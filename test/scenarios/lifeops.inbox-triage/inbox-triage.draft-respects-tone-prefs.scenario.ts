@@ -16,12 +16,12 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
-import { judgeRubric } from "../_helpers/action-assertions.ts";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
+import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 const PLEASANTRY_BLOCKLIST = [
   "hope you're doing well",
@@ -55,8 +55,10 @@ function checkDraftIsTerse(ctx: ScenarioContext): string | undefined {
   // Count sentences in any draft body — terse should be <= 4 sentences.
   // Extract a likely draft body field if present.
   const bodyMatch = blob.match(/"body"\s*:\s*"([^"]{20,2000})"/);
-  if (bodyMatch && bodyMatch[1]) {
-    const sentences = bodyMatch[1].split(/[.!?]+/).filter((s) => s.trim().length > 5);
+  if (bodyMatch?.[1]) {
+    const sentences = bodyMatch[1]
+      .split(/[.!?]+/)
+      .filter((s) => s.trim().length > 5);
     if (sentences.length > 6) {
       return `Draft is too verbose for terse mode: ${sentences.length} sentences. Body: ${bodyMatch[1].slice(0, 300)}`;
     }
@@ -68,13 +70,7 @@ export default scenario({
   id: "inbox-triage.draft-respects-tone-prefs",
   title: "Draft respects 'terse, no pleasantries' tone preference",
   domain: "lifeops.inbox-triage",
-  tags: [
-    "lifeops",
-    "inbox-triage",
-    "tone",
-    "preferences",
-    "draft",
-  ],
+  tags: ["lifeops", "inbox-triage", "tone", "preferences", "draft"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

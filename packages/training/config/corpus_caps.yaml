@@ -42,8 +42,8 @@ max_per_source: 100000
 # ─────────────── per-action cap ────────────────────────────────────
 # Primary action = first entry in `availableActions` for routing tasks
 # (RESPOND/IGNORE/STOP, REPLY, etc.) OR the action name extracted from
-# TOON `actions[0].name` for tool_call/shell_command tasks (TASK_CALL,
-# SHELL_COMMAND, …).
+# native JSON `tool_calls[0].name` for tool_call/shell_command tasks (TASK_CALL,
+# legacy action aliases, for example SHELL_COMMAND -> SHELL).
 #
 # Cap prevents `TASK_CALL` (which alone covers all of Tier B+C tool
 # corpora) from drowning out routing decisions like RESPOND/IGNORE which

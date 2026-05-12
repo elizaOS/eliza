@@ -377,7 +377,7 @@ describe("structuredStateCompactor", () => {
       facts: ["fact1", "fact2"],
       decisions: ["decided thing"],
       pending_actions: ["follow up"],
-      entities: { project: "milady" },
+      entities: { project: "eliza" },
     });
     const out = await structuredStateCompactor.compact(
       buildTranscript(20),
@@ -387,7 +387,7 @@ describe("structuredStateCompactor", () => {
     expect(out.replacementMessages[0].role).toBe("system");
     expect(out.replacementMessages[0].content).toContain("fact1");
     expect(out.replacementMessages[0].content).toContain("decided thing");
-    expect(out.replacementMessages[0].content).toContain("project: milady");
+    expect(out.replacementMessages[0].content).toContain("project: eliza");
   });
 
   it("recurses on its own output when budget exceeded", async () => {

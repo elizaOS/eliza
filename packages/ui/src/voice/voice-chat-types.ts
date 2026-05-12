@@ -5,6 +5,7 @@
 import type { VoiceConfig, VoiceMode } from "../api/client";
 import { resolveApiUrl } from "../utils";
 import { ttsDebug } from "../utils/tts-debug";
+import type { Emotion } from "./emotion";
 
 // ── Speech Recognition types ──────────────────────────────────────────
 
@@ -67,7 +68,52 @@ export function getSpeechRecognitionCtor(): SpeechRecognitionCtor | undefined {
 
 export type SpeechSegmentKind = "full" | "first-sentence" | "remainder";
 export type SpeechProviderKind = "elevenlabs" | "browser";
-export type VoiceCaptureMode = "idle" | "compose" | "push-to-talk";
+export type VoiceSessionMode =
+  | "idle"
+  | "compose"
+  | "push-to-talk"
+  | "hands-free"
+  | "passive";
+export type VoiceCaptureMode = VoiceSessionMode;
+
+export interface VoiceSpeakerMetadata {
+  /** Stable app/runtime entity id for the speaker when a connector can provide one. */
+  entityId?: string;
+  /** Connector-native speaker id, such as a Discord user id. */
+  sourceId?: string;
+  /** Connector/source label, such as "discord", "browser", or "talkmode". */
+  source?: string;
+  /** Human-friendly display name. */
+  name?: string;
+  /** Connector username or handle. */
+  userName?: string;
+  /** Room/channel where the turn was captured. */
+  channelId?: string;
+  roomId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface VoiceTurn {
+  /** Stable id for this captured speech turn when available. */
+  id?: string;
+  text: string;
+  mode: VoiceSessionMode;
+  isFinal: boolean;
+  speaker?: VoiceSpeakerMetadata;
+  source?: string;
+  startedAtMs?: number;
+  endedAtMs?: number;
+  confidence?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface VoiceTranscriptEvent {
+  text: string;
+  mode: Exclude<VoiceSessionMode, "idle">;
+  isFinal: boolean;
+  turn: VoiceTurn;
+  speaker?: VoiceSpeakerMetadata;
+}
 
 export interface VoicePlaybackStartEvent {
   text: string;
@@ -75,16 +121,25 @@ export interface VoicePlaybackStartEvent {
   provider: SpeechProviderKind;
   cached: boolean;
   startedAtMs: number;
+  messageId?: string;
+  voiceTurnId?: string;
+  speechEndedAtMs?: number;
+  assistantFirstTextAtMs?: number;
+  assistantTextUpdatedAtMs?: number;
+  queuedAtMs?: number;
 }
 
 export interface VoiceTranscriptPreviewEvent {
-  mode: Exclude<VoiceCaptureMode, "idle">;
+  text: string;
+  mode: Exclude<VoiceSessionMode, "idle">;
   isFinal: boolean;
+  turn: VoiceTurn;
+  speaker?: VoiceSpeakerMetadata;
 }
 
 export interface VoiceChatOptions {
   /** Called when a final transcript is ready to send */
-  onTranscript: (text: string) => void;
+  onTranscript: (text: string, event: VoiceTranscriptEvent) => void;
   /** Called whenever the live transcript buffer changes */
   onTranscriptPreview?: (
     text: string,
@@ -100,6 +155,33 @@ export interface VoiceChatOptions {
   lang?: string;
   /** Saved voice configuration — switches TTS provider when set */
   voiceConfig?: VoiceConfig | null;
+}
+
+export interface VoiceAssistantSpeechTelemetry {
+  /** Assistant message whose visible text is being spoken. */
+  messageId?: string;
+  /** User voice turn that caused this assistant output. */
+  voiceTurnId?: string;
+  /** UI monotonic timestamp for final transcript receipt / speech end. */
+  speechEndedAtMs?: number;
+  /** UI monotonic timestamp when this assistant message first had visible text. */
+  assistantFirstTextAtMs?: number;
+  /** UI monotonic timestamp for this visible text update. */
+  assistantTextUpdatedAtMs?: number;
+}
+
+export interface QueueAssistantSpeechOptions {
+  /**
+   * Replace current playback for the first clip of a new assistant message.
+   * Leave enabled for single-message stream corrections; disable when appending
+   * additional visible assistant turns from the same voice response.
+   */
+  replace?: boolean;
+  telemetry?: VoiceAssistantSpeechTelemetry;
+  /** Emotion hint forwarded to the TTS provider (see SpeakTask.emotion). */
+  emotion?: Emotion;
+  /** Route through the singing-model codepath (see SpeakTask.singing). */
+  singing?: boolean;
 }
 
 export interface VoiceChatState {
@@ -119,8 +201,8 @@ export interface VoiceChatState {
   usingAudioAnalysis: boolean;
   /** Toggle voice listening on/off */
   toggleListening: () => void;
-  /** Begin voice capture in compose or push-to-talk mode */
-  startListening: (mode?: Exclude<VoiceCaptureMode, "idle">) => Promise<void>;
+  /** Begin voice capture in an active session mode */
+  startListening: (mode?: Exclude<VoiceSessionMode, "idle">) => Promise<void>;
   /** End voice capture and optionally submit the transcript */
   stopListening: (options?: { submit?: boolean }) => Promise<void>;
   /** Speak text aloud with mouth animation */
@@ -130,6 +212,7 @@ export interface VoiceChatState {
     messageId: string,
     text: string,
     isFinal: boolean,
+    options?: QueueAssistantSpeechOptions,
   ) => void;
   /** Stop any current speech */
   stopSpeaking: () => void;
@@ -147,10 +230,25 @@ export interface SpeakTask {
   append: boolean;
   segment: SpeechSegmentKind;
   cacheKey?: string;
+  /**
+   * Optional emotion hint forwarded to providers that support it
+   * (omnivoice voice-design `instruct`, ElevenLabs `voice_settings.style`).
+   * Providers that ignore emotion just drop the field.
+   */
+  emotion?: Emotion;
+  /**
+   * Route this clip through the singing-model codepath (omnivoice singing
+   * GGUF). Providers without a singing variant treat this as a no-op and
+   * fall back to standard TTS.
+   */
+  singing?: boolean;
   /** App-only: sent as `x-elizaos-tts-*` headers on `/api/tts/*` when debug is on (never forwarded to Eliza Cloud). */
   debugUtteranceContext?: {
     messageId: string;
     fullAssistTextPreview: string;
+  };
+  telemetry?: VoiceAssistantSpeechTelemetry & {
+    queuedAtMs?: number;
   };
 }
 
@@ -161,6 +259,8 @@ export interface AssistantSpeechState {
   /** Latest speakable from the stream (debounce flush reads this). */
   latestSpeakable: string;
   finalQueued: boolean;
+  replacePlaybackOnFirstClip: boolean;
+  telemetry?: VoiceAssistantSpeechTelemetry;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────
@@ -175,14 +275,8 @@ export const ASSISTANT_TTS_FIRST_FLUSH_CHARS = 24;
 export const ASSISTANT_TTS_MIN_CHUNK_CHARS = 88;
 /** Merge rapid stream deltas into one request after a short pause. */
 export const ASSISTANT_TTS_DEBOUNCE_MS = 170;
-/**
- * Temporary safety switch:
- * only speak assistant replies once the final text has arrived.
- *
- * This avoids garbled overlap when cloud text streaming and speech playback
- * race each other on partial chunks.
- */
-export const ASSISTANT_TTS_FINAL_ONLY = true;
+/** Stream assistant speech progressively; queueing keeps chunks serialized. */
+export const ASSISTANT_TTS_FINAL_ONLY = false;
 export const TALKMODE_STOP_SETTLE_MS = 120;
 export const REDACTED_SECRET = "[REDACTED]";
 export const MOUTH_OPEN_STEP = 0.02;

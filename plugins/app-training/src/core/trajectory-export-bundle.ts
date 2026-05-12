@@ -8,18 +8,17 @@ import {
   type PrivacyFilterOptions,
 } from "./privacy-filter.js";
 import {
-  exportTrajectoryTaskDatasets,
-  type TrajectoryTaskDatasetExport,
-  type TrajectoryTrainingTask,
-} from "./trajectory-task-datasets.js";
-import {
   type HfUploadConfig,
   resolveHfUploadConfig,
   uploadTrajectoryJsonlToHuggingFace,
 } from "./trajectory-hf-upload.js";
+import {
+  exportTrajectoryTaskDatasets,
+  type TrajectoryTaskDatasetExport,
+  type TrajectoryTrainingTask,
+} from "./trajectory-task-datasets.js";
 
-export const TRAJECTORY_EXPORT_BUNDLE_SCHEMA =
-  "eliza_trajectory_export_bundle";
+export const TRAJECTORY_EXPORT_BUNDLE_SCHEMA = "eliza_trajectory_export_bundle";
 export const TRAJECTORY_EXPORT_BUNDLE_VERSION = 1;
 
 type ExportableTrajectory = Trajectory & FilterableTrajectory;
@@ -80,7 +79,9 @@ export interface TrajectoryExportBundleManifest {
     llmCalls: number | null;
     skippedNonNativeRows: number | null;
   };
-  tasks: Partial<Record<TrajectoryTrainingTask, TrajectoryExportBundleTaskFile>>;
+  tasks: Partial<
+    Record<TrajectoryTrainingTask, TrajectoryExportBundleTaskFile>
+  >;
   privacy: TrajectoryExportBundlePrivacyStats;
   cloudUpload: TrajectoryExportBundleCloudUpload;
 }
@@ -107,7 +108,7 @@ export interface BuildTrajectoryExportBundleOptions {
   };
   /**
    * Upload the sanitized JSONL to a HuggingFace dataset repo. `true` resolves
-   * the config from the environment (`MILADY_TRAJECTORY_HF_REPO` + HF token);
+   * the config from the environment (`ELIZA_TRAJECTORY_HF_REPO` + HF token);
    * pass an explicit `HfUploadConfig` to override. Defaults to no upload.
    */
   uploadToHuggingFace?: boolean | HfUploadConfig;
@@ -276,8 +277,7 @@ export async function buildTrajectoryExportBundle(
   const hasPreSanitizedInput =
     options.sanitizedTrajectories !== undefined ||
     options.sanitizedJsonlPath !== undefined;
-  const shouldApplyPrivacy =
-    options.privacy?.apply ?? !hasPreSanitizedInput;
+  const shouldApplyPrivacy = options.privacy?.apply ?? !hasPreSanitizedInput;
   const privacyResult =
     shouldApplyPrivacy && exportableTrajectories.length > 0
       ? applyPrivacyFilter(exportableTrajectories, options.privacy?.options)
@@ -359,7 +359,7 @@ export async function buildTrajectoryExportBundle(
       cloudUpload = {
         uploadedToHuggingFace: false,
         huggingFaceError:
-          "HuggingFace upload requested but not configured (set MILADY_TRAJECTORY_HF_REPO and an HF token)",
+          "HuggingFace upload requested but not configured (set ELIZA_TRAJECTORY_HF_REPO and an HF token)",
       };
     }
   }

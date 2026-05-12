@@ -15,10 +15,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "category",
-      "30 days"
-    ],
+    "required_outputs": ["category", "30 days"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -40,9 +37,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "fitness"
-    ],
+    "required_outputs": ["fitness"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -66,9 +61,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Netflix"
-    ],
+    "required_outputs": ["Netflix"],
     "first_question_fallback": {
       "canned_answer": "Yes, I confirm \u2014 go ahead and cancel.",
       "applies_when": "agent asks for explicit confirmation before canceling"
@@ -93,9 +86,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "recurring"
-    ],
+    "required_outputs": ["recurring"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -117,10 +108,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Q2",
-      "2026"
-    ],
+    "required_outputs": ["Q2", "2026"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -144,9 +132,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Spotify"
-    ],
+    "required_outputs": ["Spotify"],
     "first_question_fallback": {
       "canned_answer": "Yes, I confirm \u2014 cancel it.",
       "applies_when": "agent asks for explicit confirmation before canceling"
@@ -172,9 +158,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Amazon"
-    ],
+    "required_outputs": ["Amazon"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -196,9 +180,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "work"
-    ],
+    "required_outputs": ["work"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -220,9 +202,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "unused"
-    ],
+    "required_outputs": ["unused"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -244,10 +224,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "category",
-      "365 days"
-    ],
+    "required_outputs": ["category", "365 days"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -270,9 +247,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Apple"
-    ],
+    "required_outputs": ["Apple"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -294,9 +269,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "income"
-    ],
+    "required_outputs": ["income"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,

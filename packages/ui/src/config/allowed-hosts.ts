@@ -6,19 +6,19 @@ export type AllowedHostPattern = {
 function parseHostPattern(rawValue: string): AllowedHostPattern {
   let value = rawValue.trim();
   if (!value) {
-    throw new Error("MILADY_ALLOWED_HOSTS contains an empty host entry");
+    throw new Error("ELIZA_ALLOWED_HOSTS contains an empty host entry");
   }
 
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
     const url = new URL(value);
     if (url.protocol !== "http:" && url.protocol !== "https:") {
       throw new Error(
-        `MILADY_ALLOWED_HOSTS entry has unsupported protocol: ${rawValue}`,
+        `ELIZA_ALLOWED_HOSTS entry has unsupported protocol: ${rawValue}`,
       );
     }
     if (url.pathname !== "/" || url.search || url.hash) {
       throw new Error(
-        `MILADY_ALLOWED_HOSTS entry must be a host, not a URL path: ${rawValue}`,
+        `ELIZA_ALLOWED_HOSTS entry must be a host, not a URL path: ${rawValue}`,
       );
     }
     value = url.hostname;
@@ -30,7 +30,7 @@ function parseHostPattern(rawValue: string): AllowedHostPattern {
   ).toLowerCase();
   if (!host || host.includes("/") || host.includes("*")) {
     throw new Error(
-      `MILADY_ALLOWED_HOSTS entry is not a supported host pattern: ${rawValue}`,
+      `ELIZA_ALLOWED_HOSTS entry is not a supported host pattern: ${rawValue}`,
     );
   }
 

@@ -76,7 +76,31 @@ export interface PlannerRuntime {
 
 export interface PlannerToolResult {
 	success: boolean;
+	/**
+	 * Diagnostic / log-shaped projection of the tool's output. Goes into
+	 * the trajectory and the planner's tool-result message. Used by the
+	 * model to reason about success/failure and to decide the next step.
+	 *
+	 * **Never** rendered directly to the user — this often contains
+	 * wrapper formatting (shell prompts, exit codes, cwd, byte counts,
+	 * stderr-vs-stdout separators). Tools that want their output to be
+	 * shown to the user verbatim must set `userFacingText` separately.
+	 */
 	text?: string;
+	/**
+	 * Optional user-facing projection of the tool's output. When set,
+	 * the planner-loop's terminal-FINISH fallback may use this as the
+	 * `finalMessage` shown to the user — instead of leaking the tool's
+	 * diagnostic `text` wrapper.
+	 *
+	 * Tools that produce a true user-facing answer (Q&A tools, REPLY
+	 * actions, content generators) should set this. Tools that emit
+	 * logs (BASH, SHELL, fetchers, file readers) should leave it
+	 * undefined; in that case the framework falls through to the
+	 * evaluator's synthesized reply rather than dumping shell-wrapper
+	 * text into the user channel.
+	 */
+	userFacingText?: string;
 	data?: Record<string, unknown>;
 	error?: unknown;
 	continueChain?: boolean;

@@ -52,7 +52,7 @@ _SOURCE_CONTEXT_CACHE: dict[tuple[str, str, str], str | None] = {}
 
 
 def _normalize_patch_text(text: str) -> str:
-    """Normalize TOON-indented multiline patch text back to a raw diff."""
+    """Normalize indented multiline patch text back to a raw diff."""
     normalized = textwrap.dedent(text).strip()
     lines = normalized.splitlines()
     if lines:

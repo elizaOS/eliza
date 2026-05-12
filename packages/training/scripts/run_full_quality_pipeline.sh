@@ -20,7 +20,7 @@
 #                                    welcome!", strip lead/tail slop, cap at 250
 #   9. transform_task_reply_deslop — task replies: strip "Hello! I'd...",
 #                                    "Sure, here", "Apologies, but", etc.
-#  10. transform_unquoted_text_deslop — same but for unquoted TOON text values
+#  10. transform_unquoted_text_deslop — same but for unquoted native JSON text values
 #  11. transform_strip_residual_openers — final pass for residual social
 #                                    openers like "You're welcome! Now..."
 #  12. transform_diversify_standalone_thanks — diversify all remaining
@@ -31,7 +31,7 @@
 #   bash scripts/run_full_quality_pipeline.sh
 #
 # Environment:
-#   MILADY_INTEGRATE_TRIVIAL=1   integrate round-3 thought replacements (req:
+#   ELIZA_INTEGRATE_TRIVIAL=1   integrate round-3 thought replacements (req:
 #                                round-3 finished)
 
 set -euo pipefail

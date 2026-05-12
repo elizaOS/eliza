@@ -1,16 +1,8 @@
 import type { Plugin } from '@elizaos/core';
-import {
-    sunoGenerateMusicHandler,
-    type SunoMusicSubaction,
-} from './actions/musicGeneration';
+import { sunoGenerateMusicHandler, type SunoMusicSubaction } from './actions/musicGeneration';
 import { SunoProvider, sunoStatusProvider } from './providers/suno';
 
-export {
-    SunoProvider,
-    sunoGenerateMusicHandler,
-    sunoStatusProvider,
-    type SunoMusicSubaction,
-};
+export { SunoProvider, sunoGenerateMusicHandler, sunoStatusProvider, type SunoMusicSubaction };
 
 export const sunoPlugin: Plugin = {
     name: 'suno',

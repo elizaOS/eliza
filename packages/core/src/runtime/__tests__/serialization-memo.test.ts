@@ -67,7 +67,7 @@ function makeContext(toolCount: number, propsPerTool: number): ContextObject {
 
 describe("Wave 2-D serialization memoization", () => {
 	afterEach(() => {
-		delete process.env.MILADY_SHORT_FORM_ENUMS;
+		delete process.env.ELIZA_SHORT_FORM_ENUMS;
 	});
 
 	it("renders the same bytes from memo as from a fresh compute", () => {
@@ -125,7 +125,7 @@ describe("Wave 2-D serialization memoization", () => {
 		// context.events array identity.
 		const ctxWithRoutingHints = makeContext(5, 3);
 		// Just sanity-check that the block builds with both env states.
-		process.env.MILADY_PROMPT_COMPRESS = "1";
+		process.env.ELIZA_PROMPT_COMPRESS = "1";
 		try {
 			const compressed =
 				__renderAvailableActionsBlockForTests(ctxWithRoutingHints);
@@ -135,7 +135,7 @@ describe("Wave 2-D serialization memoization", () => {
 			expect(compressed).not.toBeNull();
 			expect(before).not.toBeNull();
 		} finally {
-			delete process.env.MILADY_PROMPT_COMPRESS;
+			delete process.env.ELIZA_PROMPT_COMPRESS;
 		}
 	});
 });

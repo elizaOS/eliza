@@ -1,5 +1,11 @@
-import { type ChildProcess, spawn } from "node:child_process";
-import { type IAgentRuntime, Service, logger as coreLogger } from "@elizaos/core";
+import { execFile } from "node:child_process";
+import { statSync } from "node:fs";
+import * as path from "node:path";
+import {
+  logger as coreLogger,
+  type IAgentRuntime,
+  Service,
+} from "@elizaos/core";
 import { CODING_TOOLS_LOG_PREFIX, RIPGREP_SERVICE } from "../types.js";
 
 const VCS_EXCLUDES = [".git", ".svn", ".hg", ".bzr", ".jj", ".sl"];
@@ -72,7 +78,7 @@ export class RipgrepService extends Service {
     options: RipgrepOptions,
     mode: RipgrepMode,
   ): Promise<RipgrepResult> {
-    const args: string[] = [];
+    const args: string[] = ["--no-config"];
     if (mode === "files_with_matches") args.push("--files-with-matches");
     else if (mode === "count") args.push("--count");
     else {
@@ -86,70 +92,89 @@ export class RipgrepService extends Service {
     if (options.maxCount && mode === "content") {
       args.push("-m", String(options.maxCount));
     }
-    if (options.contextBefore !== undefined) args.push("-B", String(options.contextBefore));
-    if (options.contextAfter !== undefined) args.push("-A", String(options.contextAfter));
-    if (options.contextAround !== undefined) args.push("-C", String(options.contextAround));
+    if (options.contextBefore !== undefined)
+      args.push("-B", String(options.contextBefore));
+    if (options.contextAfter !== undefined)
+      args.push("-A", String(options.contextAfter));
+    if (options.contextAround !== undefined)
+      args.push("-C", String(options.contextAround));
     for (const dir of VCS_EXCLUDES) {
       args.push("-g", `!${dir}/**`);
     }
-    args.push("--", options.pattern, options.path);
+    const executionPath = resolveExecutionPath(options.path);
+    args.push("--", options.pattern, executionPath.searchPath);
 
-    return runRipgrep(this.binary(), args);
+    return runRipgrep(this.binary(), args, mode, executionPath.cwd);
   }
 }
 
-function runRipgrep(rg: string, args: string[]): Promise<RipgrepResult> {
+function resolveExecutionPath(targetPath: string): {
+  cwd?: string;
+  searchPath: string;
+} {
+  try {
+    const stat = statSync(targetPath);
+    if (stat.isDirectory()) {
+      return { cwd: targetPath, searchPath: "." };
+    }
+    return {
+      cwd: path.dirname(targetPath),
+      searchPath: path.basename(targetPath),
+    };
+  } catch {
+    return { searchPath: targetPath };
+  }
+}
+
+function runRipgrep(
+  rg: string,
+  args: string[],
+  mode: RipgrepMode,
+  cwd: string | undefined,
+): Promise<RipgrepResult> {
   return new Promise((resolve) => {
-    let stdout = "";
-    let stderr = "";
-    let truncated = false;
     const HARD_CAP_BYTES = 5_000_000;
 
-    let proc: ChildProcess;
-    try {
-      proc = spawn(rg, args, { stdio: ["ignore", "pipe", "pipe"] });
-    } catch (err) {
-      resolve({
-        mode: "content",
-        output: `ripgrep spawn failed: ${(err as Error).message}`,
-        exitCode: -1,
-        truncated: false,
-      });
-      return;
-    }
+    execFile(
+      rg,
+      args,
+      {
+        encoding: "utf8",
+        maxBuffer: HARD_CAP_BYTES,
+        timeout: 30_000,
+        ...(cwd ? { cwd } : {}),
+      },
+      (error, stdout, stderr) => {
+        const output = stdout || stderr;
+        if (!error) {
+          resolve({ mode, output, exitCode: 0, truncated: false });
+          return;
+        }
 
-    const timer = setTimeout(() => {
-      proc.kill("SIGTERM");
-    }, 30_000);
-
-    proc.stdout?.on("data", (chunk: Buffer) => {
-      if (stdout.length + chunk.length > HARD_CAP_BYTES) {
-        truncated = true;
-        proc.kill("SIGTERM");
-        return;
-      }
-      stdout += chunk.toString("utf8");
-    });
-    proc.stderr?.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf8");
-    });
-    proc.on("close", (code) => {
-      clearTimeout(timer);
-      resolve({
-        mode: "content",
-        output: stdout || stderr,
-        exitCode: typeof code === "number" ? code : -1,
-        truncated,
-      });
-    });
-    proc.on("error", (err) => {
-      clearTimeout(timer);
-      resolve({
-        mode: "content",
-        output: `ripgrep error: ${err.message}`,
-        exitCode: -1,
-        truncated: false,
-      });
-    });
+        const err = error as NodeJS.ErrnoException & {
+          killed?: boolean;
+          signal?: NodeJS.Signals | null;
+        };
+        if (err.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+          resolve({ mode, output, exitCode: 0, truncated: true });
+          return;
+        }
+        if (typeof err.code === "number") {
+          resolve({ mode, output, exitCode: err.code, truncated: false });
+          return;
+        }
+        const timedOut = err.killed || err.signal === "SIGTERM";
+        resolve({
+          mode,
+          output:
+            output ||
+            (timedOut
+              ? "ripgrep timed out after 30000ms"
+              : `ripgrep error: ${err.message}`),
+          exitCode: -1,
+          truncated: false,
+        });
+      },
+    );
   });
 }

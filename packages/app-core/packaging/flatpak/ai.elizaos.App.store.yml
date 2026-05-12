@@ -39,14 +39,14 @@ finish-args:
   # sockets here so the portal stack works correctly.
   - --socket=wayland
   - --socket=fallback-x11
-  # Persisted state — keeps `~/.milady` (app data, prompts, trajectories)
+  # Persisted state — keeps `~/.eliza` (app data, prompts, trajectories)
   # inside the per-app sandboxed home so it survives upgrades. Flatpak
-  # rewrites this to `~/.var/app/ai.elizaos.App/.milady` transparently.
-  - --persist=.milady
+  # rewrites this to `~/.var/app/ai.elizaos.App/.eliza` transparently.
+  - --persist=.eliza
   # Portal-managed user-granted workspace folder. The user picks this
   # explicitly via the FileChooser portal at first run; everything outside
   # it stays unreadable.
-  - --filesystem=xdg-documents/Milady:create
+  - --filesystem=xdg-documents/Eliza:create
   # XDG config persistence (config file, account storage, settings).
   - --filesystem=xdg-config/elizaos-app:create
   # Desktop notifications.
@@ -109,7 +109,7 @@ modules:
           - aarch64
 
   # ── elizaOS App CLI (store variant) ──────────────────────────────────
-  # The store wrapper exports MILADY_BUILD_VARIANT=store before exec'ing
+  # The store wrapper exports ELIZA_BUILD_VARIANT=store before exec'ing
   # the runtime, which the agent reads to gate off PATH-lookup CLI
   # spawning, EXECUTE_CODE, and host-Ollama discovery. The bubblewrap
   # sandbox enforces the same constraints unconditionally; the env var

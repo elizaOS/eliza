@@ -42,15 +42,54 @@ IGNORED_BENCHMARK_DIRS = {
     ".git",
     ".pytest_cache",
     "benchmark_results",
+    "claw-eval",
     "eliza-adapter",
     "hermes-adapter",
     "openclaw-adapter",
     "lib",
+    "nl2repo",
     "orchestrator",
+    "qwen-claw-bench",
+    "qwen-web-bench",
+    "scripts",
+    "skillsbench",
+    "swe-bench-pro",
+    "swe-bench-multilingual",
     "swe-bench-workspace",
     "tests",
     "viewer",
 }
+
+
+# Harness compatibility lookup. The benchmark matrix is intentionally
+# tri-harness by default so `--all-harnesses` remains a full Eliza/Hermes/
+# OpenClaw comparison unless a future adapter adds a hard exclusion here.
+ALL_HARNESSES: tuple[str, ...] = ("eliza", "openclaw", "hermes")
+AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
+    # CompactBench currently exercises elizaOS conversation-compactor
+    # implementations through a Python bridge. Hermes/OpenClaw rows would be
+    # misleading labels unless explicit per-agent compactor methods are added.
+    "compactbench": ("eliza",),
+    # Eliza/Hermes preserve full OpenAI chat/tool payloads through the LOCA
+    # proxy. The current OpenClaw CLI adapter only receives the last user text
+    # plus a session id, so its LOCA rows are not comparable yet.
+    "loca_bench": ("eliza", "hermes"),
+    # ConfigBench currently has an in-process Eliza handler plus oracle/mock
+    # handlers. Hermes/OpenClaw rows were previously scored against the
+    # Perfect oracle fallback, which is not a real harness comparison.
+    "configbench": ("eliza",),
+    # FrameworkBench measures the local elizaOS TypeScript runtime with a mock
+    # LLM. It does not invoke Hermes/OpenClaw, so tri-harness labels are
+    # misleading until real per-harness framework drivers exist.
+    "framework": ("eliza",),
+    # VoiceBench currently instantiates the local TypeScript runtime directly;
+    # Hermes/OpenClaw labels run the same mock voice path with zero LLM calls.
+    "voicebench": ("eliza",),
+}
+
+
+def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
+    return AGENT_COMPATIBILITY_OVERRIDES.get(benchmark_id, ALL_HARNESSES)
 
 
 def _is_benchmark_directory(path: Path) -> bool:
@@ -111,7 +150,16 @@ def _make_registry_adapter(
             if existing
             else os.pathsep.join(adapter_python_paths)
         )
-        return {"PYTHONPATH": pythonpath}
+        env = {"PYTHONPATH": pythonpath}
+        for extra_key, env_key in (
+            ("openclaw_timeout_s", "OPENCLAW_TIMEOUT_S"),
+            ("hermes_timeout_s", "HERMES_TIMEOUT_S"),
+            ("eliza_bench_http_timeout_s", "ELIZA_BENCH_HTTP_TIMEOUT"),
+        ):
+            value = ctx.request.extra_config.get(extra_key)
+            if isinstance(value, (int, float)) and value > 0:
+                env[env_key] = str(float(value))
+        return env
 
     return BenchmarkAdapter(
         id=benchmark_id,
@@ -124,6 +172,7 @@ def _make_registry_adapter(
         required_env=tuple(requirements_env),
         default_extra_config=dict(default_extra_config or {}),
         env_builder=env_builder,
+        agent_compatibility=_agent_compatibility_for(benchmark_id),
     )
 
 
@@ -166,6 +215,7 @@ def _make_extra_adapter(
         env_builder=env_builder,
         capability_notes=capability_notes,
         default_timeout_seconds=default_timeout_seconds,
+        agent_compatibility=_agent_compatibility_for(adapter_id),
     )
 
 
@@ -849,10 +899,6 @@ def _score_from_configbench(path: Path) -> ScoreSummary:
         if "eliza" in name:
             target = item
             break
-    if target is None and handlers:
-        first = handlers[0]
-        if isinstance(first, dict):
-            target = first
     if target is None:
         return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
     overall = target.get("overallScore")
@@ -1110,36 +1156,64 @@ def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
         args.append("--resume")
     if ctx.request.extra_config.get("score") is True:
         args.append("--score")
+    if ctx.request.extra_config.get("analyze_valid_hits", True) is not False:
+        args.append("--analyze-valid-hits")
+        args.extend(
+            [
+                "--valid-hit-output",
+                str(ctx.output_root / "compactbench-results.valid-hits.jsonl"),
+            ]
+        )
     return args
 
 
 def _score_from_compactbench(path: Path) -> ScoreSummary:
     import json
 
-    run_end: dict[str, Any] | None = None
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    valid_path = path.with_name(f"{path.stem}.valid-hits.jsonl")
+    if not valid_path.exists():
+        raise ValueError(
+            "compactbench repaired valid-hit analysis is required; "
+            "set analyze_valid_hits=true or run run_cerebras.py with "
+            "--analyze-valid-hits"
+        )
+    analysis_end: dict[str, Any] | None = None
+    for line in valid_path.read_text(encoding="utf-8", errors="replace").splitlines():
         if not line.strip():
             continue
         try:
             item = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(item, dict) and item.get("event") == "run_end":
-            run_end = item
-    if run_end is None:
-        raise ValueError("compactbench result missing run_end event")
-    raw = run_end.get("overall_score")
+        if isinstance(item, dict) and item.get("event") == "analysis_end":
+            analysis_end = item
+    if analysis_end is None:
+        raise ValueError("compactbench valid-hit analysis missing analysis_end event")
+    raw = analysis_end.get("overall_score")
     score = float(raw) if isinstance(raw, (int, float)) else None
     return ScoreSummary(
         score=score,
         unit="ratio",
         higher_is_better=True,
         metrics={
+            "scorer_name": "repaired_valid_hits",
             "overall_score": raw,
-            "drift_resistance": run_end.get("drift_resistance"),
-            "constraint_retention": run_end.get("constraint_retention"),
-            "contradiction_rate": run_end.get("contradiction_rate"),
-            "compression_ratio": run_end.get("compression_ratio"),
+            "benchmark_quality_score": analysis_end.get(
+                "benchmark_quality_score"
+            ),
+            "raw_lexical_overall_score": analysis_end.get(
+                "raw_lexical_overall_score"
+            ),
+            "valid_false_negatives": analysis_end.get("valid_false_negatives"),
+            "semantic_false_positives": analysis_end.get(
+                "semantic_false_positives"
+            ),
+            "failures_remaining": analysis_end.get("failures_remaining"),
+            "repaired_expected_conflicts": analysis_end.get(
+                "repaired_expected_conflicts"
+            ),
+            "removed_invalid_items": analysis_end.get("removed_invalid_items"),
+            "judge_refusals": analysis_end.get("judge_refusals"),
         },
     )
 
@@ -1161,7 +1235,8 @@ def _command_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> lis
         str(int(ctx.request.extra_config.get("max_tokens", 2048))),
         "--timeout",
         str(int(ctx.request.extra_config.get("timeout", 300))),
-        "--allow-empty",
+        "--max-retries",
+        str(int(ctx.request.extra_config.get("max_retries", 1))),
     ]
     config = ctx.request.extra_config.get("config")
     if isinstance(config, str) and config.strip():
@@ -1174,13 +1249,26 @@ def _command_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> lis
     max_steps = ctx.request.extra_config.get("max_steps", ctx.request.extra_config.get("max_tasks"))
     if isinstance(max_steps, int) and max_steps > 0:
         args.extend(["--max-steps", str(max_steps)])
+    for key, flag, caster in [
+        ("max_context_size", "--max-context-size", int),
+        ("reset_size", "--reset-size", int),
+        ("reset_ratio", "--reset-ratio", float),
+        ("memory_warning_threshold", "--memory-warning-threshold", float),
+        ("keep_thinking", "--keep-thinking", int),
+    ]:
+        if key in ctx.request.extra_config:
+            args.extend([flag, str(caster(ctx.request.extra_config[key]))])
     context_summary = ctx.request.extra_config.get("context_summary")
     if context_summary is not False:
         args.append("--context-summary")
     if ctx.request.extra_config.get("context_awareness") is True:
         args.append("--context-awareness")
+    reasoning_effort = ctx.request.extra_config.get("reasoning_effort")
+    if isinstance(reasoning_effort, str) and reasoning_effort.strip():
+        args.extend(["--reasoning-effort", reasoning_effort.strip()])
     if ctx.request.extra_config.get("dry_run") is True:
         args.append("--dry-run")
+        args.append("--allow-empty")
     return args
 
 
@@ -1192,18 +1280,174 @@ def _score_from_loca_bench(path: Path) -> ScoreSummary:
     if not isinstance(summary, dict):
         raise ValueError("loca-bench audit missing summary")
     raw = summary.get("avg_accuracy")
+    trajectory_count = summary.get("trajectory_count")
+    aggregate_trajectory_count = summary.get("aggregate_trajectory_count")
+    metadata_total_tasks = summary.get("metadata_total_tasks")
     score = float(raw) if isinstance(raw, (int, float)) else None
+    if score is None:
+        raise ValueError("loca-bench audit missing summary.avg_accuracy")
+    if summary.get("issue_count"):
+        raise ValueError(f"loca-bench audit has {summary.get('issue_count')} issue(s)")
+    has_trajectories = (
+        (isinstance(trajectory_count, int) and trajectory_count > 0)
+        or (
+            isinstance(aggregate_trajectory_count, int)
+            and aggregate_trajectory_count > 0
+        )
+    )
+    if not has_trajectories:
+        raise ValueError("loca-bench run has no captured trajectories")
+    if summary.get("total_api_tokens") in (None, 0) and (
+        isinstance(metadata_total_tasks, int) and metadata_total_tasks > 0
+    ):
+        raise ValueError("loca-bench run has tasks but no API token usage")
     return ScoreSummary(
         score=score,
         unit="ratio",
         higher_is_better=True,
         metrics={
             "avg_accuracy": raw,
-            "trajectory_count": summary.get("trajectory_count"),
+            "aggregate_trajectory_count": aggregate_trajectory_count,
             "issue_count": summary.get("issue_count"),
+            "metadata_total_tasks": metadata_total_tasks,
             "total_api_tokens": summary.get("total_api_tokens"),
             "max_prompt_tokens": summary.get("max_prompt_tokens"),
+            "max_total_tokens": summary.get("max_total_tokens"),
+            "trajectory_count": trajectory_count,
         },
+    )
+
+
+def _env_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    del adapter
+    env: dict[str, str] = {}
+    max_context_size = ctx.request.extra_config.get("max_context_size")
+    if isinstance(max_context_size, int) and max_context_size > 0:
+        env["MAX_CONVERSATION_TOKENS"] = str(max_context_size)
+    return env
+
+
+def _command_interrupt_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    args = [
+        "bun",
+        "run",
+        "src/runner.ts",
+        "--mode=cerebras",
+        f"--model={ctx.request.model}",
+        f"--out={ctx.output_root}",
+    ]
+    scenario = ctx.request.extra_config.get("scenario")
+    if isinstance(scenario, str) and scenario.strip():
+        args.append(f"--scenario={scenario.strip()}")
+    elif int(ctx.request.extra_config.get("max_tasks", 0) or 0) == 1:
+        args.append("--scenario=A1-fragmented-email-draft")
+    if ctx.request.extra_config.get("judge") is True:
+        args.append("--judge")
+    return args
+
+
+def _score_from_interrupt_bench(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    final_score = data.get("finalScore")
+    aggregate = data.get("aggregate")
+    raw_score = final_score if isinstance(final_score, (int, float)) else aggregate
+    score = float(raw_score) / 100.0 if isinstance(raw_score, (int, float)) else None
+    scenarios = data.get("scenarios")
+    scenario_count = len(scenarios) if isinstance(scenarios, list) else 0
+    boundary_violations = 0
+    if isinstance(scenarios, list):
+        boundary_violations = sum(
+            1
+            for item in scenarios
+            if isinstance(item, dict) and item.get("boundaryViolated") is True
+        )
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "finalScore": final_score,
+            "aggregate": aggregate,
+            "judgeBonus": data.get("judgeBonus"),
+            "passTier": data.get("passTier"),
+            "scenario_count": scenario_count,
+            "boundary_violations": boundary_violations,
+            "mode": data.get("mode"),
+            "model": data.get("model"),
+        },
+    )
+
+
+def _command_personality_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    return [
+        "bun",
+        "run",
+        "src/runner.ts",
+        "--calibration",
+        "--calibration-dir",
+        "tests/calibration",
+        "--agent",
+        ctx.request.agent.strip().lower() or "eliza",
+        "--output",
+        str(ctx.output_root / "report.md"),
+        "--output-json",
+        str(ctx.output_root / "report.json"),
+    ]
+
+
+def _env_personality_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    enable_llm = ctx.request.extra_config.get("enable_llm_judge") is True
+    return {
+        "PERSONALITY_JUDGE_MODEL": ctx.request.model,
+        "PERSONALITY_JUDGE_ENABLE_LLM": "1" if enable_llm else "0",
+        "PERSONALITY_JUDGE_STRICT": "0",
+    }
+
+
+def _score_from_personality_bench(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    calibration = data.get("calibration")
+    totals = data.get("totals") if isinstance(data.get("totals"), dict) else {}
+    if isinstance(calibration, dict):
+        raw_score = calibration.get("score", calibration.get("agreementRate"))
+        score = float(raw_score) if isinstance(raw_score, (int, float)) else None
+        metrics = {
+            "total": calibration.get("total"),
+            "agreed": calibration.get("agreed"),
+            "disagreed": calibration.get("disagreed"),
+            "needsReview": calibration.get("needsReview"),
+            "falsePositive": calibration.get("falsePositive"),
+            "falseNegative": calibration.get("falseNegative"),
+            "agreementRate": calibration.get("agreementRate"),
+            "falsePositiveRate": calibration.get("falsePositiveRate"),
+            "reviewRate": calibration.get("reviewRate"),
+            "mismatch_count": len(calibration.get("mismatches", []))
+            if isinstance(calibration.get("mismatches"), list)
+            else 0,
+        }
+        return ScoreSummary(
+            score=score,
+            unit="ratio",
+            higher_is_better=True,
+            metrics=metrics,
+        )
+
+    scenario_count = totals.get("scenarios", 0) if isinstance(totals, dict) else 0
+    passed = totals.get("pass", 0) if isinstance(totals, dict) else 0
+    score = (float(passed) / float(scenario_count)) if scenario_count else None
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics=dict(totals) if isinstance(totals, dict) else {},
     )
 
 
@@ -1233,6 +1477,18 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "mint": {
             "agent": "eliza",
         },
+        "terminal_bench": {
+            "max_tasks": 1,
+            "sample": True,
+            "timeout": 180,
+            "no_markdown": True,
+            "no_sessions": True,
+            "no_leaderboard": True,
+        },
+        "visualwebbench": {
+            "max_tasks": 1,
+            "task_types": "web_caption",
+        },
         "social_alpha": {
             "system": "eliza",
         },
@@ -1258,6 +1514,18 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_scenarios": 12,
             "strict": True,
         },
+        "hermes_tblite": {
+            "max_tasks": 5,
+        },
+        "hermes_terminalbench_2": {
+            "max_tasks": 5,
+        },
+        "hermes_yc_bench": {
+            "max_tasks": 3,
+        },
+        "hermes_swe_env": {
+            "max_tasks": 1,
+        },
     }
     registry_dir_map = {
         "context_bench": "context-bench",
@@ -1275,8 +1543,38 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "gsm8k": "standard",
         "mt_bench": "standard",
     }
+    hermes_env_benchmark_ids = {
+        "hermes_tblite",
+        "hermes_terminalbench_2",
+        "hermes_yc_bench",
+        "hermes_swe_env",
+    }
+    hermes_adapter_dir_exists = (benchmarks_root / "hermes-adapter").is_dir()
     for entry in registry_entries:
         directory = registry_dir_map.get(entry.id, entry.id)
+        if entry.id in hermes_env_benchmark_ids:
+            # Hermes-native envs live under benchmarks/hermes-adapter (which is
+            # in IGNORED_BENCHMARK_DIRS because it's an adapter, not a benchmark
+            # tree). Bypass the dir-existence check and force-map to that path
+            # when the adapter checkout is present.
+            if not hermes_adapter_dir_exists:
+                continue
+            directory = "hermes-adapter"
+            adapters[entry.id] = _make_registry_adapter(
+                workspace_root=workspace_root,
+                benchmarks_root=benchmarks_root,
+                score_extractor_factory=score_extractor_factory,
+                benchmark_id=entry.id,
+                display_name=entry.display_name,
+                description=entry.description,
+                benchmark_dir=directory,
+                cwd_rel=entry.cwd_rel,
+                build_command=entry.build_command,
+                locate_result=entry.locate_result,
+                requirements_env=entry.requirements.env_vars,
+                default_extra_config=registry_default_extra.get(entry.id, {}),
+            )
+            continue
         if directory not in benchmark_dirs:
             if entry.id in {"osworld"} and "OSWorld" in benchmark_dirs:
                 directory = "OSWorld"
@@ -1415,12 +1713,38 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             command_builder=_command_loca_bench,
             result_patterns=["loca-output/eliza_loca_audit.json", "**/eliza_loca_audit.json"],
             score_extractor=_score_from_loca_bench,
+            env_builder=_env_loca_bench,
             default_extra_config={
                 "max_steps": 1,
                 "max_tool_uses": 5,
+                "max_retries": 1,
+                "timeout": 120,
                 "context_summary": True,
+                "max_context_size": 131072,
+                "reset_size": 65536,
             },
             default_timeout_seconds=7200,
+        ),
+        _make_extra_adapter(
+            adapter_id="interrupt_bench",
+            directory="interrupt-bench",
+            description="InterruptBench response-handler interruption benchmark",
+            cwd=str((benchmarks_root / "interrupt-bench").resolve()),
+            command_builder=_command_interrupt_bench,
+            result_patterns=["report.json"],
+            score_extractor=_score_from_interrupt_bench,
+            default_timeout_seconds=7200,
+        ),
+        _make_extra_adapter(
+            adapter_id="personality_bench",
+            directory="personality-bench",
+            description="Personality-bench judge calibration suite",
+            cwd=str((benchmarks_root / "personality-bench").resolve()),
+            command_builder=_command_personality_bench,
+            env_builder=_env_personality_bench,
+            result_patterns=["report.json"],
+            score_extractor=_score_from_personality_bench,
+            default_timeout_seconds=600,
         ),
         _make_extra_adapter(
             adapter_id="rolodex",
@@ -1483,7 +1807,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             adapter_id="woobench",
             directory="woobench",
             description="WooBench mystical reading benchmark",
-            cwd=str((benchmarks_root / "woobench").resolve()),
+            cwd=str(workspace_root.resolve()),
             command_builder=_command_woobench,
             env_builder=_env_woobench,
             result_patterns=["woobench_*.json"],

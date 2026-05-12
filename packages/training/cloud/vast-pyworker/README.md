@@ -95,7 +95,7 @@ Required env (sourced from the manifest's `vast_template_env` block):
 | `VLLM_PORT`       | Port vLLM binds to (must match the manifest `port`). |
 | `VLLM_REGISTRY_KEY` | Training-side key, used for log lines + manifest auto-resolve. |
 
-Optional env: `MILADY_VAST_MANIFEST` (override manifest path), `HUGGING_FACE_HUB_TOKEN`,
+Optional env: `ELIZA_VAST_MANIFEST` (override manifest path), `HUGGING_FACE_HUB_TOKEN`,
 `PYWORKER_REPO`, `PYWORKER_REF`, `MODEL_DIR`, `PYWORKER_DIR`, `VLLM_LOG`,
 `VLLM_READY_TIMEOUT`. See the script header for full defaults.
 

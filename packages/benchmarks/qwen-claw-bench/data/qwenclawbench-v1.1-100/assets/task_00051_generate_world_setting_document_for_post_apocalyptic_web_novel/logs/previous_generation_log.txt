@@ -1,0 +1,43 @@
+[2024-01-20 09:10:14] INFO: Starting generation pipeline v0.7.1...
+[2024-01-20 09:10:14] INFO: Loading workspace configuration from config/outdated_project_config.yaml
+[2024-01-20 09:10:15] INFO: Configuration loaded successfully
+[2024-01-20 09:10:15] INFO: Project: 末世重生：尸潮危机
+[2024-01-20 09:10:15] INFO: Target output directory: project_output/
+[2024-01-20 09:10:16] INFO: Loading specification files...
+[2024-01-20 09:10:17] INFO: Loaded specs/project_brief.md (1.8 KB)
+[2024-01-20 09:10:17] INFO: Loaded specs/chapter_structure_guide.md (1.5 KB)
+[2024-01-20 09:10:18] INFO: Loaded specs/character_template.md (1.8 KB)
+[2024-01-20 09:10:18] INFO: Loading reference materials...
+[2024-01-20 09:10:19] INFO: Loaded 4 reference files
+[2024-01-20 09:10:20] INFO: Validating template structure...
+[2024-01-20 09:10:21] INFO: Field 'protagonist_name': PASS (王爱娟)
+[2024-01-20 09:10:21] INFO: Field 'apocalypse_cause': PASS (zombie_virus)
+[2024-01-20 09:10:22] INFO: Field 'power_system': PASS (zombie_mutation)
+[2024-01-20 09:10:22] INFO: Field 'chapter_structure': PASS (3000 chars/chapter, 40-50 chapters/volume)
+[2024-01-20 09:10:23] INFO: Field 'estimated_volumes': PASS (4-5 volumes)
+[2024-01-20 09:10:23] INFO: Field 'total_target_chars': PASS (500000)
+[2024-01-20 09:10:24] INFO: Template validation: all required fields found, 0 errors
+[2024-01-20 09:10:25] INFO: Beginning generation phase 1: 设定文件.md
+[2024-01-20 09:10:48] INFO: Phase 1 complete (4800 chars generated)
+[2024-01-20 09:10:49] INFO: Running consistency check on 设定文件.md...
+[2024-01-20 09:11:02] INFO: Consistency check: 10 items verified, 0 conflicts
+[2024-01-20 09:11:03] INFO: Beginning generation phase 2: 人物设定.md
+[2024-01-20 09:11:15] INFO: Phase 2 complete (3100 chars generated)
+[2024-01-20 09:11:16] INFO: Beginning generation phase 3: 设立设定.md
+[2024-01-20 09:11:28] INFO: Phase 3 complete (2700 chars generated)
+[2024-01-20 09:11:29] INFO: Beginning generation phase 4: 写作规范.md
+[2024-01-20 09:11:38] INFO: Phase 4 complete (2200 chars generated)
+[2024-01-20 09:11:39] INFO: Beginning generation phase 5: 正文核对检查标准.md
+[2024-01-20 09:11:48] INFO: Phase 5 complete (1900 chars generated)
+[2024-01-20 09:11:49] INFO: Creating output directory: 正文/
+[2024-01-20 09:11:49] INFO: All 5 output files generated successfully
+[2024-01-20 09:11:50] INFO: Pipeline completed successfully
+[2024-01-20 09:11:50] INFO: Total runtime: 1 minute 36 seconds
+[2024-01-20 09:11:50] INFO: Exit code: 0
+[2024-01-20 09:11:51] INFO: Output summary:
+[2024-01-20 09:11:51] INFO:   设定文件.md          - 4800 chars
+[2024-01-20 09:11:51] INFO:   人物设定.md          - 3100 chars
+[2024-01-20 09:11:51] INFO:   设立设定.md          - 2700 chars
+[2024-01-20 09:11:51] INFO:   写作规范.md          - 2200 chars
+[2024-01-20 09:11:51] INFO:   正文核对检查标准.md  - 1900 chars
+[2024-01-20 09:11:52] INFO: NOTE: This run used config/outdated_project_config.yaml (v1.0, 2024-01-15)

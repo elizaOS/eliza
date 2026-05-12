@@ -77,9 +77,7 @@ export default scenario({
           return "first turn appears to have sent the Telegram reply instead of drafting it";
         }
         const sendAction = secondActions.find((entry) =>
-          ["MESSAGE", "MESSAGE"].includes(
-            entry.actionName,
-          ),
+          ["MESSAGE", "MESSAGE"].includes(entry.actionName),
         );
         if (!sendAction) {
           return "second turn did not call the Telegram send action after confirmation";

@@ -60,7 +60,11 @@ def test_training_spec_uses_only_active_split(publish_dataset):
     names = {p.name for p in spec.files}
     train_src = names & {"train.jsonl", "train_final.jsonl"}
     assert len(train_src) == 1, f"expected one of train.jsonl|train_final.jsonl, got {names}"
-    assert {"val.jsonl", "test.jsonl", "manifest_final.json"} <= names
+    val_src = names & {"val.jsonl", "validation.jsonl"}
+    manifest_src = names & {"manifest.json", "manifest_final.json"}
+    assert len(val_src) == 1
+    assert "test.jsonl" in names
+    assert len(manifest_src) == 1
     # Explicit denylist — historical/WIP files that must never be in the spec.
     forbidden = {"train_v8.jsonl", "train_rewritten.review.jsonl"}
     assert names.isdisjoint(forbidden)
@@ -69,6 +73,57 @@ def test_training_spec_uses_only_active_split(publish_dataset):
     assert spec.path_in_repo[final] == "train.jsonl"
     manifest = spec.files[3]
     assert spec.path_in_repo[manifest] == "manifest.json"
+
+
+def test_training_spec_can_publish_candidate_as_root_splits(publish_dataset, tmp_path):
+    candidate = tmp_path / "lifeops-candidate"
+    data = candidate / "data"
+    data.mkdir(parents=True)
+    for name in ("train.jsonl", "validation.jsonl", "test.jsonl"):
+        (data / name).write_text('{"messages":[{"role":"user","content":"hi"}]}\n')
+    (candidate / "manifest.json").write_text("{}")
+
+    spec = publish_dataset._spec_training_from_dir(candidate)
+
+    by_target = {target: path.name for path, target in spec.path_in_repo.items()}
+    assert by_target == {
+        "train.jsonl": "train.jsonl",
+        "val.jsonl": "validation.jsonl",
+        "test.jsonl": "test.jsonl",
+        "manifest.json": "manifest.json",
+    }
+
+
+def test_hf_load_preflight_accepts_matching_candidate_splits(
+    publish_dataset, tmp_path
+):
+    pytest.importorskip("datasets")
+    candidate = tmp_path / "lifeops-candidate"
+    data = candidate / "data"
+    data.mkdir(parents=True)
+    row = '{"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"ok"}]}\n'
+    for name in ("train.jsonl", "validation.jsonl", "test.jsonl"):
+        (data / name).write_text(row)
+    (candidate / "manifest.json").write_text("{}")
+
+    assert publish_dataset.validate_hf_loadable(
+        publish_dataset._spec_training_from_dir(candidate)
+    )
+
+
+def test_hf_load_preflight_rejects_split_feature_drift(publish_dataset, tmp_path):
+    pytest.importorskip("datasets")
+    candidate = tmp_path / "lifeops-candidate"
+    data = candidate / "data"
+    data.mkdir(parents=True)
+    (data / "train.jsonl").write_text('{"messages":[{"role":"user","content":"hi"}]}\n')
+    (data / "validation.jsonl").write_text('{"messages":"bad"}\n')
+    (data / "test.jsonl").write_text('{"messages":[{"role":"user","content":"hi"}]}\n')
+    (candidate / "manifest.json").write_text("{}")
+
+    assert not publish_dataset.validate_hf_loadable(
+        publish_dataset._spec_training_from_dir(candidate)
+    )
 
 
 def test_scambench_spec_only_includes_scambench(publish_dataset):
@@ -296,13 +351,13 @@ def test_dataset_card_includes_license(publish_dataset):
 
 
 # ---------------------------------------------------------------------------
-# elizaos publisher (publish_milady_model.py)
+# elizaos publisher (publish_eliza1_model.py)
 # ---------------------------------------------------------------------------
 
 
 @pytest.fixture
-def publish_milady():
-    return _load("publish_milady_model", SCRIPTS / "publish_milady_model.py")
+def publish_eliza1():
+    return _load("publish_eliza1_model", SCRIPTS / "publish_eliza1_model.py")
 
 
 def _make_fused_gguf(path: Path) -> None:
@@ -329,7 +384,7 @@ def _make_stock_gguf(path: Path) -> None:
     )
 
 
-def _make_milady_bundle(model_dir: Path, *, fused: bool, kind: str = "milady-optimized") -> None:
+def _make_eliza1_bundle(model_dir: Path, *, fused: bool, kind: str = "eliza-1-optimized") -> None:
     model_dir.mkdir(parents=True, exist_ok=True)
     gguf = model_dir / f"{model_dir.name}.gguf"
     (_make_fused_gguf if fused else _make_stock_gguf)(gguf)
@@ -356,13 +411,13 @@ def _make_milady_bundle(model_dir: Path, *, fused: bool, kind: str = "milady-opt
             "kvV": "TBQ4_0",
             "speculativeDecode": "DFlash",
             "kernels": ["q4_polar", "qjl1_256", "tbq3_0", "tbq4_0", "dflash"],
-            "requiresFork": "elizaOS/llama.cpp@v0.1.0-milady",
+            "requiresFork": "elizaOS/llama.cpp@v1.0.0-eliza",
         },
         "pipeline": {
             "publishedAt": "2026-05-10T00:00:00Z",
             "trainedFrom": "Qwen/Qwen3.5-4B",
             "trainingPipeline": "elizaos/eliza-1-pipeline",
-            "buildScript": "packages/training/scripts/publish_milady_model.py",
+            "buildScript": "packages/training/scripts/publish_eliza1_model.py",
         },
     }
     import json as _json
@@ -370,41 +425,41 @@ def _make_milady_bundle(model_dir: Path, *, fused: bool, kind: str = "milady-opt
     (model_dir / "README.md").write_text("# placeholder\n")
 
 
-def test_milady_dry_run_accepts_fused_gguf(publish_milady, tmp_path, monkeypatch):
+def test_eliza1_dry_run_accepts_fused_gguf(publish_eliza1, tmp_path, monkeypatch):
     monkeypatch.delenv("HF_TOKEN", raising=False)
     monkeypatch.delenv("HUGGINGFACE_HUB_TOKEN", raising=False)
-    bundle = tmp_path / "qwen3.5-4b-milady-optimized"
-    _make_milady_bundle(bundle, fused=True)
+    bundle = tmp_path / "qwen3.5-4b-optimized"
+    _make_eliza1_bundle(bundle, fused=True)
 
-    rc = publish_milady.main([
+    rc = publish_eliza1.main([
         "--model-dir", str(bundle),
-        "--repo-id", "elizaos/qwen3.5-4b-milady-optimized",
+        "--repo-id", "elizaos/qwen3.5-4b-optimized",
         "--dry-run",
     ])
     assert rc == 0
 
 
-def test_milady_refuses_stock_gguf(publish_milady, tmp_path, monkeypatch):
+def test_eliza1_refuses_stock_gguf(publish_eliza1, tmp_path, monkeypatch):
     monkeypatch.delenv("HF_TOKEN", raising=False)
-    bundle = tmp_path / "qwen3.5-4b-milady-optimized"
-    _make_milady_bundle(bundle, fused=False)
+    bundle = tmp_path / "qwen3.5-4b-optimized"
+    _make_eliza1_bundle(bundle, fused=False)
 
     with pytest.raises(SystemExit) as excinfo:
-        publish_milady.main([
+        publish_eliza1.main([
             "--model-dir", str(bundle),
-            "--repo-id", "elizaos/qwen3.5-4b-milady-optimized",
+            "--repo-id", "elizaos/qwen3.5-4b-optimized",
             "--dry-run",
         ])
     msg = str(excinfo.value)
     assert "q4_polar" in msg.lower() or "qjl1_256" in msg.lower()
 
 
-def test_milady_refuses_non_milady_org(publish_milady, tmp_path):
-    bundle = tmp_path / "qwen3.5-4b-milady-optimized"
-    _make_milady_bundle(bundle, fused=True)
+def test_eliza1_refuses_non_elizaos_org(publish_eliza1, tmp_path):
+    bundle = tmp_path / "qwen3.5-4b-optimized"
+    _make_eliza1_bundle(bundle, fused=True)
 
     with pytest.raises(SystemExit) as excinfo:
-        publish_milady.main([
+        publish_eliza1.main([
             "--model-dir", str(bundle),
             "--repo-id", "someoneelse/qwen3.5-4b",
             "--dry-run",
@@ -412,36 +467,36 @@ def test_milady_refuses_non_milady_org(publish_milady, tmp_path):
     assert "elizaos" in str(excinfo.value)
 
 
-def test_milady_refuses_zero_byte_gguf(publish_milady, tmp_path):
-    bundle = tmp_path / "qwen3.5-4b-milady-optimized"
+def test_eliza1_refuses_zero_byte_gguf(publish_eliza1, tmp_path):
+    bundle = tmp_path / "qwen3.5-4b-optimized"
     bundle.mkdir()
-    (bundle / "qwen3.5-4b-milady-optimized.gguf").touch()  # zero bytes
-    (bundle / "manifest.json").write_text('{"version":1,"kind":"milady-optimized","modelId":"x","base":{},"gguf":{},"optimization":{}}')
+    (bundle / "qwen3.5-4b-optimized.gguf").touch()  # zero bytes
+    (bundle / "manifest.json").write_text('{"version":1,"kind":"eliza-1-optimized","modelId":"x","base":{},"gguf":{},"optimization":{}}')
     (bundle / "README.md").write_text("# x")
 
     with pytest.raises(SystemExit) as excinfo:
-        publish_milady.main([
+        publish_eliza1.main([
             "--model-dir", str(bundle),
-            "--repo-id", "elizaos/qwen3.5-4b-milady-optimized",
+            "--repo-id", "elizaos/qwen3.5-4b-optimized",
             "--dry-run",
         ])
     assert "zero bytes" in str(excinfo.value)
 
 
-def test_milady_publish_writes_published_sidecar(publish_milady, tmp_path, monkeypatch):
+def test_eliza1_publish_writes_published_sidecar(publish_eliza1, tmp_path, monkeypatch):
     """End-to-end: HfApi mocked, publisher writes published.json idempotency
     sidecar with the canonical resolve URL + sha256."""
     monkeypatch.setenv("HF_TOKEN", "hf_fake_token")
-    bundle = tmp_path / "qwen3.5-4b-milady-optimized"
-    _make_milady_bundle(bundle, fused=True)
+    bundle = tmp_path / "qwen3.5-4b-optimized"
+    _make_eliza1_bundle(bundle, fused=True)
 
     fake_api = MagicMock()
     fake_api.repo_info.return_value = SimpleNamespace(siblings=[])
 
     with patch("huggingface_hub.HfApi", return_value=fake_api):
-        rc = publish_milady.main([
+        rc = publish_eliza1.main([
             "--model-dir", str(bundle),
-            "--repo-id", "elizaos/qwen3.5-4b-milady-optimized",
+            "--repo-id", "elizaos/qwen3.5-4b-optimized",
         ])
     assert rc == 0
 
@@ -449,11 +504,11 @@ def test_milady_publish_writes_published_sidecar(publish_milady, tmp_path, monke
     assert sidecar.exists(), "published.json was not written"
     import json as _json
     data = _json.loads(sidecar.read_text())
-    assert data["repoId"] == "elizaos/qwen3.5-4b-milady-optimized"
+    assert data["repoId"] == "elizaos/qwen3.5-4b-optimized"
     assert data["resolveUrl"].startswith(
-        "https://huggingface.co/elizaos/qwen3.5-4b-milady-optimized/resolve/main/"
+        "https://huggingface.co/elizaos/qwen3.5-4b-optimized/resolve/main/"
     )
-    assert data["ggufFile"] == "qwen3.5-4b-milady-optimized.gguf"
+    assert data["ggufFile"] == "qwen3.5-4b-optimized.gguf"
     assert isinstance(data["sha256"], str) and len(data["sha256"]) == 64
     assert data["sizeBytes"] > 0
 
@@ -464,21 +519,21 @@ def test_milady_publish_writes_published_sidecar(publish_milady, tmp_path, monke
     assert op_paths == [
         "README.md",
         "manifest.json",
-        "qwen3.5-4b-milady-optimized.gguf",
+        "qwen3.5-4b-optimized.gguf",
     ]
 
 
-def test_milady_publish_skips_when_remote_sha_matches(publish_milady, tmp_path, monkeypatch):
+def test_eliza1_publish_skips_when_remote_sha_matches(publish_eliza1, tmp_path, monkeypatch):
     """If the remote LFS pointer's sha256 matches the local GGUF, the GGUF
     upload is skipped and only README + manifest get refreshed."""
     monkeypatch.setenv("HF_TOKEN", "hf_fake_token")
-    bundle = tmp_path / "qwen3.5-4b-milady-optimized"
-    _make_milady_bundle(bundle, fused=True)
-    gguf_path = bundle / "qwen3.5-4b-milady-optimized.gguf"
-    expected_sha = publish_milady._sha256_file(gguf_path)
+    bundle = tmp_path / "qwen3.5-4b-optimized"
+    _make_eliza1_bundle(bundle, fused=True)
+    gguf_path = bundle / "qwen3.5-4b-optimized.gguf"
+    expected_sha = publish_eliza1._sha256_file(gguf_path)
 
     sibling = SimpleNamespace(
-        rfilename="qwen3.5-4b-milady-optimized.gguf",
+        rfilename="qwen3.5-4b-optimized.gguf",
         lfs={"sha256": expected_sha},
     )
     fake_api = MagicMock()
@@ -488,9 +543,9 @@ def test_milady_publish_skips_when_remote_sha_matches(publish_milady, tmp_path, 
     ]
 
     with patch("huggingface_hub.HfApi", return_value=fake_api):
-        rc = publish_milady.main([
+        rc = publish_eliza1.main([
             "--model-dir", str(bundle),
-            "--repo-id", "elizaos/qwen3.5-4b-milady-optimized",
+            "--repo-id", "elizaos/qwen3.5-4b-optimized",
         ])
     assert rc == 0
 
@@ -515,12 +570,15 @@ def test_sync_catalog_writes_diff(sync_catalog, tmp_path, monkeypatch):
     out = tmp_path / "diff.json"
     entries = [
         sync_catalog.CatalogEntry(
-            id="qwen3.5-4b-milady-optimized",
-            hf_repo="elizaos/qwen3.5-4b-milady-optimized",
-            gguf_file="qwen3.5-4b-milady-optimized.gguf",
+            id="qwen3.5-4b-optimized",
+            hf_repo="elizaos/qwen3.5-4b-optimized",
+            gguf_file="qwen3.5-4b-optimized.gguf",
             sha256="a" * 64,
             size_bytes=1234567,
-            manifest={"version": 1, "kind": "milady-optimized"},
+            manifest={"version": 1, "kind": "eliza-1-optimized"},
+            bundle_manifest_file="eliza-1.manifest.json",
+            bundle_manifest_sha256="b" * 64,
+            bundle_size_bytes=2345678,
         ),
     ]
     sync_catalog.write_diff(entries, out, org="elizaos")
@@ -530,8 +588,38 @@ def test_sync_catalog_writes_diff(sync_catalog, tmp_path, monkeypatch):
     assert payload["org"] == "elizaos"
     assert len(payload["entries"]) == 1
     e = payload["entries"][0]
-    assert e["id"] == "qwen3.5-4b-milady-optimized"
-    assert e["hfRepo"] == "elizaos/qwen3.5-4b-milady-optimized"
+    assert e["id"] == "qwen3.5-4b-optimized"
+    assert e["hfRepo"] == "elizaos/qwen3.5-4b-optimized"
     assert e["sha256"] == "a" * 64
     assert e["sizeBytes"] == 1234567
-    assert e["manifest"]["kind"] == "milady-optimized"
+    assert e["bundleManifestFile"] == "eliza-1.manifest.json"
+    assert e["bundleManifestSha256"] == "b" * 64
+    assert e["bundleSizeBytes"] == 2345678
+    assert e["manifest"]["kind"] == "eliza-1-optimized"
+
+
+def test_sync_catalog_selects_manifest_text_file(sync_catalog):
+    manifest = {
+        "files": {
+            "text": [
+                {"path": "text/eliza-1-9b-32k.gguf", "sha256": "a" * 64, "ctx": 32768},
+                {"path": "text/eliza-1-9b-64k.gguf", "sha256": "b" * 64, "ctx": 65536},
+            ],
+            "dflash": [{"path": "dflash/drafter-9b.gguf", "sha256": "c" * 64}],
+        },
+    }
+    file_index = {
+        "text/eliza-1-9b-32k.gguf": ("a" * 64, 100),
+        "text/eliza-1-9b-64k.gguf": ("b" * 64, 200),
+        "dflash/drafter-9b.gguf": ("c" * 64, 50),
+    }
+
+    selected = sync_catalog._primary_text_file_from_manifest(
+        manifest,
+        file_index,
+        "elizaos/eliza-1-9b",
+    )
+    bundle_size = sync_catalog._bundle_size_from_manifest(manifest, file_index)
+
+    assert selected == ("text/eliza-1-9b-64k.gguf", "b" * 64, 200)
+    assert bundle_size == 350

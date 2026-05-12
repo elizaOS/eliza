@@ -1,9 +1,6 @@
-import type {
-  CodingAgentSession,
-  CodingAgentTaskThread,
-  CodingAgentTaskThreadDetail,
-} from "@elizaos/ui/api/client-types-cloud";
 import {
+  Badge,
+  Button,
   client,
   EmptyWidgetState,
   PULSE_STATUSES,
@@ -13,7 +10,11 @@ import {
   usePtySessions,
   WidgetSection,
 } from "@elizaos/ui";
-import { Badge, Button } from "@elizaos/ui";
+import type {
+  CodingAgentSession,
+  CodingAgentTaskThread,
+  CodingAgentTaskThreadDetail,
+} from "@elizaos/ui/api/client-types-cloud";
 import { Activity, SquareArrowOutUpRight } from "lucide-react";
 import {
   type ReactNode,

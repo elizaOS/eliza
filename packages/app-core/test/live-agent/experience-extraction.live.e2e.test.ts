@@ -3,7 +3,7 @@ import {
   type AgentRuntime,
   ChannelType,
   createMessageMemory,
-  EvaluatorService,
+  type EvaluatorService,
   type Memory,
   type Plugin,
   type UUID,

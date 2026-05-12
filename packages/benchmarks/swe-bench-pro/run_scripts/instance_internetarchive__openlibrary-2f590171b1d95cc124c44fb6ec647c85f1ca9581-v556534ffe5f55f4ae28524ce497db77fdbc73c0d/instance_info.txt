@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-2f590171b1d95cc124c44fb6ec647c85f1ca9581-v556534ffe5f55f4ae28524ce497db77fdbc73c0d
+Repository: internetarchive/openlibrary
+Base Commit: 50987573b7fad8f91830621404ca191df0e33a39
+Test Files: ["openlibrary/tests/core/test_vendors.py"]
+FAIL_TO_PASS: ["openlibrary/tests/core/test_vendors.py::test_get_amazon_metadata"]
+PASS_TO_PASS: ["openlibrary/tests/core/test_vendors.py::test_clean_amazon_metadata_for_load_non_ISBN", "openlibrary/tests/core/test_vendors.py::test_clean_amazon_metadata_for_load_ISBN", "openlibrary/tests/core/test_vendors.py::test_clean_amazon_metadata_for_load_subtitle", "openlibrary/tests/core/test_vendors.py::test_betterworldbooks_fmt"]

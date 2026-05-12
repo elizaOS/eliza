@@ -180,7 +180,7 @@ export function parseVitestOutput(output: string): VitestSummary {
 }
 
 /**
- * Resolve the root state directory honoring `MILADY_STATE_DIR` >
+ * Resolve the root state directory honoring `ELIZA_STATE_DIR` >
  * `ELIZA_STATE_DIR` > `~/.${ELIZA_NAMESPACE ?? "eliza"}` precedence.
  */
 export function getStateDir(): string {

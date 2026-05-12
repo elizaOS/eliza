@@ -62,7 +62,7 @@ function parseArgs(argv) {
 
 const args = parseArgs(process.argv.slice(2));
 const inputRoot =
-  args.input ?? path.join(os.homedir(), ".milady", "trajectories");
+  args.input ?? path.join(os.homedir(), ".eliza", "trajectories");
 const repoRoot = path.resolve(
   path.dirname(new URL(import.meta.url).pathname),
   "..",
@@ -91,7 +91,9 @@ function listJson(root) {
 }
 
 function normalize(s) {
-  return String(s ?? "").trim().toLowerCase();
+  return String(s ?? "")
+    .trim()
+    .toLowerCase();
 }
 
 function safeReadJson(p) {
@@ -200,7 +202,7 @@ function collectSamples() {
       if (stage.kind !== "toolSearch") continue;
       toolSearchCount += 1;
       const ts = stage.toolSearch;
-      if (!ts || !ts.fusedTopK) continue;
+      if (!ts?.fusedTopK) continue;
       measuredCount += 1;
       samples.push({
         fusedTopK: ts.fusedTopK,
@@ -290,4 +292,4 @@ const isMain =
   process.argv[1]?.endsWith("lifeops-retrieval-pareto.mjs");
 if (isMain) main();
 
-export { analyzeSamples, recommendK, K_SWEEP };
+export { analyzeSamples, K_SWEEP, recommendK };

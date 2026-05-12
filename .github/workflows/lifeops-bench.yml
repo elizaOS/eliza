@@ -9,7 +9,7 @@
 #     bun run lifeops:full
 #
 # The per-job matrix uploads the per-agent run directory from
-# `~/.milady/runs/lifeops/lifeops-multiagent-<ts>/<agent>/` (plus the
+# `~/.eliza/runs/lifeops/lifeops-multiagent-<ts>/<agent>/` (plus the
 # top-level `report.md` / `report.json`) as a 30-day artifact, and posts a
 # side-by-side summary as a PR comment after all matrix legs complete.
 #
@@ -133,8 +133,8 @@ jobs:
         id: run
         env:
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
-          MILADY_BENCH_AGENT: ${{ matrix.agent }}
-          MILADY_BENCH_LIMIT: ${{ inputs.limit || '25' }}
+          ELIZA_BENCH_AGENT: ${{ matrix.agent }}
+          ELIZA_BENCH_LIMIT: ${{ inputs.limit || '25' }}
         run: |
           set -e
           bun run lifeops:full | tee lifeops-full.log

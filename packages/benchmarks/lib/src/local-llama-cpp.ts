@@ -2,7 +2,7 @@
  * Thin OpenAI-compatible client adapter for the dflash llama-cpp fork.
  *
  * The dflash fork (built locally under
- * `~/.cache/eliza-dflash/milady-llama-cpp`) exposes the standard
+ * `~/.cache/eliza-dflash/eliza-llama-cpp`) exposes the standard
  * `llama-server` OpenAI-compatible HTTP endpoint at `/v1`. This module
  * provides:
  *
@@ -19,19 +19,27 @@
  * fork is not built.
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
-const DFLASH_FORK_ROOT = path.join(homedir(), ".cache", "eliza-dflash", "milady-llama-cpp");
+const DFLASH_FORK_ROOT = path.join(
+  homedir(),
+  ".cache",
+  "eliza-dflash",
+  "eliza-llama-cpp",
+);
 const DFLASH_BINARY_RELATIVE = path.join("build", "bin", "llama-server");
 
 /** Absolute filesystem path to where the dflash fork is expected to live. */
 export const DFLASH_FORK_PATH = DFLASH_FORK_ROOT;
 
 /** Absolute filesystem path to the expected `llama-server` binary. */
-export const DFLASH_BINARY_PATH = path.join(DFLASH_FORK_ROOT, DFLASH_BINARY_RELATIVE);
+export const DFLASH_BINARY_PATH = path.join(
+  DFLASH_FORK_ROOT,
+  DFLASH_BINARY_RELATIVE,
+);
 
 /**
  * Expand a leading `~` to the user's home directory. No-op for absolute
@@ -88,7 +96,7 @@ export async function startLocalServer(
   if (!binary) {
     throw new Error(
       `dflash llama-server binary not found at ${DFLASH_BINARY_PATH}. ` +
-        "Build the fork at ~/.cache/eliza-dflash/milady-llama-cpp or set " +
+        "Build the fork at ~/.cache/eliza-dflash/eliza-llama-cpp or set " +
         "PARALLAX_OPENCODE_BASE_URL to point at a local OpenAI-compatible endpoint.",
     );
   }
@@ -195,7 +203,7 @@ export interface ResolvedLocalBaseUrl {
  * inference. Preference order:
  *
  * 1. `PARALLAX_OPENCODE_BASE_URL` (explicit operator override; matches the
- *    same env Milady's OpenCode fallback reads).
+ *    same env Eliza's OpenCode fallback reads).
  * 2. Ollama default `http://localhost:11434/v1`.
  *
  * This function does **not** spawn the dflash fork — callers that want to

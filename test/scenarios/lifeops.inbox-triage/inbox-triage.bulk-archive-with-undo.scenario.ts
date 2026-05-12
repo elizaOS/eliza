@@ -17,12 +17,12 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
-import { judgeRubric } from "../_helpers/action-assertions.ts";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
+import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 function checkUndoHandledHonestly(ctx: ScenarioContext): string | undefined {
   // The second turn's reply must acknowledge undo. Reply must not include
@@ -70,15 +70,10 @@ function checkUndoHandledHonestly(ctx: ScenarioContext): string | undefined {
 
 export default scenario({
   id: "inbox-triage.bulk-archive-with-undo",
-  title: "Bulk archive then undo within 60s — agent reverses or queues unarchive",
+  title:
+    "Bulk archive then undo within 60s — agent reverses or queues unarchive",
   domain: "lifeops.inbox-triage",
-  tags: [
-    "lifeops",
-    "inbox-triage",
-    "undo",
-    "bulk",
-    "reversibility",
-  ],
+  tags: ["lifeops", "inbox-triage", "undo", "bulk", "reversibility"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

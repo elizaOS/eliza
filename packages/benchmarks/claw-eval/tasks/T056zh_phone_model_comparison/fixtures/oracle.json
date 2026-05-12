@@ -1,0 +1,8 @@
+{
+  "canonical_answer": "左边是小米17 Pro Max，右边是小米17 Pro",
+  "required_entities": [
+    "小米17 Pro Max",
+    "小米17 Pro"
+  ],
+  "aliases": []
+}

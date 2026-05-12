@@ -15,7 +15,7 @@
 #                                 records which model line this came from.
 #   --interval-seconds <n>       default 600 (10 min). Time between sweeps.
 #   --val-jsonl <path>           default training/data/smoke/val.jsonl.
-#   --max-examples <n>           default 50, per-bucket cap for eliza_bench.
+#   --max-examples <n>           default 50, per-bucket cap for native_tool_call_bench.
 #
 # On SIGTERM/SIGINT we exit cleanly between sweeps.
 
@@ -77,7 +77,7 @@ fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCAL_CKPT_DIR="$ROOT/checkpoints/$RUN_NAME"
 PROGRESS_LOG="$LOCAL_CKPT_DIR/_progress.jsonl"
-LOG_FILE="$HOME/.milady/checkpoint-eval.log"
+LOG_FILE="$HOME/.eliza/checkpoint-eval.log"
 LOG_MAX_BYTES=$((10 * 1024 * 1024))
 
 if [[ -z "$VAL_JSONL" ]]; then

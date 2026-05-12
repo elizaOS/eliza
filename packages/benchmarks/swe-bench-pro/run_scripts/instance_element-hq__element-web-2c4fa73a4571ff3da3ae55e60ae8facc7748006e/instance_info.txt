@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-2c4fa73a4571ff3da3ae55e60ae8facc7748006e
+Repository: element-hq/element-web
+Base Commit: 4290237bdfc94587d7f8489a160502cf5e45560f
+Test Files: ["/app/test/CallHandler-test.ts", "test/CallHandler-test.ts"]
+FAIL_TO_PASS: ["/app/test/CallHandler-test.ts | CallHandler | should look up the correct user and open the room when a phone number is dialled"]
+PASS_TO_PASS: ["/app/test/CallHandler-test.ts | CallHandler | should move calls between rooms when remote asserted identity changes"]

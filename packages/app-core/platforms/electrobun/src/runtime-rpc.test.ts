@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import type { RuntimeDebugSnapshot } from "./rpc-schema";
 import {
@@ -8,7 +8,7 @@ import {
 } from "./runtime-rpc";
 
 function mockFetchJson(status: number, body: unknown) {
-	const fetchMock = mock(
+	const fetchMock = vi.fn(
 		async (_input: RequestInfo | URL, _init?: RequestInit) =>
 			new Response(JSON.stringify(body), { status }),
 	);
@@ -84,7 +84,7 @@ describe("getRuntimeSnapshot typed RPC", () => {
 	});
 
 	it("passes snapshot params to the runtime reader", async () => {
-		const reader = mock(async () => runtimeSnapshot);
+		const reader = vi.fn(async () => runtimeSnapshot);
 
 		await expect(
 			composeRuntimeSnapshot(31337, { depth: 4 }, reader),

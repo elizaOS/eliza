@@ -1,15 +1,9 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
 import type { IAgentRuntime, Task } from "@elizaos/core";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgeSettings,
 } from "@elizaos/plugin-browser";
+import type { HealthBackend } from "@elizaos/plugin-health";
 import type {
   LifeOpsCapabilitiesStatus,
   LifeOpsCapabilityEvidence,
@@ -27,14 +21,17 @@ import {
 import { resolveDefaultTimeZone } from "./defaults.js";
 import { createFeatureFlagService } from "./feature-flags.js";
 import type { FeatureFlagState } from "./feature-flags.types.js";
-import type { HealthBackend } from "@elizaos/plugin-health";
 import type { LifeOpsScheduleMergedState } from "./schedule-sync-contracts.js";
 import {
   LIFEOPS_TASK_NAME,
   LIFEOPS_TASK_TAGS,
   resolveLifeOpsTaskIntervalMs,
 } from "./scheduler-task.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
 
 type HealthConnectorStatus = {
   available: boolean;
@@ -57,6 +54,10 @@ export type StatusMixinDependencies = LifeOpsServiceBase & {
   ): Promise<LifeOpsXConnectorStatus>;
   getHealthConnectorStatus(): Promise<HealthConnectorStatus>;
 };
+
+export interface LifeOpsStatusService {
+  getCapabilityStatus(now?: Date): Promise<LifeOpsCapabilitiesStatus>;
+}
 
 type CheckResult<T> =
   | { ok: true; value: T; message?: string; observedAt?: string }
@@ -270,7 +271,7 @@ function browserReadinessConfidence(
 /** @internal */
 export function withStatus<TBase extends Constructor<StatusMixinDependencies>>(
   Base: TBase,
-) {
+): MixinClass<TBase, LifeOpsStatusService> {
   class LifeOpsStatusServiceMixin extends Base {
     async getCapabilityStatus(
       now = new Date(),
@@ -557,11 +558,7 @@ export function withStatus<TBase extends Constructor<StatusMixinDependencies>>(
                 {
                   label: "X status",
                   state: "degraded" as const,
-                  detail: xLocal.ok
-                    ? xCloud.ok
-                      ? null
-                      : xCloud.message
-                    : xLocal.message,
+                  detail: xLocal.ok ? null : xLocal.message,
                   observedAt: checkedAt,
                 },
               ],
@@ -589,5 +586,8 @@ export function withStatus<TBase extends Constructor<StatusMixinDependencies>>(
     }
   }
 
-  return LifeOpsStatusServiceMixin;
+  return LifeOpsStatusServiceMixin as unknown as MixinClass<
+    TBase,
+    LifeOpsStatusService
+  >;
 }

@@ -1,0 +1,62 @@
+task_id: T104_packet_decoder
+task_name: Binary Protocol Packet Decoder
+version: "2.0"
+category: terminal
+difficulty: easy
+tags: [general]
+
+services: []
+
+prompt:
+  text: |
+    Container files:
+
+    - /workspace/fixtures/capture.bin — binary stream of protocol packets
+    - /workspace/fixtures/protocol_spec.md — protocol specification
+
+    Write /workspace/decode.py that parses all packets from capture.bin
+    and outputs /workspace/decoded.jsonl (one JSON object per line).
+
+    The spec may be incomplete in places — examine the actual binary data
+    to resolve any ambiguities.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/capture.bin
+  - fixtures/protocol_spec.md
+
+sandbox_grader_files:
+  - fixtures/verify_decode.py
+
+env_snapshot_commands:
+  - python /workspace/fixtures/verify_decode.py
+  - test -f /workspace/decoded.jsonl && echo EXISTS || echo MISSING
+  - test -f /workspace/decode.py && echo EXISTS || echo MISSING
+  - python /workspace/decode.py 2>&1; echo EXIT_CODE=$?
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+reference_solution: |
+  Key challenges the agent must solve:
+  1. CRC-16/MODBUS variant (poly=0x8005, init=0xFFFF, reflected I/O) — NOT named in spec
+  2. 4-byte packet alignment with 0x00 padding between packets
+  3. Extension header (4 bytes uint32 LE) when flags bit 7 is set — shifts payload start
+  4. 6 message types: HANDSHAKE, DATA, HEARTBEAT, CLOSE, CONFIG, ERROR
+     CONFIG and ERROR payload formats are barely documented in spec
+  5. CRC is computed over standard header + extension header (if present) + payload
+  6. firmware_ver: packed as major*256+minor, stored as uint16 LE
+  7. 5 packets with corrupted CRC must be detected and flagged
+  Agent must examine binary data to determine the exact CRC algorithm and
+  figure out underdocumented CONFIG/ERROR payload structures.
+
+primary_dimensions: [completion, robustness]

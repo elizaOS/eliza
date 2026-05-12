@@ -1,15 +1,15 @@
-import { logger, type IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 
 import {
   ownerFactsToView,
   resolveOwnerFactStore,
 } from "../owner/fact-store.js";
-import { getAnchorRegistry } from "../registries/anchor-registry.js";
-import { LifeOpsRepository } from "../repository.js";
 import {
   createPendingPromptsStore,
   type RecordedPendingPrompt,
 } from "../pending-prompts/store.js";
+import { getAnchorRegistry } from "../registries/anchor-registry.js";
+import { LifeOpsRepository } from "../repository.js";
 import {
   expectedReplyKindForTask,
   isCompletionTimeoutDue,
@@ -18,7 +18,7 @@ import {
   markWindowFireIfNeeded,
   pendingPromptRoomIdForTask,
 } from "./due.js";
-import { createRuntimeScheduledTaskRunner } from "./runtime-wiring.js";
+import { getScheduledTaskRunner } from "./service.js";
 import type { ScheduledTask } from "./types.js";
 
 export interface ProcessDueScheduledTasksRequest {
@@ -96,9 +96,13 @@ export async function processDueScheduledTasks(
   };
   const limit = Math.max(1, Math.floor(request.limit));
   const repo = new LifeOpsRepository(request.runtime);
-  const runner = createRuntimeScheduledTaskRunner({
-    runtime: request.runtime,
+  // The runner is constructed ONCE per runtime by ScheduledTaskRunnerService
+  // (registered in plugin.ts). Reaching for it here every tick is O(map-get),
+  // not the O(register-channels + build-registries) reconstruction the old
+  // `createRuntimeScheduledTaskRunner` call did per minute.
+  const runner = getScheduledTaskRunner(request.runtime, {
     agentId: request.agentId,
+    now: () => request.now,
   });
   const ownerFacts = ownerFactsToView(
     await resolveOwnerFactStore(request.runtime).read(),
@@ -108,20 +112,33 @@ export async function processDueScheduledTasks(
     ownerFacts,
     anchors: getAnchorRegistry(request.runtime),
   };
-  const tasks = await repo.listScheduledTasks(request.agentId, {
-    status: [
-      "scheduled",
-      "fired",
-      "acknowledged",
-      "completed",
-      "skipped",
-      "expired",
-      "failed",
-    ],
+  // Indexed pass 1: due-to-fire candidates.
+  //
+  // The partial index `idx_life_scheduled_tasks_due` covers
+  // `(agent_id, next_fire_at) WHERE state_json->>'status' IN ('scheduled','fired')`,
+  // so this query touches O(# due rows + # event-driven rows with NULL)
+  // instead of every row owned by the agent. `next_fire_at IS NULL` rows are
+  // included so event / manual / after_task triggers (which deliberately
+  // have no wall-clock fire time) still get a chance at fire-time gates if
+  // they're invoked through another path. The authoritative
+  // `isScheduledTaskDue` re-evaluates per task below.
+  const nowIso = request.now.toISOString();
+  const dueCandidates = await repo.listScheduledTasks(request.agentId, {
+    status: ["scheduled", "fired"],
+    dueAtOrBeforeIso: nowIso,
+  });
+  // Indexed pass 2: completion-timeout candidates. These are rows that have
+  // already fired (`status = 'fired'`) and have a `followupAfterMinutes` on
+  // the completion-check. The partial index has them too because `fired` is
+  // in the index predicate. `dueAtOrBeforeIso` is intentionally omitted —
+  // a fired row's `next_fire_at` is NULL after the claim, so we filter by
+  // `state.firedAt` in JS via `isCompletionTimeoutDue`.
+  const timeoutCandidates = await repo.listScheduledTasks(request.agentId, {
+    status: ["fired"],
   });
   const timeoutTaskIds = new Set<string>();
 
-  for (const task of tasks) {
+  for (const task of timeoutCandidates) {
     if (result.fires.length + result.completionTimeouts.length >= limit) {
       break;
     }
@@ -152,7 +169,7 @@ export async function processDueScheduledTasks(
     }
   }
 
-  for (const task of tasks) {
+  for (const task of dueCandidates) {
     if (timeoutTaskIds.has(task.taskId)) continue;
     if (result.fires.length + result.completionTimeouts.length >= limit) {
       break;
@@ -160,14 +177,86 @@ export async function processDueScheduledTasks(
     const decision = await isScheduledTaskDue(task, dueContext);
     if (!decision.due) continue;
     try {
-      const fired = await runner.fire(task.taskId, {
+      const fireResult = await runner.fireWithResult(task.taskId, {
         allowTerminalRefire: isRecurringTrigger(task.trigger),
       });
-      const windowMetadata = markWindowFireIfNeeded(fired, dueContext);
+      const fired = await handleFireResult({
+        request,
+        repo,
+        fireResult,
+        decision,
+        dueContext,
+        result,
+      });
+      if (!fired) continue;
+    } catch (error) {
+      const message = errorMessage(error);
+      logger.warn(
+        `[lifeops-scheduled-task] fire failed for ${task.taskId}: ${message}`,
+      );
+      result.errors.push({ taskId: task.taskId, phase: "fire", message });
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Branch on the `ScheduledTaskFireResult` discriminated union and record the
+ * outcome into the tick result. Returns `true` when the result counted as a
+ * fire (so the caller knows it consumed a slot), `false` otherwise.
+ */
+async function handleFireResult(args: {
+  request: ProcessDueScheduledTasksRequest;
+  repo: LifeOpsRepository;
+  fireResult: import("./runner.js").ScheduledTaskFireResult;
+  decision: import("./due.js").ScheduledTaskDueDecision;
+  dueContext: import("./due.js").ScheduledTaskDueContext;
+  result: ProcessDueScheduledTasksResult;
+}): Promise<boolean> {
+  const { request, fireResult, decision, dueContext, result } = args;
+  switch (fireResult.kind) {
+    case "raced": {
+      // Another tick atomically claimed this row first. Nothing to record —
+      // the winning tick will publish its own fire event. Surfacing this as
+      // an error would double-count; surfacing as a fire would double-bill.
+      return false;
+    }
+    case "skipped": {
+      // Gate denial / global-pause / terminal-non-recurring etc. Recorded so
+      // observers see the task was visited and chose not to dispatch.
+      result.fires.push({
+        taskId: fireResult.task.taskId,
+        status: fireResult.task.state.status,
+        reason: fireResult.reason || decision.reason,
+        occurrenceAtIso: decision.occurrenceAtIso,
+      });
+      return true;
+    }
+    case "dispatch_failed": {
+      result.errors.push({
+        taskId: fireResult.task.taskId,
+        phase: "fire",
+        message: fireResult.error.message,
+      });
+      return true;
+    }
+    case "fired": {
+      const windowMetadata = markWindowFireIfNeeded(
+        fireResult.task,
+        dueContext,
+      );
+      // Service singleton — same instance the scheduler grabbed at the top.
+      const runner = getScheduledTaskRunner(request.runtime, {
+        agentId: request.agentId,
+        now: () => request.now,
+      });
       const persisted =
         windowMetadata !== null
-          ? await runner.apply(fired.taskId, "edit", { metadata: windowMetadata })
-          : fired;
+          ? await runner.apply(fireResult.task.taskId, "edit", {
+              metadata: windowMetadata,
+            })
+          : fireResult.task;
       result.fires.push({
         taskId: persisted.taskId,
         status: persisted.state.status,
@@ -183,22 +272,19 @@ export async function processDueScheduledTasks(
       } catch (error) {
         const message = errorMessage(error);
         logger.warn(
-          `[lifeops-scheduled-task] pending prompt record failed for ${task.taskId}: ${message}`,
+          `[lifeops-scheduled-task] pending prompt record failed for ${fireResult.task.taskId}: ${message}`,
         );
         result.errors.push({
-          taskId: task.taskId,
+          taskId: fireResult.task.taskId,
           phase: "pending_prompt",
           message,
         });
       }
-    } catch (error) {
-      const message = errorMessage(error);
-      logger.warn(
-        `[lifeops-scheduled-task] fire failed for ${task.taskId}: ${message}`,
-      );
-      result.errors.push({ taskId: task.taskId, phase: "fire", message });
+      return true;
+    }
+    default: {
+      const _exhaustive: never = fireResult;
+      return false;
     }
   }
-
-  return result;
 }

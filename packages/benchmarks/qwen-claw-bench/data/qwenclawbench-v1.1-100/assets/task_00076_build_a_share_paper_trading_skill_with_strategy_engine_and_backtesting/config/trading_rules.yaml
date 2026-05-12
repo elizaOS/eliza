@@ -1,0 +1,58 @@
+# A-Share Trading Rules Configuration
+# Last updated: 2024-09-01
+
+settlement:
+  type: "T+1"
+  description: "Shares bought today cannot be sold until the next trading day"
+  fund_availability: "T+1 for stock proceeds, T+0 for unused buying power"
+
+lot_size: 100
+min_order: 100
+max_order: 1000000
+
+price_limits:
+  main_board: 0.10
+  chinext: 0.20
+  star_market: 0.20
+  st_stocks: 0.05
+
+trading_hours:
+  morning_session:
+    start: "09:30"
+    end: "11:30"
+  afternoon_session:
+    start: "13:00"
+    end: "15:00"
+  call_auction:
+    opening:
+      start: "09:15"
+      end: "09:25"
+    closing:
+      start: "14:57"
+      end: "15:00"
+
+order_types:
+  - limit_order
+  - market_order_at_close
+
+tick_size:
+  stocks: 0.01
+  funds: 0.001
+
+boards:
+  main_board:
+    code_prefix: ["sh600", "sh601", "sh603", "sz000", "sz001"]
+    price_limit: 0.10
+    lot_size: 100
+  chinext:
+    code_prefix: ["sz300", "sz301"]
+    price_limit: 0.20
+    lot_size: 100
+  star_market:
+    code_prefix: ["sh688"]
+    price_limit: 0.20
+    lot_size: 100
+  st_stocks:
+    price_limit: 0.05
+    lot_size: 100
+    description: "Special Treatment stocks with tighter price limits"

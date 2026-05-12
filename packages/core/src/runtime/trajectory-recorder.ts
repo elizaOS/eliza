@@ -9,14 +9,14 @@
  *
  * Persistence model:
  * - One JSON file per trajectory at
- *   `${MILADY_TRAJECTORY_DIR ?? `${MILADY_STATE_DIR ?? `${ELIZA_STATE_DIR ?? ~/.milady`}/trajectories`}`}/<agentId>/<trajectoryId>.json`.
+ *   `${ELIZA_TRAJECTORY_DIR ?? `${ELIZA_STATE_DIR ?? `${MILADY_STATE_DIR ?? ~/.eliza`}/trajectories`}`}/<agentId>/<trajectoryId>.json`.
  * - Atomic writes: write to `<id>.json.tmp`, rename to `<id>.json`.
  * - Append-only stages: `recordStage` rewrites the whole file (small files,
  *   sub-100 KB typical).
  * - Failures must NOT crash the runtime — every I/O operation is wrapped in
  *   try/catch and routed through `runtime.logger.warn`.
  *
- * Toggle via `MILADY_TRAJECTORY_RECORDING=0`. Default on.
+ * Toggle via `ELIZA_TRAJECTORY_RECORDING=0`. Default on.
  */
 
 import fs from "node:fs/promises";
@@ -112,7 +112,7 @@ export interface RecordedToolStage {
 	/**
 	 * Captured action-handler input (the resolved params passed into the
 	 * action). Encoded as JSON when possible. Capped at
-	 * `MILADY_TRAJECTORY_FIELD_CAP_BYTES` (default 64KB); oversize values
+	 * `ELIZA_TRAJECTORY_FIELD_CAP_BYTES` (default 64KB); oversize values
 	 * are truncated and a marker is added to `truncated[]`.
 	 */
 	input?: string;
@@ -147,7 +147,7 @@ export interface RecordedRetrievalStageEntry {
 }
 
 /**
- * Per-stage retrieval scores captured under `MILADY_RETRIEVAL_MEASUREMENT=1`.
+ * Per-stage retrieval scores captured under `ELIZA_RETRIEVAL_MEASUREMENT=1`.
  * Default `undefined` — no perf cost in production unless the env var is
  * explicitly enabled.
  */
@@ -185,7 +185,7 @@ export interface RecordedToolSearchStage {
 	fallback?: string;
 	/**
 	 * Per-stage retrieval funnel. Populated only when the retrieval call
-	 * ran with measurement mode on (`MILADY_RETRIEVAL_MEASUREMENT=1`).
+	 * ran with measurement mode on (`ELIZA_RETRIEVAL_MEASUREMENT=1`).
 	 */
 	perStageScores?: RecordedRetrievalPerStageScores;
 	/**
@@ -355,29 +355,27 @@ function envFlagEnabled(key: string, defaultValue = false): boolean {
 
 /**
  * Resolve the on-disk trajectory directory. Precedence per PLAN.md §18.1:
- *   MILADY_TRAJECTORY_DIR
- *   MILADY_STATE_DIR/trajectories
+ *   ELIZA_TRAJECTORY_DIR
  *   ELIZA_STATE_DIR/trajectories
- *   ~/.milady/trajectories
+ *   MILADY_STATE_DIR/trajectories (legacy alias)
+ *   ~/.eliza/trajectories
  */
 export function resolveTrajectoryDir(): string {
-	const explicit = process.env.MILADY_TRAJECTORY_DIR?.trim();
+	const explicit = process.env.ELIZA_TRAJECTORY_DIR?.trim();
 	if (explicit) return explicit;
 
-	const miladyState = process.env.MILADY_STATE_DIR?.trim();
-	if (miladyState) return path.join(miladyState, "trajectories");
-
-	const elizaState = process.env.ELIZA_STATE_DIR?.trim();
+	const elizaState =
+		process.env.ELIZA_STATE_DIR?.trim() || process.env.MILADY_STATE_DIR?.trim();
 	if (elizaState) return path.join(elizaState, "trajectories");
 
-	return path.join(homedir(), ".milady", "trajectories");
+	return path.join(homedir(), ".eliza", "trajectories");
 }
 
 /**
- * Whether the recorder is enabled. Off when MILADY_TRAJECTORY_RECORDING=0.
+ * Whether the recorder is enabled. Off when ELIZA_TRAJECTORY_RECORDING=0.
  */
 export function isTrajectoryRecordingEnabled(): boolean {
-	return envFlagEnabled("MILADY_TRAJECTORY_RECORDING", true);
+	return envFlagEnabled("ELIZA_TRAJECTORY_RECORDING", true);
 }
 
 /**
@@ -386,14 +384,14 @@ export function isTrajectoryRecordingEnabled(): boolean {
  */
 export function isTrajectoryMarkdownReviewEnabled(): boolean {
 	return (
-		envFlagEnabled("MILADY_TRAJECTORY_REVIEW_MODE") ||
-		envFlagEnabled("MILADY_TRAJECTORY_MARKDOWN") ||
-		Boolean(process.env.MILADY_TRAJECTORY_MARKDOWN_DIR?.trim())
+		envFlagEnabled("ELIZA_TRAJECTORY_REVIEW_MODE") ||
+		envFlagEnabled("ELIZA_TRAJECTORY_MARKDOWN") ||
+		Boolean(process.env.ELIZA_TRAJECTORY_MARKDOWN_DIR?.trim())
 	);
 }
 
 function resolveTrajectoryMarkdownDir(rootDir: string): string {
-	return process.env.MILADY_TRAJECTORY_MARKDOWN_DIR?.trim() || rootDir;
+	return process.env.ELIZA_TRAJECTORY_MARKDOWN_DIR?.trim() || rootDir;
 }
 
 function safeRandomId(prefix: string): string {
@@ -481,7 +479,7 @@ function safeStringifyForMarkdown(value: unknown): string {
 }
 
 function redactMarkdownSecrets(text: string): string {
-	if (!envFlagEnabled("MILADY_TRAJECTORY_MARKDOWN_REDACT", true)) {
+	if (!envFlagEnabled("ELIZA_TRAJECTORY_MARKDOWN_REDACT", true)) {
 		return text;
 	}
 	const explicitSecrets = [
@@ -720,20 +718,35 @@ function applyMetricsForStage(
 	}
 }
 
+const RECORD_SANITIZE_MAX_DEPTH = 40;
+const RECORD_SANITIZE_MAX_ARRAY_ITEMS = 250;
+const RECORD_SANITIZE_MAX_OBJECT_KEYS = 200;
+const RECORD_SANITIZE_MAX_STRING_CHARS = 64 * 1024;
+const RECORD_SANITIZE_TRUNCATION_SUFFIX = "...[truncated]";
+
+function truncateRecordString(value: string): string {
+	if (value.length <= RECORD_SANITIZE_MAX_STRING_CHARS) return value;
+	const previewLength = Math.max(
+		0,
+		RECORD_SANITIZE_MAX_STRING_CHARS - RECORD_SANITIZE_TRUNCATION_SUFFIX.length,
+	);
+	return `${value.slice(0, previewLength)}${RECORD_SANITIZE_TRUNCATION_SUFFIX}`;
+}
+
 function sanitizeForRecord(
 	value: unknown,
 	seen = new WeakSet<object>(),
 	depth = 0,
 ): unknown {
-	if (depth > 40) {
+	if (depth > RECORD_SANITIZE_MAX_DEPTH) {
 		return "[MaxDepth]";
 	}
-	if (
-		value === null ||
-		typeof value === "string" ||
-		typeof value === "number" ||
-		typeof value === "boolean"
-	) {
+	if (value === null) return null;
+	if (typeof value === "string") return truncateRecordString(value);
+	if (typeof value === "number") {
+		return Number.isFinite(value) ? value : null;
+	}
+	if (typeof value === "boolean") {
 		return value;
 	}
 	if (typeof value === "bigint") {
@@ -759,37 +772,113 @@ function sanitizeForRecord(
 			stack: value.stack,
 		};
 	}
+	if (value instanceof RegExp) {
+		return value.toString();
+	}
+	if (value instanceof ArrayBuffer) {
+		return { type: "ArrayBuffer", byteLength: value.byteLength };
+	}
+	if (ArrayBuffer.isView(value)) {
+		return {
+			type: value.constructor.name || "ArrayBufferView",
+			byteLength: value.byteLength,
+		};
+	}
+	if (value instanceof Map) {
+		if (seen.has(value)) return "[Circular]";
+		seen.add(value);
+		const output: Record<string, unknown> = {};
+		let index = 0;
+		for (const [key, entry] of value.entries()) {
+			if (index >= RECORD_SANITIZE_MAX_OBJECT_KEYS) break;
+			const sanitized = sanitizeForRecord(entry, seen, depth + 1);
+			if (sanitized !== undefined) {
+				output[String(key)] = sanitized;
+			}
+			index++;
+		}
+		if (value.size > RECORD_SANITIZE_MAX_OBJECT_KEYS) {
+			output.__truncatedKeys = value.size - RECORD_SANITIZE_MAX_OBJECT_KEYS;
+		}
+		seen.delete(value);
+		return output;
+	}
+	if (value instanceof Set) {
+		if (seen.has(value)) return "[Circular]";
+		seen.add(value);
+		const output: unknown[] = [];
+		let index = 0;
+		for (const entry of value.values()) {
+			if (index >= RECORD_SANITIZE_MAX_ARRAY_ITEMS) break;
+			output.push(sanitizeForRecord(entry, seen, depth + 1) ?? null);
+			index++;
+		}
+		if (value.size > RECORD_SANITIZE_MAX_ARRAY_ITEMS) {
+			output.push({
+				__truncatedItems: value.size - RECORD_SANITIZE_MAX_ARRAY_ITEMS,
+			});
+		}
+		seen.delete(value);
+		return output;
+	}
 	if (Array.isArray(value)) {
 		if (seen.has(value)) return "[Circular]";
 		seen.add(value);
-		return value.map((entry) => sanitizeForRecord(entry, seen, depth + 1));
+		const output: unknown[] = [];
+		const length = Math.min(value.length, RECORD_SANITIZE_MAX_ARRAY_ITEMS);
+		for (let i = 0; i < length; i++) {
+			output.push(sanitizeForRecord(value[i], seen, depth + 1) ?? null);
+		}
+		if (value.length > RECORD_SANITIZE_MAX_ARRAY_ITEMS) {
+			output.push({
+				__truncatedItems: value.length - RECORD_SANITIZE_MAX_ARRAY_ITEMS,
+			});
+		}
+		seen.delete(value);
+		return output;
 	}
 	if (typeof value === "object") {
 		if (seen.has(value)) return "[Circular]";
 		seen.add(value);
+		const entries = Object.entries(value as Record<string, unknown>);
+		if (entries.length === 0) {
+			seen.delete(value);
+			return String(value);
+		}
 		const output: Record<string, unknown> = {};
-		for (const [key, entry] of Object.entries(
-			value as Record<string, unknown>,
+		for (const [key, entry] of entries.slice(
+			0,
+			RECORD_SANITIZE_MAX_OBJECT_KEYS,
 		)) {
 			const sanitized = sanitizeForRecord(entry, seen, depth + 1);
 			if (sanitized !== undefined) {
 				output[key] = sanitized;
 			}
 		}
+		if (entries.length > RECORD_SANITIZE_MAX_OBJECT_KEYS) {
+			output.__truncatedKeys = entries.length - RECORD_SANITIZE_MAX_OBJECT_KEYS;
+		}
+		seen.delete(value);
 		return output;
 	}
 	return String(value);
 }
 
 function cloneForRecord<T>(value: T): T {
-	if (typeof structuredClone === "function") {
-		try {
-			return structuredClone(value);
-		} catch {
-			return sanitizeForRecord(value) as T;
-		}
-	}
 	return sanitizeForRecord(value) as T;
+}
+
+function cloneRootMessageForRecord(
+	rootMessage: StartTrajectoryInput["rootMessage"],
+): RecordedTrajectory["rootMessage"] {
+	return {
+		id: String(rootMessage.id),
+		text: truncateRecordString(String(rootMessage.text ?? "")),
+		sender:
+			rootMessage.sender === undefined
+				? undefined
+				: truncateRecordString(String(rootMessage.sender)),
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -802,11 +891,11 @@ const TRUNCATION_SUFFIX = "...[truncated]";
 /**
  * Resolve the per-field byte cap for `input` / `output` / `errorText`. The
  * recorder uses this for action-step capture (M12). Override with
- * `MILADY_TRAJECTORY_FIELD_CAP_BYTES`; values below 1KB or non-integer are
+ * `ELIZA_TRAJECTORY_FIELD_CAP_BYTES`; values below 1KB or non-integer are
  * rejected as invalid and the default is used.
  */
 export function resolveTrajectoryFieldCapBytes(): number {
-	const raw = process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES?.trim();
+	const raw = process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES?.trim();
 	if (!raw) return DEFAULT_FIELD_CAP_BYTES;
 	const parsed = Number.parseInt(raw, 10);
 	if (!Number.isFinite(parsed) || parsed < 1024) {
@@ -951,7 +1040,7 @@ export interface SkillInvocationIOCapture {
  * Encode + cap skill invocation args/result for a per-skill trajectory
  * record. Fields that are `undefined` after encoding are omitted so the
  * persisted shape stays minimal. Caps default to
- * `MILADY_TRAJECTORY_FIELD_CAP_BYTES` (64KB).
+ * `ELIZA_TRAJECTORY_FIELD_CAP_BYTES` (64KB).
  */
 export function captureSkillInvocationIO(
 	input: SkillInvocationIOInput,
@@ -1031,6 +1120,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 	private readonly enabled: boolean;
 	private readonly markdownEnabled: boolean;
 	private readonly active = new Map<string, MutableTrajectory>();
+	private readonly flushQueues = new Map<string, Promise<void>>();
 
 	constructor(opts: CreateJsonFileRecorderOptions = {}) {
 		this.rootDir = opts.rootDir ?? resolveTrajectoryDir();
@@ -1053,9 +1143,9 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			trajectoryId: id,
 			agentId: input.agentId,
 			roomId: input.roomId,
-			runId: input.runId ?? process.env.MILADY_LIFEOPS_RUN_ID,
-			scenarioId: input.scenarioId ?? process.env.MILADY_LIFEOPS_SCENARIO_ID,
-			rootMessage: input.rootMessage,
+			runId: input.runId ?? process.env.ELIZA_LIFEOPS_RUN_ID,
+			scenarioId: input.scenarioId ?? process.env.ELIZA_LIFEOPS_SCENARIO_ID,
+			rootMessage: cloneRootMessageForRecord(input.rootMessage),
 			startedAt: Date.now(),
 			status: "running",
 			stages: [],
@@ -1077,7 +1167,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 
 		// Best-effort initial flush so the file exists even if the run crashes
 		// before any stage lands. Errors are logged and swallowed.
-		void this.flushTrajectory(trajectory).catch((err) => {
+		void this.queueFlushTrajectory(trajectory).catch((err) => {
 			this.logger?.warn?.(
 				{ err: (err as Error).message, trajectoryId: id },
 				"[TrajectoryRecorder] initial flush failed",
@@ -1102,7 +1192,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		trajectory.stages.push(recordedStage);
 		applyMetricsForStage(trajectory.metrics, recordedStage);
 
-		await this.flushTrajectory(trajectory);
+		await this.queueFlushTrajectory(trajectory);
 	}
 
 	async endTrajectory(
@@ -1125,8 +1215,9 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			trajectory.metrics.finalDecision = "error";
 		}
 
-		await this.flushTrajectory(trajectory);
+		await this.queueFlushTrajectory(trajectory);
 		this.active.delete(trajectoryId);
+		this.flushQueues.delete(trajectoryId);
 	}
 
 	async load(trajectoryId: string): Promise<RecordedTrajectory | null> {
@@ -1182,22 +1273,40 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		}
 	}
 
-	private async flushTrajectory(trajectory: MutableTrajectory): Promise<void> {
+	private queueFlushTrajectory(trajectory: MutableTrajectory): Promise<void> {
+		const trajectoryId = trajectory.trajectoryId;
+		const snapshot = cloneForRecord(trajectory);
+		const previous = this.flushQueues.get(trajectoryId) ?? Promise.resolve();
+		const next = previous
+			.catch(() => undefined)
+			.then(() => this.flushSnapshot(snapshot));
+		this.flushQueues.set(trajectoryId, next);
+		void next
+			.finally(() => {
+				if (this.flushQueues.get(trajectoryId) === next) {
+					this.flushQueues.delete(trajectoryId);
+				}
+			})
+			.catch(() => undefined);
+		return next;
+	}
+
+	private async flushSnapshot(snapshot: RecordedTrajectory): Promise<void> {
 		const filePath = path.join(
 			this.rootDir,
-			trajectory.agentId,
-			trajectoryFileName(trajectory.trajectoryId),
+			snapshot.agentId,
+			trajectoryFileName(snapshot.trajectoryId),
 		);
-		await atomicWriteJson(filePath, trajectory, this.logger);
+		await atomicWriteJson(filePath, snapshot, this.logger);
 		if (!this.markdownEnabled) return;
 		const markdownPath = path.join(
 			this.markdownDir,
-			trajectory.agentId,
-			`${trajectory.trajectoryId}.md`,
+			snapshot.agentId,
+			`${snapshot.trajectoryId}.md`,
 		);
 		await atomicWriteText(
 			markdownPath,
-			renderTrajectoryMarkdown(trajectory),
+			renderTrajectoryMarkdown(snapshot),
 			this.logger,
 		);
 	}
@@ -1244,8 +1353,8 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 
 /**
  * Construct a JSON-file backed `TrajectoryRecorder`. The default rootDir is
- * resolved from `MILADY_TRAJECTORY_DIR` → `MILADY_STATE_DIR/trajectories` →
- * `ELIZA_STATE_DIR/trajectories` → `~/.milady/trajectories`.
+ * resolved from `ELIZA_TRAJECTORY_DIR` → `ELIZA_STATE_DIR/trajectories` →
+ * `MILADY_STATE_DIR/trajectories` (legacy) → `~/.eliza/trajectories`.
  *
  * Pass `enabled: false` to short-circuit every method to a no-op (test
  * fixtures, opt-out at construction time).

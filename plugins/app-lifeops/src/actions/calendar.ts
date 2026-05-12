@@ -11,10 +11,9 @@
  *     `src/lifeops/connectors/calendly.ts`). The standalone `calendlyAction`
  *     in `./lib/calendly-handler.ts` is now a top-level Action — Calendly is a
  *     provider, not a CALENDAR subaction.
- *   - `negotiate_*` verbs moved out into the new
- *     `SCHEDULING_NEGOTIATION` action defined in
- *     `./lib/scheduling-handler.ts`. Multi-turn negotiation is a long-running
- *     stateful actor, not a calendar verb (§7, §8.3).
+ *   - multi-turn scheduling negotiation is delegated through
+ *     PERSONAL_ASSISTANT action=scheduling. It is a long-running stateful
+ *     actor, not a calendar verb (§7, §8.3).
  *
  * What stays compound here is exactly the irreducible calendar-provider
  * surface plus `bulk_reschedule`, which `HARDCODING_AUDIT.md` §7 explicitly
@@ -32,7 +31,9 @@ import type {
   State,
 } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
+import { formatCalendarEventDateTime } from "../lifeops/google/format-helpers.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import {
   buildUtcDateFromLocalParts,
@@ -44,12 +45,10 @@ import {
   type SubactionsMap,
 } from "./lib/resolve-action-args.js";
 import {
-  checkAvailabilityAction,
-  proposeMeetingTimesAction,
-  updateMeetingPreferencesAction,
+  runCheckAvailabilityHandler,
+  runProposeMeetingTimesHandler,
+  runUpdateMeetingPreferencesHandler,
 } from "./lib/scheduling-handler.js";
-import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
-import { formatCalendarEventDateTime } from "../lifeops/google/format-helpers.js";
 
 // Re-exported for consumers that route calendar-plan extraction without
 // going through the umbrella handler (multilingual routing test, live LLM
@@ -267,13 +266,9 @@ function messageText(message: Memory): string {
 function looksLikeFlightConflictQuestion(text: string): boolean {
   const normalized = text.toLowerCase();
   return (
-    /\b(?:flight|flights?|airport|jfk|sfo|lax|ewr|lga)\b/u.test(
-      normalized,
-    ) &&
+    /\b(?:flight|flights?|airport|jfk|sfo|lax|ewr|lga)\b/u.test(normalized) &&
     /\b(?:meeting|board|calendar|appointment|event)\b/u.test(normalized) &&
-    /\b(?:land|lands|arrival|arrive|make|conflict|rebook)\b/u.test(
-      normalized,
-    )
+    /\b(?:land|lands|arrival|arrive|make|conflict|rebook)\b/u.test(normalized)
   );
 }
 
@@ -527,29 +522,29 @@ async function route(
         timeZone: params.timeZone ?? null,
       });
     case "propose_times":
-      return (await proposeMeetingTimesAction.handler?.(
+      return runProposeMeetingTimesHandler(
         runtime,
         message,
         state,
         forwardedOptions,
         delegatedCallback,
-      )) as ActionResult;
+      );
     case "check_availability":
-      return (await checkAvailabilityAction.handler?.(
+      return runCheckAvailabilityHandler(
         runtime,
         message,
         state,
         forwardedOptions,
         delegatedCallback,
-      )) as ActionResult;
+      );
     case "update_preferences":
-      return (await updateMeetingPreferencesAction.handler?.(
+      return runUpdateMeetingPreferencesHandler(
         runtime,
         message,
         state,
         forwardedOptions,
         delegatedCallback,
-      )) as ActionResult;
+      );
   }
 }
 
@@ -561,6 +556,19 @@ export const calendarAction: Action & {
     "CALENDAR",
     "SCHEDULE",
     "MEETING",
+    // Time-block phrasings — these used to live on the BLOCK action's simile
+    // list, where they shadowed calendar-block creation. They live here now
+    // because "block out 2 hours for deep work" / "carve out a focus block"
+    // is a CALENDAR.create_event request, not an app/website block.
+    "BLOCK_TIME",
+    "CREATE_TIME_BLOCK",
+    "TIME_BLOCK",
+    "DEEP_WORK_BLOCK",
+    "FOCUS_BLOCK",
+    "BLOCK_OUT",
+    "BLOCK_OUT_TIME",
+    "CARVE_OUT_TIME",
+    "RESERVE_TIME",
     // PRD action-catalog aliases. These resolve to CALENDAR subactions via
     // handler argument routing; see packages/docs/action-prd-map.md.
     "CALENDAR_LIST_UPCOMING",
@@ -588,10 +596,10 @@ export const calendarAction: Action & {
     "Manage live calendar events plus availability and meeting preferences. Subactions: " +
     "feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, " +
     "check_availability, propose_times, update_preferences. " +
-    "Use CALENDLY for calendly.com URLs and SCHEDULING_NEGOTIATION for multi-turn proposal/response flows.",
+    "Use CALENDLY for calendly.com URLs and PERSONAL_ASSISTANT action=scheduling for multi-turn proposal/response flows.",
   descriptionCompressed:
     "calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
-  // "general" included for the same reason as LIFE: messageHandler routes
+  // "general" included so messageHandler can route direct owner calendar
   // most user-facing event/scheduling requests to "general" rather than
   // "calendar", so retrieval would otherwise filter CALENDAR out before
   // the planner sees it. See `12-real-root-cause.md`.
@@ -691,7 +699,12 @@ export const calendarAction: Action & {
     },
     {
       name: "title",
-      description: "Event title when creating a calendar event.",
+      description:
+        "Event title when creating a calendar event. TOP-LEVEL (flat) field — " +
+        "NEVER place `title` inside `details`. " +
+        "Example: `{ subaction: 'create_event', title: 'Dentist', details: { start: '...', end: '...' } }`.",
+      descriptionCompressed:
+        "Event title, TOP-LEVEL flat field (NOT inside details). Example: { subaction: 'create_event', title: 'Dentist', details: { start, end } }",
       required: false,
       schema: { type: "string" as const },
     },
@@ -712,9 +725,19 @@ export const calendarAction: Action & {
     {
       name: "details",
       description:
-        "Structured calendar fields — time bounds, timezone, calendar id, create-event timing, location, and attendees.",
+        "Structured calendar fields for create_event / update_event / delete_event. " +
+        "Use ISO-8601 strings for `start` and `end` (e.g. '2026-05-15T14:00:00Z'). " +
+        "Example create_event shape: `{ subaction: 'create_event', title: 'Dentist', details: { calendarId: 'cal_primary', start: '...', end: '...', location: '...' } }`. " +
+        "Example update_event: `{ subaction: 'update_event', details: { eventId: 'event_00040', calendarId: 'cal_primary', start: '...', end: '...' } }`. " +
+        "Use `start`/`end` (aliases `startAt`/`endAt` are also accepted). " +
+        "For check_availability and propose_times, put time-window fields at the TOP LEVEL — not inside `details`.",
       descriptionCompressed:
-        "calendar details: calendarId timeMin timeMax timeZone startAt endAt durationMinutes eventId newTitle description location travelOriginAddress windowDays windowPreset forceSync",
+        "details (for create/update/delete_event ONLY): { calendarId, start (ISO-8601), end (ISO-8601), eventId, newTitle, location, attendees, description }. " +
+        "`title` is FLAT/TOP-LEVEL — never put it inside details. " +
+        "Time fields use `start`/`end` (aliases startAt/endAt). " +
+        "Example create_event: { subaction:'create_event', title:'Dentist', details:{ calendarId:'cal_primary', start:'2026-05-15T14:00:00Z', end:'2026-05-15T15:00:00Z', location:'Bright Smile Dental' } }. " +
+        "Example update_event: { subaction:'update_event', details:{ eventId:'event_00040', start:'...', end:'...' } }. " +
+        "For check_availability / propose_times / update_preferences, use TOP-LEVEL fields (startAt/endAt/durationMinutes/...), NOT details.",
       required: false,
       schema: {
         type: "object" as const,
@@ -726,6 +749,8 @@ export const calendarAction: Action & {
           forceSync: { type: "boolean" as const },
           windowDays: { type: "number" as const },
           windowPreset: { type: "string" as const },
+          start: { type: "string" as const },
+          end: { type: "string" as const },
           startAt: { type: "string" as const },
           endAt: { type: "string" as const },
           durationMinutes: { type: "number" as const },
@@ -743,7 +768,10 @@ export const calendarAction: Action & {
     },
     {
       name: "durationMinutes",
-      description: "Meeting length in minutes. Used by propose_times.",
+      description:
+        "Top-level flat field. Meeting length in minutes for propose_times. " +
+        "Example: `{ subaction: 'propose_times', durationMinutes: 30, slotCount: 3, windowStart: '...', windowEnd: '...' }`. " +
+        "Do NOT wrap propose_times args inside a `details` object.",
       required: false,
       schema: { type: "number" as const },
     },
@@ -776,13 +804,17 @@ export const calendarAction: Action & {
     },
     {
       name: "startAt",
-      description: "ISO-8601 start time. Used by check_availability.",
+      description:
+        "Top-level flat field. ISO-8601 start time for check_availability. " +
+        "Example: `{ subaction: 'check_availability', startAt: '2026-05-14T09:00:00Z', endAt: '2026-05-14T10:00:00Z' }`. " +
+        "Do NOT wrap check_availability args inside a `details` object.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "endAt",
-      description: "ISO-8601 end time. Used by check_availability.",
+      description:
+        "Top-level flat field. ISO-8601 end time for check_availability. See `startAt`.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -796,14 +828,16 @@ export const calendarAction: Action & {
     {
       name: "preferredStartLocal",
       description:
-        "Earliest preferred meeting start time-of-day (local HH:MM, 24h).",
+        "Top-level flat field for update_preferences. Earliest preferred meeting start time-of-day (local HH:MM, 24h). " +
+        "Example: `{ subaction: 'update_preferences', preferredStartLocal: '09:00', preferredEndLocal: '17:00', blackoutWindows: [...] }`. " +
+        "Do NOT wrap update_preferences args inside a `details` object.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "preferredEndLocal",
       description:
-        "Latest preferred meeting end time-of-day (local HH:MM, 24h).",
+        "Top-level flat field for update_preferences. Latest preferred meeting end time-of-day (local HH:MM, 24h). See `preferredStartLocal`.",
       required: false,
       schema: { type: "string" as const },
     },

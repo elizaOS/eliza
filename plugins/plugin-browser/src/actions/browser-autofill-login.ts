@@ -186,7 +186,9 @@ export async function executeBrowserAutofillLogin(
   _message: Memory | undefined,
   options: HandlerOptions | undefined,
 ): Promise<ActionResult> {
-  const params = options?.parameters as BrowserAutofillLoginParameters | undefined;
+  const params = options?.parameters as
+    | BrowserAutofillLoginParameters
+    | undefined;
   const domain = params?.domain?.trim().toLowerCase() ?? "";
   const requestedUsername = params?.username?.trim();
   const submit = params?.submit === true;

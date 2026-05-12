@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ChannelType, stringToUuid, type Plugin } from "@elizaos/core";
+import { ChannelType, type Plugin, stringToUuid } from "@elizaos/core";
 import {
   createRealTestRuntime,
   type RealTestRuntimeOptions,

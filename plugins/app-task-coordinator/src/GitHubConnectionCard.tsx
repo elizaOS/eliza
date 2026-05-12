@@ -1,5 +1,4 @@
-import { client, openExternalUrl } from "@elizaos/ui";
-import { Button, SettingsControls } from "@elizaos/ui";
+import { Button, client, openExternalUrl, SettingsControls } from "@elizaos/ui";
 import {
   CheckCircle2,
   ExternalLink,

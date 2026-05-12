@@ -1,4 +1,4 @@
-"""Maximally-optimized vLLM serve launcher for Milady fine-tunes.
+"""Maximally-optimized vLLM serve launcher for Eliza fine-tunes.
 
 Wraps `vllm serve` with the canonical flag set per (registry-key, GPU target)
 tuple. Stack composition assembled from:
@@ -23,7 +23,7 @@ What this DOES NOT do:
       CUDA graphs and recovers more than that win for free.
     - Touch QJL. vLLM's KV manager rejects QJL because the JL sketch
       amplifies variance through softmax (vLLM #38171 thread). QJL stays
-      on the HF MiladyHybridCache path; vLLM gets TurboQuant for both K
+      on the HF ElizaHybridCache path; vLLM gets TurboQuant for both K
       and V via the merged turboquant_4bit_nc dtype. (3bit_nc is also
       available but costs ~20pp on GSM8K vs ~3% PPL for 4bit_nc; we
       default to 4-bit. See /tmp/turboquant_v_reconcile.md.)
@@ -40,7 +40,7 @@ Usage:
         --port 8000
 
     # eliza-1-27b on 2x H200, DFlash drafter (AEON-7 fork required)
-    MILADY_VLLM_DFLASH=1 \\
+    ELIZA_VLLM_DFLASH=1 \\
     uv run --extra serve python scripts/inference/serve_vllm.py \\
         --registry-key qwen3.6-27b \\
         --dflash z-lab/Qwen3.6-27B-DFlash \\
@@ -182,16 +182,16 @@ def _build_speculative_config(
     """Pick exactly one drafter. They are mutually exclusive at runtime.
 
     Priority (highest first):
-      1. Explicit --dflash (requires MILADY_VLLM_DFLASH=1 + vllm-dflash fork)
+      1. Explicit --dflash (requires ELIZA_VLLM_DFLASH=1 + vllm-dflash fork)
       2. Explicit --eagle3 (works on stock vLLM; needs a per-model EAGLE3 head)
       3. Implicit qwen3_next_mtp on MoE models that ship an MTP head
     """
     if dflash_path:
-        if os.environ.get("MILADY_VLLM_DFLASH") not in ("1", "true", "yes"):
+        if os.environ.get("ELIZA_VLLM_DFLASH") not in ("1", "true", "yes"):
             log.warning(
-                "--dflash specified without MILADY_VLLM_DFLASH=1 — DFlash "
+                "--dflash specified without ELIZA_VLLM_DFLASH=1 — DFlash "
                 "requires the AEON-7 vllm-dflash fork (vLLM PR #40898 unmerged). "
-                "Set MILADY_VLLM_DFLASH=1 to confirm the fork is installed; "
+                "Set ELIZA_VLLM_DFLASH=1 to confirm the fork is installed; "
                 "otherwise vLLM will fail with 'unknown speculative method'."
             )
         return {
@@ -244,13 +244,13 @@ def build_command(args, *, entry) -> list[str]:
         args.enable_prefix_caching
         and drafter_active
         and _is_hybrid_qwen(model_id)
-        and os.environ.get("MILADY_APC_DRAFTER_VERIFIED") not in ("1", "true", "yes")
+        and os.environ.get("ELIZA_APC_DRAFTER_VERIFIED") not in ("1", "true", "yes")
     ):
         log.warning(
             "APC + drafter on a Qwen3.5/3.6 hybrid model is gated by "
             "omlx#825 — disabling --enable-prefix-caching for this serve. "
             "Run scripts/inference/test_apc_dflash_tool_calls.py against "
-            "this build, then set MILADY_APC_DRAFTER_VERIFIED=1 to re-enable."
+            "this build, then set ELIZA_APC_DRAFTER_VERIFIED=1 to re-enable."
         )
         args.enable_prefix_caching = False
 
@@ -444,7 +444,7 @@ def main() -> int:
     ap.add_argument("--dflash", default=None,
                     help="HF id or local path to a z-lab/...-DFlash drafter. "
                          "Requires the AEON-7 vllm-dflash fork "
-                         "(set MILADY_VLLM_DFLASH=1 to acknowledge). 2.5-6x "
+                         "(set ELIZA_VLLM_DFLASH=1 to acknowledge). 2.5-6x "
                          "decode on greedy code/math; ~2.75x on prose.")
     ap.add_argument("--use-mtp-native", action=argparse.BooleanOptionalAction,
                     default=True,
@@ -482,7 +482,7 @@ def main() -> int:
                     help="Also spawn scripts.inference.heartbeat as a child "
                          "subprocess so this serve emits periodic stats to "
                          "--stats-out. Killed on serve teardown.")
-    ap.add_argument("--stats-out", default="~/.milady/inference-stats.jsonl",
+    ap.add_argument("--stats-out", default="~/.eliza/inference-stats.jsonl",
                     help="JSONL path the heartbeat appends to (only used "
                          "when --with-heartbeat is set).")
     args = ap.parse_args()

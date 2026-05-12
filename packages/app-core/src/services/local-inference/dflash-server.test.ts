@@ -19,6 +19,7 @@ import {
   resolveDflashBinary,
   resolveDflashKvOffload,
   resolveFusedDflashBinary,
+  shouldRequireActiveDflashForRequest,
 } from "./dflash-server";
 
 const originalEnv = { ...process.env };
@@ -107,18 +108,10 @@ describe("DFlash runtime discovery", () => {
     delete process.env.ROCR_VISIBLE_DEVICES;
     delete process.env.CUDA_VISIBLE_DEVICES;
     const binary = makeManagedBinary(root);
-    const isMetalRuntime = process.platform === "darwin";
 
     expect(resolveDflashBinary()).toBe(binary);
-    expect(dflashEnabled()).toBe(!isMetalRuntime);
-    expect(getDflashRuntimeStatus().enabled).toBe(!isMetalRuntime);
-
-    if (isMetalRuntime) {
-      expect(getDflashRuntimeStatus().reason).toContain("auto-disabled");
-      process.env.ELIZA_DFLASH_METAL_AUTO = "1";
-      expect(dflashEnabled()).toBe(true);
-      expect(getDflashRuntimeStatus().enabled).toBe(true);
-    }
+    expect(dflashEnabled()).toBe(true);
+    expect(getDflashRuntimeStatus().enabled).toBe(true);
   });
 
   it("does not use PATH llama-server unless explicitly enabled", () => {
@@ -285,32 +278,30 @@ describe("fused-vs-two-process spawn selection", () => {
   });
 });
 
-describe("MILADY_DFLASH_DISABLE developer kill-switch", () => {
+describe("ELIZA_DFLASH_DISABLE developer kill-switch", () => {
   it("disables DFlash even when ELIZA_DFLASH_ENABLED forces it on", () => {
-    delete process.env.MILADY_DFLASH_DISABLE;
+    delete process.env.ELIZA_DFLASH_DISABLE;
     process.env.ELIZA_DFLASH_ENABLED = "1";
     expect(dflashDevDisabled()).toBe(false);
     expect(dflashEnabled()).toBe(true);
 
-    process.env.MILADY_DFLASH_DISABLE = "1";
+    process.env.ELIZA_DFLASH_DISABLE = "1";
     expect(dflashDevDisabled()).toBe(true);
     expect(dflashEnabled()).toBe(false);
-    expect(getDflashRuntimeStatus().reason).toContain("MILADY_DFLASH_DISABLE");
+    expect(getDflashRuntimeStatus().reason).toContain("ELIZA_DFLASH_DISABLE");
   });
 
   it("logs a loud warning when active and is silent otherwise", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      delete process.env.MILADY_DFLASH_DISABLE;
+      delete process.env.ELIZA_DFLASH_DISABLE;
       logDflashDevDisabledWarning();
       expect(warn).not.toHaveBeenCalled();
 
-      process.env.MILADY_DFLASH_DISABLE = "1";
+      process.env.ELIZA_DFLASH_DISABLE = "1";
       logDflashDevDisabledWarning();
       expect(warn).toHaveBeenCalledTimes(1);
-      expect(String(warn.mock.calls[0][0])).toContain(
-        "MILADY_DFLASH_DISABLE=1",
-      );
+      expect(String(warn.mock.calls[0][0])).toContain("ELIZA_DFLASH_DISABLE=1");
     } finally {
       warn.mockRestore();
     }
@@ -350,6 +341,21 @@ llamacpp:n_drafted_accepted 75
     expect(snapshot?.acceptanceRate).toBeCloseTo(0.75, 5);
   });
 
+  it("prefers unlabelled totals over labelled shard samples", () => {
+    const text = `llamacpp:n_decode_total 64
+llamacpp:n_drafted_total{slot_id="0"} 10
+llamacpp:n_drafted_total{slot_id="1"} 20
+llamacpp:n_drafted_total 40
+llamacpp:n_drafted_accepted_total{slot_id="0"} 4
+llamacpp:n_drafted_accepted_total{slot_id="1"} 5
+llamacpp:n_drafted_accepted_total 12
+`;
+    const snapshot = parseDflashMetrics(text);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.drafted).toBe(40);
+    expect(snapshot?.accepted).toBe(12);
+  });
+
   it("returns null when the response has no speculative counters", () => {
     const text = `# HELP some_other_metric Random gauge.
 # TYPE some_other_metric gauge
@@ -367,6 +373,51 @@ llamacpp:n_drafted_accepted_total 0
     expect(snapshot).not.toBeNull();
     expect(snapshot?.drafted).toBe(0);
     expect(Number.isNaN(snapshot?.acceptanceRate)).toBe(true);
+  });
+});
+
+describe("shouldRequireActiveDflashForRequest", () => {
+  it("does not require draft evidence for tiny prewarm-style requests", () => {
+    expect(
+      shouldRequireActiveDflashForRequest(
+        { draftMin: 2, disableDrafter: false },
+        1,
+      ),
+    ).toBe(false);
+    expect(
+      shouldRequireActiveDflashForRequest(
+        { draftMin: 2, disableDrafter: false },
+        3,
+      ),
+    ).toBe(false);
+  });
+
+  it("requires draft evidence once the request is long enough to verify a draft", () => {
+    expect(
+      shouldRequireActiveDflashForRequest(
+        { draftMin: 2, disableDrafter: false },
+        4,
+      ),
+    ).toBe(true);
+  });
+
+  it("does not require draft evidence when the drafter is deliberately disabled", () => {
+    expect(
+      shouldRequireActiveDflashForRequest(
+        { draftMin: 2, disableDrafter: true },
+        128,
+      ),
+    ).toBe(false);
+  });
+
+  it("allows zero draft only behind the local diagnostics escape hatch", () => {
+    process.env.ELIZA_DFLASH_ALLOW_ZERO_DRAFT = "1";
+    expect(
+      shouldRequireActiveDflashForRequest(
+        { draftMin: 2, disableDrafter: false },
+        128,
+      ),
+    ).toBe(false);
   });
 });
 
@@ -468,6 +519,79 @@ describe("DFlash streaming callbacks", () => {
       target.baseUrl = previous.baseUrl;
       target.cacheParallel = previous.cacheParallel;
       await mock.close();
+    }
+  });
+
+  it("repairs deterministic structured-output spans while suppressing duplicate server bytes", async () => {
+    const server = http.createServer(async (req, res) => {
+      if (req.method === "GET" && req.url === "/metrics") {
+        res.statusCode = 200;
+        res.end(
+          [
+            "llamacpp:prompt_tokens_total 0",
+            "llamacpp:n_tokens_predicted_total 0",
+            "llamacpp:n_drafted_total 2",
+            "llamacpp:n_accepted_total 2",
+          ].join("\n"),
+        );
+        return;
+      }
+      if (req.method === "POST" && req.url === "/v1/chat/completions") {
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [{ delta: { content: '{"action":"BLO' } }],
+          })}\n\n`,
+        );
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [{ delta: { content: 'CK","parameters":{}' } }],
+          })}\n\n`,
+        );
+        res.end("data: [DONE]\n\n");
+        return;
+      }
+      res.statusCode = 404;
+      res.end();
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const target = dflashLlamaServer as unknown as {
+      baseUrl: string | null;
+      cacheParallel: number;
+    };
+    const previous = {
+      baseUrl: target.baseUrl,
+      cacheParallel: target.cacheParallel,
+    };
+    target.baseUrl = baseUrl;
+    target.cacheParallel = 4;
+    const textChunks: string[] = [];
+    try {
+      const result = await dflashLlamaServer.generateWithUsage({
+        prompt: "choose action",
+        responseSkeleton: {
+          spans: [
+            { kind: "literal", value: '{"action":' },
+            { kind: "enum", key: "action", enumValues: ["BLOCK", "BRIEF"] },
+            { kind: "literal", value: ',"parameters":' },
+            { kind: "free-json", key: "parameters" },
+            { kind: "literal", value: "}" },
+          ],
+        },
+        onTextChunk: (chunk) => {
+          textChunks.push(chunk);
+        },
+      });
+
+      expect(result.text).toBe('{"action":"BLOCK","parameters":{}}');
+      expect(textChunks).toEqual(['{"action":"BLOCK","parameters":', "{}}"]);
+    } finally {
+      target.baseUrl = previous.baseUrl;
+      target.cacheParallel = previous.cacheParallel;
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 });

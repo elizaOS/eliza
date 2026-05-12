@@ -99,7 +99,14 @@ export interface PromotionNativeBackendResultLike {
     }>;
     fewShotExamples?: PromotionFewShotExample[];
   };
+  /** Full parsed dataset. Fallback target for the gate when no holdout exists. */
   dataset: OptimizationExample[];
+  /**
+   * Optional held-out subset the optimizer never saw. When present and
+   * non-empty the promotion gate scores against this set instead of
+   * `dataset`, eliminating train-on-test contamination.
+   */
+  holdoutSet?: OptimizationExample[];
   scorer: PromptScorer;
 }
 
@@ -137,14 +144,25 @@ export async function gatedPersistNativeResult(
   const incumbentPrompt = incumbentResolved?.prompt ?? input.baselinePrompt;
   const incumbentSource = incumbentResolved ? "current" : "baseline";
 
+  // Prefer the held-out subset (the optimizer never saw it) so the gate is
+  // not a train-on-test pass. Fall back to the full dataset for back-compat
+  // and for tiny datasets where the deterministic split produced no holdout.
+  const holdoutSet = input.result.holdoutSet;
+  const gateDataset =
+    holdoutSet && holdoutSet.length > 0 ? holdoutSet : input.result.dataset;
+  const gateSource =
+    holdoutSet && holdoutSet.length > 0
+      ? `holdout(n=${holdoutSet.length})`
+      : `full-dataset(n=${input.result.dataset.length}) [no holdout available]`;
+
   const decision = await evaluatePromotion({
     incumbentPrompt,
     candidatePrompt: input.result.result.optimizedPrompt,
-    dataset: input.result.dataset,
+    dataset: gateDataset,
     scorer: input.result.scorer,
   });
   notes.push(
-    `promotion-gate ${decision.promote ? "PROMOTE" : "REJECT"} incumbent_source=${incumbentSource} ${decision.reason}`,
+    `promotion-gate ${decision.promote ? "PROMOTE" : "REJECT"} incumbent_source=${incumbentSource} gate_dataset=${gateSource} ${decision.reason}`,
   );
 
   const generatedAt = new Date().toISOString();

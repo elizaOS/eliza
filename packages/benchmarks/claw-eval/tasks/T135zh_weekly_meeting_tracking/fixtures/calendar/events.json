@@ -1,0 +1,7 @@
+[
+  {"event_id": "evt_501", "title": "产品需求周会", "start_time": "2026-03-16T10:00:00+08:00", "end_time": "2026-03-16T11:30:00+08:00", "location": "会议室A", "organizer": "王明", "attendees": ["王明","李华","赵蕾"], "description": "每周产品需求评审，关联纪要NOTE-501", "status": "confirmed"},
+  {"event_id": "evt_502", "title": "技术评审会", "start_time": "2026-03-18T14:00:00+08:00", "end_time": "2026-03-18T16:00:00+08:00", "location": "技术区", "organizer": "李华", "attendees": ["李华","马强","周明"], "description": "架构评审，关联纪要NOTE-502", "status": "confirmed"},
+  {"event_id": "evt_503", "title": "客户进展同步会", "start_time": "2026-03-20T09:00:00+08:00", "end_time": "2026-03-20T10:00:00+08:00", "location": "会议室B", "organizer": "赵蕾", "attendees": ["赵蕾","王明"], "description": "大客户进展同步，关联纪要NOTE-503", "status": "confirmed"},
+  {"event_id": "evt_504", "title": "全员站会", "start_time": "2026-03-17T10:00:00+08:00", "end_time": "2026-03-17T10:15:00+08:00", "location": "开放区", "organizer": "王明", "attendees": ["全员"], "description": "每日站会，无纪要", "status": "confirmed"},
+  {"event_id": "evt_505", "title": "午餐分享", "start_time": "2026-03-19T12:00:00+08:00", "end_time": "2026-03-19T13:00:00+08:00", "location": "食堂", "organizer": "HR", "attendees": ["自愿参加"], "description": "技术午餐分享，无纪要", "status": "confirmed"}
+]

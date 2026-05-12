@@ -1,0 +1,49 @@
+task_id: M068_video_tennis_set_point_analysis
+task_name: Video Tennis Set Point Analysis
+version: "1.0"
+category: video_qa
+difficulty: hard
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.webm
+
+    Watch the video and answer: how many set points in total did the player wearing a white top fail to convert across all three sets? How many set points did he fail to convert in the first set, second set, and third set respectively?
+
+    Note: A set point is a score situation where a player needs only one more point to win the current set. Failing to convert a set point means the player had a set point but did not win that point.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/video.webm
+
+sandbox_grader_files: []
+
+env_snapshot_commands: []
+env_snapshot_files: []
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+
+reference_solution: |
+  Use sandbox_read_media to analyze the tennis match video.
+  White-shirt player wasted 5 set points total.
+  Set 1: 1, Set 2: 0, Set 3: 4.
+
+primary_dimensions:
+  - completion
+  - robustness

@@ -10,7 +10,9 @@ publish orchestrator can hash and validate the final bundle.
 Default sources:
   - TTS: Serveurperso/OmniVoice-GGUF, Apache-2.0 GGUF artifacts.
   - ASR: ggml-org/Qwen3-ASR-*-GGUF, GGUF artifacts.
-  - VAD: onnx-community/silero-vad, int8 ONNX sidecar model.
+  - VAD: ggml-org/whisper-vad, native GGML Silero VAD v5.1.2 model.
+    The legacy onnx-community/silero-vad int8 ONNX model can be staged as
+    an explicit fallback with --include-vad-onnx-fallback.
   - Wake word (optional): github.com/dscripka/openWakeWord release ONNX
     graphs (melspectrogram + embedding feature models, "hey jarvis" head
     staged as the Eliza-1 default `wake/hey-eliza.onnx`). Skip with
@@ -44,13 +46,16 @@ except ImportError:  # pragma: no cover - script execution path
     from eliza1_manifest import VOICE_QUANT_BY_TIER
 
 VOICE_REPO: Final[str] = "Serveurperso/OmniVoice-GGUF"
-VAD_REPO: Final[str] = "onnx-community/silero-vad"
+VAD_NATIVE_REPO: Final[str] = "ggml-org/whisper-vad"
+VAD_ONNX_REPO: Final[str] = "onnx-community/silero-vad"
 ASR_REPO_BY_TIER: Final[dict[str, str]] = {
-    "0_6b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
-    "1_7b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
+    "0_8b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
+    "2b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
+    "4b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
     "9b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
     "27b": "ggml-org/Qwen3-ASR-1.7B-GGUF",
     "27b-256k": "ggml-org/Qwen3-ASR-1.7B-GGUF",
+    "27b-1m": "ggml-org/Qwen3-ASR-1.7B-GGUF",
 }
 GGUF_QUANT_PREFERENCE: Final[tuple[str, ...]] = (
     "Q4_K_M",
@@ -59,7 +64,10 @@ GGUF_QUANT_PREFERENCE: Final[tuple[str, ...]] = (
     "Q8_0",
 )
 
-VAD_FILES: Final[tuple[tuple[str, str], ...]] = (
+VAD_NATIVE_FILES: Final[tuple[tuple[str, str], ...]] = (
+    ("ggml-silero-v5.1.2.bin", "vad/silero-vad-v5.1.2.ggml.bin"),
+)
+VAD_ONNX_FALLBACK_FILES: Final[tuple[tuple[str, str], ...]] = (
     ("onnx/model_int8.onnx", "vad/silero-vad-int8.onnx"),
 )
 
@@ -321,8 +329,15 @@ def merge_lineage(
                 "license": "apache-2.0; review upstream model card before release",
             },
             "vad": {
-                "base": f"{VAD_REPO}@{revisions[VAD_REPO]}",
+                "base": f"{VAD_NATIVE_REPO}@{revisions[VAD_NATIVE_REPO]}",
                 "license": "mit",
+                "format": "ggml",
+                "artifact": "vad/silero-vad-v5.1.2.ggml.bin",
+                "onnxFallback": (
+                    f"{VAD_ONNX_REPO}@{revisions[VAD_ONNX_REPO]}"
+                    if VAD_ONNX_REPO in revisions
+                    else None
+                ),
             },
             "wakeword": {
                 "base": f"{WAKEWORD_RELEASE}",
@@ -350,7 +365,10 @@ def write_license_notes(bundle_dir: Path, *, dry_run: bool) -> None:
             "Review upstream Apache-2.0 license and model card before release.\n"
         ),
         "LICENSE.vad": (
-            "VAD assets staged from onnx-community/silero-vad.\n"
+            "VAD assets staged from ggml-org/whisper-vad as native GGML "
+            "Silero VAD v5.1.2 at vad/silero-vad-v5.1.2.ggml.bin.\n"
+            "Optional legacy ONNX fallback may be staged from "
+            "onnx-community/silero-vad at vad/silero-vad-int8.onnx.\n"
             "Declared upstream license: MIT.\n"
         ),
         "LICENSE.wakeword": (
@@ -389,7 +407,10 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
     asr_repo = args.asr_repo or ASR_REPO_BY_TIER[tier]
     HfApi, _ = require_hf_hub()
     api = HfApi()
-    revisions = resolve_revisions(api, (VOICE_REPO, asr_repo, VAD_REPO))
+    revision_repos = [VOICE_REPO, asr_repo, VAD_NATIVE_REPO]
+    if args.include_vad_onnx_fallback:
+        revision_repos.append(VAD_ONNX_REPO)
+    revisions = resolve_revisions(api, tuple(revision_repos))
     asr_remote_path = choose_gguf_file(api, repo_id=asr_repo, requested=args.asr_file)
     asr_mmproj_remote_path = choose_mmproj_file(
         api,
@@ -436,17 +457,29 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
             dry_run=args.dry_run,
         )
     )
-    for remote, rel in VAD_FILES:
+    for remote, rel in VAD_NATIVE_FILES:
         staged.append(
             copy_hf_file(
-                repo_id=VAD_REPO,
-                revision=revisions[VAD_REPO],
+                repo_id=VAD_NATIVE_REPO,
+                revision=revisions[VAD_NATIVE_REPO],
                 remote_path=remote,
                 destination=bundle_dir / rel,
                 link_mode=args.link_mode,
                 dry_run=args.dry_run,
             )
         )
+    if args.include_vad_onnx_fallback:
+        for remote, rel in VAD_ONNX_FALLBACK_FILES:
+            staged.append(
+                copy_hf_file(
+                    repo_id=VAD_ONNX_REPO,
+                    revision=revisions[VAD_ONNX_REPO],
+                    remote_path=remote,
+                    destination=bundle_dir / rel,
+                    link_mode=args.link_mode,
+                    dry_run=args.dry_run,
+                )
+            )
     if not args.skip_wakeword:
         for remote, rel in WAKEWORD_FILES:
             staged.append(
@@ -474,6 +507,21 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
         "asrRepo": asr_repo,
         "asrRemotePath": asr_remote_path,
         "asrMmprojRemotePath": asr_mmproj_remote_path,
+        "vad": {
+            "nativeRepo": VAD_NATIVE_REPO,
+            "nativeRemotePath": VAD_NATIVE_FILES[0][0],
+            "nativeBundlePath": VAD_NATIVE_FILES[0][1],
+            "format": "ggml",
+            "onnxFallbackIncluded": bool(args.include_vad_onnx_fallback),
+            "onnxFallbackRepo": (
+                VAD_ONNX_REPO if args.include_vad_onnx_fallback else None
+            ),
+            "onnxFallbackBundlePath": (
+                VAD_ONNX_FALLBACK_FILES[0][1]
+                if args.include_vad_onnx_fallback
+                else None
+            ),
+        },
         "sources": {
             repo: {"revision": rev}
             for repo, rev in revisions.items()
@@ -562,6 +610,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Skip staging the optional openWakeWord graphs. Wake word is "
             "opt-in (hide-not-disable); a bundle without it still has a "
             "working voice pipeline (push-to-talk / VAD-gated)."
+        ),
+    )
+    ap.add_argument(
+        "--include-vad-onnx-fallback",
+        action="store_true",
+        help=(
+            "Also stage the legacy Silero ONNX fallback at "
+            "vad/silero-vad-int8.onnx. Native GGML VAD is always staged."
         ),
     )
     ap.add_argument(

@@ -1,10 +1,3 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
 import crypto from "node:crypto";
 import type {
   BrowserBridgeCompanionStatus,
@@ -33,7 +26,11 @@ import {
   browserBridgePermissionsReady,
   isBrowserBridgePaused,
 } from "./browser-readiness.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
 import {
   classifyScreenTimeTarget,
@@ -81,6 +78,82 @@ type ScreenTimeWeeklyAverageItem = {
   averageSecondsPerDay: number;
   averageMinutesPerDay: number;
 };
+
+type ScreenTimeEventInput = {
+  source: "app" | "website";
+  identifier: string;
+  displayName: string;
+  startAt: string;
+  endAt?: string | null;
+  durationSeconds?: number;
+  metadata?: Record<string, unknown>;
+};
+
+type ScreenTimeMixinDependencies = LifeOpsServiceBase & {
+  getBrowserSettings(): Promise<BrowserBridgeSettings>;
+  listBrowserCompanions(): Promise<BrowserBridgeCompanionStatus[]>;
+};
+
+type ScreenTimeWeeklyAverageResponse = {
+  items: ScreenTimeWeeklyAverageItem[];
+  totalSeconds: number;
+  daysInWindow: number;
+};
+
+export interface LifeOpsScreenTimeServicePublic {
+  recordScreenTimeEvent(
+    event: ScreenTimeEventInput,
+  ): Promise<LifeOpsScreenTimeSession>;
+  finishActiveScreenTimeSession(
+    id: string,
+    endAt: string,
+    durationSeconds: number,
+  ): Promise<void>;
+  collectScreenTimeRows(opts: {
+    since: string;
+    until: string;
+    source?: LifeOpsScreenTimeSource;
+    identifier?: string;
+  }): Promise<ScreenTimeAggregateRow[]>;
+  getScreenTimeDaily(opts: {
+    date: string;
+    source?: LifeOpsScreenTimeSource;
+    identifier?: string;
+    limit?: number;
+  }): Promise<LifeOpsScreenTimeDaily[]>;
+  getScreenTimeSummary(opts: {
+    since: string;
+    until: string;
+    source?: LifeOpsScreenTimeSource;
+    identifier?: string;
+    topN?: number;
+  }): Promise<LifeOpsScreenTimeSummary>;
+  getScreenTimeBreakdown(opts: {
+    since: string;
+    until: string;
+    source?: LifeOpsScreenTimeSource;
+    identifier?: string;
+    topN?: number;
+  }): Promise<ScreenTimeBreakdown>;
+  getSocialHabitSummary(opts: {
+    since: string;
+    until: string;
+    topN?: number;
+  }): Promise<SocialHabitSummary>;
+  getScreenTimeHistory(opts: {
+    range: LifeOpsScreenTimeRangeKey;
+    topN?: number;
+    socialTopN?: number;
+  }): Promise<LifeOpsScreenTimeHistoryResponse>;
+  getScreenTimeWeeklyAverageByApp(opts: {
+    since: string;
+    until: string;
+    daysInWindow: number;
+    identifier?: string;
+    topN?: number;
+  }): Promise<ScreenTimeWeeklyAverageResponse>;
+  aggregateDailyForDate(date: string): Promise<{ updated: number }>;
+}
 
 const DAY_MS = 86_400_000;
 
@@ -887,17 +960,14 @@ function browserTrackingDataSourceState(
 /** @internal */
 export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
-) {
-  class LifeOpsScreenTimeServiceMixin extends Base {
-    async recordScreenTimeEvent(event: {
-      source: "app" | "website";
-      identifier: string;
-      displayName: string;
-      startAt: string;
-      endAt?: string | null;
-      durationSeconds?: number;
-      metadata?: Record<string, unknown>;
-    }): Promise<LifeOpsScreenTimeSession> {
+): MixinClass<TBase, LifeOpsScreenTimeServicePublic> {
+  const ScreenTimeBase =
+    Base as unknown as Constructor<ScreenTimeMixinDependencies>;
+
+  class LifeOpsScreenTimeServiceMixin extends ScreenTimeBase {
+    async recordScreenTimeEvent(
+      event: ScreenTimeEventInput,
+    ): Promise<LifeOpsScreenTimeSession> {
       if (event.source !== "app" && event.source !== "website") {
         fail(400, "source must be 'app' or 'website'");
       }
@@ -1287,11 +1357,7 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
       daysInWindow: number;
       identifier?: string;
       topN?: number;
-    }): Promise<{
-      items: ScreenTimeWeeklyAverageItem[];
-      totalSeconds: number;
-      daysInWindow: number;
-    }> {
+    }): Promise<ScreenTimeWeeklyAverageResponse> {
       const summary = await this.getScreenTimeSummary({
         since: opts.since,
         until: opts.until,
@@ -1314,5 +1380,8 @@ export function withScreenTime<TBase extends Constructor<LifeOpsServiceBase>>(
       );
     }
   }
-  return LifeOpsScreenTimeServiceMixin;
+  return LifeOpsScreenTimeServiceMixin as unknown as MixinClass<
+    TBase,
+    LifeOpsScreenTimeServicePublic
+  >;
 }

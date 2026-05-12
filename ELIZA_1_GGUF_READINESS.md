@@ -6,8 +6,8 @@ It is a release checklist, not hardware evidence.
 Important caveats:
 
 - Text, TTS, ASR, and DFlash payloads are GGUF artifacts in the final plan.
-- VAD is intentionally a sidecar ONNX artifact at `vad/silero-vad-int8.onnx`, not a GGUF.
-- v1 release shape (`releaseState=base-v1`): the upstream BASE models — GGUF-converted via the elizaOS/llama.cpp fork and fully Milady-optimized (every quant/kernel trick in `packages/inference/AGENTS.md` §3) — but NOT fine-tuned. `evidence/release.json` records `finetuned=false` and a `sourceModels` map (which upstream HF repo each component comes from). For `base-v1`, `final.weights` need not be `true` (the bytes are the upstream base GGUFs by design) — but `final.{hashes,evals,licenses,kernelDispatchReports,platformEvidence,sizeFirstRepoIds}` must all be `true`, and the runnable-on-base evals (text perplexity vs the upstream GGUF, voice RTF, ASR WER, VAD latency, dflash acceptance, e2e loop, 30-turn) must pass — but NOT a fine-tuned-text-quality eval. Fine-tuning ships in v2 (`releaseState=finetuned-v2`).
+- VAD is a native GGML artifact at `vad/silero-vad-v5.1.2.ggml.bin`. It is not GGUF. Legacy bundles may additionally carry the ONNX fallback `vad/silero-vad-int8.onnx`, but the fallback is not the release readiness path.
+- v1 release shape (`releaseState=base-v1`): the upstream BASE models — GGUF-converted via the elizaOS/llama.cpp fork and fully Eliza-optimized (every quant/kernel trick in `packages/inference/AGENTS.md` §3) — but NOT fine-tuned. `evidence/release.json` records `finetuned=false` and a `sourceModels` map (which upstream HF repo each component comes from). For `base-v1`, `final.weights` need not be `true` (the bytes are the upstream base GGUFs by design) — but `final.{hashes,evals,licenses,kernelDispatchReports,platformEvidence,sizeFirstRepoIds}` must all be `true`, and the runnable-on-base evals (text perplexity vs the upstream GGUF, voice RTF, ASR WER, VAD latency/boundary/endpoint/false-barge-in, dflash acceptance, e2e loop, 30-turn) must pass — but NOT a fine-tuned-text-quality eval. Fine-tuning ships in v2 (`releaseState=finetuned-v2`).
 - Release evidence must use real final hashes, evals, licenses, platform reports, and Hugging Face upload records — and real GGUF/quant-sidecar bytes from a real fork build. Fabricated hashes / not-yet-built tiers are blockers.
 
 ## 0_6b
@@ -23,7 +23,7 @@ Required files:
 - `tts/omnivoice-tokenizer-Q4_K_M.gguf`
 - `asr/eliza-1-asr.gguf`
 - `asr/eliza-1-asr-mmproj.gguf`
-- `vad/silero-vad-int8.onnx`
+- `vad/silero-vad-v5.1.2.ggml.bin`
 - `dflash/drafter-0_6b.gguf`
 - `dflash/target-meta.json`
 - `cache/voice-preset-default.bin`
@@ -47,6 +47,9 @@ Required files:
 - `quantization/qjl_config.json`
 - `quantization/polarquant_config.json`
 
+Optional fallback files:
+- `vad/silero-vad-int8.onnx`
+
 Missing files/evidence: none recorded by this check.
 
 ## 1_7b
@@ -63,7 +66,7 @@ Required files:
 - `tts/omnivoice-tokenizer-Q4_K_M.gguf`
 - `asr/eliza-1-asr.gguf`
 - `asr/eliza-1-asr-mmproj.gguf`
-- `vad/silero-vad-int8.onnx`
+- `vad/silero-vad-v5.1.2.ggml.bin`
 - `dflash/drafter-1_7b.gguf`
 - `dflash/target-meta.json`
 - `cache/voice-preset-default.bin`
@@ -87,6 +90,9 @@ Required files:
 - `quantization/qjl_config.json`
 - `quantization/polarquant_config.json`
 
+Optional fallback files:
+- `vad/silero-vad-int8.onnx`
+
 Missing files/evidence: none recorded by this check.
 
 ## 9b
@@ -103,7 +109,7 @@ Required files:
 - `tts/omnivoice-tokenizer-Q8_0.gguf`
 - `asr/eliza-1-asr.gguf`
 - `asr/eliza-1-asr-mmproj.gguf`
-- `vad/silero-vad-int8.onnx`
+- `vad/silero-vad-v5.1.2.ggml.bin`
 - `vision/mmproj-9b.gguf`
 - `dflash/drafter-9b.gguf`
 - `dflash/target-meta.json`
@@ -133,6 +139,9 @@ Required files:
 - `quantization/qjl_config.json`
 - `quantization/polarquant_config.json`
 
+Optional fallback files:
+- `vad/silero-vad-int8.onnx`
+
 Missing files/evidence: none recorded by this check.
 
 ## 27b
@@ -149,7 +158,7 @@ Required files:
 - `tts/omnivoice-tokenizer-Q8_0.gguf`
 - `asr/eliza-1-asr.gguf`
 - `asr/eliza-1-asr-mmproj.gguf`
-- `vad/silero-vad-int8.onnx`
+- `vad/silero-vad-v5.1.2.ggml.bin`
 - `vision/mmproj-27b.gguf`
 - `dflash/drafter-27b.gguf`
 - `dflash/target-meta.json`
@@ -179,6 +188,9 @@ Required files:
 - `quantization/qjl_config.json`
 - `quantization/polarquant_config.json`
 
+Optional fallback files:
+- `vad/silero-vad-int8.onnx`
+
 Missing files/evidence: none recorded by this check.
 
 ## 27b-256k
@@ -194,7 +206,7 @@ Required files:
 - `tts/omnivoice-tokenizer-Q8_0.gguf`
 - `asr/eliza-1-asr.gguf`
 - `asr/eliza-1-asr-mmproj.gguf`
-- `vad/silero-vad-int8.onnx`
+- `vad/silero-vad-v5.1.2.ggml.bin`
 - `vision/mmproj-27b-256k.gguf`
 - `dflash/drafter-27b-256k.gguf`
 - `dflash/target-meta.json`
@@ -224,6 +236,9 @@ Required files:
 - `quantization/qjl_config.json`
 - `quantization/polarquant_config.json`
 
+Optional fallback files:
+- `vad/silero-vad-int8.onnx`
+
 Missing files/evidence: none recorded by this check.
 
 ## 27b-1m
@@ -239,7 +254,7 @@ Required files:
 - `tts/omnivoice-tokenizer-Q8_0.gguf`
 - `asr/eliza-1-asr.gguf`
 - `asr/eliza-1-asr-mmproj.gguf`
-- `vad/silero-vad-int8.onnx`
+- `vad/silero-vad-v5.1.2.ggml.bin`
 - `dflash/drafter-27b-1m.gguf`
 - `dflash/target-meta.json`
 - `cache/voice-preset-default.bin`
@@ -259,5 +274,8 @@ Required files:
 - `quantization/fused_turboquant.json`
 - `quantization/qjl_config.json`
 - `quantization/polarquant_config.json`
+
+Optional fallback files:
+- `vad/silero-vad-int8.onnx`
 
 Missing files/evidence: none recorded by this check.

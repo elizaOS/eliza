@@ -1,4 +1,4 @@
-"""Synthesize ~1,800 canonical TOON tool_call records for commerce/scheduling
+"""Synthesize ~1,800 canonical native JSON tool_call records for commerce/scheduling
 plugin actions.
 
 Targets 18 actions across plugin-shopify, plugin-calendly, plugin-cron, and
@@ -61,7 +61,7 @@ USER_NAMES = [
 AGENT_NAMES = [
     "Iris", "Kai", "Ava", "Nova", "Echo", "Sage", "Atlas", "Lyra",
     "Pico", "Lumi", "Rune", "Vega", "Sol", "Orion", "Mira", "Tess",
-    "milady", "Eliza",
+    "eliza", "Eliza",
 ]
 
 ROOM_KINDS = [

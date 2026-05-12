@@ -1,5 +1,4 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
-import { elizaLogger } from "@elizaos/core";
+import { elizaLogger, type IAgentRuntime } from "@elizaos/core";
 import {
   API_BASE_URL,
   BIRDEYE_ENDPOINTS,
@@ -162,11 +161,11 @@ class HttpError extends Error {
 // extends BaseCachedProvider
 // really more like a service
 export class BirdeyeProvider {
-  private runtime: unknown;
+  private runtime: Pick<IAgentRuntime, "getCache" | "setCache">;
   private maxRetries: number;
 
   constructor(
-    runtime,
+    runtime: Pick<IAgentRuntime, "getCache" | "setCache">,
     //cacheManager: ICacheManager,
     _symbolMap?: Record<string, string>,
     maxRetries?: number,
@@ -278,7 +277,7 @@ export class BirdeyeProvider {
         : `${url}:${JSON.stringify(params)}`;
 
     // Check cache first
-    const cachedVal = await this.runtime.getCache(cacheKey);
+    const cachedVal = await this.runtime.getCache<T>(cacheKey);
     if (cachedVal) return cachedVal as T;
 
     const urlWithParams =

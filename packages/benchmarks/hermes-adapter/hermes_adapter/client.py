@@ -20,13 +20,55 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Any, Mapping, Sequence
+
+from ._retry import (
+    MAX_ATTEMPTS,
+    RetryExhaustedError,
+    backoff_seconds,
+    is_retryable_status,
+    parse_retry_after,
+)
 
 logger = logging.getLogger(__name__)
 
 
+def _retry_after_from_openai_exception(exc: object) -> float | None:
+    """Pull a ``Retry-After`` header from an openai-SDK exception, if present."""
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return None
+    try:
+        raw = headers.get("retry-after") or headers.get("Retry-After")
+    except AttributeError:
+        return None
+    return parse_retry_after(raw if isinstance(raw, str) else None)
+
+
 DEFAULT_REPO_PATH = Path.home() / ".eliza" / "agents" / "hermes-agent-src"
 DEFAULT_VENV_PYTHON = DEFAULT_REPO_PATH / ".venv" / "bin" / "python"
+_OPENAI_COMPAT_DEFAULT_BASE_URLS = {
+    "cerebras": "https://api.cerebras.ai/v1",
+    "openai": "https://api.openai.com/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "groq": "https://api.groq.com/openai/v1",
+}
+_PROVIDER_API_KEY_ENVS = {
+    "cerebras": ("CEREBRAS_API_KEY", "OPENAI_API_KEY"),
+    "openai": ("OPENAI_API_KEY",),
+    "openrouter": ("OPENROUTER_API_KEY", "OPENAI_API_KEY"),
+    "groq": ("GROQ_API_KEY", "OPENAI_API_KEY"),
+    "vllm": ("OPENAI_API_KEY",),
+}
+_PROVIDER_BASE_URL_ENVS = {
+    "cerebras": ("CEREBRAS_BASE_URL", "OPENAI_BASE_URL"),
+    "openai": ("OPENAI_BASE_URL",),
+    "openrouter": ("OPENROUTER_BASE_URL", "OPENAI_BASE_URL"),
+    "groq": ("GROQ_BASE_URL", "OPENAI_BASE_URL"),
+    "vllm": ("VLLM_BASE_URL", "OPENAI_BASE_URL"),
+}
+_ALLOWED_TOOL_CHOICES = {"auto", "required", "none"}
 
 
 @dataclass
@@ -37,6 +79,222 @@ class MessageResponse:
     thought: str | None
     actions: list[str]
     params: dict[str, object]
+
+
+_CONTROL_CONTEXT_KEYS = {
+    "messages",
+    "system_prompt",
+    "system_hint",
+    "temperature",
+    "reasoning_effort",
+    "max_tokens",
+    "model_name",
+    "benchmark",
+    "task_id",
+    "session_id",
+    "agent_id",
+    "tools",
+    "tool_choice",
+}
+
+
+def context_to_prompt(context: Mapping[str, object] | None) -> str:
+    if not context:
+        return ""
+    parts: list[str] = []
+    hint_keys = ("instructions",) if isinstance(context.get("system_prompt"), str) else ("system_hint", "instructions")
+    for key in hint_keys:
+        value = context.get(key)
+        if isinstance(value, str) and value.strip():
+            parts.append(f"{key}:\n{value.strip()}")
+    history = context.get("history")
+    if isinstance(history, Sequence) and not isinstance(history, (str, bytes)):
+        history_lines: list[str] = []
+        for item in history:
+            if not isinstance(item, Mapping):
+                continue
+            role = str(item.get("role") or "turn")
+            content = item.get("content")
+            if content is not None:
+                history_lines.append(f"{role}: {content}")
+        if history_lines:
+            parts.append("history:\n" + "\n".join(history_lines))
+    for key in sorted(str(k) for k in context.keys()):
+        if key in _CONTROL_CONTEXT_KEYS or key == "history":
+            continue
+        value = context.get(key)
+        if value in (None, "", [], {}):
+            continue
+        parts.append(f"{key}:\n{json.dumps(_jsonable(value), ensure_ascii=True, indent=2)}")
+    return "\n\n".join(parts)
+
+
+def _prompt_text(text: str, context: Mapping[str, object] | None) -> str:
+    if not context:
+        return text
+    parts: list[str] = []
+    system_prompt = context.get("system_prompt")
+    if isinstance(system_prompt, str) and system_prompt.strip():
+        parts.append(system_prompt.strip())
+    context_prompt = context_to_prompt(context)
+    if context_prompt:
+        parts.append(f"Benchmark context:\n{context_prompt}")
+    messages = context.get("messages")
+    if isinstance(messages, Sequence) and not isinstance(messages, (str, bytes)):
+        for item in messages:
+            if not isinstance(item, Mapping):
+                continue
+            role = item.get("role")
+            content = item.get("content")
+            if isinstance(role, str) and content is not None:
+                parts.append(f"{role}: {content}")
+    if text:
+        parts.append(f"user: {text}")
+    return "\n".join(parts) if parts else text
+
+
+def _jsonable(value: object) -> object:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Mapping):
+        return {str(k): _jsonable(v) for k, v in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_jsonable(v) for v in value]
+    return str(value)
+
+
+def _coerce_optional_float(value: object, *, fallback: float | None) -> float | None:
+    if isinstance(value, bool):
+        return fallback
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return float(value)
+        except ValueError:
+            return fallback
+    return fallback
+
+
+def _coerce_optional_int(value: object, *, fallback: int | None) -> int | None:
+    if isinstance(value, bool):
+        return fallback
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return int(value)
+        except ValueError:
+            return fallback
+    return fallback
+
+
+def _coerce_optional_str(value: object, *, fallback: str | None) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return fallback
+
+
+def _env_optional_float(*names: str) -> float | None:
+    for name in names:
+        value = _coerce_optional_float(os.environ.get(name), fallback=None)
+        if value is not None:
+            return value
+    return None
+
+
+def _env_optional_int(*names: str) -> int | None:
+    for name in names:
+        value = _coerce_optional_int(os.environ.get(name), fallback=None)
+        if value is not None:
+            return value
+    return None
+
+
+def _env_optional_str(*names: str) -> str | None:
+    for name in names:
+        value = _coerce_optional_str(os.environ.get(name), fallback=None)
+        if value is not None:
+            return value
+    return None
+
+
+def _is_gpt_oss_model(model: str) -> bool:
+    bare = model.rsplit("/", 1)[-1]
+    return bare.startswith("gpt-oss")
+
+
+def _default_api_key(provider: str) -> str:
+    provider_key = provider.strip().lower()
+    for env_name in _PROVIDER_API_KEY_ENVS.get(provider_key, ("OPENAI_API_KEY",)):
+        value = os.environ.get(env_name, "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _default_base_url(provider: str) -> str:
+    provider_key = provider.strip().lower()
+    for env_name in _PROVIDER_BASE_URL_ENVS.get(provider_key, ("OPENAI_BASE_URL",)):
+        value = os.environ.get(env_name, "").strip()
+        if value:
+            return value.rstrip("/")
+    return _OPENAI_COMPAT_DEFAULT_BASE_URLS.get(
+        provider_key,
+        "https://api.cerebras.ai/v1",
+    )
+
+
+def _write_telemetry(
+    *,
+    harness: str,
+    provider: str,
+    model: str,
+    text: str,
+    context: Mapping[str, object] | None,
+    latency_ms: float,
+    task_id: str | None,
+    benchmark: str | None,
+    response: MessageResponse | None = None,
+    error: str | None = None,
+) -> None:
+    telemetry_path = os.environ.get("BENCHMARK_TELEMETRY_JSONL", "").strip()
+    if not telemetry_path:
+        return
+    usage: object = {}
+    if response is not None:
+        usage_raw = response.params.get("usage")
+        if isinstance(usage_raw, Mapping):
+            usage = dict(usage_raw)
+        else:
+            meta_raw = response.params.get("_meta")
+            if isinstance(meta_raw, Mapping) and isinstance(meta_raw.get("usage"), Mapping):
+                usage = dict(meta_raw["usage"])  # type: ignore[index]
+    prompt = _prompt_text(text, context)
+    record: dict[str, Any] = {
+        "harness": harness,
+        "provider": provider,
+        "model": model,
+        "benchmark": benchmark,
+        "task_id": task_id,
+        "prompt_text": prompt,
+        "prompt_chars": len(prompt),
+        "latency_ms": latency_ms,
+        "usage": _jsonable(usage),
+        "actions": list(response.actions) if response is not None else [],
+        "response_text": response.text if response is not None else "",
+    }
+    if error:
+        record["error"] = error
+    try:
+        path = Path(telemetry_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=True, sort_keys=True) + "\n")
+    except OSError as exc:
+        logger.debug("failed to write hermes telemetry: %s", exc)
 
 
 class HermesClient:
@@ -61,6 +319,9 @@ class HermesClient:
         base_url: str | None = None,
         mode: str = "subprocess",
         timeout_s: float = 1200.0,
+        temperature: float | None = None,
+        reasoning_effort: str | None = None,
+        max_tokens: int | None = None,
     ) -> None:
         if mode not in {"subprocess", "in_process"}:
             raise ValueError(f"Unknown mode {mode!r}; expected 'subprocess' or 'in_process'")
@@ -73,14 +334,29 @@ class HermesClient:
 
         self.provider = provider
         self.model = model
-        self.api_key = api_key if api_key is not None else os.environ.get("CEREBRAS_API_KEY", "")
+        self.api_key = api_key if api_key is not None else _default_api_key(provider)
         self.base_url = (
-            base_url
-            if base_url is not None
-            else os.environ.get("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1")
+            base_url.rstrip("/")
+            if isinstance(base_url, str) and base_url
+            else _default_base_url(provider)
         )
         self.mode = mode
         self.timeout_s = float(timeout_s)
+        self.temperature = (
+            temperature
+            if temperature is not None
+            else _env_optional_float("BENCHMARK_TEMPERATURE", "TEMPERATURE")
+        )
+        self.reasoning_effort = (
+            reasoning_effort
+            if reasoning_effort is not None
+            else _env_optional_str("BENCHMARK_REASONING_EFFORT", "CEREBRAS_REASONING_EFFORT")
+        )
+        self.max_tokens = (
+            max_tokens
+            if max_tokens is not None
+            else _env_optional_int("BENCHMARK_MAX_TOKENS", "MAX_TOKENS")
+        )
 
         # send_message records (task_id, benchmark) from reset() — purely
         # informational so callers can correlate logs.
@@ -175,9 +451,37 @@ class HermesClient:
           4. Emits a single JSON line on stdout in the shape
              ``{"text", "thought", "actions", "params"}``.
         """
-        if self.mode == "in_process":
-            return self._send_in_process(text, context)
-        return self._send_subprocess(text, context)
+        started = time.monotonic()
+        try:
+            if self.mode == "in_process":
+                response = self._send_in_process(text, context)
+            else:
+                response = self._send_subprocess(text, context)
+        except Exception as exc:
+            _write_telemetry(
+                harness="hermes",
+                provider=self.provider,
+                model=self.model,
+                text=text,
+                context=context,
+                latency_ms=(time.monotonic() - started) * 1000.0,
+                task_id=self._task_id,
+                benchmark=self._benchmark,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            raise
+        _write_telemetry(
+            harness="hermes",
+            provider=self.provider,
+            model=self.model,
+            text=text,
+            context=context,
+            latency_ms=(time.monotonic() - started) * 1000.0,
+            task_id=self._task_id,
+            benchmark=self._benchmark,
+            response=response,
+        )
+        return response
 
     # ------------------------------------------------------------------
     # Command construction (separated for unit-test inspection)
@@ -200,6 +504,15 @@ class HermesClient:
         raw_tools = ctx.get("tools")
         tools = _openai_compatible_tools(raw_tools)
         system_prompt = ctx.get("system_prompt")
+        if not isinstance(system_prompt, str) or not system_prompt.strip():
+            hint = ctx.get("system_hint")
+            system_prompt = hint if isinstance(hint, str) else None
+        context_prompt = context_to_prompt(ctx)
+        if context_prompt:
+            prefix = system_prompt if isinstance(system_prompt, str) else ""
+            system_prompt = (
+                f"{prefix}\n\nBenchmark context:\n{context_prompt}".strip()
+            )
         if isinstance(raw_tools, list) and raw_tools and tools is None:
             tool_context = json.dumps(raw_tools, ensure_ascii=True)
             prefix = system_prompt if isinstance(system_prompt, str) else ""
@@ -214,6 +527,18 @@ class HermesClient:
             "api_key": self.api_key,
             "system_prompt": system_prompt if isinstance(system_prompt, str) else None,
             "tools": tools,
+            "temperature": _coerce_optional_float(
+                ctx.get("temperature"), fallback=self.temperature
+            ),
+            "reasoning_effort": _coerce_optional_str(
+                ctx.get("reasoning_effort"), fallback=self.reasoning_effort
+            ),
+            "max_tokens": _coerce_optional_int(
+                ctx.get("max_tokens"), fallback=self.max_tokens
+            ),
+            "tool_choice": _coerce_optional_str(
+                ctx.get("tool_choice"), fallback=None
+            ),
             "task_id": self._task_id,
             "benchmark": self._benchmark,
         }
@@ -264,6 +589,12 @@ class HermesClient:
         # Lazy import — only attempted when explicitly requested.
         try:
             from openai import OpenAI  # noqa: WPS433 — lazy by design
+            from openai import (  # noqa: WPS433
+                APIConnectionError,
+                APIStatusError,
+                APITimeoutError,
+                RateLimitError,
+            )
         except ImportError as exc:  # pragma: no cover
             raise RuntimeError(
                 "in_process mode requires `openai` installed in the parent "
@@ -271,7 +602,11 @@ class HermesClient:
             ) from exc
 
         payload = self.build_send_message_payload(text, context)
-        oai = OpenAI(api_key=payload["api_key"] or None, base_url=str(payload["base_url"]))
+        oai = OpenAI(
+            api_key=payload["api_key"] or None,
+            base_url=str(payload["base_url"]),
+            max_retries=0,  # we own the retry loop below
+        )
         ctx = payload.get("context")
         raw_messages = ctx.get("messages") if isinstance(ctx, Mapping) else None
         sys_prompt = payload.get("system_prompt") if isinstance(payload.get("system_prompt"), str) else None
@@ -280,11 +615,68 @@ class HermesClient:
             system_prompt=sys_prompt,
             fallback_user_text=text,
         )
-        kwargs: dict[str, object] = {"model": str(payload["model"]), "messages": messages}
+        model_name = str(payload["model"])
+        kwargs: dict[str, object] = {"model": model_name, "messages": messages}
         tools = payload.get("tools")
         if isinstance(tools, list) and tools:
             kwargs["tools"] = tools
-        completion = oai.chat.completions.create(**kwargs)
+            tool_choice = payload.get("tool_choice")
+            if isinstance(tool_choice, str) and tool_choice in _ALLOWED_TOOL_CHOICES:
+                kwargs["tool_choice"] = tool_choice
+        temperature = payload.get("temperature")
+        if isinstance(temperature, (int, float)):
+            kwargs["temperature"] = float(temperature)
+        max_tokens = payload.get("max_tokens")
+        if isinstance(max_tokens, int) and max_tokens > 0:
+            kwargs["max_completion_tokens"] = max_tokens
+        reasoning_effort = payload.get("reasoning_effort")
+        if isinstance(reasoning_effort, str) and reasoning_effort and _is_gpt_oss_model(model_name):
+            kwargs["reasoning_effort"] = reasoning_effort
+
+        # Retry loop: 429 + 5xx + network errors, exponential backoff,
+        # ``Retry-After`` honored when present. Other 4xx surface immediately.
+        last_status: int | None = None
+        last_error_str = "no attempt completed"
+        for attempt in range(MAX_ATTEMPTS):
+            try:
+                completion = oai.chat.completions.create(**kwargs)
+                break
+            except RateLimitError as exc:
+                last_status = 429
+                last_error_str = str(exc)
+                delay = _retry_after_from_openai_exception(exc) or backoff_seconds(attempt)
+            except APIStatusError as exc:
+                status = getattr(exc, "status_code", None)
+                last_status = int(status) if isinstance(status, int) else None
+                last_error_str = str(exc)
+                if last_status is None or not is_retryable_status(last_status):
+                    raise
+                delay = _retry_after_from_openai_exception(exc) or backoff_seconds(attempt)
+            except (APIConnectionError, APITimeoutError) as exc:
+                last_status = None
+                last_error_str = f"{type(exc).__name__}: {exc}"
+                delay = backoff_seconds(attempt)
+            if attempt == MAX_ATTEMPTS - 1:
+                raise RetryExhaustedError(
+                    attempts=MAX_ATTEMPTS,
+                    last_status=last_status,
+                    last_error=last_error_str,
+                )
+            logger.warning(
+                "hermes-adapter retrying chat.completions (attempt %d/%d, status=%s) after %.2fs: %s",
+                attempt + 1,
+                MAX_ATTEMPTS,
+                "net" if last_status is None else last_status,
+                delay,
+                last_error_str[:200],
+            )
+            time.sleep(delay)
+        else:  # pragma: no cover — defensive; the break/raise paths cover it
+            raise RetryExhaustedError(
+                attempts=MAX_ATTEMPTS,
+                last_status=last_status,
+                last_error=last_error_str,
+            )
         msg = completion.choices[0].message
         tool_calls = getattr(msg, "tool_calls", None) or []
         parsed_tool_calls = [
@@ -436,9 +828,16 @@ def _build_openai_messages(
                     msg["name"] = tname
             messages.append(msg)
             had_raw = True
-    if not had_raw:
-        if isinstance(system_prompt, str) and system_prompt:
+    if isinstance(system_prompt, str) and system_prompt:
+        already_present = any(
+            msg.get("role") == "system" and msg.get("content") == system_prompt
+            for msg in messages
+        )
+        if had_raw and not already_present:
+            messages.insert(0, {"role": "system", "content": system_prompt})
+        elif not had_raw:
             messages.append({"role": "system", "content": system_prompt})
+    if not had_raw:
         messages.append({"role": "user", "content": fallback_user_text})
     return messages
 
@@ -481,6 +880,46 @@ _SEND_MESSAGE_SCRIPT = r"""
 import asyncio
 import json
 import sys
+import time
+from email.utils import parsedate_to_datetime
+
+
+_RETRY_BACKOFF = (1.0, 2.0, 4.0, 8.0, 16.0)
+_MAX_ATTEMPTS = 5
+_MAX_RETRY_AFTER = 60.0
+
+
+def _parse_retry_after(value):
+    if not value:
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    try:
+        seconds = float(raw)
+    except ValueError:
+        try:
+            target = parsedate_to_datetime(raw)
+        except (TypeError, ValueError):
+            return None
+        if target is None:
+            return None
+        seconds = target.timestamp() - time.time()
+    if seconds <= 0:
+        return 0.0
+    return min(seconds, _MAX_RETRY_AFTER)
+
+
+def _retry_after_from_exc(exc):
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return None
+    try:
+        raw = headers.get("retry-after") or headers.get("Retry-After")
+    except AttributeError:
+        return None
+    return _parse_retry_after(raw)
 
 
 def _main() -> int:
@@ -495,9 +934,19 @@ def _main() -> int:
     api_key = payload.get("api_key")
     system_prompt = payload.get("system_prompt")
     tools = payload.get("tools")
+    temperature = payload.get("temperature")
+    max_tokens = payload.get("max_tokens")
+    reasoning_effort = payload.get("reasoning_effort")
+    tool_choice = payload.get("tool_choice")
 
     try:
         from openai import OpenAI
+        from openai import (
+            APIConnectionError,
+            APIStatusError,
+            APITimeoutError,
+            RateLimitError,
+        )
     except ImportError as exc:
         print(
             json.dumps(
@@ -511,7 +960,7 @@ def _main() -> int:
         )
         return 0
 
-    client = OpenAI(api_key=api_key or None, base_url=base_url or None)
+    client = OpenAI(api_key=api_key or None, base_url=base_url or None, max_retries=0)
     messages = []
     context = payload.get("context")
     raw_messages = context.get("messages") if isinstance(context, dict) else None
@@ -567,16 +1016,83 @@ def _main() -> int:
                     msg["name"] = tname
             messages.append(msg)
             had_raw_messages = True
-    if isinstance(system_prompt, str) and system_prompt and not had_raw_messages:
-        messages.append({"role": "system", "content": system_prompt})
+    if isinstance(system_prompt, str) and system_prompt:
+        already_present = any(
+            msg.get("role") == "system" and msg.get("content") == system_prompt
+            for msg in messages
+        )
+        if had_raw_messages and not already_present:
+            messages.insert(0, {"role": "system", "content": system_prompt})
+        elif not had_raw_messages:
+            messages.append({"role": "system", "content": system_prompt})
     if not had_raw_messages:
         messages.append({"role": "user", "content": text})
 
     kwargs = {"model": model, "messages": messages}
     if isinstance(tools, list) and tools:
         kwargs["tools"] = tools
+        if isinstance(tool_choice, str) and tool_choice in {"auto", "required", "none"}:
+            kwargs["tool_choice"] = tool_choice
+    if isinstance(temperature, (int, float)):
+        kwargs["temperature"] = float(temperature)
+    if isinstance(max_tokens, int) and max_tokens > 0:
+        kwargs["max_completion_tokens"] = max_tokens
+    model_name = str(model or "")
+    if (
+        isinstance(reasoning_effort, str)
+        and reasoning_effort
+        and model_name.rsplit("/", 1)[-1].startswith("gpt-oss")
+    ):
+        kwargs["reasoning_effort"] = reasoning_effort
 
-    completion = client.chat.completions.create(**kwargs)
+    completion = None
+    last_status = None
+    last_err_str = "no attempt completed"
+    for attempt in range(_MAX_ATTEMPTS):
+        try:
+            completion = client.chat.completions.create(**kwargs)
+            break
+        except RateLimitError as exc:
+            last_status = 429
+            last_err_str = str(exc)
+            delay = _retry_after_from_exc(exc) or _RETRY_BACKOFF[min(attempt, len(_RETRY_BACKOFF) - 1)]
+        except APIStatusError as exc:
+            status = getattr(exc, "status_code", None)
+            last_status = int(status) if isinstance(status, int) else None
+            last_err_str = str(exc)
+            if last_status is None or not (last_status == 429 or last_status >= 500):
+                raise
+            delay = _retry_after_from_exc(exc) or _RETRY_BACKOFF[min(attempt, len(_RETRY_BACKOFF) - 1)]
+        except (APIConnectionError, APITimeoutError) as exc:
+            last_status = None
+            last_err_str = "{}: {}".format(type(exc).__name__, exc)
+            delay = _RETRY_BACKOFF[min(attempt, len(_RETRY_BACKOFF) - 1)]
+        if attempt == _MAX_ATTEMPTS - 1:
+            sys.stderr.write(
+                "hermes-adapter retry exhausted after {} attempts (last_status={}): {}\n".format(
+                    _MAX_ATTEMPTS,
+                    "net" if last_status is None else last_status,
+                    last_err_str[:300],
+                )
+            )
+            raise RuntimeError(
+                "hermes-adapter retry exhausted after {} attempts (last_status={})".format(
+                    _MAX_ATTEMPTS,
+                    "net" if last_status is None else last_status,
+                )
+            )
+        sys.stderr.write(
+            "hermes-adapter retry attempt {}/{} status={} delay={:.2f}s: {}\n".format(
+                attempt + 1,
+                _MAX_ATTEMPTS,
+                "net" if last_status is None else last_status,
+                delay,
+                last_err_str[:200],
+            )
+        )
+        time.sleep(delay)
+    if completion is None:  # defensive — loop must have raised
+        raise RuntimeError("hermes-adapter completion is None after retry loop")
     msg = completion.choices[0].message
 
     tool_calls = []

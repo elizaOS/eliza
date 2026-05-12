@@ -1,0 +1,37 @@
+{
+  "agent": "half_v1",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T102050Z_733a34a7/realm__realm/half_v1_realm_20260512T102051Z_1_57973b25/output"
+  ],
+  "benchmark_directory": "realm",
+  "benchmark_id": "realm",
+  "cache_metrics": {},
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "avg_efficiency": 0,
+    "avg_plan_quality": 0,
+    "calibration_depth": "scorer_payload",
+    "calibration_spec_version": "calibration_v1",
+    "overall_success_rate": 0.5,
+    "passed_tasks": 0,
+    "return_code": 0,
+    "synthetic_expected_score": 0.5,
+    "synthetic_harness": "half_v1",
+    "synthetic_is_meaningful": true,
+    "synthetic_strategy": "freeform",
+    "total_tasks": 0
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {},
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T102050Z_733a34a7/realm__realm/half_v1_realm_20260512T102051Z_1_57973b25/output/realm_results_half_v1.json",
+  "run_group_id": "rg_20260512T102050Z_733a34a7",
+  "run_id": "half_v1_realm_20260512T102051Z_1_57973b25",
+  "score": 0.5,
+  "status": "succeeded",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": "ratio",
+  "updated_at": "2026-05-12T10:20:51.192921+00:00"
+}

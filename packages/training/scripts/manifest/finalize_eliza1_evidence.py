@@ -335,7 +335,14 @@ def _evals_pass(bundle_dir: Path) -> tuple[bool, list[str]]:
 
 
 def _hashes_ok(bundle_dir: Path) -> bool:
-    """True iff checksums/SHA256SUMS exists and covers the bundle files."""
+    """True iff checksums/SHA256SUMS matches every referenced bundle file.
+
+    This deliberately does not assert that every bundle file is already listed:
+    `finalize()` calls `regenerate_checksums()` immediately before this check,
+    so coverage is established by construction. The local validation here makes
+    `final.hashes` mean the recorded digests are parseable, reference real
+    files, and match the bytes on disk.
+    """
     sums_path = bundle_dir / "checksums" / "SHA256SUMS"
     if not sums_path.is_file():
         return False
@@ -343,8 +350,15 @@ def _hashes_ok(bundle_dir: Path) -> bool:
     for line in sums_path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or "  " not in line:
-            continue
+            return False
         digest, rel = line.split("  ", 1)
+        if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            return False
+        path = bundle_dir / rel
+        if not path.is_file():
+            return False
+        if _sha256(path) != digest:
+            return False
         listed[rel] = digest
     return len(listed) > 0
 

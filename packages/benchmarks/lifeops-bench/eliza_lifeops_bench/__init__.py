@@ -21,6 +21,7 @@ from .types import (
     ScenarioMode,
     ScenarioResult,
     TurnResult,
+    attach_usage_cache_fields,
     compute_cache_hit_pct,
 )
 
@@ -36,5 +37,6 @@ __all__ = [
     "ScenarioMode",
     "ScenarioResult",
     "TurnResult",
+    "attach_usage_cache_fields",
     "compute_cache_hit_pct",
 ]

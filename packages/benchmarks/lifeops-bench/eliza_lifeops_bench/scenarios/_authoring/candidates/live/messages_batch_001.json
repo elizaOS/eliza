@@ -171,9 +171,7 @@
       "Executor lists each suspected spam message with sender and a short excerpt.",
       "Executor recommends a removal action without deleting automatically."
     ],
-    "world_assertions": [
-      "No deletion actions performed; only analysis."
-    ]
+    "world_assertions": ["No deletion actions performed; only analysis."]
   },
   {
     "id": "live.messages.translate_message_for_friend",
@@ -193,9 +191,7 @@
       "Executor provides an accurate English translation of the French sentence.",
       "Executor drafts a short reply proposing an alternative time."
     ],
-    "world_assertions": [
-      "A draft chat_message exists with the proposed reply."
-    ]
+    "world_assertions": ["A draft chat_message exists with the proposed reply."]
   },
   {
     "id": "live.messages.compile_daily_summary",
@@ -215,9 +211,7 @@
       "Executor lists each platform with count of messages received.",
       "Executor flags messages requiring reply with sender and brief preview."
     ],
-    "world_assertions": [
-      "No new messages created; only read operations."
-    ]
+    "world_assertions": ["No new messages created; only read operations."]
   },
   {
     "id": "live.messages.ask_for_meeting_confirmation",
@@ -259,9 +253,7 @@
       "Executor returns the latest URL string found in the channel.",
       "Executor includes the sender\u2019s name and timestamp."
     ],
-    "world_assertions": [
-      "No new chat_message is created."
-    ]
+    "world_assertions": ["No new chat_message is created."]
   },
   {
     "id": "live.messages.confirm_event_details_via_sms",
@@ -303,9 +295,7 @@
       "Executor asks for the support chat ID after confirmation.",
       "Executor lists each unread ticket with customer name and short issue description."
     ],
-    "world_assertions": [
-      "No ticket status changes; only read operations."
-    ]
+    "world_assertions": ["No ticket status changes; only read operations."]
   },
   {
     "id": "live.messages.schedule_follow_up_call",
@@ -347,9 +337,7 @@
       "Executor lists each qualifying message with timestamp and emoji count.",
       "Executor does not delete any messages."
     ],
-    "world_assertions": [
-      "No chat_message deletions performed."
-    ]
+    "world_assertions": ["No chat_message deletions performed."]
   },
   {
     "id": "live.messages.request_file_from_colleague",
@@ -391,9 +379,7 @@
       "Executor asks for the #feedback channel identifier after confirmation.",
       "Executor returns counts for positive, neutral, and negative messages."
     ],
-    "world_assertions": [
-      "No new messages created; only analysis."
-    ]
+    "world_assertions": ["No new messages created; only analysis."]
   },
   {
     "id": "live.messages.confirm_delivery_of_important_email",
@@ -435,9 +421,7 @@
       "Executor lists each unread non\u2011chore message with sender and short excerpt.",
       "Executor provides total count of such messages."
     ],
-    "world_assertions": [
-      "No deletions or edits performed on chat messages."
-    ]
+    "world_assertions": ["No deletions or edits performed on chat messages."]
   },
   {
     "id": "live.messages.prepare_welcome_message_new_member",
@@ -501,9 +485,7 @@
       "Executor lists each phone number in international format with the sender\u2019s name.",
       "Executor reports total count of extracted numbers."
     ],
-    "world_assertions": [
-      "No new messages are sent; only extraction."
-    ]
+    "world_assertions": ["No new messages are sent; only extraction."]
   },
   {
     "id": "live.messages.confirm_meeting_reschedule_acceptance",
@@ -567,9 +549,7 @@
       "Executor returns each missed call entry with caller name and timestamp.",
       "Executor reports total number of missed calls found."
     ],
-    "world_assertions": [
-      "No message deletions performed."
-    ]
+    "world_assertions": ["No message deletions performed."]
   },
   {
     "id": "live.messages.suggest_reply_for_ambiguous_message",
@@ -589,9 +569,7 @@
       "Executor asks for the teammate\u2019s name after presenting drafts.",
       "Executor indicates which draft the persona prefers to send."
     ],
-    "world_assertions": [
-      "No new chat_message sent; only drafts created."
-    ]
+    "world_assertions": ["No new chat_message sent; only drafts created."]
   },
   {
     "id": "live.messages.identify_unread_important_emails_in_chat",
@@ -611,9 +589,7 @@
       "Executor lists each referenced email with subject and sender.",
       "Executor notes which of those are still unread."
     ],
-    "world_assertions": [
-      "No email read-status changes occur."
-    ]
+    "world_assertions": ["No email read-status changes occur."]
   },
   {
     "id": "live.messages.ask_for_feedback_on_prototype",
@@ -677,9 +653,7 @@
       "Executor asks for the exact iMessage sender identifier after the outline.",
       "Executor drafts a concise report message ready for submission."
     ],
-    "world_assertions": [
-      "No actual submission performed; only draft created."
-    ]
+    "world_assertions": ["No actual submission performed; only draft created."]
   },
   {
     "id": "live.messages.extract_action_items_from_meeting_chat",
@@ -699,9 +673,7 @@
       "Executor returns each identified action item with owner name and any due date.",
       "Executor notes if any item lacks a due date."
     ],
-    "world_assertions": [
-      "No new chat_message created."
-    ]
+    "world_assertions": ["No new chat_message created."]
   },
   {
     "id": "live.messages.confirm_message_sent_status",
@@ -721,9 +693,7 @@
       "Executor reports delivery status (sent, delivered, read) clearly.",
       "Executor mentions any next steps if delivery failed."
     ],
-    "world_assertions": [
-      "No new messages sent; only status query performed."
-    ]
+    "world_assertions": ["No new messages sent; only status query performed."]
   },
   {
     "id": "live.messages.suggest_alternative_time_for_meeting",
@@ -765,9 +735,7 @@
       "Executor lists each unread message with platform, timestamp, and short preview.",
       "Executor reports total count of unread messages."
     ],
-    "world_assertions": [
-      "No message read-status changes performed."
-    ]
+    "world_assertions": ["No message read-status changes performed."]
   },
   {
     "id": "live.messages.provide_summary_of_weekend_chat",
@@ -787,9 +755,7 @@
       "Executor asks for the #weekend-plans channel identifier after confirmation.",
       "Executor delivers a concise summary with at least two decided activities."
     ],
-    "world_assertions": [
-      "No new messages created; only read and summarize."
-    ]
+    "world_assertions": ["No new messages created; only read and summarize."]
   },
   {
     "id": "live.messages.ask_for_clarification_on_vague_message",
@@ -875,9 +841,7 @@
       "Executor lists each unread announcement with timestamp and headline.",
       "Executor reports total count of unread announcements."
     ],
-    "world_assertions": [
-      "No read\u2011status modifications performed."
-    ]
+    "world_assertions": ["No read\u2011status modifications performed."]
   },
   {
     "id": "live.messages.draft_thank_you_message_for_help",

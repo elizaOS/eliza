@@ -145,3 +145,154 @@ tr:hover td {
   color: #92400e;
   font-weight: 600;
 }
+
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin: 16px 0 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.tab-button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  padding: 8px 14px;
+  cursor: pointer;
+  color: var(--muted);
+  font: inherit;
+}
+
+.tab-button.is-active {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.tab-panel {
+  display: none;
+}
+
+.tab-panel.is-active {
+  display: block;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0 0 10px;
+}
+
+.muted {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.harness-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 12px;
+  margin-right: 4px;
+  background: #f0f7f0;
+}
+
+.harness-eliza {
+  background: #e0f2fe;
+}
+
+.harness-openclaw {
+  background: #fef3c7;
+}
+
+.harness-hermes {
+  background: #ede9fe;
+}
+
+.harness-random_v1 {
+  background: #fee2e2;
+}
+
+.diff-open {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.diff-open:hover {
+  filter: brightness(1.1);
+}
+
+.diff-legend {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin: 6px 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.diff-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.diff-equal {
+  background: #d1fae5;
+}
+
+.diff-differ {
+  background: #fef3c7;
+}
+
+.diff-tool-only {
+  background: #dbeafe;
+}
+
+.diff-cell {
+  white-space: pre-wrap;
+  vertical-align: top;
+  max-width: 360px;
+  word-break: break-word;
+  font-size: 12px;
+}
+
+.diff-cell.diff-equal {
+  background: rgba(209, 250, 229, 0.6);
+}
+
+.diff-cell.diff-differ {
+  background: rgba(254, 243, 199, 0.6);
+}
+
+.diff-cell.diff-tool-only {
+  background: rgba(219, 234, 254, 0.6);
+}
+
+.diff-step {
+  font-weight: 600;
+  width: 50px;
+  text-align: right;
+  padding-right: 10px;
+}
+
+.tool-calls {
+  margin-top: 6px;
+  padding: 4px 6px;
+  background: rgba(15, 23, 42, 0.05);
+  border-radius: 4px;
+  font-family: "JetBrains Mono", "Menlo", monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+}

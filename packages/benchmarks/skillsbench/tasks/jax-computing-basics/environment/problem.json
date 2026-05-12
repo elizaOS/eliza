@@ -1,0 +1,32 @@
+[
+    {
+      "id": "basic_reduce",
+      "description": "Given array x, compute mean of each row.",
+      "input": "data/x.npy",
+      "output": "basic_reduce.npy"
+    },
+    {
+      "id": "map_square",
+      "description": "Apply square function to each element using vectorization.",
+      "input": "data/x.npy",
+      "output": "map_square.npy"
+    },
+    {
+      "id": "grad_logistic",
+      "description": "Compute gradient of logistic loss.",
+      "input": "data/logistic.npz",
+      "output": "grad_logistic.npy"
+    },
+    {
+      "id": "scan_rnn",
+      "description": "Implement RNN forward pass using scan.",
+      "input": "data/seq.npz",
+      "output": "scan_rnn.npy"
+    },
+    {
+      "id": "jit_mlp",
+      "description": "Implement and JIT compile a 2-layer MLP.",
+      "input": "data/mlp.npz",
+      "output": "jit_mlp.npy"
+    }
+  ]

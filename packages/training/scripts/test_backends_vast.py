@@ -149,7 +149,7 @@ def test_provision_raises_on_vastai_create_failure(
                 disk_gb=2048,
                 image="pytorch/pytorch:2.6.0-cuda12.6-cudnn9-devel",
                 ssh_pubkey_path=pubkey,
-                label="milady-test",
+                label="eliza-test",
             )
     msg = str(exc.value)
     assert "vastai create instance failed" in msg
@@ -165,7 +165,7 @@ def test_provision_raises_on_missing_pubkey(
             disk_gb=100,
             image="img",
             ssh_pubkey_path=tmp_path / "missing.pub",
-            label="milady-test",
+            label="eliza-test",
         )
     assert "ssh public key not found" in str(exc.value)
 
@@ -196,11 +196,11 @@ def test_provision_returns_instance_handle_on_success(
             disk_gb=2048,
             image="pytorch/pytorch:2.6.0-cuda12.6-cudnn9-devel",
             ssh_pubkey_path=pubkey,
-            label="milady-test",
+            label="eliza-test",
         )
     assert handle.backend == "vast"
     assert handle.instance_id == "12345678"
-    assert handle.label == "milady-test"
+    assert handle.label == "eliza-test"
 
 
 # ---------------------------------------------------------------------------

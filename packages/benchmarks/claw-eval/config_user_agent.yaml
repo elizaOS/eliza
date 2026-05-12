@@ -1,0 +1,28 @@
+# Agent Eval default configuration
+
+model:
+  # OpenRouter endpoint (OpenAI-compatible)
+  api_key: ${OPENROUTER_API_KEY}
+  base_url: https://openrouter.ai/api/v1
+  model_id: anthropic/claude-opus-4.6
+  context_window: 1000000
+  extra_body:
+    reasoning:
+      effort: high
+
+judge:
+  api_key: ${OPENROUTER_API_KEY}
+  base_url: https://openrouter.ai/api/v1
+  model_id: anthropic/claude-opus-4.6
+  enabled: true
+
+defaults:
+  trace_dir: traces
+  tasks_dir: tasks
+
+
+
+user_agent_model:
+  api_key: ${OPENROUTER_API_KEY}
+  base_url: https://openrouter.ai/api/v1
+  model_id: anthropic/claude-opus-4.6

@@ -4,8 +4,7 @@
 # flattening Bun's store-backed node_modules, and copying only the cloud runtime.
 ARG NODE_VERSION=22
 ARG BUN_VERSION=1.3.13
-ARG APP_ENTRYPOINT=app.mjs
-ARG APP_CMD_START=""
+ARG APP_CMD_START="node --import /opt/tsx/node_modules/tsx/dist/loader.mjs node_modules/@elizaos/app-core/src/entry.ts start"
 ARG APP_PORT=2138
 ARG APP_API_BIND=127.0.0.1
 ARG OCI_SOURCE=""
@@ -25,19 +24,19 @@ WORKDIR /src
 
 # Copy only the manifests Bun needs to resolve the production dependency graph.
 COPY package.json bun.lock ./
-COPY eliza/packages/app-core/patches ./eliza/packages/app-core/patches
-COPY eliza/packages/core/package.json ./eliza/packages/core/package.json
-COPY eliza/packages/agent/package.json ./eliza/packages/agent/package.json
-COPY eliza/packages/app-core/package.json ./eliza/packages/app-core/package.json
-COPY eliza/packages/shared/package.json ./eliza/packages/shared/package.json
-COPY eliza/packages/ui/package.json ./eliza/packages/ui/package.json
-COPY eliza/plugins/plugin-sql/package.json ./eliza/plugins/plugin-sql/package.json
-COPY eliza/plugins/plugin-elizacloud/package.json ./eliza/plugins/plugin-elizacloud/package.json
-COPY eliza/plugins/plugin-workflow/package.json ./eliza/plugins/plugin-workflow/package.json
-COPY eliza/packages/workflows/package.json ./eliza/packages/workflows/package.json
+COPY packages/app-core/patches ./packages/app-core/patches
+COPY packages/core/package.json ./packages/core/package.json
+COPY packages/agent/package.json ./packages/agent/package.json
+COPY packages/app-core/package.json ./packages/app-core/package.json
+COPY packages/shared/package.json ./packages/shared/package.json
+COPY packages/ui/package.json ./packages/ui/package.json
+COPY plugins/plugin-sql/package.json ./plugins/plugin-sql/package.json
+COPY plugins/plugin-elizacloud/package.json ./plugins/plugin-elizacloud/package.json
+COPY plugins/plugin-workflow/package.json ./plugins/plugin-workflow/package.json
+COPY packages/workflows/package.json ./packages/workflows/package.json
 COPY packages/app/package.json ./packages/app/package.json
-COPY eliza/packages/app-core/platforms/electrobun/package.json ./eliza/packages/app-core/platforms/electrobun/package.json
-COPY eliza/packages/app-core/deploy/cloud-agent-template/package.json ./eliza/packages/app-core/deploy/cloud-agent-template/package.json
+COPY packages/app-core/platforms/electrobun/package.json ./packages/app-core/platforms/electrobun/package.json
+COPY packages/app-core/deploy/cloud-agent-template/package.json ./packages/app-core/deploy/cloud-agent-template/package.json
 
 ENV NODE_LLAMA_CPP_SKIP_DOWNLOAD=true
 # Materialize the standalone cloud-agent template at the Docker deploy
@@ -47,14 +46,14 @@ RUN node <<'EOF'
 const fs = require("fs");
 
 const KEEP = [
-  "eliza/packages/agent",
-  "eliza/packages/app-core",
-  "eliza/packages/shared",
-  "eliza/packages/ui",
-  "eliza/packages/app-core/platforms/electrobun",
-  "eliza/packages/app-core/deploy/cloud-agent-template",
-  "eliza/packages/workflows",
-  "eliza/plugins/plugin-workflow",
+  "packages/agent",
+  "packages/app-core",
+  "packages/shared",
+  "packages/ui",
+  "packages/app-core/platforms/electrobun",
+  "packages/app-core/deploy/cloud-agent-template",
+  "packages/workflows",
+  "plugins/plugin-workflow",
   "packages/app",
 ];
 const ALLOW = new Set([
@@ -78,11 +77,11 @@ const PRUNE_FIELDS = [
 const STRIP_NAMES =
   /^@elizaos\/(app-|capacitor-|plugin-agent-orchestrator|plugin-cli|plugin-imessage|plugin-local-ai|plugin-pdf|plugin-wechat|steward-)/;
 const VERSION_MANIFESTS = [
-  "eliza/packages/core/package.json",
-  "eliza/plugins/plugin-sql/package.json",
-  "eliza/plugins/plugin-elizacloud/package.json",
-  "eliza/plugins/plugin-workflow/package.json",
-  "eliza/packages/workflows/package.json",
+  "packages/core/package.json",
+  "plugins/plugin-sql/package.json",
+  "plugins/plugin-elizacloud/package.json",
+  "plugins/plugin-workflow/package.json",
+  "packages/workflows/package.json",
 ];
 const CLOUD_AGENT_RELEASE_DEPS = [
   "@elizaos/core",
@@ -144,7 +143,7 @@ function prune(path) {
 }
 
 materializeWorkspaceDeps(
-  "eliza/packages/app-core/deploy/cloud-agent-template/package.json",
+  "packages/app-core/deploy/cloud-agent-template/package.json",
   CLOUD_AGENT_RELEASE_DEPS,
   collectVersions(),
 );
@@ -155,12 +154,12 @@ writeJson("package.json", root);
 [
   "package.json",
   "packages/app/package.json",
-  "eliza/packages/agent/package.json",
-  "eliza/packages/app-core/package.json",
-  "eliza/packages/shared/package.json",
-  "eliza/packages/ui/package.json",
-  "eliza/packages/app-core/platforms/electrobun/package.json",
-  "eliza/packages/app-core/deploy/cloud-agent-template/package.json",
+  "packages/agent/package.json",
+  "packages/app-core/package.json",
+  "packages/shared/package.json",
+  "packages/ui/package.json",
+  "packages/app-core/platforms/electrobun/package.json",
+  "packages/app-core/deploy/cloud-agent-template/package.json",
 ].forEach(prune);
 if (fs.existsSync("bun.lock")) fs.unlinkSync("bun.lock");
 EOF
@@ -174,29 +173,27 @@ RUN npm install --prefix /opt/tsx --ignore-scripts --no-save tsx@4.21.0 \
 
 FROM node:${NODE_VERSION}-slim AS prep
 WORKDIR /src
-ARG APP_ENTRYPOINT
 ARG VERSION_CLEAN
 # Re-declare so it's in scope for this build stage.
 ARG VITE_ASSET_BASE_URL=""
 ENV VITE_ASSET_BASE_URL=${VITE_ASSET_BASE_URL}
 
 COPY --from=deps /src/node_modules ./node_modules
-COPY dist ./dist
 COPY packages/app/dist ./packages/app/dist
-COPY eliza/packages/agent ./eliza/packages/agent
-COPY eliza/packages/app-core ./eliza/packages/app-core
-COPY eliza/packages/shared ./eliza/packages/shared
-COPY eliza/packages/workflows ./eliza/packages/workflows
-COPY eliza/plugins/plugin-workflow ./eliza/plugins/plugin-workflow
-COPY ${APP_ENTRYPOINT} package.json plugins.json ./
-COPY eliza/packages/app-core/scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
+COPY packages/agent ./packages/agent
+COPY packages/app-core ./packages/app-core
+COPY packages/shared ./packages/shared
+COPY packages/workflows ./packages/workflows
+COPY plugins/plugin-workflow ./plugins/plugin-workflow
+COPY package.json ./
+COPY packages/app-core/scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
 
 RUN set -eux; \
   mkdir -p /runtime/node_modules /runtime/packages/app /runtime/scripts; \
   # Keep bun's symlink structure intact — cp -rL breaks transitive dep resolution.
   cp -a node_modules/. /runtime/node_modules/; \
   # Overlay workspace packages with full source (not just the symlinked dist).
-  for dir in eliza/packages/agent eliza/packages/app-core eliza/packages/shared eliza/packages/workflows eliza/plugins/plugin-workflow; do \
+  for dir in packages/agent packages/app-core packages/shared packages/workflows plugins/plugin-workflow; do \
     name="$(node -p "require('./${dir}/package.json').name")"; \
     target="/runtime/node_modules/${name}"; \
     rm -rf "$target"; \
@@ -205,10 +202,9 @@ RUN set -eux; \
     find "$target" -type d \( -name node_modules -o -name coverage -o -name .turbo -o -name .vite \) -prune -exec rm -rf {} +; \
     rm -rf "$target/dist" "$target/test" "$target/tests" "$target/__tests__" 2>/dev/null || true; \
   done; \
-  cp -a dist /runtime/dist; \
   cp -a packages/app/dist /runtime/packages/app/dist; \
-  cp -a eliza/packages/app-core/scripts/docker-entrypoint.sh /runtime/scripts/docker-entrypoint.sh; \
-  cp -a "${APP_ENTRYPOINT}" package.json plugins.json /runtime/; \
+  cp -a packages/app-core/scripts/docker-entrypoint.sh /runtime/scripts/docker-entrypoint.sh; \
+  cp -a package.json /runtime/; \
   sed -i 's/const stats = service.getCatalogStats();/const stats = typeof service.getCatalogStats === "function" ? service.getCatalogStats() : { loaded: 0, total: 0, storageType: "unknown" };/g' /runtime/node_modules/@elizaos/plugin-agent-skills/dist/index.js 2>/dev/null || true; \
   if [ -n "${VERSION_CLEAN}" ]; then \
     node -e "const fs=require('fs'); const v=process.argv[1]; const p='/runtime/node_modules/@elizaos/agent/package.json'; try { const pkg=JSON.parse(fs.readFileSync(p,'utf8')); pkg.version=v; fs.writeFileSync(p, JSON.stringify(pkg, null, 2)); console.log('Patched autonomous to', v); } catch (err) { console.log('skip:', err.message); }" "${VERSION_CLEAN}"; \
@@ -238,7 +234,6 @@ RUN set -eux; \
   find /runtime/node_modules -type d -name 'test' -prune -exec rm -rf {} + 2>/dev/null
 
 FROM node:${NODE_VERSION}-slim
-ARG APP_ENTRYPOINT
 ARG APP_CMD_START
 ARG APP_PORT
 ARG APP_API_BIND
@@ -282,7 +277,6 @@ COPY --from=prep /runtime/ /app/
 COPY --from=tsx /opt/tsx /opt/tsx
 
 ENV NODE_ENV=production
-ENV APP_ENTRYPOINT=${APP_ENTRYPOINT}
 ENV APP_CMD_START=${APP_CMD_START}
 ENV APP_PORT=${APP_PORT}
 ENV APP_API_BIND=${APP_API_BIND}
@@ -295,4 +289,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
   CMD sh -lc 'port="${PORT:-${APP_PORT:-${ELIZA_PORT:-2138}}}"; code="$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${port}/api/health")" && [ "$code" = "200" -o "$code" = "401" ]'
 
 ENTRYPOINT ["sh", "./scripts/docker-entrypoint.sh"]
-CMD ["sh", "-lc", "exec ${APP_CMD_START:-node --import /opt/tsx/node_modules/tsx/dist/loader.mjs ${APP_ENTRYPOINT} start}"]
+CMD ["sh", "-lc", "exec ${APP_CMD_START:-node --import /opt/tsx/node_modules/tsx/dist/loader.mjs node_modules/@elizaos/app-core/src/entry.ts start}"]

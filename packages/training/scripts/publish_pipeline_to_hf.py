@@ -189,7 +189,7 @@ def build_pipeline_card(repo_id: str) -> str:
         "  training/        APOLLO entrypoints, model_registry.py, dataset packers\n"
         "  quantization/    PolarQuant / TurboQuant / QJL / FP8 / GGUF / abliteration\n"
         "  inference/       serve_vllm.py + per-GPU profiles\n"
-        "  benchmark/       eliza_bench harness\n"
+        "  benchmark/       native_tool_call_bench harness\n"
         "  train_vast.sh    Canonical cloud entrypoint\n"
         "pyproject.toml     uv project (deps + extras)\n"
         "uv.lock            pinned deps\n"

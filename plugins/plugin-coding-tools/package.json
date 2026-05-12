@@ -82,34 +82,34 @@
       },
       "CODING_TOOLS_DENY_COMMANDS": {
         "type": "string",
-        "description": "Comma-separated command-prefix patterns the BASH action must refuse (e.g. 'rm -rf /,sudo,curl|wget'). Combined with built-in denylist.",
+        "description": "Comma-separated command-prefix patterns the SHELL action must refuse (e.g. 'rm -rf /,sudo,curl|wget'). Combined with built-in denylist.",
         "required": false,
         "sensitive": false
       },
-      "CODING_TOOLS_BASH_TIMEOUT_MS": {
+      "CODING_TOOLS_SHELL_TIMEOUT_MS": {
         "type": "number",
-        "description": "Default BASH timeout in milliseconds. Hard ceiling enforced before backgrounding kicks in.",
+        "description": "Default SHELL timeout in milliseconds. Hard ceiling enforced before backgrounding kicks in.",
         "required": false,
         "default": 120000,
         "sensitive": false
       },
-      "CODING_TOOLS_BASH_BG_BUDGET_MS": {
+      "CODING_TOOLS_SHELL_BG_BUDGET_MS": {
         "type": "number",
-        "description": "Foreground budget. Bash invocations exceeding this auto-background and return a task_id (matches Claude's 15s ASSISTANT_BLOCKING_BUDGET_MS).",
+        "description": "Foreground budget. Shell invocations exceeding this auto-background and return a task_id (matches Claude's 15s ASSISTANT_BLOCKING_BUDGET_MS).",
         "required": false,
         "default": 15000,
         "sensitive": false
       },
       "CODING_TOOLS_MAX_READ_LINES": {
         "type": "number",
-        "description": "Max lines returned by READ in a single call before truncation. Mirrors Claude's MAX_LINES_TO_READ.",
+        "description": "Max lines returned by FILE action=read in a single call before truncation. Mirrors Claude's MAX_LINES_TO_READ.",
         "required": false,
         "default": 2000,
         "sensitive": false
       },
       "CODING_TOOLS_MAX_FILE_SIZE_BYTES": {
         "type": "number",
-        "description": "Pre-stat byte cap on READ. Files larger than this are rejected with a message instructing the agent to read in chunks.",
+        "description": "Pre-stat byte cap on FILE action=read. Files larger than this are rejected with a message instructing the agent to read in chunks.",
         "required": false,
         "default": 262144,
         "sensitive": false

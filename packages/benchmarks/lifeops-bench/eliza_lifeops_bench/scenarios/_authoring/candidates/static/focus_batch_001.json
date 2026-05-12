@@ -12,19 +12,13 @@
         "kwargs": {
           "subaction": "block",
           "intent": "block facebook.com and tiktok.com for 60 minutes",
-          "hostnames": [
-            "facebook.com",
-            "tiktok.com"
-          ],
+          "hostnames": ["facebook.com", "tiktok.com"],
           "durationMinutes": 60,
           "confirmed": true
         }
       }
     ],
-    "required_outputs": [
-      "blocked",
-      "60"
-    ],
+    "required_outputs": ["blocked", "60"],
     "first_question_fallback": {
       "canned_answer": "Yes, go ahead and block them for an hour.",
       "applies_when": "agent asks for confirmation before blocking"
@@ -46,16 +40,11 @@
         "kwargs": {
           "subaction": "unblock",
           "intent": "unblock reddit.com",
-          "hostnames": [
-            "reddit.com"
-          ]
+          "hostnames": ["reddit.com"]
         }
       }
     ],
-    "required_outputs": [
-      "unblocked",
-      "reddit"
-    ],
+    "required_outputs": ["unblocked", "reddit"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -74,16 +63,12 @@
         "kwargs": {
           "subaction": "request_permission",
           "intent": "request permission to block youtube.com for 30 minutes",
-          "hostnames": [
-            "youtube.com"
-          ],
+          "hostnames": ["youtube.com"],
           "durationMinutes": 30
         }
       }
     ],
-    "required_outputs": [
-      "permission"
-    ],
+    "required_outputs": ["permission"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -102,19 +87,13 @@
         "kwargs": {
           "subaction": "block",
           "intent": "block Spotify and Netflix for 120 minutes",
-          "packageNames": [
-            "com.spotify.music",
-            "com.netflix.ninja"
-          ],
+          "packageNames": ["com.spotify.music", "com.netflix.ninja"],
           "durationMinutes": 120,
           "confirmed": true
         }
       }
     ],
-    "required_outputs": [
-      "blocked",
-      "120"
-    ],
+    "required_outputs": ["blocked", "120"],
     "first_question_fallback": {
       "canned_answer": "Yes, confirmed \u2014 block them for two hours.",
       "applies_when": "agent asks for confirmation before blocking"
@@ -136,19 +115,13 @@
         "kwargs": {
           "subaction": "block",
           "intent": "block hackernews.com and reddit.com for 15 minutes",
-          "hostnames": [
-            "news.ycombinator.com",
-            "reddit.com"
-          ],
+          "hostnames": ["news.ycombinator.com", "reddit.com"],
           "durationMinutes": 15,
           "confirmed": true
         }
       }
     ],
-    "required_outputs": [
-      "blocked",
-      "15"
-    ],
+    "required_outputs": ["blocked", "15"],
     "first_question_fallback": {
       "canned_answer": "Just 15 minutes is fine.",
       "applies_when": "agent asks which duration"
@@ -170,16 +143,11 @@
         "kwargs": {
           "subaction": "unblock",
           "intent": "unblock Spotify app",
-          "packageNames": [
-            "com.spotify.music"
-          ]
+          "packageNames": ["com.spotify.music"]
         }
       }
     ],
-    "required_outputs": [
-      "unblocked",
-      "Spotify"
-    ],
+    "required_outputs": ["unblocked", "Spotify"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -198,9 +166,7 @@
         "kwargs": {
           "subaction": "block",
           "intent": "block youtube.com for 45 minutes for study",
-          "hostnames": [
-            "youtube.com"
-          ],
+          "hostnames": ["youtube.com"],
           "durationMinutes": 45,
           "reason": "study session",
           "ruleId": "rule_001",
@@ -208,11 +174,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "blocked",
-      "45",
-      "study"
-    ],
+    "required_outputs": ["blocked", "45", "study"],
     "first_question_fallback": {
       "canned_answer": "Yes, please go ahead.",
       "applies_when": "agent asks for confirmation before blocking"
@@ -239,9 +201,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "status"
-    ],
+    "required_outputs": ["status"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -264,9 +224,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "released"
-    ],
+    "required_outputs": ["released"],
     "first_question_fallback": {
       "canned_answer": "Yes, clear everything.",
       "applies_when": "agent asks for confirmation before releasing"
@@ -288,20 +246,13 @@
         "kwargs": {
           "subaction": "block",
           "intent": "block twitter.com, instagram.com, linkedin.com for 30 minutes",
-          "hostnames": [
-            "twitter.com",
-            "instagram.com",
-            "linkedin.com"
-          ],
+          "hostnames": ["twitter.com", "instagram.com", "linkedin.com"],
           "durationMinutes": 30,
           "confirmed": true
         }
       }
     ],
-    "required_outputs": [
-      "blocked",
-      "30"
-    ],
+    "required_outputs": ["blocked", "30"],
     "first_question_fallback": {
       "canned_answer": "Yep, go ahead.",
       "applies_when": "agent asks for confirmation before blocking"
@@ -323,16 +274,11 @@
         "kwargs": {
           "subaction": "unblock",
           "intent": "unblock Instagram app",
-          "packageNames": [
-            "com.instagram.android"
-          ]
+          "packageNames": ["com.instagram.android"]
         }
       }
     ],
-    "required_outputs": [
-      "unblocked",
-      "Instagram"
-    ],
+    "required_outputs": ["unblocked", "Instagram"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -351,18 +297,12 @@
         "kwargs": {
           "subaction": "block",
           "intent": "block cnn.com and bbc.com for 45 minutes",
-          "hostnames": [
-            "cnn.com",
-            "bbc.com"
-          ],
+          "hostnames": ["cnn.com", "bbc.com"],
           "durationMinutes": 45
         }
       }
     ],
-    "required_outputs": [
-      "blocked",
-      "45"
-    ],
+    "required_outputs": ["blocked", "45"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -381,21 +321,14 @@
         "kwargs": {
           "subaction": "block",
           "intent": "block com.example.testapp for 10 minutes with token",
-          "packageNames": [
-            "com.example.testapp"
-          ],
+          "packageNames": ["com.example.testapp"],
           "durationMinutes": 10,
-          "appTokens": [
-            "token_abc123"
-          ],
+          "appTokens": ["token_abc123"],
           "confirmed": true
         }
       }
     ],
-    "required_outputs": [
-      "blocked",
-      "10"
-    ],
+    "required_outputs": ["blocked", "10"],
     "first_question_fallback": {
       "canned_answer": "Yes, go ahead with the token.",
       "applies_when": "agent asks for confirmation before blocking"
@@ -421,10 +354,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "unblocked",
-      "all"
-    ],
+    "required_outputs": ["unblocked", "all"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -443,19 +373,13 @@
         "kwargs": {
           "subaction": "block",
           "intent": "block youtube.com and twitch.tv for 5 minutes",
-          "hostnames": [
-            "youtube.com",
-            "twitch.tv"
-          ],
+          "hostnames": ["youtube.com", "twitch.tv"],
           "durationMinutes": 5,
           "confirmed": true
         }
       }
     ],
-    "required_outputs": [
-      "blocked",
-      "5"
-    ],
+    "required_outputs": ["blocked", "5"],
     "first_question_fallback": {
       "canned_answer": "Sure, block them for five minutes.",
       "applies_when": "agent asks for confirmation before blocking"
@@ -477,18 +401,12 @@
         "kwargs": {
           "subaction": "request_permission",
           "intent": "request permission to block pinterest.com, tumblr.com, flickr.com for 20 minutes",
-          "hostnames": [
-            "pinterest.com",
-            "tumblr.com",
-            "flickr.com"
-          ],
+          "hostnames": ["pinterest.com", "tumblr.com", "flickr.com"],
           "durationMinutes": 20
         }
       }
     ],
-    "required_outputs": [
-      "permission"
-    ],
+    "required_outputs": ["permission"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -507,19 +425,14 @@
         "kwargs": {
           "subaction": "block",
           "intent": "block com.example.game for 90 minutes to focus",
-          "packageNames": [
-            "com.example.game"
-          ],
+          "packageNames": ["com.example.game"],
           "durationMinutes": 90,
           "reason": "focus on project",
           "confirmed": true
         }
       }
     ],
-    "required_outputs": [
-      "blocked",
-      "90"
-    ],
+    "required_outputs": ["blocked", "90"],
     "first_question_fallback": {
       "canned_answer": "Yes, please block it.",
       "applies_when": "agent asks for confirmation before blocking"
@@ -541,16 +454,11 @@
         "kwargs": {
           "subaction": "unblock",
           "intent": "unblock reddit.com after timer",
-          "hostnames": [
-            "reddit.com"
-          ]
+          "hostnames": ["reddit.com"]
         }
       }
     ],
-    "required_outputs": [
-      "unblocked",
-      "reddit"
-    ],
+    "required_outputs": ["unblocked", "reddit"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -569,20 +477,14 @@
         "kwargs": {
           "subaction": "block",
           "intent": "block medium.com for 25 minutes with rule_42",
-          "hostnames": [
-            "medium.com"
-          ],
+          "hostnames": ["medium.com"],
           "durationMinutes": 25,
           "ruleId": "rule_42",
           "confirmed": true
         }
       }
     ],
-    "required_outputs": [
-      "blocked",
-      "25",
-      "rule_42"
-    ],
+    "required_outputs": ["blocked", "25", "rule_42"],
     "first_question_fallback": {
       "canned_answer": "Sure, go ahead.",
       "applies_when": "agent asks for confirmation before blocking"
@@ -609,9 +511,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "status"
-    ],
+    "required_outputs": ["status"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -630,20 +530,13 @@
         "kwargs": {
           "subaction": "block",
           "intent": "block Slack, Zoom, Discord for 45 minutes",
-          "packageNames": [
-            "com.slack.app",
-            "com.zoom.us",
-            "com.discord"
-          ],
+          "packageNames": ["com.slack.app", "com.zoom.us", "com.discord"],
           "durationMinutes": 45,
           "confirmed": true
         }
       }
     ],
-    "required_outputs": [
-      "blocked",
-      "45"
-    ],
+    "required_outputs": ["blocked", "45"],
     "first_question_fallback": {
       "canned_answer": "Yes, confirm the block.",
       "applies_when": "agent asks for confirmation before blocking"
@@ -669,10 +562,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "unblocked",
-      "all"
-    ],
+    "required_outputs": ["unblocked", "all"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -691,19 +581,13 @@
         "kwargs": {
           "subaction": "block",
           "intent": "block nytimes.com and theguardian.com for 10 minutes",
-          "hostnames": [
-            "nytimes.com",
-            "theguardian.com"
-          ],
+          "hostnames": ["nytimes.com", "theguardian.com"],
           "durationMinutes": 10,
           "confirmed": true
         }
       }
     ],
-    "required_outputs": [
-      "blocked",
-      "10"
-    ],
+    "required_outputs": ["blocked", "10"],
     "first_question_fallback": {
       "canned_answer": "Yes, block them for ten minutes.",
       "applies_when": "agent asks for confirmation before blocking"
@@ -725,18 +609,12 @@
         "kwargs": {
           "subaction": "request_permission",
           "intent": "request permission to block facebook.com, instagram.com, snapchat.com for 40 minutes",
-          "hostnames": [
-            "facebook.com",
-            "instagram.com",
-            "snapchat.com"
-          ],
+          "hostnames": ["facebook.com", "instagram.com", "snapchat.com"],
           "durationMinutes": 40
         }
       }
     ],
-    "required_outputs": [
-      "permission"
-    ],
+    "required_outputs": ["permission"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -755,18 +633,13 @@
         "kwargs": {
           "subaction": "block",
           "intent": "block instagram.com for 20 minutes",
-          "hostnames": [
-            "instagram.com"
-          ],
+          "hostnames": ["instagram.com"],
           "durationMinutes": 20,
           "confirmed": true
         }
       }
     ],
-    "required_outputs": [
-      "blocked",
-      "20"
-    ],
+    "required_outputs": ["blocked", "20"],
     "first_question_fallback": {
       "canned_answer": "Just 20 minutes is fine.",
       "applies_when": "agent asks which duration"
@@ -788,16 +661,11 @@
         "kwargs": {
           "subaction": "unblock",
           "intent": "unblock twitter.com",
-          "hostnames": [
-            "twitter.com"
-          ]
+          "hostnames": ["twitter.com"]
         }
       }
     ],
-    "required_outputs": [
-      "unblocked",
-      "twitter"
-    ],
+    "required_outputs": ["unblocked", "twitter"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -816,20 +684,13 @@
         "kwargs": {
           "subaction": "block",
           "intent": "block reuters.com, aljazeera.com, bloomberg.com for 60 minutes",
-          "hostnames": [
-            "reuters.com",
-            "aljazeera.com",
-            "bloomberg.com"
-          ],
+          "hostnames": ["reuters.com", "aljazeera.com", "bloomberg.com"],
           "durationMinutes": 60,
           "confirmed": true
         }
       }
     ],
-    "required_outputs": [
-      "blocked",
-      "60"
-    ],
+    "required_outputs": ["blocked", "60"],
     "first_question_fallback": {
       "canned_answer": "Yes, go ahead.",
       "applies_when": "agent asks for confirmation before blocking"
@@ -856,9 +717,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "status"
-    ],
+    "required_outputs": ["status"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -882,10 +741,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "released",
-      "rule_007"
-    ],
+    "required_outputs": ["released", "rule_007"],
     "first_question_fallback": {
       "canned_answer": "Yes, release it.",
       "applies_when": "agent asks for confirmation before releasing"
@@ -907,17 +763,12 @@
         "kwargs": {
           "subaction": "block",
           "intent": "block example.com for 30 minutes",
-          "hostnames": [
-            "example.com"
-          ],
+          "hostnames": ["example.com"],
           "durationMinutes": 30
         }
       }
     ],
-    "required_outputs": [
-      "blocked",
-      "30"
-    ],
+    "required_outputs": ["blocked", "30"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -941,10 +792,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "unblocked",
-      "all"
-    ],
+    "required_outputs": ["unblocked", "all"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,

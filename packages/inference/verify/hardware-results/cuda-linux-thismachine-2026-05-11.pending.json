@@ -32,7 +32,7 @@
   "harness": {
     "selfContained": true,
     "linksLibggmlCuda": false,
-    "note": "cuda_verify.cu ports the C reference (reference/turbo_kernels.c + verify/qjl_polar_ref.c) into CUDA __device__ kernels operating on the on-disk fixture byte layouts — same approach as metal_verify / vulkan_verify. No build of the milady-llama-cpp fork is required for `make cuda-verify`; the fork build is only needed for the model-backed graph smoke."
+    "note": "cuda_verify.cu ports the C reference (reference/turbo_kernels.c + verify/qjl_polar_ref.c) into CUDA __device__ kernels operating on the on-disk fixture byte layouts — same approach as metal_verify / vulkan_verify. No build of the eliza-llama-cpp fork is required for `make cuda-verify`; the fork build is only needed for the model-backed graph smoke."
   },
   "buildHint": {
     "linux-x64-cuda": "ELIZA_DFLASH_CMAKE_FLAGS='-DCMAKE_CUDA_ARCHITECTURES=120;90;89;86;80' node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda",

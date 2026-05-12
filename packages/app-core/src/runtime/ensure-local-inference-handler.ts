@@ -50,6 +50,10 @@ import { localInferenceEngine } from "../services/local-inference/engine";
 import { handlerRegistry } from "../services/local-inference/handler-registry";
 import { listInstalledModels } from "../services/local-inference/registry";
 import { installRouterHandler } from "../services/local-inference/router-handler";
+import {
+  type ElizaHarnessSchema,
+  elizaHarnessSchemaFromSkeleton,
+} from "../services/local-inference/structured-output";
 import type { AgentModelSlot } from "../services/local-inference/types";
 import {
   decodeMonoPcm16Wav,
@@ -195,11 +199,53 @@ async function ensureAssignedModelLoaded(
 }
 
 /**
+ * True when the caller opted this generation into *guided structured decode* —
+ * the deterministic-token prefill-plan short-circuit on top of the GBNF
+ * constrained decode. Off by default: needs either an explicit
+ * `providerOptions.eliza.guidedDecode === true` (the planner / message service
+ * sets this when it built a forced skeleton) or the process-wide
+ * `MILADY_LOCAL_GUIDED_DECODE=1` (`ELIZA_LOCAL_GUIDED_DECODE=1`) opt-in.
+ */
+function guidedDecodeRequested(params: GenerateTextParams): boolean {
+  const providerOptions = (params as { providerOptions?: unknown })
+    .providerOptions;
+  const elizaOpts =
+    providerOptions && typeof providerOptions === "object"
+      ? (providerOptions as { eliza?: { guidedDecode?: unknown } }).eliza
+      : undefined;
+  if (elizaOpts && elizaOpts.guidedDecode === true) return true;
+  const env =
+    process.env.MILADY_LOCAL_GUIDED_DECODE ??
+    process.env.ELIZA_LOCAL_GUIDED_DECODE;
+  return env === "1" || env === "true";
+}
+
+/**
+ * Build the {@link ElizaHarnessSchema} for this call — the bundle of the
+ * forced skeleton, the pre-built grammar (when the producer supplied one), and
+ * the derived deterministic-token prefill plan. Returns undefined unless guided
+ * decode is requested AND a `responseSkeleton` (or explicit `grammar`) is
+ * present (schema presence == the off-by-default switch for the prefill plan).
+ */
+function elizaHarnessSchemaFromParams(
+  params: GenerateTextParams,
+): ElizaHarnessSchema | undefined {
+  if (!guidedDecodeRequested(params)) return undefined;
+  const skeleton = params.responseSkeleton;
+  if (!skeleton) return undefined;
+  return elizaHarnessSchemaFromSkeleton({
+    skeleton,
+    grammar: typeof params.grammar === "string" ? params.grammar : undefined,
+  });
+}
+
+/**
  * Project a `GenerateTextParams` onto the engine's `GenerateArgs`, threading
  * the structure-forcing extensions (`prefill`, `responseSkeleton`, `grammar`,
- * `streamStructured`) and wiring `onStreamChunk` to the engine's per-token
- * `onTextChunk`. Cloud adapters ignore these fields; the local engine honours
- * them (the forced-span / prefill / grammar path is local-model-only).
+ * `streamStructured`, `elizaSchema`) and wiring `onStreamChunk` to the engine's
+ * per-token `onTextChunk`. Cloud adapters ignore these fields; the local engine
+ * honours them (the forced-span / prefill / grammar / prefill-plan path is
+ * local-model-only).
  */
 function engineGenerateArgsFromParams(
   params: GenerateTextParams,
@@ -213,6 +259,7 @@ function engineGenerateArgsFromParams(
   responseSkeleton?: GenerateTextParams["responseSkeleton"];
   grammar?: string;
   streamStructured?: boolean;
+  elizaSchema?: ElizaHarnessSchema;
   onTextChunk?: (chunk: string) => void | Promise<void>;
 } {
   const streamStructured = params.streamStructured === true;
@@ -235,6 +282,7 @@ function engineGenerateArgsFromParams(
     responseSkeleton: params.responseSkeleton,
     grammar: params.grammar,
     streamStructured: streamStructured || undefined,
+    elizaSchema: elizaHarnessSchemaFromParams(params),
     onTextChunk,
   };
 }
@@ -368,7 +416,7 @@ function makeEmbeddingHandler(): EmbeddingHandler {
  * path: the engine has no `embed()` on the `LocalInferenceLoader` service
  * surface (that's only the AOSP / device-bridge loaders), but when an
  * Eliza-1 bundle is active it serves embeddings through the bundle's
- * local embedding model — pooled text on `0_6b`, the dedicated
+ * local embedding model — pooled text on `0_8b`, the dedicated
  * `embedding/` GGUF on larger tiers — via a lazily-started embedding
  * `llama-server` sidecar. Throws (→ runtime falls through to the
  * operator-configured provider) when no Eliza-1 bundle is loaded; no
@@ -761,7 +809,7 @@ export async function ensureLocalInferenceHandler(
   //   - The desktop/server `LocalInferenceEngine` path has no loader
   //     `embed()`, but when an Eliza-1 bundle is loaded it serves
   //     embeddings through the bundle's local embedding model (pooled text
-  //     on `0_6b`, the dedicated `embedding/` GGUF on larger tiers) via a
+  //     on `0_8b`, the dedicated `embedding/` GGUF on larger tiers) via a
   //     lazily-started embedding `llama-server` sidecar.
   // In neither case do we register a handler that would serve a silent
   // zero-vector — both throw when there's nothing real to call, so the

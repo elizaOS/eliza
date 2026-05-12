@@ -92,10 +92,7 @@ describe("payment-callback-bus", () => {
 
   test("waitFor resolves on the next matching event", async () => {
     const bus = createPaymentCallbackBus();
-    const promise = bus.waitFor(
-      { paymentRequestId: "pr_wait", names: ["PaymentSettled"] },
-      1000,
-    );
+    const promise = bus.waitFor({ paymentRequestId: "pr_wait", names: ["PaymentSettled"] }, 1000);
 
     await bus.publish(makeSettled("pr_other"));
     await bus.publish(makeFailed("pr_wait"));
@@ -153,10 +150,7 @@ describe("payment-callback-bus", () => {
 
   test("waitFor cleans up its subscription on resolve", async () => {
     const bus = createPaymentCallbackBus();
-    const promise = bus.waitFor(
-      { paymentRequestId: "pr_clean", names: ["PaymentSettled"] },
-      1000,
-    );
+    const promise = bus.waitFor({ paymentRequestId: "pr_clean", names: ["PaymentSettled"] }, 1000);
     await bus.publish(makeSettled("pr_clean"));
     await promise;
 
@@ -216,5 +210,13 @@ describe("payment-callback-bus", () => {
     });
     await bus.publish(makeSettled("pr_recfail"));
     expect(delivered).toBe(true);
+  });
+
+  test("recordProviderEvent de-dupes provider event ids per bus instance", () => {
+    const bus = createPaymentCallbackBus();
+
+    expect(bus.recordProviderEvent("stripe", "evt_1")).toBe(true);
+    expect(bus.recordProviderEvent("stripe", "evt_1")).toBe(false);
+    expect(bus.recordProviderEvent("x402", "evt_1")).toBe(true);
   });
 });

@@ -1,0 +1,53 @@
+server {
+    listen 80;
+    server_name www.fzw.best fzw.best;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name www.fzw.best fzw.best;
+
+    ssl_certificate /www/server/panel/vhost/cert/www.fzw.best/fullchain.pem;
+    ssl_certificate_key /www/server/panel/vhost/cert/www.fzw.best/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
+    ssl_prefer_server_ciphers on;
+    ssl_session_timeout 10m;
+    ssl_session_cache shared:SSL:10m;
+
+    index index.php index.html;
+    root /www/wwwroot/www.fzw.best/public;
+
+    include /www/server/panel/vhost/nginx/extension/www.fzw.best/*.conf;
+    include /www/server/panel/vhost/rewrite/www.fzw.best.conf;
+
+    # Laravel routing - fixed to handle SPA fallback
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    # API proxy for moltbot webhook
+    location /api/telegram/webhook {
+        proxy_pass http://127.0.0.1:3781;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    include enable-php-80.conf;
+
+    location ~* \.(css|js|jpg|jpeg|png|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    location ~ /\. {
+        deny all;
+    }
+
+    access_log /www/wwwlogs/www.fzw.best.log;
+    error_log /www/wwwlogs/www.fzw.best.error.log;
+}

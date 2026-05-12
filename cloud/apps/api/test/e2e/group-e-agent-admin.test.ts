@@ -216,24 +216,6 @@ describe("Group E: admin / docker-containers (live + 501 stubs)", () => {
     expect(authed.status).toBe(501);
   });
 
-  test("POST /api/v1/admin/docker-nodes/:nodeId/health-check forwards to the control plane", async () => {
-    if (!shouldRun()) return;
-    const unauthed = await api.post(`/api/v1/admin/docker-nodes/${FAKE_UUID}/health-check`);
-    expectAuthGate(unauthed.status, "POST docker-nodes/:nodeId/health-check (unauth)");
-
-    const authed = await api.post(
-      `/api/v1/admin/docker-nodes/${FAKE_UUID}/health-check`,
-      undefined,
-      { headers: bearerHeaders() },
-    );
-    expect(authed.status).toBe(503);
-    const body = (await authed.json()) as { code?: string };
-    expect([
-      "CONTAINER_CONTROL_PLANE_NOT_CONFIGURED",
-      "CONTAINER_CONTROL_PLANE_UNREACHABLE",
-    ]).toContain(body.code ?? "");
-  });
-
   test("POST /api/v1/admin/infrastructure/containers/actions is a 501 stub; rejects unauthenticated", async () => {
     if (!shouldRun()) return;
     const unauthed = await api.post("/api/v1/admin/infrastructure/containers/actions", {
@@ -450,5 +432,25 @@ describe("Group E: session-cookie sanity check", () => {
     if (!shouldRun()) return;
     sessionCookie = await exchangeApiKeyForSession();
     expect(sessionCookie).toMatch(/^[^=]+=.+/);
+  });
+});
+
+describe("Group E: admin / docker control-plane forwarding", () => {
+  test("POST /api/v1/admin/docker-nodes/:nodeId/health-check forwards to the control plane", async () => {
+    if (!shouldRun()) return;
+    const unauthed = await api.post(`/api/v1/admin/docker-nodes/${FAKE_UUID}/health-check`);
+    expectAuthGate(unauthed.status, "POST docker-nodes/:nodeId/health-check (unauth)");
+
+    const authed = await api.post(
+      `/api/v1/admin/docker-nodes/${FAKE_UUID}/health-check`,
+      undefined,
+      { headers: bearerHeaders() },
+    );
+    expect(authed.status).toBe(503);
+    const body = (await authed.json()) as { code?: string };
+    expect([
+      "CONTAINER_CONTROL_PLANE_NOT_CONFIGURED",
+      "CONTAINER_CONTROL_PLANE_UNREACHABLE",
+    ]).toContain(body.code ?? "");
   });
 });

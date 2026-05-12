@@ -1,10 +1,3 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
 import crypto from "node:crypto";
 import {
   LIFEOPS_NEGOTIATION_STATES,
@@ -17,7 +10,11 @@ import {
   type LifeOpsScheduleSummary,
   readScheduleSummary,
 } from "./schedule-insight.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
 
 function isoNow(): string {
@@ -46,6 +43,75 @@ type CounterpartyTarget = {
   name: string;
 };
 
+type SchedulingMixinDependencies = LifeOpsServiceBase & {
+  sendGmailMessage(
+    requestUrl: URL,
+    request: {
+      to: string[];
+      subject: string;
+      bodyText: string;
+      confirmSend: boolean;
+    },
+  ): Promise<unknown>;
+  sendTelegramMessage(request: {
+    target: string;
+    message: string;
+  }): Promise<unknown>;
+  sendWhatsAppMessage(request: { to: string; text: string }): Promise<unknown>;
+  sendIMessage(request: { to: string; text: string }): Promise<unknown>;
+};
+
+export interface LifeOpsSchedulingService {
+  inspectSchedule(args: {
+    timezone: string;
+    now?: Date;
+  }): Promise<LifeOpsScheduleInspection>;
+  readScheduleSummary(args: {
+    timezone: string;
+    now?: Date;
+  }): Promise<LifeOpsScheduleSummary>;
+  resolveCounterpartyTarget(
+    negotiation: LifeOpsSchedulingNegotiation,
+  ): Promise<CounterpartyTarget | null>;
+  dispatchSchedulingMessage(
+    negotiation: LifeOpsSchedulingNegotiation,
+    body: string,
+    subject: string,
+  ): Promise<CounterpartyTarget>;
+  startNegotiation(input: {
+    subject: string;
+    relationshipId?: string | null;
+    durationMinutes?: number;
+    timezone?: string;
+    metadata?: Record<string, unknown>;
+  }): Promise<LifeOpsSchedulingNegotiation>;
+  getNegotiation(
+    id: string,
+  ): Promise<LifeOpsSchedulingNegotiation | null>;
+  listActiveNegotiations(opts?: {
+    limit?: number;
+  }): Promise<LifeOpsSchedulingNegotiation[]>;
+  proposeTime(input: {
+    negotiationId: string;
+    startAt: string;
+    endAt: string;
+    proposedBy: "agent" | "owner" | "counterparty";
+    metadata?: Record<string, unknown>;
+  }): Promise<LifeOpsSchedulingProposal>;
+  respondToProposal(
+    proposalId: string,
+    status: "accepted" | "declined" | "expired",
+  ): Promise<LifeOpsSchedulingProposal>;
+  finalizeNegotiation(
+    id: string,
+    acceptedProposalId: string,
+  ): Promise<LifeOpsSchedulingNegotiation>;
+  cancelNegotiation(id: string, reason?: string): Promise<void>;
+  listProposals(
+    negotiationId: string,
+  ): Promise<LifeOpsSchedulingProposal[]>;
+}
+
 function normalizeChannel(
   value: string | null | undefined,
 ): SchedulingDispatchChannel | null {
@@ -59,8 +125,11 @@ function normalizeChannel(
 /** @internal */
 export function withScheduling<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
-) {
-  class LifeOpsSchedulingServiceMixin extends Base {
+): MixinClass<TBase, LifeOpsSchedulingService> {
+  const SchedulingBase =
+    Base as unknown as Constructor<SchedulingMixinDependencies>;
+
+  class LifeOpsSchedulingServiceMixin extends SchedulingBase {
     async inspectSchedule(args: {
       timezone: string;
       now?: Date;
@@ -507,5 +576,8 @@ export function withScheduling<TBase extends Constructor<LifeOpsServiceBase>>(
     }
   }
 
-  return LifeOpsSchedulingServiceMixin;
+  return LifeOpsSchedulingServiceMixin as unknown as MixinClass<
+    TBase,
+    LifeOpsSchedulingService
+  >;
 }

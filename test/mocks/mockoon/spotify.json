@@ -17,7 +17,7 @@
       "responses": [
         {
           "uuid": "bbbb1111-aaaa-4000-8000-000000020124",
-          "body": "{\n  \"id\": \"shawmilady\",\n  \"display_name\": \"Shaw\",\n  \"email\": \"shaw@milady.dev\",\n  \"country\": \"US\",\n  \"product\": \"premium\",\n  \"images\": []\n}",
+          "body": "{\n  \"id\": \"shaweliza\",\n  \"display_name\": \"Shaw\",\n  \"email\": \"shaw@eliza.dev\",\n  \"country\": \"US\",\n  \"product\": \"premium\",\n  \"images\": []\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "happy path",

@@ -25,6 +25,15 @@ import {
 } from "../helpers/trajectory-harness.ts";
 import type { ActionBenchmarkCase } from "./action-selection-cases.ts";
 
+const seedGrantsModuleUrl = new URL(
+  "../../../../test/mocks/helpers/seed-grants.ts",
+  import.meta.url,
+).href;
+const lifeopsApprovalQueueModuleUrl = new URL(
+  "../../../../plugins/app-lifeops/src/lifeops/approval-queue.ts",
+  import.meta.url,
+).href;
+
 export type ActionFailureMode =
   | "passed"
   | "validate_filtered"
@@ -319,7 +328,9 @@ function makeBenchmarkConnectorMemory(args: {
     ),
     entityId: args.runtime.agentId,
     agentId: args.runtime.agentId,
-    roomId: stringToUuid(`benchmark-${args.source}-room-${args.runtime.agentId}`),
+    roomId: stringToUuid(
+      `benchmark-${args.source}-room-${args.runtime.agentId}`,
+    ),
     content: {
       text: args.text,
       source: args.source,
@@ -359,7 +370,7 @@ function registerBenchmarkXConnectors(runtime: AgentRuntime): void {
         runtime,
         source: "x",
         index: 2,
-        text: "@milady: Agent runtime benchmarks are looking healthier.",
+        text: "@eliza: Agent runtime benchmarks are looking healthier.",
       }),
     ],
     searchPosts: async (_context: unknown, params: { query?: string }) => {
@@ -953,17 +964,16 @@ export function parsePlannedActionsFromResponse(response: string): string[] {
   if (!parsed) {
     return [];
   }
-  const rawActions =
-    Array.isArray(parsed)
-      ? parsed
-      : parsed.toolCalls ??
-        parsed.tool_calls ??
-        parsed.actions ??
-        parsed.action ??
-        parsed.actionName ??
-        parsed.name ??
-        parsed.tool ??
-        parsed.function;
+  const rawActions = Array.isArray(parsed)
+    ? parsed
+    : (parsed.toolCalls ??
+      parsed.tool_calls ??
+      parsed.actions ??
+      parsed.action ??
+      parsed.actionName ??
+      parsed.name ??
+      parsed.tool ??
+      parsed.function);
   const names = parseActionNamesFromValue(rawActions);
   if (
     names.length === 0 &&
@@ -1070,9 +1080,7 @@ async function seedBenchmarkCaseFixtures(
   //    is migrated against the per-case PGLite adapter. Idempotent — safe to
   //    call even when the runtime already ran plugin migrations at boot.
   try {
-    const { LifeOpsRepository } = (await import(
-      "@elizaos/app-lifeops"
-    )) as {
+    const { LifeOpsRepository } = (await import("@elizaos/app-lifeops")) as {
       LifeOpsRepository: {
         bootstrapSchema?: (r: AgentRuntime) => Promise<void>;
       };
@@ -1090,9 +1098,7 @@ async function seedBenchmarkCaseFixtures(
   // 2) Seed a David relationship row used by relationship-flow benchmark cases.
   try {
     const now = new Date().toISOString();
-    const { LifeOpsRepository } = await import(
-      "@elizaos/app-lifeops"
-    );
+    const { LifeOpsRepository } = await import("@elizaos/app-lifeops");
     const repo = new LifeOpsRepository(runtime);
     const relationshipRepo = repo as typeof repo & {
       upsertRelationship?: (rel: Record<string, unknown>) => Promise<unknown>;
@@ -1227,10 +1233,7 @@ async function seedBenchmarkCaseFixtures(
   //    `readStoredGoogleTokenFile`, which transparently supports legacy
   //    plaintext tokens, so a single plain-JSON write satisfies both sides.
   try {
-    const seedModule = (await import(
-      // @ts-expect-error — path resolved at runtime relative to repo root
-      "../../../../test/mocks/helpers/seed-grants.ts"
-    )) as {
+    const seedModule = (await import(seedGrantsModuleUrl)) as {
       seedGoogleConnectorGrant: (
         runtime: AgentRuntime,
         opts?: {
@@ -1281,10 +1284,7 @@ async function seedBenchmarkCaseFixtures(
     process.env.TWITTER_USER_ID =
       process.env.TWITTER_USER_ID ?? "bench-x-user-id";
 
-    const seedModule = (await import(
-      // @ts-expect-error — path resolved at runtime relative to repo root
-      "../../../../test/mocks/helpers/seed-grants.ts"
-    )) as {
+    const seedModule = (await import(seedGrantsModuleUrl)) as {
       seedXConnectorGrant: (
         runtime: AgentRuntime,
         opts?: { side?: "owner" | "agent"; handle?: string },
@@ -1312,9 +1312,7 @@ async function seedBenchmarkCaseFixtures(
     let lastError: unknown;
     for (let attempt = 0; attempt < 20 && !seeded; attempt += 1) {
       try {
-        const approvalModule = await import(
-          "@elizaos/app-lifeops"
-        );
+        const approvalModule = await import("@elizaos/app-lifeops");
         const createApprovalQueue =
           (approvalModule as { createApprovalQueue?: unknown })
             .createApprovalQueue ??
@@ -1329,10 +1327,7 @@ async function seedBenchmarkCaseFixtures(
             : null;
         const fallbackModule =
           createQueue === null
-            ? await import(
-                // @ts-expect-error — path resolved at runtime relative to this file
-                "../../../../plugins/app-lifeops/src/lifeops/approval-queue.ts"
-              )
+            ? await import(lifeopsApprovalQueueModuleUrl)
             : null;
         const createApprovalQueueFinal =
           createQueue ??

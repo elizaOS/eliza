@@ -1,0 +1,236 @@
+[
+  {
+    "article_id": "RSS-1201",
+    "title": "AI Adoption Accelerates: Enterprise AI Tool Market Grows 120%",
+    "category": "AI",
+    "content": "In Q1 2026, the enterprise AI tool market grew 120% year-over-year. Manufacturing and healthcare emerged as the fastest-growing sectors for AI adoption. Analysts note that AI is transitioning from proof-of-concept to large-scale deployment, with over 60% of mid-to-large enterprises expected to deploy at least one AI-driven core business system by 2027. Demand for smart quality inspection and predictive maintenance in manufacturing is particularly strong.",
+    "url": "https://tech-news.example.com/ai-enterprise-growth",
+    "tags": [
+      "AI",
+      "enterprise",
+      "market growth"
+    ],
+    "source": "Tech Express",
+    "published_at": "2026-03-24T08:00:00Z",
+    "summary": "In Q1 2026, the enterprise AI tool market grew 120% year-over-year. Manufacturing and healthcare emerged as the fastest-growing sectors for AI adoption. Analysts note that AI is transitioning from pro",
+    "word_count": 458
+  },
+  {
+    "article_id": "RSS-1202",
+    "title": "Cloud Computing Market Shifts: Hybrid Cloud Becomes Enterprise Preference",
+    "category": "Cloud Computing",
+    "content": "Latest research shows 78% of enterprises have adopted or plan to adopt hybrid cloud architecture. The public + private cloud combination allows enterprises to balance flexibility and data security. Manufacturing and healthcare industries in particular have strong hybrid cloud demand due to data compliance requirements. SaaS vendors need to support hybrid cloud deployment to stay competitive.",
+    "url": "https://tech-news.example.com/hybrid-cloud-trend",
+    "tags": [
+      "cloud computing",
+      "hybrid cloud",
+      "enterprise IT"
+    ],
+    "source": "Tech Express",
+    "published_at": "2026-03-23T10:00:00Z",
+    "summary": "Latest research shows 78% of enterprises have adopted or plan to adopt hybrid cloud architecture. The public + private cloud combination allows enterprises to balance flexibility and data security. Ma",
+    "word_count": 394
+  },
+  {
+    "article_id": "RSS-1209",
+    "title": "Quantum Computing Commercialization Still Years Away",
+    "category": "Frontier Technology",
+    "content": "Industry experts generally agree that large-scale quantum computing commercialization is still 5-10 years away. Currently only preliminary applications exist in drug development and cryptography.",
+    "url": "https://tech-news.example.com/quantum-computing",
+    "tags": [
+      "quantum computing",
+      "frontier"
+    ],
+    "source": "Tech Express",
+    "published_at": "2026-03-22T09:00:00Z",
+    "summary": "Industry experts generally agree that large-scale quantum computing commercialization is still 5-10 years away. Currently only preliminary applications exist in drug development and cryptography.",
+    "word_count": 195
+  },
+  {
+    "article_id": "RSS-1210",
+    "title": "Global Chip Overcapacity Signals Emerging",
+    "category": "Semiconductors",
+    "content": "Multiple chip foundries report capacity utilization dropping below 75%, raising market concerns about oversupply.",
+    "url": "https://tech-news.example.com/chip-oversupply",
+    "tags": [
+      "semiconductors",
+      "capacity"
+    ],
+    "source": "Tech Express",
+    "published_at": "2026-03-25T07:00:00Z",
+    "summary": "Multiple chip foundries report capacity utilization dropping below 75%, raising market concerns about oversupply.",
+    "word_count": 113
+  },
+  {
+    "article_id": "RSS-1203",
+    "title": "SaaS Industry Renewal Rates Decline: Customers Focus More on ROI",
+    "category": "SaaS",
+    "content": "The 2025 SaaS industry average net revenue retention rate (NRR) dropped from 118% to 109%. Main causes include: 1) Tightening enterprise IT budgets; 2) Stricter customer ROI requirements for SaaS tools; 3) Increased homogeneous competition strengthening customer bargaining power. SME customer churn is particularly notable, with annualized churn reaching 22%. SaaS vendors are advised to strengthen customer success programs and provide differentiated value.",
+    "url": "https://analysis.example.com/saas-nrr-decline",
+    "tags": [
+      "SaaS",
+      "renewal rate",
+      "NRR",
+      "risk"
+    ],
+    "source": "Industry Analysis",
+    "published_at": "2026-03-24T11:00:00Z",
+    "summary": "The 2025 SaaS industry average net revenue retention rate (NRR) dropped from 118% to 109%. Main causes include: 1) Tightening enterprise IT budgets; 2) Stricter customer ROI requirements for SaaS tool",
+    "word_count": 459
+  },
+  {
+    "article_id": "RSS-1204",
+    "title": "Manufacturing Digital Transformation Accelerates: 2026 Investment Up 35%",
+    "category": "Manufacturing",
+    "content": "Ministry of Industry data shows Q1 2026 manufacturing digital investment grew 35% year-over-year. Key investment areas include: smart manufacturing systems (MES), supply chain management (SCM), and AI quality inspection systems. Large manufacturers (annual revenue >500M CNY) increased IT spending from 2.1% to 3.4% of revenue. Mid-sized manufacturers are also actively following suit, particularly focused on cost-effective SaaS solutions.",
+    "url": "https://analysis.example.com/manufacturing-digital",
+    "tags": [
+      "manufacturing",
+      "digitization",
+      "investment"
+    ],
+    "source": "Industry Analysis",
+    "published_at": "2026-03-25T09:00:00Z",
+    "summary": "Ministry of Industry data shows Q1 2026 manufacturing digital investment grew 35% year-over-year. Key investment areas include: smart manufacturing systems (MES), supply chain management (SCM), and AI",
+    "word_count": 440
+  },
+  {
+    "article_id": "RSS-1205",
+    "title": "SME IT Spending Growth: SaaS Penetration Continues Rising",
+    "category": "SME",
+    "content": "Statistics show average SME IT spending grew 18% year-over-year, with SaaS tool procurement share rising from 35% to 42%. SMEs prioritize product usability, rapid deployment, and flexible pricing. Small and medium healthcare and education institutions are the main drivers of new SaaS customer acquisition.",
+    "url": "https://analysis.example.com/sme-it-spending",
+    "tags": [
+      "SME",
+      "IT spending",
+      "SaaS"
+    ],
+    "source": "Industry Analysis",
+    "published_at": "2026-03-23T14:00:00Z",
+    "summary": "Statistics show average SME IT spending grew 18% year-over-year, with SaaS tool procurement share rising from 35% to 42%. SMEs prioritize product usability, rapid deployment, and flexible pricing. Sma",
+    "word_count": 306
+  },
+  {
+    "article_id": "RSS-1211",
+    "title": "E-Commerce Platform Promotion Data Analysis",
+    "category": "E-Commerce",
+    "content": "A major e-commerce platform's March promotion saw GMV grow 28% YoY, with livestream commerce exceeding 40% share for the first time.",
+    "url": "https://analysis.example.com/ecommerce-promo",
+    "tags": [
+      "e-commerce",
+      "livestream"
+    ],
+    "source": "Industry Analysis",
+    "published_at": "2026-03-25T16:00:00Z",
+    "summary": "A major e-commerce platform's March promotion saw GMV grow 28% YoY, with livestream commerce exceeding 40% share for the first time.",
+    "word_count": 132
+  },
+  {
+    "article_id": "RSS-1212",
+    "title": "New Energy Vehicle Insurance Rate Reform",
+    "category": "Insurance",
+    "content": "The banking and insurance regulatory commission released a new energy vehicle insurance rate reform plan, with premiums expected to decrease by an average of 12%.",
+    "url": "https://analysis.example.com/ev-insurance",
+    "tags": [
+      "new energy",
+      "insurance"
+    ],
+    "source": "Industry Analysis",
+    "published_at": "2026-03-22T11:00:00Z",
+    "summary": "The banking and insurance regulatory commission released a new energy vehicle insurance rate reform plan, with premiums expected to decrease by an average of 12%.",
+    "word_count": 162
+  },
+  {
+    "article_id": "RSS-1206",
+    "title": "Healthcare IT Policy Boost: Tier-A Hospital System Upgrades to Achieve Full Coverage",
+    "category": "Healthcare",
+    "content": "The National Health Commission issued a new directive requiring all Tier-A hospitals to complete core information system upgrades by 2027. This covers comprehensive cloudification of electronic medical records (EMR), hospital information systems (HIS), and medical imaging systems (PACS). The estimated market opportunity exceeds 50 billion CNY. The policy also encourages IT modernization for private hospitals and community health centers, creating opportunities for small and medium healthcare SaaS products.",
+    "url": "https://market.example.com/healthcare-it-policy",
+    "tags": [
+      "healthcare",
+      "policy",
+      "IT"
+    ],
+    "source": "Market Trends",
+    "published_at": "2026-03-24T15:00:00Z",
+    "summary": "The National Health Commission issued a new directive requiring all Tier-A hospitals to complete core information system upgrades by 2027. This covers comprehensive cloudification of electronic medica",
+    "word_count": 511
+  },
+  {
+    "article_id": "RSS-1207",
+    "title": "Education Industry Digital Needs: AI Teaching Assistants Become Hotspot",
+    "category": "Education",
+    "content": "The Ministry of Education promotes Education Informatization 2.0 upgrades, making AI teaching assistant tools, online exam systems, and student data analytics platforms procurement hotspots across schools. Both K12 and higher education sectors are seeing significant demand release, but education customers have limited budgets and long procurement cycles, challenging SaaS vendors' channel capabilities and pricing strategies.",
+    "url": "https://market.example.com/education-digital",
+    "tags": [
+      "education",
+      "digitization",
+      "AI"
+    ],
+    "source": "Market Trends",
+    "published_at": "2026-03-25T10:00:00Z",
+    "summary": "The Ministry of Education promotes Education Informatization 2.0 upgrades, making AI teaching assistant tools, online exam systems, and student data analytics platforms procurement hotspots across sch",
+    "word_count": 427
+  },
+  {
+    "article_id": "RSS-1208",
+    "title": "Fintech Regulation Tightens: Compliance Costs Continue Rising",
+    "category": "Finance",
+    "content": "The central bank and banking regulator jointly issued new fintech compliance regulations requiring all financial SaaS products to pass Level-3 security certification. Compliance costs are expected to increase 20%-30%, putting significant pressure on small and mid-sized fintech companies. However, for leading SaaS vendors that already possess compliance capabilities, this creates a competitive moat.",
+    "url": "https://market.example.com/fintech-regulation",
+    "tags": [
+      "finance",
+      "regulation",
+      "compliance"
+    ],
+    "source": "Market Trends",
+    "published_at": "2026-03-23T16:00:00Z",
+    "summary": "The central bank and banking regulator jointly issued new fintech compliance regulations requiring all financial SaaS products to pass Level-3 security certification. Compliance costs are expected to ",
+    "word_count": 401
+  },
+  {
+    "article_id": "RSS-1213",
+    "title": "Real Estate Market Quarterly Review",
+    "category": "Real Estate",
+    "content": "First-tier city housing prices rose slightly by 0.5% month-over-month, while second and third-tier cities continue adjusting, with the overall market running steadily.",
+    "url": "https://market.example.com/real-estate",
+    "tags": [
+      "real estate",
+      "market"
+    ],
+    "source": "Market Trends",
+    "published_at": "2026-03-24T13:00:00Z",
+    "summary": "First-tier city housing prices rose slightly by 0.5% month-over-month, while second and third-tier cities continue adjusting, with the overall market running steadily.",
+    "word_count": 167
+  },
+  {
+    "article_id": "RSS-1214",
+    "title": "Sports Industry Report: Marathon Economy Booms",
+    "category": "Sports",
+    "content": "Over 600 marathon events were held nationwide in H1 2026, driving peripheral consumption exceeding 20 billion CNY.",
+    "url": "https://market.example.com/marathon-economy",
+    "tags": [
+      "sports",
+      "consumption"
+    ],
+    "source": "Market Trends",
+    "published_at": "2026-03-25T18:00:00Z",
+    "summary": "Over 600 marathon events were held nationwide in H1 2026, driving peripheral consumption exceeding 20 billion CNY.",
+    "word_count": 114
+  },
+  {
+    "article_id": "RSS-1215",
+    "title": "Pet Economy Continues Heating Up",
+    "category": "Consumer",
+    "content": "The pet food and veterinary market exceeded 300 billion CNY in scale, with smart pet devices growing rapidly.",
+    "url": "https://market.example.com/pet-economy",
+    "tags": [
+      "pets",
+      "consumption"
+    ],
+    "source": "Market Trends",
+    "published_at": "2026-03-22T14:00:00Z",
+    "summary": "The pet food and veterinary market exceeded 300 billion CNY in scale, with smart pet devices growing rapidly.",
+    "word_count": 109
+  }
+]

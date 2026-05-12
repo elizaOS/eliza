@@ -260,6 +260,13 @@ describe("carrot store", () => {
       );
     }));
 
+  it("rejects carrot ids before deriving store paths", () =>
+    withTempDir((dir) => {
+      expect(() =>
+        getCarrotStorePaths(join(dir, "store"), "../../evil"),
+      ).toThrow(CarrotStoreError);
+    }));
+
   it("uninstalls a carrot and refreshes the registry", () =>
     withTempDir((dir) => {
       const storeRoot = join(dir, "store");

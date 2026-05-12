@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
+import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
+import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import { runV5MessageRuntimeStage1 } from "../services/message";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
@@ -37,6 +40,10 @@ function makeState(): State {
 
 function makeRuntime(responses: unknown[]): IAgentRuntime {
 	const queue = [...responses];
+	const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
+	for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
+		responseHandlerFieldRegistry.register(evaluator);
+	}
 	return {
 		agentId: "00000000-0000-0000-0000-000000000003" as UUID,
 		character: {
@@ -62,6 +69,11 @@ function makeRuntime(responses: unknown[]): IAgentRuntime {
 			error: vi.fn(),
 			trace: vi.fn(),
 		},
+		responseHandlerFieldRegistry,
+		responseHandlerFieldEvaluators: [
+			...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+		],
+		responseHandlerEvaluators: [],
 	} as IAgentRuntime;
 }
 
@@ -97,12 +109,16 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(result.kind).toBe("direct_reply");
 		const firstCall = useModelCalls(runtime)[0];
 		const params = firstCall?.[1] as {
-			tools?: Array<{ name?: string }>;
+			tools?: Array<{ name?: string; parameters?: { required?: string[] } }>;
 			toolChoice?: string;
 			responseSchema?: unknown;
 			responseFormat?: unknown;
 		};
 		expect(params.tools?.[0]?.name).toBe("HANDLE_RESPONSE");
+		expect(params.tools?.[0]?.parameters?.required).toContain(
+			"candidateActionNames",
+		);
+		expect(params.tools?.[0]?.parameters?.required).toContain("facts");
 		expect(params.toolChoice).toBe("required");
 		expect(params.responseSchema).toBeUndefined();
 		expect(params.responseFormat).toBeUndefined();
@@ -191,7 +207,7 @@ describe("runV5MessageRuntimeStage1", () => {
 						providerName: "RECENT_MESSAGES",
 					},
 					PROVIDERS: {
-						text: "# Providers\nproviders[99]: giant catalog",
+						text: "# Providers\nproviders: giant catalog",
 						providerName: "PROVIDERS",
 					},
 					CHARACTER: {
@@ -321,6 +337,102 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(providerNames).not.toContain("CHARACTER");
 	});
 
+	it("emits a response-handler reply before planner recomposition when provided", async () => {
+		const order: string[] = [];
+		const runtime = makeRuntime([
+			JSON.stringify({
+				processMessage: "RESPOND",
+				thought: "Acknowledge first, then inspect.",
+				plan: {
+					contexts: ["general"],
+					requiresTool: true,
+					simple: false,
+					reply: "I'll check that now.",
+				},
+			}),
+			JSON.stringify({
+				thought: "Finished the follow-up.",
+				toolCalls: [],
+				messageToUser: "The follow-up is complete.",
+			}),
+		]);
+		runtime.composeState = vi.fn(async () => {
+			order.push("compose-planner-state");
+			return makeState();
+		});
+
+		const earlyReply = vi.fn(async () => {
+			order.push("early-reply");
+		});
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).toHaveBeenCalledWith(
+			expect.objectContaining({
+				text: "I'll check that now.",
+			}),
+		);
+		expect(order).toEqual(["early-reply", "compose-planner-state"]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"The follow-up is complete.",
+			);
+		}
+	});
+
+	it("preserves the parsed response-handler reply for early delivery even when a repair clears plan.reply", async () => {
+		const runtime = makeRuntime([
+			JSON.stringify({
+				processMessage: "RESPOND",
+				thought: "Acknowledge first.",
+				plan: {
+					contexts: ["simple"],
+					requiresTool: false,
+					reply: "I'll start on that.",
+				},
+			}),
+			JSON.stringify({
+				thought: "Planner should not repeat the acknowledgement.",
+				toolCalls: [],
+				messageToUser: "I found the extra detail.",
+			}),
+		]);
+		runtime.responseHandlerEvaluators = [
+			{
+				name: "test.clear_reply_but_plan",
+				priority: 5,
+				shouldRun: () => true,
+				evaluate: () => ({
+					requiresTool: true,
+					simple: false,
+					clearReply: true,
+					addContexts: ["general"],
+				}),
+			} satisfies ResponseHandlerEvaluator,
+		];
+		const earlyReply = vi.fn(async () => undefined);
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).toHaveBeenCalledWith(
+			expect.objectContaining({
+				text: "I'll start on that.",
+			}),
+		);
+	});
+
 	it("exposes only validated actions and enforces tool-required routing through PLAN_ACTIONS", async () => {
 		const runtime = makeRuntime([
 			JSON.stringify({
@@ -439,6 +551,66 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("routes to the planner when field registry emits candidate actions without contexts", async () => {
+		const runtime = makeRuntime([
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				contexts: [],
+				intents: [],
+				replyText: "",
+				candidateActionNames: ["CHECK_RUNTIME"],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "PLAN_ACTIONS",
+						arguments: {
+							action: "CHECK_RUNTIME",
+							parameters: {},
+						},
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Done.",
+				messageToUser: "Checked.",
+			}),
+		]);
+		const handler = vi.fn(async () => ({ success: true, text: "checked" }));
+		runtime.actions = [
+			{
+				name: "CHECK_RUNTIME",
+				description: "Check current runtime state.",
+				contexts: ["general"],
+				validate: vi.fn(async () => true),
+				handler,
+			},
+		] as IAgentRuntime["actions"];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(3);
+		expect(useModelCalls(runtime)[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
+		const plannerParams = useModelCalls(runtime)[1]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		expect(JSON.stringify(plannerParams.messages)).toContain("CHECK_RUNTIME");
+		expect(handler).toHaveBeenCalledTimes(1);
+	});
+
 	it("lets a registered response-handler evaluator force planner routing without another Stage 1 call", async () => {
 		const runtime = makeRuntime([
 			JSON.stringify({
@@ -519,6 +691,65 @@ describe("runV5MessageRuntimeStage1", () => {
 			expect(result.result.responseContent?.text).toBe(
 				"Checked through the planner.",
 			);
+		}
+	});
+
+	it("dispatches response-handler field preemption before planner routing", async () => {
+		const runtime = makeRuntime([
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				contexts: ["general"],
+				intents: ["stop work"],
+				replyText: "",
+				candidateActionNames: ["CHECK_RUNTIME"],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+				abortTest: true,
+			}),
+		]);
+		const handle = vi.fn(async () => ({
+			mutateResult: (result) => {
+				result.replyText = "Stopped.";
+				result.contexts = ["simple"];
+				result.candidateActionNames = [];
+			},
+			preempt: { mode: "ack-and-stop" as const, reason: "test_abort" },
+		}));
+		const abortField: ResponseHandlerFieldEvaluator<boolean> = {
+			name: "abortTest",
+			description: "Test-only abort field.",
+			priority: 25,
+			schema: { type: "boolean" },
+			parse: (value) => value === true,
+			handle,
+		};
+		runtime.responseHandlerFieldRegistry.register(abortField);
+		runtime.responseHandlerFieldEvaluators.push(abortField);
+		runtime.responseHandlerEvaluators = [
+			{
+				name: "test.should_not_run_after_preempt",
+				priority: 1,
+				shouldRun: () => true,
+				evaluate: () => ({
+					addContexts: ["general"],
+					requiresTool: true,
+				}),
+			} satisfies ResponseHandlerEvaluator,
+		];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(handle).toHaveBeenCalledTimes(1);
+		expect(result.kind).toBe("direct_reply");
+		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe("Stopped.");
 		}
 	});
 

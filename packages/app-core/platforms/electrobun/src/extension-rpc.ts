@@ -1,18 +1,10 @@
 import { AgentNotReadyError } from "./config-and-auth-rpc";
+import { isRecord, nullableString } from "./rpc-parse-utils";
 import type { ExtensionStatusSnapshot } from "./rpc-schema";
 
 const DEFAULT_TIMEOUT_MS = 4_000;
 const INVALID_OPTIONAL_FIELD = Symbol("invalid optional field");
 type OptionalField<T> = T | undefined | typeof INVALID_OPTIONAL_FIELD;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function nullableString(value: unknown): string | null | undefined {
-	if (value === null) return null;
-	return typeof value === "string" ? value : undefined;
-}
 
 function optionalNullableString(
 	body: Record<string, unknown>,

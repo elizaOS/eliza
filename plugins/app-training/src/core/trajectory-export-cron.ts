@@ -25,14 +25,14 @@ import {
   type FilterableTrajectory,
 } from "./privacy-filter.js";
 import {
-  exportTrajectoryTaskDatasets,
-  type TrajectoryTaskDatasetExport,
-} from "./trajectory-task-datasets.js";
-import {
   type HfUploadResult,
   resolveHfUploadConfig,
   uploadTrajectoryJsonlToHuggingFace,
 } from "./trajectory-hf-upload.js";
+import {
+  exportTrajectoryTaskDatasets,
+  type TrajectoryTaskDatasetExport,
+} from "./trajectory-task-datasets.js";
 import { waitForService } from "./wait-for-service.js";
 
 const EXPORT_EVENT_NAME = "TRACK_C_TRAJECTORY_EXPORT";

@@ -1,15 +1,15 @@
 {
   "agent": "eliza",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131604Z_396172d5/voicebench__voicebench/run_voicebench_20260511T131604Z_1_3a4ffbf3/output"
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T131604Z_396172d5/voicebench__voicebench/run_voicebench_20260511T131604Z_1_3a4ffbf3/output"
   ],
   "benchmark_directory": "voicebench",
   "benchmark_id": "voicebench",
   "cache_metrics": {
-    "cache_read_input_tokens": 0,
     "cache_creation_input_tokens": 0,
-    "turns_with_cached_field": 0,
-    "cache_hit_ratio": 0.0
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
   },
   "error": null,
   "higher_is_better": false,
@@ -19,10 +19,10 @@
     "avgTranscriptionMs": 0.25,
     "avgVoiceFirstTokenCachedMs": 0.154,
     "cache_metrics": {
-      "cache_read_input_tokens": 0,
       "cache_creation_input_tokens": 0,
-      "turns_with_cached_field": 0,
-      "cache_hit_ratio": 0.0
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
     },
     "mode": "simple",
     "p95EndToEndMs": 117.625,
@@ -37,18 +37,18 @@
     "return_code": 0,
     "runs": 1,
     "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
       "llm_call_count": 2,
       "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "avg_prompt_tokens": 0.0,
-      "avg_completion_tokens": 0.0
+      "total_tokens": 0
     },
     "trajectory_summary": {
       "files": 1,
-      "turns": 2,
       "prompt_chars": 38,
-      "repeated_prefixes": []
+      "repeated_prefixes": [],
+      "turns": 2
     },
     "transcriptionNormalizedAccuracy": 1
   },
@@ -60,25 +60,25 @@
     "throughput_per_second": 1.6708140559977644
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131604Z_396172d5/voicebench__voicebench/run_voicebench_20260511T131604Z_1_3a4ffbf3/output/voicebench-typescript-mock-1778505364349.json",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T131604Z_396172d5/voicebench__voicebench/run_voicebench_20260511T131604Z_1_3a4ffbf3/output/voicebench-typescript-mock-1778505364349.json",
   "run_group_id": "rg_20260511T131604Z_396172d5",
   "run_id": "run_voicebench_20260511T131604Z_1_3a4ffbf3",
   "score": 117.625,
   "status": "succeeded",
   "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
     "llm_call_count": 2,
     "prompt_tokens": 0,
-    "completion_tokens": 0,
-    "total_tokens": 0,
-    "avg_prompt_tokens": 0.0,
-    "avg_completion_tokens": 0.0
+    "total_tokens": 0
   },
   "trajectory_summary": {
     "files": 1,
-    "turns": 2,
     "prompt_chars": 38,
-    "repeated_prefixes": []
+    "repeated_prefixes": [],
+    "turns": 2
   },
   "unit": "ms",
-  "updated_at": "2026-05-11T14:03:03.350677+00:00"
+  "updated_at": "2026-05-11T13:16:05.496699+00:00"
 }

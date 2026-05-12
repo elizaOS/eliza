@@ -152,7 +152,7 @@ function removeSelfDependencies() {
     }
     const name = pkg.name;
     if (!name) continue;
-    const indent = raw.match(/^(\s+)"/m)?.[1] || "  ";
+    const _indent = raw.match(/^(\s+)"/m)?.[1] || "  ";
     let changed = false;
     for (const sec of sections) {
       if (!pkg[sec]?.[name]) continue;

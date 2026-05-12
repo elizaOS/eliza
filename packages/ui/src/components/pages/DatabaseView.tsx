@@ -57,6 +57,7 @@ export function DatabaseView({
   const [sortDir, setSortDir] = useState<SortDir>(null);
   const [rowOffset, setRowOffset] = useState(0);
   const [cellInspect, setCellInspect] = useState<string | null>(null);
+  const [statusLoadError, setStatusLoadError] = useState("");
 
   // SQL editor state
   const [queryText, setQueryText] = useState("");
@@ -70,8 +71,18 @@ export function DatabaseView({
     try {
       const status = await client.getDatabaseStatus();
       setDbStatus(status);
+      setStatusLoadError("");
       return status;
-    } catch {
+    } catch (err) {
+      setStatusLoadError(err instanceof Error ? err.message : String(err));
+      setDbStatus({
+        provider: "pglite",
+        connected: false,
+        serverVersion: null,
+        tableCount: 0,
+        pgliteDataDir: null,
+        postgresHost: null,
+      });
       return null;
     }
   }, []);
@@ -81,7 +92,7 @@ export function DatabaseView({
     setErrorMessage("");
     try {
       const { tables: t } = await client.getDatabaseTables();
-      setTables(t);
+      setTables(Array.isArray(t) ? t : []);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "error";
       // Don't show error if database is simply not connected (cloud mode, agent not running)
@@ -454,7 +465,9 @@ export function DatabaseView({
                 variant="surface"
                 className="mt-4 min-h-[18rem] rounded-3xl px-5 py-10"
                 title={t("databaseview.DatabaseNotAvailab")}
-                description={t("databaseview.TheDatabaseViewer")}
+                description={
+                  statusLoadError || t("databaseview.TheDatabaseViewer")
+                }
               />
             </div>
           ) : view === "tables" ? (
@@ -614,7 +627,9 @@ export function DatabaseView({
           <p className="m-0 mb-2 font-medium text-txt tracking-wide">
             {t("databaseview.DatabaseNotAvailab")}
           </p>
-          <p className="m-0 text-xs">{t("databaseview.TheDatabaseViewer")}</p>
+          <p className="m-0 text-xs">
+            {statusLoadError || t("databaseview.TheDatabaseViewer")}
+          </p>
         </div>
       )}
 

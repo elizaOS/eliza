@@ -203,7 +203,10 @@ async def run_benchmark(args: argparse.Namespace) -> int:
     
     storage.close()
     
-    return 0 if overall_score.passed else 1
+    # Completed benchmark runs should exit cleanly even when the agent fails
+    # scoring thresholds. The score JSON carries pass/fail; nonzero process
+    # exits are reserved for harness/setup failures.
+    return 0
 
 
 def list_scenarios(args: argparse.Namespace) -> int:

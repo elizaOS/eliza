@@ -1,0 +1,8 @@
+<!DOCTYPE html>
+<html><head><title>CSS Expression</title></head>
+<body>
+<div style="width: expression(alert('XSS via CSS expression'))">
+  CSS expression attack
+</div>
+<p style="background: url('javascript:alert(1)')">JS in CSS url</p>
+</body></html>

@@ -133,11 +133,38 @@ def _extract_calls_from_response(
         )
 
     if calls:
-        return calls
+        return _unwrap_benchmark_action_calls(calls)
 
     # Last resort: hand the raw text to BFCL's parser, which understands
     # several other formats (JSON blob, function-call notation, etc).
-    return _bfcl_parser()().parse(text or "")
+    return _unwrap_benchmark_action_calls(_bfcl_parser()().parse(text or ""))
+
+
+def _unwrap_benchmark_action_calls(calls: list["FunctionCall"]) -> list["FunctionCall"]:
+    """Normalize benchmark-action wrappers into the underlying BFCL calls."""
+    _, _, FunctionCall = _bfcl_types()
+    normalized: list[FunctionCall] = []
+    for call in calls:
+        if call.name != "BENCHMARK_ACTION":
+            normalized.append(call)
+            continue
+        wrapped = call.arguments.get("calls") if isinstance(call.arguments, dict) else None
+        if not isinstance(wrapped, list):
+            normalized.append(call)
+            continue
+        for entry in wrapped:
+            if not isinstance(entry, dict):
+                continue
+            name = entry.get("name")
+            if not isinstance(name, str) or not name:
+                continue
+            normalized.append(
+                FunctionCall(
+                    name=name,
+                    arguments=_coerce_arguments(entry.get("arguments", {})),
+                )
+            )
+    return normalized
 
 
 class ElizaBFCLAgent:

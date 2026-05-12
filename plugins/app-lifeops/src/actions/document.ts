@@ -1,5 +1,5 @@
 /**
- * `DOC` umbrella action — Docs And Portals domain.
+ * `OWNER_DOCUMENTS` umbrella action — Docs And Portals domain.
  *
  * PRD: `prd-lifeops-executive-assistant.md` §Docs And Portals.
  *
@@ -8,12 +8,12 @@
  * PRD-named actions are exposed as similes on a single umbrella that
  * dispatches on `subaction`:
  *
- *   - `request_signature`  ← `DOC_REQUEST_SIGNATURE`
- *   - `request_approval`   ← `DOC_REQUEST_APPROVAL`
- *   - `track_deadline`     ← `DOC_TRACK_DEADLINE`
- *   - `upload_asset`       ← `DOC_UPLOAD_ASSET`
- *   - `collect_id`         ← `DOC_COLLECT_ID_OR_FORM`
- *   - `close_request`      ← `DOC_CLOSE_REQUEST`
+ *   - `request_signature`  ← `OWNER_DOCUMENTS_REQUEST_SIGNATURE`
+ *   - `request_approval`   ← `OWNER_DOCUMENTS_REQUEST_APPROVAL`
+ *   - `track_deadline`     ← `OWNER_DOCUMENTS_TRACK_DEADLINE`
+ *   - `upload_asset`       ← `OWNER_DOCUMENTS_UPLOAD_ASSET`
+ *   - `collect_id`         ← `OWNER_DOCUMENTS_COLLECT_ID_OR_FORM`
+ *   - `close_request`      ← `OWNER_DOCUMENTS_CLOSE_REQUEST`
  *
  * Each subaction composes existing services (`SCHEDULED_TASK` runner for
  * deadline tracking, `ApprovalQueue` for owner-gated dispatch) rather than
@@ -38,20 +38,20 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
+import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import type {
   ScheduledTaskRunnerHandle,
   ScheduledTaskTrigger,
 } from "../lifeops/scheduled-task/index.js";
-import { createRuntimeScheduledTaskRunner } from "../lifeops/scheduled-task/runtime-wiring.js";
+import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
 import type {
   DocumentRequest,
   DocumentRequestKind,
   DocumentRequestStatus,
 } from "../types/document-request.js";
 
-const ACTION_NAME = "DOC";
+const ACTION_NAME = "OWNER_DOCUMENTS";
 
 const SUBACTIONS = [
   "request_signature",
@@ -65,29 +65,28 @@ const SUBACTIONS = [
 type Subaction = (typeof SUBACTIONS)[number];
 
 const SIMILE_NAMES: readonly string[] = [
-  "DOC_REQUEST_SIGNATURE",
-  "DOC_REQUEST_APPROVAL",
-  "DOC_TRACK_DEADLINE",
-  "DOC_UPLOAD_ASSET",
-  "DOC_COLLECT_ID_OR_FORM",
-  "DOC_CLOSE_REQUEST",
-  "DOCUMENT",
-  "DOCUMENTS",
+  "OWNER_DOCUMENTS_REQUEST_SIGNATURE",
+  "OWNER_DOCUMENTS_REQUEST_APPROVAL",
+  "OWNER_DOCUMENTS_TRACK_DEADLINE",
+  "OWNER_DOCUMENTS_UPLOAD_ASSET",
+  "OWNER_DOCUMENTS_COLLECT_ID_OR_FORM",
+  "OWNER_DOCUMENTS_CLOSE_REQUEST",
   "PAPERWORK",
 ];
 
 /**
- * Map planner-facing simile (e.g. `DOC_REQUEST_SIGNATURE`) to the umbrella
- * subaction the handler dispatches on. The map is checked when the handler
- * is invoked through a simile virtual rather than the `subaction` arg.
+ * Map planner-facing simile (e.g.
+ * `OWNER_DOCUMENTS_REQUEST_SIGNATURE`) to the umbrella subaction the handler
+ * dispatches on. The map is checked when the handler is invoked through a
+ * simile virtual rather than the `subaction` arg.
  */
 const SIMILE_TO_SUBACTION: Readonly<Record<string, Subaction>> = {
-  DOC_REQUEST_SIGNATURE: "request_signature",
-  DOC_REQUEST_APPROVAL: "request_approval",
-  DOC_TRACK_DEADLINE: "track_deadline",
-  DOC_UPLOAD_ASSET: "upload_asset",
-  DOC_COLLECT_ID_OR_FORM: "collect_id",
-  DOC_CLOSE_REQUEST: "close_request",
+  OWNER_DOCUMENTS_REQUEST_SIGNATURE: "request_signature",
+  OWNER_DOCUMENTS_REQUEST_APPROVAL: "request_approval",
+  OWNER_DOCUMENTS_TRACK_DEADLINE: "track_deadline",
+  OWNER_DOCUMENTS_UPLOAD_ASSET: "upload_asset",
+  OWNER_DOCUMENTS_COLLECT_ID_OR_FORM: "collect_id",
+  OWNER_DOCUMENTS_CLOSE_REQUEST: "close_request",
 };
 
 interface DocActionParameters {
@@ -201,7 +200,10 @@ function missing(name: string, subaction: Subaction): ActionResult {
   };
 }
 
-function notFound(documentRequestId: string, subaction: Subaction): ActionResult {
+function notFound(
+  documentRequestId: string,
+  subaction: Subaction,
+): ActionResult {
   return {
     success: false,
     text: `No DocumentRequest found with id ${documentRequestId}.`,
@@ -246,7 +248,7 @@ interface RunnerScope {
 
 function makeScope(runtime: IAgentRuntime, message: Memory): RunnerScope {
   const agentId = String(runtime.agentId);
-  const runner = createRuntimeScheduledTaskRunner({ runtime, agentId });
+  const runner = getScheduledTaskRunner(runtime, { agentId });
   const subjectUserId =
     typeof message.entityId === "string" && message.entityId.length > 0
       ? message.entityId
@@ -325,7 +327,9 @@ async function handleRequestSignature(
     },
     channel: "internal",
     reason: `Request signature from ${requesteeEntityId} on "${doc.title}" by ${deadline}`,
-    expiresAt: new Date(Date.parse(deadline) || Date.now() + 24 * 60 * 60 * 1000),
+    expiresAt: new Date(
+      Date.parse(deadline) || Date.now() + 24 * 60 * 60 * 1000,
+    ),
   });
 
   // Schedule the deadline watcher up front so a SCHEDULED_TASK exists even
@@ -341,7 +345,7 @@ async function handleRequestSignature(
   });
 
   logger.info(
-    `[DOC] request_signature id=${saved.id} requestee=${requesteeEntityId} deadline=${deadline} approval=${approvalRequest.id}`,
+    `[OWNER_DOCUMENTS] request_signature id=${saved.id} requestee=${requesteeEntityId} deadline=${deadline} approval=${approvalRequest.id}`,
   );
 
   return {
@@ -389,7 +393,7 @@ async function handleRequestApproval(
   });
 
   logger.info(
-    `[DOC] request_approval id=${saved.id} title="${documentTitle}" reason=${params.approvalReason ?? "(none)"}`,
+    `[OWNER_DOCUMENTS] request_approval id=${saved.id} title="${documentTitle}" reason=${params.approvalReason ?? "(none)"}`,
   );
 
   return {
@@ -431,7 +435,7 @@ async function handleTrackDeadline(
   if (!next) return notFound(documentRequestId, subaction);
 
   logger.info(
-    `[DOC] track_deadline id=${next.id} deadline=${deadline} task=${scheduledTaskId ?? "(none)"}`,
+    `[OWNER_DOCUMENTS] track_deadline id=${next.id} deadline=${deadline} task=${scheduledTaskId ?? "(none)"}`,
   );
 
   return {
@@ -514,7 +518,7 @@ async function handleUploadAsset(
   // approval flips to `approved`. For now the approval queue entry is the
   // executable contract the Wave-2 scenarios assert against.
   logger.info(
-    `[DOC] upload_asset id=${saved.id} portal=${portalUrl} asset=${assetKind} approval=${approvalRequest.id}`,
+    `[OWNER_DOCUMENTS] upload_asset id=${saved.id} portal=${portalUrl} asset=${assetKind} approval=${approvalRequest.id}`,
   );
 
   return {
@@ -547,7 +551,8 @@ async function handleCollectId(
     kind: "collect_id",
     requesteeEntityId,
     title:
-      params.documentTitle?.trim() ?? `Collect ${assetKind} from ${requesteeEntityId}`,
+      params.documentTitle?.trim() ??
+      `Collect ${assetKind} from ${requesteeEntityId}`,
     assetKind,
     status: "pending",
     createdAt: now,
@@ -565,7 +570,7 @@ async function handleCollectId(
   });
 
   logger.info(
-    `[DOC] collect_id id=${saved.id} requestee=${requesteeEntityId} kind=${assetKind}`,
+    `[OWNER_DOCUMENTS] collect_id id=${saved.id} requestee=${requesteeEntityId} kind=${assetKind}`,
   );
 
   return {
@@ -615,13 +620,13 @@ async function handleCloseRequest(
       });
     } catch (error) {
       logger.warn(
-        `[DOC] close_request failed to dismiss task ${patched.scheduledTaskId}: ${error instanceof Error ? error.message : String(error)}`,
+        `[OWNER_DOCUMENTS] close_request failed to dismiss task ${patched.scheduledTaskId}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
 
   logger.info(
-    `[DOC] close_request id=${patched.id} resolution=${resolution}`,
+    `[OWNER_DOCUMENTS] close_request id=${patched.id} resolution=${resolution}`,
   );
 
   return {
@@ -655,7 +660,9 @@ const examples: ActionExample[][] = [
   [
     {
       name: "{{name1}}",
-      content: { text: "Upload the deck to the Solana Breakpoint speaker portal." },
+      content: {
+        text: "Upload the deck to the Solana Breakpoint speaker portal.",
+      },
     },
     {
       name: "{{agentName}}",
@@ -680,7 +687,9 @@ const examples: ActionExample[][] = [
   ],
 ];
 
-export const docAction: Action & { suppressPostActionContinuation?: boolean } = {
+export const ownerDocumentsAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
   name: ACTION_NAME,
   similes: SIMILE_NAMES.slice(),
   tags: [
@@ -696,16 +705,16 @@ export const docAction: Action & { suppressPostActionContinuation?: boolean } = 
   descriptionCompressed:
     "docs: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request; deadline-aware; owner-gated for signature+upload",
   routingHint:
-    'document signature/approval/upload/portal/ID-form intent ("get this signed", "send for approval", "upload deck to portal", "track NDA deadline", "close out the doc request") -> DOC; approval queue resolution stays on RESOLVE_REQUEST',
+    'owner document signature/approval/upload/portal/ID-form intent ("get this signed", "send for approval", "upload deck to portal", "track NDA deadline", "close out the doc request") -> OWNER_DOCUMENTS; approval queue resolution stays on RESOLVE_REQUEST',
   contexts: ["docs", "tasks", "calendar", "contacts"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description:
-        "Which document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+        "Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
@@ -738,7 +747,8 @@ export const docAction: Action & { suppressPostActionContinuation?: boolean } = 
     },
     {
       name: "assetPath",
-      description: "Local path or URL of the asset to upload. Required for upload_asset.",
+      description:
+        "Local path or URL of the asset to upload. Required for upload_asset.",
       schema: { type: "string" as const },
     },
     {

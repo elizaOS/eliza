@@ -1,4 +1,4 @@
-// @ts-nocheck — Mixin pattern: see service.ts for the composed public type.
+import type { FeatureResult } from "@elizaos/shared";
 import type {
   CreateLifeOpsCalendarEventAttendee,
   CreateLifeOpsCalendarEventRequest,
@@ -6,8 +6,10 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
   LifeOpsCalendarSummary,
+  LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
+  LifeOpsGoogleConnectorStatus,
   LifeOpsNextCalendarEventContext,
   ListLifeOpsCalendarsRequest,
 } from "../contracts/index.js";
@@ -135,6 +137,27 @@ type AggregatedCalendarFeedSource = {
   feed: LifeOpsCalendarFeed;
 };
 
+type CalendarMixinDependencies = LifeOpsServiceBase & {
+  getGoogleConnectorAccounts(
+    requestUrl: URL,
+    requestedSide?: LifeOpsConnectorSide,
+  ): Promise<LifeOpsGoogleConnectorStatus[]>;
+  requireGoogleCalendarGrant(
+    requestUrl: URL,
+    requestedMode?: LifeOpsConnectorMode,
+    requestedSide?: LifeOpsConnectorSide,
+    grantId?: string,
+  ): Promise<LifeOpsConnectorGrant>;
+  requireGoogleCalendarWriteGrant(
+    requestUrl: URL,
+    requestedMode?: LifeOpsConnectorMode,
+    requestedSide?: LifeOpsConnectorSide,
+    grantId?: string,
+  ): Promise<LifeOpsConnectorGrant>;
+};
+
+type AppleCalendarFailure = Extract<FeatureResult<unknown>, { ok: false }>;
+
 export function mergeAggregatedCalendarFeedEvents(
   sources: readonly AggregatedCalendarFeedSource[],
 ): LifeOpsCalendarEvent[] {
@@ -158,7 +181,25 @@ export function mergeAggregatedCalendarFeedEvents(
   );
 }
 
-function failAppleCalendarResult(result, operation) {
+function hasGoogleConnectorGrant(
+  status: LifeOpsGoogleConnectorStatus,
+): status is LifeOpsGoogleConnectorStatus & { grant: LifeOpsConnectorGrant } {
+  return status.grant !== null;
+}
+
+function isAppleCalendarFailure(
+  result: FeatureResult<unknown>,
+): result is AppleCalendarFailure {
+  return result.ok === false;
+}
+
+function failAppleCalendarResult(
+  result: FeatureResult<unknown>,
+  operation: string,
+): never {
+  if (!isAppleCalendarFailure(result)) {
+    fail(500, `Apple Calendar ${operation} unexpectedly succeeded.`);
+  }
   if (result.reason === "permission") {
     fail(
       403,
@@ -183,7 +224,9 @@ function failAppleCalendarResult(result, operation) {
   }
   fail(
     502,
-    result.message || `Apple Calendar ${operation} failed through EventKit.`,
+    result.reason === "native_error" && result.message
+      ? result.message
+      : `Apple Calendar ${operation} failed through EventKit.`,
   );
 }
 
@@ -227,7 +270,10 @@ function shouldIncludeAppleCalendar(request: {
 export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsCalendarService> {
-  return class extends Base {
+  const CalendarBase =
+    Base as unknown as Constructor<CalendarMixinDependencies>;
+
+  return class extends CalendarBase {
     public async listCalendars(
       requestUrl: URL,
       request?: ListLifeOpsCalendarsRequest,
@@ -236,8 +282,8 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
       const side = normalizeOptionalConnectorSide(request?.side, "side");
       const statuses = await this.getGoogleConnectorAccounts(requestUrl, side);
       const grants = statuses
+        .filter(hasGoogleConnectorGrant)
         .map((status) => status.grant)
-        .filter(Boolean)
         .filter((grant) =>
           request?.grantId ? grant.id === request.grantId : true,
         )
@@ -461,7 +507,6 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
           agentId: this.agentId(),
           provider: "google",
           side: grant.side,
-          grantId: grant.id,
           calendarId: args.calendarId,
           windowStartAt: args.timeMin,
           windowEndAt: args.timeMax,
@@ -538,7 +583,6 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
           agentId: this.agentId(),
           provider: APPLE_CALENDAR_PROVIDER,
           side: "owner",
-          grantId: APPLE_CALENDAR_GRANT_ID,
           calendarId: args.calendarId,
           windowStartAt: args.timeMin,
           windowEndAt: args.timeMax,
@@ -746,8 +790,10 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
       const mode = normalizeOptionalConnectorMode(request.mode, "mode");
       const side = normalizeOptionalConnectorSide(request.side, "side");
       const calendarId = normalizeCalendarId(request.calendarId);
-      const timeZone = normalizeCalendarTimeZone(request.timeZone);
-      const { startAt, endAt } = resolveCalendarEventRange(request, now, timeZone);
+      const { startAt, endAt, timeZone } = resolveCalendarEventRange(
+        request,
+        now,
+      );
       if (isAppleCalendarGrant(request.grantId)) {
         const nativeEvent = await createNativeAppleCalendarEvent({
           agentId: this.agentId(),
@@ -775,7 +821,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         return nativeEvent.data;
       }
 
-      let grant;
+      let grant: LifeOpsConnectorGrant;
       try {
         grant = await this.requireGoogleCalendarWriteGrant(
           requestUrl,
@@ -905,7 +951,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         return nativeEvent.data;
       }
 
-      let grant;
+      let grant: LifeOpsConnectorGrant;
       try {
         grant = await this.requireGoogleCalendarWriteGrant(
           requestUrl,
@@ -1022,7 +1068,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         return;
       }
 
-      let grant;
+      let grant: LifeOpsConnectorGrant;
       try {
         grant = await this.requireGoogleCalendarWriteGrant(
           requestUrl,
@@ -1116,5 +1162,5 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         null;
       return buildNextCalendarEventContext(nextEvent, now);
     }
-  } as MixinClass<TBase, LifeOpsCalendarService>;
+  } as unknown as MixinClass<TBase, LifeOpsCalendarService>;
 }

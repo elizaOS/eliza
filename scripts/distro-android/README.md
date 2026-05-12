@@ -91,6 +91,7 @@ to the corresponding role intents.
 | `build-aosp.mjs`          | Top-level orchestrator: libllama → APK → sync → validate → m → cvd start → boot-validate |
 | `sync-to-aosp.mjs`        | Copy `<vendorDir>` to `<aospRoot>/vendor/<brand>` |
 | `validate.mjs`            | Static validation of vendor tree + APK (xmllint, aapt) |
+| `validate-ota-metadata.mjs` | Static validation of an AOSP OTA release JSON index; no AOSP checkout required |
 | `boot-validate.mjs`       | adb checks against a booted device (roles, intents, package flags, logcat) |
 | `lint-init-rc.mjs`        | Brand-agnostic Android init.rc syntax checker |
 | `compile-libllama.mjs`    | Cross-compile musl-linked libllama.so per ABI for the bundled bun runtime |
@@ -135,3 +136,27 @@ node eliza/scripts/distro-android/build-aosp.mjs \
   --launch \
   --boot-validate
 ```
+
+## OTA release metadata
+
+AOSP/ElizaOS updates are owned by the signed OTA/system-image channel, not by
+the normal APK update UI. Release jobs should publish a JSON index beside the
+signed full OTA, optional signed incremental OTA, payload properties, checksums,
+and release notes. GitHub Releases can host those files when devices verify the
+payload signatures before install.
+
+Run the metadata validator before publishing:
+
+```bash
+node scripts/distro-android/validate-ota-metadata.mjs \
+  --brand-config scripts/distro-android/brand.eliza.json \
+  out/elizaos-ota-release.json
+```
+
+Required top-level fields are `schemaVersion: 1`, `brand`, `distroName`,
+`packageName`, `channel`, `releaseVersion`, `buildId`, `buildFingerprint`,
+`androidVersion`, `securityPatchLevel`, `releaseNotesUrl`, and `payloads`.
+Each payload records `type`, `fileName`, HTTPS `url`, `sha256`, `sizeBytes`,
+`targetBuildFingerprint`, `rollbackIndex`, and `rollbackIndexLocation`.
+Incremental payloads also require `sourceBuildFingerprint`. The optional
+`--allow-file-urls` flag is for local dry-runs only.

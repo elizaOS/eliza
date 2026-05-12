@@ -60,9 +60,152 @@ export interface OmniVoiceBackend {
   }): Promise<AudioChunk>;
 }
 
+/**
+ * One PCM segment delivered by a streaming OmniVoice runtime. This is the
+ * scheduler-facing TypeScript contract for the future native streaming ABI:
+ * the current v1/batch ABI remains valid, and backends that implement this
+ * seam can additionally surface first-audio before a full phrase finishes.
+ */
+export interface TtsPcmChunk {
+  pcm: Float32Array;
+  sampleRate: number;
+  isFinal: boolean;
+}
+
+export interface StreamingTtsBackend {
+  synthesizeStream(args: {
+    phrase: Phrase;
+    preset: SpeakerPreset;
+    cancelSignal: { cancelled: boolean };
+    onChunk: (chunk: TtsPcmChunk) => boolean | undefined;
+    onKernelTick?: () => void;
+  }): Promise<{ cancelled: boolean }>;
+}
+
+/** Opaque native handle for a streaming ASR session in the v2 ABI shape. */
+export type StreamingAsrHandle = bigint;
+
+/**
+ * TS-only v2 streaming ABI contract. Implementations can satisfy this beside
+ * the existing synchronous v1 methods; callers should test the support flags
+ * rather than probe-and-catch. Native bindings may carry context handles on
+ * top of this shape; the scheduler-facing stream semantics stay the same.
+ */
+export interface VoiceStreamingAbiV2 {
+  ttsStreamSupported(): boolean;
+  ttsSynthesizeStream(args: {
+    text: string;
+    speakerPresetId: string | null;
+    onChunk: (chunk: {
+      pcm: Float32Array;
+      isFinal: boolean;
+    }) => boolean | undefined;
+  }): { cancelled: boolean };
+  cancelTts(): void;
+  asrStreamSupported(): boolean;
+  asrStreamOpen(args: { sampleRateHz: number }): StreamingAsrHandle;
+  asrStreamFeed(args: { stream: StreamingAsrHandle; pcm: Float32Array }): void;
+  asrStreamPartial(args: {
+    stream: StreamingAsrHandle;
+    maxTextBytes?: number;
+    maxTokens?: number;
+  }): { partial: string; tokens?: number[] };
+  asrStreamFinish(args: {
+    stream: StreamingAsrHandle;
+    maxTextBytes?: number;
+    maxTokens?: number;
+  }): { partial: string; tokens?: number[] };
+  asrStreamClose(stream: StreamingAsrHandle): void;
+}
+
 export interface TranscriptionAudio {
   pcm: Float32Array;
   sampleRate: number;
+}
+
+export type VoiceInputKind =
+  | "local_mic"
+  | "discord"
+  | "telegram"
+  | "signal"
+  | "whatsapp"
+  | "phone"
+  | "browser"
+  | "file"
+  | "unknown";
+
+/**
+ * Where speech audio entered the voice loop. Keep this structural so local
+ * mic, Discord, phone, and future connector captures can share the same
+ * turn-taking and attribution path without branching on prompt text.
+ */
+export interface VoiceInputSource {
+  kind: VoiceInputKind;
+  /** Connector account, device, guild/channel, call, or upload id. */
+  sourceId?: string;
+  roomId?: string;
+  conversationId?: string;
+  messageId?: string;
+  deviceId?: string;
+  connectorAccountId?: string;
+  channelId?: string;
+  guildId?: string;
+  callId?: string;
+  participantId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Speaker attribution for diarized speech. `imprintClusterId` is evidence,
+ * not identity: callers that want to attach this to a LifeOps person must
+ * submit a normal `EntityStore.observeIdentity` observation with this
+ * cluster/observation id in its evidence list. Do not use voice imprints as
+ * a parallel identity graph or as authorization for voice synthesis.
+ */
+export interface VoiceSpeaker {
+  id: string;
+  label?: string;
+  displayName?: string;
+  source?: VoiceInputSource;
+  imprintClusterId?: string;
+  imprintObservationId?: string;
+  entityId?: string;
+  confidence?: number;
+  isLocalUser?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+/** One diarized span within a transcript snapshot or finalized voice turn. */
+export interface VoiceSegment {
+  id?: string;
+  text: string;
+  startMs: number;
+  endMs: number;
+  speaker?: VoiceSpeaker;
+  speakerId?: string;
+  source?: VoiceInputSource;
+  confidence?: number;
+  tokens?: number[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface VoiceDiarizationMetadata {
+  provider: "local" | "connector" | "cloud" | "unknown";
+  model?: string;
+  version?: string;
+  confidence?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface VoiceTurnMetadata {
+  turnId?: string;
+  source?: VoiceInputSource;
+  primarySpeaker?: VoiceSpeaker;
+  segments?: VoiceSegment[];
+  startedAtMs?: number;
+  endedAtMs?: number;
+  diarization?: VoiceDiarizationMetadata;
+  metadata?: Record<string, unknown>;
 }
 
 /* -------------------------------------------------------------------- *
@@ -70,18 +213,16 @@ export interface TranscriptionAudio {
  *
  * Owned jointly by the transcriber adapters (`voice/transcriber.ts`), the
  * VAD gating + barge-in word-confirm (`voice/vad.ts`, `voice/barge-in.ts`),
- * and the turn controller / speculative-on-pause path. The
- * `StreamingTranscriber` below is the meeting-point contract; the two
- * adapters (fused Qwen3-ASR via libelizainference, interim whisper.cpp)
- * implement it in `voice/transcriber.ts`. It consumes the canonical
- * `PcmFrame` (defined below in the audio front-end section) off a
- * `MicSource` and is gated by the `VadEvent` stream.
- *
- * NOTE on the older `pipeline.ts::AsrTokenStreamer`: that one models a
- * *batch-buffer → token iterator* (the overlapped `VoicePipeline` scaffold).
- * This one models a *live PCM-frame feed → partial-transcript events*. They
- * are different layers; `pipeline-impls.ts` adapts a `StreamingTranscriber`
- * onto `AsrTokenStreamer` for the pipeline.
+ * the turn controller / speculative-on-pause path, and the overlapped
+ * `VoicePipeline` (`voice/pipeline.ts`). The `StreamingTranscriber` below
+ * is the single ASR contract; the two adapters (fused Qwen3-ASR via
+ * libelizainference, interim whisper.cpp) implement it in
+ * `voice/transcriber.ts`. It consumes the canonical `PcmFrame` (defined
+ * below in the audio front-end section) off a `MicSource` and is gated by
+ * the `VadEvent` stream. The `VoicePipeline` drives the same contract as a
+ * batch (feed the whole utterance buffer, `flush()`, split the final
+ * transcript into contiguous text tokens) — there is no separate batch ASR
+ * interface.
  * -------------------------------------------------------------------- */
 
 /** A running or final transcript snapshot from a `StreamingTranscriber`. */
@@ -90,6 +231,14 @@ export interface TranscriptUpdate {
   partial: string;
   /** True for the snapshot emitted by `flush()` / on `speech-end`. */
   isFinal: boolean;
+  /** Channel/device/call metadata for attribution and storage. */
+  source?: VoiceInputSource;
+  /** Best speaker attribution for single-speaker snapshots. */
+  speaker?: VoiceSpeaker;
+  /** Diarized spans for multi-speaker snapshots, when available. */
+  segments?: VoiceSegment[];
+  /** Turn-level metadata carried through to generation and storage. */
+  turn?: VoiceTurnMetadata;
   /**
    * Text-model token ids for `partial`, when the backend can supply them
    * cheaply (fused Qwen3-ASR shares the text vocabulary). Absent for the
@@ -144,18 +293,18 @@ export interface StreamingTranscriber {
 export interface PhraseChunkerConfig {
   /**
    * Hard word cap before a phrase is force-flushed even without a
-   * `, . ! ?` boundary. Defaults to 30 (the brief's A6 "first 30 words").
+   * `, . ! ? ; :` boundary. Defaults to 30 (the brief's A6 "first 30 words").
    */
   maxTokensPerPhrase?: number;
   /**
-   * Characters that close a phrase. Default `, . ! ?` — a comma is a
-   * boundary so the first clause reaches TTS without waiting for a
+   * Characters that close a phrase. Default `, . ! ? ; :` — punctuation
+   * boundaries let the first clause reach TTS without waiting for a
    * sentence-final mark.
    */
   sentenceTerminators?: ReadonlySet<string>;
   /**
    * Where the chunker emits a phrase boundary.
-   *   'punctuation'    — default. Wait for `, . ! ?` or the max-token cap.
+   *   'punctuation'    — default. Wait for `, . ! ? ; :` or the max-token cap.
    *   'phoneme-stream' — additionally emit a sub-phrase chunk every
    *                      `phonemesPerChunk` phonemes. Cuts first-audio
    *                      latency by handing partial phrases to TTS at
@@ -169,6 +318,16 @@ export interface PhraseChunkerConfig {
 export interface VerifierStreamEvent {
   kind: "accept" | "reject";
   tokens: TextToken[];
+  /**
+   * Optional per-event metadata. Today only the very first `accept` of a
+   * streaming completion carries `firstTokenMs` (L5 — time from the fetch
+   * being issued to the first SSE chunk arriving). Other consumers MAY
+   * ignore this field; producers MUST omit it on non-first events.
+   */
+  meta?: {
+    /** Milliseconds from request issue (`performance.now()`) to first chunk. */
+    firstTokenMs?: number;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -333,3 +492,85 @@ export interface SchedulerConfig {
    */
   maxInFlightPhrases?: number;
 }
+
+export interface VoiceSchedulerPhraseTelemetry {
+  id: number;
+  text: string;
+  fromIndex: number;
+  toIndex: number;
+  terminator: Phrase["terminator"];
+  tokenCount: number;
+  textBytes: number;
+}
+
+export type VoiceAudioSource = "cache" | "synthesis";
+
+export type VoiceTtsCancelReason =
+  | "barge-in"
+  | "rollback"
+  | "pending-tts"
+  | "synthesis-cancelled";
+
+export type VoiceSchedulerTelemetryEvent =
+  | {
+      type: "phrase-dispatch";
+      atMs: number;
+      phrase: VoiceSchedulerPhraseTelemetry;
+      inFlightPhrases: number;
+    }
+  | {
+      type: "phrase-cache-hit" | "phrase-cache-miss";
+      atMs: number;
+      phrase: VoiceSchedulerPhraseTelemetry;
+    }
+  | {
+      type: "tts-start";
+      atMs: number;
+      phrase: VoiceSchedulerPhraseTelemetry;
+      inFlightPhrases: number;
+    }
+  | {
+      type: "tts-first-audio";
+      atMs: number;
+      phrase: VoiceSchedulerPhraseTelemetry;
+      source: VoiceAudioSource;
+      samples: number;
+      sampleRate: number;
+    }
+  | {
+      type: "audio-committed";
+      atMs: number;
+      phrase: VoiceSchedulerPhraseTelemetry;
+      source: VoiceAudioSource;
+      samples: number;
+      sampleRate: number;
+      flushedSamples: number;
+      paused: boolean;
+      ringBufferSamples: number;
+      sinkBufferedSamples: number;
+    }
+  | {
+      type: "tts-cancel";
+      atMs: number;
+      phrase: VoiceSchedulerPhraseTelemetry;
+      reason: VoiceTtsCancelReason;
+    }
+  | {
+      type: "rollback";
+      atMs: number;
+      phraseId: number;
+      range: RejectedTokenRange;
+      reason: "rejected-tokens";
+    }
+  | {
+      type: "barge-in";
+      atMs: number;
+      ringBufferSamplesDrained: number;
+      sinkBufferedSamplesDrained: number;
+      inFlightPhrasesCancelled: number;
+      wasPaused: boolean;
+    };
+
+export type VoiceSchedulerTelemetryListener = (
+  event: VoiceSchedulerTelemetryEvent,
+) => void;

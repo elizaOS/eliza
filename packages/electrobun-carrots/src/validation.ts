@@ -21,6 +21,12 @@ export type CarrotManifestValidationResult =
   | { ok: true; manifest: CarrotManifest }
   | { ok: false; issues: CarrotManifestValidationIssue[] };
 
+const CARROT_ID_PATTERN = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/;
+
+export function isValidCarrotId(value: string): boolean {
+  return CARROT_ID_PATTERN.test(value);
+}
+
 function isJsonObject(value: JsonValue | undefined): value is JsonObject {
   return (
     value !== undefined &&
@@ -282,6 +288,13 @@ export function validateCarrotManifest(
   if (!object) return { ok: false, issues };
 
   const id = stringAt(object, "id", "$", issues);
+  if (id && !isValidCarrotId(id)) {
+    issues.push({
+      path: "$.id",
+      message:
+        "Expected carrot id segments containing only letters, numbers, underscores, hyphens, or dots.",
+    });
+  }
   const name = stringAt(object, "name", "$", issues);
   const version = stringAt(object, "version", "$", issues);
   const description = stringAt(object, "description", "$", issues);

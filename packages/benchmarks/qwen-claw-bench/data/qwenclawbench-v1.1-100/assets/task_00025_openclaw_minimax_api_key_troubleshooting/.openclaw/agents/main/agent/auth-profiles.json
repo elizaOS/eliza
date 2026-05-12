@@ -1,0 +1,42 @@
+{
+  "profiles": {
+    "alibaba-cloud:default": {
+      "type": "api_key",
+      "provider": "alibaba-cloud",
+      "key": "sk-REDACTED_ALIBABA_CLOUD_KEY"
+    },
+    "openai:default": {
+      "type": "api_key",
+      "provider": "openai",
+      "key": "sk-proj-REDACTED_OPENAI_KEY"
+    },
+    "anthropic:default": {
+      "type": "api_key",
+      "provider": "anthropic",
+      "key": "sk-ant-api03-REDACTED_ANTHROPIC_KEY"
+    },
+    "minimax:default": {
+      "type": "api_key",
+      "provider": "minimax",
+      "key": ""
+    }
+  },
+  "usageStats": {
+    "alibaba-cloud:default": {
+      "lastUsed": 1739174400000,
+      "errorCount": 0
+    },
+    "openai:default": {
+      "lastUsed": 1739088000000,
+      "errorCount": 0
+    },
+    "anthropic:default": {
+      "lastUsed": 1739001600000,
+      "errorCount": 0
+    },
+    "minimax:default": {
+      "lastUsed": 1739265000000,
+      "errorCount": 47
+    }
+  }
+}

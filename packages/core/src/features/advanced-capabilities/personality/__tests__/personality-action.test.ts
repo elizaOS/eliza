@@ -1,10 +1,7 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import type { ActionResult, HandlerOptions } from "../../../../types/index.ts";
 import { personalityAction } from "../actions/personality.ts";
-import {
-	GLOBAL_PERSONALITY_SCOPE,
-	PERSONALITY_AUDIT_TABLE,
-} from "../types.ts";
+import { GLOBAL_PERSONALITY_SCOPE, PERSONALITY_AUDIT_TABLE } from "../types.ts";
 import {
 	captureCallback,
 	initStore,
@@ -157,9 +154,14 @@ describe("personalityAction — subactions write structured state", () => {
 			scope: "user",
 			directive: "no emojis",
 		});
-		const { result } = await run(fake, "clear preferences", "clear_directives", {
-			scope: "user",
-		});
+		const { result } = await run(
+			fake,
+			"clear preferences",
+			"clear_directives",
+			{
+				scope: "user",
+			},
+		);
 		expect(result.success).toBe(true);
 		const slot = fake.store.getSlot(
 			"00000000-0000-4000-8000-0000000000ff" as never,

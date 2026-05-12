@@ -36,6 +36,58 @@ LIFEOPS_TOOL_SYSTEM_PROMPT = (
 )
 
 
+def _json_arguments(raw_args: Any) -> str:
+    """Return canonical JSON-object arguments for OpenAI tool_call history."""
+    if isinstance(raw_args, str):
+        if not raw_args:
+            return "{}"
+        try:
+            parsed = json.loads(raw_args)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"tool_call arguments were not valid JSON: {raw_args!r}") from exc
+        if not isinstance(parsed, dict):
+            raise ValueError(
+                f"tool_call arguments JSON must decode to an object, got {type(parsed).__name__}"
+            )
+        return json.dumps(parsed, sort_keys=True)
+    if isinstance(raw_args, dict):
+        return json.dumps(raw_args, sort_keys=True)
+    if raw_args is None:
+        return "{}"
+    raise ValueError(f"tool_call arguments must be str or dict, got {type(raw_args).__name__}")
+
+
+def _normalize_tool_calls_for_openai(
+    tool_calls: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Normalize nested or flat tool calls into OpenAI chat-completions shape."""
+    normalized: list[dict[str, Any]] = []
+    for index, call in enumerate(tool_calls):
+        if not isinstance(call, dict):
+            continue
+        function = call.get("function")
+        if isinstance(function, dict):
+            name = function.get("name")
+            raw_args = function.get("arguments", {})
+        else:
+            name = call.get("name")
+            raw_args = call.get("arguments", call.get("kwargs", {}))
+        if not isinstance(name, str) or not name:
+            raise ValueError(f"tool_call {index} missing function name")
+        call_id = call.get("id")
+        normalized.append(
+            {
+                "id": str(call_id) if call_id else f"call_{index}",
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "arguments": _json_arguments(raw_args),
+                },
+            }
+        )
+    return normalized
+
+
 def message_turns_to_openai(history: list[MessageTurn]) -> list[dict[str, Any]]:
     """Convert the runner's ``MessageTurn`` history to OpenAI-format messages.
 
@@ -47,7 +99,11 @@ def message_turns_to_openai(history: list[MessageTurn]) -> list[dict[str, Any]]:
     for turn in history:
         msg: dict[str, Any] = {"role": turn.role, "content": turn.content or ""}
         if turn.role == "assistant" and turn.tool_calls:
-            msg["tool_calls"] = list(turn.tool_calls)
+            msg["tool_calls"] = _normalize_tool_calls_for_openai(turn.tool_calls)
+            if not msg["content"]:
+                # OpenAI-compatible servers reject an empty string alongside
+                # assistant tool_calls; the protocol expects null content.
+                msg["content"] = None
         if turn.role == "tool":
             if turn.tool_call_id is not None:
                 msg["tool_call_id"] = turn.tool_call_id
@@ -65,9 +121,10 @@ def client_response_to_message_turn(response: ClientResponse) -> MessageTurn:
     they round-trip cleanly through ``runner._extract_actions_from_turn``
     and ``runner._extract_tool_call_id``.
 
-    Per-turn cost / latency / token telemetry is attached as extra attrs on
-    the dataclass instance — the runner reads them via ``getattr`` with a
-    default of 0.
+    Per-turn cost / latency / token telemetry lands on the ``MessageTurn``
+    dataclass fields directly. ``cost_usd`` stays :data:`None` when the
+    provider couldn't price the call (unknown model) — per AGENTS.md Cmd
+    #8, no silent ``0.0`` fallback.
     """
     tool_calls: list[dict[str, Any]] = []
     for tc in response.tool_calls:
@@ -81,17 +138,21 @@ def client_response_to_message_turn(response: ClientResponse) -> MessageTurn:
                 },
             }
         )
+    cost = (
+        float(response.cost_usd) if response.cost_usd is not None else None
+    )
     turn = MessageTurn(
         role="assistant",
         content=response.content or "",
         tool_calls=tool_calls if tool_calls else None,
+        cost_usd=cost,
+        latency_ms=float(response.latency_ms),
+        input_tokens=int(response.usage.prompt_tokens),
+        output_tokens=int(response.usage.completion_tokens),
     )
-    # Telemetry the runner reads via getattr. Setting extra attrs on a
-    # non-frozen dataclass is allowed; the runner expects these names.
-    turn.cost_usd = float(response.cost_usd)  # type: ignore[attr-defined]
-    turn.latency_ms = int(response.latency_ms)  # type: ignore[attr-defined]
-    turn.input_tokens = int(response.usage.prompt_tokens)  # type: ignore[attr-defined]
-    turn.output_tokens = int(response.usage.completion_tokens)  # type: ignore[attr-defined]
+    setattr(turn, "cache_read_input_tokens", response.usage.cache_read_input_tokens)
+    setattr(turn, "cache_creation_input_tokens", response.usage.cache_creation_input_tokens)
+    setattr(turn, "cache_supported", True)
     return turn
 
 
@@ -111,12 +172,14 @@ class OpenAICompatAgent:
         temperature: float = 0.0,
         reasoning_effort: str = "low",
         max_tokens: int | None = None,
+        system_prompt: str | None = None,
     ) -> None:
         self._client_factory = client_factory
         self._client: BaseClient | None = None
         self._temperature = temperature
         self._reasoning_effort = reasoning_effort
         self._max_tokens = max_tokens
+        self._system_prompt = system_prompt or LIFEOPS_TOOL_SYSTEM_PROMPT
         self.total_cost_usd: float = 0.0
         self.total_input_tokens: int = 0
         self.total_output_tokens: int = 0
@@ -135,7 +198,7 @@ class OpenAICompatAgent:
     ) -> MessageTurn:
         messages = message_turns_to_openai(history)
         if tools and not any(msg.get("role") == "system" for msg in messages):
-            messages.insert(0, {"role": "system", "content": LIFEOPS_TOOL_SYSTEM_PROMPT})
+            messages.insert(0, {"role": "system", "content": self._system_prompt})
         call = ClientCall(
             messages=messages,
             tools=list(tools) if tools else None,
@@ -147,7 +210,11 @@ class OpenAICompatAgent:
         # has its own per-scenario error handling and needs to see the
         # actual failure.
         response = await self.client.complete(call)
-        self.total_cost_usd += float(response.cost_usd)
+        if response.cost_usd is not None:
+            # Unpriced calls (model not in pricing table) skip the
+            # accumulator so it tracks only billable spend — not a silent
+            # ``+0`` that would conflate "free" with "unpriced".
+            self.total_cost_usd += float(response.cost_usd)
         self.total_input_tokens += int(response.usage.prompt_tokens)
         self.total_output_tokens += int(response.usage.completion_tokens)
         return client_response_to_message_turn(response)

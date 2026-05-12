@@ -1,5 +1,9 @@
 import * as path from "node:path";
-import { type IAgentRuntime, Service, logger as coreLogger } from "@elizaos/core";
+import {
+  logger as coreLogger,
+  type IAgentRuntime,
+  Service,
+} from "@elizaos/core";
 import { CODING_TOOLS_LOG_PREFIX, SESSION_CWD_SERVICE } from "../types.js";
 
 /**
@@ -18,7 +22,8 @@ import { CODING_TOOLS_LOG_PREFIX, SESSION_CWD_SERVICE } from "../types.js";
  */
 export class SessionCwdService extends Service {
   static serviceType = SESSION_CWD_SERVICE;
-  capabilityDescription = "Per-conversation working directory for coding tools.";
+  capabilityDescription =
+    "Per-conversation working directory for coding tools.";
 
   private cwdByConversation = new Map<string, string>();
   private frames = new Map<

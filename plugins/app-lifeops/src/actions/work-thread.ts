@@ -7,7 +7,7 @@ import type {
 } from "@elizaos/core";
 import { Semaphore } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
-import { createRuntimeScheduledTaskRunner } from "../lifeops/scheduled-task/runtime-wiring.js";
+import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
 import type { ScheduledTaskTrigger } from "../lifeops/scheduled-task/types.js";
 import {
   createWorkThreadStore,
@@ -192,7 +192,10 @@ function looksLikeThreadLifecycleIntent(message: Memory): boolean {
   );
 }
 
-function hasCurrentMutableRef(thread: WorkThread, roomId: string | null): boolean {
+function hasCurrentMutableRef(
+  thread: WorkThread,
+  roomId: string | null,
+): boolean {
   if (!roomId) return false;
   return [thread.primarySourceRef, ...thread.sourceRefs].some(
     (ref) => ref.roomId === roomId && ref.canMutate !== false,
@@ -222,7 +225,9 @@ function operationType(value: unknown): ThreadOperationType | null {
   return null;
 }
 
-function statusForOperation(type: ThreadOperationType): WorkThreadStatus | null {
+function statusForOperation(
+  type: ThreadOperationType,
+): WorkThreadStatus | null {
   if (type === "stop") return "stopped";
   if (type === "mark_waiting") return "waiting";
   if (type === "mark_completed") return "completed";
@@ -239,7 +244,8 @@ function normalizeSourceWorkThreadIds(value: unknown): string[] {
   }
   return [
     ...new Set(
-      value.filter((item): item is string => typeof item === "string")
+      value
+        .filter((item): item is string => typeof item === "string")
         .map((item) => item.trim())
         .filter((item) => item.length > 0),
     ),
@@ -255,7 +261,9 @@ function mergedMetadata(
     ? existing.filter((item): item is string => typeof item === "string")
     : [];
   return {
-    mergedFromWorkThreadIds: [...new Set([...existingIds, ...sourceWorkThreadIds])],
+    mergedFromWorkThreadIds: [
+      ...new Set([...existingIds, ...sourceWorkThreadIds]),
+    ],
   };
 }
 
@@ -269,7 +277,8 @@ async function validateThreadAction(
   if (looksLikeThreadLifecycleIntent(message)) {
     return true;
   }
-  const roomId = typeof message.roomId === "string" ? message.roomId : undefined;
+  const roomId =
+    typeof message.roomId === "string" ? message.roomId : undefined;
   if (!roomId) {
     return false;
   }
@@ -346,358 +355,369 @@ export const workThreadAction: Action & {
     }
 
     return withThreadOperationConcurrency(() =>
-      withThreadOperationLocks(lockKeysForOperations(operations, message), async () => {
-        const store = createWorkThreadStore(runtime);
-        const roomId = typeof message.roomId === "string" ? message.roomId : null;
-        const sourceRef = sourceRefFromMessage(message);
-        const results: Array<Record<string, unknown>> = [];
+      withThreadOperationLocks(
+        lockKeysForOperations(operations, message),
+        async () => {
+          const store = createWorkThreadStore(runtime);
+          const roomId =
+            typeof message.roomId === "string" ? message.roomId : null;
+          const sourceRef = sourceRefFromMessage(message);
+          const results: Array<Record<string, unknown>> = [];
 
-        for (const operation of operations) {
-          const type = operationType(operation.type);
-          if (!type) {
-            results.push({ success: false, error: "INVALID_OPERATION" });
-            continue;
-          }
-          if (type === "create") {
-            const initialSourceRef = operation.sourceRef ?? sourceRef;
-            if (
-              operation.sourceRef &&
-              !isCurrentChannelMutableSourceRef(operation.sourceRef, roomId)
-            ) {
+          for (const operation of operations) {
+            const type = operationType(operation.type);
+            if (!type) {
+              results.push({ success: false, error: "INVALID_OPERATION" });
+              continue;
+            }
+            if (type === "create") {
+              const initialSourceRef = operation.sourceRef ?? sourceRef;
+              if (
+                operation.sourceRef &&
+                !isCurrentChannelMutableSourceRef(operation.sourceRef, roomId)
+              ) {
+                results.push({
+                  success: false,
+                  type,
+                  error: "SOURCE_REF_NOT_CURRENT_CHANNEL",
+                });
+                continue;
+              }
+              const activeThreads = await store.list({
+                statuses: ["active", "waiting", "paused"],
+                limit: MAX_ACTIVE_WORK_THREADS,
+              });
+              if (activeThreads.length >= MAX_ACTIVE_WORK_THREADS) {
+                results.push({
+                  success: false,
+                  type,
+                  error: "THREAD_POOL_FULL",
+                  maxActiveThreads: MAX_ACTIVE_WORK_THREADS,
+                });
+                continue;
+              }
+              const created = await store.create({
+                ownerEntityId:
+                  typeof message.entityId === "string"
+                    ? message.entityId
+                    : null,
+                title:
+                  operation.title ?? operation.instruction ?? "Active thread",
+                summary:
+                  operation.summary ?? operation.instruction ?? "Active thread",
+                currentPlanSummary: operation.instruction ?? null,
+                primarySourceRef: initialSourceRef,
+                sourceRefs: [initialSourceRef],
+                participantEntityIds:
+                  typeof message.entityId === "string"
+                    ? [message.entityId]
+                    : [],
+                lastMessageMemoryId:
+                  typeof message.id === "string" ? message.id : null,
+                metadata: { createdFrom: "lifeops_thread_control" },
+              });
+              results.push({ success: true, type, workThreadId: created.id });
+              continue;
+            }
+
+            const workThreadId = operation.workThreadId?.trim();
+            if (!workThreadId) {
               results.push({
                 success: false,
                 type,
-                error: "SOURCE_REF_NOT_CURRENT_CHANNEL",
+                error: "MISSING_WORK_THREAD_ID",
               });
               continue;
             }
-            const activeThreads = await store.list({
-              statuses: ["active", "waiting", "paused"],
-              limit: MAX_ACTIVE_WORK_THREADS,
-            });
-            if (activeThreads.length >= MAX_ACTIVE_WORK_THREADS) {
-              results.push({
-                success: false,
-                type,
-                error: "THREAD_POOL_FULL",
-                maxActiveThreads: MAX_ACTIVE_WORK_THREADS,
-              });
-              continue;
-            }
-            const created = await store.create({
-              ownerEntityId:
-                typeof message.entityId === "string" ? message.entityId : null,
-              title:
-                operation.title ?? operation.instruction ?? "Active thread",
-              summary:
-                operation.summary ?? operation.instruction ?? "Active thread",
-              currentPlanSummary: operation.instruction ?? null,
-              primarySourceRef: initialSourceRef,
-              sourceRefs: [initialSourceRef],
-              participantEntityIds:
-                typeof message.entityId === "string" ? [message.entityId] : [],
-              lastMessageMemoryId:
-                typeof message.id === "string" ? message.id : null,
-              metadata: { createdFrom: "lifeops_thread_control" },
-            });
-            results.push({ success: true, type, workThreadId: created.id });
-            continue;
-          }
-
-          const workThreadId = operation.workThreadId?.trim();
-          if (!workThreadId) {
-            results.push({
-              success: false,
-              type,
-              error: "MISSING_WORK_THREAD_ID",
-            });
-            continue;
-          }
-          const current = await store.get(workThreadId);
-          if (!current) {
-            results.push({
-              success: false,
-              type,
-              workThreadId,
-              error: "NOT_FOUND",
-            });
-            continue;
-          }
-          const canMutate =
-            type === "attach_source" || hasCurrentMutableRef(current, roomId);
-          if (!canMutate) {
-            results.push({
-              success: false,
-              type,
-              workThreadId,
-              error: "CROSS_CHANNEL_READ_ONLY",
-            });
-            continue;
-          }
-          const terminalNoop =
-            (type === "stop" && current.status === "stopped") ||
-            (type === "mark_completed" && current.status === "completed");
-          if (isTerminalThreadStatus(current.status) && !terminalNoop) {
-            results.push({
-              success: false,
-              type,
-              workThreadId,
-              error: "THREAD_NOT_ACTIVE",
-              status: current.status,
-            });
-            continue;
-          }
-          if (terminalNoop) {
-            results.push({
-              success: true,
-              type,
-              workThreadId,
-              status: current.status,
-              noop: true,
-            });
-            continue;
-          }
-
-          if (type === "steer") {
-            const instruction = operation.instruction?.trim();
-            if (!instruction) {
+            const current = await store.get(workThreadId);
+            if (!current) {
               results.push({
                 success: false,
                 type,
                 workThreadId,
-                error: "MISSING_INSTRUCTION",
+                error: "NOT_FOUND",
               });
               continue;
             }
-            await store.update(workThreadId, {
-              currentPlanSummary: instruction,
-              summary: operation.summary ?? current.summary,
-              lastMessageMemoryId:
-                typeof message.id === "string" ? message.id : null,
-              eventType: "steered",
-              reason: operation.reason,
-              detail: { instruction },
-            });
-            results.push({ success: true, type, workThreadId });
-            continue;
-          }
-
-          if (type === "merge") {
-            const sourceWorkThreadIds = normalizeSourceWorkThreadIds(
-              operation.sourceWorkThreadIds,
-            ).filter((sourceId) => sourceId !== workThreadId);
-            if (sourceWorkThreadIds.length === 0) {
+            const canMutate =
+              type === "attach_source" || hasCurrentMutableRef(current, roomId);
+            if (!canMutate) {
               results.push({
                 success: false,
                 type,
                 workThreadId,
-                error: "MISSING_SOURCE_WORK_THREAD_IDS",
+                error: "CROSS_CHANNEL_READ_ONLY",
+              });
+              continue;
+            }
+            const terminalNoop =
+              (type === "stop" && current.status === "stopped") ||
+              (type === "mark_completed" && current.status === "completed");
+            if (isTerminalThreadStatus(current.status) && !terminalNoop) {
+              results.push({
+                success: false,
+                type,
+                workThreadId,
+                error: "THREAD_NOT_ACTIVE",
+                status: current.status,
+              });
+              continue;
+            }
+            if (terminalNoop) {
+              results.push({
+                success: true,
+                type,
+                workThreadId,
+                status: current.status,
+                noop: true,
               });
               continue;
             }
 
-            const sourceThreads: WorkThread[] = [];
-            let blocked = false;
-            for (const sourceWorkThreadId of sourceWorkThreadIds) {
-              const sourceThread = await store.get(sourceWorkThreadId);
-              if (!sourceThread) {
+            if (type === "steer") {
+              const instruction = operation.instruction?.trim();
+              if (!instruction) {
                 results.push({
                   success: false,
                   type,
                   workThreadId,
-                  sourceWorkThreadId,
-                  error: "SOURCE_NOT_FOUND",
+                  error: "MISSING_INSTRUCTION",
                 });
-                blocked = true;
-                break;
+                continue;
               }
-              if (!hasCurrentMutableRef(sourceThread, roomId)) {
-                results.push({
-                  success: false,
-                  type,
-                  workThreadId,
-                  sourceWorkThreadId,
-                  error: "CROSS_CHANNEL_READ_ONLY",
-                });
-                blocked = true;
-                break;
-              }
-              if (isTerminalThreadStatus(sourceThread.status)) {
-                results.push({
-                  success: false,
-                  type,
-                  workThreadId,
-                  sourceWorkThreadId,
-                  error: "SOURCE_THREAD_NOT_ACTIVE",
-                  status: sourceThread.status,
-                });
-                blocked = true;
-                break;
-              }
-              sourceThreads.push(sourceThread);
-            }
-            if (blocked) {
-              continue;
-            }
-
-            const mergedSourceRefs = [
-              ...current.sourceRefs,
-              ...sourceThreads.flatMap((sourceThread) => sourceThread.sourceRefs),
-            ];
-            const mergedParticipantEntityIds = [
-              ...current.participantEntityIds,
-              ...sourceThreads.flatMap(
-                (sourceThread) => sourceThread.participantEntityIds,
-              ),
-              ...(typeof message.entityId === "string" ? [message.entityId] : []),
-            ];
-
-            await store.update(workThreadId, {
-              summary: operation.summary ?? current.summary,
-              currentPlanSummary:
-                operation.instruction?.trim() || current.currentPlanSummary,
-              sourceRefs: mergedSourceRefs,
-              participantEntityIds: mergedParticipantEntityIds,
-              lastMessageMemoryId:
-                typeof message.id === "string" ? message.id : null,
-              metadata: mergedMetadata(current, sourceWorkThreadIds),
-              eventType: "merged",
-              reason: operation.reason,
-              detail: {
-                sourceWorkThreadIds,
-                instruction: operation.instruction,
-              },
-            });
-
-            for (const sourceThread of sourceThreads) {
-              await store.update(sourceThread.id, {
-                status: "stopped",
-                metadata: { mergedIntoWorkThreadId: workThreadId },
-                eventType: "merged_into",
+              await store.update(workThreadId, {
+                currentPlanSummary: instruction,
+                summary: operation.summary ?? current.summary,
+                lastMessageMemoryId:
+                  typeof message.id === "string" ? message.id : null,
+                eventType: "steered",
                 reason: operation.reason,
-                detail: { targetWorkThreadId: workThreadId },
+                detail: { instruction },
               });
+              results.push({ success: true, type, workThreadId });
+              continue;
             }
 
-            results.push({
-              success: true,
-              type,
-              workThreadId,
-              sourceWorkThreadIds,
-            });
-            continue;
-          }
+            if (type === "merge") {
+              const sourceWorkThreadIds = normalizeSourceWorkThreadIds(
+                operation.sourceWorkThreadIds,
+              ).filter((sourceId) => sourceId !== workThreadId);
+              if (sourceWorkThreadIds.length === 0) {
+                results.push({
+                  success: false,
+                  type,
+                  workThreadId,
+                  error: "MISSING_SOURCE_WORK_THREAD_IDS",
+                });
+                continue;
+              }
 
-          if (type === "attach_source") {
-            const ref = operation.sourceRef ?? sourceRef;
-            if (!isCurrentChannelMutableSourceRef(ref, roomId)) {
+              const sourceThreads: WorkThread[] = [];
+              let blocked = false;
+              for (const sourceWorkThreadId of sourceWorkThreadIds) {
+                const sourceThread = await store.get(sourceWorkThreadId);
+                if (!sourceThread) {
+                  results.push({
+                    success: false,
+                    type,
+                    workThreadId,
+                    sourceWorkThreadId,
+                    error: "SOURCE_NOT_FOUND",
+                  });
+                  blocked = true;
+                  break;
+                }
+                if (!hasCurrentMutableRef(sourceThread, roomId)) {
+                  results.push({
+                    success: false,
+                    type,
+                    workThreadId,
+                    sourceWorkThreadId,
+                    error: "CROSS_CHANNEL_READ_ONLY",
+                  });
+                  blocked = true;
+                  break;
+                }
+                if (isTerminalThreadStatus(sourceThread.status)) {
+                  results.push({
+                    success: false,
+                    type,
+                    workThreadId,
+                    sourceWorkThreadId,
+                    error: "SOURCE_THREAD_NOT_ACTIVE",
+                    status: sourceThread.status,
+                  });
+                  blocked = true;
+                  break;
+                }
+                sourceThreads.push(sourceThread);
+              }
+              if (blocked) {
+                continue;
+              }
+
+              const mergedSourceRefs = [
+                ...current.sourceRefs,
+                ...sourceThreads.flatMap(
+                  (sourceThread) => sourceThread.sourceRefs,
+                ),
+              ];
+              const mergedParticipantEntityIds = [
+                ...current.participantEntityIds,
+                ...sourceThreads.flatMap(
+                  (sourceThread) => sourceThread.participantEntityIds,
+                ),
+                ...(typeof message.entityId === "string"
+                  ? [message.entityId]
+                  : []),
+              ];
+
+              await store.update(workThreadId, {
+                summary: operation.summary ?? current.summary,
+                currentPlanSummary:
+                  operation.instruction?.trim() || current.currentPlanSummary,
+                sourceRefs: mergedSourceRefs,
+                participantEntityIds: mergedParticipantEntityIds,
+                lastMessageMemoryId:
+                  typeof message.id === "string" ? message.id : null,
+                metadata: mergedMetadata(current, sourceWorkThreadIds),
+                eventType: "merged",
+                reason: operation.reason,
+                detail: {
+                  sourceWorkThreadIds,
+                  instruction: operation.instruction,
+                },
+              });
+
+              for (const sourceThread of sourceThreads) {
+                await store.update(sourceThread.id, {
+                  status: "stopped",
+                  metadata: { mergedIntoWorkThreadId: workThreadId },
+                  eventType: "merged_into",
+                  reason: operation.reason,
+                  detail: { targetWorkThreadId: workThreadId },
+                });
+              }
+
               results.push({
-                success: false,
+                success: true,
                 type,
                 workThreadId,
-                error: "SOURCE_REF_NOT_CURRENT_CHANNEL",
+                sourceWorkThreadIds,
               });
               continue;
             }
-            await store.update(workThreadId, {
-              sourceRefs: [...current.sourceRefs, ref],
-              eventType: "source_attached",
-              reason: operation.reason,
-              detail: { sourceRef: ref },
-            });
-            results.push({ success: true, type, workThreadId });
-            continue;
-          }
 
-          if (type === "schedule_followup") {
-            if (!operation.trigger || typeof operation.trigger !== "object") {
+            if (type === "attach_source") {
+              const ref = operation.sourceRef ?? sourceRef;
+              if (!isCurrentChannelMutableSourceRef(ref, roomId)) {
+                results.push({
+                  success: false,
+                  type,
+                  workThreadId,
+                  error: "SOURCE_REF_NOT_CURRENT_CHANNEL",
+                });
+                continue;
+              }
+              await store.update(workThreadId, {
+                sourceRefs: [...current.sourceRefs, ref],
+                eventType: "source_attached",
+                reason: operation.reason,
+                detail: { sourceRef: ref },
+              });
+              results.push({ success: true, type, workThreadId });
+              continue;
+            }
+
+            if (type === "schedule_followup") {
+              if (!operation.trigger || typeof operation.trigger !== "object") {
+                results.push({
+                  success: false,
+                  type,
+                  workThreadId,
+                  error: "MISSING_TRIGGER",
+                });
+                continue;
+              }
+              const instruction = operation.instruction?.trim();
+              if (!instruction) {
+                results.push({
+                  success: false,
+                  type,
+                  workThreadId,
+                  error: "MISSING_INSTRUCTION",
+                });
+                continue;
+              }
+              const runner = getScheduledTaskRunner(runtime, {
+                agentId: runtime.agentId,
+              });
+              const task = await runner.schedule({
+                kind: "followup",
+                promptInstructions: instruction,
+                trigger: operation.trigger,
+                priority: "medium",
+                respectsGlobalPause: true,
+                source: "user_chat",
+                createdBy: runtime.agentId,
+                ownerVisible: true,
+                subject: { kind: "thread", id: workThreadId },
+                ...(roomId
+                  ? {
+                      output: {
+                        destination: "channel",
+                        target: `in_app:${roomId}`,
+                      },
+                    }
+                  : {}),
+                metadata: {
+                  workThreadId,
+                  ...(roomId ? { pendingPromptRoomId: roomId } : {}),
+                },
+              });
+              await store.update(workThreadId, {
+                currentScheduledTaskId: task.taskId,
+                eventType: "followup_scheduled",
+                reason: operation.reason,
+                detail: { taskId: task.taskId },
+              });
               results.push({
-                success: false,
+                success: true,
                 type,
                 workThreadId,
-                error: "MISSING_TRIGGER",
+                taskId: task.taskId,
               });
               continue;
             }
-            const instruction = operation.instruction?.trim();
-            if (!instruction) {
-              results.push({
-                success: false,
-                type,
-                workThreadId,
-                error: "MISSING_INSTRUCTION",
+
+            const status = statusForOperation(type);
+            if (status) {
+              await store.update(workThreadId, {
+                status,
+                eventType:
+                  type === "stop"
+                    ? "stopped"
+                    : type === "mark_waiting"
+                      ? "waiting"
+                      : "completed",
+                reason: operation.reason,
               });
-              continue;
+              results.push({ success: true, type, workThreadId, status });
             }
-            const runner = createRuntimeScheduledTaskRunner({
-              runtime,
-              agentId: runtime.agentId,
-            });
-            const task = await runner.schedule({
-              kind: "followup",
-              promptInstructions: instruction,
-              trigger: operation.trigger,
-              priority: "medium",
-              respectsGlobalPause: true,
-              source: "user_chat",
-              createdBy: runtime.agentId,
-              ownerVisible: true,
-              subject: { kind: "thread", id: workThreadId },
-              ...(roomId
-                ? {
-                    output: {
-                      destination: "channel",
-                      target: `in_app:${roomId}`,
-                    },
-                  }
-                : {}),
-              metadata: {
-                workThreadId,
-                ...(roomId ? { pendingPromptRoomId: roomId } : {}),
-              },
-            });
-            await store.update(workThreadId, {
-              currentScheduledTaskId: task.taskId,
-              eventType: "followup_scheduled",
-              reason: operation.reason,
-              detail: { taskId: task.taskId },
-            });
-            results.push({
-              success: true,
-              type,
-              workThreadId,
-              taskId: task.taskId,
-            });
-            continue;
           }
 
-          const status = statusForOperation(type);
-          if (status) {
-            await store.update(workThreadId, {
-              status,
-              eventType:
-                type === "stop"
-                  ? "stopped"
-                  : type === "mark_waiting"
-                    ? "waiting"
-                    : "completed",
-              reason: operation.reason,
-            });
-            results.push({ success: true, type, workThreadId, status });
-          }
-        }
-
-        const ok = results.some((result) => result.success === true);
-        const text = ok
-          ? `Applied ${results.filter((result) => result.success === true).length} thread operation${results.filter((result) => result.success === true).length === 1 ? "" : "s"}.`
-          : "No thread operations were applied.";
-        await callback?.({
-          text,
-          source: "action",
-          action: "WORK_THREAD",
-        });
-        return { success: ok, text, data: { operations: results } };
-      }),
+          const ok = results.some((result) => result.success === true);
+          const text = ok
+            ? `Applied ${results.filter((result) => result.success === true).length} thread operation${results.filter((result) => result.success === true).length === 1 ? "" : "s"}.`
+            : "No thread operations were applied.";
+          await callback?.({
+            text,
+            source: "action",
+            action: "WORK_THREAD",
+          });
+          return { success: ok, text, data: { operations: results } };
+        },
+      ),
     );
   },
 };

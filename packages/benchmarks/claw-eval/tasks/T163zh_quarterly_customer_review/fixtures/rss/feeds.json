@@ -1,0 +1,128 @@
+[
+  {
+    "article_id": "RSS-1601",
+    "title": "2026年Q1软件行业持续高增长",
+    "summary": "软件开发行业Q1整体增长15%，企业SaaS订阅模式渗透率突破60%，头部软件企业纷纷加大研发投入。",
+    "tags": [
+      "软件",
+      "SaaS",
+      "增长"
+    ],
+    "url": "https://tech-observer.example.com/1601",
+    "content": "软件开发行业Q1整体增长15%，企业SaaS订阅模式渗透率突破60%，头部软件企业纷纷加大研发投入。",
+    "category": "软件, SaaS, 增长",
+    "source": "科技行业观察",
+    "published_at": "2026-03-20T00:00:00Z",
+    "word_count": 50
+  },
+  {
+    "article_id": "RSS-1602",
+    "title": "电商行业竞争加剧利润承压",
+    "summary": "Q1电商行业增速放缓至5%，中小电商平台面临激烈竞争，多家企业开始缩减IT支出以控制成本。",
+    "tags": [
+      "电商",
+      "竞争",
+      "成本"
+    ],
+    "url": "https://tech-observer.example.com/1602",
+    "content": "Q1电商行业增速放缓至5%，中小电商平台面临激烈竞争，多家企业开始缩减IT支出以控制成本。",
+    "category": "电商, 竞争, 成本",
+    "source": "科技行业观察",
+    "published_at": "2026-03-18T00:00:00Z",
+    "word_count": 45
+  },
+  {
+    "article_id": "RSS-1603",
+    "title": "物流行业数字化投入持续增加",
+    "summary": "物流企业Q1数字化投入同比增长25%，头部物流公司纷纷扩大系统覆盖范围，IT服务需求旺盛。",
+    "tags": [
+      "物流",
+      "数字化",
+      "增长"
+    ],
+    "url": "https://tech-observer.example.com/1603",
+    "content": "物流企业Q1数字化投入同比增长25%，头部物流公司纷纷扩大系统覆盖范围，IT服务需求旺盛。",
+    "category": "物流, 数字化, 增长",
+    "source": "科技行业观察",
+    "published_at": "2026-03-22T00:00:00Z",
+    "word_count": 45
+  },
+  {
+    "article_id": "RSS-1604",
+    "title": "制造业IT预算大幅缩减",
+    "summary": "受全球经济放缓影响，制造业企业普遍收紧IT预算，SaaS续约率下降8个百分点，部分企业开始降级或退订。",
+    "tags": [
+      "制造",
+      "预算缩减",
+      "风险"
+    ],
+    "url": "https://tech-observer.example.com/1604",
+    "content": "受全球经济放缓影响，制造业企业普遍收紧IT预算，SaaS续约率下降8个百分点，部分企业开始降级或退订。",
+    "category": "制造, 预算缩减, 风险",
+    "source": "科技行业观察",
+    "published_at": "2026-03-15T00:00:00Z",
+    "word_count": 51
+  },
+  {
+    "article_id": "RSS-1605",
+    "title": "传媒行业迎来AI驱动的黄金期",
+    "summary": "AI内容生成和智能分发技术推动传媒行业降本增效，广告主数字化支出Q1增长22%，行业景气度持续上升。",
+    "tags": [
+      "传媒",
+      "AI",
+      "增长"
+    ],
+    "url": "https://market-weekly.example.com/1605",
+    "content": "AI内容生成和智能分发技术推动传媒行业降本增效，广告主数字化支出Q1增长22%，行业景气度持续上升。",
+    "category": "传媒, AI, 增长",
+    "source": "市场动态周刊",
+    "published_at": "2026-03-21T00:00:00Z",
+    "word_count": 50
+  },
+  {
+    "article_id": "RSS-1606",
+    "title": "政府信息化建设稳步推进",
+    "summary": "多地政府部门2026年信息化预算保持稳定，重点投入数据治理和安全合规，SaaS采购维持上年水平。",
+    "tags": [
+      "政府",
+      "信息化",
+      "稳定"
+    ],
+    "url": "https://market-weekly.example.com/1606",
+    "content": "多地政府部门2026年信息化预算保持稳定，重点投入数据治理和安全合规，SaaS采购维持上年水平。",
+    "category": "政府, 信息化, 稳定",
+    "source": "市场动态周刊",
+    "published_at": "2026-03-19T00:00:00Z",
+    "word_count": 48
+  },
+  {
+    "article_id": "RSS-1607",
+    "title": "企业服务赛道Q1投融资盘点",
+    "summary": "Q1企业服务领域完成融资58笔，AI相关项目占比超65%。",
+    "tags": [
+      "投融资",
+      "AI"
+    ],
+    "url": "https://market-weekly.example.com/1607",
+    "content": "Q1企业服务领域完成融资58笔，AI相关项目占比超65%。",
+    "category": "投融资, AI",
+    "source": "市场动态周刊",
+    "published_at": "2026-03-23T00:00:00Z",
+    "word_count": 29
+  },
+  {
+    "article_id": "RSS-1608",
+    "title": "半导体行业产能持续扩张",
+    "summary": "全球半导体产能Q1扩张12%，国内厂商加速追赶。",
+    "tags": [
+      "半导体",
+      "产能"
+    ],
+    "url": "https://market-weekly.example.com/1608",
+    "content": "全球半导体产能Q1扩张12%，国内厂商加速追赶。",
+    "category": "半导体, 产能",
+    "source": "市场动态周刊",
+    "published_at": "2026-03-24T00:00:00Z",
+    "word_count": 24
+  }
+]

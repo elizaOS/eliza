@@ -37,44 +37,48 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
   return (
     <div
       data-testid="vincent-shell"
-      className="fixed inset-0 z-50 flex flex-col bg-bg h-[100vh] overflow-hidden supports-[height:100dvh]:h-[100dvh]"
+      className="fixed inset-0 z-50 flex h-[100vh] flex-col overflow-hidden bg-bg pb-[var(--safe-area-bottom,0px)] pl-[var(--safe-area-left,0px)] pr-[var(--safe-area-right,0px)] pt-[var(--safe-area-top,0px)] supports-[height:100dvh]:h-[100dvh]"
     >
       {/* Header */}
-      <div className="flex shrink-0 items-center justify-between border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-sm">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <Button
             variant="ghost"
             size="icon"
-            className="h-9 w-9 rounded-xl text-muted hover:text-txt"
+            className="h-9 w-9 shrink-0 rounded-xl text-muted hover:text-txt"
             onClick={exitToApps}
             aria-label={t("nav.back", { defaultValue: "Back" })}
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div>
+          <div className="min-w-0">
             <h1 className="text-base font-semibold text-txt">Vincent</h1>
-            <p className="text-xs-tight text-muted leading-none">
+            <p className="truncate text-xs-tight text-muted leading-tight">
               Hyperliquid and Polymarket trading access
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {/* Connection status pill */}
           <span
             data-testid="vincent-status-card"
-            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs-tight font-semibold ${
+            className={`inline-flex max-w-[8.5rem] items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs-tight font-semibold ${
               vincentConnected
                 ? "border-ok/35 bg-ok/12 text-ok"
                 : "border-border bg-bg-accent text-muted"
             }`}
           >
             <span
-              className={`h-1.5 w-1.5 rounded-full ${vincentConnected ? "bg-ok" : "bg-muted"}`}
+              className={`h-1.5 w-1.5 shrink-0 rounded-full ${vincentConnected ? "bg-ok" : "bg-muted"}`}
             />
-            {vincentConnected
-              ? t("vincent.connected", { defaultValue: "Connected" })
-              : t("vincent.disconnected", { defaultValue: "Disconnected" })}
+            <span className="truncate">
+              {vincentConnected
+                ? t("vincent.statusConnected", { defaultValue: "Connected" })
+                : t("vincent.statusDisconnected", {
+                    defaultValue: "Disconnected",
+                  })}
+            </span>
           </span>
 
           <Button

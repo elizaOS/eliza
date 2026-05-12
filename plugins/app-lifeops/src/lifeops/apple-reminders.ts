@@ -1,3 +1,4 @@
+/// <reference types="bun-types" />
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -126,7 +127,7 @@ let nativeReminderBridge: NativeReminderBridge | null | undefined;
 let nativeReminderBridgeOverride: NativeReminderBridge | null | undefined;
 
 const NATIVE_DYLIB_CANDIDATES = [
-  process.env.MILADY_NATIVE_PERMISSIONS_DYLIB ?? "",
+  process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "",
   "../../../../packages/app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
 ].filter(Boolean);
 

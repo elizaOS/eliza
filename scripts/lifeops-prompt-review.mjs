@@ -3,7 +3,7 @@
  * lifeops-prompt-review.
  *
  * Reads the manifest produced by `scripts/lifeops-prompt-inventory.mjs` and
- * the latest trajectories under `~/.milady/trajectories/` and emits one
+ * the latest trajectories under `~/.eliza/trajectories/` and emits one
  * Markdown page per prompt under
  * `docs/audits/lifeops-2026-05-11/prompts/<sanitized-id>.md`, plus an
  * `INDEX.md` linking all pages by token count and last-optimization score.
@@ -22,8 +22,8 @@
 import {
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -39,7 +39,7 @@ const PAGES_DIR = join(AUDIT_DIR, "prompts");
 
 const TRAJECTORIES_ROOT =
   process.env.LIFEOPS_TRAJECTORIES_DIR ??
-  join(process.env.HOME ?? "/Users/shawwalters", ".milady", "trajectories");
+  join(process.env.HOME ?? "/Users/shawwalters", ".eliza", "trajectories");
 const MAX_TRAJECTORIES = Number(process.env.LIFEOPS_REVIEW_MAX_TRAJ ?? "200");
 const MAX_FAILURE_SAMPLES = 3;
 
@@ -140,7 +140,7 @@ function indexTrajectoryStages(trajectories) {
   for (const t of trajectories) {
     const traj = t.data;
     if (!Array.isArray(traj.stages)) continue;
-    let turnSucceeded = traj.status === "finished";
+    const turnSucceeded = traj.status === "finished";
     for (const stage of traj.stages) {
       const kind = stage.kind ?? null;
       const messagesText = collectStageText(stage);
@@ -326,7 +326,10 @@ function renderPromptPage(prompt, stats) {
       `- **Parameter**: ${prompt.extras.parameterName} (required: ${prompt.extras.required ? "yes" : "no"})`,
     );
   }
-  if (Array.isArray(prompt.extras?.similes) && prompt.extras.similes.length > 0) {
+  if (
+    Array.isArray(prompt.extras?.similes) &&
+    prompt.extras.similes.length > 0
+  ) {
     lines.push(`- **Similes**: ${prompt.extras.similes.join(", ")}`);
   }
   lines.push("");
@@ -345,7 +348,9 @@ function renderPromptPage(prompt, stats) {
 
   lines.push("## Usage stats (latest trajectories)");
   if (stats.invocations === 0) {
-    lines.push("- Invocations: 0 (this prompt was not matched in any recent trajectory)");
+    lines.push(
+      "- Invocations: 0 (this prompt was not matched in any recent trajectory)",
+    );
   } else {
     lines.push(`- Invocations: ${stats.invocations}`);
     lines.push(
@@ -432,7 +437,8 @@ function main() {
   const manifest = loadManifest();
   // Remove stale pages from previous runs so renamed slugs don't leave
   // dangling .md files. We rebuild the directory from scratch each run.
-  if (existsSync(PAGES_DIR)) rmSync(PAGES_DIR, { recursive: true, force: true });
+  if (existsSync(PAGES_DIR))
+    rmSync(PAGES_DIR, { recursive: true, force: true });
   mkdirSync(PAGES_DIR, { recursive: true });
   const { trajectories, scanned } = loadTrajectories();
   console.log(

@@ -212,7 +212,7 @@ def main() -> None:
         "coverage falls back to substring matching on the record's text payload."
     )
     out.append(
-        "- Action coverage matches the action `name` (e.g. `SHELL_COMMAND`, `TRANSFER`) as a "
+        "- Action coverage matches the action `name` (e.g. `SHELL`, `TRANSFER`) as a "
         "word-boundary regex against the record's `currentMessage`, `expectedResponse`, "
         "`metadata`, and `availableActions`. False positives are possible for short generic "
         "names (e.g. `STATUS`, `APP`)."

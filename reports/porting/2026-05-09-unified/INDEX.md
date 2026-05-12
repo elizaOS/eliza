@@ -1,7 +1,7 @@
 # Unified-fork verification metrics — 2026-05-09
 
 Post-pin snapshot for the
-[elizaOS/llama.cpp @ v0.1.0-milady](https://github.com/elizaOS/llama.cpp)
+[elizaOS/llama.cpp @ v0.1.0-eliza](https://github.com/elizaOS/llama.cpp)
 fork landing. Diffs against
 [`reports/porting/2026-05-09-baseline/`](../2026-05-09-baseline/).
 
@@ -11,15 +11,15 @@ were under this directory.
 ## What landed
 
 - `elizaOS/llama.cpp` repo created with branches
-  `milady/main` (= upstream `b8198`),
-  `milady/tbq` (+TBQ from apothic),
-  `milady/qjl` (+QJL from W1-A),
-  `milady/polarquant` (+Q4_POLAR from W1-B with slot bumped 45→47),
-  `milady/metal` (+5 .metal sources from W1-D),
-  `milady/integration` (merge of all the above).
-- Tagged `v0.1.0-milady` at `edd55d8b0a1f4b4279f17eb08a903e52b9a7cc4e`.
+  `eliza/main` (= upstream `b8198`),
+  `eliza/tbq` (+TBQ from apothic),
+  `eliza/qjl` (+QJL from W1-A),
+  `eliza/polarquant` (+Q4_POLAR from W1-B with slot bumped 45→47),
+  `eliza/metal` (+5 .metal sources from W1-D),
+  `eliza/integration` (merge of all the above).
+- Tagged `v0.1.0-eliza` at `edd55d8b0a1f4b4279f17eb08a903e52b9a7cc4e`.
 - `elizaOS/node-llama-cpp` repo created with branch
-  `milady/extended-cache-types` and tag `v3.18.1-milady.1` extending
+  `eliza/extended-cache-types` and tag `v3.18.1-eliza.1` extending
   `GgmlType` to accept TBQ3_0/TBQ4_0/QJL1_256/Q4_POLAR (and lowercase
   aliases).
 - `compile-libllama.mjs` (AOSP) re-pinned to the new fork.
@@ -50,7 +50,7 @@ were under this directory.
 | `libllama.so` (arm64) stripped size | 2,778,560 B | 2,776,336 B | -2,224 B (~0.08%) |
 | `libggml-cpu.so` (arm64) stripped size | 951,120 B | 950,976 B | -144 B |
 | `llama-server` (arm64) stripped size | 5,706,024 B | 5,705,704 B | -320 B |
-| llama.cpp pin | apothic@b2b5273 | milady@edd55d8b | unified |
+| llama.cpp pin | apothic@b2b5273 | eliza@edd55d8b | unified |
 | QJL/Polar/Metal vendored patches applied at build time | 0 (not on develop) | 0 (baked into fork) | path simplified |
 | `node-llama-cpp` cache-type strings accepted | only stock `GgmlType` keys | + `tbq3_0`, `tbq4_0`, `qjl1_256`, `q4_polar`, `tbq3_tcq` | unblocks W1-C |
 
@@ -69,14 +69,14 @@ host).
   apothic's CUDA template instances for TBQ3_0/TBQ4_0 (mmq + fattn-vec)
   but not the spiritbuun TurboQuant-CUDA fixes.
 - **Metal dispatcher wiring**. The .metal sources are in the fork
-  tree under `ggml/src/ggml-metal/milady-kernels/` but the
+  tree under `ggml/src/ggml-metal/eliza-kernels/` but the
   `ggml-metal.metal` dispatcher hasn't been updated to call them.
   Needs Apple Silicon — out of scope on this Linux x86_64 box.
 - **CUDA build**. CMake configure-only verified (CUDA toolkit not on
   this host); the apothic-cherry-picked TBQ CUDA template instances are
   present so a Blackwell/RTX runner should compile them in one pass.
 - **node-llama-cpp consumer pin**. The fork is published and the
-  binding-side enum extension is in place, but the milady consumer's
+  binding-side enum extension is in place, but the eliza consumer's
   `node-llama-cpp` optional-dep is left at upstream `3.18.1`. Reason:
   the `node-llama-cpp` package ships only `dist/` in its `files`
   field; a github-URL install via bun does not run the upstream's
@@ -102,7 +102,7 @@ host).
   (`GGML_TYPE_Q4_POLAR`, never spelled with the literal slot number).
 - Slot 45 is intentionally a hole on the unified fork — keeping the
   W1-A convention so a GGUF that recorded `type=45` against the older
-  TBQ-only build is unambiguously not a recognized milady block.
+  TBQ-only build is unambiguously not a recognized eliza block.
 
 ## Quick stats
 
@@ -120,4 +120,4 @@ host).
   the baseline recorded that discrepancy as larp E3, this run clears
   it).
 - llama.cpp pin: apothic + 5 vendored patches → elizaOS/llama.cpp
-  @ v0.1.0-milady (single tag).
+  @ v0.1.0-eliza (single tag).

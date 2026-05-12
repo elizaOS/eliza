@@ -9,7 +9,7 @@
  *      spawned, ports probed, LIFEOPS_USE_MOCKOON=1 exported, cleanup hook
  *      registered so mockoons are SIGTERM'd on parent exit / Ctrl-C.
  *   2. Verify Cerebras eval helper reachable.
- *   3. For each agent in MILADY_BENCH_AGENT (default "all" → eliza, hermes,
+ *   3. For each agent in ELIZA_BENCH_AGENT (default "all" → eliza, hermes,
  *      openclaw), invoke the Python multi-agent bench against Cerebras
  *      gpt-oss-120b. Sequential, since they share the same Cerebras quota
  *      and the same Mockoon port fleet.
@@ -20,18 +20,22 @@
  *
  * Env knobs (all have sensible defaults — operator should never need flags):
  *   - LIFEOPS_USE_MOCKOON       (default "1")        Toggle Mockoon substrate.
- *   - MILADY_BENCH_AGENT        (default "all")      "all" | eliza | hermes |
+ *   - ELIZA_BENCH_AGENT        (default "all")      "all" | eliza | hermes |
  *                                                    openclaw | cerebras-direct.
- *   - MILADY_BENCH_LIMIT        (default "25")       Scenarios per agent.
- *   - MILADY_BENCH_MODEL        (default "gpt-oss-120b")  Cerebras model id.
- *   - MILADY_BENCH_CONCURRENCY  (default "4")        Python concurrency.
- *   - MILADY_BENCH_SEEDS        (default "1")        Repetitions per scenario.
- *   - MILADY_BENCH_SKIP_JS      (default "")         Set to "1" to skip the
+ *   - ELIZA_BENCH_LIMIT        (default "25")       Scenarios per agent.
+ *   - ELIZA_BENCH_MODEL        (default "gpt-oss-120b")  Cerebras model id.
+ *   - ELIZA_BENCH_CONCURRENCY  (default "2")        Python concurrency
+ *                                                    (lowered from 4 after
+ *                                                    Cerebras 429s under load;
+ *                                                    raise back to 4+ for
+ *                                                    non-Cerebras providers).
+ *   - ELIZA_BENCH_SEEDS        (default "1")        Repetitions per scenario.
+ *   - ELIZA_BENCH_SKIP_JS      (default "")         Set to "1" to skip the
  *                                                    JS scenario-runner step.
  *   - CEREBRAS_API_KEY          (required)           Sourced from eliza/.env.
  *
  * Output:
- *   ~/.milady/runs/lifeops/lifeops-multiagent-<ts>/
+ *   ~/.eliza/runs/lifeops/lifeops-multiagent-<ts>/
  *     mockoon/                  Mockoon bootstrap log.
  *     eliza/                    Python bench JSON for eliza.
  *     hermes/                   Python bench JSON for hermes.
@@ -42,13 +46,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -82,12 +80,7 @@ if (existsSync(ENV_FILE)) {
     }
   }
 }
-const BENCH_DIR = join(
-  REPO_ROOT,
-  "packages",
-  "benchmarks",
-  "lifeops-bench",
-);
+const BENCH_DIR = join(REPO_ROOT, "packages", "benchmarks", "lifeops-bench");
 
 const AGENT_ORDER = ["eliza", "hermes", "openclaw"];
 const KNOWN_AGENTS = new Set([...AGENT_ORDER, "cerebras-direct"]);
@@ -112,17 +105,17 @@ function envStr(name, fallback) {
 
 function envBoolish(name, fallback) {
   const raw = (process.env[name] ?? "").trim().toLowerCase();
-  if (raw === "" ) return fallback;
+  if (raw === "") return fallback;
   return ["1", "true", "yes", "on"].includes(raw);
 }
 
-const cliAgent = envStr("MILADY_BENCH_AGENT", "all");
-const scenarioLimit = envInt("MILADY_BENCH_LIMIT", 25);
-const model = envStr("MILADY_BENCH_MODEL", "gpt-oss-120b");
-const concurrency = envInt("MILADY_BENCH_CONCURRENCY", 4);
-const seeds = envInt("MILADY_BENCH_SEEDS", 1);
+const cliAgent = envStr("ELIZA_BENCH_AGENT", "all");
+const scenarioLimit = envInt("ELIZA_BENCH_LIMIT", 25);
+const model = envStr("ELIZA_BENCH_MODEL", "gpt-oss-120b");
+const concurrency = envInt("ELIZA_BENCH_CONCURRENCY", 2);
+const seeds = envInt("ELIZA_BENCH_SEEDS", 1);
 const useMockoon = envBoolish("LIFEOPS_USE_MOCKOON", true);
-const skipJsScenarios = envBoolish("MILADY_BENCH_SKIP_JS", false);
+const skipJsScenarios = envBoolish("ELIZA_BENCH_SKIP_JS", false);
 
 let agents;
 if (cliAgent === "all") {
@@ -131,14 +124,14 @@ if (cliAgent === "all") {
   agents = [cliAgent];
 } else {
   console.error(
-    `[lifeops-full-run] unknown MILADY_BENCH_AGENT=${cliAgent}; valid: all | ${AGENT_ORDER.join(" | ")} | cerebras-direct`,
+    `[lifeops-full-run] unknown ELIZA_BENCH_AGENT=${cliAgent}; valid: all | ${AGENT_ORDER.join(" | ")} | cerebras-direct`,
   );
   process.exit(2);
 }
 
 const RUN_TS = Date.now();
 const RUN_ID = `lifeops-multiagent-${RUN_TS}`;
-const RUN_DIR = join(homedir(), ".milady", "runs", "lifeops", RUN_ID);
+const RUN_DIR = join(homedir(), ".eliza", "runs", "lifeops", RUN_ID);
 mkdirSync(RUN_DIR, { recursive: true });
 
 console.log(`[lifeops-full-run] RUN_ID=${RUN_ID}`);
@@ -189,11 +182,15 @@ if (useMockoon) {
       `[lifeops-full-run] mockoon up — ${mockoonHandle.connectors.length} connectors listening`,
     );
   } catch (e) {
-    console.error(`[lifeops-full-run] mockoon bootstrap failed: ${e?.message ?? e}`);
+    console.error(
+      `[lifeops-full-run] mockoon bootstrap failed: ${e?.message ?? e}`,
+    );
     process.exit(2);
   }
 } else {
-  console.log(`[lifeops-full-run] LIFEOPS_USE_MOCKOON=0 → skipping mockoon bootstrap`);
+  console.log(
+    `[lifeops-full-run] LIFEOPS_USE_MOCKOON=0 → skipping mockoon bootstrap`,
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -219,6 +216,26 @@ const benchEnv = {
   // MODEL_NAME_OVERRIDE, and the default tier is already large → cerebras.
   MODEL_NAME_OVERRIDE: model,
   MODEL_TIER: "large",
+  // The Eliza TypeScript benchmark server uses plugin-openai. That plugin
+  // does not read MODEL_NAME_OVERRIDE; it reads the OPENAI_* model settings
+  // per ModelType. Keep the Python harness and Eliza runtime on the same
+  // Cerebras-compatible model so Stage 1 / planner calls do not fall back to
+  // OpenAI default ids against the Cerebras base URL.
+  ELIZA_PROVIDER: "cerebras",
+  OPENAI_BASE_URL:
+    process.env.OPENAI_BASE_URL ??
+    process.env.CEREBRAS_BASE_URL ??
+    "https://api.cerebras.ai/v1",
+  OPENAI_SMALL_MODEL: process.env.OPENAI_SMALL_MODEL ?? model,
+  OPENAI_NANO_MODEL: process.env.OPENAI_NANO_MODEL ?? model,
+  OPENAI_MEDIUM_MODEL: process.env.OPENAI_MEDIUM_MODEL ?? model,
+  OPENAI_LARGE_MODEL: process.env.OPENAI_LARGE_MODEL ?? model,
+  OPENAI_MEGA_MODEL: process.env.OPENAI_MEGA_MODEL ?? model,
+  OPENAI_RESPONSE_HANDLER_MODEL:
+    process.env.OPENAI_RESPONSE_HANDLER_MODEL ?? model,
+  OPENAI_ACTION_PLANNER_MODEL: process.env.OPENAI_ACTION_PLANNER_MODEL ?? model,
+  RESPONSE_HANDLER_MODEL: process.env.RESPONSE_HANDLER_MODEL ?? model,
+  ACTION_PLANNER_MODEL: process.env.ACTION_PLANNER_MODEL ?? model,
   PYTHONUNBUFFERED: "1",
 };
 

@@ -1,6 +1,6 @@
 """Hermes adapter for LifeOpsBench.
 
-Wraps :class:`HermesClient` (Wave 1E) into an :class:`OpenAICompatAgent`
+Wraps :class:`HermesClient` into an :class:`OpenAICompatAgent`
 that the runner can drive. The client itself owns the Hermes XML
 ``<tool_call>`` / ``<tool_response>`` translation and the system-prompt
 template — this adapter just funnels the runner's ``MessageTurn`` history
@@ -9,10 +9,40 @@ cost/latency telemetry attached.
 """
 
 from __future__ import annotations
-
 from typing import Any, Awaitable, Callable
 
 from ..types import MessageTurn
+from .adapter_paths import ensure_benchmark_adapter_importable
+
+
+class HermesLifeOpsAgent:
+    """Callable wrapper that adds runner-readable cumulative telemetry."""
+
+    def __init__(
+        self,
+        inner: Callable[[list[MessageTurn], list[dict[str, Any]]], Awaitable[MessageTurn]],
+    ) -> None:
+        self._inner = inner
+        self.total_cost_usd: float = 0.0
+        self.total_input_tokens: int = 0
+        self.total_output_tokens: int = 0
+
+    async def __call__(
+        self,
+        history: list[MessageTurn],
+        tools: list[dict[str, Any]],
+    ) -> MessageTurn:
+        turn = await self._inner(history, tools)
+        cost = getattr(turn, "cost_usd", None)
+        if isinstance(cost, (int, float)):
+            self.total_cost_usd += float(cost)
+        input_tokens = getattr(turn, "input_tokens", None)
+        if isinstance(input_tokens, (int, float)):
+            self.total_input_tokens += int(input_tokens)
+        output_tokens = getattr(turn, "output_tokens", None)
+        if isinstance(output_tokens, (int, float)):
+            self.total_output_tokens += int(output_tokens)
+        return turn
 
 
 def build_hermes_agent(
@@ -22,7 +52,7 @@ def build_hermes_agent(
     *,
     temperature: float = 0.0,
     reasoning_effort: str = "low",
-    max_tokens: int | None = None,
+    max_tokens: int | None = 4096,
 ) -> Callable[[list[MessageTurn], list[dict[str, Any]]], Awaitable[MessageTurn]]:
     """Build a Hermes-template agent callable for the bench runner.
 
@@ -38,7 +68,7 @@ def build_hermes_agent(
     direct endpoint experiments, but it requires ``HERMES_BASE_URL`` and
     bypasses the source harness setup.
     """
-    del temperature, reasoning_effort, max_tokens
+    ensure_benchmark_adapter_importable("hermes")
     try:
         from hermes_adapter.client import HermesClient
         from hermes_adapter.lifeops_bench import build_lifeops_bench_agent_fn
@@ -52,7 +82,12 @@ def build_hermes_agent(
     # installed (the bench depends on litellm/openai), so we can drive the
     # OpenAI-compatible Cerebras endpoint directly without requiring a
     # hermes-agent venv subprocess.
-    client_kwargs: dict[str, Any] = {"mode": "in_process"}
+    client_kwargs: dict[str, Any] = {
+        "mode": "in_process",
+        "temperature": temperature,
+        "reasoning_effort": reasoning_effort,
+        "max_tokens": max_tokens,
+    }
     if model:
         client_kwargs["model"] = model
     if base_url:
@@ -61,11 +96,40 @@ def build_hermes_agent(
         client_kwargs["api_key"] = api_key
     client = HermesClient(**client_kwargs)
 
-    return build_lifeops_bench_agent_fn(
+    # Allow operators to override the system prompt with an optimized one
+    # (e.g. the artifact produced by `bun run train --optimizer dspy-mipro`).
+    # The override is read from disk so we don't bake training output into
+    # source.
+    import json as _json
+    import os as _os
+
+    # P2-6: include BLOCK kwarg shape hint so the model uses bundle_id
+    # (e.g. 'com.apple.Safari') not app_name when emitting BLOCK actions.
+    default_system_prompt = (
+        "You are running LifeOpsBench. Use the supplied tools exactly "
+        "when they are needed, and keep responses concise. "
+        "For BLOCK actions, use bundle_id (e.g., 'com.apple.Safari') not app_name."
+    )
+    system_prompt = default_system_prompt
+    override_path = _os.environ.get("LIFEOPS_PLANNER_PROMPT_FILE")
+    if override_path and _os.path.exists(override_path):
+        try:
+            if override_path.endswith(".json"):
+                with open(override_path, "r", encoding="utf-8") as fh:
+                    obj = _json.load(fh)
+                if isinstance(obj, dict) and isinstance(obj.get("prompt"), str):
+                    system_prompt = obj["prompt"]
+            else:
+                with open(override_path, "r", encoding="utf-8") as fh:
+                    text = fh.read().strip()
+                if text:
+                    system_prompt = text
+        except OSError:
+            pass
+
+    inner = build_lifeops_bench_agent_fn(
         client=client,
         model_name=model,
-        system_prompt=(
-            "You are running LifeOpsBench. Use the supplied tools exactly "
-            "when they are needed, and keep responses concise."
-        ),
+        system_prompt=system_prompt,
     )
+    return HermesLifeOpsAgent(inner)

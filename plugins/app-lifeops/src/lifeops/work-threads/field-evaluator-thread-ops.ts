@@ -1,11 +1,9 @@
 /**
  * `threadOps` — response-handler field evaluator owned by app-lifeops.
  *
- * Replaces the old `workThreadResponseHandlerEvaluator` regex-based router
- * (`response-handler-evaluator.ts`). Instead of pattern-matching the user's
- * message, this evaluator contributes a typed schema fragment to the SAME
- * Stage-1 LLM call the response handler is already making. The LLM extracts
- * the thread operations from context — no regex.
+ * Contributes a typed schema fragment to the SAME Stage-1 LLM call the
+ * response handler is already making. The LLM extracts the thread operations
+ * from context — no post-parse regex router.
  *
  * The abort intent ("stop", "nvm", "actually wait don't do that") lives as
  * one operation type within threadOps. When the LLM emits
@@ -23,10 +21,10 @@
 
 import { hasOwnerAccess } from "@elizaos/agent";
 import type {
+  ResponseHandlerFieldContext,
   ResponseHandlerFieldEffect,
   ResponseHandlerFieldEvaluator,
   ResponseHandlerFieldHandleContext,
-  ResponseHandlerFieldContext,
 } from "@elizaos/core";
 import { createPendingPromptsStore } from "../pending-prompts/store.js";
 import { createWorkThreadStore } from "./store.js";
@@ -92,7 +90,9 @@ const THREAD_OP_TYPE_ENUM = [
   "abort",
 ];
 
-const THREAD_OPS_SCHEMA = {
+// Note: declared as JSONSchema (mutable) so it can be passed into the
+// registry's `register()` which expects `JSONSchema` not `Readonly<...>`.
+const THREAD_OPS_SCHEMA: import("@elizaos/core").JSONSchema = {
   type: "array",
   description:
     "Thread operations for this turn. Empty array when no thread action is needed.",
@@ -102,7 +102,7 @@ const THREAD_OPS_SCHEMA = {
     properties: {
       type: {
         type: "string",
-        enum: THREAD_OP_TYPE_ENUM,
+        enum: [...THREAD_OP_TYPE_ENUM],
         description:
           "Operation type. 'abort' preempts the turn; all others stage thread mutations for the lifeops_thread_control action.",
       },
@@ -163,7 +163,7 @@ const THREAD_OPS_SCHEMA = {
       "reason",
     ],
   },
-} as const;
+};
 
 // ---------------------------------------------------------------------------
 // shouldRun — only include this field's prompt slice when relevant
@@ -339,13 +339,14 @@ async function threadOpsHandle(
 // Exported evaluator
 // ---------------------------------------------------------------------------
 
-export const threadOpsFieldEvaluator: ResponseHandlerFieldEvaluator<ThreadOp[]> =
-  {
-    name: "threadOps",
-    description: THREAD_OPS_DESCRIPTION,
-    priority: 30, // Runs before contexts/candidateActions can be finalized.
-    schema: THREAD_OPS_SCHEMA,
-    shouldRun: threadOpsShouldRun,
-    parse: threadOpsParse,
-    handle: threadOpsHandle,
-  };
+export const threadOpsFieldEvaluator: ResponseHandlerFieldEvaluator<
+  ThreadOp[]
+> = {
+  name: "threadOps",
+  description: THREAD_OPS_DESCRIPTION,
+  priority: 30, // Runs before contexts/candidateActions can be finalized.
+  schema: THREAD_OPS_SCHEMA,
+  shouldRun: threadOpsShouldRun,
+  parse: threadOpsParse,
+  handle: threadOpsHandle,
+};

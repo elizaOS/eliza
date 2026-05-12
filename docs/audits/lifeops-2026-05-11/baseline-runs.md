@@ -13,9 +13,9 @@ STATIC scenarios.
 
 | Agent    | Run dir                                                                                   | Scenarios | Passed | Partial | Zero | Errored | Mean (mail) | Cost     | Latency  | Model            | Provider |
 |----------|-------------------------------------------------------------------------------------------|-----------|--------|---------|------|---------|-------------|----------|----------|------------------|----------|
-| hermes   | `~/.milady/runs/lifeops/lifeops-hermes-baseline-1778514429`                               | 25        | 0      | 24      | 1    | 0       | 0.494       | $0.0000* | 0 ms*    | gpt-oss-120b     | cerebras |
-| openclaw | `~/.milady/runs/lifeops/lifeops-openclaw-baseline-1778514437`                             | 25        | 0      | 22      | 3    | 0       | 0.562       | $0.1036  | 155188 ms | gpt-oss-120b     | cerebras |
-| eliza    | `~/.milady/runs/lifeops/lifeops-eliza-baseline-1778515576`                                | 25        | 0      | 0       | 25   | 0       | 0.000       | $0.0000* | 0 ms*    | gpt-oss-120b     | cerebras |
+| hermes   | `~/.eliza/runs/lifeops/lifeops-hermes-baseline-1778514429`                               | 25        | 0      | 24      | 1    | 0       | 0.494       | $0.0000* | 0 ms*    | gpt-oss-120b     | cerebras |
+| openclaw | `~/.eliza/runs/lifeops/lifeops-openclaw-baseline-1778514437`                             | 25        | 0      | 22      | 3    | 0       | 0.562       | $0.1036  | 155188 ms | gpt-oss-120b     | cerebras |
+| eliza    | `~/.eliza/runs/lifeops/lifeops-eliza-baseline-1778515576`                                | 25        | 0      | 0       | 25   | 0       | 0.000       | $0.0000* | 0 ms*    | gpt-oss-120b     | cerebras |
 
 \* The Hermes adapter's in-process bridge drives the OpenAI SDK directly
 and does not feed per-turn token usage back into the runner's
@@ -39,17 +39,10 @@ Hermes runs are cost-comparable.
 
 ### openclaw
 
-- 3 zero-score scenarios all share the same pattern: the model emitted
-  a `<tool_call>{...}` JSON block with no closing `</tool_call>`, so
-  the OpenClaw text parser dropped the call. Example, from
-  `mail.archive_thread_by_subject`:
-
-  ```
-  We need to call MESSAGE search.We'll search inbox.<tool_call>{"tool": "MESSAGE", "args": {"operation": "search_inbox", "source": "gmail", "query": "subject:\"Quarterly Review\""}}The task is complete.
-  ```
-
-  Real LLM behavior under Cerebras + gpt-oss-120b. The OpenClaw adapter
-  parser is strict — it requires balanced tags.
+- 3 zero-score scenarios were caused by OpenClaw's legacy text-embedded
+  tool-call protocol. Current Eliza-native benchmarks do not use that
+  protocol; they require OpenAI-compatible `tools` and returned
+  `tool_calls`.
 - 22 partial-credit scenarios mostly land at 0.20 or 0.70 — same
   story as hermes: the agent emits `MESSAGE` correctly but doesn't
   match the scenario's expected sub-operation argument (`manage`,
@@ -59,7 +52,7 @@ Hermes runs are cost-comparable.
 
 - The eliza bench server is up and serving the agent loop. Cerebras is
   wired in via `OPENAI_BASE_URL=https://api.cerebras.ai/v1` +
-  `OPENAI_API_KEY=$CEREBRAS_API_KEY` + `MILADY_PROVIDER=cerebras`.
+  `OPENAI_API_KEY=$CEREBRAS_API_KEY` + `ELIZA_PROVIDER=cerebras`.
   This causes
   `packages/app-core/src/benchmark/server.ts` to load
   `@elizaos/plugin-openai` against the Cerebras endpoint and strip the
@@ -106,8 +99,8 @@ Hermes runs are cost-comparable.
   parent Python (the hermes-adapter's in-process mode bypasses the
   hermes-agent venv subprocess; the openclaw adapter is OpenAI-compat
   by default).
-- Cerebras key in `/Users/shawwalters/milaidy/eliza/.env` confirmed at
-  prefix `csk-8c9hf68j` (matches the expected new key).
+- Cerebras key in `/Users/shawwalters/milaidy/eliza/.env` confirmed present
+  without recording the secret or prefix in this audit.
 - Saved JSON manifests confirm `model_name=gpt-oss-120b` and
   `judge_model_name=claude-opus-4-7`. No mocked content. Each
   scenario's `turns[*].agent_message` contains real natural-language
@@ -152,21 +145,21 @@ set -a; . /Users/shawwalters/milaidy/eliza/.env; set +a
 
 # hermes (in-process — does NOT need ~/.eliza/agents/hermes-agent-src)
 python -m eliza_lifeops_bench --agent hermes --domain mail --mode static \
-  --output-dir ~/.milady/runs/lifeops/lifeops-hermes-baseline-$(date +%s) \
+  --output-dir ~/.eliza/runs/lifeops/lifeops-hermes-baseline-$(date +%s) \
   --per-scenario-timeout-s 120 --max-cost-usd 5
 
 # openclaw (OpenAI-compat — does NOT need the openclaw CLI binary)
 python -m eliza_lifeops_bench --agent openclaw --domain mail --mode static \
-  --output-dir ~/.milady/runs/lifeops/lifeops-openclaw-baseline-$(date +%s) \
+  --output-dir ~/.eliza/runs/lifeops/lifeops-openclaw-baseline-$(date +%s) \
   --per-scenario-timeout-s 120 --max-cost-usd 5
 
 # eliza (needs the bench server — the adapter auto-spawns it)
 export OPENAI_BASE_URL="https://api.cerebras.ai/v1"
-export MILADY_PROVIDER=cerebras
+export ELIZA_PROVIDER=cerebras
 export OPENAI_LARGE_MODEL=gpt-oss-120b
 export OPENAI_SMALL_MODEL=gpt-oss-120b
 export OPENAI_API_KEY="$CEREBRAS_API_KEY"
 python -m eliza_lifeops_bench --agent eliza --domain mail --mode static \
-  --output-dir ~/.milady/runs/lifeops/lifeops-eliza-baseline-$(date +%s) \
+  --output-dir ~/.eliza/runs/lifeops/lifeops-eliza-baseline-$(date +%s) \
   --per-scenario-timeout-s 90 --max-cost-usd 5 --concurrency 4
 ```

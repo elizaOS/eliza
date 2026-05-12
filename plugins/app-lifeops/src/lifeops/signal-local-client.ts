@@ -95,8 +95,7 @@ export async function readSignalInboundMessages(
 
     const speakerName =
       envelope.sourceName ?? senderNumber ?? senderUuid ?? "Signal";
-    const createdAt =
-      dataMessage.timestamp ?? envelope.timestamp ?? Date.now();
+    const createdAt = dataMessage.timestamp ?? envelope.timestamp ?? Date.now();
     const threadId = `signal:${channelId}`;
 
     messages.push({

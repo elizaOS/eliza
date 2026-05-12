@@ -97,7 +97,10 @@ export const appBlockerProvider: Provider = {
           appBlockerAvailable: true,
           appBlockerActive: status.active,
           appBlockerBlockedCount: status.blockedCount,
-          appBlockerBlockedPackageNames: status.blockedPackageNames.slice(0, 25),
+          appBlockerBlockedPackageNames: status.blockedPackageNames.slice(
+            0,
+            25,
+          ),
           appBlockerEndsAt: status.endsAt,
           appBlockerEngine: status.engine,
           appBlockerPlatform: status.platform,

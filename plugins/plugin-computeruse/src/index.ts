@@ -93,7 +93,16 @@ export const computerusePlugin = computerUsePlugin;
 
 export default computerUsePlugin;
 
+export { handleComputerUseRoutes } from "./routes/computer-use-routes.js";
+export { handleSandboxRoute } from "./routes/sandbox-routes.js";
 export { ComputerUseService } from "./services/computer-use-service.js";
+export type {
+  DesktopControlCapabilities,
+  DesktopControlCapability,
+  DesktopInputButton,
+  DesktopScreenshotRegion,
+  DesktopWindowInfo,
+} from "./services/desktop-control.js";
 export {
   captureDesktopScreenshot,
   commandExists,
@@ -108,15 +117,6 @@ export {
   performDesktopScroll,
   performDesktopTextInput,
 } from "./services/desktop-control.js";
-export type {
-  DesktopControlCapabilities,
-  DesktopControlCapability,
-  DesktopInputButton,
-  DesktopScreenshotRegion,
-  DesktopWindowInfo,
-} from "./services/desktop-control.js";
-export { handleComputerUseRoutes } from "./routes/computer-use-routes.js";
-export { handleSandboxRoute } from "./routes/sandbox-routes.js";
 // Re-export types for consumers
 export type {
   ActionHistoryEntry,
@@ -152,4 +152,3 @@ export type {
   WindowActionType,
   WindowInfo,
 } from "./types.js";
-export * from "./register-routes.js";

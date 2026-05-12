@@ -1,13 +1,8 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
 import type {
   CreateLifeOpsGoalRequest,
+  LifeOpsActivitySignal,
   LifeOpsChannelPolicy,
+  LifeOpsDefinitionRecord,
   LifeOpsGoalDefinition,
   LifeOpsGoalExperienceLoop,
   LifeOpsGoalExperienceLoopMatch,
@@ -21,6 +16,7 @@ import type {
   LifeOpsOverviewSection,
   LifeOpsReminderPlan,
   LifeOpsReminderPreference,
+  LifeOpsReminderInspection,
   LifeOpsReminderUrgency,
   LifeOpsTaskDefinition,
   LifeOpsWeeklyGoalReview,
@@ -42,6 +38,7 @@ import { evaluateGoalProgressWithLlm } from "./goal-semantic-evaluator.js";
 import {
   createLifeOpsAuditEvent,
   createLifeOpsGoalDefinition,
+  type LifeOpsScheduleMergedStateRecord,
 } from "./repository.js";
 import {
   GOAL_REVIEW_LOOKBACK_DAYS,
@@ -130,6 +127,36 @@ const GOAL_SIMILARITY_STOP_WORDS = new Set([
   "goals",
 ]);
 
+type GoalMixinDependencies = LifeOpsServiceBase & {
+  getGoalRecord(goalId: string): Promise<LifeOpsGoalRecord>;
+  getDefinitionRecord(definitionId: string): Promise<LifeOpsDefinitionRecord>;
+  listActivitySignals(args?: {
+    sinceAt?: string | null;
+    limit?: number | null;
+    states?: LifeOpsActivitySignal["state"][] | null;
+  }): Promise<LifeOpsActivitySignal[]>;
+  inspectReminder(
+    ownerType: "occurrence" | "calendar_event",
+    ownerId: string,
+  ): Promise<LifeOpsReminderInspection>;
+  refreshEffectiveScheduleState(args?: {
+    timezone?: string | null;
+    now?: Date;
+  }): Promise<LifeOpsScheduleMergedStateRecord | null>;
+  refreshDefinitionOccurrences(
+    definition: LifeOpsTaskDefinition,
+    now?: Date,
+  ): Promise<void>;
+  buildReminderPreferenceResponse(
+    definition: LifeOpsTaskDefinition | null,
+    policies: LifeOpsChannelPolicy[],
+  ): LifeOpsReminderPreference;
+  resolveEffectiveReminderPlan(
+    plan: LifeOpsReminderPlan | null,
+    preference: LifeOpsReminderPreference,
+  ): LifeOpsReminderPlan | null;
+};
+
 function tokenizeGoalText(text: string | null | undefined): string[] {
   const raw = typeof text === "string" ? text : "";
   return raw
@@ -158,7 +185,9 @@ function buildGoalSimilarityTokens(args: {
 export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsGoalService> {
-  return class extends Base {
+  const GoalsBase = Base as unknown as Constructor<GoalMixinDependencies>;
+
+  class LifeOpsGoalServiceMixin extends GoalsBase {
     async deleteGoal(goalId: string): Promise<void> {
       const goal = await this.repository.getGoal(this.agentId(), goalId);
       if (!goal) {
@@ -1462,5 +1491,10 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
     async listChannelPolicies(): Promise<LifeOpsChannelPolicy[]> {
       return this.repository.listChannelPolicies(this.agentId());
     }
-  } as MixinClass<TBase, LifeOpsGoalService>;
+  }
+
+  return LifeOpsGoalServiceMixin as unknown as MixinClass<
+    TBase,
+    LifeOpsGoalService
+  >;
 }

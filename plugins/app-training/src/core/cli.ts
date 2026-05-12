@@ -8,12 +8,12 @@
  * Or: `cd eliza/packages/agent && bun run training:cli` (delegates to this file).
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from "fs";
-import { mkdir, readFile, writeFile } from "fs/promises";
-import { homedir } from "os";
-import { join } from "path";
-import { fileURLToPath } from "url";
-import { parseArgs } from "util";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 import { AGENT_CONTEXTS, type AgentContext } from "./context-types.js";
 import {
   createAnthropicTeacher,
@@ -114,9 +114,19 @@ async function cmdGenerate(args: string[]) {
     },
   });
 
-  const variantsPerBlueprint = parseInt(values.variants!, 10);
-  const outputDir = values.output!;
-  const concurrency = parseInt(values.concurrency!, 10);
+  const variantsRaw = values.variants;
+  const outputDir = values.output;
+  const concurrencyRaw = values.concurrency;
+  if (
+    typeof variantsRaw !== "string" ||
+    typeof outputDir !== "string" ||
+    typeof concurrencyRaw !== "string"
+  ) {
+    throw new Error("Missing required generate options");
+  }
+
+  const variantsPerBlueprint = parseInt(variantsRaw, 10);
+  const concurrency = parseInt(concurrencyRaw, 10);
 
   const filterContexts = parseAgentContexts(values.contexts);
   const filterDecisions = parseAgentDecisions(values.decisions);
@@ -398,11 +408,9 @@ async function cmdExportTrajectories(args: string[]) {
   });
   const inputDir =
     values.input ??
-    process.env.MILADY_TRAJECTORY_DIR ??
+    process.env.ELIZA_TRAJECTORY_DIR ??
     join(
-      process.env.MILADY_STATE_DIR ??
-        process.env.ELIZA_STATE_DIR ??
-        join(homedir(), ".milady"),
+      process.env.ELIZA_STATE_DIR ?? join(homedir(), ".eliza"),
       "trajectories",
     );
   const outputDir = values.output ?? "./training-data";
@@ -554,11 +562,11 @@ async function cmdRollbackPrompt(args: string[]) {
   if (customRoot) {
     service.setStoreRoot(customRoot);
   } else {
-    // Match the runtime precedence used by `bun run train`: MILADY_STATE_DIR
+    // Match the runtime precedence used by `bun run train`: ELIZA_STATE_DIR
     // then ELIZA_STATE_DIR then ~/.eliza. Stay aligned so `rollback-prompt`
     // operates on the same store the runtime + train CLI write to.
     const stateDir =
-      process.env.MILADY_STATE_DIR?.trim() ||
+      process.env.ELIZA_STATE_DIR?.trim() ||
       process.env.ELIZA_STATE_DIR?.trim() ||
       join(homedir(), ".eliza");
     service.setStoreRoot(join(stateDir, "optimized-prompts"));
@@ -616,7 +624,7 @@ Commands:
     --input PATH    Path to raw_samples.json
 
   export-trajectories  Re-export raw recorded trajectories to per-task JSONL
-    -i, --input DIR    Trajectory dir (default: $MILADY_TRAJECTORY_DIR or ~/.milady/trajectories)
+    -i, --input DIR    Trajectory dir (default: $ELIZA_TRAJECTORY_DIR or ~/.eliza/trajectories)
     -o, --output DIR   Output dir (default: ./training-data)
     --max-per-task N   Cap examples per task bucket
 
@@ -634,11 +642,11 @@ Commands:
     -o, --output PATH  Write JSON result to file
     Exits with code 2 if variant regresses beyond --tolerance.
 
-  rollback-prompt   Flip the optimized-prompt 'current' and 'previous' symlinks
-    <task>            Required positional: should_respond | context_routing |
+    rollback-prompt   Flip the optimized-prompt 'current' and 'previous' symlinks
+      <task>            Required positional: should_respond | context_routing |
                       action_planner | response | media_description
     --store-root DIR  Override the optimized-prompts store root (default:
-                      $MILADY_STATE_DIR / $ELIZA_STATE_DIR / ~/.eliza/optimized-prompts)
+                      $ELIZA_STATE_DIR / ~/.eliza/optimized-prompts)
 
 Environment:
   ANTHROPIC_API_KEY   Use Claude as teacher model

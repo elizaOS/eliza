@@ -60,7 +60,7 @@ PERSONAS: list[str] = [
 ]
 
 AGENT_NAMES: list[str] = [
-    "milady", "eliza", "iris", "atlas", "nova", "kai", "echo", "sage",
+    "eliza", "eliza", "iris", "atlas", "nova", "kai", "echo", "sage",
     "lyra", "vega",
 ]
 
@@ -374,11 +374,11 @@ SIGNAL_GROUPS = [
 ]
 TWITTER_HANDLES = [
     "alice_in_chains", "bob_dev", "elonmusk", "satyanadella",
-    "elizaos_official", "milady_ai",
+    "elizaos_official", "eliza_ai",
 ]
 TWITTER_QUERIES = [
     "elizaOS news",
-    "@milady_ai launches",
+    "@eliza_ai launches",
     "GPU shortage 2026",
     "ai agents tooling",
     "tokio rust async",
@@ -387,8 +387,8 @@ TWITTER_QUERIES = [
     "#opensource",
 ]
 SAMPLE_TWEETS = [
-    "Just shipped a new build of milady — local-first AI agents that respect your data.",
-    "Hot take: TOON > JSON when the model is the consumer.",
+    "Just shipped a new build of eliza — local-first AI agents that respect your data.",
+    "Hot take: native JSON > JSON when the model is the consumer.",
     "Friendly reminder that @elizaos_official is always hiring.",
     "Coffee, then deploy. In that order.",
     "Eliza skill of the week: yara-authoring. Detect malware patterns from chat.",
@@ -755,7 +755,7 @@ def _sample_value(action: str, param_key: str, p: ParamSpec, idx: int,
         return [
             "Updated: the deploy lands at 13:00 UTC, not 12:00.",
             "Edit: removed the broken link, see the new doc.",
-            "Fixed typo — should be 'milady', not 'milday'.",
+            "Fixed typo — should be 'eliza', not 'milday'.",
             "Adding context: this only affects the EU region.",
         ][idx % 4]
     if n == "messageContent":

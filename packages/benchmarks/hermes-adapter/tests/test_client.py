@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 import pytest
 
-from hermes_adapter.client import HermesClient, MessageResponse
+from hermes_adapter.client import HermesClient, MessageResponse, _build_openai_messages
 
 
 def _fake_completed(
@@ -198,6 +198,68 @@ def test_client_send_message_passes_system_prompt(
         {"system_prompt": "You are a teapot."},
     )
     assert payload["system_prompt"] == "You are a teapot."
+
+
+def test_client_send_message_payload_includes_generation_options(tmp_path: Path) -> None:
+    client = HermesClient(
+        repo_path=tmp_path,
+        api_key="test-key",
+        base_url="https://test.example/v1",
+        mode="in_process",
+        temperature=0.1,
+        reasoning_effort="medium",
+        max_tokens=2048,
+    )
+
+    payload = client.build_send_message_payload("hi", {"max_tokens": 1024})
+
+    assert payload["temperature"] == 0.1
+    assert payload["reasoning_effort"] == "medium"
+    assert payload["max_tokens"] == 1024
+
+
+def test_client_provider_specific_env_defaults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CEREBRAS_API_KEY", "sk-cerebras")
+    monkeypatch.setenv("CEREBRAS_BASE_URL", "https://cerebras.example/v1")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
+    monkeypatch.setenv("OPENAI_BASE_URL", "https://openai.example/v1")
+
+    openai_client = HermesClient(repo_path=tmp_path, provider="openai")
+    cerebras_client = HermesClient(repo_path=tmp_path, provider="cerebras")
+
+    assert openai_client.api_key == "sk-openai"
+    assert openai_client.base_url == "https://openai.example/v1"
+    assert cerebras_client.api_key == "sk-cerebras"
+    assert cerebras_client.base_url == "https://cerebras.example/v1"
+
+
+def test_build_openai_messages_preserves_system_prompt_with_history() -> None:
+    messages = _build_openai_messages(
+        raw_messages=[{"role": "user", "content": "last turn"}],
+        system_prompt="Benchmark instructions",
+        fallback_user_text="fallback",
+    )
+
+    assert messages[0] == {"role": "system", "content": "Benchmark instructions"}
+    assert messages[1] == {"role": "user", "content": "last turn"}
+
+
+def test_build_openai_messages_does_not_duplicate_identical_system_prompt() -> None:
+    messages = _build_openai_messages(
+        raw_messages=[
+            {"role": "system", "content": "Benchmark instructions"},
+            {"role": "user", "content": "last turn"},
+        ],
+        system_prompt="Benchmark instructions",
+        fallback_user_text="fallback",
+    )
+
+    assert [
+        msg for msg in messages if msg.get("role") == "system"
+    ] == [{"role": "system", "content": "Benchmark instructions"}]
 
 
 def test_client_is_ready_returns_bool(client_with_fake_venv: HermesClient) -> None:

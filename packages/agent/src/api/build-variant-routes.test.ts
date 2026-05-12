@@ -2,13 +2,13 @@ import type http from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleBuildVariantRoutes } from "./build-variant-routes";
 
-const originalEnv = process.env.MILADY_BUILD_VARIANT;
+const originalEnv = process.env.ELIZA_BUILD_VARIANT;
 
 afterEach(() => {
   if (originalEnv === undefined) {
-    delete process.env.MILADY_BUILD_VARIANT;
+    delete process.env.ELIZA_BUILD_VARIANT;
   } else {
-    process.env.MILADY_BUILD_VARIANT = originalEnv;
+    process.env.ELIZA_BUILD_VARIANT = originalEnv;
   }
 });
 
@@ -28,7 +28,7 @@ function makeCtx(method: string, pathname: string) {
 
 describe("handleBuildVariantRoutes", () => {
   it("returns variant=store + platform when env is store", () => {
-    process.env.MILADY_BUILD_VARIANT = "store";
+    process.env.ELIZA_BUILD_VARIANT = "store";
     const { ctx, json } = makeCtx("GET", "/api/build/variant");
     const handled = handleBuildVariantRoutes(ctx);
     expect(handled).toBe(true);
@@ -41,7 +41,7 @@ describe("handleBuildVariantRoutes", () => {
   });
 
   it("returns variant=direct by default", () => {
-    delete process.env.MILADY_BUILD_VARIANT;
+    delete process.env.ELIZA_BUILD_VARIANT;
     const { ctx, json } = makeCtx("GET", "/api/build/variant");
     expect(handleBuildVariantRoutes(ctx)).toBe(true);
     const payload = json.mock.calls[0]?.[1];

@@ -38,7 +38,9 @@ from it; if they disagree the registry wins.
 
 | registry key     | optimizer    | rank | scale | micro_batch | grad_accum | seq_len | tier         |
 |------------------|--------------|------|-------|-------------|------------|---------|--------------|
+| `qwen3.5-0.8b`   | apollo_mini   | 128  | 128.0 | 1           | 8          | 4096    | local        |
 | `qwen3.5-2b`     | apollo_mini   | 256  | 128.0 | 1           | 16         | 8192    | local        |
+| `qwen3.5-4b`     | apollo_mini   | 256  | 128.0 | 1           | 16         | 4096    | local        |
 | `qwen3.5-9b`     | apollo        | 512  | 1.0   | 2           | 8          | 16384   | workstation  |
 | `qwen3.6-27b`    | apollo_mini   | 512  | 128.0 | 1           | 8          | 65536   | cloud (FSDP) |
 
@@ -103,8 +105,7 @@ uv run --extra train python3 scripts/train_local.py \
     --run-name qwen35-2b-apollo-mini-v1
 ```
 
-`--qlora` is rejected. This local pipeline is full-parameter APOLLO/APOLLO-Mini
-only.
+This local pipeline is full-parameter APOLLO/APOLLO-Mini only.
 
 ## Validation
 

@@ -8,7 +8,8 @@ import {
 
 export default scenario({
   id: "push.voice-call-as-last-resort",
-  title: "Voice call fires only after the SMS rung has been unacknowledged for 10m",
+  title:
+    "Voice call fires only after the SMS rung has been unacknowledged for 10m",
   domain: "lifeops.push",
   tags: ["lifeops", "push", "ladder", "voice", "last-resort"],
   description:
@@ -36,9 +37,21 @@ export default scenario({
       content: {
         kind: "ladder-state",
         history: [
-          { channel: "desktop", at: new Date(Date.now() - 30 * 60_000).toISOString(), ackedAt: null },
-          { channel: "mobile", at: new Date(Date.now() - 22 * 60_000).toISOString(), ackedAt: null },
-          { channel: "sms", at: new Date(Date.now() - 12 * 60_000).toISOString(), ackedAt: null },
+          {
+            channel: "desktop",
+            at: new Date(Date.now() - 30 * 60_000).toISOString(),
+            ackedAt: null,
+          },
+          {
+            channel: "mobile",
+            at: new Date(Date.now() - 22 * 60_000).toISOString(),
+            ackedAt: null,
+          },
+          {
+            channel: "sms",
+            at: new Date(Date.now() - 12 * 60_000).toISOString(),
+            ackedAt: null,
+          },
         ],
         urgency: "critical",
       },

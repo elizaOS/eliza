@@ -21,7 +21,7 @@ function isTruthy(value: string | undefined): boolean {
 
 function terminalSupportedByEnv(ctx: PluginAutoEnableContext): boolean {
   const env = ctx.env;
-  const variant = (env.MILADY_BUILD_VARIANT ?? env.ELIZA_BUILD_VARIANT ?? "").trim().toLowerCase();
+  const variant = (env.ELIZA_BUILD_VARIANT ?? "").trim().toLowerCase();
   if (variant === "store") return false;
 
   const platform = env.ELIZA_PLATFORM?.trim().toLowerCase();

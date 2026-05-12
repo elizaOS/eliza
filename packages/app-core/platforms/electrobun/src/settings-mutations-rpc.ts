@@ -1,4 +1,5 @@
 import { AgentNotReadyError } from "./config-and-auth-rpc";
+import { isRecord } from "./rpc-parse-utils";
 import type {
 	AgentAutomationMode,
 	AgentAutomationModeSnapshot,
@@ -8,10 +9,6 @@ import type {
 } from "./rpc-schema";
 
 const DEFAULT_TIMEOUT_MS = 8_000;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isAgentAutomationMode(value: unknown): value is AgentAutomationMode {
 	return value === "connectors-only" || value === "full";

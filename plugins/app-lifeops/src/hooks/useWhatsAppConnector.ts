@@ -1,5 +1,5 @@
-import { client } from "@elizaos/ui";
 import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared";
+import { client } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
 import { formatConnectorError } from "./connector-error.js";
 

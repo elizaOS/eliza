@@ -15,12 +15,12 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
-import { judgeRubric } from "../_helpers/action-assertions.ts";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
+import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 const VIP_SENDER = "board-chair@example.com";
 
@@ -37,13 +37,7 @@ export default scenario({
   id: "inbox-triage.escalate-from-known-VIP",
   title: "Low-urgency mail from VIP escalates to top of triage",
   domain: "lifeops.inbox-triage",
-  tags: [
-    "lifeops",
-    "inbox-triage",
-    "vip",
-    "entity-aware",
-    "ranking",
-  ],
+  tags: ["lifeops", "inbox-triage", "vip", "entity-aware", "ranking"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

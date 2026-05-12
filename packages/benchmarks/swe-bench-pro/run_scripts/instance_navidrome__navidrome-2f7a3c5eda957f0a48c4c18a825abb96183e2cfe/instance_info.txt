@@ -1,0 +1,6 @@
+Instance ID: instance_navidrome__navidrome-2f7a3c5eda957f0a48c4c18a825abb96183e2cfe
+Repository: navidrome/navidrome
+Base Commit: cb3ba23fce5c37887d1e8952452292afe90b466b
+Test Files: ["TestListenBrainz"]
+FAIL_TO_PASS: ["TestListenBrainz"]
+PASS_TO_PASS: []

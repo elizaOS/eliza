@@ -286,7 +286,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
   return (
     <div
       data-testid="phone-shell"
-      className="fixed inset-0 z-50 flex flex-col bg-bg h-[100vh] overflow-hidden supports-[height:100dvh]:h-[100dvh]"
+      className="fixed inset-0 z-50 flex h-[100vh] flex-col overflow-hidden bg-bg pb-[var(--safe-area-bottom,0px)] pl-[var(--safe-area-left,0px)] pr-[var(--safe-area-right,0px)] pt-[var(--safe-area-top,0px)] supports-[height:100dvh]:h-[100dvh]"
     >
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-sm">
@@ -350,9 +350,9 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
         {/* Dialer */}
         <TabsContent
           value="dialer"
-          className="flex-1 overflow-hidden focus-visible:outline-none"
+          className="flex-1 overflow-y-auto focus-visible:outline-none"
         >
-          <div className="flex h-full flex-col items-center justify-between px-4 py-6">
+          <div className="flex min-h-full flex-col items-center justify-between px-4 py-6">
             <div className="flex w-full max-w-sm flex-col items-center gap-3 pt-2">
               <output
                 className="block min-h-[3rem] w-full select-text rounded-xl border border-border bg-bg-accent px-4 py-3 text-center font-mono text-2xl text-txt"
@@ -382,9 +382,10 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
                 <button
                   key={key}
                   type="button"
-                  className="aspect-square rounded-full border border-border bg-bg-accent text-2xl font-semibold text-txt transition active:scale-95 hover:bg-bg-accent/70"
+                  className="h-16 rounded-full border border-border bg-bg-accent text-2xl font-semibold text-txt transition active:scale-95 hover:bg-bg-accent/70 sm:h-20"
                   onClick={() => appendDigit(key)}
                   aria-label={`Dial ${key}`}
+                  data-testid={`phone-dial-key-${key}`}
                 >
                   {key}
                 </button>
@@ -397,6 +398,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
                 type="button"
                 className="h-12 rounded-full border border-border bg-bg-accent text-lg font-semibold text-txt active:scale-95"
                 onClick={appendPlus}
+                data-testid="phone-dial-plus"
                 aria-label={t("phone.dialer.intl", {
                   defaultValue: "Insert + for international dialing",
                 })}
@@ -408,6 +410,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
                 disabled={calling || dialed.length === 0}
                 className="h-14 rounded-full bg-ok text-bg hover:bg-ok/90 disabled:opacity-50"
                 aria-label={t("phone.dialer.call", { defaultValue: "Call" })}
+                data-testid="phone-dial-call"
               >
                 <PhoneIcon className="h-6 w-6" aria-hidden />
               </Button>
@@ -419,6 +422,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
                 aria-label={t("phone.dialer.backspace", {
                   defaultValue: "Delete digit",
                 })}
+                data-testid="phone-dial-backspace"
               >
                 <Delete className="h-5 w-5" aria-hidden />
               </button>
@@ -437,12 +441,47 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
                 {callsError}
               </p>
             ) : null}
-            {!callsError && calls.length === 0 && !callsLoading ? (
-              <p className="py-8 text-center text-sm text-muted">
-                {t("phone.recent.empty", {
-                  defaultValue: "No recent calls.",
+            {!callsError && calls.length === 0 && callsLoading ? (
+              <div className="flex h-full items-center justify-center px-6 text-center text-sm text-muted">
+                {t("phone.recent.loading", {
+                  defaultValue: "Loading recent calls…",
                 })}
-              </p>
+              </div>
+            ) : null}
+            {!callsError && calls.length === 0 && !callsLoading ? (
+              <div className="flex h-full items-center justify-center px-6 text-center">
+                <div className="max-w-sm">
+                  <PhoneIcon className="mx-auto h-12 w-12 text-muted" />
+                  <div className="mt-3 text-sm font-medium text-txt">
+                    {t("phone.recent.empty", {
+                      defaultValue: "No recent calls.",
+                    })}
+                  </div>
+                  <p className="mt-1 text-xs text-muted">
+                    {t("phone.recent.emptyBody", {
+                      defaultValue:
+                        "Recent incoming, outgoing, and missed calls will appear here after Android grants call-log access.",
+                    })}
+                  </p>
+                  <div className="mt-4 flex justify-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setActiveTab("dialer")}
+                    >
+                      {t("phone.tabs.dialer", { defaultValue: "Dialer" })}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void refreshCalls()}
+                    >
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      {t("actions.refresh", { defaultValue: "Refresh" })}
+                    </Button>
+                  </div>
+                </div>
+              </div>
             ) : null}
             <ul className="flex flex-col gap-1">
               {calls.map((entry) => {
@@ -486,11 +525,23 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
         >
           <div className="chat-native-scrollbar h-full overflow-y-auto px-4 py-3">
             {!contactsAvailable ? (
-              <p className="py-8 text-center text-sm text-muted">
-                {t("phone.contacts.unavailable", {
-                  defaultValue: "Contacts are not available on this device.",
-                })}
-              </p>
+              <div className="flex h-full items-center justify-center px-6 text-center">
+                <div className="max-w-sm">
+                  <UserIcon className="mx-auto h-12 w-12 text-muted" />
+                  <div className="mt-3 text-sm font-medium text-txt">
+                    {t("phone.contacts.unavailable", {
+                      defaultValue:
+                        "Contacts are not available on this device.",
+                    })}
+                  </div>
+                  <p className="mt-1 text-xs text-muted">
+                    {t("phone.contacts.unavailableBody", {
+                      defaultValue:
+                        "Install the Contacts bridge or open the standalone Contacts app to add phone numbers.",
+                    })}
+                  </p>
+                </div>
+              </div>
             ) : null}
             {contactsAvailable && contactsError ? (
               <p className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
@@ -502,11 +553,22 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
             contacts !== null &&
             contacts.length === 0 &&
             !contactsLoading ? (
-              <p className="py-8 text-center text-sm text-muted">
-                {t("phone.contacts.empty", {
-                  defaultValue: "No contacts with phone numbers.",
-                })}
-              </p>
+              <div className="flex h-full items-center justify-center px-6 text-center">
+                <div className="max-w-sm">
+                  <UserIcon className="mx-auto h-12 w-12 text-muted" />
+                  <div className="mt-3 text-sm font-medium text-txt">
+                    {t("phone.contacts.empty", {
+                      defaultValue: "No contacts with phone numbers.",
+                    })}
+                  </div>
+                  <p className="mt-1 text-xs text-muted">
+                    {t("phone.contacts.emptyBody", {
+                      defaultValue:
+                        "Contacts with callable phone numbers will appear here.",
+                    })}
+                  </p>
+                </div>
+              </div>
             ) : null}
             <ul className="flex flex-col gap-1">
               {(contacts ?? []).map((contact) => {

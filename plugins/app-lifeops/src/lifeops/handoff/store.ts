@@ -57,7 +57,9 @@ function isResumeCondition(value: unknown): value is ResumeCondition {
   if (cand.kind === "explicit_resume") return true;
   if (cand.kind === "silence_minutes") {
     const minutes = (value as { minutes?: unknown }).minutes;
-    return typeof minutes === "number" && Number.isFinite(minutes) && minutes > 0;
+    return (
+      typeof minutes === "number" && Number.isFinite(minutes) && minutes > 0
+    );
   }
   if (cand.kind === "user_request_help") {
     const userId = (value as { userId?: unknown }).userId;
@@ -70,7 +72,10 @@ function isValidRecord(value: unknown): value is HandoffRecord {
   if (!value || typeof value !== "object") return false;
   const r = value as Partial<HandoffRecord>;
   if (typeof r.roomId !== "string" || r.roomId.length === 0) return false;
-  if (typeof r.enteredAt !== "string" || !Number.isFinite(Date.parse(r.enteredAt))) {
+  if (
+    typeof r.enteredAt !== "string" ||
+    !Number.isFinite(Date.parse(r.enteredAt))
+  ) {
     return false;
   }
   if (typeof r.reason !== "string") return false;
@@ -112,7 +117,10 @@ export function createHandoffStore(runtime: IAgentRuntime): HandoffStore {
       await cache.deleteCache(cacheKeyForRoom(roomId));
     },
 
-    async status(roomId: string, _now: Date = new Date()): Promise<HandoffStatus> {
+    async status(
+      roomId: string,
+      _now: Date = new Date(),
+    ): Promise<HandoffStatus> {
       void _now;
       if (typeof roomId !== "string" || roomId.length === 0) {
         return { active: false };
@@ -208,7 +216,7 @@ export function describeResumeCondition(cond: ResumeCondition): string {
     case "mention":
       return "you are @-mentioned";
     case "explicit_resume":
-      return "the user explicitly says to resume (LIFEOPS or MESSAGE.handoff verb=resume)";
+      return "the user explicitly asks to resume a handoff";
     case "silence_minutes":
       return `the room has been silent for at least ${cond.minutes} minute${cond.minutes === 1 ? "" : "s"}`;
     case "user_request_help":

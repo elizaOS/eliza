@@ -12,11 +12,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * and independent of the wider eliza test harness.
  */
 export default defineConfig({
-	test: {
-		dir: __dirname,
-		include: ["**/*.test.ts"],
-		root: __dirname,
-		passWithNoTests: false,
-		testTimeout: 10_000,
-	},
+  test: {
+    dir: __dirname,
+    include: ["**/*.test.ts"],
+    root: __dirname,
+    passWithNoTests: false,
+    testTimeout: 10_000,
+  },
 });

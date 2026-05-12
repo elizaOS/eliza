@@ -167,6 +167,19 @@ export const DEFAULT_ONBOARDING_PROVIDER_OPTIONS = [
     order: 140,
   },
   {
+    id: "mlx",
+    name: "MLX (Apple Silicon)",
+    envKey: null,
+    pluginName: "@elizaos/plugin-mlx",
+    keyPrefix: null,
+    description:
+      "Local inference via mlx_lm.server on Apple Silicon. Auto-detected on darwin-arm64.",
+    family: "mlx",
+    authMode: "local",
+    group: "local",
+    order: 145,
+  },
+  {
     id: "zai",
     name: "z.ai",
     envKey: "ZAI_API_KEY",

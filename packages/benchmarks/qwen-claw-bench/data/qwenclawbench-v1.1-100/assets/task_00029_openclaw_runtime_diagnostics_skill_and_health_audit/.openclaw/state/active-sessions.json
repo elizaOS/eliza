@@ -1,0 +1,45 @@
+{
+  "activeSessions": [
+    {
+      "sessionKey": "feishu_ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa06_main",
+      "channel": "feishu",
+      "userId": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa06",
+      "model": "claude-sonnet-4-20250514",
+      "startedAt": "2026-02-10T10:22:15+08:00",
+      "lastActivity": "2026-02-10T14:16:48+08:00",
+      "messageCount": 47,
+      "kind": "main"
+    },
+    {
+      "sessionKey": "cron_heartbeat_daily",
+      "channel": "internal",
+      "userId": "system",
+      "model": "claude-sonnet-4-20250514",
+      "startedAt": "2026-02-10T08:00:00+08:00",
+      "lastActivity": "2026-02-10T14:00:00+08:00",
+      "messageCount": 12,
+      "kind": "cron"
+    },
+    {
+      "sessionKey": "subagent_backup_monitor",
+      "channel": "internal",
+      "userId": "system",
+      "model": "deepseek-r1",
+      "startedAt": "2026-02-10T03:00:05+08:00",
+      "lastActivity": "2026-02-10T03:12:44+08:00",
+      "messageCount": 8,
+      "kind": "isolated"
+    },
+    {
+      "sessionKey": "telegram_u_7a3f92c1b8e045dd_main",
+      "channel": "telegram",
+      "userId": "u_7a3f92c1b8e045dd",
+      "model": "claude-sonnet-4-20250514",
+      "startedAt": "2026-02-10T13:47:30+08:00",
+      "lastActivity": "2026-02-10T14:12:05+08:00",
+      "messageCount": 5,
+      "kind": "main"
+    }
+  ],
+  "updatedAt": "2026-02-10T14:15:00+08:00"
+}

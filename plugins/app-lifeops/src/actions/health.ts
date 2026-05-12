@@ -17,18 +17,19 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  State,
 } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import type { LifeOpsHealthSummaryResponse } from "../contracts/index.js";
 import type { HealthDataPoint } from "@elizaos/plugin-health";
-import { LifeOpsService } from "../lifeops/service.js";
-import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
+import type { LifeOpsHealthSummaryResponse } from "../contracts/index.js";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { runLifeOpsJsonModel } from "../lifeops/google/format-helpers.js";
+import { LifeOpsService } from "../lifeops/service.js";
 import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
 } from "../lifeops/voice/grounded-reply.js";
+import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 
 type Subaction = "today" | "trend" | "by_metric" | "status";
 
@@ -298,8 +299,7 @@ export const HEALTH_PARAMETERS: readonly ActionParameter[] = [
     name: "subaction",
     description:
       "Which health query to run: today (default daily summary), trend (multi-day), by_metric (single metric), status (backend connectivity).",
-    descriptionCompressed:
-      "health query: today | trend | by_metric | status",
+    descriptionCompressed: "health query: today | trend | by_metric | status",
     schema: {
       type: "string" as const,
       enum: [...HEALTH_SUBACTIONS],
@@ -351,343 +351,343 @@ export const HEALTH_PARAMETERS: readonly ActionParameter[] = [
 export async function runHealthHandler(
   runtime: IAgentRuntime,
   message: Memory,
-  state: unknown,
+  state: State | undefined,
   options: HandlerOptions | undefined,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
-    const intent = getMessageText(message).trim();
+  const intent = getMessageText(message).trim();
 
-    const respond = async <
-      T extends NonNullable<ActionResult["data"]> | undefined,
-    >(payload: {
-      success: boolean;
-      scenario: string;
-      fallback: string;
-      context?: Record<string, unknown>;
-      data?: T;
-      values?: ActionResult["values"];
-    }): Promise<ActionResult> => {
-      const text = await renderLifeOpsActionReply({
-        runtime,
-        message,
-        state,
-        intent,
-        scenario: payload.scenario,
-        fallback: payload.fallback,
-        context: payload.context,
-      });
-      await callback?.({ text, source: "action", action: "HEALTH" });
-      return {
-        text,
-        success: payload.success,
-        ...(payload.values ? { values: payload.values } : {}),
-        ...(payload.data ? { data: payload.data } : {}),
-      };
+  const respond = async <
+    T extends NonNullable<ActionResult["data"]> | undefined,
+  >(payload: {
+    success: boolean;
+    scenario: string;
+    fallback: string;
+    context?: Record<string, unknown>;
+    data?: T;
+    values?: ActionResult["values"];
+  }): Promise<ActionResult> => {
+    const text = await renderLifeOpsActionReply({
+      runtime,
+      message,
+      state,
+      intent,
+      scenario: payload.scenario,
+      fallback: payload.fallback,
+      context: payload.context,
+    });
+    await callback?.({ text, source: "action", action: "HEALTH" });
+    return {
+      text,
+      success: payload.success,
+      ...(payload.values ? { values: payload.values } : {}),
+      ...(payload.data ? { data: payload.data } : {}),
     };
+  };
 
-    if (!(await hasLifeOpsAccess(runtime, message))) {
+  if (!(await hasLifeOpsAccess(runtime, message))) {
+    return respond({
+      success: false,
+      scenario: "access_denied",
+      fallback: "Health data is restricted to the owner.",
+      data: { error: "PERMISSION_DENIED" },
+    });
+  }
+
+  const params = getParams(options);
+  const body = getMessageText(message);
+  const explicitSubaction = normalizeHealthSubaction(params.subaction);
+  let subaction: Subaction | null = explicitSubaction;
+  let plannedMetric: HealthMetric | null = null;
+  let plannedDays: number | null = null;
+  if (!subaction) {
+    const planIntent = (params.intent ?? body).trim();
+    const plan = await resolveHealthPlanWithLlm({
+      runtime,
+      message,
+      state,
+      intent: planIntent,
+      params,
+    });
+    subaction = plan.subaction;
+    plannedMetric = plan.metric;
+    plannedDays = plan.days;
+    if (plan.shouldAct === false || !subaction) {
+      const fallback =
+        plan.response ??
+        "Tell me whether you want today's summary, a multi-day trend, a specific metric, or backend status.";
       return respond({
         success: false,
-        scenario: "access_denied",
-        fallback: "Health data is restricted to the owner.",
-        data: { error: "PERMISSION_DENIED" },
-      });
-    }
-
-    const params = getParams(options);
-    const body = getMessageText(message);
-    const explicitSubaction = normalizeHealthSubaction(params.subaction);
-    let subaction: Subaction | null = explicitSubaction;
-    let plannedMetric: HealthMetric | null = null;
-    let plannedDays: number | null = null;
-    if (!subaction) {
-      const planIntent = (params.intent ?? body).trim();
-      const plan = await resolveHealthPlanWithLlm({
-        runtime,
-        message,
-        state,
-        intent: planIntent,
-        params,
-      });
-      subaction = plan.subaction;
-      plannedMetric = plan.metric;
-      plannedDays = plan.days;
-      if (plan.shouldAct === false || !subaction) {
-        const fallback =
-          plan.response ??
-          "Tell me whether you want today's summary, a multi-day trend, a specific metric, or backend status.";
-        return respond({
-          success: false,
-          scenario: "planner_clarification",
-          fallback,
-          context: { suggestedSubaction: subaction },
-          values: {
-            success: false,
-            error: "PLANNER_SHOULDACT_FALSE",
-            noop: true,
-            suggestedSubaction: subaction,
-          },
-          data: {
-            noop: true,
-            error: "PLANNER_SHOULDACT_FALSE",
-            suggestedSubaction: subaction,
-          },
-        });
-      }
-    }
-    const service = new LifeOpsService(runtime);
-
-    // Single availability probe shared by every subaction below. When no
-    // backend is configured we surface a clear, conversational reply rather
-    // than throwing a `HealthBridgeError` that bubbles up as a raw server
-    // error to the scenario runtime and to end users.
-    const connectorStatus = await service.getHealthConnectorStatus();
-    let healthSummary: LifeOpsHealthSummaryResponse | null = null;
-    try {
-      healthSummary = await service.getHealthSummary({
-        days: plannedDays ?? params.days ?? 7,
-      });
-    } catch (error) {
-      runtime.logger?.warn?.(
-        {
-          src: "action:health",
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "LifeOps health connector summary failed to load",
-      );
-    }
-    const connectedProviders =
-      healthSummary?.providers
-        .filter((provider) => provider.connected)
-        .map((provider) => provider.provider) ?? [];
-
-    if (subaction === "status") {
-      const connectorText =
-        connectedProviders.length > 0
-          ? ` Connected providers: ${connectedProviders.join(", ")}.`
-          : "";
-      const fallback = connectorStatus.available
-        ? `Health backend available: ${connectorStatus.backend}.${connectorText}`
-        : `No HealthKit/Google Fit bridge available.${connectorText || " Connect Strava, Fitbit, Withings, or Oura in LifeOps settings."}`;
-      return respond({
-        success: true,
-        scenario: "health_status",
+        scenario: "planner_clarification",
         fallback,
-        context: {
-          backendAvailable: connectorStatus.available,
-          backend: connectorStatus.backend,
-          connectedProviders,
-        },
+        context: { suggestedSubaction: subaction },
         values: {
-          success: true,
-          healthBackendAvailable: connectorStatus.available,
-          healthBackend: connectorStatus.backend,
-          healthConnectedProviders: connectedProviders,
+          success: false,
+          error: "PLANNER_SHOULDACT_FALSE",
+          noop: true,
+          suggestedSubaction: subaction,
         },
         data: {
-          subaction,
-          status: connectorStatus,
-          healthConnectors: healthSummary?.providers ?? [],
+          noop: true,
+          error: "PLANNER_SHOULDACT_FALSE",
+          suggestedSubaction: subaction,
         },
       });
     }
+  }
+  const service = new LifeOpsService(runtime);
 
-    if (!connectorStatus.available) {
-      if (healthSummary && connectedProviders.length > 0) {
-        if (subaction === "trend") {
-          const days =
-            params.days && params.days > 0
-              ? Math.floor(params.days)
-              : (plannedDays ?? 7);
-          const fallback =
-            healthSummary.summaries.length === 0
-              ? `No wearable health data recorded in the last ${days} days.`
-              : `Health trend (last ${days} days):\n${healthSummary.summaries
-                  .map((entry) => formatConnectorDailySummary(entry))
-                  .join("\n\n")}`;
-          return respond({
-            success: true,
-            scenario: "health_connector_trend",
-            fallback,
-            context: { days, summaries: healthSummary.summaries },
-            values: {
-              success: true,
-              healthConnectedProviders: connectedProviders,
-            },
-            data: { subaction, days, healthSummary },
-          });
-        }
-        if (subaction === "by_metric") {
-          const metric = normalizeHealthMetric(params.metric) ?? plannedMetric;
-          if (!metric) {
-            return respond({
-              success: false,
-              scenario: "health_missing_metric",
-              fallback:
-                "Specify a metric: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.",
-              data: { error: "MISSING_METRIC" },
-            });
-          }
-          const points = healthSummary.samples.filter(
-            (sample) => sample.metric === metric,
-          );
-          const firstPoint = points[0];
-          const total = points.reduce((acc, point) => acc + point.value, 0);
-          const fallback = firstPoint
-            ? `${metric}: total ${total.toFixed(2)} ${firstPoint.unit} across ${points.length} sample${points.length === 1 ? "" : "s"}.`
-            : `No ${metric} data recorded by connected health providers.`;
-          return respond({
-            success: true,
-            scenario: "health_connector_by_metric",
-            fallback,
-            context: {
-              metric,
-              total,
-              unit: firstPoint?.unit,
-              sampleCount: points.length,
-            },
-            values: {
-              success: true,
-              healthConnectedProviders: connectedProviders,
-            },
-            data: { subaction, metric, points, healthSummary },
-          });
-        }
-        const daily = latestConnectorSummaryForDate(
-          healthSummary,
-          params.date ?? todayIso(),
-        );
-        const fallback = daily
-          ? `Health summary for ${formatConnectorDailySummary(daily)}`
-          : "Connected health providers have not synced daily summaries yet.";
+  // Single availability probe shared by every subaction below. When no
+  // backend is configured we surface a clear, conversational reply rather
+  // than throwing a `HealthBridgeError` that bubbles up as a raw server
+  // error to the scenario runtime and to end users.
+  const connectorStatus = await service.getHealthConnectorStatus();
+  let healthSummary: LifeOpsHealthSummaryResponse | null = null;
+  try {
+    healthSummary = await service.getHealthSummary({
+      days: plannedDays ?? params.days ?? 7,
+    });
+  } catch (error) {
+    runtime.logger?.warn?.(
+      {
+        src: "action:health",
+        error: error instanceof Error ? error.message : String(error),
+      },
+      "LifeOps health connector summary failed to load",
+    );
+  }
+  const connectedProviders =
+    healthSummary?.providers
+      .filter((provider) => provider.connected)
+      .map((provider) => provider.provider) ?? [];
+
+  if (subaction === "status") {
+    const connectorText =
+      connectedProviders.length > 0
+        ? ` Connected providers: ${connectedProviders.join(", ")}.`
+        : "";
+    const fallback = connectorStatus.available
+      ? `Health backend available: ${connectorStatus.backend}.${connectorText}`
+      : `No HealthKit/Google Fit bridge available.${connectorText || " Connect Strava, Fitbit, Withings, or Oura in LifeOps settings."}`;
+    return respond({
+      success: true,
+      scenario: "health_status",
+      fallback,
+      context: {
+        backendAvailable: connectorStatus.available,
+        backend: connectorStatus.backend,
+        connectedProviders,
+      },
+      values: {
+        success: true,
+        healthBackendAvailable: connectorStatus.available,
+        healthBackend: connectorStatus.backend,
+        healthConnectedProviders: connectedProviders,
+      },
+      data: {
+        subaction,
+        status: connectorStatus,
+        healthConnectors: healthSummary?.providers ?? [],
+      },
+    });
+  }
+
+  if (!connectorStatus.available) {
+    if (healthSummary && connectedProviders.length > 0) {
+      if (subaction === "trend") {
+        const days =
+          params.days && params.days > 0
+            ? Math.floor(params.days)
+            : (plannedDays ?? 7);
+        const fallback =
+          healthSummary.summaries.length === 0
+            ? `No wearable health data recorded in the last ${days} days.`
+            : `Health trend (last ${days} days):\n${healthSummary.summaries
+                .map((entry) => formatConnectorDailySummary(entry))
+                .join("\n\n")}`;
         return respond({
           success: true,
-          scenario: "health_connector_today",
+          scenario: "health_connector_trend",
           fallback,
-          context: { daily },
+          context: { days, summaries: healthSummary.summaries },
           values: {
             success: true,
             healthConnectedProviders: connectedProviders,
           },
-          data: { subaction: "today", healthSummary },
+          data: { subaction, days, healthSummary },
         });
       }
+      if (subaction === "by_metric") {
+        const metric = normalizeHealthMetric(params.metric) ?? plannedMetric;
+        if (!metric) {
+          return respond({
+            success: false,
+            scenario: "health_missing_metric",
+            fallback:
+              "Specify a metric: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.",
+            data: { error: "MISSING_METRIC" },
+          });
+        }
+        const points = healthSummary.samples.filter(
+          (sample) => sample.metric === metric,
+        );
+        const firstPoint = points[0];
+        const total = points.reduce((acc, point) => acc + point.value, 0);
+        const fallback = firstPoint
+          ? `${metric}: total ${total.toFixed(2)} ${firstPoint.unit} across ${points.length} sample${points.length === 1 ? "" : "s"}.`
+          : `No ${metric} data recorded by connected health providers.`;
+        return respond({
+          success: true,
+          scenario: "health_connector_by_metric",
+          fallback,
+          context: {
+            metric,
+            total,
+            unit: firstPoint?.unit,
+            sampleCount: points.length,
+          },
+          values: {
+            success: true,
+            healthConnectedProviders: connectedProviders,
+          },
+          data: { subaction, metric, points, healthSummary },
+        });
+      }
+      const daily = latestConnectorSummaryForDate(
+        healthSummary,
+        params.date ?? todayIso(),
+      );
+      const fallback = daily
+        ? `Health summary for ${formatConnectorDailySummary(daily)}`
+        : "Connected health providers have not synced daily summaries yet.";
       return respond({
         success: true,
-        scenario: "health_no_backend",
-        fallback:
-          "I don't have a health data source connected yet. Connect Apple Health, Google Fit, Strava, Fitbit, Withings, or Oura and I'll pick it up.",
-        context: { connectedProviders, backend: connectorStatus.backend },
+        scenario: "health_connector_today",
+        fallback,
+        context: { daily },
         values: {
           success: true,
-          healthBackendAvailable: false,
           healthConnectedProviders: connectedProviders,
         },
-        data: { subaction, status: connectorStatus, degraded: "no-backend" },
+        data: { subaction: "today", healthSummary },
       });
     }
-
-    if (subaction === "trend") {
-      const days =
-        params.days && params.days > 0
-          ? Math.floor(params.days)
-          : (plannedDays ?? 7);
-      const trend = await service.getHealthTrend(days);
-      const fallback =
-        trend.length === 0
-          ? `No health data recorded in the last ${days} days.`
-          : `Health trend (last ${days} days):\n${trend
-              .map((s) => formatSummary(s))
-              .join("\n\n")}`;
-      return respond({
+    return respond({
+      success: true,
+      scenario: "health_no_backend",
+      fallback:
+        "I don't have a health data source connected yet. Connect Apple Health, Google Fit, Strava, Fitbit, Withings, or Oura and I'll pick it up.",
+      context: { connectedProviders, backend: connectorStatus.backend },
+      values: {
         success: true,
-        scenario: "health_trend",
-        fallback,
-        context: { days, pointCount: trend.length, trend },
-        values: { success: true, days, pointCount: trend.length },
-        data: { subaction, days, trend },
+        healthBackendAvailable: false,
+        healthConnectedProviders: connectedProviders,
+      },
+      data: { subaction, status: connectorStatus, degraded: "no-backend" },
+    });
+  }
+
+  if (subaction === "trend") {
+    const days =
+      params.days && params.days > 0
+        ? Math.floor(params.days)
+        : (plannedDays ?? 7);
+    const trend = await service.getHealthTrend(days);
+    const fallback =
+      trend.length === 0
+        ? `No health data recorded in the last ${days} days.`
+        : `Health trend (last ${days} days):\n${trend
+            .map((s) => formatSummary(s))
+            .join("\n\n")}`;
+    return respond({
+      success: true,
+      scenario: "health_trend",
+      fallback,
+      context: { days, pointCount: trend.length, trend },
+      values: { success: true, days, pointCount: trend.length },
+      data: { subaction, days, trend },
+    });
+  }
+
+  if (subaction === "by_metric") {
+    const metric = normalizeHealthMetric(params.metric) ?? plannedMetric;
+    if (!metric) {
+      return respond({
+        success: false,
+        scenario: "health_missing_metric",
+        fallback:
+          "Specify a metric: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.",
+        data: { error: "MISSING_METRIC" },
       });
     }
-
-    if (subaction === "by_metric") {
-      const metric = normalizeHealthMetric(params.metric) ?? plannedMetric;
-      if (!metric) {
-        return respond({
-          success: false,
-          scenario: "health_missing_metric",
-          fallback:
-            "Specify a metric: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.",
-          data: { error: "MISSING_METRIC" },
-        });
-      }
-      const days =
-        params.days && params.days > 0
-          ? Math.floor(params.days)
-          : (plannedDays ?? 1);
-      const endAt = new Date().toISOString();
-      const startAt = new Date(
-        Date.now() - days * 24 * 60 * 60 * 1000,
-      ).toISOString();
-      const points = await service.getHealthDataPoints({
-        metric,
-        startAt,
-        endAt,
-      });
-      const total = points.reduce((acc, p) => acc + p.value, 0);
-      const firstPoint = points[0];
-      if (!firstPoint) {
-        const fallback = `No ${metric} data recorded in the last ${days} day${days === 1 ? "" : "s"}.`;
-        return respond({
-          success: true,
-          scenario: "health_by_metric_empty",
-          fallback,
-          context: { metric, days },
-          values: { success: true, metric, pointCount: points.length },
-          data: { subaction, metric, startAt, endAt, points },
-        });
-      }
-      const fallback =
-        points.length === 0
-          ? `No ${metric} data recorded in the last ${days} day${days === 1 ? "" : "s"}.`
-          : `${metric} — last ${days} day${days === 1 ? "" : "s"}: total ${total.toFixed(
-              2,
-            )} ${firstPoint.unit} across ${points.length} sample${points.length === 1 ? "" : "s"}.`;
+    const days =
+      params.days && params.days > 0
+        ? Math.floor(params.days)
+        : (plannedDays ?? 1);
+    const endAt = new Date().toISOString();
+    const startAt = new Date(
+      Date.now() - days * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const points = await service.getHealthDataPoints({
+      metric,
+      startAt,
+      endAt,
+    });
+    const total = points.reduce((acc, p) => acc + p.value, 0);
+    const firstPoint = points[0];
+    if (!firstPoint) {
+      const fallback = `No ${metric} data recorded in the last ${days} day${days === 1 ? "" : "s"}.`;
       return respond({
         success: true,
-        scenario: "health_by_metric",
+        scenario: "health_by_metric_empty",
         fallback,
-        context: {
-          metric,
-          days,
-          total,
-          unit: firstPoint.unit,
-          sampleCount: points.length,
-        },
+        context: { metric, days },
         values: { success: true, metric, pointCount: points.length },
         data: { subaction, metric, startAt, endAt, points },
       });
     }
-
-    // today — default
-    const date = params.date ?? todayIso();
-    const summary = await service.getHealthDailySummary(date);
-    const fallback = `Health summary for ${formatSummary(summary)}`;
+    const fallback =
+      points.length === 0
+        ? `No ${metric} data recorded in the last ${days} day${days === 1 ? "" : "s"}.`
+        : `${metric} — last ${days} day${days === 1 ? "" : "s"}: total ${total.toFixed(
+            2,
+          )} ${firstPoint.unit} across ${points.length} sample${points.length === 1 ? "" : "s"}.`;
     return respond({
       success: true,
-      scenario: "health_today",
+      scenario: "health_by_metric",
       fallback,
       context: {
-        date,
-        steps: summary.steps,
-        activeMinutes: summary.activeMinutes,
-        sleepHours: summary.sleepHours,
+        metric,
+        days,
+        total,
+        unit: firstPoint.unit,
+        sampleCount: points.length,
       },
-      values: {
-        success: true,
-        steps: summary.steps,
-        activeMinutes: summary.activeMinutes,
-        sleepHours: summary.sleepHours,
-      },
-      data: { subaction: "today", date, summary },
+      values: { success: true, metric, pointCount: points.length },
+      data: { subaction, metric, startAt, endAt, points },
     });
+  }
+
+  // today — default
+  const date = params.date ?? todayIso();
+  const summary = await service.getHealthDailySummary(date);
+  const fallback = `Health summary for ${formatSummary(summary)}`;
+  return respond({
+    success: true,
+    scenario: "health_today",
+    fallback,
+    context: {
+      date,
+      steps: summary.steps,
+      activeMinutes: summary.activeMinutes,
+      sleepHours: summary.sleepHours,
+    },
+    values: {
+      success: true,
+      steps: summary.steps,
+      activeMinutes: summary.activeMinutes,
+      sleepHours: summary.sleepHours,
+    },
+    data: { subaction: "today", date, summary },
+  });
 }

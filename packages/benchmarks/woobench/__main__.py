@@ -304,14 +304,16 @@ async def _run(args: argparse.Namespace) -> None:
         print(f"Payment mock: {args.payment_mock_url}")
     print(f"Concurrency: {args.concurrency}\n")
 
-    result = await runner.run_all()
+    try:
+        result = await runner.run_all()
+    finally:
+        if server_manager is not None:
+            server_manager.stop()
 
     # Save and display
     filepath = WooBenchRunner.save_results(result, output_dir=args.output)
     WooBenchRunner.print_summary(result)
     print(f"Full results saved to: {filepath}")
-    if server_manager is not None:
-        server_manager.stop()
 
 
 def main() -> None:

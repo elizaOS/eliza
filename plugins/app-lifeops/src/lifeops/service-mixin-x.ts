@@ -1,14 +1,8 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
 import crypto from "node:crypto";
 import type {
   CreateLifeOpsXPostRequest,
   DisconnectLifeOpsXConnectorRequest,
+  LifeOpsChannelPolicy,
   LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
@@ -126,6 +120,12 @@ type LifeOpsXConnectorCapability =
   | "x.dm.read"
   | "x.dm.write";
 
+type XMixinDependencies = LifeOpsServiceBase & {
+  resolvePrimaryChannelPolicy(
+    channelType: LifeOpsChannelPolicy["channelType"],
+  ): Promise<LifeOpsChannelPolicy | null>;
+};
+
 function normalizeXCapabilityRequest(
   value: unknown,
 ): LifeOpsXConnectorCapability[] {
@@ -158,9 +158,7 @@ function createSyntheticXGrant(
     mode,
     metadata: {
       source: "plugin-x-runtime",
-      ...(accountId
-        ? { accountId, connectorAccountId: accountId }
-        : {}),
+      ...(accountId ? { accountId, connectorAccountId: accountId } : {}),
     },
     lastRefreshAt: new Date().toISOString(),
   });
@@ -220,6 +218,16 @@ function xDelegationFailureStatus(reason: string): number {
   return reason.includes("not registered") ? 409 : 502;
 }
 
+function normalizeXReason(
+  value: unknown,
+): NonNullable<LifeOpsXConnectorStatus["reason"]> {
+  return value === "connected" ||
+    value === "needs_reauth" ||
+    value === "config_missing"
+    ? value
+    : "disconnected";
+}
+
 function xRequestedAccountId(value: unknown): string | undefined {
   if (!value || typeof value !== "object") {
     return undefined;
@@ -259,7 +267,9 @@ function xRuntimeAvailableCapabilities(
 export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsXService> {
-  return class extends Base {
+  const XBase = Base as unknown as Constructor<XMixinDependencies>;
+
+  class LifeOpsXServiceMixin extends XBase {
     async resolveXGrant(
       requestedMode?: LifeOpsConnectorMode,
       requestedSide?: LifeOpsConnectorSide,
@@ -346,13 +356,14 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
         defaultMode,
         availableModes,
         executionTarget: "local",
-        sourceOfTruth: "plugin_runtime",
+        sourceOfTruth: "local_storage",
         configured: runtimeStatus.status === "handled",
         connected: runtimeConnected,
-        reason:
+        reason: normalizeXReason(
           runtimeStatus.status === "handled"
             ? runtimeStatus.value.reason
             : runtimeStatus.reason,
+        ),
         preferredByAgent: grant?.preferredByAgent ?? false,
         cloudConnectionId: grant?.cloudConnectionId ?? null,
         grantedCapabilities: capabilities,
@@ -379,7 +390,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<StartLifeOpsXConnectorResponse> {
       const side =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
-      const mode =
+      const _mode =
         normalizeOptionalConnectorMode(request.mode, "mode") ?? xDefaultMode();
       const requestedAccountId = xRequestedAccountId(request);
       const runtimeStatus = await getXAccountStatusWithRuntimeService({
@@ -421,9 +432,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
             : {},
         metadata: {
           source: "plugin-x-runtime",
-          ...(accountId
-            ? { accountId, connectorAccountId: accountId }
-            : {}),
+          ...(accountId ? { accountId, connectorAccountId: accountId } : {}),
         },
       });
       return {
@@ -526,7 +535,11 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     async getXDmDigest(
-      opts: { accountId?: string; limit?: number; conversationId?: string } = {},
+      opts: {
+        accountId?: string;
+        limit?: number;
+        conversationId?: string;
+      } = {},
     ): Promise<{
       generatedAt: string;
       conversationId: string | null;
@@ -597,9 +610,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
             isInbound:
               typeof x.isInbound === "boolean"
                 ? x.isInbound
-                : metadata.fromBot === true
-                  ? false
-                  : true,
+                : metadata.fromBot !== true,
             text: memory.content?.text ?? "",
             receivedAt:
               Number.isFinite(Number(memory.createdAt)) &&
@@ -937,8 +948,10 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
         ok: true,
         status: 201,
         postId,
-        category: "plugin_runtime",
+        category: "success",
       };
     }
-  } as MixinClass<TBase, LifeOpsXService>;
+  }
+
+  return LifeOpsXServiceMixin as unknown as MixinClass<TBase, LifeOpsXService>;
 }

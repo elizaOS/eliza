@@ -11,9 +11,7 @@
  *
  * Follow-up cadence (`add_follow_up`, `complete_follow_up`,
  * `follow_up_list`, `days_since`, `list_overdue_followups`,
- * `mark_followup_done`, `set_followup_threshold`) lives on `SCHEDULED_TASK`.
- * The legacy `RELATIONSHIP` umbrella name is preserved as a simile so the
- * planner does not regress on cached prompts.
+ * `mark_followup_done`, `set_followup_threshold`) lives on `SCHEDULED_TASKS`.
  */
 
 import type {
@@ -29,19 +27,19 @@ import {
   LIFEOPS_MESSAGE_CHANNELS,
   type LifeOpsMessageChannel,
 } from "@elizaos/shared";
-import { LifeOpsService } from "../lifeops/service.js";
-import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { runLifeOpsJsonModel } from "../lifeops/google/format-helpers.js";
+import { LifeOpsRepository } from "../lifeops/repository.js";
+import { LifeOpsService } from "../lifeops/service.js";
 import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
 } from "../lifeops/voice/grounded-reply.js";
-import { LifeOpsRepository } from "../lifeops/repository.js";
+import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 
 type Subaction =
-  | "add"
-  | "list"
+  | "create"
+  | "read"
   | "log_interaction"
   | "set_identity"
   | "set_relationship"
@@ -49,6 +47,8 @@ type Subaction =
 
 type EntityParameters = {
   subaction?: Subaction;
+  /** Alias for `subaction` accepted from the planner's `action` field. */
+  action?: Subaction;
   intent?: string;
   name?: string;
   channel?: LifeOpsMessageChannel;
@@ -223,21 +223,32 @@ async function resolveRelationshipId(
 }
 
 const ENTITY_SUBACTIONS: readonly Subaction[] = [
-  "add",
-  "list",
+  "create",
+  "read",
   "log_interaction",
   "set_identity",
   "set_relationship",
   "merge",
 ];
 
+/**
+ * Map legacy verb names (`add`, `list`) to their canonical replacements so
+ * older callers continue to resolve. These aliases live in the dispatcher
+ * only; the schema enum exposes the canonical names.
+ */
+const LEGACY_SUBACTION_ALIASES: Record<string, Subaction> = {
+  add: "create",
+  list: "read",
+};
+
 function normalizeRelationshipSubaction(value: unknown): Subaction | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toLowerCase();
-  if (!(ENTITY_SUBACTIONS as readonly string[]).includes(normalized)) {
-    return null;
+  if ((ENTITY_SUBACTIONS as readonly string[]).includes(normalized)) {
+    return normalized as Subaction;
   }
-  return normalized as Subaction;
+  const aliased = LEGACY_SUBACTION_ALIASES[normalized];
+  return aliased ?? null;
 }
 
 function normalizeShouldAct(value: unknown): boolean | null {
@@ -361,7 +372,7 @@ async function resolveEntityPlanWithLlm(args: {
     "Plan the ENTITY (people / relationships) action for this request.",
     "The user may speak in any language.",
     "Return JSON only as a single object with exactly these fields:",
-    "action: add, list, log_interaction, set_identity, set_relationship, merge, or null",
+    "action: create, read, log_interaction, set_identity, set_relationship, merge, or null",
     "shouldAct: true or false",
     "response: short clarifying question, or null",
     "intent: concise restatement of the user request, or null",
@@ -382,10 +393,10 @@ async function resolveEntityPlanWithLlm(args: {
     "relationshipType: edge type label (set_relationship; e.g. 'manages', 'colleague_of', 'works_at'), or null",
     "sourceEntityIds: array of duplicate entity ids to fold into the target (merge), or null",
     "evidence: short evidence string for set_identity / set_relationship, or null",
-    'Example: {"action":"add","shouldAct":true,"response":null,"intent":"add Sam to my Rolodex","name":"Sam","channel":"telegram","handle":"@sam","email":null,"phone":null,"notes":null,"relationshipId":null,"reason":null,"confirmed":null,"entityId":null,"platform":null,"displayName":null,"toEntityId":null,"fromEntityId":null,"relationshipType":null,"sourceEntityIds":null,"evidence":null}',
+    'Example: {"action":"create","shouldAct":true,"response":null,"intent":"add Sam to my Rolodex","name":"Sam","channel":"telegram","handle":"@sam","email":null,"phone":null,"notes":null,"relationshipId":null,"reason":null,"confirmed":null,"entityId":null,"platform":null,"displayName":null,"toEntityId":null,"fromEntityId":null,"relationshipType":null,"sourceEntityIds":null,"evidence":null}',
     "",
-    "Choose list when the user wants to see, browse, list, or recall who is in the contacts/Rolodex.",
-    "Choose add when the user wants to remember a new person, store a handle, or add them to the contact list.",
+    "Choose read when the user wants to see, browse, list, or recall who is in the contacts/Rolodex.",
+    "Choose create when the user wants to remember a new person, store a handle, or add them to the contact list.",
     "Choose log_interaction when the user reports a past conversation, call, meeting, or message they had with a known contact.",
     "Choose set_identity when the user adds a (platform, handle) for an existing entity, e.g. 'Pat's Slack handle is @pat'.",
     "Choose set_relationship when the user describes a typed edge between two entities, e.g. 'Pat is my manager', 'Sam works at Acme', 'Carol is my colleague'.",
@@ -394,7 +405,7 @@ async function resolveEntityPlanWithLlm(args: {
     "Set shouldAct=false only when the request is too vague to safely choose any of the actions.",
     "When shouldAct=false, response must be a short clarifying question in the user's language.",
     "Extract only values stated or clearly implied by the request or recent conversation. Do not invent ids, handles, or notes.",
-    "For add, extract name plus channel and handle when present.",
+    "For create, extract name plus channel and handle when present.",
     "For set_identity, extract entityId or name plus platform and handle.",
     "For set_relationship, extract fromEntityId/toEntityId or names plus relationshipType.",
     "",
@@ -447,9 +458,6 @@ export const entityAction: Action & {
 } = {
   name: "ENTITY",
   similes: [
-    // Wave-2 W2-A: RELATIONSHIP is preserved as a one-release simile so
-    // the planner does not regress on cached prompts.
-    "RELATIONSHIP",
     "CONTACTS",
     "ROLODEX",
     "LOG_INTERACTION",
@@ -458,14 +466,13 @@ export const entityAction: Action & {
     "MERGE_ENTITIES",
     "MERGE_CONTACTS",
     "SET_IDENTITY",
-    "SET_RELATIONSHIP",
   ],
   description:
-    "Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: add, list, set_identity, set_relationship, log_interaction, merge. Use SCHEDULED_TASK for follow-up cadence; use LIFE for one-off dated reminders to call/text someone.",
+    "Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: create, read, set_identity, set_relationship, log_interaction, merge. For rolodex/contact lifecycle (CRUD on a single contact's profile) use CONTACT; ENTITY is the owner-graph umbrella for identity, relationships, and interaction history. Use SCHEDULED_TASKS for follow-up cadence; use OWNER_REMINDERS for one-off dated reminders to call/text someone.",
   descriptionCompressed:
-    "people+relationships: add|list|set_identity|set_relationship|log_interaction|merge; follow-up cadence → SCHEDULED_TASK",
+    "people+relationships: create|read|set_identity|set_relationship|log_interaction|merge; rolodex CRUD → CONTACT; follow-up cadence → SCHEDULED_TASK",
   routingHint:
-    'people/contacts/relationships ("add Pat to my contacts", "Pat is my manager") -> ENTITY; follow-up cadence ("follow up with David", "how long since I talked to X", "who is overdue") -> SCHEDULED_TASK; one-off dated reminders to call/text someone ("remember to call mom Sunday") -> LIFE',
+    'people/contacts/relationships ("add Pat to my contacts", "Pat is my manager") -> ENTITY; follow-up cadence ("follow up with David", "how long since I talked to X", "who is overdue") -> SCHEDULED_TASKS; one-off dated reminders to call/text someone ("remember to call mom Sunday") -> OWNER_REMINDERS',
   tags: [
     "domain:contacts",
     "capability:read",
@@ -575,7 +582,7 @@ export const entityAction: Action & {
     }
     const service = new LifeOpsService(runtime);
 
-    if (subaction === "list") {
+    if (subaction === "read") {
       const contacts = await service.listRelationships({ limit: 50 });
       const fallback =
         contacts.length === 0
@@ -590,7 +597,7 @@ export const entityAction: Action & {
       });
     }
 
-    if (subaction === "add") {
+    if (subaction === "create") {
       const name = params.name;
       const channel = params.channel;
       const handle = params.handle;
@@ -644,7 +651,7 @@ export const entityAction: Action & {
           success: false,
           scenario: "entity_log_missing_id",
           fallback: "I need a known contact to log an interaction.",
-          data: { subaction, error: "MISSING_RELATIONSHIP_ID" },
+          data: { subaction, error: "MISSING_EDGE_ID" },
         });
       }
       const rel = await service.getRelationship(relationshipId);
@@ -707,10 +714,11 @@ export const entityAction: Action & {
       });
       // Force-mark this identity as verified — the canonical surface for
       // user-asserted identities per IMPL §5.1.
-      const verifiedIdentities = observation.entity.identities.map((identity) =>
-        identity.platform === platform && identity.handle === handle
-          ? { ...identity, verified: true }
-          : identity,
+      const verifiedIdentities = observation.entity.identities.map(
+        (identity) =>
+          identity.platform === platform && identity.handle === handle
+            ? { ...identity, verified: true }
+            : identity,
       );
       const merged = await entityStore.upsert({
         ...observation.entity,
@@ -813,19 +821,18 @@ export const entityAction: Action & {
     {
       name: "action",
       description:
-        "Which ENTITY operation to run: add (new contact), list (read rolodex), log_interaction (record contact event), set_identity (force-merge a platform handle onto an entity), set_relationship (typed edge between entities), merge (collapse duplicate entities). Follow-up cadence belongs to SCHEDULED_TASKS.",
+        "Which ENTITY operation to run: create (new contact), read (load rolodex), log_interaction (record contact event), set_identity (force-merge a platform handle onto an entity), set_relationship (typed edge between entities), merge (collapse duplicate entities). For rolodex/contact lifecycle (read full profile, search, update fields) use CONTACT. Follow-up cadence belongs to SCHEDULED_TASKS.",
       descriptionCompressed:
-        "ENTITY op: add | list | log_interaction | set_identity | set_relationship | merge",
+        "ENTITY op: create | read | log_interaction | set_identity | set_relationship | merge",
       schema: {
         type: "string" as const,
         enum: [...ENTITY_SUBACTIONS],
       },
-      examples: ["add", "list", "set_identity"],
+      examples: ["create", "read", "set_identity"],
     },
     {
       name: "intent",
-      description:
-        "Free-form user intent used to infer action when not set.",
+      description: "Free-form user intent used to infer action when not set.",
       descriptionCompressed: "free-form intent infer action",
       schema: { type: "string" as const },
     },
@@ -893,7 +900,8 @@ export const entityAction: Action & {
       name: "platform",
       description:
         "Identity platform for set_identity (e.g. telegram, slack, email, twitter). Combine with handle.",
-      descriptionCompressed: "set_identity platform e.g. telegram|slack|email|twitter|phone",
+      descriptionCompressed:
+        "set_identity platform e.g. telegram|slack|email|twitter|phone",
       schema: { type: "string" as const },
       examples: ["telegram", "email", "phone", "slack"],
     },

@@ -1,0 +1,52 @@
+[
+  {
+    "message_id": "msg_801",
+    "from": "chen@vip-client.com",
+    "to": "me@company.com",
+    "subject": "邀请4月2日来上海拜访",
+    "date": "2026-03-24T10:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important"],
+    "body": "您好，我们是贵公司的VIP客户鼎新软件，希望邀请您4月2日来上海办公室讨论下半年合作方案。这次会议对我们非常重要，请务必参加。联系人：上海办陈经理。"
+  },
+  {
+    "message_id": "msg_802",
+    "from": "liwei@shenzhen-branch.com",
+    "to": "me@company.com",
+    "subject": "深圳技术交流 4/2-4/3",
+    "date": "2026-03-24T14:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "团队你好，深圳分公司计划4月2日至3日举办技术交流活动，主题是微服务架构升级。欢迎总部同事参加。联系人：深圳办李伟。"
+  },
+  {
+    "message_id": "msg_803",
+    "from": "hr@company.com",
+    "to": "all@company.com",
+    "subject": "北京总部年度会议 4月5日",
+    "date": "2026-03-23T09:00:00+08:00",
+    "is_read": true,
+    "labels": ["inbox", "important"],
+    "body": "全体通知：4月5日在北京总部召开年度战略会议，所有部门负责人必须参加。已为各地同事预订往返机票，请确认行程。"
+  },
+  {
+    "message_id": "msg_804",
+    "from": "weekly@company.com",
+    "to": "all@company.com",
+    "subject": "本周周报提醒",
+    "date": "2026-03-25T17:00:00+08:00",
+    "is_read": true,
+    "labels": ["inbox"],
+    "body": "请大家在周五下班前提交本周周报。"
+  },
+  {
+    "message_id": "msg_805",
+    "from": "zhaolei@company.com",
+    "to": "me@company.com",
+    "subject": "周末聚餐",
+    "date": "2026-03-25T12:00:00+08:00",
+    "is_read": true,
+    "labels": ["inbox"],
+    "body": "这周末部门聚餐，你来不来？"
+  }
+]

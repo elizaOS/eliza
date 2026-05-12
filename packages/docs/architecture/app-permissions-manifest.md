@@ -16,7 +16,7 @@ It does **not** apply to elizaOS *plugins* (different surface, different enforce
 - Make the declaration the durable contract that future enforcement layers (consent UI, worker isolation, FS gating, network gating) read.
 - Persist the declared permissions alongside the registered app so a user can later inspect what was declared at register time.
 - Persist the requested execution isolation so Phase 2 worker hosting can decide how to run the app without re-reading package.json.
-- Forward-compatible: third-party app authors can declare permission namespaces that newer Milady versions will recognise; older Milady versions ignore unknown namespaces without rejecting the manifest.
+- Forward-compatible: third-party app authors can declare permission namespaces that newer Eliza versions will recognise; older Eliza versions ignore unknown namespaces without rejecting the manifest.
 
 ## Non-goals
 
@@ -112,7 +112,7 @@ type AppIsolation = "none" | "worker";
 
 - Omitted or `"none"` means a first-party app runs in-process. External apps cannot opt into this fast path; the loader promotes them to `"worker"` at register time and when reading persisted legacy registry entries.
 - `"worker"` means the app is requesting the worker execution path. The worker host passes the app's declared permissions and current grants into the worker, and the worker's `runtime.fetch` / `runtime.fs` bridge gates network and state-directory access against that data.
-- Unknown values are treated as `"none"` by this Milady version. This keeps older clients forward-compatible with future isolation modes while avoiding accidental enforcement claims for modes they do not understand.
+- Unknown values are treated as `"none"` by this Eliza version. This keeps older clients forward-compatible with future isolation modes while avoiding accidental enforcement claims for modes they do not understand.
 
 ## Forward compatibility
 
@@ -128,7 +128,7 @@ The parser MUST NOT:
 - Reject a manifest because of an unrecognised namespace key inside `permissions`.
 - Reject a manifest because of an unrecognised key inside a recognised namespace (e.g. `fs.someFutureField`). The recognised slices are validated; the rest is preserved.
 
-This rule means a third-party app that ships `permissions: { fs: {...}, capabilities: {...} }` keeps working when `capabilities` becomes a real namespace later, and keeps working today even though Milady ignores it.
+This rule means a third-party app that ships `permissions: { fs: {...}, capabilities: {...} }` keeps working when `capabilities` becomes a real namespace later, and keeps working today even though Eliza ignores it.
 
 ## Persistence
 
@@ -141,7 +141,7 @@ This rule means a third-party app that ships `permissions: { fs: {...}, capabili
 
 Both fields are persisted alongside the existing `slug` / `canonicalName` / `aliases` / `directory` / `displayName` fields. Older entries written before these fields landed parse cleanly; absent `requestedPermissions` means no permissions were declared, and absent `isolation` defaults to `"none"`.
 
-The persisted shape is the **raw** declared object, not the typed slice. This preserves forward compatibility through restarts: when a future Milady version recognises `capabilities`, it re-reads the same registry and the field is already there.
+The persisted shape is the **raw** declared object, not the typed slice. This preserves forward compatibility through restarts: when a future Eliza version recognises `capabilities`, it re-reads the same registry and the field is already there.
 
 ### Audit log (`~/.<namespace>/audit/app-loads.jsonl`)
 
@@ -213,7 +213,7 @@ Parser: `{ raw: null, fs: undefined, net: undefined }`. App registers with `requ
 }
 ```
 
-Parser: `{ raw: {fs: {read: ["**"]}, capabilities: {...}}, fs: {read: ["**"]}, net: undefined }`. The `capabilities` slice is preserved in `raw` and will surface to a future Milady version that recognises it.
+Parser: `{ raw: {fs: {read: ["**"]}, capabilities: {...}}, fs: {read: ["**"]}, net: undefined }`. The `capabilities` slice is preserved in `raw` and will surface to a future Eliza version that recognises it.
 
 ### Invalid — wrong shape on recognised namespace
 

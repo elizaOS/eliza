@@ -21,7 +21,7 @@ function sha256(value) {
 function stablePrefix() {
   const lineCount = Math.max(
     96,
-    Number(process.env.MILADY_CACHE_PREFIX_LINES ?? 320),
+    Number(process.env.ELIZA_CACHE_PREFIX_LINES ?? 320),
   );
   const repeated = Array.from(
     { length: lineCount },
@@ -29,7 +29,7 @@ function stablePrefix() {
       `Stable planner instruction ${index}: preserve character, tool protocol, cache markers, and action policy.`,
   ).join("\n");
   return [
-    "Milady cache validation harness.",
+    "Eliza cache validation harness.",
     "This prefix is intentionally stable across calls to measure prompt-cache hit rate.",
     repeated,
   ].join("\n");
@@ -70,7 +70,7 @@ function openAICompatiblePayload({
   forceTool = false,
   scenario = "tool-call",
 }) {
-	const cacheKey = process.env.MILADY_CACHE_PROMPT_KEY ?? "milady-cache-harness";
+	const cacheKey = process.env.ELIZA_CACHE_PROMPT_KEY ?? "eliza-cache-harness";
 	const explicitCacheControl = openRouterExplicitCacheControl(provider, model);
 	const stableSystemContent = explicitCacheControl
 		? [
@@ -489,7 +489,7 @@ function extractToolArgumentActionNames(args) {
 }
 
 function maxTokens() {
-	const value = Number(process.env.MILADY_CACHE_MAX_TOKENS ?? 256);
+	const value = Number(process.env.ELIZA_CACHE_MAX_TOKENS ?? 256);
 	return Number.isFinite(value) && value > 0 ? Math.floor(value) : 256;
 }
 
@@ -556,7 +556,7 @@ function dryRun(args) {
     JSON.stringify(
       {
         dryRun: true,
-        note: "No network call was made. Set MILADY_CACHE_LIVE=1 and the provider API key to run live.",
+        note: "No network call was made. Set ELIZA_CACHE_LIVE=1 and the provider API key to run live.",
         provider: config.label,
         model: config.model,
         largeModelLabel:
@@ -575,10 +575,10 @@ function dryRun(args) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const provider = args.provider ?? process.env.MILADY_CACHE_PROVIDER ?? "elizacloud";
-  const calls = Math.max(1, Number(args.calls ?? process.env.MILADY_CACHE_CALLS ?? 3));
+  const provider = args.provider ?? process.env.ELIZA_CACHE_PROVIDER ?? "elizacloud";
+  const calls = Math.max(1, Number(args.calls ?? process.env.ELIZA_CACHE_CALLS ?? 3));
 
-  if (process.env.MILADY_CACHE_LIVE !== "1") {
+  if (process.env.ELIZA_CACHE_LIVE !== "1") {
     dryRun({ ...args, provider });
     return;
   }

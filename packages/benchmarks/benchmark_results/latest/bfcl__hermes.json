@@ -1,80 +1,80 @@
 {
   "agent": "hermes",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T133321Z_fd838049/bfcl__bfcl/run_bfcl_20260511T133321Z_2_196a8c21/output"
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T084510Z_25422344/bfcl__bfcl/run_bfcl_20260512T084510Z_1_71113430/output"
   ],
   "benchmark_directory": "bfcl",
   "benchmark_id": "bfcl",
   "cache_metrics": {
-    "cache_read_input_tokens": 0,
     "cache_creation_input_tokens": 0,
-    "turns_with_cached_field": 0,
-    "cache_hit_ratio": 0.0
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 1
   },
   "error": null,
   "higher_is_better": true,
   "metrics": {
     "ast_accuracy": 0,
     "cache_metrics": {
-      "cache_read_input_tokens": 0,
       "cache_creation_input_tokens": 0,
-      "turns_with_cached_field": 0,
-      "cache_hit_ratio": 0.0
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 1
     },
+    "canonical_entries": 0,
     "exec_accuracy": 0,
-    "nonzero_return_code_with_result": 1,
     "overall_score": 0.0,
     "performance_metrics": {
-      "duration_seconds": 2.0925151249975897,
-      "mean_latency_ms": 1229.569673538208,
-      "p95_latency_ms": 1229.569673538208,
-      "throughput_per_second": 0.4778937977813431
+      "duration_seconds": 3.734984959010035,
+      "mean_latency_ms": 962.438892776845,
+      "p95_latency_ms": 962.648868560791,
+      "throughput_per_second": 0.5354773906586505
     },
-    "relevance_accuracy": 1.0,
-    "return_code": 1,
+    "relevance_accuracy": 0,
+    "return_code": 0,
     "token_metrics": {
-      "llm_call_count": 1,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "avg_prompt_tokens": 0.0,
-      "avg_completion_tokens": 0.0
+      "avg_completion_tokens": 238.0,
+      "avg_prompt_tokens": 392.0,
+      "completion_tokens": 476,
+      "llm_call_count": 2,
+      "prompt_tokens": 784,
+      "total_tokens": 1260
     },
-    "total_tests": 1,
+    "total_tests": 0,
     "trajectory_summary": {
-      "files": 2,
-      "turns": 1,
-      "prompt_chars": 0,
-      "repeated_prefixes": []
+      "files": 3,
+      "prompt_chars": 2955,
+      "repeated_prefixes": [],
+      "turns": 2
     }
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
-    "duration_seconds": 2.0925151249975897,
-    "mean_latency_ms": 1229.569673538208,
-    "p95_latency_ms": 1229.569673538208,
-    "throughput_per_second": 0.4778937977813431
+    "duration_seconds": 3.734984959010035,
+    "mean_latency_ms": 962.438892776845,
+    "p95_latency_ms": 962.648868560791,
+    "throughput_per_second": 0.5354773906586505
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T133321Z_fd838049/bfcl__bfcl/run_bfcl_20260511T133321Z_2_196a8c21/output/bfcl_results_gpt-oss-120b_20260511_063323.json",
-  "run_group_id": "rg_20260511T133321Z_fd838049",
-  "run_id": "run_bfcl_20260511T133321Z_2_196a8c21",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T084510Z_25422344/bfcl__bfcl/run_bfcl_20260512T084510Z_1_71113430/output/bfcl_results_gpt-oss-120b_20260512_014513.json",
+  "run_group_id": "rg_20260512T084510Z_25422344",
+  "run_id": "run_bfcl_20260512T084510Z_1_71113430",
   "score": 0.0,
   "status": "succeeded",
   "token_metrics": {
-    "llm_call_count": 1,
-    "prompt_tokens": 0,
-    "completion_tokens": 0,
-    "total_tokens": 0,
-    "avg_prompt_tokens": 0.0,
-    "avg_completion_tokens": 0.0
+    "avg_completion_tokens": 238.0,
+    "avg_prompt_tokens": 392.0,
+    "completion_tokens": 476,
+    "llm_call_count": 2,
+    "prompt_tokens": 784,
+    "total_tokens": 1260
   },
   "trajectory_summary": {
-    "files": 2,
-    "turns": 1,
-    "prompt_chars": 0,
-    "repeated_prefixes": []
+    "files": 3,
+    "prompt_chars": 2955,
+    "repeated_prefixes": [],
+    "turns": 2
   },
   "unit": "ratio",
-  "updated_at": "2026-05-11T14:02:59.626375+00:00"
+  "updated_at": "2026-05-12T08:45:13.946448+00:00"
 }

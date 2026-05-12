@@ -4,6 +4,7 @@ import type { RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";
 import { AppHero } from "./app-identity";
 import { getAppShortName, groupAppsForCatalog } from "./helpers";
+import { getProvenanceFlags, getProvenanceTitle } from "./provenance";
 
 interface AppsCatalogGridProps {
   activeAppNames: Set<string>;
@@ -13,6 +14,7 @@ interface AppsCatalogGridProps {
   searchQuery: string;
   visibleApps: RegistryAppInfo[];
   onLaunch: (app: RegistryAppInfo) => void;
+  onRetry?: () => void;
   onToggleFavorite: (appName: string) => void;
 }
 
@@ -52,24 +54,19 @@ function appProvenanceLabels(app: RegistryAppInfo): {
   supportLabel: string | null;
   title: string | undefined;
 } {
-  const isThirdParty = app.thirdParty === true || app.origin === "third-party";
-  const isBuiltIn = app.builtIn === true || app.origin === "builtin";
-  const isFirstParty = app.firstParty === true || app.support === "first-party";
-  const isCommunity =
-    app.support === "community" || (isThirdParty && !isFirstParty);
-
+  const flags = getProvenanceFlags(app);
   return {
-    originLabel: isThirdParty ? "Third party" : isBuiltIn ? "Built in" : null,
-    supportLabel: isCommunity
+    originLabel: flags.isThirdParty
+      ? "Third party"
+      : flags.isBuiltIn
+        ? "Built in"
+        : null,
+    supportLabel: flags.isCommunity
       ? "Community"
-      : isFirstParty
+      : flags.isFirstParty
         ? "First party"
         : null,
-    title: isThirdParty
-      ? "Community app registered through the plugin registry"
-      : isBuiltIn || isFirstParty
-        ? "First-party app generated from the elizaOS plugin registry"
-        : undefined,
+    title: getProvenanceTitle(flags, "app"),
   };
 }
 
@@ -291,6 +288,7 @@ export function AppsCatalogGrid({
   searchQuery,
   visibleApps,
   onLaunch,
+  onRetry,
   onToggleFavorite,
 }: AppsCatalogGridProps) {
   const { t } = useApp();
@@ -338,8 +336,17 @@ export function AppsCatalogGrid({
   return (
     <div ref={catalogRef} data-testid="apps-catalog-grid">
       {error ? (
-        <div className="mb-4 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs-tight text-danger">
-          {error}
+        <div className="mb-4 flex flex-col gap-2 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs-tight text-danger sm:flex-row sm:items-center sm:justify-between">
+          <span>{error}</span>
+          {onRetry ? (
+            <button
+              type="button"
+              className="self-start rounded-full border border-danger/40 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.14em] transition-colors hover:bg-danger/10 sm:self-auto"
+              onClick={onRetry}
+            >
+              Retry
+            </button>
+          ) : null}
         </div>
       ) : null}
 

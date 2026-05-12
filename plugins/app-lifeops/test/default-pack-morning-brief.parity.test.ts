@@ -24,7 +24,11 @@ function buildFixtureReport(): Omit<CheckinReport, "summaryText"> {
     generatedAt: "2026-01-15T07:00:00.000Z",
     escalationLevel: 0,
     overdueTodos: [
-      { id: "t1", title: "draft launch announcement", dueAt: "2026-01-14T17:00:00.000Z" },
+      {
+        id: "t1",
+        title: "draft launch announcement",
+        dueAt: "2026-01-14T17:00:00.000Z",
+      },
       { id: "t2", title: "respond to investor follow-ups", dueAt: null },
     ],
     todaysMeetings: [
@@ -36,7 +40,11 @@ function buildFixtureReport(): Omit<CheckinReport, "summaryText"> {
       },
     ],
     yesterdaysWins: [
-      { id: "w1", title: "shipped CDN cache fix", completedAt: "2026-01-14T22:30:00.000Z" },
+      {
+        id: "w1",
+        title: "shipped CDN cache fix",
+        completedAt: "2026-01-14T22:30:00.000Z",
+      },
     ],
     habitSummaries: [
       {
@@ -82,19 +90,28 @@ describe("morning-brief default pack ↔ CheckinService prompt parity", () => {
 
   it("includes the morning intro line", () => {
     const report = buildFixtureReport();
-    const prompt = buildMorningBriefPromptFromReport({ ...report, kind: "morning" });
+    const prompt = buildMorningBriefPromptFromReport({
+      ...report,
+      kind: "morning",
+    });
     expect(prompt.startsWith("Write the owner's morning")).toBe(true);
   });
 
   it("does not include night-only sleep recap section for morning reports", () => {
     const report = buildFixtureReport();
-    const prompt = buildMorningBriefPromptFromReport({ ...report, kind: "morning" });
+    const prompt = buildMorningBriefPromptFromReport({
+      ...report,
+      kind: "morning",
+    });
     expect(prompt).not.toContain("Sleep recap (use these facts only");
   });
 
   it("preserves the embedded JSON report payload", () => {
     const report = buildFixtureReport();
-    const prompt = buildMorningBriefPromptFromReport({ ...report, kind: "morning" });
+    const prompt = buildMorningBriefPromptFromReport({
+      ...report,
+      kind: "morning",
+    });
     expect(prompt).toContain('"reportId":"fixture-morning-001"');
     expect(prompt).toContain('"kind":"morning"');
   });

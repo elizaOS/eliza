@@ -11,26 +11,26 @@ import { asCacheRuntime } from "../runtime-cache.js";
 
 // --- Public re-exports of the canonical OwnerFactStore --------------------
 
-export {
-  createOwnerFactStore,
-  ownerFactsToView,
-  registerOwnerFactStore,
-  resolveOwnerFactStore,
-  getOwnerFactStore,
-} from "../owner/fact-store.js";
 export type {
   EscalationRule,
   OwnerFactEntry,
   OwnerFactProvenance,
   OwnerFactProvenanceSource,
+  OwnerFactStore,
   OwnerFacts,
   OwnerFactsPatch,
-  OwnerFactStore,
   OwnerFactWindow,
   OwnerQuietHours,
   PolicyPatchEscalationRule,
   PolicyPatchReminderIntensity,
   ReminderIntensity,
+} from "../owner/fact-store.js";
+export {
+  createOwnerFactStore,
+  getOwnerFactStore,
+  ownerFactsToView,
+  registerOwnerFactStore,
+  resolveOwnerFactStore,
 } from "../owner/fact-store.js";
 
 // --- First-run lifecycle state -------------------------------------------
@@ -60,7 +60,7 @@ export interface FirstRunStateStore {
   recordAnswer(key: string, value: unknown): Promise<FirstRunRecord>;
   abandon(): Promise<FirstRunRecord>;
   complete(): Promise<FirstRunRecord>;
-  /** Reset the lifecycle entirely (LIFEOPS.wipe + replay re-entry). */
+  /** Reset the lifecycle entirely and replay re-entry. */
   reset(): Promise<void>;
 }
 

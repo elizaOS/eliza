@@ -1,0 +1,48 @@
+# Heartbeat Configuration
+# Controls periodic health check behavior
+
+schedule:
+  default_interval_ms: 2700000   # 45 minutes (adjusted per user request on 2025-06-17)
+  weekend_interval_ms: 3600000   # 60 minutes on weekends
+  quiet_hours:
+    start: "23:00"
+    end: "08:00"
+    timezone: "Europe/London"
+
+checks:
+  email:
+    enabled: true
+    priority: high
+    max_age_hours: 4
+  calendar:
+    enabled: true
+    priority: medium
+    max_age_hours: 6
+    lookahead_hours: 48
+  weather:
+    enabled: true
+    priority: low
+    max_age_hours: 8
+    location: "London"
+  github:
+    enabled: true
+    priority: medium
+    max_age_hours: 6
+    repos:
+      - "openclaw/moltbot"
+      - "openclaw/openclaw"
+  social:
+    enabled: true
+    priority: low
+    max_age_hours: 12
+    platforms:
+      - "moltbook"
+
+alerting:
+  consecutive_miss_threshold: 3
+  alert_channels:
+    - telegram
+  escalation_delay_ms: 300000    # 5 minutes before escalating
+
+state_file: "memory/heartbeat-state.json"
+log_file: "memory/heartbeat-log.csv"

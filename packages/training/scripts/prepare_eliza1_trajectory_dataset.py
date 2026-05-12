@@ -953,7 +953,8 @@ def build_lifeops_records(
 
             messages = [dict(msg) for msg in history]
             messages.append(assistant)
-            tools = finalize_tools({}, actions, manifest_tools)
+            context_actions = actions_from_message_tool_calls(messages)
+            tools = finalize_tools({}, [*context_actions, *actions], manifest_tools)
             record_id = stable_hash(
                 "lifeops",
                 path.as_posix(),
@@ -1005,6 +1006,40 @@ def build_lifeops_records(
             )
 
             history.append(assistant)
+            raw_tool_results = turn.get("tool_results")
+            if isinstance(raw_tool_results, list):
+                for result_idx, raw_result in enumerate(raw_tool_results):
+                    if not isinstance(raw_result, dict):
+                        continue
+                    raw_name = raw_result.get("name")
+                    name = (
+                        aliases.canonicalize(raw_name)
+                        if isinstance(raw_name, str) and raw_name.strip()
+                        else None
+                    )
+                    fallback_call_id = (
+                        tool_calls[result_idx].get("id")
+                        if result_idx < len(tool_calls)
+                        else f"call_{result_idx}"
+                    )
+                    # The LifeOpsBench result stores executable actions
+                    # without the original provider tool-call id. The
+                    # prepared assistant call id is therefore the canonical
+                    # id the request history must reference.
+                    tool_call_id = str(fallback_call_id or raw_result.get("tool_call_id"))
+                    content = content_to_text(raw_result.get("content"))
+                    if not content.strip() and "payload" in raw_result:
+                        content = json.dumps(raw_result.get("payload"), sort_keys=True, default=str)
+                    if not content.strip():
+                        continue
+                    tool_message: dict[str, Any] = {
+                        "role": "tool",
+                        "content": content,
+                        "tool_call_id": tool_call_id,
+                    }
+                    if name:
+                        tool_message["name"] = name
+                    history.append(tool_message)
             user_response = content_to_text(turn.get("user_response"))
             if user_response.strip():
                 history.append({"role": "user", "content": user_response})
@@ -1067,6 +1102,47 @@ def split_success_record(record: dict[str, Any], *, seed: str, val_ratio: float,
     if unit < test_ratio + val_ratio:
         return "val"
     return "train"
+
+
+def enforce_requested_success_splits(
+    splits: dict[str, list[dict[str, Any]]],
+    *,
+    val_ratio: float,
+    test_ratio: float,
+) -> list[dict[str, str]]:
+    """Keep requested train/val/test files populated for small repeatable runs."""
+
+    requested = ["train"]
+    if val_ratio > 0:
+        requested.append("val")
+    if test_ratio > 0:
+        requested.append("test")
+
+    success_total = sum(len(splits[name]) for name in ("train", "val", "test"))
+    if success_total < len(requested):
+        return []
+
+    moves: list[dict[str, str]] = []
+    for target in requested:
+        if splits[target]:
+            continue
+        donor = max(
+            (
+                split
+                for split in ("train", "val", "test")
+                if split != target and len(splits[split]) > 1
+            ),
+            key=lambda split: (len(splits[split]), split),
+            default=None,
+        )
+        if donor is None:
+            continue
+        row = sorted(splits[donor], key=lambda item: str(item.get("id") or ""))[-1]
+        splits[donor].remove(row)
+        row["split"] = target
+        splits[target].append(row)
+        moves.append({"id": str(row.get("id") or ""), "from": donor, "to": target})
+    return moves
 
 
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
@@ -1328,6 +1404,12 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
         if max_records and stats.produced >= max_records:
             break
 
+    split_minimum_moves = enforce_requested_success_splits(
+        splits,
+        val_ratio=args.val_ratio,
+        test_ratio=args.test_ratio,
+    )
+
     manifest = {
         "schema": MANIFEST_SCHEMA,
         "recordSchema": NATIVE_FORMAT
@@ -1391,6 +1473,7 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
             "seed": args.seed,
             "valRatio": args.val_ratio,
             "testRatio": args.test_ratio,
+            "minimumMoves": split_minimum_moves,
         },
         "actionAliases": str(Path(args.action_aliases)),
         "actionManifest": {

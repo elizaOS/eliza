@@ -54,14 +54,22 @@ class ToolCall:
 
 @dataclass(frozen=True)
 class ClientResponse:
-    """Uniform response shape across providers."""
+    """Uniform response shape across providers.
+
+    ``cost_usd`` is :data:`None` when the model is not in the provider's
+    pricing table (e.g. a custom Hermes endpoint hosting a model not in
+    ``HERMES_PRICING``). Per AGENTS.md Cmd #8: missing pricing data stays
+    nullable rather than masquerading as a free ``0.0`` call. ``latency_ms``
+    is always set by the client since wall-clock timing is available
+    locally regardless of provider.
+    """
 
     content: str | None
     tool_calls: list[ToolCall]
     finish_reason: FinishReason
     usage: Usage
     latency_ms: int
-    cost_usd: float
+    cost_usd: float | None
     raw_provider_response: dict[str, Any]
 
 

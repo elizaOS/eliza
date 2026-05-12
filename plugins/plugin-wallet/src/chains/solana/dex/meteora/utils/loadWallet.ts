@@ -1,7 +1,8 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime } from "@elizaos/core";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
+
+const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 
 export interface WalletResult {
   signer?: Keypair;
@@ -19,7 +20,7 @@ export async function loadWallet(
   runtime: IAgentRuntime,
   requirePrivateKey: boolean = true
 ): Promise<WalletResult> {
-  const rpcUrl = runtime.getSetting("SOLANA_RPC_URL") || "https://api.mainnet-beta.solana.com";
+  const rpcUrl = getRuntimeStringSetting(runtime, "SOLANA_RPC_URL") ?? DEFAULT_SOLANA_RPC_URL;
   const connection = new Connection(rpcUrl, "confirmed");
 
   // TODO: Re-enable TEE mode once DeriveKeyProvider is available
@@ -46,7 +47,8 @@ export async function loadWallet(
   // TEE mode is OFF
   if (requirePrivateKey) {
     const privateKeyString =
-      runtime.getSetting("SOLANA_PRIVATE_KEY") ?? runtime.getSetting("WALLET_PRIVATE_KEY");
+      getRuntimeStringSetting(runtime, "SOLANA_PRIVATE_KEY") ??
+      getRuntimeStringSetting(runtime, "WALLET_PRIVATE_KEY");
 
     if (!privateKeyString) {
       throw new Error("Private key not found in settings");
@@ -70,7 +72,8 @@ export async function loadWallet(
     }
   } else {
     const publicKeyString =
-      runtime.getSetting("SOLANA_PUBLIC_KEY") ?? runtime.getSetting("WALLET_PUBLIC_KEY");
+      getRuntimeStringSetting(runtime, "SOLANA_PUBLIC_KEY") ??
+      getRuntimeStringSetting(runtime, "WALLET_PUBLIC_KEY");
 
     if (!publicKeyString) {
       throw new Error("Public key not found in settings");
@@ -78,4 +81,9 @@ export async function loadWallet(
 
     return { address: new PublicKey(publicKeyString), connection };
   }
+}
+
+function getRuntimeStringSetting(runtime: IAgentRuntime, key: string): string | undefined {
+  const value = runtime.getSetting(key);
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }

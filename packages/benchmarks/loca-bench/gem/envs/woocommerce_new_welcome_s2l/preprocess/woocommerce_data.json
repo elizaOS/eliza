@@ -42,8 +42,14 @@
       },
       "is_paying_customer": true,
       "_links": {
-        "self": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers/10"}],
-        "collection": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers"}]
+        "self": [
+          {
+            "href": "https://localhost:10003/store88/wp-json/wc/v3/customers/10"
+          }
+        ],
+        "collection": [
+          { "href": "https://localhost:10003/store88/wp-json/wc/v3/customers" }
+        ]
       }
     },
     {
@@ -88,8 +94,14 @@
       },
       "is_paying_customer": true,
       "_links": {
-        "self": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers/11"}],
-        "collection": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers"}]
+        "self": [
+          {
+            "href": "https://localhost:10003/store88/wp-json/wc/v3/customers/11"
+          }
+        ],
+        "collection": [
+          { "href": "https://localhost:10003/store88/wp-json/wc/v3/customers" }
+        ]
       }
     },
     {
@@ -134,8 +146,14 @@
       },
       "is_paying_customer": true,
       "_links": {
-        "self": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers/12"}],
-        "collection": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers"}]
+        "self": [
+          {
+            "href": "https://localhost:10003/store88/wp-json/wc/v3/customers/12"
+          }
+        ],
+        "collection": [
+          { "href": "https://localhost:10003/store88/wp-json/wc/v3/customers" }
+        ]
       }
     },
     {
@@ -180,8 +198,14 @@
       },
       "is_paying_customer": true,
       "_links": {
-        "self": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers/13"}],
-        "collection": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers"}]
+        "self": [
+          {
+            "href": "https://localhost:10003/store88/wp-json/wc/v3/customers/13"
+          }
+        ],
+        "collection": [
+          { "href": "https://localhost:10003/store88/wp-json/wc/v3/customers" }
+        ]
       }
     },
     {
@@ -226,8 +250,14 @@
       },
       "is_paying_customer": true,
       "_links": {
-        "self": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers/14"}],
-        "collection": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers"}]
+        "self": [
+          {
+            "href": "https://localhost:10003/store88/wp-json/wc/v3/customers/14"
+          }
+        ],
+        "collection": [
+          { "href": "https://localhost:10003/store88/wp-json/wc/v3/customers" }
+        ]
       }
     },
     {
@@ -272,8 +302,14 @@
       },
       "is_paying_customer": true,
       "_links": {
-        "self": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers/15"}],
-        "collection": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers"}]
+        "self": [
+          {
+            "href": "https://localhost:10003/store88/wp-json/wc/v3/customers/15"
+          }
+        ],
+        "collection": [
+          { "href": "https://localhost:10003/store88/wp-json/wc/v3/customers" }
+        ]
       }
     },
     {
@@ -318,8 +354,14 @@
       },
       "is_paying_customer": true,
       "_links": {
-        "self": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers/16"}],
-        "collection": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers"}]
+        "self": [
+          {
+            "href": "https://localhost:10003/store88/wp-json/wc/v3/customers/16"
+          }
+        ],
+        "collection": [
+          { "href": "https://localhost:10003/store88/wp-json/wc/v3/customers" }
+        ]
       }
     },
     {
@@ -364,8 +406,14 @@
       },
       "is_paying_customer": true,
       "_links": {
-        "self": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers/17"}],
-        "collection": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers"}]
+        "self": [
+          {
+            "href": "https://localhost:10003/store88/wp-json/wc/v3/customers/17"
+          }
+        ],
+        "collection": [
+          { "href": "https://localhost:10003/store88/wp-json/wc/v3/customers" }
+        ]
       }
     },
     {
@@ -410,8 +458,14 @@
       },
       "is_paying_customer": true,
       "_links": {
-        "self": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers/18"}],
-        "collection": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers"}]
+        "self": [
+          {
+            "href": "https://localhost:10003/store88/wp-json/wc/v3/customers/18"
+          }
+        ],
+        "collection": [
+          { "href": "https://localhost:10003/store88/wp-json/wc/v3/customers" }
+        ]
       }
     },
     {
@@ -456,8 +510,14 @@
       },
       "is_paying_customer": true,
       "_links": {
-        "self": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers/19"}],
-        "collection": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers"}]
+        "self": [
+          {
+            "href": "https://localhost:10003/store88/wp-json/wc/v3/customers/19"
+          }
+        ],
+        "collection": [
+          { "href": "https://localhost:10003/store88/wp-json/wc/v3/customers" }
+        ]
       }
     },
     {
@@ -502,8 +562,14 @@
       },
       "is_paying_customer": true,
       "_links": {
-        "self": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers/20"}],
-        "collection": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers"}]
+        "self": [
+          {
+            "href": "https://localhost:10003/store88/wp-json/wc/v3/customers/20"
+          }
+        ],
+        "collection": [
+          { "href": "https://localhost:10003/store88/wp-json/wc/v3/customers" }
+        ]
       }
     },
     {
@@ -548,8 +614,14 @@
       },
       "is_paying_customer": true,
       "_links": {
-        "self": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers/21"}],
-        "collection": [{"href": "https://localhost:10003/store88/wp-json/wc/v3/customers"}]
+        "self": [
+          {
+            "href": "https://localhost:10003/store88/wp-json/wc/v3/customers/21"
+          }
+        ],
+        "collection": [
+          { "href": "https://localhost:10003/store88/wp-json/wc/v3/customers" }
+        ]
       }
     }
   ]

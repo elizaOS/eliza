@@ -27,6 +27,10 @@ export * from "./connector-health.ts";
 export * from "./credit-detection.ts";
 export * from "./database.ts";
 export * from "./diagnostics-routes.ts";
+export {
+  type DispatchRouteArgs,
+  dispatchRoute,
+} from "./dispatch-route.ts";
 export * from "./documents-routes.ts";
 export * from "./documents-service-loader.ts";
 export * from "./early-logs.ts";

@@ -5,6 +5,8 @@ on:
     branches: [main, develop]
     paths:
       - "launchdocs/**"
+      - "packages/docs/docs/launchdocs/**"
+      - "packages/docs/launchdocs/**"
       - "scripts/launch-qa/**"
       - "package.json"
       - ".github/workflows/launch-qa.yml"

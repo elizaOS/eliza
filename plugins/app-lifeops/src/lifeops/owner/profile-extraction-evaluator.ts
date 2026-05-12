@@ -5,8 +5,14 @@ import type {
 } from "@elizaos/core";
 import { EntityStore } from "../entities/store.js";
 import { SELF_ENTITY_ID } from "../entities/types.js";
-import { createOwnerFactStore, type OwnerFactsPatch } from "../owner/fact-store.js";
-import { applyExtractedEdges, type ExtractedEdge } from "../relationships/extraction.js";
+import {
+  createOwnerFactStore,
+  type OwnerFactsPatch,
+} from "../owner/fact-store.js";
+import {
+  applyExtractedEdges,
+  type ExtractedEdge,
+} from "../relationships/extraction.js";
 import { RelationshipStore } from "../relationships/store.js";
 
 type IdentityHint = {
@@ -29,7 +35,8 @@ type ProfileExtraction = {
 const FACT_PATTERNS = [
   {
     key: "preferredName",
-    pattern: /\b(?:my name is|people call me|you can call me)\s+([^,.!?]{2,60})/iu,
+    pattern:
+      /\b(?:my name is|people call me|you can call me)\s+([^,.!?]{2,60})/iu,
   },
   {
     key: "preferredName",
@@ -37,7 +44,8 @@ const FACT_PATTERNS = [
   },
   {
     key: "location",
-    pattern: /\b(?:i live in|i'm in|i am in|my location is)\s+([^,.!?]{2,80})/iu,
+    pattern:
+      /\b(?:i live in|i'm in|i am in|my location is)\s+([^,.!?]{2,80})/iu,
   },
   {
     key: "timezone",
@@ -48,6 +56,11 @@ const FACT_PATTERNS = [
     pattern: /\bmy partner(?:'s name)? is\s+([^,.!?]{2,60})/iu,
   },
 ] as const;
+
+const TRAVEL_PREFERENCE_CONTEXT =
+  /\b(?:travel|booking|bookings|trip|trips|flight|flights|hotel|hotels)\b/iu;
+const TRAVEL_PREFERENCE_DETAILS =
+  /\b(?:aisle|window|seat|seats|checked\s+bag|checked\s+bags|carry-?on|luggage|hotel|hotels|budget|\$\d|venue|venues|mile|miles|night|nights)\b/iu;
 
 const RELATIONSHIP_TYPES: Record<string, string> = {
   boss: "managed_by",
@@ -69,10 +82,7 @@ function messageText(value: unknown): string {
 }
 
 function cleanName(raw: string | undefined): string | null {
-  const value = raw
-    ?.replace(/["'`]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  const value = raw?.replace(/["'`]/g, "").replace(/\s+/g, " ").trim();
   if (!value || value.length < 2 || value.length > 80) return null;
   if (/^(?:me|my|mine|you|them|someone|somebody|at|on)$/iu.test(value)) {
     return null;
@@ -102,23 +112,74 @@ function collectFactHints(text: string, facts: OwnerFactsPatch): void {
   }
 }
 
+function cleanTravelPreference(raw: string | undefined): string | null {
+  const value = raw
+    ?.replace(/\s+/g, " ")
+    .replace(/^[\s:,-]+/u, "")
+    .replace(/[.!?]+$/u, "")
+    .trim();
+  if (!value || value.length < 8) {
+    return null;
+  }
+
+  const withoutLeadIn = value
+    .replace(/^(?:that\s+)?(?:i\s+)?prefer\s+/iu, "")
+    .trim();
+  if (!TRAVEL_PREFERENCE_DETAILS.test(withoutLeadIn)) {
+    return null;
+  }
+
+  const normalized = withoutLeadIn.replace(/^(.)/u, (first) =>
+    first.toUpperCase(),
+  );
+  return `Prefer ${normalized}`;
+}
+
+function collectTravelPreferenceHints(
+  text: string,
+  facts: OwnerFactsPatch,
+): void {
+  if (
+    facts.travelBookingPreferences ||
+    !/\bprefer(?:ence|ences|s|red)?\b/iu.test(text) ||
+    !TRAVEL_PREFERENCE_CONTEXT.test(text)
+  ) {
+    return;
+  }
+
+  const patterns = [
+    /\b(?:for\s+(?:all\s+)?future\s+travel\s+bookings?|for\s+travel\s+bookings?|when\s+booking\s+travel)[:,-]?\s*((?:i\s+)?prefer\s+[^.!?]{8,240})/iu,
+    /\b(?:travel|booking|flight|hotel)\s+preferences?\s*(?:are|is|:|-)\s*([^.!?]{8,240})/iu,
+    /\b(?:remember\s+that\s+)?((?:i\s+)?prefer\s+[^.!?]{8,240})/iu,
+  ];
+
+  for (const pattern of patterns) {
+    const preference = cleanTravelPreference(pattern.exec(text)?.[1]);
+    if (preference) {
+      facts.travelBookingPreferences = preference;
+      return;
+    }
+  }
+}
+
 function collectIdentityHints(text: string): IdentityHint[] {
   const hints: IdentityHint[] = [];
   const patterns = [
     /\b([A-Z][A-Za-z0-9 .'-]{1,60})'s\s+(telegram|slack|discord|twitter|x|email|github|nostr)\s+(?:handle|username|account|profile)\s+is\s+(@?[A-Za-z0-9_.+\-@]+)\b/gu,
     /\b(?:the\s+)?(telegram|slack|discord|twitter|x|email|github|nostr)\s+(?:handle|username|account|profile)\s+for\s+([A-Z][A-Za-z0-9 .'-]{1,60})\s+is\s+(@?[A-Za-z0-9_.+\-@]+)\b/gu,
-    /\b([A-Z][A-Za-z0-9 .'-]{1,60})\s+(?:goes by|is)\s+(@[A-Za-z0-9_.+\-]+)\s+on\s+(telegram|slack|discord|twitter|x|github|nostr)\b/gu,
+    /\b([A-Z][A-Za-z0-9 .'-]{1,60})\s+(?:goes by|is)\s+(@[A-Za-z0-9_.+-]+)\s+on\s+(telegram|slack|discord|twitter|x|github|nostr)\b/gu,
   ];
   for (const pattern of patterns) {
     for (const match of text.matchAll(pattern)) {
       const first = match[1] ?? "";
       const second = match[2] ?? "";
       const third = match[3] ?? "";
-      const platformFirst = /^(telegram|slack|discord|twitter|x|email|github|nostr)$/iu.test(
-        first,
-      );
+      const platformFirst =
+        /^(telegram|slack|discord|twitter|x|email|github|nostr)$/iu.test(first);
       const name = cleanName(platformFirst ? second : first);
-      const platform = normalizePlatform(platformFirst ? first : third || second);
+      const platform = normalizePlatform(
+        platformFirst ? first : third || second,
+      );
       const handle = cleanHandle(platformFirst ? third : second);
       if (name && platform && handle) {
         hints.push({ name, platform, handle });
@@ -146,6 +207,7 @@ function collectRelationshipHints(text: string): RelationshipHint[] {
 function extractProfileDetails(text: string): ProfileExtraction {
   const facts: OwnerFactsPatch = {};
   collectFactHints(text, facts);
+  collectTravelPreferenceHints(text, facts);
   return {
     facts,
     identities: collectIdentityHints(text),
@@ -172,7 +234,10 @@ export const ownerProfileExtractionEvaluator: ResponseHandlerEvaluator = {
     }
     return hasExtraction(extractProfileDetails(messageText(message)));
   },
-  async evaluate({ runtime, message }): Promise<ResponseHandlerPatch | undefined> {
+  async evaluate({
+    runtime,
+    message,
+  }): Promise<ResponseHandlerPatch | undefined> {
     const text = messageText(message);
     const extraction = extractProfileDetails(text);
     if (!hasExtraction(extraction)) {
@@ -192,7 +257,10 @@ export const ownerProfileExtractionEvaluator: ResponseHandlerEvaluator = {
       debug.push(`facts=${Object.keys(extraction.facts).length}`);
     }
 
-    if (extraction.identities.length > 0 || extraction.relationships.length > 0) {
+    if (
+      extraction.identities.length > 0 ||
+      extraction.relationships.length > 0
+    ) {
       const agentId = runtime.agentId;
       const entityStore = new EntityStore(runtime, agentId);
       const relationshipStore = new RelationshipStore(runtime, agentId);
@@ -231,7 +299,9 @@ export const ownerProfileExtractionEvaluator: ResponseHandlerEvaluator = {
 
     return {
       debug,
-      addContextSlices: ["Owner profile/entity details were extracted before planning."],
+      addContextSlices: [
+        "Owner profile/entity details were extracted before planning.",
+      ],
     };
   },
 };

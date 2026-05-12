@@ -12,7 +12,7 @@
  *   apothic's fork adds two GGML quant types (TBQ3_0 = 43, TBQ4_0 = 44)
  *   for KV-cache compression, with CPU implementations under
  *   `ggml/src/ggml-cpu/quants.c` + `ggml/src/ggml-cpu/ggml-cpu.c`.
- *   The Milady-side `polarquant-q4` branch on the same fork adds a third
+ *   The Eliza-side `polarquant-q4` branch on the same fork adds a third
  *   weight-quant type (Q4_POLAR = 45) — 128-element rotated Lloyd-Max +
  *   optional 1-bit QJL residual, ~4.125-5.125 bpw — registered in the
  *   same dispatch table. PolarQuant tensors are weight-quantized, not
@@ -426,7 +426,7 @@ const LLAMA_POOLING_TYPE_MEAN = 1;
 const GGML_TYPE_F16 = 1;
 const GGML_TYPE_TBQ3_0 = 43;
 const GGML_TYPE_TBQ4_0 = 44;
-// QJL1_256 + Q4_POLAR are landed on elizaOS/llama.cpp @ v0.1.0-milady.
+// QJL1_256 + Q4_POLAR are landed on elizaOS/llama.cpp @ v0.1.0-eliza.
 // Slot 45 is an intentional reserved hole on the fork.
 const GGML_TYPE_QJL1_256 = 46;
 const GGML_TYPE_Q4_POLAR = 47;
@@ -435,7 +435,7 @@ const GGML_TYPE_Q4_POLAR = 47;
  * Map a friendly KV-cache type name to its ggml_type enum value. Keep the
  * table small — only types we actually intend to drive end up here. F16
  * is the upstream default; tbq3_0 / tbq4_0 / qjl1_256 / q4_polar are the
- * fork additions on elizaOS/llama.cpp @ v0.1.0-milady. Unknown names
+ * fork additions on elizaOS/llama.cpp @ v0.1.0-eliza. Unknown names
  * throw rather than silently degrade.
  *
  * Exported for unit tests so we can assert mapping correctness without
@@ -642,12 +642,6 @@ async function loadBunFfi(): Promise<BunFfiLoadResult> {
   // We surface the real error so AOSP-only debugging on Android can see the
   // root cause instead of the generic "bun:ffi unavailable" message.
   try {
-    /* Deliberate boundary cast: the real bun:ffi typings define dlopen
-     * with a generic `Fns extends Record<string, FFIFunction>` constraint
-     * we don't want leaking into adapter types; we only consume the
-     * weakly-typed runtime shape. */
-    // biome-ignore lint/suspicious/noTsIgnore: bun:ffi is a Bun runtime builtin loaded only on AOSP.
-    // @ts-ignore
     const mod = await import("bun:ffi");
     if (!isBunFFIModule(mod)) {
       throw new Error("bun:ffi module did not expose the expected FFI API");

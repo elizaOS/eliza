@@ -22,9 +22,17 @@ export const APP_RESUME_EVENT = "eliza:app-resume" as const;
 export const APP_PAUSE_EVENT = "eliza:app-pause" as const;
 export const CONNECT_EVENT = "eliza:connect" as const;
 export const FOCUS_CONNECTOR_EVENT = "eliza:focus-connector" as const;
+export const NETWORK_STATUS_CHANGE_EVENT =
+  "eliza:network-status-change" as const;
 export const MOBILE_RUNTIME_MODE_CHANGED_EVENT =
   "eliza:mobile-runtime-mode-changed" as const;
 const FOCUS_CONNECTOR_STORAGE_KEY = "elizaos:focus-connector";
+
+/** Detail payload for {@link NETWORK_STATUS_CHANGE_EVENT}. */
+export interface NetworkStatusChangeDetail {
+  /** `true` when the device reports a usable network interface. */
+  connected: boolean;
+}
 
 // ── Voice / config ───────────────────────────────────────────────────────
 export const VOICE_CONFIG_UPDATED_EVENT = "eliza:voice-config-updated" as const;
@@ -83,6 +91,7 @@ export type ElizaDocumentEventName =
   | typeof APP_PAUSE_EVENT
   | typeof CONNECT_EVENT
   | typeof FOCUS_CONNECTOR_EVENT
+  | typeof NETWORK_STATUS_CHANGE_EVENT
   | typeof MOBILE_RUNTIME_MODE_CHANGED_EVENT;
 
 export type ElizaWindowEventName =

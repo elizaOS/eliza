@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   canSetAsDefault,
   ELIZA_1_MANIFEST_SCHEMA_VERSION,
+  ELIZA_1_TIERS,
+  ELIZA_1_TOKENIZER_FAMILY,
   REQUIRED_KERNELS_BY_TIER,
   validateManifest,
 } from "./index";
@@ -45,12 +47,12 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
       text: [
         { path: `text/eliza-1-${tier}-64k.gguf`, ctx: 65536, sha256: SHA },
       ],
-      voice: [{ path: "tts/omnivoice-1.7b.gguf", sha256: SHA }],
+      voice: [{ path: "tts/omnivoice-base-Q4_K_M.gguf", sha256: SHA }],
       asr: [{ path: "asr/asr.gguf", sha256: SHA }],
       vision: [{ path: `vision/mmproj-${tier}.gguf`, sha256: SHA }],
       dflash: [{ path: `dflash/drafter-${tier}.gguf`, sha256: SHA }],
       cache: [{ path: "cache/voice-preset-default.bin", sha256: SHA }],
-      vad: [{ path: "vad/eliza-1-vad.onnx", sha256: SHA }],
+      vad: [{ path: "vad/silero-vad-v5.1.2.ggml.bin", sha256: SHA }],
     },
     kernels: {
       required: [...REQUIRED_KERNELS_BY_TIER[tier]],
@@ -61,7 +63,14 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
       textEval: { score: 0.71, passed: true },
       voiceRtf: { rtf: 0.42, passed: true },
       asrWer: { wer: 0.05, passed: true },
-      vadLatencyMs: { median: 16, passed: true },
+      vadLatencyMs: {
+        median: 16,
+        boundaryMs: 24,
+        endpointMs: 80,
+        falseBargeInRate: 0.01,
+        passed: true,
+      },
+      dflash: { acceptanceRate: 0.72, speedup: 1.8, passed: true },
       e2eLoopOk: true,
       thirtyTurnOk: true,
     },
@@ -74,6 +83,17 @@ describe("Eliza-1 manifest schema constants", () => {
   it("exports schema version 1", () => {
     expect(ELIZA_1_MANIFEST_SCHEMA_VERSION).toBe("1");
   });
+
+  it("uses Qwen3.5 small-tier ids and tokenizer family", () => {
+    expect(ELIZA_1_TOKENIZER_FAMILY).toBe("qwen35");
+    expect(ELIZA_1_TIERS.slice(0, 3)).toEqual(["0_6b", "1_7b", "4b"]);
+    expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
+      expect.arrayContaining(["0_6b", "1_7b"]),
+    );
+    expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).not.toEqual(
+      expect.arrayContaining([`0${"_8b"}`, `2${"b"}`]),
+    );
+  });
 });
 
 describe("validateManifest — valid input", () => {
@@ -83,7 +103,15 @@ describe("validateManifest — valid input", () => {
     if (result.ok) {
       expect(result.manifest.tier).toBe("9b");
       expect(result.manifest.defaultEligible).toBe(true);
+      expect(result.manifest.evals.vadLatencyMs?.falseBargeInRate).toBe(0.01);
     }
+  });
+
+  it("keeps legacy ONNX VAD manifests compatible", () => {
+    const m = baseManifest();
+    m.files.vad = [{ path: "vad/silero-vad-int8.onnx", sha256: SHA }];
+    const result = validateManifest(m);
+    expect(result.ok).toBe(true);
   });
 
   it("accepts optional component lineage, files, evals, and voice capabilities", () => {
@@ -114,7 +142,7 @@ describe("validateManifest — valid input", () => {
   });
 
   it("accepts every tier with that tier's required kernel set", () => {
-    for (const tier of ["0_6b", "1_7b", "9b", "27b", "27b-256k"] as const) {
+    for (const tier of ELIZA_1_TIERS) {
       const m = baseManifest(tier);
       const result = validateManifest(m);
       const detail = result.ok ? "" : ` errors=${result.errors.join(", ")}`;
@@ -127,6 +155,17 @@ describe("validateManifest — schema-level rejections", () => {
   it("rejects a manifest with a bad sha256", () => {
     const m = baseManifest();
     m.files.text[0].sha256 = "not-a-hash";
+    const result = validateManifest(m);
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects out-of-range VAD false barge-in metrics", () => {
+    const m = baseManifest();
+    m.evals.vadLatencyMs = {
+      median: 16,
+      falseBargeInRate: 1.2,
+      passed: true,
+    };
     const result = validateManifest(m);
     expect(result.ok).toBe(false);
   });
@@ -366,5 +405,56 @@ describe("canSetAsDefault", () => {
     const m = baseManifest("9b");
     m.kernels.required = ["turboquant_q4"]; // missing qjl/polarquant/dflash
     expect(canSetAsDefault(m, device)).toBe(false);
+  });
+});
+
+describe("releaseChannel", () => {
+  it("accepts an absent releaseChannel (defaults to recommended)", () => {
+    const result = validateManifest(baseManifest("9b"));
+    expect(result.ok).toBe(true);
+  });
+
+  it("accepts releaseChannel=recommended", () => {
+    const m = { ...baseManifest("9b"), releaseChannel: "recommended" as const };
+    expect(validateManifest(m).ok).toBe(true);
+  });
+
+  it("accepts releaseChannel=base-v1 only when defaultEligible is false", () => {
+    const m = {
+      ...baseManifest("9b"),
+      releaseChannel: "base-v1" as const,
+      defaultEligible: false,
+    };
+    const result = validateManifest(m);
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects releaseChannel=base-v1 with defaultEligible=true", () => {
+    const m = {
+      ...baseManifest("9b"),
+      releaseChannel: "base-v1" as const,
+      defaultEligible: true,
+    };
+    const result = validateManifest(m);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.includes("base-v1"))).toBe(true);
+    }
+  });
+
+  it("rejects an unknown releaseChannel value", () => {
+    const m = { ...baseManifest("9b"), releaseChannel: "v3" as never };
+    expect(validateManifest(m).ok).toBe(false);
+  });
+
+  it("a base-v1-channel manifest is never a device default", () => {
+    const m = {
+      ...baseManifest("9b"),
+      releaseChannel: "base-v1" as const,
+      defaultEligible: false,
+    };
+    expect(
+      canSetAsDefault(m, { availableBackends: ["metal"], ramMb: 64_000 }),
+    ).toBe(false);
   });
 });

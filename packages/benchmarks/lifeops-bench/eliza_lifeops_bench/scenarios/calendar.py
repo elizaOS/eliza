@@ -53,7 +53,7 @@ CALENDAR_SCENARIOS: list[Scenario] = [
                 },
             ),
         ],
-        required_outputs=["roadmap", "3"],
+        required_outputs=["roadmap", "3pm"],
         first_question_fallback=FirstQuestionFallback(
             canned_answer="Yes — keep it on my Personal calendar and keep the same attendees.",
             applies_when="agent asks which calendar or whether to keep attendees",

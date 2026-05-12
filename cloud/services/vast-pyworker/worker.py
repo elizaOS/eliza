@@ -21,6 +21,7 @@ Why llama.cpp instead of vLLM:
 """
 
 import os
+from typing import Any
 
 from vastai_sdk import (
     BenchmarkConfig,
@@ -41,20 +42,46 @@ LLAMA_SERVER_PORT = int(os.environ.get("LLAMA_SERVER_PORT", "8080"))
 # Log file the worker tails for the readiness signal. llama-server prints
 # `main: server is listening on http://...` once /v1 is live.
 LLAMA_SERVER_LOG = os.environ.get("LLAMA_SERVER_LOG", "/var/log/llama-server.log")
+MAX_QUEUE_TIME_SECONDS = float(os.environ.get("VAST_WORKER_MAX_QUEUE_TIME", "60"))
+
+
+def _text_token_estimate(value: Any) -> float:
+    if isinstance(value, str):
+        return max(1.0, len(value) / 4.0)
+    if isinstance(value, list):
+        return sum(_text_token_estimate(item) for item in value)
+    if isinstance(value, dict):
+        if "text" in value:
+            return _text_token_estimate(value.get("text"))
+        return sum(_text_token_estimate(item) for item in value.values())
+    return 0.0
+
+
+def _requested_output_tokens(payload: dict) -> float:
+    requested = payload.get("max_tokens")
+    if isinstance(requested, (int, float)) and requested > 0:
+        return float(requested)
+    return float(os.environ.get("VAST_WORKER_DEFAULT_MAX_TOKENS", "512"))
 
 
 def workload_for_chat_request(payload: dict) -> float:
     """Approximate per-request work in tokens.
 
     The Vast autoscaler uses these values to compare per-worker capacity
-    against incoming load. We charge `max_tokens` (default 512) so caps
-    smoothly bound the upper estimate; real per-request cost is
-    re-measured by the benchmark step on cold start.
+    against incoming load. Estimate both prompt and output work so long-context
+    requests and tool-heavy prompts scale differently from short chats.
     """
-    requested = payload.get("max_tokens")
-    if isinstance(requested, (int, float)) and requested > 0:
-        return float(requested)
-    return 512.0
+    messages = payload.get("messages") or []
+    prompt_tokens = 0.0
+    if isinstance(messages, list):
+        prompt_tokens = sum(
+            _text_token_estimate(message.get("content"))
+            for message in messages
+            if isinstance(message, dict)
+        )
+    prompt_tokens += _text_token_estimate(payload.get("prompt"))
+    prompt_tokens += _text_token_estimate(payload.get("tools")) * 0.25
+    return max(128.0, prompt_tokens + _requested_output_tokens(payload))
 
 
 CHAT_BENCHMARK = BenchmarkConfig(
@@ -90,14 +117,14 @@ def main() -> None:
                 route="/v1/chat/completions",
                 allow_parallel_requests=True,
                 workload_calculator=workload_for_chat_request,
-                max_queue_time=60.0,
+                max_queue_time=MAX_QUEUE_TIME_SECONDS,
                 benchmark_config=CHAT_BENCHMARK,
             ),
             HandlerConfig(
                 route="/v1/completions",
                 allow_parallel_requests=True,
                 workload_calculator=workload_for_chat_request,
-                max_queue_time=60.0,
+                max_queue_time=MAX_QUEUE_TIME_SECONDS,
             ),
         ],
     )

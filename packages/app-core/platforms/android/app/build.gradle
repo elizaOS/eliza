@@ -112,6 +112,11 @@ dependencies {
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    // WorkManager for periodic background refresh (see ElizaTasksWorker + ElizaBootReceiver).
+    // The Capacitor background-runner already pulls in work-runtime-ktx transitively;
+    // this explicit dep makes the worker classes resolvable from Java without relying on
+    // transitive resolution and pins us to the same version (2.11.0).
+    implementation "androidx.work:work-runtime:2.11.0"
     implementation project(':capacitor-android')
     implementation "com.google.code.gson:gson:2.14.0"
     implementation "com.google.firebase:firebase-common-ktx:21.0.0"

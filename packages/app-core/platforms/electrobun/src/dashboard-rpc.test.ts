@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import {
 	type AgentSelfStatusReader,
@@ -18,7 +18,7 @@ import type {
 } from "./rpc-schema";
 
 function mockFetchJson(status: number, body: unknown) {
-	const fetchMock = mock(
+	const fetchMock = vi.fn(
 		async (_input: RequestInfo | URL, _init?: RequestInit) =>
 			new Response(JSON.stringify(body), { status }),
 	);

@@ -1,8 +1,8 @@
 # llama.cpp patches — DEPRECATED archival drop (2026-05-09)
 
-> **Superseded by `elizaOS/llama.cpp @ v0.1.0-milady`.** These patch
+> **Superseded by `elizaOS/llama.cpp @ v0.1.0-eliza`.** These patch
 > series are no longer applied on AOSP builds. `compile-libllama.mjs`
-> now points at the unified Milady fork, which has TBQ + QJL + Q4_POLAR
+> now points at the unified Eliza fork, which has TBQ + QJL + Q4_POLAR
 > baked in (plus the Metal kernel sources). See
 > `docs/porting/unified-fork-strategy.md` for the migration story.
 
@@ -38,12 +38,12 @@ directly, this directory can be deleted.
 ### `qjl/`
 Five patches that added `GGML_TYPE_QJL1_256 = 46` +
 `GGML_OP_ATTN_SCORE_QJL` to apothic@b2b5273. Now landed on
-`elizaOS/llama.cpp` branch `milady/qjl` and merged into
-`milady/integration` (slot 46 unchanged).
+`elizaOS/llama.cpp` branch `eliza/qjl` and merged into
+`eliza/integration` (slot 46 unchanged).
 
 ### `polarquant/`
 Four patches that added `GGML_TYPE_Q4_POLAR = 45` to apothic@b2b5273.
-Now landed on `elizaOS/llama.cpp` branch `milady/polarquant` —
+Now landed on `elizaOS/llama.cpp` branch `eliza/polarquant` —
 **slot bumped from 45 to 47** so QJL (46) and Polar (47) coexist
 without colliding on the reserved hole at 45 (which was
 `GGML_TYPE_COUNT` in the TBQ-only build).

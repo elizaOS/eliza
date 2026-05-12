@@ -1,5 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { mkdirSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -17,7 +22,11 @@ function syntheticTrajectory() {
     roomId: "room-1",
     runId: "run-1",
     scenarioId: "todos.create-basic",
-    rootMessage: { id: "msg-1", text: "add buy milk to my todos", sender: "user" },
+    rootMessage: {
+      id: "msg-1",
+      text: "add buy milk to my todos",
+      sender: "user",
+    },
     startedAt: 1_700_000_000_000,
     endedAt: 1_700_000_001_000,
     status: "finished" as const,
@@ -55,12 +64,18 @@ function syntheticTrajectory() {
           tools: [
             {
               type: "function",
-              function: { name: "CREATE_TODO", description: "create a todo", parameters: {} },
+              function: {
+                name: "CREATE_TODO",
+                description: "create a todo",
+                parameters: {},
+              },
             },
           ],
           toolChoice: "auto",
           response: "Added it.",
-          toolCalls: [{ id: "call_0", name: "CREATE_TODO", args: { text: "buy milk" } }],
+          toolCalls: [
+            { id: "call_0", name: "CREATE_TODO", args: { text: "buy milk" } },
+          ],
           usage: { promptTokens: 120, completionTokens: 14, totalTokens: 134 },
           finishReason: "tool_calls",
           costUsd: 0,
@@ -73,7 +88,13 @@ function syntheticTrajectory() {
         startedAt: 1_700_000_000_900,
         endedAt: 1_700_000_000_950,
         latencyMs: 50,
-        tool: { name: "CREATE_TODO", args: { text: "buy milk" }, result: { ok: true }, success: true, durationMs: 50 },
+        tool: {
+          name: "CREATE_TODO",
+          args: { text: "buy milk" },
+          result: { ok: true },
+          success: true,
+          durationMs: 50,
+        },
       },
     ],
     metrics: {
@@ -104,16 +125,26 @@ describe("recordedTrajectoryToNativeRows", () => {
     // request has at least one user turn
     expect(Array.isArray(row.request.messages)).toBe(true);
     expect(
-      (row.request.messages as Array<{ role?: string }>).some((m) => m.role === "user"),
+      (row.request.messages as Array<{ role?: string }>).some(
+        (m) => m.role === "user",
+      ),
     ).toBe(true);
     expect(row.request.tools).toBeDefined();
     // response has either text or toolCalls
     expect(row.response.text).toBe("Added it.");
     expect(row.response.toolCalls).toEqual([
-      { toolCallId: "call_0", toolName: "CREATE_TODO", input: { text: "buy milk" } },
+      {
+        toolCallId: "call_0",
+        toolName: "CREATE_TODO",
+        input: { text: "buy milk" },
+      },
     ]);
     expect(row.response.finishReason).toBe("tool_calls");
-    expect(row.response.usage).toEqual({ promptTokens: 120, completionTokens: 14, totalTokens: 134 });
+    expect(row.response.usage).toEqual({
+      promptTokens: 120,
+      completionTokens: 14,
+      totalTokens: 134,
+    });
     // identity / bookkeeping
     expect(row.trajectoryId).toBe("tj-test-1");
     expect(row.agentId).toBe("agent-test");
@@ -130,7 +161,9 @@ describe("recordedTrajectoryToNativeRows", () => {
   });
 
   it("skips stages without a usable request/response", () => {
-    const traj = syntheticTrajectory() as Record<string, unknown> & { stages: unknown[] };
+    const traj = syntheticTrajectory() as Record<string, unknown> & {
+      stages: unknown[];
+    };
     traj.stages = [
       {
         stageId: "stage-empty",
@@ -145,18 +178,28 @@ describe("recordedTrajectoryToNativeRows", () => {
   });
 
   it("matches the minimal accepted shape from CANONICAL_RECORD.md", () => {
-    const NATIVE_BOUNDARIES = new Set(["vercel_ai_sdk.generateText", "vercel_ai_sdk.streamText"]);
-    for (const row of recordedTrajectoryToNativeRows(syntheticTrajectory() as never)) {
+    const NATIVE_BOUNDARIES = new Set([
+      "vercel_ai_sdk.generateText",
+      "vercel_ai_sdk.streamText",
+    ]);
+    for (const row of recordedTrajectoryToNativeRows(
+      syntheticTrajectory() as never,
+    )) {
       expect(row.format).toBe("eliza_native_v1");
       expect(NATIVE_BOUNDARIES.has(row.boundary)).toBe(true);
       const hasRequest =
         (Array.isArray(row.request.messages) &&
-          (row.request.messages as Array<{ role?: string }>).some((m) => m.role === "user")) ||
-        (typeof row.request.prompt === "string" && row.request.prompt.length > 0);
+          (row.request.messages as Array<{ role?: string }>).some(
+            (m) => m.role === "user",
+          )) ||
+        (typeof row.request.prompt === "string" &&
+          row.request.prompt.length > 0);
       expect(hasRequest).toBe(true);
       const hasResponse =
-        (typeof row.response.text === "string" && row.response.text.trim().length > 0) ||
-        (Array.isArray(row.response.toolCalls) && row.response.toolCalls.length > 0);
+        (typeof row.response.text === "string" &&
+          row.response.text.trim().length > 0) ||
+        (Array.isArray(row.response.toolCalls) &&
+          row.response.toolCalls.length > 0);
       expect(hasResponse).toBe(true);
     }
   });
@@ -174,7 +217,11 @@ describe("exportScenarioNativeJsonl", () => {
         "utf-8",
       );
       // A non-trajectory JSON and an unparseable file should be skipped, not fatal.
-      writeFileSync(path.join(runDir, "trajectories", "matrix.json"), JSON.stringify({ totals: {} }), "utf-8");
+      writeFileSync(
+        path.join(runDir, "trajectories", "matrix.json"),
+        JSON.stringify({ totals: {} }),
+        "utf-8",
+      );
       writeFileSync(path.join(trajDir, "broken.json"), "{not json", "utf-8");
 
       const outPath = path.join(runDir, "native.jsonl");
@@ -184,7 +231,9 @@ describe("exportScenarioNativeJsonl", () => {
       expect(lines).toHaveLength(1);
       const parsed = JSON.parse(lines[0]!);
       expect(parsed.format).toBe("eliza_native_v1");
-      expect(parsed.metadata.source_dataset).toBe("scenario_trajectory_boundary");
+      expect(parsed.metadata.source_dataset).toBe(
+        "scenario_trajectory_boundary",
+      );
     } finally {
       rmSync(runDir, { recursive: true, force: true });
     }

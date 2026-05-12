@@ -1,0 +1,35 @@
+[2026-02-05T07:00:02+08:00] [weather] START - Fetching weather for Beijing
+[2026-02-05T07:00:03+08:00] [weather] OK - Weather data retrieved successfully
+[2026-02-05T07:00:04+08:00] [weather] OK - Message sent to ou_852fce059cfd664b756a298b7a30b3f8
+[2026-02-05T07:05:01+08:00] [ai-news] START - Fetching AI news from 3 sources
+[2026-02-05T07:05:08+08:00] [ai-news] OK - 7 stories collected and summarized
+[2026-02-05T07:05:09+08:00] [ai-news] OK - Message sent to ou_852fce059cfd664b756a298b7a30b3f8
+[2026-02-06T07:00:01+08:00] [weather] START - Fetching weather for Beijing
+[2026-02-06T07:00:03+08:00] [weather] OK - Weather data retrieved successfully
+[2026-02-06T07:00:03+08:00] [weather] OK - Message sent to ou_852fce059cfd664b756a298b7a30b3f8
+[2026-02-06T07:05:02+08:00] [ai-news] START - Fetching AI news from 3 sources
+[2026-02-06T07:05:09+08:00] [ai-news] OK - 8 stories collected and summarized
+[2026-02-06T07:05:10+08:00] [ai-news] OK - Message sent to ou_852fce059cfd664b756a298b7a30b3f8
+[2026-02-07T07:00:02+08:00] [weather] START - Fetching weather for Beijing
+[2026-02-07T07:00:03+08:00] [weather] OK - Weather data retrieved successfully
+[2026-02-07T07:00:04+08:00] [weather] OK - Message sent to ou_852fce059cfd664b756a298b7a30b3f8
+[2026-02-07T07:05:01+08:00] [ai-news] START - Fetching AI news from 3 sources
+[2026-02-07T07:05:07+08:00] [ai-news] OK - 6 stories collected and summarized
+[2026-02-07T07:05:08+08:00] [ai-news] OK - Message sent to ou_852fce059cfd664b756a298b7a30b3f8
+[2026-02-08T07:00:01+08:00] [weather] START - Fetching weather for Beijing
+[2026-02-08T07:00:03+08:00] [weather] OK - Weather data retrieved successfully
+[2026-02-08T07:00:04+08:00] [weather] OK - Message sent to ou_852fce059cfd664b756a298b7a30b3f8
+[2026-02-08T07:05:02+08:00] [ai-news] START - Fetching AI news from 3 sources
+[2026-02-08T07:05:10+08:00] [ai-news] OK - 8 stories collected and summarized
+[2026-02-08T07:05:11+08:00] [ai-news] OK - Message sent to ou_852fce059cfd664b756a298b7a30b3f8
+[2026-02-09T07:00:02+08:00] [weather] START - Fetching weather for Beijing
+[2026-02-09T07:00:04+08:00] [weather] WARN - wttr.in returned 503, retrying (1/3)
+[2026-02-09T07:00:06+08:00] [weather] WARN - wttr.in returned 503, retrying (2/3)
+[2026-02-09T07:00:08+08:00] [weather] WARN - wttr.in returned 503, retrying (3/3)
+[2026-02-09T07:00:08+08:00] [weather] ERROR - Failed to fetch weather after 3 retries
+[2026-02-09T07:05:01+08:00] [ai-news] START - Fetching AI news from 3 sources
+[2026-02-09T07:05:03+08:00] [ai-news] ERROR - Cron job disabled by user request (message: "暂时不需要了" at 2026-02-09 21:10:26)
+[2026-02-09T21:10:30+08:00] [system] INFO - User ou_852fce059cfd664b756a298b7a30b3f8 requested pause on daily reports
+[2026-02-09T21:10:30+08:00] [system] INFO - Disabling cron jobs: daily-weather-report, daily-ai-news-report
+[2026-02-10T07:00:00+08:00] [weather] SKIP - Job disabled (paused by user request)
+[2026-02-10T07:05:00+08:00] [ai-news] SKIP - Job disabled (paused by user request)

@@ -94,7 +94,10 @@ export async function decideTokenMeta(opts: {
   }
   // sanitize
   parsed.name = parsed.name.trim().slice(0, 24);
-  parsed.symbol = parsed.symbol.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+  parsed.symbol = parsed.symbol
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 8);
   parsed.description = (parsed.description ?? "").trim().slice(0, 500);
   return parsed;
 }

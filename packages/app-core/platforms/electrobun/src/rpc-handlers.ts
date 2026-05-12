@@ -376,11 +376,13 @@ export function buildBunRpcHandlers({
 		 * Bun process (the typed contract stays identical through that
 		 * migration).
 		 */
-		bootProgress: async () =>
-			composeBootProgressSnapshot(
-				agent.getStatus(),
+		bootProgress: async () => {
+			const status = agent.getStatus();
+			return composeBootProgressSnapshot(
+				{ ...status, port: resolveRpcAgentPort(status.port) },
 				readAgentHealthSnapshotViaHttp,
-			),
+			);
+		},
 		/**
 		 * Typed counterpart to renderer `client.getOnboardingStatus()` —
 		 * the polling-backend startup phase calls this. See

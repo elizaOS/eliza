@@ -1,10 +1,10 @@
-import { useApp } from "@elizaos/ui";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectValue,
   SettingsControls,
+  useApp,
 } from "@elizaos/ui";
 import { useState } from "react";
 import {

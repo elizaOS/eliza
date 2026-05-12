@@ -17,43 +17,11 @@ export type ProviderDoc = {
 };
 export declare const coreActionsSpec: {
   readonly version: "1.0.0";
-  readonly actions: readonly [
-    {
-      readonly name: "SHELL_HISTORY";
-      readonly description: string;
-      readonly similes: readonly [
-        "CLEAR_HISTORY",
-        "CLEAR_SHELL_HISTORY",
-        "RESET_SHELL",
-        "CLEAR_TERMINAL",
-        "RESET_HISTORY",
-        "VIEW_SHELL_HISTORY",
-        "SHOW_SHELL_HISTORY",
-        "LIST_SHELL_HISTORY",
-      ];
-      readonly parameters: readonly [];
-    },
-  ];
+  readonly actions: readonly [];
 };
 export declare const allActionsSpec: {
   readonly version: "1.0.0";
-  readonly actions: readonly [
-    {
-      readonly name: "SHELL_HISTORY";
-      readonly description: string;
-      readonly similes: readonly [
-        "CLEAR_HISTORY",
-        "CLEAR_SHELL_HISTORY",
-        "RESET_SHELL",
-        "CLEAR_TERMINAL",
-        "RESET_HISTORY",
-        "VIEW_SHELL_HISTORY",
-        "SHOW_SHELL_HISTORY",
-        "LIST_SHELL_HISTORY",
-      ];
-      readonly parameters: readonly [];
-    },
-  ];
+  readonly actions: readonly [];
 };
 export declare const coreProvidersSpec: {
   readonly version: "1.0.0";

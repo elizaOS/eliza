@@ -5,9 +5,9 @@
 > Hexagon DSP, NNAPI/EdgeTPU), iOS/macOS (Metal, Accelerate), and the
 > Linux/CUDA training rig that already runs them.
 >
-> **The unified Milady fork now exists** at
+> **The unified Eliza fork now exists** at
 > [`elizaOS/llama.cpp`](https://github.com/elizaOS/llama.cpp) @
-> `v0.1.0-milady` (commit `edd55d8b`). It composes TBQ3_0 / TBQ4_0 from
+> `v0.1.0-eliza` (commit `edd55d8b`). It composes TBQ3_0 / TBQ4_0 from
 > apothic, QJL1_256 from W1-A, Q4_POLAR (slot bumped from 45 to 47) from
 > W1-B, and the Metal kernel sources from W1-D onto upstream b8198. The
 > AOSP path's `compile-libllama.mjs` is now pinned at this fork —
@@ -18,25 +18,25 @@
 > [`reports/porting/2026-05-09-unified/`](../../reports/porting/2026-05-09-unified/)
 > for the post-pin verification snapshot. The companion
 > [`elizaOS/node-llama-cpp`](https://github.com/elizaOS/node-llama-cpp)
-> @ `v3.18.1-milady.3` extends `experimentalKvCacheKey/ValueType` to
+> @ `v3.18.1-eliza.3` extends `experimentalKvCacheKey/ValueType` to
 > accept the new lowercase aliases (`"tbq3_0"`, `"tbq4_0"`,
 > `"qjl1_256"`, `"q4_polar"`) so the desktop path stops rejecting them
 > at `createContext()`. **Consumable as a github URL drop-in: bun
-> resolves `github:elizaOS/node-llama-cpp#v3.18.1-milady.3` directly
+> resolves `github:elizaOS/node-llama-cpp#v3.18.1-eliza.3` directly
 > and gets pre-built `dist/` + `templates/packed/` (no devDeps + tsc
-> needed).** Milady's three pins (root `package.json`,
+> needed).** Eliza's three pins (root `package.json`,
 > `eliza/packages/app-core/package.json`,
 > `eliza/plugins/plugin-local-embedding/package.json`) all point at
 > this tag. Native binaries still come from
 > `@node-llama-cpp/<platform>@3.18.1` on npm (upstream's prebuilds);
-> kernels for the milady-only enum slots (43/44/46/47) only resolve
+> kernels for the eliza-only enum slots (43/44/46/47) only resolve
 > against the elizaOS/llama.cpp fork binary, but the binding-level
 > acceptance is now correct so desktop W1-C plumbing
 > (`active-model.runtime.test.ts`) passes end-to-end.
 >
 > The on-device runtime is `bun:ffi` → `libllama.so` → forked llama.cpp
 > ([`elizaOS/llama.cpp`](https://github.com/elizaOS/llama.cpp) @
-> `v0.1.0-milady`). Anything shipped to a phone has to land in that
+> `v0.1.0-eliza`). Anything shipped to a phone has to land in that
 > fork as either:
 >
 > 1. a new `GGML_TYPE_*` quant block + dequant/dot kernel (per backend), OR
@@ -48,11 +48,11 @@
 
 ## Current state on the AOSP image (last verified 2026-05-09 post-fork-unifier)
 
-`milady_cf_x86_64_phone-trunk_staging-userdebug` boots, Milady priv-app
-installs at `/system/priv-app/Milady/`, and `ElizaAgentService` spawns
+`eliza_cf_x86_64_phone-trunk_staging-userdebug` boots, Eliza priv-app
+installs at `/system/priv-app/Eliza/`, and `ElizaAgentService` spawns
 `bun + libllama.so + agent-bundle.js` correctly. The native libs in
 the APK are now produced from the unified
-[`elizaOS/llama.cpp @ v0.1.0-milady`](https://github.com/elizaOS/llama.cpp)
+[`elizaOS/llama.cpp @ v0.1.0-eliza`](https://github.com/elizaOS/llama.cpp)
 fork (commit `edd55d8b`); the May-5-era hot-patch workaround
 (`s/init_eliza()/await init_eliza()/` against the agent bundle, plus a
 vendored Apothic + 5 floating-patch series for QJL / Polar / Metal) is
@@ -106,7 +106,7 @@ init-order bug that triggered the hot-patch is unreachable by
 construction.
 
 PGlite db corruption from prior crash-loops is bypassed by wiping
-`/data/user/0/ai.milady.milady/files/.eliza/workspace/.eliza/.elizadb`
+`/data/user/0/ai.eliza.eliza/files/.eliza/workspace/.eliza/.elizadb`
 between runs. Improved `PGliteClientManager.formatError` handles
 non-Error throwables (was returning `"[object Object]"`, hiding the
 real error message; commit on `worktree-agent-af5238436024dfb1d` —
@@ -149,10 +149,10 @@ DFlash hardening landed in W1-G:
     `docs/porting/dflash-drafter-strategy.md`.
 
 **node-llama-cpp gap.** The desktop binding is now forked at
-[`elizaOS/node-llama-cpp @ v3.18.1-milady.1`](https://github.com/elizaOS/node-llama-cpp);
+[`elizaOS/node-llama-cpp @ v3.18.1-eliza.1`](https://github.com/elizaOS/node-llama-cpp);
 `GgmlType` accepts `tbq3_0`, `tbq4_0`, `qjl1_256`, `q4_polar`. The
 consumer side still pulls upstream `node-llama-cpp@3.18.1` because
-the milady fork ships only TS sources (no `dist/`); the unblock is to
+the eliza fork ships only TS sources (no `dist/`); the unblock is to
 publish `@elizaos/node-llama-cpp` to npm (path (b) in
 `reports/porting/2026-05-09-unified/INDEX.md` "What did NOT land").
 
@@ -170,13 +170,13 @@ publish `@elizaos/node-llama-cpp` to npm (path (b) in
 | `qjl1_256` cache type | `aosp-llama-adapter.ts` | Set `ELIZA_LLAMA_CACHE_TYPE_K=qjl1_256` to compose with TBQ V when the selected Eliza-1 bundle supports it. |
 | `block_qjl1_256` + `GGML_OP_ATTN_SCORE_QJL` | `elizaOS/llama.cpp` unified fork | QJL packed-K cache type and custom attention-score op are tracked in the fork instead of a local-only patch stack. |
 | `block_q4_polar` (`Q4_POLAR=47`) | `elizaOS/llama.cpp` unified fork | PolarQuant weight type is tracked in the fork; slot 47 is the shipped value. |
-| Speculative-decoding API | DFlash CLI surface landed on `elizaOS/llama.cpp @ v0.2.0-milady` (Wave-3 agent A, 2026-05-09): `--spec-type dflash`, `--draft-min-prob`, `n_drafted_total` + `n_drafted_accepted_total` Prometheus counters. arm64-v8a + x86_64 musl cross-builds verified clean via `compile-libllama.mjs --src-dir`. Local llama-server smoke: chat completion + metrics counters confirmed (acceptance rate 13/13 with target=drafter). | spiritbuun/buun-llama-cpp pin retired. Both AOSP and host build paths now consume the same unified-fork commit. |
+| Speculative-decoding API | DFlash CLI surface landed on `elizaOS/llama.cpp @ v0.2.0-eliza` (Wave-3 agent A, 2026-05-09): `--spec-type dflash`, `--draft-min-prob`, `n_drafted_total` + `n_drafted_accepted_total` Prometheus counters. arm64-v8a + x86_64 musl cross-builds verified clean via `compile-libllama.mjs --src-dir`. Local llama-server smoke: chat completion + metrics counters confirmed (acceptance rate 13/13 with target=drafter). | spiritbuun/buun-llama-cpp pin retired. Both AOSP and host build paths now consume the same unified-fork commit. |
 | Capacitor Android local-agent runtime | source landed (worktree-agent-a58ffa46f33215b6a) | ElizaAgentService gated on AOSP_BUILD; in-WebView local-agent kernel (`local-agent-kernel.ts`) generalized for both iOS and Android; shared TBQ resolver across adapters. |
 | Catalog `tokenizerFamily` field + DFlash pair guard | source landed on develop (W1-G commit) | Backfilled across every catalog entry. `maybeRepairDflashDrafter` deleted (dead). |
 | QJL standalone kernel library | `packages/native-plugins/qjl-cpu/` | 1100 LOC, scalar+AVX2+NEON, 100/100 bit-parity vs Python ref. The kernel sources are also vendored under `ggml/src/ggml-cpu/qjl/` in the unified fork. |
 | PolarQuant standalone kernel library | `packages/native-plugins/polarquant-cpu/` | 1871 LOC (C+Python), scalar + AVX2 + NEON kernels + safetensors→GGUF converter. The kernel sources land at `ggml/src/ggml-cpu/quants-polar.c` in the unified fork. |
 | Benchmark harness | `scripts/benchmark/profile-inference.mjs` | 48-combo matrix, stub-validated. CI wired in `.github/workflows/local-inference-bench.yml`. |
-| iOS / macOS Metal dispatcher | source-only on the fork (`ggml/src/ggml-metal/milady-kernels/`); needs Apple Silicon | W3-G shipped a ready-to-run kit. The dispatcher patch (`ggml-metal.metal` updates so TBQ/QJL/Polar route to the new shaders) lands as soon as a self-hosted `apple-m3-pro` runner is available. |
+| iOS / macOS Metal dispatcher | source-only on the fork (`ggml/src/ggml-metal/eliza-kernels/`); needs Apple Silicon | W3-G shipped a ready-to-run kit. The dispatcher patch (`ggml-metal.metal` updates so TBQ/QJL/Polar route to the new shaders) lands as soon as a self-hosted `apple-m3-pro` runner is available. |
 
 For the per-cell artifact status (build command, expected exported
 symbols, verification command, hardware required, and current
@@ -187,7 +187,7 @@ verify it" — this section is the AOSP-image-specific summary.
 
 ## Target × technique matrix
 
-`✓` = shipped on the unified fork (`elizaOS/llama.cpp @ v0.1.0-milady`)
+`✓` = shipped on the unified fork (`elizaOS/llama.cpp @ v0.1.0-eliza`)
 and verified per
 [`docs/porting/build-matrix.md`](./build-matrix.md). `⚠` = artifact
 exists, runtime verification on matching silicon still pending. `□` =
@@ -201,7 +201,7 @@ attempted.
 | **Android x86_64 CPU** (cuttlefish + emu) | ✓ same | ⚠ same DFlash status | ⚠ AVX2 path (`qjl_quantize_row_avx2`, `qjl_score_qk_avx2`) — present in unified-fork build **post-W3-H** only (pre-W3-H the cuttlefish x86_64 build was missing them; see "Symbols verified" note above) | ⚠ Q4_POLAR slot + ref dequant/dot; AVX2-vec-dot landing as a follow-up |
 | **Pixel Tensor TPU / NNAPI** | ✗ KV-cache quant is a per-step custom op, can't fit static graph | ✗ spec-decode is a control-flow problem, NNAPI is a tensor graph | ✗ same constraint as TBQ | ▲ only the dense matmul is delegate-able; sidecar codes have to be unpacked CPU-side first. **Not worth it** unless we abandon llama.cpp for TFLite/MediaPipe — out of scope for this plan. |
 | **Hexagon DSP (Snapdragon QDSP6)** | □ block-quant GEMM ports to HVX intrinsics; KV path needs careful threading | ▲ scheduling/control flow is hard on Hexagon; not high priority | □ JL projection is matmul + sign — a clean HVX target | □ same as android-arm64 but with HVX wide vectors |
-| **iOS / macOS Metal** | □ TBQ3/TBQ4 `.metal` shaders staged on the fork at `ggml/src/ggml-metal/milady-kernels/` (W1-D); dispatcher wiring needs Apple Silicon (W3-G has the ready-to-run kit) | □ host-side spec-decode, no Metal-side work | □ QJL `.metal` staged; dispatcher needs Apple Silicon | □ Polar `.metal` staged; dispatcher needs Apple Silicon |
+| **iOS / macOS Metal** | □ TBQ3/TBQ4 `.metal` shaders staged on the fork at `ggml/src/ggml-metal/eliza-kernels/` (W1-D); dispatcher wiring needs Apple Silicon (W3-G has the ready-to-run kit) | □ host-side spec-decode, no Metal-side work | □ QJL `.metal` staged; dispatcher needs Apple Silicon | □ Polar `.metal` staged; dispatcher needs Apple Silicon |
 | **iOS / macOS Accelerate (CPU)** | ⚠ inherits CPU-NEON path; needs Apple Silicon runtime gate | ⚠ same as Android arm64 once `llama-server` cross-builds for arm64 darwin | ⚠ NEON path inherits | ⚠ same |
 | **Linux/Mac/Windows CUDA (host rig)** | ✓ TBQ CUDA template instances inherited from apothic; W3-D walked the configure | ✓ via stock llama.cpp speculative example | □ port from `packages/training/scripts/quantization/qjl/csrc/` | □ port from `polarquant/csrc/` (codes-only training-side reference) |
 | **WebGPU (browser, future)** | ▲ blocked on llama.cpp WebGPU backend maturity | ▲ same | ▲ same | ▲ same |
@@ -247,7 +247,7 @@ small drafter model. Upstream llama.cpp ships
 not used today because the shim only exposes single-model decode.
 
 **Status (2026-05-09, Wave-3 agent A):** path (a) landed on the unified
-fork at `elizaOS/llama.cpp @ v0.2.0-milady`. The fork now exposes
+fork at `elizaOS/llama.cpp @ v0.2.0-eliza`. The fork now exposes
 `--spec-type dflash` (alias for the upstream draft-model path),
 `--draft-min-prob` (alias for upstream `--draft-p-min`), and Prometheus
 counters `llamacpp:n_drafted_total` / `llamacpp:n_drafted_accepted_total`
@@ -261,7 +261,7 @@ Two viable paths (recorded for posterity):
 
 - **(a) llama-server route — LANDED.** Cross-compiled `llama-server`
   for android-arm64 + x86_64 musl using `compile-libllama.mjs` (now
-  pointing at the unified fork's `v0.2.0-milady` tag). Bun spawns it
+  pointing at the unified fork's `v0.2.0-eliza` tag). Bun spawns it
   via `aosp-dflash-adapter.ts` and talks to it over loopback OpenAI
   HTTP, same shape as the host-side `dflash-server.ts`. Adds one
   resident process per loaded target; cold-start cost is the price
@@ -407,7 +407,7 @@ into two tiers:
   previously required manual hot-patching.
 
 - **Manual gate (`elizaos-cuttlefish.yml`, `workflow_dispatch` on a
-  self-hosted KVM runner):** boots `milady_cf_x86_64_phone-trunk_staging-userdebug`,
+  self-hosted KVM runner):** boots `eliza_cf_x86_64_phone-trunk_staging-userdebug`,
   installs the priv-app, and runs `packages/app-core/scripts/aosp/smoke-cuttlefish.mjs`
   for the full `/api/health` + `/api/messages` round-trip per the
   commands below. Operator runs this at every release tag and after
@@ -425,16 +425,16 @@ baseline after `bun run --cwd packages/agent build:mobile` produced
 `packages/agent/dist-mobile/agent-bundle.js`.
 
 ```bash
-adb -s 0.0.0.0:6520 shell am force-stop ai.milady.milady
+adb -s 0.0.0.0:6520 shell am force-stop ai.eliza.eliza
 adb -s 0.0.0.0:6520 shell pkill -9 -f bun
 sleep 2
 adb -s 0.0.0.0:6520 push packages/agent/dist-mobile/agent-bundle.js \
-  /data/data/ai.milady.milady/files/agent/agent-bundle.js
-adb -s 0.0.0.0:6520 shell chmod 600 /data/data/ai.milady.milady/files/agent/agent-bundle.js
-adb -s 0.0.0.0:6520 shell chown u0_a36:u0_a36 /data/data/ai.milady.milady/files/agent/agent-bundle.js
-adb -s 0.0.0.0:6520 shell rm -rf /data/user/0/ai.milady.milady/files/.eliza/workspace/.eliza/.elizadb
-adb -s 0.0.0.0:6520 shell rm -f /data/data/ai.milady.milady/files/agent/agent.log
-adb -s 0.0.0.0:6520 shell monkey -p ai.milady.milady -c android.intent.category.LAUNCHER 1
+  /data/data/ai.eliza.eliza/files/agent/agent-bundle.js
+adb -s 0.0.0.0:6520 shell chmod 600 /data/data/ai.eliza.eliza/files/agent/agent-bundle.js
+adb -s 0.0.0.0:6520 shell chown u0_a36:u0_a36 /data/data/ai.eliza.eliza/files/agent/agent-bundle.js
+adb -s 0.0.0.0:6520 shell rm -rf /data/user/0/ai.eliza.eliza/files/.eliza/workspace/.eliza/.elizadb
+adb -s 0.0.0.0:6520 shell rm -f /data/data/ai.eliza.eliza/files/agent/agent.log
+adb -s 0.0.0.0:6520 shell monkey -p ai.eliza.eliza -c android.intent.category.LAUNCHER 1
 adb -s 0.0.0.0:6520 logcat -d | grep ElizaAgent | tail -30
 ```
 
@@ -450,7 +450,7 @@ curl -X POST localhost:31337/api/messages -H 'Content-Type: application/json' \
 
 ## Wave 3: fused CPU kernels (W3-B; landed)
 
-Branch: `milady/fused-cpu` off `milady/integration`. Three new kernels +
+Branch: `eliza/fused-cpu` off `eliza/integration`. Three new kernels +
 parity tests + microbench, all CPU-only:
 
 | Kernel | Op / entry | ISAs | Parity | Speedup vs unfused (AVX2) |
@@ -459,7 +459,7 @@ parity tests + microbench, all CPU-only:
 | Fused Q4_POLAR × Q8_0 dot | `ggml_vec_dot_q4_polar_q8_0_fused` | scalar / AVX2 / NEON | bit-exact (0.00e+00 max-rel) over 100 blocks, both QJL-residual on/off | ≥ 100× (unfused is cross-TU call-overhead bound) |
 | Fused-Hadamard 2-block dot | `ggml_vec_dot_q4_polar_q8_0_fused_hadamard` | scalar (SIMD pending) | bit-exact over 100 blocks | not measured (lower-priority) |
 
-Files (in `elizaOS/llama.cpp` on branch `milady/fused-cpu`):
+Files (in `elizaOS/llama.cpp` on branch `eliza/fused-cpu`):
 - `ggml/src/ggml-cpu/fused-attn-qjl-tbq.c` + `-avx2.c` + `-neon.c`
 - `ggml/src/ggml-cpu/fused-q4-polar-dot.c` + `-avx2.c` + `-neon.c`
 - `ggml/src/ggml-cpu/fused-hadamard-polar-dot.c`
@@ -482,8 +482,8 @@ Algorithm notes:
   rather than the butterfly fusion itself. SIMD versions of this
   kernel are deferred until a workload depends on it.
 
-GPU fused kernels (CUDA, Metal) tracked separately on `milady/fused-cuda`
-(W3-D) and a future `milady/fused-metal`.
+GPU fused kernels (CUDA, Metal) tracked separately on `eliza/fused-cuda`
+(W3-D) and a future `eliza/fused-metal`.
 
 ## Out of scope (explicit)
 

@@ -109,7 +109,7 @@ def main() -> int:
     # (Qwen3.5 / Qwen3.6) we MUST build a layer-type-aware cache or HF's
     # parent Cache.has_previous_state crashes when the linear-attention
     # layers index into a cache that only knows about full-attention slots.
-    # MiladyHybridCache handles that and dispatches the full-attention
+    # ElizaHybridCache handles that and dispatches the full-attention
     # slots to bf16 / fused_turboquant / qjl_full as requested.
     from inference.hybrid_cache import has_hybrid_layer_types, make_hybrid_cache
 

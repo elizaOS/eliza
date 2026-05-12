@@ -39,8 +39,14 @@ const RETIRED_IMPLEMENTATION_ONLY_ACTIONS = new Set([
   "CHECK_AVAILABILITY",
   "CLEAR_HISTORY",
   "CREATE_PLAN",
+  "CREATE_PAYMENT_REQUEST",
   "DESKTOP",
+  "DEVICE_FILE_READ",
+  "DEVICE_FILE_WRITE",
+  "DEVICE_LIST_DIR",
   "DISCORD_SETUP_CREDENTIALS",
+  "DOC",
+  "DELIVER_PAYMENT_LINK",
   "EDIT",
   "ENTER_WORKTREE",
   "EXIT_WORKTREE",
@@ -70,7 +76,6 @@ const RETIRED_IMPLEMENTATION_ONLY_ACTIONS = new Set([
   "GOOGLE_CALENDAR",
   "LIFEOPS_PAUSE",
   "NOSTR_PUBLISH_PROFILE",
-  "PAYMENT",
   "PLACE_CALL",
   "PLAY_AUDIO",
   "PLAYBACK",
@@ -87,6 +92,11 @@ const RETIRED_IMPLEMENTATION_ONLY_ACTIONS = new Set([
   "WRITE",
   "LS",
   "MUSIC_LIBRARY",
+  "MYSTICISM_PAYMENT",
+  "VERIFY_PAYMENT_PAYLOAD",
+  "SETTLE_PAYMENT",
+  "AWAIT_PAYMENT_CALLBACK",
+  "CANCEL_PAYMENT_REQUEST",
   "LIST_OVERDUE_FOLLOWUPS",
   "MARK_FOLLOWUP_DONE",
   "SET_FOLLOWUP_THRESHOLD",
@@ -104,6 +114,16 @@ const RETIRED_IMPLEMENTATION_ONLY_ACTIONS = new Set([
   "GET_LINEAR_ACTIVITY",
   "CLEAR_LINEAR_ACTIVITY",
   "SEARCH_LINEAR_ISSUES",
+  // Page-group umbrella parents collapsed into the single PAGE_DELEGATE action.
+  // PAGE_DELEGATE is registered in packages/agent and is not scanned here.
+  "BROWSER_ACTIONS",
+  "WALLET_ACTIONS",
+  "CHARACTER_ACTIONS",
+  "SETTINGS_ACTIONS",
+  "CONNECTOR_ACTIONS",
+  "AUTOMATION_ACTIONS",
+  "PHONE_ACTIONS",
+  "OWNER_ACTIONS",
 ]);
 
 function readText(filePath) {
@@ -206,20 +226,226 @@ function isActionCandidateFile(filePath) {
   );
 }
 
+const registeredActionBindingsByPluginRoot = new Map();
+
+function getPluginRoot(filePath) {
+  const relative = path.relative(PLUGINS_ROOT, filePath);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) return null;
+  const [pluginName] = relative.split(path.sep);
+  return pluginName ? path.join(PLUGINS_ROOT, pluginName) : null;
+}
+
+function resolveTsImport(entryDir, importPath) {
+  if (!importPath.startsWith(".")) return null;
+  const base = path.resolve(entryDir, importPath);
+  const candidates = [
+    base,
+    base.replace(/\.js$/u, ".ts"),
+    `${base}.ts`,
+    path.join(base, "index.ts"),
+  ];
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
+}
+
+function readBalancedArraySource(src, bracketStart) {
+  let depth = 0;
+  let i = bracketStart;
+  let inSingle = false;
+  let inDouble = false;
+  let inTemplate = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+  let escaped = false;
+
+  while (i < src.length) {
+    const ch = src[i];
+    const next = i + 1 < src.length ? src[i + 1] : "";
+
+    if (inLineComment) {
+      if (ch === "\n") inLineComment = false;
+      i++;
+      continue;
+    }
+    if (inBlockComment) {
+      if (ch === "*" && next === "/") {
+        inBlockComment = false;
+        i += 2;
+        continue;
+      }
+      i++;
+      continue;
+    }
+    if (!inSingle && !inDouble && !inTemplate) {
+      if (ch === "/" && next === "/") {
+        inLineComment = true;
+        i += 2;
+        continue;
+      }
+      if (ch === "/" && next === "*") {
+        inBlockComment = true;
+        i += 2;
+        continue;
+      }
+    }
+
+    if (inSingle) {
+      if (!escaped && ch === "'") inSingle = false;
+      escaped = !escaped && ch === "\\";
+      i++;
+      continue;
+    }
+    if (inDouble) {
+      if (!escaped && ch === '"') inDouble = false;
+      escaped = !escaped && ch === "\\";
+      i++;
+      continue;
+    }
+    if (inTemplate) {
+      if (!escaped && ch === "`") inTemplate = false;
+      escaped = !escaped && ch === "\\";
+      i++;
+      continue;
+    }
+
+    if (ch === "'") {
+      inSingle = true;
+      i++;
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      i++;
+      continue;
+    }
+    if (ch === "`") {
+      inTemplate = true;
+      i++;
+      continue;
+    }
+
+    if (ch === "[") depth++;
+    if (ch === "]") {
+      depth--;
+      if (depth === 0) return src.slice(bracketStart, i + 1);
+    }
+    i++;
+  }
+
+  return null;
+}
+
+function extractActionArraySources(src) {
+  const sources = [];
+  const re = /\bactions\s*:\s*\[/gm;
+  for (;;) {
+    const match = re.exec(src);
+    if (match === null) break;
+    const bracketStart = match.index + match[0].lastIndexOf("[");
+    const source = readBalancedArraySource(src, bracketStart);
+    if (source) sources.push(source);
+    re.lastIndex = Math.max(re.lastIndex, bracketStart + (source?.length ?? 1));
+  }
+  return sources;
+}
+
+function extractNamedImports(src, entryDir) {
+  const imports = new Map();
+  const re = /import\s+\{([\s\S]*?)\}\s+from\s+(["'])([^"']+)\2/gm;
+  for (;;) {
+    const match = re.exec(src);
+    if (match === null) break;
+    const resolved = resolveTsImport(entryDir, match[3]);
+    if (!resolved || !isActionCandidateFile(resolved)) continue;
+    for (const rawPart of match[1].split(",")) {
+      const part = rawPart.trim();
+      if (!part) continue;
+      const [importedRaw, localRaw] = part.split(/\s+as\s+/u);
+      const imported = importedRaw.trim();
+      const local = (localRaw ?? importedRaw).trim();
+      if (
+        /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(imported) &&
+        /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(local)
+      ) {
+        imports.set(local, imported);
+      }
+    }
+  }
+  return imports;
+}
+
+function entrypointCandidatesForPlugin(pluginRoot) {
+  return [
+    path.join(pluginRoot, "src", "plugin.ts"),
+    path.join(pluginRoot, "src", "index.ts"),
+    path.join(pluginRoot, "index.ts"),
+  ].filter((candidate) => fs.existsSync(candidate));
+}
+
+function getRegisteredActionBindings(pluginRoot) {
+  if (!pluginRoot) return null;
+  if (registeredActionBindingsByPluginRoot.has(pluginRoot)) {
+    return registeredActionBindingsByPluginRoot.get(pluginRoot);
+  }
+
+  const entrypoints = entrypointCandidatesForPlugin(pluginRoot);
+  const registeredLocalNames = new Set();
+  const registeredExportNames = new Set();
+  let foundActionArray = false;
+
+  for (const entrypoint of entrypoints) {
+    const src = readText(entrypoint);
+    const actionArrays = extractActionArraySources(src);
+    if (actionArrays.length === 0) continue;
+    foundActionArray = true;
+    const imports = extractNamedImports(src, path.dirname(entrypoint));
+    const actionArraySource = actionArrays.join("\n");
+    for (const [localName, importedName] of imports) {
+      const localRe = new RegExp(`\\b${localName}\\b`, "u");
+      if (localRe.test(actionArraySource)) {
+        registeredLocalNames.add(localName);
+        registeredExportNames.add(importedName);
+      }
+    }
+
+    const identifierRe = /\b[A-Za-z_$][A-Za-z0-9_$]*\b/g;
+    for (;;) {
+      const match = identifierRe.exec(actionArraySource);
+      if (match === null) break;
+      registeredLocalNames.add(match[0]);
+    }
+  }
+
+  const result = foundActionArray
+    ? { localNames: registeredLocalNames, exportNames: registeredExportNames }
+    : null;
+  registeredActionBindingsByPluginRoot.set(pluginRoot, result);
+  return result;
+}
+
+function isRegisteredActionObject(filePath, exportName) {
+  const registered = getRegisteredActionBindings(getPluginRoot(filePath));
+  if (!registered || !exportName) return true;
+  return (
+    registered.exportNames.has(exportName) ||
+    registered.localNames.has(exportName)
+  );
+}
+
 /**
  * Extract object literal source for `export const X: Action = { ... }`.
- * Returns array of `{ filePath, objectText }`.
+ * Returns array of `{ filePath, exportName, objectText }`.
  */
 function extractActionObjects(filePath, src) {
   const results = [];
   const patterns = [
-    /:\s*Action(?:\s*&\s*\{[\s\S]*?\})?\s*=\s*\{/gm,
-    /\bfunction\s+[A-Za-z_$][A-Za-z0-9_$]*\s*\([^)]*\)\s*:\s*Action\s*\{[\s\S]*?\breturn\s+\{/gm,
+    /\b(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*:\s*Action(?:\s*&\s*\{[\s\S]*?\})?\s*=\s*\{/gm,
+    /\b(?:export\s+)?function\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\([^)]*\)\s*:\s*Action\s*\{[\s\S]*?\breturn\s+\{/gm,
   ];
   for (const re of patterns) {
     for (;;) {
       const m = re.exec(src);
       if (m === null) break;
+      const exportName = m[1];
       const braceStart = m.index + m[0].lastIndexOf("{");
 
       // Parse balanced braces, skipping strings and comments.
@@ -308,7 +534,7 @@ function extractActionObjects(filePath, src) {
           depth--;
           if (depth === 0) {
             const objectText = src.slice(braceStart, j + 1);
-            results.push({ filePath, objectText });
+            results.push({ filePath, exportName, objectText });
             break;
           }
         }
@@ -1395,6 +1621,7 @@ function main() {
         src,
       );
       if (!name) continue;
+      if (!isRegisteredActionObject(filePath, obj.exportName)) continue;
       if (RETIRED_IMPLEMENTATION_ONLY_ACTIONS.has(name)) continue;
       if (coreActionNames.has(name)) continue;
       const description = expandDescriptionTemplateLiterals(
@@ -1405,7 +1632,10 @@ function main() {
         obj.objectText,
         "descriptionCompressed",
       );
-      const similes = extractTopLevelStringArrayProp(obj.objectText, "similes");
+      const similes = extractTopLevelStringArrayProp(
+        obj.objectText,
+        "similes",
+      ).filter((simile) => !RETIRED_IMPLEMENTATION_ONLY_ACTIONS.has(simile));
       const explicitParameters = sanitizeParameters(
         extractTopLevelLiteralProp(obj.objectText, "parameters", constants),
       );

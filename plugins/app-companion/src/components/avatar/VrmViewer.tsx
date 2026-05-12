@@ -259,6 +259,12 @@ export function VrmViewer(props: VrmViewerProps) {
     );
   });
 
+  const applyInitialEnvironmentTheme = useEffectEvent((engine: VrmEngine) => {
+    if (props.environmentTheme) {
+      engine.setEnvironmentTheme(props.environmentTheme);
+    }
+  });
+
   const syncDebugRegistry = useEffectEvent(() => {
     const meta = import.meta as ImportMeta & { env?: { DEV?: boolean } };
     if (!meta.env?.DEV) return;
@@ -360,6 +366,7 @@ export function VrmViewer(props: VrmViewerProps) {
     void engine.whenReady().then(
       () => {
         if (!mountedRef.current) return;
+        applyInitialEnvironmentTheme(engine);
         resize();
         applyDesktopBatteryPolicy();
         applyVisibilityAndBackgroundPolicy();
@@ -524,6 +531,7 @@ export function VrmViewer(props: VrmViewerProps) {
   return (
     <canvas
       ref={canvasRef}
+      data-testid="companion-vrm-canvas"
       onPointerDown={(event) => {
         if (!pointerParallaxRef.current) return;
         pointerStateRef.current = {

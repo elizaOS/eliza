@@ -49,11 +49,11 @@ const DEFAULT_BASE_URL = "https://api.cerebras.ai/v1";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(here, "..");
 const elizaRoot = path.resolve(packageRoot, "..", "..");
-const miladyRoot = path.resolve(elizaRoot, "..");
+const elizaRoot = path.resolve(elizaRoot, "..");
 for (const candidate of [
   path.join(packageRoot, ".env"),
   path.join(elizaRoot, ".env"),
-  path.join(miladyRoot, ".env"),
+  path.join(elizaRoot, ".env"),
 ]) {
   if (fs.existsSync(candidate)) {
     dotenv.config({ path: candidate, override: false });

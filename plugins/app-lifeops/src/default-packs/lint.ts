@@ -77,7 +77,7 @@ const PHONE_REGEX =
 
 /** Absolute paths: `/foo/bar`, `~/foo`, `C:\foo`. */
 const ABSOLUTE_PATH_REGEX =
-  /(^|[\s"'`(])(?:\/[A-Za-z0-9_.\-/]{2,}|~\/[A-Za-z0-9_.\-/]{2,}|[A-Z]:\\[A-Za-z0-9_.\\\-]{2,})/g;
+  /(^|[\s"'`(])(?:\/[A-Za-z0-9_.\-/]{2,}|~\/[A-Za-z0-9_.\-/]{2,}|[A-Z]:\\[A-Za-z0-9_.\\-]{2,})/g;
 
 /**
  * Hardcoded times. We allow:
@@ -278,7 +278,9 @@ function recordIdFor(record: ScheduledTaskSeed): string {
 /**
  * Lint multiple packs and return the aggregated findings.
  */
-export function lintPacks(packs: ReadonlyArray<DefaultPack>): PromptLintFinding[] {
+export function lintPacks(
+  packs: ReadonlyArray<DefaultPack>,
+): PromptLintFinding[] {
   const findings: PromptLintFinding[] = [];
   for (const pack of packs) {
     findings.push(...lintPack(pack));
@@ -290,7 +292,9 @@ export function lintPacks(packs: ReadonlyArray<DefaultPack>): PromptLintFinding[
  * Format a list of findings as a human-readable report. Each line is one
  * finding; the runner script prints this to stderr.
  */
-export function formatFindings(findings: ReadonlyArray<PromptLintFinding>): string {
+export function formatFindings(
+  findings: ReadonlyArray<PromptLintFinding>,
+): string {
   if (findings.length === 0) return "";
   const lines = findings.map(
     (finding) =>

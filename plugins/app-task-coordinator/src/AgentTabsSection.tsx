@@ -1,5 +1,9 @@
-import { type AgentPreflightResult, useApp } from "@elizaos/ui";
-import { Button, SettingsControls } from "@elizaos/ui";
+import {
+  type AgentPreflightResult,
+  Button,
+  SettingsControls,
+  useApp,
+} from "@elizaos/ui";
 import {
   AlertTriangle,
   CheckCircle2,

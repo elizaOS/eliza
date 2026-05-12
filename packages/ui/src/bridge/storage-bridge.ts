@@ -14,7 +14,18 @@ import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../onboarding/mobile-runtime-mode";
 
-const isNative = Capacitor.isNativePlatform();
+function isNativePlatform(): boolean {
+  try {
+    const platform = Capacitor.getPlatform();
+    return (
+      Capacitor.isNativePlatform() ||
+      platform === "ios" ||
+      platform === "android"
+    );
+  } catch {
+    return false;
+  }
+}
 
 // Keys that should be synced to Capacitor Preferences.
 // On iOS, WKWebView localStorage can be purged under memory pressure.
@@ -27,12 +38,18 @@ const SYNCED_KEYS = new Set([
   "eliza:onboarding-complete",
   "eliza:onboarding:step",
   MOBILE_RUNTIME_MODE_STORAGE_KEY,
+  // `useAppLifecycleEvents` writes this on APP_PAUSE so the next
+  // foreground can rehydrate the same conversation even after the
+  // WKWebView localStorage was purged under memory pressure.
+  "eliza:chat:activeConversationId",
   "eliza:ios-local-agent:conversations:v1",
   "eliza:ios-local-agent:active-model:v1",
   "eliza:ios-local-agent:assignments:v1",
   "eliza:ios-local-agent:browser-workspace:v1",
   "eliza:ios-local-agent:wallet-market-overview:v1",
   "eliza:ios-local-agent:eliza-1-bundles:v1",
+  "eliza:ios-full-bun-smoke:request",
+  "eliza:ios-full-bun-smoke:result",
 ]);
 
 // In-memory cache of values from Preferences (for native)
@@ -40,6 +57,7 @@ const preferencesCache = new Map<string, string>();
 
 // Flag to track if initial sync has completed
 let initialized = false;
+let storageProxyInstalled = false;
 
 /**
  * Initialize the storage bridge
@@ -48,8 +66,11 @@ let initialized = false;
  * into the in-memory cache and optionally syncs them to localStorage.
  */
 export async function initializeStorageBridge(): Promise<void> {
-  if (!isNative) {
-    initialized = true;
+  if (initialized) {
+    return;
+  }
+
+  if (!isNativePlatform()) {
     return;
   }
 
@@ -77,7 +98,11 @@ export async function initializeStorageBridge(): Promise<void> {
  * Set up a proxy to intercept localStorage operations
  */
 function setupStorageProxy(): void {
-  if (!isNative) {
+  if (storageProxyInstalled) {
+    return;
+  }
+
+  if (!isNativePlatform()) {
     return;
   }
 
@@ -122,13 +147,15 @@ function setupStorageProxy(): void {
       });
     }
   };
+
+  storageProxyInstalled = true;
 }
 
 /**
  * Get a value from storage (works on both native and web)
  */
 export async function getStorageValue(key: string): Promise<string | null> {
-  if (isNative && SYNCED_KEYS.has(key)) {
+  if (isNativePlatform() && SYNCED_KEYS.has(key)) {
     const result = await Preferences.get({ key });
     return result.value;
   }
@@ -144,7 +171,7 @@ export async function setStorageValue(
 ): Promise<void> {
   window.localStorage.setItem(key, value);
 
-  if (isNative && SYNCED_KEYS.has(key)) {
+  if (isNativePlatform() && SYNCED_KEYS.has(key)) {
     await Preferences.set({ key, value });
   }
 }
@@ -155,7 +182,7 @@ export async function setStorageValue(
 export async function removeStorageValue(key: string): Promise<void> {
   window.localStorage.removeItem(key);
 
-  if (isNative && SYNCED_KEYS.has(key)) {
+  if (isNativePlatform() && SYNCED_KEYS.has(key)) {
     await Preferences.remove({ key });
   }
 }

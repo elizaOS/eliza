@@ -65,7 +65,7 @@ Command:
 bunx vitest run eliza/packages/native-plugins/llama/src/index.test.ts
 ```
 
-Run from `/Users/shawwalters/eliza-workspace/milady` because the root Vitest include patterns are anchored with `eliza/...`.
+Run from `/Users/shawwalters/eliza-workspace/eliza` because the root Vitest include patterns are anchored with `eliza/...`.
 
 Result:
 

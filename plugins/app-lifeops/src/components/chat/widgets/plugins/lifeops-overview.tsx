@@ -1,12 +1,3 @@
-import {
-  type ChatSidebarWidgetDefinition,
-  type ChatSidebarWidgetProps,
-  client,
-  EmptyWidgetState,
-  isApiError,
-  useApp,
-  WidgetSection,
-} from "@elizaos/ui";
 import type {
   LifeOpsActiveReminderView,
   LifeOpsCadence,
@@ -19,7 +10,16 @@ import type {
   LifeOpsOverviewSection,
   LifeOpsScheduleInsight,
 } from "@elizaos/shared";
-import { Button } from "@elizaos/ui";
+import {
+  Button,
+  type ChatSidebarWidgetDefinition,
+  type ChatSidebarWidgetProps,
+  client,
+  EmptyWidgetState,
+  isApiError,
+  useApp,
+  WidgetSection,
+} from "@elizaos/ui";
 import {
   Bell,
   Bot,

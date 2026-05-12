@@ -336,7 +336,7 @@ export function EmotePicker() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Cmd+E toggle
-      if ((e.metaKey || e.ctrlKey) && e.key === "e") {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "e") {
         e.preventDefault();
         if (emotePickerOpen) {
           closeEmotePicker();
@@ -351,8 +351,9 @@ export function EmotePicker() {
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () =>
+      window.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, [emotePickerOpen, openEmotePicker, closeEmotePicker]);
 
   // Desktop bridge listener
@@ -382,12 +383,14 @@ export function EmotePicker() {
   return (
     <div
       ref={panelRef}
-      className={`fixed bottom-4 left-4 z-[${Z_SYSTEM_CRITICAL}] w-[320px] rounded-xl shadow-2xl`}
+      data-testid="emote-picker"
+      className="pointer-events-auto fixed bottom-4 left-4 w-[320px] rounded-xl shadow-2xl"
       style={{
         background: "rgba(18, 22, 32, 0.96)",
         border: "1px solid rgba(240, 178, 50, 0.18)",
         backdropFilter: "blur(24px)",
         boxShadow: "0 8px 60px rgba(0,0,0,0.6), 0 0 40px rgba(240,178,50,0.06)",
+        zIndex: Z_SYSTEM_CRITICAL,
       }}
     >
       {/* Header */}
@@ -416,6 +419,7 @@ export function EmotePicker() {
             size="sm"
             onClick={stopEmote}
             className="rounded px-2 py-1 text-xs font-medium h-auto"
+            data-testid="emote-picker-stop"
           >
             {t("game.stop")}
           </Button>
@@ -431,6 +435,8 @@ export function EmotePicker() {
             size="icon"
             onClick={closeEmotePicker}
             className="h-auto w-auto p-0"
+            aria-label={t("common.close", { defaultValue: "Close" })}
+            data-testid="emote-picker-close"
             style={{ color: "rgba(255,255,255,0.45)" }}
             onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
               e.currentTarget.style.color = "rgba(240,238,250,0.92)";
@@ -458,6 +464,7 @@ export function EmotePicker() {
           }
           placeholder={t("emotepicker.SearchEmotes")}
           className="w-full rounded px-2 py-1 text-sm focus:outline-none focus:ring-1"
+          data-testid="emote-picker-search"
           style={{
             background: "rgba(255,255,255,0.06)",
             color: "rgba(240,238,250,0.92)",
@@ -476,6 +483,7 @@ export function EmotePicker() {
           size="sm"
           onClick={() => setActiveCategory(null)}
           className="shrink-0 rounded px-2 py-1 text-xs font-medium h-auto"
+          data-testid="emote-picker-category-all"
           style={{
             background:
               activeCategory === null
@@ -496,6 +504,7 @@ export function EmotePicker() {
             key={cat}
             onClick={() => setActiveCategory(cat)}
             className="shrink-0 rounded px-2 py-1 text-xs font-medium h-auto"
+            data-testid={`emote-picker-category-${cat}`}
             style={{
               background:
                 activeCategory === cat
@@ -523,6 +532,8 @@ export function EmotePicker() {
               key={emote.id}
               onClick={() => playEmote(emote.id)}
               disabled={playing === emote.id}
+              aria-label={`Play ${emote.name}`}
+              data-testid={`emote-picker-item-${emote.id}`}
               title={emote.name}
               className="flex aspect-square items-center justify-center rounded text-2xl h-auto w-auto"
               style={{

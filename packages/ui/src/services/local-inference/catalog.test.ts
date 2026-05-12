@@ -10,7 +10,7 @@ import { recommendForFirstRun } from "./recommendation";
 import { localInferenceService } from "./service";
 
 describe("local inference catalog", () => {
-  it("ships exactly the 5 Eliza-1 size tiers", () => {
+  it("ships exactly the Eliza-1 size tiers", () => {
     expect(
       MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)
         .map((m) => m.id)
@@ -18,7 +18,7 @@ describe("local inference catalog", () => {
     ).toEqual([...ELIZA_1_TIER_IDS].sort());
   });
 
-  it("marks ONLY the 5 Eliza-1 size tiers as default-eligible", () => {
+  it("marks ONLY the Eliza-1 size tiers as default-eligible", () => {
     expect([...DEFAULT_ELIGIBLE_MODEL_IDS].sort()).toEqual(
       [...ELIZA_1_TIER_IDS].sort(),
     );
@@ -79,15 +79,18 @@ describe("local inference catalog", () => {
   });
 
   it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
-    // Size tiers: 0.6B/1.7B = 32k, 9B = 64k, 27B = 128k,
+    // Size tiers: 0.8B/0.6B/1.7B/2B = 32k, 9B = 64k, 27B = 128k,
     // 27B-256k = 256k. The catalog records the largest ctx the
     // bundle's manifest will advertise for each tier.
     const expected: Record<string, number> = {
+      "eliza-1-0_8b": 32768,
       "eliza-1-0_6b": 32768,
       "eliza-1-1_7b": 32768,
+      "eliza-1-2b": 32768,
       "eliza-1-9b": 65536,
       "eliza-1-27b": 131072,
       "eliza-1-27b-256k": 262144,
+      "eliza-1-27b-1m": 1_048_576,
     };
     for (const [id, expectedLength] of Object.entries(expected)) {
       const model = findCatalogModel(id);

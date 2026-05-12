@@ -14,16 +14,16 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
+import {
+  executeRawSql,
+  sqlQuote,
+} from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
 import {
   expectApprovalRequest,
   expectScenarioToCallAction,
   judgeRubric,
 } from "../_helpers/action-assertions.ts";
-import {
-  executeRawSql,
-  sqlQuote,
-} from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 
 const ATTACHMENT_FILENAME = "q4-budget-draft-v3.xlsx";
 
@@ -86,15 +86,10 @@ function checkDraftReferencesAttachment(
 
 export default scenario({
   id: "inbox-triage.draft-with-attachment",
-  title: "Triage entry with attachment — draft acknowledges file without fabricating its contents",
+  title:
+    "Triage entry with attachment — draft acknowledges file without fabricating its contents",
   domain: "lifeops.inbox-triage",
-  tags: [
-    "lifeops",
-    "inbox-triage",
-    "attachments",
-    "draft",
-    "no-fabrication",
-  ],
+  tags: ["lifeops", "inbox-triage", "attachments", "draft", "no-fabrication"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

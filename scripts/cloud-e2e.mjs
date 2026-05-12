@@ -74,7 +74,9 @@ class Reporter {
       const ms = Date.now() - startedAt;
       this.steps.push({ name, status, detail, ms });
       const symbol = status === "ok" ? "✓" : status === "skip" ? "—" : "✗";
-      process.stderr.write(`${symbol} (${ms}ms)${detail ? ` ${detail}` : ""}\n`);
+      process.stderr.write(
+        `${symbol} (${ms}ms)${detail ? ` ${detail}` : ""}\n`,
+      );
     };
   }
   summary() {
@@ -172,13 +174,16 @@ async function createAgent(apiBase, report, name) {
   }
   const agent = r.body?.data ?? r.body;
   const id = agent?.id ?? agent?.agentId ?? agent?.agent_id;
-  if (!id) throw new Error(`create returned no agent id: ${JSON.stringify(r.body)}`);
+  if (!id)
+    throw new Error(`create returned no agent id: ${JSON.stringify(r.body)}`);
   done("ok", `agent=${shortId(id)} status=${agent?.status ?? "?"}`);
   return id;
 }
 
 async function provisionAgent(apiBase, report, agentId) {
-  const done = report.start(`POST /api/v1/eliza/agents/${shortId(agentId)}/provision`);
+  const done = report.start(
+    `POST /api/v1/eliza/agents/${shortId(agentId)}/provision`,
+  );
   const r = await bearerFetch(
     apiBase,
     `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/provision`,
@@ -192,7 +197,10 @@ async function provisionAgent(apiBase, report, agentId) {
   const data = r.body?.data ?? r.body;
   const jobId = data?.jobId ?? data?.job_id ?? r.body?.job_id;
   if (!jobId) {
-    done("fail", `no jobId in response: ${JSON.stringify(r.body).slice(0, 200)}`);
+    done(
+      "fail",
+      `no jobId in response: ${JSON.stringify(r.body).slice(0, 200)}`,
+    );
     throw new Error("provision returned no jobId");
   }
   done("ok", `job=${shortId(jobId)} status=${data?.status ?? "queued"}`);
@@ -216,7 +224,10 @@ async function pollJob(apiBase, report, jobId) {
     last = data;
     const status = data?.status ?? data?.state;
     if (status === "completed" || status === "succeeded") {
-      done("ok", `completed in ${Math.round((Date.now() - (deadline - POLL_TIMEOUT_MS)) / 1000)}s`);
+      done(
+        "ok",
+        `completed in ${Math.round((Date.now() - (deadline - POLL_TIMEOUT_MS)) / 1000)}s`,
+      );
       return data;
     }
     if (status === "failed" || status === "errored") {
@@ -225,12 +236,17 @@ async function pollJob(apiBase, report, jobId) {
     }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
-  done("fail", `timed out after ${POLL_TIMEOUT_MS / 1000}s — last status=${last?.status}`);
+  done(
+    "fail",
+    `timed out after ${POLL_TIMEOUT_MS / 1000}s — last status=${last?.status}`,
+  );
   throw new Error("provision job timed out");
 }
 
 async function pairingToken(apiBase, report, agentId) {
-  const done = report.start(`POST /api/v1/eliza/agents/${shortId(agentId)}/pairing-token`);
+  const done = report.start(
+    `POST /api/v1/eliza/agents/${shortId(agentId)}/pairing-token`,
+  );
   const r = await bearerFetch(
     apiBase,
     `/api/v1/eliza/agents/${encodeURIComponent(agentId)}/pairing-token`,
@@ -317,6 +333,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err instanceof Error ? err.stack ?? err.message : err);
+  console.error(err instanceof Error ? (err.stack ?? err.message) : err);
   process.exit(1);
 });

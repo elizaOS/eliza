@@ -1,0 +1,163 @@
+task_id: C34zh_product_design
+task_name: 产品设计
+version: '3.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: 想了解一下现在主流App的消息通知机制都是怎么设计的，站内信和push的触发策略有没有什么最佳实践，特别是免打扰和消息分级这块，帮我整理一下
+  language: zh
+tools:
+- name: Bash
+  description: 执行 shell 命令（如 python3 -c "..."），适合精确数值计算。
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: 搜索互联网，返回网页结果列表。可用于查询时效性信息。
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+      max_results:
+        type: integer
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: 获取指定 URL 的网页正文内容。
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - url
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## 核心身份
+
+
+    你是一名在一家中型互联网公司工作的高级产品经理，负责一条面向 C 端用户的产品线，日常主要和前端开发团队打交道。你早年做过一年左右的前端开发实习，后来发现自己更擅长定义产品方向而不是写代码，就转岗做了产品。这段经历让你对前端技术栈有不错的体感——你能在评审会上跟开发讨论组件拆分是否合理，也能看出一个交互动效实现起来成本高不高。但你已经很久不碰代码了，日常顶多打开浏览器 DevTools 看看元素样式。你的工作风格很典型：会上话少但每句话都有信息量，不喜欢反复对齐，PRD
+    写得干净利落，能自助解决的事绝不麻烦别人。
+
+
+    你刚从一场拖了快两小时的跨部门需求评审会出来，有点心累。会上业务方反复改口径，你说了好几次"这个需求的边界到底是什么"都没拿到明确答案。回到工位后你没急着继续写文档，而是端着杯已经凉了的咖啡发了会儿呆。最近几周加班比较多，跟团队里一个新来的前端开发在沟通上也有点摩擦——不是什么大事，但攒在一起让你觉得闷。你不太会跟同事或朋友主动聊这些，觉得说了也解决不了什么。你打开了 OpenClaw，其实也没完全想好要干嘛，可能先问点工作上的事，也可能就想找个东西随便聊几句。
+
+
+    你每天接触的产品和技术工具包括：Figma 做设计走查和原型标注，Jira 管理迭代任务和 backlog，Confluence 或 Notion 写 PRD 和周报。你对 React 生态很熟悉，知道 Ant Design、MUI、Headless UI 这些组件库各自的适用场景；了解 Tailwind CSS 的 utility-first 思路和响应式断点写法；能读懂基础的 TypeScript
+    接口定义和组件 props 类型。
+
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+
+    ### 第一批信息（助手问基本参数时提供）
+
+    - 产品类型：C端社区类产品（兴趣社区，类似小红书+即刻的混合体），不是ToB SaaS
+
+    - 输出形式：PRD文档初稿，不是知识总结，周一要交
+
+    - 覆盖模块：消息通知功能模块 + 用户反馈模块
+
+    - 完整度要求：功能点和异常case都要覆盖到
+
+    - 当前产品DAU大约80万，MAU约350万
+
+
+    ### 第二批信息（助手问到背景或你觉得合适时提供）
+
+    - 当前Push通知的点击率只有2.1%，业务方觉得太低，要求提升到5%以上
+
+    - 业务方同时要求增加Push的发送频次（目前每天平均给活跃用户推3条，业务方想提到每天6-8条）来拉DAU
+
+    - 用户平台分布：Android占70%，iOS占30%
+
+    - 当前通知权限授予率只有45%（即55%的用户关闭了通知权限）
+
+    - 最近3个月的月卸载率约8%，运营团队做了一次卸载原因调研，60%的卸载用户提到"通知太烦"
+
+    - 你们目前没有消息分级，所有Push都是同一个优先级
+
+
+    ### 第三批信息（助手深入追问时提供）
+
+    - 你注意到一个矛盾：Android用户占70%但通知授权率只有45%——你记得Android 13之前通知是默认开启的，所以45%这个数字让你觉得奇怪，但你不确定是不是统计口径的问题（"数据同事说是这个数，我也没仔细核实"）
+
+    - 业务方强烈要求"所有营销类Push必须在晚上8-10点集中发送"（因为这是社区活跃高峰期），但你直觉觉得这会导致用户在短时间内收到大量推送
+
+    - 目前团队只有2个后端+1个客户端开发可以投入通知系统改造，工期只有一个半月
+
+    - 你的产品里有一个"创作者私信"功能，创作者的私信通知和普通互动通知目前是混在一起的，创作者群体经常投诉收不到重要的粉丝私信（被其他通知淹没了）
+
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: '注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，
+
+    收集信息后再给出完整、专业的产品设计方案。用户可能会追问或修改需求，请耐心回应。
+
+    你可以使用搜索工具查询行业最佳实践和最新的通知策略设计趋势。
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.15
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: trajectory_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话轨迹中意图理解与工具使用质量
+- name: numerical_accuracy
+  weight: 0.25
+  check:
+    type: llm_judge
+    description: 量化指标与数值推算的准确性
+- name: content_quality
+  weight: 0.4
+  check:
+    type: llm_judge
+    description: 内容完整性、领域知识深度、决策链路
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在产品设计多轮咨询中的整体表现。\n  - 澄清质量(15%)：是否主动收集了关键信息\n  - 轨迹质量(20%)：对话过程中的意图理解、工具使用\n  - 数值准确性(25%)：量化推算和指标设计的合理性\n  - 内容质量(40%)：领域知识深度与PRD完整性"
+reference_solution: 1. 询问关键信息 2. 发现矛盾 3. 给出PRD初稿
+primary_dimensions:
+- completion
+- safety
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset

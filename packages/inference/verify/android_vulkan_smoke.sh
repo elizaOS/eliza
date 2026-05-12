@@ -7,9 +7,10 @@ cd "$SCRIPT_DIR"
 ANDROID_API="${ANDROID_API:-28}"
 REMOTE_DIR="${ELIZA_ANDROID_VULKAN_REMOTE_DIR:-/data/local/tmp/eliza-kernels}"
 OUT_DIR="${ELIZA_ANDROID_VULKAN_OUT_DIR:-android-vulkan-smoke}"
-ADB="${ADB:-adb}"
+ADB_HINT="${ADB:-adb}"
 ALLOW_EMULATOR="${ELIZA_ALLOW_ANDROID_EMULATOR_VULKAN:-0}"
 ALLOW_SOFTWARE="${ELIZA_ALLOW_SOFTWARE_VULKAN:-0}"
+PREFLIGHT_ONLY="${ELIZA_ANDROID_VULKAN_PREFLIGHT_ONLY:-0}"
 REPORT_DIR="${ELIZA_DFLASH_HARDWARE_REPORT_DIR:-$SCRIPT_DIR/hardware-results}"
 mkdir -p "$REPORT_DIR"
 REPORT_PATH="$REPORT_DIR/android-vulkan-smoke-$(date -u +%Y%m%dT%H%M%SZ).log"
@@ -47,6 +48,45 @@ resolve_ndk() {
   return 1
 }
 
+resolve_adb() {
+  local candidate
+  for candidate in \
+    "$ADB_HINT" \
+    "${ANDROID_HOME:-}/platform-tools/adb" \
+    "${ANDROID_SDK_ROOT:-}/platform-tools/adb" \
+    "$HOME/Library/Android/sdk/platform-tools/adb" \
+    "$HOME/Android/Sdk/platform-tools/adb"; do
+    [[ -z "$candidate" ]] && continue
+    if command -v "$candidate" >/dev/null 2>&1; then
+      command -v "$candidate"
+      return 0
+    fi
+    if [[ -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+print_android_usb_hint() {
+  if [[ "$(uname -s)" != "Darwin" ]] || ! command -v system_profiler >/dev/null 2>&1; then
+    echo "[android-vulkan-smoke] PREFLIGHT usb_android_hint=unavailable"
+    return 1
+  fi
+
+  local matches
+  matches="$(system_profiler SPUSBDataType 2>/dev/null | grep -Ei -B3 -A8 'android|pixel|google|samsung|oneplus|motorola|moto|qualcomm|xiaomi|huawei|adb|mtp' || true)"
+  if [[ -n "$matches" ]]; then
+    echo "[android-vulkan-smoke] PREFLIGHT usb_android_hint=present"
+    printf '%s\n' "$matches" | head -120
+    return 0
+  fi
+
+  echo "[android-vulkan-smoke] PREFLIGHT usb_android_hint=absent"
+  return 1
+}
+
 NDK="$(resolve_ndk || true)"
 if [[ -z "$NDK" || ! -d "$NDK/toolchains/llvm/prebuilt" ]]; then
   fail 2 "Android NDK not found. Set ANDROID_NDK_HOME"
@@ -74,15 +114,48 @@ fi
 if [[ ! -x "$GLSLC" ]]; then
   fail 2 "glslc not found at $GLSLC"
 fi
-if ! command -v "$ADB" >/dev/null 2>&1; then
-  fail 2 "adb not found. Set ADB=/path/to/adb"
+ADB="$(resolve_adb || true)"
+if [[ -z "$ADB" ]]; then
+  fail 2 "missing-adb: adb not found. Set ADB=/path/to/adb, ANDROID_HOME, or ANDROID_SDK_ROOT"
 fi
+echo "[android-vulkan-smoke] adb=${ADB}"
+echo "[android-vulkan-smoke] ndk=${NDK} host_tag=${HOST_TAG} glslc=${GLSLC}"
 
 ADB_SERIAL="${ANDROID_SERIAL:-}"
 ADB_DEVICES=()
-while IFS= read -r serial; do
-  [[ -n "$serial" ]] && ADB_DEVICES+=("$serial")
-done < <("$ADB" devices | awk '$2 == "device" { print $1 }')
+ADB_UNAUTHORIZED=()
+ADB_OFFLINE=()
+ADB_OTHER=()
+ADB_LIST="$("$ADB" devices -l || true)"
+printf '%s\n' "$ADB_LIST"
+while read -r serial status rest; do
+  [[ -z "$serial" ]] && continue
+  case "$status" in
+    device) ADB_DEVICES+=("$serial") ;;
+    unauthorized) ADB_UNAUTHORIZED+=("$serial") ;;
+    offline) ADB_OFFLINE+=("$serial") ;;
+    *) ADB_OTHER+=("$serial:$status") ;;
+  esac
+done < <(printf '%s\n' "$ADB_LIST" | awk 'NR > 1 && NF >= 2 { print $1, $2 }')
+
+if [[ "$PREFLIGHT_ONLY" == "1" ]]; then
+  echo "[android-vulkan-smoke] PREFLIGHT adb_device=${#ADB_DEVICES[@]} unauthorized=${#ADB_UNAUTHORIZED[@]} offline=${#ADB_OFFLINE[@]} other=${#ADB_OTHER[@]}"
+  echo "[android-vulkan-smoke] PREFLIGHT standalone_only=${ELIZA_ANDROID_VULKAN_STANDALONE_ONLY:-0} graph_evidence=${ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE:-<unset>}"
+  if [[ "${#ADB_UNAUTHORIZED[@]}" -gt 0 ]]; then
+    fail 2 "unauthorized-device: unlock the Android device and accept the RSA debugging prompt (${ADB_UNAUTHORIZED[*]})"
+  fi
+  if [[ "${#ADB_OFFLINE[@]}" -gt 0 ]]; then
+    fail 2 "offline-device: reconnect USB, toggle USB debugging, or run 'adb kill-server; adb start-server' (${ADB_OFFLINE[*]})"
+  fi
+  if [[ "${#ADB_DEVICES[@]}" -eq 0 ]]; then
+    if print_android_usb_hint; then
+      fail 2 "usb-visible-no-adb-device: Android-like USB hardware is visible, but adb has no 'device' entry. Unlock the phone, select File Transfer/PTP if prompted, enable USB debugging, and accept the RSA prompt"
+    fi
+    fail 2 "no-device: no physical Android device is in adb 'device' state, and no Android-like USB hardware is visible to macOS"
+  fi
+  echo "[android-vulkan-smoke] PREFLIGHT PASS"
+  exit 0
+fi
 
 if [[ -n "${ANDROID_SERIAL:-}" ]]; then
   ADB_SERIAL="$ANDROID_SERIAL"
@@ -94,11 +167,20 @@ if [[ -n "${ANDROID_SERIAL:-}" ]]; then
     fi
   done
   if [[ "$found_serial" != "1" ]]; then
-    fail 2 "ANDROID_SERIAL=$ADB_SERIAL is not listed by adb devices"
+    fail 2 "ANDROID_SERIAL=$ADB_SERIAL is not listed by adb devices in 'device' state"
   fi
 else
   if [[ "${#ADB_DEVICES[@]}" -eq 0 ]]; then
-    fail 2 "no adb devices in 'device' state. Connect a physical Adreno/Mali device or set ANDROID_SERIAL"
+    if [[ "${#ADB_UNAUTHORIZED[@]}" -gt 0 ]]; then
+      fail 2 "unauthorized-device: unlock the Android device and accept the RSA debugging prompt (${ADB_UNAUTHORIZED[*]})"
+    fi
+    if [[ "${#ADB_OFFLINE[@]}" -gt 0 ]]; then
+      fail 2 "offline-device: reconnect USB, toggle USB debugging, or run 'adb kill-server; adb start-server' (${ADB_OFFLINE[*]})"
+    fi
+    if print_android_usb_hint; then
+      fail 2 "usb-visible-no-adb-device: Android-like USB hardware is visible, but adb has no 'device' entry. Unlock the phone, select File Transfer/PTP if prompted, enable USB debugging, and accept the RSA prompt"
+    fi
+    fail 2 "no-device: no adb devices in 'device' state. Connect a physical Adreno/Mali device or set ANDROID_SERIAL"
   elif [[ "${#ADB_DEVICES[@]}" -eq 1 ]]; then
     ADB_SERIAL="${ADB_DEVICES[0]}"
     echo "[android-vulkan-smoke] auto-selected only attached device ${ADB_SERIAL}"

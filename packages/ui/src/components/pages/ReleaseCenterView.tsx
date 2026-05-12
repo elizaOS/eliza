@@ -13,6 +13,11 @@ import {
   subscribeDesktopBridgeEvent,
 } from "../../bridge";
 import { useBranding } from "../../config/branding";
+import {
+  type ApplicationUpdateSnapshot,
+  getApplicationUpdateSnapshot,
+  mapAgentUpdateStatusToSnapshot,
+} from "../../services/app-updates/update-policy";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { openDesktopSurfaceWindow } from "../../utils/desktop-workspace";
@@ -36,6 +41,8 @@ export function ReleaseCenterView() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [nativeUpdater, setNativeUpdater] =
     useState<DesktopUpdaterSnapshot | null>(null);
+  const [applicationUpdate, setApplicationUpdate] =
+    useState<ApplicationUpdateSnapshot | null>(null);
   const [releaseNotesUrl, setReleaseNotesUrl] = useState(
     defaultReleaseNotesUrl,
   );
@@ -60,6 +67,13 @@ export function ReleaseCenterView() {
   useEffect(() => {
     void loadUpdateStatus();
   }, [loadUpdateStatus]);
+
+  useEffect(() => {
+    void getApplicationUpdateSnapshot({
+      desktop: desktopRuntime,
+      version: desktopRuntime ? nativeUpdater?.currentVersion : undefined,
+    }).then(setApplicationUpdate);
+  }, [desktopRuntime, nativeUpdater?.currentVersion]);
 
   useEffect(() => {
     if (!desktopRuntime) return;
@@ -161,12 +175,12 @@ export function ReleaseCenterView() {
   };
 
   const appStatus = updateStatus as AppReleaseStatus | null | undefined;
-  const appVersion = appStatus?.currentVersion ?? "—";
+  const agentUpdate = mapAgentUpdateStatusToSnapshot(updateStatus ?? null);
+  const appVersion =
+    applicationUpdate?.version ??
+    t("common.unknown", { defaultValue: "Unknown" });
   const desktopVersion = nativeUpdater?.currentVersion ?? "—";
   const channel = nativeUpdater?.channel ?? "—";
-  const latestVersion =
-    appStatus?.latestVersion ??
-    t("releasecenterview.Current", { defaultValue: "Current" });
   const lastCheckAt = appStatus?.lastCheckAt;
   const lastChecked = lastCheckAt
     ? new Date(lastCheckAt).toLocaleString()
@@ -183,12 +197,46 @@ export function ReleaseCenterView() {
   );
   const autoUpdateDisabled =
     nativeUpdater != null && !nativeUpdater.canAutoUpdate;
+  const canManualCheck =
+    applicationUpdate?.canManualCheck ?? Boolean(desktopRuntime);
+  const canAutoUpdate =
+    applicationUpdate?.canAutoUpdate ?? Boolean(nativeUpdater?.canAutoUpdate);
 
   const versionRows: Array<{ label: string; value: ReactNode }> = [
     {
       label: t("releasecenterview.App", { defaultValue: "App" }),
       value: appVersion,
     },
+    ...(applicationUpdate?.build
+      ? [
+          {
+            label: t("releasecenterview.Build", { defaultValue: "Build" }),
+            value: applicationUpdate.build,
+          },
+        ]
+      : []),
+    ...(applicationUpdate
+      ? [
+          {
+            label: t("releasecenterview.Distribution", {
+              defaultValue: "Distribution",
+            }),
+            value: applicationUpdate.statusLabel,
+          },
+        ]
+      : []),
+    ...(applicationUpdate
+      ? [
+          {
+            label: t("releasecenterview.AutoUpdates", {
+              defaultValue: "Auto updates",
+            }),
+            value: canAutoUpdate
+              ? t("common.enabled", { defaultValue: "Enabled" })
+              : t("common.disabled", { defaultValue: "Disabled" }),
+          },
+        ]
+      : []),
     ...(desktopRuntime
       ? [
           {
@@ -206,16 +254,6 @@ export function ReleaseCenterView() {
         ]
       : []),
     {
-      label: t("releasecenterview.Latest", { defaultValue: "Latest" }),
-      value: latestVersion,
-    },
-    {
-      label: t("releasecenter.LastChecked", {
-        defaultValue: "Last checked",
-      }),
-      value: lastChecked,
-    },
-    {
       label: t("common.status", { defaultValue: "Status" }),
       value: (
         <span className="inline-flex items-center gap-1.5">
@@ -228,6 +266,61 @@ export function ReleaseCenterView() {
         </span>
       ),
     },
+    ...(agentUpdate
+      ? [
+          {
+            label: t("releasecenterview.Agent", {
+              defaultValue: "Agent",
+            }),
+            value: agentUpdate.currentVersion,
+          },
+          {
+            label: t("releasecenterview.AgentLatest", {
+              defaultValue: "Agent latest",
+            }),
+            value:
+              agentUpdate.latestVersion ??
+              t("releasecenterview.Current", { defaultValue: "Current" }),
+          },
+          {
+            label: t("releasecenterview.AgentAuthority", {
+              defaultValue: "Agent authority",
+            }),
+            value: agentUpdate.authorityLabel,
+          },
+          {
+            label: t("releasecenterview.AgentChannel", {
+              defaultValue: "Agent channel",
+            }),
+            value: agentUpdate.channel,
+          },
+          {
+            label: t("releasecenterview.AgentLastChecked", {
+              defaultValue: "Agent last checked",
+            }),
+            value: lastChecked,
+          },
+          {
+            label: t("releasecenterview.AgentStatus", {
+              defaultValue: "Agent status",
+            }),
+            value: (
+              <span className="inline-flex items-center gap-1.5">
+                {agentUpdate.status === "error" ||
+                agentUpdate.status === "update-available" ? (
+                  <AlertTriangle
+                    className="h-3.5 w-3.5 text-warn"
+                    aria-hidden
+                  />
+                ) : (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-ok" aria-hidden />
+                )}
+                {agentUpdate.statusLabel}
+              </span>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -256,6 +349,22 @@ export function ReleaseCenterView() {
           {nativeUpdater.autoUpdateDisabledReason}
         </div>
       )}
+      {applicationUpdate && !desktopRuntime && (
+        <div
+          role="status"
+          className="rounded-lg border border-border/60 bg-bg/40 px-3 py-2 text-xs text-muted"
+        >
+          {applicationUpdate.detail}
+        </div>
+      )}
+      {agentUpdate && (
+        <div
+          role="status"
+          className="rounded-lg border border-border/60 bg-bg/40 px-3 py-2 text-xs text-muted"
+        >
+          {agentUpdate.error ?? agentUpdate.detail}
+        </div>
+      )}
 
       <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-xs sm:grid-cols-2">
         {versionRows.map((row) => (
@@ -279,7 +388,8 @@ export function ReleaseCenterView() {
             disabled={
               busyAction === "check-updates" ||
               updateLoading ||
-              autoUpdateDisabled
+              autoUpdateDisabled ||
+              !canManualCheck
             }
             onClick={() =>
               void runAction(

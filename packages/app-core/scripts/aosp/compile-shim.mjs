@@ -177,8 +177,8 @@ export function buildSigsysShimForAbi({
       `[compile-shim] Unknown ABI: ${abi}. Only ${SHIM_ABI_TARGETS.map((t) => t.androidAbi).join(", ")} need a shim.`,
     );
   }
-  const resolvedShimSource = shimSourcePath
-    ?? path.join(here, "seccomp-shim", target.shimSource);
+  const resolvedShimSource =
+    shimSourcePath ?? path.join(here, "seccomp-shim", target.shimSource);
   if (!fs.existsSync(resolvedShimSource)) {
     throw new Error(
       `[compile-shim] ${target.shimSource} not found at ${resolvedShimSource}.`,

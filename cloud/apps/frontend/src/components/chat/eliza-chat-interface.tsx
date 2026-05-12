@@ -18,6 +18,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  useRenderGuard,
 } from "@elizaos/cloud-ui";
 import {
   ArrowUp,
@@ -149,6 +150,7 @@ export function ElizaChatInterface({
   character,
   expectedCharacterId,
 }: ElizaChatInterfaceProps) {
+  useRenderGuard("ElizaChatInterface");
   // Use chat store for room and character management
   const {
     roomId,

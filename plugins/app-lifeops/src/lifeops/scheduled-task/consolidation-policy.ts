@@ -14,9 +14,9 @@
  */
 
 import type {
+  AnchorConsolidationPolicy,
   AnchorContext,
   AnchorContribution,
-  AnchorConsolidationPolicy,
   ScheduledTask,
   ScheduledTaskPriority,
 } from "./types.js";
@@ -184,9 +184,7 @@ export function createConsolidationRegistry(): ConsolidationRegistry {
   return {
     register(p) {
       if (!p.anchorKey || typeof p.anchorKey !== "string") {
-        throw new Error(
-          "ConsolidationRegistry.register: anchorKey required",
-        );
+        throw new Error("ConsolidationRegistry.register: anchorKey required");
       }
       map.set(p.anchorKey, p);
     },
@@ -211,9 +209,10 @@ export function createConsolidationRegistry(): ConsolidationRegistry {
         return aFired < bFired ? -1 : aFired > bFired ? 1 : 0;
       });
 
-      const cap = policy.maxBatchSize && policy.maxBatchSize > 0
-        ? policy.maxBatchSize
-        : sorted.length;
+      const cap =
+        policy.maxBatchSize && policy.maxBatchSize > 0
+          ? policy.maxBatchSize
+          : sorted.length;
 
       if (policy.mode === "merge") {
         const batches: ScheduledTask[][] = [];

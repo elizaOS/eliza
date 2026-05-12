@@ -16,24 +16,8 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
 } from "../../contracts/index.js";
+import { hasLifeOpsAccess, INTERNAL_URL } from "../../lifeops/access.js";
 import { resolveDefaultTimeZone } from "../../lifeops/defaults.js";
-import { LifeOpsService, LifeOpsServiceError } from "../../lifeops/service.js";
-import {
-  addDaysToLocalDate,
-  buildUtcDateFromLocalParts,
-  getWeekdayForLocalDate,
-  getZonedDateParts,
-} from "../../lifeops/time.js";
-import {
-  type CreateEventTravelIntent,
-  computeCreateEventTravelBuffer,
-  resolveCreateEventTravelIntent,
-} from "../../travel-time/calendar-create.js";
-import { TravelTimeUnavailableError } from "../../travel-time/service.js";
-import {
-  hasLifeOpsAccess,
-  INTERNAL_URL,
-} from "../../lifeops/access.js";
 import {
   detailArray,
   detailBoolean,
@@ -48,6 +32,19 @@ import {
   runLifeOpsTextModel,
   toActionData,
 } from "../../lifeops/google/format-helpers.js";
+import { LifeOpsService, LifeOpsServiceError } from "../../lifeops/service.js";
+import {
+  addDaysToLocalDate,
+  buildUtcDateFromLocalParts,
+  getWeekdayForLocalDate,
+  getZonedDateParts,
+} from "../../lifeops/time.js";
+import {
+  type CreateEventTravelIntent,
+  computeCreateEventTravelBuffer,
+  resolveCreateEventTravelIntent,
+} from "../../travel-time/calendar-create.js";
+import { TravelTimeUnavailableError } from "../../travel-time/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./recent-context.js";
 
 type CalendarSubaction =
@@ -178,8 +175,8 @@ const CALENDAR_DETAIL_ALIASES = {
   timeZone: ["timezone", "time_zone"],
   forceSync: ["forcesync", "force_sync"],
   windowDays: ["windowdays", "window_days"],
-  startAt: ["startat", "start_at"],
-  endAt: ["endat", "end_at"],
+  startAt: ["startat", "start_at", "start", "start_time", "starttime"],
+  endAt: ["endat", "end_at", "end", "end_time", "endtime"],
   durationMinutes: ["durationminutes", "duration_minutes"],
   windowPreset: ["windowpreset", "window_preset"],
   eventId: [
@@ -831,7 +828,8 @@ function buildAppleCalendarPermissionRequestText(
     "```json",
     JSON.stringify({
       action: "permission_request",
-      reasoning: "native Apple Calendar access is required for this LifeOps calendar action",
+      reasoning:
+        "native Apple Calendar access is required for this LifeOps calendar action",
       permission: "calendar",
       reason,
       feature,
@@ -3036,7 +3034,7 @@ function normalizeCalendarAttendees(
 export const calendarAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
-  name: "GOOGLE_CALENDAR",
+  name: "CALENDAR",
   similes: [
     "CALENDAR_ACTION",
     "CHECK_CALENDAR",
@@ -3078,7 +3076,7 @@ export const calendarAction: Action & {
     "These are live calendar reads and writes, so do not answer them from provider context alone and do not fall back to NONE or REPLY when this action is available. " +
     "DO NOT use this action when the user is only making an observation like 'my calendar has been crazy this quarter' unless they actually ask you to inspect or change calendar state. " +
     "DO NOT use this action for email inbox work, drafting or sending emails — use MESSAGE with operation=triage, search_inbox, draft_reply, or send_draft (source=gmail for Gmail-specific work) instead. " +
-    "DO NOT use this action for personal habits, goals, routines, or reminders — use LIFE instead. " +
+    "DO NOT use this action for personal habits, goals, routines, or reminders — use OWNER_ROUTINES, OWNER_GOALS, or OWNER_REMINDERS instead. " +
     "DO NOT use this action to propose or suggest candidate meeting times to send to someone — use PROPOSE_MEETING_TIMES for requests like 'propose three times for a 30 min sync with X', 'suggest meeting slots', or 'find times that work next week'. The create_event subaction is only for booking a single known time on your own calendar. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action.",
   descriptionCompressed:
@@ -3188,7 +3186,7 @@ export const calendarAction: Action & {
       await callback?.({
         text: payload.text,
         source: "action",
-        action: "GOOGLE_CALENDAR",
+        action: "CALENDAR",
       });
       return payload;
     };

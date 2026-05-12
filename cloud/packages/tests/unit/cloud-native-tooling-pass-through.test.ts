@@ -12,7 +12,7 @@ describe("cloud native tool pass-through", () => {
           {
             id: "call_1",
             type: "function",
-            function: { name: "lookup", arguments: '{"query":"milady"}' },
+            function: { name: "lookup", arguments: '{"query":"eliza"}' },
           },
         ],
       },
@@ -31,7 +31,7 @@ describe("cloud native tool pass-through", () => {
             type: "tool-call",
             toolCallId: "call_1",
             toolName: "lookup",
-            input: { query: "milady" },
+            input: { query: "eliza" },
           },
         ],
       },

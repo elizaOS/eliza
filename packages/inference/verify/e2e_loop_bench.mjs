@@ -62,8 +62,20 @@ function parseArgs(argv) {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),
+    refs: (process.env.ELIZA_E2E_REFS || "")
+      .split("|")
+      .map((s) => s.trim())
+      .filter(Boolean),
     turns: Number.parseInt(process.env.ELIZA_E2E_TURNS || "1", 10),
     nPredict: Number.parseInt(process.env.ELIZA_E2E_N_PREDICT || "40", 10),
+    enduranceNPredict: Number.parseInt(process.env.ELIZA_E2E_ENDURANCE_N_PREDICT || "12", 10),
+    ttsAllPhrases: process.env.ELIZA_E2E_TTS_ALL_PHRASES === "1",
+    ttsSteps: Number.parseInt(process.env.ELIZA_E2E_TTS_STEPS || "32", 10),
+    micTtsSteps: Number.parseInt(process.env.ELIZA_E2E_MIC_TTS_STEPS || "32", 10),
+    ttsRoundtripAsr: process.env.ELIZA_E2E_TTS_ROUNDTRIP_ASR === "1",
+    ttsAudioDir: process.env.ELIZA_E2E_TTS_AUDIO_DIR || "",
+    phraseMaxTokens: Number.parseInt(process.env.ELIZA_E2E_PHRASE_MAX_TOKENS || "8", 10),
+    maxTtsPhrases: Number.parseInt(process.env.ELIZA_E2E_MAX_TTS_PHRASES || "3", 10),
     threads: Number.parseInt(
       process.env.ELIZA_E2E_THREADS || String(Math.min(os.cpus().length, 12)),
       10,
@@ -97,8 +109,21 @@ function parseArgs(argv) {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean);
+    else if (a === "--ref" || a === "--refs")
+      args.refs = next()
+        .split("|")
+        .map((s) => s.trim())
+        .filter(Boolean);
     else if (a === "--turns") args.turns = Number.parseInt(next(), 10);
     else if (a === "--n-predict") args.nPredict = Number.parseInt(next(), 10);
+    else if (a === "--endurance-n-predict") args.enduranceNPredict = Number.parseInt(next(), 10);
+    else if (a === "--tts-all-phrases") args.ttsAllPhrases = true;
+    else if (a === "--tts-steps") args.ttsSteps = Number.parseInt(next(), 10);
+    else if (a === "--mic-tts-steps") args.micTtsSteps = Number.parseInt(next(), 10);
+    else if (a === "--tts-roundtrip-asr") args.ttsRoundtripAsr = true;
+    else if (a === "--tts-audio-dir") args.ttsAudioDir = next();
+    else if (a === "--phrase-max-tokens") args.phraseMaxTokens = Number.parseInt(next(), 10);
+    else if (a === "--max-tts-phrases") args.maxTtsPhrases = Number.parseInt(next(), 10);
     else if (a === "--threads") args.threads = Number.parseInt(next(), 10);
     else if (a === "--ctx") args.ctx = Number.parseInt(next(), 10);
     else if (a === "--ngl") args.ngl = next();
@@ -106,7 +131,7 @@ function parseArgs(argv) {
     else if (a === "--quiet") args.quiet = true;
     else if (a === "--help" || a === "-h") {
       console.log(
-        "Usage: bun packages/inference/verify/e2e_loop_bench.mjs --bundle <dir> --tier <id> [--backend cpu|vulkan|cuda] [--turns N] [--wav a,b] [--report out.json]",
+        "Usage: bun packages/inference/verify/e2e_loop_bench.mjs --bundle <dir> --tier <id> [--backend cpu|vulkan|cuda|metal] [--turns N] [--wav a,b] [--report out.json]",
       );
       process.exit(0);
     } else throw new Error(`unknown argument: ${a}`);
@@ -125,7 +150,7 @@ const log = (q) => (...m) => {
 function stateRoot() {
   return (
     process.env.ELIZA_STATE_DIR?.trim() ||
-    process.env.MILADY_STATE_DIR?.trim() ||
+    process.env.ELIZA_STATE_DIR?.trim() ||
     path.join(os.homedir(), ".eliza")
   );
 }
@@ -164,14 +189,17 @@ function discoverEngine(backend, explicitBinDir) {
     .readdirSync(root)
     .filter((d) => fs.statSync(path.join(root, d)).isDirectory())
     .filter((d) => d.startsWith(plat));
-  // Exact backend-fused first, then any fused on this platform.
-  const exact = dirs.find((d) => d === prefer);
   const anyFused = dirs.filter((d) => d.includes("-fused"));
-  const pick = exact || anyFused.find((d) => d.includes(`-${backend}-`)) || anyFused[0];
+  // Honesty: a `--backend X` run must use an `X`-fused build, not silently
+  // fall back to a different backend's fused build (that would mislabel the
+  // numbers). Exact `${plat}-${backend}-fused` only, then a `-${backend}-`
+  // fused variant; if neither exists, this is `needs-build` for that backend.
+  const pick =
+    dirs.find((d) => d === prefer) || anyFused.find((d) => d.includes(`-${backend}-`)) || null;
   if (!pick) {
     return {
       ok: false,
-      reason: `no fused build dir for ${plat} backend=${backend} under ${root} (have: ${dirs.join(", ") || "none"})`,
+      reason: `no fused ${backend} build dir for ${plat} under ${root} (have fused: ${anyFused.join(", ") || "none"}; pass --bin-dir to override)`,
     };
   }
   return validateEngineDir(path.join(root, pick), backend);
@@ -196,6 +224,7 @@ function validateEngineDir(dir, backend) {
   if (!fused) {
     return { ok: false, reason: `${dir} is not an omnivoice-fused build (no /v1/audio/speech route)` };
   }
+  const actualBackend = caps?.backend || backend;
   return {
     ok: true,
     dir,
@@ -204,7 +233,8 @@ function validateEngineDir(dir, backend) {
     speculative: fs.existsSync(path.join(dir, "llama-speculative-simple"))
       ? path.join(dir, "llama-speculative-simple")
       : null,
-    backend: caps?.backend || backend,
+    backend: actualBackend,
+    backendMismatch: actualBackend !== backend ? `requested ${backend}, build is ${actualBackend}` : null,
     caps,
   };
 }
@@ -487,6 +517,33 @@ function readErrAndFree(ffi, s, ptrBuf) {
   return msg;
 }
 
+function asrTranscribeFloat32(ffiCtx, ffi, s, samples, sampleRate) {
+  const pcm16k = resampleLinear(samples, sampleRate, 16000);
+  const pcmBuf = Buffer.from(pcm16k.buffer, pcm16k.byteOffset, pcm16k.byteLength);
+  const outBytes = 4096;
+  const outBuf = Buffer.alloc(outBytes);
+  const errBuf = Buffer.alloc(8);
+  errBuf.fill(0);
+  const t0 = performance.now();
+  const rc = s.eliza_inference_asr_transcribe(
+    ffiCtx,
+    ffi.ptr(pcmBuf),
+    BigInt(pcm16k.length),
+    16000,
+    ffi.ptr(outBuf),
+    BigInt(outBytes),
+    ffi.ptr(errBuf),
+  );
+  const latencyMs = performance.now() - t0;
+  if (rc < 0) {
+    throw new Error(`asr_transcribe rc=${rc}: ${readErrAndFree(ffi, s, errBuf)}`);
+  }
+  return {
+    latencyMs,
+    transcript: outBuf.toString("utf8", 0, rc).trim(),
+  };
+}
+
 // --------------------------------------------------------------------------
 // HTTP helpers against the fused llama-server
 // --------------------------------------------------------------------------
@@ -640,15 +697,26 @@ async function streamCompletion(port, prompt, nPredict, turnTimeoutS) {
 // TTS phrase synthesis via /v1/audio/speech (raw f32 PCM)
 // --------------------------------------------------------------------------
 
-async function synthPhrasePcm(port, text, turnTimeoutS) {
+function estimateTtsDurationSec(text) {
+  const words = (String(text).trim().match(/[A-Za-z0-9']+/g) || []).length;
+  if (words <= 0) return null;
+  // OmniVoice's default duration predictor over-stretches terse assistant
+  // snippets ("The meeting is to" regularly becomes ~1.8s). A conservative
+  // word-rate hint keeps latency sane without clipping normal short phrases.
+  return Math.max(0.75, Math.min(12, 0.42 + words * 0.19));
+}
+
+async function synthPhrasePcm(port, text, turnTimeoutS, ttsSteps = 32, durationSec = null) {
   const t0 = performance.now();
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), turnTimeoutS * 1000);
   try {
+    const body = { input: text, response_format: "pcm", num_step: ttsSteps };
+    if (Number.isFinite(durationSec) && durationSec > 0) body.duration = durationSec;
     const res = await fetch(`http://127.0.0.1:${port}/v1/audio/speech`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ input: text, response_format: "pcm" }),
+      body: JSON.stringify(body),
       signal: ctrl.signal,
     });
     if (!res.ok) {
@@ -671,31 +739,29 @@ async function synthPhrasePcm(port, text, turnTimeoutS) {
 // --------------------------------------------------------------------------
 
 async function runTurn(opts, turnIdx) {
-  const { port, ffiCtx, ffi, s, wav, refText, nPredict, turnTimeoutS, logFn } = opts;
+  const {
+    port,
+    ffiCtx,
+    ffi,
+    s,
+    wav,
+    refText,
+    nPredict,
+    turnTimeoutS,
+    logFn,
+    ttsAllPhrases,
+    ttsSteps,
+    maxTtsPhrases,
+    phraseMaxTokens,
+    ttsRoundtripAsr,
+    ttsAudioDir,
+  } = opts;
   const turnT0 = performance.now();
 
   // 1) ASR: feed the WAV's mono PCM (resampled to 16 kHz) to the FFI.
-  const pcm16k = resampleLinear(wav.samples, wav.sampleRate, 16000);
-  const pcmBuf = Buffer.from(pcm16k.buffer, pcm16k.byteOffset, pcm16k.byteLength);
-  const outBytes = 4096;
-  const outBuf = Buffer.alloc(outBytes);
-  const errBuf = Buffer.alloc(8);
-  errBuf.fill(0);
-  const asrT0 = performance.now();
-  const rc = s.eliza_inference_asr_transcribe(
-    ffiCtx,
-    ffi.ptr(pcmBuf),
-    BigInt(pcm16k.length),
-    16000,
-    ffi.ptr(outBuf),
-    BigInt(outBytes),
-    ffi.ptr(errBuf),
-  );
-  const asrMs = performance.now() - asrT0;
-  if (rc < 0) {
-    throw new Error(`asr_transcribe rc=${rc}: ${readErrAndFree(ffi, s, errBuf)}`);
-  }
-  const transcript = outBuf.toString("utf8", 0, rc).trim();
+  const inputAsr = asrTranscribeFloat32(ffiCtx, ffi, s, wav.samples, wav.sampleRate);
+  const asrMs = inputAsr.latencyMs;
+  const transcript = inputAsr.transcript;
   const wer = refText ? wordErrorRate(refText, transcript) : null;
   logFn(`turn ${turnIdx}: ASR ${asrMs.toFixed(0)}ms -> ${JSON.stringify(transcript)} (wer=${wer == null ? "n/a" : wer.toFixed(3)})`);
 
@@ -724,16 +790,44 @@ async function runTurn(opts, turnIdx) {
   // 3) Phrase chunker + 4) TTS per phrase. First-audio = ASR-done → first PCM
   //    sample of the first phrase (the streaming-handoff latency the runtime
   //    optimizes); also report it relative to the first text token.
-  const phrases = chunkPhrases(gen.content || prompt);
+  const allPhrases = chunkPhrases(gen.content || prompt, phraseMaxTokens);
+  // In endurance mode the contract is "the loop completes without crash /
+  // leak" — synthesizing every phrase of every one of 30 turns at a >1×-RTF
+  // CPU TTS would take ~45 min for no extra signal. So unless --tts-all-phrases
+  // is requested, an endurance turn synthesizes only the first phrase (still
+  // exercises the full TTS forward pass + the streaming handoff). A 1-turn
+  // run synthesizes up to `maxTtsPhrases` (default 3) — more than 3 phrases
+  // adds no signal over the per-phrase RTF + first-audio it already measures,
+  // and a noisy base-model response can chunk into 10+ phrases which would
+  // dominate the wall clock on a >1×-RTF CPU TTS.
+  const phrases = ttsAllPhrases ? allPhrases.slice(0, Math.max(1, maxTtsPhrases || 3)) : allPhrases.slice(0, 1);
   const ttsRuns = [];
   let firstPhrasePcm = null;
   const ttsLoopT0 = performance.now();
-  for (const ph of phrases) {
-    const r = await synthPhrasePcm(port, ph, turnTimeoutS);
-    ttsRuns.push({ phrase: ph, audioSec: r.audioSec, wallMs: r.wallMs, rtf: r.rtf });
+  for (let i = 0; i < phrases.length; i += 1) {
+    const ph = phrases[i];
+    const durationSec = estimateTtsDurationSec(ph);
+    const r = await synthPhrasePcm(port, ph, turnTimeoutS, ttsSteps, durationSec);
+    const run = { phrase: ph, durationHintSec: durationSec, audioSec: r.audioSec, wallMs: r.wallMs, rtf: r.rtf };
+    if (ttsAudioDir) {
+      fs.mkdirSync(ttsAudioDir, { recursive: true });
+      const safe = String(turnIdx).padStart(2, "0") + "-" + String(i + 1).padStart(2, "0");
+      const file = path.join(ttsAudioDir, `turn-${safe}-steps${ttsSteps}.wav`);
+      writeWav16(file, r.samples, r.sampleRate);
+      run.audioPath = file;
+    }
+    if (ttsRoundtripAsr) {
+      const rt = asrTranscribeFloat32(ffiCtx, ffi, s, r.samples, r.sampleRate);
+      run.roundTripAsr = {
+        latencyMs: round1(rt.latencyMs),
+        transcript: rt.transcript,
+        wer: round4(wordErrorRate(ph, rt.transcript)),
+      };
+    }
+    ttsRuns.push(run);
     if (firstPhrasePcm === null) firstPhrasePcm = r;
   }
-  const ttsTotalWallMs = performance.now() - ttsLoopT0;
+  const ttsTotalWallMs = ttsRuns.reduce((a, r) => a + (r.wallMs || 0), 0);
   const totalAudioSec = ttsRuns.reduce((a, r) => a + r.audioSec, 0);
   const ttsRtf = totalAudioSec > 0 ? ttsTotalWallMs / 1000 / totalAudioSec : null;
   // first-audio relative to mic-in (ASR start) and to first text token.
@@ -766,10 +860,18 @@ async function runTurn(opts, turnIdx) {
     },
     tts: {
       phrases: phrases.length,
+      totalPhrases: allPhrases.length,
       audioSec: round2(totalAudioSec),
       wallMs: round1(ttsTotalWallMs),
       rtf: ttsRtf == null ? null : round4(ttsRtf),
-      perPhrase: ttsRuns.map((r) => ({ ...r, audioSec: round2(r.audioSec), wallMs: round1(r.wallMs), rtf: r.rtf == null ? null : round4(r.rtf) })),
+      roundTripAsrWerMean: round4(mean(ttsRuns.map((r) => r.roundTripAsr?.wer))),
+      perPhrase: ttsRuns.map((r) => ({
+        ...r,
+        durationHintSec: r.durationHintSec == null ? null : round2(r.durationHintSec),
+        audioSec: round2(r.audioSec),
+        wallMs: round1(r.wallMs),
+        rtf: r.rtf == null ? null : round4(r.rtf),
+      })),
     },
     firstAudioFromMicMs: round1(firstAudioFromMicMs),
     firstAudioFromTokenMs: firstAudioFromTokenMs == null ? null : round1(firstAudioFromTokenMs),
@@ -789,9 +891,11 @@ async function runTurn(opts, turnIdx) {
 // --------------------------------------------------------------------------
 
 async function measureBargeIn(port, ffiCtx, ffi, s) {
-  // (a) client-side abort latency
-  const longText =
-    "Here is a fairly long answer that I will keep speaking for several seconds so that we can interrupt it partway through and measure how quickly the audio path stops consuming bytes after the barge in signal arrives.";
+  // (a) client-side abort latency. Keep the phrase short — the batch-only TTS
+  //     build has no in-flight cancel, so this synthesis runs to completion on
+  //     the server even after the client aborts; a long phrase would just burn
+  //     a >1×-RTF CPU MaskGIT pass for nothing.
+  const longText = "Here is a short answer that I will keep speaking so we can interrupt it.";
   const ctrl = new AbortController();
   const reqP = fetch(`http://127.0.0.1:${port}/v1/audio/speech`, {
     method: "POST",
@@ -855,12 +959,28 @@ function maxOf(xs) {
   return v.length ? Math.max(...v) : null;
 }
 
+function parseCodecBackendLog(logText) {
+  const text = logText || "";
+  const fallback = text.match(
+    /\[PipelineCodec\] Metal codec fallback: requested=([^\s]+) selected=([^\s]+) reason=([^\n]+)/,
+  );
+  const loaded = text.match(/\[PipelineCodec\] Loaded codec: sr=(\d+) hop=(\d+) backend=([^\s]+)/);
+  return {
+    metalCodecFallback: !!fallback,
+    requestedBackend: fallback?.[1] ?? null,
+    selectedBackend: fallback?.[2] ?? loaded?.[3] ?? null,
+    reason: fallback?.[3]?.trim() ?? null,
+    sampleRate: loaded ? Number(loaded[1]) : null,
+    hopLength: loaded ? Number(loaded[2]) : null,
+  };
+}
+
 // --------------------------------------------------------------------------
 // main
 // --------------------------------------------------------------------------
 
 function nowTag() {
-  return new Date().toISOString().slice(0, 10);
+  return process.env.ELIZA_E2E_DATE?.trim() || new Date().toISOString().slice(0, 10);
 }
 
 async function main() {
@@ -888,9 +1008,20 @@ async function main() {
       cpuModel: os.cpus()[0]?.model || null,
       totalMemMb: Math.round(os.totalmem() / 1024 / 1024),
     },
-    request: { tier, backend: args.backend, turns: args.turns, nPredict: args.nPredict },
+    request: {
+      tier,
+      backend: args.backend,
+      turns: args.turns,
+      nPredict: args.nPredict,
+      ttsSteps: args.ttsSteps,
+      micTtsSteps: args.micTtsSteps,
+      ttsRoundtripAsr: args.ttsRoundtripAsr,
+      phraseMaxTokens: args.phraseMaxTokens,
+      wavs: args.wavs.length,
+      refs: args.refs.length,
+    },
     bundle: { dir: bundleDir, tier, ramBudgetMb: files.manifest?.ramBudgetMb ?? null },
-    engine: engine.ok ? { dir: engine.dir, backend: engine.backend, fused: true, caps: engine.caps?.kernels ?? null } : null,
+    engine: engine.ok ? { dir: engine.dir, backend: engine.backend, backendMismatch: engine.backendMismatch ?? null, fused: true, caps: engine.caps?.kernels ?? null } : null,
   };
 
   // Preconditions — produce honest needs-* statuses, not fake passes.
@@ -924,7 +1055,7 @@ async function main() {
   //     use them as the "mic" input. Reference text drives WER.
   const REF_PHRASES = [
     "What is the capital of France?",
-    "Schedule a meeting for tomorrow at three in the afternoon.",
+    "Schedule a meeting for tomorrow afternoon.",
     "Tell me a short fact about the ocean.",
   ];
   let micWavs = []; // { file, samples, sampleRate, refText }
@@ -966,14 +1097,20 @@ async function main() {
 
     // --- synthesize mic WAVs if none supplied ---
     if (args.wavs.length > 0) {
-      for (const w of args.wavs) {
+      for (let i = 0; i < args.wavs.length; i += 1) {
+        const w = args.wavs[i];
         const wav = readWav(w);
-        micWavs.push({ file: w, samples: wav.samples, sampleRate: wav.sampleRate, refText: null });
+        micWavs.push({
+          file: w,
+          samples: wav.samples,
+          sampleRate: wav.sampleRate,
+          refText: args.refs[i] || null,
+        });
       }
     } else {
       for (let i = 0; i < REF_PHRASES.length; i += 1) {
         const ph = REF_PHRASES[i];
-        const r = await synthPhrasePcm(port, ph, args.turnTimeoutS);
+        const r = await synthPhrasePcm(port, ph, args.turnTimeoutS, args.micTtsSteps);
         const w16 = resampleLinear(r.samples, r.sampleRate, 16000);
         const file = path.join(tmpDir, `mic-${i}.wav`);
         writeWav16(file, w16, 16000);
@@ -1014,10 +1151,24 @@ async function main() {
     let bargeIn = null;
     const rssSamples = [];
     const totalTurns = Math.max(1, args.turns);
+    const isEndurance = totalTurns >= 8;
     for (let t = 0; t < totalTurns; t += 1) {
       const mic = micWavs[t % micWavs.length];
+      // Turn 1 always runs "full" (all phrases, full nPredict) so the e2e
+      // metrics are complete; later turns in an endurance run are lighter.
+      const fullTurn = t === 0 || !isEndurance;
       const turnReport = await runTurn(
-        { port, ffiCtx, ffi, s, wav: mic, refText: mic.refText, nPredict: args.nPredict, turnTimeoutS: args.turnTimeoutS, logFn },
+        {
+          port, ffiCtx, ffi, s, wav: mic, refText: mic.refText,
+          nPredict: fullTurn ? args.nPredict : args.enduranceNPredict,
+          turnTimeoutS: args.turnTimeoutS, logFn,
+          ttsAllPhrases: args.ttsAllPhrases ? true : fullTurn,
+          ttsSteps: args.ttsSteps,
+          ttsRoundtripAsr: args.ttsRoundtripAsr,
+          ttsAudioDir: args.ttsAudioDir,
+          phraseMaxTokens: args.phraseMaxTokens,
+          maxTtsPhrases: args.maxTtsPhrases,
+        },
         t + 1,
       );
       turnReports.push(turnReport);
@@ -1026,12 +1177,15 @@ async function main() {
         rssSamples.push(rss);
         turnReport.serverPeakRssMb = rss;
       }
-      // measure barge-in once, around turn 1 (cheap, doesn't disturb the loop)
-      if (t === 0) bargeIn = await measureBargeIn(port, ffiCtx, ffi, s);
       if (serverChild.exitCode !== null) {
         throw new Error(`llama-server died mid-loop (exit ${serverChild.exitCode}) at turn ${t + 1}`);
       }
     }
+    // Measure barge-in after the loop. The current HTTP TTS route is batch
+    // only, so aborting the client fetch stops playback consumption but does
+    // not cancel the server-side OmniVoice forward pass; running it mid-loop
+    // would contaminate subsequent turn latency.
+    bargeIn = await measureBargeIn(port, ffiCtx, ffi, s);
 
     const finalPeakRss = peakRssMb(serverChild.pid);
     const peakRss = maxOf([...rssSamples, finalPeakRss]);
@@ -1062,6 +1216,8 @@ async function main() {
       firstAudioFromTokenMsMedian: round1(median(turnReports.map((r) => r.firstAudioFromTokenMs))),
       ttsRtfMedian: round4(median(turnReports.map((r) => r.tts.rtf))),
       ttsRtfMean: round4(mean(turnReports.map((r) => r.tts.rtf))),
+      ttsRoundTripAsrWerMean: round4(mean(turnReports.map((r) => r.tts.roundTripAsrWerMean))),
+      ttsRoundTripAsrWerByTurn: turnReports.map((r) => r.tts.roundTripAsrWerMean),
       totalTurnMsMedian: round1(median(turnReports.map((r) => r.totalTurnMs))),
       bargeInCancelMs: bargeIn ? bargeIn.httpAbortMs : null,
       serverPeakRssMb: peakRss,
@@ -1073,20 +1229,53 @@ async function main() {
       summary.dflashDraftedTotal > 0 ? round4(summary.dflashAcceptedTotal / summary.dflashDraftedTotal) : null;
     summary.dflashAcceptanceRateOverall = dflashOverall;
 
-    const e2eLoopOk = turnReports.length > 0 &&
+    const flowCompletedOk = turnReports.length > 0 &&
       turnReports.every((r) => r.gen.firstTokenMs != null && r.tts.audioSec != null && r.tts.audioSec > 0 && r.totalTurnMs != null);
-    const thirtyTurnOk = totalTurns >= 30 ? e2eLoopOk && !leakSuspected && (ramWithinBudget !== false) : null;
+    const requiredOptimizations = {
+      dflashDraftingActive: summary.dflashDraftedTotal > 0,
+      streamingTtsActive: bargeIn?.ttsStreamSupported === true,
+    };
+    const optimizationReadyOk = Object.values(requiredOptimizations).every(Boolean);
+    const e2eLoopOk = flowCompletedOk;
+    const thirtyTurnOk = totalTurns >= 30 ? flowCompletedOk && !leakSuspected && (ramWithinBudget !== false) : null;
+    summary.flowCompletedOk = flowCompletedOk;
+    summary.optimizationReadyOk = optimizationReadyOk;
+    summary.requiredOptimizations = requiredOptimizations;
+    const fullServerLog = fs.existsSync(path.join(tmpDir, "server.log"))
+      ? fs.readFileSync(path.join(tmpDir, "server.log"), "utf8")
+      : "";
+    summary.codecBackend = parseCodecBackendLog(fullServerLog);
 
     const out = {
       ...baseReport,
-      status: "ok",
+      status: e2eLoopOk ? (optimizationReadyOk ? "ok" : "needs-optimization") : "failed",
+      reason: e2eLoopOk
+        ? optimizationReadyOk
+          ? null
+          : "voice loop completed, but required Eliza-1 optimizations were not all active"
+        : "voice loop did not complete",
       e2eLoopOk,
       thirtyTurnOk,
+      flowCompletedOk,
+      optimizationReadyOk,
+      requiredOptimizations,
       summary,
       bargeIn,
       turns: turnReports,
-      serverLog: fs.existsSync(path.join(tmpDir, "server.log"))
-        ? fs.readFileSync(path.join(tmpDir, "server.log"), "utf8").split("\n").slice(-30).join("\n")
+      serverLog: fullServerLog ? fullServerLog.split("\n").slice(-300).join("\n") : null,
+    };
+    return finish(out, args, logFn);
+  } catch (err) {
+    const serverLogPath = path.join(tmpDir, "server.log");
+    const out = {
+      ...baseReport,
+      status: "failed",
+      reason: err instanceof Error ? err.message : String(err),
+      e2eLoopOk: false,
+      thirtyTurnOk: null,
+      serverExitCode: serverChild?.exitCode ?? null,
+      serverLog: fs.existsSync(serverLogPath)
+        ? fs.readFileSync(serverLogPath, "utf8").split("\n").slice(-80).join("\n")
         : null,
     };
     return finish(out, args, logFn);

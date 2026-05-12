@@ -154,6 +154,7 @@ TUNNEL_AUTH_KEY_COST_USD = "0.01"
 #   OPENAI_API_KEY                     OpenAI direct
 #   AI_GATEWAY_API_KEY
 #   GROQ_API_KEY                       Groq
+#   CEREBRAS_API_KEY                   Cerebras — ultra-fast inference for provisioning placeholder agent
 #   FAL_KEY                            Fal.ai video gen
 #   ELEVENLABS_API_KEY                 ElevenLabs TTS
 #   VAST_API_KEY                       Vast.ai Serverless endpoint API token (Bearer)

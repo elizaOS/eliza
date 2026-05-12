@@ -3,13 +3,14 @@ import {
   Button,
   type CloudOAuthConnection,
   client,
+  isAppWindowRoute,
   isWebPlatform,
   openExternalUrl,
   PagePanel,
+  PageScopedChatPane,
   useApp,
   useMediaQuery,
 } from "@elizaos/ui";
-import { PageScopedChatPane } from "@elizaos/ui";
 import { Power, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -476,11 +477,14 @@ function LifeOpsWorkspaceInner() {
     select({ eventId, messageId });
   }, [eventId, messageId, select]);
   const appEnabled = lifeOpsApp.enabled;
+  const appWindowRoute =
+    typeof window !== "undefined" ? isAppWindowRoute(window.location) : false;
 
   const runtimeReady =
-    startupCoordinator.phase === "ready" &&
-    agentStatus?.state === "running" &&
-    backendConnection?.state === "connected";
+    appWindowRoute ||
+    (startupCoordinator.phase === "ready" &&
+      agentStatus?.state === "running" &&
+      backendConnection?.state === "connected");
 
   const loadGithub = useCallback(async () => {
     if (!appEnabled || !elizaCloudConnected) {

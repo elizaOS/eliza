@@ -92,11 +92,22 @@ JUDGE_SYSTEM_PROMPT = (
     '"Rating: [[<integer>]]" — e.g. "Rating: [[7]]".'
 )
 
-_RATING_RE = re.compile(r"\bRating:\s*\[\[(\d{1,2})\]\]")
+_RATING_PATTERNS = (
+    re.compile(r"\bRating:\s*\[\[(\d{1,2})\]\]", re.IGNORECASE),
+    re.compile(
+        r"\b(?:final\s+rating|rating|score)\s*[:=]\s*"
+        r"(?:\[\[|\[)?\s*(\d{1,2})(?:\s*/\s*10)?\s*(?:\]\]|\])?",
+        re.IGNORECASE,
+    ),
+)
 
 
 def _extract_rating(text: str) -> float | None:
-    match = _RATING_RE.search(text or "")
+    match = None
+    for pattern in _RATING_PATTERNS:
+        match = pattern.search(text or "")
+        if match:
+            break
     if not match:
         return None
     try:

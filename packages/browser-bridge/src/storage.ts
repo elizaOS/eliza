@@ -85,10 +85,7 @@ function isLoopbackHost(hostname: string): boolean {
 
 function isLikelyAgentAppTab(tab: ExtensionTab): boolean {
   const haystack = `${tab.title ?? ""} ${tab.url ?? ""}`.toLowerCase();
-  return (
-    haystack.includes("eliza") ||
-    haystack.includes("lifeops")
-  );
+  return haystack.includes("eliza") || haystack.includes("lifeops");
 }
 
 export function candidateApiBaseUrlsFromTabs(

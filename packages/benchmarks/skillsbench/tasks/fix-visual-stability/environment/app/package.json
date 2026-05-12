@@ -1,0 +1,26 @@
+{
+  "name": "modern-marketplace",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "14.0.4",
+    "pngjs": "^7.0.0",
+    "react": "18.2.0",
+    "react-dom": "18.2.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.18",
+    "@types/node": "20.10.0",
+    "@types/react": "18.2.0",
+    "autoprefixer": "^10.4.23",
+    "playwright": "^1.49.1",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.18",
+    "typescript": "5.3.3"
+  }
+}

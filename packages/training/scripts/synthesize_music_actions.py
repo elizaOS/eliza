@@ -9,7 +9,7 @@ Targets the 15 music actions across `plugin-music-library` (8) and
     (≥3 each), distributed deterministically.
   - 5-10% subtle-null records that resolve to a canonical
     `thought:/text:` REPLY (e.g., "I want to listen to something")
-    instead of a tool call — encoded via TOON like the bundled
+    instead of a tool call — encoded via native JSON like the bundled
     `reply` task.
 
 Output: one JSONL per record under
@@ -21,7 +21,7 @@ The expected shape is the canonical eliza record (see
   - `task_type: tool_call` for tool-call records.
   - `task_type: reply` for the subtle-null records.
 
-Tool-call `expectedResponse` is the TOON-encoded
+Tool-call `expectedResponse` is the native JSON-encoded
 `{tool_calls: [{name, arguments}]}` envelope, exactly matching the
 upstream `synthesize_action_pairs.py` shape.
 
@@ -66,7 +66,7 @@ log = logging.getLogger("synth-music")
 AGENT_NAMES = [
     "Iris", "Kai", "Ava", "Nova", "Echo", "Sage", "Atlas", "Lyra",
     "Pico", "Lumi", "Rune", "Vega", "Sol", "Orion", "Mira", "Tess",
-    "milady", "Eliza", "Cleo", "Juno",
+    "eliza", "Eliza", "Cleo", "Juno",
 ]
 
 USER_NAMES = [
@@ -453,7 +453,7 @@ EN_PREFIXES = [
     "", "hey, ", "yo ", "ok so ", "uhh ", "real quick — ",
     "please ", "could you ", "can you ", "would you mind ",
     "i need you to ", "let's ", "go ahead and ", "trigger this: ",
-    "voice command: ", "alexa, ", "siri, ", "hey milady, ",
+    "voice command: ", "alexa, ", "siri, ", "hey eliza, ",
 ]
 EN_SUFFIXES = [
     "", " thanks", " plz", " 🙏", "?", " — when you can",

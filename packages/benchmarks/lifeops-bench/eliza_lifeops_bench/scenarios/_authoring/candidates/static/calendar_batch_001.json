@@ -21,10 +21,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "dentist",
-      "Friday"
-    ],
+    "required_outputs": ["dentist", "Friday"],
     "first_question_fallback": {
       "canned_answer": "Yes, keep it on my primary calendar.",
       "applies_when": "agent asks which calendar"
@@ -53,10 +50,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "canceled",
-      "yoga"
-    ],
+    "required_outputs": ["canceled", "yoga"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 8,
@@ -83,10 +77,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "slot",
-      "Alex"
-    ],
+    "required_outputs": ["slot", "Alex"],
     "first_question_fallback": {
       "canned_answer": "30 minutes, no attendees needed.",
       "applies_when": "agent asks for duration or attendees"

@@ -74,6 +74,11 @@ def _build_system_prompt(tools: list[dict[str, Any]]) -> str:
     manifest for the upstream's hardcoded ``exec`` / ``write`` / ``read``
     triplet. The tool catalogue is rendered as ``- <name>: <description>``
     + a JSON schema block per tool.
+
+    P1-7: includes a shape-hint preamble so hermes/openclaw know the expected
+    action names, the ENTITY contact-create convention, and the search-before-
+    write rule — the same structural context the eliza-runtime adapter gets via
+    personality prompts.
     """
     if not tools:
         tool_section = "(no tools available — respond with a final summary only)"
@@ -93,6 +98,16 @@ def _build_system_prompt(tools: list[dict[str, Any]]) -> str:
     return (
         "You are a life-assistant agent operating through OpenClaw's "
         "text-embedded tool-call protocol.\n"
+        "\n"
+        # P1-7: shape-hint preamble — use exact action names, ENTITY.create
+        # convention, and search-before-write rule.
+        "SHAPE HINTS:\n"
+        "- Use the exact action names shown in AVAILABLE TOOLS below — do not "
+        "invent synonyms or alternative spellings.\n"
+        "- For contacts: use ENTITY with args.subaction='create', args.name, "
+        "and args.email at the top level of args.\n"
+        "- Always search for existing records (contacts, events, reminders) "
+        "before creating new ones.\n"
         "\n"
         "You MUST take action by emitting tool calls. Describing what you "
         "\"will do\" without emitting <tool_call> blocks counts as zero "
@@ -140,11 +155,20 @@ def _format_assistant_for_openclaw(turn: MessageTurn) -> str:
             if raw_args is None:
                 raw_args = tc.get("arguments")
             if isinstance(raw_args, str):
-                args_obj = json.loads(raw_args) if raw_args else {}
+                try:
+                    args_obj = json.loads(raw_args) if raw_args else {}
+                except json.JSONDecodeError as exc:
+                    raise ValueError(
+                        f"OpenClaw history tool_call arguments were not valid JSON: {raw_args!r}"
+                    ) from exc
             elif isinstance(raw_args, dict):
                 args_obj = raw_args
             else:
                 args_obj = {}
+            if not isinstance(args_obj, dict):
+                raise ValueError(
+                    "OpenClaw history tool_call arguments JSON must decode to an object"
+                )
             parts.append(
                 "<tool_call>"
                 + json.dumps({"tool": name, "args": args_obj}, sort_keys=True)
@@ -291,33 +315,42 @@ def parse_openclaw_tool_calls(text: str) -> tuple[str, list[dict[str, Any]]]:
     treated as "no tool call here" rather than a hard failure, because
     the alternative is to surface every truncated stream as an exception.
     """
-    tool_calls: list[dict[str, Any]] = []
-    matches = list(_TOOL_CALL_RE.finditer(text))
-    for index, match in enumerate(matches):
-        tool_calls.append(_tool_call_block_to_openai_shape(match.group(1), index))
+    # Collect closed and recovered unclosed blocks, then sort by source span so
+    # call IDs preserve model emission order.
+    candidates: list[tuple[int, int, str]] = []
+    covered_spans: list[tuple[int, int]] = []
+    for match in _TOOL_CALL_RE.finditer(text):
+        candidates.append((match.start(), match.end(), match.group(1)))
+        covered_spans.append((match.start(), match.end()))
 
-    if tool_calls:
-        prose = _TOOL_CALL_RE.sub("", text).strip()
-        return prose, tool_calls
-
-    # Pass 2: brace-balanced fallback for unclosed openers.
-    # Track recovered span ends so we can strip them from prose too.
-    recovered_spans: list[tuple[int, int]] = []
+    # Pass 2: brace-balanced fallback for unclosed openers outside already
+    # parsed closed spans. This recovers mixed responses such as one closed
+    # block followed by one missing ``</tool_call>`` block without
+    # double-counting the closed opener.
     for match in _TOOL_CALL_OPENER_RE.finditer(text):
+        if any(start <= match.start() < end for start, end in covered_spans):
+            continue
         json_start = match.start(1)
         sliced = _brace_balanced_json_slice(text, json_start)
         if sliced is None:
             continue
         raw_json, end = sliced
-        tool_calls.append(
-            _tool_call_block_to_openai_shape(raw_json, len(tool_calls))
-        )
-        recovered_spans.append((match.start(), end))
+        candidates.append((match.start(), end, raw_json))
 
-    if recovered_spans:
+    if not candidates:
+        return text.strip(), []
+
+    candidates.sort(key=lambda item: item[0])
+    tool_calls = [
+        _tool_call_block_to_openai_shape(raw_json, index)
+        for index, (_span_start, _span_end, raw_json) in enumerate(candidates)
+    ]
+
+    spans = [(span_start, span_end) for span_start, span_end, _raw in candidates]
+    if spans:
         parts: list[str] = []
         cursor = 0
-        for span_start, span_end in recovered_spans:
+        for span_start, span_end in spans:
             parts.append(text[cursor:span_start])
             cursor = span_end
         parts.append(text[cursor:])
@@ -413,18 +446,27 @@ class OpenClawAgent:
                 provider="openclaw",
             )
 
+        cost = (
+            float(response.cost_usd) if response.cost_usd is not None else None
+        )
         turn = MessageTurn(
             role="assistant",
             content=prose,
             tool_calls=tool_calls if tool_calls else None,
+            cost_usd=cost,
+            latency_ms=float(latency_ms),
+            input_tokens=int(response.usage.prompt_tokens),
+            output_tokens=int(response.usage.completion_tokens),
         )
-        # Telemetry the runner reads via getattr.
-        turn.cost_usd = float(response.cost_usd)  # type: ignore[attr-defined]
-        turn.latency_ms = int(latency_ms)  # type: ignore[attr-defined]
-        turn.input_tokens = int(response.usage.prompt_tokens)  # type: ignore[attr-defined]
-        turn.output_tokens = int(response.usage.completion_tokens)  # type: ignore[attr-defined]
+        setattr(turn, "cache_read_input_tokens", response.usage.cache_read_input_tokens)
+        setattr(turn, "cache_creation_input_tokens", response.usage.cache_creation_input_tokens)
+        setattr(turn, "cache_supported", True)
 
-        self.total_cost_usd += float(response.cost_usd)
+        if cost is not None:
+            # Skip unpriced calls so the accumulator tracks only billable
+            # spend — per AGENTS.md Cmd #8, "unpriced" is not the same as
+            # "free".
+            self.total_cost_usd += cost
         self.total_input_tokens += int(response.usage.prompt_tokens)
         self.total_output_tokens += int(response.usage.completion_tokens)
         return turn
@@ -447,7 +489,7 @@ def build_openclaw_agent(
     *,
     temperature: float = 0.0,
     reasoning_effort: str = "low",
-    max_tokens: int | None = None,
+    max_tokens: int | None = 4096,
     client_factory: ClientFactory | None = None,
 ) -> OpenClawAgent:
     """Build an OpenClaw-protocol agent callable for the bench runner.

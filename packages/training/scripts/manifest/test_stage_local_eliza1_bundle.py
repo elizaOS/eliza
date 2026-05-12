@@ -24,11 +24,11 @@ def _write(path: Path, payload: str | bytes) -> Path:
 
 
 def _base_bundle(tmp_path: Path) -> Path:
-    bundle = tmp_path / "eliza-1-1_7b.bundle"
+    bundle = tmp_path / "eliza-1-2b.bundle"
     _write(bundle / "tts" / "omnivoice-base-Q4_K_M.gguf", b"voice")
     _write(bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf", b"voice-tokenizer")
     _write(bundle / "asr" / "eliza-1-asr.gguf", b"asr")
-    _write(bundle / "vad" / "silero-vad-int8.onnx", b"vad")
+    _write(bundle / "vad" / "silero-vad-v5.1.2.ggml.bin", b"vad")
     _write(bundle / "cache" / "voice-preset-default.bin", b"cache")
     _write(bundle / "licenses" / "LICENSE.voice", "voice license\n")
     _write(bundle / "licenses" / "LICENSE.asr", "asr license\n")
@@ -72,7 +72,7 @@ def test_stage_local_bundle_writes_non_publishable_layout(
 
     report = stage.stage_local_bundle(
         argparse.Namespace(
-            tier="1_7b",
+            tier="2b",
             bundle_dir=bundle,
             text_source=text_source,
             drafter_source=drafter_source,
@@ -89,8 +89,8 @@ def test_stage_local_bundle_writes_non_publishable_layout(
     assert report["manifestValidation"]["localNonPublishableOk"] is True
     assert report["manifestValidation"]["publishReadyOk"] is False
     assert report["checksumValidation"]["ok"] is True
-    assert (bundle / "text" / "eliza-1-1_7b-64k.gguf").is_file()
-    assert (bundle / "dflash" / "drafter-1_7b.gguf").is_file()
+    assert (bundle / "text" / "eliza-1-2b-64k.gguf").is_file()
+    assert (bundle / "dflash" / "drafter-2b.gguf").is_file()
     assert (bundle / "dflash" / "target-meta.json").is_file()
     assert (bundle / "vision").is_dir()
     assert (bundle / "evals" / "aggregate.json").is_file()
@@ -105,10 +105,24 @@ def test_stage_local_bundle_writes_non_publishable_layout(
     assert (bundle / "licenses" / "LICENSE.text").is_file()
     assert (bundle / "licenses" / "LICENSE.dflash").is_file()
     assert (bundle / "licenses" / "LICENSE.eliza-1").is_file()
+    aggregate = json.loads((bundle / "evals" / "aggregate.json").read_text())
+    assert "vad_boundary_ms" in aggregate["results"]
+    assert "vad_endpoint_ms" in aggregate["results"]
+    assert "vad_false_barge_in_rate" in aggregate["results"]
 
     manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
     assert manifest["defaultEligible"] is False
     assert manifest["files"]["vision"] == []
+    assert manifest["files"]["vad"][0]["path"] == "vad/silero-vad-v5.1.2.ggml.bin"
+    assert manifest["evals"]["vadLatencyMs"]["boundaryMs"] == 0.0
+    assert manifest["evals"]["vadLatencyMs"]["endpointMs"] == 0.0
+    assert manifest["evals"]["vadLatencyMs"]["falseBargeInRate"] == 1.0
+    # RAM budget is calibrated from the 2026-05-11 e2e voice-loop bench:
+    # the fused llama-server holds every voice region resident, so 1_7b's
+    # server peak RSS is ~4.8 GB → recommended must clear that with headroom
+    # and the previous 4500 MB figure (which `thirty_turn_ok` failed on) is
+    # no longer in effect.
+    assert manifest["ramBudgetMb"] == {"min": 4000, "recommended": 5500}
     assert stage.validate_manifest(manifest, require_publish_ready=False) == ()
     publish_errors = stage.validate_manifest(manifest)
     assert any("textEval" in err for err in publish_errors)

@@ -1427,9 +1427,7 @@ export function patchAutonomousTypeError(root, log = console.log) {
     let source = readFileSync(filePath, "utf8");
     // Skip if already fixed by widening through the generated API surface.
     if (
-      source.includes(
-        "as Partial<SubscriptionAuthApi> as SubscriptionAuthApi",
-      )
+      source.includes("as Partial<SubscriptionAuthApi> as SubscriptionAuthApi")
     )
       continue;
     if (source.includes("as SubscriptionAuthApi")) {

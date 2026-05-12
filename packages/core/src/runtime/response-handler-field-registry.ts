@@ -87,6 +87,17 @@ export class ResponseHandlerFieldRegistry {
 	 *
 	 * All fields are REQUIRED (per the user directive). The LLM emits the
 	 * declared empty value for fields that don't apply this turn.
+	 *
+	 * Canonical-source note: this is the schema the Stage-1 LLM actually
+	 * receives in production — `services/message.ts` passes it to
+	 * `createHandleResponseTool({ parameters: ... })`, and `buildResponseGrammar`
+	 * (`./response-grammar.ts`) composes the GBNF skeleton from the same
+	 * registered field set. The static `HANDLE_RESPONSE_SCHEMA` /
+	 * `HANDLE_RESPONSE_DIRECT_SCHEMA` in `../actions/to-tool.ts` are the legacy
+	 * W3 flat-envelope shape (different field set) kept only as the default tool
+	 * `parameters` and for the back-compat trajectory parser; see the
+	 * `TODO(consolidate)` block on `HANDLE_RESPONSE_SCHEMA` there for why the two
+	 * have not yet been unified.
 	 */
 	composeSchema(): JSONSchema {
 		if (this.cachedSchema) return this.cachedSchema;

@@ -25,7 +25,7 @@ Companion to [`23-ai-qa-master-plan.md`](./23-ai-qa-master-plan.md). This doc is
 
 These are the issues the AI flagged as user-visible failure or critical drift, ranked by likely impact:
 
-1. **`packages/ui/src/state/persistence.ts:50-52,70-76` — `prefers-color-scheme` is ignored on first launch.** `normalizeUiTheme` returns `"dark"` for any non-`"light"` value (including missing/null). Every macOS-light-mode user gets a dark Milady at first boot despite the OS already saying what they prefer. Single-call-site fix: add `window.matchMedia("(prefers-color-scheme: light)")` check before defaulting. **P1, low-risk, high-impact.** (WS6 finding #1, visually confirmed in `reports/ai-qa/broad-002/captures/connectors/connectors__mobile__light.png` — the page is dark despite `theme=light`.)
+1. **`packages/ui/src/state/persistence.ts:50-52,70-76` — `prefers-color-scheme` is ignored on first launch.** `normalizeUiTheme` returns `"dark"` for any non-`"light"` value (including missing/null). Every macOS-light-mode user gets a dark Eliza at first boot despite the OS already saying what they prefer. Single-call-site fix: add `window.matchMedia("(prefers-color-scheme: light)")` check before defaulting. **P1, low-risk, high-impact.** (WS6 finding #1, visually confirmed in `reports/ai-qa/broad-002/captures/connectors/connectors__mobile__light.png` — the page is dark despite `theme=light`.)
 
 2. **`plugins/plugin-health/src/connectors/index.ts:39-46` + `contracts/lifeops.ts:325-330` — Apple Health and Google Fit are registered but unreachable from LifeOps.** Route validator returns HTTP 400 and the Settings UI map has no entry. Users who hit Settings → LifeOps health expect to see "connect Apple Health" and there's no path. **P0.** (WS2 finding #1.)
 

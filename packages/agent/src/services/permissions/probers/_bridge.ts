@@ -283,7 +283,7 @@ let nativeLibResolved = false;
 
 const DYLIB_CANDIDATES = [
   // Absolute env override
-  process.env.MILADY_NATIVE_PERMISSIONS_DYLIB ?? "",
+  process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "",
   // Source worktree layout — relative to this prober file
   "../../../../../app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
   // Worktree layout — relative to the agent package

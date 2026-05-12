@@ -54,10 +54,35 @@ const agentRoot = path.resolve(here, "..");
 // the source of every "could not locate @electric-sql/pglite/dist" or
 // "agent-bundle.js not found" error in CI.)
 const repoRoot = path.resolve(agentRoot, "..", "..");
-const outDir = path.join(agentRoot, "dist-mobile");
+
+// Target selection. `--target=android` (default) preserves existing behavior;
+// `--target=ios` swaps in iOS-specific stubs and sets ELIZA_PLATFORM=ios at
+// bundle time. `--target=ios-jsc` produces an ESM bundle for the iOS
+// JSContext runtime: Bun.build runs with target=browser (no inlined Bun
+// CJS-on-V8 shims) and a polyfill prefix from
+// native/ios-bun-port/polyfill/dist/polyfill-prefix.js is concatenated on
+// top to install Bun + Node module shims over globalThis.__ELIZA_BRIDGE__.
+const targetArg = (
+  process.argv.find((a) => a.startsWith("--target=")) ?? ""
+).split("=")[1];
+const TARGET = targetArg || process.env.ELIZA_MOBILE_TARGET || "android";
+if (TARGET !== "android" && TARGET !== "ios" && TARGET !== "ios-jsc") {
+  console.error(
+    `[build-mobile] FATAL: unknown --target=${TARGET}; expected 'android', 'ios', or 'ios-jsc'`,
+  );
+  process.exit(1);
+}
+
+const OUT_DIRS = {
+  android: "dist-mobile",
+  ios: "dist-mobile-ios",
+  "ios-jsc": "dist-mobile-ios-jsc",
+};
+const outDir = path.join(agentRoot, OUT_DIRS[TARGET]);
 const stubsDir = path.join(here, "mobile-stubs");
 const entry = path.join(agentRoot, "src", "bin.ts");
 
+console.log("[build-mobile] target:", TARGET);
 console.log("[build-mobile] agent root:", agentRoot);
 console.log("[build-mobile] output dir:", outDir);
 
@@ -280,6 +305,49 @@ const nativeStubs = {
   "react/jsx-runtime": path.join(stubsDir, "react-jsx-runtime.cjs"),
   "react/jsx-dev-runtime": path.join(stubsDir, "react-jsx-runtime.cjs"),
 };
+
+// iOS-specific overrides. The iOS Bun port (see native/ios-bun-port/) forbids
+// `child_process` / `Bun.spawn` (kernel sandbox), restricts `bun:ffi` to
+// statically-linked symbols, and routes `os.homedir()` through env vars set by
+// ElizaBunRuntime.swift. These stubs surface the platform constraints as JS
+// runtime errors rather than module-load crashes.
+if (TARGET === "ios" || TARGET === "ios-jsc") {
+  nativeStubs["node:child_process"] = path.join(
+    stubsDir,
+    "ios-child-process.cjs",
+  );
+  nativeStubs["child_process"] = path.join(stubsDir, "ios-child-process.cjs");
+  nativeStubs["node:os"] = path.join(stubsDir, "ios-os.cjs");
+  // Note: `bun:ffi` is provided natively by the iOS Bun runtime; the
+  // ios-ffi.cjs stub only loads in dev/desktop fallbacks where this bundle
+  // is being run outside the iOS port. We do NOT remap `bun:ffi` here so
+  // the native implementation wins on iOS device builds.
+}
+
+// ios-jsc adds throw-on-use stubs for Node built-ins not exposed by the
+// JSContext bridge v1 surface, plus a passthrough DNS shim (URLSession
+// resolves DNS for us, so dns.lookup just returns the input). bun:ffi is
+// remapped to the existing ios-ffi.cjs stub here — there is no native
+// bun:ffi inside JSContext, unlike the iOS Bun port target.
+if (TARGET === "ios-jsc") {
+  const throwStub = path.join(stubsDir, "ios-jsc-throw.cjs");
+  const dnsStub = path.join(stubsDir, "ios-jsc-dns.cjs");
+  nativeStubs["node:net"] = throwStub;
+  nativeStubs["net"] = throwStub;
+  nativeStubs["node:tls"] = throwStub;
+  nativeStubs["tls"] = throwStub;
+  nativeStubs["node:dgram"] = throwStub;
+  nativeStubs["dgram"] = throwStub;
+  nativeStubs["node:cluster"] = throwStub;
+  nativeStubs["cluster"] = throwStub;
+  nativeStubs["node:worker_threads"] = throwStub;
+  nativeStubs["worker_threads"] = throwStub;
+  nativeStubs["node:dns"] = dnsStub;
+  nativeStubs["dns"] = dnsStub;
+  nativeStubs["node:dns/promises"] = dnsStub;
+  nativeStubs["dns/promises"] = dnsStub;
+  nativeStubs["bun:ffi"] = path.join(stubsDir, "ios-ffi.cjs");
+}
 
 // Optional @elizaos plugins that the agent runtime statically references but
 // transitively pull in old/incompatible `@elizaos/core` versions. Stubbing
@@ -522,6 +590,63 @@ const zodCjsResolverPlugin = {
   },
 };
 
+function findEthersCommonJsIndex() {
+  const candidates = [];
+  const directPackageRoots = [
+    path.resolve(repoRoot, "node_modules", "ethers"),
+    path.resolve(agentRoot, "node_modules", "ethers"),
+  ];
+  for (const pkgRoot of directPackageRoots) {
+    candidates.push(path.join(pkgRoot, "lib.commonjs", "index.js"));
+  }
+
+  const bunDirs = [
+    path.resolve(repoRoot, "node_modules", ".bun"),
+    path.resolve(agentRoot, "node_modules", ".bun"),
+  ];
+  for (const bunDir of bunDirs) {
+    for (const entry of readdirSyncSafe(bunDir)) {
+      if (!entry.startsWith("ethers@")) continue;
+      candidates.push(
+        path.join(
+          bunDir,
+          entry,
+          "node_modules",
+          "ethers",
+          "lib.commonjs",
+          "index.js",
+        ),
+      );
+    }
+  }
+
+  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+
+const ethersCommonJsIndex = findEthersCommonJsIndex();
+if (!ethersCommonJsIndex) {
+  console.error(
+    "[build-mobile] FATAL: could not locate ethers/lib.commonjs/index.js. " +
+      "Run `bun install` first.",
+  );
+  process.exit(1);
+}
+
+// Bun.build's large mobile ESM graph can lower `import { ethers }` or
+// `import * as ethers` to bare identifiers like `id2`, `keccak256`, and
+// `JsonRpcProvider` without emitting the corresponding bindings. Resolve
+// ethers through its CommonJS entry so Bun packages the real module object
+// with stable properties instead of relying on fragile ESM namespace lowering.
+const ethersCjsResolverPlugin = {
+  name: "eliza-mobile-ethers-cjs",
+  setup(build) {
+    build.onResolve({ filter: /^ethers$/ }, () => ({
+      path: ethersCommonJsIndex,
+      namespace: "file",
+    }));
+  },
+};
+
 // host-specific UI modules and any other workspace UI module that
 // pulls in CSS would otherwise be included in the bundle. Bun.build emits
 // a `.css` artifact in addition to the `.js`, and our `naming` template
@@ -684,19 +809,128 @@ if (!existsSync(bundlerTsconfig)) {
   process.exit(1);
 }
 
+// ios-jsc uses target=browser so Bun.build does NOT inline Bun's
+// CJS-on-V8 shims; the polyfill prefix from
+// native/ios-bun-port/polyfill/ supplies Bun + Node module shims at
+// runtime over globalThis.__ELIZA_BRIDGE__. The platform define
+// stays "ios" (so runtime feature gates that check ELIZA_PLATFORM=='ios'
+// fire), with a parallel ELIZA_RUNTIME='ios-jsc' for code that needs to
+// distinguish the JSContext + bridge environment from a real Bun runtime.
+const bunBuildTarget = TARGET === "ios-jsc" ? "browser" : "bun";
+const platformDefineValue = TARGET === "ios-jsc" ? "ios" : TARGET;
+
+// Browser-targeted Bun.build refuses Node built-ins outright; the polyfill
+// resolves these at runtime via __ELIZA_BRIDGE__, so we mark them external
+// and let the imports survive into the output. The list mirrors the modules
+// the polyfill exposes plus the long tail that workspace dependencies pull
+// in (timers, module, etc.). Anything not handled by the polyfill will
+// surface as a clear `require is not defined` / `Cannot find module` at
+// runtime — preferable to silently dropping the import at bundle time.
+const iosJscExternals =
+  TARGET === "ios-jsc"
+    ? [
+        "node:fs",
+        "node:fs/promises",
+        "node:path",
+        "node:os",
+        "node:crypto",
+        "node:url",
+        "node:util",
+        "node:stream",
+        "node:stream/web",
+        "node:stream/promises",
+        "node:stream/consumers",
+        "node:buffer",
+        "node:events",
+        "node:http",
+        "node:https",
+        "node:zlib",
+        "node:querystring",
+        "node:assert",
+        "node:assert/strict",
+        "node:async_hooks",
+        "node:child_process",
+        "node:net",
+        "node:tls",
+        "node:dgram",
+        "node:dns",
+        "node:dns/promises",
+        "node:cluster",
+        "node:worker_threads",
+        "node:perf_hooks",
+        "node:timers",
+        "node:timers/promises",
+        "node:string_decoder",
+        "node:readline",
+        "node:tty",
+        "node:vm",
+        "node:module",
+        "node:process",
+        "node:punycode",
+        "node:console",
+        "node:inspector",
+        "node:test",
+        "node:sqlite",
+        // Bare-name forms too — Bun.build treats these as distinct
+        // specifiers from the node:-prefixed forms.
+        "module",
+        "fs",
+        "fs/promises",
+        "path",
+        "os",
+        "crypto",
+        "url",
+        "util",
+        "stream",
+        "stream/web",
+        "stream/promises",
+        "buffer",
+        "events",
+        "http",
+        "https",
+        "zlib",
+        "querystring",
+        "assert",
+        "child_process",
+        "net",
+        "tls",
+        "dgram",
+        "dns",
+        "dns/promises",
+        "cluster",
+        "worker_threads",
+        "perf_hooks",
+        "timers",
+        "timers/promises",
+        "string_decoder",
+        "readline",
+        "tty",
+        "vm",
+        "process",
+        "punycode",
+        "console",
+        // bun:* specifiers — the polyfill exposes Bun.* under globalThis.Bun,
+        // and bun:sqlite / bun:ffi resolve through the polyfill module map.
+        "bun:sqlite",
+        // bun:ffi is intentionally NOT external — it's already mapped to
+        // ios-ffi.cjs via stubResolverPlugin and inlined for ios-jsc.
+      ]
+    : undefined;
+
 console.log("[build-mobile] starting Bun.build...");
 const buildResult = await Bun.build({
   entrypoints: [entry],
   outdir: outDir,
   naming: "[dir]/[name].[ext]",
-  target: "bun",
+  target: bunBuildTarget,
   format: "esm",
+  ...(iosJscExternals ? { external: iosJscExternals } : {}),
   tsconfig: bundlerTsconfig,
   // Don't minify. Bundling is already significant — this is a debugging step
   // to keep stack traces readable. Re-enable selectively if APK size matters.
   minify: false,
   define: {
-    "process.env.ELIZA_PLATFORM": JSON.stringify("android"),
+    "process.env.ELIZA_PLATFORM": JSON.stringify(platformDefineValue),
     // Disable the `isDirectRun` self-invocation guard in the agent's
     // `runtime/eliza.ts`. After bundling, `import.meta.url` and
     // `process.argv[1]` both resolve to the same bundle path, so the guard
@@ -706,16 +940,51 @@ const buildResult = await Bun.build({
     // the whole process down. Defining the marker as `false` flattens the
     // branch at build time.
     "process.env.ELIZA_DISABLE_DIRECT_RUN": JSON.stringify("1"),
+    "globalThis.__ELIZA_MOBILE_BUNDLE__": JSON.stringify(true),
+    // ios-jsc-only defines. Code can branch on ELIZA_RUNTIME='ios-jsc'
+    // to detect the JSContext + bridge runtime, and the global flags let
+    // the polyfill prefix flip behaviour without re-reading process.env
+    // (the polyfill is loaded before process.env is fully simulated).
+    ...(TARGET === "ios-jsc"
+      ? {
+          "process.env.ELIZA_RUNTIME": JSON.stringify("ios-jsc"),
+          "globalThis.__ELIZA_IOS_JSC__": JSON.stringify(true),
+          "globalThis.__ELIZA_BRIDGE_VERSION_REQUIRED__": JSON.stringify("v1"),
+        }
+      : {}),
   },
   plugins: [
     coreTestingStripPlugin,
     zodCjsResolverPlugin,
+    ethersCjsResolverPlugin,
     stubCssPlugin,
     dedupePlugin,
     nativeCapacitorPlugin,
     workspaceSrcFallbackPlugin,
     stripStaleJsArtifactsPlugin,
     stubResolverPlugin,
+    // ios-jsc: actively mark Node built-ins as external via onResolve so
+    // Bun.build's browser target stops substituting its incomplete browser
+    // polyfills (e.g. node:url without pathToFileURL). The polyfill prefix
+    // resolves these at runtime via __ELIZA_BRIDGE__. Comes AFTER
+    // stubResolverPlugin so explicit stubs (ios-jsc-throw, ios-os, etc.)
+    // still win for the modules we want to inline.
+    ...(TARGET === "ios-jsc"
+      ? [
+          {
+            name: "ios-jsc-node-externals",
+            setup(build) {
+              const externalSet = new Set(iosJscExternals ?? []);
+              build.onResolve({ filter: /.*/ }, (args) => {
+                if (externalSet.has(args.path)) {
+                  return { path: args.path, external: true };
+                }
+                return undefined;
+              });
+            },
+          },
+        ]
+      : []),
   ],
 });
 
@@ -727,14 +996,18 @@ if (!buildResult.success) {
   process.exit(1);
 }
 
-const bundlePath = path.join(outDir, "agent-bundle.js");
+// ios-jsc ships the bundle as `agent-bundle-ios.js` (matches the iOS
+// app's loader expectation); android + ios-bun stay on `agent-bundle.js`.
+const bundleFilename =
+  TARGET === "ios-jsc" ? "agent-bundle-ios.js" : "agent-bundle.js";
+const bundlePath = path.join(outDir, bundleFilename);
 const defaultEntryPath = path.join(outDir, "bin.js");
 if (!existsSync(bundlePath) && existsSync(defaultEntryPath)) {
   await rename(defaultEntryPath, bundlePath);
 }
 if (!existsSync(bundlePath)) {
   console.error(
-    "[build-mobile] FATAL: agent-bundle.js not produced at",
+    `[build-mobile] FATAL: ${bundleFilename} not produced at`,
     bundlePath,
   );
   console.error(
@@ -857,16 +1130,92 @@ console.log(
 );
 const polyfillHeader = `${polyfillLines.join("\n")}\n`;
 const polyfillFooter = "";
+
+// ios-jsc: prepend the JSContext polyfill from
+// native/ios-bun-port/polyfill/dist/polyfill-prefix.js (built in parallel
+// by the polyfill agent). The prefix installs Bun + Node module shims
+// over globalThis.__ELIZA_BRIDGE__. If the file is missing (parallel
+// build hasn't finished yet) emit a banner comment and proceed so the
+// pipeline keeps moving — the polyfill can be concatenated at install
+// time on the device side.
+let iosJscPolyfillSrc = "";
+let iosJscPolyfillBundled = false;
+if (TARGET === "ios-jsc") {
+  const polyfillCandidates = [
+    path.resolve(
+      repoRoot,
+      "native",
+      "ios-bun-port",
+      "polyfill",
+      "dist",
+      "polyfill-prefix.js",
+    ),
+    // Compatibility for older checkouts that kept native/ beside the repo.
+    path.resolve(
+      repoRoot,
+      "..",
+      "native",
+      "ios-bun-port",
+      "polyfill",
+      "dist",
+      "polyfill-prefix.js",
+    ),
+  ];
+  const polyfillPath =
+    polyfillCandidates.find((candidate) => existsSync(candidate)) ??
+    polyfillCandidates[0];
+  if (existsSync(polyfillPath)) {
+    iosJscPolyfillSrc = await Bun.file(polyfillPath).text();
+    iosJscPolyfillBundled = true;
+    console.log(
+      `[build-mobile] prepended ios-jsc polyfill (${(iosJscPolyfillSrc.length / 1024).toFixed(1)} KB) from ${polyfillPath}`,
+    );
+  } else {
+    iosJscPolyfillSrc =
+      "// WARNING: ios-jsc polyfill prefix not found at " +
+      polyfillPath +
+      "\n" +
+      "// This bundle assumes the polyfill prefix is prepended at install time.\n" +
+      "// Without it, __ELIZA_BRIDGE__-backed Bun + Node shims will be missing\n" +
+      "// and the agent will crash at first `require('node:fs')` / `Bun.serve()`.\n";
+    console.warn(
+      `[build-mobile] WARNING: ios-jsc polyfill missing at ${polyfillPath}; ` +
+        "emitting agent code with a banner comment only. " +
+        "Prepend the polyfill at install time before evaluating in JSContext.",
+    );
+  }
+}
+
+// The bridge-version guard is appended after the polyfill so the polyfill
+// itself defines __ELIZA_BRIDGE__ usage; the guard runs before the agent
+// bundle and aborts fast on a version mismatch.
+const iosJscBridgeCheck =
+  TARGET === "ios-jsc"
+    ? "if (typeof globalThis.__ELIZA_BRIDGE__ === 'undefined') {\n" +
+      "  throw new Error('[ios-jsc] __ELIZA_BRIDGE__ is not installed; the Swift Capacitor host must inject it before evaluating this bundle.');\n" +
+      "}\n" +
+      "if (globalThis.__ELIZA_BRIDGE__ && globalThis.__ELIZA_BRIDGE__.version && globalThis.__ELIZA_BRIDGE__.version !== 'v1') {\n" +
+      "  throw new Error('[ios-jsc] __ELIZA_BRIDGE__ version mismatch: bundle requires v1, host provided ' + globalThis.__ELIZA_BRIDGE__.version);\n" +
+      "}\n"
+    : "";
+
 let prefixed;
 if (bundleSrc.startsWith("#!")) {
   const nlIndex = bundleSrc.indexOf("\n");
   prefixed =
     bundleSrc.slice(0, nlIndex + 1) +
+    iosJscPolyfillSrc +
+    iosJscBridgeCheck +
     polyfillHeader +
     bundleSrc.slice(nlIndex + 1) +
     polyfillFooter;
 } else {
-  prefixed = polyfillHeader + bundleSrc + polyfillFooter;
+  prefixed =
+    iosJscPolyfillSrc +
+    iosJscBridgeCheck +
+    polyfillHeader +
+    bundleSrc +
+    polyfillFooter;
 }
 await Bun.write(bundlePath, prefixed);
 
@@ -875,7 +1224,7 @@ const nativeNodeOutputs = (await readdir(outDir)).filter((file) =>
 );
 if (nativeNodeOutputs.length > 0) {
   console.error(
-    "[build-mobile] FATAL: native Node addon(s) leaked into the Android mobile payload:",
+    `[build-mobile] FATAL: native Node addon(s) leaked into the ${TARGET} mobile payload:`,
     nativeNodeOutputs.join(", "),
   );
   console.error(
@@ -932,9 +1281,9 @@ for (const asset of ["vector.tar.gz", "fuzzystrmatch.tar.gz"]) {
 
 const manifest = {
   generatedAt: new Date().toISOString(),
-  bundle: "agent-bundle.js",
-  bunTarget: "bun",
-  platform: "android",
+  bundle: bundleFilename,
+  bunTarget: bunBuildTarget,
+  platform: TARGET,
   pglite: {
     wasm: "pglite.wasm",
     initdb: "initdb.wasm",
@@ -977,6 +1326,32 @@ await writeFile(
   JSON.stringify(manifest, null, 2),
 );
 console.log("[build-mobile] wrote plugins-manifest.json");
+
+// ios-jsc gets an additional `manifest.json` next to the bundle for the
+// Swift Capacitor loader: it lists the bridge version the bundle needs
+// and a sha256 fingerprint so the host can verify the asset on launch.
+if (TARGET === "ios-jsc") {
+  const finalBundleBytes = await Bun.file(bundlePath).bytes();
+  const sha256 = new Bun.CryptoHasher("sha256")
+    .update(finalBundleBytes)
+    .digest("hex");
+  const iosJscManifest = {
+    target: "ios-jsc",
+    bundle: bundleFilename,
+    bundle_size_bytes: finalBundleBytes.length,
+    bridge_version_required: "v1",
+    polyfill_bundled: iosJscPolyfillBundled,
+    sha256,
+    generatedAt: new Date().toISOString(),
+  };
+  await writeFile(
+    path.join(outDir, "manifest.json"),
+    JSON.stringify(iosJscManifest, null, 2),
+  );
+  console.log(
+    `[build-mobile] wrote manifest.json (sha256=${sha256.slice(0, 16)}..., polyfill_bundled=${iosJscPolyfillBundled})`,
+  );
+}
 
 console.log("[build-mobile] done.");
 console.log("[build-mobile] outputs:");

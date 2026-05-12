@@ -15,6 +15,7 @@ import asyncio
 import logging
 import os
 import sys
+from pathlib import Path
 from typing import Optional
 
 from .eliza_1_bundle import (
@@ -44,6 +45,45 @@ _DOMAIN_CHOICES = tuple(d.value for d in Domain)
 _MODE_CHOICES = tuple(m.value for m in ScenarioMode)
 _MODEL_TIER_CHOICES = tuple(DEFAULT_TIERS.keys())
 _SUITE_CHOICES = tuple(SUITES.keys())
+
+
+def _load_env_file(path: Path) -> None:
+    """Load KEY=VALUE pairs from *path* without overriding existing env."""
+    if not path.exists() or not path.is_file():
+        return
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+        value = value.strip()
+        if (
+            len(value) >= 2
+            and value[0] == value[-1]
+            and value[0] in {"'", '"'}
+        ):
+            value = value[1:-1]
+        os.environ[key] = value
+
+
+def _load_default_env_files() -> None:
+    """Mirror orchestrator dotenv loading for direct LifeOps CLI runs."""
+    repo_root = Path(__file__).resolve().parents[4]
+    for candidate in (
+        repo_root / ".env",
+        repo_root.parent / ".env",
+        Path.cwd() / ".env",
+    ):
+        _load_env_file(candidate)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -112,8 +152,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--concurrency",
         type=int,
-        default=4,
-        help="Max concurrent scenario evaluations (default: 4)",
+        default=2,
+        help=(
+            "Max concurrent scenario evaluations (default: 2). The default was "
+            "lowered from 4 after W2-9 observed Cerebras 429s at concurrency=4 "
+            "on the hermes suite. Raise back to 4+ for non-Cerebras providers."
+        ),
     )
     parser.add_argument(
         "--seeds",
@@ -221,6 +265,9 @@ def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_ov
         return None
     if name == "eliza":
         try:
+            from .agents.adapter_paths import ensure_benchmark_adapter_importable
+
+            ensure_benchmark_adapter_importable("eliza")
             from .agents import build_eliza_agent  # type: ignore[attr-defined]
         except ImportError as exc:
             raise SystemExit(
@@ -278,7 +325,7 @@ def _apply_eliza_one_bundle_override(
     """Honor ``ELIZA_1_MODEL_BUNDLE`` to point the harness at a GGUF bundle.
 
     When set, reads the bundle's manifest, propagates the pre-release flag
-    through ``MILADY_BENCH_PRE_RELEASE`` (read by ``scripts/aggregate-lifeops-run.mjs``
+    through ``ELIZA_BENCH_PRE_RELEASE`` (read by ``scripts/aggregate-lifeops-run.mjs``
     and the runner when it stamps ``RunMetrics.preRelease``), and rewrites the
     tier spec so downstream agent / client factories see the local-llama-cpp
     endpoint instead of the registry default.
@@ -294,10 +341,10 @@ def _apply_eliza_one_bundle_override(
         return None, base
     manifest = read_eliza_one_bundle(bundle_path)
     pre_release = bundle_is_pre_release(manifest)
-    # The aggregator reads MILADY_BENCH_PRE_RELEASE on every emitted report.
+    # The aggregator reads ELIZA_BENCH_PRE_RELEASE on every emitted report.
     # `1` is the only value the aggregator parses as truthy — keep that
     # explicit (no surrounding whitespace, no "true"/"yes" shortcut here).
-    os.environ["MILADY_BENCH_PRE_RELEASE"] = "1" if pre_release else "0"
+    os.environ["ELIZA_BENCH_PRE_RELEASE"] = "1" if pre_release else "0"
     # Spawn the dflash local-llama-cpp server pointing at the bundle weights.
     # We pass the weights path through MODEL_BUNDLE_OVERRIDE so downstream TS
     # readers (live-provider.ts, model-tiers.ts) see the same value, and we
@@ -347,7 +394,7 @@ def _spawn_dflash_server_for_bundle(
         return os.environ["PARALLAX_OPENCODE_BASE_URL"]
     dflash_root = (
         os.environ.get("ELIZA_DFLASH_LLAMA_DIR")
-        or os.path.expanduser("~/.cache/eliza-dflash/milady-llama-cpp")
+        or os.path.expanduser("~/.cache/eliza-dflash/eliza-llama-cpp")
     )
     binary = os.path.join(dflash_root, "build", "bin", "llama-server")
     if not os.path.exists(binary):
@@ -392,10 +439,10 @@ def _spawn_dflash_server_for_bundle(
 def _build_world_factory():
     """Snapshot-aware world factory.
 
-    Wave 2A scenarios reference the medium snapshot (seed=2026, ids like
-    `event_00040`); the tiny snapshot is seed=42. Both load from the on-disk
-    JSON snapshots so referenced entity ids resolve. Anything else falls back
-    to a fresh `WorldGenerator` populated at the small scale.
+    The medium snapshot (seed=2026) carries ids like `event_00040`; the tiny
+    snapshot is seed=42. Both load from the on-disk JSON snapshots so
+    referenced entity ids resolve. Anything else falls back to a fresh
+    `WorldGenerator` populated at the small scale.
     """
     from .lifeworld import LifeWorld
     from .lifeworld.generators import WorldGenerator
@@ -412,6 +459,21 @@ def _build_world_factory():
         )
 
     return factory
+
+
+def _needs_live_evaluator(
+    scenarios,
+    *,
+    domain: Domain | None,
+    mode: ScenarioMode | None,
+) -> bool:
+    """Whether the post-filter scenario set contains LIVE cases."""
+    return any(
+        s.mode is ScenarioMode.LIVE
+        for s in scenarios
+        if (domain is None or s.domain == domain)
+        and (mode is None or s.mode == mode)
+    )
 
 
 async def _run(args: argparse.Namespace) -> None:
@@ -435,10 +497,10 @@ async def _run(args: argparse.Namespace) -> None:
         scenarios = list(ALL_SCENARIOS)
 
     tier_spec = resolve_tier()
-    # Wave 3-B: when ELIZA_1_MODEL_BUNDLE is set, override the resolved tier
+    # When ELIZA_1_MODEL_BUNDLE is set, override the resolved tier
     # so the harness boots the dflash local-llama-cpp server pointing at the
     # bundle's GGUF weights. The bundle manifest's pre-release flag is
-    # propagated through MILADY_BENCH_PRE_RELEASE so the aggregator stamps
+    # propagated through ELIZA_BENCH_PRE_RELEASE so the aggregator stamps
     # `preRelease: true` on every emitted RunMetrics + report.json.
     eliza_one_manifest, tier_spec = _apply_eliza_one_bundle_override(tier_spec)
     evaluator_model = args.evaluator_model or tier_spec.model_name
@@ -508,6 +570,27 @@ async def _run(args: argparse.Namespace) -> None:
         print(f"[dry-run] resolved {len(scenarios)} scenarios; skipping execution.")
         return
 
+    simulated_user_client = None
+    judge_client = None
+    if _needs_live_evaluator(scenarios, domain=domain, mode=mode):
+        try:
+            from .clients.base import ProviderError
+            from .clients.factory import make_client
+        except ImportError as exc:
+            raise SystemExit(
+                "LIVE mode requires LifeOpsBench client providers; failed to "
+                f"import client factory: {exc}"
+            ) from exc
+        try:
+            simulated_user_client = make_client("cerebras", model=evaluator_model)
+            judge_client = make_client("anthropic", model=args.judge_model)
+        except ProviderError as exc:
+            raise SystemExit(
+                "LIVE mode requires CEREBRAS_API_KEY for the simulated user "
+                "and ANTHROPIC_API_KEY for the judge. "
+                f"Client setup failed: {exc}"
+            ) from exc
+
     runner = LifeOpsBenchRunner(
         agent_fn=agent_fn,
         agent_factory=agent_factory,
@@ -520,6 +603,8 @@ async def _run(args: argparse.Namespace) -> None:
         max_cost_usd=args.max_cost_usd,
         per_scenario_timeout_s=args.per_scenario_timeout_s,
         abort_on_budget_exceeded=args.abort_on_budget_exceeded,
+        simulated_user_client=simulated_user_client,
+        judge_client=judge_client,
     )
 
     result = await runner.run_filtered(domain=domain, mode=mode)
@@ -529,6 +614,7 @@ async def _run(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    _load_default_env_files()
     parser = _build_parser()
     args = parser.parse_args()
 

@@ -10,6 +10,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HANDLE_RESPONSE_TOOL_NAME } from "../actions/to-tool";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
+import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import { runV5MessageRuntimeStage1 } from "../services/message";
 import type {
 	Action,
@@ -33,6 +35,14 @@ const RESPONSE_ID = "10000000-0000-0000-0000-000000000005" as UUID;
 interface CannedResponse {
 	expectModelType?: string;
 	body: unknown;
+}
+
+function createResponseHandlerFieldRegistry(): ResponseHandlerFieldRegistry {
+	const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
+	for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
+		responseHandlerFieldRegistry.register(evaluator);
+	}
+	return responseHandlerFieldRegistry;
 }
 
 function makeMessage(): Memory {
@@ -95,6 +105,7 @@ function makeRuntime(opts: {
 	contextRegistry?: ContextRegistry;
 }): IAgentRuntime {
 	const queue = [...opts.responses];
+	const responseHandlerFieldRegistry = createResponseHandlerFieldRegistry();
 	const calls: Array<{
 		modelType: unknown;
 		params: unknown;
@@ -106,6 +117,10 @@ function makeRuntime(opts: {
 		actions: opts.actions,
 		providers: [],
 		contexts: opts.contextRegistry,
+		responseHandlerFieldRegistry,
+		responseHandlerFieldEvaluators: [
+			...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+		],
 		composeState: vi.fn(async () => opts.state),
 		emitEvent: vi.fn(async () => undefined),
 		runActionsByMode: vi.fn(async () => []),
@@ -197,9 +212,9 @@ let originalEnv: NodeJS.ProcessEnv;
 beforeEach(() => {
 	tempDir = mkdtempSync(join(tmpdir(), "v5-stress-compaction-"));
 	originalEnv = { ...process.env };
-	process.env.MILADY_TRAJECTORY_DIR = tempDir;
-	process.env.MILADY_TRAJECTORY_RECORDING = "1";
-	process.env.MILADY_TRAJECTORY_REVIEW_MODE = "1";
+	process.env.ELIZA_TRAJECTORY_DIR = tempDir;
+	process.env.ELIZA_TRAJECTORY_RECORDING = "1";
+	process.env.ELIZA_TRAJECTORY_REVIEW_MODE = "1";
 });
 
 afterEach(() => {
@@ -568,7 +583,7 @@ describe("v5 stress path — long build, compaction, gates, trajectory export", 
 		writeFileSync(exportPath, jsonl, "utf8");
 		const exported = readFileSync(exportPath, "utf8");
 		expect(exported).toContain('"trajectoryId"');
-		const reviewExportDir = process.env.MILADY_V5_STRESS_EXPORT_DIR;
+		const reviewExportDir = process.env.ELIZA_V5_STRESS_EXPORT_DIR;
 		if (reviewExportDir) {
 			mkdirSync(reviewExportDir, { recursive: true });
 			writeFileSync(

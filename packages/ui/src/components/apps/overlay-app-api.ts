@@ -39,7 +39,7 @@ export interface OverlayApp {
   /** Optional hero image shown in app cards and chat widgets. */
   readonly heroImage?: string | null;
   /**
-   * When true, the app should only appear in the catalog on MiladyOS Android.
+   * When true, the app should only appear in the catalog on ElizaOS Android.
    * Apps that wrap Android-only Capacitor native plugins (WiFi, Contacts,
    * Phone) set this so they are hidden on stock Android, iOS, desktop, and
    * web. Stock Android APKs do not expose these privileged OS-control surfaces.

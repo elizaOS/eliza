@@ -1,4 +1,3 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, JsonValue } from "@elizaos/core";
 import { logger, Service } from "@elizaos/core";
 import type { StakingPool } from "@steerprotocol/sdk";
@@ -15,9 +14,13 @@ import { arbitrum, base, mainnet, optimism, polygon } from "viem/chains";
 import type {
   SteerStakingPoolDetailInput,
   SteerVaultDetailInput,
+  SteerVaultPositionRow,
 } from "../steer-display-types.js";
 
+type SteerClientCtor = ConstructorParameters<typeof SteerClient>;
+type VaultClientCtor = ConstructorParameters<typeof VaultClient>;
 type StakingClientCtor = ConstructorParameters<typeof StakingClient>;
+type HexAddress = `0x${string}`;
 
 type SteerEarnedRewardsResult = Awaited<ReturnType<StakingClient["earned"]>>;
 type SteerStakingSupplyResult = Awaited<
@@ -49,7 +52,7 @@ interface RawSteerVault {
   name?: string;
   token0?: string | { address?: string };
   token1?: string | { address?: string };
-  pool?: { poolAddress?: string; feeTier?: number };
+  pool?: { poolAddress?: string; feeTier?: number | string };
   poolAddress?: string;
   fee?: number;
   aprData?: Record<string, number>;
@@ -57,6 +60,19 @@ interface RawSteerVault {
   apr?: number;
   tvl?: number;
   volume24h?: number;
+  isActive?: boolean;
+  createdAt?: number | string;
+  protocol?: string;
+  strategyType?: string;
+  positions?: SteerVaultPositionRow[];
+  ammType?: string | number;
+  singleAssetDepositContract?: string;
+  beaconName?: string;
+  protocolBaseType?: string;
+  targetProtocol?: string;
+  feeApr?: number;
+  stakingApr?: number;
+  merklApr?: number;
 }
 
 // Supported chain IDs
@@ -121,10 +137,157 @@ interface GraphQLVaultData {
   deployer: string;
 }
 
-interface GraphQLResponse {
-  data: {
-    vault: GraphQLVaultData;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
+function formatLogError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isHexAddress(value: unknown): value is HexAddress {
+  return typeof value === "string" && /^0x[a-fA-F0-9]{40}$/.test(value);
+}
+
+function getSdkError(response: unknown): string | undefined {
+  if (!isRecord(response)) {
+    return undefined;
+  }
+  return typeof response.error === "string" ? response.error : undefined;
+}
+
+function isSuccessfulSdkResponse(
+  response: unknown,
+): response is { success: true; data: unknown; error?: unknown } {
+  return (
+    isRecord(response) &&
+    response.success === true &&
+    response.data !== null &&
+    response.data !== undefined
+  );
+}
+
+function getEdgesFromData(data: unknown): unknown[] {
+  if (!isRecord(data) || !Array.isArray(data.edges)) {
+    return [];
+  }
+  return data.edges;
+}
+
+function isRawSteerVault(value: unknown): value is RawSteerVault {
+  return (
+    isRecord(value) &&
+    (typeof value.vaultAddress === "string" ||
+      typeof value.address === "string" ||
+      typeof value.name === "string" ||
+      isRecord(value.pool))
+  );
+}
+
+function getRawVaultNodes(response: unknown): RawSteerVault[] {
+  if (!isSuccessfulSdkResponse(response)) {
+    return [];
+  }
+
+  return getEdgesFromData(response.data)
+    .map((edge) => (isRecord(edge) ? edge.node : undefined))
+    .filter(isRawSteerVault);
+}
+
+function isSteerPoolNode(value: unknown): value is SteerPoolNode {
+  return (
+    isRecord(value) &&
+    (typeof value.poolAddress === "string" || typeof value.id === "string")
+  );
+}
+
+function getPoolNodes(response: unknown): SteerPoolNode[] {
+  if (!isSuccessfulSdkResponse(response)) {
+    return [];
+  }
+
+  return getEdgesFromData(response.data)
+    .map((edge) => (isRecord(edge) ? edge.node : undefined))
+    .filter(isSteerPoolNode);
+}
+
+function getResponseDebug(response: unknown): Record<string, unknown> {
+  const responseRecord = isRecord(response) ? response : {};
+  const data = responseRecord.data;
+  const edges = isRecord(data) ? data.edges : undefined;
+
+  return {
+    success: responseRecord.success === true,
+    hasData: data !== null && data !== undefined,
+    dataType: typeof data,
+    isArray: Array.isArray(data),
+    hasEdges: Array.isArray(edges),
+    edgesLength: Array.isArray(edges) ? edges.length : 0,
   };
+}
+
+function isGraphQLTokenRef(
+  value: unknown,
+): value is GraphQLVaultData["strategyToken"] {
+  if (!isRecord(value) || !isRecord(value.creator)) {
+    return false;
+  }
+
+  return (
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.creator.id === "string" &&
+    typeof value.admin === "string"
+  );
+}
+
+function isGraphQLVaultData(value: unknown): value is GraphQLVaultData {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const requiredStringFields = [
+    "id",
+    "name",
+    "token0",
+    "token1",
+    "pool",
+    "weeklyFeeAPR",
+    "token0Symbol",
+    "token0Decimals",
+    "token1Symbol",
+    "token1Decimals",
+    "token0Balance",
+    "token1Balance",
+    "totalLPTokensIssued",
+    "feeTier",
+    "fees0",
+    "fees1",
+    "beaconName",
+    "payloadIpfs",
+    "deployer",
+  ];
+
+  return (
+    requiredStringFields.every((field) => typeof value[field] === "string") &&
+    isGraphQLTokenRef(value.strategyToken)
+  );
+}
+
+function getGraphQLVaultData(response: unknown): GraphQLVaultData | null {
+  if (!isRecord(response) || !isRecord(response.data)) {
+    return null;
+  }
+
+  return isGraphQLVaultData(response.data.vault) ? response.data.vault : null;
+}
+
+function hasGraphQLMeta(response: unknown): boolean {
+  return (
+    isRecord(response) &&
+    isRecord(response.data) &&
+    isRecord(response.data._meta)
+  );
 }
 
 /**
@@ -145,7 +308,7 @@ export class SteerLiquidityService extends Service {
   capabilityDescription =
     "Provides detailed access to Steer Finance vaults and staking pools for specific tokens using the official SDK." as const;
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
 
     // Initialize supported chains
@@ -159,12 +322,16 @@ export class SteerLiquidityService extends Service {
         transport: http(),
       });
 
-      this.steerClient = new SteerClient({
+      const steerClientConfig = {
         client: viemClient,
-      });
+      } as unknown as SteerClientCtor[0];
+      this.steerClient = new SteerClient(steerClientConfig);
       logger.log("Steer SDK client initialized successfully");
     } catch (error) {
-      logger.error("Failed to initialize Steer SDK client:", error);
+      logger.error(
+        "Failed to initialize Steer SDK client:",
+        formatLogError(error),
+      );
       throw new Error("Steer SDK initialization failed");
     }
 
@@ -178,10 +345,10 @@ export class SteerLiquidityService extends Service {
     );
 
     // Verify runtime has required methods
-    if (!runtime.getService) {
+    if (!runtime?.getService) {
       logger.warn("Runtime missing getService method");
     }
-    if (!runtime.getCache) {
+    if (!runtime?.getCache) {
       logger.warn("Runtime missing getCache method");
     }
 
@@ -231,15 +398,15 @@ export class SteerLiquidityService extends Service {
 
         // Initialize vault client for this chain
         const vaultClient = new VaultClient(
-          publicClient,
-          walletClient,
+          publicClient as unknown as VaultClientCtor[0],
+          walletClient as unknown as VaultClientCtor[1],
           "production",
         );
         this.vaultClients.set(chainId, vaultClient);
 
         // Initialize staking client for this chain
         const stakingClient = new StakingClient(
-          walletClient as StakingClientCtor[0],
+          walletClient as unknown as StakingClientCtor[0],
         );
         this.stakingClients.set(chainId, stakingClient);
 
@@ -249,7 +416,7 @@ export class SteerLiquidityService extends Service {
         `Successfully initialized clients for ${this.supportedChains.length} chains`,
       );
     } catch (error) {
-      logger.error("Error initializing chain clients:", error);
+      logger.error("Error initializing chain clients:", formatLogError(error));
       throw new Error("Failed to initialize chain clients");
     }
   }
@@ -329,7 +496,7 @@ export class SteerLiquidityService extends Service {
           } catch (error) {
             logger.error(
               `Error searching for token ${tokenIdentifier} on chain ${chainId}:`,
-              error,
+              formatLogError(error),
             );
           }
         }
@@ -358,7 +525,10 @@ export class SteerLiquidityService extends Service {
               `Chain ${chainId}: Successfully processed ${chainVaults.length} vaults`,
             );
           } catch (error) {
-            logger.error(`Error fetching data for chain ${chainId}:`, error);
+            logger.error(
+              `Error fetching data for chain ${chainId}:`,
+              formatLogError(error),
+            );
           }
         }
       }
@@ -403,7 +573,7 @@ export class SteerLiquidityService extends Service {
         {} as { [key: number]: number },
       );
 
-      logger.log(`Vaults by chain:`, vaultsByChain);
+      logger.log({ vaultsByChain }, "Vaults by chain");
 
       const stats: TokenLiquidityStats = {
         tokenIdentifier,
@@ -428,7 +598,10 @@ export class SteerLiquidityService extends Service {
 
       return stats;
     } catch (error) {
-      logger.error("Error getting Steer liquidity stats:", error);
+      logger.error(
+        "Error getting Steer liquidity stats:",
+        formatLogError(error),
+      );
       throw new Error(
         `Failed to get Steer liquidity stats: ${error instanceof Error ? error.message : "Unknown error"}`,
       );
@@ -448,45 +621,37 @@ export class SteerLiquidityService extends Service {
         return [];
       }
 
-      type VaultSdkList = {
-        success: boolean;
-        data?: { edges?: Array<{ node?: RawSteerVault }> };
-        error?: string;
-      };
-      let vaultsResponse: VaultSdkList;
+      let vaultsResponse: unknown;
       try {
         vaultsResponse = await vaultClient.getVaults({ chainId }, 100, null);
       } catch (error) {
-        logger.error(`API call failed for chain ${chainId}:`, error);
+        logger.error(
+          `API call failed for chain ${chainId}:`,
+          formatLogError(error),
+        );
         return [];
       }
 
-      if (!vaultsResponse.success || !vaultsResponse.data) {
+      if (!isSuccessfulSdkResponse(vaultsResponse)) {
+        const sdkError = getSdkError(vaultsResponse);
         logger.warn(
-          `Failed to get vaults for chain ${chainId}: ${vaultsResponse.error || "Unknown error"}`,
+          `Failed to get vaults for chain ${chainId}: ${sdkError || "Unknown error"}`,
         );
         // If it's a server error, log it but continue with other chains
-        if (vaultsResponse.error?.includes("INTERNAL_SERVER_ERROR")) {
+        if (sdkError?.includes("INTERNAL_SERVER_ERROR")) {
           logger.warn(`Chain ${chainId} has server issues, skipping for now`);
         }
         return [];
       }
 
       // Debug: Log the response structure
-      logger.log(`Vault response structure for chain ${chainId}:`, {
-        success: vaultsResponse.success,
-        hasData: !!vaultsResponse.data,
-        dataType: typeof vaultsResponse.data,
-        isArray: Array.isArray(vaultsResponse.data),
-        hasEdges: !!vaultsResponse.data?.edges,
-        edgesLength: vaultsResponse.data?.edges?.length || 0,
-      });
+      logger.log(
+        getResponseDebug(vaultsResponse),
+        `Vault response structure for chain ${chainId}`,
+      );
 
       // Extract vaults from the paginated response structure
-      const vaults: RawSteerVault[] =
-        vaultsResponse.data?.edges
-          ?.map((edge: { node?: RawSteerVault }) => edge.node)
-          .filter((n): n is RawSteerVault => n !== undefined) || [];
+      const vaults = getRawVaultNodes(vaultsResponse);
       logger.log(
         `Retrieved ${vaults.length} vaults from SDK for chain ${chainId}`,
       );
@@ -498,7 +663,10 @@ export class SteerLiquidityService extends Service {
             if (!vault) return null;
             return await this.processVaultData(vault, chainId);
           } catch (error) {
-            logger.error(`Error processing vault ${vault.address}:`, error);
+            logger.error(
+              `Error processing vault ${vault.address}:`,
+              formatLogError(error),
+            );
             return null;
           }
         }),
@@ -508,7 +676,10 @@ export class SteerLiquidityService extends Service {
         (vault): vault is SteerVaultDetailInput => vault !== null,
       );
     } catch (error) {
-      logger.error(`Error getting vaults for chain ${chainId}:`, error);
+      logger.error(
+        `Error getting vaults for chain ${chainId}:`,
+        formatLogError(error),
+      );
       return [];
     }
   }
@@ -527,46 +698,44 @@ export class SteerLiquidityService extends Service {
         return [];
       }
 
-      type VaultSdkList = {
-        success: boolean;
-        data?: { edges?: Array<{ node?: RawSteerVault }> };
-        error?: string;
-      };
-      let vaultsResponse: VaultSdkList;
+      let vaultsResponse: unknown;
       try {
         vaultsResponse = await vaultClient.getVaults({ chainId }, 100, null);
       } catch (error) {
-        logger.error(`API call failed for chain ${chainId}:`, error);
+        logger.error(
+          `API call failed for chain ${chainId}:`,
+          formatLogError(error),
+        );
         return [];
       }
 
-      if (!vaultsResponse.success || !vaultsResponse.data) {
+      if (!isSuccessfulSdkResponse(vaultsResponse)) {
         logger.warn(
-          `Failed to get vaults for chain ${chainId}: ${vaultsResponse.error || "Unknown error"}`,
+          `Failed to get vaults for chain ${chainId}: ${getSdkError(vaultsResponse) || "Unknown error"}`,
         );
         return [];
       }
 
       // Extract vaults from the paginated response structure
-      const allVaults: RawSteerVault[] =
-        vaultsResponse.data?.edges
-          ?.map((edge: { node?: RawSteerVault }) => edge.node)
-          .filter((n): n is RawSteerVault => n !== undefined) || [];
+      const allVaults = getRawVaultNodes(vaultsResponse);
       logger.log(
         `Searching ${allVaults.length} vaults for token ${tokenAddress} on chain ${chainId}`,
       );
 
       // Debug: Log first vault structure to understand the data format
       if (allVaults.length > 0) {
-        logger.log(`Sample vault structure for chain ${chainId}:`, {
-          vaultAddress: allVaults[0].vaultAddress,
-          address: allVaults[0].address,
-          token0: allVaults[0].token0,
-          token1: allVaults[0].token1,
-          token0Type: typeof allVaults[0].token0,
-          token1Type: typeof allVaults[0].token1,
-          pool: allVaults[0].pool,
-        });
+        logger.log(
+          {
+            vaultAddress: allVaults[0].vaultAddress,
+            address: allVaults[0].address,
+            token0: allVaults[0].token0,
+            token1: allVaults[0].token1,
+            token0Type: typeof allVaults[0].token0,
+            token1Type: typeof allVaults[0].token1,
+            pool: allVaults[0].pool,
+          },
+          `Sample vault structure for chain ${chainId}`,
+        );
       }
 
       const matchingVaults: SteerVaultDetailInput[] = [];
@@ -587,7 +756,10 @@ export class SteerLiquidityService extends Service {
             }
           }
         } catch (error) {
-          logger.log(`Error processing vault ${vault.address}:`, error);
+          logger.log(
+            `Error processing vault ${vault.address}:`,
+            formatLogError(error),
+          );
         }
       }
 
@@ -598,7 +770,7 @@ export class SteerLiquidityService extends Service {
     } catch (error) {
       logger.error(
         `Error getting vaults for token ${tokenAddress} on chain ${chainId}:`,
-        error,
+        formatLogError(error),
       );
       return [];
     }
@@ -645,7 +817,11 @@ export class SteerLiquidityService extends Service {
       // Extract basic vault information
       const vaultAddress = vault.vaultAddress || vault.address || "";
       const poolAddress = vault.pool?.poolAddress || vault.poolAddress;
-      const feeTier = vault.pool?.feeTier || vault.fee || 0.3;
+      const rawFeeTier = vault.pool?.feeTier ?? vault.fee ?? 0.3;
+      const feeTier =
+        typeof rawFeeTier === "number"
+          ? rawFeeTier
+          : Number.parseFloat(rawFeeTier) || 0.3;
 
       // Extract APY data from various sources
       const apyData = vault.aprData || {};
@@ -657,7 +833,7 @@ export class SteerLiquidityService extends Service {
         apyData.apr14dAvg ||
         0;
 
-      const processedVault = {
+      const processedVault: SteerVaultDetailInput = {
         address: vaultAddress,
         name: vault.name || `Steer Vault ${vaultAddress?.slice(0, 8)}...`,
         chainId,
@@ -678,7 +854,11 @@ export class SteerLiquidityService extends Service {
         positions: vault.positions || [],
         poolAddress: poolAddress,
         ammType: vault.ammType || "UniswapV3",
-        singleAssetDepositContract: vault.singleAssetDepositContract,
+        singleAssetDepositContract: isHexAddress(
+          vault.singleAssetDepositContract,
+        )
+          ? vault.singleAssetDepositContract
+          : undefined,
         // Additional fields from SDK
         protocol: vault.protocol,
         beaconName: vault.beaconName,
@@ -749,7 +929,7 @@ export class SteerLiquidityService extends Service {
         } catch (error) {
           logger.log(
             `Could not fetch price data for vault ${vaultAddress}:`,
-            error,
+            formatLogError(error),
           );
         }
       } catch (_error) {
@@ -768,12 +948,15 @@ export class SteerLiquidityService extends Service {
       } catch (error) {
         logger.log(
           `Could not enrich vault ${vaultAddress} with GraphQL data, returning basic info:`,
-          error,
+          formatLogError(error),
         );
         return processedVault;
       }
     } catch (error) {
-      logger.error(`Error processing vault ${vault.address}:`, error);
+      logger.error(
+        `Error processing vault ${vault.address}:`,
+        formatLogError(error),
+      );
       return null;
     }
   }
@@ -784,7 +967,7 @@ export class SteerLiquidityService extends Service {
   async getVaultDetails(
     vaultAddress: string,
     chainId: number,
-  ): Promise<SteerVaultDetailInput | RawSteerVault | null> {
+  ): Promise<SteerVaultDetailInput | null> {
     try {
       // First try to get data from GraphQL
       const graphqlData = await this.getVaultDataFromGraphQL(vaultAddress);
@@ -830,9 +1013,13 @@ export class SteerLiquidityService extends Service {
       logger.log(
         `GraphQL data not available for ${vaultAddress}, falling back to SDK`,
       );
-      return await this.getVaultDetailsFromSDK(vaultAddress, chainId);
+      const rawVault = await this.getVaultDetailsFromSDK(vaultAddress, chainId);
+      return rawVault ? await this.processVaultData(rawVault, chainId) : null;
     } catch (error) {
-      logger.error(`Error getting vault details for ${vaultAddress}:`, error);
+      logger.error(
+        `Error getting vault details for ${vaultAddress}:`,
+        formatLogError(error),
+      );
       return null;
     }
   }
@@ -852,25 +1039,33 @@ export class SteerLiquidityService extends Service {
       }
 
       // Get vault details using SDK - use getVaults and filter
-      const vaultResponse = await vaultClient.getVaults({ chainId }, 100, null);
+      const vaultResponse: unknown = await vaultClient.getVaults(
+        { chainId },
+        100,
+        null,
+      );
 
-      if (!vaultResponse.success || !vaultResponse.data) {
+      if (!isSuccessfulSdkResponse(vaultResponse)) {
         logger.warn(
-          `Failed to get vault details for ${vaultAddress}: ${vaultResponse.error || "Unknown error"}`,
+          `Failed to get vault details for ${vaultAddress}: ${getSdkError(vaultResponse) || "Unknown error"}`,
         );
         return null;
       }
 
       // Extract vaults from the paginated response structure
-      const vaults: RawSteerVault[] =
-        vaultResponse.data?.edges
-          ?.map((edge: { node?: RawSteerVault }) => edge.node)
-          .filter((n): n is RawSteerVault => n !== undefined) || [];
-      return vaults.length > 0 ? vaults[0] : null;
+      const vaults = getRawVaultNodes(vaultResponse);
+      const normalizedVaultAddress = vaultAddress.toLowerCase();
+      return (
+        vaults.find(
+          (vault) =>
+            (vault.vaultAddress || vault.address || "").toLowerCase() ===
+            normalizedVaultAddress,
+        ) || null
+      );
     } catch (error) {
       logger.error(
         `Error getting vault details for ${vaultAddress} on chain ${chainId}:`,
-        error,
+        formatLogError(error),
       );
       return null;
     }
@@ -889,7 +1084,10 @@ export class SteerLiquidityService extends Service {
       logger.log(`Price fetching not yet implemented for chain ${chainId}`);
       return null;
     } catch (error) {
-      logger.error(`Error getting token prices for chain ${chainId}:`, error);
+      logger.error(
+        `Error getting token prices for chain ${chainId}:`,
+        formatLogError(error),
+      );
       return null;
     }
   }
@@ -920,11 +1118,8 @@ export class SteerLiquidityService extends Service {
           100,
           null,
         );
-        if (poolsResponse.success && poolsResponse.data) {
-          const pools: SteerPoolNode[] =
-            poolsResponse.data.edges
-              ?.map((edge: { node?: SteerPoolNode }) => edge.node)
-              .filter((n): n is SteerPoolNode => n !== undefined) || [];
+        if (isSuccessfulSdkResponse(poolsResponse)) {
+          const pools = getPoolNodes(poolsResponse);
           const matchingPool = pools.find(
             (pool: SteerPoolNode) =>
               pool.poolAddress?.toLowerCase() === poolAddress.toLowerCase() ||
@@ -949,7 +1144,7 @@ export class SteerLiquidityService extends Service {
       } catch (error) {
         logger.log(
           `Could not fetch pool data from SDK for ${poolAddress}:`,
-          error,
+          formatLogError(error),
         );
       }
 
@@ -963,7 +1158,7 @@ export class SteerLiquidityService extends Service {
     } catch (error) {
       logger.error(
         `Error getting pool data for ${poolAddress} on chain ${chainId}:`,
-        error,
+        formatLogError(error),
       );
       return null;
     }
@@ -998,7 +1193,7 @@ export class SteerLiquidityService extends Service {
     } catch (error) {
       logger.error(
         `Error getting staking pool details for ${poolAddress} on chain ${chainId}:`,
-        error,
+        formatLogError(error),
       );
       return null;
     }
@@ -1035,9 +1230,9 @@ export class SteerLiquidityService extends Service {
         );
       }
 
-      const result = await response.json();
+      const result: unknown = await response.json();
 
-      if (result.data?._meta) {
+      if (hasGraphQLMeta(result)) {
         logger.log("GraphQL connection test successful");
         return { success: true };
       } else {
@@ -1045,7 +1240,7 @@ export class SteerLiquidityService extends Service {
         return { success: false, error: "Unexpected response structure" };
       }
     } catch (error) {
-      logger.error("GraphQL connection test failed:", error);
+      logger.error("GraphQL connection test failed:", formatLogError(error));
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
@@ -1074,7 +1269,7 @@ export class SteerLiquidityService extends Service {
     } catch (error) {
       logger.error(
         `GraphQL vault query test failed for ${vaultAddress}:`,
-        error,
+        formatLogError(error),
       );
       return {
         success: false,
@@ -1107,20 +1302,13 @@ export class SteerLiquidityService extends Service {
               100,
               null,
             );
-            logger.log(`Chain ${chainId} vault response:`, {
-              success: vaultsResponse.success,
-              hasData: !!vaultsResponse.data,
-              dataType: typeof vaultsResponse.data,
-              isArray: Array.isArray(vaultsResponse.data),
-              hasEdges: !!vaultsResponse.data?.edges,
-              edgesLength: vaultsResponse.data?.edges?.length || 0,
-            });
+            logger.log(
+              getResponseDebug(vaultsResponse),
+              `Chain ${chainId} vault response`,
+            );
 
-            if (vaultsResponse.success && vaultsResponse.data) {
-              const vaults =
-                vaultsResponse.data.edges
-                  ?.map((edge: { node?: RawSteerVault }) => edge.node)
-                  .filter((n): n is RawSteerVault => n !== undefined) || [];
+            if (isSuccessfulSdkResponse(vaultsResponse)) {
+              const vaults = getRawVaultNodes(vaultsResponse);
               totalVaultCount += vaults.length;
               logger.log(`Chain ${chainId}: Found ${vaults.length} vaults`);
             }
@@ -1143,7 +1331,10 @@ export class SteerLiquidityService extends Service {
         } catch (error) {
           const errorMsg = `Chain ${chainId}: ${error instanceof Error ? error.message : "Unknown error"}`;
           connectionErrors.push(errorMsg);
-          logger.error(`Connection test failed for chain ${chainId}:`, error);
+          logger.error(
+            `Connection test failed for chain ${chainId}:`,
+            formatLogError(error),
+          );
         }
       }
 
@@ -1161,7 +1352,7 @@ export class SteerLiquidityService extends Service {
       );
       return result;
     } catch (error) {
-      logger.error("Error testing Steer connection:", error);
+      logger.error("Error testing Steer connection:", formatLogError(error));
       return {
         connectionTest: false,
         supportedChains: this.supportedChains,
@@ -1272,7 +1463,10 @@ export class SteerLiquidityService extends Service {
       this.isRunning = true;
       logger.log("SteerLiquidityService started successfully");
     } catch (error) {
-      logger.error("Failed to start SteerLiquidityService:", error);
+      logger.error(
+        "Failed to start SteerLiquidityService:",
+        formatLogError(error),
+      );
       throw error;
     }
   }
@@ -1287,7 +1481,10 @@ export class SteerLiquidityService extends Service {
       this.isRunning = false;
       logger.log("SteerLiquidityService stopped successfully");
     } catch (error) {
-      logger.error("Failed to stop SteerLiquidityService:", error);
+      logger.error(
+        "Failed to stop SteerLiquidityService:",
+        formatLogError(error),
+      );
       throw error;
     }
   }
@@ -1319,7 +1516,12 @@ export class SteerLiquidityService extends Service {
         throw new Error(`Vault ${vaultAddress} not found on chain ${chainId}`);
       }
 
-      if (!vault.poolAddress || !vault.singleAssetDepositContract) {
+      const poolAddress = vault.poolAddress;
+      const singleAssetDepositContract = vault.singleAssetDepositContract;
+      if (
+        !isHexAddress(poolAddress) ||
+        !isHexAddress(singleAssetDepositContract)
+      ) {
         throw new Error(
           `Vault ${vaultAddress} does not support single-asset deposits`,
         );
@@ -1336,16 +1538,16 @@ export class SteerLiquidityService extends Service {
           depositSlippagePercent,
           swapSlippageBP,
           ammType: AMMType.UniswapV3,
-          singleAssetDepositContract: vault.singleAssetDepositContract,
+          singleAssetDepositContract,
         },
-        vault.poolAddress,
+        poolAddress,
       );
 
       return preview;
     } catch (error) {
       logger.error(
         `Error previewing single-asset deposit for vault ${vaultAddress}:`,
-        error,
+        formatLogError(error),
       );
       throw error;
     }
@@ -1375,7 +1577,12 @@ export class SteerLiquidityService extends Service {
         throw new Error(`Vault ${vaultAddress} not found on chain ${chainId}`);
       }
 
-      if (!vault.singleAssetDepositContract) {
+      if (!isHexAddress(receiver)) {
+        throw new Error(`Receiver ${receiver} is not a valid EVM address`);
+      }
+
+      const singleAssetDepositContract = vault.singleAssetDepositContract;
+      if (!isHexAddress(singleAssetDepositContract)) {
         throw new Error(
           `Vault ${vaultAddress} does not support single-asset deposits`,
         );
@@ -1384,20 +1591,20 @@ export class SteerLiquidityService extends Service {
       // Execute the single-asset deposit using SDK
       const result = await vaultClient.singleAssetDeposit({
         assets,
-        receiver: receiver as `0x${string}`,
+        receiver,
         vault: vaultAddress as `0x${string}`,
         isToken0,
         depositSlippagePercent,
         swapSlippageBP,
         ammType: AMMType.UniswapV3,
-        singleAssetDepositContract: vault.singleAssetDepositContract,
+        singleAssetDepositContract,
       });
 
       return result;
     } catch (error) {
       logger.error(
         `Error executing single-asset deposit for vault ${vaultAddress}:`,
-        error,
+        formatLogError(error),
       );
       throw error;
     }
@@ -1425,7 +1632,7 @@ export class SteerLiquidityService extends Service {
     } catch (error) {
       logger.error(
         `Error getting earned rewards for pool ${poolAddress}:`,
-        error,
+        formatLogError(error),
       );
       throw error;
     }
@@ -1451,7 +1658,7 @@ export class SteerLiquidityService extends Service {
     } catch (error) {
       logger.error(
         `Error getting total supply for pool ${poolAddress}:`,
-        error,
+        formatLogError(error),
       );
       throw error;
     }
@@ -1477,7 +1684,10 @@ export class SteerLiquidityService extends Service {
       );
       return balance;
     } catch (error) {
-      logger.error(`Error getting balance for pool ${poolAddress}:`, error);
+      logger.error(
+        `Error getting balance for pool ${poolAddress}:`,
+        formatLogError(error),
+      );
       throw error;
     }
   }
@@ -1547,32 +1757,36 @@ export class SteerLiquidityService extends Service {
         );
       }
 
-      const result: GraphQLResponse = await response.json();
+      const result: unknown = await response.json();
+      const vaultData = getGraphQLVaultData(result);
 
-      if (result.data?.vault) {
+      if (vaultData) {
         logger.log(
           `Successfully fetched GraphQL data for vault ${vaultAddress}`,
         );
-        logger.log(`GraphQL vault data:`, {
-          name: result.data.vault.name,
-          token0Symbol: result.data.vault.token0Symbol,
-          token1Symbol: result.data.vault.token1Symbol,
-          weeklyFeeAPR: result.data.vault.weeklyFeeAPR,
-          token0Balance: result.data.vault.token0Balance,
-          token1Balance: result.data.vault.token1Balance,
-        });
-        return result.data.vault;
+        logger.log(
+          {
+            name: vaultData.name,
+            token0Symbol: vaultData.token0Symbol,
+            token1Symbol: vaultData.token1Symbol,
+            weeklyFeeAPR: vaultData.weeklyFeeAPR,
+            token0Balance: vaultData.token0Balance,
+            token1Balance: vaultData.token1Balance,
+          },
+          "GraphQL vault data",
+        );
+        return vaultData;
       } else {
         logger.warn(
           `No vault data found in GraphQL response for ${vaultAddress}`,
         );
-        logger.log(`GraphQL response:`, JSON.stringify(result, null, 2));
+        logger.log("GraphQL response:", JSON.stringify(result, null, 2));
         return null;
       }
     } catch (error) {
       logger.error(
         `Error fetching GraphQL data for vault ${vaultAddress}:`,
-        error,
+        formatLogError(error),
       );
       return null;
     }
@@ -1586,12 +1800,11 @@ export class SteerLiquidityService extends Service {
     _chainId: number,
   ): Promise<SteerVaultDetailInput> {
     try {
-      if (!vault.address && !vault.vaultAddress) {
+      const vaultAddress = vault.address || vault.vaultAddress;
+      if (!vaultAddress) {
         logger.warn("Vault missing address, cannot fetch GraphQL data");
         return vault;
       }
-
-      const vaultAddress = vault.address || vault.vaultAddress;
       logger.log(`Enriching vault ${vaultAddress} with GraphQL data...`);
 
       // Fetch GraphQL data
@@ -1653,7 +1866,10 @@ export class SteerLiquidityService extends Service {
       );
       return vault;
     } catch (error) {
-      logger.error(`Error enriching vault with GraphQL data:`, error);
+      logger.error(
+        "Error enriching vault with GraphQL data:",
+        formatLogError(error),
+      );
       return vault; // Return original vault data if enrichment fails
     }
   }
@@ -1683,7 +1899,10 @@ export class SteerLiquidityService extends Service {
       logger.log(`Estimated TVL: $${estimatedTvl.toLocaleString()}`);
       return estimatedTvl;
     } catch (error) {
-      logger.error("Error calculating TVL from balances:", error);
+      logger.error(
+        "Error calculating TVL from balances:",
+        formatLogError(error),
+      );
       return 0;
     }
   }

@@ -206,5 +206,4 @@ describe("cross-channel-search WS1 integration", () => {
       result.degraded.find((d) => d.channel === "gmail");
     expect(gmailStatus).toBeTruthy();
   }, 120_000);
-
 });

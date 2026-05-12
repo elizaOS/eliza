@@ -632,7 +632,7 @@ const FIELD_HELP: Record<string, string> = {
   "tools.cache.memoryCapacity":
     "In-memory LRU capacity for the tool-call cache. Default 1000.",
   "tools.cache.diskRoot":
-    "Override the on-disk root for the tool-call cache. Default: ~/.milady/tool-cache.",
+    "Override the on-disk root for the tool-call cache. Default: ~/.eliza/tool-cache.",
   "tools.web.fetch.maxRedirects":
     "Maximum redirects allowed for web_fetch (default: 3).",
   "tools.web.fetch.userAgent":

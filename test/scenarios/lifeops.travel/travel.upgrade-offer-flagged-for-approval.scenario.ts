@@ -8,7 +8,8 @@ import {
 
 export default scenario({
   id: "travel.upgrade-offer-flagged-for-approval",
-  title: "Paid upgrade offer is surfaced for explicit approval, not auto-accepted",
+  title:
+    "Paid upgrade offer is surfaced for explicit approval, not auto-accepted",
   domain: "lifeops.travel",
   tags: ["lifeops", "travel", "upgrade", "approval", "spend"],
   description:

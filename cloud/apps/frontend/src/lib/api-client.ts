@@ -28,13 +28,12 @@ export class ApiError extends Error {
 }
 
 function getApiBaseUrl(): string {
-  const fromEnv = import.meta.env.VITE_API_URL ?? import.meta.env.NEXT_PUBLIC_API_URL;
-  if (typeof fromEnv === "string" && fromEnv.length > 0) return fromEnv.replace(/\/+$/, "");
+  if (typeof window !== "undefined") return "";
 
-  // Browser calls default to same-origin so Cloudflare Pages Functions can
-  // proxy /api/* to the Worker while preserving frontend-scoped auth marker
-  // cookies. Deployments without a same-origin proxy can opt into a separate
-  // API origin with VITE_API_URL / NEXT_PUBLIC_API_URL.
+  const fromEnv =
+    import.meta.env.VITE_API_URL ?? import.meta.env.NEXT_PUBLIC_API_URL;
+  if (typeof fromEnv === "string" && fromEnv.length > 0)
+    return fromEnv.replace(/\/+$/, "");
   return "";
 }
 
@@ -79,7 +78,10 @@ export interface ApiRequestInit extends Omit<RequestInit, "body"> {
   skipAuth?: boolean;
 }
 
-async function readPayload(res: Response, strictJson: boolean): Promise<unknown> {
+async function readPayload(
+  res: Response,
+  strictJson: boolean,
+): Promise<unknown> {
   if (res.status === 204 || res.status === 205) return undefined;
 
   const contentType = res.headers.get("content-type") ?? "";
@@ -100,14 +102,22 @@ async function readPayload(res: Response, strictJson: boolean): Promise<unknown>
   }
 }
 
-function errorDetails(payload: unknown, status: number): { code: string; message: string } {
+function errorDetails(
+  payload: unknown,
+  status: number,
+): { code: string; message: string } {
   if (typeof payload === "object" && payload) {
-    const body = payload as { error?: unknown; code?: unknown; message?: unknown };
+    const body = payload as {
+      error?: unknown;
+      code?: unknown;
+      message?: unknown;
+    };
     const message =
       (typeof body.error === "string" && body.error) ||
       (typeof body.message === "string" && body.message) ||
       `Request failed with status ${status}`;
-    const code = typeof body.code === "string" && body.code ? body.code : `HTTP_${status}`;
+    const code =
+      typeof body.code === "string" && body.code ? body.code : `HTTP_${status}`;
     return { code, message };
   }
 
@@ -119,10 +129,16 @@ function errorDetails(payload: unknown, status: number): { code: string; message
     return { code: `HTTP_${status}`, message };
   }
 
-  return { code: `HTTP_${status}`, message: `Request failed with status ${status}` };
+  return {
+    code: `HTTP_${status}`,
+    message: `Request failed with status ${status}`,
+  };
 }
 
-export async function apiFetch(path: string, init: ApiRequestInit = {}): Promise<Response> {
+export async function apiFetch(
+  path: string,
+  init: ApiRequestInit = {},
+): Promise<Response> {
   const { json, body, skipAuth, headers: rawHeaders, ...rest } = init;
 
   const headers = new Headers(rawHeaders);
@@ -154,7 +170,10 @@ export async function apiFetch(path: string, init: ApiRequestInit = {}): Promise
   return res;
 }
 
-export async function api<T = unknown>(path: string, init: ApiRequestInit = {}): Promise<T> {
+export async function api<T = unknown>(
+  path: string,
+  init: ApiRequestInit = {},
+): Promise<T> {
   const res = await apiFetch(path, init);
   const payload = await readPayload(res, true);
 

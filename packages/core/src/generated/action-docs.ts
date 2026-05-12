@@ -1242,6 +1242,232 @@ export const coreActionsSpec = {
 			],
 			descriptionCompressed: "Generate image, video, or audio from prompt.",
 		},
+		{
+			name: "TRUST",
+			description:
+				"Unified trust system control. action=evaluate reads a trust profile for an entity; record_interaction logs a trust-affecting event; request_elevation requests temporary permissions; update_role assigns OWNER / ADMIN / NONE roles within a world.",
+			similes: [
+				"TRUST_MANAGEMENT",
+				"TRUST_OPERATION",
+				"TRUST_PROFILE",
+				"TRUST_INTERACTION",
+				"ELEVATE_PERMISSIONS",
+				"ASSIGN_ROLE",
+				"CHANGE_ROLE",
+				"MAKE_ADMIN",
+				"SET_PERMISSIONS",
+			],
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Action: evaluate | record_interaction | request_elevation | update_role.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"evaluate",
+							"record_interaction",
+							"request_elevation",
+							"update_role",
+						],
+					},
+					descriptionCompressed:
+						"Action: evaluate | record_interaction | request_elevation | update_role.",
+				},
+				{
+					name: "entityId",
+					description:
+						"Target entity ID. evaluate: defaults to sender. record_interaction: target of the interaction (defaults to agent).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Target entity ID. evaluate: defaults to sender. record_interaction: target of the interaction (defaults to agent).",
+				},
+				{
+					name: "entityName",
+					description:
+						"Optional target entity name (evaluate). Name-only lookups return a bounded failure; provide entityId where possible.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional target entity name (evaluate). Name-only lookups return a bounded failure. provide entityId where possible.",
+				},
+				{
+					name: "detailed",
+					description:
+						"Whether evaluate should return detailed dimensions (default false).",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Whether evaluate should return detailed dimensions (default false).",
+				},
+				{
+					name: "type",
+					description: "Trust evidence type (record_interaction).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Trust evidence type (record_interaction).",
+				},
+				{
+					name: "impact",
+					description:
+						"Numerical trust impact (record_interaction). Default 10.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Numerical trust impact (record_interaction). Default 10.",
+				},
+				{
+					name: "description",
+					description: "Optional interaction description (record_interaction).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional interaction description (record_interaction).",
+				},
+				{
+					name: "permissionAction",
+					description: "Permission action being requested (request_elevation).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Permission action being requested (request_elevation).",
+				},
+				{
+					name: "resource",
+					description: "Resource scope for elevation (request_elevation).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Resource scope for elevation (request_elevation).",
+				},
+				{
+					name: "justification",
+					description: "Reason elevation is needed (request_elevation).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Reason elevation is needed (request_elevation).",
+				},
+				{
+					name: "duration",
+					description:
+						"Requested duration in hours (request_elevation). Defaults to 60.",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+						maximum: 168,
+					},
+					descriptionCompressed:
+						"Requested duration in hours (request_elevation). Defaults to 60.",
+				},
+				{
+					name: "roleAssignments",
+					description: "Role assignments (update_role).",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "object",
+							properties: {
+								entityId: {
+									type: "string",
+								},
+								newRole: {
+									type: "string",
+									enum: ["OWNER", "ADMIN", "NONE"],
+								},
+							},
+						},
+					},
+					descriptionCompressed: "Role assignments (update_role).",
+				},
+			],
+			examples: [
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "What is my trust score?",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Trust Level: Good (65/100) based on 42 interactions",
+							actions: ["TRUST"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Record that Alice kept their promise to help with the project",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Trust interaction recorded: PROMISE_KEPT with impact +15",
+							actions: ["TRUST"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "I need permission to manage roles to help moderate spam",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Elevation approved! You have been granted temporary manage_roles permissions.",
+							actions: ["TRUST"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Make {{name2}} an ADMIN",
+						},
+					},
+					{
+						name: "{{name3}}",
+						content: {
+							text: "Updated {{name2}}'s role to ADMIN.",
+							actions: ["TRUST"],
+						},
+					},
+				],
+			],
+			descriptionCompressed:
+				"Trust system: action=evaluate|record_interaction|request_elevation|update_role.",
+		},
 	],
 } as const satisfies { version: string; actions: readonly ActionDoc[] };
 export const allActionsSpec = {
@@ -2413,170 +2639,235 @@ export const allActionsSpec = {
 			descriptionCompressed: "Generate image, video, or audio from prompt.",
 		},
 		{
-			name: "APP",
+			name: "TRUST",
 			description:
-				"Unified app control. action=launch starts a registered app; action=relaunch stops then launches (optionally with verify); action=list shows installed + running apps; action=load_from_directory registers apps from an absolute folder; action=create runs the multi-turn create-or-edit flow that searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, and dispatches a coding agent with AppVerificationService validator.",
+				"Unified trust system control. action=evaluate reads a trust profile for an entity; record_interaction logs a trust-affecting event; request_elevation requests temporary permissions; update_role assigns OWNER / ADMIN / NONE roles within a world.",
+			similes: [
+				"TRUST_MANAGEMENT",
+				"TRUST_OPERATION",
+				"TRUST_PROFILE",
+				"TRUST_INTERACTION",
+				"ELEVATE_PERMISSIONS",
+				"ASSIGN_ROLE",
+				"CHANGE_ROLE",
+				"MAKE_ADMIN",
+				"SET_PERMISSIONS",
+			],
 			parameters: [
 				{
 					name: "action",
 					description:
-						"Operation: launch | relaunch | load_from_directory | list | create.",
+						"Action: evaluate | record_interaction | request_elevation | update_role.",
 					required: true,
 					schema: {
 						type: "string",
 						enum: [
-							"launch",
-							"relaunch",
-							"load_from_directory",
-							"list",
-							"create",
+							"evaluate",
+							"record_interaction",
+							"request_elevation",
+							"update_role",
 						],
 					},
 					descriptionCompressed:
-						"Operation: launch | relaunch | load_from_directory | list | create.",
+						"Action: evaluate | record_interaction | request_elevation | update_role.",
 				},
 				{
-					name: "mode",
-					description: "Legacy alias for action.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: [
-							"launch",
-							"relaunch",
-							"load_from_directory",
-							"list",
-							"create",
-						],
-					},
-					descriptionCompressed: "Legacy alias for action.",
-				},
-				{
-					name: "app",
+					name: "entityId",
 					description:
-						"App name, slug, or display name (launch / relaunch / create-edit).",
+						"Target entity ID. evaluate: defaults to sender. record_interaction: target of the interaction (defaults to agent).",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"App name, slug, or display name (launch/relaunch/create-edit).",
+						"Target entity ID. evaluate: defaults to sender. record_interaction: target of the interaction (defaults to agent).",
 				},
 				{
-					name: "name",
-					description: "Alias for `app`.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Alias for `app`.",
-				},
-				{
-					name: "runId",
+					name: "entityName",
 					description:
-						"Specific run id to stop before relaunching (relaunch mode).",
+						"Optional target entity name (evaluate). Name-only lookups return a bounded failure; provide entityId where possible.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Specific run id to stop before relaunching (relaunch mode).",
+						"Optional target entity name (evaluate). Name-only lookups return a bounded failure. provide entityId where possible.",
 				},
 				{
-					name: "verify",
+					name: "detailed",
 					description:
-						"When true, runs AppVerificationService (fast profile) after relaunch.",
+						"Whether evaluate should return detailed dimensions (default false).",
 					required: false,
 					schema: {
 						type: "boolean",
-						default: false,
 					},
 					descriptionCompressed:
-						"When true, runs AppVerificationService (fast profile) after relaunch.",
+						"Whether evaluate should return detailed dimensions (default false).",
 				},
 				{
-					name: "workdir",
+					name: "type",
+					description: "Trust evidence type (record_interaction).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Trust evidence type (record_interaction).",
+				},
+				{
+					name: "impact",
 					description:
-						"Absolute workdir for verify (relaunch) or for explicit edit (create).",
+						"Numerical trust impact (record_interaction). Default 10.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Numerical trust impact (record_interaction). Default 10.",
+				},
+				{
+					name: "description",
+					description: "Optional interaction description (record_interaction).",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Absolute workdir for verify (relaunch) or for explicit edit (create).",
+						"Optional interaction description (record_interaction).",
 				},
 				{
-					name: "directory",
-					description: "Absolute directory to scan (load_from_directory mode).",
+					name: "permissionAction",
+					description: "Permission action being requested (request_elevation).",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Absolute directory to scan (load_from_directory mode).",
+						"Permission action being requested (request_elevation).",
 				},
 				{
-					name: "intent",
+					name: "resource",
+					description: "Resource scope for elevation (request_elevation).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Resource scope for elevation (request_elevation).",
+				},
+				{
+					name: "justification",
+					description: "Reason elevation is needed (request_elevation).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Reason elevation is needed (request_elevation).",
+				},
+				{
+					name: "duration",
 					description:
-						"Free-form description of the app to build (create mode). Defaults to the user message text.",
+						"Requested duration in hours (request_elevation). Defaults to 60.",
 					required: false,
 					schema: {
-						type: "string",
+						type: "number",
+						minimum: 1,
+						maximum: 168,
 					},
 					descriptionCompressed:
-						"Free-form description of the app to build (create mode). Defaults to user msg text.",
+						"Requested duration in hours (request_elevation). Defaults to 60.",
 				},
 				{
-					name: "editTarget",
-					description:
-						"Skip the picker and edit this installed app directly (create mode).",
+					name: "roleAssignments",
+					description: "Role assignments (update_role).",
 					required: false,
 					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Skip the picker and edit this installed app directly (create mode).",
-				},
-				{
-					name: "choice",
-					description:
-						"Override choice reply (`new` | `edit-N` | `cancel`) for create mode follow-up turns.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Override choice reply (`new` | `edit-N` | `cancel`) for create mode follow-up turns.",
-				},
-			],
-			descriptionCompressed:
-				"Manage apps: launch/relaunch/list/load folder/create; create scaffolds min app, runs coding agent, verifies result.",
-			similes: ["APP_CONTROL", "MANAGE_APPS"],
-			exampleCalls: [
-				{
-					user: "Use APP with the provided parameters.",
-					actions: ["APP"],
-					params: {
-						APP: {
-							action: "launch",
-							mode: "launch",
-							app: "example",
-							name: "example",
-							runId: "example",
-							verify: false,
-							workdir: "example",
-							directory: "example",
-							intent: "example",
-							editTarget: "example",
-							choice: "example",
+						type: "array",
+						items: {
+							type: "object",
+							properties: {
+								entityId: {
+									type: "string",
+								},
+								newRole: {
+									type: "string",
+									enum: ["OWNER", "ADMIN", "NONE"],
+								},
+							},
 						},
 					},
+					descriptionCompressed: "Role assignments (update_role).",
 				},
 			],
+			examples: [
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "What is my trust score?",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Trust Level: Good (65/100) based on 42 interactions",
+							actions: ["TRUST"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Record that Alice kept their promise to help with the project",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Trust interaction recorded: PROMISE_KEPT with impact +15",
+							actions: ["TRUST"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "I need permission to manage roles to help moderate spam",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Elevation approved! You have been granted temporary manage_roles permissions.",
+							actions: ["TRUST"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Make {{name2}} an ADMIN",
+						},
+					},
+					{
+						name: "{{name3}}",
+						content: {
+							text: "Updated {{name2}}'s role to ADMIN.",
+							actions: ["TRUST"],
+						},
+					},
+				],
+			],
+			descriptionCompressed:
+				"Trust system: action=evaluate|record_interaction|request_elevation|update_role.",
 		},
 		{
 			name: "BLOCK",
-			description: "Block or unblock phone apps and desktop websites. ",
+			description:
+				"Block or unblock specific phone apps (Family Controls / Usage Access) and ",
 			parameters: [
 				{
 					name: "target",
@@ -2721,7 +3012,18 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"block/unblock apps+websites; actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
+				"block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focus-blocks — those go to CALENDAR create_event); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
+			similes: [
+				"SELFCONTROL",
+				"SITE_BLOCKER",
+				"HOSTS_BLOCK",
+				"BLOCK_WEBSITE",
+				"SHIELD_APPS",
+				"FAMILY_CONTROLS",
+				"PHONE_FOCUS",
+				"PHONE_BLOCK_APPS",
+				"BLOCK_APPS",
+			],
 			exampleCalls: [
 				{
 					user: "Use BLOCK with the provided parameters.",
@@ -2751,16 +3053,16 @@ export const allActionsSpec = {
 				"Compose the owner's morning, evening, or weekly briefing by pulling calendar feed, inbox triage, life-domain due items, and money recurring charges into a single LifeOpsBriefing. Subactions: compose_morning, compose_evening, compose_weekly.",
 			parameters: [
 				{
-					name: "subaction",
+					name: "action",
 					description:
-						"Which brief to compose: compose_morning | compose_evening | compose_weekly.",
+						"Canonical brief operation: compose_morning | compose_evening | compose_weekly.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["compose_morning", "compose_evening", "compose_weekly"],
 					},
 					descriptionCompressed:
-						"Which brief to compose: compose_morning | compose_evening | compose_weekly.",
+						"Canonical brief operation: compose_morning | compose_evening | compose_weekly.",
 				},
 				{
 					name: "period",
@@ -2806,7 +3108,7 @@ export const allActionsSpec = {
 					actions: ["BRIEF"],
 					params: {
 						BRIEF: {
-							subaction: "compose_morning",
+							action: "compose_morning",
 							period: "today",
 							include: "example",
 							format: "narrative",
@@ -2863,41 +3165,6 @@ export const allActionsSpec = {
 					},
 					descriptionCompressed:
 						"Browser action to perform. Snake_case values are canonical. legacy kebab-case and subaction are also accepted.",
-				},
-				{
-					name: "subaction",
-					description: "Legacy alias for action.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: [
-							"back",
-							"click",
-							"close",
-							"forward",
-							"get",
-							"hide",
-							"navigate",
-							"open",
-							"press",
-							"reload",
-							"screenshot",
-							"show",
-							"snapshot",
-							"state",
-							"tab",
-							"type",
-							"wait",
-							"realistic-click",
-							"realistic-fill",
-							"realistic-type",
-							"realistic-press",
-							"cursor-move",
-							"cursor-hide",
-							"autofill-login",
-						],
-					},
-					descriptionCompressed: "Legacy alias for action.",
 				},
 				{
 					name: "tabAction",
@@ -3085,7 +3352,6 @@ export const allActionsSpec = {
 				"CONTROL_BROWSER",
 				"CONTROL_BROWSER_SESSION",
 				"MANAGE_ELIZA_BROWSER_WORKSPACE",
-				"MANAGE_LIFEOPS_BROWSER",
 				"NAVIGATE_SITE",
 				"OPEN_SITE",
 				"USE_BROWSER",
@@ -3105,7 +3371,6 @@ export const allActionsSpec = {
 					params: {
 						BROWSER: {
 							action: "back",
-							subaction: "back",
 							tabAction: "close",
 							domain: "example",
 							username: "example",
@@ -3171,12 +3436,14 @@ export const allActionsSpec = {
 				},
 				{
 					name: "title",
-					description: "Event title when creating a calendar event.",
+					description:
+						"Event title when creating a calendar event. TOP-LEVEL (flat) field — ",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Event title when creating a calendar event.",
+					descriptionCompressed:
+						"Event title, TOP-LEVEL flat field (NOT inside details). Example: { subaction: 'create_event', title: 'Dentist', details: { start, end } }",
 				},
 				{
 					name: "query",
@@ -3206,7 +3473,7 @@ export const allActionsSpec = {
 				{
 					name: "details",
 					description:
-						"Structured calendar fields — time bounds, timezone, calendar id, create-event timing, location, and attendees.",
+						"Structured calendar fields for create_event / update_event / delete_event. ",
 					required: false,
 					schema: {
 						type: "object",
@@ -3230,6 +3497,12 @@ export const allActionsSpec = {
 								type: "number",
 							},
 							windowPreset: {
+								type: "string",
+							},
+							start: {
+								type: "string",
+							},
+							end: {
 								type: "string",
 							},
 							startAt: {
@@ -3265,17 +3538,18 @@ export const allActionsSpec = {
 						},
 					},
 					descriptionCompressed:
-						"calendar details: calendarId timeMin timeMax timeZone startAt endAt durationMinutes eventId newTitle description location travelOriginAddress windowDays windowPreset forceSync",
+						"details (for create/update/delete_event ONLY): { calendarId, start (ISO-8601), end (ISO-8601), eventId, newTitle, location, attendees, description }. ",
 				},
 				{
 					name: "durationMinutes",
-					description: "Meeting length in minutes. Used by propose_times.",
+					description:
+						"Top-level flat field. Meeting length in minutes for propose_times. ",
 					required: false,
 					schema: {
 						type: "number",
 					},
 					descriptionCompressed:
-						"Meeting length in minutes. Used by propose_times.",
+						"Top-level flat field. Meeting length in minutes for propose_times.",
 				},
 				{
 					name: "daysAhead",
@@ -3323,23 +3597,25 @@ export const allActionsSpec = {
 				},
 				{
 					name: "startAt",
-					description: "ISO-8601 start time. Used by check_availability.",
+					description:
+						"Top-level flat field. ISO-8601 start time for check_availability. ",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"ISO-8601 start time. Used by check_availability.",
+						"Top-level flat field. ISO-8601 start time for check_availability.",
 				},
 				{
 					name: "endAt",
-					description: "ISO-8601 end time. Used by check_availability.",
+					description:
+						"Top-level flat field. ISO-8601 end time for check_availability. See `startAt`.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"ISO-8601 end time. Used by check_availability.",
+						"Top-level flat field. ISO-8601 end time for check_availability. See `startAt`.",
 				},
 				{
 					name: "timeZone",
@@ -3355,24 +3631,24 @@ export const allActionsSpec = {
 				{
 					name: "preferredStartLocal",
 					description:
-						"Earliest preferred meeting start time-of-day (local HH:MM, 24h).",
+						"Top-level flat field for update_preferences. Earliest preferred meeting start time-of-day (local HH:MM, 24h). ",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Earliest preferred meeting start time-of-day (local HH:MM, 24h).",
+						"Top-level flat field for update_preferences. Earliest preferred meeting start time-of-day (local HH:MM, 24h).",
 				},
 				{
 					name: "preferredEndLocal",
 					description:
-						"Latest preferred meeting end time-of-day (local HH:MM, 24h).",
+						"Top-level flat field for update_preferences. Latest preferred meeting end time-of-day (local HH:MM, 24h). See `preferredStartLocal`.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Latest preferred meeting end time-of-day (local HH:MM, 24h).",
+						"Top-level flat field for update_preferences. Latest preferred meeting end time-of-day (local HH:MM, 24h). See `preferredStartLocal`.",
 				},
 				{
 					name: "defaultDurationMinutes",
@@ -3431,22 +3707,6 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
-			similes: [
-				"CALENDAR",
-				"SCHEDULE",
-				"MEETING",
-				"CALENDAR_LIST_UPCOMING",
-				"CALENDAR_FIND_AVAILABILITY",
-				"CALENDAR_CREATE_EVENT",
-				"CALENDAR_CREATE_RECURRING_BLOCK",
-				"CALENDAR_RESCHEDULE_EVENT",
-				"CALENDAR_CANCEL_EVENT",
-				"CALENDAR_PROPOSE_TIMES",
-				"CALENDAR_PROTECT_WINDOW",
-				"CALENDAR_BUNDLE_MEETINGS",
-				"CALENDAR_ADD_PREP_BUFFER",
-				"CALENDAR_ADD_TRAVEL_BUFFER",
-			],
 			exampleCalls: [
 				{
 					user: "Use CALENDAR with the provided parameters.",
@@ -3472,129 +3732,6 @@ export const allActionsSpec = {
 							defaultDurationMinutes: 1,
 							travelBufferMinutes: 1,
 							blackoutWindows: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "CALENDLY",
-			description:
-				"Work with Calendly specifically (calendly.com / api.calendly.com). ",
-			parameters: [
-				{
-					name: "action",
-					description:
-						"One of: list_event_types, availability, upcoming_events, single_use_link. When omitted, the handler runs an LLM extraction over the conversation to recover it.",
-					required: true,
-					schema: {
-						type: "string",
-						enum: [
-							"list_event_types",
-							"availability",
-							"upcoming_events",
-							"single_use_link",
-						],
-					},
-					examples: ["list_event_types", "availability"],
-					descriptionCompressed:
-						"calendly op: list_event_types|availability|upcoming_events|single_use_link",
-				},
-				{
-					name: "subaction",
-					description: "Legacy alias for action.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: [
-							"list_event_types",
-							"availability",
-							"upcoming_events",
-							"single_use_link",
-						],
-					},
-					examples: ["list_event_types", "availability"],
-					descriptionCompressed: "legacy calendly op alias",
-				},
-				{
-					name: "intent",
-					description: "Optional free-form description of the user's intent.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "free-form intent",
-				},
-				{
-					name: "eventTypeUri",
-					description:
-						"Calendly event type URI. Required for availability and single_use_link.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["https://api.calendly.com/event_types/ABCDEFGH"],
-					descriptionCompressed:
-						"calendly event type URI (availability|single_use_link)",
-				},
-				{
-					name: "startDate",
-					description:
-						"ISO date (YYYY-MM-DD) for range-based queries (availability, upcoming_events).",
-					required: false,
-					schema: {
-						type: "string",
-						pattern: "^\\d{4}-\\d{2}-\\d{2}$",
-					},
-					examples: ["2026-05-12"],
-					descriptionCompressed: "YYYY-MM-DD range start",
-				},
-				{
-					name: "endDate",
-					description: "ISO date (YYYY-MM-DD) for range-based queries.",
-					required: false,
-					schema: {
-						type: "string",
-						pattern: "^\\d{4}-\\d{2}-\\d{2}$",
-					},
-					examples: ["2026-05-19"],
-					descriptionCompressed: "YYYY-MM-DD range end",
-				},
-				{
-					name: "timezone",
-					description: "IANA timezone, e.g. America/Los_Angeles.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					examples: ["America/Los_Angeles", "UTC"],
-					descriptionCompressed: "IANA tz",
-				},
-			],
-			descriptionCompressed:
-				"calendly: list_event_types|availability|upcoming_events|single_use_link; route here for calendly.com URLs",
-			similes: [
-				"CALENDLY_LIST_EVENT_TYPES",
-				"CALENDLY_AVAILABILITY",
-				"CALENDLY_UPCOMING",
-				"CALENDLY_BOOKING_LINK",
-				"CALENDLY_ACTION",
-				"CALENDLY_EVENT_TYPES",
-				"CALENDLY_SCHEDULED_EVENTS",
-			],
-			exampleCalls: [
-				{
-					user: "Use CALENDLY with the provided parameters.",
-					actions: ["CALENDLY"],
-					params: {
-						CALENDLY: {
-							action: "list_event_types",
-							subaction: "list_event_types",
-							intent: "example",
-							eventTypeUri: "https://api.calendly.com/event_types/ABCDEFGH",
-							startDate: "2026-05-12",
-							endDate: "2026-05-19",
-							timezone: "America/Los_Angeles",
 						},
 					},
 				},
@@ -3778,16 +3915,16 @@ export const allActionsSpec = {
 				"Proactively scan the owner's calendar for overlapping events, or evaluate a proposed event window against the owner's feed. Subactions: scan_today, scan_week, scan_event_proposal.",
 			parameters: [
 				{
-					name: "subaction",
+					name: "action",
 					description:
-						"Which scan to run: scan_today | scan_week | scan_event_proposal.",
+						"Canonical conflict scan operation: scan_today | scan_week | scan_event_proposal.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["scan_today", "scan_week", "scan_event_proposal"],
 					},
 					descriptionCompressed:
-						"Which scan to run: scan_today | scan_week | scan_event_proposal.",
+						"Canonical conflict scan operation: scan_today | scan_week | scan_event_proposal.",
 				},
 				{
 					name: "range",
@@ -3820,7 +3957,7 @@ export const allActionsSpec = {
 					actions: ["CONFLICT_DETECT"],
 					params: {
 						CONFLICT_DETECT: {
-							subaction: "scan_today",
+							action: "scan_today",
 							range: "example",
 							proposal: "example",
 						},
@@ -4126,186 +4263,21 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "DOC",
-			description:
-				"Manage the owner's document workflow surface: signature requests, approvals, deadline tracking, portal uploads, ID/form collection, and request close-out. Subactions: request_signature, request_approval, track_deadline, upload_asset, collect_id, close_request.",
-			parameters: [
-				{
-					name: "subaction",
-					description:
-						"Which document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: [
-							"request_signature",
-							"request_approval",
-							"track_deadline",
-							"upload_asset",
-							"collect_id",
-							"close_request",
-						],
-					},
-					descriptionCompressed:
-						"Which document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
-				},
-				{
-					name: "documentRequestId",
-					description:
-						"Existing DocumentRequest id. Required for track_deadline and close_request.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Existing DocumentRequest id. Required for track_deadline and close_request.",
-				},
-				{
-					name: "requesteeEntityId",
-					description:
-						"Entity id of the person we are asking. Required for request_signature and collect_id.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Entity id of the person we are asking. Required for request_signature and collect_id.",
-				},
-				{
-					name: "documentTitle",
-					description: "Short human-readable label for the document.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Short human-readable label for the document.",
-				},
-				{
-					name: "deadline",
-					description: "ISO-8601 deadline for the request.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "ISO-8601 deadline for the request.",
-				},
-				{
-					name: "portalUrl",
-					description:
-						"Portal endpoint for upload_asset and (optionally) collect_id.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Portal endpoint for upload_asset and (optionally) collect_id.",
-				},
-				{
-					name: "assetPath",
-					description:
-						"Local path or URL of the asset to upload. Required for upload_asset.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Local path or URL of the asset to upload. Required for upload_asset.",
-				},
-				{
-					name: "assetKind",
-					description:
-						"What kind of asset: deck, headshot, id, form, etc. Required for upload_asset and collect_id.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"What kind of asset: deck, headshot, id, form, etc. Required for upload_asset and collect_id.",
-				},
-				{
-					name: "signatureUrl",
-					description:
-						"Optional signing portal URL (DocuSign / HelloSign / etc.).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional signing portal URL (DocuSign/HelloSign/etc.).",
-				},
-				{
-					name: "approvalReason",
-					description: "Reason label for request_approval.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Reason label for request_approval.",
-				},
-				{
-					name: "note",
-					description: "Free-form note recorded on the DocumentRequest.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Free-form note recorded on the DocumentRequest.",
-				},
-				{
-					name: "resolution",
-					description:
-						"close_request only: completed | expired | cancelled. Defaults to completed.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: ["completed", "expired", "cancelled"],
-					},
-					descriptionCompressed:
-						"close_request only: completed | expired | cancelled. Defaults to completed.",
-				},
-			],
-			descriptionCompressed:
-				"docs: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request; deadline-aware; owner-gated for signature+upload",
-			exampleCalls: [
-				{
-					user: "Use DOC with the provided parameters.",
-					actions: ["DOC"],
-					params: {
-						DOC: {
-							subaction: "request_signature",
-							documentRequestId: "example",
-							requesteeEntityId: "example",
-							documentTitle: "example",
-							deadline: "example",
-							portalUrl: "example",
-							assetPath: "example",
-							assetKind: "example",
-							signatureUrl: "example",
-							approvalReason: "example",
-							note: "example",
-							resolution: "completed",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "ENTITY",
 			description:
-				"Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: add, list, set_identity, set_relationship, log_interaction, merge. Use SCHEDULED_TASK for follow-up cadence; use LIFE for one-off dated reminders to call/text someone.",
+				"Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: create, read, set_identity, set_relationship, log_interaction, merge. For rolodex/contact lifecycle (CRUD on a single contact's profile) use CONTACT; ENTITY is the owner-graph umbrella for identity, relationships, and interaction history. Use SCHEDULED_TASKS for follow-up cadence; use OWNER_REMINDERS for one-off dated reminders to call/text someone.",
 			parameters: [
 				{
 					name: "action",
 					description:
-						"Which ENTITY operation to run: add (new contact), list (read rolodex), log_interaction (record contact event), set_identity (force-merge a platform handle onto an entity), set_relationship (typed edge between entities), merge (collapse duplicate entities). Follow-up cadence belongs to SCHEDULED_TASKS.",
+						"Which ENTITY operation to run: create (new contact), read (load rolodex), log_interaction (record contact event), set_identity (force-merge a platform handle onto an entity), set_relationship (typed edge between entities), merge (collapse duplicate entities). For rolodex/contact lifecycle (read full profile, search, update fields) use CONTACT. Follow-up cadence belongs to SCHEDULED_TASKS.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					examples: ["add", "list", "set_identity"],
+					examples: ["create", "read", "set_identity"],
 					descriptionCompressed:
-						"ENTITY op: add | list | log_interaction | set_identity | set_relationship | merge",
+						"ENTITY op: create | read | log_interaction | set_identity | set_relationship | merge",
 				},
 				{
 					name: "intent",
@@ -4496,9 +4468,8 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"people+relationships: add|list|set_identity|set_relationship|log_interaction|merge; follow-up cadence → SCHEDULED_TASK",
+				"people+relationships: create|read|set_identity|set_relationship|log_interaction|merge; rolodex CRUD → CONTACT; follow-up cadence → SCHEDULED_TASK",
 			similes: [
-				"RELATIONSHIP",
 				"CONTACTS",
 				"ROLODEX",
 				"LOG_INTERACTION",
@@ -4507,7 +4478,6 @@ export const allActionsSpec = {
 				"MERGE_ENTITIES",
 				"MERGE_CONTACTS",
 				"SET_IDENTITY",
-				"SET_RELATIONSHIP",
 			],
 			exampleCalls: [
 				{
@@ -4515,7 +4485,7 @@ export const allActionsSpec = {
 					actions: ["ENTITY"],
 					params: {
 						ENTITY: {
-							action: "add",
+							action: "create",
 							intent: "example",
 							name: "example",
 							channel: "email",
@@ -4542,7 +4512,7 @@ export const allActionsSpec = {
 		{
 			name: "FILE",
 			description:
-				"Read, write, edit, search, find, or list workspace files through one FILE action. Choose action=read/write/edit/grep/glob/ls. All paths must be absolute unless an operation explicitly defaults to the session cwd.",
+				"Read, write, edit, search, find, or list files through one FILE action. Choose action=read/write/edit/grep/glob/ls. Use target=device for device-filesystem reads, writes, and directory lists; workspace paths must be absolute unless an operation explicitly defaults to the session cwd.",
 			parameters: [
 				{
 					name: "action",
@@ -4553,6 +4523,18 @@ export const allActionsSpec = {
 						enum: ["read", "write", "edit", "grep", "glob", "ls"],
 					},
 					descriptionCompressed: "File operation to run.",
+				},
+				{
+					name: "target",
+					description:
+						"Optional target filesystem. Use device for relative paths under the device filesystem bridge; omit for workspace files.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["workspace", "device"],
+					},
+					descriptionCompressed:
+						"Optional target filesystem. Use device for relative paths under the device filesystem bridge. omit for workspace files.",
 				},
 				{
 					name: "file_path",
@@ -4755,22 +4737,22 @@ export const allActionsSpec = {
 					},
 					descriptionCompressed: "For action=ls, glob patterns to exclude.",
 				},
+				{
+					name: "encoding",
+					description:
+						"For target=device read/write: utf8 or base64. Defaults to utf8.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["utf8", "base64"],
+					},
+					descriptionCompressed:
+						"For target=device read/write: utf8 or base64. Defaults to utf8.",
+				},
 			],
 			descriptionCompressed:
-				"File operations umbrella: action=read/write/edit/grep/glob/ls.",
-			similes: [
-				"READ",
-				"WRITE",
-				"EDIT",
-				"GREP",
-				"GLOB",
-				"LS",
-				"READ_FILE",
-				"WRITE_FILE",
-				"EDIT_FILE",
-				"FILE_OPERATION",
-				"FILE_IO",
-			],
+				"File operations umbrella: action=read/write/edit/grep/glob/ls, optional target=device.",
+			similes: ["FILE_OPERATION", "FILE_IO"],
 			exampleCalls: [
 				{
 					user: "Use FILE with the provided parameters.",
@@ -4778,6 +4760,7 @@ export const allActionsSpec = {
 					params: {
 						FILE: {
 							action: "read",
+							target: "workspace",
 							file_path: "example",
 							path: "example",
 							content: "example",
@@ -4798,47 +4781,7 @@ export const allActionsSpec = {
 							offset: 1,
 							limit: 1,
 							ignore: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "FORM",
-			description:
-				"Form session router. action=restore rehydrates the most recent stashed form for the current user.",
-			parameters: [
-				{
-					name: "action",
-					description: "Form verb: restore. Defaults to restore when omitted.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: ["restore"],
-					},
-					descriptionCompressed:
-						"Form verb: restore. Defaults to restore when omitted.",
-				},
-				{
-					name: "sessionId",
-					description: "Optional stashed form session id to restore.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Optional stashed form session id to restore.",
-				},
-			],
-			descriptionCompressed: "Form session router (restore).",
-			similes: ["FORM_RESTORE", "RESUME_FORM", "CONTINUE_FORM"],
-			exampleCalls: [
-				{
-					user: "Use FORM with the provided parameters.",
-					actions: ["FORM"],
-					params: {
-						FORM: {
-							action: "restore",
-							sessionId: "example",
+							encoding: "utf8",
 						},
 					},
 				},
@@ -5037,14 +4980,15 @@ export const allActionsSpec = {
 				"Cross-platform unified inbox: fan out to Gmail, Slack, Discord, Telegram, Signal, iMessage, and WhatsApp and merge into a single recency-ordered feed. Subactions: list, search, summarize.",
 			parameters: [
 				{
-					name: "subaction",
-					description: "Which operation: list | search | summarize.",
+					name: "action",
+					description: "Canonical inbox operation: list | search | summarize.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["list", "search", "summarize"],
 					},
-					descriptionCompressed: "Which operation: list | search | summarize.",
+					descriptionCompressed:
+						"Canonical inbox operation: list | search | summarize.",
 				},
 				{
 					name: "platforms",
@@ -5097,7 +5041,7 @@ export const allActionsSpec = {
 					actions: ["INBOX_UNIFIED"],
 					params: {
 						INBOX_UNIFIED: {
-							subaction: "list",
+							action: "list",
 							platforms: "example",
 							since: "example",
 							limit: 1,
@@ -5140,27 +5084,13 @@ export const allActionsSpec = {
 			descriptionCompressed:
 				"Linear: create/get/update/delete issue, create/update/delete/list comment, search issues, get/clear activity.",
 			similes: [
-				"LINEAR_ISSUE",
 				"LINEAR_ISSUES",
-				"LINEAR_COMMENT",
 				"LINEAR_COMMENTS",
-				"LINEAR_WORKFLOW",
 				"LINEAR_ACTIVITY",
 				"LINEAR_SEARCH",
-				"CREATE_LINEAR_ISSUE",
-				"GET_LINEAR_ISSUE",
-				"UPDATE_LINEAR_ISSUE",
-				"DELETE_LINEAR_ISSUE",
 				"MANAGE_LINEAR_ISSUE",
 				"MANAGE_LINEAR_ISSUES",
-				"CREATE_LINEAR_COMMENT",
 				"COMMENT_LINEAR_ISSUE",
-				"UPDATE_LINEAR_COMMENT",
-				"DELETE_LINEAR_COMMENT",
-				"LIST_LINEAR_COMMENTS",
-				"GET_LINEAR_ACTIVITY",
-				"CLEAR_LINEAR_ACTIVITY",
-				"SEARCH_LINEAR_ISSUES",
 				"LINEAR_WORKFLOW_SEARCH",
 			],
 			exampleCalls: [
@@ -5170,179 +5100,6 @@ export const allActionsSpec = {
 					params: {
 						LINEAR: {
 							action: "create_issue",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "LIQUIDITY",
-			description:
-				"Single LP/liquidity management action. action=onboard|list_pools|open|close|reposition|list_positions|get_position|set_preferences. dex=orca|raydium|meteora|uniswap|aerodrome|pancakeswap selects the protocol; chain=solana|evm is inferred from dex when omitted.",
-			parameters: [
-				{
-					name: "action",
-					description:
-						"Liquidity operation: onboard, list_pools, open, close, reposition, list_positions, get_position, set_preferences.",
-					required: true,
-					schema: {
-						type: "string",
-						enum: [
-							"onboard",
-							"list_pools",
-							"open",
-							"close",
-							"reposition",
-							"list_positions",
-							"get_position",
-							"set_preferences",
-						],
-					},
-					descriptionCompressed:
-						"Liquidity operation: onboard, list_pools, open, close, reposition, list_positions, get_position, set_preferences.",
-				},
-				{
-					name: "subaction",
-					description: "Legacy alias for action.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Legacy alias for action.",
-				},
-				{
-					name: "chain",
-					description: "Chain for the LP operation.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: ["solana", "evm"],
-					},
-					descriptionCompressed: "Chain for the LP operation.",
-				},
-				{
-					name: "dex",
-					description: "DEX/protocol name.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "DEX/protocol name.",
-				},
-				{
-					name: "pool",
-					description:
-						"Pool id/address for open, close, reposition, or position lookup.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Pool id/address for open, close, reposition, or position lookup.",
-				},
-				{
-					name: "position",
-					description: "LP position id/mint/address.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "LP position id/mint/address.",
-				},
-				{
-					name: "amount",
-					description:
-						"Liquidity amount for open, close, or reposition operations.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Liquidity amount for open, close, or reposition operations.",
-				},
-				{
-					name: "range",
-					description: "Desired concentrated liquidity price range.",
-					required: false,
-					schema: {
-						type: "object",
-					},
-					descriptionCompressed: "Desired concentrated liquidity price range.",
-				},
-				{
-					name: "tokenA",
-					description: "First token filter or deposit token.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "First token filter or deposit token.",
-				},
-				{
-					name: "tokenB",
-					description: "Second token filter or deposit token.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Second token filter or deposit token.",
-				},
-				{
-					name: "chainId",
-					description: "Optional numeric EVM chain id.",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed: "Optional numeric EVM chain id.",
-				},
-				{
-					name: "slippageBps",
-					description: "Maximum allowed slippage in basis points.",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed: "max allowed slippage in basis points.",
-				},
-			],
-			descriptionCompressed:
-				"Manage LP positions by action, chain, dex, pool, position, amount, range, token filters.",
-			similes: [
-				"lp_management",
-				"LP_MANAGEMENT",
-				"LIQUIDITY_POOL_MANAGEMENT",
-				"LP_MANAGER",
-				"MANAGE_LP",
-				"MANAGE_LIQUIDITY",
-				"MANAGE_LP_POSITIONS",
-				"manage_positions",
-				"manage_raydium_positions",
-				"AUTOMATE_REBALANCING",
-				"AUTOMATE_POSITIONS",
-				"START_MANAGING_POSITIONS",
-				"AUTOMATE_RAYDIUM_REBALANCING",
-				"AUTOMATE_RAYDIUM_POSITIONS",
-				"START_MANAGING_RAYDIUM_POSITIONS",
-			],
-			exampleCalls: [
-				{
-					user: "Use LIQUIDITY with the provided parameters.",
-					actions: ["LIQUIDITY"],
-					params: {
-						LIQUIDITY: {
-							action: "onboard",
-							subaction: "example",
-							chain: "solana",
-							dex: "example",
-							pool: "example",
-							position: "example",
-							amount: "example",
-							range: "example",
-							tokenA: "example",
-							tokenB: "example",
-							chainId: 1,
-							slippageBps: 1,
 						},
 					},
 				},
@@ -5364,16 +5121,6 @@ export const allActionsSpec = {
 					},
 					descriptionCompressed:
 						"Bridge management action. Use refresh for show/settings/status/connection-state requests. Use open_manager only for explicit chrome://extensions or...",
-				},
-				{
-					name: "subaction",
-					description: "Legacy alias for action.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: ["install", "reveal_folder", "open_manager", "refresh"],
-					},
-					descriptionCompressed: "Legacy alias for action.",
 				},
 			],
 			descriptionCompressed:
@@ -5408,7 +5155,6 @@ export const allActionsSpec = {
 					params: {
 						MANAGE_BROWSER_BRIDGE: {
 							action: "install",
-							subaction: "install",
 						},
 					},
 				},
@@ -5444,30 +5190,6 @@ export const allActionsSpec = {
 					descriptionCompressed: "Action.",
 				},
 				{
-					name: "subaction",
-					description: "Legacy alias for action.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: [
-							"connect",
-							"disconnect",
-							"goto",
-							"stop",
-							"look",
-							"control",
-							"waypoint_goto",
-							"dig",
-							"place",
-							"chat",
-							"attack",
-							"waypoint_set",
-							"waypoint_delete",
-						],
-					},
-					descriptionCompressed: "Legacy action alias.",
-				},
-				{
 					name: "params",
 					description:
 						"Optional JSON object containing the fields required by the chosen op.",
@@ -5487,7 +5209,6 @@ export const allActionsSpec = {
 					params: {
 						MC: {
 							action: "connect",
-							subaction: "connect",
 							params: "example",
 						},
 					},
@@ -5750,15 +5471,15 @@ export const allActionsSpec = {
 						"Must be true when the underlying operation requires confirmation.",
 				},
 				{
-					name: "operation",
+					name: "routingAction",
 					description:
-						"Structured routing operation when using set_routing (set_mode, start_route, …).",
+						"Structured routing action when using set_routing (set_mode, start_route, status, stop_route).",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Structured routing operation when using set_routing (set_mode, start_route, …).",
+						"Structured routing action when using set_routing (set_mode, start_route, status, stop_route).",
 				},
 				{
 					name: "mode",
@@ -5886,7 +5607,7 @@ export const allActionsSpec = {
 							song: "example",
 							limit: 1,
 							confirmed: false,
-							operation: "example",
+							routingAction: "example",
 							mode: "example",
 							sourceId: "example",
 							targetIds: "example",
@@ -5903,7 +5624,437 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "MYSTICISM_PAYMENT",
+			name: "MYSTICISM_READING",
+			description:
+				"Mystical reading router. Set type to tarot, astrology, or iching, and action to start (begin a new reading), followup (reveal the next element), or deepen (more interpretation for the most-recent element).",
+			parameters: [
+				{
+					name: "type",
+					description: "Reading type: tarot, astrology, or iching.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["tarot", "astrology", "iching"],
+					},
+					descriptionCompressed: "Reading type: tarot, astrology, or iching.",
+				},
+				{
+					name: "action",
+					description: "Action: start, followup, or deepen.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["start", "followup", "deepen"],
+					},
+					descriptionCompressed: "Action: start, followup, or deepen.",
+				},
+				{
+					name: "question",
+					description: "Optional question or focus for the reading.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Optional question or focus for the reading.",
+				},
+				{
+					name: "context",
+					description:
+						"Optional additional context (e.g., birth data hint for astrology).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional additional context (e. g. , birth data hint for astrology).",
+				},
+			],
+			descriptionCompressed:
+				"Mystical readings: tarot, astrology, iching; actions: start, followup, deepen.",
+			similes: [
+				"TAROT_READING",
+				"READ_TAROT",
+				"DRAW_CARDS",
+				"TAROT_SPREAD",
+				"CARD_READING",
+				"ICHING_READING",
+				"CAST_HEXAGRAM",
+				"CONSULT_ICHING",
+				"THROW_COINS",
+				"ORACLE_READING",
+				"ASTROLOGY_READING",
+				"BIRTH_CHART",
+				"NATAL_CHART",
+				"HOROSCOPE_READING",
+				"ZODIAC_READING",
+				"READING_FOLLOWUP",
+				"CONTINUE_READING",
+				"NEXT_CARD",
+				"PROCEED_READING",
+				"DEEPEN_READING",
+				"EXPLORE_DEEPER",
+				"ELABORATE_READING",
+			],
+			exampleCalls: [
+				{
+					user: "Use MYSTICISM_READING with the provided parameters.",
+					actions: ["MYSTICISM_READING"],
+					params: {
+						MYSTICISM_READING: {
+							type: "tarot",
+							action: "start",
+							question: "example",
+							context: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "OWNER_ALARMS",
+			description:
+				"Owner alarms: create, update, delete, complete, skip, snooze, or review alarm-like reminders.",
+			parameters: [],
+			descriptionCompressed:
+				"owner alarms: action=create|update|delete|complete|skip|snooze|review",
+			similes: ["ALARM", "ALARMS", "WAKE_ME", "WAKE_UP"],
+		},
+		{
+			name: "OWNER_DOCUMENTS",
+			description:
+				"Manage the owner's document workflow surface: signature requests, approvals, deadline tracking, portal uploads, ID/form collection, and request close-out. Subactions: request_signature, request_approval, track_deadline, upload_asset, collect_id, close_request.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"request_signature",
+							"request_approval",
+							"track_deadline",
+							"upload_asset",
+							"collect_id",
+							"close_request",
+						],
+					},
+					descriptionCompressed:
+						"Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+				},
+				{
+					name: "documentRequestId",
+					description:
+						"Existing DocumentRequest id. Required for track_deadline and close_request.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Existing DocumentRequest id. Required for track_deadline and close_request.",
+				},
+				{
+					name: "requesteeEntityId",
+					description:
+						"Entity id of the person we are asking. Required for request_signature and collect_id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Entity id of the person we are asking. Required for request_signature and collect_id.",
+				},
+				{
+					name: "documentTitle",
+					description: "Short human-readable label for the document.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Short human-readable label for the document.",
+				},
+				{
+					name: "deadline",
+					description: "ISO-8601 deadline for the request.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "ISO-8601 deadline for the request.",
+				},
+				{
+					name: "portalUrl",
+					description:
+						"Portal endpoint for upload_asset and (optionally) collect_id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Portal endpoint for upload_asset and (optionally) collect_id.",
+				},
+				{
+					name: "assetPath",
+					description:
+						"Local path or URL of the asset to upload. Required for upload_asset.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Local path or URL of the asset to upload. Required for upload_asset.",
+				},
+				{
+					name: "assetKind",
+					description:
+						"What kind of asset: deck, headshot, id, form, etc. Required for upload_asset and collect_id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"What kind of asset: deck, headshot, id, form, etc. Required for upload_asset and collect_id.",
+				},
+				{
+					name: "signatureUrl",
+					description:
+						"Optional signing portal URL (DocuSign / HelloSign / etc.).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional signing portal URL (DocuSign/HelloSign/etc.).",
+				},
+				{
+					name: "approvalReason",
+					description: "Reason label for request_approval.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Reason label for request_approval.",
+				},
+				{
+					name: "note",
+					description: "Free-form note recorded on the DocumentRequest.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Free-form note recorded on the DocumentRequest.",
+				},
+				{
+					name: "resolution",
+					description:
+						"close_request only: completed | expired | cancelled. Defaults to completed.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["completed", "expired", "cancelled"],
+					},
+					descriptionCompressed:
+						"close_request only: completed | expired | cancelled. Defaults to completed.",
+				},
+			],
+			descriptionCompressed:
+				"docs: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request; deadline-aware; owner-gated for signature+upload",
+			exampleCalls: [
+				{
+					user: "Use OWNER_DOCUMENTS with the provided parameters.",
+					actions: ["OWNER_DOCUMENTS"],
+					params: {
+						OWNER_DOCUMENTS: {
+							action: "request_signature",
+							documentRequestId: "example",
+							requesteeEntityId: "example",
+							documentTitle: "example",
+							deadline: "example",
+							portalUrl: "example",
+							assetPath: "example",
+							assetKind: "example",
+							signatureUrl: "example",
+							approvalReason: "example",
+							note: "example",
+							resolution: "completed",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "OWNER_FINANCES",
+			description:
+				"Owner finances: payment sources, transaction imports, spending summaries, recurring charges, and subscription audits.",
+			parameters: [
+				{
+					name: "action",
+					description: "Owner finance action.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Owner finance action.",
+				},
+			],
+			descriptionCompressed:
+				"owner finances: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
+			similes: ["FINANCES"],
+			exampleCalls: [
+				{
+					user: "Use OWNER_FINANCES with the provided parameters.",
+					actions: ["OWNER_FINANCES"],
+					params: {
+						OWNER_FINANCES: {
+							action: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "OWNER_GOALS",
+			description:
+				"Owner goals: create, update, delete, or review long-term goals and progress.",
+			parameters: [],
+			descriptionCompressed:
+				"owner goals: action=create|update|delete|review; backing kind=goal",
+			similes: ["GOAL", "GOALS", "LONG_TERM_GOAL"],
+		},
+		{
+			name: "OWNER_HEALTH",
+			description:
+				"Owner health telemetry reads across HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura. Actions: today, trend, by_metric, status.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Owner health read action: today, trend, by_metric, or status.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Owner health read action: today, trend, by_metric, or status.",
+				},
+			],
+			descriptionCompressed:
+				"owner health: today|trend|by_metric|status; read-only telemetry",
+			similes: ["FITNESS", "WELLNESS"],
+			exampleCalls: [
+				{
+					user: "Use OWNER_HEALTH with the provided parameters.",
+					actions: ["OWNER_HEALTH"],
+					params: {
+						OWNER_HEALTH: {
+							action: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "OWNER_REMINDERS",
+			description:
+				"Owner reminders: create, update, delete, complete, skip, snooze, or review one-off and recurring reminders.",
+			parameters: [],
+			descriptionCompressed:
+				"owner reminders: action=create|update|delete|complete|skip|snooze|review",
+			similes: [
+				"REMINDER",
+				"REMINDERS",
+				"SET_REMINDER",
+				"REMIND_ME",
+				"REMIND_ME_TO",
+			],
+		},
+		{
+			name: "OWNER_ROUTINES",
+			description:
+				"Owner routines and habits: create or manage recurring routines, and inspect passive schedule inference.",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Routine operation: create, update, delete, complete, skip, snooze, review, schedule_summary, or schedule_inspect.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Routine operation: create, update, delete, complete, skip, snooze, review, schedule_summary, or schedule_inspect.",
+				},
+			],
+			descriptionCompressed:
+				"owner routines: action=create|update|delete|complete|skip|snooze|review|schedule_summary|schedule_inspect",
+			similes: [
+				"HABIT",
+				"HABITS",
+				"ROUTINE",
+				"ROUTINES",
+				"DAILY_TASK",
+				"WEEKLY_TASK",
+			],
+			exampleCalls: [
+				{
+					user: "Use OWNER_ROUTINES with the provided parameters.",
+					actions: ["OWNER_ROUTINES"],
+					params: {
+						OWNER_ROUTINES: {
+							action: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "OWNER_SCREENTIME",
+			description:
+				"Owner screen-time and activity analytics across local activity, app usage, and browser reports.",
+			parameters: [
+				{
+					name: "action",
+					description: "Owner screentime read action.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Owner screentime read action.",
+				},
+			],
+			descriptionCompressed:
+				"owner screentime: summary|today|weekly|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity",
+			similes: ["SCREENTIME", "ACTIVITY_REPORT"],
+			exampleCalls: [
+				{
+					user: "Use OWNER_SCREENTIME with the provided parameters.",
+					actions: ["OWNER_SCREENTIME"],
+					params: {
+						OWNER_SCREENTIME: {
+							action: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "OWNER_TODOS",
+			description:
+				"Owner todos: create, update, delete, complete, skip, snooze, or review personal todos.",
+			parameters: [],
+			descriptionCompressed:
+				"owner todos: action=create|update|delete|complete|skip|snooze|review",
+			similes: [
+				"OWNER_TODO",
+				"PERSONAL_TODO",
+				"PERSONAL_TODOS",
+				"PERSONAL_TASK",
+			],
+		},
+		{
+			name: "PAYMENT",
 			description:
 				"Payment router for the active mysticism reading session. Set action to 'check' to read payment status, or 'request' to ask the user to pay (set amount or include $X.XX in the message).",
 			parameters: [
@@ -5963,194 +6114,14 @@ export const allActionsSpec = {
 			],
 			exampleCalls: [
 				{
-					user: "Use MYSTICISM_PAYMENT with the provided parameters.",
-					actions: ["MYSTICISM_PAYMENT"],
+					user: "Use PAYMENT with the provided parameters.",
+					actions: ["PAYMENT"],
 					params: {
-						MYSTICISM_PAYMENT: {
+						PAYMENT: {
 							action: "check",
 							amount: "example",
 							entityId: "example",
 							roomId: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "MYSTICISM_READING",
-			description:
-				"Mystical reading router. Set type to tarot, astrology, or iching, and action to start (begin a new reading), followup (reveal the next element), or deepen (more interpretation for the most-recent element).",
-			parameters: [
-				{
-					name: "type",
-					description: "Reading type: tarot, astrology, or iching.",
-					required: true,
-					schema: {
-						type: "string",
-						enum: ["tarot", "astrology", "iching"],
-					},
-					descriptionCompressed: "Reading type: tarot, astrology, or iching.",
-				},
-				{
-					name: "action",
-					description: "Action: start, followup, or deepen.",
-					required: true,
-					schema: {
-						type: "string",
-						enum: ["start", "followup", "deepen"],
-					},
-					descriptionCompressed: "Action: start, followup, or deepen.",
-				},
-				{
-					name: "question",
-					description: "Optional question or focus for the reading.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Optional question or focus for the reading.",
-				},
-				{
-					name: "context",
-					description:
-						"Optional additional context (e.g., birth data hint for astrology).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional additional context (e. g. , birth data hint for astrology).",
-				},
-			],
-			descriptionCompressed:
-				"Mystical readings: tarot, astrology, iching; actions: start, followup, deepen.",
-			similes: [
-				"READING",
-				"TAROT_READING",
-				"READ_TAROT",
-				"DRAW_CARDS",
-				"TAROT_SPREAD",
-				"CARD_READING",
-				"ICHING_READING",
-				"CAST_HEXAGRAM",
-				"CONSULT_ICHING",
-				"THROW_COINS",
-				"ORACLE_READING",
-				"ASTROLOGY_READING",
-				"BIRTH_CHART",
-				"NATAL_CHART",
-				"HOROSCOPE_READING",
-				"ZODIAC_READING",
-				"READING_FOLLOWUP",
-				"CONTINUE_READING",
-				"NEXT_CARD",
-				"PROCEED_READING",
-				"DEEPEN_READING",
-				"EXPLORE_DEEPER",
-				"ELABORATE_READING",
-			],
-			exampleCalls: [
-				{
-					user: "Use MYSTICISM_READING with the provided parameters.",
-					actions: ["MYSTICISM_READING"],
-					params: {
-						MYSTICISM_READING: {
-							type: "tarot",
-							action: "start",
-							question: "example",
-							context: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "OWNER_FINANCES",
-			description:
-				"Owner finances: payment sources, transaction imports, spending summaries, recurring charges, and subscription audits.",
-			parameters: [
-				{
-					name: "action",
-					description: "Owner finance action.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Owner finance action.",
-				},
-			],
-			descriptionCompressed:
-				"owner finances: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
-			similes: ["MONEY", "FINANCES", "SUBSCRIPTIONS"],
-			exampleCalls: [
-				{
-					user: "Use OWNER_FINANCES with the provided parameters.",
-					actions: ["OWNER_FINANCES"],
-					params: {
-						OWNER_FINANCES: {
-							action: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "OWNER_HEALTH",
-			description:
-				"Owner health telemetry reads across HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura. Actions: today, trend, by_metric, status.",
-			parameters: [
-				{
-					name: "action",
-					description:
-						"Owner health read action: today, trend, by_metric, or status.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Owner health read action: today, trend, by_metric, or status.",
-				},
-			],
-			descriptionCompressed:
-				"owner health: today|trend|by_metric|status; read-only telemetry",
-			similes: ["HEALTH", "FITNESS", "WELLNESS"],
-			exampleCalls: [
-				{
-					user: "Use OWNER_HEALTH with the provided parameters.",
-					actions: ["OWNER_HEALTH"],
-					params: {
-						OWNER_HEALTH: {
-							action: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "OWNER_SCREENTIME",
-			description:
-				"Owner screen-time and activity analytics across local activity, app usage, and browser reports.",
-			parameters: [
-				{
-					name: "action",
-					description: "Owner screentime read action.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Owner screentime read action.",
-				},
-			],
-			descriptionCompressed:
-				"owner screentime: summary|today|weekly|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity",
-			similes: ["SCREENTIME", "SCREEN_TIME", "ACTIVITY_REPORT"],
-			exampleCalls: [
-				{
-					user: "Use OWNER_SCREENTIME with the provided parameters.",
-					actions: ["OWNER_SCREENTIME"],
-					params: {
-						OWNER_SCREENTIME: {
-							action: "example",
 						},
 					},
 				},
@@ -6182,18 +6153,6 @@ export const allActionsSpec = {
 					},
 					descriptionCompressed:
 						"Perpetual market operation: read or place_order.",
-				},
-				{
-					name: "subaction",
-					description:
-						"Legacy alias for action. Accepts place-order as place_order.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: ["read", "place_order", "place-order"],
-					},
-					descriptionCompressed:
-						"Legacy alias for action. Accepts place-order as place_order.",
 				},
 				{
 					name: "kind",
@@ -6257,7 +6216,6 @@ export const allActionsSpec = {
 						PERPETUAL_MARKET: {
 							target: "hyperliquid",
 							action: "read",
-							subaction: "read",
 							kind: "status",
 							coin: "example",
 							side: "buy",
@@ -6287,9 +6245,7 @@ export const allActionsSpec = {
 				"personal assistant workflows: action=book_travel|scheduling|sign_document",
 			similes: [
 				"ASSISTANT",
-				"BOOK_TRAVEL",
 				"SCHEDULING",
-				"SCHEDULING_NEGOTIATION",
 				"SIGN_DOCUMENT",
 				"DOCUSIGN",
 				"TRAVEL_CAPTURE_PREFERENCES",
@@ -6357,16 +6313,16 @@ export const allActionsSpec = {
 				"Rank the owner's open todos, message threads, or pending decisions by urgency × importance via an LLM compose pass. Subactions: rank_todos, rank_threads, rank_decisions.",
 			parameters: [
 				{
-					name: "subaction",
+					name: "action",
 					description:
-						"Which ranking to compute: rank_todos | rank_threads | rank_decisions.",
+						"Canonical prioritization operation: rank_todos | rank_threads | rank_decisions.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["rank_todos", "rank_threads", "rank_decisions"],
 					},
 					descriptionCompressed:
-						"Which ranking to compute: rank_todos | rank_threads | rank_decisions.",
+						"Canonical prioritization operation: rank_todos | rank_threads | rank_decisions.",
 				},
 				{
 					name: "subject",
@@ -6410,108 +6366,10 @@ export const allActionsSpec = {
 					actions: ["PRIORITIZE"],
 					params: {
 						PRIORITIZE: {
-							subaction: "rank_todos",
+							action: "rank_todos",
 							subject: "todos",
 							topN: 1,
 							criteria: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "PROPOSE_MEETING_TIMES",
-			description:
-				"Propose concrete meeting time slots to offer to another person. This is ",
-			parameters: [
-				{
-					name: "durationMinutes",
-					description:
-						"Meeting length in minutes. Defaults to the owner's configured default duration.",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed:
-						"Meeting length in minutes. Defaults to the owner's configured default duration.",
-				},
-				{
-					name: "daysAhead",
-					description:
-						"Number of days ahead to search. Defaults to 7. Ignored when windowStart/windowEnd are supplied.",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed:
-						"Number of days ahead to search. Defaults to 7. Ignored when windowStart/windowEnd are supplied.",
-				},
-				{
-					name: "slotCount",
-					description: "Number of candidate slots to return. Defaults to 3.",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed:
-						"Number of candidate slots to return. Defaults to 3.",
-				},
-				{
-					name: "windowStart",
-					description:
-						"Optional ISO-8601 earliest start for the search window.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional ISO-8601 earliest start for the search window.",
-				},
-				{
-					name: "windowEnd",
-					description: "Optional ISO-8601 latest end for the search window.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional ISO-8601 latest end for the search window.",
-				},
-				{
-					name: "timeZone",
-					description:
-						"Optional IANA time zone override when the user is temporarily traveling and wants proposals shown in that local time.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional IANA time zone override when user is temporarily traveling and wants proposals shown in that local time.",
-				},
-			],
-			descriptionCompressed:
-				"Propose available meeting slots from the owner's calendar and meeting preferences; not calendar CRUD or negotiation tracking.",
-			similes: [
-				"SUGGEST_MEETING_TIMES",
-				"OFFER_MEETING_SLOTS",
-				"FIND_MEETING_SLOTS",
-				"PROPOSE_SLOTS",
-				"BUNDLE_MEETINGS_WHILE_TRAVELING",
-				"BULK_RESCHEDULE_MEETINGS",
-				"RESCHEDULE_MEETINGS",
-			],
-			exampleCalls: [
-				{
-					user: "Use PROPOSE_MEETING_TIMES with the provided parameters.",
-					actions: ["PROPOSE_MEETING_TIMES"],
-					params: {
-						PROPOSE_MEETING_TIMES: {
-							durationMinutes: 1,
-							daysAhead: 1,
-							slotCount: 1,
-							windowStart: "example",
-							windowEnd: "example",
-							timeZone: "example",
 						},
 					},
 				},
@@ -6824,15 +6682,6 @@ export const allActionsSpec = {
 					descriptionCompressed: "Action.",
 				},
 				{
-					name: "subaction",
-					description: "Legacy alias for action.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Legacy op alias.",
-				},
-				{
 					name: "params",
 					description:
 						"Optional JSON object containing the fields required by the chosen op.",
@@ -6852,7 +6701,6 @@ export const allActionsSpec = {
 					params: {
 						RS_2004: {
 							action: "walk_to",
-							subaction: "example",
 							params: "example",
 						},
 					},
@@ -6882,15 +6730,6 @@ export const allActionsSpec = {
 						],
 					},
 					descriptionCompressed: "Action.",
-				},
-				{
-					name: "subaction",
-					description: "Legacy alias for action.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Legacy op alias.",
 				},
 				{
 					name: "params",
@@ -6935,7 +6774,6 @@ export const allActionsSpec = {
 					params: {
 						SCAPE: {
 							action: "walk_to",
-							subaction: "example",
 							params: "example",
 						},
 					},
@@ -7316,18 +7154,29 @@ export const allActionsSpec = {
 		{
 			name: "SHELL",
 			description:
-				"Execute a shell command via the configured local shell. Runs synchronously in the session cwd by default. Returns stdout, stderr, and exit code. Hard timeout kills the command. Paths under the configured blocklist are off-limits as cwd.",
+				"Canonical shell action. action=run executes a shell command via the configured local shell. action=clear_history clears recorded shell command history for this conversation. action=view_history returns recent recorded shell commands. command is required only for action=run. Paths under the configured blocklist are off-limits as cwd.",
 			parameters: [
+				{
+					name: "action",
+					description: "Shell operation: run | clear_history | view_history.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["run", "clear_history", "view_history"],
+					},
+					descriptionCompressed:
+						"Shell operation: run | clear_history | view_history.",
+				},
 				{
 					name: "command",
 					description:
-						"Shell command to run; executed via /bin/bash -c <command>.",
-					required: true,
+						"Shell command to run for action=run; executed via /bin/bash -c <command>.",
+					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Shell command to run. executed via /bin/bash -c <command>.",
+						"Shell command to run for action=run. executed via /bin/bash -c <command>.",
 				},
 				{
 					name: "description",
@@ -7362,71 +7211,32 @@ export const allActionsSpec = {
 					descriptionCompressed:
 						"Absolute working directory. must not resolve under a blocked path. Defaults to the session cwd.",
 				},
+				{
+					name: "limit",
+					description:
+						"For action=view_history: maximum number of recorded commands to return.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"For action=view_history: max number of recorded commands to return.",
+				},
 			],
-			descriptionCompressed: "Run a shell command synchronously.",
-			similes: ["BASH", "EXEC", "RUN_COMMAND"],
+			descriptionCompressed:
+				"Run shell commands or manage shell command history.",
+			similes: ["EXEC", "RUN_COMMAND"],
 			exampleCalls: [
 				{
 					user: "Use SHELL with the provided parameters.",
 					actions: ["SHELL"],
 					params: {
 						SHELL: {
+							action: "run",
 							command: "example",
 							description: "example",
 							timeout: 1,
 							cwd: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "SHELL_HISTORY",
-			description:
-				"Shell command-history router. action=clear wipes the recorded history; action=view returns recent commands; action=disable is reserved for future use.",
-			parameters: [
-				{
-					name: "action",
-					description:
-						"Operation: clear | view | disable. Inferred from message text when omitted (defaults to clear).",
-					required: false,
-					schema: {
-						type: "string",
-						enum: ["clear", "view", "disable"],
-					},
-					descriptionCompressed:
-						"Operation: clear | view | disable. Inferred from msg text when omitted (defaults to clear).",
-				},
-				{
-					name: "limit",
-					description:
-						"For action=view: maximum number of history entries to return (default 20).",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed:
-						"For action=view: max number of history entries to return (default 20).",
-				},
-			],
-			descriptionCompressed: "Shell history: clear | view | disable.",
-			similes: [
-				"CLEAR_HISTORY",
-				"CLEAR_SHELL_HISTORY",
-				"RESET_SHELL",
-				"CLEAR_TERMINAL",
-				"RESET_HISTORY",
-				"VIEW_SHELL_HISTORY",
-				"SHOW_SHELL_HISTORY",
-				"LIST_SHELL_HISTORY",
-			],
-			exampleCalls: [
-				{
-					user: "Use SHELL_HISTORY with the provided parameters.",
-					actions: ["SHELL_HISTORY"],
-					params: {
-						SHELL_HISTORY: {
-							action: "clear",
 							limit: 1,
 						},
 					},
@@ -7449,15 +7259,6 @@ export const allActionsSpec = {
 					},
 					descriptionCompressed:
 						"Operation to perform. One of: search, products, inventory, orders, customers. Inferred from msg text when omitted.",
-				},
-				{
-					name: "subaction",
-					description: "Legacy alias for action.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Legacy alias for action.",
 				},
 				{
 					name: "query",
@@ -7520,7 +7321,6 @@ export const allActionsSpec = {
 					params: {
 						SHOPIFY: {
 							action: "search",
-							subaction: "example",
 							query: "example",
 							scope: "all",
 							limit: 1,
@@ -8250,15 +8050,6 @@ export const allActionsSpec = {
 						"Action: write, create, update, complete, cancel, delete, list, clear.",
 				},
 				{
-					name: "subaction",
-					description: "Legacy alias for action.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Legacy alias for action.",
-				},
-				{
 					name: "id",
 					description: "Todo id (update/complete/cancel/delete).",
 					required: false,
@@ -8390,7 +8181,6 @@ export const allActionsSpec = {
 					params: {
 						TODO: {
 							action: "example",
-							subaction: "example",
 							id: "example",
 							content: "example",
 							activeForm: "example",
@@ -8434,21 +8224,11 @@ export const allActionsSpec = {
 				},
 			],
 			similes: [
-				"TAILSCALE",
-				"START_TAILSCALE",
-				"STOP_TAILSCALE",
-				"GET_TAILSCALE_STATUS",
-				"START_TUNNEL",
 				"OPEN_TUNNEL",
 				"CREATE_TUNNEL",
-				"TAILSCALE_UP",
-				"STOP_TUNNEL",
 				"CLOSE_TUNNEL",
-				"TAILSCALE_DOWN",
-				"TAILSCALE_STATUS",
 				"CHECK_TUNNEL",
 				"TUNNEL_INFO",
-				"TUNNEL_STATUS",
 			],
 			exampleCalls: [
 				{
@@ -8464,102 +8244,6 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"Tunnel operations dispatched by `action`: start, stop, status. The `start` action accepts an optional `port` (defaults to 3000). `stop` and `status` take no...",
-		},
-		{
-			name: "UPDATE_MEETING_PREFERENCES",
-			description:
-				"Persist the owner's meeting scheduling preferences: preferred start/end ",
-			parameters: [
-				{
-					name: "timeZone",
-					description: "IANA time zone used to interpret preferred hours.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"IANA time zone used to interpret preferred hours.",
-				},
-				{
-					name: "preferredStartLocal",
-					description:
-						"Earliest preferred meeting start time-of-day (local HH:MM, 24h).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Earliest preferred meeting start time-of-day (local HH:MM, 24h).",
-				},
-				{
-					name: "preferredEndLocal",
-					description:
-						"Latest preferred meeting end time-of-day (local HH:MM, 24h).",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Latest preferred meeting end time-of-day (local HH:MM, 24h).",
-				},
-				{
-					name: "defaultDurationMinutes",
-					description: "Default meeting duration in minutes (5–480).",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed: "Default meeting duration in minutes (5-480).",
-				},
-				{
-					name: "travelBufferMinutes",
-					description: "Minutes to reserve before/after each meeting (0–240).",
-					required: false,
-					schema: {
-						type: "number",
-					},
-					descriptionCompressed:
-						"Minutes to reserve before/after each meeting (0-240).",
-				},
-				{
-					name: "blackoutWindows",
-					description:
-						"Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun..6=Sat) }.",
-					required: false,
-					schema: {
-						type: "array",
-					},
-					descriptionCompressed:
-						"Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun. 6=Sat) }.",
-				},
-			],
-			descriptionCompressed:
-				"Persist owner meeting preferences: preferred hours, blackout windows, default duration, and travel buffer.",
-			similes: [
-				"SET_MEETING_PREFERENCES",
-				"SAVE_MEETING_PREFERENCES",
-				"SET_PREFERRED_TIMES",
-				"SET_BLACKOUT_WINDOWS",
-				"SLEEP_WINDOW",
-				"NO_CALL_HOURS",
-				"PROTECT_SLEEP",
-			],
-			exampleCalls: [
-				{
-					user: "Use UPDATE_MEETING_PREFERENCES with the provided parameters.",
-					actions: ["UPDATE_MEETING_PREFERENCES"],
-					params: {
-						UPDATE_MEETING_PREFERENCES: {
-							timeZone: "example",
-							preferredStartLocal: "example",
-							preferredEndLocal: "example",
-							defaultDurationMinutes: 1,
-							travelBufferMinutes: 1,
-							blackoutWindows: "example",
-						},
-					},
-				},
-			],
 		},
 		{
 			name: "USE_SKILL",
@@ -8724,7 +8408,6 @@ export const allActionsSpec = {
 			descriptionCompressed:
 				"Twilio voice dial: recipientKind=owner|external|e164; draft-confirm; approval-queue",
 			similes: [
-				"PLACE_CALL",
 				"CALL_ME",
 				"ESCALATE_TO_USER",
 				"CALL_THIRD_PARTY",
@@ -8773,26 +8456,6 @@ export const allActionsSpec = {
 						],
 					},
 					descriptionCompressed: "Window operation verb.",
-				},
-				{
-					name: "subaction",
-					description: "Legacy alias for action.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: [
-							"list",
-							"focus",
-							"switch",
-							"arrange",
-							"move",
-							"minimize",
-							"maximize",
-							"restore",
-							"close",
-						],
-					},
-					descriptionCompressed: "Legacy alias for action.",
 				},
 				{
 					name: "windowId",
@@ -8852,7 +8515,6 @@ export const allActionsSpec = {
 					params: {
 						WINDOW: {
 							action: "list",
-							subaction: "list",
 							windowId: "example",
 							windowTitle: "example",
 							arrangement: "example",
@@ -9086,12 +8748,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed: "Git worktree umbrella: action=enter/exit.",
-			similes: [
-				"ENTER_WORKTREE",
-				"EXIT_WORKTREE",
-				"GIT_WORKTREE_ADD",
-				"GIT_WORKTREE_REMOVE",
-			],
+			similes: ["GIT_WORKTREE"],
 			exampleCalls: [
 				{
 					user: "Use WORKTREE with the provided parameters.",

@@ -11,9 +11,7 @@ import {
   seedMeetingPreferences,
 } from "../_helpers/lifeops-seeds.ts";
 
-function checkAgentAskedForGuidance(
-  ctx: ScenarioContext,
-): string | undefined {
+function checkAgentAskedForGuidance(ctx: ScenarioContext): string | undefined {
   const reply = String(ctx.turns?.[1]?.responseText ?? "").toLowerCase();
   if (!reply) return "empty reply on rejection";
   const clarifySignals = [

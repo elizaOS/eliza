@@ -6,7 +6,7 @@
  * the real fused omnivoice + llama.cpp build to exist.
  *
  * What works:
- *   - `eliza_inference_abi_version()` returns "1".
+ *   - `eliza_inference_abi_version()` returns the ABI version from `ffi.h`.
  *   - `eliza_inference_create(bundle_dir, ...)` validates the path
  *     argument and returns a tiny heap-allocated context. Bundle_dir
  *     must be non-NULL and non-empty; nothing on disk is required, so
@@ -21,6 +21,8 @@
  *   - asr_transcribe — needs the ASR backend.
  *   - asr_stream_open / _feed / _partial / _finish (ABI v2) — need the
  *     streaming ASR decoder; `_close` is a safe no-op.
+ *   - vad_open / vad_process / vad_reset (ABI v3) — need the native
+ *     Silero VAD backend; `_close` is a safe no-op.
  *
  * What returns ELIZA_OK without doing anything (these are the "no
  * fused build, nothing to do" entries — there is no in-flight forward
@@ -31,6 +33,7 @@
  * What returns 0 (capability probes — "this build does not implement
  * the streaming path"):
  *   - tts_stream_supported, asr_stream_supported.
+ *   - vad_supported.
  *
  * Per `packages/inference/AGENTS.md` §3 + §9: the stub does NOT
  * fabricate fake outputs, does NOT log, does NOT pretend success.
@@ -124,7 +127,8 @@ static int valid_region(const char * name) {
     return (strcmp(name, "tts") == 0
          || strcmp(name, "asr") == 0
          || strcmp(name, "text") == 0
-         || strcmp(name, "dflash") == 0);
+         || strcmp(name, "dflash") == 0
+         || strcmp(name, "vad") == 0);
 }
 
 int eliza_inference_mmap_acquire(
@@ -139,7 +143,7 @@ int eliza_inference_mmap_acquire(
     }
     if (!valid_region(region_name)) {
         set_error(out_error,
-            "[libelizainference-stub] mmap_acquire: invalid region_name (expected tts|asr|text|dflash)");
+            "[libelizainference-stub] mmap_acquire: invalid region_name (expected tts|asr|text|dflash|vad)");
         return ELIZA_ERR_INVALID_ARG;
     }
     set_error(out_error,
@@ -159,7 +163,7 @@ int eliza_inference_mmap_evict(
     }
     if (!valid_region(region_name)) {
         set_error(out_error,
-            "[libelizainference-stub] mmap_evict: invalid region_name (expected tts|asr|text|dflash)");
+            "[libelizainference-stub] mmap_evict: invalid region_name (expected tts|asr|text|dflash|vad)");
         return ELIZA_ERR_INVALID_ARG;
     }
     set_error(out_error,
@@ -262,6 +266,64 @@ int eliza_inference_set_verifier_callback(
     }
     /* No native speculative loop in the stub — registering is a no-op. */
     return ELIZA_OK;
+}
+
+/* ----------------------------------------------------------------- */
+/* Native VAD (ABI v3)                                               */
+/* ----------------------------------------------------------------- */
+
+struct EliVad {
+    int sample_rate_hz;
+};
+
+int eliza_inference_vad_supported(void) {
+    return 0; /* stub has no native VAD backend */
+}
+
+EliVad * eliza_inference_vad_open(
+    EliInferenceContext * ctx,
+    int sample_rate_hz,
+    char ** out_error)
+{
+    (void)sample_rate_hz;
+    if (!ctx) {
+        set_error(out_error,
+            "[libelizainference-stub] vad_open: ctx is NULL");
+        return NULL;
+    }
+    set_error(out_error,
+        "[libelizainference-stub] vad_open: not implemented in stub — fused build required");
+    return NULL;
+}
+
+int eliza_inference_vad_process(
+    EliVad * vad,
+    const float * pcm,
+    size_t n_samples,
+    float * out_probability,
+    char ** out_error)
+{
+    (void)vad;
+    (void)pcm;
+    (void)n_samples;
+    (void)out_probability;
+    set_error(out_error,
+        "[libelizainference-stub] vad_process: not implemented in stub — fused build required");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+int eliza_inference_vad_reset(
+    EliVad * vad,
+    char ** out_error)
+{
+    (void)vad;
+    set_error(out_error,
+        "[libelizainference-stub] vad_reset: not implemented in stub — fused build required");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+void eliza_inference_vad_close(EliVad * vad) {
+    if (vad) free(vad);
 }
 
 int eliza_inference_asr_transcribe(

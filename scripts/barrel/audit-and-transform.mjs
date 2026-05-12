@@ -281,7 +281,8 @@ function listPackageExports(pkg) {
     .filter(([key]) => key !== "." && key !== "./package.json")
     .map(([key, value]) => {
       const target = getExportTarget(value);
-      const asset = isAssetSpecifier(key) || (target && isAssetSpecifier(target));
+      const asset =
+        isAssetSpecifier(key) || (target && isAssetSpecifier(target));
       const wildcard = key.includes("*") || String(target ?? "").includes("*");
       return {
         packageName: pkg.name,
@@ -313,7 +314,17 @@ function rootBarrelPath(pkg) {
 }
 
 function withoutKnownExtension(file) {
-  for (const ext of [".d.ts", ".mjs", ".cjs", ".js", ".jsx", ".mts", ".cts", ".ts", ".tsx"]) {
+  for (const ext of [
+    ".d.ts",
+    ".mjs",
+    ".cjs",
+    ".js",
+    ".jsx",
+    ".mts",
+    ".cts",
+    ".ts",
+    ".tsx",
+  ]) {
     if (file.endsWith(ext)) return file.slice(0, -ext.length);
   }
   return file;
@@ -328,8 +339,10 @@ function resolveSourceFromExport(pkg, exportEntry) {
   if (rawTarget) {
     let source = rawTarget;
     source = source.replace(/^\.\//, "");
-    if (source.startsWith("dist/")) source = `src/${source.slice("dist/".length)}`;
-    if (source.startsWith("dist/src/")) source = `src/${source.slice("dist/src/".length)}`;
+    if (source.startsWith("dist/"))
+      source = `src/${source.slice("dist/".length)}`;
+    if (source.startsWith("dist/src/"))
+      source = `src/${source.slice("dist/src/".length)}`;
     if (!source.startsWith("src/") && rawTarget.startsWith("./")) {
       source = `src/${source}`;
     }
@@ -375,7 +388,9 @@ function rootUsesJsExtensions(rootFile) {
   const text = fs.readFileSync(rootFile, "utf8");
   const matches = [...text.matchAll(/export\s+[^"']+["']([^"']+)["']/g)];
   if (matches.length === 0) return true;
-  const withJs = matches.filter((match) => /\.(js|mjs|cjs)["']?$/.test(match[1]));
+  const withJs = matches.filter((match) =>
+    /\.(js|mjs|cjs)["']?$/.test(match[1]),
+  );
   return withJs.length >= matches.length / 2;
 }
 
@@ -384,7 +399,8 @@ function barrelSpecifier(rootFile, sourceFile) {
   if (!relative.startsWith(".")) relative = `./${relative}`;
   relative = relative.replace(/\\/g, "/");
   relative = withoutKnownExtension(relative);
-  if (relative.endsWith("/index")) relative = relative.slice(0, -"/index".length);
+  if (relative.endsWith("/index"))
+    relative = relative.slice(0, -"/index".length);
   if (rootUsesJsExtensions(rootFile)) return `${relative}.js`;
   return relative;
 }
@@ -400,7 +416,9 @@ function collectAudit(packages) {
       packageName: pkg.name,
       root: root ? path.relative(ROOT, root) : null,
       nonRootExports: packageExports.length,
-      explicitExports: packageExports.filter((entry) => !entry.asset && !entry.wildcard).length,
+      explicitExports: packageExports.filter(
+        (entry) => !entry.asset && !entry.wildcard,
+      ).length,
       wildcardExports: packageExports.filter((entry) => entry.wildcard).length,
       assetExports: packageExports.filter((entry) => entry.asset).length,
       platformExports: packageExports.filter((entry) => entry.platform).length,
@@ -410,7 +428,7 @@ function collectAudit(packages) {
 }
 
 function planTransforms(audit, args) {
-  const packageByName = new Map(audit.packages.map((pkg) => [pkg.name, pkg]));
+  const _packageByName = new Map(audit.packages.map((pkg) => [pkg.name, pkg]));
   const packageFilter = (name) =>
     args.packageNames.size === 0 || args.packageNames.has(name);
   const importRewrites = [];
@@ -448,7 +466,8 @@ function planTransforms(audit, args) {
         manual.push({
           packageName: pkg.name,
           key: exp.key,
-          reason: "platform export should become a root conditional export, not a blind barrel",
+          reason:
+            "platform export should become a root conditional export, not a blind barrel",
         });
         continue;
       }
@@ -505,7 +524,8 @@ function planTransforms(audit, args) {
 function replaceImportSpecifiers(file, replacements) {
   let text = fs.readFileSync(path.join(ROOT, file), "utf8");
   const unique = new Map();
-  for (const replacement of replacements) unique.set(replacement.from, replacement.to);
+  for (const replacement of replacements)
+    unique.set(replacement.from, replacement.to);
   for (const [from, to] of unique) {
     text = text
       .replaceAll(`"${from}"`, `"${to}"`)
@@ -541,7 +561,9 @@ function applyTransforms(plan, audit, args) {
   }
 
   if (args.collapseExplicitExports) {
-    const packageByRel = new Map(audit.packages.map((pkg) => [pkg.packageJsonRel, pkg]));
+    const packageByRel = new Map(
+      audit.packages.map((pkg) => [pkg.packageJsonRel, pkg]),
+    );
     for (const collapse of plan.exportMapCollapses) {
       const pkg = packageByRel.get(collapse.packageJson);
       if (!pkg) continue;
@@ -715,7 +737,9 @@ writeReports(audit, plan, args);
 console.log(args.apply ? "Applying barrel transform..." : "Dry run only.");
 console.log(`Packages: ${audit.packages.length}`);
 console.log(`Source subpath imports: ${audit.imports.length}`);
-console.log(`Source subpath string references: ${audit.stringReferences.length}`);
+console.log(
+  `Source subpath string references: ${audit.stringReferences.length}`,
+);
 console.log(`Non-root export entries: ${audit.exports.length}`);
 console.log(`Planned import rewrites: ${plan.importRewrites.length}`);
 console.log(`Planned root barrel additions: ${plan.rootBarrelAdds.length}`);

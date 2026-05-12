@@ -3,18 +3,18 @@
 # training+quant+inference+bench stack.
 #
 # Single command. ~15-30 minutes on one consumer GPU (RTX 4090/5090/H100).
-# Trains the smallest model (Qwen/Qwen3-0.6B), produces every quant
+# Trains the smallest model (Qwen/Qwen3-0.8B), produces every quant
 # sidecar, serves with vLLM, hits the OpenAI-compat tool-call endpoint,
 # benchmarks each variant, and gates on hard pass criteria.
 #
 # Usage:
 #   bash training/scripts/smoke_full_stack.sh
-#   bash training/scripts/smoke_full_stack.sh --registry-key qwen3-0.6b
+#   bash training/scripts/smoke_full_stack.sh --registry-key qwen3.5-0.8b
 #   bash training/scripts/smoke_full_stack.sh --skip-train
 #
 # Env knobs:
-#   MILADY_SMOKE_VLLM_PORT   default 8001 (use a free port if 8001 is busy)
-#   MILADY_SMOKE_BENCH_PER_BUCKET  default 10
+#   ELIZA_SMOKE_VLLM_PORT   default 8001 (use a free port if 8001 is busy)
+#   ELIZA_SMOKE_BENCH_PER_BUCKET  default 10
 #
 # Output:
 #   training/checkpoints/<registry-key>-smoke-fullstack/
@@ -32,7 +32,7 @@
 set -euo pipefail
 
 # ---------- args ----------
-REGISTRY_KEY="qwen3-0.6b"
+REGISTRY_KEY="qwen3.5-0.8b"
 SKIP_TRAIN=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -57,8 +57,8 @@ POLAR_DIR="$CKPT_ROOT/polarquant"
 FUSED_DIR="$CKPT_ROOT/fused-tq"
 QJL_DIR="$CKPT_ROOT/qjl"
 GGUF_DIR="$CKPT_ROOT/gguf-q4_k_m"
-VLLM_PORT="${MILADY_SMOKE_VLLM_PORT:-8001}"
-BENCH_PER_BUCKET="${MILADY_SMOKE_BENCH_PER_BUCKET:-10}"
+VLLM_PORT="${ELIZA_SMOKE_VLLM_PORT:-8001}"
+BENCH_PER_BUCKET="${ELIZA_SMOKE_BENCH_PER_BUCKET:-10}"
 TRAIN_DATA="$TRAIN_ROOT/data/smoke/train.jsonl"
 VAL_DATA="$TRAIN_ROOT/data/smoke/val.jsonl"
 
@@ -144,7 +144,7 @@ else
     fi
 fi
 
-# ---------- helper: run eliza_bench against a model dir ----------
+# ---------- helper: run native function-calling benchmark against a model dir ----------
 run_bench() {
     local label="$1"
     local model_arg="$2"
@@ -152,10 +152,10 @@ run_bench() {
     local out_dir="$BENCH_ROOT/$label"
     mkdir -p "$out_dir"
     echo "[smoke]   bench → $label"
-    # eliza_bench uses --model / --test-file / --out-dir (writes summary.json).
+    # native_tool_call_bench uses --model / --test-file / --out-dir (writes summary.json).
     # We point it at smoke val.jsonl with a tight per-bucket cap.
     # shellcheck disable=SC2086
-    "${PY_RUN[@]}" scripts/benchmark/eliza_bench.py \
+    "${PY_RUN[@]}" scripts/benchmark/native_tool_call_bench.py \
         --model "$model_arg" \
         $extra_arg \
         --test-file "$VAL_DATA" \
@@ -238,7 +238,7 @@ if [[ $HAS_LLAMA_CPP -eq 1 ]]; then
         --output "$GGUF_DIR" \
         2>&1 | tee "$LOG_DIR/05-gguf.log"
 else
-    echo "[smoke]   SKIP: llama.cpp not on PATH (need llama-quantize + convert_hf_to_gguf.py; set LLAMA_CPP_DIR or build vendor/llama.cpp)"
+    echo "[smoke]   SKIP: llama.cpp not on PATH (need llama-quantize + convert_hf_to_gguf.py; set LLAMA_CPP_DIR or build the packages/inference/llama.cpp submodule — see gguf-q4_k_m_apply.py _VENDOR_HINT)"
 fi
 
 # ---------- STEP 8/9: vLLM serve + 5 tool-call requests ----------
@@ -370,7 +370,7 @@ for sub in sorted(bench_root.iterdir()):
     d = json.loads(summary_path.read_text())
     buckets = d.get("buckets", {})
     n_total = sum(b.get("n", 0) for b in buckets.values())
-    fmt_ok = sum(b.get("format_ok", 0) for b in buckets.values())
+    fmt_ok = sum(b.get("structure_ok", 0) for b in buckets.values())
     cnt_ok = sum(b.get("content_ok", 0) for b in buckets.values())
     fmt_pct = 100.0 * fmt_ok / max(n_total, 1)
     cnt_pct = 100.0 * cnt_ok / max(n_total, 1)
@@ -379,8 +379,8 @@ for sub in sorted(bench_root.iterdir()):
     seen.append((sub.name, fmt_pct, cnt_pct, n_total))
     if sub.name == "sft":
         # Smoke gates content (semantic correctness — does the model pick
-        # the right action, RESPOND/IGNORE) rather than format. format_ok
-        # measures strict TOON syntax which 200 SFT steps on the smoke
+        # the right action, RESPOND/IGNORE) rather than structure. structure_ok
+        # measures native function-call / JSON structure, which 200 SFT steps on the smoke
         # split cannot achieve; the production runs (3 epochs, full data)
         # are gated on format>=95% by the publish pipeline, not here.
         # The smoke's job is to prove the pipeline runs end-to-end and

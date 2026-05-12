@@ -44,6 +44,7 @@ export {
   type DesktopMicSourceOptions,
   PushMicSource,
   pipeMicToRingBuffer,
+  resolveDesktopRecorder,
 } from "./mic-source";
 export {
   CharacterPhonemeStub,
@@ -59,8 +60,8 @@ export {
 } from "./phrase-cache";
 export { chunkTokens, PhraseChunker } from "./phrase-chunker";
 export {
-  type AsrTokenStreamer,
   type DraftProposer,
+  splitTranscriptToTokens,
   type TargetVerifier,
   VoicePipeline,
   type VoicePipelineConfig,
@@ -70,12 +71,9 @@ export {
 export {
   type DflashTextRunner,
   dflashTextRunner,
-  FfiAsrTokenStreamer,
   LlamaServerDraftProposer,
   LlamaServerTargetVerifier,
   MissingAsrTranscriber,
-  StreamingTranscriberTokenStreamer,
-  splitTranscriptToTokens,
 } from "./pipeline-impls";
 export { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
 export { type RollbackEvent, RollbackQueue } from "./rollback-queue";
@@ -95,6 +93,21 @@ export {
   type SharedTokenizer,
 } from "./shared-resources";
 export {
+  type AttributedVoiceObservation,
+  attributeVoiceImprintObservations,
+  cosineSimilarity,
+  DEFAULT_VOICE_IMPRINT_MATCH_THRESHOLD,
+  matchVoiceImprint,
+  normalizeVoiceEmbedding,
+  type SpeakerAttributionResult,
+  updateVoiceImprintCentroid,
+  type VoiceImprintCentroidUpdate,
+  type VoiceImprintMatch,
+  type VoiceImprintObservationInput,
+  type VoiceImprintProfile,
+  voiceSpeakerFromImprintMatch,
+} from "./speaker-imprint";
+export {
   DEFAULT_VOICE_ID,
   DEFAULT_VOICE_PRESET_REL_PATH,
   type LoadedPresetBundle,
@@ -104,12 +117,20 @@ export {
   voicePresetPath,
 } from "./speaker-preset-cache";
 export {
+  SystemAudioSink,
+  type SystemAudioSinkOptions,
+  WavFileAudioSink,
+  type WavFileAudioSinkOptions,
+} from "./system-audio-sink";
+export {
   ASR_SAMPLE_RATE,
   AsrUnavailableError,
   BaseStreamingTranscriber,
   type CreateStreamingTranscriberOptions,
   createStreamingTranscriber,
   downloadWhisperModel,
+  FfiBatchTranscriber,
+  type FfiBatchTranscriberOptions,
   FfiStreamingTranscriber,
   ffiSupportsStreamingAsr,
   makeWhisperCppDecoder,
@@ -133,15 +154,24 @@ export {
 export * from "./types";
 export {
   createSileroVadDetector,
+  createVadDetector,
+  NativeSileroVad,
+  type QwenToolkitVadAdapter,
+  type ResolvedVadProvider,
   RmsEnergyGate,
   type RmsEnergyGateConfig,
   resolveSileroVadPath,
+  resolveVadProvider,
   rms,
   SILERO_VAD_BUNDLE_REL_PATH,
   SileroVad,
   VadDetector,
   type VadDetectorConfig,
+  type VadLike,
+  type VadProviderId,
+  type VadProviderPreference,
   VadUnavailableError,
+  vadProviderOrder,
 } from "./vad";
 export {
   readVoicePresetFile,
@@ -154,12 +184,14 @@ export {
   writeVoicePresetFile,
 } from "./voice-preset-format";
 export {
+  isPlaceholderWakeWordHead,
   loadBundledWakeWordModel,
   OPENWAKEWORD_DEFAULT_HEAD,
   OPENWAKEWORD_DEFAULT_HEAD_REL_PATH,
   OPENWAKEWORD_DIR_REL_PATH,
   OPENWAKEWORD_EMBEDDING_REL_PATH,
   OPENWAKEWORD_MELSPEC_REL_PATH,
+  OPENWAKEWORD_PLACEHOLDER_HEADS,
   OpenWakeWordDetector,
   OpenWakeWordModel,
   resolveWakeWordModel,

@@ -122,7 +122,7 @@ tiers require it even for the 64k default.
 ### Recording Metal verification on a hardware host
 
 ```bash
-# On an Apple Silicon Mac with the milady checkout:
+# On an Apple Silicon Mac with the elizaOS/llama.cpp checkout:
 cd packages/inference/verify
 make metal
 ./metal_verify > metal_verify.txt
@@ -426,7 +426,7 @@ explicit.
 - **URL:** https://huggingface.co/elizaos
 - **Owner:** Eliza core team. Add new members via HF org settings.
 - **Visibility:** repos are public by default once the GGUF is real. Use
-  `--no-public` on `publish_milady_model.py` to create a private repo
+  `--no-public` on `publish_eliza1_model.py` to create a private repo
   for staging.
 
 ### One-time org setup
@@ -439,7 +439,7 @@ this once:
    `elizaos` org if it does not already exist.
 3. Invite the publishing service account so CI can push.
 
-If the org doesn't exist yet, `publish_milady_model.py` errors out
+If the org doesn't exist yet, `publish_eliza1_model.py` errors out
 explicitly with the URL above — it does not silently create the org.
 
 ### Token requirements
@@ -468,7 +468,7 @@ public for public repos.
 | Drafter for that target  | hidden companion file in the same `elizaos/eliza-1-<tier>` repo |
 | Pairing manifest (siblings) | `manifest.json` inside each repo (target points at drafter) |
 
-`<tier>` follows the catalog ids: `0_6b`, `1_7b`,
+`<tier>` follows the catalog ids: `0_8b`, `2b`,
 `9b`, `27b`, and `27b-256k`. The target the user installs
 is visible; the drafter is hidden from the catalog and only downloaded
 as a companion (matching the `runtimeRole: "dflash-drafter"` pattern in
@@ -491,16 +491,16 @@ file expects. Schema:
 {
   "version": 1,
   "kind": "eliza-1-optimized",
-  "modelId": "eliza-1-1_7b",
+  "modelId": "eliza-1-2b",
   "base": {
-    "name": "eliza-1-1_7b",
-    "displayName": "Eliza-1 Mobile 1.7B",
-    "params": "1.7B",
+    "name": "eliza-1-2b",
+    "displayName": "Eliza-1 Mobile 2B",
+    "params": "2B",
     "tokenizerFamily": "eliza1",
     "contextLength": 32768
   },
   "gguf": {
-    "file": "text/eliza-1-1_7b-q4_k_m.gguf",
+    "file": "text/eliza-1-2b-q4_k_m.gguf",
     "sha256": "<64-hex>",
     "sizeBytes": 0,
     "quant": "Q4_POLAR + QJL1_256 K + TBQ V"
@@ -511,19 +511,19 @@ file expects. Schema:
     "kvV": "TBQ4_0",
     "speculativeDecode": "DFlash",
     "kernels": ["q4_polar", "qjl1_256", "tbq3_0", "tbq4_0", "dflash"],
-    "requiresFork": "elizaOS/llama.cpp@v0.1.0-milady"
+    "requiresFork": "elizaOS/llama.cpp@v1.0.0-eliza"
   },
   "drafter": {
-    "repo": "elizaos/eliza-1-1_7b",
-    "file": "text/eliza-1-1_7b-drafter.gguf",
-    "params": "0.6B",
+    "repo": "elizaos/eliza-1-2b",
+    "file": "text/eliza-1-2b-drafter.gguf",
+    "params": "0.8B",
     "tokenizerFamily": "eliza1"
   },
   "pipeline": {
     "publishedAt": "2026-05-10T00:00:00Z",
     "trainedFrom": "elizaos/eliza-1-9b",
     "trainingPipeline": "elizaos/eliza-1-pipeline",
-    "buildScript": "packages/training/scripts/publish_milady_model.py"
+    "buildScript": "packages/training/scripts/publish_eliza1_model.py"
   }
 }
 ```
@@ -537,9 +537,9 @@ catalog sync script can walk either side and reconstruct pairings.
 ```bash
 # Dry-run — refuses to push anything, prints the manifest and what
 # would upload. No HF_TOKEN required.
-uv run python scripts/publish_milady_model.py \
-    --model-dir /path/to/eliza-1-1_7b \
-    --repo-id elizaos/eliza-1-1_7b \
+uv run python scripts/publish_eliza1_model.py \
+    --model-dir /path/to/eliza-1-2b \
+    --repo-id elizaos/eliza-1-2b \
     --dry-run
 
 # Real push. The script refuses to ship a stock-format GGUF (one
@@ -547,9 +547,9 @@ uv run python scripts/publish_milady_model.py \
 # `published.json` next to the GGUF with the canonical URL + sha256
 # + size; subsequent runs skip re-upload when the sha matches the
 # existing remote LFS pointer.
-HF_TOKEN=hf_xxx uv run python scripts/publish_milady_model.py \
-    --model-dir /path/to/eliza-1-1_7b \
-    --repo-id elizaos/eliza-1-1_7b
+HF_TOKEN=hf_xxx uv run python scripts/publish_eliza1_model.py \
+    --model-dir /path/to/eliza-1-2b \
+    --repo-id elizaos/eliza-1-2b
 ```
 
 After a publish run, refresh the local-inference catalog so the phone
@@ -572,7 +572,7 @@ class the iOS / Android runtimes use, points its state directory at a
 temp dir, and reports time + bytes/sec. Run it from the repo root:
 
 ```bash
-node scripts/verify-phone-download.mjs --model-id eliza-1-1_7b
+node scripts/verify-phone-download.mjs --model-id eliza-1-2b
 ```
 
 This is the gate W5-Catalog uses to decide whether to land a catalog

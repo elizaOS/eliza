@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   diffSnapshots,
+  fetchMetricsSnapshot,
   type LlamaServerMetricSnapshot,
   parsePrometheusMetrics,
 } from "./llama-server-metrics";
@@ -18,12 +19,14 @@ llamacpp:n_tokens_predicted_total 250
 
 llamacpp:n_prompt_tokens_processed_total 600
 llamacpp:n_drafted_total 80
-llamacpp:n_accepted_total 64
+llamacpp:n_drafted_accepted_total 64
 llamacpp:kv_cache_tokens 1024
 llamacpp:kv_cache_used_cells 4
 `;
     const snapshot = parsePrometheusMetrics(body, 1_000);
     expect(snapshot.takenAtMs).toBe(1_000);
+    expect(snapshot.scrapeOk).toBe(true);
+    expect(snapshot.hasGenerationCounters).toBe(true);
     expect(snapshot.promptTokensTotal).toBe(1000);
     expect(snapshot.predictedTokensTotal).toBe(250);
     expect(snapshot.promptTokensProcessedTotal).toBe(600);
@@ -46,10 +49,61 @@ not_even_a_metric =
     expect(snapshot.predictedTokensTotal).toBe(0);
   });
 
+  it("sums labelled DFlash accepted counters and accepts legacy aliases", () => {
+    const body = `
+llamacpp:n_drafted 80
+llamacpp:n_drafted_accepted_total{slot_id="0"} 30
+llamacpp:n_drafted_accepted_total{slot_id="1"} 34
+`;
+    const snapshot = parsePrometheusMetrics(body);
+    expect(snapshot.draftedTotal).toBe(80);
+    expect(snapshot.acceptedTotal).toBe(64);
+  });
+
+  it("prefers an unlabelled DFlash total over labelled shard samples", () => {
+    const body = `
+llamacpp:n_drafted_accepted_total{slot_id="0"} 30
+llamacpp:n_drafted_accepted_total{slot_id="1"} 34
+llamacpp:n_drafted_accepted_total 70
+`;
+    const snapshot = parsePrometheusMetrics(body);
+    expect(snapshot.acceptedTotal).toBe(70);
+  });
+
+  it("accepts older accepted-token aliases", () => {
+    expect(
+      parsePrometheusMetrics("llamacpp:n_accepted_total 12").acceptedTotal,
+    ).toBe(12);
+    expect(parsePrometheusMetrics("llamacpp:n_accepted 13").acceptedTotal).toBe(
+      13,
+    );
+  });
+
   it("returns zero counters for an empty body", () => {
     const snapshot = parsePrometheusMetrics("");
+    expect(snapshot.scrapeOk).toBe(true);
+    expect(snapshot.hasGenerationCounters).toBe(false);
     expect(snapshot.promptTokensTotal).toBe(0);
     expect(snapshot.predictedTokensTotal).toBe(0);
+    expect(snapshot.draftedTotal).toBe(0);
+  });
+});
+
+describe("fetchMetricsSnapshot", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("marks scrape failures so callers do not treat zero counters as evidence", async () => {
+    globalThis.fetch = (async () =>
+      new Response("not found", { status: 404 })) as unknown as typeof fetch;
+
+    const snapshot = await fetchMetricsSnapshot("http://127.0.0.1:9999");
+
+    expect(snapshot.scrapeOk).toBe(false);
+    expect(snapshot.hasGenerationCounters).toBe(false);
     expect(snapshot.draftedTotal).toBe(0);
   });
 });

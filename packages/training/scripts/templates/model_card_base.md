@@ -14,10 +14,10 @@ tags:
 # {eliza_short_name}
 
 > Local-first Eliza-1 agent checkpoint trained with APOLLO on the
-> elizaOS TOON-format trajectory corpus.
+> elizaOS native JSON-format trajectory corpus.
 
 `{eliza_short_name}` is a full-parameter SFT Eliza-1 checkpoint trained on
-[`elizaos/eliza-toon-v1-sft`](https://huggingface.co/datasets/elizaos/eliza-toon-v1-sft).
+[`elizaos/eliza-native-v1-sft`](https://huggingface.co/datasets/elizaos/eliza-native-v1-sft).
 Trained with [APOLLO](https://arxiv.org/abs/2412.05270) (full fine-tune at
 SGD-like memory) using the
 [`elizaos/eliza-1-pipeline`](https://huggingface.co/elizaos/eliza-1-pipeline)
@@ -30,7 +30,7 @@ repo. Upstream lineage is recorded in the model metadata and license block.
 | Upstream lineage | recorded in `base_model` metadata |
 | Parameters | {params_billion}B |
 | Architecture | Eliza-1 hybrid local-inference backbone |
-| Training data | [`elizaos/eliza-toon-v1-sft`](https://huggingface.co/datasets/elizaos/eliza-toon-v1-sft) |
+| Training data | [`elizaos/eliza-native-v1-sft`](https://huggingface.co/datasets/elizaos/eliza-native-v1-sft) |
 | Training pipeline | [`elizaos/eliza-1-pipeline`](https://huggingface.co/elizaos/eliza-1-pipeline) |
 | Optimizer | {optimizer} (rank {optimizer_rank}) |
 | Train sequence length | {seq_len} |
@@ -61,12 +61,12 @@ or invoke vLLM directly:
 vllm serve {repo_id} --max-model-len {infer_max_in_plus_out}
 ```
 
-### milady
+### eliza
 
-Drop the model alias into your milady config and the runtime will pick it up:
+Drop the model alias into your eliza config and the runtime will pick it up:
 
 ```bash
-MILADY_LOCAL_MODEL={repo_id} milady run
+ELIZA_LOCAL_MODEL={repo_id} eliza run
 ```
 
 ## Training

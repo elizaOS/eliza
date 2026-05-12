@@ -65,7 +65,7 @@ from scripts.quantization._kernel_manifest import kernel_manifest_fragment
 LOCAL_MODEL_ROOT: Final[Path] = (
     Path.home() / ".eliza" / "local-inference" / "models"
 )
-DEFAULT_BUNDLE_DIR: Final[Path] = LOCAL_MODEL_ROOT / "eliza-1-1_7b.bundle"
+DEFAULT_BUNDLE_DIR: Final[Path] = LOCAL_MODEL_ROOT / "eliza-1-2b.bundle"
 DEFAULT_TEXT_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash" / "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash.gguf",
@@ -80,11 +80,12 @@ DEFAULT_DRAFTER_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash-drafter-q4.repaired.gguf",
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash-drafter-q4.gguf",
 )
-VISION_TIERS: Final[set[str]] = {"9b", "27b", "27b-256k"}
+VISION_TIERS: Final[set[str]] = {"4b", "9b", "27b", "27b-256k"}
 
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
-    "0_6b": (1500, 1800),
-    "1_7b": (3500, 4500),
+    "0_8b": (1800, 2400),
+    "2b": (3500, 5000),
+    "4b": (6000, 8000),
     "9b": (7000, 9500),
     "27b": (24000, 32000),
     "27b-256k": (48000, 64000),
@@ -307,14 +308,14 @@ def _write_licenses(bundle_dir: Path, *, tier: str, force: bool) -> list[str]:
         "LICENSE.text": (
             "Eliza-1 local text stand-in provenance note.\n\n"
             "This bundle uses a local stand-in text GGUF for runtime layout "
-            "testing. It is not a final Eliza-1 1_7b text checkpoint and "
+            "testing. It is not a final Eliza-1 2B text checkpoint and "
             "is not release-reviewed for publishing.\n"
         ),
         "LICENSE.dflash": (
             "Eliza-1 local DFlash stand-in provenance note.\n\n"
             "This bundle uses a local stand-in drafter GGUF for runtime "
             "layout testing. It is not trained or verified against final "
-            "Eliza-1 1_7b text weights and is not publishable.\n"
+            "Eliza-1 2B text weights and is not publishable.\n"
         ),
         "LICENSE.eliza-1": (
             "Eliza-1 local bundle license notice.\n\n"
@@ -466,6 +467,9 @@ def _write_eval_files(
         "voice_rtf": voice_rtf if voice_rtf > 0 else None,
         "asr_wer": None,
         "vad_latency_ms": None,
+        "vad_boundary_ms": None,
+        "vad_endpoint_ms": None,
+        "vad_false_barge_in_rate": None,
         "first_token_latency_ms": None,
         "first_audio_latency_ms": None,
         "barge_in_cancel_ms": None,
@@ -835,6 +839,9 @@ def _manifest_for_local_bundle(
         asr_wer_passed=False if files.get("asr") else None,
         vad_latency_ms_median=0.0 if files.get("vad") else None,
         vad_latency_ms_passed=False if files.get("vad") else None,
+        vad_boundary_ms=0.0 if files.get("vad") else None,
+        vad_endpoint_ms=0.0 if files.get("vad") else None,
+        vad_false_barge_in_rate=1.0 if files.get("vad") else None,
         expressive_tag_faithfulness=0.0,
         expressive_mos=0.0,
         expressive_tag_leakage=1.0,
@@ -1345,7 +1352,7 @@ def stage_local_bundle(args: argparse.Namespace) -> dict[str, Any]:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--tier", default="1_7b", choices=tuple(CONTEXTS_BY_TIER))
+    ap.add_argument("--tier", default="2b", choices=tuple(CONTEXTS_BY_TIER))
     ap.add_argument("--bundle-dir", type=Path, default=DEFAULT_BUNDLE_DIR)
     ap.add_argument("--text-source", type=Path, default=None)
     ap.add_argument("--drafter-source", type=Path, default=None)

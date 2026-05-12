@@ -232,30 +232,34 @@ export const formContextProvider: Provider = {
             0,
             MAX_CONTEXT_FIELDS,
           ),
-          required_filled: requiredFilled.map((field) => ({
-            ...field,
-            value: field.displayValue,
-          })).slice(0, MAX_CONTEXT_FIELDS),
+          required_filled: requiredFilled
+            .map((field) => ({
+              ...field,
+              value: field.displayValue,
+            }))
+            .slice(0, MAX_CONTEXT_FIELDS),
           optional_missing: optionalMissing.slice(0, MAX_CONTEXT_FIELDS),
-          optional_filled: optionalFilled.map((field) => ({
-            ...field,
-            value: field.displayValue,
-          })).slice(0, MAX_CONTEXT_FIELDS),
+          optional_filled: optionalFilled
+            .map((field) => ({
+              ...field,
+              value: field.displayValue,
+            }))
+            .slice(0, MAX_CONTEXT_FIELDS),
           uncertain_fields: contextState.uncertainFields
             .slice(0, MAX_CONTEXT_FIELDS)
             .map((field) => ({
               ...field,
               confidence: Math.round(field.confidence * 100) / 100,
             })),
-          pending_external_fields: contextState.pendingExternalFields.map(
-            (field) => ({
+          pending_external_fields: contextState.pendingExternalFields
+            .map((field) => ({
               ...field,
               age_minutes: Math.max(
                 0,
                 Math.floor((Date.now() - field.activatedAt) / 60000),
               ),
-            }),
-          ).slice(0, MAX_CONTEXT_FIELDS),
+            }))
+            .slice(0, MAX_CONTEXT_FIELDS),
           instruction,
         })}`;
       } else {

@@ -54,7 +54,9 @@ const flag = (name) => {
 
 const repo = flag("--repo");
 if (!repo) {
-  console.error("usage: apply-patches.mjs --repo <llama.cpp-checkout> [--series qjl,polarquant]");
+  console.error(
+    "usage: apply-patches.mjs --repo <llama.cpp-checkout> [--series qjl,polarquant]",
+  );
   process.exit(1);
 }
 if (!existsSync(path.join(repo, ".git"))) {
@@ -64,7 +66,10 @@ if (!existsSync(path.join(repo, ".git"))) {
 
 const seriesArg = flag("--series");
 const seriesNames = seriesArg
-  ? seriesArg.split(",").map((s) => s.trim()).filter(Boolean)
+  ? seriesArg
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
   : readdirSync(here, { withFileTypes: true })
       .filter((d) => d.isDirectory())
       .map((d) => d.name)
@@ -74,7 +79,7 @@ console.log(`[patches] applying series: ${seriesNames.join(", ")}`);
 console.log(`[patches] target repo: ${repo}`);
 
 // Quick gate: when the target repo already contains the upstream
-// markers for a series (e.g. v0.4.0-milady has QJL baked in via a merge
+// markers for a series (e.g. v0.4.0-eliza has QJL baked in via a merge
 // commit, so subject-grep won't match the original patch subjects),
 // skip the entire series rather than trying to apply patches that
 // would conflict with the already-present source.
@@ -99,7 +104,10 @@ function seriesAlreadyBakedIn(seriesName) {
 }
 
 const git = (cwd, ...gitArgs) => {
-  const res = spawnSync("git", gitArgs, { cwd, stdio: ["ignore", "pipe", "pipe"] });
+  const res = spawnSync("git", gitArgs, {
+    cwd,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   return {
     code: res.status,
     out: (res.stdout?.toString() ?? "").trim(),
@@ -157,10 +165,19 @@ for (const series of seriesNames) {
     if (subject) {
       const found = spawnSync(
         "git",
-        ["log", "--all", `--grep=${escapeGrep(subject)}`, "--fixed-strings", "--format=%H"],
+        [
+          "log",
+          "--all",
+          `--grep=${escapeGrep(subject)}`,
+          "--fixed-strings",
+          "--format=%H",
+        ],
         { cwd: repo, stdio: ["ignore", "pipe", "pipe"] },
       );
-      if (found.status === 0 && (found.stdout?.toString().trim() ?? "") !== "") {
+      if (
+        found.status === 0 &&
+        (found.stdout?.toString().trim() ?? "") !== ""
+      ) {
         console.log(`[patches]   skip (already in git log): ${series}/${p}`);
         skippedCount += 1;
         continue;

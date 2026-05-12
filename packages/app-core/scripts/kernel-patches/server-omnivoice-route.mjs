@@ -15,20 +15,20 @@
 // merged-route item.
 //
 // Scope guard: every edit this module makes is wrapped in
-// `#ifdef MILADY_FUSE_OMNIVOICE`, the CMake define the fused targets set
+// `#ifdef ELIZA_FUSE_OMNIVOICE`, the CMake define the fused targets set
 // (`fusedExtraCmakeFlags()`). A non-fused build's `server.cpp` is byte-for-
 // byte unchanged after preprocessing. The cmake-graft separately links
 // `omnivoice-core` into the `llama-server` target for fused builds so the
 // symbols resolve.
 //
-// Idempotent via the `// MILADY-OMNIVOICE-AUDIO-SPEECH-ROUTE-V1` sentinel.
+// Idempotent via the `// ELIZA-OMNIVOICE-AUDIO-SPEECH-ROUTE-V1` sentinel.
 // If the server.cpp layout drifts so an anchor is missing, this throws and
 // `build-llama-cpp-dflash.mjs` exits non-zero — no silent fallback.
 
 import fs from "node:fs";
 import path from "node:path";
 
-const SENTINEL = "// MILADY-OMNIVOICE-AUDIO-SPEECH-ROUTE-V1";
+const SENTINEL = "// ELIZA-OMNIVOICE-AUDIO-SPEECH-ROUTE-V1";
 
 function findServerSource(cacheDir) {
   for (const rel of [
@@ -43,7 +43,7 @@ function findServerSource(cacheDir) {
 
 /**
  * C++ block inserted near the top of `server.cpp`, after its includes.
- * Defines a tiny `milady_omnivoice` namespace with a lazily-initialised
+ * Defines a tiny `eliza_omnivoice` namespace with a lazily-initialised
  * OmniVoice context (model + codec GGUF paths come from `--omnivoice-model`
  * / `--omnivoice-codec`, or the `ELIZA_OMNIVOICE_MODEL` /
  * `ELIZA_OMNIVOICE_CODEC` env vars the dflash-server spawn layer sets when
@@ -60,32 +60,35 @@ function findServerSource(cacheDir) {
 function audioSpeechBlock() {
   return `
 ${SENTINEL}
-#ifdef MILADY_FUSE_OMNIVOICE
+#ifdef ELIZA_FUSE_OMNIVOICE
 #include "omnivoice.h"
+#include <algorithm>
+#include <cstdlib>
 #include <cstdint>
 #include <cstring>
 #include <mutex>
 #include <string>
 #include <vector>
 
-namespace milady_omnivoice {
+namespace eliza_omnivoice {
 
 // Resolve a config value: prefer the CLI override captured in main(), then
 // the env var, then empty.
 static std::string g_model_path;
 static std::string g_codec_path;
 
-static std::string env_or(const char * name, const std::string & fallback) {
+static std::string cli_or_env(const std::string & cli, const char * name) {
+    if (!cli.empty()) return cli;
     const char * v = std::getenv(name);
     if (v && v[0] != '\\0') return std::string(v);
-    return fallback;
+    return std::string();
 }
 
 static std::string resolved_model_path() {
-    return env_or("ELIZA_OMNIVOICE_MODEL", g_model_path);
+    return cli_or_env(g_model_path, "ELIZA_OMNIVOICE_MODEL");
 }
 static std::string resolved_codec_path() {
-    return env_or("ELIZA_OMNIVOICE_CODEC", g_codec_path);
+    return cli_or_env(g_codec_path, "ELIZA_OMNIVOICE_CODEC");
 }
 
 static std::mutex      g_mu;
@@ -193,6 +196,51 @@ static server_http_res_ptr error_res(int status, const std::string & message) {
     return res;
 }
 
+static int env_int_clamped(const char * name, int fallback, int lo, int hi) {
+    const char * v = std::getenv(name);
+    if (!v || v[0] == '\\0') return fallback;
+    char * end = nullptr;
+    long parsed = std::strtol(v, &end, 10);
+    if (end == v) return fallback;
+    return (int) std::max((long) lo, std::min((long) hi, parsed));
+}
+
+static int json_int_clamped(const json & in, const char * name, int fallback, int lo, int hi) {
+    if (!in.contains(name)) return fallback;
+    try {
+        if (in[name].is_number_integer()) {
+            const int v = in[name].get<int>();
+            return std::max(lo, std::min(hi, v));
+        }
+        if (in[name].is_string()) {
+            const std::string s = in[name].get<std::string>();
+            char * end = nullptr;
+            long parsed = std::strtol(s.c_str(), &end, 10);
+            if (end != s.c_str()) return (int) std::max((long) lo, std::min((long) hi, parsed));
+        }
+    } catch (...) {
+    }
+    return fallback;
+}
+
+static float json_float_positive(const json & in, const char * name, float fallback) {
+    if (!in.contains(name)) return fallback;
+    try {
+        if (in[name].is_number()) {
+            const float v = in[name].get<float>();
+            return v > 0.0f ? v : fallback;
+        }
+        if (in[name].is_string()) {
+            const std::string s = in[name].get<std::string>();
+            char * end = nullptr;
+            float parsed = std::strtof(s.c_str(), &end);
+            if (end != s.c_str() && parsed > 0.0f) return parsed;
+        }
+    } catch (...) {
+    }
+    return fallback;
+}
+
 // handler_t for POST /v1/audio/speech.
 static server_http_context::handler_t audio_speech_handler() {
     return [](const server_http_req & req) -> server_http_res_ptr {
@@ -230,7 +278,17 @@ static server_http_context::handler_t audio_speech_handler() {
         ov_tts_params tp;
         ov_tts_default_params(&tp);
         tp.text = text.c_str();
-        ov_audio audio = { nullptr, 0 };
+        int mg_steps = env_int_clamped("ELIZA_OMNIVOICE_MG_NUM_STEP", tp.mg_num_step, 4, 64);
+        mg_steps = json_int_clamped(in, "num_step", mg_steps, 4, 64);
+        mg_steps = json_int_clamped(in, "num_steps", mg_steps, 4, 64);
+        mg_steps = json_int_clamped(in, "steps", mg_steps, 4, 64);
+        tp.mg_num_step = mg_steps;
+        const float duration_sec = json_float_positive(in, "duration", 0.0f);
+        if (duration_sec > 0.0f) {
+            const int frames = ov_duration_sec_to_tokens(ctx, duration_sec);
+            if (frames > 0) tp.T_override = frames;
+        }
+        ov_audio audio = {};
         ov_status st;
         {
             // ov_synthesize is not reentrant on one context; serialise.
@@ -260,8 +318,8 @@ static server_http_context::handler_t audio_speech_handler() {
     };
 }
 
-} // namespace milady_omnivoice
-#endif // MILADY_FUSE_OMNIVOICE
+} // namespace eliza_omnivoice
+#endif // ELIZA_FUSE_OMNIVOICE
 // end ${SENTINEL}
 `;
 }
@@ -272,7 +330,48 @@ static server_http_context::handler_t audio_speech_handler() {
  * (or the original if the sentinel is already present).
  */
 function patchServerSource(source, serverPath) {
-  if (source.includes(SENTINEL)) return source;
+  if (source.includes(SENTINEL)) {
+    const start = source.indexOf(SENTINEL);
+    const endMarker = `// end ${SENTINEL}`;
+    const end = source.indexOf(endMarker, start);
+    if (start !== -1 && end !== -1) {
+      const afterEnd = source.indexOf("\n", end);
+      return (
+        source.slice(0, start) +
+        audioSpeechBlock().trimStart() +
+        source.slice(afterEnd === -1 ? source.length : afterEnd + 1)
+      );
+    }
+    return source
+      .replace(
+        `static std::string env_or(const char * name, const std::string & fallback) {
+    const char * v = std::getenv(name);
+    if (v && v[0] != '\\0') return std::string(v);
+    return fallback;
+}
+
+static std::string resolved_model_path() {
+    return env_or("ELIZA_OMNIVOICE_MODEL", g_model_path);
+}
+static std::string resolved_codec_path() {
+    return env_or("ELIZA_OMNIVOICE_CODEC", g_codec_path);
+}`,
+        `static std::string cli_or_env(const std::string & cli, const char * name) {
+    if (!cli.empty()) return cli;
+    const char * v = std::getenv(name);
+    if (v && v[0] != '\\0') return std::string(v);
+    return std::string();
+}
+
+static std::string resolved_model_path() {
+    return cli_or_env(g_model_path, "ELIZA_OMNIVOICE_MODEL");
+}
+static std::string resolved_codec_path() {
+    return cli_or_env(g_codec_path, "ELIZA_OMNIVOICE_CODEC");
+}`,
+      )
+      .replace("ov_audio audio = { nullptr, 0 };", "ov_audio audio = {};");
+  }
 
   // 1) Insert the namespace block after the include section. server.cpp's
   //    own includes end before `#if defined(_WIN32)` / `#include <windows.h>`
@@ -288,7 +387,9 @@ function patchServerSource(source, serverPath) {
   }
   const afterInclude = source.indexOf("\n", includeIdx) + 1;
   let patched =
-    source.slice(0, afterInclude) + audioSpeechBlock() + source.slice(afterInclude);
+    source.slice(0, afterInclude) +
+    audioSpeechBlock() +
+    source.slice(afterInclude);
 
   // 2) Register the route. Anchor on the existing `/v1/embeddings` POST
   //    registration line (stable across recent forks) and add ours right
@@ -304,10 +405,10 @@ function patchServerSource(source, serverPath) {
   }
   const routeLineEnd = patched.indexOf("\n", routeIdx) + 1;
   const routeInsert =
-    `#ifdef MILADY_FUSE_OMNIVOICE\n` +
+    `#ifdef ELIZA_FUSE_OMNIVOICE\n` +
     `    // Fused omnivoice TTS — same process as the text/DFlash routes above.\n` +
-    `    ctx_http.post("/v1/audio/speech",     ex_wrapper(milady_omnivoice::audio_speech_handler()));\n` +
-    `    ctx_http.post("/audio/speech",        ex_wrapper(milady_omnivoice::audio_speech_handler()));\n` +
+    `    ctx_http.post("/v1/audio/speech",     ex_wrapper(eliza_omnivoice::audio_speech_handler()));\n` +
+    `    ctx_http.post("/audio/speech",        ex_wrapper(eliza_omnivoice::audio_speech_handler()));\n` +
     `#endif\n`;
   patched =
     patched.slice(0, routeLineEnd) + routeInsert + patched.slice(routeLineEnd);
@@ -325,18 +426,18 @@ function patchServerSource(source, serverPath) {
   }
   const paramsLineEnd = patched.indexOf("\n", paramsIdx) + 1;
   const argScan =
-    `\n#ifdef MILADY_FUSE_OMNIVOICE\n` +
+    `\n#ifdef ELIZA_FUSE_OMNIVOICE\n` +
     `    // Strip omnivoice-fused-only flags before common_params_parse so the\n` +
     `    // upstream parser doesn't reject them. Values feed the lazily-created\n` +
-    `    // OmniVoice context (see the milady_omnivoice namespace above).\n` +
+    `    // OmniVoice context (see the eliza_omnivoice namespace above).\n` +
     `    {\n` +
     `        std::vector<char *> filtered;\n` +
     `        filtered.reserve((size_t)argc);\n` +
     `        for (int i = 0; i < argc; ++i) {\n` +
     `            const std::string a = argv[i];\n` +
     `            if ((a == "--omnivoice-model" || a == "--omnivoice-codec") && i + 1 < argc) {\n` +
-    `                if (a == "--omnivoice-model") milady_omnivoice::g_model_path = argv[++i];\n` +
-    `                else                          milady_omnivoice::g_codec_path = argv[++i];\n` +
+    `                if (a == "--omnivoice-model") eliza_omnivoice::g_model_path = argv[++i];\n` +
+    `                else                          eliza_omnivoice::g_codec_path = argv[++i];\n` +
     `                continue;\n` +
     `            }\n` +
     `            filtered.push_back(argv[i]);\n` +
@@ -366,6 +467,16 @@ export function patchServerOmnivoiceRoute(cacheDir, { dryRun = false } = {}) {
   }
   const original = fs.readFileSync(serverPath, "utf8");
   if (original.includes(SENTINEL)) {
+    const patched = patchServerSource(original, serverPath);
+    if (patched !== original) {
+      if (!dryRun) fs.writeFileSync(serverPath, patched, "utf8");
+      console.log(
+        `[dflash-build] ${dryRun ? "(dry-run) would refresh" : "refreshed"} ` +
+          `${path.relative(cacheDir, serverPath)} ` +
+          `omnivoice /v1/audio/speech route (sentinel present)`,
+      );
+      return;
+    }
     console.log(
       `[dflash-build] ${path.relative(cacheDir, serverPath)} already carries the ` +
         `omnivoice /v1/audio/speech route (sentinel present)`,
@@ -376,14 +487,14 @@ export function patchServerOmnivoiceRoute(cacheDir, { dryRun = false } = {}) {
   if (dryRun) {
     console.log(
       `[dflash-build] (dry-run) would mount /v1/audio/speech onto ` +
-        `${path.relative(cacheDir, serverPath)} for MILADY_FUSE_OMNIVOICE builds`,
+        `${path.relative(cacheDir, serverPath)} for ELIZA_FUSE_OMNIVOICE builds`,
     );
     return;
   }
   fs.writeFileSync(serverPath, patched, "utf8");
   console.log(
     `[dflash-build] mounted /v1/audio/speech onto ${path.relative(cacheDir, serverPath)} ` +
-      `(active only when built with -DMILADY_FUSE_OMNIVOICE=ON)`,
+      `(active only when built with -DELIZA_FUSE_OMNIVOICE=ON)`,
   );
 }
 

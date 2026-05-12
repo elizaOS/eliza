@@ -507,7 +507,7 @@ describe("AppRegistryService permissions surface", () => {
 			);
 			await service.setGrantedNamespaces("demo", ["fs"], "user");
 
-			// Tamper with the on-disk file to simulate a future-Milady writeback
+			// Tamper with the on-disk file to simulate a future-Eliza writeback
 			// containing a namespace this version doesn't recognise.
 			const grantsPath = path.join(state.stateDir, "granted-permissions.json");
 			const raw = readFileSync(grantsPath, "utf8");

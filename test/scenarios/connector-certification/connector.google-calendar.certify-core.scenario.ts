@@ -12,11 +12,7 @@ export default buildConnectorCertificationScenario({
       name: "calendar-core",
       text: "Check my availability tomorrow, create the meeting if I'm free, and be able to move or cancel it later.",
       responseIncludesAny: ["availability", "meeting", "move", "cancel"],
-      acceptedActions: [
-        "CALENDAR",
-        "CALENDAR",
-        "CALENDAR",
-      ],
+      acceptedActions: ["CALENDAR", "CALENDAR", "CALENDAR"],
       includesAny: ["availability", "meeting", "move", "cancel"],
     },
   ],

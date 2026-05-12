@@ -5,11 +5,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  ModelType,
-  runWithTrajectoryContext,
-} from "@elizaos/core";
-import { parseJsonModelRecord } from "../utils/json-model-output.js";
+import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import {
   APP_BLOCKER_ACCESS_ERROR,
   getAppBlockerAccess,
@@ -20,6 +16,7 @@ import {
   startAppBlock,
   stopAppBlock,
 } from "../app-blocker/engine.js";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { formatPromptSection } from "./lib/prompt-format.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 import {
@@ -27,7 +24,7 @@ import {
   type SubactionsMap,
 } from "./lib/resolve-action-args.js";
 
-const ACTION_NAME = "APP_BLOCK";
+const ACTION_NAME = "BLOCK";
 
 type AppBlockSubaction = "block" | "unblock" | "status";
 
@@ -304,7 +301,9 @@ async function handleBlock(
   // explicit selection — vague intents like "block social media" need to be
   // resolved against the device's actual installed-app inventory.
   const inferredPackageNames =
-    explicitPackageNames.length === 0 && !appTokens && status.platform === "android"
+    explicitPackageNames.length === 0 &&
+    !appTokens &&
+    status.platform === "android"
       ? inferAndroidPackageNamesFromIntent(
           [params.intent, getMessageText(message)].filter(Boolean).join("\n"),
           installedApps,
@@ -350,7 +349,7 @@ async function handleBlock(
       ? explicitPackageNames
       : inferredPackageNames.length > 0
         ? inferredPackageNames
-      : (llmPlan?.packageNames ?? []);
+        : (llmPlan?.packageNames ?? []);
   const durationMinutes =
     explicitDurationMinutes !== undefined
       ? explicitDurationMinutes
@@ -470,9 +469,8 @@ export async function appBlockValidate(
 /**
  * Handler function backing the BLOCK umbrella when `target=app`.
  *
- * Folded out of the legacy `APP_BLOCK` action surface — Audit B Defer #1.
  * The umbrella in `./block.ts` is the only caller; no Action object is
- * registered for this handler anymore.
+ * registered for this handler.
  */
 export async function runAppBlockHandler(
   runtime: IAgentRuntime,

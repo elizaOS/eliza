@@ -1,7 +1,7 @@
 # Wallet and Trading Architecture
 
 Status: canonical, gates implementation.
-Owner: milady-feature-coordinator routes to specialists below.
+Owner: eliza-feature-coordinator routes to specialists below.
 Scope: this document defines the wallet abstraction, the action+provider surface, validation rules, audit + policy enforcement, the migration of existing key-bearing code, the surface coverage on desktop / cloud / mobile, and the dependency graph for execution.
 
 The locked decisions in the brief are taken as inputs. This document does not relitigate them. It defines the contract that every implementation PR must satisfy.
@@ -149,13 +149,13 @@ Inputs (env, in order of precedence):
 
 New file: `eliza/packages/agent/src/wallet/steward-backend.ts`.
 
-Inputs (env): `STEWARD_API_URL`, `STEWARD_AGENT_ID`, `STEWARD_AGENT_TOKEN`, `STEWARD_TENANT_ID`, `STEWARD_API_KEY`, `MILADY_CLOUD_CLIENT_ADDRESS_KEY`. Resolution mirrors the existing `resolveEffectiveStewardConfig` in `eliza/apps/app-steward/src/services/steward-wallet.ts:75-99`.
+Inputs (env): `STEWARD_API_URL`, `STEWARD_AGENT_ID`, `STEWARD_AGENT_TOKEN`, `STEWARD_TENANT_ID`, `STEWARD_API_KEY`, `ELIZA_CLOUD_CLIENT_ADDRESS_KEY`. Resolution mirrors the existing `resolveEffectiveStewardConfig` in `eliza/apps/app-steward/src/services/steward-wallet.ts:75-99`.
 
 Sidecar lifecycle:
 
 - In **Eliza Cloud (web)** the Steward API runs as a multi-tenant service; the sidecar at `eliza/apps/app-steward/src/services/steward-sidecar.ts` is **not** spawned — `STEWARD_API_URL` points at the managed service.
 - In **mobile (Capacitor)** there is no sidecar at all; the app is cloud-routed directly.
-- In **desktop**, `LocalEoaBackend` is the default; `StewardBackend` only activates if the user explicitly opts into managed signing (`MILADY_WALLET_BACKEND=steward`). When it does, the sidecar at `eliza/apps/app-steward/src/services/steward-sidecar.ts` boots Steward as a child process (already implemented). This is a power-user setup, not the default.
+- In **desktop**, `LocalEoaBackend` is the default; `StewardBackend` only activates if the user explicitly opts into managed signing (`ELIZA_WALLET_BACKEND=steward`). When it does, the sidecar at `eliza/apps/app-steward/src/services/steward-sidecar.ts` boots Steward as a child process (already implemented). This is a power-user setup, not the default.
 
 Approval queue subscription: `StewardBackend` listens via webhook (`eliza/apps/app-steward/src/routes/steward-bridge.ts` already wires `registerStewardWebhook` and `getRecentWebhookEvents`). When a `signMessage` / `signTypedData` call returns Steward's `pending: true` / `approved: false` shape (see `StewardSignResponse` at `eliza/apps/app-steward/src/types/steward.ts:111-118`), the backend yields a `PendingApproval` whose `approvalId` is the `txId`. The action handler observing this is responsible for surfacing it (§A.4).
 
@@ -177,7 +177,7 @@ The "approval queue badge" wiring is already most of the way there. The new work
 
 ### A.5 Runtime selection
 
-`MILADY_WALLET_BACKEND=local|steward|auto` (default `auto`).
+`ELIZA_WALLET_BACKEND=local|steward|auto` (default `auto`).
 
 Selection table:
 
@@ -654,7 +654,7 @@ For each provider: read methods, write methods (where applicable), env vars, dep
 
 ### D.4 `sentiment`
 
-- Source: new — but reuses Twitter/X infra Milady already has via the Telegram-style platform connectors. If no X SDK is in-tree, depend on `@elizaos/plugin-x` (lowercase scope per CLAUDE.md naming rules).
+- Source: new — but reuses Twitter/X infra Eliza already has via the Telegram-style platform connectors. If no X SDK is in-tree, depend on `@elizaos/plugin-x` (lowercase scope per CLAUDE.md naming rules).
 - Env: `X_BEARER_TOKEN` (or whatever the official elizaOS X plugin requires).
 - Read: `getSentiment(query)` returns `{ score: -1..1, sampleCount: number, topPosts: Array<{ id, text, author, ts }> }`.
 - Consumed by: `QUERY_MARKET` (sentiment).
@@ -852,7 +852,7 @@ interface LocalPolicyConfig {
 }
 ```
 
-Stored at `~/.milady/policy.json`; editable from the desktop UI. The local policy never produces `requires_approval` — there is no human approver in local mode; rules are absolute. They can be `ok` or `blocked`. This is the deliberate tradeoff: local mode trades approval-loop UX for offline operation.
+Stored at `~/.eliza/policy.json`; editable from the desktop UI. The local policy never produces `requires_approval` — there is no human approver in local mode; rules are absolute. They can be `ok` or `blocked`. This is the deliberate tradeoff: local mode trades approval-loop UX for offline operation.
 
 The policy module is **the only place** business rules about size/limits/allowlist live. Actions never inline a check like "if size > 10000 and venue is hyperliquid, ask for approval" — that's a policy concern, not an action concern. (AGENTS.md §2: use cases are the only computation layer, but business policy is consolidated; mixing them violates §6 CQRS.)
 
@@ -893,7 +893,7 @@ The policy module is **the only place** business rules about size/limits/allowli
 ### G.6 cloud-wallet.ts
 
 - `eliza/packages/agent/src/cloud/cloud-wallet.ts` — **keep** the client-address-key logic (`getOrCreateClientAddressKey`, lines 89-114) and the `provisionCloudWalletsBestEffort` logic (lines 207-279). These are the bridge to Steward provisioning and stay relevant under `StewardBackend`.
-- The `ENABLE_CLOUD_WALLET` flag (lines 38-41) — **deprecate** the gating once Steward is the canonical cloud backend. Replace with `MILADY_WALLET_BACKEND=steward` checks. One release with both paths, then drop the flag.
+- The `ENABLE_CLOUD_WALLET` flag (lines 38-41) — **deprecate** the gating once Steward is the canonical cloud backend. Replace with `ELIZA_WALLET_BACKEND=steward` checks. One release with both paths, then drop the flag.
 
 ### G.7 New files added (canonical)
 

@@ -1,0 +1,13 @@
+{
+  "commission_per_trade": 9.95,
+  "spread_bps": {
+    "XLK": 2,
+    "XLF": 3,
+    "XLE": 4,
+    "XLV": 2,
+    "XLI": 3,
+    "XLY": 3
+  },
+  "notes": "Spread in basis points of trade value. Commission is flat per trade (per side). Total cost per round-trip = 2 * commission + entry_spread + exit_spread.",
+  "currency": "USD"
+}

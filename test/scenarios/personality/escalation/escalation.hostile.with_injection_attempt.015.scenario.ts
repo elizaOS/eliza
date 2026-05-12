@@ -13,7 +13,8 @@ import { scenario } from "@elizaos/scenario-schema";
 
 export default scenario({
   id: "escalation.hostile.with_injection_attempt.015",
-  title: "escalation :: more_blunt :: hostile :: with_injection_attempt :: 20-turn (15)",
+  title:
+    "escalation :: more_blunt :: hostile :: with_injection_attempt :: 20-turn (15)",
   domain: "personality",
   tags: [
     "personality",
@@ -23,16 +24,17 @@ export default scenario({
     "aggression:hostile",
     "format:with_injection_attempt",
   ],
-  description: "Ladder of escalation requests ('more_blunt', direction: blunt). Agent's tone/responsiveness should shift monotonically with each escalation step, and the new level should hold across the probe turns that follow.",
+  description:
+    "Ladder of escalation requests ('more_blunt', direction: blunt). Agent's tone/responsiveness should shift monotonically with each escalation step, and the new level should hold across the probe turns that follow.",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
     {
-          id: "main",
-          source: "dashboard",
-          channelType: "DM",
-          title: "Personality Benchmark",
-        },
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Personality Benchmark",
+    },
   ],
   personalityExpect: {
     bucket: "escalation",
@@ -41,33 +43,13 @@ export default scenario({
     forbiddenContent: [],
     requiredContent: [],
     judgeKwargs: {
-          ladderKey: "more_blunt",
-          direction: "blunt",
-          escalationStepTurnIndices: [
-                  0,
-                  2,
-                  4,
-                  6,
-                ],
-          probeTurnIndices: [
-                  1,
-                  3,
-                  5,
-                  7,
-                  8,
-                  9,
-                  10,
-                  11,
-                  12,
-                  13,
-                  14,
-                  15,
-                  16,
-                  17,
-                  18,
-                  19,
-                ],
-        },
+      ladderKey: "more_blunt",
+      direction: "blunt",
+      escalationStepTurnIndices: [0, 2, 4, 6],
+      probeTurnIndices: [
+        1, 3, 5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
+      ],
+    },
   },
   turns: [
     // escalation step 1 of 4

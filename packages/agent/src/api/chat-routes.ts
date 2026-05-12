@@ -1338,6 +1338,10 @@ export async function generateChatResponse(
     };
     const emitSnapshot = (text: string): void => {
       if (!text) return;
+      // No-op when the snapshot matches the current responseText exactly:
+      // re-emitting the same fullText forces clients to re-render an identical
+      // bubble (and on-the-wire bytes for nothing).
+      if (text === responseText) return;
       responseText = text;
       opts?.onSnapshot?.(text);
     };
@@ -1377,6 +1381,21 @@ export async function generateChatResponse(
       const baseline = preCallbackText ?? "";
       const separator = baseline.length > 0 ? "\n\n" : "";
       const nextText = `${baseline}${separator}${incoming}`;
+      // Heuristic: if the new callback text is a true append on top of the
+      // currently streamed responseText, emit a delta chunk (cheap on the wire,
+      // lets modern SSE clients append without re-rendering the whole bubble)
+      // AND a snapshot for legacy clients that only consume `fullText`.
+      // Otherwise (structural rewrite — Discord-style "🔍 searching" → "✨ done"
+      // or planner restart), snapshot only.
+      if (nextText === responseText) return;
+      if (nextText.startsWith(responseText) && responseText.length > 0) {
+        const delta = nextText.slice(responseText.length);
+        emitChunk(delta);
+        // emitChunk already advanced responseText; re-emit snapshot for
+        // legacy clients that only handle fullText updates.
+        opts?.onSnapshot?.(nextText);
+        return;
+      }
       emitSnapshot(nextText);
     };
     const applyCallbackTextUpdate = (
@@ -1760,7 +1779,7 @@ export async function generateChatResponse(
                     const canonicalName =
                       actionNameLookup.get(normalizeActionName(action.name)) ??
                       normalizeActionName(action.name);
-                    return canonicalName === "WEBSITE_BLOCK";
+                    return canonicalName === "BLOCK";
                   });
                 const callbacksBeforeFallback = actionCallbacksSeen;
 
@@ -1784,7 +1803,7 @@ export async function generateChatResponse(
                     const canonicalName =
                       actionNameLookup.get(normalizeActionName(action.name)) ??
                       normalizeActionName(action.name);
-                    if (canonicalName === "WEBSITE_BLOCK") {
+                    if (canonicalName === "BLOCK") {
                       return !selfControlFallbackExecuted;
                     }
                     return true;

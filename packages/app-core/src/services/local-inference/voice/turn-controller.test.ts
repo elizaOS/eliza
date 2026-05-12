@@ -31,6 +31,10 @@ import type {
   TranscriptUpdate,
   VadEvent,
   VadEventListener,
+  VoiceInputSource,
+  VoiceSegment,
+  VoiceSpeaker,
+  VoiceTurnMetadata,
 } from "./types";
 
 function makePreset(): SpeakerPreset {
@@ -69,11 +73,22 @@ class FakeTranscriber implements StreamingTranscriber {
   private readonly listeners = new Set<TranscriberEventListener>();
   partial = "";
   finalText = "";
+  finalSource: VoiceInputSource | undefined;
+  finalSpeaker: VoiceSpeaker | undefined;
+  finalSegments: VoiceSegment[] | undefined;
+  finalTurn: VoiceTurnMetadata | undefined;
   flushCalls = 0;
   feed(): void {}
   async flush(): Promise<TranscriptUpdate> {
     this.flushCalls++;
-    return { partial: this.finalText, isFinal: true };
+    return {
+      partial: this.finalText,
+      isFinal: true,
+      ...(this.finalSource ? { source: this.finalSource } : {}),
+      ...(this.finalSpeaker ? { speaker: this.finalSpeaker } : {}),
+      ...(this.finalSegments ? { segments: this.finalSegments } : {}),
+      ...(this.finalTurn ? { turn: this.finalTurn } : {}),
+    };
   }
   on(listener: TranscriberEventListener): () => void {
     this.listeners.add(listener);
@@ -83,9 +98,16 @@ class FakeTranscriber implements StreamingTranscriber {
   emit(event: TranscriberEvent): void {
     for (const l of this.listeners) l(event);
   }
-  setPartial(text: string): void {
+  setPartial(text: string, source?: VoiceInputSource): void {
     this.partial = text;
-    this.emit({ kind: "partial", update: { partial: text, isFinal: false } });
+    this.emit({
+      kind: "partial",
+      update: {
+        partial: text,
+        isFinal: false,
+        ...(source ? { source } : {}),
+      },
+    });
   }
 }
 
@@ -314,6 +336,99 @@ describe("VoiceTurnController", () => {
     expect(h.generateCalls[0]).toMatchObject({
       transcript: "good morning",
       final: true,
+    });
+  });
+
+  it("passes transcript source metadata into speculative and final generate requests", async () => {
+    const h = makeHarness({ speculatePauseMs: 300 });
+    const source: VoiceInputSource = {
+      kind: "local_mic",
+      deviceId: "default-input",
+      roomId: "room-1",
+    };
+    h.controller.start();
+    h.vad.emit(vadEvent({ type: "speech-start" }));
+    h.transcriber.setPartial("who is speaking", source);
+    h.vad.emit(vadEvent({ type: "speech-pause", pauseDurationMs: 400 }));
+    expect(h.generateCalls[0]).toMatchObject({
+      transcript: "who is speaking",
+      final: false,
+      source,
+    });
+
+    h.resolveGenerate(0, "(speculative reply)");
+    h.transcriber.finalText = "who is speaking now";
+    h.transcriber.finalSource = source;
+    h.vad.emit(vadEvent({ type: "speech-end" }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(h.generateCalls[1]).toMatchObject({
+      transcript: "who is speaking now",
+      final: true,
+      source,
+    });
+  });
+
+  it("passes speaker attribution and diarized segments into final generate requests", async () => {
+    const h = makeHarness();
+    const source: VoiceInputSource = {
+      kind: "local_mic",
+      deviceId: "default-input",
+      roomId: "room-1",
+    };
+    const speaker: VoiceSpeaker = {
+      id: "entity-owner",
+      label: "Owner",
+      displayName: "Owner",
+      source,
+      imprintClusterId: "cluster-owner",
+      imprintObservationId: "observation-owner-1",
+      entityId: "entity-owner",
+      confidence: 0.91,
+      isLocalUser: true,
+    };
+    const segments: VoiceSegment[] = [
+      {
+        id: "seg-1",
+        text: "this is the owner",
+        startMs: 120,
+        endMs: 1480,
+        speaker,
+        source,
+        confidence: 0.89,
+      },
+    ];
+    const turn: VoiceTurnMetadata = {
+      turnId: "turn-1",
+      source,
+      primarySpeaker: speaker,
+      segments,
+      startedAtMs: 120,
+      endedAtMs: 1480,
+      diarization: {
+        provider: "local",
+        model: "eliza-voice-imprint-v1",
+        confidence: 0.89,
+      },
+    };
+
+    h.controller.start();
+    h.vad.emit(vadEvent({ type: "speech-start" }));
+    h.transcriber.finalText = "this is the owner";
+    h.transcriber.finalSource = source;
+    h.transcriber.finalSpeaker = speaker;
+    h.transcriber.finalSegments = segments;
+    h.transcriber.finalTurn = turn;
+    h.vad.emit(vadEvent({ type: "speech-end" }));
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(h.generateCalls).toHaveLength(1);
+    expect(h.generateCalls[0]).toMatchObject({
+      transcript: "this is the owner",
+      final: true,
+      source,
+      speaker,
+      segments,
+      turn,
     });
   });
 

@@ -170,6 +170,7 @@ export {
 	normalizeActionName,
 	type RuntimeActionLike,
 } from "./runtime/action-catalog";
+export * from "./runtime/builtin-field-evaluators";
 export * from "./runtime/cleanup-scope";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
@@ -192,6 +193,7 @@ export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
 export * from "./runtime/response-handler-field-evaluator";
 export * from "./runtime/response-handler-field-registry";
+export * from "./runtime/rlm";
 export * from "./runtime/room-handler-queue";
 export * from "./runtime/schema-compat";
 export * from "./runtime/sub-planner";
@@ -291,12 +293,15 @@ export * from "./utils/description-compressed-lint";
 export * from "./utils/environment";
 export { formatError } from "./utils/format-error";
 export * from "./utils/prompt-compression";
+// Canonical env-var reader with legacy-alias back-compat (ELIZA_* preferred, MILADY_* honored)
+export * from "./utils/read-env";
 // Export Node-specific utilities
 export * from "./utils/server-health";
-// Eliza state-dir resolution (MILADY_STATE_DIR → ELIZA_STATE_DIR → ~/.${ELIZA_NAMESPACE ?? "eliza"})
+// Eliza state-dir resolution (ELIZA_STATE_DIR, with the legacy MILADY_STATE_DIR honored → ~/.${ELIZA_NAMESPACE ?? "eliza"})
 export * from "./utils/state-dir";
 // Export streaming utilities
 export * from "./utils/streaming";
+export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
 // Export validation utilities
 export * from "./validation";
 

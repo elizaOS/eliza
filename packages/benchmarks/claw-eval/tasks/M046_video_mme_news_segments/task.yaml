@@ -1,0 +1,51 @@
+task_id: M046_video_mme_news_segments
+task_name: Video-MME News Segment Count and Timestamps
+version: "1.0"
+category: video_search
+difficulty: hard
+tags: [multimodal]
+
+prompt:
+  text: |
+    There is a video file at /workspace/fixtures/video.mp4.
+
+    Watch the video carefully and complete the following task:
+
+    Count the total number of distinct news segments that appear in the video.
+    For each segment, identify its start and end timestamp.
+
+    Save your answer (the count and timestamps for each segment) to /workspace/answer.txt.
+  language: en
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/answer.txt
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Watch the video using sandbox_read_media to extract frames across the full duration.
+  Identify 4 distinct news segments with their timestamps:
+  1st: 2:53 - 3:15
+  2nd: 3:48 - 4:17
+  3rd: 22:03 - 22:13
+  4th: 23:08 - 23:13
+
+primary_dimensions:
+  - completion
+  - robustness

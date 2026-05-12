@@ -40,25 +40,22 @@ type RuntimeActionLike = Pick<
   "name" | "similes" | "validate" | "handler"
 >;
 
-let ownerWebsiteBlockFallbackPromise: Promise<RuntimeActionLike | null> | null =
-  null;
+let ownerBlockFallbackPromise: Promise<RuntimeActionLike | null> | null = null;
 
 async function resolveBuiltInFallbackAction(
   actionName: string,
 ): Promise<RuntimeActionLike | null> {
-  if (actionName !== "WEBSITE_BLOCK") {
+  if (actionName !== "BLOCK") {
     return null;
   }
 
-  if (!ownerWebsiteBlockFallbackPromise) {
-    ownerWebsiteBlockFallbackPromise = import(
-      "@elizaos/app-lifeops"
-    )
+  if (!ownerBlockFallbackPromise) {
+    ownerBlockFallbackPromise = import("@elizaos/app-lifeops")
       .then((mod) => mod.websiteBlockAction ?? null)
       .catch(() => null);
   }
 
-  return ownerWebsiteBlockFallbackPromise;
+  return ownerBlockFallbackPromise;
 }
 
 export function inferBalanceChainFromText(
@@ -214,7 +211,7 @@ export async function executeFallbackParsedActions(
             : ""
           : "";
       const shouldSuppressSuccessFallbackText =
-        parsed.name === "WEBSITE_BLOCK" &&
+        parsed.name === "BLOCK" &&
         actionSucceeded === true &&
         /\b(block|blocking|self ?control)\b/i.test(currentText);
       if (fallbackText) {

@@ -117,12 +117,12 @@
     </div>
     <button class="fab fab-refresh" onclick="refreshPage()" title="Refresh"><i class="fas fa-sync-alt"></i></button>
     <script>
-        function refreshPage() {
+        function _refreshPage() {
             window.location.reload();
         }
         
         // Handle video player with enhanced mobile support
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', () => {
             const videoElement = document.getElementById('task-recording');
             const videoStatus = document.getElementById('video-status');
             
@@ -140,14 +140,14 @@
                 videoElement.addEventListener('canplay', updateSuccessStatus);
                 
                 // Error handling for video
-                videoElement.addEventListener('error', function(e) {
+                videoElement.addEventListener('error', (e) => {
                     console.error('Video error:', e);
                     videoStatus.textContent = 'Recording not available';
                     videoStatus.className = 'video-status video-error';
                 });
                 
                 // Timeout for slow connections or browser issues
-                setTimeout(function() {
+                setTimeout(() => {
                     // If video is playable but events didn't fire correctly
                     if (videoElement.readyState >= 2 && videoStatus.textContent === 'Loading video...') {
                         updateSuccessStatus();
@@ -156,13 +156,13 @@
                 
                 // Directly check video source availability with fetch API
                 fetch('/task/{{ task_type }}/{{ task_id }}/recording?action_space={{ action_space }}&observation_type={{ observation_type }}&model_name={{ model_name }}', {method: 'HEAD'})
-                    .then(function(response) {
+                    .then((response) => {
                         if (response.ok && videoStatus.textContent === 'Loading video...') {
                             // If HEAD request succeeds but video events haven't fired
                             setTimeout(updateSuccessStatus, 500);
                         }
                     })
-                    .catch(function() {
+                    .catch(() => {
                         // Network error or CORS issue
                         if (videoStatus.textContent === 'Loading video...') {
                             videoStatus.textContent = 'Recording check failed';

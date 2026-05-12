@@ -1,0 +1,55 @@
+{
+  "scripts": [
+    {
+      "hat": "control_start_as_clone",
+      "hatId": "hat_enemy_clone",
+      "blocks": [
+        {
+          "opcode": "motion_gotoxy",
+          "inputs": {
+            "X": {
+              "opcode": "operator_random",
+              "inputs": {
+                "FROM": -220,
+                "TO": 220
+              }
+            },
+            "Y": 170
+          }
+        },
+        {
+          "opcode": "looks_show"
+        },
+        {
+          "opcode": "control_forever",
+          "inputs": {
+            "SUBSTACK": [
+              {
+                "opcode": "motion_changeyby",
+                "inputs": {
+                  "DY": -5
+                }
+              },
+              {
+                "opcode": "control_if",
+                "inputs": {
+                  "CONDITION": {
+                    "opcode": "sensing_touchingobject",
+                    "inputs": {
+                      "TOUCHINGOBJECTMENU": "_edge_"
+                    }
+                  },
+                  "SUBSTACK": [
+                    {
+                      "opcode": "control_delete_this_clone"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

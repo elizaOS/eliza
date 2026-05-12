@@ -1,0 +1,90 @@
+{
+  "_metadata": {
+    "benchmark_date": "2024-01-14",
+    "benchmark_environment": {
+      "cpu": "Intel Core i7-12700H",
+      "ram_gb": 32,
+      "storage": "NVMe SSD (Samsung 980 Pro)",
+      "os": "Ubuntu 22.04 LTS"
+    },
+    "dataset": {
+      "document_count": 10000,
+      "avg_document_size_kb": 2,
+      "total_dataset_size_mb": 19.5,
+      "content_type": "mixed text — conversation logs, notes, and extracted facts"
+    },
+    "note": "Benchmarked on 10,000 documents averaging 2KB each. All engines configured with default settings unless noted. Each query latency is the median of 1000 random keyword queries."
+  },
+  "benchmarks": [
+    {
+      "engine": "tantivy",
+      "version": "0.21.1",
+      "language": "Rust",
+      "description": "High-performance full-text search engine library written in Rust, inspired by Apache Lucene",
+      "index_build_time_sec": 1.8,
+      "query_latency_ms": 0.3,
+      "index_size_mb": 4.1,
+      "memory_usage_mb": 45,
+      "supports_fuzzy": true,
+      "supports_semantic": false,
+      "supports_facets": true,
+      "notes": "Fastest indexing and query performance. Requires Rust FFI bindings for Python integration. Index is compact and efficient."
+    },
+    {
+      "engine": "SQLite FTS5",
+      "version": "3.44.0",
+      "language": "C (embedded)",
+      "description": "Full-text search extension for SQLite, built into the standard SQLite distribution",
+      "index_build_time_sec": 3.2,
+      "query_latency_ms": 1.1,
+      "index_size_mb": 45,
+      "memory_usage_mb": 28,
+      "supports_fuzzy": false,
+      "supports_semantic": false,
+      "supports_facets": false,
+      "notes": "Good balance of simplicity and performance. No external dependencies. Index stored alongside data in the same SQLite file. BM25 ranking built-in."
+    },
+    {
+      "engine": "Whoosh",
+      "version": "2.7.4",
+      "language": "Python",
+      "description": "Pure Python full-text search library",
+      "index_build_time_sec": 12.7,
+      "query_latency_ms": 8.5,
+      "index_size_mb": 5.8,
+      "memory_usage_mb": 120,
+      "supports_fuzzy": true,
+      "supports_semantic": false,
+      "supports_facets": true,
+      "notes": "Easy to integrate in Python projects but significantly slower than native alternatives. High memory usage during indexing. No longer actively maintained."
+    },
+    {
+      "engine": "MiniSearch",
+      "version": "6.3.0",
+      "language": "JavaScript",
+      "description": "Tiny but powerful in-memory full-text search engine for JavaScript",
+      "index_build_time_sec": 2.4,
+      "query_latency_ms": 1.8,
+      "index_size_mb": 3.9,
+      "memory_usage_mb": 85,
+      "supports_fuzzy": true,
+      "supports_semantic": false,
+      "supports_facets": false,
+      "notes": "In-memory only — entire index must fit in RAM. Good for small to medium datasets. Would require Node.js runtime or embedding in Electron app."
+    },
+    {
+      "engine": "Custom Inverted Index",
+      "version": "prototype-0.1",
+      "language": "Python",
+      "description": "Hand-rolled inverted index using Python dictionaries and pickle serialization",
+      "index_build_time_sec": 8.3,
+      "query_latency_ms": 15.2,
+      "index_size_mb": 7.2,
+      "memory_usage_mb": 200,
+      "supports_fuzzy": false,
+      "supports_semantic": false,
+      "supports_facets": false,
+      "notes": "Built as a prototype for the legacy system. Very slow and memory-hungry. No ranking algorithm. Included for baseline comparison only."
+    }
+  ]
+}

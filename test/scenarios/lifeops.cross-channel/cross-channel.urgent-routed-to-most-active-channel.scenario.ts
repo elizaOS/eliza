@@ -12,12 +12,12 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
-import { judgeRubric } from "../_helpers/action-assertions.ts";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
+import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 function checkRoutedToTelegram(ctx: ScenarioContext): string | undefined {
   const dispatches = ctx.connectorDispatches ?? [];
@@ -41,15 +41,10 @@ function checkRoutedToTelegram(ctx: ScenarioContext): string | undefined {
 
 export default scenario({
   id: "cross-channel.urgent-routed-to-most-active-channel",
-  title: "Urgent send routes to most-active channel (Telegram), not stale Gmail",
+  title:
+    "Urgent send routes to most-active channel (Telegram), not stale Gmail",
   domain: "lifeops.cross-channel",
-  tags: [
-    "lifeops",
-    "cross-channel",
-    "routing",
-    "urgent",
-    "channel-selection",
-  ],
+  tags: ["lifeops", "cross-channel", "routing", "urgent", "channel-selection"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

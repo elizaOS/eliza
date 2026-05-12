@@ -1,4 +1,3 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { formatJsonScalar, formatJsonTable } from "../utils";
 
@@ -12,6 +11,28 @@ interface TrendingToken {
   price24hChangePercent: number;
   liquidity: number;
 }
+
+type SupplyMap = Record<
+  string,
+  {
+    human?: {
+      multipliedBy: (n: number) => {
+        toFixed: (p: number) => string;
+      };
+    };
+  }
+>;
+
+type TrendingRow = {
+  chain: string;
+  address: string;
+  symbol: string;
+  priceUsd: string;
+  marketCapUsd: string;
+  volume24hUsd: string;
+  change24hPct: string;
+  liquidityUsd: string;
+};
 
 export async function getCacheTimed<T>(
   runtime: IAgentRuntime,
@@ -129,22 +150,11 @@ export const trendingProvider: Provider = {
       price24hChangePercent: 1.17760374,
       */
 
-      const rows = [];
+      const rows: TrendingRow[] = [];
 
       const solanaService = runtime.getService("chain_solana") as
         | {
-            getSupply?: (addresses: string[]) => Promise<
-              Record<
-                string,
-                {
-                  human?: {
-                    multipliedBy: (n: number) => {
-                      toFixed: (p: number) => string;
-                    };
-                  };
-                }
-              >
-            >;
+            getSupply?: (addresses: string[]) => Promise<SupplyMap>;
           }
         | undefined;
       if (!solanaService) {
@@ -157,15 +167,8 @@ export const trendingProvider: Provider = {
       let tokens = [...topSolanaTokens];
 
       // Try to get supply data if solanaService is available
-      let supplies: Record<
-        string,
-        {
-          human?: {
-            multipliedBy: (n: number) => { toFixed: (p: number) => string };
-          };
-        }
-      > = {};
-      if (solanaService) {
+      let supplies: SupplyMap = {};
+      if (solanaService && typeof solanaService.getSupply === "function") {
         try {
           const CAs = topSolanaTokens.map((t) => t.address);
           supplies = await solanaService.getSupply(CAs);
@@ -193,8 +196,8 @@ export const trendingProvider: Provider = {
 
         // Calculate market cap if supply data is available
         let mcapValue = "?";
-        if (supplies[token.address]?.human) {
-          const supply = supplies[token.address].human;
+        const supply = supplies[token.address]?.human;
+        if (supply) {
           const mcap = supply.multipliedBy(token.price);
           mcapValue = mcap.toFixed(0);
           //console.log('Hum supply', supply.toFormat(), 'price', token.price, 'mcap', mcap.toFormat(2))

@@ -7,7 +7,7 @@
 // header only declares the kernel entry points.  Reference / parity
 // gates live in
 //   packages/native-plugins/polarquant-cpu/test/polar_simd_parity_test.c
-// in the milady repo (the standalone library is the source of truth).
+// in the eliza repo (the standalone library is the source of truth).
 #pragma once
 
 #include "ggml-common.h"

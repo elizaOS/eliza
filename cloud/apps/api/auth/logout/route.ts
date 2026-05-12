@@ -9,10 +9,7 @@ import { deleteCookie, getCookie } from "hono/cookie";
 import { invalidateSessionCaches } from "@/lib/auth";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
-import {
-  RateLimitPresets,
-  rateLimit,
-} from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { userSessionsService } from "@/lib/services/user-sessions";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";

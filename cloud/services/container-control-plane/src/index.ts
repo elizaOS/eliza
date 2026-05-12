@@ -636,20 +636,51 @@ app.post("/api/v1/cron/pool-health-check", poolHealthCheckResponse);
 function poolImageRolloutResponse(c: Context) {
   return handleInternal(c, async () => {
     const image = containersEnv.defaultAgentImage();
+    const before = await getWarmPoolManager().rolloutStatus(image);
+    if (before.safeNextAction === "configure_pinned_desired_image") {
+      return c.json({
+        success: true,
+        data: {
+          image,
+          skipped: true,
+          reason: before.desired.warning,
+          rollout: before,
+          timestamp: new Date().toISOString(),
+        },
+      });
+    }
     const result = await getWarmPoolManager().rollout(image);
+    const after = await getWarmPoolManager().rolloutStatus(image);
     return c.json({
       success: true,
-      data: { image, ...result, timestamp: new Date().toISOString() },
+      data: { image, ...result, rollout: after, timestamp: new Date().toISOString() },
     });
   });
 }
 app.get("/api/v1/cron/pool-image-rollout", poolImageRolloutResponse);
 app.post("/api/v1/cron/pool-image-rollout", poolImageRolloutResponse);
 
+function poolImageRolloutStatusResponse(c: Context) {
+  return handleInternal(c, async () => {
+    const image = containersEnv.defaultAgentImage();
+    const rollout = await getWarmPoolManager().rolloutStatus(image);
+    return c.json({
+      success: true,
+      data: {
+        image,
+        rollout,
+        timestamp: new Date().toISOString(),
+      },
+    });
+  });
+}
+app.get("/api/v1/admin/warm-pool/rollout-status", poolImageRolloutStatusResponse);
+
 function poolStateResponse(c: Context) {
   return handleInternal(c, async () => {
     const image = containersEnv.defaultAgentImage();
     const state = await getWarmPoolManager().snapshot(image);
+    const rollout = await getWarmPoolManager().rolloutStatus(image);
     return c.json({
       success: true,
       data: {
@@ -658,6 +689,7 @@ function poolStateResponse(c: Context) {
         minPoolSize: containersEnv.warmPoolMinSize(),
         maxPoolSize: containersEnv.warmPoolMaxSize(),
         state,
+        rollout,
         timestamp: new Date().toISOString(),
       },
     });

@@ -109,6 +109,8 @@ kernel void kernel_turbo4_dot_multi(
     uint blk_idx = elem0 >> 5;
     uint within0 = elem0 & 31;
     uint q_base  = args.q_head * args.head_dim + elem0;
+    device const float4 * q4 = (device const float4 *)(q + q_base);
+    float4 qv = q4[0];
 
     uint kv_base = tg_idx * args.blocks_per_threadgroup;
     for (uint b = 0; b < args.blocks_per_threadgroup; ++b) {
@@ -121,8 +123,6 @@ kernel void kernel_turbo4_dot_multi(
         device const block_turbo4_0 & blk = grp[blk_idx];
         float norm = float(blk.norm);
 
-        device const float4 * q4 = (device const float4 *)(q + q_base);
-        float4 qv = q4[0];
         uint qb0 = blk.qs[(within0 + 0u) & 15u];
         uint qb1 = blk.qs[(within0 + 1u) & 15u];
         uint qb2 = blk.qs[(within0 + 2u) & 15u];

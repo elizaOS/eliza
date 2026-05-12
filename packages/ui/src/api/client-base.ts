@@ -6,6 +6,10 @@
  */
 
 import { getBootConfig, setBootConfig } from "../config/boot-config";
+import {
+  NETWORK_STATUS_CHANGE_EVENT,
+  type NetworkStatusChangeDetail,
+} from "../events";
 import { hydrateAndroidLocalAgentTokenForUrl } from "../onboarding/local-agent-token";
 import { stripAssistantStageDirections } from "../utils/assistant-text";
 import {
@@ -75,6 +79,54 @@ function isElizaCloudControlPlaneBase(
 }
 
 // ---------------------------------------------------------------------------
+// Network status — listens for the bridged Capacitor `networkStatusChange`
+// event so the WS reconnect scheduler can park itself during airplane mode
+// instead of burning all 5 backoff attempts.
+// ---------------------------------------------------------------------------
+
+let lastKnownNetworkConnected = true;
+const networkStatusListeners = new Set<(connected: boolean) => void>();
+
+function isNetworkStatusChangeEvent(
+  ev: Event,
+): ev is CustomEvent<NetworkStatusChangeDetail> {
+  if (!("detail" in ev)) return false;
+  const detail = (ev as CustomEvent<unknown>).detail;
+  return (
+    typeof detail === "object" &&
+    detail !== null &&
+    typeof (detail as { connected?: unknown }).connected === "boolean"
+  );
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener(NETWORK_STATUS_CHANGE_EVENT, (ev: Event) => {
+    if (!isNetworkStatusChangeEvent(ev)) return;
+    const next = ev.detail.connected;
+    if (next === lastKnownNetworkConnected) return;
+    lastKnownNetworkConnected = next;
+    for (const listener of networkStatusListeners) {
+      try {
+        listener(next);
+      } catch {
+        // ignore listener errors — they don't get to break network state
+      }
+    }
+  });
+}
+
+/** Test-only: reset the cached network state. */
+export function __resetNetworkStatusForTests(): void {
+  lastKnownNetworkConnected = true;
+  networkStatusListeners.clear();
+}
+
+/** Test-only: read the last bridged network status. */
+export function __getLastKnownNetworkConnected(): boolean {
+  return lastKnownNetworkConnected;
+}
+
+// ---------------------------------------------------------------------------
 // Client
 // ---------------------------------------------------------------------------
 
@@ -91,6 +143,7 @@ export class ElizaClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private backoffMs = 500;
   private wsHasConnectedOnce = false;
+  private networkStatusUnsubscribe: (() => void) | null = null;
 
   // Connection state tracking for backend crash handling
   private connectionState: WebSocketConnectionState = "disconnected";
@@ -617,6 +670,17 @@ export class ElizaClient {
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer) return;
+    // Skip the backoff timer when the device reports no network — the
+    // browser's `online`/`offline` events plus Capacitor's bridged
+    // `networkStatusChange` event will wake us up when connectivity
+    // returns. Without this, airplane mode (or a flaky cellular hand-
+    // off) burns through all `maxReconnectAttempts` in seconds, leaving
+    // the UI in the long-poll fallback even after the network comes
+    // back.
+    if (!lastKnownNetworkConnected) {
+      this.armNetworkStatusWake();
+      return;
+    }
     // After the short backoff window is exhausted, keep probing at a
     // low frequency so the UI can recover without a full page refresh.
     if (this.reconnectAttempt >= this.maxReconnectAttempts) {
@@ -631,6 +695,26 @@ export class ElizaClient {
       this.connectWs();
     }, this.backoffMs);
     this.backoffMs = Math.min(this.backoffMs * 1.5, 10000);
+  }
+
+  /**
+   * Arms a one-shot network-status listener that re-runs `connectWs()` the
+   * moment the device reports connectivity again. Calling twice is a noop
+   * — the existing listener stays in place.
+   */
+  private armNetworkStatusWake(): void {
+    if (this.networkStatusUnsubscribe) return;
+    const listener = (connected: boolean): void => {
+      if (!connected) return;
+      const unsubscribe = this.networkStatusUnsubscribe;
+      this.networkStatusUnsubscribe = null;
+      if (unsubscribe) unsubscribe();
+      this.connectWs();
+    };
+    networkStatusListeners.add(listener);
+    this.networkStatusUnsubscribe = () => {
+      networkStatusListeners.delete(listener);
+    };
   }
 
   private emitConnectionStateChange(): void {
@@ -724,6 +808,10 @@ export class ElizaClient {
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
+    }
+    if (this.networkStatusUnsubscribe) {
+      this.networkStatusUnsubscribe();
+      this.networkStatusUnsubscribe = null;
     }
     this.ws?.close();
     this.ws = null;

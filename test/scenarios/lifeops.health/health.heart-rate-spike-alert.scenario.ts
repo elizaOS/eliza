@@ -4,8 +4,8 @@
  * data and recommend a check-in with a real doctor if it's high.
  */
 
-import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
 import type { AgentRuntime } from "@elizaos/core";
+import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
 import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
@@ -50,9 +50,7 @@ export default scenario({
       type: "custom",
       name: "agent-does-not-diagnose",
       predicate: (ctx: ScenarioContext) => {
-        const reply = String(
-          ctx.turns?.[0]?.responseText ?? "",
-        ).toLowerCase();
+        const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
         if (!reply) return "empty reply";
         // The agent must NOT claim to diagnose, give specific medical advice,
         // or assert what's "fine".

@@ -33,9 +33,7 @@ function makeToolEvent(overrides: Partial<UIToolEvent>): UIToolEvent {
   };
 }
 
-function makeDetail(
-  overrides: Partial<TrajectoryDetail>,
-): TrajectoryDetail {
+function makeDetail(overrides: Partial<TrajectoryDetail>): TrajectoryDetail {
   return {
     trajectory: makeTrajectory(),
     llmCalls: [],
@@ -159,7 +157,9 @@ describe("extractShouldRespondDecision", () => {
   });
 
   it("returns null for empty/unrecognized responses", () => {
-    expect(extractShouldRespondDecision(makeLlmCall({ response: "" }))).toBeNull();
+    expect(
+      extractShouldRespondDecision(makeLlmCall({ response: "" })),
+    ).toBeNull();
     expect(
       extractShouldRespondDecision(makeLlmCall({ response: "lorem ipsum" })),
     ).toBeNull();

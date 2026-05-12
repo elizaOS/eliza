@@ -1,6 +1,5 @@
 import { scenario } from "@elizaos/scenario-schema";
 import {
-  expectConnectorDispatch,
   expectMemoryWrite,
   expectScenarioToCallAction,
   expectTurnToCallAction,
@@ -9,7 +8,8 @@ import {
 
 export default scenario({
   id: "push.ntfy-delivery-receipt",
-  title: "ntfy delivery receipt is persisted so the ladder knows not to escalate",
+  title:
+    "ntfy delivery receipt is persisted so the ladder knows not to escalate",
   domain: "lifeops.push",
   tags: ["lifeops", "push", "ntfy", "receipt"],
   description:

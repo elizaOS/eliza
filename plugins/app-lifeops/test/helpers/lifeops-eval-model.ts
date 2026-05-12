@@ -1,6 +1,15 @@
 // Shared eval/training LLM client for lifeops.
 // All evaluation/judging and training callsites route through this helper
 // so the agent under test (Anthropic Opus 4.7) is never used to grade itself.
+//
+// Judge-shaped calls (`judgeWithCerebras`) route their transport through
+// the shared `CerebrasJudge` class in scenario-runner so all four Cerebras
+// judges in the repo share retry + parsing logic.
+
+import {
+  CerebrasJudge,
+  type JudgeResponse,
+} from "../../../../packages/scenario-runner/src/cerebras-judge.ts";
 
 interface ResolvedClientConfig {
   apiKey: string;
@@ -31,7 +40,9 @@ export interface CerebrasChatResponse {
   raw?: unknown;
 }
 
-export type EvalModelClient = (req: CerebrasChatRequest) => Promise<CerebrasChatResponse>;
+export type EvalModelClient = (
+  req: CerebrasChatRequest,
+) => Promise<CerebrasChatResponse>;
 
 function readEnv(...keys: string[]): string | undefined {
   for (const key of keys) {
@@ -62,7 +73,11 @@ function resolveBaseUrl(): string {
 }
 
 function resolveEvalModel(): string {
-  return readEnv("EVAL_MODEL", "EVAL_MODEL_NAME") ?? readEnv("CEREBRAS_MODEL") ?? "gpt-oss-120b";
+  return (
+    readEnv("EVAL_MODEL", "EVAL_MODEL_NAME") ??
+    readEnv("CEREBRAS_MODEL") ??
+    "gpt-oss-120b"
+  );
 }
 
 function resolveTrainingModel(): string {
@@ -273,18 +288,53 @@ export function getTrainingModelClient(): EvalModelClient {
   return (req) => dispatch(config, req);
 }
 
+/**
+ * Cerebras-only judge helper. Routes through the shared `CerebrasJudge`
+ * transport (tolerant parsing, 429/5xx retry, json_object opt-in). Returns
+ * the raw model text for backward compatibility with existing callers.
+ * New callers should consume `judgeWithCerebrasShared()` (below) to get
+ * the canonical parsed shape.
+ */
 export async function judgeWithCerebras(
   prompt: string,
   options?: { maxTokens?: number; temperature?: number; systemPrompt?: string },
 ): Promise<string> {
-  const client = getEvalModelClient();
-  const result = await client({
-    prompt,
+  const response = await judgeWithCerebrasShared(prompt, options);
+  return response.raw;
+}
+
+/**
+ * New canonical entry: returns the full JudgeResponse for callers that
+ * want the parsed score/verdict/reason without re-parsing the raw text.
+ */
+export async function judgeWithCerebrasShared(
+  prompt: string,
+  options?: { maxTokens?: number; temperature?: number; systemPrompt?: string },
+): Promise<JudgeResponse> {
+  const provider = resolveProvider("eval");
+  if (provider !== "cerebras") {
+    // Eval provider pinned to a non-Cerebras model. Fall back to the eval
+    // client so the judge still runs (cross-grader rule); the shared
+    // CerebrasJudge transport only speaks the Cerebras dialect.
+    const client = getEvalModelClient();
+    const result = await client({
+      prompt,
+      systemPrompt: options?.systemPrompt,
+      temperature: options?.temperature ?? 0,
+      maxTokens: options?.maxTokens ?? 700,
+    });
+    return { raw: result.text, json: null };
+  }
+  const judge = new CerebrasJudge({
+    apiKey: resolveCerebrasApiKey("eval"),
+    baseUrl: resolveBaseUrl(),
+    model: resolveEvalModel(),
+  });
+  return judge.judge(prompt, {
     systemPrompt: options?.systemPrompt,
     temperature: options?.temperature ?? 0,
     maxTokens: options?.maxTokens ?? 700,
   });
-  return result.text;
 }
 
 // Adapter shaped like runtime.useModel("TEXT_LARGE", { prompt, ... }) so
@@ -307,10 +357,16 @@ export function getTrainingUseModelAdapter(): (input: {
 
 export function isCerebrasEvalEnabled(): boolean {
   const provider = resolveProvider("eval");
-  return provider === "cerebras" && !!readEnv("CEREBRAS_API_KEY", "EVAL_CEREBRAS_API_KEY");
+  return (
+    provider === "cerebras" &&
+    !!readEnv("CEREBRAS_API_KEY", "EVAL_CEREBRAS_API_KEY")
+  );
 }
 
 export function isCerebrasTrainingEnabled(): boolean {
   const provider = resolveProvider("training");
-  return provider === "cerebras" && !!readEnv("CEREBRAS_API_KEY", "TRAIN_CEREBRAS_API_KEY");
+  return (
+    provider === "cerebras" &&
+    !!readEnv("CEREBRAS_API_KEY", "TRAIN_CEREBRAS_API_KEY")
+  );
 }

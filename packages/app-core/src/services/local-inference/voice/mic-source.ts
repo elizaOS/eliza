@@ -3,26 +3,191 @@
  *
  * The `MicSource` interface (see `./types`) is the only seam the rest of the
  * voice loop sees. The first concrete implementation, `DesktopMicSource`,
- * shells out to the platform's standard PCM-capable recorder
- * (`arecord` on Linux, `sox -d` on macOS — the same pattern
- * `plugin-vision/src/audio-capture-stream.ts` established), emits 16 kHz
+ * shells out to the platform's standard PCM-capable recorder, emits 16 kHz
  * mono `PcmFrame`s, and lets callers tee them anywhere:
  *
  *   mic → DesktopMicSource ─┬─→ PcmRingBuffer  (ASR reads PCM from here)
  *                           └─→ VadDetector    (speech / barge-in signals)
  *
- * Connectors that already have a decoded PCM stream (Discord voice, the
- * Electrobun renderer's `getUserMedia` path, a mobile capture callback)
- * implement `MicSource` over `PushMicSource` instead of spawning a process.
+ * Per-platform recorder selection (in priority order):
+ *   - Linux:   `arecord` (alsa-utils), else `parec` (PulseAudio), else `sox`/`rec`.
+ *   - macOS:   `sox`/`rec` (`sox -d`), else `ffmpeg -f avfoundation`.
+ *   - Windows: `ffmpeg -f dshow` (DirectShow capture — bundled with most
+ *              Windows installs of ffmpeg; the renderer's `getUserMedia` path
+ *              feeding `PushMicSource` is the no-ffmpeg route).
  *
- * No fallback sludge: if no recorder binary is on PATH, `start()` throws —
- * the caller surfaces "no mic backend available", it does not pretend to
- * capture silence.
+ * Connectors that already have a decoded PCM stream (Discord voice, the
+ * Electrobun renderer's `getUserMedia` path, a mobile capture callback —
+ * the Capacitor `Microphone` plugin on iOS/Android) implement `MicSource`
+ * over `PushMicSource` instead of spawning a process.
+ *
+ * No fallback sludge: if no recorder binary is on PATH (and no override
+ * argv was given), `start()` throws — the caller surfaces "no mic backend
+ * available", it does not pretend to capture silence.
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import process from "node:process";
 import { PcmRingBuffer } from "./ring-buffer";
 import type { AudioSink, MicSource, PcmFrame } from "./types";
+
+/** Resolve an executable on PATH (with the Windows extension list). */
+function whichBin(bin: string): string | null {
+  const pathEnv = process.env.PATH ?? "";
+  const exts =
+    process.platform === "win32" ? [".exe", ".cmd", ".bat", ""] : [""];
+  for (const dir of pathEnv.split(path.delimiter)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      const candidate = path.join(dir, bin + ext);
+      if (existsSync(candidate)) return candidate;
+    }
+  }
+  return null;
+}
+
+/**
+ * Pick the recorder that streams raw signed 16-bit LE mono PCM at
+ * `sampleRate` on stdout for the host platform. Returns `null` when none is
+ * available — the caller throws an actionable error or uses `PushMicSource`.
+ * Exported so the cross-platform preflight (`voice:interactive
+ * --platform-report`) can report which recorder the host would use.
+ */
+export function resolveDesktopRecorder(
+  sampleRate: number,
+  device?: string,
+): { program: string; argv: string[] } | null {
+  const sr = String(sampleRate);
+  if (process.platform === "linux") {
+    if (whichBin("arecord")) {
+      return {
+        program: "arecord",
+        argv: [
+          "-q",
+          "-D",
+          device ?? "default",
+          "-f",
+          "S16_LE",
+          "-r",
+          sr,
+          "-c",
+          "1",
+          "-t",
+          "raw",
+          "-",
+        ],
+      };
+    }
+    if (whichBin("parec")) {
+      // PulseAudio / PipeWire capture, raw 16-bit LE mono on stdout.
+      return {
+        program: "parec",
+        argv: ["--raw", "--format=s16le", `--rate=${sr}`, "--channels=1"],
+      };
+    }
+    const soxLinux = whichBin("rec") ? "rec" : whichBin("sox") ? "sox" : null;
+    if (soxLinux) {
+      return {
+        program: soxLinux,
+        argv: [
+          "-q",
+          ...(soxLinux === "sox" ? ["-d"] : []),
+          "-r",
+          sr,
+          "-c",
+          "1",
+          "-b",
+          "16",
+          "-e",
+          "signed-integer",
+          "-t",
+          "raw",
+          "-",
+        ],
+      };
+    }
+    return null;
+  }
+  if (process.platform === "darwin") {
+    const soxMac = whichBin("sox") ? "sox" : whichBin("rec") ? "rec" : null;
+    if (soxMac) {
+      return {
+        program: soxMac,
+        argv: [
+          "-q",
+          ...(soxMac === "sox" ? ["-d"] : []),
+          "-r",
+          sr,
+          "-c",
+          "1",
+          "-b",
+          "16",
+          "-e",
+          "signed-integer",
+          "-t",
+          "raw",
+          "-",
+        ],
+      };
+    }
+    if (whichBin("ffmpeg")) {
+      // avfoundation default audio device → raw PCM16-LE mono on stdout.
+      return {
+        program: "ffmpeg",
+        argv: [
+          "-loglevel",
+          "error",
+          "-f",
+          "avfoundation",
+          "-i",
+          device ?? ":default",
+          "-ac",
+          "1",
+          "-ar",
+          sr,
+          "-f",
+          "s16le",
+          "pipe:1",
+        ],
+      };
+    }
+    return null;
+  }
+  if (process.platform === "win32") {
+    if (whichBin("ffmpeg")) {
+      // DirectShow default microphone → raw PCM16-LE mono on stdout. The
+      // device name is `audio="<friendly name>"`; `device` overrides it.
+      // Without a name ffmpeg's dshow demuxer can't pick a default, so we
+      // require either an explicit device or fall back to the common
+      // "Microphone" alias; callers that know the device name pass it.
+      const dshowDevice = device
+        ? `audio=${device}`
+        : "audio=Microphone (Realtek(R) Audio)";
+      return {
+        program: "ffmpeg",
+        argv: [
+          "-loglevel",
+          "error",
+          "-f",
+          "dshow",
+          "-i",
+          dshowDevice,
+          "-ac",
+          "1",
+          "-ar",
+          sr,
+          "-f",
+          "s16le",
+          "pipe:1",
+        ],
+      };
+    }
+    return null;
+  }
+  return null;
+}
 
 const DEFAULT_SAMPLE_RATE = 16_000;
 const DEFAULT_FRAME_MS = 32; // 512 samples @ 16 kHz — matches Silero's window.
@@ -82,24 +247,27 @@ export interface DesktopMicSourceOptions {
   sampleRate?: number;
   /** Frame duration in ms. Default 32 ms (one Silero window @ 16 kHz). */
   frameMs?: number;
-  /** Recorder program. Default: `arecord` on Linux, `sox` on macOS. */
+  /** Recorder program. Default: auto-resolved per platform (see module doc). */
   program?: string;
   /** Override the recorder argv. When set, `program` is the executable and
    *  these are the args (must produce raw little-endian signed 16-bit mono
    *  PCM at `sampleRate` on stdout). */
   argv?: string[];
-  /** ALSA device (Linux `arecord -D`). Default `default`. */
+  /** Capture device — ALSA name (Linux `arecord -D`), avfoundation index
+   *  (macOS, e.g. `:0`), or DirectShow friendly name (Windows). */
   device?: string;
 }
 
 /**
- * `MicSource` backed by a recorder subprocess. Linux uses `arecord`, macOS
- * uses `sox -d`; both stream raw PCM16 mono to stdout, which this class
- * re-frames into fixed-size `Float32Array` frames in [-1, 1].
+ * `MicSource` backed by a recorder subprocess. The recorder is auto-resolved
+ * per platform (Linux: `arecord`/`parec`/`sox`; macOS: `sox -d`/`ffmpeg -f
+ * avfoundation`; Windows: `ffmpeg -f dshow`); all stream raw PCM16 mono to
+ * stdout, which this class re-frames into fixed-size `Float32Array` frames
+ * in [-1, 1].
  *
- * On Windows there is no universally-available CLI recorder, so `start()`
- * throws — the Electrobun renderer's `getUserMedia` path (which feeds a
- * `PushMicSource`) is the Windows route.
+ * When no recorder is available `start()` throws — the renderer's
+ * `getUserMedia` path (or the Capacitor `Microphone` plugin on mobile),
+ * both feeding a `PushMicSource`, are the no-CLI route.
  */
 export class DesktopMicSource extends BaseMicSource {
   private readonly program: string;
@@ -119,42 +287,22 @@ export class DesktopMicSource extends BaseMicSource {
     if (opts.program && opts.argv) {
       this.program = opts.program;
       this.argv = opts.argv;
-    } else if (process.platform === "linux") {
-      this.program = opts.program ?? "arecord";
-      this.argv = [
-        "-q",
-        "-D",
-        opts.device ?? "default",
-        "-f",
-        "S16_LE",
-        "-r",
-        String(sampleRate),
-        "-c",
-        "1",
-        "-t",
-        "raw",
-        "-",
-      ];
-    } else if (process.platform === "darwin") {
-      this.program = opts.program ?? "sox";
-      this.argv = [
-        "-q",
-        "-d",
-        "-r",
-        String(sampleRate),
-        "-c",
-        "1",
-        "-b",
-        "16",
-        "-e",
-        "signed-integer",
-        "-t",
-        "raw",
-        "-",
-      ];
     } else {
-      this.program = opts.program ?? "";
-      this.argv = opts.argv ?? [];
+      const resolved = resolveDesktopRecorder(sampleRate, opts.device);
+      if (resolved && !opts.program) {
+        this.program = resolved.program;
+        this.argv = resolved.argv;
+      } else if (opts.program) {
+        // Caller named a program but not argv — give it the resolved argv if
+        // the resolved program matches, else an empty argv (it must be a
+        // recorder that defaults to raw-PCM-on-stdout, e.g. a wrapper).
+        this.program = opts.program;
+        this.argv =
+          resolved && resolved.program === opts.program ? resolved.argv : [];
+      } else {
+        this.program = "";
+        this.argv = [];
+      }
     }
   }
 
@@ -162,7 +310,10 @@ export class DesktopMicSource extends BaseMicSource {
     if (this._running) return;
     if (!this.program) {
       throw new Error(
-        `[voice] No CLI mic recorder available on platform '${process.platform}'. Feed PCM via PushMicSource (e.g. the Electrobun renderer's getUserMedia path) instead.`,
+        `[voice] No CLI mic recorder available on platform '${process.platform}'. ` +
+          `Install one (Linux: alsa-utils/pulseaudio/sox; macOS: sox or ffmpeg; ` +
+          `Windows: ffmpeg) or feed PCM via PushMicSource (the renderer's ` +
+          `getUserMedia path, or the Capacitor Microphone plugin on mobile).`,
       );
     }
     let proc: ChildProcess;
@@ -174,7 +325,7 @@ export class DesktopMicSource extends BaseMicSource {
       throw new Error(
         `[voice] Failed to spawn mic recorder '${this.program}': ${
           err instanceof Error ? err.message : String(err)
-        }. Install it (Linux: alsa-utils; macOS: sox) or use PushMicSource.`,
+        }. Install it (Linux: alsa-utils/sox; macOS: sox or ffmpeg; Windows: ffmpeg) or use PushMicSource.`,
       );
     }
     this.proc = proc;

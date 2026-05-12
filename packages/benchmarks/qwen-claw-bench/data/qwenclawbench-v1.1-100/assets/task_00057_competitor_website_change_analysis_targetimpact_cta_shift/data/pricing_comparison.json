@@ -1,0 +1,56 @@
+{
+  "report_title": "Competitor Website Change Magnitude Comparison",
+  "report_date": "2024-06-15",
+  "data_source": "SiteWatch Pro Aggregated Reports",
+  "note": "Change magnitudes represent cumulative detected changes over the trailing 30-day period",
+  "competitors": [
+    {
+      "name": "TargetImpact",
+      "url": "https://targetimpact.com/",
+      "change_magnitude": 74,
+      "pages_monitored": 5,
+      "last_scan": "2024-06-15",
+      "assessment": "TargetImpact change_magnitude: 74 — this is a very large change suggesting major site overhaul. Multiple sections affected including CTAs, hero content, and metadata. Recommend immediate deep-dive analysis."
+    },
+    {
+      "name": "MailReach",
+      "url": "https://mailreach.io/",
+      "change_magnitude": 150,
+      "pages_monitored": 3,
+      "last_scan": "2024-06-15",
+      "assessment": "MailReach showing highest change activity, consistent with enterprise tier launch and associated marketing updates."
+    },
+    {
+      "name": "CampaignForge",
+      "url": "https://campaignforge.com/",
+      "change_magnitude": 23,
+      "pages_monitored": 2,
+      "last_scan": "2024-06-15",
+      "assessment": "CampaignForge relatively stable. Minor copy updates and blog additions."
+    },
+    {
+      "name": "SendGrid Pro",
+      "url": "https://sendgridpro.com/",
+      "change_magnitude": 89,
+      "pages_monitored": 2,
+      "last_scan": "2024-06-15",
+      "assessment": "SendGrid Pro moderate activity, primarily related to free trial extension messaging changes."
+    },
+    {
+      "name": "Drip+",
+      "url": "https://dripplus.io/",
+      "change_magnitude": 41,
+      "pages_monitored": 2,
+      "last_scan": "2024-06-14",
+      "assessment": "Drip+ showing some activity around Shopify partnership announcement pages."
+    }
+  ],
+  "ranking_by_change_magnitude": [
+    {"rank": 1, "name": "MailReach", "change_magnitude": 150},
+    {"rank": 2, "name": "SendGrid Pro", "change_magnitude": 89},
+    {"rank": 3, "name": "TargetImpact", "change_magnitude": 74},
+    {"rank": 4, "name": "Drip+", "change_magnitude": 41},
+    {"rank": 5, "name": "CampaignForge", "change_magnitude": 23}
+  ],
+  "summary": "TargetImpact ranks 3rd in website change activity this period with a magnitude of 74, indicating substantial modifications to their web presence. This level of change is notable and warrants further investigation into strategic intent."
+}

@@ -13,7 +13,8 @@ import { scenario } from "@elizaos/scenario-schema";
 
 export default scenario({
   id: "scope_global_vs_user.neutral.list.032",
-  title: "scope :: admin_global_terse_user_verbose :: neutral :: list :: 23-turn (32)",
+  title:
+    "scope :: admin_global_terse_user_verbose :: neutral :: list :: 23-turn (32)",
   domain: "personality",
   tags: [
     "personality",
@@ -23,58 +24,37 @@ export default scenario({
     "aggression:neutral",
     "format:list",
   ],
-  description: "Two-room scope test: admin (owner role) and regular user (non-owner). Variant 'admin_global_terse_user_verbose'. Verifies that global vs per-user personality scopes don't cross-contaminate, and that regular users cannot make global changes.",
+  description:
+    "Two-room scope test: admin (owner role) and regular user (non-owner). Variant 'admin_global_terse_user_verbose'. Verifies that global vs per-user personality scopes don't cross-contaminate, and that regular users cannot make global changes.",
   scope: "mixed",
   isolation: "per-scenario",
   rooms: [
     {
-          id: "admin",
-          source: "dashboard",
-          channelType: "DM",
-          title: "Personality Admin (Owner Role)",
-        },
+      id: "admin",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Personality Admin (Owner Role)",
+    },
     {
-          id: "user",
-          source: "dashboard",
-          channelType: "DM",
-          title: "Personality Regular User",
-        },
+      id: "user",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Personality Regular User",
+    },
   ],
   personalityExpect: {
     bucket: "scope_global_vs_user",
-    expectedBehavior: "global_setting_applies_to_admin_per_user_override_applies_to_user_no_cross_contamination",
+    expectedBehavior:
+      "global_setting_applies_to_admin_per_user_override_applies_to_user_no_cross_contamination",
     judgeMode: "scope_isolated",
     forbiddenContent: [],
     requiredContent: [],
     judgeKwargs: {
-          variantKey: "admin_global_terse_user_verbose",
-          adminProbeTurnIndices: [
-                  2,
-                  4,
-                  6,
-                  8,
-                  10,
-                  12,
-                  14,
-                  16,
-                  18,
-                  20,
-                  22,
-                ],
-          userProbeTurnIndices: [
-                  3,
-                  5,
-                  7,
-                  9,
-                  11,
-                  13,
-                  15,
-                  17,
-                  19,
-                  21,
-                ],
-          forbidGlobalChangeFromUser: false,
-        },
+      variantKey: "admin_global_terse_user_verbose",
+      adminProbeTurnIndices: [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22],
+      userProbeTurnIndices: [3, 5, 7, 9, 11, 13, 15, 17, 19, 21],
+      forbidGlobalChangeFromUser: false,
+    },
   },
   turns: [
     // admin sets global personality

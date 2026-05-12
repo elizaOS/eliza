@@ -1,7 +1,7 @@
 /**
  * Inference-stats JSONL parsing + windowed aggregation.
  *
- * Sister-agent contract for `~/.milady/inference-stats.jsonl` rows:
+ * Sister-agent contract for `~/.eliza/inference-stats.jsonl` rows:
  *   {"ts","label","tokens_per_sec","p50_tpot_ms","p95_tpot_ms",
  *    "kv_cache_usage_pct","num_requests_running","spec_decode_accept_rate",
  *    "apc_hit_rate","peak_vram_mb"}

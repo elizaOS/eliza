@@ -13,12 +13,17 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import dotenv from "dotenv";
-import { LifeOpsBenchHandler } from "./lifeops-bench-handler.js";
+import { autoWireCerebras } from "./cerebras-autowire.js";
+import {
+  LifeOpsBenchHandler,
+  type LifeOpsBenchTurnRecord,
+} from "./lifeops-bench-handler.js";
 import type { LifeOpsFakeBackend } from "./lifeops-fake-backend.js";
 import {
   clearCapturedAction,
   createBenchmarkPlugin,
   getCapturedAction,
+  getCapturedActions,
   setBenchmarkContext,
 } from "./plugin";
 import {
@@ -44,9 +49,40 @@ import {
   toPlugin,
 } from "./server-utils.js";
 
-// Load environment variables BEFORE anything else
-// This ensures API keys are available when plugins initialize
-dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+// `dotenv.config({ path: cwd/.env })` only finds the file when the bench server
+// is started from the repo root. When `ElizaServerManager` spawns us with
+// `cwd=packages/app-core`, there is no `.env` next to that directory — so the
+// repo-root `.env` is invisible and `CEREBRAS_API_KEY` arrives unset. Walk
+// upward looking for the first `.env` so the bench server works regardless of
+// where the parent process happened to anchor cwd.
+function loadEnvFromAncestors(startDir: string): string | null {
+  let current = path.resolve(startDir);
+  for (let i = 0; i < 8; i += 1) {
+    const candidate = path.join(current, ".env");
+    if (
+      // node:fs is heavy at top-level for a single existence check; use dotenv's
+      // own behavior — it silently no-ops on missing files. We still need to
+      // know *which* path matched so we can log it and stop walking.
+      dotenv.config({ path: candidate, override: false }).parsed !== undefined
+    ) {
+      return candidate;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return null;
+}
+const _loadedEnvPath = loadEnvFromAncestors(process.cwd());
+if (_loadedEnvPath) {
+  elizaLogger.debug(`[bench] Loaded env from ${_loadedEnvPath}`);
+}
+
+// Cerebras auto-wiring. See `./cerebras-autowire.ts` for the rationale and
+// the rules under which `CEREBRAS_API_KEY` / `CEREBRAS_BASE_URL` /
+// `CEREBRAS_MODEL` are promoted to OpenAI-compat env keys.
+autoWireCerebras();
+
 const BENCH_TOKEN = process.env.ELIZA_BENCH_TOKEN?.trim() || null;
 const OPENROUTER_PLUGIN_MODULE: string = "@elizaos/plugin-openrouter";
 
@@ -63,6 +99,57 @@ const MAX_BODY_BYTES =
 
 /** Allowed CORS origins — only localhost variants. */
 const LOCALHOST_ORIGINS = new Set(["http://localhost", "https://localhost"]);
+
+function buildLifeOpsBenchmarkContext(
+  backend: LifeOpsFakeBackend,
+  previousTurns: LifeOpsBenchTurnRecord[],
+): Record<string, unknown> {
+  const world = backend.toDocument();
+  const nowIso = backend.getNow();
+  const nowMs = Date.parse(nowIso);
+  const calendarEvents = Object.values(world.stores.calendar_event)
+    .filter((event) => event.status !== "cancelled")
+    .sort((a, b) => {
+      const aDistance = Number.isFinite(nowMs)
+        ? Math.abs(Date.parse(a.start) - nowMs)
+        : 0;
+      const bDistance = Number.isFinite(nowMs)
+        ? Math.abs(Date.parse(b.start) - nowMs)
+        : 0;
+      if (aDistance !== bDistance) return aDistance - bDistance;
+      return a.id.localeCompare(b.id);
+    })
+    .slice(0, 80)
+    .map((event) => ({
+      id: event.id,
+      calendarId: event.calendar_id,
+      title: event.title,
+      start: event.start,
+      end: event.end,
+      status: event.status,
+      source: event.source,
+    }));
+  const previousToolResults = previousTurns
+    .flatMap((turn) =>
+      turn.toolCalls.map((call) => ({
+        userText: turn.userText,
+        assistantText: turn.assistantText,
+        tool: call.name,
+        arguments: call.arguments,
+        ok: call.ok,
+        result: call.result,
+        error: call.error,
+      })),
+    )
+    .slice(-12);
+  return {
+    nowIso,
+    today: nowIso.slice(0, 10),
+    seed: backend.getSeed(),
+    calendarEvents,
+    previousToolResults,
+  };
+}
 
 function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin) return false;
@@ -258,7 +345,6 @@ async function collectSessionDiagnostics(
   };
 }
 
-// Proper robust server implementation
 export async function startBenchmarkServer() {
   const port = resolvePort();
   elizaLogger.info(
@@ -273,8 +359,8 @@ export async function startBenchmarkServer() {
   // (see `isBenchmarkForcingToolCall`) honors this env var ONLY for messages
   // whose `content.source === "benchmark"` or whose `content.metadata.benchmark`
   // is set, so a co-resident chat process is unaffected.
-  if (process.env.MILADY_BENCH_FORCE_TOOL_CALL === undefined) {
-    process.env.MILADY_BENCH_FORCE_TOOL_CALL = "1";
+  if (process.env.ELIZA_BENCH_FORCE_TOOL_CALL === undefined) {
+    process.env.ELIZA_BENCH_FORCE_TOOL_CALL = "1";
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -295,6 +381,20 @@ export async function startBenchmarkServer() {
   const skipPlugins = new Set([
     "@elizaos/plugin-elizacloud", // Requires elizaOS cloud auth, conflicts with local LLM
   ]);
+
+  // Skip `@elizaos/plugin-local-embedding` by default in benchmark mode:
+  // - It downloads a ~500MB GGUF from `huggingface.co/elizaos/eliza-1-0_8b`
+  //   on first `TEXT_EMBEDDING` call. The repo is gated/private, so every turn
+  //   spams a 401 from HuggingFace.
+  // - Benchmarks don't score on semantic retrieval, so a deterministic
+  //   zero-vector handler is a fine stand-in.
+  // - Opt-out by setting `ELIZA_BENCH_SKIP_EMBEDDING=0` (e.g. for a benchmark
+  //   that genuinely depends on real embeddings).
+  const skipEmbeddingPlugin =
+    (process.env.ELIZA_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
+  if (skipEmbeddingPlugin) {
+    skipPlugins.add("@elizaos/plugin-local-embedding");
+  }
 
   const skipCorePlugins = process.env.ELIZA_BENCH_SKIP_CORE_PLUGINS === "true";
   const corePluginsToLoad = skipCorePlugins
@@ -387,8 +487,35 @@ export async function startBenchmarkServer() {
     );
   }
 
-  // Trust is now a built-in core capability — enable via ENABLE_TRUST character setting.
-  // No need to load as a separate plugin.
+  // Register a zero-vector TEXT_EMBEDDING stand-in when local-embedding is
+  // skipped. The runtime calls `useModel(TEXT_EMBEDDING, ...)` for every
+  // persisted memory; without ANY handler, those calls throw and abort the
+  // turn. The benchmarks don't score retrieval, so a deterministic
+  // 1024-dim zero vector is the right stub. Dimensions match the local-
+  // embedding default (eliza-1-0_8b → 1024) so downstream code that
+  // assumes that shape (vector columns sized at boot) still works.
+  if (skipEmbeddingPlugin) {
+    const EMBEDDING_DIMENSIONS = 1024;
+    const benchEmbeddingPlugin: Plugin = {
+      name: "@elizaos/bench-stub-embedding",
+      description:
+        "Benchmark-mode zero-vector TEXT_EMBEDDING handler. Replaces " +
+        "@elizaos/plugin-local-embedding so we never download the gated " +
+        "HuggingFace GGUF on every turn.",
+      // Higher than local-embedding's `priority: 10` so we win even if a
+      // CORE_PLUGINS race were to register a competing handler later.
+      priority: 100,
+      models: {
+        TEXT_EMBEDDING: async () =>
+          new Array<number>(EMBEDDING_DIMENSIONS).fill(0),
+      },
+    };
+    plugins.push(toPlugin(benchEmbeddingPlugin, "bench-stub-embedding"));
+    elizaLogger.info(
+      `[bench] Registered zero-vector TEXT_EMBEDDING stub (dim=${EMBEDDING_DIMENSIONS}); ` +
+        "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-embedding instead.",
+    );
+  }
 
   // Load LLM provider plugins based on environment.
   //
@@ -405,7 +532,7 @@ export async function startBenchmarkServer() {
   const _openAiBaseUrl = process.env.OPENAI_BASE_URL?.trim();
   const _cerebrasIntent =
     !!_openAiBaseUrl && /(^|\.)cerebras\.ai(\/|$)/i.test(_openAiBaseUrl);
-  const _explicitProvider = process.env.MILADY_PROVIDER?.trim().toLowerCase();
+  const _explicitProvider = process.env.ELIZA_PROVIDER?.trim().toLowerCase();
   const _benchProvider =
     process.env.BENCHMARK_MODEL_PROVIDER?.trim().toLowerCase();
   const _suppressGroqForOtherProvider =
@@ -430,7 +557,7 @@ export async function startBenchmarkServer() {
   } else if (groqApiKey && _suppressGroqForOtherProvider) {
     elizaLogger.info(
       "[bench] Skipping @elizaos/plugin-groq: another provider is the explicit intent " +
-        `(cerebras=${_cerebrasIntent}, MILADY_PROVIDER=${_explicitProvider ?? ""}, BENCHMARK_MODEL_PROVIDER=${_benchProvider ?? ""})`,
+        `(cerebras=${_cerebrasIntent}, ELIZA_PROVIDER=${_explicitProvider ?? ""}, BENCHMARK_MODEL_PROVIDER=${_benchProvider ?? ""})`,
     );
   }
 
@@ -443,10 +570,10 @@ export async function startBenchmarkServer() {
   const openAiApiKey = process.env.OPENAI_API_KEY?.trim();
   const openAiBaseURL = process.env.OPENAI_BASE_URL?.trim();
   const cerebrasApiKey = process.env.CEREBRAS_API_KEY?.trim();
-  const miladyProvider = process.env.MILADY_PROVIDER?.trim().toLowerCase();
+  const elizaProvider = process.env.ELIZA_PROVIDER?.trim().toLowerCase();
   const baseUrlIsCerebras =
     !!openAiBaseURL && /(^|\.)cerebras\.ai(\/|$)/i.test(openAiBaseURL);
-  const providerIsCerebras = miladyProvider === "cerebras";
+  const providerIsCerebras = elizaProvider === "cerebras";
   const hasOpenAiCompatibleKey =
     (openAiApiKey && !openAiApiKey.startsWith("gsk_")) ||
     ((baseUrlIsCerebras || providerIsCerebras) && !!cerebrasApiKey);
@@ -890,7 +1017,6 @@ export async function startBenchmarkServer() {
   const sessions = new Map<string, BenchmarkSession>();
   let lastSessionKey: string | null = null;
 
-  // Session TTL eviction (R4)
   const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
   const SESSION_SWEEP_INTERVAL_MS = 60_000;
   const sessionCreatedAt = new Map<string, number>();
@@ -956,7 +1082,13 @@ export async function startBenchmarkServer() {
   // ────────────────────────────────────────────────────────────────────────
   const lifeopsBenchHandler = new LifeOpsBenchHandler({
     checkAuth: checkBenchAuth,
-    invokePlanner: async ({ taskId, userText, toolManifest, backend }) => {
+    invokePlanner: async ({
+      taskId,
+      userText,
+      toolManifest,
+      backend,
+      previousTurns,
+    }) => {
       const session = resolveSession(taskId, "lifeops_bench", true);
       if (!session) throw new Error("Failed to resolve lifeops_bench session");
       await ensureBenchmarkSessionContext(runtime, session);
@@ -965,12 +1097,16 @@ export async function startBenchmarkServer() {
         benchmark: "lifeops_bench",
         task_id: taskId,
         ...(Array.isArray(toolManifest) ? { tools: toolManifest } : {}),
+        lifeops: buildLifeOpsBenchmarkContext(backend, previousTurns),
       });
 
-      const composedPrompt = composeBenchmarkPrompt({
-        text: userText,
-        context: benchmarkContext,
-      });
+      // The ELIZA_BENCHMARK provider already renders the full LifeOps clock,
+      // world snapshot, tool manifest, and previous tool results. Duplicating
+      // that JSON into the user message balloons Cerebras prompts and can leave
+      // the TS bridge waiting on a huge outbound model call. Keep the message
+      // itself to the user's benchmark instruction and let the provider carry
+      // the structured context.
+      const composedPrompt = userText.trim();
 
       const incomingMessage: Memory = {
         id: stringToUuid(`lifeops-msg:${Date.now()}:${Math.random()}`),
@@ -1064,9 +1200,22 @@ export async function startBenchmarkServer() {
       // Also pass through any directly-named actions (e.g. when the planner
       // emits MESSAGE/CALENDAR directly without the BENCHMARK_ACTION wrapper),
       // skipping the BENCHMARK_ACTION sentinel itself which has already been
-      // unwrapped above.
+      // unwrapped above. REPLY/RESPOND are terminal assistant messages, not
+      // LifeOps backend tools; forwarding them as tool calls makes the Python
+      // runner keep looping after a finished response.
       for (const name of actions) {
-        if (name === "BENCHMARK_ACTION") continue;
+        if (
+          name === "BENCHMARK_ACTION" ||
+          name === "REPLY" ||
+          name === "RESPOND"
+        )
+          continue;
+        if (
+          capturedAction &&
+          typeof capturedAction.toolName === "string" &&
+          capturedAction.toolName === name
+        )
+          continue;
         const paramsForAction = params[name];
         const argumentsObj: Record<string, unknown> =
           paramsForAction &&
@@ -1108,11 +1257,6 @@ export async function startBenchmarkServer() {
         totalTokens: turnUsageBuffer.reduce((s, c) => s + c.totalTokens, 0),
         ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
       };
-
-      // Touch the backend so unused-import linters do not strip the
-      // LifeOpsFakeBackend type — and so future planner integrations can
-      // pre-warm the backend before action execution.
-      void (backend as LifeOpsFakeBackend);
 
       return { text: responseText, toolCalls, usage };
     },
@@ -1450,6 +1594,7 @@ export async function startBenchmarkServer() {
           const turnUsage = summarizeUsage(turnUsageBuffer);
 
           const capturedAction = getCapturedAction();
+          const capturedActions = getCapturedActions();
 
           const responseText =
             typeof result.responseContent?.text === "string"
@@ -1471,6 +1616,11 @@ export async function startBenchmarkServer() {
             Object.keys(parsedParams).length > 0
               ? parsedParams
               : capturedActionToParams(capturedAction);
+          if (capturedActions.length > 1) {
+            params.BENCHMARK_ACTIONS = capturedActions
+              .map((action) => capturedActionToParams(action).BENCHMARK_ACTION)
+              .filter(Boolean);
+          }
           const finishedAt = Date.now();
 
           trajectory.push({
@@ -1495,6 +1645,7 @@ export async function startBenchmarkServer() {
               thought,
               actions,
               params,
+              captured_actions: capturedActions,
               benchmark: session.benchmark,
               task_id: session.taskId,
               room_id: session.roomId,

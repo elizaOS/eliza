@@ -130,7 +130,10 @@ describe("D12 — pipeline.onFail propagates parent terminal state", () => {
     expect(child).toBeDefined();
     expect(child?.state.pipelineParentId).toBe(parent.taskId);
 
-    const log = await logStore.list({ agentId: "test-d12", taskId: parent.taskId });
+    const log = await logStore.list({
+      agentId: "test-d12",
+      taskId: parent.taskId,
+    });
     expect(log.some((l) => l.transition === "failed")).toBe(true);
   });
 

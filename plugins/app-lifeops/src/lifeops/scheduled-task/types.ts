@@ -44,6 +44,44 @@ export type ScheduledTaskKind =
   | "output"
   | "custom";
 
+/**
+ * What kind of host execution environment a scheduled task needs at fire
+ * time. The runner consults this against `getHostExecutionCapabilities`
+ * (in `@elizaos/app-core/services/local-inference/host-capabilities`) and
+ * substitutes `notify-only` semantics when the host can't satisfy the
+ * requested profile (e.g. mobile background without an FGS / BGProcessingTask).
+ *
+ * - `"foreground"`: requires the app to be foregrounded. Anything that
+ *   would block the UI thread or needs the user present.
+ * - `"bg-light-30s"`: bookkeeping that fits in ~30 s. Safe in iOS
+ *   BGAppRefreshTask windows; no LLM action.
+ * - `"bg-heavy-fgs"`: needs an Android foreground service OR an iOS
+ *   BGProcessingTask. Can run LLM inference. Long-running but bounded.
+ * - `"notify-only"`: just deliver a local notification; the user's tap
+ *   opens the app in foreground where the real work runs.
+ */
+export type TaskExecutionProfile =
+  | "foreground"
+  | "bg-light-30s"
+  | "bg-heavy-fgs"
+  | "notify-only";
+
+export const TASK_EXECUTION_PROFILES = [
+  "foreground",
+  "bg-light-30s",
+  "bg-heavy-fgs",
+  "notify-only",
+] as const satisfies readonly TaskExecutionProfile[];
+
+/**
+ * Default profile assumed when a persisted task has no `executionProfile`
+ * column (back-compat for tasks written before this field landed).
+ * Foreground is the safest default — the runner downgrades to notify-only
+ * if even that isn't available.
+ */
+export const DEFAULT_TASK_EXECUTION_PROFILE: TaskExecutionProfile =
+  "foreground";
+
 export type ScheduledTaskPriority = "low" | "medium" | "high";
 
 export type ScheduledTaskSource =
@@ -199,6 +237,22 @@ export interface ScheduledTask {
   createdBy: string;
   ownerVisible: boolean;
   metadata?: Record<string, unknown>;
+  /**
+   * Host execution profile required at fire time. The runner consults the
+   * platform's `getHostExecutionCapabilities` and substitutes `notify-only`
+   * delivery when the requested profile isn't available (e.g. an LLM-heavy
+   * `"bg-heavy-fgs"` task on an iOS build with no BGProcessingTask
+   * identifier registered).
+   *
+   * Optional in this interface — repository reads default to
+   * {@link DEFAULT_TASK_EXECUTION_PROFILE} for back-compat with rows
+   * persisted before this field landed. The DB column is **not** NOT NULL
+   * yet; the next major version should backfill and tighten the schema.
+   *
+   * TODO(scheduled-task-vNext): once backfilled, make this required and
+   * mark the column NOT NULL.
+   */
+  executionProfile?: TaskExecutionProfile;
 }
 
 export type ScheduledTaskRef = string | ScheduledTask;
@@ -239,10 +293,7 @@ export interface ScheduledTaskRunner {
     verb: ScheduledTaskVerb,
     payload?: unknown,
   ): Promise<ScheduledTask>;
-  pipeline(
-    taskId: string,
-    outcome: TerminalState,
-  ): Promise<ScheduledTask[]>;
+  pipeline(taskId: string, outcome: TerminalState): Promise<ScheduledTask[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -302,7 +353,7 @@ export interface SubjectStoreView {
  * tasks with `respectsGlobalPause: true` skip with `reason = "global_pause"`.
  */
 export interface GlobalPauseView {
-  current(): Promise<{
+  current(now?: Date): Promise<{
     active: boolean;
     startIso?: string;
     endIso?: string;

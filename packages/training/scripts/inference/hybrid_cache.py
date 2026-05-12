@@ -31,7 +31,7 @@ returns False (lucky) or raises::
     ValueError: `has_previous_state` can only be called on LinearAttention
     layers, and the current Cache seem to only contain Attention layers.
 
-``MiladyHybridCache`` solves this by being layer-type-aware from the start.
+``ElizaHybridCache`` solves this by being layer-type-aware from the start.
 For each entry of ``model.config.get_text_config(decoder=True).layer_types``
 we install:
 
@@ -56,7 +56,7 @@ slot 0 and the quantizer's parent has no such methods, (2) the patched
 fused-attention forward expects to read its own slot back as a packed-key
 dict, not a conv state.
 
-So the wiring is: ``MiladyHybridCache`` is the single object the model sees
+So the wiring is: ``ElizaHybridCache`` is the single object the model sees
 as ``past_key_values``. Its ``self.layers`` is a heterogeneous list (per
 ``layer_types``). For ``fused_turboquant`` / ``qjl_full``, the cache also
 holds a side ``CompressedKVCache`` that the patched fused-attention forward
@@ -68,7 +68,7 @@ The model's own forward path calls ``self.layers[layer_idx].update(...)``
 through ``Cache.update``. For full-attention layers under fused_turboquant
 the caller is the patched fused forward, which calls
 ``cache.update(dummy_keys, dummy_values, layer_idx)`` where ``cache`` is
-the side ``CompressedKVCache`` — but ``MiladyHybridCache`` IS that side
+the side ``CompressedKVCache`` — but ``ElizaHybridCache`` IS that side
 cache (we use composition by inheriting the ``store_compressed_*``,
 ``get_compressed_*``, ``decode_values`` methods directly). The
 ``DynamicLayer`` placeholder in ``self.layers[layer_idx]`` collects the
@@ -135,7 +135,7 @@ def make_hybrid_cache(
     compress_v: bool = True,
     qjl_value_bits: int = 4,
     verify_fused: bool = False,
-) -> "MiladyHybridCache":
+) -> "ElizaHybridCache":
     """Build a hybrid cache matched to ``model.config.layer_types``.
 
     Parameters
@@ -160,7 +160,7 @@ def make_hybrid_cache(
     arch_name = type(model).__name__
     if "ForConditionalGeneration" in arch_name:
         raise ValueError(
-            f"{arch_name} is a multimodal model. MiladyHybridCache wraps the "
+            f"{arch_name} is a multimodal model. ElizaHybridCache wraps the "
             "text decoder only. Load the text decoder with "
             "AutoModelForCausalLM (which resolves Qwen3_5Config -> "
             "Qwen3_5ForCausalLM), or extract the decoder manually via "
@@ -174,7 +174,7 @@ def make_hybrid_cache(
             "this isn't a hybrid architecture. Use a plain DynamicCache."
         )
 
-    cache = MiladyHybridCache(
+    cache = ElizaHybridCache(
         layer_types=layer_types,
         text_config=text_cfg,
         full_attn_backend=full_attn_backend,
@@ -215,11 +215,11 @@ def _resolve_text_config(model_or_config):
 
 
 # ---------------------------------------------------------------------------
-# MiladyHybridCache
+# ElizaHybridCache
 # ---------------------------------------------------------------------------
 
 
-class MiladyHybridCache(Cache):
+class ElizaHybridCache(Cache):
     """Hybrid cache for Qwen3.5 / Qwen3.6 style linear+full attention models.
 
     The cache holds one ``self.layers[i]`` per ``layer_types[i]``. Linear-

@@ -17,6 +17,17 @@ import {
 } from "./internal";
 import type { StartupEvent } from "./startup-coordinator";
 
+function isCapacitorNative(): boolean {
+  try {
+    const cap = (globalThis as Record<string, unknown>).Capacitor as
+      | { isNativePlatform?: () => boolean }
+      | undefined;
+    return Boolean(cap?.isNativePlatform?.());
+  } catch {
+    return false;
+  }
+}
+
 export interface StartingRuntimeDeps {
   setAgentStatus: (v: import("../api").AgentStatus | null) => void;
   setConnected: (v: boolean) => void;
@@ -152,17 +163,24 @@ export async function runStartingRuntime(
     } catch (err) {
       const ae = asApiLikeError(err);
       if (ae?.status === 401 && !client.hasToken()) {
-        const auth = await client.getAuthStatus().catch(() => ({
-          required: true,
-          pairingEnabled: false,
-          expiresAt: null,
-        }));
-        deps.setAuthRequired(true);
-        deps.setPairingEnabled(auth.pairingEnabled);
-        deps.setPairingExpiresAt(auth.expiresAt);
-        deps.setOnboardingLoading(false);
-        dispatch({ type: "BACKEND_AUTH_REQUIRED" });
-        return;
+        // On Capacitor native the bearer token is injected asynchronously.
+        // The first /api/status poll can race the injection and return 401
+        // before the token is available. Fall through to retry on native;
+        // dispatch BACKEND_AUTH_REQUIRED immediately on non-native runtimes
+        // where there is no injection race.
+        if (!isCapacitorNative()) {
+          const auth = await client.getAuthStatus().catch(() => ({
+            required: true,
+            pairingEnabled: false,
+            expiresAt: null,
+          }));
+          deps.setAuthRequired(true);
+          deps.setPairingEnabled(auth.pairingEnabled);
+          deps.setPairingExpiresAt(auth.expiresAt);
+          deps.setOnboardingLoading(false);
+          dispatch({ type: "BACKEND_AUTH_REQUIRED" });
+          return;
+        }
       }
       if ((ae?.status === 401 || ae?.status === 429) && client.hasToken()) {
         // 401/429 with a token. Two flavors to distinguish:

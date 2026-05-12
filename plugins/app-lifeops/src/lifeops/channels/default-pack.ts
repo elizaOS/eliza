@@ -11,8 +11,8 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { getConnectorRegistry } from "../connectors/registry.js";
 import type { DispatchResult } from "../connectors/contract.js";
+import { getConnectorRegistry } from "../connectors/registry.js";
 import type {
   ChannelCapabilities,
   ChannelContribution,
@@ -257,7 +257,10 @@ function buildChannelContribution(
       }
       if (targetPrefix && payload && typeof payload === "object") {
         const p = payload as Record<string, unknown>;
-        if (typeof p.target === "string" && !p.target.startsWith(targetPrefix)) {
+        if (
+          typeof p.target === "string" &&
+          !p.target.startsWith(targetPrefix)
+        ) {
           return connector.send({ ...p, target: `${targetPrefix}${p.target}` });
         }
       }

@@ -18,6 +18,10 @@ export function isCatalogClarification(item: string | ClarificationRequest): boo
     : isCatalogClarificationString(item.question);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /**
  * Normalize a mixed-shape clarifications array into structured
  * `ClarificationRequest` objects. Legacy strings become `kind: 'free_text'`
@@ -25,7 +29,7 @@ export function isCatalogClarification(item: string | ClarificationRequest): boo
  * picker). Structured items pass through unchanged.
  */
 export function coerceClarificationRequests(
-  items: ReadonlyArray<string | ClarificationRequest> | undefined | null
+  items: ReadonlyArray<unknown> | undefined | null
 ): ClarificationRequest[] {
   if (!items || items.length === 0) {
     return [];
@@ -38,11 +42,21 @@ export function coerceClarificationRequests(
         continue;
       }
       out.push({ kind: 'free_text', question: trimmed, paramPath: '' });
-    } else if (item && typeof item === 'object' && typeof item.question === 'string') {
+    } else if (isRecord(item) && typeof item.question === 'string') {
       out.push({
-        kind: item.kind ?? 'free_text',
-        platform: item.platform,
-        scope: item.scope,
+        kind:
+          item.kind === 'target_channel' ||
+          item.kind === 'target_server' ||
+          item.kind === 'recipient' ||
+          item.kind === 'value' ||
+          item.kind === 'free_text'
+            ? item.kind
+            : 'free_text',
+        platform: typeof item.platform === 'string' ? item.platform : undefined,
+        scope:
+          isRecord(item.scope) && typeof item.scope.guildId === 'string'
+            ? { guildId: item.scope.guildId }
+            : undefined,
         question: item.question,
         paramPath: typeof item.paramPath === 'string' ? item.paramPath : '',
       });

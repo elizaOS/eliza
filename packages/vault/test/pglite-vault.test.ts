@@ -13,6 +13,7 @@ import { generateMasterKey } from "../src/crypto.js";
 import { inMemoryMasterKey } from "../src/master-key.js";
 import { PgliteVaultImpl } from "../src/pglite-vault.js";
 import { VaultMissError } from "../src/vault.js";
+import { runtimeVaultCaller } from "./vitest-assertion-shim.js";
 
 describe("PgliteVaultImpl", () => {
   let workDir: string;
@@ -131,10 +132,9 @@ describe("PgliteVaultImpl", () => {
   });
 
   it("rejects non-string value", async () => {
-    await expect(
-      // @ts-expect-error exercises runtime validation for invalid callers.
-      vault.set("k", 123),
-    ).rejects.toThrow(/must be a string/);
+    await expect(runtimeVaultCaller(vault).set("k", 123)).rejects.toThrow(
+      /must be a string/,
+    );
   });
 
   it("ciphertext is opaque on disk (decrypt requires the master key)", async () => {
@@ -174,8 +174,8 @@ describe("PgliteVaultImpl", () => {
       const masterKey = generateMasterKey();
       const { createVault } = await import("../src/vault.js");
       // Force the file backend regardless of env default.
-      const prev = process.env.MILADY_VAULT_BACKEND;
-      process.env.MILADY_VAULT_BACKEND = "file";
+      const prev = process.env.ELIZA_VAULT_BACKEND;
+      process.env.ELIZA_VAULT_BACKEND = "file";
       const fileVault2 = createVault({
         workDir: legacyDir,
         masterKey: inMemoryMasterKey(masterKey),
@@ -188,8 +188,8 @@ describe("PgliteVaultImpl", () => {
         source: "1password",
         path: "op://Personal/GitHub/token",
       });
-      if (prev === undefined) delete process.env.MILADY_VAULT_BACKEND;
-      else process.env.MILADY_VAULT_BACKEND = prev;
+      if (prev === undefined) delete process.env.ELIZA_VAULT_BACKEND;
+      else process.env.ELIZA_VAULT_BACKEND = prev;
 
       // Open a PGlite vault pointing at the legacy file
       const pgDir = await mkdtemp(join(tmpdir(), "vault-pglite-mig-"));

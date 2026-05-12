@@ -7,10 +7,7 @@ hermes venv with the conversation's tool catalog injected via the OpenAI
 ``tools=`` parameter.
 
 The adapter is deliberately thin — it owns no scenario state and treats the
-hermes-agent venv as the source of truth for tool execution. LifeOpsBench's
-state-hash scoring is delegated to whatever world-state fixture the caller
-supplies via ``fixtures`` (this differs from the Eliza path, where the TS
-bench server hydrates an in-memory fake backend).
+hermes-agent venv as the source of truth for tool execution.
 """
 
 from __future__ import annotations
@@ -33,13 +30,21 @@ _CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
 }
 
 
-def _compute_cost_usd(model: str | None, prompt_tokens: int, completion_tokens: int) -> float:
-    """Return USD cost for a Cerebras completion, or 0.0 for unpriced models."""
+def _compute_cost_usd(
+    model: str | None, prompt_tokens: int, completion_tokens: int
+) -> float | None:
+    """Return USD cost for a Cerebras completion.
+
+    Returns :data:`None` when ``model`` is missing or unpriced — per
+    AGENTS.md Cmd #8, "unpriced" is distinct from "free" and a silent
+    ``0.0`` would conflate the two. The runner sums only non-None per-turn
+    costs into ``total_cost_usd``.
+    """
     if not model:
-        return 0.0
+        return None
     pricing = _CEREBRAS_PRICING.get(model)
     if pricing is None:
-        return 0.0
+        return None
     return (
         (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"]
         + (completion_tokens / 1_000_000.0) * pricing["output_per_million_usd"]
@@ -95,13 +100,61 @@ def _history_to_openai_messages(conversation_history: list[Any]) -> list[dict[st
     return out
 
 
+def _build_bench_preamble(
+    tools: list[dict[str, Any]],
+    world_context: dict[str, Any] | None = None,
+) -> str:
+    """Build a shape-hint preamble for hermes/openclaw bench sessions (P1-7).
+
+    Injected as the first system turn before the scenario instruction so the
+    agent knows:
+    1. Exact action names and parameter schemas (use the tool list verbatim).
+    2. The ``ENTITY`` contact-create convention (subaction=create with name/email).
+    3. The search-before-write rule (look up existing records before creating).
+    4. IDs of seeded contacts/events (when world_context is provided) so the
+       agent can reference them directly without a search round-trip.
+
+    This replaces zero-shot guessing with explicit context — the eliza-runtime
+    adapter already receives personality prompts that cover this, so we skip
+    it there and inject only here (hermes + openclaw).
+    """
+    lines: list[str] = [
+        "You are operating in LifeOpsBench. Use the exact action names and "
+        "parameter schemas shown in your tool list — do not invent synonyms. "
+        "For contacts, use ENTITY with subaction='create' and provide name and "
+        "email at the top level of the arguments object. "
+        "Always search for existing records before creating new ones.",
+    ]
+
+    # Surface seeded contact IDs so the agent can reference them directly.
+    if world_context:
+        contacts = world_context.get("contacts", {})
+        if contacts:
+            snippets = [
+                f"  {cid}: {c.get('display_name', '?')} <{c.get('primary_email', '?')}>"
+                for cid, c in list(contacts.items())[:10]
+            ]
+            lines.append("Seeded contacts (use these IDs to reference existing people):")
+            lines.extend(snippets)
+
+        events = world_context.get("calendar_events", {})
+        if events:
+            snippets = [
+                f"  {eid}: {e.get('title', '?')} @ {e.get('start', '?')}"
+                for eid, e in list(events.items())[:10]
+            ]
+            lines.append("Seeded calendar events:")
+            lines.extend(snippets)
+
+    return "\n".join(lines)
+
+
 def build_lifeops_bench_agent_fn(
     *,
     client: HermesClient | None = None,
-    scenario_yaml: dict[str, Any] | None = None,
-    fixtures: dict[str, Any] | None = None,
     system_prompt: str | None = None,
     model_name: str | None = None,
+    inject_preamble: bool = True,
 ) -> Callable[[list[Any], list[dict[str, Any]]], Awaitable[Any]]:
     """Create a LifeOpsBench-compatible ``agent_fn`` backed by hermes-agent.
 
@@ -109,12 +162,19 @@ def build_lifeops_bench_agent_fn(
     ``agent_fn(history: list[MessageTurn], tools: list[dict]) -> MessageTurn``
     so it plugs into ``LifeOpsBenchRunner`` exactly like the eliza-adapter
     equivalent.
+
+    ``inject_preamble`` (default ``True``) prepends a shape-hint system
+    message on the first turn of each new session so hermes/openclaw receive
+    the same structural context that the eliza-runtime adapter gets via its
+    personality prompts (P1-7). Set to ``False`` to disable for ablation runs.
     """
-    from eliza_lifeops_bench.types import MessageTurn  # noqa: WPS433 — lazy
+    from eliza_lifeops_bench.types import (  # noqa: WPS433 — lazy
+        MessageTurn,
+        attach_usage_cache_fields,
+    )
 
     bridge = client or HermesClient()
     bridge.wait_until_ready(timeout=60)
-    del scenario_yaml, fixtures  # currently unused; reserved for future state hooks
 
     async def _agent_fn(
         conversation_history: list[Any],
@@ -139,6 +199,16 @@ def build_lifeops_bench_agent_fn(
         context: dict[str, object] = {"messages": messages}
         if tools:
             context["tools"] = tools
+
+        # P1-7: inject shape-hint preamble before the first user turn so
+        # hermes/openclaw know the expected action names, the ENTITY.create
+        # convention, and seeded object IDs. We only inject on the first turn
+        # (no existing assistant turn) to avoid polluting multi-turn history.
+        if inject_preamble and not any(m.get("role") == "assistant" for m in messages):
+            preamble = _build_bench_preamble(list(tools) if tools else [])
+            if preamble and not any(m.get("role") == "system" for m in messages):
+                messages.insert(0, {"role": "system", "content": preamble})
+
         if system_prompt:
             # Prepend system prompt to the threaded message list (only if the
             # caller didn't already include one in history).
@@ -195,64 +265,24 @@ def build_lifeops_bench_agent_fn(
         # cache_creation_input_tokens) are forwarded verbatim when present.
         usage = resp.params.get("usage") if isinstance(resp.params, dict) else None
         if isinstance(usage, dict):
-            _attach_usage_cache_fields(turn, usage)
+            attach_usage_cache_fields(turn, usage)
         # Bug B: usage IS returned by Cerebras but never priced. The runner
-        # reads ``cost_usd`` directly off the MessageTurn via getattr; without
-        # this, every turn reports $0.00 even though we spent real Cerebras
+        # reads ``cost_usd`` directly off the MessageTurn; without this,
+        # every turn reports $0.00 even though we spent real Cerebras
         # tokens. Mirror cerebras-direct's pricing table so totals match.
-        in_tok = int(getattr(turn, "input_tokens", 0) or 0)
-        out_tok = int(getattr(turn, "output_tokens", 0) or 0)
+        #
+        # Per AGENTS.md Cmd #8: ``cost_usd`` stays :data:`None` when the
+        # model is unpriced rather than silently masquerading as a free
+        # ``0.0`` call.
+        in_tok_raw = getattr(turn, "input_tokens", None)
+        out_tok_raw = getattr(turn, "output_tokens", None)
+        in_tok = int(in_tok_raw) if isinstance(in_tok_raw, (int, float)) else 0
+        out_tok = int(out_tok_raw) if isinstance(out_tok_raw, (int, float)) else 0
         pricing_model = model_name or bridge.model
         cost = _compute_cost_usd(pricing_model, in_tok, out_tok)
-        setattr(turn, "cost_usd", float(cost))
+        setattr(turn, "cost_usd", cost if cost is None else float(cost))
         return turn
 
     return _agent_fn
 
 
-def _attach_usage_cache_fields(turn: Any, usage: dict[str, Any]) -> None:
-    """Parse OpenAI / Cerebras / Anthropic-shaped usage onto the MessageTurn.
-
-    Sets ``input_tokens`` / ``output_tokens`` / ``cache_read_input_tokens`` /
-    ``cache_creation_input_tokens`` / ``cache_supported`` as attributes on
-    ``turn`` (via ``setattr``) so the LifeOpsBench runner can pick them up
-    with ``getattr``. Cache fields stay ``None`` when the provider does not
-    report them — per AGENTS.md Cmd #8, no silent ``0`` fallback.
-    """
-    prompt = usage.get("prompt_tokens")
-    completion = usage.get("completion_tokens")
-    # Anthropic shape: input_tokens / output_tokens.
-    if not isinstance(prompt, (int, float)):
-        prompt = usage.get("input_tokens")
-    if not isinstance(completion, (int, float)):
-        completion = usage.get("output_tokens")
-    if isinstance(prompt, (int, float)):
-        setattr(turn, "input_tokens", int(prompt))
-    if isinstance(completion, (int, float)):
-        setattr(turn, "output_tokens", int(completion))
-
-    # OpenAI / Cerebras: usage.prompt_tokens_details.cached_tokens
-    prompt_details = usage.get("prompt_tokens_details") or {}
-    cache_read_raw = (
-        prompt_details.get("cached_tokens")
-        if isinstance(prompt_details, dict)
-        else None
-    )
-    # Anthropic: cache_read_input_tokens at the usage root.
-    if cache_read_raw is None:
-        cache_read_raw = usage.get("cache_read_input_tokens")
-    cache_creation_raw = usage.get("cache_creation_input_tokens")
-
-    cache_read_value: int | None = (
-        int(cache_read_raw) if isinstance(cache_read_raw, (int, float)) else None
-    )
-    cache_creation_value: int | None = (
-        int(cache_creation_raw)
-        if isinstance(cache_creation_raw, (int, float))
-        else None
-    )
-    setattr(turn, "cache_read_input_tokens", cache_read_value)
-    setattr(turn, "cache_creation_input_tokens", cache_creation_value)
-    # Hermes-template servers fronting Cerebras gpt-oss-120b or Anthropic
-    # support prompt caching; cache_supported is a hard-true here.
-    setattr(turn, "cache_supported", True)

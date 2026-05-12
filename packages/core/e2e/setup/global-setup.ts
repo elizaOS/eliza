@@ -35,8 +35,8 @@ const TEST_CHARACTER: Character = {
  * Resolve the correct model-provider plugin.
  *
  * IMPORTANT: this runs from `packages/core` inside a nested workspace
- * (`milady/eliza/...`). Bun's bare-specifier resolution can pick the published
- * `@elizaos/plugin-openai` hoisted at `milady/node_modules` instead of the
+ * (`eliza/eliza/...`). Bun's bare-specifier resolution can pick the published
+ * `@elizaos/plugin-openai` hoisted at `eliza/node_modules` instead of the
  * local workspace copy under `eliza/plugins/plugin-openai/`. The published
  * 2.0.0-alpha.537 build only forwards `params.prompt`, while the local source
  * also forwards `params.messages` (which the v5 planner relies on). So we
@@ -49,7 +49,9 @@ async function importWorkspacePlugin(
 ): Promise<Record<string, unknown> | null> {
 	try {
 		const mod = (await import(relativeFromHere)) as Record<string, unknown>;
-		console.log(`[e2e] loaded ${bareSpecifier} from workspace: ${relativeFromHere}`);
+		console.log(
+			`[e2e] loaded ${bareSpecifier} from workspace: ${relativeFromHere}`,
+		);
 		return mod;
 	} catch (err) {
 		console.warn(
@@ -57,7 +59,9 @@ async function importWorkspacePlugin(
 		);
 		try {
 			const mod = (await import(bareSpecifier)) as Record<string, unknown>;
-			console.log(`[e2e] loaded ${bareSpecifier} via bare specifier (likely published copy)`);
+			console.log(
+				`[e2e] loaded ${bareSpecifier} via bare specifier (likely published copy)`,
+			);
 			return mod;
 		} catch {
 			return null;
@@ -134,9 +138,9 @@ function applyProviderSettings(
 			const openAiKey = process.env.OPENAI_API_KEY?.trim() ?? "";
 			const cerebrasKey = process.env.CEREBRAS_API_KEY?.trim() ?? "";
 			const explicitBase = process.env.OPENAI_BASE_URL?.trim();
-			const explicitMiladyProvider = process.env.MILADY_PROVIDER?.trim();
+			const explicitElizaProvider = process.env.ELIZA_PROVIDER?.trim();
 			const isCerebras =
-				explicitMiladyProvider?.toLowerCase() === "cerebras" ||
+				explicitElizaProvider?.toLowerCase() === "cerebras" ||
 				/^csk-/i.test(openAiKey || cerebrasKey) ||
 				/(^|\.)cerebras\.ai(\/|$)/i.test(explicitBase ?? "");
 
@@ -157,12 +161,12 @@ function applyProviderSettings(
 					"https://api.cerebras.ai/v1",
 					true,
 				);
-				runtime.setSetting("MILADY_PROVIDER", "cerebras", true);
+				runtime.setSetting("ELIZA_PROVIDER", "cerebras", true);
 			}
-			if (explicitMiladyProvider) {
-				runtime.setSetting("MILADY_PROVIDER", explicitMiladyProvider, true);
+			if (explicitElizaProvider) {
+				runtime.setSetting("ELIZA_PROVIDER", explicitElizaProvider, true);
 			} else if (isCerebras) {
-				runtime.setSetting("MILADY_PROVIDER", "cerebras", true);
+				runtime.setSetting("ELIZA_PROVIDER", "cerebras", true);
 			}
 			if (isCerebras) {
 				const cerebrasModel =

@@ -24,11 +24,11 @@
   "dependencies": {
     "@elizaos/core": "2.0.0-beta.1",
     "@elizaos/shared": "2.0.0-beta.1",
-    "@elizaos/ui": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.2",
     "lucide-react": "^1.0.0"
   },
   "peerDependencies": {
-    "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/app-core": "2.0.0-beta.3",
     "@elizaos/plugin-wallet": "2.0.0-beta.1",
     "react": ">=18.0.0"
   },

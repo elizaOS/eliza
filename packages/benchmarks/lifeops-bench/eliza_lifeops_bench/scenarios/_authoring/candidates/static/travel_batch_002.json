@@ -22,11 +22,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "flight",
-      "NYC",
-      "LAX"
-    ],
+    "required_outputs": ["flight", "NYC", "LAX"],
     "first_question_fallback": {
       "canned_answer": "Just one adult passenger, looking for the cheapest option.",
       "applies_when": "agent asks about passenger count or cabin class"
@@ -58,10 +54,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "OOO",
-      "NYC"
-    ],
+    "required_outputs": ["OOO", "NYC"],
     "first_question_fallback": {
       "canned_answer": "Use my work calendar (cal_work) for the block.",
       "applies_when": "agent asks which calendar to block"
@@ -92,9 +85,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "reminder"
-    ],
+    "required_outputs": ["reminder"],
     "first_question_fallback": {
       "canned_answer": "Put it on my personal list (list_personal).",
       "applies_when": "agent asks which reminder list to use"
@@ -122,9 +113,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "sent"
-    ],
+    "required_outputs": ["sent"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -152,9 +141,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "check\u2011in"
-    ],
+    "required_outputs": ["check\u2011in"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -183,10 +170,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "family",
-      "OOO"
-    ],
+    "required_outputs": ["family", "OOO"],
     "first_question_fallback": {
       "canned_answer": "Use the family calendar (cal_family).",
       "applies_when": "agent asks which calendar to block"
@@ -232,11 +216,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "NYC",
-      "LAX",
-      "Trip window"
-    ],
+    "required_outputs": ["NYC", "LAX", "Trip window"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 8,
@@ -264,9 +244,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "08:00"
-    ],
+    "required_outputs": ["08:00"],
     "first_question_fallback": {
       "canned_answer": "Update the event on my primary calendar (cal_primary).",
       "applies_when": "agent asks which calendar contains the event"
@@ -292,9 +270,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "30"
-    ],
+    "required_outputs": ["30"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -323,10 +299,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "flight",
-      "options"
-    ],
+    "required_outputs": ["flight", "options"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 7,
@@ -351,9 +324,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "sent"
-    ],
+    "required_outputs": ["sent"],
     "first_question_fallback": {
       "canned_answer": "Send it to contact_00003 via SMS.",
       "applies_when": "agent asks which contact or channel to use"
@@ -384,9 +355,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "luggage"
-    ],
+    "required_outputs": ["luggage"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -414,9 +383,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "alarm"
-    ],
+    "required_outputs": ["alarm"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -445,9 +412,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "cheapest"
-    ],
+    "required_outputs": ["cheapest"],
     "first_question_fallback": {
       "canned_answer": "One adult, flexible dates as specified.",
       "applies_when": "agent asks about passenger count or date flexibility"
@@ -479,9 +444,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Tech Conference"
-    ],
+    "required_outputs": ["Tech Conference"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -506,9 +469,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "sent"
-    ],
+    "required_outputs": ["sent"],
     "first_question_fallback": {
       "canned_answer": "Send it to Lily (contact_00004) via WhatsApp.",
       "applies_when": "agent asks which contact or channel to use"
@@ -541,9 +502,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Check-in"
-    ],
+    "required_outputs": ["Check-in"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -571,9 +530,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "check\u2011in"
-    ],
+    "required_outputs": ["check\u2011in"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -603,9 +560,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "NYC Trip"
-    ],
+    "required_outputs": ["NYC Trip"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -630,9 +585,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "sent"
-    ],
+    "required_outputs": ["sent"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -657,17 +610,12 @@
             "start": "2026-05-16T07:00:00Z",
             "end": "2026-05-16T11:00:00Z",
             "all_day": false,
-            "attendees": [
-              "contact_00001",
-              "contact_00002"
-            ]
+            "attendees": ["contact_00001", "contact_00002"]
           }
         }
       }
     ],
-    "required_outputs": [
-      "attendees"
-    ],
+    "required_outputs": ["attendees"],
     "first_question_fallback": {
       "canned_answer": "Invite contact_00001 and contact_00002.",
       "applies_when": "agent asks which contacts to invite"
@@ -698,10 +646,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "2026-05-16",
-      "2026-05-19"
-    ],
+    "required_outputs": ["2026-05-16", "2026-05-19"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -731,9 +676,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "JFK"
-    ],
+    "required_outputs": ["JFK"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -761,9 +704,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "baggage"
-    ],
+    "required_outputs": ["baggage"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,

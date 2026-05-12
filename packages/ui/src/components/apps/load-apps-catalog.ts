@@ -2,7 +2,7 @@ import { client, type RegistryAppInfo } from "../../api";
 import { writeAppsCache } from "./apps-cache";
 import { getInternalToolApps } from "./internal-tool-apps";
 import {
-  getAllOverlayApps,
+  getAvailableOverlayApps,
   overlayAppToRegistryInfo,
 } from "./overlay-app-registry";
 
@@ -53,7 +53,7 @@ export async function loadAppsCatalog(): Promise<RegistryAppInfo[]> {
     catalogApps = getInternalToolApps();
   }
 
-  const overlayDescriptors = getAllOverlayApps()
+  const overlayDescriptors = getAvailableOverlayApps()
     .filter((oa) => !serverApps.some((a) => a.name === oa.name))
     .filter((oa) => !catalogApps.some((a) => a.name === oa.name))
     .map(overlayAppToRegistryInfo);

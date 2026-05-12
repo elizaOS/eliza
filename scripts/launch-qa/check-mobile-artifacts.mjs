@@ -247,6 +247,17 @@ function plistArrayValues(content, key) {
   );
 }
 
+function expectedIosAppGroups(appId, relativePath) {
+  const groups = [];
+  if (appId) {
+    groups.push(`group.${appId}`);
+  }
+  if (relativePath.startsWith("packages/app-core/platforms/ios/")) {
+    groups.push("group.ai.elizaos.app");
+  }
+  return [...new Set(groups)];
+}
+
 function checkInfoPlist(repoRoot, relativePath, errors, checks) {
   const filePath = path.join(repoRoot, relativePath);
   const content = readText(filePath);
@@ -301,25 +312,28 @@ function checkEntitlements(repoRoot, relativePath, appId, errors, checks) {
     content,
     "com.apple.security.application-groups",
   );
-  const expectedGroup = appId ? `group.${appId}` : null;
+  const expectedGroups = expectedIosAppGroups(appId, relativePath);
   const ok =
-    groups.length > 0 && (!expectedGroup || groups.includes(expectedGroup));
+    groups.length > 0 &&
+    (expectedGroups.length === 0 ||
+      expectedGroups.some((group) => groups.includes(group)));
   checks.push({
     id: `ios-entitlements:${relativePath}`,
     ok,
     file: relativePath,
     groups,
-    expectedGroup,
+    expectedGroups,
   });
   if (!ok) {
     addError(errors, {
       type: "invalid-ios-app-group",
       file: relativePath,
-      expected: expectedGroup,
+      expected: expectedGroups,
       found: groups,
-      message: expectedGroup
-        ? `missing expected iOS app group ${expectedGroup}`
-        : "missing iOS app group entitlement",
+      message:
+        expectedGroups.length > 0
+          ? `missing expected iOS app group ${expectedGroups.join(" or ")}`
+          : "missing iOS app group entitlement",
     });
   }
 }
@@ -348,7 +362,8 @@ function androidPermissions(manifest) {
 }
 
 function checkAndroidManifest(repoRoot, appId, errors, checks) {
-  const relativePath = "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml";
+  const relativePath =
+    "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml";
   const filePath = path.join(repoRoot, relativePath);
   const content = readText(filePath);
   if (!content) {
@@ -667,14 +682,14 @@ export function checkMobileArtifacts(options = {}) {
       checkAndroidPluginAssets(
         repoRoot,
         appConfig,
-      capacitorConfig,
-      errors,
-      checks,
-    );
-    checkRequiredFiles(
-      repoRoot,
-      REQUIRED_ANDROID_ASSETS,
-      errors,
+        capacitorConfig,
+        errors,
+        checks,
+      );
+      checkRequiredFiles(
+        repoRoot,
+        REQUIRED_ANDROID_ASSETS,
+        errors,
         checks,
         "android-asset",
       );

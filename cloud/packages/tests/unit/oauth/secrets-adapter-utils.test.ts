@@ -13,6 +13,12 @@ import {
   verifyConnectionId,
 } from "@/lib/services/oauth/connection-adapters/secrets-adapter-utils";
 
+function invalidSecretsConnectionOverrides(
+  overrides: Record<string, unknown>,
+): NonNullable<Parameters<typeof createSecretsConnection>[3]> {
+  return overrides as NonNullable<Parameters<typeof createSecretsConnection>[3]>;
+}
+
 describe("Secrets Adapter Utils", () => {
   describe("generateConnectionId", () => {
     it("should generate ID in format platform:organizationId", () => {
@@ -206,12 +212,14 @@ describe("Secrets Adapter Utils", () => {
 
     it("should not allow overriding generated ID", () => {
       const linkedAt = new Date();
-      // TypeScript now prevents passing `id` in overrides, but we can test
-      // the runtime behavior by casting
-      const conn = createSecretsConnection("twitter", "org-123", linkedAt, {
-        // @ts-expect-error - Testing that id override is ignored at runtime
-        id: "custom-id",
-      });
+      const conn = createSecretsConnection(
+        "twitter",
+        "org-123",
+        linkedAt,
+        invalidSecretsConnectionOverrides({
+          id: "custom-id",
+        }),
+      );
 
       // The ID must always be generated from platform:orgId - never from overrides
       // This prevents connection ID tampering/confusion attacks

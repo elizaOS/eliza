@@ -25,8 +25,8 @@ import {
   desktopType,
 } from "./desktop.js";
 import {
-  isAvailable as nutAvailable,
   loadFailureReason,
+  isAvailable as nutAvailable,
   nutCaptureScreenshot,
   nutClick,
   nutClickWithModifiers,
@@ -85,7 +85,8 @@ export async function driverClickWithModifiers(
   y: number,
   modifiers: string[],
 ): Promise<void> {
-  if (selectedDriver() === "nutjs") return nutClickWithModifiers(x, y, modifiers);
+  if (selectedDriver() === "nutjs")
+    return nutClickWithModifiers(x, y, modifiers);
   desktopClickWithModifiers(x, y, modifiers);
 }
 

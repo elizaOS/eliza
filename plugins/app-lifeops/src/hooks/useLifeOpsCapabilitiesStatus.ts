@@ -1,5 +1,5 @@
-import { client } from "@elizaos/ui";
 import type { LifeOpsCapabilitiesStatus } from "@elizaos/shared";
+import { client } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
 
 function formatError(cause: unknown, fallback: string): string {

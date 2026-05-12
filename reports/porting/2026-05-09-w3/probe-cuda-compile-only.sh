@@ -9,7 +9,7 @@
 #   plus per-failure logs at $OUT_DIR/fail/<flat>.log
 #
 # Reads:
-#   FORK_DIR (default /home/shaw/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0)
+#   FORK_DIR (default /home/shaw/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0)
 #   BUILD_DIR (default $FORK_DIR/build-cuda)
 #   CUDA_HOME (default /home/shaw/cuda)
 #   CUDA_ARCHS (default "80;86;89;90")
@@ -19,7 +19,7 @@
 
 set -uo pipefail
 
-FORK_DIR="${FORK_DIR:-/home/shaw/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0}"
+FORK_DIR="${FORK_DIR:-/home/shaw/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0}"
 BUILD_DIR="${BUILD_DIR:-$FORK_DIR/build-cuda}"
 CUDA_HOME="${CUDA_HOME:-/home/shaw/cuda}"
 CUDA_ARCHS="${CUDA_ARCHS:-80;86;89;90}"

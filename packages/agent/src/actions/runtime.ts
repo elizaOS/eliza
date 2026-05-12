@@ -346,7 +346,7 @@ async function restartOp(
   if (source === "self-edit" && !isSelfEditEnabled()) {
     const refusal =
       "Refused: self-edit restart requires dev mode " +
-      "(MILADY_ENABLE_SELF_EDIT=1 plus NODE_ENV!=production or MILADY_DEV_MODE=1).";
+      "(ELIZA_ENABLE_SELF_EDIT=1 plus NODE_ENV!=production or ELIZA_DEV_MODE=1).";
     logger.warn(`[runtime] ${refusal}`);
     return {
       success: false,

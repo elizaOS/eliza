@@ -94,7 +94,8 @@ class FakeTodosService {
     const row = this.rows.find((r) => r.id === id);
     if (!row) return null;
     if (patch.content !== undefined) row.content = String(patch.content);
-    if (patch.activeForm !== undefined) row.activeForm = String(patch.activeForm);
+    if (patch.activeForm !== undefined)
+      row.activeForm = String(patch.activeForm);
     if (patch.status !== undefined) {
       row.status = String(patch.status);
       row.completedAt = row.status === "completed" ? new Date() : null;
@@ -188,14 +189,14 @@ function mockRuntime(service: FakeTodosService): IAgentRuntime {
     agentId: AGENT,
     getSetting: (): string | boolean | number | null => null,
     getService: ((name: string) =>
-      name === TODOS_SERVICE_TYPE ? service : null) as IAgentRuntime["getService"],
+      name === TODOS_SERVICE_TYPE
+        ? service
+        : null) as IAgentRuntime["getService"],
   };
   return stub as never as IAgentRuntime;
 }
 
-function makeMessage(
-  overrides: Partial<Memory> = {},
-): Memory {
+function makeMessage(overrides: Partial<Memory> = {}): Memory {
   return {
     entityId: ENTITY,
     roomId: ROOM,
@@ -228,7 +229,7 @@ describe("TODO action", () => {
   });
 
   afterEach(() => {
-    delete process.env.MILADY_PARENT_TRAJECTORY_STEP_ID;
+    delete process.env.ELIZA_PARENT_TRAJECTORY_STEP_ID;
   });
 
   describe("op=write", () => {
@@ -280,7 +281,7 @@ describe("TODO action", () => {
     });
 
     it("captures parentTrajectoryStepId from env on new rows", async () => {
-      process.env.MILADY_PARENT_TRAJECTORY_STEP_ID = "parent-step-99";
+      process.env.ELIZA_PARENT_TRAJECTORY_STEP_ID = "parent-step-99";
       await invoke(runtime, {
         op: "write",
         todos: [{ content: "child task", status: "pending" }],
@@ -298,7 +299,11 @@ describe("TODO action", () => {
       });
       expect(result.success).toBe(true);
       const data = result.data as Record<string, unknown>;
-      const todo = data.todo as { content: string; entityId: string; status: string };
+      const todo = data.todo as {
+        content: string;
+        entityId: string;
+        status: string;
+      };
       expect(todo.content).toBe("Add tests");
       expect(todo.entityId).toBe(ENTITY);
       expect(todo.status).toBe("pending");
@@ -441,6 +446,34 @@ describe("TODO action", () => {
       );
       expect(result.success).toBe(false);
       expect(result.text).toContain("entityId");
+    });
+  });
+
+  describe("canonical action discriminator", () => {
+    it("accepts action:create as the canonical discriminator", async () => {
+      const result = await invoke(runtime, {
+        action: "create",
+        content: "Add tests via canonical name",
+      });
+      expect(result.success).toBe(true);
+      expect(service.rows[0]?.content).toBe("Add tests via canonical name");
+    });
+
+    it("accepts action:write equivalently to op:write", async () => {
+      const result = await invoke(runtime, {
+        action: "write",
+        todos: [{ content: "via action", status: "pending" }],
+      });
+      expect(result.success).toBe(true);
+      expect(service.rows.length).toBe(1);
+    });
+
+    it("still accepts legacy op:list for back-compat", async () => {
+      await invoke(runtime, { action: "create", content: "alpha" });
+      const result = await invoke(runtime, { op: "list" });
+      expect(result.success).toBe(true);
+      const data = result.data as { todos: unknown[] };
+      expect(data.todos.length).toBe(1);
     });
   });
 });

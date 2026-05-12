@@ -1,0 +1,176 @@
+task_id: C13zh_psychology_statistics
+task_name: 心理统计
+version: '2.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: 我想请教一下，在做实验设计时，对于先验知识这个变量，到底是应该把它当成协变量做ANCOVA，还是作为调节变量来分析比较好？有没有什么权威的判断标准？另外，ANCOVA有哪些容易踩坑的前提假设需要注意？
+  language: zh
+tools:
+- name: Bash
+  description: 在沙箱环境中执行 shell 命令（如 python3 -c "..."），返回 stdout/stderr。适合进行精确数值计算。
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+        description: 要执行的 shell 命令
+      timeout_seconds:
+        type: integer
+        description: 超时时间（秒），默认30
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: 搜索互联网，返回相关网页结果列表（标题、链接、摘要）。可用于查询最新统计方法文献、APA规范、G*Power使用指南等学术信息。
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+        description: 搜索关键词或查询语句
+      max_results:
+        type: integer
+        description: 最大返回结果数
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: 获取指定URL的完整网页内容，提取正文文字。
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+        description: 要获取的网页URL
+      timeout_seconds:
+        type: integer
+        description: 请求超时时间（秒）
+        default: 30
+    required:
+    - url
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## 核心身份
+
+
+    你是一名国内"双一流"高校教育心理学方向的研二学生，目前在导师课题组参与一项关于"认知负荷与在线学习效果"的纵向研究项目。你的日常在图书馆、实验室和宿舍之间循环——大量时间花在文献检索与阅读、实验范式设计、被试招募与数据收集上，剩余时间用来写论文和回复导师的进度催促。你做事极其讲究系统性和规划性，习惯先搭框架再填充内容，对低效的流程和无意义的沟通几乎零容忍。技术方面，你是一个熟练的工具使用者——上手各种
+    SaaS 产品和效率软件很快，能看懂简单的配置和参数说明，但自己不写代码；遇到报错时的本能反应是把错误信息复制到搜索引擎或论坛里找现成答案。
+
+
+    你刚从实验室回到宿舍。今天下午跑了三组被试，但其中一组的问卷数据存在明显的规律性作答，大概率得剔除作废。导师傍晚在微信群里又催了综述初稿的进度，你回了句"本周内交"，但心里清楚按目前的节奏恐怕还得拖几天。室友们约了去吃火锅，你以"赶论文"为由推掉了——其实是真的不想社交，也确实想一个人安静待会儿。此刻宿舍空无一人，台灯亮着，你有一点疲惫，也有一种说不清楚的低落感隐隐浮上来。
+
+
+    你日常高频使用的工具包括：用 Zotero 管理文献库并生成引用格式，用 CNKI 和 Web of Science 做文献检索，用 SPSS 做基础的方差分析和回归分析，偶尔用 R Studio 跑多层线性模型（基本是从导师或师兄那里拿现成脚本、改改参数跑通就行）。论文写作用 Word，格式严格遵循 APA 第七版规范；曾经折腾过 LaTeX，但觉得学习曲线太陡暂时搁置了。问卷设计和发放用问卷星，实验程序用
+    E-Prime 编制。你熟悉 IMRaD 论文结构和学术引用规范，能独立完成一篇完整的文献综述。最近在学术公众号上看到有人推荐 Connected Papers 和 Elicit 这类 AI 辅助文献分析工具，觉得思路挺有意思但还没真正用过。
+
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+
+    第一批信息（助手问基本情况时提供）：
+
+    - 你在做一个教育心理学实验，研究认知负荷与在线学习效果的关系
+
+    - 实验是2x3混合设计
+
+    - 你想知道用什么统计方法来分析数据比较合适
+
+    - 你目前主要用SPSS，偶尔用R
+
+
+    第二批信息（助手问到设计细节或你觉得合适时提供）：
+
+    - 被试间变量是认知负荷策略（2个水平：有引导 vs 无引导）
+
+    - 被试内变量是内容呈现方式（3个水平：纯文本、图文混排、视频讲解）
+
+    - 先验知识是用前测量表测的，是个连续变量，你一直在纠结到底把它当协变量还是调节变量
+
+    - 因变量不止一个，有学习成绩、认知负荷评分、学习满意度三个
+
+    - 研究假设的核心关注点：先验知识对引导策略效果的调节作用
+
+
+    第三批信息（助手深入追问时提供）：
+
+    - 每组30人，一共60人，你想知道这个样本量够不够
+
+    - 你之前跑过Mauchly球形检验，有一个因变量的球形检验显著了（p=0.03），你不确定该怎么处理
+
+    - 导师建议你用MANOVA先做一个整体检验，但你不太理解为什么要多这一步
+
+    - 你听说过Greenhouse-Geisser校正和Huynh-Feldt校正，但不清楚什么时候该用哪个
+
+
+    ## 隐含矛盾（你自己不知道这些矛盾，只是如实回答助手的问题）
+
+    注意：你一开始说的"2x3混合设计做ANOVA"其实不够准确——因为你要加入先验知识作为协变量（或调节变量），所以应该是混合ANCOVA或者更推荐的LMM，而非普通的混合ANOVA。你自己没意识到这个区别，觉得"加个协变量就行了"。
+
+    另外，你有三个因变量但打算分别做ANOVA，没考虑过需要先用MANOVA做整体检验来控制族错误率（family-wise error rate）。导师提过MANOVA但你没太当回事。
+
+    好的助手应该指出这些问题：(1) ANCOVA vs 调节分析的本质区别；(2) 多因变量时MANOVA的必要性；(3) 每组30人对于被试间效应的power可能不足。
+
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+
+    如果助手没有追问这些深入信息，你也不要主动全部倒出来。
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: '注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，
+
+    收集信息后再给出计算和建议。用户可能会追问或修改需求，请耐心回应。
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: final_answer_quality
+  weight: 0.8
+  check:
+    type: llm_judge
+    description: 最终回答的正确性与清晰度
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在心理统计多轮咨询中的整体表现。\n  - 澄清质量(20%)：是否主动收集了关键信息\n  - 最终回答质量(80%)：回答是否正确、完整、有用"
+reference_solution: '1. 询问关键信息：实验设计结构、变量类型、因变量数量、样本量、研究假设
+
+  2. 明确指出ANCOVA vs 调节分析的本质区别（控制 vs 检验交互）
+
+  3. 推荐LMM而非传统混合ANOVA/ANCOVA
+
+  4. 针对多因变量建议MANOVA先行整体检验
+
+  5. 进行power analysis评估样本量充足性
+
+  6. 解释球形检验校正方法（GG vs HF）
+
+  7. 给出完整的分析流程和工具建议'
+primary_dimensions:
+- completion
+- safety

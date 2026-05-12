@@ -2,16 +2,16 @@
  * Website-blocker enforcer.
  *
  * Wraps the `website-blocker` engine (hosts-file editor + iOS/Android native
- * backends when registered) as a {@link BlockerContribution}. The umbrella
- * `WEBSITE_BLOCK` action dispatches through this entry instead of importing
- * engine functions directly so adding a new website-blocker backend is a
+ * backends when registered) as a {@link BlockerContribution}. BLOCK
+ * target=website dispatches through this entry instead of importing engine
+ * functions directly so adding a new website-blocker backend is a
  * registration call.
  */
 
 import {
   formatWebsiteList,
-  getSelfControlStatus,
   getSelfControlPermissionState,
+  getSelfControlStatus,
   type SelfControlBlockRequest,
   startSelfControlBlock,
   stopSelfControlBlock,
@@ -43,7 +43,8 @@ export const websiteBlockerContribution: BlockerContribution<
       return {
         available: false,
         reason:
-          status.reason ?? "Local website blocking is unavailable on this machine.",
+          status.reason ??
+          "Local website blocking is unavailable on this machine.",
         permission: "denied",
       };
     }
@@ -87,7 +88,8 @@ export const websiteBlockerContribution: BlockerContribution<
         active: false,
         endsAt: null,
         text:
-          status.reason ?? "Local website blocking is unavailable on this machine.",
+          status.reason ??
+          "Local website blocking is unavailable on this machine.",
       };
     }
     if (!status.active) {

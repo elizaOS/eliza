@@ -1,4 +1,4 @@
-"""Entropix entropy/varentropy sampler for Milady inference.
+"""Entropix entropy/varentropy sampler for Eliza inference.
 
 Per-step logit post-processor: picks one of {greedy, forced-clarifier,
 temp-bumped resample, mask-and-resample} from (entropy, varentropy) of the
@@ -78,7 +78,12 @@ try:
 
     class VLLMEntropixProcessor(VLLMLP):
         def __init__(self, vocab_size: int, device: torch.device, *_, **__):
-            self.th = EntropixThresholds()           # TODO: read from extra_args
+            # vLLM v1 passes per-request sampling config through `extra_args`
+            # on the SamplingParams, not the processor ctor — wiring those into
+            # per-request EntropixThresholds is not implemented; this processor
+            # uses the static defaults for every request. Override the module
+            # constants if you need different thresholds for now.
+            self.th = EntropixThresholds()
 
         def is_argmax_invariant(self) -> bool:
             return False

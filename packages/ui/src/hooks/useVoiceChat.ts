@@ -66,6 +66,7 @@ import {
   MAX_CACHED_SEGMENTS,
   matchesVoiceLocale,
   normalizeSpeechLocale,
+  type QueueAssistantSpeechOptions,
   resolveEffectiveVoiceConfig,
   resolveVoiceMode,
   resolveVoiceProxyEndpoint,
@@ -78,7 +79,11 @@ import {
   type VoiceChatOptions,
   type VoiceChatState,
   type VoicePlaybackStartEvent,
+  type VoiceSessionMode,
+  type VoiceSpeakerMetadata,
+  type VoiceTranscriptEvent,
   type VoiceTranscriptPreviewEvent,
+  type VoiceTurn,
   webSpeechVoiceDebugFields,
 } from "../voice/voice-chat-types";
 
@@ -86,11 +91,17 @@ import {
 
 export { nextIdleMouthOpen } from "../voice/voice-chat-playback";
 export type {
+  QueueAssistantSpeechOptions,
+  VoiceAssistantSpeechTelemetry,
   VoiceCaptureMode,
   VoiceChatOptions,
   VoiceChatState,
   VoicePlaybackStartEvent,
+  VoiceSessionMode,
+  VoiceSpeakerMetadata,
+  VoiceTranscriptEvent,
   VoiceTranscriptPreviewEvent,
+  VoiceTurn,
 } from "../voice/voice-chat-types";
 
 // ── Shared mutable state ─────────────────────────────────────────────
@@ -119,6 +130,31 @@ function shouldAutoRestartBrowserRecognition(): boolean {
     return false;
   }
   return true;
+}
+
+const ACTIVE_VOICE_SESSION_MODES = new Set<Exclude<VoiceSessionMode, "idle">>([
+  "compose",
+  "push-to-talk",
+  "hands-free",
+  "passive",
+]);
+
+function normalizeActiveVoiceSessionMode(
+  mode: unknown,
+): Exclude<VoiceSessionMode, "idle"> | null {
+  return typeof mode === "string" &&
+    ACTIVE_VOICE_SESSION_MODES.has(mode as Exclude<VoiceSessionMode, "idle">)
+    ? (mode as Exclude<VoiceSessionMode, "idle">)
+    : null;
+}
+
+interface VoiceTranscriptUpdateMetadata {
+  mode?: Exclude<VoiceSessionMode, "idle">;
+  speaker?: VoiceSpeakerMetadata;
+  source?: string;
+  confidence?: number;
+  turn?: Partial<VoiceTurn>;
+  metadata?: Record<string, unknown>;
 }
 
 // ── Test-visible internals ───────────────────────────────────────────
@@ -165,9 +201,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   const enabledRef = useRef(false);
   const listeningModeRef = useRef<VoiceCaptureMode>("idle");
   const transcriptBufferRef = useRef("");
-  const emitTranscript = useEffectEvent((text: string) => {
-    options.onTranscript(text);
-  });
+  const latestTranscriptTurnRef = useRef<VoiceTurn | null>(null);
+  const emitTranscript = useEffectEvent(
+    (text: string, event: VoiceTranscriptEvent) => {
+      options.onTranscript(text, event);
+    },
+  );
   const emitTranscriptPreview = useEffectEvent(
     (text: string, event: VoiceTranscriptPreviewEvent) => {
       options.onTranscriptPreview?.(text, event);
@@ -423,8 +462,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
   // ── STT (Speech Recognition) ──────────────────────────────────────
 
   const applyTranscriptUpdate = useCallback(
-    (transcript: string, isFinal: boolean) => {
-      const mode = listeningModeRef.current;
+    (
+      transcript: string,
+      isFinal: boolean,
+      metadata: VoiceTranscriptUpdateMetadata = {},
+    ) => {
+      const mode = metadata.mode ?? listeningModeRef.current;
       if (mode === "idle") return;
 
       const normalized = collapseWhitespace(transcript);
@@ -438,9 +481,27 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
       transcriptBufferRef.current = nextText;
       setInterimTranscript(nextText);
-      emitTranscriptPreview(nextText, {
+      const turn: VoiceTurn = {
+        ...metadata.turn,
+        text: nextText,
         mode,
         isFinal,
+        speaker: metadata.speaker ?? metadata.turn?.speaker,
+        source:
+          metadata.source ??
+          metadata.turn?.source ??
+          sttBackendRef.current ??
+          undefined,
+        confidence: metadata.confidence ?? metadata.turn?.confidence,
+        metadata: metadata.metadata ?? metadata.turn?.metadata,
+      };
+      latestTranscriptTurnRef.current = turn;
+      emitTranscriptPreview(nextText, {
+        text: nextText,
+        mode,
+        isFinal,
+        turn,
+        speaker: turn.speaker,
       });
 
       if (interruptOnSpeechRef.current) {
@@ -464,6 +525,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   const resetListeningState = useCallback(() => {
     transcriptBufferRef.current = "";
+    latestTranscriptTurnRef.current = null;
     recognitionRef.current = null;
     sttBackendRef.current = null;
     enabledRef.current = false;
@@ -481,7 +543,22 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     const transcriptHandle = await talkMode.addListener(
       "transcript",
       (event: TalkModeTranscriptEvent) => {
-        applyTranscriptUpdate(event.transcript ?? "", event.isFinal === true);
+        const typedEvent = event as TalkModeTranscriptEvent & {
+          mode?: unknown;
+          speaker?: VoiceSpeakerMetadata;
+          turn?: Partial<VoiceTurn>;
+          source?: string;
+          confidence?: number;
+          metadata?: Record<string, unknown>;
+        };
+        applyTranscriptUpdate(event.transcript ?? "", event.isFinal === true, {
+          mode: normalizeActiveVoiceSessionMode(typedEvent.mode) ?? undefined,
+          speaker: typedEvent.speaker,
+          source: typedEvent.source,
+          confidence: typedEvent.confidence,
+          turn: typedEvent.turn,
+          metadata: typedEvent.metadata,
+        });
       },
     );
     const errorHandle = await talkMode.addListener(
@@ -660,9 +737,25 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   const finalizeRecognition = useCallback(
     (submit: boolean) => {
+      const mode =
+        normalizeActiveVoiceSessionMode(listeningModeRef.current) ?? "compose";
       const transcript = collapseWhitespace(transcriptBufferRef.current);
       if (submit && transcript) {
-        emitTranscript(transcript);
+        const latestTurn = latestTranscriptTurnRef.current;
+        const turn: VoiceTurn = {
+          ...latestTurn,
+          text: transcript,
+          mode,
+          isFinal: true,
+          endedAtMs: latestTurn?.endedAtMs ?? Date.now(),
+        };
+        emitTranscript(transcript, {
+          text: transcript,
+          mode,
+          isFinal: true,
+          turn,
+          speaker: turn.speaker,
+        });
       }
 
       resetListeningState();
@@ -1054,6 +1147,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           provider: "elevenlabs",
           cached,
           startedAtMs: playStartMs,
+          ...task.telemetry,
         });
       });
     },
@@ -1142,6 +1236,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             provider: "browser",
             cached: false,
             startedAtMs: performance.now(),
+            ...task.telemetry,
           });
           speechTimeoutRef.current = setTimeout(finish, estimatedMs);
           return;
@@ -1242,6 +1337,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             provider: "browser",
             cached: false,
             startedAtMs: browserPlayStartMsRef.value,
+            ...task.telemetry,
           });
         };
         const endBrowserUtterance = () => {
@@ -1380,7 +1476,19 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         cancelPlayback();
       }
 
-      queueRef.current.push({ ...task, text: speakable });
+      queueRef.current.push({
+        ...task,
+        text: speakable,
+        telemetry: task.telemetry
+          ? {
+              ...task.telemetry,
+              queuedAtMs:
+                typeof performance !== "undefined"
+                  ? performance.now()
+                  : Date.now(),
+            }
+          : undefined,
+      });
       ttsDebug("enqueueSpeech", {
         segment: task.segment,
         append: task.append,
@@ -1447,17 +1555,23 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     const isFirstClip = state.queuedSpeakablePrefix.length === 0;
     enqueueSpeech({
       text: unsent,
-      append: !isFirstClip,
+      append: !isFirstClip || !state.replacePlaybackOnFirstClip,
       segment: isFirstClip ? "full" : "remainder",
       cacheKey,
       debugUtteranceContext: dbgUtterance,
+      telemetry: state.telemetry,
     });
 
     state.queuedSpeakablePrefix = latest;
   }, [enqueueSpeech, makeElevenCacheKey]);
 
   const queueAssistantSpeech = useCallback(
-    (messageId: string, text: string, isFinal: boolean) => {
+    (
+      messageId: string,
+      text: string,
+      isFinal: boolean,
+      queueOptions?: QueueAssistantSpeechOptions,
+    ) => {
       if (!messageId) return;
 
       const speakable = toSpeakableText(text);
@@ -1480,6 +1594,13 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           queuedSpeakablePrefix: "",
           latestSpeakable: "",
           finalQueued: false,
+          replacePlaybackOnFirstClip: queueOptions?.replace !== false,
+          telemetry: queueOptions?.telemetry,
+        };
+      } else if (queueOptions?.telemetry) {
+        current.telemetry = {
+          ...current.telemetry,
+          ...queueOptions.telemetry,
         };
       }
 
@@ -1516,6 +1637,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           segment: "full",
           cacheKey,
           debugUtteranceContext: dbgUtterance,
+          telemetry: state.telemetry,
         });
         state.queuedSpeakablePrefix = speakable;
         state.finalQueued = true;
@@ -1565,10 +1687,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           : undefined;
         enqueueSpeech({
           text: unsent,
-          append: !isFirstClip,
+          append: !isFirstClip || !state.replacePlaybackOnFirstClip,
           segment: isFirstClip ? "full" : "remainder",
           cacheKey,
           debugUtteranceContext: dbgUtterance,
+          telemetry: state.telemetry,
         });
         state.queuedSpeakablePrefix = speakable;
         if (isFinal) state.finalQueued = true;

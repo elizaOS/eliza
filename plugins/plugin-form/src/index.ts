@@ -7,15 +7,11 @@
  * @license MIT
  */
 
-import type {
-  IAgentRuntime,
-  Plugin,
-  ServiceClass,
-} from "@elizaos/core";
+import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { formEvaluator } from "./evaluators/extractor";
 
-export * from "./types";
-
+export { formAction, formRestoreAction } from "./actions/form";
+export { C, ControlBuilder, Form, FormBuilder } from "./builder";
 export {
   BUILTIN_TYPE_MAP,
   BUILTIN_TYPES,
@@ -23,17 +19,18 @@ export {
   isBuiltinType,
   registerBuiltinTypes,
 } from "./builtins";
-
+export { applyControlDefaults, applyFormDefaults, prettify } from "./defaults";
+export { formEvaluator } from "./evaluators/extractor";
 export {
-  clearTypeHandlers,
-  formatValue,
-  getTypeHandler,
-  matchesMimeType,
-  parseValue,
-  registerTypeHandler,
-  validateField,
-} from "./validation";
-
+  buildFormExtractorPromptSection,
+  buildFormExtractorSchema,
+  coerceExtractionsAgainstControls,
+  detectCorrection,
+  extractSingleField,
+  parseFormExtractorOutput,
+} from "./extraction";
+export { formContextProvider } from "./providers/context";
+export { FormService } from "./service";
 export {
   deleteSession,
   getActiveSession,
@@ -45,16 +42,6 @@ export {
   saveSession,
   saveSubmission,
 } from "./storage";
-
-export {
-  buildFormExtractorPromptSection,
-  buildFormExtractorSchema,
-  coerceExtractionsAgainstControls,
-  detectCorrection,
-  extractSingleField,
-  parseFormExtractorOutput,
-} from "./extraction";
-
 export {
   calculateTTL,
   formatEffort,
@@ -64,16 +51,16 @@ export {
   shouldConfirmCancel,
   shouldNudge,
 } from "./ttl";
-
-export { applyControlDefaults, applyFormDefaults, prettify } from "./defaults";
-
-export { C, ControlBuilder, Form, FormBuilder } from "./builder";
-
-export { FormService } from "./service";
-
-export { formAction, formRestoreAction } from "./actions/form";
-export { formEvaluator } from "./evaluators/extractor";
-export { formContextProvider } from "./providers/context";
+export * from "./types";
+export {
+  clearTypeHandlers,
+  formatValue,
+  getTypeHandler,
+  matchesMimeType,
+  parseValue,
+  registerTypeHandler,
+  validateField,
+} from "./validation";
 
 /**
  * Form Plugin

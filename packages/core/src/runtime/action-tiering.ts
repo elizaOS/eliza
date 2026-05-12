@@ -29,6 +29,18 @@ export type TierActionResultsInput = {
 	maxTierAParents?: number;
 	maxTierBParents?: number;
 	protocolActions?: readonly Tier0ProtocolAction[];
+	/**
+	 * When provided, tier-A is narrowed to parents matching at least one
+	 * candidate name (by parent normalized name OR any child normalized name,
+	 * so TASKS_SPAWN_AGENT maps back to TASKS). Non-matching tier-A and tier-B
+	 * parents go to tier-C (omitted entirely — not tier-B, which would still
+	 * expose umbrella parent names to the planner). No-op when no tier-A
+	 * parent matches, to prevent accidental surface collapse.
+	 *
+	 * Applied before the maxTierAParents cap so a candidate parent ranked
+	 * outside the cap isn't silently displaced before the narrow runs.
+	 */
+	narrowToCandidateActions?: readonly string[];
 };
 
 export type TieredActionSurface = {
@@ -84,6 +96,52 @@ export function tierActionResults(
 	tierAParents.sort(compareTieredParents);
 	tierBParents.sort(compareTieredParents);
 	tierCParents.sort(compareTieredParents);
+
+	// Narrow before the cap: if the candidate parent is the 9th-best
+	// tier-A entry and maxTierAParents=8, running the cap first would push
+	// it to tier-B and the no-op safety would fire, leaving FILE/BASH in
+	// tier-A. By narrowing first we collapse tier-A to only the candidates,
+	// and the cap then applies to that smaller set.
+	const narrowSet = normalizeCandidateSet(input.narrowToCandidateActions);
+	if (narrowSet.size > 0 && tierAParents.length > 0) {
+		const matchesCandidate = (parent: TieredParentAction): boolean => {
+			if (narrowSet.has(parent.normalizedName)) {
+				return true;
+			}
+			for (const child of parent.childNormalizedNames) {
+				if (narrowSet.has(child)) {
+					return true;
+				}
+			}
+			return false;
+		};
+		const kept: TieredParentAction[] = [];
+		const demotedFromTierA: TieredParentAction[] = [];
+		for (const parent of tierAParents) {
+			if (matchesCandidate(parent)) {
+				kept.push(parent);
+			} else {
+				demotedFromTierA.push(parent);
+			}
+		}
+		if (kept.length > 0) {
+			tierAParents.length = 0;
+			tierAParents.push(...kept);
+
+			const tierBKept: TieredParentAction[] = [];
+			for (const parent of tierBParents) {
+				if (matchesCandidate(parent)) {
+					tierBKept.push(parent);
+				} else {
+					tierCParents.push(parent);
+				}
+			}
+			tierBParents.length = 0;
+			tierBParents.push(...tierBKept);
+			tierCParents.push(...demotedFromTierA);
+			tierCParents.sort(compareTieredParents);
+		}
+	}
 
 	if (tierAParents.length > maxTierAParents) {
 		tierBParents.push(
@@ -214,6 +272,35 @@ function sortedUnique(values: readonly string[]): string[] {
 	return Array.from(new Set(values.filter(Boolean))).sort((left, right) =>
 		left.localeCompare(right),
 	);
+}
+
+function normalizeCandidateSet(
+	values: readonly string[] | undefined,
+): Set<string> {
+	// Must match action-catalog's normalizeActionName (UPPER_SNAKE_CASE) so
+	// the candidate names line up with TieredParentAction.normalizedName /
+	// childNormalizedNames produced by the catalog. Lowercasing here would
+	// silently miss every match and the narrow becomes a no-op.
+	const set = new Set<string>();
+	if (!values) {
+		return set;
+	}
+	for (const value of values) {
+		if (typeof value !== "string") {
+			continue;
+		}
+		const normalized = String(value)
+			.trim()
+			.replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+			.replace(/[^A-Za-z0-9]+/g, "_")
+			.replace(/^_+|_+$/g, "")
+			.replace(/_+/g, "_")
+			.toUpperCase();
+		if (normalized) {
+			set.add(normalized);
+		}
+	}
+	return set;
 }
 
 function fnv1a(value: string): string {

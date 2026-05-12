@@ -1,4 +1,4 @@
-"""Corpus-level analysis for the Milady training set.
+"""Corpus-level analysis for the Eliza training set.
 
 Phase A of the dedup/variance pipeline: catch near-duplicate templated
 records by mining n-gram repetition, source-to-source overlap, and per-

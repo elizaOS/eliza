@@ -37,43 +37,51 @@ const BYTES_PER_GB = 1024 ** 3;
  * tier that fits the platform; desktops/servers pick larger tiers
  * first when memory headroom allows.
  */
+// Per the 2026-05-12 operator directive, the Qwen3.5 line is the default —
+// eliza-1-0_8b (Qwen3.5-0.8B) is the small default, eliza-1-2b
+// (Qwen3.5-2B) is the mid default. The legacy Qwen3 tiers (eliza-1-0_6b /
+// eliza-1-1_7b) stay in the ladders as DEPRECATED fallbacks but sit below
+// the Qwen3.5 tiers. Mirrors the app-core SLOT_LADDERS — keep the two in
+// sync.
 const SLOT_LADDERS: Record<
   RecommendationPlatformClass,
   Record<TextGenerationSlot, string[]>
 > = {
   mobile: {
-    TEXT_SMALL: ["eliza-1-0_6b", "eliza-1-1_7b"],
-    TEXT_LARGE: ["eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-0_6b", "eliza-1-2b", "eliza-1-1_7b"],
+    TEXT_LARGE: ["eliza-1-2b", "eliza-1-0_8b", "eliza-1-1_7b", "eliza-1-0_6b"],
   },
   "apple-silicon": {
-    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
-    TEXT_LARGE: ["eliza-1-27b", "eliza-1-9b", "eliza-1-1_7b"],
+    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_LARGE: ["eliza-1-27b", "eliza-1-9b", "eliza-1-2b", "eliza-1-1_7b"],
   },
   "linux-gpu": {
-    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-1_7b", "eliza-1-0_6b"],
     TEXT_LARGE: [
       "eliza-1-27b-256k",
       "eliza-1-27b",
       "eliza-1-9b",
+      "eliza-1-2b",
       "eliza-1-1_7b",
     ],
   },
   "linux-cpu": {
-    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
-    TEXT_LARGE: ["eliza-1-9b", "eliza-1-1_7b"],
+    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_LARGE: ["eliza-1-9b", "eliza-1-2b", "eliza-1-1_7b"],
   },
   "desktop-gpu": {
-    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-1_7b", "eliza-1-0_6b"],
     TEXT_LARGE: [
       "eliza-1-27b-256k",
       "eliza-1-27b",
       "eliza-1-9b",
+      "eliza-1-2b",
       "eliza-1-1_7b",
     ],
   },
   "desktop-cpu": {
-    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
-    TEXT_LARGE: ["eliza-1-9b", "eliza-1-1_7b"],
+    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_LARGE: ["eliza-1-9b", "eliza-1-2b", "eliza-1-1_7b"],
   },
 };
 

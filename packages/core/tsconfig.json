@@ -29,14 +29,18 @@
 		"paths": {
 			"@elizaos/core": ["./src/index.node.ts"],
 			"@elizaos/shared": ["../shared/src/index.ts"],
-			"@elizaos/plugin-elizacloud": ["../../plugins/plugin-elizacloud/src/index.node.ts"],
+			"@elizaos/plugin-elizacloud": [
+				"../../plugins/plugin-elizacloud/src/index.node.ts"
+			],
 			"@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
 			"@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
 			"@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
 			"@elizaos/plugin-computeruse": [
 				"../../plugins/plugin-computeruse/src/index.ts"
 			],
-			"@elizaos/plugin-whatsapp": ["../../plugins/plugin-whatsapp/src/index.ts"],
+			"@elizaos/plugin-whatsapp": [
+				"../../plugins/plugin-whatsapp/src/index.ts"
+			],
 			"@elizaos/app-task-coordinator": [
 				"../../plugins/app-task-coordinator/src/api/coordinator-types.ts"
 			]

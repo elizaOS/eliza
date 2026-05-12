@@ -1,3 +1,4 @@
+/// <reference types="bun-types" />
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -9,8 +10,8 @@ import type {
   LifeOpsCalendarEventAttendee,
   LifeOpsCalendarFeed,
   LifeOpsCalendarSummary,
+  LifeOpsConnectorSide,
 } from "../contracts/index.js";
-import type { LifeOpsConnectorSide } from "../contracts/index.js";
 
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
 
@@ -68,7 +69,9 @@ type NativeCalendarBridge = {
     timeMin: string;
     timeMax: string;
   }): Promise<NativeCalendarPayload>;
-  createEvent(payload: NativeCalendarEventPayload): Promise<NativeCalendarPayload>;
+  createEvent(
+    payload: NativeCalendarEventPayload,
+  ): Promise<NativeCalendarPayload>;
   updateEvent(
     eventId: string,
     payload: NativeCalendarEventPayload,
@@ -90,9 +93,11 @@ type NativeCalendarEventPayload = {
 
 type MacCalendarBridge = {
   listCalendars(): string | null;
-  listEvents(calendarId: string, startSeconds: number, endSeconds: number):
-    | string
-    | null;
+  listEvents(
+    calendarId: string,
+    startSeconds: number,
+    endSeconds: number,
+  ): string | null;
   createEvent(payloadJson: string): string | null;
   updateEvent(eventId: string, payloadJson: string): string | null;
   deleteEvent(eventId: string): string | null;
@@ -104,7 +109,7 @@ let nativeBridgeOverride: NativeCalendarBridge | null | undefined;
 
 const NATIVE_DYLIB_ENV =
   typeof process !== "undefined"
-    ? (process.env.MILADY_NATIVE_PERMISSIONS_DYLIB ?? "")
+    ? (process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "")
     : "";
 
 const NATIVE_DYLIB_CANDIDATES = [
@@ -127,8 +132,9 @@ function detectRuntimePlatform(): string {
   if (typeof process !== "undefined" && typeof process.platform === "string") {
     return process.platform;
   }
-  const capacitor = (globalThis as { Capacitor?: { getPlatform?: () => string } })
-    .Capacitor;
+  const capacitor = (
+    globalThis as { Capacitor?: { getPlatform?: () => string } }
+  ).Capacitor;
   const platform = capacitor?.getPlatform?.();
   return typeof platform === "string" && platform ? platform : "web";
 }
@@ -262,8 +268,9 @@ function epochSeconds(iso: string): number {
 }
 
 async function loadIosCalendarBridge(): Promise<NativeCalendarBridge | null> {
-  const capacitor = (globalThis as { Capacitor?: { getPlatform?: () => string } })
-    .Capacitor;
+  const capacitor = (
+    globalThis as { Capacitor?: { getPlatform?: () => string } }
+  ).Capacitor;
   if (capacitor?.getPlatform?.() !== "ios") return null;
   try {
     const { AppleCalendar } = await import("@elizaos/capacitor-calendar");
@@ -284,7 +291,9 @@ async function loadIosCalendarBridge(): Promise<NativeCalendarBridge | null> {
         );
       },
       async deleteEvent(eventId) {
-        return normalizeNativePayload(await AppleCalendar.deleteEvent({ eventId }));
+        return normalizeNativePayload(
+          await AppleCalendar.deleteEvent({ eventId }),
+        );
       },
     };
   } catch {
@@ -461,11 +470,15 @@ export function lifeOpsCalendarEventFromApple(args: {
   };
 }
 
-export function isAppleCalendarGrant(grantId: string | null | undefined): boolean {
+export function isAppleCalendarGrant(
+  grantId: string | null | undefined,
+): boolean {
   return grantId === APPLE_CALENDAR_GRANT_ID;
 }
 
-export function isAppleCalendarEvent(event: Pick<LifeOpsCalendarEvent, "provider">): boolean {
+export function isAppleCalendarEvent(
+  event: Pick<LifeOpsCalendarEvent, "provider">,
+): boolean {
   return event.provider === APPLE_CALENDAR_PROVIDER;
 }
 
@@ -532,7 +545,11 @@ export async function getNativeAppleCalendarFeed(args: {
   runtime?: IAgentRuntime | null;
 }): Promise<FeatureResult<LifeOpsCalendarFeed>> {
   const result = await listNativeAppleCalendarEvents(args);
-  if (!result.ok) return result;
+  if (result.ok === false) {
+    // FeatureResult failure variants don't reference T; re-typed by widening.
+    const failure: FeatureResult<LifeOpsCalendarFeed> = result;
+    return failure;
+  }
   return {
     ok: true,
     data: {

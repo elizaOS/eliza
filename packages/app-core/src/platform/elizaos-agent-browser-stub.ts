@@ -4,7 +4,6 @@
 // Node-only code.
 
 const noop = () => undefined;
-const asyncNoop = async () => undefined;
 export const ACCOUNT_CREDENTIAL_PROVIDER_IDS = [];
 export const AccountCredentialRecord = noop;
 export const AGENT_EVENT_ALLOWED_STREAMS = [];

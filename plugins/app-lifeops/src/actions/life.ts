@@ -5,6 +5,7 @@ import {
 } from "@elizaos/agent";
 import type {
   ActionResult,
+  AgentContext,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -114,6 +115,7 @@ type LifeParams = {
   target?: string;
   minutes?: number;
   details?: Record<string, unknown>;
+  ownerSurface?: string;
 };
 
 const SUBACTIONS = {
@@ -266,7 +268,10 @@ function normalizeExplicitLifeAction(value: unknown):
   if (typeof value !== "string") {
     return null;
   }
-  const normalized = value.trim().toLowerCase().replace(/[-\s]+/g, "_");
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]+/g, "_");
   switch (normalized) {
     case "create_goal":
     case "goal_create":
@@ -347,7 +352,7 @@ async function resolveLifeOperationPlan(args: {
 }
 
 /**
- * Pre-routing pick of the LIFE subaction.
+ * Pre-routing pick of the owner operation action.
  *
  * Tries the shared `resolveActionArgs` substrate first (planner-trust path
  * + single LLM pass). Falls back to the LifeOps-specific extractor when
@@ -377,7 +382,7 @@ async function routeLifeSubaction(args: {
     message,
     state,
     options,
-    actionName: "LIFE",
+    actionName: ownerSurfaceActionNameFromOptions(options),
     subactions: SUBACTIONS,
     intentHint: intent,
   });
@@ -2010,13 +2015,14 @@ function formatWeeklyGoalReview(args: {
 
 // ── Main action ───────────────────────────────────────
 
-// LIFE belongs to the LifeOps surface (home chat / page-lifeops /
-// app-lifeops direct rooms). On foreign page-* scopes the action set is
+// Owner-operation actions belong to the LifeOps surface (home chat /
+// page-lifeops / app-lifeops direct rooms). On foreign page-* scopes the action set is
 // scoped to that surface (page-automations → WORKFLOW,
-// page-browser → browser actions, etc.). When LIFE stays eligible on those
-// scopes its long description contaminates the ACTION_PLANNER candidate
-// list, driving the LLM to mimic the life-param-extractor structured schema and
-// producing envelopes the planner cannot read.
+// page-browser → browser actions, etc.). When owner-operation actions stay
+// eligible on those scopes, their long descriptions contaminate the
+// ACTION_PLANNER candidate list, driving the LLM to mimic the
+// life-param-extractor structured schema and producing envelopes the planner
+// cannot read.
 async function isForeignPageScope(
   runtime: IAgentRuntime,
   message: Memory,
@@ -2030,10 +2036,10 @@ async function isForeignPageScope(
 }
 
 // Metadata reused by the owner-* umbrella actions in owner-surfaces.ts.
-// LIFE itself is no longer planner-visible — owner-surfaces re-publishes the
+// The old umbrella is no longer planner-visible — owner-surfaces publishes the
 // individual reminder/alarm/goal/todo/routine umbrellas that delegate into
 // `runLifeOperationHandler` below.
-export const LIFE_TAGS: readonly string[] = [
+export const OWNER_OPERATION_TAGS: string[] = [
   "domain:reminders",
   "capability:read",
   "capability:write",
@@ -2043,7 +2049,7 @@ export const LIFE_TAGS: readonly string[] = [
   "surface:internal",
 ];
 
-export const LIFE_CONTEXTS: readonly string[] = [
+export const OWNER_OPERATION_CONTEXTS: AgentContext[] = [
   "general",
   "tasks",
   "todos",
@@ -2051,10 +2057,10 @@ export const LIFE_CONTEXTS: readonly string[] = [
   "health",
 ];
 
-export const LIFE_ROLE_GATE = { minRole: "OWNER" } as const;
-export const LIFE_SUPPRESS_POST_ACTION_CONTINUATION = true;
+export const OWNER_OPERATION_ROLE_GATE = { minRole: "OWNER" } as const;
+export const OWNER_OPERATION_SUPPRESS_POST_ACTION_CONTINUATION = true;
 
-export const LIFE_VALIDATE = async (
+export const OWNER_OPERATION_VALIDATE = async (
   runtime: IAgentRuntime,
   message: Memory,
 ): Promise<boolean> => {
@@ -2064,673 +2070,624 @@ export const LIFE_VALIDATE = async (
   return true;
 };
 
+function ownerSurfaceActionNameFromOptions(
+  options: HandlerOptions | undefined,
+): string {
+  const raw = (options as HandlerOptions | undefined)?.parameters as
+    | LifeParams
+    | undefined;
+  return typeof raw?.ownerSurface === "string" && raw.ownerSurface.length > 0
+    ? raw.ownerSurface
+    : "OWNER_TODOS";
+}
+
 export async function runLifeOperationHandler(
   runtime: IAgentRuntime,
   message: Memory,
   state: State | undefined,
-  options: unknown,
+  options: HandlerOptions | undefined,
   _callback?: HandlerCallback,
 ): Promise<ActionResult> {
-    // Defense-in-depth: validate() excludes LIFE from planner candidates on
-    // foreign page-* scopes, and this handler keeps direct tool execution a
-    // no-op if a stale or malformed plan still reaches it.
-    if (await isForeignPageScope(runtime, message)) {
-      return {
-        success: false,
-        text: "",
-        data: {
-          actionName: "LIFE",
-          reason: "foreign_page_scope",
-        },
-      };
-    }
+  const ownerSurfaceActionName = ownerSurfaceActionNameFromOptions(options);
+  // Defense-in-depth: validate() excludes owner-operation candidates on
+  // foreign page-* scopes, and this handler keeps direct tool execution a
+  // no-op if a stale or malformed plan still reaches it.
+  if (await isForeignPageScope(runtime, message)) {
+    return {
+      success: false,
+      text: "",
+      data: {
+        actionName: ownerSurfaceActionName,
+        reason: "foreign_page_scope",
+      },
+    };
+  }
 
-    const rawParams = (options as HandlerOptions | undefined)?.parameters as
-      | LifeParams
-      | undefined;
-    const params = rawParams ?? ({} as LifeParams);
-    const currentText = normalizeLifeInputText(messageText(message));
-    const details = params.details;
-    const deferredDraft = latestDeferredLifeDraft(state);
-    const turnsSinceDraft =
-      deferredDraft != null
-        ? (countTurnsSinceLatestDeferredLifeDraft(state) ?? 0) + 1
-        : undefined;
-    const deferredDraftFollowupMode = deferredDraft
-      ? await extractDeferredLifeDraftFollowupWithLlm({
-          runtime,
-          message,
-          state,
-          currentText,
-          draft: deferredDraft,
-        })
-      : null;
-    const draftExpiryReason = deferredLifeDraftExpiryReason({
-      draft: deferredDraft,
-      turnsSinceDraft,
-    });
-    if (draftExpiryReason && deferredDraftFollowupMode === "confirm") {
-      const fallback =
-        "That LifeOps draft expired. Please restate it and I'll preview it again.";
-      return {
-        success: false,
-        text: await renderLifeActionReply({
-          runtime,
-          message,
-          state,
-          intent: currentText,
-          scenario: "reply_only",
-          fallback,
-          context: {
-            reason: "draft_expired",
-          },
-        }),
-      };
-    }
-    if (deferredDraftFollowupMode === "cancel") {
-      const fallback = "Okay, I won't save it yet.";
-      return {
-        success: true,
-        text: await renderLifeActionReply({
-          runtime,
-          message,
-          state,
-          intent: currentText,
-          scenario: "reply_only",
-          fallback,
-          context: {
-            reason: "draft_cancelled",
-            draft: deferredDraft
-              ? {
-                  operation: deferredDraft.operation,
-                  title: deferredDraft.request.title,
-                }
-              : null,
-          },
-        }),
-        data: {
-          actionName: "LIFE",
-          noop: true,
+  const rawParams = (options as HandlerOptions | undefined)?.parameters as
+    | LifeParams
+    | undefined;
+  const params = rawParams ?? ({} as LifeParams);
+  const currentText = normalizeLifeInputText(messageText(message));
+  const details = params.details;
+  const deferredDraft = latestDeferredLifeDraft(state);
+  const turnsSinceDraft =
+    deferredDraft != null
+      ? (countTurnsSinceLatestDeferredLifeDraft(state) ?? 0) + 1
+      : undefined;
+  const deferredDraftFollowupMode = deferredDraft
+    ? await extractDeferredLifeDraftFollowupWithLlm({
+        runtime,
+        message,
+        state,
+        currentText,
+        draft: deferredDraft,
+      })
+    : null;
+  const draftExpiryReason = deferredLifeDraftExpiryReason({
+    draft: deferredDraft,
+    turnsSinceDraft,
+  });
+  if (draftExpiryReason && deferredDraftFollowupMode === "confirm") {
+    const fallback =
+      "That LifeOps draft expired. Please restate it and I'll preview it again.";
+    return {
+      success: false,
+      text: await renderLifeActionReply({
+        runtime,
+        message,
+        state,
+        intent: currentText,
+        scenario: "reply_only",
+        fallback,
+        context: {
+          reason: "draft_expired",
         },
-      };
-    }
-    const explicitAction = normalizeExplicitLifeAction(params.action);
-    if (explicitAction === "phone") {
-      return {
-        success: false,
-        text: "I need the phone number before I can save text reminders.",
-        data: {
-          actionName: "LIFE",
-          missingField: "phone_number",
+      }),
+    };
+  }
+  if (deferredDraftFollowupMode === "cancel") {
+    const fallback = "Okay, I won't save it yet.";
+    return {
+      success: true,
+      text: await renderLifeActionReply({
+        runtime,
+        message,
+        state,
+        intent: currentText,
+        scenario: "reply_only",
+        fallback,
+        context: {
+          reason: "draft_cancelled",
+          draft: deferredDraft
+            ? {
+                operation: deferredDraft.operation,
+                title: deferredDraft.request.title,
+              }
+            : null,
         },
-      };
-    }
-    const explicitSubaction =
-      typeof params.subaction === "string" &&
-      Object.hasOwn(SUBACTIONS, params.subaction)
-        ? (params.subaction as LifeOwnedOperation)
-        : explicitAction?.operation;
-    const deferredDraftReuseMode = resolveDeferredLifeDraftReuseMode({
-      details,
-      draft: deferredDraft,
-      explicitOperation: explicitSubaction,
-      llmMode: deferredDraftFollowupMode,
-      turnsSinceDraft,
-    });
-    const reuseDeferredDraft = deferredDraftReuseMode !== null;
-    const intent = reuseDeferredDraft
-      ? deferredDraftReuseMode === "confirm"
-        ? normalizeLifeInputText(deferredDraft?.intent ?? "")
-        : normalizeLifeInputText(params.intent?.trim() ?? currentText)
-      : normalizeLifeInputText(params.intent?.trim() ?? currentText);
-    if (!intent) {
-      const fallback = "Tell me what you want me to do.";
-      return {
-        success: false,
-        text: await renderLifeActionReply({
-          runtime,
-          message,
-          state,
-          intent: currentText,
-          scenario: "reply_only",
-          fallback,
-          context: {
-            reason: "missing_intent",
-          },
-        }),
-      };
-    }
+      }),
+      data: {
+        actionName: ownerSurfaceActionName,
+        noop: true,
+      },
+    };
+  }
+  const explicitAction = normalizeExplicitLifeAction(params.action);
+  if (explicitAction === "phone") {
+    return {
+      success: false,
+      text: "I need the phone number before I can save text reminders.",
+      data: {
+        actionName: ownerSurfaceActionName,
+        missingField: "phone_number",
+      },
+    };
+  }
+  const explicitSubaction =
+    typeof params.subaction === "string" &&
+    Object.hasOwn(SUBACTIONS, params.subaction)
+      ? (params.subaction as LifeOwnedOperation)
+      : explicitAction?.operation;
+  const deferredDraftReuseMode = resolveDeferredLifeDraftReuseMode({
+    details,
+    draft: deferredDraft,
+    explicitOperation: explicitSubaction,
+    llmMode: deferredDraftFollowupMode,
+    turnsSinceDraft,
+  });
+  const reuseDeferredDraft = deferredDraftReuseMode !== null;
+  const intent = reuseDeferredDraft
+    ? deferredDraftReuseMode === "confirm"
+      ? normalizeLifeInputText(deferredDraft?.intent ?? "")
+      : normalizeLifeInputText(params.intent?.trim() ?? currentText)
+    : normalizeLifeInputText(params.intent?.trim() ?? currentText);
+  if (!intent) {
+    const fallback = "Tell me what you want me to do.";
+    return {
+      success: false,
+      text: await renderLifeActionReply({
+        runtime,
+        message,
+        state,
+        intent: currentText,
+        scenario: "reply_only",
+        fallback,
+        context: {
+          reason: "missing_intent",
+        },
+      }),
+    };
+  }
 
-    // Pre-routing: pick the subaction. When reusing a deferred draft we
-    // inherit its operation. When the planner supplied an explicit subaction
-    // we trust it. Otherwise dispatch through resolveActionArgs (the
-    // shared LLM pre-routing substrate). The text extractor
-    // stays available as a fallback for richer "missing field" diagnostics.
-    const operationPlan: ResolvedLifeOperationPlan =
-      reuseDeferredDraft && deferredDraft
+  // Pre-routing: pick the subaction. When reusing a deferred draft we
+  // inherit its operation. When the planner supplied an explicit subaction
+  // we trust it. Otherwise dispatch through resolveActionArgs (the
+  // shared LLM pre-routing substrate). The text extractor
+  // stays available as a fallback for richer "missing field" diagnostics.
+  const operationPlan: ResolvedLifeOperationPlan =
+    reuseDeferredDraft && deferredDraft
+      ? {
+          confidence: 1,
+          missing: [] as ExtractedLifeMissingField[],
+          operation: "create",
+          kind:
+            deferredDraft.operation === "create_goal" ? "goal" : "definition",
+          shouldAct: true,
+        }
+      : explicitAction
         ? {
             confidence: 1,
-            missing: [] as ExtractedLifeMissingField[],
-            operation: "create",
-            kind:
-              deferredDraft.operation === "create_goal" ? "goal" : "definition",
+            missing: [],
+            operation: explicitAction.operation,
+            kind: explicitAction.kind,
             shouldAct: true,
           }
-        : explicitAction
-          ? {
-              confidence: 1,
-              missing: [],
-              operation: explicitAction.operation,
-              kind: explicitAction.kind,
-              shouldAct: true,
-            }
-          : await routeLifeSubaction({
-              runtime,
-              message,
-              state,
-              options,
-              intent,
-              explicitSubaction,
-            });
-    const explicitKind: LifeKind | undefined =
-      params.kind === "definition" || params.kind === "goal"
-        ? params.kind
-        : undefined;
-    const resolvedKind: LifeKind | undefined =
-      operationPlan.kind ?? explicitKind;
-    const forceCreateExecution = shouldForceLifeCreateExecution({
-      intent,
+        : await routeLifeSubaction({
+            runtime,
+            message,
+            state,
+            options,
+            intent,
+            explicitSubaction,
+          });
+  const explicitKind: LifeKind | undefined =
+    params.kind === "definition" || params.kind === "goal"
+      ? params.kind
+      : undefined;
+  const resolvedKind: LifeKind | undefined = operationPlan.kind ?? explicitKind;
+  const forceCreateExecution = shouldForceLifeCreateExecution({
+    intent,
+    missing: operationPlan.missing,
+    operation: operationPlan.operation,
+    kind: resolvedKind,
+    details,
+    title: params.title,
+  });
+  if (!operationPlan.shouldAct && !forceCreateExecution) {
+    const fallback = buildLifeClarificationFallback({
       missing: operationPlan.missing,
       operation: operationPlan.operation,
       kind: resolvedKind,
-      details,
-      title: params.title,
     });
-    if (!operationPlan.shouldAct && !forceCreateExecution) {
-      const fallback = buildLifeClarificationFallback({
-        missing: operationPlan.missing,
-        operation: operationPlan.operation,
-        kind: resolvedKind,
-      });
-      return {
-        success: true,
-        text: await renderLifeActionReply({
-          runtime,
-          message,
-          state,
-          intent,
-          scenario:
-            operationPlan.operation === "create" && resolvedKind === "goal"
-              ? "clarify_create_goal"
-              : "clarify_create_definition",
-          fallback,
-          context: {
-            missing: operationPlan.missing,
-            operation: operationPlan.operation,
-          },
-        }),
-        data: {
-          actionName: "LIFE",
-          noop: true,
-          suggestedOperation: operationPlan.operation,
+    return {
+      success: true,
+      text: await renderLifeActionReply({
+        runtime,
+        message,
+        state,
+        intent,
+        scenario:
+          operationPlan.operation === "create" && resolvedKind === "goal"
+            ? "clarify_create_goal"
+            : "clarify_create_definition",
+        fallback,
+        context: {
+          missing: operationPlan.missing,
+          operation: operationPlan.operation,
         },
-      };
-    }
-    const operation: LifeOwnedOperation | null = forceCreateExecution
-      ? "create"
-      : isLifeOwnedOperation(operationPlan.operation)
-        ? operationPlan.operation
-        : null;
-    const queryOperation = forceCreateExecution
-      ? null
-      : !isLifeOwnedOperation(operationPlan.operation)
-        ? operationPlan.operation
-        : null;
-    const service = new LifeOpsService(runtime);
-    if (queryOperation === "query_calendar_today") {
-      return {
-        success: false,
-        text:
-          "Calendar access is not available. Grant Apple Calendar access or connect Google Calendar to use calendar actions.",
-        data: {
-          actionName: "LIFE",
-          operation: queryOperation,
-        },
-      };
-    }
-    if (queryOperation === "query_calendar_next") {
-      return {
-        success: false,
-        text:
-          "Calendar access is not available. Grant Apple Calendar access or connect Google Calendar to use calendar actions.",
-        data: {
-          actionName: "LIFE",
-          operation: queryOperation,
-        },
-      };
-    }
-    if (queryOperation === "query_email") {
-      return {
-        success: false,
-        text:
-          "Gmail is not connected. Connect Google in LifeOps settings to use Gmail actions.",
-        data: {
-          actionName: "LIFE",
-          operation: queryOperation,
-        },
-      };
-    }
-    if (queryOperation === "query_overview") {
-      const overview = await service.getOverview();
-      const userQuery = messageText(message) || intent || "overview";
-      const fallback = formatOverviewForQuery(overview, userQuery);
-      return {
-        success: true,
-        text: await renderLifeActionReply({
-          runtime,
-          message,
-          state,
-          intent: userQuery,
-          scenario: "overview",
-          fallback,
-          context: {
-            summary: overview.owner.summary,
-            occurrenceTitles: overview.owner.occurrences
-              .slice(0, 6)
-              .map((occurrence) => occurrence.title),
-            goalTitles: overview.owner.goals
-              .slice(0, 3)
-              .map((goal) => goal.title),
-          },
-        }),
-        data: toActionData(overview),
-      };
-    }
-    // Internal handler dispatch key (definition vs goal split lives here).
-    // For create/update/delete, infer kind from explicit param, plan, draft, or
-    // intent; for occurrence-level verbs the kind is irrelevant.
-    const kind: LifeKind =
-      resolvedKind ??
-      (operation === "create" ||
-      operation === "update" ||
-      operation === "delete"
-        ? inferLifeKindFromIntent(intent)
-        : "definition");
-    const internalOp: InternalLifeOp | null = operation
-      ? toInternalLifeOp(operation, kind)
+      }),
+      data: {
+        actionName: ownerSurfaceActionName,
+        noop: true,
+        suggestedOperation: operationPlan.operation,
+      },
+    };
+  }
+  const operation: LifeOwnedOperation | null = forceCreateExecution
+    ? "create"
+    : isLifeOwnedOperation(operationPlan.operation)
+      ? operationPlan.operation
       : null;
-    if (!operation) {
-      const fallback = "Tell me what LifeOps action you want me to take.";
-      return {
-        success: true,
-        text: await renderLifeActionReply({
-          runtime,
-          message,
-          state,
-          intent,
-          scenario: "reply_only",
-          fallback,
-          context: {
-            reason: "missing_operation_after_extraction",
-          },
-        }),
-        data: {
-          actionName: "LIFE",
-          noop: true,
+  const queryOperation = forceCreateExecution
+    ? null
+    : !isLifeOwnedOperation(operationPlan.operation)
+      ? operationPlan.operation
+      : null;
+  const service = new LifeOpsService(runtime);
+  if (queryOperation === "query_calendar_today") {
+    return {
+      success: false,
+      text: "Calendar access is not available. Grant Apple Calendar access or connect Google Calendar to use calendar actions.",
+      data: {
+        actionName: ownerSurfaceActionName,
+        operation: queryOperation,
+      },
+    };
+  }
+  if (queryOperation === "query_calendar_next") {
+    return {
+      success: false,
+      text: "Calendar access is not available. Grant Apple Calendar access or connect Google Calendar to use calendar actions.",
+      data: {
+        actionName: ownerSurfaceActionName,
+        operation: queryOperation,
+      },
+    };
+  }
+  if (queryOperation === "query_email") {
+    return {
+      success: false,
+      text: "Gmail is not connected. Connect Google in LifeOps settings to use Gmail actions.",
+      data: {
+        actionName: ownerSurfaceActionName,
+        operation: queryOperation,
+      },
+    };
+  }
+  if (queryOperation === "query_overview") {
+    const overview = await service.getOverview();
+    const userQuery = messageText(message) || intent || "overview";
+    const fallback = formatOverviewForQuery(overview, userQuery);
+    return {
+      success: true,
+      text: await renderLifeActionReply({
+        runtime,
+        message,
+        state,
+        intent: userQuery,
+        scenario: "overview",
+        fallback,
+        context: {
+          summary: overview.owner.summary,
+          occurrenceTitles: overview.owner.occurrences
+            .slice(0, 6)
+            .map((occurrence) => occurrence.title),
+          goalTitles: overview.owner.goals
+            .slice(0, 3)
+            .map((goal) => goal.title),
         },
-      };
-    }
-    const domain = detailString(details, "domain") as LifeOpsDomain | undefined;
-    const ownership = requestedOwnership(domain);
-    const targetName = params.target ?? params.title;
-    const createConfirmed =
-      deferredDraftReuseMode === "confirm" ||
-      detailBoolean(details, "confirmed") === true;
+      }),
+      data: toActionData(overview),
+    };
+  }
+  // Internal handler dispatch key (definition vs goal split lives here).
+  // For create/update/delete, infer kind from explicit param, plan, draft, or
+  // intent; for occurrence-level verbs the kind is irrelevant.
+  const kind: LifeKind =
+    resolvedKind ??
+    (operation === "create" || operation === "update" || operation === "delete"
+      ? inferLifeKindFromIntent(intent)
+      : "definition");
+  const internalOp: InternalLifeOp | null = operation
+    ? toInternalLifeOp(operation, kind)
+    : null;
+  if (!operation) {
+    const fallback = "Tell me what LifeOps action you want me to take.";
+    return {
+      success: true,
+      text: await renderLifeActionReply({
+        runtime,
+        message,
+        state,
+        intent,
+        scenario: "reply_only",
+        fallback,
+        context: {
+          reason: "missing_operation_after_extraction",
+        },
+      }),
+      data: {
+        actionName: ownerSurfaceActionName,
+        noop: true,
+      },
+    };
+  }
+  const domain = detailString(details, "domain") as LifeOpsDomain | undefined;
+  const ownership = requestedOwnership(domain);
+  const targetName = params.target ?? params.title;
+  const createConfirmed =
+    deferredDraftReuseMode === "confirm" ||
+    detailBoolean(details, "confirmed") === true;
 
-    try {
-      const createDefinition = async () => {
-        const deferredDefinitionDraft =
-          reuseDeferredDraft && deferredDraft?.operation === "create_definition"
-            ? deferredDraft
-            : null;
-        const editingDeferredDefinitionDraft =
-          deferredDraftReuseMode === "edit" &&
-          deferredDefinitionDraft?.operation === "create_definition";
-        const explicitCadenceDetail = normalizeCadenceDetail(
-          detailObject(details, "cadence"),
-        );
-        const hasCompleteNativeDefinitionCreatePlan = Boolean(
-          params.title &&
-            explicitCadenceDetail &&
-            detailString(details, "kind"),
-        );
-        const fallbackTitle = deferredDefinitionDraft?.request.title ?? null;
-        let title: string | null = editingDeferredDefinitionDraft
-          ? (params.title ?? fallbackTitle)
-          : (fallbackTitle ?? params.title ?? null);
-        const fallbackCadence = deferredDefinitionDraft?.request.cadence;
-        let cadence: LifeOpsCadence | undefined = editingDeferredDefinitionDraft
-          ? (explicitCadenceDetail ?? fallbackCadence ?? undefined)
-          : (fallbackCadence ?? explicitCadenceDetail ?? undefined);
-        let windowPolicy:
-          | CreateLifeOpsDefinitionRequest["windowPolicy"]
-          | undefined = editingDeferredDefinitionDraft
-          ? ((detailObject(details, "windowPolicy") as unknown as
-              | CreateLifeOpsDefinitionRequest["windowPolicy"]
-              | undefined) ?? deferredDefinitionDraft?.request.windowPolicy)
-          : (deferredDefinitionDraft?.request.windowPolicy ??
-            (detailObject(details, "windowPolicy") as unknown as
-              | CreateLifeOpsDefinitionRequest["windowPolicy"]
-              | undefined));
-        const explicitPriority = detailNumber(details, "priority");
-        const explicitDescription = detailString(details, "description");
-        const explicitMetadata = detailObject(details, "metadata") as
-          | Record<string, unknown>
-          | undefined;
+  try {
+    const createDefinition = async () => {
+      const deferredDefinitionDraft =
+        reuseDeferredDraft && deferredDraft?.operation === "create_definition"
+          ? deferredDraft
+          : null;
+      const editingDeferredDefinitionDraft =
+        deferredDraftReuseMode === "edit" &&
+        deferredDefinitionDraft?.operation === "create_definition";
+      const explicitCadenceDetail = normalizeCadenceDetail(
+        detailObject(details, "cadence"),
+      );
+      const hasCompleteNativeDefinitionCreatePlan = Boolean(
+        params.title && explicitCadenceDetail && detailString(details, "kind"),
+      );
+      const fallbackTitle = deferredDefinitionDraft?.request.title ?? null;
+      let title: string | null = editingDeferredDefinitionDraft
+        ? (params.title ?? fallbackTitle)
+        : (fallbackTitle ?? params.title ?? null);
+      const fallbackCadence = deferredDefinitionDraft?.request.cadence;
+      let cadence: LifeOpsCadence | undefined = editingDeferredDefinitionDraft
+        ? (explicitCadenceDetail ?? fallbackCadence ?? undefined)
+        : (fallbackCadence ?? explicitCadenceDetail ?? undefined);
+      let windowPolicy:
+        | CreateLifeOpsDefinitionRequest["windowPolicy"]
+        | undefined = editingDeferredDefinitionDraft
+        ? ((detailObject(details, "windowPolicy") as unknown as
+            | CreateLifeOpsDefinitionRequest["windowPolicy"]
+            | undefined) ?? deferredDefinitionDraft?.request.windowPolicy)
+        : (deferredDefinitionDraft?.request.windowPolicy ??
+          (detailObject(details, "windowPolicy") as unknown as
+            | CreateLifeOpsDefinitionRequest["windowPolicy"]
+            | undefined));
+      const explicitPriority = detailNumber(details, "priority");
+      const explicitDescription = detailString(details, "description");
+      const explicitMetadata = detailObject(details, "metadata") as
+        | Record<string, unknown>
+        | undefined;
 
-        // Track whether cadence/title came from explicit high-confidence
-        // sources so the planner only fills genuine gaps.
-        const hadExplicitCadence = Boolean(
-          (editingDeferredDefinitionDraft
-            ? (explicitCadenceDetail ??
-              deferredDefinitionDraft?.request.cadence)
-            : deferredDefinitionDraft?.request.cadence) ??
-            explicitCadenceDetail,
-        );
-        const hadExplicitTitle = Boolean(
-          (editingDeferredDefinitionDraft
-            ? params.title
-            : deferredDefinitionDraft?.request.title) ?? params.title,
-        );
+      // Track whether cadence/title came from explicit high-confidence
+      // sources so the planner only fills genuine gaps.
+      const hadExplicitCadence = Boolean(
+        (editingDeferredDefinitionDraft
+          ? (explicitCadenceDetail ?? deferredDefinitionDraft?.request.cadence)
+          : deferredDefinitionDraft?.request.cadence) ?? explicitCadenceDetail,
+      );
+      const hadExplicitTitle = Boolean(
+        (editingDeferredDefinitionDraft
+          ? params.title
+          : deferredDefinitionDraft?.request.title) ?? params.title,
+      );
 
-        // Parameter enhancement fills gaps when structured planner input is incomplete.
-        // Skip when options.parameters already contain the complete
-        // definition-create shape, or when reusing a confirmed deferred draft.
-        let llmPlan: Awaited<
-          ReturnType<typeof extractTaskCreatePlanWithLlm>
-        > | null = null;
-        let llmDescription: string | undefined;
-        let llmPriority: number | undefined;
-        let llmRequestKind: NativeAppleReminderLikeKind | null = null;
-        if (
-          (!deferredDefinitionDraft || editingDeferredDefinitionDraft) &&
-          !hasCompleteNativeDefinitionCreatePlan
-        ) {
-          llmPlan = await extractTaskCreatePlanWithLlm({
-            runtime,
-            intent,
-            state: state ?? undefined,
-            message: message ?? undefined,
-          });
-          const shouldHonorPlannerResponse =
-            llmPlan?.mode === "respond" &&
-            Boolean(llmPlan.response) &&
-            !editingDeferredDefinitionDraft &&
-            !params.title &&
-            !explicitCadenceDetail &&
-            !detailString(details, "description") &&
-            !detailString(details, "goalId") &&
-            !detailString(details, "goalTitle") &&
-            !detailString(details, "kind");
-          if (shouldHonorPlannerResponse && llmPlan?.response) {
-            return {
-              success: true as const,
-              text: llmPlan.response,
-            };
-          }
-          if (llmPlan) {
-            llmRequestKind = llmPlan.requestKind;
-            if (
-              !hadExplicitTitle &&
-              shouldAdoptPlannerTitle({
-                currentTitle: title,
-                plannerTitle: llmPlan.title,
-              })
-            ) {
-              title = llmPlan.title;
-            }
-            if (
-              (editingDeferredDefinitionDraft || !hadExplicitCadence) &&
-              llmPlan.cadenceKind
-            ) {
-              const llmCadenceTimeZone = normalizeLifeTimeZoneToken(
-                detailString(details, "timeZone") ??
-                  llmPlan.timeZone ??
-                  deferredDefinitionDraft?.request.timezone ??
-                  windowPolicy?.timezone,
-              );
-              const llmCadence = buildCadenceFromLlmParams(llmPlan, {
-                intent,
-                timeZone: llmCadenceTimeZone ?? undefined,
-              });
-              if (
-                llmCadence &&
-                shouldAdoptPlannerCadence({
-                  currentCadence: cadence,
-                  plannerCadence: llmCadence.cadence,
-                })
-              ) {
-                cadence = llmCadence.cadence;
-                windowPolicy = llmCadence.windowPolicy ?? windowPolicy;
-              }
-            }
-            if (!explicitDescription && llmPlan.description) {
-              llmDescription = llmPlan.description;
-            }
-            if (explicitPriority === undefined && llmPlan.priority) {
-              llmPriority = llmPlan.priority;
-            }
-          }
-        }
-        const resolvedTimeZone = normalizeLifeTimeZoneToken(
-          detailString(details, "timeZone") ??
-            llmPlan?.timeZone ??
-            deferredDefinitionDraft?.request.timezone ??
-            windowPolicy?.timezone,
-        );
-        const timedRequestKind = llmRequestKind;
-        const nativeAppleMetadata =
-          timedRequestKind && cadence?.kind === "once"
-            ? buildNativeAppleReminderMetadata({
-                kind: timedRequestKind,
-                source: "llm",
-              })
-            : undefined;
-        const definitionMetadata = editingDeferredDefinitionDraft
-          ? mergeMetadataRecords(
-              deferredDefinitionDraft?.request.metadata,
-              mergeMetadataRecords(explicitMetadata, nativeAppleMetadata),
-            )
-          : (deferredDefinitionDraft?.request.metadata ??
-            mergeMetadataRecords(explicitMetadata, nativeAppleMetadata));
-
-        if (!title) {
-          const fallback = "What should I call it?";
-          return {
-            success: false as const,
-            text: await renderLifeActionReply({
-              runtime,
-              message,
-              state,
-              intent,
-              scenario: "clarify_create_definition",
-              fallback,
-              context: {
-                missing: ["title"],
-                operation: "create_definition",
-              },
-            }),
-            // Asking the owner to fill in a missing field — selection +
-            // execution were both correct, terminal state is "needs human
-            // input". Flag so the native planner chain breaks and the spy
-            // scores this as completed.
-            values: {
-              success: false,
-              error: "MISSING_DEFINITION_FIELD",
-              missingField: "title",
-              requiresConfirmation: true,
-            },
-            data: {
-              actionName: "LIFE",
-              missingField: "title",
-              requiresConfirmation: true,
-            },
-          };
-        }
-        if (!cadence) {
-          const fallback = "When should it happen?";
-          return {
-            success: false as const,
-            text: await renderLifeActionReply({
-              runtime,
-              message,
-              state,
-              intent,
-              scenario: "clarify_create_definition",
-              fallback,
-              context: {
-                missing: ["schedule"],
-                operation: "create_definition",
-              },
-            }),
-            values: {
-              success: false,
-              error: "MISSING_DEFINITION_FIELD",
-              missingField: "schedule",
-              requiresConfirmation: true,
-            },
-            data: {
-              actionName: "LIFE",
-              missingField: "schedule",
-              requiresConfirmation: true,
-            },
-          };
-        }
-        const kind =
-          (editingDeferredDefinitionDraft
-            ? (detailString(details, "kind") as
-                | CreateLifeOpsDefinitionRequest["kind"]
-                | undefined)
-            : deferredDefinitionDraft?.request.kind) ??
-          (detailString(details, "kind") as
-            | CreateLifeOpsDefinitionRequest["kind"]
-            | undefined) ??
-          "habit";
-        const definitionDraft: DeferredLifeDefinitionDraft = {
+      // Parameter enhancement fills gaps when structured planner input is incomplete.
+      // Skip when options.parameters already contain the complete
+      // definition-create shape, or when reusing a confirmed deferred draft.
+      let llmPlan: Awaited<
+        ReturnType<typeof extractTaskCreatePlanWithLlm>
+      > | null = null;
+      let llmDescription: string | undefined;
+      let llmPriority: number | undefined;
+      let llmRequestKind: NativeAppleReminderLikeKind | null = null;
+      if (
+        (!deferredDefinitionDraft || editingDeferredDefinitionDraft) &&
+        !hasCompleteNativeDefinitionCreatePlan
+      ) {
+        llmPlan = await extractTaskCreatePlanWithLlm({
+          runtime,
           intent,
-          operation: "create_definition",
-          createdAt: editingDeferredDefinitionDraft
-            ? Date.now()
-            : (deferredDefinitionDraft?.createdAt ?? Date.now()),
-          request: {
-            cadence,
-            description:
-              explicitDescription ??
-              llmDescription ??
-              (editingDeferredDefinitionDraft
-                ? deferredDefinitionDraft?.request.description
-                : undefined),
-            goalRef:
-              detailString(details, "goalId") ??
-              detailString(details, "goalTitle") ??
-              deferredDefinitionDraft?.request.goalRef ??
-              undefined,
-            kind,
-            priority:
-              explicitPriority ??
-              llmPriority ??
-              deferredDefinitionDraft?.request.priority,
-            progressionRule:
-              (detailObject(
-                details,
-                "progressionRule",
-              ) as CreateLifeOpsDefinitionRequest["progressionRule"]) ??
-              deferredDefinitionDraft?.request.progressionRule,
-            reminderPlan:
-              (detailObject(details, "reminderPlan") as
-                | CreateLifeOpsDefinitionRequest["reminderPlan"]
-                | undefined) ??
-              deferredDefinitionDraft?.request.reminderPlan ??
-              buildDefaultReminderPlan(`${title} reminder`),
-            timezone:
-              normalizeLifeTimeZoneToken(llmPlan?.timeZone) ??
-              normalizeLifeTimeZoneToken(
-                resolvedTimeZone ?? deferredDefinitionDraft?.request.timezone,
-              ) ??
-              resolvedTimeZone ??
-              deferredDefinitionDraft?.request.timezone,
-            title,
-            metadata: definitionMetadata,
-            windowPolicy,
-            websiteAccess:
-              (detailObject(details, "websiteAccess") as unknown as
-                | CreateLifeOpsDefinitionRequest["websiteAccess"]
-                | undefined) ?? deferredDefinitionDraft?.request.websiteAccess,
-          },
-        };
-        if (
-          shouldRequireLifeCreateConfirmation({
-            confirmed: createConfirmed,
-            messageSource:
-              typeof message.content?.source === "string"
-                ? message.content.source
-                : undefined,
-            requestKind: timedRequestKind,
-            cadence: definitionDraft.request.cadence,
-          })
-        ) {
-          const fallback = `I can save this as a ${definitionDraft.request.kind} named "${definitionDraft.request.title}" that happens ${summarizeCadence(definitionDraft.request.cadence)}. Confirm and I'll save it, or tell me what to change.`;
+          state: state ?? undefined,
+          message: message ?? undefined,
+        });
+        const shouldHonorPlannerResponse =
+          llmPlan?.mode === "respond" &&
+          Boolean(llmPlan.response) &&
+          !editingDeferredDefinitionDraft &&
+          !params.title &&
+          !explicitCadenceDetail &&
+          !detailString(details, "description") &&
+          !detailString(details, "goalId") &&
+          !detailString(details, "goalTitle") &&
+          !detailString(details, "kind");
+        if (shouldHonorPlannerResponse && llmPlan?.response) {
           return {
             success: true as const,
-            text: await renderLifeActionReply({
-              runtime,
-              message,
-              state,
-              intent,
-              scenario: "preview_definition",
-              fallback,
-              context: {
-                draft: definitionDraft.request,
-                requestKind: timedRequestKind,
-              },
-            }),
-            data: {
-              actionName: "LIFE",
-              deferred: true,
-              lifeDraft: definitionDraft,
-              preview: {
-                cadence: definitionDraft.request.cadence,
-                kind: definitionDraft.request.kind,
-                title: definitionDraft.request.title,
-              },
-            },
+            text: llmPlan.response,
           };
         }
-        const resolvedGoal = definitionDraft.request.goalRef
-          ? await resolveGoal(service, definitionDraft.request.goalRef, domain)
-          : null;
+        if (llmPlan) {
+          llmRequestKind = llmPlan.requestKind;
+          if (
+            !hadExplicitTitle &&
+            shouldAdoptPlannerTitle({
+              currentTitle: title,
+              plannerTitle: llmPlan.title,
+            })
+          ) {
+            title = llmPlan.title;
+          }
+          if (
+            (editingDeferredDefinitionDraft || !hadExplicitCadence) &&
+            llmPlan.cadenceKind
+          ) {
+            const llmCadenceTimeZone = normalizeLifeTimeZoneToken(
+              detailString(details, "timeZone") ??
+                llmPlan.timeZone ??
+                deferredDefinitionDraft?.request.timezone ??
+                windowPolicy?.timezone,
+            );
+            const llmCadence = buildCadenceFromLlmParams(llmPlan, {
+              intent,
+              timeZone: llmCadenceTimeZone ?? undefined,
+            });
+            if (
+              llmCadence &&
+              shouldAdoptPlannerCadence({
+                currentCadence: cadence,
+                plannerCadence: llmCadence.cadence,
+              })
+            ) {
+              cadence = llmCadence.cadence;
+              windowPolicy = llmCadence.windowPolicy ?? windowPolicy;
+            }
+          }
+          if (!explicitDescription && llmPlan.description) {
+            llmDescription = llmPlan.description;
+          }
+          if (explicitPriority === undefined && llmPlan.priority) {
+            llmPriority = llmPlan.priority;
+          }
+        }
+      }
+      const resolvedTimeZone = normalizeLifeTimeZoneToken(
+        detailString(details, "timeZone") ??
+          llmPlan?.timeZone ??
+          deferredDefinitionDraft?.request.timezone ??
+          windowPolicy?.timezone,
+      );
+      const timedRequestKind = llmRequestKind;
+      const nativeAppleMetadata =
+        timedRequestKind && cadence?.kind === "once"
+          ? buildNativeAppleReminderMetadata({
+              kind: timedRequestKind,
+              source: "llm",
+            })
+          : undefined;
+      const definitionMetadata = editingDeferredDefinitionDraft
+        ? mergeMetadataRecords(
+            deferredDefinitionDraft?.request.metadata,
+            mergeMetadataRecords(explicitMetadata, nativeAppleMetadata),
+          )
+        : (deferredDefinitionDraft?.request.metadata ??
+          mergeMetadataRecords(explicitMetadata, nativeAppleMetadata));
 
-        const created = await service.createDefinition({
-          ownership,
-          kind: definitionDraft.request.kind,
-          title: definitionDraft.request.title,
-          description: definitionDraft.request.description,
-          originalIntent:
-            definitionDraft.intent || definitionDraft.request.title,
-          cadence: definitionDraft.request.cadence,
+      if (!title) {
+        const fallback = "What should I call it?";
+        return {
+          success: false as const,
+          text: await renderLifeActionReply({
+            runtime,
+            message,
+            state,
+            intent,
+            scenario: "clarify_create_definition",
+            fallback,
+            context: {
+              missing: ["title"],
+              operation: "create_definition",
+            },
+          }),
+          // Asking the owner to fill in a missing field — selection +
+          // execution were both correct, terminal state is "needs human
+          // input". Flag so the native planner chain breaks and the spy
+          // scores this as completed.
+          values: {
+            success: false,
+            error: "MISSING_DEFINITION_FIELD",
+            missingField: "title",
+            requiresConfirmation: true,
+          },
+          data: {
+            actionName: ownerSurfaceActionName,
+            missingField: "title",
+            requiresConfirmation: true,
+          },
+        };
+      }
+      if (!cadence) {
+        const fallback = "When should it happen?";
+        return {
+          success: false as const,
+          text: await renderLifeActionReply({
+            runtime,
+            message,
+            state,
+            intent,
+            scenario: "clarify_create_definition",
+            fallback,
+            context: {
+              missing: ["schedule"],
+              operation: "create_definition",
+            },
+          }),
+          values: {
+            success: false,
+            error: "MISSING_DEFINITION_FIELD",
+            missingField: "schedule",
+            requiresConfirmation: true,
+          },
+          data: {
+            actionName: ownerSurfaceActionName,
+            missingField: "schedule",
+            requiresConfirmation: true,
+          },
+        };
+      }
+      const kind =
+        (editingDeferredDefinitionDraft
+          ? (detailString(details, "kind") as
+              | CreateLifeOpsDefinitionRequest["kind"]
+              | undefined)
+          : deferredDefinitionDraft?.request.kind) ??
+        (detailString(details, "kind") as
+          | CreateLifeOpsDefinitionRequest["kind"]
+          | undefined) ??
+        "habit";
+      const definitionDraft: DeferredLifeDefinitionDraft = {
+        intent,
+        operation: "create_definition",
+        createdAt: editingDeferredDefinitionDraft
+          ? Date.now()
+          : (deferredDefinitionDraft?.createdAt ?? Date.now()),
+        request: {
+          cadence,
+          description:
+            explicitDescription ??
+            llmDescription ??
+            (editingDeferredDefinitionDraft
+              ? deferredDefinitionDraft?.request.description
+              : undefined),
+          goalRef:
+            detailString(details, "goalId") ??
+            detailString(details, "goalTitle") ??
+            deferredDefinitionDraft?.request.goalRef ??
+            undefined,
+          kind,
+          priority:
+            explicitPriority ??
+            llmPriority ??
+            deferredDefinitionDraft?.request.priority,
+          progressionRule:
+            (detailObject(
+              details,
+              "progressionRule",
+            ) as CreateLifeOpsDefinitionRequest["progressionRule"]) ??
+            deferredDefinitionDraft?.request.progressionRule,
+          reminderPlan:
+            (detailObject(details, "reminderPlan") as
+              | CreateLifeOpsDefinitionRequest["reminderPlan"]
+              | undefined) ??
+            deferredDefinitionDraft?.request.reminderPlan ??
+            buildDefaultReminderPlan(`${title} reminder`),
           timezone:
-            normalizeLifeTimeZoneToken(definitionDraft.request.timezone) ??
-            definitionDraft.request.timezone,
-          priority: definitionDraft.request.priority,
-          windowPolicy: definitionDraft.request.windowPolicy,
-          progressionRule: definitionDraft.request.progressionRule,
-          reminderPlan: definitionDraft.request.reminderPlan,
-          metadata: definitionDraft.request.metadata,
-          websiteAccess: definitionDraft.request.websiteAccess,
-          goalId: resolvedGoal?.goal.id ?? null,
-          source: "chat",
-        });
-        const fallback = `Saved "${created.definition.title}" as ${summarizeCadence(created.definition.cadence)}.`;
+            normalizeLifeTimeZoneToken(llmPlan?.timeZone) ??
+            normalizeLifeTimeZoneToken(
+              resolvedTimeZone ?? deferredDefinitionDraft?.request.timezone,
+            ) ??
+            resolvedTimeZone ??
+            deferredDefinitionDraft?.request.timezone,
+          title,
+          metadata: definitionMetadata,
+          windowPolicy,
+          websiteAccess:
+            (detailObject(details, "websiteAccess") as unknown as
+              | CreateLifeOpsDefinitionRequest["websiteAccess"]
+              | undefined) ?? deferredDefinitionDraft?.request.websiteAccess,
+        },
+      };
+      if (
+        shouldRequireLifeCreateConfirmation({
+          confirmed: createConfirmed,
+          messageSource:
+            typeof message.content?.source === "string"
+              ? message.content.source
+              : undefined,
+          requestKind: timedRequestKind,
+          cadence: definitionDraft.request.cadence,
+        })
+      ) {
+        const fallback = `I can save this as a ${definitionDraft.request.kind} named "${definitionDraft.request.title}" that happens ${summarizeCadence(definitionDraft.request.cadence)}. Confirm and I'll save it, or tell me what to change.`;
         return {
           success: true as const,
           text: await renderLifeActionReply({
@@ -2738,462 +2695,258 @@ export async function runLifeOperationHandler(
             message,
             state,
             intent,
-            scenario: "saved_definition",
+            scenario: "preview_definition",
             fallback,
             context: {
-              created: {
-                title: created.definition.title,
-                cadence: created.definition.cadence,
-              },
+              draft: definitionDraft.request,
               requestKind: timedRequestKind,
             },
           }),
-          data: toActionData(created),
-        };
-      };
-
-      // ── Mutations ───────────────────────────────────
-
-      if (internalOp === "create_definition") {
-        return await createDefinition();
-      }
-
-      if (internalOp === "create_goal") {
-        const deferredGoalDraft =
-          reuseDeferredDraft && deferredDraft?.operation === "create_goal"
-            ? deferredDraft
-            : null;
-        const editingDeferredGoalDraft =
-          deferredDraftReuseMode === "edit" &&
-          deferredGoalDraft?.operation === "create_goal";
-        const explicitDescription = detailString(details, "description");
-        const explicitCadence = normalizeCadenceDetail(
-          detailObject(details, "cadence"),
-        ) as CreateLifeOpsGoalRequest["cadence"];
-        const explicitSuccessCriteria = detailObject(
-          details,
-          "successCriteria",
-        ) as CreateLifeOpsGoalRequest["successCriteria"] | undefined;
-        const explicitSupportStrategy = detailObject(
-          details,
-          "supportStrategy",
-        ) as CreateLifeOpsGoalRequest["supportStrategy"] | undefined;
-        const explicitMetadata = detailObject(details, "metadata") as
-          | CreateLifeOpsGoalRequest["metadata"]
-          | undefined;
-        let title: string | null = editingDeferredGoalDraft
-          ? (params.title ?? deferredGoalDraft?.request.title ?? null)
-          : (deferredGoalDraft?.request.title ?? params.title ?? null);
-        let description: string | undefined = editingDeferredGoalDraft
-          ? (explicitDescription ?? deferredGoalDraft?.request.description)
-          : (deferredGoalDraft?.request.description ?? explicitDescription);
-        let cadence = editingDeferredGoalDraft
-          ? (explicitCadence ?? deferredGoalDraft?.request.cadence)
-          : (deferredGoalDraft?.request.cadence ?? explicitCadence);
-        let successCriteria = editingDeferredGoalDraft
-          ? (explicitSuccessCriteria ??
-            deferredGoalDraft?.request.successCriteria)
-          : (deferredGoalDraft?.request.successCriteria ??
-            explicitSuccessCriteria);
-        let supportStrategy = editingDeferredGoalDraft
-          ? (explicitSupportStrategy ??
-            deferredGoalDraft?.request.supportStrategy)
-          : (deferredGoalDraft?.request.supportStrategy ??
-            explicitSupportStrategy);
-        let goalMetadata: CreateLifeOpsGoalRequest["metadata"] | undefined =
-          editingDeferredGoalDraft
-            ? (explicitMetadata ?? deferredGoalDraft?.request.metadata)
-            : (deferredGoalDraft?.request.metadata ?? explicitMetadata);
-        let evaluationSummary: string | null = null;
-
-        const hasExplicitGroundedGoal =
-          Boolean(title) &&
-          (createConfirmed ||
-            (Boolean(successCriteria) && Boolean(supportStrategy)));
-
-        if (
-          (!deferredGoalDraft || editingDeferredGoalDraft) &&
-          !hasExplicitGroundedGoal
-        ) {
-          const llmPlan = await extractGoalCreatePlanWithLlm({
-            runtime,
-            intent,
-            state: state ?? undefined,
-            message: message ?? undefined,
-          });
-          if (!title && llmPlan.title) {
-            title = llmPlan.title;
-          }
-          if (!description && llmPlan.description) {
-            description = llmPlan.description;
-          }
-          if (!cadence && llmPlan.cadence) {
-            cadence = llmPlan.cadence;
-          }
-          if (!successCriteria && llmPlan.successCriteria) {
-            successCriteria = llmPlan.successCriteria;
-          }
-          if (!supportStrategy && llmPlan.supportStrategy) {
-            supportStrategy = llmPlan.supportStrategy;
-          }
-          evaluationSummary = llmPlan.evaluationSummary;
-          if (
-            llmPlan.groundingState === "grounded" &&
-            llmPlan.successCriteria &&
-            title
-          ) {
-            goalMetadata = mergeGoalMetadataWithGrounding({
-              metadata: {
-                ...goalMetadata,
-                source: "chat",
-                originalIntent: intent,
-              },
-              nowIso: new Date().toISOString(),
-              plan: llmPlan,
-            });
-          }
-          if (
-            llmPlan.groundingState !== "grounded" ||
-            !title ||
-            !successCriteria ||
-            !supportStrategy
-          ) {
-            // A clarification request is a successful outcome from the
-            // agent's point of view — the agent chose to ask instead of
-            // invent an ungrounded goal. Callers rely on `success: true +
-            // data.noop: true` to distinguish a deliberate clarify from a
-            // handler error.
-            return {
-              success: true,
-              text:
-                llmPlan.response ??
-                "What would count as success for that goal, and over what time window?",
-              values: {
-                success: true,
-                error: "NOOP_GOAL_UNGROUNDED",
-                noop: true,
-                suggestedOperation: "create_goal",
-              },
-              data: {
-                actionName: "LIFE",
-                noop: true,
-                error: "NOOP_GOAL_UNGROUNDED",
-                suggestedOperation: "create_goal",
-              },
-            };
-          }
-        }
-
-        if (!title)
-          return {
-            success: false,
-            text: await renderLifeActionReply({
-              runtime,
-              message,
-              state,
-              intent,
-              scenario: "clarify_create_goal",
-              fallback: "What are you trying to achieve?",
-              context: {
-                missing: ["title"],
-                operation: "create_goal",
-              },
-            }),
-          };
-        const goalDraft: DeferredLifeGoalDraft = deferredGoalDraft ?? {
-          intent,
-          operation: "create_goal",
-          createdAt: Date.now(),
-          request: {
-            cadence,
-            description,
-            metadata: goalMetadata,
-            successCriteria,
-            supportStrategy,
-            title,
+          data: {
+            actionName: ownerSurfaceActionName,
+            deferred: true,
+            lifeDraft: definitionDraft,
+            preview: {
+              cadence: definitionDraft.request.cadence,
+              kind: definitionDraft.request.kind,
+              title: definitionDraft.request.title,
+            },
           },
         };
-        const experienceLoop = await service.buildGoalExperienceLoop({
-          title: goalDraft.request.title,
-          description: goalDraft.request.description,
-          successCriteria:
-            (goalDraft.request.successCriteria as
-              | Record<string, unknown>
-              | undefined) ?? null,
+      }
+      const resolvedGoal = definitionDraft.request.goalRef
+        ? await resolveGoal(service, definitionDraft.request.goalRef, domain)
+        : null;
+
+      const created = await service.createDefinition({
+        ownership,
+        kind: definitionDraft.request.kind,
+        title: definitionDraft.request.title,
+        description: definitionDraft.request.description,
+        originalIntent: definitionDraft.intent || definitionDraft.request.title,
+        cadence: definitionDraft.request.cadence,
+        timezone:
+          normalizeLifeTimeZoneToken(definitionDraft.request.timezone) ??
+          definitionDraft.request.timezone,
+        priority: definitionDraft.request.priority,
+        windowPolicy: definitionDraft.request.windowPolicy,
+        progressionRule: definitionDraft.request.progressionRule,
+        reminderPlan: definitionDraft.request.reminderPlan,
+        metadata: definitionDraft.request.metadata,
+        websiteAccess: definitionDraft.request.websiteAccess,
+        goalId: resolvedGoal?.goal.id ?? null,
+        source: "chat",
+      });
+      const fallback = `Saved "${created.definition.title}" as ${summarizeCadence(created.definition.cadence)}.`;
+      return {
+        success: true as const,
+        text: await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "saved_definition",
+          fallback,
+          context: {
+            created: {
+              title: created.definition.title,
+              cadence: created.definition.cadence,
+            },
+            requestKind: timedRequestKind,
+          },
+        }),
+        data: toActionData(created),
+      };
+    };
+
+    // ── Mutations ───────────────────────────────────
+
+    if (internalOp === "create_definition") {
+      return await createDefinition();
+    }
+
+    if (internalOp === "create_goal") {
+      const deferredGoalDraft =
+        reuseDeferredDraft && deferredDraft?.operation === "create_goal"
+          ? deferredDraft
+          : null;
+      const editingDeferredGoalDraft =
+        deferredDraftReuseMode === "edit" &&
+        deferredGoalDraft?.operation === "create_goal";
+      const explicitDescription = detailString(details, "description");
+      const explicitCadence = normalizeCadenceDetail(
+        detailObject(details, "cadence"),
+      ) as CreateLifeOpsGoalRequest["cadence"];
+      const explicitSuccessCriteria = detailObject(
+        details,
+        "successCriteria",
+      ) as CreateLifeOpsGoalRequest["successCriteria"] | undefined;
+      const explicitSupportStrategy = detailObject(
+        details,
+        "supportStrategy",
+      ) as CreateLifeOpsGoalRequest["supportStrategy"] | undefined;
+      const explicitMetadata = detailObject(details, "metadata") as
+        | CreateLifeOpsGoalRequest["metadata"]
+        | undefined;
+      let title: string | null = editingDeferredGoalDraft
+        ? (params.title ?? deferredGoalDraft?.request.title ?? null)
+        : (deferredGoalDraft?.request.title ?? params.title ?? null);
+      let description: string | undefined = editingDeferredGoalDraft
+        ? (explicitDescription ?? deferredGoalDraft?.request.description)
+        : (deferredGoalDraft?.request.description ?? explicitDescription);
+      let cadence = editingDeferredGoalDraft
+        ? (explicitCadence ?? deferredGoalDraft?.request.cadence)
+        : (deferredGoalDraft?.request.cadence ?? explicitCadence);
+      let successCriteria = editingDeferredGoalDraft
+        ? (explicitSuccessCriteria ??
+          deferredGoalDraft?.request.successCriteria)
+        : (deferredGoalDraft?.request.successCriteria ??
+          explicitSuccessCriteria);
+      let supportStrategy = editingDeferredGoalDraft
+        ? (explicitSupportStrategy ??
+          deferredGoalDraft?.request.supportStrategy)
+        : (deferredGoalDraft?.request.supportStrategy ??
+          explicitSupportStrategy);
+      let goalMetadata: CreateLifeOpsGoalRequest["metadata"] | undefined =
+        editingDeferredGoalDraft
+          ? (explicitMetadata ?? deferredGoalDraft?.request.metadata)
+          : (deferredGoalDraft?.request.metadata ?? explicitMetadata);
+      let evaluationSummary: string | null = null;
+
+      const hasExplicitGroundedGoal =
+        Boolean(title) &&
+        (createConfirmed ||
+          (Boolean(successCriteria) && Boolean(supportStrategy)));
+
+      if (
+        (!deferredGoalDraft || editingDeferredGoalDraft) &&
+        !hasExplicitGroundedGoal
+      ) {
+        const llmPlan = await extractGoalCreatePlanWithLlm({
+          runtime,
+          intent,
+          state: state ?? undefined,
+          message: message ?? undefined,
         });
+        if (!title && llmPlan.title) {
+          title = llmPlan.title;
+        }
+        if (!description && llmPlan.description) {
+          description = llmPlan.description;
+        }
+        if (!cadence && llmPlan.cadence) {
+          cadence = llmPlan.cadence;
+        }
+        if (!successCriteria && llmPlan.successCriteria) {
+          successCriteria = llmPlan.successCriteria;
+        }
+        if (!supportStrategy && llmPlan.supportStrategy) {
+          supportStrategy = llmPlan.supportStrategy;
+        }
+        evaluationSummary = llmPlan.evaluationSummary;
         if (
-          shouldRequireLifeCreateConfirmation({
-            confirmed: createConfirmed,
-            messageSource:
-              typeof message.content?.source === "string"
-                ? message.content.source
-                : undefined,
-          })
+          llmPlan.groundingState === "grounded" &&
+          llmPlan.successCriteria &&
+          title
         ) {
-          const fallbackParts = [
-            evaluationSummary
-              ? `I can save "${goalDraft.request.title}" as a goal. Success looks like this: ${evaluationSummary} Confirm and I'll save it, or tell me what to change.`
-              : `I can save this goal as "${goalDraft.request.title}". Confirm and I'll save it, or tell me what to change.`,
-          ];
-          const experienceSummary =
-            formatGoalExperienceLoopSummary(experienceLoop);
-          if (experienceSummary) {
-            fallbackParts.push(experienceSummary);
-          }
+          goalMetadata = mergeGoalMetadataWithGrounding({
+            metadata: {
+              ...goalMetadata,
+              source: "chat",
+              originalIntent: intent,
+            },
+            nowIso: new Date().toISOString(),
+            plan: llmPlan,
+          });
+        }
+        if (
+          llmPlan.groundingState !== "grounded" ||
+          !title ||
+          !successCriteria ||
+          !supportStrategy
+        ) {
+          // A clarification request is a successful outcome from the
+          // agent's point of view — the agent chose to ask instead of
+          // invent an ungrounded goal. Callers rely on `success: true +
+          // data.noop: true` to distinguish a deliberate clarify from a
+          // handler error.
           return {
             success: true,
-            text: await renderLifeActionReply({
-              runtime,
-              message,
-              state,
-              intent,
-              scenario: "preview_goal",
-              fallback: fallbackParts.join(" "),
-              context: {
-                draft: goalDraft.request,
-                groundingSummary: evaluationSummary,
-                experienceLoop,
-              },
-            }),
-            data: {
-              actionName: "LIFE",
-              deferred: true,
-              lifeDraft: goalDraft,
-              experienceLoop,
-              preview: {
-                title: goalDraft.request.title,
-              },
-            },
-          };
-        }
-        const created = await service.createGoal({
-          ownership,
-          title: goalDraft.request.title,
-          description: goalDraft.request.description,
-          cadence: goalDraft.request.cadence,
-          supportStrategy: goalDraft.request.supportStrategy,
-          successCriteria: goalDraft.request.successCriteria,
-          metadata: {
-            ...goalDraft.request.metadata,
-            source: "chat",
-            originalIntent: goalDraft.intent || goalDraft.request.title,
-          },
-        });
-        const createdExperienceLoop = await service.buildGoalExperienceLoop({
-          goalId: created.goal.id,
-          title: created.goal.title,
-          description: created.goal.description,
-          successCriteria:
-            (created.goal.successCriteria as
-              | Record<string, unknown>
-              | undefined) ?? null,
-        });
-        const experienceSummary = formatGoalExperienceLoopSummary(
-          createdExperienceLoop,
-        );
-        const fallback = experienceSummary
-          ? `Saved goal "${created.goal.title}". ${experienceSummary}`
-          : `Saved goal "${created.goal.title}".`;
-        return {
-          success: true,
-          text: await renderLifeActionReply({
-            runtime,
-            message,
-            state,
-            intent,
-            scenario: "saved_goal",
-            fallback,
-            context: {
-              created: {
-                title: created.goal.title,
-                cadence: created.goal.cadence,
-              },
-              experienceLoop: createdExperienceLoop,
-            },
-          }),
-          data: toActionData({
-            ...created,
-            experienceLoop: createdExperienceLoop,
-          }),
-        };
-      }
-
-      if (internalOp === "update_definition") {
-        const target = await resolveDefinition(service, targetName, domain);
-        if (!target)
-          return {
-            success: false,
-            text: "I could not find that item to update.",
-          };
-        const request: UpdateLifeOpsDefinitionRequest = {
-          ownership,
-          title:
-            params.title !== target.definition.title ? params.title : undefined,
-          description: detailString(details, "description"),
-          cadence: normalizeCadenceDetail(detailObject(details, "cadence")),
-          priority: detailNumber(details, "priority"),
-          windowPolicy: detailObject(
-            details,
-            "windowPolicy",
-          ) as unknown as UpdateLifeOpsDefinitionRequest["windowPolicy"],
-          reminderPlan: detailObject(
-            details,
-            "reminderPlan",
-          ) as UpdateLifeOpsDefinitionRequest["reminderPlan"],
-        };
-
-        // If no explicit changes from structured details, try LLM extraction
-        const hasExplicitChanges = hasDefinitionUpdateChanges(request);
-        if (!hasExplicitChanges && intent) {
-          const llmFields = await extractUpdateFieldsWithLlm({
-            runtime,
-            intent,
-            currentTitle: target.definition.title,
-            currentCadenceKind: target.definition.cadence.kind,
-            currentWindows:
-              target.definition.windowPolicy?.windows?.map((w) => w.name) ?? [],
-          });
-          if (llmFields) {
-            if (llmFields.title) request.title = llmFields.title;
-            if (llmFields.priority) request.priority = llmFields.priority;
-            if (llmFields.description)
-              request.description = llmFields.description;
-            if (
-              llmFields.cadenceKind ||
-              llmFields.windows ||
-              llmFields.weekdays ||
-              llmFields.everyMinutes ||
-              llmFields.timeOfDay
-            ) {
-              const built = buildCadenceFromUpdateFields({
-                currentCadence: target.definition.cadence,
-                currentWindowPolicy: target.definition.windowPolicy,
-                timeZone: target.definition.timezone,
-                update: llmFields,
-              });
-              if (built) {
-                request.cadence = built.cadence;
-                request.windowPolicy = built.windowPolicy;
-              }
-            }
-          }
-        }
-
-        if (!hasDefinitionUpdateChanges(request)) {
-          return {
-            success: false,
-            text: `Tell me what to change about "${target.definition.title}" and I'll update it.`,
-          };
-        }
-
-        const updated = await service.updateDefinition(
-          target.definition.id,
-          request,
-        );
-        const fallback = `Updated "${updated.definition.title}".`;
-        return {
-          success: true,
-          text: await renderLifeActionReply({
-            runtime,
-            message,
-            state,
-            intent,
-            scenario: "updated_definition",
-            fallback,
-            context: {
-              previousTitle: target.definition.title,
-              updated: {
-                title: updated.definition.title,
-              },
-            },
-          }),
-          data: toActionData(updated),
-        };
-      }
-
-      if (internalOp === "update_goal") {
-        const target = await resolveGoal(service, targetName, domain);
-        if (!target)
-          return {
-            success: false,
-            text: "I could not find that goal to update.",
-          };
-        const request: UpdateLifeOpsGoalRequest = {
-          ownership,
-          title: params.title !== target.goal.title ? params.title : undefined,
-          description: detailString(details, "description"),
-          cadence: normalizeCadenceDetail(
-            detailObject(details, "cadence"),
-          ) as UpdateLifeOpsGoalRequest["cadence"],
-          supportStrategy: detailObject(details, "supportStrategy"),
-          successCriteria: detailObject(details, "successCriteria"),
-        };
-        const hasExplicitGoalChanges =
-          request.title !== undefined ||
-          request.description !== undefined ||
-          request.cadence !== undefined ||
-          request.supportStrategy !== undefined ||
-          request.successCriteria !== undefined;
-        if (!hasExplicitGoalChanges) {
-          const llmPlan = await extractGoalUpdatePlanWithLlm({
-            runtime,
-            currentGoal: target.goal,
-            intent,
-            state: state ?? undefined,
-            message: message ?? undefined,
-          });
-          if (llmPlan.mode === "respond") {
-            return {
+            text:
+              llmPlan.response ??
+              "What would count as success for that goal, and over what time window?",
+            values: {
               success: true,
-              text:
-                llmPlan.response ??
-                `Tell me what to change about "${target.goal.title}" and I'll update it.`,
-              data: {
-                actionName: "LIFE",
-                noop: true,
-                suggestedOperation: "update_goal",
-              },
-            };
-          }
-          if (llmPlan.title) request.title = llmPlan.title;
-          if (llmPlan.description) request.description = llmPlan.description;
-          if (llmPlan.cadence) request.cadence = llmPlan.cadence;
-          if (llmPlan.supportStrategy)
-            request.supportStrategy = llmPlan.supportStrategy;
-          if (llmPlan.successCriteria)
-            request.successCriteria = llmPlan.successCriteria;
-          if (llmPlan.groundingState) {
-            request.metadata = mergeGoalMetadataWithGrounding({
-              metadata: target.goal.metadata,
-              nowIso: new Date().toISOString(),
-              plan: {
-                cadence: llmPlan.cadence,
-                confidence: llmPlan.confidence,
-                evaluationSummary: llmPlan.evaluationSummary,
-                groundingState: llmPlan.groundingState,
-                missingCriticalFields: llmPlan.missingCriticalFields,
-                successCriteria:
-                  llmPlan.successCriteria ?? target.goal.successCriteria,
-                targetDomain: llmPlan.targetDomain,
-              },
-            });
-          }
-        }
-        if (
-          request.title === undefined &&
-          request.description === undefined &&
-          request.cadence === undefined &&
-          request.supportStrategy === undefined &&
-          request.successCriteria === undefined &&
-          request.metadata === undefined
-        ) {
-          return {
-            success: false,
-            text: `Tell me what to change about "${target.goal.title}" and I'll update it.`,
+              error: "NOOP_GOAL_UNGROUNDED",
+              noop: true,
+              suggestedOperation: "create_goal",
+            },
+            data: {
+              actionName: ownerSurfaceActionName,
+              noop: true,
+              error: "NOOP_GOAL_UNGROUNDED",
+              suggestedOperation: "create_goal",
+            },
           };
         }
-        const updated = await service.updateGoal(target.goal.id, request);
-        const fallback = `Updated goal "${updated.goal.title}".`;
+      }
+
+      if (!title)
+        return {
+          success: false,
+          text: await renderLifeActionReply({
+            runtime,
+            message,
+            state,
+            intent,
+            scenario: "clarify_create_goal",
+            fallback: "What are you trying to achieve?",
+            context: {
+              missing: ["title"],
+              operation: "create_goal",
+            },
+          }),
+        };
+      const goalDraft: DeferredLifeGoalDraft = deferredGoalDraft ?? {
+        intent,
+        operation: "create_goal",
+        createdAt: Date.now(),
+        request: {
+          cadence,
+          description,
+          metadata: goalMetadata,
+          successCriteria,
+          supportStrategy,
+          title,
+        },
+      };
+      const experienceLoop = await service.buildGoalExperienceLoop({
+        title: goalDraft.request.title,
+        description: goalDraft.request.description,
+        successCriteria:
+          (goalDraft.request.successCriteria as
+            | Record<string, unknown>
+            | undefined) ?? null,
+      });
+      if (
+        shouldRequireLifeCreateConfirmation({
+          confirmed: createConfirmed,
+          messageSource:
+            typeof message.content?.source === "string"
+              ? message.content.source
+              : undefined,
+        })
+      ) {
+        const fallbackParts = [
+          evaluationSummary
+            ? `I can save "${goalDraft.request.title}" as a goal. Success looks like this: ${evaluationSummary} Confirm and I'll save it, or tell me what to change.`
+            : `I can save this goal as "${goalDraft.request.title}". Confirm and I'll save it, or tell me what to change.`,
+        ];
+        const experienceSummary =
+          formatGoalExperienceLoopSummary(experienceLoop);
+        if (experienceSummary) {
+          fallbackParts.push(experienceSummary);
+        }
         return {
           success: true,
           text: await renderLifeActionReply({
@@ -3201,128 +2954,335 @@ export async function runLifeOperationHandler(
             message,
             state,
             intent,
-            scenario: "updated_goal",
-            fallback,
+            scenario: "preview_goal",
+            fallback: fallbackParts.join(" "),
             context: {
-              previousTitle: target.goal.title,
-              updated: {
-                title: updated.goal.title,
-              },
+              draft: goalDraft.request,
+              groundingSummary: evaluationSummary,
+              experienceLoop,
             },
           }),
-          data: toActionData(updated),
+          data: {
+            actionName: ownerSurfaceActionName,
+            deferred: true,
+            lifeDraft: goalDraft,
+            experienceLoop,
+            preview: {
+              title: goalDraft.request.title,
+            },
+          },
         };
       }
+      const created = await service.createGoal({
+        ownership,
+        title: goalDraft.request.title,
+        description: goalDraft.request.description,
+        cadence: goalDraft.request.cadence,
+        supportStrategy: goalDraft.request.supportStrategy,
+        successCriteria: goalDraft.request.successCriteria,
+        metadata: {
+          ...goalDraft.request.metadata,
+          source: "chat",
+          originalIntent: goalDraft.intent || goalDraft.request.title,
+        },
+      });
+      const createdExperienceLoop = await service.buildGoalExperienceLoop({
+        goalId: created.goal.id,
+        title: created.goal.title,
+        description: created.goal.description,
+        successCriteria:
+          (created.goal.successCriteria as
+            | Record<string, unknown>
+            | undefined) ?? null,
+      });
+      const experienceSummary = formatGoalExperienceLoopSummary(
+        createdExperienceLoop,
+      );
+      const fallback = experienceSummary
+        ? `Saved goal "${created.goal.title}". ${experienceSummary}`
+        : `Saved goal "${created.goal.title}".`;
+      return {
+        success: true,
+        text: await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "saved_goal",
+          fallback,
+          context: {
+            created: {
+              title: created.goal.title,
+              cadence: created.goal.cadence,
+            },
+            experienceLoop: createdExperienceLoop,
+          },
+        }),
+        data: toActionData({
+          ...created,
+          experienceLoop: createdExperienceLoop,
+        }),
+      };
+    }
 
-      if (internalOp === "delete_definition") {
-        const target = await resolveDefinition(service, targetName, domain);
-        if (!target)
-          return {
-            success: false,
-            text: "I could not find that item to delete.",
-          };
-        await service.deleteDefinition(target.definition.id);
-        const fallback = `Deleted "${target.definition.title}" and its occurrences.`;
+    if (internalOp === "update_definition") {
+      const target = await resolveDefinition(service, targetName, domain);
+      if (!target)
         return {
-          success: true,
-          text: await renderLifeActionReply({
-            runtime,
-            message,
-            state,
-            intent,
-            scenario: "deleted_definition",
-            fallback,
-            context: {
-              deleted: {
-                title: target.definition.title,
-              },
-            },
-          }),
+          success: false,
+          text: "I could not find that item to update.",
         };
-      }
+      const request: UpdateLifeOpsDefinitionRequest = {
+        ownership,
+        title:
+          params.title !== target.definition.title ? params.title : undefined,
+        description: detailString(details, "description"),
+        cadence: normalizeCadenceDetail(detailObject(details, "cadence")),
+        priority: detailNumber(details, "priority"),
+        windowPolicy: detailObject(
+          details,
+          "windowPolicy",
+        ) as unknown as UpdateLifeOpsDefinitionRequest["windowPolicy"],
+        reminderPlan: detailObject(
+          details,
+          "reminderPlan",
+        ) as UpdateLifeOpsDefinitionRequest["reminderPlan"],
+      };
 
-      if (internalOp === "delete_goal") {
-        const target = await resolveGoal(service, targetName, domain);
-        if (!target)
-          return {
-            success: false,
-            text: "I could not find that goal to delete.",
-          };
-        await service.deleteGoal(target.goal.id);
-        const fallback = `Deleted goal "${target.goal.title}".`;
-        return {
-          success: true,
-          text: await renderLifeActionReply({
-            runtime,
-            message,
-            state,
-            intent,
-            scenario: "deleted_goal",
-            fallback,
-            context: {
-              deleted: {
-                title: target.goal.title,
-              },
-            },
-          }),
-        };
-      }
-
-      if (internalOp === "complete_occurrence") {
-        // Direct occurrenceId path: when the planner already knows the
-        // occurrence id we skip title/intent matching.
-        const directOccurrenceId = detailString(details, "occurrenceId");
-        let resolvedTargetId: string;
-        if (directOccurrenceId) {
-          resolvedTargetId = directOccurrenceId;
-        } else {
-          const { match: target, ambiguousCandidates } =
-            await resolveOccurrenceWithIntentFallback({
-              service,
-              target: targetName,
-              domain,
-              intent,
-              operation,
-            });
-          if (!target) {
-            if (ambiguousCandidates.length > 0) {
-              return {
-                success: false,
-                text: `Multiple items match — which one?\n${ambiguousCandidates.map((t) => `  - ${t}`).join("\n")}`,
-              };
-            }
-            return {
-              success: false,
-              text: "I could not find that active item to complete.",
-            };
-          }
-          resolvedTargetId = target.id;
-        }
-        const completed = await service.completeOccurrence(resolvedTargetId, {
-          note: detailString(details, "note"),
+      // If no explicit changes from structured details, try LLM extraction
+      const hasExplicitChanges = hasDefinitionUpdateChanges(request);
+      if (!hasExplicitChanges && intent) {
+        const llmFields = await extractUpdateFieldsWithLlm({
+          runtime,
+          intent,
+          currentTitle: target.definition.title,
+          currentCadenceKind: target.definition.cadence.kind,
+          currentWindows:
+            target.definition.windowPolicy?.windows?.map((w) => w.name) ?? [],
         });
-        const fallback = `Marked "${completed.title}" done.`;
+        if (llmFields) {
+          if (llmFields.title) request.title = llmFields.title;
+          if (llmFields.priority) request.priority = llmFields.priority;
+          if (llmFields.description)
+            request.description = llmFields.description;
+          if (
+            llmFields.cadenceKind ||
+            llmFields.windows ||
+            llmFields.weekdays ||
+            llmFields.everyMinutes ||
+            llmFields.timeOfDay
+          ) {
+            const built = buildCadenceFromUpdateFields({
+              currentCadence: target.definition.cadence,
+              currentWindowPolicy: target.definition.windowPolicy,
+              timeZone: target.definition.timezone,
+              update: llmFields,
+            });
+            if (built) {
+              request.cadence = built.cadence;
+              request.windowPolicy = built.windowPolicy;
+            }
+          }
+        }
+      }
+
+      if (!hasDefinitionUpdateChanges(request)) {
         return {
-          success: true,
-          text: await renderLifeActionReply({
-            runtime,
-            message,
-            state,
-            intent,
-            scenario: "completed_occurrence",
-            fallback,
-            context: {
-              completed: {
-                title: completed.title,
-              },
-              note: detailString(details, "note"),
-            },
-          }),
-          data: toActionData(completed),
+          success: false,
+          text: `Tell me what to change about "${target.definition.title}" and I'll update it.`,
         };
       }
 
-      if (internalOp === "skip_occurrence") {
+      const updated = await service.updateDefinition(
+        target.definition.id,
+        request,
+      );
+      const fallback = `Updated "${updated.definition.title}".`;
+      return {
+        success: true,
+        text: await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "updated_definition",
+          fallback,
+          context: {
+            previousTitle: target.definition.title,
+            updated: {
+              title: updated.definition.title,
+            },
+          },
+        }),
+        data: toActionData(updated),
+      };
+    }
+
+    if (internalOp === "update_goal") {
+      const target = await resolveGoal(service, targetName, domain);
+      if (!target)
+        return {
+          success: false,
+          text: "I could not find that goal to update.",
+        };
+      const request: UpdateLifeOpsGoalRequest = {
+        ownership,
+        title: params.title !== target.goal.title ? params.title : undefined,
+        description: detailString(details, "description"),
+        cadence: normalizeCadenceDetail(
+          detailObject(details, "cadence"),
+        ) as UpdateLifeOpsGoalRequest["cadence"],
+        supportStrategy: detailObject(details, "supportStrategy"),
+        successCriteria: detailObject(details, "successCriteria"),
+      };
+      const hasExplicitGoalChanges =
+        request.title !== undefined ||
+        request.description !== undefined ||
+        request.cadence !== undefined ||
+        request.supportStrategy !== undefined ||
+        request.successCriteria !== undefined;
+      if (!hasExplicitGoalChanges) {
+        const llmPlan = await extractGoalUpdatePlanWithLlm({
+          runtime,
+          currentGoal: target.goal,
+          intent,
+          state: state ?? undefined,
+          message: message ?? undefined,
+        });
+        if (llmPlan.mode === "respond") {
+          return {
+            success: true,
+            text:
+              llmPlan.response ??
+              `Tell me what to change about "${target.goal.title}" and I'll update it.`,
+            data: {
+              actionName: ownerSurfaceActionName,
+              noop: true,
+              suggestedOperation: "update_goal",
+            },
+          };
+        }
+        if (llmPlan.title) request.title = llmPlan.title;
+        if (llmPlan.description) request.description = llmPlan.description;
+        if (llmPlan.cadence) request.cadence = llmPlan.cadence;
+        if (llmPlan.supportStrategy)
+          request.supportStrategy = llmPlan.supportStrategy;
+        if (llmPlan.successCriteria)
+          request.successCriteria = llmPlan.successCriteria;
+        if (llmPlan.groundingState) {
+          request.metadata = mergeGoalMetadataWithGrounding({
+            metadata: target.goal.metadata,
+            nowIso: new Date().toISOString(),
+            plan: {
+              cadence: llmPlan.cadence,
+              confidence: llmPlan.confidence,
+              evaluationSummary: llmPlan.evaluationSummary,
+              groundingState: llmPlan.groundingState,
+              missingCriticalFields: llmPlan.missingCriticalFields,
+              successCriteria:
+                llmPlan.successCriteria ?? target.goal.successCriteria,
+              targetDomain: llmPlan.targetDomain,
+            },
+          });
+        }
+      }
+      if (
+        request.title === undefined &&
+        request.description === undefined &&
+        request.cadence === undefined &&
+        request.supportStrategy === undefined &&
+        request.successCriteria === undefined &&
+        request.metadata === undefined
+      ) {
+        return {
+          success: false,
+          text: `Tell me what to change about "${target.goal.title}" and I'll update it.`,
+        };
+      }
+      const updated = await service.updateGoal(target.goal.id, request);
+      const fallback = `Updated goal "${updated.goal.title}".`;
+      return {
+        success: true,
+        text: await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "updated_goal",
+          fallback,
+          context: {
+            previousTitle: target.goal.title,
+            updated: {
+              title: updated.goal.title,
+            },
+          },
+        }),
+        data: toActionData(updated),
+      };
+    }
+
+    if (internalOp === "delete_definition") {
+      const target = await resolveDefinition(service, targetName, domain);
+      if (!target)
+        return {
+          success: false,
+          text: "I could not find that item to delete.",
+        };
+      await service.deleteDefinition(target.definition.id);
+      const fallback = `Deleted "${target.definition.title}" and its occurrences.`;
+      return {
+        success: true,
+        text: await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "deleted_definition",
+          fallback,
+          context: {
+            deleted: {
+              title: target.definition.title,
+            },
+          },
+        }),
+      };
+    }
+
+    if (internalOp === "delete_goal") {
+      const target = await resolveGoal(service, targetName, domain);
+      if (!target)
+        return {
+          success: false,
+          text: "I could not find that goal to delete.",
+        };
+      await service.deleteGoal(target.goal.id);
+      const fallback = `Deleted goal "${target.goal.title}".`;
+      return {
+        success: true,
+        text: await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "deleted_goal",
+          fallback,
+          context: {
+            deleted: {
+              title: target.goal.title,
+            },
+          },
+        }),
+      };
+    }
+
+    if (internalOp === "complete_occurrence") {
+      // Direct occurrenceId path: when the planner already knows the
+      // occurrence id we skip title/intent matching.
+      const directOccurrenceId = detailString(details, "occurrenceId");
+      let resolvedTargetId: string;
+      if (directOccurrenceId) {
+        resolvedTargetId = directOccurrenceId;
+      } else {
         const { match: target, ambiguousCandidates } =
           await resolveOccurrenceWithIntentFallback({
             service,
@@ -3340,215 +3300,262 @@ export async function runLifeOperationHandler(
           }
           return {
             success: false,
-            text: "I could not find that active item to skip.",
+            text: "I could not find that active item to complete.",
           };
         }
-        const skipped = await service.skipOccurrence(target.id);
-        const fallback = `Skipped "${skipped.title}".`;
-        return {
-          success: true,
-          text: await renderLifeActionReply({
-            runtime,
-            message,
-            state,
-            intent,
-            scenario: "skipped_occurrence",
-            fallback,
-            context: {
-              skipped: {
-                title: skipped.title,
-              },
+        resolvedTargetId = target.id;
+      }
+      const completed = await service.completeOccurrence(resolvedTargetId, {
+        note: detailString(details, "note"),
+      });
+      const fallback = `Marked "${completed.title}" done.`;
+      return {
+        success: true,
+        text: await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "completed_occurrence",
+          fallback,
+          context: {
+            completed: {
+              title: completed.title,
             },
-          }),
-          data: toActionData(skipped),
+            note: detailString(details, "note"),
+          },
+        }),
+        data: toActionData(completed),
+      };
+    }
+
+    if (internalOp === "skip_occurrence") {
+      const { match: target, ambiguousCandidates } =
+        await resolveOccurrenceWithIntentFallback({
+          service,
+          target: targetName,
+          domain,
+          intent,
+          operation,
+        });
+      if (!target) {
+        if (ambiguousCandidates.length > 0) {
+          return {
+            success: false,
+            text: `Multiple items match — which one?\n${ambiguousCandidates.map((t) => `  - ${t}`).join("\n")}`,
+          };
+        }
+        return {
+          success: false,
+          text: "I could not find that active item to skip.",
         };
       }
+      const skipped = await service.skipOccurrence(target.id);
+      const fallback = `Skipped "${skipped.title}".`;
+      return {
+        success: true,
+        text: await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "skipped_occurrence",
+          fallback,
+          context: {
+            skipped: {
+              title: skipped.title,
+            },
+          },
+        }),
+        data: toActionData(skipped),
+      };
+    }
 
-      if (internalOp === "snooze_occurrence") {
-        // Direct occurrenceId path for reminder_snooze.
-        const directOccurrenceId = detailString(details, "occurrenceId");
-        let resolvedTargetId: string;
-        if (directOccurrenceId) {
-          resolvedTargetId = directOccurrenceId;
-        } else {
-          const { match: target, ambiguousCandidates } =
-            await resolveOccurrenceWithIntentFallback({
-              service,
-              target: targetName,
-              domain,
-              intent,
-              operation,
-            });
-          if (!target) {
-            if (ambiguousCandidates.length > 0) {
-              return {
-                success: false,
-                text: `Multiple items match — which one?\n${ambiguousCandidates.map((t) => `  - ${t}`).join("\n")}`,
-              };
-            }
+    if (internalOp === "snooze_occurrence") {
+      // Direct occurrenceId path for reminder_snooze.
+      const directOccurrenceId = detailString(details, "occurrenceId");
+      let resolvedTargetId: string;
+      if (directOccurrenceId) {
+        resolvedTargetId = directOccurrenceId;
+      } else {
+        const { match: target, ambiguousCandidates } =
+          await resolveOccurrenceWithIntentFallback({
+            service,
+            target: targetName,
+            domain,
+            intent,
+            operation,
+          });
+        if (!target) {
+          if (ambiguousCandidates.length > 0) {
             return {
               success: false,
-              text: "I could not find that active item to snooze.",
+              text: `Multiple items match — which one?\n${ambiguousCandidates.map((t) => `  - ${t}`).join("\n")}`,
             };
           }
-          resolvedTargetId = target.id;
+          return {
+            success: false,
+            text: "I could not find that active item to snooze.",
+          };
         }
-        const preset = detailString(details, "preset") as
-          | "15m"
-          | "30m"
-          | "1h"
-          | "tonight"
-          | "tomorrow_morning"
-          | undefined;
-        const minutes = detailNumber(details, "minutes");
-        const snoozed = await service.snoozeOccurrence(resolvedTargetId, {
-          preset,
-          minutes,
-        });
-        const fallback = `Snoozed "${snoozed.title}".`;
-        return {
-          success: true,
-          text: await renderLifeActionReply({
-            runtime,
-            message,
-            state,
-            intent,
-            scenario: "snoozed_occurrence",
-            fallback,
-            context: {
-              snoozed: {
-                title: snoozed.title,
-              },
-              preset: preset ?? null,
-              minutes: minutes ?? null,
-            },
-          }),
-          data: toActionData(snoozed),
-        };
+        resolvedTargetId = target.id;
       }
+      const preset = detailString(details, "preset") as
+        | "15m"
+        | "30m"
+        | "1h"
+        | "tonight"
+        | "tomorrow_morning"
+        | undefined;
+      const minutes = detailNumber(details, "minutes");
+      const snoozed = await service.snoozeOccurrence(resolvedTargetId, {
+        preset,
+        minutes,
+      });
+      const fallback = `Snoozed "${snoozed.title}".`;
+      return {
+        success: true,
+        text: await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "snoozed_occurrence",
+          fallback,
+          context: {
+            snoozed: {
+              title: snoozed.title,
+            },
+            preset: preset ?? null,
+            minutes: minutes ?? null,
+          },
+        }),
+        data: toActionData(snoozed),
+      };
+    }
 
-      if (internalOp === "review_goal") {
-        const target = await resolveGoal(service, targetName, domain);
-        if (!target) {
-          const weeklyReview = await service.reviewGoalsForWeek();
-          if (weeklyReview.summary.totalGoals === 0) {
-            // No goals to review — fall through to overview so todo-list-style
-            // queries like "what's on my todo list today?" still resolve.
-            const overview = await service.getOverview();
-            const userQuery = messageText(message) || intent || "overview";
-            const fallback = formatOverviewForQuery(overview, userQuery);
-            return {
-              success: true,
-              text: await renderLifeActionReply({
-                runtime,
-                message,
-                state,
-                intent: userQuery,
-                scenario: "overview",
-                fallback,
-                context: {
-                  summary: overview.owner.summary,
-                  occurrenceTitles: overview.owner.occurrences
-                    .slice(0, 6)
-                    .map((occurrence) => occurrence.title),
-                  goalTitles: overview.owner.goals
-                    .slice(0, 3)
-                    .map((goal) => goal.title),
-                },
-              }),
-              data: toActionData(overview),
-            };
-          }
-          const fallback = formatWeeklyGoalReview(weeklyReview);
+    if (internalOp === "review_goal") {
+      const target = await resolveGoal(service, targetName, domain);
+      if (!target) {
+        const weeklyReview = await service.reviewGoalsForWeek();
+        if (weeklyReview.summary.totalGoals === 0) {
+          // No goals to review — fall through to overview so todo-list-style
+          // queries like "what's on my todo list today?" still resolve.
+          const overview = await service.getOverview();
+          const userQuery = messageText(message) || intent || "overview";
+          const fallback = formatOverviewForQuery(overview, userQuery);
           return {
             success: true,
             text: await renderLifeActionReply({
               runtime,
               message,
               state,
-              intent,
-              scenario: "weekly_goal_review",
+              intent: userQuery,
+              scenario: "overview",
               fallback,
               context: {
-                summary: weeklyReview.summary,
-                atRiskTitles: weeklyReview.atRisk
+                summary: overview.owner.summary,
+                occurrenceTitles: overview.owner.occurrences
+                  .slice(0, 6)
+                  .map((occurrence) => occurrence.title),
+                goalTitles: overview.owner.goals
                   .slice(0, 3)
-                  .map((review) => review.goal.title),
-                needsAttentionTitles: weeklyReview.needsAttention
-                  .slice(0, 3)
-                  .map((review) => review.goal.title),
-                onTrackTitles: weeklyReview.onTrack
-                  .slice(0, 3)
-                  .map((review) => review.goal.title),
+                  .map((goal) => goal.title),
               },
             }),
-            data: toActionData(weeklyReview),
+            data: toActionData(overview),
           };
         }
-        const review = await service.reviewGoal(target.goal.id);
+        const fallback = formatWeeklyGoalReview(weeklyReview);
         return {
           success: true,
-          text: review.summary.explanation,
-          data: toActionData(review),
-        };
-      }
-
-      if (internalOp === "policy_set_reminder") {
-        const intensityDetail = detailString(details, "intensity");
-        const intensity =
-          intensityDetail === "minimal" ||
-          intensityDetail === "normal" ||
-          intensityDetail === "persistent" ||
-          intensityDetail === "high_priority_only"
-            ? intensityDetail
-            : undefined;
-        return applyOwnerPolicySetReminder({
-          runtime,
-          message,
-          intent,
-          resolveDefinition: resolveDefinitionFromIntent,
-          intensity,
-          target: targetName,
-          details,
-        });
-      }
-
-      if (internalOp === "policy_configure_escalation") {
-        return applyOwnerPolicyConfigureEscalation({
-          runtime,
-          message,
-          intent,
-          resolveDefinition: resolveDefinitionFromIntent,
-          target: targetName,
-          timeoutMinutes: detailNumber(details, "timeoutMinutes"),
-          callAfterMinutes: detailNumber(details, "callAfterMinutes"),
-          details,
-        });
-      }
-
-      return {
-        success: false,
-        text: "I didn't understand that life management request.",
-      };
-    } catch (err) {
-      if (err instanceof LifeOpsServiceError) {
-        const fallback = buildLifeServiceErrorFallback(err, intent);
-        return {
-          success: false,
           text: await renderLifeActionReply({
             runtime,
             message,
             state,
             intent,
-            scenario: "service_error",
+            scenario: "weekly_goal_review",
             fallback,
             context: {
-              status: err.status,
-              operation,
+              summary: weeklyReview.summary,
+              atRiskTitles: weeklyReview.atRisk
+                .slice(0, 3)
+                .map((review) => review.goal.title),
+              needsAttentionTitles: weeklyReview.needsAttention
+                .slice(0, 3)
+                .map((review) => review.goal.title),
+              onTrackTitles: weeklyReview.onTrack
+                .slice(0, 3)
+                .map((review) => review.goal.title),
             },
           }),
+          data: toActionData(weeklyReview),
         };
       }
-      throw err;
+      const review = await service.reviewGoal(target.goal.id);
+      return {
+        success: true,
+        text: review.summary.explanation,
+        data: toActionData(review),
+      };
     }
+
+    if (internalOp === "policy_set_reminder") {
+      const intensityDetail = detailString(details, "intensity");
+      const intensity =
+        intensityDetail === "minimal" ||
+        intensityDetail === "normal" ||
+        intensityDetail === "persistent" ||
+        intensityDetail === "high_priority_only"
+          ? intensityDetail
+          : undefined;
+      return applyOwnerPolicySetReminder({
+        runtime,
+        message,
+        intent,
+        resolveDefinition: resolveDefinitionFromIntent,
+        intensity,
+        target: targetName,
+        details,
+      });
+    }
+
+    if (internalOp === "policy_configure_escalation") {
+      return applyOwnerPolicyConfigureEscalation({
+        runtime,
+        message,
+        intent,
+        resolveDefinition: resolveDefinitionFromIntent,
+        target: targetName,
+        timeoutMinutes: detailNumber(details, "timeoutMinutes"),
+        callAfterMinutes: detailNumber(details, "callAfterMinutes"),
+        details,
+      });
+    }
+
+    return {
+      success: false,
+      text: "I didn't understand that life management request.",
+    };
+  } catch (err) {
+    if (err instanceof LifeOpsServiceError) {
+      const fallback = buildLifeServiceErrorFallback(err, intent);
+      return {
+        success: false,
+        text: await renderLifeActionReply({
+          runtime,
+          message,
+          state,
+          intent,
+          scenario: "service_error",
+          fallback,
+          context: {
+            status: err.status,
+            operation,
+          },
+        }),
+      };
+    }
+    throw err;
+  }
 }

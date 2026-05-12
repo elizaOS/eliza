@@ -11,6 +11,7 @@ import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import type { PatchOp, UiSpec } from "../../config/ui-spec";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { isDesktopPlatform, isNative } from "../../platform";
 import {
   createMobileSignalsPermissionsRegistry,
@@ -1037,6 +1038,7 @@ export function MessageContent({
   message,
   analysisMode = false,
 }: MessageContentProps) {
+  useRenderGuard("MessageContent");
   const app = useApp();
   const { sendActionMessage } = app;
   const [localDownloadState, setLocalDownloadState] = useState<

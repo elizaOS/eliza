@@ -11,6 +11,7 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { createCalendlyConnectorContribution } from "./calendly.js";
+import type { ConnectorContribution, ConnectorRegistry } from "./contract.js";
 import { createDiscordConnectorContribution } from "./discord.js";
 import { createDuffelConnectorContribution } from "./duffel.js";
 import { createGoogleConnectorContribution } from "./google.js";
@@ -20,10 +21,6 @@ import { createTelegramConnectorContribution } from "./telegram.js";
 import { createTwilioConnectorContribution } from "./twilio.js";
 import { createWhatsAppConnectorContribution } from "./whatsapp.js";
 import { createXConnectorContribution } from "./x.js";
-import type {
-  ConnectorContribution,
-  ConnectorRegistry,
-} from "./contract.js";
 
 export type ConnectorContributionFactory = (
   runtime: IAgentRuntime,
@@ -35,18 +32,19 @@ export type ConnectorContributionFactory = (
  * apple_health/google_fit/strava/fitbit/withings/oura on its own; they
  * are not part of this pack.
  */
-export const DEFAULT_CONNECTOR_CONTRIBUTIONS: ReadonlyArray<ConnectorContributionFactory> = [
-  createGoogleConnectorContribution,
-  createTelegramConnectorContribution,
-  createDiscordConnectorContribution,
-  createSignalConnectorContribution,
-  createWhatsAppConnectorContribution,
-  createIMessageConnectorContribution,
-  createXConnectorContribution,
-  createTwilioConnectorContribution,
-  createCalendlyConnectorContribution,
-  createDuffelConnectorContribution,
-];
+export const DEFAULT_CONNECTOR_CONTRIBUTIONS: ReadonlyArray<ConnectorContributionFactory> =
+  [
+    createGoogleConnectorContribution,
+    createTelegramConnectorContribution,
+    createDiscordConnectorContribution,
+    createSignalConnectorContribution,
+    createWhatsAppConnectorContribution,
+    createIMessageConnectorContribution,
+    createXConnectorContribution,
+    createTwilioConnectorContribution,
+    createCalendlyConnectorContribution,
+    createDuffelConnectorContribution,
+  ];
 
 /**
  * Empty default — populating against a synthetic runtime would require

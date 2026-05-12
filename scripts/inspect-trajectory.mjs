@@ -24,15 +24,15 @@
  *     ]
  *   }
  *
- * The default trajectory directory is ~/.milady/trajectories. Override with
+ * The default trajectory directory is ~/.eliza/trajectories. Override with
  * --dir <path> on any subcommand.
  *
  * No external dependencies — pure Node ESM.
  */
 
 import fs from "node:fs";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
 
 // ---------------------------------------------------------------------------
 // Inlined prompt compaction
@@ -50,7 +50,7 @@ const CODING_INTENT_RE =
   /\b(code|coding|codebase|repo|repository|pull request|pr\b|branch|merge|commit|deploy|refactor|research|investigate|analy[sz]e|analysis|draft|document|orchestrate|delegate|subtask|parallel|background task|task agent|start_coding_task|spawn_coding_agent|send_to_coding_agent|create_task|spawn_agent|send_to_agent|list_agents|stop_agent)\b|https?:\/\/(?:github\.com|gitlab\.com|bitbucket\.org)\//i;
 const PLUGIN_UI_INTENT_RE =
   /\b(plugin|plugins|configure|configuration|setup|install|enable|disable|api key|credential|secret|dashboard|form|ui|interface|\[config:)\b/i;
-const WALLET_INTENT_RE =
+const _WALLET_INTENT_RE =
   /\b(wallet|onchain|on-chain|transaction|tx\b|transfer|swap|trade|send\b|gas|token|bnb|eth|sol|basechain|erc20|balance)\b/i;
 
 function hasIntent(prompt, keywords) {
@@ -161,7 +161,7 @@ export function compactModelPrompt(prompt) {
 // ---------------------------------------------------------------------------
 
 export function defaultTrajectoryDir() {
-  return path.join(os.homedir(), ".milady", "trajectories");
+  return path.join(os.homedir(), ".eliza", "trajectories");
 }
 
 function* walkJson(dir) {
@@ -384,7 +384,11 @@ function cmdList(args) {
   }
 
   const filtered = trajectories
-    .map(({ file, data }) => ({ file, data, summary: summarizeTrajectory(data) }))
+    .map(({ file, data }) => ({
+      file,
+      data,
+      summary: summarizeTrajectory(data),
+    }))
     .filter((row) => !args.source || row.summary.source === args.source)
     .sort((a, b) => (b.summary.startTime ?? 0) - (a.summary.startTime ?? 0));
 
@@ -400,15 +404,21 @@ function cmdList(args) {
     return 0;
   }
 
-  console.log(`Trajectories under ${dir}: ${filtered.length} (showing ${rows.length})\n`);
+  console.log(
+    `Trajectories under ${dir}: ${filtered.length} (showing ${rows.length})\n`,
+  );
   console.log(
     "ID                                    SOURCE          STATUS     STEPS  TOKENS    STARTED",
   );
   console.log(SEP);
   for (const row of rows) {
     const id = (row.summary.id ?? "(no id)").padEnd(36).slice(0, 36);
-    const src = String(row.summary.source ?? "").padEnd(14).slice(0, 14);
-    const status = String(row.summary.status ?? "").padEnd(10).slice(0, 10);
+    const src = String(row.summary.source ?? "")
+      .padEnd(14)
+      .slice(0, 14);
+    const status = String(row.summary.status ?? "")
+      .padEnd(10)
+      .slice(0, 10);
     const steps = String(row.summary.stepCount).padStart(5);
     const tokens = String(row.summary.totalTokens).padStart(8);
     const started = fmtTime(row.summary.startTime);
@@ -421,7 +431,9 @@ function cmdShow(args) {
   const dir = args.dir ?? defaultTrajectoryDir();
   const id = args.positional[0];
   if (!id) {
-    console.error("Usage: inspect-trajectory.mjs show <trajectoryId> [--step N] [--format text|json] [--full]");
+    console.error(
+      "Usage: inspect-trajectory.mjs show <trajectoryId> [--step N] [--format text|json] [--full]",
+    );
     return 2;
   }
   const found = loadTrajectoryById(dir, id);
@@ -433,11 +445,14 @@ function cmdShow(args) {
   const stages = Array.isArray(data.stages) ? data.stages : [];
 
   const stepFilter = args.step !== undefined ? Number(args.step) : null;
-  const selected = stepFilter !== null ? [stages[stepFilter]].filter(Boolean) : stages;
+  const selected =
+    stepFilter !== null ? [stages[stepFilter]].filter(Boolean) : stages;
 
   if (args.format === "json") {
     for (let i = 0; i < selected.length; i++) {
-      process.stdout.write(`${JSON.stringify({ stepIndex: i, ...selected[i] })}\n`);
+      process.stdout.write(
+        `${JSON.stringify({ stepIndex: i, ...selected[i] })}\n`,
+      );
     }
     return 0;
   }
@@ -446,7 +461,9 @@ function cmdShow(args) {
   console.log(HEAVY);
   console.log(`Trajectory: ${data.trajectoryId ?? "(no id)"}`);
   console.log(`File:       ${file}`);
-  console.log(`Source:     ${data.source ?? data.metadata?.source ?? "(unknown)"}`);
+  console.log(
+    `Source:     ${data.source ?? data.metadata?.source ?? "(unknown)"}`,
+  );
   console.log(`Status:     ${data.status ?? "unknown"}`);
   console.log(`Started:    ${fmtTime(data.startedAt)}`);
   console.log(`Ended:      ${fmtTime(data.endedAt)}`);
@@ -459,17 +476,25 @@ function cmdShow(args) {
   for (let i = 0; i < selected.length; i++) {
     const stage = selected[i];
     const realIdx = stepFilter !== null ? stepFilter : i;
-    console.log(`\n[Step ${realIdx}] kind=${stage.kind ?? "?"} stageId=${stage.stageId ?? "?"}`);
-    console.log(`  startedAt=${fmtTime(stage.startedAt)} latencyMs=${stage.latencyMs ?? "?"}`);
+    console.log(
+      `\n[Step ${realIdx}] kind=${stage.kind ?? "?"} stageId=${stage.stageId ?? "?"}`,
+    );
+    console.log(
+      `  startedAt=${fmtTime(stage.startedAt)} latencyMs=${stage.latencyMs ?? "?"}`,
+    );
     const m = stage.model;
     if (!m) {
       console.log("  (no model call)");
       continue;
     }
     console.log(SEP);
-    console.log(`  model.modelType=${m.modelType ?? "?"}  provider=${m.provider ?? "?"}  modelName=${m.modelName ?? "(none)"}`);
+    console.log(
+      `  model.modelType=${m.modelType ?? "?"}  provider=${m.provider ?? "?"}  modelName=${m.modelName ?? "(none)"}`,
+    );
     if (m.purpose || m.actionType) {
-      console.log(`  purpose=${m.purpose ?? "(none)"}  actionType=${m.actionType ?? "(none)"}`);
+      console.log(
+        `  purpose=${m.purpose ?? "(none)"}  actionType=${m.actionType ?? "(none)"}`,
+      );
     }
     if (m.usage) {
       console.log(`  usage=${JSON.stringify(m.usage)}`);
@@ -478,25 +503,55 @@ function cmdShow(args) {
     for (let mi = 0; mi < messages.length; mi++) {
       const msg = messages[mi];
       const content =
-        typeof msg.content === "string" ? msg.content : JSON.stringify(msg.content, null, 2);
-      console.log(`\n  --- message[${mi}] role=${msg.role} (${content.length} chars) ---`);
-      console.log(truncate(content, 4000, full).split("\n").map((l) => `    ${l}`).join("\n"));
+        typeof msg.content === "string"
+          ? msg.content
+          : JSON.stringify(msg.content, null, 2);
+      console.log(
+        `\n  --- message[${mi}] role=${msg.role} (${content.length} chars) ---`,
+      );
+      console.log(
+        truncate(content, 4000, full)
+          .split("\n")
+          .map((l) => `    ${l}`)
+          .join("\n"),
+      );
     }
-    if (typeof m.prompt === "string" && m.prompt.length > 0 && messages.length === 0) {
+    if (
+      typeof m.prompt === "string" &&
+      m.prompt.length > 0 &&
+      messages.length === 0
+    ) {
       console.log(`\n  --- raw prompt (${m.prompt.length} chars) ---`);
-      console.log(truncate(m.prompt, 4000, full).split("\n").map((l) => `    ${l}`).join("\n"));
+      console.log(
+        truncate(m.prompt, 4000, full)
+          .split("\n")
+          .map((l) => `    ${l}`)
+          .join("\n"),
+      );
     }
     const respText =
-      typeof m.response === "string" ? m.response : JSON.stringify(m.response, null, 2);
+      typeof m.response === "string"
+        ? m.response
+        : JSON.stringify(m.response, null, 2);
     console.log(`\n  --- response (${respText.length} chars) ---`);
-    console.log(truncate(respText, 4000, full).split("\n").map((l) => `    ${l}`).join("\n"));
+    console.log(
+      truncate(respText, 4000, full)
+        .split("\n")
+        .map((l) => `    ${l}`)
+        .join("\n"),
+    );
     const tcs = Array.isArray(m.toolCalls) ? m.toolCalls : [];
     if (tcs.length > 0) {
       console.log(`\n  --- tool calls (${tcs.length}) ---`);
       for (const tc of tcs) {
         console.log(`    • ${tc.name ?? "(unnamed)"} id=${tc.id ?? "?"}`);
         const argsJson = JSON.stringify(tc.args ?? {}, null, 2);
-        console.log(truncate(argsJson, 2000, full).split("\n").map((l) => `      ${l}`).join("\n"));
+        console.log(
+          truncate(argsJson, 2000, full)
+            .split("\n")
+            .map((l) => `      ${l}`)
+            .join("\n"),
+        );
       }
     }
   }
@@ -507,7 +562,9 @@ function cmdCompactionDiff(args) {
   const dir = args.dir ?? defaultTrajectoryDir();
   const id = args.positional[0];
   if (!id) {
-    console.error("Usage: inspect-trajectory.mjs compaction-diff <trajectoryId> [--step N] [--call N]");
+    console.error(
+      "Usage: inspect-trajectory.mjs compaction-diff <trajectoryId> [--step N] [--call N]",
+    );
     return 2;
   }
   const found = loadTrajectoryById(dir, id);
@@ -519,7 +576,7 @@ function cmdCompactionDiff(args) {
   const stages = Array.isArray(data.stages) ? data.stages : [];
   const stepIdx = args.step !== undefined ? Number(args.step) : 0;
   const stage = stages[stepIdx];
-  if (!stage || !stage.model) {
+  if (!stage?.model) {
     console.error(`No model call at step ${stepIdx}`);
     return 1;
   }

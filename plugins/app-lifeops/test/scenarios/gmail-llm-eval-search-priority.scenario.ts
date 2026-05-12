@@ -22,7 +22,13 @@ export default scenario({
       name: "gmail-cross-account-search",
       text: "Search Gmail for a colleague across my personal and work accounts.",
       plannerIncludesAll: ["gmail_action"],
-      plannerIncludesAny: ["personal", "work", "account", "colleague", "search"],
+      plannerIncludesAny: [
+        "personal",
+        "work",
+        "account",
+        "colleague",
+        "search",
+      ],
       plannerExcludes: ["calendar_action", "owner_send_message"],
     },
     {

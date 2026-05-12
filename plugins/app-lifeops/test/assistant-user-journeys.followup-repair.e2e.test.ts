@@ -3,10 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  buildCharacterFromConfig,
-  createElizaPlugin,
-} from "@elizaos/agent";
+import { buildCharacterFromConfig, createElizaPlugin } from "@elizaos/agent";
 import {
   AgentRuntime,
   ChannelType,
@@ -18,11 +15,11 @@ import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../test/helpers/conditional-tests.ts";
 import { saveEnv, withTimeout } from "../../../test/helpers/test-utils";
+import { executeApprovedRequest } from "../src/actions/resolve-request.js";
 import { InboxTriageRepository } from "../src/inbox/repository.js";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import { LifeOpsRepository } from "../src/lifeops/repository.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
-import { executeApprovedRequest } from "../src/actions/resolve-request.js";
 import { appLifeOpsPlugin } from "../src/plugin.js";
 import {
   getLifeOpsLiveSetupWarnings,

@@ -1,6 +1,6 @@
 import type * as React from "react";
 
-import { memo } from "react";
+import { memo, useMemo } from "react";
 
 import { ChatBubble } from "./chat-bubble";
 import { ChatMessage } from "./chat-message";
@@ -119,7 +119,10 @@ export const ChatTranscript = memo(function ChatTranscript({
   userMessagesOnRight = true,
   variant = "default",
 }: ChatTranscriptProps) {
-  const normalizedMessages = messages.map(normalizeTranscriptMessage);
+  const normalizedMessages = useMemo(
+    () => messages.map(normalizeTranscriptMessage),
+    [messages],
+  );
 
   if (variant === "game-modal") {
     return (

@@ -63,7 +63,7 @@ log = logging.getLogger("synth-routing")
 AGENT_NAMES = [
     "eliza", "Eliza", "Iris", "Kai", "Ava", "Nova", "Echo",
     "Sage", "Atlas", "Lyra", "Pico", "Lumi", "Rune", "Vega",
-    "Sol", "Orion", "Mira", "Tess", "milady",
+    "Sol", "Orion", "Mira", "Tess", "eliza",
 ]
 
 
@@ -321,14 +321,14 @@ def synthesize_one(
         "secondaryContexts": "",
         "evidenceTurnIds": "",
     }
-    toon = encoder.encode(target)
+    payload = encoder.encode(target)
 
     return build(
         roomName=stable_id("dialogue_routing", agent, current["content"][:120], target_action),
         agentId=agent.lower(),
         memoryEntries=memory,
         currentMessage=current,
-        expectedResponse=toon,
+        expectedResponse=payload,
         availableActions=[ACTION_RESPOND, ACTION_IGNORE, ACTION_STOP],
         task_type="dialogue_routing",
         source_dataset="synth-dialogue-routing",

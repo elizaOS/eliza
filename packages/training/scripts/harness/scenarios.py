@@ -32,13 +32,15 @@ LOG_DIR = ROOT / "data" / "synthesized" / "harness" / "logs"
 
 DEFAULT_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 DEFAULT_API_KEY_ENV = "GROQ_API_KEY"
-DEFAULT_DEV_MODEL = "openai/gpt-oss-120b"
+# Development models are intentionally not pinned here. Pass --model or set
+# ELIZA_HARNESS_MODEL / ELIZA_COLLECTION_MODEL for the provider under test.
+DEFAULT_DEV_MODEL = ""
 
 
 def default_teacher_model() -> str:
     return (
-        os.environ.get("MILADY_HARNESS_MODEL")
-        or os.environ.get("MILADY_COLLECTION_MODEL")
+        os.environ.get("ELIZA_HARNESS_MODEL")
+        or os.environ.get("ELIZA_COLLECTION_MODEL")
         or DEFAULT_DEV_MODEL
     )
 
@@ -187,7 +189,7 @@ async def generate_for_action(
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "User-Agent": "milady-training-harness/1.0",
+        "User-Agent": "eliza-training-harness/1.0",
     }
     backoff = 5.0
     for attempt in range(6):
@@ -343,16 +345,21 @@ def main() -> None:
     ap.add_argument("--only", type=str, default="", help="comma-separated action names")
     ap.add_argument("--force", action="store_true", help="regenerate even if pool exists")
     ap.add_argument("--model", default=default_teacher_model())
-    ap.add_argument("--api-url", default=os.environ.get("MILADY_HARNESS_API_URL", DEFAULT_API_URL))
-    ap.add_argument("--api-key-env", default=os.environ.get("MILADY_HARNESS_API_KEY_ENV", DEFAULT_API_KEY_ENV))
-    ap.add_argument("--provider-label", default=os.environ.get("MILADY_HARNESS_PROVIDER", "groq-dev"))
-    ap.add_argument("--reasoning-effort", default=os.environ.get("MILADY_HARNESS_REASONING_EFFORT", "low"))
+    ap.add_argument("--api-url", default=os.environ.get("ELIZA_HARNESS_API_URL", DEFAULT_API_URL))
+    ap.add_argument("--api-key-env", default=os.environ.get("ELIZA_HARNESS_API_KEY_ENV", DEFAULT_API_KEY_ENV))
+    ap.add_argument("--provider-label", default=os.environ.get("ELIZA_HARNESS_PROVIDER", "groq-dev"))
+    ap.add_argument("--reasoning-effort", default=os.environ.get("ELIZA_HARNESS_REASONING_EFFORT", "low"))
     ap.add_argument(
         "--no-response-format",
         action="store_true",
         help="omit OpenAI JSON response_format for compatible endpoints that do not support it",
     )
     args = ap.parse_args()
+    if not args.model:
+        raise SystemExit(
+            "--model is required unless ELIZA_HARNESS_MODEL or "
+            "ELIZA_COLLECTION_MODEL is set"
+        )
     asyncio.run(main_async(args))
 
 

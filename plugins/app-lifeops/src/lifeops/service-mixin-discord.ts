@@ -1,32 +1,8 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
-
 import { logger } from "@elizaos/core";
 import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgeTabSummary,
 } from "@elizaos/plugin-browser";
-import type {
-  LifeOpsBrowserSession,
-  LifeOpsConnectorDegradation,
-  LifeOpsConnectorGrant,
-  LifeOpsConnectorSide,
-  LifeOpsDiscordCapability,
-  LifeOpsDiscordConnectorStatus,
-  LifeOpsMessagingConnectorReason,
-  LifeOpsOwnerBrowserAccessSource,
-  LifeOpsOwnerBrowserAccessStatus,
-  LifeOpsOwnerBrowserAuthState,
-  LifeOpsOwnerBrowserNextAction,
-  LifeOpsOwnerBrowserTabState,
-} from "@elizaos/shared";
-import { LIFEOPS_DISCORD_CAPABILITIES } from "@elizaos/shared";
-import { asRecord } from "@elizaos/shared";
 import {
   captureDiscordDeliveryStatus,
   closeDiscordTab,
@@ -44,12 +20,32 @@ import {
   searchDiscordMessages,
   sendDiscordViaDesktopCdp,
 } from "@elizaos/plugin-discord";
+import type {
+  LifeOpsBrowserSession,
+  LifeOpsConnectorDegradation,
+  LifeOpsConnectorGrant,
+  LifeOpsConnectorSide,
+  LifeOpsDiscordCapability,
+  LifeOpsDiscordConnectorStatus,
+  LifeOpsMessagingConnectorReason,
+  LifeOpsOwnerBrowserAccessSource,
+  LifeOpsOwnerBrowserAccessStatus,
+  LifeOpsOwnerBrowserAuthState,
+  LifeOpsOwnerBrowserNextAction,
+  LifeOpsOwnerBrowserTabState,
+} from "@elizaos/shared";
+import { asRecord, LIFEOPS_DISCORD_CAPABILITIES } from "@elizaos/shared";
 import { createLifeOpsConnectorGrant } from "./repository.js";
 import {
   searchDiscordMessagesWithRuntimeService,
   sendDiscordMessageWithRuntimeService,
 } from "./runtime-service-delegates.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type { BrowserBridgeService } from "./service-mixin-browser.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
 import { normalizeOptionalConnectorSide } from "./service-normalize-connector.js";
 
@@ -71,6 +67,71 @@ type DiscordPluginServiceLike = {
     } | null;
   } | null;
 };
+
+type DiscordMixinDependencies = LifeOpsServiceBase &
+  Pick<
+    BrowserBridgeService,
+    | "createBrowserSession"
+    | "getBrowserSession"
+    | "getBrowserSettings"
+    | "getCurrentBrowserPage"
+    | "listBrowserCompanions"
+    | "listBrowserTabs"
+  >;
+
+type DiscordSendMessageResult = {
+  provider: "discord";
+  side: LifeOpsConnectorSide;
+  channelId: string;
+  ok: true;
+  deliveryStatus: "sent" | "sending" | "failed" | "unknown";
+};
+
+type DiscordConnectorVerification = {
+  provider: "discord";
+  side: LifeOpsConnectorSide;
+  verifiedAt: string;
+  status: LifeOpsDiscordConnectorStatus;
+  send: {
+    ok: boolean;
+    error: string | null;
+    channelId: string | null;
+    message: string;
+    deliveryStatus: "sent" | "sending" | "failed" | "unknown" | null;
+  };
+};
+
+export interface LifeOpsDiscordService {
+  getDiscordConnectorStatus(
+    side?: LifeOpsConnectorSide,
+  ): Promise<LifeOpsDiscordConnectorStatus>;
+  authorizeDiscordConnector(
+    side?: LifeOpsConnectorSide,
+    source?: LifeOpsOwnerBrowserAccessSource,
+  ): Promise<LifeOpsDiscordConnectorStatus>;
+  searchDiscordMessages(request: {
+    side?: LifeOpsConnectorSide;
+    query: string;
+    channelId?: string;
+    limit?: number;
+  }): Promise<DiscordMessageSearchResult[]>;
+  captureDiscordDeliveryStatus(
+    side?: LifeOpsConnectorSide,
+  ): Promise<DiscordMessageSearchResult[]>;
+  sendDiscordMessage(request: {
+    side?: LifeOpsConnectorSide;
+    channelId?: string;
+    text: string;
+  }): Promise<DiscordSendMessageResult>;
+  verifyDiscordConnector(request: {
+    side?: LifeOpsConnectorSide;
+    channelId?: string;
+    sendMessage?: string;
+  }): Promise<DiscordConnectorVerification>;
+  disconnectDiscord(
+    side?: LifeOpsConnectorSide,
+  ): Promise<LifeOpsDiscordConnectorStatus>;
+}
 
 function getDiscordPluginService(
   runtime: Constructor<LifeOpsServiceBase>["prototype"]["runtime"],
@@ -657,8 +718,10 @@ function discordDesktopReasonFor(args: {
 /** @internal */
 export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
-) {
-  class LifeOpsDiscordServiceMixin extends Base {
+): MixinClass<TBase, LifeOpsDiscordService> {
+  const DiscordBase = Base as unknown as Constructor<DiscordMixinDependencies>;
+
+  class LifeOpsDiscordServiceMixin extends DiscordBase {
     async lifeOpsDiscordProbeTab(
       tabId: string | null,
     ): Promise<DiscordTabProbe | null> {
@@ -740,34 +803,42 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
           ? sessionProbe
           : null);
       const companionByKey = companionMap(connectedCompanions);
-      const selectedCompanion =
-        (currentPage &&
+      let selectedCompanion: BrowserBridgeCompanionStatus | null = null;
+      if (currentPage) {
+        selectedCompanion =
           companionByKey.get(
             companionKey({
               browser: currentPage.browser,
               profileId: currentPage.profileId,
             }),
-          )) ??
-        (discordTab &&
+          ) ?? null;
+      }
+      if (!selectedCompanion && discordTab) {
+        selectedCompanion =
           companionByKey.get(
             companionKey({
               browser: discordTab.browser,
               profileId: discordTab.profileId,
             }),
-          )) ??
-        (companionIdFromGrant(grant)
-          ? (connectedCompanions.find(
-              (companion) => companion.id === companionIdFromGrant(grant),
-            ) ?? null)
-          : null) ??
-        connectedCompanions[0] ??
-        (companionIdFromGrant(grant)
-          ? (allCompanions.find(
-              (companion) => companion.id === companionIdFromGrant(grant),
-            ) ?? null)
-          : null) ??
-        allCompanions[0] ??
-        null;
+          ) ?? null;
+      }
+      const grantedCompanionId = companionIdFromGrant(grant);
+      if (!selectedCompanion && grantedCompanionId) {
+        selectedCompanion =
+          connectedCompanions.find(
+            (companion) => companion.id === grantedCompanionId,
+          ) ?? null;
+      }
+      if (!selectedCompanion) {
+        selectedCompanion = connectedCompanions.at(0) ?? null;
+      }
+      if (!selectedCompanion && grantedCompanionId) {
+        selectedCompanion =
+          allCompanions.find(
+            (companion) => companion.id === grantedCompanionId,
+          ) ?? null;
+      }
+      selectedCompanion ??= allCompanions.at(0) ?? null;
 
       const reason = browserReasonFor({
         available,
@@ -1538,13 +1609,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
       side?: LifeOpsConnectorSide;
       channelId?: string;
       text: string;
-    }): Promise<{
-      provider: "discord";
-      side: LifeOpsConnectorSide;
-      channelId: string;
-      ok: true;
-      deliveryStatus: "sent" | "sending" | "failed" | "unknown";
-    }> {
+    }): Promise<DiscordSendMessageResult> {
       const normalizedSide =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
       const text = request.text.trim();
@@ -1642,19 +1707,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
       side?: LifeOpsConnectorSide;
       channelId?: string;
       sendMessage?: string;
-    }): Promise<{
-      provider: "discord";
-      side: LifeOpsConnectorSide;
-      verifiedAt: string;
-      status: LifeOpsDiscordConnectorStatus;
-      send: {
-        ok: boolean;
-        error: string | null;
-        channelId: string | null;
-        message: string;
-        deliveryStatus: "sent" | "sending" | "failed" | "unknown" | null;
-      };
-    }> {
+    }): Promise<DiscordConnectorVerification> {
       const normalizedSide =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
       const message =
@@ -1740,5 +1793,8 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
     }
   }
 
-  return LifeOpsDiscordServiceMixin;
+  return LifeOpsDiscordServiceMixin as unknown as MixinClass<
+    TBase,
+    LifeOpsDiscordService
+  >;
 }

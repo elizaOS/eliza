@@ -1,6 +1,6 @@
-import { randomUUID } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
-import { join } from "path";
+import { randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { AgentContext } from "./context-types.js";
 import type {
   ElizaNativeTrainingExample,
@@ -139,7 +139,9 @@ export async function exportRoleplayEpisodes(
   await writeFile(manifestPath, `${manifestLines.join("\n")}\n`);
 
   const tuningLines = samples.map((sample) =>
-    JSON.stringify(toElizaNativeFormat(sample, true) as ElizaNativeTrainingExample),
+    JSON.stringify(
+      toElizaNativeFormat(sample, true) as ElizaNativeTrainingExample,
+    ),
   );
   await writeFile(tuningPath, `${tuningLines.join("\n")}\n`);
 

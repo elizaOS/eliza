@@ -8,23 +8,23 @@
  * Forward compatibility: only the recognised namespaces (`fs`, `net`) are
  * validated and surfaced as typed slices. Unrecognised keys inside the
  * `permissions` object are preserved verbatim under `raw` so a future
- * Milady version that recognises them can read them out of the persisted
+ * Eliza version that recognises them can read them out of the persisted
  * registry without re-parsing the source manifest.
  *
  * NOTE: this module is distinct from `./permissions.ts`, which describes
  * OS-level system permissions (camera, microphone, accessibility). App
  * permissions are an in-runtime sandbox concept declared by an app's
  * package.json; system permissions are an OS concept granted to the
- * Milady binary itself.
+ * Eliza binary itself.
  */
 
 export const MAX_PATTERN_LENGTH = 256;
 
 /**
- * Namespaces this Milady version recognises in `elizaos.app.permissions`.
+ * Namespaces this Eliza version recognises in `elizaos.app.permissions`.
  * The parser surfaces only these as typed slices; other namespace keys
  * declared by an app are preserved verbatim under `raw` for forward
- * compatibility but cannot be granted (a future Milady version that
+ * compatibility but cannot be granted (a future Eliza version that
  * recognises them adds them here).
  *
  * Source of truth for the granted-permission store's namespace
@@ -99,7 +99,7 @@ export type AppIsolation = "none" | "worker";
 /**
  * Parses a raw `isolation` field from `elizaos.app.isolation` into the
  * typed enum, defaulting to `"none"` when absent. Unknown values
- * (including future modes a later Milady version might add) are
+ * (including future modes a later Eliza version might add) are
  * coerced to `"none"` to keep the parser forward-compatible.
  */
 export function parseAppIsolation(value: unknown): AppIsolation {
@@ -119,7 +119,7 @@ export interface AppPermissionsView {
   isolation: AppIsolation;
   /** Raw `elizaos.app.permissions` block from the app's package.json. */
   requestedPermissions: Record<string, unknown> | null;
-  /** Intersection of declared namespaces with what this Milady recognises. */
+  /** Intersection of declared namespaces with what this Eliza recognises. */
   recognisedNamespaces: RecognisedPermissionNamespace[];
   /** Subset of `recognisedNamespaces` the user / loader has granted. */
   grantedNamespaces: RecognisedPermissionNamespace[];
@@ -132,7 +132,7 @@ export interface AppPermissionsManifest {
    * Raw declared object as it appears under `elizaos.app.permissions`,
    * or `null` when no `permissions` block was declared. This is what
    * persists into `app-registry.json` and the audit log so future
-   * Milady versions can read namespaces this version did not validate.
+   * Eliza versions can read namespaces this version did not validate.
    */
   raw: Record<string, unknown> | null;
   fs?: FsPermissions;

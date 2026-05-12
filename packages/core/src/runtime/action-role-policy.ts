@@ -5,7 +5,7 @@ import { normalizeGateRole, satisfiesRoleGate } from "./context-gates";
  * Operator-supplied override map from the `ACTION_ROLE_POLICY` env var.
  *
  * Shape: `{"<ACTION_NAME>": "<RoleGateRole>", ...}` — e.g.
- * `{"BASH":"GUEST","WEB_FETCH":"MEMBER"}`.
+ * `{"SHELL":"GUEST","BROWSER":"MEMBER"}`.
  *
  * When an action name appears in this policy, its declared `contextGate` is
  * bypassed and access is decided solely by whether the caller satisfies the

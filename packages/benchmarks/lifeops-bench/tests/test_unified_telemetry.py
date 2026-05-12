@@ -279,7 +279,11 @@ def test_compute_cache_hit_pct_uses_full_billed_input() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 5. Adapter-level cache-attach helpers
+# 5. Adapter-level cache-attach helper
+#
+# ``attach_usage_cache_fields`` lives on ``eliza_lifeops_bench.types`` and is
+# shared by the hermes-adapter + openclaw-adapter wrappers. Previously each
+# adapter shipped its own private copy; the helper now has one canonical home.
 # ---------------------------------------------------------------------------
 
 
@@ -289,8 +293,8 @@ class _AttrTurn:
     enum/dataclass machinery."""
 
 
-def test_hermes_adapter_parses_cerebras_usage_onto_turn() -> None:
-    from hermes_adapter.lifeops_bench import _attach_usage_cache_fields
+def test_attach_usage_cerebras_shape() -> None:
+    from eliza_lifeops_bench.types import attach_usage_cache_fields
 
     usage = {
         "prompt_tokens": 256,
@@ -298,7 +302,7 @@ def test_hermes_adapter_parses_cerebras_usage_onto_turn() -> None:
         "prompt_tokens_details": {"cached_tokens": 192},
     }
     turn = _AttrTurn()
-    _attach_usage_cache_fields(turn, usage)
+    attach_usage_cache_fields(turn, usage)
     assert getattr(turn, "input_tokens") == 256
     assert getattr(turn, "output_tokens") == 32
     assert getattr(turn, "cache_read_input_tokens") == 192
@@ -306,8 +310,8 @@ def test_hermes_adapter_parses_cerebras_usage_onto_turn() -> None:
     assert getattr(turn, "cache_supported") is True
 
 
-def test_hermes_adapter_parses_anthropic_usage_onto_turn() -> None:
-    from hermes_adapter.lifeops_bench import _attach_usage_cache_fields
+def test_attach_usage_anthropic_shape() -> None:
+    from eliza_lifeops_bench.types import attach_usage_cache_fields
 
     usage = {
         "input_tokens": 200,
@@ -316,7 +320,7 @@ def test_hermes_adapter_parses_anthropic_usage_onto_turn() -> None:
         "cache_creation_input_tokens": 128,
     }
     turn = _AttrTurn()
-    _attach_usage_cache_fields(turn, usage)
+    attach_usage_cache_fields(turn, usage)
     assert getattr(turn, "input_tokens") == 200
     assert getattr(turn, "output_tokens") == 50
     assert getattr(turn, "cache_read_input_tokens") == 1024
@@ -324,39 +328,8 @@ def test_hermes_adapter_parses_anthropic_usage_onto_turn() -> None:
     assert getattr(turn, "cache_supported") is True
 
 
-def test_openclaw_adapter_parses_cerebras_usage_onto_turn() -> None:
-    from openclaw_adapter.lifeops_bench import _attach_usage_cache_fields
-
-    usage = {
-        "prompt_tokens": 64,
-        "completion_tokens": 8,
-        "prompt_tokens_details": {"cached_tokens": 32},
-    }
-    turn = _AttrTurn()
-    _attach_usage_cache_fields(turn, usage)
-    assert getattr(turn, "cache_read_input_tokens") == 32
-    assert getattr(turn, "cache_creation_input_tokens") is None
-    assert getattr(turn, "cache_supported") is True
-
-
-def test_openclaw_adapter_anthropic_shape_round_trips() -> None:
-    from openclaw_adapter.lifeops_bench import _attach_usage_cache_fields
-
-    usage = {
-        "input_tokens": 10,
-        "output_tokens": 2,
-        "cache_read_input_tokens": 5,
-        "cache_creation_input_tokens": 3,
-    }
-    turn = _AttrTurn()
-    _attach_usage_cache_fields(turn, usage)
-    assert getattr(turn, "cache_read_input_tokens") == 5
-    assert getattr(turn, "cache_creation_input_tokens") == 3
-    assert getattr(turn, "cache_supported") is True
-
-
-def test_openclaw_adapter_missing_cache_stays_none() -> None:
-    from openclaw_adapter.lifeops_bench import _attach_usage_cache_fields
+def test_attach_usage_missing_cache_stays_none() -> None:
+    from eliza_lifeops_bench.types import attach_usage_cache_fields
 
     usage = {
         "prompt_tokens": 1,
@@ -364,7 +337,7 @@ def test_openclaw_adapter_missing_cache_stays_none() -> None:
         # No cache info at all.
     }
     turn = _AttrTurn()
-    _attach_usage_cache_fields(turn, usage)
+    attach_usage_cache_fields(turn, usage)
     # No silent 0 fallback — AGENTS.md Cmd #8.
     assert getattr(turn, "cache_read_input_tokens") is None
     assert getattr(turn, "cache_creation_input_tokens") is None
@@ -387,3 +360,194 @@ def test_usage_dataclass_carries_new_cache_fields() -> None:
     assert usage.cache_read_input_tokens == 40
     assert usage.cache_creation_input_tokens == 0
     assert usage.cached_tokens == 40
+
+
+# ---------------------------------------------------------------------------
+# 7. Wave 6-F4: per-turn ``cost_usd`` + ``latency_ms`` on ``MessageTurn``
+#
+# Per-run ``total_cost_usd`` is already wired at the run level (W1-3); these
+# tests verify per-turn granularity lands as proper :class:`MessageTurn`
+# dataclass fields and round-trips through the OpenAI-compat agent path.
+# Cerebras gpt-oss-120b pricing is $0.35/M input + $0.75/M output — sourced
+# from CEREBRAS_PRICING and confirmed against
+# https://www.cerebras.ai/blog/cerebras-inference-now-available-via-pay-per-token.
+# ---------------------------------------------------------------------------
+
+
+def test_message_turn_has_per_turn_cost_and_latency_fields() -> None:
+    """``MessageTurn`` has nullable ``cost_usd`` / ``latency_ms`` defaults."""
+    from eliza_lifeops_bench.types import MessageTurn
+
+    turn = MessageTurn(role="assistant", content="ok")
+    # Per AGENTS.md Cmd #8: missing data stays None, never 0.0.
+    assert turn.cost_usd is None
+    assert turn.latency_ms is None
+    assert turn.input_tokens is None
+    assert turn.output_tokens is None
+
+    # Fields accept explicit values when the provider exposes them.
+    populated = MessageTurn(
+        role="assistant",
+        content="ok",
+        cost_usd=0.001,
+        latency_ms=423.5,
+        input_tokens=200,
+        output_tokens=50,
+    )
+    assert populated.cost_usd == pytest.approx(0.001)
+    assert populated.latency_ms == pytest.approx(423.5)
+    assert populated.input_tokens == 200
+    assert populated.output_tokens == 50
+
+
+@pytest.mark.asyncio
+async def test_openai_compat_agent_attaches_per_turn_cost_and_latency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``OpenAICompatAgent`` writes per-turn ``cost_usd`` + ``latency_ms``
+    on the returned ``MessageTurn`` and the values match Cerebras pricing.
+    """
+    from eliza_lifeops_bench.agents._openai_compat import OpenAICompatAgent
+    from eliza_lifeops_bench.clients.base import ClientCall
+    from eliza_lifeops_bench.clients.cerebras import CEREBRAS_PRICING, CerebrasClient
+    from eliza_lifeops_bench.types import MessageTurn
+
+    monkeypatch.setenv("CEREBRAS_API_KEY", "test")
+    body = {
+        "choices": [
+            {
+                "finish_reason": "stop",
+                "message": {"role": "assistant", "content": "done"},
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 1024,
+            "completion_tokens": 256,
+            "total_tokens": 1280,
+        },
+    }
+    fake_http = _FakeAsyncClient(body)
+
+    def _factory() -> CerebrasClient:
+        return CerebrasClient(model="gpt-oss-120b", http_client=fake_http)
+
+    agent = OpenAICompatAgent(_factory)
+    history = [MessageTurn(role="user", content="status?")]
+    turn = await agent(history, tools=[])
+
+    pricing = CEREBRAS_PRICING["gpt-oss-120b"]
+    expected_cost = (
+        1024 / 1_000_000.0 * pricing["input_per_million_usd"]
+        + 256 / 1_000_000.0 * pricing["output_per_million_usd"]
+    )
+
+    assert turn.cost_usd is not None
+    assert turn.cost_usd == pytest.approx(expected_cost)
+    # Latency comes from the client's wall-clock timing — a fake HTTP
+    # client returns almost instantly, but it's still a non-negative
+    # number that was actually recorded.
+    assert turn.latency_ms is not None
+    assert turn.latency_ms >= 0
+    # Token counts also land on the dataclass.
+    assert turn.input_tokens == 1024
+    assert turn.output_tokens == 256
+    # Agent-level accumulator picks up per-turn cost exactly once.
+    assert agent.total_cost_usd == pytest.approx(expected_cost)
+    # The unused ClientCall import below keeps this test self-contained
+    # for tools / typecheckers that flag unused symbols.
+    _ = ClientCall
+
+
+def test_message_turn_cost_usd_is_none_for_unpriced_models() -> None:
+    """When the pricing table doesn't know a model, ``cost_usd`` is
+    :data:`None` — per AGENTS.md Cmd #8, missing pricing data stays
+    nullable rather than masquerading as a free ``0.0`` call.
+    """
+    from eliza_lifeops_bench.clients.cerebras import _compute_cost_usd as _cerebras_cost
+    from eliza_lifeops_bench.clients.hermes import _compute_cost_usd as _hermes_cost
+
+    assert _cerebras_cost("definitely-not-a-real-model", 1024, 256) is None
+    assert _hermes_cost("nonsense/Custom-Model-9B", 1024, 256) is None
+
+
+def test_total_cost_usd_equals_sum_of_per_turn_costs() -> None:
+    """Run-level invariant: ``ScenarioResult.total_cost_usd`` equals
+    the sum of per-turn ``cost_usd`` values, skipping None entries
+    (unpriced models). Matches the runner's aggregation at
+    ``runner.py``'s ``ScenarioResult`` construction.
+    """
+    from eliza_lifeops_bench.types import TurnResult
+
+    turns = [
+        TurnResult(
+            turn_number=1,
+            agent_message="a",
+            agent_actions=[],
+            user_response="",
+            latency_ms=100,
+            input_tokens=200,
+            output_tokens=50,
+            cost_usd=0.0012,
+        ),
+        TurnResult(
+            turn_number=2,
+            agent_message="b",
+            agent_actions=[],
+            user_response="",
+            latency_ms=120,
+            input_tokens=210,
+            output_tokens=60,
+            cost_usd=0.0034,
+        ),
+        # An unpriced turn: cost is unknown, not free.
+        TurnResult(
+            turn_number=3,
+            agent_message="c",
+            agent_actions=[],
+            user_response="",
+            latency_ms=130,
+            input_tokens=220,
+            output_tokens=70,
+            cost_usd=None,
+        ),
+    ]
+    # Mirrors the runner aggregation expression — keep in sync with
+    # ``ScenarioResult`` construction in runner.py.
+    total = sum(t.cost_usd for t in turns if t.cost_usd is not None)
+    assert total == pytest.approx(0.0012 + 0.0034)
+    # The None-priced turn is preserved on the per-turn record so
+    # downstream telemetry can still distinguish "unknown" from "free".
+    assert turns[2].cost_usd is None
+
+
+def test_message_turn_json_shape_via_dataclasses_asdict() -> None:
+    """Sample MessageTurn JSON output documents the new field shape
+    for downstream serializers (W1-3 already round-trips ``total_cost_usd``
+    at the run level; this captures the per-turn analogue).
+    """
+    import json
+    from dataclasses import asdict
+
+    from eliza_lifeops_bench.types import MessageTurn
+
+    turn = MessageTurn(
+        role="assistant",
+        content="OK, booking that for Tuesday.",
+        tool_calls=None,
+        cost_usd=0.00128,
+        latency_ms=412.0,
+        input_tokens=1024,
+        output_tokens=256,
+    )
+    payload = json.loads(json.dumps(asdict(turn)))
+    assert payload == {
+        "role": "assistant",
+        "content": "OK, booking that for Tuesday.",
+        "name": None,
+        "tool_calls": None,
+        "tool_call_id": None,
+        "cost_usd": 0.00128,
+        "latency_ms": 412.0,
+        "input_tokens": 1024,
+        "output_tokens": 256,
+    }

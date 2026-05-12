@@ -1,9 +1,12 @@
-import { client, useApp } from "@elizaos/ui";
-import type {
-  DocumentRecord,
-  DocumentScope,
+import type { DocumentRecord, DocumentScope } from "@elizaos/ui";
+import {
+  Button,
+  client,
+  Input,
+  PagePanel,
+  Textarea,
+  useApp,
 } from "@elizaos/ui";
-import { Button, Input, PagePanel, Textarea } from "@elizaos/ui";
 import {
   Bot,
   CalendarClock,
@@ -194,7 +197,8 @@ export function LifeOpsDocumentsSection() {
   }, [editingDraft, editingId, loadDocuments, setActionNotice]);
 
   const sortedDocuments = useMemo(
-    () => [...documents].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)),
+    () =>
+      [...documents].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)),
     [documents],
   );
 
