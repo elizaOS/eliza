@@ -42,11 +42,12 @@ function isPaymentOp(value: unknown): value is PaymentOp {
 }
 
 export const paymentOpAction: Action = {
-  name: "MYSTICISM_PAYMENT",
+  name: "PAYMENT",
   contexts: ["finance", "payments"],
   contextGate: { anyOf: ["finance", "payments"] },
   roleGate: { minRole: "OWNER" },
   similes: [
+    "MYSTICISM_PAYMENT",
     "REQUEST_PAYMENT",
     "CHARGE_USER",
     "ASK_FOR_PAYMENT",
@@ -108,7 +109,7 @@ export const paymentOpAction: Action = {
     if (!isPaymentOp(opRaw)) {
       return {
         success: false,
-        text: `PAYMENT_OP requires op in {check, request}, got ${String(opRaw)}`,
+        text: `PAYMENT requires action in {check, request}, got ${String(opRaw)}`,
       };
     }
 
@@ -171,7 +172,7 @@ export const paymentOpAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "For a full Celtic Cross reading, I'd ask $3.00.",
-          actions: ["MYSTICISM_PAYMENT"],
+          actions: ["PAYMENT"],
         },
       },
     ],
@@ -180,7 +181,7 @@ export const paymentOpAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Let me check if your payment has come through...",
-          actions: ["MYSTICISM_PAYMENT"],
+          actions: ["PAYMENT"],
         },
       },
     ],
