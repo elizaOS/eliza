@@ -59,8 +59,8 @@ export {
 } from "./phrase-cache";
 export { chunkTokens, PhraseChunker } from "./phrase-chunker";
 export {
-  type AsrTokenStreamer,
   type DraftProposer,
+  splitTranscriptToTokens,
   type TargetVerifier,
   VoicePipeline,
   type VoicePipelineConfig,
@@ -70,12 +70,9 @@ export {
 export {
   type DflashTextRunner,
   dflashTextRunner,
-  FfiAsrTokenStreamer,
   LlamaServerDraftProposer,
   LlamaServerTargetVerifier,
   MissingAsrTranscriber,
-  StreamingTranscriberTokenStreamer,
-  splitTranscriptToTokens,
 } from "./pipeline-impls";
 export { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
 export { type RollbackEvent, RollbackQueue } from "./rollback-queue";
