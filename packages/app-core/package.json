@@ -38,6 +38,7 @@
     "build:dist": "node ../../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../../scripts/flatten-tsc-package-output.mjs packages/app-core && node ../../scripts/copy-package-assets.mjs packages/app-core src/styles src/registry/entries scripts platforms packaging patches test/scripts test/helpers && node ../../scripts/prepare-package-dist.mjs packages/app-core",
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "benchmark:server": "node --import tsx src/benchmark/server.ts",
+    "voice:interactive": "bun ./scripts/voice-interactive.mjs",
     "build:flatpak": "node ./scripts/build-flatpak.mjs",
     "build:flatpak:store": "ELIZA_BUILD_VARIANT=store node ./scripts/build-flatpak.mjs",
     "build:flatpak:direct": "ELIZA_BUILD_VARIANT=direct node ./scripts/build-flatpak.mjs",

@@ -24,6 +24,10 @@ const vulkanDispatchEvidencePath = path.join(
   here,
   "vulkan-runtime-dispatch-evidence.json",
 );
+const cudaDispatchEvidencePath = path.join(
+  here,
+  "cuda-runtime-dispatch-evidence.json",
+);
 
 const errors = [];
 
@@ -123,6 +127,9 @@ const buildScript = readText(buildScriptPath);
 const manifestSchema = readJson(manifestSchemaPath);
 const metalDispatchEvidence = readJson(metalDispatchEvidencePath);
 const vulkanDispatchEvidence = readJson(vulkanDispatchEvidencePath);
+const cudaDispatchEvidence = fs.existsSync(cudaDispatchEvidencePath)
+  ? readJson(cudaDispatchEvidencePath)
+  : null;
 
 const allowedStatuses = new Set([
   "blocked",
@@ -145,12 +152,19 @@ const vulkanEvidenceKernels =
   vulkanDispatchEvidence && typeof vulkanDispatchEvidence === "object"
     ? vulkanDispatchEvidence.kernels || {}
     : {};
+const cudaEvidenceKernels =
+  cudaDispatchEvidence && typeof cudaDispatchEvidence === "object"
+    ? cudaDispatchEvidence.kernels || {}
+    : {};
 
 if (metalDispatchEvidence.backend !== "metal") {
   fail(`metal dispatch evidence backend must be "metal"`);
 }
 if (vulkanDispatchEvidence.backend !== "vulkan") {
   fail(`vulkan dispatch evidence backend must be "vulkan"`);
+}
+if (cudaDispatchEvidence && cudaDispatchEvidence.backend !== "cuda") {
+  fail(`cuda dispatch evidence backend must be "cuda"`);
 }
 
 // 1. Manifest kernel names are the app-core schema names, not shader names.
@@ -558,6 +572,7 @@ if (!fusedAttn || typeof fusedAttn !== "object") {
   const fusedAttnEvidenceByBackend = {
     metal: metalEvidenceKernels.fusedAttn,
     vulkan: vulkanEvidenceKernels.fusedAttn,
+    cuda: cudaEvidenceKernels.fusedAttn,
   };
   for (const [backend, status] of Object.entries(fusedAttn.runtimeStatus || {})) {
     if (!allowedStatuses.has(status)) {

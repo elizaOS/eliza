@@ -247,7 +247,14 @@ const TRAIT_KEY_TO_OPTIONS = {
 
 const DIRECTION_KEY_TO_OPTION = {
   warmer: "warmer",
-  playful: "warmer",
+  // W5-G6: route `playful` to its own playfulness rubric rather than
+  // collapsing it to `warmer`. Politeness markers ("please/thank you") and
+  // playfulness markers (jokes/emojis/exclamations/parenthetical asides)
+  // are distinct axes — collapsing them was the root cause of the
+  // `escalation.aggressive.code.004` "all agents fail" symptom. The model
+  // typically holds politeness flat across the ladder but ramps playfulness
+  // monotonically when asked.
+  playful: "playful",
   cooler: "cooler",
   blunt: "cooler",
   more_formal: "cooler",

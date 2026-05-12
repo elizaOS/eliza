@@ -17,10 +17,10 @@
  * remote -- it simply connects to `http://localhost:{port}`.
  *
  * **Port policy (WHY):** we resolve a **free** loopback desktop API port from
- * `ELIZA_API_PORT`, `ELIZA_API_PORT`, or `ELIZA_PORT` (see
+ * `ELIZA_API_PORT`, `MILADY_API_PORT`, or `ELIZA_PORT` (see
  * `findFirstAvailableLoopbackPort`) instead of SIGKILL-ing listeners by
  * default, so two desktop apps can run side by side. Optional
- * `ELIZA_AGENT_RECLAIM_STALE_PORT=1` (legacy: `ELIZA_AGENT_RECLAIM_STALE_PORT`)
+ * `ELIZA_AGENT_RECLAIM_STALE_PORT=1` (legacy: `MILADY_AGENT_RECLAIM_STALE_PORT`)
  * restores lsof-based reclaim for single-instance dev.
  */
 

@@ -112,6 +112,12 @@ export {
   voicePresetPath,
 } from "./speaker-preset-cache";
 export {
+  SystemAudioSink,
+  type SystemAudioSinkOptions,
+  WavFileAudioSink,
+  type WavFileAudioSinkOptions,
+} from "./system-audio-sink";
+export {
   ASR_SAMPLE_RATE,
   AsrUnavailableError,
   BaseStreamingTranscriber,

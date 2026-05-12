@@ -158,7 +158,7 @@ the release-evidence stage):
 | `voice_rtf` | 5.91 | ≤ 0.45 | ✗ (CPU MaskGIT TTS) |
 | `asr_wer` | 1.00 | ≤ 0.08 | ✗ (stand-in ASR GGUF) |
 | `e2e_loop_ok` | **true** | true | **✓** |
-| `thirty_turn_ok` | null (the 10-turn endurance bench crashed mid-run, `rc=1`; the full 30-turn on this host needs ~45–90 min of uncontended CPU — not run to completion here) | true | ✗ (not measured) |
+| `thirty_turn_ok` | false — the eval-suite's 10-turn endurance variant crashed mid-run (`rc=1`); a separate standalone `e2e_loop_bench.mjs --turns 30` **completed** (no crash, no RSS leak, `e2eLoopOk=true`, `thirtyTurnOk=false` — peak server RSS 4828 MB over the 4500 MB budget). 30-turn medians: ASR 3394 ms / WER 0.99, first-token 61 ms, decode 24.2 tok/s, **DFlash 0.638 (74/116 — the meaningful acceptance figure over 30 turns)**, first-audio ~13.3 s, RTF 6.06, total 13.3 s, barge-in 0.6 ms | true | ✗ (RSS over budget) |
 | `dflash_acceptance` | **0.55** (11/20) | ≥ 0.65 | ✗ (real spec run; drafter is a near-copy of target so this is high-variance, not a trained-drafter number) |
 | `dispatch` | pass | — | ✓ |
 | `vad_*` | null | — | ✗ (no labelled corpus) |
@@ -177,9 +177,10 @@ the release-evidence stage):
 }
 ```
 
-(`thirtyTurnOk` is left at `false` rather than the aggregate's `null` so the
-manifest's `evals.thirtyTurnOk` is a valid boolean — the real 30-turn run is
-the publish-finish follow-up.)
+(`thirtyTurnOk` is `false` — the standalone 30-turn ran to completion but
+peak RSS exceeds the budget. The eval-suite `endurance.json` records the
+10-turn variant's `not-run` honestly; the standalone 30-turn result lives in
+`packages/inference/verify/bench_results/e2e_loop_2026-05-11.json`.)
 
 ## Publish dry-run verdict (0.6B and 1.7B)
 
