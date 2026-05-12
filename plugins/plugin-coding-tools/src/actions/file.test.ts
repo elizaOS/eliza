@@ -136,6 +136,8 @@ describe("FILE target=device", () => {
     );
 
     expect(result.success).toBe(false);
-    expect(result.text).toContain("target=device supports action=read/write/ls");
+    expect(result.text).toContain(
+      "target=device supports action=read/write/ls",
+    );
   });
 });

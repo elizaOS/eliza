@@ -298,6 +298,7 @@ export * from "./utils/server-health";
 export * from "./utils/state-dir";
 // Export streaming utilities
 export * from "./utils/streaming";
+export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
 // Export validation utilities
 export * from "./validation";
 

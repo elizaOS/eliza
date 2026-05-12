@@ -86,6 +86,8 @@ export * from "./utils/description-compressed-lint";
 // Export browser-compatible utilities
 export * from "./utils/environment";
 export { formatError } from "./utils/format-error";
+export * from "./utils/streaming";
+export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
 
 export function resolveStateDir(): string {
 	return "/.eliza";

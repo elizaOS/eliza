@@ -524,7 +524,17 @@ function patchMetalQjlAttnOpsCpp(cacheDir, { dryRun }) {
   );
   const original = fs.readFileSync(opsPath, "utf8");
   if (original.includes(SENTINEL_QJL_ATTN)) {
-    let upgraded = original.replace(
+    let upgraded = original;
+    if (!upgraded.includes("#include <cstdlib>")) {
+      upgraded = upgraded.replace(
+        `#include <cmath>
+`,
+        `#include <cmath>
+#include <cstdlib>
+`,
+      );
+    }
+    upgraded = upgraded.replace(
       `struct milady_qjl_score_args {
     uint32_t n_heads;
     uint32_t n_kv_heads;
@@ -539,6 +549,35 @@ function patchMetalQjlAttnOpsCpp(cacheDir, { dryRun }) {
     uint32_t tokens_per_threadgroup;
 };`,
     );
+    if (!upgraded.includes("static inline uint32_t milady_env_u32")) {
+      upgraded = upgraded.replace(
+        `static inline ggml_metal_buffer_id milady_metal_buffer_offset(ggml_metal_buffer_id id, size_t extra) {
+    id.offs += extra;
+    return id;
+}
+`,
+        `static inline ggml_metal_buffer_id milady_metal_buffer_offset(ggml_metal_buffer_id id, size_t extra) {
+    id.offs += extra;
+    return id;
+}
+
+static inline uint32_t milady_env_u32(const char * name, uint32_t fallback, uint32_t min_value, uint32_t max_value) {
+    const char * raw = std::getenv(name);
+    if (raw == nullptr || raw[0] == '\\0') {
+        return fallback;
+    }
+    char * end = nullptr;
+    const unsigned long parsed = std::strtoul(raw, &end, 10);
+    if (end == raw || *end != '\\0' || parsed < min_value || parsed > max_value) {
+        GGML_LOG_WARN("%s: ignoring invalid %s=%s (expected %u..%u)\\n",
+                      __func__, name, raw, min_value, max_value);
+        return fallback;
+    }
+    return (uint32_t) parsed;
+}
+`,
+      );
+    }
     upgraded = upgraded.replace(
       `        /* n_tokens   = */ n_tokens,
         /* proj_dim   = */ 256u,
@@ -680,6 +719,15 @@ int ggml_metal_op_attn_score_qjl(ggml_metal_op_t ctx, int idx) {
 
 `;
   let patched = original.replace(funcAnchor, opFunc + funcAnchor);
+  if (!patched.includes("#include <cstdlib>")) {
+    patched = patched.replace(
+      `#include <cmath>
+`,
+      `#include <cmath>
+#include <cstdlib>
+`,
+    );
+  }
 
   const switchAnchor = `        case GGML_OP_FLASH_ATTN_EXT:
             {
@@ -1198,9 +1246,9 @@ function patchMetalTbqPolarOpsCpp(cacheDir, { dryRun }) {
 
 static inline uint32_t milady_tbq_blocks_per_threadgroup(ggml_type type) {
     switch (type) {
-        case GGML_TYPE_TBQ3_0:   return 8u;
-        case GGML_TYPE_TBQ4_0:   return 32u;
-        case GGML_TYPE_TBQ3_TCQ: return 4u;
+        case GGML_TYPE_TBQ3_0:   return milady_env_u32("ELIZA_METAL_TBQ3_BLOCKS_PER_TG", 8u, 1u, 64u);
+        case GGML_TYPE_TBQ4_0:   return milady_env_u32("ELIZA_METAL_TBQ4_BLOCKS_PER_TG", 32u, 1u, 64u);
+        case GGML_TYPE_TBQ3_TCQ: return milady_env_u32("ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG", 4u, 1u, 64u);
         default: GGML_ABORT("unsupported TurboQuant attention score type");
     }
 }
@@ -1238,6 +1286,15 @@ struct milady_polar_score_args {
     uint32_t use_qjl;
 };
 
+struct milady_polar_preht_score_args {
+    uint32_t head_dim;
+    uint32_t n_kv;
+    uint32_t kv_stride_blocks;
+    uint32_t q_head;
+    uint32_t head_offset_bytes;
+    uint32_t use_qjl;
+};
+
 static const float k_milady_tbq3_tcq_codebook[512] = {
 ${tcqCodebook}
 };
@@ -1256,9 +1313,9 @@ static inline uint32_t milady_tbq_blocks_per_threadgroup(ggml_type type) {
     //   TBQ3=8, TBQ4=32, TBQ3_TCQ=4. Voice-mode policy can still force N=1
     //   at a higher scheduler layer when barge-in latency dominates.
     switch (type) {
-        case GGML_TYPE_TBQ3_0:   return 8u;
-        case GGML_TYPE_TBQ4_0:   return 32u;
-        case GGML_TYPE_TBQ3_TCQ: return 4u;
+        case GGML_TYPE_TBQ3_0:   return milady_env_u32("ELIZA_METAL_TBQ3_BLOCKS_PER_TG", 8u, 1u, 64u);
+        case GGML_TYPE_TBQ4_0:   return milady_env_u32("ELIZA_METAL_TBQ4_BLOCKS_PER_TG", 32u, 1u, 64u);
+        case GGML_TYPE_TBQ3_TCQ: return milady_env_u32("ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG", 4u, 1u, 64u);
         default: GGML_ABORT("unsupported TurboQuant attention score type");
     }
 }
@@ -1369,6 +1426,7 @@ int ggml_metal_op_attn_score_polar(ggml_metal_op_t ctx, int idx) {
     const uint32_t n_kv_heads  = (uint32_t) params[0];
     const uint32_t n_tokens    = (uint32_t) pk->ne[1];
     const uint32_t use_qjl     = (uint32_t) (params[1] != 0);
+    const uint32_t q_preht     = (uint32_t) (params[2] != 0);
     const int64_t  n_batch     = q->ne[2];
     const int64_t  ne3         = q->ne[3];
 
@@ -1383,33 +1441,62 @@ int ggml_metal_op_attn_score_polar(ggml_metal_op_t ctx, int idx) {
     GGML_ASSERT(pk->nb[1] == ggml_row_size(GGML_TYPE_Q4_POLAR, 128));
     GGML_ASSERT(pk->nb[2] == (size_t) n_tokens * pk->nb[1]);
 
-    milady_polar_score_args args = {
-        /* n_rows = */ n_tokens,
-        /* head_dim = */ 128u,
-        /* use_qjl = */ use_qjl,
-    };
-
-    auto pipeline = ggml_metal_library_get_pipeline_attn_score_polar(lib);
-
     const ggml_metal_buffer_id q_base   = ggml_metal_get_buffer_id(q);
     const ggml_metal_buffer_id pk_base  = ggml_metal_get_buffer_id(pk);
     const ggml_metal_buffer_id dst_base = ggml_metal_get_buffer_id(op);
     const uint32_t gqa = n_heads / n_kv_heads;
 
-    ggml_metal_encoder_set_pipeline(enc, pipeline);
-    ggml_metal_encoder_set_bytes(enc, &args, sizeof(args), 3);
+    if (q_preht != 0u) {
+        auto pipeline = ggml_metal_library_get_pipeline_attn_score_polar_preht(lib);
+        ggml_metal_encoder_set_pipeline(enc, pipeline);
 
-    for (int64_t i3 = 0; i3 < ne3; ++i3) {
-        const size_t q_i3   = (size_t) i3 * q->nb[3];
-        const size_t pk_i3  = (size_t) i3 * pk->nb[3];
-        const size_t dst_i3 = (size_t) i3 * op->nb[3];
-        for (int64_t ib = 0; ib < n_batch; ++ib) {
-            for (uint32_t h = 0; h < n_heads; ++h) {
-                const uint32_t h_k = h / gqa;
-                ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(pk_base,  pk_i3 + (size_t) h_k * pk->nb[2]), 0);
-                ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(q_base,   q_i3  + (size_t) ib * q->nb[2]  + (size_t) h   * q->nb[1]),  1);
-                ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(dst_base, dst_i3 + (size_t) ib * op->nb[2] + (size_t) h   * op->nb[1]), 2);
-                ggml_metal_encoder_dispatch_threadgroups(enc, (int) n_tokens, 1, 1, 32, 1, 1);
+        for (int64_t i3 = 0; i3 < ne3; ++i3) {
+            const size_t q_i3   = (size_t) i3 * q->nb[3];
+            const size_t pk_i3  = (size_t) i3 * pk->nb[3];
+            const size_t dst_i3 = (size_t) i3 * op->nb[3];
+            for (int64_t ib = 0; ib < n_batch; ++ib) {
+                ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(q_base,   q_i3  + (size_t) ib * q->nb[2]), 0);
+                ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(pk_base,  pk_i3),                         1);
+                ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(dst_base, dst_i3 + (size_t) ib * op->nb[2]), 2);
+                for (uint32_t h = 0; h < n_heads; ++h) {
+                    const uint32_t h_k = h / gqa;
+                    milady_polar_preht_score_args args = {
+                        /* head_dim = */ 128u,
+                        /* n_kv = */ n_tokens,
+                        /* kv_stride_blocks = */ 1u,
+                        /* q_head = */ h,
+                        /* head_offset_bytes = */ (uint32_t) ((size_t) h_k * pk->nb[2]),
+                        /* use_qjl = */ use_qjl,
+                    };
+                    ggml_metal_encoder_set_bytes(enc, &args, sizeof(args), 3);
+                    ggml_metal_encoder_dispatch_threadgroups(enc, (int) n_tokens, 1, 1, 32, 1, 1);
+                }
+            }
+        }
+    } else {
+        milady_polar_score_args args = {
+            /* n_rows = */ n_tokens,
+            /* head_dim = */ 128u,
+            /* use_qjl = */ use_qjl,
+        };
+
+        auto pipeline = ggml_metal_library_get_pipeline_attn_score_polar(lib);
+
+        ggml_metal_encoder_set_pipeline(enc, pipeline);
+        ggml_metal_encoder_set_bytes(enc, &args, sizeof(args), 3);
+
+        for (int64_t i3 = 0; i3 < ne3; ++i3) {
+            const size_t q_i3   = (size_t) i3 * q->nb[3];
+            const size_t pk_i3  = (size_t) i3 * pk->nb[3];
+            const size_t dst_i3 = (size_t) i3 * op->nb[3];
+            for (int64_t ib = 0; ib < n_batch; ++ib) {
+                for (uint32_t h = 0; h < n_heads; ++h) {
+                    const uint32_t h_k = h / gqa;
+                    ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(pk_base,  pk_i3 + (size_t) h_k * pk->nb[2]), 0);
+                    ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(q_base,   q_i3  + (size_t) ib * q->nb[2]  + (size_t) h   * q->nb[1]),  1);
+                    ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(dst_base, dst_i3 + (size_t) ib * op->nb[2] + (size_t) h   * op->nb[1]), 2);
+                    ggml_metal_encoder_dispatch_threadgroups(enc, (int) n_tokens, 1, 1, 32, 1, 1);
+                }
             }
         }
     }

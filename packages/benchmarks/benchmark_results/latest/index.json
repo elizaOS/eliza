@@ -104,9 +104,9 @@
     },
     "bfcl::openclaw": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/bfcl__openclaw.json",
-      "run_id": "run_bfcl_20260511T133323Z_2_24587416",
+      "run_id": "run_bfcl_20260512T021008Z_1_32a9417d",
       "status": "succeeded",
-      "updated_at": "2026-05-12T01:33:59Z"
+      "updated_at": "2026-05-12T02:10:35.680171+00:00"
     },
     "clawbench::eliza": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/clawbench__eliza.json",
@@ -824,9 +824,9 @@
     },
     "terminal_bench::openclaw": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/terminal_bench__openclaw.json",
-      "run_id": "run_terminal_bench_20260511T191156Z_1_af614376",
+      "run_id": "run_terminal_bench_20260512T020849Z_2_f920b087",
       "status": "succeeded",
-      "updated_at": "2026-05-12T01:34:00Z"
+      "updated_at": "2026-05-12T02:10:08.369648+00:00"
     },
     "trust::eliza": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/trust__eliza.json",
@@ -937,5 +937,5 @@
       "updated_at": "2026-05-12T01:34:00Z"
     }
   },
-  "updated_at": "2026-05-12T02:08:49.192167+00:00"
+  "updated_at": "2026-05-12T02:10:35.682008+00:00"
 }

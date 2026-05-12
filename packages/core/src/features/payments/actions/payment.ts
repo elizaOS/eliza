@@ -302,9 +302,7 @@ async function handleDeliverLink(
 	}
 
 	const paymentRequestId =
-		typeof params.paymentRequestId === "string"
-			? params.paymentRequestId
-			: "";
+		typeof params.paymentRequestId === "string" ? params.paymentRequestId : "";
 	const target =
 		typeof params.target === "string"
 			? (params.target as DeliveryTarget)
@@ -319,7 +317,9 @@ async function handleDeliverLink(
 
 	const envelope = await client.get(paymentRequestId);
 	if (!envelope) {
-		logger.warn(`[Payment:deliver_link] requestId=${paymentRequestId} not found`);
+		logger.warn(
+			`[Payment:deliver_link] requestId=${paymentRequestId} not found`,
+		);
 		return {
 			success: false,
 			text: `Payment request ${paymentRequestId} not found.`,
@@ -406,9 +406,7 @@ async function handleVerifyPayload(
 	}
 
 	const paymentRequestId =
-		typeof params.paymentRequestId === "string"
-			? params.paymentRequestId
-			: "";
+		typeof params.paymentRequestId === "string" ? params.paymentRequestId : "";
 	if (!paymentRequestId || params.proof === undefined) {
 		return {
 			success: false,
@@ -458,9 +456,7 @@ async function handleSettle(
 	}
 
 	const paymentRequestId =
-		typeof params.paymentRequestId === "string"
-			? params.paymentRequestId
-			: "";
+		typeof params.paymentRequestId === "string" ? params.paymentRequestId : "";
 	if (!paymentRequestId) {
 		return {
 			success: false,
@@ -510,9 +506,7 @@ async function handleAwaitCallback(
 	}
 
 	const paymentRequestId =
-		typeof params.paymentRequestId === "string"
-			? params.paymentRequestId
-			: "";
+		typeof params.paymentRequestId === "string" ? params.paymentRequestId : "";
 	if (!paymentRequestId) {
 		return {
 			success: false,
@@ -575,9 +569,7 @@ async function handleCancelRequest(
 	}
 
 	const paymentRequestId =
-		typeof params.paymentRequestId === "string"
-			? params.paymentRequestId
-			: "";
+		typeof params.paymentRequestId === "string" ? params.paymentRequestId : "";
 	if (!paymentRequestId) {
 		return {
 			success: false,
@@ -607,7 +599,10 @@ async function handleCancelRequest(
 	};
 }
 
-function validateParams(runtime: IAgentRuntime, params: PaymentParams): boolean {
+function validateParams(
+	runtime: IAgentRuntime,
+	params: PaymentParams,
+): boolean {
 	const action = normalizePaymentAction(params.action);
 	if (!action) return false;
 	switch (action) {
@@ -657,22 +652,16 @@ export const paymentAction: Action = {
 	name: "PAYMENT",
 	suppressPostActionContinuation: true,
 	similes: [
-		"CREATE_PAYMENT_REQUEST",
 		"NEW_PAYMENT_REQUEST",
 		"OPEN_PAYMENT_REQUEST",
-		"DELIVER_PAYMENT_LINK",
 		"SEND_PAYMENT_LINK",
 		"DISPATCH_PAYMENT_LINK",
-		"VERIFY_PAYMENT_PAYLOAD",
 		"VERIFY_PAYMENT_PROOF",
 		"CHECK_PAYMENT_PROOF",
-		"SETTLE_PAYMENT",
 		"FINALIZE_PAYMENT",
 		"CONFIRM_PAYMENT",
-		"AWAIT_PAYMENT_CALLBACK",
 		"WAIT_FOR_PAYMENT",
 		"AWAIT_PAYMENT_SETTLEMENT",
-		"CANCEL_PAYMENT_REQUEST",
 		"VOID_PAYMENT_REQUEST",
 		"ABORT_PAYMENT_REQUEST",
 	],
@@ -772,7 +761,8 @@ export const paymentAction: Action = {
 		},
 		{
 			name: "proof",
-			description: "For verify_payload or settle: provider-specific proof payload.",
+			description:
+				"For verify_payload or settle: provider-specific proof payload.",
 			required: false,
 			schema: { type: "object" as const },
 		},

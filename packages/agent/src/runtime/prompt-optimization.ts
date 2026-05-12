@@ -1449,7 +1449,7 @@ export function installPromptOptimizations(
             );
           }
         }
-      } else if (nextMessages && !payloadHasProviderTools) {
+      } else if (nextMessages) {
         try {
           const beforeRendered = renderMessagesForTelemetry(nextMessages);
           let conversationCompactionSkipReason: string | undefined;
@@ -1481,10 +1481,6 @@ export function installPromptOptimizations(
             )}`,
           );
         }
-      } else if (nextMessages && payloadHasProviderTools) {
-        promptOptimizationTelemetry.transformations.push(
-          "conversation-message-compaction-skipped:provider-tools-present",
-        );
       }
     }
 

@@ -2,138 +2,6 @@
   "version": "1.0.0",
   "actions": [
     {
-      "name": "APP",
-      "description": "Unified app control. action=launch starts a registered app; action=relaunch stops then launches (optionally with verify); action=list shows installed + running apps; action=load_from_directory registers apps from an absolute folder; action=create runs the multi-turn create-or-edit flow that searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, and dispatches a coding agent with AppVerificationService validator.",
-      "parameters": [
-        {
-          "name": "action",
-          "description": "Operation: launch | relaunch | load_from_directory | list | create.",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "launch",
-              "relaunch",
-              "load_from_directory",
-              "list",
-              "create"
-            ]
-          }
-        },
-        {
-          "name": "mode",
-          "description": "Legacy alias for action.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "launch",
-              "relaunch",
-              "load_from_directory",
-              "list",
-              "create"
-            ]
-          }
-        },
-        {
-          "name": "app",
-          "description": "App name, slug, or display name (launch / relaunch / create-edit).",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "name",
-          "description": "Alias for `app`.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "runId",
-          "description": "Specific run id to stop before relaunching (relaunch mode).",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "verify",
-          "description": "When true, runs AppVerificationService (fast profile) after relaunch.",
-          "required": false,
-          "schema": {
-            "type": "boolean",
-            "default": false
-          }
-        },
-        {
-          "name": "workdir",
-          "description": "Absolute workdir for verify (relaunch) or for explicit edit (create).",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "directory",
-          "description": "Absolute directory to scan (load_from_directory mode).",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "intent",
-          "description": "Free-form description of the app to build (create mode). Defaults to the user message text.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "editTarget",
-          "description": "Skip the picker and edit this installed app directly (create mode).",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "choice",
-          "description": "Override choice reply (`new` | `edit-N` | `cancel`) for create mode follow-up turns.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "Manage apps: launch/relaunch/list/load folder/create; create scaffolds min app, runs coding agent, verifies result.",
-      "similes": ["APP_CONTROL", "MANAGE_APPS"],
-      "exampleCalls": [
-        {
-          "user": "Use APP with the provided parameters.",
-          "actions": ["APP"],
-          "params": {
-            "APP": {
-              "action": "launch",
-              "mode": "launch",
-              "app": "example",
-              "name": "example",
-              "runId": "example",
-              "verify": false,
-              "workdir": "example",
-              "directory": "example",
-              "intent": "example",
-              "editTarget": "example",
-              "choice": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
       "name": "BLOCK",
       "description": "Block or unblock specific phone apps (Family Controls / Usage Access) ",
       "parameters": [
@@ -899,122 +767,6 @@
       ]
     },
     {
-      "name": "CALENDLY",
-      "description": "Work with Calendly specifically (calendly.com / api.calendly.com). ",
-      "parameters": [
-        {
-          "name": "action",
-          "description": "One of: list_event_types, availability, upcoming_events, single_use_link. When omitted, the handler runs an LLM extraction over the conversation to recover it.",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "list_event_types",
-              "availability",
-              "upcoming_events",
-              "single_use_link"
-            ]
-          },
-          "examples": ["list_event_types", "availability"],
-          "descriptionCompressed": "calendly op: list_event_types|availability|upcoming_events|single_use_link"
-        },
-        {
-          "name": "subaction",
-          "description": "Legacy alias for action.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "list_event_types",
-              "availability",
-              "upcoming_events",
-              "single_use_link"
-            ]
-          },
-          "examples": ["list_event_types", "availability"],
-          "descriptionCompressed": "legacy calendly op alias"
-        },
-        {
-          "name": "intent",
-          "description": "Optional free-form description of the user's intent.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "descriptionCompressed": "free-form intent"
-        },
-        {
-          "name": "eventTypeUri",
-          "description": "Calendly event type URI. Required for availability and single_use_link.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": ["https://api.calendly.com/event_types/ABCDEFGH"],
-          "descriptionCompressed": "calendly event type URI (availability|single_use_link)"
-        },
-        {
-          "name": "startDate",
-          "description": "ISO date (YYYY-MM-DD) for range-based queries (availability, upcoming_events).",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
-          },
-          "examples": ["2026-05-12"],
-          "descriptionCompressed": "YYYY-MM-DD range start"
-        },
-        {
-          "name": "endDate",
-          "description": "ISO date (YYYY-MM-DD) for range-based queries.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
-          },
-          "examples": ["2026-05-19"],
-          "descriptionCompressed": "YYYY-MM-DD range end"
-        },
-        {
-          "name": "timezone",
-          "description": "IANA timezone, e.g. America/Los_Angeles.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "examples": ["America/Los_Angeles", "UTC"],
-          "descriptionCompressed": "IANA tz"
-        }
-      ],
-      "descriptionCompressed": "calendly: list_event_types|availability|upcoming_events|single_use_link; route here for calendly.com URLs",
-      "similes": [
-        "CALENDLY_LIST_EVENT_TYPES",
-        "CALENDLY_AVAILABILITY",
-        "CALENDLY_UPCOMING",
-        "CALENDLY_BOOKING_LINK",
-        "CALENDLY_ACTION",
-        "CALENDLY_EVENT_TYPES",
-        "CALENDLY_SCHEDULED_EVENTS"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use CALENDLY with the provided parameters.",
-          "actions": ["CALENDLY"],
-          "params": {
-            "CALENDLY": {
-              "action": "list_event_types",
-              "subaction": "list_event_types",
-              "intent": "example",
-              "eventTypeUri": "https://api.calendly.com/event_types/ABCDEFGH",
-              "startDate": "2026-05-12",
-              "endDate": "2026-05-19",
-              "timezone": "America/Los_Angeles"
-            }
-          }
-        }
-      ]
-    },
-    {
       "name": "COMPUTER_USE",
       "description": "computer_use:\n  purpose: Canonical cross-platform computer-use action for real desktop interaction on macOS, Linux, and Windows when direct computer operation is required.\n  guidance: Take a screenshot before acting. After each desktop action, the result includes a screenshot when available. Use this standard plugin action, not a LifeOps wrapper, for Finder/Desktop/native-app/browser/file/terminal workflows on the owner's machine.\n  actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
       "parameters": [
@@ -1462,267 +1214,6 @@
       ]
     },
     {
-      "name": "DEVICE_FILE_READ",
-      "description": "Read a file from the user's device. On iOS/Android this reads from Capacitor's Documents directory; on desktop/AOSP it reads from the agent's workspace under the state directory. Paths are relative; `..` traversal and absolute paths are rejected.",
-      "parameters": [
-        {
-          "name": "path",
-          "description": "Relative path within the user's device-files root.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "encoding",
-          "description": "Text encoding to decode the bytes with. Defaults to utf8.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": ["utf8", "base64"]
-          }
-        }
-      ],
-      "descriptionCompressed": "read file from device (relative path, utf8|base64 encoding)",
-      "similes": ["READ_DEVICE_FILE", "DEVICE_READ_FILE"],
-      "exampleCalls": [
-        {
-          "user": "Use DEVICE_FILE_READ with the provided parameters.",
-          "actions": ["DEVICE_FILE_READ"],
-          "params": {
-            "DEVICE_FILE_READ": {
-              "path": "example",
-              "encoding": "utf8"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "DEVICE_FILE_WRITE",
-      "description": "Write a file to the user's device. On iOS/Android this writes into Capacitor's Documents directory (visible in Files.app / shared storage); on desktop/AOSP it writes under the agent's workspace in the state directory. Paths are relative; `..` traversal and absolute paths are rejected.",
-      "parameters": [
-        {
-          "name": "path",
-          "description": "Relative path within the user's device-files root.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "content",
-          "description": "File content as a string. base64-encode when binary.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "encoding",
-          "description": "How the content string should be interpreted. Defaults to utf8.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": ["utf8", "base64"]
-          }
-        }
-      ],
-      "descriptionCompressed": "write file to device (relative path, utf8|base64 content)",
-      "similes": ["WRITE_DEVICE_FILE", "DEVICE_WRITE_FILE"],
-      "exampleCalls": [
-        {
-          "user": "Use DEVICE_FILE_WRITE with the provided parameters.",
-          "actions": ["DEVICE_FILE_WRITE"],
-          "params": {
-            "DEVICE_FILE_WRITE": {
-              "path": "example",
-              "content": "example",
-              "encoding": "utf8"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "DEVICE_LIST_DIR",
-      "description": "List entries in a directory on the user's device. On iOS/Android this lists inside Capacitor's Documents directory; on desktop/AOSP it lists under the agent's workspace in the state directory. Paths are relative; `..` traversal and absolute paths are rejected.",
-      "parameters": [
-        {
-          "name": "path",
-          "description": "Relative directory path within the user's device-files root. Empty string or omitted means the root.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "list directory on device (relative path; rooted under Documents/workspace)",
-      "similes": ["LIST_DEVICE_DIR", "DEVICE_LS"],
-      "exampleCalls": [
-        {
-          "user": "Use DEVICE_LIST_DIR with the provided parameters.",
-          "actions": ["DEVICE_LIST_DIR"],
-          "params": {
-            "DEVICE_LIST_DIR": {
-              "path": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "DOC",
-      "description": "Manage the owner's document workflow surface: signature requests, approvals, deadline tracking, portal uploads, ID/form collection, and request close-out. Subactions: request_signature, request_approval, track_deadline, upload_asset, collect_id, close_request.",
-      "parameters": [
-        {
-          "name": "action",
-          "description": "Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "request_signature",
-              "request_approval",
-              "track_deadline",
-              "upload_asset",
-              "collect_id",
-              "close_request"
-            ]
-          }
-        },
-        {
-          "name": "subaction",
-          "description": "Legacy alias for action. Prefer action for new planner output.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "request_signature",
-              "request_approval",
-              "track_deadline",
-              "upload_asset",
-              "collect_id",
-              "close_request"
-            ]
-          }
-        },
-        {
-          "name": "documentRequestId",
-          "description": "Existing DocumentRequest id. Required for track_deadline and close_request.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "requesteeEntityId",
-          "description": "Entity id of the person we are asking. Required for request_signature and collect_id.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "documentTitle",
-          "description": "Short human-readable label for the document.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "deadline",
-          "description": "ISO-8601 deadline for the request.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "portalUrl",
-          "description": "Portal endpoint for upload_asset and (optionally) collect_id.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "assetPath",
-          "description": "Local path or URL of the asset to upload. Required for upload_asset.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "assetKind",
-          "description": "What kind of asset: deck, headshot, id, form, etc. Required for upload_asset and collect_id.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "signatureUrl",
-          "description": "Optional signing portal URL (DocuSign / HelloSign / etc.).",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "approvalReason",
-          "description": "Reason label for request_approval.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "note",
-          "description": "Free-form note recorded on the DocumentRequest.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "resolution",
-          "description": "close_request only: completed | expired | cancelled. Defaults to completed.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": ["completed", "expired", "cancelled"]
-          }
-        }
-      ],
-      "descriptionCompressed": "docs: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request; deadline-aware; owner-gated for signature+upload",
-      "exampleCalls": [
-        {
-          "user": "Use DOC with the provided parameters.",
-          "actions": ["DOC"],
-          "params": {
-            "DOC": {
-              "action": "request_signature",
-              "subaction": "request_signature",
-              "documentRequestId": "example",
-              "requesteeEntityId": "example",
-              "documentTitle": "example",
-              "deadline": "example",
-              "portalUrl": "example",
-              "assetPath": "example",
-              "assetKind": "example",
-              "signatureUrl": "example",
-              "approvalReason": "example",
-              "note": "example",
-              "resolution": "completed"
-            }
-          }
-        }
-      ]
-    },
-    {
       "name": "ENTITY",
       "description": "Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: create, read, set_identity, set_relationship, log_interaction, merge. For rolodex/contact lifecycle (CRUD on a single contact's profile) use CONTACT; ENTITY is the owner-graph umbrella for identity, relationships, and interaction history. Use SCHEDULED_TASK for follow-up cadence; use LIFE for one-off dated reminders to call/text someone.",
       "parameters": [
@@ -1894,7 +1385,6 @@
       ],
       "descriptionCompressed": "people+relationships: create|read|set_identity|set_relationship|log_interaction|merge; rolodex CRUD → CONTACT; follow-up cadence → SCHEDULED_TASK",
       "similes": [
-        "RELATIONSHIP",
         "CONTACTS",
         "ROLODEX",
         "LOG_INTERACTION",
@@ -1937,7 +1427,7 @@
     },
     {
       "name": "FILE",
-      "description": "Read, write, edit, search, find, or list workspace files through one FILE action. Choose action=read/write/edit/grep/glob/ls. All paths must be absolute unless an operation explicitly defaults to the session cwd.",
+      "description": "Read, write, edit, search, find, or list files through one FILE action. Choose action=read/write/edit/grep/glob/ls. Use target=device for device-filesystem reads, writes, and directory lists; workspace paths must be absolute unless an operation explicitly defaults to the session cwd.",
       "parameters": [
         {
           "name": "action",
@@ -1946,6 +1436,15 @@
           "schema": {
             "type": "string",
             "enum": ["read", "write", "edit", "grep", "glob", "ls"]
+          }
+        },
+        {
+          "name": "target",
+          "description": "Optional target filesystem. Use device for relative paths under the device filesystem bridge; omit for workspace files.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["workspace", "device"]
           }
         },
         {
@@ -2111,16 +1610,19 @@
               "type": "string"
             }
           }
+        },
+        {
+          "name": "encoding",
+          "description": "For target=device read/write: utf8 or base64. Defaults to utf8.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["utf8", "base64"]
+          }
         }
       ],
-      "descriptionCompressed": "File operations umbrella: action=read/write/edit/grep/glob/ls.",
+      "descriptionCompressed": "File operations umbrella: action=read/write/edit/grep/glob/ls, optional target=device.",
       "similes": [
-        "READ",
-        "WRITE",
-        "EDIT",
-        "GREP",
-        "GLOB",
-        "LS",
         "READ_FILE",
         "WRITE_FILE",
         "EDIT_FILE",
@@ -2134,6 +1636,7 @@
           "params": {
             "FILE": {
               "action": "read",
+              "target": "workspace",
               "file_path": "example",
               "path": "example",
               "content": "example",
@@ -2153,44 +1656,8 @@
               "show_line_numbers": false,
               "offset": 1,
               "limit": 1,
-              "ignore": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "FORM",
-      "description": "Form session router. action=restore rehydrates the most recent stashed form for the current user.",
-      "parameters": [
-        {
-          "name": "action",
-          "description": "Form verb: restore. Defaults to restore when omitted.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": ["restore"]
-          }
-        },
-        {
-          "name": "sessionId",
-          "description": "Optional stashed form session id to restore.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "Form session router (restore).",
-      "similes": ["FORM_RESTORE", "RESUME_FORM", "CONTINUE_FORM"],
-      "exampleCalls": [
-        {
-          "user": "Use FORM with the provided parameters.",
-          "actions": ["FORM"],
-          "params": {
-            "FORM": {
-              "action": "restore",
-              "sessionId": "example"
+              "ignore": "example",
+              "encoding": "utf8"
             }
           }
         }
@@ -2465,27 +1932,13 @@
       ],
       "descriptionCompressed": "Linear: create/get/update/delete issue, create/update/delete/list comment, search issues, get/clear activity.",
       "similes": [
-        "LINEAR_ISSUE",
         "LINEAR_ISSUES",
-        "LINEAR_COMMENT",
         "LINEAR_COMMENTS",
-        "LINEAR_WORKFLOW",
         "LINEAR_ACTIVITY",
         "LINEAR_SEARCH",
-        "CREATE_LINEAR_ISSUE",
-        "GET_LINEAR_ISSUE",
-        "UPDATE_LINEAR_ISSUE",
-        "DELETE_LINEAR_ISSUE",
         "MANAGE_LINEAR_ISSUE",
         "MANAGE_LINEAR_ISSUES",
-        "CREATE_LINEAR_COMMENT",
         "COMMENT_LINEAR_ISSUE",
-        "UPDATE_LINEAR_COMMENT",
-        "DELETE_LINEAR_COMMENT",
-        "LIST_LINEAR_COMMENTS",
-        "GET_LINEAR_ACTIVITY",
-        "CLEAR_LINEAR_ACTIVITY",
-        "SEARCH_LINEAR_ISSUES",
         "LINEAR_WORKFLOW_SEARCH"
       ],
       "exampleCalls": [
@@ -2495,159 +1948,6 @@
           "params": {
             "LINEAR": {
               "action": "create_issue"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "LIQUIDITY",
-      "description": "Single LP/liquidity management action. action=onboard|list_pools|open|close|reposition|list_positions|get_position|set_preferences. dex=orca|raydium|meteora|uniswap|aerodrome|pancakeswap selects the protocol; chain=solana|evm is inferred from dex when omitted.",
-      "parameters": [
-        {
-          "name": "action",
-          "description": "Liquidity operation: onboard, list_pools, open, close, reposition, list_positions, get_position, set_preferences.",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "onboard",
-              "list_pools",
-              "open",
-              "close",
-              "reposition",
-              "list_positions",
-              "get_position",
-              "set_preferences"
-            ]
-          }
-        },
-        {
-          "name": "subaction",
-          "description": "Legacy alias for action.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "chain",
-          "description": "Chain for the LP operation.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": ["solana", "evm"]
-          }
-        },
-        {
-          "name": "dex",
-          "description": "DEX/protocol name.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "pool",
-          "description": "Pool id/address for open, close, reposition, or position lookup.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "position",
-          "description": "LP position id/mint/address.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "amount",
-          "description": "Liquidity amount for open, close, or reposition operations.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "range",
-          "description": "Desired concentrated liquidity price range.",
-          "required": false,
-          "schema": {
-            "type": "object"
-          }
-        },
-        {
-          "name": "tokenA",
-          "description": "First token filter or deposit token.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "tokenB",
-          "description": "Second token filter or deposit token.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "chainId",
-          "description": "Optional numeric EVM chain id.",
-          "required": false,
-          "schema": {
-            "type": "number"
-          }
-        },
-        {
-          "name": "slippageBps",
-          "description": "Maximum allowed slippage in basis points.",
-          "required": false,
-          "schema": {
-            "type": "number"
-          }
-        }
-      ],
-      "descriptionCompressed": "Manage LP positions by action, chain, dex, pool, position, amount, range, token filters.",
-      "similes": [
-        "lp_management",
-        "LP_MANAGEMENT",
-        "LIQUIDITY_POOL_MANAGEMENT",
-        "LP_MANAGER",
-        "MANAGE_LP",
-        "MANAGE_LIQUIDITY",
-        "MANAGE_LP_POSITIONS",
-        "manage_positions",
-        "manage_raydium_positions",
-        "AUTOMATE_REBALANCING",
-        "AUTOMATE_POSITIONS",
-        "START_MANAGING_POSITIONS",
-        "AUTOMATE_RAYDIUM_REBALANCING",
-        "AUTOMATE_RAYDIUM_POSITIONS",
-        "START_MANAGING_RAYDIUM_POSITIONS"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use LIQUIDITY with the provided parameters.",
-          "actions": ["LIQUIDITY"],
-          "params": {
-            "LIQUIDITY": {
-              "action": "onboard",
-              "subaction": "example",
-              "chain": "solana",
-              "dex": "example",
-              "pool": "example",
-              "position": "example",
-              "amount": "example",
-              "range": "example",
-              "tokenA": "example",
-              "tokenB": "example",
-              "chainId": 1,
-              "slippageBps": 1
             }
           }
         }
@@ -3133,7 +2433,318 @@
       ]
     },
     {
-      "name": "MYSTICISM_PAYMENT",
+      "name": "MYSTICISM_READING",
+      "description": "Mystical reading router. Set type to tarot, astrology, or iching, and action to start (begin a new reading), followup (reveal the next element), or deepen (more interpretation for the most-recent element).",
+      "parameters": [
+        {
+          "name": "type",
+          "description": "Reading type: tarot, astrology, or iching.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": ["tarot", "astrology", "iching"]
+          }
+        },
+        {
+          "name": "action",
+          "description": "Action: start, followup, or deepen.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": ["start", "followup", "deepen"]
+          }
+        },
+        {
+          "name": "question",
+          "description": "Optional question or focus for the reading.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "context",
+          "description": "Optional additional context (e.g., birth data hint for astrology).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "Mystical readings: tarot, astrology, iching; actions: start, followup, deepen.",
+      "similes": [
+        "TAROT_READING",
+        "READ_TAROT",
+        "DRAW_CARDS",
+        "TAROT_SPREAD",
+        "CARD_READING",
+        "ICHING_READING",
+        "CAST_HEXAGRAM",
+        "CONSULT_ICHING",
+        "THROW_COINS",
+        "ORACLE_READING",
+        "ASTROLOGY_READING",
+        "BIRTH_CHART",
+        "NATAL_CHART",
+        "HOROSCOPE_READING",
+        "ZODIAC_READING",
+        "READING_FOLLOWUP",
+        "CONTINUE_READING",
+        "NEXT_CARD",
+        "PROCEED_READING",
+        "DEEPEN_READING",
+        "EXPLORE_DEEPER",
+        "ELABORATE_READING"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use MYSTICISM_READING with the provided parameters.",
+          "actions": ["MYSTICISM_READING"],
+          "params": {
+            "MYSTICISM_READING": {
+              "type": "tarot",
+              "action": "start",
+              "question": "example",
+              "context": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "OWNER_DOCUMENTS",
+      "description": "Manage the owner's document workflow surface: signature requests, approvals, deadline tracking, portal uploads, ID/form collection, and request close-out. Subactions: request_signature, request_approval, track_deadline, upload_asset, collect_id, close_request.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "request_signature",
+              "request_approval",
+              "track_deadline",
+              "upload_asset",
+              "collect_id",
+              "close_request"
+            ]
+          }
+        },
+        {
+          "name": "subaction",
+          "description": "Legacy alias for action. Prefer action for new planner output.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "request_signature",
+              "request_approval",
+              "track_deadline",
+              "upload_asset",
+              "collect_id",
+              "close_request"
+            ]
+          }
+        },
+        {
+          "name": "documentRequestId",
+          "description": "Existing DocumentRequest id. Required for track_deadline and close_request.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "requesteeEntityId",
+          "description": "Entity id of the person we are asking. Required for request_signature and collect_id.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "documentTitle",
+          "description": "Short human-readable label for the document.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deadline",
+          "description": "ISO-8601 deadline for the request.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "portalUrl",
+          "description": "Portal endpoint for upload_asset and (optionally) collect_id.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "assetPath",
+          "description": "Local path or URL of the asset to upload. Required for upload_asset.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "assetKind",
+          "description": "What kind of asset: deck, headshot, id, form, etc. Required for upload_asset and collect_id.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "signatureUrl",
+          "description": "Optional signing portal URL (DocuSign / HelloSign / etc.).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "approvalReason",
+          "description": "Reason label for request_approval.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "note",
+          "description": "Free-form note recorded on the DocumentRequest.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "resolution",
+          "description": "close_request only: completed | expired | cancelled. Defaults to completed.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["completed", "expired", "cancelled"]
+          }
+        }
+      ],
+      "descriptionCompressed": "docs: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request; deadline-aware; owner-gated for signature+upload",
+      "exampleCalls": [
+        {
+          "user": "Use OWNER_DOCUMENTS with the provided parameters.",
+          "actions": ["OWNER_DOCUMENTS"],
+          "params": {
+            "OWNER_DOCUMENTS": {
+              "action": "request_signature",
+              "subaction": "request_signature",
+              "documentRequestId": "example",
+              "requesteeEntityId": "example",
+              "documentTitle": "example",
+              "deadline": "example",
+              "portalUrl": "example",
+              "assetPath": "example",
+              "assetKind": "example",
+              "signatureUrl": "example",
+              "approvalReason": "example",
+              "note": "example",
+              "resolution": "completed"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "OWNER_FINANCES",
+      "description": "Owner finances: payment sources, transaction imports, spending summaries, recurring charges, and subscription audits.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Owner finance action.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "owner finances: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
+      "similes": ["FINANCES"],
+      "exampleCalls": [
+        {
+          "user": "Use OWNER_FINANCES with the provided parameters.",
+          "actions": ["OWNER_FINANCES"],
+          "params": {
+            "OWNER_FINANCES": {
+              "action": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "OWNER_HEALTH",
+      "description": "Owner health telemetry reads across HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura. Actions: today, trend, by_metric, status.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Owner health read action: today, trend, by_metric, or status.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "owner health: today|trend|by_metric|status; read-only telemetry",
+      "similes": ["FITNESS", "WELLNESS"],
+      "exampleCalls": [
+        {
+          "user": "Use OWNER_HEALTH with the provided parameters.",
+          "actions": ["OWNER_HEALTH"],
+          "params": {
+            "OWNER_HEALTH": {
+              "action": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "OWNER_SCREENTIME",
+      "description": "Owner screen-time and activity analytics across local activity, app usage, and browser reports.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Owner screentime read action.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "owner screentime: summary|today|weekly|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity",
+      "similes": ["SCREENTIME", "ACTIVITY_REPORT"],
+      "exampleCalls": [
+        {
+          "user": "Use OWNER_SCREENTIME with the provided parameters.",
+          "actions": ["OWNER_SCREENTIME"],
+          "params": {
+            "OWNER_SCREENTIME": {
+              "action": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "PAYMENT",
       "description": "Payment router for the active mysticism reading session. Set action to 'check' to read payment status, or 'request' to ask the user to pay (set amount or include $X.XX in the message).",
       "parameters": [
         {
@@ -3182,175 +2793,14 @@
       ],
       "exampleCalls": [
         {
-          "user": "Use MYSTICISM_PAYMENT with the provided parameters.",
-          "actions": ["MYSTICISM_PAYMENT"],
+          "user": "Use PAYMENT with the provided parameters.",
+          "actions": ["PAYMENT"],
           "params": {
-            "MYSTICISM_PAYMENT": {
+            "PAYMENT": {
               "action": "check",
               "amount": "example",
               "entityId": "example",
               "roomId": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "MYSTICISM_READING",
-      "description": "Mystical reading router. Set type to tarot, astrology, or iching, and action to start (begin a new reading), followup (reveal the next element), or deepen (more interpretation for the most-recent element).",
-      "parameters": [
-        {
-          "name": "type",
-          "description": "Reading type: tarot, astrology, or iching.",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "enum": ["tarot", "astrology", "iching"]
-          }
-        },
-        {
-          "name": "action",
-          "description": "Action: start, followup, or deepen.",
-          "required": true,
-          "schema": {
-            "type": "string",
-            "enum": ["start", "followup", "deepen"]
-          }
-        },
-        {
-          "name": "question",
-          "description": "Optional question or focus for the reading.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "context",
-          "description": "Optional additional context (e.g., birth data hint for astrology).",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "Mystical readings: tarot, astrology, iching; actions: start, followup, deepen.",
-      "similes": [
-        "READING",
-        "TAROT_READING",
-        "READ_TAROT",
-        "DRAW_CARDS",
-        "TAROT_SPREAD",
-        "CARD_READING",
-        "ICHING_READING",
-        "CAST_HEXAGRAM",
-        "CONSULT_ICHING",
-        "THROW_COINS",
-        "ORACLE_READING",
-        "ASTROLOGY_READING",
-        "BIRTH_CHART",
-        "NATAL_CHART",
-        "HOROSCOPE_READING",
-        "ZODIAC_READING",
-        "READING_FOLLOWUP",
-        "CONTINUE_READING",
-        "NEXT_CARD",
-        "PROCEED_READING",
-        "DEEPEN_READING",
-        "EXPLORE_DEEPER",
-        "ELABORATE_READING"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use MYSTICISM_READING with the provided parameters.",
-          "actions": ["MYSTICISM_READING"],
-          "params": {
-            "MYSTICISM_READING": {
-              "type": "tarot",
-              "action": "start",
-              "question": "example",
-              "context": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "OWNER_FINANCES",
-      "description": "Owner finances: payment sources, transaction imports, spending summaries, recurring charges, and subscription audits.",
-      "parameters": [
-        {
-          "name": "action",
-          "description": "Owner finance action.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "owner finances: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
-      "similes": ["MONEY", "FINANCES", "SUBSCRIPTIONS"],
-      "exampleCalls": [
-        {
-          "user": "Use OWNER_FINANCES with the provided parameters.",
-          "actions": ["OWNER_FINANCES"],
-          "params": {
-            "OWNER_FINANCES": {
-              "action": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "OWNER_HEALTH",
-      "description": "Owner health telemetry reads across HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura. Actions: today, trend, by_metric, status.",
-      "parameters": [
-        {
-          "name": "action",
-          "description": "Owner health read action: today, trend, by_metric, or status.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "owner health: today|trend|by_metric|status; read-only telemetry",
-      "similes": ["HEALTH", "FITNESS", "WELLNESS"],
-      "exampleCalls": [
-        {
-          "user": "Use OWNER_HEALTH with the provided parameters.",
-          "actions": ["OWNER_HEALTH"],
-          "params": {
-            "OWNER_HEALTH": {
-              "action": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "OWNER_SCREENTIME",
-      "description": "Owner screen-time and activity analytics across local activity, app usage, and browser reports.",
-      "parameters": [
-        {
-          "name": "action",
-          "description": "Owner screentime read action.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "owner screentime: summary|today|weekly|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity",
-      "similes": ["SCREENTIME", "SCREEN_TIME", "ACTIVITY_REPORT"],
-      "exampleCalls": [
-        {
-          "user": "Use OWNER_SCREENTIME with the provided parameters.",
-          "actions": ["OWNER_SCREENTIME"],
-          "params": {
-            "OWNER_SCREENTIME": {
-              "action": "example"
             }
           }
         }
@@ -3467,9 +2917,7 @@
       "descriptionCompressed": "personal assistant workflows: action=book_travel|scheduling|sign_document",
       "similes": [
         "ASSISTANT",
-        "BOOK_TRAVEL",
         "SCHEDULING",
-        "SCHEDULING_NEGOTIATION",
         "SIGN_DOCUMENT",
         "DOCUSIGN",
         "TRAVEL_CAPTURE_PREFERENCES",
@@ -3586,86 +3034,6 @@
               "subject": "todos",
               "topN": 1,
               "criteria": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "PROPOSE_MEETING_TIMES",
-      "description": "Propose concrete meeting time slots to offer to another person. This is ",
-      "parameters": [
-        {
-          "name": "durationMinutes",
-          "description": "Meeting length in minutes. Defaults to the owner's configured default duration.",
-          "required": false,
-          "schema": {
-            "type": "number"
-          }
-        },
-        {
-          "name": "daysAhead",
-          "description": "Number of days ahead to search. Defaults to 7. Ignored when windowStart/windowEnd are supplied.",
-          "required": false,
-          "schema": {
-            "type": "number"
-          }
-        },
-        {
-          "name": "slotCount",
-          "description": "Number of candidate slots to return. Defaults to 3.",
-          "required": false,
-          "schema": {
-            "type": "number"
-          }
-        },
-        {
-          "name": "windowStart",
-          "description": "Optional ISO-8601 earliest start for the search window.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "windowEnd",
-          "description": "Optional ISO-8601 latest end for the search window.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "timeZone",
-          "description": "Optional IANA time zone override when the user is temporarily traveling and wants proposals shown in that local time.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        }
-      ],
-      "descriptionCompressed": "Propose available meeting slots from the owner's calendar and meeting preferences; not calendar CRUD or negotiation tracking.",
-      "similes": [
-        "SUGGEST_MEETING_TIMES",
-        "OFFER_MEETING_SLOTS",
-        "FIND_MEETING_SLOTS",
-        "PROPOSE_SLOTS",
-        "BUNDLE_MEETINGS_WHILE_TRAVELING",
-        "BULK_RESCHEDULE_MEETINGS",
-        "RESCHEDULE_MEETINGS"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use PROPOSE_MEETING_TIMES with the provided parameters.",
-          "actions": ["PROPOSE_MEETING_TIMES"],
-          "params": {
-            "PROPOSE_MEETING_TIMES": {
-              "durationMinutes": 1,
-              "daysAhead": 1,
-              "slotCount": 1,
-              "windowStart": "example",
-              "windowEnd": "example",
-              "timeZone": "example"
             }
           }
         }
@@ -4442,7 +3810,6 @@
       ],
       "descriptionCompressed": "Shell history: clear | view | disable.",
       "similes": [
-        "CLEAR_HISTORY",
         "CLEAR_SHELL_HISTORY",
         "RESET_SHELL",
         "CLEAR_TERMINAL",
@@ -5296,15 +4663,12 @@
         }
       ],
       "similes": [
-        "TAILSCALE",
         "START_TAILSCALE",
         "STOP_TAILSCALE",
         "GET_TAILSCALE_STATUS",
-        "START_TUNNEL",
         "OPEN_TUNNEL",
         "CREATE_TUNNEL",
         "TAILSCALE_UP",
-        "STOP_TUNNEL",
         "CLOSE_TUNNEL",
         "TAILSCALE_DOWN",
         "TAILSCALE_STATUS",
@@ -5320,86 +4684,6 @@
             "TUNNEL": {
               "action": "start",
               "parameters": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "UPDATE_MEETING_PREFERENCES",
-      "description": "Persist the owner's meeting scheduling preferences: preferred start/end ",
-      "parameters": [
-        {
-          "name": "timeZone",
-          "description": "IANA time zone used to interpret preferred hours.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "preferredStartLocal",
-          "description": "Earliest preferred meeting start time-of-day (local HH:MM, 24h).",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "preferredEndLocal",
-          "description": "Latest preferred meeting end time-of-day (local HH:MM, 24h).",
-          "required": false,
-          "schema": {
-            "type": "string"
-          }
-        },
-        {
-          "name": "defaultDurationMinutes",
-          "description": "Default meeting duration in minutes (5–480).",
-          "required": false,
-          "schema": {
-            "type": "number"
-          }
-        },
-        {
-          "name": "travelBufferMinutes",
-          "description": "Minutes to reserve before/after each meeting (0–240).",
-          "required": false,
-          "schema": {
-            "type": "number"
-          }
-        },
-        {
-          "name": "blackoutWindows",
-          "description": "Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun..6=Sat) }.",
-          "required": false,
-          "schema": {
-            "type": "array"
-          }
-        }
-      ],
-      "descriptionCompressed": "Persist owner meeting preferences: preferred hours, blackout windows, default duration, and travel buffer.",
-      "similes": [
-        "SET_MEETING_PREFERENCES",
-        "SAVE_MEETING_PREFERENCES",
-        "SET_PREFERRED_TIMES",
-        "SET_BLACKOUT_WINDOWS",
-        "SLEEP_WINDOW",
-        "NO_CALL_HOURS",
-        "PROTECT_SLEEP"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use UPDATE_MEETING_PREFERENCES with the provided parameters.",
-          "actions": ["UPDATE_MEETING_PREFERENCES"],
-          "params": {
-            "UPDATE_MEETING_PREFERENCES": {
-              "timeZone": "example",
-              "preferredStartLocal": "example",
-              "preferredEndLocal": "example",
-              "defaultDurationMinutes": 1,
-              "travelBufferMinutes": 1,
-              "blackoutWindows": "example"
             }
           }
         }
@@ -5535,7 +4819,6 @@
       ],
       "descriptionCompressed": "Twilio voice dial: recipientKind=owner|external|e164; draft-confirm; approval-queue",
       "similes": [
-        "PLACE_CALL",
         "CALL_ME",
         "ESCALATE_TO_USER",
         "CALL_THIRD_PARTY",
@@ -5852,12 +5135,7 @@
         }
       ],
       "descriptionCompressed": "Git worktree umbrella: action=enter/exit.",
-      "similes": [
-        "ENTER_WORKTREE",
-        "EXIT_WORKTREE",
-        "GIT_WORKTREE_ADD",
-        "GIT_WORKTREE_REMOVE"
-      ],
+      "similes": ["GIT_WORKTREE_ADD", "GIT_WORKTREE_REMOVE"],
       "exampleCalls": [
         {
           "user": "Use WORKTREE with the provided parameters.",

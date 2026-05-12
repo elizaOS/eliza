@@ -281,12 +281,6 @@ export const fileAction: Action = {
     "EDIT_FILE",
     "FILE_OPERATION",
     "FILE_IO",
-    "DEVICE_FILE_READ",
-    "DEVICE_FILE_WRITE",
-    "DEVICE_LIST_DIR",
-    "READ_DEVICE_FILE",
-    "WRITE_DEVICE_FILE",
-    "LIST_DEVICE_DIR",
   ],
   description:
     "Read, write, edit, search, find, or list files through one FILE action. Choose action=read/write/edit/grep/glob/ls. Use target=device for device-filesystem reads, writes, and directory lists; workspace paths must be absolute unless an operation explicitly defaults to the session cwd.",

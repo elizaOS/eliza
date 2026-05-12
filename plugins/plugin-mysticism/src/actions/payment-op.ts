@@ -47,7 +47,6 @@ export const paymentOpAction: Action = {
   contextGate: { anyOf: ["finance", "payments"] },
   roleGate: { minRole: "OWNER" },
   similes: [
-    "MYSTICISM_PAYMENT",
     "REQUEST_PAYMENT",
     "CHARGE_USER",
     "ASK_FOR_PAYMENT",

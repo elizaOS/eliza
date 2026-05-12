@@ -13,19 +13,19 @@
       "name": "fused_attn_qjl_tbq3",
       "kernel_function": "kernel_fused_attn_qjl_tbq3_f32",
       "bytes_per_dispatch": 11845632,
-      "gpu_us": { "median": 8450.9375, "p50": 8450.9375, "p99": 10636.4775, "min": 7515.0000, "max": 10800.7500 },
-      "cpu_us": { "median": 8644.0000, "p99": 19782.5200 },
-      "bandwidth_GBs": 1.4017,
-      "bandwidth_pct_of_peak": 0.2567
+      "gpu_us": { "median": 8345.3750, "p50": 8345.3750, "p99": 10198.5879, "min": 7356.2500, "max": 10250.8750 },
+      "cpu_us": { "median": 8794.5000, "p99": 11258.2900 },
+      "bandwidth_GBs": 1.4194,
+      "bandwidth_pct_of_peak": 0.2600
     },
     {
       "name": "fused_attn_qjl_polar",
       "kernel_function": "kernel_fused_attn_qjl_polar_f32",
       "bytes_per_dispatch": 15253504,
-      "gpu_us": { "median": 10736.6250, "p50": 10736.6250, "p99": 12643.9138, "min": 9463.5000, "max": 12650.9166 },
-      "cpu_us": { "median": 11130.0000, "p99": 14287.2400 },
-      "bandwidth_GBs": 1.4207,
-      "bandwidth_pct_of_peak": 0.2602
+      "gpu_us": { "median": 10663.0000, "p50": 10663.0000, "p99": 12967.0758, "min": 9506.5000, "max": 13036.1250 },
+      "cpu_us": { "median": 11024.5000, "p99": 15893.6300 },
+      "bandwidth_GBs": 1.4305,
+      "bandwidth_pct_of_peak": 0.2620
     }
   ],
   "note": "Fused attention walks K once and decodes/mixes V inside the online-softmax recurrence. This measures standalone shader cost only; runtime-ready status still requires built-fork graph dispatch smoke."

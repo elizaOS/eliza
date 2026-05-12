@@ -10,13 +10,22 @@ served via Cerebras's OpenAI-compatible API.
 """
 
 from eliza_compactbench.bridge import BridgeError, run_ts_compactor
-from eliza_compactbench.compactors import (
-    HierarchicalSummaryCompactor,
-    HybridLedgerCompactor,
-    NaiveSummaryCompactor,
-    PromptStrippingPassthroughCompactor,
-    StructuredStateCompactor,
-)
+
+_COMPACTOR_EXPORTS = {
+    "HierarchicalSummaryCompactor",
+    "HybridLedgerCompactor",
+    "NaiveSummaryCompactor",
+    "PromptStrippingPassthroughCompactor",
+    "StructuredStateCompactor",
+}
+
+
+def __getattr__(name: str):
+    if name in _COMPACTOR_EXPORTS:
+        from eliza_compactbench import compactors
+
+        return getattr(compactors, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 __all__ = [
     "BridgeError",

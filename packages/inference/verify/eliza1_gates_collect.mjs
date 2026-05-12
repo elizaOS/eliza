@@ -205,10 +205,19 @@ async function main() {
     "e2e-loop-",
   );
 
+  const e2eDflashDrafted = e2eLoop?.data?.summary?.dflashDraftedTotal;
+  const e2eDflashAccepted = e2eLoop?.data?.summary?.dflashAcceptedTotal;
+  const e2eDflashAcceptance =
+    Number.isFinite(e2eDflashDrafted) && Number.isFinite(e2eDflashAccepted)
+      ? e2eDflashDrafted > 0
+        ? e2eDflashAccepted / e2eDflashDrafted
+        : 0
+      : null;
   const dflashAcceptance =
     dflashBench?.data?.summary?.dflashAcceptanceRate ??
     e2eLoop?.data?.summary?.dflashAcceptanceRateOverall ??
     e2eLoop?.data?.summary?.dflashAcceptanceRateMean ??
+    e2eDflashAcceptance ??
     null;
   const dflashSpeedup = dflashBench?.data?.summary?.dflashSpeedup ?? null;
   const vadLatencyMs = vadQuality?.data?.summary?.vadLatencyMs ?? null;

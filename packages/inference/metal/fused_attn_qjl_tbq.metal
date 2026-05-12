@@ -114,16 +114,10 @@ static inline uint tbq3_get_code(const device uint8_t * qs, uint idx) {
 // sketch elements). Collective: ALL 32 lanes must call together for the SAME
 // token. Returns the per-token raw score (×sm_scale) to every lane.
 static inline float qjl_score_one_token(
-        device const float * q_sketch,
         device const block_qjl1_256 * pk_head,
-        uint h_q, uint q_pos, uint n_heads, uint t, float sm_scale, uint tid) {
+        float4 q0, float4 q1, uint t, float sm_scale, uint tid) {
     device const block_qjl1_256 & blk = pk_head[t];
     uint bits  = blk.qs[tid];
-    uint base  = tid * 8u;
-    uint q_off = (q_pos * n_heads + h_q) * QJL_PROJECTION_DIM + base;
-    device const float4 * qs4 = (device const float4 *)(q_sketch + q_off);
-    float4 q0 = qs4[0];
-    float4 q1 = qs4[1];
     float4 s0 = float4(
         float(int(((bits >> 0) & 1u) << 1) - 1),
         float(int(((bits >> 1) & 1u) << 1) - 1),
@@ -206,6 +200,10 @@ kernel void kernel_fused_attn_qjl_tbq3_f32(
     device const block_qjl1_256 * pk_head = k_packed + (size_t)h_k * args.n_kv;
     device const block_tbq3_0   * pv_head = v_packed + (size_t)h_k * args.n_kv * TBQ_PER_TOKEN;
     float sm_scale = args.scale;
+    uint q_off = (q_pos * args.n_heads + h_q) * QJL_PROJECTION_DIM + tid * 8u;
+    device const float4 * qs4 = (device const float4 *)(q_sketch + q_off);
+    float4 q0 = qs4[0];
+    float4 q1 = qs4[1];
 
     // Empty cache -> out = 0 (matches the reference memset on degenerate input).
     if (args.n_kv == 0u) {
@@ -226,13 +224,12 @@ kernel void kernel_fused_attn_qjl_tbq3_f32(
     threadgroup_barrier(mem_flags::mem_threadgroup);
     for (uint t = 0u; t < args.n_kv; t++) {
         if (args.causal != 0u && t > q_abs) break;
-        float raw = qjl_score_one_token(q_sketch, pk_head, h_q, q_pos, args.n_heads, t, sm_scale, tid);
+        float raw = qjl_score_one_token(pk_head, q0, q1, t, sm_scale, tid);
         float new_m = max(m, raw);
         float corr = exp(m - new_m);
         float w = exp(raw - new_m);
         l = l * corr + w;
         m = new_m;
-        threadgroup_barrier(mem_flags::mem_threadgroup);   // tbq_buf reused per token
         tbq3_decode_token_into_acc(pv_head + (size_t)t * TBQ_PER_TOKEN, tbq_buf, acc_o, w, corr, tid);
     }
     if (!isfinite(m) || m <= -1.0e29f || !(l > 0.0f)) {
@@ -243,12 +240,6 @@ kernel void kernel_fused_attn_qjl_tbq3_f32(
     for (uint i = tid; i < HEAD_DIM; i += 32u) acc_o[i] *= inv_l;
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    // Write out. Lane 0 writes all 128 elements serially — the shared
-    // accumulator is fully settled by the decode helper's trailing barrier,
-    // and a single-thread store sidesteps the strided-parallel SSBO-store
-    // codegen quirk seen on some drivers (same fingerprint the Vulkan port
-    // works around; harmless on Apple Silicon, robust everywhere).
-    if (tid == 0u) {
-        for (uint i = 0u; i < HEAD_DIM; i++) out_attn[out_base + i] = acc_o[i];
-    }
+    // Native Apple Metal does not need the Vulkan serial-store workaround.
+    for (uint i = tid; i < HEAD_DIM; i += 32u) out_attn[out_base + i] = acc_o[i];
 }

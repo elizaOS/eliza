@@ -56,8 +56,10 @@ describe("PAYMENT", () => {
 				"cancel_request",
 			],
 		});
-		expect(paymentAction.similes).toContain("CREATE_PAYMENT_REQUEST");
-		expect(paymentAction.similes).toContain("CANCEL_PAYMENT_REQUEST");
+		expect(paymentAction.similes).toContain("NEW_PAYMENT_REQUEST");
+		expect(paymentAction.similes).toContain("VOID_PAYMENT_REQUEST");
+		expect(paymentAction.similes).not.toContain("CREATE_PAYMENT_REQUEST");
+		expect(paymentAction.similes).not.toContain("CANCEL_PAYMENT_REQUEST");
 	});
 
 	test("create_request creates a request and returns eligible delivery targets", async () => {

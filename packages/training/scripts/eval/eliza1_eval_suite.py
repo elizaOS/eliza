@@ -1016,7 +1016,7 @@ def eval_dflash_accept(ctx: EvalContext) -> dict[str, Any]:
             "outputTail": "\n".join(out.strip().splitlines()[-30:]),
             "binary": str(spec),
         }
-    if not drafted or accepted is None:
+    if drafted is None or accepted is None:
         return {
             **base,
             "status": "not-run",
@@ -1026,6 +1026,23 @@ def eval_dflash_accept(ctx: EvalContext) -> dict[str, Any]:
             "reason": "could not parse n_drafted / n_drafted_accepted from speculative run",
             "outputTail": "\n".join(out.strip().splitlines()[-30:]),
             "binary": str(spec),
+        }
+    if drafted == 0:
+        return {
+            **base,
+            "status": "fail",
+            "acceptanceRate": 0.0,
+            "drafted": 0,
+            "accepted": accepted,
+            "tokensPredicted": n_predict,
+            "wallSeconds": round(wall_s, 2),
+            "target": str(target),
+            "drafter": str(drafter),
+            "binary": str(spec),
+            "reason": (
+                "speculative run completed but produced zero draft tokens; "
+                "this is a real DFlash readiness failure, not missing data"
+            ),
         }
     rate = round(accepted / drafted, 4)
     return {

@@ -1,7 +1,7 @@
 {
   "agent": "openclaw",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T191156Z_d6bda818/terminal-bench__terminal_bench/run_terminal_bench_20260511T191156Z_1_af614376/output"
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T020849Z_e2094f60/terminal-bench__terminal_bench/run_terminal_bench_20260512T020849Z_2_f920b087/output"
   ],
   "benchmark_directory": "terminal-bench",
   "benchmark_id": "terminal_bench",
@@ -25,10 +25,10 @@
     "nonzero_return_code_with_result": 1,
     "passed_tasks": 0,
     "performance_metrics": {
-      "duration_seconds": 17.104974209010834,
+      "duration_seconds": 79.02236395800719,
       "mean_latency_ms": 0.0,
       "p95_latency_ms": 0.0,
-      "throughput_per_second": 0.05846252603369632
+      "throughput_per_second": 0.012654645468862512
     },
     "return_code": 1,
     "token_metrics": {
@@ -49,15 +49,15 @@
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
-    "duration_seconds": 17.104974209010834,
+    "duration_seconds": 79.02236395800719,
     "mean_latency_ms": 0.0,
     "p95_latency_ms": 0.0,
-    "throughput_per_second": 0.05846252603369632
+    "throughput_per_second": 0.012654645468862512
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T191156Z_d6bda818/terminal-bench__terminal_bench/run_terminal_bench_20260511T191156Z_1_af614376/output/terminal-bench-20260511_121213.json",
-  "run_group_id": "rg_20260511T191156Z_d6bda818",
-  "run_id": "run_terminal_bench_20260511T191156Z_1_af614376",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T020849Z_e2094f60/terminal-bench__terminal_bench/run_terminal_bench_20260512T020849Z_2_f920b087/output/terminal-bench-20260511_191008.json",
+  "run_group_id": "rg_20260512T020849Z_e2094f60",
+  "run_id": "run_terminal_bench_20260512T020849Z_2_f920b087",
   "score": 0.0,
   "status": "succeeded",
   "token_metrics": {
@@ -75,5 +75,5 @@
     "turns": 1
   },
   "unit": "ratio",
-  "updated_at": "2026-05-12T01:34:00Z"
+  "updated_at": "2026-05-12T02:10:08.369648+00:00"
 }

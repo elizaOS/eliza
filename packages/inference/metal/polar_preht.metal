@@ -82,14 +82,17 @@ static inline float polar_preht_lane_acc(
         device const float * qp,
         uint use_qjl, uint tid) {
     float acc = 0.0f;
+    float scaled = 0.0f;
+    if (use_qjl != 0u) {
+        scaled = ((blk->qjl[0] & 1u) ? 1.0f : -1.0f)
+               * POLAR_QJL_CORRECTION_MAGNITUDE * POLAR_QJL_INV_SQRT_QK;
+    }
     for (uint b = tid; b < QK_POLAR / 2u; b += 32u) {
         uint8_t byte = blk->qs[b];
         uint i0 = 2u * b, i1 = i0 + 1u;
         float x0 = POLAR_Q4_CENTROIDS[byte & 0xFu];
         float x1 = POLAR_Q4_CENTROIDS[(byte >> 4) & 0xFu];
         if (use_qjl != 0u) {
-            float scaled = ((blk->qjl[0] & 1u) ? 1.0f : -1.0f)
-                         * POLAR_QJL_CORRECTION_MAGNITUDE * POLAR_QJL_INV_SQRT_QK;
             x0 += scaled * POLAR_QJL_SIGNS[i0];
             x1 += scaled * POLAR_QJL_SIGNS[i1];
         }

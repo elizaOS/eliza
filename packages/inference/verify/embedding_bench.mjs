@@ -110,6 +110,7 @@ function resolveModel(opts) {
 
 function backendOfBinary(binPath) {
   const lc = (binPath || "").toLowerCase();
+  if (lc.includes("metal")) return "metal";
   if (lc.includes("vulkan")) return "vulkan";
   if (lc.includes("cuda")) return "cuda";
   if (lc.includes("rocm") || lc.includes("hip")) return "rocm";
