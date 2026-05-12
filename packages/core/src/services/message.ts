@@ -4885,12 +4885,13 @@ export async function runV5MessageRuntimeStage1(args: {
 		const routedResponseHandlerReply = getMessageHandlerReply(messageHandler);
 		const earlyReplyText =
 			routedResponseHandlerReply || parsedResponseHandlerReply;
-		const earlyReplySent =
+		const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
+		if (
 			messageHandler.processMessage === "RESPOND" &&
 			earlyReplyText.length > 0 &&
-			typeof args.onResponseHandlerEarlyReply === "function";
-		if (earlyReplySent) {
-			await args.onResponseHandlerEarlyReply({
+			typeof onResponseHandlerEarlyReply === "function"
+		) {
+			await onResponseHandlerEarlyReply({
 				text: earlyReplyText,
 				messageHandler,
 			});
@@ -5158,22 +5159,23 @@ export async function runV5MessageRuntimeStage1(args: {
 		return {
 			kind: "planned_reply",
 			messageHandler,
-			result: plannedText && !plannedTextRepeatsEarlyReply
-				? createV5ReplyStrategyResult({
-						...args,
-						state: finalPlannerState,
-						text: plannedText,
-						thought:
-							plannerResult.evaluator?.thought ??
-							plannerResult.trajectory.steps.at(-1)?.thought ??
-							messageHandler.thought,
-					})
-				: {
-						responseContent: null,
-						responseMessages: [],
-						state: finalPlannerState,
-						mode: "none",
-					},
+			result:
+				plannedText && !plannedTextRepeatsEarlyReply
+					? createV5ReplyStrategyResult({
+							...args,
+							state: finalPlannerState,
+							text: plannedText,
+							thought:
+								plannerResult.evaluator?.thought ??
+								plannerResult.trajectory.steps.at(-1)?.thought ??
+								messageHandler.thought,
+						})
+					: {
+							responseContent: null,
+							responseMessages: [],
+							state: finalPlannerState,
+							mode: "none",
+						},
 		};
 	} catch (err) {
 		endStatus = "errored";

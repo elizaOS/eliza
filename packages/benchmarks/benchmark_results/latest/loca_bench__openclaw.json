@@ -40,7 +40,7 @@
       "completion_tokens": 107,
       "llm_call_count": 1,
       "prompt_tokens": 17785,
-      "total_tokens": 17892
+      "total_tokens": 36068
     },
     "total_api_tokens": 36068,
     "trajectory_count": 1,
@@ -70,7 +70,7 @@
     "completion_tokens": 107,
     "llm_call_count": 1,
     "prompt_tokens": 17785,
-    "total_tokens": 17892
+    "total_tokens": 36068
   },
   "trajectory_summary": {
     "files": 33,
@@ -79,5 +79,5 @@
     "turns": 1
   },
   "unit": "ratio",
-  "updated_at": "2026-05-12T01:26:44.727179+00:00"
+  "updated_at": "2026-05-12T01:30:15Z"
 }

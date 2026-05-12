@@ -273,7 +273,9 @@ static server_http_context::handler_t audio_speech_handler() {
  * (or the original if the sentinel is already present).
  */
 function patchServerSource(source, serverPath) {
-  if (source.includes(SENTINEL)) return source;
+  if (source.includes(SENTINEL)) {
+    return source.replace("ov_audio audio = { nullptr, 0 };", "ov_audio audio = {};");
+  }
 
   // 1) Insert the namespace block after the include section. server.cpp's
   //    own includes end before `#if defined(_WIN32)` / `#include <windows.h>`
@@ -367,6 +369,15 @@ export function patchServerOmnivoiceRoute(cacheDir, { dryRun = false } = {}) {
   }
   const original = fs.readFileSync(serverPath, "utf8");
   if (original.includes(SENTINEL)) {
+    const patched = patchServerSource(original, serverPath);
+    if (!dryRun && patched !== original) {
+      fs.writeFileSync(serverPath, patched, "utf8");
+      console.log(
+        `[dflash-build] refreshed ${path.relative(cacheDir, serverPath)} ` +
+          `omnivoice /v1/audio/speech route (sentinel present)`,
+      );
+      return;
+    }
     console.log(
       `[dflash-build] ${path.relative(cacheDir, serverPath)} already carries the ` +
         `omnivoice /v1/audio/speech route (sentinel present)`,

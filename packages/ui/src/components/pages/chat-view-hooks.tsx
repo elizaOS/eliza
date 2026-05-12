@@ -354,6 +354,19 @@ export function useChatVoiceController(options: {
         provider: event.provider,
         segment: event.segment,
         cached: event.cached,
+        messageId: event.messageId,
+        voiceTurnId: event.voiceTurnId,
+        speechEndToVoiceStartMs:
+          event.speechEndedAtMs != null
+            ? Math.max(0, Math.round(event.startedAtMs - event.speechEndedAtMs))
+            : undefined,
+        assistantStreamToVoiceStartMs:
+          event.assistantFirstTextAtMs != null
+            ? Math.max(
+                0,
+                Math.round(event.startedAtMs - event.assistantFirstTextAtMs),
+              )
+            : undefined,
       });
       const pending = pendingVoiceTurnRef.current;
       if (!pending) return;
@@ -560,7 +573,16 @@ export function useChatVoiceController(options: {
     if (initialCompletedAssistant) {
       initialCompletedAssistantOnGameModalMountRef.current = null;
     }
-    if (hasCompanionSpeechBeenPlayed(activeConversationId, messageId, text)) {
+    const prev = companionBootstrapAutoSpeakRef.current;
+    const sameQueuedVisibleText =
+      prev &&
+      prev.messageId === messageId &&
+      prev.text === text &&
+      prev.unlockGen === ug;
+    if (
+      hasCompanionSpeechBeenPlayed(activeConversationId, messageId, text) &&
+      !sameQueuedVisibleText
+    ) {
       companionBootstrapAutoSpeakRef.current = {
         tick,
         messageId,
@@ -569,7 +591,6 @@ export function useChatVoiceController(options: {
       };
       return;
     }
-    const prev = companionBootstrapAutoSpeakRef.current;
     if (
       prev &&
       prev.messageId === messageId &&
@@ -586,7 +607,7 @@ export function useChatVoiceController(options: {
         };
         return;
       }
-      if (tick === prev.tick) {
+      if (tick === prev.tick && chatSending) {
         // Same deps re-run (e.g. React Strict Mode dev double effect) — already queued.
         return;
       }
