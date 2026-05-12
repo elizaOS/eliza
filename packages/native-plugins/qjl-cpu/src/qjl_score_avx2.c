@@ -33,8 +33,6 @@
 #include "qjl/qjl.h"
 #include "qjl_block.h"
 #include <immintrin.h>
-#include <math.h>
-#include <stdlib.h>
 
 #define QJL_SCORE_TBL_FLOATS ((size_t)QJL_PACKED_BYTES * 256) /* 32*256 = 8192 */
 
@@ -74,20 +72,6 @@ static void qjl_build_score_table(const float *qs, float *tbl) {
     }
 }
 
-/* Direct expand+FMA fallback for one (head, token) — used on OOM. */
-static inline float qjl_score_one_direct(const float *qs, const uint8_t *qb) {
-    __m256 acc = _mm256_setzero_ps();
-    for (int b = 0; b < QJL_PACKED_BYTES; b++)
-        acc = _mm256_fmadd_ps(expand_signs_byte(qb[b]),
-                              _mm256_loadu_ps(qs + (size_t)b * 8), acc);
-    __m128 lo = _mm256_castps256_ps128(acc);
-    __m128 hi = _mm256_extractf128_ps(acc, 1);
-    __m128 v  = _mm_add_ps(lo, hi);
-    v = _mm_hadd_ps(v, v);
-    v = _mm_hadd_ps(v, v);
-    return _mm_cvtss_f32(v);
-}
-
 void qjl_score_qk_avx2(const float *q_sketch,
                        const qjl_block_qjl1_256 *packed_k,
                        int n_heads, int n_kv_heads, int n_tokens,
@@ -96,19 +80,9 @@ void qjl_score_qk_avx2(const float *q_sketch,
     const float scl_base = 1.2533141373155003f / (float)QJL_PROJECTION_DIM;
     const int gqa = n_heads / n_kv_heads;
 
-    float *tbl = (float *)malloc(QJL_SCORE_TBL_FLOATS * sizeof(float));
-    if (!tbl) {
-        for (int hq = 0; hq < n_heads; hq++) {
-            const int hk = hq / gqa;
-            const float *qs = q_sketch + (size_t)hq * QJL_PROJECTION_DIM;
-            const qjl_block_qjl1_256 *blk_base = packed_k + (size_t)hk * n_tokens;
-            for (int t = 0; t < n_tokens; t++)
-                scores[(size_t)hq * n_tokens + t] = scl_base
-                    * qjl_bf16_to_fp32(blk_base[t].norm_bf16)
-                    * qjl_score_one_direct(qs, blk_base[t].qs);
-        }
-        return;
-    }
+    /* 32 KB partial-sum table, on the stack — no malloc, thread-safe when
+     * the ggml thread pool runs this over disjoint head ranges. */
+    _Alignas(64) float tbl[QJL_SCORE_TBL_FLOATS];
 
     /* Loop-invariant byte-position base offsets b*256 (4 ymm of 8). */
     const __m256i pos_base0 = _mm256_setr_epi32(0,256,512,768,1024,1280,1536,1792);
@@ -147,7 +121,6 @@ void qjl_score_qk_avx2(const float *q_sketch,
             out[t] = scl_base * qjl_bf16_to_fp32(blk_base[t].norm_bf16) * _mm_cvtss_f32(v);
         }
     }
-    free(tbl);
 }
 
 #endif /* __AVX2__ */

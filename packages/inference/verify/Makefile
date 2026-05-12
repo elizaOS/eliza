@@ -346,6 +346,28 @@ cpu-bench: cpu_bench
 cpu_bench: cpu_bench.c $(REF_OBJ) $(QJL_POLAR_OBJ)
 	$(CC) $(CFLAGS) -I../reference cpu_bench.c $(REF_OBJ) $(QJL_POLAR_OBJ) -lm -o cpu_bench
 
+# CPU SIMD-path bench: links the qjl-cpu / polarquant-cpu plugin static
+# libraries and times their dispatched SIMD entrypoints (AVX-VNNI / AVX2
+# / NEON-dotprod) at the production attention workload, with a thread
+# sweep. Requires the plugin libs — built here via cmake first.
+QJL_CPU_DIR     = ../../native-plugins/qjl-cpu
+POLAR_CPU_DIR   = ../../native-plugins/polarquant-cpu
+QJL_CPU_LIB     = $(QJL_CPU_DIR)/build/libqjl.a
+POLAR_CPU_LIB   = $(POLAR_CPU_DIR)/build/libpolarquant.a
+
+$(QJL_CPU_LIB):
+	cmake -S $(QJL_CPU_DIR) -B $(QJL_CPU_DIR)/build -DCMAKE_BUILD_TYPE=Release >/dev/null
+	cmake --build $(QJL_CPU_DIR)/build --target qjl >/dev/null
+$(POLAR_CPU_LIB):
+	cmake -S $(POLAR_CPU_DIR) -B $(POLAR_CPU_DIR)/build -DCMAKE_BUILD_TYPE=Release >/dev/null
+	cmake --build $(POLAR_CPU_DIR)/build --target polarquant >/dev/null
+
+cpu-simd-bench: cpu_simd_bench
+cpu_simd_bench: cpu_simd_bench.c $(QJL_CPU_LIB) $(POLAR_CPU_LIB)
+	$(CC) -O3 -march=native -fopenmp -std=c11 \
+	    -I$(QJL_CPU_DIR)/include -I$(QJL_CPU_DIR)/src -I$(POLAR_CPU_DIR)/include \
+	    cpu_simd_bench.c $(QJL_CPU_LIB) $(POLAR_CPU_LIB) -lm -o cpu_simd_bench
+
 # Umbrella: build (and run, into bench_results/) every available bench.
 # CPU bench always runs. Metal bench runs only on macOS with xcrun.
 bench: cpu-bench

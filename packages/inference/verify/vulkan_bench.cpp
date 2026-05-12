@@ -33,6 +33,7 @@
 #include <vulkan/vulkan.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -116,20 +117,40 @@ static Vk init_vk() {
     uint32_t pdc = 0; VK_CHECK(vkEnumeratePhysicalDevices(v.instance, &pdc, nullptr));
     if (pdc == 0) { std::fprintf(stderr, "no Vulkan devices\n"); std::exit(1); }
     std::vector<VkPhysicalDevice> pds(pdc); VK_CHECK(vkEnumeratePhysicalDevices(v.instance, &pdc, pds.data()));
-    for (VkPhysicalDevice cand : pds) {
+    // Device selection: ELIZA_VK_DEVICE_INDEX picks the Nth enumerated device;
+    // ELIZA_VK_DEVICE_SUBSTR picks the first whose deviceName contains the
+    // substring (case-insensitive). Default: first compute-capable device.
+    long want_index = -1;
+    if (const char * e = std::getenv("ELIZA_VK_DEVICE_INDEX")) want_index = std::atol(e);
+    std::string want_substr;
+    if (const char * e = std::getenv("ELIZA_VK_DEVICE_SUBSTR")) {
+        want_substr = e;
+        for (char & c : want_substr) c = (char)std::tolower((unsigned char)c);
+    }
+    auto compute_qfam = [](VkPhysicalDevice cand, uint32_t & out_qfam, bool & out_ts) -> bool {
         uint32_t qc = 0; vkGetPhysicalDeviceQueueFamilyProperties(cand, &qc, nullptr);
         std::vector<VkQueueFamilyProperties> qf(qc);
         vkGetPhysicalDeviceQueueFamilyProperties(cand, &qc, qf.data());
         for (uint32_t i = 0; i < qc; i++) {
-            if (qf[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
-                v.pd = cand; v.qfam = i;
-                v.ts_supported = qf[i].timestampValidBits > 0;
-                break;
-            }
+            if (qf[i].queueFlags & VK_QUEUE_COMPUTE_BIT) { out_qfam = i; out_ts = qf[i].timestampValidBits > 0; return true; }
         }
-        if (v.pd != VK_NULL_HANDLE) break;
+        return false;
+    };
+    for (uint32_t idx = 0; idx < pdc; idx++) {
+        VkPhysicalDevice cand = pds[idx];
+        uint32_t qfam = (uint32_t)-1; bool ts = false;
+        if (!compute_qfam(cand, qfam, ts)) continue;
+        if (want_index >= 0 && (long)idx != want_index) continue;
+        if (!want_substr.empty()) {
+            VkPhysicalDeviceProperties p; vkGetPhysicalDeviceProperties(cand, &p);
+            std::string nm = p.deviceName;
+            for (char & c : nm) c = (char)std::tolower((unsigned char)c);
+            if (nm.find(want_substr) == std::string::npos) continue;
+        }
+        v.pd = cand; v.qfam = qfam; v.ts_supported = ts;
+        break;
     }
-    if (v.pd == VK_NULL_HANDLE) { std::fprintf(stderr, "no compute-capable Vulkan device\n"); std::exit(1); }
+    if (v.pd == VK_NULL_HANDLE) { std::fprintf(stderr, "no matching compute-capable Vulkan device\n"); std::exit(1); }
     VkPhysicalDeviceProperties props; vkGetPhysicalDeviceProperties(v.pd, &props);
     v.ts_period_ns = props.limits.timestampPeriod;
     v.device_name = props.deviceName;
@@ -316,6 +337,7 @@ static std::string spv_path(const std::string & dir, const char * name) { return
 
 int main(int argc, char ** argv) {
     std::string json_out;
+    if (const char * e = std::getenv("VULKAN_BENCH_JSON")) json_out = e;
     int runs = 9, warmup = 3;
     std::string spv_dir = SPV_DIR_DEFAULT;
     for (int i = 1; i < argc; i++) {
