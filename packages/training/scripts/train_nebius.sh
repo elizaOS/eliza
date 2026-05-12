@@ -341,22 +341,36 @@ uv sync --extra train
 # the leftover cu13 nvidia stack, and force-refresh nvidia-cusparselt-cu12 (uv's
 # uninstall can leave a stale dist-info without the .so). REMOTE_TORCH_OVERRIDE=skip
 # disables this on an image whose driver is >=580.
+# torch_swap_cu128 — idempotent: swaps the venv to torch 2.11.0+cu128 if the
+# installed torch can't see CUDA (cu130 needs driver >=580; the Nebius cuda12.8
+# image ships 570.x). Callable both at boot AND right before train_local.py: a
+# bare \`uv run --extra train …\` re-syncs the env from the cu130-pinned lockfile,
+# silently clobbering the swap and forcing CPU training — so after the first swap
+# we set UV_NO_SYNC=1 (every later \`uv run\`, incl. the ones run_pipeline.py spawns
+# internally, then uses .venv as-is) AND re-swap defensively if it still drifted.
+torch_swap_cu128() {
+  .venv/bin/python -c 'import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)' 2>/dev/null && return 0
+  echo "[remote] torch can't see CUDA (cu130 needs driver >=580; have 570.x) — swapping to torch 2.11.0+cu128"
+  uv pip uninstall --python .venv/bin/python torch torchvision triton 2>/dev/null || true
+  cu13pkgs="\$(uv pip list --python .venv/bin/python 2>/dev/null | awk '/^nvidia-[a-z0-9-]+ /{print \$1}')"
+  [ -n "\$cu13pkgs" ] && uv pip uninstall --python .venv/bin/python \$cu13pkgs 2>/dev/null || true
+  uv pip install --python .venv/bin/python 'torch==2.11.0' --index-url https://download.pytorch.org/whl/cu128
+  uv pip install --python .venv/bin/python --reinstall nvidia-cusparselt-cu12
+  .venv/bin/python -c 'import torch; assert torch.cuda.is_available(), "still no CUDA after torch swap"; x=torch.randn(64,64,device="cuda"); _=(x@x).sum().item(); print("[remote] torch", torch.__version__, "cuda OK on", torch.cuda.get_device_name(0))'
+}
 if [ "${REMOTE_TORCH_OVERRIDE:-cu128}" != "skip" ]; then
-  if ! .venv/bin/python -c 'import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)' 2>/dev/null; then
-    echo "[remote] torch can't see CUDA (driver too old for cu130) — swapping to torch 2.11.0+cu128"
-    uv pip uninstall --python .venv/bin/python torch torchvision triton 2>/dev/null || true
-    cu13pkgs="\$(uv pip list --python .venv/bin/python 2>/dev/null | awk '/^nvidia-[a-z0-9-]+ /{print \$1}')"
-    [ -n "\$cu13pkgs" ] && uv pip uninstall --python .venv/bin/python \$cu13pkgs 2>/dev/null || true
-    uv pip install --python .venv/bin/python 'torch==2.11.0' --index-url https://download.pytorch.org/whl/cu128
-    uv pip install --python .venv/bin/python --reinstall nvidia-cusparselt-cu12
-    .venv/bin/python -c 'import torch; assert torch.cuda.is_available(), "still no CUDA after torch swap"; x=torch.randn(64,64,device="cuda"); _=(x@x).sum().item(); print("[remote] torch", torch.__version__, "cuda OK on", torch.cuda.get_device_name(0))'
-  fi
+  torch_swap_cu128
+  # Freeze the env: no later \`uv run\` may re-sync away the cu128 torch.
+  export UV_NO_SYNC=1 UV_FROZEN=1
 fi
 ${hf_tok:+uv run hf auth login --token "\$HUGGING_FACE_HUB_TOKEN" --add-to-git-credential || true}
 if [ "$SYNC_FULLCORPUS_SOURCES" = "1" ]; then
   echo "[remote] rebuilding data/final-eliza1-fullcorpus/ (upsample=\$ELIZA1_FULLCORPUS_UPSAMPLE)"
   uv run --extra train python scripts/build_eliza1_fullcorpus.py
 fi
+# Defensive re-check: if anything above re-synced the env (it shouldn't with
+# UV_NO_SYNC=1), swap torch back to cu128 before run_pipeline.py spawns SFT.
+[ "${REMOTE_TORCH_OVERRIDE:-cu128}" != "skip" ] && torch_swap_cu128
 uv run --extra train $launch scripts/run_pipeline.py \\
   --registry-key $REGISTRY_KEY --run-name $RUN_NAME \\
   --epochs 1 --lr 1e-5 --use-liger on \\

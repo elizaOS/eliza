@@ -314,3 +314,45 @@ provision→ssh→teardown path. Then the 0_6b full-corpus run was launched:
   # Preferred: Vast 27b (2x/4x H200 or B200):
   VAST_API_KEY=<key> bash packages/training/scripts/train_vast.sh provision-and-train --registry-key qwen3.6-27b --epochs 1
   ```
+
+## 11. H200 run relaunched 2026-05-12 ~12:18 UTC — torch-on-CPU bug fixed; local run killed
+
+The first H200 launch (§10) silently trained on **CPU**: `train_nebius.sh`'s boot-time
+torch swap to `2.11.0+cu128` (the Nebius image's 570.x driver can't run the
+project-pinned `2.11.0+cu130`) *did* run and verified `cuda OK on NVIDIA H200`, but
+`run_pipeline.py`'s internal `uv run --extra train python scripts/{train_local,benchmark/*}.py`
+calls **re-sync the venv from the cu130-pinned lockfile**, clobbering the swap — so the
+base bench and then `train_local.py` came up `device=cpu ... no GPU detected` (a 77 k-row
+CPU SFT = days, H200 idle). Killed at ~12:17 UTC before it wasted GPU-hours.
+
+Fix (committed to `train_nebius.sh`): the torch swap is now an idempotent
+`torch_swap_cu128()` function called at boot **and** again right before `run_pipeline.py`,
+and after the first swap the runner exports `UV_NO_SYNC=1 UV_FROZEN=1` so every later
+`uv run` (incl. the subprocesses `run_pipeline.py` spawns) uses the in-place-swapped
+`.venv` instead of re-resolving. Verified on the live VM: `UV_NO_SYNC=1 uv run … → torch
+2.11.0+cu128 True`; a bare `uv run` (no env) still clobbers it → the fix is load-bearing.
+
+Relaunched on the **same VM** (`eliza-train-h200-0_6b`), **same run name**
+(`eliza-1-0_6b-apollo-fullcorpus-h200-1778581740`, log overwritten), corpus already on
+disk (`SYNC_FULLCORPUS_SOURCES=0`, `data/final-eliza1-fullcorpus/` = 76 917 train rows,
+`ELIZA1_FULLCORPUS_UPSAMPLE=8`, `ALLOW_UNVALIDATED_CORPUS=1`), **`BENCHMARK_AFTER=0`**
+(`--skip-base-bench` — the ~1.4 h CPU base bench was already eaten by the broken first
+launch; the base column for the delta is in `reports/eliza1-0_6b-apollo-sft-2026-05-11.manifest.json`).
+SFT confirmed training **on the H200** at 12:18 UTC: `device=cuda torch=2.11.0+cu128`,
+2.2 GB GPU resident, 127 W. Caveat: **Liger disabled** — the Nebius image lacks
+`python3.12-dev` headers so Triton's runtime probe fails to compile `cuda_utils.c`; the
+SFT falls back to HF defaults (slower / more memory, but the 0.6B at seq 4096 fits the
+H200 easily — not a correctness issue). `apt install python3.12-dev` + relaunch would
+re-enable Liger if speed matters.
+
+**Local fallback SFT (`eliza-1-0_6b-apollo-fullcorpus-1778563093`, RTX 5080, ~12 %,
+non-upsampled corpus, no envelope rows) — killed 2026-05-12 ~12:22 UTC** once the H200
+SFT was confirmed on the GPU; checkpoints 500/1000 retained under
+`packages/training/checkpoints/eliza-1-0_6b-apollo-fullcorpus-1778563093/`. The H200 run
+(`…-h200-1778581740`) supersedes it.
+
+Watcher: `/tmp/nebius-finish-v3.sh` (16 h timeout, `fetch` → print `gate_report.json` →
+`teardown` on `RUN_PIPELINE_EXIT=`, `teardown` on timeout). When the gate report lands
+(`checkpoints/eliza-1-0_6b-apollo-fullcorpus-h200-1778581740/gate_report.json`): GREEN
+(`format_ok ≥ 0.70`) → quant + push to `elizaos/eliza-1-0_6b`; RED → re-launch with
+`--epochs 2` / `--lr 2e-5`.
