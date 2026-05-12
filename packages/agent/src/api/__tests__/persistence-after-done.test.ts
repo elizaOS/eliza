@@ -55,7 +55,7 @@ vi.mock("../chat-routes.ts", async () => {
       return new Promise((resolve, reject) => {
         persistResolve = (value) => {
           persistResolvedAt = Date.now();
-          resolve(value as void);
+          resolve();
         };
         persistReject = (err) => {
           persistResolvedAt = Date.now();
@@ -258,7 +258,7 @@ describe("conversation-routes streaming persistence ordering", () => {
     expect(persistResolvedAt).not.toBeNull();
     // res.end() ran before persistence finished.
     expect(record.endedAt).not.toBeNull();
-    expect(record.endedAt!).toBeLessThanOrEqual(persistResolvedAt!);
+    expect(record.endedAt ?? 0).toBeLessThanOrEqual(persistResolvedAt ?? Infinity);
   });
 
   it("logs persistence failures via Logger.error and still ends the response cleanly", async () => {
