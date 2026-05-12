@@ -48,12 +48,7 @@ export default scenario({
         expectTurnActionResultData({
           description:
             "expired ID workflow creates a real intervention payload",
-          actionName: [
-            "DEVICE_INTENT",
-            "VOICE_CALL",
-            "MESSAGE",
-            "MESSAGE",
-          ],
+          actionName: ["DEVICE_INTENT", "VOICE_CALL", "MESSAGE", "MESSAGE"],
           includesAny: ["updated copy", "expired", "workflow", "dashboard"],
         })(turn),
       responseIncludesAny: [
@@ -68,12 +63,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: [
-        "DEVICE_INTENT",
-        "VOICE_CALL",
-        "MESSAGE",
-        "MESSAGE",
-      ],
+      actionName: ["DEVICE_INTENT", "VOICE_CALL", "MESSAGE", "MESSAGE"],
     },
     {
       type: "interventionRequestExists",
@@ -83,12 +73,7 @@ export default scenario({
       type: "custom",
       name: "ea-collect-id-copy-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: [
-          "DEVICE_INTENT",
-          "VOICE_CALL",
-          "MESSAGE",
-          "MESSAGE",
-        ],
+        acceptedActions: ["DEVICE_INTENT", "VOICE_CALL", "MESSAGE", "MESSAGE"],
         description: "expired ID workflow escalation",
         includesAny: ["id", "expired", "workflow", "copy"],
       }),
@@ -99,12 +84,7 @@ export default scenario({
       predicate: expectScenarioActionResultData({
         description:
           "intervention reaches the user through an explicit action result payload rather than a silent log entry",
-        actionName: [
-          "DEVICE_INTENT",
-          "VOICE_CALL",
-          "MESSAGE",
-          "MESSAGE",
-        ],
+        actionName: ["DEVICE_INTENT", "VOICE_CALL", "MESSAGE", "MESSAGE"],
         includesAny: ["updated copy", "expired", "workflow", "dashboard"],
       }),
     },

@@ -31,7 +31,8 @@ function checkDossierAddressesSeededMeeting(
 
 export default scenario({
   id: "calendar.dossier-for-tomorrow-9am",
-  title: "Pre-meeting dossier references the seeded 9am event without fabrication",
+  title:
+    "Pre-meeting dossier references the seeded 9am event without fabrication",
   domain: "lifeops.calendar",
   tags: ["lifeops", "calendar", "dossier", "no-fabrication"],
   isolation: "per-scenario",

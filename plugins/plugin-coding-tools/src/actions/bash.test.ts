@@ -73,7 +73,7 @@ function makeMessage(roomId = "11111111-aaaa-bbbb-cccc-222222222222"): Memory {
 describe("shellAction", () => {
   it("runs a simple foreground command (echo hello)", async () => {
     const { runtime } = await makeRuntime();
-    const result = await shellAction.handler!(
+    const result = await shellAction.handler?.(
       runtime,
       makeMessage(),
       undefined,
@@ -91,7 +91,7 @@ describe("shellAction", () => {
     await fs.mkdir(blocked, { recursive: true });
     try {
       const { runtime } = await makeRuntime({ blockedPaths: blocked });
-      const result = await shellAction.handler!(
+      const result = await shellAction.handler?.(
         runtime,
         makeMessage(),
         undefined,
@@ -106,7 +106,7 @@ describe("shellAction", () => {
 
   it("returns a timeout failure when the command exceeds its budget", async () => {
     const { runtime } = await makeRuntime();
-    const result = await shellAction.handler!(
+    const result = await shellAction.handler?.(
       runtime,
       makeMessage(),
       undefined,
@@ -119,7 +119,7 @@ describe("shellAction", () => {
   it("respects an explicit cwd", async () => {
     const tmpRoot = path.resolve(os.tmpdir());
     const { runtime } = await makeRuntime();
-    const result = await shellAction.handler!(
+    const result = await shellAction.handler?.(
       runtime,
       makeMessage(),
       undefined,
@@ -131,7 +131,7 @@ describe("shellAction", () => {
 
   it("returns command_failed when the command exits non-zero", async () => {
     const { runtime } = await makeRuntime();
-    const result = await shellAction.handler!(
+    const result = await shellAction.handler?.(
       runtime,
       makeMessage(),
       undefined,
@@ -147,7 +147,7 @@ describe("shellAction", () => {
     const { runtime, shellHistoryService } = await makeRuntime({
       withShellHistoryService: true,
     });
-    const result = await shellAction.handler!(
+    const result = await shellAction.handler?.(
       runtime,
       makeMessage(),
       undefined,
@@ -164,7 +164,7 @@ describe("shellAction", () => {
     const { runtime, shellHistoryService } = await makeRuntime({
       shellHistoryCommands: ["git status", "bun test"],
     });
-    const result = await shellAction.handler!(
+    const result = await shellAction.handler?.(
       runtime,
       makeMessage(),
       undefined,

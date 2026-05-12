@@ -1,9 +1,9 @@
-import type { RouteRequestContext } from "@elizaos/core";
 import type { ElizaConfig } from "@elizaos/agent";
 import type {
   BscTradeQuoteResponse,
   BscUnsignedApprovalTx,
   BscUnsignedTradeTx,
+  RouteRequestContext,
 } from "@elizaos/core";
 import type { ethers } from "ethers";
 import type { TradePermissionMode } from "./trade-safety";

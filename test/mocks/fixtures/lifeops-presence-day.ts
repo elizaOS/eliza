@@ -414,16 +414,26 @@ export function lifeOpsPresenceDayCoverage(): LifeOpsPresenceDayCoverage {
     LIFEOPS_PRESENCE_DAY_ACTIVITY_SIGNALS.map((signal) => signal.source),
   );
   const healthSources = new Set<LifeOpsHealthSignalSource>(
-    Object.keys(LIFEOPS_PRESENCE_DAY_HEALTH_SIGNALS) as LifeOpsHealthSignalSource[],
+    Object.keys(
+      LIFEOPS_PRESENCE_DAY_HEALTH_SIGNALS,
+    ) as LifeOpsHealthSignalSource[],
   );
   return {
-    activitySources: [...activitySources].sort() as readonly LifeOpsActivitySignalSource[],
-    healthSources: [...healthSources].sort() as readonly LifeOpsHealthSignalSource[],
+    activitySources: [
+      ...activitySources,
+    ].sort() as readonly LifeOpsActivitySignalSource[],
+    healthSources: [
+      ...healthSources,
+    ].sort() as readonly LifeOpsHealthSignalSource[],
   };
 }
 
 export const LIFEOPS_PRESENCE_DAY_REQUIRED_ACTIVITY_SOURCES: readonly LifeOpsActivitySignalSource[] =
-  [...LIFEOPS_ACTIVITY_SIGNAL_SOURCES].sort() as readonly LifeOpsActivitySignalSource[];
+  [
+    ...LIFEOPS_ACTIVITY_SIGNAL_SOURCES,
+  ].sort() as readonly LifeOpsActivitySignalSource[];
 
 export const LIFEOPS_PRESENCE_DAY_REQUIRED_HEALTH_SOURCES: readonly LifeOpsHealthSignalSource[] =
-  [...LIFEOPS_HEALTH_SIGNAL_SOURCES].sort() as readonly LifeOpsHealthSignalSource[];
+  [
+    ...LIFEOPS_HEALTH_SIGNAL_SOURCES,
+  ].sort() as readonly LifeOpsHealthSignalSource[];

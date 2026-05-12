@@ -28,8 +28,8 @@
 import {
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
@@ -158,7 +158,8 @@ for (const file of walkJson(sourceDir)) {
                 )
                 .join("\n\n"),
               response:
-                responseText || (toolCalls.length ? JSON.stringify({ toolCalls }) : ""),
+                responseText ||
+                (toolCalls.length ? JSON.stringify({ toolCalls }) : ""),
             },
           ],
         },
@@ -179,8 +180,12 @@ for (const file of walkJson(sourceDir)) {
 }
 
 const anonymizer = createHashAnonymizer("eliza-trajectories-v1");
-const { trajectories: filtered, dropped, redactionCount, anonymizationCount } =
-  applyPrivacyFilter(rawRows, { anonymizer });
+const {
+  trajectories: filtered,
+  dropped,
+  redactionCount,
+  anonymizationCount,
+} = applyPrivacyFilter(rawRows, { anonymizer });
 
 function stripPrefix(text, role) {
   const prefix = `[${role}]\n`;
@@ -205,7 +210,10 @@ for (const t of filtered) {
           ? [
               {
                 role: userMessages[0].role,
-                content: stripPrefix(call.userPrompt ?? "", userMessages[0].role),
+                content: stripPrefix(
+                  call.userPrompt ?? "",
+                  userMessages[0].role,
+                ),
               },
             ]
           : [{ role: "user", content: call.userPrompt ?? "" }],
@@ -251,7 +259,7 @@ const meta = {
   redactionCount,
   anonymizationCount,
 };
-writeFileSync(metaPath, JSON.stringify(meta, null, 2) + "\n");
+writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`);
 
 console.log(
   `[traj->ds] scanned=${trajectoriesScanned} plannerStages=${plannerStagesSeen} rawRows=${rawRows.length} skippedEmpty=${skippedEmpty}`,

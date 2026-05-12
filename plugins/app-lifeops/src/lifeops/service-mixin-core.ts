@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
-import { getAgentEventService } from "@elizaos/agent";
-import { resolveOwnerEntityId } from "@elizaos/agent";
+import { getAgentEventService, resolveOwnerEntityId } from "@elizaos/agent";
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import {
   BROWSER_BRIDGE_COMPANION_CONNECTION_STATES,

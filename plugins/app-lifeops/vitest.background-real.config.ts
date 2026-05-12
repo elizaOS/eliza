@@ -62,7 +62,7 @@ function resolveJsToTsFromSourceRoot(
     return null;
   }
 
-  const tsCandidate = candidate.slice(0, -".js".length) + ".ts";
+  const tsCandidate = `${candidate.slice(0, -".js".length)}.ts`;
   return fs.existsSync(tsCandidate) ? tsCandidate : null;
 }
 

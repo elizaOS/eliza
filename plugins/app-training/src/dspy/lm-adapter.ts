@@ -13,34 +13,34 @@
 import type { LlmAdapter } from "../optimizers/types.js";
 
 export interface UsageInfo {
-	promptTokens?: number;
-	completionTokens?: number;
-	totalTokens?: number;
-	/** Provider-specific cache fields are surfaced verbatim under `cache`. */
-	cache?: Record<string, number>;
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+  /** Provider-specific cache fields are surfaced verbatim under `cache`. */
+  cache?: Record<string, number>;
 }
 
 export interface ChatMessage {
-	role: "system" | "user" | "assistant";
-	content: string;
+  role: "system" | "user" | "assistant";
+  content: string;
 }
 
 export interface GenerateArgs {
-	system: string;
-	messages: ChatMessage[];
-	temperature?: number;
-	maxTokens?: number;
-	stop?: string[];
+  system: string;
+  messages: ChatMessage[];
+  temperature?: number;
+  maxTokens?: number;
+  stop?: string[];
 }
 
 export interface GenerateResult {
-	text: string;
-	usage: UsageInfo;
+  text: string;
+  usage: UsageInfo;
 }
 
 export interface LanguageModelAdapter {
-	name: string;
-	generate(args: GenerateArgs): Promise<GenerateResult>;
+  name: string;
+  generate(args: GenerateArgs): Promise<GenerateResult>;
 }
 
 /**
@@ -51,26 +51,26 @@ export interface LanguageModelAdapter {
  * single-turn signatures only.
  */
 export function legacyAdapterToLm(
-	legacy: LlmAdapter,
-	name = "legacy",
+  legacy: LlmAdapter,
+  name = "legacy",
 ): LanguageModelAdapter {
-	return {
-		name,
-		async generate(args) {
-			const composed = args.messages
-				.map((m) =>
-					m.role === "user" ? m.content : `[${m.role}]\n${m.content}`,
-				)
-				.join("\n\n");
-			const text = await legacy.complete({
-				system: args.system,
-				user: composed,
-				temperature: args.temperature,
-				maxTokens: args.maxTokens,
-			});
-			return { text, usage: {} };
-		},
-	};
+  return {
+    name,
+    async generate(args) {
+      const composed = args.messages
+        .map((m) =>
+          m.role === "user" ? m.content : `[${m.role}]\n${m.content}`,
+        )
+        .join("\n\n");
+      const text = await legacy.complete({
+        system: args.system,
+        user: composed,
+        temperature: args.temperature,
+        maxTokens: args.maxTokens,
+      });
+      return { text, usage: {} };
+    },
+  };
 }
 
 /**
@@ -81,65 +81,65 @@ export function legacyAdapterToLm(
  * the user message so even unconfigured tests get a deterministic string.
  */
 export interface MockRule {
-	system?: string | RegExp;
-	user?: string | RegExp;
-	response: string;
+  system?: string | RegExp;
+  user?: string | RegExp;
+  response: string;
 }
 
 export interface MockAdapterOptions {
-	rules?: MockRule[];
-	defaultResponse?: string;
-	/** Optional usage stub returned with every response. */
-	usage?: UsageInfo;
-	/** Records every call for assertion in tests. */
-	log?: GenerateArgs[];
+  rules?: MockRule[];
+  defaultResponse?: string;
+  /** Optional usage stub returned with every response. */
+  usage?: UsageInfo;
+  /** Records every call for assertion in tests. */
+  log?: GenerateArgs[];
 }
 
 export class MockAdapter implements LanguageModelAdapter {
-	readonly name = "mock";
-	private readonly rules: MockRule[];
-	private readonly defaultResponse: string;
-	private readonly usage: UsageInfo;
-	private readonly log?: GenerateArgs[];
-	private callCount = 0;
+  readonly name = "mock";
+  private readonly rules: MockRule[];
+  private readonly defaultResponse: string;
+  private readonly usage: UsageInfo;
+  private readonly log?: GenerateArgs[];
+  private callCount = 0;
 
-	constructor(options: MockAdapterOptions = {}) {
-		this.rules = options.rules ?? [];
-		this.defaultResponse = options.defaultResponse ?? "";
-		this.usage = options.usage ?? {
-			promptTokens: 0,
-			completionTokens: 0,
-			totalTokens: 0,
-		};
-		this.log = options.log;
-	}
+  constructor(options: MockAdapterOptions = {}) {
+    this.rules = options.rules ?? [];
+    this.defaultResponse = options.defaultResponse ?? "";
+    this.usage = options.usage ?? {
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+    };
+    this.log = options.log;
+  }
 
-	get calls(): number {
-		return this.callCount;
-	}
+  get calls(): number {
+    return this.callCount;
+  }
 
-	async generate(args: GenerateArgs): Promise<GenerateResult> {
-		this.callCount += 1;
-		this.log?.push(args);
-		const userContent = args.messages
-			.filter((m) => m.role === "user")
-			.map((m) => m.content)
-			.join("\n");
-		for (const rule of this.rules) {
-			if (rule.system && !matches(rule.system, args.system)) continue;
-			if (rule.user && !matches(rule.user, userContent)) continue;
-			return { text: rule.response, usage: this.usage };
-		}
-		return {
-			text: this.defaultResponse || userContent,
-			usage: this.usage,
-		};
-	}
+  async generate(args: GenerateArgs): Promise<GenerateResult> {
+    this.callCount += 1;
+    this.log?.push(args);
+    const userContent = args.messages
+      .filter((m) => m.role === "user")
+      .map((m) => m.content)
+      .join("\n");
+    for (const rule of this.rules) {
+      if (rule.system && !matches(rule.system, args.system)) continue;
+      if (rule.user && !matches(rule.user, userContent)) continue;
+      return { text: rule.response, usage: this.usage };
+    }
+    return {
+      text: this.defaultResponse || userContent,
+      usage: this.usage,
+    };
+  }
 }
 
 function matches(needle: string | RegExp, haystack: string): boolean {
-	if (typeof needle === "string") return haystack.includes(needle);
-	return needle.test(haystack);
+  if (typeof needle === "string") return haystack.includes(needle);
+  return needle.test(haystack);
 }
 
 /**
@@ -152,36 +152,32 @@ function matches(needle: string | RegExp, haystack: string): boolean {
  * a hard import on `app-lifeops` (it lives in a sibling plugin). Callers
  * resolve the helper through a dynamic import and inject it here.
  */
-export interface UseModelLike {
-	(input: {
-		prompt: string;
-		systemPrompt?: string;
-		temperature?: number;
-		maxTokens?: number;
-	}): Promise<string>;
-}
+export type UseModelLike = (input: {
+  prompt: string;
+  systemPrompt?: string;
+  temperature?: number;
+  maxTokens?: number;
+}) => Promise<string>;
 
 export class CerebrasAdapter implements LanguageModelAdapter {
-	readonly name = "cerebras";
+  readonly name = "cerebras";
 
-	constructor(private readonly useModel: UseModelLike) {}
+  constructor(private readonly useModel: UseModelLike) {}
 
-	async generate(args: GenerateArgs): Promise<GenerateResult> {
-		const userContent = args.messages
-			.filter((m) => m.role !== "system")
-			.map((m) =>
-				m.role === "user" ? m.content : `[${m.role}]\n${m.content}`,
-			)
-			.join("\n\n");
-		const text = await this.useModel({
-			prompt: userContent,
-			systemPrompt: args.system,
-			temperature: args.temperature,
-			maxTokens: args.maxTokens,
-		});
-		// gpt-oss-120b does not expose per-call cache fields through the existing
-		// helper, so usage stays empty here. The helper-level cache hit-rate
-		// counters live in `lifeops-eval-model.ts` and surface elsewhere.
-		return { text, usage: {} };
-	}
+  async generate(args: GenerateArgs): Promise<GenerateResult> {
+    const userContent = args.messages
+      .filter((m) => m.role !== "system")
+      .map((m) => (m.role === "user" ? m.content : `[${m.role}]\n${m.content}`))
+      .join("\n\n");
+    const text = await this.useModel({
+      prompt: userContent,
+      systemPrompt: args.system,
+      temperature: args.temperature,
+      maxTokens: args.maxTokens,
+    });
+    // gpt-oss-120b does not expose per-call cache fields through the existing
+    // helper, so usage stays empty here. The helper-level cache hit-rate
+    // counters live in `lifeops-eval-model.ts` and surface elsewhere.
+    return { text, usage: {} };
+  }
 }

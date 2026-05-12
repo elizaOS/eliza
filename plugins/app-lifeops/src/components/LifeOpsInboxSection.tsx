@@ -1,13 +1,4 @@
 import {
-  Button,
-  client,
-  Input,
-  openExternalUrl,
-  Spinner,
-  useApp,
-  useMediaQuery,
-} from "@elizaos/ui";
-import {
   LIFEOPS_INBOX_CHANNELS,
   type LifeOpsGmailNeedsResponseFeed,
   type LifeOpsGmailSpamReviewFeed,
@@ -16,6 +7,15 @@ import {
   type LifeOpsInboxMessage,
   type LifeOpsInboxThreadGroup,
 } from "@elizaos/shared";
+import {
+  Button,
+  client,
+  Input,
+  openExternalUrl,
+  Spinner,
+  useApp,
+  useMediaQuery,
+} from "@elizaos/ui";
 import {
   AlarmClock,
   ArrowLeft,

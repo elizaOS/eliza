@@ -144,7 +144,10 @@ describe("privacy filter — deep walk of providerAccesses and metadata", () => 
           providerAccesses: [
             {
               data: {
-                contact: { email: "secret@person.com", note: "lat: 1.23, lng: 4.56" },
+                contact: {
+                  email: "secret@person.com",
+                  note: "lat: 1.23, lng: 4.56",
+                },
                 list: ["call 415-555-9999"],
               },
             },

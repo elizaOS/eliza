@@ -1,17 +1,13 @@
-import {
-  type IAgentRuntime,
-  type Memory,
-  type Provider,
-  type ProviderResult,
-  type State,
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
 } from "@elizaos/core";
 
-import { TodosService } from "../service.js";
-import {
-  type Todo,
-  TODOS_CONTEXTS,
-  TODOS_SERVICE_TYPE,
-} from "../types.js";
+import type { TodosService } from "../service.js";
+import { TODOS_CONTEXTS, TODOS_SERVICE_TYPE, type Todo } from "../types.js";
 
 function checkboxFor(status: Todo["status"]): string {
   switch (status) {

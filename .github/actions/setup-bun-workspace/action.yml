@@ -191,6 +191,19 @@ runs:
         SKIP_AVATAR_CLONE: ${{ inputs.skip-avatar-clone == 'true' && '1' || '' }}
         ELIZA_NO_VISION_DEPS: ${{ inputs.no-vision-deps == 'true' && '1' || '' }}
 
+    - name: Ensure workspace + native-plugin symlinks (postinstall safety net)
+      # `bun run postinstall` chains `bun scripts/patch-*` steps before
+      # `ensure-workspace-symlinks.mjs` / `ensure-native-plugins-linked.mjs`;
+      # if a `bun` invocation fails partway (e.g. the placeholder binary),
+      # those symlinks never get created and downstream vitest jobs hit
+      # "Failed to resolve entry for @elizaos/<workspace-pkg>". Run them
+      # explicitly with `node` (always available) so the symlinks exist
+      # regardless of how postinstall fared. Both scripts are idempotent.
+      shell: bash
+      run: |
+        node scripts/ensure-workspace-symlinks.mjs || echo "::warning::ensure-workspace-symlinks failed"
+        node scripts/ensure-native-plugins-linked.mjs || echo "::warning::ensure-native-plugins-linked failed"
+
     - name: Ensure generated shared i18n data
       shell: bash
       run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs

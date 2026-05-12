@@ -12,27 +12,21 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-schema";
-import {
-  expectScenarioToCallAction,
-  judgeRubric,
-} from "../_helpers/action-assertions.ts";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
+import {
+  expectScenarioToCallAction,
+  judgeRubric,
+} from "../_helpers/action-assertions.ts";
 
 export default scenario({
   id: "cross-channel.unanswered-decision-bump",
   title: "Unanswered question gets bumped (resend / escalate) after waiting",
   domain: "lifeops.cross-channel",
-  tags: [
-    "lifeops",
-    "cross-channel",
-    "followup",
-    "bump",
-    "unanswered",
-  ],
+  tags: ["lifeops", "cross-channel", "followup", "bump", "unanswered"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],
@@ -54,7 +48,9 @@ export default scenario({
         if (!runtime) return "scenario runtime unavailable";
         await LifeOpsRepository.bootstrapSchema(runtime);
         const agentId = String(runtime.agentId);
-        const fiveDaysAgo = new Date(Date.now() - 5 * 24 * 60 * 60_000).toISOString();
+        const fiveDaysAgo = new Date(
+          Date.now() - 5 * 24 * 60 * 60_000,
+        ).toISOString();
         await executeRawSql(
           runtime,
           `INSERT INTO app_lifeops.life_inbox_triage_entries (

@@ -39,7 +39,11 @@ export default scenario({
     {
       type: "definitionCountDelta",
       title: "Wind down",
-      titleAliases: ["Bedtime wind down", "Wind-down reminder", "Pre-bed wind-down"],
+      titleAliases: [
+        "Bedtime wind down",
+        "Wind-down reminder",
+        "Pre-bed wind-down",
+      ],
       delta: 1,
       requireReminderPlan: true,
     },

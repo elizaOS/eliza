@@ -69,14 +69,12 @@ if (!env.ELIZA_UI_SMOKE_API_PORT) {
   const apiPort = await getFreePort();
   env.ELIZA_UI_SMOKE_API_PORT = String(apiPort);
 }
-env.ELIZA_UI_SMOKE_API_PORT = env.ELIZA_UI_SMOKE_API_PORT;
 env.ELIZA_API_PORT = env.ELIZA_API_PORT || env.ELIZA_UI_SMOKE_API_PORT;
 
 if (!env.ELIZA_UI_SMOKE_PORT) {
   const uiPort = await getFreePort();
   env.ELIZA_UI_SMOKE_PORT = String(uiPort);
 }
-env.ELIZA_UI_SMOKE_PORT = env.ELIZA_UI_SMOKE_PORT;
 env.ELIZA_PORT = env.ELIZA_PORT || env.ELIZA_UI_SMOKE_PORT;
 
 for (const spec of specFiles) {

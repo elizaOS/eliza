@@ -48,14 +48,18 @@ const CANONICAL_OWNER_PARENTS = [
 
 describe("LifeOps canonical action structure", () => {
   it("does not register retired LifeOps source action names", () => {
-    const actionNames = new Set((appLifeOpsPlugin.actions ?? []).map((a) => a.name));
+    const actionNames = new Set(
+      (appLifeOpsPlugin.actions ?? []).map((a) => a.name),
+    );
     for (const retired of RETIRED_REGISTERED_NAMES) {
       expect(actionNames.has(retired), retired).toBe(false);
     }
   });
 
   it("registers canonical owner-operation parents", () => {
-    const actionNames = new Set((appLifeOpsPlugin.actions ?? []).map((a) => a.name));
+    const actionNames = new Set(
+      (appLifeOpsPlugin.actions ?? []).map((a) => a.name),
+    );
     for (const expected of CANONICAL_OWNER_PARENTS) {
       expect(actionNames.has(expected), expected).toBe(true);
     }
@@ -64,9 +68,15 @@ describe("LifeOps canonical action structure", () => {
   it("uses action as the public discriminator on canonical owner-operation parents", () => {
     const actionNames = new Set(CANONICAL_OWNER_PARENTS);
     const failures = (appLifeOpsPlugin.actions ?? [])
-      .filter((action) => actionNames.has(action.name as (typeof CANONICAL_OWNER_PARENTS)[number]))
+      .filter((action) =>
+        actionNames.has(
+          action.name as (typeof CANONICAL_OWNER_PARENTS)[number],
+        ),
+      )
       .filter((action) => {
-        const names = new Set((action.parameters ?? []).map((parameter) => parameter.name));
+        const names = new Set(
+          (action.parameters ?? []).map((parameter) => parameter.name),
+        );
         return names.has("subaction") && !names.has("action");
       })
       .map((action) => action.name);

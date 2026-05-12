@@ -230,9 +230,7 @@ function analyze() {
     for (const k of KS) {
       const arr = recallBuckets[stage][k];
       recallSummary[stage][k] =
-        arr.length === 0
-          ? null
-          : arr.reduce((s, v) => s + v, 0) / arr.length;
+        arr.length === 0 ? null : arr.reduce((s, v) => s + v, 0) / arr.length;
     }
   }
   return { stats, recallSummary, firstAppearHist };
@@ -286,7 +284,9 @@ function buildMarkdown(report) {
   lines.push("| Stage   | Count |");
   lines.push("|---------|-------|");
   for (const stage of [...STAGES, "fused", "never"]) {
-    lines.push(`| ${stage.padEnd(7)} | ${String(firstAppearHist[stage]).padEnd(5)} |`);
+    lines.push(
+      `| ${stage.padEnd(7)} | ${String(firstAppearHist[stage]).padEnd(5)} |`,
+    );
   }
   lines.push("");
   return lines.join("\n");
@@ -295,7 +295,7 @@ function buildMarkdown(report) {
 function main() {
   const report = analyze();
   fs.mkdirSync(path.dirname(outJson), { recursive: true });
-  fs.writeFileSync(outJson, JSON.stringify(report, null, 2) + "\n");
+  fs.writeFileSync(outJson, `${JSON.stringify(report, null, 2)}\n`);
   fs.writeFileSync(outMd, buildMarkdown(report));
   process.stdout.write(
     `[funnel] scanned=${report.stats.filesScanned} counted=${report.stats.countedSamples}\n`,

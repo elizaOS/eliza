@@ -11,36 +11,36 @@
  */
 
 import { describe, expect, it } from "vitest";
+import type {
+  DefaultPack,
+  ScheduledTaskKind,
+  ScheduledTaskSeed,
+} from "../src/default-packs/index.js";
 import {
   DAILY_RHYTHM_PACK_KEY,
   DAILY_RHYTHM_RECORD_IDS,
   DEFAULT_CONSOLIDATION_POLICIES,
   DEFAULT_ESCALATION_LADDERS,
-  FOLLOWUP_STARTER_PACK_KEY,
-  HABIT_STARTER_KEYS,
-  HABIT_STARTER_RECORDS,
-  HABIT_STARTERS_PACK_KEY,
-  INBOX_TRIAGE_REQUIRED_CAPABILITIES,
-  INBOX_TRIAGE_STARTER_PACK_KEY,
-  MORNING_BRIEF_PACK_KEY,
-  QUIET_THRESHOLD_DAYS,
-  QUIET_USER_WATCHER_PACK_KEY,
   dailyRhythmPack,
+  FOLLOWUP_STARTER_PACK_KEY,
   followupStarterPack,
   getAllDefaultPacks,
   getDefaultEnabledPacks,
   getDefaultPack,
   getOfferedDefaultPacks,
+  HABIT_STARTER_KEYS,
+  HABIT_STARTER_RECORDS,
+  HABIT_STARTERS_PACK_KEY,
   habitStartersPack,
+  INBOX_TRIAGE_REQUIRED_CAPABILITIES,
+  INBOX_TRIAGE_STARTER_PACK_KEY,
   inboxTriageStarterPack,
   isInboxTriageEligible,
+  MORNING_BRIEF_PACK_KEY,
   morningBriefPack,
+  QUIET_THRESHOLD_DAYS,
+  QUIET_USER_WATCHER_PACK_KEY,
   quietUserWatcherPack,
-} from "../src/default-packs/index.js";
-import type {
-  DefaultPack,
-  ScheduledTaskKind,
-  ScheduledTaskSeed,
 } from "../src/default-packs/index.js";
 
 const VALID_KINDS: ReadonlySet<ScheduledTaskKind> = new Set<ScheduledTaskKind>([
@@ -152,7 +152,11 @@ describe("W1-D default-pack registry — shape", () => {
   });
 
   it("registers the documented pack keys", () => {
-    expect(getAllDefaultPacks().map((p) => p.key).sort()).toEqual(
+    expect(
+      getAllDefaultPacks()
+        .map((p) => p.key)
+        .sort(),
+    ).toEqual(
       [
         DAILY_RHYTHM_PACK_KEY,
         FOLLOWUP_STARTER_PACK_KEY,
@@ -299,9 +303,7 @@ describe("W1-D daily-rhythm pack", () => {
   });
 
   it("checkin record has user_replied_within completionCheck and onSkip pipeline", () => {
-    const checkin = dailyRhythmPack.records.find(
-      (r) => r.kind === "checkin",
-    );
+    const checkin = dailyRhythmPack.records.find((r) => r.kind === "checkin");
     expect(checkin?.completionCheck?.kind).toBe("user_replied_within");
     expect(checkin?.priority).toBe("medium");
     expect(checkin?.pipeline?.onSkip?.length ?? 0).toBeGreaterThan(0);
@@ -335,9 +337,7 @@ describe("W1-D habit-starters pack", () => {
     const recordKeys = habitStartersPack.records
       .map((r) => r.metadata?.recordKey as string | undefined)
       .filter(Boolean);
-    expect(recordKeys.sort()).toEqual(
-      Object.values(HABIT_STARTER_KEYS).sort(),
-    );
+    expect(recordKeys.sort()).toEqual(Object.values(HABIT_STARTER_KEYS).sort());
   });
 
   it("stretch uses first_deny multi-gate composition with three gates", () => {
@@ -345,9 +345,11 @@ describe("W1-D habit-starters pack", () => {
       (r) => r.metadata?.recordKey === HABIT_STARTER_KEYS.stretch,
     );
     expect(stretch?.shouldFire?.compose).toBe("first_deny");
-    expect(stretch?.shouldFire?.gates.map((g) => g.kind).sort()).toEqual(
-      ["late_evening_skip", "stretch.walk_out_reset", "weekend_skip"],
-    );
+    expect(stretch?.shouldFire?.gates.map((g) => g.kind).sort()).toEqual([
+      "late_evening_skip",
+      "stretch.walk_out_reset",
+      "weekend_skip",
+    ]);
   });
 
   it("workout has high priority and a workout-blocker pipeline placeholder", () => {

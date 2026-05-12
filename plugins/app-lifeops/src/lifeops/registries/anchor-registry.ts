@@ -17,10 +17,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  type AnchorRegistry,
-  createAnchorRegistry,
-} from "../scheduled-task/consolidation-policy.js";
+import type { AnchorRegistry } from "../scheduled-task/consolidation-policy.js";
 import type {
   AnchorContext,
   AnchorContribution,
@@ -121,7 +118,8 @@ const morningStartAnchor: AnchorContribution = nullableTimeAnchor({
 
 const nightStartAnchor: AnchorContribution = nullableTimeAnchor({
   anchorKey: "night.start",
-  label: "Owner evening / wind-down window start (ownerFact.eveningWindow.start)",
+  label:
+    "Owner evening / wind-down window start (ownerFact.eveningWindow.start)",
   windowKey: "eveningWindow",
   edge: "start",
 });

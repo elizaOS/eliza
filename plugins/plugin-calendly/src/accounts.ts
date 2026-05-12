@@ -174,7 +174,9 @@ export function resolveCalendlyAccount(
 ): CalendlyAccountConfig | null {
   return (
     accounts.find((account) => account.accountId === accountId) ??
-    accounts.find((account) => account.accountId === DEFAULT_CALENDLY_ACCOUNT_ID) ??
+    accounts.find(
+      (account) => account.accountId === DEFAULT_CALENDLY_ACCOUNT_ID,
+    ) ??
     accounts[0] ??
     null
   );

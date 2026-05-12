@@ -19,7 +19,7 @@ await build({
   format: "esm",
   sourcemap: "external",
   minify: false,
-  external: ["@elizaos/core",],
+  external: ["@elizaos/core"],
 });
 
 console.log("Build complete.");

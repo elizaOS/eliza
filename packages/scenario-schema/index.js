@@ -56,7 +56,13 @@ export const FINAL_CHECK_KEYS = new Map(
     gmailBatchModify: ["type", "name", "expected", "body"],
     gmailApproval: ["type", "name", "state"],
     gmailNoRealWrite: ["type", "name"],
-    workflowDispatchOccurred: ["type", "name", "workflowId", "expected", "minCount"],
+    workflowDispatchOccurred: [
+      "type",
+      "name",
+      "workflowId",
+      "expected",
+      "minCount",
+    ],
   }).map(([type, keys]) => [type, new Set(keys)]),
 );
 

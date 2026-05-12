@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock metal-bench-fused cpu-bench cpu-dispatch-smoke bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
+.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock metal-bench-fused cpu-bench cpu-dispatch-smoke bench cuda cuda-verify cuda-verify-fused hip-verify cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -457,6 +457,11 @@ endif
 #   3. ELIZA_DFLASH_LLAMA_DIR / ELIZA_DFLASH_LIBGGML_CUDA — UNUSED by this
 #      harness now; retained as env so cuda_runner.sh's passthrough is inert.
 NVCC ?= $(shell command -v nvcc 2>/dev/null)
+# ROCm/HIP — `hipcc` from a ROCm install. `hip-verify` builds hip_verify.cu
+# (a thin shim over cuda_verify.cu — same kernels, HIP ABI) and runs the same
+# six fixtures. Requires `rocminfo` to report a `gfx*` agent at runtime; see
+# rocm_runner.sh for the full fork-target + GGUF-graph gate.
+HIPCC ?= $(shell command -v hipcc 2>/dev/null)
 # Distro CUDA toolkits (Debian/Ubuntu `nvidia-cuda-toolkit`) put the runtime
 # headers in /usr/include, not /usr/local/cuda/include. Probe both.
 CUDA_HOME ?= $(if $(wildcard /usr/local/cuda/include/cuda_runtime.h),/usr/local/cuda,$(if $(wildcard /usr/include/cuda_runtime.h),/usr,/usr/local/cuda))
@@ -586,6 +591,33 @@ else
 	@if [ -f fixtures/fused_attn_qjl_tbq.json ]; then \
 		echo "[cuda-verify-fused] fused QJL-K + TBQ-V attention (+ DP4A QJL cross-check) ..." ; ./cuda_verify fixtures/fused_attn_qjl_tbq.json ; \
 	else echo "[cuda-verify-fused] fused_attn_qjl_tbq.json missing — run reference-test first" ; false ; fi
+endif
+
+# ROCm/HIP fixture-parity gate. hip_verify.cu is a thin shim over
+# cuda_verify.cu (cuda_verify.cu guards its backend headers on
+# __HIP_PLATFORM_AMD__ and aliases the `cuda*` runtime calls to `hip*`), so
+# this runs the EXACT same device kernels + fixture loader + reference
+# cross-check the NVIDIA `cuda-verify` does, just compiled by `hipcc`. Needs
+# `hipcc` + a `gfx*` GPU agent (rocminfo). For a host without ROCm this is a
+# clean "not found, see rocm_runner.sh" message — the source is authored and
+# buildable; running it is the AMD-box gate.
+hip-verify:
+ifeq ($(HIPCC),)
+	@echo "ROCm/HIP toolchain not found — install ROCm (provides hipcc) and run on a gfx* GPU host, or use verify/rocm_runner.sh. hip_verify.cu is a thin shim over cuda_verify.cu (same kernels, HIP ABI)."
+	@false
+else
+	$(MAKE) tbq3_tcq_codebook.inc
+	$(HIPCC) -O2 -std=c++17 -I. $(CUDA_INCLUDES) \
+		hip_verify.cu $(QJL_POLAR_OBJ) $(REF_OBJ) -lm -o hip_verify
+	@echo "[hip-verify] turbo3 ..."     ; ./hip_verify fixtures/turbo3.json
+	@echo "[hip-verify] turbo4 ..."     ; ./hip_verify fixtures/turbo4.json
+	@echo "[hip-verify] turbo3_tcq ..." ; ./hip_verify fixtures/turbo3_tcq.json
+	@echo "[hip-verify] qjl ..."        ; ./hip_verify fixtures/qjl.json
+	@echo "[hip-verify] polar ..."      ; ./hip_verify fixtures/polar.json
+	@echo "[hip-verify] polar + QJL residual ..." ; ./hip_verify fixtures/polar_qjl.json
+	@if [ -f fixtures/fused_attn_qjl_tbq.json ]; then \
+		echo "[hip-verify] fused QJL-K + TBQ-V attention ..." ; ./hip_verify fixtures/fused_attn_qjl_tbq.json ; \
+	else echo "[hip-verify] fused_attn_qjl_tbq.json not present — skipping fused case" ; fi
 endif
 
 # Hardware runners. These intentionally fail without matching physical

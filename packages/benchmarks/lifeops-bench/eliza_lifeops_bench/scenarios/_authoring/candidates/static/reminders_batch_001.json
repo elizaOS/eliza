@@ -21,10 +21,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "dentist",
-      "May 15"
-    ],
+    "required_outputs": ["dentist", "May 15"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -48,10 +45,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "snooze",
-      "team"
-    ],
+    "required_outputs": ["snooze", "team"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -74,9 +68,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "complete"
-    ],
+    "required_outputs": ["complete"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -98,9 +90,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "overdue"
-    ],
+    "required_outputs": ["overdue"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -130,10 +120,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "gym",
-      "Monday"
-    ],
+    "required_outputs": ["gym", "Monday"],
     "first_question_fallback": {
       "canned_answer": "Weekly on Mondays at 18:00 works.",
       "applies_when": "agent asks about recurrence pattern"
@@ -164,10 +151,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "project",
-      "deadline"
-    ],
+    "required_outputs": ["project", "deadline"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -191,10 +175,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "snooze",
-      "Mom"
-    ],
+    "required_outputs": ["snooze", "Mom"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -223,10 +204,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "water",
-      "daily"
-    ],
+    "required_outputs": ["water", "daily"],
     "first_question_fallback": {
       "canned_answer": "Every day at 09:00 works for me.",
       "applies_when": "agent asks about cadence or time of day"
@@ -252,9 +230,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "complete"
-    ],
+    "required_outputs": ["complete"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -276,9 +252,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "work"
-    ],
+    "required_outputs": ["work"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -308,10 +282,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "monthly",
-      "report"
-    ],
+    "required_outputs": ["monthly", "report"],
     "first_question_fallback": {
       "canned_answer": "Last day of each month at 16:00 is fine.",
       "applies_when": "agent asks about day of month or time"
@@ -338,10 +309,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "snooze",
-      "medication"
-    ],
+    "required_outputs": ["snooze", "medication"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -369,10 +337,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "tax",
-      "April"
-    ],
+    "required_outputs": ["tax", "April"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -395,9 +360,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "complete"
-    ],
+    "required_outputs": ["complete"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -425,10 +388,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "birthday",
-      "June"
-    ],
+    "required_outputs": ["birthday", "June"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -452,10 +412,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "snooze",
-      "birthday"
-    ],
+    "required_outputs": ["snooze", "birthday"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -485,10 +442,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "quarterly",
-      "review"
-    ],
+    "required_outputs": ["quarterly", "review"],
     "first_question_fallback": {
       "canned_answer": "First day of each quarter at 10:00 is perfect.",
       "applies_when": "agent asks about recurrence pattern"
@@ -514,9 +468,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "complete"
-    ],
+    "required_outputs": ["complete"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -538,10 +490,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "overdue",
-      "personal"
-    ],
+    "required_outputs": ["overdue", "personal"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -569,10 +518,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "clinic",
-      "30"
-    ],
+    "required_outputs": ["clinic", "30"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -596,10 +542,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "snooze",
-      "Mom"
-    ],
+    "required_outputs": ["snooze", "Mom"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -628,10 +571,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "stretch",
-      "daily"
-    ],
+    "required_outputs": ["stretch", "daily"],
     "first_question_fallback": {
       "canned_answer": "Every day at 07:00 is great.",
       "applies_when": "agent asks about cadence or time of day"
@@ -657,9 +597,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "complete"
-    ],
+    "required_outputs": ["complete"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -687,10 +625,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "vacation",
-      "December"
-    ],
+    "required_outputs": ["vacation", "December"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -714,10 +649,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "snooze",
-      "vacation"
-    ],
+    "required_outputs": ["snooze", "vacation"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -747,10 +679,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "weekly",
-      "report"
-    ],
+    "required_outputs": ["weekly", "report"],
     "first_question_fallback": {
       "canned_answer": "Friday at 15:00 each week works.",
       "applies_when": "agent asks about recurrence pattern"
@@ -776,9 +705,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "complete"
-    ],
+    "required_outputs": ["complete"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -800,9 +727,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "reminders"
-    ],
+    "required_outputs": ["reminders"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -833,10 +758,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "health",
-      "annual"
-    ],
+    "required_outputs": ["health", "annual"],
     "first_question_fallback": {
       "canned_answer": "Yearly on October\u202f1st at 08:00 works.",
       "applies_when": "agent asks about recurrence pattern"
@@ -863,10 +785,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "snooze",
-      "health"
-    ],
+    "required_outputs": ["snooze", "health"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,

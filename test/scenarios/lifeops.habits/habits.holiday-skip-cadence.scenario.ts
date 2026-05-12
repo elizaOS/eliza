@@ -50,9 +50,7 @@ export default scenario({
       type: "custom",
       name: "agent-acknowledges-holiday-skip",
       predicate: (ctx: ScenarioContext) => {
-        const reply = String(
-          ctx.turns?.[0]?.responseText ?? "",
-        ).toLowerCase();
+        const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
         if (!reply) return "empty reply";
         const acknowledged =
           reply.includes("skip") ||

@@ -13,9 +13,7 @@
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
-function checkDiscordExpirySurfaced(
-  ctx: ScenarioContext,
-): string | undefined {
+function checkDiscordExpirySurfaced(ctx: ScenarioContext): string | undefined {
   const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
   if (reply.length === 0) return "empty reply on discord token expiry";
   const discordSignals = [

@@ -51,8 +51,8 @@ import {
   createInMemoryScheduledTaskLogStore,
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
-  TestNoopScheduledTaskDispatcher,
   type ScheduledTaskRunnerHandle,
+  TestNoopScheduledTaskDispatcher,
 } from "../lifeops/scheduled-task/index.js";
 import type { SendPolicyContribution } from "../lifeops/send-policy/contract.js";
 import {

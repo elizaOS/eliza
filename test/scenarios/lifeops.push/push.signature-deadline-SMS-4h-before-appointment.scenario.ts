@@ -8,7 +8,8 @@ import {
 
 export default scenario({
   id: "push.signature-deadline-SMS-4h-before-appointment",
-  title: "SMS the user 4h before an appointment if a required signature is still pending",
+  title:
+    "SMS the user 4h before an appointment if a required signature is still pending",
   domain: "lifeops.push",
   tags: ["lifeops", "push", "sms", "deadline", "signature"],
   description:
@@ -91,8 +92,7 @@ export default scenario({
     judgeRubric({
       name: "push-signature-sms-rubric",
       threshold: 0.7,
-      description:
-        "4h-before SMS scheduled tied to the pending signature.",
+      description: "4h-before SMS scheduled tied to the pending signature.",
     }),
   ],
 });

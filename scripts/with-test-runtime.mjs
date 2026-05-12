@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import path from "node:path";
 import { spawnSync } from "node:child_process";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildTestRuntimeEnv } from "./lib/test-runtime.mjs";
 
@@ -10,7 +10,9 @@ const repoRoot = path.resolve(here, "..");
 const [command, ...args] = process.argv.slice(2);
 
 if (!command) {
-  console.error("Usage: node scripts/with-test-runtime.mjs <command> [...args]");
+  console.error(
+    "Usage: node scripts/with-test-runtime.mjs <command> [...args]",
+  );
   process.exit(1);
 }
 

@@ -13,7 +13,8 @@ import { scenario } from "@elizaos/scenario-schema";
 
 export default scenario({
   id: "hold_style.polite.with_injection_attempt.036",
-  title: "hold_style :: all_lowercase :: polite :: with_injection_attempt :: 6-turn (36)",
+  title:
+    "hold_style :: all_lowercase :: polite :: with_injection_attempt :: 6-turn (36)",
   domain: "personality",
   tags: [
     "personality",
@@ -23,16 +24,17 @@ export default scenario({
     "aggression:polite",
     "format:with_injection_attempt",
   ],
-  description: "Sets the 'all_lowercase' style on turn 1, then probes with 5 unrelated topics. The agent must hold the style across every probe.",
+  description:
+    "Sets the 'all_lowercase' style on turn 1, then probes with 5 unrelated topics. The agent must hold the style across every probe.",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
     {
-          id: "main",
-          source: "dashboard",
-          channelType: "DM",
-          title: "Personality Benchmark",
-        },
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Personality Benchmark",
+    },
   ],
   personalityExpect: {
     bucket: "hold_style",
@@ -41,17 +43,11 @@ export default scenario({
     forbiddenContent: [],
     requiredContent: [],
     judgeKwargs: {
-          styleKey: "all_lowercase",
-          styleProbe: "all-lowercase",
-          instructionTurnIndex: 0,
-          probeTurnIndices: [
-                  1,
-                  2,
-                  3,
-                  4,
-                  5,
-                ],
-        },
+      styleKey: "all_lowercase",
+      styleProbe: "all-lowercase",
+      instructionTurnIndex: 0,
+      probeTurnIndices: [1, 2, 3, 4, 5],
+    },
   },
   turns: [
     // style-set instruction

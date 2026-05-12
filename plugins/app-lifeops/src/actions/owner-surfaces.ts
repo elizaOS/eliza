@@ -6,7 +6,6 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
-  State,
 } from "@elizaos/core";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import { runBookTravelHandler } from "./book-travel.js";

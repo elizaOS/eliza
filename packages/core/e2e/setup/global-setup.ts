@@ -49,7 +49,9 @@ async function importWorkspacePlugin(
 ): Promise<Record<string, unknown> | null> {
 	try {
 		const mod = (await import(relativeFromHere)) as Record<string, unknown>;
-		console.log(`[e2e] loaded ${bareSpecifier} from workspace: ${relativeFromHere}`);
+		console.log(
+			`[e2e] loaded ${bareSpecifier} from workspace: ${relativeFromHere}`,
+		);
 		return mod;
 	} catch (err) {
 		console.warn(
@@ -57,7 +59,9 @@ async function importWorkspacePlugin(
 		);
 		try {
 			const mod = (await import(bareSpecifier)) as Record<string, unknown>;
-			console.log(`[e2e] loaded ${bareSpecifier} via bare specifier (likely published copy)`);
+			console.log(
+				`[e2e] loaded ${bareSpecifier} via bare specifier (likely published copy)`,
+			);
 			return mod;
 		} catch {
 			return null;

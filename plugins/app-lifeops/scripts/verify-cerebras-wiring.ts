@@ -13,7 +13,8 @@ import {
 async function main(): Promise<void> {
   console.log("[verify-cerebras] starting smoke test");
   console.log("[verify-cerebras] env:", {
-    CEREBRAS_BASE_URL: process.env.CEREBRAS_BASE_URL ?? "(default https://api.cerebras.ai/v1)",
+    CEREBRAS_BASE_URL:
+      process.env.CEREBRAS_BASE_URL ?? "(default https://api.cerebras.ai/v1)",
     CEREBRAS_MODEL: process.env.CEREBRAS_MODEL ?? "(default gpt-oss-120b)",
     EVAL_MODEL: process.env.EVAL_MODEL,
     TRAIN_MODEL: process.env.TRAIN_MODEL,
@@ -31,12 +32,15 @@ async function main(): Promise<void> {
   console.log("[verify-cerebras] eval text:", evalResult.text);
   console.log("[verify-cerebras] eval usage:", evalResult.usage);
   if (!evalResult.text.toLowerCase().includes("ok")) {
-    throw new Error(`eval client did not return parseable JSON: ${evalResult.text}`);
+    throw new Error(
+      `eval client did not return parseable JSON: ${evalResult.text}`,
+    );
   }
 
   const trainClient = getTrainingModelClient();
   const trainResult = await trainClient({
-    prompt: "Generate one short user message asking for tomorrow's weather. Reply with only the user message.",
+    prompt:
+      "Generate one short user message asking for tomorrow's weather. Reply with only the user message.",
     systemPrompt: "You produce realistic synthetic training utterances.",
     maxTokens: 256,
     temperature: 0.9,

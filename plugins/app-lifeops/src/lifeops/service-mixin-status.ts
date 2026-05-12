@@ -10,6 +10,7 @@ import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgeSettings,
 } from "@elizaos/plugin-browser";
+import type { HealthBackend } from "@elizaos/plugin-health";
 import type {
   LifeOpsCapabilitiesStatus,
   LifeOpsCapabilityEvidence,
@@ -27,7 +28,6 @@ import {
 import { resolveDefaultTimeZone } from "./defaults.js";
 import { createFeatureFlagService } from "./feature-flags.js";
 import type { FeatureFlagState } from "./feature-flags.types.js";
-import type { HealthBackend } from "@elizaos/plugin-health";
 import type { LifeOpsScheduleMergedState } from "./schedule-sync-contracts.js";
 import {
   LIFEOPS_TASK_NAME,

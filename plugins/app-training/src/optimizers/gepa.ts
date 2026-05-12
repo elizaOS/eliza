@@ -125,10 +125,13 @@ export async function runGepa(input: GepaInput): Promise<OptimizerResult> {
   // Seed: alternate feedback-guided and compression mutations of the baseline.
   for (let i = 1; i < population; i += 1) {
     const mode: "feedback" | "compress" = i % 2 === 0 ? "compress" : "feedback";
-    const seed = await mutate(ctx, input.baselinePrompt, baseline.feedback, mode);
-    pool.push(
-      await scoreCandidate(ctx, seed, `seed-${mode}`, 0, i, lineage),
+    const seed = await mutate(
+      ctx,
+      input.baselinePrompt,
+      baseline.feedback,
+      mode,
     );
+    pool.push(await scoreCandidate(ctx, seed, `seed-${mode}`, 0, i, lineage));
   }
 
   for (let gen = 1; gen <= generations; gen += 1) {
@@ -139,14 +142,33 @@ export async function runGepa(input: GepaInput): Promise<OptimizerResult> {
     // K=2 children per survivor: one feedback-guided, one compression.
     for (const parent of frontier) {
       if (next.length >= population) break;
-      const child = await mutate(ctx, parent.prompt, parent.feedback, "feedback");
+      const child = await mutate(
+        ctx,
+        parent.prompt,
+        parent.feedback,
+        "feedback",
+      );
       next.push(
-        await scoreCandidate(ctx, child, "feedback-mut", gen, variantIdx++, lineage),
+        await scoreCandidate(
+          ctx,
+          child,
+          "feedback-mut",
+          gen,
+          variantIdx++,
+          lineage,
+        ),
       );
       if (next.length >= population) break;
       const comp = await mutate(ctx, parent.prompt, "", "compress");
       next.push(
-        await scoreCandidate(ctx, comp, "compress-mut", gen, variantIdx++, lineage),
+        await scoreCandidate(
+          ctx,
+          comp,
+          "compress-mut",
+          gen,
+          variantIdx++,
+          lineage,
+        ),
       );
     }
 
@@ -163,7 +185,14 @@ export async function runGepa(input: GepaInput): Promise<OptimizerResult> {
           a.prompt,
         );
         next.push(
-          await scoreCandidate(ctx, merged, "crossover", gen, variantIdx++, lineage),
+          await scoreCandidate(
+            ctx,
+            merged,
+            "crossover",
+            gen,
+            variantIdx++,
+            lineage,
+          ),
         );
       }
     }
@@ -229,7 +258,14 @@ async function mutate(
     );
   }
   const user = `Current prompt:\n${prompt}\n\nFailure analysis:\n${feedback || "(none provided — explore a phrasing change)"}`;
-  return llmCall(ctx.llm, SYS_FEEDBACK, user, ctx.temperature, ctx.maxTokens, prompt);
+  return llmCall(
+    ctx.llm,
+    SYS_FEEDBACK,
+    user,
+    ctx.temperature,
+    ctx.maxTokens,
+    prompt,
+  );
 }
 
 /**
@@ -313,8 +349,11 @@ export function paretoFrontier(pool: Candidate[]): Candidate[] {
  */
 function approxTokenCount(text: string): number {
   if (text.length === 0) return 0;
-  const words = text.trim().split(/\s+/).filter((s) => s.length > 0).length;
-  const puncts = (text.match(/[.,;:!?(){}\[\]"'`]/g) ?? []).length;
+  const words = text
+    .trim()
+    .split(/\s+/)
+    .filter((s) => s.length > 0).length;
+  const puncts = (text.match(/[.,;:!?(){}[\]"'`]/g) ?? []).length;
   return words + Math.floor(puncts / 2);
 }
 

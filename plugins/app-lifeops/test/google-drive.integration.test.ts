@@ -13,7 +13,10 @@
  * Run:
  *   GOOGLE_OAUTH_TEST_TOKEN=ya29.xxx bunx --bun vitest run plugins/app-lifeops/test/google-drive.integration.test.ts
  */
-import { GoogleApiClientFactory, GoogleDriveClient } from "@elizaos/plugin-google";
+import {
+  GoogleApiClientFactory,
+  GoogleDriveClient,
+} from "@elizaos/plugin-google";
 import { OAuth2Client } from "google-auth-library";
 import { describe, expect, it } from "vitest";
 import { itIf } from "../../../test/helpers/conditional-tests.ts";

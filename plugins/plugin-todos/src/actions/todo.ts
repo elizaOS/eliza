@@ -1,27 +1,27 @@
-import {
-  type Action,
-  type ActionResult,
-  type HandlerCallback,
-  type HandlerOptions,
-  type IAgentRuntime,
-  type Memory,
-  type State,
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
 
 import {
   type CreateTodoInput,
-  type UpdateTodoInput,
   getTodosService,
   type TodosService,
+  type UpdateTodoInput,
 } from "../service.js";
 import {
   TODO_FAILURE_TEXT_PREFIX,
   TODO_OPS,
   TODO_STATUSES,
+  TODOS_CONTEXTS,
   type Todo,
   type TodoOp,
   type TodoStatus,
-  TODOS_CONTEXTS,
 } from "../types.js";
 
 const PARENT_TRAJECTORY_STEP_ENV_KEY = "ELIZA_PARENT_TRAJECTORY_STEP_ID";
@@ -55,9 +55,7 @@ function checkboxFor(status: TodoStatus): string {
 
 function renderMarkdown(todos: Todo[]): string {
   if (todos.length === 0) return "(no todos)";
-  return todos
-    .map((t) => `- ${checkboxFor(t.status)} ${t.content}`)
-    .join("\n");
+  return todos.map((t) => `- ${checkboxFor(t.status)} ${t.content}`).join("\n");
 }
 
 function failure(reason: string, message: string): ActionResult {
@@ -115,9 +113,7 @@ interface ParsedListItem {
 
 function parseTodoList(
   raw: unknown,
-):
-  | { ok: true; items: ParsedListItem[] }
-  | { ok: false; message: string } {
+): { ok: true; items: ParsedListItem[] } | { ok: false; message: string } {
   if (!Array.isArray(raw)) {
     return { ok: false, message: "todos must be an array" };
   }
@@ -514,7 +510,8 @@ export const todoAction: Action = {
     },
     {
       name: "activeForm",
-      description: "Present-continuous form, e.g. 'Adding tests' (create/update).",
+      description:
+        "Present-continuous form, e.g. 'Adding tests' (create/update).",
       required: false,
       schema: { type: "string" as const },
     },
@@ -607,7 +604,10 @@ export const todoAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Add 'review PR feedback' to my todo list.", source: "chat" },
+        content: {
+          text: "Add 'review PR feedback' to my todo list.",
+          source: "chat",
+        },
       },
       {
         name: "{{agentName}}",
@@ -622,7 +622,10 @@ export const todoAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Show my todos that are still pending.", source: "chat" },
+        content: {
+          text: "Show my todos that are still pending.",
+          source: "chat",
+        },
       },
       {
         name: "{{agentName}}",

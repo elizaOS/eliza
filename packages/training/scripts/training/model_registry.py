@@ -5,20 +5,31 @@ optimizer + quantization combination, and what its memory budget looks like.
 
 Two kinds of entries live here:
 
-1. REAL, buildable entries on published Qwen3 dense base models. These map
-   onto the size-first ``eliza-1-*`` tier ids used by the runtime model
-   catalog (``packages/shared/src/local-inference/catalog.ts`` —
+1. REAL, buildable entries on published Qwen3 / Qwen3.5 dense base models.
+   These map onto the size-first ``eliza-1-*`` tier ids used by the runtime
+   model catalog (``packages/shared/src/local-inference/catalog.ts`` —
    ``ELIZA_1_TIER_IDS`` / ``MODEL_CATALOG``):
 
-     - ``qwen3-0.6b`` → ``Qwen/Qwen3-0.6B`` → ``eliza-1-0_6b``  (local tier; full-param SFT on one consumer GPU)
-     - ``qwen3-1.7b`` → ``Qwen/Qwen3-1.7B`` → ``eliza-1-1_7b``  (local tier; full-param SFT on a 16 GB GPU)
-     - ``qwen3-4b``   → ``Qwen/Qwen3-4B``   → ``eliza-1-4b``    (local/workstation tier; full-param SFT on a 24 GB GPU)
+     - ``qwen3.5-0.8b`` → ``Qwen/Qwen3.5-0.8B-Base`` → ``eliza-1-0_8b``  (local tier; new "smallest" Qwen3.5 tier; full-param SFT on one consumer GPU; trains from the Base pretrain checkpoint, not the instruct release)
+     - ``qwen3-0.6b``   → ``Qwen/Qwen3-0.6B``   → ``eliza-1-0_6b``  (legacy Qwen3 local tier; full-param SFT on one consumer GPU)
+     - ``qwen3-1.7b``   → ``Qwen/Qwen3-1.7B``   → ``eliza-1-1_7b``  (legacy Qwen3 local tier; full-param SFT on a 16 GB GPU)
+     - ``qwen3-4b``     → ``Qwen/Qwen3-4B``     → ``eliza-1-4b``    (legacy Qwen3 local/workstation tier; full-param SFT on a 24 GB GPU)
+
+   The owner has decided the small tiers move to the Qwen3.5 backbone
+   (``Qwen/Qwen3.5-0.8B`` and ``Qwen/Qwen3.5-2B``). ``qwen3.5-0.8b`` is the
+   new small default; ``qwen3-0.6b`` / ``qwen3-1.7b`` / ``qwen3-4b`` are kept
+   as a legacy Qwen3 line until the owner decides whether to drop them — see
+   the ``# TODO(owner):`` note below the registry literal.
 
 2. Larger-tier entries against the next-gen Qwen3.5/3.6 dense checkpoints
    (``qwen3.5-2b`` → ``Qwen/Qwen3.5-2B`` → ``eliza-1-2b``; ``qwen3.5-9b`` →
    ``Qwen/Qwen3.5-9B`` → ``eliza-1-9b``; ``qwen3.6-27b`` →
-   ``Qwen/Qwen3.6-27B`` → ``eliza-1-27b``). All three are published on the
-   Hub. The 9b/27b tiers need workstation/cloud-class GPUs (or FSDP).
+   ``Qwen/Qwen3.6-27B`` → ``eliza-1-27b``). All published on the Hub. The
+   9b/27b tiers need workstation/cloud-class GPUs (or FSDP). Their DFlash
+   speculative-decode drafter is distilled from ``Qwen/Qwen3.5-0.8B-Base``
+   (the Qwen3.5 tokenizer — vocab 248320 — must match the target; a
+   Qwen3-0.6B drafter has the wrong vocab for a Qwen3.5/3.6 target). See
+   ``DFLASH_DRAFTER_BASE`` below and ``scripts/distill_dflash_drafter.py``.
 
 The numbers below are observed-or-projected memory budgets for full-parameter
 SFT with APOLLO at the listed sequence length. They are *budgets* — the
@@ -219,24 +230,91 @@ def _entry(**kw) -> ModelEntry:
 # Layer counts / head shapes come straight from the HF `config.json` of each
 # base model. The Qwen3 dense models below are plain full-attention causal
 # LMs (no hybrid linear-attention layers), so the KV-bearing layer count
-# equals the total layer count.
+# equals the total layer count. The Qwen3.5 entries are hybrid linear-attn
+# VLMs (`model_type: qwen3_5`, `full_attention_interval=4` → 3:1
+# linear:full), so the KV-bearing layer count is total_layers // 4.
 #   total layers   q_heads  kv_heads  head_dim   vocab    (HF base id)
-#   28             16        8         128        151936   Qwen/Qwen3-0.6B → eliza-1-0_6b
-#   28             16        8         128        151936   Qwen/Qwen3-1.7B → eliza-1-1_7b
-#   36             32        8         128        151936   Qwen/Qwen3-4B   → eliza-1-4b
+#   24 (6 full)    8         2         256        248320   Qwen/Qwen3.5-0.8B → eliza-1-0_8b   (qwen3_5, hidden 1024, max_pos 262144)
+#   28             16        8         128        151936   Qwen/Qwen3-0.6B   → eliza-1-0_6b   (qwen3, hidden 1024, max_pos 40960)
+#   28             16        8         128        151936   Qwen/Qwen3-1.7B   → eliza-1-1_7b   (qwen3, hidden 2048, max_pos 40960)
+#   36             32        8         128        151936   Qwen/Qwen3-4B     → eliza-1-4b     (qwen3, hidden 2560, max_pos 40960)
+#   24 (6 full)    8         2         256        248320   Qwen/Qwen3.5-2B   → eliza-1-2b     (qwen3_5, hidden 2048, max_pos 262144)
+#
+# DFlash speculative-decode drafter base, per eliza tier id. The drafter
+# must share the target's tokenizer/vocab: Qwen3 targets (0_6b/1_7b) draft
+# from a Qwen3 base; Qwen3.5/3.6 targets (2b/9b/27b...) draft from the
+# Qwen3.5-0.8B-Base pretrain checkpoint — published, vocab 248320 — and the
+# *shipped* drafter GGUF is that base distilled down to ~0.6B params (a
+# smaller Qwen3.5-arch student; `scripts/distill_dflash_drafter.py` is the
+# distiller, run on a cloud GPU; the artifact is not produced here). The
+# 0_6b tier ships no drafter (no smaller-than-itself Qwen3 base). Mirrors
+# `DEFAULT_STUDENT_BASE` in `scripts/distill_dflash_drafter.py` — keep the
+# two in sync.
+DFLASH_DRAFTER_BASE: dict[str, str] = {
+    # Qwen3.5/3.6 targets — drafter base is Qwen3.5-0.8B-Base; distill-target: ~0.6B Qwen3.5-arch.
+    "eliza-1-2b": "Qwen/Qwen3.5-0.8B-Base",
+    "eliza-1-9b": "Qwen/Qwen3.5-0.8B-Base",
+    "eliza-1-27b": "Qwen/Qwen3.5-0.8B-Base",
+    # Qwen3 legacy targets — drafter base stays on the Qwen3 vocab (151936).
+    "eliza-1-1_7b": "Qwen/Qwen3-0.6B",
+    "eliza-1-4b": "Qwen/Qwen3-0.6B",
+    # eliza-1-0_6b / eliza-1-0_8b: no drafter (smallest tiers).
+}
 
 REGISTRY: dict[str, ModelEntry] = {
     # ─────────────────────────── REAL ENTRIES ───────────────────────────
-    # Buildable Qwen3 dense base models, mapped onto the size-first
+    # Buildable Qwen3 / Qwen3.5 dense base models, mapped onto the size-first
     # eliza-1 tier ids in packages/shared/src/local-inference/catalog.ts.
     # Full-parameter SFT with APOLLO + Liger; the listed budgets target a
-    # single consumer GPU (0.6B/1.7B: 16 GB; 4B: 24 GB).
+    # single consumer GPU (0.8B/0.6B/1.7B: 16 GB; 4B: 24 GB).
     #
-    # Qwen3 vocab is ~152k tokens — the HF causal-LM loss upcasts logits to
-    # fp32 (B*S*V*4 bytes), so Liger fused chunked CE is what keeps the
-    # listed seq_len inside the budget. Inference budgets here are modest
-    # local-tier windows; the runtime catalog ships 32k context for these
-    # tiers and applies its own KV quantization.
+    # The Qwen3 bases (0.6B/1.7B/4B) have a ~152k vocab; the Qwen3.5 bases
+    # (0.8B/2B) have a 248k vocab — either way the HF causal-LM loss upcasts
+    # logits to fp32 (B*S*V*4 bytes), so Liger fused chunked CE is what keeps
+    # the listed seq_len inside the budget (the 248k vocab makes this
+    # transient ~1.6× heavier, hence the conservative seq_len on the Qwen3.5
+    # small tiers). Inference budgets here are modest local-tier windows; the
+    # runtime catalog ships 32k context for these tiers and applies its own
+    # KV quantization.
+    #
+    # New "smallest" tier on the Qwen3.5 backbone (owner decision). Shares
+    # the 248k Qwen3.5 tokenizer with the 2b/9b/27b targets — which is also
+    # why it is the DFlash drafter base for those tiers (see
+    # DFLASH_DRAFTER_BASE above). Hybrid linear-attn VLM (`qwen3_5`,
+    # `full_attention_interval=4` → 6 of 24 layers are full-attention /
+    # KV-bearing). Geometry from Qwen/Qwen3.5-0.8B `config.json`. SFT trains
+    # from the *Base* pretrain checkpoint (`Qwen/Qwen3.5-0.8B-Base`), not the
+    # instruct release — same architecture/tokenizer, no chat-SFT pre-baked in.
+    "qwen3.5-0.8b": _entry(
+        hf_id="Qwen/Qwen3.5-0.8B-Base", short_name="qwen3.5-0.8b",
+        eliza_short_name="eliza-1-0_8b", eliza_repo_id="elizaos/eliza-1-0_8b",
+        abliteration_repo_id="elizaos/eliza-1-0_8b-uncensored",
+        params_billion=0.8, tier=Tier.LOCAL,
+        seq_len=4096, optimizer="apollo_mini", optimizer_rank=1,
+        micro_batch=1, grad_accum=8, train_mem_gb_budget=12.0,
+        train_dtype="bf16",
+        infer_max_in=28672, infer_max_out=4096,
+        infer_kv_layers=6, infer_kv_heads=2, infer_kv_head_dim=256,
+        quantization_after=("polarquant", "turboquant", "qjl", "fp8", "gguf-q4_k_m"),
+        notes="New smallest published eliza-1 tier, on the Qwen3.5-0.8B "
+              "backbone (replaces eliza-1-0_6b as the small default). "
+              "Full-param APOLLO SFT fits a 16 GB consumer GPU; runs the "
+              "whole train→quant→bench stack end-to-end in well under an "
+              "hour. Runtime catalog id: eliza-1-0_8b (32k context). Shares "
+              "the 248k Qwen3.5 tokenizer with the 2b/9b/27b targets — also "
+              "the DFlash drafter base for those tiers (the -Base pretrain "
+              "checkpoint, distilled to ~0.6B — see DFLASH_DRAFTER_BASE).",
+    ),
+    # ──────────────────── LEGACY QWEN3 SMALL TIERS ───────────────────────
+    # TODO(owner): keep these three Qwen3 tiers as a legacy line alongside
+    # the new Qwen3.5 small line, drop them entirely, or replace
+    # eliza-1-1_7b with eliza-1-0_8b + eliza-1-2b as the new small defaults?
+    # Kept here (additive) until the owner decides — see test_model_registry
+    # SMALL_KEYS and benchmarks/MODELS_STATUS.md.
+    #
+    # Qwen3 vocab is ~152k tokens; Liger fused chunked CE keeps the listed
+    # seq_len inside the budget. Inference budgets here are modest local-tier
+    # windows; the runtime catalog ships 32k context for these tiers.
     "qwen3-0.6b": _entry(
         hf_id="Qwen/Qwen3-0.6B", short_name="qwen3-0.6b",
         eliza_short_name="eliza-1-0_6b", eliza_repo_id="elizaos/eliza-1-0_6b",

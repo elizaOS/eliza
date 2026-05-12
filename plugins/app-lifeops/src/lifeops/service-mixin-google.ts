@@ -2,8 +2,8 @@
 // methods belonging to sibling mixins. The composed LifeOpsService owns the
 // real runtime surface.
 import {
-  getConnectorAccountManager,
   type ConnectorAccount,
+  getConnectorAccountManager,
 } from "@elizaos/core";
 import type {
   DisconnectLifeOpsGoogleConnectorRequest,
@@ -17,7 +17,6 @@ import type {
 import {
   disconnectedGoogleStatus,
   googleAccountIdFromGrantId,
-  googleCapabilitiesForAccount,
   googleGrantFromAccount,
   googleGrantIdForAccount,
   googleScopesForAccount,
@@ -370,7 +369,9 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         requestedSide: side,
         grantId,
       });
-      return account ? this.googleAccountStatus(account) : disconnectedGoogleStatus(side);
+      return account
+        ? this.googleAccountStatus(account)
+        : disconnectedGoogleStatus(side);
     }
 
     async getGoogleConnectorAccounts(
@@ -407,11 +408,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         "mode",
       );
       assertLocalMode(preferredMode);
-      return this.getGoogleConnectorStatus(
-        requestUrl,
-        "local",
-        requestedSide,
-      );
+      return this.getGoogleConnectorStatus(requestUrl, "local", requestedSide);
     }
 
     async startGoogleConnector(

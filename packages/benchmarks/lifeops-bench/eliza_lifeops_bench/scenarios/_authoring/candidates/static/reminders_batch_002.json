@@ -21,10 +21,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "dentist",
-      "Monday"
-    ],
+    "required_outputs": ["dentist", "Monday"],
     "first_question_fallback": {
       "canned_answer": "Personal list works.",
       "applies_when": "agent asks which reminder list"
@@ -50,9 +47,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "complete"
-    ],
+    "required_outputs": ["complete"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -76,9 +71,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "snooze"
-    ],
+    "required_outputs": ["snooze"],
     "first_question_fallback": {
       "canned_answer": "Three days from now, same time.",
       "applies_when": "agent asks for new due time"
@@ -103,9 +96,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "upcoming"
-    ],
+    "required_outputs": ["upcoming"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -128,9 +119,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "deleted"
-    ],
+    "required_outputs": ["deleted"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -159,10 +148,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "weekly",
-      "sync"
-    ],
+    "required_outputs": ["weekly", "sync"],
     "first_question_fallback": {
       "canned_answer": "Work list is fine.",
       "applies_when": "agent asks which reminder list"
@@ -188,9 +174,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "completed"
-    ],
+    "required_outputs": ["completed"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -214,9 +198,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "snoozed"
-    ],
+    "required_outputs": ["snoozed"],
     "first_question_fallback": {
       "canned_answer": "One day later, same time.",
       "applies_when": "agent asks for new due time"
@@ -241,9 +223,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "overdue"
-    ],
+    "required_outputs": ["overdue"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -271,9 +251,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "dry cleaning"
-    ],
+    "required_outputs": ["dry cleaning"],
     "first_question_fallback": {
       "canned_answer": "Personal list is fine.",
       "applies_when": "agent asks which reminder list"
@@ -299,9 +277,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "deleted"
-    ],
+    "required_outputs": ["deleted"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -330,10 +306,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "budget",
-      "monthly"
-    ],
+    "required_outputs": ["budget", "monthly"],
     "first_question_fallback": {
       "canned_answer": "Work list works.",
       "applies_when": "agent asks which reminder list"
@@ -359,9 +332,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "completed"
-    ],
+    "required_outputs": ["completed"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -385,9 +356,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "snoozed"
-    ],
+    "required_outputs": ["snoozed"],
     "first_question_fallback": {
       "canned_answer": "Two hours later, same time.",
       "applies_when": "agent asks for new due time"
@@ -412,9 +381,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "overdue"
-    ],
+    "required_outputs": ["overdue"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -443,10 +410,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "daily",
-      "medication"
-    ],
+    "required_outputs": ["daily", "medication"],
     "first_question_fallback": {
       "canned_answer": "Personal list is fine.",
       "applies_when": "agent asks which reminder list"
@@ -472,9 +436,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "deleted"
-    ],
+    "required_outputs": ["deleted"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -503,10 +465,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "taxes",
-      "yearly"
-    ],
+    "required_outputs": ["taxes", "yearly"],
     "first_question_fallback": {
       "canned_answer": "Work list works.",
       "applies_when": "agent asks which reminder list"
@@ -532,9 +491,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "completed"
-    ],
+    "required_outputs": ["completed"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -558,9 +515,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "snoozed"
-    ],
+    "required_outputs": ["snoozed"],
     "first_question_fallback": {
       "canned_answer": "One week later, same time.",
       "applies_when": "agent asks for new due time"
@@ -585,9 +540,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "overdue"
-    ],
+    "required_outputs": ["overdue"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -616,10 +569,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "daily",
-      "stretch"
-    ],
+    "required_outputs": ["daily", "stretch"],
     "first_question_fallback": {
       "canned_answer": "Personal list works.",
       "applies_when": "agent asks which reminder list"
@@ -645,9 +595,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "deleted"
-    ],
+    "required_outputs": ["deleted"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -676,10 +624,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "monthly",
-      "tax"
-    ],
+    "required_outputs": ["monthly", "tax"],
     "first_question_fallback": {
       "canned_answer": "Work list is fine.",
       "applies_when": "agent asks which reminder list"
@@ -705,9 +650,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "completed"
-    ],
+    "required_outputs": ["completed"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -731,9 +674,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "snoozed"
-    ],
+    "required_outputs": ["snoozed"],
     "first_question_fallback": {
       "canned_answer": "Two hours later, same time.",
       "applies_when": "agent asks for new due time"
@@ -758,9 +699,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "upcoming"
-    ],
+    "required_outputs": ["upcoming"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -789,10 +728,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "weekly",
-      "grocery"
-    ],
+    "required_outputs": ["weekly", "grocery"],
     "first_question_fallback": {
       "canned_answer": "Personal list works.",
       "applies_when": "agent asks which reminder list"
@@ -818,9 +754,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "deleted"
-    ],
+    "required_outputs": ["deleted"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -849,10 +783,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "daily",
-      "journal"
-    ],
+    "required_outputs": ["daily", "journal"],
     "first_question_fallback": {
       "canned_answer": "Personal list is fine.",
       "applies_when": "agent asks which reminder list"
@@ -878,9 +809,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "completed"
-    ],
+    "required_outputs": ["completed"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,

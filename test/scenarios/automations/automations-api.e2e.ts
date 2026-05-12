@@ -13,15 +13,13 @@
 
 import type { TriggerSummary } from "@elizaos/agent";
 import type {
-  WorkflowStatusResponse,
-  WorkflowDefinition,
-} from "@elizaos/ui";
-import type {
   AutomationItem,
   AutomationListResponse,
   AutomationNodeCatalogResponse,
   AutomationNodeDescriptor,
   WorkbenchTask,
+  WorkflowDefinition,
+  WorkflowStatusResponse,
 } from "@elizaos/ui";
 
 const API_BASE = process.env.ELIZA_API_BASE ?? "http://127.0.0.1:31337";
@@ -258,12 +256,18 @@ async function caseWorkflowTriggerValidation(): Promise<void> {
 
 async function caseWorkflowDefinitionsAndStatus(): Promise<void> {
   const listRes = await apiFetch("/api/workflow/workflows");
-  assert(listRes.status === 200, `GET /api/workflow/workflows ${listRes.status}`);
+  assert(
+    listRes.status === 200,
+    `GET /api/workflow/workflows ${listRes.status}`,
+  );
   const listBody = await readJson<{ workflows: WorkflowDefinition[] }>(listRes);
   assert(Array.isArray(listBody.workflows), "workflows is not an array");
 
   const statusRes = await apiFetch("/api/workflow/status");
-  assert(statusRes.status === 200, `GET /api/workflow/status ${statusRes.status}`);
+  assert(
+    statusRes.status === 200,
+    `GET /api/workflow/status ${statusRes.status}`,
+  );
   const status = await readJson<WorkflowStatusResponse>(statusRes);
   assert(typeof status.mode === "string", "workflow status missing mode");
   assert(typeof status.status === "string", "workflow status missing status");
@@ -271,7 +275,10 @@ async function caseWorkflowDefinitionsAndStatus(): Promise<void> {
     typeof status.cloudHealth === "string",
     "workflow status missing cloudHealth",
   );
-  assert(typeof status.platform === "string", "workflow status missing platform");
+  assert(
+    typeof status.platform === "string",
+    "workflow status missing platform",
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -352,7 +359,10 @@ async function caseAutomationsList(): Promise<void> {
     `workflowCount mismatch: ${body.summary.workflowCount} vs ${wf}`,
   );
   assert(body.workflowStatus !== undefined, "workflowStatus field absent");
-  assert(body.workflowStatus !== null, "workflowStatus null (workflow unreachable?)");
+  assert(
+    body.workflowStatus !== null,
+    "workflowStatus null (workflow unreachable?)",
+  );
   assert(
     body.workflowFetchError === null,
     `workflowFetchError should be null when workflow healthy, got ${body.workflowFetchError}`,

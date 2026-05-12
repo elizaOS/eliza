@@ -350,7 +350,7 @@ export class JupiterClient {
 			},
 		);
 
-		if (!swapData || !swapData.swapTransaction) {
+		if (!swapData?.swapTransaction) {
 			console.error("Swap error:", swapData);
 			throw new Error(
 				`Failed to get swap transaction: ${swapData?.error || "No swap transaction returned"}`,
@@ -449,7 +449,7 @@ export class DexscreenerClient {
 				options,
 			);
 
-			if (!data || !data.pairs) {
+			if (!data?.pairs) {
 				throw new Error("No DexScreener data available");
 			}
 

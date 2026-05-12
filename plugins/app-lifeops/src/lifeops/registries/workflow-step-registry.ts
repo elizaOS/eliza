@@ -48,10 +48,7 @@ export interface WorkflowStepExecuteContext {
     request: CreateLifeOpsDefinitionRequest,
   ): Promise<LifeOpsDefinitionRecord>;
 
-  relockWebsiteAccessGroup(
-    groupKey: string,
-    now?: Date,
-  ): Promise<{ ok: true }>;
+  relockWebsiteAccessGroup(groupKey: string, now?: Date): Promise<{ ok: true }>;
 
   resolveWebsiteAccessCallback(
     callbackKey: string,

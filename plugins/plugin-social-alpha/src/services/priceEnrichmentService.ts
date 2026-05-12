@@ -61,8 +61,6 @@ export interface TrustScore {
 }
 
 export class PriceEnrichmentService {
-	private runtime: IAgentRuntime;
-	private runtime: IAgentRuntime;
 	private birdeyeClient: BirdeyeClient;
 	private dexscreenerClient: DexscreenerClient;
 
@@ -711,10 +709,6 @@ export class PriceEnrichmentService {
 				DEGENAI: {
 					address: "Gu3LDkn7Vx3bmCzLafYNKcDxv2mqcDvZLhbiewCaAp1M",
 					name: "DEGENAI",
-				},
-				ELIZA: {
-					address: "H1Y31Gztt3kUJgQhjoyX5r5AAoNAhAi8xfq6afVV84cg",
-					name: "Eliza",
 				},
 				COBIE: {
 					address: "6og9y7SuLDZ5wJXtvJTXFJECaFmCj3gKcSSoydG39Dxu",

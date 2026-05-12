@@ -143,8 +143,12 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
   if (!isFullBunRuntimePluginAvailable()) return null;
   fullBunRuntime ??= (async () => {
     try {
+      // Resolve via a variable so the typechecker doesn't require the (often
+      // un-built) `@elizaos/capacitor-bun-runtime` package to be present —
+      // it only ships in the iOS app bundle. Mirrors `android-native-agent-transport.ts`.
+      const fullBunRuntimePluginId = "@elizaos/capacitor-bun-runtime";
       const mod = (await import(
-        "@elizaos/capacitor-bun-runtime"
+        /* @vite-ignore */ fullBunRuntimePluginId
       )) as FullBunRuntimeModule;
       const runtime = mod.ElizaBunRuntime;
       const started = await runtime.start({

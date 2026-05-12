@@ -11,11 +11,11 @@
  * api key.
  */
 
+import { loadElizaConfig } from "@elizaos/agent";
 import {
   normalizeCloudSiteUrl,
   resolveCloudApiBaseUrl,
 } from "@elizaos/plugin-elizacloud";
-import { loadElizaConfig } from "@elizaos/agent";
 
 const PLAID_REQUEST_TIMEOUT_MS = 30_000;
 

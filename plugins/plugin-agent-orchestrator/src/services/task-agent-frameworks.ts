@@ -711,6 +711,21 @@ async function computeTaskAgentFrameworkState(
   const providerPrefersGemini =
     configuredSubscriptionProvider === "gemini-cli" ||
     configuredSubscriptionProvider === "gemini-subscription";
+  // Prefer opencode when the user has configured an OpenAI-compatible
+  // endpoint (cerebras, openrouter, local Ollama, etc.) AND has no
+  // first-party subscription paired. This is the "BYO API key" path —
+  // claude/codex subs always win when paired since the user is already
+  // paying for them.
+  const providerPrefersOpencode =
+    !providerPrefersClaude &&
+    !providerPrefersCodex &&
+    !providerPrefersGemini &&
+    Boolean(
+      readConfigEnvKey("PARALLAX_OPENCODE_BASE_URL") ||
+        readConfigEnvKey("PARALLAX_OPENCODE_LOCAL") === "1" ||
+        readConfigEnvKey("PARALLAX_OPENCODE_API_KEY") ||
+        readConfigEnvKey("PARALLAX_OPENCODE_MODEL_POWERFUL"),
+    );
 
   const inventory: TaskAgentFrameworkAvailability[] = STANDARD_FRAMEWORKS.map(
     (id) => {
@@ -841,7 +856,11 @@ async function computeTaskAgentFrameworkState(
             ? framework.subscriptionReady
               ? 18
               : 6
-            : 0;
+            : providerPrefersOpencode && framework.id === "opencode"
+              ? framework.authReady
+                ? 18
+                : 6
+              : 0;
     const availabilityScore =
       (framework.installed ? 40 : -100) +
       (framework.authReady ? 18 : -25) +
@@ -1000,6 +1019,21 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
   const providerPrefersGemini =
     configuredSubscriptionProvider === "gemini-cli" ||
     configuredSubscriptionProvider === "gemini-subscription";
+  // Prefer opencode when the user has configured an OpenAI-compatible
+  // endpoint (cerebras, openrouter, local Ollama, etc.) AND has no
+  // first-party subscription paired. This is the "BYO API key" path —
+  // claude/codex subs always win when paired since the user is already
+  // paying for them.
+  const providerPrefersOpencode =
+    !providerPrefersClaude &&
+    !providerPrefersCodex &&
+    !providerPrefersGemini &&
+    Boolean(
+      readConfigEnvKey("PARALLAX_OPENCODE_BASE_URL") ||
+        readConfigEnvKey("PARALLAX_OPENCODE_LOCAL") === "1" ||
+        readConfigEnvKey("PARALLAX_OPENCODE_API_KEY") ||
+        readConfigEnvKey("PARALLAX_OPENCODE_MODEL_POWERFUL"),
+    );
   const explicitDefault = safeGetSetting(runtime, "PARALLAX_DEFAULT_AGENT_TYPE")
     ?.toLowerCase()
     .trim();
@@ -1031,7 +1065,11 @@ function computeTaskAgentFrameworkStateFromCachedInventory(
             ? framework.subscriptionReady
               ? 18
               : 6
-            : 0;
+            : providerPrefersOpencode && framework.id === "opencode"
+              ? framework.authReady
+                ? 18
+                : 6
+              : 0;
     const availabilityScore =
       (framework.installed ? 40 : -100) +
       (framework.authReady ? 18 : -25) +

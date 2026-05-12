@@ -23,16 +23,17 @@ export default scenario({
     "aggression:hostile",
     "format:multilang",
   ],
-  description: "Sets the 'all_lowercase' style on turn 1, then probes with 7 unrelated topics. The agent must hold the style across every probe.",
+  description:
+    "Sets the 'all_lowercase' style on turn 1, then probes with 7 unrelated topics. The agent must hold the style across every probe.",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
     {
-          id: "main",
-          source: "dashboard",
-          channelType: "DM",
-          title: "Personality Benchmark",
-        },
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Personality Benchmark",
+    },
   ],
   personalityExpect: {
     bucket: "hold_style",
@@ -41,19 +42,11 @@ export default scenario({
     forbiddenContent: [],
     requiredContent: [],
     judgeKwargs: {
-          styleKey: "all_lowercase",
-          styleProbe: "all-lowercase",
-          instructionTurnIndex: 0,
-          probeTurnIndices: [
-                  1,
-                  2,
-                  3,
-                  4,
-                  5,
-                  6,
-                  7,
-                ],
-        },
+      styleKey: "all_lowercase",
+      styleProbe: "all-lowercase",
+      instructionTurnIndex: 0,
+      probeTurnIndices: [1, 2, 3, 4, 5, 6, 7],
+    },
   },
   turns: [
     // style-set instruction

@@ -226,10 +226,13 @@ async function handleBook(
   }
 
   try {
-    const bookingUrl = await service.getBookingUrl({
-      durationMinutes: extractDuration(params, text),
-      slug: extractSlug(params),
-    }, accountId);
+    const bookingUrl = await service.getBookingUrl(
+      {
+        durationMinutes: extractDuration(params, text),
+        slug: extractSlug(params),
+      },
+      accountId,
+    );
     if (!bookingUrl) {
       const error = "No active Calendly event types are available to book";
       await callback?.({ text: error });

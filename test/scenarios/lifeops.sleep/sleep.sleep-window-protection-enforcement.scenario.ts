@@ -55,9 +55,7 @@ export default scenario({
       type: "custom",
       name: "agent-protects-sleep-window",
       predicate: (ctx: ScenarioContext) => {
-        const reply = String(
-          ctx.turns?.[0]?.responseText ?? "",
-        ).toLowerCase();
+        const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
         if (!reply) return "empty reply";
         const protected_ =
           reply.includes("early") ||

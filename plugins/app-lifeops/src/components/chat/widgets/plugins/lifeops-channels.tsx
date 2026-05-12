@@ -1,11 +1,3 @@
-import {
-  type ChatSidebarWidgetDefinition,
-  type ChatSidebarWidgetProps,
-  client,
-  type TriggerSummary,
-  useApp,
-  WidgetSection,
-} from "@elizaos/ui";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
@@ -14,6 +6,14 @@ import type {
   LifeOpsGoogleCapability,
   LifeOpsGoogleConnectorStatus,
 } from "@elizaos/shared";
+import {
+  type ChatSidebarWidgetDefinition,
+  type ChatSidebarWidgetProps,
+  client,
+  type TriggerSummary,
+  useApp,
+  WidgetSection,
+} from "@elizaos/ui";
 import { CalendarDays, Clock, Mail } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useGoogleLifeOpsConnector } from "../../../../hooks/useGoogleLifeOpsConnector.js";

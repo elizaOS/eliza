@@ -23,16 +23,17 @@ export default scenario({
     "aggression:polite",
     "format:with_emojis",
   ],
-  description: "Ladder of escalation requests ('less_emoji', direction: no_emoji). Agent's tone/responsiveness should shift monotonically with each escalation step, and the new level should hold across the probe turns that follow.",
+  description:
+    "Ladder of escalation requests ('less_emoji', direction: no_emoji). Agent's tone/responsiveness should shift monotonically with each escalation step, and the new level should hold across the probe turns that follow.",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
     {
-          id: "main",
-          source: "dashboard",
-          channelType: "DM",
-          title: "Personality Benchmark",
-        },
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Personality Benchmark",
+    },
   ],
   personalityExpect: {
     bucket: "escalation",
@@ -41,23 +42,11 @@ export default scenario({
     forbiddenContent: [],
     requiredContent: [],
     judgeKwargs: {
-          ladderKey: "less_emoji",
-          direction: "no_emoji",
-          escalationStepTurnIndices: [
-                  0,
-                  2,
-                  4,
-                  6,
-                ],
-          probeTurnIndices: [
-                  1,
-                  3,
-                  5,
-                  7,
-                  8,
-                  9,
-                ],
-        },
+      ladderKey: "less_emoji",
+      direction: "no_emoji",
+      escalationStepTurnIndices: [0, 2, 4, 6],
+      probeTurnIndices: [1, 3, 5, 7, 8, 9],
+    },
   },
   turns: [
     // escalation step 1 of 4

@@ -85,9 +85,8 @@ function parseMatrixRows(content: string): MatrixRow[] {
 
     const testFileCell = cells[4] ?? "";
     const testFileMatch =
-      testFileCell.match(/`([^`]+)`/) ??
-      testFileCell.match(/(\S+\.test\.ts)/);
-    const testFile = testFileMatch ? testFileMatch[1] ?? null : null;
+      testFileCell.match(/`([^`]+)`/) ?? testFileCell.match(/(\S+\.test\.ts)/);
+    const testFile = testFileMatch ? (testFileMatch[1] ?? null) : null;
 
     rows.push({
       journeyId,
@@ -215,7 +214,9 @@ describe("coverage-matrix.md contract — domain-anchored (GAP §8.5)", () => {
     const duplicates: string[] = [];
     for (const [testFile, journeyIds] of counts) {
       if (journeyIds.length > 1) {
-        duplicates.push(`${testFile} referenced by rows: ${journeyIds.join(", ")}`);
+        duplicates.push(
+          `${testFile} referenced by rows: ${journeyIds.join(", ")}`,
+        );
       }
     }
     expect(

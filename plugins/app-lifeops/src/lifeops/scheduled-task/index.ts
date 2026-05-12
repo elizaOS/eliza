@@ -5,12 +5,89 @@
  * runner surface other plugins build against.
  */
 
+export {
+  type CompletionCheckRegistry,
+  createCompletionCheckRegistry,
+  registerBuiltInCompletionChecks,
+} from "./completion-check-registry.js";
+export {
+  type AnchorRegistry,
+  type ConsolidationRegistry,
+  createAnchorRegistry,
+  createConsolidationRegistry,
+  registerStubAnchors,
+} from "./consolidation-policy.js";
+export {
+  expectedReplyKindForTask,
+  isCompletionTimeoutDue,
+  isRecurringTrigger,
+  isScheduledTaskDue,
+  markWindowFireIfNeeded,
+  pendingPromptRoomIdForTask,
+  type ScheduledTaskDueContext,
+  type ScheduledTaskDueDecision,
+} from "./due.js";
+export {
+  createEscalationLadderRegistry,
+  DEFAULT_ESCALATION_LADDERS,
+  type EscalationCursor,
+  type EscalationLadder,
+  type EscalationLadderRegistry,
+  nextEscalationStep,
+  PRIORITY_DEFAULT_LADDER_KEYS,
+  registerDefaultEscalationLadders,
+  resetLadderForSnooze,
+  resolveEffectiveLadder,
+} from "./escalation.js";
+export {
+  createTaskGateRegistry,
+  registerBuiltInGates,
+  type TaskGateRegistry,
+} from "./gate-registry.js";
+export { computeNextFireAt } from "./next-fire-at.js";
+
+export {
+  createInMemoryScheduledTaskStore,
+  createScheduledTaskRunner,
+  type ScheduledTaskClaimResult,
+  type ScheduledTaskDispatcher,
+  type ScheduledTaskDispatchRecord,
+  type ScheduledTaskFireResult,
+  type ScheduledTaskRunnerDeps,
+  type ScheduledTaskRunnerExtras,
+  type ScheduledTaskRunnerHandle,
+  type ScheduledTaskStore,
+  type ScheduledTaskUpsertOptions,
+  TestNoopScheduledTaskDispatcher,
+} from "./runner.js";
+// `ScheduledTaskFireResult` (the runner's fire-attempt discriminated union) is
+// re-exported above from `./runner.js`. The scheduler module defines a separate
+// processing-summary shape under the same name; it is consumed via
+// `ProcessDueScheduledTasksResult.fires` and does not need a separate symbol on
+// this barrel.
+export {
+  type ProcessDueScheduledTasksRequest,
+  type ProcessDueScheduledTasksResult,
+  processDueScheduledTasks,
+  type ScheduledTaskProcessingError,
+} from "./scheduler.js";
+export {
+  type GetScheduledTaskRunnerOptions,
+  getScheduledTaskRunner,
+  ScheduledTaskRunnerService,
+} from "./service.js";
+export {
+  createInMemoryScheduledTaskLogStore,
+  createStateLogger,
+  type ScheduledTaskLogStore,
+  STATE_LOG_DEFAULT_RETENTION_DAYS,
+} from "./state-log.js";
 export type {
   ActivitySignalBusView,
-  AnchorContext,
-  AnchorContribution,
   AnchorConsolidationMode,
   AnchorConsolidationPolicy,
+  AnchorContext,
+  AnchorContribution,
   CompletionCheckContext,
   CompletionCheckContribution,
   CompletionCheckParams,
@@ -49,89 +126,3 @@ export type {
   TaskGateContribution,
   TerminalState,
 } from "./types.js";
-
-export {
-  createTaskGateRegistry,
-  registerBuiltInGates,
-  type TaskGateRegistry,
-} from "./gate-registry.js";
-
-export {
-  createCompletionCheckRegistry,
-  registerBuiltInCompletionChecks,
-  type CompletionCheckRegistry,
-} from "./completion-check-registry.js";
-
-export {
-  createAnchorRegistry,
-  createConsolidationRegistry,
-  registerStubAnchors,
-  type AnchorRegistry,
-  type ConsolidationRegistry,
-} from "./consolidation-policy.js";
-
-export {
-  createEscalationLadderRegistry,
-  DEFAULT_ESCALATION_LADDERS,
-  PRIORITY_DEFAULT_LADDER_KEYS,
-  registerDefaultEscalationLadders,
-  resetLadderForSnooze,
-  resolveEffectiveLadder,
-  nextEscalationStep,
-  type EscalationCursor,
-  type EscalationLadder,
-  type EscalationLadderRegistry,
-} from "./escalation.js";
-
-export {
-  createInMemoryScheduledTaskLogStore,
-  createStateLogger,
-  STATE_LOG_DEFAULT_RETENTION_DAYS,
-  type ScheduledTaskLogStore,
-} from "./state-log.js";
-
-export {
-  createInMemoryScheduledTaskStore,
-  createScheduledTaskRunner,
-  TestNoopScheduledTaskDispatcher,
-  type ScheduledTaskClaimResult,
-  type ScheduledTaskDispatcher,
-  type ScheduledTaskDispatchRecord,
-  type ScheduledTaskFireResult,
-  type ScheduledTaskRunnerDeps,
-  type ScheduledTaskRunnerExtras,
-  type ScheduledTaskRunnerHandle,
-  type ScheduledTaskStore,
-  type ScheduledTaskUpsertOptions,
-} from "./runner.js";
-
-export {
-  getScheduledTaskRunner,
-  ScheduledTaskRunnerService,
-  type GetScheduledTaskRunnerOptions,
-} from "./service.js";
-
-export { computeNextFireAt } from "./next-fire-at.js";
-
-export {
-  expectedReplyKindForTask,
-  isCompletionTimeoutDue,
-  isRecurringTrigger,
-  isScheduledTaskDue,
-  markWindowFireIfNeeded,
-  pendingPromptRoomIdForTask,
-  type ScheduledTaskDueContext,
-  type ScheduledTaskDueDecision,
-} from "./due.js";
-
-// `ScheduledTaskFireResult` (the runner's fire-attempt discriminated union) is
-// re-exported above from `./runner.js`. The scheduler module defines a separate
-// processing-summary shape under the same name; it is consumed via
-// `ProcessDueScheduledTasksResult.fires` and does not need a separate symbol on
-// this barrel.
-export {
-  processDueScheduledTasks,
-  type ProcessDueScheduledTasksRequest,
-  type ProcessDueScheduledTasksResult,
-  type ScheduledTaskProcessingError,
-} from "./scheduler.js";

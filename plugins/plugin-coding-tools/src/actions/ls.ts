@@ -115,8 +115,7 @@ export async function lsHandler(
   const ignoreRaw = readArrayParam(options, "ignore");
   const ignoreMatchers: RegExp[] = (ignoreRaw ?? [])
     .filter(
-      (entry): entry is string =>
-        typeof entry === "string" && entry.length > 0,
+      (entry): entry is string => typeof entry === "string" && entry.length > 0,
     )
     .map((entry) => globToRegExp(entry));
 

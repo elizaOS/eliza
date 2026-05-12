@@ -53,14 +53,16 @@ import {
   normalizeOptionalConnectorSide,
 } from "./service-normalize-connector.js";
 import {
-  normalizeGmailReplyBody,
-  normalizeGmailDraftTone,
+  buildFallbackGmailReplyDraftBody,
+  buildGmailReplyDraft,
   normalizeGmailBulkOperation,
-  normalizeOptionalGmailLabelIdArray,
-  normalizeOptionalMessageIdArray,
+  normalizeGmailDraftTone,
+  normalizeGmailReplyBody,
   normalizeGmailSearchQuery,
   normalizeGmailSpamReviewStatus,
   normalizeGmailUnrespondedOlderThanDays,
+  normalizeOptionalGmailLabelIdArray,
+  normalizeOptionalMessageIdArray,
   summarizeGmailBatchReplyDrafts,
   summarizeGmailNeedsResponse,
   summarizeGmailRecommendations,
@@ -68,8 +70,6 @@ import {
   summarizeGmailSpamReviewItems,
   summarizeGmailTriage,
   summarizeGmailUnresponded,
-  buildFallbackGmailReplyDraftBody,
-  buildGmailReplyDraft,
 } from "./service-normalize-gmail.js";
 
 export interface LifeOpsGmailService {
@@ -167,12 +167,18 @@ const DEFAULT_GMAIL_SEARCH_LIMIT = 25;
 function maxResults(value: unknown, fallback: number): number {
   return Math.max(
     1,
-    Math.min(100, Number.isFinite(value) ? Math.trunc(value as number) : fallback),
+    Math.min(
+      100,
+      Number.isFinite(value) ? Math.trunc(value as number) : fallback,
+    ),
   );
 }
 
 function bodyTextFromMessage(message: unknown): string {
-  const record = message && typeof message === "object" ? message as Record<string, unknown> : {};
+  const record =
+    message && typeof message === "object"
+      ? (message as Record<string, unknown>)
+      : {};
   const bodyText = typeof record.bodyText === "string" ? record.bodyText : "";
   const snippet = typeof record.snippet === "string" ? record.snippet : "";
   return bodyText || snippet;
@@ -184,11 +190,17 @@ function externalMessageIdFromInput(messageId: string): string {
   if (markerIndex >= 0) {
     return messageId.slice(markerIndex + marker.length);
   }
-  return messageId.startsWith("gmail:") ? messageId.slice("gmail:".length) : messageId;
+  return messageId.startsWith("gmail:")
+    ? messageId.slice("gmail:".length)
+    : messageId;
 }
 
 function isDestructiveGmailOperation(operation: string): boolean {
-  return operation === "trash" || operation === "delete" || operation === "report_spam";
+  return (
+    operation === "trash" ||
+    operation === "delete" ||
+    operation === "report_spam"
+  );
 }
 
 function labelsAfterGmailManage(
@@ -276,7 +288,10 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
         args.side,
         args.grantId,
       );
-      const searchMessages = requireGoogleServiceMethod(this.runtime, "searchMessages");
+      const searchMessages = requireGoogleServiceMethod(
+        this.runtime,
+        "searchMessages",
+      );
       const syncedAt = (args.now ?? new Date()).toISOString();
       const googleMessages = await searchMessages({
         accountId: accountIdForGrant(grant),
@@ -315,7 +330,10 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsGmailTriageFeed> {
       const mode = normalizeOptionalConnectorMode(request.mode, "mode");
       const side = normalizeOptionalConnectorSide(request.side, "side");
-      const limit = maxResults(request.maxResults, DEFAULT_GMAIL_TRIAGE_MAX_RESULTS);
+      const limit = maxResults(
+        request.maxResults,
+        DEFAULT_GMAIL_TRIAGE_MAX_RESULTS,
+      );
       const synced = await this.syncGmailMessages({
         requestUrl,
         mode,
@@ -395,7 +413,9 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
       }
       let query: string | null = null;
       if (!messageId) {
-        query = normalizeGmailSearchQuery(request.query ?? "in:inbox newer_than:30d");
+        query = normalizeGmailSearchQuery(
+          request.query ?? "in:inbox newer_than:30d",
+        );
         const search = await this.getGmailSearch(
           requestUrl,
           {
@@ -440,7 +460,9 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
       now = new Date(),
     ): Promise<LifeOpsGmailNeedsResponseFeed> {
       const triage = await this.getGmailTriage(requestUrl, request, now);
-      const messages = triage.messages.filter((message) => message.likelyReplyNeeded);
+      const messages = triage.messages.filter(
+        (message) => message.likelyReplyNeeded,
+      );
       return {
         messages,
         source: "synced",
@@ -549,7 +571,9 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
         lastInboundAt: null,
         daysWaiting: Math.max(
           olderThanDays,
-          Math.floor((now.getTime() - Date.parse(message.receivedAt)) / 86_400_000),
+          Math.floor(
+            (now.getTime() - Date.parse(message.receivedAt)) / 86_400_000,
+          ),
         ),
         snippet: message.snippet,
         labels: message.labels,
@@ -583,8 +607,10 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
         normalizeOptionalGmailLabelIdArray(request.labelIds, "labelIds") ?? [];
       const destructive = isDestructiveGmailOperation(operation);
       const confirmDestructive =
-        normalizeOptionalBoolean(request.confirmDestructive, "confirmDestructive") ??
-        false;
+        normalizeOptionalBoolean(
+          request.confirmDestructive,
+          "confirmDestructive",
+        ) ?? false;
 
       if (destructive && !confirmDestructive) {
         fail(409, `${operation} requires explicit destructive confirmation.`);
@@ -660,17 +686,14 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
               }),
             )
           : (
-              await this.getGmailSearch(
-                requestUrl,
-                {
-                  mode,
-                  side,
-                  grantId: grant.id,
-                  query,
-                  maxResults: max,
-                  includeSpamTrash: true,
-                },
-              )
+              await this.getGmailSearch(requestUrl, {
+                mode,
+                side,
+                grantId: grant.id,
+                query,
+                maxResults: max,
+                includeSpamTrash: true,
+              })
             ).messages;
 
       if (messages.length === 0) {
@@ -707,7 +730,11 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
           );
         } else {
           for (const message of messages) {
-            const labels = labelsAfterGmailManage(message.labels, operation, labelIds);
+            const labels = labelsAfterGmailManage(
+              message.labels,
+              operation,
+              labelIds,
+            );
             await this.repository.upsertGmailMessage(
               {
                 ...message,
@@ -823,8 +850,10 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
       const tone = normalizeGmailDraftTone(request.tone);
       const intent = normalizeOptionalString(request.intent);
       const includeQuotedOriginal =
-        normalizeOptionalBoolean(request.includeQuotedOriginal, "includeQuotedOriginal") ??
-        false;
+        normalizeOptionalBoolean(
+          request.includeQuotedOriginal,
+          "includeQuotedOriginal",
+        ) ?? false;
       const read = await this.readGmailMessage(requestUrl, {
         mode: request.mode,
         side: request.side,
@@ -845,18 +874,21 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsGmailBatchReplyDraftsFeed> {
       const messages = request.messageIds?.length
         ? await Promise.all(
-            request.messageIds.map(async (messageId) => (
-              await this.readGmailMessage(
-                requestUrl,
-                {
-                  mode: request.mode,
-                  side: request.side,
-                  grantId: request.grantId,
-                  messageId,
-                },
-                now,
-              )
-            ).message),
+            request.messageIds.map(
+              async (messageId) =>
+                (
+                  await this.readGmailMessage(
+                    requestUrl,
+                    {
+                      mode: request.mode,
+                      side: request.side,
+                      grantId: request.grantId,
+                      messageId,
+                    },
+                    now,
+                  )
+                ).message,
+            ),
           )
         : (
             await this.getGmailSearch(
@@ -875,8 +907,10 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
       const tone = normalizeGmailDraftTone(request.tone);
       const intent = normalizeOptionalString(request.intent);
       const includeQuotedOriginal =
-        normalizeOptionalBoolean(request.includeQuotedOriginal, "includeQuotedOriginal") ??
-        false;
+        normalizeOptionalBoolean(
+          request.includeQuotedOriginal,
+          "includeQuotedOriginal",
+        ) ?? false;
       const drafts = messages.map((message) =>
         draftForMessage(message, {
           tone,
@@ -919,9 +953,15 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
       await sendEmail(
         googleSendEmailInput({
           accountId: accountIdForGrant(grant),
-          to: request.to?.length ? request.to : read.message.fromEmail ? [read.message.fromEmail] : [],
+          to: request.to?.length
+            ? request.to
+            : read.message.fromEmail
+              ? [read.message.fromEmail]
+              : [],
           cc: request.cc,
-          subject: request.subject ?? `Re: ${read.message.subject.replace(/^Re:\\s*/i, "")}`,
+          subject:
+            request.subject ??
+            `Re: ${read.message.subject.replace(/^Re:\\s*/i, "")}`,
           bodyText: normalizeGmailReplyBody(request.bodyText),
           threadId: read.message.threadId,
         }),

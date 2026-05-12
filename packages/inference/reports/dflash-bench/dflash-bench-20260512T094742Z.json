@@ -1,0 +1,27 @@
+{
+  "generatedAt": "2026-05-12T09:47:42.793Z",
+  "verifier": "packages/inference/verify/dflash_drafter_runtime_smoke.mjs",
+  "targetModel": "/home/shaw/.eliza/local-inference/models/eliza-1-1_7b.bundle/text/eliza-1-1_7b-64k.gguf",
+  "drafterModel": "/home/shaw/.eliza/local-inference/models/eliza-1-1_7b.bundle/dflash/drafter-1_7b.gguf",
+  "specBinary": "/home/shaw/.eliza/local-inference/bin/dflash/darwin-arm64-metal/llama-speculative-simple",
+  "benchTokens": 128,
+  "available": false,
+  "withDrafter": {
+    "available": false,
+    "binary": "/home/shaw/.eliza/local-inference/bin/dflash/darwin-arm64-metal/llama-speculative-simple",
+    "withDrafter": true
+  },
+  "withoutDrafter": {
+    "available": false,
+    "binary": "/home/shaw/.eliza/local-inference/bin/dflash/darwin-arm64-metal/llama-speculative-simple",
+    "withDrafter": false
+  },
+  "acceptanceRate": null,
+  "speedup": null,
+  "summary": {
+    "tokensPerSecondWithDrafter": null,
+    "tokensPerSecondBaseline": null,
+    "dflashAcceptanceRate": null,
+    "dflashSpeedup": null
+  }
+}

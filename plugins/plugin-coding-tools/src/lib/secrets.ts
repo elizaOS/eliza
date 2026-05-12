@@ -12,8 +12,14 @@ const PATTERNS: Array<{ name: string; regex: RegExp }> = [
   { name: "google_api_key", regex: /\bAIza[0-9A-Za-z_-]{35}\b/ },
   { name: "slack_token", regex: /\bxox[abprs]-[A-Za-z0-9-]{10,}\b/ },
   { name: "stripe_secret", regex: /\bsk_live_[A-Za-z0-9]{24,}\b/ },
-  { name: "private_key_pem", regex: /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/ },
-  { name: "jwt_like", regex: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/ },
+  {
+    name: "private_key_pem",
+    regex: /-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----/,
+  },
+  {
+    name: "jwt_like",
+    regex: /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/,
+  },
 ];
 
 export interface SecretMatch {
@@ -27,7 +33,8 @@ export function detectSecrets(content: string): SecretMatch[] {
     const m = regex.exec(content);
     if (m) {
       const found = m[0];
-      const preview = found.length > 16 ? `${found.slice(0, 6)}…${found.slice(-4)}` : found;
+      const preview =
+        found.length > 16 ? `${found.slice(0, 6)}…${found.slice(-4)}` : found;
       matches.push({ name, preview });
     }
   }

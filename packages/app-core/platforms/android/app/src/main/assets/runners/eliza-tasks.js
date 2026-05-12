@@ -92,7 +92,7 @@ function handleWake(args) {
     )
     .then((response) => {
       if (!response?.ok) {
-        var status = response ? response.status : "no-response";
+        const status = response ? response.status : "no-response";
         throw new Error(`wake POST failed: status=${status}`);
       }
       return response.json();

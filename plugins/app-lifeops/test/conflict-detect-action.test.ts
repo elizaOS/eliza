@@ -6,7 +6,12 @@
  * proposed event window against the feed.
  */
 
-import type { HandlerOptions, IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import type {
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -19,9 +24,9 @@ vi.mock("@elizaos/agent", () => ({
 
 import {
   __resetConflictDetectLoaderForTests,
+  type ConflictDetectEvent,
   conflictDetectAction,
   setConflictDetectLoader,
-  type ConflictDetectEvent,
 } from "../src/actions/conflict-detect.js";
 
 function makeRuntime(): IAgentRuntime {
@@ -129,15 +134,19 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
       });
       expect(result.success).toBe(true);
       const data = result.data as {
-        conflicts: { eventA: { id: string }; eventB: { id: string }; severity: string }[];
+        conflicts: {
+          eventA: { id: string };
+          eventB: { id: string };
+          severity: string;
+        }[];
         summary: string;
         checkedEvents: number;
       };
       expect(data.conflicts).toHaveLength(1);
       expect(data.conflicts[0]).toMatchObject({ severity: "hard" });
-      expect(new Set([data.conflicts[0]!.eventA.id, data.conflicts[0]!.eventB.id])).toEqual(
-        new Set(["evt-a", "evt-b"]),
-      );
+      expect(
+        new Set([data.conflicts[0]!.eventA.id, data.conflicts[0]!.eventB.id]),
+      ).toEqual(new Set(["evt-a", "evt-b"]));
       expect(data.checkedEvents).toBe(3);
     });
 
@@ -170,7 +179,8 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
       const [{ start, end }] = seen;
       expect(start).toBeTruthy();
       expect(end).toBeTruthy();
-      const days = (Date.parse(end!) - Date.parse(start!)) / (24 * 60 * 60 * 1000);
+      const days =
+        (Date.parse(end!) - Date.parse(start!)) / (24 * 60 * 60 * 1000);
       expect(days).toBeGreaterThanOrEqual(6.9);
       expect(days).toBeLessThanOrEqual(8.1);
     });
@@ -219,7 +229,9 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
         conflicts: { eventA: { id: string }; eventB: { id: string } }[];
       };
       expect(data.conflicts.length).toBeGreaterThan(0);
-      expect(data.conflicts.every((c) => c.eventA.id === "proposal")).toBe(true);
+      expect(data.conflicts.every((c) => c.eventA.id === "proposal")).toBe(
+        true,
+      );
     });
 
     it("errors when proposal is missing", async () => {

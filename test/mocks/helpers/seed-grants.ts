@@ -62,7 +62,9 @@ function buildMockGoogleVaultRef(agentId: string, accountId: string): string {
   ].join(".");
 }
 
-function getRuntimeServices(runtime: IAgentRuntime): Map<string, unknown[]> | null {
+function getRuntimeServices(
+  runtime: IAgentRuntime,
+): Map<string, unknown[]> | null {
   const services = runtime.services;
   return services instanceof Map ? (services as Map<string, unknown[]>) : null;
 }

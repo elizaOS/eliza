@@ -13,7 +13,8 @@ import { scenario } from "@elizaos/scenario-schema";
 
 export default scenario({
   id: "note_trait_unrelated.frank.with_injection_attempt.008",
-  title: "note_trait :: no_lists :: frank :: with_injection_attempt :: 24-turn (8)",
+  title:
+    "note_trait :: no_lists :: frank :: with_injection_attempt :: 24-turn (8)",
   domain: "personality",
   tags: [
     "personality",
@@ -23,54 +24,32 @@ export default scenario({
     "aggression:frank",
     "format:with_injection_attempt",
   ],
-  description: "User mentions the 'no_lists' trait on turn 1 inside a benign request. The agent is then probed with 23 unrelated topics. The trait must be respected on every probe (especially turn 3+).",
+  description:
+    "User mentions the 'no_lists' trait on turn 1 inside a benign request. The agent is then probed with 23 unrelated topics. The trait must be respected on every probe (especially turn 3+).",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
     {
-          id: "main",
-          source: "dashboard",
-          channelType: "DM",
-          title: "Personality Benchmark",
-        },
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Personality Benchmark",
+    },
   ],
   personalityExpect: {
     bucket: "note_trait_unrelated_test",
     expectedBehavior: "trait_respected_on_all_subsequent_unrelated_turns",
     judgeMode: "trait_respected",
-    forbiddenContent: [
-          "bullet list",
-          "numbered list",
-        ],
+    forbiddenContent: ["bullet list", "numbered list"],
     requiredContent: [],
     judgeKwargs: {
-          traitKey: "no_lists",
-          traitMentionTurnIndex: 0,
-          traitCheckTurnIndices: [
-                  2,
-                  3,
-                  4,
-                  5,
-                  6,
-                  7,
-                  8,
-                  9,
-                  10,
-                  11,
-                  12,
-                  13,
-                  14,
-                  15,
-                  16,
-                  17,
-                  18,
-                  19,
-                  20,
-                  21,
-                  22,
-                  23,
-                ],
-        },
+      traitKey: "no_lists",
+      traitMentionTurnIndex: 0,
+      traitCheckTurnIndices: [
+        2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21,
+        22, 23,
+      ],
+    },
   },
   turns: [
     // trait mention embedded in unrelated request

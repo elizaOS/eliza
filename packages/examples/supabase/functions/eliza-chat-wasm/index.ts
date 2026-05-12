@@ -80,7 +80,7 @@ interface WasmModule {
   validate_message: (message: string) => boolean;
 }
 
-let wasmModule: WasmModule | null = null;
+const wasmModule: WasmModule | null = null;
 
 async function initWasm(): Promise<WasmModule | null> {
   if (wasmModule) return wasmModule;

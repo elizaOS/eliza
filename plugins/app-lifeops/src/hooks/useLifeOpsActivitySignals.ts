@@ -1,5 +1,11 @@
 import { Capacitor } from "@capacitor/core";
 import {
+  MobileSignals,
+  type MobileSignalsHealthSnapshot,
+  type MobileSignalsSignal,
+  type MobileSignalsSnapshot,
+} from "@elizaos/capacitor-mobile-signals";
+import {
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
   client,
@@ -7,12 +13,6 @@ import {
   isElectrobunRuntime,
   loadDesktopWorkspaceSnapshot,
 } from "@elizaos/ui";
-import {
-  MobileSignals,
-  type MobileSignalsHealthSnapshot,
-  type MobileSignalsSignal,
-  type MobileSignalsSnapshot,
-} from "@elizaos/capacitor-mobile-signals";
 import { useEffect, useRef } from "react";
 import type {
   CaptureLifeOpsActivitySignalRequest,

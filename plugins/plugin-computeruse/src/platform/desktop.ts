@@ -31,7 +31,7 @@ import {
   isPermissionDeniedError,
 } from "./permissions.js";
 
-function toAppleScriptModifier(key: string): string {
+function _toAppleScriptModifier(key: string): string {
   const normalized = key.trim().toLowerCase();
   const mapping: Record<string, string> = {
     cmd: "command",
@@ -52,7 +52,7 @@ function toAppleScriptModifier(key: string): string {
   return modifier;
 }
 
-function toAppleScriptKeyCode(key: string): number | null {
+function _toAppleScriptKeyCode(key: string): number | null {
   const canonical = canonicalKeyName(key);
   const keyCodes: Record<string, number> = {
     enter: 36,
@@ -90,7 +90,7 @@ function runDarwinJxa(script: string, timeoutMs = 5000): void {
   runCommand("osascript", ["-l", "JavaScript", "-e", script], timeoutMs);
 }
 
-function moveMouseDarwin(x: number, y: number): void {
+function _moveMouseDarwin(x: number, y: number): void {
   runDarwinJxa(
     `
 ObjC.import("ApplicationServices");
@@ -106,7 +106,7 @@ $.CGEventPost($.kCGHIDEventTap, event);
   );
 }
 
-function clickDarwinWithCoreGraphics(
+function _clickDarwinWithCoreGraphics(
   x: number,
   y: number,
   button: "left" | "right",
@@ -134,7 +134,7 @@ for (let clickIndex = 1; clickIndex <= ${clickCount}; clickIndex += 1) {
   );
 }
 
-function scrollDarwin(
+function _scrollDarwin(
   x: number,
   y: number,
   direction: "up" | "down" | "left" | "right",

@@ -62,7 +62,10 @@ export const storeContextProvider: Provider = {
         values: {
           shopifyConnected: true,
           shopifyStoreName: shop.name,
-          shopifyDomain: shop.myshopifyDomain.slice(0, MAX_SHOPIFY_DOMAIN_CHARS),
+          shopifyDomain: shop.myshopifyDomain.slice(
+            0,
+            MAX_SHOPIFY_DOMAIN_CHARS,
+          ),
           shopifyPlan: shop.plan.displayName,
           shopifyCurrency: shop.currencyCode,
           shopifyProductCount: productCount ?? 0,

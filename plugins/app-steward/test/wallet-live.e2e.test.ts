@@ -9,7 +9,7 @@
  * surface directly.
  */
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../test/helpers/conditional-tests.ts";
 import { req } from "../../../test/helpers/http";
 import { isLiveTestEnabled } from "../../../test/helpers/live-provider";

@@ -51,7 +51,7 @@ export const calendlyEventTypesProvider: Provider = {
   ): Promise<ProviderResult> => {
     const service = runtime.getService<CalendlyService>(CALENDLY_SERVICE_TYPE);
     const accountId = resolveCalendlyAccountId(runtime);
-    if (!service || !service.isConnected(accountId)) {
+    if (!service?.isConnected(accountId)) {
       return { data: {}, values: { calendlyConnected: false }, text: "" };
     }
 

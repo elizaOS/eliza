@@ -7,16 +7,24 @@ train_local-compatible records land in the output. The benchmark-aligned rows go
 first so that, with a cosine LR warmup, the early steps see the structured
 ACTION/tool-call/personality rows the publish gates measure.
 
+The benchmark-aligned slice is ~49x smaller than the broad `data/final` mix, so
+the structured-output rows the publish gates score (response envelope,
+ACTION/tool-call, personality, voice-emotion) are heavily diluted. Set
+`ELIZA1_FULLCORPUS_UPSAMPLE=N` to repeat that slice N times in the *train* split
+only (val/test are never upsampled). Default 1 (no upsample).
+
 Output: `data/final-eliza1-fullcorpus/{train,val,test}.jsonl` (gitignored;
 the run report records the row counts + sha256s).
 
 Usage:
     uv run python scripts/build_eliza1_fullcorpus.py
+    ELIZA1_FULLCORPUS_UPSAMPLE=8 uv run python scripts/build_eliza1_fullcorpus.py
 """
 
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -29,36 +37,48 @@ SRC_BENCH = ROOT / "datasets" / "eliza1-sft-0_6b"
 SRC_FINAL = ROOT / "data" / "final"
 OUT_DIR = ROOT / "data" / "final-eliza1-fullcorpus"
 
+UPSAMPLE = max(1, int(os.environ.get("ELIZA1_FULLCORPUS_UPSAMPLE", "1")))
 
-def _concat(out_path: Path, sources: list[Path]) -> tuple[int, int]:
-    n_in = n_ok = 0
+
+def _load_valid(src: Path) -> list[str]:
+    rows: list[str] = []
+    with src.open(encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if format_record(rec) is None:
+                continue
+            rows.append(json.dumps(rec, ensure_ascii=False))
+    return rows
+
+
+def _concat(out_path: Path, sources: list[tuple[Path, int]]) -> int:
+    n_ok = 0
     with out_path.open("w", encoding="utf-8") as out:
-        for src in sources:
-            with src.open(encoding="utf-8") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    n_in += 1
-                    try:
-                        rec = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    if format_record(rec) is None:
-                        continue
-                    n_ok += 1
-                    out.write(json.dumps(rec, ensure_ascii=False) + "\n")
-    return n_in, n_ok
+        for src, repeat in sources:
+            rows = _load_valid(src)
+            for _ in range(repeat):
+                for r in rows:
+                    out.write(r + "\n")
+                n_ok += len(rows)
+    return n_ok
 
 
 def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     for split in ("train", "val", "test"):
-        n_in, n_ok = _concat(
+        bench_repeat = UPSAMPLE if split == "train" else 1
+        n_ok = _concat(
             OUT_DIR / f"{split}.jsonl",
-            [SRC_BENCH / f"{split}.jsonl", SRC_FINAL / f"{split}.jsonl"],
+            [(SRC_BENCH / f"{split}.jsonl", bench_repeat), (SRC_FINAL / f"{split}.jsonl", 1)],
         )
-        print(f"{split}: {n_in} read, {n_ok} format_record-valid → {OUT_DIR / f'{split}.jsonl'}")
+        suffix = f" (eliza1-sft slice x{bench_repeat})" if bench_repeat > 1 else ""
+        print(f"{split}: {n_ok} format_record-valid rows{suffix} -> {OUT_DIR / f'{split}.jsonl'}")
     return 0
 
 

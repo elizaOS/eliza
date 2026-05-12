@@ -8,15 +8,15 @@
  * call.
  */
 
-import type {
-  BlockAppsOptions,
-  BlockAppsResult,
-} from "../../app-blocker/types.js";
 import {
   getAppBlockerStatus,
   startAppBlock,
   stopAppBlock,
 } from "../../app-blocker/engine.js";
+import type {
+  BlockAppsOptions,
+  BlockAppsResult,
+} from "../../app-blocker/types.js";
 import type {
   BlockerAvailability,
   BlockerContribution,
@@ -28,14 +28,17 @@ export const appBlockerContribution: BlockerContribution<
   BlockAppsResult
 > = {
   kind: "app",
-  describe: { label: "Phone-app blocker (iOS Family Controls / Android Usage Access)" },
+  describe: {
+    label: "Phone-app blocker (iOS Family Controls / Android Usage Access)",
+  },
 
   async verifyAvailable(): Promise<BlockerAvailability> {
     const status = await getAppBlockerStatus();
     if (!status.available) {
       return {
         available: false,
-        reason: status.reason ?? "App blocking is not available on this device.",
+        reason:
+          status.reason ?? "App blocking is not available on this device.",
         permission: "denied",
       };
     }

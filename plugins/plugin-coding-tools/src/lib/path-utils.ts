@@ -44,7 +44,10 @@ export function isWithin(child: string, parent: string): boolean {
   return rel.length > 0 && !rel.startsWith("..") && !path.isAbsolute(rel);
 }
 
-export async function isWithinAnyRoot(p: string, roots: string[]): Promise<boolean> {
+export async function isWithinAnyRoot(
+  p: string,
+  roots: string[],
+): Promise<boolean> {
   if (roots.length === 0) return false;
   const real = await resolveRealPath(p);
   for (const root of roots) {

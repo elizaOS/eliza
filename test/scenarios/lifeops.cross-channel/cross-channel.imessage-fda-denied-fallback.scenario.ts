@@ -15,9 +15,7 @@
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
-function checkImessageDeniedHandled(
-  ctx: ScenarioContext,
-): string | undefined {
+function checkImessageDeniedHandled(ctx: ScenarioContext): string | undefined {
   const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
   if (reply.length === 0) return "empty reply on imessage-denied path";
   const deniedSignals = [
@@ -49,7 +47,8 @@ function checkImessageDeniedHandled(
 
 export default scenario({
   id: "cross-channel.imessage-fda-denied-fallback",
-  title: "iMessage FDA-denied → agent surfaces and falls back to other channels",
+  title:
+    "iMessage FDA-denied → agent surfaces and falls back to other channels",
   domain: "lifeops.cross-channel",
   tags: [
     "lifeops",

@@ -7,14 +7,14 @@
  * just resetting the streak and getting on with the day.
  */
 
-import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
 import type { IAgentRuntime } from "@elizaos/core";
+import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { seedCheckinDefinition } from "../_helpers/lifeops-seeds.ts";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
+import { seedCheckinDefinition } from "../_helpers/lifeops-seeds.ts";
 
 function scenarioNow(ctx: ScenarioContext): Date {
   return typeof ctx.now === "string" && Number.isFinite(Date.parse(ctx.now))
@@ -30,9 +30,7 @@ async function seedSecondMissedBrushOccurrence(
   const now = scenarioNow(ctx);
   const agentId = String(runtime.agentId);
   const dueAt = new Date(now.getTime() - 26 * 60 * 60 * 1000).toISOString();
-  const createdAt = new Date(
-    now.getTime() - 30 * 60 * 60 * 1000,
-  ).toISOString();
+  const createdAt = new Date(now.getTime() - 30 * 60 * 60 * 1000).toISOString();
 
   await executeRawSql(
     runtime,

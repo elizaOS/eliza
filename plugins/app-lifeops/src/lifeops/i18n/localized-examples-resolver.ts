@@ -12,27 +12,30 @@
  */
 
 import type { LocalizedActionExampleResolver } from "@elizaos/core";
-import type { MultilingualPromptRegistry, PromptLocale } from "./prompt-registry.js";
+import type {
+  MultilingualPromptRegistry,
+  PromptLocale,
+} from "./prompt-registry.js";
 
 const SUPPORTED_REGISTRY_LOCALES: ReadonlySet<PromptLocale> = new Set([
-	"en",
-	"es",
-	"fr",
-	"ja",
+  "en",
+  "es",
+  "fr",
+  "ja",
 ]);
 
 function isSupportedRegistryLocale(value: string): value is PromptLocale {
-	return SUPPORTED_REGISTRY_LOCALES.has(value as PromptLocale);
+  return SUPPORTED_REGISTRY_LOCALES.has(value as PromptLocale);
 }
 
 export interface LocalizedExamplesResolverOptions {
-	registry: MultilingualPromptRegistry;
-	/**
-	 * Locale tag to look up. When the tag is one our registry doesn't carry,
-	 * the resolver returns `null` for every lookup (English fall-through is
-	 * applied by `buildActionCatalog`'s caller — partial coverage is fine).
-	 */
-	locale: string;
+  registry: MultilingualPromptRegistry;
+  /**
+   * Locale tag to look up. When the tag is one our registry doesn't carry,
+   * the resolver returns `null` for every lookup (English fall-through is
+   * applied by `buildActionCatalog`'s caller — partial coverage is fine).
+   */
+  locale: string;
 }
 
 /**
@@ -43,20 +46,20 @@ export interface LocalizedExamplesResolverOptions {
  * English source.
  */
 export function createLocalizedExamplesResolver(
-	opts: LocalizedExamplesResolverOptions,
+  opts: LocalizedExamplesResolverOptions,
 ): LocalizedActionExampleResolver {
-	if (!isSupportedRegistryLocale(opts.locale)) {
-		return () => null;
-	}
-	const locale = opts.locale;
-	const registry = opts.registry;
+  if (!isSupportedRegistryLocale(opts.locale)) {
+    return () => null;
+  }
+  const locale = opts.locale;
+  const registry = opts.registry;
 
-	return ({ actionName, exampleIndex }) => {
-		const exampleKey = `${actionName}.example.${exampleIndex}`;
-		const pair = registry.getPair(exampleKey, locale);
-		if (!pair) {
-			return null;
-		}
-		return pair;
-	};
+  return ({ actionName, exampleIndex }) => {
+    const exampleKey = `${actionName}.example.${exampleIndex}`;
+    const pair = registry.getPair(exampleKey, locale);
+    if (!pair) {
+      return null;
+    }
+    return pair;
+  };
 }

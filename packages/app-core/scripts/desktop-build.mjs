@@ -168,7 +168,12 @@ function buildInvocation(binary, binaryArgs = []) {
 }
 
 function run(commandName, commandArgs, options = {}) {
-  const { cwd = ROOT, env = process.env, label, allowFailure = false } = options;
+  const {
+    cwd = ROOT,
+    env = process.env,
+    label,
+    allowFailure = false,
+  } = options;
   const invocation = buildInvocation(commandName, commandArgs);
   const rendered = [invocation.command, ...invocation.args].join(" ");
   console.log(`[desktop-build] ${label ?? rendered}`);
