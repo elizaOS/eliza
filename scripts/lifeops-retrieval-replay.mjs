@@ -3,13 +3,13 @@
  * Retrieval replay — augment existing trajectories with `perStageScores`
  * + `correctActions` so the funnel + Pareto analyzers can count samples.
  *
- * The TS runtime only emits measurement when `MILADY_RETRIEVAL_MEASUREMENT=1`
+ * The TS runtime only emits measurement when `ELIZA_RETRIEVAL_MEASUREMENT=1`
  * is set during the bench run. For the historical 600+ LifeOps trajectory
  * corpus that landed on disk before that flag existed, this script
  * deterministically re-runs `retrieveActions` over each stored user-message
  * query, derives `correctActions` from the actually-invoked `tool` stages
  * that follow it, and writes the augmented trajectories to a separate
- * output directory (default `~/.milady/trajectories-replay/`). The funnel +
+ * output directory (default `~/.eliza/trajectories-replay/`). The funnel +
  * Pareto scripts can then be pointed at that directory.
  *
  * Why this is sound:
@@ -24,8 +24,8 @@
  *
  * Usage:
  *   bun scripts/lifeops-retrieval-replay.mjs
- *   bun scripts/lifeops-retrieval-replay.mjs --input ~/.milady/trajectories \\
- *     --output ~/.milady/trajectories-replay
+ *   bun scripts/lifeops-retrieval-replay.mjs --input ~/.eliza/trajectories \\
+ *     --output ~/.eliza/trajectories-replay
  *
  * The script only touches LifeOpsBench trajectories (those with a
  * `lifeops_bench` task_id embedded in the user message) so noise from
@@ -58,10 +58,24 @@ function parseArgs(argv) {
 }
 
 const args = parseArgs(process.argv.slice(2));
-const inputRoot =
-  args.input ?? path.join(os.homedir(), ".milady", "trajectories");
+
+function defaultStateDir() {
+  // Env wins (MILADY_STATE_DIR / ELIZA_STATE_DIR), then check both legacy
+  // and current default dirs so the script works in mixed environments.
+  const envDir =
+    process.env.MILADY_STATE_DIR?.trim() ||
+    process.env.ELIZA_STATE_DIR?.trim();
+  if (envDir) return envDir;
+  const milady = path.join(os.homedir(), ".milady");
+  const eliza = path.join(os.homedir(), ".eliza");
+  if (fs.existsSync(path.join(milady, "trajectories"))) return milady;
+  return eliza;
+}
+
+const stateDir = defaultStateDir();
+const inputRoot = args.input ?? path.join(stateDir, "trajectories");
 const outputRoot =
-  args.output ?? path.join(os.homedir(), ".milady", "trajectories-replay");
+  args.output ?? path.join(stateDir, "trajectories-replay");
 
 if (!fs.existsSync(inputRoot)) {
   console.error(`[replay] input directory not found: ${inputRoot}`);
@@ -180,16 +194,52 @@ function toolsManifestToActions(tools) {
   return actions;
 }
 
-/** Collect the names of executed tool stages following each toolSearch. */
+/**
+ * Collect the names of executed tool stages following each toolSearch.
+ * LifeOpsBench wraps the planner's real call inside a `BENCHMARK_ACTION`
+ * shim — when we see that, unwrap to the underlying `tool_name` so the
+ * ground truth reflects the action the retriever actually needed to
+ * surface (e.g. `CALENDAR_PROPOSE_TIMES`, not `BENCHMARK_ACTION`).
+ */
 function collectExecutedToolNames(stages, fromIndex) {
   const out = [];
+  const seen = new Set();
   for (let i = fromIndex; i < stages.length; i += 1) {
     const s = stages[i];
+    // From the immediately-following planner stages, also recover any
+    // tool_calls the model emitted (BENCHMARK_ACTION wraps the real call
+    // in the args, so we have to look there for the actionable name).
+    if (s?.kind === "planner") {
+      const calls = Array.isArray(s.model?.toolCalls) ? s.model.toolCalls : [];
+      for (const call of calls) {
+        const wrappedName =
+          typeof call?.name === "string" ? call.name.toUpperCase() : null;
+        if (!wrappedName) continue;
+        if (wrappedName === "BENCHMARK_ACTION") {
+          const inner = call.args?.tool_name;
+          if (typeof inner === "string") {
+            const innerName = inner.toUpperCase();
+            if (!FILTERED_TOOL_NAMES.has(innerName) && !seen.has(innerName)) {
+              seen.add(innerName);
+              out.push(innerName);
+            }
+          }
+          continue;
+        }
+        if (!FILTERED_TOOL_NAMES.has(wrappedName) && !seen.has(wrappedName)) {
+          seen.add(wrappedName);
+          out.push(wrappedName);
+        }
+      }
+      continue;
+    }
     if (s?.kind !== "tool") continue;
     const name =
       typeof s.tool?.name === "string" ? s.tool.name.toUpperCase() : null;
     if (!name) continue;
     if (FILTERED_TOOL_NAMES.has(name)) continue;
+    if (seen.has(name)) continue;
+    seen.add(name);
     out.push(name);
   }
   return out;
