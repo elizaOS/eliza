@@ -90,7 +90,8 @@ export default scenario({
       predicate: expectStateTransition({
         subject: "deviceIntent",
         to: "cancelled",
-        description: "scheduled push transitions to cancelled when its event is cancelled",
+        description:
+          "scheduled push transitions to cancelled when its event is cancelled",
       }),
     },
     judgeRubric({

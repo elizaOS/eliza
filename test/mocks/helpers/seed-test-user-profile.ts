@@ -1,9 +1,9 @@
 import type { IAgentRuntime } from "@elizaos/core";
+import { HABIT_STARTER_RECORDS } from "../../../plugins/app-lifeops/src/default-packs/habit-starters.ts";
 import {
   persistConfiguredOwnerName,
   updateLifeOpsOwnerProfile,
 } from "../../../plugins/app-lifeops/src/lifeops/owner-profile.ts";
-import { HABIT_STARTER_RECORDS } from "../../../plugins/app-lifeops/src/default-packs/habit-starters.ts";
 import { LifeOpsService } from "../../../plugins/app-lifeops/src/lifeops/service.ts";
 import { ensureLifeOpsSchema } from "./seed-grants.ts";
 

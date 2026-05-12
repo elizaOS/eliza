@@ -12,21 +12,21 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
+import { seedGoogleConnectorGrant } from "../../mocks/helpers/seed-grants.ts";
 import {
   expectScenarioToCallAction,
   judgeRubric,
 } from "../_helpers/action-assertions.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
-import { seedGoogleConnectorGrant } from "../../mocks/helpers/seed-grants.ts";
 
 const PACIFIC_TZ = "America/Los_Angeles";
 // 2026-03-08 is the US DST spring-forward day for Pacific Time.
 const PRE_SPRING_FWD_8AM_UTC = "2026-03-08T16:00:00.000Z"; // 08:00 PST
-const POST_SPRING_FWD_9AM_UTC = "2026-03-08T16:00:00.000Z"; // 09:00 PDT
+const _POST_SPRING_FWD_9AM_UTC = "2026-03-08T16:00:00.000Z"; // 09:00 PDT
 // After the transition, 9am PDT = 16:00Z. The trap is the same UTC value
 // represents different local hours depending on the date — the agent must
 // reason in local time.
-const POST_SPRING_FWD_10AM_UTC = "2026-03-08T17:00:00.000Z"; // 10:00 PDT (target)
+const _POST_SPRING_FWD_10AM_UTC = "2026-03-08T17:00:00.000Z"; // 10:00 PDT (target)
 const EVENT_ID = "seed_dst_spring_event_1";
 
 function localHourPacific(iso: string): number | null {
@@ -146,7 +146,9 @@ export default scenario({
             },
           ],
           metadata: {},
-          syncedAt: new Date(Date.parse(startAt) - 6 * 60 * 60_000).toISOString(),
+          syncedAt: new Date(
+            Date.parse(startAt) - 6 * 60 * 60_000,
+          ).toISOString(),
           updatedAt: new Date(
             Date.parse(startAt) - 6 * 60 * 60_000,
           ).toISOString(),

@@ -52,7 +52,9 @@ function checkPlannerSelfCorrectedOrAskedClarification(
     return `Planner ran a content blocker (${ctx.actionsCalled
       .filter((a) => FORBIDDEN_BLOCKER_ACTIONS.has(a.actionName))
       .map((a) => a.actionName)
-      .join(",")}) for "block out time on my calendar". The retrieval misled the planner and it failed to self-correct.`;
+      .join(
+        ",",
+      )}) for "block out time on my calendar". The retrieval misled the planner and it failed to self-correct.`;
   }
   if (!calledCalendar && !askedClarification) {
     return `Planner did not invoke CALENDAR for a "block out time on my calendar" request, and did not ask a clarifying question. Reply: ${reply.slice(0, 400)}; actions: ${ctx.actionsCalled.map((a) => a.actionName).join(",")}`;
@@ -65,13 +67,7 @@ export default scenario({
   title:
     'Planner self-corrects when "block out time" misleads retrieval to website/app blockers',
   domain: "lifeops.planner",
-  tags: [
-    "lifeops",
-    "planner",
-    "tool-search",
-    "self-correction",
-    "robustness",
-  ],
+  tags: ["lifeops", "planner", "tool-search", "self-correction", "robustness"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

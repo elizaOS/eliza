@@ -1,11 +1,11 @@
 import crypto from "node:crypto";
-import { MockHttpError } from "./mock-http-error.ts";
 import {
   getLifeOpsSimulatorPerson,
   LIFEOPS_SIMULATOR_CALENDAR_EVENTS,
   LIFEOPS_SIMULATOR_OWNER,
   type LifeOpsSimulatorCalendarEvent,
 } from "../fixtures/lifeops-simulator.ts";
+import { MockHttpError } from "./mock-http-error.ts";
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };

@@ -47,9 +47,7 @@ export default scenario({
       type: "custom",
       name: "agent-cites-streak-or-no-data",
       predicate: (ctx) => {
-        const reply = String(
-          ctx.turns?.[0]?.responseText ?? "",
-        ).toLowerCase();
+        const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
         if (!reply) return "empty reply";
         const responded =
           reply.includes("streak") ||

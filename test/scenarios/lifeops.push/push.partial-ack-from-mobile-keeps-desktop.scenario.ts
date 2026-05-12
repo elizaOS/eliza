@@ -7,7 +7,8 @@ import {
 
 export default scenario({
   id: "push.partial-ack-from-mobile-keeps-desktop",
-  title: "Partial 'snooze' ack from mobile defers but keeps the desktop copy alive",
+  title:
+    "Partial 'snooze' ack from mobile defers but keeps the desktop copy alive",
   domain: "lifeops.push",
   tags: ["lifeops", "push", "snooze", "partial-ack"],
   description:

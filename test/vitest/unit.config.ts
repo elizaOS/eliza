@@ -42,8 +42,7 @@ const localCoreSourceReplacement = useMonorepoElizaCore
     ? legacyTypescriptCoreSource
     : undefined;
 
-const localElizaCoreReplacement =
-  localCoreSourceReplacement ?? elizaCoreEntry;
+const localElizaCoreReplacement = localCoreSourceReplacement ?? elizaCoreEntry;
 const unitAliasEntries: ModuleAlias[] = [
   ...getOptionalResolvedAliases([
     {

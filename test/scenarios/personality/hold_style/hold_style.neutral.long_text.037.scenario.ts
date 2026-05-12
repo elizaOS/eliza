@@ -13,7 +13,8 @@ import { scenario } from "@elizaos/scenario-schema";
 
 export default scenario({
   id: "hold_style.neutral.long_text.037",
-  title: "hold_style :: second_person_only :: neutral :: long_text :: 10-turn (37)",
+  title:
+    "hold_style :: second_person_only :: neutral :: long_text :: 10-turn (37)",
   domain: "personality",
   tags: [
     "personality",
@@ -23,16 +24,17 @@ export default scenario({
     "aggression:neutral",
     "format:long_text",
   ],
-  description: "Sets the 'second_person_only' style on turn 1, then probes with 9 unrelated topics. The agent must hold the style across every probe.",
+  description:
+    "Sets the 'second_person_only' style on turn 1, then probes with 9 unrelated topics. The agent must hold the style across every probe.",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
     {
-          id: "main",
-          source: "dashboard",
-          channelType: "DM",
-          title: "Personality Benchmark",
-        },
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Personality Benchmark",
+    },
   ],
   personalityExpect: {
     bucket: "hold_style",
@@ -41,21 +43,11 @@ export default scenario({
     forbiddenContent: [],
     requiredContent: [],
     judgeKwargs: {
-          styleKey: "second_person_only",
-          styleProbe: "no-first-person",
-          instructionTurnIndex: 0,
-          probeTurnIndices: [
-                  1,
-                  2,
-                  3,
-                  4,
-                  5,
-                  6,
-                  7,
-                  8,
-                  9,
-                ],
-        },
+      styleKey: "second_person_only",
+      styleProbe: "no-first-person",
+      instructionTurnIndex: 0,
+      probeTurnIndices: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    },
   },
   turns: [
     // style-set instruction

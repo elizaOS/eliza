@@ -64,9 +64,7 @@ export default scenario({
       type: "custom",
       name: "agent-only-pauses-workout",
       predicate: (ctx: ScenarioContext) => {
-        const reply = String(
-          ctx.turns?.[0]?.responseText ?? "",
-        ).toLowerCase();
+        const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
         if (!reply) return "empty reply";
         if (!reply.includes("workout")) {
           return "expected reply to mention workout (the habit being paused)";

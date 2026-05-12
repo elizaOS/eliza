@@ -105,7 +105,8 @@ export default scenario({
       type: "custom",
       name: "travel-book-state-machine-progress",
       predicate: expectApprovalStateTransition({
-        description: "approval moved pending → approved before booking dispatch",
+        description:
+          "approval moved pending → approved before booking dispatch",
         from: "pending",
         to: "approved",
         actionName: ["BOOK_TRAVEL"],
@@ -115,7 +116,8 @@ export default scenario({
       type: "custom",
       name: "travel-book-no-side-effect-on-reject",
       predicate: expectNoSideEffectOnReject({
-        description: "no Duffel booking would fire if the approval were rejected",
+        description:
+          "no Duffel booking would fire if the approval were rejected",
         actionName: ["BOOK_TRAVEL"],
       }),
     },

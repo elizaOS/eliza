@@ -90,8 +90,7 @@ export default scenario({
     judgeRubric({
       name: "push-batch-digest-rubric",
       threshold: 0.7,
-      description:
-        "Three items batched into one 6pm digest push.",
+      description: "Three items batched into one 6pm digest push.",
     }),
   ],
 });

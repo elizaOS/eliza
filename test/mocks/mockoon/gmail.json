@@ -49,8 +49,20 @@
           "databucketID": "",
           "sendFileAsBody": false,
           "rules": [
-            { "target": "header", "modifier": "X-Mockoon-Fault", "value": "rate_limit", "invert": false, "operator": "equals" },
-            { "target": "query", "modifier": "_fault", "value": "rate_limit", "invert": false, "operator": "equals" }
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
           ],
           "rulesOperator": "OR",
           "disableTemplating": false,
@@ -71,8 +83,20 @@
           "databucketID": "",
           "sendFileAsBody": false,
           "rules": [
-            { "target": "header", "modifier": "X-Mockoon-Fault", "value": "auth_expired", "invert": false, "operator": "equals" },
-            { "target": "query", "modifier": "_fault", "value": "auth_expired", "invert": false, "operator": "equals" }
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
           ],
           "rulesOperator": "OR",
           "disableTemplating": false,
@@ -93,8 +117,20 @@
           "databucketID": "",
           "sendFileAsBody": false,
           "rules": [
-            { "target": "header", "modifier": "X-Mockoon-Fault", "value": "server_error", "invert": false, "operator": "equals" },
-            { "target": "query", "modifier": "_fault", "value": "server_error", "invert": false, "operator": "equals" }
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
           ],
           "rulesOperator": "OR",
           "disableTemplating": false,
@@ -333,9 +369,7 @@
     "passphrase": ""
   },
   "cors": true,
-  "headers": [
-    { "key": "Content-Type", "value": "application/json" }
-  ],
+  "headers": [{ "key": "Content-Type", "value": "application/json" }],
   "proxyReqHeaders": [{ "key": "", "value": "" }],
   "proxyResHeaders": [{ "key": "", "value": "" }],
   "data": [],

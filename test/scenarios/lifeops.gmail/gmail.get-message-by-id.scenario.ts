@@ -57,7 +57,10 @@ export default scenario({
     {
       type: "gmailMockRequest",
       method: "GET",
-      path: ["/gmail/v1/users/me/messages", `/gmail/v1/users/me/messages/${MESSAGE_ID}`],
+      path: [
+        "/gmail/v1/users/me/messages",
+        `/gmail/v1/users/me/messages/${MESSAGE_ID}`,
+      ],
       minCount: 1,
     },
     {
