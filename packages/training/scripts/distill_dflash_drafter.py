@@ -487,27 +487,49 @@ def _run_distillation(args: argparse.Namespace) -> int:
     # rendered via the target's chat template). We only need the token
     # sequences the *target* generates over, so this is the same prompt
     # distribution the text model was fine-tuned on — reuse the SFT corpus.
+    # The eliza-1 corpora are mostly native-record format (`agentId` /
+    # `currentMessage` / `expectedResponse` / `memoryEntries`), not raw `text`
+    # or bare ChatML — `format_for_training.format_record` is the single
+    # chokepoint that normalizes any of those into `{"messages": [...]}` (and
+    # applies the privacy filter). Use it when importable; fall back to the
+    # plain `text`/`messages` reader otherwise.
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from format_for_training import format_record  # type: ignore  # noqa: PLC0415
+    except Exception:  # pragma: no cover - smoke envs without the deps
+        format_record = None  # type: ignore
+
+    def _render(rec: dict[str, Any]) -> str | None:
+        if "text" in rec and isinstance(rec["text"], str) and rec["text"].strip():
+            return rec["text"]
+        msgs = rec.get("messages")
+        if msgs is None and format_record is not None:
+            formatted = format_record(rec)
+            msgs = formatted.get("messages") if formatted else None
+        if not msgs:
+            return None
+        return tgt_tok.apply_chat_template(
+            msgs, tokenize=False, add_generation_prompt=False
+        )
+
     examples: list[str] = []
+    skipped = 0
     with dataset_path.open() as fh:
         for line in fh:
             line = line.strip()
             if not line:
                 continue
-            rec = json.loads(line)
-            if "text" in rec and isinstance(rec["text"], str):
-                examples.append(rec["text"])
-            elif "messages" in rec:
-                examples.append(
-                    tgt_tok.apply_chat_template(
-                        rec["messages"], tokenize=False, add_generation_prompt=False
-                    )
-                )
-    if args.max_samples:
-        examples = examples[: args.max_samples]
+            rendered = _render(json.loads(line))
+            if rendered:
+                examples.append(rendered)
+            else:
+                skipped += 1
+            if args.max_samples and len(examples) >= args.max_samples:
+                break
     if not examples:
         log.error("dataset %s produced 0 usable examples", dataset_path)
         return 2
-    log.info("distilling over %d examples", len(examples))
+    log.info("distilling over %d examples (%d records skipped as unrenderable)", len(examples), skipped)
 
     def collate(batch: list[str]) -> dict[str, torch.Tensor]:
         enc = tgt_tok(
