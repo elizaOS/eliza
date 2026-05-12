@@ -1736,6 +1736,21 @@ function main(): void {
         continue;
       }
 
+      // Same filter we apply at initial discovery: runtime plugins that
+      // aren't in `alwaysBundled` (CORE_PLUGINS / OPTIONAL_CORE_PLUGINS /
+      // BASELINE_*) are post-release-installable and must not be physically
+      // bundled into the desktop runtime. Without this guard, an
+      // alwaysBundled package's non-optional peerDependency or dependency
+      // on a post-release plugin (e.g. @elizaos/app-wallet → peerDep on
+      // @elizaos/plugin-wallet) drags the entire transitive tree in,
+      // including @orca-so/whirlpools → @solana-program/* → @solana/kit
+      // with three coexisting major versions of @solana/codecs* nested
+      // 8 levels deep, which then trips `assertTarSafeRuntimePaths`.
+      if (!shouldBundleDiscoveredPackage(dep.name, alwaysBundled)) {
+        filteredOptionalPlugins.add(dep.name);
+        continue;
+      }
+
       queue.push({
         name: dep.name,
         spec: dep.spec,
