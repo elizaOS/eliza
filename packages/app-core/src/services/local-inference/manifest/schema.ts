@@ -27,6 +27,7 @@
 //   inference/AGENTS.md §2. See
 //   `packages/inference/reports/porting/2026-05-11/qwen-backbone-unification.md`.
 
+import type { LocalRuntimeKernel } from "@elizaos/shared";
 import { z } from "zod";
 
 export const ELIZA_1_MANIFEST_SCHEMA_VERSION = "1" as const;
@@ -58,6 +59,12 @@ export type Eliza1Tier = (typeof ELIZA_1_TIERS)[number];
 // for any long-context text variant. The C-level llama.cpp kernel handles in
 // `../types.ts` are an implementation detail of the runtime; the manifest
 // speaks in terms of the optimization, not the .metal/.comp file.
+//
+// The relationship to the runtime-side `LocalRuntimeKernel` enum (the
+// llama.cpp-handle layer, declared in `@elizaos/shared/local-inference/types`)
+// is made explicit by `ELIZA1_TO_RUNTIME_KERNEL` / `RUNTIME_TO_ELIZA1_KERNEL`
+// below — that is the single source of truth for the manifest↔runtime kernel
+// bridge.
 export const ELIZA_1_KERNELS = [
   "turboquant_q3",
   "turboquant_q4",
@@ -67,6 +74,46 @@ export const ELIZA_1_KERNELS = [
   "turbo3_tcq",
 ] as const;
 export type Eliza1Kernel = (typeof ELIZA_1_KERNELS)[number];
+
+// Manifest-kernel ↔ runtime-kernel bridge.
+//
+// `Eliza1Kernel` (this module, the bundle-manifest layer) names the *named
+// optimization* a bundle advertises; `LocalRuntimeKernel`
+// (`@elizaos/shared/local-inference/types`, the llama.cpp-handle layer) names
+// the *fork kernel handle* the binary must expose. They overlap but are not the
+// same enum:
+//
+//   turboquant_q3  ↔ turbo3       (Q3 KV-cache quant kernel)
+//   turboquant_q4  ↔ turbo4       (Q4 KV-cache quant kernel)
+//   qjl            ↔ qjl_full     (QuIP#-JL fused-attention kernel)
+//   polarquant     ↔ polarquant   (same name on both layers)
+//   dflash         ↔ dflash       (same name on both layers)
+//   turbo3_tcq     ↔ turbo3_tcq   (same name on both layers)
+//
+// Every member of both enums is covered (both are total maps). When code needs
+// to translate between the catalog's `requiresKernel: LocalRuntimeKernel[]` and
+// the manifest's `kernels.required: Eliza1Kernel[]`, route it through these.
+export const ELIZA1_TO_RUNTIME_KERNEL: Readonly<
+  Record<Eliza1Kernel, LocalRuntimeKernel>
+> = {
+  turboquant_q3: "turbo3",
+  turboquant_q4: "turbo4",
+  qjl: "qjl_full",
+  polarquant: "polarquant",
+  dflash: "dflash",
+  turbo3_tcq: "turbo3_tcq",
+};
+
+export const RUNTIME_TO_ELIZA1_KERNEL: Readonly<
+  Record<LocalRuntimeKernel, Eliza1Kernel>
+> = {
+  turbo3: "turboquant_q3",
+  turbo4: "turboquant_q4",
+  qjl_full: "qjl",
+  polarquant: "polarquant",
+  dflash: "dflash",
+  turbo3_tcq: "turbo3_tcq",
+};
 
 export const ELIZA_1_BACKENDS = [
   "metal",
