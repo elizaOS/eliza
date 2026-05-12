@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.training.model_registry import REGISTRY, Tier, by_tier, get, summary_table
+from scripts.training.model_registry import DFLASH_DRAFTER_BASE, REGISTRY, Tier, by_tier, get, summary_table
 
 
 VERIFIED_KEYS = (
