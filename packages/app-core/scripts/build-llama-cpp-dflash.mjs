@@ -159,6 +159,15 @@ const SUPPORTED_TARGETS = [
   "linux-aarch64-cuda",
   "android-arm64-cpu",
   "android-arm64-vulkan",
+  // Android x86_64: Chromebooks (ChromeOS Android subsystem / ARCVM),
+  // the Android x86_64 emulator, and — the load-bearing one for CI —
+  // Cuttlefish (cvd) virtual devices, which run on an x86_64 Linux host
+  // under KVM. The fork's CPU kernels already have an AVX2 path
+  // (qjl-cpu / polarquant-cpu), so this is a real target, not a stub.
+  // Built with the NDK toolchain + -DANDROID_ABI=x86_64; cvd smoke
+  // harness: aosp/smoke-cuttlefish.mjs.
+  "android-x86_64-cpu",
+  "android-x86_64-vulkan",
   "darwin-arm64-metal",
   // iOS targets (require macOS host with Xcode). Output is a static .a +
   // headers that the LlamaCpp.xcframework patch in
@@ -191,6 +200,14 @@ const SUPPORTED_TARGETS = [
   "linux-x64-vulkan-fused",
   "darwin-arm64-metal-fused",
   "windows-x64-cuda-fused",
+  // Android fused targets — libelizainference (OmniVoice TTS + Qwen3-ASR)
+  // carried alongside libllama in the AAR for the in-process voice path
+  // (mic → VAD → ASR → DFlash text → TTS, no spawned server). Cross-built
+  // with the NDK; device verify (Pixel) is host-gated. android-x86_64
+  // covers the Cuttlefish/Chromebook fused smoke.
+  "android-arm64-cpu-fused",
+  "android-arm64-vulkan-fused",
+  "android-x86_64-cpu-fused",
 ];
 
 // Targets that opt into omnivoice fusion. Membership in this set is
@@ -202,6 +219,9 @@ const FUSED_TARGETS = new Set([
   "linux-x64-vulkan-fused",
   "darwin-arm64-metal-fused",
   "windows-x64-cuda-fused",
+  "android-arm64-cpu-fused",
+  "android-arm64-vulkan-fused",
+  "android-x86_64-cpu-fused",
 ]);
 
 // Strip the "-fused" suffix when one is present, returning the base
@@ -721,24 +741,26 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 // in at backend-load time. When that lands, this patch becomes a no-op
 // and can be removed.
 // Extend the fork's `--cache-type-k/v` whitelist (`kv_cache_types` in
-// common/arg.cpp) to also accept `qjl1_256` and `q4_polar` — the Eliza-1
-// QJL K-cache and PolarQuant V-cache types. Both have full ggml type traits
-// (`to_float` / `from_float_ref`) in the fork's `ggml.c`, and the K-cache
-// uses the dedicated `GGML_OP_ATTN_SCORE_QJL` graph route the fork already
-// has; the only thing missing was the CLI-arg whitelist, so a build that
-// compiled the CPU/Vulkan/CUDA QJL+Polar code couldn't actually be told to
-// use them. `tbq3_tcq` is intentionally NOT added — it has a block layout
-// in ggml-common.h but no ggml type-traits entry in ggml.c, so it can't be
-// a generic K/V cache type yet (it's an attention-score-only op).
+// common/arg.cpp) to also accept `qjl1_256`, `q4_polar` and `tbq3_tcq` — the
+// Eliza-1 QJL K-cache, PolarQuant V-cache, and TurboQuant TCQ-3 K-cache types.
+// All three have full ggml type traits (`to_float` / `from_float_ref`) in the
+// fork's `ggml.c` (qjl1_256/q4_polar shipped earlier; tbq3_tcq's type-traits
+// entry — Viterbi `quantize_row_tbq3_tcq_ref` + sliding-9-bit-window
+// `dequantize_row_tbq3_tcq` in ggml-quants.c, codebook in ggml-tcq-codebook.h —
+// landed in this wave). `kv_cache_type_from_str` matches on `ggml_type_name`,
+// so once the type is in this vector `--cache-type-k tbq3_tcq` resolves. The
+// only thing missing was the CLI-arg whitelist; a build that compiled the
+// CPU/Vulkan/CUDA QJL+Polar+TCQ code couldn't actually be told to use them.
 //
-// This is what makes `probeKernels()` (which greps `llama-server --help`
-// for `qjl1_256` / `q4_polar`) flip `kernels.qjl_full` / `kernels.polarquant`
-// true on a CPU/Vulkan/CUDA host build — i.e. a `linux-x64-cpu` build's
-// CAPABILITIES.json now advertises {dflash, turbo3, turbo4, qjl_full,
-// polarquant}, which satisfies the `eliza-1-1_7b` runtime kernel set
-// (turbo3_tcq is only required for the 27b-256k context tiers).
+// This is what makes `probeKernels()` (which greps `llama-server --help` for
+// `qjl1_256` / `q4_polar` / `tbq3_tcq`) flip `kernels.qjl_full` /
+// `kernels.polarquant` / `kernels.turbo3_tcq` true on a CPU/Vulkan/CUDA host
+// build — i.e. a `linux-x64-cpu` build's CAPABILITIES.json now advertises
+// {dflash, turbo3, turbo4, turbo3_tcq, qjl_full, polarquant}, which satisfies
+// the `eliza-1-1_7b` runtime kernel set and the `27b`/`27b-256k`/`27b-1m`
+// tiers' `turbo3_tcq` requirement (added at contextLength >= 65536).
 //
-// Idempotent via the `// ELIZA-KV-CACHE-TYPES-V1` sentinel.
+// Idempotent via the `// ELIZA-KV-CACHE-TYPES-V2` sentinel.
 function patchServerKvCacheTypeNames(cacheDir, { dryRun = false } = {}) {
   const argPath = path.join(cacheDir, "common", "arg.cpp");
   if (!fs.existsSync(argPath)) {
@@ -747,12 +769,17 @@ function patchServerKvCacheTypeNames(cacheDir, { dryRun = false } = {}) {
     );
   }
   const original = fs.readFileSync(argPath, "utf8");
-  const sentinel = "// ELIZA-KV-CACHE-TYPES-V1";
+  const sentinel = "// ELIZA-KV-CACHE-TYPES-V2";
   if (original.includes(sentinel)) {
     return { changed: false, alreadyPatched: true };
   }
   // Anchor: the last entry of the kv_cache_types vector before its `};`.
-  const anchor = "    GGML_TYPE_TBQ3_0,\n    GGML_TYPE_TBQ4_0,\n};";
+  // Tolerate a prior V1 patch (qjl1_256 + q4_polar already appended).
+  const anchorV1 = "    GGML_TYPE_TBQ3_0,\n    GGML_TYPE_TBQ4_0,\n};";
+  const anchorAfterV1 =
+    "    GGML_TYPE_QJL1_256,\n    GGML_TYPE_Q4_POLAR,\n};";
+  const usingV1Anchor = original.includes(anchorAfterV1);
+  const anchor = usingV1Anchor ? anchorAfterV1 : anchorV1;
   if (!original.includes(anchor)) {
     throw new Error(
       `[dflash-build] patchServerKvCacheTypeNames: anchor not found in ${argPath}; ` +
@@ -760,20 +787,28 @@ function patchServerKvCacheTypeNames(cacheDir, { dryRun = false } = {}) {
         `common/arg.cpp and update the anchor.`,
     );
   }
+  const prefix = usingV1Anchor
+    ? "    GGML_TYPE_QJL1_256,\n    GGML_TYPE_Q4_POLAR,\n"
+    : "    GGML_TYPE_TBQ3_0,\n    GGML_TYPE_TBQ4_0,\n" +
+      "    // ELIZA-KV-CACHE-TYPES-V1 — Eliza-1 QJL K-cache + PolarQuant V-cache\n" +
+      "    GGML_TYPE_QJL1_256,\n    GGML_TYPE_Q4_POLAR,\n";
   const replacement =
-    "    GGML_TYPE_TBQ3_0,\n    GGML_TYPE_TBQ4_0,\n" +
-    `    ${sentinel} — Eliza-1 QJL K-cache + PolarQuant V-cache (full ggml\n` +
-    "    // type traits in ggml.c; K uses the GGML_OP_ATTN_SCORE_QJL graph route)\n" +
-    "    GGML_TYPE_QJL1_256,\n    GGML_TYPE_Q4_POLAR,\n};";
+    prefix +
+    `    ${sentinel} — Eliza-1 TurboQuant TCQ-3 K-cache (full ggml type traits\n` +
+    "    // in ggml.c; Viterbi quantize_row_tbq3_tcq_ref + sliding-window\n" +
+    "    // dequantize_row_tbq3_tcq, required for the 27b 64k+ context tiers)\n" +
+    "    GGML_TYPE_TBQ3_TCQ,\n};";
   if (dryRun) {
     console.log(
-      `[dflash-build] (dry-run) would extend kv_cache_types in ${argPath} with GGML_TYPE_QJL1_256, GGML_TYPE_Q4_POLAR`,
+      `[dflash-build] (dry-run) would extend kv_cache_types in ${argPath} with ` +
+        `${usingV1Anchor ? "" : "GGML_TYPE_QJL1_256, GGML_TYPE_Q4_POLAR, "}GGML_TYPE_TBQ3_TCQ`,
     );
     return { changed: true, dryRun: true };
   }
   fs.writeFileSync(argPath, original.replace(anchor, replacement), "utf8");
   console.log(
-    "[dflash-build] patched common/arg.cpp to accept --cache-type-k/v qjl1_256 / q4_polar",
+    "[dflash-build] patched common/arg.cpp to accept --cache-type-k/v " +
+      "qjl1_256 / q4_polar / tbq3_tcq",
   );
   return { changed: true };
 }
@@ -1156,14 +1191,30 @@ function cmakeFlagsForTarget(target, ctx) {
         "Android target requested but ANDROID_NDK_HOME is not set and no NDK was found under ~/Android/Sdk/ndk",
       );
     }
+    // arch is the triple's second segment: "arm64" → arm64-v8a (phones),
+    // "x86_64" → x86_64 (Cuttlefish/cvd, Chromebook ARCVM, x86_64 emulator).
+    const androidAbi = arch === "x86_64" ? "x86_64" : "arm64-v8a";
     flags.push(
       `-DCMAKE_TOOLCHAIN_FILE=${path.join(ctx.androidNdk, "build", "cmake", "android.toolchain.cmake")}`,
       `-DANDROID_NDK=${ctx.androidNdk}`,
-      "-DANDROID_ABI=arm64-v8a",
+      `-DANDROID_ABI=${androidAbi}`,
       "-DANDROID_PLATFORM=android-28",
       // CURL is optional for llama-server and not part of the NDK sysroot.
       "-DLLAMA_CURL=OFF",
     );
+    if (androidAbi === "x86_64") {
+      // The x86_64 Android ABI baseline is SSE4.2 only; AVX2 is what the
+      // QJL/Polar CPU kernels need (qjl_score_qk_avx2 etc.). cvd/ChromeOS
+      // x86_64 hosts are all Haswell+ in practice. -DGGML_NATIVE=OFF (a
+      // cross-build can't sniff -march), AVX/AVX2/FMA/F16C on explicitly.
+      flags.push(
+        "-DGGML_NATIVE=OFF",
+        "-DGGML_AVX=ON",
+        "-DGGML_AVX2=ON",
+        "-DGGML_FMA=ON",
+        "-DGGML_F16C=ON",
+      );
+    }
     if (backend === "vulkan" && ctx.androidVulkanInclude) {
       // Mostly informational - the NDK sysroot already exposes vulkan/ on the
       // include path. Pass it explicitly so CMake's FindVulkan succeeds even
