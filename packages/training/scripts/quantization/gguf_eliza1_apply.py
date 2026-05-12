@@ -195,6 +195,13 @@ def _build_ext_metadata(
             "base_seed": tbq_sidecar.get("base_seed", 42),
             "skip_layers": tbq_sidecar.get("skip_layers", [0]),
             "norm_threshold": tbq_sidecar.get("norm_threshold", 5.0),
+            # Carry hybrid linear-attn provenance so the runtime knows the
+            # cache only attaches to full-attention layers (Qwen3.5/3.6).
+            "hybrid_linear_attn": tbq_sidecar.get("hybrid_linear_attn", False),
+            "full_attention_layers": tbq_sidecar.get("full_attention_layers"),
+            "linear_attention_layers_skipped": tbq_sidecar.get(
+                "linear_attention_layers_skipped", []
+            ),
         }
     return out
 

@@ -262,6 +262,28 @@ def _run_apply_stage(
     )
 
 
+def _stage_dir_sidecar(stage: StageResult) -> dict[str, object] | None:
+    """Load the per-stage JSON sidecar (``polarquant_config.json`` /
+    ``qjl_config.json`` / ``turboquant.json``) so the orchestrator manifest
+    can carry the recipe pins + hybrid-linear-attn provenance forward.
+    Returns ``None`` when the stage was skipped or its sidecar didn't land.
+    """
+    if stage.skipped or stage.exit_code != 0:
+        return None
+    candidate = stage.output_dir / {
+        "polarquant": "polarquant_config.json",
+        "qjl": "qjl_config.json",
+        "turboquant": "turboquant.json",
+        "fused_turboquant": "turboquant.json",
+    }.get(stage.name, f"{stage.name}.json")
+    if not candidate.exists():
+        return None
+    try:
+        return json.loads(candidate.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def _build_eliza1_manifest(
     plan: OptimizationPlan,
     stages: list[StageResult],
@@ -288,6 +310,32 @@ def _build_eliza1_manifest(
             block["reason"] = s.skip_reason
         if s.sidecar_path is not None:
             block["sidecar"] = s.sidecar_path.name
+        # Fold hybrid linear-attn provenance from the per-stage JSON sidecars
+        # into the orchestrator manifest so downstream tooling
+        # (verify_optimization_stack.py, stage_base_v1_candidate.py) doesn't
+        # need to re-load the stage dirs. For PolarQuant we record the
+        # average block MSE; for QJL the number of full-attention layers it
+        # actually compressed; for TurboQuant the linear-attn skip list.
+        sidecar_json = _stage_dir_sidecar(s)
+        if sidecar_json is not None:
+            if s.name == "polarquant":
+                block["average_block_mse"] = sidecar_json.get("average_block_mse")
+                block["n_layers_quantized"] = sidecar_json.get("n_layers_quantized")
+            elif s.name == "qjl":
+                block["n_full_attention_layers"] = sidecar_json.get(
+                    "n_full_attention_layers"
+                )
+                block["num_hidden_layers"] = sidecar_json.get("num_hidden_layers")
+            elif s.name in ("turboquant", "fused_turboquant"):
+                block["hybrid_linear_attn"] = sidecar_json.get(
+                    "hybrid_linear_attn", False
+                )
+                block["full_attention_layers"] = sidecar_json.get(
+                    "full_attention_layers"
+                )
+                block["layers_skipped"] = sidecar_json.get(
+                    "linear_attention_layers_skipped", []
+                )
         applied[s.name] = block
 
     return {
