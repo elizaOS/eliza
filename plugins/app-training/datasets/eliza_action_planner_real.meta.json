@@ -1,0 +1,17 @@
+{
+  "generatedAt": "2026-05-12T06:29:37.629Z",
+  "sourceDir": "/Users/shawwalters/.eliza/trajectories",
+  "trajectoriesScanned": 158,
+  "plannerStagesSeen": 90,
+  "rawRows": 90,
+  "skippedEmpty": 0,
+  "rowsAfterPrivacyFilter": 90,
+  "rowsWritten": 90,
+  "dropped": 0,
+  "rewardCounts": {
+    "r1": 30,
+    "r0": 60
+  },
+  "redactionCount": 0,
+  "anonymizationCount": 0
+}
