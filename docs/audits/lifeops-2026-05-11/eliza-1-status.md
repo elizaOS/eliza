@@ -27,8 +27,26 @@ in `report.json`.
 > 9b now have real, sha-matched base weights staged locally with bench-harness
 > `manifest.json` files; 27b / 27b-1m are blocked on a ≈ 16.5 GiB upstream
 > pull (disk budget) and have no on-disk bundle yet. No drafter for any tier
-> on this host. No `eliza-1-*` repo is published on Hugging Face — the only
-> public elizaos HF asset is the empty `elizaos/eliza-1-assets/1_7b/` scaffold.
+> on this host.
+>
+> **2026-05-11 (Wave-7 H2 update):** the three on-disk bundles (0.6b, 1.7b,
+> 9b) were pushed to Hugging Face under `elizaos/eliza-1-<tier>` as
+> **pre-release / local-standin** artifacts. Each repo carries the verbatim
+> `manifest.json` (still `releaseState=local-standin`, `publishEligible=false`,
+> `final.weights=false`) and a README banner stating the bytes are upstream
+> Qwen base weights renamed for the bundle layout — NOT fine-tuned, NOT
+> publish-eligible. Full audit:
+> [`h2-hf-publish-status.md`](./h2-hf-publish-status.md). Drafter audit
+> conclusion: no `elizaos/*-dflash-drafter` repos exist; third-party z-lab
+> drafters don't match our exact base tiers; GPU distillation is still
+> required. The `elizaos/eliza-1-assets` repo (12 files in the `1_7b/`
+> subtree) was already populated before this audit — G4's "empty" claim was
+> stale.
+>
+> Published URLs (pre-release):
+> - https://huggingface.co/elizaos/eliza-1-0_6b
+> - https://huggingface.co/elizaos/eliza-1-1_7b
+> - https://huggingface.co/elizaos/eliza-1-9b
 
 | Bundle ID         | Size    | releaseState   | publishEligible | final.weights | DFlash drafter | Weights validated | preRelease |
 |-------------------|---------|----------------|-----------------|---------------|----------------|-------------------|------------|
