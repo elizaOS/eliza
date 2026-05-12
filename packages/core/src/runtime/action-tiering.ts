@@ -29,6 +29,26 @@ export type TierActionResultsInput = {
 	maxTierAParents?: number;
 	maxTierBParents?: number;
 	protocolActions?: readonly Tier0ProtocolAction[];
+	/**
+	 * When provided, tier-A is narrowed to parents that match at least one
+	 * of these candidate action names (matched by parent normalized name OR
+	 * any child normalized name — so virtual sub-actions like
+	 * `TASKS_SPAWN_AGENT` correctly map back to their `TASKS` parent).
+	 *
+	 * Non-matching parents are demoted to tier-B (their parent name stays
+	 * exposed as a retrieval fallback, but their child names are dropped).
+	 *
+	 * The narrowing is suppressed (i.e. no-op) when NO tier-A parent matches
+	 * any candidate — preventing accidental loss of the full surface when
+	 * the candidate set points at a non-tier-A parent.
+	 *
+	 * This turns `candidateActions` from a soft hint into a hard filter,
+	 * which is what the upstream messageHandler stage actually intends —
+	 * if it decided "this turn should run TASKS", the planner shouldn't be
+	 * free to pick `FILE.write` instead just because both happen to score
+	 * highly in retrieval.
+	 */
+	narrowToCandidateActions?: readonly string[];
 };
 
 export type TieredActionSurface = {
@@ -92,6 +112,55 @@ export function tierActionResults(
 				.map((parent) => parentOnlyTieredParent(parent)),
 		);
 		tierBParents.sort(compareTieredParents);
+	}
+
+	const narrowSet = normalizeCandidateSet(input.narrowToCandidateActions);
+	if (narrowSet.size > 0 && tierAParents.length > 0) {
+		const matchesCandidate = (parent: TieredParentAction): boolean => {
+			if (narrowSet.has(parent.normalizedName)) {
+				return true;
+			}
+			for (const child of parent.childNormalizedNames) {
+				if (narrowSet.has(child)) {
+					return true;
+				}
+			}
+			return false;
+		};
+		const kept: TieredParentAction[] = [];
+		const demotedFromTierA: TieredParentAction[] = [];
+		for (const parent of tierAParents) {
+			if (matchesCandidate(parent)) {
+				kept.push(parent);
+			} else {
+				demotedFromTierA.push(parent);
+			}
+		}
+		if (kept.length > 0) {
+			tierAParents.length = 0;
+			tierAParents.push(...kept);
+
+			// Demoted tier-A parents go to tier-C (omitted), not tier-B.
+			// Tier-B exposes the parent name to the LLM, and many parents
+			// are parameter-driven umbrellas (e.g. `FILE` with
+			// `action=read/write/edit`). If we left them in tier-B the
+			// planner could still call `FILE` with `action=write` and
+			// bypass the narrow. Tier-C removes them from the prompt
+			// entirely, which is what the candidate filter means to do.
+			// Tier-B parents not in tier-A are unaffected.
+			const tierBKept: TieredParentAction[] = [];
+			for (const parent of tierBParents) {
+				if (matchesCandidate(parent)) {
+					tierBKept.push(parent);
+				} else {
+					tierCParents.push(parent);
+				}
+			}
+			tierBParents.length = 0;
+			tierBParents.push(...tierBKept);
+			tierCParents.push(...demotedFromTierA);
+			tierCParents.sort(compareTieredParents);
+		}
 	}
 
 	if (tierBParents.length > maxTierBParents) {
@@ -214,6 +283,35 @@ function sortedUnique(values: readonly string[]): string[] {
 	return Array.from(new Set(values.filter(Boolean))).sort((left, right) =>
 		left.localeCompare(right),
 	);
+}
+
+function normalizeCandidateSet(
+	values: readonly string[] | undefined,
+): Set<string> {
+	// Must match action-catalog's normalizeActionName (UPPER_SNAKE_CASE) so
+	// the candidate names line up with TieredParentAction.normalizedName /
+	// childNormalizedNames produced by the catalog. Lowercasing here would
+	// silently miss every match and the narrow becomes a no-op.
+	const set = new Set<string>();
+	if (!values) {
+		return set;
+	}
+	for (const value of values) {
+		if (typeof value !== "string") {
+			continue;
+		}
+		const normalized = String(value)
+			.trim()
+			.replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+			.replace(/[^A-Za-z0-9]+/g, "_")
+			.replace(/^_+|_+$/g, "")
+			.replace(/_+/g, "_")
+			.toUpperCase();
+		if (normalized) {
+			set.add(normalized);
+		}
+	}
+	return set;
 }
 
 function fnv1a(value: string): string {
