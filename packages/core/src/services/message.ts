@@ -3205,12 +3205,44 @@ export function extractPlanActionsCallFromText(text: unknown): {
 	}
 	const obj = parsed as Record<string, unknown>;
 	const action = typeof obj.action === "string" ? obj.action.trim() : "";
-	if (!action) return null;
-	const params =
-		obj.params && typeof obj.params === "object" && !Array.isArray(obj.params)
-			? (obj.params as Record<string, unknown>)
-			: {};
-	return { name: action, params };
+	if (action) {
+		const params =
+			obj.params &&
+			typeof obj.params === "object" &&
+			!Array.isArray(obj.params)
+				? (obj.params as Record<string, unknown>)
+				: {};
+		return { name: action, params };
+	}
+	// Bare-params recovery: in native-tools mode, the response handler
+	// often emits ONLY the params object (no outer `action`/`params`
+	// wrapper) when it intends to call a specific action — the model
+	// thinks it IS calling the function but Cerebras's API ships the
+	// args as content instead of routing through the function-call API.
+	// Recognize the canonical `TASKS_SPAWN_AGENT` shape: a JSON object
+	// with a `task` string AND an `agentType` field whose value is one
+	// of the registered coding-agent adapters. The `agentType` field is
+	// the discriminator that uniquely identifies this as a delegation
+	// call shape — no other action's parameters have that combination.
+	const task = typeof obj.task === "string" ? obj.task.trim() : "";
+	const rawAgentType =
+		typeof obj.agentType === "string" ? obj.agentType.trim() : "";
+	const KNOWN_ADAPTER_TYPES = new Set([
+		"claude",
+		"codex",
+		"opencode",
+		"gemini",
+		"aider",
+		"hermes",
+	]);
+	if (
+		task &&
+		rawAgentType &&
+		KNOWN_ADAPTER_TYPES.has(rawAgentType.toLowerCase())
+	) {
+		return { name: "TASKS_SPAWN_AGENT", params: obj };
+	}
+	return null;
 }
 
 function messageHandlerFromFieldResult(
