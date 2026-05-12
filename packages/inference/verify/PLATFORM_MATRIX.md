@@ -11,6 +11,34 @@
 > publish-blocker ledger is
 > [`../reports/porting/2026-05-11/remaining-work-ledger.md`](../reports/porting/2026-05-11/remaining-work-ledger.md).
 
+## Verify status as of 2026-05-12 (post multi-agent wave)
+
+Re-ran the full integration verify matrix on this box (Intel Arrow Lake CPU +
+Intel ARL/ANV Vulkan + RTX 5080 / sm_120 CUDA, with a full-corpus SFT job
+holding ~12 GB VRAM concurrently — no OOM contention on the short verify runs):
+
+| Target | Result |
+| --- | --- |
+| `make kernel-contract` | PASS — `OK kernels=6 targets=21 manifestNames=6` |
+| `make reference-test` | PASS — C reference clean; `gen_fixture --self-test` finite (fused-attn + TBQ V-cache parity OK) |
+| `make cpu-bench` | PASS (nothing to rebuild; harness in place) |
+| `make cpu-dispatch-smoke` | PASS — `ATTN_SCORE_QJL` + `FUSED_ATTN_QJL_TBQ` MT-vs-ST bit-identical, no NaN |
+| `make vulkan-dispatch-smoke` | PASS — Intel ARL: `GGML_OP_ATTN_SCORE_QJL` 32 outs max 2.7e-7, `GGML_OP_FUSED_ATTN_QJL_TBQ` 512 outs max 4.5e-8 |
+| `make vulkan-verify` | PASS — 8/8 (turbo3/turbo4/turbo3_tcq/qjl/polar incl. polar pre-Hadamard, both residual modes) |
+| `make vulkan-verify-multiblock` | PASS — 8/8 across 1/2/4/8 blocks-per-workgroup |
+| `make vulkan-verify-fused` | PASS — 1920/1920 outputs (4 cases) on Intel ARL ANV, max diff ≤ 7.2e-7 |
+| `make cuda-verify` | PASS — 8/8 each kernel + 1920/1920 fused on RTX 5080 (sm_120), max diff ≤ 9.5e-6 |
+| `make cuda-verify-fused` | PASS — 1920/1920 fused QJL-K/TBQ-V on RTX 5080, max diff 4.47e-7 |
+
+Nothing regressed in this wave. `bun run typecheck` for `packages/app-core` is
+clean; `bun test packages/app-core/src/services/local-inference/` is 603 pass /
+17 fail where all 17 failures are the known test-isolation flakes (downloader ×6
+— passes 7/7 alone — plus `cache-restart-corruption` / `cache-multi-model` /
+`cache-thrash` / `cache-stress` shared-mock-state, and the 2 `fused llama-server`
+tests that need the fused binary built); `…/voice/` is 217/218 + 28/28 green;
+`python3 -m pytest packages/training/scripts/{eval,publish,manifest,wakeword}
+packages/training/benchmarks` is 140 passed / 1 skipped.
+
 ## Status vocabulary
 
 | Status | Meaning |

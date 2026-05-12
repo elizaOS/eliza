@@ -24,6 +24,23 @@ backend × device that is source-complete but unverified, with the exact runner
 command and remaining blocker — see
 [`needs-hardware-ledger.md`](./needs-hardware-ledger.md).
 
+**Verify re-run, 2026-05-12 (post multi-agent wave):** the full integration
+matrix is green again on this box (CPU + Intel ARL/ANV Vulkan + RTX 5080 sm_120
+CUDA, run alongside a concurrent full-corpus SFT job holding ~12 GB VRAM — no
+contention on the short verify runs): `make -C packages/inference/verify
+kernel-contract reference-test cpu-bench cpu-dispatch-smoke vulkan-dispatch-smoke
+vulkan-verify vulkan-verify-multiblock vulkan-verify-fused cuda-verify
+cuda-verify-fused` — every target PASS, nothing regressed. `bun run typecheck`
+(`packages/app-core`) clean; `bun test packages/app-core/src/services/local-inference/`
+603 pass / 17 fail (all 17 are the known shared-mock test-isolation flakes —
+downloader passes 7/7 alone — plus the 2 `fused llama-server` tests that need the
+fused binary); `…/voice/` 217/218 + `engine.voice*` 28/28 green; `python3 -m
+pytest packages/training/scripts/{eval,publish,manifest,wakeword}
+packages/training/benchmarks` 140 passed / 1 skipped. Full table in
+[`../../../verify/PLATFORM_MATRIX.md`](../../../verify/PLATFORM_MATRIX.md)
+("Verify status as of 2026-05-12"). The §3 build gates and the hardware-gated
+items below are unchanged.
+
 ## Current Runtime Truth
 
 | Area | Status | Evidence |

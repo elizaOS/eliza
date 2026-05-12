@@ -25,7 +25,7 @@ Legend: `[x]` done in this checkout, `[ ]` pending, `[hw]` pending and needs GPU
 ## A. Host-side / CPU (no GPU, runs in CI)
 
 - [x] `make -C packages/inference/verify reference-test` - C reference clean, `gen_fixture --self-test` finite, including fused-attn + TBQ V-cache parity.
-- [x] `make -C packages/inference/verify kernel-contract` - manifest names / capability keys / fixture set / Makefile targets / target list in sync (`OK kernels=6 targets=23 manifestNames=6`).
+- [x] `make -C packages/inference/verify kernel-contract` - manifest names / capability keys / fixture set / Makefile targets / target list in sync (`OK kernels=6 targets=21 manifestNames=6`).
 - [x] `python3 -m pytest packages/training/scripts/manifest/` - bundle staging, manifest build, platform plan, source-weights staging, evidence finalizer.
 - [x] `python packages/training/scripts/quantization/test_recipes_smoke.py` - TurboQuant / QJL / Polar recipe parity + codebook-hash / block-layout pins.
 - [x] `uv run --extra train python packages/training/scripts/distill_dflash_drafter.py --tier 1_7b --synthetic-smoke ...` - DFlash distill pipeline + GGUF metadata write (no torch / GPU).
