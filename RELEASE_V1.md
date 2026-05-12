@@ -80,12 +80,36 @@ The build MUST fail if any required kernel patch is missing
 (inference/AGENTS.md §3). There is no "kernels-missing fallback build"
 **for a publishable artifact**. There is, however, an opt-in, loudly-warned,
 **non-publishable** "reduced-optimization local mode" so the voice pipeline
-runs on backends that can't dispatch a required kernel yet (ROCm/HIP; the
-`turbo3_tcq` cache type): `ELIZA_DFLASH_ALLOW_REDUCED_KERNELS=1` lets
-`build-llama-cpp-dflash.mjs` finish such a target with `publishable: false` +
-`reducedOptimizationLocalMode: true`, and `MILADY_LOCAL_ALLOW_STOCK_KV=1`
+runs on backends that can't dispatch a required kernel yet (ROCm/HIP — the
+*production* `.cu` kernels aren't `__HIP_PLATFORM_AMD__`-clean yet, though
+`verify/hip_verify.cu` / `make -C packages/inference/verify hip-verify` now
+gives a fixture-parity gate; CPU TBQ/Polar standalone score graph op):
+`ELIZA_DFLASH_ALLOW_REDUCED_KERNELS=1` lets `build-llama-cpp-dflash.mjs`
+finish such a target with `publishable: false` +
+`reducedOptimizationLocalMode: true`, and `ELIZA_LOCAL_ALLOW_STOCK_KV=1`
 makes the runtime load it with stock `f16` KV. Neither is a default, and
 `defaultEligible` bundles still require the verified kernels per backend.
+
+> **`turbo3_tcq` is now a real K/V cache type** (2026-05-12): the fork's
+> `ggml.c` has the `[GGML_TYPE_TBQ3_TCQ]` type-traits entry (`to_float` =
+> sliding-9-bit-window codebook lookup, `from_float_ref` = host-side
+> 512-state Viterbi encoder in the orthogonal WHT basis; codebook in
+> `ggml/src/ggml-tcq-codebook.h`) + the ggml-cpu `from_float`;
+> `patchServerKvCacheTypeNames` appends `GGML_TYPE_TBQ3_TCQ` to
+> `common/arg.cpp`'s `kv_cache_types`, so `--cache-type-k tbq3_tcq`
+> resolves — this unblocks the 27b / 27b-256k / 27b-1m tiers
+> (`requiredKernelsForContext` adds `turbo3_tcq` at `ctx >= 65536`). Fork
+> branch `elizaOS/llama.cpp` `eliza/ws2-tbq3-tcq-traits` @ `536ff214`;
+> `packages/inference/llama.cpp` gitlink bumped to it (WS-4 merges the
+> decode-loop / streaming source on that branch, then tags). The
+> `android-x86_64-cpu` target (Cuttlefish/cvd) is real + built (cvd smoke
+> 5/6 infra steps PASS); the Android in-process voice path adds the
+> "path b" `common_speculative` shim (`aosp/llama-shim/eliza_llama_shim_speculative.cpp`)
+> + the `android-arm64-{cpu,vulkan}-fused` AAR build + Capacitor mic/audio/
+> ONNX-VAD bridges + `aosp/deploy-pixel.mjs`. MLX (`mlx_lm.server`,
+> `ELIZA_LOCAL_MLX=1`) is an opt-in Apple-Silicon text-only convenience
+> path — never `defaultEligible`, never the voice path. TPU/NPU is not a
+> target this wave (verdict documented).
 
 ### Per-platform voice support matrix
 

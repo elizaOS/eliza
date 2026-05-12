@@ -191,7 +191,7 @@
         "evidenceFile": "verify/cpu-runtime-dispatch-evidence.json"
       }
     },
-    "nextGate": "Vulkan fused dispatch verified on Intel ANV (GGML_OP_FUSED_ATTN_QJL_TBQ graph route, vulkan-dispatch-smoke 7/7, max diff 4.5e-8; standalone fused 1920/1920 PASS). CUDA fused verified on NVIDIA GeForce RTX 5080 Laptop (Blackwell sm_120, NATIVE SASS via CUDA 12.8 nvcc V12.8.93 — no longer compute_90 PTX JIT): make cuda-verify-fused 1920/1920 outputs PASS across 4 GQA/n_kv cases, max diff 4.47e-7, against the warp-cooperative kernel that mirrors the production cuda/fused-attn-qjl-tbq.cu (compiles clean into the fork libggml-cuda via patchCudaKernels + -DGGML_CUDA_FUSED_ATTN_QJL=ON; cuobjdump --list-elf confirms sm_80/86/89/90/90a/100/120 cubins with the fat-binary arch list). build-llama-cpp-dflash.mjs resolveNvcc()+cudaCompilerFlags() pin the 12.8 side-by-side toolkit; P3 occupancy/__ldg/vectorized-load + DP4A-as-default-standalone-QJL landed (nsys: DP4A ~2.27x faster than fp32 qjl_score); P2 cp.async deferred (on-cache QJL/TBQ blocks have no 4B alignment at a token stride). Remaining for CUDA: full ggml-cuda integration build (blocked on host RAM contention this wave). CPU fused dispatch verified on Intel Core Ultra 9 275HX (GGML_OP_FUSED_ATTN_QJL_TBQ CPU graph route, cpu-dispatch-smoke MT-vs-ST bit-identical, no NaN). Remaining: run metal-verify-fused on an Apple-Silicon Mac (metal/fused_attn_*.metal + metal/polar_preht.metal authored, byte-faithful to the Vulkan ports). fused_attn stays out of requiredRuntimeCapabilityKeys / manifestKernelNames \u2014 it is an optimization on top of the five required kernels (AGENTS.md \u00a73), not a required kernel \u2014 until all backends report a runtime-ready fused smoke and the manifest schema adds a fused kernel name."
+    "nextGate": "Vulkan fused dispatch verified on Intel ANV (GGML_OP_FUSED_ATTN_QJL_TBQ graph route, vulkan-dispatch-smoke 7/7, max diff 4.5e-8; standalone fused 1920/1920 PASS). CUDA fused verified on NVIDIA GeForce RTX 5080 Laptop (Blackwell sm_120, NATIVE SASS via CUDA 12.8 nvcc V12.8.93 \u2014 no longer compute_90 PTX JIT): make cuda-verify-fused 1920/1920 outputs PASS across 4 GQA/n_kv cases, max diff 4.47e-7, against the warp-cooperative kernel that mirrors the production cuda/fused-attn-qjl-tbq.cu (compiles clean into the fork libggml-cuda via patchCudaKernels + -DGGML_CUDA_FUSED_ATTN_QJL=ON; cuobjdump --list-elf confirms sm_80/86/89/90/90a/100/120 cubins with the fat-binary arch list). build-llama-cpp-dflash.mjs resolveNvcc()+cudaCompilerFlags() pin the 12.8 side-by-side toolkit; P3 occupancy/__ldg/vectorized-load + DP4A-as-default-standalone-QJL landed (nsys: DP4A ~2.27x faster than fp32 qjl_score); P2 cp.async deferred (on-cache QJL/TBQ blocks have no 4B alignment at a token stride). Remaining for CUDA: full ggml-cuda integration build (blocked on host RAM contention this wave). CPU fused dispatch verified on Intel Core Ultra 9 275HX (GGML_OP_FUSED_ATTN_QJL_TBQ CPU graph route, cpu-dispatch-smoke MT-vs-ST bit-identical, no NaN). Remaining: run metal-verify-fused on an Apple-Silicon Mac (metal/fused_attn_*.metal + metal/polar_preht.metal authored, byte-faithful to the Vulkan ports). fused_attn stays out of requiredRuntimeCapabilityKeys / manifestKernelNames \u2014 it is an optimization on top of the five required kernels (AGENTS.md \u00a73), not a required kernel \u2014 until all backends report a runtime-ready fused smoke and the manifest schema adds a fused kernel name."
   },
   "kernels": [
     {
@@ -319,6 +319,12 @@
         "vulkan": "runtime-ready",
         "cuda": "runtime-ready",
         "cpu": "reference-only"
+      },
+      "kvCacheType": {
+        "typeName": "tbq3_tcq",
+        "ggmlType": "GGML_TYPE_TBQ3_TCQ",
+        "status": "type-traits-added",
+        "note": "ggml.c now has the [GGML_TYPE_TBQ3_TCQ] type-traits entry (to_float = dequantize_row_tbq3_tcq sliding-window lookup, from_float_ref = quantize_row_tbq3_tcq_ref Viterbi encoder in the orthogonal WHT basis, codebook in ggml/src/ggml-tcq-codebook.h) plus the ggml-cpu from_float (so ggml_cpy(K_cur -> K_view) can quantize). build-llama-cpp-dflash.mjs patchServerKvCacheTypeNames appends GGML_TYPE_TBQ3_TCQ to common/arg.cpp kv_cache_types, so `--cache-type-k tbq3_tcq` resolves. Like qjl1_256/q4_polar it is a cache type only (never a mul_mat operand); the score path consumes the WHT-rotated cache directly, matching the CUDA (ggml-cuda/turbo-tcq.cu) + Metal decode kernels. Fork branch: elizaOS/llama.cpp eliza/ws2-tbq3-tcq-traits @ 536ff214 (on top of the prior pin 2f80716c). Verified: ggml-base + ggml-cpu compile clean, symbols exported. CPU standalone *score graph op* stays reference-only (no public CPU ggml graph builder for TCQ in the pin \u2014 the reduced-optimization local mode `ELIZA_LOCAL_ALLOW_STOCK_KV=1` is the documented hatch)."
       }
     },
     {
@@ -566,6 +572,36 @@
       "runtimeDispatch": "needs-hardware",
       "deviceRun": "needs-hardware",
       "nextGate": "Run Windows CUDA hardware runner first, then fused Windows CUDA voice/runtime smoke."
+    },
+    "android-x86_64-cpu": {
+      "kernelVerification": "compile-only",
+      "runtimeDispatch": "needs-runtime-smoke",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Real target: NDK cross-build (-DANDROID_ABI=x86_64, AVX/AVX2/FMA/F16C forced; the fork CPU QJL/Polar AVX2 paths compile). Built locally \u2014 real Android x86_64 ELF (interpreter /system/bin/linker64). Run the full 8-step Cuttlefish cvd smoke (aosp/smoke-cuttlefish.mjs) on the x86_64 Linux box under KVM with a model staged in the privileged APK. On the live cvd this wave: 5/6 infra steps PASS (cvd reachable, APK installed abi=x86_64, ElizaAgentService start, /api/health agentState=running runtime=ok, bearer token); step 6 chat completion failed because no model is staged in the release APK on that cvd instance. Vulkan-on-cvd (gfxstream/SwiftShader) is best-effort \u2014 a SwiftShader fallback is software and produces no recordable evidence."
+    },
+    "android-x86_64-vulkan": {
+      "kernelVerification": "standalone-verified",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "NDK cross-build with -DANDROID_ABI=x86_64 + Vulkan headers. Graph dispatch needs real ChromeOS x86_64 GPU (Adreno/Mali under ARCVM) \u2014 cvd virtio-gpu is gfxstream/SwiftShader (software \u2192 no recordable evidence per fail-closed). Adreno/Mali ChromeOS hardware = needs-hardware."
+    },
+    "android-x86_64-cpu-fused": {
+      "kernelVerification": "compile-only",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Fused libelizainference (OmniVoice TTS + Qwen3-ASR) carried alongside libllama for the in-process voice path on cvd/Chromebook. NDK cross-build via the omnivoice-fuse graft. Device verify host-gated."
+    },
+    "android-arm64-cpu-fused": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Fused libelizainference carried in the AAR alongside libllama for the in-process mic\u2192VAD\u2192ASR\u2192DFlash-text\u2192TTS path (the path-b common_speculative shim \u2014 aosp/llama-shim/eliza_llama_shim_speculative.cpp \u2014 runs the spec loop in-process). NDK cross-build locally; device run = needs a Pixel (exact `adb` cmd: aosp/deploy-pixel.mjs --abi arm64-v8a --voice)."
+    },
+    "android-arm64-vulkan-fused": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Fused libelizainference carried in the AAR alongside libllama for the in-process mic\u2192VAD\u2192ASR\u2192DFlash-text\u2192TTS path (the path-b common_speculative shim \u2014 aosp/llama-shim/eliza_llama_shim_speculative.cpp \u2014 runs the spec loop in-process). NDK cross-build locally; device run = needs a Pixel (exact `adb` cmd: aosp/deploy-pixel.mjs --abi arm64-v8a --voice)."
     }
   }
 }
