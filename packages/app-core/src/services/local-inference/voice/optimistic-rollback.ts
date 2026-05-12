@@ -113,8 +113,9 @@ export interface OptimisticRollbackControllerOptions {
    */
   enableOptimisticRollback?: boolean;
   /**
-   * VAD pause hangover (ms). Default 220 ms — matches the voice loop's
-   * standard hangover. The rollback window is `2 ×` this value.
+   * VAD pause hangover (ms). Default 100 ms (lowered from 220ms; further
+   * reduction gated on semantic EOT classifier V2) — matches the voice
+   * loop's standard hangover. The rollback window is `2 ×` this value.
    */
   pauseHangoverMs?: number;
   /** Source of VAD events; usually `VadDetector`. */
@@ -132,7 +133,8 @@ export interface OptimisticRollbackControllerOptions {
   now?: () => number;
 }
 
-const DEFAULT_PAUSE_HANGOVER_MS = 220;
+// Lowered from 220ms; further reduction gated on semantic EOT classifier (V2).
+const DEFAULT_PAUSE_HANGOVER_MS = 100;
 /** Rollback window = ROLLBACK_WINDOW_MULTIPLIER × pauseHangoverMs. */
 const ROLLBACK_WINDOW_MULTIPLIER = 2;
 

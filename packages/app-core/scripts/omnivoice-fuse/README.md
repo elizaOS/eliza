@@ -297,11 +297,11 @@ intentionally pinned to CPU to bypass the known merged-ggml DAC decode
 stall; gates should classify that as a pass-with-fallback, not as a
 silent downgrade or hang.
 
-Example 0_6b latency probe:
+Example 9B latency probe:
 
 ```bash
 bun packages/app-core/scripts/omnivoice-fuse/tts-stream-ffi-smoke.ts \
-  --bundle ~/.eliza/local-inference/models/eliza-1-0_6b.bundle \
+  --bundle ~/.eliza/local-inference/models/eliza-1-9b.bundle \
   --cancel-mode none \
   --maskgit-steps 8 \
   --chunk-threshold-sec 0.25 \

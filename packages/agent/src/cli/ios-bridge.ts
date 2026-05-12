@@ -1,11 +1,23 @@
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+} from "node:fs";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import path from "node:path";
 import process from "node:process";
+import { Readable } from "node:stream";
 
 import {
   ChannelType,
   createMessageMemory,
+  type GenerateTextParams,
   type IAgentRuntime,
+  ModelType,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -26,6 +38,23 @@ interface BridgeResponse {
   error?: string;
 }
 
+interface HostCallFrame {
+  type: "host_call";
+  id: string;
+  method: string;
+  payload?: unknown;
+  timeoutMs?: number;
+}
+
+interface HostResultFrame {
+  type: "host_result";
+  id?: unknown;
+  envelope?: unknown;
+  ok?: boolean;
+  result?: unknown;
+  error?: string;
+}
+
 interface BridgeReadyFrame {
   type: "ready";
   ok: boolean;
@@ -37,6 +66,7 @@ interface BridgeReadyFrame {
 }
 
 type BridgeFrame = BridgeReadyFrame | BridgeResponse;
+type BridgeOutboundFrame = BridgeFrame | HostCallFrame;
 
 interface HttpRequestPayload {
   method?: unknown;
@@ -74,6 +104,38 @@ interface IosConversation {
   metadata?: Record<string, unknown>;
 }
 
+interface BufferedHttpResponse {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: string;
+  bodyBase64: string;
+  bodyEncoding: "utf-8";
+}
+
+interface InstalledModelEntry {
+  id: string;
+  displayName?: string;
+  path: string;
+  sizeBytes?: number;
+  installedAt?: string;
+  lastUsedAt?: string | null;
+  source?: string;
+  bundleVerifiedAt?: string;
+  dimensions?: number;
+  embeddingDimension?: number;
+  embeddingDimensions?: number;
+}
+
+interface NativeLlamaState {
+  contextId: number | null;
+  modelId: string | null;
+  modelPath: string | null;
+  loadedAt: string | null;
+  status: "idle" | "loading" | "ready" | "error";
+  error?: string;
+}
+
 interface RuntimeMessageService {
   handleMessage: (
     runtime: IAgentRuntime,
@@ -83,6 +145,50 @@ interface RuntimeMessageService {
     ) => Promise<unknown[]> | unknown[],
   ) => Promise<unknown> | unknown;
 }
+
+type GenerateTextHandler = (
+  runtime: IAgentRuntime,
+  params: GenerateTextParams,
+) => Promise<string>;
+
+type RuntimeWithModelRegistration = IAgentRuntime & {
+  registerModel?: (
+    modelType: string | number,
+    handler: GenerateTextHandler,
+    provider: string,
+    priority?: number,
+  ) => void;
+};
+
+const IOS_NATIVE_LLAMA_PROVIDER = "capacitor-llama";
+const IOS_NATIVE_LLAMA_DEVICE_ID = "ios-native-llama";
+const IOS_NATIVE_LLAMA_PRIORITY = 0;
+const TEXT_GENERATION_MODEL_TYPES = [
+  ModelType.TEXT_NANO,
+  ModelType.TEXT_SMALL,
+  ModelType.TEXT_MEDIUM,
+  ModelType.TEXT_LARGE,
+  ModelType.RESPONSE_HANDLER,
+  ModelType.ACTION_PLANNER,
+  ModelType.TEXT_COMPLETION,
+] as const;
+const nativeLlamaState: NativeLlamaState = {
+  contextId: null,
+  modelId: null,
+  modelPath: null,
+  loadedAt: null,
+  status: "idle",
+};
+const pendingHostCalls = new Map<
+  string,
+  {
+    resolve: (value: unknown) => void;
+    reject: (error: Error) => void;
+    timeout: ReturnType<typeof setTimeout>;
+  }
+>();
+let hostProtocolWrite: ((frame: BridgeOutboundFrame) => void) | null = null;
+let nextHostCallId = 1;
 
 function normalizeHeaderRecord(value: unknown): Record<string, string> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -112,13 +218,6 @@ function normalizeMethod(value: unknown): string {
     throw new Error("Unsupported HTTP method");
   }
   return method;
-}
-
-function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  return bytes.buffer.slice(
-    bytes.byteOffset,
-    bytes.byteOffset + bytes.byteLength,
-  ) as ArrayBuffer;
 }
 
 async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
@@ -161,12 +260,15 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
   const { bootElizaRuntime } = await import("../runtime/index.ts");
 
   const runtime = await bootElizaRuntime();
+  installIosNativeLlamaHandlers(runtime);
 
   return {
     runtime,
     conversations: new Map(),
     fallbackPort: 0,
-    close: async () => {},
+    close: async () => {
+      await unloadNativeLlamaModel().catch(() => undefined);
+    },
   };
 }
 
@@ -239,6 +341,19 @@ function payloadBodyAsRaw(payload: HttpRequestPayload): unknown {
     return Buffer.from(payload.body, "base64");
   }
   return payload.body;
+}
+
+function bodyTextForLegacyRoute(payload: HttpRequestPayload): string {
+  const raw = payloadBodyAsRaw(payload);
+  if (raw == null) return "";
+  if (typeof raw === "string") return raw;
+  if (Buffer.isBuffer(raw)) return raw.toString("utf8");
+  if (raw instanceof Uint8Array) return Buffer.from(raw).toString("utf8");
+  try {
+    return JSON.stringify(raw);
+  } catch {
+    return "";
+  }
 }
 
 function statusTextForCode(status: number): string {
@@ -422,14 +537,7 @@ function parseJsonBody(body: string): unknown {
 function jsonResponse(
   status: number,
   body: unknown,
-): {
-  status: number;
-  statusText: string;
-  headers: Record<string, string>;
-  body: string;
-  bodyBase64: string;
-  bodyEncoding: "utf-8";
-} {
+): BufferedHttpResponse {
   const text = JSON.stringify(body);
   return {
     status,
@@ -437,6 +545,115 @@ function jsonResponse(
     headers: { "content-type": "application/json; charset=utf-8" },
     body: text,
     bodyBase64: Buffer.from(text, "utf8").toString("base64"),
+    bodyEncoding: "utf-8",
+  };
+}
+
+function buildBufferedRoutePair(args: {
+  method: string;
+  path: string;
+  headers: Record<string, string>;
+  bodyText: string;
+}): {
+  req: IncomingMessage;
+  res: ServerResponse;
+  captured: {
+    statusCode: number;
+    headers: Record<string, string>;
+    chunks: Buffer[];
+    ended: boolean;
+  };
+} {
+  const readable = Readable.from(
+    args.bodyText ? [Buffer.from(args.bodyText, "utf8")] : [],
+  );
+  const req = readable as unknown as IncomingMessage & {
+    method: string;
+    url: string;
+    headers: Record<string, string>;
+  };
+  req.method = args.method;
+  req.url = args.path;
+  req.headers = args.headers;
+
+  const captured = {
+    statusCode: 200,
+    headers: {} as Record<string, string>,
+    chunks: [] as Buffer[],
+    ended: false,
+  };
+  const writeChunk = (chunk: unknown): void => {
+    if (chunk == null) return;
+    if (typeof chunk === "string") {
+      captured.chunks.push(Buffer.from(chunk, "utf8"));
+    } else if (Buffer.isBuffer(chunk)) {
+      captured.chunks.push(chunk);
+    } else if (chunk instanceof Uint8Array) {
+      captured.chunks.push(Buffer.from(chunk));
+    } else {
+      captured.chunks.push(Buffer.from(String(chunk), "utf8"));
+    }
+  };
+  const res = {
+    get statusCode() {
+      return captured.statusCode;
+    },
+    set statusCode(value: number) {
+      captured.statusCode = value;
+    },
+    get headersSent() {
+      return captured.ended;
+    },
+    setHeader(name: string, value: string | number | string[]) {
+      captured.headers[name.toLowerCase()] = Array.isArray(value)
+        ? value.join(", ")
+        : String(value);
+      return res;
+    },
+    getHeader(name: string) {
+      return captured.headers[name.toLowerCase()];
+    },
+    writeHead(statusCode: number, headers?: Record<string, unknown>) {
+      captured.statusCode = statusCode;
+      if (headers) {
+        for (const [key, value] of Object.entries(headers)) {
+          if (value == null) continue;
+          captured.headers[key.toLowerCase()] = Array.isArray(value)
+            ? value.join(", ")
+            : String(value);
+        }
+      }
+      return res;
+    },
+    write(chunk: unknown) {
+      writeChunk(chunk);
+      return true;
+    },
+    end(chunk?: unknown) {
+      if (chunk != null) writeChunk(chunk);
+      captured.ended = true;
+      return res;
+    },
+  };
+  return {
+    req,
+    res: res as unknown as ServerResponse,
+    captured,
+  };
+}
+
+function bufferedRouteResponse(captured: {
+  statusCode: number;
+  headers: Record<string, string>;
+  chunks: Buffer[];
+}): BufferedHttpResponse {
+  const bytes = Buffer.concat(captured.chunks);
+  return {
+    status: captured.statusCode || 200,
+    statusText: statusTextForCode(captured.statusCode || 200),
+    headers: captured.headers,
+    body: bytes.toString("utf8"),
+    bodyBase64: bytes.toString("base64"),
     bodyEncoding: "utf-8",
   };
 }
