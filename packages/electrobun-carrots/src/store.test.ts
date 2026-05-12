@@ -1,0 +1,167 @@
+import { describe, expect, it } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  assertCarrotPayload,
+  CarrotStoreError,
+  ensureCarrotSourceDirectory,
+  getCarrotStorePaths,
+  installPrebuiltCarrot,
+  loadInstalledCarrot,
+  loadInstalledCarrots,
+  readCarrotRegistry,
+  resolveCarrotPathInside,
+  uninstallInstalledCarrot,
+} from "./store.js";
+import type { CarrotManifest } from "./types.js";
+
+function withTempDir<T>(fn: (dir: string) => T): T {
+  const dir = mkdtempSync(join(tmpdir(), "electrobun-carrots-"));
+  try {
+    return fn(dir);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+const manifest: CarrotManifest = {
+  id: "bunny.search",
+  name: "Search",
+  version: "1.0.0",
+  description: "Search helper",
+  mode: "window",
+  permissions: {
+    host: { windows: true },
+    bun: { read: true },
+    isolation: "shared-worker",
+  },
+  view: {
+    relativePath: "views/index.html",
+    title: "Search",
+    width: 720,
+    height: 480,
+  },
+  worker: {
+    relativePath: "worker.js",
+  },
+  remoteUIs: {
+    dash: {
+      name: "Dashboard",
+      path: "remote-ui/dash/index.html",
+    },
+  },
+};
+
+function writePayload(
+  dir: string,
+  nextManifest: CarrotManifest = manifest,
+): string {
+  const payloadDir = join(dir, "payload");
+  mkdirSync(join(payloadDir, "views"), { recursive: true });
+  writeFileSync(
+    join(payloadDir, "carrot.json"),
+    JSON.stringify(nextManifest, null, 2),
+    "utf8",
+  );
+  writeFileSync(
+    join(payloadDir, "worker.js"),
+    "globalThis.postMessage({ type: 'ready' });\n",
+    "utf8",
+  );
+  writeFileSync(
+    join(payloadDir, "views", "index.html"),
+    "<main>Search</main>\n",
+    "utf8",
+  );
+  return payloadDir;
+}
+
+describe("carrot store", () => {
+  it("installs a prebuilt carrot and writes a registry", () =>
+    withTempDir((dir) => {
+      const storeRoot = join(dir, "store");
+      const payloadDir = writePayload(dir);
+
+      const installed = installPrebuiltCarrot(storeRoot, payloadDir, {
+        now: () => 1700000000000,
+      });
+
+      expect(installed.manifest.id).toBe("bunny.search");
+      expect(installed.viewUrl).toBe("views://views/index.html");
+      expect(installed.install.permissionsGranted).toEqual({
+        host: { windows: true },
+        bun: { read: true },
+        isolation: "shared-worker",
+      });
+      expect(
+        installed.workerPath.endsWith(".bunny/carrot-bun-entrypoint.mjs"),
+      ).toBe(true);
+
+      const registry = readCarrotRegistry(storeRoot);
+      expect(Object.keys(registry.carrots)).toEqual(["bunny.search"]);
+      expect(registry.carrots["bunny.search"]?.installedAt).toBe(1700000000000);
+    }));
+
+  it("loads installed carrots and preserves the bootstrap context", () =>
+    withTempDir((dir) => {
+      const storeRoot = join(dir, "store");
+      const payloadDir = writePayload(dir);
+      installPrebuiltCarrot(storeRoot, payloadDir, {
+        now: () => 1700000000000,
+      });
+
+      const loaded = loadInstalledCarrot(storeRoot, "bunny.search");
+      expect(loaded?.manifest.remoteUIs?.dash?.path).toBe(
+        "remote-ui/dash/index.html",
+      );
+      expect(loaded?.workerPath).toBe(
+        join(loaded?.currentDir ?? "", ".bunny", "carrot-bun-entrypoint.mjs"),
+      );
+
+      const all = loadInstalledCarrots(storeRoot);
+      expect(all.map((carrot) => carrot.manifest.id)).toEqual(["bunny.search"]);
+    }));
+
+  it("rejects payload paths that escape the carrot root", () =>
+    withTempDir((dir) => {
+      const escapedManifest: CarrotManifest = {
+        ...manifest,
+        worker: { relativePath: "../worker.js" },
+      };
+      const payloadDir = writePayload(dir, escapedManifest);
+
+      expect(() => assertCarrotPayload(payloadDir)).toThrow(CarrotStoreError);
+      expect(() => resolveCarrotPathInside(payloadDir, "../worker.js")).toThrow(
+        CarrotStoreError,
+      );
+    }));
+
+  it("uninstalls a carrot and refreshes the registry", () =>
+    withTempDir((dir) => {
+      const storeRoot = join(dir, "store");
+      const payloadDir = writePayload(dir);
+      installPrebuiltCarrot(storeRoot, payloadDir);
+
+      const removed = uninstallInstalledCarrot(storeRoot, "bunny.search");
+      expect(removed?.id).toBe("bunny.search");
+      expect(readCarrotRegistry(storeRoot).carrots).toEqual({});
+      expect(loadInstalledCarrot(storeRoot, "bunny.search")).toBeNull();
+    }));
+
+  it("recognizes source directories", () =>
+    withTempDir((dir) => {
+      const sourceDir = join(dir, "source");
+      mkdirSync(sourceDir, { recursive: true });
+      writeFileSync(
+        join(sourceDir, "electrobun.config.ts"),
+        "export default {};\n",
+        "utf8",
+      );
+
+      expect(ensureCarrotSourceDirectory(sourceDir)).toBe(sourceDir);
+      expect(getCarrotStorePaths(dir, "bunny.search").installPath).toBe(
+        join(dir, "bunny.search", "install.json"),
+      );
+    }));
+});
