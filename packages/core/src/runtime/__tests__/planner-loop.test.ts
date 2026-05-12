@@ -338,6 +338,67 @@ describe("v5 planner loop skeleton", () => {
 		expect(result.finalMessage).toBe("Final answer.");
 	});
 
+	it("applies the derived per-model reserve when no reserve override is configured", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () => `{
+  "thought": "Done.",
+  "messageToUser": "Final answer.",
+  "toolCalls": []
+}`,
+			),
+		};
+
+		await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			config: {
+				contextWindowModelName: "gpt-oss-120b",
+			},
+		});
+
+		const plannerParams = runtime.useModel.mock.calls[0]?.[1];
+		expect(plannerParams?.providerOptions.eliza.modelInputBudget).toMatchObject(
+			{
+				contextWindowTokens: 131_000,
+				reserveTokens: 26_200,
+				compactionThresholdTokens: 104_800,
+				resolvedModelKey: "gpt-oss-120b",
+			},
+		);
+	});
+
+	it("keeps explicit compactionReserveTokens overrides with a model lookup", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () => `{
+  "thought": "Done.",
+  "messageToUser": "Final answer.",
+  "toolCalls": []
+}`,
+			),
+		};
+
+		await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			config: {
+				contextWindowModelName: "gpt-oss-120b",
+				compactionReserveTokens: 5_000,
+			},
+		});
+
+		const plannerParams = runtime.useModel.mock.calls[0]?.[1];
+		expect(plannerParams?.providerOptions.eliza.modelInputBudget).toMatchObject(
+			{
+				contextWindowTokens: 131_000,
+				reserveTokens: 5_000,
+				compactionThresholdTokens: 126_000,
+				resolvedModelKey: "gpt-oss-120b",
+			},
+		);
+	});
+
 	it("retries premature terminal output when a non-terminal tool call is required", async () => {
 		const runtime = {
 			useModel: vi

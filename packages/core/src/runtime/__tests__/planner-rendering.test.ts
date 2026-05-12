@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { ChatMessage } from "../../types/model";
-import type { PlannerStep } from "../planner-types";
 import {
 	trajectoryStepsToMessages,
 	truncateToolResultText,
 } from "../planner-rendering";
+import type { PlannerStep } from "../planner-types";
 
 /**
  * Build a single completed planner step whose tool-result text is the
@@ -79,6 +79,7 @@ describe("truncateToolResultText (pure)", () => {
 		const input = `${"H".repeat(2_000)}${"M".repeat(20_000)}${"T".repeat(2_000)}`;
 		const out = truncateToolResultText(input, 1_000);
 		expect(out.length).toBeLessThan(input.length);
+		expect(out.length).toBeLessThanOrEqual(1_000);
 		expect(out).toMatch(/chars truncated/);
 		// Head must start with H, tail must end with T — proves we kept
 		// both ends rather than slicing only from one side.
@@ -117,14 +118,18 @@ describe("truncateToolResultText (pure)", () => {
 		expect(headLen / tailLen).toBeLessThanOrEqual(1.6);
 	});
 
-	it("bails out to the original when the input is too small for the head/tail floor to be useful", () => {
-		// The head/tail floor is 10 chars each; with a 15-char input we
-		// have nothing meaningful to drop, so the helper returns the input
-		// unchanged. Better to emit a short raw string than crop below the
-		// readability floor.
+	it("still respects tiny caps that cannot fit a marker", () => {
 		const input = "x".repeat(15);
 		const out = truncateToolResultText(input, 10);
-		expect(out).toBe(input);
+		expect(out).toBe("x".repeat(10));
+		expect(out.length).toBeLessThanOrEqual(10);
+	});
+
+	it("never exceeds maxChars when the truncated-count marker grows digits", () => {
+		const input = "x".repeat(1_000_000);
+		const out = truncateToolResultText(input, 80);
+		expect(out.length).toBeLessThanOrEqual(80);
+		expect(out).toMatch(/chars truncated/);
 	});
 });
 

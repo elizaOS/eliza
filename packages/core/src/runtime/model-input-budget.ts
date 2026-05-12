@@ -87,10 +87,12 @@ export function buildModelInputBudget(args: {
 	promptSegments?: readonly PromptSegment[];
 	tools?: readonly ToolDefinition[];
 	/**
-	 * Explicit ceiling. When set, wins over the per-model lookup and the
-	 * `DEFAULT_CONTEXT_WINDOW_TOKENS` fallback. Pass this when you have a
-	 * provider-side limit that isn't representable in the lookup table
-	 * (e.g. a custom long-context tier).
+	 * Explicit fallback ceiling. Used when `modelName` is unset or misses the
+	 * lookup table, and otherwise superseded by the per-model lookup because
+	 * the lookup reflects the concrete provider-side hard limit.
+	 *
+	 * Pass this without `modelName` when you need to force a custom tier that
+	 * is not representable in the lookup table.
 	 */
 	contextWindowTokens?: number;
 	/**
@@ -161,7 +163,9 @@ export function buildModelInputBudget(args: {
 			: undefined;
 
 	const reserveTokens =
-		explicitReserve ?? derivedReserveFromLookup ?? DEFAULT_COMPACTION_RESERVE_TOKENS;
+		explicitReserve ??
+		derivedReserveFromLookup ??
+		DEFAULT_COMPACTION_RESERVE_TOKENS;
 
 	const compactionThresholdTokens = Math.max(
 		1,

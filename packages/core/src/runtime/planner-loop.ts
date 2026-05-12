@@ -559,6 +559,18 @@ function renderPlannerModelInput(params: {
 	return { messages, promptSegments };
 }
 
+function compactionReserveForBudget(
+	config: ChainingLoopConfig,
+): number | undefined {
+	if (
+		config.contextWindowModelName &&
+		config.compactionReserveTokensExplicit !== true
+	) {
+		return undefined;
+	}
+	return config.compactionReserveTokens;
+}
+
 function normalizePlannerToolName(name: string): string {
 	return name
 		.trim()
@@ -1020,15 +1032,14 @@ async function callPlanner(params: {
 		promptSegments: renderedInput.promptSegments,
 		tools: params.tools,
 		// `modelName` lets the per-model context-window lookup fire when the
-		// caller provides one; otherwise we keep the explicit fallback.
-		// `contextWindowTokens` is only passed when explicitly set on config
-		// so the lookup result can take effect when the caller chose the
-		// looser per-model path.
+		// caller provides one. The lookup is authoritative over the legacy
+		// `contextWindowTokens` default; an explicit reserve only wins when the
+		// caller actually supplied `compactionReserveTokens`.
 		modelName: params.config.contextWindowModelName,
 		...(params.config.contextWindowTokens
 			? { contextWindowTokens: params.config.contextWindowTokens }
 			: {}),
-		reserveTokens: params.config.compactionReserveTokens,
+		reserveTokens: compactionReserveForBudget(params.config),
 	});
 	if (modelInputBudget.shouldCompact && params.config.compactionEnabled) {
 		const compacted = await maybeCompactPlannerTrajectory({
@@ -1057,7 +1068,7 @@ async function callPlanner(params: {
 				...(params.config.contextWindowTokens
 					? { contextWindowTokens: params.config.contextWindowTokens }
 					: {}),
-				reserveTokens: params.config.compactionReserveTokens,
+				reserveTokens: compactionReserveForBudget(params.config),
 			});
 		}
 	}
@@ -1294,7 +1305,7 @@ async function maybeCompactBeforeNextModelCall(args: {
 		...(args.config.contextWindowTokens
 			? { contextWindowTokens: args.config.contextWindowTokens }
 			: {}),
-		reserveTokens: args.config.compactionReserveTokens,
+		reserveTokens: compactionReserveForBudget(args.config),
 	});
 	if (!budget.shouldCompact) {
 		return false;

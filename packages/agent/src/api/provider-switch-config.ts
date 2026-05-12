@@ -438,6 +438,8 @@ const PROVIDER_DEFAULT_MODELS: Record<
 };
 
 /**
+ * @internal Exported for testing only.
+ *
  * True when the active `OPENAI_BASE_URL` points at a non-openai.com host
  * (Cerebras, Groq, OpenRouter, Together, vLLM, LM Studio, an in-house
  * gateway, etc.). The "openai" provider id then represents an OpenAI-API
@@ -457,7 +459,6 @@ const PROVIDER_DEFAULT_MODELS: Record<
  * is "user has to type their model name", which is strictly better than
  * stamping a model the upstream rejects with 404.
  */
-/** @internal Exported for testing only. */
 export function openAiBaseUrlIsThirdParty(): boolean {
   const raw = process.env.OPENAI_BASE_URL?.trim();
   if (!raw) return false;

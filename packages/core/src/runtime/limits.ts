@@ -24,6 +24,13 @@ export interface ChainingLoopConfig {
 	contextWindowModelName?: string;
 	/** Token reserve kept free for model output and provider overhead. */
 	compactionReserveTokens: number;
+	/**
+	 * @internal Tracks whether `compactionReserveTokens` came from the caller
+	 * rather than `DEFAULT_CHAINING_LOOP_CONFIG`. This lets the planner apply
+	 * the per-model derived reserve when only `contextWindowModelName` is set,
+	 * while still preserving explicit reserve overrides.
+	 */
+	compactionReserveTokensExplicit?: boolean;
 	/** Whether the planner may summarize old trajectory steps before replanning. */
 	compactionEnabled: boolean;
 	/** Number of newest completed tool steps kept verbatim after compaction. */
@@ -120,6 +127,9 @@ export function mergeChainingLoopConfig(
 	return {
 		...DEFAULT_CHAINING_LOOP_CONFIG,
 		...config,
+		compactionReserveTokensExplicit:
+			config?.compactionReserveTokens !== undefined ||
+			config?.compactionReserveTokensExplicit === true,
 	};
 }
 

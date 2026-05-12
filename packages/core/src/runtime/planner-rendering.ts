@@ -10,25 +10,6 @@ import {
 } from "./provider-cache-plan";
 
 /**
- * Convert completed trajectory steps into proper assistant/tool message pairs
- * for native tool-calling. Skips steps that lack a toolCall or result (e.g.
- * terminal-only steps). The resulting array grows append-only across planner
- * iterations, which keeps the prefix byte-identical for cache hits.
- *
- * Emits AI SDK v6's `AssistantModelMessage` / `ToolModelMessage` shape — tool
- * calls live inside `content` as `ToolCallPart`, tool results inside `content`
- * as `ToolResultPart`. The legacy OpenAI v0.x shape (`assistant` with a
- * top-level `toolCalls` array + `tool` with `toolCallId`/`name` siblings) is
- * silently ignored by AI SDK v6's message conversion: `AssistantContent` only
- * understands `string | Array<TextPart | FilePart | ReasoningPart |
- * ToolCallPart | ToolResultPart | ToolApprovalRequest>` and has no top-level
- * `toolCalls` field. Emitting the legacy shape leaves the evaluator's
- * downstream model call with no view of the tool history, so the LLM keeps
- * routing CONTINUE under the belief that no tool has been executed yet — the
- * planner-loop then iterates until `TrajectoryLimitExceeded` on every
- * shell-tool turn.
- */
-/**
  * Options for {@link trajectoryStepsToMessages}.
  */
 export interface TrajectoryStepsToMessagesOptions {
@@ -75,26 +56,54 @@ export function truncateToolResultText(
 	if (text.length <= maxChars) {
 		return text;
 	}
-	// 60/40 head/tail split — the head usually carries the most signal
-	// (action confirmation, primary output) while the tail catches summary
-	// lines, exit codes, and trailing error context. The marker accounts
-	// for ~50 chars of overhead so we shave from the actual content limit.
-	const markerSuffixSample = " [0 chars truncated] ";
-	const overhead = markerSuffixSample.length;
-	const usable = Math.max(20, maxChars - overhead);
-	const headChars = Math.max(10, Math.floor(usable * 0.6));
-	const tailChars = Math.max(10, usable - headChars);
-	const truncatedCount = text.length - headChars - tailChars;
-	if (truncatedCount <= 0) {
-		// Numeric edge case: marker overhead pushed the budget below the
-		// raw length. Just return the raw text.
-		return text;
+
+	const limit = Math.floor(maxChars);
+	const markerFor = (count: number) => ` [${count} chars truncated] `;
+
+	for (
+		let preserveBudget = limit - markerFor(text.length).length;
+		preserveBudget > 0;
+		preserveBudget--
+	) {
+		const headFloor = preserveBudget >= 20 ? 10 : 1;
+		const tailFloor = preserveBudget >= 20 ? 10 : preserveBudget > 1 ? 1 : 0;
+		const headChars = Math.max(headFloor, Math.floor(preserveBudget * 0.6));
+		const tailChars = Math.max(tailFloor, preserveBudget - headChars);
+		const preservedChars = headChars + tailChars;
+		const truncatedCount = text.length - preservedChars;
+		if (truncatedCount <= 0) {
+			return text.slice(0, limit);
+		}
+		const marker = markerFor(truncatedCount);
+		if (preservedChars + marker.length <= limit) {
+			const head = text.slice(0, headChars);
+			const tail = text.slice(text.length - tailChars);
+			return `${head}${marker}${tail}`;
+		}
 	}
-	const head = text.slice(0, headChars);
-	const tail = text.slice(text.length - tailChars);
-	return `${head} [${truncatedCount} chars truncated] ${tail}`;
+
+	return text.slice(0, limit);
 }
 
+/**
+ * Convert completed trajectory steps into proper assistant/tool message pairs
+ * for native tool-calling. Skips steps that lack a toolCall or result (e.g.
+ * terminal-only steps). The resulting array grows append-only across planner
+ * iterations, which keeps the prefix byte-identical for cache hits.
+ *
+ * Emits AI SDK v6's `AssistantModelMessage` / `ToolModelMessage` shape — tool
+ * calls live inside `content` as `ToolCallPart`, tool results inside `content`
+ * as `ToolResultPart`. The legacy OpenAI v0.x shape (`assistant` with a
+ * top-level `toolCalls` array + `tool` with `toolCallId`/`name` siblings) is
+ * silently ignored by AI SDK v6's message conversion: `AssistantContent` only
+ * understands `string | Array<TextPart | FilePart | ReasoningPart |
+ * ToolCallPart | ToolResultPart | ToolApprovalRequest>` and has no top-level
+ * `toolCalls` field. Emitting the legacy shape leaves the evaluator's
+ * downstream model call with no view of the tool history, so the LLM keeps
+ * routing CONTINUE under the belief that no tool has been executed yet — the
+ * planner-loop then iterates until `TrajectoryLimitExceeded` on every
+ * shell-tool turn.
+ */
 export function trajectoryStepsToMessages(
 	steps: PlannerStep[],
 	options: TrajectoryStepsToMessagesOptions = {},

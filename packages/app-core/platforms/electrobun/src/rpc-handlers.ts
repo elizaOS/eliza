@@ -14,8 +14,26 @@ import { setAgentReady } from "./agent-ready-state";
 import { postAgentResetFromMain } from "./agent-reset-from-main";
 import { resolveDesktopRuntimeMode } from "./api-base";
 import { showBackgroundNoticeOnce } from "./background-notice";
+import {
+	composeBootProgressSnapshot,
+	readAgentHealthSnapshotViaHttp,
+} from "./boot-progress";
 import { getBrandConfig } from "./brand-config";
 import { postCloudDisconnectFromMain } from "./cloud-disconnect-from-main";
+import {
+	composeAuthMeSnapshot,
+	composeAuthStatusSnapshot,
+	composeConfigSnapshot,
+	readAuthMeViaHttp,
+	readAuthStatusViaHttp,
+	readConfigViaHttp,
+} from "./config-and-auth-rpc";
+import {
+	composeCharacterSnapshot,
+	composeConversationsListSnapshot,
+	readCharacterViaHttp,
+	readConversationsListViaHttp,
+} from "./conversations-and-character-rpc";
 import { desktopHttpRequest } from "./desktop-http-request";
 import { formatRendererDiagnosticLine } from "./diagnostic-format";
 import { getFloatingChatManager } from "./floating-chat-window";
@@ -48,24 +66,6 @@ import {
 } from "./native/steward";
 import { getSwabbleManager } from "./native/swabble";
 import { getTalkModeManager } from "./native/talkmode";
-import {
-	composeBootProgressSnapshot,
-	readAgentHealthSnapshotViaHttp,
-} from "./boot-progress";
-import {
-	composeAuthMeSnapshot,
-	composeAuthStatusSnapshot,
-	composeConfigSnapshot,
-	readAuthMeViaHttp,
-	readAuthStatusViaHttp,
-	readConfigViaHttp,
-} from "./config-and-auth-rpc";
-import {
-	composeCharacterSnapshot,
-	composeConversationsListSnapshot,
-	readCharacterViaHttp,
-	readConversationsListViaHttp,
-} from "./conversations-and-character-rpc";
 import {
 	composeOnboardingOptionsSnapshot,
 	composeOnboardingStatusSnapshot,
@@ -276,11 +276,13 @@ export function buildBunRpcHandlers({
 		 * Bun process (the typed contract stays identical through that
 		 * migration).
 		 */
-		bootProgress: async () =>
-			composeBootProgressSnapshot(
-				agent.getStatus(),
+		bootProgress: async () => {
+			const status = agent.getStatus();
+			return composeBootProgressSnapshot(
+				{ ...status, port: resolveRpcAgentPort(status.port) },
 				readAgentHealthSnapshotViaHttp,
-			),
+			);
+		},
 		/**
 		 * Typed counterpart to renderer `client.getOnboardingStatus()` —
 		 * the polling-backend startup phase calls this. See
