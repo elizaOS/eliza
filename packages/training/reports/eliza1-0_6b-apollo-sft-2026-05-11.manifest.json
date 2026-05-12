@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "produced_by": "SFT-0.6b agent (eliza-1 wave, 2026-05-11)",
+  "tier": "eliza-1-0_6b",
+  "registry_key": "qwen3-0.6b",
+  "base_model": "Qwen/Qwen3-0.6B",
+  "optimizer": "apollo_mini",
+  "run_name": "eliza-1-0_6b-apollo-1778551769",
+  "run_kind": "test-sft (smoke slice, 8000 samples, 1 epoch)",
+  "eval_loss": 1.315,
+  "verdict": "conditional-go",
+  "verdict_note": "Beats baseline on every measured metric, regresses none (format_ok 0.0857->0.20, reply parse-errors 8->0, claude_distill format 27.3%->63.6%, gen tps +33%). Does NOT clear the absolute format_ok publish floor (smoke 0.5 / full 0.7) which is calibrated for a full-corpus fine-tune. PUBLISH must block defaultEligible until a full-corpus run lands a green format_ok gate; stage as a candidate revision only meanwhile.",
+  "artifacts": {
+    "hf_checkpoint": {
+      "path": "/home/shaw/milady/eliza/packages/training/checkpoints/eliza-1-0_6b-apollo-1778551769/final",
+      "model_safetensors_sha256": "5c68fe1f37c2222f2fcbc10a969ded065dedd8b3448f362fd27b2d5b7578df36",
+      "size_bytes": 1192135096
+    },
+    "gguf_q4_k_m": {
+      "path": "/home/shaw/milady/eliza/packages/training/checkpoints/eliza-1-0_6b-apollo-1778551769/final-gguf-q4_k_m/final-Q4_K_M.gguf",
+      "sha256": "0af9edf53beb60bb22b42a9a6f870a9b8b0426d6de3d4461cd1b9fa86f37f04f",
+      "size_bytes": 396704416,
+      "scheme": "Q4_K_M",
+      "smoke_load": "llama-cli timed out at 180s on the build host (slow box; not a conversion failure)"
+    },
+    "eliza1_sidecar_bundle": {
+      "path": "/home/shaw/milady/eliza/packages/training/checkpoints/eliza-1-0_6b-apollo-1778515903/milady-optimized-gpu",
+      "manifest": "/home/shaw/milady/eliza/packages/training/checkpoints/eliza-1-0_6b-apollo-1778515903/milady-optimized-gpu/gguf/milady_manifest.json",
+      "gguf": "final-milady-Q4_POLAR.gguf",
+      "ggml_types": { "weights": "Q4_POLAR=47", "k_cache": "QJL1_256=46", "v_cache": "TBQ3_0=43" },
+      "caveat": "Built from the EARLIER 1778515903 checkpoint, not the eval_loss-1.315 1778551769/final weights. PUBLISH should re-run scripts/quantization/gguf_eliza1_apply.py against 1778551769/final before publishing so the bundle matches the canonical weights."
+    },
+    "benchmarks": {
+      "dir": "/home/shaw/milady/eliza/packages/training/benchmarks/eliza-1-0_6b-apollo-1778551769",
+      "pipeline_summary": "/home/shaw/milady/eliza/packages/training/benchmarks/eliza-1-0_6b-apollo-1778551769/pipeline-summary.json",
+      "base": "/home/shaw/milady/eliza/packages/training/benchmarks/eliza-1-0_6b-apollo-1778551769/base",
+      "finetuned": "/home/shaw/milady/eliza/packages/training/benchmarks/eliza-1-0_6b-apollo-1778551769/finetuned",
+      "gate_report": "/home/shaw/milady/eliza/packages/training/checkpoints/eliza-1-0_6b-apollo-1778551769/gate_report.json",
+      "evals_aggregate": "/home/shaw/milady/eliza/packages/training/checkpoints/eliza-1-0_6b-apollo-1778551769/evals/aggregate.json"
+    }
+  },
+  "benchmark_table": {
+    "metrics": {
+      "eval_format_ok":            { "base": 0.0857, "finetuned": 0.20, "higher_is_better": true },
+      "claude_distill_format_pct": { "base": 27.27,  "finetuned": 63.64, "unit": "percent", "higher_is_better": true },
+      "claude_distill_has_think_close_pct": { "base": 27.27, "finetuned": 63.64, "unit": "percent", "higher_is_better": true },
+      "reply_parse_errors_of_12":  { "base": 8, "finetuned": 0, "higher_is_better": false },
+      "message_handler_parse_errors_of_12": { "base": 3, "finetuned": 1, "higher_is_better": false },
+      "message_handler_content_pct": { "base": 100.0, "finetuned": 100.0, "unit": "percent" },
+      "gen_tokens_per_sec":        { "base": 68.47, "finetuned": 90.85, "higher_is_better": true },
+      "avg_gen_len_tokens":        { "base": 297.1, "finetuned": 194.1 },
+      "eval_loss":                 { "base": null, "finetuned": 1.315, "higher_is_better": false }
+    },
+    "note": "Smoke-corpus eval (data/final/test.jsonl, max 12/bucket, 35 examples). Absolute values are low because the structural gates expect a full-corpus fine-tune (~0.95 parsable-format target). The relative deltas are the signal."
+  },
+  "nebius_resume_command": "NEBIUS_PROJECT_ID=project-e00kfz6cpr00q21z892vec HUGGING_FACE_HUB_TOKEN=<hf-token> REGISTRY_KEY=qwen3-0.6b bash packages/training/scripts/cloud/run-on-cloud.sh --provider nebius --task train --gpu h200 --tier 0_6b --yes-i-will-pay",
+  "drafter_restamp": "n/a — eliza-1-0_6b has no DFlash drafter (no smaller-than-itself Qwen3 base); the dflash-draft.target_checkpoint_sha256 coordination applies to 1.7b+ tiers only."
+}
