@@ -282,19 +282,34 @@ _RELEASE_FINAL_FLAGS_ALL: Final[tuple[str, ...]] = (
 _RELEASE_FINAL_FLAGS_BASE_V1: Final[tuple[str, ...]] = tuple(
     f for f in _RELEASE_FINAL_FLAGS_ALL if f != "weights"
 )
+_WEIGHT_PAYLOAD_DIRS: Final[frozenset[str]] = frozenset(
+    {"text", "tts", "asr", "vad", "vision", "dflash", "embedding", "wakeword"}
+)
 
 
 def release_status_blockers(
     bundle_root: Path, plan: Mapping[str, TierGgufPlan]
 ) -> dict[str, list[str]]:
     blockers: dict[str, list[str]] = {}
-    for tier in plan:
+    for tier, tier_plan in plan.items():
         plain_root = bundle_root / f"eliza-1-{tier}"
         bundle_root_candidate = bundle_root / f"eliza-1-{tier}.bundle"
         root = bundle_root_candidate if bundle_root_candidate.exists() else plain_root
         evidence_path = root / "evidence" / "release.json"
         tier_blockers: list[str] = []
-        if evidence_path.is_file():
+        if not bundle_root_candidate.exists() and not plain_root.exists():
+            tier_blockers.append(
+                "`bundle`: missing canonical local bundle "
+                f"`{bundle_root_candidate.name}` or `{plain_root.name}`; "
+                "final payloads, checksums, license evidence, and HF upload "
+                "evidence cannot be verified"
+            )
+        if not evidence_path.is_file():
+            tier_blockers.append(
+                "`evidence/release.json`: missing; release state, final flags, "
+                "source models, and HF upload evidence are not proven"
+            )
+        else:
             try:
                 evidence = json.loads(evidence_path.read_text())
             except json.JSONDecodeError as exc:
@@ -312,6 +327,32 @@ def release_status_blockers(
                     tier_blockers.append(
                         "`evidence/release.json`: publishEligible is not true"
                     )
+                if evidence.get("checksumManifest") != "checksums/SHA256SUMS":
+                    tier_blockers.append(
+                        "`evidence/release.json`: checksumManifest is not "
+                        "`checksums/SHA256SUMS`"
+                    )
+                weights = evidence.get("weights")
+                if not isinstance(weights, list) or not all(
+                    isinstance(p, str) for p in weights
+                ):
+                    tier_blockers.append(
+                        "`evidence/release.json`: weights must list final "
+                        "bundle-relative payload paths"
+                    )
+                else:
+                    weights_set = set(weights)
+                    required_weight_paths = {
+                        rel
+                        for rel in tier_plan.required_files
+                        if rel.split("/", 1)[0] in _WEIGHT_PAYLOAD_DIRS
+                    }
+                    missing_weight_paths = sorted(required_weight_paths - weights_set)
+                    if missing_weight_paths:
+                        tier_blockers.append(
+                            "`evidence/release.json`: weights missing final "
+                            f"payload path(s): {missing_weight_paths}"
+                        )
                 if release_state == "base-v1":
                     finetuned = evidence.get("finetuned")
                     if finetuned is not False:
@@ -319,9 +360,9 @@ def release_status_blockers(
                             "`evidence/release.json`: releaseState is `base-v1` "
                             "but `finetuned` is not false"
                         )
-                    if not isinstance(evidence.get("sourceModels"), dict) or not evidence.get(
-                        "sourceModels"
-                    ):
+                    if not isinstance(
+                        evidence.get("sourceModels"), dict
+                    ) or not evidence.get("sourceModels"):
                         tier_blockers.append(
                             "`evidence/release.json`: base-v1 release missing `sourceModels`"
                         )
@@ -341,10 +382,43 @@ def release_status_blockers(
                     tier_blockers.append("`evidence/release.json`: final object missing")
                 hf = evidence.get("hf")
                 upload = hf.get("uploadEvidence") if isinstance(hf, dict) else None
-                if release_state == "final" and not isinstance(upload, dict):
+                if not isinstance(hf, dict):
+                    tier_blockers.append("`evidence/release.json`: hf object missing")
+                else:
+                    if hf.get("repoId") != f"elizaos/eliza-1-{tier}":
+                        tier_blockers.append(
+                            "`evidence/release.json`: hf.repoId is not "
+                            f"`elizaos/eliza-1-{tier}`"
+                        )
+                    if hf.get("status") != "uploaded":
+                        tier_blockers.append(
+                            "`evidence/release.json`: hf.status is not `uploaded`; "
+                            "final Hugging Face payload upload is not proven"
+                        )
+                if not isinstance(upload, dict):
                     tier_blockers.append(
-                        "`evidence/release.json`: final release missing hf.uploadEvidence"
+                        "`evidence/release.json`: hf.uploadEvidence missing; "
+                        "final Hugging Face commit/url/uploaded paths are not proven"
                     )
+                else:
+                    if upload.get("repoId") != f"elizaos/eliza-1-{tier}":
+                        tier_blockers.append(
+                            "`evidence/release.json`: hf.uploadEvidence.repoId is not "
+                            f"`elizaos/eliza-1-{tier}`"
+                        )
+                    for key in ("commit", "url"):
+                        if not isinstance(upload.get(key), str) or not upload.get(key):
+                            tier_blockers.append(
+                                f"`evidence/release.json`: hf.uploadEvidence.{key} missing"
+                            )
+                    uploaded_paths = upload.get("uploadedPaths")
+                    if not isinstance(uploaded_paths, list) or not all(
+                        isinstance(p, str) for p in uploaded_paths
+                    ):
+                        tier_blockers.append(
+                            "`evidence/release.json`: hf.uploadEvidence.uploadedPaths "
+                            "must list uploaded bundle paths"
+                        )
         blockers[tier] = sorted(set(tier_blockers))
     return blockers
 
@@ -372,6 +446,10 @@ def render_readiness(
         "Legacy bundles may additionally carry the ONNX fallback "
         "`vad/silero-vad-int8.onnx`, but the fallback is not the release "
         "readiness path.",
+        "- Canonical small text tiers are Qwen3.5 0.6B (`0_8b`) and "
+        "Qwen3.5 1.7B (`2b`). ASR and embedding are real Qwen3 upstream "
+        "exceptions: Qwen3-ASR and Qwen3-Embedding artifacts must stay "
+        "Qwen3, not be renamed to Qwen3.5.",
         "- v1 release shape (`releaseState=base-v1`): the upstream BASE models "
         "— GGUF-converted via the elizaOS/llama.cpp fork and fully "
         "Eliza-optimized (every quant/kernel trick in `packages/inference/AGENTS.md` "
@@ -389,6 +467,10 @@ def render_readiness(
         "licenses, platform reports, and Hugging Face upload records — and "
         "real GGUF/quant-sidecar bytes from a real fork build. Fabricated "
         "hashes / not-yet-built tiers are blockers.",
+        "- No-larp release readiness requires canonical local bundle names, "
+        "real `checksums/SHA256SUMS`, real license evidence, and "
+        "`hf.status=uploaded` with `hf.uploadEvidence` commit/url/uploaded paths. "
+        "`pending-upload` or blocked local evidence is not release-ready.",
         "",
     ]
 

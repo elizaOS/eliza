@@ -6,9 +6,15 @@ import { runBench } from "../runner.ts";
 import { evaluateGates, aggregate, DEFAULT_GATES } from "../gates.ts";
 
 describe("scenarios", () => {
-  it("emits the canonical 6 scenarios", () => {
+  it("emits the canonical scenario set", () => {
     const built = buildScenarios();
     expect(built.map((b) => b.scenario.id)).toEqual([...SCENARIO_IDS]);
+  });
+
+  it("includes the false-end-of-speech and barge-in-mid-response rollback scenarios", () => {
+    const ids = buildScenarios().map((b) => b.scenario.id);
+    expect(ids).toContain("false-end-of-speech");
+    expect(ids).toContain("barge-in-mid-response");
   });
 
   for (const id of SCENARIO_IDS) {
@@ -25,10 +31,18 @@ describe("scenarios", () => {
       const m = collector.finalize(result);
       expect(m.ttfaMs).toBeGreaterThan(0);
       expect(m.speechEndToFirstAudioMs).toBeGreaterThan(0);
-      if (id === "barge-in") {
+      if (id === "barge-in" || id === "barge-in-mid-response") {
         expect(m.bargeInResponseMs).toBeDefined();
         expect(m.bargeInResponseMs!).toBeGreaterThan(0);
         expect(m.bargeInResponseMs!).toBeLessThan(250);
+        // Rollback-drop event fired by the mock driver on barge-in.
+        expect(m.rollbackCount).toBeGreaterThanOrEqual(1);
+        expect(m.rollbackWasteTokens).toBeGreaterThan(0);
+      }
+      if (id === "false-end-of-speech") {
+        // Mock driver emits a rollback-drop for the mid-clause pause.
+        expect(m.rollbackCount).toBeGreaterThanOrEqual(1);
+        expect(m.rollbackWasteTokens).toBeGreaterThan(0);
       }
     });
   }
@@ -82,6 +96,8 @@ describe("gates", () => {
         falseBargeInCount: 0,
         draftTokensTotal: 10,
         draftTokensWasted: 1,
+        rollbackCount: 0,
+        rollbackWasteTokens: 0,
         peakRssMb: 100,
         peakCpuPct: 50,
       },
@@ -93,6 +109,8 @@ describe("gates", () => {
         falseBargeInCount: 0,
         draftTokensTotal: 10,
         draftTokensWasted: 2,
+        rollbackCount: 0,
+        rollbackWasteTokens: 0,
         peakRssMb: 100,
         peakCpuPct: 50,
       },
@@ -122,9 +140,12 @@ describe("gates", () => {
       driver: new MockPipelineDriver(),
       bundleId: "baseline",
     });
-    // Simulate a 100% regression — ttfa doubled.
+    // Simulate a 100%+ regression — ttfa doubled vs the default mock.
+    // Mock driver defaults to firstAcceptMs=35, ttsFirstPcmMs=12, so doubling
+    // pushes the slow run well over the +50% fail threshold while keeping
+    // the test fast.
     const slow = await runBench({
-      driver: new MockPipelineDriver({ firstAcceptMs: 1500, ttsFirstPcmMs: 800 }),
+      driver: new MockPipelineDriver({ firstAcceptMs: 150, ttsFirstPcmMs: 80 }),
       bundleId: "slow",
     });
     const report = evaluateGates({

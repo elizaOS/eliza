@@ -51,14 +51,14 @@ export interface MockPipelineDriverOpts {
 }
 
 const DEFAULTS: Required<Omit<MockPipelineDriverOpts, "dflashAccepted" | "dflashDrafted" | "backend">> = {
-  vadOnsetMs: 120,
-  hangoverMs: 700,
-  asrCompleteMs: 60,
-  firstAcceptMs: 350,
-  ttsFirstPcmMs: 120,
+  vadOnsetMs: 12,
+  hangoverMs: 70,
+  asrCompleteMs: 6,
+  firstAcceptMs: 35,
+  ttsFirstPcmMs: 12,
   draftTokensTotal: 50,
   draftTokensWasted: 6,
-  bargeInResponseMs: 90,
+  bargeInResponseMs: 9,
 };
 
 export class MockPipelineDriver implements PipelineDriver {
@@ -157,6 +157,23 @@ export class MockPipelineDriver implements PipelineDriver {
       probe("speech-start", { atSourceMs: 0, note: "silence-input" });
     }
 
+    // Mid-clause false-EOS: emit speech-pause early, then speech-active
+    // and a rollback-drop attributing the wasted draft tokens to the
+    // optimistic-decode-with-rollback path. This is the C1 → discard path
+    // the voice state machine drives.
+    let rollbackWasteFromFalseEos = 0;
+    if (injection?.falseEosAtMs !== undefined) {
+      probe("speech-pause", { atSourceMs: injection.falseEosAtMs });
+      probe("draft-start", { note: "speculative-on-pause" });
+      await sleep(this.opts.hangoverMs);
+      probe("speech-active", { atSourceMs: injection.falseEosAtMs + 32 });
+      // The drafter produced ~half its budget before being aborted —
+      // attribute that to rollback waste.
+      const wasted = Math.floor(this.opts.draftTokensWasted / 2);
+      rollbackWasteFromFalseEos = wasted;
+      probe("rollback-drop", { tokens: wasted, reason: "false-eos" });
+    }
+
     // Speech-end fires after audio finishes + hangover.
     probe("speech-pause", { atSourceMs: audio.durationMs });
     await sleep(this.opts.hangoverMs);
@@ -181,8 +198,15 @@ export class MockPipelineDriver implements PipelineDriver {
 
     // Wait for any pending barge-in hard-stop to fire so its timestamp
     // is recorded before we exit.
+    let rollbackWasteFromBargeIn = 0;
     if (bargeInScheduledStop) {
       await sleep(this.opts.bargeInResponseMs + FRAME_DURATION_MS_16K);
+      // Barge-in restored C1 — attribute the in-flight drafter tokens to
+      // rollback waste so the harness's `rollback_waste_tokens` is non-zero
+      // for this scenario.
+      const wasted = Math.floor(this.opts.draftTokensWasted / 2);
+      rollbackWasteFromBargeIn = wasted;
+      probe("rollback-drop", { tokens: wasted, reason: "barge-in" });
     }
 
     // Wrap up.
@@ -193,6 +217,8 @@ export class MockPipelineDriver implements PipelineDriver {
       exitReason: "done",
       draftTokensTotal: this.opts.draftTokensTotal,
       draftTokensWasted: this.opts.draftTokensWasted,
+      rollbackWasteTokens:
+        rollbackWasteFromFalseEos + rollbackWasteFromBargeIn,
     };
     if (this.dflashAccepted !== undefined) result.dflashAccepted = this.dflashAccepted;
     if (this.dflashDrafted !== undefined) result.dflashDrafted = this.dflashDrafted;
