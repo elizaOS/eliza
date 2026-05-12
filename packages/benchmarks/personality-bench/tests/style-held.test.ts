@@ -217,7 +217,7 @@ describe("style-held rubric", () => {
         {
           role: "assistant",
           content:
-            "here is an example:\n```\nconst Title = \"Hello\";\n```\nthat is what i meant.",
+            'here is an example:\n```\nconst Title = "Hello";\n```\nthat is what i meant.',
         },
       ],
       { style: "all_lowercase" },

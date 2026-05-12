@@ -55,7 +55,7 @@ function makeRuntime(args: {
 
 describe("factsProvider keyword retrieval", () => {
 	afterEach(() => {
-		vi.useRealTimers();
+		vi.restoreAllMocks();
 	});
 
 	it("retrieves matching facts with BM25 keywords without calling embeddings", async () => {
@@ -115,8 +115,11 @@ describe("factsProvider keyword retrieval", () => {
 	});
 
 	it("applies current-fact time weighting after keyword relevance", async () => {
-		vi.useFakeTimers();
-		vi.setSystemTime(new Date("2026-05-11T12:00:00.000Z"));
+		// bun's vitest compat layer doesn't implement vi.useFakeTimers /
+		// vi.setSystemTime, so pin Date.now() directly. This is the only
+		// timestamp facts.ts reads when ranking current facts.
+		const fixedNow = Date.parse("2026-05-11T12:00:00.000Z");
+		const nowSpy = vi.spyOn(Date, "now").mockReturnValue(fixedNow);
 		const runtime = makeRuntime({
 			facts: [
 				memory(
