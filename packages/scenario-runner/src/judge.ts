@@ -52,16 +52,16 @@ function extractBalancedJsonObject(raw: string): string | null {
 
   let depth = 0;
   let inString = false;
-  let escape = false;
+  let escaped = false;
 
   for (let i = start; i < raw.length; i += 1) {
     const ch = raw[i];
-    if (escape) {
-      escape = false;
+    if (escaped) {
+      escaped = false;
       continue;
     }
     if (ch === "\\" && inString) {
-      escape = true;
+      escaped = true;
       continue;
     }
     if (ch === '"') {

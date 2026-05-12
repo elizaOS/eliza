@@ -152,8 +152,10 @@ function parsePositiveInteger(value, label) {
   return parsed;
 }
 
+const ANSI_ESCAPE_RE = new RegExp(`${String.fromCharCode(27)}\\[[0-9;?]*[ -/]*[@-~]`, "g");
+
 function stripAnsi(value) {
-  return value.replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "");
+  return value.replace(ANSI_ESCAPE_RE, "");
 }
 
 function timestamp() {

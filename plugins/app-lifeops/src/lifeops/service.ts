@@ -90,6 +90,7 @@ class LifeOpsServiceComposed extends LIFEOPS_COMPOSED {}
 export class LifeOpsService extends LifeOpsServiceComposed {}
 
 /** Declared explicitly: mixin composition exceeds TypeScript inference depth. */
+// biome-ignore lint/suspicious/noUnsafeDeclarationMerging: intentional class+interface merge to surface mixin methods past TS inference depth
 export interface LifeOpsService {
   processScheduledWork(request?: {
     now?: string;

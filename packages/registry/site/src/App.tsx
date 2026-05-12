@@ -12,7 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type RegistryKind = "app" | "connector" | "plugin";
 type RegistryOrigin = "builtin" | "third-party";
@@ -269,7 +269,7 @@ const App = () => {
   const [origin, setOrigin] = useState<"all" | RegistryOrigin>("all");
   const [kind, setKind] = useState<"all" | RegistryKind>("all");
 
-  const fetchRegistry = async () => {
+  const fetchRegistry = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -286,11 +286,11 @@ const App = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchRegistry();
-  }, []);
+  }, [fetchRegistry]);
 
   const items = useMemo<RegistryItem[]>(() => {
     if (!data) {

@@ -127,16 +127,16 @@ function extractToolsManifest(messageText) {
   // Find the matching closing brace by walking forward.
   let depth = 0;
   let inString = false;
-  let escape = false;
+  let escaped = false;
   let end = -1;
   for (let i = braceStart; i < messageText.length; i += 1) {
     const ch = messageText[i];
-    if (escape) {
-      escape = false;
+    if (escaped) {
+      escaped = false;
       continue;
     }
     if (ch === "\\") {
-      escape = true;
+      escaped = true;
       continue;
     }
     if (ch === '"') {

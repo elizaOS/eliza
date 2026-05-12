@@ -4,12 +4,12 @@ type SuiteCallback = () => void | Promise<void>;
 type TestCallback = () => void | Promise<void>;
 
 type DescribeGate = (
-  name: string | Function,
+  name: string,
   fn: SuiteCallback,
 ) => ReturnType<typeof describe>;
 
 type TestGate = (
-  name: string | Function,
+  name: string,
   fn: TestCallback,
   timeout?: number,
 ) => ReturnType<typeof it>;
