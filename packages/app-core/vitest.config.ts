@@ -62,6 +62,10 @@ const pluginStreamingSrc = path.join(
   monorepoRoot,
   "plugins/plugin-streaming/src",
 );
+const pluginLocalEmbeddingSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-local-embedding/src",
+);
 const pluginWhatsappRoot = path.join(monorepoRoot, "plugins/plugin-whatsapp");
 const pluginAgentOrchestratorSrc = path.join(
   monorepoRoot,
@@ -281,6 +285,10 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-local-inference$/,
         replacement: path.join(pluginLocalInferenceSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-local-embedding$/,
+        replacement: path.join(pluginLocalEmbeddingSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/plugin-mcp$/,

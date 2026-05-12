@@ -39,13 +39,13 @@ type MockOptions = {
 
 function eliza1MobileManifest(): Record<string, unknown> {
   return {
-    id: "eliza-1-4b",
+    id: "eliza-1-2b",
     version: "1.0.0",
     defaultEligible: true,
     files: {
       text: [
         {
-          path: "text/eliza-1-4b-64k.gguf",
+          path: "text/eliza-1-2b-32k.gguf",
           sha256: "0".repeat(64),
           ctx: 32768,
         },
@@ -65,14 +65,14 @@ function eliza1MobileManifest(): Record<string, unknown> {
       vision: [],
       dflash: [
         {
-          path: "dflash/drafter-4b.gguf",
+          path: "dflash/drafter-2b.gguf",
           sha256: "0".repeat(64),
           ctx: 32768,
         },
       ],
       cache: [
         {
-          path: "cache/eliza-1-4b.kvcache",
+          path: "cache/eliza-1-2b.kvcache",
           sha256: "0".repeat(64),
         },
       ],
@@ -300,19 +300,19 @@ describe("iOS local-agent local inference flow", () => {
 
     expect(reply.localInference).toMatchObject({
       status: "downloading",
-      modelId: "eliza-1-4b",
+      modelId: "eliza-1-2b",
     });
     expect(reply.text.toLowerCase()).toContain("downloading");
 
     await eventually(() => {
       const filenames = downloadModel.mock.calls.map((call) => call[1]);
-      expect(filenames).toContain("eliza-1-4b.manifest.json");
-      expect(filenames).toContain("eliza-1-4b-64k.gguf");
+      expect(filenames).toContain("eliza-1-2b.manifest.json");
+      expect(filenames).toContain("eliza-1-2b-32k.gguf");
       expect(mockState.hashFile).toHaveBeenCalledWith(
-        "/models/eliza-1-4b.manifest.json",
+        "/models/eliza-1-2b.manifest.json",
       );
       expect(mockState.hashFile).toHaveBeenCalledWith(
-        "/models/eliza-1-4b-64k.gguf",
+        "/models/eliza-1-2b-32k.gguf",
       );
     });
   }, 30_000);
@@ -337,7 +337,7 @@ describe("iOS local-agent local inference flow", () => {
     expect(greeting.text.toLowerCase()).toContain("downloading");
     expect(greeting.localInference).toMatchObject({
       status: "downloading",
-      modelId: "eliza-1-4b",
+      modelId: "eliza-1-2b",
     });
   });
 
@@ -352,13 +352,13 @@ describe("iOS local-agent local inference flow", () => {
     });
 
     await jsonRequest(kernel, "POST", "/api/local-inference/downloads", {
-      modelId: "eliza-1-4b",
+      modelId: "eliza-1-2b",
     });
 
     await eventually(async () => {
       const response = await kernel.handleIosLocalAgentRequest(
         new Request(
-          "http://127.0.0.1:31337/api/local-inference/downloads/eliza-1-4b",
+          "http://127.0.0.1:31337/api/local-inference/downloads/eliza-1-2b",
         ),
       );
       const payload = (await response.json()) as {
@@ -394,7 +394,7 @@ describe("iOS local-agent local inference flow", () => {
 
     expect(reply.localInference).toMatchObject({
       status: "downloading",
-      modelId: "eliza-1-4b",
+      modelId: "eliza-1-2b",
     });
   });
 
@@ -404,20 +404,20 @@ describe("iOS local-agent local inference flow", () => {
       load,
       availableModels: [
         {
-          name: "eliza-1-4b-64k.gguf",
-          path: "/models/eliza-1-4b-64k.gguf",
+          name: "eliza-1-2b-32k.gguf",
+          path: "/models/eliza-1-2b-32k.gguf",
           size: 1_200_000_000,
         },
       ],
     });
 
     await jsonRequest(kernel, "POST", "/api/local-inference/active", {
-      modelId: "eliza-1-4b",
+      modelId: "eliza-1-2b",
     });
 
     expect(load).toHaveBeenCalledWith(
       expect.objectContaining({
-        modelPath: "/models/eliza-1-4b-64k.gguf",
+        modelPath: "/models/eliza-1-2b-32k.gguf",
         contextSize: 6144,
         maxThreads: 6,
         useGpu: true,
@@ -435,20 +435,20 @@ describe("iOS local-agent local inference flow", () => {
       },
       availableModels: [
         {
-          name: "eliza-1-4b-64k.gguf",
-          path: "/models/eliza-1-4b-64k.gguf",
+          name: "eliza-1-2b-32k.gguf",
+          path: "/models/eliza-1-2b-32k.gguf",
           size: 1_200_000_000,
         },
       ],
     });
 
     await jsonRequest(kernel, "POST", "/api/local-inference/active", {
-      modelId: "eliza-1-4b",
+      modelId: "eliza-1-2b",
     });
 
     expect(load).toHaveBeenCalledWith(
       expect.objectContaining({
-        modelPath: "/models/eliza-1-4b-64k.gguf",
+        modelPath: "/models/eliza-1-2b-32k.gguf",
         useGpu: true,
       }),
     );

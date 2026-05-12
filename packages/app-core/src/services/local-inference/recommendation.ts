@@ -483,9 +483,10 @@ export type BundleDefaultEligibility =
  *    (`InstalledModel.bundleVerifiedAt` is set) — a materialized-but-unverified
  *    bundle is never auto-selected, per AGENTS.md §7.
  *
- * `manifest.defaultEligible: true` is required — the publisher must explicitly
- * mark the bundle as eligible. The recommender prefers a strict release over a
- * candidate when both are installed and `defaultEligible: true`.
+ * `manifest.defaultEligible: true` is NOT required at the gate level — a
+ * `base-v1-candidate` bundle that passes every above condition is allowed
+ * to fill an empty default slot. The recommender prefers a strict release
+ * (`defaultEligible: true`) over a candidate when both are installed.
  */
 export function canBundleBeDefaultOnDevice(
   installed: InstalledModel,
@@ -506,13 +507,6 @@ export function canBundleBeDefaultOnDevice(
       canBeDefault: false,
       reason: "not-verified-on-device",
       detail: `${installed.id}: bundle materialized but the on-device verify pass (load → 1-token text → 1-phrase voice → barge-in) has not run`,
-    };
-  }
-  if (!manifest.defaultEligible) {
-    return {
-      canBeDefault: false,
-      reason: "not-default-eligible",
-      detail: `${installed.id}: manifest.defaultEligible is false`,
     };
   }
   const caps = deviceCapsFromProbe(hardware);
