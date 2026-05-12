@@ -121,11 +121,7 @@ interface OmnivoiceFFIFunctions {
   ov_init: (paramsPtr: bigint) => bigint;
   ov_free: (ctx: bigint) => void;
   ov_tts_default_params: (paramsPtr: bigint) => void;
-  ov_synthesize: (
-    ctx: bigint,
-    paramsPtr: bigint,
-    audioPtr: bigint,
-  ) => number;
+  ov_synthesize: (ctx: bigint, paramsPtr: bigint, audioPtr: bigint) => number;
   ov_audio_free: (audioPtr: bigint) => void;
 }
 
@@ -264,12 +260,14 @@ export class OmnivoiceContext {
   private constructor(
     private readonly handle: OmnivoiceLibHandle,
     private readonly ctx: bigint,
-    private readonly options: OmnivoiceContextOptions,
+    readonly _options: OmnivoiceContextOptions,
     /** Roots holding C-string buffers alive for the ctx lifetime. */
     private readonly retained: ArrayBufferView[],
   ) {}
 
-  static async open(options: OmnivoiceContextOptions): Promise<OmnivoiceContext> {
+  static async open(
+    options: OmnivoiceContextOptions,
+  ): Promise<OmnivoiceContext> {
     if (!options.modelPath || !existsSync(options.modelPath)) {
       throw new OmnivoiceModelMissing("model_path", options.modelPath);
     }
@@ -303,9 +301,8 @@ export class OmnivoiceContext {
       OV_INIT_PARAMS_LAYOUT.fields.codec_path.offset,
       ffi.ptr(codecStr),
     );
-    paramsBuf[OV_INIT_PARAMS_LAYOUT.fields.use_fa.offset] = options.useFa ?? true
-      ? 1
-      : 0;
+    paramsBuf[OV_INIT_PARAMS_LAYOUT.fields.use_fa.offset] =
+      (options.useFa ?? true) ? 1 : 0;
     paramsBuf[OV_INIT_PARAMS_LAYOUT.fields.clamp_fp16.offset] =
       options.clampFp16 ? 1 : 0;
 
@@ -359,7 +356,7 @@ export class OmnivoiceContext {
       ffi: BunFFIModule,
       retain: (buf: ArrayBufferView) => void,
     ) => void,
-    onChunk?: (chunk: OmnivoiceStreamingChunk) => boolean | void,
+    onChunk?: (chunk: OmnivoiceStreamingChunk) => boolean | undefined,
   ): Promise<OmnivoiceSynthesisResult> {
     const { symbols, ffi } = this.handle;
     const paramsBuf = new Uint8Array(OV_TTS_PARAMS_LAYOUT.size);
@@ -408,7 +405,7 @@ export class OmnivoiceContext {
           }
           streamedChunks.push(pcm);
           streamedTotal += pcm.length;
-          let keepGoing: boolean | void;
+          let keepGoing: boolean | undefined;
           try {
             keepGoing = onChunk({ samples: pcm });
           } catch (err) {
@@ -457,7 +454,10 @@ export class OmnivoiceContext {
     }
 
     const audioView = getDataView(audioBuf);
-    const samplesPtr = readPointer(audioView, OV_AUDIO_LAYOUT.fields.samples.offset);
+    const samplesPtr = readPointer(
+      audioView,
+      OV_AUDIO_LAYOUT.fields.samples.offset,
+    );
     const nSamples = audioView.getInt32(
       OV_AUDIO_LAYOUT.fields.n_samples.offset,
       true,

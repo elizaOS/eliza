@@ -17,10 +17,10 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  _internal,
   OV_AUDIO_LAYOUT,
   OV_STATUS_OK,
   OV_TTS_PARAMS_LAYOUT,
-  _internal,
 } from "../src/ffi";
 
 /** Build a fake `bun:ffi`-shaped module + symbols and return both. */
@@ -76,11 +76,12 @@ function makeFakeFfi(opts: {
       return slice;
     },
     CString: class FakeCString {
-      constructor(_addr: bigint) {}
       toString() {
         return "";
       }
-    } as unknown as new (a: bigint) => string,
+    } as unknown as new (
+      a: bigint,
+    ) => string,
     JSCallback: class {
       readonly ptr: bigint;
       closed = false;

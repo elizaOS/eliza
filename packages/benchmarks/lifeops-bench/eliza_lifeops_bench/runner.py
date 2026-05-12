@@ -2152,8 +2152,27 @@ def _u_block(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any
 
     Focus-block sessions are not yet modeled in LifeWorld — every BLOCK_*
     is a read-only no-op for state-hash purposes.
+
+    Kwarg canonicalization (P2-6): agents emit app target under several
+    spellings. Normalize all variants to ``bundle_id`` internally so the
+    scorer can compare consistently regardless of which name was used:
+
+      - ``app_name``   → ``bundle_id``
+      - ``identifier`` → ``bundle_id``
+      - ``name``       → ``bundle_id`` (when not already a bundle-id form)
     """
-    return {"subaction": kw.get("subaction", "block"), "ok": True, "noop": True}
+    # Resolve bundle_id from whichever kwarg spelling the agent chose.
+    bundle_id: str | None = (
+        kw.get("bundle_id")
+        or kw.get("app_name")
+        or kw.get("identifier")
+        or kw.get("name")
+        or None
+    )
+    result: dict[str, Any] = {"subaction": kw.get("subaction", "block"), "ok": True, "noop": True}
+    if bundle_id is not None:
+        result["bundle_id"] = bundle_id
+    return result
 
 
 def _u_scheduled_task_create(

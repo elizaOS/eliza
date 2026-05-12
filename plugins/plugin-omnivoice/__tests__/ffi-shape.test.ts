@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  _internal,
   OV_ABI_VERSION,
   OV_AUDIO_LAYOUT,
   OV_INIT_PARAMS_LAYOUT,
   OV_TTS_PARAMS_LAYOUT,
-  _internal,
 } from "../src/ffi";
 
 describe("plugin-omnivoice FFI shape", () => {
