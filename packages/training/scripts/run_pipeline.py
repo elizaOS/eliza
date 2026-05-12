@@ -109,21 +109,34 @@ def _resolve_eliza1_llama_cpp() -> Path | None:
 
 def _resolve_llama_bench(fork_dir: Path | None) -> Path | None:
     """Find a `llama-bench` binary, preferring the fastest backend available:
-    a CUDA build > the fork's Vulkan build > the stock CPU build > $PATH."""
+    CUDA build > Vulkan build > plain CPU build > $PATH. Globs the per-backend
+    build dirs rather than hard-coding paths so it survives the `milady`↔
+    `eliza1` renames and the in-repo-submodule vs ~/.cache layouts."""
+    import glob
     import shutil
-    cands: list[Path] = []
-    vendor = ROOT / "vendor" / "llama.cpp"
-    cands += [vendor / "build-cuda" / "bin" / "llama-bench"]
-    if fork_dir is not None:
-        cands += [
-            fork_dir / "build-cuda" / "bin" / "llama-bench",
-            fork_dir / "build" / "linux-x64-cuda" / "bin" / "llama-bench",
-            fork_dir / "build" / "linux-x64-vulkan" / "bin" / "llama-bench",
+    pats: list[str] = []
+    for base in (ROOT / "vendor" / "llama.cpp", fork_dir):
+        if base is None:
+            continue
+        pats += [
+            f"{base}/build-cuda/bin/llama-bench",
+            f"{base}/build/bin/llama-bench",
+            f"{base}/build/*cuda*/bin/llama-bench",
+            f"{base}/build/*vulkan*/bin/llama-bench",
+            f"{base}/build/*/bin/llama-bench",
         ]
-    cands += [vendor / "build" / "bin" / "llama-bench"]
-    for c in cands:
-        if c.is_file() and os.access(c, os.X_OK):
-            return c
+    home = str(Path.home())
+    pats += [
+        f"{home}/.cache/eliza-dflash/*-llama-cpp/build-cuda/bin/llama-bench",
+        f"{home}/.cache/eliza-dflash/*-llama-cpp/build/*cuda*/bin/llama-bench",
+        f"{home}/.cache/eliza-dflash/*-llama-cpp/build/*vulkan*/bin/llama-bench",
+        f"{home}/.cache/eliza-dflash/*-llama-cpp/build/bin/llama-bench",
+    ]
+    for pat in pats:
+        for m in sorted(glob.glob(pat)):
+            p = Path(m)
+            if p.is_file() and os.access(p, os.X_OK):
+                return p
     w = shutil.which("llama-bench")
     return Path(w) if w else None
 
