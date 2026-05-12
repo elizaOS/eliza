@@ -470,7 +470,7 @@ export const proposeMeetingTimesAction: Action & {
     "buffer) and returns three available slots by default over the next seven " +
     "days. Also correct for bundled scheduling while traveling or concrete " +
     "reschedule options. " +
-    "STRONG POSITIVE TRIGGERS — route HERE, not to CALENDAR or SCHEDULING_NEGOTIATION: " +
+    "STRONG POSITIVE TRIGGERS — route HERE, not to CALENDAR or PERSONAL_ASSISTANT action=scheduling: " +
     "'propose three times for a sync with a person', 'suggest a few times for " +
     "a partner', 'offer a colleague three 30-minute slots', 'find us three options " +
     "next week', 'give me slots to send to a teammate'. " +
@@ -478,8 +478,8 @@ export const proposeMeetingTimesAction: Action & {
     "DO NOT use this to check the owner's calendar, create a calendar event, " +
     "or view upcoming events — that is CALENDAR. " +
     "DO NOT use this to start a multi-turn scheduling negotiation record — " +
-    "that is SCHEDULING_NEGOTIATION (subaction: start). This action just generates " +
-    "the candidate slots; SCHEDULING_NEGOTIATION tracks the negotiation lifecycle around them.",
+    "that is PERSONAL_ASSISTANT action=scheduling. This action just generates " +
+    "the candidate slots; the scheduling workflow tracks the negotiation lifecycle around them.",
   descriptionCompressed:
     "Propose available meeting slots from the owner's calendar and meeting preferences; not calendar CRUD or negotiation tracking.",
   contexts: ["calendar", "contacts", "tasks"],
@@ -1188,7 +1188,7 @@ function formatProposalSummary(p: {
   return `Proposal ${p.id}: ${p.startAt} → ${p.endAt} by ${p.proposedBy} (status=${p.status})`;
 }
 
-// Internal SCHEDULING_NEGOTIATION lifecycle handler. The surface is delegated
+// Internal scheduling-negotiation lifecycle handler. The surface is delegated
 // to from the registered PERSONAL_ASSISTANT umbrella in owner-surfaces.ts;
 // scheduling negotiations no longer publish a planner-visible Action.
 export async function runSchedulingNegotiationHandler(
@@ -1203,7 +1203,8 @@ export async function runSchedulingNegotiationHandler(
       message,
       state,
       callback,
-      actionName: "SCHEDULING_NEGOTIATION",
+      actionName: "PERSONAL_ASSISTANT",
+      action: "scheduling",
     });
 
     const params =

@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   diffSnapshots,
+  fetchMetricsSnapshot,
   type LlamaServerMetricSnapshot,
   parsePrometheusMetrics,
 } from "./llama-server-metrics";
@@ -24,6 +25,8 @@ llamacpp:kv_cache_used_cells 4
 `;
     const snapshot = parsePrometheusMetrics(body, 1_000);
     expect(snapshot.takenAtMs).toBe(1_000);
+    expect(snapshot.scrapeOk).toBe(true);
+    expect(snapshot.hasGenerationCounters).toBe(true);
     expect(snapshot.promptTokensTotal).toBe(1000);
     expect(snapshot.predictedTokensTotal).toBe(250);
     expect(snapshot.promptTokensProcessedTotal).toBe(600);
@@ -78,8 +81,29 @@ llamacpp:n_drafted_accepted_total 70
 
   it("returns zero counters for an empty body", () => {
     const snapshot = parsePrometheusMetrics("");
+    expect(snapshot.scrapeOk).toBe(true);
+    expect(snapshot.hasGenerationCounters).toBe(false);
     expect(snapshot.promptTokensTotal).toBe(0);
     expect(snapshot.predictedTokensTotal).toBe(0);
+    expect(snapshot.draftedTotal).toBe(0);
+  });
+});
+
+describe("fetchMetricsSnapshot", () => {
+  const originalFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("marks scrape failures so callers do not treat zero counters as evidence", async () => {
+    globalThis.fetch = (async () =>
+      new Response("not found", { status: 404 })) as typeof fetch;
+
+    const snapshot = await fetchMetricsSnapshot("http://127.0.0.1:9999");
+
+    expect(snapshot.scrapeOk).toBe(false);
+    expect(snapshot.hasGenerationCounters).toBe(false);
     expect(snapshot.draftedTotal).toBe(0);
   });
 });

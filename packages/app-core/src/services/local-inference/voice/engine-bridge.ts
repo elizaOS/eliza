@@ -394,9 +394,11 @@ export class FfiOmniVoiceBackend
    * result), so the caller never mistakes a non-streaming build for a
    * streaming one (no fallback sludge — the chunk count is the honest
    * signal). The native side checks `ctx->tts_cancel` (set via
-   * `eliza_inference_cancel_tts`) on top of the `onChunk` return value,
-   * so a barge-in `cancelTts` interrupts the in-flight forward pass even
-   * if the JS callback hasn't been reached yet.
+   * `eliza_inference_cancel_tts`) on top of the `onChunk` return value.
+   * A non-streaming build cannot be interrupted while the native batch
+   * forward pass is inside `ttsSynthesize`; it only observes cancellation
+   * before emitting the body chunk. Barge-in-critical product paths should
+   * require `supportsStreamingTts()`.
    */
   async synthesizeStream(args: {
     phrase: Phrase;

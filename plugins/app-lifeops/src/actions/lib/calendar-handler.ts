@@ -3036,7 +3036,7 @@ function normalizeCalendarAttendees(
 export const calendarAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
-  name: "GOOGLE_CALENDAR",
+  name: "CALENDAR",
   similes: [
     "CALENDAR_ACTION",
     "CHECK_CALENDAR",
@@ -3188,7 +3188,7 @@ export const calendarAction: Action & {
       await callback?.({
         text: payload.text,
         source: "action",
-        action: "GOOGLE_CALENDAR",
+        action: "CALENDAR",
       });
       return payload;
     };

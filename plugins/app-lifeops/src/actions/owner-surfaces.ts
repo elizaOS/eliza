@@ -556,7 +556,6 @@ export const personalAssistantAction: Action = {
   similes: [
     "ASSISTANT",
     "SCHEDULING",
-    "SCHEDULING_NEGOTIATION",
     "SIGN_DOCUMENT",
     "DOCUSIGN",
     // PRD action-catalog aliases. Travel workflows resolve to action=book_travel
