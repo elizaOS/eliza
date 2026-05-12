@@ -59,7 +59,6 @@ import {
   LlamaServerDraftProposer,
   LlamaServerTargetVerifier,
   MissingAsrTranscriber,
-  StreamingTranscriberTokenStreamer,
 } from "./pipeline-impls";
 import { type SchedulerEvents, VoiceScheduler } from "./scheduler";
 import {
@@ -1065,23 +1064,19 @@ export class EngineVoiceBridge {
   }
 
   /**
-   * Resolve the pipeline's ASR backend: a real `StreamingTranscriber`
-   * (fused `eliza_inference_asr_stream_*` streaming decoder when the loaded
-   * build advertises one; else the contract-clean fused-batch interim
-   * `eliza_inference_asr_transcribe` over a sliding window; else the
-   * whisper.cpp legacy interim — all gated on the bundle shipping an `asr/`
-   * region) adapted onto the pipeline's batch token-iterator
-   * (`StreamingTranscriberTokenStreamer`). When no ASR backend is available
-   * the failure is surfaced as a `MissingAsrTranscriber` that throws on
-   * first use — AGENTS.md §3, no silent cloud fallback.
+   * Resolve the pipeline's ASR backend: a live `StreamingTranscriber` —
+   * the fused `eliza_inference_asr_stream_*` decoder when the loaded build
+   * advertises one and the bundle ships an `asr/` region, else the
+   * whisper.cpp interim adapter. The `VoicePipeline` drives it as a batch
+   * (feed the whole utterance, `flush()`, split the transcript into
+   * tokens). When no ASR backend is available the failure is surfaced as a
+   * `MissingAsrTranscriber` that throws on first use — AGENTS.md §3, no
+   * silent cloud fallback.
    */
-  private resolveTranscriber():
-    | StreamingTranscriberTokenStreamer
-    | MissingAsrTranscriber {
+  private resolveTranscriber(): StreamingTranscriber {
     const ctxRef = this.ffiContextRef;
-    let streaming: StreamingTranscriber;
     try {
-      streaming = createStreamingTranscriber({
+      return createStreamingTranscriber({
         ffi: this.ffi,
         getContext: ctxRef ? () => ctxRef.ensure() : undefined,
         asrBundlePresent: this.asrAvailable,
@@ -1093,7 +1088,6 @@ export class EngineVoiceBridge {
       }
       throw err;
     }
-    return new StreamingTranscriberTokenStreamer(streaming);
   }
 
   /** Diagnostic accessor — bundle root the bridge is wired against. */

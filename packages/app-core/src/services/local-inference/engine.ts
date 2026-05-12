@@ -28,7 +28,6 @@ import {
   type Eliza1TierId,
   findCatalogModel,
 } from "./catalog";
-import type { InstalledModel } from "./types";
 import {
   type ConversationHandle,
   conversationRegistry,
@@ -50,6 +49,7 @@ import {
   SessionPool,
 } from "./session-pool";
 import { resolveGrammarForParams } from "./structured-output";
+import type { InstalledModel } from "./types";
 import {
   buildLocalEmbeddingRoute,
   EMBEDDING_FULL_DIM,
@@ -57,7 +57,7 @@ import {
   type LocalEmbeddingRoute,
 } from "./voice/embedding";
 import {
-  EmbeddingServer,
+  type EmbeddingServer,
   embeddingServerForRoute,
 } from "./voice/embedding-server";
 import {

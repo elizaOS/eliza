@@ -5,7 +5,6 @@ import {
   KV_SPILL_MIN_CONTEXT,
   KV_SPILL_VOICE_LATENCY_BUDGET_MS,
   type KvGeometry,
-  type KvRestoreClass,
   KvSpillUnsupportedError,
   planKvSpill,
   residentKvBudgetFromRamBudget,

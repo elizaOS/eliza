@@ -558,7 +558,9 @@ function makeFakeFfi(opts: {
     vadOpen: () => {
       throw new Error("not used");
     },
-    vadProcess: () => 0,
+    vadProcess: () => {
+      throw new Error("not used");
+    },
     vadReset: () => {},
     vadClose: () => {},
     asrStreamSupported: () => opts.streamSupported,

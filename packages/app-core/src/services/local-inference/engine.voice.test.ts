@@ -191,6 +191,20 @@ function fakeFfi(calls: string[]): ElizaInferenceFfi {
       /* no-op */
     },
     setVerifierCallback: () => ({ close: () => {} }),
+    // Native VAD ABI v3 — unused by this test (no working backend).
+    vadSupported: () => false,
+    vadOpen() {
+      throw new Error("not used by this test");
+    },
+    vadProcess() {
+      throw new Error("not used by this test");
+    },
+    vadReset() {
+      /* no-op */
+    },
+    vadClose() {
+      /* no-op */
+    },
     // Streaming ASR ABI v2 — this fake reports no working decoder, so the
     // adapter chain falls through to the whisper.cpp interim path.
     asrStreamSupported: () => false,
