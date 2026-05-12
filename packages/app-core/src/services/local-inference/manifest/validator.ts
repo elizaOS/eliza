@@ -283,9 +283,7 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
   // decoding was actually measured and passed.
   if (!m.evals.dflash) {
     if (m.defaultEligible) {
-      errors.push(
-        "evals.dflash: required when defaultEligible=true",
-      );
+      errors.push("evals.dflash: required when defaultEligible=true");
     }
   } else {
     if (
@@ -299,9 +297,7 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
     }
     if (m.defaultEligible) {
       if (!m.evals.dflash.passed) {
-        errors.push(
-          "evals.dflash.passed: false for defaultEligible manifest",
-        );
+        errors.push("evals.dflash.passed: false for defaultEligible manifest");
       }
       if (
         m.evals.dflash.acceptanceRate === null ||

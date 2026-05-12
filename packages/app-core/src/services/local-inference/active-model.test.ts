@@ -228,10 +228,7 @@ describe("assertModelFitsHost (RAM-budget admission control)", () => {
   });
 
   it("a manifest-declared budget makes the gate stricter than the catalog scalar", () => {
-    const m = makeInstalledModel(
-      "eliza-1-2b",
-      "/tmp/x/text/eliza-1-2b.gguf",
-    );
+    const m = makeInstalledModel("eliza-1-2b", "/tmp/x/text/eliza-1-2b.gguf");
     const bigManifestLoader = () =>
       ({
         id: "eliza-1-2b",

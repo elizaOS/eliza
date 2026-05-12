@@ -372,10 +372,7 @@ describe("local inference downloader status", () => {
     });
     const failed = new Promise<DownloadJob>((resolve) => {
       const unsub = downloader.subscribe((event) => {
-        if (
-          event.job.modelId === pinnedModel.id &&
-          event.type === "failed"
-        ) {
+        if (event.job.modelId === pinnedModel.id && event.type === "failed") {
           unsub();
           resolve(event.job);
         }

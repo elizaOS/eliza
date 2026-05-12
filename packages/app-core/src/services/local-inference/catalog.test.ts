@@ -30,7 +30,7 @@ describe("local inference catalog", () => {
     expect(serializedCatalog).toContain("Qwen/Qwen3.5-2B");
     expect(serializedCatalog).toContain("Qwen/Qwen3.5-4B");
     expect(serializedCatalog).not.toMatch(
-      /eliza-1-0_8b|eliza-1-2b|Qwen\/Qwen3-0\.6B|Qwen\/Qwen3-1\.7B|Qwen3\.5-0\.6B|Qwen3\.5-1\.7B/,
+      /eliza-1-0_8b|eliza-1-2b|Qwen\/Qwen3-0\.6B|Qwen\/Qwen3-1\.7B|Qwen3\.5-0\.8B|Qwen3\.5-2B/,
     );
     for (const model of MODEL_CATALOG) {
       expect(model.tokenizerFamily).toBe("qwen35");

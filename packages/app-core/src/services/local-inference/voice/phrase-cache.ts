@@ -127,7 +127,9 @@ export class PhraseCache {
     const key = canonicalizePhraseText(entry.text);
     if (!key) return false;
     if (entry.pcm.length > this.maxPcmSamplesPerEntry) return false;
-    if (estimatePhraseTokenCount(entry.text) > this.maxEstimatedTokensPerEntry) {
+    if (
+      estimatePhraseTokenCount(entry.text) > this.maxEstimatedTokensPerEntry
+    ) {
       return false;
     }
     this.entries.delete(key);

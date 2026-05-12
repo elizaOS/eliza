@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  ELIZA_1_TIERS,
-  ELIZA_1_TOKENIZER_FAMILY,
   canSetAsDefault,
   ELIZA_1_MANIFEST_SCHEMA_VERSION,
+  ELIZA_1_TIERS,
+  ELIZA_1_TOKENIZER_FAMILY,
   REQUIRED_KERNELS_BY_TIER,
   validateManifest,
 } from "./index";
@@ -91,7 +91,7 @@ describe("Eliza-1 manifest schema constants", () => {
       expect.arrayContaining(["0_8b", "2b"]),
     );
     expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).not.toEqual(
-      expect.arrayContaining(["0_8b", "2b"]),
+      expect.arrayContaining(["0_6b", "1_7b"]),
     );
   });
 });
