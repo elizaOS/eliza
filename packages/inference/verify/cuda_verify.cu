@@ -45,12 +45,40 @@
 #include <string>
 #include <vector>
 
+// Backend ABI: NVIDIA CUDA by default; ROCm/HIP when compiled by hipcc
+// (which defines __HIP_PLATFORM_AMD__) or with -DELIZA_VERIFY_HIP. The
+// `cuda*` runtime entry points, the `<<<grid,block>>>` launch syntax,
+// `__global__`/`__device__`/`__constant__`, `__shfl_*_sync`, and `__half` /
+// `__half2float` all map 1:1 onto HIP, so the kernel bodies, fixture loader
+// and main() below are shared verbatim — only this header block and the
+// `cuda*` → `hip*` aliases differ. hip_verify.cu just `#include`s this file.
+#if defined(__HIP_PLATFORM_AMD__) || defined(ELIZA_VERIFY_HIP)
+#include <hip/hip_runtime.h>
+#include <hip/hip_fp16.h>
+using cudaError_t    = hipError_t;
+using cudaStream_t   = hipStream_t;
+using cudaDeviceProp = hipDeviceProp_t;   // .name/.major/.minor/.totalGlobalMem identical
+static constexpr hipError_t cudaSuccess = hipSuccess;
+#define cudaMalloc              hipMalloc
+#define cudaFree                hipFree
+#define cudaMemcpy              hipMemcpy
+#define cudaMemset              hipMemset
+#define cudaMemcpyHostToDevice  hipMemcpyHostToDevice
+#define cudaMemcpyDeviceToHost  hipMemcpyDeviceToHost
+#define cudaGetLastError        hipGetLastError
+#define cudaDeviceSynchronize   hipDeviceSynchronize
+#define cudaGetErrorString      hipGetErrorString
+#define cudaGetDeviceCount      hipGetDeviceCount
+#define cudaGetDeviceProperties hipGetDeviceProperties
+#define cudaSetDevice           hipSetDevice
+#else
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
+#endif
 
 // CPU reference declarations — used only for an on-host double-check of the
 // fixture's expected_scores (the same .o that metal_verify / vulkan_verify
-// link). The CUDA dispatch path below is independent of these.
+// link). The CUDA/HIP dispatch path below is independent of these.
 extern "C" {
 #include "qjl_polar_ref.h"
 }
