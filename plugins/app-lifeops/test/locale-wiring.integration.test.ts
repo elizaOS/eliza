@@ -10,6 +10,7 @@ import {
 	type ActionExample,
 	buildActionCatalog,
 	type IAgentRuntime,
+	type LocalizedActionExampleResolver,
 } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { createOwnerLocaleExamplesProvider } from "../src/lifeops/i18n/localized-examples-provider.ts";
@@ -74,9 +75,7 @@ function getExamplesAsPairs(value: unknown): ActionExample[][] {
 	return value as ActionExample[][];
 }
 
-function buildRoutinesCatalog(
-	resolver: Awaited<ReturnType<ReturnType<typeof createOwnerLocaleExamplesProvider>>>,
-) {
+function buildRoutinesCatalog(resolver: LocalizedActionExampleResolver | null) {
 	return buildActionCatalog(
 		[
 			{
