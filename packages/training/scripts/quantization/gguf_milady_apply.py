@@ -1,6 +1,6 @@
 """Emit a Milady-typed GGUF using the elizaOS/llama.cpp fork's converter.
 
-The elizaOS/llama.cpp v0.4.0-milady fork registers the following
+The elizaOS/llama.cpp v1.0.0-eliza fork registers the following
 non-upstream GGML types:
 
     - ``Q4_POLAR=47``  PolarQuant 4-bit weight blocks
@@ -31,7 +31,7 @@ This script is a thin wrapper around the fork's
 Where the fork's converter natively handles a step, we delegate. Where
 it doesn't, this script writes a minimal extension JSON next to the
 GGUF describing the unwritten metadata and warns the user. The runtime
-loader (``elizaOS/llama.cpp`` ≥ v0.4.0-milady) reads the extension
+loader (``elizaOS/llama.cpp`` ≥ v1.0.0-eliza) reads the extension
 JSON if the GGUF metadata block is missing — this is the migration shim
 described in ``docs/porting/unified-fork-strategy.md`` §H step 8.
 
@@ -218,7 +218,7 @@ def main(argv: list[str] | None = None) -> int:
         "--llama-cpp-dir",
         type=Path,
         default=None,
-        help="Path to the elizaOS/llama.cpp v0.4.0-milady checkout.",
+        help="Path to the elizaOS/llama.cpp v1.0.0-eliza checkout (defaults to the in-repo submodule packages/inference/llama.cpp).",
     )
     ap.add_argument(
         "--polarquant-sidecar",
