@@ -71,6 +71,10 @@ import { getBrowserWorkspaceManager } from "./native/browser-workspace";
 import { getCameraManager } from "./native/camera";
 import { getCanvasManager } from "./native/canvas";
 import {
+	configureCarrotManagerEvents,
+	getCarrotManager,
+} from "./native/carrots";
+import {
 	scanAndValidateProviderCredentials,
 	scanProviderCredentials,
 } from "./native/credentials";
@@ -112,6 +116,18 @@ import {
 	composeRuntimeSnapshot,
 	readRuntimeSnapshotViaHttp,
 } from "./runtime-rpc";
+import {
+	composeAgentAutomationModeSnapshot,
+	composeAgentAutomationModeUpdate,
+	composeConfigUpdate,
+	composeTradePermissionModeSnapshot,
+	composeTradePermissionModeUpdate,
+	readAgentAutomationModeViaHttp,
+	readTradePermissionModeViaHttp,
+	updateAgentAutomationModeViaHttp,
+	updateConfigViaHttp,
+	updateTradePermissionModeViaHttp,
+} from "./settings-mutations-rpc";
 import {
 	composeSubscriptionStatusSnapshot,
 	readSubscriptionStatusViaHttp,
@@ -271,6 +287,8 @@ export function buildBunRpcHandlers({
 	const talkmode = getTalkModeManager();
 	const musicPlayer = getMusicPlayerManager();
 	const browserWorkspace = getBrowserWorkspaceManager();
+	const carrots = getCarrotManager();
+	configureCarrotManagerEvents(sendToWebview);
 
 	return {
 		// ---- Agent ----
@@ -391,10 +409,38 @@ export function buildBunRpcHandlers({
 				resolveRpcAgentPort(agent.getStatus().port),
 				readConfigViaHttp,
 			),
+		updateConfig: async (params) =>
+			composeConfigUpdate(
+				resolveRpcAgentPort(agent.getStatus().port),
+				params,
+				updateConfigViaHttp,
+			),
 		getConfigSchema: async () =>
 			composeConfigSchemaSnapshot(
 				resolveRpcAgentPort(agent.getStatus().port),
 				readConfigSchemaViaHttp,
+			),
+		getAgentAutomationMode: async () =>
+			composeAgentAutomationModeSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readAgentAutomationModeViaHttp,
+			),
+		setAgentAutomationMode: async (params) =>
+			composeAgentAutomationModeUpdate(
+				resolveRpcAgentPort(agent.getStatus().port),
+				params.mode,
+				updateAgentAutomationModeViaHttp,
+			),
+		getTradePermissionMode: async () =>
+			composeTradePermissionModeSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readTradePermissionModeViaHttp,
+			),
+		setTradePermissionMode: async (params) =>
+			composeTradePermissionModeUpdate(
+				resolveRpcAgentPort(agent.getStatus().port),
+				params.mode,
+				updateTradePermissionModeViaHttp,
 			),
 		/**
 		 * Typed counterpart to `client.getAuthStatus()` — auth/pairing
@@ -730,6 +776,27 @@ export function buildBunRpcHandlers({
 		}) => ({
 			success: desktop.setManagedWindowAlwaysOnTop(params.id, params.flag),
 		}),
+
+		// ---- Carrots ----
+		carrotGetStoreRoot: async () => ({ storeRoot: carrots.getStoreRoot() }),
+		carrotList: async () => ({ carrots: carrots.listCarrots() }),
+		carrotGetStoreSnapshot: async () => carrots.getStoreSnapshot(),
+		carrotGet: async (params: { id: string }) => carrots.getCarrot(params.id),
+		carrotInstallFromDirectory: async (params) =>
+			carrots.installFromDirectory(params),
+		carrotUninstall: async (params: { id: string }) =>
+			carrots.uninstall(params.id),
+		carrotStartWorker: async (params: { id: string }) =>
+			carrots.startWorker(params.id),
+		carrotStopWorker: async (params: { id: string }) =>
+			carrots.stopWorker(params.id),
+		carrotGetWorkerStatus: async (params: { id: string }) =>
+			carrots.getWorkerStatus(params.id),
+		carrotListWorkerStatuses: async () => ({
+			workers: carrots.listWorkerStatuses(),
+		}),
+		carrotGetLogs: async (params) =>
+			carrots.getLogs(params.id, params.maxBytes),
 
 		// ---- Browser Workspace ----
 		browserWorkspaceGetSnapshot: async () => ({

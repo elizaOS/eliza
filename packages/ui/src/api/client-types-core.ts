@@ -299,7 +299,11 @@ export interface AgentAutomationModeResponse {
 
 export interface TradePermissionModeResponse {
   mode: TradePermissionMode;
-  options: TradePermissionMode[];
+  tradePermissionMode: TradePermissionMode;
+  options?: TradePermissionMode[];
+  ok?: boolean;
+  canUserLocalExecute?: boolean;
+  canAgentAutoTrade?: boolean;
 }
 
 export interface ApplyProductionWalletDefaultsResponse {

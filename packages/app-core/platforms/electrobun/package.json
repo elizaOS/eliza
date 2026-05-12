@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/electrobun-carrots": "workspace:*",
     "@elizaos/plugin-browser": "2.0.0-beta.1",
     "@elizaos/shared": "2.0.0-beta.1",
     "bonjour-service": "1.3.0",

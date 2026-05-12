@@ -110,6 +110,15 @@ function clientSettingsDebug(): boolean {
   });
 }
 
+function isTradePermissionMode(value: string): value is TradePermissionMode {
+  return (
+    value === "user-sign-only" ||
+    value === "manual-local-key" ||
+    value === "agent-auto" ||
+    value === "disabled"
+  );
+}
+
 const WEBSITE_BLOCKING_PERMISSION_ID = "website-blocking" as const;
 
 function getNativeWebsiteBlockerPluginIfAvailable() {
@@ -1030,6 +1039,17 @@ ElizaClient.prototype.setAutomationMode = async function (
   this: ElizaClient,
   mode,
 ) {
+  try {
+    const viaRpc =
+      await invokeDesktopBridgeRequest<AgentAutomationModeResponse>({
+        rpcMethod: "setAgentAutomationMode",
+        ipcChannel: "agent:setAgentAutomationMode",
+        params: { mode },
+      });
+    if (viaRpc) return { mode: viaRpc.mode };
+  } catch {
+    /* fall through */
+  }
   return this.fetch("/api/permissions/automation-mode", {
     method: "PUT",
     body: JSON.stringify({ mode }),
@@ -1037,6 +1057,24 @@ ElizaClient.prototype.setAutomationMode = async function (
 };
 
 ElizaClient.prototype.setTradeMode = async function (this: ElizaClient, mode) {
+  if (isTradePermissionMode(mode)) {
+    try {
+      const viaRpc =
+        await invokeDesktopBridgeRequest<TradePermissionModeResponse>({
+          rpcMethod: "setTradePermissionMode",
+          ipcChannel: "agent:setTradePermissionMode",
+          params: { mode },
+        });
+      if (viaRpc && typeof viaRpc.ok === "boolean") {
+        return {
+          ok: viaRpc.ok,
+          tradePermissionMode: viaRpc.tradePermissionMode,
+        };
+      }
+    } catch {
+      /* fall through */
+    }
+  }
   return this.fetch("/api/permissions/trade-mode", {
     method: "PUT",
     body: JSON.stringify({ mode }),
@@ -1501,22 +1539,37 @@ ElizaClient.prototype.updateConfig = async function (this: ElizaClient, patch) {
     baseUrl: this.getBaseUrl(),
     patch,
   });
-  const out = (await this.fetch(
-    "/api/config",
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(patch),
-    },
-    {
-      timeoutMs: SETTINGS_MUTATION_TIMEOUT_MS,
-    },
-  )) as Record<string, unknown>;
+  let out: Record<string, unknown> | null = null;
+  let transport = "rpc";
+  try {
+    out = await invokeDesktopBridgeRequest<Record<string, unknown>>({
+      rpcMethod: "updateConfig",
+      ipcChannel: "agent:updateConfig",
+      params: patch,
+    });
+  } catch {
+    out = null;
+  }
+  if (!out) {
+    transport = "http";
+    out = (await this.fetch(
+      "/api/config",
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      },
+      {
+        timeoutMs: SETTINGS_MUTATION_TIMEOUT_MS,
+      },
+    )) as Record<string, unknown>;
+  }
   const cloud = out.cloud as Record<string, unknown> | undefined;
   logSettingsClient("PUT /api/config ← ok", {
     baseUrl: this.getBaseUrl(),
     topKeys: Object.keys(out).sort(),
     cloud: settingsDebugCloudSummary(cloud),
+    transport,
   });
   return out;
 };
@@ -2761,6 +2814,16 @@ ElizaClient.prototype.setUpdateChannel = async function (
 ElizaClient.prototype.getAgentAutomationMode = async function (
   this: ElizaClient,
 ) {
+  try {
+    const viaRpc =
+      await invokeDesktopBridgeRequest<AgentAutomationModeResponse>({
+        rpcMethod: "getAgentAutomationMode",
+        ipcChannel: "agent:getAgentAutomationMode",
+      });
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* fall through */
+  }
   return this.fetch("/api/permissions/automation-mode");
 };
 
@@ -2768,6 +2831,17 @@ ElizaClient.prototype.setAgentAutomationMode = async function (
   this: ElizaClient,
   mode,
 ) {
+  try {
+    const viaRpc =
+      await invokeDesktopBridgeRequest<AgentAutomationModeResponse>({
+        rpcMethod: "setAgentAutomationMode",
+        ipcChannel: "agent:setAgentAutomationMode",
+        params: { mode },
+      });
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* fall through */
+  }
   return this.fetch("/api/permissions/automation-mode", {
     method: "PUT",
     body: JSON.stringify({ mode }),
@@ -2777,6 +2851,16 @@ ElizaClient.prototype.setAgentAutomationMode = async function (
 ElizaClient.prototype.getTradePermissionMode = async function (
   this: ElizaClient,
 ) {
+  try {
+    const viaRpc =
+      await invokeDesktopBridgeRequest<TradePermissionModeResponse>({
+        rpcMethod: "getTradePermissionMode",
+        ipcChannel: "agent:getTradePermissionMode",
+      });
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* fall through */
+  }
   return this.fetch("/api/permissions/trade-mode");
 };
 
@@ -2784,6 +2868,17 @@ ElizaClient.prototype.setTradePermissionMode = async function (
   this: ElizaClient,
   mode,
 ) {
+  try {
+    const viaRpc =
+      await invokeDesktopBridgeRequest<TradePermissionModeResponse>({
+        rpcMethod: "setTradePermissionMode",
+        ipcChannel: "agent:setTradePermissionMode",
+        params: { mode },
+      });
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* fall through */
+  }
   return this.fetch("/api/permissions/trade-mode", {
     method: "PUT",
     body: JSON.stringify({ mode }),
