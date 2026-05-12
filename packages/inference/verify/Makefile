@@ -371,8 +371,10 @@ $(POLAR_CPU_LIB):
 	cmake --build $(POLAR_CPU_DIR)/build --target polarquant >/dev/null
 
 cpu-simd-bench: cpu_simd_bench
+OPENMP_FLAGS ?= $(shell printf '' | $(CC) -x c -fopenmp -E - >/dev/null 2>&1 && printf '%s' '-fopenmp')
+
 cpu_simd_bench: cpu_simd_bench.c $(QJL_CPU_LIB) $(POLAR_CPU_LIB)
-	$(CC) -O3 -march=native -fopenmp -std=c11 \
+	$(CC) -O3 -march=native $(OPENMP_FLAGS) -std=c11 \
 	    -I$(QJL_CPU_DIR)/include -I$(QJL_CPU_DIR)/src -I$(POLAR_CPU_DIR)/include \
 	    cpu_simd_bench.c $(QJL_CPU_LIB) $(POLAR_CPU_LIB) -lm -o cpu_simd_bench
 
