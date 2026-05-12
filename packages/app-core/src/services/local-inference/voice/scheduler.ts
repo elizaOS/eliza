@@ -778,11 +778,51 @@ export class VoiceScheduler {
     const sinkBufferedSamplesDrained = this.sink.bufferedSamples();
     const wasPaused = this.paused;
     const inFlightPhrases = Array.from(this.inFlight.values());
+    const divergencePoint = this.lastCommittedTokenIndex;
+
     this.paused = false;
     this.clearAgentSpeaking();
     this.clearPhraseFlushTimer();
-    this.ringBuffer.drain();
+
+    // Prefix-preserving rollback: partition in-flight audio chunks at the
+    // divergence point. Chunks for tokens <= divergencePoint are replayed
+    // into the sink (they were already correct); the rest are dropped.
+    // This avoids re-synthesizing audio the user would have heard anyway.
+    //
+    // If the prefix queue is empty (e.g. the backend emitted no streaming
+    // chunks yet), fall through to the plain drain path.
+    const prefixResult = this.prefixQueue.rollbackAt(divergencePoint);
+    if (prefixResult.retained.length > 0 || prefixResult.dropped.length > 0) {
+      // We had tagged chunks — apply prefix-preserving rollback.
+      // Drain the ring buffer first (it may hold chunks we're about to
+      // replay from the retained prefix, or chunks past the cutoff).
+      this.ringBuffer.drain();
+      // Replay retained prefix into the ring buffer and flush to sink.
+      for (const taggedChunk of prefixResult.retained) {
+        this.ringBuffer.write(taggedChunk.pcm);
+      }
+      if (prefixResult.retained.length > 0) {
+        const flushed = this.ringBuffer.flushToSink();
+        this.markAgentSpeakingForAudio(flushed, this.sampleRate);
+      }
+      this.emitTelemetry({
+        type: "barge-in-prefix-rollback",
+        atMs: nowMs(),
+        divergencePoint,
+        retainedChunks: prefixResult.retained.length,
+        droppedChunks: prefixResult.dropped.length,
+        straddledChunks: prefixResult.straddled.length,
+        retainedDurationMs: prefixResult.retainedDurationMs,
+        droppedDurationMs: prefixResult.droppedDurationMs,
+      });
+    } else {
+      // No tagged chunks — plain ring-buffer drain (legacy path).
+      this.ringBuffer.drain();
+    }
+
     this.chunker.reset();
+    this.lastCommittedTokenIndex = 0;
+
     for (const inflight of inFlightPhrases) {
       inflight.cancelSignal.cancelled = true;
       this.emitTtsCancel(inflight.phrase, "barge-in");
