@@ -1,14 +1,14 @@
+import fs from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
-import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  MLX_BACKEND_ID,
-  MlxLocalServer,
   isAppleSilicon,
   looksLikeMlxModelDir,
+  MLX_BACKEND_ID,
+  MlxLocalServer,
   mlxBackendEligible,
   mlxOptIn,
   resolveMlxModelDir,
@@ -37,23 +37,32 @@ describe("mlx-server: opt-in + eligibility (convenience path)", () => {
   });
 
   it("mlxOptIn is false unless ELIZA_LOCAL_MLX or ELIZA_LOCAL_BACKEND=mlx-server", () => {
-    withEnv({ ELIZA_LOCAL_MLX: undefined, ELIZA_LOCAL_BACKEND: undefined }, () => {
-      expect(mlxOptIn()).toBe(false);
-    });
+    withEnv(
+      { ELIZA_LOCAL_MLX: undefined, ELIZA_LOCAL_BACKEND: undefined },
+      () => {
+        expect(mlxOptIn()).toBe(false);
+      },
+    );
     withEnv({ ELIZA_LOCAL_MLX: "1" }, () => {
       expect(mlxOptIn()).toBe(true);
     });
-    withEnv({ ELIZA_LOCAL_MLX: undefined, ELIZA_LOCAL_BACKEND: "mlx-server" }, () => {
-      expect(mlxOptIn()).toBe(true);
-    });
+    withEnv(
+      { ELIZA_LOCAL_MLX: undefined, ELIZA_LOCAL_BACKEND: "mlx-server" },
+      () => {
+        expect(mlxOptIn()).toBe(true);
+      },
+    );
   });
 
   it("eligibility is never true without the explicit opt-in", () => {
-    withEnv({ ELIZA_LOCAL_MLX: undefined, ELIZA_LOCAL_BACKEND: undefined }, () => {
-      const d = mlxBackendEligible();
-      expect(d.eligible).toBe(false);
-      expect(d.reason).toMatch(/opt-in/i);
-    });
+    withEnv(
+      { ELIZA_LOCAL_MLX: undefined, ELIZA_LOCAL_BACKEND: undefined },
+      () => {
+        const d = mlxBackendEligible();
+        expect(d.eligible).toBe(false);
+        expect(d.reason).toMatch(/opt-in/i);
+      },
+    );
   });
 
   it("eligibility refuses on non-Apple-Silicon hosts even when opted in", () => {
