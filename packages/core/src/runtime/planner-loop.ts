@@ -2141,11 +2141,30 @@ function terminalMessageFromToolCalls(
 	);
 }
 
+/**
+ * Latest user-safe projection of a tool's result, walking the trajectory
+ * back-to-front. Returns ONLY the tool's `userFacingText` field — never
+ * the diagnostic `text` field, because `text` is log-shaped (shell
+ * prompts, exit codes, cwd, byte counts) and leaks the tool's wrapper
+ * format into the user channel.
+ *
+ * Tools that produce real user-facing answers (Q&A, content generation,
+ * REPLY) must opt in by setting `userFacingText`. Tools that emit logs
+ * (BASH, SHELL, fetchers, file readers) leave it unset; this function
+ * then returns undefined and the caller falls through to the evaluator's
+ * synthesized reply instead of dumping the log into the channel.
+ *
+ * Pre-PR, this function returned `step.result.text` directly — that's
+ * how `$ find … [exit 0] (cwd=…) --- stdout --- 443` ever ended up as
+ * a literal Discord reply. The fix is structural: tools tell the
+ * framework what's safe, the framework doesn't guess by parsing
+ * wrapper text.
+ */
 function latestToolResultText(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
 	for (const step of [...trajectory.steps].reverse()) {
-		const text = step.result?.text?.trim();
+		const text = step.result?.userFacingText?.trim();
 		if (text) {
 			return text;
 		}
