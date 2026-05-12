@@ -109,10 +109,11 @@ def calibrate_key_outliers(
         return _hook
 
     handles: list[object] = []
+    decoder_layers = _find_decoder_layers(model)
     for i in layer_indices:
-        if i >= len(model.model.layers):
+        if i >= len(decoder_layers):
             continue
-        layer = model.model.layers[i]
+        layer = decoder_layers[i]
         attn = getattr(layer, "self_attn", None)
         if attn is None:
             continue
@@ -270,6 +271,9 @@ def _find_decoder_layers(model: nn.Module) -> nn.Module:
     """Locate the decoder layer list (Llama-style)."""
     candidate_paths = (
         ("model", "layers"),
+        # Qwen3.5/3.6 VLM: ``model.language_model.layers``.
+        ("model", "language_model", "layers"),
+        ("language_model", "layers"),
         ("language_model", "model", "layers"),
         ("model", "model", "layers"),
         ("transformer", "layers"),

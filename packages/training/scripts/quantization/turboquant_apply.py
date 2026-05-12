@@ -32,6 +32,7 @@ if str(_HERE) not in sys.path:
 
 from _common import (  # noqa: E402
     add_quantization_cli_args,
+    full_attention_layer_indices,
     get_text_config,
     head_dim_of,
     kernel_manifest_fragment,
@@ -117,20 +118,58 @@ def main(argv: list[str] | None = None) -> int:
     out_dir = Path(args.output)
     model, tok = load_model_and_tokenizer(args.model, device_map=args.device)
 
+    text_cfg = get_text_config(model.config)
+    head_dim = head_dim_of(text_cfg)
+
+    # Hybrid linear+full-attention models (Qwen3.5 / 3.6) only carry a
+    # standard (B,H,T,D) KV tensor on full-attention layers; linear-attn
+    # layers store a recurrent state with no per-token K/V cache to
+    # compress. Record those layer indices in the sidecar so the runtime
+    # knows TurboQuant only applies to the full-attention slots and the
+    # manifest can be honest about it. ``layer_types`` is the canonical
+    # signal (present on Qwen3.5+); models without it are uniform-full.
+    layer_types = getattr(text_cfg, "layer_types", None)
+    if layer_types:
+        full_idx = full_attention_layer_indices(text_cfg)
+        linear_attn_layers = [
+            i for i, t in enumerate(layer_types) if t != "full_attention"
+        ]
+    else:
+        full_idx = list(range(int(text_cfg.num_hidden_layers)))
+        linear_attn_layers = []
+    # "hybrid" means at least one non-full-attention layer exists. Models
+    # like Qwen3 (all full_attention) get hybrid_linear_attn=false even
+    # though they expose layer_types; Qwen3.5/3.6 (interleaved 3:1) get
+    # hybrid_linear_attn=true.
+    hybrid_linear_attn = bool(linear_attn_layers)
+
     if args.calibration:
         prompts = load_calibration_prompts(args.calibration, n=args.calibration_samples)
         log.info("calibrating with %d prompts", len(prompts))
-        skip_layers = calibrate_skip_layers(
-            model, tok, prompts, norm_threshold=args.norm_threshold
-        )
+        if hybrid_linear_attn:
+            # turbokv's calibrate_skip_layers iterates every decoder layer
+            # expecting ``self_attn.{q,k,v}_proj`` — Qwen3.5 linear-attn
+            # layers don't expose that surface, so calibration would crash
+            # or return zeros for those slots. Skip them outright; the
+            # full-attention layers are the only ones TurboQuant could ever
+            # cache anyway. The on-by-default ``skip_layers=[0]`` heuristic
+            # remains; the full union includes every linear-attn index so
+            # the runtime never tries to attach TurboQuant to them.
+            log.info(
+                "hybrid linear+full attention model detected; calibrating "
+                "TurboQuant on full-attention layers only: %s",
+                full_idx,
+            )
+            skip_layers = sorted(set(linear_attn_layers + [0]))
+        else:
+            skip_layers = calibrate_skip_layers(
+                model, tok, prompts, norm_threshold=args.norm_threshold
+            )
     else:
         log.info("no calibration; defaulting skip_layers to [0]")
-        skip_layers = [0]
+        skip_layers = sorted(set(linear_attn_layers + [0]))
 
     save_model(model, tok, out_dir)
-
-    text_cfg = get_text_config(model.config)
-    head_dim = head_dim_of(text_cfg)
 
     # Which KV cache type the runtime uses for K. Long-context variants take
     # the trellis path (turbo3_tcq); everything else uses the per-block
@@ -148,6 +187,13 @@ def main(argv: list[str] | None = None) -> int:
         "skip_layers": skip_layers,
         "head_dim": head_dim,
         "num_hidden_layers": int(text_cfg.num_hidden_layers),
+        # Hybrid linear-attn provenance: which decoder slots TurboQuant can
+        # actually cache (full-attention layers) vs the ones it must leave
+        # alone (linear-attn layers store recurrent state, no per-token KV).
+        "hybrid_linear_attn": hybrid_linear_attn,
+        "full_attention_layers": full_idx,
+        "n_full_attention_layers": len(full_idx),
+        "linear_attention_layers_skipped": linear_attn_layers,
         "trellis": bool(args.trellis),
         "context_length": (
             int(args.context_length) if args.context_length is not None else None
@@ -162,7 +208,10 @@ def main(argv: list[str] | None = None) -> int:
             "this directory are unchanged. To use the quantized cache, "
             "construct turboquant.TurboQuantCache(model.config, nbits=..., "
             "base_seed=..., skip_layers=set(skip_layers)) and pass it to "
-            "model.generate(past_key_values=cache)."
+            "model.generate(past_key_values=cache). For hybrid linear+full "
+            "attention models (Qwen3.5/3.6), the cache only attaches to "
+            "the layer indices in `full_attention_layers`; linear-attn "
+            "layers carry a recurrent state with no KV cache."
         ),
     }
     sidecar_path = write_sidecar(out_dir, "turboquant.json", sidecar_payload)
