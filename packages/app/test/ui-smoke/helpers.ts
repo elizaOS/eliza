@@ -1,4 +1,27 @@
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { expect, type Locator, type Page } from "@playwright/test";
+
+// One real bundled VRM (gzipped glTF) shipped under packages/app/dist/vrms/.
+// The preview server used by ui-smoke serves the SPA but not the runtime
+// boot-config's `vrmAssets`, so `getVrmUrl()` falls back to `bundled-1.vrm.gz`
+// which 404s — the gz-decode of a tiny 404 page then throws "Invalid typed
+// array length" inside three-vrm. We mock every `vrms/*.vrm.gz` request with
+// this real asset so the companion canvas loads a model instead.
+const __helpersDir = dirname(fileURLToPath(import.meta.url));
+let cachedVrmGz: Buffer | null | undefined;
+function bundledVrmGz(): Buffer | null {
+  if (cachedVrmGz !== undefined) return cachedVrmGz;
+  try {
+    cachedVrmGz = readFileSync(
+      resolve(__helpersDir, "../../dist/vrms/eliza-1.vrm.gz"),
+    );
+  } catch {
+    cachedVrmGz = null;
+  }
+  return cachedVrmGz;
+}
 
 const ROOT_TIMEOUT_MS = 20_000;
 const NAV_TIMEOUT_MS = 12_000;
@@ -217,6 +240,24 @@ function emptyWalletTradingProfile(url: URL) {
 
 /** Installs baseline API routes for smoke tests before flow-specific overrides. */
 export async function installDefaultAppRoutes(page: Page): Promise<void> {
+  // VRM model assets (vrms/<slug>.vrm.gz) — the preview server doesn't carry
+  // the runtime boot-config's vrmAssets, so resolveAppAssetUrl(`vrms/...`)
+  // 404s. Serve a real bundled VRM so the companion canvas renders without a
+  // console error. previews/backgrounds PNGs are best-effort: a 404 there is
+  // harmless (the canvas falls back), so leave those to fallback().
+  await page.route("**/vrms/*.vrm.gz", async (route) => {
+    const body = bundledVrmGz();
+    if (!body) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      headers: { "content-type": "application/octet-stream" },
+      body,
+    });
+  });
+
   await page.route("**/api/health", async (route) => {
     await route.fulfill({
       status: 200,
