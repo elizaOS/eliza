@@ -53,7 +53,7 @@ vi.mock("../chat-routes.ts", async () => {
     persistAssistantConversationMemory: vi.fn(async () => {
       persistCalledAt = Date.now();
       return new Promise((resolve, reject) => {
-        persistResolve = (value) => {
+        persistResolve = (_value) => {
           persistResolvedAt = Date.now();
           resolve();
         };
@@ -258,7 +258,9 @@ describe("conversation-routes streaming persistence ordering", () => {
     expect(persistResolvedAt).not.toBeNull();
     // res.end() ran before persistence finished.
     expect(record.endedAt).not.toBeNull();
-    expect(record.endedAt ?? 0).toBeLessThanOrEqual(persistResolvedAt ?? Infinity);
+    expect(record.endedAt ?? 0).toBeLessThanOrEqual(
+      persistResolvedAt ?? Infinity,
+    );
   });
 
   it("logs persistence failures via Logger.error and still ends the response cleanly", async () => {
