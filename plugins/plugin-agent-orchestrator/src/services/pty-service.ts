@@ -93,7 +93,6 @@ import type {
 import {
   isOpencodeAgentType,
   isPiAgentType,
-  toOpencodeCommand,
   toPiCommand,
 } from "./pty-types.js";
 import {

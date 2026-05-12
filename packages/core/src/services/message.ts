@@ -3030,69 +3030,6 @@ function normalizeRawParsedForFieldRegistry(
 	return normalized;
 }
 
-const PROTOCOL_ACTION_NAMES_FOR_REFUSAL = new Set([
-	"REPLY",
-	"IGNORE",
-	"STOP",
-	"CONTINUE",
-	"NONE",
-]);
-
-const REFUSAL_PHRASE_PATTERN =
-	/(?:^|[^A-Za-z])(?:I'?m unable|I cannot|I can'?t|unable to spawn|policy restriction|due to policy)/i;
-
-/**
- * When the response handler produces a self-contradicting envelope —
- * `candidateActions` shortlists a real (non-protocol) action AND
- * `plan.reply` is an unambiguous refusal — drop the prose. The
- * structured `candidateActions` field is trajectory ground truth (a
- * discrete, machine-readable decision); the prose is the alignment
- * artifact of safety-tuned models on verbs like "spawn / delegate /
- * agent". When they disagree, trust the candidate and let the planner
- * stage act — shipping a refusal that contradicts what the agent is
- * about to do confuses the user.
- *
- * Detection is intentionally narrow:
- *  - `candidateActions` must include at least one non-protocol action
- *    (REPLY/IGNORE/STOP/CONTINUE/NONE don't count)
- *  - `plan.reply` must contain an unambiguous refusal phrase
- *  - `plan.prefiredToolCall` must NOT be set (a prefired call already
- *    means we extracted a call-shape from the reply, so there's no
- *    contradiction left to suppress)
- *
- * If any of these don't hold the function returns the input unchanged.
- * This is a downstream consistency fix, NOT regex-on-output-for-routing
- * (routing has already happened via `candidateActions` before this
- * function runs).
- */
-function applyRefusalContradictionSuppression(
-	result: MessageHandlerResult,
-): MessageHandlerResult {
-	const plan = result.plan;
-	if (!plan) return result;
-	if (plan.prefiredToolCall) return result;
-	const reply = typeof plan.reply === "string" ? plan.reply : "";
-	if (!reply) return result;
-	if (!REFUSAL_PHRASE_PATTERN.test(reply)) return result;
-	const candidateActions = Array.isArray(plan.candidateActions)
-		? plan.candidateActions
-		: [];
-	const hasNonProtocolCandidate = candidateActions.some(
-		(name) =>
-			typeof name === "string" &&
-			!PROTOCOL_ACTION_NAMES_FOR_REFUSAL.has(name.trim().toUpperCase()),
-	);
-	if (!hasNonProtocolCandidate) return result;
-	return {
-		...result,
-		thought: `${result.thought ?? ""}\n[refusal-contradiction-suppression] response handler emitted refusal text alongside non-protocol candidateActions=[${candidateActions.join(",")}]; dropping prose, letting planner act on the candidate.`.trim(),
-		plan: {
-			...plan,
-			reply: "",
-		},
-	};
-}
-
 /**
  * Detect a bare `{action: "...", params: {...}}` call shape on an
  * already-parsed object (the response handler's structured tool args or
@@ -3476,6 +3413,35 @@ function synthesizeSimpleReplyFromPlainText(
 				},
 			},
 		};
+	}
+
+	// Malformed structured-output guard: when the response handler was
+	// instructed to emit JSON via `HANDLE_RESPONSE` / `responseSkeleton`
+	// (the default) but the model returned a JSON-shaped fragment that
+	// neither `parseMessageHandlerOutput` nor the call-shape extractors
+	// could parse, the model produced broken structured output — NOT
+	// user-facing prose. Shipping that fragment verbatim to Discord
+	// surfaces things like a stray `{` character or half a JSON object
+	// as the bot's reply.
+	//
+	// Structural test (not regex-on-content-for-routing): try to
+	// JSON.parse the entire reply. If parse FAILS and the trimmed text
+	// starts with `{` or `[`, the model intended structured output and
+	// failed mid-stream. Fall through to the null return so callers
+	// route to their structured-failure reply path instead of shipping
+	// the fragment.
+	const looksLikeIncompleteStructuredOutput =
+		(replyText.startsWith("{") || replyText.startsWith("[")) &&
+		(() => {
+			try {
+				JSON.parse(replyText);
+				return false;
+			} catch {
+				return true;
+			}
+		})();
+	if (looksLikeIncompleteStructuredOutput) {
+		return null;
 	}
 
 	return {
@@ -5147,24 +5113,6 @@ export async function runV5MessageRuntimeStage1(args: {
 					availableContexts,
 				}) ?? buildFallbackStage1DirectReplyPlan();
 		}
-		// Self-contradicting envelope detection: weaker / Cerebras-aligned
-		// LLMs frequently emit a STRUCTURED decision in `candidateActions`
-		// (e.g. `["TASKS_SPAWN_AGENT"]`) AND simultaneously a refusal in
-		// `replyText` ("I'm unable to spawn a sub-agent due to policy
-		// restrictions"). The two fields disagree about whether the agent
-		// should act. The structured field IS trajectory ground truth;
-		// the prose is the alignment artifact. When they contradict,
-		// suppress the prose so the planner's chosen action speaks for
-		// itself — anything else confuses the user with a refusal that
-		// contradicts what the agent is about to do.
-		//
-		// Applied at this single endpoint so it covers BOTH the field-
-		// registry path AND the parseMessageHandlerModelOutput fallback
-		// path. Both produce a MessageHandlerResult; both flow through
-		// here before downstream stages read `plan.reply`.
-		if (messageHandler) {
-			messageHandler = applyRefusalContradictionSuppression(messageHandler);
-		}
 		if (!messageHandler && process.env.ELIZA_DEBUG_STAGE1 === "1") {
 			args.runtime.logger?.warn?.(
 				{
@@ -5612,8 +5560,34 @@ export async function runV5MessageRuntimeStage1(args: {
 				trajectoryId,
 				plannerLoopConfig: args.plannerLoopConfig,
 			});
-			const synthesizedFinalMessage =
-				toolResult.text ?? (toolResult.success ? undefined : toolResult.error);
+			// On success, `toolResult.text` is the action's user-facing
+			// output (often empty for spawn — the response handler's
+			// pre-spawn reply text speaks for the turn). On failure,
+			// `toolResult.error` is an INTERNAL diagnostic string like
+			// "Action TASKS_SPAWN_AGENT is not allowed in the current
+			// context" or "Argument 'approvalPreset' value 'default' is
+			// not one of [...]" — never user-facing prose. Don't pipe
+			// internal errors into `finalMessage` (which Discord ships
+			// verbatim). Failures get logged at info level and the bot
+			// falls through to whatever the response handler emitted as
+			// `replyText` (or the runtime's structured failure reply if
+			// nothing else).
+			if (!toolResult.success) {
+				args.runtime.logger.info(
+					{
+						src: "service:message",
+						actionName: prefiredPlanCall.name,
+						origin: "response-handler-content-extract",
+						error:
+							typeof toolResult.error === "string"
+								? toolResult.error
+								: toolResult.error instanceof Error
+									? toolResult.error.message
+									: String(toolResult.error),
+					},
+					"Prefired tool call failed; not shipping internal error to user channel",
+				);
+			}
 			plannerResult = {
 				status: "finished",
 				trajectory: {
@@ -5632,8 +5606,8 @@ export async function runV5MessageRuntimeStage1(args: {
 					evaluatorOutputs: [],
 				},
 				finalMessage:
-					typeof synthesizedFinalMessage === "string"
-						? synthesizedFinalMessage
+					toolResult.success && typeof toolResult.text === "string"
+						? toolResult.text
 						: undefined,
 			};
 		} else {
