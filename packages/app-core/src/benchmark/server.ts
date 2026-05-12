@@ -1527,10 +1527,10 @@ export async function startBenchmarkServer() {
     ) {
       try {
         // Try to extract sessionId from path segment first.
-        const pathSessionId = pathname.startsWith(
-          "/api/benchmark/audit-log/",
-        )
-          ? decodeURIComponent(pathname.slice("/api/benchmark/audit-log/".length))
+        const pathSessionId = pathname.startsWith("/api/benchmark/audit-log/")
+          ? decodeURIComponent(
+              pathname.slice("/api/benchmark/audit-log/".length),
+            )
           : "";
         let session: ReturnType<typeof resolveSession> = null;
         if (pathSessionId) {
@@ -1544,8 +1544,7 @@ export async function startBenchmarkServer() {
         }
         if (!session) {
           const context = extractRecord({
-            benchmark:
-              requestUrl.searchParams.get("benchmark") ?? undefined,
+            benchmark: requestUrl.searchParams.get("benchmark") ?? undefined,
             task_id:
               requestUrl.searchParams.get("task_id") ??
               requestUrl.searchParams.get("taskId") ??
