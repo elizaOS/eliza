@@ -8,6 +8,7 @@ import {
   ensureCarrotSourceDirectory,
   getCarrotStorePaths,
   installPrebuiltCarrot,
+  loadCarrotStoreSnapshot,
   loadInstalledCarrot,
   loadInstalledCarrots,
   readCarrotRegistry,
@@ -121,6 +122,68 @@ describe("carrot store", () => {
 
       const all = loadInstalledCarrots(storeRoot);
       expect(all.map((carrot) => carrot.manifest.id)).toEqual(["bunny.search"]);
+    }));
+
+  it("builds a public store snapshot for host and UI callers", () =>
+    withTempDir((dir) => {
+      const storeRoot = join(dir, "store");
+      const payloadDir = writePayload(dir);
+      installPrebuiltCarrot(storeRoot, payloadDir, {
+        currentHash: "hash-1",
+        devMode: true,
+        lastBuildAt: 1700000000100,
+        now: () => 1700000000000,
+      });
+
+      const snapshot = loadCarrotStoreSnapshot(storeRoot);
+
+      expect(snapshot).toMatchObject({
+        version: 1,
+        carrots: [
+          {
+            id: "bunny.search",
+            name: "Search",
+            version: "1.0.0",
+            description: "Search helper",
+            mode: "window",
+            status: "installed",
+            sourceKind: "artifact",
+            currentHash: "hash-1",
+            installedAt: 1700000000000,
+            updatedAt: 1700000000000,
+            devMode: true,
+            lastBuildAt: 1700000000100,
+            lastBuildError: null,
+            requestedPermissions: {
+              host: { windows: true },
+              bun: { read: true },
+              isolation: "shared-worker",
+            },
+            grantedPermissions: {
+              host: { windows: true },
+              bun: { read: true },
+              isolation: "shared-worker",
+            },
+            view: {
+              relativePath: "views/index.html",
+              viewUrl: "views://views/index.html",
+              title: "Search",
+              width: 720,
+              height: 480,
+            },
+            worker: {
+              relativePath: "worker.js",
+            },
+            remoteUIs: {
+              dash: {
+                name: "Dashboard",
+                path: "remote-ui/dash/index.html",
+              },
+            },
+          },
+        ],
+      });
+      expect(JSON.stringify(snapshot)).not.toContain(storeRoot);
     }));
 
   it("rejects payload paths that escape the carrot root", () =>

@@ -2678,6 +2678,16 @@ ElizaClient.prototype.getUpdateStatus = async function (
   this: ElizaClient,
   force = false,
 ) {
+  try {
+    const viaRpc = await invokeDesktopBridgeRequest<UpdateStatus>({
+      rpcMethod: "getUpdateStatus",
+      ipcChannel: "agent",
+      params: { force },
+    });
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* fall through */
+  }
   return this.fetch(`/api/update/status${force ? "?force=true" : ""}`);
 };
 
