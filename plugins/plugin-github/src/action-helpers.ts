@@ -6,8 +6,8 @@
 
 import type { HandlerCallback, IAgentRuntime } from "@elizaos/core";
 import {
-  resolveGitHubAccountSelection,
   type GitHubAccountSelection,
+  resolveGitHubAccountSelection,
 } from "./accounts.js";
 import type { GitHubService } from "./services/github-service.js";
 import {

@@ -13,12 +13,12 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
-import { judgeRubric } from "../_helpers/action-assertions.ts";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
+import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 const RETRY_TOKEN = "post-retry-success-marker";
 
@@ -27,7 +27,12 @@ function checkRecovery(ctx: ScenarioContext): string | undefined {
   if (reply.length === 0) return "empty reply on retry-after-failure";
   // After recovery, the agent should mention the actually-fetched content.
   // We seeded a unique sender; verify it surfaces.
-  if (!reply.includes("retry-marker") && !reply.includes("retry") && !reply.includes("acme") && !reply.includes("invoice")) {
+  if (
+    !reply.includes("retry-marker") &&
+    !reply.includes("retry") &&
+    !reply.includes("acme") &&
+    !reply.includes("invoice")
+  ) {
     return `Reply did not surface post-retry content. Reply: ${reply.slice(0, 400)}`;
   }
   return undefined;
@@ -37,13 +42,7 @@ export default scenario({
   id: "inbox-triage.recovery-after-failure",
   title: "Agent retries transient connector failure and completes triage",
   domain: "lifeops.inbox-triage",
-  tags: [
-    "lifeops",
-    "inbox-triage",
-    "retry",
-    "recovery",
-    "robustness",
-  ],
+  tags: ["lifeops", "inbox-triage", "retry", "recovery", "robustness"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

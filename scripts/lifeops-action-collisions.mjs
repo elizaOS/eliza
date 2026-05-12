@@ -30,7 +30,9 @@ const MANIFEST_PATH = join(AUDIT_DIR, "prompts-manifest.json");
 const MD_OUT = join(AUDIT_DIR, "action-collisions.md");
 const JSON_OUT = join(AUDIT_DIR, "action-collisions.json");
 
-const COLLISION_THRESHOLD = Number(process.env.LIFEOPS_COLLISION_THRESHOLD ?? "0.75");
+const COLLISION_THRESHOLD = Number(
+  process.env.LIFEOPS_COLLISION_THRESHOLD ?? "0.75",
+);
 // Show this many "near-miss" pairs (in the [NEAR_MISS_FLOOR, threshold)
 // band) at the bottom of the markdown — useful when the strict threshold
 // turns up nothing because action descriptions in this codebase are short.

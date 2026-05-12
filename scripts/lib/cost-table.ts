@@ -13,32 +13,50 @@
  */
 
 export interface ModelPriceUsdPerMTokens {
-	input: number;
-	output: number;
-	cacheRead: number;
-	cacheWrite: number;
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
 }
 
 export interface TokenUsageForCost {
-	promptTokens?: number;
-	completionTokens?: number;
-	cacheReadInputTokens?: number;
-	cacheCreationInputTokens?: number;
-	totalTokens?: number;
+  promptTokens?: number;
+  completionTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  totalTokens?: number;
 }
 
-export const MODEL_PRICES_USD_PER_M_TOKENS: Record<string, ModelPriceUsdPerMTokens> = {
-	// Cerebras (gpt-oss family, served at https://api.cerebras.ai/v1)
-	"gpt-oss-120b": { input: 0.5, output: 0.8, cacheRead: 0, cacheWrite: 0 },
+export const MODEL_PRICES_USD_PER_M_TOKENS: Record<
+  string,
+  ModelPriceUsdPerMTokens
+> = {
+  // Cerebras (gpt-oss family, served at https://api.cerebras.ai/v1)
+  "gpt-oss-120b": { input: 0.5, output: 0.8, cacheRead: 0, cacheWrite: 0 },
 
-	// Anthropic
-	"claude-opus-4-7": { input: 15.0, output: 75.0, cacheRead: 1.5, cacheWrite: 18.75 },
-	"claude-sonnet-4-6": { input: 3.0, output: 15.0, cacheRead: 0.3, cacheWrite: 3.75 },
-	"claude-haiku-4-5": { input: 0.8, output: 4.0, cacheRead: 0.08, cacheWrite: 1.0 },
+  // Anthropic
+  "claude-opus-4-7": {
+    input: 15.0,
+    output: 75.0,
+    cacheRead: 1.5,
+    cacheWrite: 18.75,
+  },
+  "claude-sonnet-4-6": {
+    input: 3.0,
+    output: 15.0,
+    cacheRead: 0.3,
+    cacheWrite: 3.75,
+  },
+  "claude-haiku-4-5": {
+    input: 0.8,
+    output: 4.0,
+    cacheRead: 0.08,
+    cacheWrite: 1.0,
+  },
 
-	// OpenAI (current ship targets per CLAUDE.md)
-	"gpt-5.5": { input: 1.25, output: 10.0, cacheRead: 0.125, cacheWrite: 0 },
-	"gpt-5.5-mini": { input: 0.25, output: 2.0, cacheRead: 0.025, cacheWrite: 0 },
+  // OpenAI (current ship targets per CLAUDE.md)
+  "gpt-5.5": { input: 1.25, output: 10.0, cacheRead: 0.125, cacheWrite: 0 },
+  "gpt-5.5-mini": { input: 0.25, output: 2.0, cacheRead: 0.025, cacheWrite: 0 },
 };
 
 /**
@@ -47,16 +65,18 @@ export const MODEL_PRICES_USD_PER_M_TOKENS: Record<string, ModelPriceUsdPerMToke
  * model id (e.g. `claude-haiku-4-5-20251001`) where the price table only
  * stores the family key (`claude-haiku-4-5`).
  */
-export function lookupModelPrice(modelName: string | undefined): ModelPriceUsdPerMTokens | null {
-	if (!modelName) return null;
-	const exact = MODEL_PRICES_USD_PER_M_TOKENS[modelName];
-	if (exact) return exact;
+export function lookupModelPrice(
+  modelName: string | undefined,
+): ModelPriceUsdPerMTokens | null {
+  if (!modelName) return null;
+  const exact = MODEL_PRICES_USD_PER_M_TOKENS[modelName];
+  if (exact) return exact;
 
-	const normalized = modelName.toLowerCase();
-	const match = Object.keys(MODEL_PRICES_USD_PER_M_TOKENS)
-		.filter((k) => normalized.includes(k.toLowerCase()))
-		.sort((a, b) => b.length - a.length)[0];
-	return match ? (MODEL_PRICES_USD_PER_M_TOKENS[match] ?? null) : null;
+  const normalized = modelName.toLowerCase();
+  const match = Object.keys(MODEL_PRICES_USD_PER_M_TOKENS)
+    .filter((k) => normalized.includes(k.toLowerCase()))
+    .sort((a, b) => b.length - a.length)[0];
+  return match ? (MODEL_PRICES_USD_PER_M_TOKENS[match] ?? null) : null;
 }
 
 /**
@@ -70,25 +90,27 @@ export function lookupModelPrice(modelName: string | undefined): ModelPriceUsdPe
  * for them. Non-cached input is billed at the input rate.
  */
 export function computeCallCostUsd(
-	modelName: string | undefined,
-	usage: TokenUsageForCost | undefined,
+  modelName: string | undefined,
+  usage: TokenUsageForCost | undefined,
 ): number {
-	if (!usage) return 0;
-	const price = lookupModelPrice(modelName);
-	if (!price) return 0;
+  if (!usage) return 0;
+  const price = lookupModelPrice(modelName);
+  if (!price) return 0;
 
-	const cacheRead = usage.cacheReadInputTokens ?? 0;
-	const cacheWrite = usage.cacheCreationInputTokens ?? 0;
-	const totalPrompt = usage.promptTokens ?? 0;
-	const nonCachedInput = Math.max(0, totalPrompt - cacheRead - cacheWrite);
-	const completion = usage.completionTokens ?? 0;
+  const cacheRead = usage.cacheReadInputTokens ?? 0;
+  const cacheWrite = usage.cacheCreationInputTokens ?? 0;
+  const totalPrompt = usage.promptTokens ?? 0;
+  const nonCachedInput = Math.max(0, totalPrompt - cacheRead - cacheWrite);
+  const completion = usage.completionTokens ?? 0;
 
-	const inputCost = (nonCachedInput / 1_000_000) * price.input;
-	const cacheReadCost = (cacheRead / 1_000_000) * (price.cacheRead || price.input);
-	const cacheWriteCost = (cacheWrite / 1_000_000) * (price.cacheWrite || price.input);
-	const outputCost = (completion / 1_000_000) * price.output;
+  const inputCost = (nonCachedInput / 1_000_000) * price.input;
+  const cacheReadCost =
+    (cacheRead / 1_000_000) * (price.cacheRead || price.input);
+  const cacheWriteCost =
+    (cacheWrite / 1_000_000) * (price.cacheWrite || price.input);
+  const outputCost = (completion / 1_000_000) * price.output;
 
-	return inputCost + cacheReadCost + cacheWriteCost + outputCost;
+  return inputCost + cacheReadCost + cacheWriteCost + outputCost;
 }
 
 /**
@@ -96,6 +118,6 @@ export function computeCallCostUsd(
  * stage-level lines line up nicely.
  */
 export function formatUsd(amount: number): string {
-	if (!Number.isFinite(amount)) return "$?.????";
-	return `$${amount.toFixed(4)}`;
+  if (!Number.isFinite(amount)) return "$?.????";
+  return `$${amount.toFixed(4)}`;
 }

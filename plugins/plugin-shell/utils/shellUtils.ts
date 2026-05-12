@@ -12,10 +12,7 @@ import { spawn } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import {
-  resolveExecutable,
-  resolveTerminalShell,
-} from "./terminalCapabilities";
+import { resolveExecutable, resolveTerminalShell } from "./terminalCapabilities";
 
 const CHUNK_LIMIT = 8 * 1024;
 

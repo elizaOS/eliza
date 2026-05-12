@@ -7,7 +7,8 @@ import {
 
 export default scenario({
   id: "identity.search-across-handles",
-  title: "Search the rolodex returns the same entity for any handle on any platform",
+  title:
+    "Search the rolodex returns the same entity for any handle on any platform",
   domain: "lifeops.identity",
   tags: ["lifeops", "identity", "search", "merge"],
   description:

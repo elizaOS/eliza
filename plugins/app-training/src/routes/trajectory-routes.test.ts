@@ -2,8 +2,8 @@ import type http from "node:http";
 import { Readable } from "node:stream";
 import type { Trajectory } from "@elizaos/agent";
 import {
-  ELIZA_NATIVE_TRAJECTORY_FORMAT,
   type AgentRuntime,
+  ELIZA_NATIVE_TRAJECTORY_FORMAT,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { handleTrajectoryRoute } from "./trajectory-routes";
@@ -254,9 +254,7 @@ describe("trajectory routes", () => {
     );
     expect(response.headers["content-type"]).toBe("application/x-ndjson");
     expect(typeof response.body).toBe("string");
-    const lines = String(response.body)
-      .trim()
-      .split("\n");
+    const lines = String(response.body).trim().split("\n");
     expect(lines).toHaveLength(1);
     expect(JSON.parse(lines[0] ?? "{}")).toMatchObject({
       format: ELIZA_NATIVE_TRAJECTORY_FORMAT,

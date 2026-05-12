@@ -8,7 +8,13 @@
  * For each relative specifier ./ or ../ that has no file extension, resolves to either
  * "<path>.js" or "<path>/index.js" when those files exist next to the importing file.
  */
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -100,7 +106,9 @@ if (!packageDirArg) {
 
 const distDir = path.join(repoRoot, packageDirArg, "dist");
 if (!existsSync(distDir)) {
-  console.error(`[rewrite-dist-relative-imports-node-esm] dist not found: ${distDir}`);
+  console.error(
+    `[rewrite-dist-relative-imports-node-esm] dist not found: ${distDir}`,
+  );
   process.exit(1);
 }
 

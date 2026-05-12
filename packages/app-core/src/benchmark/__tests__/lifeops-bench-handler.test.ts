@@ -475,27 +475,80 @@ describe("LifeOpsFakeBackend", () => {
     expect(backend.stateHash()).toEqual(before);
   });
 
-  it("MESSAGE read ops (triage/search_inbox/list_channels/read_channel/read_with_contact) are noop", () => {
+  // P0-4 (W6-4): MESSAGE read ops project real LifeWorld slices instead
+  // of returning `{noop: true}`. State-hash stays unchanged (these are
+  // reads, not writes) but the result envelope now carries enough seed
+  // data for the planner to take an informed next-turn write decision.
+  // Mirrors Python `_u_message`'s envelope-shaped no-op result, just with
+  // populated payload fields instead of an empty marker.
+  it("MESSAGE read ops return seed slices without mutating state", () => {
     const path = writeFixture();
     const backend = LifeOpsFakeBackend.fromJsonFile(path);
     const before = backend.stateHash();
-    for (const op of [
-      "triage",
-      "search_inbox",
-      "list_channels",
-      "read_channel",
-      "read_with_contact",
-    ]) {
-      const result = backend.applyAction("MESSAGE", {
-        operation: op,
-        source: "gmail",
-      });
-      expect(result.ok).toBe(true);
-      expect(result.result).toMatchObject({
-        operation: op,
-        noop: true,
-      });
-    }
+
+    const triage = backend.applyAction("MESSAGE", {
+      operation: "triage",
+      source: "gmail",
+    });
+    expect(triage.ok).toBe(true);
+    expect(triage.result).toMatchObject({
+      operation: "triage",
+      source: "gmail",
+    });
+    const triageResult = triage.result as {
+      top: Array<{ id: string; priority: string }>;
+    };
+    expect(triageResult.top.map((m) => m.id)).toContain("e1");
+    expect(triageResult.top.find((m) => m.id === "e1")?.priority).toBe("high");
+
+    const searchInbox = backend.applyAction("MESSAGE", {
+      operation: "search_inbox",
+      source: "gmail",
+      query: "report",
+    });
+    expect(searchInbox.ok).toBe(true);
+    const searchResult = searchInbox.result as {
+      matches: Array<{ id: string }>;
+    };
+    expect(searchResult.matches.map((m) => m.id)).toContain("e1");
+
+    const listChannels = backend.applyAction("MESSAGE", {
+      operation: "list_channels",
+      source: "imessage",
+    });
+    expect(listChannels.ok).toBe(true);
+    expect(listChannels.result).toMatchObject({
+      operation: "list_channels",
+      source: "imessage",
+      channels: expect.any(Array),
+    });
+
+    const readChannel = backend.applyAction("MESSAGE", {
+      operation: "read_channel",
+      source: "imessage",
+      channel: "conv_unknown",
+    });
+    expect(readChannel.ok).toBe(true);
+    expect(readChannel.result).toMatchObject({
+      operation: "read_channel",
+      source: "imessage",
+      channel: "conv_unknown",
+      messages: [],
+    });
+
+    const readWith = backend.applyAction("MESSAGE", {
+      operation: "read_with_contact",
+      source: "imessage",
+      contact: "Alice",
+    });
+    expect(readWith.ok).toBe(true);
+    expect(readWith.result).toMatchObject({
+      operation: "read_with_contact",
+      source: "imessage",
+      contact: "Alice",
+    });
+
+    // None of the reads should mutate state.
     expect(backend.stateHash()).toEqual(before);
   });
 
@@ -513,6 +566,105 @@ describe("LifeOpsFakeBackend", () => {
     expect(() =>
       backend.applyAction("MESSAGE", { operation: "frobnicate" }),
     ).toThrow(/MESSAGE\/frobnicate/);
+  });
+
+  // -------------------------------------------------------------------
+  // W6-4: granular dotted `messages.*` forms route through the umbrella
+  // dispatcher with `operation` injected from the suffix. Mirrors the
+  // executor-side umbrella translation in `umbrellaToLowercase`.
+  // -------------------------------------------------------------------
+
+  it("messages.triage dotted form returns the same shape as MESSAGE/triage", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const result = backend.applyAction("messages.triage", { source: "gmail" });
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatchObject({
+      operation: "triage",
+      source: "gmail",
+    });
+  });
+
+  it("messages.search_inbox dotted form filters by query", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const result = backend.applyAction("messages.search_inbox", {
+      source: "gmail",
+      query: "report",
+    });
+    expect(result.ok).toBe(true);
+    const matches = (result.result as { matches: Array<{ id: string }> })
+      .matches;
+    expect(matches.map((m) => m.id)).toContain("e1");
+  });
+
+  it("messages.list_channels dotted form lists conversations", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const result = backend.applyAction("messages.list_channels", {});
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatchObject({ operation: "list_channels" });
+  });
+
+  it("messages.draft_reply dotted form mutates state (drafts)", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const before = backend.stateHash();
+    const result = backend.applyAction("messages.draft_reply", {
+      source: "gmail",
+      messageId: "e1",
+      body: "thanks",
+    });
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatchObject({ folder: "drafts", thread_id: "t1" });
+    expect(backend.stateHash()).not.toEqual(before);
+  });
+
+  it("messages.manage dotted form archives by messageId", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const result = backend.applyAction("messages.manage", {
+      manageOperation: "archive",
+      messageId: "e1",
+    });
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatchObject({ id: "e1", folder: "archive" });
+  });
+
+  // -------------------------------------------------------------------
+  // W6-4: P0-5 umbrella translation. The bench backend's local
+  // `umbrellaToLowercase` translator handles MESSAGE_TRIAGE-style
+  // granular forms (the bench handler's `translateUmbrellaAction`
+  // handles CALENDAR + dotted forms at the HTTP boundary).
+  // -------------------------------------------------------------------
+
+  it("MESSAGE_TRIAGE (granular) routes through the umbrella to triage", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const result = backend.applyAction("MESSAGE_TRIAGE", { source: "gmail" });
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatchObject({
+      operation: "triage",
+      source: "gmail",
+    });
+  });
+
+  it("MESSAGE_SEND (granular, gmail) routes through the umbrella to send", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const before = backend.stateHash();
+    const result = backend.applyAction("MESSAGE_SEND", {
+      source: "gmail",
+      to_emails: ["a@example.test"],
+      subject: "hi",
+      body: "there",
+    });
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatchObject({
+      folder: "sent",
+      subject: "hi",
+    });
+    expect(backend.stateHash()).not.toEqual(before);
   });
 });
 

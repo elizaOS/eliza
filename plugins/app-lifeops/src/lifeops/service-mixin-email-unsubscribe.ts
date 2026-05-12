@@ -6,9 +6,9 @@ import type {
   EmailUnsubscribeMethod,
   EmailUnsubscribeRecord,
   EmailUnsubscribeRequest,
-  EmailUnsubscribeStatus,
   EmailUnsubscribeResult,
   EmailUnsubscribeScanRequest,
+  EmailUnsubscribeStatus,
 } from "./email-unsubscribe-types.js";
 import {
   accountIdForGrant,

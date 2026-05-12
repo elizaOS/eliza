@@ -10,8 +10,8 @@
 
 import {
   formatWebsiteList,
-  getSelfControlStatus,
   getSelfControlPermissionState,
+  getSelfControlStatus,
   type SelfControlBlockRequest,
   startSelfControlBlock,
   stopSelfControlBlock,
@@ -43,7 +43,8 @@ export const websiteBlockerContribution: BlockerContribution<
       return {
         available: false,
         reason:
-          status.reason ?? "Local website blocking is unavailable on this machine.",
+          status.reason ??
+          "Local website blocking is unavailable on this machine.",
         permission: "denied",
       };
     }
@@ -87,7 +88,8 @@ export const websiteBlockerContribution: BlockerContribution<
         active: false,
         endsAt: null,
         text:
-          status.reason ?? "Local website blocking is unavailable on this machine.",
+          status.reason ??
+          "Local website blocking is unavailable on this machine.",
       };
     }
     if (!status.active) {

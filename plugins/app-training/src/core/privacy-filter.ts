@@ -121,8 +121,7 @@ const EMAIL_REPLACEMENT = "[REDACTED_EMAIL]";
 const PHONE_REPLACEMENT = "[REDACTED_PHONE]";
 const ADDRESS_REPLACEMENT = "[REDACTED_ADDRESS]";
 
-const EMAIL_PATTERN =
-  /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
+const EMAIL_PATTERN = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
 
 const STREET_SUFFIXES =
   "St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Ln|Lane|Dr|Drive|Ct|Court|Pl|Place|Way|Pkwy|Parkway|Ter|Terrace|Cir|Circle|Hwy|Highway|Sq|Square|Trl|Trail|Loop";
@@ -355,7 +354,9 @@ function transformDeep(
   }
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    for (const [key, entry] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
       out[key] = transformDeep(
         entry,
         options,

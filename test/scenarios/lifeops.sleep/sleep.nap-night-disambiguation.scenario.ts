@@ -7,11 +7,11 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 const NIGHT_START_UTC = "2025-11-04T05:00:00.000Z"; // 22:00 Pacific Mon Nov 3
@@ -131,9 +131,7 @@ export default scenario({
       type: "custom",
       name: "reports-night-not-7-5",
       predicate: (ctx: ScenarioContext) => {
-        const reply = String(
-          ctx.turns?.[0]?.responseText ?? "",
-        ).toLowerCase();
+        const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
         if (!reply) return "empty reply";
         // 7h is the night sleep; 7.5h would be the buggy sum with nap
         if (reply.includes("7.5") || reply.includes("7 and a half")) {

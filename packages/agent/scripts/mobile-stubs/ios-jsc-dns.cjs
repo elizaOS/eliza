@@ -51,11 +51,16 @@ module.exports = {
   resolve,
   resolve4: resolve,
   resolve6: resolve,
-  resolveCname: (_h, cb) => (typeof cb === "function" ? cb(null, []) : Promise.resolve([])),
-  resolveMx: (_h, cb) => (typeof cb === "function" ? cb(null, []) : Promise.resolve([])),
-  resolveNs: (_h, cb) => (typeof cb === "function" ? cb(null, []) : Promise.resolve([])),
-  resolveTxt: (_h, cb) => (typeof cb === "function" ? cb(null, []) : Promise.resolve([])),
-  reverse: (ip, cb) => (typeof cb === "function" ? cb(null, [ip]) : Promise.resolve([ip])),
+  resolveCname: (_h, cb) =>
+    typeof cb === "function" ? cb(null, []) : Promise.resolve([]),
+  resolveMx: (_h, cb) =>
+    typeof cb === "function" ? cb(null, []) : Promise.resolve([]),
+  resolveNs: (_h, cb) =>
+    typeof cb === "function" ? cb(null, []) : Promise.resolve([]),
+  resolveTxt: (_h, cb) =>
+    typeof cb === "function" ? cb(null, []) : Promise.resolve([]),
+  reverse: (ip, cb) =>
+    typeof cb === "function" ? cb(null, [ip]) : Promise.resolve([ip]),
   promises,
   Resolver: promises.Resolver,
   ADDRCONFIG: 32,

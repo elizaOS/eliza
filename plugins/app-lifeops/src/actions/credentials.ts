@@ -183,7 +183,8 @@ export const credentialsAction: Action & {
     // Password-manager-side params.
     {
       name: "intent",
-      description: "(action=search) Natural-language description of the lookup intent.",
+      description:
+        "(action=search) Natural-language description of the lookup intent.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -237,11 +238,6 @@ export const credentialsAction: Action & {
     if (AUTOFILL_SUBACTIONS.has(subaction)) {
       return runAutofillHandler(runtime, message, state, forwardedOptions);
     }
-    return runPasswordManagerHandler(
-      runtime,
-      message,
-      state,
-      forwardedOptions,
-    );
+    return runPasswordManagerHandler(runtime, message, state, forwardedOptions);
   },
 };

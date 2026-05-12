@@ -10,7 +10,8 @@ const now = Date.now();
 
 export default scenario({
   id: "travel.travel-blackout-defends-no-booking-during-focus",
-  title: "Travel blackout defends against booking flights during a focus window",
+  title:
+    "Travel blackout defends against booking flights during a focus window",
   domain: "lifeops.travel",
   tags: ["lifeops", "travel", "calendar", "blackout", "defense"],
   description:

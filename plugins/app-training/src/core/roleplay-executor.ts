@@ -270,7 +270,9 @@ function parseRoutingDecision(response: string): {
   const secondaryContexts =
     contexts.length > 1
       ? contexts.slice(1)
-      : parseDelimitedList(readLegacyField(response, "secondaryContexts") ?? "");
+      : parseDelimitedList(
+          readLegacyField(response, "secondaryContexts") ?? "",
+        );
 
   return {
     decision:

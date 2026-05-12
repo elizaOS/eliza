@@ -14,34 +14,19 @@
     "stripInternal": true,
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "paths": {
-      "@elizaos/ui": [
-        "../ui/dist/index.d.ts"
-      ],
-      "@elizaos/shared": [
-        "../shared/dist/index.d.ts"
-      ],
-      "@elizaos/core": [
-        "../core/dist/index.d.ts"
-      ],
-      "@elizaos/agent": [
-        "./src/index.ts"
-      ],
+      "@elizaos/ui": ["../ui/dist/index.d.ts"],
+      "@elizaos/shared": ["../shared/dist/index.d.ts"],
+      "@elizaos/core": ["../core/dist/index.d.ts"],
+      "@elizaos/agent": ["./src/index.ts"],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/dist/index.d.ts"
       ],
       "@elizaos/plugin-browser": [
         "../../plugins/plugin-browser/dist/index.d.ts"
       ],
-      "@elizaos/plugin-elizacloud": [
-        "./src/external-modules.d.ts"
-      ]
+      "@elizaos/plugin-elizacloud": ["./src/external-modules.d.ts"]
     },
-    "types": [
-      "node",
-      "bun-types",
-      "react",
-      "react-dom"
-    ],
+    "types": ["node", "bun-types", "react", "react-dom"],
     "typeRoots": [
       "../../node_modules/@types",
       "../../node_modules/.bun/node_modules/@types",
@@ -54,12 +39,6 @@
       "../../../node_modules/.bun/node_modules"
     ]
   },
-  "exclude": [
-    "src/**/*.test.ts",
-    "src/**/*.test.tsx"
-  ],
-  "include": [
-    "src",
-    "vite-env.d.ts"
-  ]
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"],
+  "include": ["src", "vite-env.d.ts"]
 }

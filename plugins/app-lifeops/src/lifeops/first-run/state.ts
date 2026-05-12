@@ -11,26 +11,26 @@ import { asCacheRuntime } from "../runtime-cache.js";
 
 // --- Public re-exports of the canonical OwnerFactStore --------------------
 
-export {
-  createOwnerFactStore,
-  ownerFactsToView,
-  registerOwnerFactStore,
-  resolveOwnerFactStore,
-  getOwnerFactStore,
-} from "../owner/fact-store.js";
 export type {
   EscalationRule,
   OwnerFactEntry,
   OwnerFactProvenance,
   OwnerFactProvenanceSource,
+  OwnerFactStore,
   OwnerFacts,
   OwnerFactsPatch,
-  OwnerFactStore,
   OwnerFactWindow,
   OwnerQuietHours,
   PolicyPatchEscalationRule,
   PolicyPatchReminderIntensity,
   ReminderIntensity,
+} from "../owner/fact-store.js";
+export {
+  createOwnerFactStore,
+  getOwnerFactStore,
+  ownerFactsToView,
+  registerOwnerFactStore,
+  resolveOwnerFactStore,
 } from "../owner/fact-store.js";
 
 // --- First-run lifecycle state -------------------------------------------

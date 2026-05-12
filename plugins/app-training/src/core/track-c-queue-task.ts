@@ -3,8 +3,8 @@
  * Uses the same cron-boundary math as Heartbeats via `computeNextCronRunAtMs`.
  */
 
-import type { IAgentRuntime, Task } from "@elizaos/core";
 import { computeNextCronRunAtMs } from "@elizaos/agent";
+import type { IAgentRuntime, Task } from "@elizaos/core";
 
 export const TRACK_C_QUEUE_TAGS = ["queue", "repeat", "track-c"] as const;
 

@@ -11,12 +11,12 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import { updateLifeOpsMeetingPreferences } from "../../../plugins/app-lifeops/src/lifeops/owner-profile.ts";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
-import { updateLifeOpsMeetingPreferences } from "../../../plugins/app-lifeops/src/lifeops/owner-profile.ts";
 
 const PACIFIC_TZ = "America/Los_Angeles";
 const HABIT_TITLE = "Stretch";

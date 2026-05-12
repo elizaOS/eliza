@@ -59,9 +59,7 @@ vi.mock("../src/app-blocker/engine.js", () => ({
       (options.packageNames?.length ?? 0) + (options.appTokens?.length ?? 0);
     const endsAt =
       typeof options.durationMinutes === "number"
-        ? new Date(
-            Date.now() + options.durationMinutes * 60_000,
-          ).toISOString()
+        ? new Date(Date.now() + options.durationMinutes * 60_000).toISOString()
         : null;
     stubState.active = true;
     stubState.blockedCount = blockedCount;
@@ -86,7 +84,7 @@ const { createMinimalRuntimeStub } = await import("./first-run-helpers.js");
 
 function ownerMessage(agentId: UUID, text: string): Memory {
   return {
-    id: ("msg-" + Math.random().toString(36).slice(2, 8)) as UUID,
+    id: `msg-${Math.random().toString(36).slice(2, 8)}` as UUID,
     entityId: agentId,
     roomId: agentId,
     agentId,
@@ -153,9 +151,9 @@ describe("runAppBlockHandler", () => {
     );
 
     expect(result?.success).toBe(true);
-    expect(
-      (result?.data as { active?: boolean } | undefined)?.active,
-    ).toBe(false);
+    expect((result?.data as { active?: boolean } | undefined)?.active).toBe(
+      false,
+    );
     expect(result?.text ?? "").toMatch(/No app block/);
   });
 

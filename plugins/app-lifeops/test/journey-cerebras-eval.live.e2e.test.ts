@@ -38,8 +38,8 @@ import {
 import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
-  TestNoopScheduledTaskDispatcher,
   type ScheduledTaskRunnerHandle,
+  TestNoopScheduledTaskDispatcher,
 } from "../src/lifeops/scheduled-task/runner.ts";
 import {
   createInMemoryScheduledTaskLogStore,
@@ -57,9 +57,9 @@ import type {
   SubjectStoreView,
 } from "../src/lifeops/scheduled-task/types.ts";
 import {
-  getEvalModelClient,
   type CerebrasChatResponse,
   type EvalModelClient,
+  getEvalModelClient,
 } from "./helpers/lifeops-eval-model.ts";
 
 // ---------------------------------------------------------------------------
@@ -550,7 +550,11 @@ describeIfKey("Domain 1 — Onboarding & first-run setup", () => {
       }),
     ];
     const tasks = await Promise.all(seeds.map((s) => h.runner.schedule(s)));
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 1,
       title: "Onboarding & first-run setup",
@@ -582,7 +586,11 @@ describeIfKey("Domain 2 — Core data model & overview surface", () => {
         h.runner.schedule(input({ kind: k, promptInstructions: `${k}-task` })),
       ),
     );
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 2,
       title: "Core data model & overview surface",
@@ -614,7 +622,11 @@ describeIfKey("Domain 3 — Habits", () => {
     await h.runner.fire(habit.taskId);
     await h.runner.apply(habit.taskId, "complete", { reason: "drank" });
     const tasks = await h.runner.list();
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 3,
       title: "Habits",
@@ -663,7 +675,11 @@ describeIfKey("Domain 4 — Routines & multi-step daily flows", () => {
     if (!recap) throw new Error("recap missing after check-in completion");
     await h.runner.apply(recap.taskId, "complete");
     const tasks = await h.runner.list();
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 4,
       title: "Routines & multi-step daily flows",
@@ -688,7 +704,11 @@ describeIfKey("Domain 5 — Tasks (one-off)", () => {
     );
     await h.runner.apply(t.taskId, "complete", { reason: "took them" });
     const tasks = await h.runner.list();
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((x) => x.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((x) => x.taskId),
+    );
     await recordAndAssert({
       domain: 5,
       title: "Tasks (one-off)",
@@ -717,12 +737,18 @@ describeIfKey("Domain 6 — Goals", () => {
         subject: { kind: "self", id: "owner-self" },
         shouldFire: {
           compose: "all",
-          gates: [{ kind: "quiet_hours", params: { highPriorityBypass: false } }],
+          gates: [
+            { kind: "quiet_hours", params: { highPriorityBypass: false } },
+          ],
         },
       }),
     );
     const tasks = [goal];
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 6,
       title: "Goals",
@@ -749,7 +775,11 @@ describeIfKey("Domain 7 — Reminders & escalation ladder", () => {
     );
     const ladders = h.runner.inspectRegistries().ladders;
     const tasks = [t];
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 7,
       title: "Reminders & escalation ladder",
@@ -777,15 +807,24 @@ describeIfKey("Domain 8 — Calendar journeys", () => {
         subject: { kind: "calendar_event", id: "evt-123" },
         pipeline: {
           onComplete: [
-            input({ kind: "output", promptInstructions: "save recap to notes" }),
+            input({
+              kind: "output",
+              promptInstructions: "save recap to notes",
+            }),
           ],
-          onSkip: [input({ kind: "followup", promptInstructions: "ask later" })],
+          onSkip: [
+            input({ kind: "followup", promptInstructions: "ask later" }),
+          ],
         },
       }),
     );
     await h.runner.apply(recap.taskId, "skip", { reason: "user busy" });
     const tasks = await h.runner.list();
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 8,
       title: "Calendar journeys",
@@ -812,7 +851,11 @@ describeIfKey("Domain 9 — Inbox & email triage", () => {
     );
     await h.runner.apply(t.taskId, "complete");
     const tasks = await h.runner.list();
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 9,
       title: "Inbox & email triage",
@@ -845,9 +888,15 @@ describeIfKey("Domain 10 — Travel", () => {
         },
       }),
     );
-    await h.runner.apply(approval.taskId, "complete", { reason: "user approved" });
+    await h.runner.apply(approval.taskId, "complete", {
+      reason: "user approved",
+    });
     const tasks = await h.runner.list();
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 10,
       title: "Travel",
@@ -884,7 +933,11 @@ describeIfKey("Domain 11 — Follow-up repair (relationships)", () => {
       repliedAtIso: "2026-05-09T08:30:00.000Z",
     });
     const tasks = await h.runner.list();
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 11,
       title: "Follow-up repair (relationships)",
@@ -920,7 +973,11 @@ describeIfKey("Domain 12 — Documents, signatures, portals", () => {
     );
     const children = await h.runner.pipeline(t.taskId, "failed");
     const tasks = await h.runner.list();
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 12,
       title: "Documents, signatures, portals",
@@ -947,7 +1004,11 @@ describeIfKey("Domain 13 — Self-control / app & website blockers", () => {
     );
     await h.runner.fire(t.taskId);
     const tasks = await h.runner.list();
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 13,
       title: "Self-control / app & website blockers",
@@ -974,7 +1035,11 @@ describeIfKey("Domain 14 — Group chat handoff", () => {
       }),
     );
     const tasks = [t];
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 14,
       title: "Group chat handoff",
@@ -1007,7 +1072,11 @@ describeIfKey("Domain 15 — Multi-channel & cross-channel search", () => {
       }),
     );
     const tasks = [t];
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 15,
       title: "Multi-channel & cross-channel search",
@@ -1048,7 +1117,11 @@ describeIfKey("Domain 16 — Activity signals & screen context", () => {
     h.setNow("2026-05-09T07:30:00.000Z");
     await h.runner.evaluateCompletion(t.taskId, { acknowledged: false });
     const tasks = await h.runner.list();
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 16,
       title: "Activity signals & screen context",
@@ -1074,7 +1147,11 @@ describeIfKey("Domain 17 — Approval queues & action gating", () => {
     );
     await h.runner.apply(approval.taskId, "dismiss", { reason: "not now" });
     const tasks = await h.runner.list();
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 17,
       title: "Approval queues & action gating",
@@ -1101,7 +1178,11 @@ describeIfKey("Domain 18 — Identity merge (canonical person)", () => {
     );
     await h.runner.apply(t.taskId, "complete", { reason: "merged identity" });
     const tasks = await h.runner.list();
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 18,
       title: "Identity merge (canonical person)",
@@ -1126,7 +1207,11 @@ describeIfKey("Domain 19 — Memory recall", () => {
       }),
     );
     const tasks = [t];
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 19,
       title: "Memory recall",
@@ -1158,7 +1243,11 @@ describeIfKey("Domain 20 — Connectors & permissions", () => {
       }),
     );
     const tasks = [t];
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 20,
       title: "Connectors & permissions",
@@ -1188,7 +1277,11 @@ describeIfKey("Domain 21 — Health, money, screen time", () => {
     );
     const checks = h.runner.inspectRegistries().completionChecks;
     const tasks = [t];
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 21,
       title: "Health, money, screen time",
@@ -1214,7 +1307,11 @@ describeIfKey("Domain 22 — Push notifications", () => {
     );
     const ladders = h.runner.inspectRegistries().ladders;
     const tasks = [t];
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 22,
       title: "Push notifications",
@@ -1240,7 +1337,11 @@ describeIfKey("Domain 23 — Remote sessions", () => {
       }),
     );
     const tasks = [t];
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 23,
       title: "Remote sessions",
@@ -1270,7 +1371,11 @@ describeIfKey("Domain 24 — Settings & UX", () => {
       }),
     );
     const tasks = [t];
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 24,
       title: "Settings & UX",
@@ -1296,7 +1401,11 @@ describeIfKey("Domain 25 — REST API access flows", () => {
       }),
     );
     const tasks = [t];
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 25,
       title: "REST API access flows",
@@ -1323,13 +1432,19 @@ describeIfKey("Domain 26 — Workflows (event-triggered)", () => {
           filter: { source: "stripe" },
         },
         pipeline: {
-          onComplete: [input({ kind: "output", promptInstructions: "audit log" })],
+          onComplete: [
+            input({ kind: "output", promptInstructions: "audit log" }),
+          ],
         },
       }),
     );
     await h.runner.apply(t.taskId, "complete");
     const tasks = await h.runner.list();
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 26,
       title: "Workflows (event-triggered)",
@@ -1356,7 +1471,11 @@ describeIfKey("Domain 27 — Multilingual coverage", () => {
       }),
     );
     const tasks = [t];
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 27,
       title: "Multilingual coverage",
@@ -1384,7 +1503,11 @@ describeIfKey("Domain 28 — Suspected-but-unconfirmed flows", () => {
       reason: "owner deferred until confirmed",
     });
     const tasks = await h.runner.list();
-    const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
+    const log = await collectLog(
+      h.logStore,
+      h.agentId,
+      tasks.map((t) => t.taskId),
+    );
     await recordAndAssert({
       domain: 28,
       title: "Suspected-but-unconfirmed flows",
@@ -1409,7 +1532,9 @@ afterAll(() => {
     return;
   }
   const passes = RESULTS.filter((r) => r.verdict === "pass").length;
-  const caveats = RESULTS.filter((r) => r.verdict === "pass_with_caveat").length;
+  const caveats = RESULTS.filter(
+    (r) => r.verdict === "pass_with_caveat",
+  ).length;
   const failures = RESULTS.filter((r) => r.verdict === "fail").length;
   const summary = {
     generatedAtIso: new Date().toISOString(),

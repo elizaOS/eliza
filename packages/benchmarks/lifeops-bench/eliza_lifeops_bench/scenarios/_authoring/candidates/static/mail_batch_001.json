@@ -17,9 +17,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "urgent"
-    ],
+    "required_outputs": ["urgent"],
     "first_question_fallback": {
       "canned_answer": "The most recent email from ceo@example.test, which is email_000001.",
       "applies_when": "agent asks which email to flag"
@@ -47,9 +45,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "PDF"
-    ],
+    "required_outputs": ["PDF"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -73,9 +69,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "June 2"
-    ],
+    "required_outputs": ["June 2"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -100,9 +94,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "meeting"
-    ],
+    "required_outputs": ["meeting"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -126,9 +118,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "dessert"
-    ],
+    "required_outputs": ["dessert"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -153,9 +143,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "budget"
-    ],
+    "required_outputs": ["budget"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -179,9 +167,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "read"
-    ],
+    "required_outputs": ["read"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -205,9 +191,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "contact"
-    ],
+    "required_outputs": ["contact"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -231,9 +215,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "\ud83d\udc4d"
-    ],
+    "required_outputs": ["\ud83d\udc4d"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -257,9 +239,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "April"
-    ],
+    "required_outputs": ["April"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,

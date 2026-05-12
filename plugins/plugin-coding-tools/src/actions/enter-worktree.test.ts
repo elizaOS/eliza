@@ -164,8 +164,9 @@ describe("ENTER_WORKTREE", () => {
       [SANDBOX_SERVICE]: sandbox,
       [SESSION_CWD_SERVICE]: session,
     };
-    (runtime as { getService: (k: string) => unknown }).getService =
-      (key: string) => services[key] ?? null;
+    (runtime as { getService: (k: string) => unknown }).getService = (
+      key: string,
+    ) => services[key] ?? null;
 
     const result = await enterWorktreeHandler(
       runtime,

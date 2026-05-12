@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import crypto from "node:crypto";
 import { setTimeout as sleep } from "node:timers/promises";
 import { promisify } from "node:util";
-import { describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { describeIf } from "../../../test/helpers/conditional-tests.ts";
 import {
   createNativeAppleReminderLikeItem,

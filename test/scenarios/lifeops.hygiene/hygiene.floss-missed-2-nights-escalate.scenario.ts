@@ -3,8 +3,8 @@
  * and the agent should bring it up in the morning brief without lecturing.
  */
 
-import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
 import type { IAgentRuntime } from "@elizaos/core";
+import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
 import {
   executeRawSql,
   sqlQuote,
@@ -25,9 +25,7 @@ async function seedSecondMissedFloss(
   const now = scenarioNow(ctx);
   const agentId = String(runtime.agentId);
   const dueAt = new Date(now.getTime() - 26 * 60 * 60 * 1000).toISOString();
-  const createdAt = new Date(
-    now.getTime() - 30 * 60 * 60 * 1000,
-  ).toISOString();
+  const createdAt = new Date(now.getTime() - 30 * 60 * 60 * 1000).toISOString();
 
   await executeRawSql(
     runtime,

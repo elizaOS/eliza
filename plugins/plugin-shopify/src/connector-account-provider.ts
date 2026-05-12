@@ -142,9 +142,7 @@ async function fetchShopInfo(
     },
   });
   if (!response.ok) {
-    throw new Error(
-      `Shopify shop.json query failed with ${response.status}`,
-    );
+    throw new Error(`Shopify shop.json query failed with ${response.status}`);
   }
   return (await response.json()) as ShopifyShopPayload;
 }

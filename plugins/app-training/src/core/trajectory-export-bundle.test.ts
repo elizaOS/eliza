@@ -4,15 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Trajectory } from "@elizaos/agent";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { TrainingServiceLike } from "../services/training-service-like.js";
 import {
   handleTrainingRoutes,
   type TrainingRouteContext,
 } from "../routes/training-routes.js";
+import type { TrainingServiceLike } from "../services/training-service-like.js";
 import {
+  buildTrajectoryExportBundle,
   TRAJECTORY_EXPORT_BUNDLE_SCHEMA,
   TRAJECTORY_EXPORT_BUNDLE_VERSION,
-  buildTrajectoryExportBundle,
 } from "./trajectory-export-bundle.js";
 
 const tempDirs: string[] = [];
@@ -51,7 +51,11 @@ function baseTrajectory(): Trajectory {
   };
 }
 
-function withRunId(trajectory: Trajectory, trajectoryId: string, runId: string) {
+function withRunId(
+  trajectory: Trajectory,
+  trajectoryId: string,
+  runId: string,
+) {
   const firstStep = trajectory.steps?.[0];
   const firstCall = firstStep?.llmCalls?.[0];
   if (!firstStep || !firstCall) {
@@ -282,9 +286,9 @@ describe("trajectory export bundle", () => {
         limit: 100,
       }),
     );
-    const getTrajectoryById = vi.fn<
-      TrainingServiceLike["getTrajectoryById"]
-    >(async (trajectoryId: string) => trajectories.get(trajectoryId) ?? null);
+    const getTrajectoryById = vi.fn<TrainingServiceLike["getTrajectoryById"]>(
+      async (trajectoryId: string) => trajectories.get(trajectoryId) ?? null,
+    );
     const trainingService = createTrainingService({
       listTrajectories,
       getTrajectoryById,
@@ -309,7 +313,9 @@ describe("trajectory export bundle", () => {
     const payload = response.payload as {
       trajectoriesConsidered: number;
       trajectoriesBundled: number;
-      bundle: Awaited<ReturnType<typeof buildTrajectoryExportBundle>>["manifest"];
+      bundle: Awaited<
+        ReturnType<typeof buildTrajectoryExportBundle>
+      >["manifest"];
     };
     expect(payload.trajectoriesConsidered).toBe(2);
     expect(payload.trajectoriesBundled).toBe(1);

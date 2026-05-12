@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 // Reads capture records produced by ai-qa-capture.spec.ts and runs a Claude
 // vision pass over each screenshot. Writes per-capture findings JSON + a
 // rolled-up markdown report.
@@ -13,8 +14,8 @@
 //   AI_QA_MAX_TOKENS   — defaults to 4096
 //   AI_QA_CONCURRENCY  — defaults to 3
 
-import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -139,14 +140,18 @@ function selectVisionProvider() {
     return looksLikeOpenAiKey(process.env.OPENAI_API_KEY) ? "openai" : null;
   }
   if (forced === "groq") {
-    return process.env.GROQ_API_KEY || looksLikeGroqKey(process.env.OPENAI_API_KEY)
+    return process.env.GROQ_API_KEY ||
+      looksLikeGroqKey(process.env.OPENAI_API_KEY)
       ? "groq"
       : null;
   }
   if (process.env.ANTHROPIC_API_KEY) return "anthropic";
   if (looksLikeOpenAiKey(process.env.OPENAI_API_KEY)) return "openai";
   // Repos that route Groq through OPENAI_API_KEY are common in this workspace.
-  if (process.env.GROQ_API_KEY || looksLikeGroqKey(process.env.OPENAI_API_KEY)) {
+  if (
+    process.env.GROQ_API_KEY ||
+    looksLikeGroqKey(process.env.OPENAI_API_KEY)
+  ) {
     return "groq";
   }
   return null;
@@ -446,11 +451,11 @@ async function main() {
         : provider === "groq"
           ? GROQ_MODEL
           : "?";
-  console.error(`[ai-qa] vision provider: ${provider} (model: ${providerModel})`);
+  console.error(
+    `[ai-qa] vision provider: ${provider} (model: ${providerModel})`,
+  );
   const args = parseArgs(process.argv.slice(2));
-  const runDir = args.runDir
-    ? resolve(args.runDir)
-    : await findLatestRunDir();
+  const runDir = args.runDir ? resolve(args.runDir) : await findLatestRunDir();
   if (!runDir || !existsSync(runDir)) {
     console.error(`[ai-qa] no run dir found; run capture spec first`);
     process.exit(2);

@@ -79,11 +79,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  logger,
-  ModelType,
-  runWithTrajectoryContext,
-} from "@elizaos/core";
+import { logger, ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import type {
   ApprovalAction,
@@ -299,11 +295,12 @@ function emptyPayloadFor(_action: ApprovalAction): ApprovalPayload | null {
   return null;
 }
 
-function stringOrNull(record: Record<string, unknown>, key: string): string | null {
+function stringOrNull(
+  record: Record<string, unknown>,
+  key: string,
+): string | null {
   const value = record[key];
-  return typeof value === "string" && value.trim().length > 0
-    ? value
-    : null;
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 
 function coerceTravelSearch(

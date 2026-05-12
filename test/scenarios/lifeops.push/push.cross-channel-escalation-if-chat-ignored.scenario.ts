@@ -8,7 +8,8 @@ import {
 
 export default scenario({
   id: "push.cross-channel-escalation-if-chat-ignored",
-  title: "Escalate to mobile push if a desktop chat message went 10 minutes unread",
+  title:
+    "Escalate to mobile push if a desktop chat message went 10 minutes unread",
   domain: "lifeops.push",
   tags: ["lifeops", "push", "escalation", "cross-channel"],
   description:
@@ -56,8 +57,7 @@ export default scenario({
       responseIncludesAny: ["mobile", "phone", "escalate"],
       responseJudge: {
         minimumScore: 0.7,
-        rubric:
-          "Reply must escalate to mobile push. Repeating desktop fails.",
+        rubric: "Reply must escalate to mobile push. Repeating desktop fails.",
       },
     },
   ],
@@ -95,8 +95,7 @@ export default scenario({
     judgeRubric({
       name: "push-cross-channel-rubric",
       threshold: 0.7,
-      description:
-        "Agent escalated from desktop (unread 10m) to mobile push.",
+      description: "Agent escalated from desktop (unread 10m) to mobile push.",
     }),
   ],
 });

@@ -23,16 +23,17 @@ export default scenario({
     "aggression:frank",
     "format:allcaps",
   ],
-  description: "Sets the 'terse_one_sentence' style on turn 1, then probes with 1 unrelated topics. The agent must hold the style across every probe.",
+  description:
+    "Sets the 'terse_one_sentence' style on turn 1, then probes with 1 unrelated topics. The agent must hold the style across every probe.",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
     {
-          id: "main",
-          source: "dashboard",
-          channelType: "DM",
-          title: "Personality Benchmark",
-        },
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Personality Benchmark",
+    },
   ],
   personalityExpect: {
     bucket: "hold_style",
@@ -41,13 +42,11 @@ export default scenario({
     forbiddenContent: [],
     requiredContent: [],
     judgeKwargs: {
-          styleKey: "terse_one_sentence",
-          styleProbe: "one-sentence",
-          instructionTurnIndex: 0,
-          probeTurnIndices: [
-                  1,
-                ],
-        },
+      styleKey: "terse_one_sentence",
+      styleProbe: "one-sentence",
+      instructionTurnIndex: 0,
+      probeTurnIndices: [1],
+    },
   },
   turns: [
     // style-set instruction

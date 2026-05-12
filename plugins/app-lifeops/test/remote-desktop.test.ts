@@ -22,13 +22,13 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { Memory, UUID } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { remoteDesktopAction } from "../src/actions/remote-desktop.ts";
 import {
   __resetRemoteSessionServiceForTests,
   getRemoteSessionService,
 } from "../src/remote/remote-session-service.ts";
-import type { Memory, UUID } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { remoteDesktopAction } from "../src/actions/remote-desktop.ts";
 import { createMinimalRuntimeStub } from "./first-run-helpers.ts";
 
 let priorStateDir: string | undefined;
@@ -36,7 +36,7 @@ let priorLocalMode: string | undefined;
 
 function ownerMessage(agentId: UUID, text: string): Memory {
   return {
-    id: ("msg-" + Math.random().toString(36).slice(2, 8)) as UUID,
+    id: `msg-${Math.random().toString(36).slice(2, 8)}` as UUID,
     entityId: agentId,
     roomId: agentId,
     agentId,
@@ -81,7 +81,10 @@ describe("REMOTE_DESKTOP integration (local mode)", () => {
       [],
     );
     expect(result?.success).toBe(false);
-    const values = result?.values as { error?: string; requiresConfirmation?: boolean };
+    const values = result?.values as {
+      error?: string;
+      requiresConfirmation?: boolean;
+    };
     expect(values.error).toBe("CONFIRMATION_REQUIRED");
     expect(values.requiresConfirmation).toBe(true);
   });

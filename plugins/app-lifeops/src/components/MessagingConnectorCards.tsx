@@ -1,3 +1,7 @@
+import type {
+  LifeOpsOwnerBrowserAccessStatus,
+  LifeOpsTelegramAuthState,
+} from "@elizaos/shared";
 import {
   Button,
   client,
@@ -6,10 +10,6 @@ import {
   openExternalUrl,
   useApp,
 } from "@elizaos/ui";
-import type {
-  LifeOpsOwnerBrowserAccessStatus,
-  LifeOpsTelegramAuthState,
-} from "@elizaos/shared";
 import {
   CheckCircle2,
   CircleAlert,

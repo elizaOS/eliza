@@ -1,9 +1,4 @@
-import {
-  type IAgentRuntime,
-  createUniqueUuid,
-  logger,
-  type UUID,
-} from "@elizaos/core";
+import { createUniqueUuid, type IAgentRuntime, logger } from "@elizaos/core";
 import type {
   BoundingBox,
   DetectedObject,

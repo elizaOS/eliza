@@ -90,8 +90,7 @@ export default scenario({
     judgeRubric({
       name: "push-retry-secondary-rubric",
       threshold: 0.7,
-      description:
-        "After ntfy 503, agent fired SMS fallback (not ntfy retry).",
+      description: "After ntfy 503, agent fired SMS fallback (not ntfy retry).",
     }),
   ],
 });

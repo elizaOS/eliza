@@ -1,10 +1,10 @@
 import type { AgentRuntime, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
-import { isLoopbackUrl } from "./utils.js";
 import type {
   ScenarioContext,
   ScenarioSeedStep,
 } from "@elizaos/scenario-schema";
+import { isLoopbackUrl } from "./utils.js";
 
 type LifeOpsOccurrenceState =
   | "completed"
@@ -72,15 +72,12 @@ async function loadLifeOps() {
     { resolveDefaultWindowPolicy },
     { materializeDefinitionOccurrences },
     repo,
-  ]: [
-    LifeOpsDefaultsModule,
-    LifeOpsEngineModule,
-    LifeOpsRepositoryModule,
-  ] = await Promise.all([
-    import(defaultsSpecifier),
-    import(engineSpecifier),
-    import(repositorySpecifier),
-  ]);
+  ]: [LifeOpsDefaultsModule, LifeOpsEngineModule, LifeOpsRepositoryModule] =
+    await Promise.all([
+      import(defaultsSpecifier),
+      import(engineSpecifier),
+      import(repositorySpecifier),
+    ]);
   return {
     resolveDefaultWindowPolicy,
     materializeDefinitionOccurrences,
@@ -209,7 +206,6 @@ function readOptionalNumber(value: unknown): number | undefined {
 function readOptionalBoolean(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
 }
-
 
 function readScenarioNow(ctx: ScenarioContext): Date {
   return typeof ctx.now === "string" && Number.isFinite(Date.parse(ctx.now))

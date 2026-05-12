@@ -127,11 +127,10 @@ function buildSignalStatusResponse(
   session: SignalPairingSessionLike | undefined,
   previousSnapshot: SignalPairingSnapshot | undefined,
   authExists: boolean,
-  serviceConnected: boolean,
+  serviceConnected: boolean
 ): SetupStatusResponse<SignalSetupDetail> {
   const snapshot = session?.getSnapshot() ?? previousSnapshot;
-  const pairingStatus =
-    snapshot?.status ?? (authExists || serviceConnected ? "connected" : "idle");
+  const pairingStatus = snapshot?.status ?? (authExists || serviceConnected ? "connected" : "idle");
 
   const state: SetupState =
     pairingStatus === "connected"
@@ -185,9 +184,7 @@ function resolveServiceConnected(runtime: IAgentRuntime): boolean {
 }
 
 function extractAccountId(value: unknown): string {
-  return sanitizeAccountId(
-    typeof value === "string" && value.trim() ? value.trim() : "default",
-  );
+  return sanitizeAccountId(typeof value === "string" && value.trim() ? value.trim() : "default");
 }
 
 // ── GET /api/setup/signal/status ────────────────────────────────────────
@@ -195,7 +192,7 @@ function extractAccountId(value: unknown): string {
 async function handleStatus(
   req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): Promise<void> {
   reapTerminalSessions();
 
@@ -220,13 +217,7 @@ async function handleStatus(
   res
     .status(200)
     .json(
-      buildSignalStatusResponse(
-        accountId,
-        session,
-        previousSnapshot,
-        authExists,
-        serviceConnected,
-      ),
+      buildSignalStatusResponse(accountId, session, previousSnapshot, authExists, serviceConnected)
     );
 }
 
@@ -235,7 +226,7 @@ async function handleStatus(
 async function handleStart(
   req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): Promise<void> {
   reapTerminalSessions();
 
@@ -250,12 +241,14 @@ async function handleStart(
 
   const isReplacing = signalPairingSessions.has(accountId);
   if (!isReplacing && signalPairingSessions.size >= MAX_PAIRING_SESSIONS) {
-    res.status(429).json(
-      setupError(
-        "too_many_sessions",
-        `Too many concurrent pairing sessions (max ${MAX_PAIRING_SESSIONS})`,
-      ),
-    );
+    res
+      .status(429)
+      .json(
+        setupError(
+          "too_many_sessions",
+          `Too many concurrent pairing sessions (max ${MAX_PAIRING_SESSIONS})`
+        )
+      );
     return;
   }
 
@@ -359,8 +352,8 @@ async function handleStart(
         session,
         signalPairingSnapshots.get(accountId),
         false,
-        false,
-      ),
+        false
+      )
     );
 }
 
@@ -369,7 +362,7 @@ async function handleStart(
 async function handleCancel(
   req: RouteRequest,
   res: RouteResponse,
-  runtime: IAgentRuntime,
+  runtime: IAgentRuntime
 ): Promise<void> {
   const body = (req.body ?? {}) as { accountId?: string };
   let accountId: string;
@@ -393,12 +386,14 @@ async function handleCancel(
   try {
     signalLogout(workspaceDir, accountId);
   } catch (err) {
-    res.status(500).json(
-      setupError(
-        "internal_error",
-        `Failed to disconnect Signal: ${err instanceof Error ? err.message : String(err)}`,
-      ),
-    );
+    res
+      .status(500)
+      .json(
+        setupError(
+          "internal_error",
+          `Failed to disconnect Signal: ${err instanceof Error ? err.message : String(err)}`
+        )
+      );
     return;
   }
 
@@ -421,12 +416,14 @@ async function handleCancel(
         };
       });
     } catch (error) {
-      res.status(500).json(
-        setupError(
-          "internal_error",
-          `Failed to persist Signal disconnect: ${error instanceof Error ? error.message : String(error)}`,
-        ),
-      );
+      res
+        .status(500)
+        .json(
+          setupError(
+            "internal_error",
+            `Failed to persist Signal disconnect: ${error instanceof Error ? error.message : String(error)}`
+          )
+        );
       return;
     }
   }
@@ -477,7 +474,7 @@ export function applySignalQrOverride(
     configured: boolean;
     qrConnected?: boolean;
   }[],
-  workspaceDir: string,
+  workspaceDir: string
 ): void {
   if (signalAuthExists(workspaceDir, "default")) {
     const sigPlugin = plugins.find((plugin) => plugin.id === "signal");

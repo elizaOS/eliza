@@ -1,7 +1,10 @@
-import { client, dispatchFocusConnector } from "@elizaos/ui";
-import { isApiError } from "@elizaos/ui";
 import { APP_RESUME_EVENT } from "@elizaos/shared";
-import { useApp } from "@elizaos/ui";
+import {
+  client,
+  dispatchFocusConnector,
+  isApiError,
+  useApp,
+} from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   LifeOpsConnectorGrant,
@@ -258,16 +261,22 @@ function googleIdentityForAccount(
   return Object.keys(identity).length > 0 ? identity : null;
 }
 
-function googleAccountEmail(account: GoogleConnectorAccountRecord): string | null {
+function googleAccountEmail(
+  account: GoogleConnectorAccountRecord,
+): string | null {
   const identity = googleIdentityForAccount(account);
   return (
-    stringValue(identity?.email) ??
-    stringValue(account.handle) ??
-    null
-  )?.toLowerCase() ?? null;
+    (
+      stringValue(identity?.email) ??
+      stringValue(account.handle) ??
+      null
+    )?.toLowerCase() ?? null
+  );
 }
 
-function isConnectedGoogleAccount(account: GoogleConnectorAccountRecord): boolean {
+function isConnectedGoogleAccount(
+  account: GoogleConnectorAccountRecord,
+): boolean {
   return account.enabled !== false && account.status === "connected";
 }
 

@@ -63,10 +63,9 @@ function defaultStateDir() {
   // Env wins (ELIZA_STATE_DIR / ELIZA_STATE_DIR), then check both legacy
   // and current default dirs so the script works in mixed environments.
   const envDir =
-    process.env.ELIZA_STATE_DIR?.trim() ||
-    process.env.MILADY_STATE_DIR?.trim();
+    process.env.ELIZA_STATE_DIR?.trim() || process.env.MILADY_STATE_DIR?.trim();
   if (envDir) return envDir;
-  const eliza = path.join(os.homedir(), ".eliza");
+  const _eliza = path.join(os.homedir(), ".eliza");
   const eliza = path.join(os.homedir(), ".eliza");
   if (fs.existsSync(path.join(eliza, "trajectories"))) return eliza;
   return eliza;
@@ -74,8 +73,7 @@ function defaultStateDir() {
 
 const stateDir = defaultStateDir();
 const inputRoot = args.input ?? path.join(stateDir, "trajectories");
-const outputRoot =
-  args.output ?? path.join(stateDir, "trajectories-replay");
+const outputRoot = args.output ?? path.join(stateDir, "trajectories-replay");
 
 if (!fs.existsSync(inputRoot)) {
   console.error(`[replay] input directory not found: ${inputRoot}`);
@@ -129,16 +127,16 @@ function extractToolsManifest(messageText) {
   // Find the matching closing brace by walking forward.
   let depth = 0;
   let inString = false;
-  let escape = false;
+  let escaped = false;
   let end = -1;
   for (let i = braceStart; i < messageText.length; i += 1) {
     const ch = messageText[i];
-    if (escape) {
-      escape = false;
+    if (escaped) {
+      escaped = false;
       continue;
     }
     if (ch === "\\") {
-      escape = true;
+      escaped = true;
       continue;
     }
     if (ch === '"') {
@@ -283,7 +281,8 @@ for (const file of inputFiles) {
 
     const queryRaw =
       typeof ts.query?.text === "string" ? ts.query.text : rootText;
-    const tools = extractToolsManifest(queryRaw) ?? extractToolsManifest(rootText);
+    const tools =
+      extractToolsManifest(queryRaw) ?? extractToolsManifest(rootText);
     if (!tools || tools.length === 0) continue;
 
     const actions = toolsManifestToActions(tools);
@@ -326,10 +325,22 @@ for (const file of inputFiles) {
 }
 
 console.log(`[replay] done.`);
-console.log(`[replay] trajectoriesScanned       : ${stats.trajectoriesScanned}`);
-console.log(`[replay] trajectoriesWritten       : ${stats.trajectoriesWritten}`);
-console.log(`[replay] skipped (not lifeops_bench): ${stats.trajectoriesSkippedNoBench}`);
-console.log(`[replay] skipped (no toolSearch)    : ${stats.trajectoriesSkippedNoToolSearch}`);
-console.log(`[replay] toolSearch augmented       : ${stats.toolSearchAugmented}`);
-console.log(`[replay] toolSearch skipped (no correct): ${stats.toolSearchSkippedNoCorrect}`);
+console.log(
+  `[replay] trajectoriesScanned       : ${stats.trajectoriesScanned}`,
+);
+console.log(
+  `[replay] trajectoriesWritten       : ${stats.trajectoriesWritten}`,
+);
+console.log(
+  `[replay] skipped (not lifeops_bench): ${stats.trajectoriesSkippedNoBench}`,
+);
+console.log(
+  `[replay] skipped (no toolSearch)    : ${stats.trajectoriesSkippedNoToolSearch}`,
+);
+console.log(
+  `[replay] toolSearch augmented       : ${stats.toolSearchAugmented}`,
+);
+console.log(
+  `[replay] toolSearch skipped (no correct): ${stats.toolSearchSkippedNoCorrect}`,
+);
 console.log(`[replay] output: ${outputRoot}`);

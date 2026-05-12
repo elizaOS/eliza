@@ -21,11 +21,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Lunch",
-      "Dr. Sam",
-      "12:30"
-    ],
+    "required_outputs": ["Lunch", "Dr. Sam", "12:30"],
     "first_question_fallback": {
       "canned_answer": "primary calendar, no other attendees",
       "applies_when": "agent asks which calendar or attendees"
@@ -56,10 +52,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "dentist",
-      "Friday"
-    ],
+    "required_outputs": ["dentist", "Friday"],
     "first_question_fallback": {
       "canned_answer": "Yes, move it to Friday at 10am on my primary calendar.",
       "applies_when": "agent asks for confirmation before moving the appointment"
@@ -88,10 +81,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Team Sync",
-      "cancel"
-    ],
+    "required_outputs": ["Team Sync", "cancel"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 8,
@@ -118,11 +108,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "coffee",
-      "30",
-      "slot"
-    ],
+    "required_outputs": ["coffee", "30", "slot"],
     "first_question_fallback": {
       "canned_answer": "Just me and Alex, no other attendees.",
       "applies_when": "agent asks about attendees or duration"

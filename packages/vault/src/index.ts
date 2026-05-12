@@ -14,49 +14,70 @@
  * — the value lives there, the vault stores only the reference.
  */
 
-export { createVault, VaultMissError } from "./vault.js";
-export type {
-  CreateVaultOptions,
-  SetOptions,
-  Vault,
-} from "./vault.js";
+export type { SavedLogin, SavedLoginSummary } from "./credentials.js";
 export {
-  PgliteVaultImpl,
-  defaultPgliteVaultDataDir,
-} from "./pglite-vault.js";
-export type { PgliteVaultOptions } from "./pglite-vault.js";
-
+  deleteSavedLogin,
+  getAutofillAllowed,
+  getSavedLogin,
+  listSavedLogins,
+  setAutofillAllowed,
+  setSavedLogin,
+} from "./credentials.js";
 export {
-  defaultMasterKey,
-  inMemoryMasterKey,
-  MasterKeyUnavailableError,
-  osKeychainMasterKey,
-  passphraseMasterKey,
-  passphraseMasterKeyFromEnv,
-} from "./master-key.js";
-export type {
-  MasterKeyResolver,
-  OsKeychainOptions,
-  PassphraseOptions,
-} from "./master-key.js";
-
-export {
-  encrypt,
+  CryptoError,
   decrypt,
+  encrypt,
   generateMasterKey,
   KEY_BYTES,
-  CryptoError,
 } from "./crypto.js";
-
+export type {
+  ExecFn,
+  ExternalLoginListEntry,
+  ExternalLoginReveal,
+  ExternalLoginSource,
+} from "./external-credentials.js";
 export {
-  PasswordManagerError,
-  resolveReference,
-} from "./password-managers.js";
-
+  BackendNotSignedInError,
+  defaultExecFn,
+  listBitwardenLogins,
+  listOnePasswordLogins,
+  revealBitwardenLogin,
+  revealOnePasswordLogin,
+} from "./external-credentials.js";
+export type {
+  BackendInstallSpec,
+  InstallMethod,
+  InstallMethodKind,
+  PackageManagerAvailability,
+  SupportedPlatform,
+} from "./install.js";
 export {
-  createManager,
-  DEFAULT_PREFERENCES,
-} from "./manager.js";
+  BACKEND_INSTALL_SPECS,
+  buildInstallCommand,
+  currentPlatform,
+  detectPackageManagers,
+  resetInstallerCache,
+  resolveRunnableMethods,
+} from "./install.js";
+export type {
+  VaultEntryCategory,
+  VaultEntryMeta,
+  VaultEntryMetaRecord,
+  VaultEntryMetaUpdate,
+  VaultEntryProfile,
+} from "./inventory.js";
+export {
+  categorizeKey,
+  inferProviderId,
+  listVaultInventory,
+  META_PREFIX,
+  PROFILE_SEGMENT,
+  profileStorageKey,
+  ROUTING_KEY,
+  readEntryMeta,
+  removeEntryMeta,
+  setEntryMeta,
+} from "./inventory.js";
 export type {
   BackendId,
   BackendStatus,
@@ -69,81 +90,32 @@ export type {
   UnifiedLoginListResult,
   UnifiedLoginReveal,
 } from "./manager.js";
-
 export {
-  BackendNotSignedInError,
-  defaultExecFn,
-  listBitwardenLogins,
-  listOnePasswordLogins,
-  revealBitwardenLogin,
-  revealOnePasswordLogin,
-} from "./external-credentials.js";
+  createManager,
+  DEFAULT_PREFERENCES,
+} from "./manager.js";
 export type {
-  ExecFn,
-  ExternalLoginListEntry,
-  ExternalLoginReveal,
-  ExternalLoginSource,
-} from "./external-credentials.js";
-
+  MasterKeyResolver,
+  OsKeychainOptions,
+  PassphraseOptions,
+} from "./master-key.js";
 export {
-  BACKEND_INSTALL_SPECS,
-  buildInstallCommand,
-  currentPlatform,
-  detectPackageManagers,
-  resetInstallerCache,
-  resolveRunnableMethods,
-} from "./install.js";
-export type {
-  BackendInstallSpec,
-  InstallMethod,
-  InstallMethodKind,
-  PackageManagerAvailability,
-  SupportedPlatform,
-} from "./install.js";
-
-export type {
-  AuditRecord,
-  PasswordManagerReference,
-  VaultDescriptor,
-  VaultLogger,
-  VaultStats,
-} from "./types.js";
-
+  defaultMasterKey,
+  inMemoryMasterKey,
+  MasterKeyUnavailableError,
+  osKeychainMasterKey,
+  passphraseMasterKey,
+  passphraseMasterKeyFromEnv,
+} from "./master-key.js";
 export {
-  deleteSavedLogin,
-  getAutofillAllowed,
-  getSavedLogin,
-  listSavedLogins,
-  setAutofillAllowed,
-  setSavedLogin,
-} from "./credentials.js";
-export type { SavedLogin, SavedLoginSummary } from "./credentials.js";
-
+  PasswordManagerError,
+  resolveReference,
+} from "./password-managers.js";
+export type { PgliteVaultOptions } from "./pglite-vault.js";
 export {
-  categorizeKey,
-  inferProviderId,
-  listVaultInventory,
-  META_PREFIX,
-  profileStorageKey,
-  PROFILE_SEGMENT,
-  readEntryMeta,
-  removeEntryMeta,
-  ROUTING_KEY,
-  setEntryMeta,
-} from "./inventory.js";
-export type {
-  VaultEntryCategory,
-  VaultEntryMeta,
-  VaultEntryMetaRecord,
-  VaultEntryMetaUpdate,
-  VaultEntryProfile,
-} from "./inventory.js";
-
-export {
-  readRoutingConfig,
-  resolveActiveValue,
-  writeRoutingConfig,
-} from "./profiles.js";
+  defaultPgliteVaultDataDir,
+  PgliteVaultImpl,
+} from "./pglite-vault.js";
 export type {
   ResolutionContext,
   RoutingConfig,
@@ -151,4 +123,22 @@ export type {
   RoutingScope,
   RoutingScopeKind,
 } from "./profiles.js";
+export {
+  readRoutingConfig,
+  resolveActiveValue,
+  writeRoutingConfig,
+} from "./profiles.js";
 export * from "./testing.js";
+export type {
+  AuditRecord,
+  PasswordManagerReference,
+  VaultDescriptor,
+  VaultLogger,
+  VaultStats,
+} from "./types.js";
+export type {
+  CreateVaultOptions,
+  SetOptions,
+  Vault,
+} from "./vault.js";
+export { createVault, VaultMissError } from "./vault.js";

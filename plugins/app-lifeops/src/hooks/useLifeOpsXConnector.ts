@@ -1,10 +1,10 @@
-import { client } from "@elizaos/ui";
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsXConnectorStatus,
   LifeOpsXPostResponse,
 } from "@elizaos/shared";
+import { client } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
 import { formatConnectorError } from "./connector-error.js";
 

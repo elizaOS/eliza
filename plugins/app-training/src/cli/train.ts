@@ -30,9 +30,13 @@ Options:
   --backend NAME       native (required)
   --dataset PATH       Path to eliza_native_v1 JSONL file (required)
   --task NAME          should_respond | context_routing | action_planner | response | media_description
-  --optimizer NAME     instruction-search | prompt-evolution | bootstrap-fewshot
-                       | dspy-bootstrap-fewshot | dspy-copro | dspy-mipro
+  --optimizer NAME     instruction-search | prompt-evolution | gepa
+                       | bootstrap-fewshot | dspy-bootstrap-fewshot
+                       | dspy-copro | dspy-mipro
                        Defaults to instruction-search.
+                       gepa is the formal Pareto+feedback variant (Goyal et
+                       al. 2024); prompt-evolution is the simpler genetic
+                       mutation variant — both stay registered.
                        The dspy-* variants use the native DSPy primitives
                        (Signature + Predict + privacy-filtered Example loader)
                        and emit eliza_native_v1-compatible artifacts.

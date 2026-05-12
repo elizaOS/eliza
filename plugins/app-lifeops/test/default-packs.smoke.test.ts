@@ -19,6 +19,10 @@
  */
 
 import { describe, expect, it } from "vitest";
+import type {
+  AnchorConsolidationPolicy,
+  ScheduledTaskSeed,
+} from "../src/default-packs/index.js";
 import {
   DEFAULT_CONSOLIDATION_POLICIES,
   dailyRhythmPack,
@@ -26,10 +30,6 @@ import {
   getDefaultEnabledPacks,
   morningBriefPack,
   quietUserWatcherPack,
-} from "../src/default-packs/index.js";
-import type {
-  AnchorConsolidationPolicy,
-  ScheduledTaskSeed,
 } from "../src/default-packs/index.js";
 
 interface SimulatedFire {
@@ -59,7 +59,10 @@ function priorityRank(priority: SimulatedFire["priority"]): number {
  * + 24h-budget invariants, not interval/cron firing).
  */
 function simulateOneDay(args: {
-  packs: ReadonlyArray<{ records: ReadonlyArray<ScheduledTaskSeed>; key: string }>;
+  packs: ReadonlyArray<{
+    records: ReadonlyArray<ScheduledTaskSeed>;
+    key: string;
+  }>;
   wakeMinuteOfDay: number;
   bedtimeMinuteOfDay: number;
 }): SimulatedFire[] {
@@ -133,7 +136,8 @@ function applyConsolidation(
     const policy = policyByAnchor.get(anchor)!;
     if (policy.mode === "merge") {
       const sorted = [...anchorFires].sort(
-        (left, right) => priorityRank(right.priority) - priorityRank(left.priority),
+        (left, right) =>
+          priorityRank(right.priority) - priorityRank(left.priority),
       );
       result.push(sorted);
     } else if (policy.mode === "sequential") {
@@ -168,7 +172,10 @@ describe("W1-D default-pack smoke — 24h simulated nudge budget", () => {
       createdBy: "plugin-health:sleep-recap",
       ownerVisible: true,
       idempotencyKey: "plugin-health:sleep-recap:nightly",
-      metadata: { recordKey: "sleep-recap", packKey: "plugin-health:sleep-recap" },
+      metadata: {
+        recordKey: "sleep-recap",
+        packKey: "plugin-health:sleep-recap",
+      },
     };
     const packs = [
       ...enabledPacks,

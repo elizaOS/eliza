@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import path from "node:path";
 import { spawnSync } from "node:child_process";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildTestRuntimeEnv,

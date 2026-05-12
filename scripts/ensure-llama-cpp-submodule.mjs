@@ -35,10 +35,14 @@ if (
 if (!existsSync(gitmodules)) {
   process.exit(0);
 }
-const gm = spawnSync("git", ["config", "-f", gitmodules, "--get-regexp", "path"], {
-  cwd: repoRoot,
-  encoding: "utf8",
-});
+const gm = spawnSync(
+  "git",
+  ["config", "-f", gitmodules, "--get-regexp", "path"],
+  {
+    cwd: repoRoot,
+    encoding: "utf8",
+  },
+);
 if (gm.status !== 0 || !gm.stdout.includes(submoduleRel)) {
   process.exit(0);
 }

@@ -49,7 +49,9 @@ function arg(name, fallback) {
   return idx >= 0 && idx + 1 < args.length ? args[idx + 1] : fallback;
 }
 
-const runDir = path.resolve(arg("--run-dir", process.env.ELIZA_LIFEOPS_RUN_DIR ?? ""));
+const runDir = path.resolve(
+  arg("--run-dir", process.env.ELIZA_LIFEOPS_RUN_DIR ?? ""),
+);
 if (!runDir) {
   console.error(
     "[aggregate-lifeops-run] --run-dir required (or set ELIZA_LIFEOPS_RUN_DIR).",
@@ -67,10 +69,7 @@ const runIdFilter = arg("--run-id", process.env.ELIZA_LIFEOPS_RUN_ID);
 const HARNESS_VALID = new Set(HARNESSES);
 const MODEL_TIER_VALID = new Set(MODEL_TIERS);
 
-const harness = arg(
-  "--harness",
-  process.env.ELIZA_BENCH_HARNESS ?? "eliza",
-);
+const harness = arg("--harness", process.env.ELIZA_BENCH_HARNESS ?? "eliza");
 if (!HARNESS_VALID.has(harness)) {
   console.error(
     `[aggregate-lifeops-run] --harness must be one of ${HARNESSES.join("|")} (got ${harness})`,
@@ -96,7 +95,9 @@ const preReleaseFlag =
   );
 
 if (!fs.existsSync(trajectoryDir)) {
-  console.error(`[aggregate-lifeops-run] trajectory dir does not exist: ${trajectoryDir}`);
+  console.error(
+    `[aggregate-lifeops-run] trajectory dir does not exist: ${trajectoryDir}`,
+  );
   process.exit(2);
 }
 
@@ -116,7 +117,9 @@ function pct(num, denom) {
 }
 
 function fmtSlug(s) {
-  return String(s ?? "unknown").replace(/[^a-zA-Z0-9._-]/g, "-").slice(0, 80);
+  return String(s ?? "unknown")
+    .replace(/[^a-zA-Z0-9._-]/g, "-")
+    .slice(0, 80);
 }
 
 const trajectories = [];
@@ -237,7 +240,8 @@ for (const { t } of trajectories) {
   }
 
   bucket.trajectoryCount += 1;
-  if (t.runId && !bucket.runIdFromTrajectory) bucket.runIdFromTrajectory = t.runId;
+  if (t.runId && !bucket.runIdFromTrajectory)
+    bucket.runIdFromTrajectory = t.runId;
   if (typeof t.startedAt === "number") {
     bucket.startedAt = Math.min(bucket.startedAt, t.startedAt);
   }
@@ -421,11 +425,13 @@ for (const { t } of trajectories) {
         s.kind === "toolSearch"
           ? {
               query: s.toolSearch?.query?.text ?? null,
-              top_results: (s.toolSearch?.results ?? []).slice(0, 5).map((r) => ({
-                name: r.name,
-                score: r.score,
-                rank: r.rank,
-              })),
+              top_results: (s.toolSearch?.results ?? [])
+                .slice(0, 5)
+                .map((r) => ({
+                  name: r.name,
+                  score: r.score,
+                  rank: r.rank,
+                })),
               tier_a: s.toolSearch?.tier?.tierA ?? [],
               tier_b: s.toolSearch?.tier?.tierB ?? [],
               fallback: s.toolSearch?.fallback ?? null,
@@ -487,10 +493,13 @@ let totalCost = 0;
 let totalDuration = 0;
 
 for (const b of scenarioBuckets.values()) {
-  fs.writeFileSync(b.jsonlPath, b.jsonlLines.join("\n") + (b.jsonlLines.length ? "\n" : ""));
+  fs.writeFileSync(
+    b.jsonlPath,
+    b.jsonlLines.join("\n") + (b.jsonlLines.length ? "\n" : ""),
+  );
   fs.writeFileSync(
     b.metaPath,
-    JSON.stringify(
+    `${JSON.stringify(
       {
         scenarioId: b.scenarioId,
         slug: b.slug,
@@ -502,10 +511,14 @@ for (const b of scenarioBuckets.values()) {
         cacheReadTokens: b.cacheRead,
         cacheCreationTokens: b.cacheCreate,
         totalInputTokens: b.promptTokens + b.cacheRead + b.cacheCreate,
-        cacheHitPct: pct(b.cacheRead, b.promptTokens + b.cacheRead + b.cacheCreate),
-        avgPerCallCacheHitPct: b.cacheHitSampleCount > 0
-          ? +(b.cacheHitSampleSum / b.cacheHitSampleCount).toFixed(2)
-          : 0,
+        cacheHitPct: pct(
+          b.cacheRead,
+          b.promptTokens + b.cacheRead + b.cacheCreate,
+        ),
+        avgPerCallCacheHitPct:
+          b.cacheHitSampleCount > 0
+            ? +(b.cacheHitSampleSum / b.cacheHitSampleCount).toFixed(2)
+            : 0,
         toolCalls: b.toolCalls,
         toolFailures: b.toolFailures,
         toolSearches: b.toolSearches,
@@ -514,7 +527,7 @@ for (const b of scenarioBuckets.values()) {
       },
       null,
       2,
-    ) + "\n",
+    )}\n`,
   );
 
   totalStageCount += b.stageCount;
@@ -526,7 +539,7 @@ for (const b of scenarioBuckets.values()) {
   totalDuration += b.durationMs;
 }
 
-fs.writeFileSync(stepsCsvPath, csvLines.join("\n") + "\n");
+fs.writeFileSync(stepsCsvPath, `${csvLines.join("\n")}\n`);
 
 // Resolve run-level provider/model from the first model stage we observed in
 // any scenario. This is the canonical "primary" planner model. We deliberately
@@ -536,7 +549,8 @@ let runProvider;
 let runModelName;
 for (const b of scenarioBuckets.values()) {
   if (!runProvider && b.providers.size > 0) runProvider = [...b.providers][0];
-  if (!runModelName && b.modelNames.size > 0) runModelName = [...b.modelNames][0];
+  if (!runModelName && b.modelNames.size > 0)
+    runModelName = [...b.modelNames][0];
   if (runProvider && runModelName) break;
 }
 const cerebrasDetected = (runProvider ?? "").toLowerCase() === "cerebras";
@@ -557,10 +571,7 @@ if (cerebrasDetected && anyCacheReportedRun) {
 }
 
 const totalInput = totalPrompt + totalCacheRead + totalCacheCreate;
-const lines = [
-  `# LifeOps run report`,
-  ``,
-];
+const lines = [`# LifeOps run report`, ``];
 
 if (preReleaseFlag) {
   // When the run exercised a non-final eliza-1 bundle (any of
@@ -608,7 +619,9 @@ lines.push(
   `| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |`,
 );
 
-const sortedBuckets = [...scenarioBuckets.values()].sort((a, b) => b.stageCount - a.stageCount);
+const sortedBuckets = [...scenarioBuckets.values()].sort(
+  (a, b) => b.stageCount - a.stageCount,
+);
 for (const b of sortedBuckets) {
   lines.push(
     `| \`${b.scenarioId}\` | ${b.stageCount} | ${b.toolSearches} | ${b.toolCalls} | ${b.toolFailures} | ${b.promptTokens.toLocaleString()} | ${b.cacheRead.toLocaleString()} | ${pct(b.cacheRead, b.promptTokens + b.cacheRead + b.cacheCreate)}% | ${b.completionTokens.toLocaleString()} | $${b.cost.toFixed(4)} | ${(b.durationMs / 1000).toFixed(1)}s |`,
@@ -626,7 +639,9 @@ for (const b of scenarioBuckets.values()) {
     phaseTotals[phase] = (phaseTotals[phase] ?? 0) + count;
   }
 }
-for (const [phase, count] of Object.entries(phaseTotals).sort((a, b) => b[1] - a[1])) {
+for (const [phase, count] of Object.entries(phaseTotals).sort(
+  (a, b) => b[1] - a[1],
+)) {
   lines.push(`| ${phase} | ${count} |`);
 }
 lines.push(``);
@@ -635,7 +650,7 @@ lines.push(`- per-scenario JSONL: \`scenarios/<idx>-<id>/run.jsonl\``);
 lines.push(`- flat steps CSV: \`steps.csv\``);
 lines.push(`- raw trajectories: \`${path.relative(runDir, trajectoryDir)}/\``);
 
-fs.writeFileSync(reportMdPath, lines.join("\n") + "\n");
+fs.writeFileSync(reportMdPath, `${lines.join("\n")}\n`);
 
 // ---------------------------------------------------------------------------
 // report.json (canonical schema: lifeops-bench-v1)
@@ -736,7 +751,10 @@ if (!parseResult.success) {
 }
 
 const reportJsonPath = path.join(runDir, "report.json");
-fs.writeFileSync(reportJsonPath, JSON.stringify(parseResult.data, null, 2) + "\n");
+fs.writeFileSync(
+  reportJsonPath,
+  `${JSON.stringify(parseResult.data, null, 2)}\n`,
+);
 
 process.stdout.write(
   `[aggregate-lifeops-run] wrote ${reportMdPath}\n` +

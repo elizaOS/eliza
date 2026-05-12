@@ -196,9 +196,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
       const sendReady = signalServiceCanSend(signalService);
       const connected =
         signalServiceConnected(signalService) || inboundReady || sendReady;
-      const grantedCapabilities = connected
-        ? FULL_SIGNAL_CAPABILITIES
-        : [];
+      const grantedCapabilities = connected ? FULL_SIGNAL_CAPABILITIES : [];
       const capabilities = signalReadyCapabilities({
         granted: grantedCapabilities,
         inboundReady,

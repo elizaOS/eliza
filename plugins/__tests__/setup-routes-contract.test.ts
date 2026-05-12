@@ -27,67 +27,67 @@
  * normalization follow-up a precise spec to satisfy.
  */
 
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 // ── Connector inventory ────────────────────────────────────────────────────
 
 interface ConnectorTarget {
-	/** Slug used in the intended `/api/setup/<name>/` path. */
-	connector: string;
-	/** Repo-relative path to the setup-routes source file. */
-	file: string;
-	/** Expected name of the `Route[]` export. */
-	exportName: string;
+  /** Slug used in the intended `/api/setup/<name>/` path. */
+  connector: string;
+  /** Repo-relative path to the setup-routes source file. */
+  file: string;
+  /** Expected name of the `Route[]` export. */
+  exportName: string;
 }
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
 const CONNECTORS: ConnectorTarget[] = [
-	{
-		connector: "discord",
-		file: "plugins/plugin-discord/setup-routes.ts",
-		exportName: "discordSetupRoutes",
-	},
-	{
-		connector: "telegram",
-		file: "plugins/plugin-telegram/src/setup-routes.ts",
-		exportName: "telegramSetupRoutes",
-	},
-	{
-		connector: "signal",
-		file: "plugins/plugin-signal/src/setup-routes.ts",
-		exportName: "signalSetupRoutes",
-	},
-	{
-		connector: "imessage",
-		file: "plugins/plugin-imessage/src/setup-routes.ts",
-		exportName: "imessageSetupRoutes",
-	},
-	{
-		connector: "bluebubbles",
-		file: "plugins/plugin-bluebubbles/src/setup-routes.ts",
-		exportName: "blueBubblesSetupRoutes",
-	},
-	{
-		connector: "documents",
-		file: "plugins/app-documents/src/setup-routes.ts",
-		exportName: "documentsRoutes",
-	},
+  {
+    connector: "discord",
+    file: "plugins/plugin-discord/setup-routes.ts",
+    exportName: "discordSetupRoutes",
+  },
+  {
+    connector: "telegram",
+    file: "plugins/plugin-telegram/src/setup-routes.ts",
+    exportName: "telegramSetupRoutes",
+  },
+  {
+    connector: "signal",
+    file: "plugins/plugin-signal/src/setup-routes.ts",
+    exportName: "signalSetupRoutes",
+  },
+  {
+    connector: "imessage",
+    file: "plugins/plugin-imessage/src/setup-routes.ts",
+    exportName: "imessageSetupRoutes",
+  },
+  {
+    connector: "bluebubbles",
+    file: "plugins/plugin-bluebubbles/src/setup-routes.ts",
+    exportName: "blueBubblesSetupRoutes",
+  },
+  {
+    connector: "documents",
+    file: "plugins/app-documents/src/setup-routes.ts",
+    exportName: "documentsRoutes",
+  },
 ];
 
 // ── Source parsing ─────────────────────────────────────────────────────────
 
 interface ParsedRoute {
-	type: string;
-	path: string;
+  type: string;
+  path: string;
 }
 
 interface ParsedExport {
-	source: string;
-	routes: ParsedRoute[];
-	hasBareErrorString: boolean;
+  source: string;
+  routes: ParsedRoute[];
+  hasBareErrorString: boolean;
 }
 
 /**
@@ -100,139 +100,126 @@ interface ParsedExport {
  * keeps the test self-contained and the contract surface is simple
  * enough that string scanning is sufficient.
  */
-function parseExport(
-	source: string,
-	exportName: string,
-): ParsedExport | null {
-	const arrayDeclMatch = source.match(
-		new RegExp(`export\\s+const\\s+${exportName}\\s*:[^=]*=\\s*([\\s\\S]*?);\\s*(?:\\n|$)`),
-	);
-	if (!arrayDeclMatch) return null;
-	const body = arrayDeclMatch[1];
+function parseExport(source: string, exportName: string): ParsedExport | null {
+  const arrayDeclMatch = source.match(
+    new RegExp(
+      `export\\s+const\\s+${exportName}\\s*:[^=]*=\\s*([\\s\\S]*?);\\s*(?:\\n|$)`,
+    ),
+  );
+  if (!arrayDeclMatch) return null;
+  const body = arrayDeclMatch[1];
 
-	const routes: ParsedRoute[] = [];
+  const routes: ParsedRoute[] = [];
 
-	// Direct array literal form: [{ type: "GET", path: "/x", ... }, ...]
-	const entryRegex =
-		/\{\s*type:\s*"(GET|POST|PUT|PATCH|DELETE|STATIC)"\s*,\s*path:\s*"([^"]+)"/g;
-	let match: RegExpExecArray | null;
-	while ((match = entryRegex.exec(body)) !== null) {
-		routes.push({ type: match[1], path: match[2] });
-	}
+  // Direct array literal form: [{ type: "GET", path: "/x", ... }, ...]
+  const entryRegex =
+    /\{\s*type:\s*"(GET|POST|PUT|PATCH|DELETE|STATIC)"\s*,\s*path:\s*"([^"]+)"/g;
+  let match: RegExpExecArray | null;
+  while ((match = entryRegex.exec(body)) !== null) {
+    routes.push({ type: match[1], path: match[2] });
+  }
 
-	// app-documents declares routes by mapping over a DOCUMENT_ROUTES list.
-	// Pick those up too when the export is derived via `.map(...)`.
-	if (routes.length === 0) {
-		const tableRegex =
-			/\{\s*type:\s*"(GET|POST|PUT|PATCH|DELETE|STATIC)"\s*,\s*path:\s*"([^"]+)"\s*\}/g;
-		while ((match = tableRegex.exec(source)) !== null) {
-			routes.push({ type: match[1], path: match[2] });
-		}
-	}
+  // app-documents declares routes by mapping over a DOCUMENT_ROUTES list.
+  // Pick those up too when the export is derived via `.map(...)`.
+  if (routes.length === 0) {
+    const tableRegex =
+      /\{\s*type:\s*"(GET|POST|PUT|PATCH|DELETE|STATIC)"\s*,\s*path:\s*"([^"]+)"\s*\}/g;
+    while ((match = tableRegex.exec(source)) !== null) {
+      routes.push({ type: match[1], path: match[2] });
+    }
+  }
 
-	// Best-effort scan for bare `error: <string>` literal in response bodies —
-	// the contract requires `{ error: { code, message } }` instead.
-	// Matches `error: "..."`, `error: \`...\``, `error: '...'`, and the
-	// common template-string form `error: \`...${err}\`` plus
-	// `error: result.error ?? "..."`. Any of these indicates a flat-string
-	// error response shape rather than a structured envelope.
-	const bareErrorPatterns = [
-		/\berror:\s*["`'][^"`']/,
-		/\berror:\s*`/,
-		/\berror:\s*\(err as Error\)\.message/,
-		/\berror:\s*result\.error/,
-		/\berror:\s*String\(/,
-		/\berror:\s*\w+\s*\?\?\s*["'`]/,
-		// Helpers that emit a flat `{ error: "..." }` response.
-		/\bsendJsonError\s*\(/,
-		/\bhttpSendJsonError\s*\(/,
-		/\bwriteJsonError\b/,
-	];
-	const hasBareErrorString = bareErrorPatterns.some((rx) => rx.test(source));
+  // Best-effort scan for bare `error: <string>` literal in response bodies —
+  // the contract requires `{ error: { code, message } }` instead.
+  // Matches `error: "..."`, `error: \`...\``, `error: '...'`, and the
+  // common template-string form `error: \`...${err}\`` plus
+  // `error: result.error ?? "..."`. Any of these indicates a flat-string
+  // error response shape rather than a structured envelope.
+  const bareErrorPatterns = [
+    /\berror:\s*["`'][^"`']/,
+    /\berror:\s*`/,
+    /\berror:\s*\(err as Error\)\.message/,
+    /\berror:\s*result\.error/,
+    /\berror:\s*String\(/,
+    /\berror:\s*\w+\s*\?\?\s*["'`]/,
+    // Helpers that emit a flat `{ error: "..." }` response.
+    /\bsendJsonError\s*\(/,
+    /\bhttpSendJsonError\s*\(/,
+    /\bwriteJsonError\b/,
+  ];
+  const hasBareErrorString = bareErrorPatterns.some((rx) => rx.test(source));
 
-	return { source, routes, hasBareErrorString };
+  return { source, routes, hasBareErrorString };
 }
 
 function loadConnector(target: ConnectorTarget): ParsedExport | null {
-	const absPath = path.join(REPO_ROOT, target.file);
-	if (!existsSync(absPath)) return null;
-	const source = readFileSync(absPath, "utf8");
-	return parseExport(source, target.exportName);
+  const absPath = path.join(REPO_ROOT, target.file);
+  if (!existsSync(absPath)) return null;
+  const source = readFileSync(absPath, "utf8");
+  return parseExport(source, target.exportName);
 }
 
 // ── Contract assertions ────────────────────────────────────────────────────
 
 for (const target of CONNECTORS) {
-	describe(`connector: ${target.connector}`, () => {
-		const parsed = loadConnector(target);
+  describe(`connector: ${target.connector}`, () => {
+    const parsed = loadConnector(target);
 
-		test("setup-routes source file exists", () => {
-			expect(parsed, `missing ${target.file}`).not.toBeNull();
-		});
+    test("setup-routes source file exists", () => {
+      expect(parsed, `missing ${target.file}`).not.toBeNull();
+    });
 
-		if (!parsed) return;
+    if (!parsed) return;
 
-		test(`exports a non-empty Route[] as ${target.exportName}`, () => {
-			expect(parsed.routes.length, "no routes parsed from export").toBeGreaterThan(0);
-		});
+    test(`exports a non-empty Route[] as ${target.exportName}`, () => {
+      expect(
+        parsed.routes.length,
+        "no routes parsed from export",
+      ).toBeGreaterThan(0);
+    });
 
-		// ── Contract rule 1: path prefix `/api/setup/<connector>/`
-		test.fails(
-			`all routes use prefix /api/setup/${target.connector}/`,
-			() => {
-				const expectedPrefix = `/api/setup/${target.connector}/`;
-				const offending = parsed.routes.filter(
-					(r) => !r.path.startsWith(expectedPrefix),
-				);
-				expect(offending, `routes not under ${expectedPrefix}`).toEqual([]);
-			},
-		);
+    // ── Contract rule 1: path prefix `/api/setup/<connector>/`
+    test.fails(`all routes use prefix /api/setup/${target.connector}/`, () => {
+      const expectedPrefix = `/api/setup/${target.connector}/`;
+      const offending = parsed.routes.filter(
+        (r) => !r.path.startsWith(expectedPrefix),
+      );
+      expect(offending, `routes not under ${expectedPrefix}`).toEqual([]);
+    });
 
-		// ── Contract rule 2: GET /api/setup/<connector>/status
-		test.fails(
-			`exposes GET /api/setup/${target.connector}/status`,
-			() => {
-				const target_path = `/api/setup/${target.connector}/status`;
-				const found = parsed.routes.some(
-					(r) => r.type === "GET" && r.path === target_path,
-				);
-				expect(found, `missing GET ${target_path}`).toBe(true);
-			},
-		);
+    // ── Contract rule 2: GET /api/setup/<connector>/status
+    test.fails(`exposes GET /api/setup/${target.connector}/status`, () => {
+      const target_path = `/api/setup/${target.connector}/status`;
+      const found = parsed.routes.some(
+        (r) => r.type === "GET" && r.path === target_path,
+      );
+      expect(found, `missing GET ${target_path}`).toBe(true);
+    });
 
-		// ── Contract rule 3: POST /api/setup/<connector>/start
-		test.fails(
-			`exposes POST /api/setup/${target.connector}/start`,
-			() => {
-				const target_path = `/api/setup/${target.connector}/start`;
-				const found = parsed.routes.some(
-					(r) => r.type === "POST" && r.path === target_path,
-				);
-				expect(found, `missing POST ${target_path}`).toBe(true);
-			},
-		);
+    // ── Contract rule 3: POST /api/setup/<connector>/start
+    test.fails(`exposes POST /api/setup/${target.connector}/start`, () => {
+      const target_path = `/api/setup/${target.connector}/start`;
+      const found = parsed.routes.some(
+        (r) => r.type === "POST" && r.path === target_path,
+      );
+      expect(found, `missing POST ${target_path}`).toBe(true);
+    });
 
-		// ── Contract rule 4: POST /api/setup/<connector>/cancel
-		test.fails(
-			`exposes POST /api/setup/${target.connector}/cancel`,
-			() => {
-				const target_path = `/api/setup/${target.connector}/cancel`;
-				const found = parsed.routes.some(
-					(r) => r.type === "POST" && r.path === target_path,
-				);
-				expect(found, `missing POST ${target_path}`).toBe(true);
-			},
-		);
+    // ── Contract rule 4: POST /api/setup/<connector>/cancel
+    test.fails(`exposes POST /api/setup/${target.connector}/cancel`, () => {
+      const target_path = `/api/setup/${target.connector}/cancel`;
+      const found = parsed.routes.some(
+        (r) => r.type === "POST" && r.path === target_path,
+      );
+      expect(found, `missing POST ${target_path}`).toBe(true);
+    });
 
-		// ── Contract rule 5: error responses use { error: { code, message } }
-		test.fails(
-			"error responses use structured { error: { code, message } } envelope",
-			() => {
-				expect(
-					parsed.hasBareErrorString,
-					"found bare `error: \"string\"` in responses",
-				).toBe(false);
-			},
-		);
-	});
+    // ── Contract rule 5: error responses use { error: { code, message } }
+    test.fails("error responses use structured { error: { code, message } } envelope", () => {
+      expect(
+        parsed.hasBareErrorString,
+        'found bare `error: "string"` in responses',
+      ).toBe(false);
+    });
+  });
 }

@@ -40,6 +40,7 @@ import {
   type OptimizerResult,
   type PromptScorer,
   runBootstrapFewshot,
+  runGepa,
   runInstructionSearch,
   runPromptEvolution,
   scorePlannerAction,
@@ -274,6 +275,8 @@ function dispatchOptimizer(
       return runInstructionSearch(input);
     case "prompt-evolution":
       return runPromptEvolution(input);
+    case "gepa":
+      return runGepa(input);
     case "bootstrap-fewshot":
       return runBootstrapFewshot(input);
     case "dspy-bootstrap-fewshot":
@@ -455,8 +458,7 @@ export async function runNativeBackend(
     };
   }
 
-  const holdoutFraction =
-    options.holdoutFraction ?? DEFAULT_HOLDOUT_FRACTION;
+  const holdoutFraction = options.holdoutFraction ?? DEFAULT_HOLDOUT_FRACTION;
   const { trainSet, holdoutSet } = splitTrainHoldout(dataset, holdoutFraction);
 
   const result = await dispatchOptimizer(options.optimizer, {
@@ -495,6 +497,7 @@ export async function runNativeBackend(
 export const NATIVE_OPTIMIZERS: readonly OptimizerName[] = [
   "instruction-search",
   "prompt-evolution",
+  "gepa",
   "bootstrap-fewshot",
   "dspy-bootstrap-fewshot",
   "dspy-copro",

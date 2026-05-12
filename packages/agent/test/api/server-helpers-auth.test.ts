@@ -42,9 +42,9 @@ describe("applyCors", () => {
   it("allows app-core client headers used by Capacitor WebViews", () => {
     const res = new HeaderCapture();
 
-    expect(applyCors(requestWithOrigin("https://localhost"), res, "/api/status")).toBe(
-      true,
-    );
+    expect(
+      applyCors(requestWithOrigin("https://localhost"), res, "/api/status"),
+    ).toBe(true);
 
     expect(res.headers.get("Access-Control-Allow-Origin")).toBe(
       "https://localhost",

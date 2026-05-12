@@ -219,9 +219,7 @@ export function parseFormExtractorOutput(raw: unknown): IntentResult | null {
   if (!isRecord(raw)) return null;
 
   const intentStr =
-    typeof raw.formIntent === "string"
-      ? raw.formIntent.toLowerCase()
-      : "other";
+    typeof raw.formIntent === "string" ? raw.formIntent.toLowerCase() : "other";
   const intent: FormIntent = isValidIntent(intentStr) ? intentStr : "other";
 
   const rawExtractions = Array.isArray(raw.formExtractions)
@@ -240,8 +238,7 @@ export function parseFormExtractorOutput(raw: unknown): IntentResult | null {
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
 
-    const value: JsonValue =
-      (entry.value as JsonValue | undefined) ?? null;
+    const value: JsonValue = (entry.value as JsonValue | undefined) ?? null;
 
     let confidence =
       typeof entry.confidence === "number"
@@ -293,7 +290,8 @@ export function coerceExtractionsAgainstControls(
 
     const validation = validateField(value, control);
     if (!validation.valid) {
-      const reasoning = `${extraction.reasoning ?? ""} (Validation failed: ${validation.error})`.trim();
+      const reasoning =
+        `${extraction.reasoning ?? ""} (Validation failed: ${validation.error})`.trim();
       return {
         ...extraction,
         value,

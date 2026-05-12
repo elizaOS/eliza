@@ -4,6 +4,18 @@
 # scripts/train_vast.sh). This script kept for emergency fallback. Do not
 # extend, do not document Nebius as an option in user-facing material, do not
 # add new commands or flags. Bug fixes only.
+#
+# !! BROKEN against the current `nebius` CLI (verified 2026-05-12) !!
+# `nebius compute v1 instance create` now requires `--parent-id` (not
+# `--project-id`), `--resources-platform` (e.g. `gpu-h200-sxm`) alongside
+# `--resources-preset` (e.g. `1gpu-16vcpu-200gb`), and `--boot-disk-*` flags
+# (the `--boot-disk-spec` JSON blob is gone). It also needs a real subnet id
+# (`nebius vpc subnet list`) rather than the literal `"default"`. The
+# federation auth token on the build host *is* valid (`nebius iam tenant list`
+# / `nebius compute v1 instance list --parent-id <proj>` succeed) — only the
+# `instance create` call shape is stale. Until this is updated against the
+# live API, use `scripts/train_vast.sh` (the canonical path) or run
+# `train_local.py` inside `tmux` directly on a manually-provisioned VM.
 # =============================================================================
 #
 # Provision a Nebius H200 instance, sync the training tree, and run a

@@ -12,15 +12,13 @@
  */
 
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
-import {
-  getConnectorAccountManager,
-  logger,
-} from "@elizaos/core";
+import { getConnectorAccountManager, logger } from "@elizaos/core";
 import { createCalendlyConnectorAccountProvider } from "./connector-account-provider.js";
 import { calendlyEventTypesProvider } from "./providers/calendly-event-types.js";
 import { CalendlyService } from "./services/CalendlyService.js";
 
 export * from "./accounts.js";
+export { calendlyOpAction } from "./actions/calendly-op.js";
 export {
   type CalendlyAvailabilityNormalized,
   type CalendlyCredentials,
@@ -36,7 +34,6 @@ export {
   listCalendlyScheduledEvents,
   readCalendlyCredentialsFromEnv,
 } from "./calendly-client.js";
-export { calendlyOpAction } from "./actions/calendly-op.js";
 export { createCalendlyConnectorAccountProvider } from "./connector-account-provider.js";
 export { calendlyEventTypesProvider } from "./providers/calendly-event-types.js";
 export { CalendlyService } from "./services/CalendlyService.js";

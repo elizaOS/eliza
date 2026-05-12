@@ -28,7 +28,8 @@ function checkAgentDisambiguated(ctx: ScenarioContext): string | undefined {
 
 export default scenario({
   id: "calendar.delete-1on1-correctly",
-  title: "Three 1:1s seeded — agent disambiguates instead of guessing which to delete",
+  title:
+    "Three 1:1s seeded — agent disambiguates instead of guessing which to delete",
   domain: "lifeops.calendar",
   tags: ["lifeops", "calendar", "disambiguation", "delete"],
   isolation: "per-scenario",

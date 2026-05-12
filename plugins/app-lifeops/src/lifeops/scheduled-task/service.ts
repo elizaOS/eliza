@@ -21,12 +21,12 @@
  * ScheduledTaskRunnerService]`.
  */
 
-import { logger, Service, type IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 
 import type { ScheduledTaskRunnerHandle } from "./runner.js";
 import {
-  createRuntimeScheduledTaskRunner,
   type CreateRuntimeRunnerOptions,
+  createRuntimeScheduledTaskRunner,
 } from "./runtime-wiring.js";
 
 const SERVICE_TYPE = "lifeops_scheduled_task_runner" as const;

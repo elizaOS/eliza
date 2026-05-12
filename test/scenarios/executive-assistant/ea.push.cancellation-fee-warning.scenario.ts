@@ -33,11 +33,7 @@ export default scenario({
       room: "main",
       text: "If missing this could trigger a cancellation fee, warn me clearly and offer to handle it now.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: [
-          "DEVICE_INTENT",
-          "VOICE_CALL",
-          "CALENDAR",
-        ],
+        acceptedActions: ["DEVICE_INTENT", "VOICE_CALL", "CALENDAR"],
         description: "financial-risk escalation",
         includesAny: ["fee", "cancellation", "warn", "handle"],
       }),
@@ -71,11 +67,7 @@ export default scenario({
       type: "custom",
       name: "ea-cancellation-fee-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: [
-          "DEVICE_INTENT",
-          "VOICE_CALL",
-          "CALENDAR",
-        ],
+        acceptedActions: ["DEVICE_INTENT", "VOICE_CALL", "CALENDAR"],
         description: "financial-risk escalation",
         includesAny: ["fee", "cancellation", "warn", "handle"],
       }),

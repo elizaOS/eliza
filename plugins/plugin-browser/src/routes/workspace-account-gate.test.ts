@@ -26,11 +26,7 @@ function createRuntimeHarness() {
 
 function createJsonCapture() {
   const res: { body?: unknown; statusCode?: number } = {};
-  const json = (
-    target: typeof res,
-    data: unknown,
-    status = 200,
-  ): void => {
+  const json = (target: typeof res, data: unknown, status = 200): void => {
     target.statusCode = status;
     target.body = data;
   };
@@ -260,7 +256,9 @@ describe("browser workspace connector account gate", () => {
 
     expect(denied.res.statusCode).toBe(400);
     expect(denied.res.body).toMatchObject({
-      error: expect.stringContaining("connectorProvider and connectorAccountId"),
+      error: expect.stringContaining(
+        "connectorProvider and connectorAccountId",
+      ),
     });
   });
 });

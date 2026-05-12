@@ -53,14 +53,16 @@ function trimDemonstrationInput(rawInput: string): string {
   // planner inputs typically end with "<TURN-N>\nuser: <message>" or a
   // similar marker.
   const userMatch =
-    rawInput.match(/(?:^|\n)user(?:\s+message)?\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i) ??
+    rawInput.match(
+      /(?:^|\n)user(?:\s+message)?\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i,
+    ) ??
     rawInput.match(/(?:^|\n)user_message\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i);
   const candidate = userMatch?.[1]?.trim();
   if (candidate && candidate.length > 0 && candidate.length <= 600) {
     return candidate;
   }
   if (candidate && candidate.length > 0) {
-    return candidate.slice(0, 600).trimEnd() + " …";
+    return `${candidate.slice(0, 600).trimEnd()} …`;
   }
   // Fallback: first 400 chars + "..." + last 200 chars so the model sees
   // both the framing and the request without the middle bulk.

@@ -18,8 +18,8 @@ import {
 import {
 	decideReplyGate,
 	enforceVerbosity,
-	getPersonalityStore,
 } from "../features/advanced-capabilities/personality";
+import { getPersonalityStore } from "../features/advanced-capabilities/personality/services/personality-store.ts";
 import { looksLikeNonActionableChatter } from "../features/basic-capabilities/providers/non-actionable-chatter";
 import { logger } from "../logger";
 import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
@@ -80,7 +80,10 @@ import {
 	type PlannerTrajectory,
 	runPlannerLoop,
 } from "../runtime/planner-loop";
-import { buildResponseGrammar } from "../runtime/response-grammar";
+import {
+	buildResponseGrammar,
+	withGuidedDecodeProviderOptions,
+} from "../runtime/response-grammar";
 import {
 	type ResponseHandlerEvaluator,
 	type ResponseHandlerPatch,
@@ -4629,7 +4632,14 @@ export async function runV5MessageRuntimeStage1(args: {
 				streamStructured: true,
 				responseSkeleton: responseGrammar.responseSkeleton,
 				grammar: responseGrammar.grammar,
-				providerOptions: messageHandlerProviderOptions,
+				// Guided structured decode on by default for Stage 1 (the call always
+				// carries a forced skeleton): the local engine derives the
+				// deterministic-token prefill plan and the fork fast-forwards the
+				// forced scaffold spans. Opt out with `MILADY_LOCAL_GUIDED_DECODE=0`.
+				// Cloud adapters ignore `providerOptions.eliza.guidedDecode`.
+				providerOptions: withGuidedDecodeProviderOptions(
+					messageHandlerProviderOptions,
+				),
 			},
 		)) as string | GenerateTextResult;
 		const messageHandlerEndedAt = Date.now();

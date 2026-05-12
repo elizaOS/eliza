@@ -1,4 +1,3 @@
-import { client } from "@elizaos/ui";
 import type {
   LifeOpsOverview,
   LifeOpsPersonalBaselineResponse,
@@ -11,6 +10,7 @@ import type {
   LifeOpsSleepHistorySummary,
   LifeOpsSleepRegularityResponse,
 } from "@elizaos/shared";
+import { client } from "@elizaos/ui";
 import {
   Activity,
   AlarmClock,

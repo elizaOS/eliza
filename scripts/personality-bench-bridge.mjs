@@ -193,8 +193,7 @@ export function bridgePersonalityExpect(scenario) {
         : [];
       const firstStep = steps.length > 0 ? steps[0] : 0;
       directiveTurn = userTurnTo1IndexedTrajectory(firstStep);
-      const directionKey =
-        typeof kw.direction === "string" ? kw.direction : "";
+      const directionKey = typeof kw.direction === "string" ? kw.direction : "";
       const mapped = DIRECTION_KEY_TO_OPTION[directionKey];
       if (mapped) options.direction = mapped;
       break;
@@ -208,8 +207,7 @@ export function bridgePersonalityExpect(scenario) {
         : [];
       checkTurns = [...adminProbe, ...userProbe].map(assistantTurnFor);
       directiveTurn = 1;
-      const variantKey =
-        typeof kw.variantKey === "string" ? kw.variantKey : "";
+      const variantKey = typeof kw.variantKey === "string" ? kw.variantKey : "";
       const mode = SCOPE_VARIANT_TO_MODE[variantKey];
       if (mode) options.mode = mode;
       if (kw.forbidGlobalChangeFromUser === true) {

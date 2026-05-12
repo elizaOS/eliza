@@ -13,11 +13,13 @@
  */
 
 import type http from "node:http";
-import { sendJson as httpSendJson, sendJsonError as httpSendJsonError } from "@elizaos/core";
 import { TLSSocket } from "node:tls";
-import {
-  readJsonBody as httpReadJsonBody } from "@elizaos/shared";
 import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
+import {
+  sendJson as httpSendJson,
+  sendJsonError as httpSendJsonError,
+} from "@elizaos/core";
+import { readJsonBody as httpReadJsonBody } from "@elizaos/shared";
 import { loadTrainingConfig } from "./core/training-config.js";
 import {
   EXPERIENCE_ROUTE_PATHS,

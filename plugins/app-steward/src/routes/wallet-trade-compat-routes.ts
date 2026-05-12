@@ -7,12 +7,10 @@
  */
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
-import { ensureCompatApiAuthorized } from "@elizaos/app-core";
 import {
   type CompatRuntimeState,
+  ensureCompatApiAuthorized,
   readCompatJsonBody,
-} from "@elizaos/app-core";
-import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "@elizaos/app-core";

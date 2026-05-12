@@ -13,7 +13,8 @@ import { scenario } from "@elizaos/scenario-schema";
 
 export default scenario({
   id: "note_trait_unrelated.aggressive.with_emojis.014",
-  title: "note_trait :: no_apologies :: aggressive :: with_emojis :: 15-turn (14)",
+  title:
+    "note_trait :: no_apologies :: aggressive :: with_emojis :: 15-turn (14)",
   domain: "personality",
   tags: [
     "personality",
@@ -23,46 +24,29 @@ export default scenario({
     "aggression:aggressive",
     "format:with_emojis",
   ],
-  description: "User mentions the 'no_apologies' trait on turn 1 inside a benign request. The agent is then probed with 14 unrelated topics. The trait must be respected on every probe (especially turn 3+).",
+  description:
+    "User mentions the 'no_apologies' trait on turn 1 inside a benign request. The agent is then probed with 14 unrelated topics. The trait must be respected on every probe (especially turn 3+).",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
     {
-          id: "main",
-          source: "dashboard",
-          channelType: "DM",
-          title: "Personality Benchmark",
-        },
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Personality Benchmark",
+    },
   ],
   personalityExpect: {
     bucket: "note_trait_unrelated_test",
     expectedBehavior: "trait_respected_on_all_subsequent_unrelated_turns",
     judgeMode: "trait_respected",
-    forbiddenContent: [
-          "sorry",
-          "apolog",
-          "my bad",
-        ],
+    forbiddenContent: ["sorry", "apolog", "my bad"],
     requiredContent: [],
     judgeKwargs: {
-          traitKey: "no_apologies",
-          traitMentionTurnIndex: 0,
-          traitCheckTurnIndices: [
-                  2,
-                  3,
-                  4,
-                  5,
-                  6,
-                  7,
-                  8,
-                  9,
-                  10,
-                  11,
-                  12,
-                  13,
-                  14,
-                ],
-        },
+      traitKey: "no_apologies",
+      traitMentionTurnIndex: 0,
+      traitCheckTurnIndices: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14],
+    },
   },
   turns: [
     // trait mention embedded in unrelated request

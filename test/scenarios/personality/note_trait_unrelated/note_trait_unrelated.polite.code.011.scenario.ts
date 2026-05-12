@@ -23,37 +23,29 @@ export default scenario({
     "aggression:polite",
     "format:code",
   ],
-  description: "User mentions the 'no_buddy_friend' trait on turn 1 inside a benign request. The agent is then probed with 4 unrelated topics. The trait must be respected on every probe (especially turn 3+).",
+  description:
+    "User mentions the 'no_buddy_friend' trait on turn 1 inside a benign request. The agent is then probed with 4 unrelated topics. The trait must be respected on every probe (especially turn 3+).",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
     {
-          id: "main",
-          source: "dashboard",
-          channelType: "DM",
-          title: "Personality Benchmark",
-        },
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Personality Benchmark",
+    },
   ],
   personalityExpect: {
     bucket: "note_trait_unrelated_test",
     expectedBehavior: "trait_respected_on_all_subsequent_unrelated_turns",
     judgeMode: "trait_respected",
-    forbiddenContent: [
-          "buddy",
-          "friend",
-          "pal",
-          "champ",
-        ],
+    forbiddenContent: ["buddy", "friend", "pal", "champ"],
     requiredContent: [],
     judgeKwargs: {
-          traitKey: "no_buddy_friend",
-          traitMentionTurnIndex: 0,
-          traitCheckTurnIndices: [
-                  2,
-                  3,
-                  4,
-                ],
-        },
+      traitKey: "no_buddy_friend",
+      traitMentionTurnIndex: 0,
+      traitCheckTurnIndices: [2, 3, 4],
+    },
   },
   turns: [
     // trait mention embedded in unrelated request

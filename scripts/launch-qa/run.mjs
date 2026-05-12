@@ -59,8 +59,7 @@ const TASKS = [
     requiredFiles: [
       "packages/app-core/scripts/startup-integration-script-drift.test.ts",
     ],
-    description:
-      "Focused app-core startup script drift tests",
+    description: "Focused app-core startup script drift tests",
   },
   {
     id: "ui-focused",
@@ -260,7 +259,10 @@ function taskMissingReasons(task) {
   for (const file of task.requiredFiles ?? []) {
     if (!fs.existsSync(path.join(repoRoot, task.cwd ?? "", file))) {
       missing.push(
-        `required file missing: ${path.join(task.cwd ?? "", file).split(path.sep).join("/")}`,
+        `required file missing: ${path
+          .join(task.cwd ?? "", file)
+          .split(path.sep)
+          .join("/")}`,
       );
     }
   }

@@ -1,4 +1,3 @@
-import type { AutomationNodeDescriptor } from "@elizaos/ui";
 import {
   type AutomationNodeContributorContext,
   registerAutomationNodeContributor,
@@ -8,10 +7,11 @@ import type {
   IPermissionsRegistry,
   LifeOpsDiscordConnectorStatus,
   LifeOpsGoogleConnectorStatus,
-  PermissionState,
   LifeOpsSignalConnectorStatus,
   LifeOpsTelegramConnectorStatus,
+  PermissionState,
 } from "@elizaos/shared";
+import type { AutomationNodeDescriptor } from "@elizaos/ui";
 import { LifeOpsService } from "./lifeops/service";
 
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
@@ -165,14 +165,13 @@ async function buildLifeOpsAutomationNodes({
     signalStatus,
     discordStatus,
     calendarPermission,
-  ] =
-    await Promise.all([
-      resolveGoogleStatus(lifeOps),
-      resolveTelegramStatus(lifeOps),
-      resolveSignalStatus(lifeOps),
-      resolveDiscordStatus(lifeOps),
-      resolveNativeCalendarPermission(runtime),
-    ]);
+  ] = await Promise.all([
+    resolveGoogleStatus(lifeOps),
+    resolveTelegramStatus(lifeOps),
+    resolveSignalStatus(lifeOps),
+    resolveDiscordStatus(lifeOps),
+    resolveNativeCalendarPermission(runtime),
+  ]);
 
   const googleCapabilities = new Set(googleStatus?.grantedCapabilities ?? []);
   const hasGoogleCapability = (needle: string) =>
