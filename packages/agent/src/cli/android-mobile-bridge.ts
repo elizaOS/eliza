@@ -60,6 +60,7 @@ process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING ||= "1";
 // Fall back to HOME/.eliza if running standalone outside the service.
 
 import { installMobileFsShim } from "./mobile-fs-shim.ts";
+import * as nodeFs from "node:fs";
 
 const stateDir =
   process.env.ELIZA_STATE_DIR ||
@@ -68,25 +69,41 @@ const stateDir =
 
 installMobileFsShim(stateDir);
 
+// ── Debug file logger (bypasses stdio to avoid TIOCGWINSZ/SELinux issues) ───
+// Writes to $ELIZA_STATE_DIR/android-bridge.log so we can read via adb run-as.
+const _logPath = `${stateDir}/android-bridge.log`;
+try { nodeFs.mkdirSync(stateDir, { recursive: true }); } catch { /* ignore */ }
+function _logToFile(line: string): void {
+  try { nodeFs.appendFileSync(_logPath, `${new Date().toISOString()} ${line}\n`); } catch { /* ignore */ }
+}
+_logToFile("[android-bridge] process started, stateDir=" + stateDir);
+
 // ── Step 3: boot the runtime ──────────────────────────────────────────────
 
 export async function runAndroidBridgeCli(): Promise<void> {
   process.on("unhandledRejection", (reason) => {
-    console.error(
-      "[android-bridge] unhandled rejection:",
-      reason instanceof Error ? reason.stack || reason.message : reason,
-    );
+    const msg = reason instanceof Error ? reason.stack || reason.message : String(reason);
+    _logToFile("[android-bridge] unhandledRejection: " + msg);
+    console.error("[android-bridge] unhandled rejection:", msg);
   });
   process.on("uncaughtException", (error) => {
-    console.error(
-      "[android-bridge] uncaught exception:",
-      error.stack || error.message,
-    );
+    _logToFile("[android-bridge] uncaughtException: " + (error.stack || error.message));
+    console.error("[android-bridge] uncaught exception:", error.stack || error.message);
   });
 
+  _logToFile("[android-bridge] importing startEliza...");
   const { startEliza } = await import("../runtime/index.ts");
+  _logToFile("[android-bridge] calling startEliza({ serverOnly: true })...");
 
-  const runtime = await startEliza({ serverOnly: true });
+  let runtime: Awaited<ReturnType<typeof startEliza>>;
+  try {
+    runtime = await startEliza({ serverOnly: true });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.stack || err.message : String(err);
+    _logToFile("[android-bridge] startEliza THREW: " + msg);
+    throw err;
+  }
+  _logToFile("[android-bridge] startEliza returned: " + (runtime ? "present" : "null"));
 
   console.log(
     `[android-bridge] startEliza returned: runtime=${runtime ? "present" : "null"}, ` +

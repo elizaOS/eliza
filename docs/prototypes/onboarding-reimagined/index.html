@@ -64,7 +64,8 @@
         background:
           radial-gradient(circle at 76% 18%, rgba(255, 255, 255, 0.35), transparent 18rem),
           linear-gradient(180deg, #1178da 0%, var(--sky-1) 52%, var(--sky-2) 100%);
-        z-index: -3;
+        z-index: 0;
+        pointer-events: none;
       }
 
       .sky::before {
@@ -159,6 +160,8 @@
       }
 
       .app {
+        position: relative;
+        z-index: 1;
         width: min(1480px, calc(100vw - 40px));
         margin: 0 auto;
         padding: 30px 0 56px;
@@ -261,6 +264,20 @@
       .screen .sky {
         position: absolute;
         border-radius: inherit;
+        z-index: 0;
+      }
+
+      .screen .clouds-a {
+        top: -7vh;
+        opacity: 0.34;
+      }
+
+      .screen .clouds-b {
+        opacity: 0.28;
+      }
+
+      .screen .clouds-c {
+        opacity: 0.58;
       }
 
       .status {
@@ -302,6 +319,7 @@
       .state h1 {
         font-size: 33px;
         line-height: 1.08;
+        text-shadow: 0 1px 18px rgba(7, 43, 75, 0.26);
       }
 
       .state h2 {
