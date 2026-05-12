@@ -117,7 +117,7 @@ const RTX_3090: GpuProfile = {
   computeCapability: "sm_86",
   memoryBandwidthGBs: 936,
   fp8: false,
-  recommendedBundles: ["eliza-1-9b", "eliza-1-4b", "eliza-1-1_7b"],
+  recommendedBundles: ["eliza-1-9b", "eliza-1-4b", "eliza-1-2b"],
   flashAttn: true,
   // Ampere doesn't have the q4_polar kernel on the Polar fork; fall back to
   // the Q8/Q4 KV quants which work on every sm_70+ GPU.
