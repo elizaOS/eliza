@@ -83,7 +83,7 @@ export function wrapLocalModelSearchResults(
         ? `https://huggingface.co/${model.hfRepo}`
         : providerId === "modelscope"
           ? `https://www.modelscope.cn/models/${model.hfRepo}`
-        : undefined,
+          : undefined,
     download: {
       supported: provider.downloadSupported,
       ...(provider.downloadUnsupportedReason

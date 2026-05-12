@@ -232,10 +232,14 @@ function defaultReportPath(): string {
 }
 
 function platformTag(): string {
-  const sys =
-    { darwin: "darwin", linux: "linux", win32: "windows" }[process.platform] ||
-    process.platform;
-  const arch = { x64: "x64", arm64: "arm64" }[process.arch] || process.arch;
+  const sysMap: Record<string, string> = {
+    darwin: "darwin",
+    linux: "linux",
+    win32: "windows",
+  };
+  const archMap: Record<string, string> = { x64: "x64", arm64: "arm64" };
+  const sys = sysMap[process.platform] || process.platform;
+  const arch = archMap[process.arch] || process.arch;
   return `${sys}-${arch}`;
 }
 

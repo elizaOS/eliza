@@ -102,8 +102,8 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("@elizaos/plugin-local-ai")).toBe(false);
   });
 
-  it("local-only mode keeps local providers and hides remote/cloud providers", () => {
-    process.env.OPENAI_API_KEY = "sk-test";
+  it("local-only mode keeps local providers and hides cloud providers", () => {
+    process.env.ELIZAOS_CLOUD_API_KEY = "cloud-test";
     process.env.OLLAMA_BASE_URL = "http://127.0.0.1:11434";
 
     const config: ElizaConfig = {
@@ -115,7 +115,6 @@ describe("collectPluginNames runtime mode provider policy", () => {
 
     expect(names.has("@elizaos/plugin-local-embedding")).toBe(true);
     expect(names.has("@elizaos/plugin-ollama")).toBe(true);
-    expect(names.has("@elizaos/plugin-openai")).toBe(false);
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
   });
 });

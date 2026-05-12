@@ -102,16 +102,18 @@ describe("CustomModelSearch", () => {
     expect(onDownload).toHaveBeenCalledWith(hfModel);
   });
 
-  it("searches ModelScope explicitly and downloads the selected result spec", async () => {
+  it("searches ModelScope explicitly but disables direct downloads", async () => {
     vi.useFakeTimers();
+    const onDownload = vi.fn();
     const msModel: CatalogModel = {
       ...hfModel,
       id: "modelscope:Qwen/Qwen3.5-0.8B-GGUF::qwen3.5-0.8b-q4_k_m.gguf",
+      displayName: "ModelScope Qwen3.5 0.8B GGUF",
       hub: "modelscope",
       hfRepo: "Qwen/Qwen3.5-0.8B-GGUF",
     };
     searchHuggingFaceGguf.mockResolvedValue({ models: [msModel] });
-    renderSearch();
+    renderSearch({ onDownload });
 
     fireEvent.click(screen.getByRole("button", { name: "ModelScope" }));
     fireEvent.change(
@@ -128,5 +130,12 @@ describe("CustomModelSearch", () => {
       undefined,
       "modelscope",
     );
+    expect(screen.getByText("ModelScope Qwen3.5 0.8B GGUF")).toBeTruthy();
+    const download = screen.getByRole("button", {
+      name: "Download unavailable",
+    }) as HTMLButtonElement;
+    expect(download.disabled).toBe(true);
+    fireEvent.click(download);
+    expect(onDownload).not.toHaveBeenCalled();
   });
 });

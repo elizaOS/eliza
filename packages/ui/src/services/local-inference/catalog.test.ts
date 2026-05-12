@@ -265,7 +265,8 @@ describe("local model custom search providers", () => {
       providerId: "modelscope",
       download: {
         supported: false,
-        reason: "ModelScope direct downloads are not implemented in this build.",
+        reason:
+          "ModelScope direct downloads are not implemented in this build.",
       },
     });
     expect(response.results[0]?.model.id).toMatch(/^modelscope:/);
