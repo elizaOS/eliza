@@ -103,6 +103,11 @@ export {
 export { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
 export { type RollbackEvent, RollbackQueue } from "./rollback-queue";
 export {
+  PrefixPreservingQueue,
+  type RollbackResult,
+  type TaggedAudioChunk,
+} from "./prefix-preserving-queue";
+export {
   type SchedulerDeps,
   type SchedulerEvents,
   VoiceScheduler,
