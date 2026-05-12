@@ -829,6 +829,30 @@ function patchSpeculativeReplacementsField(cacheDir, { dryRun = false } = {}) {
   );
 }
 
+function patchMtmdQwen3aDuplicateDispatch(cacheDir, { dryRun = false } = {}) {
+  const clipPath = path.join(cacheDir, "tools", "mtmd", "clip.cpp");
+  if (!fs.existsSync(clipPath)) {
+    return;
+  }
+  const original = fs.readFileSync(clipPath, "utf8");
+  const dispatchRe =
+    /        case PROJECTOR_TYPE_QWEN3A:\n            \{\n                builder = std::make_unique<clip_graph_qwen3a>\(ctx, img\);\n            \} break;\n/g;
+  let seen = 0;
+  const patched = original.replace(dispatchRe, (match) => {
+    seen += 1;
+    return seen === 1 ? match : "";
+  });
+  if (seen <= 1 || patched === original) {
+    return;
+  }
+  if (!dryRun) {
+    fs.writeFileSync(clipPath, patched, "utf8");
+  }
+  console.log(
+    `[dflash-build] removed ${seen - 1} duplicate Qwen3A mtmd dispatch block(s)`,
+  );
+}
+
 // Patch `ggml/src/ggml-cuda/CMakeLists.txt` so the staged fused-attn TU
 // (fused-attn-qjl-tbq.cu, copied in by patchCudaKernels) compiles its body
 // when `-DGGML_CUDA_FUSED_ATTN_QJL=ON` is passed. The fork's ggml-cuda
@@ -1625,6 +1649,7 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   patchGgmlQ1G32Quantizer(cacheDir, { dryRun });
   patchGgmlTypeTraitDrift(cacheDir, { dryRun });
   patchSpeculativeReplacementsField(cacheDir, { dryRun });
+  patchMtmdQwen3aDuplicateDispatch(cacheDir, { dryRun });
   if (envFlag("ELIZA_DFLASH_SKIP_DRAFTER_ARCH_PATCH")) {
     console.warn(
       `[dflash-build] skipping DFlash drafter architecture patch for target=${target}; ` +

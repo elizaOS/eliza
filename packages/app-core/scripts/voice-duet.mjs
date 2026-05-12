@@ -631,12 +631,6 @@ async function main() {
   // kernels — almost never in CI. The wiring/cancel/shape path is covered by
   // voice-duet.e2e.test.ts unconditionally with stub backends; this is the
   // real-output run.)
-  tag(
-    "duet",
-    "blue",
-    `booting two ${args.model} engines (${args.twoProcess ? "two-process" : "in-process"})…`,
-  );
-
   const { LocalInferenceEngine } = await import(
     "../src/services/local-inference/engine.ts"
   );
@@ -714,6 +708,11 @@ async function main() {
     );
     process.exit(1);
   }
+  tag(
+    "duet",
+    "blue",
+    `booting two ${args.model} engines (${args.twoProcess ? "two-process" : "in-process"})…`,
+  );
   const bundlePath = target.path;
 
   const [{ PushMicSource }, vadMod] = await Promise.all([
