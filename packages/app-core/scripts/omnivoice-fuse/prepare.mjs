@@ -572,7 +572,7 @@ static int eliza_load_asr(EliInferenceContext * ctx, char ** out_error) {
         eliza_set_error(out_error, "[libelizainference] ASR mmproj does not report audio support");
         return ELIZA_ERR_BUNDLE_INVALID;
     }
-    ctx->asr_sample_rate = mtmd_get_audio_bitrate(ctx->asr_mtmd);
+    ctx->asr_sample_rate = mtmd_get_audio_sample_rate(ctx->asr_mtmd);
     if (ctx->asr_sample_rate <= 0) {
         eliza_free_asr(ctx);
         eliza_set_error(out_error, "[libelizainference] ASR mmproj returned an invalid audio sample rate");

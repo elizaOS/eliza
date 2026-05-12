@@ -2,6 +2,7 @@ export * from "./components/auth/authorize-content";
 export * from "./components/auth/authorize-return";
 export * from "./components/brand";
 export * from "./components/image-gen";
+export * from "./components/icons";
 export * from "./components/layout";
 export * from "./components/monetization";
 export * from "./components/primitives";

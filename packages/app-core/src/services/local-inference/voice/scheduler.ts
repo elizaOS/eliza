@@ -3,6 +3,10 @@ import { inferenceTelemetry } from "../inference-telemetry";
 import type { PhonemeTokenizer } from "./phoneme-tokenizer";
 import { PhraseCache } from "./phrase-cache";
 import { PhraseChunker } from "./phrase-chunker";
+import {
+  type TaggedAudioChunk,
+  PrefixPreservingQueue,
+} from "./prefix-preserving-queue";
 import { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
 import { RollbackQueue } from "./rollback-queue";
 import type {
@@ -156,16 +160,31 @@ export class VoiceScheduler {
   readonly ringBuffer: PcmRingBuffer;
   readonly sink: AudioSink;
   readonly preset: SpeakerPreset;
+  /**
+   * Prefix-preserving barge-in queue. When the streaming TTS path is active,
+   * each audio chunk is enqueued here tagged with its token range. On
+   * hard-stop (barge-in), `rollbackAt(divergencePoint)` partitions the
+   * queue: chunks at or before the divergence point are replayed into the
+   * sink; chunks after are dropped. This lets audio that was already
+   * correct play through without re-synthesizing.
+   */
+  readonly prefixQueue = new PrefixPreservingQueue();
   private readonly backend: OmniVoiceBackend;
   private readonly phraseCache: PhraseCache;
   private readonly events: SchedulerEvents;
   private readonly sampleRate: number;
   private readonly inFlight = new Map<number, InFlight>();
   private readonly maxInFlight: number;
+  private readonly streamingTtsActive: boolean;
   private kernelTicks = 0;
   private nextStandalonePhraseId = -1;
   /** True while a provisional barge-in (`pause-tts`) has paused playback. */
   private paused = false;
+  /**
+   * The last committed token index — updated whenever a phrase is dispatched
+   * to TTS. Used as the divergence point when a barge-in fires mid-response.
+   */
+  private lastCommittedTokenIndex = 0;
   private agentSpeakingUntilMs = 0;
   private agentSpeakingTimer: ReturnType<typeof setTimeout> | null = null;
   private phraseFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -194,6 +213,10 @@ export class VoiceScheduler {
       1,
       config.maxInFlightPhrases ?? DEFAULT_MAX_IN_FLIGHT_PHRASES,
     );
+    // streamingTtsActive defaults true. The Metal ggml_conv_transpose_1d stall
+    // that previously required disabling this on macOS is fixed in the
+    // llama.cpp merge (native Metal kernels; CPU fallback no longer triggers).
+    this.streamingTtsActive = config.streamingTtsActive ?? true;
     // Legacy hard-stop hook (`bargeIn.onMicActive()` / `attach.onCancel`).
     this.bargeIn.attach({
       onCancel: () => this.handleBargeIn(),
