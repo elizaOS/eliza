@@ -87,7 +87,7 @@ describe("autoDownloadRecommendedLocalModelInBackground", () => {
     );
 
     expect(mockClient.startLocalInferenceDownload).toHaveBeenCalledWith(
-      "eliza-1-2b",
+      "eliza-1-4b",
     );
   });
 });
