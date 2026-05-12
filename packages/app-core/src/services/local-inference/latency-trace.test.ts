@@ -25,6 +25,7 @@ function fullTurn(
 }
 
 const CANONICAL_OFFSETS: Record<VoiceCheckpoint, number> = {
+  "peer-utterance-end": -100,
   "vad-trigger": 0,
   "vad-speech-start": 30,
   "prewarm-fired": 35,
@@ -32,9 +33,11 @@ const CANONICAL_OFFSETS: Record<VoiceCheckpoint, number> = {
   "asr-final": 900,
   "llm-first-token": 1000,
   "llm-first-replytext-char": 1040,
+  "replyText-first-emotion-tag": 1060,
   "phrase-1-to-tts": 1090,
   "tts-first-audio-chunk": 1200,
   "audio-first-played": 1230,
+  "audio-first-into-peer-ring": 1240,
 };
 
 describe("EndToEndLatencyTracer", () => {
@@ -48,16 +51,19 @@ describe("EndToEndLatencyTracer", () => {
     expect(trace.missing).toHaveLength(0);
     expect(trace.roomId).toBe("roomA");
     expect(trace.checkpoints).toHaveLength(VOICE_CHECKPOINTS.length);
-    // t0 == vad-trigger; checkpoints sorted by atEpochMs.
-    expect(trace.t0EpochMs).toBe(1_000_000);
-    expect(trace.checkpoints[0]?.name).toBe("vad-trigger");
+    // t0 == peer-utterance-end; checkpoints sorted by atEpochMs.
+    expect(trace.t0EpochMs).toBe(999_900);
+    expect(trace.checkpoints[0]?.name).toBe("peer-utterance-end");
     expect(trace.checkpoints[0]?.tMs).toBe(0);
     // Derived spans.
+    expect(trace.derived.ttftFromUtteranceEndMs).toBe(1100);
+    expect(trace.derived.firstAudioIntoPeerRingFromUtteranceEndMs).toBe(1340);
     expect(trace.derived.ttftMs).toBe(1000); // vad-trigger → llm-first-token
     expect(trace.derived.ttfaMs).toBe(1200); // vad-trigger → tts-first-audio-chunk
     expect(trace.derived.ttapMs).toBe(1230); // vad-trigger → audio-first-played
     expect(trace.derived.asrFinalLatencyMs).toBe(870); // vad-speech-start(30) → asr-final(900)
     expect(trace.derived.prewarmLatencyMs).toBe(35);
+    expect(trace.derived.emotionTagOverheadMs).toBe(20);
     expect(trace.derived.audioSinkLatencyMs).toBe(30); // tts-first-chunk(1200) → played(1230)
     expect(trace.anomalies).toHaveLength(0);
   });
