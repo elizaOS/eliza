@@ -1,11 +1,11 @@
-import {
-  type Action,
-  type ActionResult,
-  type HandlerCallback,
-  type HandlerOptions,
-  type IAgentRuntime,
-  type Memory,
-  type State,
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
 
 import { failureToActionResult, readStringParam } from "../lib/format.js";
@@ -38,7 +38,9 @@ const WORKTREE_OPERATION_ALIASES: Record<string, WorktreeOperation> = {
   remove: "exit",
 };
 
-function readWorktreeOperation(options: unknown): WorktreeOperation | undefined {
+function readWorktreeOperation(
+  options: unknown,
+): WorktreeOperation | undefined {
   const raw = readStringParam(options, "action");
   if (!raw) return undefined;
   const normalized = raw.trim().toLowerCase().replace(/-/g, "_");
@@ -129,14 +131,18 @@ export const worktreeAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Enter a worktree for feature/login.", source: "chat" },
+        content: {
+          text: "Enter a worktree for feature/login.",
+          source: "chat",
+        },
       },
       {
         name: "{{agentName}}",
         content: {
           text: "Entered a new worktree.",
           actions: ["WORKTREE"],
-          thought: "Creating a git worktree maps to WORKTREE with action=enter.",
+          thought:
+            "Creating a git worktree maps to WORKTREE with action=enter.",
         },
       },
     ],

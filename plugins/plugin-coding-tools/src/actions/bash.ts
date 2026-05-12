@@ -8,7 +8,7 @@ import {
   type Memory,
   type State,
 } from "@elizaos/core";
-
+import { resolveRuntimeExecutionMode } from "@elizaos/shared";
 import {
   failureToActionResult,
   readNumberParam,
@@ -17,7 +17,6 @@ import {
   successActionResult,
   truncate,
 } from "../lib/format.js";
-import { resolveRuntimeExecutionMode } from "@elizaos/shared";
 import { runShell, type ShellResult } from "../lib/run-shell.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
@@ -52,7 +51,6 @@ function formatStreams(stdout: string, stderr: string): string {
   }
   return lines.join("\n");
 }
-
 
 export const shellAction: Action = {
   name: "SHELL",
@@ -186,16 +184,16 @@ export const shellAction: Action = {
       );
     }
 
-    coreLogger.info(
-      `${CODING_TOOLS_LOG_PREFIX} SHELL mode=${mode} cwd=${cwd}`,
-    );
+    coreLogger.info(`${CODING_TOOLS_LOG_PREFIX} SHELL mode=${mode} cwd=${cwd}`);
 
     let result: ShellResult;
     try {
       result = await runShell(runtime, { command, cwd, timeoutMs: timeout });
     } catch (err) {
       const message = (err as Error).message;
-      coreLogger.error(`${CODING_TOOLS_LOG_PREFIX} SHELL dispatch failed: ${message}`);
+      coreLogger.error(
+        `${CODING_TOOLS_LOG_PREFIX} SHELL dispatch failed: ${message}`,
+      );
       return failureToActionResult({ reason: "internal", message }, { cwd });
     }
 
@@ -237,7 +235,10 @@ export const shellAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Run `git status` in the current repo.", source: "chat" },
+        content: {
+          text: "Run `git status` in the current repo.",
+          source: "chat",
+        },
       },
       {
         name: "{{agentName}}",

@@ -119,10 +119,12 @@ void eliza_inference_destroy(EliInferenceContext * ctx);
  *   - "vad" : Silero VAD weights / runtime pages
  *
  * Returns ELIZA_OK on success, negative on failure with
- * `*out_error` populated. Eviction is a hint to the OS (madvise
- * MADV_DONTNEED / VirtualUnlock) — it does NOT close the file
- * descriptor; a subsequent `mmap_acquire` re-pages without a fresh
- * open(). */
+ * `*out_error` populated. Implementations may either issue an OS paging
+ * hint (madvise MADV_DONTNEED / VirtualUnlock) or fully unload the
+ * voice-only region to minimize voice-off RSS. Callers must treat an
+ * evicted region as unavailable until a later `mmap_acquire(region)`.
+ * The "text" and "dflash" regions are allowed to be no-ops because the
+ * text runtime keeps them hot for voice-off text turns. */
 int eliza_inference_mmap_acquire(
     EliInferenceContext * ctx,
     const char * region_name,

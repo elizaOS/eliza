@@ -1,9 +1,9 @@
 /**
  * @module tunnel
  * @description Single dispatcher action that fans out to the active
- * tunnel-service implementation. The action's name is `TUNNEL`; legacy
- * `TAILSCALE`-prefixed action names are kept as `similes` so older
- * characters and callers still resolve.
+ * tunnel-service implementation. The action's name is `TUNNEL`; concrete
+ * providers such as local Tailscale, Eliza Cloud headscale, and ngrok only
+ * register the service backend.
  *
  * Sub-ops (selected via the `action` parameter-enum):
  *   - start  -> handleStartTunnel    (optional `port`, defaults to 3000)
@@ -45,7 +45,7 @@ function resolveDispatch(options: Record<string, unknown> | undefined): {
   }
   const nested = pickRecord(options.parameters);
   const actionSource = nested ?? options;
-  const rawAction = actionSource.action ?? actionSource.subaction ?? actionSource.op;
+  const rawAction = actionSource.action;
   const action = typeof rawAction === 'string' ? rawAction.toLowerCase() : null;
 
   let subOptions: Record<string, unknown>;
@@ -56,15 +56,13 @@ function resolveDispatch(options: Record<string, unknown> | undefined): {
     } else {
       const {
         action: _omitAction,
-        subaction: _omitSubaction,
-        op: _omitOp,
         parameters: _omitParams,
         ...rest
       } = nested;
       subOptions = rest;
     }
   } else {
-    const { action: _omitAction, subaction: _omitSubaction, op: _omitOp, ...rest } = options;
+    const { action: _omitAction, ...rest } = options;
     subOptions = rest;
   }
 
@@ -74,22 +72,11 @@ function resolveDispatch(options: Record<string, unknown> | undefined): {
 export const tunnelAction: Action = {
   name: 'TUNNEL',
   similes: [
-    // Legacy action names kept so existing characters/transcripts still resolve.
-    'TAILSCALE',
-    'START_TAILSCALE',
-    'STOP_TAILSCALE',
-    'GET_TAILSCALE_STATUS',
-    'START_TUNNEL',
     'OPEN_TUNNEL',
     'CREATE_TUNNEL',
-    'TAILSCALE_UP',
-    'STOP_TUNNEL',
     'CLOSE_TUNNEL',
-    'TAILSCALE_DOWN',
-    'TAILSCALE_STATUS',
     'CHECK_TUNNEL',
     'TUNNEL_INFO',
-    'TUNNEL_STATUS',
   ],
   description:
     'Tunnel operations dispatched by `action`: start, stop, status. The `start` action accepts an optional `port` (defaults to 3000); `stop` and `status` take no parameters. Backed by whichever tunnel plugin is active (local Tailscale CLI, Eliza Cloud headscale, or ngrok).',

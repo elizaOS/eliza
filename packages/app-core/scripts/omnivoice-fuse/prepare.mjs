@@ -738,12 +738,10 @@ int eliza_inference_asr_transcribe(
         }
     }
     if (!completed) {
-        std::string cleaned_partial = eliza_clean_asr_transcript(transcript);
-        if (cleaned_partial.empty()) {
-            eliza_set_error(out_error, "[libelizainference] asr_transcribe: decode reached token cap before EOG and produced no transcript");
-            return ELIZA_ERR_FFI_FAULT;
-        }
-        transcript = cleaned_partial;
+        eliza_set_error(out_error,
+            "[libelizainference] asr_transcribe: decode reached token cap before EOG; "
+            "refusing to return a possibly truncated transcript");
+        return ELIZA_ERR_FFI_FAULT;
     } else {
         transcript = eliza_clean_asr_transcript(transcript);
     }
