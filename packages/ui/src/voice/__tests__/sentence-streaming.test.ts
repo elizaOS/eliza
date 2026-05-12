@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   queueableSpeechPrefix,
   remainderAfter,
+  shouldCacheGeneratedSpeech,
   splitFirstSentence,
 } from "../voice-chat-playback";
 
@@ -182,5 +183,24 @@ describe("remainderAfter accumulation invariant", () => {
 
   it("returns empty when nothing new is pending", () => {
     expect(remainderAfter("Hello there.", "Hello there.")).toBe("");
+  });
+});
+
+describe("shouldCacheGeneratedSpeech", () => {
+  it("caches short first/full clips", () => {
+    expect(shouldCacheGeneratedSpeech("Got it.", "full")).toBe(true);
+    expect(shouldCacheGeneratedSpeech("Okay, I am on it.", "first-sentence")).toBe(
+      true,
+    );
+  });
+
+  it("does not cache longer or remainder clips", () => {
+    expect(
+      shouldCacheGeneratedSpeech(
+        "This sentence is deliberately longer than ten speech tokens for cache discipline.",
+        "full",
+      ),
+    ).toBe(false);
+    expect(shouldCacheGeneratedSpeech("short follow up", "remainder")).toBe(false);
   });
 });
