@@ -21,16 +21,11 @@ for (let attempt = 0; attempt < 5; attempt += 1) {
     rmSync(target, { recursive: true, force: true });
     process.exit(0);
   } catch (e) {
-    const code =
-      e && typeof e === "object" && "code" in e ? e.code : undefined;
+    const code = e && typeof e === "object" && "code" in e ? e.code : undefined;
     if (code === "ENOENT") {
       process.exit(0);
     }
-    if (
-      typeof code === "string" &&
-      retryableCodes.has(code) &&
-      attempt < 4
-    ) {
+    if (typeof code === "string" && retryableCodes.has(code) && attempt < 4) {
       await delay(50 * (attempt + 1));
       continue;
     }

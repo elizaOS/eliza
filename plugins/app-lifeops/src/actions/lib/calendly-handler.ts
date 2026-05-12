@@ -523,10 +523,12 @@ export const calendlyAction: Action = {
             status: "active",
             limit: 50,
           };
-          const delegated = await listCalendlyScheduledEventsWithRuntimeService({
-            runtime,
-            options: eventOptions,
-          });
+          const delegated = await listCalendlyScheduledEventsWithRuntimeService(
+            {
+              runtime,
+              options: eventOptions,
+            },
+          );
           if (delegated.status === "handled") {
             const events = normalizeCalendlyScheduledEvents(delegated.value);
             return success(formatScheduledEvents(events), {
@@ -537,7 +539,10 @@ export const calendlyAction: Action = {
           }
           const credentials = readCalendlyCredentialsFromEnv();
           if (!credentials) return calendlyNotConfiguredFailure();
-          const events = await listCalendlyScheduledEvents(credentials, eventOptions);
+          const events = await listCalendlyScheduledEvents(
+            credentials,
+            eventOptions,
+          );
           return success(formatScheduledEvents(events), {
             subaction,
             events,
@@ -551,17 +556,23 @@ export const calendlyAction: Action = {
               "MISSING_EVENT_TYPE_URI",
             );
           }
-          const delegated = await createCalendlySingleUseLinkWithRuntimeService({
-            runtime,
-            eventTypeUri,
-          });
+          const delegated = await createCalendlySingleUseLinkWithRuntimeService(
+            {
+              runtime,
+              eventTypeUri,
+            },
+          );
           if (delegated.status === "handled") {
             const expiryText = delegated.value.expiresAt
               ? ` (expires ${delegated.value.expiresAt})`
               : "";
             return success(
               `Single-use Calendly booking link: ${delegated.value.bookingUrl}${expiryText}`,
-              { subaction, link: delegated.value, accountId: delegated.accountId },
+              {
+                subaction,
+                link: delegated.value,
+                accountId: delegated.accountId,
+              },
             );
           }
           const credentials = readCalendlyCredentialsFromEnv();

@@ -15,6 +15,7 @@ import type {
 } from "@elizaos/core";
 
 import type { ScapeGameService } from "../services/game-service.js";
+
 const INVENTORY_ITEM_LIMIT = 28;
 const EQUIPMENT_ITEM_LIMIT = 14;
 
@@ -50,17 +51,17 @@ export const inventoryProvider: Provider = {
             count: inv.length,
             capacity: 28,
             items: inv.slice(0, INVENTORY_ITEM_LIMIT).map((item) => ({
-            slot: item.slot,
-            itemId: item.itemId,
-            name: item.name,
-            count: item.count,
-          })),
+              slot: item.slot,
+              itemId: item.itemId,
+              name: item.name,
+              count: item.count,
+            })),
             worn: eq.slice(0, EQUIPMENT_ITEM_LIMIT).map((item) => ({
-            slot: item.slot,
-            itemId: item.itemId,
-            name: item.name,
-            count: item.count,
-          })),
+              slot: item.slot,
+              itemId: item.itemId,
+              name: item.name,
+              count: item.count,
+            })),
           },
         }),
       };

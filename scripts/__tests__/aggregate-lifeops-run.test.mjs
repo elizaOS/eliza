@@ -35,14 +35,21 @@ function assert(cond, msg) {
 // Build a synthetic run directory + 2 trajectory JSONs.
 // ---------------------------------------------------------------------------
 
-const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "lifeops-aggregator-test-"));
+const tmpRoot = fs.mkdtempSync(
+  path.join(os.tmpdir(), "lifeops-aggregator-test-"),
+);
 const runDir = path.join(tmpRoot, "run");
 const trajectoryDir = path.join(runDir, "trajectories");
 fs.mkdirSync(trajectoryDir, { recursive: true });
 
 const RUN_ID = "test-run-001";
 
-function makeTrajectory({ trajectoryId, scenarioId, finalDecision, cacheRead }) {
+function makeTrajectory({
+  trajectoryId,
+  scenarioId,
+  finalDecision,
+  cacheRead,
+}) {
   return {
     trajectoryId,
     agentId: "agent-test",
@@ -199,8 +206,8 @@ const aggregateResult = spawnSync(
   { encoding: "utf8", cwd: REPO_ROOT },
 );
 if (aggregateResult.status !== 0) {
-  console.error("[test] aggregator stdout:\n" + aggregateResult.stdout);
-  console.error("[test] aggregator stderr:\n" + aggregateResult.stderr);
+  console.error(`[test] aggregator stdout:\n${aggregateResult.stdout}`);
+  console.error(`[test] aggregator stderr:\n${aggregateResult.stderr}`);
   failures.push(`aggregator exited with status ${aggregateResult.status}`);
 }
 
@@ -211,30 +218,61 @@ let report;
 if (fs.existsSync(reportJsonPath)) {
   const reportRaw = JSON.parse(fs.readFileSync(reportJsonPath, "utf8"));
   const parsed = ReportSchema.safeParse(reportRaw);
-  assert(parsed.success, `report.json must parse with ReportSchema: ${parsed.success ? "" : JSON.stringify(parsed.error?.issues)}`);
+  assert(
+    parsed.success,
+    `report.json must parse with ReportSchema: ${parsed.success ? "" : JSON.stringify(parsed.error?.issues)}`,
+  );
   if (parsed.success) {
     report = parsed.data;
     assert(
       report.schemaVersion === REPORT_SCHEMA_VERSION,
       `schemaVersion expected ${REPORT_SCHEMA_VERSION} got ${report.schemaVersion}`,
     );
-    assert(report.scenarios.length === 2, `expected 2 scenarios, got ${report.scenarios.length}`);
-    assert(report.harness === "eliza", `harness should be eliza, got ${report.harness}`);
-    assert(report.provider === "cerebras", `provider should be cerebras, got ${report.provider}`);
-    assert(report.rollup.scenarioCount === 2, `rollup.scenarioCount = ${report.rollup.scenarioCount}`);
-    assert(report.rollup.passCount === 1, `rollup.passCount should be 1, got ${report.rollup.passCount}`);
-    assert(report.rollup.passRate === 0.5, `rollup.passRate should be 0.5, got ${report.rollup.passRate}`);
     assert(
-      Array.isArray(report.notes) && report.notes.some((n) => n.includes("cerebras")),
+      report.scenarios.length === 2,
+      `expected 2 scenarios, got ${report.scenarios.length}`,
+    );
+    assert(
+      report.harness === "eliza",
+      `harness should be eliza, got ${report.harness}`,
+    );
+    assert(
+      report.provider === "cerebras",
+      `provider should be cerebras, got ${report.provider}`,
+    );
+    assert(
+      report.rollup.scenarioCount === 2,
+      `rollup.scenarioCount = ${report.rollup.scenarioCount}`,
+    );
+    assert(
+      report.rollup.passCount === 1,
+      `rollup.passCount should be 1, got ${report.rollup.passCount}`,
+    );
+    assert(
+      report.rollup.passRate === 0.5,
+      `rollup.passRate should be 0.5, got ${report.rollup.passRate}`,
+    );
+    assert(
+      Array.isArray(report.notes) &&
+        report.notes.some((n) => n.includes("cerebras")),
       "report.notes should mention cerebras",
     );
     for (const sc of report.scenarios) {
-      assert(sc.turns.length === 1, `scenario ${sc.scenarioId} should have 1 turn`);
+      assert(
+        sc.turns.length === 1,
+        `scenario ${sc.scenarioId} should have 1 turn`,
+      );
       const turn = sc.turns[0];
-      assert(turn.cacheSupported === true, `turn.cacheSupported should be true for cerebras`);
+      assert(
+        turn.cacheSupported === true,
+        `turn.cacheSupported should be true for cerebras`,
+      );
       assert(turn.toolCalls.length === 1, `turn should have 1 tool call`);
       assert(turn.toolCalls[0].name === "WEB_SEARCH", "tool name mismatch");
-      assert(sc.aggregateCacheHitPct !== null, "aggregateCacheHitPct should not be null when cache reported");
+      assert(
+        sc.aggregateCacheHitPct !== null,
+        "aggregateCacheHitPct should not be null when cache reported",
+      );
     }
   }
 }
@@ -269,8 +307,8 @@ const deltaResult = spawnSync(
   { encoding: "utf8", cwd: REPO_ROOT },
 );
 if (deltaResult.status !== 0) {
-  console.error("[test] delta stdout:\n" + deltaResult.stdout);
-  console.error("[test] delta stderr:\n" + deltaResult.stderr);
+  console.error(`[test] delta stdout:\n${deltaResult.stdout}`);
+  console.error(`[test] delta stderr:\n${deltaResult.stderr}`);
   failures.push(`delta script exited with status ${deltaResult.status}`);
 }
 
@@ -283,17 +321,47 @@ if (fs.existsSync(deltaJsonPath)) {
   assert(parsedDelta.success, `delta.json must parse with DeltaSchema`);
   if (parsedDelta.success) {
     const d = parsedDelta.data;
-    assert(d.rollup.deltaPassRate === 0, `deltaPassRate should be 0, got ${d.rollup.deltaPassRate}`);
-    assert(d.rollup.deltaCostUsd === 0, `deltaCostUsd should be 0, got ${d.rollup.deltaCostUsd}`);
-    assert(d.rollup.deltaTotalTokens === 0, `deltaTotalTokens should be 0, got ${d.rollup.deltaTotalTokens}`);
-    assert(d.rollup.deltaCacheHitPct === 0, `deltaCacheHitPct should be 0, got ${d.rollup.deltaCacheHitPct}`);
-    assert(d.rollup.deltaTimeMs === 0, `deltaTimeMs should be 0, got ${d.rollup.deltaTimeMs}`);
+    assert(
+      d.rollup.deltaPassRate === 0,
+      `deltaPassRate should be 0, got ${d.rollup.deltaPassRate}`,
+    );
+    assert(
+      d.rollup.deltaCostUsd === 0,
+      `deltaCostUsd should be 0, got ${d.rollup.deltaCostUsd}`,
+    );
+    assert(
+      d.rollup.deltaTotalTokens === 0,
+      `deltaTotalTokens should be 0, got ${d.rollup.deltaTotalTokens}`,
+    );
+    assert(
+      d.rollup.deltaCacheHitPct === 0,
+      `deltaCacheHitPct should be 0, got ${d.rollup.deltaCacheHitPct}`,
+    );
+    assert(
+      d.rollup.deltaTimeMs === 0,
+      `deltaTimeMs should be 0, got ${d.rollup.deltaTimeMs}`,
+    );
     for (const s of d.perScenario) {
-      assert(s.deltaCostUsd === 0, `scenario ${s.scenarioId} deltaCostUsd should be 0`);
-      assert(s.deltaLatencyMs === 0, `scenario ${s.scenarioId} deltaLatencyMs should be 0`);
-      assert(s.deltaTotalTokens === 0, `scenario ${s.scenarioId} deltaTotalTokens should be 0`);
-      assert(s.deltaCacheHitPct === 0, `scenario ${s.scenarioId} deltaCacheHitPct should be 0`);
-      assert(s.passBaseline === s.passCandidate, "pass booleans should match for self-delta");
+      assert(
+        s.deltaCostUsd === 0,
+        `scenario ${s.scenarioId} deltaCostUsd should be 0`,
+      );
+      assert(
+        s.deltaLatencyMs === 0,
+        `scenario ${s.scenarioId} deltaLatencyMs should be 0`,
+      );
+      assert(
+        s.deltaTotalTokens === 0,
+        `scenario ${s.scenarioId} deltaTotalTokens should be 0`,
+      );
+      assert(
+        s.deltaCacheHitPct === 0,
+        `scenario ${s.scenarioId} deltaCacheHitPct should be 0`,
+      );
+      assert(
+        s.passBaseline === s.passCandidate,
+        "pass booleans should match for self-delta",
+      );
     }
   }
 }
@@ -309,4 +377,6 @@ if (failures.length > 0) {
 
 // Clean up only on success.
 fs.rmSync(tmpRoot, { recursive: true, force: true });
-console.log("[test] aggregate-lifeops-run + lifeops-bench-delta smoke test PASSED");
+console.log(
+  "[test] aggregate-lifeops-run + lifeops-bench-delta smoke test PASSED",
+);

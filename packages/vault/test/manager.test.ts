@@ -2,11 +2,11 @@ import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { setSavedLogin } from "../src/credentials.js";
 import { generateMasterKey } from "../src/crypto.js";
 import type { ExecFn } from "../src/external-credentials.js";
-import { inMemoryMasterKey } from "../src/master-key.js";
 import { createManager, DEFAULT_PREFERENCES } from "../src/manager.js";
-import { setSavedLogin } from "../src/credentials.js";
+import { inMemoryMasterKey } from "../src/master-key.js";
 import { createVault } from "../src/vault.js";
 
 describe("manager — preferences", () => {

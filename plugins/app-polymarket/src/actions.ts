@@ -1,4 +1,3 @@
-import { Service } from "@elizaos/core";
 import type {
   Action,
   ActionResult,
@@ -9,6 +8,7 @@ import type {
   ProviderDataRecord,
   State,
 } from "@elizaos/core";
+import { Service } from "@elizaos/core";
 import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
 import type {
   PolymarketDisabledResponse,
@@ -190,7 +190,10 @@ function readKind(
 
 function normalizeOp(value: unknown): PolymarketOp | null {
   if (typeof value !== "string") return null;
-  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   if ((POLYMARKET_OPS as readonly string[]).includes(normalized)) {
     return normalized as PolymarketOp;
   }
@@ -237,10 +240,18 @@ function hasSelectedContext(
       if (typeof item === "string") selected.add(item);
     }
   };
-  collect((state?.values as Record<string, unknown> | undefined)?.selectedContexts);
-  collect((state?.data as Record<string, unknown> | undefined)?.selectedContexts);
-  const contextObject = (state?.data as Record<string, unknown> | undefined)?.contextObject as
-    | { trajectoryPrefix?: { selectedContexts?: unknown }; metadata?: { selectedContexts?: unknown } }
+  collect(
+    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  collect(
+    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  const contextObject = (state?.data as Record<string, unknown> | undefined)
+    ?.contextObject as
+    | {
+        trajectoryPrefix?: { selectedContexts?: unknown };
+        metadata?: { selectedContexts?: unknown };
+      }
     | undefined;
   collect(contextObject?.trajectoryPrefix?.selectedContexts);
   collect(contextObject?.metadata?.selectedContexts);
@@ -254,7 +265,9 @@ function hasKeywordIntent(
 ): boolean {
   const text = [
     typeof message.content?.text === "string" ? message.content.text : "",
-    typeof state?.values?.recentMessages === "string" ? state.values.recentMessages : "",
+    typeof state?.values?.recentMessages === "string"
+      ? state.values.recentMessages
+      : "",
   ]
     .join("\n")
     .toLowerCase();
@@ -580,7 +593,10 @@ interface PredictionMarketProvider extends PredictionMarketProviderMetadata {
 }
 
 function normalizeProviderKey(value: string): string {
-  return value.trim().toLowerCase().replace(/[\s_-]+/g, "");
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
 }
 
 function readTarget(
@@ -743,7 +759,8 @@ export const polymarketAction: Action = {
     },
     {
       name: "subaction",
-      description: "Legacy alias for action. Accepts place-order as place_order.",
+      description:
+        "Legacy alias for action. Accepts place-order as place_order.",
       required: false,
       schema: { type: "string", enum: [...POLYMARKET_OPS, "place-order"] },
     },

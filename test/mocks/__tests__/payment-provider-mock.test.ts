@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import http from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
-import { startMocks, type StartedMocks } from "../scripts/start-mocks.ts";
+import { type StartedMocks, startMocks } from "../scripts/start-mocks.ts";
 
 let activeMocks: StartedMocks | null = null;
 let activeServer: http.Server | null = null;
@@ -91,7 +91,9 @@ async function startCallbackServer(): Promise<{
   };
 }
 
-function paymentRequest(body: Record<string, unknown>): Record<string, unknown> {
+function paymentRequest(
+  body: Record<string, unknown>,
+): Record<string, unknown> {
   const value = body.paymentRequest;
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("paymentRequest missing from response");
@@ -128,19 +130,26 @@ describe("payments mock provider", () => {
 
     const paid = await jsonRequest(
       `${baseUrl}/v1/payment-requests/${createdRequest.id}/pay`,
-      { method: "POST", body: JSON.stringify({ transactionHash: "mock_tx_1" }) },
+      {
+        method: "POST",
+        body: JSON.stringify({ transactionHash: "mock_tx_1" }),
+      },
     );
     expect(paid.response.status).toBe(200);
     expect(paid.body.accepted).toBe(true);
     expect(paymentRequest(paid.body).status).toBe("paid");
     expect(paymentRequest(paid.body).transactionHash).toBe("mock_tx_1");
 
-    const status = await jsonRequest(`${baseUrl}/v1/payment-requests/${createdRequest.id}`);
+    const status = await jsonRequest(
+      `${baseUrl}/v1/payment-requests/${createdRequest.id}`,
+    );
     expect(status.response.status).toBe(200);
     expect(paymentRequest(status.body).paid).toBe(true);
 
     const ledger = await jsonRequest(`${baseUrl}/__mock/payments/requests`);
-    const paymentRequests = ledger.body.paymentRequests as Array<Record<string, unknown>>;
+    const paymentRequests = ledger.body.paymentRequests as Array<
+      Record<string, unknown>
+    >;
     expect(paymentRequests).toHaveLength(1);
     expect(paymentRequests[0]?.status).toBe("paid");
 
@@ -157,19 +166,22 @@ describe("payments mock provider", () => {
     const baseUrl = activeMocks.baseUrls.payments;
     const appId = "app_mock_woobench";
 
-    const created = await jsonRequest(`${baseUrl}/api/v1/apps/${appId}/charges`, {
-      method: "POST",
-      body: JSON.stringify({
-        amount: 1,
-        description: "WooBench action charge",
-        providers: ["stripe", "oxapay"],
-        callback_channel: {
-          source: "woobench",
-          roomId: "room-1",
-          agentId: "agent-1",
-        },
-      }),
-    });
+    const created = await jsonRequest(
+      `${baseUrl}/api/v1/apps/${appId}/charges`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          amount: 1,
+          description: "WooBench action charge",
+          providers: ["stripe", "oxapay"],
+          callback_channel: {
+            source: "woobench",
+            roomId: "room-1",
+            agentId: "agent-1",
+          },
+        }),
+      },
+    );
 
     expect(created.response.status).toBe(201);
     const createdCharge = appCharge(created.body);
@@ -187,15 +199,20 @@ describe("payments mock provider", () => {
       },
     );
     expect(checkout.response.status).toBe(200);
-    expect((checkout.body.checkout as Record<string, unknown>)?.provider).toBe("oxapay");
-    expect((checkout.body.checkout as Record<string, unknown>)?.payLink).toContain(
-      `/checkout/${createdCharge.id}`,
+    expect((checkout.body.checkout as Record<string, unknown>)?.provider).toBe(
+      "oxapay",
     );
+    expect(
+      (checkout.body.checkout as Record<string, unknown>)?.payLink,
+    ).toContain(`/checkout/${createdCharge.id}`);
 
-    const paid = await jsonRequest(`${baseUrl}/__mock/app-charges/${createdCharge.id}/pay`, {
-      method: "POST",
-      body: JSON.stringify({ transactionHash: "mock_app_charge_tx" }),
-    });
+    const paid = await jsonRequest(
+      `${baseUrl}/__mock/app-charges/${createdCharge.id}/pay`,
+      {
+        method: "POST",
+        body: JSON.stringify({ transactionHash: "mock_app_charge_tx" }),
+      },
+    );
     expect(paid.response.status).toBe(200);
     expect(paymentRequest(paid.body).status).toBe("paid");
 
@@ -241,7 +258,10 @@ describe("payments mock provider", () => {
     const delivery = await Promise.race([
       callback.nextDelivery,
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("callback delivery timed out")), 2_000),
+        setTimeout(
+          () => reject(new Error("callback delivery timed out")),
+          2_000,
+        ),
       ),
     ]);
     expect(delivery.headers["x-eliza-event"]).toBe("payment_request.paid");

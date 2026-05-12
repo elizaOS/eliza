@@ -68,9 +68,6 @@ function normalizeShellSubaction(
     case "list_history":
     case "history_view":
       return "view_history";
-    case "run":
-    case "execute":
-    case "command":
     default:
       return "run";
   }

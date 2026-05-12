@@ -8,7 +8,8 @@ import {
 
 export default scenario({
   id: "followup.dismiss-with-reason",
-  title: "Dismissing a follow-up captures the user-supplied reason for future filtering",
+  title:
+    "Dismissing a follow-up captures the user-supplied reason for future filtering",
   domain: "lifeops.followup",
   tags: ["lifeops", "followup", "dismiss", "memory"],
   description:

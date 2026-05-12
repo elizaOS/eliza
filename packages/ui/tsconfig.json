@@ -6,46 +6,26 @@
     "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     "allowImportingTsExtensions": true,
     "declaration": false,
     "noEmit": true,
     "paths": {
-      "drizzle-orm": [
-        "../../plugins/plugin-sql/node_modules/drizzle-orm"
-      ],
-      "drizzle-orm/*": [
-        "../../plugins/plugin-sql/node_modules/drizzle-orm/*"
-      ],
-      "@elizaos/app-lifeops": [
-        "../../plugins/app-lifeops/src/index.ts"
-      ],
+      "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../../plugins/plugin-sql/node_modules/drizzle-orm/*"],
+      "@elizaos/app-lifeops": ["../../plugins/app-lifeops/src/index.ts"],
       "@elizaos/app-task-coordinator": [
         "../../plugins/app-task-coordinator/src/index.ts"
       ],
-      "@elizaos/app-steward": [
-        "../../plugins/app-steward/src/index.ts"
-      ],
-      "@elizaos/app-shopify": [
-        "../../plugins/app-shopify/src/index.ts"
-      ],
-      "@elizaos/app-training": [
-        "../../plugins/app-training/src/index.ts"
-      ],
-      "@elizaos/app-vincent": [
-        "../../plugins/app-vincent/src/index.ts"
-      ],
+      "@elizaos/app-steward": ["../../plugins/app-steward/src/index.ts"],
+      "@elizaos/app-shopify": ["../../plugins/app-shopify/src/index.ts"],
+      "@elizaos/app-training": ["../../plugins/app-training/src/index.ts"],
+      "@elizaos/app-vincent": ["../../plugins/app-vincent/src/index.ts"],
       "@elizaos/plugin-lifeops-browser": [
         "../../plugins/plugin-lifeops-browser/src/index.ts"
       ],
-      "@elizaos/plugin-browser": [
-        "../../plugins/plugin-browser/src/index.ts"
-      ],
-      "@elizaos/plugin-video": [
-        "../../plugins/plugin-video/dist/index.d.ts"
-      ],
+      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
+      "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
       ],
@@ -55,24 +35,14 @@
       "@elizaos/plugin-whatsapp": [
         "../../plugins/plugin-whatsapp/src/index.ts"
       ],
-      "@elizaos/plugin-signal": [
-        "../../plugins/plugin-signal/src/index.ts"
-      ],
-      "@elizaos/app-core": [
-        "../app-core/src/index.ts"
-      ],
-      "@elizaos/agent": [
-        "../agent/src/index.ts"
-      ],
+      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
+      "@elizaos/app-core": ["../app-core/src/index.ts"],
+      "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
       ],
-      "@elizaos/app-companion": [
-        "../../plugins/app-companion/src/index.ts"
-      ],
-      "@elizaos/app-elizamaker": [
-        "../../plugins/app-elizamaker/src/index.ts"
-      ],
+      "@elizaos/app-companion": ["../../plugins/app-companion/src/index.ts"],
+      "@elizaos/app-elizamaker": ["../../plugins/app-elizamaker/src/index.ts"],
       "@elizaos/capacitor-appblocker": [
         "../native-plugins/appblocker/src/index.ts"
       ],

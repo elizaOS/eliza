@@ -35,11 +35,7 @@ export default scenario({
         const names = new Set(
           ctx.actionsCalled.map((action) => action.actionName),
         );
-        if (
-          names.has("REPLY") ||
-          names.has("THINK") ||
-          names.has("IGNORE")
-        ) {
+        if (names.has("REPLY") || names.has("THINK") || names.has("IGNORE")) {
           return undefined;
         }
         return `Expected Discord login flow to route through REPLY, THINK, or IGNORE. Called: ${Array.from(names).join(",") || "(none)"}`;

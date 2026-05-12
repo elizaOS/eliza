@@ -90,4 +90,4 @@ export interface RunnerContext extends ScenarioContext {
   artifacts: CapturedArtifact[];
 }
 
-export type { ScenarioDefinition, ScenarioTurn, ScenarioFinalCheck };
+export type { ScenarioDefinition, ScenarioFinalCheck, ScenarioTurn };

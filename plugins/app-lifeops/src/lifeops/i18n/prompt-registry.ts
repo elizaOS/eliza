@@ -18,12 +18,7 @@ import type { ActionExample, IAgentRuntime } from "@elizaos/core";
 
 export type PromptLocale = "en" | "es" | "fr" | "ja";
 
-const SUPPORTED_LOCALES: ReadonlyArray<PromptLocale> = [
-  "en",
-  "es",
-  "fr",
-  "ja",
-];
+const SUPPORTED_LOCALES: ReadonlyArray<PromptLocale> = ["en", "es", "fr", "ja"];
 
 const DEFAULT_LOCALE: PromptLocale = "en";
 

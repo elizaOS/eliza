@@ -87,9 +87,7 @@ export default scenario({
       type: "custom",
       name: "no-backfill-of-missed-days",
       predicate: (ctx: ScenarioContext) => {
-        const reply = String(
-          ctx.turns?.[0]?.responseText ?? "",
-        ).toLowerCase();
+        const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
         const claimsBackfill =
           reply.includes("missed") &&
           (reply.includes("backfill") || reply.includes("catch up"));

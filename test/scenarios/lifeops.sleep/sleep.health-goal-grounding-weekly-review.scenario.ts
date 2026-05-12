@@ -6,11 +6,11 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import { seedLifeOpsGoal } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({
@@ -49,9 +49,7 @@ export default scenario({
           const start = new Date(
             Date.parse("2025-11-03T07:00:00.000Z") - day * 24 * 3600_000,
           ).toISOString();
-          const end = new Date(
-            Date.parse(start) + 6 * 3600_000,
-          ).toISOString();
+          const end = new Date(Date.parse(start) + 6 * 3600_000).toISOString();
           await executeRawSql(
             runtime,
             `INSERT INTO app_lifeops.life_health_sleep_episodes (
@@ -97,9 +95,7 @@ export default scenario({
       type: "custom",
       name: "agent-flags-sleep-goal-attention",
       predicate: (ctx: ScenarioContext) => {
-        const reply = String(
-          ctx.turns?.[0]?.responseText ?? "",
-        ).toLowerCase();
+        const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
         if (!reply) return "empty reply";
         const flagged =
           reply.includes("short") ||

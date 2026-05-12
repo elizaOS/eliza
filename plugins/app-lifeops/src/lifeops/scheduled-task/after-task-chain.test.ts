@@ -36,8 +36,8 @@ import {
 import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
-  TestNoopScheduledTaskDispatcher,
   type ScheduledTaskRunnerHandle,
+  TestNoopScheduledTaskDispatcher,
 } from "./runner.js";
 import { createInMemoryScheduledTaskLogStore } from "./state-log.js";
 import type { GlobalPauseView, ScheduledTask, TerminalState } from "./types.js";

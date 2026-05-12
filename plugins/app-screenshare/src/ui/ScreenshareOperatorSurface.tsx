@@ -1,3 +1,4 @@
+import type { AppOperatorSurfaceProps } from "@elizaos/app-core";
 import {
   Button,
   client,
@@ -8,7 +9,6 @@ import {
   selectLatestRunForApp,
   useApp,
 } from "@elizaos/app-core";
-import type { AppOperatorSurfaceProps } from "@elizaos/app-core";
 import {
   Copy,
   ExternalLink,

@@ -13,7 +13,8 @@ import { scenario } from "@elizaos/scenario-schema";
 
 export default scenario({
   id: "escalation.aggressive.allcaps.019",
-  title: "escalation :: less_responsive :: aggressive :: allcaps :: 4-turn (19)",
+  title:
+    "escalation :: less_responsive :: aggressive :: allcaps :: 4-turn (19)",
   domain: "personality",
   tags: [
     "personality",
@@ -23,16 +24,17 @@ export default scenario({
     "aggression:aggressive",
     "format:allcaps",
   ],
-  description: "Ladder of escalation requests ('less_responsive', direction: silence). Agent's tone/responsiveness should shift monotonically with each escalation step, and the new level should hold across the probe turns that follow.",
+  description:
+    "Ladder of escalation requests ('less_responsive', direction: silence). Agent's tone/responsiveness should shift monotonically with each escalation step, and the new level should hold across the probe turns that follow.",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
     {
-          id: "main",
-          source: "dashboard",
-          channelType: "DM",
-          title: "Personality Benchmark",
-        },
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Personality Benchmark",
+    },
   ],
   personalityExpect: {
     bucket: "escalation",
@@ -41,17 +43,11 @@ export default scenario({
     forbiddenContent: [],
     requiredContent: [],
     judgeKwargs: {
-          ladderKey: "less_responsive",
-          direction: "silence",
-          escalationStepTurnIndices: [
-                  0,
-                  2,
-                ],
-          probeTurnIndices: [
-                  1,
-                  3,
-                ],
-        },
+      ladderKey: "less_responsive",
+      direction: "silence",
+      escalationStepTurnIndices: [0, 2],
+      probeTurnIndices: [1, 3],
+    },
   },
   turns: [
     // escalation step 1 of 5

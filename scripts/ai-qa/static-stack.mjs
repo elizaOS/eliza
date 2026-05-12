@@ -21,9 +21,9 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { extname, resolve, join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import net from "node:net";
+import { dirname, extname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { WebSocket, WebSocketServer } from "ws";
 
 const HERE = dirname(fileURLToPath(import.meta.url));

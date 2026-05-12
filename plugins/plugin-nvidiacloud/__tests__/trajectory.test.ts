@@ -1,6 +1,6 @@
 import type { IAgentRuntime, ModelHandler } from "@elizaos/core";
 import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
-import { describe, it, expect } from "vitest";
+import { describe, expect, it } from "vitest";
 
 interface CapturedLlmCall {
   stepId: string;
@@ -23,8 +23,7 @@ function createInlineRuntime(calls: CapturedLlmCall[]): IAgentRuntime {
   };
   const settings: Record<string, string> = {
     NVIDIA_API_KEY: apiKey ?? "",
-    NVIDIA_SMALL_MODEL:
-      process.env.NVIDIA_SMALL_MODEL ?? "openai/gpt-oss-120b",
+    NVIDIA_SMALL_MODEL: process.env.NVIDIA_SMALL_MODEL ?? "openai/gpt-oss-120b",
   };
   const runtime = {
     agentId: "agent-nvidia",
@@ -46,50 +45,43 @@ if (!SHOULD_RUN) {
     `\x1b[33m[nvidiacloud trajectory.test] skipped — missing required env: ${REQUIRED_KEY} (set ${REQUIRED_KEY} to enable)\x1b[0m`,
   );
   describe("NVIDIA Cloud trajectory wrapping (live)", () => {
-    it.skip(
-      `[live] suite skipped — set ${REQUIRED_KEY} to enable`,
-      () => {},
-    );
+    it.skip(`[live] suite skipped — set ${REQUIRED_KEY} to enable`, () => {});
   });
 } else {
   describe("NVIDIA Cloud trajectory wrapping (live)", () => {
-    it(
-      "records structured-output generation via TEXT_SMALL through recordLlmCall",
-      async () => {
-        const mod = (await import("../dist/index.js")) as {
-          nvidiaCloudPlugin: { models?: Record<string, ModelHandler> };
-        };
-        const handler = mod.nvidiaCloudPlugin.models?.[ModelType.TEXT_SMALL];
-        if (!handler) {
-          throw new Error("nvidiaCloudPlugin TEXT_SMALL handler missing");
-        }
+    it("records structured-output generation via TEXT_SMALL through recordLlmCall", async () => {
+      const mod = (await import("../dist/index.js")) as {
+        nvidiaCloudPlugin: { models?: Record<string, ModelHandler> };
+      };
+      const handler = mod.nvidiaCloudPlugin.models?.[ModelType.TEXT_SMALL];
+      if (!handler) {
+        throw new Error("nvidiaCloudPlugin TEXT_SMALL handler missing");
+      }
 
-        const calls: CapturedLlmCall[] = [];
-        const runtime = createInlineRuntime(calls);
+      const calls: CapturedLlmCall[] = [];
+      const runtime = createInlineRuntime(calls);
 
-        const result = await runWithTrajectoryContext(
-          { trajectoryStepId: "step-nvidia" },
-          async () =>
-            handler(runtime, {
-              prompt:
-                'Return JSON with shape {"answer": 4} for the question 2+2. Reply with only the JSON object.',
-              responseSchema: {
-                type: "object",
-                properties: { answer: { type: "number" } },
-                required: ["answer"],
-              },
-            } as never),
-        );
+      const result = await runWithTrajectoryContext(
+        { trajectoryStepId: "step-nvidia" },
+        async () =>
+          handler(runtime, {
+            prompt:
+              'Return JSON with shape {"answer": 4} for the question 2+2. Reply with only the JSON object.',
+            responseSchema: {
+              type: "object",
+              properties: { answer: { type: "number" } },
+              required: ["answer"],
+            },
+          } as never),
+      );
 
-        expect(JSON.stringify(result)).toContain("4");
-        expect(calls.length).toBeGreaterThanOrEqual(1);
-        const [call] = calls;
-        expect(call.stepId).toBe("step-nvidia");
-        expect(typeof call.actionType).toBe("string");
-        expect(call.promptTokens ?? 0).toBeGreaterThan(0);
-        expect(call.completionTokens ?? 0).toBeGreaterThan(0);
-      },
-      120_000,
-    );
+      expect(JSON.stringify(result)).toContain("4");
+      expect(calls.length).toBeGreaterThanOrEqual(1);
+      const [call] = calls;
+      expect(call.stepId).toBe("step-nvidia");
+      expect(typeof call.actionType).toBe("string");
+      expect(call.promptTokens ?? 0).toBeGreaterThan(0);
+      expect(call.completionTokens ?? 0).toBeGreaterThan(0);
+    }, 120_000);
   });
 }

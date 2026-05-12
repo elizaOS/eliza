@@ -1,8 +1,8 @@
 import type { IAgentRuntime, Memory, State, UUID } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import formPlugin, { FormService } from "./index";
 import { formAction, formRestoreAction } from "./actions/form";
 import { formEvaluator } from "./evaluators/extractor";
+import formPlugin, { FormService } from "./index";
 import { formContextProvider } from "./providers/context";
 import type { FormDefinition, FormSession } from "./types";
 
@@ -242,16 +242,8 @@ describe("FORM action", () => {
     const message = makeMessage("resume my form");
     const callback = vi.fn();
 
-    await expect(
-      formAction.validate(runtime, message, {}),
-    ).resolves.toBe(true);
-    const result = await formAction.handler(
-      runtime,
-      message,
-      {},
-      {},
-      callback,
-    );
+    await expect(formAction.validate(runtime, message, {})).resolves.toBe(true);
+    const result = await formAction.handler(runtime, message, {}, {}, callback);
 
     expect(result.success).toBe(true);
     expect(formService.restore).toHaveBeenCalledWith("stashed", entityId);

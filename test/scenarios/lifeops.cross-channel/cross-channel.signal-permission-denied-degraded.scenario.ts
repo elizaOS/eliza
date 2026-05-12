@@ -37,7 +37,8 @@ function checkSignalUnavailableSurfaced(
 
 export default scenario({
   id: "cross-channel.signal-permission-denied-degraded",
-  title: "Signal permission denied → degraded but cross-channel query continues",
+  title:
+    "Signal permission denied → degraded but cross-channel query continues",
   domain: "lifeops.cross-channel",
   tags: [
     "lifeops",

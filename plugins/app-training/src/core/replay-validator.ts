@@ -19,11 +19,7 @@ import {
   ELIZA_NATIVE_TRAJECTORY_FORMAT,
   type ElizaNativeTrajectoryRow,
 } from "@elizaos/core";
-import {
-  ACTION_CONTEXT_MAP,
-  ALL_CONTEXTS,
-  PROVIDER_CONTEXT_MAP,
-} from "./context-catalog.js";
+import { ACTION_CONTEXT_MAP, ALL_CONTEXTS } from "./context-catalog.js";
 import type { AgentContext } from "./context-types.js";
 import type {
   ElizaNativeTrainingExample,

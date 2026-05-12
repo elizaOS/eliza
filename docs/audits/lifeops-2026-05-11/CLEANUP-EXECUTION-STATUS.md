@@ -16,10 +16,10 @@ trajectory + voice cleanup, what's in flight, and what's still to do.
 |---|---|---|---|
 | 0 | Refresh ground truth — fresh baselines | ✅ Done | `final-rebaseline-report.md` snapshot is current (2026-05-11). eliza 0.518 / hermes 0.480 / openclaw 0.505 on lifeops calendar 25; personality eliza-runtime 64%. |
 | 1 | Close bench→optimizer loop + holdout gate | ✅ Done | `splitTrainHoldout` + `holdoutSet` plumbing. 24/24 tests pass. Commit `76add4ddd8`. |
-| 2 | Consolidate 4 Cerebras judge wrappers | 🟡 Planned | Hold for end-of-session — touches files multiple agents have edited. |
+| 2 | Consolidate 4 Cerebras judge wrappers | 🟡 In flight | Agent `a1243ed8ffbcc3275`. Extracts `CerebrasJudge` to shared location, migrates 4 wrappers, canonical verdict schema. |
 | 3 | Adapter parity + transport dedup | ✅ Done | `BaseBenchmarkClient` extracted to `packages/benchmarks/lib/`. All three adapters subclass + override `_send`. **Eliza $0 cost bug fixed** (server.ts propagates `usage` to HTTP response). 164 tests pass. Commit `6e1d8b200d`. |
 | 4 | Voice benchmarks (VoiceBench, MMAU, VoiceAgentBench) | 🟡 2 of 3 done | **VoiceBench** at `b82b302ccc` (`voicebench-quality/`, 25 tests). **MMAU** at `dc24e51b4c` (`packages/benchmarks/mmau/`, 53 tests). **VoiceAgentBench** still in flight (agent `a58604a002051bfe7`). |
-| 5 | Registry split + stub purge | ⛔ Blocked | Wait for VoiceAgentBench to land its registry entry. Then split `registry.py` (now ~44 entries) by domain. |
+| 5 | Registry split + stub purge | 🟡 In flight | Agent `afa4b6369deb651da`. Splits 3782-line `registry.py` into `registry/` package + removes 6 stubs. |
 | 6 | Python ↔ TS training bridge | ✅ Done | `local_path` source type, `eval_checkpoint.py` writes to W0-X5 store, `eliza-nightly-*` dataset entries. 18 new tests + 30 results-store regression tests pass. Commit `ae912c3450`. |
 | 7 | Formal GEPA (Goyal et al. 2024) | 🟡 In flight | Agent `a17413e1e37cf24b0`. `runGepa` imported in `native.ts` dispatcher. Pending commit. |
 | 8 | Continuous Cerebras grind in CI | ✅ Done | `cerebras-nightly.yml` + `cerebras-nightly-delta.py`. Commit `62ebaac31a`. |
@@ -36,8 +36,9 @@ trajectory + voice cleanup, what's in flight, and what's still to do.
 | P0-4 | MESSAGE umbrella in TS fake backend | ✅ Done | `b9556447bd` — mirrors Python `_u_message` so eliza mail scores move off 0.000. |
 | P0-5 | CALENDAR umbrella → `lifeops.calendar.*` routing | ✅ Done | `4d89b51c61` — `translateUmbrellaAction` in `lifeops-bench-handler.ts`. 18 tests pass. |
 | P0-6 | Inline LIFE_CREATE wire shape into `_TOOL_DESCRIPTIONS` | 🟡 In flight | Agent `aaeae1fd70b8363d0`. |
-| P0-7 | Bench-server role seeding for `scope_global_vs_user` | ⛔ Not started | Holding — needs design pass on runner cooperation. After P0 batch lands. |
-| P0-8 | Stop read-only ops gifting `state_hash_match` | ⛔ Not started | Holding — coordinate with P0-1 measurement so the lift attribution is clean. |
+| P0-6 | Inline LIFE_CREATE wire shape | ✅ Done | `9ca07f32e8` — 18 tests pass. Parallel `[w6-5]` commit landed similar work. |
+| P0-7 | Bench-server role seeding for `scope_global_vs_user` | 🟡 In flight | Agent `a76d834fdd813f467`. Reset payload + `PersonalityStore.clear` + 5-variant scope rubric. |
+| P0-8 | Stop read-only ops gifting `state_hash_match` | 🟡 In flight | Agent `a5ad9cd285b3e40f0`. Option B (re-weight) — 0.7*action + 0.3*substring on read-only scenarios. |
 
 ---
 

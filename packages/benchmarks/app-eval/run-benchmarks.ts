@@ -384,7 +384,7 @@ async function runTasksServerMode(
 
       for (const line of lines) {
         const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith("{")) continue;
+        if (!trimmed?.startsWith("{")) continue;
         try {
           const result: BenchmarkResult = JSON.parse(trimmed);
           results.push(result);
@@ -398,11 +398,11 @@ async function runTasksServerMode(
           if (taskIndex < tasks.length) {
             const nextTask = tasks[taskIndex];
             child.stdin.write(
-              JSON.stringify({
+              `${JSON.stringify({
                 id: nextTask.id,
                 type: nextTask.type,
                 prompt: nextTask.prompt,
-              }) + "\n",
+              })}\n`,
             );
           } else {
             // All tasks sent and results received
@@ -477,11 +477,11 @@ async function runTasksServerMode(
     if (tasks.length > 0) {
       const firstTask = tasks[0];
       child.stdin.write(
-        JSON.stringify({
+        `${JSON.stringify({
           id: firstTask.id,
           type: firstTask.type,
           prompt: firstTask.prompt,
-        }) + "\n",
+        })}\n`,
       );
     } else {
       child.stdin.end();
@@ -630,7 +630,7 @@ function generateSummary(
 // ---------------------------------------------------------------------------
 
 function printReport(summary: RunSummary): void {
-  console.log("\n" + "=".repeat(60));
+  console.log(`\n${"=".repeat(60)}`);
   console.log("  APP BENCHMARK RESULTS");
   console.log("=".repeat(60));
   console.log(`  Run ID:     ${summary.run_id}`);
@@ -666,9 +666,9 @@ function printReport(summary: RunSummary): void {
     }
   }
 
-  console.log("\n" + "-".repeat(60));
+  console.log(`\n${"-".repeat(60)}`);
   console.log(`  OVERALL SCORE: ${summary.overall_score}`);
-  console.log("=".repeat(60) + "\n");
+  console.log(`${"=".repeat(60)}\n`);
 }
 
 // ---------------------------------------------------------------------------

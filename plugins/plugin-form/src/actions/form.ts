@@ -43,9 +43,7 @@ function truncateRestoreResponse(text: string): string {
     : `${text.slice(0, RESTORE_RESPONSE_MAX_CHARS)}\n\n[truncated restored form summary]`;
 }
 
-function readFormSubaction(
-  options: HandlerOptions | undefined,
-): FormSubaction {
+function readFormSubaction(options: HandlerOptions | undefined): FormSubaction {
   const params = options?.parameters as
     | Record<string, JsonValue | undefined>
     | undefined;
@@ -177,13 +175,13 @@ export const formAction: Action = {
   contextGate: { anyOf: ["tasks", "automation", "memory"] },
   roleGate: { minRole: "USER" },
   similes: ["FORM_RESTORE", "RESUME_FORM", "CONTINUE_FORM"],
-  description: "Form session router. action=restore rehydrates the most recent stashed form for the current user.",
+  description:
+    "Form session router. action=restore rehydrates the most recent stashed form for the current user.",
   descriptionCompressed: "Form session router (restore).",
   parameters: [
     {
       name: "action",
-      description:
-        "Form verb: restore. Defaults to restore when omitted.",
+      description: "Form verb: restore. Defaults to restore when omitted.",
       required: false,
       schema: {
         type: "string",

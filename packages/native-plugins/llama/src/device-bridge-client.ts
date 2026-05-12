@@ -19,7 +19,7 @@
  *   iOS never wins routing.
  *
  *   To fix this, the bridge client probes the host app's
- *   `ElizaIntent` / `ElizaIntent` Capacitor plugin (whichever is
+ *   `MiladyIntent` / `ElizaIntent` Capacitor plugin (whichever is
  *   registered) for a `getDeviceCapabilities()` method and merges the
  *   real values (`utsname.machine`, `ProcessInfo.physicalMemory`,
  *   thermal state, low-power mode, OS version) into the register
@@ -80,6 +80,11 @@ type AgentInbound =
       temperature?: number;
     }
   | { type: "embed"; correlationId: string; input: string }
+  | {
+      type: "formatChat";
+      correlationId: string;
+      messages: { role: string; content: string }[];
+    }
   | { type: "ping"; at: number };
 
 type DeviceOutbound =
@@ -114,6 +119,18 @@ type DeviceOutbound =
       tokens: number;
     }
   | { type: "embedResult"; correlationId: string; ok: false; error: string }
+  | {
+      type: "formatChatResult";
+      correlationId: string;
+      ok: true;
+      prompt: string | null;
+    }
+  | {
+      type: "formatChatResult";
+      correlationId: string;
+      ok: false;
+      error: string;
+    }
   | { type: "pong"; at: number };
 
 export interface DeviceBridgeClientConfig {
@@ -134,7 +151,7 @@ const INITIAL_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
 const CONNECT_TIMEOUT_MS = 5_000;
 
-/** Result returned by the iOS `ElizaIntent.getDeviceCapabilities()` /
+/** Result returned by the iOS `MiladyIntent.getDeviceCapabilities()` /
  * `ElizaIntent.getDeviceCapabilities()` plugin method. Matches the Swift
  * `call.resolve([...])` shape — every field is optional from the JS side
  * because we feature-detect at runtime and want to tolerate older app
@@ -178,10 +195,10 @@ async function probeNativeIosCapabilities(): Promise<NativeIosCapabilities | nul
   if (!cap?.isNativePlatform?.()) return null;
   if (cap.getPlatform?.() !== "ios") return null;
   const plugins = cap.Plugins ?? {};
-  // Try the eliza-branded plugin first, then the legacy eliza-branded
+  // Try the milady-branded plugin first, then the legacy eliza-branded
   // one. Both ship with the same `getDeviceCapabilities` surface in this
   // repo; whichever is registered first wins.
-  for (const name of ["ElizaIntent", "ElizaIntent"]) {
+  for (const name of ["MiladyIntent", "ElizaIntent"]) {
     const plugin = plugins[name];
     if (typeof plugin?.getDeviceCapabilities === "function") {
       try {
@@ -321,13 +338,12 @@ export class DeviceBridgeClient {
     // On iOS, `llama-cpp-capacitor` does not implement `getHardwareInfo`,
     // so the adapter returned a fallback with `deviceModel="ios"` /
     // `totalRamGb=0` / no `isSimulator` flag. Probe our own native
-    // `ElizaIntent` plugin for real values and merge them on top of the
+    // `MiladyIntent` plugin for real values and merge them on top of the
     // adapter result. The adapter fallback is the floor — when the
     // upstream plugin gains a real probe path that returns trustworthy
     // values (`source === "native"`), we let it win.
     const native = await probeNativeIosCapabilities();
-    const useNativeOverride =
-      native !== null && hardware.source !== "native";
+    const useNativeOverride = native !== null && hardware.source !== "native";
 
     const platform = useNativeOverride
       ? (native?.platform ?? hardware.platform)
@@ -362,7 +378,7 @@ export class DeviceBridgeClient {
         : hardware.cpuCores
       : hardware.cpuCores;
     const gpu = useNativeOverride
-      ? native?.gpu && native.gpu.available
+      ? native?.gpu?.available
         ? ({
             backend:
               native.gpu.backend === "metal" ||
@@ -533,6 +549,30 @@ export class DeviceBridgeClient {
       } catch (err) {
         this.send(ws, {
           type: "embedResult",
+          correlationId: msg.correlationId,
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      return;
+    }
+
+    if (msg.type === "formatChat") {
+      try {
+        const capacitorLlama = await loadCapacitorLlama();
+        const prompt =
+          typeof capacitorLlama.formatChat === "function"
+            ? await capacitorLlama.formatChat(msg.messages)
+            : null;
+        this.send(ws, {
+          type: "formatChatResult",
+          correlationId: msg.correlationId,
+          ok: true,
+          prompt,
+        });
+      } catch (err) {
+        this.send(ws, {
+          type: "formatChatResult",
           correlationId: msg.correlationId,
           ok: false,
           error: err instanceof Error ? err.message : String(err),

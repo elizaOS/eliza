@@ -109,29 +109,31 @@ def _resolve_eliza1_llama_cpp() -> Path | None:
 
 def _resolve_llama_bench(fork_dir: Path | None) -> Path | None:
     """Find a `llama-bench` binary, preferring the fastest backend available:
-    CUDA build > Vulkan build > plain CPU build > $PATH. Globs the per-backend
-    build dirs rather than hard-coding paths so it survives the `milady`↔
-    `eliza1` renames and the in-repo-submodule vs ~/.cache layouts."""
+    CUDA build > Vulkan build > plain CPU build > $PATH. Backend priority is the
+    OUTER loop so a CUDA build under ~/.cache wins over a CPU build under the
+    repo (a contended throughput bench once silently ran on the CPU binary while
+    a perfectly good CUDA build sat in ~/.cache/eliza-dflash). Globs the
+    per-backend build dirs rather than hard-coding paths so it survives the
+    `milady`↔`eliza1` renames and the in-repo-submodule vs ~/.cache layouts."""
     import glob
     import shutil
-    pats: list[str] = []
-    for base in (ROOT / "vendor" / "llama.cpp", fork_dir):
-        if base is None:
-            continue
-        pats += [
-            f"{base}/build-cuda/bin/llama-bench",
-            f"{base}/build/bin/llama-bench",
-            f"{base}/build/*cuda*/bin/llama-bench",
-            f"{base}/build/*vulkan*/bin/llama-bench",
-            f"{base}/build/*/bin/llama-bench",
-        ]
     home = str(Path.home())
-    pats += [
-        f"{home}/.cache/eliza-dflash/*-llama-cpp/build-cuda/bin/llama-bench",
-        f"{home}/.cache/eliza-dflash/*-llama-cpp/build/*cuda*/bin/llama-bench",
-        f"{home}/.cache/eliza-dflash/*-llama-cpp/build/*vulkan*/bin/llama-bench",
-        f"{home}/.cache/eliza-dflash/*-llama-cpp/build/bin/llama-bench",
-    ]
+    bases = [b for b in (ROOT / "vendor" / "llama.cpp", fork_dir) if b is not None]
+    cache_globs = [f"{home}/.cache/eliza-dflash/*-llama-cpp"]
+
+    def _per_base(suffixes: list[str]) -> list[str]:
+        out: list[str] = []
+        for base in bases:
+            out += [f"{base}/{s}/bin/llama-bench" for s in suffixes]
+        for cg in cache_globs:
+            out += [f"{cg}/{s}/bin/llama-bench" for s in suffixes]
+        return out
+
+    # Outer = backend tier (fastest first); inner = location.
+    pats: list[str] = []
+    pats += _per_base(["build-cuda", "build/*cuda*"])      # CUDA
+    pats += _per_base(["build-vulkan", "build/*vulkan*"])  # Vulkan
+    pats += _per_base(["build", "build/*"])                # CPU / unspecified
     for pat in pats:
         for m in sorted(glob.glob(pat)):
             p = Path(m)

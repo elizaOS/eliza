@@ -7,7 +7,12 @@
  * behavior so Wave-2 scenarios can build on it.
  */
 
-import type { HandlerOptions, IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import type {
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -38,7 +43,10 @@ const mocks = vi.hoisted(() => ({
   })),
   apply: vi.fn(async (taskId: string, verb: string) => ({
     taskId,
-    state: { status: verb === "dismiss" ? "dismissed" : "scheduled", followupCount: 0 },
+    state: {
+      status: verb === "dismiss" ? "dismissed" : "scheduled",
+      followupCount: 0,
+    },
   })),
 }));
 
@@ -178,7 +186,8 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
         subaction: "request_signature",
         status: "pending",
       });
-      const docId = (result.data as { documentRequestId: string }).documentRequestId;
+      const docId = (result.data as { documentRequestId: string })
+        .documentRequestId;
       expect(docId).toMatch(/^doc-/);
 
       expect(mocks.enqueue).toHaveBeenCalledTimes(1);
@@ -234,7 +243,8 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
         approvalReason: "Need yes/no on the SOW",
       });
       expect(result.success).toBe(true);
-      const doc = (result.data as { documentRequest: { kind: string } }).documentRequest;
+      const doc = (result.data as { documentRequest: { kind: string } })
+        .documentRequest;
       expect(doc.kind).toBe("approval");
     });
 
@@ -254,7 +264,8 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
         subaction: "request_approval",
         documentTitle: "Vendor SOW",
       });
-      const docId = (created.data as { documentRequestId: string }).documentRequestId;
+      const docId = (created.data as { documentRequestId: string })
+        .documentRequestId;
       mocks.schedule.mockClear();
 
       const result = await callDoc(runtime, makeMessage(), {
@@ -286,7 +297,9 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
         deadline: "2026-06-01T17:00:00.000Z",
       });
       expect(result.success).toBe(false);
-      expect(result.data).toMatchObject({ error: "DOCUMENT_REQUEST_NOT_FOUND" });
+      expect(result.data).toMatchObject({
+        error: "DOCUMENT_REQUEST_NOT_FOUND",
+      });
     });
   });
 
@@ -354,7 +367,8 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
         assetKind: "passport",
       });
       expect(result.success).toBe(true);
-      const doc = (result.data as { documentRequest: { kind: string } }).documentRequest;
+      const doc = (result.data as { documentRequest: { kind: string } })
+        .documentRequest;
       expect(doc.kind).toBe("collect_id");
     });
 
@@ -386,7 +400,8 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
         documentTitle: "Partnership NDA",
         deadline: "2026-05-15T17:00:00.000Z",
       });
-      const docId = (created.data as { documentRequestId: string }).documentRequestId;
+      const docId = (created.data as { documentRequestId: string })
+        .documentRequestId;
       mocks.apply.mockClear();
 
       const result = await callDoc(runtime, makeMessage(), {
@@ -406,7 +421,8 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
         subaction: "request_approval",
         documentTitle: "Vendor SOW",
       });
-      const docId = (created.data as { documentRequestId: string }).documentRequestId;
+      const docId = (created.data as { documentRequestId: string })
+        .documentRequestId;
 
       const result = await callDoc(runtime, makeMessage(), {
         subaction: "close_request",
@@ -431,7 +447,8 @@ describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
         subaction: "request_approval",
         documentTitle: "Vendor SOW",
       });
-      const docId = (created.data as { documentRequestId: string }).documentRequestId;
+      const docId = (created.data as { documentRequestId: string })
+        .documentRequestId;
       const result = await callDoc(runtime, makeMessage(), {
         subaction: "close_request",
         documentRequestId: docId,

@@ -122,7 +122,9 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
     reportPath: reportPath ? path.resolve(reportPath) : undefined,
     reportDir: reportDir ? path.resolve(reportDir) : undefined,
     runDir: runDir ? path.resolve(runDir) : undefined,
-    exportNativePath: exportNativePath ? path.resolve(exportNativePath) : undefined,
+    exportNativePath: exportNativePath
+      ? path.resolve(exportNativePath)
+      : undefined,
     runId,
     filter,
     fileGlobs,

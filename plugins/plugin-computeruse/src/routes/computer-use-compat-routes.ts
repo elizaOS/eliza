@@ -13,8 +13,8 @@
  * `ComputerUseServiceLike` interface so the runtime type stays loose.
  */
 
-import type http from "node:http";
 import crypto from "node:crypto";
+import type http from "node:http";
 
 type CompatRuntimeState = {
   current: {
@@ -84,11 +84,13 @@ function getProvidedApiToken(
   }
 
   return (
-    firstHeaderValue(req.headers["x-eliza-token"]) ??
-    firstHeaderValue(req.headers["x-elizaos-token"]) ??
-    firstHeaderValue(req.headers["x-api-key"]) ??
-    firstHeaderValue(req.headers["x-api-token"])
-  )?.trim() || null;
+    (
+      firstHeaderValue(req.headers["x-eliza-token"]) ??
+      firstHeaderValue(req.headers["x-elizaos-token"]) ??
+      firstHeaderValue(req.headers["x-api-key"]) ??
+      firstHeaderValue(req.headers["x-api-token"])
+    )?.trim() || null
+  );
 }
 
 function sendJsonResponse(
@@ -173,7 +175,9 @@ async function readCompatJsonBody(
   if (chunks.length === 0) return {};
 
   try {
-    const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+    const parsed = JSON.parse(
+      Buffer.concat(chunks).toString("utf8"),
+    ) as unknown;
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
       sendJsonErrorResponse(res, 400, "Invalid JSON body");
       return null;

@@ -1,7 +1,4 @@
-import type {
-  Trajectory,
-  TrajectoryListResult,
-} from "@elizaos/agent";
+import type { Trajectory, TrajectoryListResult } from "@elizaos/agent";
 
 export interface TrainingServiceLike {
   getStatus(): Record<string, unknown>;

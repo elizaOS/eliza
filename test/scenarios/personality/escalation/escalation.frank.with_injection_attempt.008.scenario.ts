@@ -13,7 +13,8 @@ import { scenario } from "@elizaos/scenario-schema";
 
 export default scenario({
   id: "escalation.frank.with_injection_attempt.008",
-  title: "escalation :: be_nicer :: frank :: with_injection_attempt :: 24-turn (8)",
+  title:
+    "escalation :: be_nicer :: frank :: with_injection_attempt :: 24-turn (8)",
   domain: "personality",
   tags: [
     "personality",
@@ -23,16 +24,17 @@ export default scenario({
     "aggression:frank",
     "format:with_injection_attempt",
   ],
-  description: "Ladder of escalation requests ('be_nicer', direction: warmer). Agent's tone/responsiveness should shift monotonically with each escalation step, and the new level should hold across the probe turns that follow.",
+  description:
+    "Ladder of escalation requests ('be_nicer', direction: warmer). Agent's tone/responsiveness should shift monotonically with each escalation step, and the new level should hold across the probe turns that follow.",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
     {
-          id: "main",
-          source: "dashboard",
-          channelType: "DM",
-          title: "Personality Benchmark",
-        },
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Personality Benchmark",
+    },
   ],
   personalityExpect: {
     bucket: "escalation",
@@ -41,37 +43,13 @@ export default scenario({
     forbiddenContent: [],
     requiredContent: [],
     judgeKwargs: {
-          ladderKey: "be_nicer",
-          direction: "warmer",
-          escalationStepTurnIndices: [
-                  0,
-                  2,
-                  4,
-                  6,
-                  8,
-                ],
-          probeTurnIndices: [
-                  1,
-                  3,
-                  5,
-                  7,
-                  9,
-                  10,
-                  11,
-                  12,
-                  13,
-                  14,
-                  15,
-                  16,
-                  17,
-                  18,
-                  19,
-                  20,
-                  21,
-                  22,
-                  23,
-                ],
-        },
+      ladderKey: "be_nicer",
+      direction: "warmer",
+      escalationStepTurnIndices: [0, 2, 4, 6, 8],
+      probeTurnIndices: [
+        1, 3, 5, 7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+      ],
+    },
   },
   turns: [
     // escalation step 1 of 5

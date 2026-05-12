@@ -196,12 +196,11 @@ jobs:
         run: |
           set -euo pipefail
           if [ -f "artifacts/$SUITE/delta.md" ]; then
-            BODY="$(cat artifacts/$SUITE/delta.md)"
-            gh issue comment "$ISSUE" \
-              --body "## Cerebras Nightly — $SUITE — run ${{ github.run_id }}
-
-$BODY
-
-[Full artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" \
+            {
+              printf '## Cerebras Nightly — %s — run %s\n\n' "$SUITE" "${{ github.run_id }}"
+              cat "artifacts/$SUITE/delta.md"
+              printf '\n[Full artifacts](https://github.com/%s/actions/runs/%s)\n' "${{ github.repository }}" "${{ github.run_id }}"
+            } > /tmp/cerebras-nightly-comment.md
+            gh issue comment "$ISSUE" --body-file /tmp/cerebras-nightly-comment.md \
               || echo "tracking-issue upsert failed; artifact retained"
           fi

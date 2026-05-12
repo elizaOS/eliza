@@ -19,9 +19,9 @@
 import { describe, expect, it } from "vitest";
 import {
   bridgePersonalityExpect,
+  type PersonalityScenarioLike,
   STYLE_KEY_TO_STYLE,
   TRAIT_KEY_TO_OPTIONS,
-  type PersonalityScenarioLike,
 } from "../../../../scripts/personality-bench-bridge.mjs";
 
 type TestScenario = PersonalityScenarioLike;

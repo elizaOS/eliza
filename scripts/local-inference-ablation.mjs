@@ -274,7 +274,8 @@ function thresholdFor(thresholds, backend, variantName) {
   const direct = byBackend[variantName];
   if (typeof direct === "number" && Number.isFinite(direct)) return direct;
   const fallback = byBackend.default;
-  if (typeof fallback === "number" && Number.isFinite(fallback)) return fallback;
+  if (typeof fallback === "number" && Number.isFinite(fallback))
+    return fallback;
   return null;
 }
 
@@ -565,7 +566,7 @@ async function main() {
   if (variants.length === 0) throw new Error("no variants selected");
 
   const binaryMissing = !fs.existsSync(args.binary);
-  const modelMissing = !fs.existsSync(args.model);
+  const _modelMissing = !fs.existsSync(args.model);
   const thresholds = args.gate ? loadThresholds(args.gate) : null;
 
   fs.mkdirSync(args.outDir, { recursive: true });
@@ -596,9 +597,7 @@ async function main() {
   } else {
     for (const variant of variants) {
       if (variant.skipReason) {
-        console.log(
-          `[ablation] skip ${variant.name}: ${variant.skipReason}`,
-        );
+        console.log(`[ablation] skip ${variant.name}: ${variant.skipReason}`);
         report.variants.push({
           name: variant.name,
           label: variant.label,

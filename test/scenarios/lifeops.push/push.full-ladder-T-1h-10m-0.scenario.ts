@@ -109,7 +109,8 @@ export default scenario({
       predicate: expectStateTransition({
         subject: "deviceIntent",
         to: "acknowledged",
-        description: "phone ack transitions device intent → acknowledged so the ladder stops",
+        description:
+          "phone ack transitions device intent → acknowledged so the ladder stops",
       }),
     },
     judgeRubric({

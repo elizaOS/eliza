@@ -64,9 +64,9 @@ describe("Calendly API client", () => {
     );
 
     expect(urls).toContain("http://127.0.0.1:3003/event_types/abc");
-    expect(
-      urls.some((url) => url.startsWith("https://api.calendly.com")),
-    ).toBe(false);
+    expect(urls.some((url) => url.startsWith("https://api.calendly.com"))).toBe(
+      false,
+    );
     expect(availability).toEqual([
       {
         date: "2026-04-21",

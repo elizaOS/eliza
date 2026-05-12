@@ -80,12 +80,36 @@ The build MUST fail if any required kernel patch is missing
 (inference/AGENTS.md §3). There is no "kernels-missing fallback build"
 **for a publishable artifact**. There is, however, an opt-in, loudly-warned,
 **non-publishable** "reduced-optimization local mode" so the voice pipeline
-runs on backends that can't dispatch a required kernel yet (ROCm/HIP; the
-`turbo3_tcq` cache type): `ELIZA_DFLASH_ALLOW_REDUCED_KERNELS=1` lets
-`build-llama-cpp-dflash.mjs` finish such a target with `publishable: false` +
-`reducedOptimizationLocalMode: true`, and `MILADY_LOCAL_ALLOW_STOCK_KV=1`
+runs on backends that can't dispatch a required kernel yet (ROCm/HIP — the
+*production* `.cu` kernels aren't `__HIP_PLATFORM_AMD__`-clean yet, though
+`verify/hip_verify.cu` / `make -C packages/inference/verify hip-verify` now
+gives a fixture-parity gate; CPU TBQ/Polar standalone score graph op):
+`ELIZA_DFLASH_ALLOW_REDUCED_KERNELS=1` lets `build-llama-cpp-dflash.mjs`
+finish such a target with `publishable: false` +
+`reducedOptimizationLocalMode: true`, and `ELIZA_LOCAL_ALLOW_STOCK_KV=1`
 makes the runtime load it with stock `f16` KV. Neither is a default, and
 `defaultEligible` bundles still require the verified kernels per backend.
+
+> **`turbo3_tcq` is now a real K/V cache type** (2026-05-12): the fork's
+> `ggml.c` has the `[GGML_TYPE_TBQ3_TCQ]` type-traits entry (`to_float` =
+> sliding-9-bit-window codebook lookup, `from_float_ref` = host-side
+> 512-state Viterbi encoder in the orthogonal WHT basis; codebook in
+> `ggml/src/ggml-tcq-codebook.h`) + the ggml-cpu `from_float`;
+> `patchServerKvCacheTypeNames` appends `GGML_TYPE_TBQ3_TCQ` to
+> `common/arg.cpp`'s `kv_cache_types`, so `--cache-type-k tbq3_tcq`
+> resolves — this unblocks the 27b / 27b-256k / 27b-1m tiers
+> (`requiredKernelsForContext` adds `turbo3_tcq` at `ctx >= 65536`). Fork
+> branch `elizaOS/llama.cpp` `eliza/ws2-tbq3-tcq-traits` @ `536ff214`;
+> `packages/inference/llama.cpp` gitlink bumped to it (WS-4 merges the
+> decode-loop / streaming source on that branch, then tags). The
+> `android-x86_64-cpu` target (Cuttlefish/cvd) is real + built (cvd smoke
+> 5/6 infra steps PASS); the Android in-process voice path adds the
+> "path b" `common_speculative` shim (`aosp/llama-shim/eliza_llama_shim_speculative.cpp`)
+> + the `android-arm64-{cpu,vulkan}-fused` AAR build + Capacitor mic/audio/
+> ONNX-VAD bridges + `aosp/deploy-pixel.mjs`. MLX (`mlx_lm.server`,
+> `ELIZA_LOCAL_MLX=1`) is an opt-in Apple-Silicon text-only convenience
+> path — never `defaultEligible`, never the voice path. TPU/NPU is not a
+> target this wave (verdict documented).
 
 ### Per-platform voice support matrix
 
@@ -399,11 +423,33 @@ plan declared, gates not yet met" state).
 
 ### Current status — a `base-v1` upload is NOT yet possible
 
+**HF repos exist (as of 2026-05-12), but only with pre-release content:** the
+[`elizaos/eliza-1-{0_6b,1_7b,9b}`](https://huggingface.co/elizaos/eliza-1-0_6b)
+bundle repos are public and hold the **upstream BASE GGUFs** (Qwen3-0.6B-Q8_0 /
+Qwen3-1.7B-Q8_0 — the 9b GGUF blob upload is pending; its `manifest.json`
+records the sha + the `unsloth/Qwen3.5-9B-GGUF` source) + `manifest.json`
+(`releaseState: local-standin`, `publishEligible: false`, **not
+`defaultEligible`**) + an honest card. The test-SFT *candidate* lives at
+[`elizaos/eliza-1-0_6b-sft-weights`](https://huggingface.co/elizaos/eliza-1-0_6b-sft-weights)
+— APOLLO, 8000-row slice, conditional-go (`format_ok=0.20 <` the publish
+floor) — published as a **candidate** only, **not `defaultEligible`, not the
+`recommended` channel**, superseded by the in-progress full-corpus SFT. SFT
+corpora are at [`elizaos/eliza-1-0_6b-sft`](https://huggingface.co/datasets/elizaos/eliza-1-0_6b-sft)
++ [`elizaos/eliza-1-training`](https://huggingface.co/datasets/elizaos/eliza-1-training);
+the bench tables + kernel-verify evidence at
+[`elizaos/eliza-1-evals`](https://huggingface.co/datasets/elizaos/eliza-1-evals);
+the frozen `1_7b` voice/ASR/VAD bytes at
+[`elizaos/eliza-1-assets`](https://huggingface.co/elizaos/eliza-1-assets). **No
+fork-built `base-v1` weights, and no fine-tuned `recommended`-channel weights,
+have been pushed to any `elizaos/eliza-1-<tier>` main revision** — the
+orchestrator refuses to do that until the gates below clear.
+
 `bash packages/training/scripts/publish_all_eliza1.sh --bundles-root <dir>
 --base-v1 --dry-run` (and the per-bundle `python -m scripts.publish.orchestrator
 --tier <t> --bundle-dir <bundle> --base-v1 --dry-run`) **fail with
-`EXIT_RELEASE_EVIDENCE_FAIL` (16)** on the staged bundles. The blockers (all
-recorded in each bundle's `evidence/release.json` `publishBlockingReasons`):
+`EXIT_RELEASE_EVIDENCE_FAIL` (16)** at stage 2 on the staged `0_6b` and `1_7b`
+bundles. The blockers (all recorded in each bundle's `evidence/release.json`
+`publishBlockingReasons`; logs under `evidence/base-v1-dry-run-*.log`):
 
 1. `releaseState` is `weights-staged` (the bundles carry placeholder/
    substitute bytes, not a real fork build of the upstream base weights).

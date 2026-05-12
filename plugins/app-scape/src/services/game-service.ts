@@ -27,11 +27,6 @@ import {
   setTrajectoryPurpose,
   withStandaloneTrajectory,
 } from "@elizaos/core";
-
-import {
-  formatScapeRouterPrompt,
-  resolveScapeRouterAction,
-} from "./autonomous-loop-prompt.js";
 import { botStateProvider } from "../providers/bot-state.js";
 import { goalsProvider } from "../providers/goals.js";
 import { inventoryProvider } from "../providers/inventory.js";
@@ -45,6 +40,10 @@ import type {
 } from "../sdk/types.js";
 import { setCurrentLlmResponse } from "../shared-state.js";
 import { loadOrGenerateAgentIdentity } from "./agent-identity.js";
+import {
+  formatScapeRouterPrompt,
+  resolveScapeRouterAction,
+} from "./autonomous-loop-prompt.js";
 import { BotManager, type BotManagerConfig } from "./bot-manager.js";
 import { JournalService } from "./journal-service.js";
 
@@ -627,7 +626,10 @@ Your choice:`;
     legacyAction: string;
     params: Record<string, unknown>;
   } | null {
-    const parsed = parseJSONObjectFromText(response) as Record<string, unknown> | null;
+    const parsed = parseJSONObjectFromText(response) as Record<
+      string,
+      unknown
+    > | null;
     const action = this.extractActionName(parsed);
     if (!action) return null;
 

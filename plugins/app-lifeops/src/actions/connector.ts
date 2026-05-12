@@ -10,9 +10,9 @@ import type {
   State,
 } from "@elizaos/core";
 import type { LifeOpsGoogleCapability } from "../contracts/index.js";
-import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { INTERNAL_URL } from "../lifeops/access.js";
 import { getConnectorRegistry } from "../lifeops/connectors/index.js";
+import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 
 const ACTION_NAME = "CONNECTOR";
 
@@ -141,10 +141,7 @@ function listKnownConnectorKinds(runtime: IAgentRuntime): string[] {
   return [...new Set([...VERBOSE_DISPATCHER_KINDS, ...fromRegistry])];
 }
 
-function isValidConnectorKind(
-  runtime: IAgentRuntime,
-  kind: string,
-): boolean {
+function isValidConnectorKind(runtime: IAgentRuntime, kind: string): boolean {
   return listKnownConnectorKinds(runtime).includes(kind);
 }
 

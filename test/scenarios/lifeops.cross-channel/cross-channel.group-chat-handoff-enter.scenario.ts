@@ -10,16 +10,14 @@
  * Cited: 03-coverage-gap-matrix.md — handoff enter.
  */
 
-import type { AgentRuntime, UUID } from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
 import {
   expectScenarioToCallAction,
   judgeRubric,
 } from "../_helpers/action-assertions.ts";
 
-function checkHandoffRoomPersisted(
-  ctx: ScenarioContext,
-): string | undefined {
+function checkHandoffRoomPersisted(ctx: ScenarioContext): string | undefined {
   const runtime = ctx.runtime as AgentRuntime | undefined;
   if (!runtime) return "scenario runtime unavailable";
   const hit = ctx.actionsCalled.find((a) => a.actionName === "MESSAGE");

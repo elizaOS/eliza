@@ -27,11 +27,11 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 function checkAgentSurfacesActionableError(
@@ -113,8 +113,7 @@ function checkAgentSurfacesActionableError(
 
 export default scenario({
   id: "payments.plaid-mfa-fail",
-  title:
-    "Plaid MFA failure surfaces actionable re-auth, never claims success",
+  title: "Plaid MFA failure surfaces actionable re-auth, never claims success",
   domain: "lifeops.payments",
   tags: [
     "lifeops",
@@ -166,16 +165,18 @@ export default scenario({
              'needs_reauth',
              ${sqlQuote(nowIso)},
              0,
-             ${sqlQuote(JSON.stringify({
-               provider: "plaid",
-               error_code: "ITEM_LOGIN_REQUIRED",
-               error_type: "ITEM_ERROR",
-               last_failure: nowIso,
-               failure_message:
-                 "MFA verification failed; the user must re-authenticate Chase via Plaid Link.",
-               link_token_url:
-                 "https://link.plaid.com/v2/sandbox/seed-token-needs-reauth",
-             }))},
+             ${sqlQuote(
+               JSON.stringify({
+                 provider: "plaid",
+                 error_code: "ITEM_LOGIN_REQUIRED",
+                 error_type: "ITEM_ERROR",
+                 last_failure: nowIso,
+                 failure_message:
+                   "MFA verification failed; the user must re-authenticate Chase via Plaid Link.",
+                 link_token_url:
+                   "https://link.plaid.com/v2/sandbox/seed-token-needs-reauth",
+               }),
+             )},
              ${sqlQuote(nowIso)},
              ${sqlQuote(nowIso)}
            )

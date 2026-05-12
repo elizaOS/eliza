@@ -23,11 +23,11 @@ export default rs2004scapePlugin;
 
 export type { GatewayHandle, GatewayOptions } from "./gateway/index.js";
 export { startGateway } from "./gateway/index.js";
+export * from "./routes.js";
 export { BotActions } from "./sdk/actions.js";
 export { BotSDK } from "./sdk/index.js";
 export type * from "./sdk/types.js";
 export { BotManager } from "./services/bot-manager.js";
 // Re-exports for direct access
 export { RsSdkGameService } from "./services/game-service.js";
-export * from "./routes.js";
 export * from "./ui/index.js";

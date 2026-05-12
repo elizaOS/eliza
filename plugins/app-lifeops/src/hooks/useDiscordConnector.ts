@@ -1,9 +1,9 @@
-import { client } from "@elizaos/ui";
 import type {
   LifeOpsConnectorSide,
   LifeOpsDiscordConnectorStatus,
   LifeOpsOwnerBrowserAccessSource,
 } from "@elizaos/shared";
+import { client } from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { formatConnectorError } from "./connector-error.js";
 

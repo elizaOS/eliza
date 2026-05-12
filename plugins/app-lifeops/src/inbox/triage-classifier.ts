@@ -1,9 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  logger,
-  ModelType,
-  runWithTrajectoryContext,
-} from "@elizaos/core";
+import { logger, ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import type {
   InboundMessage,

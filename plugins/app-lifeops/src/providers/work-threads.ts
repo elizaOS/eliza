@@ -6,7 +6,10 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { createWorkThreadStore, type WorkThread } from "../lifeops/work-threads/index.js";
+import {
+  createWorkThreadStore,
+  type WorkThread,
+} from "../lifeops/work-threads/index.js";
 
 const EMPTY: ProviderResult = {
   text: "",
@@ -30,13 +33,20 @@ function threadMutability(thread: WorkThread, roomId: string | null): string {
   return "read-only-cross-channel";
 }
 
-function renderWorkThreadsText(threads: WorkThread[], roomId: string | null): string {
+function renderWorkThreadsText(
+  threads: WorkThread[],
+  roomId: string | null,
+): string {
   if (threads.length === 0) {
     return "";
   }
   const lines = threads.slice(0, MAX_THREADS).map((thread) => {
     const source = thread.primarySourceRef;
-    const channel = source.channelName ?? source.roomId ?? source.externalThreadId ?? "unknown-channel";
+    const channel =
+      source.channelName ??
+      source.roomId ??
+      source.externalThreadId ??
+      "unknown-channel";
     const plan = thread.currentPlanSummary
       ? ` plan=${thread.currentPlanSummary}`
       : "";

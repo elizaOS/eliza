@@ -10,7 +10,8 @@ const now = Date.now();
 
 export default scenario({
   id: "travel.passport-expiry-warning",
-  title: "Warn when passport expiry is inside the international trip's 6-month rule",
+  title:
+    "Warn when passport expiry is inside the international trip's 6-month rule",
   domain: "lifeops.travel",
   tags: ["lifeops", "travel", "passport", "compliance"],
   description:

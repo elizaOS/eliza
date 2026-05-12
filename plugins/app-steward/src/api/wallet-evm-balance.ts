@@ -4,8 +4,9 @@
  * Handles multi-chain EVM balance + NFT retrieval with provider-key resolution
  * and automatic fallback to public RPC endpoints when premium APIs are unavailable.
  */
-import { logger } from "@elizaos/core";
+
 import type { EvmChainBalance, EvmNft, EvmTokenBalance } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import {
   computeValueUsd,
   type DexTokenMeta,

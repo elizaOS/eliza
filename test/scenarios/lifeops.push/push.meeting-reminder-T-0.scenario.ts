@@ -90,8 +90,7 @@ export default scenario({
     judgeRubric({
       name: "push-T-0-rubric",
       threshold: 0.7,
-      description:
-        "T-0 reminder fires with the join link visible.",
+      description: "T-0 reminder fires with the join link visible.",
     }),
   ],
 });

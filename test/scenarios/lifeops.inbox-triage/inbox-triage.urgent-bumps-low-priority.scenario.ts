@@ -16,12 +16,12 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
-import { judgeRubric } from "../_helpers/action-assertions.ts";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
+import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 const LOW_KEYWORD = "office-supplies-receipt";
 const URGENT_KEYWORD = "wire-transfer-deadline";
@@ -43,14 +43,10 @@ function checkUrgentBeforeLow(ctx: ScenarioContext): string | undefined {
     if (lowHit && urgentHit) {
       // Find earliest position for each group.
       const earliestUrgent = Math.min(
-        ...urgentSignals
-          .map((s) => reply.indexOf(s))
-          .filter((i) => i >= 0),
+        ...urgentSignals.map((s) => reply.indexOf(s)).filter((i) => i >= 0),
       );
       const earliestLow = Math.min(
-        ...lowSignals
-          .map((s) => reply.indexOf(s))
-          .filter((i) => i >= 0),
+        ...lowSignals.map((s) => reply.indexOf(s)).filter((i) => i >= 0),
       );
       if (earliestUrgent > earliestLow) {
         return `Low-priority item surfaced before urgent: urgent@${earliestUrgent}, low@${earliestLow}. Reply: ${reply.slice(0, 400)}`;
@@ -69,15 +65,10 @@ function checkUrgentBeforeLow(ctx: ScenarioContext): string | undefined {
 
 export default scenario({
   id: "inbox-triage.urgent-bumps-low-priority",
-  title: "Urgent triage item surfaces before low-priority regardless of arrival order",
+  title:
+    "Urgent triage item surfaces before low-priority regardless of arrival order",
   domain: "lifeops.inbox-triage",
-  tags: [
-    "lifeops",
-    "inbox-triage",
-    "ranking",
-    "urgency",
-    "ordering",
-  ],
+  tags: ["lifeops", "inbox-triage", "ranking", "urgency", "ordering"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

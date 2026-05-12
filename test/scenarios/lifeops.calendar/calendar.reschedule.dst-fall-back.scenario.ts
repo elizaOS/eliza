@@ -28,18 +28,18 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
+import { seedGoogleConnectorGrant } from "../../mocks/helpers/seed-grants.ts";
 import {
   expectScenarioToCallAction,
   judgeRubric,
 } from "../_helpers/action-assertions.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
-import { seedGoogleConnectorGrant } from "../../mocks/helpers/seed-grants.ts";
 
 const PACIFIC_TZ = "America/Los_Angeles";
 // 2025-11-02 is the US DST fall-back day for Pacific Time.
 const PRE_FALL_BACK_8AM_UTC = "2025-11-02T15:00:00.000Z"; // 08:00 PDT
-const PRE_FALL_BACK_9AM_UTC = "2025-11-02T16:00:00.000Z"; // 09:00 PDT (wrong target)
-const POST_FALL_BACK_9AM_UTC = "2025-11-02T17:00:00.000Z"; // 09:00 PST (correct target)
+const _PRE_FALL_BACK_9AM_UTC = "2025-11-02T16:00:00.000Z"; // 09:00 PDT (wrong target)
+const _POST_FALL_BACK_9AM_UTC = "2025-11-02T17:00:00.000Z"; // 09:00 PST (correct target)
 const EVENT_ID = "seed_dst_event_1";
 
 function localHourPacific(iso: string): number | null {
@@ -162,7 +162,9 @@ export default scenario({
             },
           ],
           metadata: {},
-          syncedAt: new Date(Date.parse(startAt) - 6 * 60 * 60_000).toISOString(),
+          syncedAt: new Date(
+            Date.parse(startAt) - 6 * 60 * 60_000,
+          ).toISOString(),
           updatedAt: new Date(
             Date.parse(startAt) - 6 * 60 * 60_000,
           ).toISOString(),

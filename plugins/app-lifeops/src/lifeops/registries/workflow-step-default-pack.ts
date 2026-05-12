@@ -26,12 +26,10 @@
  */
 
 import { z } from "zod";
-import {
-  describeWorkflowValue,
-} from "../service-helpers-browser.js";
-import {
-  type AnyWorkflowStepContribution,
-  type WorkflowStepRegistry,
+import { describeWorkflowValue } from "../service-helpers-browser.js";
+import type {
+  AnyWorkflowStepContribution,
+  WorkflowStepRegistry,
 } from "./workflow-step-registry.js";
 
 const baseStepFields = {
@@ -97,8 +95,7 @@ const relockWebsiteAccessContribution: AnyWorkflowStepContribution = {
   kind: "relock_website_access",
   describe: {
     label: "Re-lock website access group",
-    description:
-      "Revoke any active website-access grants for the named group.",
+    description: "Revoke any active website-access grants for the named group.",
     provider: "app-lifeops:default",
   },
   paramSchema: relockWebsiteAccessStepSchema,
@@ -130,7 +127,9 @@ const resolveWebsiteAccessCallbackContribution: AnyWorkflowStepContribution = {
   },
   paramSchema: resolveWebsiteAccessCallbackStepSchema,
   async execute(step, args, ctx) {
-    const typed = step as z.infer<typeof resolveWebsiteAccessCallbackStepSchema>;
+    const typed = step as z.infer<
+      typeof resolveWebsiteAccessCallbackStepSchema
+    >;
     return ctx.resolveWebsiteAccessCallback(
       typed.request.callbackKey,
       new Date(args.startedAt),
@@ -205,7 +204,8 @@ const getGmailUnrespondedContribution: AnyWorkflowStepContribution = {
   kind: "get_gmail_unresponded",
   describe: {
     label: "Get unresponded Gmail thread",
-    description: "Read Gmail threads awaiting a reply older than the threshold.",
+    description:
+      "Read Gmail threads awaiting a reply older than the threshold.",
     provider: "app-lifeops:default",
   },
   paramSchema: getGmailUnrespondedStepSchema,
@@ -238,7 +238,8 @@ const getHealthSummaryContribution: AnyWorkflowStepContribution = {
   },
   paramSchema: getHealthSummaryStepSchema,
   async execute(step, _args, ctx) {
-    const request = (step as z.infer<typeof getHealthSummaryStepSchema>).request;
+    const request = (step as z.infer<typeof getHealthSummaryStepSchema>)
+      .request;
     return ctx.getHealthSummary(
       (request ?? {}) as Parameters<typeof ctx.getHealthSummary>[0],
     );

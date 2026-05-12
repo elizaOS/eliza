@@ -34,13 +34,13 @@ export const ModelTierSchema = z.enum(MODEL_TIERS);
 export type ModelTier = z.infer<typeof ModelTierSchema>;
 
 export const STAGE_KINDS = [
-	"plannerTurn",
-	"toolCall",
-	"toolSearch",
-	"evaluation",
-	"subPlanner",
-	"compaction",
-	"factsAndRelationships",
+  "plannerTurn",
+  "toolCall",
+  "toolSearch",
+  "evaluation",
+  "subPlanner",
+  "compaction",
+  "factsAndRelationships",
 ] as const;
 export const StageKindSchema = z.enum(STAGE_KINDS);
 export type StageKind = z.infer<typeof StageKindSchema>;
@@ -50,33 +50,33 @@ export type StageKind = z.infer<typeof StageKindSchema>;
 // ---------------------------------------------------------------------------
 
 export const ToolCallMetricsSchema = z.object({
-	name: z.string(),
-	success: z.boolean(),
-	durationMs: z.number(),
-	error: z.string().optional(),
+  name: z.string(),
+  success: z.boolean(),
+  durationMs: z.number(),
+  error: z.string().optional(),
 });
 export type ToolCallMetrics = z.infer<typeof ToolCallMetricsSchema>;
 
 export const TurnMetricsSchema = z.object({
-	turnIdx: z.number().int().nonnegative(),
-	startedAt: z.number(),
-	endedAt: z.number(),
-	latencyMs: z.number(),
-	provider: z.string(),
-	modelName: z.string(),
-	modelTier: ModelTierSchema.optional(),
-	inputTokens: z.number().int().nonnegative(),
-	outputTokens: z.number().int().nonnegative(),
-	totalTokens: z.number().int().nonnegative(),
-	cacheReadInputTokens: z.number().int().nonnegative().nullable(),
-	cacheCreationInputTokens: z.number().int().nonnegative().nullable(),
-	cacheHitPct: z.number().min(0).max(1).nullable(),
-	cacheSupported: z.boolean(),
-	costUsd: z.number().nonnegative(),
-	toolCalls: z.array(ToolCallMetricsSchema),
-	toolSearchTopK: z.number().int().optional(),
-	promptCacheKey: z.string().optional(),
-	prefixHash: z.string().optional(),
+  turnIdx: z.number().int().nonnegative(),
+  startedAt: z.number(),
+  endedAt: z.number(),
+  latencyMs: z.number(),
+  provider: z.string(),
+  modelName: z.string(),
+  modelTier: ModelTierSchema.optional(),
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  totalTokens: z.number().int().nonnegative(),
+  cacheReadInputTokens: z.number().int().nonnegative().nullable(),
+  cacheCreationInputTokens: z.number().int().nonnegative().nullable(),
+  cacheHitPct: z.number().min(0).max(1).nullable(),
+  cacheSupported: z.boolean(),
+  costUsd: z.number().nonnegative(),
+  toolCalls: z.array(ToolCallMetricsSchema),
+  toolSearchTopK: z.number().int().optional(),
+  promptCacheKey: z.string().optional(),
+  prefixHash: z.string().optional(),
 });
 export type TurnMetrics = z.infer<typeof TurnMetricsSchema>;
 
@@ -88,27 +88,27 @@ export type TurnMetrics = z.infer<typeof TurnMetricsSchema>;
 // ---------------------------------------------------------------------------
 
 export const StageMetricsSchema = z.object({
-	stageId: z.string(),
-	kind: StageKindSchema,
-	iteration: z.number().int().optional(),
-	startedAt: z.number(),
-	endedAt: z.number(),
-	latencyMs: z.number(),
-	provider: z.string().optional(),
-	modelName: z.string().optional(),
-	modelTier: ModelTierSchema.optional(),
-	inputTokens: z.number().int().nonnegative().optional(),
-	outputTokens: z.number().int().nonnegative().optional(),
-	cacheReadInputTokens: z.number().int().nonnegative().nullable(),
-	cacheCreationInputTokens: z.number().int().nonnegative().nullable(),
-	cacheHitPct: z.number().min(0).max(1).nullable(),
-	cacheSupported: z.boolean(),
-	costUsd: z.number().nonnegative().optional(),
-	toolName: z.string().optional(),
-	toolSuccess: z.boolean().optional(),
-	toolError: z.string().optional(),
-	prefixHash: z.string().optional(),
-	promptCacheKey: z.string().optional(),
+  stageId: z.string(),
+  kind: StageKindSchema,
+  iteration: z.number().int().optional(),
+  startedAt: z.number(),
+  endedAt: z.number(),
+  latencyMs: z.number(),
+  provider: z.string().optional(),
+  modelName: z.string().optional(),
+  modelTier: ModelTierSchema.optional(),
+  inputTokens: z.number().int().nonnegative().optional(),
+  outputTokens: z.number().int().nonnegative().optional(),
+  cacheReadInputTokens: z.number().int().nonnegative().nullable(),
+  cacheCreationInputTokens: z.number().int().nonnegative().nullable(),
+  cacheHitPct: z.number().min(0).max(1).nullable(),
+  cacheSupported: z.boolean(),
+  costUsd: z.number().nonnegative().optional(),
+  toolName: z.string().optional(),
+  toolSuccess: z.boolean().optional(),
+  toolError: z.string().optional(),
+  prefixHash: z.string().optional(),
+  promptCacheKey: z.string().optional(),
 });
 export type StageMetrics = z.infer<typeof StageMetricsSchema>;
 
@@ -117,30 +117,30 @@ export type StageMetrics = z.infer<typeof StageMetricsSchema>;
 // ---------------------------------------------------------------------------
 
 export const RunMetricsSchema = z.object({
-	runId: z.string(),
-	scenarioId: z.string(),
-	harness: HarnessSchema,
-	provider: z.string(),
-	modelName: z.string(),
-	modelTier: ModelTierSchema,
-	preRelease: z.boolean(),
-	passAt1: z.boolean(),
-	passAtK: z.boolean().optional(),
-	stateHashMatch: z.boolean().optional(),
-	startedAt: z.number(),
-	endedAt: z.number(),
-	timeToCompleteMs: z.number(),
-	turns: z.array(TurnMetricsSchema),
-	stages: z.array(StageMetricsSchema).optional(),
-	totalInputTokens: z.number().int(),
-	totalOutputTokens: z.number().int(),
-	totalCacheReadTokens: z.number().int().nullable(),
-	totalCacheCreationTokens: z.number().int().nullable(),
-	aggregateCacheHitPct: z.number().min(0).max(1).nullable(),
-	totalCostUsd: z.number().nonnegative(),
-	plannerIterations: z.number().int().optional(),
-	toolCallCount: z.number().int(),
-	toolFailureCount: z.number().int(),
+  runId: z.string(),
+  scenarioId: z.string(),
+  harness: HarnessSchema,
+  provider: z.string(),
+  modelName: z.string(),
+  modelTier: ModelTierSchema,
+  preRelease: z.boolean(),
+  passAt1: z.boolean(),
+  passAtK: z.boolean().optional(),
+  stateHashMatch: z.boolean().optional(),
+  startedAt: z.number(),
+  endedAt: z.number(),
+  timeToCompleteMs: z.number(),
+  turns: z.array(TurnMetricsSchema),
+  stages: z.array(StageMetricsSchema).optional(),
+  totalInputTokens: z.number().int(),
+  totalOutputTokens: z.number().int(),
+  totalCacheReadTokens: z.number().int().nullable(),
+  totalCacheCreationTokens: z.number().int().nullable(),
+  aggregateCacheHitPct: z.number().min(0).max(1).nullable(),
+  totalCostUsd: z.number().nonnegative(),
+  plannerIterations: z.number().int().optional(),
+  toolCallCount: z.number().int(),
+  toolFailureCount: z.number().int(),
 });
 export type RunMetrics = z.infer<typeof RunMetricsSchema>;
 
@@ -151,30 +151,30 @@ export type RunMetrics = z.infer<typeof RunMetricsSchema>;
 export const REPORT_SCHEMA_VERSION = "lifeops-bench-v1" as const;
 
 export const ReportRollupSchema = z.object({
-	scenarioCount: z.number().int(),
-	passCount: z.number().int(),
-	passRate: z.number(),
-	totalInputTokens: z.number().int(),
-	totalOutputTokens: z.number().int(),
-	totalCacheReadTokens: z.number().int().nullable(),
-	aggregateCacheHitPct: z.number().min(0).max(1).nullable(),
-	totalCostUsd: z.number().nonnegative(),
-	totalTimeMs: z.number(),
+  scenarioCount: z.number().int(),
+  passCount: z.number().int(),
+  passRate: z.number(),
+  totalInputTokens: z.number().int(),
+  totalOutputTokens: z.number().int(),
+  totalCacheReadTokens: z.number().int().nullable(),
+  aggregateCacheHitPct: z.number().min(0).max(1).nullable(),
+  totalCostUsd: z.number().nonnegative(),
+  totalTimeMs: z.number(),
 });
 export type ReportRollup = z.infer<typeof ReportRollupSchema>;
 
 export const ReportSchema = z.object({
-	schemaVersion: z.literal(REPORT_SCHEMA_VERSION),
-	generatedAt: z.string(),
-	runId: z.string(),
-	harness: HarnessSchema,
-	provider: z.string(),
-	modelName: z.string(),
-	modelTier: ModelTierSchema,
-	preRelease: z.boolean(),
-	scenarios: z.array(RunMetricsSchema),
-	rollup: ReportRollupSchema,
-	notes: z.array(z.string()).optional(),
+  schemaVersion: z.literal(REPORT_SCHEMA_VERSION),
+  generatedAt: z.string(),
+  runId: z.string(),
+  harness: HarnessSchema,
+  provider: z.string(),
+  modelName: z.string(),
+  modelTier: ModelTierSchema,
+  preRelease: z.boolean(),
+  scenarios: z.array(RunMetricsSchema),
+  rollup: ReportRollupSchema,
+  notes: z.array(z.string()).optional(),
 });
 export type Report = z.infer<typeof ReportSchema>;
 
@@ -185,38 +185,38 @@ export type Report = z.infer<typeof ReportSchema>;
 export const DELTA_SCHEMA_VERSION = "lifeops-bench-delta-v1" as const;
 
 export const DeltaSidecarSchema = z.object({
-	runId: z.string(),
-	label: z.string(),
+  runId: z.string(),
+  label: z.string(),
 });
 export type DeltaSidecar = z.infer<typeof DeltaSidecarSchema>;
 
 export const DeltaScenarioSchema = z.object({
-	scenarioId: z.string(),
-	passBaseline: z.boolean(),
-	passCandidate: z.boolean(),
-	deltaCostUsd: z.number(),
-	deltaLatencyMs: z.number(),
-	deltaTotalTokens: z.number(),
-	deltaCacheHitPct: z.number().nullable(),
+  scenarioId: z.string(),
+  passBaseline: z.boolean(),
+  passCandidate: z.boolean(),
+  deltaCostUsd: z.number(),
+  deltaLatencyMs: z.number(),
+  deltaTotalTokens: z.number(),
+  deltaCacheHitPct: z.number().nullable(),
 });
 export type DeltaScenario = z.infer<typeof DeltaScenarioSchema>;
 
 export const DeltaRollupSchema = z.object({
-	deltaPassRate: z.number(),
-	deltaCostUsd: z.number(),
-	deltaTotalTokens: z.number(),
-	deltaCacheHitPct: z.number().nullable(),
-	deltaTimeMs: z.number(),
+  deltaPassRate: z.number(),
+  deltaCostUsd: z.number(),
+  deltaTotalTokens: z.number(),
+  deltaCacheHitPct: z.number().nullable(),
+  deltaTimeMs: z.number(),
 });
 export type DeltaRollup = z.infer<typeof DeltaRollupSchema>;
 
 export const DeltaSchema = z.object({
-	schemaVersion: z.literal(DELTA_SCHEMA_VERSION),
-	generatedAt: z.string(),
-	baseline: DeltaSidecarSchema,
-	candidate: DeltaSidecarSchema,
-	perScenario: z.array(DeltaScenarioSchema),
-	rollup: DeltaRollupSchema,
+  schemaVersion: z.literal(DELTA_SCHEMA_VERSION),
+  generatedAt: z.string(),
+  baseline: DeltaSidecarSchema,
+  candidate: DeltaSidecarSchema,
+  perScenario: z.array(DeltaScenarioSchema),
+  rollup: DeltaRollupSchema,
 });
 export type Delta = z.infer<typeof DeltaSchema>;
 
@@ -225,13 +225,13 @@ export type Delta = z.infer<typeof DeltaSchema>;
 // ---------------------------------------------------------------------------
 
 export function parseReport(input: unknown): Report {
-	return ReportSchema.parse(input);
+  return ReportSchema.parse(input);
 }
 
 export function parseDelta(input: unknown): Delta {
-	return DeltaSchema.parse(input);
+  return DeltaSchema.parse(input);
 }
 
 export function parseRunMetrics(input: unknown): RunMetrics {
-	return RunMetricsSchema.parse(input);
+  return RunMetricsSchema.parse(input);
 }

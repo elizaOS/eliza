@@ -1,5 +1,5 @@
-import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
 import { useApp } from "@elizaos/ui";
+import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
 import { PtyConsoleBase } from "./PtyConsoleBase";
 import { PULSE_STATUSES, STATUS_DOT } from "./pty-status-dots";
 

@@ -1330,10 +1330,9 @@ export class LifeOpsFakeBackend {
       ? `Re: ${parent.subject}`
       : pickString(kw, ["subject"], "Re:");
     const fromEmail = pickString(kw, ["from_email"], "me@example.test");
-    const toEmails =
-      parent && parent.from_email
-        ? [parent.from_email]
-        : pickStringArray(kw, ["to_emails"]);
+    const toEmails = parent?.from_email
+      ? [parent.from_email]
+      : pickStringArray(kw, ["to_emails"]);
     if (toEmails.length === 0) {
       throw new Error(
         `MESSAGE/draft_reply needs a parent email or to_emails (parent=${parentId})`,
@@ -1513,6 +1512,75 @@ export class LifeOpsFakeBackend {
 }
 
 // --------------------------------------------------------------------------
+// Umbrella translation (executor-side analogue of the scorer's
+// `_UMBRELLA_SUBACTIONS` canonicalization — see W4-A scorer fixes).
+//
+// The committed P0-4/P0-5 dispatch refs `umbrellaToLowercase` /
+// `isUmbrellaChatShape` / `isUmbrellaMailShape` but never defined them.
+// This block closes that gap so the executor actually translates
+// `CALENDAR_CREATE_EVENT` / `MESSAGE_TRIAGE` into the bare umbrella
+// dispatch surface before the switch fires. Kept module-local because
+// `lifeops-bench-handler.ts` already exposes the HTTP-boundary variant
+// `translateUmbrellaAction`; layering two narrow helpers is simpler than
+// a god-helper.
+// --------------------------------------------------------------------------
+
+const UMBRELLA_DISCRIMINATOR_KEYS: Record<string, string> = {
+  CALENDAR: "subaction",
+  MESSAGE: "operation",
+};
+
+function umbrellaToLowercase(
+  name: string,
+  kwargs: Record<string, unknown>,
+): { name: string; kwargs: Record<string, unknown> } {
+  // Bare umbrella: dispatch handles subaction routing directly.
+  if (UMBRELLA_DISCRIMINATOR_KEYS[name] !== undefined) {
+    return { name, kwargs };
+  }
+  // Lower-case dotted form already matches the switch's case labels.
+  if (name.includes(".") && name === name.toLowerCase()) {
+    return { name, kwargs };
+  }
+  // Promoted granular `<UMBRELLA>_<SUB>` → bare umbrella + injected
+  // discriminator. Split on the first underscore so `CALENDAR_CREATE_EVENT`
+  // → `CALENDAR` + `create_event`.
+  const splitIdx = name.indexOf("_");
+  if (splitIdx > 0) {
+    const head = name.slice(0, splitIdx);
+    const discriminatorKey = UMBRELLA_DISCRIMINATOR_KEYS[head];
+    if (discriminatorKey !== undefined) {
+      const tail = name.slice(splitIdx + 1).toLowerCase();
+      const merged: Record<string, unknown> = { ...kwargs };
+      // Preserve an explicit discriminator the planner already set; only
+      // inject when the field is missing or empty so we never silently
+      // override caller intent (AGENTS.md commandment #8).
+      const current = merged[discriminatorKey];
+      if (current === undefined || current === null || current === "") {
+        merged[discriminatorKey] = tail;
+      }
+      return { name: head, kwargs: merged };
+    }
+  }
+  // Unknown head — leave unchanged so the switch's default branch raises
+  // `LifeOpsBackendUnsupportedError` with a clear, actionable hint.
+  return { name, kwargs };
+}
+
+function isUmbrellaChatShape(kw: Record<string, unknown>): boolean {
+  return (
+    typeof kw.target === "string" ||
+    typeof kw.targetKind === "string" ||
+    typeof kw.roomId === "string" ||
+    (typeof kw.source === "string" && kw.source !== "" && kw.source !== "gmail")
+  );
+}
+
+function isUmbrellaMailShape(kw: Record<string, unknown>): boolean {
+  return kw.source === "gmail" || Array.isArray(kw.to_emails);
+}
+
+// --------------------------------------------------------------------------
 // Helpers — coerce loosely-typed kwargs from JSON request bodies.
 // --------------------------------------------------------------------------
 
@@ -1567,6 +1635,22 @@ function pickStringArray(
     }
   }
   return [];
+}
+
+function pickNumber(
+  kw: Record<string, unknown>,
+  keys: string[],
+  fallback: number,
+): number {
+  for (const k of keys) {
+    const v = kw[k];
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    if (typeof v === "string") {
+      const n = Number(v);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return fallback;
 }
 
 function durationMinutes(

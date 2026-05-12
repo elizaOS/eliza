@@ -52,7 +52,7 @@ const agentSourceJsToTsPlugin = {
     ) {
       const candidate = path.resolve(path.dirname(normalizedImporter), source);
       if (candidate.startsWith(`${agentSourceRoot}${path.sep}`)) {
-        const tsCandidate = candidate.slice(0, -".js".length) + ".ts";
+        const tsCandidate = `${candidate.slice(0, -".js".length)}.ts`;
         if (fs.existsSync(tsCandidate)) {
           return tsCandidate;
         }
@@ -113,12 +113,7 @@ const telegramSessionsEntry = path.join(
   "sessions",
   "index.js",
 );
-const pluginHealthSrc = path.join(
-  elizaRoot,
-  "plugins",
-  "plugin-health",
-  "src",
-);
+const pluginHealthSrc = path.join(elizaRoot, "plugins", "plugin-health", "src");
 
 const defaultUnitExcludes = [
   "dist/**",

@@ -19,18 +19,18 @@ export const todosPlugin: Plugin = {
 export default todosPlugin;
 
 export { todoAction } from "./actions/todo.js";
-export { currentTodosProvider } from "./providers/current-todos.js";
 export {
-  type CreateTodoInput,
-  type TodoFilter,
-  type UpdateTodoInput,
-  TodosService,
-  getTodosService,
-} from "./service.js";
-export {
-  type TodoRow,
   type TodoInsert,
+  type TodoRow,
   todosSchema,
   todosTable,
 } from "./db/schema.js";
+export { currentTodosProvider } from "./providers/current-todos.js";
+export {
+  type CreateTodoInput,
+  getTodosService,
+  type TodoFilter,
+  TodosService,
+  type UpdateTodoInput,
+} from "./service.js";
 export * from "./types.js";

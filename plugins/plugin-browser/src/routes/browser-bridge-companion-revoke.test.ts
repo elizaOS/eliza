@@ -1,8 +1,8 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { BROWSER_BRIDGE_ROUTE_SERVICE_TYPE } from "../service.js";
 import type { BrowserBridgeRouteService } from "../service.js";
+import { BROWSER_BRIDGE_ROUTE_SERVICE_TYPE } from "../service.js";
 import type { BrowserBridgeRouteContext } from "./bridge.js";
 
 vi.mock("@elizaos/core", () => ({
@@ -46,7 +46,8 @@ function createContext(args: {
     url: new URL(`http://127.0.0.1${args.pathname}`),
     state: {
       runtime,
-      adminEntityId: "owner-1" as BrowserBridgeRouteContext["state"]["adminEntityId"],
+      adminEntityId:
+        "owner-1" as BrowserBridgeRouteContext["state"]["adminEntityId"],
     },
     json: (target, data, status = 200) => {
       target.statusCode = status;

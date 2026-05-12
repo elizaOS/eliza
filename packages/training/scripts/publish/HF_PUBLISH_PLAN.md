@@ -6,13 +6,43 @@ contract). This file is the **plan + card drafts** for the wave that publishes t
 fine-tuned 0.6B model, the adapted SFT datasets, and the eval/bench results once
 the DATASETS and FINETUNE workstreams produce them.
 
-> Status (2026-05-12): **prep only — nothing uploaded yet.** The fine-tuned-model
-> upload is gated on the FINETUNE workstream's go/no-go (`gate_report.json` →
-> `passed: true` and the finetuned bench beating baseline). The existing
-> `packages/training/checkpoints/eliza-1-0_6b-apollo-*` runs are *smoke-mode* and
-> FAILED their gates (`format_ok=0.2 < 0.5`); they are NOT publishable. The
-> datasets + results subset CAN be published independently (including a negative
-> result, honestly) — see "Conservative subset" below.
+> Status (2026-05-12): **the conservative subset + the test-SFT candidate are
+> published; the production `base-v1` / `recommended` weights are NOT.** Live HF
+> state (all public, `elizaos` org):
+> - **Model bundle repos** — `elizaos/eliza-1-{0_6b,1_7b,9b}`: each holds the
+>   **upstream BASE GGUF** (Qwen3-0.6B-Q8_0 / Qwen3-1.7B-Q8_0; the 9b GGUF blob
+>   upload is pending — `manifest.json` records the sha + the
+>   `unsloth/Qwen3.5-9B-GGUF` source) + `manifest.json`
+>   (`releaseState: local-standin`, `publishEligible: false`, **not
+>   `defaultEligible`**) + an honest card naming the `base-v1` / `recommended`
+>   channels and cross-linking the eval/SFT repos. One bundle repo per tier — no
+>   `-sft`/`-ft` variant bundle repo.
+> - **Test-SFT candidate** — `elizaos/eliza-1-0_6b-sft-weights` (model): the
+>   APOLLO test-SFT checkpoint (8000-row slice, `eval_loss 1.315`):
+>   `model.safetensors` + config/tokenizer/chat-template +
+>   `gguf/eliza-1-0_6b-sft-Q4_K_M.gguf`. Conditional-go (beats base on every
+>   measured metric, regresses none, but `format_ok=0.20 <` the 0.5 smoke / 0.7
+>   full publish floor). Published as a **candidate** — not `defaultEligible`,
+>   not the `recommended` channel; the in-progress full-corpus SFT supersedes
+>   it.
+> - **Datasets** — `elizaos/eliza-1-0_6b-sft` (the 0.6B-tier SFT corpus),
+>   `elizaos/eliza-1-training` (the broader SFT corpus).
+> - **Results** — `elizaos/eliza-1-evals` (dataset): baseline-vs-test-SFT bench
+>   tables, `eliza1_eval_suite.py` outputs, CUDA (RTX 5080) + Vulkan (Intel ANV)
+>   + CPU kernel-verify evidence, throughput snapshots. Metal/iOS/Android
+>   kernel-verify NOT there — no hardware.
+> - **Voice/ASR/VAD** — `elizaos/eliza-1-assets` (frozen `1_7b` bytes),
+>   unchanged.
+>
+> The fine-tuned `recommended`-channel model upload is still gated on the
+> FINETUNE workstream's go/no-go (`gate_report.json` → `passed: true` and the
+> finetuned bench beating baseline at the absolute floor). The existing
+> `packages/training/checkpoints/eliza-1-{0_6b,1_7b}-apollo-*` runs are
+> *smoke/slice-mode* and FAILED their absolute gates (`format_ok=0.2–0.33 <
+> 0.5`); they are published only as the `eliza-1-0_6b-sft-weights` candidate.
+> The fork-built `base-v1` weights for the bundle repos are gated on the
+> hardware-evidence work — the orchestrator `--base-v1 --dry-run` exits at stage
+> 2 today (see "Upload sequence" step 5 and `ELIZA_1_RELEASE_ASSET_STATUS.md`).
 
 ---
 
@@ -20,11 +50,11 @@ the DATASETS and FINETUNE workstreams produce them.
 
 | Repo | Type | Purpose | Exists? |
 |---|---|---|---|
-| `elizaos/eliza-1-0_6b` | model | The canonical `0_6b` **bundle** repo (`packages/inference/AGENTS.md` §2 layout: `text/ tts/ asr/ vad/ dflash/ cache/ evals/ licenses/ evidence/ checksums/` + `eliza-1.manifest.json` + auto-rendered `README.md`). The fine-tuned text GGUF lands at `text/eliza-1-0_6b-32k.gguf`; the drafter at `dflash/drafter-0_6b.gguf`. Pushed by `scripts/publish/orchestrator.py --tier 0_6b`. There is **one bundle repo per tier** — NOT a separate `-sft`/`-ft` variant repo. `evidence/release.json.final.sizeFirstRepoIds` flips `true` when this push records the repo id. | no — created on first push |
-| `elizaos/eliza-1-0_6b-sft` | model | Raw fine-tune artifact repo (TRL `final/` safetensors + `config.json` + `tokenizer*` + the trainer's auto README + `gate_report.json` + `pipeline-summary.json`). This is the **un-quantized, un-bundled** checkpoint — useful for re-quantizing / re-converting / auditing, distinct from the device bundle above. Pushed by `scripts/push_model_to_hf.py` / `scripts/publish_eliza1_model.py`. | no |
+| `elizaos/eliza-1-0_6b` | model | The canonical `0_6b` **bundle** repo (`packages/inference/AGENTS.md` §2 layout: `text/ tts/ asr/ vad/ dflash/ cache/ evals/ licenses/ evidence/ checksums/` + `eliza-1.manifest.json` + auto-rendered `README.md`). The fine-tuned text GGUF lands at `text/eliza-1-0_6b-32k.gguf`; the drafter at `dflash/drafter-0_6b.gguf`. Pushed by `scripts/publish/orchestrator.py --tier 0_6b`. There is **one bundle repo per tier** — NOT a separate `-sft`/`-ft` variant repo. `evidence/release.json.final.sizeFirstRepoIds` flips `true` when this push records the repo id. | **yes** (created 2026-05-12; currently holds the upstream Qwen3-0.6B-Q8_0 base GGUF + `manifest.json` `releaseState: local-standin` + honest card — NOT the fork-built `base-v1`, NOT `defaultEligible`. Production `base-v1`/`recommended` weights pending). |
+| `elizaos/eliza-1-0_6b-sft` | model | Raw fine-tune artifact repo (TRL `final/` safetensors + `config.json` + `tokenizer*` + the trainer's auto README + `gate_report.json` + `pipeline-summary.json`). This is the **un-quantized, un-bundled** checkpoint — useful for re-quantizing / re-converting / auditing, distinct from the device bundle above. Pushed by `scripts/push_model_to_hf.py` / `scripts/publish_eliza1_model.py`. | **yes** as `elizaos/eliza-1-0_6b-sft-weights` (model — the APOLLO test-SFT checkpoint: `model.safetensors` + config/tokenizer/chat-template + `gguf/eliza-1-0_6b-sft-Q4_K_M.gguf`). Published as a **candidate** — NOT `defaultEligible`, NOT the `recommended` channel. Superseded by the in-progress full-corpus SFT. |
 | `elizaos/eliza-1-training` | dataset | The canonical SFT corpus (`train.jsonl` / `val.jsonl` / `test.jsonl` + `scambench/` + `synthesized/` + `manifest.json` + README). Already exists; the DATASETS workstream's adapted SFT JSONL + upload manifest extend/refresh it (`scripts/publish_dataset_to_hf.py --dataset training --repo-id elizaos/eliza-1-training`). | **yes** (already populated) |
-| `elizaos/eliza-1-sft-0_6b` | dataset | The **0.6B-tier-specific** adapted SFT split (the DATASETS workstream's `packages/training/datasets/eliza1-sft-0_6b/` output — currently an empty staged dir). Only created if the DATASETS upload manifest names a tier-specific repo distinct from `eliza-1-training`; otherwise these files go into `elizaos/eliza-1-training` under a `0_6b/` prefix. | no — pending DATASETS |
-| `elizaos/eliza-1-evals` | dataset | The eval/bench **results** repo: the baseline-vs-finetuned side-by-side table, the `eliza1_eval_suite.py` outputs (`evals/aggregate.json`, per-axis JSON), the kernel-verify evidence we DO have (CPU `reference-test`, Vulkan Intel-ANV + RTX 5080, CUDA RTX 5080), `gate_report.json`, `pipeline-summary.json`, and `THROUGHPUT.md` / `OPTIMIZATIONS_ROLLUP.md` snapshots. If the FINETUNE go/no-go is NO, this repo still gets published with the negative result documented. Pushed via `huggingface_hub.HfApi.upload_folder`. | no |
+| `elizaos/eliza-1-sft-0_6b` | dataset | The **0.6B-tier-specific** adapted SFT split (the DATASETS workstream's `packages/training/datasets/eliza1-sft-0_6b/` output — currently an empty staged dir). Only created if the DATASETS upload manifest names a tier-specific repo distinct from `eliza-1-training`; otherwise these files go into `elizaos/eliza-1-training` under a `0_6b/` prefix. | **yes** as `elizaos/eliza-1-0_6b-sft` (dataset — the 0.6B-tier SFT corpus, privacy-filtered, `Qwen/Qwen3-0.6B`-substitute chat template). |
+| `elizaos/eliza-1-evals` | dataset | The eval/bench **results** repo: the baseline-vs-finetuned side-by-side table, the `eliza1_eval_suite.py` outputs (`evals/aggregate.json`, per-axis JSON), the kernel-verify evidence we DO have (CPU `reference-test`, Vulkan Intel-ANV + RTX 5080, CUDA RTX 5080), `gate_report.json`, `pipeline-summary.json`, and `THROUGHPUT.md` / `OPTIMIZATIONS_ROLLUP.md` snapshots. If the FINETUNE go/no-go is NO, this repo still gets published with the negative result documented. Pushed via `huggingface_hub.HfApi.upload_folder`. | **yes** (created 2026-05-12; baseline-vs-test-SFT bench tables, `eliza1_eval_suite.py` outputs, CUDA RTX 5080 + Vulkan Intel-ANV + CPU kernel-verify evidence, throughput snapshots, `MODELS_STATUS.md`). |
 | `elizaos/eliza-1-assets` | model | Already exists — frozen voice/ASR/VAD bytes for `1_7b`. Not part of this wave; left as-is. | **yes** |
 
 `huggingface-cli whoami` with the wave token → user `shawmakesmagic`, **write access to the `elizaos` org**. (`hf-transfer-eliza1.sh` covers the legacy `milady-ai/*` → `elizaos/*` transfers separately — not in scope here.)

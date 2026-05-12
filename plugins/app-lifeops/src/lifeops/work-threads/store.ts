@@ -73,7 +73,11 @@ function normalizeSourceRefs(
   const seen = new Set<string>();
   const result: ThreadSourceRef[] = [];
   for (const ref of [primary, ...refs]) {
-    if (!ref || typeof ref.connector !== "string" || ref.connector.length === 0) {
+    if (
+      !ref ||
+      typeof ref.connector !== "string" ||
+      ref.connector.length === 0
+    ) {
       continue;
     }
     const key = [
@@ -90,7 +94,9 @@ function normalizeSourceRefs(
       ...(ref.channelName ? { channelName: ref.channelName } : {}),
       ...(ref.channelKind ? { channelKind: ref.channelKind } : {}),
       ...(ref.roomId ? { roomId: ref.roomId } : {}),
-      ...(ref.externalThreadId ? { externalThreadId: ref.externalThreadId } : {}),
+      ...(ref.externalThreadId
+        ? { externalThreadId: ref.externalThreadId }
+        : {}),
       ...(ref.accountId ? { accountId: ref.accountId } : {}),
       ...(ref.grantId ? { grantId: ref.grantId } : {}),
       canRead: ref.canRead ?? true,
@@ -118,7 +124,10 @@ export function createWorkThreadStore(
         ownerEntityId: input.ownerEntityId ?? null,
         status: "active",
         title: compactText(input.title || "Active thread", 120),
-        summary: compactText(input.summary || input.title || "Active thread", 500),
+        summary: compactText(
+          input.summary || input.title || "Active thread",
+          500,
+        ),
         currentPlanSummary: input.currentPlanSummary ?? null,
         primarySourceRef: sourceRefs[0] ?? input.primarySourceRef,
         sourceRefs,
@@ -187,7 +196,9 @@ export function createWorkThreadStore(
             ? input.workflowRunId
             : current.workflowRunId,
         approvalId:
-          input.approvalId !== undefined ? input.approvalId : current.approvalId,
+          input.approvalId !== undefined
+            ? input.approvalId
+            : current.approvalId,
         lastMessageMemoryId:
           input.lastMessageMemoryId !== undefined
             ? input.lastMessageMemoryId

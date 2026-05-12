@@ -1,14 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import type { AgentRuntime } from "@elizaos/core";
-import {
-  type ModelTier,
-  resolveTier,
-} from "../../../../packages/benchmarks/lib/src/model-tiers.ts";
-import {
-  probeDflashFork,
-  resolveLocalBaseUrl,
-} from "../../../../packages/benchmarks/lib/src/local-llama-cpp.ts";
-import { computeCallCostUsd } from "../../../../packages/core/src/features/trajectories/pricing.ts";
 import { flushTrajectoryWrites } from "../../../../packages/agent/src/runtime/trajectory-storage.ts";
 import type {
   Trajectory,
@@ -20,6 +11,15 @@ import {
   selectLiveProvider,
 } from "../../../../packages/app-core/test/helpers/live-provider.ts";
 import type { RealTestRuntimeResult } from "../../../../packages/app-core/test/helpers/real-runtime.ts";
+import {
+  probeDflashFork,
+  resolveLocalBaseUrl,
+} from "../../../../packages/benchmarks/lib/src/local-llama-cpp.ts";
+import {
+  type ModelTier,
+  resolveTier,
+} from "../../../../packages/benchmarks/lib/src/model-tiers.ts";
+import { computeCallCostUsd } from "../../../../packages/core/src/features/trajectories/pricing.ts";
 import { actionsAreScenarioEquivalent } from "../../../../packages/scenario-runner/src/action-families.ts";
 import type {
   PromptBenchmarkCase,
@@ -752,7 +752,10 @@ export async function createLifeOpsPromptBenchmarkRuntime(args?: {
     const dflashBinary = probeDflashFork();
     if (!dflashBinary) {
       const fallback = resolveLocalBaseUrl();
-      if (fallback.source === "ollama-default" && !process.env.PARALLAX_OPENCODE_BASE_URL) {
+      if (
+        fallback.source === "ollama-default" &&
+        !process.env.PARALLAX_OPENCODE_BASE_URL
+      ) {
         throw new Error(
           "MODEL_TIER=small|mid requires the dflash llama-cpp fork at " +
             "~/.cache/eliza-dflash/eliza-llama-cpp or PARALLAX_OPENCODE_BASE_URL " +

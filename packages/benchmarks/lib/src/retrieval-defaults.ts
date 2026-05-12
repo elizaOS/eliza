@@ -76,7 +76,10 @@ export interface RetrievalTierDefaults {
  * `scripts/lifeops-retrieval-pareto.mjs` against fresh trajectories
  * to recalibrate.
  */
-export const RETRIEVAL_DEFAULTS_BY_TIER: Record<ModelTier, RetrievalTierDefaults> = {
+export const RETRIEVAL_DEFAULTS_BY_TIER: Record<
+  ModelTier,
+  RetrievalTierDefaults
+> = {
   small: {
     topK: 5, // measured: K=5 saturates (heuristic was 5; unchanged)
     stageWeights: {

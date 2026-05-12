@@ -13,16 +13,6 @@
  */
 
 import type http from "node:http";
-import { readJsonBody as parseJsonBody, sendJson, sendJsonError } from "@elizaos/core";
-import { createZipArchive } from "@elizaos/agent";
-import {
-  enrichTrajectoryLlmCall,
-  executeRawSql,
-  extractRows,
-  type PersistedStep,
-  type PersistedTrajectory,
-  saveTrajectory,
-} from "@elizaos/agent";
 import type {
   Trajectory,
   TrajectoryExportFormat,
@@ -36,12 +26,22 @@ import type {
   TrajectoryStep,
 } from "@elizaos/agent";
 import {
-  ELIZA_NATIVE_TRAJECTORY_FORMAT,
-  type AgentRuntime,
-} from "@elizaos/core";
+  createZipArchive,
+  enrichTrajectoryLlmCall,
+  executeRawSql,
+  extractRows,
+  type PersistedStep,
+  type PersistedTrajectory,
+  saveTrajectory,
+} from "@elizaos/agent";
 import {
-  listTrajectoryCallEntries,
-} from "../core/trajectory-consumer.js";
+  type AgentRuntime,
+  ELIZA_NATIVE_TRAJECTORY_FORMAT,
+  readJsonBody as parseJsonBody,
+  sendJson,
+  sendJsonError,
+} from "@elizaos/core";
+import { listTrajectoryCallEntries } from "../core/trajectory-consumer.js";
 
 export type { TrajectoryExportFormat };
 
@@ -1155,9 +1155,7 @@ function trajectoryToUIDetail(traj: Trajectory): UITrajectoryDetailResult {
       promptTokens: call.promptTokens,
       completionTokens: call.completionTokens,
       timestamp: call.timestamp || entry.step.timestamp,
-      createdAt: new Date(
-        call.timestamp || entry.step.timestamp,
-      ).toISOString(),
+      createdAt: new Date(call.timestamp || entry.step.timestamp).toISOString(),
     });
     totalPromptTokens += call.promptTokens || 0;
     totalCompletionTokens += call.completionTokens || 0;
@@ -1917,11 +1915,7 @@ async function handleExportTrajectories(
       ? body.jsonShape
       : undefined;
   if (body.jsonShape !== undefined && !jsonShape) {
-    sendJsonError(
-      res,
-      "jsonShape must be 'eliza_native_v1'",
-      400,
-    );
+    sendJsonError(res, "jsonShape must be 'eliza_native_v1'", 400);
     return;
   }
 

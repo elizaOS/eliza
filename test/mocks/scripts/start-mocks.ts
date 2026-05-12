@@ -61,7 +61,10 @@ export const MOCK_PROVIDER_ENVIRONMENTS = [
   "vision",
 ] as const;
 
-export const MOCK_SCENARIO_ENVIRONMENTS = ["lifeops-presence-active", "lifeops-presence"] as const;
+export const MOCK_SCENARIO_ENVIRONMENTS = [
+  "lifeops-presence-active",
+  "lifeops-presence",
+] as const;
 
 export const MOCK_ENVIRONMENTS = [
   ...MOCK_PROVIDER_ENVIRONMENTS,
@@ -294,7 +297,8 @@ function envVarsFor(
     out.ELIZA_MOCK_VISION_BASE = baseUrls.vision;
   }
   if (envs.includes("lifeops-presence-active")) {
-    out.ELIZA_MOCK_LIFEOPS_PRESENCE_ACTIVE_BASE = baseUrls["lifeops-presence-active"];
+    out.ELIZA_MOCK_LIFEOPS_PRESENCE_ACTIVE_BASE =
+      baseUrls["lifeops-presence-active"];
   }
   return out;
 }
@@ -2065,7 +2069,7 @@ function discordDynamicFixture(
   method: string,
   pathname: string,
   requestBody: RequestBody,
-  ledgerEntry: MockRequestLedgerEntry,
+  _ledgerEntry: MockRequestLedgerEntry,
 ): DynamicFixtureResponse | null {
   const postMsgChannelId = routeParam(
     pathname,
@@ -2171,13 +2175,12 @@ function slackDynamicFixture(
   method: string,
   pathname: string,
   requestBody: RequestBody,
-  ledgerEntry: MockRequestLedgerEntry,
+  _ledgerEntry: MockRequestLedgerEntry,
 ): DynamicFixtureResponse | null {
   if (method === "POST" && pathname === "/api/chat.postMessage") {
     const channel =
       typeof requestBody.channel === "string" ? requestBody.channel : "C00MOCK";
-    const text =
-      typeof requestBody.text === "string" ? requestBody.text : "";
+    const text = typeof requestBody.text === "string" ? requestBody.text : "";
     const ts = slackTs();
     const msg: SlackMessage = {
       type: "message",
@@ -2203,7 +2206,11 @@ function slackDynamicFixture(
     for (const id of state.sentMessages.keys()) {
       channels.push({ id, name: id.toLowerCase(), is_member: true });
     }
-    return jsonFixture({ ok: true, channels, response_metadata: { next_cursor: "" } });
+    return jsonFixture({
+      ok: true,
+      channels,
+      response_metadata: { next_cursor: "" },
+    });
   }
 
   if (pathname === "/__mock/slack/sent") {
@@ -2253,7 +2260,12 @@ interface TelegramUpdate {
   update_id: number;
   message: {
     message_id: number;
-    from: { id: number; is_bot: boolean; first_name: string; username?: string };
+    from: {
+      id: number;
+      is_bot: boolean;
+      first_name: string;
+      username?: string;
+    };
     chat: { id: number; type: string };
     date: number;
     text: string;
@@ -2274,7 +2286,7 @@ function telegramDynamicFixture(
   method: string,
   pathname: string,
   requestBody: RequestBody,
-  ledgerEntry: MockRequestLedgerEntry,
+  _ledgerEntry: MockRequestLedgerEntry,
 ): DynamicFixtureResponse | null {
   // Match any `/bot<TOKEN>/<method>` path so callers can use either the
   // literal `:token` placeholder or a real-looking token string.
@@ -2368,7 +2380,11 @@ function telegramDynamicFixture(
   }
 
   if (method === "POST" && tgMethod === "setWebhook") {
-    return jsonFixture({ ok: true, result: true, description: "Webhook was set" });
+    return jsonFixture({
+      ok: true,
+      result: true,
+      description: "Webhook was set",
+    });
   }
 
   if (method === "POST" && tgMethod === "deleteWebhook") {
@@ -2405,9 +2421,7 @@ function telegramDynamicFixture(
     const text =
       typeof requestBody.text === "string" ? requestBody.text : "inbound";
     const fromId =
-      typeof requestBody.from_id === "number"
-        ? requestBody.from_id
-        : 200000;
+      typeof requestBody.from_id === "number" ? requestBody.from_id : 200000;
     const fromName =
       typeof requestBody.from_name === "string"
         ? requestBody.from_name
@@ -2442,8 +2456,18 @@ function createLinearMockState(): LinearMockState {
   return {
     nextIssueId: 1,
     issues: [
-      { id: "issue-fix-001", title: "Fix login bug", state: "Todo", teamId: "team-eng" },
-      { id: "issue-feat-001", title: "Add dark mode", state: "In Progress", teamId: "team-eng" },
+      {
+        id: "issue-fix-001",
+        title: "Fix login bug",
+        state: "Todo",
+        teamId: "team-eng",
+      },
+      {
+        id: "issue-feat-001",
+        title: "Add dark mode",
+        state: "In Progress",
+        teamId: "team-eng",
+      },
     ],
   };
 }
@@ -2453,14 +2477,19 @@ function linearDynamicFixture(
   method: string,
   pathname: string,
   requestBody: RequestBody,
-  ledgerEntry: MockRequestLedgerEntry,
+  _ledgerEntry: MockRequestLedgerEntry,
 ): DynamicFixtureResponse | null {
   if (method !== "POST" || pathname !== "/graphql") return null;
 
-  const query = typeof requestBody.query === "string" ? requestBody.query.trim() : "";
+  const query =
+    typeof requestBody.query === "string" ? requestBody.query.trim() : "";
 
   // viewer query
-  if (/^\s*(query\s+)?Viewer\b/i.test(query) || query.includes("viewer {") || query.includes("viewer{")) {
+  if (
+    /^\s*(query\s+)?Viewer\b/i.test(query) ||
+    query.includes("viewer {") ||
+    query.includes("viewer{")
+  ) {
     return jsonFixture({
       data: {
         viewer: {
@@ -2491,9 +2520,7 @@ function linearDynamicFixture(
     return jsonFixture({
       data: {
         teams: {
-          nodes: [
-            { id: "team-eng", name: "Engineering", key: "ENG" },
-          ],
+          nodes: [{ id: "team-eng", name: "Engineering", key: "ENG" }],
           pageInfo: { hasNextPage: false, endCursor: null },
         },
       },
@@ -2510,7 +2537,10 @@ function linearDynamicFixture(
   }
 
   // createIssue mutation
-  if (/mutation\s+IssueCreate\b/i.test(query) || (/mutation/.test(query) && /issueCreate/.test(query))) {
+  if (
+    /mutation\s+IssueCreate\b/i.test(query) ||
+    (/mutation/.test(query) && /issueCreate/.test(query))
+  ) {
     const vars = requestBody.variables;
     const input =
       vars && typeof vars === "object" && !Array.isArray(vars) && vars.input
@@ -2532,16 +2562,28 @@ function linearDynamicFixture(
   }
 
   // updateIssue mutation
-  if (/mutation\s+IssueUpdate\b/i.test(query) || (/mutation/.test(query) && /issueUpdate/.test(query))) {
+  if (
+    /mutation\s+IssueUpdate\b/i.test(query) ||
+    (/mutation/.test(query) && /issueUpdate/.test(query))
+  ) {
     const vars = requestBody.variables;
     const input =
       vars && typeof vars === "object" && !Array.isArray(vars) && vars.input
         ? (vars.input as Record<string, string>)
         : {};
-    const issueId = typeof vars === "object" && vars && !Array.isArray(vars) && typeof vars.id === "string" ? vars.id : "";
-    const existing = state.issues.find((i) => i.id === issueId) ?? state.issues[0];
-    if (existing && typeof input.title === "string") existing.title = input.title;
-    if (existing && typeof input.state === "string") existing.state = input.state;
+    const issueId =
+      typeof vars === "object" &&
+      vars &&
+      !Array.isArray(vars) &&
+      typeof vars.id === "string"
+        ? vars.id
+        : "";
+    const existing =
+      state.issues.find((i) => i.id === issueId) ?? state.issues[0];
+    if (existing && typeof input.title === "string")
+      existing.title = input.title;
+    if (existing && typeof input.state === "string")
+      existing.state = input.state;
     return jsonFixture({
       data: {
         issueUpdate: {
@@ -2553,10 +2595,16 @@ function linearDynamicFixture(
   }
 
   // deleteIssue mutation
-  if (/mutation\s+IssueDelete\b/i.test(query) || (/mutation/.test(query) && /issueDelete/.test(query))) {
+  if (
+    /mutation\s+IssueDelete\b/i.test(query) ||
+    (/mutation/.test(query) && /issueDelete/.test(query))
+  ) {
     const vars = requestBody.variables;
     const issueId =
-      vars && typeof vars === "object" && !Array.isArray(vars) && typeof vars.id === "string"
+      vars &&
+      typeof vars === "object" &&
+      !Array.isArray(vars) &&
+      typeof vars.id === "string"
         ? vars.id
         : "";
     const before = state.issues.length;
@@ -2576,8 +2624,20 @@ function linearDynamicFixture(
       data: {
         users: {
           nodes: [
-            { id: "user-mock-linear", name: "Mock User", email: "mock@example.test", displayName: "Mock User", active: true },
-            { id: "user-mock-linear-2", name: "Mock Reviewer", email: "reviewer@example.test", displayName: "Mock Reviewer", active: true },
+            {
+              id: "user-mock-linear",
+              name: "Mock User",
+              email: "mock@example.test",
+              displayName: "Mock User",
+              active: true,
+            },
+            {
+              id: "user-mock-linear-2",
+              name: "Mock Reviewer",
+              email: "reviewer@example.test",
+              displayName: "Mock Reviewer",
+              active: true,
+            },
           ],
           pageInfo: { hasNextPage: false, endCursor: null },
         },
@@ -2586,13 +2646,26 @@ function linearDynamicFixture(
   }
 
   // projects query
-  if (/^\s*(query\s+)?Projects\b/i.test(query) || /\bprojects\s*\(/.test(query)) {
+  if (
+    /^\s*(query\s+)?Projects\b/i.test(query) ||
+    /\bprojects\s*\(/.test(query)
+  ) {
     return jsonFixture({
       data: {
         projects: {
           nodes: [
-            { id: "project-mock-platform", name: "Platform", state: "started", progress: 0.42 },
-            { id: "project-mock-growth", name: "Growth", state: "planned", progress: 0.0 },
+            {
+              id: "project-mock-platform",
+              name: "Platform",
+              state: "started",
+              progress: 0.42,
+            },
+            {
+              id: "project-mock-growth",
+              name: "Growth",
+              state: "planned",
+              progress: 0.0,
+            },
           ],
           pageInfo: { hasNextPage: false, endCursor: null },
         },
@@ -2672,7 +2745,7 @@ function anthropicDynamicFixture(
   method: string,
   pathname: string,
   requestBody: RequestBody,
-  ledgerEntry: MockRequestLedgerEntry,
+  _ledgerEntry: MockRequestLedgerEntry,
 ): DynamicFixtureResponse | null {
   if (method !== "POST" || pathname !== "/v1/messages") return null;
 
@@ -2691,7 +2764,9 @@ function anthropicDynamicFixture(
 
   if (hasComputerUseTool) {
     // Check if the last message is a tool_result (follow-up after screenshot)
-    const messages = Array.isArray(requestBody.messages) ? requestBody.messages : [];
+    const messages = Array.isArray(requestBody.messages)
+      ? requestBody.messages
+      : [];
     const lastMessage = messages[messages.length - 1];
     const isToolResult =
       lastMessage &&
@@ -2713,7 +2788,9 @@ function anthropicDynamicFixture(
         id: `msg_${randomFromAlphabet("abcdefghijklmnopqrstuvwxyz0123456789", 24)}`,
         type: "message",
         role: "assistant",
-        content: [{ type: "text", text: "Task completed after reviewing screenshot." }],
+        content: [
+          { type: "text", text: "Task completed after reviewing screenshot." },
+        ],
         model: requestBody.model ?? "claude-haiku-4-5-20251001",
         stop_reason: "end_turn",
         stop_sequence: null,
@@ -2773,7 +2850,9 @@ function anthropicDynamicFixture(
 
   // No tools — return a prompt-keyed text response (or fall through to the
   // static Mockoon baseline if no prefix matches).
-  const userText = firstUserMessageText(requestBody.messages).trim().toLowerCase();
+  const userText = firstUserMessageText(requestBody.messages)
+    .trim()
+    .toLowerCase();
   for (const entry of ANTHROPIC_PROMPT_RESPONSES) {
     if (userText.startsWith(entry.prefix)) {
       return jsonFixture({
@@ -2858,7 +2937,8 @@ function pickVisionFixture(requestBody: RequestBody): VisionFixture {
   if (imageBytes) {
     const hash = crypto.createHash("sha256").update(imageBytes).digest("hex");
     const fixtureKey = VISION_HASH_TO_FIXTURE[hash];
-    if (fixtureKey && VISION_FIXTURES[fixtureKey]) return VISION_FIXTURES[fixtureKey];
+    if (fixtureKey && VISION_FIXTURES[fixtureKey])
+      return VISION_FIXTURES[fixtureKey];
     return GENERIC_VISION_FIXTURE;
   }
 
@@ -2879,7 +2959,7 @@ function visionDynamicFixture(
   method: string,
   pathname: string,
   requestBody: RequestBody,
-  ledgerEntry: MockRequestLedgerEntry,
+  _ledgerEntry: MockRequestLedgerEntry,
 ): DynamicFixtureResponse | null {
   if (method !== "POST") return null;
 
@@ -3004,7 +3084,9 @@ function readMoney(body: RequestBody, ...keys: string[]): number | null {
   return null;
 }
 
-function jsonRecordValue(value: JsonValue | undefined): Record<string, JsonValue> | undefined {
+function jsonRecordValue(
+  value: JsonValue | undefined,
+): Record<string, JsonValue> | undefined {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, JsonValue>)
     : undefined;
@@ -3016,7 +3098,9 @@ function paymentMockOrigin(headers: http.IncomingHttpHeaders): string {
   return `${proto}://${host}`;
 }
 
-function paymentMockView(request: PaymentMockRequest): Record<string, JsonValue> {
+function paymentMockView(
+  request: PaymentMockRequest,
+): Record<string, JsonValue> {
   return {
     id: request.id,
     amountUsd: request.amountUsd,
@@ -3052,12 +3136,15 @@ function paymentMockProviders(request: PaymentMockRequest): string[] {
   const raw = request.metadata?.providers;
   if (!Array.isArray(raw)) return ["stripe", "oxapay"];
   const providers = raw.filter(
-    (provider): provider is string => provider === "stripe" || provider === "oxapay",
+    (provider): provider is string =>
+      provider === "stripe" || provider === "oxapay",
   );
   return providers.length > 0 ? providers : ["stripe", "oxapay"];
 }
 
-function paymentMockAppChargeView(request: PaymentMockRequest): Record<string, JsonValue> {
+function paymentMockAppChargeView(
+  request: PaymentMockRequest,
+): Record<string, JsonValue> {
   const appId = paymentMockAppId(request) ?? "mock-app";
   return {
     id: request.id,
@@ -3087,7 +3174,10 @@ function setPaymentLedger(
   ledgerEntry: MockRequestLedgerEntry,
   metadata: Omit<PaymentRequestLedgerMetadata, "runId">,
 ): void {
-  ledgerEntry.payment = withRunId<PaymentRequestLedgerMetadata>(ledgerEntry, metadata);
+  ledgerEntry.payment = withRunId<PaymentRequestLedgerMetadata>(
+    ledgerEntry,
+    metadata,
+  );
 }
 
 async function paymentCallbackSignature(
@@ -3110,7 +3200,9 @@ async function dispatchPaymentMockCallback(
   if (!request.callbackUrl) {
     if (!request.channel) return false;
     const roomId =
-      typeof request.channel.roomId === "string" ? request.channel.roomId : request.id;
+      typeof request.channel.roomId === "string"
+        ? request.channel.roomId
+        : request.id;
     state.callbacks.push({
       paymentRequestId: request.id,
       event,
@@ -3187,7 +3279,7 @@ function paymentRequestByPath(
   pattern: RegExp,
 ): PaymentMockRequest | null {
   const id = routeParam(pathname, pattern);
-  return id ? state.requests.get(id) ?? null : null;
+  return id ? (state.requests.get(id) ?? null) : null;
 }
 
 async function paymentDynamicFixture(
@@ -3219,9 +3311,16 @@ async function paymentDynamicFixture(
     return jsonFixture({ ok: true });
   }
 
-  const appChargeCreateMatch = /^\/api\/v1\/apps\/([^/]+)\/charges\/?$/.exec(pathname);
+  const appChargeCreateMatch = /^\/api\/v1\/apps\/([^/]+)\/charges\/?$/.exec(
+    pathname,
+  );
   if (method === "POST" && appChargeCreateMatch) {
-    const amountUsd = readMoney(requestBody, "amountUsd", "amount_usd", "amount");
+    const amountUsd = readMoney(
+      requestBody,
+      "amountUsd",
+      "amount_usd",
+      "amount",
+    );
     if (amountUsd === null) {
       throw new MockHttpError(400, "amountUsd must be a positive number");
     }
@@ -3264,7 +3363,8 @@ async function paymentDynamicFixture(
       accepted: false,
       provider: "app-charge",
       network: "app-charge",
-      description: readOptionalString(requestBody, "description") ?? "Mock app charge",
+      description:
+        readOptionalString(requestBody, "description") ?? "Mock app charge",
       paymentUrl: metadata.payment_url as string,
       checkoutUrl: `${origin}/checkout/${encodeURIComponent(id)}`,
       callbackUrl:
@@ -3282,7 +3382,9 @@ async function paymentDynamicFixture(
       metadata: metadata as Record<string, JsonValue>,
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
-      expiresAt: new Date(now.getTime() + expiresInSeconds * 1000).toISOString(),
+      expiresAt: new Date(
+        now.getTime() + expiresInSeconds * 1000,
+      ).toISOString(),
     };
     state.requests.set(id, request);
     setPaymentLedger(ledgerEntry, {
@@ -3291,10 +3393,14 @@ async function paymentDynamicFixture(
       status: request.status,
       amountUsd,
     });
-    return jsonFixture({ success: true, charge: paymentMockAppChargeView(request) }, 201);
+    return jsonFixture(
+      { success: true, charge: paymentMockAppChargeView(request) },
+      201,
+    );
   }
 
-  const appChargeGetMatch = /^\/api\/v1\/apps\/([^/]+)\/charges\/([^/]+)\/?$/.exec(pathname);
+  const appChargeGetMatch =
+    /^\/api\/v1\/apps\/([^/]+)\/charges\/([^/]+)\/?$/.exec(pathname);
   if (method === "GET" && appChargeGetMatch) {
     const appId = decodeURIComponent(appChargeGetMatch[1] ?? "");
     const chargeId = decodeURIComponent(appChargeGetMatch[2] ?? "");
@@ -3308,7 +3414,10 @@ async function paymentDynamicFixture(
       status: request.status,
       amountUsd: request.amountUsd,
     });
-    return jsonFixture({ success: true, charge: paymentMockAppChargeView(request) });
+    return jsonFixture({
+      success: true,
+      charge: paymentMockAppChargeView(request),
+    });
   }
 
   const appChargeCheckoutMatch =
@@ -3356,7 +3465,12 @@ async function paymentDynamicFixture(
   }
 
   if (method === "POST" && pathname === "/v1/payment-requests") {
-    const amountUsd = readMoney(requestBody, "amountUsd", "amount_usd", "amount");
+    const amountUsd = readMoney(
+      requestBody,
+      "amountUsd",
+      "amount_usd",
+      "amount",
+    );
     if (amountUsd === null) {
       throw new MockHttpError(400, "amountUsd must be a positive number");
     }
@@ -3377,7 +3491,9 @@ async function paymentDynamicFixture(
       accepted: false,
       provider: readOptionalString(requestBody, "provider") ?? "mock",
       network: readOptionalString(requestBody, "network") ?? "mock",
-      description: readOptionalString(requestBody, "description") ?? "Mock payment request",
+      description:
+        readOptionalString(requestBody, "description") ??
+        "Mock payment request",
       paymentUrl: `${origin}/checkout/${encodeURIComponent(id)}`,
       checkoutUrl: `${origin}/checkout/${encodeURIComponent(id)}`,
       callbackUrl:
@@ -3395,7 +3511,9 @@ async function paymentDynamicFixture(
       metadata: jsonRecordValue(requestBody.metadata),
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
-      expiresAt: new Date(now.getTime() + expiresInSeconds * 1000).toISOString(),
+      expiresAt: new Date(
+        now.getTime() + expiresInSeconds * 1000,
+      ).toISOString(),
     };
     state.requests.set(id, request);
     setPaymentLedger(ledgerEntry, {
@@ -3404,13 +3522,19 @@ async function paymentDynamicFixture(
       status: request.status,
       amountUsd,
     });
-    return jsonFixture({ success: true, paymentRequest: paymentMockView(request) }, 201);
+    return jsonFixture(
+      { success: true, paymentRequest: paymentMockView(request) },
+      201,
+    );
   }
 
   if (method === "GET") {
     const request =
-      paymentRequestByPath(state, pathname, /^\/v1\/payment-requests\/([^/]+)\/?$/) ??
-      paymentRequestByPath(state, pathname, /^\/checkout\/([^/]+)\/?$/);
+      paymentRequestByPath(
+        state,
+        pathname,
+        /^\/v1\/payment-requests\/([^/]+)\/?$/,
+      ) ?? paymentRequestByPath(state, pathname, /^\/checkout\/([^/]+)\/?$/);
     if (request) {
       setPaymentLedger(ledgerEntry, {
         action: pathname.startsWith("/checkout/")
@@ -3420,15 +3544,27 @@ async function paymentDynamicFixture(
         status: request.status,
         amountUsd: request.amountUsd,
       });
-      return jsonFixture({ success: true, paymentRequest: paymentMockView(request) });
+      return jsonFixture({
+        success: true,
+        paymentRequest: paymentMockView(request),
+      });
     }
   }
 
   const payId =
     method === "POST"
-      ? routeParam(pathname, /^\/v1\/payment-requests\/([^/]+)\/(?:pay|confirm|settle)\/?$/) ??
-        routeParam(pathname, /^\/__mock\/payments\/([^/]+)\/(?:pay|confirm|settle)\/?$/) ??
-        routeParam(pathname, /^\/__mock\/app-charges\/([^/]+)\/(?:pay|confirm|settle)\/?$/)
+      ? (routeParam(
+          pathname,
+          /^\/v1\/payment-requests\/([^/]+)\/(?:pay|confirm|settle)\/?$/,
+        ) ??
+        routeParam(
+          pathname,
+          /^\/__mock\/payments\/([^/]+)\/(?:pay|confirm|settle)\/?$/,
+        ) ??
+        routeParam(
+          pathname,
+          /^\/__mock\/app-charges\/([^/]+)\/(?:pay|confirm|settle)\/?$/,
+        ))
       : null;
   if (payId) {
     const request = state.requests.get(payId);
@@ -3464,8 +3600,8 @@ async function paymentDynamicFixture(
 
   const failId =
     method === "POST"
-      ? routeParam(pathname, /^\/v1\/payment-requests\/([^/]+)\/fail\/?$/) ??
-        routeParam(pathname, /^\/__mock\/payments\/([^/]+)\/fail\/?$/)
+      ? (routeParam(pathname, /^\/v1\/payment-requests\/([^/]+)\/fail\/?$/) ??
+        routeParam(pathname, /^\/__mock\/payments\/([^/]+)\/fail\/?$/))
       : null;
   if (failId) {
     const request = state.requests.get(failId);
@@ -3521,8 +3657,8 @@ function shopifyDynamicFixture(
   state: ShopifyMockState,
   method: string,
   pathname: string,
-  requestBody: RequestBody,
-  ledgerEntry: MockRequestLedgerEntry,
+  _requestBody: RequestBody,
+  _ledgerEntry: MockRequestLedgerEntry,
 ): DynamicFixtureResponse | null {
   if (method !== "GET") return null;
 
@@ -3582,7 +3718,13 @@ function shopifyDynamicFixture(
         financial_status: "paid",
         fulfillment_status: null,
         line_items: [
-          { id: 1, title: "Mock Widget", quantity: 2, price: "19.99", sku: "MOCK-001" },
+          {
+            id: 1,
+            title: "Mock Widget",
+            quantity: 2,
+            price: "19.99",
+            sku: "MOCK-001",
+          },
         ],
         customer: {
           id: 9000000001,
@@ -3668,7 +3810,7 @@ function openaiDynamicFixture(
   method: string,
   pathname: string,
   requestBody: RequestBody,
-  ledgerEntry: MockRequestLedgerEntry,
+  _ledgerEntry: MockRequestLedgerEntry,
 ): DynamicFixtureResponse | null {
   if (method !== "POST") return null;
 
@@ -3998,7 +4140,8 @@ async function startFixtureServer(
         res.end(
           JSON.stringify({
             version: LIFEOPS_PRESENCE_ACTIVE_FIXTURE_CATALOG.version,
-            scenarioCount: LIFEOPS_PRESENCE_ACTIVE_FIXTURE_CATALOG.scenarioCount,
+            scenarioCount:
+              LIFEOPS_PRESENCE_ACTIVE_FIXTURE_CATALOG.scenarioCount,
             providers: LIFEOPS_PRESENCE_ACTIVE_FIXTURE_CATALOG.providers,
             scenarios: lifeOpsPresenceActiveScenarioSummaries(),
           }),
@@ -4351,7 +4494,6 @@ function parseCliArgs(argv: readonly string[]): {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean) as readonly MockEnvironmentName[];
-      continue;
     }
   }
   return { envs, simulator };

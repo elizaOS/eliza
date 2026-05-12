@@ -1,15 +1,8 @@
 // @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
-import fs from "node:fs";
-import path from "node:path";
-import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent";
-import { whatsappAuthExists } from "@elizaos/plugin-whatsapp";
-import type { Plugin } from "@elizaos/core";
+// methods belonging to sibling mixins (e.g. `this.logLifeOpsWarn`,
+// `this.pullWhatsAppRecent`). Type checking each mixin in isolation surfaces
+// phantom errors because the local TBase constraint can't see sibling mixin
+// methods. Real type safety is enforced at the composed LifeOpsService level.
 import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared";
 import {
   fetchWhatsAppMessagesWithRuntimeService,

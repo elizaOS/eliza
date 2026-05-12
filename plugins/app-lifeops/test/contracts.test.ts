@@ -9,16 +9,16 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  type ChannelContribution,
   createChannelRegistry,
   PRIORITY_TO_POSTURE,
-  type ChannelContribution,
   type ScheduledTaskPriority,
 } from "../src/lifeops/channels/index.js";
 import {
-  createConnectorRegistry,
-  decideDispatchPolicy,
   type ConnectorContribution,
+  createConnectorRegistry,
   type DispatchResult,
+  decideDispatchPolicy,
 } from "../src/lifeops/connectors/index.js";
 import { DEFAULT_ESCALATION_LADDERS } from "../src/lifeops/escalation-ladders.js";
 import {
@@ -101,16 +101,16 @@ describe("ConnectorRegistry", () => {
     expect(registry.list({ mode: "local" }).map((c) => c.kind)).toEqual([
       "telegram",
     ]);
-    expect(registry.list({ mode: "cloud" }).map((c) => c.kind).sort()).toEqual([
-      "google",
-      "telegram",
-    ]);
-
     expect(
       registry
-        .byCapability("telegram.send")
-        .map((c) => c.kind),
-    ).toEqual(["telegram"]);
+        .list({ mode: "cloud" })
+        .map((c) => c.kind)
+        .sort(),
+    ).toEqual(["google", "telegram"]);
+
+    expect(registry.byCapability("telegram.send").map((c) => c.kind)).toEqual([
+      "telegram",
+    ]);
     expect(registry.byCapability("does.not.exist")).toEqual([]);
   });
 
@@ -162,10 +162,12 @@ describe("ChannelRegistry", () => {
     expect(registry.get("in_app")).toBe(inApp);
     expect(registry.get("missing")).toBeNull();
 
-    expect(registry.list().map((c) => c.kind).sort()).toEqual([
-      "in_app",
-      "voice",
-    ]);
+    expect(
+      registry
+        .list()
+        .map((c) => c.kind)
+        .sort(),
+    ).toEqual(["in_app", "voice"]);
     expect(
       registry.list({ supports: { voice: true } }).map((c) => c.kind),
     ).toEqual(["voice"]);
@@ -183,9 +185,9 @@ describe("ChannelRegistry", () => {
   it("rejects duplicate kind", () => {
     const registry = createChannelRegistry();
     registry.register(makeChannel({ kind: "in_app" }));
-    expect(() =>
-      registry.register(makeChannel({ kind: "in_app" })),
-    ).toThrow(/already registered/);
+    expect(() => registry.register(makeChannel({ kind: "in_app" }))).toThrow(
+      /already registered/,
+    );
   });
 });
 

@@ -17,8 +17,7 @@ import {
   loadElizaConfig,
   saveElizaConfig,
 } from "@elizaos/agent";
-import { readCompatJsonBody } from "@elizaos/app-core";
-import { sendJson, sendJsonError } from "@elizaos/app-core";
+import { readCompatJsonBody, sendJson, sendJsonError } from "@elizaos/app-core";
 import type { AgentRuntime } from "@elizaos/core";
 import { resolveWalletExportRejection } from "@elizaos/plugin-wallet";
 import {

@@ -6,7 +6,12 @@
  * and respects the search / summarize subactions.
  */
 
-import type { HandlerOptions, IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import type {
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -19,9 +24,9 @@ vi.mock("@elizaos/agent", () => ({
 
 import {
   __resetInboxUnifiedFetchersForTests,
+  type InboxUnifiedItem,
   inboxUnifiedAction,
   setInboxUnifiedFetchers,
-  type InboxUnifiedItem,
 } from "../src/actions/inbox-unified.js";
 
 function makeRuntime(): IAgentRuntime {
@@ -59,10 +64,12 @@ async function callInbox(
   );
 }
 
-function makeItem(overrides: Partial<InboxUnifiedItem> & {
-  platform: InboxUnifiedItem["platform"];
-  id: string;
-}): InboxUnifiedItem {
+function makeItem(
+  overrides: Partial<InboxUnifiedItem> & {
+    platform: InboxUnifiedItem["platform"];
+    id: string;
+  },
+): InboxUnifiedItem {
   return {
     channel: "default",
     senderName: "Alice",

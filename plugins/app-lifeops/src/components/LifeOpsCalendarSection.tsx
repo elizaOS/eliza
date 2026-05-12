@@ -7,6 +7,7 @@
  * the same feed keeps the same colour across renders.
  */
 
+import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import {
   Button,
   Popover,
@@ -17,7 +18,6 @@ import {
   useApp,
   useMediaQuery,
 } from "@elizaos/ui";
-import type { LifeOpsCalendarEvent } from "@elizaos/shared";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {

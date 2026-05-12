@@ -70,7 +70,9 @@ const showerRecord: ScheduledTaskSeed = {
   contextRequest: { includeOwnerFacts: ["preferredName"] },
   trigger: { kind: "during_window", windowKey: "morning" },
   priority: "low",
-  shouldFire: { gates: [{ kind: "weekday_only", params: { weekdays: [1, 3, 5] } }] },
+  shouldFire: {
+    gates: [{ kind: "weekday_only", params: { weekdays: [1, 3, 5] } }],
+  },
   respectsGlobalPause: true,
   source: "default_pack",
   createdBy: HABIT_STARTERS_PACK_KEY,
@@ -118,7 +120,10 @@ const drinkWaterRecord: ScheduledTaskSeed = {
   priority: "low",
   shouldFire: {
     gates: [
-      { kind: "during_window", params: { windows: ["morning", "afternoon", "evening"] } },
+      {
+        kind: "during_window",
+        params: { windows: ["morning", "afternoon", "evening"] },
+      },
     ],
   },
   respectsGlobalPause: true,
@@ -243,7 +248,9 @@ const shaveRecord: ScheduledTaskSeed = {
   contextRequest: { includeOwnerFacts: ["preferredName"] },
   trigger: { kind: "during_window", windowKey: "morning" },
   priority: "low",
-  shouldFire: { gates: [{ kind: "weekday_only", params: { weekdays: [2, 5] } }] },
+  shouldFire: {
+    gates: [{ kind: "weekday_only", params: { weekdays: [2, 5] } }],
+  },
   respectsGlobalPause: true,
   source: "default_pack",
   createdBy: HABIT_STARTERS_PACK_KEY,

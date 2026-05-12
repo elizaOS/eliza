@@ -8,14 +8,14 @@ import {
   type ProviderResult,
   type State,
 } from "@elizaos/core";
-import { hasLifeOpsAccess } from "../lifeops/access.js";
-import { getConnectorRegistry } from "../lifeops/connectors/registry.js";
-import type { ConnectorStatus } from "../lifeops/connectors/contract.js";
 import type {
   LifeOpsGmailTriageSummary,
   LifeOpsGoalDefinition,
   LifeOpsNextCalendarEventContext,
 } from "../contracts/index.js";
+import { hasLifeOpsAccess } from "../lifeops/access.js";
+import type { ConnectorStatus } from "../lifeops/connectors/contract.js";
+import { getConnectorRegistry } from "../lifeops/connectors/registry.js";
 import {
   type LifeOpsOwnerProfile,
   readLifeOpsOwnerProfile,

@@ -8,6 +8,7 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { logger, ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import { INTERNAL_URL } from "../lifeops/access.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import {
   ApprovalNotFoundError,
@@ -26,7 +27,6 @@ import {
   resolveActionArgs,
   type SubactionsMap,
 } from "./lib/resolve-action-args.js";
-import { INTERNAL_URL } from "../lifeops/access.js";
 
 const ACTION_NAME = "RESOLVE_REQUEST";
 

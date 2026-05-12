@@ -23,16 +23,17 @@ export default scenario({
     "aggression:neutral",
     "format:list",
   ],
-  description: "Ladder of escalation requests ('less_chatty', direction: terser). Agent's tone/responsiveness should shift monotonically with each escalation step, and the new level should hold across the probe turns that follow.",
+  description:
+    "Ladder of escalation requests ('less_chatty', direction: terser). Agent's tone/responsiveness should shift monotonically with each escalation step, and the new level should hold across the probe turns that follow.",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
     {
-          id: "main",
-          source: "dashboard",
-          channelType: "DM",
-          title: "Personality Benchmark",
-        },
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Personality Benchmark",
+    },
   ],
   personalityExpect: {
     bucket: "escalation",
@@ -41,16 +42,11 @@ export default scenario({
     forbiddenContent: [],
     requiredContent: [],
     judgeKwargs: {
-          ladderKey: "less_chatty",
-          direction: "terser",
-          escalationStepTurnIndices: [
-                  0,
-                  2,
-                ],
-          probeTurnIndices: [
-                  1,
-                ],
-        },
+      ladderKey: "less_chatty",
+      direction: "terser",
+      escalationStepTurnIndices: [0, 2],
+      probeTurnIndices: [1],
+    },
   },
   turns: [
     // escalation step 1 of 5

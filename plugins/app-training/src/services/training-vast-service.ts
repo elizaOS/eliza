@@ -840,12 +840,10 @@ function narrowBudgetSnapshot(
   // Caps may legitimately be null when ELIZA_VAST_MAX_USD is unset.
   const softRaw = obj.soft_cap_usd;
   const hardRaw = obj.hard_cap_usd;
-  const soft = typeof softRaw === "number" && Number.isFinite(softRaw)
-    ? softRaw
-    : null;
-  const hard = typeof hardRaw === "number" && Number.isFinite(hardRaw)
-    ? hardRaw
-    : null;
+  const soft =
+    typeof softRaw === "number" && Number.isFinite(softRaw) ? softRaw : null;
+  const hard =
+    typeof hardRaw === "number" && Number.isFinite(hardRaw) ? hardRaw : null;
   return {
     job_id: jobId,
     instance_id: instanceId,

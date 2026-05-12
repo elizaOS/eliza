@@ -30,4 +30,4 @@ const handler = {
   construct: throwUnsupported,
 };
 
-module.exports = new Proxy(function () {}, handler);
+module.exports = new Proxy(() => {}, handler);

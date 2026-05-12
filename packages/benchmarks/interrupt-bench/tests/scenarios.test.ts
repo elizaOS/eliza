@@ -8,8 +8,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { loadScenarios } from "../src/scenarios.ts";
 import { runScenario } from "../src/evaluator.ts";
+import { loadScenarios } from "../src/scenarios.ts";
 
 describe("scenarios", () => {
   const all = loadScenarios();
@@ -55,7 +55,11 @@ describe("scenarios", () => {
 
   // Spot-check: a few simple scenarios should hit a high score with the
   // scripted ideal-agent. This guards against scorer regressions.
-  for (const id of ["B1-pure-cancellation", "C1-mid-task-steering", "A1-fragmented-email-draft"]) {
+  for (const id of [
+    "B1-pure-cancellation",
+    "C1-mid-task-steering",
+    "A1-fragmented-email-draft",
+  ]) {
     it(`${id} scripted score >= 0.7`, async () => {
       const scenario = all.find((s) => s.id === id);
       expect(scenario).toBeDefined();

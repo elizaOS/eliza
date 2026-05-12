@@ -12,8 +12,8 @@
  *   - The new incoming message, marked clearly.
  */
 
-import type { Scenario, ScenarioScriptStep } from "./types.ts";
 import type { SimulatorState } from "./state.ts";
+import type { Scenario, ScenarioScriptStep } from "./types.ts";
 
 export interface RenderArgs {
   scenario: Scenario;
@@ -27,22 +27,32 @@ export function renderConversation(args: RenderArgs): string {
   const lines: string[] = [];
   lines.push("## Rooms");
   for (const r of scenario.setup.rooms) {
-    lines.push(`- ${r.id} (kind=${r.kind}${r.owner ? `, owner=${r.owner}` : ""}${r.members ? `, members=[${r.members.join(", ")}]` : ""})`);
+    lines.push(
+      `- ${r.id} (kind=${r.kind}${r.owner ? `, owner=${r.owner}` : ""}${r.members ? `, members=[${r.members.join(", ")}]` : ""})`,
+    );
   }
 
-  const activeThreads = [...state.threads.values()].filter((t) => t.status !== "stopped" && t.status !== "completed");
+  const activeThreads = [...state.threads.values()].filter(
+    (t) => t.status !== "stopped" && t.status !== "completed",
+  );
   if (activeThreads.length > 0) {
     lines.push("\n## Active threads (you may reference these workThreadIds)");
     for (const t of activeThreads) {
-      lines.push(`- ${t.id} owner=${t.owner} status=${t.status} room=${t.roomId} :: ${t.instruction}`);
+      lines.push(
+        `- ${t.id} owner=${t.owner} status=${t.status} room=${t.roomId} :: ${t.instruction}`,
+      );
     }
   }
 
-  const pendingPrompts = [...state.pendingPrompts.values()].filter((p) => !p.resolved);
+  const pendingPrompts = [...state.pendingPrompts.values()].filter(
+    (p) => !p.resolved,
+  );
   if (pendingPrompts.length > 0) {
     lines.push("\n## Pending prompts (questions the agent asked previously)");
     for (const p of pendingPrompts) {
-      lines.push(`- promptId=${p.id} asked-in=${p.askedIn} question="${p.question}"`);
+      lines.push(
+        `- promptId=${p.id} asked-in=${p.askedIn} question="${p.question}"`,
+      );
     }
   }
 

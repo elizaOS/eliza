@@ -6,7 +6,7 @@
  *
  * Gated on ELIZA_LIVE_TEST=1.
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../test/helpers/conditional-tests";
 import {
   createRealTestRuntime,

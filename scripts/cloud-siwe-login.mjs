@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * cloud-siwe-login.mjs
  *
@@ -22,11 +23,16 @@
  * can be eval'd into a shell. Pass --json for the full verify response.
  */
 
-import { createSiweMessage } from "viem/siwe";
 import { privateKeyToAccount } from "viem/accounts";
+import { createSiweMessage } from "viem/siwe";
 
 function parseArgs(argv) {
-  const args = { baseUrl: null, chainId: 1, envName: "ELIZAOS_CLOUD_API_KEY", json: false };
+  const args = {
+    baseUrl: null,
+    chainId: 1,
+    envName: "ELIZAOS_CLOUD_API_KEY",
+    json: false,
+  };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--base-url") args.baseUrl = argv[++i];
@@ -74,7 +80,9 @@ async function main() {
   const account = privateKeyToAccount(pk);
 
   const nonceUrl = `${baseUrl.replace(/\/$/, "")}/api/auth/siwe/nonce?chainId=${args.chainId}`;
-  const nonceRes = await fetch(nonceUrl, { headers: { Accept: "application/json" } });
+  const nonceRes = await fetch(nonceUrl, {
+    headers: { Accept: "application/json" },
+  });
   if (!nonceRes.ok) {
     const body = await nonceRes.text();
     throw new Error(`SIWE nonce fetch failed (${nonceRes.status}): ${body}`);
@@ -126,6 +134,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err instanceof Error ? err.stack ?? err.message : err);
+  console.error(err instanceof Error ? (err.stack ?? err.message) : err);
   process.exit(1);
 });
