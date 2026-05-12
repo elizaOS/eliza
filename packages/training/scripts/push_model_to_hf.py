@@ -95,15 +95,15 @@ class PushConfig:
     dry_run: bool
     eval_results: dict[str, Any] = field(default_factory=dict)
     # Eliza-1 v1 release shape: `base-v1` = the upstream BASE model,
-    # GGUF-converted via the elizaOS/llama.cpp fork and fully Milady-optimized
+    # GGUF-converted via the elizaOS/llama.cpp fork and fully Eliza-1-optimized
     # (every quant/kernel trick in inference/AGENTS.md §3), NOT fine-tuned.
     # When set, the model card records `finetuned: false` + the upstream
     # source repo, and the preflight refuses to push a `base-v1` checkpoint
-    # whose `*.provenance.json` (written by gguf_milady_apply.py) disagrees.
+    # whose `*.provenance.json` (written by gguf_eliza1_apply.py) disagrees.
     release_state: str | None = None
-    milady_manifest: Path | None = None
-    """Path to a milady_manifest.json describing the optimization stack
-    applied to a Milady-optimized GGUF. Set by ``optimize_for_milady.py``;
+    eliza1_manifest: Path | None = None
+    """Path to a eliza1_manifest.json describing the optimization stack
+    applied to a Eliza-1-optimized GGUF. Set by ``optimize_for_eliza1.py``;
     when present, the published model card uses the manifest's runtime
     block to document the load command and the ``elizaOS/llama.cpp``
     pin instead of the generic per-quant template."""
@@ -123,7 +123,7 @@ def resolve_repo_id(
 
     Override > registry's eliza_repo_id / abliteration_repo_id (+ quant suffix).
     The abliterated variant ships under a separate org so the safety-tuned
-    line's reputation is not contaminated. Milady-optimized publishes
+    line's reputation is not contaminated. Eliza-1-optimized publishes
     always pass an explicit ``--repo-id``; the registry path is only the
     historical eliza-1 sibling-repo flow.
     """
@@ -497,12 +497,12 @@ def _select_template_path(config: PushConfig) -> Path:
     return TEMPLATES_DIR / "model_card_base.md"
 
 
-def _build_milady_manifest_card(
+def _build_eliza1_manifest_card(
     config: PushConfig, manifest: dict[str, Any]
 ) -> str:
-    """Render a model-card README from a Milady optimization manifest.
+    """Render a model-card README from a Eliza-1 optimization manifest.
 
-    The manifest comes from ``scripts/optimize_for_milady.py`` and
+    The manifest comes from ``scripts/optimize_for_eliza1.py`` and
     declares the applied stack + the exact ``llama-server`` invocation
     consumers should run. The manifest IS the source of truth — this
     function only renders it for HF discoverability.
@@ -540,8 +540,8 @@ def _build_milady_manifest_card(
         "---\n"
         "library_name: llama.cpp\n"
         "tags:\n"
-        "  - milady\n"
-        "  - milady-optimized\n"
+        "  - eliza1\n"
+        "  - eliza1-optimized\n"
         "  - gguf\n"
         "  - polarquant\n"
         "  - qjl\n"
@@ -549,7 +549,7 @@ def _build_milady_manifest_card(
         "  - dflash\n"
         "---\n"
         "\n"
-        "# Milady-optimized GGUF\n"
+        "# Eliza-1-optimized GGUF\n"
         "\n"
         f"Base model: `{manifest.get('base_model')}`  \n"
         f"Repo: `{config.repo_id}`  \n"
@@ -588,8 +588,8 @@ def build_model_card(
     """Construct an HF model card for the eliza-1 release.
 
     Resolution order:
-      1. If a ``--milady-manifest`` was passed, render directly from the
-         manifest (canonical Milady-optimized release path).
+      1. If a ``--eliza1-manifest`` was passed, render directly from the
+         manifest (canonical Eliza-1-optimized release path).
       2. If the checkpoint dir already contains a README.md, ship it verbatim
          (downstream tools — e.g. abliterate.py — can author a richer card
          than this template covers).
@@ -600,16 +600,16 @@ def build_model_card(
     latter is empty, for backwards compatibility with checkpoints that wrote
     a benchmark.json sidecar.
     """
-    if config.milady_manifest is not None:
+    if config.eliza1_manifest is not None:
         try:
-            manifest = json.loads(config.milady_manifest.read_text())
+            manifest = json.loads(config.eliza1_manifest.read_text())
         except (OSError, json.JSONDecodeError) as exc:
             raise SystemExit(
-                f"--milady-manifest is unreadable: {config.milady_manifest}: {exc}"
+                f"--eliza1-manifest is unreadable: {config.eliza1_manifest}: {exc}"
             ) from exc
-        log.info("rendering model card from milady manifest %s",
-                 config.milady_manifest)
-        return _build_milady_manifest_card(config, manifest)
+        log.info("rendering model card from Eliza-1 manifest %s",
+                 config.eliza1_manifest)
+        return _build_eliza1_manifest_card(config, manifest)
 
     checkpoint_readme = config.checkpoint / "README.md"
     if checkpoint_readme.exists():
@@ -673,7 +673,7 @@ def preflight(config: PushConfig) -> tuple[bool, list[str]]:
                 "--variant abliterated requires abliteration_metadata.json in "
                 f"{config.checkpoint} (produced by scripts/training/abliterate.py)"
             )
-    # base-v1 consistency: if a `*.provenance.json` (from gguf_milady_apply.py)
+    # base-v1 consistency: if a `*.provenance.json` (from gguf_eliza1_apply.py)
     # is present next to the checkpoint, its releaseState/finetuned must agree
     # with --release-state. base-v1 means "upstream base, NOT fine-tuned".
     if config.release_state and config.checkpoint.exists():
@@ -717,7 +717,7 @@ def push(config: PushConfig) -> int:
     card = build_model_card(config, training_args, bench)
     if config.release_state == "base-v1":
         # Be honest in the repo card: v1 is the base model, GGUF + fully
-        # Milady-optimized, NOT fine-tuned. Fine-tuning ships in v2.
+        # Eliza-1-optimized, NOT fine-tuned. Fine-tuning ships in v2.
         prov_repo = None
         for prov_path in config.checkpoint.glob("*.provenance.json"):
             try:
@@ -731,7 +731,7 @@ def push(config: PushConfig) -> int:
             "upstream base model"
             + (f" (`{prov_repo}`)" if prov_repo else "")
             + ", GGUF-converted via the elizaOS/llama.cpp fork and fully "
-            "Milady-optimized (TurboQuant turbo3/turbo4/turbo3_tcq KV, QJL "
+            "Eliza-1-optimized (TurboQuant turbo3/turbo4/turbo3_tcq KV, QJL "
             "K-cache, PolarQuant V-cache, fused attention, DFlash speculative "
             "decoding) for in-harness use. It has **not** been fine-tuned — "
             "Eliza-1 fine-tuning ships in v2 (`releaseState=finetuned-v2`).\n\n"
@@ -854,8 +854,8 @@ def main() -> int:
              "shows a TBD placeholder.",
     )
     ap.add_argument(
-        "--milady-manifest", type=Path, default=None,
-        help="Path to a milady_manifest.json from optimize_for_milady.py. "
+        "--eliza1-manifest", type=Path, default=None,
+        help="Path to a eliza1_manifest.json from optimize_for_eliza1.py. "
              "Triggers manifest-driven model card rendering and supersedes "
              "the per-quant template. Use for elizaos/* repo publishes.",
     )
@@ -863,7 +863,7 @@ def main() -> int:
         "--release-state", default=None,
         choices=("base-v1", "finetuned-v2"),
         help="Eliza-1 release lineage. `base-v1` = upstream base model, "
-             "GGUF + fully Milady-optimized, NOT fine-tuned (the v1 product); "
+             "GGUF + fully Eliza-1-optimized, NOT fine-tuned (the v1 product); "
              "`finetuned-v2` = the trained checkpoint (v2). Records the lineage "
              "in the model card and is checked against any *.provenance.json "
              "next to the checkpoint.",
@@ -881,9 +881,9 @@ def main() -> int:
         except json.JSONDecodeError as exc:
             raise SystemExit(f"--eval-results is not valid JSON: {exc}") from exc
 
-    if args.milady_manifest is not None and not args.milady_manifest.exists():
+    if args.eliza1_manifest is not None and not args.eliza1_manifest.exists():
         raise SystemExit(
-            f"--milady-manifest does not exist: {args.milady_manifest}"
+            f"--eliza1-manifest does not exist: {args.eliza1_manifest}"
         )
 
     config = PushConfig(
@@ -899,7 +899,7 @@ def main() -> int:
         dry_run=args.dry_run,
         eval_results=eval_results,
         release_state=args.release_state,
-        milady_manifest=args.milady_manifest,
+        eliza1_manifest=args.eliza1_manifest,
     )
     return push(config)
 

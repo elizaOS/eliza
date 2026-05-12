@@ -18,8 +18,8 @@
 # deps are already present.
 #
 # NOTE: this is STOCK upstream llama.cpp. The custom GGML types used by the
-# Milady inference fork (Q4_POLAR=47, QJL1_256=46, TurboQuant TBQ4_0/TBQ3_0)
-# live in elizaOS/llama.cpp, NOT here — gguf_milady_apply.py / the optimize
+# Eliza-1 inference fork (Q4_POLAR=47, QJL1_256=46, TurboQuant TBQ4_0/TBQ3_0)
+# live in elizaOS/llama.cpp, NOT here — gguf_eliza1_apply.py / the optimize
 # pipeline still want LLAMA_CPP_DIR pointed at that fork. See README.md.
 #
 # Override knobs (env vars):
