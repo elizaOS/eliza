@@ -150,14 +150,43 @@ the release-evidence stage):
 }
 ```
 
-(1.7B eval-suite numbers added when its run — including the slower 30-turn —
-finishes; see the report's tail / the bundle's `aggregate.json`.)
+1.7B aggregate (`eliza-1-1_7b.bundle/evals/aggregate.json`):
 
-## Publish dry-run verdict (0.6B)
+| gate | measured | threshold | pass? |
+|---|---|---|---|
+| `text_eval` | 0.328 (ppl 41.1) | ≥ 0.60 | ✗ (base-v1) |
+| `voice_rtf` | 5.91 | ≤ 0.45 | ✗ (CPU MaskGIT TTS) |
+| `asr_wer` | 1.00 | ≤ 0.08 | ✗ (stand-in ASR GGUF) |
+| `e2e_loop_ok` | **true** | true | **✓** |
+| `thirty_turn_ok` | null (the 10-turn endurance bench crashed mid-run, `rc=1`; the full 30-turn on this host needs ~45–90 min of uncontended CPU — not run to completion here) | true | ✗ (not measured) |
+| `dflash_acceptance` | **0.55** (11/20) | ≥ 0.65 | ✗ (real spec run; drafter is a near-copy of target so this is high-variance, not a trained-drafter number) |
+| `dispatch` | pass | — | ✓ |
+| `vad_*` | null | — | ✗ (no labelled corpus) |
+| `barge_in_cancel_ms` | null in aggregate | ≤ 70 | ✗ (separate harness) |
 
-`python -m scripts.publish.orchestrator --tier 0_6b --bundle-dir … --dry-run
---metal-verification …/metal_verify.json` — **fails at stage 2 (validate
-release evidence)**, before it reaches the eval gates / manifest build:
+1.7B manifest `evals` block (patched on disk from the aggregate):
+
+```json
+{
+  "textEval": { "score": 0.328, "passed": false },
+  "voiceRtf": { "rtf": 5.9121, "passed": false },
+  "e2eLoopOk": true,
+  "thirtyTurnOk": false,
+  "asrWer": { "wer": 1.0, "passed": false },
+  "dflash": { "acceptanceRate": 0.55, "speedup": null, "passed": false }
+}
+```
+
+(`thirtyTurnOk` is left at `false` rather than the aggregate's `null` so the
+manifest's `evals.thirtyTurnOk` is a valid boolean — the real 30-turn run is
+the publish-finish follow-up.)
+
+## Publish dry-run verdict (0.6B and 1.7B)
+
+`python -m scripts.publish.orchestrator --tier {0_6b,1_7b} --bundle-dir …
+--dry-run --metal-verification …/metal_verify.json` — **both fail at stage 2
+(validate release evidence)**, before they reach the eval gates / manifest
+build:
 
 ```
 - releaseState must be 'upload-candidate' or 'final'
@@ -167,9 +196,11 @@ release evidence)**, before it reaches the eval gates / manifest build:
 - final.sizeFirstRepoIds must be true
 ```
 
-So the dry-run never re-builds the manifest. The independent eval-gate verdict
-(from the eval suite's `aggregate.json`): `passed = false`, 9 required gate
-failures. **Still blocking publish**, even ignoring the release-evidence stage:
+So the dry-run never re-builds the manifest (the publish-finish sibling owns
+the release-evidence finalization step). The independent eval-gate verdict
+(from each bundle's `evals/aggregate.json`): `passed = false` for both tiers, 9
+required gate failures each. **Still blocking publish**, even ignoring the
+release-evidence stage:
 - `text_eval` (needs the v2 fine-tune — base-v1 lands 0.28),
 - `voice_rtf` (8.6× — CPU MaskGIT TTS; needs a GPU-fused build to land ≤0.5),
 - `asr_wer` (1.0 — the bundle's ASR GGUF is stand-in quality),

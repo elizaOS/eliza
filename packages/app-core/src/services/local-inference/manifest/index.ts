@@ -3,6 +3,7 @@
 // from the schema/types/validator files individually.
 
 export {
+  ELIZA1_TO_RUNTIME_KERNEL,
   ELIZA_1_BACKENDS,
   ELIZA_1_KERNELS,
   ELIZA_1_MANIFEST_SCHEMA_URL,
@@ -26,6 +27,7 @@ export {
   Eliza1VerifiedBackendStatusSchema,
   Eliza1VoiceSchema,
   REQUIRED_KERNELS_BY_TIER,
+  RUNTIME_TO_ELIZA1_KERNEL,
   SUPPORTED_BACKENDS_BY_TIER,
   VOICE_PRESET_CACHE_PATH,
 } from "./schema";
