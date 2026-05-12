@@ -19,6 +19,32 @@ export {
   toBunWorkerPermissions,
 } from "./permissions.js";
 export type {
+  CarrotStorePaths,
+  InstalledCarrot,
+  InstallPrebuiltCarrotOptions,
+} from "./store.js";
+export {
+  assertCarrotPayload,
+  CarrotStoreError,
+  ensureCarrotSourceDirectory,
+  getCarrotStorePaths,
+  installPrebuiltCarrot,
+  isCarrotSourceDirectory,
+  listInstalledCarrotDirectories,
+  loadInstalledCarrot,
+  loadInstalledCarrots,
+  readCarrotInstallRecord,
+  readCarrotManifestAt,
+  readCarrotRegistry,
+  resolveCarrotPathInside,
+  syncCarrotRegistry,
+  toCarrotViewUrl,
+  uninstallInstalledCarrot,
+  writeCarrotInstallRecord,
+  writeCarrotRegistry,
+  writeCarrotWorkerBootstrap,
+} from "./store.js";
+export type {
   BunPermission,
   CarrotDependencyMap,
   CarrotInstallRecord,

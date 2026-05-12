@@ -40,6 +40,11 @@
       "import": "./dist/manifest.js",
       "default": "./dist/manifest.js"
     },
+    "./store": {
+      "types": "./dist/store.d.ts",
+      "import": "./dist/store.js",
+      "default": "./dist/store.js"
+    },
     "./validation": {
       "types": "./dist/validation.d.ts",
       "import": "./dist/validation.js",
