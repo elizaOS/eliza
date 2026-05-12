@@ -52,6 +52,7 @@
         "../native-plugins/mobile-signals/src/index.ts"
       ],
       "@elizaos/ui": ["../ui/src/index.ts"],
+      "@elizaos/ui/*": ["../ui/src/*"],
       "react": ["../../node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [
         "../../node_modules/@types/react/jsx-runtime.d.ts"
