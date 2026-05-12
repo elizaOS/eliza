@@ -24,6 +24,8 @@ import {
 } from "../services/agent-credentials.js";
 import { getCoordinator } from "../services/pty-service.js";
 import {
+  type CodingAgentType,
+  isOpencodeAgentType,
   isPiAgentType,
   normalizeAgentType,
   toPiCommand,
@@ -611,7 +613,15 @@ export async function handleAgentRoutes(
         ? (agentType as string).toLowerCase()
         : await ctx.ptyService.resolveAgentType();
       const piRequested = isPiAgentType(agentStr);
-      const normalizedType = normalizeAgentType(agentStr);
+      const opencodeRequested = isOpencodeAgentType(agentStr);
+      // For pi/opencode we keep the unnormalized type so spawnSession can
+      // detect the request via its own `isOpencodeAgentType` / `isPiAgentType`
+      // check. Normalizing here to "shell" too early skips the per-adapter
+      // brief + AGENTS.md write paths inside spawnSession.
+      const normalizedType: CodingAgentType =
+        piRequested || opencodeRequested
+          ? (agentStr as CodingAgentType)
+          : normalizeAgentType(agentStr);
       const aiderProvider =
         agentStr === "aider"
           ? (ctx.runtime.getSetting("PARALLAX_AIDER_PROVIDER") as string | null)
