@@ -79,10 +79,17 @@ class BucketResult:
     field_match: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     field_total: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     examples_failed: list[dict[str, Any]] = field(default_factory=list)
+    # Throughput accounting — wallclock seconds spent inside model.generate()
+    # for this bucket, plus the prompt / generated token counts seen.
+    gen_seconds: float = 0.0
+    prompt_tokens: int = 0
+    gen_tokens: int = 0
 
     def record(self, *, ok_format: bool, ok_content: bool,
                parse_err: bool, fields: dict[str, bool],
-               failed_example: dict | None) -> None:
+               failed_example: dict | None,
+               gen_dt: float = 0.0, n_prompt_tokens: int = 0,
+               n_gen_tokens: int = 0) -> None:
         self.n += 1
         if ok_format:
             self.format_ok += 1
@@ -90,6 +97,9 @@ class BucketResult:
             self.content_ok += 1
         if parse_err:
             self.parse_errors += 1
+        self.gen_seconds += gen_dt
+        self.prompt_tokens += n_prompt_tokens
+        self.gen_tokens += n_gen_tokens
         for k, ok in fields.items():
             self.field_total[k] += 1
             if ok:
@@ -100,6 +110,8 @@ class BucketResult:
     def to_dict(self) -> dict:
         def pct(num: int, denom: int) -> float:
             return round(100.0 * num / denom, 2) if denom else 0.0
+        def rate(num: int, denom: float) -> float:
+            return round(num / denom, 2) if denom > 0 else 0.0
         return {
             "bucket": self.name,
             "n": self.n,
@@ -108,6 +120,13 @@ class BucketResult:
             "content_ok": self.content_ok,
             "content_pct": pct(self.content_ok, self.n),
             "parse_errors": self.parse_errors,
+            # prompt_tps / gen_tps share the same denominator (the wallclock
+            # spent inside model.generate(): prefill + decode); model.generate
+            # does not separate the two phases, so these are throughput proxies,
+            # not isolated prefill / decode rates.
+            "prompt_tps": rate(self.prompt_tokens, self.gen_seconds),
+            "gen_tps": rate(self.gen_tokens, self.gen_seconds),
+            "gen_seconds": round(self.gen_seconds, 2),
             "field_match_pct": {
                 k: pct(self.field_match[k], v)
                 for k, v in self.field_total.items()
@@ -408,6 +427,8 @@ def main() -> int:
                 ok_format=ok_fmt, ok_content=ok_content,
                 parse_err=parse_err,
                 fields=fields, failed_example=failed,
+                gen_dt=dt, n_prompt_tokens=int(prompt_len),
+                n_gen_tokens=int(gen.shape[0]),
             )
 
             if (i + 1) % 25 == 0:
@@ -418,6 +439,7 @@ def main() -> int:
                          dt)
 
     elapsed = time.perf_counter() - t_start
+    total_gen_seconds = sum(r.gen_seconds for r in results.values())
     summary = {
         "model": args.model,
         "base_model": args.base_model,
@@ -425,15 +447,23 @@ def main() -> int:
         "max_per_bucket": args.max_per_bucket,
         "elapsed_s": round(elapsed, 2),
         "examples": total_emitted,
+        # tokens_per_sec_gen is over the full wallclock (includes scoring
+        # overhead); prompt_tps / gen_tps are over the generate()-only
+        # wallclock (prefill+decode, not separated by model.generate).
         "tokens_per_sec_gen": round(total_gen_tokens / max(elapsed, 1e-6), 2),
+        "prompt_tps": round(total_prompt_tokens / max(total_gen_seconds, 1e-6), 2),
+        "gen_tps": round(total_gen_tokens / max(total_gen_seconds, 1e-6), 2),
+        "gen_seconds": round(total_gen_seconds, 2),
         "avg_gen_len": round(total_gen_tokens / max(total_emitted, 1), 1),
         "avg_prompt_len": round(total_prompt_tokens / max(total_emitted, 1), 1),
         "buckets": {b: r.to_dict() for b, r in results.items()},
     }
     out_dir.joinpath("summary.json").write_text(json.dumps(summary, indent=2))
     log.info("wrote %s", out_dir / "summary.json")
-    print(json.dumps({"buckets": summary["buckets"], "tokens_per_sec_gen":
-                       summary["tokens_per_sec_gen"]}, indent=2))
+    print(json.dumps({"buckets": summary["buckets"],
+                       "tokens_per_sec_gen": summary["tokens_per_sec_gen"],
+                       "prompt_tps": summary["prompt_tps"],
+                       "gen_tps": summary["gen_tps"]}, indent=2))
     return 0
 
 
