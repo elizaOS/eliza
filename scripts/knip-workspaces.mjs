@@ -1,31 +1,20 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import {
-  existsSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-} from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { delimiter, join, relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
-const KNIP_CONFIG_FILES = [
-  "knip.json",
-  "knip.jsonc",
-  "knip.config.js",
-  "knip.config.mjs",
-  "knip.config.ts",
-  "knip.js",
-  "knip.ts",
-];
-
+const ROOT_KNIP_CONFIG = existsSync(join(ROOT, "knip.json"))
+  ? "knip.json"
+  : null;
 function usage() {
   console.log(`Usage: node scripts/knip-workspaces.mjs [options] [-- knip args]
 
 Runs Knip once per workspace package from the repository root so Knip keeps
-workspace dependency context without sharing one large analysis process. If a
-workspace has a local knip config, it is passed to that package run.
+workspace dependency context without sharing one large analysis process. The
+root knip.json is used for each run so package-local config drift does not
+drop shared ignore rules.
 
 Options:
   --filter, -f <text>     Run only packages whose name/path matches text or glob.
@@ -164,9 +153,7 @@ function expandPattern(pattern) {
 
 function globToRegExp(glob) {
   const escaped = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(
-    `^${escaped.replace(/\*/g, ".*").replace(/\?/g, ".")}$`,
-  );
+  return new RegExp(`^${escaped.replace(/\*/g, ".*").replace(/\?/g, ".")}$`);
 }
 
 function collectWorkspaces(includeRoot) {
@@ -192,20 +179,9 @@ function collectWorkspaces(includeRoot) {
         dir,
         path,
         name: pkg.name ?? path,
-        knipConfig: findKnipConfig(dir),
       };
     })
     .sort((a, b) => a.path.localeCompare(b.path));
-}
-
-function findKnipConfig(dir) {
-  for (const fileName of KNIP_CONFIG_FILES) {
-    const filePath = join(dir, fileName);
-    if (existsSync(filePath)) {
-      return relative(ROOT, filePath);
-    }
-  }
-  return null;
 }
 
 function matchesFilter(pkg, filters) {
@@ -245,7 +221,9 @@ function getKnipCommand() {
 function getBunCommand() {
   const candidates = [
     process.env.npm_execpath,
-    process.env.BUN_INSTALL ? join(process.env.BUN_INSTALL, "bin", "bun") : null,
+    process.env.BUN_INSTALL
+      ? join(process.env.BUN_INSTALL, "bin", "bun")
+      : null,
     ...getPathCandidates("bun"),
   ];
 
@@ -316,7 +294,7 @@ for (let index = 0; index < packages.length; index += 1) {
   const pkg = packages[index];
   const scopeArgs =
     pkg.path === "." ? ["--directory", "."] : ["--workspace", pkg.path];
-  const configArgs = pkg.knipConfig ? ["--config", pkg.knipConfig] : [];
+  const configArgs = ROOT_KNIP_CONFIG ? ["--config", ROOT_KNIP_CONFIG] : [];
   const args = [
     ...prefixArgs,
     ...configArgs,

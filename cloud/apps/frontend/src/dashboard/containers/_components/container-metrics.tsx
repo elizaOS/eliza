@@ -37,6 +37,30 @@ interface ContainerMetricsProps {
   containerName: string;
 }
 
+type UtilizationBadgeVariant = "default" | "secondary" | "destructive";
+
+const METRICS_REFRESH_MS = 10_000;
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / k ** i).toFixed(2)} ${sizes[i]}`;
+}
+
+function getUtilizationColor(utilization: number): string {
+  if (utilization >= 80) return "text-red-500";
+  if (utilization >= 60) return "text-yellow-500";
+  return "text-green-500";
+}
+
+function getUtilizationBadge(utilization: number): UtilizationBadgeVariant {
+  if (utilization >= 80) return "destructive";
+  if (utilization >= 60) return "default";
+  return "secondary";
+}
+
 export function ContainerMetrics({ containerId, containerName }: ContainerMetricsProps) {
   const [metrics, setMetrics] = useState<ContainerMetrics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -45,55 +69,37 @@ export function ContainerMetrics({ containerId, containerName }: ContainerMetric
 
   const fetchMetrics = useCallback(async () => {
     setLoading(true);
-    const response = await fetch(`/api/v1/containers/${containerId}/metrics?period=60`);
+    try {
+      const response = await fetch(`/api/v1/containers/${containerId}/metrics?period=60`);
 
-    if (!response.ok) {
-      throw new Error("Failed to fetch metrics");
-    }
+      if (!response.ok) {
+        throw new Error("Failed to fetch metrics");
+      }
 
-    const data = await response.json();
-    if (data.success) {
-      setMetrics(data.data.metrics);
-      setError(null);
-    } else {
-      setError(data.error || "Failed to load metrics");
+      const data = await response.json();
+      if (data.success) {
+        setMetrics(data.data.metrics);
+        setError(null);
+      } else {
+        setError(data.error || "Failed to load metrics");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch metrics");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [containerId]);
 
   useEffect(() => {
-    // Use setTimeout to avoid synchronous setState in effect
-    setTimeout(() => {
-      fetchMetrics();
-    }, 0);
+    void fetchMetrics();
   }, [fetchMetrics]);
 
   useEffect(() => {
     if (autoRefresh) {
-      const interval = setInterval(fetchMetrics, 10000); // Refresh every 10 seconds
+      const interval = setInterval(fetchMetrics, METRICS_REFRESH_MS);
       return () => clearInterval(interval);
     }
   }, [autoRefresh, fetchMetrics]);
-
-  const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return "0 B";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return `${(bytes / k ** i).toFixed(2)} ${sizes[i]}`;
-  };
-
-  const getUtilizationColor = (utilization: number): string => {
-    if (utilization >= 80) return "text-red-500";
-    if (utilization >= 60) return "text-yellow-500";
-    return "text-green-500";
-  };
-
-  const getUtilizationBadge = (utilization: number): string => {
-    if (utilization >= 80) return "destructive";
-    if (utilization >= 60) return "default";
-    return "secondary";
-  };
 
   if (loading && !metrics) {
     return (
@@ -130,6 +136,8 @@ export function ContainerMetrics({ containerId, containerName }: ContainerMetric
   }
 
   if (!metrics) return null;
+  const healthyTaskPercent =
+    metrics.task_count > 0 ? (metrics.healthy_task_count / metrics.task_count) * 100 : 0;
 
   return (
     <Card className="shadow-lg shadow-black/50">
@@ -146,7 +154,7 @@ export function ContainerMetrics({ containerId, containerName }: ContainerMetric
             <Button
               variant={autoRefresh ? "default" : "outline"}
               size="sm"
-              onClick={() => setAutoRefresh(!autoRefresh)}
+              onClick={() => setAutoRefresh((current) => !current)}
               title="Toggle auto-refresh"
             >
               <RefreshCw className={`h-4 w-4 ${autoRefresh ? "animate-spin" : ""}`} />
@@ -172,12 +180,7 @@ export function ContainerMetrics({ containerId, containerName }: ContainerMetric
                 <Cpu className="h-4 w-4 text-blue-500" />
               </div>
               <Badge
-                variant={
-                  getUtilizationBadge(metrics.cpu_utilization) as
-                    | "default"
-                    | "secondary"
-                    | "destructive"
-                }
+                variant={getUtilizationBadge(metrics.cpu_utilization)}
                 className="text-xs"
               >
                 {metrics.cpu_utilization.toFixed(1)}%
@@ -205,12 +208,7 @@ export function ContainerMetrics({ containerId, containerName }: ContainerMetric
                 <HardDrive className="h-4 w-4 text-purple-500" />
               </div>
               <Badge
-                variant={
-                  getUtilizationBadge(metrics.memory_utilization) as
-                    | "default"
-                    | "secondary"
-                    | "destructive"
-                }
+                variant={getUtilizationBadge(metrics.memory_utilization)}
                 className="text-xs"
               >
                 {metrics.memory_utilization.toFixed(1)}%
@@ -296,7 +294,7 @@ export function ContainerMetrics({ containerId, containerName }: ContainerMetric
                 <span className="text-lg text-muted-foreground">/ {metrics.task_count}</span>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                {((metrics.healthy_task_count / metrics.task_count) * 100).toFixed(0)}% healthy
+                {healthyTaskPercent.toFixed(0)}% healthy
               </p>
             </div>
           </div>
@@ -304,7 +302,7 @@ export function ContainerMetrics({ containerId, containerName }: ContainerMetric
             <div
               className="h-full bg-green-500 transition-all duration-500"
               style={{
-                width: `${(metrics.healthy_task_count / metrics.task_count) * 100}%`,
+                width: `${healthyTaskPercent}%`,
               }}
             />
           </div>

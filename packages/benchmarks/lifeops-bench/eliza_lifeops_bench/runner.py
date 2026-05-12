@@ -46,7 +46,10 @@ import logging
 import os
 import re
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timedelta, timezone
+from copy import deepcopy
+from datetime import date, datetime, timedelta, timezone
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
 from .clients.base import BaseClient
@@ -142,18 +145,89 @@ _PROMOTED_ACTION_DEFAULTS: dict[str, tuple[str, str, str]] = {
     "MESSAGE_READ_WITH_CONTACT": ("MESSAGE", "operation", "read_with_contact"),
 }
 
+_ACTION_NAME_ALIASES: dict[str, str] = {
+    "SCHEDULED_TASKS_CREATE": "SCHEDULED_TASK_CREATE",
+    "SCHEDULED_TASKS_SNOOZE": "SCHEDULED_TASK_SNOOZE",
+    "SCHEDULED_TASKS_UPDATE": "SCHEDULED_TASK_UPDATE",
+}
+
+
+_CALENDAR_ACTION_ALIASES: dict[str, str] = {
+    "feed": "search_events",
+    "trip_window": "search_events",
+}
+
+_MESSAGE_ACTION_ALIASES: dict[str, str] = {
+    "list_inbox": "search_inbox",
+    "search": "search_inbox",
+    "respond": "send",
+    "send_draft": "send",
+    "draft_followup": "draft_reply",
+}
+
+_ENTITY_ACTION_ALIASES: dict[str, str] = {
+    "create": "add",
+    "read": "list",
+}
+
 
 def _normalize_action(action: Action) -> Action:
     """Canonicalize planner-facing aliases before executor dispatch."""
+    aliased_name = _ACTION_NAME_ALIASES.get(action.name)
+    if aliased_name is not None:
+        return _normalize_action(Action(name=aliased_name, kwargs=action.kwargs))
     if action.name in {"REPLY", "RESPOND"}:
         return Action(name="REPLY", kwargs=action.kwargs)
     promoted = _PROMOTED_ACTION_DEFAULTS.get(action.name)
     if promoted is None:
-        return action
+        return _normalize_umbrella_discriminator(action)
     parent, discriminator, value = promoted
     kwargs = dict(action.kwargs)
     kwargs.setdefault(discriminator, value)
     return Action(name=parent, kwargs=kwargs)
+
+
+def _normalize_umbrella_discriminator(action: Action) -> Action:
+    """Accept field-registry discriminator aliases on umbrella actions."""
+    if action.name == "CALENDAR":
+        return _with_discriminator_alias(
+            action,
+            target_field="subaction",
+            aliases=_CALENDAR_ACTION_ALIASES,
+            allowed=set(_DISCRIMINATORS["CALENDAR"][1]),
+        )
+    if action.name == "MESSAGE":
+        return _with_discriminator_alias(
+            action,
+            target_field="operation",
+            aliases=_MESSAGE_ACTION_ALIASES,
+            allowed=set(_DISCRIMINATORS["MESSAGE"][1]),
+        )
+    if action.name == "ENTITY":
+        return _with_discriminator_alias(
+            action,
+            target_field="subaction",
+            aliases=_ENTITY_ACTION_ALIASES,
+            allowed=set(_DISCRIMINATORS["ENTITY"][1]),
+        )
+    return action
+
+
+def _with_discriminator_alias(
+    action: Action,
+    *,
+    target_field: str,
+    aliases: dict[str, str],
+    allowed: set[str],
+) -> Action:
+    kwargs = dict(action.kwargs)
+    if target_field not in kwargs:
+        raw = kwargs.get("action")
+        if isinstance(raw, str):
+            candidate = aliases.get(raw, raw)
+            if candidate in allowed:
+                kwargs[target_field] = candidate
+    return Action(name=action.name, kwargs=kwargs)
 
 
 _OPENAI_FUNCTION_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -278,6 +352,118 @@ def _tool_parameters_for_action(action_name: str) -> dict[str, Any]:
     return schema
 
 
+@lru_cache(maxsize=1)
+def _field_registry_tools_by_name() -> dict[str, dict[str, Any]]:
+    manifest_path = Path(__file__).resolve().parents[1] / "manifests" / "actions.manifest.json"
+    try:
+        raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    actions = raw.get("actions") if isinstance(raw, dict) else None
+    if not isinstance(actions, list):
+        return {}
+    tools: dict[str, dict[str, Any]] = {}
+    for tool in actions:
+        if not isinstance(tool, dict):
+            continue
+        function = tool.get("function")
+        if not isinstance(function, dict):
+            continue
+        name = function.get("name")
+        if not isinstance(name, str):
+            continue
+        if _OPENAI_FUNCTION_NAME_RE.fullmatch(name) is None:
+            continue
+        tools.setdefault(name, tool)
+    return tools
+
+
+def _registry_tool_for_action(action_name: str) -> dict[str, Any] | None:
+    tool = _field_registry_tools_by_name().get(action_name)
+    if tool is None:
+        return None
+    function = tool.get("function")
+    if not isinstance(function, dict):
+        return None
+    params = function.get("parameters")
+    if not isinstance(params, dict) or params.get("type") != "object":
+        return None
+    sanitized_function = deepcopy(function)
+    sanitized_function = {
+        "name": action_name,
+        "description": (
+            _TOOL_DESCRIPTIONS.get(action_name)
+            or sanitized_function.get("description")
+            or "Execute this LifeOps action when the user request requires it."
+        ),
+        "parameters": _sanitize_registry_parameters(
+            action_name, sanitized_function["parameters"]
+        ),
+    }
+    return {"type": "function", "function": sanitized_function}
+
+
+def _sanitize_registry_parameters(
+    action_name: str, schema: dict[str, Any]
+) -> dict[str, Any]:
+    schema = deepcopy(schema)
+    schema.setdefault("type", "object")
+    schema.setdefault("properties", {})
+    if not isinstance(schema["properties"], dict):
+        schema["properties"] = {}
+    # Keep top-level schemas permissive so real planner aliases can still be
+    # accepted by the executor while the field registry supplies better hints.
+    schema["additionalProperties"] = True
+
+    promoted = _PROMOTED_ACTION_DEFAULTS.get(action_name)
+    if promoted is not None:
+        _, discriminator, value = promoted
+        _set_schema_discriminator(schema, discriminator, [value], required=False)
+        return schema
+
+    discriminator = _DISCRIMINATORS.get(action_name)
+    if discriminator is not None:
+        field, values = discriminator
+        _set_schema_discriminator(schema, field, values, required=True)
+    return schema
+
+
+def _set_schema_discriminator(
+    schema: dict[str, Any],
+    field: str,
+    values: list[str],
+    *,
+    required: bool,
+) -> None:
+    properties = schema["properties"]
+    existing = properties.get(field)
+    if not isinstance(existing, dict):
+        existing = {}
+    existing["type"] = "string"
+    existing["enum"] = list(values)
+    existing.setdefault("description", f"LifeOps discriminator: {', '.join(values)}.")
+    properties[field] = existing
+
+    # If the field registry used `action` for a canonical discriminator, keep
+    # it as an optional alias but restrict it to executor-supported values.
+    if field != "action":
+        alias = properties.get("action")
+        if isinstance(alias, dict):
+            alias["enum"] = list(values)
+
+    current_required = schema.get("required")
+    required_values = [
+        item
+        for item in (current_required if isinstance(current_required, list) else [])
+        if isinstance(item, str) and item != "action"
+    ]
+    if required and field not in required_values:
+        required_values.append(field)
+    elif not required:
+        required_values = [item for item in required_values if item != field]
+    schema["required"] = required_values
+
+
 def build_tool_manifest(_world: LifeWorld) -> list[dict[str, Any]]:
     """Build the OpenAI-compatible tool manifest for the current LifeOps world.
 
@@ -289,6 +475,10 @@ def build_tool_manifest(_world: LifeWorld) -> list[dict[str, Any]]:
     tools: list[dict[str, Any]] = []
     for action_name in sorted(supported_actions()):
         if _OPENAI_FUNCTION_NAME_RE.fullmatch(action_name) is None:
+            continue
+        registry_tool = _registry_tool_for_action(action_name)
+        if registry_tool is not None:
+            tools.append(registry_tool)
             continue
         tools.append(
             {
@@ -468,12 +658,26 @@ def _h_contact_delete(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[
 
 
 def _h_reminder_create(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
+    reminder_id = (
+        kw.get("reminder_id")
+        or kw.get("reminderId")
+        or kw.get("id")
+        or _synthetic_id(
+            "reminder_auto",
+            {
+                "l": kw.get("list_id") or kw.get("listId"),
+                "t": kw.get("title"),
+                "d": kw.get("due_at") or kw.get("dueAt") or kw.get("due"),
+            },
+        )
+    )
+    list_id = kw.get("list_id") or kw.get("listId") or "list_personal"
     reminder = world.create_reminder(
-        reminder_id=kw["reminder_id"],
-        list_id=kw["list_id"],
+        reminder_id=reminder_id,
+        list_id=list_id,
         title=kw["title"],
         notes=kw.get("notes", ""),
-        due_at=kw.get("due_at"),
+        due_at=kw.get("due_at") or kw.get("dueAt") or kw.get("due"),
         priority=kw.get("priority", "none"),
         tags=kw.get("tags"),
     )
@@ -481,7 +685,10 @@ def _h_reminder_create(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict
 
 
 def _h_reminder_complete(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
-    reminder = world.complete_reminder(kw["reminder_id"])
+    reminder_id = kw.get("reminder_id") or kw.get("reminderId") or kw.get("id") or kw.get("target")
+    if not isinstance(reminder_id, str) or not reminder_id:
+        raise KeyError("REMINDER.complete needs reminder_id/reminderId/id/target")
+    reminder = world.complete_reminder(reminder_id)
     return {"id": reminder.id, "completed_at": reminder.completed_at}
 
 
@@ -514,20 +721,33 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
         sub = _required(kw, "subaction", action=name, sub="<missing>")
     details = _details(kw)
     if sub == "create_event":
-        calendar_id = (
+        calendar_id = _resolve_calendar_id(
+            world,
             details.get("calendarId")
             or kw.get("calendarId")
             or details.get("calendar_id")
             or kw.get("calendar_id")
-            or _primary_calendar_id(world)
+            or details.get("calendar")
+            or kw.get("calendar"),
         )
+        if not calendar_id:
+            calendar_id = _primary_calendar_id(world)
         start = (
             details.get("start")
             or kw.get("start")
+            or details.get("startAt")
+            or kw.get("startAt")
             or details.get("start_time")
             or kw.get("start_time")
         )
-        end = details.get("end") or kw.get("end") or details.get("end_time") or kw.get("end_time")
+        end = (
+            details.get("end")
+            or kw.get("end")
+            or details.get("endAt")
+            or kw.get("endAt")
+            or details.get("end_time")
+            or kw.get("end_time")
+        )
         if start and not end:
             end = _shift_iso(str(start), minutes=_duration_minutes(kw, details, 30))
         title = kw.get("title") or details.get("title") or "Untitled"
@@ -575,6 +795,8 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
             title=details.get("title")
             or kw.get("title")
             or updates.get("title")
+            or details.get("eventTitle")
+            or kw.get("eventTitle")
             or details.get("event_name")
             or kw.get("event_name")
             or (
@@ -585,6 +807,8 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
             ),
             date_hint=details.get("start")
             or kw.get("start")
+            or details.get("startAt")
+            or kw.get("startAt")
             or details.get("new_start")
             or kw.get("new_start")
             or details.get("newStart")
@@ -593,15 +817,25 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
             or updates.get("new_start")
             or updates.get("newStart")
             or details.get("date")
-            or kw.get("date"),
+            or kw.get("date")
+            or details.get("when")
+            or kw.get("when"),
+            calendar_hint=details.get("calendarId")
+            or kw.get("calendarId")
+            or details.get("calendar_id")
+            or kw.get("calendar_id")
+            or details.get("calendar")
+            or kw.get("calendar"),
         )
         if event is None:
             raise KeyError(
                 f"{name}/{sub} missing required field 'eventId' in kwargs={sorted(kw)}"
             )
-        start = (
+        explicit_start = (
             details.get("start")
             or kw.get("start")
+            or details.get("startAt")
+            or kw.get("startAt")
             or details.get("new_start")
             or kw.get("new_start")
             or details.get("newStart")
@@ -609,11 +843,12 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
             or updates.get("start")
             or updates.get("new_start")
             or updates.get("newStart")
-            or event.start
         )
-        end = (
+        explicit_end = (
             details.get("end")
             or kw.get("end")
+            or details.get("endAt")
+            or kw.get("endAt")
             or details.get("new_end")
             or kw.get("new_end")
             or details.get("newEnd")
@@ -622,10 +857,46 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
             or updates.get("new_end")
             or updates.get("newEnd")
         )
-        if not end:
-            end = _shift_iso(str(start), minutes=_duration_minutes(kw, details, 60))
-        event = world.move_event(event.id, start=start, end=end)
-        return {"id": event.id, "start": event.start, "end": event.end}
+        start = explicit_start or event.start
+        if explicit_end:
+            end = explicit_end
+        elif explicit_start:
+            end = _shift_iso(
+                str(start),
+                minutes=_duration_minutes(
+                    kw, details, _calendar_event_duration_minutes(event, 60)
+                ),
+            )
+        else:
+            end = event.end
+        patches: dict[str, Any] = {"start": start, "end": end}
+        for source, aliases in {
+            "title": ("newTitle", "new_title"),
+            "description": ("newDescription", "new_description"),
+            "location": ("newLocation", "new_location"),
+            "attendees": ("attendees", "newAttendees", "new_attendees"),
+            "status": ("status",),
+            "all_day": ("all_day", "allDay"),
+        }.items():
+            for alias in aliases:
+                if alias in updates:
+                    patches[source] = updates[alias]
+                    break
+                if alias in details:
+                    patches[source] = details[alias]
+                    break
+                if alias in kw:
+                    patches[source] = kw[alias]
+                    break
+        if "attendees" in patches:
+            patches["attendees"] = _string_list(patches["attendees"])
+        event = world.update(EntityKind.CALENDAR_EVENT, event.id, **patches)
+        return {
+            "id": event.id,
+            "title": event.title,
+            "start": event.start,
+            "end": event.end,
+        }
     if sub == "delete_event":
         requested_event_id = (
             details.get("eventId")
@@ -640,12 +911,24 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
             event_id=requested_event_id,
             title=details.get("title")
             or kw.get("title")
+            or details.get("eventTitle")
+            or kw.get("eventTitle")
             or details.get("event_name")
             or kw.get("event_name"),
             date_hint=details.get("date")
             or kw.get("date")
             or details.get("start")
-            or kw.get("start"),
+            or kw.get("start")
+            or details.get("startAt")
+            or kw.get("startAt")
+            or details.get("when")
+            or kw.get("when"),
+            calendar_hint=details.get("calendarId")
+            or kw.get("calendarId")
+            or details.get("calendar_id")
+            or kw.get("calendar_id")
+            or details.get("calendar")
+            or kw.get("calendar"),
         )
         if event is None:
             if requested_event_id:
@@ -660,7 +943,33 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
             )
         event = world.cancel_event(event.id)
         return {"id": event.id, "status": event.status}
-    if sub in {"search_events", "check_availability", "next_event"}:
+    if sub == "check_availability":
+        start = (
+            kw.get("startAt")
+            or details.get("startAt")
+            or kw.get("start")
+            or details.get("start")
+            or kw.get("timeMin")
+            or details.get("timeMin")
+        )
+        end = (
+            kw.get("endAt")
+            or details.get("endAt")
+            or kw.get("end")
+            or details.get("end")
+            or kw.get("timeMax")
+            or details.get("timeMax")
+        )
+        if not isinstance(start, str) or not isinstance(end, str):
+            raise KeyError(
+                f"{name}/{sub} requires startAt/endAt or start/end in kwargs={sorted(kw)}"
+            )
+        return {
+            "subaction": sub,
+            "ok": True,
+            "events": _search_calendar_events(world, kw, details),
+        }
+    if sub in {"search_events", "next_event"}:
         return {
             "subaction": sub,
             "ok": True,
@@ -718,12 +1027,18 @@ def _send_email_via_message(world: LifeWorld, kw: dict[str, Any]) -> dict[str, A
     if not to_emails:
         raise KeyError("MESSAGE/send (gmail) requires to_emails")
     subject = kw.get("subject") or ""
-    body = kw.get("body") or kw.get("body_plain") or ""
+    body = (
+        kw.get("body")
+        or kw.get("body_plain")
+        or kw.get("messageBody")
+        or kw.get("text")
+        or ""
+    )
     from_email = kw.get("from_email") or "me@example.test"
     thread_id = kw.get("threadId") or kw.get("thread_id") or _synthetic_id(
         "thread_auto", {"to": sorted(to_emails), "s": subject}
     )
-    message_id = kw.get("messageId") or kw.get("message_id") or _synthetic_id(
+    message_id = kw.get("messageId") or kw.get("message_id") or kw.get("id") or _synthetic_id(
         "email_auto", {"th": thread_id, "b": body, "s": subject}
     )
     msg = world.send_email(
@@ -740,14 +1055,22 @@ def _send_email_via_message(world: LifeWorld, kw: dict[str, Any]) -> dict[str, A
 def _send_chat_via_message(
     world: LifeWorld, kw: dict[str, Any], source: str
 ) -> dict[str, Any]:
-    target_kind = kw.get("targetKind", "contact")
+    target_kind = kw.get("targetKind") or kw.get("target_kind") or "contact"
     text = kw.get("message") or kw.get("text") or ""
     if not text:
         raise KeyError("MESSAGE/send (chat) requires message/text")
     channel = source or "imessage"
 
-    if target_kind == "group":
-        room_id = _required(kw, "roomId", action="MESSAGE", sub="send/group")
+    if target_kind in {"group", "room", "channel"}:
+        room_id = (
+            kw.get("roomId")
+            or kw.get("room_id")
+            or kw.get("channelId")
+            or kw.get("channel_id")
+            or kw.get("target")
+        )
+        if not isinstance(room_id, str) or not room_id:
+            raise KeyError("MESSAGE/send (group) requires roomId/channelId/target")
         if room_id not in world.conversations:
             world.ensure_synthetic_conversation(
                 conversation_id=room_id,
@@ -798,12 +1121,29 @@ def _draft_reply_via_message(
         # Drafts on chat channels aren't modeled — treat as no-op so state
         # match still works. Add a non-mail draft store if scenarios need one.
         return {"operation": "draft_reply", "source": source, "ok": True, "noop": True}
-    parent_id = _required(kw, "messageId", action="MESSAGE", sub="draft_reply")
+    parent_id = (
+        kw.get("messageId")
+        or kw.get("message_id")
+        or kw.get("inReplyToId")
+        or kw.get("in_reply_to_id")
+        or kw.get("id")
+        or kw.get("target")
+    )
+    if not isinstance(parent_id, str) or not parent_id:
+        raise KeyError("MESSAGE/draft_reply needs messageId/inReplyToId/id")
     parent = world.emails.get(parent_id)
     thread_id = parent.thread_id if parent is not None else _synthetic_id(
         "thread_auto", {"p": parent_id}
     )
-    body = kw.get("body") or ""
+    body = (
+        kw.get("body")
+        or kw.get("body_plain")
+        or kw.get("reply")
+        or kw.get("replyText")
+        or kw.get("messageBody")
+        or kw.get("text")
+        or ""
+    )
     subject = (
         f"Re: {parent.subject}" if parent is not None else (kw.get("subject") or "Re:")
     )
@@ -830,9 +1170,27 @@ def _draft_reply_via_message(
 
 
 def _manage_email_via_message(world: LifeWorld, kw: dict[str, Any]) -> dict[str, Any]:
-    op = _required(kw, "manageOperation", action="MESSAGE", sub="manage")
-    msg_id = kw.get("messageId")
-    thread_id = kw.get("threadId")
+    raw_op = (
+        kw.get("manageOperation")
+        or kw.get("manage_operation")
+        or kw.get("mailOperation")
+        or kw.get("mail_operation")
+        or kw.get("action")
+        or kw.get("verb")
+    )
+    if not isinstance(raw_op, str) or not raw_op:
+        raise KeyError("MESSAGE/manage missing required field 'manageOperation'")
+    op = {
+        "archive_thread": "archive",
+        "markRead": "mark_read",
+        "mark_read": "mark_read",
+        "read": "mark_read",
+        "delete": "trash",
+        "trash_email": "trash",
+        "star_email": "star",
+    }.get(raw_op, raw_op)
+    msg_id = kw.get("messageId") or kw.get("message_id") or kw.get("id") or kw.get("target")
+    thread_id = kw.get("threadId") or kw.get("thread_id")
     if op == "archive":
         if msg_id is not None:
             msg = world.archive_email(msg_id)
@@ -931,15 +1289,28 @@ def _u_life_create(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str,
         )
     title = kw.get("title") or "Untitled"
     details = _details(kw)
-    detail_kind = details.get("kind", "reminder")
+    detail_kind = details.get("kind") or kw.get("kind") or "reminder"
     if detail_kind in {"reminder", "alarm"}:
-        list_id = details.get("listId") or "list_personal"
+        list_id = (
+            details.get("listId")
+            or details.get("list_id")
+            or kw.get("listId")
+            or kw.get("list_id")
+            or "list_personal"
+        )
         if list_id not in world.reminder_lists:
             raise KeyError(
                 f"LIFE_CREATE references unknown reminder list '{list_id}' "
                 f"(known: {sorted(world.reminder_lists)})"
             )
-        due_at = details.get("due") or details.get("due_at")
+        due_at = (
+            details.get("due")
+            or details.get("due_at")
+            or details.get("dueAt")
+            or kw.get("due")
+            or kw.get("due_at")
+            or kw.get("dueAt")
+        )
         reminder_id = _synthetic_id(
             "reminder_auto",
             {"t": title, "l": list_id, "d": due_at, "kind": detail_kind},
@@ -1056,17 +1427,243 @@ def _u_life_skip(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str,
     return {"subaction": kw.get("subaction", "skip"), "ok": True, "noop": True}
 
 
-def _u_scheduled_task_mutate(
-    _world: LifeWorld, kw: dict[str, Any], _name: str
-) -> dict[str, Any]:
-    """SCHEDULED_TASK_SNOOZE/UPDATE — no-op when task id isn't seeded in the world.
+def _scheduled_task_id(kw: dict[str, Any]) -> str | None:
+    raw = (
+        kw.get("taskId")
+        or kw.get("task_id")
+        or kw.get("id")
+        or kw.get("target")
+        or kw.get("scheduledTaskId")
+        or kw.get("scheduled_task_id")
+    )
+    return raw if isinstance(raw, str) and raw.strip() else None
 
-    The LLM occasionally references ``task_*`` ids that don't exist in the
-    snapshot. Modeling them would require a separate scheduled-task store;
-    folding into reminders breaks identity (tasks ≠ reminders). Both
-    replays no-op identically so state-hash scoring still works.
+
+def _scheduled_task_trigger(kw: dict[str, Any]) -> dict[str, Any]:
+    raw = kw.get("trigger")
+    trigger = dict(raw) if isinstance(raw, dict) else {}
+    at = (
+        kw.get("atIso")
+        or kw.get("at_iso")
+        or kw.get("dueAt")
+        or kw.get("due_at")
+        or kw.get("due")
+    )
+    if isinstance(at, str) and at:
+        trigger.setdefault("atIso", at)
+    return trigger
+
+
+def _scheduled_task_patches(
+    kw: dict[str, Any], *, include_identity: bool = True
+) -> dict[str, Any]:
+    patches: dict[str, Any] = {}
+    if include_identity:
+        kind = kw.get("kind")
+        if isinstance(kind, str) and kind:
+            patches["kind"] = kind
+        prompt = (
+            kw.get("promptInstructions")
+            or kw.get("prompt_instructions")
+            or kw.get("instructions")
+            or kw.get("title")
+        )
+        if isinstance(prompt, str):
+            patches["prompt_instructions"] = prompt
+        trigger = _scheduled_task_trigger(kw)
+        if trigger:
+            patches["trigger"] = trigger
+
+    alias_groups = {
+        "output": ("output",),
+        "subject": ("subject",),
+        "priority": ("priority",),
+        "should_fire": ("shouldFire", "should_fire"),
+        "completion_check": ("completionCheck", "completion_check"),
+        "pipeline": ("pipeline",),
+        "metadata": ("metadata",),
+        "state": ("state", "status"),
+        "respects_global_pause": ("respectsGlobalPause", "respects_global_pause"),
+    }
+    for field, aliases in alias_groups.items():
+        for alias in aliases:
+            if alias not in kw:
+                continue
+            value = kw[alias]
+            if field in {
+                "output",
+                "subject",
+                "should_fire",
+                "completion_check",
+                "pipeline",
+                "metadata",
+            }:
+                if isinstance(value, dict):
+                    patches[field] = dict(value)
+                elif value is None:
+                    patches[field] = None
+            elif field == "respects_global_pause":
+                patches[field] = bool(value)
+            else:
+                patches[field] = value
+            break
+    return patches
+
+
+def _u_scheduled_task_mutate(
+    world: LifeWorld, kw: dict[str, Any], name: str
+) -> dict[str, Any]:
+    """Apply SCHEDULED_TASK_UPDATE/SNOOZE to the benchmark task store.
+
+    Some static scenarios target production task ids that are not pre-seeded
+    in LifeWorld. We materialize a placeholder before applying the mutation so
+    the final hash records the id and structural update instead of granting a
+    free no-op match.
     """
-    return {"subaction": kw.get("subaction", "update"), "ok": True, "noop": True}
+    task_id = _scheduled_task_id(kw)
+    if not task_id:
+        raise KeyError(f"{name} needs taskId/task_id/id/target")
+    existing = world.scheduled_tasks.get(task_id)
+    if existing is None:
+        existing = world.create_scheduled_task(
+            task_id=task_id,
+            kind=str(kw.get("kind") or "unknown"),
+            prompt_instructions=str(
+                kw.get("promptInstructions")
+                or kw.get("prompt_instructions")
+                or kw.get("title")
+                or "Unseeded scheduled task"
+            ),
+            trigger={},
+            metadata={"materialized_from": name},
+        )
+
+    if name.endswith("SNOOZE"):
+        minutes_raw = kw.get("minutes") or kw.get("durationMinutes") or kw.get("duration")
+        minutes = int(minutes_raw) if isinstance(minutes_raw, (int, float, str)) else 0
+        trigger = dict(existing.trigger)
+        base = str(trigger.get("atIso") or trigger.get("at_iso") or world.now_iso)
+        trigger["atIso"] = (
+            kw.get("until")
+            or kw.get("untilIso")
+            or kw.get("until_iso")
+            or _shift_iso(base, minutes=minutes)
+        )
+        metadata = dict(existing.metadata)
+        metadata.update({"snoozedMinutes": minutes, "lastMutation": name})
+        updated = world.update_scheduled_task(
+            task_id,
+            trigger=trigger,
+            state="snoozed",
+            metadata=metadata,
+        )
+        return {"id": updated.id, "state": updated.state, "trigger": updated.trigger}
+
+    updates = kw.get("updates") or _details(kw)
+    if not isinstance(updates, dict):
+        updates = {}
+    patches = _scheduled_task_patches({**kw, **updates})
+    metadata = dict(existing.metadata)
+    metadata["lastMutation"] = name
+    patches["metadata"] = {**metadata, **dict(patches.get("metadata") or {})}
+    updated = world.update_scheduled_task(task_id, **patches)
+    return {"id": updated.id, "state": updated.state}
+
+
+_SCHEDULED_TASK_STATE_BY_ACTION: dict[str, str] = {
+    "SCHEDULED_TASKS_ACKNOWLEDGE": "acknowledged",
+    "SCHEDULED_TASKS_CANCEL": "cancelled",
+    "SCHEDULED_TASKS_COMPLETE": "completed",
+    "SCHEDULED_TASKS_DISMISS": "dismissed",
+    "SCHEDULED_TASKS_REOPEN": "active",
+    "SCHEDULED_TASKS_SKIP": "skipped",
+}
+
+
+def _u_scheduled_task_state(
+    world: LifeWorld, kw: dict[str, Any], name: str
+) -> dict[str, Any]:
+    task_id = _scheduled_task_id(kw)
+    if not task_id:
+        raise KeyError(f"{name} needs taskId/task_id/id/target")
+    existing = world.scheduled_tasks.get(task_id)
+    if existing is None:
+        existing = world.create_scheduled_task(
+            task_id=task_id,
+            kind=str(kw.get("kind") or "unknown"),
+            prompt_instructions=str(
+                kw.get("promptInstructions")
+                or kw.get("prompt_instructions")
+                or kw.get("title")
+                or "Unseeded scheduled task"
+            ),
+            trigger=_scheduled_task_trigger(kw),
+            metadata={"materialized_from": name},
+        )
+    state = _SCHEDULED_TASK_STATE_BY_ACTION[name]
+    metadata = dict(existing.metadata)
+    metadata["lastMutation"] = name
+    task = world.update_scheduled_task(task_id, state=state, metadata=metadata)
+    return {"id": task.id, "state": task.state}
+
+
+def _u_scheduled_tasks_readonly(
+    world: LifeWorld, kw: dict[str, Any], name: str
+) -> dict[str, Any]:
+    task_id = _scheduled_task_id(kw)
+    tasks = list(world.scheduled_tasks.values())
+    if task_id:
+        tasks = [task for task in tasks if task.id == task_id]
+    kind = kw.get("kind")
+    if isinstance(kind, str) and kind:
+        tasks = [task for task in tasks if task.kind == kind]
+    state = kw.get("state") or kw.get("status")
+    if isinstance(state, str) and state:
+        tasks = [task for task in tasks if task.state == state]
+    return {
+        "subaction": kw.get("subaction") or kw.get("action") or name,
+        "ok": True,
+        "tasks": [
+            {
+                "id": task.id,
+                "kind": task.kind,
+                "state": task.state,
+                "trigger": task.trigger,
+                "promptInstructions": task.prompt_instructions,
+            }
+            for task in sorted(tasks, key=lambda item: item.id)
+        ],
+    }
+
+
+def _u_scheduled_tasks(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, Any]:
+    op = str(kw.get("operation") or kw.get("action") or kw.get("subaction") or "list")
+    op = {
+        "ack": "acknowledge",
+        "create_task": "create",
+        "list_tasks": "list",
+    }.get(op, op)
+    if op == "create":
+        return _u_scheduled_task_create(world, kw, "SCHEDULED_TASK_CREATE")
+    if op in {"update", "snooze"}:
+        return _u_scheduled_task_mutate(
+            world, kw, f"SCHEDULED_TASK_{op.upper()}"
+        )
+    state_action = {
+        "acknowledge": "SCHEDULED_TASKS_ACKNOWLEDGE",
+        "cancel": "SCHEDULED_TASKS_CANCEL",
+        "complete": "SCHEDULED_TASKS_COMPLETE",
+        "dismiss": "SCHEDULED_TASKS_DISMISS",
+        "reopen": "SCHEDULED_TASKS_REOPEN",
+        "skip": "SCHEDULED_TASKS_SKIP",
+    }.get(op)
+    if state_action is not None:
+        return _u_scheduled_task_state(world, kw, state_action)
+    if op in {"get", "history", "list"}:
+        return _u_scheduled_tasks_readonly(world, kw, name)
+    raise UnsupportedAction(
+        f"unsupported action in execute path: SCHEDULED_TASKS/{op} — file gap in LIFEOPS_BENCH_GAPS.md"
+    )
 
 
 def _u_health(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
@@ -1148,32 +1745,36 @@ def _u_block(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any
 def _u_scheduled_task_create(
     world: LifeWorld, kw: dict[str, Any], _name: str
 ) -> dict[str, Any]:
-    """SCHEDULED_TASK_CREATE — model as a reminder on list_personal.
-
-    LifeWorld doesn't have a separate scheduled-task store; folding into
-    reminders gives state-hash determinism without inventing a new entity
-    kind. Split this out if scenarios start needing
-    scheduled-task semantics that diverge from reminders.
-    """
-    if "list_personal" not in world.reminder_lists:
-        raise KeyError(
-            "SCHEDULED_TASK_CREATE expects a reminder list 'list_personal' in the world"
-        )
-    title = kw.get("promptInstructions") or kw.get("title") or "Scheduled task"
-    raw_trigger = kw.get("trigger")
-    trigger = raw_trigger if isinstance(raw_trigger, dict) else {}
-    due_at = trigger.get("atIso")
-    reminder_id = _synthetic_id(
-        "reminder_sched",
-        {"t": title, "trig": trigger, "k": kw.get("kind", "reminder")},
+    """SCHEDULED_TASK_CREATE — model the production task primitive directly."""
+    trigger = _scheduled_task_trigger(kw)
+    prompt = str(
+        kw.get("promptInstructions")
+        or kw.get("prompt_instructions")
+        or kw.get("instructions")
+        or kw.get("title")
+        or "Scheduled task"
     )
-    reminder = world.create_reminder(
-        reminder_id=reminder_id,
-        list_id="list_personal",
-        title=title[:120],
-        due_at=due_at,
+    task_id = _scheduled_task_id(kw) or _synthetic_id(
+        "task_auto",
+        {
+            "k": kw.get("kind", "reminder"),
+            "p": prompt,
+            "trig": trigger,
+            "subject": kw.get("subject"),
+            "output": kw.get("output"),
+        },
     )
-    return {"id": reminder.id, "title": reminder.title}
+    if task_id in world.scheduled_tasks:
+        task = world.scheduled_tasks[task_id]
+        return {"id": task.id, "kind": task.kind, "idempotent": True}
+    task = world.create_scheduled_task(
+        task_id=task_id,
+        kind=str(kw.get("kind") or "reminder"),
+        prompt_instructions=prompt,
+        trigger=trigger,
+        **_scheduled_task_patches(kw, include_identity=False),
+    )
+    return {"id": task.id, "kind": task.kind, "state": task.state}
 
 
 # ---------------------------------------------------------------------------
@@ -1215,10 +1816,28 @@ def _primary_calendar_id(world: LifeWorld) -> str | None:
     return first.id if first is not None else None
 
 
+def _resolve_calendar_id(world: LifeWorld, value: Any) -> str | None:
+    if isinstance(value, str) and value.strip():
+        raw = value.strip()
+        if raw in world.calendars:
+            return raw
+        lowered = raw.lower()
+        if lowered in {"primary", "main", "default"}:
+            return _primary_calendar_id(world)
+        for calendar in world.calendars.values():
+            if calendar.name.lower() == lowered:
+                return calendar.id
+            if _calendar_hint_matches(calendar.id, raw):
+                return calendar.id
+    return None
+
+
 def _duration_minutes(kw: dict[str, Any], details: dict[str, Any], fallback: int) -> int:
     raw = (
         details.get("duration_minutes")
         or kw.get("duration_minutes")
+        or details.get("durationMinutes")
+        or kw.get("durationMinutes")
         or kw.get("duration")
         or details.get("duration")
     )
@@ -1236,12 +1855,22 @@ def _duration_minutes(kw: dict[str, Any], details: dict[str, Any], fallback: int
     return fallback
 
 
+def _calendar_event_duration_minutes(event: Any, fallback: int) -> int:
+    start = _try_parse_iso(str(getattr(event, "start", "")))
+    end = _try_parse_iso(str(getattr(event, "end", "")))
+    if start is None or end is None:
+        return fallback
+    minutes = int((end - start).total_seconds() // 60)
+    return max(1, minutes)
+
+
 def _find_calendar_event(
     world: LifeWorld,
     *,
     event_id: Any = None,
     title: Any = None,
     date_hint: Any = None,
+    calendar_hint: Any = None,
 ) -> Any:
     if isinstance(event_id, str) and event_id in world.calendar_events:
         return world.calendar_events[event_id]
@@ -1251,6 +1880,7 @@ def _find_calendar_event(
             event
             for event in world.calendar_events.values()
             if event.status != "cancelled"
+            and _calendar_hint_matches(event.calendar_id, calendar_hint)
         ]
         matches = [
             event for event in active_events if event.title.strip().lower() == wanted
@@ -1262,8 +1892,21 @@ def _find_calendar_event(
                 if wanted in event.title.strip().lower()
                 or event.title.strip().lower() in wanted
             ]
+        if not matches:
+            wanted_tokens = _meaningful_title_tokens(wanted)
+            matches = [
+                event
+                for event in active_events
+                if wanted_tokens
+                and (
+                    wanted_tokens.issubset(
+                        _meaningful_title_tokens(event.title)
+                    )
+                    or _meaningful_title_tokens(event.title).issubset(wanted_tokens)
+                )
+            ]
         if matches:
-            hint = _try_parse_iso(str(date_hint)) if isinstance(date_hint, str) else None
+            hint = _parse_calendar_datetime_hint(date_hint, world.now_iso)
             if hint is None:
                 hint = _try_parse_iso(world.now_iso)
             hint_date = hint.date() if hint is not None else None
@@ -1289,6 +1932,75 @@ def _find_calendar_event(
     return None
 
 
+def _meaningful_title_tokens(value: Any) -> set[str]:
+    return {
+        token
+        for token in re.findall(r"[a-z0-9]+", str(value).lower())
+        if token not in {"a", "an", "and", "for", "of", "on", "the", "to"}
+    }
+
+
+def _calendar_hint_matches(calendar_id: str, hint: Any) -> bool:
+    if not isinstance(hint, str) or not hint.strip():
+        return True
+    wanted = hint.strip().lower()
+    if wanted == calendar_id.lower():
+        return True
+    normalized = re.sub(r"[^a-z0-9]+", "", wanted)
+    calendar_normalized = re.sub(r"[^a-z0-9]+", "", calendar_id.lower())
+    return normalized == calendar_normalized or calendar_normalized.endswith(normalized)
+
+
+def _parse_calendar_datetime_hint(value: Any, now_iso: str) -> datetime | None:
+    if isinstance(value, str):
+        parsed = _try_parse_iso(value)
+        if parsed is not None:
+            return parsed
+    parsed_date = _parse_calendar_date_hint(value, now_iso)
+    if parsed_date is None:
+        return None
+    return datetime(parsed_date.year, parsed_date.month, parsed_date.day, tzinfo=timezone.utc)
+
+
+def _parse_calendar_date_hint(value: Any, now_iso: str) -> date | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    raw = value.strip().lower()
+    parsed = _try_parse_iso(raw)
+    if parsed is not None:
+        return parsed.date()
+    now = _try_parse_iso(now_iso)
+    if now is None:
+        return None
+    if raw == "today":
+        return now.date()
+    if raw == "tomorrow":
+        return (now + timedelta(days=1)).date()
+    weekdays = {
+        "monday": 0,
+        "tuesday": 1,
+        "wednesday": 2,
+        "thursday": 3,
+        "friday": 4,
+        "saturday": 5,
+        "sunday": 6,
+    }
+    match = re.search(
+        r"\b(?P<modifier>this|next)?\s*"
+        r"(?P<day>monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+        raw,
+    )
+    if match is None:
+        return None
+    target = weekdays[match.group("day")]
+    delta = (target - now.weekday()) % 7
+    if delta == 0:
+        delta = 7
+    if match.group("modifier") == "next":
+        delta += 7
+    return (now + timedelta(days=delta)).date()
+
+
 def _search_calendar_events(
     world: LifeWorld,
     kw: dict[str, Any],
@@ -1305,13 +2017,22 @@ def _search_calendar_events(
         or ""
     )
     query = str(query_raw).strip().lower()
-    date_raw = kw.get("date") or details.get("date")
-    if date_raw == "today":
-        date_filter = world.now_iso[:10]
-    elif isinstance(date_raw, str) and re.match(r"^\d{4}-\d{2}-\d{2}", date_raw):
-        date_filter = date_raw[:10]
-    else:
-        date_filter = None
+    date_raw = (
+        kw.get("date")
+        or details.get("date")
+        or kw.get("when")
+        or details.get("when")
+    )
+    parsed_date = _parse_calendar_date_hint(date_raw, world.now_iso)
+    date_filter = parsed_date.isoformat() if parsed_date is not None else None
+    calendar_hint = (
+        kw.get("calendarId")
+        or details.get("calendarId")
+        or kw.get("calendar_id")
+        or details.get("calendar_id")
+        or kw.get("calendar")
+        or details.get("calendar")
+    )
 
     time_range = kw.get("time_range") or details.get("time_range") or {}
     if not isinstance(time_range, dict):
@@ -1319,6 +2040,10 @@ def _search_calendar_events(
     start = (
         kw.get("start")
         or details.get("start")
+        or kw.get("startAt")
+        or details.get("startAt")
+        or kw.get("timeMin")
+        or details.get("timeMin")
         or kw.get("startDate")
         or details.get("startDate")
         or time_range.get("start")
@@ -1326,6 +2051,10 @@ def _search_calendar_events(
     end = (
         kw.get("end")
         or details.get("end")
+        or kw.get("endAt")
+        or details.get("endAt")
+        or kw.get("timeMax")
+        or details.get("timeMax")
         or kw.get("endDate")
         or details.get("endDate")
         or time_range.get("end")
@@ -1334,8 +2063,15 @@ def _search_calendar_events(
     def matches(event: Any) -> bool:
         if getattr(event, "status", None) == "cancelled":
             return False
+        if not _calendar_hint_matches(getattr(event, "calendar_id", ""), calendar_hint):
+            return False
         title = str(getattr(event, "title", "")).lower()
-        if query and query not in title and title not in query:
+        if query and not (
+            query in title
+            or title in query
+            or _meaningful_title_tokens(query).issubset(_meaningful_title_tokens(title))
+            or _meaningful_title_tokens(title).issubset(_meaningful_title_tokens(query))
+        ):
             return False
         event_start = str(getattr(event, "start", ""))
         event_end = str(getattr(event, "end", ""))
@@ -1427,6 +2163,19 @@ _ACTION_HANDLERS: dict[
     "SCHEDULED_TASK_CREATE": _u_scheduled_task_create,
     "SCHEDULED_TASK_SNOOZE": _u_scheduled_task_mutate,
     "SCHEDULED_TASK_UPDATE": _u_scheduled_task_mutate,
+    "SCHEDULED_TASKS": _u_scheduled_tasks,
+    "SCHEDULED_TASKS_ACKNOWLEDGE": _u_scheduled_task_state,
+    "SCHEDULED_TASKS_CANCEL": _u_scheduled_task_state,
+    "SCHEDULED_TASKS_COMPLETE": _u_scheduled_task_state,
+    "SCHEDULED_TASKS_CREATE": _u_scheduled_task_create,
+    "SCHEDULED_TASKS_DISMISS": _u_scheduled_task_state,
+    "SCHEDULED_TASKS_GET": _u_scheduled_tasks_readonly,
+    "SCHEDULED_TASKS_HISTORY": _u_scheduled_tasks_readonly,
+    "SCHEDULED_TASKS_LIST": _u_scheduled_tasks_readonly,
+    "SCHEDULED_TASKS_REOPEN": _u_scheduled_task_state,
+    "SCHEDULED_TASKS_SKIP": _u_scheduled_task_state,
+    "SCHEDULED_TASKS_SNOOZE": _u_scheduled_task_mutate,
+    "SCHEDULED_TASKS_UPDATE": _u_scheduled_task_mutate,
     # Conversational terminal sentinels are valid assistant outcomes. They
     # have no LifeWorld side effect and should not be reported as executor
     # coverage gaps.

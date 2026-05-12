@@ -48,6 +48,7 @@ IGNORED_BENCHMARK_DIRS = {
     "lib",
     "orchestrator",
     "scripts",
+    "swe-bench-pro",
     "swe-bench-workspace",
     "tests",
     "viewer",
@@ -143,7 +144,16 @@ def _make_registry_adapter(
             if existing
             else os.pathsep.join(adapter_python_paths)
         )
-        return {"PYTHONPATH": pythonpath}
+        env = {"PYTHONPATH": pythonpath}
+        for extra_key, env_key in (
+            ("openclaw_timeout_s", "OPENCLAW_TIMEOUT_S"),
+            ("hermes_timeout_s", "HERMES_TIMEOUT_S"),
+            ("eliza_bench_http_timeout_s", "ELIZA_BENCH_HTTP_TIMEOUT"),
+        ):
+            value = ctx.request.extra_config.get(extra_key)
+            if isinstance(value, (int, float)) and value > 0:
+                env[env_key] = str(float(value))
+        return env
 
     return BenchmarkAdapter(
         id=benchmark_id,
@@ -1791,7 +1801,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             adapter_id="woobench",
             directory="woobench",
             description="WooBench mystical reading benchmark",
-            cwd=str((benchmarks_root / "woobench").resolve()),
+            cwd=str(workspace_root.resolve()),
             command_builder=_command_woobench,
             env_builder=_env_woobench,
             result_patterns=["woobench_*.json"],

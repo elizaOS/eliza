@@ -150,7 +150,7 @@ const log = (q) => (...m) => {
 function stateRoot() {
   return (
     process.env.ELIZA_STATE_DIR?.trim() ||
-    process.env.MILADY_STATE_DIR?.trim() ||
+    process.env.ELIZA_STATE_DIR?.trim() ||
     path.join(os.homedir(), ".eliza")
   );
 }

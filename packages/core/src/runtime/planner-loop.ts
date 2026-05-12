@@ -623,7 +623,7 @@ function compactToolParameters(parameters: unknown): unknown {
 const RENDERED_TOOL_MEMO = new WeakMap<ContextObjectTool, string>();
 
 /**
- * When `MILADY_SHORT_FORM_ENUMS=1` is set, expose a short-form hint line on
+ * When `ELIZA_SHORT_FORM_ENUMS=1` is set, expose a short-form hint line on
  * tools whose single parameter is a closed enum. The hint lives on a NEW line
  * after the existing `parameters: { ... }` JSON so the byte-stable JSON shape
  * is preserved exactly when the flag is off. The dispatch side (see
@@ -631,7 +631,7 @@ const RENDERED_TOOL_MEMO = new WeakMap<ContextObjectTool, string>();
  * string emission back into the full JSON shape before validation.
  */
 function shortFormEnumHint(tool: ContextObjectTool): string | undefined {
-	if (process.env.MILADY_SHORT_FORM_ENUMS !== "1") return undefined;
+	if (process.env.ELIZA_SHORT_FORM_ENUMS !== "1") return undefined;
 	const action = tool.action;
 	if (!action) return undefined;
 	const parameters = action.parameters ?? [];
@@ -655,7 +655,7 @@ function shortFormEnumHint(tool: ContextObjectTool): string | undefined {
 }
 
 function renderToolForAvailableActions(tool: ContextObjectTool): string {
-	const memoKey = process.env.MILADY_SHORT_FORM_ENUMS === "1" ? null : tool;
+	const memoKey = process.env.ELIZA_SHORT_FORM_ENUMS === "1" ? null : tool;
 	if (memoKey !== null) {
 		const cached = RENDERED_TOOL_MEMO.get(memoKey);
 		if (cached !== undefined) return cached;
@@ -687,7 +687,7 @@ function renderToolForAvailableActions(tool: ContextObjectTool): string {
  * Returns `null` when no exposed action has a `routingHint` set, so the
  * planner prompt simply omits the section.
  *
- * When `MILADY_PROMPT_COMPRESS=1` is set, skip routing-hint rendering
+ * When `ELIZA_PROMPT_COMPRESS=1` is set, skip routing-hint rendering
  * entirely — the Cerebras compress-mode escape hatch trades these hints for a
  * tighter token budget. Memoized on `context.events` identity; the events
  * array is immutable per planner iteration (`appendContextEvent` returns a
@@ -698,7 +698,7 @@ const ROUTING_HINTS_MEMO = new WeakMap<
 	string | null
 >();
 function renderRoutingHintsBlock(context: ContextObject): string | null {
-	if (process.env.MILADY_PROMPT_COMPRESS === "1") return null;
+	if (process.env.ELIZA_PROMPT_COMPRESS === "1") return null;
 	const events = context.events;
 	if (events && ROUTING_HINTS_MEMO.has(events)) {
 		return ROUTING_HINTS_MEMO.get(events) ?? null;
@@ -783,7 +783,7 @@ const AVAILABLE_ACTIONS_BLOCK_MEMO = new WeakMap<
 function renderAvailableActionsBlock(context: ContextObject): string | null {
 	const events = context.events;
 	const useMemo =
-		events !== undefined && process.env.MILADY_SHORT_FORM_ENUMS !== "1";
+		events !== undefined && process.env.ELIZA_SHORT_FORM_ENUMS !== "1";
 	if (useMemo && AVAILABLE_ACTIONS_BLOCK_MEMO.has(events)) {
 		return AVAILABLE_ACTIONS_BLOCK_MEMO.get(events) ?? null;
 	}

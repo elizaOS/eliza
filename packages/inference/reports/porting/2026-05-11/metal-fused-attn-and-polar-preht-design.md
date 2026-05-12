@@ -420,13 +420,13 @@ layer) is the secondary win. **No bench number can be claimed until an M-series 
 - `METAL_KERNEL_FILES` in `metal-kernels.mjs` gains a `fused_attn.metal` standalone (one
   file holding `kernel_fused_attn_qjl_polar_f32`, `..._tbq3_polar_f32`,
   `..._tbq4_polar_f32`, `..._tbq3tcq_polar_f32`). It's copied verbatim into
-  `ggml/src/ggml-metal/milady-shipped/` with the `// # MILADY-KERNEL-PATCH-V1` sentinel,
+  `ggml/src/ggml-metal/eliza-shipped/` with the `// # ELIZA-KERNEL-PATCH-V1` sentinel,
   compiled to its own `.air`, and merged into `default.metallib` — same flow as the five
   existing standalones (no change to the CMake patch shape; just one more file in the
-  list, which the existing `miladyAirLinesForSdk` / `miladyAirInputs` loops already
+  list, which the existing `elizaAirLinesForSdk` / `elizaAirInputs` loops already
   handle).
 - iOS `GGML_METAL_EMBED_LIBRARY=ON` path: the patcher's embed branch
-  (`patchMetallibCmake` → `SENTINEL_EMBED`) already compiles every `milady-shipped/*.metal`
+  (`patchMetallibCmake` → `SENTINEL_EMBED`) already compiles every `eliza-shipped/*.metal`
   to a separate `.air`, merges them with `ggml-metal-embed.air` into a binary
   `default.metallib`, and `.incbin`s the bytes — so a new standalone is picked up
   automatically. No new iOS-specific work beyond making sure the file is in
@@ -434,7 +434,7 @@ layer) is the secondary win. **No bench number can be claimed until an M-series 
   *runtime-dispatch-ready* (in `metal-runtime-dispatch-evidence.json`), not merely
   symbol-present — keep that gate.
 - New `patchFusedAttnDispatch(cacheDir, {dryRun})` in `metal-kernels.mjs`, sentinel-gated
-  (`# MILADY-KERNEL-PATCH-V1` family), wiring `GGML_OP_FUSED_ATTN_QJL_TBQ` in
+  (`# ELIZA-KERNEL-PATCH-V1` family), wiring `GGML_OP_FUSED_ATTN_QJL_TBQ` in
   `ggml-metal-ops.cpp` to select `kernel_fused_attn_<k>_<v>_f32` by `(src[1]->type,
   src[2]->type)`, with `GGML_ASSERT`s mirroring the existing `ggml_metal_op_attn_score_tbq`
   asserts (head_dim==128, contiguous rows, GQA divisibility, op_param presence). Idempotent
@@ -516,8 +516,8 @@ robustness observation.
   `idx = elem<16 ? (qb&0xF) : (qb>>4)`, `×norm` — matches q4_0-style packing. `within0`
   is a multiple of 4 and the `hi = within0>=16` test never straddles the 16 boundary
   (16 is a multiple of 4) — the four `idx*` all use the same nibble half. OK. (The fork's
-  in-tree `milady-kernels/tbq4_0.metal` is an earlier draft with a different inner loop;
-  the build copies *this* standalone into `milady-shipped/`, so the metallib ships the
+  in-tree `eliza-kernels/tbq4_0.metal` is an earlier draft with a different inner loop;
+  the build copies *this* standalone into `eliza-shipped/`, so the metallib ships the
   FMA-tuned variant — consistent with `PATCH_AUDIT_2026-05-10.md` and the README.)
 - **`turbo3_tcq.metal` / `_multi`**: `half norm; uint8 qs[49]; uint8 pad` (52 B). Decode
   reads a sliding 9-bit window at bit `t*3` (not `t*3 + 6` — the "6 prefix bits" in the

@@ -1,55 +1,55 @@
 # Eliza-1 HF Release Readiness Audit - 2026-05-12
 
-Scope: final Eliza-1 HF weights, checksums, licenses, evals, and upload evidence that can be verified locally in `/Users/shawwalters/eliza-workspace/milady/eliza`.
+Scope: final Eliza-1 HF weights, checksums, licenses, evals, and upload evidence that can be verified locally in `/Users/shawwalters/eliza-workspace/eliza/eliza`.
 
 ## Local bundle inventory
 
 No final staged release bundle was found under the expected local release roots:
 
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-0_6b.bundle`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-1_7b.bundle`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-27b.bundle`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-27b-256k.bundle`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-27b-1m.bundle`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-0_6b.bundle`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-1_7b.bundle`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-27b.bundle`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-27b-256k.bundle`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-27b-1m.bundle`
 
 Because those roots are absent, every required bundle-relative path in `ELIZA_1_GGUF_READINESS.md` is missing locally under the matching root. Examples of the exact missing payload paths for the 9B tier are:
 
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/text/eliza-1-9b-64k.gguf`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/text/eliza-1-9b-128k.gguf`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/tts/omnivoice-base-Q8_0.gguf`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/tts/omnivoice-tokenizer-Q8_0.gguf`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/asr/eliza-1-asr.gguf`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/asr/eliza-1-asr-mmproj.gguf`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/vad/silero-vad-v5.1.2.ggml.bin`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/vision/mmproj-9b.gguf`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/dflash/drafter-9b.gguf`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/dflash/target-meta.json`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/cache/voice-preset-default.bin`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/evals/aggregate.json`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/evals/metal_verify.json`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/evals/vulkan_verify.json`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/evals/cuda_verify.json`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/evals/rocm_verify.json`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/evals/cpu_reference.json`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/evals/metal_dispatch.json`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/evals/vulkan_dispatch.json`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/evals/cuda_dispatch.json`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/evals/rocm_dispatch.json`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/evals/cpu_dispatch.json`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/licenses/LICENSE.text`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/licenses/LICENSE.voice`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/licenses/LICENSE.asr`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/licenses/LICENSE.vad`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/licenses/LICENSE.dflash`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/licenses/LICENSE.eliza-1`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/licenses/LICENSE.vision`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/checksums/SHA256SUMS`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/evidence/release.json`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/quantization/turboquant.json`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/quantization/fused_turboquant.json`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/quantization/qjl_config.json`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/eliza-1-9b.bundle/quantization/polarquant_config.json`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/text/eliza-1-9b-64k.gguf`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/text/eliza-1-9b-128k.gguf`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/tts/omnivoice-base-Q8_0.gguf`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/tts/omnivoice-tokenizer-Q8_0.gguf`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/asr/eliza-1-asr.gguf`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/asr/eliza-1-asr-mmproj.gguf`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/vad/silero-vad-v5.1.2.ggml.bin`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/vision/mmproj-9b.gguf`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/dflash/drafter-9b.gguf`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/dflash/target-meta.json`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/cache/voice-preset-default.bin`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/evals/aggregate.json`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/evals/metal_verify.json`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/evals/vulkan_verify.json`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/evals/cuda_verify.json`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/evals/rocm_verify.json`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/evals/cpu_reference.json`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/evals/metal_dispatch.json`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/evals/vulkan_dispatch.json`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/evals/cuda_dispatch.json`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/evals/rocm_dispatch.json`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/evals/cpu_dispatch.json`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/licenses/LICENSE.text`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/licenses/LICENSE.voice`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/licenses/LICENSE.asr`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/licenses/LICENSE.vad`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/licenses/LICENSE.dflash`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/licenses/LICENSE.eliza-1`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/licenses/LICENSE.vision`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/checksums/SHA256SUMS`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/evidence/release.json`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/quantization/turboquant.json`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/quantization/fused_turboquant.json`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/quantization/qjl_config.json`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/eliza-1-9b.bundle/quantization/polarquant_config.json`
 
 The same root-plus-relative-path rule applies to every other tier section in `ELIZA_1_GGUF_READINESS.md`. No local hash or upload claim was made for any absent payload.
 

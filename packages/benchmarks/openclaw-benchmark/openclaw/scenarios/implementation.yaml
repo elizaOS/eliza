@@ -106,7 +106,7 @@ scoring:
     - id: typescript_compiles
       type: code_executes
       path: src/weather.ts
-      command: "npx tsc --noEmit src/weather.ts 2>&1 || echo 'TypeScript check'"
+      command: "npx tsc --noEmit src/weather.ts"
       points: 3
       category: execution
       description: TypeScript code compiles without errors

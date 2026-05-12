@@ -1,7 +1,7 @@
-# Milady optimization pipeline
+# Eliza optimization pipeline
 
 End-to-end recipe for taking a base HuggingFace causal-LM, applying every
-Milady inference optimization (PolarQuant Q4 weights, QJL K-cache
+Eliza inference optimization (PolarQuant Q4 weights, QJL K-cache
 projection, TurboQuant V-cache, DFlash speculative decoding) on top of
 the `elizaOS/llama.cpp` fork — which ships in-tree as the git submodule at
 `packages/inference/llama.cpp` (`elizaOS/llama.cpp @ v1.0.0-eliza`, commit
@@ -12,7 +12,7 @@ downloader.
 
 ## Why this exists
 
-The Milady fork composes four non-upstream GGML types and a DFlash
+The Eliza fork composes four non-upstream GGML types and a DFlash
 spec-decode CLI surface:
 
 | Slot | Type        | What it stores                                  | Source |
@@ -51,13 +51,13 @@ Source: `packages/training/scripts/quantization/README.md` and
 packages/training/scripts/
   optimize_for_eliza1.py            ← master orchestrator (this doc)
   emit_eliza1_catalog.py            ← catalog.ts diff generator
-  push_model_to_hf.py               ← HF publisher (extended with --milady-manifest)
+  push_model_to_hf.py               ← HF publisher (extended with --eliza-manifest)
   quantization/
     polarquant_apply.py             ← PolarQuant 4-bit weights
     qjl_apply.py                    ← QJL 1-bit K cache
     turboquant_apply.py             ← TurboQuant V cache (PyTorch reference)
     fused_turboquant_apply.py       ← TurboQuant V cache (Triton kernel; needs GPU)
-    gguf_eliza1_apply.py            ← GGUF emit shim for Milady GGML types
+    gguf_eliza1_apply.py            ← GGUF emit shim for Eliza GGML types
 ```
 
 ### Apply order
@@ -77,8 +77,8 @@ stage-qjl/         (HF ckpt + qjl_config.json)
     ↓  turboquant_apply.py
 stage-turboquant/  (HF ckpt + turboquant.json)
     ↓  convert_hf_to_gguf.py (elizaOS/llama.cpp v1.0.0-eliza)
-gguf/<name>-milady-Q4_POLAR.gguf + milady_manifest.json + README.md
-    ↓  push_model_to_hf.py --milady-manifest
+gguf/<name>-eliza-Q4_POLAR.gguf + eliza_manifest.json + README.md
+    ↓  push_model_to_hf.py --eliza-manifest
 HuggingFace: elizaos/eliza-1-<tier>
 ```
 
@@ -136,7 +136,7 @@ After publish, run:
 
 ```bash
 uv run python scripts/emit_eliza1_catalog.py \
-    --manifest checkpoints/eliza-1-lite/gguf/milady_manifest.json \
+    --manifest checkpoints/eliza-1-lite/gguf/eliza_manifest.json \
     --catalog ../app-core/src/services/local-inference/catalog.ts \
     --output reports/training/catalog-eliza-1-lite.diff
 ```
@@ -210,8 +210,8 @@ The dry-run on this CPU-only Linux x86_64 box validates:
 - The manifest serializes with the right GGML type slot numbers
   (`Q4_POLAR=47`, `QJL1_256=46`, `TBQ3_0=43`).
 - The runtime block declares the exact `llama-server` flag set the
-  Milady fork understands.
-- `push_model_to_hf.py --milady-manifest` accepts the manifest and
+  Eliza fork understands.
+- `push_model_to_hf.py --eliza-manifest` accepts the manifest and
   renders a README.md using the manifest's runtime block (no template
   fallback).
 

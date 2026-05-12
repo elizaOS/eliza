@@ -14,11 +14,10 @@
  * dead-end boot in a `"Failed to connect to /127.0.0.1:31337"` loop.
  *
  * Detection is a pure user-agent test: `MainActivity.applyBrandUserAgentMarkers`
- * appends an `ElizaOS/<tag>` (or `MiladyOS/<tag>`) token to the WebView
- * UA only when `ro.elizaos.product` / `ro.miladyos.product` is set by
- * the AOSP product makefile. This file pins that contract directly via
- * the exported `isAospElizaUserAgent` helper, and exercises the
- * pre-seed wrapper (`preSeedAndroidLocalRuntimeIfFresh`) end-to-end so a
+ * appends an `ElizaOS/<tag>` token to the WebView UA only when
+ * `ro.elizaos.product` is set by the AOSP product makefile. This file pins
+ * that contract directly via the exported `isAospElizaUserAgent` helper, and
+ * exercises the pre-seed wrapper (`preSeedAndroidLocalRuntimeIfFresh`) end-to-end so a
  * regression in either the regex or the navigator plumbing is caught.
  *
  * Resolves item 15 in `docs/QA-onboarding-followups.md`.
@@ -81,12 +80,20 @@ describe("isAospElizaUserAgent — pure detection contract", () => {
     ).toBe(true);
   });
 
-  it("returns true for the MiladyOS white-label marker", () => {
+  it("returns true for a white-label AOSP UA carrying the base marker", () => {
     expect(
       isAospElizaUserAgent(
-        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 MiladyOS/2.4.0 Mobile Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 ElizaOS/2.4.0 AcmeOS/2.4.0 Mobile Safari/537.36",
       ),
     ).toBe(true);
+  });
+
+  it("returns false for a brand marker without the base AOSP marker", () => {
+    expect(
+      isAospElizaUserAgent(
+        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 AcmeOS/2.4.0 Mobile Safari/537.36",
+      ),
+    ).toBe(false);
   });
 
   it("returns true when the marker appears mid-string with a pre-release tag", () => {

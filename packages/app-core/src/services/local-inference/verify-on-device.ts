@@ -29,18 +29,39 @@ const VERIFY_PROMPT = "Reply with one word.";
 /** A short phrase to drive a single TTS dispatch through the voice scheduler. */
 const VERIFY_PHRASE = "Ready.";
 
-async function manifestDeclaresVoice(manifestPath: string): Promise<boolean> {
-  const raw = await fs.readFile(manifestPath, "utf8");
-  const manifest = parseManifestOrThrow(JSON.parse(raw));
+type VerifyEngine = Pick<
+  typeof localInferenceEngine,
+  | "load"
+  | "generate"
+  | "startVoice"
+  | "armVoice"
+  | "synthesizeSpeech"
+  | "triggerBargeIn"
+  | "stopVoice"
+  | "unload"
+>;
+
+interface VerifyBundleOnDeviceDeps {
+  readonly engine?: VerifyEngine;
+  readonly readFile?: typeof fs.readFile;
+  readonly parseManifest?: typeof parseManifestOrThrow;
+}
+
+async function manifestDeclaresVoice(
+  manifestPath: string,
+  deps: Required<Pick<VerifyBundleOnDeviceDeps, "readFile" | "parseManifest">>,
+): Promise<boolean> {
+  const raw = await deps.readFile(manifestPath, "utf8");
+  const manifest = deps.parseManifest(JSON.parse(String(raw)));
   // Voice tiers ship a TTS GGUF under `files.voice`; the ASR/VAD files are
   // gated on top of that. If there is no voice file, this is a text-only
   // bundle and the voice leg of the smoke is skipped.
   return (manifest.files.voice ?? []).length > 0;
 }
 
-async function verifyText(textGgufPath: string): Promise<void> {
-  await localInferenceEngine.load(textGgufPath);
-  const out = await localInferenceEngine.generate({
+async function verifyText(engine: VerifyEngine, textGgufPath: string): Promise<void> {
+  await engine.load(textGgufPath);
+  const out = await engine.generate({
     prompt: VERIFY_PROMPT,
     maxTokens: 1,
     temperature: 0,
@@ -52,16 +73,16 @@ async function verifyText(textGgufPath: string): Promise<void> {
   }
 }
 
-async function verifyVoice(bundleRoot: string): Promise<void> {
+async function verifyVoice(engine: VerifyEngine, bundleRoot: string): Promise<void> {
   // `useFfiBackend: true` is the production path — it loads the fused
   // `libelizainference` and hard-fails (`VoiceStartupError`) when the fused
   // build is absent. That is the intended behaviour: a voice bundle that
   // cannot run voice on this device is not verified.
-  localInferenceEngine.startVoice({ bundleRoot, useFfiBackend: true });
+  engine.startVoice({ bundleRoot, useFfiBackend: true });
   try {
-    await localInferenceEngine.armVoice();
+    await engine.armVoice();
     // One real synthesis through the voice bridge.
-    const pcm = await localInferenceEngine.synthesizeSpeech(VERIFY_PHRASE);
+    const pcm = await engine.synthesizeSpeech(VERIFY_PHRASE);
     if (!(pcm instanceof Uint8Array) || pcm.byteLength === 0) {
       throw new Error(
         "[verify-on-device] voice synthesis produced no PCM bytes",
@@ -69,26 +90,35 @@ async function verifyVoice(bundleRoot: string): Promise<void> {
     }
     // Barge-in cancel must be accepted without throwing — exercises the
     // hard-stop path the voice loop uses to abort speculative TTS.
-    localInferenceEngine.triggerBargeIn();
+    engine.triggerBargeIn();
   } finally {
-    await localInferenceEngine.stopVoice();
+    await engine.stopVoice();
   }
 }
 
-export const verifyBundleOnDevice: VerifyBundleOnDevice = async ({
-  bundleRoot,
-  manifestPath,
-  textGgufPath,
-}) => {
-  try {
-    await verifyText(textGgufPath);
-    if (await manifestDeclaresVoice(manifestPath)) {
-      await verifyVoice(bundleRoot);
+export function createVerifyBundleOnDevice(
+  deps: VerifyBundleOnDeviceDeps = {},
+): VerifyBundleOnDevice {
+  const engine = deps.engine ?? localInferenceEngine;
+  const manifestDeps = {
+    readFile: deps.readFile ?? fs.readFile,
+    parseManifest: deps.parseManifest ?? parseManifestOrThrow,
+  };
+
+  return async ({ bundleRoot, manifestPath, textGgufPath }) => {
+    try {
+      await verifyText(engine, textGgufPath);
+      if (await manifestDeclaresVoice(manifestPath, manifestDeps)) {
+        await verifyVoice(engine, bundleRoot);
+      }
+    } finally {
+      // Always release the model the verify pass loaded — the bundle is not
+      // "active" yet, and the active-model coordinator owns load/unload from
+      // here on.
+      await engine.unload().catch(() => {});
     }
-  } finally {
-    // Always release the model the verify pass loaded — the bundle is not
-    // "active" yet, and the active-model coordinator owns load/unload from
-    // here on.
-    await localInferenceEngine.unload().catch(() => {});
-  }
-};
+  };
+}
+
+export const verifyBundleOnDevice: VerifyBundleOnDevice =
+  createVerifyBundleOnDevice();

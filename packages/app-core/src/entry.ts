@@ -18,20 +18,20 @@ if (process.argv.includes("--no-color")) {
   process.env.FORCE_COLOR = "0";
 }
 
-// Build-testing bridge: when MILADY_DEV_CLOUD_API_KEY is set in non-production,
+// Build-testing bridge: when ELIZA_DEV_CLOUD_API_KEY is set in non-production,
 // promote it to ELIZAOS_CLOUD_API_KEY so the cloud plugin's env-fallback chain
 // (plugins/plugin-elizacloud/src/cloud/cloud-api-key.ts) authenticates without
-// the browser SIWE handshake. Production never sets MILADY_DEV_*, so this is
+// the browser SIWE handshake. Production never sets ELIZA_DEV_*, so this is
 // a no-op there. See scripts/cloud-siwe-login.mjs to mint a fresh key.
 if (
   process.env.NODE_ENV !== "production" &&
-  process.env.MILADY_DEV_CLOUD_API_KEY &&
+  process.env.ELIZA_DEV_CLOUD_API_KEY &&
   !process.env.ELIZAOS_CLOUD_API_KEY
 ) {
-  process.env.ELIZAOS_CLOUD_API_KEY = process.env.MILADY_DEV_CLOUD_API_KEY;
+  process.env.ELIZAOS_CLOUD_API_KEY = process.env.ELIZA_DEV_CLOUD_API_KEY;
   // Stderr only — logger isn't initialized yet at this point in boot.
   process.stderr.write(
-    "[entry] MILADY_DEV_CLOUD_API_KEY detected (dev mode): promoted to ELIZAOS_CLOUD_API_KEY\n",
+    "[entry] ELIZA_DEV_CLOUD_API_KEY detected (dev mode): promoted to ELIZAOS_CLOUD_API_KEY\n",
   );
 }
 

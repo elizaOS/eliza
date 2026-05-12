@@ -175,6 +175,42 @@ def test_compare_actions_umbrella_matches_granular_gt() -> None:
     assert compare_actions(predicted, gt) == 1.0
 
 
+def test_compare_actions_accepts_field_registry_action_discriminator_aliases() -> None:
+    """Runtime field-registry `action` aliases score like canonical discriminators."""
+    assert (
+        compare_actions(
+            [
+                Action(
+                    name="CALENDAR",
+                    kwargs={
+                        "action": "check_availability",
+                        "startAt": "2026-05-14T09:00:00Z",
+                        "endAt": "2026-05-14T10:00:00Z",
+                    },
+                )
+            ],
+            [
+                Action(
+                    name="CALENDAR",
+                    kwargs={
+                        "subaction": "check_availability",
+                        "startAt": "2026-05-14T09:00:00Z",
+                        "endAt": "2026-05-14T10:00:00Z",
+                    },
+                )
+            ],
+        )
+        == 1.0
+    )
+    assert (
+        compare_actions(
+            [Action(name="MESSAGE", kwargs={"action": "list_inbox"})],
+            [Action(name="MESSAGE", kwargs={"operation": "search_inbox"})],
+        )
+        == 1.0
+    )
+
+
 # ---------------------------------------------------------------------------
 # Bug 2: `intent` is a soft kwarg
 # ---------------------------------------------------------------------------
@@ -220,11 +256,30 @@ def test_kwargs_match_structural_aliases_are_equivalent() -> None:
     assert _kwargs_match(predicted, expected) is True
 
 
-def test_kwargs_match_intent_present_but_mismatched_still_fails() -> None:
-    """If predicted DOES emit `intent`, the value still has to match."""
+def test_kwargs_match_propose_times_window_can_be_same_day_superset() -> None:
+    """A broader same-day search window still covers the requested slot window."""
+    expected = {
+        "subaction": "propose_times",
+        "durationMinutes": 60,
+        "slotCount": 3,
+        "windowStart": "2026-05-12T13:00:00Z",
+        "windowEnd": "2026-05-15T22:00:00Z",
+    }
+    predicted = {
+        "subaction": "propose_times",
+        "durationMinutes": 60,
+        "slotCount": 3,
+        "windowStart": "2026-05-12T00:00:00Z",
+        "windowEnd": "2026-05-15T23:59:59Z",
+    }
+    assert _kwargs_match(predicted, expected) is True
+
+
+def test_kwargs_match_intent_present_but_mismatched_is_ignored() -> None:
+    """`intent` is prose documentation; executable kwargs decide the match."""
     expected = {"subaction": "x", "intent": "find a free hour on monday"}
     predicted = {"subaction": "x", "intent": "send an email to john"}
-    assert _kwargs_match(predicted, expected) is False
+    assert _kwargs_match(predicted, expected) is True
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +334,15 @@ def test_output_substring_match_accepts_calendar_confirmation_synonym() -> None:
     )
 
     assert matches == [True, True]
+
+
+def test_output_substring_match_accepts_slot_plural() -> None:
+    matches = output_substring_match(
+        [MessageTurn(role="assistant", content="Here are three slots.")],
+        ["slot"],
+    )
+
+    assert matches == [True]
 
 
 def test_output_substring_match_accepts_24_hour_time_for_pm_requirement() -> None:
@@ -501,6 +565,94 @@ def test_score_scenario_readonly_same_action_wrong_kwargs_scores_zero() -> None:
     )
 
     assert score_scenario(result, scenario) == 0.0
+
+
+def test_score_scheduled_task_create_structural_fields_affect_state_hash() -> None:
+    """ScheduledTask fields are now modeled, so missing structure changes state."""
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.scorer import state_hash
+
+    scenario = _scenario(
+        domain=Domain.SLEEP,
+        ground_truth_actions=[
+            Action(
+                name="SCHEDULED_TASK_CREATE",
+                kwargs={
+                    "subaction": "create",
+                    "kind": "reminder",
+                    "promptInstructions": "Wind down",
+                    "trigger": {"atIso": "2026-05-10T22:00:00Z"},
+                    "subject": {"kind": "self", "id": "me"},
+                    "pipeline": {"onComplete": ["task_followup"]},
+                },
+            )
+        ],
+    )
+    expected_world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    actual_world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    _execute_action(scenario.ground_truth_actions[0], expected_world)
+    _execute_action(
+        Action(
+            name="SCHEDULED_TASK_CREATE",
+            kwargs={
+                "subaction": "create",
+                "kind": "reminder",
+                "promptInstructions": "Wind down",
+                "trigger": {"atIso": "2026-05-10T22:00:00Z"},
+            },
+        ),
+        actual_world,
+    )
+    assert state_hash(actual_world) != state_hash(expected_world)
+
+    result = _result(
+        state_hash_match=False,
+        agent_actions=[
+            Action(
+                name="SCHEDULED_TASK_CREATE",
+                kwargs={
+                    "subaction": "create",
+                    "kind": "reminder",
+                    "promptInstructions": "Wind down",
+                    "trigger": {"atIso": "2026-05-10T22:00:00Z"},
+                },
+            )
+        ],
+    )
+
+    assert score_scenario(result, scenario) < 1.0
+
+
+def test_score_scheduled_task_plural_alias_matches_singular_ground_truth() -> None:
+    scenario = _scenario(
+        domain=Domain.SLEEP,
+        ground_truth_actions=[
+            Action(
+                name="SCHEDULED_TASK_CREATE",
+                kwargs={
+                    "kind": "reminder",
+                    "promptInstructions": "Wind down",
+                    "trigger": {"atIso": "2026-05-10T22:00:00Z"},
+                },
+            )
+        ],
+    )
+    result = _result(
+        state_hash_match=True,
+        agent_actions=[
+            Action(
+                name="SCHEDULED_TASKS_CREATE",
+                kwargs={
+                    "kind": "reminder",
+                    "prompt_instructions": "Wind down",
+                    "trigger": {"at_iso": "2026-05-10T22:00:00Z"},
+                },
+            )
+        ],
+    )
+
+    assert score_scenario(result, scenario) == 1.0
 
 
 def test_compile_benchmark_result_counts_missing_expected_runs_as_failures() -> None:

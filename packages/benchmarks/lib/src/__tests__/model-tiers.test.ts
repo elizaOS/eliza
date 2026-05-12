@@ -19,14 +19,14 @@ describe("resolveTier", () => {
     const spec = resolveTier({ MODEL_TIER: "small" });
     expect(spec.tier).toBe("small");
     expect(spec.provider).toBe("local-llama-cpp");
-    expect(spec.modelName).toBe("qwen3-0.6b-q8_0");
-    expect(spec.bundlePath).toContain("eliza-1-0.6b.bundle");
+    expect(spec.modelName).toBe("qwen3-0.8b-q8_0");
+    expect(spec.bundlePath).toContain("eliza-1-0.8b.bundle");
   });
 
   it("returns the mid tier when MODEL_TIER=mid", () => {
     const spec = resolveTier({ MODEL_TIER: "mid" });
     expect(spec.tier).toBe("mid");
-    expect(spec.modelName).toBe("qwen3-1.7b-q4_k_m");
+    expect(spec.modelName).toBe("qwen3-2b-q4_k_m");
     expect(spec.contextWindow).toBe(65_536);
   });
 
@@ -45,9 +45,9 @@ describe("resolveTier", () => {
   it("applies MODEL_NAME_OVERRIDE", () => {
     const spec = resolveTier({
       MODEL_TIER: "small",
-      MODEL_NAME_OVERRIDE: "qwen3-0.6b-q4_k_s",
+      MODEL_NAME_OVERRIDE: "qwen3-0.8b-q4_k_s",
     });
-    expect(spec.modelName).toBe("qwen3-0.6b-q4_k_s");
+    expect(spec.modelName).toBe("qwen3-0.8b-q4_k_s");
   });
 
   it("applies MODEL_BASE_URL_OVERRIDE", () => {
@@ -71,7 +71,7 @@ describe("resolveTier", () => {
       MODEL_TIER: "small",
       MODEL_NAME_OVERRIDE: "mutated",
     });
-    expect(DEFAULT_TIERS.small.modelName).toBe("qwen3-0.6b-q8_0");
+    expect(DEFAULT_TIERS.small.modelName).toBe("qwen3-0.8b-q8_0");
   });
 });
 

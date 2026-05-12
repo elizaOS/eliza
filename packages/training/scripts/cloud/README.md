@@ -43,9 +43,9 @@ bash packages/training/scripts/cloud/run-on-cloud.sh \
   --provider vast --task kernel-verify --gpu h100 \
   --smoke-model /models/eliza-1-smoke.gguf --yes-i-will-pay
 
-# CUDA e2e bench for the 0.6B tier on an RTX 4090:
+# CUDA e2e bench for the 0.8B tier on an RTX 4090:
 bash packages/training/scripts/cloud/run-on-cloud.sh \
-  --provider vast --task bench --gpu rtx4090 --tier 0_6b --yes-i-will-pay
+  --provider vast --task bench --gpu rtx4090 --tier 0_8b --yes-i-will-pay
 
 # Train the 27B tier on 2x B200 (delegates to train_vast.sh provision-and-train):
 bash packages/training/scripts/cloud/run-on-cloud.sh \
@@ -63,7 +63,7 @@ bash packages/training/scripts/cloud/run-on-cloud.sh \
 | `--provider` | `vast` \| `nebius` | (required) |
 | `--task` | `kernel-verify` \| `bench` \| `train` | (required) |
 | `--gpu` | `h100` `h200` `a100` `a100-80` `rtx4090` `rtx5090` `l40s` `b200` `blackwell6000` | `h100` |
-| `--tier` | `0_6b` `1_7b` `9b` `27b` `27b-256k` `27b-1m` | `0_6b` |
+| `--tier` | `0_8b` `2b` `9b` `27b` `27b-256k` `27b-1m` | `0_8b` |
 | `--ssh-pubkey` | path | `~/.ssh/id_ed25519.pub` |
 | `--smoke-model` | path to a GGUF | none (parity-only) |
 | `--yes-i-will-pay` | (gate) — required for any real provisioning | off |

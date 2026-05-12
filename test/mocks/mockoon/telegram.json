@@ -17,7 +17,7 @@
       "responses": [
         {
           "uuid": "bbbb1111-aaaa-4000-8000-000000020055",
-          "body": "{\n  \"ok\": true,\n  \"result\": {\n    \"message_id\": 4821,\n    \"from\": {\n      \"id\": 7000000001,\n      \"is_bot\": true,\n      \"first_name\": \"MiladyBot\",\n      \"username\": \"miladybot\"\n    },\n    \"chat\": {\n      \"id\": -1009876543210,\n      \"title\": \"Milady Standup\",\n      \"type\": \"supergroup\"\n    },\n    \"date\": 1746810420,\n    \"text\": \"Mock outbound message\"\n  }\n}",
+          "body": "{\n  \"ok\": true,\n  \"result\": {\n    \"message_id\": 4821,\n    \"from\": {\n      \"id\": 7000000001,\n      \"is_bot\": true,\n      \"first_name\": \"ElizaBot\",\n      \"username\": \"elizabot\"\n    },\n    \"chat\": {\n      \"id\": -1009876543210,\n      \"title\": \"Eliza Standup\",\n      \"type\": \"supergroup\"\n    },\n    \"date\": 1746810420,\n    \"text\": \"Mock outbound message\"\n  }\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "happy path",
@@ -172,7 +172,7 @@
       "responses": [
         {
           "uuid": "bbbb1111-aaaa-4000-8000-00000002005a",
-          "body": "{\n  \"ok\": true,\n  \"result\": [\n    {\n      \"update_id\": 982344571,\n      \"message\": {\n        \"message_id\": 4810,\n        \"from\": {\n          \"id\": 11122233,\n          \"is_bot\": false,\n          \"first_name\": \"Priya\",\n          \"last_name\": \"Raman\",\n          \"username\": \"priyar\"\n        },\n        \"chat\": {\n          \"id\": -1009876543210,\n          \"title\": \"Milady Standup\",\n          \"type\": \"supergroup\"\n        },\n        \"date\": 1746810360,\n        \"text\": \"Pushing the patch in 10\"\n      }\n    },\n    {\n      \"update_id\": 982344572,\n      \"message\": {\n        \"message_id\": 4811,\n        \"from\": {\n          \"id\": 22233344,\n          \"is_bot\": false,\n          \"first_name\": \"Marcus\",\n          \"username\": \"marcuso\"\n        },\n        \"chat\": {\n          \"id\": -1009876543210,\n          \"title\": \"Milady Standup\",\n          \"type\": \"supergroup\"\n        },\n        \"date\": 1746810400,\n        \"text\": \"I'll grab it.\"\n      }\n    }\n  ]\n}",
+          "body": "{\n  \"ok\": true,\n  \"result\": [\n    {\n      \"update_id\": 982344571,\n      \"message\": {\n        \"message_id\": 4810,\n        \"from\": {\n          \"id\": 11122233,\n          \"is_bot\": false,\n          \"first_name\": \"Priya\",\n          \"last_name\": \"Raman\",\n          \"username\": \"priyar\"\n        },\n        \"chat\": {\n          \"id\": -1009876543210,\n          \"title\": \"Eliza Standup\",\n          \"type\": \"supergroup\"\n        },\n        \"date\": 1746810360,\n        \"text\": \"Pushing the patch in 10\"\n      }\n    },\n    {\n      \"update_id\": 982344572,\n      \"message\": {\n        \"message_id\": 4811,\n        \"from\": {\n          \"id\": 22233344,\n          \"is_bot\": false,\n          \"first_name\": \"Marcus\",\n          \"username\": \"marcuso\"\n        },\n        \"chat\": {\n          \"id\": -1009876543210,\n          \"title\": \"Eliza Standup\",\n          \"type\": \"supergroup\"\n        },\n        \"date\": 1746810400,\n        \"text\": \"I'll grab it.\"\n      }\n    }\n  ]\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "happy path",
@@ -327,7 +327,7 @@
       "responses": [
         {
           "uuid": "bbbb1111-aaaa-4000-8000-00000002005f",
-          "body": "{\n  \"ok\": true,\n  \"result\": {\n    \"id\": 7000000001,\n    \"is_bot\": true,\n    \"first_name\": \"MiladyBot\",\n    \"username\": \"miladybot\",\n    \"can_join_groups\": true,\n    \"can_read_all_group_messages\": false,\n    \"supports_inline_queries\": false\n  }\n}",
+          "body": "{\n  \"ok\": true,\n  \"result\": {\n    \"id\": 7000000001,\n    \"is_bot\": true,\n    \"first_name\": \"ElizaBot\",\n    \"username\": \"elizabot\",\n    \"can_join_groups\": true,\n    \"can_read_all_group_messages\": false,\n    \"supports_inline_queries\": false\n  }\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "happy path",

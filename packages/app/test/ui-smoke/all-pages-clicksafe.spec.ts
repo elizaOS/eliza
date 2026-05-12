@@ -217,7 +217,7 @@ const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 const ONE_PIXEL_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
 const SMOKE_VRM = readFileSync(
-  new URL("../../../../plugins/app-companion/public_src/vrms/milady-1.vrm", import.meta.url),
+  new URL("../../../../plugins/app-companion/public_src/vrms/eliza-1.vrm", import.meta.url),
 );
 const EMPTY_PERMISSIONS = Object.fromEntries(
   PERMISSION_IDS.map((id: PermissionId) => [

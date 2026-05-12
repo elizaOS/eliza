@@ -235,7 +235,7 @@ export const ToolsWebSchema = z
 
 /**
  * Top-level cross-tool cache config. Drives the two-tier `ToolCallCache`
- * (in-memory LRU + on-disk persistent under ~/.milady/tool-cache).
+ * (in-memory LRU + on-disk persistent under ~/.eliza/tool-cache).
  *
  * Per-tool TTL overrides live under `perTool` keyed by tool name; values
  * are minutes for parity with the existing web search/fetch knobs. The

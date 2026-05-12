@@ -1,6 +1,6 @@
 // App-level plugin manifest.
 //
-// Each host app (eliza, milady, custom downstream apps) declares which
+// Each host app (eliza, eliza, custom downstream apps) declares which
 // plugins it considers candidates and how they default in its own
 // `package.json` under `elizaos.app`:
 //

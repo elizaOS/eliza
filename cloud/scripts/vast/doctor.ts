@@ -1,11 +1,16 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  listVastManifestFiles,
+  manifestGpuRamGb,
+  manifestSearchParamsToQuery,
+  readVastManifest,
+  VAST_PYWORKER_DIR,
+  type VastServeManifest,
+} from "./manifest";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const cloudRoot = join(__dirname, "..", "..");
-const vastPyworkerDir = join(cloudRoot, "services", "vast-pyworker");
-const manifestDir = join(vastPyworkerDir, "manifests");
 
 const turboQuantDtypes = new Set([
   "turboquant_k8v4",
@@ -13,25 +18,6 @@ const turboQuantDtypes = new Set([
   "turboquant_k3v4_nc",
   "turboquant_3bit_nc",
 ]);
-
-interface Manifest {
-  label?: string;
-  model?: string;
-  model_repo?: string;
-  model_alias?: string;
-  served_model_name?: string;
-  image?: string;
-  port?: number;
-  tensor_parallel_size?: number;
-  max_model_len?: number;
-  weight_quantization?: string;
-  kv_cache_dtype?: string;
-  enable_turboquant?: boolean;
-  turboquant_preset?: string;
-  additional_config?: Record<string, unknown>;
-  onstart_script?: string;
-  vast_template_env?: Record<string, string>;
-}
 
 function fail(message: string): never {
   throw new Error(message);
@@ -41,13 +27,8 @@ function assert(condition: unknown, message: string): void {
   if (!condition) fail(message);
 }
 
-function readManifest(path: string): Manifest {
-  return JSON.parse(readFileSync(path, "utf8")) as Manifest;
-}
-
 function validateManifest(file: string): void {
-  const path = join(manifestDir, file);
-  const manifest = readManifest(path);
+  const manifest = readVastManifest(file).manifest;
   const prefix = `${file}:`;
 
   assert(manifest.label, `${prefix} missing label`);
@@ -92,10 +73,27 @@ function validateManifest(file: string): void {
     !manifest.additional_config || manifest.additional_config.qjl !== true,
     `${prefix} QJL must not be enabled in manifests; use VLLM_EXPERIMENTAL_QJL with benchmark gate`,
   );
+  validateManifestSearch(file, manifest);
+}
+
+function validateManifestSearch(file: string, manifest: VastServeManifest): void {
+  const prefix = `${file}:`;
+  assert(manifest.search_params, `${prefix} missing search_params`);
+  assert(manifest.search_params?.gpu_name, `${prefix} missing search_params.gpu_name`);
+  assert(manifest.search_params?.gpu_ram, `${prefix} missing search_params.gpu_ram`);
+  assert(manifest.search_params?.disk_space, `${prefix} missing search_params.disk_space`);
+  assert(manifestGpuRamGb(manifest) > 0, `${prefix} invalid workergroup gpu_ram`);
+  assert(
+    manifestSearchParamsToQuery(manifest).includes("gpu_ram"),
+    `${prefix} search_params did not render gpu_ram query`,
+  );
+  if ((manifest.tensor_parallel_size ?? 1) > 1) {
+    assert(manifest.search_params?.num_gpus, `${prefix} multi-GPU manifest must set num_gpus`);
+  }
 }
 
 function validateRuntimeScripts(): void {
-  const vllmOnstart = readFileSync(join(vastPyworkerDir, "onstart-vllm.sh"), "utf8");
+  const vllmOnstart = readFileSync(join(VAST_PYWORKER_DIR, "onstart-vllm.sh"), "utf8");
   assert(
     vllmOnstart.includes("VLLM_QJL_BENCHMARK_GATE=passed"),
     "onstart-vllm.sh must benchmark-gate experimental QJL",
@@ -119,15 +117,27 @@ function validateRuntimeScripts(): void {
     "upsert-template.ts must keep llama as default runtime",
   );
   assert(
-    upsert.includes("MILADY_VAST_MANIFEST_JSON"),
+    upsert.includes("ELIZA_VAST_MANIFEST_JSON"),
     "upsert-template.ts must inline vLLM manifest JSON",
+  );
+  assert(
+    upsert.includes("manifest?.manifest.search_params"),
+    "upsert-template.ts must carry manifest search_params into the template",
+  );
+
+  const provision = readFileSync(join(__dirname, "provision-endpoint.ts"), "utf8");
+  assert(
+    provision.includes("/api/v0/endptjobs/") && provision.includes("/api/v0/workergroups/"),
+    "provision-endpoint.ts must use Vast endpoint jobs + workergroups APIs",
+  );
+  assert(
+    provision.includes("manifestSearchParamsToQuery") && provision.includes("manifestGpuRamGb"),
+    "provision-endpoint.ts must build hardware requirements from manifests",
   );
 }
 
 function main(): void {
-  const manifests = readdirSync(manifestDir)
-    .filter((file) => file.endsWith(".json"))
-    .sort();
+  const manifests = listVastManifestFiles();
   assert(manifests.length > 0, "no Vast manifests found");
   for (const manifest of manifests) validateManifest(manifest);
   validateRuntimeScripts();

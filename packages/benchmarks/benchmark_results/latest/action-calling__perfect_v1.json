@@ -1,0 +1,40 @@
+{
+  "agent": "perfect_v1",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T102047Z_f6fbe207/action-calling__action-calling/perfect_v1_action-calling_20260512T102048Z_3_35dd714a/output"
+  ],
+  "benchmark_directory": "action-calling",
+  "benchmark_id": "action-calling",
+  "cache_metrics": {},
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "args_parse_ok": 1.0,
+    "arguments_match": 1.0,
+    "calibration_depth": "scorer_payload",
+    "calibration_spec_version": "calibration_v1",
+    "generation_source": "synthetic_calibration",
+    "n": 1,
+    "native_tool_calls_ok": 1.0,
+    "required_keys_ok": 1.0,
+    "return_code": 0,
+    "score": 1.0,
+    "synthetic_expected_score": 1.0,
+    "synthetic_harness": "perfect_v1",
+    "synthetic_is_meaningful": true,
+    "synthetic_strategy": "function_call",
+    "tool_name_match": 1.0
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {},
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T102047Z_f6fbe207/action-calling__action-calling/perfect_v1_action-calling_20260512T102048Z_3_35dd714a/output/action_calling_results_perfect_v1.json",
+  "run_group_id": "rg_20260512T102047Z_f6fbe207",
+  "run_id": "perfect_v1_action-calling_20260512T102048Z_3_35dd714a",
+  "score": 1.0,
+  "status": "succeeded",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": "ratio",
+  "updated_at": "2026-05-12T10:20:48.116994+00:00"
+}

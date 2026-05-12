@@ -34,7 +34,7 @@ function runtime(settings: Record<string, string | undefined> = {}): IAgentRunti
   };
   const fixture: RuntimeFixture = {
     character: {
-      name: "Milady",
+      name: "Eliza",
       bio: [],
     },
     getSetting: (key: string) => merged[key],
@@ -135,7 +135,7 @@ if (missing.length > 0) {
         ],
         toolChoice: { type: "tool", toolName: "PLAN_ACTIONS" },
         providerOptions: {
-          eliza: { promptCacheKey: "agent:milady:planner-live" },
+          eliza: { promptCacheKey: "agent:eliza:planner-live" },
           openrouter: { provider: { order: ["deepinfra"] } },
           gateway: { caching: "auto" },
         },
@@ -147,8 +147,8 @@ if (missing.length > 0) {
 
       const body = chatCall?.body ?? {};
       expect(typeof body.model).toBe("string");
-      expect(body.prompt_cache_key).toBe("agent:milady:planner-live");
-      expect(body.promptCacheKey).toBe("agent:milady:planner-live");
+      expect(body.prompt_cache_key).toBe("agent:eliza:planner-live");
+      expect(body.promptCacheKey).toBe("agent:eliza:planner-live");
       expect(body.provider).toEqual({ order: ["deepinfra"] });
       expect(body.gateway).toEqual({ caching: "auto" });
       expect(Array.isArray(body.messages)).toBe(true);
@@ -161,12 +161,12 @@ if (missing.length > 0) {
         gateway: { caching: "auto" },
         openrouter: {
           provider: { order: ["deepinfra"] },
-          promptCacheKey: "agent:milady:planner-live",
-          prompt_cache_key: "agent:milady:planner-live",
+          promptCacheKey: "agent:eliza:planner-live",
+          prompt_cache_key: "agent:eliza:planner-live",
         },
         openai: {
-          promptCacheKey: "agent:milady:planner-live",
-          prompt_cache_key: "agent:milady:planner-live",
+          promptCacheKey: "agent:eliza:planner-live",
+          prompt_cache_key: "agent:eliza:planner-live",
         },
       });
       expect(body.provider_options).toEqual(body.providerOptions);

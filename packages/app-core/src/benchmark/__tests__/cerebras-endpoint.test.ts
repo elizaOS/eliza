@@ -42,7 +42,7 @@ const ENV_KEYS = [
   "OPENAI_BASE_URL",
   "OPENAI_LARGE_MODEL",
   "OPENAI_SMALL_MODEL",
-  "MILADY_PROVIDER",
+  "ELIZA_PROVIDER",
 ] as const;
 
 describe("bench-server Cerebras autowiring", () => {
@@ -78,7 +78,7 @@ describe("bench-server Cerebras autowiring", () => {
     expect(process.env.OPENAI_BASE_URL).toBe("https://api.cerebras.ai/v1");
     expect(process.env.OPENAI_BASE_URL).not.toContain("/responses");
     expect(process.env.OPENAI_API_KEY).toBe("csk-test");
-    expect(process.env.MILADY_PROVIDER).toBe("cerebras");
+    expect(process.env.ELIZA_PROVIDER).toBe("cerebras");
     expect(process.env.OPENAI_LARGE_MODEL).toBe("gpt-oss-120b");
     expect(process.env.OPENAI_SMALL_MODEL).toBe("gpt-oss-120b");
   });
@@ -112,7 +112,7 @@ describe("bench-server Cerebras autowiring", () => {
 
     expect(process.env.OPENAI_BASE_URL).toBeUndefined();
     expect(process.env.OPENAI_API_KEY).toBeUndefined();
-    expect(process.env.MILADY_PROVIDER).toBeUndefined();
+    expect(process.env.ELIZA_PROVIDER).toBeUndefined();
   });
 
   it("does not overwrite an explicit OPENAI_API_KEY (Anthropic and OpenAI-direct paths stay untouched)", () => {
@@ -123,7 +123,7 @@ describe("bench-server Cerebras autowiring", () => {
 
     expect(process.env.OPENAI_API_KEY).toBe("sk-real-openai");
     expect(process.env.OPENAI_BASE_URL).toBeUndefined();
-    expect(process.env.MILADY_PROVIDER).toBeUndefined();
+    expect(process.env.ELIZA_PROVIDER).toBeUndefined();
   });
 
   it("does not overwrite an explicit OPENAI_BASE_URL", () => {
@@ -136,16 +136,16 @@ describe("bench-server Cerebras autowiring", () => {
       "https://api.openrouter.ai/api/v1",
     );
     expect(process.env.OPENAI_API_KEY).toBeUndefined();
-    expect(process.env.MILADY_PROVIDER).toBeUndefined();
+    expect(process.env.ELIZA_PROVIDER).toBeUndefined();
   });
 
-  it("does not overwrite an explicit MILADY_PROVIDER", () => {
+  it("does not overwrite an explicit ELIZA_PROVIDER", () => {
     process.env.CEREBRAS_API_KEY = "csk-test";
-    process.env.MILADY_PROVIDER = "anthropic";
+    process.env.ELIZA_PROVIDER = "anthropic";
 
     autoWireCerebras();
 
-    expect(process.env.MILADY_PROVIDER).toBe("anthropic");
+    expect(process.env.ELIZA_PROVIDER).toBe("anthropic");
     expect(process.env.OPENAI_BASE_URL).toBeUndefined();
     expect(process.env.OPENAI_API_KEY).toBeUndefined();
   });
@@ -156,7 +156,7 @@ describe("bench-server Cerebras autowiring", () => {
     process.env.OPENAI_SMALL_MODEL = "custom-small";
 
     // OPENAI_LARGE_MODEL and OPENAI_SMALL_MODEL don't gate the autowire
-    // branch (only OPENAI_API_KEY, OPENAI_BASE_URL, and MILADY_PROVIDER do),
+    // branch (only OPENAI_API_KEY, OPENAI_BASE_URL, and ELIZA_PROVIDER do),
     // so we expect the base URL, key, and provider hint to land, but the
     // explicit model pins must survive.
     autoWireCerebras();

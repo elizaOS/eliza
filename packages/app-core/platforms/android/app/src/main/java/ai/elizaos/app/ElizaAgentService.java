@@ -821,7 +821,7 @@ public class ElizaAgentService extends Service {
             // configuration; the download fail then cascades into a
             // mid-init crash (no stderr, no exit code, agent.log empty).
             // The branded-device check uses `ro.elizaos.product` /
-            // `ro.miladyos.product` system props that are only set by
+            // `ro.elizaos.product` system props that are only set by
             // AOSP product makefiles — stock Android leaves them empty
             // and falls through to the DeviceBridge path.
             if (BuildConfig.AOSP_BUILD && isBrandedDevice()) {
@@ -1614,11 +1614,11 @@ public class ElizaAgentService extends Service {
 
     private static boolean isBrandedDevice() {
         if (!readSystemProperty("ro.elizaos.product").isEmpty()) return true;
-        // White-label forks set ro.<brand>os.product (e.g. ro.miladyos.product).
+        // White-label forks set ro.<brand>os.product (e.g. ro.elizaos.product).
         // We can't enumerate every fork's namespace from native code, so
         // probe the most common ones used by current forks. Forks that
         // need a different sysprop should override shouldAutoStart locally.
-        return !readSystemProperty("ro.miladyos.product").isEmpty();
+        return !readSystemProperty("ro.elizaos.product").isEmpty();
     }
 
     private static String readRuntimeMode(Context context) {

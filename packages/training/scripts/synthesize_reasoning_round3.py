@@ -90,7 +90,7 @@ CFG = RoundConfig(
         temperature_step=0.1,
         temperature_floor=0.2,
         max_tokens=220,
-        extra_headers={"User-Agent": "milady-training/1.0"},
+        extra_headers={"User-Agent": "eliza-training/1.0"},
     ),
     out_file=DEFAULT_OUT_FILE,
 )

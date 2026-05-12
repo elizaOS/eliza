@@ -131,6 +131,7 @@ def client(tmp_path) -> OpenClawClient:
         provider="cerebras",
         base_url="https://api.cerebras.ai/v1",
         api_key="sk-test",
+        direct_openai_compatible=True,
     )
 
 

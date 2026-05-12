@@ -62,7 +62,7 @@ function parseArgs(argv) {
 
 const args = parseArgs(process.argv.slice(2));
 const inputRoot =
-  args.input ?? path.join(os.homedir(), ".milady", "trajectories");
+  args.input ?? path.join(os.homedir(), ".eliza", "trajectories");
 const repoRoot = path.resolve(
   path.dirname(new URL(import.meta.url).pathname),
   "..",

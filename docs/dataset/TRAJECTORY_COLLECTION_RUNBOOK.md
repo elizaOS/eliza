@@ -44,8 +44,8 @@ The collector is manifest-only unless `--execute` is present. Use `--dry-run`
 when you want that intent to be visible in command history; otherwise omitting
 `--execute` has the same no-run behavior.
 
-The run id is always exported as `MILADY_COLLECTION_RUN_ID` and
-`MILADY_LIFEOPS_RUN_ID`. Entry points with a native run-id flag also receive
+The run id is always exported as `ELIZA_COLLECTION_RUN_ID` and
+`ELIZA_LIFEOPS_RUN_ID`. Entry points with a native run-id flag also receive
 `--runId <run-id>` or `--run-id <run-id>` so recorder files, reports, and
 aggregation filters line up.
 
@@ -75,9 +75,9 @@ non-Opus override replaces them.
 The older action-trajectory harness under
 `packages/training/scripts/harness/` is also provider/model configurable. Run
 it as a module and pass `--model`, `--api-url`, `--api-key-env`, and
-`--provider-label`, or set `MILADY_HARNESS_MODEL`,
-`MILADY_HARNESS_API_URL`, `MILADY_HARNESS_API_KEY_ENV`, and
-`MILADY_HARNESS_PROVIDER`. Its default remains the development Groq-compatible
+`--provider-label`, or set `ELIZA_HARNESS_MODEL`,
+`ELIZA_HARNESS_API_URL`, `ELIZA_HARNESS_API_KEY_ENV`, and
+`ELIZA_HARNESS_PROVIDER`. Its default remains the development Groq-compatible
 endpoint only as a fallback.
 
 ## Dry-Run

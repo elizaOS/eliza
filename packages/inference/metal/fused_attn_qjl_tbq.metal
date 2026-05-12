@@ -7,7 +7,7 @@
 // reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md (Part 2),
 // byte-faithful to the C reference eliza_fused_attn_qjl_tbq3() in
 // packages/inference/verify/qjl_polar_ref.c (bit-exact to fused_attn_qjl_tbq_ref
-// in the milady-llama-cpp fork). Hardware-verified bit-for-bit on both the
+// in the eliza-llama-cpp fork). Hardware-verified bit-for-bit on both the
 // Vulkan port (fused_attn_qjl_tbq.comp, Intel ARL Mesa ANV) and this Metal
 // mirror (Apple M4 Max runtime JIT).
 //

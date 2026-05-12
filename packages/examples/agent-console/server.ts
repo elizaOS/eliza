@@ -94,7 +94,7 @@ if (!provider) {
 // Inject the env vars plugin-openai expects so its Cerebras auto-detect kicks in.
 process.env.OPENAI_BASE_URL = provider.baseUrl;
 if (!process.env.OPENAI_API_KEY) process.env.OPENAI_API_KEY = provider.apiKey;
-if (provider.name === "cerebras") process.env.MILADY_PROVIDER = "cerebras";
+if (provider.name === "cerebras") process.env.ELIZA_PROVIDER = "cerebras";
 if (!process.env.OPENAI_LARGE_MODEL)
   process.env.OPENAI_LARGE_MODEL = process.env.AGENT_MODEL || provider.defaultLarge;
 if (!process.env.OPENAI_SMALL_MODEL)
@@ -209,7 +209,7 @@ const character: Character = createCharacter({
     OPENAI_LARGE_MODEL: process.env.OPENAI_LARGE_MODEL,
     OPENAI_SMALL_MODEL: process.env.OPENAI_SMALL_MODEL,
     CEREBRAS_API_KEY: provider.name === "cerebras" ? provider.apiKey : "",
-    MILADY_PROVIDER: provider.name === "cerebras" ? "cerebras" : "",
+    ELIZA_PROVIDER: provider.name === "cerebras" ? "cerebras" : "",
     ELIZA_ADMIN_ENTITY_ID: OPERATOR_ENTITY_ID,
   },
 });

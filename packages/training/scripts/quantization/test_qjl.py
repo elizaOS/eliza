@@ -13,7 +13,7 @@ This test measures:
      the C++ extension are skipped with that note. The pure-PyTorch
      reference path (upstream ``QJLSketch.qjl_qunatize``) still runs.
 
-  2. Baseline generation on ``Qwen/Qwen3-0.6B`` with bf16 ``DynamicCache``:
+  2. Baseline generation on ``Qwen/Qwen3-0.8B`` with bf16 ``DynamicCache``:
      peak VRAM, tok/sec, decoded sample.
 
   3. **Pure-PyTorch QJL simulation** on real K activations from a forward
@@ -33,7 +33,7 @@ This test measures:
        The paper's headline ~16x figure is the *inlier-only* ratio; the
        norm-per-token overhead drags the realized ratio to
        ``head_dim * 2 / (projection_dim/8 + 2)`` -- e.g.
-       ``128*2 / (256/8 + 2) = 7.53x`` for Qwen3-0.6B at projection_dim=256.
+       ``128*2 / (256/8 + 2) = 7.53x`` for Qwen3-0.8B at projection_dim=256.
        At projection_dim=128 the same formula gives 14.2x; the smaller
        projection trades quality for ratio. The ratio asserted here
        (≥7x) is the honest end-to-end number for the canonical
@@ -371,7 +371,7 @@ def capture_real_k_activations(
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
-    ap.add_argument("--model", default="Qwen/Qwen3-0.6B")
+    ap.add_argument("--model", default="Qwen/Qwen3-0.8B")
     ap.add_argument("--num-prompts", type=int, default=5)
     ap.add_argument("--max-new-tokens", type=int, default=128)
     ap.add_argument("--projection-dim-per-head", type=int, default=256)

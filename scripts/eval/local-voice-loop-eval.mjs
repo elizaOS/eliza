@@ -112,7 +112,7 @@ function localInferenceRoot() {
 
 function defaults() {
   const root = localInferenceRoot();
-  const bundle = process.env.ELIZA_BUNDLE ?? path.join(root, "models", "eliza-1-1_7b.bundle");
+  const bundle = process.env.ELIZA_BUNDLE ?? path.join(root, "models", "eliza-1-2b.bundle");
   return {
     cli:
       process.env.ELIZA_TTS_CLI ??

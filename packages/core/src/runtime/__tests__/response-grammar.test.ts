@@ -117,6 +117,38 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		expect(grammar).toContain('"\\"ONLY\\""');
 	});
 
+	it("preserves multi-value string field enums as enum spans for prefix shortcuts", () => {
+		clearResponseGrammarCache();
+		const { responseSkeleton, grammar } = buildResponseGrammar(
+			{
+				actions: [],
+				responseHandlerFields: [
+					field({
+						name: "shouldRespond",
+						priority: 5,
+						schema: { type: "string", enum: ["RESPOND", "IGNORE", "STOP"] },
+					}),
+					field({
+						name: "replyText",
+						priority: 20,
+						schema: { type: "string" },
+					}),
+				],
+			},
+			{ contexts: ["general"] },
+		);
+		const shouldRespondSpan = responseSkeleton.spans.find(
+			(span) => span.key === "shouldRespond",
+		);
+		expect(shouldRespondSpan).toMatchObject({
+			kind: "enum",
+			enumValues: ["RESPOND", "IGNORE", "STOP"],
+		});
+		expect(grammar).toContain(
+			'"\\"RESPOND\\"" | "\\"IGNORE\\"" | "\\"STOP\\""',
+		);
+	});
+
 	it("uses the field-registry envelope when registered fields are present", () => {
 		clearResponseGrammarCache();
 		const { responseSkeleton } = buildResponseGrammar(

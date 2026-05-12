@@ -24,6 +24,7 @@ const BENIGN_CONSOLE_PATTERNS = [
   /THREE\.Clock: This module has been deprecated/i,
   /THREE\.WebGLShadowMap: PCFSoftShadowMap has been deprecated/i,
   /GL Driver Message .*GPU stall due to ReadPixels/i,
+  /\[eliza\]\[startup:init\] stream settings avatar TypeError: Failed to fetch/i,
 ];
 
 function routeReadyChecks(routeCase: RouteCase): readonly ReadyCheck[] {

@@ -130,7 +130,7 @@ Run from `packages/app-core/platforms/electrobun`. Result: 2 test files passed, 
 
 - I did not start a dev server or do exhaustive manual clicking. Scope was static review plus targeted tests.
 - I did not verify live visual layout on actual browser/iOS/Android/Desktop builds, including safe-area, keyboard, window chrome, menu bar, tray, or high-DPI behavior.
-- I did not validate native plugin permission prompts or device APIs for phone, messages, contacts, WiFi, push notifications, status bar, keyboard, mobile device bridge, or Android MiladyOS-only surfaces.
+- I did not validate native plugin permission prompts or device APIs for phone, messages, contacts, WiFi, push notifications, status bar, keyboard, mobile device bridge, or Android ElizaOS-only surfaces.
 - I did not validate live cloud/catalog/runtime data, installed app availability, OAuth flows, wallet connectivity, trade execution, marketplace sessions, or remote game servers.
 - I did not launch every app package. Many apps depend on runtime servers, catalog metadata, route loaders, viewer URLs, auth handshakes, or external URLs that require an end-to-end environment.
 - I did not validate iframe/game postMessage auth with a real viewer. The static code path exists in `AppsView` and `AppWindowRenderer`, but real sessions still need live viewer checks.
@@ -148,7 +148,7 @@ None found in this bounded review.
 
 ### P2
 
-Android-only overlay filtering is inconsistent across catalog entry points. `loadMergedCatalogApps()` correctly uses `getAvailableOverlayApps()` to hide `androidOnly: true` apps off MiladyOS Android (`packages/app-core/src/components/apps/catalog-loader.ts:26-36`), but `AppsView.loadApps()` injects `getAllOverlayApps()` directly (`packages/app-core/src/components/pages/AppsView.tsx:466-470`), `AppDetailsView.resolveAppFromSlug()` resolves overlays from `getAllOverlayApps()` (`packages/app-core/src/components/pages/AppDetailsView.tsx:102-112`), and `AppWindowRenderer.resolveOverlayAppNameFromSlug()` does the same (`packages/app-core/src/shell/AppWindowRenderer.tsx:482-489`). The current `packages/app` host does not import Phone/Contacts/WiFi overlay registrations, so this may not be visible in the default elizaOS build. It is still a launch risk for white-label/native builds or future imports because direct catalog/details/app-window paths can bypass the availability filter.
+Android-only overlay filtering is inconsistent across catalog entry points. `loadMergedCatalogApps()` correctly uses `getAvailableOverlayApps()` to hide `androidOnly: true` apps off ElizaOS Android (`packages/app-core/src/components/apps/catalog-loader.ts:26-36`), but `AppsView.loadApps()` injects `getAllOverlayApps()` directly (`packages/app-core/src/components/pages/AppsView.tsx:466-470`), `AppDetailsView.resolveAppFromSlug()` resolves overlays from `getAllOverlayApps()` (`packages/app-core/src/components/pages/AppDetailsView.tsx:102-112`), and `AppWindowRenderer.resolveOverlayAppNameFromSlug()` does the same (`packages/app-core/src/shell/AppWindowRenderer.tsx:482-489`). The current `packages/app` host does not import Phone/Contacts/WiFi overlay registrations, so this may not be visible in the default elizaOS build. It is still a launch risk for white-label/native builds or future imports because direct catalog/details/app-window paths can bypass the availability filter.
 
 Phone/messages/contacts routes and deep links are globally recognized but silently fall back to Chat outside native Android. The canonical route table includes `/phone`, `/messages`, and `/contacts` (`packages/app-core/src/navigation/index.ts:289-293`), deep links set those hash routes (`packages/app/src/main.tsx:446-455`), and the render branch returns ChatView when the Android phone surface gate is false (`packages/app-core/src/App.tsx:387-410`). That may be intended, but it needs explicit product sign-off and automated regression coverage because a user can land on `/phone` on web/iOS/desktop without seeing a not-available state.
 
@@ -194,7 +194,7 @@ This matrix is intentionally targeted. It is meant to catch wiring, platform, pe
 | Game/catalog apps | Defense, ClawVille, Babylon, Scape, 2004Scape, Hyperscape as visible/configured | Same | Same | App window or game window | Details-first flow, viewer loads or error is useful, stop/reopen, iframe auth if required. |
 | Finance/wallet apps | Steward, Vincent, Hyperliquid, Polymarket if available | Same | Same | Same | Requires wallet/cloud/account setup; verify hidden/visible rules and no accidental trading action. |
 | Phone/messages/contacts | Should not show phone surfaces; direct route fallback/sign-off | Should not show phone surfaces unless product says otherwise | Native Android phone/messages/contacts | Should not show phone surfaces | Native permissions, empty states, incoming links, back behavior, direct `/phone` expectations. |
-| WiFi/Contacts/Phone overlays | Hidden | Hidden | MiladyOS Android only | Hidden | Verify Android-only overlays do not appear on stock Android/iOS/web/desktop; verify native plugin prompts on MiladyOS. |
+| WiFi/Contacts/Phone overlays | Hidden | Hidden | ElizaOS Android only | Hidden | Verify Android-only overlays do not appear on stock Android/iOS/web/desktop; verify native plugin prompts on ElizaOS. |
 | Browser workspace | `/browser` when enabled | If enabled | If enabled | Main and detached browser window | URL entry, agent browser controls, detached browser `browse` seed on desktop. |
 | Automations/workflows | `/automations`, `/apps/tasks` | Same | Same | Main and detached triggers window | Task creation/view, workflow builder route, legacy `/tasks` redirect. |
 | Character and knowledge | `/character`, `/character/select`, `/character/documents` | Same | Same | Same | Character header actions, save/selection/knowledge page transitions. |
@@ -338,7 +338,7 @@ Component: `packages/ui/src/components/pages/SkillsView.tsx` (uses `AppPageSideb
 
 Component: `plugins/app-training/src/ui/FineTuningView.tsx` (697 LOC).
 
-- [P3] `plugins/app-training/src/ui/FineTuningView.tsx:89-91` — `useState("http://localhost:11434")` — hardcoded default for the Ollama URL. If a user has Ollama on a different port (e.g. running multiple instances) they need to manually clear and re-type. Fix: read from `MILADY_OLLAMA_URL` or expose the default as a config var.
+- [P3] `plugins/app-training/src/ui/FineTuningView.tsx:89-91` — `useState("http://localhost:11434")` — hardcoded default for the Ollama URL. If a user has Ollama on a different port (e.g. running multiple instances) they need to manually clear and re-type. Fix: read from `ELIZA_OLLAMA_URL` or expose the default as a config var.
 - [P3] `plugins/app-training/src/ui/FineTuningView.tsx:73-74` — `setBuildLimit("250")` / `setBuildMinCalls("1")` are stringified default numbers. Acceptable for `<Input type="text">` but visually mixes number/string semantics. Fix: keep as numbers and stringify only at render.
 - No P0/P1/P2 findings. View uses `ContentLayout`, has loading/error/empty states, structured panels.
 

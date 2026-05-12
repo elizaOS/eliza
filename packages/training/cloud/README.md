@@ -4,11 +4,11 @@ Three published Eliza-1 fine-tunes × five hosting paths. Each row picks a
 quant flavor that's appropriate for the target hardware; the `cell`
 columns name the canonical config file and the runtime that consumes it.
 
-| Size                | Local (Milady)               | Ollama (local)                                    | vLLM (self-host)                                                   | Vast pyworker (autoscale)            | Eliza Cloud  |
+| Size                | Local (Eliza)               | Ollama (local)                                    | vLLM (self-host)                                                   | Vast pyworker (autoscale)            | Eliza Cloud  |
 |---------------------|------------------------------|---------------------------------------------------|---------------------------------------------------------------------|--------------------------------------|--------------|
-| **eliza-1-2b**      | `MILADY_MODEL=eliza-1-2b`    | `ollama/Modelfile.eliza-1-2b-q4_k_m`              | `serve_vllm.py --registry-key eliza-1-2b --gpu-target single`       | `vast-pyworker/eliza-1-2b.json`      | `vast/eliza-1-2b` (catalog entry pending) |
-| **eliza-1-9b**      | `MILADY_MODEL=eliza-1-9b`    | `ollama/Modelfile.eliza-1-9b-q4_k_m`              | `serve_vllm.py --registry-key eliza-1-9b --gpu-target h100-2x`      | `vast-pyworker/eliza-1-9b.json`      | `vast/eliza-1-9b` (catalog entry pending) |
-| **eliza-1-27b**     | `MILADY_MODEL=eliza-1-27b`   | `ollama/Modelfile.eliza-1-27b-q4_k_m`             | `serve_vllm.py --registry-key eliza-1-27b --gpu-target h200-2x`     | `vast-pyworker/eliza-1-27b.json`     | `vast/eliza-1-27b` (catalog entry pending) |
+| **eliza-1-2b**      | `ELIZA_MODEL=eliza-1-2b`    | `ollama/Modelfile.eliza-1-2b-q4_k_m`              | `serve_vllm.py --registry-key eliza-1-2b --gpu-target single`       | `vast-pyworker/eliza-1-2b.json`      | `vast/eliza-1-2b` (catalog entry pending) |
+| **eliza-1-9b**      | `ELIZA_MODEL=eliza-1-9b`    | `ollama/Modelfile.eliza-1-9b-q4_k_m`              | `serve_vllm.py --registry-key eliza-1-9b --gpu-target h100-2x`      | `vast-pyworker/eliza-1-9b.json`      | `vast/eliza-1-9b` (catalog entry pending) |
+| **eliza-1-27b**     | `ELIZA_MODEL=eliza-1-27b`   | `ollama/Modelfile.eliza-1-27b-q4_k_m`             | `serve_vllm.py --registry-key eliza-1-27b --gpu-target h200-2x`     | `vast-pyworker/eliza-1-27b.json`     | `vast/eliza-1-27b` (catalog entry pending) |
 
 The "catalog entry pending" annotation reflects that
 `eliza/cloud/packages/lib/models/catalog.ts` only has
@@ -16,7 +16,7 @@ The "catalog entry pending" annotation reflects that
 is a one-line PR per id (mirror the existing row), but is owned by the
 cloud monorepo, not this directory.
 
-The `MILADY_MODEL` env var is read by the runtime via
+The `ELIZA_MODEL` env var is read by the runtime via
 `eliza/packages/app-core/src/runtime/local-model-resolver.ts`, which
 auto-picks the right quant flavor (gguf / polarquant / fp8 / bf16) for
 the detected GPU and pulls the matching HF sibling repo on first run.
@@ -122,5 +122,5 @@ Reference docs in the wider repo:
 - `eliza/cloud/services/vast-pyworker/` — the existing pyworker that
   fronts the GGUF / llama-server path on Vast (Q6_K 27B today).
 - `eliza/packages/app-core/src/runtime/local-model-resolver.ts` —
-  the Milady-side resolver that maps `MILADY_MODEL=eliza-1-<size>` →
+  the Eliza-side resolver that maps `ELIZA_MODEL=eliza-1-<size>` →
   `(repo, quant, backend)` per detected GPU.

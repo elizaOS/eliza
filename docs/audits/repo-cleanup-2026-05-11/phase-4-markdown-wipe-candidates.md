@@ -1,7 +1,7 @@
 # Phase 4 Markdown Wipe Candidates
 
 Date: 2026-05-11
-Scope root: `/Users/shawwalters/eliza-workspace/milady/eliza`
+Scope root: `/Users/shawwalters/eliza-workspace/eliza/eliza`
 Assigned output: `docs/audits/repo-cleanup-2026-05-11/phase-4-markdown-wipe-candidates.md`
 
 ## Scope
@@ -426,7 +426,7 @@ Review deletion of:
 - `packages/docs/docs/launchdocs/05-settings-qa.md`
 - `packages/docs/docs/launchdocs/06-ios-qa.md`
 - `packages/docs/docs/launchdocs/07-android-qa.md`
-- `packages/docs/docs/launchdocs/08-cloud-milady-ai-qa.md`
+- `packages/docs/docs/launchdocs/08-cloud-eliza-ai-qa.md`
 - `packages/docs/docs/launchdocs/09-desktop-qa.md`
 - `packages/docs/docs/launchdocs/10-remote-interfaces.md`
 - `packages/docs/docs/launchdocs/11-browser-wallet-qa.md`

@@ -331,7 +331,10 @@ async def run_cli(args: argparse.Namespace) -> int:
 
             if args.dry_run:
                 return 0
-            return 0 if report.accuracy > 0 else 1
+            # A completed benchmark run is a successful process invocation even
+            # when the model scores 0%. The orchestrator extracts score from
+            # the JSON report and treats nonzero exits as harness failures.
+            return 0
     finally:
         if server_mgr is not None:
             server_mgr.stop()

@@ -83,8 +83,8 @@ if [[ -z "$APP_DIR" ]]; then
   fi
 fi
 COMMON_BUILD_ENV=(ELIZA_ELECTROBUN_REPO_ROOT="$REPO_ROOT")
-if [[ -f "$REPO_ROOT/eliza/packages/app-core/package.json" && -z "${MILADY_ELIZA_SOURCE:-}" && -z "${ELIZA_SOURCE:-}" ]]; then
-  COMMON_BUILD_ENV+=(MILADY_ELIZA_SOURCE="local")
+if [[ -f "$REPO_ROOT/eliza/packages/app-core/package.json" && -z "${ELIZA_ELIZA_SOURCE:-}" && -z "${ELIZA_SOURCE:-}" ]]; then
+  COMMON_BUILD_ENV+=(ELIZA_ELIZA_SOURCE="local")
 fi
 BUILD_ENV="${BUILD_ENV:-canary}"
 SKIP_SIGNATURE_CHECK="${SKIP_SIGNATURE_CHECK:-0}"
@@ -125,7 +125,7 @@ STATE_ERROR=""
 STATE_EXIT_CODE=""
 STATE_UPDATED_AT=""
 STATE_SOURCE_FILE=""
-DEFAULT_AVATAR_ASSET_SLUGS=(eliza-1 milady-1)
+DEFAULT_AVATAR_ASSET_SLUGS=(eliza-1 eliza-1)
 
 if [[ "$SKIP_SIGNATURE_CHECK" == "1" && -z "$BUILD_SKIP_CODESIGN" ]]; then
   BUILD_SKIP_CODESIGN="1"

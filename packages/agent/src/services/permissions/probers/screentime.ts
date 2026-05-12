@@ -7,7 +7,7 @@
  *
  * Screen Time is gated by the FamilyControls entitlement
  * (`com.apple.developer.family-controls`) which Apple grants only to
- * approved apps. The Milady dev build doesn't have it, so we report
+ * approved apps. The Eliza dev build doesn't have it, so we report
  * `restricted/entitlement_required`.
  *
  * The mobile-signals plugin already exposes a more elaborate Screen Time

@@ -1,9 +1,9 @@
 """Vast.ai budget enforcement + cost surfacing.
 
 Computes a running cost snapshot for a provisioned Vast instance and
-enforces the soft/hard cap policy defined by ``MILADY_VAST_MAX_USD``:
+enforces the soft/hard cap policy defined by ``ELIZA_VAST_MAX_USD``:
 
-  * **soft cap** = ``MILADY_VAST_MAX_USD`` (USD). Crossing it emits a
+  * **soft cap** = ``ELIZA_VAST_MAX_USD`` (USD). Crossing it emits a
     warn event but the run continues.
   * **hard cap** = 1.5 × soft cap. Crossing it triggers an auto-teardown
     decision (the watcher script destroys the instance).
@@ -28,7 +28,7 @@ The ``enforce`` subcommand returns:
   * exit 0 — under soft cap (or no cap configured)
   * exit 10 — over soft cap (warning event written)
   * exit 11 — over hard cap (auto-teardown signaled by writing
-    ``MILADY_STATE_DIR/vast-budget/<instance_id>.teardown`` sentinel)
+    ``ELIZA_STATE_DIR/vast-budget/<instance_id>.teardown`` sentinel)
 
 The watcher (``scripts/vast-watcher.sh``) polls ``enforce`` and acts on
 the exit code.
@@ -47,7 +47,7 @@ from dataclasses import asdict, dataclass
 from scripts.lib import vast as _vast_cli
 
 
-SOFT_CAP_ENV = "MILADY_VAST_MAX_USD"
+SOFT_CAP_ENV = "ELIZA_VAST_MAX_USD"
 HARD_CAP_MULTIPLIER = 1.5
 
 # Exit codes used by the ``enforce`` subcommand to communicate budget
@@ -60,9 +60,9 @@ EXIT_BACKEND_ERROR = 2
 
 
 def _state_dir() -> str:
-    return os.environ.get("MILADY_STATE_DIR") or os.environ.get(
+    return os.environ.get("ELIZA_STATE_DIR") or os.environ.get(
         "ELIZA_STATE_DIR"
-    ) or os.path.join(os.path.expanduser("~"), ".milady")
+    ) or os.path.join(os.path.expanduser("~"), ".eliza")
 
 
 def budget_dir() -> str:

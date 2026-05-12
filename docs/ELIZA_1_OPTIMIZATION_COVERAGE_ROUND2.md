@@ -159,8 +159,8 @@ checkout. The closest current evidence is `ELIZA_1_TESTING_TODO.md`,
   schema identity, but if the org rename requires `elizaos`, it is not a
   docs-only change: runtime parsers, JSON Schema files, tests, generated
   manifests, and published bundle compatibility must migrate together.
-- Several docs/code comments still say `Milady-optimized` or reference
-  `MILADY_*` environment variables. Some are historical/internal env names and
+- Several docs/code comments still say `Eliza-optimized` or reference
+  `ELIZA_*` environment variables. Some are historical/internal env names and
   not necessarily stale. User-facing strings should continue to say `Eliza-1`.
 - `publish_eliza1_model.py` describes older single-GGUF optimized repos
   (`elizaos/<base>-optimized`) and is not the canonical multi-file Eliza-1

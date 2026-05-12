@@ -43,6 +43,19 @@ def _score_from_bfcl_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="bfcl:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="bfcl:root"), ctx="bfcl:metrics")
     overall = expect_float(get_required(metrics, "overall_score", ctx="bfcl:metrics"), ctx="bfcl:overall_score")
+    total_tests = get_optional(metrics, "total_tests") or 0
+    error_analysis = get_optional(metrics, "error_analysis")
+    if total_tests == 0:
+        no_ground_truth = 0
+        if isinstance(error_analysis, dict):
+            raw_no_gt = error_analysis.get("no_ground_truth")
+            if isinstance(raw_no_gt, (int, float)):
+                no_ground_truth = int(raw_no_gt)
+        if no_ground_truth:
+            raise ValueError(
+                "bfcl: sample produced no evaluable ground-truth tests "
+                f"(no_ground_truth={no_ground_truth})"
+            )
 
     return ScoreExtraction(
         score=overall,
@@ -53,7 +66,8 @@ def _score_from_bfcl_json(data: JSONValue) -> ScoreExtraction:
             "ast_accuracy": get_optional(metrics, "ast_accuracy") or 0,
             "exec_accuracy": get_optional(metrics, "exec_accuracy") or 0,
             "relevance_accuracy": get_optional(metrics, "relevance_accuracy") or 0,
-            "total_tests": get_optional(metrics, "total_tests") or 0,
+            "total_tests": total_tests,
+            "error_analysis": error_analysis or {},
         },
     )
 
@@ -736,64 +750,6 @@ def _score_from_gauntlet_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
-def _score_from_eliza_format_json(data: JSONValue) -> ScoreExtraction:
-    """Extract score from training/scripts/benchmark/eliza_bench.py summary.json.
-
-    The script writes a per-bucket dict with ``format_pct`` and ``content_pct``
-    (both 0..100). The wrapper CLI's API path also writes a top-level
-    ``metrics.score`` field. We prefer the explicit metrics block when present
-    and otherwise compute ``0.5 * format_ok + 0.5 * content_ok`` averaged across
-    buckets that recorded at least one example.
-    """
-    root = expect_dict(data, ctx="eliza_format:root")
-    metrics_obj = get_optional(root, "metrics")
-    if isinstance(metrics_obj, dict):
-        score = expect_float(
-            get_required(metrics_obj, "score", ctx="eliza_format:metrics"),
-            ctx="eliza_format:metrics.score",
-        )
-        return ScoreExtraction(
-            score=score,
-            unit="ratio",
-            higher_is_better=True,
-            metrics={
-                "score": score,
-                "format_ok": metrics_obj.get("format_ok") or 0,
-                "content_ok": metrics_obj.get("content_ok") or 0,
-                "examples": root.get("examples") or 0,
-            },
-        )
-    buckets = expect_dict(get_required(root, "buckets", ctx="eliza_format:root"), ctx="eliza_format:buckets")
-    fmt_pcts: list[float] = []
-    content_pcts: list[float] = []
-    for name, raw in buckets.items():
-        if not isinstance(raw, dict):
-            continue
-        n = raw.get("n")
-        if not isinstance(n, int) or n <= 0:
-            continue
-        fmt = raw.get("format_pct")
-        content = raw.get("content_pct")
-        if isinstance(fmt, (int, float)):
-            fmt_pcts.append(float(fmt) / 100.0)
-        if isinstance(content, (int, float)):
-            content_pcts.append(float(content) / 100.0)
-    fmt_avg = sum(fmt_pcts) / len(fmt_pcts) if fmt_pcts else 0.0
-    content_avg = sum(content_pcts) / len(content_pcts) if content_pcts else 0.0
-    score = 0.5 * fmt_avg + 0.5 * content_avg
-    return ScoreExtraction(
-        score=score,
-        unit="ratio",
-        higher_is_better=True,
-        metrics={
-            "score": score,
-            "format_ok": fmt_avg,
-            "content_ok": content_avg,
-            "buckets_scored": len(fmt_pcts),
-        },
-    )
-
-
 def _score_from_scambench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="scambench:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="scambench:root"), ctx="scambench:metrics")
@@ -870,10 +826,7 @@ def _score_from_action_calling_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="action_calling:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="action_calling:root"), ctx="action_calling:metrics")
     score = expect_float(get_required(metrics, "score", ctx="action_calling:metrics"), ctx="action_calling:metrics.score")
-    provider = root.get("provider")
     generation_source = root.get("generation_source")
-    if provider == "eliza" and generation_source != "model_text":
-        raise ValueError("action_calling:eliza result must score actual model_text, not synthesized action params")
     n = root.get("n") or 0
     if not isinstance(n, int) or n <= 0:
         raise ValueError("action_calling:n must be positive")
@@ -883,12 +836,34 @@ def _score_from_action_calling_json(data: JSONValue) -> ScoreExtraction:
         higher_is_better=True,
         metrics={
             "score": score,
-            "format_ok": metrics.get("format_ok") or 0,
-            "action_name_match": metrics.get("action_name_match") or 0,
+            "native_tool_calls_ok": metrics.get("native_tool_calls_ok") or 0,
+            "tool_name_match": metrics.get("tool_name_match") or 0,
             "args_parse_ok": metrics.get("args_parse_ok") or 0,
             "required_keys_ok": metrics.get("required_keys_ok") or 0,
+            "arguments_match": metrics.get("arguments_match") or 0,
             "n": n,
             "generation_source": generation_source or "",
+        },
+    )
+
+
+def _score_from_eliza_format_json(data: JSONValue) -> ScoreExtraction:
+    root = expect_dict(data, ctx="eliza_format:root")
+    metrics_obj = get_optional(root, "metrics")
+    metrics = expect_dict(metrics_obj, ctx="eliza_format:metrics") if isinstance(metrics_obj, dict) else root
+    score_raw = get_optional(metrics, "score")
+    if score_raw is None:
+        score_raw = get_optional(root, "score")
+    score = expect_float(score_raw, ctx="eliza_format:score")
+    return ScoreExtraction(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "score": score,
+            "format_ok": metrics.get("format_ok") or 0,
+            "content_ok": metrics.get("content_ok") or 0,
+            "examples": metrics.get("examples") or metrics.get("n") or 0,
         },
     )
 
@@ -2283,49 +2258,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _woobench_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="woobench_*.json")
 
-    # eliza-format — wraps training/scripts/benchmark/eliza_bench.py.
-    # Default cwd is `packages/training` (resolved from workspace_root via
-    # cwd_rel), so test-file path is relative to that root.
-    def _eliza_format_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
-        provider = (model.provider or "").strip().lower() or "hf"
-        args = [
-            python,
-            "-m",
-            "benchmarks.eliza_format.cli",
-            "--provider",
-            provider,
-            "--out",
-            str(output_dir),
-        ]
-        if model.model:
-            args.extend(["--model", model.model])
-        base_url = extra.get("base_url")
-        if not isinstance(base_url, str) or not base_url.strip():
-            base_url = extra.get("vllm_base_url")
-        if isinstance(base_url, str) and base_url.strip():
-            args.extend(["--base-url", base_url.strip()])
-        api_key_env = extra.get("api_key_env")
-        if isinstance(api_key_env, str) and api_key_env.strip():
-            args.extend(["--api-key-env", api_key_env.strip()])
-        test_file = extra.get("test_file")
-        if isinstance(test_file, str) and test_file.strip():
-            test_path = Path(test_file.strip())
-            if not test_path.is_absolute():
-                for candidate in (repo_root / test_path, repo_root.parent / test_path):
-                    if candidate.exists():
-                        test_path = candidate.resolve()
-                        break
-            args.extend(["--test-file", str(test_path)])
-        max_per_bucket = extra.get("max_per_bucket") or extra.get("max_examples")
-        if isinstance(max_per_bucket, int) and max_per_bucket > 0:
-            args.extend(["--max-per-bucket", str(max_per_bucket)])
-        else:
-            args.extend(["--max-per-bucket", "200"])
-        return args
-
-    def _eliza_format_result(output_dir: Path) -> Path:
-        return output_dir / "summary.json"
-
     # scambench
     def _scambench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         provider = (model.provider or "").strip().lower() or "vllm"
@@ -2406,6 +2338,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         temperature = extra.get("temperature")
         if isinstance(temperature, (int, float)) and not isinstance(temperature, bool) and temperature >= 0:
             args.extend(["--temperature", str(float(temperature))])
+        tool_choice = extra.get("tool_choice")
+        if isinstance(tool_choice, str) and tool_choice in {"auto", "required"}:
+            args.extend(["--tool-choice", tool_choice])
+        else:
+            args.extend(["--tool-choice", "required"])
         return args
 
     def _abliteration_robustness_result(output_dir: Path) -> Path:
@@ -3221,26 +3158,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_woobench_json,
         ),
         BenchmarkDefinition(
-            id="eliza-format",
-            display_name="Eliza-Format",
-            description="Strict TOON format + content scoring against held-out eliza-1 test set",
-            cwd_rel="training",
-            requirements=BenchmarkRequirements(
-                env_vars=(),
-                paths=("training/scripts/benchmark/eliza_bench.py", "training/data/final/test.jsonl"),
-                notes=(
-                    "Wraps training/scripts/benchmark/eliza_bench.py in place. "
-                    "Provider hf loads the model via transformers; provider vllm/openai/anthropic "
-                    "routes through the OpenAI Python SDK against --base-url; provider mock "
-                    "replays a fixture for no-credential smoke tests. "
-                    "Score = 0.5 * format_ok + 0.5 * content_ok averaged across buckets."
-                ),
-            ),
-            build_command=_eliza_format_cmd,
-            locate_result=_eliza_format_result,
-            extract_score=_score_from_eliza_format_json,
-        ),
-        BenchmarkDefinition(
             id="scambench",
             display_name="ScamBench",
             description="Adversarial scam-detection benchmark (refusal vs helpfulness)",
@@ -3282,15 +3199,15 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         BenchmarkDefinition(
             id="action-calling",
             display_name="Action Calling",
-            description="Strict TOON action emission against held-out planner-style records",
+            description="Native function/tool calling against planner-style records",
             cwd_rel=".",
             requirements=BenchmarkRequirements(
                 env_vars=(),
-                paths=("training/data/final/test.jsonl",),
+                paths=("training/data/native/records/hermes-fc-v1.jsonl",),
                 notes=(
-                    "Samples planner-style records (message_handler/agent_trace/tool_call/mcp_tool_call). "
-                    "Asserts TOON parse, action-name match, args JSON parse, and required-arg presence. "
-                    "Score = geometric mean of the four sub-rates."
+                    "Samples native planner records and sends OpenAI-compatible tools to the provider. "
+                    "Asserts real tool-call emission, tool-name match, args JSON parse, required-arg presence, "
+                    "and expected argument-value preservation. Score = geometric mean of the five sub-rates."
                 ),
             ),
             build_command=_action_calling_cmd,

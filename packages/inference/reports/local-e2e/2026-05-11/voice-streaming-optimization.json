@@ -75,6 +75,6 @@
     "Expose true DFlash accept/reject token events from the fused native runtime or llama-server stream; current HTTP streaming path forwards accepted text deltas through the same callback shape but still cannot cancel TTS for speculative branches the server never emitted.",
     "Make the product chat/voice UI call the streamed local path directly instead of waiting for post-hoc TTS on completed assistant messages.",
     "Record first-token, first-audio, peak RSS, and thermal metrics from the iOS/Android app shells with the same streaming/prewarm settings.",
-    "Backport the dflash-draft architecture loader into the optimized milady fused runtime so the publishable binary does not rely on the nonpublishable DFlash loader bridge."
+    "Backport the dflash-draft architecture loader into the optimized eliza fused runtime so the publishable binary does not rely on the nonpublishable DFlash loader bridge."
   ]
 }

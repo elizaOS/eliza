@@ -1,8 +1,8 @@
 """Load real elizaOS trajectories from disk for LifeOpsBench evaluation.
 
 elizaOS persists trajectories under
-``~/.milady/trajectories/<agentId>/<trajectoryId>.json`` (overridable via
-``MILADY_STATE_DIR`` / ``ELIZA_STATE_DIR``). LifeOpsBench can ingest
+``~/.eliza/trajectories/<agentId>/<trajectoryId>.json`` (overridable via
+``ELIZA_STATE_DIR`` / ``ELIZA_STATE_DIR``). LifeOpsBench can ingest
 these as evaluation inputs — for example, to score a model on real user
 interactions rather than synthetic scenarios.
 

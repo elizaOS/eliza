@@ -15,6 +15,7 @@ import asyncio
 import logging
 import os
 import sys
+from pathlib import Path
 from typing import Optional
 
 from .eliza_1_bundle import (
@@ -44,6 +45,45 @@ _DOMAIN_CHOICES = tuple(d.value for d in Domain)
 _MODE_CHOICES = tuple(m.value for m in ScenarioMode)
 _MODEL_TIER_CHOICES = tuple(DEFAULT_TIERS.keys())
 _SUITE_CHOICES = tuple(SUITES.keys())
+
+
+def _load_env_file(path: Path) -> None:
+    """Load KEY=VALUE pairs from *path* without overriding existing env."""
+    if not path.exists() or not path.is_file():
+        return
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+        value = value.strip()
+        if (
+            len(value) >= 2
+            and value[0] == value[-1]
+            and value[0] in {"'", '"'}
+        ):
+            value = value[1:-1]
+        os.environ[key] = value
+
+
+def _load_default_env_files() -> None:
+    """Mirror orchestrator dotenv loading for direct LifeOps CLI runs."""
+    repo_root = Path(__file__).resolve().parents[4]
+    for candidate in (
+        repo_root / ".env",
+        repo_root.parent / ".env",
+        Path.cwd() / ".env",
+    ):
+        _load_env_file(candidate)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -225,6 +265,9 @@ def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_ov
         return None
     if name == "eliza":
         try:
+            from .agents.adapter_paths import ensure_benchmark_adapter_importable
+
+            ensure_benchmark_adapter_importable("eliza")
             from .agents import build_eliza_agent  # type: ignore[attr-defined]
         except ImportError as exc:
             raise SystemExit(
@@ -282,7 +325,7 @@ def _apply_eliza_one_bundle_override(
     """Honor ``ELIZA_1_MODEL_BUNDLE`` to point the harness at a GGUF bundle.
 
     When set, reads the bundle's manifest, propagates the pre-release flag
-    through ``MILADY_BENCH_PRE_RELEASE`` (read by ``scripts/aggregate-lifeops-run.mjs``
+    through ``ELIZA_BENCH_PRE_RELEASE`` (read by ``scripts/aggregate-lifeops-run.mjs``
     and the runner when it stamps ``RunMetrics.preRelease``), and rewrites the
     tier spec so downstream agent / client factories see the local-llama-cpp
     endpoint instead of the registry default.
@@ -298,10 +341,10 @@ def _apply_eliza_one_bundle_override(
         return None, base
     manifest = read_eliza_one_bundle(bundle_path)
     pre_release = bundle_is_pre_release(manifest)
-    # The aggregator reads MILADY_BENCH_PRE_RELEASE on every emitted report.
+    # The aggregator reads ELIZA_BENCH_PRE_RELEASE on every emitted report.
     # `1` is the only value the aggregator parses as truthy — keep that
     # explicit (no surrounding whitespace, no "true"/"yes" shortcut here).
-    os.environ["MILADY_BENCH_PRE_RELEASE"] = "1" if pre_release else "0"
+    os.environ["ELIZA_BENCH_PRE_RELEASE"] = "1" if pre_release else "0"
     # Spawn the dflash local-llama-cpp server pointing at the bundle weights.
     # We pass the weights path through MODEL_BUNDLE_OVERRIDE so downstream TS
     # readers (live-provider.ts, model-tiers.ts) see the same value, and we
@@ -457,7 +500,7 @@ async def _run(args: argparse.Namespace) -> None:
     # When ELIZA_1_MODEL_BUNDLE is set, override the resolved tier
     # so the harness boots the dflash local-llama-cpp server pointing at the
     # bundle's GGUF weights. The bundle manifest's pre-release flag is
-    # propagated through MILADY_BENCH_PRE_RELEASE so the aggregator stamps
+    # propagated through ELIZA_BENCH_PRE_RELEASE so the aggregator stamps
     # `preRelease: true` on every emitted RunMetrics + report.json.
     eliza_one_manifest, tier_spec = _apply_eliza_one_bundle_override(tier_spec)
     evaluator_model = args.evaluator_model or tier_spec.model_name
@@ -571,6 +614,7 @@ async def _run(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    _load_default_env_files()
     parser = _build_parser()
     args = parser.parse_args()
 

@@ -40,9 +40,9 @@ Type audit setup command, intentionally outside the repo:
 TYPE_ROOT="/tmp/eliza-phase2-type-audit-20260511115823"
 mkdir -p "$TYPE_ROOT/scripts"
 cp scripts/type-audit.mjs "$TYPE_ROOT/scripts/type-audit.mjs"
-ln -s /Users/shawwalters/eliza-workspace/milady/eliza/packages "$TYPE_ROOT/packages"
-ln -s /Users/shawwalters/eliza-workspace/milady/eliza/plugins "$TYPE_ROOT/plugins"
-ln -s /Users/shawwalters/eliza-workspace/milady/eliza/node_modules "$TYPE_ROOT/node_modules"
+ln -s /Users/shawwalters/eliza-workspace/eliza/eliza/packages "$TYPE_ROOT/packages"
+ln -s /Users/shawwalters/eliza-workspace/eliza/eliza/plugins "$TYPE_ROOT/plugins"
+ln -s /Users/shawwalters/eliza-workspace/eliza/eliza/node_modules "$TYPE_ROOT/node_modules"
 /Users/shawwalters/.bun/bin/bun "$TYPE_ROOT/scripts/type-audit.mjs" --json
 ```
 

@@ -61,6 +61,7 @@ import {
   BugReportProvider,
   useBugReportState,
   useContextMenu,
+  useRenderGuard,
   useStreamPopoutNavigation,
 } from "./hooks";
 import { useActivityEvents } from "./hooks/useActivityEvents";
@@ -643,6 +644,7 @@ function ViewRouter({
 }
 
 export function App() {
+  useRenderGuard("App");
   const {
     startupError,
     startupCoordinator,

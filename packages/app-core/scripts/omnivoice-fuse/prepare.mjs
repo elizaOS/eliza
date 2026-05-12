@@ -22,18 +22,18 @@ import fs from "node:fs";
 import path from "node:path";
 
 const OMNIVOICE_REPO =
-  process.env.MILADY_OMNIVOICE_REMOTE ||
+  process.env.ELIZA_OMNIVOICE_REMOTE ||
   "https://github.com/elizaOS/omnivoice.cpp.git";
 
 // Master HEAD as of 2026-05-10. Bump per the runbook in README.md.
 export const OMNIVOICE_REF =
-  process.env.MILADY_OMNIVOICE_REF || "38f824023d12b21a7c324651b18bd90f16d8bb86";
+  process.env.ELIZA_OMNIVOICE_REF || "38f824023d12b21a7c324651b18bd90f16d8bb86";
 
 // The ServeurpersoCom ggml submodule pin we explicitly DO NOT include
 // in the fused build. Recorded so verify-symbols.mjs can assert that no
 // `omnivoice/ggml` directory is left dangling under the llama.cpp tree.
 export const OMNIVOICE_GGML_REF =
-  process.env.MILADY_OMNIVOICE_GGML_REF ||
+  process.env.ELIZA_OMNIVOICE_GGML_REF ||
   "0e3980ef205ea3639650f59e54cfeecd7d947700";
 
 // Subdirectory inside the llama.cpp checkout where omnivoice sources
@@ -96,7 +96,7 @@ function replaceBetween(source, startMarker, endMarker, replacement) {
   return source.slice(0, start) + replacement + source.slice(end);
 }
 
-function writeMiladyFfiAdapter({ graftRoot, commit }) {
+function writeElizaFfiAdapter({ graftRoot, commit }) {
   const ffiHeaderSrc = new URL("./ffi.h", import.meta.url).pathname;
   const ffiHeaderDst = path.join(graftRoot, "src", "ffi.h");
   fs.copyFileSync(ffiHeaderSrc, ffiHeaderDst);
@@ -117,6 +117,7 @@ function writeMiladyFfiAdapter({ graftRoot, commit }) {
 #include <cctype>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -1178,14 +1179,14 @@ function inspectPreparedOmnivoiceSurface({ graftRoot }) {
   };
 }
 
-function applyMiladyGgmlCompatibility({ graftRoot, commit }) {
+function applyElizaGgmlCompatibility({ graftRoot, commit }) {
   const dacPath = path.join(graftRoot, "src", "dac-decoder.h");
   let source = fs.readFileSync(dacPath, "utf8");
-  const loadCtw = `// Load ConvTranspose1d weights in milady ggml's native kernel layout.
+  const loadCtw = `// Load ConvTranspose1d weights in eliza ggml's native kernel layout.
 // Source-side layout is (IC, OC, K), represented by ggml as ne=(K, OC, IC).
-// milady ggml already ships GGML_OP_CONV_TRANSPOSE_1D for CPU/CUDA/Metal/
+// eliza ggml already ships GGML_OP_CONV_TRANSPOSE_1D for CPU/CUDA/Metal/
 // Vulkan, while omnivoice's fork used a private col2im_1d op. Keeping the
-// native layout lets the fused build share the patched milady ggml without
+// native layout lets the fused build share the patched eliza ggml without
 // adding a second custom op.
 static void dac_load_ctw(struct ggml_tensor * dst, const GGUFModel & gf, const std::string & name) {
     struct ggml_tensor * mt = ggml_get_tensor(gf.meta, name.c_str());
@@ -1238,9 +1239,9 @@ static void dac_load_ctw(struct ggml_tensor * dst, const GGUFModel & gf, const s
     loadCtw,
   );
 
-  const convT = `// ConvTranspose1d using milady ggml's native GGML_OP_CONV_TRANSPOSE_1D.
+  const convT = `// ConvTranspose1d using eliza ggml's native GGML_OP_CONV_TRANSPOSE_1D.
 // The upstream omnivoice fork used a private col2im_1d op with padding.
-// milady's native op requires p0=0, so we crop pad samples from both ends
+// eliza's native op requires p0=0, so we crop pad samples from both ends
 // and then apply output_pad to match the original length contract.
 static struct ggml_tensor * dac_conv_t1d(struct ggml_context * ctx,
                                          struct ggml_tensor *  w,
@@ -1304,7 +1305,7 @@ static struct ggml_tensor * dac_conv_t1d(struct ggml_context * ctx,
   codecSource = codecSource.replace(
     codecBackendAnchor,
     `    // Keep the MaskGIT/LM path on the selected accelerator, but pin the
-    // audio tokenizer / DAC codec to CPU on Apple Metal. The merged milady
+    // audio tokenizer / DAC codec to CPU on Apple Metal. The merged eliza
     // ggml Metal DAC decode graph has been observed to stall immediately
     // after "[TTS] Decode"; using CPU here keeps one fused process and one
     // model lifecycle while avoiding the bad Metal codec scheduler path.
@@ -1341,10 +1342,10 @@ static struct ggml_tensor * dac_conv_t1d(struct ggml_context * ctx,
 
   fs.writeFileSync(
     path.join(graftRoot, "src", "version.h"),
-    `#pragma once\n#define OMNIVOICE_VERSION "${commit.slice(0, 12)} (milady-fused)"\n`,
+    `#pragma once\n#define OMNIVOICE_VERSION "${commit.slice(0, 12)} (eliza-fused)"\n`,
     "utf8",
   );
-  writeMiladyFfiAdapter({ graftRoot, commit });
+  writeElizaFfiAdapter({ graftRoot, commit });
 }
 
 // Ensure a clone of omnivoice.cpp at OMNIVOICE_REF lives under
@@ -1497,7 +1498,7 @@ function replaceRequired(source, from, to, label) {
   return source.replace(from, to);
 }
 
-function applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot }) {
+function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
   const touched = [];
 
   const clipImplPath = path.join(llamaCppRoot, "tools", "mtmd", "clip-impl.h");
@@ -1659,11 +1660,27 @@ function applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot }) {
       "mtmd.cpp qwen3a audio preprocessor",
     );
   }
-  if (!mtmd.includes("proj == PROJECTOR_TYPE_QWEN3A")) {
+  if (
+    !mtmd.includes('aud_beg = "<|audio_start|>";') ||
+    !mtmd.includes('proj == PROJECTOR_TYPE_QWEN3A')
+  ) {
     mtmd = replaceRequired(
       mtmd,
-      "        if (proj == PROJECTOR_TYPE_QWEN2A) {",
-      "        if (proj == PROJECTOR_TYPE_QWEN2A || proj == PROJECTOR_TYPE_QWEN3A || proj == PROJECTOR_TYPE_QWEN25O) {",
+      `        if (proj == PROJECTOR_TYPE_QWEN2A) {
+            // <|audio_bos|> ... (embeddings) ... <|audio_eos|>
+            aud_beg = "<|audio_bos|>";
+            aud_end = "<|audio_eos|>";
+`,
+      `        if (proj == PROJECTOR_TYPE_QWEN3A) {
+            // <|audio_start|> ... (embeddings replacing <|audio_pad|>) ... <|audio_end|>
+            aud_beg = "<|audio_start|>";
+            aud_end = "<|audio_end|>";
+
+        } else if (proj == PROJECTOR_TYPE_QWEN2A || proj == PROJECTOR_TYPE_QWEN25O) {
+            // <|audio_bos|> ... (embeddings) ... <|audio_eos|>
+            aud_beg = "<|audio_bos|>";
+            aud_end = "<|audio_eos|>";
+`,
       "mtmd.cpp qwen3a audio special tokens",
     );
   }
@@ -1673,7 +1690,7 @@ function applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot }) {
   }
 
   return {
-    name: "milady-qwen3a-mtmd-backport",
+    name: "eliza-qwen3a-mtmd-backport",
     status: touched.length > 0 ? "applied" : "already-applied",
     files: touched,
   };
@@ -1697,7 +1714,7 @@ export function prepareOmnivoiceFusion({
   }
   if (!fs.existsSync(path.join(llamaCppRoot, "ggml", "CMakeLists.txt"))) {
     throw new Error(
-      `[omnivoice-fuse] llamaCppRoot=${llamaCppRoot} missing ggml/CMakeLists.txt; the milady ggml is required for fusion`,
+      `[omnivoice-fuse] llamaCppRoot=${llamaCppRoot} missing ggml/CMakeLists.txt; the eliza ggml is required for fusion`,
     );
   }
 
@@ -1742,7 +1759,7 @@ export function prepareOmnivoiceFusion({
       path.join(graftRoot, subdir),
     );
   }
-  applyMiladyGgmlCompatibility({ graftRoot, commit: head });
+  applyElizaGgmlCompatibility({ graftRoot, commit: head });
   const sourceSurface = inspectPreparedOmnivoiceSurface({ graftRoot });
 
   // examples/ is data-only (audio prompts, sample text). Copy on a
@@ -1765,7 +1782,7 @@ export function prepareOmnivoiceFusion({
 
   // Apply any reconciliation patches keyed to specific drifts.
   const patchesDir = new URL("./patches/", import.meta.url).pathname;
-  const qwen3aBackport = applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot });
+  const qwen3aBackport = applyElizaQwen3AsrMtmdSupport({ llamaCppRoot });
   const appliedPatches = [
     qwen3aBackport,
     ...applyPatches({ patchesDir, llamaCppRoot }),

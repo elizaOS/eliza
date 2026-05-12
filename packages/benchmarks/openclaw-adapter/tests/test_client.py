@@ -172,6 +172,27 @@ def test_build_argv_passes_session_and_agent(client: OpenClawClient) -> None:
     assert argv[argv.index("--agent") + 1] == "ops"
 
 
+def test_build_openai_body_includes_generation_options(fake_binary: Path) -> None:
+    c = OpenClawClient(
+        binary_path=fake_binary,
+        temperature=0.2,
+        reasoning_effort="low",
+        max_tokens=512,
+    )
+    body = c.build_openai_compatible_body(
+        "hi",
+        {
+            "max_tokens": 256,
+            "tool_choice": "none",
+            "tools": [{"type": "function", "function": {"name": "LOOKUP"}}],
+        },
+    )
+    assert body["temperature"] == 0.2
+    assert body["reasoning_effort"] == "low"
+    assert body["max_completion_tokens"] == 256
+    assert body["tool_choice"] == "none"
+
+
 def test_client_session_id_passed(
     client: OpenClawClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -227,6 +248,28 @@ def test_client_send_message_parses_json(
     assert isinstance(result, MessageResponse)
     assert result.text == "PONG"
     assert result.actions == []
+
+
+def test_client_base_url_does_not_bypass_cli_by_default(
+    fake_binary: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A live OpenClaw harness may set base_url for provider routing; that must
+    still exercise the CLI unless direct_openai_compatible is explicit."""
+    monkeypatch.delenv("OPENCLAW_DIRECT_OPENAI_COMPAT", raising=False)
+    monkeypatch.delenv("OPENCLAW_USE_CLI", raising=False)
+    c = OpenClawClient(
+        binary_path=fake_binary,
+        repo_path=fake_binary.parent,
+        base_url="https://api.cerebras.ai/v1",
+    )
+    with patch("openclaw_adapter.client.subprocess.run") as mock_run:
+        mock_run.return_value = _fake_completed(stdout=json.dumps({"reply": "ok"}), rc=0)
+        result = c.send_message("hi")
+    assert result.text == "ok"
+    argv = mock_run.call_args.args[0]
+    assert argv[0] == str(fake_binary)
+    assert "agent" in argv
 
 
 def test_client_handles_warnings_before_json(
@@ -360,6 +403,30 @@ def test_response_from_payload_normalizes_tool_calls() -> None:
     assert r.actions == ["FOO", "BAR"]
     assert r.params["FOO"] == {"x": 1}
     assert r.params["BAR"] == {"y": 2}
+
+
+def test_response_from_payload_recovers_text_embedded_tool_call() -> None:
+    payload = {
+        "reply": (
+            'Need lookup.<tool_call>{"tool": "SEARCH", '
+            '"args": {"query": "approvals"}}</tool_call>'
+        )
+    }
+    r = _response_from_payload(payload)
+    assert r.text == "Need lookup."
+    assert r.actions == ["SEARCH"]
+    assert r.params["SEARCH"] == {"query": "approvals"}
+    assert r.params["tool_calls"][0]["name"] == "SEARCH"
+
+
+def test_response_from_payload_preserves_scalar_arguments() -> None:
+    payload = {
+        "reply": "ok",
+        "tool_calls": [{"id": "c1", "name": "RUN", "arguments": "echo hello"}],
+    }
+    r = _response_from_payload(payload)
+    assert r.params["RUN"] == "echo hello"
+    assert r.params["tool_calls"][0]["arguments"] == "echo hello"
 
 
 def test_response_from_payload_stashes_usage_under_meta() -> None:

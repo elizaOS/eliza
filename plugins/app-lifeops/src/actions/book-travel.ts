@@ -572,7 +572,7 @@ export async function runBookTravelHandler(
 }
 
 // Callback invoked by the approval queue once an owner approves a queued
-// book_travel request. Exported because approval.ts dispatches here after
+// book_travel request. The resolve-request action dispatches here after
 // a request transitions from pending -> approved.
 export async function executeApprovedBookTravel(args: {
   runtime: IAgentRuntime;

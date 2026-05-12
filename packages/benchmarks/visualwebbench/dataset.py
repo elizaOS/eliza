@@ -215,7 +215,7 @@ class VisualWebBenchDataset:
         return [str(item) for item in raw]
 
     def _parse_image_size(self, raw: object) -> tuple[int, int] | None:
-        if isinstance(raw, list | tuple) and len(raw) >= 2:
+        if isinstance(raw, (list, tuple)) and len(raw) >= 2:
             try:
                 return (int(raw[0]), int(raw[1]))
             except (TypeError, ValueError):
@@ -223,7 +223,7 @@ class VisualWebBenchDataset:
         return None
 
     def _parse_bbox(self, raw: object) -> BBox | None:
-        if isinstance(raw, list | tuple) and len(raw) >= 4:
+        if isinstance(raw, (list, tuple)) and len(raw) >= 4:
             try:
                 return (float(raw[0]), float(raw[1]), float(raw[2]), float(raw[3]))
             except (TypeError, ValueError):

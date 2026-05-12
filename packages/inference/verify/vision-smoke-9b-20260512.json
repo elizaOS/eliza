@@ -11,7 +11,7 @@
   "status": "pass",
   "action": "vision-smoke-passed",
   "smokeConfig": {
-    "image": "/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/test/fixtures/sample-scene.png",
+    "image": "/Users/shawwalters/eliza-workspace/eliza/eliza/plugins/plugin-vision/test/fixtures/sample-scene.png",
     "ctxSize": 1024,
     "nPredict": 24,
     "gpuLayers": "99",
@@ -60,10 +60,10 @@
           "mtmd": true,
           "metal": true
         },
-        "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/llama.cpp/build/darwin-arm64-metal-fused/bin/default.metallib'\nggml_metal_library_init: loaded in 0.001 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
+        "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/eliza-workspace/eliza/eliza/packages/inference/llama.cpp/build/darwin-arm64-metal-fused/bin/default.metallib'\nggml_metal_library_init: loaded in 0.001 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
       },
       {
-        "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/llama.cpp/build/darwin-arm64-metal-fused/bin/llama-mtmd-cli",
+        "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/inference/llama.cpp/build/darwin-arm64-metal-fused/bin/llama-mtmd-cli",
         "exists": true,
         "executable": true,
         "helpExitCode": 0,
@@ -74,7 +74,7 @@
           "mtmd": true,
           "metal": true
         },
-        "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/llama.cpp/build/darwin-arm64-metal-fused/bin/default.metallib'\nggml_metal_library_init: loaded in 0.001 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
+        "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/eliza-workspace/eliza/eliza/packages/inference/llama.cpp/build/darwin-arm64-metal-fused/bin/default.metallib'\nggml_metal_library_init: loaded in 0.001 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
       }
     ],
     "buildCommands": [
@@ -155,10 +155,10 @@
             "mtmd": true,
             "metal": true
           },
-          "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/llama.cpp/build/darwin-arm64-metal-fused/bin/default.metallib'\nggml_metal_library_init: loaded in 0.001 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
+          "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/eliza-workspace/eliza/eliza/packages/inference/llama.cpp/build/darwin-arm64-metal-fused/bin/default.metallib'\nggml_metal_library_init: loaded in 0.001 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
         },
         {
-          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/llama.cpp/build/darwin-arm64-metal-fused/bin/llama-mtmd-cli",
+          "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/inference/llama.cpp/build/darwin-arm64-metal-fused/bin/llama-mtmd-cli",
           "exists": true,
           "executable": true,
           "helpExitCode": 0,
@@ -169,7 +169,7 @@
             "mtmd": true,
             "metal": true
           },
-          "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/llama.cpp/build/darwin-arm64-metal-fused/bin/default.metallib'\nggml_metal_library_init: loaded in 0.001 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
+          "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/eliza-workspace/eliza/eliza/packages/inference/llama.cpp/build/darwin-arm64-metal-fused/bin/default.metallib'\nggml_metal_library_init: loaded in 0.001 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
         }
       ],
       "buildCommands": [

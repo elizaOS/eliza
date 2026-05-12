@@ -44,9 +44,9 @@ const BUN_VERSION = "1.3.13";
 // Bun 1.3.13 has a segfault we hit during inference on Cuttlefish at
 // peak ~2.3 GB RSS ("panic(main thread): Segmentation fault at address
 // 0x5420"). The canary channel ships the upstream fix while we wait for
-// 1.3.14+. MILADY_BUN_CHANNEL=stable forces back to BUN_VERSION; default
+// 1.3.14+. ELIZA_BUN_CHANNEL=stable forces back to BUN_VERSION; default
 // is canary so AOSP/cvd inference doesn't crash mid-token.
-const BUN_CHANNEL = (process.env.MILADY_BUN_CHANNEL ?? "canary").toLowerCase();
+const BUN_CHANNEL = (process.env.ELIZA_BUN_CHANNEL ?? "canary").toLowerCase();
 const ALPINE_BRANCH = "v3.21";
 
 /**

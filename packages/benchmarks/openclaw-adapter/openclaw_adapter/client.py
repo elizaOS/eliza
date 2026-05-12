@@ -47,8 +47,10 @@ DEFAULT_PROVIDER = "cerebras"
 DEFAULT_MODEL = "gpt-oss-120b"
 DEFAULT_API_KEY_ENV = "CEREBRAS_API_KEY"
 DEFAULT_BASE_URL_ENV = "CEREBRAS_BASE_URL"
+DEFAULT_BASE_URL = "https://api.cerebras.ai/v1"
 DEFAULT_THINKING_LEVEL = "medium"
 DEFAULT_TIMEOUT_S = 600.0
+_ALLOWED_TOOL_CHOICES = {"auto", "required", "none"}
 
 
 _JSON_BLOB_RE = re.compile(r"\{.*\}", re.DOTALL)
@@ -69,6 +71,54 @@ class MessageResponse:
     params: dict[str, object]
 
 
+_CONTROL_CONTEXT_KEYS = {
+    "messages",
+    "system_prompt",
+    "system_hint",
+    "temperature",
+    "reasoning_effort",
+    "max_tokens",
+    "model_name",
+    "benchmark",
+    "task_id",
+    "session_id",
+    "agent_id",
+    "tools",
+    "tool_choice",
+}
+
+
+def context_to_prompt(context: Mapping[str, object] | None) -> str:
+    if not context:
+        return ""
+    parts: list[str] = []
+    hint_keys = ("instructions",) if isinstance(context.get("system_prompt"), str) else ("system_hint", "instructions")
+    for key in hint_keys:
+        value = context.get(key)
+        if isinstance(value, str) and value.strip():
+            parts.append(f"{key}:\n{value.strip()}")
+    history = context.get("history")
+    if isinstance(history, Sequence) and not isinstance(history, (str, bytes)):
+        history_lines: list[str] = []
+        for item in history:
+            if not isinstance(item, Mapping):
+                continue
+            role = str(item.get("role") or "turn")
+            content = item.get("content")
+            if content is not None:
+                history_lines.append(f"{role}: {content}")
+        if history_lines:
+            parts.append("history:\n" + "\n".join(history_lines))
+    for key in sorted(str(k) for k in context.keys()):
+        if key in _CONTROL_CONTEXT_KEYS or key == "history":
+            continue
+        value = context.get(key)
+        if value in (None, "", [], {}):
+            continue
+        parts.append(f"{key}:\n{json.dumps(_jsonable(value), ensure_ascii=True, indent=2)}")
+    return "\n\n".join(parts)
+
+
 def _prompt_text(text: str, context: Mapping[str, object] | None) -> str:
     if not context:
         return text
@@ -76,6 +126,13 @@ def _prompt_text(text: str, context: Mapping[str, object] | None) -> str:
     system_prompt = context.get("system_prompt")
     if isinstance(system_prompt, str) and system_prompt.strip():
         parts.append(system_prompt.strip())
+    else:
+        system_hint = context.get("system_hint")
+        if isinstance(system_hint, str) and system_hint.strip():
+            parts.append(system_hint.strip())
+    context_prompt = context_to_prompt(context)
+    if context_prompt:
+        parts.append(f"Benchmark context:\n{context_prompt}")
     messages = context.get("messages")
     if isinstance(messages, Sequence) and not isinstance(messages, (str, bytes)):
         for item in messages:
@@ -98,6 +155,68 @@ def _jsonable(value: object) -> object:
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return [_jsonable(v) for v in value]
     return str(value)
+
+
+def _coerce_optional_float(value: object, *, fallback: float | None) -> float | None:
+    if isinstance(value, bool):
+        return fallback
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return float(value)
+        except ValueError:
+            return fallback
+    return fallback
+
+
+def _coerce_optional_int(value: object, *, fallback: int | None) -> int | None:
+    if isinstance(value, bool):
+        return fallback
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return int(value)
+        except ValueError:
+            return fallback
+    return fallback
+
+
+def _coerce_optional_str(value: object, *, fallback: str | None) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return fallback
+
+
+def _env_optional_float(*names: str) -> float | None:
+    for name in names:
+        value = _coerce_optional_float(os.environ.get(name), fallback=None)
+        if value is not None:
+            return value
+    return None
+
+
+def _env_optional_int(*names: str) -> int | None:
+    for name in names:
+        value = _coerce_optional_int(os.environ.get(name), fallback=None)
+        if value is not None:
+            return value
+    return None
+
+
+def _env_optional_str(*names: str) -> str | None:
+    for name in names:
+        value = _coerce_optional_str(os.environ.get(name), fallback=None)
+        if value is not None:
+            return value
+    return None
+
+
+def _is_gpt_oss_model(model: str) -> bool:
+    return model.rsplit("/", 1)[-1].startswith("gpt-oss")
 
 
 def _write_telemetry(
@@ -167,19 +286,41 @@ class OpenClawClient:
         model: str = DEFAULT_MODEL,
         api_key: str | None = None,
         api_key_env: str = DEFAULT_API_KEY_ENV,
+        base_url: str | None = None,
         base_url_env: str = DEFAULT_BASE_URL_ENV,
         thinking_level: str = DEFAULT_THINKING_LEVEL,
         timeout_s: float = DEFAULT_TIMEOUT_S,
+        temperature: float | None = None,
+        reasoning_effort: str | None = None,
+        max_tokens: int | None = None,
+        direct_openai_compatible: bool = False,
     ) -> None:
         self.repo_path = Path(repo_path) if repo_path else _default_repo_path()
         self.binary_path = Path(binary_path) if binary_path else _resolve_default_binary()
         self.provider = provider
         self.model = model
         self.api_key_env = api_key_env
+        self.base_url = base_url.rstrip("/") if isinstance(base_url, str) and base_url else None
         self.base_url_env = base_url_env
         self.api_key = api_key if api_key is not None else _default_api_key(provider, api_key_env)
         self.thinking_level = thinking_level
         self.timeout_s = float(timeout_s)
+        self.temperature = (
+            temperature
+            if temperature is not None
+            else _env_optional_float("BENCHMARK_TEMPERATURE", "TEMPERATURE")
+        )
+        self.reasoning_effort = (
+            reasoning_effort
+            if reasoning_effort is not None
+            else _env_optional_str("BENCHMARK_REASONING_EFFORT", "CEREBRAS_REASONING_EFFORT")
+        )
+        self.max_tokens = (
+            max_tokens
+            if max_tokens is not None
+            else _env_optional_int("BENCHMARK_MAX_TOKENS", "MAX_TOKENS")
+        )
+        self.direct_openai_compatible = bool(direct_openai_compatible)
         self._task_id: str | None = None
         self._benchmark: str | None = None
 
@@ -261,6 +402,27 @@ class OpenClawClient:
         text: str,
         context: Mapping[str, object] | None = None,
     ) -> MessageResponse:
+        """Run one OpenClaw turn and parse it.
+
+        Normal benchmark runs use the OpenClaw CLI. Tests and lightweight
+        smoke paths can set ``direct_openai_compatible=True`` (or
+        ``OPENCLAW_DIRECT_OPENAI_COMPAT=1``) to exercise the direct
+        OpenAI-compatible retry/parser path without requiring the Node binary.
+        Setting ``OPENCLAW_USE_CLI=1`` always forces the CLI path.
+        """
+        direct_requested = (
+            self.direct_openai_compatible
+            or os.environ.get("OPENCLAW_DIRECT_OPENAI_COMPAT", "").strip() == "1"
+        )
+        if direct_requested and os.environ.get("OPENCLAW_USE_CLI") != "1":
+            return self._send_openai_compatible(text, context)
+        return self._send_cli(text, context)
+
+    def _send_cli(
+        self,
+        text: str,
+        context: Mapping[str, object] | None,
+    ) -> MessageResponse:
         """Spawn one ``openclaw agent --local --json`` turn and parse it."""
         argv = self.build_argv(text, context)
         env = self.build_env()
@@ -327,6 +489,51 @@ class OpenClawClient:
         )
         return response
 
+    def _send_openai_compatible(
+        self,
+        text: str,
+        context: Mapping[str, object] | None,
+    ) -> MessageResponse:
+        """Call an OpenAI-compatible endpoint directly with retry.
+
+        This keeps the adapter's smoke tests hermetic while sharing the same
+        ``MessageResponse`` parser and telemetry shape as the CLI path.
+        """
+        started = time.monotonic()
+        try:
+            payload = _post_with_retry(
+                url=f"{self.base_url or DEFAULT_BASE_URL}/chat/completions",
+                body=self.build_openai_compatible_body(text, context),
+                api_key=self.api_key or _default_api_key(self.provider, self.api_key_env),
+                timeout_s=self.timeout_s,
+            )
+            response = _response_from_openai_completion(payload)
+        except Exception as exc:
+            _write_telemetry(
+                harness="openclaw",
+                provider=self.provider,
+                model=self.model,
+                text=text,
+                context=context,
+                latency_ms=(time.monotonic() - started) * 1000.0,
+                task_id=self._task_id,
+                benchmark=self._benchmark,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            raise
+        _write_telemetry(
+            harness="openclaw",
+            provider=self.provider,
+            model=self.model,
+            text=text,
+            context=context,
+            latency_ms=(time.monotonic() - started) * 1000.0,
+            task_id=self._task_id,
+            benchmark=self._benchmark,
+            response=response,
+        )
+        return response
+
     # ------------------------------------------------------------------
     # Command construction (separated for unit-test inspection)
     # ------------------------------------------------------------------
@@ -340,6 +547,7 @@ class OpenClawClient:
         model_id = self.model
         if self.provider and "/" not in model_id:
             model_id = f"{self.provider}/{model_id}"
+        message_text = _prompt_text(text, context)
         argv: list[str] = [
             str(self.binary_path),
             "agent",
@@ -352,7 +560,7 @@ class OpenClawClient:
             "--timeout",
             str(int(self.timeout_s)),
             "--message",
-            text,
+            message_text,
         ]
         session_id: str | None = None
         agent_id: str | None = None
@@ -391,10 +599,51 @@ class OpenClawClient:
         if api_key:
             env[self.api_key_env] = api_key
             env["OPENAI_API_KEY"] = api_key
-        base_url = env.get(self.base_url_env, "")
+        base_url = self.base_url or env.get(self.base_url_env, "")
         if base_url:
             env.setdefault("OPENAI_BASE_URL", base_url)
         return env
+
+    def build_openai_compatible_body(
+        self,
+        text: str,
+        context: Mapping[str, object] | None,
+    ) -> dict[str, object]:
+        """Build the direct OpenAI-compatible request body."""
+        body: dict[str, object] = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": _prompt_text(text, context)}],
+        }
+        if context:
+            tools = context.get("tools")
+            if isinstance(tools, list) and tools:
+                body["tools"] = tools
+                tool_choice = context.get("tool_choice")
+                if isinstance(tool_choice, str) and tool_choice in _ALLOWED_TOOL_CHOICES:
+                    body["tool_choice"] = tool_choice
+            temperature = _coerce_optional_float(
+                context.get("temperature"), fallback=self.temperature
+            )
+            if temperature is not None:
+                body["temperature"] = temperature
+            max_tokens = _coerce_optional_int(
+                context.get("max_tokens"), fallback=self.max_tokens
+            )
+            if max_tokens is not None and max_tokens > 0:
+                body["max_completion_tokens"] = max_tokens
+            reasoning_effort = _coerce_optional_str(
+                context.get("reasoning_effort"), fallback=self.reasoning_effort
+            )
+            if reasoning_effort and _is_gpt_oss_model(self.model):
+                body["reasoning_effort"] = reasoning_effort
+        else:
+            if self.temperature is not None:
+                body["temperature"] = self.temperature
+            if self.max_tokens is not None and self.max_tokens > 0:
+                body["max_completion_tokens"] = self.max_tokens
+            if self.reasoning_effort and _is_gpt_oss_model(self.model):
+                body["reasoning_effort"] = self.reasoning_effort
+        return body
 
 
 # ----------------------------------------------------------------------
@@ -576,6 +825,11 @@ def _response_from_payload(payload: Mapping[str, object]) -> MessageResponse:
         if isinstance(meta, Mapping):
             text = _first_str(meta, ("finalAssistantVisibleText", "finalAssistantRawText"))
     raw_tool_calls = _collect_tool_calls(payload)
+    if text:
+        visible_text, embedded_tool_calls = parse_openclaw_tool_calls(text)
+        if embedded_tool_calls:
+            text = visible_text
+            raw_tool_calls.extend(embedded_tool_calls)
 
     actions: list[str] = []
     params: dict[str, object] = {}
@@ -614,6 +868,26 @@ def _response_from_payload(payload: Mapping[str, object]) -> MessageResponse:
         actions=actions,
         params=params,
     )
+
+
+def _response_from_openai_completion(payload: Mapping[str, object]) -> MessageResponse:
+    """Map an OpenAI-compatible chat completion to :class:`MessageResponse`."""
+    choices = payload.get("choices")
+    choice: object = (
+        choices[0]
+        if isinstance(choices, Sequence) and not isinstance(choices, (str, bytes)) and choices
+        else {}
+    )
+    message = choice.get("message") if isinstance(choice, Mapping) else {}
+    message_map = message if isinstance(message, Mapping) else {}
+    normalized: dict[str, object] = {
+        "message": message_map,
+        "tool_calls": message_map.get("tool_calls", []),
+    }
+    usage = payload.get("usage")
+    if isinstance(usage, Mapping):
+        normalized["usage"] = dict(usage)
+    return _response_from_payload(normalized)
 
 
 def _first_str(payload: Mapping[str, object], keys: Sequence[str]) -> str:
@@ -754,7 +1028,7 @@ def _normalize_tool_call(
     return {
         "id": str(call_id) if isinstance(call_id, (str, int)) else f"call_{fallback_index}",
         "name": name_obj,
-        "arguments": args_obj if isinstance(args_obj, (Mapping, list)) else {},
+        "arguments": args_obj if args_obj is not None else {},
     }
 
 
@@ -811,7 +1085,7 @@ def _tool_call_dict_from_raw(
     return {
         "id": str(data.get("id") or f"call_openclaw_{index}"),
         "name": name,
-        "arguments": args if isinstance(args, dict) else {},
+        "arguments": args if args is not None else {},
     }
 
 

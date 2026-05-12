@@ -11,8 +11,8 @@
     "cache_read_input_tokens": 0,
     "turns_with_cached_field": 0
   },
-  "error": null,
-  "higher_is_better": true,
+  "error": "Benchmark 'loca_bench' is no longer compatible with harness 'openclaw' (supported: eliza, hermes)",
+  "higher_is_better": null,
   "metrics": {
     "aggregate_trajectory_count": 1,
     "avg_accuracy": 0.0,
@@ -23,6 +23,7 @@
       "turns_with_cached_field": 0
     },
     "canonical_entries": 0,
+    "harness": "openclaw",
     "issue_count": 0,
     "max_prompt_tokens": 17785,
     "max_total_tokens": 36068,
@@ -33,7 +34,12 @@
       "p95_latency_ms": null,
       "throughput_per_second": 0.00439169121775314
     },
+    "reason": "latest_row_violates_current_compatibility",
     "return_code": 0,
+    "supported_harnesses": [
+      "eliza",
+      "hermes"
+    ],
     "token_metrics": {
       "avg_completion_tokens": 107.0,
       "avg_prompt_tokens": 17785.0,
@@ -62,8 +68,8 @@
   "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T012256Z_43e977de/loca-bench__loca_bench/run_loca_bench_20260512T012256Z_3_4b3f44cb/output/loca-output/eliza_loca_audit.json",
   "run_group_id": "rg_20260512T012256Z_43e977de",
   "run_id": "run_loca_bench_20260512T012256Z_3_4b3f44cb",
-  "score": 0.0,
-  "status": "succeeded",
+  "score": null,
+  "status": "incompatible",
   "token_metrics": {
     "avg_completion_tokens": 107.0,
     "avg_prompt_tokens": 17785.0,
@@ -78,6 +84,6 @@
     "repeated_prefixes": [],
     "turns": 1
   },
-  "unit": "ratio",
+  "unit": null,
   "updated_at": "2026-05-12T01:26:44.726513+00:00"
 }

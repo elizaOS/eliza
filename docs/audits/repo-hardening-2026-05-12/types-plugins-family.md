@@ -1,6 +1,6 @@
 # Type Duplication Audit - Plugins Family
 
-Workspace: `/Users/shawwalters/eliza-workspace/milady/eliza`
+Workspace: `/Users/shawwalters/eliza-workspace/eliza/eliza`
 Date: 2026-05-12
 Mode: dry run / report only
 

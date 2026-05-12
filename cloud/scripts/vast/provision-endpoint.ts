@@ -1,59 +1,48 @@
 /**
- * Idempotent Vast.ai Serverless endpoint provisioning.
+ * Manifest-driven Vast.ai Serverless endpoint + workergroup provisioning.
  *
- * Run once per environment to create or update the endpoint that hosts the
- * Eliza-1 27B Q6_K GGUF on RTX 5090 via llama.cpp. Vast manages the
- * autoscaler, queue, and load balancer; this script only declares the desired
- * endpoint + workergroup config.
+ * Current Vast Serverless separates:
+ *   - endpoint jobs: /api/v0/endptjobs/
+ *   - workergroups: /api/v0/workergroups/
  *
- * Required env:
- *   VASTAI_API_KEY        — vast CLI key (starts with `vastai_`)
- *   VAST_TEMPLATE_ID      — id of the serverless-compatible template that
- *                           launches llama-server + PyWorker (see
- *                           services/vast-pyworker/README.md and
- *                           scripts/vast/upsert-template.ts)
- *
- * Optional env:
- *   VAST_ENDPOINT_NAME    — defaults to "eliza-cloud-eliza-1-27b"
- *   VAST_MIN_WORKERS      — defaults to 1
- *   VAST_MAX_WORKERS      — defaults to 8
- *   VAST_TARGET_UTIL      — defaults to 0.9
- *
- * The vast.ai REST host is https://console.vast.ai. Endpoint lifecycle is
- * available under /api/v0/endptjobs/ (legacy autoscaler) and /api/v0/serverless/
- * (Serverless v2). This script targets v2.
+ * The old script targeted a legacy /serverless/endpoints shape and hardcoded a
+ * single RTX 5090 class. This version reads the selected Eliza serve manifest
+ * so each model tier provisions the right worker image, GPU count, VRAM, disk,
+ * network, and autoscaling policy.
  */
+
+import {
+  manifestGpuRamGb,
+  manifestSearchParamsToQuery,
+  readVastManifest,
+  type VastServeManifest,
+} from "./manifest";
 
 const VAST_API = "https://console.vast.ai";
 
-interface EndpointConfig {
-  name: string;
-  template_id: number;
-  min_workers: number;
-  max_workers: number;
+export interface EndpointJobPayload {
+  endpoint_name: string;
   min_load: number;
-  cold_mult: number;
   target_util: number;
-  inactivity_timeout: number;
-  max_queue_time: number;
-  target_queue_time: number;
-  search_params: SearchParams;
+  cold_mult: number;
+  cold_workers: number;
+  max_workers: number;
 }
 
-interface SearchParams {
-  gpu_name: string[];
-  gpu_ram_min: number;
-  disk_space_min: number;
-  duration_min: number;
-  rentable: boolean;
-  verified: boolean;
-  reliability_min: number;
-  rental_type: "on_demand" | "reserved" | "interruptible";
+export interface WorkergroupPayload {
+  endpoint_name?: string;
+  endpoint_id?: number;
+  template_id: number;
+  gpu_ram: number;
+  search_params?: string;
+  launch_args?: string;
 }
 
-interface VastEndpoint {
-  id: number;
-  name: string;
+interface VastCreateResult {
+  success?: boolean;
+  result?: number;
+  error?: string;
+  msg?: string;
 }
 
 function readEnv(name: string, fallback?: string): string {
@@ -77,6 +66,48 @@ function readNumber(name: string, fallback: number): number {
   return parsed;
 }
 
+function readPositiveInt(name: string): number {
+  const parsed = Number(readEnv(name));
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${name} must be a positive integer, got ${parsed}`);
+  }
+  return parsed;
+}
+
+export function buildEndpointJobPayload(manifest: VastServeManifest): EndpointJobPayload {
+  const alias = manifest.model_alias?.replace(/^vast\//, "") ?? "eliza-1";
+  return {
+    endpoint_name: readEnv("VAST_ENDPOINT_NAME", `eliza-cloud-${alias}`),
+    min_load: readNumber("VAST_MIN_LOAD", 1),
+    target_util: readNumber("VAST_TARGET_UTIL", 0.85),
+    cold_mult: readNumber("VAST_COLD_MULT", 2.5),
+    cold_workers: readNumber("VAST_COLD_WORKERS", 1),
+    max_workers: readNumber("VAST_MAX_WORKERS", 8),
+  };
+}
+
+export function buildWorkergroupPayload(
+  templateId: number,
+  endpoint: EndpointJobPayload,
+  manifest: VastServeManifest,
+  endpointId?: number,
+): WorkergroupPayload {
+  const payload: WorkergroupPayload = {
+    template_id: templateId,
+    gpu_ram: readNumber("VAST_GPU_RAM_GB", manifestGpuRamGb(manifest)),
+    search_params: readEnv("VAST_SEARCH_PARAMS", manifestSearchParamsToQuery(manifest)),
+  };
+  if (endpointId) {
+    payload.endpoint_id = endpointId;
+  } else {
+    payload.endpoint_name = endpoint.endpoint_name;
+  }
+
+  const launchArgs = process.env.VAST_LAUNCH_ARGS?.trim();
+  if (launchArgs) payload.launch_args = launchArgs;
+  return payload;
+}
+
 async function vastFetch<T>(
   apiKey: string,
   method: "GET" | "POST" | "PUT" | "DELETE",
@@ -98,69 +129,89 @@ async function vastFetch<T>(
   return text.length > 0 ? (JSON.parse(text) as T) : ({} as T);
 }
 
-async function findEndpointByName(apiKey: string, name: string): Promise<VastEndpoint | null> {
-  const list = await vastFetch<{ endpoints?: VastEndpoint[] }>(
+async function createEndpointJob(
+  apiKey: string,
+  payload: EndpointJobPayload,
+): Promise<number | null> {
+  const result = await vastFetch<VastCreateResult>(apiKey, "POST", "/api/v0/endptjobs/", payload);
+  if (result.success === false) {
+    throw new Error(`Vast endpoint create failed: ${result.error ?? "error"} ${result.msg ?? ""}`);
+  }
+  return typeof result.result === "number" ? result.result : null;
+}
+
+async function createWorkergroup(
+  apiKey: string,
+  payload: WorkergroupPayload,
+): Promise<number | null> {
+  const result = await vastFetch<VastCreateResult>(
     apiKey,
-    "GET",
-    "/api/v0/serverless/endpoints",
+    "POST",
+    "/api/v0/workergroups/",
+    payload,
   );
-  return list.endpoints?.find((e) => e.name === name) ?? null;
+  if (result.success === false) {
+    throw new Error(
+      `Vast workergroup create failed: ${result.error ?? "error"} ${result.msg ?? ""}`,
+    );
+  }
+  return typeof result.result === "number" ? result.result : null;
 }
 
-async function upsertEndpoint(apiKey: string, config: EndpointConfig): Promise<VastEndpoint> {
-  const existing = await findEndpointByName(apiKey, config.name);
-  if (existing) {
-    console.log(`[vast] Updating endpoint #${existing.id} (${config.name})`);
-    await vastFetch(apiKey, "PUT", `/api/v0/serverless/endpoints/${existing.id}`, config);
-    return existing;
-  }
-  console.log(`[vast] Creating endpoint ${config.name}`);
-  return await vastFetch<VastEndpoint>(apiKey, "POST", "/api/v0/serverless/endpoints", config);
-}
-
-async function main(): Promise<void> {
-  const apiKey = readEnv("VASTAI_API_KEY");
-  const templateId = Number(readEnv("VAST_TEMPLATE_ID"));
-  if (!Number.isInteger(templateId) || templateId <= 0) {
-    throw new Error(`VAST_TEMPLATE_ID must be a positive integer, got ${templateId}`);
-  }
-
-  const config: EndpointConfig = {
-    name: readEnv("VAST_ENDPOINT_NAME", "eliza-cloud-eliza-1-27b"),
-    template_id: templateId,
-    min_workers: readNumber("VAST_MIN_WORKERS", 1),
-    max_workers: readNumber("VAST_MAX_WORKERS", 8),
-    min_load: readNumber("VAST_MIN_LOAD", 1),
-    cold_mult: readNumber("VAST_COLD_MULT", 3),
-    target_util: readNumber("VAST_TARGET_UTIL", 0.9),
-    inactivity_timeout: readNumber("VAST_INACTIVITY_TIMEOUT", -1),
-    max_queue_time: readNumber("VAST_MAX_QUEUE_TIME", 60),
-    target_queue_time: readNumber("VAST_TARGET_QUEUE_TIME", 5),
-    search_params: {
-      gpu_name: ["RTX_5090"],
-      // RTX 5090 has 32 GB VRAM. Q6_K is 22.4 GB; min 25 GB ensures KV-cache
-      // headroom for at least 4096-token context with --parallel 2.
-      gpu_ram_min: readNumber("VAST_GPU_RAM_MIN_MB", 25000),
-      // Q6_K GGUF is 22.4 GB; require 50 GB to leave room for HF cache,
-      // staging, and a second quant variant if we hot-swap.
-      disk_space_min: readNumber("VAST_DISK_MIN_GB", 50),
-      duration_min: readNumber("VAST_DURATION_MIN_SECONDS", 7 * 24 * 3600),
-      rentable: true,
-      verified: true,
-      reliability_min: readNumber("VAST_RELIABILITY_MIN", 0.9),
-      rental_type: "on_demand",
-    },
-  };
-
-  const endpoint = await upsertEndpoint(apiKey, config);
-  console.log(`[vast] Endpoint ready: id=${endpoint.id} name=${endpoint.name}`);
+function printDryRun(endpoint: EndpointJobPayload, workergroup: WorkergroupPayload): void {
   console.log(
-    "[vast] Next: set VAST_API_KEY + VAST_BASE_URL on the cloud Worker",
-    "(wrangler secret put VAST_API_KEY / VAST_BASE_URL).",
+    JSON.stringify(
+      {
+        endpoint,
+        workergroup,
+        env: {
+          VAST_BASE_URL: `https://openai.vast.ai/${endpoint.endpoint_name}`,
+        },
+      },
+      null,
+      2,
+    ),
   );
 }
 
-main().catch((err: Error) => {
-  console.error(`[vast] provision failed: ${err.message}`);
-  process.exit(1);
-});
+export async function main(): Promise<void> {
+  const apiKey = readEnv("VASTAI_API_KEY");
+  const templateId = readPositiveInt("VAST_TEMPLATE_ID");
+  const manifest = readVastManifest(readEnv("ELIZA_VAST_MANIFEST", "eliza-1-2b.json")).manifest;
+  const endpoint = buildEndpointJobPayload(manifest);
+  const explicitEndpointId = process.env.VAST_ENDPOINT_ID
+    ? readPositiveInt("VAST_ENDPOINT_ID")
+    : undefined;
+  const workergroup = buildWorkergroupPayload(templateId, endpoint, manifest, explicitEndpointId);
+
+  if (process.env.VAST_DRY_RUN === "1" || process.env.VAST_DRY_RUN === "true") {
+    printDryRun(endpoint, workergroup);
+    return;
+  }
+
+  const endpointId = explicitEndpointId ?? (await createEndpointJob(apiKey, endpoint));
+  if (endpointId && !workergroup.endpoint_id) {
+    delete workergroup.endpoint_name;
+    workergroup.endpoint_id = endpointId;
+  }
+  const workergroupId = await createWorkergroup(apiKey, workergroup);
+
+  console.log(
+    `[vast] Endpoint ready: name=${endpoint.endpoint_name} id=${endpointId ?? "unknown"}`,
+  );
+  console.log(`[vast] Workergroup ready: id=${workergroupId ?? "unknown"}`);
+  console.log(`[vast] Worker base URL: https://openai.vast.ai/${endpoint.endpoint_name}`);
+  console.log(
+    `[vast] Configure cloud: VAST_BASE_URL_${endpoint.endpoint_name
+      .replace(/^eliza-cloud-/, "")
+      .replace(/[^a-zA-Z0-9]+/g, "_")
+      .toUpperCase()}=https://openai.vast.ai/${endpoint.endpoint_name}`,
+  );
+}
+
+if (import.meta.main) {
+  main().catch((err: Error) => {
+    console.error(`[vast] provision failed: ${err.message}`);
+    process.exit(1);
+  });
+}

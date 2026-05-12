@@ -24,13 +24,13 @@
 //
 // Both halves ship together — bumping n_tasks without the ith/nth split
 // would be a data race. Idempotent: each mutation carries a
-// `// MILADY-CPU-THREAD-PARALLELISM-V1` sentinel (or `# ...` in CMake-ish
+// `// ELIZA-CPU-THREAD-PARALLELISM-V1` sentinel (or `# ...` in CMake-ish
 // contexts, but these are all .c here) and the patcher no-ops if present.
 
 import fs from "node:fs";
 import path from "node:path";
 
-const SENTINEL = "MILADY-CPU-THREAD-PARALLELISM-V1";
+const SENTINEL = "ELIZA-CPU-THREAD-PARALLELISM-V1";
 
 // --- 1. ggml-cpu.c: task-count + work-size ---------------------------------
 

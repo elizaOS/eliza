@@ -258,7 +258,7 @@
       }
     },
     "provenance": {
-      "description": "Optional. Present on `base-v1` bundles — the upstream BASE models, GGUF-converted via the elizaOS/llama.cpp fork and fully Milady-optimized, NOT fine-tuned. Records the release state, the not-fine-tuned flag, and the upstream source repo per shipped component. The runtime validator requires per-component coverage when releaseState === 'base-v1'.",
+      "description": "Optional. Present on `base-v1` bundles — the upstream BASE models, GGUF-converted via the elizaOS/llama.cpp fork and fully Eliza-optimized, NOT fine-tuned. Records the release state, the not-fine-tuned flag, and the upstream source repo per shipped component. The runtime validator requires per-component coverage when releaseState === 'base-v1'.",
       "type": "object",
       "additionalProperties": false,
       "required": ["releaseState", "finetuned", "sourceModels"],

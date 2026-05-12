@@ -243,6 +243,26 @@ function extractDflashAcceptance(data) {
 }
 
 function extractDflashSpeedup(data) {
+  const drafted = firstFinite(
+    data?.withDrafter?.drafted,
+    data?.summary?.dflashDraftedTotal,
+  );
+  const accepted = firstFinite(
+    data?.withDrafter?.accepted,
+    data?.summary?.dflashAcceptedTotal,
+  );
+  const draftingActive =
+    data?.draftingActive ??
+    data?.summary?.dflashDraftingActive ??
+    data?.withDrafter?.draftingActive ??
+    (drafted !== null && drafted > 0 && accepted !== null);
+  const tokenizerCompatible =
+    data?.summary?.tokenizerCompatible ??
+    data?.withDrafter?.tokenizerCompatible;
+  if (draftingActive === false || tokenizerCompatible === false || drafted === 0) {
+    return 0;
+  }
+
   const summarySpeedup = finiteOrNull(data?.summary?.dflashSpeedup);
   if (summarySpeedup !== null) return summarySpeedup;
   const withTps = finiteOrNull(data?.withDrafter?.tokensPerSecond);

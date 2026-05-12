@@ -51,7 +51,7 @@ datasets:
       minimal CLAUDE_DISTILL_SYSTEM prompt so the model learns the
       thinking-mode shape from data, not a long header.
 
-  # =================== LOCAL MILADY CORPORA =====================
+  # =================== LOCAL ELIZA CORPORA =====================
   # Self-hosted nubilio bot — cron-snapshot trajectories already in
   # OpenAI {messages:[…]} shape. Adapter passes the assistant content
   # through verbatim because the action-planner output is already
@@ -64,7 +64,7 @@ datasets:
     priority: core
     license: proprietary
     notes: |
-      Cron snapshots from the self-hosted milady bot at milady.nubs.site
+      Cron snapshots from the self-hosted eliza bot at eliza.nubs.site
       (date range 2026-04-19 → 2026-05-02, ~6.3k examples spanning
       action_planner + response tasks). Drop in nubilio-trajectories/
       under training/ to ingest.

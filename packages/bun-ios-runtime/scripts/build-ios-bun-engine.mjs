@@ -21,9 +21,16 @@ const shimSource = path.join(
   "ElizaBunEngineShim",
   "eliza_bun_engine_shim.c",
 );
+const patchesDir = path.join(packageRoot, "patches");
+const bunIosPatch = path.join(patchesDir, "dannote-bun-ios-nojit.patch");
+const webKitIosPatch = path.join(
+  patchesDir,
+  "webkit-ios-simulator-nojit.patch",
+);
 const frameworkName = "ElizaBunEngine";
 const requiredSymbols = [
   "_eliza_bun_engine_abi_version",
+  "_eliza_bun_engine_last_error",
   "_eliza_bun_engine_start",
   "_eliza_bun_engine_stop",
   "_eliza_bun_engine_call",
@@ -45,6 +52,7 @@ function run(command, args, options = {}) {
     env: options.env ?? process.env,
     stdio: options.stdio ?? "inherit",
     encoding: options.encoding,
+    maxBuffer: options.maxBuffer,
   });
   if (result.status !== 0) {
     throw new Error(
@@ -59,6 +67,7 @@ function runCapture(command, args, options = {}) {
     ...options,
     stdio: ["ignore", "pipe", "pipe"],
     encoding: "utf8",
+    maxBuffer: options.maxBuffer ?? 256 * 1024 * 1024,
   });
 }
 
@@ -100,6 +109,7 @@ function fail(message) {
 
 const info = targetInfo(argValue("--target", "simulator"));
 const verifyOnly = process.argv.includes("--verify-only");
+const packageOnly = process.argv.includes("--package-only");
 const rebuild = process.argv.includes("--rebuild");
 const backend = (
   argValue("--backend", process.env.ELIZA_BUN_IOS_BUILD_BACKEND || "auto") ||
@@ -307,6 +317,65 @@ if (
     `${sourceDir} does not look like a Bun source checkout (missing build.zig and CMakeLists.txt)`,
   );
 }
+
+function patchCheck(root, patchFile, reverse = false) {
+  const args = reverse
+    ? ["apply", "--reverse", "--check", patchFile]
+    : ["apply", "--check", patchFile];
+  return spawnSync("git", args, {
+    cwd: root,
+    env: process.env,
+    stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf8",
+  });
+}
+
+function applyPatchIfNeeded(root, patchFile, label) {
+  if (process.env.ELIZA_BUN_IOS_SKIP_SOURCE_PATCHES === "1") return;
+  if (!fs.existsSync(patchFile)) return;
+  if (!fs.existsSync(path.join(root, ".git"))) {
+    console.warn(
+      `[bun-ios-runtime] Skipping ${label} source patch; ${root} is not a git checkout`,
+    );
+    return;
+  }
+
+  const forward = patchCheck(root, patchFile);
+  if (forward.status === 0) {
+    console.log(`[bun-ios-runtime] Applying ${label} source patch`);
+    run("git", ["apply", patchFile], { cwd: root });
+    return;
+  }
+
+  const reverse = patchCheck(root, patchFile, true);
+  if (reverse.status === 0) {
+    console.log(`[bun-ios-runtime] ${label} source patch already applied`);
+    return;
+  }
+
+  fail(
+    [
+      `Cannot apply ${label} source patch ${patchFile}.`,
+      forward.stderr?.trim() || forward.stdout?.trim() || "git apply --check failed",
+    ].join("\n"),
+  );
+}
+
+function applyBundledSourcePatches() {
+  applyPatchIfNeeded(sourceDir, bunIosPatch, "Bun iOS/no-JIT");
+  const webKitSourceDir =
+    process.env.ELIZA_BUN_IOS_WEBKIT_SOURCE_DIR ||
+    process.env.ELIZA_WEBKIT_SOURCE_DIR;
+  if (webKitSourceDir) {
+    applyPatchIfNeeded(
+      path.resolve(webKitSourceDir),
+      webKitIosPatch,
+      "WebKit iOS Simulator/no-JIT",
+    );
+  }
+}
+
+applyBundledSourcePatches();
 
 const explicitCommand = process.env.ELIZA_BUN_IOS_BUILD_COMMAND;
 const env = {
@@ -668,6 +737,14 @@ function buildWithCmake() {
     process.env.ELIZA_BUN_IOS_BUILD_DIR ||
       path.join(packageRoot, "build", info.cmakeBuildDirName, "bun"),
   );
+  if (packageOnly) {
+    console.log(
+      `[bun-ios-runtime] Packaging existing Bun CMake output from ${buildDir}`,
+    );
+    const frameworkDir = linkFramework({ buildDir, webkitPath, info });
+    createXcframework(frameworkDir);
+    return;
+  }
   if (rebuild) fs.rmSync(buildDir, { recursive: true, force: true });
   fs.mkdirSync(buildDir, { recursive: true });
 

@@ -1,4 +1,4 @@
-# Milady iOS — Build Map
+# Eliza iOS — Build Map
 
 The iOS app is a **cloud-hybrid** Capacitor build: Apple forbids
 running a JIT-enabled JavaScript runtime (bun, JavaScriptCore at
@@ -33,7 +33,7 @@ Effects (all idempotent):
    `App.entitlements`, `PrivacyInfo.xcprivacy`, the
    WebsiteBlockerContentExtension, and the Podfile / fastlane / Gemfile.
 2. `overlayIos()` —
-   - Merges Milady-specific permission strings into `Info.plist`
+   - Merges Eliza-specific permission strings into `Info.plist`
      (camera, microphone, location, contacts, etc.).
    - Rewrites `App.entitlements` to use `group.ai.elizaos.eliza` as
      the App Group ID.
@@ -66,7 +66,7 @@ a **4 GB total limit**; the bundled Eliza-1 GGUF can weigh several GB.
 Apple's
 recommended pattern for shipping on-demand large assets is **On-Demand
 Resources (ODR)** — the iOS equivalent of the Android Dynamic Feature
-Module that `scripts/miladyos/stage-models-dfm.mjs` already uses for
+Module that `scripts/elizaos/stage-models-dfm.mjs` already uses for
 the AAB build:
 
 | Concept                | Android (AAB)             | iOS (ODR)                                  |
@@ -77,7 +77,7 @@ the AAB build:
 | On-demand              | `dist:onDemand="true"`    | `Download only on demand`                  |
 | Runtime accessor       | `getAssets().open(...)`   | `NSBundleResourceRequest(tags:)`           |
 
-The script `scripts/miladyos/stage-models-odr.mjs` (TODO) should:
+The script `scripts/elizaos/stage-models-odr.mjs` (TODO) should:
 
 1. Move staged GGUFs from
    `apps/app/ios/App/App/agent/models/` (or wherever the iOS staging
@@ -104,11 +104,11 @@ hand-off. iOS WebView (WKWebView) can't share cookies with Safari, so
 the OAuth callback must use either:
 
 - **Universal Link** (preferred) — the Anthropic / Codex OAuth client
-  is registered against `https://milady.app/oauth/callback`, the iOS
+  is registered against `https://eliza.app/oauth/callback`, the iOS
   app declares the associated domain in `App.entitlements`, and the
   redirect re-opens the app via the Universal Link handler in
   `AppDelegate.swift`'s `application(_:continue:restorationHandler:)`.
-- **Custom URL scheme** (fallback) — `milady://oauth/callback` with
+- **Custom URL scheme** (fallback) — `eliza://oauth/callback` with
   `CFBundleURLTypes` declaration in `Info.plist`. Less secure (any
   other app can register the same scheme) but doesn't require an
   Apple-approved associated domain.
@@ -125,7 +125,7 @@ onboarding flows should round-trip.
 | Env / Build flag        | Effect                                                           |
 | ----------------------- | ---------------------------------------------------------------- |
 | `ELIZA_DISPLAY_NAME`    | Substituted into `CFBundleDisplayName` at build time             |
-| `MILADY_BUILD_FORMAT=aab` (Android) | Triggers `stage-models-dfm.mjs` — no iOS equivalent yet |
+| `ELIZA_BUILD_FORMAT=aab` (Android) | Triggers `stage-models-dfm.mjs` — no iOS equivalent yet |
 | `ELIZA_DEVICE_BRIDGE_ENABLED=1` | Already on by default; the Capacitor llama plugin uses it     |
 | `ELIZA_REQUIRE_LOCAL_AUTH` | Off by default for parity with Android Capacitor build path     |
 
@@ -140,9 +140,9 @@ needs macOS:
 - [ ] Open `App.xcworkspace`, configure a development team, build
       against an iOS 15+ simulator and a real device.
 - [ ] Wire the OAuth callback in `AppDelegate.swift` and add the
-      `applinks:milady.app` associated domain in
+      `applinks:eliza.app` associated domain in
       `App.entitlements`.
-- [ ] Implement `scripts/miladyos/stage-models-odr.mjs` (mirrors
+- [ ] Implement `scripts/elizaos/stage-models-odr.mjs` (mirrors
       `stage-models-dfm.mjs`) and update
       `LlamaCppCapacitor.swift` to call
       `NSBundleResourceRequest.beginAccessingResources(completionHandler:)`

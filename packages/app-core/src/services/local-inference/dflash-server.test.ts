@@ -278,31 +278,31 @@ describe("fused-vs-two-process spawn selection", () => {
   });
 });
 
-describe("MILADY_DFLASH_DISABLE developer kill-switch", () => {
+describe("ELIZA_DFLASH_DISABLE developer kill-switch", () => {
   it("disables DFlash even when ELIZA_DFLASH_ENABLED forces it on", () => {
-    delete process.env.MILADY_DFLASH_DISABLE;
+    delete process.env.ELIZA_DFLASH_DISABLE;
     process.env.ELIZA_DFLASH_ENABLED = "1";
     expect(dflashDevDisabled()).toBe(false);
     expect(dflashEnabled()).toBe(true);
 
-    process.env.MILADY_DFLASH_DISABLE = "1";
+    process.env.ELIZA_DFLASH_DISABLE = "1";
     expect(dflashDevDisabled()).toBe(true);
     expect(dflashEnabled()).toBe(false);
-    expect(getDflashRuntimeStatus().reason).toContain("MILADY_DFLASH_DISABLE");
+    expect(getDflashRuntimeStatus().reason).toContain("ELIZA_DFLASH_DISABLE");
   });
 
   it("logs a loud warning when active and is silent otherwise", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      delete process.env.MILADY_DFLASH_DISABLE;
+      delete process.env.ELIZA_DFLASH_DISABLE;
       logDflashDevDisabledWarning();
       expect(warn).not.toHaveBeenCalled();
 
-      process.env.MILADY_DFLASH_DISABLE = "1";
+      process.env.ELIZA_DFLASH_DISABLE = "1";
       logDflashDevDisabledWarning();
       expect(warn).toHaveBeenCalledTimes(1);
       expect(String(warn.mock.calls[0][0])).toContain(
-        "MILADY_DFLASH_DISABLE=1",
+        "ELIZA_DFLASH_DISABLE=1",
       );
     } finally {
       warn.mockRestore();

@@ -108,14 +108,14 @@ in this document's status vocabulary:
    resolved: `vulkan_verify` now branches on QJL and Polar fixtures and
    passes all five kernels on Apple M4 Max via MoltenVK. The remaining
    blocker is runtime graph dispatch in the fork: `ggml-vulkan.cpp` still
-   needs milady-native descriptors/push constants and per-op routing before
+   needs eliza-native descriptors/push constants and per-op routing before
    a `linux-x64-vulkan` or Android build can honestly claim runtime-ready
    QJL/Polar/TurboQuant.
    Owner: kernel team (backend dispatch patch + native-driver smoke).
    Effort: M–L depending on Vulkan backend surface.
 
 4. **No CUDA hardware in the loop.** `linux-x64-cuda` and the
-   v0.4.0-milady fork's W4-B CUDA QJL/Polar/TBQ3_TCQ kernels have never
+   v0.4.0-eliza fork's W4-B CUDA QJL/Polar/TBQ3_TCQ kernels have never
    been observed running on a real NVIDIA card in this repo. The build
    target compiles when `nvcc` is present
    ([`build-llama-cpp-dflash.mjs:812`](../app-core/scripts/build-llama-cpp-dflash.mjs))
@@ -128,7 +128,7 @@ in this document's status vocabulary:
    Effort: M (write `cuda_verify` harness against same JSON fixtures) →
    L (procure a host or a CI runner).
 
-5. **iOS Capacitor patch claims the xcframework slot but the milady
+5. **iOS Capacitor patch claims the xcframework slot but the eliza
    archive never lands there.** ~~RESOLVED IN WIRING (Wave-4-F)~~ — the
    `buildIosLlamaCppSimulatorFramework()` in-process cmake call is gone.
    `ensureIosLlamaCppVendoredFramework()` now invokes
@@ -137,7 +137,7 @@ in this document's status vocabulary:
    through `ios-xcframework/build-xcframework.mjs --verify`. The
    patched podspec still points at the same
    `ios/Frameworks-xcframework/LlamaCpp.xcframework` slot, but the slot
-   is now filled with the milady-kernel xcframework, not a stock build.
+   is now filled with the eliza-kernel xcframework, not a stock build.
    Pairs with blocker #1's residual runtime-dispatch/device-smoke gap.
    Owner: device-lab + kernel team.
    Effort: S–M.
@@ -197,7 +197,7 @@ dispatch and real device runs.
 
 - **`cuda_verify`** — SCAFFOLD EXISTS. Same JSON fixture format,
   `cudaMalloc` + `cudaMemcpy` instead of vulkan_verify's host-visible
-  path, kernel launch via the v0.4.0-milady fork's CUDA entry points
+  path, kernel launch via the v0.4.0-eliza fork's CUDA entry points
   (`turbo_quant_cuda.cuh`, the W4-B QJL/Polar/TBQ3_TCQ additions). Needs
   a real CUDA host for the first 8/8 run.
 

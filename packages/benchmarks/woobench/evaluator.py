@@ -476,8 +476,6 @@ Respond ONLY with the rephrased response, nothing else."""
             node = nodes_by_id.get(turn.node_id)
             if node and "resource" in node.id and turn.match_result == MatchResult.POSITIVE:
                 crisis_handled = True
-            if node and "payment" in node.id and turn.match_result == MatchResult.POSITIVE:
-                payment_converted = True
 
         revenue = RevenueResult(
             amount_earned=revenue_amount_earned,

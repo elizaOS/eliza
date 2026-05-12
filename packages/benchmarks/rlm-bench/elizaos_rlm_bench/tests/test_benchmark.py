@@ -173,6 +173,19 @@ class TestEvaluator:
         assert compute_partial_match("apple", "apple banana") == 0.5
         assert compute_partial_match("xyz", "apple banana") == 0.0
 
+    def test_partial_match_accepts_unlabeled_generated_codes(self) -> None:
+        """Oolong-pairs answers should pass when all IDs are present."""
+        expected = "Shared: AB12CD34, A: EF56GH78, B: IJ90KL12"
+        predicted = "The values are AB12CD34, EF56GH78, and IJ90KL12."
+
+        assert compute_partial_match(predicted, expected) == 1.0
+
+    def test_partial_match_penalizes_missing_generated_codes(self) -> None:
+        expected = "Shared: AB12CD34, A: EF56GH78, B: IJ90KL12"
+        predicted = "The shared value is AB12CD34 and A is EF56GH78."
+
+        assert compute_partial_match(predicted, expected) == pytest.approx(2 / 3)
+
     def test_evaluator_correct_answer(self) -> None:
         """Test evaluator marks correct answer."""
         evaluator = RLMBenchEvaluator()
@@ -336,6 +349,29 @@ class TestRunner:
 
         with pytest.raises(ValueError, match="Unknown mode"):
             await runner.run_task(task, mode="nonexistent")
+
+    def test_eliza_mode_skips_server_for_delegate_harness(self, monkeypatch) -> None:
+        """Hermes/OpenClaw delegate transports should not spawn Eliza."""
+        import run_benchmark
+
+        monkeypatch.delenv("ELIZA_BENCH_URL", raising=False)
+        monkeypatch.delenv("ELIZA_BENCH_TOKEN", raising=False)
+        monkeypatch.setenv("BENCHMARK_HARNESS", "hermes")
+
+        assert run_benchmark.should_start_eliza_server() is False
+
+    def test_eliza_mode_forwards_model_env(self, monkeypatch) -> None:
+        import os
+        import run_benchmark
+
+        monkeypatch.delenv("BENCHMARK_MODEL_NAME", raising=False)
+        monkeypatch.delenv("OPENAI_LARGE_MODEL", raising=False)
+        config = RLMBenchConfig(root_model="openai/gpt-oss-120b")
+
+        run_benchmark.configure_bridge_model_env(config)
+
+        assert os.environ["BENCHMARK_MODEL_NAME"] == "openai/gpt-oss-120b"
+        assert os.environ["OPENAI_LARGE_MODEL"] == "openai/gpt-oss-120b"
 
 
 class TestReporting:

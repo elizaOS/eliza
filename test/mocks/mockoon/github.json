@@ -17,7 +17,7 @@
       "responses": [
         {
           "uuid": "bbbb1111-aaaa-4000-8000-00000002006a",
-          "body": "{\n  \"total_count\": 2,\n  \"incomplete_results\": false,\n  \"items\": [\n    {\n      \"id\": 2010101010,\n      \"number\": 482,\n      \"state\": \"open\",\n      \"title\": \"lifeops: planner drops candidate when all signals stale\",\n      \"html_url\": \"https://github.com/milady/lifeops/issues/482\",\n      \"user\": {\n        \"login\": \"priyar\",\n        \"id\": 11122233\n      },\n      \"created_at\": \"2026-05-08T19:14:11Z\",\n      \"updated_at\": \"2026-05-09T16:55:02Z\",\n      \"labels\": [\n        {\n          \"name\": \"bug\"\n        },\n        {\n          \"name\": \"lifeops\"\n        }\n      ]\n    },\n    {\n      \"id\": 2010101011,\n      \"number\": 483,\n      \"state\": \"open\",\n      \"title\": \"lifeops: surface telemetry span ids in approval queue\",\n      \"html_url\": \"https://github.com/milady/lifeops/issues/483\",\n      \"user\": {\n        \"login\": \"marcuso\",\n        \"id\": 22233344\n      },\n      \"created_at\": \"2026-05-09T08:02:17Z\",\n      \"updated_at\": \"2026-05-09T17:30:00Z\",\n      \"labels\": [\n        {\n          \"name\": \"enhancement\"\n        }\n      ]\n    }\n  ]\n}",
+          "body": "{\n  \"total_count\": 2,\n  \"incomplete_results\": false,\n  \"items\": [\n    {\n      \"id\": 2010101010,\n      \"number\": 482,\n      \"state\": \"open\",\n      \"title\": \"lifeops: planner drops candidate when all signals stale\",\n      \"html_url\": \"https://github.com/eliza/lifeops/issues/482\",\n      \"user\": {\n        \"login\": \"priyar\",\n        \"id\": 11122233\n      },\n      \"created_at\": \"2026-05-08T19:14:11Z\",\n      \"updated_at\": \"2026-05-09T16:55:02Z\",\n      \"labels\": [\n        {\n          \"name\": \"bug\"\n        },\n        {\n          \"name\": \"lifeops\"\n        }\n      ]\n    },\n    {\n      \"id\": 2010101011,\n      \"number\": 483,\n      \"state\": \"open\",\n      \"title\": \"lifeops: surface telemetry span ids in approval queue\",\n      \"html_url\": \"https://github.com/eliza/lifeops/issues/483\",\n      \"user\": {\n        \"login\": \"marcuso\",\n        \"id\": 22233344\n      },\n      \"created_at\": \"2026-05-09T08:02:17Z\",\n      \"updated_at\": \"2026-05-09T17:30:00Z\",\n      \"labels\": [\n        {\n          \"name\": \"enhancement\"\n        }\n      ]\n    }\n  ]\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "happy path",
@@ -637,7 +637,7 @@
       "responses": [
         {
           "uuid": "bbbb1111-aaaa-4000-8000-00000002007e",
-          "body": "{\n  \"id\": 2010101099,\n  \"number\": 484,\n  \"state\": \"open\",\n  \"title\": \"Mock created issue\",\n  \"html_url\": \"https://github.com/milady/lifeops/issues/484\",\n  \"created_at\": \"2026-05-09T18:30:00Z\"\n}",
+          "body": "{\n  \"id\": 2010101099,\n  \"number\": 484,\n  \"state\": \"open\",\n  \"title\": \"Mock created issue\",\n  \"html_url\": \"https://github.com/eliza/lifeops/issues/484\",\n  \"created_at\": \"2026-05-09T18:30:00Z\"\n}",
           "latency": 0,
           "statusCode": 201,
           "label": "happy path",

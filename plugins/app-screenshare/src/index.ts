@@ -1,4 +1,4 @@
-import { gatePluginSessionForHostedApp } from "@elizaos/agent";
+import { gatePluginSessionForHostedApp } from "@elizaos/agent/services/app-session-gate";
 import type { Plugin } from "@elizaos/core";
 import {
   handleAppRoutes,

@@ -53,7 +53,7 @@ on:
         type: boolean
         default: false
       run_publish_models:
-        description: "Run the eliza-1 model publish + catalog-sync job on-demand (gated by secrets.MILADY_HF_TOKEN)."
+        description: "Run the eliza-1 model publish + catalog-sync job on-demand (gated by secrets.ELIZA_HF_TOKEN)."
         required: false
         type: boolean
         default: false
@@ -162,8 +162,8 @@ jobs:
 
       - name: Boot dev agent
         env:
-          MILADY_API_PORT: "31337"
-          MILADY_PORT: "2138"
+          ELIZA_API_PORT: "31337"
+          ELIZA_PORT: "2138"
           NODE_ENV: "test"
           ELIZA_DISABLE_TRAJECTORY_LOGGING: "1"
         run: |
@@ -171,7 +171,7 @@ jobs:
           mkdir -p .ci-logs
           # Run the dev server in the background. The orchestrator
           # already auto-shifts ports if the defaults are busy and writes
-          # a `.milady/desktop-dev-console.log` we can tail if needed.
+          # a `.eliza/desktop-dev-console.log` we can tail if needed.
           bun run dev > .ci-logs/dev.log 2>&1 &
           echo $! > /tmp/dev.pid
           # Health probe — give the agent up to 120s to come up.
@@ -186,7 +186,7 @@ jobs:
 
       - name: Run profile harness (host-cpu config)
         env:
-          MILADY_API_TOKEN: ${{ secrets.MILADY_CI_API_TOKEN }}
+          ELIZA_API_TOKEN: ${{ secrets.ELIZA_CI_API_TOKEN }}
         run: |
           set -euo pipefail
           DATE="$(date -u +%Y-%m-%d)"
@@ -490,7 +490,7 @@ jobs:
     # then runs sync_catalog_from_hf.py to produce the catalog diff and
     # opens a PR with the update.
     #
-    # Gated behind secrets.MILADY_HF_TOKEN. When the secret is unset
+    # Gated behind secrets.ELIZA_HF_TOKEN. When the secret is unset
     # (forks, dry-test branches), the job no-ops with an explicit
     # warning so unrelated workflow runs don't fail.
     name: Publish eliza-1 models (weekly)
@@ -505,7 +505,7 @@ jobs:
       # `<base>-optimized` (or `-drafter`) bundle —
       # i.e. a single .gguf + manifest.json + README.md.
       W5_PIPELINE_OUTPUT_ROOT: ${{ vars.W5_PIPELINE_OUTPUT_ROOT || '/mnt/w5-pipeline-output' }}
-      HF_TOKEN: ${{ secrets.MILADY_HF_TOKEN }}
+      HF_TOKEN: ${{ secrets.ELIZA_HF_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -513,11 +513,11 @@ jobs:
           submodules: false
           show-progress: false
 
-      - name: Guard — require MILADY_HF_TOKEN
+      - name: Guard — require ELIZA_HF_TOKEN
         run: |
           set -euo pipefail
           if [ -z "${HF_TOKEN:-}" ]; then
-            echo "::warning ::secrets.MILADY_HF_TOKEN not configured; publish job will no-op."
+            echo "::warning ::secrets.ELIZA_HF_TOKEN not configured; publish job will no-op."
             echo "PUBLISH_SKIPPED=1" >> "$GITHUB_ENV"
             exit 0
           fi

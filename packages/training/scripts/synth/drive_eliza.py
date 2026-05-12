@@ -1,4 +1,4 @@
-"""Drive a running milady/eliza agent through scenarios to capture trajectories.
+"""Drive a running eliza/eliza agent through scenarios to capture trajectories.
 
 Architecture:
     drive_eliza.py
@@ -9,7 +9,7 @@ Architecture:
             shouldRespond → context_routing → action_planner → response
         ↓ each model call writes to the trajectory_collector service
         ↓ trajectory-export-cron flushes to JSONL per-task
-    ~/.milady/training-datasets/<date>/{
+    ~/.eliza/training-datasets/<date>/{
         should_respond_trajectories.jsonl,
         context_routing_trajectories.jsonl,
         action_planner_trajectories.jsonl,
@@ -33,7 +33,7 @@ Sub-agent capture (closes M8 / W1-T1 + W1-T2 + W1-T3):
 
 Usage:
     # 1. Start the eliza benchmark server (separate process):
-    cd /home/shaw/milady && bun run --cwd packages/app-core src/benchmark/server.ts
+    cd /home/shaw/eliza && bun run --cwd packages/app-core src/benchmark/server.ts
 
     # 2. Run this driver:
     .venv/bin/python scripts/synth/drive_eliza.py \\
@@ -191,7 +191,7 @@ class AiohttpSubAgentTransport:
     """Production transport: hits the orchestrator HTTP API directly.
 
     The orchestrator and the bench server are different processes — the
-    orchestrator runs inside the main eliza runtime on ``MILADY_API_PORT``
+    orchestrator runs inside the main eliza runtime on ``ELIZA_API_PORT``
     (31337 in dev) and the bench server runs on ``ELIZA_BENCH_URL`` (7777
     in the README example). Both URLs must be passed in by the caller.
     """
@@ -762,7 +762,7 @@ def main() -> int:
         "--orchestrator-url",
         type=str,
         default=os.environ.get(
-            "MILADY_ORCHESTRATOR_URL", "http://localhost:31337"
+            "ELIZA_ORCHESTRATOR_URL", "http://localhost:31337"
         ),
         help="base URL of the orchestrator that owns /api/coding-agents/*. "
         "Only used when --allow-subagents is set.",

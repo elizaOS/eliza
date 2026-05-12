@@ -9,28 +9,10 @@ cost/latency telemetry attached.
 """
 
 from __future__ import annotations
-
-import sys
-from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from ..types import MessageTurn
-
-
-def _ensure_hermes_adapter_importable() -> None:
-    """Make the sibling hermes-adapter source tree importable in repo checkouts."""
-    try:
-        import hermes_adapter  # noqa: F401
-        return
-    except ImportError:
-        pass
-
-    benchmarks_dir = Path(__file__).resolve().parents[3]
-    candidate = benchmarks_dir / "hermes-adapter"
-    if (candidate / "hermes_adapter").is_dir():
-        candidate_str = str(candidate)
-        if candidate_str not in sys.path:
-            sys.path.insert(0, candidate_str)
+from .adapter_paths import ensure_benchmark_adapter_importable
 
 
 class HermesLifeOpsAgent:
@@ -70,7 +52,7 @@ def build_hermes_agent(
     *,
     temperature: float = 0.0,
     reasoning_effort: str = "low",
-    max_tokens: int | None = None,
+    max_tokens: int | None = 4096,
 ) -> Callable[[list[MessageTurn], list[dict[str, Any]]], Awaitable[MessageTurn]]:
     """Build a Hermes-template agent callable for the bench runner.
 
@@ -86,8 +68,7 @@ def build_hermes_agent(
     direct endpoint experiments, but it requires ``HERMES_BASE_URL`` and
     bypasses the source harness setup.
     """
-    del temperature, reasoning_effort, max_tokens
-    _ensure_hermes_adapter_importable()
+    ensure_benchmark_adapter_importable("hermes")
     try:
         from hermes_adapter.client import HermesClient
         from hermes_adapter.lifeops_bench import build_lifeops_bench_agent_fn
@@ -101,7 +82,12 @@ def build_hermes_agent(
     # installed (the bench depends on litellm/openai), so we can drive the
     # OpenAI-compatible Cerebras endpoint directly without requiring a
     # hermes-agent venv subprocess.
-    client_kwargs: dict[str, Any] = {"mode": "in_process"}
+    client_kwargs: dict[str, Any] = {
+        "mode": "in_process",
+        "temperature": temperature,
+        "reasoning_effort": reasoning_effort,
+        "max_tokens": max_tokens,
+    }
     if model:
         client_kwargs["model"] = model
     if base_url:

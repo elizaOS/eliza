@@ -50,7 +50,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 : "${NEBIUS_PROJECT_ID:?must export NEBIUS_PROJECT_ID}"
-: "${NEBIUS_VM_NAME:=milady-train-h200}"
+: "${NEBIUS_VM_NAME:=eliza-train-h200}"
 : "${NEBIUS_VM_PRESET:=gpu-h200x2}"
 : "${NEBIUS_VM_REGION:=eu-north1}"
 : "${NEBIUS_VM_DISK_GB:=2048}"

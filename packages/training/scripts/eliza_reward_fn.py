@@ -1,25 +1,17 @@
-"""Verifiable reward function for the eliza-1 GRPO stage.
+"""Verifiable reward function for native Eliza tool-calling GRPO.
 
-Per RL_STRATEGY.md the reward is a clamped weighted sum of:
+The reward scores the model's native assistant output against JSON/function
+calling ground truth:
 
-  format_ok    (0/1)   — eliza_bench TOON parser succeeds + required fields present.
-  content_ok   (0/1)   — eliza_bench scorer's action-name / RESPOND-IGNORE / text check.
-  length       (-0.2..0)— heuristic token-length penalty (target 50-500 tokens).
-  ai_judge     (0/1)   — optional Claude judge call (gated on ELIZA_REWARD_USE_AI_JUDGE=1).
+  format_ok    (0/1)   — response is structured enough to score, or is a
+                         non-empty direct reply when the target is text.
+  content_ok   (0/1)   — tool names and argument values match, or JSON/text
+                         response matches the expected target.
+  length       (-0.2..0)— bounded short/long response penalty.
+  ai_judge     (0/1)   — optional Claude judge call
+                         (ELIZA_REWARD_USE_AI_JUDGE=1).
 
-Weights default to (0.4, 0.4, 0.1, 0.1) to match the reward weights table in
-RL_STRATEGY.md (verifiable correctness primary, heuristics secondary, AI judge
-capped). Final reward is clamped to [-1, 1].
-
-Importable as:
-    from scripts.eliza_reward_fn import compute_reward
-    r = compute_reward(prompt, response, ground_truth={"task_type": ..., "expected": ...})
-
-Standalone CLI for verl reward-server use:
-    python scripts/eliza_reward_fn.py \\
-        --prompt-jsonl prompts.jsonl \\
-        --responses-jsonl responses.jsonl \\
-        --out results.json
+Final reward is a clamped weighted sum in [-1, 1].
 """
 
 from __future__ import annotations
@@ -34,27 +26,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "scripts"))
-
-from benchmark.eliza_bench import (  # noqa: E402
-    classify,
-    score_claude_distill,
-    score_message_handler,
-    score_reply,
-    score_should_respond,
-)
-from benchmark.toon_parser import parse as parse_toon  # noqa: E402
-
 log = logging.getLogger("eliza-reward")
 
 
-# ───────────────────────────── tunables ─────────────────────────────
-
-# Defaults match RL_STRATEGY.md "Reward signal design" section. Verifiable
-# correctness is the primary signal (format + content together are 0.8 of
-# the gross), heuristic length shaping and the optional AI judge each cap
-# at 0.1 so a single noisy signal can't dominate the gradient.
 DEFAULT_WEIGHTS: dict[str, float] = {
     "format": 0.4,
     "content": 0.4,
@@ -62,19 +36,16 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "ai_judge": 0.1,
 }
 
-# Token-length sweet spot for TOON action documents. Anything inside the band
-# is neutral (0); short responses get a mild penalty (-0.2..0); long
-# responses get a stronger penalty (-0.2..0). The penalty is bounded so a
-# correct-but-slightly-long response can't go negative on length alone.
-LENGTH_TARGET_LO = 50
-LENGTH_TARGET_HI = 500
+LENGTH_TARGET_LO = 12
+LENGTH_TARGET_HI = 700
 LENGTH_PENALTY_FLOOR = -0.2
 
 AI_JUDGE_MODEL_ENV = "ELIZA_REWARD_AI_JUDGE_MODEL"
 AI_JUDGE_DEFAULT_MODEL = "claude-haiku-4-5-20251001"
 
+JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*([\s\S]*?)\s*```$", re.I)
+TOKEN_RE = re.compile(r"\S+")
 
-# ───────────────────────────── components ─────────────────────────────
 
 @dataclass
 class RewardComponents:
@@ -100,88 +71,228 @@ class RewardComponents:
         }
 
 
-# ───────────────────────────── verifiable scoring ─────────────────────────────
+def _as_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _clean_json_text(text: str) -> str:
+    stripped = (text or "").strip()
+    match = JSON_FENCE_RE.match(stripped)
+    if match:
+        return match.group(1).strip()
+    return stripped
+
+
+def _parse_json_object(text: str) -> dict[str, Any] | None:
+    cleaned = _clean_json_text(text)
+    if not cleaned.startswith("{"):
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start < 0 or end <= start:
+            return None
+        cleaned = cleaned[start : end + 1]
+    try:
+        value = json.loads(cleaned)
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _call_name(call: dict[str, Any]) -> str:
+    function = _as_dict(call.get("function"))
+    value = (
+        call.get("name")
+        or call.get("toolName")
+        or call.get("tool_name")
+        or call.get("tool")
+        or function.get("name")
+    )
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _call_args(call: dict[str, Any]) -> dict[str, Any]:
+    function = _as_dict(call.get("function"))
+    raw = (
+        call.get("input")
+        if "input" in call
+        else call.get("args")
+        if "args" in call
+        else call.get("arguments")
+        if "arguments" in call
+        else call.get("parameters")
+        if "parameters" in call
+        else function.get("arguments")
+    )
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _normalize_tool_calls(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    calls: list[dict[str, Any]] = []
+    for raw in value:
+        if not isinstance(raw, dict):
+            continue
+        name = _call_name(raw)
+        if not name:
+            continue
+        calls.append({"name": name, "arguments": _call_args(raw)})
+    return calls
+
+
+def _extract_tool_calls_from_text(text: str) -> list[dict[str, Any]]:
+    parsed = _parse_json_object(text or "")
+    if not parsed:
+        return []
+    for key in ("toolCalls", "tool_calls"):
+        if isinstance(parsed.get(key), list):
+            return _normalize_tool_calls(parsed[key])
+    if _call_name(parsed):
+        return _normalize_tool_calls([parsed])
+    return []
+
+
+def _deep_contains(expected: Any, actual: Any) -> bool:
+    if isinstance(expected, dict):
+        if not isinstance(actual, dict):
+            return False
+        return all(key in actual and _deep_contains(value, actual[key]) for key, value in expected.items())
+    if isinstance(expected, list):
+        return expected == actual
+    return expected == actual or str(expected) == str(actual)
+
+
+def _normalize_words(text: str) -> list[str]:
+    lowered = (text or "").lower()
+    cleaned = "".join(ch if ch.isalnum() else " " for ch in lowered)
+    return [token for token in cleaned.split() if token]
+
+
+def _text_similarity(expected: str, actual: str) -> float:
+    if expected.strip() == actual.strip():
+        return 1.0
+    expected_tokens = _normalize_words(expected)
+    actual_tokens = _normalize_words(actual)
+    if not expected_tokens or not actual_tokens:
+        return 0.0
+    counts: dict[str, int] = {}
+    for token in expected_tokens:
+        counts[token] = counts.get(token, 0) + 1
+    overlap = 0
+    for token in actual_tokens:
+        count = counts.get(token, 0)
+        if count:
+            overlap += 1
+            counts[token] = count - 1
+    precision = overlap / len(actual_tokens)
+    recall = overlap / len(expected_tokens)
+    return 0.0 if precision + recall == 0 else (2 * precision * recall) / (precision + recall)
+
+
+def _ground_truth_target(ground_truth: dict[str, Any] | None) -> dict[str, Any]:
+    if not ground_truth:
+        return {}
+    response = _as_dict(ground_truth.get("response"))
+    calls = _normalize_tool_calls(
+        ground_truth.get("expectedToolCalls")
+        or ground_truth.get("expected_tool_calls")
+        or response.get("toolCalls")
+        or response.get("tool_calls")
+    )
+    expected = ground_truth.get("expected")
+    if expected is None:
+        expected = ground_truth.get("expectedResponse")
+    parsed_expected = _parse_json_object(str(expected)) if isinstance(expected, str) else expected
+    if not calls and isinstance(parsed_expected, dict):
+        for key in ("toolCalls", "tool_calls"):
+            if isinstance(parsed_expected.get(key), list):
+                calls = _normalize_tool_calls(parsed_expected[key])
+                break
+    return {
+        "tool_calls": calls,
+        "json": parsed_expected if isinstance(parsed_expected, dict) else None,
+        "text": str(response.get("text") or expected or ""),
+    }
+
+
+def _score_tool_calls(
+    predicted_calls: list[dict[str, Any]],
+    expected_calls: list[dict[str, Any]],
+) -> tuple[float, float, list[str]]:
+    notes: list[str] = []
+    if not predicted_calls:
+        return 0.0, 0.0, ["missing_native_tool_calls"]
+    if len(predicted_calls) < len(expected_calls):
+        notes.append("too_few_tool_calls")
+    names_ok = [
+        index < len(predicted_calls)
+        and predicted_calls[index]["name"] == expected["name"]
+        for index, expected in enumerate(expected_calls)
+    ]
+    args_ok = [
+        index < len(predicted_calls)
+        and _deep_contains(expected.get("arguments", {}), predicted_calls[index].get("arguments", {}))
+        for index, expected in enumerate(expected_calls)
+    ]
+    content_ok = 1.0 if all(names_ok) and all(args_ok) else 0.0
+    if not all(names_ok):
+        notes.append("tool_name_mismatch")
+    if not all(args_ok):
+        notes.append("tool_argument_mismatch")
+    return 1.0, content_ok, notes
+
+
+def _score_json_or_text(response: str, target: dict[str, Any]) -> tuple[float, float, list[str]]:
+    notes: list[str] = []
+    expected_json = target.get("json")
+    expected_text = str(target.get("text") or "")
+    predicted_json = _parse_json_object(response)
+    if isinstance(expected_json, dict):
+        if not predicted_json:
+            return 0.0, 0.0, ["json_parse_failed"]
+        return 1.0, 1.0 if _deep_contains(expected_json, predicted_json) else 0.0, notes
+    if expected_text:
+        ok = bool(response.strip())
+        return 1.0 if ok else 0.0, 1.0 if _text_similarity(expected_text, response) >= 0.8 else 0.0, notes
+    ok = bool(response.strip()) or bool(predicted_json)
+    notes.append("no_ground_truth")
+    return 1.0 if ok else 0.0, 0.5, notes
+
 
 def _score_verifiable(
     response: str,
     ground_truth: dict[str, Any] | None,
 ) -> tuple[float, float, list[str]]:
-    """Run eliza_bench's bucket-aware scorer. Returns (format_ok, content_ok, notes)."""
-
-    notes: list[str] = []
-    if not ground_truth:
-        # No ground truth: we can still verify format (TOON parses + has at
-        # least one key) but can't verify content. Treat content as neutral
-        # (0.5) so the optimizer isn't told the response is wrong when we
-        # simply don't know.
-        parsed = parse_toon(response)
-        fmt = 1.0 if (parsed.ok and parsed.document) else 0.0
-        notes.append("no_ground_truth")
-        return fmt, 0.5, notes
-
-    # Construct an eliza-style record so eliza_bench.classify works.
-    bucket = ground_truth.get("bucket")
-    if not bucket:
-        synthetic = {"metadata": {"task_type": ground_truth.get("task_type", "")}}
-        bucket = classify(synthetic)
-
-    expected = ground_truth.get("expected") or ground_truth.get("expectedResponse") or ""
-
-    if bucket == "claude_distill":
-        ok_fmt, ok_content, _ = score_claude_distill(response, str(expected))
-        return float(ok_fmt), float(ok_content), notes
-
-    if bucket not in ("should_respond", "message_handler", "reply"):
-        # Unknown task type — score format only.
-        parsed = parse_toon(response)
-        fmt = 1.0 if (parsed.ok and parsed.document) else 0.0
-        notes.append(f"unknown_bucket:{bucket}")
-        return fmt, 0.5, notes
-
-    pred = parse_toon(response)
-    exp = parse_toon(str(expected))
-    scorer = {
-        "should_respond": score_should_respond,
-        "message_handler": score_message_handler,
-        "reply": score_reply,
-    }[bucket]
-    ok_fmt, ok_content, _ = scorer(pred.document, exp.document)
-    return float(ok_fmt), float(ok_content), notes
-
-
-# ───────────────────────────── length heuristic ─────────────────────────────
-
-_TOKEN_RE = re.compile(r"\S+")
+    target = _ground_truth_target(ground_truth)
+    expected_calls = target.get("tool_calls") or []
+    if expected_calls:
+        return _score_tool_calls(_extract_tool_calls_from_text(response), expected_calls)
+    return _score_json_or_text(response, target)
 
 
 def _length_score(response: str) -> float:
-    """Cheap word-count proxy for token count.
-
-    Returns a value in [LENGTH_PENALTY_FLOOR, 0]. We never reward extra length —
-    the verifiable signal already captures correctness; this only penalizes
-    pathological short or long outputs that game format checks.
-    """
-
-    n = len(_TOKEN_RE.findall(response or ""))
+    n = len(TOKEN_RE.findall(response or ""))
     if LENGTH_TARGET_LO <= n <= LENGTH_TARGET_HI:
         return 0.0
     if n < LENGTH_TARGET_LO:
-        # Linearly interpolate from -0.2 at n=0 to 0 at n=LO.
         frac = n / max(LENGTH_TARGET_LO, 1)
         return LENGTH_PENALTY_FLOOR * (1.0 - frac)
-    # n > HI: ramp to floor at 4× target.
     over = (n - LENGTH_TARGET_HI) / max(LENGTH_TARGET_HI * 3, 1)
     return max(LENGTH_PENALTY_FLOOR, LENGTH_PENALTY_FLOOR * min(over, 1.0))
 
 
-# ───────────────────────────── AI judge ─────────────────────────────
-
-_AI_JUDGE_PROMPT = """You are scoring an autonomous agent's TOON-format response.
+AI_JUDGE_PROMPT = """You are scoring an autonomous agent's native tool-calling response.
 
 Prompt context:
 {prompt}
 
-Ground truth (expected response):
+Ground truth:
 {expected}
 
 Model response:
@@ -197,8 +308,6 @@ def _ai_judge_score(
     response: str,
     ground_truth: dict[str, Any] | None,
 ) -> float | None:
-    """Optional Claude judge. Returns None when disabled or unreachable."""
-
     if os.environ.get("ELIZA_REWARD_USE_AI_JUDGE", "0") != "1":
         return None
     if not ground_truth:
@@ -213,10 +322,10 @@ def _ai_judge_score(
         log.warning("ANTHROPIC_API_KEY unset; skipping AI judge")
         return None
 
-    expected = ground_truth.get("expected") or ground_truth.get("expectedResponse") or ""
-    body = _AI_JUDGE_PROMPT.format(
+    expected = ground_truth.get("expected") or ground_truth.get("expectedResponse") or ground_truth
+    body = AI_JUDGE_PROMPT.format(
         prompt=(prompt or "")[:2000],
-        expected=str(expected)[:1000],
+        expected=json.dumps(expected, ensure_ascii=False, default=str)[:1500],
         response=(response or "")[:2000],
     )
     client = anthropic.Anthropic(api_key=api_key)
@@ -230,16 +339,14 @@ def _ai_judge_score(
     for block in resp.content:
         if getattr(block, "type", "") == "text":
             text += getattr(block, "text", "")
-    text = text.strip().upper()
-    if text.startswith("YES"):
+    verdict = text.strip().upper()
+    if verdict.startswith("YES"):
         return 1.0
-    if text.startswith("NO"):
+    if verdict.startswith("NO"):
         return 0.0
-    log.warning("ai_judge unparseable verdict: %r", text)
+    log.warning("ai_judge unparseable verdict: %r", verdict)
     return None
 
-
-# ───────────────────────────── public API ─────────────────────────────
 
 def compute_reward_components(
     prompt: str,
@@ -250,7 +357,6 @@ def compute_reward_components(
 ) -> RewardComponents:
     w = weights or DEFAULT_WEIGHTS
     out = RewardComponents()
-
     out.format_ok, out.content_ok, notes = _score_verifiable(response, ground_truth)
     out.notes.extend(notes)
     out.length_score = _length_score(response)
@@ -264,7 +370,6 @@ def compute_reward_components(
     if out.ai_judge_score is not None:
         weighted += w.get("ai_judge", 0.0) * out.ai_judge_score
     out.weighted_sum = weighted
-
     out.final = max(-1.0, min(1.0, weighted))
     return out
 
@@ -278,14 +383,9 @@ def compute_reward(
 ) -> float:
     """Scalar reward in [-1, 1]. Importable from verl's reward-fn registry."""
 
-    return compute_reward_components(
-        prompt, response, ground_truth, weights=weights,
-    ).final
+    return compute_reward_components(prompt, response, ground_truth, weights=weights).final
 
 
-# verl's `reward_score.compute_score` registry expects a callable named
-# `compute_score(data_source, solution_str, ground_truth, extra_info)`. Wrap
-# our function so verl can import it directly.
 def compute_score(
     data_source: str,
     solution_str: str,
@@ -299,33 +399,25 @@ def compute_score(
         gt = {"expected": ground_truth, "task_type": data_source or ""}
     else:
         gt = None
-    prompt = ""
-    if isinstance(extra_info, dict):
-        prompt = str(extra_info.get("prompt") or "")
+    prompt = str(extra_info.get("prompt") or "") if isinstance(extra_info, dict) else ""
     return compute_reward(prompt, solution_str, gt)
 
-
-# ───────────────────────────── CLI ─────────────────────────────
 
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
-            if not line:
-                continue
-            rows.append(json.loads(line))
+            if line:
+                rows.append(json.loads(line))
     return rows
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--prompt-jsonl", required=True,
-                    help="JSONL of {id, prompt, ground_truth} rows.")
-    ap.add_argument("--responses-jsonl", required=True,
-                    help="JSONL of {id, response} rows. Joined to prompts by id.")
-    ap.add_argument("--out", required=True,
-                    help="Output JSON file with per-row + aggregate scores.")
+    ap.add_argument("--prompt-jsonl", required=True, help="JSONL of {id, prompt, ground_truth} rows.")
+    ap.add_argument("--responses-jsonl", required=True, help="JSONL of {id, response} rows. Joined by id.")
+    ap.add_argument("--out", required=True, help="Output JSON file with per-row + aggregate scores.")
     ap.add_argument("--weight-format", type=float, default=DEFAULT_WEIGHTS["format"])
     ap.add_argument("--weight-content", type=float, default=DEFAULT_WEIGHTS["content"])
     ap.add_argument("--weight-length", type=float, default=DEFAULT_WEIGHTS["length"])
@@ -343,34 +435,27 @@ def main() -> int:
 
     rows: list[dict[str, Any]] = []
     total = 0.0
-    for r in responses:
-        rid = r["id"]
-        p = prompts.get(rid)
-        if not p:
+    for response_row in responses:
+        rid = response_row["id"]
+        prompt_row = prompts.get(rid)
+        if not prompt_row:
             continue
         comps = compute_reward_components(
-            p.get("prompt", ""),
-            r.get("response", ""),
-            p.get("ground_truth"),
+            prompt_row.get("prompt", ""),
+            response_row.get("response", ""),
+            prompt_row.get("ground_truth"),
             weights=weights,
         )
         rows.append({"id": rid, "components": comps.to_dict()})
         total += comps.final
 
     avg = total / len(rows) if rows else 0.0
-    payload = {
-        "weights": weights,
-        "n": len(rows),
-        "mean_reward": avg,
-        "rows": rows,
-    }
-    Path(args.out).write_text(json.dumps(payload, indent=2))
+    payload = {"weights": weights, "n": len(rows), "mean_reward": avg, "rows": rows}
+    Path(args.out).write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print(json.dumps({"n": len(rows), "mean_reward": round(avg, 4)}))
     return 0
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s",
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     sys.exit(main())

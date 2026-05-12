@@ -1,7 +1,7 @@
-# From `eliza-1-<tier>.gguf` to a running Milady `TEXT_LARGE`
+# From `eliza-1-<tier>.gguf` to a running Eliza `TEXT_LARGE`
 
 This is the handoff between this package (the offline training /
-quantization / GGUF pipeline) and the Milady runtime
+quantization / GGUF pipeline) and the Eliza runtime
 (`packages/app-core`, `packages/shared`). It assumes you already have a
 freshly produced `eliza-1-<tier>.gguf` (e.g. from
 `scripts/optimize_for_eliza1.py`, which also writes a
@@ -33,10 +33,10 @@ For testing a just-built GGUF, the simplest path is to drop it into the
 Eliza-owned models directory so it shows up as an `eliza-download`:
 
 ```
-$MILADY_STATE_DIR/local-inference/models/<id>.gguf
+$ELIZA_STATE_DIR/local-inference/models/<id>.gguf
 ```
 
-(`$MILADY_STATE_DIR` falls back to `$ELIZA_STATE_DIR`, then `~/.milady`.
+(`$ELIZA_STATE_DIR` falls back to `$ELIZA_STATE_DIR`, then `~/.eliza`.
 The directory is `elizaModelsDir()` in
 `packages/shared/src/local-inference/paths.ts`; the local-inference root
 is `<state-dir>/local-inference/`.)
@@ -104,7 +104,7 @@ Once a model is installed (either source), three layers route a
 Relevant env vars / files (no hardcoded ports here, this is all
 state-dir + mode):
 
-- `MILADY_STATE_DIR` / `ELIZA_STATE_DIR` — root for
+- `ELIZA_STATE_DIR` / `ELIZA_STATE_DIR` — root for
   `<state-dir>/local-inference/{models,registry.json,assignments.json,routing.json,downloads}`.
 - Runtime mode — local-inference handlers only register when the runtime
   mode is `local` or `local-only` (`shouldRegisterLocalInferenceHandlers`).

@@ -7,6 +7,12 @@ const NAV_TIMEOUT_MS = 12_000;
 const READY_CHECK_TIMEOUT_MS = 15_000;
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 const STORAGE_SEEDED_KEY = "eliza:ui-smoke-storage-seeded";
+const RENDER_TELEMETRY_EVENT = "eliza:render-telemetry";
+const RENDER_TELEMETRY_ERRORS_KEY = "__ELIZA_RENDER_TELEMETRY_ERRORS__";
+const RENDER_TELEMETRY_INSTALLED_KEY =
+  "__ELIZA_RENDER_TELEMETRY_WATCHER_INSTALLED__";
+
+const renderTelemetryGuardedPages = new WeakSet<Page>();
 
 type ReadyCheck =
   | { selector: string; text?: never }
@@ -15,6 +21,13 @@ type ReadyCheck =
 type EvaluatedReadyCheck = {
   check: ReadyCheck;
   passed: boolean;
+};
+
+type RenderTelemetryIssue = {
+  name?: string;
+  renderCount?: number;
+  windowMs?: number;
+  severity?: string;
 };
 
 const DEFAULT_APP_STORAGE: Record<string, string> = {
@@ -47,6 +60,56 @@ export async function seedAppStorage(
   );
 }
 
+export async function installRenderTelemetryGuard(page: Page): Promise<void> {
+  if (renderTelemetryGuardedPages.has(page)) return;
+  renderTelemetryGuardedPages.add(page);
+
+  await page.addInitScript(
+    ({ eventName, errorsKey, installedKey }) => {
+      const win = window as Window &
+        Record<string, unknown> & {
+          [key: string]: unknown;
+        };
+      if (win[installedKey]) return;
+      win[installedKey] = true;
+      win[errorsKey] = [];
+      window.addEventListener(eventName, (event) => {
+        const detail = (event as CustomEvent<RenderTelemetryIssue>).detail;
+        if (detail?.severity !== "error") return;
+        const errors = win[errorsKey];
+        if (Array.isArray(errors)) {
+          errors.push(detail);
+        }
+      });
+    },
+    {
+      eventName: RENDER_TELEMETRY_EVENT,
+      errorsKey: RENDER_TELEMETRY_ERRORS_KEY,
+      installedKey: RENDER_TELEMETRY_INSTALLED_KEY,
+    },
+  );
+}
+
+export async function expectNoRenderTelemetryErrors(
+  page: Page,
+  label: string,
+): Promise<void> {
+  const errors = await page.evaluate<RenderTelemetryIssue[]>((errorsKey) => {
+    const value = (window as Window & Record<string, unknown>)[errorsKey];
+    return Array.isArray(value) ? (value as RenderTelemetryIssue[]) : [];
+  }, RENDER_TELEMETRY_ERRORS_KEY);
+  const summary = errors
+    .map(
+      (event) =>
+        `${event.name ?? "unknown"}:${event.renderCount ?? "?"} renders/${event.windowMs ?? "?"}ms`,
+    )
+    .join(", ");
+  expect(
+    errors,
+    `[playwright-ui-smoke] ${label}: render telemetry errors detected${summary ? ` (${summary})` : ""}`,
+  ).toHaveLength(0);
+}
+
 async function expectRootReady(page: Page): Promise<void> {
   await expect(page.locator("#root")).toBeVisible({ timeout: ROOT_TIMEOUT_MS });
 }
@@ -59,9 +122,11 @@ export async function openAppPath(
   page: Page,
   targetPath: string,
 ): Promise<void> {
+  await installRenderTelemetryGuard(page);
   await page.goto(targetPath, { waitUntil: "domcontentloaded" });
   await expectRootReady(page);
   await expectNoOnboardingRedirect(page);
+  await expectNoRenderTelemetryErrors(page, targetPath);
 }
 
 export async function readLocalStorage(

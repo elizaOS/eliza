@@ -102,7 +102,7 @@ def _minimal_staged_bundle(root: Path, tier: str) -> Path:
 
 
 def test_finalize_sets_licenses_true_and_keeps_the_rest_honest(tmp_path: Path) -> None:
-    bundle = _minimal_staged_bundle(tmp_path, "0_6b")
+    bundle = _minimal_staged_bundle(tmp_path, "0_8b")
     evidence = finalize(bundle, tmp_path)
     assert evidence["final"]["licenses"] is True
     # Real upstream license text + sidecar were written.
@@ -130,7 +130,7 @@ def test_finalize_sets_licenses_true_and_keeps_the_rest_honest(tmp_path: Path) -
 
 
 def test_finalize_dev_workstation_partial_evidence_on_cpu_and_vulkan(tmp_path: Path) -> None:
-    bundle = _minimal_staged_bundle(tmp_path, "0_6b")
+    bundle = _minimal_staged_bundle(tmp_path, "0_8b")
     finalize(bundle, tmp_path)
     cpu = json.loads((bundle / "evidence" / "platform" / "linux-x64-cpu.json").read_text())
     assert cpu["status"] == "pending"

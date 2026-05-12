@@ -6,7 +6,7 @@
     "ready": true,
     "ms": 2018,
     "issues": [],
-    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-2026-05-11/apps-catalog__desktop.png"
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-2026-05-11/apps-catalog__desktop.png"
   },
   {
     "id": "apps-catalog",
@@ -15,7 +15,7 @@
     "ready": true,
     "ms": 1224,
     "issues": [],
-    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-2026-05-11/apps-catalog__mobile.png"
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-2026-05-11/apps-catalog__mobile.png"
   },
   {
     "id": "fine-tuning",
@@ -24,7 +24,7 @@
     "ready": true,
     "ms": 1215,
     "issues": [],
-    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-2026-05-11/fine-tuning__desktop.png"
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-2026-05-11/fine-tuning__desktop.png"
   },
   {
     "id": "fine-tuning",
@@ -33,7 +33,7 @@
     "ready": true,
     "ms": 1188,
     "issues": [],
-    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-2026-05-11/fine-tuning__mobile.png"
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-2026-05-11/fine-tuning__mobile.png"
   },
   {
     "id": "vincent",
@@ -42,7 +42,7 @@
     "ready": true,
     "ms": 1292,
     "issues": [],
-    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-2026-05-11/vincent__desktop.png"
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-2026-05-11/vincent__desktop.png"
   },
   {
     "id": "vincent",
@@ -51,7 +51,7 @@
     "ready": true,
     "ms": 1191,
     "issues": [],
-    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-2026-05-11/vincent__mobile.png"
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-2026-05-11/vincent__mobile.png"
   },
   {
     "id": "shopify",
@@ -60,7 +60,7 @@
     "ready": true,
     "ms": 1221,
     "issues": [],
-    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-2026-05-11/shopify__desktop.png"
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-2026-05-11/shopify__desktop.png"
   },
   {
     "id": "shopify",
@@ -69,7 +69,7 @@
     "ready": true,
     "ms": 1221,
     "issues": [],
-    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-2026-05-11/shopify__mobile.png"
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-2026-05-11/shopify__mobile.png"
   },
   {
     "id": "inventory",
@@ -78,7 +78,7 @@
     "ready": true,
     "ms": 1322,
     "issues": [],
-    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-2026-05-11/inventory__desktop.png"
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-2026-05-11/inventory__desktop.png"
   },
   {
     "id": "inventory",
@@ -87,7 +87,7 @@
     "ready": true,
     "ms": 1194,
     "issues": [],
-    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-2026-05-11/inventory__mobile.png"
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-2026-05-11/inventory__mobile.png"
   },
   {
     "id": "elizamaker",
@@ -96,7 +96,7 @@
     "ready": true,
     "ms": 1206,
     "issues": [],
-    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-2026-05-11/elizamaker__desktop.png"
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-2026-05-11/elizamaker__desktop.png"
   },
   {
     "id": "elizamaker",
@@ -105,7 +105,7 @@
     "ready": true,
     "ms": 1190,
     "issues": [],
-    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-2026-05-11/elizamaker__mobile.png"
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-2026-05-11/elizamaker__mobile.png"
   },
   {
     "id": "details-training",
@@ -114,7 +114,7 @@
     "ready": true,
     "ms": 1211,
     "issues": [],
-    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-2026-05-11/details-training__desktop.png"
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-2026-05-11/details-training__desktop.png"
   },
   {
     "id": "details-training",
@@ -123,6 +123,6 @@
     "ready": true,
     "ms": 1198,
     "issues": [],
-    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-2026-05-11/details-training__mobile.png"
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-2026-05-11/details-training__mobile.png"
   }
 ]

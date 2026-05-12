@@ -337,7 +337,7 @@ function installedFixture(
 ): InstalledModel {
   return {
     id: "eliza-1-2b",
-    displayName: "Eliza-1 1.7B",
+    displayName: "Eliza-1 2B",
     path: "/models/eliza-1-2b.bundle/text/eliza-1-2b-32k.gguf",
     sizeBytes: 1_000_000_000,
     bundleRoot: "/models/eliza-1-2b.bundle",

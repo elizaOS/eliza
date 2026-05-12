@@ -17,7 +17,7 @@
  * remote -- it simply connects to `http://localhost:{port}`.
  *
  * **Port policy (WHY):** we resolve a **free** loopback desktop API port from
- * `ELIZA_API_PORT`, `ELIZA_API_PORT`, or `ELIZA_PORT` (see
+ * `ELIZA_API_PORT` or `ELIZA_PORT` (see
  * `findFirstAvailableLoopbackPort`) instead of SIGKILL-ing listeners by
  * default, so two desktop apps can run side by side. Optional
  * `ELIZA_AGENT_RECLAIM_STALE_PORT=1` (legacy: `ELIZA_AGENT_RECLAIM_STALE_PORT`)
@@ -159,8 +159,7 @@ function normalizeEnvPath(value: string | undefined): string | null {
 }
 
 function isStoreBuildVariant(env: NodeJS.ProcessEnv = process.env): boolean {
-	const raw =
-		env.MILADY_BUILD_VARIANT?.trim() || env.ELIZA_BUILD_VARIANT?.trim();
+	const raw = env.ELIZA_BUILD_VARIANT?.trim();
 	return raw?.toLowerCase() === "store";
 }
 
@@ -169,10 +168,7 @@ function resolveStateNamespace(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 function resolveExplicitStateDir(env: NodeJS.ProcessEnv): string | null {
-	return (
-		normalizeEnvPath(env.MILADY_STATE_DIR) ??
-		normalizeEnvPath(env.ELIZA_STATE_DIR)
-	);
+	return normalizeEnvPath(env.ELIZA_STATE_DIR);
 }
 
 function resolveStoreUserDataStateDir(): string {
@@ -200,7 +196,7 @@ function applyDesktopChildStateEnv(childEnv: Record<string, string>): void {
 		env: childEnv as NodeJS.ProcessEnv,
 	});
 	fs.mkdirSync(stateDir, { recursive: true });
-	childEnv.MILADY_STATE_DIR = stateDir;
+	childEnv.ELIZA_STATE_DIR = stateDir;
 	childEnv.ELIZA_STATE_DIR = stateDir;
 }
 
@@ -227,7 +223,7 @@ function buildExistingElizaInstallCandidates(opts?: {
 	const env = opts?.env ?? process.env;
 	const homedir = opts?.homedir ?? os.homedir();
 	const configPathFromEnv =
-		normalizeEnvPath(env.MILADY_CONFIG_PATH) ??
+		normalizeEnvPath(env.ELIZA_CONFIG_PATH) ??
 		normalizeEnvPath(env.ELIZA_CONFIG_PATH);
 	const stateDirFromEnv = resolveExplicitStateDir(env);
 	const defaultStateDir = joinPortable(

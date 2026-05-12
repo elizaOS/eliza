@@ -181,7 +181,6 @@ export async function runTrainCli(argv: string[]): Promise<number> {
       const os = await import("node:os");
       const { OptimizedPromptService } = await import("@elizaos/core");
       const stateDir =
-        process.env.MILADY_STATE_DIR?.trim() ||
         process.env.ELIZA_STATE_DIR?.trim() ||
         path.join(os.homedir(), ".eliza");
       const service = new OptimizedPromptService();

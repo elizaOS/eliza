@@ -195,7 +195,7 @@ export interface ResolvedLocalBaseUrl {
  * inference. Preference order:
  *
  * 1. `PARALLAX_OPENCODE_BASE_URL` (explicit operator override; matches the
- *    same env Milady's OpenCode fallback reads).
+ *    same env Eliza's OpenCode fallback reads).
  * 2. Ollama default `http://localhost:11434/v1`.
  *
  * This function does **not** spawn the dflash fork — callers that want to

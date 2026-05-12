@@ -7,7 +7,7 @@
  *
  * `direct` builds are the unrestricted user-download artifacts.
  *
- * Resolution: `MILADY_BUILD_VARIANT` → `ELIZA_BUILD_VARIANT` → default `direct`.
+ * Resolution: `ELIZA_BUILD_VARIANT` → default `direct`.
  * The variant is decided at process start; we do not refresh it mid-run.
  */
 
@@ -18,16 +18,13 @@ export const DEFAULT_BUILD_VARIANT: BuildVariant = "direct";
 
 const VARIANT_VALUES: ReadonlySet<BuildVariant> = new Set(BUILD_VARIANTS);
 
-const DIRECT_DOWNLOAD_URL = "https://milady.so/download";
+const DIRECT_DOWNLOAD_URL = "https://eliza.so/download";
 
 let resolvedVariant: BuildVariant | null = null;
 
 function readVariantFromEnv(): BuildVariant {
 	const raw =
-		(typeof process !== "undefined" &&
-			(process.env?.MILADY_BUILD_VARIANT ??
-				process.env?.ELIZA_BUILD_VARIANT)) ||
-		"";
+		(typeof process !== "undefined" && process.env?.ELIZA_BUILD_VARIANT) || "";
 	const normalized = raw.trim().toLowerCase();
 	if (VARIANT_VALUES.has(normalized as BuildVariant)) {
 		return normalized as BuildVariant;

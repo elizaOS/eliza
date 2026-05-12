@@ -337,14 +337,26 @@ function spanKindForFieldSchema(
 ): ResponseSkeletonSpan["kind"] {
 	const type = (schema as { type?: unknown }).type;
 	if (type === "string") {
-		// A single-value enum lowers to a literal at compile time; multi-value
-		// enums could be `enum` spans, but we keep it simple — free-string is a
-		// safe superset and W4 collapses single-value enums anyway.
 		const enumValues = (schema as { enum?: unknown }).enum;
 		if (Array.isArray(enumValues) && enumValues.length === 1) return "literal";
+		if (
+			Array.isArray(enumValues) &&
+			enumValues.length > 1 &&
+			enumValues.every((v): v is string => typeof v === "string")
+		) {
+			return "enum";
+		}
 		return "free-string";
 	}
 	return "free-json";
+}
+
+function stringEnumValuesForFieldSchema(schema: JSONSchema): string[] {
+	const enumValues = (schema as { enum?: unknown }).enum;
+	return Array.isArray(enumValues) &&
+		enumValues.every((v): v is string => typeof v === "string")
+		? enumValues.map(String)
+		: [];
 }
 
 /** GBNF rule reference for an envelope key's value. */
@@ -500,6 +512,13 @@ export function buildResponseGrammar(
 				const value = JSON.stringify(String(enumValues[0] ?? ""));
 				spans.push({ kind: "literal", key: field.name, value });
 				rootParts.push(gbnfLiteral(value));
+			} else if (kind === "enum") {
+				spans.push({
+					kind,
+					key: field.name,
+					enumValues: stringEnumValuesForFieldSchema(field.schema),
+				});
+				rootParts.push(gbnfRefForFieldSchema(builder, field.schema));
 			} else {
 				spans.push({ kind, key: field.name });
 				rootParts.push(gbnfRefForFieldSchema(builder, field.schema));
@@ -593,6 +612,13 @@ export function buildResponseGrammar(
 			const value = JSON.stringify(String(enumValues[0] ?? ""));
 			spans.push({ kind: "literal", key: field.name, value });
 			rootParts.push(gbnfLiteral(value));
+		} else if (kind === "enum") {
+			spans.push({
+				kind,
+				key: field.name,
+				enumValues: stringEnumValuesForFieldSchema(field.schema),
+			});
+			rootParts.push(gbnfRefForFieldSchema(builder, field.schema));
 		} else {
 			spans.push({ kind, key: field.name });
 			rootParts.push(gbnfRefForFieldSchema(builder, field.schema));

@@ -17,7 +17,53 @@ const actionSkeleton: ResponseSkeleton = {
   ],
 };
 
+const responseHandlerSkeleton: ResponseSkeleton = {
+  spans: [
+    { kind: "literal", value: '{"shouldRespond":"' },
+    {
+      kind: "enum",
+      key: "shouldRespond",
+      enumValues: ["RESPOND", "IGNORE", "STOP"],
+    },
+    { kind: "literal", value: '","replyText":' },
+    { kind: "free-string", key: "replyText" },
+    { kind: "literal", value: "}" },
+  ],
+};
+
 describe("deterministic structured-output repair", () => {
+  it("completes response-handler RE/IG enum prefixes and advances to replyText", () => {
+    expect(
+      repairStructuredOutput('{"shouldRespond":"RE', {
+        skeleton: responseHandlerSkeleton,
+      }),
+    ).toEqual({
+      text: '{"shouldRespond":"RESPOND","replyText":',
+      status: "repaired",
+      reason: "free-span-incomplete",
+    });
+
+    expect(
+      repairStructuredOutput('{"shouldRespond":"IG', {
+        skeleton: responseHandlerSkeleton,
+      }),
+    ).toEqual({
+      text: '{"shouldRespond":"IGNORE","replyText":',
+      status: "repaired",
+      reason: "free-span-incomplete",
+    });
+  });
+
+  it("streams deterministic response-handler enum completions without waiting for full enum tokens", () => {
+    const stream = new StructuredOutputRepairStream({
+      skeleton: responseHandlerSkeleton,
+    });
+    expect(stream.push('{"shouldRespond":"IG')).toBe(
+      '{"shouldRespond":"IGNORE","replyText":',
+    );
+    expect(stream.push('NORE","replyText":"')).toBe('"');
+  });
+
   it("completes an unambiguous enum and advances to the next JSON field", () => {
     expect(
       repairStructuredOutput('{"action":"BLO', {

@@ -217,7 +217,7 @@ function resolveCompatConfigPaths(): {
 } {
   const explicitConfig = process.env.ELIZA_CONFIG_PATH?.trim();
   const hasStateOverride =
-    Boolean(process.env.MILADY_STATE_DIR?.trim()) ||
+    Boolean(process.env.ELIZA_STATE_DIR?.trim()) ||
     Boolean(process.env.ELIZA_STATE_DIR?.trim());
   const configPath =
     explicitConfig ||

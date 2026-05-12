@@ -18,9 +18,9 @@
  *
  * Detection: we look for `ElizaOS/<tag>` in the WebView user-agent,
  * which `MainActivity.applyBrandUserAgentMarkers` appends only when
- * `ro.elizaos.product` (or `ro.miladyos.product`) is set by the AOSP
- * product makefile. White-label forks pick this up automatically as
- * long as their product config sets one of those system properties.
+ * `ro.elizaos.product` is set by the AOSP product makefile. White-label
+ * forks pick this up automatically because brand markers are appended in
+ * addition to the base framework marker, not as replacements.
  *
  * Implementation note: this file deliberately does NOT import from
  * `state/persistence` — that module's transitive dep graph is heavy
@@ -39,6 +39,9 @@ import {
   persistMobileRuntimeModeForServerTarget,
   readPersistedMobileRuntimeMode,
 } from "./mobile-runtime-mode";
+import { isAospElizaUserAgent } from "../platform/aosp-user-agent";
+
+export { isAospElizaUserAgent } from "../platform/aosp-user-agent";
 
 // Mirror of `ACTIVE_SERVER_STORAGE_KEY` in `state/persistence.ts`. Split
 // here so this file stays a leaf module — `state/persistence.ts` pulls in
@@ -79,24 +82,6 @@ function writeLocalAgentActiveServer(): void {
   } catch {
     // localStorage can be unavailable in embedded shells.
   }
-}
-
-/**
- * Pure user-agent test. Exported so unit tests can pin the detection
- * contract without having to mock the whole pre-seed pipeline.
- *
- * MainActivity.applyBrandUserAgentMarkers appends `ElizaOS/<tag>` (or
- * `MiladyOS/<tag>`) only when the corresponding `ro.<brand>os.product`
- * system property is set by the AOSP product makefile. Stock Android
- * leaves the UA untouched, which is exactly when we want to render the
- * picker. The trailing `/` is required — a bare `ElizaOS` token (no
- * version) is malformed and must NOT trigger the pre-seed.
- */
-export function isAospElizaUserAgent(
-  userAgent: string | null | undefined,
-): boolean {
-  if (typeof userAgent !== "string" || userAgent.length === 0) return false;
-  return /\bElizaOS\/\S/.test(userAgent) || /\bMiladyOS\/\S/.test(userAgent);
 }
 
 function isBrandedAndroidDevice(): boolean {

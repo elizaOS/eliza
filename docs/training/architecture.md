@@ -10,15 +10,15 @@ this file, this file is the intended source of truth.
 
 | System | Where | What it actually does | Output | Produces `eliza-1` weights? |
 |---|---|---|---|---|
-| **Offline `packages/training/` pipeline** | `packages/training/` | Fine-tunes a base Qwen3 causal-LM, applies the Milady inference optimizations (PolarQuant / QJL / TurboQuant / DFlash), converts to GGUF | `elizaos/eliza-1-*` GGUF on HuggingFace + a runtime manifest | **Yes — this is the one.** |
+| **Offline `packages/training/` pipeline** | `packages/training/` | Fine-tunes a base Qwen3 causal-LM, applies the Eliza inference optimizations (PolarQuant / QJL / TurboQuant / DFlash), converts to GGUF | `elizaos/eliza-1-*` GGUF on HuggingFace + a runtime manifest | **Yes — this is the one.** |
 | **Plugin vast.ai GPU training** (`/api/training/vast/*`, plus `/api/training/{jobs,datasets,models}`) | `plugins/app-training/` | Dashboard-driven fine-tune jobs on rented vast.ai GPUs against the same Qwen targets; imports the result to Ollama, benchmarks it | A trained checkpoint / GGUF + a `MODEL_CATALOG`-style entry | Yes — it's the *managed UI* in front of (a slice of) the offline pipeline. |
-| **Plugin native prompt optimization** (`/api/training/auto/*`, `/api/training/jobs` with `backend: native`) | `plugins/app-training/` + `packages/app-core` `OptimizedPromptService` | MIPRO / GEPA / bootstrap-fewshot over collected trajectories | Prompt artifacts under `~/.milady/optimized-prompts/<task>/` | **No.** No weights are touched. This optimizes *prompts*, not model parameters. |
+| **Plugin native prompt optimization** (`/api/training/auto/*`, `/api/training/jobs` with `backend: native`) | `plugins/app-training/` + `packages/app-core` `OptimizedPromptService` | MIPRO / GEPA / bootstrap-fewshot over collected trajectories | Prompt artifacts under `~/.eliza/optimized-prompts/<task>/` | **No.** No weights are touched. This optimizes *prompts*, not model parameters. |
 | **Cloud Vertex AI Gemini fine-tuning** (`/api/training/vertex/*`, `/api/training/trajectories/export`) | `cloud/apps/api/training/`, `cloud/packages/lib/services/vertex-*` | Submits supervised tuning jobs to Google Vertex AI against hosted `gemini-2.5-flash[-lite]`; tracks jobs; assigns the tuned Gemini to a routing "slot" | A tuned Gemini model id wired into a user/org/global model-preference slot | **No.** Hosted Gemini fine-tunes, unrelated to the local `eliza-1` GGUF family. |
 
 ## 1. The offline pipeline — `packages/training/` (this is "eliza-1")
 
 `packages/training/` is the only thing in the repo that actually produces the
-`eliza-1` weights that ship with Milady and get downloaded onto phones.
+`eliza-1` weights that ship with Eliza and get downloaded onto phones.
 
 - Entry point: `packages/training/scripts/optimize_for_eliza1.py` (full recipe
   in [`optimization-pipeline.md`](optimization-pipeline.md)).
@@ -29,7 +29,7 @@ this file, this file is the intended source of truth.
 - It composes the four non-upstream GGML types — `Q4_POLAR` (weights),
   `QJL1_256` (K-cache), `TBQ3_0`/`TBQ4_0` (V-cache) — and the DFlash
   spec-decode CLI surface, all of which require the
-  `elizaOS/llama.cpp` v0.4.0-milady fork at runtime.
+  `elizaOS/llama.cpp` v0.4.0-eliza fork at runtime.
 - Publishes to `elizaos/eliza-1-<tier>` on HuggingFace, then
   `emit_eliza1_catalog.py` wires the new repo into
   `packages/app-core/src/services/local-inference/catalog.ts`.
@@ -66,7 +66,7 @@ exposes two families of routes:
 This is the **default training backend** (`--backend native`). It does **not**
 fine-tune any model. It runs MIPRO / GEPA / bootstrap-fewshot over the
 collected trajectories and writes *prompt artifacts* to
-`~/.milady/optimized-prompts/<task>/`, which `OptimizedPromptService`
+`~/.eliza/optimized-prompts/<task>/`, which `OptimizedPromptService`
 (in `packages/app-core`) auto-loads at boot. Calling this "training" is a bit
 of a misnomer — it is prompt optimization, and it touches zero weights. It
 shares the `/api/training/*` namespace with the GPU lane only because both are

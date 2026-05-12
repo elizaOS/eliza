@@ -60,7 +60,7 @@ const DFLASH_BINARY_PATH = join(
   homedir(),
   ".cache",
   "eliza-dflash",
-  "milady-llama-cpp",
+  "eliza-llama-cpp",
   "build",
   "bin",
   "llama-server",
@@ -121,7 +121,7 @@ const dryRun = hasFlag("--dry-run");
 const ts = new Date().toISOString().replace(/[:.]/g, "-");
 const runId = `lifeops-multi-tier-${ts}`;
 const runDir = resolve(
-  arg("--run-dir", join(homedir(), ".milady", "runs", "lifeops", runId)),
+  arg("--run-dir", join(homedir(), ".eliza", "runs", "lifeops", runId)),
 );
 
 // ---------------------------------------------------------------------------

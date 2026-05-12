@@ -64,10 +64,10 @@ async function main() {
   const pk =
     process.env.ELIZA_CLOUD_WALLET_PRIVATE_KEY ??
     process.env.ELIZAOS_CLOUD_WALLET_PRIVATE_KEY ??
-    process.env.MILADY_TEST_WALLET_PRIVATE_KEY;
+    process.env.ELIZA_TEST_WALLET_PRIVATE_KEY;
   if (!pk) {
     console.error(
-      "ELIZA_CLOUD_WALLET_PRIVATE_KEY is required (0x-prefixed 32-byte hex). Legacy MILADY_TEST_WALLET_PRIVATE_KEY is still accepted.",
+      "ELIZA_CLOUD_WALLET_PRIVATE_KEY is required (0x-prefixed 32-byte hex). Legacy ELIZA_TEST_WALLET_PRIVATE_KEY is still accepted.",
     );
     process.exit(2);
   }

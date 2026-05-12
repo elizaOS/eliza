@@ -11,14 +11,33 @@ import { recommendForFirstRun } from "./recommendation";
 import { localInferenceService } from "./service";
 
 describe("local inference catalog", () => {
-  it("ships exactly the 5 visible Eliza-1 tiers", () => {
+  it("ships exactly the visible Eliza-1 tiers", () => {
     const visible = MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog);
     expect(visible.map((m) => m.id).sort()).toEqual(
       [...ELIZA_1_TIER_IDS].sort(),
     );
   });
 
-  it("marks ONLY the 5 Eliza-1 tiers as default-eligible", () => {
+  it("uses the Qwen3.5 0.8B / 2B / 4B text source tiers, not stale Qwen3 text tiers", () => {
+    expect(ELIZA_1_TIER_IDS.slice(0, 3)).toEqual([
+      "eliza-1-0_8b",
+      "eliza-1-2b",
+      "eliza-1-4b",
+    ]);
+    expect(FIRST_RUN_DEFAULT_MODEL_ID).toBe("eliza-1-2b");
+    const serializedCatalog = JSON.stringify(MODEL_CATALOG);
+    expect(serializedCatalog).toContain("Qwen/Qwen3.5-0.8B");
+    expect(serializedCatalog).toContain("Qwen/Qwen3.5-2B");
+    expect(serializedCatalog).toContain("Qwen/Qwen3.5-4B");
+    expect(serializedCatalog).not.toMatch(
+      /eliza-1-0_8b|eliza-1-2b|Qwen\/Qwen3-0\.6B|Qwen\/Qwen3-1\.7B|Qwen3\.5-0\.6B|Qwen3\.5-1\.7B/,
+    );
+    for (const model of MODEL_CATALOG) {
+      expect(model.tokenizerFamily).toBe("qwen35");
+    }
+  });
+
+  it("marks ONLY the Eliza-1 tiers as default-eligible", () => {
     expect([...DEFAULT_ELIGIBLE_MODEL_IDS].sort()).toEqual(
       [...ELIZA_1_TIER_IDS].sort(),
     );
@@ -88,7 +107,7 @@ describe("local inference catalog", () => {
   });
 
   it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
-    // Size tiers: 0.6B/1.7B = 32k, 4B/9B = 64k, 27B = 128k,
+    // Size tiers: 0.8B / 2B = 32k, 4B/9B = 64k, 27B = 128k,
     // 27B-256k = 256k. The catalog records the largest
     // ctx the bundle's manifest will advertise for each tier.
     const expected: Record<string, number> = {
@@ -185,7 +204,7 @@ describe("local inference catalog", () => {
       expect(drafter.hiddenFromCatalog).toBe(true);
       expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(drafter.id)).toBe(false);
       expect(drafter.companionForModelId).toBeTruthy();
-      expect(drafter.tokenizerFamily).toBe("eliza1");
+      expect(drafter.tokenizerFamily).toBe("qwen35");
     }
   });
 
@@ -194,12 +213,10 @@ describe("local inference catalog", () => {
     expect(model?.sourceModel?.finetuned).toBe(false);
     const components = model?.sourceModel?.components;
     expect(components?.text).toEqual({
-      repo: "batiai/Qwen3.6-27B-GGUF",
-      file: "Qwen-Qwen3.6-27B-Q4_K_M.gguf",
+      repo: "Qwen/Qwen3.6-27B",
     });
     expect(components?.vision).toEqual({
-      repo: "batiai/Qwen3.6-27B-GGUF",
-      file: "mmproj-Qwen-Qwen3.6-27B-Q6_K.gguf",
+      repo: "Qwen/Qwen3.6-27B",
     });
   });
 

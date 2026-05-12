@@ -129,7 +129,7 @@ next bench run picks up the corrected wire-shape hint immediately.
 - Hand-patched owner-surface entries verified via `jq` for
   `OWNER_REMINDERS_CREATE` — title + details descriptions now carry the
   flat/nested rule with concrete examples.
-- Smoke run (5 scenarios, `MILADY_BENCH_AGENT=eliza`,
+- Smoke run (5 scenarios, `ELIZA_BENCH_AGENT=eliza`,
   run id `lifeops-multiagent-1778549433787`):
 
   | Scenario | Before (W2-9) | After |

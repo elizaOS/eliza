@@ -200,6 +200,61 @@ async def test_evaluator() -> bool:
     return True
 
 
+def test_evaluator_rejects_empty_type_value() -> None:
+    """TYPE/SELECT answers with required values must not pass on empty text."""
+    from benchmarks.mind2web.evaluator import Mind2WebEvaluator
+    from benchmarks.mind2web.types import Mind2WebOperation
+
+    evaluator = Mind2WebEvaluator()
+
+    assert evaluator._check_value("", "test query", Mind2WebOperation.TYPE) is False
+    assert evaluator._check_value("test query", "test query", Mind2WebOperation.TYPE) is True
+
+
+def test_provider_normalization_does_not_rewrite_to_ground_truth() -> None:
+    """Bad provider actions must stay bad instead of being coerced to labels."""
+    from benchmarks.mind2web.eliza_agent import OpenAICompatibleMind2WebAgent
+    from benchmarks.mind2web.types import (
+        Mind2WebAction,
+        Mind2WebActionStep,
+        Mind2WebConfig,
+        Mind2WebElement,
+        Mind2WebOperation,
+    )
+
+    target = Mind2WebElement(
+        tag="input",
+        backend_node_id="node_search",
+        attributes={"id": "search-box"},
+        is_original_target=True,
+    )
+    step = Mind2WebActionStep(
+        action_uid="a1",
+        operation=Mind2WebOperation.TYPE,
+        value="test query",
+        pos_candidates=[target],
+    )
+    agent = OpenAICompatibleMind2WebAgent(Mind2WebConfig())
+
+    normalized = agent._normalize_action(
+        step,
+        Mind2WebAction(
+            operation=Mind2WebOperation.TYPE,
+            element_id="not_a_candidate",
+            value="",
+        ),
+    )
+
+    assert normalized.element_id == "not_a_candidate"
+    assert normalized.value == ""
+
+
+def test_parse_action_rejects_unknown_operation() -> None:
+    from benchmarks.mind2web.eliza_agent import parse_mind2web_action
+
+    assert parse_mind2web_action('{"operation":"FOO","element_id":"node_search"}') is None
+
+
 async def test_context_and_provider() -> bool:
     """Test Mind2Web context and provider functionality."""
     from benchmarks.mind2web.dataset import Mind2WebDataset

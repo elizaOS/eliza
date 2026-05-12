@@ -11,12 +11,12 @@ The direct cause was in `cloud/apps/frontend/tsconfig.json`:
 - `@/db/*` resolved frontend imports such as `@/db/schemas` into `cloud/packages/db/*`.
 - `@elizaos/core` resolved into root source at `packages/core/src/index.node.ts`.
 - `@elizaos/plugin-sql` resolved into root source at `plugins/plugin-sql/src/index.ts`.
-- `drizzle-orm` and `drizzle-orm/*` resolved through `../../../plugins/plugin-sql/node_modules/drizzle-orm`, which symlinked back into the root install under `/Users/shawwalters/eliza-workspace/milady/eliza/node_modules/.bun/...`.
+- `drizzle-orm` and `drizzle-orm/*` resolved through `../../../plugins/plugin-sql/node_modules/drizzle-orm`, which symlinked back into the root install under `/Users/shawwalters/eliza-workspace/eliza/eliza/node_modules/.bun/...`.
 
 That meant cloud DB source and root package/plugin source could share one TypeScript program while using the root Drizzle type identity. In cloud checks that also resolve package dependencies through `cloud/node_modules`, this creates a duplicate Drizzle identity boundary between:
 
-- `/Users/shawwalters/eliza-workspace/milady/eliza/node_modules`
-- `/Users/shawwalters/eliza-workspace/milady/eliza/cloud/node_modules`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/node_modules`
+- `/Users/shawwalters/eliza-workspace/eliza/eliza/cloud/node_modules`
 
 ## Fix
 

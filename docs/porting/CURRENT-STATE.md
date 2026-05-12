@@ -1,6 +1,6 @@
-# Milady on-device inference — CURRENT STATE
+# Eliza on-device inference — CURRENT STATE
 
-> **Single-page consolidated status** of the Milady on-device inference
+> **Single-page consolidated status** of the Eliza on-device inference
 > porting effort. Authoritative as of **2026-05-09 (Wave-4 D)**.
 > Replaces the cross-document hunt across baseline / unified / w2 / w3
 > reports — those still exist as detailed evidence under
@@ -48,7 +48,7 @@ Status legend matches `build-matrix.md`: `✓` verified, `⚠` partial,
 
 | Technique | Linux CPU | Linux CUDA | Linux Vulkan | Apple Metal | iOS Metal | Android arm64 NEON | Android Vulkan | Notes |
 |---|---|---|---|---|---|---|---|---|
-| **TBQ3_0 / TBQ4_0** (V-cache) | ✓ | ⚠ compile-only, 4 fattn-vec instances | ⚠ 3 SPVs compile, 0/8 runtime | □ | □ | ✓ NEON+QEMU parity | □ | source pin: `elizaOS/llama.cpp @ v0.3.0-milady` |
+| **TBQ3_0 / TBQ4_0** (V-cache) | ✓ | ⚠ compile-only, 4 fattn-vec instances | ⚠ 3 SPVs compile, 0/8 runtime | □ | □ | ✓ NEON+QEMU parity | □ | source pin: `elizaOS/llama.cpp @ v0.3.0-eliza` |
 | **TBQ3_TCQ** (trellis-coded) | □ ref C only | ▲ Viterbi encoder needs warp-shuffle | ⚠ SPV compiles, 0/8 runtime | □ | □ | □ | □ | encoder still missing |
 | **QJL1_256** (K-cache) | ✓ AVX2 + ref | ✗ not in fork | ⚠ 3 SPVs compile, no harness | □ Metal source exists | □ | ✓ NEON+QEMU 100/100 | □ | W4-B kernel CUDA port pending |
 | **Q4_POLAR** (weight-side) | ✓ scalar + AVX2 | ✗ not in fork | ⚠ 2 SPVs compile, no harness | □ Metal source exists | □ | ✓ NEON parity (in budget) | □ | W4-B kernel CUDA port pending |
@@ -69,7 +69,7 @@ These items are blocked **only** on physical hardware. Software is ready.
    surface). Run W3-G's ready-to-run kit on an M-series Mac. Verify
    TBQ Metal kernels via `metal_verify`, then wire QJL/Polar Metal
    dispatchers (sources already staged under
-   `ggml/src/ggml-metal/milady-kernels/` on `elizaOS/llama.cpp`).
+   `ggml/src/ggml-metal/eliza-kernels/` on `elizaOS/llama.cpp`).
    Owner: any agent with an M-series Mac. Effort: 2–3 sessions.
 
 2. **NVIDIA GPU runtime gate for CUDA** (compile is green; runtime
@@ -111,19 +111,19 @@ when that lands; for now this is the single ledger.
    "Source-level findings". Two options: shared-memory tree reduction
    (driver-portable, +5 barriers) or `VkPipelineShaderStageRequiredSubgroupSizeCreateInfo`
    pipeline-side fix (faster on 32-lane native subgroup hardware).
-   Recommend tree reduction as the safe-default for v0.4.0-milady.
+   Recommend tree reduction as the safe-default for v0.4.0-eliza.
    Verifies on lavapipe immediately (no GPU needed).
 
 2. **W4-B — QJL/Polar CUDA kernel port.** Reference research kernels
    live at `packages/training/scripts/quantization/qjl/csrc/`
    (qjl_quant_kernel.cu, qjl_score_kernel.cu, …). Port into
-   `ggml/src/ggml-cuda/` on `milady/qjl-cuda` and `milady/polar-cuda`
+   `ggml/src/ggml-cuda/` on `eliza/qjl-cuda` and `eliza/polar-cuda`
    branches. Compile-validate on this host, then queue for the
    real-GPU runner. ~3–5 sessions including ggml-cuda dispatcher
    wiring.
 
-3. **`compile-libllama.mjs` pin bump** from `v0.2.0-milady` to
-   `v0.3.0-milady`. One-line change in
+3. **`compile-libllama.mjs` pin bump** from `v0.2.0-eliza` to
+   `v0.3.0-eliza`. One-line change in
    `packages/app-core/scripts/aosp/compile-libllama.mjs:187` plus
    the matching `LLAMA_CPP_COMMIT` update. Required before W3-B
    fused kernels reach the AOSP path by default.
@@ -148,12 +148,12 @@ when that lands; for now this is the single ledger.
    ships `dist/` and accepts the new `GgmlType` strings, but the
    underlying `@node-llama-cpp/<platform>` C++ binary still resolves
    to the upstream prebuild — so the desktop path silently falls
-   back to the default cache type when a Milady enum int isn't in
+   back to the default cache type when a Eliza enum int isn't in
    ggml's type table. Publishing per-platform prebuilds from the
    elizaOS/llama.cpp tree is the seal. See
    `unified-fork-strategy.md` §F "Remaining gap". ~1 week.
 
-8. **MXFP4 / NVFP4 rebase pickup.** `milady/main` should rebase to
+8. **MXFP4 / NVFP4 rebase pickup.** `eliza/main` should rebase to
    the upstream master that landed both. Free win on rebase. Add
    MXFP4/NVFP4 to `kvCacheConfigs[]` in
    `scripts/benchmark/configs/`. ~1 session.
@@ -183,7 +183,7 @@ only).
 The next wave (Wave-5 / W5) should focus on:
 1. landing W4-A (Vulkan shader fix — verifiable on lavapipe),
 2. landing W4-B (QJL/Polar CUDA — verifiable as compile-only on this host),
-3. shipping a v0.4.0-milady tag containing both,
+3. shipping a v0.4.0-eliza tag containing both,
 4. pushing the build-matrix re-run on that tag (this report's process).
 
 Hardware-runner items in §"Outstanding hardware-runner work" are

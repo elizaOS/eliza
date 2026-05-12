@@ -1,0 +1,38 @@
+{
+  "agent": "half_v1",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T102050Z_733a34a7/app-eval__app-eval/half_v1_app-eval_20260512T102050Z_1_82a623c8/output"
+  ],
+  "benchmark_directory": "app-eval",
+  "benchmark_id": "app-eval",
+  "cache_metrics": {},
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "avg_duration_ms": 0,
+    "calibration_depth": "scorer_payload",
+    "calibration_spec_version": "calibration_v1",
+    "completed": 0,
+    "failed": 0,
+    "overall_score": 5.0,
+    "return_code": 0,
+    "synthetic_expected_score": 0.5,
+    "synthetic_harness": "half_v1",
+    "synthetic_is_meaningful": true,
+    "synthetic_strategy": "freeform",
+    "timed_out": 0,
+    "total_tasks": 0
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {},
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T102050Z_733a34a7/app-eval__app-eval/half_v1_app-eval_20260512T102050Z_1_82a623c8/output/summary-half_v1.json",
+  "run_group_id": "rg_20260512T102050Z_733a34a7",
+  "run_id": "half_v1_app-eval_20260512T102050Z_1_82a623c8",
+  "score": 0.5,
+  "status": "succeeded",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": "ratio",
+  "updated_at": "2026-05-12T10:20:50.507527+00:00"
+}

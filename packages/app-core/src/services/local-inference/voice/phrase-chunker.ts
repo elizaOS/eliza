@@ -7,14 +7,21 @@ import type {
 } from "./types";
 
 /**
- * Default phrase boundaries: end-of-clause comma plus the three
+ * Default phrase boundaries: end-of-clause punctuation plus the three
  * sentence-final marks. Per `packages/inference/AGENTS.md` §4 / the
- * voice-swarm brief item A6 — "the first segment delimited by `, . ! ?`
+ * voice-swarm brief item A6 — "the first segment delimited by punctuation
  * OR the first 30 words, whichever comes first". Cutting a phrase at the
- * first comma hands TTS something to say without waiting for a
- * sentence-final mark.
+ * first comma/semicolon/colon hands TTS something to say without waiting
+ * for a sentence-final mark.
  */
-const DEFAULT_TERMINATORS: ReadonlySet<string> = new Set([",", ".", "!", "?"]);
+const DEFAULT_TERMINATORS: ReadonlySet<string> = new Set([
+  ",",
+  ".",
+  "!",
+  "?",
+  ";",
+  ":",
+]);
 const DEFAULT_PHONEMES_PER_CHUNK = 8;
 /** Default hard word cap when a caller doesn't supply `maxTokensPerPhrase` (the brief's "first 30 words"). */
 const DEFAULT_MAX_TOKENS_PER_PHRASE = 30;

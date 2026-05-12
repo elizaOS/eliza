@@ -451,7 +451,7 @@ function isTruthyEnvValue(value: string | undefined): boolean {
 }
 
 export function isTrajectoryStrictModeEnabled(): boolean {
-	return isTruthyEnvValue(readProcessEnv("MILADY_TRAJECTORY_STRICT"));
+	return isTruthyEnvValue(readProcessEnv("ELIZA_TRAJECTORY_STRICT"));
 }
 
 export function normalizeTrajectoryLlmPurpose(
@@ -516,7 +516,7 @@ function formatLlmGuardContext(context?: TrajectoryLlmGuardContext): string {
 
 /**
  * Strict-mode assertion for any generative LLM call. In normal mode this is a
- * no-op. With `MILADY_TRAJECTORY_STRICT=1`, it throws unless a trajectory step
+ * no-op. With `ELIZA_TRAJECTORY_STRICT=1`, it throws unless a trajectory step
  * is active.
  */
 export function assertActiveTrajectoryForLlmCall(
@@ -767,7 +767,7 @@ export function logActiveTrajectoryLlmCall(
  *
  * If no trajectory step is active or no trajectory logger is registered,
  * `fn` still runs and its result is returned in normal mode. With
- * `MILADY_TRAJECTORY_STRICT=1`, this throws before calling `fn` unless a
+ * `ELIZA_TRAJECTORY_STRICT=1`, this throws before calling `fn` unless a
  * trajectory step is active.
  */
 export async function recordLlmCall<T>(

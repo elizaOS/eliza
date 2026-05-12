@@ -362,8 +362,8 @@ export async function startBenchmarkServer() {
   // (see `isBenchmarkForcingToolCall`) honors this env var ONLY for messages
   // whose `content.source === "benchmark"` or whose `content.metadata.benchmark`
   // is set, so a co-resident chat process is unaffected.
-  if (process.env.MILADY_BENCH_FORCE_TOOL_CALL === undefined) {
-    process.env.MILADY_BENCH_FORCE_TOOL_CALL = "1";
+  if (process.env.ELIZA_BENCH_FORCE_TOOL_CALL === undefined) {
+    process.env.ELIZA_BENCH_FORCE_TOOL_CALL = "1";
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -391,10 +391,10 @@ export async function startBenchmarkServer() {
   //   spams a 401 from HuggingFace.
   // - Benchmarks don't score on semantic retrieval, so a deterministic
   //   zero-vector handler is a fine stand-in.
-  // - Opt-out by setting `MILADY_BENCH_SKIP_EMBEDDING=0` (e.g. for a benchmark
+  // - Opt-out by setting `ELIZA_BENCH_SKIP_EMBEDDING=0` (e.g. for a benchmark
   //   that genuinely depends on real embeddings).
   const skipEmbeddingPlugin =
-    (process.env.MILADY_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
+    (process.env.ELIZA_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
   if (skipEmbeddingPlugin) {
     skipPlugins.add("@elizaos/plugin-local-embedding");
   }
@@ -516,7 +516,7 @@ export async function startBenchmarkServer() {
     plugins.push(toPlugin(benchEmbeddingPlugin, "bench-stub-embedding"));
     elizaLogger.info(
       `[bench] Registered zero-vector TEXT_EMBEDDING stub (dim=${EMBEDDING_DIMENSIONS}); ` +
-        "set MILADY_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-embedding instead.",
+        "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-embedding instead.",
     );
   }
 
@@ -538,7 +538,7 @@ export async function startBenchmarkServer() {
   const _openAiBaseUrl = process.env.OPENAI_BASE_URL?.trim();
   const _cerebrasIntent =
     !!_openAiBaseUrl && /(^|\.)cerebras\.ai(\/|$)/i.test(_openAiBaseUrl);
-  const _explicitProvider = process.env.MILADY_PROVIDER?.trim().toLowerCase();
+  const _explicitProvider = process.env.ELIZA_PROVIDER?.trim().toLowerCase();
   const _benchProvider =
     process.env.BENCHMARK_MODEL_PROVIDER?.trim().toLowerCase();
   const _suppressGroqForOtherProvider =
@@ -563,7 +563,7 @@ export async function startBenchmarkServer() {
   } else if (groqApiKey && _suppressGroqForOtherProvider) {
     elizaLogger.info(
       "[bench] Skipping @elizaos/plugin-groq: another provider is the explicit intent " +
-        `(cerebras=${_cerebrasIntent}, MILADY_PROVIDER=${_explicitProvider ?? ""}, BENCHMARK_MODEL_PROVIDER=${_benchProvider ?? ""})`,
+        `(cerebras=${_cerebrasIntent}, ELIZA_PROVIDER=${_explicitProvider ?? ""}, BENCHMARK_MODEL_PROVIDER=${_benchProvider ?? ""})`,
     );
   }
 
@@ -576,10 +576,10 @@ export async function startBenchmarkServer() {
   const openAiApiKey = process.env.OPENAI_API_KEY?.trim();
   const openAiBaseURL = process.env.OPENAI_BASE_URL?.trim();
   const cerebrasApiKey = process.env.CEREBRAS_API_KEY?.trim();
-  const miladyProvider = process.env.MILADY_PROVIDER?.trim().toLowerCase();
+  const elizaProvider = process.env.ELIZA_PROVIDER?.trim().toLowerCase();
   const baseUrlIsCerebras =
     !!openAiBaseURL && /(^|\.)cerebras\.ai(\/|$)/i.test(openAiBaseURL);
-  const providerIsCerebras = miladyProvider === "cerebras";
+  const providerIsCerebras = elizaProvider === "cerebras";
   const hasOpenAiCompatibleKey =
     (openAiApiKey && !openAiApiKey.startsWith("gsk_")) ||
     ((baseUrlIsCerebras || providerIsCerebras) && !!cerebrasApiKey);

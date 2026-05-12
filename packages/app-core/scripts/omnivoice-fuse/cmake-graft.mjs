@@ -25,7 +25,7 @@ import path from "node:path";
 
 import { OMNIVOICE_GRAFT_SUBDIR } from "./prepare.mjs";
 
-const SENTINEL = "# MILADY-OMNIVOICE-FUSION-GRAFT-V1";
+const SENTINEL = "# ELIZA-OMNIVOICE-FUSION-GRAFT-V1";
 
 // CMake snippet appended verbatim to llama.cpp's root CMakeLists.txt.
 // Indentation is intentional — it's read out of CMakeLists.txt as-is.
@@ -41,33 +41,33 @@ ${SENTINEL}
 # share llama.cpp's vendored ggml.
 # ----------------------------------------------------------------------
 
-if(MILADY_FUSE_OMNIVOICE)
+if(ELIZA_FUSE_OMNIVOICE)
     find_package(Threads REQUIRED)
 
     # Audio tokenizer tensor names exceed default GGML_MAX_NAME of 64.
     # Mirrored from omnivoice's own CMakeLists.txt.
     add_compile_definitions(GGML_MAX_NAME=128)
-    foreach(_milady_ggml_max_name_target
+    foreach(_eliza_ggml_max_name_target
             ggml ggml-base ggml-cpu ggml-blas ggml-metal ggml-vulkan ggml-cuda
             llama common mtmd server-context)
-        if(TARGET \${_milady_ggml_max_name_target})
-            target_compile_definitions(\${_milady_ggml_max_name_target}
+        if(TARGET \${_eliza_ggml_max_name_target})
+            target_compile_definitions(\${_eliza_ggml_max_name_target}
                 PUBLIC GGML_MAX_NAME=128)
         endif()
     endforeach()
 
-    file(GLOB MILADY_OMNIVOICE_SOURCES
+    file(GLOB ELIZA_OMNIVOICE_SOURCES
         CONFIGURE_DEPENDS
         \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}/src/*.cpp)
-    file(GLOB MILADY_OMNIVOICE_HEADERS
+    file(GLOB ELIZA_OMNIVOICE_HEADERS
         CONFIGURE_DEPENDS
         \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}/src/*.h)
 
-    if(NOT MILADY_OMNIVOICE_SOURCES)
-        message(FATAL_ERROR "MILADY_FUSE_OMNIVOICE=ON but no sources under ${OMNIVOICE_GRAFT_SUBDIR}/src/")
+    if(NOT ELIZA_OMNIVOICE_SOURCES)
+        message(FATAL_ERROR "ELIZA_FUSE_OMNIVOICE=ON but no sources under ${OMNIVOICE_GRAFT_SUBDIR}/src/")
     endif()
 
-    add_library(omnivoice-core STATIC \${MILADY_OMNIVOICE_SOURCES})
+    add_library(omnivoice-core STATIC \${ELIZA_OMNIVOICE_SOURCES})
     target_compile_definitions(omnivoice-core PUBLIC OMNIVOICE_STATIC)
     target_compile_features(omnivoice-core PUBLIC cxx_std_17)
     target_include_directories(omnivoice-core PUBLIC
@@ -85,11 +85,11 @@ if(MILADY_FUSE_OMNIVOICE)
     if(TARGET ggml-base)
         target_link_libraries(omnivoice-core PUBLIC ggml-base)
     endif()
-    foreach(_milady_backend cpu blas cuda metal vulkan)
-        if(TARGET ggml-\${_milady_backend})
-            get_target_property(_milady_btype ggml-\${_milady_backend} TYPE)
-            if(NOT _milady_btype STREQUAL "MODULE_LIBRARY")
-                target_link_libraries(omnivoice-core PUBLIC ggml-\${_milady_backend})
+    foreach(_eliza_backend cpu blas cuda metal vulkan)
+        if(TARGET ggml-\${_eliza_backend})
+            get_target_property(_eliza_btype ggml-\${_eliza_backend} TYPE)
+            if(NOT _eliza_btype STREQUAL "MODULE_LIBRARY")
+                target_link_libraries(omnivoice-core PUBLIC ggml-\${_eliza_backend})
             endif()
         endif()
     endforeach()
@@ -97,7 +97,7 @@ if(MILADY_FUSE_OMNIVOICE)
     # Fused shared library exporting both \`llama_*\` and \`omnivoice_*\`.
     # Used by Electrobun + Capacitor bridges that dlopen one artifact.
     add_library(elizainference SHARED
-        \${MILADY_OMNIVOICE_SOURCES})
+        \${ELIZA_OMNIVOICE_SOURCES})
     target_compile_definitions(elizainference PRIVATE OMNIVOICE_BUILD)
     target_compile_features(elizainference PUBLIC cxx_std_17)
     target_include_directories(elizainference PUBLIC
@@ -117,11 +117,11 @@ if(MILADY_FUSE_OMNIVOICE)
     if(TARGET ggml-base)
         target_link_libraries(elizainference PUBLIC ggml-base)
     endif()
-    foreach(_milady_backend cpu blas cuda metal vulkan)
-        if(TARGET ggml-\${_milady_backend})
-            get_target_property(_milady_btype ggml-\${_milady_backend} TYPE)
-            if(NOT _milady_btype STREQUAL "MODULE_LIBRARY")
-                target_link_libraries(elizainference PUBLIC ggml-\${_milady_backend})
+    foreach(_eliza_backend cpu blas cuda metal vulkan)
+        if(TARGET ggml-\${_eliza_backend})
+            get_target_property(_eliza_btype ggml-\${_eliza_backend} TYPE)
+            if(NOT _eliza_btype STREQUAL "MODULE_LIBRARY")
+                target_link_libraries(elizainference PUBLIC ggml-\${_eliza_backend})
             endif()
         endif()
     endforeach()
@@ -131,14 +131,14 @@ if(MILADY_FUSE_OMNIVOICE)
 
     # The fused HTTP server IS \`llama-server\`. The kernel-patch
     # \`server-omnivoice-route.mjs\` adds a \`POST /v1/audio/speech\` route to
-    # tools/server/server.cpp, guarded by \`#ifdef MILADY_FUSE_OMNIVOICE\`,
+    # tools/server/server.cpp, guarded by \`#ifdef ELIZA_FUSE_OMNIVOICE\`,
     # backed by omnivoice-core's \`ov_synthesize\`. So the same process that
     # serves \`/completion\` + \`/v1/chat/completions\` + the DFlash spec loop
     # also serves TTS — one process, one llama.cpp build, one GGML pin
     # (packages/inference/AGENTS.md §4). We link omnivoice-core into the
     # \`llama-server\` target and put the route define + omnivoice headers on
     # it. The non-fused build is untouched (this whole block is inside
-    # \`if(MILADY_FUSE_OMNIVOICE)\`).
+    # \`if(ELIZA_FUSE_OMNIVOICE)\`).
     if(TARGET llama-server)
         target_link_libraries(llama-server PRIVATE omnivoice-core)
         target_include_directories(llama-server PRIVATE
@@ -149,7 +149,7 @@ if(MILADY_FUSE_OMNIVOICE)
         # omnivoice-core was compiled the same way, so the static link is
         # ABI-consistent.
         target_compile_definitions(llama-server PRIVATE
-            MILADY_FUSE_OMNIVOICE GGML_MAX_NAME=128)
+            ELIZA_FUSE_OMNIVOICE GGML_MAX_NAME=128)
     endif()
 
     # Legacy \`llama-omnivoice-server\` placeholder kept ONLY so the symbol
@@ -189,28 +189,28 @@ export function appendCmakeGraft({ llamaCppRoot }) {
   const original = fs.readFileSync(cmakePath, "utf8");
   if (original.includes(SENTINEL)) {
     let upgraded = original.replace(
-      "if(MILADY_FUSE_OMNIVOICE)\n    # Audio tokenizer",
-      "if(MILADY_FUSE_OMNIVOICE)\n    find_package(Threads REQUIRED)\n\n    # Audio tokenizer",
+      "if(ELIZA_FUSE_OMNIVOICE)\n    # Audio tokenizer",
+      "if(ELIZA_FUSE_OMNIVOICE)\n    find_package(Threads REQUIRED)\n\n    # Audio tokenizer",
     );
     upgraded = upgraded.replace(
-      "    add_compile_definitions(GGML_MAX_NAME=128)\n\n    file(GLOB MILADY_OMNIVOICE_SOURCES",
-      "    add_compile_definitions(GGML_MAX_NAME=128)\n    foreach(_milady_ggml_max_name_target\n            ggml ggml-base ggml-cpu ggml-blas ggml-metal ggml-vulkan ggml-cuda\n            llama common mtmd server-context)\n        if(TARGET ${_milady_ggml_max_name_target})\n            target_compile_definitions(${_milady_ggml_max_name_target}\n                PUBLIC GGML_MAX_NAME=128)\n        endif()\n    endforeach()\n\n    file(GLOB MILADY_OMNIVOICE_SOURCES",
+      "    add_compile_definitions(GGML_MAX_NAME=128)\n\n    file(GLOB ELIZA_OMNIVOICE_SOURCES",
+      "    add_compile_definitions(GGML_MAX_NAME=128)\n    foreach(_eliza_ggml_max_name_target\n            ggml ggml-base ggml-cpu ggml-blas ggml-metal ggml-vulkan ggml-cuda\n            llama common mtmd server-context)\n        if(TARGET ${_eliza_ggml_max_name_target})\n            target_compile_definitions(${_eliza_ggml_max_name_target}\n                PUBLIC GGML_MAX_NAME=128)\n        endif()\n    endforeach()\n\n    file(GLOB ELIZA_OMNIVOICE_SOURCES",
     );
     upgraded = upgraded.replace(
-      "add_library(omnivoice-core STATIC ${MILADY_OMNIVOICE_SOURCES})\n    target_include_directories(omnivoice-core PUBLIC",
-      "add_library(omnivoice-core STATIC ${MILADY_OMNIVOICE_SOURCES})\n    target_compile_definitions(omnivoice-core PUBLIC OMNIVOICE_STATIC)\n    target_compile_features(omnivoice-core PUBLIC cxx_std_17)\n    target_include_directories(omnivoice-core PUBLIC",
+      "add_library(omnivoice-core STATIC ${ELIZA_OMNIVOICE_SOURCES})\n    target_include_directories(omnivoice-core PUBLIC",
+      "add_library(omnivoice-core STATIC ${ELIZA_OMNIVOICE_SOURCES})\n    target_compile_definitions(omnivoice-core PUBLIC OMNIVOICE_STATIC)\n    target_compile_features(omnivoice-core PUBLIC cxx_std_17)\n    target_include_directories(omnivoice-core PUBLIC",
     );
     upgraded = upgraded.replace(
-      "add_library(omnivoice-core STATIC ${MILADY_OMNIVOICE_SOURCES})\n    target_compile_definitions(omnivoice-core PUBLIC OMNIVOICE_STATIC)\n    target_include_directories(omnivoice-core PUBLIC",
-      "add_library(omnivoice-core STATIC ${MILADY_OMNIVOICE_SOURCES})\n    target_compile_definitions(omnivoice-core PUBLIC OMNIVOICE_STATIC)\n    target_compile_features(omnivoice-core PUBLIC cxx_std_17)\n    target_include_directories(omnivoice-core PUBLIC",
+      "add_library(omnivoice-core STATIC ${ELIZA_OMNIVOICE_SOURCES})\n    target_compile_definitions(omnivoice-core PUBLIC OMNIVOICE_STATIC)\n    target_include_directories(omnivoice-core PUBLIC",
+      "add_library(omnivoice-core STATIC ${ELIZA_OMNIVOICE_SOURCES})\n    target_compile_definitions(omnivoice-core PUBLIC OMNIVOICE_STATIC)\n    target_compile_features(omnivoice-core PUBLIC cxx_std_17)\n    target_include_directories(omnivoice-core PUBLIC",
     );
     upgraded = upgraded.replace(
-      "add_library(elizainference SHARED\n        ${MILADY_OMNIVOICE_SOURCES})\n    target_include_directories(elizainference PUBLIC",
-      "add_library(elizainference SHARED\n        ${MILADY_OMNIVOICE_SOURCES})\n    target_compile_definitions(elizainference PRIVATE OMNIVOICE_BUILD)\n    target_compile_features(elizainference PUBLIC cxx_std_17)\n    target_include_directories(elizainference PUBLIC",
+      "add_library(elizainference SHARED\n        ${ELIZA_OMNIVOICE_SOURCES})\n    target_include_directories(elizainference PUBLIC",
+      "add_library(elizainference SHARED\n        ${ELIZA_OMNIVOICE_SOURCES})\n    target_compile_definitions(elizainference PRIVATE OMNIVOICE_BUILD)\n    target_compile_features(elizainference PUBLIC cxx_std_17)\n    target_include_directories(elizainference PUBLIC",
     );
     upgraded = upgraded.replace(
-      "add_library(elizainference SHARED\n        ${MILADY_OMNIVOICE_SOURCES})\n    target_compile_definitions(elizainference PRIVATE OMNIVOICE_BUILD)\n    target_include_directories(elizainference PUBLIC",
-      "add_library(elizainference SHARED\n        ${MILADY_OMNIVOICE_SOURCES})\n    target_compile_definitions(elizainference PRIVATE OMNIVOICE_BUILD)\n    target_compile_features(elizainference PUBLIC cxx_std_17)\n    target_include_directories(elizainference PUBLIC",
+      "add_library(elizainference SHARED\n        ${ELIZA_OMNIVOICE_SOURCES})\n    target_compile_definitions(elizainference PRIVATE OMNIVOICE_BUILD)\n    target_include_directories(elizainference PUBLIC",
+      "add_library(elizainference SHARED\n        ${ELIZA_OMNIVOICE_SOURCES})\n    target_compile_definitions(elizainference PRIVATE OMNIVOICE_BUILD)\n    target_compile_features(elizainference PUBLIC cxx_std_17)\n    target_include_directories(elizainference PUBLIC",
     );
     upgraded = upgraded.replace(
       "            ${CMAKE_CURRENT_BINARY_DIR})\n        target_link_libraries(llama-omnivoice-server PRIVATE",
@@ -262,7 +262,7 @@ export function appendCmakeGraft({ llamaCppRoot }) {
  * defaults. Returns an array of `-D…=…` strings.
  */
 export function fusedExtraCmakeFlags() {
-  return ["-DMILADY_FUSE_OMNIVOICE=ON", "-DBUILD_SHARED_LIBS=ON"];
+  return ["-DELIZA_FUSE_OMNIVOICE=ON", "-DBUILD_SHARED_LIBS=ON"];
 }
 
 /**

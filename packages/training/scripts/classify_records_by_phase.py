@@ -89,7 +89,7 @@ def iter_hf_raw(repo_id: str, filename: str, limit: int | None) -> Iterator[dict
 
     url = hf_hub_url(repo_id, filename, repo_type="dataset")
     log.info("streaming %s from %s", filename, url)
-    req = urllib.request.Request(url, headers={"User-Agent": "milady-classifier"})
+    req = urllib.request.Request(url, headers={"User-Agent": "eliza-classifier"})
     with urllib.request.urlopen(req) as resp:
         for i, raw in enumerate(resp):
             if limit is not None and i >= limit:

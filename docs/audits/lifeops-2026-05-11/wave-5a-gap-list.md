@@ -106,7 +106,7 @@ Real P1 fixes surfaced by sanity-check after rebuild:
 
 ## P3 — Tracked to follow-up
 
-- **First real measured run of `MILADY_RETRIEVAL_MEASUREMENT=1`** —
+- **First real measured run of `ELIZA_RETRIEVAL_MEASUREMENT=1`** —
   current `retrieval-funnel.{md,json}` is structurally correct but
   `counted samples: 0` because no full run yet emits measurement
   trajectories. First run should rerun `bun run lifeops:retrieval:funnel`

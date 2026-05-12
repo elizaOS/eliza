@@ -255,7 +255,7 @@ function patchPackagedCoreSandboxPolicyExports() {
 export const BUILD_VARIANTS = ["store", "direct"];
 export const DEFAULT_BUILD_VARIANT = "direct";
 const __elizaosBuildVariantValues = new Set(BUILD_VARIANTS);
-const __elizaosBuildVariantDirectDownloadUrl = "https://milady.so/download";
+const __elizaosBuildVariantDirectDownloadUrl = "https://eliza.so/download";
 let __elizaosBuildVariantResolved = null;
 
 export function getBuildVariant() {
@@ -264,7 +264,7 @@ export function getBuildVariant() {
   }
   const raw =
     (typeof process !== "undefined" &&
-      (process.env?.MILADY_BUILD_VARIANT ?? process.env?.ELIZA_BUILD_VARIANT)) ||
+      (process.env?.ELIZA_BUILD_VARIANT ?? process.env?.ELIZA_BUILD_VARIANT)) ||
     "";
   const normalized = raw.trim().toLowerCase();
   __elizaosBuildVariantResolved = __elizaosBuildVariantValues.has(normalized)
@@ -294,7 +294,7 @@ export function _resetBuildVariantForTests() {
   if (!hasSandboxPolicyExports) {
     jsPatch += `
 const __elizaosSandboxBuildVariants = new Set(["store", "direct"]);
-const __elizaosSandboxDirectDownloadUrl = "https://milady.so/download";
+const __elizaosSandboxDirectDownloadUrl = "https://eliza.so/download";
 let __elizaosSandboxResolvedVariant = null;
 
 function __elizaosSandboxBuildVariant() {
@@ -303,7 +303,7 @@ function __elizaosSandboxBuildVariant() {
   }
   const raw =
     (typeof process !== "undefined" &&
-      (process.env?.MILADY_BUILD_VARIANT ?? process.env?.ELIZA_BUILD_VARIANT)) ||
+      (process.env?.ELIZA_BUILD_VARIANT ?? process.env?.ELIZA_BUILD_VARIANT)) ||
     "";
   const normalized = raw.trim().toLowerCase();
   __elizaosSandboxResolvedVariant = __elizaosSandboxBuildVariants.has(normalized)
@@ -318,7 +318,7 @@ export function isLocalCodeExecutionAllowed() {
 
 export function buildStoreVariantBlockedMessage(featureLabel) {
   return [
-    \`\${featureLabel} requires the direct download build of Milady.\`,
+    \`\${featureLabel} requires the direct download build of Eliza.\`,
     "Store-distributed builds run in an OS sandbox that blocks forking user-installed CLIs.",
     \`To use this feature, install from \${__elizaosSandboxDirectDownloadUrl}.\`,
   ].join(" ");
@@ -393,14 +393,14 @@ function patchPackagedAppCoreSandboxPolicy() {
   fs.writeFileSync(
     sandboxPolicyPath,
     `const BUILD_VARIANTS = new Set(["store", "direct"]);
-const DIRECT_DOWNLOAD_URL = "https://milady.so/download";
+const DIRECT_DOWNLOAD_URL = "https://eliza.so/download";
 let resolvedVariant = null;
 
 function getBuildVariant() {
   if (resolvedVariant !== null) return resolvedVariant;
   const raw =
     (typeof process !== "undefined" &&
-      (process.env?.MILADY_BUILD_VARIANT ?? process.env?.ELIZA_BUILD_VARIANT)) ||
+      (process.env?.ELIZA_BUILD_VARIANT ?? process.env?.ELIZA_BUILD_VARIANT)) ||
     "";
   const normalized = raw.trim().toLowerCase();
   resolvedVariant = BUILD_VARIANTS.has(normalized) ? normalized : "direct";
@@ -413,7 +413,7 @@ export function isLocalCodeExecutionAllowed() {
 
 export function buildStoreVariantBlockedMessage(featureLabel) {
   return [
-    \`\${featureLabel} requires the direct download build of Milady.\`,
+    \`\${featureLabel} requires the direct download build of Eliza.\`,
     "Store-distributed builds run in an OS sandbox that blocks forking user-installed CLIs.",
     \`To use this feature, install from \${DIRECT_DOWNLOAD_URL}.\`,
   ].join(" ");

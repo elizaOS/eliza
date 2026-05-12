@@ -41,7 +41,7 @@ type RuntimeAction = {
 };
 
 const STORE_LOCAL_DISABLED_DOCS_URL =
-  "https://github.com/milady-ai/milady/blob/develop/docs/desktop/build-variants.md";
+  "https://github.com/eliza-ai/eliza/blob/develop/docs/desktop/build-variants.md";
 
 export function RuntimeSettingsSection() {
   const { t } = useApp();

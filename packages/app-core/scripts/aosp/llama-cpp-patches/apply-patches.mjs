@@ -74,7 +74,7 @@ console.log(`[patches] applying series: ${seriesNames.join(", ")}`);
 console.log(`[patches] target repo: ${repo}`);
 
 // Quick gate: when the target repo already contains the upstream
-// markers for a series (e.g. v0.4.0-milady has QJL baked in via a merge
+// markers for a series (e.g. v0.4.0-eliza has QJL baked in via a merge
 // commit, so subject-grep won't match the original patch subjects),
 // skip the entire series rather than trying to apply patches that
 // would conflict with the already-present source.

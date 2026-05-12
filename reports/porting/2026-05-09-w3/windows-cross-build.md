@@ -4,11 +4,11 @@ Owner: Wave-3 agent F. Date: 2026-05-09. Worktree branch: `worktree-agent-afda9c
 
 ## Goal
 
-Add Windows x86_64 cross-build support to the milady llama.cpp build pipeline so CI ships Windows DLLs without needing a Windows runner. Today the script (`packages/app-core/scripts/build-llama-cpp-dflash.mjs`) handles linux/darwin/android/ios but treats `windows-x64-cpu` and `windows-x64-cuda` as host-only or `MINGW_TOOLCHAIN_FILE`-only paths — neither works on a stock Linux dev box.
+Add Windows x86_64 cross-build support to the eliza llama.cpp build pipeline so CI ships Windows DLLs without needing a Windows runner. Today the script (`packages/app-core/scripts/build-llama-cpp-dflash.mjs`) handles linux/darwin/android/ios but treats `windows-x64-cpu` and `windows-x64-cuda` as host-only or `MINGW_TOOLCHAIN_FILE`-only paths — neither works on a stock Linux dev box.
 
 ## Scope landed
 
-1. **Toolchain probe + auto-wire (no operator config required).** New `findMingwToolchain()` searches `MILADY_MINGW_PREFIX`, then PATH, then `~/.local/x86_64-w64-mingw32/usr/bin/`. When found, `writeMingwToolchainFile()` materializes a CMake toolchain file under `~/.cache/eliza-dflash/mingw-toolchain/mingw-x86_64.cmake` and a force-included shim header (`milady-mingw-win-shim.h`) that backports the Win8+ `THREAD_POWER_THROTTLING_STATE` typedef missing from mingw-w64 11.0 headers.
+1. **Toolchain probe + auto-wire (no operator config required).** New `findMingwToolchain()` searches `ELIZA_MINGW_PREFIX`, then PATH, then `~/.local/x86_64-w64-mingw32/usr/bin/`. When found, `writeMingwToolchainFile()` materializes a CMake toolchain file under `~/.cache/eliza-dflash/mingw-toolchain/mingw-x86_64.cmake` and a force-included shim header (`eliza-mingw-win-shim.h`) that backports the Win8+ `THREAD_POWER_THROTTLING_STATE` typedef missing from mingw-w64 11.0 headers.
 2. **`windows-x64-cpu` cross-build path.** `cmakeFlagsForTarget()` for `platform=windows`/`backend=cpu` now passes the toolchain file, `-DLLAMA_CURL=OFF`, `-DBUILD_SHARED_LIBS=ON`, and the AVX/AVX2/FMA/F16C flags so the Windows CPU baseline matches Linux.
 3. **PE/COFF QJL link fix.** `patchGgmlBaseForWindowsQjl()` rewrites `ggml/src/CMakeLists.txt` to compile `ggml-cpu/qjl/*.c` into ggml-base on Windows shared-lib builds. The fork's `ggml.c` references QJL symbols defined in ggml-cpu via the type-traits table; ELF resolves these at runtime via DT_NEEDED, but PE/COFF requires every imported symbol to resolve at link time, so without this patch `ggml-base.dll` fails with `undefined reference to quantize_qjl1_256`.
 4. **`isRuntimeLibrary()` accepts mingw DLL naming.** mingw produces `ggml.dll` / `ggml-base.dll` / `ggml-cpu.dll` (no `lib` prefix) alongside `libllama.dll` / `libmtmd.dll`. The installer regex now accepts plain `*.dll` so all six DLLs land in the output dir.
@@ -34,7 +34,7 @@ Add Windows x86_64 cross-build support to the milady llama.cpp build pipeline so
 
 Host running this: Ubuntu 24.04.4 LTS, no root access (`sudo` blocked), so the .debs were `dpkg-deb -x`-extracted into `~/.local/x86_64-w64-mingw32/`. The script's `findMingwToolchain()` finds them there automatically. CI gets the same packages via `apt-get install` because GitHub runners do have root.
 
-The mingw-w64 11.0 headers don't ship `THREAD_POWER_THROTTLING_STATE` (Win8+) even though `_WIN32_WINNT` resolves to `0x0a00` (Win10). cpp-httplib in `vendor/cpp-httplib/` hard-requires `_WIN32_WINNT >= 0x0A00` and uses `CreateFile2`; bumping `WINVER` to `0x0A00` triggers `ggml-cpu.c`'s `#if _WIN32_WINNT >= 0x0602` throttling-state branch. The script's `milady-mingw-win-shim.h` provides the missing typedef inline; the actual `SetThreadInformation` API is in kernel32.dll on every Win8+ host so the resulting binary works at runtime.
+The mingw-w64 11.0 headers don't ship `THREAD_POWER_THROTTLING_STATE` (Win8+) even though `_WIN32_WINNT` resolves to `0x0a00` (Win10). cpp-httplib in `vendor/cpp-httplib/` hard-requires `_WIN32_WINNT >= 0x0A00` and uses `CreateFile2`; bumping `WINVER` to `0x0A00` triggers `ggml-cpu.c`'s `#if _WIN32_WINNT >= 0x0602` throttling-state branch. The script's `eliza-mingw-win-shim.h` provides the missing typedef inline; the actual `SetThreadInformation` API is in kernel32.dll on every Win8+ host so the resulting binary works at runtime.
 
 ## Build commands
 
@@ -44,12 +44,12 @@ The script invocation:
 # Default fork (spiritbuun/buun-llama-cpp master):
 node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target windows-x64-cpu
 
-# elizaOS/llama.cpp v0.1.0-milady (the fork the AOSP path consumes; this
+# elizaOS/llama.cpp v0.1.0-eliza (the fork the AOSP path consumes; this
 # is what the CI matrix uses so the symbols match downstream consumers):
 ELIZA_DFLASH_LLAMA_CPP_REMOTE="https://github.com/elizaOS/llama.cpp.git" \
   node packages/app-core/scripts/build-llama-cpp-dflash.mjs \
     --target windows-x64-cpu \
-    --ref v0.1.0-milady
+    --ref v0.1.0-eliza
 ```
 
 Effective cmake invocation (auto-emitted by the script):
@@ -73,7 +73,7 @@ cmake --build <cache>/build/windows-x64-cpu \
 
 Build wall time on a 16-core dev box: ~110s clean, ~25s cached. CI is allotted 30 minutes which is conservative.
 
-## Artifacts (elizaOS/llama.cpp v0.1.0-milady, commit edd55d8)
+## Artifacts (elizaOS/llama.cpp v0.1.0-eliza, commit edd55d8)
 
 Output dir: `$ELIZA_STATE_DIR/local-inference/bin/dflash/windows-x64-cpu/`.
 
@@ -135,7 +135,7 @@ The CI workflow re-runs the same checks via the `Verify exported symbols` step a
 ## Known limitations + follow-up work
 
 1. **PE/COFF QJL link-time fix is a build-side patch, not a fork-side fix.** `patchGgmlBaseForWindowsQjl()` mutates `ggml/src/CMakeLists.txt` in the cached checkout to compile `ggml-cpu/qjl/*.c` into `ggml-base.dll`. The right fix lives upstream in `elizaOS/llama.cpp`: either move the QJL definitions into ggml-base (matches where TBQ already lives), or wire the type-traits table through a registration callback that ggml-cpu fills in at backend-load time. When that lands, the patch becomes a no-op and can be removed. Tracker: `TODO(elizaOS/llama.cpp)` comment in the patch function.
-2. **mingw-w64 11.0 vs Win10 SDK gap.** The shim header (`milady-mingw-win-shim.h`) papers over `THREAD_POWER_THROTTLING_STATE`. If a future fork rev pulls in another Win10-only API the shim doesn't cover, the build will fail loud and the shim needs an addition. Documented inline.
+2. **mingw-w64 11.0 vs Win10 SDK gap.** The shim header (`eliza-mingw-win-shim.h`) papers over `THREAD_POWER_THROTTLING_STATE`. If a future fork rev pulls in another Win10-only API the shim doesn't cover, the build will fail loud and the shim needs an addition. Documented inline.
 3. **CUDA path still unwired.** `windows-x64-cuda` remains "host-only or MINGW_TOOLCHAIN_FILE" in `targetCompatibility()`. Cross-CUDA from Linux is theoretically possible (nvcc + cudart_static.lib + the Windows kernel32 import lib) but not in scope here.
 4. **wine smoke is opt-in.** `ubuntu-24.04` doesn't ship `wine-stable` and installing it bloats the runtime by ~5min. The job uploads artifacts unconditionally; consumers can wine-test downstream. To turn the smoke on, set `ELIZA_DFLASH_RUN_WINE_SMOKE=1` on the workflow (and add `apt-get install wine64` to the install step).
 5. **Vulkan path unwired.** `windows-x64-vulkan` is documented above as deferred. A Linux→Windows Vulkan cross would need `Vulkan-Headers` (already fetched in `safelyPrepareVulkanHeaders()`), `glslc` (already on PATH after `apt-get install glslc`), and a Windows-bound `vulkan-1.lib` import lib. The hard part is verification: there's no software-Vulkan ICD that runs PE binaries under wine (Mesa lavapipe is Linux-native).

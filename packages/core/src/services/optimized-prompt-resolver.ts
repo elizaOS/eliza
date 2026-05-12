@@ -53,12 +53,12 @@ export function resolveOptimizedPrompt(
 	if (!service) return baseline;
 	const optimized = service.getPrompt(task);
 	if (!optimized) return baseline;
-	// Wave 2-D: `MILADY_PROMPT_COMPRESS=1` drops few-shot examples from the
+	// Wave 2-D: `ELIZA_PROMPT_COMPRESS=1` drops few-shot examples from the
 	// optimized prompt. This is the Cerebras "compress" escape hatch — keep
 	// the base optimized instruction text but skip the ICL demonstrations to
 	// reduce token budget pressure.
 	if (
-		process.env.MILADY_PROMPT_COMPRESS === "1" ||
+		process.env.ELIZA_PROMPT_COMPRESS === "1" ||
 		!optimized.fewShotExamples ||
 		optimized.fewShotExamples.length === 0
 	) {

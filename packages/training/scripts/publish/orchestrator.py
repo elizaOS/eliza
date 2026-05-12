@@ -155,6 +155,12 @@ REQUIRED_KERNEL_MANIFEST_KEYS: tuple[str, ...] = (
     "codebook_hash",
     "per_block_tolerance",
 )
+REQUIRED_KERNEL_TARGETS_BY_SIDECAR: Mapping[str, tuple[str, ...]] = {
+    "turboquant.json": ("turbo3", "turbo4", "turbo3_tcq"),
+    "fused_turboquant.json": ("turbo3", "turbo4", "turbo3_tcq"),
+    "qjl_config.json": ("qjl1_256",),
+    "polarquant_config.json": ("polar_q4",),
+}
 
 RELEASE_EVIDENCE_PATH = Path("evidence/release.json")
 CHECKSUMS_PATH = Path("checksums/SHA256SUMS")
@@ -293,43 +299,66 @@ def _find_sidecar(bundle: Path, names: Sequence[str]) -> Path | None:
     return None
 
 
+def _find_sidecar_by_name(bundle: Path, name: str) -> Path | None:
+    return _find_sidecar(bundle, (name,))
+
+
+def _kernel_targets(kernel_manifest: Mapping[str, Any]) -> set[str]:
+    targets = kernel_manifest.get("kernel_target")
+    if isinstance(targets, str):
+        return {targets}
+    if isinstance(targets, list):
+        return {str(target) for target in targets}
+    return set()
+
+
 def _validate_quantization_sidecars(bundle: Path) -> list[Path]:
     found: list[Path] = []
     for method, names in REQUIRED_QUANTIZATION_SIDECARS.items():
-        sidecar = _find_sidecar(bundle, names)
-        if sidecar is None:
-            raise OrchestratorError(
-                "bundle layout: missing quantization sidecar for "
-                f"{method}; expected one of {', '.join(names)} in bundle root, "
-                "text/, dflash/, or evals/",
-                EXIT_MISSING_FILE,
-            )
-        data = _read_sidecar(sidecar)
-        kernel_manifest = data.get("kernel_manifest")
-        if not isinstance(kernel_manifest, dict):
-            raise OrchestratorError(
-                f"quantization sidecar {sidecar} missing kernel_manifest object",
-                EXIT_BUNDLE_LAYOUT_FAIL,
-            )
-        missing_keys = [
-            key
-            for key in REQUIRED_KERNEL_MANIFEST_KEYS
-            if key not in kernel_manifest
-        ]
-        if missing_keys:
-            raise OrchestratorError(
-                f"quantization sidecar {sidecar} has incomplete "
-                f"kernel_manifest; missing {missing_keys}",
-                EXIT_BUNDLE_LAYOUT_FAIL,
-            )
-        targets = kernel_manifest.get("kernel_target")
-        if not isinstance(targets, list) or not targets:
-            raise OrchestratorError(
-                f"quantization sidecar {sidecar} kernel_manifest.kernel_target "
-                "must be a non-empty array",
-                EXIT_BUNDLE_LAYOUT_FAIL,
-            )
-        found.append(sidecar)
+        for name in names:
+            sidecar = _find_sidecar_by_name(bundle, name)
+            if sidecar is None:
+                raise OrchestratorError(
+                    "bundle layout: missing quantization sidecar for "
+                    f"{method}; expected {name} in bundle root, text/, "
+                    "dflash/, evals/, or quantization/",
+                    EXIT_MISSING_FILE,
+                )
+            data = _read_sidecar(sidecar)
+            kernel_manifest = data.get("kernel_manifest")
+            if not isinstance(kernel_manifest, dict):
+                raise OrchestratorError(
+                    f"quantization sidecar {sidecar} missing kernel_manifest object",
+                    EXIT_BUNDLE_LAYOUT_FAIL,
+                )
+            missing_keys = [
+                key
+                for key in REQUIRED_KERNEL_MANIFEST_KEYS
+                if key not in kernel_manifest
+            ]
+            if missing_keys:
+                raise OrchestratorError(
+                    f"quantization sidecar {sidecar} has incomplete "
+                    f"kernel_manifest; missing {missing_keys}",
+                    EXIT_BUNDLE_LAYOUT_FAIL,
+                )
+            targets = _kernel_targets(kernel_manifest)
+            if not targets:
+                raise OrchestratorError(
+                    f"quantization sidecar {sidecar} kernel_manifest.kernel_target "
+                    "must be a non-empty array",
+                    EXIT_BUNDLE_LAYOUT_FAIL,
+                )
+            expected_targets = set(REQUIRED_KERNEL_TARGETS_BY_SIDECAR[name])
+            missing_targets = sorted(expected_targets - targets)
+            if missing_targets:
+                raise OrchestratorError(
+                    f"quantization sidecar {sidecar} targets {sorted(targets)} "
+                    f"but must cover {sorted(expected_targets)}; missing "
+                    f"{missing_targets}",
+                    EXIT_BUNDLE_LAYOUT_FAIL,
+                )
+            found.append(sidecar)
     return found
 
 

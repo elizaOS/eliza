@@ -310,7 +310,7 @@ export function composeBenchmarkPrompt(params: {
       : undefined;
   if (benchmark === "action-calling") {
     segments.push(
-      "This is an action-calling strict-format benchmark. Follow the requested planner TOON envelope exactly. Do not answer in prose and do not use normal Eliza action output.",
+      "This is an action-calling benchmark. Use the available benchmark tool through Eliza's normal native action/function-calling path. Do not serialize tool calls in prose, XML, markdown, or JSON text.",
     );
   } else {
     segments.push(

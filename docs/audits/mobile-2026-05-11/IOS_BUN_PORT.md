@@ -2,7 +2,7 @@
 
 **Status:** Greenlit 2026-05-11. Multi-month engineering project.
 **Owner:** TBD.
-**Goal:** Ship Bun as a statically-linked, no-JIT, sandbox-safe library inside the Milady iOS app, hosting the existing `agent-bundle.js` payload in-process. The same runtime that ships on desktop + Android-AOSP ships on iOS, with `fs`-class APIs that simply error gracefully on calls the iOS sandbox forbids.
+**Goal:** Ship Bun as a statically-linked, no-JIT, sandbox-safe library inside the Eliza iOS app, hosting the existing `agent-bundle.js` payload in-process. The same runtime that ships on desktop + Android-AOSP ships on iOS, with `fs`-class APIs that simply error gracefully on calls the iOS sandbox forbids.
 
 This document is the source of truth for the port. It is intentionally pessimistic about timelines and explicit about what is unknown — the audit at `REPORT.md` makes the case against this path; this plan is the case *for* executing it.
 
@@ -219,7 +219,7 @@ Twelve gated milestones, each with explicit acceptance criteria. Sequencing is m
 **Acceptance:**
 - Same as M06 but on physical iPhone 15 Pro (or whatever the latest device is at the time).
 - Code-signed with a Developer certificate.
-- Sandbox path correctness: `os.homedir()` returns `~/Library/Application Support/Milady/`; `os.tmpdir()` returns `NSTemporaryDirectory()`.
+- Sandbox path correctness: `os.homedir()` returns `~/Library/Application Support/Eliza/`; `os.tmpdir()` returns `NSTemporaryDirectory()`.
 - `fs.readFile(bundle resource path)` works.
 - No crashes from missing entropy sources, missing system frameworks, or signal-handler mismatches.
 
@@ -252,7 +252,7 @@ Twelve gated milestones, each with explicit acceptance criteria. Sequencing is m
 - `bun run ios:simulator` (or platform-specific equivalent) builds, code-signs, and launches the simulator.
 - UI loads, agent boots, model loads (Eliza-1 0.6B Q4_K_M from app bundle), user types "hello", reply streams in.
 - Reproducible from clean checkout on a fresh M-series Mac in <30 min.
-- Chat persists across app relaunch (PGlite via Capacitor Filesystem in `Documents/.milady/db.pglite`).
+- Chat persists across app relaunch (PGlite via Capacitor Filesystem in `Documents/.eliza/db.pglite`).
 
 **This is "iOS local agent fully working end to end" per the original request.** Effort: 2 weeks. Mostly integration debugging.
 

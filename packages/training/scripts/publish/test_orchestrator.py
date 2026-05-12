@@ -27,6 +27,7 @@ if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
 
 from scripts.publish.orchestrator import (  # noqa: E402
+    EXIT_BUNDLE_LAYOUT_FAIL,
     EXIT_EVAL_GATE_FAIL,
     EXIT_KERNEL_VERIFY_FAIL,
     EXIT_MISSING_FILE,
@@ -115,23 +116,39 @@ def _build_fixture_bundle(
     )
     _write(bundle / "cache" / "voice-preset-default.bin", b"\x00cache\x00")
 
-    kernel_manifest = {
-        "kernel_target": ["stub"],
-        "block_layout_version": {"stub": "v1"},
-        "codebook_hash": {"stub": "hash"},
-        "per_block_tolerance": {"stub": 0.01},
-    }
+    def kernel_manifest(*targets: str) -> dict[str, Any]:
+        return {
+            "kernel_target": list(targets),
+            "block_layout_version": {target: "v1" for target in targets},
+            "codebook_hash": {target: f"{target}-hash" for target in targets},
+            "per_block_tolerance": {target: 0.01 for target in targets},
+        }
+
     _write(
         bundle / "quantization" / "turboquant.json",
-        json.dumps({"method": "turboquant", "kernel_manifest": kernel_manifest}),
+        json.dumps(
+            {
+                "method": "turboquant",
+                "kernel_manifest": kernel_manifest("turbo3", "turbo4", "turbo3_tcq"),
+            }
+        ),
+    )
+    _write(
+        bundle / "quantization" / "fused_turboquant.json",
+        json.dumps(
+            {
+                "method": "fused-turboquant",
+                "kernel_manifest": kernel_manifest("turbo3", "turbo4", "turbo3_tcq"),
+            }
+        ),
     )
     _write(
         bundle / "quantization" / "qjl_config.json",
-        json.dumps({"method": "qjl", "kernel_manifest": kernel_manifest}),
+        json.dumps({"method": "qjl", "kernel_manifest": kernel_manifest("qjl1_256")}),
     )
     _write(
         bundle / "quantization" / "polarquant_config.json",
-        json.dumps({"method": "polarquant", "kernel_manifest": kernel_manifest}),
+        json.dumps({"method": "polarquant", "kernel_manifest": kernel_manifest("polar_q4")}),
     )
 
     # Licenses — written with the real attestation generator so the
@@ -296,7 +313,7 @@ def _source_models() -> dict[str, dict[str, str]]:
         "text": {"repo": "unsloth/Qwen3.5-9B-GGUF", "file": "text.gguf"},
         "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
         "drafter": {"repo": "elizaos/eliza-1-9b-drafter"},
-        "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
+        "asr": {"repo": "ggml-org/Qwen3-ASR-0.8B-GGUF"},
         "vad": {"repo": "ggml-org/whisper-vad"},
         "vision": {"repo": "unsloth/Qwen3.5-9B-GGUF", "file": "mmproj.gguf"},
     }
@@ -545,6 +562,30 @@ def test_missing_quantization_sidecar_fails(tmp_path: Path) -> None:
     metal = _metal_report(tmp_path)
     rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_MISSING_FILE
+
+
+def test_missing_fused_turboquant_sidecar_fails(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "quantization" / "fused_turboquant.json").unlink()
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_MISSING_FILE
+
+
+def test_quantization_sidecar_must_target_expected_kernel_family(
+    tmp_path: Path,
+) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    sidecar = bundle / "quantization" / "polarquant_config.json"
+    data = json.loads(sidecar.read_text())
+    data["kernel_manifest"]["kernel_target"] = ["turbo3"]
+    sidecar.write_text(json.dumps(data))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_BUNDLE_LAYOUT_FAIL
 
 
 def test_missing_voice_cache_fails(tmp_path: Path) -> None:

@@ -94,7 +94,7 @@ Findings:
 ### 3.1 Device-policy thresholds for the `_multi` routes — `vulkan-kernels.mjs`
 
 The runtime-dispatch patch previously used one pair of constants
-(`MILADY_VK_MULTIBLOCK_FACTOR=4`, `THRESHOLD=2048`) for *all* `_multi` routes on
+(`ELIZA_VK_MULTIBLOCK_FACTOR=4`, `THRESHOLD=2048`) for *all* `_multi` routes on
 *all* devices. Split into QJL vs TBQ, tuned from the bench:
 
 - **QJL: keep `TOKENS_PER_WG=4`, lower the engage threshold 2048 → 1024.**
@@ -151,7 +151,7 @@ The seam for divergence is `device->vendor_id` in
 `{2,4,8}` sweep and Mali for low barrier pressure in the review, both
 needs-hardware.) The pipelines are still created with `constant_id=0 == 4`; if a
 future device wants a different fold the `02-ggml-vulkan-pipelines.patch` hunk
-and the `MILADY_VK_*_MULTIBLOCK_FACTOR` dispatch divisors must move together.
+and the `ELIZA_VK_*_MULTIBLOCK_FACTOR` dispatch divisors must move together.
 
 ## 5. Parity confirmation (all on Intel ARL Mesa ANV, real hardware)
 
@@ -258,16 +258,16 @@ Previously the `_multi` pipelines were created with `constant_id=0 == 4` baked
 in for every device, and the runtime divided the grid by a static `4`. Now:
 
 - **Hunk 1** of `02-ggml-vulkan-pipelines.patch` adds
-  `uint32_t milady_vk_tbq_multiblock_factor = 4;` and
-  `uint32_t milady_vk_qjl_multiblock_factor = 4;` to `vk_device_struct`.
+  `uint32_t eliza_vk_tbq_multiblock_factor = 4;` and
+  `uint32_t eliza_vk_qjl_multiblock_factor = 4;` to `vk_device_struct`.
 - **Hunk 2** picks the factor by `device->vendor_id` *before* the `_multi`
   pipeline creation (`VK_VENDOR_ID_NVIDIA` → 16 / 8; everything else → 4 / 4),
-  stores it on `device->milady_vk_*_multiblock_factor`, and passes that as the
+  stores it on `device->eliza_vk_*_multiblock_factor`, and passes that as the
   spec constant.
 - The runtime dispatch in `vulkan-kernels.mjs`
-  (`ggml_vk_milady_attn_score_{qjl,tbq}`) reads
-  `ctx->device->milady_vk_{qjl,tbq}_multiblock_factor` instead of the deleted
-  static `MILADY_VK_*_MULTIBLOCK_FACTOR` constants, so the grid divisor always
+  (`ggml_vk_eliza_attn_score_{qjl,tbq}`) reads
+  `ctx->device->eliza_vk_{qjl,tbq}_multiblock_factor` instead of the deleted
+  static `ELIZA_VK_*_MULTIBLOCK_FACTOR` constants, so the grid divisor always
   matches whatever the pipeline was created with. The engage *thresholds*
   (`QJL >= 1024 tokens`, `TBQ >= 8192`) are unchanged and the same on every
   device — on NVIDIA the fold helps even below 1024, so this only forfeits a

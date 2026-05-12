@@ -1,13 +1,13 @@
-# W4-D — Build matrix re-run against v0.3.0-milady
+# W4-D — Build matrix re-run against v0.3.0-eliza
 
 **Date:** 2026-05-09
 **Agent:** Wave-4 D (build-matrix gate)
 **Worktree:** `worktree-agent-ae84835e1877a12c9`
-**Fork pin under test:** `elizaOS/llama.cpp @ v0.3.0-milady`
+**Fork pin under test:** `elizaOS/llama.cpp @ v0.3.0-eliza`
 (commit `2baad8630da2f56b6f66957082368d553dcc0c5b`)
 
 This report re-runs every on-host buildable target against the latest unified
-fork tag (v0.3.0-milady = v0.2.0 base + DFlash CLI + W3-B fused CPU kernels)
+fork tag (v0.3.0-eliza = v0.2.0 base + DFlash CLI + W3-B fused CPU kernels)
 and captures measured pass/fail, build times, artifact sizes, and symbol
 verification. Companion to `docs/porting/build-matrix.md` (now updated with
 measured-today data) and `docs/porting/CURRENT-STATE.md` (single-page
@@ -36,7 +36,7 @@ not landed in the fork yet — they are research items, not blocked by W4-D.
 
 **Build command:**
 ```bash
-cd ~/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0
+cd ~/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0
 cmake -B /tmp/w4d-builds/linux-x64-cpu -S . \
   -DGGML_NATIVE=ON -DGGML_CUDA=OFF -DGGML_METAL=OFF \
   -DBUILD_SHARED_LIBS=ON -DCMAKE_BUILD_TYPE=Release \
@@ -78,13 +78,13 @@ Full symbol dump in `symbols/linux-x64-cpu-libggml-{cpu,base}.txt`.
 node packages/app-core/scripts/aosp/compile-libllama.mjs \
   --abi arm64-v8a \
   --assets-dir /tmp/w4d-arm64 \
-  --src-dir ~/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0 \
+  --src-dir ~/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0 \
   --cache-dir /tmp/w4d-aosp-cache
 ```
 
-(`--src-dir` overrides the script's pinned `LLAMA_CPP_TAG=v0.2.0-milady` to use
+(`--src-dir` overrides the script's pinned `LLAMA_CPP_TAG=v0.2.0-eliza` to use
 the v0.3.0 checkout actually under test today. The script's pin should be
-bumped to v0.3.0-milady — see CURRENT-STATE.md outstanding work.)
+bumped to v0.3.0-eliza — see CURRENT-STATE.md outstanding work.)
 
 **Wall:** 1m40.7s including stripping + alias creation + shim compile.
 
@@ -163,7 +163,7 @@ PATH=/home/shaw/.local/x86_64-w64-mingw32/usr/bin:$PATH \
 ELIZA_DFLASH_LLAMA_CPP_REMOTE="https://github.com/elizaOS/llama.cpp.git" \
   node packages/app-core/scripts/build-llama-cpp-dflash.mjs \
     --target windows-x64-cpu \
-    --ref v0.3.0-milady
+    --ref v0.3.0-eliza
 ```
 
 **Wall:** 2m37.5s including separate llama-cli, llama-server, llama-speculative-simple targets.
@@ -243,7 +243,7 @@ remains"). Out of scope for W4-D (verification-only).
 
 **Configure:**
 ```bash
-PATH=/home/shaw/cuda/bin:$PATH cmake -B /tmp/w4d-builds/linux-x64-cuda -S ~/.cache/.../milady-llama-cpp-v0.1.0 \
+PATH=/home/shaw/cuda/bin:$PATH cmake -B /tmp/w4d-builds/linux-x64-cuda -S ~/.cache/.../eliza-llama-cpp-v0.1.0 \
   -DGGML_CUDA=ON -DCMAKE_CUDA_COMPILER=/home/shaw/cuda/bin/nvcc \
   -DCMAKE_CUDA_ARCHITECTURES="80;86;89;90" \
   -DGGML_CUDA_FA=ON -DGGML_CUDA_FA_ALL_QUANTS=ON \
@@ -390,7 +390,7 @@ Output in `bench-stub/profile.{json,md}`.
 
 ## Verdict
 
-The v0.3.0-milady tag is **production-ready on Linux x64 CPU, Linux arm64
+The v0.3.0-eliza tag is **production-ready on Linux x64 CPU, Linux arm64
 musl, Windows x64 CPU, and Android arm64-v8a CPU+NEON** (compile + symbol +
 QEMU parity all green). Vulkan compute and CUDA compute remain **research
 status** — kernels compile cleanly but the runtime gates (Vulkan turbo*

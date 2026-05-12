@@ -25,7 +25,7 @@
   (e.g. a newer quant kernel, a server fix), and (b) GPU/Metal runners are
   available to re-verify the TurboQuant Q1_0 path on upstream's new block
   layout.
-- The `v1.0.0-eliza` tag = the kernel-complete `v0.4.0-milady`/`v0.2.0-milady`
+- The `v1.0.0-eliza` tag = the kernel-complete `v0.4.0-eliza`/`v0.2.0-eliza`
   lineage tree, re-tagged for the org rename. A real newer rebase produces a
   new `v1.x` tag.
 
@@ -34,7 +34,7 @@
 The fork composes TurboQuant onto a base where:
 
 - the fork's `block_q1_0` uses `QK1_0 = 32` — the TurboQuant CUDA and Metal
-  kernels (mmq / mmvq / vecdotq / the fused-attn path, plus the milady-kernels
+  kernels (mmq / mmvq / vecdotq / the fused-attn path, plus the eliza-kernels
   `.metal` shaders) are written against the 32-element block;
 - the fork's `block_q1_0_g128` (the 128-grouped variant) is approximately
   what upstream later shipped as its *new* `Q1_0`.
@@ -52,23 +52,23 @@ not a clean replay — it is a re-port:
    runners (see `unified-fork-strategy.md` §G).
 2. **Adapt to upstream's `ggml-metal` / `ggml-cuda` restructure.** Upstream
    has since split `ggml-metal.m` → `ggml-metal*.cpp` and reorganized the
-   `ggml-cuda/` tree; the milady kernels live under
-   `ggml/src/ggml-metal/milady-kernels/` and `ggml/src/ggml-cuda/{qjl,polarquant,turboquant,turbo-tcq}.cu(h)` and the fused-attn `.cu`, all of which have to be re-slotted into the
+   `ggml-cuda/` tree; the eliza kernels live under
+   `ggml/src/ggml-metal/eliza-kernels/` and `ggml/src/ggml-cuda/{qjl,polarquant,turboquant,turbo-tcq}.cu(h)` and the fused-attn `.cu`, all of which have to be re-slotted into the
    new layout and re-wired into the dispatcher.
 
 ## Conflict surface (files that will fight you on rebase)
 
-- `ggml/src/ggml-common.h`, `ggml/include/ggml.h` — the milady quant-slot
+- `ggml/src/ggml-common.h`, `ggml/include/ggml.h` — the eliza quant-slot
   enums (`TBQ3_0=43`, `TBQ4_0=44`, `QJL1_256=46`, `Q4_POLAR=47`) **and** the
   `block_q1_0` / `block_q1_0_g128` definitions vs upstream's redefined
   `Q1_0`. This is the central collision.
 - `ggml/src/ggml-quants.c`, `ggml/src/ggml-quants.h` — quantize/dequantize
-  rows for every milady type + the Q1_0 reference path.
+  rows for every eliza type + the Q1_0 reference path.
 - `ggml/src/ggml-cuda/{mmq,convert,vecdotq,mmvq,fattn*}.cu(h)` plus the
-  milady CUDA kernels (`qjl.cu`, `polarquant.cu`, `turboquant.cu`,
+  eliza CUDA kernels (`qjl.cu`, `polarquant.cu`, `turboquant.cu`,
   `turbo-tcq.cu`, the fused-attn `.cu`).
 - `ggml/src/ggml-metal/ggml-metal*.cpp` + `ggml/src/ggml-metal/ggml-metal.metal`
-  and the `ggml-metal/milady-kernels/*.metal` shaders + dispatcher entries.
+  and the `ggml-metal/eliza-kernels/*.metal` shaders + dispatcher entries.
 - `gguf-py/gguf/constants.py` — the GGUF Python type table (`TBQ3_0`,
   `TBQ4_0`, `QJL1_256`, `Q4_POLAR`) the converter and the `gguf_eliza1_apply.py`
   shim grep for.
@@ -76,7 +76,7 @@ not a clean replay — it is a re-port:
   `flash_attn` bool → `flash_attn_type` enum drift bites the AOSP shim).
 - `tools/quantize/quantize.cpp`, `src/llama-quant.cpp`,
   `src/llama-model-loader.cpp` — recognizing the new ftype names + loading
-  the milady block layouts.
+  the eliza block layouts.
 - `tools/server/server-{task,common,context,http}.cpp` — the structured-output
   surface already ported once; an upstream rebase replays it against
   whatever upstream's server refactor looks like at that point. (Not a
@@ -94,19 +94,19 @@ Trigger a rebase only when **both** are true:
    TurboQuant Q1_0 path on the new 128-block layout before merge.
 
 Until then the `b8198`-based pin is the right answer: it carries every
-milady kernel, DFlash spec-decode, and the structured-output server surface,
+eliza kernel, DFlash spec-decode, and the structured-output server surface,
 and it is hardware-verified at the levels recorded in
 `packages/inference/README.md`.
 
 ## Sequencing (when it happens)
 
-1. New branch off `milady/main`; rebase onto the target upstream tag. Take
+1. New branch off `eliza/main`; rebase onto the target upstream tag. Take
    the conflicts in the order of the surface list above (`ggml-common.h` /
    `ggml.h` first — resolving the `Q1_0` collision unblocks the rest).
 2. Re-port TurboQuant Q1_0 (CPU first, then CUDA, then Metal) onto upstream's
    128-block layout. CPU parity (scalar + AVX2 + NEON) is the gate before
    touching GPU.
-3. Re-slot the milady CUDA + Metal kernels into upstream's restructured
+3. Re-slot the eliza CUDA + Metal kernels into upstream's restructured
    `ggml-cuda/` and `ggml-metal/` trees; re-wire the dispatcher.
 4. Re-reconcile the structured-output server patch (or confirm upstream now
    carries it natively and drop our copy).

@@ -9,7 +9,7 @@
  *   - Spawning `python <trainingRoot>/scripts/eval_checkpoint.py ...` for ad-hoc
  *     evals against an existing job's run directory.
  *   - Reading the inference-stats JSONL the inference side appends to
- *     (`~/.milady/inference-stats.jsonl` by default).
+ *     (`~/.eliza/inference-stats.jsonl` by default).
  *
  * `trainingRoot` is the eliza-1 training package, resolved by default to
  * `eliza/packages/training/` (relative to this file's compiled location).
@@ -685,7 +685,7 @@ export class VastTrainingService {
   ): Promise<string | null> {
     const stateFile = join(
       this.trainingRoot,
-      ".milady",
+      ".eliza",
       "vast-state",
       `${record.run_name}.json`,
     );
@@ -707,7 +707,7 @@ export class VastTrainingService {
     }
     const logTail = await readJobLogTail(record.job_id, 200);
     for (const line of logTail) {
-      const match = /MILADY_VAST_INSTANCE_ID=([A-Za-z0-9_-]+)/.exec(line);
+      const match = /ELIZA_VAST_INSTANCE_ID=([A-Za-z0-9_-]+)/.exec(line);
       if (match) return match[1];
     }
     return null;
@@ -837,7 +837,7 @@ function narrowBudgetSnapshot(
   ) {
     return null;
   }
-  // Caps may legitimately be null when MILADY_VAST_MAX_USD is unset.
+  // Caps may legitimately be null when ELIZA_VAST_MAX_USD is unset.
   const softRaw = obj.soft_cap_usd;
   const hardRaw = obj.hard_cap_usd;
   const soft = typeof softRaw === "number" && Number.isFinite(softRaw)

@@ -1,6 +1,6 @@
 # Final cumulative re-baseline 2026-05-11
 
-Run dir: `/Users/shawwalters/.milady/runs/lifeops/lifeops-multiagent-1778550918415`
+Run dir: `/Users/shawwalters/.eliza/runs/lifeops/lifeops-multiagent-1778550918415`
 Limit: 10 scenarios per agent on Cerebras gpt-oss-120b with Mockoon substrate.
 
 ## Headline pass rates
@@ -16,7 +16,7 @@ Notes:
 - `hermes` and `openclaw` ran live against Cerebras `gpt-oss-120b`.
 - Only the `calendar` domain executed in this 10-scenario slice (the bench limit consumes the first N scenarios in canonical order, which are all calendar).
 
-## Delta from W2-9 baseline (`~/.milady/runs/lifeops/lifeops-multiagent-best`)
+## Delta from W2-9 baseline (`~/.eliza/runs/lifeops/lifeops-multiagent-best`)
 
 | Agent | W2-9 mean | W4 mean | Delta |
 |---|---:|---:|---:|
@@ -45,7 +45,7 @@ All three agents improved on mean score. Hermes still pass@1=0 — every calenda
 
 ## Saved-best symlink
 
-`~/.milady/runs/lifeops/lifeops-multiagent-w4-final → /Users/shawwalters/.milady/runs/lifeops/lifeops-multiagent-1778550918415`
+`~/.eliza/runs/lifeops/lifeops-multiagent-w4-final → /Users/shawwalters/.eliza/runs/lifeops/lifeops-multiagent-1778550918415`
 
 ## Wave-5 followups
 

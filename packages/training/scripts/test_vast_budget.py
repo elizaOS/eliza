@@ -26,10 +26,10 @@ from scripts.lib import vast_budget
 
 @pytest.fixture(autouse=True)
 def isolated_state_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    """Redirect MILADY_STATE_DIR so writes from enforce() are sandboxed."""
-    monkeypatch.setenv("MILADY_STATE_DIR", str(tmp_path))
-    # Make sure no operator MILADY_VAST_MAX_USD leaks into the test process.
-    monkeypatch.delenv("MILADY_VAST_MAX_USD", raising=False)
+    """Redirect ELIZA_STATE_DIR so writes from enforce() are sandboxed."""
+    monkeypatch.setenv("ELIZA_STATE_DIR", str(tmp_path))
+    # Make sure no operator ELIZA_VAST_MAX_USD leaks into the test process.
+    monkeypatch.delenv("ELIZA_VAST_MAX_USD", raising=False)
     return tmp_path
 
 
@@ -87,7 +87,7 @@ def test_snapshot_computes_total_so_far_from_dph_and_uptime() -> None:
 def test_snapshot_reads_soft_and_hard_caps_from_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("MILADY_VAST_MAX_USD", "10")
+    monkeypatch.setenv("ELIZA_VAST_MAX_USD", "10")
     now = 1_000_000.0
     payload = _show_payload(dph=2.00, start_offset_s=3600.0, now_value=now)
 
@@ -108,7 +108,7 @@ def test_snapshot_reads_soft_and_hard_caps_from_env(
 
 
 def test_snapshot_invalid_max_usd_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MILADY_VAST_MAX_USD", "not-a-number")
+    monkeypatch.setenv("ELIZA_VAST_MAX_USD", "not-a-number")
     with pytest.raises(SystemExit) as exc:
         vast_budget.fetch_snapshot(
             42,
@@ -121,7 +121,7 @@ def test_snapshot_invalid_max_usd_raises(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_snapshot_negative_max_usd_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MILADY_VAST_MAX_USD", "-5")
+    monkeypatch.setenv("ELIZA_VAST_MAX_USD", "-5")
     with pytest.raises(SystemExit) as exc:
         vast_budget.fetch_snapshot(
             42,
@@ -168,7 +168,7 @@ def test_snapshot_empty_payload_raises() -> None:
 def test_enforce_returns_ok_under_soft_cap(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("MILADY_VAST_MAX_USD", "10")
+    monkeypatch.setenv("ELIZA_VAST_MAX_USD", "10")
     now = 1_000_000.0
     payload = _show_payload(dph=3.0, start_offset_s=1 * 3600.0, now_value=now)
 
@@ -189,7 +189,7 @@ def test_enforce_returns_ok_under_soft_cap(
 def test_enforce_returns_soft_breach_when_over_soft_but_under_hard(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("MILADY_VAST_MAX_USD", "10")
+    monkeypatch.setenv("ELIZA_VAST_MAX_USD", "10")
     now = 1_000_000.0
     # 3 USD/hr × 4 h = 12 USD — over soft (10) but under hard (15).
     payload = _show_payload(dph=3.0, start_offset_s=4 * 3600.0, now_value=now)
@@ -218,7 +218,7 @@ def test_enforce_hard_cap_writes_teardown_sentinel(
     The watcher reads the sentinel and runs ``vastai destroy instance``.
     Keeping the destructive call out of the module makes test runs safe.
     """
-    monkeypatch.setenv("MILADY_VAST_MAX_USD", "10")
+    monkeypatch.setenv("ELIZA_VAST_MAX_USD", "10")
     now = 1_000_000.0
     # 3 USD/hr × 6 h = 18 USD — over hard (15).
     payload = _show_payload(dph=3.0, start_offset_s=6 * 3600.0, now_value=now)
@@ -259,7 +259,7 @@ def test_enforce_hard_cap_is_idempotent(
     instance still alive on the next pass. The sentinel must already
     exist so we don't blow away the forensic record.
     """
-    monkeypatch.setenv("MILADY_VAST_MAX_USD", "10")
+    monkeypatch.setenv("ELIZA_VAST_MAX_USD", "10")
     now = 1_000_000.0
     payload = _show_payload(dph=3.0, start_offset_s=6 * 3600.0, now_value=now)
     sentinel = tmp_path / "vast-budget" / "42.teardown"
@@ -288,8 +288,8 @@ def test_enforce_hard_cap_is_idempotent(
 def test_enforce_with_no_cap_configured_always_returns_ok(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """No MILADY_VAST_MAX_USD => budget is opt-in, never enforced."""
-    monkeypatch.delenv("MILADY_VAST_MAX_USD", raising=False)
+    """No ELIZA_VAST_MAX_USD => budget is opt-in, never enforced."""
+    monkeypatch.delenv("ELIZA_VAST_MAX_USD", raising=False)
     now = 1_000_000.0
     # Would be very over any reasonable cap if one were set.
     payload = _show_payload(dph=100.0, start_offset_s=100 * 3600.0, now_value=now)
@@ -317,7 +317,7 @@ def test_enforce_with_no_cap_configured_always_returns_ok(
 def test_cli_snapshot_prints_one_line_summary(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setenv("MILADY_VAST_MAX_USD", "10")
+    monkeypatch.setenv("ELIZA_VAST_MAX_USD", "10")
     now = 1_000_000.0
     payload = _show_payload(dph=3.51, start_offset_s=2 * 3600.0, now_value=now)
     with mock.patch.object(
@@ -345,7 +345,7 @@ def test_cli_snapshot_prints_one_line_summary(
 def test_cli_snapshot_json_emits_full_record(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setenv("MILADY_VAST_MAX_USD", "10")
+    monkeypatch.setenv("ELIZA_VAST_MAX_USD", "10")
     now = 1_000_000.0
     payload = _show_payload(dph=2.0, start_offset_s=3600.0, now_value=now)
     with mock.patch.object(
@@ -370,7 +370,7 @@ def test_cli_enforce_returns_hard_cap_exit_code(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Asserts the bash launcher contract: rc=11 => watcher initiates teardown."""
-    monkeypatch.setenv("MILADY_VAST_MAX_USD", "10")
+    monkeypatch.setenv("ELIZA_VAST_MAX_USD", "10")
     now = 1_000_000.0
     payload = _show_payload(dph=3.0, start_offset_s=6 * 3600.0, now_value=now)
 
@@ -385,7 +385,7 @@ def test_cli_enforce_returns_hard_cap_exit_code(
 def test_cli_enforce_returns_soft_cap_exit_code(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setenv("MILADY_VAST_MAX_USD", "10")
+    monkeypatch.setenv("ELIZA_VAST_MAX_USD", "10")
     now = 1_000_000.0
     payload = _show_payload(dph=3.0, start_offset_s=4 * 3600.0, now_value=now)
 

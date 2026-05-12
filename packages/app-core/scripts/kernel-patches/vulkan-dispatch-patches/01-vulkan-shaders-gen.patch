@@ -1,7 +1,7 @@
-# MILADY-VK-DISPATCH-PATCH-V1
+# ELIZA-VK-DISPATCH-PATCH-V1
 #
 # Patch target : ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
-# Goal         : register the 9 single-block + 4 multi-block milady standalone
+# Goal         : register the 9 single-block + 4 multi-block eliza standalone
 #                .comp files in process_shaders() so their SPIR-V blobs are
 #                emitted into ggml-vulkan-shaders.hpp as `<name>_data[]` +
 #                `<name>_len`. The *_multi variants carry a constant_id=0 spec
@@ -20,36 +20,36 @@
 #   ---INJECT-END---
 #
 # The anchor below is the trailing `for (auto &c : compiles)` wait loop at the
-# bottom of process_shaders() — present in upstream and in v0.4.0-milady fork.
+# bottom of process_shaders() — present in upstream and in v0.4.0-eliza fork.
 
 ANCHOR    for (auto &c : compiles) {
-SENTINEL  MILADY-VK-DISPATCH-PATCH-V1
+SENTINEL  ELIZA-VK-DISPATCH-PATCH-V1
 ---INJECT-BEGIN---
-    // MILADY-VK-DISPATCH-PATCH-V1 BEGIN — register milady turbo / qjl / polar
+    // ELIZA-VK-DISPATCH-PATCH-V1 BEGIN — register eliza turbo / qjl / polar
     // standalone shaders. Each entry causes vulkan-shaders-gen to compile the
     // matching .comp via glslc (staged into vulkan-shaders/ by
     // kernel-patches/vulkan-kernels.mjs) and emit `<name>_data[]` + `<name>_len`
     // symbols into ggml-vulkan-shaders.hpp. The shader sources are
     // self-contained TUs — no defines are required.
-    string_to_spv("milady_turbo3",         "turbo3.comp",         {});
-    string_to_spv("milady_turbo4",         "turbo4.comp",         {});
-    string_to_spv("milady_turbo3_tcq",     "turbo3_tcq.comp",     {});
-    string_to_spv("milady_qjl",            "qjl.comp",            {});
-    string_to_spv("milady_qjl_get_rows",   "qjl_get_rows.comp",   {});
-    string_to_spv("milady_qjl_mul_mv",     "qjl_mul_mv.comp",     {});
-    string_to_spv("milady_polar",          "polar.comp",          {});
-    string_to_spv("milady_polar_preht",    "polar_preht.comp",    {});
-    string_to_spv("milady_polar_get_rows", "polar_get_rows.comp", {});
+    string_to_spv("eliza_turbo3",         "turbo3.comp",         {});
+    string_to_spv("eliza_turbo4",         "turbo4.comp",         {});
+    string_to_spv("eliza_turbo3_tcq",     "turbo3_tcq.comp",     {});
+    string_to_spv("eliza_qjl",            "qjl.comp",            {});
+    string_to_spv("eliza_qjl_get_rows",   "qjl_get_rows.comp",   {});
+    string_to_spv("eliza_qjl_mul_mv",     "qjl_mul_mv.comp",     {});
+    string_to_spv("eliza_polar",          "polar.comp",          {});
+    string_to_spv("eliza_polar_preht",    "polar_preht.comp",    {});
+    string_to_spv("eliza_polar_get_rows", "polar_get_rows.comp", {});
     // Multi-block-per-workgroup variants (BLOCKS_PER_WG / TOKENS_PER_WG is a
     // constant_id=0 spec constant set at pipeline-create). One SPV family per
     // kernel; the runtime picks a device-tuned amortisation factor.
-    string_to_spv("milady_turbo3_multi",     "turbo3_multi.comp",     {});
-    string_to_spv("milady_turbo4_multi",     "turbo4_multi.comp",     {});
-    string_to_spv("milady_turbo3_tcq_multi", "turbo3_tcq_multi.comp", {});
-    string_to_spv("milady_qjl_multi",        "qjl_multi.comp",        {});
+    string_to_spv("eliza_turbo3_multi",     "turbo3_multi.comp",     {});
+    string_to_spv("eliza_turbo4_multi",     "turbo4_multi.comp",     {});
+    string_to_spv("eliza_turbo3_tcq_multi", "turbo3_tcq_multi.comp", {});
+    string_to_spv("eliza_qjl_multi",        "qjl_multi.comp",        {});
     // Fused attention (QJL-K score + V-mix, online softmax): TBQ3-V + Polar-V.
-    string_to_spv("milady_fused_attn_qjl_tbq",   "fused_attn_qjl_tbq.comp",   {});
-    string_to_spv("milady_fused_attn_qjl_polar", "fused_attn_qjl_polar.comp", {});
-    // MILADY-VK-DISPATCH-PATCH-V1 END
+    string_to_spv("eliza_fused_attn_qjl_tbq",   "fused_attn_qjl_tbq.comp",   {});
+    string_to_spv("eliza_fused_attn_qjl_polar", "fused_attn_qjl_polar.comp", {});
+    // ELIZA-VK-DISPATCH-PATCH-V1 END
 
 ---INJECT-END---

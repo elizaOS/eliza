@@ -71,7 +71,7 @@ public final class SqliteVecLoader {
             // We deliberately don't propagate — the bridge consumer
             // already logged the open, and vec queries that depend on
             // the extension will fail loudly at their own call sites.
-            NSLog("[milady-sqlite-vec] init failed: %@", msg)
+            NSLog("[eliza-sqlite-vec] init failed: %@", msg)
         }
     }
 }

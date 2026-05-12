@@ -936,7 +936,7 @@ function hasInboundBenchmarkContext(message: Memory): boolean {
 
 /**
  * Returns true when the current turn was issued by a benchmark harness AND the
- * `MILADY_BENCH_FORCE_TOOL_CALL` env opt-in is set. Used to bias the planner
+ * `ELIZA_BENCH_FORCE_TOOL_CALL` env opt-in is set. Used to bias the planner
  * toward emitting structured tool calls instead of routing every turn through
  * `REPLY`, which is what LifeOpsBench and similar harnesses score against.
  *
@@ -950,7 +950,7 @@ function hasInboundBenchmarkContext(message: Memory): boolean {
  * bench-server metadata get the tool-call boost.
  */
 function isBenchmarkForcingToolCall(message: Memory): boolean {
-	if (process.env.MILADY_BENCH_FORCE_TOOL_CALL !== "1") return false;
+	if (process.env.ELIZA_BENCH_FORCE_TOOL_CALL !== "1") return false;
 	const content = message.content;
 	if (!content) return false;
 	if (content.source === "benchmark") return true;
@@ -1805,7 +1805,7 @@ function buildV5PlannerActionSurface(params: {
 
 	if (
 		params.actions.length === 0 ||
-		process.env.MILADY_TIERED_ACTION_SURFACE === "0"
+		process.env.ELIZA_TIERED_ACTION_SURFACE === "0"
 	) {
 		return buildFullV5PlannerActionSurface({
 			actions: params.actions,
@@ -1818,7 +1818,7 @@ function buildV5PlannerActionSurface(params: {
 	const catalog = buildActionCatalog([...params.actions], {
 		localizedExamples: params.localizedExamples,
 	});
-	const measurementMode = process.env.MILADY_RETRIEVAL_MEASUREMENT === "1";
+	const measurementMode = process.env.ELIZA_RETRIEVAL_MEASUREMENT === "1";
 	const retrieval = retrieveActions({
 		catalog,
 		messageText: getUserMessageText(params.message) ?? "",
@@ -4467,7 +4467,7 @@ export async function runV5MessageRuntimeStage1(args: {
 	});
 
 	// G10/G11: construct the per-trajectory recorder. No-op when disabled via
-	// MILADY_TRAJECTORY_RECORDING=0. Failures inside the recorder must NEVER
+	// ELIZA_TRAJECTORY_RECORDING=0. Failures inside the recorder must NEVER
 	// propagate up — the recorder is observability, not load-bearing.
 	const recordingEnabled = isTrajectoryRecordingEnabled();
 	const recorder: TrajectoryRecorder | undefined = recordingEnabled
@@ -4662,7 +4662,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					availableContexts,
 				}) ?? buildFallbackStage1DirectReplyPlan();
 		}
-		if (!messageHandler && process.env.MILADY_DEBUG_STAGE1 === "1") {
+		if (!messageHandler && process.env.ELIZA_DEBUG_STAGE1 === "1") {
 			args.runtime.logger?.warn?.(
 				{
 					raw:
@@ -5958,18 +5958,9 @@ function buildCanonicalActionRepairPrompt(args: {
 		args.plannerReplyText.trim().length > 0
 			? args.plannerReplyText.trim()
 			: "(empty)";
-	const rawPlannerActions =
-		args.rawPlannerActions.length > 0
-			? `planner_actions_raw[${args.rawPlannerActions.length}]: ${args.rawPlannerActions.join(",")}`
-			: "planner_actions_raw[0]:";
-	const rawPlannerProviders =
-		args.rawPlannerProviders.length > 0
-			? `planner_providers_raw[${args.rawPlannerProviders.length}]: ${args.rawPlannerProviders.join(",")}`
-			: "planner_providers_raw[0]:";
-	const availableRuntimeActions =
-		args.availableActionNames.length > 0
-			? `available_runtime_actions[${args.availableActionNames.length}]: ${args.availableActionNames.join(",")}`
-			: "available_runtime_actions[0]:";
+	const rawPlannerActions = `planner_actions_raw: ${JSON.stringify(args.rawPlannerActions)}`;
+	const rawPlannerProviders = `planner_providers_raw: ${JSON.stringify(args.rawPlannerProviders)}`;
+	const availableRuntimeActions = `available_runtime_actions: ${JSON.stringify(args.availableActionNames)}`;
 
 	return [
 		"You are repairing an action-planner output that used a non-canonical action name.",
@@ -5993,7 +5984,7 @@ function buildCanonicalActionRepairPrompt(args: {
 		"",
 		"Example:",
 		'user_message: "Pull up a dossier on Satya Nadella."',
-		"planner_actions_raw[1]: LOOKUP",
+		'planner_actions_raw: ["LOOKUP"]',
 		"output:",
 		JSON.stringify(
 			{
@@ -7923,7 +7914,7 @@ export class DefaultMessageService implements IMessageService {
 	): Promise<MessageProcessingResult> {
 		// Analysis-mode token detection runs BEFORE any planner work so the
 		// agent never hallucinates a "performing an analysis" reply. Gated by
-		// `MILADY_ENABLE_ANALYSIS_MODE` / `NODE_ENV=development`. See
+		// `ELIZA_ENABLE_ANALYSIS_MODE` / `NODE_ENV=development`. See
 		// services/analysis-mode-handler.ts and review #15.
 		const analysisActivation = maybeHandleAnalysisActivation({
 			text: message.content?.text,
