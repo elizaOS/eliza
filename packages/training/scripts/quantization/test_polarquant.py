@@ -2,7 +2,7 @@
 
 What this asserts (per the AGENTS.md mandate that we don't LARP results):
 
-1. The script downloads/loads the ``--model`` (default ``Qwen/Qwen3-0.6B``;
+1. The script downloads/loads the ``--model`` (default ``Qwen/Qwen3-0.8B``;
    see "Qwen3.5 caveat" in ``scripts/quantization/README.md`` for why we
    do **not** default to ``Qwen/Qwen3.5-0.8B`` — that checkpoint is a
    hybrid linear-attention VL model exported as
@@ -58,7 +58,7 @@ logger = logging.getLogger("test_polarquant")
 
 REPO_ROOT = _HERE.parent.parent
 DEFAULT_VAL = REPO_ROOT / "data" / "final" / "val.jsonl"
-DEFAULT_MODEL = "Qwen/Qwen3-0.6B"
+DEFAULT_MODEL = "Qwen/Qwen3-0.8B"
 DEFAULT_WORK = REPO_ROOT / "scripts" / "quantization" / ".test_polarquant_work"
 
 

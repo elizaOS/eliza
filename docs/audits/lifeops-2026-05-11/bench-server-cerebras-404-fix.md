@@ -10,8 +10,8 @@ W2-9 flagged in `docs/audits/lifeops-2026-05-11/rebaseline-report.md`.
 The W1-3 baseline (`docs/audits/lifeops-2026-05-11/baseline-runs.md`) saw
 the eliza HTTP bench server emit `AI_APICallError: Not Found` from Cerebras
 on every turn, then fall back to "Something went wrong on my end. Please
-try again." The reproducer was `MILADY_BENCH_LIMIT=1 LIFEOPS_USE_MOCKOON=1
-MILADY_BENCH_AGENT=eliza bun run lifeops:full`.
+try again." The reproducer was `ELIZA_BENCH_LIMIT=1 LIFEOPS_USE_MOCKOON=1
+ELIZA_BENCH_AGENT=eliza bun run lifeops:full`.
 
 ### Root cause
 
@@ -70,7 +70,7 @@ function autoWireCerebras(): void {
   // ... when CEREBRAS_API_KEY is set and no OpenAI key/url is set:
   process.env.OPENAI_BASE_URL = "https://api.cerebras.ai/v1";
   process.env.OPENAI_API_KEY = cerebrasKey;
-  process.env.MILADY_PROVIDER = "cerebras";
+  process.env.ELIZA_PROVIDER = "cerebras";
   // Pin both model tiers to gpt-oss-120b.
   process.env.OPENAI_LARGE_MODEL = "gpt-oss-120b";
   process.env.OPENAI_SMALL_MODEL = "gpt-oss-120b";
@@ -84,7 +84,7 @@ with `model: gpt-oss-120b`, which is the only endpoint Cerebras serves.
 ### Verification (no more 404)
 
 Most recent multi-agent eliza Python bench
-(`~/.milady/runs/lifeops/lifeops-multiagent-1778549597914/eliza/lifeops_gpt-oss-120b_20260511_183511.json`):
+(`~/.eliza/runs/lifeops/lifeops-multiagent-1778549597914/eliza/lifeops_gpt-oss-120b_20260511_183511.json`):
 
 - `pass_at_1: 0.0` (still scoring partials)
 - `mean_score_per_domain: {'calendar': 0.30000000000000004}`
@@ -139,7 +139,7 @@ Two distinct runtime paths register `@elizaos/plugin-local-embedding`:
 
 1. **`packages/app-core/src/benchmark/server.ts` (bench server)** — already
    handled in W1-9+: the server skips `@elizaos/plugin-local-embedding`
-   when `MILADY_BENCH_SKIP_EMBEDDING != "0"` (default ON in bench mode)
+   when `ELIZA_BENCH_SKIP_EMBEDDING != "0"` (default ON in bench mode)
    and registers a zero-vector `TEXT_EMBEDDING` stub at priority 100.
    No 401s in this path.
 2. **`packages/scenario-runner/src/runtime-factory.ts` (legacy JS
@@ -155,13 +155,13 @@ Two distinct runtime paths register `@elizaos/plugin-local-embedding`:
 `packages/scenario-runner/src/runtime-factory.ts` — mirror the bench
 server's pattern: default to a zero-vector `TEXT_EMBEDDING` stub at
 priority 100 (higher than `@elizaos/plugin-local-embedding`'s priority
-10), gated by the same `MILADY_BENCH_SKIP_EMBEDDING` env var (default
+10), gated by the same `ELIZA_BENCH_SKIP_EMBEDDING` env var (default
 ON). Operators who actually want local embeddings opt back in with
-`MILADY_BENCH_SKIP_EMBEDDING=0`.
+`ELIZA_BENCH_SKIP_EMBEDDING=0`.
 
 ```ts
 const skipEmbeddingPlugin =
-  (process.env.MILADY_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
+  (process.env.ELIZA_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
 if (skipEmbeddingPlugin) {
   const EMBEDDING_DIMENSIONS = 1024;
   const stubEmbeddingPlugin: Plugin = {
@@ -176,7 +176,7 @@ if (skipEmbeddingPlugin) {
   await runtime.registerPlugin(stubEmbeddingPlugin);
   logger.info(
     `[scenario-runner] Registered zero-vector TEXT_EMBEDDING stub (dim=${EMBEDDING_DIMENSIONS}); ` +
-      "set MILADY_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-embedding instead.",
+      "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-embedding instead.",
   );
 } else {
   // existing local-embedding load
@@ -185,11 +185,11 @@ if (skipEmbeddingPlugin) {
 
 ### Verification
 
-`MILADY_BENCH_LIMIT=1 LIFEOPS_USE_MOCKOON=1 bun --bun packages/scenario-runner/src/cli.ts run plugins/app-lifeops/test/scenarios`
+`ELIZA_BENCH_LIMIT=1 LIFEOPS_USE_MOCKOON=1 bun --bun packages/scenario-runner/src/cli.ts run plugins/app-lifeops/test/scenarios`
 (2026-05-11):
 
 ```
-Info [scenario-runner] Registered zero-vector TEXT_EMBEDDING stub (dim=1024); set MILADY_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-embedding instead.
+Info [scenario-runner] Registered zero-vector TEXT_EMBEDDING stub (dim=1024); set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-embedding instead.
 ```
 
 No `401`, no `Failed to download`, no `Model download attempt failed`
@@ -202,7 +202,7 @@ in `docs/audits/lifeops-2026-05-11/eliza-tool-call-fix.md` followups).
 - `packages/scenario-runner/src/runtime-factory.ts` — replaced
   unconditional `@elizaos/plugin-local-embedding` registration with the
   zero-vector stub pattern from the bench server, gated by
-  `MILADY_BENCH_SKIP_EMBEDDING` (default ON).
+  `ELIZA_BENCH_SKIP_EMBEDDING` (default ON).
 - `docs/audits/lifeops-2026-05-11/bench-server-cerebras-404-fix.md` —
   this file.
 
@@ -216,7 +216,7 @@ in `docs/audits/lifeops-2026-05-11/eliza-tool-call-fix.md` followups).
   `isBenchmarkForcingToolCall`"), the verification step is what's
   delivered — no code change needed in this wave.
 - `plugin-local-embedding`'s internal retry loop. Operators who
-  opt back in with `MILADY_BENCH_SKIP_EMBEDDING=0` still get the same
+  opt back in with `ELIZA_BENCH_SKIP_EMBEDDING=0` still get the same
   401 burst, but that's the intentional opt-in surface. Caching the
   401 once-per-session would change the public behavior of the plugin
   outside benchmark mode, which is W4-C/W4-G territory rather than W4-B.

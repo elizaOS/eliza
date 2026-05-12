@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "generatedAt": "2026-05-11T06:10:11Z",
-  "workspace": "/Users/shawwalters/eliza-workspace/milady/eliza",
+  "workspace": "/Users/shawwalters/eliza-workspace/eliza/eliza",
   "host": "darwin-arm64 Apple Silicon local smoke",
   "bundle": {
     "path": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle",

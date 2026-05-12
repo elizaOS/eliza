@@ -45,6 +45,47 @@ logging.basicConfig(
 )
 logger = logging.getLogger("rlm-bench")
 
+_DELEGATE_HARNESSES = {"hermes", "openclaw"}
+
+
+def _selected_delegate_harness() -> str:
+    return (
+        os.environ.get("ELIZA_BENCH_HARNESS")
+        or os.environ.get("BENCHMARK_HARNESS")
+        or ""
+    ).strip().lower()
+
+
+def should_start_eliza_server() -> bool:
+    """Return whether Eliza bridge mode needs a local TS benchmark server."""
+    return (
+        _selected_delegate_harness() not in _DELEGATE_HARNESSES
+        and (
+            not os.environ.get("ELIZA_BENCH_URL")
+            or not os.environ.get("ELIZA_BENCH_TOKEN")
+        )
+    )
+
+
+def configure_bridge_model_env(config: RLMBenchConfig) -> None:
+    """Forward RLM model settings to Eliza/Hermes/OpenClaw adapter env vars."""
+    model_name = (config.root_model or config.subcall_model or "").strip()
+    if not model_name:
+        return
+    os.environ["BENCHMARK_MODEL_NAME"] = model_name
+    for key in (
+        "MODEL_NAME",
+        "OPENAI_LARGE_MODEL",
+        "OPENAI_SMALL_MODEL",
+        "GROQ_LARGE_MODEL",
+        "GROQ_SMALL_MODEL",
+        "OPENROUTER_LARGE_MODEL",
+        "OPENROUTER_SMALL_MODEL",
+        "CEREBRAS_LARGE_MODEL",
+        "CEREBRAS_SMALL_MODEL",
+    ):
+        os.environ.setdefault(key, model_name)
+
 
 def _load_env_file(env_path: Path) -> None:
     """
@@ -223,8 +264,9 @@ async def run_eliza_benchmark_mode(
     print("at packages/app-core/src/benchmark/server.ts.")
     print()
 
+    configure_bridge_model_env(config)
     server_mgr = None
-    if not os.environ.get("ELIZA_BENCH_URL") or not os.environ.get("ELIZA_BENCH_TOKEN"):
+    if should_start_eliza_server():
         from eliza_adapter.server_manager import ElizaServerManager
 
         server_mgr = ElizaServerManager()

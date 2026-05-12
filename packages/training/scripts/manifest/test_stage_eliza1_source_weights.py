@@ -34,12 +34,12 @@ def test_lite_tiers_are_source_only_and_keep_dflash_missing(
 ) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
 
-    report = stage.stage_sources(_args(tmp_path, "0_6b"))
+    report = stage.stage_sources(_args(tmp_path, "0_8b"))
 
     kinds = [f["kind"] for f in report["files"]]
     assert "text" in kinds
     assert "dflash" not in kinds
-    assert "unsloth/Qwen3.5-0.6B-GGUF" in report["sources"]
+    assert "unsloth/Qwen3.5-0.8B-GGUF" in report["sources"]
     assert any("No upstream DFlash drafter" in b for b in report["blockers"])
 
 

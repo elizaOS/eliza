@@ -17,7 +17,7 @@
       "responses": [
         {
           "uuid": "bbbb1111-aaaa-4000-8000-000000020021",
-          "body": "{\n  \"ok\": true,\n  \"channel\": \"C09ABCD1234\",\n  \"ts\": \"1746810420.000300\",\n  \"message\": {\n    \"bot_id\": \"B09SLACKBOT\",\n    \"type\": \"message\",\n    \"text\": \"Mock slack message body\",\n    \"user\": \"U09MILADY01\",\n    \"ts\": \"1746810420.000300\",\n    \"team\": \"T09BLUEPINE\"\n  }\n}",
+          "body": "{\n  \"ok\": true,\n  \"channel\": \"C09ABCD1234\",\n  \"ts\": \"1746810420.000300\",\n  \"message\": {\n    \"bot_id\": \"B09SLACKBOT\",\n    \"type\": \"message\",\n    \"text\": \"Mock slack message body\",\n    \"user\": \"U09ELIZA01\",\n    \"ts\": \"1746810420.000300\",\n    \"team\": \"T09BLUEPINE\"\n  }\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "happy path",
@@ -327,7 +327,7 @@
       "responses": [
         {
           "uuid": "bbbb1111-aaaa-4000-8000-00000002002b",
-          "body": "{\n  \"ok\": true,\n  \"messages\": [\n    {\n      \"type\": \"message\",\n      \"user\": \"U09PRIYA001\",\n      \"text\": \"Pushing the patch in 10 — anyone want to review?\",\n      \"ts\": \"1746810360.001100\"\n    },\n    {\n      \"type\": \"message\",\n      \"user\": \"U09MARCUS01\",\n      \"text\": \"I'll grab it. Lifeops link?\",\n      \"ts\": \"1746810400.001200\"\n    },\n    {\n      \"type\": \"message\",\n      \"user\": \"U09MILADY01\",\n      \"text\": \"Here: https://github.com/milady/lifeops/pull/482\",\n      \"ts\": \"1746810410.001300\"\n    }\n  ],\n  \"has_more\": false,\n  \"response_metadata\": {\n    \"next_cursor\": \"\"\n  }\n}",
+          "body": "{\n  \"ok\": true,\n  \"messages\": [\n    {\n      \"type\": \"message\",\n      \"user\": \"U09PRIYA001\",\n      \"text\": \"Pushing the patch in 10 — anyone want to review?\",\n      \"ts\": \"1746810360.001100\"\n    },\n    {\n      \"type\": \"message\",\n      \"user\": \"U09MARCUS01\",\n      \"text\": \"I'll grab it. Lifeops link?\",\n      \"ts\": \"1746810400.001200\"\n    },\n    {\n      \"type\": \"message\",\n      \"user\": \"U09ELIZA01\",\n      \"text\": \"Here: https://github.com/eliza/lifeops/pull/482\",\n      \"ts\": \"1746810410.001300\"\n    }\n  ],\n  \"has_more\": false,\n  \"response_metadata\": {\n    \"next_cursor\": \"\"\n  }\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "happy path",
@@ -482,7 +482,7 @@
       "responses": [
         {
           "uuid": "bbbb1111-aaaa-4000-8000-000000020030",
-          "body": "{\n  \"ok\": true,\n  \"members\": [\n    {\n      \"id\": \"U09MILADY01\",\n      \"name\": \"shaw\",\n      \"real_name\": \"Shaw Walters\",\n      \"profile\": {\n        \"email\": \"shaw@milady.dev\"\n      }\n    },\n    {\n      \"id\": \"U09PRIYA001\",\n      \"name\": \"priya\",\n      \"real_name\": \"Priya Raman\",\n      \"profile\": {\n        \"email\": \"priya.raman@bluepine.dev\"\n      }\n    },\n    {\n      \"id\": \"U09MARCUS01\",\n      \"name\": \"marcus\",\n      \"real_name\": \"Marcus Okafor\",\n      \"profile\": {\n        \"email\": \"marcus@delta-four.io\"\n      }\n    }\n  ],\n  \"response_metadata\": {\n    \"next_cursor\": \"\"\n  }\n}",
+          "body": "{\n  \"ok\": true,\n  \"members\": [\n    {\n      \"id\": \"U09ELIZA01\",\n      \"name\": \"shaw\",\n      \"real_name\": \"Shaw Walters\",\n      \"profile\": {\n        \"email\": \"shaw@eliza.dev\"\n      }\n    },\n    {\n      \"id\": \"U09PRIYA001\",\n      \"name\": \"priya\",\n      \"real_name\": \"Priya Raman\",\n      \"profile\": {\n        \"email\": \"priya.raman@bluepine.dev\"\n      }\n    },\n    {\n      \"id\": \"U09MARCUS01\",\n      \"name\": \"marcus\",\n      \"real_name\": \"Marcus Okafor\",\n      \"profile\": {\n        \"email\": \"marcus@delta-four.io\"\n      }\n    }\n  ],\n  \"response_metadata\": {\n    \"next_cursor\": \"\"\n  }\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "happy path",

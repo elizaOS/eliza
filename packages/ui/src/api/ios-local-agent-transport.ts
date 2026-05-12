@@ -61,9 +61,7 @@ declare global {
 }
 
 function viteEnv(): ImportMetaEnvRecord {
-  return (
-    (import.meta as ImportMeta & { env?: ImportMetaEnvRecord }).env ?? {}
-  );
+  return (import.meta as ImportMeta & { env?: ImportMetaEnvRecord }).env ?? {};
 }
 
 function isTruthyBuildFlag(value: string | boolean | undefined): boolean {
@@ -72,13 +70,10 @@ function isTruthyBuildFlag(value: string | boolean | undefined): boolean {
 
 function shouldRequireFullBunRuntime(): boolean {
   const env = viteEnv();
-  const iosRuntimeMode =
-    env.VITE_ELIZA_IOS_RUNTIME_MODE ?? env.VITE_MILADY_IOS_RUNTIME_MODE;
+  const iosRuntimeMode = env.VITE_ELIZA_IOS_RUNTIME_MODE;
   return (
     isTruthyBuildFlag(env.VITE_ELIZA_IOS_FULL_BUN_STRICT) ||
-    isTruthyBuildFlag(env.VITE_MILADY_IOS_FULL_BUN_STRICT) ||
     isTruthyBuildFlag(env.VITE_ELIZA_IOS_FULL_BUN_SMOKE) ||
-    isTruthyBuildFlag(env.VITE_MILADY_IOS_FULL_BUN_SMOKE) ||
     (isTruthyBuildFlag(env.PROD) && iosRuntimeMode === "local")
   );
 }

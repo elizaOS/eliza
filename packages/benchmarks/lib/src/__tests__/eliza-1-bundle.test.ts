@@ -36,7 +36,7 @@ function makeBundle(overrides: ManifestOverrides = {}): {
 	draftersPath: string;
 } {
 	const root = mkdtempSync(path.join(tmpdir(), "eliza-1-bundle-test-"));
-	const bundlePath = path.join(root, "eliza-1-0.6b.bundle");
+	const bundlePath = path.join(root, "eliza-1-0.8b.bundle");
 	mkdirSync(bundlePath, { recursive: true });
 	const weightsName = "weights.gguf";
 	const draftersName = "drafter.gguf";
@@ -45,8 +45,8 @@ function makeBundle(overrides: ManifestOverrides = {}): {
 	writeFileSync(weightsPath, "stub-gguf-bytes");
 	writeFileSync(draftersPath, "stub-drafter-bytes");
 	const manifest: Record<string, unknown> = {
-		bundleId: overrides.bundleId ?? "eliza-1-0.6b",
-		modelSize: overrides.modelSize ?? "0.6b",
+		bundleId: overrides.bundleId ?? "eliza-1-0.8b",
+		modelSize: overrides.modelSize ?? "0.8b",
 		releaseState: overrides.releaseState ?? "local-standin",
 		publishEligible: overrides.publishEligible ?? false,
 		final: overrides.final ?? { weights: false },
@@ -74,8 +74,8 @@ describe("readElizaOneBundle", () => {
 	it("reads a local-standin manifest with resolved absolute weights/drafters paths", async () => {
 		const { bundlePath, weightsPath, draftersPath } = makeBundle();
 		const m = await readElizaOneBundle(bundlePath);
-		expect(m.bundleId).toBe("eliza-1-0.6b");
-		expect(m.modelSize).toBe("0.6b");
+		expect(m.bundleId).toBe("eliza-1-0.8b");
+		expect(m.modelSize).toBe("0.8b");
 		expect(m.releaseState).toBe("local-standin");
 		expect(m.publishEligible).toBe(false);
 		expect(m.final.weights).toBe(false);
@@ -88,14 +88,14 @@ describe("readElizaOneBundle", () => {
 
 	it("treats draftersPath as optional", async () => {
 		const root = mkdtempSync(path.join(tmpdir(), "eliza-1-bundle-test-"));
-		const bundlePath = path.join(root, "eliza-1-0.6b.bundle");
+		const bundlePath = path.join(root, "eliza-1-0.8b.bundle");
 		mkdirSync(bundlePath, { recursive: true });
 		writeFileSync(path.join(bundlePath, "weights.gguf"), "x");
 		writeFileSync(
 			path.join(bundlePath, "manifest.json"),
 			JSON.stringify({
-				bundleId: "eliza-1-0.6b",
-				modelSize: "0.6b",
+				bundleId: "eliza-1-0.8b",
+				modelSize: "0.8b",
 				releaseState: "local-standin",
 				publishEligible: false,
 				final: { weights: false },
@@ -166,8 +166,8 @@ function manifest(
 	},
 ): ElizaOneBundleManifest {
 	return {
-		bundleId: overrides.bundleId ?? "eliza-1-0.6b",
-		modelSize: overrides.modelSize ?? "0.6b",
+		bundleId: overrides.bundleId ?? "eliza-1-0.8b",
+		modelSize: overrides.modelSize ?? "0.8b",
 		releaseState: overrides.releaseState ?? "local-standin",
 		publishEligible: overrides.publishEligible ?? false,
 		final: { weights: overrides.finalWeights ?? false },

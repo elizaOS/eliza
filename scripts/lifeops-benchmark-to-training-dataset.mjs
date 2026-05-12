@@ -52,7 +52,7 @@ function arg(name, fallback) {
 const runDir = resolve(arg("--run-dir", ""));
 if (!runDir || !existsSync(runDir)) {
   console.error(
-    "[bench->ds] --run-dir <dir> required (e.g. ~/.milady/runs/lifeops/lifeops-bench-...)",
+    "[bench->ds] --run-dir <dir> required (e.g. ~/.eliza/runs/lifeops/lifeops-bench-...)",
   );
   process.exit(2);
 }

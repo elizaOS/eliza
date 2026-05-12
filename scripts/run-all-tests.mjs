@@ -3,10 +3,8 @@
  *
  * Cross-package test runner for the elizaOS monorepo. Discovers every
  * workspace package via root package.json `workspaces`, then runs each
- * package's `test` / `test:integration` / `test:e2e` / `test:playwright`
- * / `test:ui` / `test:live` script in turn. After the workspace sweep
- * finishes, also shells out to `bun run --cwd cloud test` (unless
- * `--no-cloud` is passed) so the cloud bun workspace runs locally too.
+ * package's deterministic `test` script by default. Explicit modes can
+ * expand the sweep to integration/e2e/playwright/manual cloud coverage.
  *
  * Lane / shard / filter knobs are honoured via a mix of CLI flags and
  * env vars so CI matrices can drive sharding deterministically:
@@ -25,6 +23,13 @@
  *     Deterministic shard membership. Each task's relative package dir
  *     is SHA-1 hashed; tasks where (hash % M) === (N - 1) run on this
  *     shard (1-indexed N).
+ *
+ *   --all
+ *     Run package `test` scripts plus integration/e2e/playwright scripts.
+ *
+ *   --cloud
+ *     Run the cloud test step at the end. `--all` implies cloud unless
+ *     `--no-cloud` is also passed.
  *
  *   --no-cloud
  *     Skip the cloud test step at the end.
@@ -50,10 +55,10 @@
  * See `.env.test.example` and `scripts/test-env.mjs` for live env setup.
  */
 
+import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { buildTestRuntimeEnv } from "./lib/test-runtime.mjs";
 
@@ -101,15 +106,26 @@ function parseFlagValue(prefix) {
   return null;
 }
 
-const noCloud = parseFlag("--no-cloud");
+const allFlag = parseFlag("--all");
+const cloudFlag = parseFlag("--cloud");
+const explicitNoCloud = parseFlag("--no-cloud");
 const helpFlag = parseFlag("--help") || parseFlag("-h");
 const filterFlag = parseFlagValue("--filter");
 const patternFlag = parseFlagValue("--pattern");
 const onlyFlag = parseFlagValue("--only"); // "e2e" | "test"
+const selectedMode = onlyFlag ?? (allFlag ? null : "test");
+const noCloud = explicitNoCloud || (!cloudFlag && !allFlag);
 
 if (onlyFlag && onlyFlag !== "e2e" && onlyFlag !== "test") {
   console.error(
     `[eliza-test] ERROR unsupported --only=${JSON.stringify(onlyFlag)}; expected "e2e" or "test".`,
+  );
+  process.exit(1);
+}
+
+if (allFlag && onlyFlag) {
+  console.error(
+    `[eliza-test] ERROR --all cannot be combined with --only=${JSON.stringify(onlyFlag)}.`,
   );
   process.exit(1);
 }
@@ -120,6 +136,8 @@ if (helpFlag) {
       "Usage: node scripts/run-all-tests.mjs [options]",
       "",
       "Options:",
+      "  --all                Run package test plus integration/e2e/playwright scripts.",
+      "  --cloud              Run the final cloud test step.",
       "  --no-cloud           Skip the final cloud test step.",
       "  --filter=<regex>     Filter package tasks by `<name> (<dir>)#<script>`.",
       "  --pattern=<regex>    Same surface as --filter; combined via intersection.",
@@ -154,8 +172,8 @@ if (TEST_SHARD) {
     const index = parseInt(parts[0], 10);
     const total = parseInt(parts[1], 10);
     if (
-      !isNaN(index) &&
-      !isNaN(total) &&
+      !Number.isNaN(index) &&
+      !Number.isNaN(total) &&
       total > 0 &&
       index >= 1 &&
       index <= total
@@ -254,6 +272,7 @@ const scriptFilter = process.env.TEST_SCRIPT_FILTER
 const startAt = process.env.TEST_START_AT?.trim() || "";
 const DEFAULT_POSTGRES_URL =
   "postgresql://eliza_test:test123@localhost:5432/eliza_test";
+const DEFAULT_TASK_TIMEOUT_MS = 15 * 60 * 1000;
 const POSTGRES_INIT_SQL_PATH = path.join(
   repoRoot,
   "plugins",
@@ -622,14 +641,14 @@ function collectScriptsToRun(scripts) {
   const scriptNames = [];
   const seenCommands = new Set();
 
-  if (onlyFlag === "e2e") {
+  if (selectedMode === "e2e") {
     for (const scriptName of collectE2EScriptCandidates(scripts)) {
       appendScriptIfRunnable(scriptNames, seenCommands, scriptName, scripts);
     }
     return scriptNames;
   }
 
-  if (onlyFlag === "test") {
+  if (selectedMode === "test") {
     if (scripts.test) {
       scriptNames.push("test");
     }
@@ -745,7 +764,7 @@ function shouldSkipEmptyVitestScript(cwd, scriptName, scripts) {
  *   that want to chain via `process.env`.
  * - TEST_LANE=post-merge → no exclusions; real keys flow through.
  * - --only=e2e     → VITEST_E2E_ONLY=1.
- * - --only=test    → VITEST_UNIT_ONLY=1.
+ * - --only=test or default mode → VITEST_UNIT_ONLY=1.
  * - --pattern      → VITEST_TEST_PATH_PATTERN forwarded for package scripts
  *   that respect it. (Most do, via the shared default vitest config; package
  *   scripts that don't will simply ignore the env var.)
@@ -784,9 +803,9 @@ function buildLaneEnv(scriptName = "") {
     extra.VITEST_LANE = "post-merge";
   }
 
-  if (onlyFlag === "e2e") {
+  if (selectedMode === "e2e") {
     extra.VITEST_E2E_ONLY = "1";
-  } else if (onlyFlag === "test") {
+  } else if (selectedMode === "test") {
     extra.VITEST_UNIT_ONLY = "1";
   }
 
@@ -802,6 +821,17 @@ function buildLaneEnv(scriptName = "") {
 }
 
 function getDefaultTaskSkipReason(relativeDir, scriptName) {
+  if (scriptName === "test:ui" && process.env.ELIZA_INCLUDE_TEST_UI !== "1") {
+    return "Vitest UI is an interactive server; set ELIZA_INCLUDE_TEST_UI=1";
+  }
+  if (
+    isLiveScriptName(scriptName) &&
+    TEST_LANE !== "post-merge" &&
+    process.env.ELIZA_INCLUDE_LIVE_TESTS !== "1" &&
+    process.env.ELIZA_LIVE_TEST !== "1"
+  ) {
+    return "Live-provider tests are opt-in; run TEST_LANE=post-merge or set ELIZA_INCLUDE_LIVE_TESTS=1";
+  }
   if (
     relativeDir === "packages/app-core/platforms/electrobun" &&
     scriptName === "test" &&
@@ -854,6 +884,20 @@ function runScript(cwd, scriptName, label, extraEnv = {}) {
       stdio: ["ignore", "pipe", "pipe"],
     });
     let capturedOutput = "";
+    let timedOut = false;
+    const timeoutMs = Number.parseInt(
+      process.env.ELIZA_TEST_TASK_TIMEOUT_MS ?? `${DEFAULT_TASK_TIMEOUT_MS}`,
+      10,
+    );
+    const timeout =
+      Number.isFinite(timeoutMs) && timeoutMs > 0
+        ? setTimeout(() => {
+            timedOut = true;
+            child.kill("SIGTERM");
+            setTimeout(() => child.kill("SIGKILL"), 5_000).unref();
+          }, timeoutMs)
+        : null;
+    timeout?.unref();
 
     child.stdout?.on("data", (chunk) => {
       process.stdout.write(chunk);
@@ -872,6 +916,11 @@ function runScript(cwd, scriptName, label, extraEnv = {}) {
 
     child.on("error", reject);
     child.on("exit", (code, signal) => {
+      if (timeout) clearTimeout(timeout);
+      if (timedOut) {
+        reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+        return;
+      }
       if (code === 0) {
         resolve({ skipped: false });
         return;
@@ -903,6 +952,20 @@ function runDirectTask(label, command, args, cwd, extraEnv = {}) {
       stdio: ["ignore", "pipe", "pipe"],
     });
     let capturedOutput = "";
+    let timedOut = false;
+    const timeoutMs = Number.parseInt(
+      process.env.ELIZA_TEST_TASK_TIMEOUT_MS ?? `${DEFAULT_TASK_TIMEOUT_MS}`,
+      10,
+    );
+    const timeout =
+      Number.isFinite(timeoutMs) && timeoutMs > 0
+        ? setTimeout(() => {
+            timedOut = true;
+            child.kill("SIGTERM");
+            setTimeout(() => child.kill("SIGKILL"), 5_000).unref();
+          }, timeoutMs)
+        : null;
+    timeout?.unref();
 
     child.stdout?.on("data", (chunk) => {
       process.stdout.write(chunk);
@@ -921,6 +984,11 @@ function runDirectTask(label, command, args, cwd, extraEnv = {}) {
 
     child.on("error", reject);
     child.on("exit", (code, signal) => {
+      if (timeout) clearTimeout(timeout);
+      if (timedOut) {
+        reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+        return;
+      }
       if (code === 0) {
         resolve({ skipped: false });
         return;
@@ -986,7 +1054,11 @@ function runCloudTests() {
     const cloudPackageJson = JSON.parse(
       fs.readFileSync(cloudPackageJsonPath, "utf8"),
     );
-    const scriptName = onlyFlag === "e2e" ? "test:e2e:all" : "test";
+    const scriptName = allFlag
+      ? "test:full"
+      : selectedMode === "e2e"
+        ? "test:e2e:all"
+        : "test";
     if (!cloudPackageJson.scripts?.[scriptName]) {
       console.log(`[eliza-test] SKIP cloud#${scriptName} (script not found)`);
       resolve({ skipped: true });
@@ -1051,7 +1123,13 @@ function runCloudTests() {
 // Main
 // ---------------------------------------------------------------------------
 
-ensurePluginSqlPostgresEnv();
+if (
+  allFlag ||
+  selectedMode === "e2e" ||
+  process.env.ELIZA_PREPARE_PLUGIN_SQL_POSTGRES === "1"
+) {
+  ensurePluginSqlPostgresEnv();
+}
 
 const packageJsonPaths = collectPackageJsonPaths();
 
@@ -1114,7 +1192,7 @@ for (const packageJsonPath of packageJsonPaths) {
   }
 }
 
-if (onlyFlag !== "test") {
+if (selectedMode !== "test") {
   const repoE2ELabel = "repo (.)#test:e2e";
   if (!started && repoE2ELabel.includes(startAt)) {
     started = true;

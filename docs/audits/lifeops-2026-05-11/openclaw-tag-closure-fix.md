@@ -3,7 +3,7 @@
 ## Symptom
 
 In the W1-3 baseline at
-`~/.milady/runs/lifeops/lifeops-openclaw-baseline-1778514437/lifeops_gpt-oss-120b_20260511_084802.json`,
+`~/.eliza/runs/lifeops/lifeops-openclaw-baseline-1778514437/lifeops_gpt-oss-120b_20260511_084802.json`,
 3 of 25 scenarios scored 0.0 with `agent_actions: []`:
 
 - `mail.archive_thread_by_subject`

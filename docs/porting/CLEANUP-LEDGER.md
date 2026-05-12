@@ -6,7 +6,7 @@
 > with a clear fix, **[LOW]** = nice-to-have / cosmetic.
 >
 > Conventions: file paths absolute from repo root (the `eliza/` checkout under
-> `~/milady/`). All claims cite `path:line`.
+> `~/eliza/`). All claims cite `path:line`.
 
 ---
 
@@ -19,7 +19,7 @@ are local-only.
 |---|---|---|---|
 | `worktree-agent-a1402895150138b18` | `3d992107d4 feat(catalog): add tokenizerFamily for retired DFlash pair` | **SUPERSEDED** | The old external-model DFlash pair is retired; local catalogs now advertise Eliza-1 tiers only. Local has additional unpushed commits (`a937626417`, `5155daf9b3`) that diverge from origin's same name; those also already landed via Wave-1. **[LOW] Delete.** |
 | `worktree-agent-a3b48813556536b5d` | `04a3fdb24d feat(catalog): add tokenizerFamily field + DFlash-pairing test guard` | **SUPERSEDED** | Identical change set: catalog already has `tokenizerFamily` on every relevant entry (24 occurrences in `packages/ui/src/services/local-inference/catalog.ts`); test guard `it("sets a tokenizerFamily on every chat/code/reasoning entry")` exists at `packages/app-core/src/services/local-inference/catalog.test.ts:85`. **[LOW] Delete.** |
-| `worktree-agent-a4af68887afcc1b30` | `dc6d1d34c0 W3-D: CUDA toolkit install + compile-only validation of elizaOS/llama.cpp v0.1.0-milady` | **MERGE-CANDIDATE** (reports only) | 17 of the 19 W3-D report files are still untracked in the main worktree (see §2). The two files that did land (`vulkan-compile-only.md`, `windows-cross-build.md`) came in via a different W3 commit. **[MED] Cherry-pick the CUDA reports as a single `chore(reports): W3-D CUDA compile-only` commit, then delete branch.** |
+| `worktree-agent-a4af68887afcc1b30` | `dc6d1d34c0 W3-D: CUDA toolkit install + compile-only validation of elizaOS/llama.cpp v0.1.0-eliza` | **MERGE-CANDIDATE** (reports only) | 17 of the 19 W3-D report files are still untracked in the main worktree (see §2). The two files that did land (`vulkan-compile-only.md`, `windows-cross-build.md`) came in via a different W3 commit. **[MED] Cherry-pick the CUDA reports as a single `chore(reports): W3-D CUDA compile-only` commit, then delete branch.** |
 | `worktree-agent-a55644a05aeeed035` | `f674c14160 feat(aosp-llama): add qjl1_256 KV cache type + auto-detect` (4 commits) | **SUPERSEDED** | `packages/native-plugins/qjl-cpu/` (CMakeLists, scalar+SIMD sources, README, bench) is fully present on develop. The `aosp-llama-adapter.ts:863-892` qjl1_256 KV cache wiring is also live (`active-model.ts:133` lists `"qjl1_256"`). Branch's `aosp-llama-adapter.ts` patch targets a now-deleted path — that file moved to `plugins/plugin-aosp-local-inference/src/aosp-llama-adapter.ts:1-46` via commit `a2f0025e1f`. **[LOW] Delete.** |
 | `worktree-agent-a58ffa46f33215b6a` | `1b5cc3f03e chore(tsconfig): map @elizaos/capacitor-llama subpaths in ui` (4 commits) | **SUPERSEDED-WITH-CAVEAT** | The work (Capacitor Llama in-WebView kernel, ios→generic local-agent rename, `kv-cache-resolver.ts`, gating `ElizaAgentService` on `AOSP_BUILD`) clearly landed: `packages/native-plugins/llama/src/{capacitor-llama-adapter,kv-cache-resolver}.ts` exist; `packages/ui/src/api/local-agent-kernel.ts` is the rename target. The branch still diffs against the deleted `packages/agent/src/runtime/aosp-llama-adapter.ts`, so a naive merge would conflict. **[LOW] Delete after one-pass diff to confirm no orphaned hunks.** |
 
@@ -47,7 +47,7 @@ Plus 4 larger logs already committed but currently re-listed by the W3-D branch
 
 **Recommendation [HIGH]: commit these as `chore(reports): W3-D CUDA
 compile-only artifacts` to develop.** They are the evidence that
-`elizaOS/llama.cpp v0.1.0-milady` builds cleanly under CUDA 12.6 (167/167
+`elizaOS/llama.cpp v0.1.0-eliza` builds cleanly under CUDA 12.6 (167/167
 .cu files) — losing them re-creates a multi-hour install + build dance for the
 next agent who needs to verify the unified fork.
 
@@ -177,7 +177,7 @@ Full repo grep (excluding `node_modules`, `dist`, `.git`, `.cache`, `.claude`,
 |---|---|---|---|
 | `packages/native-plugins/qjl-cpu/test/qjl_bench.c` | 315 | `TODO: NEON throughput TBD on cuttlefish/arm64 (see README).` | **Defer.** Real-hardware bench note; W3-D landed CUDA compile-only, NEON throughput requires arm64 device. Keep as-is. |
 | `packages/app-core/src/connectors/capacitor-{quickjs,jsc,sqlite}.ts` | 1 | `TODO(native): Swift/Kotlin implementation pending` | **Defer.** Out-of-scope for inference cleanup; tracked under the Capacitor connector area. |
-| `packages/app-core/scripts/build-llama-cpp-dflash.mjs` | 374 | `TODO(elizaOS/llama.cpp): land an upstream fix that either (a) moves...` | **Already-done-just-stale-comment.** Build script TODO references upstream behavior that the unified fork (`v0.1.0-milady` / `v0.2.0-milady`) now controls. **[LOW] Replace TODO with a reference to the fork commit.** |
+| `packages/app-core/scripts/build-llama-cpp-dflash.mjs` | 374 | `TODO(elizaOS/llama.cpp): land an upstream fix that either (a) moves...` | **Already-done-just-stale-comment.** Build script TODO references upstream behavior that the unified fork (`v0.1.0-eliza` / `v0.2.0-eliza`) now controls. **[LOW] Replace TODO with a reference to the fork commit.** |
 | `plugins/plugin-sql/src/schema/embedding.ts` | 11, 20, 40 | `XXXL: 3072` (token marker, not a TODO) | **Already-done-just-stale-comment.** False positive — `XXXL` is the schema enum tier, not a marker. **[LOW] No action.** |
 | `plugins/plugin-wallet/src/analytics/birdeye/providers/market.ts` | 129 | `FIXME: cache (how fresh does this have to be?)` | Out-of-scope (wallet, not inference). |
 
@@ -237,7 +237,7 @@ state. **R = resolved**, **U = unresolved**, **P = partial**.
 |---|---|---|
 | A1 — `contextLength` plumbing for 128k | **P** | Catalog now sets `contextLength: 131072` on advertised Eliza-1 entries; `engine.ts:135-342` honors `cacheTypeK/V` overrides. Hidden Eliza-1 DFlash companions should declare `contextLength` when published. **[MED] Add `contextLength` to every Eliza-1 companion entry.** |
 | A2 — `POST /api/local-inference/active` rejects KV overrides | **R** | `local-inference-compat-routes.ts:147` enumerates `["cacheTypeK","cacheTypeV"]` overrides; `:662-686` accepts them on POST. |
-| A3 — TurboQuant KV-cache desktop drop | **R** | `engine.ts:78-79` and `:334-342` thread `cacheTypeK/V` through `model.createContext`. Verified via the `node-llama-cpp@v3.18.1-milady.3` pin in develop's commit `22856d0e5`. |
+| A3 — TurboQuant KV-cache desktop drop | **R** | `engine.ts:78-79` and `:334-342` thread `cacheTypeK/V` through `model.createContext`. Verified via the `node-llama-cpp@v3.18.1-eliza.3` pin in develop's commit `22856d0e5`. |
 | A4 — Recommendation hardcoded ladders | **P** | `recommendation.ts:257` now reads `hardware.gpu?.totalVramGb`; ladders are still per-platform static (`recommendation.ts:13-99`). **[LOW] Generate ladders from catalog metadata or accept as design.** |
 | A5 — Downloader disk-quota pre-flight | **U** | `grep -n "statfs\|diskFree\|ENOSPC" downloader.ts` returns nothing. **[MED] Add pre-flight `fs.statfs` check.** |
 | A6 — Tokenizer-family test guard | **R** | `catalog.test.ts:85-119` asserts `tokenizerFamily` matches between every target and its drafter. |

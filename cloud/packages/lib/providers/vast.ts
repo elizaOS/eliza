@@ -2,15 +2,14 @@
  * Vast.ai Serverless provider.
  *
  * Forwards OpenAI-compatible chat completions to a Vast Serverless endpoint
- * fronted by llama.cpp's `llama-server` (via PyWorker). The endpoint URL and
- * auth token come from `VAST_BASE_URL` and `VAST_API_KEY` because each Vast
- * endpoint has a unique routing URL — we don't bake one in.
+ * fronted by vLLM or llama.cpp via PyWorker. The endpoint URL and auth token
+ * are resolved per model by the provider factory so 2B/9B/27B can be deployed,
+ * scaled, and failed over independently.
  *
- * Catalog ids look like `vast/eliza-1-27b`. The upstream llama-server
- * is launched with `--alias <catalog id>` so the model id round-trips
- * unchanged; `VAST_NATIVE_MODEL_ID_MAP` is kept available so we can register
- * additional quants/variants later. Vast itself manages autoscaling, queueing,
- * and load balancing — we are a thin pass-through.
+ * Catalog ids look like `vast/eliza-1-27b`. Optimized vLLM endpoints are served
+ * under names like `eliza-1-27b`, while older llama.cpp endpoints may use the
+ * catalog id directly. The resolved endpoint config decides what model id to
+ * send upstream.
  */
 
 import { getVastApiModelId, VAST_NATIVE_MODELS } from "@/lib/models";
@@ -38,9 +37,10 @@ export class VastProvider implements AIProvider {
   name = "vast";
   private baseUrl: string;
   private apiKey: string;
+  private apiModelId?: string;
   private timeout = 2 * 60000;
 
-  constructor(apiKey: string, baseUrl: string) {
+  constructor(apiKey: string, baseUrl: string, options?: { apiModelId?: string }) {
     if (!apiKey) {
       throw new Error("Vast API key is required");
     }
@@ -49,6 +49,7 @@ export class VastProvider implements AIProvider {
     }
     this.apiKey = apiKey;
     this.baseUrl = trimTrailingSlash(baseUrl);
+    this.apiModelId = options?.apiModelId;
   }
 
   private getHeaders(): Record<string, string> {
@@ -71,7 +72,7 @@ export class VastProvider implements AIProvider {
     options?: ProviderRequestOptions,
   ): Promise<Response> {
     const { providerOptions: _providerOptions, ...rest } = request;
-    const body = { ...rest, model: getVastApiModelId(rest.model) };
+    const body = { ...rest, model: this.apiModelId ?? getVastApiModelId(rest.model) };
 
     logger.debug("[Vast] Forwarding chat completion request", {
       model: body.model,

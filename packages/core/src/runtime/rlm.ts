@@ -119,8 +119,16 @@ export function decideRLMUse(input: RLMPolicyInput): RLMPolicyDecision {
 	}
 	const contextTokens = input.contextTokens ?? 0;
 	const contextChars = input.contextChars ?? 0;
-	if (!input.hasExternalContext && contextTokens < 32000 && contextChars < 128000) {
-		return { enabled: false, reason: "context_within_direct_model_budget", budget };
+	if (
+		!input.hasExternalContext &&
+		contextTokens < 32000 &&
+		contextChars < 128000
+	) {
+		return {
+			enabled: false,
+			reason: "context_within_direct_model_budget",
+			budget,
+		};
 	}
 	return { enabled: true, reason: "large_external_context", budget };
 }

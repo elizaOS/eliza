@@ -7,14 +7,14 @@ distribution channel decides which local capabilities are available.
 
 Use this for Mac App Store, Microsoft Store, and Flathub builds.
 
-- `MILADY_BUILD_VARIANT=store`
+- `ELIZA_BUILD_VARIANT=store`
 - Runs inside the platform app sandbox.
 - Forces local code-execution surfaces off: terminal commands, shell plugins,
   coding tools, and coding-agent orchestration are not loaded.
 - Routes local agent work through Eliza Cloud instead of starting an embedded
   host agent.
 - Stores app state under the app-container data directory via
-  `MILADY_STATE_DIR`.
+  `ELIZA_STATE_DIR`.
 - Allows users to import a direct-build state directory through the desktop
   settings panel. On macOS, the folder picker returns a security-scoped
   bookmark so access can be restored without broad filesystem entitlement.
@@ -37,12 +37,12 @@ For application update authority and OTA boundaries, see
 Use this for the downloadable DMG, Homebrew cask, Windows installer, AppImage,
 deb/rpm, and other side-loaded desktop builds.
 
-- `MILADY_BUILD_VARIANT=direct` or unset.
+- `ELIZA_BUILD_VARIANT=direct` or unset.
 - Runs with normal host filesystem/process access.
 - Enables local terminal, coding tools, coding-agent CLIs, local Ollama, and
   other power-user workflows.
 - Uses the normal namespace state directory, such as `~/.eliza`, unless
-  `MILADY_STATE_DIR` or `ELIZA_STATE_DIR` is explicitly set.
+  `ELIZA_STATE_DIR` or `ELIZA_STATE_DIR` is explicitly set.
 
 ## Mobile
 

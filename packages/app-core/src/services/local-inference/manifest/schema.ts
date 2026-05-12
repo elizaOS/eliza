@@ -37,7 +37,7 @@ export const ELIZA_1_MANIFEST_SCHEMA_URL =
 // Eliza-1 bundle uses. Exported so runtime code can assert it (a GGUF whose
 // `tokenizer.ggml.tokens` length differs from this is not an Eliza-1 component
 // and the merges-repair / zero-re-tokenization assumptions do not hold).
-export const ELIZA_1_TOKENIZER_FAMILY = "eliza1" as const;
+export const ELIZA_1_TOKENIZER_FAMILY = "qwen35" as const;
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
 
 // Tiers — see packages/inference/AGENTS.md §2 (Tier matrix). `27b-1m` is the
@@ -357,7 +357,7 @@ export const Eliza1RamBudgetSchema = z
 
 // Release-state vocabulary. `base-v1` is the v1 product: the upstream BASE
 // models — GGUF-converted via the elizaOS/llama.cpp fork and fully
-// Milady-optimized (every quant/kernel trick in inference/AGENTS.md §3) —
+// Eliza-optimized (every quant/kernel trick in inference/AGENTS.md §3) —
 // but NOT fine-tuned (fine-tuning ships in v2). `finetuned-v2` is the v2
 // state; `local-standin` is a non-publishable staging shape;
 // `upload-candidate` / `final` are the historical fine-tuned-v1 publish

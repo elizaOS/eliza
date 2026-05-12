@@ -107,7 +107,7 @@ export interface BuildTrajectoryExportBundleOptions {
   };
   /**
    * Upload the sanitized JSONL to a HuggingFace dataset repo. `true` resolves
-   * the config from the environment (`MILADY_TRAJECTORY_HF_REPO` + HF token);
+   * the config from the environment (`ELIZA_TRAJECTORY_HF_REPO` + HF token);
    * pass an explicit `HfUploadConfig` to override. Defaults to no upload.
    */
   uploadToHuggingFace?: boolean | HfUploadConfig;
@@ -359,7 +359,7 @@ export async function buildTrajectoryExportBundle(
       cloudUpload = {
         uploadedToHuggingFace: false,
         huggingFaceError:
-          "HuggingFace upload requested but not configured (set MILADY_TRAJECTORY_HF_REPO and an HF token)",
+          "HuggingFace upload requested but not configured (set ELIZA_TRAJECTORY_HF_REPO and an HF token)",
       };
     }
   }

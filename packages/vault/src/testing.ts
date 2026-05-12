@@ -45,13 +45,13 @@ export async function createTestVault(
     opts.workDir ?? (await fs.mkdtemp(join(tmpdir(), "eliza-vault-")));
   const storePath = join(workDir, "vault.json");
   const auditLogPath = join(workDir, "audit", "vault.jsonl");
-  // Force the file backend regardless of MILADY_VAULT_BACKEND. This fixture
+  // Force the file backend regardless of ELIZA_VAULT_BACKEND. This fixture
   // promises a `storePath` pointing at vault.json (callers like
   // vault-integration.test.ts read it directly to assert ciphertext at
   // rest); the PGlite backend doesn't create that file. Tests that need
   // PGlite-specific behavior should use PgliteVaultImpl directly.
-  const previousBackend = process.env.MILADY_VAULT_BACKEND;
-  process.env.MILADY_VAULT_BACKEND = "file";
+  const previousBackend = process.env.ELIZA_VAULT_BACKEND;
+  process.env.ELIZA_VAULT_BACKEND = "file";
   let vault: Vault;
   try {
     vault = createVault({
@@ -60,9 +60,9 @@ export async function createTestVault(
     });
   } finally {
     if (previousBackend === undefined) {
-      delete process.env.MILADY_VAULT_BACKEND;
+      delete process.env.ELIZA_VAULT_BACKEND;
     } else {
-      process.env.MILADY_VAULT_BACKEND = previousBackend;
+      process.env.ELIZA_VAULT_BACKEND = previousBackend;
     }
   }
   if (opts.values) {

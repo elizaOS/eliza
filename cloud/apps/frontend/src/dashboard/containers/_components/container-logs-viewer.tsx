@@ -23,7 +23,7 @@ import {
   Skeleton,
 } from "@elizaos/cloud-ui";
 import { Copy, Download, RefreshCw, Search, Wifi, WifiOff } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import type { ParsedLogEntry } from "@/lib/types/containers";
@@ -54,6 +54,23 @@ interface FilterState {
   searchQuery: string;
 }
 
+function mergeState<TState extends Record<string, unknown>>(
+  previous: TState,
+  updates: Partial<TState>,
+): TState {
+  const entries = Object.entries(updates) as Array<[keyof TState, unknown]>;
+  if (entries.every(([key, value]) => Object.is(previous[key], value))) {
+    return previous;
+  }
+  return { ...previous, ...updates };
+}
+
+function formatLogLine(log: LogEntry): string {
+  const timestamp = new Date(log.timestamp).toISOString();
+  const metadata = log.metadata ? ` | ${JSON.stringify(log.metadata)}` : "";
+  return `[${timestamp}] [${log.level.toUpperCase()}] ${log.message}${metadata}`;
+}
+
 export function ContainerLogsViewer({ containerId, containerName }: ContainerLogsViewerProps) {
   const [logsState, setLogsState] = useState<LogsState>({
     logs: [],
@@ -74,46 +91,52 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
   });
 
   const updateLogs = useCallback((updates: Partial<LogsState>) => {
-    setLogsState((prev) => ({ ...prev, ...updates }));
+    setLogsState((prev) => mergeState(prev, updates));
   }, []);
 
   const updateStreaming = useCallback((updates: Partial<StreamingState>) => {
-    setStreamingState((prev) => ({ ...prev, ...updates }));
+    setStreamingState((prev) => mergeState(prev, updates));
   }, []);
 
   const updateFilter = useCallback((updates: Partial<FilterState>) => {
-    setFilterState((prev) => ({ ...prev, ...updates }));
+    setFilterState((prev) => mergeState(prev, updates));
   }, []);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchLogs = useCallback(async () => {
-    updateLogs({ loading: true });
+    updateLogs({ loading: true, error: null });
     const params = new URLSearchParams({
       limit: "100",
       ...(filterState.level !== "all" && { level: filterState.level }),
     });
 
-    const response = await fetch(`/api/v1/containers/${containerId}/logs?${params}`);
+    try {
+      const response = await fetch(`/api/v1/containers/${containerId}/logs?${params}`);
 
-    if (!response.ok) {
-      updateLogs({ loading: false });
-      throw new Error("Failed to fetch logs");
-    }
+      if (!response.ok) {
+        throw new Error("Failed to fetch logs");
+      }
 
-    const data = await response.json();
-    if (data.success) {
+      const data = await response.json();
+      if (data.success) {
+        updateLogs({
+          logs: data.data.logs || [],
+          infoMessage: data.data.message || null,
+          error: null,
+          loading: false,
+        });
+      } else {
+        updateLogs({
+          error: data.error || "Failed to load logs",
+          infoMessage: null,
+          loading: false,
+        });
+      }
+    } catch (err) {
       updateLogs({
-        logs: data.data.logs || [],
-        infoMessage: data.data.message || null,
-        error: null,
-        loading: false,
-      });
-    } else {
-      updateLogs({
-        error: data.error || "Failed to load logs",
+        error: err instanceof Error ? err.message : "Failed to fetch logs",
         infoMessage: null,
         loading: false,
       });
@@ -177,20 +200,21 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
     eventSourceRef.current = eventSource;
   }, [containerId, filterState.level, streamingState.useStreaming, updateLogs, updateStreaming]);
 
-  const stopStreaming = useCallback(() => {
+  const closeStreamingConnection = useCallback(() => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
+  }, []);
+
+  const stopStreaming = useCallback(() => {
+    closeStreamingConnection();
     updateStreaming({ isStreaming: false });
-  }, [updateStreaming]);
+  }, [closeStreamingConnection, updateStreaming]);
 
   // Initial load
   useEffect(() => {
-    // Use setTimeout to avoid synchronous setState in effect
-    setTimeout(() => {
-      fetchLogs();
-    }, 0);
+    void fetchLogs();
   }, [fetchLogs]);
 
   // Handle streaming vs polling
@@ -204,11 +228,7 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
       const interval = setInterval(fetchLogs, 5000);
       return () => clearInterval(interval);
     } else {
-      // Stop streaming if auto-refresh is off
-      // Use setTimeout to avoid synchronous setState in effect
-      setTimeout(() => {
-        stopStreaming();
-      }, 0);
+      stopStreaming();
     }
   }, [
     streamingState.autoRefresh,
@@ -220,14 +240,10 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
 
   // Cleanup on unmount
   useEffect(() => {
-    const abortController = abortControllerRef.current;
     return () => {
-      stopStreaming();
-      if (abortController) {
-        abortController.abort();
-      }
+      closeStreamingConnection();
     };
-  }, [stopStreaming]);
+  }, [closeStreamingConnection]);
 
   const getLevelColor = (logLevel: string) => {
     switch (logLevel) {
@@ -261,11 +277,7 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
 
   const downloadLogs = () => {
     const logsText = logsState.logs
-      .map((log) => {
-        const timestamp = new Date(log.timestamp).toISOString();
-        const metadata = log.metadata ? ` | ${JSON.stringify(log.metadata)}` : "";
-        return `[${timestamp}] [${log.level.toUpperCase()}] ${log.message}${metadata}`;
-      })
+      .map(formatLogLine)
       .join("\n");
 
     const blob = new Blob([logsText], { type: "text/plain" });
@@ -280,27 +292,18 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
   };
 
   const copyAllLogs = async () => {
-    const logsText = logsState.logs
-      .map((log) => {
-        const timestamp = new Date(log.timestamp).toISOString();
-        const metadata = log.metadata ? ` | ${JSON.stringify(log.metadata)}` : "";
-        return `[${timestamp}] [${log.level.toUpperCase()}] ${log.message}${metadata}`;
-      })
-      .join("\n");
+    const logsText = logsState.logs.map(formatLogLine).join("\n");
 
     await navigator.clipboard.writeText(logsText);
     toast.success("Logs copied to clipboard");
   };
 
   const copyLogLine = async (log: LogEntry) => {
-    const timestamp = new Date(log.timestamp).toISOString();
-    const metadata = log.metadata ? ` | ${JSON.stringify(log.metadata)}` : "";
-    const text = `[${timestamp}] [${log.level.toUpperCase()}] ${log.message}${metadata}`;
-    await navigator.clipboard.writeText(text);
+    await navigator.clipboard.writeText(formatLogLine(log));
     toast.success("Log line copied");
   };
 
-  const filteredLogs = logsState.logs.filter((log) => {
+  const filteredLogs = useMemo(() => logsState.logs.filter((log) => {
     if (!filterState.searchQuery) return true;
     const searchLower = filterState.searchQuery.toLowerCase();
     return (
@@ -308,7 +311,7 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
       log.level.toLowerCase().includes(searchLower) ||
       (log.metadata && JSON.stringify(log.metadata).toLowerCase().includes(searchLower))
     );
-  });
+  }), [filterState.searchQuery, logsState.logs]);
 
   return (
     <BrandCard className="relative shadow-lg shadow-black/50" cornerSize="sm">

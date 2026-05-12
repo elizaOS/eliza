@@ -30,7 +30,7 @@
 // streamed-chunk JSON when speculative decoding rejected a contiguous span of
 // previously-emitted drafted tokens.
 //
-// The patch is keyed by a `// MILADY-DFLASH-VERIFIER-STREAM-V1` sentinel so it
+// The patch is keyed by a `// ELIZA-DFLASH-VERIFIER-STREAM-V1` sentinel so it
 // is idempotent. If the anchor it needs is absent (fork layout changed) it
 // throws — `build-llama-cpp-dflash.mjs` then exits non-zero rather than
 // shipping a binary without the verifier stream.
@@ -38,13 +38,13 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const VERIFIER_SENTINEL = "// MILADY-DFLASH-VERIFIER-STREAM-V1";
+const VERIFIER_SENTINEL = "// ELIZA-DFLASH-VERIFIER-STREAM-V1";
 
 // Server source files in the post-refactor llama.cpp layout, in the order we
 // prefer for the verifier-stream anchor (the streamed-chunk JSON builders live
 // in `server-task.cpp`). Pre-refactor llama.cpp kept everything in a single
 // `tools/server/server.cpp` (or the legacy `examples/server/server.cpp`); both
-// are still accepted so a rollback to an older `-milady` tag keeps working.
+// are still accepted so a rollback to an older `-eliza` tag keeps working.
 const SERVER_SOURCE_RELS = [
   path.join("tools", "server", "server-task.cpp"),
   path.join("tools", "server", "server-task.h"),
@@ -140,7 +140,7 @@ const VERIFIER_PATCH_BLOCK = [
   "// runtime can drop the not-yet-played TTS audio for the overlapping",
   '// phrases (docs/porting/dflash-drafter-strategy.md "DFlash↔TTS Rollback',
   '// Coupling"). `a`/`b` are inclusive token indices in target output order.',
-  "namespace milady_dflash {",
+  "namespace eliza_dflash {",
   "  // Set by the speculative loop after each verify pass; consumed + cleared",
   '  // by the next streamed-chunk send. -1 means "no reject this step".',
   "  static thread_local long long g_reject_from = -1;",

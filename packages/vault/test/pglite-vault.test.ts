@@ -174,8 +174,8 @@ describe("PgliteVaultImpl", () => {
       const masterKey = generateMasterKey();
       const { createVault } = await import("../src/vault.js");
       // Force the file backend regardless of env default.
-      const prev = process.env.MILADY_VAULT_BACKEND;
-      process.env.MILADY_VAULT_BACKEND = "file";
+      const prev = process.env.ELIZA_VAULT_BACKEND;
+      process.env.ELIZA_VAULT_BACKEND = "file";
       const fileVault2 = createVault({
         workDir: legacyDir,
         masterKey: inMemoryMasterKey(masterKey),
@@ -188,8 +188,8 @@ describe("PgliteVaultImpl", () => {
         source: "1password",
         path: "op://Personal/GitHub/token",
       });
-      if (prev === undefined) delete process.env.MILADY_VAULT_BACKEND;
-      else process.env.MILADY_VAULT_BACKEND = prev;
+      if (prev === undefined) delete process.env.ELIZA_VAULT_BACKEND;
+      else process.env.ELIZA_VAULT_BACKEND = prev;
 
       // Open a PGlite vault pointing at the legacy file
       const pgDir = await mkdtemp(join(tmpdir(), "vault-pglite-mig-"));

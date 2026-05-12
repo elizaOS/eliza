@@ -443,7 +443,7 @@ function resolveStealthImportPath(devCwd, candidatePaths) {
       // Return the absolute path so the value stays valid regardless of
       // which cwd the API child gets spawned in. The API child is anchored
       // at the eliza/ submodule (see apiSpawnCwd below), so a path computed
-      // relative to the outer milady cwd would resolve to a non-existent
+      // relative to the outer eliza cwd would resolve to a non-existent
       // `eliza/eliza/...` from the child's perspective.
       return absPath;
     }
@@ -1070,7 +1070,7 @@ if (uiOnly) {
   ];
   // The API server resolves @elizaos/* deps via Bun workspace lookup, which
   // walks up from cwd looking for a package.json with a `workspaces` field.
-  // When running from the milady-style outer repo (cwd contains an `eliza/`
+  // When running from the eliza-style outer repo (cwd contains an `eliza/`
   // submodule), the outer package.json's `workspaces: ["apps/*"]` excludes
   // eliza's workspace packages — so plugin-x402, plugin-streaming, etc. fail
   // to resolve. Spawn the API child with cwd anchored at eliza/ so its

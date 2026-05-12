@@ -8,7 +8,7 @@
 
 Worker: 03
 Date: 2026-05-04
-Repo: `/Users/shawwalters/eliza-workspace/milady/eliza`
+Repo: `/Users/shawwalters/eliza-workspace/eliza/eliza`
 Write target: `launchdocs/03-docs-v2.md`
 
 ## Current state

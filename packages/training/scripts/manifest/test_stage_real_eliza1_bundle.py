@@ -79,7 +79,7 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     args = argparse.Namespace(
         tier="0_6b", bundle_dir=bundle, text_gguf=text_gguf, drafter_gguf=drafter_gguf,
         recipes_dir=recipes, vision_gguf=None,
-        text_lineage_repo="Qwen/Qwen3-0.6B", text_lineage_rev="deadbeef",
+        text_lineage_repo="Qwen/Qwen3.5-0.6B", text_lineage_rev="deadbeef",
         text_lineage_note="substitute base", text_substituted=True, drafter_stamp_only=True,
         skip_assets=True, skip_wakeword=True, link_mode="copy",
         version="1.0.0-staged.1", generated_at="2026-05-11T00:00:00Z", force=False,
@@ -95,7 +95,7 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
     assert manifest["id"] == "eliza-1-0_6b"
     assert manifest["defaultEligible"] is False
-    assert manifest["lineage"]["text"]["base"] == "Qwen/Qwen3-0.6B@deadbeef"
+    assert manifest["lineage"]["text"]["base"] == "Qwen/Qwen3.5-0.6B@deadbeef"
     # 0_6b ships no separate embedding artifact (text backbone IS the embedding).
     assert "embedding" not in manifest["lineage"]
     assert manifest["files"]["text"][0]["ctx"] == 32768
@@ -141,7 +141,7 @@ def test_stage_real_bundle_embedding_tier_keeps_embedding_lineage(tmp_path: Path
     args = argparse.Namespace(
         tier="1_7b", bundle_dir=bundle, text_gguf=text_gguf, drafter_gguf=drafter_gguf,
         recipes_dir=recipes, vision_gguf=None,
-        text_lineage_repo="Qwen/Qwen3-1.7B", text_lineage_rev="cafebabe",
+        text_lineage_repo="Qwen/Qwen3.5-1.7B", text_lineage_rev="cafebabe",
         text_lineage_note="substitute base", text_substituted=True, drafter_stamp_only=True,
         skip_assets=True, skip_wakeword=True, link_mode="copy",
         version="1.0.0-staged.1", generated_at="2026-05-11T00:00:00Z", force=False,

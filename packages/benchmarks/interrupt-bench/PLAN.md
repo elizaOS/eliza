@@ -1,6 +1,6 @@
 # InterruptBench — Wave 0 Contract Mirror
 
-This file mirrors the Wave 0 design contract from the broader Milady project, scoped to the bench's shape.
+This file mirrors the Wave 0 design contract from the broader Eliza project, scoped to the bench's shape.
 
 ## 1. Purpose
 

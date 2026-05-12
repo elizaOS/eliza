@@ -59,7 +59,7 @@ Acceptable or validation-needed artifacts:
 | Cloud/app frontend assets | `cloud/apps/frontend/public/avatars/eliza-default.png`; `cloud/apps/frontend/public/images/blog/intro_blog_1.png`; `packages/app/public/splash-bg.jpg` | Accept if these are production UI assets. Optimize size separately. |
 | App/native packaging assets | `packages/app-core/platforms/ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732.png`; `packages/app-core/packaging/msix/assets/StoreLogo.png`; `packages/app-core/packaging/flatpak/icons/512x512/ai.elizaos.App.png` | Accept as platform assets. |
 | Benchmark fixtures | `packages/benchmarks/loca-bench/gem/envs/machine_operating_s2l/preprocess/machine_operating/live_sensor.csv`; `packages/benchmarks/OSWorld/assets/pubeval_monitor1.jpg`; `packages/benchmarks/OSWorld/uv.lock` | Accept if vendored benchmark snapshots are intentionally tracked; document source/version. |
-| Companion VRM assets | `plugins/app-companion/public/vrms/milady-7.vrm.gz`; `plugins/app-companion/public/vrms/milady-5.vrm.gz` | Accept if runtime assets; add license/provenance if missing. |
+| Companion VRM assets | `plugins/app-companion/public/vrms/eliza-7.vrm.gz`; `plugins/app-companion/public/vrms/eliza-5.vrm.gz` | Accept if runtime assets; add license/provenance if missing. |
 
 Recommended ignore additions:
 

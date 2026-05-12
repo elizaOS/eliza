@@ -1,4 +1,8 @@
-import { DashboardRouteError, formatDashboardRouteErrorMessage } from "@elizaos/cloud-ui";
+import {
+  DashboardRouteError,
+  formatDashboardRouteErrorMessage,
+  useRenderGuard,
+} from "@elizaos/cloud-ui";
 import {
   Component,
   type ComponentType,
@@ -400,6 +404,7 @@ function LegacyBuildRedirect() {
 }
 
 function App() {
+  useRenderGuard("CloudFrontendApp");
   useLinkChunkPreload();
   return (
     <Routes>

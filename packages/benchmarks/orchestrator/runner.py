@@ -32,7 +32,13 @@ from .db import (
 from .env_utils import git_head, load_env_file, merged_environment, safe_version_from_package_json
 from .leaderboard import delta_to_high_score
 from .analyze_trajectory import summarize as summarize_trajectory
-from .random_baseline_runner import run_random_baseline
+from .random_baseline_runner import (
+    CALIBRATION_HARNESSES,
+    CALIBRATION_SPEC_VERSION,
+    SYNTHETIC_HARNESSES,
+    is_synthetic_harness,
+    run_synthetic_baseline,
+)
 from .trajectory_normalize_hook import normalize_outcome_trajectories
 from .types import (
     BenchmarkAdapter,
@@ -62,6 +68,12 @@ PROVIDER_DUMMY_KEY: dict[str, str] = {
     "vllm": "dummy",
 }
 DEFAULT_STALE_RECOVERY_SECONDS = 300
+CANONICAL_REAL_HARNESSES: tuple[str, ...] = ("eliza", "hermes", "openclaw")
+LATEST_SNAPSHOT_AGENTS: set[str] = {
+    *CANONICAL_REAL_HARNESSES,
+    *SYNTHETIC_HARNESSES,
+    "compare",
+}
 
 
 def _utc_now() -> str:
@@ -75,13 +87,16 @@ def _sanitize_name(value: str) -> str:
 
 
 def _signature_for(adapter: BenchmarkAdapter, request: RunRequest) -> str:
+    extra_config = dict(request.extra_config)
+    if request.agent.strip().lower() in CALIBRATION_HARNESSES:
+        extra_config["calibration_spec_version"] = CALIBRATION_SPEC_VERSION
     payload = {
         "benchmark_id": adapter.id,
         "benchmark_directory": adapter.directory,
         "agent": request.agent,
         "provider": request.provider,
         "model": request.model,
-        "extra_config": request.extra_config,
+        "extra_config": extra_config,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")).hexdigest()
 
@@ -124,7 +139,7 @@ def _effective_request(adapter: BenchmarkAdapter, request: RunRequest) -> RunReq
 
 
 def _is_harness_compatible(adapter: BenchmarkAdapter, harness_label: str) -> bool:
-    if not harness_label or harness_label == "random_v1":
+    if not harness_label or is_synthetic_harness(harness_label):
         return True
     if harness_label == "compare":
         # Model/provider compare is valid for normal multi-harness adapters,
@@ -201,7 +216,7 @@ def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
     env["BENCHMARK_HARNESS"] = harness
     env["ELIZA_BENCH_HARNESS"] = harness
     env["BENCHMARK_AGENT"] = harness
-    env["MILADY_PROVIDER"] = provider or request.provider
+    env["ELIZA_PROVIDER"] = provider or request.provider
     env["MODEL_NAME"] = model_name
     env["OPENAI_MODEL"] = model_name
     env["ANTHROPIC_MODEL"] = model_name
@@ -259,6 +274,24 @@ def _status_after_returncode(returncode: int) -> str:
 
 
 def _required_env_for_request(adapter: BenchmarkAdapter, request: RunRequest) -> tuple[str, ...]:
+    if adapter.id == "lifeops_bench":
+        extra = request.extra_config
+        agent = str(
+            extra.get("agent")
+            or extra.get("harness")
+            or request.model
+            or ""
+        ).strip().lower()
+        mode = str(extra.get("mode") or "").strip().lower()
+        if agent in {"perfect", "wrong"} and mode != "live":
+            return ()
+        if mode == "live":
+            return ("CEREBRAS_API_KEY", "ANTHROPIC_API_KEY")
+        provider_key = PROVIDER_KEY_ENV.get(request.provider.strip().lower())
+        if agent in {"eliza", "hermes", "openclaw", "cerebras-direct"}:
+            return (provider_key or "CEREBRAS_API_KEY",)
+        return ()
+
     provider = request.provider.strip().lower()
     required = list(adapter.required_env)
     provider_key = PROVIDER_KEY_ENV.get(provider)
@@ -291,6 +324,15 @@ def _ensure_viewer_snapshot(
 
 def _collect_run_trajectory_metrics(run_root: Path, *, duration_seconds: float) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
     summary, records = summarize_trajectory(run_root)
+    estimated_prompt_tokens = 0
+    estimated_completion_tokens = 0
+    token_estimate_source: str | None = None
+    if summary.turns and summary.prompt_tokens == 0 and summary.prompt_chars > 0:
+        estimated_prompt_tokens = max(1, (summary.prompt_chars + 3) // 4)
+        token_estimate_source = "prompt_chars_div_4"
+    prompt_tokens = summary.prompt_tokens or estimated_prompt_tokens
+    completion_tokens = summary.completion_tokens or estimated_completion_tokens
+    total_tokens = summary.total_tokens or (prompt_tokens + completion_tokens)
     trajectory_summary = {
         "files": summary.files,
         "turns": summary.turns,
@@ -302,12 +344,15 @@ def _collect_run_trajectory_metrics(run_root: Path, *, duration_seconds: float) 
     }
     token_metrics = {
         "llm_call_count": summary.turns,
-        "prompt_tokens": summary.prompt_tokens,
-        "completion_tokens": summary.completion_tokens,
-        "total_tokens": summary.total_tokens,
-        "avg_prompt_tokens": (summary.prompt_tokens / summary.turns) if summary.turns else 0.0,
-        "avg_completion_tokens": (summary.completion_tokens / summary.turns) if summary.turns else 0.0,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+        "avg_prompt_tokens": (prompt_tokens / summary.turns) if summary.turns else 0.0,
+        "avg_completion_tokens": (completion_tokens / summary.turns) if summary.turns else 0.0,
     }
+    if token_estimate_source:
+        token_metrics["estimated_prompt_tokens"] = estimated_prompt_tokens
+        token_metrics["token_estimate_source"] = token_estimate_source
     cache_metrics = {
         "cache_read_input_tokens": summary.cached_tokens,
         "cache_creation_input_tokens": summary.cache_creation_tokens,
@@ -404,7 +449,11 @@ def _write_latest_result_snapshot(
     return snapshot_path
 
 
-def _rebuild_latest_result_snapshots(conn, output_root: Path) -> None:
+def _rebuild_latest_result_snapshots(
+    conn,
+    output_root: Path,
+    adapters: dict[str, BenchmarkAdapter] | None = None,
+) -> None:
     """Rebuild latest snapshots from SQLite.
 
     This keeps ``benchmark_results/latest`` idempotent even when a single
@@ -417,9 +466,16 @@ def _rebuild_latest_result_snapshots(conn, output_root: Path) -> None:
     latest_dir.mkdir(parents=True, exist_ok=True)
 
     latest_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    valid_benchmark_ids = set(adapters) if adapters is not None else None
     for row in list_runs(conn, limit=100000):
         benchmark_id = str(row.get("benchmark_id") or "")
         agent = str(row.get("agent") or "")
+        if row.get("status") == "skipped":
+            continue
+        if valid_benchmark_ids is not None and benchmark_id not in valid_benchmark_ids:
+            continue
+        if agent not in LATEST_SNAPSHOT_AGENTS:
+            continue
         if not benchmark_id or not agent:
             continue
         key = (benchmark_id, agent)
@@ -475,7 +531,54 @@ def _rebuild_latest_result_snapshots(conn, output_root: Path) -> None:
     )
 
 
-def _run_random_v1_outcome(
+def _repair_current_compatibility_statuses(
+    conn,
+    adapters: dict[str, BenchmarkAdapter],
+) -> int:
+    """Mark stale succeeded rows incompatible when rules now exclude a harness."""
+
+    repaired = 0
+    for row in list_runs(conn, limit=100000):
+        if row.get("status") == "skipped":
+            continue
+        benchmark_id = str(row.get("benchmark_id") or "")
+        agent = str(row.get("agent") or "").strip().lower()
+        if agent not in CANONICAL_REAL_HARNESSES:
+            continue
+        adapter = adapters.get(benchmark_id)
+        if adapter is None or agent in adapter.agent_compatibility:
+            continue
+        metrics = dict(row.get("metrics") or {})
+        metrics["reason"] = "latest_row_violates_current_compatibility"
+        metrics["harness"] = agent
+        metrics["supported_harnesses"] = list(adapter.agent_compatibility)
+        conn.execute(
+            """
+            UPDATE benchmark_runs
+            SET status = 'incompatible',
+                score = NULL,
+                unit = NULL,
+                higher_is_better = NULL,
+                metrics_json = ?,
+                error = ?
+            WHERE run_id = ?
+            """,
+            (
+                json.dumps(metrics, sort_keys=True, separators=(",", ":"), ensure_ascii=True),
+                (
+                    f"Benchmark '{benchmark_id}' is no longer compatible with "
+                    f"harness '{agent}' (supported: {', '.join(adapter.agent_compatibility)})"
+                ),
+                row["run_id"],
+            ),
+        )
+        repaired += 1
+    if repaired:
+        conn.commit()
+    return repaired
+
+
+def _run_synthetic_harness_outcome(
     conn,
     *,
     adapter: BenchmarkAdapter,
@@ -486,18 +589,19 @@ def _run_random_v1_outcome(
     run_root: Path,
     repo_meta: dict[str, str | None],
 ) -> BenchmarkRunOutcome:
-    """Synthesize a ``random_v1`` outcome for one benchmark.
+    """Synthesize a calibration/baseline outcome for one benchmark.
 
     Inserts a new ``benchmark_runs`` row (no subprocess), runs the
     benchmark's own ``score_extractor`` over a generated result file
-    when the strategy is meaningful, or records an ``incompatible``
-    row otherwise. The function reuses ``replace_run_trajectories``
-    only to clear any stale entries — random_v1 does not produce
-    real trajectory rows.
+    when a matching template exists, or records the expected score
+    directly otherwise. The function reuses ``replace_run_trajectories``
+    only to clear any stale entries — synthetic harnesses do not
+    produce real trajectory rows.
     """
+    harness_label = effective_request.agent.strip().lower()
     attempt = next_attempt_for_signature(conn, signature)
     now_compact = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    run_id = f"random_{adapter.id}_{now_compact}_{attempt}_{uuid4().hex[:8]}"
+    run_id = f"{harness_label}_{adapter.id}_{now_compact}_{attempt}_{uuid4().hex[:8]}"
     bench_run_root = _result_subdir(run_root, adapter, run_id)
     bench_run_root.mkdir(parents=True, exist_ok=True)
     bench_output_root = bench_run_root / "output"
@@ -512,12 +616,12 @@ def _run_random_v1_outcome(
         benchmark_directory=adapter.directory,
         signature=signature,
         attempt=attempt,
-        agent="random_v1",
+        agent=effective_request.agent,
         provider=effective_request.provider,
         model=effective_request.model,
         extra_config=effective_request.extra_config,
         started_at=started_at,
-        command=["<random_v1-synthetic>"],
+        command=[f"<{harness_label}-synthetic>"],
         cwd=adapter.cwd,
         stdout_path="",
         stderr_path="",
@@ -527,19 +631,29 @@ def _run_random_v1_outcome(
         eliza_version=repo_meta.get("eliza_version"),
     )
 
-    baseline = run_random_baseline(
+    baseline = run_synthetic_baseline(
         benchmark_id=adapter.id,
         output_dir=bench_output_root,
-        score=0.0,
+        harness=harness_label,
     )
 
     metrics: dict[str, Any] = {
-        "random_baseline_strategy": baseline.strategy_name,
-        "random_baseline_is_meaningful": baseline.is_meaningful,
+        "synthetic_harness": harness_label,
+        "synthetic_strategy": baseline.strategy_name,
+        "synthetic_is_meaningful": baseline.is_meaningful,
+        "calibration_spec_version": CALIBRATION_SPEC_VERSION,
+        "calibration_depth": "scorer_payload" if baseline.result_path else "direct_score",
         "return_code": 0,
     }
+    if harness_label == "random_v1":
+        metrics["random_baseline_strategy"] = baseline.strategy_name
+        metrics["random_baseline_is_meaningful"] = baseline.is_meaningful
+    if baseline.score is not None:
+        metrics["synthetic_expected_score"] = baseline.score
     if baseline.note:
-        metrics["random_baseline_note"] = baseline.note
+        metrics["synthetic_note"] = baseline.note
+        if harness_label == "random_v1":
+            metrics["random_baseline_note"] = baseline.note
 
     score: float | None = None
     unit: str | None = None
@@ -560,7 +674,7 @@ def _run_random_v1_outcome(
                 metrics.update(summary.metrics)
             except Exception as exc:  # noqa: BLE001 — extractor failure must surface
                 status = "failed"
-                error = f"random_v1 score extraction failed: {exc}"
+                error = f"{harness_label} score extraction failed: {exc}"
                 metrics["score_extraction_error"] = str(exc)
         else:
             score = baseline.score
@@ -609,7 +723,7 @@ def _run_random_v1_outcome(
             delta_to_high_score=delta,
         ),
         duration_seconds=0.0,
-        command=["<random_v1-synthetic>"],
+        command=[f"<{harness_label}-synthetic>"],
         cwd=adapter.cwd,
     )
     _write_latest_result_snapshot(
@@ -664,6 +778,7 @@ def run_benchmarks(
 
     repo_meta = _repo_meta(workspace_root)
     base_env = _default_env(workspace_root, request)
+    _repair_current_compatibility_statuses(conn, discovery.adapters)
 
     create_run_group(
         conn,
@@ -681,24 +796,11 @@ def run_benchmarks(
         effective_request = _effective_request(adapter, request)
         signature = _signature_for(adapter, effective_request)
 
-        if request.agent.strip().lower() == "random_v1":
-            outcome = _run_random_v1_outcome(
-                conn,
-                adapter=adapter,
-                effective_request=effective_request,
-                signature=signature,
-                run_group_id=run_group_id,
-                output_root=output_root,
-                run_root=run_root,
-                repo_meta=repo_meta,
-            )
-            outcomes.append(outcome)
-            continue
-
         # Harness/agent compatibility — if the harness is not in the adapter's
         # supported list, record an ``incompatible`` outcome and skip without
-        # spawning the subprocess. ``random_v1`` is a synthetic baseline and is
-        # handled above. ``compare`` is allowed only for multi-harness adapters.
+        # spawning the subprocess. Synthetic harnesses are compatible with all
+        # adapters and are handled after the normal idempotent skip checks.
+        # ``compare`` is allowed only for multi-harness adapters.
         harness_label = request.agent.strip().lower()
         if not _is_harness_compatible(adapter, harness_label):
             attempt = next_attempt_for_signature(conn, signature)
@@ -960,6 +1062,20 @@ def run_benchmarks(
                 )
                 outcomes.append(outcome)
                 continue
+
+        if harness_label in SYNTHETIC_HARNESSES:
+            outcome = _run_synthetic_harness_outcome(
+                conn,
+                adapter=adapter,
+                effective_request=effective_request,
+                signature=signature,
+                run_group_id=run_group_id,
+                output_root=output_root,
+                run_root=run_root,
+                repo_meta=repo_meta,
+            )
+            outcomes.append(outcome)
+            continue
 
         required_env = _required_env_for_request(adapter, effective_request)
         required_missing = [key for key in required_env if not base_env.get(key)]
@@ -1288,7 +1404,8 @@ def run_benchmarks(
 
     finish_run_group(conn, run_group_id=run_group_id, finished_at=_utc_now())
     repair_nonzero_returncode_statuses(conn)
-    _rebuild_latest_result_snapshots(conn, output_root)
+    _repair_current_compatibility_statuses(conn, discovery.adapters)
+    _rebuild_latest_result_snapshots(conn, output_root, discovery.adapters)
     viewer_snapshot = _ensure_viewer_snapshot(conn, workspace_root=workspace_root)
     conn.close()
     return run_group_id, outcomes, viewer_snapshot

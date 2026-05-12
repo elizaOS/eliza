@@ -30,8 +30,8 @@ Honesty rules (mirrors AGENTS.md §3/§7 — no fabricated passes):
 Run it::
 
     uv run --extra train python -m scripts.eval.eliza1_eval_suite \
-        --bundle-dir ~/.eliza/local-inference/models/eliza-1-0_6b.bundle \
-        --tier 0_6b
+        --bundle-dir ~/.eliza/local-inference/models/eliza-1-0_8b.bundle \
+        --tier 0_8b
 
 Or against the in-repo defaults (auto-discovers the engine bin dir and the
 held-out text-eval corpus).
@@ -91,7 +91,7 @@ DEFAULT_TEXT_EVAL_CORPUS: tuple[str, ...] = (
 # Map mean per-token negative log-likelihood to a 0..1 "text quality" score:
 # score = exp(-_NLL_DECAY * meanNll). Lower NLL → higher score. Calibrated so a
 # competent fine-tuned small model (meanNll ≈ 2.0 nats/token ≈ ppl 7.4) lands
-# around the 0_6b gate threshold (0.55), an un-fine-tuned base model
+# around the 0_8b gate threshold (0.55), an un-fine-tuned base model
 # (meanNll ≈ 4 nats ≈ ppl 55) lands ≈ 0.37, and a strong model (meanNll ≈ 1.3
 # ≈ ppl 3.7) lands ≈ 0.72. The decay is the only knob; the per-tier gate
 # thresholds in eliza1_gates.yaml are what actually decide pass/fail.
@@ -123,7 +123,7 @@ def _platform_tag() -> str:
 def _engine_bin_root() -> Path:
     state = (
         os.environ.get("ELIZA_STATE_DIR")
-        or os.environ.get("MILADY_STATE_DIR")
+        or os.environ.get("ELIZA_STATE_DIR")
         or str(Path.home() / ".eliza")
     )
     return Path(state).expanduser() / "local-inference" / "bin" / "dflash"
@@ -1334,7 +1334,7 @@ def build_context(args: argparse.Namespace) -> EvalContext:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--bundle-dir", type=Path, required=True, help="Staged Eliza-1 bundle directory.")
-    ap.add_argument("--tier", required=True, help="Tier id (0_6b / 1_7b / 9b / ...) or eliza-1-<tier>.")
+    ap.add_argument("--tier", required=True, help="Tier id (0_8b / 2b / 9b / ...) or eliza-1-<tier>.")
     ap.add_argument("--backend", default=None, help="Prefer this engine backend dir (cpu / vulkan / ...).")
     ap.add_argument("--text-eval-model", type=Path, default=None, help="Override text GGUF used for the perplexity eval (e.g. a small reference Qwen3 GGUF when the bundle text artifact is a stand-in).")
     ap.add_argument("--text-corpus", type=Path, default=None, help="Held-out text-eval corpus (.txt one-per-line or .jsonl with a 'text' field). Defaults to the bundled small set.")

@@ -24,6 +24,9 @@
       "@elizaos/agent": [
         "../../packages/agent/dist/packages/agent/src/index.d.ts"
       ],
+      "@elizaos/agent/services/app-session-gate": [
+        "../../packages/agent/src/services/app-session-gate.d.ts"
+      ],
       "@elizaos/app-core": ["../../packages/app-core/dist/index.d.ts"],
       "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
       "@elizaos/shared": ["../../packages/shared/dist/index.d.ts"],

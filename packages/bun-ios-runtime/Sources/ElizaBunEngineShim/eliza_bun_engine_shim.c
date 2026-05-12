@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <stdint.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,9 +18,12 @@ enum {
   ELIZA_STARTUP_TIMEOUT_MS = 30000,
   ELIZA_DEFAULT_CALL_TIMEOUT_MS = 120000,
   ELIZA_MAX_CALL_TIMEOUT_MS = 30 * 60 * 1000,
+  ELIZA_MAX_PROTOCOL_LINE_BYTES = 16 * 1024 * 1024,
+  ELIZA_LAST_ERROR_BYTES = 4096,
 };
 
 static pthread_mutex_t g_call_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t g_error_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int g_running = 0;
 static uint64_t g_next_id = 1;
 static int g_stdin_read_fd = -1;
@@ -31,6 +35,7 @@ static int g_stderr_write_fd = -1;
 static pthread_t g_stderr_thread;
 static int g_stderr_thread_started = 0;
 static volatile int g_stderr_thread_stop = 0;
+static char g_last_error[ELIZA_LAST_ERROR_BYTES] = {0};
 
 static void on_bun_exit(uint32_t code) {
   (void)code;
@@ -57,6 +62,15 @@ static int64_t monotonic_ms(void) {
   struct timespec ts;
   if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return 0;
   return ((int64_t)ts.tv_sec * 1000) + (ts.tv_nsec / 1000000);
+}
+
+static void set_last_error(const char *fmt, ...) {
+  pthread_mutex_lock(&g_error_mutex);
+  va_list args;
+  va_start(args, fmt);
+  vsnprintf(g_last_error, sizeof(g_last_error), fmt, args);
+  va_end(args);
+  pthread_mutex_unlock(&g_error_mutex);
 }
 
 static char *json_escape(const char *value) {
@@ -120,6 +134,7 @@ static char *json_escape(const char *value) {
 static char *timeout_json(int timeout_ms) {
   char message[128];
   snprintf(message, sizeof(message), "Bun bridge call timed out after %dms", timeout_ms);
+  set_last_error("%s", message);
   char *escaped = json_escape(message);
   if (!escaped) return xstrdup("{\"ok\":false,\"error\":\"timeout\",\"code\":\"timeout\"}");
   size_t needed = strlen(escaped) + 80;
@@ -139,6 +154,7 @@ static char *timeout_json(int timeout_ms) {
 }
 
 static char *error_json(const char *message) {
+  set_last_error("%s", message ? message : "unknown error");
   char *escaped = json_escape(message);
   if (!escaped) return xstrdup("{\"ok\":false,\"error\":\"out of memory\"}");
   size_t needed = strlen(escaped) + 24;
@@ -200,7 +216,15 @@ static char *parse_json_string(const char **cursor) {
       }
     }
     if (len + 2 > cap) {
+      if (cap >= ELIZA_MAX_PROTOCOL_LINE_BYTES) {
+        set_last_error(
+            "Bun bridge protocol line exceeded %d bytes",
+            ELIZA_MAX_PROTOCOL_LINE_BYTES);
+        free(out);
+        return NULL;
+      }
       cap *= 2;
+      if (cap > ELIZA_MAX_PROTOCOL_LINE_BYTES) cap = ELIZA_MAX_PROTOCOL_LINE_BYTES;
       char *grown = (char *)realloc(out, cap);
       if (!grown) {
         free(out);
@@ -354,9 +378,18 @@ static char *read_line_timeout(int fd, int timeout_ms, int *timed_out) {
     }
     if (ch == '\r') continue;
     if (len + 2 > cap) {
+      if (cap >= ELIZA_MAX_PROTOCOL_LINE_BYTES) {
+        set_last_error(
+            "Bun bridge protocol line exceeded %d bytes",
+            ELIZA_MAX_PROTOCOL_LINE_BYTES);
+        free(out);
+        return NULL;
+      }
       cap *= 2;
+      if (cap > ELIZA_MAX_PROTOCOL_LINE_BYTES) cap = ELIZA_MAX_PROTOCOL_LINE_BYTES;
       char *grown = (char *)realloc(out, cap);
       if (!grown) {
+        set_last_error("out of memory while reading Bun bridge protocol line");
         free(out);
         return NULL;
       }
@@ -558,15 +591,20 @@ static int wait_for_ready(int stdout_fd, int timeout_ms) {
   for (;;) {
     int64_t remaining = deadline - monotonic_ms();
     if (remaining <= 0) {
-      fprintf(stderr, "[ElizaBunEngine] ios-bridge did not become ready within %dms\n", timeout_ms);
+      set_last_error("ios-bridge did not become ready within %dms", timeout_ms);
+      fprintf(stderr, "[ElizaBunEngine] %s\n", eliza_bun_engine_last_error());
       return -2;
     }
     int timed_out = 0;
     char *line = read_line_timeout(stdout_fd, (int)remaining, &timed_out);
     if (!line) {
       if (timed_out) {
-        fprintf(stderr, "[ElizaBunEngine] ios-bridge did not become ready within %dms\n", timeout_ms);
+        set_last_error("ios-bridge did not become ready within %dms", timeout_ms);
+        fprintf(stderr, "[ElizaBunEngine] %s\n", eliza_bun_engine_last_error());
         return -2;
+      }
+      if (g_last_error[0] == '\0') {
+        set_last_error("ios-bridge closed before readiness");
       }
       fprintf(stderr, "[ElizaBunEngine] ios-bridge closed before readiness\n");
       return -1;
@@ -576,7 +614,10 @@ static int wait_for_ready(int stdout_fd, int timeout_ms) {
     free(line);
     if (ready > 0) return 0;
     if (ready < 0) {
-      fprintf(stderr, "[ElizaBunEngine] ios-bridge readiness failed: %s\n", ready_error ? ready_error : "unknown error");
+      set_last_error(
+          "ios-bridge readiness failed: %s",
+          ready_error ? ready_error : "unknown error");
+      fprintf(stderr, "[ElizaBunEngine] %s\n", eliza_bun_engine_last_error());
       free(ready_error);
       return -1;
     }
@@ -587,24 +628,41 @@ const char *eliza_bun_engine_abi_version(void) {
   return "1";
 }
 
+const char *eliza_bun_engine_last_error(void) {
+  pthread_mutex_lock(&g_error_mutex);
+  static char snapshot[ELIZA_LAST_ERROR_BYTES];
+  snprintf(snapshot, sizeof(snapshot), "%s", g_last_error);
+  pthread_mutex_unlock(&g_error_mutex);
+  return snapshot;
+}
+
 int32_t eliza_bun_engine_start(
     const char *bundle_path,
     const char *argv_json,
     const char *env_json,
     const char *app_support_dir) {
   if (g_running) return 0;
-  if (!bundle_path || bundle_path[0] == '\0') return -1;
+  set_last_error("");
+  if (!bundle_path || bundle_path[0] == '\0') {
+    set_last_error("bundle_path is required");
+    return -1;
+  }
 
   int stdin_pipe[2] = {-1, -1};
   int stdout_pipe[2] = {-1, -1};
   int stderr_pipe[2] = {-1, -1};
-  if (pipe(stdin_pipe) != 0) return -1;
+  if (pipe(stdin_pipe) != 0) {
+    set_last_error("failed to create stdin pipe: %s", strerror(errno));
+    return -1;
+  }
   if (pipe(stdout_pipe) != 0) {
+    set_last_error("failed to create stdout pipe: %s", strerror(errno));
     close(stdin_pipe[0]);
     close(stdin_pipe[1]);
     return -1;
   }
   if (pipe(stderr_pipe) != 0) {
+    set_last_error("failed to create stderr pipe: %s", strerror(errno));
     close(stdin_pipe[0]);
     close(stdin_pipe[1]);
     close(stdout_pipe[0]);
@@ -618,6 +676,7 @@ int32_t eliza_bun_engine_start(
   int argc = 0;
   char **args = parse_argv_json(argv_json, bundle_path, &argc);
   if (!args || argc <= 0) {
+    set_last_error("failed to parse argv JSON for Bun engine");
     close(stdin_pipe[0]);
     close(stdin_pipe[1]);
     close(stdout_pipe[0]);
@@ -636,6 +695,7 @@ int32_t eliza_bun_engine_start(
       on_bun_exit);
   free_argv(args, argc);
   if (result != 0) {
+    set_last_error("bun_start failed with code %d", result);
     close(stdin_pipe[0]);
     close(stdin_pipe[1]);
     close(stdout_pipe[0]);
@@ -653,6 +713,7 @@ int32_t eliza_bun_engine_start(
   g_stderr_write_fd = stderr_pipe[1];
 
   if (start_stderr_drain(g_stderr_read_fd) != 0) {
+    set_last_error("failed to start stderr drain thread");
     eliza_bun_engine_stop();
     return -1;
   }

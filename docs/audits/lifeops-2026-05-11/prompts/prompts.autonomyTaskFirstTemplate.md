@@ -25,9 +25,7 @@ USER CHAT CONTEXT (most recent last):
 Decide what to do next. Output a JSON thought, then take the most useful action.
 
 Example:
-thought: Need to gather UI state before acting.
-actions[1]:
-  - name: COMPUTER_USE_INSPECT
+{"thought":"Need to gather UI state before acting.","actions":[{"name":"COMPUTER_USE_INSPECT","params":{}}]}
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 

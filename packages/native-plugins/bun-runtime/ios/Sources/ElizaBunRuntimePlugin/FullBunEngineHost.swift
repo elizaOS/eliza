@@ -12,6 +12,7 @@ final class FullBunEngineHost {
     private static let expectedAbiVersion = "1"
 
     private typealias AbiVersionFn = @convention(c) () -> UnsafePointer<CChar>?
+    private typealias LastErrorFn = @convention(c) () -> UnsafePointer<CChar>?
     private typealias StartFn = @convention(c) (
         UnsafePointer<CChar>,
         UnsafePointer<CChar>,
@@ -27,6 +28,7 @@ final class FullBunEngineHost {
 
     private var handle: UnsafeMutableRawPointer?
     private var abiVersionFn: AbiVersionFn?
+    private var lastErrorFn: LastErrorFn?
     private var startFn: StartFn?
     private var stopFn: StopFn?
     private var callFn: CallFn?
@@ -71,7 +73,11 @@ final class FullBunEngineHost {
             }
         }
         guard code == 0 else {
-            throw makeError("ElizaBunEngine start failed with code \(code)")
+            let detail = lastError()
+            throw makeError(
+                "ElizaBunEngine start failed with code \(code)" +
+                    (detail.isEmpty ? "" : ": \(detail)")
+            )
         }
         running = true
     }
@@ -127,6 +133,10 @@ final class FullBunEngineHost {
                 "eliza_bun_engine_abi_version",
                 in: openedHandle
             )
+            let loadedLastErrorFn: LastErrorFn = try symbol(
+                "eliza_bun_engine_last_error",
+                in: openedHandle
+            )
             let loadedStartFn: StartFn = try symbol("eliza_bun_engine_start", in: openedHandle)
             let loadedStopFn: StopFn = try symbol("eliza_bun_engine_stop", in: openedHandle)
             let loadedCallFn: CallFn = try symbol("eliza_bun_engine_call", in: openedHandle)
@@ -143,6 +153,7 @@ final class FullBunEngineHost {
 
             self.handle = openedHandle
             self.abiVersionFn = loadedAbiVersionFn
+            self.lastErrorFn = loadedLastErrorFn
             self.startFn = loadedStartFn
             self.stopFn = loadedStopFn
             self.callFn = loadedCallFn
@@ -180,6 +191,11 @@ final class FullBunEngineHost {
     private func encodeJSON(_ value: Any) throws -> String {
         let data = try JSONSerialization.data(withJSONObject: value)
         return String(data: data, encoding: .utf8) ?? "{}"
+    }
+
+    private func lastError() -> String {
+        guard let pointer = lastErrorFn?() else { return "" }
+        return String(cString: pointer)
     }
 
     private func makeError(_ message: String) -> NSError {

@@ -66,7 +66,7 @@ log = logging.getLogger("synth-pairs")
 AGENT_NAMES = [
     "Iris", "Kai", "Ava", "Nova", "Echo", "Sage", "Atlas", "Lyra",
     "Pico", "Lumi", "Rune", "Vega", "Sol", "Orion", "Mira", "Tess",
-    "milady", "Eliza",
+    "eliza", "Eliza",
 ]
 
 USER_NAMES = [
@@ -2063,7 +2063,7 @@ def _sample_value_for_param(p: dict, plugin: str, action_name: str, idx: int,
                 "https://github.com/issues/42", "https://acme.example/api"][idx % 4]
     if n == "repo":
         return ["elizaOS/eliza", "anthropics/claude-cookbooks",
-                "milady/training", "shaw/playground"][idx % 4]
+                "eliza/training", "shaw/playground"][idx % 4]
     if n in ("commitmessage",):
         return ["fix: handle null user", "feat: add export endpoint",
                 "chore: bump deps", "docs: update README"][idx % 4]

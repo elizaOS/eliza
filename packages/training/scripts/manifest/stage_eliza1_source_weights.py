@@ -70,28 +70,28 @@ class SourceArtifact:
 
 
 TEXT_SOURCES: Final[dict[str, SourceArtifact]] = {
-    "0_6b": SourceArtifact(
+    "0_8b": SourceArtifact(
         kind="text",
-        repo="unsloth/Qwen3.5-0.6B-GGUF",
-        filename="Qwen3.5-0.6B-Q8_0.gguf",
-        destination="source/text/qwen3.5-0.6b-q8_0.gguf",
+        repo="unsloth/Qwen3.5-0.8B-GGUF",
+        filename="Qwen3.5-0.8B-Q8_0.gguf",
+        destination="source/text/qwen3.5-0.8b-q8_0.gguf",
         license="apache-2.0",
         status="source-only",
         notes=(
-            "Replaces the old Qwen3 small-tier placeholder; Qwen3.5's smallest public tier is 0.6B.",
+            "GGUF mirror for the official Qwen/Qwen3.5-0.8B base.",
             "Final Eliza-1 0.6B still needs training plus Q3_K_M quantization.",
         ),
     ),
-    "1_7b": SourceArtifact(
+    "2b": SourceArtifact(
         kind="text",
-        repo="unsloth/Qwen3.5-1.7B-GGUF",
-        filename="Qwen3.5-1.7B-Q8_0.gguf",
-        destination="source/text/qwen3.5-1_7b-q8_0.gguf",
+        repo="unsloth/Qwen3.5-2B-GGUF",
+        filename="Qwen3.5-2B-Q8_0.gguf",
+        destination="source/text/qwen3.5-2b-q8_0.gguf",
         license="apache-2.0",
         status="source-only",
         notes=(
-            "Replaces the old Qwen3 small-tier placeholder; Qwen3.5's nearest public tier is 1.7B.",
-            "Final Eliza-1 1.7B still needs training plus Q4_K_M quantization.",
+            "GGUF mirror for the official Qwen/Qwen3.5-2B base.",
+            "Final Eliza-1 2B still needs training plus Q4_K_M quantization.",
         ),
     ),
     "4b": SourceArtifact(
@@ -149,8 +149,8 @@ TEXT_SOURCES: Final[dict[str, SourceArtifact]] = {
 }
 
 DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
-    "0_6b": None,
-    "1_7b": None,
+    "0_8b": None,
+    "2b": None,
     "4b": None,
     "9b": SourceArtifact(
         kind="dflash",
@@ -193,24 +193,8 @@ DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
 }
 
 VISION_SOURCES: Final[dict[str, SourceArtifact | None]] = {
-    "0_6b": SourceArtifact(
-        kind="vision",
-        repo="unsloth/Qwen3.5-0.6B-GGUF",
-        filename="mmproj-F16.gguf",
-        destination="source/vision/qwen3.5-0.6b-mmproj-f16.gguf",
-        license="apache-2.0",
-        status="source-only",
-        notes=("Final Eliza-1 0.6B vision/mmproj release artifact is not produced yet.",),
-    ),
-    "1_7b": SourceArtifact(
-        kind="vision",
-        repo="unsloth/Qwen3.5-1.7B-GGUF",
-        filename="mmproj-F16.gguf",
-        destination="source/vision/qwen3.5-1_7b-mmproj-f16.gguf",
-        license="apache-2.0",
-        status="source-only",
-        notes=("Final Eliza-1 1.7B vision/mmproj release artifact is not produced yet.",),
-    ),
+    "0_8b": None,
+    "2b": None,
     "4b": SourceArtifact(
         kind="vision",
         repo="unsloth/Qwen3.5-4B-GGUF",

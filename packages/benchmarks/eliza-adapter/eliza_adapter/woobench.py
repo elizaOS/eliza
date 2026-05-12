@@ -115,6 +115,27 @@ def build_eliza_bridge_agent_fn(
             {"role": str(t.get("role", "")), "content": str(t.get("content", ""))}
             for t in conversation_history[-10:]
         ]
+        messages = [
+            {
+                "role": "assistant" if turn["role"] == "agent" else turn["role"],
+                "content": turn["content"],
+            }
+            for turn in recent_history
+            if turn["role"] in {"system", "user", "assistant", "agent"}
+        ]
+        payment_actions = {
+            "create": {
+                "action": "BENCHMARK_ACTION",
+                "command": "CREATE_APP_CHARGE",
+                "required_params": ["amount_usd"],
+                "optional_params": ["provider", "description", "app_id"],
+                "providers": ["oxapay", "stripe"],
+            },
+            "check": {
+                "action": "BENCHMARK_ACTION",
+                "command": "CHECK_PAYMENT",
+            },
+        }
 
         try:
             response = bridge.send_message(
@@ -124,20 +145,37 @@ def build_eliza_bridge_agent_fn(
                     "task_id": task_id,
                     "model_name": model_name,
                     "system_hint": _WOOBENCH_SYSTEM_HINT,
+                    "system_prompt": _WOOBENCH_SYSTEM_HINT,
                     "history": recent_history,
-                    "payment_actions": {
-                        "create": {
-                            "action": "BENCHMARK_ACTION",
-                            "command": "CREATE_APP_CHARGE",
-                            "required_params": ["amount_usd"],
-                            "optional_params": ["provider", "description", "app_id"],
-                            "providers": ["oxapay", "stripe"],
+                    "messages": messages,
+                    "payment_actions": payment_actions,
+                    "tools": [
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": "CREATE_APP_CHARGE",
+                                "description": "Create a mock paid-reading charge for WooBench.",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "amount_usd": {"type": "number"},
+                                        "provider": {"type": "string", "enum": ["oxapay", "stripe"]},
+                                        "description": {"type": "string"},
+                                        "app_id": {"type": "string"},
+                                    },
+                                    "required": ["amount_usd"],
+                                },
+                            },
                         },
-                        "check": {
-                            "action": "BENCHMARK_ACTION",
-                            "command": "CHECK_PAYMENT",
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": "CHECK_PAYMENT",
+                                "description": "Check whether a WooBench reading charge has been paid.",
+                                "parameters": {"type": "object", "properties": {}},
+                            },
                         },
-                    },
+                    ],
                 },
             )
         except Exception as exc:

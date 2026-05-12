@@ -228,7 +228,7 @@ describe("TODO action", () => {
   });
 
   afterEach(() => {
-    delete process.env.MILADY_PARENT_TRAJECTORY_STEP_ID;
+    delete process.env.ELIZA_PARENT_TRAJECTORY_STEP_ID;
   });
 
   describe("op=write", () => {
@@ -280,7 +280,7 @@ describe("TODO action", () => {
     });
 
     it("captures parentTrajectoryStepId from env on new rows", async () => {
-      process.env.MILADY_PARENT_TRAJECTORY_STEP_ID = "parent-step-99";
+      process.env.ELIZA_PARENT_TRAJECTORY_STEP_ID = "parent-step-99";
       await invoke(runtime, {
         op: "write",
         todos: [{ content: "child task", status: "pending" }],

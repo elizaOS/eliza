@@ -16,27 +16,27 @@ Usage::
 
     # Dry-run on the smallest Eliza-1 tier.
     uv run python scripts/optimize_for_eliza1.py \\
-        --base-model elizaos/eliza-1-0_6b \\
-        --output-dir checkpoints/eliza-1-0_6b \\
+        --base-model elizaos/eliza-1-0_8b \\
+        --output-dir checkpoints/eliza-1-0_8b \\
         --apply polarquant qjl turboquant \\
         --gguf-target packages/inference \\
-        --hf-repo elizaos/eliza-1-0_6b \\
+        --hf-repo elizaos/eliza-1-0_8b \\
         --dry-run
 
     # Real run (needs the elizaOS/llama.cpp v1.0.0-eliza checkout
     # at $LLAMA_CPP_DIR for the convert step + a real HF token).
-    HF_TOKEN=hf_xxx LLAMA_CPP_DIR=$HOME/src/milady-llama.cpp \\
+    HF_TOKEN=hf_xxx LLAMA_CPP_DIR=$HOME/src/eliza-llama.cpp \\
         uv run python scripts/optimize_for_eliza1.py \\
-            --base-model elizaos/eliza-1-0_6b \\
-            --output-dir checkpoints/eliza-1-0_6b \\
+            --base-model elizaos/eliza-1-0_8b \\
+            --output-dir checkpoints/eliza-1-0_8b \\
             --apply polarquant qjl turboquant \\
-            --hf-repo elizaos/eliza-1-0_6b
+            --hf-repo elizaos/eliza-1-0_8b
 
 The downstream ``llama-server`` invocation that the published manifest
 documents looks like::
 
-    llama-server --model eliza-1-0_6b-Q4_POLAR.gguf \\
-                 --draft-model eliza-1-0_6b-drafter.gguf \\
+    llama-server --model eliza-1-0_8b-Q4_POLAR.gguf \\
+                 --draft-model eliza-1-0_8b-drafter.gguf \\
                  --spec-type dflash \\
                  --cache-type-k qjl1_256 \\
                  --cache-type-v tbq3_0
@@ -429,7 +429,7 @@ def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
         return Path(which)
     raise FileNotFoundError(
         "convert_hf_to_gguf.py not found. Either pass --llama-cpp-dir or set "
-        "LLAMA_CPP_DIR=$HOME/src/milady-llama.cpp (the elizaOS/llama.cpp "
+        "LLAMA_CPP_DIR=$HOME/src/eliza-llama.cpp (the elizaOS/llama.cpp "
         "v1.0.0-eliza checkout)."
     )
 
@@ -500,7 +500,7 @@ def _push_to_hf(
         sys.executable,
         str(push_script),
         "--registry-key",
-        "qwen3-0.6b",  # smoke entry; --repo-id below overrides anyway
+        "qwen3.5-0.8b",  # smoke entry; --repo-id below overrides anyway
         "--checkpoint",
         str(gguf_path.parent),
         "--repo-id",
@@ -651,7 +651,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--base-model",
         required=True,
-        help="HF repo id or local path to the base model (e.g. elizaos/eliza-1-0_6b).",
+        help="HF repo id or local path to the base model (e.g. elizaos/eliza-1-0_8b).",
     )
     p.add_argument(
         "--output-dir",
@@ -695,7 +695,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--hf-repo",
         default=None,
-        help="HuggingFace repo to publish to (e.g. elizaos/eliza-1-0_6b). "
+        help="HuggingFace repo to publish to (e.g. elizaos/eliza-1-0_8b). "
              "When omitted the pipeline stops after manifest emission.",
     )
     p.add_argument(

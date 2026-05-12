@@ -61,7 +61,7 @@ const repoRoot = path.resolve(agentRoot, "..", "..");
 // JSContext runtime: Bun.build runs with target=browser (no inlined Bun
 // CJS-on-V8 shims) and a polyfill prefix from
 // native/ios-bun-port/polyfill/dist/polyfill-prefix.js is concatenated on
-// top to install Bun + Node module shims over globalThis.__MILADY_BRIDGE__.
+// top to install Bun + Node module shims over globalThis.__ELIZA_BRIDGE__.
 const targetArg = (process.argv.find((a) => a.startsWith("--target=")) ?? "")
   .split("=")[1];
 const TARGET = targetArg || process.env.ELIZA_MOBILE_TARGET || "android";
@@ -751,7 +751,7 @@ if (!existsSync(bundlerTsconfig)) {
 // ios-jsc uses target=browser so Bun.build does NOT inline Bun's
 // CJS-on-V8 shims; the polyfill prefix from
 // native/ios-bun-port/polyfill/ supplies Bun + Node module shims at
-// runtime over globalThis.__MILADY_BRIDGE__. The platform define
+// runtime over globalThis.__ELIZA_BRIDGE__. The platform define
 // stays "ios" (so runtime feature gates that check ELIZA_PLATFORM=='ios'
 // fire), with a parallel ELIZA_RUNTIME='ios-jsc' for code that needs to
 // distinguish the JSContext + bridge environment from a real Bun runtime.
@@ -759,7 +759,7 @@ const bunBuildTarget = TARGET === "ios-jsc" ? "browser" : "bun";
 const platformDefineValue = TARGET === "ios-jsc" ? "ios" : TARGET;
 
 // Browser-targeted Bun.build refuses Node built-ins outright; the polyfill
-// resolves these at runtime via __MILADY_BRIDGE__, so we mark them external
+// resolves these at runtime via __ELIZA_BRIDGE__, so we mark them external
 // and let the imports survive into the output. The list mirrors the modules
 // the polyfill exposes plus the long tail that workspace dependencies pull
 // in (timers, module, etc.). Anything not handled by the polyfill will
@@ -903,7 +903,7 @@ const buildResult = await Bun.build({
     // ios-jsc: actively mark Node built-ins as external via onResolve so
     // Bun.build's browser target stops substituting its incomplete browser
     // polyfills (e.g. node:url without pathToFileURL). The polyfill prefix
-    // resolves these at runtime via __MILADY_BRIDGE__. Comes AFTER
+    // resolves these at runtime via __ELIZA_BRIDGE__. Comes AFTER
     // stubResolverPlugin so explicit stubs (ios-jsc-throw, ios-os, etc.)
     // still win for the modules we want to inline.
     ...(TARGET === "ios-jsc"
@@ -1071,7 +1071,7 @@ const polyfillFooter = "";
 // ios-jsc: prepend the JSContext polyfill from
 // native/ios-bun-port/polyfill/dist/polyfill-prefix.js (built in parallel
 // by the polyfill agent). The prefix installs Bun + Node module shims
-// over globalThis.__MILADY_BRIDGE__. If the file is missing (parallel
+// over globalThis.__ELIZA_BRIDGE__. If the file is missing (parallel
 // build hasn't finished yet) emit a banner comment and proceed so the
 // pipeline keeps moving — the polyfill can be concatenated at install
 // time on the device side.
@@ -1113,7 +1113,7 @@ if (TARGET === "ios-jsc") {
       polyfillPath +
       "\n" +
       "// This bundle assumes the polyfill prefix is prepended at install time.\n" +
-      "// Without it, __MILADY_BRIDGE__-backed Bun + Node shims will be missing\n" +
+      "// Without it, __ELIZA_BRIDGE__-backed Bun + Node shims will be missing\n" +
       "// and the agent will crash at first `require('node:fs')` / `Bun.serve()`.\n";
     console.warn(
       `[build-mobile] WARNING: ios-jsc polyfill missing at ${polyfillPath}; ` +
@@ -1124,15 +1124,15 @@ if (TARGET === "ios-jsc") {
 }
 
 // The bridge-version guard is appended after the polyfill so the polyfill
-// itself defines __MILADY_BRIDGE__ usage; the guard runs before the agent
+// itself defines __ELIZA_BRIDGE__ usage; the guard runs before the agent
 // bundle and aborts fast on a version mismatch.
 const iosJscBridgeCheck =
   TARGET === "ios-jsc"
-    ? "if (typeof globalThis.__MILADY_BRIDGE__ === 'undefined') {\n" +
-      "  throw new Error('[ios-jsc] __MILADY_BRIDGE__ is not installed; the Swift Capacitor host must inject it before evaluating this bundle.');\n" +
+    ? "if (typeof globalThis.__ELIZA_BRIDGE__ === 'undefined') {\n" +
+      "  throw new Error('[ios-jsc] __ELIZA_BRIDGE__ is not installed; the Swift Capacitor host must inject it before evaluating this bundle.');\n" +
       "}\n" +
-      "if (globalThis.__MILADY_BRIDGE__ && globalThis.__MILADY_BRIDGE__.version && globalThis.__MILADY_BRIDGE__.version !== 'v1') {\n" +
-      "  throw new Error('[ios-jsc] __MILADY_BRIDGE__ version mismatch: bundle requires v1, host provided ' + globalThis.__MILADY_BRIDGE__.version);\n" +
+      "if (globalThis.__ELIZA_BRIDGE__ && globalThis.__ELIZA_BRIDGE__.version && globalThis.__ELIZA_BRIDGE__.version !== 'v1') {\n" +
+      "  throw new Error('[ios-jsc] __ELIZA_BRIDGE__ version mismatch: bundle requires v1, host provided ' + globalThis.__ELIZA_BRIDGE__.version);\n" +
       "}\n"
     : "";
 

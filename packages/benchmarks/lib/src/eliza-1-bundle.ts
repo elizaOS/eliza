@@ -32,8 +32,8 @@ import path from "node:path";
 import { expandHome } from "./local-llama-cpp.ts";
 
 export const ELIZA_ONE_MODEL_SIZES = [
-	"0.6b",
-	"1.7b",
+	"0.8b",
+	"2b",
 	"9b",
 	"27b",
 	"27b-1m",

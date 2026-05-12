@@ -49,6 +49,8 @@ class GenerationConfig:
     temperature: float = 0.0
     top_p: float = 1.0
     stop: tuple[str, ...] = ()
+    tools: tuple[Mapping[str, object], ...] = ()
+    tool_choice: str | None = None
 
 
 @dataclass(frozen=True)
@@ -133,6 +135,10 @@ class HTTPOpenAICompatibleClient:
             kwargs["top_p"] = config.top_p
         if config.stop:
             kwargs["stop"] = list(config.stop)
+        if config.tools:
+            kwargs["tools"] = [dict(tool) for tool in config.tools]
+            if config.tool_choice in {"auto", "required"}:
+                kwargs["tool_choice"] = config.tool_choice
         # Mypy can't see SDK types — narrow via getattr.
         completions = getattr(getattr(client, "chat"), "completions")
         resp = completions.create(**kwargs)
@@ -184,6 +190,7 @@ class TrajectoryRecordingClient:
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "prompt": "\n\n".join(f"{m.role}: {m.content}" for m in messages),
             "response": result.text,
+            "tools": [dict(tool) for tool in config.tools],
             "usage": usage,
             "latency_ms": latency_ms,
             "raw": result.raw,
@@ -296,6 +303,8 @@ class HarnessClient:
                 "system_prompt": system_prompt,
                 "benchmark": "standard",
                 "max_tokens": config.max_tokens,
+                "tools": [dict(tool) for tool in config.tools],
+                "tool_choice": config.tool_choice or "auto",
             },
         )
         usage = response.params.get("usage")

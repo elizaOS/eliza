@@ -312,7 +312,7 @@ Important broken-but-useful candidates:
 Existing config exclusions that should be treated as broken/useful until proven obsolete:
 
 - `test/vitest/e2e.config.ts` excludes 6 heavy e2e paths, 2 checkout-dependent e2e paths, 18 specialized live e2e paths, and 8 credential-dependent e2e paths from the baseline e2e lane.
-- `test/vitest/real.config.ts` has CI real-lane exclusions for headless ComputerUse, app-core live onboarding, benchmark app eval, plugin-form live toon integration, LifeOps live extraction/chat, media provider, life param extraction, wallet EVM live, plugin-shell real, and plugin-openrouter live models.
+- `test/vitest/real.config.ts` has CI real-lane exclusions for headless ComputerUse, app-core live onboarding, benchmark app eval, plugin-form live structured-output integration, LifeOps live extraction/chat, media provider, life param extraction, wallet EVM live, plugin-shell real, and plugin-openrouter live models.
 - `packages/app-core/vitest.config.ts` excludes app real/live e2e and local-inference engine e2e unless `ELIZA_INCLUDE_LIVE_E2E=1`.
 
 Policy for skipped tests:

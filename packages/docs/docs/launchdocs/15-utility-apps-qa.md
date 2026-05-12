@@ -43,12 +43,12 @@ Workflow Builder is exposed to users through the internal tool list and opens `/
 - `plugins/app-workflow-builder` typechecked cleanly with `bun run typecheck`.
 - Static review validates that internal tools can launch either as dedicated Electrobun app windows through `desktopOpenAppWindow` or as shell tab fallbacks (`packages/app-core/src/components/pages/AppsView.tsx:540`, `packages/app-core/src/components/pages/AppsView.tsx:737`).
 - Static review validates details-page gating: only internal tools with `hasDetailsPage` opt into details first; overlay apps skip details; catalog apps with sessions/detail panels/games get details (`packages/app-core/src/components/pages/AppDetailsView.tsx:777`).
-- Static review validates Android-only overlay filtering outside MiladyOS Android (`packages/app-core/src/components/apps/overlay-app-registry.ts:62`).
+- Static review validates Android-only overlay filtering outside ElizaOS Android (`packages/app-core/src/components/apps/overlay-app-registry.ts:62`).
 
 ## What I could not validate
 
-- I did not run a desktop, web, Android, or MiladyOS visual smoke of the Apps catalog, app windows, or overlays.
-- I could not validate Android Contacts/Phone/WiFi on-device permissions, native bridge calls, dialer/contacts/WiFi side effects, or MiladyOS user-agent/platform gating.
+- I did not run a desktop, web, Android, or ElizaOS visual smoke of the Apps catalog, app windows, or overlays.
+- I could not validate Android Contacts/Phone/WiFi on-device permissions, native bridge calls, dialer/contacts/WiFi side effects, or ElizaOS user-agent/platform gating.
 - I could not validate Electrobun OS menu launches. Static review found menu drift, but the direct targeted command did not execute because the repo has no root `vitest.config.ts`; `packages/app-core/platforms/electrobun/src/application-menu.test.ts` was not discovered by the attempted root command.
 - I could not validate Screenshare routes through a targeted test command. `plugins/app-screenshare` has no local `vitest.config.ts`, and direct root Vitest filters did not discover `plugins/app-screenshare/test/routes.test.ts` from this repo cwd. The test file itself exists and covers route/session behavior (`plugins/app-screenshare/test/routes.test.ts:122`).
 - I did not validate live Plugin Viewer, Skills Viewer, Trajectory Viewer, Relationship Viewer, Memory Viewer, Runtime Debugger, Database Viewer, Log Viewer, Fine Tuning, Steward, LifeOps, or Workflow Builder UI rendering beyond static launch wiring and app-core catalog tests.
@@ -61,7 +61,7 @@ Workflow Builder is exposed to users through the internal tool list and opens `/
 
 ### P1
 
-- Android system overlay UIs appear not to be wired into the renderer app shell. Contacts/Phone/WiFi expose `./register` modules and register overlay apps only when `isElizaOS()` is true (`plugins/app-contacts/src/register.ts:13`, `plugins/app-phone/src/register.ts:14`, `plugins/app-wifi/src/register.ts:14`), and runtime code says these imports register the overlay UIs (`packages/agent/src/runtime/plugin-collector.ts:324`). But `packages/app/src/main.tsx` imports Companion, LifeOps widgets, task coordinator slots, games, Shopify, and Vincent only (`packages/app/src/main.tsx:75`, `packages/app/src/main.tsx:109`), and `packages/app/package.json` does not list `@elizaos/app-contacts`, `@elizaos/app-phone`, or `@elizaos/app-wifi` (`packages/app/package.json:41`). WiFi also depends on `@elizaos/capacitor-wifi` (`plugins/app-wifi/package.json:21`), but the app shell imports native plugin entrypoints through line 16 without WiFi (`packages/app-core/src/platform/native-plugin-entrypoints.ts:3`). Result: MiladyOS Android may load runtime plugin actions, but catalog overlay tiles/components and WiFi native bridge registration are at risk.
+- Android system overlay UIs appear not to be wired into the renderer app shell. Contacts/Phone/WiFi expose `./register` modules and register overlay apps only when `isElizaOS()` is true (`plugins/app-contacts/src/register.ts:13`, `plugins/app-phone/src/register.ts:14`, `plugins/app-wifi/src/register.ts:14`), and runtime code says these imports register the overlay UIs (`packages/agent/src/runtime/plugin-collector.ts:324`). But `packages/app/src/main.tsx` imports Companion, LifeOps widgets, task coordinator slots, games, Shopify, and Vincent only (`packages/app/src/main.tsx:75`, `packages/app/src/main.tsx:109`), and `packages/app/package.json` does not list `@elizaos/app-contacts`, `@elizaos/app-phone`, or `@elizaos/app-wifi` (`packages/app/package.json:41`). WiFi also depends on `@elizaos/capacitor-wifi` (`plugins/app-wifi/package.json:21`), but the app shell imports native plugin entrypoints through line 16 without WiFi (`packages/app-core/src/platform/native-plugin-entrypoints.ts:3`). Result: ElizaOS Android may load runtime plugin actions, but catalog overlay tiles/components and WiFi native bridge registration are at risk.
 
 ### P2
 
@@ -78,7 +78,7 @@ Workflow Builder is exposed to users through the internal tool list and opens `/
 ## Codex-fixable work
 
 - Add `@elizaos/app-contacts`, `@elizaos/app-phone`, and `@elizaos/app-wifi` to the renderer package dependencies where intended, import their `./register` modules behind the existing `isElizaOS()` no-op gates, and add `@elizaos/capacitor-wifi` to the native plugin entrypoint/deps if WiFi must work in the app shell.
-- Add a renderer test that mocks MiladyOS Android and verifies Contacts/Phone/WiFi are registered, available, and absent on stock Android/web.
+- Add a renderer test that mocks ElizaOS Android and verifies Contacts/Phone/WiFi are registered, available, and absent on stock Android/web.
 - Make Electrobun menu parity test compare `getAppMenuEntries()` against the renderer internal-tool list or move the minimal menu data to a shared non-renderer-safe module. At minimum, align LifeOps details behavior and add Workflow Builder.
 - Decide whether Screenshare is intentionally hidden. If it should launch from Apps, remove it from `APPS_VIEW_HIDDEN_APP_NAMES`, add renderer package dependency/import as needed, and add catalog/launch smoke coverage.
 - Either make `plugins/app-workflow-builder` a real self-registering app package or document/remove the stub so the internal `/automations` route is clearly the source of truth.
@@ -89,7 +89,7 @@ Workflow Builder is exposed to users through the internal tool list and opens `/
 - Apps catalog browse on desktop/web: verify section ordering, hero cards, hidden/default behavior, search, empty states, and that visible utility apps use the new app-card formatting without clipped text or missing images.
 - Electrobun desktop: open each visible utility/internal app from Apps browse and from the OS menu, confirm whether it opens a dedicated app window or details page as intended, and verify back/recent-app state.
 - Internal tool surfaces: Plugin Viewer, Skills Viewer, Fine Tuning, Trajectory Viewer, Relationship Viewer, Memory Viewer, Runtime Debugger, Database Viewer, Log Viewer, LifeOps, Steward, and Workflow Builder should render their expected shell tab/window and not a blank route.
-- MiladyOS Android: verify Contacts/Phone/WiFi tiles appear only on MiladyOS Android, not stock Android; grant/deny permissions; test contact read/create, phone call/log behavior, WiFi scan/connect/current network, and failure states.
+- ElizaOS Android: verify Contacts/Phone/WiFi tiles appear only on ElizaOS Android, not stock Android; grant/deny permissions; test contact read/create, phone call/log behavior, WiFi scan/connect/current network, and failure states.
 - Screenshare: if expected for launch, validate route creation, viewer iframe sandbox, local screenshot stream, input commands, session stop, and permission prompts on macOS.
 - Workflow Builder: verify `/automations` from Apps has the right title/app framing and does not feel like a broken standalone app.
 
@@ -109,8 +109,8 @@ Workflow Builder is exposed to users through the internal tool list and opens `/
 | Database Viewer | Internal tool with `/apps/database`. | Static launch wiring reviewed. | Manual render check; verify auth/readonly expectations. |
 | Log Viewer | Internal tool with `/apps/logs`. | Static launch wiring reviewed. | Manual render check and log availability. |
 | Workflow Builder | Internal tool visible as `/automations`; package metadata minimal; register stub. | `bun run typecheck` passed in app package. | Fix/package decision needed; manual `/automations` framing check. |
-| Contacts | Android-only overlay app package with system metadata and component registration. | App plugin test passed, 3 tests. | P1 wiring risk; manual MiladyOS Android contacts permissions/read/create. |
-| Phone | Android-only overlay app package with system metadata and component registration. | App plugin test passed, 3 tests. | P1 wiring risk; manual MiladyOS Android call/log/dialer permissions. |
+| Contacts | Android-only overlay app package with system metadata and component registration. | App plugin test passed, 3 tests. | P1 wiring risk; manual ElizaOS Android contacts permissions/read/create. |
+| Phone | Android-only overlay app package with system metadata and component registration. | App plugin test passed, 3 tests. | P1 wiring risk; manual ElizaOS Android call/log/dialer permissions. |
 | WiFi | Android-only overlay app package with system metadata and component registration. | App plugin test passed, 3 tests. | P1 wiring risk; add WiFi native entrypoint/deps if intended, then device QA scan/connect. |
 | Screenshare | Rich new-style app metadata and routes; hidden from Apps browse. | Static route/test review only; direct test harness did not discover file. | Decide discoverability, then manual stream/viewer/input QA. |
 | Browser | Plugin/runtime package, hidden from Apps browse, no app-card metadata. | Static package review only; deeper browser QA is in Launch Readiness 11. | OK as hidden infrastructure unless product expects app tile. |

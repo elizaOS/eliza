@@ -75,7 +75,7 @@ const INTERNAL_THOUGHT_RE = /\([^)]*'s internal thought:[^)]*\)/i;
 const ACTIONS_LINE_RE = /\([^)]*'s actions:[^)]*\)/i;
 const USER_SPEAKER_RE = /^(?:user|operator|human|client|customer|system)$/i;
 const ASSISTANT_SPEAKER_RE =
-  /^(?:eliza|milady|agent|assistant|bot|ai)(?:\s*\([^)]*\))?$/i;
+  /^(?:eliza|eliza|agent|assistant|bot|ai)(?:\s*\([^)]*\))?$/i;
 const SYNTHETIC_MARKER_LINE_RE =
   /^\[(system summary|Agent|Tool(?::([^\]\s]+))?)(?:\s+\[([^\]]*)\])?\]\s*(.*)$/i;
 const REPLACEMENT_OVERHEAD_TOKENS = 32;

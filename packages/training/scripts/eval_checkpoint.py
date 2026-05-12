@@ -21,7 +21,7 @@ Args:
   --val-jsonl <path>      Validation JSONL. Default: data/smoke/val.jsonl.
   --max-examples <n>      Per-bucket cap for eliza_bench. Default 50 — the
                           smoke val set is tiny on purpose so each scoring
-                          pass takes ~10s on a 0.6B and ~30s on a 2B (per
+                          pass takes ~10s on a 0.8B and ~30s on a 2B (per
                           AGENTS spec for this script).
   --out <path>            Where to write the per-checkpoint result JSON.
                           The eval loop also writes a sibling `_eval.json`

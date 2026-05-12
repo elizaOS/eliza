@@ -1,6 +1,6 @@
 # Phase 4 JSON/Data/Generated Artifact Audit
 
-Scope: `/Users/shawwalters/eliza-workspace/milady/eliza`
+Scope: `/Users/shawwalters/eliza-workspace/eliza/eliza`
 
 Date: 2026-05-11
 

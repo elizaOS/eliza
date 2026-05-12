@@ -1,4 +1,4 @@
-"""Emit a Milady-typed GGUF using the elizaOS/llama.cpp fork's converter.
+"""Emit a Eliza-typed GGUF using the elizaOS/llama.cpp fork's converter.
 
 The elizaOS/llama.cpp v1.0.0-eliza fork registers the following
 non-upstream GGML types:
@@ -15,7 +15,7 @@ them); cache types are runtime-only (set via ``llama-server
 This script is a thin wrapper around the fork's
 ``convert_hf_to_gguf.py`` that:
 
-  1. Verifies the convert script exists and has Milady type support
+  1. Verifies the convert script exists and has Eliza type support
      (looks for ``Q4_POLAR`` in the script source — the fork adds it
      to ``GGMLQuantizationType`` directly).
   2. Reads the upstream PolarQuant codes sidecar
@@ -58,7 +58,7 @@ logging.basicConfig(
 log = logging.getLogger("gguf_eliza1_apply")
 
 
-# Source-of-truth slot numbers for the Milady-added GGML types. Mirrors
+# Source-of-truth slot numbers for the Eliza-added GGML types. Mirrors
 # packages/app-core/scripts/aosp/compile-libllama.mjs (preamble) and the
 # elizaOS/llama.cpp fork's gguf-py/gguf/constants.py.
 ELIZA1_GGML_TYPES = {
@@ -121,7 +121,7 @@ def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
 def _convert_script_supports_eliza1(convert_path: Path) -> bool:
     """Best-effort detection of fork-vs-upstream convert script.
 
-    The fork adds Milady type symbols directly to the GGUF Python
+    The fork adds Eliza type symbols directly to the GGUF Python
     constants module; the upstream script does not. We grep for
     ``Q4_POLAR`` because it's the most reliably present marker.
     """
@@ -197,7 +197,7 @@ def _build_ext_metadata(
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=(
-            "Emit a Milady-typed GGUF (Q4_POLAR weights + sidecar metadata "
+            "Emit a Eliza-typed GGUF (Q4_POLAR weights + sidecar metadata "
             "for QJL1_256 K-cache + TBQ V-cache)."
         ),
     )
@@ -212,7 +212,7 @@ def main(argv: list[str] | None = None) -> int:
         "--output",
         type=Path,
         required=True,
-        help="Output GGUF file path (e.g. .../qwen3-0.6b-milady-Q4_POLAR.gguf).",
+        help="Output GGUF file path (e.g. .../qwen3.5-0.8b-eliza-Q4_POLAR.gguf).",
     )
     ap.add_argument(
         "--llama-cpp-dir",
@@ -244,8 +244,20 @@ def main(argv: list[str] | None = None) -> int:
         "--outtype",
         default="q4_polar",
         choices=["q4_polar", "q8_0", "f16", "bf16", "f32", "auto"],
-        help="GGUF tensor type. Default q4_polar (Milady-only); falls back to "
-             "q8_0 automatically when the fork's converter can't emit it yet.",
+        help=(
+            "GGUF tensor type. Default q4_polar (elizaOS fork-only). "
+            "q4_polar is fail-closed for release builds; use "
+            "--allow-unoptimized-fallback only for local debugging."
+        ),
+    )
+    ap.add_argument(
+        "--allow-unoptimized-fallback",
+        action="store_true",
+        help=(
+            "Local-debug escape hatch: when q4_polar cannot be emitted, "
+            "fall back to f16/q8_0 and mark the sidecar as deferred. "
+            "Do not use for Eliza-1 release artifacts."
+        ),
     )
     # Eliza-1 v1 = the upstream BASE models, GGUF-converted + fully optimized
     # (every quant/kernel trick in inference/AGENTS.md §3), NOT fine-tuned.
@@ -307,6 +319,14 @@ def main(argv: list[str] | None = None) -> int:
     fallback_reason: str | None = None
     if args.outtype == "q4_polar" and polar_sidecar is None:
         fallback_reason = f"polarquant codebook ({polar_sidecar_path}) missing"
+        if not args.allow_unoptimized_fallback:
+            log.error(
+                "outtype=q4_polar requires %s. Refusing to emit an "
+                "unoptimized Eliza-1 GGUF; pass --allow-unoptimized-fallback "
+                "only for local debugging.",
+                polar_sidecar_path,
+            )
+            return 2
         log.warning("outtype=q4_polar but %s — falling back to f16", fallback_reason)
         args.outtype = "f16"
 
@@ -322,17 +342,23 @@ def main(argv: list[str] | None = None) -> int:
         convert_path = None
 
     if args.outtype == "q4_polar" and convert_path is not None and not fork_supports_eliza1:
-        # The fork's runtime (ggml.h) defines GGML_TYPE_Q4_POLAR, but its
-        # convert_hf_to_gguf.py may not yet emit it (the converter-side wiring
-        # lags the kernel work). Don't crash — fall back to q8_0 (the best
-        # quant the stock converter does support) and record the deferral so
-        # the manifest is honest. Re-run when the fork's converter ships
-        # --outtype q4_polar.
+        # The fork's runtime (ggml.h) defines GGML_TYPE_Q4_POLAR, but some
+        # converter checkouts may not emit it. Release builds must fail here;
+        # silently shipping q8_0 would make the "fully optimized Eliza-1"
+        # artifact claim false. A local debug escape hatch remains available
+        # for staging environments that only need sidecar metadata.
         fallback_reason = (
             f"{convert_path} does not support --outtype q4_polar yet "
             "(ggml runtime has GGML_TYPE_Q4_POLAR=47 but the converter does not "
             "emit it); using q8_0 — re-run when the fork's converter is updated"
         )
+        if not args.allow_unoptimized_fallback:
+            log.error(
+                "Q4_POLAR conversion unavailable: %s. Refusing fallback for "
+                "release-suitable output.",
+                fallback_reason,
+            )
+            return 2
         log.warning("Q4_POLAR conversion unavailable: %s", fallback_reason)
         args.outtype = "q8_0"
 

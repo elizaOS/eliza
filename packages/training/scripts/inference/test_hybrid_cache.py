@@ -1,4 +1,4 @@
-"""End-to-end test for MiladyHybridCache on Qwen3.5-0.8B.
+"""End-to-end test for ElizaHybridCache on Qwen3.5-0.8B.
 
 Loads the text decoder of Qwen/Qwen3.5-0.8B (a hybrid Gated DeltaNet +
 full-attention model), then generates several completions through each

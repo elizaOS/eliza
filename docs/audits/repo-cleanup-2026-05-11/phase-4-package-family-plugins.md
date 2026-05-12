@@ -1,6 +1,6 @@
 # Phase 4 - Provider, Social, Utility, And Wallet Plugin Audit
 
-Workspace: `/Users/shawwalters/eliza-workspace/milady/eliza`
+Workspace: `/Users/shawwalters/eliza-workspace/eliza/eliza`
 Mode: dry run / report only
 
 No source files were deleted or modified for this pass.

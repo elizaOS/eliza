@@ -7,7 +7,7 @@ implementation can run in two modes:
   `ElizaBunEngine.framework` from `@elizaos/bun-ios-runtime` when the app was
   built with `ELIZA_IOS_FULL_BUN_ENGINE=1`.
 - `engine: "compat"`: hosts a `JSContext` compatibility bridge on a dedicated
-  worker thread, installs the `__MILADY_BRIDGE__` host functions, and loads the
+  worker thread, installs the `__ELIZA_BRIDGE__` host functions, and loads the
   staged iOS agent payload from `public/agent/agent-bundle.js`.
 
 The full Bun engine artifact is produced outside this package by the
@@ -37,8 +37,8 @@ copied into the app bundle by Capacitor's `public` folder resource:
   `packages/agent/dist-mobile-ios/`. Required for the full backend path.
 - `pglite.wasm`, `initdb.wasm`, `pglite.data`, `vector.tar.gz`,
   `fuzzystrmatch.tar.gz` — PGlite runtime assets used by the agent bundle.
-- `milady-polyfill-prefix.js` — the polyfill prefix that maps `Bun.*` /
-  `node:*` onto `__MILADY_BRIDGE__` for the compatibility JSContext path.
+- `eliza-polyfill-prefix.js` — the polyfill prefix that maps `Bun.*` /
+  `node:*` onto `__ELIZA_BRIDGE__` for the compatibility JSContext path.
   Optional; the runtime ships a minimal embedded fallback that just
   version-checks the bridge.
 
@@ -79,8 +79,8 @@ await ElizaBunRuntime.stop();
 
 The full-engine ABI lives in
 `packages/bun-ios-runtime/BRIDGE_CONTRACT.md`. The compatibility host still
-implements the Swift `__MILADY_BRIDGE__` v1 surface; breaking changes bump the
-version string emitted in `globalThis.__MILADY_BRIDGE_VERSION__`.
+implements the Swift `__ELIZA_BRIDGE__` v1 surface; breaking changes bump the
+version string emitted in `globalThis.__ELIZA_BRIDGE_VERSION__`.
 
 In full Bun mode, the Swift host loads `ElizaBunEngine.framework` with
 `dlopen`, starts `agent-bundle.js ios-bridge --stdio`, and forwards React
@@ -93,16 +93,16 @@ ITTP kernel for compatibility builds.
 
 `llama_*` host functions delegate to `LlamaBridgeImpl`, which links against the
 same `LlamaCpp.xcframework` built by the iOS local-inference pipeline. The
-xcframework build also emits the small `milady_llama_*` C helpers needed by the
+xcframework build also emits the small `eliza_llama_*` C helpers needed by the
 Swift direct bridge.
 
 ## Events
 
 The plugin emits two Capacitor events:
 
-- `milady:ui` — every `bridge.ui_post_message(channel, payload)` call.
-  Subscribe with `ElizaBunRuntime.addListener("milady:ui", handler)`.
-- `milady:runtime-exit` — fired when the agent calls
+- `eliza:ui` — every `bridge.ui_post_message(channel, payload)` call.
+  Subscribe with `ElizaBunRuntime.addListener("eliza:ui", handler)`.
+- `eliza:runtime-exit` — fired when the agent calls
   `bridge.exit(code)`. Useful for surfacing crashes to the React shell.
 
 ## Limitations (v1)

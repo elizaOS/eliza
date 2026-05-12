@@ -44,7 +44,7 @@ export const containersEnv = {
   /** SSH user for connecting to Docker nodes. Defaults to "root". */
   sshUser(): string {
     const env = getCloudAwareEnv();
-    return pick(env.CONTAINERS_SSH_USER, env.AGENT_SSH_USER, env.MILADY_SSH_USER) ?? "root";
+    return pick(env.CONTAINERS_SSH_USER, env.AGENT_SSH_USER, env.ELIZA_SSH_USER) ?? "root";
   },
 
   /** Docker network name created on every node. Containers attach to this. */
@@ -99,7 +99,7 @@ export const containersEnv = {
       env.ELIZA_AGENT_IMAGE,
       env.CONTAINERS_DEFAULT_IMAGE,
       env.AGENT_DOCKER_IMAGE,
-      env.MILADY_DOCKER_IMAGE,
+      env.ELIZA_DOCKER_IMAGE,
     );
   },
 
@@ -115,7 +115,7 @@ export const containersEnv = {
         env.ELIZA_AGENT_IMAGE_PLATFORM,
         env.CONTAINERS_DEFAULT_IMAGE_PLATFORM,
         env.AGENT_DOCKER_PLATFORM,
-        env.MILADY_DOCKER_PLATFORM,
+        env.ELIZA_DOCKER_PLATFORM,
       ) ?? "linux/amd64"
     );
   },
@@ -133,7 +133,7 @@ export const containersEnv = {
   /** Application port baked into the canonical Eliza agent image. */
   agentPort(): string {
     const env = getCloudAwareEnv();
-    return pick(env.ELIZA_AGENT_PORT, env.AGENT_AGENT_PORT, env.MILADY_AGENT_PORT) ?? "3000";
+    return pick(env.ELIZA_AGENT_PORT, env.AGENT_AGENT_PORT) ?? "3000";
   },
 
   /** Bridge port the agent listens on inside the container (for agent-server bridge). */
@@ -143,7 +143,7 @@ export const containersEnv = {
       pick(
         env.ELIZA_AGENT_BRIDGE_PORT,
         env.AGENT_BRIDGE_INTERNAL_PORT,
-        env.MILADY_BRIDGE_INTERNAL_PORT,
+        env.ELIZA_BRIDGE_INTERNAL_PORT,
       ) ?? "31337"
     );
   },

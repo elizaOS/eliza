@@ -5,7 +5,7 @@ trajectories against a candidate model. This adapter generalizes that
 pattern to the standard benchmark surface so any model behind an
 OpenAI-compatible endpoint can be regression-checked against a curated
 set of ``eliza_native_v1`` trajectories captured by elizaOS runtimes
-(``~/.eliza/trajectories/`` or ``~/.milady/trajectories/``).
+(``~/.eliza/trajectories/`` or ``~/.eliza/trajectories/``).
 
 How replay works
 ----------------
@@ -27,9 +27,7 @@ For each stage we compute two diff dimensions:
 2. **Final-state match** — when the trajectory's terminal stage is a
    reply (``HANDLE_RESPONSE`` toolcall, ``plan.reply`` populated, or a
    plain text completion), we compare the candidate's final string
-   payload against the baseline using ``eliza_reward_fn.compute_reward``.
-   That returns a scalar in ``[-1, 1]`` driven by format-correctness +
-   content-correctness + bounded length penalty.
+   payload against the baseline with a local lexical scorer.
 
 The trajectory's overall score is the mean of stage scores (each
 ``action_sequence_match * 0.5 + reward * 0.5``). The benchmark's
@@ -46,9 +44,8 @@ verifiable correctness in GRPO training:
   match byte-for-byte. Set to ``--no-exact-action-sequence`` to fall
   back to set-equality (still a hard match, just unordered).
 * ``--reward-threshold`` (default 0.5): per-stage final-state pass
-  threshold against ``compute_reward``. Stages below this don't get
-  credit for final-state. ``0.0`` would mean "any non-negative reward
-  passes".
+  threshold against the local lexical scorer. Stages below this don't
+  get credit for final-state.
 
 CLI:
 
@@ -68,12 +65,11 @@ import json
 import logging
 import os
 import re
-import sys
 import time
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 from ._base import (
     BenchmarkResult,
@@ -101,56 +97,7 @@ DEFAULT_ACTION_WEIGHT = 0.5
 DEFAULT_FINAL_STATE_WEIGHT = 0.5
 
 
-# ───────────────────────────── reward fn import ─────────────────────────────
-
-# eliza_reward_fn lives under packages/training/scripts. It depends on
-# packages/training/scripts/benchmark/{eliza_bench,toon_parser}, all of
-# which are stdlib + dataclasses only. We import it lazily so that the
-# standard benchmark surface stays importable without a training-tree
-# checkout (e.g. in a benchmarks-only docker layer).
-
-
-_REWARD_FN_CACHE: object | None = None
-
-
-def _resolve_reward_fn() -> "RewardFn":
-    """Import ``packages.training.scripts.eliza_reward_fn.compute_reward``.
-
-    Cached after first resolution. Adds the scripts dir to
-    ``sys.path`` so the relative imports inside ``eliza_reward_fn``
-    (``benchmark.eliza_bench``, ``benchmark.toon_parser``) resolve.
-    """
-
-    global _REWARD_FN_CACHE
-    if _REWARD_FN_CACHE is not None:
-        return cast("RewardFn", _REWARD_FN_CACHE)
-
-    # packages/benchmarks/standard/trajectory_replay.py -> packages/
-    packages_root = Path(__file__).resolve().parents[2]
-    scripts_dir = packages_root / "training" / "scripts"
-    if not scripts_dir.exists():
-        raise RuntimeError(
-            f"eliza_reward_fn unavailable: {scripts_dir} does not exist. "
-            "Trajectory replay requires the training package."
-        )
-    scripts_str = str(scripts_dir)
-    if scripts_str not in sys.path:
-        sys.path.insert(0, scripts_str)
-    from eliza_reward_fn import compute_reward  # type: ignore[import-not-found]
-
-    _REWARD_FN_CACHE = compute_reward
-    return cast("RewardFn", compute_reward)
-
-
-class RewardFn:
-    """Structural protocol for ``eliza_reward_fn.compute_reward``."""
-
-    def __call__(
-        self,
-        prompt: str,
-        response: str,
-        ground_truth: dict[str, Any] | None,
-    ) -> float: ...
+FinalStateScorer = Callable[[str, str], float]
 
 
 # ───────────────────────────── trajectory IO ─────────────────────────────
@@ -350,6 +297,8 @@ class StageReplayResult:
     reward_pass: bool
     candidate_text: str
     baseline_text: str
+    action_weight: float = DEFAULT_ACTION_WEIGHT
+    final_state_weight: float = DEFAULT_FINAL_STATE_WEIGHT
     error: str | None = None
 
     @property
@@ -358,8 +307,8 @@ class StageReplayResult:
             action_match=self.action_sequence_match,
             reward=self.reward,
             reward_pass=self.reward_pass,
-            action_weight=DEFAULT_ACTION_WEIGHT,
-            final_state_weight=DEFAULT_FINAL_STATE_WEIGHT,
+            action_weight=self.action_weight,
+            final_state_weight=self.final_state_weight,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -416,8 +365,8 @@ def _stage_score_from_components(
 ) -> float:
     """Combine action-sequence match + reward pass into a stage score.
 
-    Both signals are 0/1 by design (the reward fn already returns a
-    scalar in [-1, 1], but the *pass* signal is an explicit threshold
+    Both signals are 0/1 by design (the final-state scorer returns a
+    scalar in [0, 1], and the *pass* signal is an explicit threshold
     check). Returned score is in ``[0, action_weight + final_state_weight]``
     — we cap at 1.0 to keep the aggregate in ``[0, 1]``.
     """
@@ -432,6 +381,32 @@ def _stage_score_from_components(
     return max(0.0, min(1.0, raw / total))
 
 
+def _name_from_tool_call(raw: object) -> str | None:
+    if isinstance(raw, str) and raw:
+        return raw
+    if not isinstance(raw, dict):
+        return None
+    function = raw.get("function")
+    if isinstance(function, dict):
+        name = function.get("name")
+        if isinstance(name, str) and name:
+            return name
+    for key in ("name", "tool_name", "tool", "command"):
+        name = raw.get(key)
+        if isinstance(name, str) and name:
+            return name
+    return None
+
+
+def _extend_action_names_from_list(names: list[str], raw: object) -> None:
+    if not isinstance(raw, list):
+        return
+    for item in raw:
+        name = _name_from_tool_call(item)
+        if name:
+            names.append(name)
+
+
 def _extract_candidate_action_names(raw: dict[str, object]) -> tuple[str, ...]:
     """Extract the candidate's tool-call sequence from a raw chat-completion.
 
@@ -440,95 +415,96 @@ def _extract_candidate_action_names(raw: dict[str, object]) -> tuple[str, ...]:
     """
 
     choices = raw.get("choices")
-    if not isinstance(choices, list) or not choices:
-        return ()
-    choice = choices[0]
-    if not isinstance(choice, dict):
-        return ()
-    message = choice.get("message")
-    if not isinstance(message, dict):
-        return ()
-    tool_calls = message.get("tool_calls")
-    if not isinstance(tool_calls, list):
-        return ()
-    names: list[str] = []
-    for tc in tool_calls:
-        if not isinstance(tc, dict):
-            continue
-        function = tc.get("function")
-        if isinstance(function, dict):
-            name = function.get("name")
-            if isinstance(name, str) and name:
-                names.append(name)
-                continue
-        # Some providers put name at the top level.
-        name = tc.get("name")
-        if isinstance(name, str) and name:
-            names.append(name)
+    if isinstance(choices, list) and choices:
+        choice = choices[0]
+        if isinstance(choice, dict):
+            message = choice.get("message")
+            if isinstance(message, dict):
+                names: list[str] = []
+                _extend_action_names_from_list(names, message.get("tool_calls"))
+                if names:
+                    return tuple(names)
+
+    names = []
+    _extend_action_names_from_list(names, raw.get("tool_calls"))
+    if names:
+        return tuple(names)
+
+    params = raw.get("params")
+    if isinstance(params, dict):
+        names = []
+        _extend_action_names_from_list(names, params.get("tool_calls"))
+        if names:
+            return tuple(names)
+
+        names = []
+        _extend_action_names_from_list(names, params.get("BENCHMARK_ACTIONS"))
+        if names:
+            return tuple(names)
+
+        single_name = _name_from_tool_call(params.get("BENCHMARK_ACTION"))
+        if single_name:
+            return (single_name,)
+
+    names = []
+    _extend_action_names_from_list(names, raw.get("actions"))
     return tuple(names)
 
 
-_TOON_TOOLCALL_RE = re.compile(
-    r"<tool_call>\s*(\{.*?\})\s*</tool_call>", re.DOTALL
+_TOOL_CALL_TEXT_RE = re.compile(
+    r"<tool_call>\s*(\{.*?\})\s*</tool_call>",
+    re.DOTALL,
 )
 
 
 def _extract_action_names_from_text(text: str) -> tuple[str, ...]:
-    """Fallback action extraction for models that emit Hermes-style XML.
+    """Extract Hermes/OpenClaw-style serialized tool calls from message text."""
 
-    Some providers return ``<tool_call>{"name": "X", "args": {...}}</tool_call>``
-    inside the message content rather than as structured tool_calls. We
-    parse those out as a last resort so we can still compare against
-    baselines captured from agents that used that encoding.
-    """
-
-    out: list[str] = []
-    for match in _TOON_TOOLCALL_RE.finditer(text or ""):
+    names: list[str] = []
+    for raw_call in _TOOL_CALL_TEXT_RE.findall(text or ""):
         try:
-            obj = json.loads(match.group(1))
+            parsed = json.loads(raw_call)
         except json.JSONDecodeError:
             continue
-        if isinstance(obj, dict):
-            name = obj.get("name")
-            if isinstance(name, str) and name:
-                out.append(name)
-    return tuple(out)
+        name = _name_from_tool_call(parsed)
+        if name:
+            names.append(name)
+    return tuple(names)
 
 
-def _baseline_ground_truth(stage: ReplayStage) -> dict[str, Any]:
-    """Build the ground-truth dict ``eliza_reward_fn`` expects.
-
-    The reward function classifies by ``task_type``/``bucket``; we use
-    the trajectory's stage kind + model type as the task hint and pass
-    the baseline response (whether textual or tool-call serialization)
-    as ``expected``.
-    """
-
-    bucket = _bucket_for_stage(stage)
-    return {
-        "task_type": stage.model_type or stage.kind or "trajectory_replay",
-        "bucket": bucket,
-        "expected": stage.baseline_response_text,
-    }
+def _normalize_text_for_score(text: str) -> list[str]:
+    lowered = text.lower()
+    cleaned = "".join(ch if ch.isalnum() else " " for ch in lowered)
+    return [token for token in cleaned.split() if token]
 
 
-def _bucket_for_stage(stage: ReplayStage) -> str:
-    """Map an elizaOS stage kind/modelType to an ``eliza_bench`` bucket.
+def _lexical_final_state_score(expected: str, actual: str) -> float:
+    """Local final-state score for replay without external corpus parsers."""
 
-    The reward fn understands ``should_respond``, ``message_handler``,
-    ``reply``, ``claude_distill``. Falls back to ``message_handler`` so
-    the scorer at least runs verifiable TOON parsing.
-    """
-
-    mt = (stage.model_type or "").upper()
-    kind = (stage.kind or "").lower()
-    if mt == "RESPONSE_HANDLER" or kind == "messagehandler":
-        return "message_handler"
-    if mt == "ACTION_PLANNER" or kind == "planner":
-        return "message_handler"
-    if kind == "evaluation":
-        return "reply"
-    return "message_handler"
+    expected_norm = " ".join(_normalize_text_for_score(expected))
+    actual_norm = " ".join(_normalize_text_for_score(actual))
+    if not expected_norm and not actual_norm:
+        return 1.0
+    if expected_norm and expected_norm == actual_norm:
+        return 1.0
+    expected_tokens = _normalize_text_for_score(expected)
+    actual_tokens = _normalize_text_for_score(actual)
+    if not expected_tokens or not actual_tokens:
+        return 0.0
+    expected_counts: dict[str, int] = {}
+    for token in expected_tokens:
+        expected_counts[token] = expected_counts.get(token, 0) + 1
+    overlap = 0
+    for token in actual_tokens:
+        count = expected_counts.get(token, 0)
+        if count > 0:
+            overlap += 1
+            expected_counts[token] = count - 1
+    precision = overlap / len(actual_tokens)
+    recall = overlap / len(expected_tokens)
+    if precision + recall == 0:
+        return 0.0
+    return 2 * precision * recall / (precision + recall)
 
 
 # ───────────────────────────── runner ─────────────────────────────
@@ -551,11 +527,11 @@ class TrajectoryReplayRunner:
         final_state_weight: float = DEFAULT_FINAL_STATE_WEIGHT,
         max_tokens: int = DEFAULT_MAX_TOKENS,
         trajectories: Iterable[ReplayTrajectory] | None = None,
-        reward_fn: RewardFn | None = None,
+        final_state_scorer: FinalStateScorer | None = None,
     ) -> None:
-        if reward_threshold < -1.0 or reward_threshold > 1.0:
+        if reward_threshold < 0.0 or reward_threshold > 1.0:
             raise ValueError(
-                f"reward_threshold must be in [-1, 1]; got {reward_threshold}"
+                f"reward_threshold must be in [0, 1]; got {reward_threshold}"
             )
         if action_weight < 0 or final_state_weight < 0:
             raise ValueError("score weights must be non-negative")
@@ -569,12 +545,10 @@ class TrajectoryReplayRunner:
         self._final_state_weight = final_state_weight
         self._max_tokens = max_tokens
         self._trajectories = list(trajectories) if trajectories is not None else None
-        self._reward_fn = reward_fn
+        self._final_state_scorer = final_state_scorer
 
-    def _resolve_reward_fn(self) -> RewardFn:
-        if self._reward_fn is not None:
-            return self._reward_fn
-        return _resolve_reward_fn()
+    def _resolve_final_state_scorer(self) -> FinalStateScorer:
+        return self._final_state_scorer or _lexical_final_state_score
 
     def _replay_stage(
         self,
@@ -582,7 +556,7 @@ class TrajectoryReplayRunner:
         client: OpenAICompatibleClient,
         model: str,
         stage: ReplayStage,
-        reward_fn: RewardFn,
+        final_state_scorer: FinalStateScorer,
     ) -> StageReplayResult:
         chat_messages = [
             ChatMessage(role=str(m.get("role", "user")), content=_coerce_str(m.get("content")))
@@ -593,6 +567,8 @@ class TrajectoryReplayRunner:
             model=model,
             max_tokens=self._max_tokens,
             temperature=0.0,
+            tools=stage.tools,
+            tool_choice="auto" if stage.tools else None,
         )
 
         try:
@@ -611,6 +587,8 @@ class TrajectoryReplayRunner:
                 reward_pass=False,
                 candidate_text="",
                 baseline_text=stage.baseline_response_text,
+                action_weight=self._action_weight,
+                final_state_weight=self._final_state_weight,
                 error=str(exc),
             )
 
@@ -627,12 +605,7 @@ class TrajectoryReplayRunner:
             else action_set_match
         )
 
-        ground_truth = _baseline_ground_truth(stage)
-        prompt_text = ""
-        if stage.messages:
-            last = stage.messages[-1]
-            prompt_text = _coerce_str(last.get("content"))
-        reward_value = reward_fn(prompt_text, gen.text, ground_truth)
+        reward_value = final_state_scorer(stage.baseline_response_text, gen.text)
         reward_pass = reward_value >= self._reward_threshold
 
         return StageReplayResult(
@@ -647,6 +620,8 @@ class TrajectoryReplayRunner:
             reward_pass=reward_pass,
             candidate_text=gen.text,
             baseline_text=stage.baseline_response_text,
+            action_weight=self._action_weight,
+            final_state_weight=self._final_state_weight,
         )
 
     def _replay_trajectory(
@@ -655,7 +630,7 @@ class TrajectoryReplayRunner:
         client: OpenAICompatibleClient,
         model: str,
         trajectory: ReplayTrajectory,
-        reward_fn: RewardFn,
+        final_state_scorer: FinalStateScorer,
     ) -> TrajectoryReplayResult:
         stage_results: list[StageReplayResult] = []
         for stage in trajectory.stages:
@@ -664,7 +639,7 @@ class TrajectoryReplayRunner:
                     client=client,
                     model=model,
                     stage=stage,
-                    reward_fn=reward_fn,
+                    final_state_scorer=final_state_scorer,
                 )
             )
 
@@ -727,7 +702,7 @@ class TrajectoryReplayRunner:
         if limit is not None and self._trajectories is not None:
             trajectories = trajectories[:limit]
 
-        reward_fn = self._resolve_reward_fn()
+        final_state_scorer = self._resolve_final_state_scorer()
         traj_results: list[TrajectoryReplayResult] = []
         failures: list[dict[str, object]] = []
         for traj in trajectories:
@@ -735,7 +710,7 @@ class TrajectoryReplayRunner:
                 client=client,
                 model=model,
                 trajectory=traj,
-                reward_fn=reward_fn,
+                final_state_scorer=final_state_scorer,
             )
             traj_results.append(traj_result)
             if traj_result.aggregate_score < self._reward_threshold and len(failures) < 8:
@@ -861,7 +836,7 @@ class _TrajectoryReplayFactory(RunnerFactory):
     description = (
         "Trajectory replay regression benchmark. Replays a curated set of "
         "eliza_native_v1 trajectories against a candidate endpoint, scoring "
-        "action sequence + final state via eliza_reward_fn."
+        "native action sequence + local final-state similarity."
     )
 
     def augment_parser(self, parser: argparse.ArgumentParser) -> None:
@@ -883,9 +858,9 @@ class _TrajectoryReplayFactory(RunnerFactory):
             type=float,
             default=DEFAULT_REWARD_THRESHOLD,
             help=(
-                "Pass threshold for the per-stage reward signal in [-1,1]. "
+                "Pass threshold for the per-stage final-state similarity in [0,1]. "
                 "Stages below this don't count toward final-state credit. "
-                "Default: 0.5 (matches RL_STRATEGY.md verifiable bar)."
+                "Default: 0.5."
             ),
         )
         parser.add_argument(
@@ -927,7 +902,7 @@ class _TrajectoryReplayFactory(RunnerFactory):
         traj_set = _expand_traj_set(args.traj_set)
         mock_responses: Sequence[str] | None = None
         trajectories: list[ReplayTrajectory] | None = None
-        reward_fn: RewardFn | None = None
+        final_state_scorer: FinalStateScorer | None = None
 
         if args.mock:
             # In mock mode we synthesize a fixture trajectory and feed
@@ -942,19 +917,12 @@ class _TrajectoryReplayFactory(RunnerFactory):
                 SMOKE_TRAJECTORY["stages"][0]["model"]["response"]  # type: ignore[index]
             ]
 
-            def _mock_reward(
-                prompt: str,
-                response: str,
-                ground_truth: dict[str, Any] | None,
-            ) -> float:
+            def _mock_final_state_scorer(expected: str, response: str) -> float:
                 # In smoke mode we score on exact string equality with
-                # the baseline. The real reward fn requires the
-                # training tree, which we deliberately skip in mock
-                # mode.
-                expected = (ground_truth or {}).get("expected", "")
+                # the baseline.
                 return 1.0 if response.strip() == str(expected).strip() else 0.0
 
-            reward_fn = cast("RewardFn", _mock_reward)
+            final_state_scorer = _mock_final_state_scorer
 
         runner = TrajectoryReplayRunner(
             traj_set=traj_set,
@@ -965,7 +933,7 @@ class _TrajectoryReplayFactory(RunnerFactory):
             final_state_weight=args.final_state_weight,
             max_tokens=args.max_tokens,
             trajectories=trajectories,
-            reward_fn=reward_fn,
+            final_state_scorer=final_state_scorer,
         )
         return runner, mock_responses
 

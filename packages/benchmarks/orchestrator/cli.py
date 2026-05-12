@@ -9,6 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 from .adapters import discover_adapters
+from .calibration_report import build_calibration_report, print_calibration_report
 from .compare_vs_random import add_compare_vs_random_parser
 from .db import (
     connect_database,
@@ -18,7 +19,8 @@ from .db import (
     repair_nonzero_returncode_statuses,
     tag_run_with_comparison,
 )
-from .runner import _rebuild_latest_result_snapshots, run_benchmarks
+from .random_baseline_runner import CALIBRATION_HARNESSES, SYNTHETIC_HARNESSES
+from .runner import _rebuild_latest_result_snapshots, _repair_current_compatibility_statuses, run_benchmarks
 from .types import RunRequest
 from .viewer_server import serve_viewer
 from .viewer_data import build_viewer_dataset
@@ -138,24 +140,40 @@ def _cmd_run(args: argparse.Namespace) -> int:
 
 def _selected_harnesses(args: argparse.Namespace) -> tuple[str, ...]:
     if getattr(args, "all_harnesses", False):
-        return ("eliza", "hermes", "openclaw")
+        harnesses = ["eliza", "hermes", "openclaw"]
+        if bool(getattr(args, "include_calibration_harnesses", False)):
+            harnesses.extend(CALIBRATION_HARNESSES)
+        if bool(getattr(args, "include_random_baseline", False)):
+            harnesses.append("random_v1")
+        return tuple(dict.fromkeys(harnesses))
     raw = getattr(args, "harnesses", None)
     include_random = bool(getattr(args, "include_random_baseline", False))
+    include_calibration = bool(getattr(args, "include_calibration_harnesses", False))
     if raw:
         values: list[str] = []
         for item in raw:
             values.extend(part.strip().lower() for part in str(item).split(",") if part.strip())
         deduped: list[str] = []
         for value in values:
-            if value not in {"eliza", "hermes", "openclaw", "random_v1"}:
+            if value not in {"eliza", "hermes", "openclaw", *SYNTHETIC_HARNESSES}:
                 raise SystemExit(
-                    f"Unknown harness '{value}'. Expected eliza, hermes, openclaw, or random_v1."
+                    "Unknown harness "
+                    f"'{value}'. Expected eliza, hermes, openclaw, random_v1, "
+                    "perfect_v1, wrong_v1, or half_v1."
                 )
             if value not in deduped:
                 deduped.append(value)
         if include_random and "random_v1" not in deduped:
             deduped.append("random_v1")
+        if include_calibration:
+            for harness in CALIBRATION_HARNESSES:
+                if harness not in deduped:
+                    deduped.append(harness)
         return tuple(deduped) if deduped else (args.agent,)
+    if include_calibration and include_random:
+        return (args.agent, *CALIBRATION_HARNESSES, "random_v1")
+    if include_calibration:
+        return (args.agent, *CALIBRATION_HARNESSES)
     if include_random:
         return (args.agent, "random_v1")
     return (args.agent,)
@@ -168,7 +186,9 @@ def _cmd_export_viewer(args: argparse.Namespace) -> int:
     initialize_database(conn)
     output_root = workspace_root / "benchmarks" / "benchmark_results"
     repair_nonzero_returncode_statuses(conn)
-    _rebuild_latest_result_snapshots(conn, output_root)
+    discovery = discover_adapters(workspace_root)
+    _repair_current_compatibility_statuses(conn, discovery.adapters)
+    _rebuild_latest_result_snapshots(conn, output_root, discovery.adapters)
     out = _rebuild_viewer_json(workspace_root, conn)
     conn.close()
     print(str(out))
@@ -195,12 +215,19 @@ def _cmd_recover_stale(args: argparse.Namespace) -> int:
     ended_at = datetime.now(UTC).isoformat()
     recovered = recover_stale_running_runs(conn, stale_before=stale_before, ended_at=ended_at)
     repaired = repair_nonzero_returncode_statuses(conn)
-    _rebuild_latest_result_snapshots(conn, workspace_root / "benchmarks" / "benchmark_results")
+    discovery = discover_adapters(workspace_root)
+    compatibility_repaired = _repair_current_compatibility_statuses(conn, discovery.adapters)
+    _rebuild_latest_result_snapshots(
+        conn,
+        workspace_root / "benchmarks" / "benchmark_results",
+        discovery.adapters,
+    )
     viewer_snapshot = _rebuild_viewer_json(workspace_root, conn)
     conn.close()
 
     print(f"Recovered runs: {len(recovered)}")
-    print(f"Repaired nonzero-return-code statuses: {len(repaired)}")
+    print(f"Repaired nonzero-return-code statuses: {repaired}")
+    print(f"Repaired compatibility statuses: {compatibility_repaired}")
     for run_id in recovered:
         print(f"- {run_id}")
     print(f"Viewer snapshot: {viewer_snapshot}")
@@ -230,6 +257,27 @@ def _cmd_show_runs(args: argparse.Namespace) -> int:
             f"status={row.get('status')} "
             f"score={row.get('score')}"
         )
+    return 0
+
+
+def _cmd_calibration_report(args: argparse.Namespace) -> int:
+    workspace_root = _workspace_root_from_here()
+    discovery = discover_adapters(workspace_root)
+    report = build_calibration_report(
+        workspace_root=workspace_root,
+        tolerance=float(args.tolerance),
+        benchmark_ids=set(discovery.adapters),
+    )
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=True))
+    else:
+        print_calibration_report(report)
+    if args.fail_on_suspicious:
+        for row in report.get("rows", []):
+            if row.get("calibration_status") not in {"valid"}:
+                return 1
+            if row.get("real_pattern") in {"all_real_zero", "all_real_one", "all_real_equal"}:
+                return 1
     return 0
 
 
@@ -594,7 +642,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--harnesses",
         nargs="+",
         default=None,
-        help="Harnesses to run (space- or comma-separated): eliza hermes openclaw",
+        help="Harnesses to run (space- or comma-separated): eliza hermes openclaw random_v1 perfect_v1 wrong_v1 half_v1",
     )
     p_run.add_argument(
         "--all-harnesses",
@@ -605,6 +653,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--include-random-baseline",
         action="store_true",
         help="Additionally run a phantom random_v1 baseline against each selected benchmark",
+    )
+    p_run.add_argument(
+        "--include-calibration-harnesses",
+        action="store_true",
+        help="Additionally run perfect_v1, wrong_v1, and half_v1 calibration harnesses",
     )
     p_run.add_argument("--provider", default="cerebras", help="Model provider")
     p_run.add_argument("--model", default="gpt-oss-120b", help="Model name")
@@ -647,6 +700,24 @@ def build_parser() -> argparse.ArgumentParser:
     p_show.add_argument("--desc", action="store_true", help="Sort descending by (agent, run_id)")
     p_show.set_defaults(func=_cmd_show_runs)
 
+    p_calibration = sub.add_parser(
+        "calibration-report",
+        help="Report calibration harness health and all-right/all-wrong benchmark patterns",
+    )
+    p_calibration.add_argument(
+        "--tolerance",
+        type=float,
+        default=1e-6,
+        help="Absolute/relative tolerance for score comparisons",
+    )
+    p_calibration.add_argument("--json", action="store_true", help="Print full JSON report")
+    p_calibration.add_argument(
+        "--fail-on-suspicious",
+        action="store_true",
+        help="Exit nonzero if calibration is missing/mismatched or real harnesses tie exactly",
+    )
+    p_calibration.set_defaults(func=_cmd_calibration_report)
+
     p_serve = sub.add_parser("serve-viewer", help="Serve benchmarks/viewer with live API data")
     p_serve.add_argument("--host", default="127.0.0.1", help="Bind host (default: 127.0.0.1)")
     p_serve.add_argument("--port", type=int, default=8877, help="Bind port (default: 8877)")
@@ -669,7 +740,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_compare.add_argument(
         "--benchmarks",
         required=True,
-        help="Comma-separated benchmark IDs (e.g. eliza-format,bfcl,realm,context-bench)",
+        help="Comma-separated benchmark IDs (e.g. action-calling,bfcl,realm,context-bench)",
     )
     p_compare.add_argument(
         "--max-examples",

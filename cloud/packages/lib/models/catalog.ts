@@ -397,10 +397,10 @@ export const VAST_NATIVE_MODELS: CatalogModel[] = [
     owned_by: "vast",
     name: "Eliza-1 2B",
     description:
-      "Milady's smallest fine-tune (Q4_K_M GGUF, llama-server). Single GPU debug / latency-tolerant agent loops. HF: elizaos/eliza-1-2b-gguf-q4_k_m",
+      "Eliza's smallest fine-tune (Q4_K_M GGUF, llama-server). Single GPU debug / latency-tolerant agent loops. HF: elizaos/eliza-1-2b-gguf-q4_k_m",
     type: "language",
     context_window: 32768,
-    tags: ["self-hosted", "llama.cpp", "gguf", "milady-eliza-1"],
+    tags: ["self-hosted", "llama.cpp", "gguf", "eliza-eliza-1"],
   },
   {
     id: "vast/eliza-1-9b",
@@ -409,10 +409,10 @@ export const VAST_NATIVE_MODELS: CatalogModel[] = [
     owned_by: "vast",
     name: "Eliza-1 9B",
     description:
-      "Workstation-tier Milady fine-tune. Served via vLLM with PolarQuant + AWQ-Marlin and TurboQuant quality KV on 2× RTX PRO 6000 Blackwell. HF: elizaos/eliza-1-9b-polarquant",
+      "Workstation-tier Eliza fine-tune. Served via vLLM with PolarQuant + AWQ-Marlin and TurboQuant quality KV on 2× RTX PRO 6000 Blackwell. HF: elizaos/eliza-1-9b-polarquant",
     type: "language",
     context_window: 131072,
-    tags: ["self-hosted", "vllm", "polarquant", "awq-marlin", "turboquant", "milady-eliza-1"],
+    tags: ["self-hosted", "vllm", "polarquant", "awq-marlin", "turboquant", "eliza-eliza-1"],
   },
   {
     id: "vast/eliza-1-27b",
@@ -421,10 +421,10 @@ export const VAST_NATIVE_MODELS: CatalogModel[] = [
     owned_by: "vast",
     name: "Eliza-1 27B",
     description:
-      "Cloud-tier Milady flagship. Served via vLLM with FP8 weights + TurboQuant quality KV on 2× H200 SXM. 4-bit KV is available as an explicit benchmark-gated runtime preset. HF: elizaos/eliza-1-27b-fp8",
+      "Cloud-tier Eliza flagship. Served via vLLM with FP8 weights + TurboQuant quality KV on 2× H200 SXM. 4-bit KV is available as an explicit benchmark-gated runtime preset. HF: elizaos/eliza-1-27b-fp8",
     type: "language",
     context_window: 131072,
-    tags: ["self-hosted", "vllm", "fp8", "turboquant", "milady-eliza-1"],
+    tags: ["self-hosted", "vllm", "fp8", "turboquant", "eliza-eliza-1"],
   },
 ] as const;
 

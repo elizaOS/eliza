@@ -3,7 +3,12 @@ import json
 import logging
 import os
 import time
-from wrapt_timeout_decorator import *
+try:
+    from wrapt_timeout_decorator import *  # type: ignore[import-not-found]  # noqa: F403
+except ModuleNotFoundError:
+    # The timeout decorator package is only needed by some upstream runner
+    # variants. Keep the Eliza dry-run harness importable in minimal envs.
+    pass
 from lib_results_logger import log_task_completion
 
 logger = logging.getLogger("desktopenv.experiment")
@@ -518,13 +523,21 @@ def run_single_example_uipath(agent, env, example, max_steps, instruction, args,
     env.controller.end_recording(os.path.join(example_result_dir, "recording.mp4"))
 
 
-from mm_agents.os_symphony.utils.common_utils import draw_coordinates
-from mm_agents.os_symphony.utils.process_context import set_current_result_dir
+try:
+    from mm_agents.os_symphony.utils.common_utils import draw_coordinates
+    from mm_agents.os_symphony.utils.process_context import set_current_result_dir
+except ModuleNotFoundError:
+    draw_coordinates = None  # type: ignore[assignment]
+
+    def set_current_result_dir(_path):
+        return None
 
 
 logger = logging.getLogger("desktopenv.experiment")
 
 def run_single_example_os_symphony(agent, env, example, max_steps, instruction, args, example_result_dir, scores):
+    if draw_coordinates is None:
+        raise RuntimeError("OS-Symphony dependencies are not installed")
     set_current_result_dir(example_result_dir)
     
     agent.reset(result_dir=example_result_dir)

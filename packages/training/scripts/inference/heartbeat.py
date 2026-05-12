@@ -24,7 +24,7 @@ Run from `training/`:
 
     python -m scripts.inference.heartbeat \\
         --vllm-metrics-url http://127.0.0.1:8000/metrics \\
-        --out ~/.milady/inference-stats.jsonl \\
+        --out ~/.eliza/inference-stats.jsonl \\
         --interval-seconds 60 \\
         --label adhoc-h200-eliza-1-9b
 """
@@ -273,7 +273,7 @@ def main() -> int:
     ap.add_argument("--vllm-metrics-url",
                     default="http://127.0.0.1:8000/metrics",
                     help="vLLM Prometheus endpoint to scrape.")
-    ap.add_argument("--out", default="~/.milady/inference-stats.jsonl",
+    ap.add_argument("--out", default="~/.eliza/inference-stats.jsonl",
                     help="JSONL append target. Created if missing.")
     ap.add_argument("--interval-seconds", type=float, default=60.0,
                     help="Scrape cadence. Deltas are computed against the previous scrape.")

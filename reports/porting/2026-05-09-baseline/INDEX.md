@@ -33,7 +33,7 @@ were under this directory.
 
 The audit subagent transcripts that fed `larp-inventory.md` are extracted to
 `/tmp/audit-extracts/audit-*.md` (8 files, ~100 KB total). Originals live under
-`/tmp/claude-1000/-home-shaw-milady-eliza/4b3bac68-b53d-4cf6-9d19-164ea09586c1/tasks/<id>.output`
+`/tmp/claude-1000/-home-shaw-eliza-eliza/4b3bac68-b53d-4cf6-9d19-164ea09586c1/tasks/<id>.output`
 as JSONL transcripts; the extracts contain just the final assistant text per
 audit task.
 

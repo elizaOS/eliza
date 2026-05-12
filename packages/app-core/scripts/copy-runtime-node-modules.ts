@@ -299,8 +299,8 @@ function buildWorkspacePackageIndex(): void {
 
   indexWorkspacePackages(ROOT);
 
-  // The desktop wrapper repo builds from /milady while the active Eliza
-  // workspace lives at /milady/eliza. Prefer those local packages over stale
+  // The desktop wrapper repo builds from /eliza while the active Eliza
+  // workspace lives at /eliza/eliza. Prefer those local packages over stale
   // published node_modules copies so deep runtime imports match the code that
   // tsdown just compiled.
   const nestedElizaRoot = path.join(ROOT, "eliza");

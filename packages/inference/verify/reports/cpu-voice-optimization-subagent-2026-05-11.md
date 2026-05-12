@@ -108,7 +108,7 @@ Scope:
    - Add adjacency tests: reject `[2, 4)` should rollback tokens 2 and 3 only, not token 4.
 
 4. DFlash hard-fail patch:
-   - Replace `return []` in `LlamaServerDraftProposer.propose()` with a startup/voice error unless `MILADY_DFLASH_DISABLE=1` is set.
+   - Replace `return []` in `LlamaServerDraftProposer.propose()` with a startup/voice error unless `ELIZA_DFLASH_DISABLE=1` is set.
    - Ensure `runVoiceTurn()` and live voice startup assert `hasDrafter()` before constructing the pipeline.
 
 5. ASR default patch:

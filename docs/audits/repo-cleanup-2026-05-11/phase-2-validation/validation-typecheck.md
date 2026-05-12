@@ -2,7 +2,7 @@
 
 Worker: validation worker B
 Date: 2026-05-11
-Workspace: `/Users/shawwalters/eliza-workspace/milady/eliza`
+Workspace: `/Users/shawwalters/eliza-workspace/eliza/eliza`
 Bun: `/Users/shawwalters/.bun/bin/bun`
 Node options: `NODE_OPTIONS=--max-old-space-size=8192`
 
@@ -105,8 +105,8 @@ The detailed error text shows the same package version resolving from two
 different physical install roots:
 
 ```text
-/Users/shawwalters/eliza-workspace/milady/eliza/node_modules/.bun/drizzle-orm@0.45.2+fc0f68b157690761/...
-/Users/shawwalters/eliza-workspace/milady/eliza/cloud/node_modules/.bun/drizzle-orm@0.45.2+cee48a6471b6eae6/...
+/Users/shawwalters/eliza-workspace/eliza/eliza/node_modules/.bun/drizzle-orm@0.45.2+fc0f68b157690761/...
+/Users/shawwalters/eliza-workspace/eliza/eliza/cloud/node_modules/.bun/drizzle-orm@0.45.2+cee48a6471b6eae6/...
 ```
 
 Because Drizzle classes include protected/private members such as `config`

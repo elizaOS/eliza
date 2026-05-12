@@ -1,46 +1,17 @@
 /**
  * Eliza-curated local model catalog.
  *
- * Eliza-1 is the only default-eligible model line. The user-facing model
- * ids are size-first (`eliza-1-0_8b`, `eliza-1-2b`, `eliza-1-4b`,
- * `eliza-1-9b`, `eliza-1-27b`, `eliza-1-27b-256k`, `eliza-1-27b-1m`). The recommendation
- * engine picks one of these tiers based on hardware. The long-context 27B
- * variants (`27b-256k`, `27b-1m`) only surface on hosts whose RAM/VRAM can
- * hold the KV cache at that window — `27b-1m` is GH200-class.
+ * Eliza-1 is the only default-eligible model line. User-facing model ids are
+ * size-first: `eliza-1-0_8b`, `eliza-1-2b`, `eliza-1-4b`, `eliza-1-9b`,
+ * `eliza-1-27b`, `eliza-1-27b-256k`, and `eliza-1-27b-1m`.
  *
- * HF-search results from outside `elizaos/eliza-1-*` MUST never be
- * marked default-eligible (handled by `hf-search.ts`, which produces
- * entries that are absent from `DEFAULT_ELIGIBLE_MODEL_IDS`).
- *
- * When upstream naming conventions drift, update `ggufFile` here — we
- * rely on the exact filename for resolved-URL construction in the
- * downloader.
- *
- * Shared-vocabulary note: every text-bearing entry below (the `chat` tier
- * entries AND their `dflash-drafter` companions) carries
- * `tokenizerFamily: "eliza1"` — they are all Qwen3.5/Qwen3.6-lineage and
- * share the same Qwen3.5 vocabulary + merges table. The drafter GGUFs ship *without* their
- * own `tokenizer.ggml.merges`; the runtime injects it from the tier's text
- * GGUF at load time (`resolveDflashDrafter` in
- * `packages/app-core/src/services/local-inference/dflash-server.ts`). The same
- * vocab also covers the bundled text/vision model and DFlash drafter. ASR
- * emits text strings through a separate Qwen3-ASR vocabulary, so ASR output is
- * re-tokenized at the text boundary. The shared *vocabulary* does NOT mean a
- * shared *token-embedding tensor* (each GGUF has its own `token_embd.weight`),
- * and "shared mmap region for weights" in inference/AGENTS.md §4 is per-file
- * dedup — only text+vision share one GGUF/region today; the OmniVoice text
- * decoder, ASR, embedding, and drafter are separate files. Deduplicating the
- * vocab tensor itself would need a fused-architecture container, which is out
- * of scope per inference/AGENTS.md §2. Full analysis:
- * `packages/inference/reports/porting/2026-05-11/qwen-backbone-unification.md`.
+ * HF-search results from outside `elizaos/eliza-1-*` must never be marked
+ * default-eligible. The final downloadable GGUF bundles live under the
+ * `elizaos` organization; the `sourceModel` block records upstream provenance.
  */
 
 import type { CatalogModel, LocalRuntimeKernel } from "./types.js";
 
-/**
- * Eliza-1 tier identifiers, in tier-matrix order. Source of truth for
- * the recommendation ladders and the default-eligible set.
- */
 export const ELIZA_1_TIER_IDS = [
   "eliza-1-0_8b",
   "eliza-1-2b",
@@ -53,21 +24,8 @@ export const ELIZA_1_TIER_IDS = [
 
 export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
 
-/**
- * The model id the engine auto-loads on first run when no preference is
- * set. Resolves to the `eliza-1-2b` tier - the smallest Eliza-1 tier
- * that fits the broadest range of hardware (modern phone or laptop).
- * Hosts that can't fit `eliza-1-2b` get the `eliza-1-0_8b` fallback via
- * the recommendation ladder.
- */
 export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-2b";
 
-/**
- * The single source of truth for default-eligibility. Only Eliza-1
- * tiers are default-eligible. The recommendation engine MUST refuse to
- * surface anything outside this set as a default; HF-search results
- * MUST never appear here.
- */
 export const DEFAULT_ELIGIBLE_MODEL_IDS: ReadonlySet<string> = new Set(
   ELIZA_1_TIER_IDS,
 );
@@ -76,7 +34,6 @@ export function isDefaultEligibleId(id: string): boolean {
   return DEFAULT_ELIGIBLE_MODEL_IDS.has(id);
 }
 
-/** Compatibility export for callers that need the Eliza-1 model id set. */
 export const ELIZA_1_PLACEHOLDER_IDS: ReadonlySet<string> = new Set(
   ELIZA_1_TIER_IDS,
 );
@@ -101,24 +58,6 @@ function drafterId(id: Eliza1TierId): `${Eliza1TierId}-drafter` {
   return `${id}-drafter`;
 }
 
-/**
- * Per-tier "base, not fine-tuned" provenance — the upstream HuggingFace
- * repos each shipped bundle component is GGUF-converted + Milady-optimized
- * from. Eliza-1 v1 = these exact base weights, optimized (every quant/kernel
- * trick in `packages/inference/AGENTS.md` §3), NOT fine-tuned. This must
- * agree with `provenance.sourceModels` in the tier's
- * `eliza-1.manifest.json`. Fine-tuning lands in v2.
- *
- * Notes:
- * - 0.6B / 1.7B / 4B / 9B text use Qwen3.5 Small via the current public GGUF
- *   mirrors. 27B uses Qwen3.6. This replaces the old small-tier Qwen3
- *   placeholders; do not relabel those old-vocab files as Eliza-1 release
- *   candidates.
- * - 0_8b has no dedicated `embedding` component — it pools from the text
- *   backbone with `--pooling last` (inference/AGENTS.md §1).
- * - the drafter is distilled (KD, not fine-tuning of the target) FROM the
- *   tier's base text model and published under `elizaos/eliza-1-<tier>`.
- */
 type SourceComponentMap = NonNullable<
   CatalogModel["sourceModel"]
 >["components"];
@@ -131,58 +70,25 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   const asrLarge = { repo: "ggml-org/Qwen3-ASR-1.7B-GGUF" } as const;
 
   const textByTier: Record<Eliza1TierId, { repo: string; file?: string }> = {
-    "eliza-1-0_8b": {
-      repo: "unsloth/Qwen3.5-0.8B-GGUF",
-      file: "Qwen3.5-0.8B-Q8_0.gguf",
-    },
-    "eliza-1-2b": {
-      repo: "unsloth/Qwen3.5-2B-GGUF",
-      file: "Qwen3.5-2B-Q8_0.gguf",
-    },
-    "eliza-1-4b": {
-      repo: "unsloth/Qwen3.5-4B-GGUF",
-      file: "Qwen3.5-4B-Q8_0.gguf",
-    },
-    "eliza-1-9b": {
-      repo: "unsloth/Qwen3.5-9B-GGUF",
-      file: "Qwen3.5-9B-Q4_K_M.gguf",
-    },
-    "eliza-1-27b": {
-      repo: "batiai/Qwen3.6-27B-GGUF",
-      file: "Qwen-Qwen3.6-27B-Q4_K_M.gguf",
-    },
-    "eliza-1-27b-256k": {
-      repo: "batiai/Qwen3.6-27B-GGUF",
-      file: "Qwen-Qwen3.6-27B-Q4_K_M.gguf",
-    },
-    "eliza-1-27b-1m": {
-      repo: "batiai/Qwen3.6-27B-GGUF",
-      file: "Qwen-Qwen3.6-27B-Q4_K_M.gguf",
-    },
+    "eliza-1-0_8b": { repo: "Qwen/Qwen3.5-0.8B" },
+    "eliza-1-2b": { repo: "Qwen/Qwen3.5-2B" },
+    "eliza-1-4b": { repo: "Qwen/Qwen3.5-4B" },
+    "eliza-1-9b": { repo: "Qwen/Qwen3.5-9B" },
+    "eliza-1-27b": { repo: "Qwen/Qwen3.6-27B" },
+    "eliza-1-27b-256k": { repo: "Qwen/Qwen3.6-27B" },
+    "eliza-1-27b-1m": { repo: "Qwen/Qwen3.6-27B" },
   };
+
   const visionByTier: Partial<
     Record<Eliza1TierId, { repo: string; file?: string }>
   > = {
-    "eliza-1-0_8b": {
-      repo: "unsloth/Qwen3.5-0.8B-GGUF",
-      file: "mmproj-F16.gguf",
-    },
-    "eliza-1-2b": { repo: "unsloth/Qwen3.5-2B-GGUF", file: "mmproj-F16.gguf" },
-    "eliza-1-4b": { repo: "unsloth/Qwen3.5-4B-GGUF", file: "mmproj-F16.gguf" },
-    "eliza-1-9b": { repo: "unsloth/Qwen3.5-9B-GGUF", file: "mmproj-F16.gguf" },
-    "eliza-1-27b": {
-      repo: "batiai/Qwen3.6-27B-GGUF",
-      file: "mmproj-Qwen-Qwen3.6-27B-Q6_K.gguf",
-    },
-    "eliza-1-27b-256k": {
-      repo: "batiai/Qwen3.6-27B-GGUF",
-      file: "mmproj-Qwen-Qwen3.6-27B-Q6_K.gguf",
-    },
-    "eliza-1-27b-1m": {
-      repo: "batiai/Qwen3.6-27B-GGUF",
-      file: "mmproj-Qwen-Qwen3.6-27B-Q6_K.gguf",
-    },
+    "eliza-1-4b": { repo: "Qwen/Qwen3.5-4B" },
+    "eliza-1-9b": { repo: "Qwen/Qwen3.5-9B" },
+    "eliza-1-27b": { repo: "Qwen/Qwen3.6-27B" },
+    "eliza-1-27b-256k": { repo: "Qwen/Qwen3.6-27B" },
+    "eliza-1-27b-1m": { repo: "Qwen/Qwen3.6-27B" },
   };
+
   const usesLargeAsr = id.startsWith("eliza-1-27b");
   const components: SourceComponentMap = {
     text: textByTier[id],
@@ -199,18 +105,6 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   return { finetuned: false, components };
 }
 
-/**
- * Default KV-cache quantization types per tier, per `packages/inference/AGENTS.md`
- * §3 items 1–3. Every Eliza-1 tier runs at a context length > 8k, so the
- * mandated layout is QJL on the K-cache (`qjl1_256`) and PolarQuant on the
- * V-cache (`q4_polar`); the TurboQuant K/V types (`turbo3_0` for tiny Q3
- * tiers, `turbo4_0` for the larger Q4 tiers) are the <=8k fallback and are
- * not used by any current tier. These are catalog defaults — the operator's
- * `ELIZA_DFLASH_CACHE_TYPE_K` / `_V` env vars still override them. The
- * dflash-server refuses a type the shipped binary's `CAPABILITIES.json`
- * doesn't advertise, so a build missing the QJL/Polar kernels fails loudly
- * rather than silently running an f16 cache.
- */
 function kvCacheForContext(
   contextLength: number,
 ): NonNullable<CatalogModel["runtime"]>["kvCache"] {
@@ -283,13 +177,12 @@ function drafterCompanion(args: {
     hiddenFromCatalog: true,
     runtimeRole: "dflash-drafter",
     companionForModelId: args.id,
-    tokenizerFamily: "eliza1",
+    tokenizerFamily: "qwen35",
     blurb: "Companion drafter file.",
   };
 }
 
 export const MODEL_CATALOG: CatalogModel[] = [
-  // eliza-1-0_8b (low-RAM phones, CPU fallback)
   {
     id: "eliza-1-0_8b",
     displayName: "eliza-1-0_8b",
@@ -298,12 +191,12 @@ export const MODEL_CATALOG: CatalogModel[] = [
     bundleManifestFile: "eliza-1.manifest.json",
     params: "0.8B",
     quant: "Eliza-1 optimized local runtime",
-    sizeGb: 0.5,
+    sizeGb: 0.7,
     minRamGb: 2,
     category: "chat",
     bucket: "small",
     contextLength: 32768,
-    tokenizerFamily: "eliza1",
+    tokenizerFamily: "qwen35",
     companionModelIds: ["eliza-1-0_8b-drafter"],
     sourceModel: sourceModelForTier("eliza-1-0_8b"),
     runtime: runtimeFor("eliza-1-0_8b", 32768),
@@ -315,12 +208,10 @@ export const MODEL_CATALOG: CatalogModel[] = [
     displayName: "eliza-1-0_8b",
     ggufFile: "dflash/drafter-0_8b.gguf",
     params: "0.8B",
-    sizeGb: 0.25,
+    sizeGb: 0.3,
     minRamGb: 2,
     bucket: "small",
   }),
-
-  // eliza-1-2b (modern phones)
   {
     id: "eliza-1-2b",
     displayName: "eliza-1-2b",
@@ -329,12 +220,12 @@ export const MODEL_CATALOG: CatalogModel[] = [
     bundleManifestFile: "eliza-1.manifest.json",
     params: "2B",
     quant: "Eliza-1 optimized local runtime",
-    sizeGb: 1.2,
+    sizeGb: 1.5,
     minRamGb: 4,
     category: "chat",
     bucket: "small",
     contextLength: 32768,
-    tokenizerFamily: "eliza1",
+    tokenizerFamily: "qwen35",
     companionModelIds: ["eliza-1-2b-drafter"],
     sourceModel: sourceModelForTier("eliza-1-2b"),
     runtime: runtimeFor("eliza-1-2b", 32768),
@@ -350,8 +241,6 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 4,
     bucket: "small",
   }),
-
-  // eliza-1-4b (flagship phones, small desktops)
   {
     id: "eliza-1-4b",
     displayName: "eliza-1-4b",
@@ -365,7 +254,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "chat",
     bucket: "mid",
     contextLength: 65536,
-    tokenizerFamily: "eliza1",
+    tokenizerFamily: "qwen35",
     companionModelIds: ["eliza-1-4b-drafter"],
     sourceModel: sourceModelForTier("eliza-1-4b"),
     runtime: runtimeFor("eliza-1-4b", 65536),
@@ -381,8 +270,6 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 8,
     bucket: "mid",
   }),
-
-  // eliza-1-9b (laptops, 24 GB phones, 48 GB Mac)
   {
     id: "eliza-1-9b",
     displayName: "eliza-1-9b",
@@ -396,7 +283,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "chat",
     bucket: "mid",
     contextLength: 65536,
-    tokenizerFamily: "eliza1",
+    tokenizerFamily: "qwen35",
     companionModelIds: ["eliza-1-9b-drafter"],
     sourceModel: sourceModelForTier("eliza-1-9b"),
     runtime: runtimeFor("eliza-1-9b", 65536),
@@ -412,8 +299,6 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 12,
     bucket: "mid",
   }),
-
-  // eliza-1-27b (96 GB+ Mac, high-VRAM desktop)
   {
     id: "eliza-1-27b",
     displayName: "eliza-1-27b",
@@ -427,7 +312,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "chat",
     bucket: "large",
     contextLength: 131072,
-    tokenizerFamily: "eliza1",
+    tokenizerFamily: "qwen35",
     companionModelIds: ["eliza-1-27b-drafter"],
     sourceModel: sourceModelForTier("eliza-1-27b"),
     runtime: runtimeFor("eliza-1-27b", 131072),
@@ -443,8 +328,6 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 32,
     bucket: "large",
   }),
-
-  // eliza-1-27b-256k (workstation / server)
   {
     id: "eliza-1-27b-256k",
     displayName: "eliza-1-27b-256k",
@@ -458,7 +341,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "chat",
     bucket: "large",
     contextLength: 262144,
-    tokenizerFamily: "eliza1",
+    tokenizerFamily: "qwen35",
     companionModelIds: ["eliza-1-27b-256k-drafter"],
     sourceModel: sourceModelForTier("eliza-1-27b-256k"),
     runtime: runtimeFor("eliza-1-27b-256k", 262144),
@@ -474,14 +357,6 @@ export const MODEL_CATALOG: CatalogModel[] = [
     minRamGb: 96,
     bucket: "large",
   }),
-
-  // eliza-1-27b-1m (GH200-class — 1M context). The KV cache at a 1M window
-  // does not fit consumer hardware even at QJL+Polar compression; this tier
-  // is only recommended on hosts with very large unified/HBM memory. On
-  // every other device the recommender's RAM gate (`minRamGb`) excludes it,
-  // which is the intended "refuse on devices that can't fit it, surface it
-  // on the ones that can" behavior. The K-cache rides the trellis path
-  // (`turbo3_tcq`, declared via `requiresKernel` through `runtimeFor`).
   {
     id: "eliza-1-27b-1m",
     displayName: "eliza-1-27b-1m",
@@ -495,7 +370,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "chat",
     bucket: "large",
     contextLength: 1_048_576,
-    tokenizerFamily: "eliza1",
+    tokenizerFamily: "qwen35",
     companionModelIds: ["eliza-1-27b-1m-drafter"],
     sourceModel: sourceModelForTier("eliza-1-27b-1m"),
     runtime: runtimeFor("eliza-1-27b-1m", 1_048_576),
@@ -517,13 +392,6 @@ export function findCatalogModel(id: string): CatalogModel | undefined {
   return MODEL_CATALOG.find((m) => m.id === id);
 }
 
-/**
- * Construct the HuggingFace resolve URL for a given catalog entry.
- *
- * Respects `ELIZA_HF_BASE_URL` when set so self-hosted HF mirrors and the
- * downloader e2e test suite can redirect all downloads without touching
- * the catalog.
- */
 export function buildHuggingFaceResolveUrlForPath(
   model: CatalogModel,
   filePath: string,
@@ -531,8 +399,6 @@ export function buildHuggingFaceResolveUrlForPath(
   const base =
     process.env.ELIZA_HF_BASE_URL?.trim().replace(/\/+$/, "") ||
     "https://huggingface.co";
-  // Encode each path segment separately so nested bundle layouts like
-  // `text/eliza-1-2b-32k.gguf` keep their slashes.
   const encodedPath = filePath
     .split("/")
     .map((segment) => encodeURIComponent(segment))

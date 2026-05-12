@@ -4,8 +4,8 @@ Closing-the-loop run after waves W1-9 / W1-10 / W1-11 (agent emit fixes),
 W1-4 / W1-4b (Mockoon substrate), W1-7 / W1-8 (PRD similes / DOC umbrella),
 W2-1..W2-7 (scenario corpus + new actions + runner fix).
 
-- **Run dir:** `/Users/shawwalters/.milady/runs/lifeops/lifeops-multiagent-1778523395565`
-- **Best symlink:** `/Users/shawwalters/.milady/runs/lifeops/lifeops-multiagent-best`
+- **Run dir:** `/Users/shawwalters/.eliza/runs/lifeops/lifeops-multiagent-1778523395565`
+- **Best symlink:** `/Users/shawwalters/.eliza/runs/lifeops/lifeops-multiagent-best`
 - **Model:** Cerebras `gpt-oss-120b` (judge `claude-opus-4-7`)
 - **Scenarios per agent:** 25 (first slice — all CALENDAR domain due to suite order)
 - **Mockoon:** auto-started, 18 connectors
@@ -38,7 +38,7 @@ The hard ceiling is **0.80** for every "partial pass". That isn't noise — it's
 
 > `AI_APICallError: Not Found` → falls back to "Something went wrong on my end. Please try again." → planner emits `REPLY`.
 
-This means the openai plugin is calling an endpoint Cerebras doesn't expose (likely `/v1/responses` instead of `/v1/chat/completions`, since the python adapter that uses `chat/completions` does work fine on the same key). The `MILADY_BENCH_FORCE_TOOL_CALL=1` gate (W1-9) is active in the bench server, but the planner never gets a chance to pick a tool because the model call itself fails on stage 1.
+This means the openai plugin is calling an endpoint Cerebras doesn't expose (likely `/v1/responses` instead of `/v1/chat/completions`, since the python adapter that uses `chat/completions` does work fine on the same key). The `ELIZA_BENCH_FORCE_TOOL_CALL=1` gate (W1-9) is active in the bench server, but the planner never gets a chance to pick a tool because the model call itself fails on stage 1.
 
 Note: state_hash matches in **11/25** scenarios despite zero tool calls. Those are all read-only scenarios (`next_event_today`, `check_availability_*`, `search_*`, `propose_*`, `find_free_*`, `update_preferences_*`, `check_monday_morning_block`) where the ground-truth actions don't mutate world state, so a "do nothing" passes the state-hash check. The scorer's triviality guard correctly zeroes those out because `action_score == 0` AND `len(ground_truth_actions) > 0`. So the resulting `total_score = 0` is honest, not a false negative.
 
@@ -116,7 +116,7 @@ None. Every scenario received a deterministic score from the scorer. There's no 
 lifeops-multiagent-best → lifeops-multiagent-1778523395565
 ```
 
-Created at `/Users/shawwalters/.milady/runs/lifeops/`.
+Created at `/Users/shawwalters/.eliza/runs/lifeops/`.
 
 Historical baselines preserved (per mission rules):
 - `lifeops-eliza-baseline-1778515576`
@@ -140,10 +140,10 @@ Historical baselines preserved (per mission rules):
 
 ```bash
 bun run lifeops:verify-cerebras                  # OK — both eval and train Cerebras reachable
-MILADY_BENCH_LIMIT=25 MILADY_BENCH_SKIP_JS=1 \
+ELIZA_BENCH_LIMIT=25 ELIZA_BENCH_SKIP_JS=1 \
 LIFEOPS_USE_MOCKOON=1 \
 OPENAI_BASE_URL=https://api.cerebras.ai/v1 \
-MILADY_PROVIDER=cerebras \
+ELIZA_PROVIDER=cerebras \
 BENCHMARK_MODEL_PROVIDER=cerebras BENCHMARK_MODEL_NAME=gpt-oss-120b \
 bun run lifeops:full                              # full run, status=0
 ```
@@ -153,8 +153,8 @@ bun run lifeops:full                              # full run, status=0
 Ran 10 scenarios × 3 agents (30 total) on the W3-2 personality corpus, judged
 by the W3-3 layer.
 
-- **Run dir:** `/Users/shawwalters/.milady/runs/personality/personality-multiagent-1778523895524`
-- **Best symlink:** `/Users/shawwalters/.milady/runs/personality/personality-multiagent-best`
+- **Run dir:** `/Users/shawwalters/.eliza/runs/personality/personality-multiagent-1778523895524`
+- **Best symlink:** `/Users/shawwalters/.eliza/runs/personality/personality-multiagent-best`
 
 | agent    | scenarios | PASS | FAIL | NEEDS_REVIEW | %Pass | cost     | wall   |
 |----------|----------:|-----:|-----:|-------------:|------:|---------:|-------:|

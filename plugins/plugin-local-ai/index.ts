@@ -10,8 +10,10 @@ import type {
   JSONSchema,
   ModelTypeName,
   TextEmbeddingParams,
+  TextStreamResult,
   TextToSpeechParams,
   TokenizeTextParams,
+  TokenUsage,
   ToolDefinition,
   TranscriptionParams,
 } from "@elizaos/core";
@@ -26,6 +28,7 @@ import {
 } from "node-llama-cpp";
 import { type Config, validateConfig } from "./environment";
 import { extractToolCalls, planStructuredRequest, type ToolCallResult } from "./structured-output";
+import { streamLlamaPrompt } from "./text-streaming";
 import { type EmbeddingModelSpec, MODEL_SPECS, type ModelSpec } from "./types";
 import { DownloadManager } from "./utils/downloadManager";
 import { getPlatformManager } from "./utils/platform";
@@ -52,6 +55,29 @@ interface LocalGenerationResult {
 type LocalGenerateTextParams = GenerateTextParams & {
   modelType?: ModelTypeName;
 };
+
+/**
+ * When the caller asked for streaming AND the request shape is plain text
+ * (no tools, no schema, no JSON-object format), `generateText` returns a
+ * `TextStreamResult` instead of a `LocalGenerationResult`. The native
+ * dispatch in the model handler unwraps this back to the runtime contract:
+ *  - return `TextStreamResult` directly so `runtime.ts:isTextStreamResult`
+ *    matches and the SSE pump drains tokens.
+ * Tool / schema requests still buffer fully (those paths require the whole
+ * response before extraction / validation).
+ */
+type LocalGenerationOutput = LocalGenerationResult | TextStreamResult;
+
+function isStreamResult(value: LocalGenerationOutput): value is TextStreamResult {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "textStream" in value &&
+    "text" in value &&
+    "usage" in value &&
+    "finishReason" in value
+  );
+}
 
 type LocalNativeTextModelResult = string & {
   text: string;
@@ -660,7 +686,7 @@ class LocalAIManager {
     return entry;
   }
 
-  async generateText(params: LocalGenerateTextParams): Promise<LocalGenerationResult> {
+  async generateText(params: LocalGenerateTextParams): Promise<LocalGenerationOutput> {
     await this.initializeEnvironment();
     const modelType = params.modelType ?? ModelType.TEXT_SMALL;
     const systemPrompt = params.system?.trim() || DEFAULT_LOCAL_SYSTEM_PROMPT;

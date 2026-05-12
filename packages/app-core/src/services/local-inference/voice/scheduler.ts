@@ -126,12 +126,15 @@ export class VoiceScheduler {
   private readonly backend: OmniVoiceBackend;
   private readonly phraseCache: PhraseCache;
   private readonly events: SchedulerEvents;
+  private readonly sampleRate: number;
   private readonly inFlight = new Map<number, InFlight>();
   private readonly maxInFlight: number;
   private kernelTicks = 0;
   private nextStandalonePhraseId = -1;
   /** True while a provisional barge-in (`pause-tts`) has paused playback. */
   private paused = false;
+  private agentSpeakingUntilMs = 0;
+  private agentSpeakingTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     config: SchedulerConfig,
@@ -145,6 +148,7 @@ export class VoiceScheduler {
     this.preset = config.preset;
     this.backend = deps.backend;
     this.phraseCache = deps.phraseCache ?? new PhraseCache();
+    this.sampleRate = config.sampleRate;
     this.sink = deps.sink ?? new InMemoryAudioSink();
     this.ringBuffer = new PcmRingBuffer(
       config.ringBufferCapacity,
@@ -328,12 +332,12 @@ export class VoiceScheduler {
           cancelSignal: { cancelled: false },
           onKernelTick: () => this.tickKernel(),
         });
-        this.phraseCache.put({
+        const stored = this.phraseCache.put({
           text,
           pcm: chunk.pcm,
           sampleRate: chunk.sampleRate,
         });
-        warmed++;
+        if (stored) warmed++;
       }
     };
 
@@ -353,6 +357,23 @@ export class VoiceScheduler {
     return this.kernelTicks;
   }
 
+  /**
+   * Mark the agent as audibly speaking for the duration of audio handed to the
+   * sink. This is the barge-in gate: VAD blips only pause/resume TTS while this
+   * flag is true, and ASR-confirmed words hard-stop playback plus generation.
+   */
+  markAgentSpeakingForAudio(samples: number, sampleRate: number): void {
+    if (samples <= 0 || sampleRate <= 0) return;
+    const durationMs = (samples / sampleRate) * 1000;
+    // A short guard absorbs sink scheduling jitter between tiny streaming chunks.
+    this.agentSpeakingUntilMs = Math.max(
+      this.agentSpeakingUntilMs,
+      nowMs() + durationMs + 50,
+    );
+    this.bargeIn.setAgentSpeaking(true);
+    this.armAgentSpeakingTimer();
+  }
+
   /** True while a provisional barge-in has paused TTS playback. */
   get ttsPaused(): boolean {
     return this.paused;
@@ -367,6 +388,7 @@ export class VoiceScheduler {
    */
   cancelPendingTts(): void {
     this.paused = false;
+    this.clearAgentSpeaking();
     this.ringBuffer.drain();
     this.chunker.reset();
     for (const inflight of this.inFlight.values()) {
@@ -570,6 +592,7 @@ export class VoiceScheduler {
     let flushedSamples = 0;
     if (!this.paused) {
       flushedSamples = this.ringBuffer.flushToSink();
+      this.markAgentSpeakingForAudio(flushedSamples, chunk.sampleRate);
     }
     if (opts.markPlayed !== false) {
       this.rollback.markPlayed(chunk.phraseId);
@@ -602,7 +625,10 @@ export class VoiceScheduler {
         if (this.paused) {
           this.paused = false;
           // Hand whatever was buffered during the pause to the sink now.
-          if (this.ringBuffer.size() > 0) this.ringBuffer.flushToSink();
+          if (this.ringBuffer.size() > 0) {
+            const flushed = this.ringBuffer.flushToSink();
+            this.markAgentSpeakingForAudio(flushed, this.sampleRate);
+          }
           this.events.onTtsResume?.();
         }
         break;
@@ -624,6 +650,7 @@ export class VoiceScheduler {
     const wasPaused = this.paused;
     const inFlightPhrases = Array.from(this.inFlight.values());
     this.paused = false;
+    this.clearAgentSpeaking();
     this.ringBuffer.drain();
     this.chunker.reset();
     for (const inflight of inFlightPhrases) {
@@ -653,5 +680,35 @@ export class VoiceScheduler {
 
   private emitTelemetry(event: VoiceSchedulerTelemetryEvent): void {
     this.events.onTelemetry?.(event);
+  }
+
+  private armAgentSpeakingTimer(): void {
+    if (this.agentSpeakingTimer) {
+      clearTimeout(this.agentSpeakingTimer);
+      this.agentSpeakingTimer = null;
+    }
+    const delayMs = Math.max(1, this.agentSpeakingUntilMs - nowMs());
+    this.agentSpeakingTimer = setTimeout(() => {
+      this.agentSpeakingTimer = null;
+      if (nowMs() < this.agentSpeakingUntilMs) {
+        this.armAgentSpeakingTimer();
+        return;
+      }
+      this.agentSpeakingUntilMs = 0;
+      if (this.ringBuffer.size() === 0) {
+        this.bargeIn.setAgentSpeaking(false);
+      }
+    }, delayMs);
+    const maybeUnref = this.agentSpeakingTimer as { unref?: () => void };
+    maybeUnref.unref?.();
+  }
+
+  private clearAgentSpeaking(): void {
+    this.agentSpeakingUntilMs = 0;
+    if (this.agentSpeakingTimer) {
+      clearTimeout(this.agentSpeakingTimer);
+      this.agentSpeakingTimer = null;
+    }
+    this.bargeIn.setAgentSpeaking(false);
   }
 }

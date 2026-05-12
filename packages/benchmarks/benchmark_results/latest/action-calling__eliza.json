@@ -1,7 +1,7 @@
 {
   "agent": "eliza",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T082644Z_a7e51965/action-calling__action-calling/run_action-calling_20260512T082644Z_2_f2151ec9/output"
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T084954Z_2f406711/action-calling__action-calling/run_action-calling_20260512T084954Z_5_a08a0ea1/output"
   ],
   "benchmark_directory": "action-calling",
   "benchmark_id": "action-calling",
@@ -14,8 +14,8 @@
   "error": null,
   "higher_is_better": true,
   "metrics": {
-    "action_name_match": 0,
-    "args_parse_ok": 0,
+    "action_name_match": 1.0,
+    "args_parse_ok": 1.0,
     "cache_metrics": {
       "cache_creation_input_tokens": 0,
       "cache_hit_ratio": 0.0,
@@ -23,60 +23,64 @@
       "turns_with_cached_field": 0
     },
     "canonical_entries": 0,
-    "format_ok": 0,
-    "generation_source": "model_text",
+    "format_ok": 1.0,
+    "generation_source": "captured_action",
     "n": 1,
     "performance_metrics": {
-      "duration_seconds": 18.465365041047335,
-      "mean_latency_ms": null,
-      "p95_latency_ms": null,
-      "throughput_per_second": 0.05415544170272635
+      "duration_seconds": 19.209407124959398,
+      "mean_latency_ms": 13834.596583037637,
+      "p95_latency_ms": 13834.596583037637,
+      "throughput_per_second": 0.05205782737045892
     },
-    "required_keys_ok": 0,
+    "required_keys_ok": 1.0,
     "return_code": 0,
-    "score": 1.0000000000000007e-09,
+    "score": 1.0,
     "token_metrics": {
       "avg_completion_tokens": 0.0,
-      "avg_prompt_tokens": 0.0,
+      "avg_prompt_tokens": 177.0,
       "completion_tokens": 0,
+      "estimated_prompt_tokens": 177,
       "llm_call_count": 1,
-      "prompt_tokens": 0,
-      "total_tokens": 0
+      "prompt_tokens": 177,
+      "token_estimate_source": "prompt_chars_div_4",
+      "total_tokens": 177
     },
     "trajectory_summary": {
-      "files": 1,
-      "prompt_chars": 28,
+      "files": 2,
+      "prompt_chars": 707,
       "repeated_prefixes": [],
       "turns": 1
     }
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
-    "duration_seconds": 18.465365041047335,
-    "mean_latency_ms": null,
-    "p95_latency_ms": null,
-    "throughput_per_second": 0.05415544170272635
+    "duration_seconds": 19.209407124959398,
+    "mean_latency_ms": 13834.596583037637,
+    "p95_latency_ms": 13834.596583037637,
+    "throughput_per_second": 0.05205782737045892
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T082644Z_a7e51965/action-calling__action-calling/run_action-calling_20260512T082644Z_2_f2151ec9/output/action-calling-results.json",
-  "run_group_id": "rg_20260512T082644Z_a7e51965",
-  "run_id": "run_action-calling_20260512T082644Z_2_f2151ec9",
-  "score": 1.0000000000000007e-09,
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T084954Z_2f406711/action-calling__action-calling/run_action-calling_20260512T084954Z_5_a08a0ea1/output/action-calling-results.json",
+  "run_group_id": "rg_20260512T084954Z_2f406711",
+  "run_id": "run_action-calling_20260512T084954Z_5_a08a0ea1",
+  "score": 1.0,
   "status": "succeeded",
   "token_metrics": {
     "avg_completion_tokens": 0.0,
-    "avg_prompt_tokens": 0.0,
+    "avg_prompt_tokens": 177.0,
     "completion_tokens": 0,
+    "estimated_prompt_tokens": 177,
     "llm_call_count": 1,
-    "prompt_tokens": 0,
-    "total_tokens": 0
+    "prompt_tokens": 177,
+    "token_estimate_source": "prompt_chars_div_4",
+    "total_tokens": 177
   },
   "trajectory_summary": {
-    "files": 1,
-    "prompt_chars": 28,
+    "files": 2,
+    "prompt_chars": 707,
     "repeated_prefixes": [],
     "turns": 1
   },
   "unit": "ratio",
-  "updated_at": "2026-05-12T08:27:02.736925+00:00"
+  "updated_at": "2026-05-12T08:50:13.841326+00:00"
 }

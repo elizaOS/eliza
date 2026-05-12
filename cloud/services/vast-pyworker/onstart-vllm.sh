@@ -14,12 +14,12 @@
 #
 # Required template env vars:
 #   MODEL_REPO              — HuggingFace repo id (e.g. elizaos/eliza-1-27b-fp8).
-#                             OR set MILADY_VAST_MANIFEST=eliza-1-{2b,9b,27b}.json
+#                             OR set ELIZA_VAST_MANIFEST=eliza-1-{2b,9b,27b}.json
 #                             and the script extracts MODEL_REPO + all flags
 #                             from the manifest.
 #
 # Optional (defaults match training/cloud/vast-pyworker/eliza-1-27b.json):
-#   MILADY_VAST_MANIFEST    — path to a per-size manifest JSON. When set, the
+#   ELIZA_VAST_MANIFEST    — path to a per-size manifest JSON. When set, the
 #                             manifest fills any unset env var below. Caller
 #                             env always wins. Default: eliza-1-2b.json
 #                             (resolved against the script's manifests/ subdir
@@ -74,17 +74,17 @@
 
 set -euo pipefail
 
-# 0. Manifest resolution (optional). When MILADY_VAST_MANIFEST points at a
+# 0. Manifest resolution (optional). When ELIZA_VAST_MANIFEST points at a
 # per-size manifest JSON we slurp its canonical fields into env vars (only
 # those not already set by the caller). This is the load-bearing change that
-# lets a single template env var (MILADY_VAST_MANIFEST=eliza-1-9b.json)
+# lets a single template env var (ELIZA_VAST_MANIFEST=eliza-1-9b.json)
 # drive the whole vllm flag set.
-MILADY_VAST_MANIFEST="${MILADY_VAST_MANIFEST:-eliza-1-2b.json}"
+ELIZA_VAST_MANIFEST="${ELIZA_VAST_MANIFEST:-eliza-1-2b.json}"
 _resolve_manifest() {
   local m="$1"
-  if [ -n "${MILADY_VAST_MANIFEST_JSON:-}" ]; then
-    local embedded="/tmp/milady-vast-manifest.json"
-    printf '%s' "$MILADY_VAST_MANIFEST_JSON" > "$embedded"
+  if [ -n "${ELIZA_VAST_MANIFEST_JSON:-}" ]; then
+    local embedded="/tmp/eliza-vast-manifest.json"
+    printf '%s' "$ELIZA_VAST_MANIFEST_JSON" > "$embedded"
     echo "$embedded"
     return 0
   fi
@@ -99,7 +99,7 @@ _resolve_manifest() {
   done
   return 1
 }
-if MANIFEST_PATH="$(_resolve_manifest "$MILADY_VAST_MANIFEST")"; then
+if MANIFEST_PATH="$(_resolve_manifest "$ELIZA_VAST_MANIFEST")"; then
   echo "[onstart-vllm] loading manifest $MANIFEST_PATH"
   eval "$(python3 - "$MANIFEST_PATH" <<'PY'
 import json, os, sys, shlex
@@ -150,11 +150,11 @@ for k, v in mapping.items():
 PY
 )"
 else
-  echo "[onstart-vllm] no manifest at $MILADY_VAST_MANIFEST (proceeding with raw env)"
+  echo "[onstart-vllm] no manifest at $ELIZA_VAST_MANIFEST (proceeding with raw env)"
 fi
 
 PORT="${PORT:-8000}"
-MODEL_REPO="${MODEL_REPO:?MODEL_REPO is required (HF repo id) — set via MILADY_VAST_MANIFEST or MODEL_REPO}"
+MODEL_REPO="${MODEL_REPO:?MODEL_REPO is required (HF repo id) — set via ELIZA_VAST_MANIFEST or MODEL_REPO}"
 SERVED_MODEL_NAME_DEFAULT="${MODEL_REPO##*/}"
 SERVED_MODEL_NAME="${SERVED_MODEL_NAME:-${MODEL_ALIAS:-$SERVED_MODEL_NAME_DEFAULT}}"
 TENSOR_PARALLEL_SIZE="${TENSOR_PARALLEL_SIZE:-1}"
@@ -312,8 +312,8 @@ if [ -n "$ADDITIONAL_CONFIG_JSON" ]; then
   VLLM_ARGS+=(--additional-config "$ADDITIONAL_CONFIG_JSON")
 fi
 if [ -z "$SPECULATIVE_CONFIG_JSON" ] && [ -n "$DFLASH_MODEL" ]; then
-  if [ "${MILADY_VLLM_DFLASH:-}" != "1" ] && [ "${MILADY_VLLM_DFLASH:-}" != "true" ]; then
-    echo "[onstart-vllm] DFLASH_MODEL set without MILADY_VLLM_DFLASH=1; continuing, but stock vLLM may reject method=dflash" >&2
+  if [ "${ELIZA_VLLM_DFLASH:-}" != "1" ] && [ "${ELIZA_VLLM_DFLASH:-}" != "true" ]; then
+    echo "[onstart-vllm] DFLASH_MODEL set without ELIZA_VLLM_DFLASH=1; continuing, but stock vLLM may reject method=dflash" >&2
   fi
   SPECULATIVE_CONFIG_JSON="$(python3 - <<PY
 import json, os
@@ -400,7 +400,7 @@ echo "[onstart-vllm] vllm-stats logger pid: $!"
 # (older container without the training/ tree mounted), we log and move on
 # rather than blocking the PyWorker handoff.
 HEARTBEAT_OUT="${HEARTBEAT_OUT:-/workspace/inference-stats.jsonl}"
-HEARTBEAT_LABEL="${HEARTBEAT_LABEL:-vast-${MILADY_VAST_INSTANCE_ID:-unknown}}"
+HEARTBEAT_LABEL="${HEARTBEAT_LABEL:-vast-${ELIZA_VAST_INSTANCE_ID:-unknown}}"
 HEARTBEAT_INTERVAL="${HEARTBEAT_INTERVAL_SECONDS:-60}"
 VLLM_METRICS_PORT="${VLLM_METRICS_PORT:-$PORT}"
 HEARTBEAT_LOG="${HEARTBEAT_LOG:-/var/log/heartbeat.log}"

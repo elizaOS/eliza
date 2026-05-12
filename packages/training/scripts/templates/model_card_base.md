@@ -61,12 +61,12 @@ or invoke vLLM directly:
 vllm serve {repo_id} --max-model-len {infer_max_in_plus_out}
 ```
 
-### milady
+### eliza
 
-Drop the model alias into your milady config and the runtime will pick it up:
+Drop the model alias into your eliza config and the runtime will pick it up:
 
 ```bash
-MILADY_LOCAL_MODEL={repo_id} milady run
+ELIZA_LOCAL_MODEL={repo_id} eliza run
 ```
 
 ## Training

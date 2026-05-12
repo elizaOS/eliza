@@ -981,7 +981,8 @@ export class EngineVoiceBridge {
       const cached = this.phraseCache.get(text);
       if (!cached || cached.pcm.length === 0) continue;
       this.scheduler.ringBuffer.write(cached.pcm);
-      this.scheduler.ringBuffer.flushToSink();
+      const flushed = this.scheduler.ringBuffer.flushToSink();
+      this.scheduler.markAgentSpeakingForAudio(flushed, cached.sampleRate);
       return cached.text;
     }
     return null;

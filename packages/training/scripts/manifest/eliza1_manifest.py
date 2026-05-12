@@ -34,8 +34,8 @@ ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
 )
 
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
-    "0_6b",
-    "1_7b",
+    "0_8b",
+    "2b",
     "4b",
     "9b",
     "27b",
@@ -70,7 +70,7 @@ VOICE_PRESET_CACHE_PATH: Final[str] = "cache/voice-preset-default.bin"
 # Release-state vocabulary recorded in `manifest.provenance.releaseState` and
 # `evidence/release.json.releaseState`. `base-v1` is the v1 product: the
 # upstream BASE models — GGUF-converted via the elizaOS/llama.cpp fork and
-# fully Milady-optimized (every quant/kernel trick in §3) — but NOT
+# fully Eliza-optimized (every quant/kernel trick in §3) — but NOT
 # fine-tuned. Fine-tuning lands in v2 (`finetuned-v2`). `local-standin` is a
 # non-publishable staging shape; `upload-candidate`/`final` are the
 # fine-tuned-v1 publish states retained for forward-compat.
@@ -102,8 +102,8 @@ ELIZA_1_PROVENANCE_SLOTS: Final[tuple[str, ...]] = (
 )
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_6b": ("turboquant_q3", "qjl", "polarquant", "dflash"),
-    "1_7b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
+    "0_8b": ("turboquant_q3", "qjl", "polarquant", "dflash"),
+    "2b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
     "4b": (
         "turboquant_q4",
         "qjl",
@@ -142,8 +142,8 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_6b": ("metal", "vulkan", "cpu"),
-    "1_7b": ("metal", "vulkan", "cpu"),
+    "0_8b": ("metal", "vulkan", "cpu"),
+    "2b": ("metal", "vulkan", "cpu"),
     "4b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
@@ -156,8 +156,8 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
-    "0_6b": "Q4_K_M",
-    "1_7b": "Q4_K_M",
+    "0_8b": "Q4_K_M",
+    "2b": "Q4_K_M",
     "4b": "Q4_K_M",
     "9b": "Q8_0",
     "27b": "Q8_0",

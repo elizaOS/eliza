@@ -3,6 +3,9 @@
 import { Capacitor } from "@capacitor/core";
 import { isElectrobunRuntime } from "../bridge";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
+import { userAgentHasElizaOSMarker } from "./aosp-user-agent";
+
+export { userAgentHasElizaOSMarker } from "./aosp-user-agent";
 
 // ── Platform detection ──────────────────────────────────────────────
 
@@ -29,19 +32,6 @@ export const isAndroid = platform === "android";
 
 export function isDesktopPlatform(): boolean {
   return platform === "electrobun";
-}
-
-/**
- * Pure UA inspector. Exported only so tests can pin the regex contract
- * without having to mock the platform module.
- *
- * Returns `true` only when `ua` contains a `ElizaOS/<tag>` token at a
- * word boundary. Substrings like `ElizaOSlike/...` or `NotElizaOS...`
- * must not match — the regex requires the slash to follow `ElizaOS`
- * directly.
- */
-export function userAgentHasElizaOSMarker(ua: string): boolean {
-  return /\bElizaOS\//.test(ua);
 }
 
 /**

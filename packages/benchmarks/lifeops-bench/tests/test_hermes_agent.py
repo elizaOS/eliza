@@ -99,6 +99,43 @@ def test_build_hermes_agent_returns_open_ai_compat_agent() -> None:
             os.environ["HERMES_BASE_URL"] = saved
 
 
+def test_build_hermes_agent_threads_harness_generation_options(monkeypatch: pytest.MonkeyPatch) -> None:
+    """LifeOps must pass model/limit settings into the shared Hermes adapter."""
+    from eliza_lifeops_bench.agents.adapter_paths import ensure_benchmark_adapter_importable
+
+    ensure_benchmark_adapter_importable("hermes")
+    from hermes_adapter.client import HermesClient as BridgeHermesClient
+
+    captured: dict[str, Any] = {}
+
+    def _fake_init(self: Any, **kwargs: Any) -> None:
+        captured.update(kwargs)
+        self.model = kwargs.get("model") or "gpt-oss-120b"
+
+    monkeypatch.setattr(BridgeHermesClient, "__init__", _fake_init)
+    monkeypatch.setattr(BridgeHermesClient, "wait_until_ready", lambda self, timeout=60: None)
+
+    agent = build_hermes_agent(
+        model="gpt-oss-20b",
+        base_url="https://cerebras.example/v1",
+        api_key="test-key",
+        temperature=0.2,
+        reasoning_effort="medium",
+        max_tokens=1234,
+    )
+
+    assert callable(agent)
+    assert captured == {
+        "mode": "in_process",
+        "temperature": 0.2,
+        "reasoning_effort": "medium",
+        "max_tokens": 1234,
+        "model": "gpt-oss-20b",
+        "base_url": "https://cerebras.example/v1",
+        "api_key": "test-key",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Single-turn end-to-end with one tool_call
 # ---------------------------------------------------------------------------

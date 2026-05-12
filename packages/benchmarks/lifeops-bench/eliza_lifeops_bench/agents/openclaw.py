@@ -474,7 +474,7 @@ def build_openclaw_agent(
     *,
     temperature: float = 0.0,
     reasoning_effort: str = "low",
-    max_tokens: int | None = None,
+    max_tokens: int | None = 4096,
     client_factory: ClientFactory | None = None,
 ) -> OpenClawAgent:
     """Build an OpenClaw-protocol agent callable for the bench runner.

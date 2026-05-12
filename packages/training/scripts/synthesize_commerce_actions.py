@@ -61,7 +61,7 @@ USER_NAMES = [
 AGENT_NAMES = [
     "Iris", "Kai", "Ava", "Nova", "Echo", "Sage", "Atlas", "Lyra",
     "Pico", "Lumi", "Rune", "Vega", "Sol", "Orion", "Mira", "Tess",
-    "milady", "Eliza",
+    "eliza", "Eliza",
 ]
 
 ROOM_KINDS = [

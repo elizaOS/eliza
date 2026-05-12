@@ -34,8 +34,8 @@ except ImportError:  # pragma: no cover - script execution path
     )
 
 TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
-    "0_6b": "Q3_K_M",
-    "1_7b": "Q4_K_M",
+    "0_8b": "Q3_K_M",
+    "2b": "Q4_K_M",
     "4b": "Q4_K_M",
     "9b": "Q4_K_M",
     "27b": "Q4_K_M",
@@ -44,8 +44,8 @@ TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
 }
 
 CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_6b": ("32k",),
-    "1_7b": ("32k", "64k"),
+    "0_8b": ("32k",),
+    "2b": ("32k", "64k"),
     "4b": ("64k", "128k"),
     "9b": ("64k", "128k"),
     "27b": ("128k", "256k"),
@@ -77,7 +77,7 @@ COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_6b": (
+    "0_8b": (
         "darwin-arm64-metal",
         "ios-arm64-metal",
         "linux-x64-vulkan",
@@ -89,7 +89,7 @@ REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "windows-arm64-cpu",
         "windows-arm64-vulkan",
     ),
-    "1_7b": (
+    "2b": (
         "darwin-arm64-metal",
         "ios-arm64-metal",
         "linux-x64-vulkan",
@@ -263,7 +263,7 @@ def missing_files(
 
 
 # Release-state interpretation: `base-v1` (the upstream base models,
-# GGUF-converted via the elizaOS/llama.cpp fork and fully Milady-optimized,
+# GGUF-converted via the elizaOS/llama.cpp fork and fully Eliza-optimized,
 # NOT fine-tuned) is a legit release shape. It does not pretend `final.weights`
 # is a *trained Eliza-1 checkpoint* — instead it records each component's
 # upstream `sourceModel`. So for `base-v1`, `final.weights` is not required to
@@ -374,7 +374,7 @@ def render_readiness(
         "readiness path.",
         "- v1 release shape (`releaseState=base-v1`): the upstream BASE models "
         "— GGUF-converted via the elizaOS/llama.cpp fork and fully "
-        "Milady-optimized (every quant/kernel trick in `packages/inference/AGENTS.md` "
+        "Eliza-optimized (every quant/kernel trick in `packages/inference/AGENTS.md` "
         "§3) — but NOT fine-tuned. `evidence/release.json` records `finetuned=false` "
         "and a `sourceModels` map (which upstream HF repo each component comes "
         "from). For `base-v1`, `final.weights` need not be `true` (the bytes are "

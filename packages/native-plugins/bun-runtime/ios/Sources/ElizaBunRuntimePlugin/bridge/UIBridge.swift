@@ -36,7 +36,7 @@ public final class UIBridge {
                 "payload": payload ?? NSNull(),
             ]
             DispatchQueue.main.async {
-                self.plugin?.notifyListeners("milady:ui", data: event)
+                self.plugin?.notifyListeners("eliza:ui", data: event)
             }
             return NSNull()
         }

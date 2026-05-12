@@ -3,7 +3,7 @@
 /**
  * Coverage for `../deep-link-handler.ts` — the iOS / Android deep-link entry
  * that lands the user on the requested RuntimeGate sub-view when the OS
- * dispatches a `milady://onboard/step/<id>` URL.
+ * dispatches a `eliza://onboard/step/<id>` URL.
  *
  * Two surfaces are exercised:
  *
@@ -70,7 +70,7 @@ import {
   RUNTIME_PICKER_TARGET_QUERY_NAME,
 } from "../reload-into-runtime-picker";
 
-const URL_SCHEME = "milady";
+const URL_SCHEME = "eliza";
 
 function resetLocation(): void {
   // jsdom's `window.location.href = ...` triggers a navigation that does not
@@ -101,7 +101,7 @@ afterEach(() => {
 describe("routeOnboardingDeepLink", () => {
   it("provider deep link routes to the local sub-view", () => {
     const handled = routeOnboardingDeepLink(
-      "milady://onboard/step/provider",
+      "eliza://onboard/step/provider",
       URL_SCHEME,
     );
 
@@ -115,7 +115,7 @@ describe("routeOnboardingDeepLink", () => {
 
   it("local deep link routes to the local sub-view", () => {
     const handled = routeOnboardingDeepLink(
-      "milady://onboard/step/local",
+      "eliza://onboard/step/local",
       URL_SCHEME,
     );
 
@@ -125,7 +125,7 @@ describe("routeOnboardingDeepLink", () => {
 
   it("cloud deep link routes to the cloud sub-view", () => {
     const handled = routeOnboardingDeepLink(
-      "milady://onboard/step/cloud",
+      "eliza://onboard/step/cloud",
       URL_SCHEME,
     );
 
@@ -135,7 +135,7 @@ describe("routeOnboardingDeepLink", () => {
 
   it("remote deep link routes to the remote sub-view", () => {
     const handled = routeOnboardingDeepLink(
-      "milady://onboard/step/remote",
+      "eliza://onboard/step/remote",
       URL_SCHEME,
     );
 
@@ -147,7 +147,7 @@ describe("routeOnboardingDeepLink", () => {
 
   it("unknown step opens the default chooser without a pinned target", () => {
     const handled = routeOnboardingDeepLink(
-      "milady://onboard/step/garbage",
+      "eliza://onboard/step/garbage",
       URL_SCHEME,
     );
 
@@ -163,7 +163,7 @@ describe("routeOnboardingDeepLink", () => {
 
   it("missing step segment opens the default chooser (no crash)", () => {
     const handled = routeOnboardingDeepLink(
-      "milady://onboard/step",
+      "eliza://onboard/step",
       URL_SCHEME,
     );
 
@@ -196,19 +196,19 @@ describe("routeOnboardingDeepLink", () => {
   });
 
   it("right scheme but non-onboard host is ignored (no mutation)", () => {
-    // `milady://chat` is a real, handled deep link in `apps/app/src/main.tsx`.
+    // `eliza://chat` is a real, handled deep link in `apps/app/src/main.tsx`.
     // The onboarding router must NOT swallow it.
-    const handled = routeOnboardingDeepLink("milady://chat", URL_SCHEME);
+    const handled = routeOnboardingDeepLink("eliza://chat", URL_SCHEME);
 
     expect(handled).toBe(false);
     expect(currentParams().get(RUNTIME_PICKER_QUERY_NAME)).toBeNull();
   });
 
   it("right scheme + onboard host but wrong inner segment is ignored", () => {
-    // `milady://onboard/something-else` — the path does not start with
+    // `eliza://onboard/something-else` — the path does not start with
     // `/step/`, so the handler bails (caller fall-through can pick it up).
     const handled = routeOnboardingDeepLink(
-      "milady://onboard/something-else",
+      "eliza://onboard/something-else",
       URL_SCHEME,
     );
 
@@ -219,7 +219,7 @@ describe("routeOnboardingDeepLink", () => {
   it("preserves existing search params unrelated to the onboarding contract", () => {
     window.history.replaceState(null, "", "http://localhost/?session=abc");
 
-    routeOnboardingDeepLink("milady://onboard/step/cloud", URL_SCHEME);
+    routeOnboardingDeepLink("eliza://onboard/step/cloud", URL_SCHEME);
 
     const params = currentParams();
     expect(params.get("session")).toBe("abc");
@@ -236,7 +236,7 @@ describe("routeOnboardingDeepLink", () => {
       "http://localhost/?runtime=picker&runtimeTarget=cloud",
     );
 
-    routeOnboardingDeepLink("milady://onboard/step/local", URL_SCHEME);
+    routeOnboardingDeepLink("eliza://onboard/step/local", URL_SCHEME);
 
     expect(currentParams().get(RUNTIME_PICKER_TARGET_QUERY_NAME)).toBe("local");
   });
@@ -259,7 +259,7 @@ describe("installOnboardingDeepLinkListener", () => {
     // Drive the registered handler with an onboarding URL — it must mutate
     // the URL params and NOT fall through to the unmatched hook.
     const handler = addListenerMock.mock.calls[0][1];
-    handler({ url: "milady://onboard/step/cloud" });
+    handler({ url: "eliza://onboard/step/cloud" });
 
     expect(currentParams().get(RUNTIME_PICKER_TARGET_QUERY_NAME)).toBe("cloud");
     expect(onUnmatched).not.toHaveBeenCalled();
@@ -276,15 +276,15 @@ describe("installOnboardingDeepLinkListener", () => {
     });
 
     const handler = addListenerMock.mock.calls[0][1];
-    handler({ url: "milady://chat" });
+    handler({ url: "eliza://chat" });
 
-    expect(onUnmatched).toHaveBeenCalledWith("milady://chat");
+    expect(onUnmatched).toHaveBeenCalledWith("eliza://chat");
     expect(currentParams().get(RUNTIME_PICKER_QUERY_NAME)).toBeNull();
   });
 
   it("routes the cold-launch URL exposed by getLaunchUrl", async () => {
     getLaunchUrlMock.mockResolvedValueOnce({
-      url: "milady://onboard/step/provider",
+      url: "eliza://onboard/step/provider",
     });
 
     await installOnboardingDeepLinkListener({ urlScheme: URL_SCHEME });
@@ -343,7 +343,7 @@ describe("installOnboardingDeepLinkListener", () => {
     // The live `appUrlOpen` listener should still work even when the cold
     // launch read failed.
     const handler = addListenerMock.mock.calls[0][1];
-    handler({ url: "milady://onboard/step/remote" });
+    handler({ url: "eliza://onboard/step/remote" });
     expect(currentParams().get(RUNTIME_PICKER_TARGET_QUERY_NAME)).toBe(
       "remote",
     );

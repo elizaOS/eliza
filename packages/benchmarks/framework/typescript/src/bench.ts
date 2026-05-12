@@ -85,7 +85,7 @@ async function resolveLlmPlugin(useRealLlm: boolean): Promise<ResolvedLlm> {
   }
 
   if (hasCerebras && !hasOpenAi) {
-    process.env.MILADY_PROVIDER = process.env.MILADY_PROVIDER ?? "cerebras";
+    process.env.ELIZA_PROVIDER = process.env.ELIZA_PROVIDER ?? "cerebras";
     process.env.OPENAI_BASE_URL =
       process.env.OPENAI_BASE_URL ?? "https://api.cerebras.ai/v1";
     process.env.OPENAI_LARGE_MODEL =

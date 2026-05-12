@@ -104,7 +104,7 @@ Replaces the granted-namespace set. Idempotent. Body:
 
 Validation:
 - Each namespace must appear in the app's `requestedPermissions` (the user cannot grant a namespace the app didn't ask for).
-- Each namespace must be a recognised name (`"fs"` | `"net"`). Forward-compat: namespaces declared in the manifest but not yet recognised by this Milady version are ignored — neither granted nor an error — so the user sees only namespaces this version can actually enforce.
+- Each namespace must be a recognised name (`"fs"` | `"net"`). Forward-compat: namespaces declared in the manifest but not yet recognised by this Eliza version are ignored — neither granted nor an error — so the user sees only namespaces this version can actually enforce.
 - `404` if no app registered under `:slug`.
 - `400` if the body is not `{namespaces: string[]}`.
 
@@ -140,7 +140,7 @@ The HTTP endpoints in `apps-routes.ts` reach into the runtime via the existing `
 Phase 1 slice 1 commits to `["fs", "net"]`. The `parseAppPermissions` parser only surfaces those two as typed slices. `recognisedNamespaces` for an app is the intersection of:
 
 1. The namespaces the app declared (`requestedPermissions` keys)
-2. The namespaces Milady currently recognises (`["fs", "net"]` today)
+2. The namespaces Eliza currently recognises (`["fs", "net"]` today)
 
 This is what the consent UI should render as toggleable rows. Forward-compat namespaces in the manifest (e.g. `capabilities`) appear in `requestedPermissions` (so a UI could surface them informationally) but not in `recognisedNamespaces` and cannot be granted.
 

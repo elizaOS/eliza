@@ -1,6 +1,6 @@
 # Phase 4 Consolidated TODO Ledger
 
-Workspace: `/Users/shawwalters/eliza-workspace/milady/eliza`
+Workspace: `/Users/shawwalters/eliza-workspace/eliza/eliza`
 Date: 2026-05-11
 
 This ledger merges the Phase 4 specialist reports into one implementation

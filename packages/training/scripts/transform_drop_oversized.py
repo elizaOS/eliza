@@ -6,7 +6,7 @@ n8n workflow dump). These exceed any model context window we ship and
 will OOM the trainer when packed.
 
 Default cap: 200,000 chars (~50k tokens at 4 chars/token). Override via
-MILADY_MAX_RESPONSE_CHARS env var.
+ELIZA_MAX_RESPONSE_CHARS env var.
 
 Operates in-place on data/final/train_final.jsonl.
 """
@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "data" / "final" / "train_final.jsonl"
 
-MAX_CHARS = int(os.environ.get("MILADY_MAX_RESPONSE_CHARS", "200000"))
+MAX_CHARS = int(os.environ.get("ELIZA_MAX_RESPONSE_CHARS", "200000"))
 
 
 def main() -> int:

@@ -1,13 +1,13 @@
 """Integration test for the budget enforcement path through the watcher.
 
 Verifies the bash watcher's contract by:
-  1. Constructing an isolated MILADY_STATE_DIR.
+  1. Constructing an isolated ELIZA_STATE_DIR.
   2. Pointing the watcher at a stub `train_vast.sh` (which always succeeds)
      and pre-seeding ``.vast_instance_id`` so the watcher reads it.
   3. Replacing the python ``scripts.lib.vast_budget enforce`` invocation
      with one that returns the hard-cap exit code (11).
-  4. Running the watcher with ``MILADY_VAST_BUDGET_DRY_RUN=1`` and a tiny
-     ``MILADY_VAST_WATCH_INTERVAL_S=1`` so a single poll happens then
+  4. Running the watcher with ``ELIZA_VAST_BUDGET_DRY_RUN=1`` and a tiny
+     ``ELIZA_VAST_WATCH_INTERVAL_S=1`` so a single poll happens then
      the watcher exits cleanly via the hard-cap branch.
   5. Asserting an incident log with kind="hard_cap_breach" was written.
 
@@ -107,7 +107,7 @@ def test_watcher_writes_hard_cap_incident_and_exits(
     This is the M9 "dry-run with mocked rate, assert hard-cap teardown"
     test from the deliverables list.
     """
-    state_dir = tmp_path / "milady-state"
+    state_dir = tmp_path / "eliza-state"
     state_dir.mkdir()
     teardown_marker = tmp_path / "teardown.marker"
 
@@ -124,10 +124,10 @@ def test_watcher_writes_hard_cap_incident_and_exits(
     staged.chmod(0o755)
 
     env = os.environ.copy()
-    env["MILADY_STATE_DIR"] = str(state_dir)
-    env["MILADY_VAST_MAX_USD"] = "10"
-    env["MILADY_VAST_WATCH_INTERVAL_S"] = "1"
-    env["MILADY_VAST_BUDGET_DRY_RUN"] = "1"
+    env["ELIZA_STATE_DIR"] = str(state_dir)
+    env["ELIZA_VAST_MAX_USD"] = "10"
+    env["ELIZA_VAST_WATCH_INTERVAL_S"] = "1"
+    env["ELIZA_VAST_BUDGET_DRY_RUN"] = "1"
     env["ROOT_TEARDOWN_MARKER"] = str(teardown_marker)
     env["PATH"] = f"{bindir}:{env.get('PATH', '')}"
 
@@ -163,13 +163,13 @@ def test_watcher_writes_hard_cap_incident_and_exits(
 def test_watcher_does_not_enforce_when_no_cap_configured(
     fake_repo: Path, tmp_path: Path
 ) -> None:
-    """Unset MILADY_VAST_MAX_USD => watcher logs but never enforces.
+    """Unset ELIZA_VAST_MAX_USD => watcher logs but never enforces.
 
     Verifies the opt-in contract: budget enforcement requires explicit
     activation. A watcher running without the env var must still work
     for liveness alerts but skip the budget pass entirely.
     """
-    state_dir = tmp_path / "milady-state"
+    state_dir = tmp_path / "eliza-state"
     state_dir.mkdir()
     teardown_marker = tmp_path / "teardown.marker"
 
@@ -183,10 +183,10 @@ def test_watcher_does_not_enforce_when_no_cap_configured(
     staged.chmod(0o755)
 
     env = os.environ.copy()
-    env["MILADY_STATE_DIR"] = str(state_dir)
-    env.pop("MILADY_VAST_MAX_USD", None)
-    env["MILADY_VAST_WATCH_INTERVAL_S"] = "1"
-    env["MILADY_VAST_BUDGET_DRY_RUN"] = "1"
+    env["ELIZA_STATE_DIR"] = str(state_dir)
+    env.pop("ELIZA_VAST_MAX_USD", None)
+    env["ELIZA_VAST_WATCH_INTERVAL_S"] = "1"
+    env["ELIZA_VAST_BUDGET_DRY_RUN"] = "1"
     env["ROOT_TEARDOWN_MARKER"] = str(teardown_marker)
     env["PATH"] = f"{bindir}:{env.get('PATH', '')}"
 

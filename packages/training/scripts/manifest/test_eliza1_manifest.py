@@ -9,6 +9,7 @@ import pytest
 
 from scripts.manifest.eliza1_manifest import (
     ELIZA_1_MANIFEST_SCHEMA_VERSION,
+    ELIZA_1_TIERS,
     REQUIRED_KERNELS_BY_TIER,
     Eliza1ManifestError,
     FileEntry,
@@ -48,7 +49,7 @@ def base_kwargs(tier: str = "9b") -> dict:
             "text": [
                 FileEntry(path=f"text/eliza-1-{tier}-64k.gguf", sha256=SHA, ctx=65536)
             ],
-            "voice": [FileEntry(path="tts/omnivoice-1.7b.gguf", sha256=SHA)],
+            "voice": [FileEntry(path="tts/omnivoice-base-Q4_K_M.gguf", sha256=SHA)],
             "asr": [FileEntry(path="asr/asr.gguf", sha256=SHA)],
             "vision": [FileEntry(path=f"vision/mmproj-{tier}.gguf", sha256=SHA)],
             "dflash": [FileEntry(path=f"dflash/drafter-{tier}.gguf", sha256=SHA)],
@@ -83,6 +84,14 @@ def base_kwargs(tier: str = "9b") -> dict:
 
 def test_schema_version_constant():
     assert ELIZA_1_MANIFEST_SCHEMA_VERSION == "1"
+
+
+def test_eliza1_tier_ids_are_canonical():
+    assert ELIZA_1_TIERS[:3] == ("0_6b", "1_7b", "4b")
+    assert "0_6b" in REQUIRED_KERNELS_BY_TIER
+    assert "1_7b" in REQUIRED_KERNELS_BY_TIER
+    assert "0_6b" not in REQUIRED_KERNELS_BY_TIER
+    assert "1_7b" not in REQUIRED_KERNELS_BY_TIER
 
 
 def test_build_manifest_happy_path():

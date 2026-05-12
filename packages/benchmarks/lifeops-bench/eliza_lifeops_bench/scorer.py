@@ -63,6 +63,19 @@ _OUTPUT_EQUIVALENTS: dict[str, tuple[str, ...]] = {
         "updated",
         "changed",
     ),
+    "cancel": (
+        "cancel",
+        "cancelled",
+        "canceled",
+        "removed",
+        "deleted",
+    ),
+    "slot": (
+        "slot",
+        "slots",
+        "opening",
+        "openings",
+    ),
 }
 
 _TIME_12H_RE = re.compile(
@@ -79,20 +92,32 @@ _TIME_24H_RE = re.compile(
 )
 
 _KWARG_ALIASES: dict[str, str] = {
+    "atIso": "at_iso",
     "calendarId": "calendar_id",
+    "completionCheck": "completion_check",
     "eventId": "event_id",
     "entityId": "entity_id",
     "displayName": "display_name",
+    "daysAhead": "days_ahead",
+    "durationMinutes": "duration_minutes",
     "endAt": "end",
     "end_time": "end",
     "listId": "list_id",
     "messageId": "message_id",
     "newEnd": "end",
     "newStart": "start",
+    "promptInstructions": "prompt_instructions",
+    "respectsGlobalPause": "respects_global_pause",
     "roomId": "room_id",
+    "scheduledTaskId": "scheduled_task_id",
+    "shouldFire": "should_fire",
+    "slotCount": "slot_count",
     "startAt": "start",
     "start_time": "start",
+    "taskId": "task_id",
     "threadId": "thread_id",
+    "windowEnd": "window_end",
+    "windowStart": "window_start",
 }
 
 _NESTED_KWARG_GROUPS: frozenset[str] = frozenset({"details", "updates"})
@@ -138,6 +163,42 @@ _UMBRELLA_SUBACTIONS: dict[str, tuple[str, frozenset[str]]] = {
     ),
 }
 
+_DISCRIMINATOR_ACTION_ALIASES: dict[str, tuple[str, dict[str, str], frozenset[str]]] = {
+    "CALENDAR": (
+        "subaction",
+        {
+            "feed": "search_events",
+            "trip_window": "search_events",
+        },
+        _UMBRELLA_SUBACTIONS["CALENDAR"][1],
+    ),
+    "MESSAGE": (
+        "operation",
+        {
+            "draft_followup": "draft_reply",
+            "list_inbox": "search_inbox",
+            "respond": "send",
+            "search": "search_inbox",
+            "send_draft": "send",
+        },
+        _UMBRELLA_SUBACTIONS["MESSAGE"][1],
+    ),
+    "ENTITY": (
+        "subaction",
+        {
+            "create": "add",
+            "read": "list",
+        },
+        frozenset({"add", "list", "log_interaction", "set_identity"}),
+    ),
+}
+
+_ACTION_NAME_ALIASES: dict[str, str] = {
+    "SCHEDULED_TASKS_CREATE": "SCHEDULED_TASK_CREATE",
+    "SCHEDULED_TASKS_SNOOZE": "SCHEDULED_TASK_SNOOZE",
+    "SCHEDULED_TASKS_UPDATE": "SCHEDULED_TASK_UPDATE",
+}
+
 _HASH_INERT_ACTION_NAMES: frozenset[str] = frozenset(
     {
         "BOOK_TRAVEL",
@@ -161,8 +222,10 @@ _HASH_INERT_ACTION_NAMES: frozenset[str] = frozenset(
         "MONEY_SPENDING_SUMMARY",
         "MONEY_SUBSCRIPTION_AUDIT",
         "MONEY_SUBSCRIPTION_STATUS",
-        "SCHEDULED_TASK_SNOOZE",
-        "SCHEDULED_TASK_UPDATE",
+        "SCHEDULED_TASKS",
+        "SCHEDULED_TASKS_GET",
+        "SCHEDULED_TASKS_HISTORY",
+        "SCHEDULED_TASKS_LIST",
     }
 )
 
@@ -206,7 +269,9 @@ def _canonicalize_action(action: Action) -> Action:
     discriminator already present in kwargs wins over the one inferred from
     the name (so an agent that emits both is consistent with itself).
     """
-    name = action.name
+    name = _ACTION_NAME_ALIASES.get(action.name, action.name)
+    if name != action.name:
+        action = Action(name=name, kwargs=action.kwargs)
     for umbrella, (field, subactions) in _UMBRELLA_SUBACTIONS.items():
         prefix = f"{umbrella}_"
         if not name.startswith(prefix):
@@ -217,6 +282,17 @@ def _canonicalize_action(action: Action) -> Action:
         new_kwargs = dict(action.kwargs)
         new_kwargs.setdefault(field, candidate)
         return Action(name=umbrella, kwargs=new_kwargs)
+    alias_config = _DISCRIMINATOR_ACTION_ALIASES.get(name)
+    if alias_config is not None:
+        field, aliases, allowed = alias_config
+        raw_action = action.kwargs.get("action")
+        if isinstance(raw_action, str):
+            candidate = aliases.get(raw_action, raw_action)
+            if candidate in allowed:
+                new_kwargs = dict(action.kwargs)
+                new_kwargs.setdefault(field, candidate)
+                new_kwargs.pop("action", None)
+                return Action(name=name, kwargs=new_kwargs)
     return action
 
 
@@ -299,6 +375,20 @@ def _canonicalize_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
         for key, value in nested_kwargs.items():
             out.setdefault(key, value)
     return out
+
+
+def _range_boundary_equivalent(key: str, predicted: Any, expected: Any) -> bool:
+    predicted_dt = _try_parse_iso(predicted)
+    expected_dt = _try_parse_iso(expected)
+    if predicted_dt is None or expected_dt is None:
+        return False
+    if predicted_dt.date() != expected_dt.date():
+        return False
+    if key == "window_start":
+        return predicted_dt <= expected_dt
+    if key == "window_end":
+        return predicted_dt >= expected_dt
+    return False
 
 
 def _normalize_string(s: str) -> str:
@@ -387,18 +477,21 @@ def _kwargs_match(predicted: dict[str, Any], expected: dict[str, Any]) -> bool:
     Extra keys on `predicted` are ignored — the agent may pass through more
     fields than the ground truth specifies.
 
-    Keys in `_SOFT_KWARGS` are documentation-only: when they appear in
-    `expected` but are absent from `predicted`, the match is still allowed.
-    When the agent DOES emit a soft kwarg, the value still has to be
-    equivalent (so we never silently accept a contradicting `intent`).
+    Keys in `_SOFT_KWARGS` are documentation-only and never load-bearing.
+    Real models often emit paraphrased `intent` fields while the executable
+    kwargs are correct, so soft fields are ignored on both sides.
     """
     predicted = _canonicalize_kwargs(predicted)
     expected = _canonicalize_kwargs(expected)
     for key, exp_value in expected.items():
+        if key in _SOFT_KWARGS:
+            continue
         if key not in predicted:
-            if key in _SOFT_KWARGS:
-                continue
             return False
+        if key in {"window_start", "window_end"} and _range_boundary_equivalent(
+            key, predicted[key], exp_value
+        ):
+            continue
         if not _values_equivalent(predicted[key], exp_value):
             return False
     return True

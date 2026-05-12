@@ -16,7 +16,7 @@ const ONE_PIXEL_PNG = Buffer.from(
 );
 const SMOKE_VRM = readFileSync(
   new URL(
-    "../../../plugins/app-companion/public_src/vrms/milady-1.vrm",
+    "../../../plugins/app-companion/public_src/vrms/eliza-1.vrm",
     import.meta.url,
   ),
 );

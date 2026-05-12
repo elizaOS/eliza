@@ -5,7 +5,7 @@
     {
       "bundleDir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle",
       "command": [
-        "/Users/shawwalters/eliza-workspace/milady/eliza/packages/training/.venv/bin/python",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/training/.venv/bin/python",
         "-m",
         "scripts.publish.orchestrator",
         "--tier",
@@ -44,7 +44,7 @@
     {
       "bundleDir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle",
       "command": [
-        "/Users/shawwalters/eliza-workspace/milady/eliza/packages/training/.venv/bin/python",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/training/.venv/bin/python",
         "-m",
         "scripts.publish.orchestrator",
         "--tier",
@@ -83,7 +83,7 @@
     {
       "bundleDir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b-256k.bundle",
       "command": [
-        "/Users/shawwalters/eliza-workspace/milady/eliza/packages/training/.venv/bin/python",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/training/.venv/bin/python",
         "-m",
         "scripts.publish.orchestrator",
         "--tier",
@@ -122,7 +122,7 @@
     {
       "bundleDir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b.bundle",
       "command": [
-        "/Users/shawwalters/eliza-workspace/milady/eliza/packages/training/.venv/bin/python",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/training/.venv/bin/python",
         "-m",
         "scripts.publish.orchestrator",
         "--tier",
@@ -161,7 +161,7 @@
     {
       "bundleDir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle",
       "command": [
-        "/Users/shawwalters/eliza-workspace/milady/eliza/packages/training/.venv/bin/python",
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/training/.venv/bin/python",
         "-m",
         "scripts.publish.orchestrator",
         "--tier",

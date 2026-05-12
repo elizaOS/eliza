@@ -3,7 +3,7 @@
 ## Symptoms
 
 W1-3's baseline run at
-`~/.milady/runs/lifeops/lifeops-hermes-baseline-1778514429/lifeops_gpt-oss-120b_20260511_085043.json`
+`~/.eliza/runs/lifeops/lifeops-hermes-baseline-1778514429/lifeops_gpt-oss-120b_20260511_085043.json`
 exposed two related bugs in the LifeOpsBench hermes adapter:
 
 - **Bug A (no finalize).** Most scenarios reached `max_turns` (~8) with the

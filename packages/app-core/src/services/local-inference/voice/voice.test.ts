@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { BargeInController } from "./barge-in";
 import {
   _resetStubWarnLatchForTests,
@@ -418,6 +418,34 @@ describe("VoiceScheduler end-to-end", () => {
     expect(audioEvents).toHaveLength(2);
     expect(backend.calls).toBe(2);
     expect(sink.totalWritten()).toBeGreaterThan(0);
+  });
+
+  it("marks agent speaking while committed audio can be interrupted", async () => {
+    vi.useFakeTimers();
+    try {
+      const backend = new StubBackend();
+      backend.samplesPerToken = 240;
+      const sink = new InMemoryAudioSink();
+      const sched = new VoiceScheduler(
+        {
+          chunkerConfig: { maxTokensPerPhrase: 10 },
+          preset: makePreset(),
+          ringBufferCapacity: 4096,
+          sampleRate: 24000,
+        },
+        { backend, sink },
+      );
+
+      await sched.accept(tok(0, "Hi."));
+      await sched.waitIdle();
+
+      expect(sink.totalWritten()).toBeGreaterThan(0);
+      expect(sched.bargeIn.isAgentSpeaking).toBe(true);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(sched.bargeIn.isAgentSpeaking).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("streams TTS chunks into the ring buffer and caches the assembled phrase", async () => {

@@ -4,11 +4,11 @@
   "benchmark_directory": "configbench",
   "benchmark_id": "configbench",
   "cache_metrics": {},
-  "error": "Benchmark 'configbench' is not compatible with harness 'hermes' (supported: eliza)",
+  "error": "Benchmark 'configbench' is no longer compatible with harness 'hermes' (supported: eliza)",
   "higher_is_better": null,
   "metrics": {
     "harness": "hermes",
-    "reason": "harness_not_in_compatibility",
+    "reason": "latest_row_violates_current_compatibility",
     "supported_harnesses": [
       "eliza"
     ]

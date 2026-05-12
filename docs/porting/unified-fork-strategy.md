@@ -1,8 +1,8 @@
 # Unified llama.cpp fork strategy
 
-> North-star plan for landing every Milady on-device inference technique
+> North-star plan for landing every Eliza on-device inference technique
 > (TurboQuant, QJL, PolarQuant, DFlash, head-quant, KV paging) into ONE
-> Milady-controlled llama.cpp fork that ships optimized kernels on every
+> Eliza-controlled llama.cpp fork that ships optimized kernels on every
 > platform we target. Successor doc to
 > [`on-device-quantization-porting-plan.md`](./on-device-quantization-porting-plan.md);
 > the porting plan tracks per-technique deliverables, this doc fixes the
@@ -16,7 +16,7 @@ git submodule at `packages/inference/llama.cpp` — `elizaOS/llama.cpp @
 v1.0.0-eliza` (commit `08032d57`; `git submodule update --init --recursive`,
 which `bun install` runs). It composes TBQ (turbo3/turbo4/turbo3_tcq) + QJL
 (`block_qjl1_256`, `GGML_OP_ATTN_SCORE_QJL`, `GGML_OP_FUSED_ATTN_QJL_TBQ`) +
-Q4_POLAR (`Q4_POLAR=47`) + the milady Metal/Vulkan/CUDA kernels + DFlash
+Q4_POLAR (`Q4_POLAR=47`) + the eliza Metal/Vulkan/CUDA kernels + DFlash
 spec-decode (`--spec-type dflash`, the `dflash-draft` GGUF arch) + the
 post-refactor `llama-server` (`server-task.cpp` / `server-common.cpp` with
 `grammar_lazy` / `json_schema` / `response_format` / `prefill_assistant`), on
@@ -26,7 +26,7 @@ upstream b8198. Both build paths (`build-llama-cpp-dflash.mjs` desktop/server,
 a standalone clone for fork bisects. The `spiritbuun/buun-llama-cpp` pin is
 retired. Stock desktop still runs `node-llama-cpp@3.18.1` — that's the remaining
 non-unified consumer; see §F for the migration plan. (`v1.0.0-eliza` is the same
-tree as the prior `v0.4.0-milady` / `v0.2.0-milady`-lineage tags, re-tagged on
+tree as the prior `v0.4.0-eliza` / `v0.2.0-eliza`-lineage tags, re-tagged on
 the elizaOS rename. A full rebase onto a recent upstream llama.cpp remains a
 deferred follow-up — **not** a blocker for any shipping feature; the b8198 base
 already carries `grammar_lazy` / `json_schema` / `response_format` /
@@ -36,7 +36,7 @@ already carries `grammar_lazy` / `json_schema` / `response_format` /
 for the full cost, conflict surface, trigger conditions, and sequencing.)
 
 **Original problem (resolved for the AOSP+host paths, kept for context):**
-Milady previously built against three different llama.cpp trees and a
+Eliza previously built against three different llama.cpp trees and a
 patch directory. AOSP cross-compiled `Apothic-AI/llama.cpp-1bit-turboquant
 @ b2b5273e8b27` and applied `eliza/packages/app-core/scripts/aosp/llama-cpp-patches/{qjl,polarquant}/*`
 on every build. The host-side DFlash server was built from
@@ -48,20 +48,20 @@ without TurboQuant/QJL/PolarQuant. The Metal kernel work in
 .metal sources. That was unmaintainable: a feature only shipped when
 two unrelated forks happened to carry the same patch series.
 
-**The fix is a single Milady-owned fork at `elizaOS/llama.cpp` rebased
-on `ggml-org/llama.cpp` master**, with every Milady technique as a named
-branch off `milady/main`, and every consumer (AOSP `compile-libllama.mjs`,
+**The fix is a single Eliza-owned fork at `elizaOS/llama.cpp` rebased
+on `ggml-org/llama.cpp` master**, with every Eliza technique as a named
+branch off `eliza/main`, and every consumer (AOSP `compile-libllama.mjs`,
 host `build-llama-cpp-dflash.mjs`, the Capacitor xcframework, the patched
 node-llama-cpp binding) pointing at the same commit. The vendored
 `scripts/aosp/llama-cpp-patches/` directory becomes a transitional shim
-during migration and is deleted once `milady/main` carries the same
+during migration and is deleted once `eliza/main` carries the same
 commits as commits in the fork. New techniques (BitNet, MXFP4, head
-quant, KV paging) land directly as PRs against `milady/main`.
+quant, KV paging) land directly as PRs against `eliza/main`.
 
 **The win:** one fork to rebuild, one CI matrix to run, one place to land
 upstream PRs from. Today QJL exists as four `git format-patch` files that
 have to apply cleanly against a moving Apothic base; tomorrow QJL is
-`milady/main..milady/qjl-cpu-kernel` and CI rebuilds every backend on
+`eliza/main..eliza/qjl-cpu-kernel` and CI rebuilds every backend on
 push. Hardware-validated kernels become always-on instead of opt-in env
 flags.
 
@@ -76,13 +76,13 @@ every technique manually.
 
 | Item | Decision |
 |---|---|
-| Repo | `https://github.com/elizaOS/llama.cpp` (new, Milady-owned) |
+| Repo | `https://github.com/elizaOS/llama.cpp` (new, Eliza-owned) |
 | Upstream base | `ggml-org/llama.cpp` master, rebase nightly to a tagged commit |
-| Default branch | `milady/main` |
+| Default branch | `eliza/main` |
 | Pin at fork creation | upstream `b8198` (matches the apothic base — verified compatible with TBQ patches and the b8198 sampler/vocab API the AOSP shim binds against; see `compile-libllama.mjs:36-63`) |
-| Per-technique branches | `milady/turboquant-cpu`, `milady/turboquant-cuda`, `milady/turboquant-metal`, `milady/turboquant-vulkan`, `milady/qjl-cpu`, `milady/qjl-metal`, `milady/qjl-cuda`, `milady/polar-cpu`, `milady/polar-metal`, `milady/polar-cuda`, `milady/dflash-server`, `milady/head-quant`, `milady/kv-paging`, `milady/fused-cpu` (W3-B), `milady/fused-cuda` (W3-D) |
-| Integration branch | `milady/integration` — fast-forwarded from per-technique branches, what every Milady consumer pins against |
-| CI tag | `milady-vYYYY.MM.DD-<short-sha>` — one tag per green CI matrix, what `compile-libllama.mjs` and `build-llama-cpp-dflash.mjs` consume |
+| Per-technique branches | `eliza/turboquant-cpu`, `eliza/turboquant-cuda`, `eliza/turboquant-metal`, `eliza/turboquant-vulkan`, `eliza/qjl-cpu`, `eliza/qjl-metal`, `eliza/qjl-cuda`, `eliza/polar-cpu`, `eliza/polar-metal`, `eliza/polar-cuda`, `eliza/dflash-server`, `eliza/head-quant`, `eliza/kv-paging`, `eliza/fused-cpu` (W3-B), `eliza/fused-cuda` (W3-D) |
+| Integration branch | `eliza/integration` — fast-forwarded from per-technique branches, what every Eliza consumer pins against |
+| CI tag | `eliza-vYYYY.MM.DD-<short-sha>` — one tag per green CI matrix, what `compile-libllama.mjs` and `build-llama-cpp-dflash.mjs` consume |
 
 Rationale for new repo (not fork-of-Apothic): Apothic's b8198 base has
 TBQ3_0/TBQ4_0 but no QJL or Polar; spiritbuun's master has TurboQuant
@@ -94,7 +94,7 @@ clean credit for upstreaming attempts (PR #21089 is still open as of
 of a patch deletion).
 
 The vendored `scripts/aosp/llama-cpp-patches/{qjl,polarquant}/` directory
-stays in-repo until `milady/main` carries equivalent commits, then the
+stays in-repo until `eliza/main` carries equivalent commits, then the
 patches are deleted and `apply-patches.mjs` short-circuits.
 
 ## C. Build matrix
@@ -137,13 +137,13 @@ kernel landed correctly. Status legend: `✓` shipped on the unified fork,
 | **TBQ3_TCQ** (trellis-coded) | ☐ ref C only | ▲ Viterbi encoder needs warp-shuffle port | ☐ `vulkan/turbo3_tcq.comp` (decode-only) | ☐ `metal/turbo3_tcq.metal` (decode-only) | ☐ same | ☐ ref C → NEON encoder | ☐ | W1-D | `metal_verify ... turbo3_tcq fixtures/turbo3_tcq.json` |
 | **QJL1_256** (K-side KV) | ☐ vendored patch series `qjl/0001..0004` (`block_qjl1_256` + `GGML_OP_ATTN_SCORE_QJL`); CPU AVX2/NEON exists in `packages/native-plugins/qjl-cpu/` | ☐ port from `packages/training/scripts/quantization/qjl/csrc/` | ☐ port to `.comp` | ☐ `metal/qjl.metal` exists (opt-in via `ELIZA_DFLASH_PATCH_METAL_QJL=1`) | ☐ same | ☐ NEON path validated 100/100 host parity, needs arm64 hardware | ☐ | W1-A (CPU), Agent-D (Metal) | `qjl_bench --parity` (host) + `metal_verify ... qjl fixtures/qjl.json` |
 | **Q4_POLAR** (weight-side) | ☐ vendored patch series `polarquant/0001..0004` (scalar ref); NEON/AVX2 = next-session work | ☐ port from `polarquant/csrc/` (training-side, codes-only) | ☐ port to `.comp` | ☐ `metal/polar.metal` exists (opt-in via `ELIZA_DFLASH_PATCH_METAL_POLAR=1`) | ☐ same | ☐ scalar landed, NEON/AVX2 next session | ☐ | W1-B, Agent-D | `polar_roundtrip` + `polar_dot` + `metal_verify ... polar fixtures/polar.json` + Wikitext-2 PPL Δ ≤ +0.05 |
-| **DFlash spec-decode** | ✓ via `llama-server --spec-type dflash` on the unified fork (`elizaOS/llama.cpp @ v0.2.0-milady`) | ✓ same | ✓ same | ✓ same | ✗ no networking sandbox | ✓ cross-compiled `llama-server` shipped per ABI; `aosp-dflash-adapter.ts` wires it. Drafter pair: Eliza-1 target + Eliza-1 drafter from the same tokenizer family (see `dflash-drafter-strategy.md`) | n/a | unified fork (Wave-3 agent A); Eliza-1 catalog/publish path | `aosp-dflash-adapter.ts` health → 5-prompt round-trip with `llamacpp:n_drafted_total > 0` and `_accepted_total / _total > 0.5` |
-| **Head quantization** (per-attn-head bit budget; recommended new addition — see §E) | ☐ port from KIVI/KVQuant ref (per-channel K, per-token V, mixed-precision scoring per head) | ☐ same | ☐ same | ☐ same | ☐ same | ☐ same | ☐ same | new branch `milady/head-quant` | Wikitext-2 PPL Δ vs flat-bit baseline; per-head sensitivity profile written to GGUF metadata |
-| **KV paging / split-by-layer offload** (recommended new addition — see §E) | ☐ extend slot-save-path + `n_keep` to a per-layer CPU↔disk pager | n/a | n/a | n/a | n/a | ☐ disk-paged KV is the >128k context unlock on phones | n/a | new branch `milady/kv-paging` | 256k context PPL on a 1B model with no OOM and tok/s ≥ baseline + 20% |
-| **BitNet b1.58** (recommended add — see §E) | ☐ port `bitnet.cpp` ternary kernels onto our base; ggml type `TL1`/`TL2` | ☐ CUDA via bitnet.cpp's `bitnet_kernels.cu` | ☐ Vulkan TBD | ☐ MSL TBD | ☐ same | ☐ NEON ternary unpack | ☐ | new branch `milady/bitnet` | bitnet-b1.58-2B-4T inference matches HF reference |
+| **DFlash spec-decode** | ✓ via `llama-server --spec-type dflash` on the unified fork (`elizaOS/llama.cpp @ v0.2.0-eliza`) | ✓ same | ✓ same | ✓ same | ✗ no networking sandbox | ✓ cross-compiled `llama-server` shipped per ABI; `aosp-dflash-adapter.ts` wires it. Drafter pair: Eliza-1 target + Eliza-1 drafter from the same tokenizer family (see `dflash-drafter-strategy.md`) | n/a | unified fork (Wave-3 agent A); Eliza-1 catalog/publish path | `aosp-dflash-adapter.ts` health → 5-prompt round-trip with `llamacpp:n_drafted_total > 0` and `_accepted_total / _total > 0.5` |
+| **Head quantization** (per-attn-head bit budget; recommended new addition — see §E) | ☐ port from KIVI/KVQuant ref (per-channel K, per-token V, mixed-precision scoring per head) | ☐ same | ☐ same | ☐ same | ☐ same | ☐ same | ☐ same | new branch `eliza/head-quant` | Wikitext-2 PPL Δ vs flat-bit baseline; per-head sensitivity profile written to GGUF metadata |
+| **KV paging / split-by-layer offload** (recommended new addition — see §E) | ☐ extend slot-save-path + `n_keep` to a per-layer CPU↔disk pager | n/a | n/a | n/a | n/a | ☐ disk-paged KV is the >128k context unlock on phones | n/a | new branch `eliza/kv-paging` | 256k context PPL on a 1B model with no OOM and tok/s ≥ baseline + 20% |
+| **BitNet b1.58** (recommended add — see §E) | ☐ port `bitnet.cpp` ternary kernels onto our base; ggml type `TL1`/`TL2` | ☐ CUDA via bitnet.cpp's `bitnet_kernels.cu` | ☐ Vulkan TBD | ☐ MSL TBD | ☐ same | ☐ NEON ternary unpack | ☐ | new branch `eliza/bitnet` | bitnet-b1.58-2B-4T inference matches HF reference |
 | **MXFP4 / NVFP4** (recommended add — see §E) | ✓ already in upstream master (Apr 2026); rebase free | ✓ Blackwell tensor-core path also upstream | ☐ Vulkan TBD | ☐ Apple Silicon FP4 not real (memory savings only) | ☐ same | ✓ memory savings on phones | ☐ | upstream rebase | upstream `llama-bench` |
-| **Fused QJL+TBQ attention** (W3-B; CPU-only) | ✓ scalar + AVX2 + NEON; `GGML_OP_FUSED_ATTN_QJL_TBQ` | ☐ W3-D CUDA fused attn | ☐ Vulkan TBD | ☐ Metal TBD | ☐ same | ✓ NEON path compiled (parity validated on x86; arm64 pending hardware) | ☐ | W3-B (`milady/fused-cpu`) | `tests/test-fused-kernels.cpp` (parity ≤ 5e-3 over 100 random contexts) + `tests/bench-fused-kernels.cpp` (target ≥1.5x AVX2 / ≥1.3x NEON; observed 4.5x on AVX2 at n_kv=512) |
-| **Fused Q4_POLAR x Q8_0 dot** (W3-B; CPU-only) | ✓ scalar + AVX2 + NEON; folded into `ggml_vec_dot_q4_polar_q8_0_fused` | ☐ port to CUDA | ☐ Vulkan TBD | ☐ Metal TBD | ☐ same | ✓ NEON path compiled | ☐ | W3-B (`milady/fused-cpu`) | bit-exact (0.00e+00 max-rel-err) vs unfused over 100 random blocks |
+| **Fused QJL+TBQ attention** (W3-B; CPU-only) | ✓ scalar + AVX2 + NEON; `GGML_OP_FUSED_ATTN_QJL_TBQ` | ☐ W3-D CUDA fused attn | ☐ Vulkan TBD | ☐ Metal TBD | ☐ same | ✓ NEON path compiled (parity validated on x86; arm64 pending hardware) | ☐ | W3-B (`eliza/fused-cpu`) | `tests/test-fused-kernels.cpp` (parity ≤ 5e-3 over 100 random contexts) + `tests/bench-fused-kernels.cpp` (target ≥1.5x AVX2 / ≥1.3x NEON; observed 4.5x on AVX2 at n_kv=512) |
+| **Fused Q4_POLAR x Q8_0 dot** (W3-B; CPU-only) | ✓ scalar + AVX2 + NEON; folded into `ggml_vec_dot_q4_polar_q8_0_fused` | ☐ port to CUDA | ☐ Vulkan TBD | ☐ Metal TBD | ☐ same | ✓ NEON path compiled | ☐ | W3-B (`eliza/fused-cpu`) | bit-exact (0.00e+00 max-rel-err) vs unfused over 100 random blocks |
 | Hexagon HVX / NNAPI / EdgeTPU / WebGPU | ✗ explicitly out of scope per current porting plan §"Out of scope (explicit)" | | | | | | | n/a | n/a |
 
 ## E. Capabilities not yet bundled but should be — ranked
@@ -199,10 +199,10 @@ kernel landed correctly. Status legend: `✓` shipped on the unified fork,
 ## F. node-llama-cpp gap — RESOLVED (path (a) landed)
 
 **Status: shipped.** `elizaOS/node-llama-cpp` exists and is consumable
-as a bun-installable github URL drop-in. Milady's three pins
+as a bun-installable github URL drop-in. Eliza's three pins
 (`/package.json`, `eliza/packages/app-core/package.json`,
 `eliza/plugins/plugin-local-embedding/package.json`) all reference
-`github:elizaOS/node-llama-cpp#v3.18.1-milady.3`. The fork's
+`github:elizaOS/node-llama-cpp#v3.18.1-eliza.3`. The fork's
 `src/gguf/types/GgufTensorInfoTypes.ts` extends `GgmlType` with
 TBQ3_0 (43), TBQ4_0 (44), QJL1_256 (46), Q4_POLAR (47) and
 `resolveGgmlTypeOption()` accepts the lowercase aliases (`tbq3_0`,
@@ -229,14 +229,14 @@ so the resolved package needs `dist/` and `templates/packed/`
 pre-built on the target ref. Path (a) — the durable answer — is to
 commit those build outputs to a release branch:
 
-1. Source branch `milady/extended-cache-types` carries the TS edits
+1. Source branch `eliza/extended-cache-types` carries the TS edits
    to `GgmlType` and `resolveGgmlTypeOption`.
-2. Release branch `milady/release-v3.18.1-milady.2` contains the
+2. Release branch `eliza/release-v3.18.1-eliza.2` contains the
    built `dist/` (~5.7 MB) + `templates/packed/` (~164 KB) plus a
-   patch to `getModuleVersion.ts` that strips `-milady.N` so the
+   patch to `getModuleVersion.ts` that strips `-eliza.N` so the
    prebuilt-binary version comparison
    (`@node-llama-cpp/<platform>@3.18.1`) succeeds.
-3. Tags `v3.18.1-milady.{1,2,3}` mark consumable refs; `.3` is
+3. Tags `v3.18.1-eliza.{1,2,3}` mark consumable refs; `.3` is
    current.
 
 Maintenance cost on upstream rebases: cherry-pick the GgmlType
@@ -271,7 +271,7 @@ a 4-job pipeline:
 
 | Job | Runner | Cost | What it does |
 |---|---|---|---|
-| `fork-build-host` | GH `ubuntu-24.04`, `windows-2022`, `macos-14` matrix | free | Rebuild every host CPU/Vulkan target on every PR to `milady/main`; runs `metal_verify`/`vulkan_verify` against fixtures (no GPU compute, just SPIR-V/AIR compile). |
+| `fork-build-host` | GH `ubuntu-24.04`, `windows-2022`, `macos-14` matrix | free | Rebuild every host CPU/Vulkan target on every PR to `eliza/main`; runs `metal_verify`/`vulkan_verify` against fixtures (no GPU compute, just SPIR-V/AIR compile). |
 | `fork-build-cross` | GH `ubuntu-24.04` | free | AOSP arm64+x86_64 musl via zig + Android Vulkan via NDK + iOS via macos-14 matrix. Output uploaded as artifact. |
 | `kernel-verify-gpu` | self-hosted: `cuda-l4`, `rocm-gfx1100`, `apple-m3-pro`, `android-pixel-arm64` | $$$ | Run `metal_verify`/`vulkan_verify` and `qjl_bench --parity` on the actual silicon — only this job catches subgroup-size mismatches and ULP drift. Manual dispatch (cost), nightly schedule, or label-gated PR (`needs-gpu-verify` label). |
 | `bench-real-agent` | self-hosted: `apple-m3-pro` for darwin, `android-pixel-arm64` via adb forward, `cuttlefish` for x86_64 emulator | $$ | Existing `profile-inference.mjs` against each backend. Records `tok/s`, `n_drafted`, PPL Δ. Posts results to nightly tracking issue (already wired). |
@@ -279,14 +279,14 @@ a 4-job pipeline:
 The current `local-inference-matrix.yml` covers some of this for the
 existing AOSP path; `local-inference-bench.yml` is the harness side.
 This proposal collapses both into a single workflow against
-`milady/main`. Self-hosted-runner label conventions follow Anthropic's
+`eliza/main`. Self-hosted-runner label conventions follow Anthropic's
 internal usage; if no Apple Silicon runner is available, Metal kernels
 get hardware-validated only on developer machines (and the
 `packages/inference/README.md` matrix row stays "NEEDS HARDWARE"
 until that's fixed).
 
 For PR gating: `fork-build-host` + `fork-build-cross` + `kernel-verify-gpu`
-on `milady/main`. `bench-real-agent` runs nightly only.
+on `eliza/main`. `bench-real-agent` runs nightly only.
 
 ## H. Migration order
 
@@ -294,29 +294,29 @@ Concrete steps from "vendored patches + scattered branches" to the
 unified fork. Each step is a single agent session unless noted.
 
 1. **Create `elizaOS/llama.cpp` repo, push upstream b8198 as
-   `milady/main`.** Tag `milady-v2026.05.09-base`. (1h.)
+   `eliza/main`.** Tag `eliza-v2026.05.09-base`. (1h.)
 2. **Cherry-pick TBQ commits from
    `Apothic-AI/llama.cpp-1bit-turboquant @ b2b5273`** onto branch
-   `milady/turboquant-cpu`. Resolve any drift against b8198 (should be
+   `eliza/turboquant-cpu`. Resolve any drift against b8198 (should be
    none — apothic is b8198 + TBQ). Tag green CI.
 3. **Cherry-pick TurboQuant CUDA + DFlash commits from
    `spiritbuun/buun-llama-cpp @ master`** onto branches
-   `milady/turboquant-cuda` and `milady/dflash-server`. Validate against
+   `eliza/turboquant-cuda` and `eliza/dflash-server`. Validate against
    spiritbuun's existing CUDA test harness on a self-hosted runner.
-4. **Apply QJL patch series to a new branch `milady/qjl-cpu`**, port
+4. **Apply QJL patch series to a new branch `eliza/qjl-cpu`**, port
    commits from `eliza/packages/app-core/scripts/aosp/llama-cpp-patches/qjl/0001..0004`
    into proper `git format-patch`-friendly commits. Add the
    `packages/native-plugins/qjl-cpu/` source as the kernel directly under
    `ggml/src/ggml-cpu/qjl/` instead of vendoring a separate CMake target.
-5. **Apply Polar patch series to `milady/polar-cpu`**, same shape. Then
+5. **Apply Polar patch series to `eliza/polar-cpu`**, same shape. Then
    add the `packages/inference/metal/{qjl,polar}.metal` files
-   directly to `ggml/src/ggml-metal/` on `milady/qjl-metal` and
-   `milady/polar-metal`. Drop the `ELIZA_DFLASH_PATCH_METAL_*` opt-in
+   directly to `ggml/src/ggml-metal/` on `eliza/qjl-metal` and
+   `eliza/polar-metal`. Drop the `ELIZA_DFLASH_PATCH_METAL_*` opt-in
    gates once `metal_verify` reports 8/8 PASS — they become always-on.
-6. **Fast-forward `milady/integration` from each per-technique branch.**
-   Run the full CI matrix from §G. Tag green output as `milady-v2026.05.X`.
+6. **Fast-forward `eliza/integration` from each per-technique branch.**
+   Run the full CI matrix from §G. Tag green output as `eliza-v2026.05.X`.
 7. **Switch `compile-libllama.mjs:165-167` to point at
-   `elizaOS/llama.cpp @ milady/integration`.** Delete
+   `elizaOS/llama.cpp @ eliza/integration`.** Delete
    `scripts/aosp/llama-cpp-patches/{qjl,polarquant}/` and the
    `apply-patches.mjs` invocation. The directory and script can be
    removed (they're transitional shims); leave them gitignored for one
@@ -328,13 +328,13 @@ unified fork. Each step is a single agent session unless noted.
    signatures during the transition, just have them log "patch already
    on fork" and return.
    **DONE 2026-05-09 (Wave-3 agent A).** Bumped `REMOTE` to
-   `elizaOS/llama.cpp`, `REF` to `v0.2.0-milady`, `MIN_COMMIT` to
+   `elizaOS/llama.cpp`, `REF` to `v0.2.0-eliza`, `MIN_COMMIT` to
    `7c7818aafc7599996268226e2e56099f4f38e972`. Cache directory renamed
-   from `buun-llama-cpp` to `milady-llama-cpp` (forces a fresh pull for
+   from `buun-llama-cpp` to `eliza-llama-cpp` (forces a fresh pull for
    anyone with a stale checkout). All five patch hooks reduced to
    "kernels already present on elizaOS/llama.cpp; no-op." log lines.
    `compile-libllama.mjs` (AOSP cross-compile) bumped from
-   `v0.1.0-milady` to the same `v0.2.0-milady` tag so both paths land on
+   `v0.1.0-eliza` to the same `v0.2.0-eliza` tag so both paths land on
    the same commit. The unified-fork side adds DFlash CLI surface
    (`--spec-type dflash`, `--draft-min-prob` alias, Prometheus
    `n_drafted_total` / `n_drafted_accepted_total` counters) directly so
@@ -346,19 +346,19 @@ unified fork. Each step is a single agent session unless noted.
 9. **Fork `node-llama-cpp` to `elizaOS/node-llama-cpp`**, embed our
    unified fork as the bundled C++ source, extend `GgmlType` /
    `resolveGgmlTypeOption` to accept `tbq3_0`, `tbq4_0`, `qjl1_256`,
-   `q4_polar`. Pin desktop builds at the milady-binding version. (~1
+   `q4_polar`. Pin desktop builds at the eliza-binding version. (~1
    week — see §F.)
 10. **Land MXFP4/NVFP4** by upstream rebase (free). Then queue
     head-quant, KV paging, and BitNet as ranked in §E. Each lands as a
-    new `milady/<technique>` branch + PR to `milady/integration`.
-11. **Open upstream PRs.** Each branch off `milady/main` should be a
+    new `eliza/<technique>` branch + PR to `eliza/integration`.
+11. **Open upstream PRs.** Each branch off `eliza/main` should be a
     candidate PR back to `ggml-org/llama.cpp` (TBQ already has
     PR #21089 — aim to keep our diff small enough to be merge-able).
     Once a technique merges upstream, delete our branch and rebase.
 
 **Rollback plan.** Every step keeps the pre-migration code path alive
 until the new path is green. The unified fork is opt-in via
-`MILADY_LLAMA_CPP_REMOTE` env until step 7, at which point the default
+`ELIZA_LLAMA_CPP_REMOTE` env until step 7, at which point the default
 flips. The patch directory stays in git history, so reverting is one
 script edit.
 
@@ -404,5 +404,5 @@ script edit.
   calibration, QJL projection generation). Stay in
   `packages/training/`.
 - **AWQ / GPTQ / IQ-quants subtypes (IQ3_XXS..IQ4_XS) / Q2_K..Q6_K.**
-  All already in upstream llama.cpp; rebasing onto `milady/main` picks
+  All already in upstream llama.cpp; rebasing onto `eliza/main` picks
   them up for free.

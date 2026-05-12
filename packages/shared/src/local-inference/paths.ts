@@ -5,8 +5,8 @@
  * the convention established by `plugin-installer.ts` and the rest of
  * app-core. We never write to paths outside of this root.
  *
- * `<state-dir>` follows the canonical `MILADY_STATE_DIR` >
- * `ELIZA_STATE_DIR` > `~/.${ELIZA_NAMESPACE ?? "eliza"}` precedence;
+ * `<state-dir>` follows the canonical `ELIZA_STATE_DIR` >
+ * `~/.${ELIZA_NAMESPACE ?? "eliza"}` precedence;
  * on AOSP, `ELIZA_STATE_DIR` is set by `ElizaAgentService.java` to
  * `/data/data/<pkg>/files/.eliza` so models land at
  * `<that>/local-inference/models/` and not under a stray homedir-derived

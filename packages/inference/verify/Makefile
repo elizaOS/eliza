@@ -473,7 +473,7 @@ ELIZA_DFLASH_IN_TREE_LLAMA_DIR := $(abspath ../llama.cpp)
 # ~/.cache build clone can be stale relative to the active worktree, and graph
 # dispatch smokes must link against the headers/libs matching the source under
 # review. CI/external runners can still override ELIZA_DFLASH_LLAMA_DIR.
-ELIZA_DFLASH_LLAMA_DIR ?= $(if $(wildcard $(ELIZA_DFLASH_IN_TREE_LLAMA_DIR)/ggml/include/ggml.h),$(ELIZA_DFLASH_IN_TREE_LLAMA_DIR),$(HOME)/.cache/eliza-dflash/milady-llama-cpp)
+ELIZA_DFLASH_LLAMA_DIR ?= $(if $(wildcard $(ELIZA_DFLASH_IN_TREE_LLAMA_DIR)/ggml/include/ggml.h),$(ELIZA_DFLASH_IN_TREE_LLAMA_DIR),$(HOME)/.cache/eliza-dflash/eliza-llama-cpp)
 ELIZA_DFLASH_LIBGGML_CUDA ?= $(ELIZA_DFLASH_LLAMA_DIR)/build-cuda/ggml/src/ggml-cuda/libggml-cuda.so
 
 # CMAKE_CUDA_ARCHITECTURES the fork build hook should pin (platform-targets
@@ -615,10 +615,10 @@ windows-hardware:
 # before signing off a bundle.
 #
 # The fork is the elizaOS/llama.cpp checkout the build script clones into
-# ~/.cache/eliza-dflash/milady-llama-cpp. If the cache dir is absent, this
+# ~/.cache/eliza-dflash/eliza-llama-cpp. If the cache dir is absent, this
 # target prints a clear "fork not present, please run build first" message
 # rather than failing cryptically.
-ELIZA_DFLASH_FORK_METAL_DIR := $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-metal/milady-shipped
+ELIZA_DFLASH_FORK_METAL_DIR := $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-metal/eliza-shipped
 ELIZA_DFLASH_FORK_VULKAN_DIR := $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-vulkan/vulkan-shaders
 
 verify-fork:
@@ -685,7 +685,7 @@ else
 	    echo "[verify-fork] vulkan_verify not buildable on this host — skipping Vulkan fork verification"; \
 	  fi; \
 	else \
-	  echo "[verify-fork] $(ELIZA_DFLASH_FORK_VULKAN_DIR) not staged with milady shaders (run a *-vulkan build target first); skipping Vulkan fork verification"; \
+	  echo "[verify-fork] $(ELIZA_DFLASH_FORK_VULKAN_DIR) not staged with eliza shaders (run a *-vulkan build target first); skipping Vulkan fork verification"; \
 	fi
 	@echo "[verify-fork] done. Compare the per-kernel pass/fail above against the standalone reference runs to detect drift."
 endif
@@ -696,7 +696,7 @@ endif
 # pipeline (not the JIT). Prerequisite:
 # `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target
 # darwin-arm64-metal` has succeeded and produced libggml-*.dylib + the
-# milady kernels in default.metallib.
+# eliza kernels in default.metallib.
 ELIZA_DFLASH_METAL_DEFAULT_BUILD_DIR := $(ELIZA_DFLASH_LLAMA_DIR)/build/darwin-arm64-metal
 ELIZA_DFLASH_METAL_FUSED_BUILD_DIR   := $(ELIZA_DFLASH_LLAMA_DIR)/build/darwin-arm64-metal-fused
 ELIZA_DFLASH_METAL_BUILD_DIR ?= $(if $(wildcard $(ELIZA_DFLASH_METAL_DEFAULT_BUILD_DIR)/bin/libggml-metal.dylib),$(ELIZA_DFLASH_METAL_DEFAULT_BUILD_DIR),$(if $(wildcard $(ELIZA_DFLASH_METAL_FUSED_BUILD_DIR)/bin/libggml-metal.dylib),$(ELIZA_DFLASH_METAL_FUSED_BUILD_DIR),$(ELIZA_DFLASH_METAL_DEFAULT_BUILD_DIR)))

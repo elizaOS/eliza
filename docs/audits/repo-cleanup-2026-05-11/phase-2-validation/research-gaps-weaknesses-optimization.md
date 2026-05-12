@@ -2,7 +2,7 @@
 
 Date: 2026-05-11
 Worker: Phase 2 research worker F
-Workspace: `/Users/shawwalters/eliza-workspace/milady/eliza`
+Workspace: `/Users/shawwalters/eliza-workspace/eliza/eliza`
 Output: `docs/audits/repo-cleanup-2026-05-11/phase-2-validation/research-gaps-weaknesses-optimization.md`
 
 ## Scope And Constraints

@@ -227,17 +227,17 @@ export function getStartupTraceConfig(
 	const bootstrap = readStartupTraceBootstrap(env, execPath, platform);
 	const sessionId =
 		trimEnv(env.ELIZA_STARTUP_SESSION_ID) ??
-		trimEnv(env.MILADY_STARTUP_SESSION_ID) ??
+		trimEnv(env.ELIZA_STARTUP_SESSION_ID) ??
 		trimEnv(bootstrap?.session_id ?? undefined) ??
 		null;
 	const stateFile =
 		trimEnv(env.ELIZA_STARTUP_STATE_FILE) ??
-		trimEnv(env.MILADY_STARTUP_STATE_FILE) ??
+		trimEnv(env.ELIZA_STARTUP_STATE_FILE) ??
 		trimEnv(bootstrap?.state_file ?? undefined) ??
 		null;
 	const eventsFile =
 		trimEnv(env.ELIZA_STARTUP_EVENTS_FILE) ??
-		trimEnv(env.MILADY_STARTUP_EVENTS_FILE) ??
+		trimEnv(env.ELIZA_STARTUP_EVENTS_FILE) ??
 		trimEnv(bootstrap?.events_file ?? undefined) ??
 		null;
 	return {

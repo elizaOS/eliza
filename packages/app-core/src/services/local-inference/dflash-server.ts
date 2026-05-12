@@ -314,17 +314,17 @@ export function shouldRequireActiveDflashForRequest(
  * Developer-only escape hatch from the always-on speculative-decoding
  * contract (`packages/inference/AGENTS.md` §4: "DFlash is always on… If
  * the user disables speculative decoding for debugging, that is a
- * developer-only flag (`MILADY_DFLASH_DISABLE=1`), it is not a user
+ * developer-only flag (`ELIZA_DFLASH_DISABLE=1`), it is not a user
  * setting, and it MUST log a loud warning every turn.").
  *
  * This is NOT a product setting — there is no UI surface and no
- * `MILADY_LOCAL_*` mapping. It exists so a developer can bisect a
+ * `ELIZA_LOCAL_*` mapping. It exists so a developer can bisect a
  * suspected DFlash regression. When set, `dflashEnabled()` returns false
  * (the dispatcher then routes to node-llama-cpp) and every generation
  * turn that runs while it is set logs `logDflashDevDisabledWarning()`.
  */
 export function dflashDevDisabled(): boolean {
-  return readBool("MILADY_DFLASH_DISABLE");
+  return readBool("ELIZA_DFLASH_DISABLE");
 }
 
 /**
@@ -336,10 +336,10 @@ export function dflashDevDisabled(): boolean {
 export function logDflashDevDisabledWarning(): void {
   if (!dflashDevDisabled()) return;
   console.warn(
-    "[local-inference] ⚠️  MILADY_DFLASH_DISABLE=1 — speculative decoding is OFF. " +
+    "[local-inference] ⚠️  ELIZA_DFLASH_DISABLE=1 — speculative decoding is OFF. " +
       "This is a developer-only debug flag, NOT a product setting. Eliza-1's " +
       "always-on DFlash contract is violated for this turn; voice latency and " +
-      "throughput are degraded. Unset MILADY_DFLASH_DISABLE to restore the " +
+      "throughput are degraded. Unset ELIZA_DFLASH_DISABLE to restore the " +
       "shipped path.",
   );
 }
@@ -649,7 +649,7 @@ export function getDflashRuntimeStatus(): DflashRuntimeStatus {
   const capabilities = readDflashBinaryCapabilities();
   if (!dflashEnabled()) {
     const reason = dflashDevDisabled()
-      ? "DFlash is disabled by the developer-only MILADY_DFLASH_DISABLE flag. This is NOT a product setting — unset it to restore the always-on speculative-decoding contract."
+      ? "DFlash is disabled by the developer-only ELIZA_DFLASH_DISABLE flag. This is NOT a product setting — unset it to restore the always-on speculative-decoding contract."
       : "DFlash auto-enables when the managed llama-server binary is installed; set ELIZA_DFLASH_ENABLED=1 to force a PATH/explicit binary, or run packages/app-core/scripts/build-llama-cpp-dflash.mjs.";
     return {
       enabled: false,
@@ -2028,7 +2028,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     // server so it mounts `POST /v1/audio/speech` in-process (AGENTS.md §4
     // — one process, not a second `llama-omnivoice-server` over IPC). The
     // route handler in the fork's `server.cpp` (guarded by
-    // `#ifdef MILADY_FUSE_OMNIVOICE`) lazy-`ov_init`s from these paths.
+    // `#ifdef ELIZA_FUSE_OMNIVOICE`) lazy-`ov_init`s from these paths.
     const runningBinaryIsFused =
       resolveFusedDflashBinary() !== null &&
       path.resolve(status.binaryPath) ===

@@ -99,13 +99,13 @@ export interface CreateScenarioRuntimeOptions {
 }
 
 const SAVE_TRAJECTORY_ENV_FLAGS = [
-  "MILADY_SAVE_TRAJECTORIES",
+  "ELIZA_SAVE_TRAJECTORIES",
   "ELIZA_SAVE_TRAJECTORIES",
   "SCENARIO_SAVE_TRAJECTORIES",
 ] as const;
 
 const SCENARIO_PGLITE_DIR_ENV_VARS = [
-  "MILADY_SCENARIO_PGLITE_DIR",
+  "ELIZA_SCENARIO_PGLITE_DIR",
   "ELIZA_SCENARIO_PGLITE_DIR",
   "SCENARIO_PGLITE_DIR",
 ] as const;
@@ -234,9 +234,9 @@ export async function createScenarioRuntime(
   // the right stub. Match the bench server's dimension (1024 — see
   // `packages/app-core/src/benchmark/server.ts`) so downstream code that
   // assumes that shape (vector columns sized at boot) still works.
-  // Opt back into the real plugin with `MILADY_BENCH_SKIP_EMBEDDING=0`.
+  // Opt back into the real plugin with `ELIZA_BENCH_SKIP_EMBEDDING=0`.
   const skipEmbeddingPlugin =
-    (process.env.MILADY_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
+    (process.env.ELIZA_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
   if (skipEmbeddingPlugin) {
     const EMBEDDING_DIMENSIONS = 1024;
     const stubEmbeddingPlugin: Plugin = {
@@ -255,7 +255,7 @@ export async function createScenarioRuntime(
     await runtime.registerPlugin(stubEmbeddingPlugin);
     logger.info(
       `[scenario-runner] Registered zero-vector TEXT_EMBEDDING stub (dim=${EMBEDDING_DIMENSIONS}); ` +
-        "set MILADY_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-embedding instead.",
+        "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-embedding instead.",
     );
   } else {
     try {

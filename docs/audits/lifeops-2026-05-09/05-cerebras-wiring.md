@@ -7,7 +7,7 @@ Anthropic Claude Opus 4.7 stays for the agent under test (production runtime).
 
 Cerebras env (already in `eliza/.env`):
 
-- `CEREBRAS_API_KEY=csk-...`
+- `CEREBRAS_API_KEY`: redacted
 - `CEREBRAS_BASE_URL=https://api.cerebras.ai/v1`
 - `CEREBRAS_MODEL=gpt-oss-120b`
 - `EVAL_MODEL_PROVIDER=cerebras`, `EVAL_MODEL=gpt-oss-120b`

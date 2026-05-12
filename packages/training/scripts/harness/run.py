@@ -49,8 +49,8 @@ DEFAULT_DEV_MODEL = "openai/gpt-oss-120b"
 
 def default_teacher_model() -> str:
     return (
-        os.environ.get("MILADY_HARNESS_MODEL")
-        or os.environ.get("MILADY_COLLECTION_MODEL")
+        os.environ.get("ELIZA_HARNESS_MODEL")
+        or os.environ.get("ELIZA_COLLECTION_MODEL")
         or DEFAULT_DEV_MODEL
     )
 
@@ -137,7 +137,7 @@ async def call_openai_compatible(
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "User-Agent": "milady-training-harness/1.0",
+        "User-Agent": "eliza-training-harness/1.0",
     }
     backoff = 5.0
     last_content = ""
@@ -216,7 +216,7 @@ async def process_scenario(
     available_actions = visible_actions_for(action, catalog)
     tool_specs = build_tool_specs(action)
     system_prompt = system_prompt_for_action(
-        agent_id="milady",
+        agent_id="eliza",
         action_name=action_name,
         available_actions=available_actions,
         tool_specs=tool_specs,
@@ -502,10 +502,10 @@ def main() -> None:
     ap.add_argument("--only", type=str, default="", help="comma-separated action names")
     ap.add_argument("--concurrency", type=int, default=16)
     ap.add_argument("--model", default=default_teacher_model())
-    ap.add_argument("--api-url", default=os.environ.get("MILADY_HARNESS_API_URL", DEFAULT_API_URL))
-    ap.add_argument("--api-key-env", default=os.environ.get("MILADY_HARNESS_API_KEY_ENV", DEFAULT_API_KEY_ENV))
-    ap.add_argument("--provider-label", default=os.environ.get("MILADY_HARNESS_PROVIDER", "groq-dev"))
-    ap.add_argument("--reasoning-effort", default=os.environ.get("MILADY_HARNESS_REASONING_EFFORT", "low"))
+    ap.add_argument("--api-url", default=os.environ.get("ELIZA_HARNESS_API_URL", DEFAULT_API_URL))
+    ap.add_argument("--api-key-env", default=os.environ.get("ELIZA_HARNESS_API_KEY_ENV", DEFAULT_API_KEY_ENV))
+    ap.add_argument("--provider-label", default=os.environ.get("ELIZA_HARNESS_PROVIDER", "groq-dev"))
+    ap.add_argument("--reasoning-effort", default=os.environ.get("ELIZA_HARNESS_REASONING_EFFORT", "low"))
     args = ap.parse_args()
     asyncio.run(main_async(args))
 

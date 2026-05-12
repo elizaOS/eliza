@@ -87,9 +87,9 @@ describe("resolveRamBudget", () => {
     const budget = resolveRamBudget(model, installed(model), loader);
 
     expect(budget.source).toBe("catalog");
-    // catalog row says minRamGb: 4 → 4096 MB; recommendedMb adds the
-    // bundle's KV-cache footprint at its 32k default ctx (1.7B ≈ 2400
-    // B/token → 75 MB), so recommended is the boot floor plus that.
+    // catalog row says minRamGb: 4 -> 4096 MB; recommendedMb adds the
+    // bundle's KV-cache footprint at its 32k default ctx (1.7B = 2400
+    // B/token -> 75 MB), so recommended is the boot floor plus that.
     expect(budget.minMb).toBe(4 * 1024);
     expect(budget.recommendedMb).toBeGreaterThan(budget.minMb);
     expect(budget.recommendedMb).toBe(4 * 1024 + 75);

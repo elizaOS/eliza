@@ -28,21 +28,21 @@ import { isTruthyEnvValue } from "./env-utils.js";
 /**
  * Env var the operator sets to opt in to self-edit. Defaults off.
  */
-export const SELF_EDIT_ENABLE_ENV = "MILADY_ENABLE_SELF_EDIT";
+export const SELF_EDIT_ENABLE_ENV = "ELIZA_ENABLE_SELF_EDIT";
 
 /**
  * Env var that, when truthy, marks the process as a developer-mode runtime
  * (in addition to / as an alternative to `NODE_ENV !== "production"`).
  */
-export const DEV_MODE_ENV = "MILADY_DEV_MODE";
+export const DEV_MODE_ENV = "ELIZA_DEV_MODE";
 
 /**
  * Predicate: is self-edit enabled for the current process?
  *
  * Returns `true` only when **all** of the following hold:
- *   1. `MILADY_ENABLE_SELF_EDIT` is truthy (explicit operator opt-in).
+ *   1. `ELIZA_ENABLE_SELF_EDIT` is truthy (explicit operator opt-in).
  *   2. The process is not a production build, i.e. `NODE_ENV !== "production"`
- *      OR `MILADY_DEV_MODE` is truthy. Either signal flips the gate on.
+ *      OR `ELIZA_DEV_MODE` is truthy. Either signal flips the gate on.
  *
  * The function is pure: pass an env snapshot for tests, default reads
  * `process.env`.

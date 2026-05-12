@@ -6,7 +6,7 @@ import { elizaLogger } from "@elizaos/core";
  *
  * The `.env` in this repo typically defines `CEREBRAS_API_KEY` /
  * `CEREBRAS_BASE_URL` / `CEREBRAS_MODEL` but does NOT set `OPENAI_BASE_URL` /
- * `OPENAI_API_KEY` / `MILADY_PROVIDER` — the keys the plugin code path
+ * `OPENAI_API_KEY` / `ELIZA_PROVIDER` — the keys the plugin code path
  * actually reads. Without those, the openai plugin is skipped at load time,
  * no TEXT_LARGE / TEXT_SMALL handler is registered, and every benchmark turn
  * falls back to the "no LLM provider configured" stub.
@@ -14,9 +14,9 @@ import { elizaLogger } from "@elizaos/core";
  * Promotes Cerebras config to OpenAI-compat keys when ALL of these hold:
  *   - `CEREBRAS_API_KEY` is set
  *   - no competing OpenAI-compat key is present (`OPENAI_API_KEY`,
- *     `OPENAI_BASE_URL`, and `MILADY_PROVIDER` are all unset)
+ *     `OPENAI_BASE_URL`, and `ELIZA_PROVIDER` are all unset)
  *
- * Never overwrites an existing OPENAI_* or MILADY_PROVIDER value.
+ * Never overwrites an existing OPENAI_* or ELIZA_PROVIDER value.
  *
  * The resulting `OPENAI_BASE_URL=https://api.cerebras.ai/v1` is the V1 root
  * onto which `@ai-sdk/openai`'s `openai.chat(model)` appends
@@ -30,14 +30,14 @@ export function autoWireCerebras(): void {
   if (!cerebrasKey) return;
   const hasOpenAiKey = !!process.env.OPENAI_API_KEY?.trim();
   const hasOpenAiBase = !!process.env.OPENAI_BASE_URL?.trim();
-  const hasMiladyProvider = !!process.env.MILADY_PROVIDER?.trim();
-  if (hasOpenAiKey || hasOpenAiBase || hasMiladyProvider) return;
+  const hasElizaProvider = !!process.env.ELIZA_PROVIDER?.trim();
+  if (hasOpenAiKey || hasOpenAiBase || hasElizaProvider) return;
 
   const cerebrasBase =
     process.env.CEREBRAS_BASE_URL?.trim() || "https://api.cerebras.ai/v1";
   process.env.OPENAI_BASE_URL = cerebrasBase;
   process.env.OPENAI_API_KEY = cerebrasKey;
-  process.env.MILADY_PROVIDER = "cerebras";
+  process.env.ELIZA_PROVIDER = "cerebras";
 
   const cerebrasModel = process.env.CEREBRAS_MODEL?.trim() || "gpt-oss-120b";
   if (!process.env.OPENAI_LARGE_MODEL?.trim()) {
@@ -49,7 +49,7 @@ export function autoWireCerebras(): void {
 
   elizaLogger.info(
     `[bench] Auto-wired Cerebras: OPENAI_BASE_URL=${cerebrasBase}, ` +
-      `MILADY_PROVIDER=cerebras, OPENAI_LARGE_MODEL=${process.env.OPENAI_LARGE_MODEL}, ` +
+      `ELIZA_PROVIDER=cerebras, OPENAI_LARGE_MODEL=${process.env.OPENAI_LARGE_MODEL}, ` +
       `OPENAI_SMALL_MODEL=${process.env.OPENAI_SMALL_MODEL}`,
   );
 }

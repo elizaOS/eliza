@@ -77,7 +77,7 @@
       "help": "Number of dimensions the embedding model outputs.",
       "advanced": false
     },
-    "MILADY_MODEL": {
+    "ELIZA_MODEL": {
       "type": "select",
       "required": false,
       "sensitive": false,

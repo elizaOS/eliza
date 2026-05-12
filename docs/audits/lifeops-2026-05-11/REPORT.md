@@ -96,7 +96,7 @@ Full per-wave detail in [`INDEX.md`](./INDEX.md). Headline commits:
 │  Harnesses (hermes / openclaw / eliza)                              │
 │     │   uses                                                        │
 │     ▼                                                               │
-│  Telemetry  → trajectories  → ~/.milady/trajectories/*.jsonl        │
+│  Telemetry  → trajectories  → ~/.eliza/trajectories/*.jsonl        │
 │     │                                                               │
 │     ▼                                                               │
 │  scripts/aggregate-lifeops-run.mjs                                  │
@@ -158,7 +158,7 @@ Full per-wave detail in [`INDEX.md`](./INDEX.md). Headline commits:
 
 Per-wave run-logs and failure detail in the individual wave docs
 linked above. The full re-baseline run (W2-9) corpus is preserved at
-`~/.milady/runs/lifeops/lifeops-multiagent-best`.
+`~/.eliza/runs/lifeops/lifeops-multiagent-best`.
 
 ## Verification commands run + outcomes
 
@@ -167,10 +167,10 @@ bun run verify                          # typecheck + lint
 bun run test                            # parallel TS test suite
 bun run test:cache-stability            # 10/10 unchanged hashes
 bun run lifeops:verify-cerebras         # both eval + train reachable
-MILADY_BENCH_LIMIT=25 MILADY_BENCH_SKIP_JS=1 \
+ELIZA_BENCH_LIMIT=25 ELIZA_BENCH_SKIP_JS=1 \
   LIFEOPS_USE_MOCKOON=1 \
   OPENAI_BASE_URL=https://api.cerebras.ai/v1 \
-  MILADY_PROVIDER=cerebras \
+  ELIZA_PROVIDER=cerebras \
   BENCHMARK_MODEL_PROVIDER=cerebras BENCHMARK_MODEL_NAME=gpt-oss-120b \
   bun run lifeops:full                  # full run, status=0
 ```
@@ -240,7 +240,7 @@ Wave 4-B residuals (full text in
    bake-in (small=5, mid=8, large=12, frontier=20) to measured Pareto
    values. Today's `retrieval-funnel.{md,json}` is structurally
    correct but `counted samples: 0` because no full run yet emits
-   `MILADY_RETRIEVAL_MEASUREMENT=1` trajectories. First measured run
+   `ELIZA_RETRIEVAL_MEASUREMENT=1` trajectories. First measured run
    should rerun `bun run lifeops:retrieval:funnel` +
    `lifeops:retrieval:pareto` and either update
    `retrieval-defaults.ts` constants or document the deltas.
@@ -248,7 +248,7 @@ Wave 4-B residuals (full text in
    the next published benchmark — without it, the granular
    elizaOS-style agent path is structurally penalized vs. the
    umbrella-form Hermes path.
-4. Whether to flip `MILADY_BENCH_PRE_RELEASE` rules for the local
+4. Whether to flip `ELIZA_BENCH_PRE_RELEASE` rules for the local
    Qwen tiers once a real (non-standin) training run lands. The
    current rule is correct (every bundle is `preRelease=true`) but
    conservative; once weights land, the aggregator should emit

@@ -57,9 +57,9 @@ Unified metrics, prompt optimization, multi-tier model e2e, native DSPy-style op
 - [x] W2-C retrieval funnel instrumentation + Pareto sweep + per-tier defaults (commit `e64bb8a6c4`)
   - `packages/core/src/runtime/action-retrieval.ts` — added `measurementMode`, `tierOverrides`, `RetrievalMeasurement` (per-stage scores + fused top-K). Weighted RRF + env-driven MODEL_TIER override.
   - `packages/core/src/runtime/trajectory-recorder.ts` — extended `RecordedToolSearchStage` with `perStageScores`, `fusedTopK`, `selectedActions`, `correctActions`.
-  - `packages/core/src/services/message.ts` — plumbed `MILADY_RETRIEVAL_MEASUREMENT=1` through `buildV5PlannerActionSurface`.
+  - `packages/core/src/services/message.ts` — plumbed `ELIZA_RETRIEVAL_MEASUREMENT=1` through `buildV5PlannerActionSurface`.
   - `packages/benchmarks/lib/src/retrieval-defaults.ts` — `RETRIEVAL_DEFAULTS_BY_TIER` (small/mid/large/frontier topK + stage weights). Re-exported from `@elizaos-benchmarks/lib`.
-  - `scripts/lifeops-retrieval-funnel.mjs` — emits `retrieval-funnel.{md,json}` from `~/.milady/trajectories`.
+  - `scripts/lifeops-retrieval-funnel.mjs` — emits `retrieval-funnel.{md,json}` from `~/.eliza/trajectories`.
   - `scripts/lifeops-retrieval-pareto.mjs` — top-K sweep (3/5/8/12/20) + per-tier recommended K against floors 0.70 / 0.78 / 0.85 / 0.90.
   - Tests: `action-retrieval-measurement.test.ts` (7), `retrieval-defaults.test.ts` (10), `lifeops-retrieval-funnel.test.mjs` (synthetic in → md+json out).
   - Defaults baked in (heuristic; recalibrate on first real measured run): small topK=5, mid=8, large=12, frontier=20. Small up-weights exact/regex/bm25 (precision-heavy), frontier up-weights keyword/embedding (recall-friendly).
@@ -103,7 +103,7 @@ Unified metrics, prompt optimization, multi-tier model e2e, native DSPy-style op
   `intent` kwarg in `_kwargs_match`, eliza bench-server LLM endpoint
   fix (Cerebras 404).
 - **Retrieval defaults recalibration** — first run with
-  `MILADY_RETRIEVAL_MEASUREMENT=1` should rerun
+  `ELIZA_RETRIEVAL_MEASUREMENT=1` should rerun
   `bun run lifeops:retrieval:funnel` and
   `bun run lifeops:retrieval:pareto`, then either update
   `packages/benchmarks/lib/src/retrieval-defaults.ts` constants or

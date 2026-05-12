@@ -10,7 +10,7 @@
  *
  * Origin policy:
  *   - `https://elizacloud.ai` / `https://www.elizacloud.ai` (production SPA)
- *   - `https://milady.ai` / `https://www.milady.ai` (Milady app frontend)
+ *   - `https://eliza.ai` / `https://www.eliza.ai` (Eliza app frontend)
  *   - `https://eliza.app` / `https://eliza.ai` / `https://www.eliza.ai` (legacy)
  *   - `*.eliza-cloud-enq.pages.dev` (Pages branch + PR previews)
  *   - `http://localhost:*` (local dev)
@@ -27,8 +27,8 @@ import { CORS_ALLOW_HEADER_NAMES, CORS_ALLOW_METHOD_NAMES } from "@/lib/cors-con
 const STATIC_ALLOWED_ORIGINS = new Set<string>([
   "https://elizacloud.ai",
   "https://www.elizacloud.ai",
-  "https://milady.ai",
-  "https://www.milady.ai",
+  "https://eliza.ai",
+  "https://www.eliza.ai",
 ]);
 const PAGES_PREVIEW_SUFFIX = ".eliza-cloud-enq.pages.dev";
 

@@ -35,10 +35,10 @@ const ACTIVE_SERVER_STORAGE_KEY = "elizaos:active-server";
 /**
  * The translated heading is "Welcome to Eliza" (i18n key
  * `runtimegate.welcomeTitle`). The in-repo defaultValue says "Welcome
- * to Milady" but the shipped translation overrides it. Match either so
+ * to Eliza" but the shipped translation overrides it. Match either so
  * the spec is resilient to translation churn.
  */
-const WELCOME_HEADING_REGEX = /welcome to (eliza|milady)/i;
+const WELCOME_HEADING_REGEX = /welcome to (eliza|eliza)/i;
 
 async function fulfillJson(
   route: Route,

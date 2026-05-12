@@ -13,7 +13,11 @@ from benchmarks.orchestrator.adapters import (
     _score_from_loca_bench,
     discover_adapters,
 )
-from benchmarks.orchestrator.runner import _effective_request, _is_harness_compatible
+from benchmarks.orchestrator.runner import (
+    _effective_request,
+    _is_harness_compatible,
+    _required_env_for_request,
+)
 from benchmarks.orchestrator.types import ExecutionContext, RunRequest
 from benchmarks.registry import get_benchmark_registry
 
@@ -28,6 +32,7 @@ def test_discovery_covers_all_real_benchmark_directories() -> None:
 
     assert set(discovery.all_directories) - covered_dirs == set()
     assert ".pytest_cache" not in discovery.all_directories
+    assert "swe-bench-pro" not in discovery.all_directories
     assert "swe-bench-workspace" not in discovery.all_directories
 
 
@@ -247,22 +252,57 @@ def test_loca_adapter_excludes_openclaw_until_full_transcript_adapter_exists(tmp
     assert env["MAX_CONVERSATION_TOKENS"] == "1000000"
 
 
-def test_action_calling_excludes_fake_cross_harness_rows() -> None:
-    adapter = discover_adapters(_workspace_root()).adapters["action-calling"]
+def test_lifeops_required_env_tracks_static_vs_live_modes() -> None:
+    adapter = discover_adapters(_workspace_root()).adapters["lifeops_bench"]
 
-    assert adapter.agent_compatibility == ("eliza",)
-    assert _is_harness_compatible(adapter, "hermes") is False
-    assert _is_harness_compatible(adapter, "openclaw") is False
+    static_perfect = _effective_request(
+        adapter,
+        RunRequest(
+            benchmarks=("lifeops_bench",),
+            agent="perfect",
+            provider="cerebras",
+            model="perfect",
+            extra_config={"mode": "static"},
+        ),
+    )
+    assert _required_env_for_request(adapter, static_perfect) == ()
+
+    static_hermes = _effective_request(
+        adapter,
+        RunRequest(
+            benchmarks=("lifeops_bench",),
+            agent="hermes",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={"mode": "static"},
+        ),
+    )
+    assert _required_env_for_request(adapter, static_hermes) == ("CEREBRAS_API_KEY",)
+
+    live_hermes = _effective_request(
+        adapter,
+        RunRequest(
+            benchmarks=("lifeops_bench",),
+            agent="hermes",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={"mode": "live"},
+        ),
+    )
+    assert _required_env_for_request(adapter, live_hermes) == (
+        "CEREBRAS_API_KEY",
+        "ANTHROPIC_API_KEY",
+    )
 
 
-def test_action_calling_eliza_generation_uses_response_text() -> None:
+def test_action_calling_eliza_generation_uses_captured_runtime_calls() -> None:
     module = importlib.import_module("benchmarks.action-calling.cli")
 
     class Response:
-        text = "plain model text"
+        text = ""
         params = {
             "BENCHMARK_ACTION": {
-                "tool": "mail.search",
+                "tool_name": "mail_search",
                 "arguments": {"query": "ACME invoice"},
             }
         }
@@ -271,38 +311,66 @@ def test_action_calling_eliza_generation_uses_response_text() -> None:
         def send_message(self, **_kwargs):
             return Response()
 
-    generated = module._generate(
+    case = module.ExpectedCase(
+        record={},
+        messages=[{"role": "system", "content": "Use tools."}, {"role": "user", "content": "call the tool"}],
+        tools=[
+            {
+                "type": "function",
+                "function": {
+                    "name": "mail_search",
+                    "description": "Search mail",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"query": {"type": "string"}},
+                        "required": ["query"],
+                    },
+                },
+            }
+        ],
+        expected_calls=[{"name": "mail_search", "arguments": {"query": "ACME invoice"}}],
+    )
+
+    generated, text, source, content_calls = module._generate(
         Client(),
         "eliza",
         "gpt-oss-120b",
-        [{"role": "user", "content": "call the tool"}],
+        case,
         128,
         0.0,
+        "auto",
     )
 
-    assert generated == "plain model text"
-    assert "actions[1]" not in generated
+    assert generated == [{"name": "mail_search", "arguments": {"query": "ACME invoice"}}]
+    assert text == ""
+    assert source == "captured_action"
+    assert content_calls == []
 
 
-def test_action_calling_rejects_legacy_synthesized_eliza_scores() -> None:
+def test_action_calling_score_accepts_native_metrics() -> None:
     entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
         "action-calling"
     ]
 
-    with pytest.raises(ValueError, match="actual model_text"):
-        entry.extract_score(
-            {
-                "provider": "eliza",
-                "n": 1,
-                "metrics": {
-                    "score": 1.0,
-                    "format_ok": 1.0,
-                    "action_name_match": 1.0,
-                    "args_parse_ok": 1.0,
-                    "required_keys_ok": 1.0,
-                },
-            }
-        )
+    score = entry.extract_score(
+        {
+            "provider": "eliza",
+            "generation_source": "captured_action",
+            "n": 1,
+            "metrics": {
+                "score": 1.0,
+                "native_tool_calls_ok": 1.0,
+                "tool_name_match": 1.0,
+                "args_parse_ok": 1.0,
+                "required_keys_ok": 1.0,
+                "arguments_match": 1.0,
+            },
+        }
+    )
+
+    assert score.score == 1.0
+    assert score.metrics["native_tool_calls_ok"] == 1.0
+    assert score.metrics["generation_source"] == "captured_action"
 
 
 def test_loca_score_rejects_task_runs_without_token_usage(tmp_path: Path) -> None:
