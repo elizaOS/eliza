@@ -83,18 +83,28 @@ export function streamLlamaPrompt(args: StreamLlamaPromptArgs): TextStreamResult
   let promptDone = false;
   let rawAccumulated = "";
 
+  let pendingReject: ((reason: unknown) => void) | null = null;
   const drain = (): void => {
     if (!pendingResolve) return;
     if (queue.length > 0) {
       const next = queue.shift() as string;
       const resolver = pendingResolve;
       pendingResolve = null;
+      pendingReject = null;
       resolver({ value: next, done: false });
+      return;
+    }
+    if (promptError && pendingReject) {
+      const rejector = pendingReject;
+      pendingResolve = null;
+      pendingReject = null;
+      rejector(promptError);
       return;
     }
     if (promptDone) {
       const resolver = pendingResolve;
       pendingResolve = null;
+      pendingReject = null;
       resolver({ value: undefined, done: true });
     }
   };
@@ -113,17 +123,22 @@ export function streamLlamaPrompt(args: StreamLlamaPromptArgs): TextStreamResult
         },
       });
       return result;
+    } catch (err) {
+      // Capture the error BEFORE the `finally` flips `promptDone` so the
+      // iterator's drain step sees `promptError` and rejects the pending
+      // pull instead of resolving it as `{ done: true }`. The `.catch`
+      // re-attached below is only there to swallow the rejection on side
+      // promises (avoids `UnhandledPromiseRejection`).
+      promptError = err;
+      throw err;
     } finally {
       promptDone = true;
       drain();
     }
   })();
 
-  // Failures propagate to consumers via the textStream generator. The
-  // caught-here rejection avoids `UnhandledPromiseRejection` if a caller
-  // only reads `usage` / `finishReason`.
-  promptPromise.catch((err) => {
-    promptError = err;
+  promptPromise.catch(() => {
+    /* surfaced through textStream / left undefined on usage+finishReason */
   });
 
   const textStream: AsyncIterable<string> = {
@@ -143,8 +158,9 @@ export function streamLlamaPrompt(args: StreamLlamaPromptArgs): TextStreamResult
               done: true,
             });
           }
-          return new Promise<IteratorResult<string>>((resolve) => {
+          return new Promise<IteratorResult<string>>((resolve, reject) => {
             pendingResolve = resolve;
+            pendingReject = reject;
           });
         },
       };
