@@ -37,6 +37,7 @@ step-by-step "run these commands to ship v1" sequence see [`RELEASE_V1.md`](RELE
 | [`docs/porting/upstream-rebase-plan.md`](docs/porting/upstream-rebase-plan.md) | The **deferred** plan to rebase the fork onto current upstream llama.cpp. NOT a v1 blocker — the fork already carries `grammar_lazy` / `json_schema` / structured output. |
 | [`scripts/release-v1-prep.mjs`](scripts/release-v1-prep.mjs) (`bun run release:v1:prep`) | The **prep command** — runs every release step that needs no GPU/Metal/Android/HF-write host (build-dflash dry-run, manifest + recipe test suites, `py_compile`, quant `--dry-run`s, DFlash synthetic smoke, platform-plan regen + idempotency, gate-collect per tier, CPU C reference + kernel-contract) and prints the remaining `[hw]` checklist with the host + command per step. |
 | [`scripts/hf-transfer-eliza1.sh`](scripts/hf-transfer-eliza1.sh) | The **HF org transfer** — `huggingface-cli repo move milady-ai/<old> elizaos/<new>` for the legacy per-tier `*-optimized`/`*-drafter` bundles + `repo create elizaos/eliza-1-<tier>` for the canonical bundle repos. Dry-run by default; `--execute` needs an `HF_TOKEN` with write to both orgs. |
+| [`packages/training/scripts/publish/HF_PUBLISH_PLAN.md`](packages/training/scripts/publish/HF_PUBLISH_PLAN.md) | The **HF publish plan** — repo plan + honest model/dataset/results card drafts + the orchestrator upload sequence + the conservative subset to publish if the fine-tune does not beat baseline. Prep doc; nothing uploaded under it yet (the fine-tuned-model upload is gated on the FINETUNE workstream's go/no-go). |
 
 ---
 
@@ -121,7 +122,26 @@ green in this checkout.
   fine-tuned `recommended` release ships in v2.
 - Local release-shaped bundles exist for all five tiers for runtime-layout smoke
   (placeholder/substitute bytes — not yet fork-built from the upstream base
-  weights; `releaseState` is `weights-staged`, not `base-v1`).
+  weights; `releaseState` is `weights-staged`, not `base-v1`). Each bundle's
+  `evidence/release.json` already records `repoId: elizaos/eliza-1-<tier>` (the
+  destination the orchestrator enforces); there is one bundle repo per tier — no
+  separate `-sft`/`-ft` variant repo. The orchestrator's `--base-v1 --dry-run`
+  on `0_6b` still exits at stage 2 (`releaseState=weights-staged` is not a
+  publishable state; `final.{evals,kernelDispatchReports,platformEvidence,
+  sizeFirstRepoIds}=false`; no `finetuned`/`sourceModels`).
+- HF publish prep: [`packages/training/scripts/publish/HF_PUBLISH_PLAN.md`](packages/training/scripts/publish/HF_PUBLISH_PLAN.md)
+  documents the repo plan (`elizaos/eliza-1-0_6b` bundle repo, `eliza-1-0_6b-sft`
+  raw fine-tune, `eliza-1-training` refresh, `eliza-1-sft-0_6b`, `eliza-1-evals`
+  results) + honest card drafts + the upload sequence. The wave token has write
+  access to the `elizaos` org. Existing HF state: `elizaos/eliza-1-assets` (frozen
+  voice/ASR/VAD bytes for `1_7b`) and `elizaos/eliza-1-training` (SFT corpus,
+  populated) exist; the per-tier `elizaos/eliza-1-<tier>` bundle repos do not yet.
+  A `0_6b` SFT split is staged at `packages/training/datasets/eliza1-sft-0_6b/`
+  (privacy-filtered, `Qwen/Qwen3-0.6B`-substitute chat template). Nothing has been
+  uploaded under this plan: the fine-tuned-model upload is gated on the FINETUNE
+  workstream's go/no-go, and the only fine-tune runs present
+  (`packages/training/checkpoints/eliza-1-{0_6b,1_7b}-apollo-*`) are smoke-mode
+  with FAILED gates (`format_ok` 0.2–0.33 < 0.5 floor) — not publishable.
 - DFlash drafters staged + stamped for `0_6b`/`1_7b`: `dflash/drafter-<tier>.gguf`
   (the `Qwen/Qwen3-0.6B` substitute), `qwen3` arch, plain-AR shape, shared
   151,936-token vocab with the `tokenizer.ggml.merges` repair intact,
