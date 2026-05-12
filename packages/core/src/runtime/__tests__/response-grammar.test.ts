@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { normalizeActionJsonSchema } from "../../actions/action-schema";
 import type { Action } from "../../types";
 import {
 	buildPlannerActionGrammar,
 	buildResponseGrammar,
 	clearResponseGrammarCache,
+	withGuidedDecodeProviderOptions,
 } from "../response-grammar";
 import type { ResponseHandlerFieldEvaluator } from "../response-handler-field-evaluator";
 
@@ -287,5 +288,70 @@ describe("buildPlannerActionGrammar — Stage-2 per-action grammar", () => {
 		const a = buildPlannerActionGrammar([makeAction("A"), makeAction("B")]);
 		const b = buildPlannerActionGrammar([makeAction("B"), makeAction("A")]);
 		expect(b).toBe(a);
+	});
+});
+
+describe("withGuidedDecodeProviderOptions", () => {
+	const ENV_KEYS = [
+		"MILADY_LOCAL_GUIDED_DECODE",
+		"ELIZA_LOCAL_GUIDED_DECODE",
+	] as const;
+	const saved: Record<string, string | undefined> = {};
+	for (const k of ENV_KEYS) saved[k] = process.env[k];
+	afterEach(() => {
+		for (const k of ENV_KEYS) {
+			if (saved[k] === undefined) delete process.env[k];
+			else process.env[k] = saved[k];
+		}
+	});
+
+	it("sets eliza.guidedDecode = true by default and preserves siblings", () => {
+		for (const k of ENV_KEYS) delete process.env[k];
+		const opts = withGuidedDecodeProviderOptions({
+			eliza: { plannerActionSchemas: { A: { type: "object" } } },
+			other: 1,
+		} as Record<string, unknown>);
+		expect(opts).toMatchObject({
+			other: 1,
+			eliza: {
+				guidedDecode: true,
+				plannerActionSchemas: { A: { type: "object" } },
+			},
+		});
+	});
+
+	it("creates the eliza bag when absent", () => {
+		for (const k of ENV_KEYS) delete process.env[k];
+		const opts = withGuidedDecodeProviderOptions({} as Record<string, unknown>);
+		expect((opts as { eliza?: { guidedDecode?: unknown } }).eliza).toEqual({
+			guidedDecode: true,
+		});
+	});
+
+	it("is a no-op when the operator opts out via MILADY_LOCAL_GUIDED_DECODE=0", () => {
+		process.env.MILADY_LOCAL_GUIDED_DECODE = "0";
+		const opts = withGuidedDecodeProviderOptions({} as Record<string, unknown>);
+		expect((opts as { eliza?: unknown }).eliza).toBeUndefined();
+	});
+
+	it("is a no-op when ELIZA_LOCAL_GUIDED_DECODE=false", () => {
+		process.env.ELIZA_LOCAL_GUIDED_DECODE = "false";
+		const opts = withGuidedDecodeProviderOptions({
+			eliza: { plannerActionSchemas: {} },
+		} as Record<string, unknown>);
+		expect(
+			(opts as { eliza?: { guidedDecode?: unknown } }).eliza?.guidedDecode,
+		).toBeUndefined();
+	});
+
+	it("returns the same object reference (idempotent merge)", () => {
+		for (const k of ENV_KEYS) delete process.env[k];
+		const input = { eliza: { foo: 1 } } as Record<string, unknown>;
+		expect(withGuidedDecodeProviderOptions(input)).toBe(input);
+		const again = withGuidedDecodeProviderOptions(input);
+		expect((again as { eliza?: { guidedDecode?: unknown } }).eliza).toEqual({
+			foo: 1,
+			guidedDecode: true,
+		});
 	});
 });
