@@ -158,6 +158,17 @@ export async function runHydrating(
       kind?: string;
       path?: string;
     };
+    // A raw `TypeError: Failed to fetch` (fetch() rejecting before any HTTP
+    // response — connection reset, route not yet wired, navigation aborted)
+    // during optional startup hydration is transient by definition: every
+    // such fetch here is best-effort and re-driven by later polls. Don't
+    // surface it as a console warning (it flakes the ui-smoke guards).
+    if (
+      err.name === "TypeError" &&
+      /^(Failed to fetch|NetworkError|Load failed)$/i.test(err.message)
+    ) {
+      return true;
+    }
     return (
       err.name === "ApiError" &&
       maybeApiError.kind === "network" &&
