@@ -1,0 +1,200 @@
+2024-08-02T22:57:50Z [INFO ] MEMORY_READ - Retrieved memory 42526796-99f9-43ff-bb87-f60f4aa85a21 (query match score: 0.84)
+2024-08-02T23:46:07Z [INFO ] MEMORY_WRITE - Stored new memory 55b5f72d-bb06-496a-97bf-69f0cef9b517 in category 'temporary'
+2024-08-03T06:11:35Z [INFO ] MEMORY_READ - Retrieved memory 9035e3de-de2d-40db-a905-77a7183ae74c (query match score: 0.91)
+2024-08-03T06:23:05Z [INFO ] MEMORY_DELETE - Removed memory 9da3afc3-6883-4c10-aebd-2220d90647c3 (reason: user_requested)
+2024-08-04T03:30:24Z [INFO ] MEMORY_READ - Retrieved memory 55b5f72d-bb06-496a-97bf-69f0cef9b517 (query match score: 0.81)
+2024-08-04T05:59:00Z [INFO ] MEMORY_WRITE - Stored new memory c3603ba6-e6d4-4add-a6e8-fddd7c9a52a2 in category 'temporary'
+2024-08-04T23:15:04Z [INFO ] MEMORY_DELETE - Removed memory 42526796-99f9-43ff-bb87-f60f4aa85a21 (reason: user_requested)
+2024-08-05T03:43:00Z [INFO ] MEMORY_WRITE - Stored new memory 07f5cb0f-87d2-4a95-9a86-91c63525364f in category 'reference'
+2024-08-05T22:26:47Z [INFO ] MEMORY_READ - Retrieved memory 1ca7ff93-29a8-4120-9475-92bff9b926ef (query match score: 0.83)
+2024-08-05T23:02:30Z [INFO ] MEMORY_READ - Retrieved memory c3603ba6-e6d4-4add-a6e8-fddd7c9a52a2 (query match score: 0.81)
+2024-08-06T03:45:32Z [INFO ] MEMORY_READ - Retrieved memory 32dc41aa-f08f-4570-a8cf-feb132649f61 (query match score: 0.87)
+2024-08-06T11:04:04Z [INFO ] MEMORY_DELETE - Removed memory 9fb7fcbe-97ed-47cc-9cb9-6089956d025c (reason: user_requested)
+2024-08-06T22:06:52Z [INFO ] MEMORY_READ - Retrieved memory 0734333d-04e7-43ec-9f57-8cc01d3d8d1b (query match score: 0.74)
+2024-08-06T23:04:42Z [INFO ] MEMORY_READ - Retrieved memory 07f5cb0f-87d2-4a95-9a86-91c63525364f (query match score: 0.76)
+2024-08-07T02:52:57Z [INFO ] MEMORY_READ - Retrieved memory 85afc254-4352-488e-8d18-0a6cbd9792a3 (query match score: 0.73)
+2024-08-07T05:06:24Z [INFO ] MEMORY_READ - Retrieved memory 8c7440cb-b238-430f-9db5-dc46bd2e9cb1 (query match score: 0.93)
+2024-08-07T11:30:37Z [INFO ] MEMORY_DELETE - Removed memory 48a7e1b4-f17b-47d0-90f3-ac1b4097ad11 (reason: user_requested)
+2024-08-08T02:01:11Z [INFO ] MEMORY_WRITE - Stored new memory 181c37af-86ee-4544-bf81-f40574638e3e in category 'work'
+2024-08-08T02:06:21Z [INFO ] MEMORY_WRITE - Stored new memory 8c7440cb-b238-430f-9db5-dc46bd2e9cb1 in category 'temporary'
+2024-08-08T02:35:20Z [INFO ] MEMORY_READ - Retrieved memory 70727f14-4213-4d44-a145-522ab08315cd (query match score: 0.83)
+2024-08-08T10:17:52Z [INFO ] MEMORY_READ - Retrieved memory 928648ce-453d-42fe-a10e-d6cba2a41754 (query match score: 0.82)
+2024-08-08T13:30:48Z [INFO ] MEMORY_READ - Retrieved memory 556882ec-6f9c-46db-b91d-f1bb38d39426 (query match score: 0.76)
+2024-08-09T00:15:07Z [INFO ] MEMORY_READ - Retrieved memory 1ca7ff93-29a8-4120-9475-92bff9b926ef (query match score: 0.9)
+2024-08-09T02:47:00Z [INFO ] MEMORY_READ - Retrieved memory 0734333d-04e7-43ec-9f57-8cc01d3d8d1b (query match score: 0.85)
+2024-08-09T05:03:00Z [INFO ] DUPLICATE_DETECTED - Memory 027c1050-dc5f-48b0-9f0b-f1aa2528874d is 0.89 similar to 648641b3-b87d-4339-920d-33df4bc76f86; no action taken (auto-merge disabled)
+2024-08-09T07:52:57Z [INFO ] MEMORY_READ - Retrieved memory 6b46efd8-3125-4320-8801-0be841493e0d (query match score: 0.75)
+2024-08-09T08:39:32Z [INFO ] MEMORY_WRITE - Stored new memory 37c48b9f-bbd9-4817-ac1e-2a033f79b6f7 in category 'temporary'
+2024-08-09T10:31:44Z [INFO ] MEMORY_READ - Retrieved memory a4381ade-3bc0-45a4-b958-5ea2fcbdc6f5 (query match score: 0.75)
+2024-08-10T03:05:17Z [INFO ] MEMORY_READ - Retrieved memory 1ca7ff93-29a8-4120-9475-92bff9b926ef (query match score: 0.83)
+2024-08-10T04:58:00Z [ERROR] MEMORY_WRITE - Failed to write memory 70727f14-4213-4d44-a145-522ab08315cd: IOError - disk write timeout after 30s
+2024-08-10T11:07:10Z [INFO ] MEMORY_READ - Retrieved memory fe5cbff6-df0e-4908-be4f-bc2f9fe5cca0 (query match score: 0.76)
+2024-08-11T04:35:07Z [INFO ] MEMORY_DELETE - Removed memory 9da3afc3-6883-4c10-aebd-2220d90647c3 (reason: user_requested)
+2024-08-11T06:22:55Z [INFO ] MEMORY_WRITE - Stored new memory fe5cbff6-df0e-4908-be4f-bc2f9fe5cca0 in category 'personal'
+2024-08-12T13:32:39Z [INFO ] MEMORY_DELETE - Removed memory af405d92-3313-41f8-87c6-e7f6ea7b4757 (reason: user_requested)
+2024-08-13T00:12:48Z [INFO ] MEMORY_READ - Retrieved memory 3006c378-ec1c-4ad5-841c-e78ea01bfe37 (query match score: 0.89)
+2024-08-13T01:01:51Z [INFO ] MEMORY_WRITE - Stored new memory d501219a-f396-4d38-be8f-fc78eb8751c5 in category 'personal'
+2024-08-14T03:54:50Z [INFO ] MEMORY_DELETE - Removed memory c3603ba6-e6d4-4add-a6e8-fddd7c9a52a2 (reason: user_requested)
+2024-08-14T08:32:19Z [INFO ] MEMORY_READ - Retrieved memory 6b854a31-0f41-4787-94e4-f90672804411 (query match score: 0.86)
+2024-08-14T16:33:00Z [INFO ] CLEANUP_RUN - Cleanup job started
+2024-08-14T16:33:22Z [INFO ] CLEANUP_RUN - Reviewed 39 items, deleted 3 expired items
+2024-08-14T20:44:25Z [INFO ] MEMORY_READ - Retrieved memory a4381ade-3bc0-45a4-b958-5ea2fcbdc6f5 (query match score: 0.77)
+2024-08-15T03:06:58Z [INFO ] MEMORY_READ - Retrieved memory 928648ce-453d-42fe-a10e-d6cba2a41754 (query match score: 0.98)
+2024-08-15T06:04:32Z [INFO ] MEMORY_READ - Retrieved memory bb18009c-8d81-42be-8480-6d873fd26088 (query match score: 0.88)
+2024-08-15T13:29:16Z [INFO ] MEMORY_WRITE - Stored new memory 9da3afc3-6883-4c10-aebd-2220d90647c3 in category 'personal'
+2024-08-15T23:25:20Z [INFO ] MEMORY_WRITE - Stored new memory 42526796-99f9-43ff-bb87-f60f4aa85a21 in category 'temporary'
+2024-08-17T10:37:00Z [INFO ] DUPLICATE_DETECTED - Memory 079525c9-b038-407c-92c0-e903024a57a8 is 0.93 similar to 6b854a31-0f41-4787-94e4-f90672804411; no action taken (auto-merge disabled)
+2024-08-17T21:17:43Z [INFO ] MEMORY_READ - Retrieved memory e7992518-d3bf-42eb-981d-6bb7a89792ca (query match score: 0.74)
+2024-08-17T21:22:28Z [INFO ] MEMORY_READ - Retrieved memory d501219a-f396-4d38-be8f-fc78eb8751c5 (query match score: 0.77)
+2024-08-18T05:10:57Z [INFO ] MEMORY_READ - Retrieved memory 56fce6f7-76c6-4ed5-a63d-4e5f7ea18a23 (query match score: 0.82)
+2024-08-18T11:27:15Z [INFO ] MEMORY_READ - Retrieved memory 3006c378-ec1c-4ad5-841c-e78ea01bfe37 (query match score: 0.9)
+2024-08-19T06:13:24Z [INFO ] MEMORY_READ - Retrieved memory ba51cee8-ff96-4149-8fb3-fa13bdc66531 (query match score: 0.79)
+2024-08-19T07:32:44Z [INFO ] MEMORY_WRITE - Stored new memory 027c1050-dc5f-48b0-9f0b-f1aa2528874d in category 'temporary'
+2024-08-19T09:35:29Z [INFO ] MEMORY_DELETE - Removed memory ba51cee8-ff96-4149-8fb3-fa13bdc66531 (reason: user_requested)
+2024-08-19T10:15:02Z [INFO ] MEMORY_READ - Retrieved memory 37c48b9f-bbd9-4817-ac1e-2a033f79b6f7 (query match score: 0.88)
+2024-08-19T20:58:53Z [INFO ] MEMORY_WRITE - Stored new memory a7b9b6dd-517c-4508-917c-38eecf7b2544 in category 'reference'
+2024-08-19T21:37:38Z [INFO ] MEMORY_READ - Retrieved memory 928648ce-453d-42fe-a10e-d6cba2a41754 (query match score: 0.79)
+2024-08-20T00:51:42Z [INFO ] MEMORY_DELETE - Removed memory 1ca7ff93-29a8-4120-9475-92bff9b926ef (reason: user_requested)
+2024-08-20T23:20:00Z [INFO ] DUPLICATE_DETECTED - Memory 07f5cb0f-87d2-4a95-9a86-91c63525364f is 0.91 similar to 485cb1ef-2900-4735-a4cc-7fd68646ada7; no action taken (auto-merge disabled)
+2024-08-21T02:28:00Z [INFO ] DUPLICATE_DETECTED - Memory a7b2c256-88d2-4f92-a8c5-d470286ebe1f is 0.89 similar to a7b2c256-88d2-4f92-a8c5-d470286ebe1f; no action taken (auto-merge disabled)
+2024-08-21T09:24:28Z [INFO ] MEMORY_WRITE - Stored new memory 93016124-5733-4dae-b1e4-ae321f31aa4a in category 'reference'
+2024-08-21T11:53:00Z [ERROR] MEMORY_WRITE - Failed to write memory 6ffafa94-9b97-4e71-804c-e8573007080e: IOError - disk write timeout after 30s
+2024-08-22T00:16:58Z [INFO ] MEMORY_DELETE - Removed memory 9035e3de-de2d-40db-a905-77a7183ae74c (reason: user_requested)
+2024-08-22T03:14:56Z [INFO ] MEMORY_WRITE - Stored new memory dd9accba-1f98-4d11-adca-255d1cb8ee5d in category 'work'
+2024-08-22T03:44:22Z [INFO ] MEMORY_READ - Retrieved memory 48a7e1b4-f17b-47d0-90f3-ac1b4097ad11 (query match score: 0.8)
+2024-08-22T12:23:23Z [INFO ] MEMORY_WRITE - Stored new memory 84435982-2966-493a-acda-38b3e93ad894 in category 'personal'
+2024-08-23T03:45:00Z [INFO ] MEMORY_READ - Retrieved memory 556882ec-6f9c-46db-b91d-f1bb38d39426 (query match score: 0.83)
+2024-08-23T11:21:48Z [INFO ] MEMORY_READ - Retrieved memory 9035e3de-de2d-40db-a905-77a7183ae74c (query match score: 0.94)
+2024-08-23T12:55:33Z [INFO ] MEMORY_READ - Retrieved memory 4b557c5f-6ccc-4a9c-be93-f9ba9fe5d89c (query match score: 0.72)
+2024-08-24T01:23:54Z [INFO ] MEMORY_READ - Retrieved memory dd9accba-1f98-4d11-adca-255d1cb8ee5d (query match score: 0.82)
+2024-08-24T08:15:52Z [INFO ] MEMORY_WRITE - Stored new memory 84435982-2966-493a-acda-38b3e93ad894 in category 'work'
+2024-08-24T13:41:19Z [INFO ] MEMORY_READ - Retrieved memory 485cb1ef-2900-4735-a4cc-7fd68646ada7 (query match score: 0.86)
+2024-08-24T20:48:35Z [INFO ] MEMORY_READ - Retrieved memory ba51cee8-ff96-4149-8fb3-fa13bdc66531 (query match score: 0.87)
+2024-08-24T23:44:19Z [INFO ] MEMORY_READ - Retrieved memory bb18009c-8d81-42be-8480-6d873fd26088 (query match score: 0.85)
+2024-08-25T01:36:54Z [INFO ] MEMORY_READ - Retrieved memory 9fb7fcbe-97ed-47cc-9cb9-6089956d025c (query match score: 0.95)
+2024-08-25T02:16:52Z [INFO ] MEMORY_WRITE - Stored new memory 48a7e1b4-f17b-47d0-90f3-ac1b4097ad11 in category 'reference'
+2024-08-25T02:33:43Z [INFO ] MEMORY_READ - Retrieved memory 027c1050-dc5f-48b0-9f0b-f1aa2528874d (query match score: 0.75)
+2024-08-25T09:55:52Z [INFO ] MEMORY_READ - Retrieved memory 90e2713a-e4ee-4e86-8cb1-b5e246f241ad (query match score: 0.97)
+2024-08-25T21:18:56Z [INFO ] MEMORY_WRITE - Stored new memory 90e2713a-e4ee-4e86-8cb1-b5e246f241ad in category 'reference'
+2024-08-26T09:14:12Z [INFO ] MEMORY_READ - Retrieved memory 9035e3de-de2d-40db-a905-77a7183ae74c (query match score: 0.93)
+2024-08-26T22:23:43Z [INFO ] MEMORY_WRITE - Stored new memory a7b2c256-88d2-4f92-a8c5-d470286ebe1f in category 'reference'
+2024-08-27T08:33:26Z [INFO ] MEMORY_WRITE - Stored new memory 6b854a31-0f41-4787-94e4-f90672804411 in category 'work'
+2024-08-27T22:57:20Z [INFO ] MEMORY_READ - Retrieved memory 37c48b9f-bbd9-4817-ac1e-2a033f79b6f7 (query match score: 0.79)
+2024-08-27T23:43:33Z [INFO ] MEMORY_READ - Retrieved memory 55b5f72d-bb06-496a-97bf-69f0cef9b517 (query match score: 0.94)
+2024-08-28T08:55:02Z [INFO ] MEMORY_DELETE - Removed memory b7080ede-758b-45b7-9dcb-5b150ba822e5 (reason: user_requested)
+2024-08-29T06:26:19Z [INFO ] MEMORY_WRITE - Stored new memory 8c7440cb-b238-430f-9db5-dc46bd2e9cb1 in category 'temporary'
+2024-08-29T09:07:32Z [INFO ] MEMORY_WRITE - Stored new memory bb18009c-8d81-42be-8480-6d873fd26088 in category 'work'
+2024-08-29T10:42:14Z [INFO ] MEMORY_READ - Retrieved memory 9fb7fcbe-97ed-47cc-9cb9-6089956d025c (query match score: 0.9)
+2024-08-29T11:14:03Z [INFO ] MEMORY_READ - Retrieved memory b7080ede-758b-45b7-9dcb-5b150ba822e5 (query match score: 0.93)
+2024-08-29T12:44:59Z [INFO ] MEMORY_READ - Retrieved memory 2e4d6d83-b746-4dab-af36-2bd517143588 (query match score: 0.97)
+2024-08-30T01:50:00Z [INFO ] MEMORY_WRITE - Stored new memory c3603ba6-e6d4-4add-a6e8-fddd7c9a52a2 in category 'personal'
+2024-08-31T03:45:24Z [INFO ] MEMORY_DELETE - Removed memory 9035e3de-de2d-40db-a905-77a7183ae74c (reason: user_requested)
+2024-08-31T12:21:21Z [INFO ] MEMORY_WRITE - Stored new memory f0dd4e54-be83-48bb-935d-10c6e33f707a in category 'personal'
+2024-08-31T22:17:29Z [INFO ] MEMORY_READ - Retrieved memory d047ccfb-3773-4321-b4dc-df57b90b219e (query match score: 0.93)
+2024-09-01T09:25:10Z [INFO ] MEMORY_READ - Retrieved memory 648641b3-b87d-4339-920d-33df4bc76f86 (query match score: 0.95)
+2024-09-01T20:38:16Z [INFO ] MEMORY_WRITE - Stored new memory bc133c5e-b4c5-45bd-bdc2-8283adb3d119 in category 'reference'
+2024-09-02T05:06:57Z [INFO ] MEMORY_WRITE - Stored new memory 556882ec-6f9c-46db-b91d-f1bb38d39426 in category 'reference'
+2024-09-02T11:14:33Z [INFO ] MEMORY_WRITE - Stored new memory 85afc254-4352-488e-8d18-0a6cbd9792a3 in category 'reference'
+2024-09-04T04:49:05Z [INFO ] MEMORY_READ - Retrieved memory d501219a-f396-4d38-be8f-fc78eb8751c5 (query match score: 0.88)
+2024-09-05T22:16:05Z [INFO ] MEMORY_DELETE - Removed memory 9fb7fcbe-97ed-47cc-9cb9-6089956d025c (reason: user_requested)
+2024-09-06T01:01:34Z [INFO ] MEMORY_WRITE - Stored new memory 42526796-99f9-43ff-bb87-f60f4aa85a21 in category 'reference'
+2024-09-06T01:54:39Z [INFO ] MEMORY_WRITE - Stored new memory 6b46efd8-3125-4320-8801-0be841493e0d in category 'reference'
+2024-09-07T04:26:10Z [INFO ] MEMORY_WRITE - Stored new memory 6ffafa94-9b97-4e71-804c-e8573007080e in category 'temporary'
+2024-09-07T10:28:09Z [INFO ] MEMORY_DELETE - Removed memory 9035e3de-de2d-40db-a905-77a7183ae74c (reason: user_requested)
+2024-09-07T11:58:17Z [INFO ] MEMORY_WRITE - Stored new memory 42526796-99f9-43ff-bb87-f60f4aa85a21 in category 'temporary'
+2024-09-08T02:04:41Z [INFO ] MEMORY_WRITE - Stored new memory 85afc254-4352-488e-8d18-0a6cbd9792a3 in category 'reference'
+2024-09-08T09:06:18Z [INFO ] MEMORY_READ - Retrieved memory af405d92-3313-41f8-87c6-e7f6ea7b4757 (query match score: 0.95)
+2024-09-08T09:25:35Z [INFO ] MEMORY_DELETE - Removed memory 556882ec-6f9c-46db-b91d-f1bb38d39426 (reason: user_requested)
+2024-09-08T11:07:00Z [ERROR] MEMORY_WRITE - Failed to write memory 027c1050-dc5f-48b0-9f0b-f1aa2528874d: IOError - disk write timeout after 30s
+2024-09-08T12:49:03Z [INFO ] MEMORY_READ - Retrieved memory 6b46efd8-3125-4320-8801-0be841493e0d (query match score: 0.72)
+2024-09-08T13:22:03Z [INFO ] MEMORY_READ - Retrieved memory 68790eb4-03db-4035-a3cf-d69821991dc0 (query match score: 0.76)
+2024-09-09T07:22:05Z [INFO ] MEMORY_READ - Retrieved memory 55b5f72d-bb06-496a-97bf-69f0cef9b517 (query match score: 0.93)
+2024-09-09T07:41:20Z [INFO ] MEMORY_DELETE - Removed memory 9da3afc3-6883-4c10-aebd-2220d90647c3 (reason: user_requested)
+2024-09-09T09:50:40Z [INFO ] MEMORY_READ - Retrieved memory d501219a-f396-4d38-be8f-fc78eb8751c5 (query match score: 0.76)
+2024-09-09T11:23:08Z [INFO ] MEMORY_READ - Retrieved memory d047ccfb-3773-4321-b4dc-df57b90b219e (query match score: 0.81)
+2024-09-09T11:41:29Z [INFO ] MEMORY_READ - Retrieved memory 556882ec-6f9c-46db-b91d-f1bb38d39426 (query match score: 0.83)
+2024-09-09T22:51:13Z [INFO ] MEMORY_READ - Retrieved memory 9fb7fcbe-97ed-47cc-9cb9-6089956d025c (query match score: 0.95)
+2024-09-10T00:26:23Z [INFO ] MEMORY_READ - Retrieved memory f0dd4e54-be83-48bb-935d-10c6e33f707a (query match score: 0.97)
+2024-09-10T01:11:00Z [INFO ] DUPLICATE_DETECTED - Memory d501219a-f396-4d38-be8f-fc78eb8751c5 is 0.92 similar to af405d92-3313-41f8-87c6-e7f6ea7b4757; no action taken (auto-merge disabled)
+2024-09-10T07:28:47Z [INFO ] MEMORY_READ - Retrieved memory 90e2713a-e4ee-4e86-8cb1-b5e246f241ad (query match score: 0.86)
+2024-09-10T08:31:52Z [INFO ] MEMORY_READ - Retrieved memory 37c48b9f-bbd9-4817-ac1e-2a033f79b6f7 (query match score: 0.73)
+2024-09-10T11:00:52Z [INFO ] MEMORY_READ - Retrieved memory 6ffafa94-9b97-4e71-804c-e8573007080e (query match score: 0.88)
+2024-09-10T12:10:18Z [INFO ] MEMORY_WRITE - Stored new memory 55b5f72d-bb06-496a-97bf-69f0cef9b517 in category 'reference'
+2024-09-11T06:20:37Z [INFO ] MEMORY_WRITE - Stored new memory 07f5cb0f-87d2-4a95-9a86-91c63525364f in category 'reference'
+2024-09-11T07:37:04Z [INFO ] MEMORY_WRITE - Stored new memory bb18009c-8d81-42be-8480-6d873fd26088 in category 'temporary'
+2024-09-11T12:27:25Z [INFO ] MEMORY_WRITE - Stored new memory 181c37af-86ee-4544-bf81-f40574638e3e in category 'personal'
+2024-09-11T21:38:03Z [INFO ] MEMORY_WRITE - Stored new memory 3006c378-ec1c-4ad5-841c-e78ea01bfe37 in category 'reference'
+2024-09-12T02:54:00Z [INFO ] MEMORY_READ - Retrieved memory 6ffafa94-9b97-4e71-804c-e8573007080e (query match score: 0.94)
+2024-09-12T04:43:00Z [INFO ] DUPLICATE_DETECTED - Memory 6ffafa94-9b97-4e71-804c-e8573007080e is 0.92 similar to 556882ec-6f9c-46db-b91d-f1bb38d39426; no action taken (auto-merge disabled)
+2024-09-12T05:03:08Z [INFO ] MEMORY_WRITE - Stored new memory dd9accba-1f98-4d11-adca-255d1cb8ee5d in category 'personal'
+2024-09-12T11:09:42Z [INFO ] MEMORY_READ - Retrieved memory 181c37af-86ee-4544-bf81-f40574638e3e (query match score: 0.94)
+2024-09-12T12:08:19Z [INFO ] MEMORY_READ - Retrieved memory 55b5f72d-bb06-496a-97bf-69f0cef9b517 (query match score: 0.97)
+2024-09-12T13:10:32Z [INFO ] MEMORY_READ - Retrieved memory 9035e3de-de2d-40db-a905-77a7183ae74c (query match score: 0.98)
+2024-09-12T16:37:00Z [INFO ] CLEANUP_RUN - Cleanup job started
+2024-09-12T16:37:35Z [INFO ] CLEANUP_RUN - Reviewed 43 items, deleted 3 expired items
+2024-09-13T07:25:06Z [INFO ] MEMORY_READ - Retrieved memory 90e2713a-e4ee-4e86-8cb1-b5e246f241ad (query match score: 0.74)
+2024-09-13T21:50:09Z [INFO ] MEMORY_READ - Retrieved memory 181c37af-86ee-4544-bf81-f40574638e3e (query match score: 0.92)
+2024-09-14T01:49:48Z [INFO ] MEMORY_READ - Retrieved memory d047ccfb-3773-4321-b4dc-df57b90b219e (query match score: 0.85)
+2024-09-14T05:25:00Z [INFO ] DUPLICATE_DETECTED - Memory 928648ce-453d-42fe-a10e-d6cba2a41754 is 0.92 similar to dd9accba-1f98-4d11-adca-255d1cb8ee5d; no action taken (auto-merge disabled)
+2024-09-14T08:13:00Z [ERROR] MEMORY_WRITE - Failed to write memory af209f36-76be-47bb-af39-85369b8c6659: IOError - disk write timeout after 30s
+2024-09-14T08:44:06Z [INFO ] MEMORY_WRITE - Stored new memory 84435982-2966-493a-acda-38b3e93ad894 in category 'work'
+2024-09-15T02:48:27Z [INFO ] MEMORY_READ - Retrieved memory 2e4d6d83-b746-4dab-af36-2bd517143588 (query match score: 0.71)
+2024-09-15T09:08:18Z [INFO ] MEMORY_READ - Retrieved memory be0c6591-45bd-47fa-abe8-f6a31f9c6061 (query match score: 0.86)
+2024-09-15T13:07:42Z [INFO ] MEMORY_WRITE - Stored new memory 9da3afc3-6883-4c10-aebd-2220d90647c3 in category 'reference'
+2024-09-16T05:53:40Z [INFO ] MEMORY_WRITE - Stored new memory 93016124-5733-4dae-b1e4-ae321f31aa4a in category 'temporary'
+2024-09-16T09:40:53Z [INFO ] MEMORY_WRITE - Stored new memory 55b5f72d-bb06-496a-97bf-69f0cef9b517 in category 'reference'
+2024-09-16T20:32:46Z [INFO ] MEMORY_WRITE - Stored new memory 90e2713a-e4ee-4e86-8cb1-b5e246f241ad in category 'work'
+2024-09-17T00:06:12Z [INFO ] MEMORY_WRITE - Stored new memory 648641b3-b87d-4339-920d-33df4bc76f86 in category 'work'
+2024-09-17T10:56:48Z [INFO ] MEMORY_WRITE - Stored new memory 70727f14-4213-4d44-a145-522ab08315cd in category 'temporary'
+2024-09-17T11:26:36Z [INFO ] MEMORY_WRITE - Stored new memory bb18009c-8d81-42be-8480-6d873fd26088 in category 'work'
+2024-09-17T20:52:42Z [INFO ] MEMORY_READ - Retrieved memory 4b557c5f-6ccc-4a9c-be93-f9ba9fe5d89c (query match score: 0.93)
+2024-09-18T01:24:20Z [INFO ] MEMORY_READ - Retrieved memory 32dc41aa-f08f-4570-a8cf-feb132649f61 (query match score: 0.82)
+2024-09-18T03:06:43Z [INFO ] MEMORY_WRITE - Stored new memory 90e2713a-e4ee-4e86-8cb1-b5e246f241ad in category 'reference'
+2024-09-18T07:28:00Z [WARN ] STORAGE_WARNING - Memory store at 83% capacity (401/500 items)
+2024-09-18T09:08:06Z [INFO ] MEMORY_READ - Retrieved memory a7b9b6dd-517c-4508-917c-38eecf7b2544 (query match score: 0.77)
+2024-09-18T22:06:14Z [INFO ] MEMORY_READ - Retrieved memory f0dd4e54-be83-48bb-935d-10c6e33f707a (query match score: 0.84)
+2024-09-19T12:51:29Z [INFO ] MEMORY_READ - Retrieved memory 32dc41aa-f08f-4570-a8cf-feb132649f61 (query match score: 0.94)
+2024-09-19T20:59:38Z [INFO ] MEMORY_WRITE - Stored new memory 0734333d-04e7-43ec-9f57-8cc01d3d8d1b in category 'personal'
+2024-09-20T08:25:00Z [WARN ] STORAGE_WARNING - Memory store at 83% capacity (384/500 items)
+2024-09-20T09:40:35Z [INFO ] MEMORY_DELETE - Removed memory 3006c378-ec1c-4ad5-841c-e78ea01bfe37 (reason: user_requested)
+2024-09-20T09:40:44Z [INFO ] MEMORY_READ - Retrieved memory d501219a-f396-4d38-be8f-fc78eb8751c5 (query match score: 0.93)
+2024-09-20T10:11:26Z [INFO ] MEMORY_WRITE - Stored new memory 8c7440cb-b238-430f-9db5-dc46bd2e9cb1 in category 'personal'
+2024-09-20T10:25:00Z [WARN ] STORAGE_WARNING - Memory store at 81% capacity (404/500 items)
+2024-09-20T12:03:06Z [INFO ] MEMORY_READ - Retrieved memory 93016124-5733-4dae-b1e4-ae321f31aa4a (query match score: 0.78)
+2024-09-21T12:37:00Z [INFO ] MEMORY_WRITE - Stored new memory 485cb1ef-2900-4735-a4cc-7fd68646ada7 in category 'work'
+2024-09-21T12:59:39Z [INFO ] MEMORY_WRITE - Stored new memory 37c48b9f-bbd9-4817-ac1e-2a033f79b6f7 in category 'reference'
+2024-09-21T14:09:22Z [INFO ] MEMORY_READ - Retrieved memory 2e4d6d83-b746-4dab-af36-2bd517143588 (query match score: 0.84)
+2024-09-22T03:00:20Z [INFO ] MEMORY_READ - Retrieved memory 0734333d-04e7-43ec-9f57-8cc01d3d8d1b (query match score: 0.93)
+2024-09-22T04:03:57Z [INFO ] MEMORY_READ - Retrieved memory 56fce6f7-76c6-4ed5-a63d-4e5f7ea18a23 (query match score: 0.85)
+2024-09-22T06:25:24Z [INFO ] MEMORY_DELETE - Removed memory 6ffafa94-9b97-4e71-804c-e8573007080e (reason: user_requested)
+2024-09-22T06:34:21Z [INFO ] MEMORY_READ - Retrieved memory bb18009c-8d81-42be-8480-6d873fd26088 (query match score: 0.91)
+2024-09-22T12:34:34Z [INFO ] MEMORY_DELETE - Removed memory 6b46efd8-3125-4320-8801-0be841493e0d (reason: user_requested)
+2024-09-23T09:29:22Z [INFO ] MEMORY_WRITE - Stored new memory ba51cee8-ff96-4149-8fb3-fa13bdc66531 in category 'personal'
+2024-09-23T13:09:00Z [ERROR] MEMORY_WRITE - Failed to write memory a4381ade-3bc0-45a4-b958-5ea2fcbdc6f5: IOError - disk write timeout after 30s
+2024-09-23T20:51:38Z [INFO ] MEMORY_WRITE - Stored new memory 0734333d-04e7-43ec-9f57-8cc01d3d8d1b in category 'work'
+2024-09-24T04:06:15Z [INFO ] MEMORY_WRITE - Stored new memory 079525c9-b038-407c-92c0-e903024a57a8 in category 'temporary'
+2024-09-24T05:18:16Z [INFO ] MEMORY_READ - Retrieved memory e7992518-d3bf-42eb-981d-6bb7a89792ca (query match score: 0.78)
+2024-09-24T07:54:09Z [INFO ] MEMORY_WRITE - Stored new memory 56fce6f7-76c6-4ed5-a63d-4e5f7ea18a23 in category 'reference'
+2024-09-24T10:23:25Z [INFO ] MEMORY_READ - Retrieved memory 68790eb4-03db-4035-a3cf-d69821991dc0 (query match score: 0.74)
+2024-09-24T14:02:35Z [INFO ] MEMORY_DELETE - Removed memory a7b9b6dd-517c-4508-917c-38eecf7b2544 (reason: user_requested)
+2024-09-25T00:58:10Z [INFO ] MEMORY_READ - Retrieved memory 56fce6f7-76c6-4ed5-a63d-4e5f7ea18a23 (query match score: 0.82)
+2024-09-25T01:11:17Z [INFO ] MEMORY_WRITE - Stored new memory 70727f14-4213-4d44-a145-522ab08315cd in category 'personal'
+2024-09-25T06:33:24Z [INFO ] MEMORY_READ - Retrieved memory 4b557c5f-6ccc-4a9c-be93-f9ba9fe5d89c (query match score: 0.72)
+2024-09-26T00:47:13Z [INFO ] MEMORY_READ - Retrieved memory 68790eb4-03db-4035-a3cf-d69821991dc0 (query match score: 0.81)
+2024-09-26T10:36:38Z [INFO ] MEMORY_WRITE - Stored new memory 42526796-99f9-43ff-bb87-f60f4aa85a21 in category 'temporary'
+2024-09-26T12:44:53Z [INFO ] MEMORY_READ - Retrieved memory 42526796-99f9-43ff-bb87-f60f4aa85a21 (query match score: 0.97)
+2024-09-26T21:39:10Z [INFO ] MEMORY_DELETE - Removed memory 68790eb4-03db-4035-a3cf-d69821991dc0 (reason: user_requested)
+2024-09-26T22:55:45Z [INFO ] MEMORY_WRITE - Stored new memory a4381ade-3bc0-45a4-b958-5ea2fcbdc6f5 in category 'work'
+2024-09-27T13:16:00Z [INFO ] MEMORY_READ - Retrieved memory dd9accba-1f98-4d11-adca-255d1cb8ee5d (query match score: 0.9)
+2024-09-27T13:55:12Z [INFO ] MEMORY_READ - Retrieved memory a4381ade-3bc0-45a4-b958-5ea2fcbdc6f5 (query match score: 0.95)
+2024-09-28T03:56:07Z [INFO ] MEMORY_WRITE - Stored new memory fe5cbff6-df0e-4908-be4f-bc2f9fe5cca0 in category 'personal'
+2024-09-28T11:36:00Z [INFO ] DUPLICATE_DETECTED - Memory 1ca7ff93-29a8-4120-9475-92bff9b926ef is 0.87 similar to 42526796-99f9-43ff-bb87-f60f4aa85a21; no action taken (auto-merge disabled)
+2024-09-28T13:23:57Z [INFO ] MEMORY_WRITE - Stored new memory 6ffafa94-9b97-4e71-804c-e8573007080e in category 'work'
+2024-09-29T00:45:23Z [INFO ] MEMORY_READ - Retrieved memory fe5cbff6-df0e-4908-be4f-bc2f9fe5cca0 (query match score: 0.83)
+2024-09-29T22:31:39Z [INFO ] MEMORY_READ - Retrieved memory 6b46efd8-3125-4320-8801-0be841493e0d (query match score: 0.98)
+2024-09-30T02:26:08Z [INFO ] MEMORY_WRITE - Stored new memory 4b557c5f-6ccc-4a9c-be93-f9ba9fe5d89c in category 'personal'
+2024-09-30T22:29:23Z [INFO ] MEMORY_DELETE - Removed memory 1ca7ff93-29a8-4120-9475-92bff9b926ef (reason: user_requested)
+2024-10-01T03:56:28Z [INFO ] MEMORY_READ - Retrieved memory a7b2c256-88d2-4f92-a8c5-d470286ebe1f (query match score: 0.91)
+2024-10-01T05:23:46Z [INFO ] MEMORY_WRITE - Stored new memory 56fce6f7-76c6-4ed5-a63d-4e5f7ea18a23 in category 'personal'
+2024-10-01T07:31:47Z [INFO ] MEMORY_READ - Retrieved memory 1ca7ff93-29a8-4120-9475-92bff9b926ef (query match score: 0.82)
+2024-10-01T14:11:08Z [INFO ] MEMORY_WRITE - Stored new memory 027c1050-dc5f-48b0-9f0b-f1aa2528874d in category 'temporary'

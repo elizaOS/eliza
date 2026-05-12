@@ -163,4 +163,15 @@ export interface LlamaAdapter {
    * Stock builds without speculative bridge methods warn-and-no-op.
    */
   setSpecType?(args: SetSpecTypeArgs): Promise<void>;
+  /**
+   * Apply the loaded model's native chat template to a list of
+   * `{role, content}` messages and return the rendered prompt string.
+   * Backed by llama.cpp's `llama_chat_apply_template` which uses the
+   * GGUF's own Jinja template — handles Llama-3, Qwen, Mistral, Phi,
+   * etc. without per-model code on the caller side. Returns null when
+   * the loaded GGUF has no chat template baked in.
+   */
+  formatChat?(
+    messages: { role: string; content: string }[],
+  ): Promise<string | null>;
 }

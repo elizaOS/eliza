@@ -176,8 +176,8 @@ Outputs:
 
 ### 3.4 Notes / minor
 
-- The nightly-real-agent job uses `MILADY_API_PORT=31337` /
-  `MILADY_PORT=2138` literally. This works in CI where ports are free
+- The nightly-real-agent job uses `ELIZA_API_PORT=31337` /
+  `ELIZA_PORT=2138` literally. This works in CI where ports are free
   but is wider than the local dev orchestrator's port-shifting logic.
   Acceptable given the CI runner is single-tenant; flagged for
   awareness only.

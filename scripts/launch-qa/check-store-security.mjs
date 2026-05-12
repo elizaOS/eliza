@@ -78,7 +78,8 @@ const REQUIRED_IOS_ENTITLEMENT_KEYS = [
 
 const REQUIRED_MODE_LITERALS = ["remote-mac", "cloud", "cloud-hybrid", "local"];
 
-const STORE_REVIEW_DOC = "packages/docs/docs/launchdocs/22-store-review-notes.md";
+const STORE_REVIEW_DOC =
+  "packages/docs/docs/launchdocs/22-store-review-notes.md";
 
 const REQUIRED_STORE_REVIEW_DOC_MARKERS = [
   "Permissions Kept For Full-Capability Review",
@@ -201,29 +202,23 @@ function checkAndroidLocalAuth(repoRoot, errors, checks) {
     if (!condition) missing.push(label);
   };
 
-  require(
-    service.includes("generateLocalAgentToken()"),
-    "per-boot token generation",
-  );
+  require(service.includes(
+    "generateLocalAgentToken()",
+  ), "per-boot token generation");
   require(service.includes("writeLocalAgentTokenFile"), "token persistence");
-  require(
-    service.includes('"ELIZA_REQUIRE_LOCAL_AUTH"') &&
-      service.includes('"1"') &&
-      service.includes('"ELIZA_API_TOKEN"'),
-    "agent env requires local auth and token",
-  );
-  require(
-    plugin.includes("Authorization") && plugin.includes('"Bearer $token"'),
-    "native plugin injects bearer token",
-  );
-  require(
-    plugin.includes("${context.packageName}.ElizaAgentService"),
-    "native plugin resolves app service from runtime package name",
-  );
-  require(
-    serverAuth.includes("ELIZA_REQUIRE_LOCAL_AUTH"),
-    "server-side local auth gate reads ELIZA_REQUIRE_LOCAL_AUTH",
-  );
+  require(service.includes('"ELIZA_REQUIRE_LOCAL_AUTH"') &&
+    service.includes('"1"') &&
+    service.includes(
+      '"ELIZA_API_TOKEN"',
+    ), "agent env requires local auth and token");
+  require(plugin.includes("Authorization") &&
+    plugin.includes('"Bearer $token"'), "native plugin injects bearer token");
+  require(plugin.includes(
+    "${context.packageName}.ElizaAgentService",
+  ), "native plugin resolves app service from runtime package name");
+  require(serverAuth.includes(
+    "ELIZA_REQUIRE_LOCAL_AUTH",
+  ), "server-side local auth gate reads ELIZA_REQUIRE_LOCAL_AUTH");
 
   checks.push({
     id: "android-local-auth-env",
@@ -262,9 +257,10 @@ function checkAndroidHighRiskManifest(repoRoot, errors, checks) {
   const missingPermissions = REQUIRED_ANDROID_HIGH_RISK_PERMISSIONS.filter(
     (permission) => !permissions.has(permission),
   );
-  const missingComponentMarkers = REQUIRED_ANDROID_HIGH_RISK_COMPONENT_MARKERS.filter(
-    (marker) => !content.includes(marker),
-  );
+  const missingComponentMarkers =
+    REQUIRED_ANDROID_HIGH_RISK_COMPONENT_MARKERS.filter(
+      (marker) => !content.includes(marker),
+    );
   const ok =
     missingPermissions.length === 0 && missingComponentMarkers.length === 0;
   checks.push({

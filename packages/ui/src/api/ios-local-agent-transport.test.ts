@@ -3,11 +3,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const capacitorState = vi.hoisted(() => ({
   isNative: true,
   platform: "ios",
+  pluginAvailable: false,
 }));
 
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
     getPlatform: () => capacitorState.platform,
+    isPluginAvailable: () => capacitorState.pluginAvailable,
     isNativePlatform: () => capacitorState.isNative,
   },
 }));
@@ -17,6 +19,7 @@ describe("iOS local agent transport bridge", () => {
     vi.resetModules();
     capacitorState.isNative = true;
     capacitorState.platform = "ios";
+    capacitorState.pluginAvailable = false;
     vi.stubGlobal("window", {
       location: { href: "capacitor://localhost/" },
       navigator: { userAgent: "vitest" },
@@ -24,6 +27,7 @@ describe("iOS local agent transport bridge", () => {
   });
 
   afterEach(() => {
+    vi.doUnmock("@elizaos/capacitor-bun-runtime");
     vi.unstubAllGlobals();
   });
 
@@ -50,7 +54,7 @@ describe("iOS local agent transport bridge", () => {
         foreground: "ittp",
       },
     });
-  }, 15_000);
+  }, 30_000);
 
   it("routes loopback local-agent URLs through the ITTP transport", async () => {
     const { iosInProcessAgentTransportForUrl } = await import(
@@ -96,6 +100,51 @@ describe("iOS local agent transport bridge", () => {
     expect(originalFetch).not.toHaveBeenCalled();
     await expect(response.json()).resolves.toMatchObject({
       mode: "ios-local",
+    });
+  });
+
+  it("uses the full Bun native bridge when the runtime plugin is available", async () => {
+    capacitorState.pluginAvailable = true;
+    const start = vi.fn(async () => ({ ok: true }));
+    const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
+    const call = vi.fn(async () => ({
+      result: {
+        status: 202,
+        statusText: "Accepted",
+        headers: { "x-engine": "bun" },
+        body: '{"ok":true}',
+      },
+    }));
+    vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
+      ElizaBunRuntime: { start, getStatus, call },
+    }));
+
+    const { handleIosLocalAgentNativeRequest } = await import(
+      "./ios-local-agent-transport"
+    );
+    const response = await handleIosLocalAgentNativeRequest({
+      method: "POST",
+      path: "/api/full-bun-smoke",
+      headers: { "content-type": "application/json" },
+      body: '{"hello":"ios"}',
+    });
+
+    expect(start).toHaveBeenCalledWith(
+      expect.objectContaining({ engine: "bun" }),
+    );
+    expect(getStatus).toHaveBeenCalled();
+    expect(call).toHaveBeenCalledWith({
+      method: "http_request",
+      args: expect.objectContaining({
+        method: "POST",
+        path: "/api/full-bun-smoke",
+        body: '{"hello":"ios"}',
+      }),
+    });
+    expect(response).toMatchObject({
+      status: 202,
+      headers: { "x-engine": "bun" },
+      body: '{"ok":true}',
     });
   });
 

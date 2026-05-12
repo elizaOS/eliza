@@ -1,0 +1,12 @@
+[
+  {
+    "message_id": "msg_2101",
+    "from": "ops@company.com",
+    "to": "me@company.com",
+    "subject": "Please check scheduled task status",
+    "date": "2026-02-25T14:30:00+08:00",
+    "is_read": true,
+    "labels": ["inbox"],
+    "body": "Hi,\n\nSome scheduled tasks seem to be acting up lately. The weekly_report didn't generate last Monday, and it looks like some tasks may have been disabled.\n\nCould you check the system's scheduled tasks when you get a chance and let us know if anything's wrong?\n\nOps Team\nops@company.com"
+  }
+]

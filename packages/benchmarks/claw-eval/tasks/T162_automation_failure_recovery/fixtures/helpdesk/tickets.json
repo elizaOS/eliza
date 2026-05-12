@@ -1,0 +1,50 @@
+[
+  {
+    "ticket_id": "TK-1501",
+    "title": "Inventory quantities do not match actual stock",
+    "description": "During a warehouse audit, the system shows 50 wireless mice in stock, but only 32 are actually on the shelves. The USB-C docking station shows 0 in the system, but the supplier clearly delivered a batch last week. We suspect the system data is inaccurate.",
+    "reporter": "Warehouse Dept - Zhou Lei",
+    "department": "Warehouse",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-26T09:30:00Z",
+    "tags": ["inventory", "data-inconsistency", "warehouse"],
+    "category": "Data Issue"
+  },
+  {
+    "ticket_id": "TK-1502",
+    "title": "Auto-restock not triggering",
+    "description": "Network switch inventory is already below the safety level (currently 3 units, safety stock is 5 units), but the system has not automatically triggered a restock order. Previously, when inventory fell below the safety level, purchase orders were generated automatically, but there have been no automatic procurement records in the past few days. Please handle urgently — the project needs switches next week.",
+    "reporter": "IT Dept - Zhao Yang",
+    "department": "IT",
+    "priority": "critical",
+    "status": "open",
+    "created_at": "2026-03-26T10:00:00Z",
+    "tags": ["restock", "automation", "urgent", "inventory"],
+    "category": "System Failure"
+  },
+  {
+    "ticket_id": "TK-1503",
+    "title": "Supplier prices not updated",
+    "description": "The Procurement department noticed that supplier prices in the system are still from last week. The supplier sent a new price list on March 21 (with price adjustments for some products), but the system does not reflect this. Need to confirm whether the sync is broken.",
+    "reporter": "Procurement Dept - Chen Lei",
+    "department": "Procurement",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-26T11:00:00Z",
+    "tags": ["supplier", "pricing", "sync"],
+    "category": "Data Issue"
+  },
+  {
+    "ticket_id": "TK-1504",
+    "title": "Printer malfunction",
+    "description": "The color printer in the 2nd floor print room cannot print and is showing a paper jam error. We already tried clearing the paper tray but the problem persists.",
+    "reporter": "Admin Dept - Li Na",
+    "department": "Administration",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-03-26T08:45:00Z",
+    "tags": ["hardware", "printer"],
+    "category": "Hardware Failure"
+  }
+]

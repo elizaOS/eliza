@@ -41,4 +41,5 @@ export const DEFAULT_ESCALATION_LADDERS: Readonly<{
   },
 } as const;
 
-export type DefaultEscalationLadderKey = keyof typeof DEFAULT_ESCALATION_LADDERS;
+export type DefaultEscalationLadderKey =
+  keyof typeof DEFAULT_ESCALATION_LADDERS;

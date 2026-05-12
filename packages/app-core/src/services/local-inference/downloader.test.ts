@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readAssignments } from "./assignments";
 import { findCatalogModel } from "./catalog";
 import { Downloader } from "./downloader";
 import type { Eliza1DeviceCaps } from "./manifest";
@@ -73,6 +74,7 @@ function eliza1Manifest(overrides: {
       voiceRtf: { rtf: 0.5, passed: true },
       asrWer: { wer: 0.05, passed: true },
       vadLatencyMs: { median: 16, passed: true },
+      dflash: { acceptanceRate: 0.72, speedup: 1.8, passed: true },
       e2eLoopOk: true,
       thirtyTurnOk: true,
     },
@@ -292,6 +294,7 @@ describe("local inference downloader status", () => {
         voiceRtf: { rtf: 0.5, passed: true },
         asrWer: { wer: 0.05, passed: true },
         vadLatencyMs: { median: 16, passed: true },
+        dflash: { acceptanceRate: 0.72, speedup: 1.8, passed: true },
         e2eLoopOk: true,
         thirtyTurnOk: true,
       },
@@ -347,6 +350,42 @@ describe("local inference downloader status", () => {
     expect(companion.companionFor).toBe(model.id);
     expect(companion.path.endsWith("dflash/drafter-0_6b.gguf")).toBe(true);
     expect(companion.bundleRoot).toBe(bundleRoot);
+    expect(main.bundleVerifiedAt).toBeUndefined();
+    expect(await readAssignments()).toEqual({});
+  });
+
+  it("rejects a pinned bundle manifest sha before fetching weights", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+    process.env.ELIZA_STATE_DIR = root;
+    const model = findCatalogModel("eliza-1-0_6b");
+    if (!model) throw new Error("missing test catalog model");
+
+    const fetchSpy = installManifestOnlyFetch("tampered manifest");
+    const pinnedModel = {
+      ...model,
+      id: "eliza-1-0_6b-manifest-hash-test",
+      companionModelIds: [],
+      bundleManifestSha256: sha256("expected manifest"),
+    };
+    const downloader = new Downloader({
+      probeDeviceCaps: async () => cpuOnlyCaps,
+    });
+    const failed = new Promise<DownloadJob>((resolve) => {
+      const unsub = downloader.subscribe((event) => {
+        if (event.job.modelId === pinnedModel.id && event.type === "failed") {
+          unsub();
+          resolve(event.job);
+        }
+      });
+    });
+
+    await downloader.start(pinnedModel);
+    const job = await failed;
+
+    expect(job.error).toContain(
+      "SHA256 mismatch for bundle file eliza-1.manifest.json",
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
   it("restarts single-file partial downloads when a server ignores Range", async () => {

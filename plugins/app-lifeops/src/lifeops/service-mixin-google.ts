@@ -1,9 +1,6 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins. The composed LifeOpsService owns the
-// real runtime surface.
 import {
-  getConnectorAccountManager,
   type ConnectorAccount,
+  getConnectorAccountManager,
 } from "@elizaos/core";
 import type {
   DisconnectLifeOpsGoogleConnectorRequest,
@@ -17,7 +14,6 @@ import type {
 import {
   disconnectedGoogleStatus,
   googleAccountIdFromGrantId,
-  googleCapabilitiesForAccount,
   googleGrantFromAccount,
   googleGrantIdForAccount,
   googleScopesForAccount,
@@ -91,7 +87,7 @@ function requestedScopesForCapabilities(
       status: "pending",
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      metadata: { grantedCapabilities: capabilities },
+      metadata: { grantedCapabilities: [...capabilities] },
     } as ConnectorAccount,
     capabilities as never,
   );
@@ -115,9 +111,11 @@ function googlePluginUnavailableStatus(
     reason: "config_missing",
     degradations: [
       {
+        axis: "disconnected",
         code: "google_plugin_unavailable",
         message:
           "@elizaos/plugin-google is required for Google accounts. LifeOps no longer stores Google OAuth tokens directly.",
+        retryable: true,
       },
     ],
   };
@@ -127,7 +125,9 @@ function googlePluginUnavailableStatus(
 export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsGoogleService> {
-  return class extends Base {
+  const GoogleBase = Base as unknown as Constructor<LifeOpsServiceBase>;
+
+  class LifeOpsGoogleServiceMixin extends GoogleBase {
     private googleConnectorManager() {
       try {
         return getConnectorAccountManager(this.runtime);
@@ -370,7 +370,9 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         requestedSide: side,
         grantId,
       });
-      return account ? this.googleAccountStatus(account) : disconnectedGoogleStatus(side);
+      return account
+        ? this.googleAccountStatus(account)
+        : disconnectedGoogleStatus(side);
     }
 
     async getGoogleConnectorAccounts(
@@ -407,11 +409,7 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         "mode",
       );
       assertLocalMode(preferredMode);
-      return this.getGoogleConnectorStatus(
-        requestUrl,
-        "local",
-        requestedSide,
-      );
+      return this.getGoogleConnectorStatus(requestUrl, "local", requestedSide);
     }
 
     async startGoogleConnector(
@@ -539,5 +537,10 @@ export function withGoogle<TBase extends Constructor<LifeOpsServiceBase>>(
         side ?? googleSideForAccount(account),
       );
     }
-  } as MixinClass<TBase, LifeOpsGoogleService>;
+  }
+
+  return LifeOpsGoogleServiceMixin as unknown as MixinClass<
+    TBase,
+    LifeOpsGoogleService
+  >;
 }

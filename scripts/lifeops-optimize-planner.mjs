@@ -8,13 +8,13 @@
  *   2. Invoke `bun run train` against the native backend with the configured
  *      optimizer + Cerebras teacher.
  *   3. Locate the produced artifact under
- *      ~/.milady/optimized-prompts/<task>/ and surface it.
+ *      ~/.eliza/optimized-prompts/<task>/ and surface it.
  *   4. Optionally re-run a benchmark variant against the new prompt to
  *      capture before/after accuracy.
  *
  * Usage:
  *   node scripts/lifeops-optimize-planner.mjs \
- *     --run-dir ~/.milady/runs/lifeops/<id> \
+ *     --run-dir ~/.eliza/runs/lifeops/<id> \
  *     [--optimizer instruction-search]   # also: prompt-evolution, bootstrap-fewshot
  *     [--task action_planner]
  *     [--baseline plugins/app-lifeops/src/lifeops/prompt/planner-baseline.txt]
@@ -26,7 +26,13 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -37,7 +43,9 @@ const REPO_ROOT = resolve(__dirname, "..");
 
 function arg(name, fallback) {
   const idx = process.argv.indexOf(name);
-  return idx >= 0 && idx + 1 < process.argv.length ? process.argv[idx + 1] : fallback;
+  return idx >= 0 && idx + 1 < process.argv.length
+    ? process.argv[idx + 1]
+    : fallback;
 }
 
 const runDir = resolve(arg("--run-dir", ""));
@@ -72,7 +80,9 @@ console.log(`[optimize-planner] optimizer=${optimizer} task=${task}`);
 console.log(`[optimize-planner] dataset=${datasetPath}`);
 
 // 1. Convert.
-console.log("\n[optimize-planner] ▶ converting benchmark + trajectories to JSONL");
+console.log(
+  "\n[optimize-planner] ▶ converting benchmark + trajectories to JSONL",
+);
 const convert = spawnSync(
   "node",
   [
@@ -88,7 +98,10 @@ if (convert.status !== 0) {
   console.error("[optimize-planner] dataset conversion failed");
   process.exit(2);
 }
-const datasetSize = readFileSync(datasetPath, "utf8").trim().split("\n").filter(Boolean).length;
+const datasetSize = readFileSync(datasetPath, "utf8")
+  .trim()
+  .split("\n")
+  .filter(Boolean).length;
 if (datasetSize === 0) {
   console.error("[optimize-planner] dataset is empty; aborting");
   process.exit(2);
@@ -144,9 +157,9 @@ if (trainResult.status !== 0) {
 }
 
 // 4. Locate the produced artifact.
-const stateDir = process.env.MILADY_STATE_DIR
-  ? resolve(process.env.MILADY_STATE_DIR)
-  : join(homedir(), ".milady");
+const stateDir = process.env.ELIZA_STATE_DIR
+  ? resolve(process.env.ELIZA_STATE_DIR)
+  : join(homedir(), ".eliza");
 const artifactDir = join(stateDir, "optimized-prompts", task);
 const elizaArtifactDir = join(homedir(), ".eliza", "optimized-prompts", task);
 const candidates = [artifactDir, elizaArtifactDir].filter(existsSync);

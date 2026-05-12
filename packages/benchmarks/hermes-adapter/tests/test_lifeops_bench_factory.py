@@ -200,6 +200,7 @@ def _install_lifeops_stub() -> None:
             self.tool_calls = tool_calls
 
     types_mod.MessageTurn = MessageTurn
+    types_mod.attach_usage_cache_fields = lambda _turn, _usage: None
     sys.modules["eliza_lifeops_bench"] = pkg
     sys.modules["eliza_lifeops_bench.types"] = types_mod
 

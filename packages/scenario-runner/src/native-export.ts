@@ -19,12 +19,12 @@
 
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { logger } from "@elizaos/core";
 import type {
   RecordedModelCall,
   RecordedStage,
   RecordedTrajectory,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 
 const NATIVE_FORMAT = "eliza_native_v1" as const;
 const NATIVE_SCHEMA_VERSION = 1 as const;
@@ -41,11 +41,19 @@ export interface NativeBoundaryRow {
     tools?: unknown;
     toolChoice?: unknown;
     providerOptions?: unknown;
-    settings?: { temperature?: number; maxOutputTokens?: number; topP?: number };
+    settings?: {
+      temperature?: number;
+      maxOutputTokens?: number;
+      topP?: number;
+    };
   };
   response: {
     text: string;
-    toolCalls?: Array<{ toolCallId?: string; toolName: string; input: unknown }>;
+    toolCalls?: Array<{
+      toolCallId?: string;
+      toolName: string;
+      input: unknown;
+    }>;
     finishReason?: string;
     usage?: {
       promptTokens?: number;
@@ -86,7 +94,10 @@ function isRecordedTrajectory(value: unknown): value is RecordedTrajectory {
   );
 }
 
-function stageKindToTaskType(kind: string | undefined, modelType: string | undefined): string {
+function stageKindToTaskType(
+  kind: string | undefined,
+  modelType: string | undefined,
+): string {
   const tokens = `${kind ?? ""} ${modelType ?? ""}`
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
     .toLowerCase();
@@ -94,16 +105,21 @@ function stageKindToTaskType(kind: string | undefined, modelType: string | undef
   if (tokens.includes("message_handler") || tokens.includes("should_respond")) {
     return "should_respond";
   }
-  if (tokens.includes("evaluation") || tokens.includes("evaluator")) return "evaluation";
-  if (tokens.includes("facts") || tokens.includes("relationships")) return "facts_and_relationships";
+  if (tokens.includes("evaluation") || tokens.includes("evaluator"))
+    return "evaluation";
+  if (tokens.includes("facts") || tokens.includes("relationships"))
+    return "facts_and_relationships";
   return "response";
 }
 
 function normalizeToolCalls(
   toolCalls: RecordedModelCall["toolCalls"],
-): Array<{ toolCallId?: string; toolName: string; input: unknown }> | undefined {
+):
+  | Array<{ toolCallId?: string; toolName: string; input: unknown }>
+  | undefined {
   if (!Array.isArray(toolCalls) || toolCalls.length === 0) return undefined;
-  const out: Array<{ toolCallId?: string; toolName: string; input: unknown }> = [];
+  const out: Array<{ toolCallId?: string; toolName: string; input: unknown }> =
+    [];
   for (const call of toolCalls) {
     if (!isRecord(call)) continue;
     const name = typeof call.name === "string" ? call.name.trim() : "";
@@ -112,7 +128,8 @@ function normalizeToolCalls(
       toolName: name,
       input: isRecord(call.args) ? call.args : {},
     };
-    if (typeof call.id === "string" && call.id.length > 0) entry.toolCallId = call.id;
+    if (typeof call.id === "string" && call.id.length > 0)
+      entry.toolCallId = call.id;
     out.push(entry);
   }
   return out.length > 0 ? out : undefined;
@@ -135,23 +152,30 @@ function buildRequest(model: RecordedModelCall): NativeBoundaryRow["request"] {
   void firstIsSystem;
   if (model.tools !== undefined) request.tools = model.tools;
   if (model.toolChoice !== undefined) request.toolChoice = model.toolChoice;
-  if (model.providerOptions !== undefined) request.providerOptions = model.providerOptions;
+  if (model.providerOptions !== undefined)
+    request.providerOptions = model.providerOptions;
   return request;
 }
 
-function buildResponse(model: RecordedModelCall): NativeBoundaryRow["response"] {
+function buildResponse(
+  model: RecordedModelCall,
+): NativeBoundaryRow["response"] {
   const response: NativeBoundaryRow["response"] = {
     text: typeof model.response === "string" ? model.response : "",
   };
   const toolCalls = normalizeToolCalls(model.toolCalls);
   if (toolCalls) response.toolCalls = toolCalls;
-  if (typeof model.finishReason === "string") response.finishReason = model.finishReason;
+  if (typeof model.finishReason === "string")
+    response.finishReason = model.finishReason;
   const usage = model.usage;
   if (usage) {
     const out: NonNullable<NativeBoundaryRow["response"]["usage"]> = {};
-    if (typeof usage.promptTokens === "number") out.promptTokens = usage.promptTokens;
-    if (typeof usage.completionTokens === "number") out.completionTokens = usage.completionTokens;
-    if (typeof usage.totalTokens === "number") out.totalTokens = usage.totalTokens;
+    if (typeof usage.promptTokens === "number")
+      out.promptTokens = usage.promptTokens;
+    if (typeof usage.completionTokens === "number")
+      out.completionTokens = usage.completionTokens;
+    if (typeof usage.totalTokens === "number")
+      out.totalTokens = usage.totalTokens;
     if (typeof usage.cacheReadInputTokens === "number") {
       out.cacheReadInputTokens = usage.cacheReadInputTokens;
     }
@@ -169,9 +193,13 @@ function buildResponse(model: RecordedModelCall): NativeBoundaryRow["response"] 
  * a model call (tool execution, tool search, cache snapshots) are skipped:
  * they are not training-supervision boundaries.
  */
-export function recordedTrajectoryToNativeRows(trajectory: RecordedTrajectory): NativeBoundaryRow[] {
+export function recordedTrajectoryToNativeRows(
+  trajectory: RecordedTrajectory,
+): NativeBoundaryRow[] {
   const rows: NativeBoundaryRow[] = [];
-  const stages: RecordedStage[] = Array.isArray(trajectory.stages) ? trajectory.stages : [];
+  const stages: RecordedStage[] = Array.isArray(trajectory.stages)
+    ? trajectory.stages
+    : [];
   for (const [stepIndex, stage] of stages.entries()) {
     const model = stage?.model;
     if (!model || typeof model !== "object") continue;
@@ -190,7 +218,8 @@ export function recordedTrajectoryToNativeRows(trajectory: RecordedTrajectory): 
         : `${trajectory.trajectoryId}:stage:${stepIndex + 1}`;
     const callId = `${trajectory.trajectoryId}:${stepId}`;
     const scenarioId =
-      typeof trajectory.scenarioId === "string" && trajectory.scenarioId.length > 0
+      typeof trajectory.scenarioId === "string" &&
+      trajectory.scenarioId.length > 0
         ? trajectory.scenarioId
         : null;
     const taskType = stageKindToTaskType(stage.kind, model.modelType);
@@ -215,8 +244,10 @@ export function recordedTrajectoryToNativeRows(trajectory: RecordedTrajectory): 
       purpose: stage.kind,
       stepType: stage.kind,
       model: typeof model.modelName === "string" ? model.modelName : undefined,
-      modelVersion: typeof model.modelName === "string" ? model.modelName : undefined,
-      modelType: typeof model.modelType === "string" ? model.modelType : undefined,
+      modelVersion:
+        typeof model.modelName === "string" ? model.modelName : undefined,
+      modelType:
+        typeof model.modelType === "string" ? model.modelType : undefined,
       provider: typeof model.provider === "string" ? model.provider : undefined,
       metadata: {
         task_type: taskType,
@@ -228,17 +259,25 @@ export function recordedTrajectoryToNativeRows(trajectory: RecordedTrajectory): 
         ...(typeof trajectory.runId === "string" && trajectory.runId.length > 0
           ? { source_run_id: trajectory.runId }
           : {}),
-        ...(typeof trajectory.roomId === "string" && trajectory.roomId.length > 0
+        ...(typeof trajectory.roomId === "string" &&
+        trajectory.roomId.length > 0
           ? { source_room_id: trajectory.roomId }
           : {}),
         ...(scenarioId ? { scenario_id: scenarioId } : {}),
         source_stage_kind: stage.kind,
-        ...(typeof stage.iteration === "number" ? { source_stage_iteration: stage.iteration } : {}),
-        source_model: typeof model.modelName === "string" ? model.modelName : undefined,
-        source_model_type: typeof model.modelType === "string" ? model.modelType : undefined,
-        source_provider: typeof model.provider === "string" ? model.provider : undefined,
+        ...(typeof stage.iteration === "number"
+          ? { source_stage_iteration: stage.iteration }
+          : {}),
+        source_model:
+          typeof model.modelName === "string" ? model.modelName : undefined,
+        source_model_type:
+          typeof model.modelType === "string" ? model.modelType : undefined,
+        source_provider:
+          typeof model.provider === "string" ? model.provider : undefined,
         trajectory_status: trajectory.status,
-        ...(typeof model.costUsd === "number" ? { source_cost_usd: model.costUsd } : {}),
+        ...(typeof model.costUsd === "number"
+          ? { source_cost_usd: model.costUsd }
+          : {}),
       },
     });
   }
@@ -282,7 +321,10 @@ function collectTrajectoryFiles(rootDir: string): string[] {
  * recorded-trajectory shaped are skipped with a warning — a malformed file in
  * the run directory should not block the rest of the export.
  */
-export function exportScenarioNativeJsonl(runDir: string, outPath: string): number {
+export function exportScenarioNativeJsonl(
+  runDir: string,
+  outPath: string,
+): number {
   const trajectoriesDir = path.join(runDir, "trajectories");
   const files = collectTrajectoryFiles(trajectoriesDir);
   const rows: NativeBoundaryRow[] = [];
@@ -305,7 +347,10 @@ export function exportScenarioNativeJsonl(runDir: string, outPath: string): numb
     rows.push(...recordedTrajectoryToNativeRows(parsed));
   }
   mkdirSync(path.dirname(outPath), { recursive: true });
-  const body = rows.length === 0 ? "" : `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
+  const body =
+    rows.length === 0
+      ? ""
+      : `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
   writeFileSync(outPath, body, "utf-8");
   logger.info(
     `[scenario-runner] wrote ${rows.length} eliza_native_v1 row(s) from ${files.length} trajectory file(s) → ${outPath}`,

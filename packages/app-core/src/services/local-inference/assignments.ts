@@ -73,7 +73,10 @@ export function buildRecommendedAssignments(
 ): ModelAssignments {
   const ownDownloads = installed.filter(
     (model) =>
-      model.source === "eliza-download" && isDefaultEligibleId(model.id),
+      model.source === "eliza-download" &&
+      isDefaultEligibleId(model.id) &&
+      typeof model.bundleVerifiedAt === "string" &&
+      model.bundleVerifiedAt.length > 0,
   );
   const best = pickLargestInstalledModel(ownDownloads);
   if (!best) return {};
@@ -204,7 +207,10 @@ export async function autoAssignAtBoot(
 ): Promise<ModelAssignments | null> {
   const ownDownloads = installed.filter(
     (model) =>
-      model.source === "eliza-download" && isDefaultEligibleId(model.id),
+      model.source === "eliza-download" &&
+      isDefaultEligibleId(model.id) &&
+      typeof model.bundleVerifiedAt === "string" &&
+      model.bundleVerifiedAt.length > 0,
   );
   if (ownDownloads.length !== 1) return null;
   const current = await readAssignments();

@@ -22,13 +22,13 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { Memory, UUID } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { remoteDesktopAction } from "../src/actions/remote-desktop.ts";
 import {
   __resetRemoteSessionServiceForTests,
   getRemoteSessionService,
 } from "../src/remote/remote-session-service.ts";
-import type { Memory, UUID } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { remoteDesktopAction } from "../src/actions/remote-desktop.ts";
 import { createMinimalRuntimeStub } from "./first-run-helpers.ts";
 
 let priorStateDir: string | undefined;
@@ -36,7 +36,7 @@ let priorLocalMode: string | undefined;
 
 function ownerMessage(agentId: UUID, text: string): Memory {
   return {
-    id: ("msg-" + Math.random().toString(36).slice(2, 8)) as UUID,
+    id: `msg-${Math.random().toString(36).slice(2, 8)}` as UUID,
     entityId: agentId,
     roomId: agentId,
     agentId,
@@ -47,9 +47,9 @@ function ownerMessage(agentId: UUID, text: string): Memory {
 
 describe("REMOTE_DESKTOP integration (local mode)", () => {
   beforeEach(() => {
-    priorStateDir = process.env.MILADY_STATE_DIR;
+    priorStateDir = process.env.ELIZA_STATE_DIR;
     priorLocalMode = process.env.ELIZA_REMOTE_LOCAL_MODE;
-    process.env.MILADY_STATE_DIR = mkdtempSync(
+    process.env.ELIZA_STATE_DIR = mkdtempSync(
       path.join(tmpdir(), "remote-desktop-test-"),
     );
     process.env.ELIZA_REMOTE_LOCAL_MODE = "1";
@@ -59,9 +59,9 @@ describe("REMOTE_DESKTOP integration (local mode)", () => {
   afterEach(() => {
     __resetRemoteSessionServiceForTests();
     if (priorStateDir === undefined) {
-      delete process.env.MILADY_STATE_DIR;
+      delete process.env.ELIZA_STATE_DIR;
     } else {
-      process.env.MILADY_STATE_DIR = priorStateDir;
+      process.env.ELIZA_STATE_DIR = priorStateDir;
     }
     if (priorLocalMode === undefined) {
       delete process.env.ELIZA_REMOTE_LOCAL_MODE;
@@ -81,7 +81,10 @@ describe("REMOTE_DESKTOP integration (local mode)", () => {
       [],
     );
     expect(result?.success).toBe(false);
-    const values = result?.values as { error?: string; requiresConfirmation?: boolean };
+    const values = result?.values as {
+      error?: string;
+      requiresConfirmation?: boolean;
+    };
     expect(values.error).toBe("CONFIRMATION_REQUIRED");
     expect(values.requiresConfirmation).toBe(true);
   });

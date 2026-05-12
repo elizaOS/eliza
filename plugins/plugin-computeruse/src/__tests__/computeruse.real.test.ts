@@ -57,11 +57,7 @@ describe("computer-use live parity", () => {
     expect(useComputerAction.similes).toContain("USE_COMPUTER");
     expect(useComputerAction.roleGate).toMatchObject({ minRole: "OWNER" });
     expect(windowAction.similes).toEqual(
-      expect.arrayContaining([
-        "MANAGE_WINDOW",
-        "WINDOW",
-        "USE_WINDOW",
-      ]),
+      expect.arrayContaining(["MANAGE_WINDOW", "WINDOW", "USE_WINDOW"]),
     );
   });
 

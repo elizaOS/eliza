@@ -65,7 +65,7 @@
 #   REGISTRY_KEY               # default: qwen3.6-27b
 #   RUN_NAME                   # default: <registry-key>-apollo
 #   VAST_GPU_TARGET            # default: auto-picked from REGISTRY_KEY
-#   VAST_INSTANCE_LABEL        # default: milady-train-vast-${REGISTRY_KEY//./-}
+#   VAST_INSTANCE_LABEL        # default: eliza-train-vast-${REGISTRY_KEY//./-}
 #   VAST_INSTANCE_ID           # set after `provision`; subsequent
 #                                subcommands read this. Persisted to
 #                                .vast_instance_id in the repo root so you
@@ -83,7 +83,7 @@
 #                                (e.g. polarquant,turboquant,qjl,fp8,gguf-q4_k_m).
 #                                Each name resolves to
 #                                scripts/quantization/${name}_apply.py.
-#   BENCHMARK_AFTER            # 1 = run eliza_bench (default 1)
+#   BENCHMARK_AFTER            # 1 = run native function-calling benchmark (default 1)
 #   BENCH_MAX_PER_BUCKET       # default: 200 (auto-lowered to 100 for 27B)
 #   FSDP_WORLD_SIZE            # default: matches num_gpus of selected
 #                                VAST_GPU_TARGET (1 for *-1x, 2 for *-2x)
@@ -92,7 +92,7 @@
 #   FORCE_REPROVISION          # set to 1 to allow `provision` to spin up
 #                                a new instance even if .vast_instance_id
 #                                already points at a live one.
-#   MILADY_SKIP_PREFLIGHT      # set to 1 to bypass scripts/preflight.sh's
+#   ELIZA_SKIP_PREFLIGHT      # set to 1 to bypass scripts/preflight.sh's
 #                                .preflight.ok gate before `provision`. Use
 #                                only in operator emergencies — the gate
 #                                exists because the six checks it runs
@@ -132,13 +132,13 @@
 #
 # Standardized env vars (preferred names; legacy names still honored):
 #   VAST_API_KEY                  # vastai API key (or `vastai set api-key <k>`)
-#   MILADY_VAST_GPU_PREFERENCE    # csv, e.g. "B200,H200,H100,RTX5090". Picks the
+#   ELIZA_VAST_GPU_PREFERENCE    # csv, e.g. "B200,H200,H100,RTX5090". Picks the
 #                                   first match against the auto-selected GPU
 #                                   target. Override of VAST_GPU_TARGET.
-#   MILADY_VAST_DISK_GB           # default 200; aliases VAST_DISK_GB.
-#   MILADY_VAST_INSTANCE_ID       # set after provision; aliases VAST_INSTANCE_ID.
+#   ELIZA_VAST_DISK_GB           # default 200; aliases VAST_DISK_GB.
+#   ELIZA_VAST_INSTANCE_ID       # set after provision; aliases VAST_INSTANCE_ID.
 #                                   Persisted to .vast_instance_id in repo root.
-#   MILADY_VAST_MAX_USD           # per-job soft budget cap in USD. Crossing it
+#   ELIZA_VAST_MAX_USD           # per-job soft budget cap in USD. Crossing it
 #                                   triggers a warn event from the watcher.
 #                                   The hard cap (auto-teardown) is 1.5× this
 #                                   value. Unset => no enforcement.
@@ -163,22 +163,22 @@ done
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# Standardized env names with backward-compat aliases. The MILADY_VAST_*
+# Standardized env names with backward-compat aliases. The ELIZA_VAST_*
 # names are canonical; the older VAST_* names continue to work so existing
 # operator muscle-memory and scratch shells don't break.
-if [ -n "${MILADY_VAST_INSTANCE_ID:-}" ] && [ -z "${VAST_INSTANCE_ID:-}" ]; then
-  VAST_INSTANCE_ID="$MILADY_VAST_INSTANCE_ID"
+if [ -n "${ELIZA_VAST_INSTANCE_ID:-}" ] && [ -z "${VAST_INSTANCE_ID:-}" ]; then
+  VAST_INSTANCE_ID="$ELIZA_VAST_INSTANCE_ID"
   export VAST_INSTANCE_ID
 fi
-if [ -n "${MILADY_VAST_DISK_GB:-}" ] && [ -z "${VAST_DISK_GB:-}" ]; then
-  VAST_DISK_GB="$MILADY_VAST_DISK_GB"
+if [ -n "${ELIZA_VAST_DISK_GB:-}" ] && [ -z "${VAST_DISK_GB:-}" ]; then
+  VAST_DISK_GB="$ELIZA_VAST_DISK_GB"
   export VAST_DISK_GB
 fi
-# MILADY_VAST_GPU_PREFERENCE is csv of GPU name fragments (B200,H200,H100,RTX5090).
+# ELIZA_VAST_GPU_PREFERENCE is csv of GPU name fragments (B200,H200,H100,RTX5090).
 # We map the first match to a VAST_GPU_TARGET. Operator can still override
 # VAST_GPU_TARGET directly to skip this mapping.
-if [ -n "${MILADY_VAST_GPU_PREFERENCE:-}" ] && [ -z "${VAST_GPU_TARGET:-}" ]; then
-  IFS=',' read -ra _gpu_pref <<< "$MILADY_VAST_GPU_PREFERENCE"
+if [ -n "${ELIZA_VAST_GPU_PREFERENCE:-}" ] && [ -z "${VAST_GPU_TARGET:-}" ]; then
+  IFS=',' read -ra _gpu_pref <<< "$ELIZA_VAST_GPU_PREFERENCE"
   for _g in "${_gpu_pref[@]}"; do
     case "${_g^^}" in
       B200)    VAST_GPU_TARGET="b200-2x"; break ;;
@@ -190,7 +190,7 @@ if [ -n "${MILADY_VAST_GPU_PREFERENCE:-}" ] && [ -z "${VAST_GPU_TARGET:-}" ]; th
   done
   if [ -n "${VAST_GPU_TARGET:-}" ]; then
     export VAST_GPU_TARGET
-    log "MILADY_VAST_GPU_PREFERENCE=$MILADY_VAST_GPU_PREFERENCE -> VAST_GPU_TARGET=$VAST_GPU_TARGET"
+    log "ELIZA_VAST_GPU_PREFERENCE=$ELIZA_VAST_GPU_PREFERENCE -> VAST_GPU_TARGET=$VAST_GPU_TARGET"
   fi
 fi
 
@@ -246,6 +246,14 @@ case "$PIPELINE" in
     case "$REGISTRY_KEY" in
       qwen3.5-2b|qwen3.5-9b)
         DEFAULT_GPU_TARGET="blackwell6000-1x"
+        DEFAULT_FSDP_WORLD_SIZE=1
+        ;;
+      qwen3.5-27b)
+        # Registry budget: 130 GB working set on a single 141 GB H200 or 183
+        # GB B200 (apollo_mini rank-1, grad ckpt, Liger CE, micro_batch=1
+        # seq=32k). B200-1x is the cheapest single-GPU fit (≈$3.8/hr × ~50h
+        # ≈ $190) and FSDP_WORLD_SIZE=1 matches the registry's extras block.
+        DEFAULT_GPU_TARGET="b200-1x"
         DEFAULT_FSDP_WORLD_SIZE=1
         ;;
       qwen3.6-27b)
@@ -306,7 +314,7 @@ case "$PIPELINE" in
   grpo) RUN_NAME="${RUN_NAME:-${REGISTRY_KEY//./-}-grpo}" ;;
 esac
 
-VAST_INSTANCE_LABEL="${VAST_INSTANCE_LABEL:-milady-train-vast-${REGISTRY_KEY//./-}}"
+VAST_INSTANCE_LABEL="${VAST_INSTANCE_LABEL:-eliza-train-vast-${REGISTRY_KEY//./-}}"
 VAST_DOCKER_IMAGE="${VAST_DOCKER_IMAGE:-pytorch/pytorch:2.6.0-cuda12.6-cudnn9-devel}"
 VAST_DISK_GB="${VAST_DISK_GB:-2048}"
 
@@ -320,7 +328,7 @@ DEFAULT_QUANTIZE_AFTER="$(cd "$ROOT" && uv run python -c "from scripts.training.
 QUANTIZE_AFTER="${QUANTIZE_AFTER:-${DEFAULT_QUANTIZE_AFTER}}"
 BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
 
-# eliza_bench at --max-per-bucket 200 with --max-new-tokens=512 generates
+# native_tool_call_bench at --max-per-bucket 200 with --max-new-tokens=512 generates
 # ~600 forward passes per bucket × 4 buckets × 5 model variants ≈ 12k
 # generations. On a 27B bf16 model this is unnecessarily slow; cap to
 # 100/bucket for 27B unless caller overrides.
@@ -448,8 +456,8 @@ preflight_gate() {
   # current calendar hour. The gate catches uv lock drift, broken unit
   # tests, schema corruption, memory-budget overshoot, stale local smoke,
   # and CUDA capability mismatches BEFORE we pay for cloud hardware.
-  if [ "${MILADY_SKIP_PREFLIGHT:-0}" = "1" ]; then
-    log_warn "MILADY_SKIP_PREFLIGHT=1 — bypassing scripts/preflight.sh gate."
+  if [ "${ELIZA_SKIP_PREFLIGHT:-0}" = "1" ]; then
+    log_warn "ELIZA_SKIP_PREFLIGHT=1 — bypassing scripts/preflight.sh gate."
     log_warn "This is an emergency override; expect provisioning failures if"
     log_warn "any of the six pre-flight checks would have failed."
     return 0
@@ -459,7 +467,7 @@ preflight_gate() {
   if [ ! -f "$gate_file" ]; then
     log_err "pre-flight gate file $gate_file is missing."
     log_err "Run:  bash scripts/preflight.sh"
-    log_err "(or MILADY_SKIP_PREFLIGHT=1 to bypass — emergency only)"
+    log_err "(or ELIZA_SKIP_PREFLIGHT=1 to bypass — emergency only)"
     exit 2
   fi
 
@@ -474,7 +482,7 @@ preflight_gate() {
   if [ "$file_stamp" != "$now_stamp" ]; then
     log_err "pre-flight gate $gate_file is stale (stamped $file_stamp, now $now_stamp)."
     log_err "Re-run:  bash scripts/preflight.sh"
-    log_err "(or MILADY_SKIP_PREFLIGHT=1 to bypass — emergency only)"
+    log_err "(or ELIZA_SKIP_PREFLIGHT=1 to bypass — emergency only)"
     exit 2
   fi
 
@@ -633,11 +641,11 @@ run_remote() {
   # FSDP-4 leaves real headroom).
   if [ "$REGISTRY_KEY" = "qwen3.6-27b" ] \
      && [ "$VAST_GPU_TARGET" = "blackwell6000-2x" ] \
-     && [ "${MILADY_FORCE_27B_BLACKWELL2X:-0}" != "1" ]; then
+     && [ "${ELIZA_FORCE_27B_BLACKWELL2X:-0}" != "1" ]; then
     log_err "27B on blackwell6000-2x has been empirically shown to OOM"
     log_err "(smoke 2026-05-04 OOM'd at seq=2048 with all optimizations on)."
     log_err "Use VAST_GPU_TARGET=b200-2x (default), h200-2x, or blackwell6000-4x."
-    log_err "Set MILADY_FORCE_27B_BLACKWELL2X=1 to bypass and accept OOM risk."
+    log_err "Set ELIZA_FORCE_27B_BLACKWELL2X=1 to bypass and accept OOM risk."
     exit 2
   fi
   echo "[train_vast] [run] launching APOLLO full-finetune (registry=$REGISTRY_KEY run=$RUN_NAME world=$FSDP_WORLD_SIZE$([ -n "$extra_train_flags" ] && echo " smoke") )"
@@ -646,13 +654,13 @@ run_remote() {
   # -d -s train 'bash scripts/train_vast.sh run'` on the local side.
   # APOLLO is the canonical optimizer for ALL eliza-1 sizes (see
   # model_registry.py: 2B/9B → apollo_mini, 27B → apollo_mini @ rank=512).
-  # train_local.py builds it via _MiladySFTTrainer.create_optimizer, which
-  # routes 2-D weights to the projector + everything else to plain AdamW.
+  # train_local.py builds it via _ElizaSFTTrainer.create_optimizer, which
+  # routes 2-D weights to APOLLO's projector + everything else to APOLLO's
+  # unprojected parameter group.
   # Under FSDP1 with --fsdp_use_orig_params true (set below), named_parameters()
-  # exposes original 2-D shapes so the routing works correctly. Operators
-  # who need a different optimizer can override via MILADY_TRAINER_OPTIM,
-  # but APOLLO is the default — do not switch to plain AdamW for 27B
-  # (its 8-byte fp32 moments would alone consume ~108 GB/rank under FSDP-2).
+  # exposes original 2-D shapes so the routing works correctly. Do not add a
+  # non-APOLLO optimizer path: APOLLO's projected state is the reason these
+  # full-parameter fine-tunes fit smaller GPU memory budgets.
   ssh_run "bash -lc '
     set -euo pipefail
     cd $REMOTE_TRAIN_DIR
@@ -785,17 +793,17 @@ bench_remote() {
     echo "[train_vast] [bench] BENCHMARK_AFTER=0 — skipping"
     return 0
   fi
-  echo "[train_vast] [bench] eliza_bench: base + finetuned + quantized (max_per_bucket=$BENCH_MAX_PER_BUCKET)"
+  echo "[train_vast] [bench] native_tool_call_bench: base + finetuned + quantized (max_per_bucket=$BENCH_MAX_PER_BUCKET)"
   ssh_run "bash -lc '
     set -euo pipefail
     cd $REMOTE_TRAIN_DIR
     export PATH=\$HOME/.local/bin:\$PATH
     base_id=\$(uv run --extra train python -c \"from scripts.training.model_registry import get; print(get(\\\"$REGISTRY_KEY\\\").hf_id)\")
-    uv run --extra train python scripts/benchmark/eliza_bench.py \\
+    uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
         --model \$base_id \\
         --out-dir benchmarks/$RUN_NAME/base \\
         --max-per-bucket $BENCH_MAX_PER_BUCKET
-    uv run --extra train python scripts/benchmark/eliza_bench.py \\
+    uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
         --model checkpoints/$RUN_NAME/final \\
         --out-dir benchmarks/$RUN_NAME/finetuned \\
         --max-per-bucket $BENCH_MAX_PER_BUCKET
@@ -807,7 +815,7 @@ bench_remote() {
       cd $REMOTE_TRAIN_DIR
       export PATH=\$HOME/.local/bin:\$PATH
       if [ -d checkpoints/$RUN_NAME/final-${q} ]; then
-        uv run --extra train python scripts/benchmark/eliza_bench.py \\
+        uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
           --model checkpoints/$RUN_NAME/final-${q} \\
           --out-dir benchmarks/$RUN_NAME/${q} \\
           --max-per-bucket $BENCH_MAX_PER_BUCKET
@@ -898,8 +906,8 @@ provision_and_train() {
     log "provision-and-train: PIPELINE=$PIPELINE REGISTRY_KEY=$REGISTRY_KEY (env/default)"
   fi
   if [ -n "$epochs" ]; then
-    export MILADY_TRAIN_EPOCHS="$epochs"
-    log "provision-and-train: epochs=$epochs (consumed by run_remote via MILADY_TRAIN_EPOCHS)"
+    export ELIZA_TRAIN_EPOCHS="$epochs"
+    log "provision-and-train: epochs=$epochs (consumed by run_remote via ELIZA_TRAIN_EPOCHS)"
   fi
 
   # Dry-run short-circuit: print the planned action set and remote
@@ -1224,7 +1232,7 @@ Subcommands:
                                                  sft|dpo → accelerate launch + APOLLO
                                                  grpo    → bash train_grpo_verl.sh
   quantize                                     Apply QUANTIZE_AFTER list (remote, SFT only)
-  bench                                        Run eliza_bench on base + finetuned
+  bench                                        Run native function-calling benchmark on base + finetuned
   fetch                                        rsync checkpoints + benchmarks back
   full                                         provision -> sync -> run [-> quantize -> bench
                                                only for SFT] -> fetch
@@ -1253,9 +1261,9 @@ GRPO-specific env vars (apply when --pipeline grpo):
 
 Standardized env vars:
   VAST_API_KEY                  vastai API key
-  MILADY_VAST_GPU_PREFERENCE    csv: B200,H200,H100,RTX5090
-  MILADY_VAST_DISK_GB           default 200; aliases VAST_DISK_GB
-  MILADY_VAST_INSTANCE_ID       set after provision; aliases VAST_INSTANCE_ID
+  ELIZA_VAST_GPU_PREFERENCE    csv: B200,H200,H100,RTX5090
+  ELIZA_VAST_DISK_GB           default 200; aliases VAST_DISK_GB
+  ELIZA_VAST_INSTANCE_ID       set after provision; aliases VAST_INSTANCE_ID
 
 Refuses to run when any NEBIUS_* env var is set.
 EOF

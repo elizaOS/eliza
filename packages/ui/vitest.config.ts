@@ -8,6 +8,10 @@ const monorepoRoot = resolve(packageRoot, "../..");
 const uiSrc = resolve(packageRoot, "src");
 const sharedSrc = resolve(monorepoRoot, "packages/shared/src");
 const coreSrc = resolve(monorepoRoot, "packages/core/src");
+const bunRuntimeSrc = resolve(
+  monorepoRoot,
+  "packages/native-plugins/bun-runtime/src/index.ts",
+);
 const reactPath = realpathSync(resolve(packageRoot, "node_modules/react"));
 const reactDomPath = realpathSync(
   resolve(packageRoot, "node_modules/react-dom"),
@@ -41,6 +45,10 @@ export default defineConfig({
         replacement: resolve(coreSrc, "$1"),
       },
       {
+        find: /^@elizaos\/capacitor-bun-runtime$/,
+        replacement: bunRuntimeSrc,
+      },
+      {
         find: /^react$/,
         replacement: resolve(reactPath, "index.js"),
       },
@@ -71,6 +79,27 @@ export default defineConfig({
       {
         find: /^node-llama-cpp$/,
         replacement: resolve(packageRoot, "test/stubs/node-llama-cpp.ts"),
+      },
+      // `@capacitor/app` is an optional native bridge the host app supplies — not
+      // a declared dep of `@elizaos/ui`. Tests `vi.mock` it; alias to a resolvable
+      // stub so vite's transform doesn't fail in CI where it isn't installed.
+      {
+        find: /^@capacitor\/app$/,
+        replacement: resolve(packageRoot, "test/stubs/capacitor-app.ts"),
+      },
+      // `@elizaos/capacitor-llama` and `@elizaos/app-wallet` are workspace packages
+      // built to dist/ only; UI tests `vi.mock` them, so alias to stubs so the
+      // import resolves in CI where their dist/ isn't built.
+      {
+        find: /^@elizaos\/capacitor-llama$/,
+        replacement: resolve(
+          packageRoot,
+          "test/stubs/elizaos-capacitor-llama.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/app-wallet$/,
+        replacement: resolve(packageRoot, "test/stubs/elizaos-app-wallet.ts"),
       },
     ],
   },

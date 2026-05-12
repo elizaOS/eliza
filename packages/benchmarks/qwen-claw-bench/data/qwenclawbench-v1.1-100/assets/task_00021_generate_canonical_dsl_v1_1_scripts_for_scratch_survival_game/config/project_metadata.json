@@ -1,0 +1,52 @@
+{
+  "projectName": "极限生存挑战",
+  "version": "2.1",
+  "lastModified": "2024-03-12T09:45:00Z",
+  "author": "GameStudio_CN",
+  "sprites": ["Player", "Enemy", "Apple"],
+  "variables": [
+    {
+      "name": "分数",
+      "default": 0,
+      "type": "number",
+      "scope": "global"
+    },
+    {
+      "name": "生命",
+      "default": 3,
+      "type": "number",
+      "scope": "global"
+    },
+    {
+      "name": "时间",
+      "default": 30,
+      "type": "number",
+      "scope": "global"
+    },
+    {
+      "name": "状态",
+      "default": "准备",
+      "type": "string",
+      "scope": "global",
+      "validValues": ["准备", "进行中", "结束"]
+    }
+  ],
+  "broadcasts": [
+    "游戏开始",
+    "游戏结束",
+    "生成敌人",
+    "生成苹果"
+  ],
+  "stage": {
+    "width": 480,
+    "height": 360,
+    "coordinateRange": {
+      "x": [-240, 240],
+      "y": [-180, 180]
+    }
+  },
+  "apple_spawn": {
+    "interval": 1.0,
+    "description": "Apple clones spawn every 1 second, independent of difficulty"
+  }
+}

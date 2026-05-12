@@ -21,11 +21,17 @@ const apiBase = argValue("--api-base");
 const authTokenArg = argValue("--auth-token");
 const requireInstalled = process.argv.includes("--require-installed");
 const exerciseAppCoreApi = process.argv.includes("--live") || Boolean(apiBase);
+const iosSelectLocal = process.argv.includes("--ios-select-local");
+const iosFullBunSmoke = process.argv.includes("--ios-full-bun-smoke");
 const androidSelectLocal = process.argv.includes("--android-select-local");
 const androidBackground = process.argv.includes("--android-background");
 const iosBackground = process.argv.includes("--ios-background");
 const iosBackgroundTaskId =
   argValue("--ios-background-task-id") ?? "ai.eliza.tasks.refresh";
+const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
+const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
+const IOS_FULL_BUN_SMOKE_ATTEMPTS = 180;
+const IOS_FULL_BUN_SMOKE_DELAY_MS = 2000;
 const ANDROID_HEALTH_ATTEMPTS = 240;
 const IOS_WAKE_POLL_ATTEMPTS = 30;
 const IOS_WAKE_POLL_DELAY_MS = 1000;
@@ -41,6 +47,8 @@ Options:
   --live                           Exercise the app-core local-agent HTTP API on Android
   --api-base URL                   Exercise an already-reachable app-core HTTP API
   --auth-token TOKEN               Bearer token for protected app-core API routes
+  --ios-select-local               Pre-seed iOS onboarding/runtime state for Local mode before launch
+  --ios-full-bun-smoke             Run a WebView-executed full Bun backend smoke in the iOS app
   --android-select-local           Tap through Android first-run Local runtime selection
   --android-background             Background Android, force-fire the WorkManager job, and poll /api/health
   --ios-background                 Background iOS, fire a BGTaskScheduler task via LLDB, and poll /api/health
@@ -153,12 +161,112 @@ function launchIosSimulatorApp() {
     return { udid, installed: false };
   }
 
+  if (iosSelectLocal || iosFullBunSmoke) {
+    preseedIosLocalRuntime(udid, id);
+  }
+  if (iosFullBunSmoke) {
+    preseedIosFullBunSmoke(udid, id);
+  }
+
   console.log(
     `[local-chat-smoke] Launching ${id} in the booted simulator (${udid}).`,
   );
   tryExec("xcrun", ["simctl", "launch", udid, id]);
   tryExec("xcrun", ["simctl", "openurl", udid, "elizaos://chat"]);
   return { udid, installed: true };
+}
+
+function writeIosDefaultsString(udid, domain, key, value) {
+  // Capacitor Preferences stores the default group as `CapacitorStorage.<key>`
+  // in iOS UserDefaults. The JS API strips that prefix; simulator pre-seed has
+  // to write the native key directly because the app is not running yet. Use
+  // the simulator's `defaults` tool so the same cfprefsd domain that the app's
+  // UserDefaults.standard reads is updated.
+  const nativeKey = `CapacitorStorage.${key}`;
+  requireExec(
+    "xcrun",
+    [
+      "simctl",
+      "spawn",
+      udid,
+      "defaults",
+      "write",
+      domain,
+      nativeKey,
+      "-string",
+      value,
+    ],
+    `Failed to write iOS preference ${key}.`,
+  );
+}
+
+function readIosDefaultsString(udid, domain, key) {
+  return tryExec(
+    "xcrun",
+    [
+      "simctl",
+      "spawn",
+      udid,
+      "defaults",
+      "read",
+      domain,
+      `CapacitorStorage.${key}`,
+    ],
+    { allowFailure: true },
+  );
+}
+
+function deleteIosDefaultsKey(udid, domain, key) {
+  tryExec(
+    "xcrun",
+    [
+      "simctl",
+      "spawn",
+      udid,
+      "defaults",
+      "delete",
+      domain,
+      `CapacitorStorage.${key}`,
+    ],
+    { allowFailure: true },
+  );
+}
+
+function flushIosPreferencesCache(udid) {
+  // `defaults write <container>/Library/Preferences/<bundle-id>` updates the
+  // plist on disk, but a booted simulator can keep the old domain cached in
+  // cfprefsd. Kill it before app launch so Capacitor Preferences sees the
+  // pre-seeded values on first read.
+  tryExec("xcrun", ["simctl", "spawn", udid, "killall", "cfprefsd"], {
+    allowFailure: true,
+  });
+}
+
+function preseedIosLocalRuntime(udid, id) {
+  const activeServer = JSON.stringify({
+    id: "local:mobile",
+    kind: "remote",
+    label: "On-device agent",
+    apiBase: "http://127.0.0.1:31337",
+  });
+
+  tryExec("xcrun", ["simctl", "terminate", udid, id], { allowFailure: true });
+  writeIosDefaultsString(udid, id, "eliza:mobile-runtime-mode", "local");
+  writeIosDefaultsString(udid, id, "eliza:onboarding-complete", "1");
+  writeIosDefaultsString(udid, id, "elizaos:active-server", activeServer);
+  flushIosPreferencesCache(udid);
+  console.log(
+    `[local-chat-smoke] Pre-seeded iOS Local runtime preferences for ${id}.`,
+  );
+}
+
+function preseedIosFullBunSmoke(udid, id) {
+  deleteIosDefaultsKey(udid, id, IOS_FULL_BUN_SMOKE_RESULT_KEY);
+  writeIosDefaultsString(udid, id, IOS_FULL_BUN_SMOKE_REQUEST_KEY, "1");
+  flushIosPreferencesCache(udid);
+  console.log(
+    `[local-chat-smoke] Requested in-app iOS full Bun backend smoke for ${id}.`,
+  );
 }
 
 function androidDeviceSerial(adb) {
@@ -480,6 +588,57 @@ function takeIosScreenshot(udid, label) {
   const ok = tryExec("xcrun", ["simctl", "io", udid, "screenshot", outPath]);
   if (ok === null) return null;
   return outPath;
+}
+
+function parseIosFullBunSmokeResult(raw) {
+  if (!raw?.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function verifyIosFullBunSmoke(context) {
+  if (!context?.installed) {
+    const message =
+      "[local-chat-smoke] --ios-full-bun-smoke requested but the iOS app is not installed.";
+    if (requireInstalled) throw new Error(message);
+    console.warn(message);
+    return null;
+  }
+
+  const id = appId();
+  let lastRaw = "";
+  for (let attempt = 1; attempt <= IOS_FULL_BUN_SMOKE_ATTEMPTS; attempt += 1) {
+    lastRaw =
+      readIosDefaultsString(context.udid, id, IOS_FULL_BUN_SMOKE_RESULT_KEY) ??
+      "";
+    const result = parseIosFullBunSmokeResult(lastRaw);
+    if (result?.ok === true) {
+      console.log(
+        "[local-chat-smoke] iOS full Bun smoke:",
+        JSON.stringify(result),
+      );
+      return result;
+    }
+    if (result?.phase === "failed" || (result?.ok === false && result?.error)) {
+      throw new Error(`iOS full Bun smoke failed: ${JSON.stringify(result)}`);
+    }
+    if (attempt % 10 === 0) {
+      const phase =
+        typeof result?.phase === "string" ? ` (${result.phase})` : "";
+      console.warn(
+        `[local-chat-smoke] iOS full Bun smoke still running${phase} (${attempt}/${IOS_FULL_BUN_SMOKE_ATTEMPTS}).`,
+      );
+    }
+    await sleep(IOS_FULL_BUN_SMOKE_DELAY_MS);
+  }
+
+  throw new Error(
+    `iOS full Bun smoke did not complete in time. Last result: ${lastRaw || "<none>"}`,
+  );
 }
 
 function takeAndroidScreenshot(context, label) {
@@ -1056,6 +1215,10 @@ async function main() {
           JSON.stringify(result),
         );
       }
+    }
+
+    if (iosFullBunSmoke && (platform === "ios" || platform === "both")) {
+      await verifyIosFullBunSmoke(iosContext);
     }
 
     run(

@@ -1,11 +1,10 @@
 import type { Plugin } from "@elizaos/core";
-import { shellHistoryAction } from "./actions";
 import { ExecApprovalService } from "./approvals";
 import { shellHistoryProvider } from "./providers";
 import { ShellService } from "./services/shellService";
 
 function terminalSupportedByEnv(env: Record<string, string | undefined>): boolean {
-  const variant = (env.MILADY_BUILD_VARIANT ?? env.ELIZA_BUILD_VARIANT ?? "").trim().toLowerCase();
+  const variant = (env.ELIZA_BUILD_VARIANT ?? "").trim().toLowerCase();
   if (variant === "store") return false;
   const platform = env.ELIZA_PLATFORM?.trim().toLowerCase();
   const mobile =
@@ -24,7 +23,7 @@ export const shellPlugin: Plugin = {
   name: "shell",
   description: "Shell observability and history management providers",
   services: [ShellService, ExecApprovalService],
-  actions: [shellHistoryAction],
+  actions: [],
   providers: [shellHistoryProvider],
   // Self-declared auto-enable: activate when features.shell is enabled.
   autoEnable: {
@@ -42,9 +41,6 @@ export const shellPlugin: Plugin = {
 };
 
 export default shellPlugin;
-
-// Actions
-export { clearHistory, shellHistoryAction } from "./actions/shellHistory";
 
 // Approvals
 export {

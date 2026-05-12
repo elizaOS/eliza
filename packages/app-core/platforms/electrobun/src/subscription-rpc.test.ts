@@ -1,5 +1,5 @@
-import { describe, expect, it, mock } from "bun:test";
 import type { SubscriptionStatusResponse } from "@elizaos/shared";
+import { describe, expect, it, vi } from "vitest";
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import {
 	composeSubscriptionStatusSnapshot,
@@ -8,7 +8,7 @@ import {
 } from "./subscription-rpc";
 
 function mockFetchJson(status: number, body: unknown) {
-	const fetchMock = mock(
+	const fetchMock = vi.fn(
 		async (_input: RequestInfo | URL, _init?: RequestInit) =>
 			new Response(JSON.stringify(body), { status }),
 	);

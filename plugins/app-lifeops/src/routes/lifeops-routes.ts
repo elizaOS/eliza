@@ -1,10 +1,10 @@
 import type http from "node:http";
-import type { ReadJsonBodyOptions } from "@elizaos/core";
 import {
   checkRateLimit,
+  createIntegrationTelemetrySpan,
   type RateLimitConfig,
 } from "@elizaos/agent";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent";
+import type { ReadJsonBodyOptions } from "@elizaos/core";
 import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
 import type {
   AcknowledgeLifeOpsReminderRequest,

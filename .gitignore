@@ -173,6 +173,10 @@ playwright-report/
 /cloud-develop-playwright-ci/
 /cloud-develop-fix/
 
+# Local OmniVoice source checkout used for pin audits; fused builds clone the
+# pinned source into a cache and strip OmniVoice's nested ggml submodule.
+packages/inference/omnivoice.cpp/
+
 # Archive files
 *.zip
 *.tar
@@ -214,6 +218,15 @@ tasks/
 !packages/benchmarks/app-eval/tasks/*-tasks.json
 !packages/benchmarks/app-eval/tasks/*_evaluator.py
 !plugins/plugin-agent-skills/src/tasks/
+# Vendored benchmark task fixtures — these ARE the benchmark, not generated.
+# We own all benchmark code in-tree; no submodules (only llama.cpp is a submodule).
+!packages/benchmarks/claw-eval/tasks/
+!packages/benchmarks/claw-eval/tasks/**
+!packages/benchmarks/skillsbench/tasks/
+!packages/benchmarks/skillsbench/tasks/**
+!packages/benchmarks/swe-bench-pro/run_scripts/**
+!packages/benchmarks/nl2repo/test_files/
+!packages/benchmarks/nl2repo/test_files/**
 
 # Development database and tool directories
 **/data/
@@ -224,6 +237,13 @@ tasks/
 # tarot, iching, and astrology all import their data tables from those JSONs.
 !plugins/plugin-mysticism/src/engines/*/data/
 !plugins/plugin-mysticism/src/engines/*/data/**
+# Benchmark fixture data is vendored, not generated.
+!packages/benchmarks/qwen-claw-bench/data/
+!packages/benchmarks/qwen-claw-bench/data/**
+!packages/benchmarks/swe-bench-multilingual/tests/test_data/
+!packages/benchmarks/swe-bench-multilingual/tests/test_data/**
+!packages/benchmarks/swe-bench-pro/helper_code/data/
+!packages/benchmarks/swe-bench-pro/helper_code/data/**
 **/.roo/
 **/.roomodes/
 **/.taskmaster/
@@ -460,6 +480,8 @@ benchmark_results/
 # src/main/assets/agent/ at build time; committing the 33 MB bundle
 # blob and 5 MB pglite.data into the repo is wrong.
 packages/agent/dist-mobile/
+packages/agent/dist-mobile-ios/
+packages/agent/dist-mobile-ios-jsc/
 packages/benchmarks/benchmark_results/
 packages/benchmarks/benchmark_results
 packages/swe-bench-workspace/
@@ -489,8 +511,24 @@ lifeops_bench_results/
 reports/ai-qa/
 scripts/ai-qa/.static-stack.json
 
+# Generated inference verification output and hardware evidence.
+packages/inference/reports/
+packages/inference/verify/bench_results/
+packages/inference/verify/hardware-results/
+packages/inference/verify/android-vulkan-smoke/
+packages/inference/verify/cpu_bench
+packages/inference/verify/cpu_simd_bench
+packages/inference/verify/cuda_verify
+packages/inference/verify/dispatch_smoke
+packages/inference/verify/metal_bench
+packages/inference/verify/vulkan_dispatch_smoke
+
 # omnivoice-fuse stub library — a build artifact of `make -C
 # packages/app-core/scripts/omnivoice-fuse`, not source. The fused-ABI
 # tests (`voice/ffi-bindings.test.ts`) skip when it is absent.
 packages/app-core/scripts/omnivoice-fuse/libelizainference_stub.so
 packages/app-core/scripts/omnivoice-fuse/libelizainference_stub.dylib
+packages/training/vendor/
+
+.swarm/
+packages/training/out/

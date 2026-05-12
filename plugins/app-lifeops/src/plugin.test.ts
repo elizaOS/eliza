@@ -49,7 +49,9 @@ describe("LifeOps Google plugin registration", () => {
     await expect(
       todoAction?.validate?.(
         { getRoom: async () => null } as IAgentRuntime,
-        { content: { text: "add a todo: pick up dry cleaning tomorrow" } } as never,
+        {
+          content: { text: "add a todo: pick up dry cleaning tomorrow" },
+        } as never,
       ),
     ).resolves.toBe(true);
   });
@@ -85,9 +87,7 @@ describe("LifeOps Google plugin registration", () => {
     expect(routePaths).not.toContain("/api/lifeops/connectors/google/accounts");
     expect(routePaths).not.toContain("/api/lifeops/connectors/google/success");
     expect(routePaths).not.toContain("/api/lifeops/connectors/google/start");
-    expect(routePaths).not.toContain(
-      "/api/lifeops/connectors/google/callback",
-    );
+    expect(routePaths).not.toContain("/api/lifeops/connectors/google/callback");
     expect(routePaths).not.toContain(
       "/api/lifeops/connectors/google/disconnect",
     );

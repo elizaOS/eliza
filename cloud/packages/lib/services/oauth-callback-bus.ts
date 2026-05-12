@@ -21,9 +21,7 @@ export type OAuthCallbackEvent =
 
 export type OAuthCallbackEventName = OAuthCallbackEvent["name"];
 
-export type OAuthCallbackListener = (
-  event: OAuthCallbackEvent,
-) => void | Promise<void>;
+export type OAuthCallbackListener = (event: OAuthCallbackEvent) => void | Promise<void>;
 
 export interface OAuthCallbackFilter {
   intentId?: string;
@@ -37,14 +35,8 @@ export interface OAuthCallbackWaitFilter {
 
 export interface OAuthCallbackBus {
   publish(event: OAuthCallbackEvent): Promise<void>;
-  subscribe(
-    filter: OAuthCallbackFilter,
-    listener: OAuthCallbackListener,
-  ): () => void;
-  waitFor(
-    filter: OAuthCallbackWaitFilter,
-    timeoutMs: number,
-  ): Promise<OAuthCallbackEvent>;
+  subscribe(filter: OAuthCallbackFilter, listener: OAuthCallbackListener): () => void;
+  waitFor(filter: OAuthCallbackWaitFilter, timeoutMs: number): Promise<OAuthCallbackEvent>;
 }
 
 export interface CreateOAuthCallbackBusDeps {
@@ -56,18 +48,13 @@ interface Subscription {
   listener: OAuthCallbackListener;
 }
 
-function matches(
-  filter: OAuthCallbackFilter,
-  event: OAuthCallbackEvent,
-): boolean {
+function matches(filter: OAuthCallbackFilter, event: OAuthCallbackEvent): boolean {
   if (filter.name && filter.name !== event.name) return false;
   if (filter.intentId && filter.intentId !== event.intentId) return false;
   return true;
 }
 
-export function createOAuthCallbackBus(
-  deps?: CreateOAuthCallbackBusDeps,
-): OAuthCallbackBus {
+export function createOAuthCallbackBus(deps?: CreateOAuthCallbackBusDeps): OAuthCallbackBus {
   const subscriptions = new Set<Subscription>();
   const record = deps?.record;
 
@@ -102,10 +89,7 @@ export function createOAuthCallbackBus(
       );
     },
 
-    subscribe(
-      filter: OAuthCallbackFilter,
-      listener: OAuthCallbackListener,
-    ): () => void {
+    subscribe(filter: OAuthCallbackFilter, listener: OAuthCallbackListener): () => void {
       const sub: Subscription = { filter, listener };
       subscriptions.add(sub);
       return () => {
@@ -113,10 +97,7 @@ export function createOAuthCallbackBus(
       };
     },
 
-    waitFor(
-      filter: OAuthCallbackWaitFilter,
-      timeoutMs: number,
-    ): Promise<OAuthCallbackEvent> {
+    waitFor(filter: OAuthCallbackWaitFilter, timeoutMs: number): Promise<OAuthCallbackEvent> {
       return new Promise<OAuthCallbackEvent>((resolve, reject) => {
         const names = new Set<OAuthCallbackEventName>(filter.names);
         let unsubscribe: (() => void) | null = null;
@@ -129,15 +110,12 @@ export function createOAuthCallbackBus(
           );
         }, timeoutMs);
 
-        unsubscribe = this.subscribe(
-          { intentId: filter.intentId },
-          (event) => {
-            if (!names.has(event.name)) return;
-            clearTimeout(timer);
-            if (unsubscribe) unsubscribe();
-            resolve(event);
-          },
-        );
+        unsubscribe = this.subscribe({ intentId: filter.intentId }, (event) => {
+          if (!names.has(event.name)) return;
+          clearTimeout(timer);
+          if (unsubscribe) unsubscribe();
+          resolve(event);
+        });
       });
     },
   };

@@ -1,0 +1,38 @@
+[
+  {
+    "contact_id": "CT-201",
+    "name": "Lisa Wang",
+    "department": "Customer Service",
+    "title": "Customer Service Director",
+    "email": "wangli@company.com",
+    "phone": "13900201001",
+    "location": "Beijing HQ"
+  },
+  {
+    "contact_id": "CT-202",
+    "name": "Michael Zhang",
+    "department": "Finance",
+    "title": "Finance Manager",
+    "email": "zhangming@company.com",
+    "phone": "13900201002",
+    "location": "Beijing HQ"
+  },
+  {
+    "contact_id": "CT-203",
+    "name": "Kevin Li",
+    "department": "Sales",
+    "title": "Sales Director",
+    "email": "liqiang@company.com",
+    "phone": "13900201003",
+    "location": "Beijing HQ"
+  },
+  {
+    "contact_id": "CT-204",
+    "name": "Helen Zhao",
+    "department": "Legal",
+    "title": "Legal Manager",
+    "email": "zhaohong@company.com",
+    "phone": "13900201004",
+    "location": "Beijing HQ"
+  }
+]

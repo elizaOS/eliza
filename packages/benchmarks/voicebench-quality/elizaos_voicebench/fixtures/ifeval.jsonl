@@ -1,0 +1,3 @@
+{"id": "ifeval_smoke_1", "prompt": "Write a sentence about the ocean using exactly 5 words.", "output": "The ocean is deep blue.", "instructions": [{"type": "word_count", "n": 5}]}
+{"id": "ifeval_smoke_2", "prompt": "Reply with the single word YES.", "output": "YES", "instructions": [{"type": "exact_match", "text": "YES"}]}
+{"id": "ifeval_smoke_3", "prompt": "List three colors, one per line.", "output": "red\nblue\ngreen", "instructions": [{"type": "min_lines", "n": 3}]}

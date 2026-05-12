@@ -676,6 +676,7 @@ export class Downloader {
       manifestPath,
       record,
       0,
+      catalogEntry.bundleManifestSha256,
     );
 
     const manifest = parseBundleManifestOrThrow(
@@ -803,14 +804,10 @@ export class Downloader {
       });
     }
 
-    // An empty default slot is filled when the bundle is default-eligible
-    // and either the on-device verify pass succeeded, or no verify hook is
-    // wired yet (first-light behavior — the engine will own this once §7's
-    // verify-on-device is integrated).
-    if (
-      isDefaultEligibleId(installed.id) &&
-      (bundleVerifiedAt !== undefined || !this.verifyOnDevice)
-    ) {
+    // An empty default slot is filled only after the on-device verify pass
+    // succeeds. Without a verify hook the bundle is installed and visible,
+    // but it is not allowed to auto-fill defaults.
+    if (isDefaultEligibleId(installed.id) && bundleVerifiedAt !== undefined) {
       await ensureDefaultAssignment(installed.id);
     }
 

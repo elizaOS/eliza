@@ -22,12 +22,10 @@ import { PtyConsoleSidePanel } from "../../../../app-task-coordinator/src/PtyCon
 import { CompanionHeader, type CompanionShellView } from "./CompanionHeader";
 import { CompanionSceneHost } from "./CompanionSceneHost";
 import { CompanionSettingsPanel } from "./CompanionSettingsPanel";
-import { useCompanionSceneStatus } from "./companion-scene-status-context";
 import { EmotePicker } from "./EmotePicker";
 import { InferenceCloudAlertButton } from "./InferenceCloudAlertButton";
 import { resolveCompanionInferenceNotice } from "./resolve-companion-inference-notice";
 
-const COMPANION_UI_REVEAL_FALLBACK_MS = 1400;
 const COMPANION_DOCK_HEIGHT = "min(42vh, 24rem)";
 
 /** Isolated PTY panel — avoids polling ptySessions in the main overlay. */
@@ -67,6 +65,9 @@ const CompanionOverlay = memo(function CompanionOverlay() {
     elizaCloudConnected,
     elizaCloudCreditsError,
     elizaCloudEnabled,
+    emotePickerOpen,
+    openEmotePicker,
+    closeEmotePicker,
     handleNewConversation,
     navigation,
     setState,
@@ -93,23 +94,6 @@ const CompanionOverlay = memo(function CompanionOverlay() {
     () => setPtySidePanelSessionId(null),
     [],
   );
-  const { avatarReady: sceneAvatarReady } = useCompanionSceneStatus();
-
-  const [avatarReadyFallback, setAvatarReadyFallback] = useState(false);
-  useEffect(() => {
-    if (sceneAvatarReady) {
-      setAvatarReadyFallback(false);
-      return;
-    }
-    setAvatarReadyFallback(false);
-    const fallbackTimer = window.setTimeout(() => {
-      setAvatarReadyFallback(true);
-    }, COMPANION_UI_REVEAL_FALLBACK_MS);
-    return () => {
-      window.clearTimeout(fallbackTimer);
-    };
-  }, [sceneAvatarReady]);
-  const avatarReady = sceneAvatarReady || avatarReadyFallback;
 
   useEffect(() => {
     setState(
@@ -166,6 +150,14 @@ const CompanionOverlay = memo(function CompanionOverlay() {
     setCompanionView("companion");
   }, []);
 
+  const handleToggleEmotePicker = useCallback(() => {
+    if (emotePickerOpen) {
+      closeEmotePicker();
+      return;
+    }
+    openEmotePicker();
+  }, [closeEmotePicker, emotePickerOpen, openEmotePicker]);
+
   const handleInferenceAlertClick = useCallback(() => {
     if (!inferenceNotice) return;
     setState("activeOverlayApp", null);
@@ -191,13 +183,7 @@ const CompanionOverlay = memo(function CompanionOverlay() {
 
   return (
     <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
-      <div
-        style={{
-          opacity: avatarReady ? 1 : 0,
-          transition: "opacity 0.35s ease-out",
-          pointerEvents: avatarReady ? "auto" : "none",
-        }}
-      >
+      <div>
         <CompanionHeader
           activeView={companionView}
           onExitToDesktop={handleExitToDesktop}
@@ -214,11 +200,12 @@ const CompanionOverlay = memo(function CompanionOverlay() {
             setState("chatAgentVoiceMuted", !chatAgentVoiceMuted)
           }
           onNewChat={() => void handleNewConversation()}
+          onToggleEmotePicker={handleToggleEmotePicker}
           rightExtras={companionHeaderRightExtras}
         />
       </div>
 
-      {avatarReady && companionView === "companion" && (
+      {companionView === "companion" && (
         <div
           className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 flex justify-center px-1.5 sm:px-4"
           style={{
@@ -226,6 +213,7 @@ const CompanionOverlay = memo(function CompanionOverlay() {
           }}
         >
           <div
+            data-testid="companion-chat-dock"
             className="relative w-full max-w-5xl min-w-0"
             style={{ height: COMPANION_DOCK_HEIGHT, minHeight: "17rem" }}
           >
@@ -239,15 +227,13 @@ const CompanionOverlay = memo(function CompanionOverlay() {
         </div>
       )}
 
-      {avatarReady && companionView === "character" && (
+      {companionView === "character" && (
         <Suspense fallback={null}>
           <CharacterEditor sceneOverlay />
         </Suspense>
       )}
 
-      {avatarReady && companionView === "settings" && (
-        <CompanionSettingsPanel />
-      )}
+      {companionView === "settings" && <CompanionSettingsPanel />}
 
       {ptySidePanelSessionId && companionView === "companion" && (
         <div className="pointer-events-auto">

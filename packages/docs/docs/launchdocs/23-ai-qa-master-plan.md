@@ -33,7 +33,7 @@ This plan extends those docs with an **AI-driven, screenshot-and-analyze loop** 
 - `GET /api/dev/stack` — port/URL discovery
 - `GET /api/dev/cursor-screenshot` — full-screen OS capture (Electrobun)
 - `GET /api/dev/console-log` — aggregated tail of vite + api + electrobun logs
-- `bun run desktop:stack-status -- --json` — one-shot probe
+- `node packages/app-core/scripts/desktop-stack-status.mjs --json` — one-shot probe
 
 **Audit scripts (strong):**
 - `audit:duplicate-components`, `audit:action-availability`, `audit:action-keyword-i18n`, `audit:package-barrels`, `audit:prompt-compliance`

@@ -89,7 +89,7 @@ export const myAction: Action = {
   param is omitted.
 - `RipgrepService` (`RIPGREP_SERVICE`) — `search(options, mode)`. GREP only.
 - `ShellTaskService` (`SHELL_TASK_SERVICE`) — `start_`, `get`, `waitFor`,
-  `stop_`. BASH backgrounding + TASK_OUTPUT + TASK_STOP.
+  `stop_`. SHELL backgrounding + TASK_OUTPUT + TASK_STOP.
 
 ## Path & cwd rules (NON-NEGOTIABLE)
 
@@ -98,9 +98,9 @@ export const myAction: Action = {
 - **GLOB / GREP / LS** — `path` parameter optional. When omitted, default to
   `SessionCwdService.getCwd(conversationId)`. When provided, must be absolute,
   validated through SandboxService.
-- **BASH** — runs with `cwd` defaulting to `SessionCwdService.getCwd(...)`.
+- **SHELL** — runs with `cwd` defaulting to `SessionCwdService.getCwd(...)`.
   Optional `cwd` parameter overrides; must be absolute and within roots.
-- **ENTER_WORKTREE** — call `SandboxService.addRoot` and
+- **WORKTREE action=enter** — call `SandboxService.addRoot` and
   `SessionCwdService.pushWorktree` so the new path is reachable.
 
 ## Conversation ID

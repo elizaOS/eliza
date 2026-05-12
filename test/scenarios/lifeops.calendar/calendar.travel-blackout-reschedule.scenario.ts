@@ -6,9 +6,9 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
-import { judgeRubric } from "../_helpers/action-assertions.ts";
 import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import { seedGoogleConnectorGrant } from "../../mocks/helpers/seed-grants.ts";
+import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 function checkAllThreeMeetingsAddressed(
   ctx: ScenarioContext,
@@ -24,7 +24,8 @@ function checkAllThreeMeetingsAddressed(
 
 export default scenario({
   id: "calendar.travel-blackout-reschedule",
-  title: "Bulk-reschedule three meetings when the travel window slides by a day",
+  title:
+    "Bulk-reschedule three meetings when the travel window slides by a day",
   domain: "lifeops.calendar",
   tags: ["lifeops", "calendar", "travel", "bulk-reschedule"],
   isolation: "per-scenario",
@@ -55,7 +56,11 @@ export default scenario({
         const baseDay = new Date(now.getTime() + 3 * 24 * 60 * 60_000);
         const meetings = [
           { id: "mtg-priya", name: "1:1 with Priya", offsetHours: 10 },
-          { id: "mtg-marcus", name: "Architecture review with Marcus", offsetHours: 13 },
+          {
+            id: "mtg-marcus",
+            name: "Architecture review with Marcus",
+            offsetHours: 13,
+          },
           { id: "mtg-aria", name: "Coffee with Aria", offsetHours: 15 },
         ];
         for (const m of meetings) {
@@ -73,8 +78,8 @@ export default scenario({
             side: "owner",
             calendarId: "primary",
             title: m.name,
-            description: null,
-            location: null,
+            description: "",
+            location: "",
             status: "confirmed",
             startAt: new Date(startMs).toISOString(),
             endAt: new Date(startMs + 30 * 60_000).toISOString(),

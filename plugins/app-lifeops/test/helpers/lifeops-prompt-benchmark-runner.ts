@@ -1,14 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import type { AgentRuntime } from "@elizaos/core";
-import {
-  type ModelTier,
-  resolveTier,
-} from "../../../../packages/benchmarks/lib/src/model-tiers.ts";
-import {
-  probeDflashFork,
-  resolveLocalBaseUrl,
-} from "../../../../packages/benchmarks/lib/src/local-llama-cpp.ts";
-import { computeCallCostUsd } from "../../../../packages/core/src/features/trajectories/pricing.ts";
 import { flushTrajectoryWrites } from "../../../../packages/agent/src/runtime/trajectory-storage.ts";
 import type {
   Trajectory,
@@ -20,6 +11,15 @@ import {
   selectLiveProvider,
 } from "../../../../packages/app-core/test/helpers/live-provider.ts";
 import type { RealTestRuntimeResult } from "../../../../packages/app-core/test/helpers/real-runtime.ts";
+import {
+  probeDflashFork,
+  resolveLocalBaseUrl,
+} from "../../../../packages/benchmarks/lib/src/local-llama-cpp.ts";
+import {
+  type ModelTier,
+  resolveTier,
+} from "../../../../packages/benchmarks/lib/src/model-tiers.ts";
+import { computeCallCostUsd } from "../../../../packages/core/src/features/trajectories/pricing.ts";
 import { actionsAreScenarioEquivalent } from "../../../../packages/scenario-runner/src/action-families.ts";
 import type {
   PromptBenchmarkCase,
@@ -52,7 +52,7 @@ export type PromptBenchmarkResult = {
   cacheReadInputTokens?: number;
   cacheCreationInputTokens?: number;
   totalInputTokens?: number;
-  cacheHitPct?: number;
+  cacheHitPct?: number | null;
   // USD cost across every llmCall on this case, computed via
   // `computeCallCostUsd` against the canonical price table at
   // `packages/core/src/features/trajectories/pricing.ts`. Mirrors the Python
@@ -245,7 +245,7 @@ async function captureTrajectoryForCase(args: {
   cacheReadInputTokens?: number;
   cacheCreationInputTokens?: number;
   totalInputTokens?: number;
-  cacheHitPct?: number;
+  cacheHitPct?: number | null;
   costUsd?: number;
 }> {
   const service = resolveTrajectoryService(args.runtime);
@@ -333,7 +333,8 @@ async function captureTrajectoryForCase(args: {
     );
   }
   const totalInput = promptTokens + cacheRead + cacheCreate;
-  const cacheHitPct = totalInput > 0 ? +((cacheRead / totalInput) * 100).toFixed(2) : 0;
+  const cacheHitPct =
+    totalInput > 0 ? +((cacheRead / totalInput) * 100).toFixed(2) : null;
 
   return {
     trajectoryId: bestDetail?.trajectoryId,
@@ -442,8 +443,8 @@ async function runSinglePromptBenchmarkCase(args: {
 
   // Tag every trajectory landed during this case so the aggregator can
   // group per-case JSONL bundles.
-  const previousScenarioId = process.env.MILADY_LIFEOPS_SCENARIO_ID;
-  process.env.MILADY_LIFEOPS_SCENARIO_ID = args.testCase.caseId;
+  const previousScenarioId = process.env.ELIZA_LIFEOPS_SCENARIO_ID;
+  process.env.ELIZA_LIFEOPS_SCENARIO_ID = args.testCase.caseId;
 
   try {
     args.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", harness.userId, false);
@@ -511,9 +512,9 @@ async function runSinglePromptBenchmarkCase(args: {
   } finally {
     await harness.cleanup();
     if (previousScenarioId === undefined) {
-      delete process.env.MILADY_LIFEOPS_SCENARIO_ID;
+      delete process.env.ELIZA_LIFEOPS_SCENARIO_ID;
     } else {
-      process.env.MILADY_LIFEOPS_SCENARIO_ID = previousScenarioId;
+      process.env.ELIZA_LIFEOPS_SCENARIO_ID = previousScenarioId;
     }
   }
 }
@@ -751,10 +752,13 @@ export async function createLifeOpsPromptBenchmarkRuntime(args?: {
     const dflashBinary = probeDflashFork();
     if (!dflashBinary) {
       const fallback = resolveLocalBaseUrl();
-      if (fallback.source === "ollama-default" && !process.env.PARALLAX_OPENCODE_BASE_URL) {
+      if (
+        fallback.source === "ollama-default" &&
+        !process.env.PARALLAX_OPENCODE_BASE_URL
+      ) {
         throw new Error(
           "MODEL_TIER=small|mid requires the dflash llama-cpp fork at " +
-            "~/.cache/eliza-dflash/milady-llama-cpp or PARALLAX_OPENCODE_BASE_URL " +
+            "~/.cache/eliza-dflash/eliza-llama-cpp or PARALLAX_OPENCODE_BASE_URL " +
             "pointing at a local OpenAI-compatible endpoint. Neither was found.",
         );
       }

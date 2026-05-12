@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 // Reads capture records produced by ai-qa-capture.spec.ts and runs a Claude
 // vision pass over each screenshot. Writes per-capture findings JSON + a
 // rolled-up markdown report.
@@ -13,8 +14,8 @@
 //   AI_QA_MAX_TOKENS   — defaults to 4096
 //   AI_QA_CONCURRENCY  — defaults to 3
 
-import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,8 +23,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../..");
 
 // --- minimal .env loader (no dotenv dependency) ---------------------------
-async function loadDotEnv() {
-  const envPath = join(REPO_ROOT, ".env");
+async function loadDotEnvFile(envPath) {
   if (!existsSync(envPath)) return;
   const raw = await readFile(envPath, "utf-8");
   for (const line of raw.split("\n")) {
@@ -41,6 +41,13 @@ async function loadDotEnv() {
     }
     if (!process.env[key]) process.env[key] = value;
   }
+}
+
+async function loadDotEnv() {
+  // First the repo's own .env, then the parent eliza/.env (workspace root).
+  // process.env already-set values win — no override.
+  await loadDotEnvFile(join(REPO_ROOT, ".env"));
+  await loadDotEnvFile(join(REPO_ROOT, "..", ".env"));
 }
 
 // --- arg parsing -----------------------------------------------------------
@@ -104,13 +111,62 @@ async function listCaptureRecords(runDir) {
   return records;
 }
 
-// --- claude vision call ----------------------------------------------------
+// --- vision provider selection ---------------------------------------------
 const ANTHROPIC_API = "https://api.anthropic.com/v1/messages";
-const MODEL = process.env.AI_QA_MODEL ?? "claude-opus-4-7";
+const OPENAI_API = "https://api.openai.com/v1/chat/completions";
+const GROQ_API = "https://api.groq.com/openai/v1/chat/completions";
+const ANTHROPIC_MODEL = process.env.AI_QA_ANTHROPIC_MODEL ?? "claude-opus-4-7";
+const OPENAI_MODEL = process.env.AI_QA_OPENAI_MODEL ?? "gpt-5.5";
+const GROQ_MODEL =
+  process.env.AI_QA_GROQ_MODEL ?? "meta-llama/llama-4-scout-17b-16e-instruct";
+// Back-compat env (the original analyze.mjs only knew about Claude).
+const MODEL = process.env.AI_QA_MODEL ?? ANTHROPIC_MODEL;
 const MAX_TOKENS = Number(process.env.AI_QA_MAX_TOKENS ?? "4096");
 
+function looksLikeOpenAiKey(key) {
+  return typeof key === "string" && key.startsWith("sk-");
+}
+
+function looksLikeGroqKey(key) {
+  return typeof key === "string" && key.startsWith("gsk_");
+}
+
+function selectVisionProvider() {
+  const forced = process.env.AI_QA_PROVIDER?.toLowerCase();
+  if (forced === "anthropic" || forced === "claude") {
+    return process.env.ANTHROPIC_API_KEY ? "anthropic" : null;
+  }
+  if (forced === "openai") {
+    return looksLikeOpenAiKey(process.env.OPENAI_API_KEY) ? "openai" : null;
+  }
+  if (forced === "groq") {
+    return process.env.GROQ_API_KEY ||
+      looksLikeGroqKey(process.env.OPENAI_API_KEY)
+      ? "groq"
+      : null;
+  }
+  if (process.env.ANTHROPIC_API_KEY) return "anthropic";
+  if (looksLikeOpenAiKey(process.env.OPENAI_API_KEY)) return "openai";
+  // Repos that route Groq through OPENAI_API_KEY are common in this workspace.
+  if (
+    process.env.GROQ_API_KEY ||
+    looksLikeGroqKey(process.env.OPENAI_API_KEY)
+  ) {
+    return "groq";
+  }
+  return null;
+}
+
+function groqApiKey() {
+  if (process.env.GROQ_API_KEY) return process.env.GROQ_API_KEY;
+  if (looksLikeGroqKey(process.env.OPENAI_API_KEY)) {
+    return process.env.OPENAI_API_KEY;
+  }
+  return null;
+}
+
 const SYSTEM_PROMPT = `You are a senior product designer and QA engineer reviewing an
-in-app screenshot for the elizaOS / Milady desktop+web+mobile assistant.
+in-app screenshot for the elizaOS / Eliza desktop+web+mobile assistant.
 
 Your job: identify concrete, actionable issues with this page. You will be given:
 - the screenshot
@@ -148,7 +204,135 @@ mention them only if they would surface to a user.
 
 NEVER return non-JSON. NEVER wrap JSON in markdown.`;
 
-async function analyzeCapture({ runDir, capture }) {
+function parseJsonResponse(text) {
+  const trimmed = text.trim();
+  const stripped = trimmed
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  return JSON.parse(stripped);
+}
+
+async function callAnthropic({ imageBase64, userText }) {
+  const body = {
+    model: MODEL,
+    max_tokens: MAX_TOKENS,
+    system: SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: "image/png",
+              data: imageBase64,
+            },
+          },
+          { type: "text", text: userText },
+        ],
+      },
+    ],
+  };
+  const response = await fetch(ANTHROPIC_API, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    return {
+      ok: false,
+      reason: `anthropic ${response.status}: ${text.slice(0, 300)}`,
+    };
+  }
+  const json = await response.json();
+  const blocks = Array.isArray(json.content) ? json.content : [];
+  const textBlock = blocks.find((b) => b.type === "text");
+  if (!textBlock) {
+    return { ok: false, reason: "anthropic: no text block in response" };
+  }
+  return { ok: true, text: textBlock.text };
+}
+
+async function callOpenAiCompatible({
+  endpoint,
+  apiKey,
+  model,
+  imageBase64,
+  userText,
+  providerName,
+}) {
+  const body = {
+    model,
+    max_tokens: MAX_TOKENS,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: [
+          {
+            type: "image_url",
+            image_url: { url: `data:image/png;base64,${imageBase64}` },
+          },
+          { type: "text", text: userText },
+        ],
+      },
+    ],
+  };
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    return {
+      ok: false,
+      reason: `${providerName} ${response.status}: ${text.slice(0, 300)}`,
+    };
+  }
+  const json = await response.json();
+  const choice = json.choices?.[0]?.message?.content;
+  if (typeof choice !== "string") {
+    return { ok: false, reason: `${providerName}: no content in response` };
+  }
+  return { ok: true, text: choice };
+}
+
+async function callOpenAi({ imageBase64, userText }) {
+  return callOpenAiCompatible({
+    endpoint: OPENAI_API,
+    apiKey: process.env.OPENAI_API_KEY,
+    model: OPENAI_MODEL,
+    imageBase64,
+    userText,
+    providerName: "openai",
+  });
+}
+
+async function callGroq({ imageBase64, userText }) {
+  return callOpenAiCompatible({
+    endpoint: GROQ_API,
+    apiKey: groqApiKey(),
+    model: GROQ_MODEL,
+    imageBase64,
+    userText,
+    providerName: "groq",
+  });
+}
+
+async function analyzeCapture({ runDir, capture, provider }) {
   const screenshotPath = join(runDir, capture.screenshotRelPath);
   if (!existsSync(screenshotPath)) {
     return {
@@ -193,66 +377,27 @@ async function analyzeCapture({ runDir, capture }) {
     "Review the screenshot and produce findings JSON.",
   ].join("\n");
 
-  const body = {
-    model: MODEL,
-    max_tokens: MAX_TOKENS,
-    system: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "image",
-            source: {
-              type: "base64",
-              media_type: "image/png",
-              data: imageBase64,
-            },
-          },
-          { type: "text", text: userText },
-        ],
-      },
-    ],
-  };
-
-  const response = await fetch(ANTHROPIC_API, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": process.env.ANTHROPIC_API_KEY,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    return {
-      ok: false,
-      reason: `anthropic ${response.status}: ${text.slice(0, 300)}`,
-      finding: null,
-    };
+  let apiResult;
+  if (provider === "anthropic") {
+    apiResult = await callAnthropic({ imageBase64, userText });
+  } else if (provider === "openai") {
+    apiResult = await callOpenAi({ imageBase64, userText });
+  } else if (provider === "groq") {
+    apiResult = await callGroq({ imageBase64, userText });
+  } else {
+    apiResult = { ok: false, reason: `unknown provider: ${provider}` };
   }
-  const json = await response.json();
-  const blocks = Array.isArray(json.content) ? json.content : [];
-  const textBlock = blocks.find((b) => b.type === "text");
-  if (!textBlock) {
-    return { ok: false, reason: "no text block in response", finding: null };
+  if (!apiResult.ok) {
+    return { ok: false, reason: apiResult.reason, finding: null };
   }
   let parsed;
   try {
-    const trimmed = textBlock.text.trim();
-    const stripped = trimmed
-      .replace(/^```json\s*/i, "")
-      .replace(/^```\s*/i, "")
-      .replace(/\s*```$/i, "")
-      .trim();
-    parsed = JSON.parse(stripped);
+    parsed = parseJsonResponse(apiResult.text);
   } catch (error) {
     return {
       ok: false,
       reason: `unparseable JSON: ${error.message}`,
-      raw: textBlock.text.slice(0, 1000),
+      raw: apiResult.text.slice(0, 1000),
       finding: null,
     };
   }
@@ -291,16 +436,26 @@ async function withConcurrency(items, limit, worker) {
 
 async function main() {
   await loadDotEnv();
-  if (!process.env.ANTHROPIC_API_KEY) {
+  const provider = selectVisionProvider();
+  if (!provider) {
     console.error(
-      "[ai-qa] ANTHROPIC_API_KEY is required (set in .env or env)",
+      "[ai-qa] No vision provider available. Set ANTHROPIC_API_KEY or OPENAI_API_KEY in env or in <repo>/.env or <repo>/../.env",
     );
     process.exit(2);
   }
+  const providerModel =
+    provider === "anthropic"
+      ? MODEL
+      : provider === "openai"
+        ? OPENAI_MODEL
+        : provider === "groq"
+          ? GROQ_MODEL
+          : "?";
+  console.error(
+    `[ai-qa] vision provider: ${provider} (model: ${providerModel})`,
+  );
   const args = parseArgs(process.argv.slice(2));
-  const runDir = args.runDir
-    ? resolve(args.runDir)
-    : await findLatestRunDir();
+  const runDir = args.runDir ? resolve(args.runDir) : await findLatestRunDir();
   if (!runDir || !existsSync(runDir)) {
     console.error(`[ai-qa] no run dir found; run capture spec first`);
     process.exit(2);
@@ -326,7 +481,7 @@ async function main() {
     console.error(
       `[ai-qa] analyze ${capture.routeId} ${capture.viewport} ${capture.theme}`,
     );
-    const result = await analyzeCapture({ runDir, capture });
+    const result = await analyzeCapture({ runDir, capture, provider });
     const outPath = join(
       findingsRoot,
       `${capture.routeId}__${capture.viewport}__${capture.theme}.json`,
@@ -351,7 +506,14 @@ async function main() {
     return { capture, result };
   });
 
-  // Roll-up
+  // Roll-up. `withConcurrency` returns either `{ capture, result }` from a
+  // successful worker call or `{ ok: false, reason }` if the worker itself
+  // threw, so unwrap defensively.
+  function unwrapResult(r) {
+    if (!r) return { ok: false, finding: null };
+    if (r.result) return r.result;
+    return r; // already in {ok, reason} shape from the catch path
+  }
   const summaryPath = join(runDir, "analysis-summary.json");
   await writeFile(
     summaryPath,
@@ -360,11 +522,11 @@ async function main() {
         runId: runDir.split("/").pop(),
         completedAt: new Date().toISOString(),
         totalCaptures: work.length,
-        succeeded: results.filter((r) => r.result.ok).length,
-        failed: results.filter((r) => !r.result.ok).length,
+        succeeded: results.filter((r) => unwrapResult(r).ok).length,
+        failed: results.filter((r) => !unwrapResult(r).ok).length,
         findingCounts: results.reduce(
           (acc, r) => {
-            const findings = r.result.finding?.findings ?? [];
+            const findings = unwrapResult(r).finding?.findings ?? [];
             for (const f of findings) {
               acc[f.severity] = (acc[f.severity] ?? 0) + 1;
             }

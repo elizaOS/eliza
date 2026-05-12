@@ -184,12 +184,9 @@ describe("EXIT_WORKTREE", () => {
   });
 
   it("fails with missing_param when message has no roomId", async () => {
-    const result = await exitWorktreeHandler(
-      env.runtime,
-      {} as Memory,
-      state,
-      { parameters: {} },
-    );
+    const result = await exitWorktreeHandler(env.runtime, {} as Memory, state, {
+      parameters: {},
+    });
     expect(result.success).toBe(false);
     expect(result.text).toContain("missing_param");
   });

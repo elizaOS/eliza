@@ -5,6 +5,13 @@ import {
   MODEL_CATALOG,
 } from "./catalog";
 import {
+  canSetAsDefault,
+  type Eliza1Backend,
+  type Eliza1DeviceCaps,
+  type Eliza1Manifest,
+  SUPPORTED_BACKENDS_BY_TIER,
+} from "./manifest";
+import {
   assessRamFit,
   defaultManifestLoader,
   type ManifestLoader,
@@ -21,8 +28,11 @@ import type {
 // type so the ladder definitions can't drift from the canonical list.
 // Adding a tier requires extending the manifest module; this file picks
 // it up automatically.
+const TIER_0_8B: Eliza1TierId = "eliza-1-0_8b";
 const TIER_0_6B: Eliza1TierId = "eliza-1-0_6b";
 const TIER_1_7B: Eliza1TierId = "eliza-1-1_7b";
+const TIER_2B: Eliza1TierId = "eliza-1-2b";
+const TIER_4B: Eliza1TierId = "eliza-1-4b";
 const TIER_9B: Eliza1TierId = "eliza-1-9b";
 const TIER_27B: Eliza1TierId = "eliza-1-27b";
 const TIER_27B_256K: Eliza1TierId = "eliza-1-27b-256k";
@@ -57,29 +67,37 @@ const SLOT_LADDERS: Record<
   RecommendationPlatformClass,
   Record<TextGenerationSlot, ReadonlyArray<Eliza1TierId>>
 > = {
+  // Per the 2026-05-12 operator directive, the Qwen3.5 line is the
+  // default — eliza-1-0_8b (Qwen3.5-0.8B) is the small default;
+  // eliza-1-2b (Qwen3.5-2B) is the mid default. The legacy Qwen3 tiers
+  // (eliza-1-0_6b / eliza-1-1_7b) stay in the ladders as DEPRECATED
+  // fallbacks so existing user bundles still resolve — but they sit
+  // BELOW the Qwen3.5 tiers in the preference order (a host that
+  // could run 0_8b or 2b should never get pushed onto the deprecated
+  // Qwen3 tiers).
   mobile: {
-    TEXT_SMALL: [TIER_0_6B, TIER_1_7B],
-    TEXT_LARGE: [TIER_1_7B, TIER_0_6B],
+    TEXT_SMALL: [TIER_0_8B, TIER_0_6B, TIER_2B, TIER_1_7B],
+    TEXT_LARGE: [TIER_2B, TIER_0_8B, TIER_1_7B, TIER_0_6B],
   },
   "apple-silicon": {
-    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
-    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_1_7B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_1_7B],
   },
   "linux-gpu": {
-    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
-    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_1_7B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_1_7B],
   },
   "linux-cpu": {
-    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
-    TEXT_LARGE: [TIER_9B, TIER_1_7B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B, TIER_1_7B],
   },
   "desktop-gpu": {
-    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
-    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_1_7B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_1_7B],
   },
   "desktop-cpu": {
-    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
-    TEXT_LARGE: [TIER_9B, TIER_1_7B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B, TIER_1_7B],
   },
 };
 
@@ -410,6 +428,129 @@ function rankLadderByLongContext(ladder: CatalogModel[]): CatalogModel[] {
       return left.idx - right.idx;
     })
     .map((entry) => entry.model);
+}
+
+// ---------------------------------------------------------------------------
+// Default-eligibility on this device — the recommendation-engine gate that
+// consults the bundle's `eliza-1.manifest.json` (`kernels.verifiedBackends`,
+// `evals`, `defaultEligible`) against the device hardware + the bundle's
+// on-device verify state. See `packages/inference/AGENTS.md` §6 + §7.
+// ---------------------------------------------------------------------------
+
+/**
+ * Project a `HardwareProbe` onto the `Eliza1DeviceCaps` shape the manifest
+ * validator's `canSetAsDefault` consumes. CPU is always available; a probed
+ * GPU contributes exactly its one backend (`cuda` / `metal` / `vulkan`). RAM
+ * is the device total, in MB — `canSetAsDefault` compares against the
+ * manifest's `ramBudgetMb.min` floor, not the headroom-discounted figure the
+ * ladder uses, because the floor is "will it boot at all".
+ */
+export function deviceCapsFromProbe(hardware: HardwareProbe): Eliza1DeviceCaps {
+  const backends: Eliza1Backend[] = ["cpu"];
+  if (hardware.gpu) backends.push(hardware.gpu.backend);
+  return {
+    availableBackends: backends,
+    ramMb: Math.round(hardware.totalRamGb * 1024),
+  };
+}
+
+export type BundleDefaultEligibility =
+  | { canBeDefault: true }
+  | {
+      canBeDefault: false;
+      reason:
+        | "no-manifest"
+        | "not-default-eligible"
+        | "ram-below-floor"
+        | "kernels-unverified-on-device"
+        | "not-verified-on-device";
+      detail: string;
+    };
+
+/**
+ * True iff this installed Eliza-1 bundle may be offered as the recommended
+ * default on this device. The full set of conditions (any one failing →
+ * not default):
+ *
+ *  - the bundle ships a validated `eliza-1.manifest.json`,
+ *  - the manifest is contract-valid (every required kernel declared, every
+ *    required eval green for a strict release, lineage/files consistent —
+ *    enforced by `canSetAsDefault` → `collectContractErrors`),
+ *  - the device exposes at least one backend the manifest verified `pass` on
+ *    out of the tier's supported set,
+ *  - the device RAM meets the manifest's `ramBudgetMb.min` floor,
+ *  - the bundle has passed the one-time on-device verify pass
+ *    (`InstalledModel.bundleVerifiedAt` is set) — a materialized-but-unverified
+ *    bundle is never auto-selected, per AGENTS.md §7.
+ *
+ * `manifest.defaultEligible: true` is required — the publisher must explicitly
+ * mark the bundle as eligible. The recommender prefers a strict release over a
+ * candidate when both are installed and `defaultEligible: true`.
+ */
+export function canBundleBeDefaultOnDevice(
+  installed: InstalledModel,
+  hardware: HardwareProbe,
+  options: { manifestLoader?: ManifestLoader } = {},
+): BundleDefaultEligibility {
+  const loader = options.manifestLoader ?? defaultManifestLoader;
+  const manifest: Eliza1Manifest | null = loader(installed.id, installed);
+  if (!manifest) {
+    return {
+      canBeDefault: false,
+      reason: "no-manifest",
+      detail: `${installed.id}: no validated eliza-1.manifest.json next to the bundle`,
+    };
+  }
+  if (!installed.bundleVerifiedAt) {
+    return {
+      canBeDefault: false,
+      reason: "not-verified-on-device",
+      detail: `${installed.id}: bundle materialized but the on-device verify pass (load → 1-token text → 1-phrase voice → barge-in) has not run`,
+    };
+  }
+  if (!manifest.defaultEligible) {
+    return {
+      canBeDefault: false,
+      reason: "not-default-eligible",
+      detail: `${installed.id}: manifest.defaultEligible is false`,
+    };
+  }
+  const caps = deviceCapsFromProbe(hardware);
+  if (canSetAsDefault(manifest, caps)) return { canBeDefault: true };
+
+  // canSetAsDefault returned false — disambiguate why so the UI/log is precise.
+  if (manifest.ramBudgetMb.min > caps.ramMb) {
+    return {
+      canBeDefault: false,
+      reason: "ram-below-floor",
+      detail: `${installed.id}: device RAM ${caps.ramMb} MB is below the manifest floor ${manifest.ramBudgetMb.min} MB`,
+    };
+  }
+  const supported = new Set<Eliza1Backend>(
+    SUPPORTED_BACKENDS_BY_TIER[manifest.tier],
+  );
+  const verifiedOnDeviceBackend = caps.availableBackends.some(
+    (b) =>
+      supported.has(b) &&
+      manifest.kernels.verifiedBackends[b].status === "pass",
+  );
+  if (!verifiedOnDeviceBackend) {
+    const deviceBackends = caps.availableBackends.join(", ");
+    return {
+      canBeDefault: false,
+      reason: "kernels-unverified-on-device",
+      detail: `${installed.id}: no backend the device exposes (${deviceBackends}) has a 'pass' kernel-verify report in the manifest`,
+    };
+  }
+  // RAM ok, backend ok — the failure must be a manifest-contract path the
+  // validator caught (e.g. a required-eval gate not passed for a strict
+  // release, a lineage/files mismatch, an inconsistent provenance block).
+  // All contract failures make the bundle ineligible to be the device default.
+  return {
+    canBeDefault: false,
+    reason: "not-default-eligible",
+    detail: `${installed.id}: manifest failed the contract check (an eval gate, kernel-coverage rule, or lineage/files consistency rule)`,
+  };
 }
 
 export function selectRecommendedModels(

@@ -1,0 +1,13 @@
+{
+  "entity_name": "analysts",
+  "entity_type": "FinancialAnalyst",
+  "summary": "74 analysts covering NovaTech with target price range $140-$432.78",
+  "attributes": {
+    "coverage_sector": "Technology",
+    "firm_affiliation": "N/A",
+    "rating_history": "N/A",
+    "analyst_count": 74
+  },
+  "related_entities": ["NovaTech", "Starbridge"],
+  "last_updated": "2024-12-15"
+}

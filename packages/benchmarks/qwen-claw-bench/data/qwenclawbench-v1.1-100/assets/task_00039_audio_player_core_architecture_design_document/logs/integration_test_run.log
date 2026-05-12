@@ -1,0 +1,200 @@
+[2024-06-15T10:00:00.291Z] [INFO ] === Audio Player Core Integration Test Suite ===
+[2024-06-15T10:00:00.463Z] [INFO ] Test runner: cargo-nextest 0.9.67
+[2024-06-15T10:00:00.712Z] [INFO ] Rust version: 1.78.0 (9b00956e5 2024-04-29)
+[2024-06-15T10:00:01.029Z] [INFO ] Target: x86_64-unknown-linux-gnu
+[2024-06-15T10:00:01.226Z] [INFO ] Profile: ci
+[2024-06-15T10:00:01.560Z] [INFO ] Starting 47 tests across 8 modules...
+[2024-06-15T10:00:01.718Z] [INFO ] 
+[2024-06-15T10:00:02.089Z] [INFO ] --- Module: queue::basic ---
+[2024-06-15T10:00:02.419Z] [INFO ]   Running queue::basic::test_add_track...
+[2024-06-15T10:00:02.535Z] [INFO ]   PASS queue::basic::test_add_track (421ms)
+[2024-06-15T10:00:02.605Z] [INFO ]   Running queue::basic::test_add_track_at_position...
+[2024-06-15T10:00:02.913Z] [DEBUG]     Setting up test fixtures for test_add_track_at_position
+[2024-06-15T10:00:03.046Z] [INFO ]   PASS queue::basic::test_add_track_at_position (490ms)
+[2024-06-15T10:00:03.060Z] [INFO ]   Running queue::basic::test_remove_track_by_index...
+[2024-06-15T10:00:03.503Z] [DEBUG]     Setting up test fixtures for test_remove_track_by_index
+[2024-06-15T10:00:03.545Z] [INFO ]   PASS queue::basic::test_remove_track_by_index (330ms)
+[2024-06-15T10:00:03.559Z] [INFO ]   Running queue::basic::test_remove_track_by_id...
+[2024-06-15T10:00:03.996Z] [DEBUG]     Initializing mock audio backend
+[2024-06-15T10:00:04.309Z] [INFO ]   PASS queue::basic::test_remove_track_by_id (644ms)
+[2024-06-15T10:00:04.803Z] [INFO ]   Running queue::basic::test_reorder_track...
+[2024-06-15T10:00:05.029Z] [INFO ]   PASS queue::basic::test_reorder_track (148ms)
+[2024-06-15T10:00:05.037Z] [INFO ]   Running queue::basic::test_clear_queue...
+[2024-06-15T10:00:05.224Z] [INFO ]   PASS queue::basic::test_clear_queue (575ms)
+[2024-06-15T10:00:05.351Z] [INFO ]   Running queue::basic::test_queue_size_limit...
+[2024-06-15T10:00:05.671Z] [DEBUG]     Setting up test fixtures for test_queue_size_limit
+[2024-06-15T10:00:05.805Z] [INFO ]   PASS queue::basic::test_queue_size_limit (331ms)
+[2024-06-15T10:00:05.865Z] [INFO ] 
+[2024-06-15T10:00:05.950Z] [INFO ] --- Module: queue::persistence ---
+[2024-06-15T10:00:06.124Z] [INFO ]   Running queue::persistence::test_save_queue_sqlite...
+[2024-06-15T10:00:06.430Z] [INFO ]   PASS queue::persistence::test_save_queue_sqlite (326ms)
+[2024-06-15T10:00:06.623Z] [INFO ]   Running queue::persistence::test_load_queue_sqlite...
+[2024-06-15T10:00:06.702Z] [INFO ]   PASS queue::persistence::test_load_queue_sqlite (544ms)
+[2024-06-15T10:00:06.910Z] [INFO ]   Running queue::persistence::test_persist_empty_queue...
+[2024-06-15T10:00:06.926Z] [INFO ]   PASS queue::persistence::test_persist_empty_queue (690ms)
+[2024-06-15T10:00:07.294Z] [INFO ]   Running queue::persistence::test_persist_large_queue...
+[2024-06-15T10:00:07.685Z] [INFO ]   PASS queue::persistence::test_persist_large_queue (309ms)
+[2024-06-15T10:00:07.790Z] [WARN ]   WARN: `crossbeam::channel::bounded` timeout API changed in 0.9
+[2024-06-15T10:00:07.962Z] [INFO ] 
+[2024-06-15T10:00:08.287Z] [INFO ] --- Module: queue::edge_cases ---
+[2024-06-15T10:00:08.686Z] [INFO ]   Running queue::edge_cases::test_add_duplicate_track...
+[2024-06-15T10:00:08.744Z] [INFO ]   PASS queue::edge_cases::test_add_duplicate_track (613ms)
+[2024-06-15T10:00:09.115Z] [WARN ]   WARN: `rodio::Decoder::new` is deprecated since 0.17.1, use `rodio::Decoder::new_decoder` instead
+[2024-06-15T10:00:09.334Z] [INFO ]   Running queue::edge_cases::test_remove_nonexistent...
+[2024-06-15T10:00:09.475Z] [DEBUG]     Setting up test fixtures for test_remove_nonexistent
+[2024-06-15T10:00:09.911Z] [INFO ]   PASS queue::edge_cases::test_remove_nonexistent (195ms)
+[2024-06-15T10:00:10.291Z] [INFO ]   Running queue::edge_cases::test_reorder_out_of_bounds...
+[2024-06-15T10:00:10.373Z] [DEBUG]     Initializing mock audio backend
+[2024-06-15T10:00:10.614Z] [INFO ]   PASS queue::edge_cases::test_reorder_out_of_bounds (340ms)
+[2024-06-15T10:00:10.850Z] [INFO ]   Running queue::edge_cases::test_clear_empty_queue...
+[2024-06-15T10:00:11.262Z] [DEBUG]     Setting up test fixtures for test_clear_empty_queue
+[2024-06-15T10:00:11.426Z] [INFO ]   PASS queue::edge_cases::test_clear_empty_queue (469ms)
+[2024-06-15T10:00:11.868Z] [INFO ] 
+[2024-06-15T10:00:12.159Z] [INFO ] --- Module: playback::controls ---
+[2024-06-15T10:00:12.288Z] [INFO ]   Running playback::controls::test_play_pause_resume...
+[2024-06-15T10:00:12.751Z] [DEBUG]     Setting up test fixtures for test_play_pause_resume
+[2024-06-15T10:00:12.771Z] [INFO ]   PASS playback::controls::test_play_pause_resume (15ms)
+[2024-06-15T10:00:13.002Z] [INFO ]   Running playback::controls::test_stop_resets_position...
+[2024-06-15T10:00:13.066Z] [DEBUG]     Setting up test fixtures for test_stop_resets_position
+[2024-06-15T10:00:13.138Z] [INFO ]   PASS playback::controls::test_stop_resets_position (495ms)
+[2024-06-15T10:00:13.577Z] [INFO ]   Running playback::controls::test_next_track...
+[2024-06-15T10:00:13.775Z] [DEBUG]     Setting up test fixtures for test_next_track
+[2024-06-15T10:00:14.084Z] [DEBUG]     Initializing mock audio backend
+[2024-06-15T10:00:14.492Z] [INFO ]   PASS playback::controls::test_next_track (663ms)
+[2024-06-15T10:00:14.751Z] [INFO ]   Running playback::controls::test_prev_track...
+[2024-06-15T10:00:15.109Z] [DEBUG]     Setting up test fixtures for test_prev_track
+[2024-06-15T10:00:15.263Z] [INFO ]   PASS playback::controls::test_prev_track (692ms)
+[2024-06-15T10:00:15.392Z] [INFO ]   Running playback::controls::test_seek_to_position...
+[2024-06-15T10:00:15.531Z] [INFO ]   PASS playback::controls::test_seek_to_position (316ms)
+[2024-06-15T10:00:15.870Z] [INFO ]   Running playback::controls::test_seek_beyond_duration...
+[2024-06-15T10:00:15.900Z] [DEBUG]     Setting up test fixtures for test_seek_beyond_duration
+[2024-06-15T10:00:15.921Z] [ERROR]   FAIL playback::controls::test_seek_beyond_duration
+[2024-06-15T10:00:16.026Z] [ERROR]     assertion failed: `(left == right)`
+[2024-06-15T10:00:16.460Z] [ERROR]       left:  `300001`
+[2024-06-15T10:00:16.502Z] [ERROR]       right: `300000`
+[2024-06-15T10:00:16.530Z] [ERROR]     note: off-by-one error in seek clamping
+[2024-06-15T10:00:16.847Z] [ERROR]     thread 'playback::controls::test_seek_beyond_duration' panicked at src/playback/engine.rs:247:9
+[2024-06-15T10:00:17.067Z] [ERROR]     stack backtrace:
+[2024-06-15T10:00:17.420Z] [ERROR]        0: std::panicking::begin_panic_handler
+[2024-06-15T10:00:17.731Z] [ERROR]        1: core::panicking::panic_fmt
+[2024-06-15T10:00:17.742Z] [ERROR]        2: core::panicking::assert_failed_inner
+[2024-06-15T10:00:18.013Z] [ERROR]        3: audio_player_core::playback::engine::PlaybackEngine::seek
+[2024-06-15T10:00:18.435Z] [ERROR]                 at src/playback/engine.rs:247:9
+[2024-06-15T10:00:18.703Z] [ERROR]        4: audio_player_core::playback::controls::test_seek_beyond_duration
+[2024-06-15T10:00:19.012Z] [ERROR]                 at tests/playback/controls.rs:156:5
+[2024-06-15T10:00:19.076Z] [ERROR]        5: core::ops::function::FnOnce::call_once
+[2024-06-15T10:00:19.208Z] [WARN ]   WARN: `sled::Db::open` with default config is deprecated, use `sled::Config::new().open()` instead
+[2024-06-15T10:00:19.648Z] [INFO ]   Running playback::controls::test_set_speed_normal...
+[2024-06-15T10:00:19.755Z] [INFO ]   PASS playback::controls::test_set_speed_normal (190ms)
+[2024-06-15T10:00:20.010Z] [INFO ]   Running playback::controls::test_set_speed_boundaries...
+[2024-06-15T10:00:20.408Z] [INFO ]   PASS playback::controls::test_set_speed_boundaries (489ms)
+[2024-06-15T10:00:20.560Z] [INFO ] 
+[2024-06-15T10:00:20.601Z] [INFO ] --- Module: playback::modes ---
+[2024-06-15T10:00:21.032Z] [INFO ]   Running playback::modes::test_sequential_mode...
+[2024-06-15T10:00:21.175Z] [INFO ]   PASS playback::modes::test_sequential_mode (278ms)
+[2024-06-15T10:00:21.662Z] [INFO ]   Running playback::modes::test_repeat_one...
+[2024-06-15T10:00:21.814Z] [DEBUG]     Setting up test fixtures for test_repeat_one
+[2024-06-15T10:00:22.020Z] [INFO ]   PASS playback::modes::test_repeat_one (639ms)
+[2024-06-15T10:00:22.058Z] [INFO ]   Running playback::modes::test_repeat_all...
+[2024-06-15T10:00:22.174Z] [DEBUG]     Initializing mock audio backend
+[2024-06-15T10:00:22.378Z] [INFO ]   PASS playback::modes::test_repeat_all (644ms)
+[2024-06-15T10:00:22.671Z] [INFO ]   Running playback::modes::test_shuffle_basic...
+[2024-06-15T10:00:22.811Z] [INFO ]   PASS playback::modes::test_shuffle_basic (250ms)
+[2024-06-15T10:00:23.145Z] [INFO ]   Running playback::modes::test_shuffle_deterministic...
+[2024-06-15T10:00:23.526Z] [DEBUG]     Initializing mock audio backend
+[2024-06-15T10:00:23.633Z] [ERROR]   FAIL playback::modes::test_shuffle_deterministic
+[2024-06-15T10:00:24.011Z] [ERROR]     assertion failed: shuffle results should be deterministic with same seed
+[2024-06-15T10:00:24.101Z] [ERROR]       first run:  [3, 7, 1, 9, 0, 4, 8, 2, 6, 5]
+[2024-06-15T10:00:24.441Z] [ERROR]       second run: [5, 2, 8, 0, 6, 3, 1, 9, 7, 4]
+[2024-06-15T10:00:24.745Z] [ERROR]     note: RNG seed not being set before shuffle — using system entropy
+[2024-06-15T10:00:24.772Z] [ERROR]     thread 'playback::modes::test_shuffle_deterministic' panicked at src/playback/modes.rs:89:9
+[2024-06-15T10:00:25.037Z] [ERROR]     stack backtrace:
+[2024-06-15T10:00:25.157Z] [ERROR]        0: std::panicking::begin_panic_handler
+[2024-06-15T10:00:25.244Z] [ERROR]        1: core::panicking::panic_fmt
+[2024-06-15T10:00:25.439Z] [ERROR]        2: audio_player_core::playback::modes::ShuffleMode::shuffle_with_seed
+[2024-06-15T10:00:25.733Z] [ERROR]                 at src/playback/modes.rs:89:9
+[2024-06-15T10:00:25.981Z] [ERROR]        3: audio_player_core::playback::modes::test_shuffle_deterministic
+[2024-06-15T10:00:26.293Z] [ERROR]                 at tests/playback/modes.rs:72:5
+[2024-06-15T10:00:26.696Z] [ERROR]        4: core::ops::function::FnOnce::call_once
+[2024-06-15T10:00:27.119Z] [INFO ]   Running playback::modes::test_shuffle_all_elements_present...
+[2024-06-15T10:00:27.499Z] [INFO ]   PASS playback::modes::test_shuffle_all_elements_present (299ms)
+[2024-06-15T10:00:27.727Z] [INFO ] 
+[2024-06-15T10:00:27.925Z] [INFO ] --- Module: cache::operations ---
+[2024-06-15T10:00:28.367Z] [INFO ]   Running cache::operations::test_cache_prefetch...
+[2024-06-15T10:00:28.498Z] [INFO ]   PASS cache::operations::test_cache_prefetch (771ms)
+[2024-06-15T10:00:28.879Z] [INFO ]   Running cache::operations::test_cache_eviction_lru...
+[2024-06-15T10:00:29.360Z] [DEBUG]     Initializing mock audio backend
+[2024-06-15T10:00:29.814Z] [INFO ]   PASS cache::operations::test_cache_eviction_lru (574ms)
+[2024-06-15T10:00:30.281Z] [INFO ]   Running cache::operations::test_cache_hit...
+[2024-06-15T10:00:30.342Z] [DEBUG]     Setting up test fixtures for test_cache_hit
+[2024-06-15T10:00:30.719Z] [INFO ]   PASS cache::operations::test_cache_hit (672ms)
+[2024-06-15T10:00:31.216Z] [WARN ]   WARN: `crossbeam::channel::bounded` timeout API changed in 0.9
+[2024-06-15T10:00:31.715Z] [INFO ]   Running cache::operations::test_cache_miss...
+[2024-06-15T10:00:31.769Z] [INFO ]   PASS cache::operations::test_cache_miss (293ms)
+[2024-06-15T10:00:32.071Z] [INFO ]   Running cache::operations::test_cache_stats...
+[2024-06-15T10:00:32.428Z] [INFO ]   PASS cache::operations::test_cache_stats (731ms)
+[2024-06-15T10:00:32.713Z] [INFO ]   Running cache::operations::test_cache_eviction_under_pressure...
+[2024-06-15T10:00:33.017Z] [DEBUG]     Setting up test fixtures for test_cache_eviction_under_pressure
+[2024-06-15T10:00:33.024Z] [ERROR]   FAIL cache::operations::test_cache_eviction_under_pressure
+[2024-06-15T10:00:33.433Z] [ERROR]     test timed out after 30000ms
+[2024-06-15T10:00:33.525Z] [ERROR]     note: cache eviction loop appears to be blocked waiting for I/O
+[2024-06-15T10:00:33.707Z] [ERROR]     note: 512MB cache was filled with 60 tracks, eviction of 10 tracks took >30s
+[2024-06-15T10:00:33.800Z] [ERROR]     thread 'cache::operations::test_cache_eviction_under_pressure' timed out
+[2024-06-15T10:00:33.819Z] [ERROR]     stack backtrace:
+[2024-06-15T10:00:33.898Z] [ERROR]        0: std::panicking::begin_panic_handler
+[2024-06-15T10:00:34.385Z] [ERROR]        1: tokio::time::timeout
+[2024-06-15T10:00:34.410Z] [ERROR]        2: audio_player_core::cache::manager::CacheManager::evict_lru
+[2024-06-15T10:00:34.855Z] [ERROR]                 at src/cache/manager.rs:312:13
+[2024-06-15T10:00:35.196Z] [ERROR]        3: audio_player_core::cache::manager::CacheManager::make_room
+[2024-06-15T10:00:35.570Z] [ERROR]                 at src/cache/manager.rs:289:9
+[2024-06-15T10:00:35.720Z] [ERROR]        4: audio_player_core::cache::operations::test_cache_eviction_under_pressure
+[2024-06-15T10:00:36.062Z] [ERROR]                 at tests/cache/operations.rs:201:5
+[2024-06-15T10:00:36.099Z] [INFO ] 
+[2024-06-15T10:00:36.149Z] [INFO ] --- Module: cache::persistence ---
+[2024-06-15T10:00:36.296Z] [INFO ]   Running cache::persistence::test_cache_survives_restart...
+[2024-06-15T10:00:36.356Z] [INFO ]   PASS cache::persistence::test_cache_survives_restart (391ms)
+[2024-06-15T10:00:36.715Z] [INFO ]   Running cache::persistence::test_cache_cleanup_on_startup...
+[2024-06-15T10:00:37.148Z] [INFO ]   PASS cache::persistence::test_cache_cleanup_on_startup (78ms)
+[2024-06-15T10:00:37.226Z] [INFO ]   Running cache::persistence::test_cache_ttl_expiry...
+[2024-06-15T10:00:37.305Z] [INFO ]   PASS cache::persistence::test_cache_ttl_expiry (499ms)
+[2024-06-15T10:00:37.649Z] [WARN ]   WARN: `sled::Db::open` with default config is deprecated, use `sled::Config::new().open()` instead
+[2024-06-15T10:00:37.834Z] [INFO ] 
+[2024-06-15T10:00:38.019Z] [INFO ] --- Module: state::persistence ---
+[2024-06-15T10:00:38.510Z] [INFO ]   Running state::persistence::test_save_state_sled...
+[2024-06-15T10:00:38.705Z] [INFO ]   PASS state::persistence::test_save_state_sled (138ms)
+[2024-06-15T10:00:38.861Z] [INFO ]   Running state::persistence::test_load_state_sled...
+[2024-06-15T10:00:39.201Z] [DEBUG]     Setting up test fixtures for test_load_state_sled
+[2024-06-15T10:00:39.364Z] [INFO ]   PASS state::persistence::test_load_state_sled (281ms)
+[2024-06-15T10:00:39.470Z] [INFO ]   Running state::persistence::test_clear_state...
+[2024-06-15T10:00:39.671Z] [INFO ]   PASS state::persistence::test_clear_state (728ms)
+[2024-06-15T10:00:39.810Z] [INFO ]   Running state::persistence::test_state_roundtrip...
+[2024-06-15T10:00:40.213Z] [DEBUG]     Setting up test fixtures for test_state_roundtrip
+[2024-06-15T10:00:40.260Z] [INFO ]   PASS state::persistence::test_state_roundtrip (581ms)
+[2024-06-15T10:00:40.713Z] [INFO ]   Running state::persistence::test_state_migration...
+[2024-06-15T10:00:40.749Z] [INFO ]   PASS state::persistence::test_state_migration (311ms)
+[2024-06-15T10:00:40.775Z] [WARN ]   WARN: `sled::Db::open` with default config is deprecated, use `sled::Config::new().open()` instead
+[2024-06-15T10:00:40.876Z] [INFO ]   Running state::persistence::test_corrupt_state_recovery...
+[2024-06-15T10:00:41.284Z] [DEBUG]     Setting up test fixtures for test_corrupt_state_recovery
+[2024-06-15T10:00:41.717Z] [DEBUG]     Initializing mock audio backend
+[2024-06-15T10:00:42.134Z] [INFO ]   PASS state::persistence::test_corrupt_state_recovery (840ms)
+[2024-06-15T10:00:42.197Z] [INFO ] 
+[2024-06-15T10:00:42.436Z] [INFO ] Compiling test artifacts... done
+[2024-06-15T10:00:42.902Z] [WARN ] unused import `std::collections::BTreeMap` in tests/helpers/mod.rs:4
+[2024-06-15T10:00:43.048Z] [WARN ] variable `_unused_config` is never read in tests/cache/operations.rs:15
+[2024-06-15T10:00:43.072Z] [INFO ] 
+[2024-06-15T10:00:43.432Z] [INFO ] === Test Summary ===
+[2024-06-15T10:00:43.931Z] [INFO ]   Total:   44
+[2024-06-15T10:00:44.131Z] [INFO ]   Passed:  41
+[2024-06-15T10:00:44.360Z] [INFO ]   Failed:  3
+[2024-06-15T10:00:44.371Z] [INFO ]   Skipped: 0
+[2024-06-15T10:00:44.668Z] [INFO ]   Duration: 44.4s
+[2024-06-15T10:00:45.107Z] [INFO ] 
+[2024-06-15T10:00:45.350Z] [ERROR] SOME TESTS FAILED
+[2024-06-15T10:00:45.850Z] [INFO ] 
+[2024-06-15T10:00:45.870Z] [INFO ] Failed tests:
+[2024-06-15T10:00:46.258Z] [INFO ]   - playback::controls::test_seek_beyond_duration (assertion)
+[2024-06-15T10:00:46.266Z] [INFO ]   - playback::modes::test_shuffle_deterministic (assertion)
+[2024-06-15T10:00:46.555Z] [INFO ]   - cache::operations::test_cache_eviction_under_pressure (timeout)
+[2024-06-15T10:00:46.752Z] [DEBUG]   Cleanup: removing temp file /tmp/audio_test_6137.pcm
+[2024-06-15T10:00:47.141Z] [DEBUG]   Cleanup: removing temp file /tmp/audio_test_2825.pcm
+[2024-06-15T10:00:47.559Z] [DEBUG]   Cleanup: removing temp file /tmp/audio_test_1668.pcm

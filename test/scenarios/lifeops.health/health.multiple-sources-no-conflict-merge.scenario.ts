@@ -49,9 +49,7 @@ export default scenario({
       type: "custom",
       name: "agent-does-not-falsely-flag-conflict",
       predicate: (ctx: ScenarioContext) => {
-        const reply = String(
-          ctx.turns?.[0]?.responseText ?? "",
-        ).toLowerCase();
+        const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
         if (!reply) return "empty reply";
         // The agent must not invent a conflict where there isn't one.
         const falseConflict =

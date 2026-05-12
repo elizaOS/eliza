@@ -1,94 +1,1205 @@
 {
-  "device": "Intel(R) Graphics (ARL)",
-  "vendorID": 32902,
-  "deviceID": 32103,
-  "subgroupSize": 32,
-  "timestampPeriodNs": 52.0833,
-  "runs": 9, "warmup": 3,
-  "rows": [
-    {"kernel": "turbo3", "n_kv": 512, "n_heads": 1, "multi": 1, "us": 157.969},
-    {"kernel": "turbo3_multi", "n_kv": 512, "n_heads": 1, "multi": 1, "us": 103.021},
-    {"kernel": "turbo3_multi", "n_kv": 512, "n_heads": 1, "multi": 2, "us": 115.573},
-    {"kernel": "turbo3_multi", "n_kv": 512, "n_heads": 1, "multi": 4, "us": 104.687},
-    {"kernel": "turbo3_multi", "n_kv": 512, "n_heads": 1, "multi": 8, "us": 149.583},
-    {"kernel": "turbo3_multi", "n_kv": 512, "n_heads": 1, "multi": 16, "us": 251.823},
-    {"kernel": "turbo3", "n_kv": 4096, "n_heads": 1, "multi": 1, "us": 930.625},
-    {"kernel": "turbo3_multi", "n_kv": 4096, "n_heads": 1, "multi": 1, "us": 923.802},
-    {"kernel": "turbo3_multi", "n_kv": 4096, "n_heads": 1, "multi": 2, "us": 943.594},
-    {"kernel": "turbo3_multi", "n_kv": 4096, "n_heads": 1, "multi": 4, "us": 953.542},
-    {"kernel": "turbo3_multi", "n_kv": 4096, "n_heads": 1, "multi": 8, "us": 997.187},
-    {"kernel": "turbo3_multi", "n_kv": 4096, "n_heads": 1, "multi": 16, "us": 1096.82},
-    {"kernel": "turbo3", "n_kv": 32768, "n_heads": 1, "multi": 1, "us": 7126.46},
-    {"kernel": "turbo3_multi", "n_kv": 32768, "n_heads": 1, "multi": 1, "us": 7067.97},
-    {"kernel": "turbo3_multi", "n_kv": 32768, "n_heads": 1, "multi": 2, "us": 7132.03},
-    {"kernel": "turbo3_multi", "n_kv": 32768, "n_heads": 1, "multi": 4, "us": 7033.54},
-    {"kernel": "turbo3_multi", "n_kv": 32768, "n_heads": 1, "multi": 8, "us": 7009.9},
-    {"kernel": "turbo3_multi", "n_kv": 32768, "n_heads": 1, "multi": 16, "us": 7038.65},
-    {"kernel": "turbo4", "n_kv": 512, "n_heads": 1, "multi": 1, "us": 143.073},
-    {"kernel": "turbo4_multi", "n_kv": 512, "n_heads": 1, "multi": 1, "us": 142.448},
-    {"kernel": "turbo4_multi", "n_kv": 512, "n_heads": 1, "multi": 2, "us": 161.458},
-    {"kernel": "turbo4_multi", "n_kv": 512, "n_heads": 1, "multi": 4, "us": 178.333},
-    {"kernel": "turbo4_multi", "n_kv": 512, "n_heads": 1, "multi": 8, "us": 133.594},
-    {"kernel": "turbo4_multi", "n_kv": 512, "n_heads": 1, "multi": 16, "us": 222.031},
-    {"kernel": "turbo4", "n_kv": 4096, "n_heads": 1, "multi": 1, "us": 817.135},
-    {"kernel": "turbo4_multi", "n_kv": 4096, "n_heads": 1, "multi": 1, "us": 809.687},
-    {"kernel": "turbo4_multi", "n_kv": 4096, "n_heads": 1, "multi": 2, "us": 835.99},
-    {"kernel": "turbo4_multi", "n_kv": 4096, "n_heads": 1, "multi": 4, "us": 842.969},
-    {"kernel": "turbo4_multi", "n_kv": 4096, "n_heads": 1, "multi": 8, "us": 876.667},
-    {"kernel": "turbo4_multi", "n_kv": 4096, "n_heads": 1, "multi": 16, "us": 955.573},
-    {"kernel": "turbo4", "n_kv": 32768, "n_heads": 1, "multi": 1, "us": 6183.59},
-    {"kernel": "turbo4_multi", "n_kv": 32768, "n_heads": 1, "multi": 1, "us": 6119.27},
-    {"kernel": "turbo4_multi", "n_kv": 32768, "n_heads": 1, "multi": 2, "us": 6209.43},
-    {"kernel": "turbo4_multi", "n_kv": 32768, "n_heads": 1, "multi": 4, "us": 6082.71},
-    {"kernel": "turbo4_multi", "n_kv": 32768, "n_heads": 1, "multi": 8, "us": 6059.37},
-    {"kernel": "turbo4_multi", "n_kv": 32768, "n_heads": 1, "multi": 16, "us": 5078.23},
-    {"kernel": "turbo3_tcq", "n_kv": 512, "n_heads": 1, "multi": 1, "us": 91.6146},
-    {"kernel": "turbo3_tcq_multi", "n_kv": 512, "n_heads": 1, "multi": 1, "us": 92.0833},
-    {"kernel": "turbo3_tcq_multi", "n_kv": 512, "n_heads": 1, "multi": 2, "us": 151.198},
-    {"kernel": "turbo3_tcq_multi", "n_kv": 512, "n_heads": 1, "multi": 4, "us": 170.885},
-    {"kernel": "turbo3_tcq_multi", "n_kv": 512, "n_heads": 1, "multi": 8, "us": 129.01},
-    {"kernel": "turbo3_tcq_multi", "n_kv": 512, "n_heads": 1, "multi": 16, "us": 214.479},
-    {"kernel": "turbo3_tcq", "n_kv": 4096, "n_heads": 1, "multi": 1, "us": 785.833},
-    {"kernel": "turbo3_tcq_multi", "n_kv": 4096, "n_heads": 1, "multi": 1, "us": 780.625},
-    {"kernel": "turbo3_tcq_multi", "n_kv": 4096, "n_heads": 1, "multi": 2, "us": 798.333},
-    {"kernel": "turbo3_tcq_multi", "n_kv": 4096, "n_heads": 1, "multi": 4, "us": 807.396},
-    {"kernel": "turbo3_tcq_multi", "n_kv": 4096, "n_heads": 1, "multi": 8, "us": 839.948},
-    {"kernel": "turbo3_tcq_multi", "n_kv": 4096, "n_heads": 1, "multi": 16, "us": 913.854},
-    {"kernel": "turbo3_tcq", "n_kv": 32768, "n_heads": 1, "multi": 1, "us": 5953.23},
-    {"kernel": "turbo3_tcq_multi", "n_kv": 32768, "n_heads": 1, "multi": 1, "us": 5923.91},
-    {"kernel": "turbo3_tcq_multi", "n_kv": 32768, "n_heads": 1, "multi": 2, "us": 6007.03},
-    {"kernel": "turbo3_tcq_multi", "n_kv": 32768, "n_heads": 1, "multi": 4, "us": 5932.5},
-    {"kernel": "turbo3_tcq_multi", "n_kv": 32768, "n_heads": 1, "multi": 8, "us": 5875.78},
-    {"kernel": "turbo3_tcq_multi", "n_kv": 32768, "n_heads": 1, "multi": 16, "us": 5856.87},
-    {"kernel": "qjl", "n_kv": 512, "n_heads": 8, "multi": 1, "us": 782.448},
-    {"kernel": "qjl_multi", "n_kv": 512, "n_heads": 8, "multi": 1, "us": 803.594},
-    {"kernel": "qjl_multi", "n_kv": 512, "n_heads": 8, "multi": 2, "us": 720.417},
-    {"kernel": "qjl_multi", "n_kv": 512, "n_heads": 8, "multi": 4, "us": 710.208},
-    {"kernel": "qjl_multi", "n_kv": 512, "n_heads": 8, "multi": 8, "us": 753.125},
-    {"kernel": "qjl_multi", "n_kv": 512, "n_heads": 8, "multi": 16, "us": 823.073},
-    {"kernel": "qjl", "n_kv": 4096, "n_heads": 8, "multi": 1, "us": 5957.19},
-    {"kernel": "qjl_multi", "n_kv": 4096, "n_heads": 8, "multi": 1, "us": 6093.54},
-    {"kernel": "qjl_multi", "n_kv": 4096, "n_heads": 8, "multi": 2, "us": 5340.47},
-    {"kernel": "qjl_multi", "n_kv": 4096, "n_heads": 8, "multi": 4, "us": 4988.75},
-    {"kernel": "qjl_multi", "n_kv": 4096, "n_heads": 8, "multi": 8, "us": 5274.01},
-    {"kernel": "qjl_multi", "n_kv": 4096, "n_heads": 8, "multi": 16, "us": 5199.32},
-    {"kernel": "qjl", "n_kv": 32768, "n_heads": 8, "multi": 1, "us": 47327.2},
-    {"kernel": "qjl_multi", "n_kv": 32768, "n_heads": 8, "multi": 1, "us": 48401},
-    {"kernel": "qjl_multi", "n_kv": 32768, "n_heads": 8, "multi": 2, "us": 42264.2},
-    {"kernel": "qjl_multi", "n_kv": 32768, "n_heads": 8, "multi": 4, "us": 39270.6},
-    {"kernel": "qjl_multi", "n_kv": 32768, "n_heads": 8, "multi": 8, "us": 41519.4},
-    {"kernel": "qjl_multi", "n_kv": 32768, "n_heads": 8, "multi": 16, "us": 40695.4},
-    {"kernel": "polar", "n_kv": 512, "n_heads": 1, "multi": 1, "us": 127.083},
-    {"kernel": "polar", "n_kv": 4096, "n_heads": 1, "multi": 1, "us": 1142.81},
-    {"kernel": "polar", "n_kv": 32768, "n_heads": 1, "multi": 1, "us": 8712.5},
-    {"kernel": "polar_preht", "n_kv": 512, "n_heads": 1, "multi": 1, "us": 170.573},
-    {"kernel": "polar_preht", "n_kv": 4096, "n_heads": 1, "multi": 1, "us": 1004.58},
-    {"kernel": "polar_preht", "n_kv": 32768, "n_heads": 1, "multi": 1, "us": 7616.72},
-    {"kernel": "fused_attn_qjl_tbq", "n_kv": 512, "n_heads": 8, "multi": 1, "us": 26682.7},
-    {"kernel": "fused_attn_qjl_tbq", "n_kv": 4096, "n_heads": 8, "multi": 1, "us": 82192.8},
-    {"kernel": "fused_attn_qjl_tbq", "n_kv": 32768, "n_heads": 8, "multi": 1, "us": 339858},
-    {"kernel": "fused_attn_qjl_polar", "n_kv": 512, "n_heads": 8, "multi": 1, "us": 3095.21},
-    {"kernel": "fused_attn_qjl_polar", "n_kv": 4096, "n_heads": 8, "multi": 1, "us": 23716.4},
-    {"kernel": "fused_attn_qjl_polar", "n_kv": 32768, "n_heads": 8, "multi": 1, "us": 201109}
+  "generated": "2026-05-11",
+  "harness": "packages/inference/verify/vulkan_bench.cpp (VK_QUERY_TYPE_TIMESTAMP per-dispatch, median of runs)",
+  "note": "Synthetic zeroed inputs (correctness is vulkan_verify's job). Box at high load average during NVIDIA run; GPU timestamps measure GPU time so are load-insensitive. Spec-constant sweep over BLOCKS_PER_WG/TOKENS_PER_WG in {1,2,4,8,16} for the _multi kernels.",
+  "devices": [
+    {
+      "device": "Intel(R) Graphics (ARL)",
+      "vendorID": 32902,
+      "deviceID": 32103,
+      "subgroupSize": 32,
+      "timestampPeriodNs": 52.0833,
+      "runs": 9,
+      "warmup": 3,
+      "rows": [
+        {
+          "kernel": "turbo3",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 79.375
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 78.75
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 2,
+          "us": 88.4896
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 4,
+          "us": 98.75
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 8,
+          "us": 75.6771
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 16,
+          "us": 122.969
+        },
+        {
+          "kernel": "turbo3",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 457.656
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 455.417
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 2,
+          "us": 447.083
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 4,
+          "us": 454.271
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 8,
+          "us": 469.74
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 16,
+          "us": 515
+        },
+        {
+          "kernel": "turbo3",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 2836.93
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 1722.76
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 2,
+          "us": 1579.53
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 4,
+          "us": 1577.66
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 8,
+          "us": 1711.51
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 16,
+          "us": 1494.58
+        },
+        {
+          "kernel": "turbo4",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 37.1875
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 37.7083
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 2,
+          "us": 42.1354
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 4,
+          "us": 45.2083
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 8,
+          "us": 41.6667
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 16,
+          "us": 62.3437
+        },
+        {
+          "kernel": "turbo4",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 212.396
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 210.677
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 2,
+          "us": 229.219
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 4,
+          "us": 241.823
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 8,
+          "us": 248.542
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 16,
+          "us": 242.917
+        },
+        {
+          "kernel": "turbo4",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 1557.92
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 1552.71
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 2,
+          "us": 1577.97
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 4,
+          "us": 1902.29
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 8,
+          "us": 1892.29
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 16,
+          "us": 1880.31
+        },
+        {
+          "kernel": "turbo3_tcq",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 51.3542
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 52.7604
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 2,
+          "us": 54.0104
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 4,
+          "us": 60.4687
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 8,
+          "us": 48.5937
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 16,
+          "us": 74.6875
+        },
+        {
+          "kernel": "turbo3_tcq",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 284.948
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 365.677
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 2,
+          "us": 354.687
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 4,
+          "us": 354.01
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 8,
+          "us": 374.323
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 16,
+          "us": 396.042
+        },
+        {
+          "kernel": "turbo3_tcq",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 2767.66
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 2768.96
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 2,
+          "us": 4341.67
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 4,
+          "us": 4297.03
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 8,
+          "us": 4268.28
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 16,
+          "us": 4220.83
+        },
+        {
+          "kernel": "qjl",
+          "n_kv": 512,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 564.375
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 512,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 579.583
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 512,
+          "n_heads": 8,
+          "multi": 2,
+          "us": 520.156
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 512,
+          "n_heads": 8,
+          "multi": 4,
+          "us": 514.531
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 512,
+          "n_heads": 8,
+          "multi": 8,
+          "us": 546.458
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 512,
+          "n_heads": 8,
+          "multi": 16,
+          "us": 593.437
+        },
+        {
+          "kernel": "qjl",
+          "n_kv": 4096,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 4274.48
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 4096,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 4371.61
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 4096,
+          "n_heads": 8,
+          "multi": 2,
+          "us": 3830.31
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 4096,
+          "n_heads": 8,
+          "multi": 4,
+          "us": 3577.03
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 4096,
+          "n_heads": 8,
+          "multi": 8,
+          "us": 3313.65
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 4096,
+          "n_heads": 8,
+          "multi": 16,
+          "us": 2627.55
+        },
+        {
+          "kernel": "qjl",
+          "n_kv": 32768,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 33887.1
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 32768,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 24347.1
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 32768,
+          "n_heads": 8,
+          "multi": 2,
+          "us": 18484.3
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 32768,
+          "n_heads": 8,
+          "multi": 4,
+          "us": 11679.6
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 32768,
+          "n_heads": 8,
+          "multi": 8,
+          "us": 12342.3
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 32768,
+          "n_heads": 8,
+          "multi": 16,
+          "us": 10365.9
+        },
+        {
+          "kernel": "polar",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 60
+        },
+        {
+          "kernel": "polar",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 298.021
+        },
+        {
+          "kernel": "polar",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 2192.14
+        },
+        {
+          "kernel": "polar_preht",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 56.4062
+        },
+        {
+          "kernel": "polar_preht",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 293.906
+        },
+        {
+          "kernel": "polar_preht",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 2008.91
+        },
+        {
+          "kernel": "fused_attn_qjl_tbq",
+          "n_kv": 512,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 5905.57
+        },
+        {
+          "kernel": "fused_attn_qjl_tbq",
+          "n_kv": 4096,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 49402.2
+        },
+        {
+          "kernel": "fused_attn_qjl_tbq",
+          "n_kv": 32768,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 283370
+        },
+        {
+          "kernel": "fused_attn_qjl_polar",
+          "n_kv": 512,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 2952.19
+        },
+        {
+          "kernel": "fused_attn_qjl_polar",
+          "n_kv": 4096,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 24505.6
+        },
+        {
+          "kernel": "fused_attn_qjl_polar",
+          "n_kv": 32768,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 189463
+        }
+      ]
+    },
+    {
+      "device": "NVIDIA GeForce RTX 5080 Laptop GPU",
+      "vendorID": 4318,
+      "deviceID": 11353,
+      "subgroupSize": 32,
+      "timestampPeriodNs": 1,
+      "runs": 9,
+      "warmup": 3,
+      "rows": [
+        {
+          "kernel": "turbo3",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 83.232
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 87.424
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 2,
+          "us": 58.496
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 4,
+          "us": 79.232
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 8,
+          "us": 36.96
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 16,
+          "us": 30.272
+        },
+        {
+          "kernel": "turbo3",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 386.144
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 379.296
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 2,
+          "us": 135.68
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 4,
+          "us": 162.048
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 8,
+          "us": 76.864
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 16,
+          "us": 48.832
+        },
+        {
+          "kernel": "turbo3",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 1536.64
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 1515.65
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 2,
+          "us": 739.072
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 4,
+          "us": 718.848
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 8,
+          "us": 441.824
+        },
+        {
+          "kernel": "turbo3_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 16,
+          "us": 422.336
+        },
+        {
+          "kernel": "turbo4",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 67.2
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 75.84
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 2,
+          "us": 67.456
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 4,
+          "us": 71.52
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 8,
+          "us": 36.096
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 16,
+          "us": 30.336
+        },
+        {
+          "kernel": "turbo4",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 318.912
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 302.56
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 2,
+          "us": 113.312
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 4,
+          "us": 102.368
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 8,
+          "us": 75.2
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 16,
+          "us": 49.28
+        },
+        {
+          "kernel": "turbo4",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 1328.83
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 1359.94
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 2,
+          "us": 665.92
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 4,
+          "us": 616
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 8,
+          "us": 485.056
+        },
+        {
+          "kernel": "turbo4_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 16,
+          "us": 522.08
+        },
+        {
+          "kernel": "turbo3_tcq",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 101.472
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 98.624
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 2,
+          "us": 98.144
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 4,
+          "us": 59.936
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 8,
+          "us": 32.704
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 16,
+          "us": 30.816
+        },
+        {
+          "kernel": "turbo3_tcq",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 380.672
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 357.888
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 2,
+          "us": 612.576
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 4,
+          "us": 176.384
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 8,
+          "us": 81.728
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 16,
+          "us": 54.688
+        },
+        {
+          "kernel": "turbo3_tcq",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 1642.11
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 1698.14
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 2,
+          "us": 1469.22
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 4,
+          "us": 726.432
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 8,
+          "us": 403.232
+        },
+        {
+          "kernel": "turbo3_tcq_multi",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 16,
+          "us": 403.104
+        },
+        {
+          "kernel": "qjl",
+          "n_kv": 512,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 299.488
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 512,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 278.144
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 512,
+          "n_heads": 8,
+          "multi": 2,
+          "us": 664.416
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 512,
+          "n_heads": 8,
+          "multi": 4,
+          "us": 162.816
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 512,
+          "n_heads": 8,
+          "multi": 8,
+          "us": 84.992
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 512,
+          "n_heads": 8,
+          "multi": 16,
+          "us": 82.08
+        },
+        {
+          "kernel": "qjl",
+          "n_kv": 4096,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 4741.57
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 4096,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 4942.59
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 4096,
+          "n_heads": 8,
+          "multi": 2,
+          "us": 3225.76
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 4096,
+          "n_heads": 8,
+          "multi": 4,
+          "us": 1277.25
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 4096,
+          "n_heads": 8,
+          "multi": 8,
+          "us": 374.272
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 4096,
+          "n_heads": 8,
+          "multi": 16,
+          "us": 388.8
+        },
+        {
+          "kernel": "qjl",
+          "n_kv": 32768,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 26785
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 32768,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 32586.1
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 32768,
+          "n_heads": 8,
+          "multi": 2,
+          "us": 21780.8
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 32768,
+          "n_heads": 8,
+          "multi": 4,
+          "us": 11058.8
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 32768,
+          "n_heads": 8,
+          "multi": 8,
+          "us": 3104.64
+        },
+        {
+          "kernel": "qjl_multi",
+          "n_kv": 32768,
+          "n_heads": 8,
+          "multi": 16,
+          "us": 3040.29
+        },
+        {
+          "kernel": "polar",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 69.376
+        },
+        {
+          "kernel": "polar",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 315.968
+        },
+        {
+          "kernel": "polar",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 1507.17
+        },
+        {
+          "kernel": "polar_preht",
+          "n_kv": 512,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 69.888
+        },
+        {
+          "kernel": "polar_preht",
+          "n_kv": 4096,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 327.488
+        },
+        {
+          "kernel": "polar_preht",
+          "n_kv": 32768,
+          "n_heads": 1,
+          "multi": 1,
+          "us": 1590.72
+        },
+        {
+          "kernel": "fused_attn_qjl_tbq",
+          "n_kv": 512,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 1932.42
+        },
+        {
+          "kernel": "fused_attn_qjl_tbq",
+          "n_kv": 4096,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 15098.2
+        },
+        {
+          "kernel": "fused_attn_qjl_tbq",
+          "n_kv": 32768,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 126761
+        },
+        {
+          "kernel": "fused_attn_qjl_polar",
+          "n_kv": 512,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 2238.02
+        },
+        {
+          "kernel": "fused_attn_qjl_polar",
+          "n_kv": 4096,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 16457.2
+        },
+        {
+          "kernel": "fused_attn_qjl_polar",
+          "n_kv": 32768,
+          "n_heads": 8,
+          "multi": 1,
+          "us": 131231
+        }
+      ]
+    }
   ]
 }

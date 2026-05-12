@@ -33,7 +33,7 @@ import { VoiceLifecycleError } from "./lifecycle";
  * Bump in lockstep with `ELIZA_INFERENCE_ABI_VERSION` in
  * `scripts/omnivoice-fuse/ffi.h` whenever the C surface changes shape.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 2 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 3 as const;
 
 /** Status codes mirrored from `ffi.h`. Negative = failure. */
 export const ELIZA_OK = 0;
@@ -49,7 +49,7 @@ export const ELIZA_ERR_CANCELLED = -7;
  * Region names the lifecycle hands to `mmap_acquire` / `mmap_evict`.
  * Mirrors the set the C stub validates in `ffi-stub.c::valid_region`.
  */
-export type ElizaInferenceRegion = "tts" | "asr" | "text" | "dflash";
+export type ElizaInferenceRegion = "tts" | "asr" | "text" | "dflash" | "vad";
 
 /**
  * Opaque pointer to the C-side `EliInferenceContext`. Numeric on Bun
@@ -57,6 +57,9 @@ export type ElizaInferenceRegion = "tts" | "asr" | "text" | "dflash";
  * side beyond passing it back through the binding.
  */
 export type ElizaInferenceContextHandle = bigint;
+
+/** Opaque pointer to a native Silero VAD session. */
+export type NativeVadHandle = bigint;
 
 /**
  * One streaming-TTS chunk delivered to the `onChunk` callback passed to
@@ -179,6 +182,22 @@ export interface ElizaInferenceFfi {
     ctx: ElizaInferenceContextHandle,
     cb: ((event: NativeVerifierEvent) => void) | null,
   ): { close(): void };
+
+  /* ---- Native VAD (ABI v3) -------------------------------------- */
+
+  /** True when this build exports and enables the native Silero VAD backend. */
+  vadSupported?(): boolean;
+  /** Open a native VAD session. The ABI-compatible sample rate is 16 kHz. */
+  vadOpen?(args: {
+    ctx: ElizaInferenceContextHandle;
+    sampleRateHz: number;
+  }): NativeVadHandle;
+  /** Process one 512-sample fp32 mono window and return P(speech). */
+  vadProcess?(args: { vad: NativeVadHandle; pcm: Float32Array }): number;
+  /** Clear native VAD recurrent state at utterance boundaries. */
+  vadReset?(vad: NativeVadHandle): void;
+  /** Close + free a native VAD session. Idempotent on already-closed handles. */
+  vadClose?(vad: NativeVadHandle): void;
 
   /* ---- Streaming ASR (ABI v2) ----------------------------------- */
 
@@ -307,6 +326,21 @@ interface BunFfiSymbols {
     userData: bigint | number,
     outErr: unknown,
   ) => number;
+  eliza_inference_vad_supported?: () => number;
+  eliza_inference_vad_open?: (
+    ctx: bigint,
+    sampleRateHz: number,
+    outErr: unknown,
+  ) => unknown;
+  eliza_inference_vad_process?: (
+    vad: bigint,
+    pcm: unknown,
+    nSamples: bigint | number,
+    outProbability: unknown,
+    outErr: unknown,
+  ) => number;
+  eliza_inference_vad_reset?: (vad: bigint, outErr: unknown) => number;
+  eliza_inference_vad_close?: (vad: bigint) => void;
   eliza_inference_asr_stream_supported: () => number;
   eliza_inference_asr_stream_open: (
     ctx: bigint,
@@ -414,79 +448,105 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
   // For inputs we encode UTF-8 to a NUL-terminated Buffer on the JS
   // side and pass `ffi.ptr(buffer)`.
   let lib: BunFfiLib;
+  let nativeVadSymbolsAvailable = true;
+  const nativeVadDefs = {
+    // Native Silero VAD (ABI v3). These are additive; some transitional
+    // builds may report ABI v3 before carrying the VAD symbols, so bind
+    // them opportunistically and advertise unsupported if absent.
+    eliza_inference_vad_supported: { args: [], returns: T.i32 },
+    eliza_inference_vad_open: {
+      args: [T.ptr, T.i32, T.ptr],
+      returns: T.ptr,
+    },
+    eliza_inference_vad_process: {
+      args: [T.usize, T.ptr, T.usize, T.ptr, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_vad_reset: { args: [T.usize, T.ptr], returns: T.i32 },
+    eliza_inference_vad_close: { args: [T.usize], returns: T.void },
+  };
+  const coreDefs = {
+    eliza_inference_abi_version: { args: [], returns: T.cstring },
+    eliza_inference_create: {
+      args: [T.ptr, T.ptr],
+      returns: T.ptr,
+    },
+    eliza_inference_destroy: { args: [T.ptr], returns: T.void },
+    eliza_inference_mmap_acquire: {
+      args: [T.ptr, T.ptr, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_mmap_evict: {
+      args: [T.ptr, T.ptr, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_tts_synthesize: {
+      args: [T.ptr, T.ptr, T.usize, T.ptr, T.ptr, T.usize, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_asr_transcribe: {
+      args: [T.ptr, T.ptr, T.usize, T.i32, T.ptr, T.usize, T.ptr],
+      returns: T.i32,
+    },
+    // Streaming TTS + native verifier callback (ABI v2). The
+    // function-pointer args are passed as raw pointer values
+    // (`JSCallback.ptr`, or 0n to clear) so this binding owns the
+    // JSCallback lifetime explicitly — see `ttsSynthesizeStream` /
+    // `setVerifierCallback` below.
+    eliza_inference_tts_stream_supported: { args: [], returns: T.i32 },
+    eliza_inference_tts_synthesize_stream: {
+      // ctx, text, text_len, speaker, on_chunk (fn ptr), user_data, out_error
+      args: [T.ptr, T.ptr, T.usize, T.ptr, T.usize, T.usize, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_cancel_tts: { args: [T.ptr, T.ptr], returns: T.i32 },
+    eliza_inference_set_verifier_callback: {
+      // ctx, cb (fn ptr — 0 to clear), user_data, out_error
+      args: [T.ptr, T.usize, T.usize, T.ptr],
+      returns: T.i32,
+    },
+    // Streaming ASR (ABI v2).
+    eliza_inference_asr_stream_supported: { args: [], returns: T.i32 },
+    eliza_inference_asr_stream_open: {
+      args: [T.ptr, T.i32, T.ptr],
+      returns: T.ptr,
+    },
+    eliza_inference_asr_stream_feed: {
+      // stream handle is a raw C pointer → pass as usize.
+      args: [T.usize, T.ptr, T.usize, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_asr_stream_partial: {
+      args: [T.usize, T.ptr, T.usize, T.ptr, T.ptr, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_asr_stream_finish: {
+      args: [T.usize, T.ptr, T.usize, T.ptr, T.ptr, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_asr_stream_close: { args: [T.usize], returns: T.void },
+    // Bun 1.3.x accepts raw pointer values passed back into C as
+    // `usize`, while `ptr` is for JS-owned ArrayBuffer pointers.
+    eliza_inference_free_string: { args: [T.usize], returns: T.void },
+  };
   try {
     lib = ffi.dlopen(dylibPath, {
-      eliza_inference_abi_version: { args: [], returns: T.cstring },
-      eliza_inference_create: {
-        args: [T.ptr, T.ptr],
-        returns: T.ptr,
-      },
-      eliza_inference_destroy: { args: [T.ptr], returns: T.void },
-      eliza_inference_mmap_acquire: {
-        args: [T.ptr, T.ptr, T.ptr],
-        returns: T.i32,
-      },
-      eliza_inference_mmap_evict: {
-        args: [T.ptr, T.ptr, T.ptr],
-        returns: T.i32,
-      },
-      eliza_inference_tts_synthesize: {
-        args: [T.ptr, T.ptr, T.usize, T.ptr, T.ptr, T.usize, T.ptr],
-        returns: T.i32,
-      },
-      eliza_inference_asr_transcribe: {
-        args: [T.ptr, T.ptr, T.usize, T.i32, T.ptr, T.usize, T.ptr],
-        returns: T.i32,
-      },
-      // Streaming TTS + native verifier callback (ABI v2). The
-      // function-pointer args are passed as raw pointer values
-      // (`JSCallback.ptr`, or 0n to clear) so this binding owns the
-      // JSCallback lifetime explicitly — see `ttsSynthesizeStream` /
-      // `setVerifierCallback` below.
-      eliza_inference_tts_stream_supported: { args: [], returns: T.i32 },
-      eliza_inference_tts_synthesize_stream: {
-        // ctx, text, text_len, speaker, on_chunk (fn ptr), user_data, out_error
-        args: [T.ptr, T.ptr, T.usize, T.ptr, T.usize, T.usize, T.ptr],
-        returns: T.i32,
-      },
-      eliza_inference_cancel_tts: { args: [T.ptr, T.ptr], returns: T.i32 },
-      eliza_inference_set_verifier_callback: {
-        // ctx, cb (fn ptr — 0 to clear), user_data, out_error
-        args: [T.ptr, T.usize, T.usize, T.ptr],
-        returns: T.i32,
-      },
-      // Streaming ASR (ABI v2).
-      eliza_inference_asr_stream_supported: { args: [], returns: T.i32 },
-      eliza_inference_asr_stream_open: {
-        args: [T.ptr, T.i32, T.ptr],
-        returns: T.ptr,
-      },
-      eliza_inference_asr_stream_feed: {
-        // stream handle is a raw C pointer → pass as usize.
-        args: [T.usize, T.ptr, T.usize, T.ptr],
-        returns: T.i32,
-      },
-      eliza_inference_asr_stream_partial: {
-        args: [T.usize, T.ptr, T.usize, T.ptr, T.ptr, T.ptr],
-        returns: T.i32,
-      },
-      eliza_inference_asr_stream_finish: {
-        args: [T.usize, T.ptr, T.usize, T.ptr, T.ptr, T.ptr],
-        returns: T.i32,
-      },
-      eliza_inference_asr_stream_close: { args: [T.usize], returns: T.void },
-      // Bun 1.3.x accepts raw pointer values passed back into C as
-      // `usize`, while `ptr` is for JS-owned ArrayBuffer pointers.
-      eliza_inference_free_string: { args: [T.usize], returns: T.void },
+      ...coreDefs,
+      ...nativeVadDefs,
     });
   } catch (err) {
-    throw new VoiceLifecycleError(
-      "kernel-missing",
-      `[ffi-bindings] Failed to open libelizainference at ${dylibPath}: ${formatFfiError(err)}`,
-    );
+    try {
+      lib = ffi.dlopen(dylibPath, coreDefs);
+      nativeVadSymbolsAvailable = false;
+    } catch {
+      throw new VoiceLifecycleError(
+        "kernel-missing",
+        `[ffi-bindings] Failed to open libelizainference at ${dylibPath}: ${formatFfiError(err)}`,
+      );
+    }
   }
 
-  // ABI version check — refuse to run if the loaded library is not v1.
+  // ABI version check — refuse to run if the loaded library is not v3.
   const reported = readCString(lib.symbols.eliza_inference_abi_version(), ffi);
   if (reported !== String(ELIZA_INFERENCE_ABI_VERSION)) {
     lib.close();
@@ -773,6 +833,85 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
           cb.close();
         },
       };
+    },
+
+    /* ---- Native VAD (ABI v3) ----------------------------------- */
+
+    vadSupported(): boolean {
+      if (
+        !nativeVadSymbolsAvailable ||
+        typeof lib.symbols.eliza_inference_vad_supported !== "function"
+      ) {
+        return false;
+      }
+      return lib.symbols.eliza_inference_vad_supported() === 1;
+    },
+
+    vadOpen({ ctx, sampleRateHz }) {
+      const open = lib.symbols.eliza_inference_vad_open;
+      if (!nativeVadSymbolsAvailable || typeof open !== "function") {
+        throw new VoiceLifecycleError(
+          "kernel-missing",
+          "[ffi-bindings] eliza_inference_vad_open is not exported by this libelizainference build",
+        );
+      }
+      const err = makeOutErr();
+      const handle = open(ctx, sampleRateHz, err.ptr);
+      if (isNullPointer(handle)) {
+        const message =
+          takeError(err.buf) ??
+          "[ffi-bindings] eliza_inference_vad_open returned NULL with no diagnostic";
+        throw new VoiceLifecycleError("kernel-missing", message);
+      }
+      return handle as NativeVadHandle;
+    },
+
+    vadProcess({ vad, pcm }) {
+      const process = lib.symbols.eliza_inference_vad_process;
+      if (!nativeVadSymbolsAvailable || typeof process !== "function") {
+        throw new VoiceLifecycleError(
+          "kernel-missing",
+          "[ffi-bindings] eliza_inference_vad_process is not exported by this libelizainference build",
+        );
+      }
+      const err = makeOutErr();
+      const outProbability = new Float32Array(1);
+      const rc = process(
+        vad,
+        ffi.ptr(pcm),
+        BigInt(pcm.length),
+        ffi.ptr(outProbability),
+        err.ptr,
+      );
+      if (rc !== ELIZA_OK) {
+        const message =
+          takeError(err.buf) ??
+          `[ffi-bindings] eliza_inference_vad_process rc=${rc}`;
+        throw new VoiceLifecycleError(failureCode(rc), message);
+      }
+      return outProbability[0] ?? 0;
+    },
+
+    vadReset(vad) {
+      const reset = lib.symbols.eliza_inference_vad_reset;
+      if (!nativeVadSymbolsAvailable || typeof reset !== "function") {
+        throw new VoiceLifecycleError(
+          "kernel-missing",
+          "[ffi-bindings] eliza_inference_vad_reset is not exported by this libelizainference build",
+        );
+      }
+      const err = makeOutErr();
+      const rc = reset(vad, err.ptr);
+      if (rc !== ELIZA_OK) {
+        const message =
+          takeError(err.buf) ??
+          `[ffi-bindings] eliza_inference_vad_reset rc=${rc}`;
+        throw new VoiceLifecycleError(failureCode(rc), message);
+      }
+    },
+
+    vadClose(vad) {
+      lib.symbols.eliza_inference_vad_close?.(vad);
     },
 
     /* ---- Streaming ASR (ABI v2) -------------------------------- */

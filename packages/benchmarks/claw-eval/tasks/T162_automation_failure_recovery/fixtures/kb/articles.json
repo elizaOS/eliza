@@ -1,0 +1,29 @@
+[
+  {
+    "article_id": "KB-1501",
+    "title": "Supplier API Migration Guide: Upgrading from v2 to v3",
+    "category": "Technical Documentation",
+    "tags": ["supplier", "API", "migration", "v2", "v3", "upgrade"],
+    "content": "## Supplier API v2 to v3 Migration Guide\n\n### Background\nThe supplier officially decommissioned the v2 API endpoint on 2026-03-20; all requests will return 404. The new v3 API is live and offers enhanced functionality.\n\n### Migration Steps\n1. In the configuration management system, change INT-1502 (Supplier API v3) status from inactive to active\n2. Change INT-1501 (Supplier API v2) status to inactive or deprecated\n3. Update JOB-1501 (Supplier Data Sync) data source configuration to point to the v3 endpoint\n4. Run a manual sync test to confirm v3 connectivity is working\n5. Monitor error rate over the next 24 hours to ensure it stays below 0.01\n\n### v3 Change Notes\n- Added batch query endpoint supporting up to 500 records per request\n- Authentication method unchanged (API Key), but a new key is required (already configured in INT-1502)\n- Response format changed from XML to JSON\n- Pagination mechanism changed to cursor-based\n\n### Important Notes\n- Back up the current configuration before migrating\n- The v2 endpoint is no longer available; rollback is not possible\n- For issues, contact supplier technical support: supplier-support@example.com",
+    "last_updated": "2026-03-18",
+    "views": 156
+  },
+  {
+    "article_id": "KB-1502",
+    "title": "Automation Task Dependency Documentation",
+    "category": "Operations Manual",
+    "tags": ["automation", "scheduled-tasks", "dependencies", "JOB", "scheduler"],
+    "content": "## Automation Task Dependency Chain Documentation\n\n### Supply Chain Automation Task Chain\nThe following three tasks have strict dependency relationships:\n\n```\nJOB-1501 (Supplier Data Sync) -> JOB-1502 (Inventory Auto Update) -> JOB-1503 (Auto Restock Trigger)\n```\n\n- **JOB-1501 Supplier Data Sync**: Pulls the latest product pricing, inventory levels, and delivery schedules from the supplier API. Runs every 4 hours.\n- **JOB-1502 Inventory Auto Update**: Updates quantities and statuses in the local inventory system based on supplier data pulled by JOB-1501. Depends on JOB-1501's data; if JOB-1501 fails, the data source is unavailable.\n- **JOB-1503 Auto Restock Trigger**: Checks safety stock levels based on the latest inventory data and automatically generates restock orders for items below threshold. Depends on JOB-1502's update results; refuses to execute if inventory data has not been updated for more than 24 hours (to prevent ordering based on stale data).\n\n### Failure Propagation\nWhen JOB-1501 fails, it triggers a cascade:\n1. JOB-1502 fails because it cannot retrieve upstream data\n2. JOB-1503 fails because inventory data is stale\n3. Affected inventory products cannot be automatically restocked\n4. Warehouse and Procurement departments may report data inconsistency issues\n\n### Repair Priority\nRepairs should start from the root node of the dependency chain (JOB-1501). Once the data source is restored, downstream tasks will automatically resume normal operation.",
+    "last_updated": "2026-03-15",
+    "views": 89
+  },
+  {
+    "article_id": "KB-1503",
+    "title": "Inventory Data Desync Repair Procedure",
+    "category": "Operations Manual",
+    "tags": ["inventory", "sync", "repair", "data-inconsistency", "manual"],
+    "content": "## Inventory Data Desync Repair Procedure\n\n### Applicable Scenarios\n- Recovery after prolonged auto-sync task failure\n- Inventory system data does not match actual stock\n- Urgent inventory data update required\n\n### Repair Steps\n1. **Confirm sync tasks have been restored**: Verify that JOB-1501 and JOB-1502 are running normally again\n2. **Manually trigger a full sync**:\n   - Log in to the admin console\n   - Navigate to Data Sync > Manual Trigger\n   - Select Full Sync (not incremental)\n   - Estimated duration: 10-15 minutes\n3. **Reconcile key products**:\n   - Compare system inventory against physical count data\n   - Focus on: products showing 0 stock, products below safety level\n4. **Check auto-restock queue**:\n   - After sync completes, check whether new restock orders have been auto-generated\n   - Manually trigger JOB-1503 to check restocking needs\n5. **Notify relevant departments**:\n   - Warehouse: confirm inventory data has been updated\n   - Procurement: confirm restock orders have been generated\n\n### Preventive Measures\n- Set up sync failure alerts; if no sync occurs for over 12 hours, automatically notify ops\n- Periodically check API integration configuration status",
+    "last_updated": "2026-03-10",
+    "views": 234
+  }
+]

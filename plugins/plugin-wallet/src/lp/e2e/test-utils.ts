@@ -1,4 +1,3 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import { strict as assert } from "node:assert";
 import {
   asUUID,
@@ -10,9 +9,23 @@ import {
   type IAgentRuntime,
   type Memory,
   type Room,
+  type Setting,
   type World,
 } from "@elizaos/core";
 import { v4 as uuid } from "uuid";
+
+const E2E_TEST_SERVER_ID = "e2e-test-server";
+
+function testSetting(name: string, value: string | boolean | null): Setting {
+  return {
+    name,
+    description: `E2E ${name}`,
+    usageDescription: `E2E ${name}`,
+    required: false,
+    value,
+    dependsOn: [],
+  };
+}
 
 /**
  * Sets up a standard scenario environment for an E2E test.
@@ -51,16 +64,15 @@ export async function setupScenario(
     id: asUUID(uuid()),
     agentId: runtime.agentId,
     name: "E2E Test World",
-    serverId: "e2e-test-server",
     metadata: {
       ownership: {
         ownerId: user.id,
       },
       settings: {
         lp_manager: {
-          onboarding_enabled: true,
-          auto_rebalance_enabled: true,
-          default_slippage_bps: 50,
+          onboarding_enabled: testSetting("onboarding_enabled", true),
+          auto_rebalance_enabled: testSetting("auto_rebalance_enabled", true),
+          default_slippage_bps: testSetting("default_slippage_bps", "50"),
         },
       },
     },
@@ -74,7 +86,7 @@ export async function setupScenario(
     type: ChannelType.DM,
     source: "e2e-test",
     worldId: world.id,
-    serverId: world.serverId,
+    serverId: E2E_TEST_SERVER_ID,
   };
   await runtime.createRoom(room);
 
@@ -131,8 +143,9 @@ export function sendMessageAndWaitForResponse(
 
     // The callback function that the message handler will invoke with the agent's final response.
     // We use this callback to resolve our promise.
-    const callback = (responseContent: Content) => {
+    const callback = async (responseContent: Content): Promise<Memory[]> => {
       resolve(responseContent);
+      return [];
     };
 
     // Emit the event to trigger the agent's message processing logic.

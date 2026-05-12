@@ -1,4 +1,5 @@
 import { AgentNotReadyError } from "./config-and-auth-rpc";
+import { isRecord, nullableString } from "./rpc-parse-utils";
 import type {
 	AgentUpdateReleaseChannel,
 	AgentUpdateStatusSnapshot,
@@ -11,20 +12,11 @@ const RELEASE_CHANNELS: readonly AgentUpdateReleaseChannel[] = [
 	"nightly",
 ];
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function isReleaseChannel(value: unknown): value is AgentUpdateReleaseChannel {
 	return (
 		typeof value === "string" &&
 		RELEASE_CHANNELS.some((channel) => channel === value)
 	);
-}
-
-function nullableString(value: unknown): string | null | undefined {
-	if (value === null) return null;
-	return typeof value === "string" ? value : undefined;
 }
 
 function parseNullableReleaseChannelRecord(

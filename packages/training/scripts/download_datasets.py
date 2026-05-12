@@ -37,6 +37,9 @@ RAW_DIR = ROOT / "data" / "raw"
 REGISTRY = ROOT / "datasets.yaml"
 DOWNLOAD_MANIFEST = RAW_DIR / "download_manifest.json"
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lib.local_path_source import LocalPathSource  # noqa: E402
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -106,7 +109,43 @@ def stage_local(entry: dict) -> tuple[str, str, float]:
     return (slug, "ok", dir_size_gb(source))
 
 
+def stage_local_path_source(entry: dict) -> tuple[str, str, float]:
+    """Stage a `source: { type: local_path, root, glob }` entry.
+
+    Used by the nightly trajectory-export bridge: globs files out of
+    ``~/.eliza/training/datasets/<date>/*.jsonl`` (resolved through
+    env-var expansion) and symlinks them under ``data/raw/<slug>/``.
+    A missing root or empty glob match is NOT a failure — we mark the
+    entry "done" with zero size so the normalize step skips it cleanly.
+    """
+    slug = entry["slug"]
+    parsed = LocalPathSource.from_entry(entry)
+    if parsed is None:
+        return (slug, "FAILED: expected source.type=local_path", 0.0)
+    files = parsed.resolve_files()
+    target = dataset_dir(slug)
+    target.mkdir(parents=True, exist_ok=True)
+    total_bytes = 0
+    for src in files:
+        # Flatten into target/<parent_dir>__<filename> so multiple dated
+        # subdirectories (e.g. 2026-05-11/, 2026-05-12/) coexist without
+        # collisions when the glob includes a wildcard segment.
+        rel_parent = src.parent.name
+        dst = target / f"{rel_parent}__{src.name}"
+        if dst.is_symlink() or dst.exists():
+            dst.unlink()
+        dst.symlink_to(src.resolve())
+        try:
+            total_bytes += src.stat().st_size
+        except OSError:
+            pass
+    mark_done(slug, f"local_path:{parsed.root}/{parsed.glob}")
+    return (slug, "ok", total_bytes / (1024**3))
+
+
 def download_one(entry: dict, *, retries: int = 3) -> tuple[str, str, float]:
+    if isinstance(entry.get("source"), dict) and entry["source"].get("type") == "local_path":
+        return stage_local_path_source(entry)
     if entry.get("local_path"):
         return stage_local(entry)
     slug = entry["slug"]
@@ -208,7 +247,13 @@ def main() -> int:
         log.info("nothing to download")
         return 0
 
-    needs_network = [e for e in selected if not e.get("local_path")]
+    def _is_local(e: dict) -> bool:
+        if e.get("local_path"):
+            return True
+        source = e.get("source")
+        return isinstance(source, dict) and source.get("type") == "local_path"
+
+    needs_network = [e for e in selected if not _is_local(e)]
     est_total_gb = sum(float(e.get("est_size_gb", 1.0)) for e in needs_network)
     free = free_gb(RAW_DIR)
     log.info(

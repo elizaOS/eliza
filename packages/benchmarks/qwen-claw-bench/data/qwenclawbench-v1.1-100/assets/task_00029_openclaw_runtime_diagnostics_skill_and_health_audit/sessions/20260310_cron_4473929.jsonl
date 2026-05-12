@@ -1,0 +1,16 @@
+{"type": "session_start", "session_id": "cron_4473929", "model": "deepseek-r1", "created_at": "2026-03-10T04:41:17.487233", "user_id": "cron-scheduler", "channel": "internal"}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-03-10T04:44:13.907351", "session_id": "cron_4473929", "seq": 1, "usage": {"prompt_tokens": 3599, "completion_tokens": 1445, "total_tokens": 2145}}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-03-10T04:45:42.754255", "session_id": "cron_4473929", "seq": 2, "usage": {"prompt_tokens": 1006, "completion_tokens": 1054, "total_tokens": 5768}}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-03-10T04:49:48.894312", "session_id": "cron_4473929", "seq": 3}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-03-10T04:50:34.273935", "session_id": "cron_4473929", "seq": 4, "usage": {"prompt_tokens": 5744, "completion_tokens": 355, "total_tokens": 11972}}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-03-10T04:54:32.278246", "session_id": "cron_4473929", "seq": 5}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-03-10T04:58:04.993127", "session_id": "cron_4473929", "seq": 6, "usage": {"prompt_tokens": 5906, "completion_tokens": 402, "total_tokens": 7990}}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-03-10T05:02:57.365328", "session_id": "cron_4473929", "seq": 7}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-03-10T05:05:23.421020", "session_id": "cron_4473929", "seq": 8}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-03-10T05:08:15.431691", "session_id": "cron_4473929", "seq": 9}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-03-10T05:11:45.033889", "session_id": "cron_4473929", "seq": 10}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-03-10T05:14:15.648690", "session_id": "cron_4473929", "seq": 11}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-03-10T05:15:42.037683", "session_id": "cron_4473929", "seq": 12}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-03-10T05:20:12.989092", "session_id": "cron_4473929", "seq": 13}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-03-10T05:22:55.380754", "session_id": "cron_4473929", "seq": 14}
+{"type": "session_end", "session_id": "cron_4473929", "ended_at": "2026-03-10T05:23:05.380754", "total_messages": 14, "status": "completed"}

@@ -121,6 +121,7 @@ def initialize_database(conn: sqlite3.Connection) -> None:
             turn_index INTEGER NOT NULL,
             prompt_tokens INTEGER NOT NULL DEFAULT 0,
             completion_tokens INTEGER NOT NULL DEFAULT 0,
+            total_tokens INTEGER NOT NULL DEFAULT 0,
             cached_tokens INTEGER NOT NULL DEFAULT 0,
             cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
             latency_ms REAL,
@@ -140,6 +141,13 @@ def initialize_database(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_benchmark_run_trajectories_run
             ON benchmark_run_trajectories(run_id);
         """
+    )
+    conn.commit()
+    _ensure_column(
+        conn,
+        "benchmark_run_trajectories",
+        "total_tokens",
+        "INTEGER NOT NULL DEFAULT 0",
     )
     conn.commit()
     ensure_comparison_id_column(conn)
@@ -448,11 +456,12 @@ def replace_run_trajectories(
                 turn_index,
                 prompt_tokens,
                 completion_tokens,
+                total_tokens,
                 cached_tokens,
                 cache_creation_tokens,
                 latency_ms,
                 prompt_chars
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -461,6 +470,13 @@ def replace_run_trajectories(
                     int(row.get("turn_index") or row.get("index") or 0),
                     int(row.get("prompt_tokens") or 0),
                     int(row.get("completion_tokens") or 0),
+                    int(
+                        row.get("total_tokens")
+                        or (
+                            int(row.get("prompt_tokens") or 0)
+                            + int(row.get("completion_tokens") or 0)
+                        )
+                    ),
                     int(row.get("cached_tokens") or 0),
                     int(row.get("cache_creation_tokens") or 0),
                     _float_or_none(row.get("latency_ms")),
@@ -616,6 +632,56 @@ def list_runs(
     return out
 
 
+def repair_nonzero_returncode_statuses(conn: sqlite3.Connection) -> int:
+    """Mark legacy rows with nonzero process exits as failed.
+
+    Older runner versions recorded a row as ``succeeded`` whenever a result
+    JSON existed, even if the subprocess exited nonzero. Keep the artifacts and
+    score, but make the status honest so latest snapshots/viewer summaries do
+    not treat task-level process failures as clean wins.
+    """
+
+    rows = conn.execute(
+        """
+        SELECT run_id, metrics_json, error
+        FROM benchmark_runs
+        WHERE status = 'succeeded'
+        """
+    ).fetchall()
+    repaired = 0
+    for row in rows:
+        raw = row["metrics_json"]
+        if not isinstance(raw, str):
+            continue
+        try:
+            metrics = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(metrics, dict):
+            continue
+        return_code = metrics.get("return_code")
+        if return_code in (None, 0):
+            return_code = metrics.get("nonzero_return_code_with_result")
+        if not isinstance(return_code, (int, float)) or int(return_code) == 0:
+            continue
+        error = row["error"] or (
+            "Command produced a result JSON but exited with "
+            f"return code {int(return_code)}"
+        )
+        conn.execute(
+            """
+            UPDATE benchmark_runs
+            SET status = 'failed', error = ?
+            WHERE run_id = ?
+            """,
+            (error, row["run_id"]),
+        )
+        repaired += 1
+    if repaired:
+        conn.commit()
+    return repaired
+
+
 def list_run_groups(conn: sqlite3.Connection, *, limit: int = 2000) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
@@ -648,10 +714,11 @@ def summarize_latest_scores(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         WITH latest AS (
             SELECT
                 benchmark_id,
+                agent,
                 MAX(started_at) AS max_started_at
             FROM benchmark_runs
             WHERE status = 'succeeded'
-            GROUP BY benchmark_id
+            GROUP BY benchmark_id, agent
         )
         SELECT
             r.benchmark_id,
@@ -669,9 +736,10 @@ def summarize_latest_scores(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         FROM benchmark_runs r
         JOIN latest l
           ON r.benchmark_id = l.benchmark_id
+         AND r.agent = l.agent
          AND r.started_at = l.max_started_at
         WHERE r.status = 'succeeded'
-        ORDER BY r.benchmark_id ASC
+        ORDER BY r.benchmark_id ASC, r.agent ASC
         """
     ).fetchall()
     return [dict(row) for row in rows]

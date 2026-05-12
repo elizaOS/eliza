@@ -3,6 +3,7 @@ import type {
 	SubscriptionStatusResponse,
 } from "@elizaos/shared";
 import { AgentNotReadyError } from "./config-and-auth-rpc";
+import { isRecord, optionalString } from "./rpc-parse-utils";
 
 const DEFAULT_TIMEOUT_MS = 4_000;
 
@@ -16,10 +17,6 @@ const SUBSCRIPTION_CREDENTIAL_SOURCES = [
 	"unavailable",
 ] as const;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function isSubscriptionCredentialSource(
 	value: unknown,
 ): value is SubscriptionProviderStatus["source"] {
@@ -30,13 +27,12 @@ function isSubscriptionCredentialSource(
 	);
 }
 
-function optionalString(
+function optionalStringField(
 	body: Record<string, unknown>,
 	key: string,
 ): string | undefined | false {
 	if (!(key in body)) return undefined;
-	const value = body[key];
-	return typeof value === "string" ? value : false;
+	return optionalString(body[key]);
 }
 
 function optionalBoolean(
@@ -68,10 +64,10 @@ function parseSubscriptionProviderStatus(
 	if (expiresAt === false) return null;
 
 	const available = optionalBoolean(value, "available");
-	const availabilityReason = optionalString(value, "availabilityReason");
-	const allowedClient = optionalString(value, "allowedClient");
-	const loginHint = optionalString(value, "loginHint");
-	const billingMode = optionalString(value, "billingMode");
+	const availabilityReason = optionalStringField(value, "availabilityReason");
+	const allowedClient = optionalStringField(value, "allowedClient");
+	const loginHint = optionalStringField(value, "loginHint");
+	const billingMode = optionalStringField(value, "billingMode");
 	if (
 		available === false ||
 		availabilityReason === false ||

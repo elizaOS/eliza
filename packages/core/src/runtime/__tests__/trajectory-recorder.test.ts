@@ -14,30 +14,30 @@ import {
 } from "../trajectory-recorder";
 
 let tmpDir: string;
-const originalReviewMode = process.env.MILADY_TRAJECTORY_REVIEW_MODE;
-const originalMarkdownDir = process.env.MILADY_TRAJECTORY_MARKDOWN_DIR;
+const originalReviewMode = process.env.ELIZA_TRAJECTORY_REVIEW_MODE;
+const originalMarkdownDir = process.env.ELIZA_TRAJECTORY_MARKDOWN_DIR;
 const originalCerebrasKey = process.env.CEREBRAS_API_KEY;
 
 beforeEach(async () => {
 	tmpDir = await fs.mkdtemp(
 		path.join(os.tmpdir(), "trajectory-recorder-test-"),
 	);
-	delete process.env.MILADY_TRAJECTORY_REVIEW_MODE;
-	delete process.env.MILADY_TRAJECTORY_MARKDOWN_DIR;
+	delete process.env.ELIZA_TRAJECTORY_REVIEW_MODE;
+	delete process.env.ELIZA_TRAJECTORY_MARKDOWN_DIR;
 	delete process.env.CEREBRAS_API_KEY;
 });
 
 afterEach(async () => {
 	await fs.rm(tmpDir, { recursive: true, force: true });
 	if (originalReviewMode === undefined) {
-		delete process.env.MILADY_TRAJECTORY_REVIEW_MODE;
+		delete process.env.ELIZA_TRAJECTORY_REVIEW_MODE;
 	} else {
-		process.env.MILADY_TRAJECTORY_REVIEW_MODE = originalReviewMode;
+		process.env.ELIZA_TRAJECTORY_REVIEW_MODE = originalReviewMode;
 	}
 	if (originalMarkdownDir === undefined) {
-		delete process.env.MILADY_TRAJECTORY_MARKDOWN_DIR;
+		delete process.env.ELIZA_TRAJECTORY_MARKDOWN_DIR;
 	} else {
-		process.env.MILADY_TRAJECTORY_MARKDOWN_DIR = originalMarkdownDir;
+		process.env.ELIZA_TRAJECTORY_MARKDOWN_DIR = originalMarkdownDir;
 	}
 	if (originalCerebrasKey === undefined) {
 		delete process.env.CEREBRAS_API_KEY;
@@ -178,6 +178,89 @@ describe("JsonFileTrajectoryRecorder", () => {
 		expect(parsed.metrics.totalCacheReadTokens).toBe(800 + 1000);
 		expect(parsed.metrics.finalDecision).toBe("FINISH");
 		expect(parsed.metrics.totalLatencyMs).toBe(300 + 600 + 110 + 270);
+	});
+
+	it("recordStage stores bounded JSON-safe copies of rich stage payloads", async () => {
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-test",
+			rootMessage: { id: "msg-1", text: "hello" },
+		});
+		const circular: Record<string, unknown> = {
+			long: "x".repeat(120_000),
+			values: Array.from({ length: 400 }, (_, index) => index),
+			buffer: new Uint8Array(1024),
+		};
+		circular.self = circular;
+
+		await recorder.recordStage(id, {
+			stageId: "stage-sanitize",
+			kind: "messageHandler",
+			startedAt: 1,
+			endedAt: 2,
+			latencyMs: 1,
+			model: {
+				modelType: "RESPONSE_HANDLER",
+				provider: "test",
+				messages: [
+					{
+						role: "user",
+						content: "m".repeat(120_000),
+						meta: circular,
+					},
+				],
+				tools: Array.from({ length: 400 }, (_, index) => ({
+					name: `tool-${index}`,
+				})),
+				providerOptions: circular,
+				response: "ok",
+			},
+		} as RecordedStage);
+
+		const reloaded = await recorder.load(id);
+		const stage = reloaded?.stages[0] as
+			| (RecordedStage & { model?: Record<string, unknown> })
+			| undefined;
+		const model = stage?.model as
+			| {
+					messages?: Array<{
+						content?: string;
+						meta?: Record<string, unknown>;
+					}>;
+					tools?: unknown[];
+					providerOptions?: Record<string, unknown>;
+			  }
+			| undefined;
+
+		expect(model?.messages?.[0]?.content?.endsWith("...[truncated]")).toBe(
+			true,
+		);
+		expect(model?.messages?.[0]?.meta?.self).toBe("[Circular]");
+		expect(model?.providerOptions?.self).toBe("[Circular]");
+		expect(model?.tools).toHaveLength(251);
+		expect(model?.providerOptions?.long).toMatch(/\.{3}\[truncated\]$/);
+	});
+
+	it("startTrajectory stores a bounded copy of the root message", async () => {
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const rootMessage = {
+			id: "msg-root",
+			text: "r".repeat(120_000),
+			sender: "user-1",
+		};
+		const id = recorder.startTrajectory({
+			agentId: "agent-test",
+			rootMessage,
+		});
+		rootMessage.text = "mutated after start";
+
+		await recorder.endTrajectory(id, "finished");
+
+		const reloaded = await recorder.load(id);
+		expect(reloaded?.rootMessage.id).toBe("msg-root");
+		expect(reloaded?.rootMessage.text).not.toBe("mutated after start");
+		expect(reloaded?.rootMessage.text.endsWith("...[truncated]")).toBe(true);
+		expect(reloaded?.rootMessage.sender).toBe("user-1");
 	});
 
 	it("does not count an interim CONTINUE evaluation as an evaluator failure", async () => {
@@ -538,7 +621,7 @@ describe("JsonFileTrajectoryRecorder", () => {
 	});
 
 	it("writes redacted markdown review artifacts when review mode is enabled", async () => {
-		process.env.MILADY_TRAJECTORY_REVIEW_MODE = "1";
+		process.env.ELIZA_TRAJECTORY_REVIEW_MODE = "1";
 		process.env.CEREBRAS_API_KEY = "csk-secret-for-markdown-test";
 
 		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
@@ -632,30 +715,30 @@ describe("JsonFileTrajectoryRecorder", () => {
 });
 
 describe("action exec input/output/error capture (M12)", () => {
-	const originalCap = process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES;
+	const originalCap = process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES;
 
 	afterEach(() => {
 		if (originalCap === undefined) {
-			delete process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES;
+			delete process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES;
 		} else {
-			process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES = originalCap;
+			process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES = originalCap;
 		}
 	});
 
 	it("defaults to a 64KB per-field cap when the env var is unset", () => {
-		delete process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES;
+		delete process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES;
 		expect(resolveTrajectoryFieldCapBytes()).toBe(64 * 1024);
 	});
 
-	it("respects MILADY_TRAJECTORY_FIELD_CAP_BYTES when set to a sane value", () => {
-		process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES = "8192";
+	it("respects ELIZA_TRAJECTORY_FIELD_CAP_BYTES when set to a sane value", () => {
+		process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES = "8192";
 		expect(resolveTrajectoryFieldCapBytes()).toBe(8192);
 	});
 
 	it("ignores invalid or sub-1KB caps and falls back to the default", () => {
-		process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES = "abc";
+		process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES = "abc";
 		expect(resolveTrajectoryFieldCapBytes()).toBe(64 * 1024);
-		process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES = "100";
+		process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES = "100";
 		expect(resolveTrajectoryFieldCapBytes()).toBe(64 * 1024);
 	});
 

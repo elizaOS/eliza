@@ -138,7 +138,7 @@ function retargetMixamoToVrm(THREE, animGltf, vrm) {
     const mixNode = animGltf.scene.getObjectByName(rawName)
       ?? animGltf.scene.getObjectByName(normName)
       ?? (rawName.includes(":") ? animGltf.scene.getObjectByName(rawName.split(":")[1] ?? rawName) : null);
-    if (!mixNode || !mixNode.parent) continue;
+    if (!mixNode?.parent) continue;
 
     mixNode.getWorldQuaternion(restRotInv).invert();
     mixNode.parent.getWorldQuaternion(parentRestWorld);

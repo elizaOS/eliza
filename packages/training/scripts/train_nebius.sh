@@ -20,7 +20,7 @@
 # micro_batch / grad_accum / seq_len.
 #
 # After training, the script optionally runs PolarQuant + TurboQuant on the
-# resulting checkpoint and the eliza_bench suite for base-vs-finetuned
+# resulting checkpoint and the native function-calling benchmark for base-vs-finetuned
 # comparison numbers.
 #
 # Required env:
@@ -32,7 +32,7 @@
 #   NEBIUS_VM_PRESET           # default: gpu-h200x1
 #   NEBIUS_VM_REGION           # default: eu-north1
 #   QUANTIZE_AFTER             # comma-separated; default: polarquant,turboquant
-#   BENCHMARK_AFTER            # 1 = run eliza_bench base+finetuned (default 1)
+#   BENCHMARK_AFTER            # 1 = run native benchmark base+finetuned (default 1)
 #
 # Usage:
 #   bash scripts/train_nebius.sh provision   # spin up the VM
@@ -50,7 +50,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 : "${NEBIUS_PROJECT_ID:?must export NEBIUS_PROJECT_ID}"
-: "${NEBIUS_VM_NAME:=milady-train-h200}"
+: "${NEBIUS_VM_NAME:=eliza-train-h200}"
 : "${NEBIUS_VM_PRESET:=gpu-h200x2}"
 : "${NEBIUS_VM_REGION:=eu-north1}"
 : "${NEBIUS_VM_DISK_GB:=2048}"
@@ -61,16 +61,27 @@ REGISTRY_KEY="${REGISTRY_KEY:-qwen3.6-27b}"
 RUN_NAME="${RUN_NAME:-${REGISTRY_KEY//./-}-apollo}"
 QUANTIZE_AFTER="${QUANTIZE_AFTER:-polarquant,fused_turboquant,qjl}"
 BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
-# Qwen3.6-27B at 144k context training needs 2× H200 SXM with FSDP. Single
-# H200 OOMs even at seq_len=8k (~92% util before activations). Two H200s
-# gives 124-130 GB per-GPU at 144k, a comfortable 44-46% utilization with
-# room for larger micro-batches. For longer training contexts (>262k) go
-# to H200-4x.
-#
-# Qwen3.5-9B fits a single H200 SXM (peak ~80 GB at seq_len=16k); set
-# NEBIUS_VM_PRESET=gpu-h200x1 + FSDP_WORLD_SIZE=1 for that run.
-NEBIUS_VM_PRESET="${NEBIUS_VM_PRESET:-gpu-h200x2}"
-FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-2}"
+PUSH_AFTER="${PUSH_AFTER:-0}"
+SYNC_FULLCORPUS_SOURCES="${SYNC_FULLCORPUS_SOURCES:-0}"
+
+TRAIN_FILE="${TRAIN_FILE:-data/final/train.jsonl}"
+VAL_FILE="${VAL_FILE:-data/final/val.jsonl}"
+TEST_FILE="${TEST_FILE:-data/final/test.jsonl}"
+
+# NEBIUS_VM_PRESET → (platform, preset, default world size). The H200 platform
+# (`gpu-h200-sxm`) has no 2-GPU preset; the only multi-GPU preset is 8×.
+case "$NEBIUS_VM_PRESET" in
+  gpu-h200x1) NEBIUS_PLATFORM="gpu-h200-sxm";  NEBIUS_PRESET="1gpu-16vcpu-200gb";    DEFAULT_WORLD=1 ;;
+  gpu-h200x2) NEBIUS_PLATFORM="gpu-h200-sxm";  NEBIUS_PRESET="8gpu-128vcpu-1600gb";  DEFAULT_WORLD=8 ;;
+  *) echo "[train_nebius] unknown NEBIUS_VM_PRESET '$NEBIUS_VM_PRESET' (gpu-h200x1|gpu-h200x2)" >&2; exit 2 ;;
+esac
+FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-$DEFAULT_WORLD}"
+
+# The transformer decoder-layer class FSDP wraps. Every entry in the
+# Qwen3.5-only model registry (qwen3.5-0.8b/2b/4b/9b/27b + qwen3.6-27b
+# legacy) uses Qwen3_5DecoderLayer; the legacy Qwen3 dense bases (which
+# would have used Qwen3DecoderLayer) were dropped on 2026-05-12.
+FSDP_WRAP_CLS="Qwen3_5DecoderLayer"
 
 cmd="${1:-help}"
 
@@ -180,17 +191,17 @@ bench_remote() {
     echo "[bench] BENCHMARK_AFTER=0 — skipping"
     return 0
   fi
-  echo "[bench] eliza_bench: base + finetuned + quantized"
+  echo "[bench] native_tool_call_bench: base + finetuned + quantized"
   ssh -o StrictHostKeyChecking=no "$target" "bash -lc '
     set -euo pipefail
     cd $REMOTE_TRAIN_DIR
     export PATH=\$HOME/.local/bin:\$PATH
     base_id=\$(uv run --extra train python -c \"from scripts.training.model_registry import get; print(get(\\\"$REGISTRY_KEY\\\").hf_id)\")
-    uv run --extra train python scripts/benchmark/eliza_bench.py \\
+    uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
         --model \$base_id \\
         --out-dir benchmarks/$RUN_NAME/base \\
         --max-per-bucket 200
-    uv run --extra train python scripts/benchmark/eliza_bench.py \\
+    uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
         --model checkpoints/$RUN_NAME/final \\
         --out-dir benchmarks/$RUN_NAME/finetuned \\
         --max-per-bucket 200
@@ -202,7 +213,7 @@ bench_remote() {
       cd $REMOTE_TRAIN_DIR
       export PATH=\$HOME/.local/bin:\$PATH
       if [ -d checkpoints/$RUN_NAME/final-${q} ]; then
-        uv run --extra train python scripts/benchmark/eliza_bench.py \\
+        uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
           --model checkpoints/$RUN_NAME/final-${q} \\
           --out-dir benchmarks/$RUN_NAME/${q} \\
           --max-per-bucket 200

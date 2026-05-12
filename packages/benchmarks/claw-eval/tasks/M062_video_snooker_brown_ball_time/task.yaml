@@ -1,0 +1,47 @@
+task_id: M062_video_snooker_brown_ball_time
+task_name: Video Snooker Brown Ball Timestamp
+version: "1.0"
+category: video_qa
+difficulty: hard
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.webm
+
+    Please carefully watch this video of a frame from a snooker match. At what time (minutes:seconds) in the video did the British player first attempt to pot the brown ball? At what time (minutes:seconds) did the British player successfully pot the brown ball? Please base the timestamps on the moment the cue ball makes contact with the brown ball.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/video.webm
+
+sandbox_grader_files: []
+
+env_snapshot_commands: []
+env_snapshot_files: []
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+
+reference_solution: |
+  Use sandbox_read_media to analyze the snooker match video.
+  First attempt at brown ball: 01:06.
+  Brown ball potted: 09:40.
+
+primary_dimensions:
+  - completion
+  - robustness

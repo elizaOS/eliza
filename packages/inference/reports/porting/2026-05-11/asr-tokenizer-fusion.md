@@ -133,13 +133,49 @@ exists to forbid.
   unchanged. The remaining gap is then purely (2) — the llama-server /
   fused-runtime token-id-prompt path — which is W7's runtime work.
 - Tests: `voice/pipeline-impls.test.ts`, `voice/pipeline.test.ts`,
-  `voice/transcriber.test.ts` all green (30/30).
+  `voice/transcriber.test.ts` all green.
+
+## Follow-up landed (continuation pass, 2026-05-11)
+
+- `voice/transcriber.ts`: `FfiBatchTranscriber` — the *contract-clean*
+  interim streaming-ASR adapter. It runs the fused build's batch decoder
+  (`eliza_inference_asr_transcribe`, ABI v1) over a sliding window with
+  overlap (≈6 s window, ≈1 s overlap, ≈1.2 s step), so each call is
+  bounded by ~6–7 s of audio — incremental, not "buffer the whole
+  utterance then one giant batch decode". `createStreamingTranscriber`
+  now resolves `fused-streaming → fused-batch → whisper.cpp`; the
+  whisper.cpp adapter (which vendors its *own* ggml — the §1 contract
+  violation) is now strictly last, only reached when no
+  `libelizainference` build is loaded at all. The committed `index.ts`
+  already re-exported `FfiBatchTranscriber`/`FfiBatchTranscriberOptions`
+  from a class that did not exist — this pass added the class, fixing
+  that dangling export.
+  - **Caveat re: fusion:** the ABI-v1 batch symbol returns only a UTF-8
+    string (no `out_tokens`), so the fused-batch interim still
+    detokenizes → the text model re-tokenizes. It does *not* close the
+    zero-re-tokenization gap; it closes the *one-ggml* gap. Real
+    zero-re-tokenization still needs the W7 streaming decoder's
+    `out_tokens` plus a token-id text-model entrypoint (item (2) above).
+  - Tests: 19/19 in `transcriber.test.ts` (3 new: fused-batch selection
+    priority, `prefer:"ffi-batch"`, the sliding-window decode shape).
+
+## Build/ABI state at the end of this pass
+
+The on-disk fused build (`~/.eliza/.../linux-x64-cpu-fused/`) reports
+**ABI v2**; `voice/ffi-bindings.ts` and `omnivoice-fuse/ffi.h` were
+bumped to **v3** by a sibling workstream without rebuilding the fused
+library or the `libelizainference_stub.so`. Consequence: the strict ABI
+check in `bindWithBunFfi` rejects the v2 library — `asr_bench.ts` and the
+ffi-bindings stub-integration tests cannot run until a fresh fused build
+is staged (the build/CUDA agents own that). 8 pre-existing voice tests
+fail on this mismatch (all "binding expected v3, library reports v2") —
+unchanged by this pass.
 
 ## What is still W7's job
 
 - The real fused streaming ASR decoder (`eliza_inference_asr_stream_*`)
   with `out_tokens` populated — the windowed incremental transcript +
-  token ids.
+  token ids — replacing the `FfiBatchTranscriber` interim.
 - A token-id text-model entrypoint (or chat-template-as-ids on
   llama-server) so the ASR ids actually skip re-tokenization on the way
   into the text KV cache.

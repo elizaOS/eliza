@@ -1,8 +1,8 @@
 /**
  * Provider failover utility.
  *
- * Catches retryable errors (402 Payment Required, 429 Rate Limited) from
- * the primary provider and retries the request with a fallback provider.
+ * Catches retryable capacity/outage errors from the primary provider and
+ * retries the request with a fallback provider.
  */
 
 import { logger } from "@/lib/utils/logger";
@@ -17,13 +17,20 @@ import type { ProviderHttpError } from "./types";
 function isRetryableProviderError(error: unknown): error is ProviderHttpError {
   if (error && typeof error === "object" && "status" in error) {
     const status = (error as { status: unknown }).status;
-    return status === 402 || status === 429;
+    return (
+      status === 402 ||
+      status === 429 ||
+      status === 500 ||
+      status === 502 ||
+      status === 503 ||
+      status === 504
+    );
   }
   return false;
 }
 
 /**
- * Execute `primaryFn`. On a retryable provider error (402/429),
+ * Execute `primaryFn`. On a retryable provider error,
  * log a warning and execute `fallbackFn` instead.
  */
 export async function withProviderFallback(

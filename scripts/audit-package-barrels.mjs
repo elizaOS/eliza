@@ -9,7 +9,8 @@ const check = args.has("--check");
 const failOnReExportMarkers = args.has("--fail-on-reexport-markers");
 
 const repoRoot = process.cwd();
-const ignoredPath = /(^|\/)(node_modules|dist|build|\.turbo|\.next|coverage)(\/|$)/;
+const ignoredPath =
+  /(^|\/)(node_modules|dist|build|\.turbo|\.next|coverage)(\/|$)/;
 const sourceExtensions = new Set([
   ".cjs",
   ".cts",
@@ -64,7 +65,8 @@ function packageOwnerForFile(file, packages) {
 
 function classifySubpath(subpath) {
   if (subpath.endsWith(".css") || subpath.endsWith(".json")) return "asset";
-  if (subpath === "browser" || subpath.startsWith("browser/")) return "platform";
+  if (subpath === "browser" || subpath.startsWith("browser/"))
+    return "platform";
   if (subpath === "node" || subpath.startsWith("node/")) return "platform";
   if (
     subpath === "ui" ||
@@ -112,15 +114,18 @@ const packageJsonFiles = shellLines("rg", [
   "-g",
   "!**/coverage/**",
 ])
-  .filter((file) =>
-    /^(?:package|cloud\/package)\.json$/.test(file) ||
-    /^packages\/[^/]+\/package\.json$/.test(file) ||
-    /^packages\/examples\/[^/]+(?:\/[^/]+){0,2}\/package\.json$/.test(file) ||
-    /^packages\/native-plugins\/[^/]+\/package\.json$/.test(file) ||
-    /^packages\/app-core\/platforms\/[^/]+\/package\.json$/.test(file) ||
-    /^plugins\/[^/]+\/package\.json$/.test(file) ||
-    /^cloud\/(?:apps|packages|services|examples)\/[^/]+\/package\.json$/.test(file) ||
-    /^cloud\/packages\/services\/[^/]+\/package\.json$/.test(file),
+  .filter(
+    (file) =>
+      /^(?:package|cloud\/package)\.json$/.test(file) ||
+      /^packages\/[^/]+\/package\.json$/.test(file) ||
+      /^packages\/examples\/[^/]+(?:\/[^/]+){0,2}\/package\.json$/.test(file) ||
+      /^packages\/native-plugins\/[^/]+\/package\.json$/.test(file) ||
+      /^packages\/app-core\/platforms\/[^/]+\/package\.json$/.test(file) ||
+      /^plugins\/[^/]+\/package\.json$/.test(file) ||
+      /^cloud\/(?:apps|packages|services|examples)\/[^/]+\/package\.json$/.test(
+        file,
+      ) ||
+      /^cloud\/packages\/services\/[^/]+\/package\.json$/.test(file),
   )
   .sort();
 
@@ -139,7 +144,9 @@ const packages = packageJsonFiles
   })
   .filter(Boolean);
 
-const packageNames = packages.map((pkg) => pkg.name).sort((a, b) => b.length - a.length);
+const packageNames = packages
+  .map((pkg) => pkg.name)
+  .sort((a, b) => b.length - a.length);
 
 const sourceFiles = shellLines("rg", [
   "--files",
@@ -186,7 +193,11 @@ for (const file of sourceFiles) {
     const packageName = packageNames.find(
       (name) => specifier === name || specifier.startsWith(`${name}/`),
     );
-    if (!packageName || specifier === packageName || specifier.endsWith("/package.json")) {
+    if (
+      !packageName ||
+      specifier === packageName ||
+      specifier.endsWith("/package.json")
+    ) {
       continue;
     }
     const subpath = specifier.slice(packageName.length + 1);
@@ -203,7 +214,11 @@ for (const file of sourceFiles) {
 
 const packageSubpathExports = [];
 for (const pkg of packages) {
-  if (!pkg.exports || typeof pkg.exports !== "object" || Array.isArray(pkg.exports)) {
+  if (
+    !pkg.exports ||
+    typeof pkg.exports !== "object" ||
+    Array.isArray(pkg.exports)
+  ) {
     continue;
   }
   for (const exportKey of Object.keys(pkg.exports)) {
@@ -289,9 +304,15 @@ if (asJson) {
   console.log("====================");
   console.log(`Workspace packages: ${report.summary.packages}`);
   console.log(`Source files scanned: ${report.summary.sourceFiles}`);
-  console.log(`Workspace package subpath references: ${report.summary.subpathReferenceCount}`);
-  console.log(`Published package subpath exports: ${report.summary.subpathExportCount}`);
-  console.log(`Literal re-export markers: ${report.summary.reExportMarkerCount}`);
+  console.log(
+    `Workspace package subpath references: ${report.summary.subpathReferenceCount}`,
+  );
+  console.log(
+    `Published package subpath exports: ${report.summary.subpathExportCount}`,
+  );
+  console.log(
+    `Literal re-export markers: ${report.summary.reExportMarkerCount}`,
+  );
 
   console.log("\nReferences by class");
   for (const item of report.totals.referencesByClass) {
@@ -324,10 +345,18 @@ if (asJson) {
   }
 
   console.log("\nRemediation order");
-  console.log("1. Move shared symbols used through package subpaths into each package root barrel.");
-  console.log("2. Replace cross-package subpath imports with bare package imports.");
-  console.log("3. Split frontend and node-only surfaces with conditional root exports, not ./ui, ./routes, ./node, or ./browser imports.");
-  console.log("4. Delete compatibility re-export shims and remove subpath keys/wildcards from package.json exports.");
+  console.log(
+    "1. Move shared symbols used through package subpaths into each package root barrel.",
+  );
+  console.log(
+    "2. Replace cross-package subpath imports with bare package imports.",
+  );
+  console.log(
+    "3. Split frontend and node-only surfaces with conditional root exports, not ./ui, ./routes, ./node, or ./browser imports.",
+  );
+  console.log(
+    "4. Delete compatibility re-export shims and remove subpath keys/wildcards from package.json exports.",
+  );
 }
 
 if (

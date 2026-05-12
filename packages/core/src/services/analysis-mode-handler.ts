@@ -13,7 +13,7 @@
  *
  * Privacy:
  *   - `isAnalysisModeAllowed()` returns false unless the operator opted in
- *     via `MILADY_ENABLE_ANALYSIS_MODE=1`, or `NODE_ENV=development`.
+ *     via `ELIZA_ENABLE_ANALYSIS_MODE=1`, or `NODE_ENV=development`.
  *   - When disabled, activation tokens are ignored (no toggle, no
  *     confirmation) so the words flow through to the planner like any
  *     other text.
@@ -52,8 +52,8 @@ export function parseAnalysisToken(
 export function isAnalysisModeAllowed(
 	env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-	if (env.MILADY_ENABLE_ANALYSIS_MODE === "1") return true;
-	if (env.MILADY_ENABLE_ANALYSIS_MODE === "0") return false;
+	if (env.ELIZA_ENABLE_ANALYSIS_MODE === "1") return true;
+	if (env.ELIZA_ENABLE_ANALYSIS_MODE === "0") return false;
 	return env.NODE_ENV === "development";
 }
 

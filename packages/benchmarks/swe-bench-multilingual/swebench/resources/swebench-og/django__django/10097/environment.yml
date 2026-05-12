@@ -1,0 +1,50 @@
+name: testbed
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - _libgcc_mutex=0.1=main
+  - _openmp_mutex=5.1=1_gnu
+  - ca-certificates=2024.9.24=h06a4308_0
+  - certifi=2020.6.20=pyhd3eb1b0_3
+  - libffi=3.3=he6710b0_2
+  - libgcc-ng=11.2.0=h1234567_1
+  - libgomp=11.2.0=h1234567_1
+  - libstdcxx-ng=11.2.0=h1234567_1
+  - ncurses=6.4=h6a678d5_0
+  - openssl=1.1.1w=h7f8727e_0
+  - pip=10.0.1=py35_0
+  - python=3.5.6=h12debd9_1
+  - readline=8.2=h5eee18b_0
+  - setuptools=40.2.0=py35_0
+  - sqlite=3.45.3=h5eee18b_0
+  - tk=8.6.14=h39e8969_0
+  - wheel=0.37.1=pyhd3eb1b0_0
+  - xz=5.4.6=h5eee18b_1
+  - zlib=1.2.13=h5eee18b_1
+  - pip:
+      - argon2-cffi==21.1.0
+      - bcrypt==3.1.7
+      - cffi==1.15.1
+      - chardet==4.0.0
+      - docutils==0.18.1
+      - geoip2==3.0.0
+      - idna==2.10
+      - jinja2==2.11.3
+      - markupsafe==1.1.1
+      - maxminddb==2.0.0
+      - numpy==1.18.5
+      - pillow==7.2.0
+      - pycparser==2.21
+      - pylibmc==1.6.1
+      - python-memcached==1.62
+      - pytz==2024.2
+      - pywatchman==1.4.1
+      - pyyaml==5.3.1
+      - requests==2.25.1
+      - selenium==3.141.0
+      - six==1.16.0
+      - sqlparse==0.4.4
+      - tblib==1.7.0
+      - urllib3==1.26.9
+prefix: /opt/miniconda3/envs/testbed

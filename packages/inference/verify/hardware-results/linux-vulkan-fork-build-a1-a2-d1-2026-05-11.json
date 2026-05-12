@@ -9,12 +9,12 @@
     "ramGb": 30
   },
   "elizaCommit": "74aa603dc4fc620a88901b75793d8743deaaa233",
-  "forkRemote": "https://github.com/milady-ai/llama.cpp.git",
-  "forkRef": "v0.4.0-milady",
+  "forkRemote": "https://github.com/elizaOS/llama.cpp.git",
+  "forkRef": "v0.4.0-eliza",
   "forkCommit": "08032d57e15574f2a7ca19fc3f29510c8673d590",
   "build": {
     "command": "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-vulkan",
-    "note": "Built with ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 — the v0.4.0-milady fork's tools/server/server.cpp lacks the lazy-GBNF / json_schema / continue_final_message upstream features the concurrent W4 structured-output patcher hard-requires, which is the documented expected blocker. The skip env is local-diagnostics-only; it does not change the default build path.",
+    "note": "Built with ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 — the v0.4.0-eliza fork's tools/server/server.cpp lacks the lazy-GBNF / json_schema / continue_final_message upstream features the concurrent W4 structured-output patcher hard-requires, which is the documented expected blocker. The skip env is local-diagnostics-only; it does not change the default build path.",
     "result": "OK — built=1, host-incompat-skipped=0, failed=0. ggml-cpu, ggml-vulkan, llama, server, all examples built. Patchers applied cleanly: cpu-simd-kernels (13 QJL TUs mirrored + CMakeLists regenerated + QJL_HAVE_* defines), vulkan-kernels (15 standalone .comp staged incl. 4 *_multi + 2 fused_attn_*; 01/02 patches + runtime graph dispatch).",
     "installDir": "~/.eliza/local-inference/bin/dflash/linux-x64-vulkan"
   },
@@ -27,11 +27,11 @@
   "vulkanShaderSymbols": {
     "lib": "libggml-vulkan.so",
     "presentDataLenPairs": [
-      "milady_turbo3", "milady_turbo4", "milady_turbo3_tcq",
-      "milady_qjl", "milady_qjl_get_rows", "milady_qjl_mul_mv",
-      "milady_polar", "milady_polar_preht", "milady_polar_get_rows",
-      "milady_turbo3_multi", "milady_turbo4_multi", "milady_turbo3_tcq_multi", "milady_qjl_multi",
-      "milady_fused_attn_qjl_tbq", "milady_fused_attn_qjl_polar"
+      "eliza_turbo3", "eliza_turbo4", "eliza_turbo3_tcq",
+      "eliza_qjl", "eliza_qjl_get_rows", "eliza_qjl_mul_mv",
+      "eliza_polar", "eliza_polar_preht", "eliza_polar_get_rows",
+      "eliza_turbo3_multi", "eliza_turbo4_multi", "eliza_turbo3_tcq_multi", "eliza_qjl_multi",
+      "eliza_fused_attn_qjl_tbq", "eliza_fused_attn_qjl_polar"
     ]
   },
   "standaloneVerify": {

@@ -42,7 +42,9 @@ export interface UpdateTodoInput {
 
 function rowToTodo(row: TodoRow): Todo {
   const metadata =
-    row.metadata && typeof row.metadata === "object" && !Array.isArray(row.metadata)
+    row.metadata &&
+    typeof row.metadata === "object" &&
+    !Array.isArray(row.metadata)
       ? (row.metadata as Record<string, unknown>)
       : {};
   return {

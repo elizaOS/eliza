@@ -32,15 +32,6 @@ import {
   registerFeatureFlagRegistry,
   UnknownFeatureFlagError,
 } from "../src/lifeops/registries/index.ts";
-import type { LifeOpsRouteContext } from "../src/routes/lifeops-routes.ts";
-import { makeScheduledTasksRouteHandler } from "../src/routes/scheduled-tasks.ts";
-import {
-  createInMemoryScheduledTaskLogStore,
-  createInMemoryScheduledTaskStore,
-  createScheduledTaskRunner,
-  TestNoopScheduledTaskDispatcher,
-  type ScheduledTaskRunnerHandle,
-} from "../src/lifeops/scheduled-task/index.ts";
 import {
   createCompletionCheckRegistry,
   registerBuiltInCompletionChecks,
@@ -57,6 +48,15 @@ import {
   createTaskGateRegistry,
   registerBuiltInGates,
 } from "../src/lifeops/scheduled-task/gate-registry.ts";
+import {
+  createInMemoryScheduledTaskLogStore,
+  createInMemoryScheduledTaskStore,
+  createScheduledTaskRunner,
+  type ScheduledTaskRunnerHandle,
+  TestNoopScheduledTaskDispatcher,
+} from "../src/lifeops/scheduled-task/index.ts";
+import type { LifeOpsRouteContext } from "../src/routes/lifeops-routes.ts";
+import { makeScheduledTasksRouteHandler } from "../src/routes/scheduled-tasks.ts";
 
 const ACME_KEY: LifeOpsFeatureFlagKey = "acme.experiment";
 
@@ -142,7 +142,10 @@ function buildCtx(args: {
     method: args.method,
     pathname: args.pathname,
     url: new URL(`http://localhost${args.pathname}`),
-    state: { runtime: args.runtime as AgentRuntime | null, adminEntityId: null },
+    state: {
+      runtime: args.runtime as AgentRuntime | null,
+      adminEntityId: null,
+    },
     json(r, data, status = 200) {
       r.statusCode = status;
       r.setHeader?.("content-type", "application/json");

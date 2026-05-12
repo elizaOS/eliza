@@ -31,7 +31,7 @@ function messageInRoom(
   text: string,
 ): Memory {
   return {
-    id: ("msg-" + Math.random().toString(36).slice(2, 8)) as UUID,
+    id: `msg-${Math.random().toString(36).slice(2, 8)}` as UUID,
     entityId: runtime.agentId,
     roomId: roomId as UUID,
     agentId: runtime.agentId,

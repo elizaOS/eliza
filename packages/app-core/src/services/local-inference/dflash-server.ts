@@ -48,8 +48,11 @@ import { localInferenceRoot } from "./paths";
 import { ramHeadroomReserveMb, resolveRamBudget } from "./ram-budget";
 import {
   grammarRequestFields,
+  repairStructuredOutput,
   resolveGrammarForParams,
+  resolveGuidedDecodeForParams,
   type StructuredGenerateParams,
+  StructuredOutputRepairStream,
 } from "./structured-output";
 import type {
   CatalogModel,
@@ -68,6 +71,16 @@ export interface DflashServerPlan {
   gpuLayers: number | "auto";
   draftGpuLayers: number | "auto";
   kvOffload?: DflashKvOffloadMode;
+  /**
+   * Catalog-default `--cache-type-k` / `--cache-type-v` for the target model
+   * (the tier's `runtime.kvCache.typeK/typeV` — `qjl1_256` K + `q4_polar` V
+   * for the >8k tiers, per `packages/inference/AGENTS.md` §3). The
+   * `ELIZA_DFLASH_CACHE_TYPE_K` / `_V` env vars override these. `start()`
+   * still runs `assertCacheTypeSupportedOnBackend` on whichever value wins,
+   * so a binary whose `CAPABILITIES.json` lacks the kernel fails loudly.
+   */
+  cacheTypeK?: string;
+  cacheTypeV?: string;
   disableThinking: boolean;
   /**
    * Target model parameter count (`"1.7B"`, `"27B"`, …). Used only to size
@@ -162,6 +175,13 @@ export interface DflashGenerateResult {
   text: string;
   usage: LocalUsageBlock;
   slotId: number;
+  /**
+   * Time-to-first-token in milliseconds, measured from the moment the
+   * outbound `fetch` was issued to the first SSE chunk arriving (L5
+   * instrumentation). `null` when the request was non-streaming or the
+   * stream ended before any chunk landed.
+   */
+  firstTokenMs: number | null;
 }
 
 export interface DflashMetricsSnapshot {
@@ -229,24 +249,31 @@ const DFLASH_METRIC_ALIASES = {
 } as const;
 
 export function parseDflashMetrics(body: string): DflashMetricsSnapshot | null {
-  const samples = new Map<string, number>();
+  const samples = new Map<
+    string,
+    { unlabeled: number | null; labeledSum: number }
+  >();
   for (const rawLine of body.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) continue;
     const match = line.match(
-      /^([a-zA-Z_:][\w:]*)(?:\{[^}]*\})?\s+([+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?)/,
+      /^([a-zA-Z_:][\w:]*)(\{[^}]*\})?\s+([+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?)/i,
     );
     if (!match) continue;
     const name = match[1];
-    const value = Number(match[2]);
+    const labels = match[2];
+    const value = Number(match[3]);
     if (!name || !Number.isFinite(value)) continue;
-    samples.set(name, (samples.get(name) ?? 0) + value);
+    const bucket = samples.get(name) ?? { unlabeled: null, labeledSum: 0 };
+    if (labels) bucket.labeledSum += value;
+    else bucket.unlabeled = value;
+    samples.set(name, bucket);
   }
 
   const readFirst = (aliases: readonly string[]): number | null => {
     for (const alias of aliases) {
-      const value = samples.get(alias);
-      if (value !== undefined) return value;
+      const bucket = samples.get(alias);
+      if (bucket !== undefined) return bucket.unlabeled ?? bucket.labeledSum;
     }
     return null;
   };
@@ -269,21 +296,43 @@ function readBool(name: string): boolean {
   return raw === "1" || raw === "true" || raw === "yes";
 }
 
+function allowZeroDraftForDiagnostics(): boolean {
+  return readBool("ELIZA_DFLASH_ALLOW_ZERO_DRAFT");
+}
+
+export function shouldRequireActiveDflashForRequest(
+  plan:
+    | Pick<DflashServerPlan, "disableDrafter" | "draftMin">
+    | null
+    | undefined,
+  maxTokens: number | null | undefined,
+): boolean {
+  if (!plan || plan.disableDrafter || allowZeroDraftForDiagnostics()) {
+    return false;
+  }
+  if (!Number.isFinite(maxTokens) || maxTokens == null) return true;
+  // The verifier can only test a draft after the first target token, and
+  // llama.cpp's server refuses drafts smaller than draftMin. One-token
+  // prewarm and tiny control probes should not be mistaken for a skipped
+  // DFlash path.
+  return maxTokens >= Math.max(1, plan.draftMin) + 2;
+}
+
 /**
  * Developer-only escape hatch from the always-on speculative-decoding
  * contract (`packages/inference/AGENTS.md` §4: "DFlash is always on… If
  * the user disables speculative decoding for debugging, that is a
- * developer-only flag (`MILADY_DFLASH_DISABLE=1`), it is not a user
+ * developer-only flag (`ELIZA_DFLASH_DISABLE=1`), it is not a user
  * setting, and it MUST log a loud warning every turn.").
  *
  * This is NOT a product setting — there is no UI surface and no
- * `MILADY_LOCAL_*` mapping. It exists so a developer can bisect a
+ * `ELIZA_LOCAL_*` mapping. It exists so a developer can bisect a
  * suspected DFlash regression. When set, `dflashEnabled()` returns false
  * (the dispatcher then routes to node-llama-cpp) and every generation
  * turn that runs while it is set logs `logDflashDevDisabledWarning()`.
  */
 export function dflashDevDisabled(): boolean {
-  return readBool("MILADY_DFLASH_DISABLE");
+  return readBool("ELIZA_DFLASH_DISABLE");
 }
 
 /**
@@ -295,10 +344,10 @@ export function dflashDevDisabled(): boolean {
 export function logDflashDevDisabledWarning(): void {
   if (!dflashDevDisabled()) return;
   console.warn(
-    "[local-inference] ⚠️  MILADY_DFLASH_DISABLE=1 — speculative decoding is OFF. " +
+    "[local-inference] ⚠️  ELIZA_DFLASH_DISABLE=1 — speculative decoding is OFF. " +
       "This is a developer-only debug flag, NOT a product setting. Eliza-1's " +
       "always-on DFlash contract is violated for this turn; voice latency and " +
-      "throughput are degraded. Unset MILADY_DFLASH_DISABLE to restore the " +
+      "throughput are degraded. Unset ELIZA_DFLASH_DISABLE to restore the " +
       "shipped path.",
   );
 }
@@ -322,19 +371,58 @@ function managedDflashBinaryPath(): string {
  * communicating over IPC"). We prefer the fused binary over the stock one
  * whenever both exist for the active backend.
  */
-function fusedBackendKey(): string {
+/**
+ * Resolve the llama-server fork backend tag for the current host.
+ *
+ * Precedence:
+ *   1. `ELIZA_DFLASH_BACKEND` — explicit operator override (any value).
+ *   2. `darwin` → always `metal`.
+ *   3. `HIP_VISIBLE_DEVICES` / `ROCR_VISIBLE_DEVICES` set → `rocm`.
+ *   4. `CUDA_VISIBLE_DEVICES` set (and not `-1`) → `cuda`.
+ *   5. **Installed-build probe** — if an accelerated fork build directory
+ *      exists under `<root>/bin/dflash/<platform>-<arch>-<backend>[-fused]/`
+ *      with a `llama-server` binary in it, prefer that backend (cuda before
+ *      vulkan before rocm). This is what makes a downloaded/built CUDA fork
+ *      artifact actually get used on a fresh Windows/Linux desktop install,
+ *      where none of the `*_VISIBLE_DEVICES` env vars are set — without it
+ *      the runtime always keyed `…-cpu` and silently ran the CPU fork even
+ *      with a CUDA build sitting on disk.
+ *   6. Fall back to `cpu`.
+ *
+ * `suffix` is `"-fused"` for the omnivoice-grafted build dir, `""` for the
+ * stock build dir.
+ */
+function accelBackendKey(suffix: "" | "-fused"): string {
   const forced = process.env.ELIZA_DFLASH_BACKEND?.trim().toLowerCase();
-  const backend = forced
-    ? forced
-    : process.platform === "darwin"
-      ? "metal"
-      : process.env.HIP_VISIBLE_DEVICES || process.env.ROCR_VISIBLE_DEVICES
-        ? "rocm"
-        : process.env.CUDA_VISIBLE_DEVICES &&
-            process.env.CUDA_VISIBLE_DEVICES !== "-1"
-          ? "cuda"
-          : "cpu";
-  return `${process.platform}-${process.arch}-${backend}-fused`;
+  if (forced) return `${process.platform}-${process.arch}-${forced}${suffix}`;
+  if (process.platform === "darwin") {
+    return `${process.platform}-${process.arch}-metal${suffix}`;
+  }
+  if (process.env.HIP_VISIBLE_DEVICES || process.env.ROCR_VISIBLE_DEVICES) {
+    return `${process.platform}-${process.arch}-rocm${suffix}`;
+  }
+  if (
+    process.env.CUDA_VISIBLE_DEVICES &&
+    process.env.CUDA_VISIBLE_DEVICES !== "-1"
+  ) {
+    return `${process.platform}-${process.arch}-cuda${suffix}`;
+  }
+  for (const backend of ["cuda", "vulkan", "rocm"] as const) {
+    const dir = path.join(
+      localInferenceRoot(),
+      "bin",
+      "dflash",
+      `${process.platform}-${process.arch}-${backend}${suffix}`,
+    );
+    if (fs.existsSync(path.join(dir, "llama-server"))) {
+      return `${process.platform}-${process.arch}-${backend}${suffix}`;
+    }
+  }
+  return `${process.platform}-${process.arch}-cpu${suffix}`;
+}
+
+function fusedBackendKey(): string {
+  return accelBackendKey("-fused");
 }
 
 function managedFusedDflashDir(): string {
@@ -486,17 +574,6 @@ export function readDflashBinaryCapabilities(): DflashBinaryCapabilities | null 
   return null;
 }
 
-function isMetalDflashRuntime(): boolean {
-  return platformKey().endsWith("-metal");
-}
-
-function dflashMetalAutoEnabled(): boolean {
-  return (
-    readBool("ELIZA_DFLASH_METAL_AUTO") ||
-    readBool("ELIZA_DFLASH_METAL_ENABLED")
-  );
-}
-
 /**
  * Refuse a `--cache-type-k/v` value when the installed llama-server binary
  * doesn't advertise the required kernel in `CAPABILITIES.json`. The blocklist
@@ -533,7 +610,6 @@ export function dflashEnabled(): boolean {
   ) {
     return false;
   }
-  if (isMetalDflashRuntime()) return dflashMetalAutoEnabled();
   return true;
 }
 
@@ -558,18 +634,7 @@ function candidateBinaryPaths(): string[] {
 }
 
 function platformKey(): string {
-  const forced = process.env.ELIZA_DFLASH_BACKEND?.trim().toLowerCase();
-  if (forced) return `${process.platform}-${process.arch}-${forced}`;
-  const backend =
-    process.platform === "darwin"
-      ? "metal"
-      : process.env.HIP_VISIBLE_DEVICES || process.env.ROCR_VISIBLE_DEVICES
-        ? "rocm"
-        : process.env.CUDA_VISIBLE_DEVICES &&
-            process.env.CUDA_VISIBLE_DEVICES !== "-1"
-          ? "cuda"
-          : "cpu";
-  return `${process.platform}-${process.arch}-${backend}`;
+  return accelBackendKey("");
 }
 
 export function resolveDflashBinary(): string | null {
@@ -591,12 +656,9 @@ export function getDflashRuntimeStatus(): DflashRuntimeStatus {
   const binary = resolveDflashBinary();
   const capabilities = readDflashBinaryCapabilities();
   if (!dflashEnabled()) {
-    const managedBinaryExists = fs.existsSync(managedDflashBinaryPath());
     const reason = dflashDevDisabled()
-      ? "DFlash is disabled by the developer-only MILADY_DFLASH_DISABLE flag. This is NOT a product setting — unset it to restore the always-on speculative-decoding contract."
-      : managedBinaryExists && isMetalDflashRuntime()
-        ? "DFlash Metal binary found but auto-disabled because the current Eliza-1 Metal path is faster target-only; set ELIZA_DFLASH_ENABLED=1 or ELIZA_DFLASH_METAL_AUTO=1 to force it."
-        : "DFlash auto-enables when the managed llama-server binary is installed; set ELIZA_DFLASH_ENABLED=1 to force a PATH/explicit binary, or run packages/app-core/scripts/build-llama-cpp-dflash.mjs.";
+      ? "DFlash is disabled by the developer-only ELIZA_DFLASH_DISABLE flag. This is NOT a product setting — unset it to restore the always-on speculative-decoding contract."
+      : "DFlash auto-enables when the managed llama-server binary is installed; set ELIZA_DFLASH_ENABLED=1 to force a PATH/explicit binary, or run packages/app-core/scripts/build-llama-cpp-dflash.mjs.";
     return {
       enabled: false,
       required: dflashRequired(),
@@ -1031,14 +1093,20 @@ async function fetchStreamingChatCompletion(
     onTextChunk?: (chunk: string) => void | Promise<void>;
     onVerifierEvent?: (event: VerifierStreamEvent) => void | Promise<void>;
   },
+  repairStream?: StructuredOutputRepairStream | null,
   externalSignal?: AbortSignal,
   startIndex = 0,
-): Promise<string> {
+): Promise<{ text: string; firstTokenMs: number | null }> {
   const controller = new AbortController();
   const abort = () => controller.abort(externalSignal?.reason);
   if (externalSignal?.aborted) abort();
   externalSignal?.addEventListener("abort", abort, { once: true });
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  // L5 — capture t0 immediately before the outbound fetch so first-token
+  // latency reflects the full request round-trip (DNS + connect + server
+  // queue + first SSE chunk).
+  const t0 = performance.now();
+  let firstTokenMs: number | null = null;
   try {
     const res = await fetch(url, { ...init, signal: controller.signal });
     if (!res.ok) {
@@ -1084,14 +1152,25 @@ async function fetchStreamingChatCompletion(
         return;
       }
 
-      const chunk = extractStreamingChatDelta(parsed);
+      let chunk = extractStreamingChatDelta(parsed);
       if (!chunk) return;
+      if (repairStream) chunk = repairStream.push(chunk);
+      if (!chunk) return;
+      // L5 — first usable chunk: record latency BEFORE emitting so the
+      // first verifier-event payload carries it.
+      if (firstTokenMs === null) {
+        firstTokenMs = performance.now() - t0;
+      }
       text += chunk;
       if (callbacks.onVerifierEvent) {
-        await callbacks.onVerifierEvent({
+        const event: VerifierStreamEvent = {
           kind: "accept",
           tokens: [{ index: nextIndex++, text: chunk }],
-        });
+        };
+        if (firstTokenMs !== null && nextIndex - 1 === startIndex) {
+          event.meta = { firstTokenMs };
+        }
+        await callbacks.onVerifierEvent(event);
       }
       await callbacks.onTextChunk?.(chunk);
     };
@@ -1110,7 +1189,18 @@ async function fetchStreamingChatCompletion(
     }
     buffer += decoder.decode();
     if (buffer.trim()) await consumeEvent(buffer);
-    return text;
+    const finalRepair = repairStream?.flush() ?? "";
+    if (finalRepair) {
+      text += finalRepair;
+      if (callbacks.onVerifierEvent) {
+        await callbacks.onVerifierEvent({
+          kind: "accept",
+          tokens: [{ index: nextIndex++, text: finalRepair }],
+        });
+      }
+      await callbacks.onTextChunk?.(finalRepair);
+    }
+    return { text, firstTokenMs };
   } finally {
     clearTimeout(timer);
     externalSignal?.removeEventListener("abort", abort);
@@ -1469,6 +1559,18 @@ export class DflashLlamaServer implements LocalInferenceBackend {
    * actually happen" assertion in tests.
    */
   private readonly persistedConversations = new Set<string>();
+  /**
+   * P3 — per-slot single-flight lock. The llama-server itself serializes
+   * requests to the same slot, but the JS layer didn't reflect that:
+   * two concurrent `generateWithUsage()` calls against the same `slotId`
+   * could interleave their metrics-diff windows, producing nonsense
+   * usage numbers and (in streaming mode) interleaving SSE events. This
+   * lock makes the JS side wait for the prior in-flight call to a pinned
+   * slot before issuing the next one. Slot id `-1` ("any free slot") is
+   * intentionally NOT locked — it routes to whichever slot is free, so
+   * serializing on it would block unrelated work.
+   */
+  private readonly slotInFlight = new Map<number, Promise<void>>();
 
   hasLoadedModel(): boolean {
     return this.child !== null && this.loadedPlan !== null;
@@ -1751,6 +1853,21 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     const gpuLayers = resolveDflashGpuLayers(overrides, dflash.gpuLayers);
     const kvOffload = resolveDflashKvOffload(overrides);
 
+    // Catalog KV-cache types (`runtime.kvCache.typeK/typeV` — `qjl1_256` K +
+    // `q4_polar` V for the >8k Eliza-1 tiers, per inference/AGENTS.md §3).
+    // A per-load override (`overrides.cacheTypeK/V`) wins; `start()` then runs
+    // `assertCacheTypeSupportedOnBackend` on whichever value it ends up with,
+    // and the `ELIZA_DFLASH_CACHE_TYPE_K/_V` env vars override even that.
+    const kvCache = catalog?.runtime?.kvCache;
+    const cacheTypeK =
+      typeof overrides?.cacheTypeK === "string"
+        ? overrides.cacheTypeK
+        : kvCache?.typeK;
+    const cacheTypeV =
+      typeof overrides?.cacheTypeV === "string"
+        ? overrides.cacheTypeV
+        : kvCache?.typeV;
+
     // KV-cache spill for context > 64k (AGENTS.md §3 item 7). Every Eliza-1
     // bundle ships the voice loop, so a tier-id match means the tighter voice
     // latency gate applies. A `KvSpillUnsupportedError` thrown here propagates
@@ -1783,6 +1900,8 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         gpuLayers,
         draftGpuLayers: dflash.draftGpuLayers,
         kvOffload: kvOffload ?? undefined,
+        cacheTypeK,
+        cacheTypeV,
         disableThinking: dflash.disableThinking,
         kvSpillPlan,
         params: catalog?.params,
@@ -1829,8 +1948,10 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       : plan.drafterModelPath;
     const port = await resolvePort();
     const host = process.env.ELIZA_DFLASH_HOST?.trim() || DEFAULT_HOST;
-    const cacheTypeK = process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim();
-    const cacheTypeV = process.env.ELIZA_DFLASH_CACHE_TYPE_V?.trim();
+    const cacheTypeK =
+      process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim() || plan.cacheTypeK;
+    const cacheTypeV =
+      process.env.ELIZA_DFLASH_CACHE_TYPE_V?.trim() || plan.cacheTypeV;
     const usableRamMb =
       Math.round(os.totalmem() / BYTES_PER_MB_DFLASH) - ramHeadroomReserveMb();
     const parallel = resolveParallel(
@@ -1912,18 +2033,18 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       args.push("--reasoning", "off");
       args.push("--chat-template-kwargs", '{"enable_thinking":false}');
     }
+    const cacheTypeKSource = process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim()
+      ? "ELIZA_DFLASH_CACHE_TYPE_K"
+      : "runtime.kvCache.typeK";
+    const cacheTypeVSource = process.env.ELIZA_DFLASH_CACHE_TYPE_V?.trim()
+      ? "ELIZA_DFLASH_CACHE_TYPE_V"
+      : "runtime.kvCache.typeV";
     if (cacheTypeK) {
-      assertCacheTypeSupportedOnBackend(
-        "ELIZA_DFLASH_CACHE_TYPE_K",
-        cacheTypeK,
-      );
+      assertCacheTypeSupportedOnBackend(cacheTypeKSource, cacheTypeK);
       args.push("--cache-type-k", cacheTypeK);
     }
     if (cacheTypeV) {
-      assertCacheTypeSupportedOnBackend(
-        "ELIZA_DFLASH_CACHE_TYPE_V",
-        cacheTypeV,
-      );
+      assertCacheTypeSupportedOnBackend(cacheTypeVSource, cacheTypeV);
       args.push("--cache-type-v", cacheTypeV);
     }
 
@@ -1941,7 +2062,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     // server so it mounts `POST /v1/audio/speech` in-process (AGENTS.md §4
     // — one process, not a second `llama-omnivoice-server` over IPC). The
     // route handler in the fork's `server.cpp` (guarded by
-    // `#ifdef MILADY_FUSE_OMNIVOICE`) lazy-`ov_init`s from these paths.
+    // `#ifdef ELIZA_FUSE_OMNIVOICE`) lazy-`ov_init`s from these paths.
     const runningBinaryIsFused =
       resolveFusedDflashBinary() !== null &&
       path.resolve(status.binaryPath) ===
@@ -2328,6 +2449,41 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       typeof dflashArgs.slotId === "number" && dflashArgs.slotId >= -1
         ? dflashArgs.slotId
         : deriveSlotId(args.cacheKey ?? "", this.cacheParallel);
+    // P3 — single-flight per pinned slot. -1 ("any free slot") is
+    // unlocked because the server routes each unpinned call to whichever
+    // slot is free, so serializing on -1 would block unrelated work.
+    if (slotId < 0) {
+      return this.runGenerate(baseUrl, dflashArgs, args, slotId);
+    }
+    const prior = this.slotInFlight.get(slotId);
+    // Chain our work after the prior tail; the new tail is what future
+    // callers will await. Errors don't break the chain (`.catch`).
+    const run = (prior ?? Promise.resolve())
+      .catch(() => {})
+      .then(() => this.runGenerate(baseUrl, dflashArgs, args, slotId));
+    // Store the void-typed continuation so subsequent callers can await
+    // completion without inheriting our result type.
+    const tail = run.then(
+      () => {},
+      () => {},
+    );
+    this.slotInFlight.set(slotId, tail);
+    try {
+      return await run;
+    } finally {
+      // Only clear the entry if no later caller has chained on top.
+      if (this.slotInFlight.get(slotId) === tail) {
+        this.slotInFlight.delete(slotId);
+      }
+    }
+  }
+
+  private async runGenerate(
+    baseUrl: string,
+    dflashArgs: DflashGenerateArgs,
+    args: DflashGenerateArgs | BackendGenerateArgs,
+    slotId: number,
+  ): Promise<DflashGenerateResult> {
     const streaming = Boolean(args.onTextChunk || dflashArgs.onVerifierEvent);
     const prefill =
       typeof dflashArgs.prefill === "string" && dflashArgs.prefill.length > 0
@@ -2337,18 +2493,28 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     const before = await fetchMetricsSnapshot(baseUrl);
     let json: Record<string, unknown> | null = null;
     let text: string;
+    let firstTokenMs: number | null = null;
     if (streaming) {
+      const repairStream =
+        dflashArgs.responseSkeleton || dflashArgs.responseSchema
+          ? new StructuredOutputRepairStream({
+              skeleton: dflashArgs.responseSkeleton,
+              jsonSchema: dflashArgs.responseSchema,
+            })
+          : null;
       // When the assistant turn is prefilled, the model only streams the
       // continuation — surface the full assistant message (prefill + tail)
       // and fire the prefill chunk through the callbacks first so the voice
       // bridge / structured-field tracker sees a complete envelope.
       let idx = 0;
+      let streamedPrefix = prefill;
       if (prefill.length > 0) {
+        streamedPrefix = repairStream?.push(prefill) ?? prefill;
         await dflashArgs.onVerifierEvent?.({
           kind: "accept",
-          tokens: [{ index: idx++, text: prefill }],
+          tokens: [{ index: idx++, text: streamedPrefix }],
         });
-        await args.onTextChunk?.(prefill);
+        await args.onTextChunk?.(streamedPrefix);
       }
       const tail = await fetchStreamingChatCompletion(
         `${baseUrl}/v1/chat/completions`,
@@ -2362,10 +2528,12 @@ export class DflashLlamaServer implements LocalInferenceBackend {
           onTextChunk: args.onTextChunk,
           onVerifierEvent: dflashArgs.onVerifierEvent,
         },
+        repairStream,
         args.signal,
         idx,
       );
-      text = prefill + tail;
+      text = streamedPrefix + tail.text;
+      firstTokenMs = tail.firstTokenMs;
     } else {
       json = (await fetchJson(
         `${baseUrl}/v1/chat/completions`,
@@ -2378,12 +2546,43 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         args.signal,
       )) as Record<string, unknown>;
       text = prefill + extractCompletionText(json);
+      if (dflashArgs.responseSkeleton) {
+        text = repairStructuredOutput(text, {
+          skeleton: dflashArgs.responseSkeleton,
+          jsonSchema: dflashArgs.responseSchema,
+        }).text;
+      } else if (dflashArgs.responseSchema) {
+        text = repairStructuredOutput(text, {
+          jsonSchema: dflashArgs.responseSchema,
+        }).text;
+      }
     }
     const after = await fetchMetricsSnapshot(baseUrl);
     const responseUsage = json ? extractResponseUsage(json) : undefined;
     const usage = diffSnapshots(before, after, responseUsage);
+    const maxTokens =
+      typeof payload.max_tokens === "number" ? payload.max_tokens : null;
+    const metricsCanProveDflashActivity =
+      before.scrapeOk === true &&
+      after.scrapeOk === true &&
+      before.hasGenerationCounters === true &&
+      after.hasGenerationCounters === true;
+    if (
+      shouldRequireActiveDflashForRequest(this.loadedPlan, maxTokens) &&
+      metricsCanProveDflashActivity &&
+      (usage.dflash_drafted_tokens ?? 0) <= 0
+    ) {
+      throw new Error(
+        "[dflash] speculative decoding was required for this Eliza-1 generation, " +
+          "but llama-server produced zero drafted tokens. This usually means the " +
+          "DFlash drafter path initialized as a generic draft model or the " +
+          "bundle's drafter does not match the target checkpoint. Rebuild with " +
+          "the native dflash-draft speculative path or set " +
+          "ELIZA_DFLASH_ALLOW_ZERO_DRAFT=1 only for local diagnostics.",
+      );
+    }
     this.touchSlot(slotId);
-    return { text, usage, slotId };
+    return { text, usage, slotId, firstTokenMs };
   }
 
   /**
@@ -2517,15 +2716,17 @@ export function buildChatCompletionBody(
   slotId: number,
   streaming: boolean,
 ): Record<string, unknown> {
+  const guided = resolveGuidedDecodeForParams(args);
+  const effectivePrefill =
+    guided.prefill ??
+    (typeof args.prefill === "string" && args.prefill.length > 0
+      ? args.prefill
+      : "");
   const messages: Array<{ role: string; content: string }> = [
     { role: "user", content: args.prompt },
   ];
-  const prefill =
-    typeof args.prefill === "string" && args.prefill.length > 0
-      ? args.prefill
-      : "";
-  if (prefill.length > 0) {
-    messages.push({ role: "assistant", content: prefill });
+  if (effectivePrefill.length > 0) {
+    messages.push({ role: "assistant", content: effectivePrefill });
   }
   const payload: Record<string, unknown> = {
     model: "local-dflash",
@@ -2538,15 +2739,21 @@ export function buildChatCompletionBody(
     cache_prompt: true,
     slot_id: slotId,
   };
-  if (prefill.length > 0) {
+  if (effectivePrefill.length > 0) {
     // Continue the partial assistant turn instead of opening a new one.
     payload.continue_final_message = true;
     // Some fork builds spell it `add_generation_prompt: false` instead.
     payload.add_generation_prompt = false;
   }
-  const grammar = resolveGrammarForParams(args);
-  if (grammar) {
-    Object.assign(payload, grammarRequestFields(grammar));
+  if (guided.grammar) {
+    Object.assign(payload, grammarRequestFields(guided.grammar));
+  }
+  if (guided.prefillPlan) {
+    payload.eliza_prefill_plan = {
+      prefix: guided.prefillPlan.prefix,
+      runs: guided.prefillPlan.runs,
+      free_count: guided.prefillPlan.freeCount,
+    };
   }
   return payload;
 }

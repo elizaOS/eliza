@@ -1,4 +1,5 @@
 import { AgentNotReadyError } from "./config-and-auth-rpc";
+import { isRecord } from "./rpc-parse-utils";
 import type {
 	AgentCloudStatusSnapshot,
 	AgentStatusSnapshot,
@@ -14,10 +15,6 @@ const AGENT_STATUS_STATES: readonly AgentStatusState[] = [
 	"restarting",
 	"error",
 ];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function isAgentStatusState(value: unknown): value is AgentStatusState {
 	return (

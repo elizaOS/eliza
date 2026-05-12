@@ -13,6 +13,12 @@
  *   - Linux:  nm -D --defined-only <lib>
  *   - Windows: objdump -T <lib> (cross-toolchain ships it; PE has no
  *     standard `nm -D`).
+ *
+ * For the product `llama-server` *executable* (which static-links
+ * omnivoice-core) the dynamic-symbol view is the wrong one — the `ov_*`
+ * symbols sit in the regular symbol table — so it is inspected with
+ * `nm --defined-only` (full table), falling back to the dynamic view on a
+ * stripped binary.
  */
 
 import { spawnSync } from "node:child_process";
@@ -52,6 +58,41 @@ function pickToolForPlatform(target) {
   return { cmd: "nm", args: ["-D", "--defined-only"] };
 }
 
+/**
+ * Tool for inspecting an *executable* (not a shared lib). The fused
+ * `llama-server` static-links `omnivoice-core`, so the `ov_*` symbols land
+ * in the regular symbol table — `nm -D` (dynamic only) would not see them
+ * and would spuriously report a "dead mount". Use the full symbol table for
+ * executables; on a stripped binary this returns nothing, in which case the
+ * caller falls back to the dynamic-symbol view.
+ */
+function pickToolForExecutable(target) {
+  if (target.startsWith("windows-")) {
+    // PE: objdump -t lists the full COFF symbol table.
+    return { cmd: "x86_64-w64-mingw32-objdump", args: ["-t"] };
+  }
+  // ELF / Mach-O: `nm --defined-only` over the full symbol table.
+  return { cmd: "nm", args: ["--defined-only"] };
+}
+
+function dumpSymbolsBestEffort({ tool, file }) {
+  const result = spawnSync(tool.cmd, [...tool.args, file], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 30_000,
+    // The full symbol table of a static-linked executable is large (~1 MB+);
+    // the default 1 MB maxBuffer trips ENOBUFS, which would mask the table.
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (
+    result.error ||
+    (typeof result.status === "number" && result.status !== 0)
+  ) {
+    return "";
+  }
+  return result.stdout || "";
+}
+
 function locateFusedLibrary({ outDir, target }) {
   const candidates = [];
   if (target.startsWith("darwin-")) {
@@ -79,11 +120,23 @@ function locateFusedServer({ outDir, target }) {
   return null;
 }
 
+function locateProductServer({ outDir, target }) {
+  const names = target.startsWith("windows-")
+    ? ["llama-server.exe"]
+    : ["llama-server"];
+  for (const name of names) {
+    const full = path.join(outDir, name);
+    if (fs.existsSync(full)) return full;
+  }
+  return null;
+}
+
 function dumpSymbols({ tool, file }) {
   const result = spawnSync(tool.cmd, [...tool.args, file], {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 30_000,
+    maxBuffer: 64 * 1024 * 1024,
   });
   if (result.error) {
     throw new Error(
@@ -148,7 +201,10 @@ function hasElfNeededLlama(lib) {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 30_000,
     });
-    if (result.error || (typeof result.status === "number" && result.status !== 0)) {
+    if (
+      result.error ||
+      (typeof result.status === "number" && result.status !== 0)
+    ) {
       continue;
     }
     const out = result.stdout || "";
@@ -165,7 +221,7 @@ function hasElfNeededLlama(lib) {
  *   - The shared library MUST exist.
  *   - The library's exports MUST contain /llama_/ and /ov_/
  *     symbol families.
- *   - The library MUST export every `eliza_inference_*` ABI v2 symbol
+ *   - The library MUST export every `eliza_inference_*` ABI v3 symbol
  *     declared in `ffi.h`; otherwise the JS/Bun bridge can dlopen a
  *     half-fused artifact and only fail later at voice activation.
  *
@@ -191,6 +247,12 @@ export const REQUIRED_ELIZA_INFERENCE_SYMBOLS = Object.freeze([
   "eliza_inference_tts_synthesize_stream",
   "eliza_inference_cancel_tts",
   "eliza_inference_set_verifier_callback",
+  // ABI v3 — native Silero VAD backend.
+  "eliza_inference_vad_supported",
+  "eliza_inference_vad_open",
+  "eliza_inference_vad_process",
+  "eliza_inference_vad_reset",
+  "eliza_inference_vad_close",
   "eliza_inference_free_string",
 ]);
 
@@ -290,19 +352,45 @@ function verifyFusedSymbolsInner({ outDir, target }) {
   );
   if (missingAbiSymbols.length > 0) {
     throw new Error(
-      `[omnivoice-fuse] symbol-verify: libelizainference at ${lib} is missing ABI v2 symbol(s): ${missingAbiSymbols.join(", ")}. Rebuild the fused target against packages/app-core/scripts/omnivoice-fuse/ffi.h.`,
+      `[omnivoice-fuse] symbol-verify: libelizainference at ${lib} is missing ABI v3 symbol(s): ${missingAbiSymbols.join(", ")}. Rebuild the fused target against packages/app-core/scripts/omnivoice-fuse/ffi.h.`,
     );
   }
 
-  // Optional fused-server check: it's expected, but the route-mount work
-  // is a TODO (see cmake-graft.mjs). If it exists, verify its symbol
-  // families too — the executable must drag in omnivoice-core, not just
-  // llama. If it doesn't exist, that's also acceptable for now (the
-  // shared library is the contract surface for the bridges).
+  const productServer = locateProductServer({ outDir, target });
+  if (!productServer) {
+    throw new Error(
+      `[omnivoice-fuse] symbol-verify: fused target did not install llama-server in ${outDir}; /v1/audio/speech cannot be served from the product HTTP runtime`,
+    );
+  }
+  // An executable that static-links omnivoice-core carries `ov_*` in the
+  // regular symbol table, not the dynamic one — inspect the full table
+  // (with the dynamic-symbol view as the stripped-binary fallback).
+  const productServerSyms =
+    dumpSymbolsBestEffort({
+      tool: pickToolForExecutable(target),
+      file: productServer,
+    }) || dumpSymbols({ tool, file: productServer });
+  const productServerReport = {
+    llamaSymbolCount: countExportedSymbolFamily(productServerSyms, "llama"),
+    omnivoiceSymbolCount: countExportedSymbolFamily(productServerSyms, "ov"),
+    path: productServer,
+  };
+  if (productServerReport.omnivoiceSymbolCount === 0) {
+    throw new Error(
+      `[omnivoice-fuse] symbol-verify: product llama-server at ${productServer} does not link OmniVoice symbols; /v1/audio/speech route would be a dead mount`,
+    );
+  }
+
+  // Legacy CLI smoke target: not product-serving, but useful for manual
+  // OmniVoice checks and co-residency evidence when present.
   let serverReport = null;
   const server = locateFusedServer({ outDir, target });
   if (server) {
-    const serverSyms = dumpSymbols({ tool, file: server });
+    const serverSyms =
+      dumpSymbolsBestEffort({
+        tool: pickToolForExecutable(target),
+        file: server,
+      }) || dumpSymbols({ tool, file: server });
     serverReport = {
       llamaSymbolCount: countExportedSymbolFamily(serverSyms, "llama"),
       omnivoiceSymbolCount: countExportedSymbolFamily(serverSyms, "ov"),
@@ -322,6 +410,7 @@ function verifyFusedSymbolsInner({ outDir, target }) {
     omnivoiceSymbols: [...REQUIRED_OMNIVOICE_SYMBOLS],
     abiSymbolCount: REQUIRED_ELIZA_INFERENCE_SYMBOLS.length,
     abiSymbols: [...REQUIRED_ELIZA_INFERENCE_SYMBOLS],
+    productServer: productServerReport,
     server: serverReport,
   };
 }
@@ -378,6 +467,9 @@ function main() {
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+if (
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
+) {
   main();
 }

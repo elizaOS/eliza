@@ -70,4 +70,26 @@ describe("carrot manifest validation", () => {
       "permissions.isolation",
     ]);
   });
+
+  it("rejects ids that could escape the carrot store root", () => {
+    const result = validateCarrotManifest({
+      id: "../../outside",
+      name: "Dash",
+      version: "0.1.0",
+      description: "IDE",
+      mode: "window",
+      permissions: {},
+      view: {
+        relativePath: "views/main/index.html",
+        title: "Dash",
+        width: 1200,
+        height: 800,
+      },
+      worker: { relativePath: "worker.js" },
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.issues.map((issue) => issue.path)).toContain("$.id");
+  });
 });

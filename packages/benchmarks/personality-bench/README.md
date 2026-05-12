@@ -42,7 +42,7 @@ false-positive denominator when reconciling with hand-graded ground truth.
 ```sh
 # Grade a recorded run dir
 bun run packages/benchmarks/personality-bench/src/runner.ts \
-  --run-dir ~/.milady/runs/personality/<agent>-<ts> \
+  --run-dir ~/.eliza/runs/personality/<agent>-<ts> \
   --output report.md \
   --output-json report.json
 

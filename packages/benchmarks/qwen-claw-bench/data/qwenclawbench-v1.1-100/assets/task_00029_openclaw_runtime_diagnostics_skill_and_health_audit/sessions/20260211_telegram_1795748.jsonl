@@ -1,0 +1,8 @@
+{"type": "session_start", "session_id": "telegram_1795748", "model": "claude-sonnet-4-20250514", "created_at": "2026-02-11T07:09:21.503342", "user_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa06", "channel": "telegram"}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-11T07:13:36.662937", "session_id": "telegram_1795748", "seq": 1, "usage": {"prompt_tokens": 5923, "completion_tokens": 2600, "total_tokens": 7979}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-11T07:14:21.309770", "session_id": "telegram_1795748", "seq": 2, "usage": {"prompt_tokens": 604, "completion_tokens": 1089, "total_tokens": 4430}}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-02-11T07:15:09.844702", "session_id": "telegram_1795748", "seq": 3, "usage": {"prompt_tokens": 879, "completion_tokens": 3632, "total_tokens": 7542}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-11T07:19:59.348897", "session_id": "telegram_1795748", "seq": 4, "usage": {"prompt_tokens": 2402, "completion_tokens": 2930, "total_tokens": 3270}}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-02-11T07:23:13.584732", "session_id": "telegram_1795748", "seq": 5, "usage": {"prompt_tokens": 578, "completion_tokens": 878, "total_tokens": 2387}}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-11T07:26:52.888328", "session_id": "telegram_1795748", "seq": 6}
+{"type": "session_end", "session_id": "telegram_1795748", "ended_at": "2026-02-11T07:27:02.888328", "total_messages": 6, "status": "completed"}

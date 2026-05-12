@@ -5,8 +5,8 @@
  * auth -> onboarding -> agent start -> chat -> wallet operations -> agent stop.
  */
 
-import path from "node:path";
 import crypto from "node:crypto";
+import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { createElizaPlugin } from "@elizaos/agent";
 import { config as loadDotenv } from "dotenv";
@@ -51,9 +51,7 @@ async function seedMachineSession(
   }
 
   const { AuthStore } = await import("../../src/services/auth-store");
-  const store = new AuthStore(
-    db as ConstructorParameters<typeof AuthStore>[0],
-  );
+  const store = new AuthStore(db as ConstructorParameters<typeof AuthStore>[0]);
   const now = Date.now();
   const identity = await store.createIdentity({
     id: crypto.randomUUID(),
@@ -231,9 +229,7 @@ async function startLiveServer(args: {
   });
   await seedMachineSession(runtimeResult, args.apiToken);
   const { startApiServer } = await import("../../src/api/server");
-  const { _resetForTesting } = await import(
-    "@elizaos/plugin-wallet"
-  );
+  const { _resetForTesting } = await import("@elizaos/plugin-wallet");
   _resetForTesting();
   const server = await startApiServer({
     port: 0,

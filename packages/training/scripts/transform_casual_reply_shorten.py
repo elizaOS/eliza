@@ -207,7 +207,7 @@ def is_casual(rec: dict) -> bool:
     return bool(CASUAL_USER_MSG_RE.match(cm.strip())) or len(cm.strip()) < 25
 
 
-TOON_TEXT_RE = re.compile(
+NATIVE_JSON_TEXT_RE = re.compile(
     r'(^|\n)(text:\s*)("(?:[^"\\]|\\.)*")(\s*(?=\n|$))',
     re.DOTALL,
 )
@@ -230,7 +230,7 @@ def transform_record(rec: dict, idx: int, stats: dict) -> dict:
         new_inner = shorten_casual(inner, idx=idx, stats=stats)
         return f"{prefix}{key}{json.dumps(new_inner, ensure_ascii=False)}{suffix}"
 
-    new_er = TOON_TEXT_RE.sub(_replace, er)
+    new_er = NATIVE_JSON_TEXT_RE.sub(_replace, er)
     if new_er != er:
         rec["expectedResponse"] = new_er
         stats["records_changed"] = stats.get("records_changed", 0) + 1

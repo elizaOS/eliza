@@ -38,6 +38,7 @@ import {
 import {
   ensureRuntimeSqlCompatibility,
   isMobilePlatform,
+  resolveDesktopApiPort,
   resolveServerOnlyPort,
   syncAppEnvToEliza,
   syncElizaEnvAliases,
@@ -686,7 +687,26 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
  * so we do not re-download multi‑GB models. Opt out:
  * `ELIZA_EMBEDDING_WARMUP_NO_REUSE=1`.
  */
+// In-flight promise cache so concurrent callers (bootElizaRuntime +
+// startEliza both run on agent boot) share a single download. Without this,
+// two `fs.createWriteStream(dest)` open the same GGUF target concurrently,
+// and the first to fail calls `safeUnlink(dest)` — which deletes the file
+// out from under the second's pending write. Downstream `llama.loadModel`
+// then opens the now-missing file and throws ENOENT, which surfaces as an
+// uncaughtException and kills the agent.
+let warmupInFlight: Promise<void> | null = null;
+
 async function warmupEmbeddingModel(
+  onProgress?: EmbeddingProgressCallback,
+): Promise<void> {
+  if (warmupInFlight) return warmupInFlight;
+  warmupInFlight = warmupEmbeddingModelImpl(onProgress).finally(() => {
+    warmupInFlight = null;
+  });
+  return warmupInFlight;
+}
+
+async function warmupEmbeddingModelImpl(
   onProgress?: EmbeddingProgressCallback,
 ): Promise<void> {
   // Mobile bundle does not ship `node-llama-cpp` (no Android prebuild) and
@@ -1101,7 +1121,13 @@ export async function startEliza(
       }
 
       const { startApiServer } = await import("../api/server");
-      const apiPort = resolveServerOnlyPort(process.env);
+      // Desktop launcher sets ELIZA_API_PORT (default 31337) to match the
+      // renderer's hardcoded API base; honor it when present. CLI/server-only
+      // mode (no ELIZA_API_PORT) keeps the legacy `resolveServerOnlyPort`
+      // default (2138) so this change is transparent for non-desktop users.
+      const apiPort = process.env.ELIZA_API_PORT
+        ? resolveDesktopApiPort(process.env)
+        : resolveServerOnlyPort(process.env);
       const { port: actualApiPort } = await startApiServer({
         port: apiPort,
         runtime: currentRuntime,
@@ -1195,6 +1221,16 @@ export async function startEliza(
 }
 
 function isDirectRuntimeRun(): boolean {
+  if (
+    (globalThis as { __ELIZA_MOBILE_BUNDLE__?: unknown })
+      .__ELIZA_MOBILE_BUNDLE__ === true ||
+    (globalThis as { __ELIZA_DISABLE_DIRECT_RUN?: unknown })
+      .__ELIZA_DISABLE_DIRECT_RUN === true ||
+    process.argv.includes("ios-bridge") ||
+    process.env.ELIZA_DISABLE_DIRECT_RUN === "1"
+  ) {
+    return false;
+  }
   const scriptArg = process.argv[1];
   if (!scriptArg) {
     return false;

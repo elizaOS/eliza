@@ -257,15 +257,16 @@ async def run_cli(args: argparse.Namespace) -> int:
     # Spin up the elizaOS TS benchmark bridge server unless one is already
     # reachable via ELIZA_BENCH_URL.
     server_mgr = None
-    if not args.dry_run and not os.environ.get("ELIZA_BENCH_URL"):
+    if (
+        not args.dry_run
+        and (not os.environ.get("ELIZA_BENCH_URL") or not os.environ.get("ELIZA_BENCH_TOKEN"))
+    ):
         from eliza_adapter.server_manager import ElizaServerManager
 
         server_mgr = ElizaServerManager()
         server_mgr.start()
         os.environ["ELIZA_BENCH_TOKEN"] = server_mgr.token
-        os.environ.setdefault(
-            "ELIZA_BENCH_URL", f"http://localhost:{server_mgr.port}"
-        )
+        os.environ["ELIZA_BENCH_URL"] = f"http://localhost:{server_mgr.port}"
 
     # Build configuration
     config = TerminalBenchConfig(
@@ -330,7 +331,10 @@ async def run_cli(args: argparse.Namespace) -> int:
 
             if args.dry_run:
                 return 0
-            return 0 if report.accuracy > 0 else 1
+            # A completed benchmark run is a successful process invocation even
+            # when the model scores 0%. The orchestrator extracts score from
+            # the JSON report and treats nonzero exits as harness failures.
+            return 0
     finally:
         if server_mgr is not None:
             server_mgr.stop()

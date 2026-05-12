@@ -32,6 +32,8 @@ import {
   type GatewayDiscoveryEndpoint,
   gatewayEndpointToApiBase,
 } from "../../bridge/gateway-discovery";
+import { APP_RESUME_EVENT } from "../../events";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { normalizeLanguage } from "../../i18n";
 import type { UiLanguage } from "../../i18n/messages";
 import { autoDownloadRecommendedLocalModelInBackground } from "../../onboarding/auto-download-recommended";
@@ -77,6 +79,7 @@ import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Spinner } from "../ui/spinner";
 import { TooltipHint } from "../ui/tooltip";
+import { ProvisioningChatView } from "./ProvisioningChatView";
 
 const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 
@@ -129,7 +132,7 @@ function resolveLocalAgentApiBase(): string {
 }
 
 /**
- * Branded native shells (AOSP/MiladyOS, where the device IS the on-device
+ * Branded native shells (AOSP/ElizaOS, where the device IS the on-device
  * agent) expose the agent's per-boot bearer through a synchronous
  * `window.ElizaNative.getLocalAgentToken()` JavascriptInterface. Reading
  * it during the local-mode wire-up means `/api/auth/status` can
@@ -229,6 +232,7 @@ type CloudStage =
   | "retry"
   | "creating"
   | "provisioning"
+  | "chat"
   | "connecting";
 
 type LocalStage = "provider" | "config";
@@ -394,6 +398,7 @@ export function resolveRuntimeChoices(args: {
 }
 
 export function RuntimeGate() {
+  useRenderGuard("RuntimeGate");
   const {
     setState,
     completeOnboarding,
@@ -421,6 +426,9 @@ export function RuntimeGate() {
   // Cloud sub-view
   const [cloudStage, setCloudStage] = React.useState<CloudStage>(
     elizaCloudConnected ? "loading" : "login",
+  );
+  const [currentAgentId, setCurrentAgentId] = React.useState<string | null>(
+    null,
   );
   const [error, setError] = React.useState<string | null>(null);
   const [provisionStatus, setProvisionStatus] = React.useState("");
@@ -519,6 +527,40 @@ export function RuntimeGate() {
     return () => {
       cancelled = true;
       if (pollTimer) clearTimeout(pollTimer);
+    };
+  }, [isDesktop, isDev, synchronousLocal]);
+
+  // ── Re-probe `/api/health` on app resume ──────────────────────────
+  // iOS / Android can suspend the WKWebView for minutes at a time. On
+  // resume the FGS or dev server may have respawned on a new port (the
+  // dev orchestrator auto-shifts when defaults are busy). Re-running the
+  // probe nudges the gate back to the picker UI instead of leaving the
+  // user stranded on a stale chooser screen with a tile that points at a
+  // dead endpoint.
+  React.useEffect(() => {
+    if (synchronousLocal) return;
+    if (!isAndroid && !isIOS) return;
+    const onResume = (): void => {
+      shouldShowLocalOption({ isDesktop, isDev, isAndroid, isIOS })
+        .then((ok) => {
+          setLocalProbeResult(ok);
+          if (!ok) {
+            // Fall back to the chooser when the probe fails so the user
+            // can pick a different runtime instead of seeing a dead
+            // Local tile.
+            setSubView((current) =>
+              current === "local" ? "chooser" : current,
+            );
+          }
+        })
+        .catch(() => {
+          setLocalProbeResult(false);
+          setSubView((current) => (current === "local" ? "chooser" : current));
+        });
+    };
+    document.addEventListener(APP_RESUME_EVENT, onResume);
+    return () => {
+      document.removeEventListener(APP_RESUME_EVENT, onResume);
     };
   }, [isDesktop, isDev, synchronousLocal]);
 
@@ -1226,6 +1268,7 @@ export function RuntimeGate() {
           }
           const primaryApiBase = resolveCloudAgentApiBase(primary);
           if (primary.status !== "running" || !primaryApiBase) {
+            setCurrentAgentId(primary.agent_id);
             await provisionAndConnect(primary.agent_id);
             return;
           }
@@ -1235,6 +1278,7 @@ export function RuntimeGate() {
           );
           if (cancelled) return;
           if (!reachable) {
+            setCurrentAgentId(primary.agent_id);
             await provisionAndConnect(primary.agent_id);
             return;
           }
@@ -1264,6 +1308,11 @@ export function RuntimeGate() {
       // cancelled=true, and the post-await guard then bails before
       // provisionAndConnect runs.
       setCloudStage("auto-creating");
+      setCurrentAgentId(createRes.data.agentId);
+
+      // Show the provisioning chat while the container warms up, then
+      // kick off provisionAndConnect in the background (non-blocking).
+      setCloudStage("chat");
 
       // Compat create returns a jobId because the cloud queues provisioning
       // automatically. Pass it through so we skip the redundant provision call
@@ -1424,7 +1473,9 @@ export function RuntimeGate() {
               ? t("runtimegate.cloudHeaderLogin", {
                   defaultValue: "Sign in to Eliza Cloud",
                 })
-              : cloudStage === "auto-creating" || cloudStage === "loading"
+              : cloudStage === "auto-creating" ||
+                  cloudStage === "loading" ||
+                  cloudStage === "chat"
                 ? t("runtimegate.cloudHeaderProvisioning", {
                     defaultValue: "Setting up your agent",
                   })
@@ -1443,8 +1494,9 @@ export function RuntimeGate() {
         />
 
         {/* Local embeddings preference — visible whenever the cloud path is
-            active and the user can still interact (not yet connecting). */}
-        {cloudStage !== "connecting" && (
+            active and the user can still interact (not yet connecting or in
+            provisioning chat). */}
+        {cloudStage !== "connecting" && cloudStage !== "chat" && (
           <LocalEmbeddingsCheckbox
             checked={useLocalEmbeddings}
             onCheckedChange={setUseLocalEmbeddings}
@@ -1488,6 +1540,33 @@ export function RuntimeGate() {
               </p>
             )}
             <BackButton t={t} onClick={() => setSubView("chooser")} />
+          </div>
+        )}
+
+        {cloudStage === "chat" && (
+          <div className="mt-4 flex w-full max-w-[28rem] flex-col gap-3">
+            <ProvisioningChatView
+              agentId={currentAgentId}
+              cloudApiBase={client.getBaseUrl()}
+              onContainerReady={(bridgeUrl) => {
+                void client
+                  .getCloudCompatAgent(currentAgentId ?? "")
+                  .then((agentRes) => {
+                    if (agentRes.success) {
+                      void finishAsCloud({
+                        ...agentRes.data,
+                        bridge_url: bridgeUrl ?? agentRes.data.bridge_url,
+                        containerUrl: bridgeUrl ?? agentRes.data.containerUrl,
+                      });
+                    }
+                  })
+                  .catch(() => {
+                    // provisionAndConnect is still running in the background;
+                    // let it complete and call finishAsCloud when ready.
+                  });
+              }}
+              onBack={() => setCloudStage("loading")}
+            />
           </div>
         )}
 
@@ -2070,7 +2149,7 @@ function WelcomeChooser({
           }}
           className="text-2xl font-light uppercase tracking-tight text-white sm:text-3xl md:text-4xl"
         >
-          {t("runtimegate.welcomeTitle", { defaultValue: "Welcome to Milady" })}
+          {t("runtimegate.welcomeTitle", { defaultValue: "Welcome to Eliza" })}
         </h1>
         <p
           className="max-w-md text-sm leading-relaxed text-white/85"

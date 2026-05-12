@@ -10,15 +10,12 @@ import {
   findBankItemByName,
   findGroundItemByName,
   findInventoryItem,
-  findInventoryItemById,
   findLocByName,
   findNpcByName,
   findShopItemByName,
   getOptionIndex,
-  getSkillLevel,
   isInventoryFull,
   waitForMovementComplete,
-  walkStepToward,
   withDoorRetry,
 } from "./actions-helpers.js";
 import type { BotSDK } from "./index.js";
@@ -944,7 +941,7 @@ export class BotActions {
       await this.walkTo(npc.worldX, npc.worldZ, `approach ${npc.name}`);
     }
 
-    const opIdx = getOptionIndex(npc.options, "Trade");
+    const _opIdx = getOptionIndex(npc.options, "Trade");
 
     try {
       await this.sdk.sendOpenShop(npc.nid);

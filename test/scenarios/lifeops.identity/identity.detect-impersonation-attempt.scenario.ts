@@ -7,7 +7,8 @@ import {
 
 export default scenario({
   id: "identity.detect-impersonation-attempt",
-  title: "Flag a possible impersonation: same display name, different platform ID",
+  title:
+    "Flag a possible impersonation: same display name, different platform ID",
   domain: "lifeops.identity",
   tags: ["lifeops", "identity", "impersonation", "security"],
   description:
@@ -59,9 +60,22 @@ export default scenario({
       assertTurn: expectTurnToCallAction({
         acceptedActions: ["RELATIONSHIP", "LIFE", "INBOX"],
         description: "impersonation flag",
-        includesAny: ["impersonation", "different", "user_id", "Jordan", "not", "match"],
+        includesAny: [
+          "impersonation",
+          "different",
+          "user_id",
+          "Jordan",
+          "not",
+          "match",
+        ],
       }),
-      responseIncludesAny: ["impersonation", "different", "Jordan", "not", "match"],
+      responseIncludesAny: [
+        "impersonation",
+        "different",
+        "Jordan",
+        "not",
+        "match",
+      ],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

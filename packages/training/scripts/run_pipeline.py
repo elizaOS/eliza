@@ -10,22 +10,25 @@ Stages (skippable individually; see flags):
                                                      checkpoints/<run>/gate_report.json
   5. PolarQuant + TurboQuant + QJL quantization   → checkpoints/<run>/final-<q>/
   6. Quantized benchmark                          → benchmarks/<run>/<q>/
-  6b. Milady-typed GGUF bundle (--milady-bundle,  → checkpoints/<run>/milady-optimized/
+  6b. Eliza-1-typed GGUF bundle (--eliza1-bundle,  → checkpoints/<run>/eliza1-optimized/
       auto-on if the elizaOS/llama.cpp fork is       (Q4_POLAR GGUF + qjl_config.json +
-      found): optimize_for_milady.py +                turboquant.json + milady_manifest.json),
+      found): optimize_for_eliza1.py +                turboquant.json + eliza1_manifest.json),
       optional DFlash drafter (--dflash-drafter)     checkpoints/<run>/dflash/drafter-<tier>.gguf
+  6c. Throughput bench (llama-bench on the GGUFs)  → checkpoints/<run>/evals/throughput.json
+      — prefill + gen tokens/sec, CUDA build if       (best -fa 1 -b 2048 -ngl 99 on GPU)
+      available; --skip-throughput-bench to skip
   7. Publish (--publish, requires --bundle-dir)   → python -m scripts.publish.orchestrator
 
 Usage:
     # Validation smoke on the smallest Eliza-1 size, tiny 1k-per-source mix.
     uv run --extra train python scripts/run_pipeline.py \
-        --registry-key qwen3-0.6b \
+        --registry-key qwen3.5-0.8b \
         --from-scratch --sample-per-source 1000 \
         --epochs 1 --eval-mode smoke
 
     # Only build the validation dataset (skip everything else).
     uv run python scripts/run_pipeline.py \
-        --registry-key qwen3-0.6b --from-scratch --sample-per-source 1000 \
+        --registry-key qwen3.5-0.8b --from-scratch --sample-per-source 1000 \
         --skip-base-bench --skip-finetune --skip-quantize --skip-bench
 
     # Production run on eliza-1-2b.
@@ -37,8 +40,8 @@ Usage:
         --registry-key eliza-1-2b \
         --trajectory-export ../trajectories/export.jsonl --epochs 1
 
-    # Cloud-tier run on eliza-1-27b — needs 2× H200 SXM,
-    # use scripts/train_nebius.sh which wraps run_pipeline.py with FSDP.
+    # Cloud-tier run on eliza-1-27b — needs 2× H200 SXM;
+    # use scripts/train_vast.sh which wraps run_pipeline.py with FSDP.
 """
 
 from __future__ import annotations
@@ -46,6 +49,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -78,11 +82,11 @@ def _read_json(path: Path) -> dict | None:
         return None
 
 
-def _resolve_milady_llama_cpp() -> Path | None:
+def _resolve_eliza1_llama_cpp() -> Path | None:
     """Locate the elizaOS/llama.cpp fork (Q4_POLAR / QJL1_256 / dflash GGML
     types). Order: $LLAMA_CPP_DIR → in-repo fork submodule
-    (packages/inference/llama.cpp) → ~/.cache/eliza-dflash/milady-llama-cpp →
-    ~/src/milady-llama.cpp. Returns None if none has a convert_hf_to_gguf.py."""
+    (packages/inference/llama.cpp) → ~/.cache/eliza-dflash/eliza-llama-cpp →
+    ~/src/eliza-llama.cpp. Returns None if none has a convert_hf_to_gguf.py."""
     import os
     cands: list[Path] = []
     env = os.environ.get("LLAMA_CPP_DIR")
@@ -94,8 +98,8 @@ def _resolve_milady_llama_cpp() -> Path | None:
             cands.append(cand)
             break
     cands += [
-        Path.home() / ".cache" / "eliza-dflash" / "milady-llama-cpp",
-        Path.home() / "src" / "milady-llama.cpp",
+        Path.home() / ".cache" / "eliza-dflash" / "eliza-llama-cpp",
+        Path.home() / "src" / "eliza-llama.cpp",
     ]
     for c in cands:
         if (c / "convert_hf_to_gguf.py").is_file():
@@ -103,12 +107,88 @@ def _resolve_milady_llama_cpp() -> Path | None:
     return None
 
 
+def _resolve_llama_bench(fork_dir: Path | None) -> Path | None:
+    """Find a `llama-bench` binary, preferring the fastest backend available:
+    CUDA build > Vulkan build > plain CPU build > $PATH. Backend priority is the
+    OUTER loop so a CUDA build under ~/.cache wins over a CPU build under the
+    repo (a contended throughput bench once silently ran on the CPU binary while
+    a perfectly good CUDA build sat in ~/.cache/eliza-dflash). Globs the
+    per-backend build dirs rather than hard-coding paths so it survives the
+    `milady`↔`eliza1` renames and the in-repo-submodule vs ~/.cache layouts."""
+    import glob
+    import shutil
+    home = str(Path.home())
+    bases = [b for b in (ROOT / "vendor" / "llama.cpp", fork_dir) if b is not None]
+    cache_globs = [f"{home}/.cache/eliza-dflash/*-llama-cpp"]
+
+    def _per_base(suffixes: list[str]) -> list[str]:
+        out: list[str] = []
+        for base in bases:
+            out += [f"{base}/{s}/bin/llama-bench" for s in suffixes]
+        for cg in cache_globs:
+            out += [f"{cg}/{s}/bin/llama-bench" for s in suffixes]
+        return out
+
+    # Outer = backend tier (fastest first); inner = location.
+    pats: list[str] = []
+    pats += _per_base(["build-cuda", "build/*cuda*"])      # CUDA
+    pats += _per_base(["build-vulkan", "build/*vulkan*"])  # Vulkan
+    pats += _per_base(["build", "build/*"])                # CPU / unspecified
+    for pat in pats:
+        for m in sorted(glob.glob(pat)):
+            p = Path(m)
+            if p.is_file() and os.access(p, os.X_OK):
+                return p
+    w = shutil.which("llama-bench")
+    return Path(w) if w else None
+
+
+def _cuda_available() -> bool:
+    try:
+        import torch  # type: ignore
+        return bool(torch.cuda.is_available())
+    except Exception:
+        return False
+
+
+def _throughput_bench(gguf: Path, bench_bin: Path, *, gpu: bool) -> dict | None:
+    """Run llama-bench on a GGUF and return {backend, results:[{n_prompt,n_gen,
+    avg_ts,stddev_ts}], cmd}. Best-effort — returns None on any failure."""
+    cmd = [str(bench_bin), "-m", str(gguf), "-p", "256,512", "-n", "64,128",
+           "-o", "json"]
+    if gpu:
+        cmd += ["-ngl", "99", "-fa", "1", "-b", "2048"]
+    else:
+        cmd += ["-t", str(min(8, os.cpu_count() or 4))]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    except (subprocess.TimeoutExpired, OSError) as e:
+        log.warning("llama-bench failed for %s: %s", gguf, e)
+        return None
+    if proc.returncode != 0:
+        log.warning("llama-bench rc=%d for %s; stderr tail: %s",
+                    proc.returncode, gguf, (proc.stderr or "")[-300:])
+        return None
+    try:
+        rows = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        log.warning("llama-bench output not JSON for %s", gguf)
+        return None
+    backend = rows[0].get("backend") if rows else None
+    results = [
+        {"n_prompt": r.get("n_prompt"), "n_gen": r.get("n_gen"),
+         "avg_ts": r.get("avg_ts"), "stddev_ts": r.get("stddev_ts")}
+        for r in rows
+    ]
+    return {"gguf": str(gguf), "backend": backend, "results": results,
+            "cmd": " ".join(cmd)}
+
+
 def _format_ok_rate(summary: dict | None) -> float | None:
     """Extract a 0..1 parsable-output rate from a benchmark summary.json.
 
-    Handles both benchmark scripts:
+    Handles the native tool-call benchmark:
       - native_tool_call_bench.py: buckets[*].{structure_ok,n}
-      - eliza_bench.py:            buckets[*].{format_ok,n}
     Returns the micro-averaged rate over all buckets, or None when there
     are no scored records.
     """
@@ -125,8 +205,6 @@ def _format_ok_rate(summary: dict | None) -> float | None:
             continue
         ok = b.get("structure_ok")
         if ok is None:
-            ok = b.get("format_ok")
-        if ok is None:
             continue
         num += int(ok)
         den += n
@@ -138,7 +216,7 @@ def _format_ok_rate(summary: dict | None) -> float | None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--registry-key", required=True,
-                    help="One of: qwen3-0.6b, eliza-1-2b, eliza-1-9b, "
+                    help="One of: qwen3.5-0.8b, eliza-1-2b, eliza-1-9b, "
                          "eliza-1-27b. Internal upstream keys are aliases.")
     ap.add_argument("--run-name", default=None,
                     help="Default: <registry-key>-apollo-<unix-ts>.")
@@ -147,10 +225,38 @@ def main() -> int:
         "--lr", type=float, default=1e-5,
         help="Learning rate for full-parameter SFT with APOLLO. Default "
              "1e-5 follows the APOLLO paper §5 SFT recipe — train_local.py's "
-             "own default of 2e-4 is the LoRA rate and would diverge here.",
+             "own default of 2e-4 is for short local smoke runs and would diverge here.",
+    )
+    ap.add_argument(
+        "--use-liger", choices=("auto", "on", "off"), default="auto",
+        help="Liger Triton kernels for SFT (fused CE + RMSNorm/SwiGLU/RoPE). "
+             "auto = on when CUDA + a working Triton runtime are present, off "
+             "otherwise (train_local.py probes Triton and falls back rather "
+             "than crashing if it can't JIT-compile — e.g. missing "
+             "python3.x-dev headers).",
     )
     ap.add_argument("--max-samples", type=int, default=0,
                     help="Cap training samples (0 = full corpus).")
+    ap.add_argument(
+        "--micro-batch", type=int, default=0,
+        help="Per-device micro-batch size for SFT (forwarded to "
+             "train_local.py --batch-size). 0 = use the registry default for "
+             "the tier. Per benchmarks/APOLLO_TUNING.md, --micro-batch 2 "
+             "--grad-accum 4 keeps the 0.6B GPU occupied at zero quality cost "
+             "(same effective batch); validate VRAM with memory_calc.py first.",
+    )
+    ap.add_argument(
+        "--grad-accum", type=int, default=0,
+        help="Gradient-accumulation steps for SFT (forwarded to "
+             "train_local.py --grad-accum). 0 = use the registry default.",
+    )
+    ap.add_argument(
+        "--max-seq-len", type=int, default=0,
+        help="Training sequence length for SFT (forwarded to "
+             "train_local.py --max-seq-len). 0 = use the registry default for "
+             "the tier (8k for 2B, 16k for 9B, 64k for 27B). Validate VRAM "
+             "with memory_calc.py --shape <key> before overriding.",
+    )
     ap.add_argument("--train-file", default=None,
                     help="Training JSONL. Defaults to data/final/train.jsonl "
                          "unless --trajectory-export is provided.")
@@ -189,7 +295,18 @@ def main() -> int:
     ap.add_argument(
         "--eval-mode", choices=("smoke", "full"), default="smoke",
         help="Eval-gate mode written into evals/aggregate.json and used for "
-             "the gate report. smoke = structural gates only (default).",
+             "the gate report. smoke = structural gates only (default). NOTE: "
+             "this pipeline only produces the structural format_ok metric; the "
+             "held-out quality / voice / e2e measurements that full-mode gates "
+             "expect come from scripts/eval/eliza1_eval_suite.py run against a "
+             "staged bundle (the publish orchestrator runs that) — `full` here "
+             "just tags the report mode.",
+    )
+    ap.add_argument(
+        "--allow-unvalidated-corpus", action="store_true",
+        help="Skip the validate_corpus.py --strict gate that normally runs on "
+             "the train/val/test splits before fine-tuning. AGENTS.md mandates "
+             "the validator; this escape hatch is for emergencies only.",
     )
     pub = ap.add_mutually_exclusive_group()
     pub.add_argument("--publish", dest="publish", action="store_true",
@@ -200,11 +317,27 @@ def main() -> int:
     ap.set_defaults(publish=False)
     ap.add_argument("--bundle-dir", default=None,
                     help="Assembled bundle dir for --publish.")
+    ap.add_argument(
+        "--release-channel", choices=("recommended", "base-v1"), default=None,
+        help="Channel passed to the publish orchestrator at stage 7. Default: "
+             "auto — `recommended` if the held-out text-quality gate is green "
+             "and the run produced a fine-tuned bundle, else `base-v1`.",
+    )
+    ap.add_argument(
+        "--metal-verification", default=None,
+        help="Path to a metal_verify.json recorded on a verified Metal host; "
+             "passed to the publish orchestrator at stage 7.",
+    )
     ap.add_argument("--bench-per-bucket", type=int, default=200)
     ap.add_argument("--skip-base-bench", action="store_true")
     ap.add_argument("--skip-finetune", action="store_true")
     ap.add_argument("--skip-quantize", action="store_true")
     ap.add_argument("--skip-bench", action="store_true")
+    ap.add_argument(
+        "--resume-from-checkpoint", default=None,
+        help="Resume stage-2 SFT from a Trainer checkpoint-N/ dir (or `True` to "
+             "pick the latest under the run's out_dir). Forwarded to train_local.py.",
+    )
     ap.add_argument(
         "--quantizers", default="polarquant,fused_turboquant,qjl",
         help="Comma-separated list of quantizers to apply post-training. "
@@ -214,20 +347,25 @@ def main() -> int:
              "pure-PyTorch path if Triton is unavailable.",
     )
     mb = ap.add_mutually_exclusive_group()
-    mb.add_argument("--milady-bundle", dest="milady_bundle", action="store_true",
-                    help="Stage 6b: assemble the Milady-typed GGUF bundle via "
-                         "optimize_for_milady.py — PolarQuant 4-bit weights + "
+    mb.add_argument("--eliza1-bundle", dest="eliza1_bundle", action="store_true",
+                    help="Stage 6b: assemble the Eliza-1-typed GGUF bundle via "
+                         "optimize_for_eliza1.py — PolarQuant 4-bit weights + "
                          "QJL1_256 K-cache + TBQ V-cache sidecars + "
-                         "milady_manifest.json. Needs the elizaOS/llama.cpp "
+                         "eliza1_manifest.json. Needs the elizaOS/llama.cpp "
                          "fork (auto-detected; set $LLAMA_CPP_DIR to override).")
-    mb.add_argument("--no-milady-bundle", dest="milady_bundle", action="store_false",
-                    help="Skip the Milady GGUF bundle stage.")
-    ap.set_defaults(milady_bundle=None)  # None ⇒ auto (on iff the fork is found)
+    mb.add_argument("--no-eliza1-bundle", dest="eliza1_bundle", action="store_false",
+                    help="Skip the Eliza-1 GGUF bundle stage.")
+    ap.set_defaults(eliza1_bundle=None)  # None ⇒ auto (on iff the fork is found)
     ap.add_argument("--dflash-drafter", action="store_true",
                     help="Also distill a DFlash speculative-decode drafter for "
                          "this tier (distill_dflash_drafter.py). Needs a GPU for "
                          "a real run; uses --synthetic-smoke when --eval-mode "
                          "smoke so the pipeline still validates on CPU.")
+    ap.add_argument("--skip-throughput-bench", action="store_true",
+                    help="Skip stage 6c (llama-bench tokens/sec on the produced "
+                         "GGUFs — prefill + generation t/s, CUDA build if "
+                         "available, written to checkpoints/<run>/evals/"
+                         "throughput.json).")
     args = ap.parse_args()
 
     if args.publish and not args.bundle_dir:
@@ -237,7 +375,7 @@ def main() -> int:
     if not entry.can_train_locally and not args.skip_finetune:
         raise SystemExit(
             f"{entry.public_name} (tier={entry.tier.value}) cannot train locally. "
-            f"Use train_nebius.sh or pass --skip-finetune."
+            f"Use train_vast.sh or pass --skip-finetune."
         )
 
     tier_id = normalize_tier(entry.public_name)
@@ -335,10 +473,46 @@ def main() -> int:
     summary["val_file"] = str(val_file)
     summary["test_file"] = str(test_file)
 
+    # ── corpus gate: validate_corpus.py --strict on the splits before training.
+    # AGENTS.md: "No raw output → fine-tune in one step." Both the from-scratch
+    # path and the trajectory→SFT path must clear the schema / stale-action /
+    # render gate before train_local.py touches the data.
+    if not args.skip_finetune:
+        review_dir = ROOT / "data" / "synthesized" / "review"
+        review_dir.mkdir(parents=True, exist_ok=True)
+        corpus_bad: list[str] = []
+        for split_name, split_path in (("train", train_file), ("val", val_file), ("test", test_file)):
+            if not split_path.exists():
+                corpus_bad.append(f"{split_name}:missing")
+                continue
+            rc = run([
+                "uv", "run", "--extra", "train", "python", "scripts/validate_corpus.py",
+                "--input", str(split_path),
+                "--report", str(review_dir / f"format_validation_{run_name}_{split_name}.json"),
+                "--strict",
+            ], cwd=ROOT)
+            if rc != 0:
+                corpus_bad.append(f"{split_name}:invalid")
+        summary["stages"]["corpus_validation"] = {
+            "splits": [str(train_file), str(val_file), str(test_file)],
+            "invalid": corpus_bad,
+            "enforced": not args.allow_unvalidated_corpus,
+        }
+        if corpus_bad:
+            msg = ("corpus validation failed: " + ", ".join(corpus_bad)
+                   + " — inspect data/synthesized/review/format_validation_*.json "
+                     "and fix the named adapter/source")
+            if args.allow_unvalidated_corpus:
+                log.warning("%s (continuing: --allow-unvalidated-corpus)", msg)
+            else:
+                log.error("%s; aborting (pass --allow-unvalidated-corpus to override)", msg)
+                (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+                return 1
+
     finetuned_model = ckpt_dir / "final"
 
     def _bench(model: str, out_sub: str) -> dict[str, int]:
-        """Run both benchmark scripts against `model` into benchmarks/<run>/<out_sub>/."""
+        """Run the native tool-call benchmark into benchmarks/<run>/<out_sub>/."""
         out_base = bench_dir / out_sub
         rc_native = run([
             "uv", "run", "--extra", "train", "python",
@@ -348,22 +522,11 @@ def main() -> int:
             "--out-dir", str(out_base / "native_tool_call"),
             "--max-per-bucket", str(args.bench_per_bucket),
         ], cwd=ROOT)
-        rc_eliza = run([
-            "uv", "run", "--extra", "train", "python",
-            "scripts/benchmark/eliza_bench.py",
-            "--model", model,
-            "--test-file", str(test_file),
-            "--out-dir", str(out_base / "eliza_bench"),
-            "--max-per-bucket", str(args.bench_per_bucket),
-        ], cwd=ROOT)
-        return {"native_tool_call": rc_native, "eliza_bench": rc_eliza}
+        return {"native_tool_call": rc_native}
 
     def _bench_format_ok(out_sub: str) -> float | None:
         out_base = bench_dir / out_sub
-        rate = _format_ok_rate(_read_json(out_base / "native_tool_call" / "summary.json"))
-        if rate is None:
-            rate = _format_ok_rate(_read_json(out_base / "eliza_bench" / "summary.json"))
-        return rate
+        return _format_ok_rate(_read_json(out_base / "native_tool_call" / "summary.json"))
 
     # ───────────── stage 1: base benchmark ─────────────────────────────
     if not args.skip_base_bench and not args.skip_bench:
@@ -382,12 +545,20 @@ def main() -> int:
             "--lr", str(args.lr),
             "--run-name", run_name,
             "--full-finetune",
-            "--use-liger", "on",
+            "--use-liger", args.use_liger,
             "--train-file", str(train_file),
             "--val-file", str(val_file),
         ]
         if args.max_samples and not args.trajectory_export:
             cmd += ["--max-samples", str(args.max_samples)]
+        if args.micro_batch:
+            cmd += ["--batch-size", str(args.micro_batch)]
+        if args.grad_accum:
+            cmd += ["--grad-accum", str(args.grad_accum)]
+        if args.max_seq_len:
+            cmd += ["--max-seq-len", str(args.max_seq_len)]
+        if args.resume_from_checkpoint:
+            cmd += ["--resume-from-checkpoint", str(args.resume_from_checkpoint)]
         rc = run(cmd, cwd=ROOT)
         summary["stages"]["finetune"] = {"exit": rc, "checkpoint": str(finetuned_model)}
         if rc != 0:
@@ -416,10 +587,8 @@ def main() -> int:
         "mode": args.eval_mode,
         "results": results,
         "benchmarks": {
-            "base": _read_json(bench_dir / "base" / "native_tool_call" / "summary.json")
-                    or _read_json(bench_dir / "base" / "eliza_bench" / "summary.json"),
-            "finetuned": _read_json(bench_dir / "finetuned" / "native_tool_call" / "summary.json")
-                         or _read_json(bench_dir / "finetuned" / "eliza_bench" / "summary.json"),
+            "base": _read_json(bench_dir / "base" / "native_tool_call" / "summary.json"),
+            "finetuned": _read_json(bench_dir / "finetuned" / "native_tool_call" / "summary.json"),
         },
         "run_name": run_name,
         "model": entry.hf_id,
@@ -457,6 +626,15 @@ def main() -> int:
                                         "passed": gate_blob.get("passed")}
     log.info("wrote %s (passed=%s)", gate_report_path, gate_blob.get("passed"))
 
+    # If this run is a publish run, a red (or un-computable) gate aborts here —
+    # before wasting quantize + bundle time — rather than only being caught by
+    # the downstream publish orchestrator's re-check of aggregate.json.
+    if args.publish and gate_blob.get("passed") is not True:
+        log.error("publish run but eval gate did not pass (%s); aborting before quantize",
+                  json.dumps(gate_blob.get("failures") or gate_blob.get("error")))
+        (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+        return 1
+
     # ───────────── stage 5: quantize ──────────────────────────────────
     quantizers = [q.strip() for q in args.quantizers.split(",") if q.strip()]
     if not args.skip_quantize:
@@ -487,26 +665,26 @@ def main() -> int:
             rcs = _bench(str(ck), q)
             summary["stages"][f"{q}_bench"] = {"exit": rcs}
 
-    # ───────────── stage 6b: Milady-typed GGUF bundle ─────────────────
+    # ───────────── stage 6b: Eliza-1-typed GGUF bundle ─────────────────
     # PolarQuant 4-bit weights packed via the fork's Q4_POLAR GGML type +
-    # QJL1_256 K-cache & TBQ V-cache JSON sidecars + milady_manifest.json,
-    # optionally paired with a DFlash drafter. optimize_for_milady.py is the
+    # QJL1_256 K-cache & TBQ V-cache JSON sidecars + eliza1_manifest.json,
+    # optionally paired with a DFlash drafter. optimize_for_eliza1.py is the
     # canonical orchestrator (it re-runs polarquant→qjl→turboquant idempotently
     # and then converts via the fork) — run_pipeline just delegates to it.
-    fork_dir = _resolve_milady_llama_cpp()
-    want_bundle = args.milady_bundle if args.milady_bundle is not None else (fork_dir is not None)
+    fork_dir = _resolve_eliza1_llama_cpp()
+    want_bundle = args.eliza1_bundle if args.eliza1_bundle is not None else (fork_dir is not None)
     if want_bundle and not args.skip_quantize:
         if fork_dir is None:
-            log.error("--milady-bundle requested but no elizaOS/llama.cpp fork "
-                      "found (set $LLAMA_CPP_DIR or clone milady-llama-cpp); "
-                      "skipping the Milady GGUF bundle")
-            summary["stages"]["milady_bundle"] = {"skipped": "fork not found"}
+            log.error("--eliza1-bundle requested but no elizaOS/llama.cpp fork "
+                      "found (set $LLAMA_CPP_DIR or clone eliza-llama-cpp); "
+                      "skipping the Eliza-1 GGUF bundle")
+            summary["stages"]["eliza1_bundle"] = {"skipped": "fork not found"}
         elif not finetuned_model.exists():
-            log.warning("no fine-tuned checkpoint at %s — skipping Milady bundle",
+            log.warning("no fine-tuned checkpoint at %s — skipping Eliza-1 bundle",
                         finetuned_model)
-            summary["stages"]["milady_bundle"] = {"skipped": "no checkpoint"}
+            summary["stages"]["eliza1_bundle"] = {"skipped": "no checkpoint"}
         else:
-            opt_dir = ckpt_dir / "milady-optimized"
+            opt_dir = ckpt_dir / "eliza1-optimized"
             drafter_gguf: Path | None = None
             if args.dflash_drafter:
                 dflash_dir = ckpt_dir / "dflash"
@@ -526,7 +704,7 @@ def main() -> int:
                 drafter_gguf = cand if cand.exists() else None
             o_cmd = [
                 "uv", "run", "--extra", "train", "python",
-                "scripts/optimize_for_milady.py",
+                "scripts/optimize_for_eliza1.py",
                 "--base-model", str(finetuned_model),
                 "--output-dir", str(opt_dir),
                 "--apply", "polarquant", "qjl", "turboquant",
@@ -536,26 +714,92 @@ def main() -> int:
             ]
             if drafter_gguf is not None:
                 o_cmd += ["--drafter-repo", str(drafter_gguf)]
-            if args.publish and getattr(entry, "milady_repo_id", None):
-                o_cmd += ["--hf-repo", entry.milady_repo_id]
+            if args.publish and getattr(entry, "eliza_repo_id", None):
+                o_cmd += ["--hf-repo", entry.eliza_repo_id]
             rc = run(o_cmd, cwd=ROOT)
-            manifest = opt_dir / "milady_manifest.json"
-            summary["stages"]["milady_bundle"] = {
+            manifest = opt_dir / "eliza1_manifest.json"
+            summary["stages"]["eliza1_bundle"] = {
                 "exit": rc, "output": str(opt_dir),
                 "manifest": str(manifest) if manifest.exists() else None,
             }
-            log.info("Milady bundle exit=%d → %s", rc, opt_dir)
+            log.info("Eliza-1 bundle exit=%d → %s", rc, opt_dir)
+
+    # ───────────── stage 6c: throughput bench (tokens/sec) ────────────
+    # llama-bench on every produced GGUF: prefill (pp) + generation (tg) t/s.
+    # Picks the fastest backend available (CUDA build > fork Vulkan > CPU) and
+    # the optimal flags (-fa 1 -b 2048 -ngl 99 on GPU). Written to
+    # checkpoints/<run>/evals/throughput.json — gives the pipeline a tokens/sec
+    # number alongside the format/structure eval rates.
+    if not args.skip_throughput_bench:
+        bench_bin = _resolve_llama_bench(fork_dir)
+        ggufs = sorted({p for p in ckpt_dir.rglob("*.gguf")})
+        if bench_bin is None:
+            summary["stages"]["throughput_bench"] = {"skipped": "no llama-bench binary"}
+        elif not ggufs:
+            summary["stages"]["throughput_bench"] = {"skipped": "no GGUF produced"}
+        else:
+            gpu = _cuda_available() or "vulkan" in bench_bin.parts or "cuda" in str(bench_bin)
+            tp = {"bench_binary": str(bench_bin), "gpu_flags": gpu, "ggufs": []}
+            for g in ggufs:
+                log.info("llama-bench %s (%s)", g.name, "GPU" if gpu else "CPU")
+                r = _throughput_bench(g, bench_bin, gpu=gpu)
+                if r is not None:
+                    tp["ggufs"].append(r)
+            tp_path = ckpt_dir / "evals" / "throughput.json"
+            tp_path.parent.mkdir(parents=True, exist_ok=True)
+            tp_path.write_text(json.dumps(tp, indent=2))
+            # Headline numbers: best pp + best tg across produced GGUFs.
+            best_pp = max((res["avg_ts"] for gg in tp["ggufs"] for res in gg["results"]
+                           if res.get("n_gen") in (0, None) and res.get("avg_ts")), default=None)
+            best_tg = max((res["avg_ts"] for gg in tp["ggufs"] for res in gg["results"]
+                           if res.get("n_prompt") in (0, None) and res.get("avg_ts")), default=None)
+            summary["stages"]["throughput_bench"] = {
+                "path": str(tp_path), "backend": (tp["ggufs"][0]["backend"] if tp["ggufs"] else None),
+                "best_prompt_ts": best_pp, "best_gen_ts": best_tg,
+            }
+            log.info("throughput: best prefill=%.1f t/s, best gen=%.1f t/s (%s)",
+                     best_pp or 0.0, best_tg or 0.0,
+                     tp["ggufs"][0]["backend"] if tp["ggufs"] else "?")
 
     # ───────────── stage 7: publish ───────────────────────────────────
+    # Auto-publish hook: when this is a --publish run and the eval gate cleared
+    # (checked at stage 4b above — a red/un-computable gate already aborted),
+    # hand the assembled bundle to scripts.publish.orchestrator. The orchestrator
+    # re-checks the §3/§6/§7 contract (layout → release evidence → kernel verify →
+    # eval gates → manifest → README → HF push) and refuses-on-red; it never
+    # bypasses a gate. The channel defaults to `recommended` when the held-out
+    # text-quality gate is green (a fine-tune that beat baseline) and to
+    # `base-v1` otherwise (upstream-base, kernel-optimized, not a recommended
+    # default). HF_TOKEN is read from the environment by the orchestrator.
     if args.publish:
-        rc = run([
+        channel = args.release_channel
+        if channel is None:
+            text_quality_green = any(
+                g.get("name") in ("held_out_text_quality", "text_quality",
+                                  "eliza_bench", "held_out_quality")
+                and g.get("passed") is True
+                for g in (gate_blob.get("gates") or [])
+            )
+            channel = "recommended" if text_quality_green else "base-v1"
+        cmd = [
             "uv", "run", "python", "-m", "scripts.publish.orchestrator",
             "--tier", tier_id,
             "--bundle-dir", str(args.bundle_dir),
-        ], cwd=ROOT)
-        summary["stages"]["publish"] = {"exit": rc}
-        if rc != 0:
-            log.error("publish orchestrator failed (exit=%d)", rc)
+        ]
+        if channel == "base-v1":
+            cmd.append("--base-v1")
+        if args.metal_verification:
+            cmd += ["--metal-verification", str(args.metal_verification)]
+        log.info("stage 7: publish channel=%s", channel)
+        rc = run(cmd, cwd=ROOT)
+        summary["stages"]["publish"] = {"exit": rc, "channel": channel}
+        repo_id = getattr(entry, "eliza_repo_id", None) or f"elizaos/eliza-1-{tier_id}"
+        if rc == 0:
+            log.info("published: https://huggingface.co/%s (channel=%s)", repo_id, channel)
+        else:
+            log.error("publish orchestrator failed (exit=%d) — blocked on a gate; "
+                      "see the [stage N/7] lines above for which one", rc)
+            log.error("blocked: %s (exit=%d, channel=%s)", repo_id, rc, channel)
 
     summary["finished"] = time.time()
     summary["elapsed_s"] = summary["finished"] - summary["started"]

@@ -1,0 +1,44 @@
+{
+  "report_id": "SIG-20241115-XYZT-001",
+  "generated_at": "2024-11-15T16:05:00Z",
+  "model": {
+    "name": "QuantAlpha Signal Engine",
+    "version": "3.2.1",
+    "last_calibrated": "2024-11-01T00:00:00Z"
+  },
+  "ticker": "XYZT",
+  "exchange": "NYSE",
+  "signal": "BUY",
+  "confidence": "MEDIUM",
+  "confidence_score": 0.62,
+  "pattern_detected": "double_bottom",
+  "pattern_details": {
+    "first_bottom_date": "2024-11-04",
+    "first_bottom_price": 50.18,
+    "second_bottom_date": "2024-11-13",
+    "second_bottom_price": 50.22,
+    "neckline_price": 51.60,
+    "pattern_quality": "good"
+  },
+  "price_levels": {
+    "current_price": 51.85,
+    "support_level": 50.10,
+    "resistance_level": 54.80,
+    "stop_loss_suggested": 49.50
+  },
+  "expected_move": {
+    "expected_move_pct": 5.2,
+    "target_price": 54.54,
+    "timeframe": "5-15 trading days",
+    "timeframe_min_days": 5,
+    "timeframe_max_days": 15
+  },
+  "risk_reward_ratio": 2.1,
+  "signal_timestamp": "2024-11-15T16:05:00Z",
+  "data_inputs": {
+    "price_data_through": "2024-11-15",
+    "volume_confirmation": true,
+    "trend_alignment": "neutral_to_bullish",
+    "momentum_score": 0.55
+  }
+}

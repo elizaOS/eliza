@@ -85,7 +85,8 @@ export default scenario({
       type: "custom",
       name: "travel-hotel-loyalty-approval",
       predicate: expectApprovalRequest({
-        description: "hotel booking is approval-gated, even with loyalty attached",
+        description:
+          "hotel booking is approval-gated, even with loyalty attached",
         actionName: ["BOOK_TRAVEL"],
       }),
     },

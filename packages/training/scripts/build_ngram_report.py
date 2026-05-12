@@ -81,8 +81,8 @@ the canonical training corpus, with per-source attribution.
 
 1. Read every {rate}{'th' if rate > 1 else ''} record from `train.jsonl`. Extract three text streams:
    `user_input` (first 2000 chars of `currentMessage.content`),
-   `assistant_thought` (TOON `thought` field of `expectedResponse`), and
-   `assistant_text` (TOON `text` field).
+   `assistant_thought` (native JSON `thought` field of `expectedResponse`), and
+   `assistant_text` (native JSON `text` field).
 2. Tokenize lowercased streams on `[a-z0-9']+`. Compute n-gram counters
    for `n in {{2,3,4,5}}`, with adaptive long-tail pruning to bound memory.
 3. For every n-gram track `total_count`, `record_count`,

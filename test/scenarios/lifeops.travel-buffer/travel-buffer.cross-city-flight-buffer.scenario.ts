@@ -32,7 +32,8 @@ function checkFlightBufferReasoning(ctx: ScenarioContext): string | undefined {
 
 export default scenario({
   id: "travel-buffer.cross-city-flight-buffer",
-  title: "Cross-city flight requires a multi-hour travel buffer, not 15-min default",
+  title:
+    "Cross-city flight requires a multi-hour travel buffer, not 15-min default",
   domain: "lifeops.travel-buffer",
   tags: ["lifeops", "travel-buffer", "flight"],
   isolation: "per-scenario",

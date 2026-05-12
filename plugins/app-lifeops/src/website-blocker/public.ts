@@ -3,7 +3,9 @@
  * `@elizaos/app-lifeops/selfcontrol` subpath imports.
  */
 
-export { websiteBlockAction } from "../actions/website-block.js";
+// External consumers that still import `websiteBlockAction` get the canonical
+// BLOCK umbrella (mirrors `src/index.ts`).
+export { blockAction as websiteBlockAction } from "../actions/block.js";
 
 export { websiteBlockerProvider } from "../providers/website-blocker.js";
 export { getSelfControlAccess, SELFCONTROL_ACCESS_ERROR } from "./access.js";

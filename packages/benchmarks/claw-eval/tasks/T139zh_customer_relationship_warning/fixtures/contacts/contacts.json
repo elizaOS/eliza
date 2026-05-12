@@ -1,0 +1,8 @@
+[
+  {"contact_id":"CON-901","name":"赵蕾","email":"zhaolei@company.com","phone":"13800138001","department":"销售部","title":"高级客户经理","responsibilities":["VIP客户维护","合同续约"]},
+  {"contact_id":"CON-902","name":"张伟","email":"zhangwei@company.com","phone":"13800138002","department":"销售部","title":"客户经理","responsibilities":["标准客户维护","新客户开发"]},
+  {"contact_id":"CON-903","name":"王明","email":"wangming@company.com","phone":"13800138003","department":"客户成功部","title":"客户成功经理","responsibilities":["客户健康度监控","续约支持"]},
+  {"contact_id":"CON-904","name":"李华","email":"lihua@company.com","phone":"13800138004","department":"技术部","title":"高级架构师","responsibilities":["技术支持","方案咨询"]},
+  {"contact_id":"CON-905","name":"刘洋","email":"liuyang@company.com","phone":"13800138005","department":"财务部","title":"财务主管","responsibilities":["合同审核","应收管理"]},
+  {"contact_id":"CON-906","name":"陈婷","email":"chenting@company.com","phone":"13800138006","department":"法务部","title":"法务专员","responsibilities":["合同条款","法律审核"]}
+]

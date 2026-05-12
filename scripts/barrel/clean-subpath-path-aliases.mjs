@@ -63,9 +63,15 @@ Options:
 
 function readJson(file) {
   if (path.basename(file).startsWith("tsconfig")) {
-    const parsed = ts.parseConfigFileTextToJson(file, fs.readFileSync(file, "utf8"));
+    const parsed = ts.parseConfigFileTextToJson(
+      file,
+      fs.readFileSync(file, "utf8"),
+    );
     if (parsed.error) {
-      const message = ts.flattenDiagnosticMessageText(parsed.error.messageText, "\n");
+      const message = ts.flattenDiagnosticMessageText(
+        parsed.error.messageText,
+        "\n",
+      );
       throw new Error(message);
     }
     return parsed.config;
@@ -120,7 +126,14 @@ function rootBarrelPath(pkg, mode) {
   const sourceCandidates =
     pkg.name === "@elizaos/core"
       ? ["src/index.node.ts", "src/index.ts", "index.ts", "index.js"]
-      : ["src/index.ts", "src/index.tsx", "src/index.js", "src/index.jsx", "index.ts", "index.js"];
+      : [
+          "src/index.ts",
+          "src/index.tsx",
+          "src/index.js",
+          "src/index.jsx",
+          "index.ts",
+          "index.js",
+        ];
   const distCandidates = [
     "dist/index.d.ts",
     "dist/index.d.mts",
@@ -138,13 +151,17 @@ function rootBarrelPath(pkg, mode) {
 }
 
 function inferMode(targets) {
-  return targets.some((target) => target.includes("/dist/") || target.startsWith("dist/"))
+  return targets.some(
+    (target) => target.includes("/dist/") || target.startsWith("dist/"),
+  )
     ? "dist"
     : "source";
 }
 
 function relativeFromTsconfig(tsconfigPath, target) {
-  const relative = path.relative(path.dirname(tsconfigPath), target).replace(/\\/g, "/");
+  const relative = path
+    .relative(path.dirname(tsconfigPath), target)
+    .replace(/\\/g, "/");
   return relative.startsWith(".") ? relative : `./${relative}`;
 }
 
@@ -229,7 +246,8 @@ function collectPlan(packages) {
           file: rel,
           alias,
           packageName: pkg.name,
-          reason: "removed subpath alias but package has no discoverable root barrel for a replacement root path",
+          reason:
+            "removed subpath alias but package has no discoverable root barrel for a replacement root path",
         });
         continue;
       }
@@ -304,13 +322,17 @@ function writeReports(plan, args) {
   lines.push("## Planned Additions");
   lines.push("");
   for (const addition of plan.additions) {
-    lines.push(`- ${addition.file}: ${addition.alias} -> ${addition.targets.join(", ")}`);
+    lines.push(
+      `- ${addition.file}: ${addition.alias} -> ${addition.targets.join(", ")}`,
+    );
   }
   lines.push("");
   lines.push("## Manual Review");
   lines.push("");
   for (const item of plan.manual) {
-    lines.push(`- ${item.file}${item.alias ? ` (${item.alias})` : ""}: ${item.reason}`);
+    lines.push(
+      `- ${item.file}${item.alias ? ` (${item.alias})` : ""}: ${item.reason}`,
+    );
   }
   lines.push("");
 

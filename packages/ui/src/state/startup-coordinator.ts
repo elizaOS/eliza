@@ -317,11 +317,17 @@ export function createWebPolicy(): PlatformPolicy {
 }
 
 export function createMobilePolicy(): PlatformPolicy {
+  // iOS Capacitor apps that bundle an on-device agent (white-label forks,
+  // etc.) hit this path — Android goes to createAndroidPolicy() first at
+  // the routing layer. iOS local-agent builds need the same 180s/300s budget
+  // as AOSP: cold-boot on an A-class chip still takes ~60–120s for PGlite
+  // migration + GGUF mmap before /api/status binds. supportsLocalRuntime:true
+  // enables the LOCAL onboarding tile for these builds.
   return {
-    supportsLocalRuntime: false,
-    backendTimeoutMs: 15_000,
-    agentReadyTimeoutMs: 60_000,
-    probeForExistingInstall: false,
+    supportsLocalRuntime: true,
+    backendTimeoutMs: 180_000,
+    agentReadyTimeoutMs: 300_000,
+    probeForExistingInstall: true,
     defaultTarget: "cloud-managed",
   };
 }

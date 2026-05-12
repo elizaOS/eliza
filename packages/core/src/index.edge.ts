@@ -42,6 +42,7 @@ export * from "./providers/onboarding-progress";
 export * from "./providers/skill-eligibility";
 export * from "./roles";
 export * from "./runtime";
+export * from "./runtime/rlm";
 export * from "./runtime/system-prompt";
 export * from "./schemas/character";
 export * from "./schemas/index";
@@ -85,6 +86,7 @@ export * from "./utils/channel-utils";
 export * from "./utils/description-compressed-lint";
 export * from "./utils/environment";
 export * from "./utils/prompt-compression";
+export * from "./utils/read-env";
 export * from "./utils/streaming";
 export * from "./validation";
 

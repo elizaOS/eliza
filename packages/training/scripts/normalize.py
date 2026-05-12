@@ -11,9 +11,7 @@ the existing bulk corpus keeps loading — new corpus data should be authored as
 Reads `datasets.yaml`, walks `data/raw/<slug>/`, dispatches to the named
 adapter in `lib/adapters.REGISTRY`, and writes
 `data/normalized/<slug>.jsonl` (+ `<slug>.errors.jsonl` for dropped rows).
-New outputs default to JSON expectedResponse payloads for native tool
-calling. Pass `--expected-response-format legacy-toon` only when rebuilding
-legacy compatibility corpora.
+Outputs use JSON expectedResponse payloads for native tool calling.
 
 Source files are auto-discovered:
   - `*.parquet` (loaded via pyarrow)
@@ -240,7 +238,7 @@ def main() -> int:
                          "two wins when both are given.")
     ap.add_argument(
         "--expected-response-format",
-        choices=("json", "legacy-toon"),
+        choices=("json",),
         default="json",
         help="supervised target encoding for generated ElizaRecord rows",
     )

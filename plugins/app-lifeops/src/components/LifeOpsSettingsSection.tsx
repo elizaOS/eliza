@@ -1,6 +1,5 @@
-import { Button, SegmentedControl, useApp } from "@elizaos/ui";
-import { client } from "@elizaos/ui";
 import type { ModelOption } from "@elizaos/shared";
+import { Button, client, SegmentedControl, useApp } from "@elizaos/ui";
 import {
   Activity,
   AlertTriangle,
@@ -264,13 +263,7 @@ function IconOnlyLabel({
   );
 }
 
-function ModeLabel({
-  mode,
-  label,
-}: {
-  mode: VisibleConnectorMode;
-  label: string;
-}) {
+function ModeLabel({ label }: { label: string }) {
   return (
     <IconOnlyLabel label={label}>
       <HardDrive className="h-3.5 w-3.5" aria-hidden />
@@ -559,7 +552,7 @@ function GoogleConnectorSideCard({
     return () => {
       cancelled = true;
     };
-  }, [side, status?.connected, status?.mode]);
+  }, [side, status?.connected, status?.mode, preferredGrantId]);
 
   const toggleCalendar = useCallback(
     async (calendar: LifeOpsCalendarSummary) => {
@@ -633,10 +626,7 @@ function GoogleConnectorSideCard({
             items={VISIBLE_CONNECTOR_MODES.map((mode) => ({
               value: mode,
               label: (
-                <ModeLabel
-                  mode={mode}
-                  label={modeLabel(mode as LifeOpsConnectorMode, t)}
-                />
+                <ModeLabel label={modeLabel(mode as LifeOpsConnectorMode, t)} />
               ),
               disabled: controlDisabled,
             }))}
@@ -884,8 +874,6 @@ function GoogleConnectorSideCard({
     </section>
   );
 }
-
-type HealthConnectorController = ReturnType<typeof useLifeOpsHealthConnectors>;
 
 const HEALTH_PROVIDER_META: Record<
   LifeOpsHealthConnectorProvider,

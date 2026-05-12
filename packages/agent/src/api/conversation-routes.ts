@@ -1251,6 +1251,10 @@ export async function handleConversationRoutes(
     }, 5000);
 
     let streamedText = "";
+    // When the success path emits `done` BEFORE running persistence (latency
+    // optimization), we hand off the persistence work as a detached promise so
+    // the `finally` block can `res.end()` immediately and still observe failures.
+    let deferredPersistence: Promise<void> | null = null;
 
     try {
       const result = await generateChatResponse(
@@ -1283,36 +1287,41 @@ export async function handleConversationRoutes(
             state.logBuffer,
             runtime,
           );
-          if (result.actionCallbackHistory?.length) {
-            await persistRecentAssistantActionCallbackHistory(
-              runtime,
-              conv.roomId,
-              result.actionCallbackHistory,
-              turnStartedAt,
-            );
-          }
-          if (
-            await shouldPersistFinalAssistantTurn(
-              runtime,
-              conv.roomId,
-              turnStartedAt,
-              result,
-            )
-          ) {
-            await persistAssistantConversationMemory(
-              runtime,
-              conv.roomId,
-              buildPersistedAssistantContent(resolvedText, result),
-              channelType,
-              turnStartedAt,
-            );
-          }
+          // Emit `done` BEFORE persistence so user-perceived end-of-turn
+          // latency excludes the ~100-500ms memory write. Persistence runs
+          // after res.end() in the `finally` block as a detached promise.
           writeSseJson(res, {
             type: "done",
             fullText: resolvedText,
             agentName: result.agentName,
             ...(result.usage ? { usage: result.usage } : {}),
           });
+          deferredPersistence = (async () => {
+            if (result.actionCallbackHistory?.length) {
+              await persistRecentAssistantActionCallbackHistory(
+                runtime,
+                conv.roomId,
+                result.actionCallbackHistory,
+                turnStartedAt,
+              );
+            }
+            if (
+              await shouldPersistFinalAssistantTurn(
+                runtime,
+                conv.roomId,
+                turnStartedAt,
+                result,
+              )
+            ) {
+              await persistAssistantConversationMemory(
+                runtime,
+                conv.roomId,
+                buildPersistedAssistantContent(resolvedText, result),
+                channelType,
+                turnStartedAt,
+              );
+            }
+          })();
         } else {
           writeSseJson(res, {
             type: "done",
@@ -1391,6 +1400,19 @@ export async function handleConversationRoutes(
     } finally {
       clearInterval(heartbeatInterval);
       res.end();
+      // Persistence runs after the client has already received `done` + the
+      // socket is closed. Failures must still be observable — never swallow.
+      if (deferredPersistence !== null) {
+        deferredPersistence.catch((persistErr: unknown) => {
+          logger.error(
+            {
+              roomId: conv.roomId,
+              err: getErrorMessage(persistErr),
+            },
+            "[ConversationStream] persistence failed",
+          );
+        });
+      }
     }
     return true;
   }

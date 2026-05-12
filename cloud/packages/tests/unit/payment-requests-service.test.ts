@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type {
+  NewPaymentRequestEvent,
+  PaymentRequestEventRow,
   PaymentRequestRow,
   PaymentRequestsRepository,
 } from "../../db/repositories/payment-requests";
 import {
+  type CreatePaymentRequestInput,
   createPaymentRequestsService,
   type PaymentProviderAdapter,
+  type PaymentRequestsService,
 } from "../../lib/services/payment-requests";
 
 interface RecordedEvent {
@@ -96,13 +100,17 @@ function makeFakeRepository(seed?: PaymentRequestRow) {
       store.set(id, next);
       return next;
     },
-    async recordPaymentRequestEvent(input: {
-      paymentRequestId: string;
-      eventName: string;
-      redactedPayload?: unknown;
-    }): Promise<unknown> {
+    async recordPaymentRequestEvent(
+      input: NewPaymentRequestEvent,
+    ): Promise<PaymentRequestEventRow> {
       events.push(input);
-      return input;
+      return {
+        id: `event_${events.length}`,
+        payment_request_id: input.paymentRequestId,
+        event_name: input.eventName,
+        redacted_payload: input.redactedPayload ?? {},
+        occurred_at: new Date(),
+      };
     },
     async expirePastPaymentRequests(now: Date): Promise<string[]> {
       const expired: string[] = [];
@@ -136,6 +144,17 @@ function makeStubAdapter(overrides: Partial<PaymentProviderAdapter> = {}): Payme
     },
     ...overrides,
   };
+}
+
+function invalidCreateInput(input: Record<string, unknown>): CreatePaymentRequestInput {
+  return input as unknown as CreatePaymentRequestInput;
+}
+
+function createWithInvalidInput(
+  service: PaymentRequestsService,
+  input: Record<string, unknown>,
+): ReturnType<PaymentRequestsService["create"]> {
+  return service.create(invalidCreateInput(input));
 }
 
 describe("paymentRequestsService", () => {
@@ -187,9 +206,8 @@ describe("paymentRequestsService", () => {
     ).rejects.toThrow(/positive integer/);
 
     await expect(
-      service.create({
+      createWithInvalidInput(service, {
         organizationId: "org-1",
-        // @ts-expect-error intentionally unsupported provider for test
         provider: "bogus",
         amountCents: 100,
         paymentContext: { kind: "any_payer" },
@@ -204,11 +222,10 @@ describe("paymentRequestsService", () => {
     });
 
     await expect(
-      service.create({
+      createWithInvalidInput(service, {
         organizationId: "org-1",
         provider: "stripe",
         amountCents: 100,
-        // @ts-expect-error missing required payerIdentityId
         paymentContext: { kind: "specific_payer" },
       }),
     ).rejects.toThrow(/payerIdentityId/);
@@ -292,15 +309,37 @@ describe("paymentRequestsService", () => {
     expect(JSON.stringify(payload)).not.toContain("fingerprint");
   });
 
-  test("markSettled is idempotent against terminal states", async () => {
-    const seed = makeRow({ id: "pr_seed", status: "settled" });
+  test("markSettled is idempotent for the same settlement tx", async () => {
+    const seed = makeRow({
+      id: "pr_seed",
+      status: "settled",
+      settlementTxRef: "tx_abc",
+    });
     const fakeSeeded = makeFakeRepository(seed);
     const service = createPaymentRequestsService({
       repository: fakeSeeded.repo,
       adapters: [makeStubAdapter()],
     });
 
-    await expect(service.markSettled("pr_seed", "tx_abc", {})).rejects.toThrow(
+    const settled = await service.markSettled("pr_seed", "tx_abc", {});
+    expect(settled.status).toBe("settled");
+    expect(settled.settlementTxRef).toBe("tx_abc");
+    expect(fakeSeeded.events).toHaveLength(0);
+  });
+
+  test("markSettled rejects conflicting terminal states", async () => {
+    const seed = makeRow({
+      id: "pr_seed",
+      status: "settled",
+      settlementTxRef: "tx_original",
+    });
+    const fakeSeeded = makeFakeRepository(seed);
+    const service = createPaymentRequestsService({
+      repository: fakeSeeded.repo,
+      adapters: [makeStubAdapter()],
+    });
+
+    await expect(service.markSettled("pr_seed", "tx_other", {})).rejects.toThrow(
       /already in terminal status/,
     );
   });
@@ -341,7 +380,7 @@ describe("paymentRequestsService", () => {
     expect((event?.redactedPayload as Record<string, unknown>).error).toBe("card_declined");
   });
 
-  test("markFailed rejects already-terminal requests (idempotent)", async () => {
+  test("markFailed is idempotent for already failed requests", async () => {
     const seed = makeRow({ id: "pr_seed", status: "failed" });
     const fakeSeeded = makeFakeRepository(seed);
     const service = createPaymentRequestsService({
@@ -349,7 +388,9 @@ describe("paymentRequestsService", () => {
       adapters: [makeStubAdapter()],
     });
 
-    await expect(service.markFailed("pr_seed", "x")).rejects.toThrow(/already in terminal status/);
+    const failed = await service.markFailed("pr_seed", "x");
+    expect(failed.status).toBe("failed");
+    expect(fakeSeeded.events).toHaveLength(0);
   });
 
   test("expirePast records payment.expired for each expired id", async () => {

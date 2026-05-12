@@ -19,6 +19,12 @@ import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 const APP_DIR = resolveMainAppDir(REPO_ROOT, "app");
 const APP_DIST_DIR = path.join(APP_DIR, "dist");
+const COMPANION_PUBLIC_DIR = path.join(
+  REPO_ROOT,
+  "plugins",
+  "app-companion",
+  "public",
+);
 const UI_SMOKE_STUB_SCRIPT = path.join(
   import.meta.dirname,
   "playwright-ui-smoke-api-stub.mjs",
@@ -85,6 +91,27 @@ function resolveDistAssetPath(requestedPath: string): string | null {
   return null;
 }
 
+function resolveCompanionPublicAssetPath(requestedPath: string): string | null {
+  const normalizedPath = requestedPath.replace(/^\/+/, "");
+  if (
+    !normalizedPath.startsWith("animations/") &&
+    !normalizedPath.startsWith("vrm-decoders/") &&
+    !normalizedPath.startsWith("vrms/")
+  ) {
+    return null;
+  }
+
+  const candidatePath = path.resolve(COMPANION_PUBLIC_DIR, normalizedPath);
+  if (
+    candidatePath.startsWith(COMPANION_PUBLIC_DIR) &&
+    existsSync(candidatePath) &&
+    path.extname(candidatePath).length > 0
+  ) {
+    return candidatePath;
+  }
+  return null;
+}
+
 async function readRequestBody(request: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
   for await (const chunk of request) {
@@ -136,9 +163,18 @@ async function proxyUiRequest(args: {
     requestUrl.pathname === "/"
       ? "index.html"
       : requestUrl.pathname.replace(/^\/+/, "");
-  let filePath = resolveDistAssetPath(requestedPath);
+  let filePath =
+    resolveDistAssetPath(requestedPath) ??
+    resolveCompanionPublicAssetPath(requestedPath);
   const isAssetRequest = path.extname(requestedPath).length > 0;
   const indexHtmlPath = path.join(APP_DIST_DIR, "index.html");
+  if (!filePath && isAssetRequest) {
+    args.response.writeHead(404, {
+      "Content-Type": "application/json",
+    });
+    args.response.end(JSON.stringify({ error: "Static asset not found" }));
+    return;
+  }
   if (!filePath && !isAssetRequest) {
     filePath = indexHtmlPath;
   }

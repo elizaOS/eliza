@@ -26,13 +26,13 @@
  * in a dedicated lifeops session action, not here.
  */
 
+import type { BrowserBridgeTabSummary } from "../contracts.js";
+import type { BrowserBridgeRouteService } from "../service.js";
 import type {
   BrowserWorkspaceCommand,
   BrowserWorkspaceCommandResult,
   BrowserWorkspaceTab,
 } from "../workspace/browser-workspace-types.js";
-import type { BrowserBridgeRouteService } from "../service.js";
-import type { BrowserBridgeTabSummary } from "../contracts.js";
 
 const SUPPORTED_SUBACTIONS = new Set<BrowserWorkspaceCommand["subaction"]>([
   "list",
@@ -49,7 +49,9 @@ const SUPPORTED_SUBACTIONS = new Set<BrowserWorkspaceCommand["subaction"]>([
   "reload",
 ]);
 
-function bridgeTabToWorkspaceTab(tab: BrowserBridgeTabSummary): BrowserWorkspaceTab {
+function bridgeTabToWorkspaceTab(
+  tab: BrowserBridgeTabSummary,
+): BrowserWorkspaceTab {
   // The bridge speaks BrowserBridgeTabSummary; the BROWSER action expects
   // BrowserWorkspaceTab. Map the overlapping fields and stub the rest.
   return {
@@ -65,9 +67,7 @@ function bridgeTabToWorkspaceTab(tab: BrowserBridgeTabSummary): BrowserWorkspace
   };
 }
 
-function unsupported(
-  subaction: BrowserWorkspaceCommand["subaction"],
-): Error {
+function unsupported(subaction: BrowserWorkspaceCommand["subaction"]): Error {
   return new Error(
     `Browser bridge target does not support subaction "${subaction}". Use the workspace target for embedded-browser features (eval, pdf, snapshot, trace, profiler, etc.).`,
   );

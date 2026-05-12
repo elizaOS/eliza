@@ -18,10 +18,10 @@ Hard contract (training/AGENTS.md §2 + §9):
     the sha256 of the final shipped text GGUF it was distilled to match.
     The publish path (and the runtime doctor) refuse a drafter whose
     recorded hash does not match the text GGUF in the same bundle.
-  - The recipe is the same across tiers; only the student size changes
-    (`drafter-0_6b.gguf` ≈ 0.15B, `drafter-1_7b.gguf` ≈ 0.6B,
-    `drafter-9b.gguf` / `drafter-27b.gguf` ≈ 1.7B). Pick the smallest
-    student whose verified acceptance window stays above the tier's gate.
+  - The recipe is the same across tiers; only the student size changes.
+    Eliza-1 small tiers use Qwen3.5-compatible students: 0.8B for 2B/4B,
+    2B for 9B, and 4B for 27B. Pick the smallest student whose verified
+    acceptance window stays above the tier's gate.
 
 Distillation objective: forward KL on the top-k target logits plus a small
 cross-entropy floor on the ground-truth token (label smoothing keeps the
@@ -34,17 +34,17 @@ Usage:
 
     # Smoke (no real models, no GPU): exercises the pipeline + metadata write
     uv run --extra train python scripts/distill_dflash_drafter.py \
-        --tier 0_6b --synthetic-smoke --out-dir /tmp/dflash-smoke
+        --tier 0_8b --synthetic-smoke --out-dir /tmp/dflash-smoke
 
-    # Real run for the 0.6B-class drafter (serves the 1_7b tier)
+    # Real run for the 0.8B-class drafter (serves the 2B tier)
     uv run --extra train python scripts/distill_dflash_drafter.py \
-        --tier 1_7b \
-        --target-checkpoint training/checkpoints/eliza-1-1_7b-text \
-        --target-gguf out/eliza-1-1_7b/text/eliza-1-1_7b-32k.gguf \
-        --student-base Qwen/Qwen3-0.6B \
+        --tier 2b \
+        --target-checkpoint training/checkpoints/eliza-1-2b-text \
+        --target-gguf out/eliza-1-2b/text/eliza-1-2b-32k.gguf \
+        --student-base Qwen/Qwen3.5-0.8B \
         --dataset data/distill/eliza1-distill.jsonl \
         --epochs 1 --batch-size 8 --grad-accum 4 \
-        --out-dir out/eliza-1-1_7b/dflash
+        --out-dir out/eliza-1-2b/dflash
 
 The script writes <out-dir>/drafter-<tier>.gguf and a run manifest
 <out-dir>/drafter-<tier>.distill.json recording dataset hashes, the student
@@ -60,6 +60,7 @@ import logging
 import os
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -77,19 +78,36 @@ log = logging.getLogger("distill_dflash_drafter")
 # scripts/manifest/stage_local_eliza1_bundle.py and the doctor's reader.
 GGUF_TARGET_CHECKPOINT_KEY = "dflash-draft.target_checkpoint_sha256"
 
-# Recommended student base per tier. The 0_6b and 1_7b tiers both draft for
-# a small target, so the drafter must be a fraction of the target's size to
-# pay for itself; the 9b/27b tiers can afford a bigger, more accurate drafter.
+# Recommended student base per tier. These defaults intentionally stay within
+# the Qwen3.5/Qwen3.6 tokenizer family. The 0.8B tier has no smaller public
+# Qwen3.5 student; its drafter is an aggressively quantized, KD-aligned
+# self-size drafter and must pass the acceptance/speed gate before release.
 DEFAULT_STUDENT_BASE: dict[str, str] = {
-    "0_6b": "Qwen/Qwen3-0.6B",  # quantized to ~0.15GB after TurboQuant Q3
-    "1_7b": "Qwen/Qwen3-0.6B",
-    "9b": "Qwen/Qwen3-1.7B",
-    "27b": "Qwen/Qwen3-1.7B",
-    "27b-256k": "Qwen/Qwen3-1.7B",
+    "0_8b": "Qwen/Qwen3.5-0.8B",
+    "2b": "Qwen/Qwen3.5-0.8B",
+    "4b": "Qwen/Qwen3.5-0.8B",
+    "9b": "Qwen/Qwen3.5-2B",
+    "27b": "Qwen/Qwen3.5-4B",
+    "27b-256k": "Qwen/Qwen3.5-4B",
     # 1M-context variant of the 27B tier: same student base as 27b/27b-256k.
     # The long-context K-cache rides the trellis path (turbo3_tcq); the
     # drafter itself is the same KD recipe.
-    "27b-1m": "Qwen/Qwen3-1.7B",
+    "27b-1m": "Qwen/Qwen3.5-4B",
+}
+
+# Canonical Eliza-1 text targets that each drafter is allowed to pair with.
+# Local training usually passes a checkpoint directory, but release evidence
+# should still record the canonical target model id so later bundle validation
+# can distinguish "trained against a small-tier-ish directory" from "trained
+# against the exact Eliza-1 target".
+DEFAULT_TARGET_MODEL: dict[str, str] = {
+    "0_8b": "elizaos/eliza-1-0_8b",
+    "2b": "elizaos/eliza-1-2b",
+    "4b": "elizaos/eliza-1-4b",
+    "9b": "elizaos/eliza-1-9b",
+    "27b": "elizaos/eliza-1-27b",
+    "27b-256k": "elizaos/eliza-1-27b-256k",
+    "27b-1m": "elizaos/eliza-1-27b-1m",
 }
 
 # Acceptance-rate gate per tier — the drafter is publish-blocking below this.
@@ -97,8 +115,9 @@ DEFAULT_STUDENT_BASE: dict[str, str] = {
 # acceptance window into `dflash/target-meta.json`. Tighten only with a
 # rebaseline (see training/AGENTS.md §8).
 ACCEPTANCE_GATE: dict[str, float] = {
-    "0_6b": 0.45,
-    "1_7b": 0.50,
+    "0_8b": 0.40,
+    "2b": 0.50,
+    "4b": 0.52,
     "9b": 0.55,
     "27b": 0.55,
     "27b-256k": 0.55,
@@ -118,6 +137,128 @@ def _sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _stable_json_sha256(value: Any) -> str:
+    return _sha256_text(
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    )
+
+
+def _jsonable(value: Any) -> Any:
+    try:
+        json.dumps(value)
+        return value
+    except TypeError:
+        if isinstance(value, dict):
+            return {str(k): _jsonable(v) for k, v in value.items()}
+        if isinstance(value, (list, tuple)):
+            return [_jsonable(v) for v in value]
+        return str(value)
+
+
+def _tokenizer_fingerprint(tokenizer: Any) -> dict[str, Any]:
+    """Return a deterministic tokenizer identity record.
+
+    ``get_vocab()`` equality is necessary but not sufficient for DFlash: two
+    tokenizers can share token ids while disagreeing on added-token flags,
+    special-token ids, chat templates, or normalization/pre-tokenization
+    internals. Serializing the tokenizer to a temp directory lets fast
+    tokenizers expose their exact tokenizer.json bytes; the structured fields
+    make test fixtures and slow-tokenizer fallbacks deterministic.
+    """
+    with tempfile.TemporaryDirectory(prefix="dflash-tokenizer-") as tmp:
+        tmp_dir = Path(tmp)
+        tokenizer.save_pretrained(tmp_dir)
+        file_hashes: dict[str, str] = {}
+        for path in sorted(p for p in tmp_dir.rglob("*") if p.is_file()):
+            rel = path.relative_to(tmp_dir).as_posix()
+            file_hashes[rel] = _sha256_file(path)
+
+    vocab = tokenizer.get_vocab()
+    payload = {
+        "class": tokenizer.__class__.__name__,
+        "vocabSize": len(vocab),
+        "vocabSha256": _stable_json_sha256(dict(sorted(vocab.items(), key=lambda kv: kv[1]))),
+        "addedVocabSha256": _stable_json_sha256(
+            dict(sorted(tokenizer.get_added_vocab().items()))
+        ),
+        "specialTokensMap": _jsonable(tokenizer.special_tokens_map),
+        "allSpecialIds": _jsonable(list(tokenizer.all_special_ids)),
+        "allSpecialTokens": _jsonable(list(tokenizer.all_special_tokens)),
+        "chatTemplate": getattr(tokenizer, "chat_template", None),
+        "files": file_hashes,
+    }
+    payload["sha256"] = _stable_json_sha256(payload)
+    return payload
+
+
+def _tokenizer_probe_encodings(tokenizer: Any) -> dict[str, list[int]]:
+    probes = {
+        "plain": "Eliza-1 DFlash tokenizer parity probe.",
+        "unicode": "cafe naive jalapeno 你好 مرحبا",
+        "tool_json": '{"tool":"calendar.create","args":{"when":"2026-05-12T09:00:00-07:00"}}',
+        "chat_markers": "<|im_start|>user\nping<|im_end|>\n<|im_start|>assistant\n",
+    }
+    return {
+        name: list(tokenizer(text, add_special_tokens=False)["input_ids"])
+        for name, text in probes.items()
+    }
+
+
+def _tokenizer_parity_report(target_tokenizer: Any, student_tokenizer: Any) -> dict[str, Any]:
+    target = _tokenizer_fingerprint(target_tokenizer)
+    student = _tokenizer_fingerprint(student_tokenizer)
+    target_probes = _tokenizer_probe_encodings(target_tokenizer)
+    student_probes = _tokenizer_probe_encodings(student_tokenizer)
+    return {
+        "target": target,
+        "student": student,
+        "matches": target["sha256"] == student["sha256"]
+        and target["vocabSha256"] == student["vocabSha256"]
+        and target_probes == student_probes,
+        "probeEncodingsMatch": target_probes == student_probes,
+        "targetProbeEncodingsSha256": _stable_json_sha256(target_probes),
+        "studentProbeEncodingsSha256": _stable_json_sha256(student_probes),
+    }
+
+
+def _resolve_student_base(args: argparse.Namespace) -> str | None:
+    expected = DEFAULT_STUDENT_BASE.get(args.tier)
+    student_base = args.student_base or expected
+    if not student_base:
+        log.error("no default student base for tier %s; pass --student-base", args.tier)
+        return None
+    if (
+        expected is not None
+        and student_base != expected
+        and not args.allow_non_default_student_base
+    ):
+        log.error(
+            "student base mismatch for tier %s: got %s, expected %s. "
+            "DFlash distillation is fail-closed; pass "
+            "--allow-non-default-student-base only for an intentional "
+            "rebaseline with tokenizer-parity evidence.",
+            args.tier,
+            student_base,
+            expected,
+        )
+        return None
+    return student_base
+
+
+def _resolve_target_model_id(args: argparse.Namespace) -> str | None:
+    expected = DEFAULT_TARGET_MODEL.get(args.tier)
+    target_model_id = args.target_model_id or expected
+    if args.target_model_id and expected and args.target_model_id != expected:
+        log.error(
+            "target model mismatch for tier %s: got %s, expected %s",
+            args.tier,
+            args.target_model_id,
+            expected,
+        )
+        return None
+    return target_model_id
+
+
 def _git_commit() -> str | None:
     try:
         out = subprocess.run(
@@ -133,11 +274,12 @@ def _git_commit() -> str | None:
 
 
 def _find_convert_script() -> Path | None:
-    """Locate the fork's convert_hf_to_gguf.py. Order: $MILADY_LLAMACPP_DIR /
-    $LLAMA_CPP_DIR → the in-repo fork submodule (packages/inference/llama.cpp)
-    → ~/.cache/eliza-dflash/milady-llama-cpp."""
+    """Locate the fork's convert_hf_to_gguf.py. Order: $ELIZA_LLAMACPP_DIR /
+    $LLAMA_CPP_DIR → the in-repo fork submodule (packages/inference/llama.cpp,
+    the single canonical llama.cpp checkout) → the standalone clone at
+    ~/.cache/eliza-dflash/eliza-llama-cpp."""
     candidates: list[Path] = []
-    for var in ("MILADY_LLAMACPP_DIR", "LLAMA_CPP_DIR"):
+    for var in ("ELIZA_LLAMACPP_DIR", "LLAMA_CPP_DIR"):
         env = os.environ.get(var)
         if env:
             candidates.append(Path(env) / "convert_hf_to_gguf.py")
@@ -147,7 +289,7 @@ def _find_convert_script() -> Path | None:
             candidates.append(cand / "convert_hf_to_gguf.py")
             break
     candidates.append(
-        Path.home() / ".cache" / "eliza-dflash" / "milady-llama-cpp" / "convert_hf_to_gguf.py"
+        Path.home() / ".cache" / "eliza-dflash" / "eliza-llama-cpp" / "convert_hf_to_gguf.py"
     )
     for c in candidates:
         if c.exists():
@@ -189,6 +331,73 @@ def _write_gguf_target_hash(gguf_path: Path, target_sha256: str) -> None:
     log.info("recorded %s=%s into %s", GGUF_TARGET_CHECKPOINT_KEY, target_sha256, gguf_path)
 
 
+def _patch_saved_hf_for_gguf_convert(hf_out: Path) -> None:
+    """Make a transformers-saved Qwen3.5 student checkpoint convertible by the
+    fork's `convert_hf_to_gguf.py`.
+
+    The fork registers `Qwen3_5ForConditionalGeneration` (the multimodal
+    architecture name) for the text path via `Qwen3_5TextModel`, NOT
+    `Qwen3_5ForCausalLM`. It also requires AutoTokenizer to dispatch to the
+    fast `Qwen3_5Tokenizer` so the pre-tokenizer chkhsh matches the registered
+    `qwen35` entry; the slow `Qwen2Tokenizer` (which transformers writes via
+    save_pretrained when tokenizer_config.json is present) produces a
+    different unregistered hash and fails conversion.
+
+    Patch in-place so the existing convert step Just Works:
+
+      1. Rewrite config.json: top-level `architectures` →
+         `["Qwen3_5ForConditionalGeneration"]`, top-level `model_type` →
+         `"qwen3_5"`, body moved into a nested `text_config` block (so the
+         converter's TextModel init merges our exact linear-attn V-head
+         counts back into root — otherwise multimodal defaults override
+         them and break `_reorder_v_heads` during tensor conversion).
+      2. Delete the autogenerated `tokenizer_config.json` so AutoTokenizer
+         falls back to its built-in Qwen3_5Tokenizer (fast).
+    """
+    cfg_path = hf_out / "config.json"
+    with cfg_path.open("r", encoding="utf-8") as f:
+        c = json.load(f)
+    # Tolerate already-patched configs (idempotent).
+    if "text_config" not in c:
+        text_keys = [
+            "architectures", "attention_bias", "attention_dropout", "attn_output_gate",
+            "bos_token_id", "dtype", "eos_token_id", "full_attention_interval",
+            "head_dim", "hidden_act", "hidden_size", "initializer_range",
+            "intermediate_size", "layer_types", "linear_conv_kernel_dim",
+            "linear_key_head_dim", "linear_num_key_heads", "linear_num_value_heads",
+            "linear_value_head_dim", "mamba_ssm_dtype", "max_position_embeddings",
+            "mlp_only_layers", "model_type", "mtp_num_hidden_layers",
+            "mtp_use_dedicated_embeddings", "num_attention_heads", "num_hidden_layers",
+            "num_key_value_heads", "pad_token_id", "partial_rotary_factor",
+            "rms_norm_eps", "rope_parameters", "tie_word_embeddings",
+            "use_cache", "vocab_size",
+        ]
+        text_config = {k: c[k] for k in text_keys if k in c}
+        text_config["model_type"] = "qwen3_5_text"
+        text_config["architectures"] = ["Qwen3_5ForConditionalGeneration"]
+        new_c = {
+            "architectures": ["Qwen3_5ForConditionalGeneration"],
+            "model_type": "qwen3_5",
+            "transformers_version": c.get("transformers_version"),
+            "tie_word_embeddings": c.get("tie_word_embeddings", True),
+            "text_config": text_config,
+            # Vision/image token ids are harmless for the text converter
+            # (it doesn't read them) but kept so any downstream tool that
+            # introspects the file recognizes this as a Qwen3.5 family wrapper.
+            "image_token_id": 248056,
+            "video_token_id": 248057,
+            "vision_start_token_id": 248053,
+            "vision_end_token_id": 248054,
+        }
+        with cfg_path.open("w", encoding="utf-8") as f:
+            json.dump(new_c, f, indent=2)
+    # Force AutoTokenizer onto the fast Qwen3_5Tokenizer (whose chkhsh is
+    # registered as `qwen35` in the fork).
+    tok_cfg = hf_out / "tokenizer_config.json"
+    if tok_cfg.exists():
+        tok_cfg.unlink()
+
+
 def _dataset_hash(dataset_path: Path) -> str:
     return _sha256_file(dataset_path)
 
@@ -224,9 +433,11 @@ def _run_synthetic_smoke(args: argparse.Namespace) -> int:
     manifest = _build_manifest(
         args=args,
         student_base="<synthetic>",
+        target_model_id=DEFAULT_TARGET_MODEL.get(args.tier),
         target_checkpoint=None,
         target_gguf=None,
         target_sha256=fake_target_sha,
+        tokenizer_parity=None,
         dataset_hash="<synthetic>",
         n_train_examples=0,
         final_kl=None,
@@ -243,9 +454,11 @@ def _build_manifest(
     *,
     args: argparse.Namespace,
     student_base: str,
+    target_model_id: str | None,
     target_checkpoint: Path | None,
     target_gguf: Path | None,
     target_sha256: str,
+    tokenizer_parity: dict[str, Any] | None,
     dataset_hash: str,
     n_train_examples: int,
     final_kl: float | None,
@@ -259,10 +472,19 @@ def _build_manifest(
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "synthetic": synthetic,
         "studentBase": student_base,
+        "expectedStudentBase": DEFAULT_STUDENT_BASE.get(args.tier),
+        "targetModelId": target_model_id,
         "targetCheckpoint": str(target_checkpoint) if target_checkpoint else None,
         "targetGguf": str(target_gguf) if target_gguf else None,
         # The hash the drafter GGUF records and the publish gate checks.
         "targetCheckpointSha256": target_sha256,
+        "tokenizerParity": tokenizer_parity,
+        "targetTokenizerSha256": (
+            tokenizer_parity["target"]["sha256"] if tokenizer_parity else None
+        ),
+        "studentTokenizerSha256": (
+            tokenizer_parity["student"]["sha256"] if tokenizer_parity else None
+        ),
         "dataset": {
             "path": str(Path(args.dataset)) if args.dataset else None,
             "sha256": dataset_hash,
@@ -273,6 +495,10 @@ def _build_manifest(
             "batchSize": args.batch_size,
             "gradAccum": args.grad_accum,
             "lr": args.lr,
+            "optimizer": args.optimizer,
+            "apolloRank": args.apollo_rank,
+            "apolloScale": args.apollo_scale,
+            "apolloUpdateProjGap": args.apollo_update_proj_gap,
             "temperature": args.temperature,
             "ceWeight": args.ce_weight,
             "topKLogits": args.top_k_logits,
@@ -312,10 +538,12 @@ def _run_distillation(args: argparse.Namespace) -> int:
         log.error("--target-gguf %s does not exist", target_gguf)
         return 2
 
-    student_base = args.student_base or DEFAULT_STUDENT_BASE.get(args.tier)
+    student_base = _resolve_student_base(args)
     if not student_base:
-        log.error("no default student base for tier %s; pass --student-base", args.tier)
-        return 2
+        return 3
+    target_model_id = _resolve_target_model_id(args)
+    if target_model_id is None:
+        return 3
 
     # The target checkpoint hash the drafter records. Prefer the final
     # shipped text GGUF's sha256 (what dflash/target-meta.json uses); fall
@@ -350,15 +578,27 @@ def _run_distillation(args: argparse.Namespace) -> int:
     # Vocab parity is non-negotiable — speculative decode rejects every
     # drafted token if the two tokenizers disagree (dflash-doctor enforces
     # the catalog-level version of this check).
-    if tgt_tok.get_vocab() != stu_tok.get_vocab():
+    tokenizer_parity = _tokenizer_parity_report(tgt_tok, stu_tok)
+    if not tokenizer_parity["matches"]:
         log.error(
-            "tokenizer mismatch: target (%s) and student (%s) do not share a "
-            "vocabulary. Pick a student from the same Qwen family as the text "
-            "backbone.",
+            "tokenizer mismatch: target (%s, sha256=%s) and student (%s, "
+            "sha256=%s) are not byte-equivalent. Pick the exact Eliza-1 "
+            "target/student pairing or rebaseline intentionally.",
             target_checkpoint,
+            tokenizer_parity["target"]["sha256"],
             student_base,
+            tokenizer_parity["student"]["sha256"],
         )
         return 3
+    if args.verify_tokenizers_only:
+        log.info(
+            "tokenizer parity verified for tier=%s targetTokenizerSha256=%s "
+            "studentTokenizerSha256=%s",
+            args.tier,
+            tokenizer_parity["target"]["sha256"],
+            tokenizer_parity["student"]["sha256"],
+        )
+        return 0
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     dtype = torch.bfloat16 if device == "cuda" else torch.float32
@@ -412,7 +652,34 @@ def _run_distillation(args: argparse.Namespace) -> int:
     loader = DataLoader(
         examples, batch_size=args.batch_size, shuffle=True, collate_fn=collate
     )
-    opt = torch.optim.AdamW(student.parameters(), lr=args.lr)
+    # IMPORTANT: Eliza-1 fine-tuning and drafter distillation use APOLLO only.
+    # APOLLO's projected optimizer state is what makes full-parameter updates
+    # practical on smaller GPUs where standard moment buffers do not fit.
+    try:
+        from training.optimizer import (
+            build_apollo_mini_optimizer,
+            build_apollo_optimizer,
+        )
+        if args.optimizer == "apollo":
+            opt = build_apollo_optimizer(
+                student,
+                lr=args.lr,
+                weight_decay=0.0,
+                rank=args.apollo_rank,
+                scale=args.apollo_scale,
+                update_proj_gap=args.apollo_update_proj_gap,
+            )
+        else:
+            opt = build_apollo_mini_optimizer(
+                student,
+                lr=args.lr,
+                weight_decay=0.0,
+            )
+    except ImportError as exc:
+        raise SystemExit(
+            "apollo-torch is required for DFlash drafter distillation; "
+            "install the training extra before running a real distillation."
+        ) from exc
     temperature = args.temperature
     ce_weight = args.ce_weight
     top_k = args.top_k_logits
@@ -471,15 +738,37 @@ def _run_distillation(args: argparse.Namespace) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     hf_out = out_dir / f"drafter-{args.tier}-hf"
     student.save_pretrained(hf_out)
-    stu_tok.save_pretrained(hf_out)
-    log.info("saved distilled student to %s", hf_out)
+    # Always persist the *target's* tokenizer with the student so the GGUF
+    # carries the exact 248320-vocab Qwen3.5 tokenizer the targets verify with.
+    tgt_tok.save_pretrained(hf_out)
+    # Make the saved checkpoint convertible by the fork's convert_hf_to_gguf.py.
+    # The fork registers `Qwen3_5ForConditionalGeneration` (multimodal wrapper)
+    # for the Qwen3.5 text path, but transformers' `save_pretrained` writes
+    # `architectures=["Qwen3_5ForCausalLM"]` and a flat config with
+    # `model_type=qwen3_5_text` — both of which the converter rejects (unknown
+    # architecture, slow tokenizer fallback that fails the pre-tokenizer hash
+    # check). We rewrite the config in-place so:
+    #   - top-level architectures = ["Qwen3_5ForConditionalGeneration"]
+    #     → routes converter to Qwen3_5TextModel (the text-arch class).
+    #   - top-level model_type = "qwen3_5"
+    #     → AutoTokenizer dispatches to the fast Qwen3_5Tokenizer (whose
+    #       pre-tokenizer hash IS registered in the fork as `qwen35`).
+    #   - body moved into nested text_config so the converter's TextModel
+    #     init merges OUR exact values back into root (otherwise the qwen3_5
+    #     multimodal defaults clobber linear-attn V-head counts and break
+    #     tensor reshape during convert).
+    # Then we also remove tokenizer_config.json from the saved dir to force
+    # AutoTokenizer onto its built-in Qwen3_5Tokenizer (transformers' saved
+    # config otherwise pins Qwen2Tokenizer slow).
+    _patch_saved_hf_for_gguf_convert(hf_out)
+    log.info("saved distilled student (%.3fB params) to %s", n_student_params / 1e9, hf_out)
 
     # Convert to GGUF via the fork's converter, then stamp the target hash.
     convert = _find_convert_script()
     drafter_gguf = out_dir / f"drafter-{args.tier}.gguf"
     if convert is None:
         log.warning(
-            "convert_hf_to_gguf.py not found (set MILADY_LLAMACPP_DIR). "
+            "convert_hf_to_gguf.py not found (set ELIZA_LLAMACPP_DIR). "
             "Skipping GGUF conversion — run it manually then re-run with "
             "--stamp-only --drafter-gguf %s --target-gguf <text gguf>.",
             drafter_gguf,
@@ -502,9 +791,11 @@ def _run_distillation(args: argparse.Namespace) -> int:
     manifest = _build_manifest(
         args=args,
         student_base=student_base,
+        target_model_id=target_model_id,
         target_checkpoint=target_checkpoint,
         target_gguf=target_gguf,
         target_sha256=target_sha256,
+        tokenizer_parity=tokenizer_parity,
         dataset_hash=_dataset_hash(dataset_path),
         n_train_examples=len(examples),
         final_kl=final_kl,
@@ -536,6 +827,37 @@ def _run_stamp_only(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_verify_tokenizers_only(args: argparse.Namespace) -> int:
+    if not args.target_checkpoint:
+        log.error("--verify-tokenizers-only requires --target-checkpoint")
+        return 2
+    student_base = _resolve_student_base(args)
+    if not student_base:
+        return 3
+    if _resolve_target_model_id(args) is None:
+        return 3
+    target_checkpoint = Path(args.target_checkpoint)
+    if not target_checkpoint.exists():
+        log.error("target checkpoint %s does not exist", target_checkpoint)
+        return 2
+
+    from transformers import AutoTokenizer  # noqa: PLC0415
+
+    tgt_tok = AutoTokenizer.from_pretrained(target_checkpoint)
+    stu_tok = AutoTokenizer.from_pretrained(student_base)
+    parity = _tokenizer_parity_report(tgt_tok, stu_tok)
+    print(json.dumps(parity, indent=2, sort_keys=True))
+    if not parity["matches"]:
+        log.error(
+            "tokenizer mismatch: targetTokenizerSha256=%s "
+            "studentTokenizerSha256=%s",
+            parity["target"]["sha256"],
+            parity["student"]["sha256"],
+        )
+        return 3
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
@@ -550,12 +872,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="Final shipped text GGUF; its sha256 is recorded in the drafter.",
     )
     p.add_argument("--student-base", help="HF id/dir of the small student base.")
+    p.add_argument(
+        "--allow-non-default-student-base",
+        action="store_true",
+        help="Permit a non-default student base after an intentional rebaseline.",
+    )
+    p.add_argument(
+        "--target-model-id",
+        help="Canonical Eliza-1 target model id; defaults to the exact tier target.",
+    )
     p.add_argument("--dataset", help="jsonl distillation corpus (text or messages).")
     p.add_argument("--out-dir", required=True)
     p.add_argument("--epochs", type=int, default=1)
     p.add_argument("--batch-size", type=int, default=8)
     p.add_argument("--grad-accum", type=int, default=4)
     p.add_argument("--lr", type=float, default=2e-4)
+    p.add_argument(
+        "--optimizer",
+        choices=("apollo", "apollo_mini"),
+        default="apollo_mini",
+        help="APOLLO optimizer variant. Drafter distillation is APOLLO-only.",
+    )
+    p.add_argument("--apollo-rank", type=int, default=256)
+    p.add_argument("--apollo-scale", type=float, default=1.0)
+    p.add_argument("--apollo-update-proj-gap", type=int, default=200)
     p.add_argument("--temperature", type=float, default=1.0)
     p.add_argument(
         "--ce-weight",
@@ -579,6 +919,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Just write dflash-draft.target_checkpoint_sha256 into an "
         "existing drafter GGUF (needs --drafter-gguf + --target-gguf).",
     )
+    p.add_argument(
+        "--verify-tokenizers-only",
+        action="store_true",
+        help="Load target/student tokenizers, emit hashes, and fail closed before training.",
+    )
     p.add_argument("--drafter-gguf", help="For --stamp-only.")
     return p
 
@@ -587,6 +932,8 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.stamp_only:
         return _run_stamp_only(args)
+    if args.verify_tokenizers_only:
+        return _run_verify_tokenizers_only(args)
     if args.synthetic_smoke:
         return _run_synthetic_smoke(args)
     return _run_distillation(args)

@@ -40,9 +40,9 @@ type ErrorResponse = {
 beforeEach(async () => {
   tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), "workbench-vfs-"));
   oldStateDir = process.env.ELIZA_STATE_DIR;
-  oldBuildVariant = process.env.MILADY_BUILD_VARIANT;
+  oldBuildVariant = process.env.ELIZA_BUILD_VARIANT;
   process.env.ELIZA_STATE_DIR = tmpDir;
-  delete process.env.MILADY_BUILD_VARIANT;
+  delete process.env.ELIZA_BUILD_VARIANT;
   _resetBuildVariantForTests();
 });
 
@@ -53,9 +53,9 @@ afterEach(async () => {
     process.env.ELIZA_STATE_DIR = oldStateDir;
   }
   if (oldBuildVariant === undefined) {
-    delete process.env.MILADY_BUILD_VARIANT;
+    delete process.env.ELIZA_BUILD_VARIANT;
   } else {
-    process.env.MILADY_BUILD_VARIANT = oldBuildVariant;
+    process.env.ELIZA_BUILD_VARIANT = oldBuildVariant;
   }
   _resetBuildVariantForTests();
   await fsp.rm(tmpDir, { recursive: true, force: true });
@@ -146,7 +146,7 @@ describe("workbench VFS routes", () => {
   });
 
   it("blocks host plugin compilation and loading in store builds", async () => {
-    process.env.MILADY_BUILD_VARIANT = "store";
+    process.env.ELIZA_BUILD_VARIANT = "store";
     _resetBuildVariantForTests();
 
     const compile = await callRoute<ErrorResponse>(

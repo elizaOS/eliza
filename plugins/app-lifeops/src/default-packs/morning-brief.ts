@@ -18,19 +18,15 @@
  * until W1-A's `src/lifeops/scheduled-task/types.ts` lands.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   buildCheckinSummaryPrompt,
-  type CheckinSourceService,
   CheckinService,
+  type CheckinSourceService,
 } from "../lifeops/checkin/checkin-service.js";
-import type {
-  CheckinKind,
-  CheckinReport,
-} from "../lifeops/checkin/types.js";
+import type { CheckinKind, CheckinReport } from "../lifeops/checkin/types.js";
 import type { ScheduledTaskSeed } from "./contract-stubs.js";
 import type { DefaultPack } from "./registry-types.js";
-
-import type { IAgentRuntime } from "@elizaos/core";
 
 export const MORNING_BRIEF_PACK_KEY = "morning-brief";
 
@@ -68,7 +64,7 @@ export const morningBriefPack: DefaultPack = {
   key: MORNING_BRIEF_PACK_KEY,
   label: "Morning brief",
   description:
-    "Assembled morning briefing on wake — overdue todos, meetings, wins, inbox, calendar, contacts, promises. Delegates assembly to the CheckinService used by /CHECKIN today, so a fresh user gets the same content the planner would.",
+    "Assembled morning briefing on wake — overdue todos, meetings, wins, inbox, calendar, contacts, promises. Delegates assembly to the scheduled briefing service, so a fresh user gets the same content the planner would.",
   defaultEnabled: true,
   records: [morningBriefRecord],
   uiHints: {
@@ -84,8 +80,8 @@ export const morningBriefPack: DefaultPack = {
  * to render the prompt (stub anchor resolution scenario) or use `summaryText`
  * directly.
  *
- * The CheckinService.runMorningCheckin path is the same path /CHECKIN uses;
- * this is the parity contract.
+ * The scheduled briefing assembler is shared with the interactive morning
+ * briefing workflow; this is the parity contract.
  */
 export async function assembleMorningBrief(
   runtime: IAgentRuntime,

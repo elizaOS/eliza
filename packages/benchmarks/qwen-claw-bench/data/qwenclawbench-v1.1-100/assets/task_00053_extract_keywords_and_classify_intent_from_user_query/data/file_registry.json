@@ -1,0 +1,86 @@
+[
+  {
+    "filename": "project_v3.prproj",
+    "file_type": "Premiere Pro Project",
+    "upload_date": "2026-03-15T10:30:00Z",
+    "tags": ["premiere", "video editing", "project file", "timeline"],
+    "description": "Main Premiere Pro project file for the current video production, version 3 with updated timeline and effects"
+  },
+  {
+    "filename": "skill_matrix_v2.xlsx",
+    "file_type": "Excel Spreadsheet",
+    "upload_date": "2026-03-16T09:15:00Z",
+    "tags": ["skill assessment", "spreadsheet", "optimization", "matrix"],
+    "description": "Skill proficiency matrix tracking video production competencies across editing, motion graphics, and color grading"
+  },
+  {
+    "filename": "skill_scheme_v3.xlsx",
+    "file_type": "Excel Spreadsheet",
+    "upload_date": "2026-03-17T11:00:00Z",
+    "tags": ["skill scheme", "iteration", "planning", "development"],
+    "description": "Third iteration of the skill development scheme with updated milestones and target proficiency levels"
+  },
+  {
+    "filename": "video_analysis_report.docx",
+    "file_type": "Word Document",
+    "upload_date": "2026-03-14T16:45:00Z",
+    "tags": ["analysis", "report", "video project", "documentation"],
+    "description": "Comprehensive analysis report of the video project covering technical quality, workflow efficiency, and improvement areas"
+  },
+  {
+    "filename": "project_timeline.mp4",
+    "file_type": "Video File",
+    "upload_date": "2026-03-13T14:20:00Z",
+    "tags": ["video", "timeline review", "screen recording", "walkthrough"],
+    "description": "Screen recording walkthrough of the project timeline structure and editing decisions"
+  },
+  {
+    "filename": "final_cut_draft_v2.mp4",
+    "file_type": "Video File",
+    "upload_date": "2026-03-12T18:30:00Z",
+    "tags": ["video", "draft", "review", "final cut"],
+    "description": "Second draft of the final video cut for review and feedback"
+  },
+  {
+    "filename": "motion_graphics_comp.aep",
+    "file_type": "After Effects Project",
+    "upload_date": "2026-03-11T10:00:00Z",
+    "tags": ["after effects", "motion graphics", "composition", "animation"],
+    "description": "After Effects project containing motion graphics compositions for title sequences and transitions"
+  },
+  {
+    "filename": "broll_footage_selects.mov",
+    "file_type": "Video File",
+    "upload_date": "2026-03-10T09:45:00Z",
+    "tags": ["footage", "b-roll", "raw", "selects"],
+    "description": "Selected B-roll footage clips compiled for use in the main project edit"
+  },
+  {
+    "filename": "color_grade_reference.mp4",
+    "file_type": "Video File",
+    "upload_date": "2026-03-09T15:10:00Z",
+    "tags": ["color grading", "reference", "LUT", "look development"],
+    "description": "Reference video showing target color grading look and mood for the project"
+  },
+  {
+    "filename": "skill_assessment_notes.xlsx",
+    "file_type": "Excel Spreadsheet",
+    "upload_date": "2026-03-08T12:30:00Z",
+    "tags": ["assessment", "notes", "skill tracking", "progress"],
+    "description": "Detailed notes from skill assessment sessions with scoring rubrics and observations"
+  },
+  {
+    "filename": "transition_effects_demo.mov",
+    "file_type": "Video File",
+    "upload_date": "2026-03-07T17:00:00Z",
+    "tags": ["transitions", "effects", "demo", "motion graphics"],
+    "description": "Demonstration reel of custom transition effects created for the project"
+  },
+  {
+    "filename": "keyframe_animation_test.aep",
+    "file_type": "After Effects Project",
+    "upload_date": "2026-03-06T11:25:00Z",
+    "tags": ["keyframe", "animation", "test", "after effects"],
+    "description": "Test project for experimenting with advanced keyframe animation techniques and expression controls"
+  }
+]

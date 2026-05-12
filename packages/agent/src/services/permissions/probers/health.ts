@@ -6,7 +6,7 @@
  *   - HKHealthStore.authorizationStatus(for:)
  *
  * HealthKit on macOS requires the `com.apple.developer.healthkit`
- * entitlement signed into the app's provisioning profile. The Milady dev
+ * entitlement signed into the app's provisioning profile. The Eliza dev
  * build is unsigned, so the entitlement isn't present and any HealthKit
  * call would crash or return `notDetermined` indefinitely.
  *

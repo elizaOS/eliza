@@ -1,0 +1,87 @@
+[
+  {
+    "transaction_id": "TXN-601",
+    "date": "2026-01-05",
+    "amount": 120000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-601",
+    "customer_name": "Zhonghe Group",
+    "type": "Monthly service fee",
+    "category": "Service revenue",
+    "description": "Zhonghe Group January 2026 standard edition service fee",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-602",
+    "date": "2026-02-05",
+    "amount": 240000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-601",
+    "customer_name": "Zhonghe Group",
+    "type": "Monthly service fee",
+    "category": "Service revenue",
+    "description": "Zhonghe Group February 2026 service fee (including add-on modules)",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-603",
+    "date": "2026-03-05",
+    "amount": 240000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-601",
+    "customer_name": "Zhonghe Group",
+    "type": "Monthly service fee",
+    "category": "Service revenue",
+    "description": "Zhonghe Group March 2026 service fee (including add-on modules)",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-604",
+    "date": "2026-03-05",
+    "amount": -50000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-602",
+    "customer_name": "Qianfeng Tech",
+    "type": "Service outage compensation",
+    "category": "Compensation expense",
+    "description": "Qianfeng Tech March service outage compensation (approved, pending execution)",
+    "status": "pending",
+    "approved_by": "Liu Yang"
+  },
+  {
+    "transaction_id": "TXN-605",
+    "date": "2026-02-15",
+    "amount": 40000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-603",
+    "customer_name": "Sunlight Media",
+    "type": "Monthly service fee",
+    "category": "Service revenue",
+    "description": "Sunlight Media February 2026 service fee",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-606",
+    "date": "2026-03-18",
+    "amount": 40000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-603",
+    "customer_name": "Sunlight Media",
+    "type": "Late monthly service fee payment",
+    "category": "Service revenue",
+    "description": "Sunlight Media March 2026 service fee (late payment)",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-607",
+    "date": "2026-01-05",
+    "amount": 30000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-602",
+    "customer_name": "Qianfeng Tech",
+    "type": "Monthly service fee",
+    "category": "Service revenue",
+    "description": "Qianfeng Tech January 2026 service fee",
+    "status": "completed"
+  }
+]

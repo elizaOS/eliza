@@ -49,8 +49,20 @@
           "databucketID": "",
           "sendFileAsBody": false,
           "rules": [
-            { "target": "header", "modifier": "X-Mockoon-Fault", "value": "rate_limit", "invert": false, "operator": "equals" },
-            { "target": "query", "modifier": "_fault", "value": "rate_limit", "invert": false, "operator": "equals" }
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
           ],
           "rulesOperator": "OR",
           "disableTemplating": false,
@@ -71,8 +83,20 @@
           "databucketID": "",
           "sendFileAsBody": false,
           "rules": [
-            { "target": "header", "modifier": "X-Mockoon-Fault", "value": "auth_expired", "invert": false, "operator": "equals" },
-            { "target": "query", "modifier": "_fault", "value": "auth_expired", "invert": false, "operator": "equals" }
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
           ],
           "rulesOperator": "OR",
           "disableTemplating": false,
@@ -93,8 +117,20 @@
           "databucketID": "",
           "sendFileAsBody": false,
           "rules": [
-            { "target": "header", "modifier": "X-Mockoon-Fault", "value": "server_error", "invert": false, "operator": "equals" },
-            { "target": "query", "modifier": "_fault", "value": "server_error", "invert": false, "operator": "equals" }
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
           ],
           "rulesOperator": "OR",
           "disableTemplating": false,
@@ -115,7 +151,7 @@
       "responses": [
         {
           "uuid": "11111111-aaaa-4000-8000-000000000021",
-          "body": "{\n  \"id\": \"{{urlParam 'id'}}\",\n  \"threadId\": \"{{urlParam 'id'}}\",\n  \"labelIds\": [\"INBOX\", \"UNREAD\", \"CATEGORY_PERSONAL\"],\n  \"snippet\": \"Hey — confirming the Thursday standup move to 9:30. Let me know if that works.\",\n  \"historyId\": \"3829471\",\n  \"internalDate\": \"1746810000000\",\n  \"sizeEstimate\": 18234,\n  \"payload\": {\n    \"mimeType\": \"multipart/alternative\",\n    \"headers\": [\n      { \"name\": \"From\", \"value\": \"Priya Raman <priya.raman@bluepine.dev>\" },\n      { \"name\": \"To\", \"value\": \"shaw@milady.dev\" },\n      { \"name\": \"Subject\", \"value\": \"Thursday standup -> 9:30?\" },\n      { \"name\": \"Date\", \"value\": \"Thu, 09 May 2026 17:40:00 +0000\" },\n      { \"name\": \"Message-ID\", \"value\": \"<CABc7Pk8q9Lj9w=ABCD@mail.bluepine.dev>\" }\n    ],\n    \"parts\": [\n      {\n        \"partId\": \"0\",\n        \"mimeType\": \"text/plain\",\n        \"body\": { \"size\": 142, \"data\": \"SGV5IOKAlCBjb25maXJtaW5nIHRoZSBUaHVyc2RheSBzdGFuZHVwIG1vdmUgdG8gOTozMC4gTGV0IG1lIGtub3cgaWYgdGhhdCB3b3Jrcy4=\" }\n      }\n    ]\n  }\n}",
+          "body": "{\n  \"id\": \"{{urlParam 'id'}}\",\n  \"threadId\": \"{{urlParam 'id'}}\",\n  \"labelIds\": [\"INBOX\", \"UNREAD\", \"CATEGORY_PERSONAL\"],\n  \"snippet\": \"Hey — confirming the Thursday standup move to 9:30. Let me know if that works.\",\n  \"historyId\": \"3829471\",\n  \"internalDate\": \"1746810000000\",\n  \"sizeEstimate\": 18234,\n  \"payload\": {\n    \"mimeType\": \"multipart/alternative\",\n    \"headers\": [\n      { \"name\": \"From\", \"value\": \"Priya Raman <priya.raman@bluepine.dev>\" },\n      { \"name\": \"To\", \"value\": \"shaw@eliza.dev\" },\n      { \"name\": \"Subject\", \"value\": \"Thursday standup -> 9:30?\" },\n      { \"name\": \"Date\", \"value\": \"Thu, 09 May 2026 17:40:00 +0000\" },\n      { \"name\": \"Message-ID\", \"value\": \"<CABc7Pk8q9Lj9w=ABCD@mail.bluepine.dev>\" }\n    ],\n    \"parts\": [\n      {\n        \"partId\": \"0\",\n        \"mimeType\": \"text/plain\",\n        \"body\": { \"size\": 142, \"data\": \"SGV5IOKAlCBjb25maXJtaW5nIHRoZSBUaHVyc2RheSBzdGFuZHVwIG1vdmUgdG8gOTozMC4gTGV0IG1lIGtub3cgaWYgdGhhdCB3b3Jrcy4=\" }\n      }\n    ]\n  }\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "happy path",
@@ -333,9 +369,7 @@
     "passphrase": ""
   },
   "cors": true,
-  "headers": [
-    { "key": "Content-Type", "value": "application/json" }
-  ],
+  "headers": [{ "key": "Content-Type", "value": "application/json" }],
   "proxyReqHeaders": [{ "key": "", "value": "" }],
   "proxyResHeaders": [{ "key": "", "value": "" }],
   "data": [],

@@ -124,7 +124,7 @@ accumulator — micro-opt, do last.
 
 Locally (after the bring-up doc):
 ```bash
-cd /home/shaw/milady/eliza
+cd /home/shaw/eliza/eliza
 ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda
 make -C packages/inference/verify cuda-verify cuda-verify-fused
 ELIZA_DFLASH_SMOKE_MODEL=/path/to/eliza-1-smoke.gguf packages/inference/verify/cuda_runner.sh \

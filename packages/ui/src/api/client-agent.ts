@@ -1065,9 +1065,9 @@ ElizaClient.prototype.setTradeMode = async function (this: ElizaClient, mode) {
           ipcChannel: "agent:setTradePermissionMode",
           params: { mode },
         });
-      if (viaRpc && typeof viaRpc.ok === "boolean") {
+      if (viaRpc) {
         return {
-          ok: viaRpc.ok,
+          ok: viaRpc.ok ?? true,
           tradePermissionMode: viaRpc.tradePermissionMode,
         };
       }
@@ -3162,8 +3162,16 @@ ElizaClient.prototype.listCodingAgentTaskThreads = function (
     params.set("limit", String(options.limit));
   }
   const query = params.toString();
-  return this.fetch<CodingAgentTaskThread[]>(
-    `/api/coding-agents/coordinator/threads${query ? `?${query}` : ""}`,
+  return this.fetch<
+    | CodingAgentTaskThread[]
+    | { threads?: CodingAgentTaskThread[] | null }
+    | null
+  >(`/api/coding-agents/coordinator/threads${query ? `?${query}` : ""}`).then(
+    (response) => {
+      if (Array.isArray(response)) return response;
+      if (Array.isArray(response?.threads)) return response.threads;
+      return [];
+    },
   );
 };
 

@@ -1,0 +1,122 @@
+{
+  "registry_version": "1.0.3",
+  "last_verified": "2023-11-15",
+  "source": "Internal Research & Verification Team",
+  "entities": [
+    {
+      "id": "ENT-001",
+      "name": "OpenAI",
+      "type": "TechCompany",
+      "category": "AI Research Lab",
+      "founded": 2015,
+      "founders": ["Sam Altman", "Greg Brockman", "Ilya Sutskever", "Elon Musk", "Wojciech Zaremski", "John Schulman"],
+      "headquarters": {
+        "city": "San Francisco",
+        "state": "California",
+        "country": "United States"
+      },
+      "mission": "Ensure AGI benefits all of humanity",
+      "products": ["ChatGPT", "GPT-4", "DALL-E", "Whisper", "Codex"],
+      "employee_count": 2050,
+      "funding_status": "Capped-profit",
+      "status": "active",
+      "website": "https://openai.com",
+      "social_tone": "professional yet approachable",
+      "key_research_areas": ["Large Language Models", "Reinforcement Learning from Human Feedback", "AI Alignment", "Multimodal AI"],
+      "notable_partnerships": ["Microsoft"],
+      "tags": ["generative-ai", "llm", "safety", "alignment"]
+    },
+    {
+      "id": "ENT-002",
+      "name": "DeepMind",
+      "type": "TechCompany",
+      "category": "AI Research Lab",
+      "founded": 2010,
+      "founders": ["Demis Hassabis", "Shane Legg", "Mustafa Suleyman"],
+      "headquarters": {
+        "city": "London",
+        "state": null,
+        "country": "United Kingdom"
+      },
+      "mission": "Solve intelligence to advance science and benefit humanity",
+      "products": ["AlphaFold", "AlphaGo", "Gemini", "WaveNet"],
+      "employee_count": 2500,
+      "funding_status": "Subsidiary of Alphabet",
+      "status": "active",
+      "website": "https://deepmind.google",
+      "social_tone": "academic and authoritative",
+      "key_research_areas": ["Protein Folding", "Reinforcement Learning", "Neuroscience-inspired AI", "Game Playing AI"],
+      "notable_partnerships": ["Google", "NHS"],
+      "tags": ["deeplearning", "scientific-discovery", "alphafold"]
+    },
+    {
+      "id": "ENT-003",
+      "name": "Anthropic",
+      "type": "TechCompany",
+      "category": "AI Safety Company",
+      "founded": 2021,
+      "founders": ["Dario Amodei", "Daniela Amodei"],
+      "headquarters": {
+        "city": "San Francisco",
+        "state": "California",
+        "country": "United States"
+      },
+      "mission": "Build reliable, interpretable, and steerable AI systems",
+      "products": ["Claude", "Claude 2", "Constitutional AI"],
+      "employee_count": 550,
+      "funding_status": "Private",
+      "status": "active",
+      "website": "https://anthropic.com",
+      "social_tone": "thoughtful and safety-conscious",
+      "key_research_areas": ["AI Safety", "Constitutional AI", "Interpretability", "Alignment"],
+      "notable_partnerships": ["Google Cloud", "Amazon"],
+      "tags": ["ai-safety", "constitutional-ai", "alignment"]
+    },
+    {
+      "id": "ENT-004",
+      "name": "Meta AI",
+      "type": "TechCompany",
+      "category": "Corporate AI Division",
+      "founded": 2013,
+      "founders": ["Yann LeCun"],
+      "headquarters": {
+        "city": "Menlo Park",
+        "state": "California",
+        "country": "United States"
+      },
+      "mission": "Advance the state of the art in AI through open research",
+      "products": ["LLaMA", "SAM", "ImageBind", "AudioCraft"],
+      "employee_count": 1200,
+      "funding_status": "Division of Meta Platforms",
+      "status": "active",
+      "website": "https://ai.meta.com",
+      "social_tone": "open-source advocate, community-driven",
+      "key_research_areas": ["Open Source LLMs", "Computer Vision", "Self-supervised Learning", "Embodied AI"],
+      "notable_partnerships": ["Microsoft", "Hugging Face"],
+      "tags": ["open-source", "llama", "computer-vision"]
+    },
+    {
+      "id": "ENT-005",
+      "name": "Stability AI",
+      "type": "TechCompany",
+      "category": "AI Startup",
+      "founded": 2019,
+      "founders": ["Emad Mostaque"],
+      "headquarters": {
+        "city": "London",
+        "state": null,
+        "country": "United Kingdom"
+      },
+      "mission": "Democratize AI through open-source generative models",
+      "products": ["Stable Diffusion", "StableLM", "Stable Audio", "DeepFloyd IF"],
+      "employee_count": 300,
+      "funding_status": "Private",
+      "status": "active",
+      "website": "https://stability.ai",
+      "social_tone": "enthusiastic and community-focused",
+      "key_research_areas": ["Image Generation", "Open Source Models", "Multimodal Generation"],
+      "notable_partnerships": ["AWS", "Hugging Face"],
+      "tags": ["stable-diffusion", "open-source", "image-generation"]
+    }
+  ]
+}

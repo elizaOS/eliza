@@ -1,0 +1,58 @@
+[
+  {
+    "query_id": "ref_001",
+    "input_query": "我想继续上次的视频项目分析",
+    "extracted_keywords": ["继续", "上次", "视频项目", "分析"],
+    "classified_intent": "general",
+    "confidence_score": 0.91,
+    "notes": "Conversation continuation query classified under general intent for broad topic handling"
+  },
+  {
+    "query_id": "ref_002",
+    "input_query": "之前讨论过的技能方案迭代优化，我们接着聊",
+    "extracted_keywords": ["之前", "讨论过", "技能方案", "迭代优化"],
+    "classified_intent": "general",
+    "confidence_score": 0.88,
+    "notes": "References previous discussion but treated as general query for flexible response generation"
+  },
+  {
+    "query_id": "ref_003",
+    "input_query": "帮我找到project_timeline.mp4视频文件",
+    "extracted_keywords": ["project_timeline.mp4", "视频文件"],
+    "classified_intent": "search_memory",
+    "confidence_score": 0.85,
+    "notes": "Video file reference routed through memory search for contextual file retrieval"
+  },
+  {
+    "query_id": "ref_004",
+    "input_query": "上次我们分析project_v3.prproj的时候提到了哪些问题",
+    "extracted_keywords": ["上次", "分析", "project_v3.prproj", "问题"],
+    "classified_intent": "general",
+    "confidence_score": 0.93,
+    "notes": "Past analysis reference handled as general intent to allow comprehensive response"
+  },
+  {
+    "query_id": "ref_005",
+    "input_query": "我要看skill_scheme_v3.xlsx这个表格文件",
+    "extracted_keywords": ["skill_scheme_v3.xlsx", "表格文件"],
+    "classified_intent": "search_memory",
+    "confidence_score": 0.87,
+    "notes": "Spreadsheet file request classified as memory search for context-aware retrieval"
+  },
+  {
+    "query_id": "ref_006",
+    "input_query": "记得我们之前讨论的Adobe Premiere编辑效率提升方案吗",
+    "extracted_keywords": ["记得", "之前", "讨论", "Adobe Premiere", "编辑效率", "提升方案"],
+    "classified_intent": "general",
+    "confidence_score": 0.90,
+    "notes": "Memory recall query classified as general for broader response scope"
+  },
+  {
+    "query_id": "ref_007",
+    "input_query": "继续分析先前对话讨论过的视频项目project_v3.prproj的关键帧动画技能方案迭代优化",
+    "extracted_keywords": ["视频项目", "project_v3.prproj", "关键帧动画", "迭代优化"],
+    "classified_intent": "search_file",
+    "confidence_score": 0.94,
+    "notes": "File extension .prproj present in query triggers search_file (priority 2), which overrides co-occurring search_memory triggers (priority 1) per extraction_rules.yaml priority resolution"
+  }
+]

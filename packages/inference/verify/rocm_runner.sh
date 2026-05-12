@@ -4,7 +4,8 @@
 # This runner intentionally fails without a real AMD GPU and a GGUF smoke
 # model. There is not yet a standalone HIP fixture harness equivalent to
 # cuda_verify; this script verifies the built fork routes the configured KV
-# cache types through a HIP-backed llama-cli invocation.
+# cache types through a HIP-backed llama-bench + llama-completion invocation
+# (the fork's llama-cli is conversation-only and busy-loops on stdin EOF).
 #
 # Environment overrides:
 #   ROCM_TARGET                 default linux-x64-rocm
@@ -183,4 +184,5 @@ fi
 
 "$HERE/runtime_graph_smoke.sh" \
     --target "$TARGET" \
-    --backend-pattern 'HIP|ROCm|rocBLAS|ggml_hip|AMD'
+    --backend-pattern 'HIP|ROCm|rocBLAS|ggml_hip|AMD' \
+    --gen-check

@@ -70,8 +70,8 @@ const FORBIDDEN_STOCK_PACKAGES = [
  * `<propertyPrefix>.boot_phase` property is set by the variant's
  * `init.<vendorDir>.rc`; the framework's `ro.setupwizard.mode` is
  * universal. propertyPrefix defaults to vendorDir for forks that
- * follow the common convention, but Milady-style forks (vendor dir
- * "milady", property namespace "miladyos") declare it separately.
+ * follow the common convention, but Eliza-style forks (vendor dir
+ * "eliza", property namespace "elizaos") declare it separately.
  */
 function requiredBootProperties(propertyPrefix) {
   return {

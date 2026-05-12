@@ -209,8 +209,8 @@ const calendar = envelope({
       etag: '"3829471"',
       nextPageToken: null,
       items: [
-        { kind: "calendar#calendarListEntry", id: "primary", summary: "shaw@milady.dev", primary: true, accessRole: "owner", timeZone: "America/Los_Angeles" },
-        { kind: "calendar#calendarListEntry", id: "team-milady@group.calendar.google.com", summary: "Milady team", accessRole: "writer", timeZone: "America/Los_Angeles" },
+        { kind: "calendar#calendarListEntry", id: "primary", summary: "shaw@eliza.dev", primary: true, accessRole: "owner", timeZone: "America/Los_Angeles" },
+        { kind: "calendar#calendarListEntry", id: "team-eliza@group.calendar.google.com", summary: "Eliza team", accessRole: "writer", timeZone: "America/Los_Angeles" },
       ],
     }, "google"),
     route("get", "calendar/v3/calendars/:calendarId/events", {
@@ -227,7 +227,7 @@ const calendar = envelope({
           start: { dateTime: "2026-05-09T16:30:00-07:00", timeZone: "America/Los_Angeles" },
           end: { dateTime: "2026-05-09T17:00:00-07:00", timeZone: "America/Los_Angeles" },
           attendees: [
-            { email: "shaw@milady.dev", responseStatus: "accepted" },
+            { email: "shaw@eliza.dev", responseStatus: "accepted" },
             { email: PEOPLE[0].email, responseStatus: "accepted" },
             { email: PEOPLE[1].email, responseStatus: "tentative" },
           ],
@@ -244,7 +244,7 @@ const calendar = envelope({
           start: { dateTime: "2026-05-12T11:00:00-07:00" },
           end: { dateTime: "2026-05-12T12:00:00-07:00" },
           attendees: [
-            { email: "shaw@milady.dev", responseStatus: "needsAction" },
+            { email: "shaw@eliza.dev", responseStatus: "needsAction" },
             { email: PEOPLE[2].email, responseStatus: "accepted" },
           ],
         },
@@ -256,7 +256,7 @@ const calendar = envelope({
       summary: "Standup",
       start: { dateTime: "2026-05-09T16:30:00-07:00" },
       end: { dateTime: "2026-05-09T17:00:00-07:00" },
-      attendees: [{ email: "shaw@milady.dev", responseStatus: "accepted" }],
+      attendees: [{ email: "shaw@eliza.dev", responseStatus: "accepted" }],
     }, "google"),
     route("post", "calendar/v3/calendars/:calendarId/events", {
       id: "ev_new_193b000000000001",
@@ -303,7 +303,7 @@ const slack = envelope({
         bot_id: "B09SLACKBOT",
         type: "message",
         text: "Mock slack message body",
-        user: "U09MILADY01",
+        user: "U09ELIZA01",
         ts: "1746810420.000300",
         team: "T09BLUEPINE",
       },
@@ -322,7 +322,7 @@ const slack = envelope({
       messages: [
         { type: "message", user: "U09PRIYA001", text: "Pushing the patch in 10 — anyone want to review?", ts: "1746810360.001100" },
         { type: "message", user: "U09MARCUS01", text: "I'll grab it. Lifeops link?", ts: "1746810400.001200" },
-        { type: "message", user: "U09MILADY01", text: "Here: https://github.com/milady/lifeops/pull/482", ts: "1746810410.001300" },
+        { type: "message", user: "U09ELIZA01", text: "Here: https://github.com/eliza/lifeops/pull/482", ts: "1746810410.001300" },
       ],
       has_more: false,
       response_metadata: { next_cursor: "" },
@@ -330,7 +330,7 @@ const slack = envelope({
     route("get", "users.list", {
       ok: true,
       members: [
-        { id: "U09MILADY01", name: "shaw", real_name: "Shaw Walters", profile: { email: "shaw@milady.dev" } },
+        { id: "U09ELIZA01", name: "shaw", real_name: "Shaw Walters", profile: { email: "shaw@eliza.dev" } },
         { id: "U09PRIYA001", name: "priya", real_name: PEOPLE[0].name, profile: { email: PEOPLE[0].email } },
         { id: "U09MARCUS01", name: "marcus", real_name: PEOPLE[1].name, profile: { email: PEOPLE[1].email } },
       ],
@@ -353,7 +353,7 @@ const discord = envelope({
   port: 18804,
   routes: [
     route("get", "users/@me/guilds", [
-      { id: "1234567890123456789", name: "Milady", icon: null, owner: true, permissions: "2147483647", features: [] },
+      { id: "1234567890123456789", name: "Eliza", icon: null, owner: true, permissions: "2147483647", features: [] },
       { id: "9876543210987654321", name: "BluePine Dev", icon: null, owner: false, permissions: "1073741824", features: [] },
     ], "discord"),
     route("get", "guilds/:guildId/channels", [
@@ -386,7 +386,7 @@ const discord = envelope({
     route("post", "channels/:channelId/messages", {
       id: "8889999999999999",
       channel_id: "{{urlParam 'channelId'}}",
-      author: { id: "5559999000000001", username: "miladybot", bot: true },
+      author: { id: "5559999000000001", username: "elizabot", bot: true },
       content: "Mock outbound message",
       timestamp: "2026-05-09T18:00:00.000Z",
       edited_timestamp: null,
@@ -410,8 +410,8 @@ const telegram = envelope({
       ok: true,
       result: {
         message_id: 4821,
-        from: { id: 7000000001, is_bot: true, first_name: "MiladyBot", username: "miladybot" },
-        chat: { id: -1009876543210, title: "Milady Standup", type: "supergroup" },
+        from: { id: 7000000001, is_bot: true, first_name: "ElizaBot", username: "elizabot" },
+        chat: { id: -1009876543210, title: "Eliza Standup", type: "supergroup" },
         date: 1746810420,
         text: "Mock outbound message",
       },
@@ -424,7 +424,7 @@ const telegram = envelope({
           message: {
             message_id: 4810,
             from: { id: 11122233, is_bot: false, first_name: "Priya", last_name: "Raman", username: "priyar" },
-            chat: { id: -1009876543210, title: "Milady Standup", type: "supergroup" },
+            chat: { id: -1009876543210, title: "Eliza Standup", type: "supergroup" },
             date: 1746810360,
             text: "Pushing the patch in 10",
           },
@@ -434,7 +434,7 @@ const telegram = envelope({
           message: {
             message_id: 4811,
             from: { id: 22233344, is_bot: false, first_name: "Marcus", username: "marcuso" },
-            chat: { id: -1009876543210, title: "Milady Standup", type: "supergroup" },
+            chat: { id: -1009876543210, title: "Eliza Standup", type: "supergroup" },
             date: 1746810400,
             text: "I'll grab it.",
           },
@@ -446,8 +446,8 @@ const telegram = envelope({
       result: {
         id: 7000000001,
         is_bot: true,
-        first_name: "MiladyBot",
-        username: "miladybot",
+        first_name: "ElizaBot",
+        username: "elizabot",
         can_join_groups: true,
         can_read_all_group_messages: false,
         supports_inline_queries: false,
@@ -472,7 +472,7 @@ const github = envelope({
           number: 482,
           state: "open",
           title: "lifeops: planner drops candidate when all signals stale",
-          html_url: "https://github.com/milady/lifeops/issues/482",
+          html_url: "https://github.com/eliza/lifeops/issues/482",
           user: { login: "priyar", id: 11122233 },
           created_at: "2026-05-08T19:14:11Z",
           updated_at: "2026-05-09T16:55:02Z",
@@ -483,7 +483,7 @@ const github = envelope({
           number: 483,
           state: "open",
           title: "lifeops: surface telemetry span ids in approval queue",
-          html_url: "https://github.com/milady/lifeops/issues/483",
+          html_url: "https://github.com/eliza/lifeops/issues/483",
           user: { login: "marcuso", id: 22233344 },
           created_at: "2026-05-09T08:02:17Z",
           updated_at: "2026-05-09T17:30:00Z",
@@ -529,7 +529,7 @@ const github = envelope({
       number: 484,
       state: "open",
       title: "Mock created issue",
-      html_url: "https://github.com/milady/lifeops/issues/484",
+      html_url: "https://github.com/eliza/lifeops/issues/484",
       created_at: "2026-05-09T18:30:00Z",
     }, "github", 201),
   ],
@@ -966,9 +966,9 @@ const spotify = envelope({
   port: 18817,
   routes: [
     route("get", "v1/me", {
-      id: "shawmilady",
+      id: "shaweliza",
       display_name: "Shaw",
-      email: "shaw@milady.dev",
+      email: "shaw@eliza.dev",
       country: "US",
       product: "premium",
       images: [],

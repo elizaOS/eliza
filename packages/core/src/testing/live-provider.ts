@@ -204,7 +204,7 @@ export function selectLiveProvider(
 			else if (isCerebrasOpenAi) env[def.baseUrlEnvVar] = baseUrl;
 		}
 		if (isCerebrasOpenAi) {
-			env.MILADY_PROVIDER = process.env.MILADY_PROVIDER?.trim() || "cerebras";
+			env.ELIZA_PROVIDER = process.env.ELIZA_PROVIDER?.trim() || "cerebras";
 		}
 		env[def.smallModelEnvVar] = smallModel;
 		env[def.largeModelEnvVar] = largeModel;

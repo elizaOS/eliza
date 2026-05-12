@@ -104,7 +104,9 @@ interface ContactParams {
   preferences?: Record<string, string> | string;
   customFields?: Record<string, string> | string;
   attributes?: Record<string, unknown>;
-  // update — operation mode for list/map updates
+  // update — update_mode for list/map updates (replace | add_to | remove_from)
+  update_mode?: string;
+  /** @deprecated dispatcher-only alias for update_mode; not part of the schema. */
   operation?: string;
   // update — UPDATE_ENTITY (component) semantics
   source?: string;
@@ -953,7 +955,8 @@ async function handleUpdateContactInfo(
   }
 
   const contact = contacts[0];
-  const operation = readString(params.operation) ?? "replace";
+  const operation =
+    readString(params.update_mode) ?? readString(params.operation) ?? "replace";
 
   const updateData: Record<string, unknown> = {};
 
@@ -1870,11 +1873,7 @@ export const contactAction: Action = {
     "APPROVE_IDENTITY_MERGE",
     "DISMISS_IDENTITY_MERGE",
     // Activity aliases
-    "GET_RELATIONSHIP_ACTIVITY",
-    "RELATIONSHIPS_ACTIVITY",
-    "LIST_RELATIONSHIP_ACTIVITY",
     "RECENT_ROLODEX_ACTIVITY",
-    "RELATIONSHIP_FEED",
     // Search aliases
     "FIND_PERSON",
     "LOOKUP_USER",
@@ -1921,14 +1920,8 @@ export const contactAction: Action = {
   parameters: [
     {
       name: "action",
-      description: `Contact operation: ${CONTACT_OPS.join(", ")}.`,
+      description: `Contact operation: ${CONTACT_OPS.join(", ")}. For owner-graph entity operations (identity, relationship, log_interaction) use ENTITY; CONTACT is the rolodex/contact lifecycle umbrella.`,
       required: true,
-      schema: { type: "string" as const, enum: [...CONTACT_OPS] },
-    },
-    {
-      name: "op",
-      description: "Legacy alias for action.",
-      required: false,
       schema: { type: "string" as const, enum: [...CONTACT_OPS] },
     },
     {
@@ -2039,7 +2032,7 @@ export const contactAction: Action = {
       schema: { type: "object" as const, additionalProperties: true },
     },
     {
-      name: "operation",
+      name: "update_mode",
       description:
         "update: how to apply list/map updates — replace, add_to, or remove_from (default: replace).",
       required: false,

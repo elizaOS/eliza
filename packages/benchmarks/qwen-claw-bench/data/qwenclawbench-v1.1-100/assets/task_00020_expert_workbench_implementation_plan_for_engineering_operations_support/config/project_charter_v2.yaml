@@ -1,0 +1,177 @@
+# ============================================================
+# Project Charter v2.0
+# Engineering Operations Intelligent Support Center
+# Expert Workbench Initiative
+# Last Updated: 2025-01-15
+# Approved by: Project Steering Committee
+# ============================================================
+
+project:
+  name: "Engineering Operations Intelligent Support Center Expert Workbench"
+  code: "EOISC-EW-2025"
+  version: "2.0"
+  status: "Approved"
+  approval_date: "2025-01-10"
+
+sponsor:
+  name: "Zhang Wei"
+  title: "VP Engineering Operations"
+  department: "Engineering Operations Division"
+
+project_manager:
+  name: "Li Jing"
+  title: "Senior Project Manager"
+  department: "Digital Transformation"
+
+# --- Budget ---
+budget:
+  budget_total_cny: 18500000
+  currency: "CNY"
+  fiscal_year: "2025-2026"
+  approval_authority: "VP Engineering Operations"
+  notes: "Revised upward from initial v1 estimate of 15.2M to account for expanded scope including edge computing, 5G integration, and additional AI model development"
+
+# --- Timeline ---
+timeline:
+  timeline_months: 18
+  start_date: "2025-03-01"
+  end_date: "2026-08-31"
+  phases:
+    - phase_name: "Requirements & Analysis"
+      duration_months: 3
+      start: "2025-03-01"
+      end: "2025-05-31"
+      deliverables:
+        - "Stakeholder requirements document"
+        - "System architecture requirements"
+        - "Data integration specifications"
+        - "Security and compliance requirements"
+    - phase_name: "System Design"
+      duration_months: 3
+      start: "2025-06-01"
+      end: "2025-08-31"
+      deliverables:
+        - "High-level system architecture"
+        - "Detailed design specifications"
+        - "API design and integration plan"
+        - "UI/UX wireframes and prototypes"
+    - phase_name: "Development & Integration"
+      duration_months: 6
+      start: "2025-09-01"
+      end: "2026-02-28"
+      deliverables:
+        - "Core platform modules"
+        - "AI/ML model integration"
+        - "SCADA and IoT data pipelines"
+        - "Knowledge graph and search engine"
+        - "AR remote assistance module"
+    - phase_name: "Testing & Validation"
+      duration_months: 3
+      start: "2026-03-01"
+      end: "2026-05-31"
+      deliverables:
+        - "System integration test results"
+        - "User acceptance test sign-off"
+        - "Performance and load test reports"
+        - "Security penetration test results"
+    - phase_name: "Deployment & Rollout"
+      duration_months: 3
+      start: "2026-06-01"
+      end: "2026-08-31"
+      deliverables:
+        - "Production deployment"
+        - "User training completion"
+        - "Operations handover documentation"
+        - "Post-deployment monitoring report"
+
+# --- Team ---
+team:
+  team_size: 25
+  composition:
+    - role: "Project Manager"
+      count: 1
+    - role: "Solution Architect"
+      count: 2
+    - role: "Backend Developer"
+      count: 5
+    - role: "Frontend Developer"
+      count: 3
+    - role: "AI/ML Engineer"
+      count: 4
+    - role: "Data Engineer"
+      count: 3
+    - role: "DevOps Engineer"
+      count: 2
+    - role: "QA Engineer"
+      count: 2
+    - role: "UX Designer"
+      count: 1
+    - role: "Domain Expert (SME)"
+      count: 2
+
+# --- Objectives ---
+objectives:
+  primary:
+    - "Reduce average P1 incident response time from 45 minutes to 15 minutes"
+    - "Enable AI-assisted resolution for 40% of support requests"
+    - "Achieve 85% expert utilization through intelligent workload distribution"
+    - "Build a unified knowledge base with 60% knowledge reuse rate"
+  secondary:
+    - "Implement AR-assisted remote diagnostics for field operations"
+    - "Deploy edge AI inference at 12 field sites for real-time anomaly detection"
+    - "Integrate with existing SCADA, MES, and ERP systems via standardized APIs"
+    - "Establish 5G private network connectivity for offshore platforms"
+
+# --- Constraints ---
+constraints:
+  technical:
+    - "Must integrate with existing SCADA infrastructure (Honeywell, Emerson, Yokogawa)"
+    - "Data sovereignty required - all production data must remain on-premises or in private cloud"
+    - "System must achieve 99.5% uptime SLA"
+    - "Edge nodes must support offline operation for minimum 72 hours"
+    - "All AI models must be explainable for safety-critical decisions"
+  regulatory:
+    - "Compliance with national cybersecurity regulations"
+    - "HSE data handling per industry safety standards"
+    - "Data classification policy enforcement (restricted/confidential/internal/public)"
+  organizational:
+    - "Must not disrupt existing production operations during deployment"
+    - "Training must cover all 380+ engineering operations staff"
+    - "Change management plan required for each deployment phase"
+
+# --- Risks ---
+risks:
+  - id: "RISK-001"
+    description: "SCADA integration complexity exceeds estimates"
+    probability: "Medium"
+    impact: "High"
+    mitigation: "Early prototyping with SCADA vendors; dedicated integration sprint"
+  - id: "RISK-002"
+    description: "AI model accuracy insufficient for safety-critical decisions"
+    probability: "Medium"
+    impact: "Critical"
+    mitigation: "Human-in-the-loop design; extensive validation with domain experts"
+  - id: "RISK-003"
+    description: "5G network deployment delays at offshore sites"
+    probability: "High"
+    impact: "Medium"
+    mitigation: "Fallback to satellite connectivity; phased offshore rollout"
+  - id: "RISK-004"
+    description: "User adoption resistance from field engineers"
+    probability: "Medium"
+    impact: "Medium"
+    mitigation: "Early user involvement; champion network; iterative UX design"
+  - id: "RISK-005"
+    description: "Key personnel turnover during development phase"
+    probability: "Low"
+    impact: "High"
+    mitigation: "Knowledge documentation; cross-training; competitive retention packages"
+
+# --- Success Criteria ---
+success_criteria:
+  - "P1 response time <= 15 minutes (measured over 30-day rolling average)"
+  - "System uptime >= 99.5% (excluding planned maintenance)"
+  - "User satisfaction score >= 4.2/5.0 (quarterly survey)"
+  - "AI-assisted resolution rate >= 40% within 6 months of deployment"
+  - "Cost per incident reduced by 30% compared to 2024 baseline"
+  - "Knowledge base contains >= 5000 validated articles at launch"

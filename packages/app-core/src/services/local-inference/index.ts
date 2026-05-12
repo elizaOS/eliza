@@ -63,13 +63,22 @@ export {
   type LocalUsageBlock,
   parsePrometheusMetrics,
 } from "./llama-server-metrics";
+export {
+  MLX_BACKEND_ID,
+  MlxLocalServer,
+  mlxBackendEligible,
+  mlxLocalServer,
+} from "./mlx-server";
 export { buildTextGenerationReadiness } from "./readiness";
 export {
   assessCatalogModelFit,
+  type BundleDefaultEligibility,
+  canBundleBeDefaultOnDevice,
   catalogDownloadSizeBytes,
   catalogDownloadSizeGb,
   chooseSmallerFallbackModel,
   classifyRecommendationPlatform,
+  deviceCapsFromProbe,
   type RecommendationPlatformClass,
   type RecommendedModelSelection,
   recommendForFirstRun,

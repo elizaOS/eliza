@@ -23,10 +23,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "bedtime",
-      "10:30"
-    ],
+    "required_outputs": ["bedtime", "10:30"],
     "first_question_fallback": {
       "canned_answer": "Yes, every day. America/New_York time zone.",
       "applies_when": "agent asks about cadence or time zone"
@@ -59,10 +56,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "wind\u2011down",
-      "30"
-    ],
+    "required_outputs": ["wind\u2011down", "30"],
     "first_question_fallback": {
       "canned_answer": "Just tonight, not recurring.",
       "applies_when": "agent asks if it should recur"
@@ -92,10 +86,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "bedtime",
-      "11\u202fpm"
-    ],
+    "required_outputs": ["bedtime", "11\u202fpm"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -122,10 +113,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "skip",
-      "tonight"
-    ],
+    "required_outputs": ["skip", "tonight"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -149,23 +137,14 @@
           "details": {
             "kind": "alarm",
             "cadence": "weekly",
-            "daysOfWeek": [
-              "MO",
-              "TU",
-              "WE",
-              "TH",
-              "FR"
-            ],
+            "daysOfWeek": ["MO", "TU", "WE", "TH", "FR"],
             "timeOfDay": "07:30",
             "listId": "list_personal"
           }
         }
       }
     ],
-    "required_outputs": [
-      "wake\u2011up",
-      "7:30"
-    ],
+    "required_outputs": ["wake\u2011up", "7:30"],
     "first_question_fallback": {
       "canned_answer": "Yes, only Monday through Friday.",
       "applies_when": "agent asks which days"
@@ -198,11 +177,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "log",
-      "sleep",
-      "11\u202fpm"
-    ],
+    "required_outputs": ["log", "sleep", "11\u202fpm"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -229,10 +204,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "conflict",
-      "10\u202fpm"
-    ],
+    "required_outputs": ["conflict", "10\u202fpm"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -256,20 +228,14 @@
           "details": {
             "kind": "alarm",
             "cadence": "weekly",
-            "daysOfWeek": [
-              "SA",
-              "SU"
-            ],
+            "daysOfWeek": ["SA", "SU"],
             "timeOfDay": "21:00",
             "listId": "list_personal"
           }
         }
       }
     ],
-    "required_outputs": [
-      "relax",
-      "9\u202fpm"
-    ],
+    "required_outputs": ["relax", "9\u202fpm"],
     "first_question_fallback": {
       "canned_answer": "Only Saturday and Sunday.",
       "applies_when": "agent asks which days"
@@ -303,10 +269,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "meditation",
-      "6\u202fam"
-    ],
+    "required_outputs": ["meditation", "6\u202fam"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -333,10 +296,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "45",
-      "wind\u2011down"
-    ],
+    "required_outputs": ["45", "wind\u2011down"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -363,10 +323,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "6:30",
-      "deleted"
-    ],
+    "required_outputs": ["6:30", "deleted"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -397,11 +354,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "review",
-      "Sunday",
-      "4\u202fpm"
-    ],
+    "required_outputs": ["review", "Sunday", "4\u202fpm"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -428,9 +381,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "wind\u2011down"
-    ],
+    "required_outputs": ["wind\u2011down"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -460,10 +411,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "nap",
-      "2\u202fpm"
-    ],
+    "required_outputs": ["nap", "2\u202fpm"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -490,10 +438,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "sleep mode",
-      "off"
-    ],
+    "required_outputs": ["sleep mode", "off"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -524,10 +469,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "stretch",
-      "7\u202fam"
-    ],
+    "required_outputs": ["stretch", "7\u202fam"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -554,10 +496,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "conflict",
-      "10:30"
-    ],
+    "required_outputs": ["conflict", "10:30"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -588,11 +527,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "sleep goal",
-      "Monday",
-      "9\u202fam"
-    ],
+    "required_outputs": ["sleep goal", "Monday", "9\u202fam"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -623,10 +558,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "relaxation",
-      "9:30"
-    ],
+    "required_outputs": ["relaxation", "9:30"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -653,10 +585,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "night\u2011light",
-      "disabled"
-    ],
+    "required_outputs": ["night\u2011light", "disabled"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -683,10 +612,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "9:45",
-      "wind\u2011down"
-    ],
+    "required_outputs": ["9:45", "wind\u2011down"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -717,11 +643,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Saturday",
-      "10\u202fam",
-      "review"
-    ],
+    "required_outputs": ["Saturday", "10\u202fam", "review"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -748,9 +670,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "sleep"
-    ],
+    "required_outputs": ["sleep"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -780,10 +700,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "screen",
-      "9\u202fpm"
-    ],
+    "required_outputs": ["screen", "9\u202fpm"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -810,10 +727,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "20",
-      "nap"
-    ],
+    "required_outputs": ["20", "nap"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -844,10 +758,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "journal",
-      "6\u202fam"
-    ],
+    "required_outputs": ["journal", "6\u202fam"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -874,10 +785,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "conflict",
-      "2\u202fpm"
-    ],
+    "required_outputs": ["conflict", "2\u202fpm"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -909,11 +817,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "email",
-      "Friday",
-      "5\u202fpm"
-    ],
+    "required_outputs": ["email", "Friday", "5\u202fpm"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 7,
@@ -943,10 +847,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "coaching",
-      "3\u202fpm"
-    ],
+    "required_outputs": ["coaching", "3\u202fpm"],
     "first_question_fallback": {
       "canned_answer": "Yes, 45 minutes is fine.",
       "applies_when": "agent asks about duration"

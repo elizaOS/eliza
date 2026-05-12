@@ -1,0 +1,17 @@
+{
+  "generatedAt": "2026-05-12T09:11:28.076Z",
+  "harness": "packages/inference/verify/bargein_latency_harness.mjs",
+  "available": false,
+  "reason": "assembled voice path (engine.startVoice + turn controller) not yet wired to this harness — pending W9",
+  "backend": {
+    "hasModels": true,
+    "hasBin": true,
+    "ok": true
+  },
+  "summary": {
+    "vadVoiceDetectedToTtsCancelledMs": null,
+    "vadVoiceDetectedToLlmCancelledMs": null,
+    "bargeInCancelMs": null,
+    "samples": 0
+  }
+}

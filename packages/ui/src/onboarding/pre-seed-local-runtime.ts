@@ -18,9 +18,9 @@
  *
  * Detection: we look for `ElizaOS/<tag>` in the WebView user-agent,
  * which `MainActivity.applyBrandUserAgentMarkers` appends only when
- * `ro.elizaos.product` (or `ro.miladyos.product`) is set by the AOSP
- * product makefile. White-label forks pick this up automatically as
- * long as their product config sets one of those system properties.
+ * `ro.elizaos.product` is set by the AOSP product makefile. White-label
+ * forks pick this up automatically because brand markers are appended in
+ * addition to the base framework marker, not as replacements.
  *
  * Implementation note: this file deliberately does NOT import from
  * `state/persistence` — that module's transitive dep graph is heavy
@@ -32,6 +32,7 @@
  * lighter refactor.
  */
 
+import { isAospElizaUserAgent } from "../platform/aosp-user-agent";
 import {
   ANDROID_LOCAL_AGENT_API_BASE,
   ANDROID_LOCAL_AGENT_LABEL,
@@ -39,6 +40,8 @@ import {
   persistMobileRuntimeModeForServerTarget,
   readPersistedMobileRuntimeMode,
 } from "./mobile-runtime-mode";
+
+export { isAospElizaUserAgent } from "../platform/aosp-user-agent";
 
 // Mirror of `ACTIVE_SERVER_STORAGE_KEY` in `state/persistence.ts`. Split
 // here so this file stays a leaf module — `state/persistence.ts` pulls in
@@ -83,12 +86,7 @@ function writeLocalAgentActiveServer(): void {
 
 function isBrandedAndroidDevice(): boolean {
   if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent ?? "";
-  // MainActivity.applyBrandUserAgentMarkers appends these tokens only
-  // when the corresponding `ro.<brand>os.product` system property is
-  // set by the AOSP product makefile. Stock Android leaves the UA
-  // untouched, which is exactly when we want to render the picker.
-  return /\bElizaOS\//.test(ua) || /\bMiladyOS\//.test(ua);
+  return isAospElizaUserAgent(navigator.userAgent);
 }
 
 /**

@@ -22,13 +22,9 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
-import {
-  judgeRubric,
-} from "../_helpers/action-assertions.ts";
+import { recordBrowserSessionRegistration } from "../../../plugins/app-lifeops/src/lifeops/browser-extension-store.ts";
+import { judgeRubric } from "../_helpers/action-assertions.ts";
 import { seedBrowserExtensionTelemetry } from "../_helpers/lifeops-seeds.ts";
-import {
-  recordBrowserSessionRegistration,
-} from "../../../plugins/app-lifeops/src/lifeops/browser-extension-store.ts";
 
 function checkScreenTimeReportIsHonest(
   ctx: ScenarioContext,

@@ -59,7 +59,6 @@ import {
   LlamaServerDraftProposer,
   LlamaServerTargetVerifier,
   MissingAsrTranscriber,
-  StreamingTranscriberTokenStreamer,
 } from "./pipeline-impls";
 import { type SchedulerEvents, VoiceScheduler } from "./scheduler";
 import {
@@ -75,6 +74,7 @@ import {
   createStreamingTranscriber,
   FfiStreamingTranscriber,
   ffiSupportsStreamingAsr,
+  type WhisperCppOptions,
 } from "./transcriber";
 import type {
   AudioChunk,
@@ -110,6 +110,23 @@ const STUB_PCM_STREAM_CHUNKS = 4;
 
 /** Re-exported from `./errors` so existing `engine-bridge` importers don't churn. */
 export { VoiceStartupError };
+
+/**
+ * Native verifier callbacks report rejected token ranges as half-open
+ * `[from, to)` intervals. The scheduler rollback queue uses inclusive
+ * token indexes, so convert in exactly one place.
+ */
+export function nativeRejectedRangeToRollbackRange(
+  event: Pick<NativeVerifierEvent, "rejectedFrom" | "rejectedTo">,
+): RejectedTokenRange | null {
+  if (event.rejectedFrom < 0 || event.rejectedTo <= event.rejectedFrom) {
+    return null;
+  }
+  return {
+    fromIndex: event.rejectedFrom,
+    toIndex: event.rejectedTo - 1,
+  };
+}
 
 /**
  * One PCM segment delivered to a `StreamingTtsBackend.synthesizeStream`
@@ -376,9 +393,11 @@ export class FfiOmniVoiceBackend
    * result), so the caller never mistakes a non-streaming build for a
    * streaming one (no fallback sludge — the chunk count is the honest
    * signal). The native side checks `ctx->tts_cancel` (set via
-   * `eliza_inference_cancel_tts`) on top of the `onChunk` return value,
-   * so a barge-in `cancelTts` interrupts the in-flight forward pass even
-   * if the JS callback hasn't been reached yet.
+   * `eliza_inference_cancel_tts`) on top of the `onChunk` return value.
+   * A non-streaming build cannot be interrupted while the native batch
+   * forward pass is inside `ttsSynthesize`; it only observes cancellation
+   * before emitting the body chunk. Barge-in-critical product paths should
+   * require `supportsStreamingTts()`.
    */
   async synthesizeStream(args: {
     phrase: Phrase;
@@ -539,6 +558,8 @@ export interface EngineVoiceBridgeOptions {
    * When unset, default loaders are derived from the bundle root.
    */
   lifecycleLoaders?: VoiceLifecycleLoaders;
+  /** Optional whisper.cpp interim ASR configuration. */
+  whisper?: WhisperCppOptions;
 }
 
 /**
@@ -563,6 +584,7 @@ export class EngineVoiceBridge {
   private readonly phraseCache: PhraseCache;
   /** In-flight fused turn (`runVoiceTurn`), if any — cancelled on barge-in. */
   private activePipeline: VoicePipeline | null = null;
+  private readonly whisper?: WhisperCppOptions;
 
   private constructor(
     scheduler: VoiceScheduler,
@@ -573,6 +595,7 @@ export class EngineVoiceBridge {
     ffiContextRef: FfiContextRef | null,
     asrAvailable: boolean,
     phraseCache: PhraseCache,
+    whisper?: WhisperCppOptions,
   ) {
     this.scheduler = scheduler;
     this.backend = backend;
@@ -582,6 +605,7 @@ export class EngineVoiceBridge {
     this.ffiContextRef = ffiContextRef;
     this.asrAvailable = asrAvailable;
     this.phraseCache = phraseCache;
+    this.whisper = whisper;
   }
 
   get ffiCtx(): ElizaInferenceContextHandle | null {
@@ -744,6 +768,7 @@ export class EngineVoiceBridge {
       ffiContextRef,
       asrAvailable,
       phraseCache,
+      opts.whisper,
     );
   }
 
@@ -862,7 +887,12 @@ export class EngineVoiceBridge {
    * no FFI handle or the build pre-dates the verifier callback.
    */
   hasNativeVerifier(): boolean {
-    return this.ffi !== null && this.ffiCtx !== null;
+    // ABI v3 exports `eliza_inference_set_verifier_callback`, but the
+    // current generated adapter returns ELIZA_ERR_NOT_IMPLEMENTED until the
+    // native DFlash speculative loop is ported into libelizainference. Do
+    // not let callers skip the SSE verifier fallback merely because the
+    // symbol exists.
+    return false;
   }
 
   /**
@@ -897,11 +927,9 @@ export class EngineVoiceBridge {
         })();
     return this.ffi.setVerifierCallback(ctx, (event) => {
       onEvent?.(event);
-      if (event.rejectedFrom >= 0 && event.rejectedTo >= event.rejectedFrom) {
-        void this.pushRejectedRange({
-          fromIndex: event.rejectedFrom,
-          toIndex: event.rejectedTo,
-        });
+      const rollback = nativeRejectedRangeToRollbackRange(event);
+      if (rollback) {
+        void this.pushRejectedRange(rollback);
       }
     });
   }
@@ -953,7 +981,8 @@ export class EngineVoiceBridge {
       const cached = this.phraseCache.get(text);
       if (!cached || cached.pcm.length === 0) continue;
       this.scheduler.ringBuffer.write(cached.pcm);
-      this.scheduler.ringBuffer.flushToSink();
+      const flushed = this.scheduler.ringBuffer.flushToSink();
+      this.scheduler.markAgentSpeakingForAudio(flushed, cached.sampleRate);
       return cached.text;
     }
     return null;
@@ -964,8 +993,10 @@ export class EngineVoiceBridge {
    * voice turn controller (W9) feeds mic frames into and the barge-in
    * word-confirm gate (W1) listens to. Resolves the adapter chain:
    *   fused `libelizainference` streaming ASR (final path, gated on a
-   *   working decoder AND a bundled ASR model) → whisper.cpp interim
-   *   adapter → `AsrUnavailableError`.
+   *   working decoder AND a bundled ASR model) → fused batch ASR over the
+   *   same bundled model → `AsrUnavailableError`. The Eliza-1 bridge
+   *   deliberately disables the standalone whisper.cpp fallback so local
+   *   voice mode never leaves the fused bundle.
    *
    * Pass W1's `vad` event stream to gate decoding to active speech
    * windows. Caller owns the returned transcriber's lifecycle (`dispose()`).
@@ -980,15 +1011,17 @@ export class EngineVoiceBridge {
       getContext: contextRef ? () => contextRef.ensure() : undefined,
       asrBundlePresent: this.asrAvailable,
       vad: opts?.vad,
+      whisper: this.whisper,
+      allowWhisperFallback: false,
     });
   }
 
   /**
    * Batch transcription: one-shot over a whole PCM buffer. Drives a
-   * `StreamingTranscriber` (fused streaming ASR or whisper.cpp interim)
-   * — feeds the buffer as a single frame, `flush()`es, returns the final
-   * transcript. Throws `AsrUnavailableError` when no ASR backend is
-   * available — never a silent empty string.
+   * `StreamingTranscriber` (fused streaming ASR → fused-batch interim) —
+   * feeds the buffer as a single frame,
+   * `flush()`es, returns the final transcript. Throws `AsrUnavailableError`
+   * when no ASR backend is available — never a silent empty string.
    */
   async transcribePcm(args: TranscriptionAudio): Promise<string> {
     this.assertVoiceOn("transcribe audio");
@@ -1057,24 +1090,24 @@ export class EngineVoiceBridge {
   }
 
   /**
-   * Resolve the pipeline's ASR backend: a real `StreamingTranscriber`
-   * (fused `eliza_inference_asr_stream_*` decoder when the loaded build
-   * advertises one and the bundle ships an `asr/` region, else the
-   * whisper.cpp interim adapter) adapted onto the pipeline's batch
-   * token-iterator (`StreamingTranscriberTokenStreamer`). When no ASR
-   * backend is available the failure is surfaced as a `MissingAsrTranscriber`
-   * that throws on first use — AGENTS.md §3, no silent cloud fallback.
+   * Resolve the pipeline's ASR backend: a live `StreamingTranscriber` —
+   * the fused `eliza_inference_asr_stream_*` decoder when the loaded build
+   * advertises one and the bundle ships an `asr/` region, else the fused
+   * batch ASR adapter. The `VoicePipeline` drives it as a batch
+   * (feed the whole utterance, `flush()`, split the transcript into
+   * tokens). When no ASR backend is available the failure is surfaced as a
+   * `MissingAsrTranscriber` that throws on first use — AGENTS.md §3, no
+   * silent cloud fallback.
    */
-  private resolveTranscriber():
-    | StreamingTranscriberTokenStreamer
-    | MissingAsrTranscriber {
+  private resolveTranscriber(): StreamingTranscriber {
     const ctxRef = this.ffiContextRef;
-    let streaming: StreamingTranscriber;
     try {
-      streaming = createStreamingTranscriber({
+      return createStreamingTranscriber({
         ffi: this.ffi,
         getContext: ctxRef ? () => ctxRef.ensure() : undefined,
         asrBundlePresent: this.asrAvailable,
+        whisper: this.whisper,
+        allowWhisperFallback: false,
       });
     } catch (err) {
       if (err instanceof AsrUnavailableError) {
@@ -1082,7 +1115,6 @@ export class EngineVoiceBridge {
       }
       throw err;
     }
-    return new StreamingTranscriberTokenStreamer(streaming);
   }
 
   /** Diagnostic accessor — bundle root the bridge is wired against. */

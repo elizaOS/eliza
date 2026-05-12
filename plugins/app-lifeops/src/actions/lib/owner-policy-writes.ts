@@ -1,9 +1,8 @@
 /**
  * Shared owner-policy writers for the LifeOps action surface.
  *
- * `LIFE.policy_set_reminder` / `LIFE.policy_configure_escalation` use these
- * helpers so the OwnerFactStore is the single source of truth for reminder
- * intensity + escalation rules.
+ * Owner reminder policy flows use these helpers so the OwnerFactStore is the
+ * single source of truth for reminder intensity + escalation rules.
  */
 
 import type { Action, IAgentRuntime, Memory } from "@elizaos/core";

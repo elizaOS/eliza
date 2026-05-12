@@ -34,7 +34,7 @@ import {
   CARROT_ISOLATIONS,
   HOST_PERMISSIONS,
 } from "./types.js";
-import { validateCarrotManifest } from "./validation.js";
+import { isValidCarrotId, validateCarrotManifest } from "./validation.js";
 
 const REGISTRY_FILE_NAME = "registry.json";
 const INSTALL_FILE_NAME = "install.json";
@@ -386,7 +386,17 @@ export function getCarrotStorePaths(
   storeRoot: string,
   id: string,
 ): CarrotStorePaths {
-  const rootDir = join(storeRoot, id);
+  if (!isValidCarrotId(id)) {
+    throw new CarrotStoreError(`Invalid carrot id: ${id}`);
+  }
+  const rootDir = resolve(storeRoot, id);
+  const normalizedStoreRoot = resolve(storeRoot);
+  if (
+    rootDir !== normalizedStoreRoot &&
+    !rootDir.startsWith(`${normalizedStoreRoot}${sep}`)
+  ) {
+    throw new CarrotStoreError(`Carrot id escapes store root: ${id}`);
+  }
   return {
     rootDir,
     currentDir: join(rootDir, "current"),

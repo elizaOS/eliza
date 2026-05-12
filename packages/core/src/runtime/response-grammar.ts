@@ -15,20 +15,17 @@
  * GBNF. Cloud adapters ignore both — `responseSchema` / `tools` carry the
  * equivalent (unforced) contract for them, so there is no fallback branch here.
  *
- * Reconciliation note (W3 ↔ field registry):
- *   W3 unified the Stage-1 envelope by editing `HANDLE_RESPONSE_SCHEMA` in
- *   `actions/to-tool.ts` directly, NOT by migrating the message pipeline onto
- *   `ResponseHandlerFieldRegistry`. The message pipeline still sends
- *   `HANDLE_RESPONSE_SCHEMA` (the flat W3 shape). Rather than force a risky
- *   pipeline migration here, `buildResponseGrammar` produces a skeleton whose
- *   fixed-order spans match `HANDLE_RESPONSE_SCHEMA` byte-for-byte
- *   (`shouldRespond → thought → replyText → contexts → contextSlices →
- *   candidateActions → parentActionHints → requiresTool → extract`) and then
- *   appends one span per *registered* `ResponseHandlerFieldEvaluator` at its
- *   priority position. So the skeleton is a superset of whatever the pipeline
- *   actually sends today and is forward-compatible if the pipeline later moves
- *   onto the registry. `parseMessageHandlerOutput` already tolerates extra
- *   top-level keys.
+ * Source of truth:
+ *   `ResponseHandlerFieldRegistry.composeSchema()`
+ *   (`./response-handler-field-registry.ts`) is canonical. Production Stage 1
+ *   sends that composed schema as the HANDLE_RESPONSE tool's `parameters`, and
+ *   when registered field evaluators are supplied here `buildResponseGrammar`
+ *   emits the *same* field-registry envelope in priority order — schema, prompt
+ *   slices, and GBNF skeleton all derive from one registered set. The legacy
+ *   fixed W3 envelope (`STAGE1_ENVELOPE_KEYS` below, mirroring
+ *   `HANDLE_RESPONSE_SCHEMA` in `../actions/to-tool.ts`) remains only as a
+ *   compatibility fallback for tests or older callers that do not pass field
+ *   evaluators. See the `TODO(consolidate)` block on `HANDLE_RESPONSE_SCHEMA`.
  *
  * Caching: `buildResponseGrammar` is pure given the runtime registries
  * snapshot. The result is byte-stable across turns when the registries haven't
@@ -50,7 +47,10 @@ import type {
 } from "../types/model.js";
 
 // ---------------------------------------------------------------------------
-// Stage-1 envelope: fixed key order matching `HANDLE_RESPONSE_SCHEMA`.
+// Stage-1 envelope (FALLBACK ONLY): fixed key order matching the legacy W3
+// `HANDLE_RESPONSE_SCHEMA` in `../actions/to-tool.ts`. Used only when no Stage-1
+// field evaluators are registered (tests / older callers). Production always
+// has the builtin evaluators registered, so the field-registry path below wins.
 // ---------------------------------------------------------------------------
 
 /** `shouldRespond` enum values, in the order the model should try them. */
@@ -337,14 +337,26 @@ function spanKindForFieldSchema(
 ): ResponseSkeletonSpan["kind"] {
 	const type = (schema as { type?: unknown }).type;
 	if (type === "string") {
-		// A single-value enum lowers to a literal at compile time; multi-value
-		// enums could be `enum` spans, but we keep it simple — free-string is a
-		// safe superset and W4 collapses single-value enums anyway.
 		const enumValues = (schema as { enum?: unknown }).enum;
 		if (Array.isArray(enumValues) && enumValues.length === 1) return "literal";
+		if (
+			Array.isArray(enumValues) &&
+			enumValues.length > 1 &&
+			enumValues.every((v): v is string => typeof v === "string")
+		) {
+			return "enum";
+		}
 		return "free-string";
 	}
 	return "free-json";
+}
+
+function stringEnumValuesForFieldSchema(schema: JSONSchema): string[] {
+	const enumValues = (schema as { enum?: unknown }).enum;
+	return Array.isArray(enumValues) &&
+		enumValues.every((v): v is string => typeof v === "string")
+		? enumValues.map(String)
+		: [];
 }
 
 /** GBNF rule reference for an envelope key's value. */
@@ -405,6 +417,10 @@ function gbnfRefForFieldSchema(
  *
  * The skeleton's spans, in order:
  *   `{` literal
+ * Field-registry path:
+ *   [one span per registered field evaluator, priority-ordered]
+ *
+ * Legacy fallback path (only when no fields are supplied):
  *   [non-direct only] `"shouldRespond":` literal → enum span (RESPOND/IGNORE/STOP)
  *   `,"thought":` (or `{"thought":` when direct) literal → free-string span
  *   `,"replyText":` literal → free-string span
@@ -414,7 +430,6 @@ function gbnfRefForFieldSchema(
  *   `,"contextSlices":` literal → free-json span (string array)
  *   `,"candidateActions":` … `,"parentActionHints":` … `,"requiresTool":` …
  *   `,"extract":` literal → free-json span (object)
- *   [one span per registered field evaluator, priority-ordered]
  *   `}` literal
  *
  * Single-value enums (e.g. a field evaluator whose schema is a one-element
@@ -453,6 +468,74 @@ export function buildResponseGrammar(
 	const spans: ResponseSkeletonSpan[] = [];
 	const builder = new GbnfBuilder();
 	const rootParts: string[] = [];
+
+	if (fields.length > 0) {
+		const firstField = fields[0];
+		const open = `{"${firstField.name}":`;
+		spans.push({ kind: "literal", value: open });
+		rootParts.push(gbnfLiteral(open));
+
+		for (let i = 0; i < fields.length; i += 1) {
+			const field = fields[i];
+			if (i > 0) {
+				const glue = `,"${field.name}":`;
+				spans.push({ kind: "literal", value: glue });
+				rootParts.push(gbnfLiteral(glue));
+			}
+			if (field.name === "contexts") {
+				spans.push({
+					kind: "free-json",
+					key: "contexts",
+					rule: "contextsarray",
+				});
+				if (contextIds.length === 0) {
+					builder.useShared("jsonstringarray");
+					rootParts.push("jsonstringarray");
+				} else {
+					const enumRule = "contextid";
+					builder.rule(
+						enumRule,
+						contextIds.map((id) => gbnfJsonStringLiteral(id)).join(" | "),
+					);
+					builder.useShared("ws");
+					builder.rule(
+						"contextsarray",
+						`"[" ws ( ${enumRule} ( ws "," ws ${enumRule} )* )? ws "]"`,
+					);
+					rootParts.push("contextsarray");
+				}
+				continue;
+			}
+			const kind = spanKindForFieldSchema(field.schema);
+			if (kind === "literal") {
+				const enumValues = (field.schema as { enum?: unknown[] }).enum ?? [];
+				const value = JSON.stringify(String(enumValues[0] ?? ""));
+				spans.push({ kind: "literal", key: field.name, value });
+				rootParts.push(gbnfLiteral(value));
+			} else if (kind === "enum") {
+				spans.push({
+					kind,
+					key: field.name,
+					enumValues: stringEnumValuesForFieldSchema(field.schema),
+				});
+				rootParts.push(gbnfRefForFieldSchema(builder, field.schema));
+			} else {
+				spans.push({ kind, key: field.name });
+				rootParts.push(gbnfRefForFieldSchema(builder, field.schema));
+			}
+		}
+		spans.push({ kind: "literal", value: "}" });
+		rootParts.push(gbnfLiteral("}"));
+		builder.root(rootParts);
+		const grammar = builder.build();
+		const skeleton: ResponseSkeleton = { spans, id: cacheKey };
+		const result: ResponseGrammarResult = {
+			responseSkeleton: skeleton,
+			grammar,
+		};
+		stage1Cache.set(cacheKey, result);
+		return result;
+	}
 
 	// Opening brace + first key glue. The first literal is the "trigger" the
 	// engine uses to start a lazy grammar; we make it the JSON open + the first
@@ -529,6 +612,13 @@ export function buildResponseGrammar(
 			const value = JSON.stringify(String(enumValues[0] ?? ""));
 			spans.push({ kind: "literal", key: field.name, value });
 			rootParts.push(gbnfLiteral(value));
+		} else if (kind === "enum") {
+			spans.push({
+				kind,
+				key: field.name,
+				enumValues: stringEnumValuesForFieldSchema(field.schema),
+			});
+			rootParts.push(gbnfRefForFieldSchema(builder, field.schema));
 		} else {
 			spans.push({ kind, key: field.name });
 			rootParts.push(gbnfRefForFieldSchema(builder, field.schema));
@@ -551,6 +641,51 @@ export function buildResponseGrammar(
 export function clearResponseGrammarCache(): void {
 	stage1Cache.clear();
 	plannerCache.clear();
+}
+
+/**
+ * True unless the operator has explicitly opted *out* of guided structured
+ * decode for the local llama-server engine. Guided decode (the
+ * deterministic-token prefill-plan fast-forward layered on top of the GBNF
+ * constrained decode) is **on by default** for the Stage-1 response handler and
+ * the Stage-2 planner — those are the calls that always carry a forced skeleton.
+ * Set `MILADY_LOCAL_GUIDED_DECODE=0` (or `ELIZA_LOCAL_GUIDED_DECODE=0` /
+ * `false` / `off` / `no`) to disable. Cloud adapters ignore
+ * `providerOptions.eliza.guidedDecode` entirely, so this is a no-op for them.
+ */
+function guidedDecodeEnabledByDefault(): boolean {
+	const raw = (
+		process.env.MILADY_LOCAL_GUIDED_DECODE ??
+		process.env.ELIZA_LOCAL_GUIDED_DECODE ??
+		""
+	)
+		.trim()
+		.toLowerCase();
+	return raw !== "0" && raw !== "false" && raw !== "off" && raw !== "no";
+}
+
+/**
+ * Merge `eliza.guidedDecode = true` into a provider-options bag so the local
+ * llama-server engine builds the {@link ResponseSkeleton}'s deterministic-token
+ * prefill plan (`eliza_prefill_plan`) and fast-forwards the forced scaffold
+ * spans — turning the ≈28% of envelope tokens the GBNF already pins into ≈28%
+ * fewer `decode()` calls (the fork-side fast-forward consumes the plan; without
+ * it the runtime degrades to grammar-only / byte-identical output). Idempotent;
+ * returns the same object reference with `eliza.guidedDecode` set. When the
+ * operator opted out via `MILADY_LOCAL_GUIDED_DECODE=0` this is a no-op so an
+ * existing `providerOptions.eliza.guidedDecode` (likely absent) is left alone.
+ */
+export function withGuidedDecodeProviderOptions<
+	T extends Record<string, unknown>,
+>(providerOptions: T): T {
+	if (!guidedDecodeEnabledByDefault()) return providerOptions;
+	const existingEliza =
+		(providerOptions as { eliza?: Record<string, unknown> }).eliza ?? {};
+	(providerOptions as { eliza?: Record<string, unknown> }).eliza = {
+		...existingEliza,
+		guidedDecode: true,
+	};
+	return providerOptions;
 }
 
 // ---------------------------------------------------------------------------

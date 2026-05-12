@@ -1,13 +1,11 @@
 #!/usr/bin/env bun
 
 import "dotenv/config";
+import { createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { logger } from "@elizaos/core";
 import archiver from "archiver";
-import { createReadStream, createWriteStream } from "fs";
-import pLimit from "p-limit";
-import { pipeline } from "stream/promises";
 
 // Paths
 const PROJECT_ROOT = path.join(process.cwd(), "..");
@@ -21,7 +19,7 @@ const PROCESSED_DATA_DIR = path.join(
 );
 const DATASET_DIR = process.cwd();
 const DATA_DIR = path.join(DATASET_DIR, "data");
-const PRICE_HISTORY_DIR = path.join(DATA_DIR, "price_history");
+const _PRICE_HISTORY_DIR = path.join(DATA_DIR, "price_history");
 
 // Interfaces
 interface DiscordMessage {
@@ -284,13 +282,13 @@ async function buildCallsDataset(calls: EnrichedCall[]): Promise<CallRecord[]> {
     if (!callGroups.has(key)) {
       callGroups.set(key, []);
     }
-    callGroups.get(key)!.push(call);
+    callGroups.get(key)?.push(call);
   }
 
   // Filter calls within 1 hour of each other
   const dedupedCalls: EnrichedCall[] = [];
 
-  for (const [key, group] of callGroups) {
+  for (const [_key, group] of callGroups) {
     if (group.length === 1) {
       dedupedCalls.push(group[0]);
     } else {

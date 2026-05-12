@@ -15,9 +15,7 @@ describe("cookieDomainForHost", () => {
   });
 
   test("scopes api-staging.elizacloud.ai to parent zone", () => {
-    expect(cookieDomainForHost("api-staging.elizacloud.ai")).toBe(
-      "elizacloud.ai",
-    );
+    expect(cookieDomainForHost("api-staging.elizacloud.ai")).toBe("elizacloud.ai");
   });
 
   test("strips port before matching", () => {
@@ -34,9 +32,7 @@ describe("cookieDomainForHost", () => {
   });
 
   test("returns undefined for pages.dev preview hosts", () => {
-    expect(
-      cookieDomainForHost("335dcc99.eliza-cloud-enq.pages.dev"),
-    ).toBeUndefined();
+    expect(cookieDomainForHost("335dcc99.eliza-cloud-enq.pages.dev")).toBeUndefined();
   });
 
   test("returns undefined for label-prefix attacks", () => {

@@ -1,5 +1,5 @@
 -- Ensure the current agent backup table exists even on databases that were
--- migrated from the older milady/eliza sandbox table names out of order.
+-- migrated from the older eliza/eliza sandbox table names out of order.
 
 CREATE TABLE IF NOT EXISTS "agent_sandbox_backups" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),

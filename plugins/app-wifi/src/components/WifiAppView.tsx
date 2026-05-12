@@ -9,6 +9,7 @@
  * inline rather than retrying silently.
  */
 
+import { System } from "@elizaos/capacitor-system";
 import type {
   ConnectResult,
   WiFiNetwork,
@@ -20,6 +21,7 @@ import {
   ChevronLeft,
   Lock,
   RefreshCw,
+  Settings,
   Wifi as WifiIcon,
   WifiOff,
 } from "lucide-react";
@@ -68,6 +70,7 @@ interface ConnectedCardProps {
   state: WifiStateResult | null;
   network: WiFiNetwork | null;
   onDisconnect: () => void;
+  onOpenSettings: () => void;
   busy: boolean;
 }
 
@@ -75,21 +78,39 @@ function ConnectedCard({
   state,
   network,
   onDisconnect,
+  onOpenSettings,
   busy,
 }: ConnectedCardProps) {
   if (!state?.enabled) {
     return (
-      <div className="rounded-2xl border border-border/30 bg-card/40 p-4">
-        <div className="flex items-center gap-3">
-          <WifiOff className="h-5 w-5 text-muted-strong" />
-          <div className="text-sm text-muted">Wi-Fi is off</div>
+      <div className="rounded-lg border border-border/30 bg-card/40 p-4">
+        <div className="flex items-start gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-bg-accent">
+            <WifiOff className="h-5 w-5 text-muted-strong" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-medium text-txt">Wi-Fi is off</div>
+            <p className="mt-1 text-xs text-muted">
+              Turn on Wi-Fi from Android settings, then scan again to load
+              nearby networks.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3 rounded-lg"
+              onClick={onOpenSettings}
+            >
+              <Settings className="mr-2 h-4 w-4" />
+              Network settings
+            </Button>
+          </div>
         </div>
       </div>
     );
   }
   if (!network) {
     return (
-      <div className="rounded-2xl border border-border/30 bg-card/40 p-4">
+      <div className="rounded-lg border border-border/30 bg-card/40 p-4">
         <div className="flex items-center gap-3">
           <WifiIcon className="h-5 w-5 text-muted-strong" />
           <div className="text-sm text-muted">Not connected</div>
@@ -98,7 +119,7 @@ function ConnectedCard({
     );
   }
   return (
-    <div className="rounded-2xl border border-border/30 bg-card/40 p-4">
+    <div className="rounded-lg border border-border/30 bg-card/40 p-4">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <WifiIcon className="h-5 w-5 text-txt" />
@@ -140,7 +161,8 @@ function NetworkRow({ network, onSelect }: NetworkRowProps) {
     <button
       type="button"
       onClick={() => onSelect(network)}
-      className="flex w-full items-center justify-between gap-3 rounded-xl border border-border/24 bg-bg/60 px-4 py-3 text-left transition-colors hover:bg-bg-accent"
+      className="flex w-full items-center justify-between gap-3 rounded-lg border border-border/24 bg-bg/60 px-4 py-3 text-left transition-colors hover:bg-bg-accent"
+      data-testid={`wifi-network-${network.bssid || network.ssid || "hidden"}`}
     >
       <div className="flex min-w-0 items-center gap-3">
         {network.secured ? (
@@ -242,12 +264,24 @@ export function WifiAppView(props: OverlayAppContext) {
     }
   }, [refreshState]);
 
+  const openNetworkSettings = useCallback(async () => {
+    setError(null);
+    try {
+      await System.openNetworkSettings();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
+
   const sortedNetworks = useMemo(() => {
     return [...networks].sort((a, b) => b.rssi - a.rssi);
   }, [networks]);
 
   return (
-    <div className="flex h-full w-full flex-col bg-bg">
+    <div
+      data-testid="wifi-shell"
+      className="fixed inset-0 z-50 flex h-[100vh] w-full flex-col overflow-hidden bg-bg pb-[var(--safe-area-bottom,0px)] pl-[var(--safe-area-left,0px)] pr-[var(--safe-area-right,0px)] pt-[var(--safe-area-top,0px)] supports-[height:100dvh]:h-[100dvh]"
+    >
       <header className="flex items-center justify-between gap-3 border-b border-border/24 px-4 py-3">
         <div className="flex items-center gap-2">
           <Button
@@ -267,6 +301,7 @@ export function WifiAppView(props: OverlayAppContext) {
             void scan();
           }}
           disabled={scanning}
+          data-testid="wifi-scan"
         >
           <RefreshCw
             className={`mr-1 h-4 w-4 ${scanning ? "animate-spin" : ""}`}
@@ -275,16 +310,19 @@ export function WifiAppView(props: OverlayAppContext) {
         </Button>
       </header>
 
-      <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
-        <ConnectedCard
-          state={state}
-          network={connected}
-          onDisconnect={handleDisconnect}
-          busy={busy}
-        />
+      <div className="grid flex-1 auto-rows-max gap-4 overflow-y-auto px-4 py-4 md:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
+        <section>
+          <ConnectedCard
+            state={state}
+            network={connected}
+            onDisconnect={handleDisconnect}
+            onOpenSettings={openNetworkSettings}
+            busy={busy}
+          />
+        </section>
 
         {error ? (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400 md:col-span-2">
             {error}
           </div>
         ) : null}
@@ -294,8 +332,37 @@ export function WifiAppView(props: OverlayAppContext) {
             Nearby networks
           </div>
           {sortedNetworks.length === 0 && !scanning ? (
-            <div className="rounded-xl border border-border/24 bg-bg/40 px-4 py-6 text-center text-sm text-muted">
-              No networks found.
+            <div className="rounded-lg border border-border/24 bg-bg/40 px-4 py-8 text-center">
+              <WifiOff className="mx-auto h-9 w-9 text-muted" />
+              <div className="mt-3 text-sm font-medium text-txt">
+                No networks found
+              </div>
+              <p className="mx-auto mt-1 max-w-sm text-xs text-muted">
+                Scans need Wi-Fi and Android location access. If the device has
+                Wi-Fi disabled, open network settings first.
+              </p>
+              <div className="mt-4 flex flex-col justify-center gap-2 sm:flex-row">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-lg"
+                  onClick={() => {
+                    void scan();
+                  }}
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Scan again
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="rounded-lg"
+                  onClick={openNetworkSettings}
+                >
+                  <Settings className="mr-2 h-4 w-4" />
+                  Network settings
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="flex flex-col gap-2">

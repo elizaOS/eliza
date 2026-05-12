@@ -24,6 +24,7 @@ import {
 } from "./plugins/native-features";
 import {
 	executeChainWithFallback,
+	isLocalProvider,
 	maybeReroute,
 	resolveChain,
 } from "./runtime/action-model-routing";
@@ -32,6 +33,7 @@ import {
 	runWithActionRoutingContext,
 	runWithoutActionRoutingContext,
 } from "./runtime/action-routing-context";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./runtime/builtin-field-evaluators";
 import { ContextRegistry } from "./runtime/context-registry";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
@@ -135,6 +137,7 @@ import {
 	type RegisteredEvaluator,
 	type Relationship,
 	type ResolvedPipelineHook,
+	type ResponseSkeleton,
 	type Room,
 	type Route,
 	type RuntimeEventStorage,
@@ -203,6 +206,10 @@ import {
 import { buildDeterministicSeed } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import { getErrorMessage, isTransientModelError } from "./utils/model-errors";
+import {
+	ResponseSkeletonStreamExtractor,
+	StructuredFieldStreamExtractor,
+} from "./utils/streaming";
 import { isPlainObject } from "./utils/type-guards";
 
 const environmentSettings: RuntimeSettings = {};
@@ -352,6 +359,52 @@ export function resolveDefaultOutputFormat(
 		default:
 			return "JSON";
 	}
+}
+
+const DEFAULT_DYNAMIC_PROMPT_STREAM_FIELDS = new Set(["text"]);
+const DEFAULT_RESPONSE_SKELETON_STREAM_FIELDS = new Set([
+	"replyText",
+	"text",
+	"messageToUser",
+]);
+
+function resolveDynamicPromptStreamFields(
+	schema: readonly SchemaRow[],
+): string[] {
+	return schema
+		.filter((row) => {
+			if (row.streamField === true) {
+				return true;
+			}
+			if (row.streamField === false) {
+				return false;
+			}
+			return DEFAULT_DYNAMIC_PROMPT_STREAM_FIELDS.has(row.field);
+		})
+		.map((row) => row.field);
+}
+
+function resolveResponseSkeletonStreamFields(
+	skeleton: ResponseSkeleton | undefined,
+): string[] {
+	if (!skeleton) {
+		return [];
+	}
+	const fields: string[] = [];
+	const seen = new Set<string>();
+	for (const span of skeleton.spans) {
+		const key = span.key;
+		if (
+			span.kind === "free-string" &&
+			key &&
+			DEFAULT_RESPONSE_SKELETON_STREAM_FIELDS.has(key) &&
+			!seen.has(key)
+		) {
+			seen.add(key);
+			fields.push(key);
+		}
+	}
+	return fields;
 }
 
 type ServiceResolver = (service: Service) => void;
@@ -1843,6 +1896,15 @@ export class AgentRuntime implements IAgentRuntime {
 				{ src: "agent", agentId: this.agentId, context: id },
 				"First-party context already registered, skipping",
 			);
+		}
+
+		// Register the canonical core response-handler field evaluators. These
+		// own the top-level properties of the Stage-1 LLM's structured output
+		// (shouldRespond, contexts, intents, candidateActionNames, replyText,
+		// facts, relationships, addressedTo). Plugins may register additional
+		// fields (e.g. app-lifeops contributes `threadOps`).
+		for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
+			this.registerResponseHandlerFieldEvaluator(evaluator);
 		}
 
 		const pluginRegistrationPromises: Promise<void>[] = [];
@@ -4449,6 +4511,8 @@ export class AgentRuntime implements IAgentRuntime {
 			stream?: boolean;
 			onStreamChunk?: StreamChunkCallback;
 			signal?: AbortSignal;
+			streamStructured?: boolean;
+			responseSkeleton?: ResponseSkeleton;
 		}
 		const streamingCtx = getStreamingContext();
 		const paramsAsStreaming = isPlainObject(modelParams)
@@ -4459,16 +4523,93 @@ export class AgentRuntime implements IAgentRuntime {
 		const msgId = streamingCtx?.messageId;
 		const abortSignal = streamingCtx?.abortSignal;
 		const explicitStream = paramsAsStreaming?.stream;
+		const resolvedProviderName = resolvedModel?.provider ?? provider;
+		const streamStructuredOnNonLocalProvider =
+			paramsAsStreaming?.streamStructured === true &&
+			explicitStream !== true &&
+			(!resolvedProviderName || !isLocalProvider(resolvedProviderName));
 
 		// stream: false = force no stream, otherwise stream if any callback exists
 		const shouldStream =
 			explicitStream === false
 				? false
-				: !!(paramsChunk || ctxChunk || explicitStream);
+				: streamStructuredOnNonLocalProvider
+					? false
+					: !!(paramsChunk || ctxChunk || explicitStream);
+		const structuredStreamFields =
+			shouldStream && paramsAsStreaming?.streamStructured === true
+				? resolveResponseSkeletonStreamFields(
+						paramsAsStreaming.responseSkeleton,
+					)
+				: [];
+		const downstreamChunk = (chunk: string, accumulated?: string): void => {
+			void (async () => {
+				if (paramsChunk) await paramsChunk(chunk, msgId, accumulated);
+				if (ctxChunk) await ctxChunk(chunk, msgId, accumulated);
+			})();
+		};
+		const structuredExtractor =
+			structuredStreamFields.length > 0 && paramsAsStreaming?.responseSkeleton
+				? new ResponseSkeletonStreamExtractor({
+						skeleton: paramsAsStreaming.responseSkeleton,
+						streamFields: structuredStreamFields,
+						onChunk: (chunk, _field, accumulated) =>
+							downstreamChunk(chunk, accumulated),
+						...(abortSignal ? { abortSignal } : {}),
+					})
+				: undefined;
+		let handlerDeliveredStream = false;
+		let streamedText = "";
+		const deliverModelStreamChunk = async (chunk: string): Promise<void> => {
+			if (abortSignal?.aborted) return;
+			streamedText += chunk;
+			const trajStream = getTrajectoryContext();
+			await this.invokePipelineHooks(
+				"model_stream_chunk",
+				modelStreamChunkPipelineHookContext({
+					source: "use_model",
+					chunk,
+					messageId: msgId,
+					roomId:
+						(trajStream?.roomId as UUID | undefined) ??
+						this.currentRoomId ??
+						this.agentId,
+					runId: this.getCurrentRunId(),
+					...(trajStream?.messageId
+						? { responseId: trajStream.messageId as UUID }
+						: {}),
+					accumulated: streamedText,
+				}),
+				"Model stream chunk (useModel)",
+				false,
+			);
+			await runInsideModelStreamChunkDelivery(async () => {
+				if (structuredExtractor) {
+					structuredExtractor.push(chunk);
+					return;
+				}
+				if (paramsChunk) await paramsChunk(chunk, msgId, undefined);
+				if (ctxChunk) await ctxChunk(chunk, msgId, undefined);
+			});
+		};
+		const handlerStreamChunk: StreamChunkCallback | undefined =
+			shouldStream &&
+			resolvedProviderName &&
+			isLocalProvider(resolvedProviderName) &&
+			(paramsChunk || structuredExtractor)
+				? async (chunk) => {
+						handlerDeliveredStream = true;
+						await deliverModelStreamChunk(chunk);
+					}
+				: undefined;
 
 		if (isPlainObject(modelParams) && paramsAsStreaming) {
 			paramsAsStreaming.stream = shouldStream;
-			delete paramsAsStreaming.onStreamChunk;
+			if (handlerStreamChunk) {
+				paramsAsStreaming.onStreamChunk = handlerStreamChunk;
+			} else {
+				delete paramsAsStreaming.onStreamChunk;
+			}
 			// Plumb the streaming-context abort signal into model params so the
 			// underlying handler can wire it into its transport (e.g. local
 			// llama's `stopOnAbortSignal`, fetch's `signal`). Only inject when
@@ -4515,41 +4656,11 @@ export class AgentRuntime implements IAgentRuntime {
 			(paramsChunk || ctxChunk) &&
 			isTextStreamResult(rawResponse)
 		) {
-			// WHY undefined for accumulated: raw LLM tokens have no field-level
-			// extraction; accumulated text is only meaningful after a structured
-			// extractor has parsed and isolated a field. Passing undefined is
-			// honest; consumers that need
-			// accumulated data get it from the extractor's onChunk bridge in
-			// dynamicPromptExecFromState, not from the raw token loop.
-			let fullText = "";
 			for await (const chunk of rawResponse.textStream) {
 				if (abortSignal?.aborted) break;
-				fullText += chunk;
-				const trajStream = getTrajectoryContext();
-				await this.invokePipelineHooks(
-					"model_stream_chunk",
-					modelStreamChunkPipelineHookContext({
-						source: "use_model",
-						chunk,
-						messageId: msgId,
-						roomId:
-							(trajStream?.roomId as UUID | undefined) ??
-							this.currentRoomId ??
-							this.agentId,
-						runId: this.getCurrentRunId(),
-						...(trajStream?.messageId
-							? { responseId: trajStream.messageId as UUID }
-							: {}),
-						accumulated: fullText,
-					}),
-					"Model stream chunk (useModel)",
-					false,
-				);
-				await runInsideModelStreamChunkDelivery(async () => {
-					if (paramsChunk) await paramsChunk(chunk, msgId, undefined);
-					if (ctxChunk) await ctxChunk(chunk, msgId, undefined);
-				});
+				await deliverModelStreamChunk(chunk);
 			}
+			structuredExtractor?.flush();
 
 			const trajStreamEnd = getTrajectoryContext();
 			await this.invokePipelineHooks(
@@ -4562,7 +4673,7 @@ export class AgentRuntime implements IAgentRuntime {
 						this.agentId,
 					runId: this.getCurrentRunId(),
 					messageId: msgId ?? trajStreamEnd?.messageId,
-					text: fullText,
+					text: streamedText,
 				}),
 				"Model stream end (useModel)",
 				true,
@@ -4573,7 +4684,7 @@ export class AgentRuntime implements IAgentRuntime {
 			const ctxEnd = streamingCtxEnd?.onStreamEnd;
 			if (ctxEnd) ctxEnd();
 
-			resultRef.current = fullText;
+			resultRef.current = streamedText;
 
 			const elapsedTime =
 				(typeof performance !== "undefined" &&
@@ -4618,18 +4729,43 @@ export class AgentRuntime implements IAgentRuntime {
 				resultRef.current,
 			);
 
-			await this.recordUseModelTrajectory({
-				modelType: String(modelType),
-				resolvedModelKey: String(resolvedModelKey),
-				provider: resolvedModel?.provider ?? provider,
-				modelParams,
-				promptContent,
-				result: resultRef.current,
-				response: modelOutToTrajectoryString(resultRef.current),
-				elapsedTime,
-			});
+			if (String(modelType) !== ModelType.TEXT_EMBEDDING) {
+				await this.recordUseModelTrajectory({
+					modelType: String(modelType),
+					resolvedModelKey: String(resolvedModelKey),
+					provider: resolvedModel?.provider ?? provider,
+					modelParams,
+					promptContent,
+					result: resultRef.current,
+					response: modelOutToTrajectoryString(resultRef.current),
+					elapsedTime,
+				});
+			}
 
 			return resultRef.current as R;
+		}
+
+		if (handlerDeliveredStream) {
+			structuredExtractor?.flush();
+			const trajStreamEnd = getTrajectoryContext();
+			await this.invokePipelineHooks(
+				"model_stream_end",
+				modelStreamEndPipelineHookContext({
+					source: "use_model",
+					roomId:
+						(trajStreamEnd?.roomId as UUID | undefined) ??
+						this.currentRoomId ??
+						this.agentId,
+					runId: this.getCurrentRunId(),
+					messageId: msgId ?? trajStreamEnd?.messageId,
+					text: streamedText,
+				}),
+				"Model stream end (useModel)",
+				true,
+			);
+			const streamingCtxEnd = getStreamingContext();
+			const ctxEnd = streamingCtxEnd?.onStreamEnd;
+			if (ctxEnd) ctxEnd();
 		}
 
 		const elapsedTime =
@@ -4648,7 +4784,7 @@ export class AgentRuntime implements IAgentRuntime {
 				durationMs: Math.round(elapsedTime),
 				params: modelParams,
 				result: resultRef,
-				streaming: false,
+				streaming: handlerDeliveredStream,
 			}),
 			"Post-model pipeline hook",
 		);
@@ -4674,16 +4810,18 @@ export class AgentRuntime implements IAgentRuntime {
 			resultRef.current,
 		);
 
-		await this.recordUseModelTrajectory({
-			modelType: String(modelType),
-			resolvedModelKey: String(resolvedModelKey),
-			provider: resolvedModel?.provider ?? provider,
-			modelParams,
-			promptContent,
-			result: resultRef.current,
-			response: modelOutToTrajectoryString(resultRef.current),
-			elapsedTime,
-		});
+		if (String(modelType) !== ModelType.TEXT_EMBEDDING) {
+			await this.recordUseModelTrajectory({
+				modelType: String(modelType),
+				resolvedModelKey: String(resolvedModelKey),
+				provider: resolvedModel?.provider ?? provider,
+				modelParams,
+				promptContent,
+				result: resultRef.current,
+				response: modelOutToTrajectoryString(resultRef.current),
+				elapsedTime,
+			});
+		}
 		return resultRef.current as R;
 	}
 
@@ -5231,6 +5369,27 @@ export class AgentRuntime implements IAgentRuntime {
 							perFieldCodes.set(row.field, promptCode());
 						}
 					}
+				}
+
+				const streamFields = resolveDynamicPromptStreamFields(schema);
+				if (
+					streamFields.length > 0 &&
+					(options.onStreamChunk || options.onStreamEvent)
+				) {
+					extractor = new StructuredFieldStreamExtractor({
+						level: contextLevel,
+						schema,
+						streamFields,
+						...(options.abortSignal
+							? { abortSignal: options.abortSignal }
+							: {}),
+						onChunk: (chunk, _field, accumulated) => {
+							void options.onStreamChunk?.(chunk, undefined, accumulated);
+						},
+						onEvent: (event) => {
+							void options.onStreamEvent?.(event, undefined);
+						},
+					});
 				}
 			}
 

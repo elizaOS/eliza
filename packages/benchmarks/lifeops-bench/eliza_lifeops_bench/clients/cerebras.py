@@ -20,8 +20,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import time
+from email.utils import parsedate_to_datetime
 from typing import Any, Final
 
 import httpx
@@ -35,6 +37,8 @@ from .base import (
     ToolCall,
     Usage,
 )
+
+logger = logging.getLogger(__name__)
 
 # Pricing: pay-per-token published by Cerebras for gpt-oss-120b is $0.35/M
 # input and $0.75/M output as of May 2026. Sourced from
@@ -50,8 +54,44 @@ CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
 
 _DEFAULT_BASE_URL: Final[str] = "https://api.cerebras.ai/v1"
 _DEFAULT_MODEL: Final[str] = "gpt-oss-120b"
-_RETRY_BACKOFF_SECONDS: Final[float] = 2.0
 _REQUEST_TIMEOUT_SECONDS: Final[float] = 60.0
+
+# Retry policy: 5 attempts, exponential backoff (1, 2, 4, 8, 16s) honoring
+# ``Retry-After`` on 429/5xx. Other 4xx surface immediately.
+_MAX_ATTEMPTS: Final[int] = 5
+_RETRY_BACKOFF: Final[tuple[float, ...]] = (1.0, 2.0, 4.0, 8.0, 16.0)
+_MAX_RETRY_AFTER_SECONDS: Final[float] = 60.0
+
+
+def _parse_retry_after(value: str | None) -> float | None:
+    """Parse a ``Retry-After`` header into a delay in seconds."""
+    if not value:
+        return None
+    raw = value.strip()
+    if not raw:
+        return None
+    try:
+        seconds = float(raw)
+    except ValueError:
+        try:
+            target = parsedate_to_datetime(raw)
+        except (TypeError, ValueError):
+            return None
+        if target is None:
+            return None
+        seconds = target.timestamp() - time.time()
+    if seconds <= 0:
+        return 0.0
+    return min(seconds, _MAX_RETRY_AFTER_SECONDS)
+
+
+def _backoff_for(attempt: int) -> float:
+    """Default backoff delay for the given 0-based attempt index."""
+    if attempt < 0:
+        return _RETRY_BACKOFF[0]
+    if attempt >= len(_RETRY_BACKOFF):
+        return _RETRY_BACKOFF[-1]
+    return _RETRY_BACKOFF[attempt]
 
 
 def _resolve_finish_reason(raw: str | None) -> FinishReason:
@@ -67,11 +107,19 @@ def _resolve_finish_reason(raw: str | None) -> FinishReason:
     return "error"
 
 
-def _compute_cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -> float:
-    """Compute USD cost for a Cerebras call. Returns 0.0 for unknown models."""
+def _compute_cost_usd(
+    model: str, prompt_tokens: int, completion_tokens: int
+) -> float | None:
+    """Compute USD cost for a Cerebras call.
+
+    Returns :data:`None` when ``model`` is not in :data:`CEREBRAS_PRICING` —
+    per AGENTS.md Cmd #8 an unpriced model is nullable, not a silent free
+    ``0.0``. Downstream aggregators sum only non-None per-turn costs into
+    the run-level ``total_cost_usd``.
+    """
     pricing = CEREBRAS_PRICING.get(model)
     if pricing is None:
-        return 0.0
+        return None
     input_cost = (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"]
     output_cost = (completion_tokens / 1_000_000.0) * pricing["output_per_million_usd"]
     return input_cost + output_cost
@@ -81,8 +129,22 @@ def _parse_tool_calls(raw_tool_calls: list[dict[str, Any]] | None) -> list[ToolC
     """Parse OpenAI-format tool_calls into the benchmark ToolCall shape."""
     if not raw_tool_calls:
         return []
+    if not isinstance(raw_tool_calls, list):
+        raise ProviderError(
+            f"Cerebras tool_calls must be a list, got {type(raw_tool_calls).__name__}",
+            status=None,
+            body=json.dumps(raw_tool_calls),
+            provider="cerebras",
+        )
     parsed: list[ToolCall] = []
     for tc in raw_tool_calls:
+        if not isinstance(tc, dict):
+            raise ProviderError(
+                f"Cerebras tool_call must be an object, got {type(tc).__name__}",
+                status=None,
+                body=json.dumps(tc),
+                provider="cerebras",
+            )
         function = tc.get("function") or {}
         name = function.get("name")
         if not isinstance(name, str) or not name:
@@ -94,7 +156,15 @@ def _parse_tool_calls(raw_tool_calls: list[dict[str, Any]] | None) -> list[ToolC
             )
         raw_args = function.get("arguments", "{}")
         if isinstance(raw_args, str):
-            arguments = json.loads(raw_args) if raw_args else {}
+            try:
+                arguments = json.loads(raw_args) if raw_args else {}
+            except json.JSONDecodeError as exc:
+                raise ProviderError(
+                    "Cerebras tool_call arguments were not valid JSON",
+                    status=None,
+                    body=json.dumps(tc),
+                    provider="cerebras",
+                ) from exc
         elif isinstance(raw_args, dict):
             arguments = raw_args
         else:
@@ -179,17 +249,69 @@ class CerebrasClient(BaseClient):
             timeout=_REQUEST_TIMEOUT_SECONDS,
         )
 
+    async def _post_with_retry(
+        self,
+        client: httpx.AsyncClient,
+        body: dict[str, Any],
+    ) -> httpx.Response:
+        """POST with exponential backoff on 429/5xx/network errors.
+
+        Retries up to :data:`_MAX_ATTEMPTS` times. Honors ``Retry-After`` when
+        present. Other 4xx responses are returned to the caller unchanged so
+        :meth:`complete` raises a structured ``ProviderError``.
+        """
+        last_status: int | None = None
+        last_error_str = "no attempt completed"
+        last_response: httpx.Response | None = None
+        for attempt in range(_MAX_ATTEMPTS):
+            try:
+                response = await self._post_once(client, body)
+            except (httpx.NetworkError, httpx.TimeoutException, httpx.RemoteProtocolError) as exc:
+                last_status = None
+                last_error_str = f"{type(exc).__name__}: {exc}"
+                last_response = None
+                delay = _backoff_for(attempt)
+            else:
+                if response.status_code == 429 or response.status_code >= 500:
+                    last_status = response.status_code
+                    last_error_str = response.text[:300]
+                    last_response = response
+                    retry_after = _parse_retry_after(response.headers.get("retry-after"))
+                    delay = retry_after if retry_after is not None else _backoff_for(attempt)
+                else:
+                    return response
+            if attempt == _MAX_ATTEMPTS - 1:
+                if last_response is not None:
+                    return last_response
+                raise ProviderError(
+                    f"Cerebras retry exhausted after {_MAX_ATTEMPTS} attempts: {last_error_str}",
+                    status=None,
+                    body=last_error_str,
+                    provider="cerebras",
+                )
+            logger.warning(
+                "cerebras-client retrying POST (attempt %d/%d, status=%s) after %.2fs: %s",
+                attempt + 1,
+                _MAX_ATTEMPTS,
+                "net" if last_status is None else last_status,
+                delay,
+                last_error_str[:200],
+            )
+            await asyncio.sleep(delay)
+        # Unreachable — the loop above either returns or raises.
+        raise ProviderError(  # pragma: no cover
+            f"Cerebras retry loop exited unexpectedly after {_MAX_ATTEMPTS} attempts",
+            status=last_status,
+            body=last_error_str,
+            provider="cerebras",
+        )
+
     async def complete(self, call: ClientCall) -> ClientResponse:
         body = self._build_body(call)
         client = self._http_client or httpx.AsyncClient()
         start_ns = time.perf_counter_ns()
         try:
-            response = await self._post_once(client, body)
-            if response.status_code == 429 or response.status_code >= 500:
-                # Single retry on transient failures, with a fixed 2s backoff.
-                # No more than one retry — fail loudly so the runner sees it.
-                await asyncio.sleep(_RETRY_BACKOFF_SECONDS)
-                response = await self._post_once(client, body)
+            response = await self._post_with_retry(client, body)
             if response.status_code >= 400:
                 raise ProviderError(
                     f"Cerebras error {response.status_code}",

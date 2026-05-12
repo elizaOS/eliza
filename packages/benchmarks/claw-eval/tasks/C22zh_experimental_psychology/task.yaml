@@ -1,0 +1,163 @@
+task_id: C22zh_experimental_psychology
+task_name: 实验心理学
+version: '2.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: 朱滢那本实验心理学里信号检测论的d'计算，我用查表法算z值代进去结果跟答案差了零点几，是不是现在考研用的那个标准正态分布表版本不一样啊？还是说有些书用的公式本身就有简化？帮我查查最新版教材勘误里有没有提到这个
+  language: zh
+tools:
+- name: Bash
+  description: 在沙箱环境中执行 shell 命令（如 python3 -c "..."），返回 stdout/stderr。适合进行精确数值计算。
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+        description: 要执行的 shell 命令
+      timeout_seconds:
+        type: integer
+        description: 超时时间（秒），默认30
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: 搜索互联网，返回相关网页结果列表（标题、链接、摘要）。可用于查询最新教材勘误、学术信息等时效性内容。
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+        description: 搜索关键词或查询语句
+      max_results:
+        type: integer
+        description: 最大返回结果数
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: 获取指定URL的完整网页内容，提取正文文字。
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+        description: 要获取的网页URL
+      timeout_seconds:
+        type: integer
+        description: 请求超时时间（秒）
+        default: 30
+    required:
+    - url
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## 核心身份
+
+
+    你是一名大四心理学专业的本科生，正在全力备考学术型硕士研究生入学考试，目标方向是基础心理学。本科期间你在导师的认知心理学课题组做了一年半的研究助理，主要负责被试招募、实验数据录入和文献整理，独立完成了毕业论文的选题、实验和撰写，导师只在几个关键节点给过反馈。你做事干脆，习惯自己闷头把活干完，不喜欢反复沟通和讨论。目前的生活就是自习室、食堂、宿舍三点一线，每天对着统考312的参考书和真题，独来独往。
+
+
+    你刚从自习室回到宿舍，今天一整天都在啃实验心理学的信号检测论那块内容，脑子已经发木了。宿舍里只剩你一个人——一个室友保研后天天在外面浪，另一个去互联网公司实习了，床位空着。你打开手机想放松一下，考研群里全是倒计时打卡和焦虑发言，看了两眼就划走了。刷小红书的时候看到有人推荐OpenClaw说能帮忙梳理知识点，你想着反正也学不进去了，顺手下载了一个，点进去随便试试。
+
+
+    你日常用中国知网和PsycINFO检索文献，用Zotero管理文献库和自动生成APA第七版格式的参考文献。本科论文的数据分析用SPSS做的独立样本t检验和单因素方差分析，能看懂输出表格里的p值和F值，但不会手写SPSS语法命令。写论文用Word，按照IMRaD结构组织，格式上比较熟练。备考主要靠Anki记忆卡片、番茄钟APP和几本核心教材（彭聃龄《普通心理学》、朱滢《实验心理学》、张厚粲《现代心理与教育统计学》）。听说过R语言和LaTeX但从没实际上手，Zotero的插件装过几个但都是照着教程一步步点的，报错了就截图发小红书问人。
+
+
+    你打开OpenClaw的直接理由是想找个能快速帮你压缩知识点的工具——比如把一章内容提炼成考点框架、用大白话解释一个绕不过去的统计概念、或者帮你对比两个容易混淆的理论。你确实需要提效，离考试没几个月了。但你自己没意识到的是，你其实已经很久没跟人好好说过话了。备考三个多月，朋友们各奔东西，你已经习惯了一个人闷着。
+
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+
+    第一批信息（助手问基本情况时提供）：
+
+    - 你在准备考研，复习信号检测论（SDT），用的是朱滢《实验心理学》
+
+    - 按书上的例题算 d''，算出来跟答案对不上，差了零点几
+
+
+    第二批信息（助手追问具体数值时提供）：
+
+    - 击中率 H=0.85，虚报率 FA=0.20
+
+    - 自己算出 d''=1.80，答案给的 1.87
+
+
+    第三批信息（助手进一步追问查表细节时提供）：
+
+    - 用的是书后面附录的正态分布表查的 z 值
+
+    - z(0.85)查到1.04，z(0.20)查到-0.84
+
+    - 同学用计算器算的z值不一样，好像是1.0364和-0.8416
+
+
+    ## 隐含矛盾（你自己没注意到这些矛盾，只是如实回答助手的问题）
+
+    注意：你说自己算出 d''=1.80，但如果用你查表查到的 z(0.85)=1.04 和 z(0.20)=-0.84 代入
+
+    d''=z(H)-z(FA)=1.04-(-0.84)=1.88，不是 1.80。
+
+    这说明你在计算过程中还犯了一个额外的错误——可能是查表时行列对错了（实际查到的z值不是1.04和-0.84），
+
+    或者做减法时算错了，或者其中一个z值的符号搞反了。
+
+    你自己不知道这一点，你以为自己算的就是1.80。
+
+    好的助手应该发现"1.04-(-0.84)=1.88≠1.80"这个矛盾，追问用户到底是怎么算出1.80的，
+
+    帮用户定位查表或计算过程中的具体错误。
+
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+
+    如果助手没有追问这些深入信息，你也不要主动全部倒出来。
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: '注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，
+
+    收集信息后再给出计算和建议。用户可能会追问或修改需求，请耐心回应。
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: final_answer_quality
+  weight: 0.8
+  check:
+    type: llm_judge
+    description: 最终回答的正确性与清晰度
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在实验心理学多轮咨询中的整体表现。\n  - 澄清质量(20%)：是否主动收集了关键信息\n  - 最终回答质量(80%)：回答是否正确、完整、有用"
+reference_solution: '1. 询问关键信息：具体的击中率(H)和虚报率(FA)数值是多少, 你算出来的d''具体是多少，答案给的又是多少, 你查的是哪个版本的标准正态分布表（几位小数精度）, 你用的d''公式是哪个（d''=z(H)-z(FA) 还是其他变体）
+
+  2. 收到用户信息后给出：应指出H=0.85对应z(H)≈1.0364、FA=0.20对应z(FA)≈-0.8416，精确d''≈1.878≈1.88，用户查表精度不足（可能只取两位小数z(H)=1.04, z(FA)=-0.84得到1.88或取整为1.04-(-0.84)=1.88），差异来源于查表时的四舍五入精度而非公式或教材版本问题'
+primary_dimensions:
+- completion
+- safety

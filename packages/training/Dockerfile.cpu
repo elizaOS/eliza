@@ -1,4 +1,4 @@
-# Milady eliza-1 training stack — CPU-only image.
+# Eliza eliza-1 training stack — CPU-only image.
 #
 # Used by CI for the cheap `cpu-smoke` lane: lint, typecheck, and the
 # subset of tests that import without CUDA. QJL is *not* built here

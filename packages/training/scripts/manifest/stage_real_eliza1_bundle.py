@@ -82,12 +82,13 @@ except ImportError:  # pragma: no cover - direct script execution path
 
 from benchmarks.eliza1_gates import apply_gates
 
-VISION_TIERS: Final[set[str]] = {"9b", "27b", "27b-256k", "27b-1m"}
-EMBEDDING_TIERS: Final[set[str]] = {"1_7b", "9b", "27b", "27b-256k", "27b-1m"}
+VISION_TIERS: Final[set[str]] = {"4b", "9b", "27b", "27b-256k", "27b-1m"}
+EMBEDDING_TIERS: Final[set[str]] = {"2b", "4b", "9b", "27b", "27b-256k", "27b-1m"}
 
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
-    "0_6b": (1500, 1800),
-    "1_7b": (3500, 4500),
+    "0_8b": (1800, 2400),
+    "2b": (3500, 5000),
+    "4b": (6000, 8000),
     "9b": (7000, 9500),
     "27b": (24000, 32000),
     "27b-256k": (48000, 64000),
@@ -364,6 +365,8 @@ def _write_eval_files(*, bundle_dir: Path, tier: str, generated_at: str, reasons
                       has_asr: bool, has_vad: bool, has_embedding: bool) -> dict[str, Any]:
     results = {
         "text_eval": None, "voice_rtf": None, "asr_wer": None, "vad_latency_ms": None,
+        "vad_boundary_ms": None, "vad_endpoint_ms": None,
+        "vad_false_barge_in_rate": None,
         "first_token_latency_ms": None, "first_audio_latency_ms": None, "barge_in_cancel_ms": None,
         "thirty_turn_ok": False, "e2e_loop_ok": False, "dflash_acceptance": None,
         "expressive_tag_faithfulness": None, "expressive_mos": None, "expressive_tag_leakage": None,
@@ -637,10 +640,13 @@ def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
             # bundle smaller and the voice pipeline still works (VAD-gated /
             # push-to-talk). E3/E5 can add it later if a tier needs it.
             skip_wakeword=getattr(args, "skip_wakeword", True),
+            include_vad_onnx_fallback=getattr(
+                args, "include_vad_onnx_fallback", False
+            ),
         )
         assets_mod.stage_assets(assets_args)
 
-    # 2. Stage embedding (non-0_6b) — Qwen3-Embedding-0.6B GGUF.
+    # 2. Stage embedding (non-0_8b) — Qwen3-Embedding-0.6B GGUF.
     has_embedding = tier in EMBEDDING_TIERS
     if has_embedding and not args.skip_assets:
         try:
@@ -721,6 +727,9 @@ def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
         embed_mteb_score=0.0 if has_embedding else None,
         embed_mteb_passed=False if has_embedding else None,
         vad_latency_ms_median=0.0 if has_vad else None, vad_latency_ms_passed=False if has_vad else None,
+        vad_boundary_ms=0.0 if has_vad else None,
+        vad_endpoint_ms=0.0 if has_vad else None,
+        vad_false_barge_in_rate=1.0 if has_vad else None,
         expressive_tag_faithfulness=0.0, expressive_mos=0.0, expressive_tag_leakage=1.0,
         expressive_passed=False, voice_capabilities=DEFAULT_VOICE_CAPABILITIES,
         voice_version=ELIZA_1_VOICE_MANIFEST_VERSION, voice_frozen=True,
@@ -800,6 +809,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
                     help="Skip staging the optional openWakeWord graphs (default: skipped).")
     ap.add_argument("--with-wakeword", dest="skip_wakeword", action="store_false",
                     help="Stage the optional openWakeWord graphs into the bundle.")
+    ap.add_argument(
+        "--include-vad-onnx-fallback",
+        action="store_true",
+        help="Also stage legacy vad/silero-vad-int8.onnx alongside native GGML VAD.",
+    )
     ap.add_argument("--link-mode", choices=("copy", "hardlink"), default="copy")
     ap.add_argument("--version", default="1.0.0-staged.1")
     ap.add_argument("--generated-at", default=None)

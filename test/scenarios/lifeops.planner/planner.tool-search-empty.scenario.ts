@@ -23,7 +23,7 @@
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
-const ALLOWED_NOOP_ACTIONS = new Set<string>([
+const _ALLOWED_NOOP_ACTIONS = new Set<string>([
   "REPLY",
   "IGNORE",
   "MESSAGE",

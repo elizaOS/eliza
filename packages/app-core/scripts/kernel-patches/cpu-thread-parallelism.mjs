@@ -1,4 +1,4 @@
-// CPU thread-parallelism for the QJL attention ops in the v0.4.0-milady fork.
+// CPU thread-parallelism for the QJL attention ops in the elizaOS/llama.cpp fork (v1.0.0-eliza).
 //
 // What this module does (applied after `git reset --hard` on the cached
 // fork checkout, every build):
@@ -24,13 +24,13 @@
 //
 // Both halves ship together — bumping n_tasks without the ith/nth split
 // would be a data race. Idempotent: each mutation carries a
-// `// MILADY-CPU-THREAD-PARALLELISM-V1` sentinel (or `# ...` in CMake-ish
+// `// ELIZA-CPU-THREAD-PARALLELISM-V1` sentinel (or `# ...` in CMake-ish
 // contexts, but these are all .c here) and the patcher no-ops if present.
 
 import fs from "node:fs";
 import path from "node:path";
 
-const SENTINEL = "MILADY-CPU-THREAD-PARALLELISM-V1";
+const SENTINEL = "ELIZA-CPU-THREAD-PARALLELISM-V1";
 
 // --- 1. ggml-cpu.c: task-count + work-size ---------------------------------
 
@@ -188,7 +188,7 @@ function patchQuantsQjl(cacheDir) {
       "[cpu-thread-parallelism] ggml_compute_forward_attn_score_qjl body not matched in quants-qjl.c",
     );
   }
-  const patched = original.replace(fnRe, ATTN_SCORE_QJL_FN + "\n");
+  const patched = original.replace(fnRe, `${ATTN_SCORE_QJL_FN}\n`);
   if (patched === original) {
     throw new Error(
       "[cpu-thread-parallelism] quants-qjl.c unchanged after patch attempt",
@@ -333,7 +333,7 @@ function patchFusedAttn(cacheDir) {
       "[cpu-thread-parallelism] ggml_compute_forward_fused_attn_qjl_tbq body not matched in fused-attn-qjl-tbq.c",
     );
   }
-  const patched = original.replace(fnRe, FUSED_ATTN_FN + "\n");
+  const patched = original.replace(fnRe, `${FUSED_ATTN_FN}\n`);
   if (patched === original) {
     throw new Error(
       "[cpu-thread-parallelism] fused-attn-qjl-tbq.c unchanged after patch attempt",

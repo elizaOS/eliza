@@ -1,0 +1,85 @@
+{
+  "agent": "eliza",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T190138Z_eb9f3ee2/personality-bench__personality_bench/run_personality_bench_20260511T190157Z_2_e52ba721/output"
+  ],
+  "benchmark_directory": "personality-bench",
+  "benchmark_id": "personality_bench",
+  "cache_metrics": {
+    "cache_creation_input_tokens": 0,
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "agreed": 87,
+    "agreementRate": 1,
+    "cache_metrics": {
+      "cache_creation_input_tokens": 0,
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
+    },
+    "canonical_entries": 0,
+    "disagreed": 0,
+    "falseNegative": 0,
+    "falsePositive": 0,
+    "falsePositiveRate": 0,
+    "mismatch_count": 0,
+    "needsReview": 2,
+    "performance_metrics": {
+      "duration_seconds": 0.13298429097631015,
+      "mean_latency_ms": null,
+      "p95_latency_ms": null,
+      "throughput_per_second": 0.0
+    },
+    "return_code": 0,
+    "reviewRate": 0.022988505747126436,
+    "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
+      "llm_call_count": 0,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    },
+    "total": 87,
+    "trajectory_summary": {
+      "files": 1,
+      "prompt_chars": 0,
+      "repeated_prefixes": [],
+      "turns": 0
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 0.13298429097631015,
+    "mean_latency_ms": null,
+    "p95_latency_ms": null,
+    "throughput_per_second": 0.0
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T190138Z_eb9f3ee2/personality-bench__personality_bench/run_personality_bench_20260511T190157Z_2_e52ba721/output/report.json",
+  "run_group_id": "rg_20260511T190138Z_eb9f3ee2",
+  "run_id": "run_personality_bench_20260511T190157Z_2_e52ba721",
+  "score": 1.0,
+  "status": "succeeded",
+  "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
+    "llm_call_count": 0,
+    "prompt_tokens": 0,
+    "total_tokens": 0
+  },
+  "trajectory_summary": {
+    "files": 1,
+    "prompt_chars": 0,
+    "repeated_prefixes": [],
+    "turns": 0
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-11T19:01:57.384715+00:00"
+}

@@ -181,22 +181,28 @@ export class FakeSubscriptionComputerUseService {
   }
 }
 
+/**
+ * Test fixture: replaces `runtime.getService("computeruse")` with a fake so
+ * scenarios can exercise the browser-executor pathway. Scenario `ctx.runtime`
+ * is typed as `unknown` (see `@elizaos/scenario-schema`), so we accept any
+ * object carrying an optional `getService` slot and patch it in place.
+ */
 export function attachFakeSubscriptionComputerUse(
-  runtime: AgentRuntime,
+  runtime: { getService?: (serviceType: string) => unknown } | AgentRuntime,
   svc: FakeSubscriptionComputerUseService = new FakeSubscriptionComputerUseService(
     "fixture_streaming",
   ),
 ): void {
-  const runtimeWithServices = runtime as AgentRuntime & {
-    getService: AgentRuntime["getService"];
+  const target = runtime as {
+    getService?: (serviceType: string) => unknown;
   };
-  const previousGetService = runtimeWithServices.getService.bind(runtime);
-  runtimeWithServices.getService = (<T extends Service = Service>(
+  const previousGetService = target.getService?.bind(runtime);
+  target.getService = (<T extends Service = Service>(
     serviceType: string,
   ): T | null => {
     if (serviceType === "computeruse") {
       return svc as T;
     }
-    return previousGetService(serviceType) as T | null;
+    return (previousGetService?.(serviceType) ?? null) as T | null;
   }) as AgentRuntime["getService"];
 }

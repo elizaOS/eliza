@@ -16,10 +16,6 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import {
-  fromOSWorldAction,
-  fromPyAutoGUI,
-} from "../../osworld/action-converter.js";
 import { OSWorldAdapter } from "../../osworld/adapter.js";
 import type { OSWorldAction } from "../../osworld/types.js";
 import { captureScreenshot } from "../../platform/screenshot.js";

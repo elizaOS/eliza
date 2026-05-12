@@ -55,12 +55,10 @@ Worker.
 
 ## Actions
 
-- `START_TAILSCALE` (similes: `START_TUNNEL`, `OPEN_TUNNEL`, `CREATE_TUNNEL`, `TAILSCALE_UP`)
-- `STOP_TAILSCALE` (similes: `STOP_TUNNEL`, `CLOSE_TUNNEL`, `TAILSCALE_DOWN`)
-- `GET_TAILSCALE_STATUS` (similes: `TAILSCALE_STATUS`, `CHECK_TUNNEL`, `TUNNEL_INFO`)
-
-All three resolve the active backend through `runtime.getService("tunnel")`, so
-they behave identically across local and cloud modes.
+This package does not expose provider-specific actions. It only registers a
+Tailscale-backed `serviceType = "tunnel"` implementation. User-facing tunnel
+operations go through the canonical `TUNNEL` action with
+`action=start | stop | status`.
 
 ## Cloud backend wire format
 

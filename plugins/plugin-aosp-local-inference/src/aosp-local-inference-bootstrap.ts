@@ -609,8 +609,11 @@ function makeGenerateHandler(
  * default lookup still picks the local handler (priority 0) — this wrapper
  * is the SAFETY NET for callers that explicitly target the wrapper or for
  * builds where local isn't registered.
+ *
+ * Exported for unit tests; production callers go through
+ * `ensureAospLocalInferenceHandlers`.
  */
-function makeCloudFallbackHandler(
+export function makeCloudFallbackHandler(
   loader: AospLoader,
   lifecycle: ReturnType<typeof makeLoaderLifecycle>,
   modelType: (typeof ModelType)[keyof typeof ModelType],
@@ -620,10 +623,18 @@ function makeCloudFallbackHandler(
     if (outcome.kind === "ok") {
       return outcome.text;
     }
-    logger.info(
-      `[aosp-local-inference] cloud-fallback engaged (modelType=${String(modelType)} reason=${outcome.reason})`,
-    );
     const candidate = findCloudCandidate(runtime, modelType, PROVIDER);
+    logger.info(
+      {
+        src: "aosp-local-inference",
+        event: "cloud-fallback-engaged",
+        modelType: String(modelType),
+        reason: outcome.reason,
+        candidateProvider: candidate?.provider ?? null,
+        cause: outcome.cause?.message,
+      },
+      "[aosp-local-inference] cloud-fallback engaged",
+    );
     if (!candidate) {
       // No cloud handler available — surface a typed error so callers see
       // the real reason instead of a generic "no handler" message.

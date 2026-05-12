@@ -28,6 +28,7 @@
  * the canonical happy-path for the action's CSV import flow.
  */
 
+import type { Memory, UUID } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 // Audit B Defer #4 folded `PAYMENTS` into the `MONEY` umbrella; exercise the
 // payments handler directly so this integration test still covers the
@@ -42,11 +43,9 @@ import {
   type RealTestRuntimeResult,
 } from "./helpers/runtime.ts";
 
-import type { Memory, UUID } from "@elizaos/core";
-
 function ownerMessage(agentId: UUID, text: string): Memory {
   return {
-    id: ("msg-" + Math.random().toString(36).slice(2, 8)) as UUID,
+    id: `msg-${Math.random().toString(36).slice(2, 8)}` as UUID,
     entityId: agentId,
     roomId: agentId,
     agentId,
@@ -93,7 +92,7 @@ describe("PAYMENTS action integration", () => {
           institution: "Chase",
           accountMask: "1234",
         },
-      }
+      },
     );
     expect(addResult?.success).toBe(true);
     const addedSource = (addResult?.data as { source?: LifeOpsPaymentSource })
@@ -108,7 +107,7 @@ describe("PAYMENTS action integration", () => {
       runtime,
       ownerMessage(runtime.agentId, "list payment sources"),
       undefined,
-      { parameters: { subaction: "list_sources" } }
+      { parameters: { subaction: "list_sources" } },
     );
     expect(listResult?.success).toBe(true);
     const sources =
@@ -131,7 +130,7 @@ describe("PAYMENTS action integration", () => {
           kind: "manual",
           label: "Manual",
         },
-      }
+      },
     );
     const sourceId = (add?.data as { source?: LifeOpsPaymentSource }).source
       ?.id as string;
@@ -147,7 +146,7 @@ describe("PAYMENTS action integration", () => {
           sourceId,
           csvText: SAMPLE_CSV,
         },
-      }
+      },
     );
     expect(firstImport?.success).toBe(true);
     const firstResult = (
@@ -164,7 +163,7 @@ describe("PAYMENTS action integration", () => {
       undefined,
       {
         parameters: { subaction: "import_csv", sourceId, csvText: SAMPLE_CSV },
-      }
+      },
     );
     const reResult = (
       reImport?.data as { result?: { inserted: number; skipped: number } }
@@ -176,7 +175,7 @@ describe("PAYMENTS action integration", () => {
       runtime,
       ownerMessage(runtime.agentId, "list transactions"),
       undefined,
-      { parameters: { subaction: "list_transactions", sourceId } }
+      { parameters: { subaction: "list_transactions", sourceId } },
     );
     const txns =
       (listTxn?.data as { transactions?: LifeOpsPaymentTransaction[] })
@@ -196,7 +195,7 @@ describe("PAYMENTS action integration", () => {
       undefined,
       {
         parameters: { subaction: "add_source", kind: "manual", label: "Daily" },
-      }
+      },
     );
     const sourceId = (add?.data as { source?: LifeOpsPaymentSource }).source
       ?.id as string;
@@ -211,14 +210,14 @@ describe("PAYMENTS action integration", () => {
           sourceId,
           csvText: SAMPLE_CSV,
         },
-      }
+      },
     );
 
     const dashboard = await runPaymentsHandler(
       runtime,
       ownerMessage(runtime.agentId, "show dashboard"),
       undefined,
-      { parameters: { subaction: "dashboard", windowDays: 30 } }
+      { parameters: { subaction: "dashboard", windowDays: 30 } },
     );
     expect(dashboard?.success).toBe(true);
     const dash = (
@@ -243,8 +242,12 @@ describe("PAYMENTS action integration", () => {
       ownerMessage(runtime.agentId, "add"),
       undefined,
       {
-        parameters: { subaction: "add_source", kind: "manual", label: "Throwaway" },
-      }
+        parameters: {
+          subaction: "add_source",
+          kind: "manual",
+          label: "Throwaway",
+        },
+      },
     );
     const sourceId = (add?.data as { source?: LifeOpsPaymentSource }).source
       ?.id as string;
@@ -253,7 +256,7 @@ describe("PAYMENTS action integration", () => {
       runtime,
       ownerMessage(runtime.agentId, "remove"),
       undefined,
-      { parameters: { subaction: "remove_source", sourceId } }
+      { parameters: { subaction: "remove_source", sourceId } },
     );
     expect(remove?.success).toBe(true);
 
@@ -261,7 +264,7 @@ describe("PAYMENTS action integration", () => {
       runtime,
       ownerMessage(runtime.agentId, "list"),
       undefined,
-      { parameters: { subaction: "list_sources" } }
+      { parameters: { subaction: "list_sources" } },
     );
     const sources =
       (list?.data as { sources?: LifeOpsPaymentSource[] }).sources ?? [];
@@ -276,7 +279,7 @@ describe("PAYMENTS action integration", () => {
       runtime,
       ownerMessage(runtime.agentId, "add"),
       undefined,
-      { parameters: { subaction: "add_source" } }
+      { parameters: { subaction: "add_source" } },
     );
     expect(result?.success).toBe(false);
     expect((result?.data as { error?: string }).error).toBe(

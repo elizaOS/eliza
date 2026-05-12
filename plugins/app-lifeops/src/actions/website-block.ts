@@ -31,7 +31,7 @@ import {
   type SubactionsMap,
 } from "./lib/resolve-action-args.js";
 
-const ACTION_NAME = "WEBSITE_BLOCK";
+const ACTION_NAME = "BLOCK";
 
 type WebsiteBlockSubaction =
   | "block"
@@ -815,13 +815,13 @@ async function handleRelease(
   if (!ruleId) {
     return {
       success: false,
-      text: "WEBSITE_BLOCK release requires a ruleId.",
+      text: "BLOCK action=release requires a ruleId.",
     };
   }
   if (!coerceConfirmedFlag(params.confirmed)) {
     return {
       success: false,
-      text: "WEBSITE_BLOCK release requires confirmed:true to release the rule.",
+      text: "BLOCK action=release requires confirmed:true to release the rule.",
     };
   }
   const reason = coerceString(params.reason) ?? "user_confirmed";
@@ -921,9 +921,8 @@ export async function websiteBlockValidate(
 /**
  * Handler function backing the BLOCK umbrella when `target=website`.
  *
- * Folded out of the legacy `WEBSITE_BLOCK` action surface — Audit B Defer #1.
  * The umbrella in `./block.ts` is the only caller; no Action object is
- * registered for this handler anymore.
+ * registered for this handler.
  */
 export async function runWebsiteBlockHandler(
   runtime: IAgentRuntime,

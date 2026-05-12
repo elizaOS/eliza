@@ -11,32 +11,34 @@
  */
 
 import type {
+  Action,
   ActionParameter,
   ActionResult,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   getActivityReport,
   getTimeOnApp,
 } from "../activity-profile/activity-tracker-reporting.js";
+import { hasLifeOpsAccess } from "../lifeops/access.js";
 import {
   getBrowserActivitySnapshot,
   getBrowserDomainActivity,
 } from "../lifeops/browser-extension-store.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import {
-  resolveActionArgs,
-  type SubactionsMap,
-} from "./lib/resolve-action-args.js";
-import { hasLifeOpsAccess } from "../lifeops/access.js";
-import {
   messageText,
   renderLifeOpsActionReply,
 } from "../lifeops/voice/grounded-reply.js";
+import {
+  resolveActionArgs,
+  type SubactionsMap,
+} from "./lib/resolve-action-args.js";
 
 const ACTION_NAME = "SCREEN_TIME";
 
@@ -361,393 +363,393 @@ export const SCREEN_TIME_PARAMETERS: readonly ActionParameter[] = [
 export async function runScreenTimeHandler(
   runtime: IAgentRuntime,
   message: Memory,
-  state: unknown,
+  state: State | undefined,
   options: HandlerOptions | undefined,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
-    if (!(await hasLifeOpsAccess(runtime, message))) {
-      const text = "Screen time data is restricted to the owner.";
-      await callback?.({ text });
-      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+  if (!(await hasLifeOpsAccess(runtime, message))) {
+    const text = "Screen time data is restricted to the owner.";
+    await callback?.({ text });
+    return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+  }
+
+  const respond = makeRespond(runtime, message, state, callback);
+
+  const resolved = await resolveActionArgs<Subaction, OwnerScreenTimeParams>({
+    runtime,
+    message,
+    state,
+    options,
+    actionName: ACTION_NAME,
+    subactions: SUBACTIONS,
+    defaultSubaction: "summary",
+  });
+
+  if (!resolved.ok) {
+    await callback?.({ text: resolved.clarification });
+    return {
+      text: resolved.clarification,
+      success: false,
+      data: { error: "INVALID_SUBACTION", missing: resolved.missing },
+    };
+  }
+
+  const { subaction, params } = resolved;
+
+  switch (subaction) {
+    case "today": {
+      const service = new LifeOpsService(runtime);
+      const date = params.date ?? todayIso();
+      const daily = await service.getScreenTimeDaily({
+        date,
+        source: params.source,
+        identifier: params.identifier,
+        limit: 10,
+      });
+      const total = daily.reduce((acc, row) => acc + row.totalSeconds, 0);
+      const fallback =
+        daily.length === 0
+          ? `No screen time recorded for ${date}.`
+          : `Screen time for ${date} (total ${formatSeconds(total)}):\n${daily
+              .map(
+                (row) =>
+                  `- ${row.source}: ${row.identifier} — ${formatSeconds(row.totalSeconds)} (${row.sessionCount} session${row.sessionCount === 1 ? "" : "s"})`,
+              )
+              .join("\n")}`;
+      return respond({
+        success: true,
+        scenario: "screen_time_daily",
+        fallback,
+        context: { date, totalSeconds: total, daily },
+        data: { subaction, date, daily },
+      });
     }
 
-    const respond = makeRespond(runtime, message, state, callback);
-
-    const resolved = await resolveActionArgs<Subaction, OwnerScreenTimeParams>({
-      runtime,
-      message,
-      state,
-      options,
-      actionName: ACTION_NAME,
-      subactions: SUBACTIONS,
-      defaultSubaction: "summary",
-    });
-
-    if (!resolved.ok) {
-      await callback?.({ text: resolved.clarification });
-      return {
-        text: resolved.clarification,
-        success: false,
-        data: { error: "INVALID_SUBACTION", missing: resolved.missing },
-      };
+    case "weekly": {
+      const service = new LifeOpsService(runtime);
+      const days = clampDays(params.days, 7);
+      const until = new Date().toISOString();
+      const since = daysAgoIso(days);
+      const summary = await service.getScreenTimeSummary({
+        since,
+        until,
+        source: params.source,
+        identifier: params.identifier,
+        topN: 10,
+      });
+      const fallback =
+        summary.items.length === 0
+          ? `No screen time recorded in the last ${days} days.`
+          : `Top screen time over the last ${days} days (total ${formatSeconds(summary.totalSeconds)}):\n${summary.items
+              .map(
+                (item) =>
+                  `- ${item.source}: ${item.displayName} — ${formatSeconds(item.totalSeconds)}`,
+              )
+              .join("\n")}`;
+      return respond({
+        success: true,
+        scenario: "screen_time_weekly",
+        fallback,
+        context: {
+          windowDays: days,
+          totalSeconds: summary.totalSeconds,
+          items: summary.items,
+        },
+        data: { subaction, since, until, summary },
+      });
     }
 
-    const { subaction, params } = resolved;
-
-    switch (subaction) {
-      case "today": {
-        const service = new LifeOpsService(runtime);
-        const date = params.date ?? todayIso();
-        const daily = await service.getScreenTimeDaily({
-          date,
-          source: params.source,
-          identifier: params.identifier,
-          limit: 10,
-        });
-        const total = daily.reduce((acc, row) => acc + row.totalSeconds, 0);
-        const fallback =
-          daily.length === 0
-            ? `No screen time recorded for ${date}.`
-            : `Screen time for ${date} (total ${formatSeconds(total)}):\n${daily
-                .map(
-                  (row) =>
-                    `- ${row.source}: ${row.identifier} — ${formatSeconds(row.totalSeconds)} (${row.sessionCount} session${row.sessionCount === 1 ? "" : "s"})`,
-                )
-                .join("\n")}`;
-        return respond({
-          success: true,
-          scenario: "screen_time_daily",
-          fallback,
-          context: { date, totalSeconds: total, daily },
-          data: { subaction, date, daily },
-        });
-      }
-
-      case "weekly": {
-        const service = new LifeOpsService(runtime);
-        const days = clampDays(params.days, 7);
-        const until = new Date().toISOString();
-        const since = daysAgoIso(days);
-        const summary = await service.getScreenTimeSummary({
-          since,
-          until,
-          source: params.source,
-          identifier: params.identifier,
-          topN: 10,
-        });
-        const fallback =
-          summary.items.length === 0
-            ? `No screen time recorded in the last ${days} days.`
-            : `Top screen time over the last ${days} days (total ${formatSeconds(summary.totalSeconds)}):\n${summary.items
-                .map(
-                  (item) =>
-                    `- ${item.source}: ${item.displayName} — ${formatSeconds(item.totalSeconds)}`,
-                )
-                .join("\n")}`;
-        return respond({
-          success: true,
-          scenario: "screen_time_weekly",
-          fallback,
-          context: {
-            windowDays: days,
-            totalSeconds: summary.totalSeconds,
-            items: summary.items,
-          },
-          data: { subaction, since, until, summary },
-        });
-      }
-
-      case "weekly_average_by_app": {
-        const service = new LifeOpsService(runtime);
-        const daysInWindow = clampDays(params.days, 7);
-        const until = new Date().toISOString();
-        const since = daysAgoIso(daysInWindow);
-        const weeklyAverage = await service.getScreenTimeWeeklyAverageByApp({
-          since,
-          until,
+    case "weekly_average_by_app": {
+      const service = new LifeOpsService(runtime);
+      const daysInWindow = clampDays(params.days, 7);
+      const until = new Date().toISOString();
+      const since = daysAgoIso(daysInWindow);
+      const weeklyAverage = await service.getScreenTimeWeeklyAverageByApp({
+        since,
+        until,
+        daysInWindow,
+        identifier: params.identifier,
+      });
+      const fallback =
+        weeklyAverage.items.length === 0
+          ? `No app screen time recorded in the last ${daysInWindow} days.`
+          : `Weekly average per app over the last ${daysInWindow} days (total ${formatSeconds(weeklyAverage.totalSeconds)}):\n${weeklyAverage.items
+              .map(
+                (item) =>
+                  `- ${item.displayName} — ${formatSeconds(item.averageSecondsPerDay)}/day average (${formatSeconds(item.totalSeconds)} total)`,
+              )
+              .join("\n")}`;
+      return respond({
+        success: true,
+        scenario: "screen_time_weekly_average_by_app",
+        fallback,
+        context: {
           daysInWindow,
-          identifier: params.identifier,
-        });
-        const fallback =
-          weeklyAverage.items.length === 0
-            ? `No app screen time recorded in the last ${daysInWindow} days.`
-            : `Weekly average per app over the last ${daysInWindow} days (total ${formatSeconds(weeklyAverage.totalSeconds)}):\n${weeklyAverage.items
-                .map(
-                  (item) =>
-                    `- ${item.displayName} — ${formatSeconds(item.averageSecondsPerDay)}/day average (${formatSeconds(item.totalSeconds)} total)`,
-                )
-                .join("\n")}`;
-        return respond({
-          success: true,
-          scenario: "screen_time_weekly_average_by_app",
-          fallback,
-          context: {
-            daysInWindow,
-            totalSeconds: weeklyAverage.totalSeconds,
-            items: weeklyAverage.items,
-          },
-          data: { subaction, source: "app", since, until, weeklyAverage },
-        });
-      }
+          totalSeconds: weeklyAverage.totalSeconds,
+          items: weeklyAverage.items,
+        },
+        data: { subaction, source: "app", since, until, weeklyAverage },
+      });
+    }
 
-      case "by_app":
-      case "by_website": {
-        const service = new LifeOpsService(runtime);
-        const source = subaction === "by_app" ? "app" : "website";
-        const windowDays = clampDays(params.windowDays, 1);
-        const until = new Date().toISOString();
-        const since = daysAgoIso(windowDays);
-        const topN =
-          typeof params.limit === "number" && params.limit > 0
-            ? Math.floor(params.limit)
-            : 10;
-        const summary = await service.getScreenTimeSummary({
-          since,
-          until,
+    case "by_app":
+    case "by_website": {
+      const service = new LifeOpsService(runtime);
+      const source = subaction === "by_app" ? "app" : "website";
+      const windowDays = clampDays(params.windowDays, 1);
+      const until = new Date().toISOString();
+      const since = daysAgoIso(windowDays);
+      const topN =
+        typeof params.limit === "number" && params.limit > 0
+          ? Math.floor(params.limit)
+          : 10;
+      const summary = await service.getScreenTimeSummary({
+        since,
+        until,
+        source,
+        identifier: params.identifier,
+        topN,
+      });
+      const label = source === "app" ? "apps" : "websites";
+      const fallback =
+        summary.items.length === 0
+          ? `No ${label} recorded in that window.`
+          : `Top ${label} (total ${formatSeconds(summary.totalSeconds)}):\n${summary.items
+              .map(
+                (item) =>
+                  `- ${item.displayName} — ${formatSeconds(item.totalSeconds)}`,
+              )
+              .join("\n")}`;
+      return respond({
+        success: true,
+        scenario:
+          source === "app" ? "screen_time_by_app" : "screen_time_by_website",
+        fallback,
+        context: {
           source,
-          identifier: params.identifier,
-          topN,
-        });
-        const label = source === "app" ? "apps" : "websites";
-        const fallback =
-          summary.items.length === 0
-            ? `No ${label} recorded in that window.`
-            : `Top ${label} (total ${formatSeconds(summary.totalSeconds)}):\n${summary.items
-                .map(
-                  (item) =>
-                    `- ${item.displayName} — ${formatSeconds(item.totalSeconds)}`,
-                )
-                .join("\n")}`;
-        return respond({
-          success: true,
-          scenario:
-            source === "app" ? "screen_time_by_app" : "screen_time_by_website",
-          fallback,
-          context: {
-            source,
-            totalSeconds: summary.totalSeconds,
-            items: summary.items,
-          },
-          data: { subaction, source, since, until, summary },
-        });
-      }
+          totalSeconds: summary.totalSeconds,
+          items: summary.items,
+        },
+        data: { subaction, source, since, until, summary },
+      });
+    }
 
-      case "activity_report": {
-        const windowMs = resolveWindowMs(params.windowHours);
-        if (!isSupportedPlatform()) {
-          return respond({
-            success: true,
-            scenario: "activity_report_unsupported_platform",
-            fallback:
-              "Activity tracking is macOS-only. No data available on this platform.",
-            context: { windowMs },
-            data: {
-              apps: [],
-              totalMs: 0,
-              windowMs,
-              noDataReason: "macos-only",
-            },
-          });
-        }
-        const agentId = String(runtime.agentId);
-        const report = await getActivityReport(runtime, agentId, {
-          windowMs,
-          limit: 20,
-        });
-        const fallback = `Activity report (${formatMinutes(report.totalMs)}m total):\n${buildReportSummary(report.apps)}`;
+    case "activity_report": {
+      const windowMs = resolveWindowMs(params.windowHours);
+      if (!isSupportedPlatform()) {
         return respond({
           success: true,
-          scenario: "activity_report_summary",
-          fallback,
-          context: {
-            totalMs: report.totalMs,
-            appCount: report.apps.length,
-            topApps: report.apps.slice(0, 5),
-          },
+          scenario: "activity_report_unsupported_platform",
+          fallback:
+            "Activity tracking is macOS-only. No data available on this platform.",
+          context: { windowMs },
           data: {
-            sinceMs: report.sinceMs,
-            untilMs: report.untilMs,
-            totalMs: report.totalMs,
-            apps: report.apps,
-          },
-        });
-      }
-
-      case "time_on_app": {
-        const target = (params.appNameOrBundleId ?? "").trim();
-        if (!target) {
-          return respond({
-            success: false,
-            scenario: "time_on_app_missing_app",
-            fallback: "Specify an app name or bundle id.",
-            data: { error: "MISSING_APP" },
-          });
-        }
-        const windowMs = resolveWindowMs(params.windowHours);
-        if (!isSupportedPlatform()) {
-          return respond({
-            success: true,
-            scenario: "time_on_app_unsupported_platform",
-            fallback: `Activity tracking is macOS-only; no time-on-app data for ${target}.`,
-            context: { app: target, windowMs },
-            data: {
-              minutes: 0,
-              totalMs: 0,
-              windowMs,
-              app: target,
-              noDataReason: "macos-only",
-            },
-          });
-        }
-        const agentId = String(runtime.agentId);
-        const result = await getTimeOnApp(runtime, agentId, target, {
-          windowMs,
-        });
-        const minutes = formatMinutes(result.totalMs);
-        const fallback =
-          result.matchedBy === "none"
-            ? `No focus events recorded for ${target} in that window.`
-            : `${target}: ${minutes}m (matched by ${result.matchedBy}).`;
-        return respond({
-          success: true,
-          scenario: "time_on_app",
-          fallback,
-          context: { app: target, minutes, matchedBy: result.matchedBy },
-          data: {
-            app: target,
-            minutes,
-            totalMs: result.totalMs,
-            matchedBy: result.matchedBy,
+            apps: [],
+            totalMs: 0,
             windowMs,
+            noDataReason: "macos-only",
           },
         });
       }
+      const agentId = String(runtime.agentId);
+      const report = await getActivityReport(runtime, agentId, {
+        windowMs,
+        limit: 20,
+      });
+      const fallback = `Activity report (${formatMinutes(report.totalMs)}m total):\n${buildReportSummary(report.apps)}`;
+      return respond({
+        success: true,
+        scenario: "activity_report_summary",
+        fallback,
+        context: {
+          totalMs: report.totalMs,
+          appCount: report.apps.length,
+          topApps: report.apps.slice(0, 5),
+        },
+        data: {
+          sinceMs: report.sinceMs,
+          untilMs: report.untilMs,
+          totalMs: report.totalMs,
+          apps: report.apps,
+        },
+      });
+    }
 
-      case "time_on_site": {
-        const rawDomain = (params.domain ?? "").trim();
-        const domain = rawDomain ? normalizeDomain(rawDomain) : "";
-        if (!domain) {
-          return respond({
-            success: false,
-            scenario: "time_on_site_missing_domain",
-            fallback: "Specify a site domain.",
-            data: { error: "MISSING_DOMAIN" },
-          });
-        }
-        const windowMs = resolveWindowMs(params.windowHours);
-        const untilMs = Date.now();
-        const sinceMs = untilMs - windowMs;
-        const result = await getBrowserDomainActivity(runtime, {
-          domain,
-          sinceMs,
-          untilMs,
+    case "time_on_app": {
+      const target = (params.appNameOrBundleId ?? "").trim();
+      if (!target) {
+        return respond({
+          success: false,
+          scenario: "time_on_app_missing_app",
+          fallback: "Specify an app name or bundle id.",
+          data: { error: "MISSING_APP" },
         });
-        const minutes = formatMinutes(result.totalMs);
-        if (result.reportCount === 0) {
-          logger.debug(
-            { domain, windowMs },
-            "[SCREEN_TIME] time_on_site invoked before any browser activity reports were recorded.",
-          );
-          return respond({
-            success: true,
-            scenario: "time_on_site_no_browser_activity",
-            fallback:
-              "No browser activity reports have been received yet. Connect the LifeOps browser activity source and try again.",
-            context: { domain, windowMs },
-            data: {
-              domain,
-              minutes: 0,
-              totalMs: 0,
-              windowMs,
-              noDataReason: "no-browser-activity-yet",
-            },
-          });
-        }
-        const fallback =
-          result.totalMs > 0
-            ? `${domain}: ${minutes}m.`
-            : `No browser activity recorded for ${domain} in that window.`;
+      }
+      const windowMs = resolveWindowMs(params.windowHours);
+      if (!isSupportedPlatform()) {
         return respond({
           success: true,
-          scenario: "time_on_site",
-          fallback,
-          context: { domain, minutes, totalMs: result.totalMs },
+          scenario: "time_on_app_unsupported_platform",
+          fallback: `Activity tracking is macOS-only; no time-on-app data for ${target}.`,
+          context: { app: target, windowMs },
+          data: {
+            minutes: 0,
+            totalMs: 0,
+            windowMs,
+            app: target,
+            noDataReason: "macos-only",
+          },
+        });
+      }
+      const agentId = String(runtime.agentId);
+      const result = await getTimeOnApp(runtime, agentId, target, {
+        windowMs,
+      });
+      const minutes = formatMinutes(result.totalMs);
+      const fallback =
+        result.matchedBy === "none"
+          ? `No focus events recorded for ${target} in that window.`
+          : `${target}: ${minutes}m (matched by ${result.matchedBy}).`;
+      return respond({
+        success: true,
+        scenario: "time_on_app",
+        fallback,
+        context: { app: target, minutes, matchedBy: result.matchedBy },
+        data: {
+          app: target,
+          minutes,
+          totalMs: result.totalMs,
+          matchedBy: result.matchedBy,
+          windowMs,
+        },
+      });
+    }
+
+    case "time_on_site": {
+      const rawDomain = (params.domain ?? "").trim();
+      const domain = rawDomain ? normalizeDomain(rawDomain) : "";
+      if (!domain) {
+        return respond({
+          success: false,
+          scenario: "time_on_site_missing_domain",
+          fallback: "Specify a site domain.",
+          data: { error: "MISSING_DOMAIN" },
+        });
+      }
+      const windowMs = resolveWindowMs(params.windowHours);
+      const untilMs = Date.now();
+      const sinceMs = untilMs - windowMs;
+      const result = await getBrowserDomainActivity(runtime, {
+        domain,
+        sinceMs,
+        untilMs,
+      });
+      const minutes = formatMinutes(result.totalMs);
+      if (result.reportCount === 0) {
+        logger.debug(
+          { domain, windowMs },
+          "[SCREEN_TIME] time_on_site invoked before any browser activity reports were recorded.",
+        );
+        return respond({
+          success: true,
+          scenario: "time_on_site_no_browser_activity",
+          fallback:
+            "No browser activity reports have been received yet. Connect the LifeOps browser activity source and try again.",
+          context: { domain, windowMs },
           data: {
             domain,
-            minutes,
-            totalMs: result.totalMs,
+            minutes: 0,
+            totalMs: 0,
             windowMs,
-            ...(result.totalMs === 0
-              ? { noDataReason: "no-domain-activity" }
-              : {}),
+            noDataReason: "no-browser-activity-yet",
           },
         });
       }
+      const fallback =
+        result.totalMs > 0
+          ? `${domain}: ${minutes}m.`
+          : `No browser activity recorded for ${domain} in that window.`;
+      return respond({
+        success: true,
+        scenario: "time_on_site",
+        fallback,
+        context: { domain, minutes, totalMs: result.totalMs },
+        data: {
+          domain,
+          minutes,
+          totalMs: result.totalMs,
+          windowMs,
+          ...(result.totalMs === 0
+            ? { noDataReason: "no-domain-activity" }
+            : {}),
+        },
+      });
+    }
 
-      case "browser_activity": {
-        const limit =
-          typeof params.limit === "number" && params.limit > 0
-            ? Math.floor(params.limit)
-            : 10;
-        const snapshot = await getBrowserActivitySnapshot(runtime, {
-          deviceId: params.deviceId?.trim(),
-          limit,
-        });
-        if (snapshot.domains.length === 0) {
-          return respond({
-            success: true,
-            scenario: "browser_activity_empty",
-            fallback: "No browser activity has been reported yet.",
-            data: { snapshot },
-          });
-        }
-        const lines = snapshot.domains.map(
-          (d) =>
-            `- ${d.domain}: ${Math.round(d.focusMs / 1000)}s (${d.sessionCount} session${d.sessionCount === 1 ? "" : "s"})`,
-        );
-        const fallback = `Browser activity (device ${snapshot.deviceId ?? "any"}, window ending ${snapshot.windowEnd}):\n${lines.join("\n")}`;
+    case "browser_activity": {
+      const limit =
+        typeof params.limit === "number" && params.limit > 0
+          ? Math.floor(params.limit)
+          : 10;
+      const snapshot = await getBrowserActivitySnapshot(runtime, {
+        deviceId: params.deviceId?.trim(),
+        limit,
+      });
+      if (snapshot.domains.length === 0) {
         return respond({
           success: true,
-          scenario: "browser_activity",
-          fallback,
-          context: {
-            deviceId: snapshot.deviceId,
-            domainCount: snapshot.domains.length,
-          },
+          scenario: "browser_activity_empty",
+          fallback: "No browser activity has been reported yet.",
           data: { snapshot },
         });
       }
-      default: {
-        const service = new LifeOpsService(runtime);
-        const windowDays = clampDays(params.windowDays, 1);
-        const until = new Date().toISOString();
-        const since = daysAgoIso(windowDays);
-        const summary = await service.getScreenTimeSummary({
-          since,
-          until,
-          source: params.source,
-          identifier: params.identifier,
-          topN: 10,
-        });
-        const fallback =
-          summary.items.length === 0
-            ? "No screen time recorded in that window."
-            : `Screen time summary (total ${formatSeconds(summary.totalSeconds)}):\n${summary.items
-                .map(
-                  (item) =>
-                    `- ${item.source}: ${item.displayName} — ${formatSeconds(item.totalSeconds)}`,
-                )
-                .join("\n")}`;
-        return respond({
-          success: true,
-          scenario: "screen_time_summary",
-          fallback,
-          context: {
-            totalSeconds: summary.totalSeconds,
-            items: summary.items,
-          },
-          data: { subaction: "summary", since, until, summary },
-        });
-      }
+      const lines = snapshot.domains.map(
+        (d) =>
+          `- ${d.domain}: ${Math.round(d.focusMs / 1000)}s (${d.sessionCount} session${d.sessionCount === 1 ? "" : "s"})`,
+      );
+      const fallback = `Browser activity (device ${snapshot.deviceId ?? "any"}, window ending ${snapshot.windowEnd}):\n${lines.join("\n")}`;
+      return respond({
+        success: true,
+        scenario: "browser_activity",
+        fallback,
+        context: {
+          deviceId: snapshot.deviceId,
+          domainCount: snapshot.domains.length,
+        },
+        data: { snapshot },
+      });
     }
+    default: {
+      const service = new LifeOpsService(runtime);
+      const windowDays = clampDays(params.windowDays, 1);
+      const until = new Date().toISOString();
+      const since = daysAgoIso(windowDays);
+      const summary = await service.getScreenTimeSummary({
+        since,
+        until,
+        source: params.source,
+        identifier: params.identifier,
+        topN: 10,
+      });
+      const fallback =
+        summary.items.length === 0
+          ? "No screen time recorded in that window."
+          : `Screen time summary (total ${formatSeconds(summary.totalSeconds)}):\n${summary.items
+              .map(
+                (item) =>
+                  `- ${item.source}: ${item.displayName} — ${formatSeconds(item.totalSeconds)}`,
+              )
+              .join("\n")}`;
+      return respond({
+        success: true,
+        scenario: "screen_time_summary",
+        fallback,
+        context: {
+          totalSeconds: summary.totalSeconds,
+          items: summary.items,
+        },
+        data: { subaction: "summary", since, until, summary },
+      });
+    }
+  }
 }

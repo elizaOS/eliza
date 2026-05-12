@@ -1,6 +1,3 @@
-// @ts-nocheck — MCP tool type inference is exponential here; checking this
-// file inflates compile time by ~30s. Same suppression as the original route.
-//
 // Minimal Cloudflare Worker that mounts ONE MCP route (the time MCP) at
 //   POST /mcps/time/streamable-http
 // using `mcp-handler`'s createMcpHandler + StreamableHttp transport.

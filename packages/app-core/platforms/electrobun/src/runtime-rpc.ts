@@ -1,4 +1,10 @@
 import { AgentNotReadyError } from "./config-and-auth-rpc";
+import {
+	finiteNumber,
+	isRecord,
+	nullableString,
+	optionalString,
+} from "./rpc-parse-utils";
 import type {
 	AgentStatusState,
 	RuntimeDebugSnapshot,
@@ -17,29 +23,11 @@ const AGENT_STATUS_STATES: readonly AgentStatusState[] = [
 	"error",
 ];
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function isAgentStatusState(value: unknown): value is AgentStatusState {
 	return (
 		typeof value === "string" &&
 		AGENT_STATUS_STATES.some((state) => state === value)
 	);
-}
-
-function finiteNumber(value: unknown): number | null {
-	return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function nullableString(value: unknown): string | null | undefined {
-	if (value === null) return null;
-	return typeof value === "string" ? value : undefined;
-}
-
-function optionalString(value: unknown): string | undefined | false {
-	if (value === undefined) return undefined;
-	return typeof value === "string" ? value : false;
 }
 
 function parseOrderItem(value: unknown): RuntimeOrderItem | null {

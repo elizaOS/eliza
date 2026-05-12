@@ -41,7 +41,9 @@ export interface DefaultPack {
   /** Anchor consolidation policies the pack contributes. */
   consolidationPolicies?: AnchorConsolidationPolicy[];
   /** Named escalation ladders the pack contributes. */
-  escalationLadders?: Partial<Record<DefaultEscalationLadderKey, EscalationLadder>>;
+  escalationLadders?: Partial<
+    Record<DefaultEscalationLadderKey, EscalationLadder>
+  >;
   /** Optional metadata surface for first-run UI. */
   uiHints?: {
     summaryOnDayOne: string;

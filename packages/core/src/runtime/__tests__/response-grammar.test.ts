@@ -1,10 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { normalizeActionJsonSchema } from "../../actions/action-schema";
 import type { Action } from "../../types";
 import {
 	buildPlannerActionGrammar,
 	buildResponseGrammar,
 	clearResponseGrammarCache,
+	withGuidedDecodeProviderOptions,
 } from "../response-grammar";
 import type { ResponseHandlerFieldEvaluator } from "../response-handler-field-evaluator";
 
@@ -117,7 +118,39 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		expect(grammar).toContain('"\\"ONLY\\""');
 	});
 
-	it("slots registered field evaluators after `extract`, priority-ordered", () => {
+	it("preserves multi-value string field enums as enum spans for prefix shortcuts", () => {
+		clearResponseGrammarCache();
+		const { responseSkeleton, grammar } = buildResponseGrammar(
+			{
+				actions: [],
+				responseHandlerFields: [
+					field({
+						name: "shouldRespond",
+						priority: 5,
+						schema: { type: "string", enum: ["RESPOND", "IGNORE", "STOP"] },
+					}),
+					field({
+						name: "replyText",
+						priority: 20,
+						schema: { type: "string" },
+					}),
+				],
+			},
+			{ contexts: ["general"] },
+		);
+		const shouldRespondSpan = responseSkeleton.spans.find(
+			(span) => span.key === "shouldRespond",
+		);
+		expect(shouldRespondSpan).toMatchObject({
+			kind: "enum",
+			enumValues: ["RESPOND", "IGNORE", "STOP"],
+		});
+		expect(grammar).toContain(
+			'"\\"RESPOND\\"" | "\\"IGNORE\\"" | "\\"STOP\\""',
+		);
+	});
+
+	it("uses the field-registry envelope when registered fields are present", () => {
 		clearResponseGrammarCache();
 		const { responseSkeleton } = buildResponseGrammar(
 			{
@@ -132,9 +165,12 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		const keys = responseSkeleton.spans
 			.filter((s) => s.key !== undefined && s.kind !== "literal")
 			.map((s) => s.key);
-		// extract is still last of the fixed keys; field evaluators follow it.
-		expect(keys.indexOf("extract")).toBeLessThan(keys.indexOf("early"));
-		expect(keys.indexOf("early")).toBeLessThan(keys.indexOf("late"));
+		expect(keys).toEqual(["early", "late"]);
+		expect(keys).not.toContain("extract");
+		expect(responseSkeleton.spans[0]).toEqual({
+			kind: "literal",
+			value: '{"early":',
+		});
 	});
 
 	it("is byte-stable / cached across calls for the same registry snapshot", () => {
@@ -284,5 +320,71 @@ describe("buildPlannerActionGrammar — Stage-2 per-action grammar", () => {
 		const a = buildPlannerActionGrammar([makeAction("A"), makeAction("B")]);
 		const b = buildPlannerActionGrammar([makeAction("B"), makeAction("A")]);
 		expect(b).toBe(a);
+	});
+});
+
+describe("withGuidedDecodeProviderOptions", () => {
+	const ENV_KEYS = [
+		"MILADY_LOCAL_GUIDED_DECODE",
+		"ELIZA_LOCAL_GUIDED_DECODE",
+	] as const;
+	const saved: Record<string, string | undefined> = {};
+	for (const k of ENV_KEYS) saved[k] = process.env[k];
+	afterEach(() => {
+		for (const k of ENV_KEYS) {
+			if (saved[k] === undefined) delete process.env[k];
+			else process.env[k] = saved[k];
+		}
+	});
+
+	it("sets eliza.guidedDecode = true by default and preserves siblings", () => {
+		for (const k of ENV_KEYS) delete process.env[k];
+		const opts = withGuidedDecodeProviderOptions({
+			eliza: { plannerActionSchemas: { A: { type: "object" } } },
+			other: 1,
+		} as Record<string, unknown>);
+		expect(opts).toMatchObject({
+			other: 1,
+			eliza: {
+				guidedDecode: true,
+				plannerActionSchemas: { A: { type: "object" } },
+			},
+		});
+	});
+
+	it("creates the eliza bag when absent", () => {
+		for (const k of ENV_KEYS) delete process.env[k];
+		const opts = withGuidedDecodeProviderOptions({} as Record<string, unknown>);
+		expect((opts as { eliza?: { guidedDecode?: unknown } }).eliza).toEqual({
+			guidedDecode: true,
+		});
+	});
+
+	it("is a no-op when the operator opts out via MILADY_LOCAL_GUIDED_DECODE=0", () => {
+		process.env.MILADY_LOCAL_GUIDED_DECODE = "0";
+		const opts = withGuidedDecodeProviderOptions({} as Record<string, unknown>);
+		expect((opts as { eliza?: unknown }).eliza).toBeUndefined();
+	});
+
+	it("is a no-op when ELIZA_LOCAL_GUIDED_DECODE=false", () => {
+		process.env.ELIZA_LOCAL_GUIDED_DECODE = "false";
+		const opts = withGuidedDecodeProviderOptions({
+			eliza: { plannerActionSchemas: {} },
+		} as Record<string, unknown>);
+		expect(
+			(opts as { eliza?: { guidedDecode?: unknown } }).eliza?.guidedDecode,
+		).toBeUndefined();
+	});
+
+	it("returns the same object reference (idempotent merge)", () => {
+		for (const k of ENV_KEYS) delete process.env[k];
+		const input = { eliza: { foo: 1 } } as Record<string, unknown>;
+		expect(withGuidedDecodeProviderOptions(input)).toBe(input);
+		// second pass keeps guidedDecode true, no duplication
+		const again = withGuidedDecodeProviderOptions(input);
+		expect((again as { eliza?: { guidedDecode?: unknown } }).eliza).toEqual({
+			foo: 1,
+			guidedDecode: true,
+		});
 	});
 });

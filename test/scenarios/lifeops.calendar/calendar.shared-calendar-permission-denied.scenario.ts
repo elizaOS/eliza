@@ -10,9 +10,9 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
-import { judgeRubric } from "../_helpers/action-assertions.ts";
 import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import { seedGoogleConnectorGrant } from "../../mocks/helpers/seed-grants.ts";
+import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 function checkAgentReportsPermissionGap(
   ctx: ScenarioContext,
@@ -77,8 +77,8 @@ export default scenario({
           side: "owner",
           calendarId: "team-shared-calendar",
           title: "Team standup",
-          description: null,
-          location: null,
+          description: "",
+          location: "",
           status: "confirmed",
           startAt: new Date(Date.now() + 6 * 60 * 60_000).toISOString(),
           endAt: new Date(Date.now() + 6.5 * 60 * 60_000).toISOString(),

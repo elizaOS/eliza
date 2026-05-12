@@ -1,4 +1,4 @@
-import { describe, expect, it, mock } from "bun:test";
+import { describe, expect, it, vi } from "vitest";
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import type { AgentUpdateStatusSnapshot } from "./rpc-schema";
 import {
@@ -8,7 +8,7 @@ import {
 } from "./update-rpc";
 
 function mockFetchJson(status: number, body: unknown) {
-	const fetchMock = mock(
+	const fetchMock = vi.fn(
 		async (_input: RequestInfo | URL, _init?: RequestInit) =>
 			new Response(JSON.stringify(body), { status }),
 	);
@@ -50,7 +50,7 @@ describe("getUpdateStatus typed RPC", () => {
 	});
 
 	it("passes the force flag to the update reader", async () => {
-		const reader = mock(async (_port: number, force: boolean) => ({
+		const reader = vi.fn(async (_port: number, force: boolean) => ({
 			...updateStatus,
 			updateAvailable: force,
 		}));

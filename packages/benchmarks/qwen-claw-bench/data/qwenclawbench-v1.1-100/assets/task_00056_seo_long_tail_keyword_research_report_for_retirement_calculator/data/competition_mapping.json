@@ -1,0 +1,50 @@
+{
+  "metadata": {
+    "dataSource": "manual assessment Q1 2022",
+    "assessedBy": "Content Strategy Team",
+    "methodology": "Manual review of SERP features and top-ranking domains",
+    "lastUpdated": "2022-03-28"
+  },
+  "competitionMapping": {
+    "401k retirement withdrawal calculator with taxes": {
+      "competition": "low",
+      "rationale": "Few dedicated tools address tax-adjusted 401k withdrawals specifically",
+      "assessedSerpFeatures": ["featured_snippet", "knowledge_panel"]
+    },
+    "best retirement withdrawal calculator for early retirement": {
+      "competition": "high",
+      "rationale": "Major financial publishers dominate this SERP with extensive comparison articles",
+      "assessedSerpFeatures": ["listicle_results", "ads_heavy"]
+    },
+    "how much can i withdraw from retirement calculator": {
+      "competition": "medium",
+      "rationale": "Mix of authoritative and niche sites ranking, moderate ad presence",
+      "assessedSerpFeatures": ["featured_snippet", "people_also_ask"]
+    },
+    "retirement withdrawal rate calculator by age": {
+      "competition": "medium",
+      "rationale": "Some competition from financial advisory firms but room for niche tools",
+      "assessedSerpFeatures": ["people_also_ask"]
+    },
+    "early retirement withdrawal penalty calculator free": {
+      "competition": "low",
+      "rationale": "Limited dedicated free tools available for this specific query",
+      "assessedSerpFeatures": ["organic_only"]
+    },
+    "retirement savings withdrawal calculator with social security": {
+      "competition": "high",
+      "rationale": "Government and major financial sites dominate social security related queries",
+      "assessedSerpFeatures": ["knowledge_panel", "gov_results"]
+    },
+    "simple retirement withdrawal calculator for beginners": {
+      "competition": "low",
+      "rationale": "Underserved niche with few beginner-focused tools",
+      "assessedSerpFeatures": ["organic_only", "people_also_ask"]
+    },
+    "roth ira retirement withdrawal calculator rules": {
+      "competition": "medium",
+      "rationale": "Moderate competition from financial education sites",
+      "assessedSerpFeatures": ["featured_snippet", "ads_moderate"]
+    }
+  }
+}

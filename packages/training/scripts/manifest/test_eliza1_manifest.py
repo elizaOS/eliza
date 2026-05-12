@@ -9,6 +9,7 @@ import pytest
 
 from scripts.manifest.eliza1_manifest import (
     ELIZA_1_MANIFEST_SCHEMA_VERSION,
+    ELIZA_1_TIERS,
     REQUIRED_KERNELS_BY_TIER,
     Eliza1ManifestError,
     FileEntry,
@@ -48,12 +49,12 @@ def base_kwargs(tier: str = "9b") -> dict:
             "text": [
                 FileEntry(path=f"text/eliza-1-{tier}-64k.gguf", sha256=SHA, ctx=65536)
             ],
-            "voice": [FileEntry(path="tts/omnivoice-1.7b.gguf", sha256=SHA)],
+            "voice": [FileEntry(path="tts/omnivoice-base-Q4_K_M.gguf", sha256=SHA)],
             "asr": [FileEntry(path="asr/asr.gguf", sha256=SHA)],
             "vision": [FileEntry(path=f"vision/mmproj-{tier}.gguf", sha256=SHA)],
             "dflash": [FileEntry(path=f"dflash/drafter-{tier}.gguf", sha256=SHA)],
             "cache": [FileEntry(path="cache/voice-preset-default.bin", sha256=SHA)],
-            "vad": [FileEntry(path="vad/eliza-1-vad.onnx", sha256=SHA)],
+            "vad": [FileEntry(path="vad/silero-vad-v5.1.2.ggml.bin", sha256=SHA)],
         },
         kernels_required=list(REQUIRED_KERNELS_BY_TIER[tier]),
         kernels_optional=[],
@@ -66,8 +67,15 @@ def base_kwargs(tier: str = "9b") -> dict:
         asr_wer_passed=True,
         vad_latency_ms_median=16.0,
         vad_latency_ms_passed=True,
+        vad_boundary_ms=24.0,
+        vad_endpoint_ms=80.0,
+        vad_false_barge_in_rate=0.01,
         e2e_loop_ok=True,
         thirty_turn_ok=True,
+        dflash_eval=True,
+        dflash_acceptance_rate=0.71,
+        dflash_speedup=1.8,
+        dflash_passed=True,
         ram_budget_min_mb=7000,
         ram_budget_recommended_mb=9500,
         default_eligible=True,
@@ -78,13 +86,41 @@ def test_schema_version_constant():
     assert ELIZA_1_MANIFEST_SCHEMA_VERSION == "1"
 
 
+def test_eliza1_tier_ids_are_canonical():
+    assert ELIZA_1_TIERS[:3] == ("0_8b", "2b", "4b")
+    assert "0_8b" in REQUIRED_KERNELS_BY_TIER
+    assert "2b" in REQUIRED_KERNELS_BY_TIER
+    assert "0_6b" not in REQUIRED_KERNELS_BY_TIER
+    assert "1_7b" not in REQUIRED_KERNELS_BY_TIER
+
+
 def test_build_manifest_happy_path():
     manifest = build_manifest(**base_kwargs())
     assert manifest["tier"] == "9b"
     assert manifest["id"] == "eliza-1-9b"
     assert manifest["defaultEligible"] is True
     assert manifest["$schema"].endswith("eliza-1.manifest.v1.json")
+    assert manifest["evals"]["vadLatencyMs"] == {
+        "median": 16.0,
+        "passed": True,
+        "boundaryMs": 24.0,
+        "endpointMs": 80.0,
+        "falseBargeInRate": 0.01,
+    }
+    assert manifest["evals"]["dflash"] == {
+        "acceptanceRate": 0.71,
+        "speedup": 1.8,
+        "passed": True,
+    }
     # Validates against itself.
+    assert validate_manifest(manifest) == ()
+
+
+def test_legacy_onnx_vad_manifest_remains_compatible():
+    kwargs = base_kwargs()
+    kwargs["files"]["vad"] = [FileEntry(path="vad/silero-vad-int8.onnx", sha256=SHA)]
+    manifest = build_manifest(**kwargs)
+    assert manifest["files"]["vad"][0]["path"] == "vad/silero-vad-int8.onnx"
     assert validate_manifest(manifest) == ()
 
 
@@ -121,7 +157,7 @@ def test_build_manifest_accepts_optional_component_slots_and_voice_caps():
 
 @pytest.mark.parametrize(
     "tier",
-    ["0_6b", "1_7b", "9b", "27b", "27b-256k"],
+    ["0_8b", "2b", "9b", "27b", "27b-256k"],
 )
 def test_every_tier_validates(tier: str):
     manifest = build_manifest(**base_kwargs(tier))
@@ -145,8 +181,18 @@ def test_default_eligible_with_failing_eval_rejected():
     assert any("defaultEligible" in e for e in exc.value.errors)
 
 
+def test_default_eligible_requires_measured_dflash_eval():
+    kwargs = base_kwargs("9b")
+    kwargs["dflash_speedup"] = None
+    kwargs["dflash_passed"] = False
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+    assert any("evals.dflash" in e for e in exc.value.errors)
+    assert any("defaultEligible" in e for e in exc.value.errors)
+
+
 def test_non_publishable_manifest_can_validate_for_local_staging():
-    kwargs = base_kwargs("1_7b")
+    kwargs = base_kwargs("2b")
     kwargs["default_eligible"] = False
     kwargs["text_eval_score"] = 0.0
     kwargs["text_eval_passed"] = False
@@ -185,7 +231,7 @@ def test_non_publishable_manifest_can_validate_for_local_staging():
 
 
 def test_default_eligible_true_still_rejected_in_local_staging_mode():
-    kwargs = base_kwargs("1_7b")
+    kwargs = base_kwargs("2b")
     kwargs["text_eval_passed"] = False
 
     with pytest.raises(Eliza1ManifestError) as exc:
@@ -220,6 +266,14 @@ def test_component_files_require_matching_lineage_and_eval_gate():
         build_manifest(**kwargs)
     assert any("lineage.asr" in e for e in exc.value.errors)
     assert any("evals.asrWer" in e for e in exc.value.errors)
+
+
+def test_vad_false_barge_in_metric_must_be_rate():
+    kwargs = base_kwargs("9b")
+    kwargs["vad_false_barge_in_rate"] = 1.2
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+    assert any("falseBargeInRate" in e for e in exc.value.errors)
 
 
 def test_default_eligible_requires_asr_and_vad_components():
@@ -273,7 +327,7 @@ def test_lite_tier_does_not_require_cuda_or_rocm_pass():
     """Lite tier ships on metal/vulkan/cpu — failing cuda/rocm backends
     must not block lite publishing."""
 
-    kwargs = base_kwargs("0_6b")
+    kwargs = base_kwargs("0_8b")
     backends = passing_backends()
     backends["cuda"] = KernelVerification(
         status="fail", at_commit="abc1234", report="cuda.txt"
@@ -403,7 +457,7 @@ def test_write_manifest_refuses_invalid(tmp_path: Path):
 def test_write_manifest_allows_non_publishable_only_when_requested(
     tmp_path: Path,
 ):
-    kwargs = base_kwargs("1_7b")
+    kwargs = base_kwargs("2b")
     kwargs["default_eligible"] = False
     kwargs["text_eval_score"] = 0.0
     kwargs["text_eval_passed"] = False
@@ -467,7 +521,7 @@ def test_parse_text_ctx_from_filename_finds_suffix_token():
 
 
 def test_parse_text_ctx_from_filename_returns_none_when_no_suffix():
-    assert parse_text_ctx_from_filename(Path("text/eliza-1-1_7b.gguf")) is None
+    assert parse_text_ctx_from_filename(Path("text/eliza-1-2b.gguf")) is None
     assert parse_text_ctx_from_filename(Path("dflash/drafter-9b.gguf")) is None
 
 
@@ -489,7 +543,7 @@ def _base_v1_provenance() -> dict:
             },
             "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
             "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
-            "vad": {"repo": "onnx-community/silero-vad"},
+            "vad": {"repo": "ggml-org/whisper-vad"},
             "vision": {"repo": "unsloth/Qwen3.5-9B-GGUF", "file": "mmproj-F16.gguf"},
             "drafter": {"repo": "elizaos/eliza-1-9b"},
         },

@@ -215,7 +215,7 @@ def validate_planner(decoded: Any) -> list[str]:
                 # don't flag as mismatch.
                 pass
         elif isinstance(actions, dict) and not actions:
-            # Empty TOON `actions:` decodes to {}. Accept as empty list.
+            # Empty native JSON `actions:` decodes to {}. Accept as empty list.
             pass
         else:
             reasons.append(f"actions_wrong_type({type(actions).__name__})")
@@ -230,7 +230,7 @@ def validate_planner(decoded: Any) -> list[str]:
                     reasons.append(f"provider[{i}]_not_string({type(p).__name__})")
                     break
         elif isinstance(providers, dict) and not providers:
-            # Empty TOON `providers:` decodes to {}. Accept.
+            # Empty native JSON `providers:` decodes to {}. Accept.
             pass
         else:
             reasons.append(f"providers_wrong_type({type(providers).__name__})")
@@ -301,7 +301,7 @@ def validate_should_respond(decoded: Any) -> list[str]:
             reasons.append(f"{k}_wrong_type({type(v).__name__})")
     for k in ("secondaryContexts", "evidenceTurnIds"):
         v = decoded.get(k)
-        # Empty TOON values may decode to "" or {}; both are acceptable.
+        # Empty native JSON values may decode to "" or {}; both are acceptable.
         if v is not None and not isinstance(v, (str, list, dict)):
             reasons.append(f"{k}_wrong_type({type(v).__name__})")
     return reasons
@@ -343,7 +343,7 @@ def validate_reflection(decoded: Any) -> list[str]:
 
 def validate_fact_extractor(decoded: Any) -> list[str]:
     """Validate a fact_extractor record. Input is the RAW JSON-decoded object,
-    NOT a TOON-decoded value (fact_extractor emits raw JSON per the template).
+    NOT a native JSON-decoded value (fact_extractor emits raw JSON per the template).
 
     Schema: ``{"ops": [...]}`` where each op has a known shape per ``op`` type.
     Empty ``ops`` is valid (and common — the template explicitly allows it).
@@ -397,7 +397,7 @@ def validate_fact_extractor(decoded: Any) -> list[str]:
 
 
 def validate_reflection_evaluator(decoded: Any) -> list[str]:
-    """Validate a reflection_evaluator record (TOON-decoded).
+    """Validate a reflection_evaluator record (native JSON-decoded).
 
     Required: ``thought`` (str), ``task_completed`` (bool),
     ``task_completion_reason`` (str). Optional: ``relationships[N]`` —
@@ -422,7 +422,7 @@ def validate_reflection_evaluator(decoded: Any) -> list[str]:
     rels = decoded.get("relationships")
     if rels is None:
         return reasons
-    # Empty TOON list decodes to {} or "" — accept those.
+    # Empty native JSON list decodes to {} or "" — accept those.
     if isinstance(rels, str) and rels == "":
         return reasons
     if isinstance(rels, dict) and not rels:
@@ -457,7 +457,7 @@ def validate_reflection_evaluator(decoded: Any) -> list[str]:
 
 
 def validate_summarization(decoded: Any) -> list[str]:
-    """Validate a summarization / initial_summarization record (TOON).
+    """Validate a summarization / initial_summarization record (native JSON).
 
     Required: ``text`` (str), ``topics`` (list of str OR CSV str),
     ``keyPoints`` (list of str OR CSV str).
@@ -474,7 +474,7 @@ def validate_summarization(decoded: Any) -> list[str]:
         if field not in decoded:
             continue
         v = decoded[field]
-        # Empty TOON list decodes to {} or "" — accept those.
+        # Empty native JSON list decodes to {} or "" — accept those.
         if isinstance(v, str):
             continue
         if isinstance(v, dict) and not v:
@@ -490,7 +490,7 @@ def validate_summarization(decoded: Any) -> list[str]:
 
 
 def validate_long_term_extraction(decoded: Any) -> list[str]:
-    """Validate a long_term_extraction record (TOON).
+    """Validate a long_term_extraction record (native JSON).
 
     The output is a (possibly empty) ``memories[N]`` block. Empty memories is
     explicitly legal and is the common case per the template. Each memory
@@ -549,8 +549,8 @@ def validate_action_specific(task_type: str, decoded: Any) -> list[str]:
 
     Field expectations are derived from the canonical templates in
     ``eliza/packages/core/src/prompts.ts``. When a template is permissive
-    or under-documented, the validator only checks the top-level shape and
-    a TODO comment marks the gap.
+    or under-documented, the validator falls back to checking only the
+    top-level shape (object, non-empty) for that ``task_type``.
     """
     if not isinstance(decoded, dict):
         return [f"top_level_not_object({type(decoded).__name__})"]

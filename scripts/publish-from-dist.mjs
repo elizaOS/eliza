@@ -24,9 +24,8 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { dirname } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -42,7 +41,8 @@ function parseArgs() {
   const tagIdx = argv.indexOf("--tag");
   if (tagIdx >= 0) flags.tag = argv[tagIdx + 1];
   const filterIdx = argv.indexOf("--filter");
-  if (filterIdx >= 0) flags.filter = argv[filterIdx + 1].split(",").map((s) => s.trim());
+  if (filterIdx >= 0)
+    flags.filter = argv[filterIdx + 1].split(",").map((s) => s.trim());
   const otpIdx = argv.indexOf("--otp");
   if (otpIdx >= 0) flags.otp = argv[otpIdx + 1];
   return flags;
@@ -86,7 +86,9 @@ function main() {
     ? pkgs.filter((p) => flags.filter.includes(p.name))
     : pkgs;
 
-  console.log(`${flags.apply ? "[PUBLISH]" : "[DRY-RUN]"} ${filtered.length} packages`);
+  console.log(
+    `${flags.apply ? "[PUBLISH]" : "[DRY-RUN]"} ${filtered.length} packages`,
+  );
   if (flags.tag) console.log(`  tag: ${flags.tag}`);
   if (flags.filter) console.log(`  filter: ${flags.filter.join(", ")}`);
 
@@ -109,9 +111,10 @@ function main() {
     args.push("--access", "public");
 
     try {
-      const target =
-        publishDir === distDir ? `${pkg.dir}/dist` : pkg.dir;
-      console.log(`  ${pkg.name}@${pkg.version}: ${args.join(" ")} (${target})`);
+      const target = publishDir === distDir ? `${pkg.dir}/dist` : pkg.dir;
+      console.log(
+        `  ${pkg.name}@${pkg.version}: ${args.join(" ")} (${target})`,
+      );
       execFileSync("npm", args, { cwd: publishDir, stdio: "inherit" });
       succeeded++;
     } catch (err) {

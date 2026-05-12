@@ -33,9 +33,20 @@ ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
     "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json"
 )
 
+# `0_8b` and `2b` are the Qwen3.5 small/mid local tiers (the eliza-1 line is
+# Qwen3.5-only per the 2026-05-12 operator directive — the Qwen3 dense bases
+# don't work with the eliza-1 dflash spec-decode path). `0_6b` / `1_7b` /
+# `4b` remain in this list as **deprecated** tier ids — the corresponding
+# elizaos/eliza-1-{0_6b,1_7b,4b} HF repos stay public for existing downloads,
+# but their cards are marked DEPRECATED and no new SFT runs target them.
+# See packages/shared/src/local-inference/catalog.ts +
+# packages/training/scripts/training/model_registry.py.
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
+    "0_8b",
     "0_6b",
     "1_7b",
+    "2b",
+    "4b",
     "9b",
     "27b",
     "27b-256k",
@@ -69,7 +80,7 @@ VOICE_PRESET_CACHE_PATH: Final[str] = "cache/voice-preset-default.bin"
 # Release-state vocabulary recorded in `manifest.provenance.releaseState` and
 # `evidence/release.json.releaseState`. `base-v1` is the v1 product: the
 # upstream BASE models — GGUF-converted via the elizaOS/llama.cpp fork and
-# fully Milady-optimized (every quant/kernel trick in §3) — but NOT
+# fully Eliza-optimized (every quant/kernel trick in §3) — but NOT
 # fine-tuned. Fine-tuning lands in v2 (`finetuned-v2`). `local-standin` is a
 # non-publishable staging shape; `upload-candidate`/`final` are the
 # fine-tuned-v1 publish states retained for forward-compat.
@@ -101,8 +112,11 @@ ELIZA_1_PROVENANCE_SLOTS: Final[tuple[str, ...]] = (
 )
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
+    "0_8b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
     "0_6b": ("turboquant_q3", "qjl", "polarquant", "dflash"),
     "1_7b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
+    "2b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
+    "4b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
     "9b": (
         "turboquant_q4",
         "qjl",
@@ -134,21 +148,27 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
+    "0_8b": ("metal", "vulkan", "cpu"),
     "0_6b": ("metal", "vulkan", "cpu"),
     "1_7b": ("metal", "vulkan", "cpu"),
+    "2b": ("metal", "vulkan", "cpu"),
+    "4b": ("metal", "vulkan", "cpu"),
     "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     # 1M context is only practical on very large unified/HBM memory
-    # (GH200-class). CUDA is the only backend whose v0.4.0-milady binary
+    # (GH200-class). CUDA is the only backend whose v1.0.0-eliza binary
     # covers the full runtime path at that window today; the others stay
     # off the supported list for this variant until verified.
     "27b-1m": ("cuda",),
 }
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
+    "0_8b": "Q4_K_M",
     "0_6b": "Q4_K_M",
     "1_7b": "Q4_K_M",
+    "2b": "Q4_K_M",
+    "4b": "Q4_K_M",
     "9b": "Q8_0",
     "27b": "Q8_0",
     "27b-256k": "Q8_0",
@@ -643,6 +663,25 @@ def validate_manifest(
                     errors.append(
                         "evals.vadLatencyMs.median: must be a non-negative number"
                     )
+                for field in ("boundaryMs", "endpointMs"):
+                    value = vad_latency.get(field)
+                    if value is not None and (
+                        not isinstance(value, (int, float))
+                        or isinstance(value, bool)
+                        or value < 0
+                    ):
+                        errors.append(
+                            f"evals.vadLatencyMs.{field}: must be a non-negative number when present"
+                        )
+                false_barge_in = vad_latency.get("falseBargeInRate")
+                if false_barge_in is not None and (
+                    not isinstance(false_barge_in, (int, float))
+                    or isinstance(false_barge_in, bool)
+                    or not 0 <= false_barge_in <= 1
+                ):
+                    errors.append(
+                        "evals.vadLatencyMs.falseBargeInRate: must be a number in [0, 1] when present"
+                    )
                 if not isinstance(vad_latency.get("passed"), bool):
                     errors.append("evals.vadLatencyMs.passed: must be a boolean")
 
@@ -912,6 +951,35 @@ def validate_manifest(
         elif not gate["passed"]:
             readiness_errors.append("evals.expressive.passed: false")
 
+    # ── DFlash bench ────────────────────────────────────────────────────
+    # Staging manifests may record a missing/failing DFlash measurement, but
+    # a default-eligible bundle must prove speculative decoding was measured
+    # and passed. Keep this in lockstep with the TS runtime validator.
+    dflash_gate = evals.get("dflash")
+    if not _is_object(dflash_gate):
+        if manifest["defaultEligible"]:
+            errors.append("evals.dflash: required when defaultEligible=true")
+    else:
+        if dflash_gate["passed"] and (
+            dflash_gate["acceptanceRate"] is None
+            or dflash_gate["speedup"] is None
+        ):
+            errors.append(
+                "evals.dflash: passed=true but acceptanceRate/speedup is null"
+            )
+        if manifest["defaultEligible"]:
+            if not dflash_gate["passed"]:
+                readiness_errors.append(
+                    "evals.dflash.passed: false for defaultEligible manifest"
+                )
+            if (
+                dflash_gate["acceptanceRate"] is None
+                or dflash_gate["speedup"] is None
+            ):
+                errors.append(
+                    "evals.dflash: defaultEligible requires measured acceptanceRate and speedup"
+                )
+
     # ── base-v1 provenance coverage ─────────────────────────────────────
     # A `base-v1` manifest must record where every shipped component comes
     # from — that is the whole point of the release state ("these exact
@@ -993,6 +1061,9 @@ def build_manifest(
     embed_mteb_passed: bool | None = None,
     vad_latency_ms_median: float | None = None,
     vad_latency_ms_passed: bool | None = None,
+    vad_boundary_ms: float | None = None,
+    vad_endpoint_ms: float | None = None,
+    vad_false_barge_in_rate: float | None = None,
     expressive_tag_faithfulness: float | None = None,
     expressive_mos: float | None = None,
     expressive_tag_leakage: float | None = None,
@@ -1061,6 +1132,12 @@ def build_manifest(
             "median": vad_latency_ms_median if vad_latency_ms_median is not None else -1,
             "passed": bool(vad_latency_ms_passed),
         }
+        if vad_boundary_ms is not None:
+            evals["vadLatencyMs"]["boundaryMs"] = vad_boundary_ms
+        if vad_endpoint_ms is not None:
+            evals["vadLatencyMs"]["endpointMs"] = vad_endpoint_ms
+        if vad_false_barge_in_rate is not None:
+            evals["vadLatencyMs"]["falseBargeInRate"] = vad_false_barge_in_rate
     expressive_values = (
         expressive_tag_faithfulness,
         expressive_mos,

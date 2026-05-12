@@ -44,15 +44,25 @@ const READY_TIMEOUT_MS = 60_000;
 const EMBED_TIMEOUT_MS = 60_000;
 
 /**
- * Logical batch size for the embedding server. Embedding throughput wants
- * a single forward pass to cover as many short texts as possible: the
- * Qwen3-Embedding-0.6B model is tiny (~600 MB Q8_0), so a 4096-token
- * logical batch / 1024-token physical micro-batch keeps the CPU/GPU busy
- * without blowing the working set. (`llama-server` defaults are 2048 /
- * 512.)
+ * Logical / physical batch size for the embedding server. Embedding
+ * throughput wants a *single* forward pass to cover as many short texts as
+ * possible — so the physical micro-batch (`-ub`) is bumped to the logical
+ * batch (`-b`) so a `/v1/embeddings` call with many inputs is one ubatch
+ * rather than chunked. The Qwen3-Embedding-0.6B model is tiny (~600 MB
+ * Q8_0), so a 4096-token batch is comfortable. (`llama-server` defaults
+ * are 2048 / 512 — and 512 silently caps batching at ~512 tokens.)
  */
 const EMBED_BATCH_SIZE = 4096;
-const EMBED_UBATCH_SIZE = 1024;
+const EMBED_UBATCH_SIZE = 4096;
+
+/**
+ * Parallel slots for the embedding server. With `--pooling last`,
+ * llama-server processes each input on its own sequence; `--parallel N`
+ * lets up to N of them ride the same forward pass instead of being
+ * serialized one-by-one. 16 covers a typical RAG batch; each slot's KV is
+ * tiny at 0.6B / 8k ctx.
+ */
+const EMBED_PARALLEL = 16;
 
 /** Context window for the embedding server. Qwen3-Embedding-0.6B is 32k-ctx; cap modestly for RAM. */
 const EMBED_CTX_SIZE = 8192;
@@ -93,13 +103,17 @@ function extractEmbeddingVectors(json: unknown): number[][] {
   }
   const data = (json as { data?: unknown }).data;
   if (!Array.isArray(data)) {
-    throw new Error("[embedding-server] /v1/embeddings: response.data is not an array");
+    throw new Error(
+      "[embedding-server] /v1/embeddings: response.data is not an array",
+    );
   }
   const out: number[][] = [];
   for (const row of data) {
     const vec = (row as { embedding?: unknown }).embedding;
     if (!Array.isArray(vec) || vec.some((x) => typeof x !== "number")) {
-      throw new Error("[embedding-server] /v1/embeddings: a row has no numeric embedding");
+      throw new Error(
+        "[embedding-server] /v1/embeddings: a row has no numeric embedding",
+      );
     }
     out.push(vec as number[]);
   }
@@ -136,7 +150,10 @@ export class EmbeddingServer {
    * Throws on an invalid `dim` or a server error — no zero-vector fallback
    * (Commandment 8).
    */
-  async embed(texts: string[], dim: number = EMBEDDING_FULL_DIM): Promise<number[][]> {
+  async embed(
+    texts: string[],
+    dim: number = EMBEDDING_FULL_DIM,
+  ): Promise<number[][]> {
     if (!isValidEmbeddingDim(dim)) {
       throw new Error(
         `[embedding-server] dim ${dim} is not a valid Matryoshka width`,
@@ -214,9 +231,10 @@ export class EmbeddingServer {
       String(threads),
       "--n-gpu-layers",
       gpuLayers === "auto" ? "99" : String(gpuLayers),
-      // Embedding-only server: no parallel slots, no jinja chat template.
+      // Embedding-only server: N parallel slots so a batch of inputs rides
+      // one forward pass; no jinja chat template needed.
       "--parallel",
-      "1",
+      String(EMBED_PARALLEL),
       ...this.config.serverFlags,
     ];
     logger.info(
@@ -270,9 +288,12 @@ export class EmbeddingServer {
     this.baseUrl = null;
     if (!child) return;
     child.kill("SIGTERM");
-    const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+    const exited = new Promise<void>((resolve) =>
+      child.once("exit", () => resolve()),
+    );
     await Promise.race([exited, sleep(2000)]);
-    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    if (child.exitCode === null && child.signalCode === null)
+      child.kill("SIGKILL");
   }
 }
 

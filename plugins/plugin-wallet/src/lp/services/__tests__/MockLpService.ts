@@ -1,4 +1,3 @@
-// @ts-nocheck — test-only mock for LP registry and E2E setup
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import type {
   AddLiquidityConfig,
@@ -15,7 +14,7 @@ import {
 
 export class MockLpService extends Service implements ILpService {
   public readonly capabilityDescription =
-    "Test-only LP service for registry scenarios.";
+    "Provides standardized access to DEX liquidity pools.";
   private positions = new Map<string, LpPositionDetails[]>();
 
   constructor(

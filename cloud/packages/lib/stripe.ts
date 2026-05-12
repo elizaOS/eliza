@@ -26,6 +26,11 @@
 import Stripe from "stripe";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 
+type PinnedStripeApiVersion = Stripe.WebhookEndpointCreateParams.ApiVersion;
+type StripeConstructorConfig = NonNullable<ConstructorParameters<typeof Stripe>[1]>;
+
+const STRIPE_API_VERSION: PinnedStripeApiVersion = "2024-11-20.acacia";
+
 let stripeInstance: Stripe | null = null;
 let stripeInitError: Error | null = null;
 
@@ -53,8 +58,7 @@ function initStripe(): Stripe | null {
 
   stripeInstance = new Stripe(secretKey, {
     typescript: true,
-    // @ts-expect-error -- Pinned to production-tested version; see #287 for upgrade plan
-    apiVersion: "2024-11-20.acacia",
+    apiVersion: STRIPE_API_VERSION as StripeConstructorConfig["apiVersion"],
   });
   return stripeInstance;
 }

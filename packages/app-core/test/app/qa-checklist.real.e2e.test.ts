@@ -2421,9 +2421,7 @@ async function listDocuments(): Promise<Array<{ filename: string }>> {
   return result.documents ?? [];
 }
 
-async function listDocumentsAfterReset(): Promise<
-  Array<{ filename: string }>
-> {
+async function listDocumentsAfterReset(): Promise<Array<{ filename: string }>> {
   try {
     return await listDocuments();
   } catch (error) {
@@ -2437,9 +2435,7 @@ async function listDocumentsAfterReset(): Promise<
   }
 }
 
-async function documentSearch(
-  query: string,
-): Promise<Array<{ text: string }>> {
+async function documentSearch(query: string): Promise<Array<{ text: string }>> {
   const encoded = encodeURIComponent(query);
   const result = await apiJson<{ results: Array<{ text: string }> }>(
     `/api/documents/search?q=${encoded}&threshold=0.1&limit=5`,

@@ -21,12 +21,10 @@ import { PtyConsoleSidePanel } from "../../../../app-task-coordinator/src/PtyCon
 import { CompanionHeader, type CompanionShellView } from "./CompanionHeader";
 import { CompanionSceneHost } from "./CompanionSceneHost";
 import { CompanionSettingsPanel } from "./CompanionSettingsPanel";
-import { useCompanionSceneStatus } from "./companion-scene-status-context";
 import { EmotePicker } from "./EmotePicker";
 import { InferenceCloudAlertButton } from "./InferenceCloudAlertButton";
 import { resolveCompanionInferenceNotice } from "./resolve-companion-inference-notice";
 
-const COMPANION_UI_REVEAL_FALLBACK_MS = 1400;
 const COMPANION_DOCK_HEIGHT = "min(42vh, 24rem)";
 
 /**
@@ -73,6 +71,9 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
     elizaCloudConnected,
     elizaCloudCreditsError,
     elizaCloudEnabled,
+    emotePickerOpen,
+    openEmotePicker,
+    closeEmotePicker,
     handleNewConversation,
     navigation,
     setState,
@@ -97,25 +98,6 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
     () => setPtySidePanelSessionId(null),
     [],
   );
-  const { avatarReady: sceneAvatarReady } = useCompanionSceneStatus();
-
-  // Gate chat + header behind avatar load — don't show chat or play
-  // greeting speech until the VRM finishes its teleport-in animation.
-  const [avatarReadyFallback, setAvatarReadyFallback] = useState(false);
-  useEffect(() => {
-    if (sceneAvatarReady) {
-      setAvatarReadyFallback(false);
-      return;
-    }
-    setAvatarReadyFallback(false);
-    const fallbackTimer = window.setTimeout(() => {
-      setAvatarReadyFallback(true);
-    }, COMPANION_UI_REVEAL_FALLBACK_MS);
-    return () => {
-      window.clearTimeout(fallbackTimer);
-    };
-  }, [sceneAvatarReady]);
-  const avatarReady = sceneAvatarReady || avatarReadyFallback;
 
   const handleExitToDesktop = useCallback(() => {
     setState("activeOverlayApp", null);
@@ -133,6 +115,14 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
   const handleSwitchToCompanion = useCallback(() => {
     setCompanionView("companion");
   }, []);
+
+  const handleToggleEmotePicker = useCallback(() => {
+    if (emotePickerOpen) {
+      closeEmotePicker();
+      return;
+    }
+    openEmotePicker();
+  }, [closeEmotePicker, emotePickerOpen, openEmotePicker]);
 
   useEffect(() => {
     setState(
@@ -194,13 +184,7 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
 
   return (
     <div className="absolute inset-0 z-10 flex flex-col pointer-events-none">
-      <div
-        style={{
-          opacity: avatarReady ? 1 : 0,
-          transition: "opacity 0.35s ease-out",
-          pointerEvents: avatarReady ? "auto" : "none",
-        }}
-      >
+      <div>
         <CompanionHeader
           activeView={companionView}
           onExitToDesktop={handleExitToDesktop}
@@ -217,11 +201,12 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
             setState("chatAgentVoiceMuted", !chatAgentVoiceMuted)
           }
           onNewChat={() => void handleNewConversation()}
+          onToggleEmotePicker={handleToggleEmotePicker}
           rightExtras={companionHeaderRightExtras}
         />
       </div>
 
-      {avatarReady && companionView === "companion" && (
+      {companionView === "companion" && (
         <div
           className="pointer-events-auto absolute inset-x-0 bottom-0 z-20 flex justify-center px-1.5 sm:px-4"
           style={{
@@ -229,6 +214,7 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
           }}
         >
           <div
+            data-testid="companion-chat-dock"
             className="relative w-full max-w-5xl min-w-0"
             style={{ height: COMPANION_DOCK_HEIGHT, minHeight: "17rem" }}
           >
@@ -242,15 +228,13 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
         </div>
       )}
 
-      {avatarReady && companionView === "character" && (
+      {companionView === "character" && (
         <Suspense fallback={null}>
           <CharacterEditor sceneOverlay />
         </Suspense>
       )}
 
-      {avatarReady && companionView === "settings" && (
-        <CompanionSettingsPanel />
-      )}
+      {companionView === "settings" && <CompanionSettingsPanel />}
 
       {/* PTY console side panel */}
       {ptySidePanelSessionId && companionView === "companion" && (

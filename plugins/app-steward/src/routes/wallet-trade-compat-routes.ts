@@ -7,12 +7,10 @@
  */
 import type http from "node:http";
 import { loadElizaConfig } from "@elizaos/agent";
-import { ensureCompatApiAuthorized } from "@elizaos/app-core";
 import {
   type CompatRuntimeState,
+  ensureCompatApiAuthorized,
   readCompatJsonBody,
-} from "@elizaos/app-core";
-import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "@elizaos/app-core";
@@ -22,7 +20,7 @@ import {
   resolveTradePermissionMode as _resolveTradePermissionMode,
 } from "@elizaos/plugin-wallet";
 import { type PolicyResult, StewardApiError } from "@stwd/sdk";
-import { ethers } from "ethers";
+import * as ethers from "ethers";
 import {
   buildBscApproveUnsignedTx,
   buildBscBuyUnsignedTx,

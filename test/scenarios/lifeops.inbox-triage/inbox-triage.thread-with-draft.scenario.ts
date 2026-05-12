@@ -17,16 +17,16 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
+import {
+  executeRawSql,
+  sqlQuote,
+} from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
 import {
   expectApprovalRequest,
   expectScenarioToCallAction,
   judgeRubric,
 } from "../_helpers/action-assertions.ts";
-import {
-  executeRawSql,
-  sqlQuote,
-} from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 
 interface ThreadMessage {
   index: number;
@@ -205,8 +205,7 @@ export default scenario({
       type: "custom",
       name: "draft-pending-approval",
       predicate: expectApprovalRequest({
-        description:
-          "outbound message gated on user approval before send",
+        description: "outbound message gated on user approval before send",
         state: "pending",
       }),
     },

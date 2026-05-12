@@ -88,7 +88,7 @@ Result:
 
 ```text
 $ vitest run
-RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/plugins/app-training
+RUN  v4.1.5 /Users/shawwalters/eliza-workspace/eliza/eliza/plugins/app-training
 Test Files  8 passed (8)
 Tests  66 passed (66)
 Duration  21.53s

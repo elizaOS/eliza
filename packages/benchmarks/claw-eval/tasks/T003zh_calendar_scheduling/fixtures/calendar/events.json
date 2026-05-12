@@ -1,0 +1,65 @@
+[
+  {
+    "event_id": "evt_001",
+    "title": "每日站会",
+    "start_time": "2026-03-02T09:00:00Z",
+    "end_time": "2026-03-02T09:30:00Z",
+    "attendees": ["张经理", "李明", "王芳", "赵强"],
+    "location": "会议室A",
+    "recurring": true
+  },
+  {
+    "event_id": "evt_002",
+    "title": "产品评审会",
+    "start_time": "2026-03-02T10:00:00Z",
+    "end_time": "2026-03-02T11:30:00Z",
+    "attendees": ["张经理", "李明", "陈总监"],
+    "location": "大会议室",
+    "recurring": false
+  },
+  {
+    "event_id": "evt_003",
+    "title": "午餐",
+    "start_time": "2026-03-02T12:00:00Z",
+    "end_time": "2026-03-02T13:00:00Z",
+    "attendees": [],
+    "location": "",
+    "recurring": true
+  },
+  {
+    "event_id": "evt_004",
+    "title": "1:1 与张经理",
+    "start_time": "2026-03-02T14:00:00Z",
+    "end_time": "2026-03-02T14:30:00Z",
+    "attendees": ["张经理"],
+    "location": "张经理办公室",
+    "recurring": true
+  },
+  {
+    "event_id": "evt_005",
+    "title": "技术分享会",
+    "start_time": "2026-03-02T16:00:00Z",
+    "end_time": "2026-03-02T17:00:00Z",
+    "attendees": ["全体技术团队"],
+    "location": "大会议室",
+    "recurring": false
+  },
+  {
+    "event_id": "evt_006",
+    "title": "李明 - 外部客户会议",
+    "start_time": "2026-03-02T13:00:00Z",
+    "end_time": "2026-03-02T14:00:00Z",
+    "attendees": ["李明", "外部客户"],
+    "location": "会议室C",
+    "recurring": false
+  },
+  {
+    "event_id": "evt_007",
+    "title": "王芳 - 用户测试会",
+    "start_time": "2026-03-02T17:00:00Z",
+    "end_time": "2026-03-02T18:00:00Z",
+    "attendees": ["王芳", "测试团队"],
+    "location": "测试实验室",
+    "recurring": false
+  }
+]

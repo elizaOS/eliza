@@ -6,10 +6,10 @@
  * append every state transition to a JSONL log so jobs survive restarts.
  *
  * Storage layout (under `resolveStateDir()`):
- *   ~/.milady/training-vast/jobs.jsonl       — append-only job event log.
- *   ~/.milady/training-vast/logs/<id>.log    — per-job stdout/stderr tail.
+ *   ~/.eliza/training-vast/jobs.jsonl       — append-only job event log.
+ *   ~/.eliza/training-vast/logs/<id>.log    — per-job stdout/stderr tail.
  *
- * The inference-stats reader points at `~/.milady/inference-stats.jsonl`,
+ * The inference-stats reader points at `~/.eliza/inference-stats.jsonl`,
  * the path the inference side writes to (overridable via env).
  */
 
@@ -66,7 +66,7 @@ export function jobLogPath(jobId: string): string {
 }
 
 export function inferenceStatsPath(): string {
-  const override = process.env.MILADY_INFERENCE_STATS_PATH;
+  const override = process.env.ELIZA_INFERENCE_STATS_PATH;
   if (override?.trim()) return override.trim();
   return join(resolveStateDir(), "inference-stats.jsonl");
 }

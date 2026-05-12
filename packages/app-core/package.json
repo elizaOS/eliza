@@ -38,28 +38,30 @@
     "build:dist": "node ../../scripts/rm-path-recursive.mjs dist && tsc --noCheck -p tsconfig.build.json && node ../../scripts/flatten-tsc-package-output.mjs packages/app-core && node ../../scripts/copy-package-assets.mjs packages/app-core src/styles src/registry/entries scripts platforms packaging patches test/scripts test/helpers && node ../../scripts/prepare-package-dist.mjs packages/app-core",
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "benchmark:server": "node --import tsx src/benchmark/server.ts",
+    "voice:interactive": "bun ./scripts/voice-interactive.mjs",
+    "voice:duet": "bun ./scripts/voice-duet.mjs",
     "build:flatpak": "node ./scripts/build-flatpak.mjs",
-    "build:flatpak:store": "MILADY_BUILD_VARIANT=store node ./scripts/build-flatpak.mjs",
-    "build:flatpak:direct": "MILADY_BUILD_VARIANT=direct node ./scripts/build-flatpak.mjs",
+    "build:flatpak:store": "ELIZA_BUILD_VARIANT=store node ./scripts/build-flatpak.mjs",
+    "build:flatpak:direct": "ELIZA_BUILD_VARIANT=direct node ./scripts/build-flatpak.mjs",
     "codesign:mas": "node ./scripts/codesign-mas.mjs",
     "codesign:mas:dry-run": "node ./scripts/codesign-mas.mjs --dry-run"
   },
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "default": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     },
     "./platform/native-plugin-entrypoints": {
+      "types": "./dist/platform/native-plugin-entrypoints.d.ts",
       "import": "./dist/platform/native-plugin-entrypoints.js",
-      "default": "./dist/platform/native-plugin-entrypoints.js",
-      "types": "./dist/platform/native-plugin-entrypoints.d.ts"
+      "default": "./dist/platform/native-plugin-entrypoints.js"
     },
     "./platform/empty-node-module": {
+      "types": "./dist/platform/empty-node-module.d.ts",
       "import": "./dist/platform/empty-node-module.js",
-      "default": "./dist/platform/empty-node-module.js",
-      "types": "./dist/platform/empty-node-module.d.ts"
+      "default": "./dist/platform/empty-node-module.js"
     }
   },
   "peerDependencies": {
@@ -69,6 +71,7 @@
   },
   "optionalDependencies": {
     "@elizaos/capacitor-appblocker": "2.0.0-beta.1",
+    "@elizaos/capacitor-bun-runtime": "0.1.0",
     "@elizaos/capacitor-camera": "2.0.0-beta.1",
     "@elizaos/capacitor-canvas": "2.0.0-beta.1",
     "@elizaos/capacitor-contacts": "2.0.0-beta.1",
@@ -109,7 +112,7 @@
     "@elizaos/plugin-elizacloud": "2.0.0-beta.1",
     "@elizaos/plugin-groq": "2.0.0-beta.1",
     "@elizaos/plugin-openai": "2.0.0-beta.1",
-    "@elizaos/plugin-zai": "2.0.0-beta.1",
+    "@elizaos/plugin-zai": "file:../../plugins/plugin-zai",
     "@elizaos/plugin-sql": "2.0.0-beta.1",
     "@elizaos/plugin-wechat": "2.0.0-beta.1",
     "@elizaos/plugin-workflow": "2.0.0-beta.1",

@@ -210,7 +210,7 @@ def build_canonical_record(
     }
     return {
         "roomName": "harness-room",
-        "agentId": "milady",
+        "agentId": "eliza",
         "memoryEntries": [
             {
                 "role": m.get("role") or "user",

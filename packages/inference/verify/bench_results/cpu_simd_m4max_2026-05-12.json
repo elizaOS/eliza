@@ -1,0 +1,13 @@
+{
+  "backend": "cpu_x86_64_simd_plugins",
+  "qjl_active_simd": "neon-dotprod",
+  "polarquant_active_simd": "neon",
+  "workload": { "n_heads": 32, "n_kv_heads": 8, "n_tokens": 4096, "polar_rows": 131072 },
+  "runs": 5, "warmup": 1,
+  "thread_sweep": [1],
+  "kernels": [
+    { "name": "qjl_score_i8", "n_outputs": 131072, "min_us_by_threads": [1896.00], "ns_per_out_t1": 14.4653 },
+    { "name": "qjl_score_fp32", "n_outputs": 131072, "min_us_by_threads": [5821.00], "ns_per_out_t1": 44.4107 },
+    { "name": "polar_preht_dot", "n_outputs": 131072, "min_us_by_threads": [6511.00], "ns_per_out_t1": 49.6750 }
+  ]
+}

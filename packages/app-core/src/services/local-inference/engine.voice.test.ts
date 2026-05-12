@@ -42,8 +42,17 @@ import type {
   RejectedTokenRange,
   SpeakerPreset,
   TextToken,
+  VoiceSchedulerTelemetryEvent,
 } from "./voice/types";
 import { writeVoicePresetFile } from "./voice/voice-preset-format";
+
+function missingWhisperOptions() {
+  const root = path.join(tmpdir(), `eliza-missing-whisper-${process.pid}`);
+  return {
+    binaryPath: path.join(root, "whisper-cli"),
+    modelPath: path.join(root, "ggml-base.en.bin"),
+  };
+}
 
 /**
  * TTS backend whose synthesis only completes when `release()` is
@@ -183,6 +192,20 @@ function fakeFfi(calls: string[]): ElizaInferenceFfi {
       /* no-op */
     },
     setVerifierCallback: () => ({ close: () => {} }),
+    // Native VAD ABI v3 — unused by this test (no working backend).
+    vadSupported: () => false,
+    vadOpen() {
+      throw new Error("not used by this test");
+    },
+    vadProcess() {
+      throw new Error("not used by this test");
+    },
+    vadReset() {
+      /* no-op */
+    },
+    vadClose() {
+      /* no-op */
+    },
     // Streaming ASR ABI v2 — this fake reports no working decoder, so the
     // adapter chain falls through to the whisper.cpp interim path.
     asrStreamSupported: () => false,
@@ -301,6 +324,7 @@ describe("LocalInferenceEngine voice surface", () => {
     ]);
     const backend = new CountingBackend();
     const audio: AudioChunk[] = [];
+    const telemetry: VoiceSchedulerTelemetryEvent[] = [];
     const engine = new LocalInferenceEngine();
     engine.startVoice({
       bundleRoot,
@@ -308,6 +332,7 @@ describe("LocalInferenceEngine voice surface", () => {
       backendOverride: backend,
       events: {
         onAudio: (chunk) => audio.push(chunk),
+        onTelemetry: (event) => telemetry.push(event),
       },
     });
 
@@ -317,6 +342,24 @@ describe("LocalInferenceEngine voice surface", () => {
     expect(backend.calls).toBe(0);
     expect(audio).toHaveLength(1);
     expect(Array.from(audio[0].pcm)).toEqual([0.5, 0.5, 0.5]);
+    expect(telemetry.map((event) => event.type)).toEqual([
+      "phrase-dispatch",
+      "phrase-cache-hit",
+      "tts-first-audio",
+      "audio-committed",
+    ]);
+    expect(
+      telemetry.find((event) => event.type === "phrase-cache-hit"),
+    ).toMatchObject({
+      phrase: { text: "Sure." },
+    });
+    expect(
+      telemetry.find((event) => event.type === "tts-first-audio"),
+    ).toMatchObject({
+      source: "cache",
+      samples: 3,
+      sampleRate: 24000,
+    });
   });
 
   it("requires an armed voice lifecycle for direct TEXT_TO_SPEECH synthesis", async () => {
@@ -337,25 +380,92 @@ describe("LocalInferenceEngine voice surface", () => {
     });
   });
 
-  it("direct TEXT_TO_SPEECH returns WAV bytes and does not block singing text", async () => {
+  it("direct TEXT_TO_SPEECH returns WAV bytes and preserves singing/emotion tags", async () => {
     writePresetBundle(bundleRoot);
     const backend = new CountingBackend();
+    const telemetry: VoiceSchedulerTelemetryEvent[] = [];
     const engine = new LocalInferenceEngine();
     engine.startVoice({
       bundleRoot,
       useFfiBackend: false,
       backendOverride: backend,
       lifecycleLoaders: lifecycleLoadersOk(),
+      events: {
+        onTelemetry: (event) => telemetry.push(event),
+      },
     });
     await engine.armVoice();
 
-    const wav = await engine.synthesizeSpeech("[singing] la la la.");
+    const expressiveText = "[singing] [happy] la la la [laughter].";
+    const wav = await engine.synthesizeSpeech(expressiveText);
 
     expect(backend.calls).toBe(1);
-    expect(backend.texts).toEqual(["[singing] la la la."]);
+    expect(backend.texts).toEqual([expressiveText]);
     expect(String.fromCharCode(...wav.subarray(0, 4))).toBe("RIFF");
     expect(String.fromCharCode(...wav.subarray(8, 12))).toBe("WAVE");
+    expect(telemetry.map((event) => event.type)).toEqual([
+      "phrase-cache-miss",
+      "tts-start",
+      "tts-first-audio",
+    ]);
+    expect(telemetry[0]).toMatchObject({
+      type: "phrase-cache-miss",
+      phrase: { text: expressiveText },
+    });
     await engine.stopVoice();
+  });
+
+  it("emits structured scheduler telemetry for phrase dispatch, cache miss, TTS, and audio commit", async () => {
+    writePresetBundle(bundleRoot);
+    const backend = new CountingBackend();
+    const telemetry: VoiceSchedulerTelemetryEvent[] = [];
+    const engine = new LocalInferenceEngine();
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: backend,
+      events: {
+        onTelemetry: (event) => telemetry.push(event),
+      },
+    });
+
+    await engine.pushAcceptedTokens([tok(0, "Sure"), tok(1, ".")]);
+    await engine.voice()?.settle();
+
+    expect(backend.calls).toBe(1);
+    expect(telemetry.map((event) => event.type)).toEqual([
+      "phrase-dispatch",
+      "phrase-cache-miss",
+      "tts-start",
+      "tts-first-audio",
+      "audio-committed",
+    ]);
+    expect(telemetry[0]).toMatchObject({
+      type: "phrase-dispatch",
+      phrase: {
+        text: "Sure.",
+        fromIndex: 0,
+        toIndex: 1,
+        tokenCount: 2,
+      },
+    });
+    expect(
+      telemetry.find((event) => event.type === "tts-first-audio"),
+    ).toMatchObject({
+      source: "synthesis",
+      samples: 2,
+      sampleRate: 24000,
+    });
+    expect(
+      telemetry.find((event) => event.type === "audio-committed"),
+    ).toMatchObject({
+      source: "synthesis",
+      samples: 2,
+      flushedSamples: 2,
+      paused: false,
+      ringBufferSamples: 0,
+      sinkBufferedSamples: 2,
+    });
   });
 
   it("prewarms phrase audio so repeated local TTS avoids a backend pass", async () => {
@@ -419,6 +529,69 @@ describe("LocalInferenceEngine voice surface", () => {
     expect(backend.calls).toBe(1);
     expect(backend.texts).toEqual(["Sure."]);
     expect(audio).toHaveLength(1);
+    await engine.stopVoice();
+  });
+
+  it("extracts replyText from structured response streams before voice scheduling", async () => {
+    writePresetBundle(bundleRoot);
+    const backend = new CountingBackend();
+    const audio: AudioChunk[] = [];
+    const engine = new LocalInferenceEngine();
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: backend,
+      lifecycleLoaders: lifecycleLoadersOk(),
+      events: {
+        onAudio: (chunk) => audio.push(chunk),
+      },
+    });
+    await engine.armVoice();
+
+    (
+      engine as unknown as {
+        dispatcher: {
+          generate(args: {
+            onTextChunk?: (chunk: string) => Promise<void> | void;
+          }): Promise<string>;
+        };
+      }
+    ).dispatcher = {
+      async generate(args) {
+        await args.onTextChunk?.(
+          '{"shouldRespond":"RESPOND","contexts":["general"],"intents":[],',
+        );
+        await args.onTextChunk?.('"replyText":"On it ');
+        await args.onTextChunk?.('now.","facts":[]}');
+        return '{"shouldRespond":"RESPOND","contexts":["general"],"intents":[],"replyText":"On it now.","facts":[]}';
+      },
+    };
+
+    const result = await engine.generate({
+      prompt: "answer briefly",
+      streamStructured: true,
+      responseSkeleton: {
+        spans: [
+          { kind: "literal", value: '{"shouldRespond":' },
+          { kind: "free-string", key: "shouldRespond" },
+          { kind: "literal", value: ',"contexts":' },
+          { kind: "free-json", key: "contexts" },
+          { kind: "literal", value: ',"intents":' },
+          { kind: "free-json", key: "intents" },
+          { kind: "literal", value: ',"replyText":' },
+          { kind: "free-string", key: "replyText" },
+          { kind: "literal", value: ',"facts":' },
+          { kind: "free-json", key: "facts" },
+          { kind: "literal", value: "}" },
+        ],
+      },
+    });
+
+    expect(result).toContain('"replyText":"On it now."');
+    expect(backend.calls).toBeGreaterThan(0);
+    expect(backend.texts.join("")).toBe("On it now.");
+    expect(backend.texts.join("")).not.toContain("shouldRespond");
+    expect(audio.length).toBe(backend.calls);
     await engine.stopVoice();
   });
 
@@ -493,6 +666,7 @@ describe("LocalInferenceEngine voice surface", () => {
       useFfiBackend: false,
       backendOverride: new CountingBackend(),
       lifecycleLoaders: lifecycleLoadersOk(),
+      whisper: missingWhisperOptions(),
     });
     await engine.armVoice();
     // Voice is armed but there is no fused ASR (stub backend, no `asr/`
@@ -511,6 +685,7 @@ describe("LocalInferenceEngine voice surface", () => {
       phraseId: number;
       range: RejectedTokenRange;
     }> = [];
+    const telemetry: VoiceSchedulerTelemetryEvent[] = [];
     const phrases: Phrase[] = [];
     const engine = new LocalInferenceEngine();
     const backend = new DeferredBackend();
@@ -525,6 +700,7 @@ describe("LocalInferenceEngine voice surface", () => {
         onPhrase: (p) => phrases.push(p),
         onRollback: (phraseId, range) =>
           rollbackEvents.push({ phraseId, range }),
+        onTelemetry: (event) => telemetry.push(event),
       },
     });
 
@@ -558,6 +734,19 @@ describe("LocalInferenceEngine voice surface", () => {
     expect(rollbackEvents.some((e) => e.phraseId === phrases[0].id)).toBe(
       false,
     );
+    expect(telemetry.find((event) => event.type === "rollback")).toMatchObject({
+      type: "rollback",
+      phraseId: phrases[1].id,
+      range: { fromIndex: 4, toIndex: 5 },
+      reason: "rejected-tokens",
+    });
+    expect(
+      telemetry.find((event) => event.type === "tts-cancel"),
+    ).toMatchObject({
+      type: "tts-cancel",
+      phrase: { id: phrases[1].id },
+      reason: "rollback",
+    });
 
     backend.releaseAll();
     await engine.stopVoice();
@@ -751,6 +940,7 @@ describe("LocalInferenceEngine voice surface", () => {
   it("(d) barge-in drains the ring buffer and cancels in-flight TTS within one kernel tick", async () => {
     writePresetBundle(bundleRoot);
     let cancelObserved = false;
+    const telemetry: VoiceSchedulerTelemetryEvent[] = [];
     const engine = new LocalInferenceEngine();
     const backend = new DeferredBackend();
     const bridge = engine.startVoice({
@@ -762,6 +952,7 @@ describe("LocalInferenceEngine voice surface", () => {
         onCancel: () => {
           cancelObserved = true;
         },
+        onTelemetry: (event) => telemetry.push(event),
       },
     });
 
@@ -785,6 +976,19 @@ describe("LocalInferenceEngine voice surface", () => {
     // the contract is "<= 1 kernel tick".
     const ticksAfter = bridge.scheduler.kernelTickCount();
     expect(ticksAfter - ticksBefore).toBeLessThanOrEqual(1);
+    expect(
+      telemetry.find((event) => event.type === "tts-cancel"),
+    ).toMatchObject({
+      type: "tts-cancel",
+      reason: "barge-in",
+    });
+    expect(telemetry.find((event) => event.type === "barge-in")).toMatchObject({
+      type: "barge-in",
+      ringBufferSamplesDrained: 0,
+      sinkBufferedSamplesDrained: 0,
+      inFlightPhrasesCancelled: 1,
+      wasPaused: false,
+    });
 
     // Release the deferred synthesis so settle() can resolve cleanly.
     backend.releaseAll();
@@ -909,6 +1113,7 @@ describe("LocalInferenceEngine.startVoiceSession", () => {
       useFfiBackend: false,
       backendOverride: new CountingBackend(),
       lifecycleLoaders: lifecycleLoadersOk(),
+      whisper: missingWhisperOptions(),
     });
     await engine.armVoice();
     // Inject a VAD (no ONNX) + a push mic source so the only missing piece

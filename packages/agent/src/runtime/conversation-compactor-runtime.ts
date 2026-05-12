@@ -15,10 +15,9 @@
  *      only the `# Conversation Messages` region and preserving the prefix
  *      and suffix verbatim.
  *
- * Opt-in via `ELIZA_CONVERSATION_COMPACTOR=<strategy>`. When unset, no
- * conversation-level compaction runs and the existing presentation-layer
- * compaction + tail truncation pipeline in prompt-optimization.ts is the
- * only path.
+ * Enabled by default with the hybrid-ledger strategy. Set
+ * `ELIZA_CONVERSATION_COMPACTOR=off|none|false|0|disabled` to disable, or set
+ * it to a named strategy to override.
  *
  * TODO(message-level): the cleanest integration is a message-level hook
  * upstream in @elizaos/core that hands the compactor a real transcript
@@ -26,7 +25,13 @@
  * here is best-effort and intentionally conservative.
  */
 
-import type { AgentRuntime } from "@elizaos/core";
+import type {
+  AgentRuntime,
+  JsonValue,
+  Metadata,
+  MetadataValue,
+  UUID,
+} from "@elizaos/core";
 import {
   compactors,
   findSafeCompactionBoundary,
@@ -50,6 +55,9 @@ export const STRATEGY_NAMES = [
 
 export type StrategyName = (typeof STRATEGY_NAMES)[number];
 
+export const DEFAULT_CONVERSATION_COMPACTOR_STRATEGY: StrategyName =
+  "hybrid-ledger";
+
 const CONVERSATION_HEADER = "# Conversation Messages";
 const CONVERSATION_HEADER_RE = /^#{1,3}\s*Conversation Messages\b/gim;
 const RECEIVED_HEADER_RE = /\n#{1,3}\s*Received Message\b/gi;
@@ -67,10 +75,44 @@ const INTERNAL_THOUGHT_RE = /\([^)]*'s internal thought:[^)]*\)/i;
 const ACTIONS_LINE_RE = /\([^)]*'s actions:[^)]*\)/i;
 const USER_SPEAKER_RE = /^(?:user|operator|human|client|customer|system)$/i;
 const ASSISTANT_SPEAKER_RE =
-  /^(?:eliza|milady|agent|assistant|bot|ai)(?:\s*\([^)]*\))?$/i;
+  /^(?:eliza|eliza|agent|assistant|bot|ai)(?:\s*\([^)]*\))?$/i;
 const SYNTHETIC_MARKER_LINE_RE =
   /^\[(system summary|Agent|Tool(?::([^\]\s]+))?)(?:\s+\[([^\]]*)\])?\]\s*(.*)$/i;
 const REPLACEMENT_OVERHEAD_TOKENS = 32;
+const DISABLED_COMPACTOR_VALUES = new Set([
+  "0",
+  "false",
+  "off",
+  "none",
+  "disabled",
+  "no",
+]);
+const ROOM_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SECRET_VALUE_RE =
+  /\b(?:sk|csk|pk|ghp|gho|ghu|ghs|github_pat)-[A-Za-z0-9_-]{16,}\b/g;
+const SECRET_ASSIGNMENT_RE =
+  /\b((?:api[_\s-]?key|secret|password|access[_\s-]?token|refresh[_\s-]?token|private[_\s-]?key)\s*[:=]\s*)([^\s,;]+)/gi;
+
+type ConversationCompactionMetadata = Metadata & {
+  priorLedger?: string;
+  strategy?: string;
+  updatedAt?: string;
+  updatedAtMs?: number;
+  source?: string;
+  compactionCount?: number;
+};
+
+const runtimePriorLedgers = new WeakMap<AgentRuntime, Map<string, string>>();
+
+function redactSecretsInLedger(text: string): string {
+  return text
+    .replace(SECRET_VALUE_RE, (match) => {
+      const prefix = match.split("-", 1)[0] || "secret";
+      return `${prefix}-[REDACTED]`;
+    })
+    .replace(SECRET_ASSIGNMENT_RE, "$1[REDACTED]");
+}
 
 // ---------------------------------------------------------------------------
 // Env config
@@ -78,21 +120,135 @@ const REPLACEMENT_OVERHEAD_TOKENS = 32;
 
 /**
  * Reads `ELIZA_CONVERSATION_COMPACTOR` from the environment.
- * Returns `null` when unset (compaction is opt-in).
+ * Returns the default strategy when unset.
+ * Returns `null` when explicitly disabled.
  * Throws when set to a value that is not a known strategy name.
  */
 export function selectStrategyFromEnv(): StrategyName | null {
   const raw = process.env.ELIZA_CONVERSATION_COMPACTOR;
-  if (raw === undefined || raw === null) return null;
+  if (raw === undefined || raw === null) {
+    return DEFAULT_CONVERSATION_COMPACTOR_STRATEGY;
+  }
   const trimmed = raw.trim();
   if (trimmed.length === 0) return null;
-  if ((STRATEGY_NAMES as readonly string[]).includes(trimmed)) {
-    return trimmed as StrategyName;
+  const normalized = trimmed.toLowerCase();
+  if (DISABLED_COMPACTOR_VALUES.has(normalized)) return null;
+  if ((STRATEGY_NAMES as readonly string[]).includes(normalized)) {
+    return normalized as StrategyName;
   }
   throw new Error(
     `ELIZA_CONVERSATION_COMPACTOR=${trimmed} is invalid. ` +
-      `Expected one of: ${STRATEGY_NAMES.join(", ")}`,
+      `Expected one of: ${STRATEGY_NAMES.join(", ")}, off, none, false, 0`,
   );
+}
+
+function ledgerMapFor(runtime: AgentRuntime): Map<string, string> {
+  const existing = runtimePriorLedgers.get(runtime);
+  if (existing) return existing;
+  const next = new Map<string, string>();
+  runtimePriorLedgers.set(runtime, next);
+  return next;
+}
+
+function getRoomCompactionMetadata(
+  roomMetadata: unknown,
+): ConversationCompactionMetadata | null {
+  if (!roomMetadata || typeof roomMetadata !== "object") return null;
+  const value = (roomMetadata as Record<string, unknown>)
+    .conversationCompaction;
+  if (!value || typeof value !== "object") return null;
+  return value as ConversationCompactionMetadata;
+}
+
+function getRoomMetadataRecord(roomMetadata: unknown): Metadata {
+  return roomMetadata && typeof roomMetadata === "object"
+    ? (roomMetadata as Metadata)
+    : {};
+}
+
+async function loadRoomLedger(
+  runtime: AgentRuntime,
+  conversationKey: string,
+): Promise<string | null> {
+  if (!ROOM_ID_RE.test(conversationKey)) return null;
+  try {
+    const room = await runtime.getRoom(conversationKey as UUID);
+    const metadata = getRoomCompactionMetadata(room?.metadata);
+    const priorLedger = metadata?.priorLedger;
+    return typeof priorLedger === "string" && priorLedger.trim().length > 0
+      ? priorLedger
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function getConversationCompactionLedger(
+  runtime: AgentRuntime,
+  conversationKey: string | undefined,
+): Promise<string | null> {
+  const key = conversationKey?.trim();
+  if (!key) return null;
+  const inMemory = ledgerMapFor(runtime).get(key);
+  if (inMemory && inMemory.trim().length > 0) return inMemory;
+  const persisted = await loadRoomLedger(runtime, key);
+  if (persisted) {
+    ledgerMapFor(runtime).set(key, persisted);
+  }
+  return persisted;
+}
+
+export async function setConversationCompactionLedger(
+  runtime: AgentRuntime,
+  conversationKey: string | undefined,
+  ledger: string,
+  options?: {
+    strategy?: StrategyName | null;
+    source?: string;
+    lastCompactionAt?: number;
+    historyEntry?: Record<string, JsonValue>;
+  },
+): Promise<void> {
+  const key = conversationKey?.trim();
+  const trimmedLedger = redactSecretsInLedger(ledger).trim();
+  if (!key || !trimmedLedger) return;
+  ledgerMapFor(runtime).set(key, trimmedLedger);
+
+  if (!ROOM_ID_RE.test(key)) return;
+  try {
+    const room = await runtime.getRoom(key as UUID);
+    if (!room) return;
+    const previous = getRoomCompactionMetadata(room.metadata);
+    const baseMetadata = getRoomMetadataRecord(room.metadata);
+    const existingHistory: MetadataValue[] = Array.isArray(
+      baseMetadata.compactionHistory,
+    )
+      ? baseMetadata.compactionHistory
+      : [];
+    const compactionHistory: MetadataValue[] = options?.historyEntry
+      ? [...existingHistory, options.historyEntry].slice(-20)
+      : existingHistory;
+    const nextMetadata: Metadata = {
+      ...baseMetadata,
+      ...(typeof options?.lastCompactionAt === "number"
+        ? { lastCompactionAt: options.lastCompactionAt }
+        : {}),
+      ...(compactionHistory.length > 0 ? { compactionHistory } : {}),
+      conversationCompaction: {
+        ...(previous ?? {}),
+        priorLedger: trimmedLedger,
+        strategy: options?.strategy ?? previous?.strategy,
+        source: options?.source ?? previous?.source ?? "runtime",
+        updatedAt: new Date().toISOString(),
+        updatedAtMs: Date.now(),
+        compactionCount: (previous?.compactionCount ?? 0) + 1,
+      },
+    };
+    await runtime.updateRoom({ ...room, metadata: nextMetadata });
+  } catch {
+    // Persistence is a quality-of-service path; model calls must not fail if
+    // room metadata cannot be written.
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -427,6 +583,8 @@ export type ApplyConversationCompactionArgs = {
   runtime?: AgentRuntime;
   /** Optional — message-count to preserve verbatim at the tail. */
   preserveTailMessages?: number;
+  /** Optional metadata forwarded to the compactor (for prior ledgers, ids). */
+  metadata?: Record<string, unknown>;
 };
 
 export type ApplyConversationCompactionResult = {
@@ -456,6 +614,8 @@ export type ApplyConversationMessageCompactionArgs = {
   callModel: CompactorModelCall;
   /** Optional — message-count to preserve verbatim at the tail. */
   preserveTailMessages?: number;
+  /** Optional metadata forwarded to the compactor (for prior ledgers, ids). */
+  metadata?: Record<string, unknown>;
 };
 
 export type ApplyConversationMessageCompactionResult = Omit<
@@ -504,7 +664,14 @@ export async function applyConversationCompaction(
   }
 
   const strategyImpl = compactors[args.strategy] ?? naiveSummaryCompactor;
-  const transcript = parsePromptToTranscript(args.prompt);
+  const parsedTranscript = parsePromptToTranscript(args.prompt);
+  const transcript: CompactorTranscript = {
+    ...parsedTranscript,
+    metadata: {
+      ...(parsedTranscript.metadata ?? {}),
+      ...(args.metadata ?? {}),
+    },
+  };
 
   // Bail when the parser had no conversation region to bite into — running
   // a summarizer on a single user-message blob is wasted spend.
@@ -648,7 +815,10 @@ export async function applyConversationMessageCompaction(
   }
 
   const strategyImpl = compactors[args.strategy] ?? naiveSummaryCompactor;
-  const transcript: CompactorTranscript = { messages: args.messages };
+  const transcript: CompactorTranscript = {
+    messages: args.messages,
+    ...(args.metadata ? { metadata: args.metadata } : {}),
+  };
   const systemOffset = args.messages[0]?.role === "system" ? 1 : 0;
   const preserveTail = args.preserveTailMessages ?? 6;
   const boundary = findSafeCompactionBoundary(args.messages, preserveTail);

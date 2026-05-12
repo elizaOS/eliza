@@ -35,13 +35,6 @@
         "../../plugins/plugin-sql/src/dist/index.node.d.ts"
       ],
       "@elizaos/agent": ["../agent/src/index.ts"],
-      "@elizaos/plugin-coding-tools": [
-        "../../plugins/plugin-coding-tools/src/index.ts"
-      ],
-      "@elizaos/plugin-coding-tools/*": [
-        "../../plugins/plugin-coding-tools/src/*"
-      ],
-      "@elizaos/workflows": ["../workflows/src/index.ts"],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
@@ -79,6 +72,7 @@
         "../native-plugins/mobile-signals/src/index.ts"
       ],
       "@elizaos/ui": ["../ui/dist/index.d.ts"],
+      "@elizaos/ui/*": ["../ui/dist/*"],
       "react": ["../../node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": ["../../node_modules/@types/react/jsx-runtime.d.ts"],
       "react/jsx-dev-runtime": [

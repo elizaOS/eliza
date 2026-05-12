@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+<html><head><title>Button Formaction</title></head>
+<body>
+<form action="/safe">
+  <button formaction="javascript:alert('XSS via formaction')">Click</button>
+  <input type="image" formaction="javascript:alert('XSS')" src="img.png">
+</form>
+<p>Button with javascript formaction.</p>
+</body></html>

@@ -206,7 +206,7 @@ def test_prepare_lifeops_result_uses_scores_and_alias_prefixes(tmp_path: Path) -
 
     assert len(train) == 1
     assert train[0]["source"]["kind"] == "lifeops_bench_result"
-    assert train[0]["actions"][0]["name"] == "MONEY"
+    assert train[0]["actions"][0]["name"] == "PAYMENT"
     assert train[0]["quality"]["weight"] == 1.0
     assert len(repair) == 1
     assert repair[0]["actions"][0]["name"] == "BLOCK_RELEASE"
@@ -287,6 +287,48 @@ def test_prepare_preserves_and_canonicalizes_request_history_tool_calls(tmp_path
     }
     assert formatted is not None
     assert formatted["messages"][1]["tool_calls"][0]["function"]["name"] == "SHELL"
+
+
+def test_prepare_keeps_requested_success_splits_non_empty(tmp_path: Path) -> None:
+    source = tmp_path / "small-native.jsonl"
+    rows = []
+    for idx in range(3):
+        rows.append(
+            {
+                "format": "eliza_native_v1",
+                "boundary": "vercel_ai_sdk.generateText",
+                "status": "completed",
+                "trajectoryId": f"traj-{idx}",
+                "stepIndex": idx,
+                "request": {"prompt": f"Say hello {idx}."},
+                "response": {"text": f"hello {idx}"},
+                "metadata": {"source_dataset": "unit_native"},
+            }
+        )
+    _write_jsonl(source, rows)
+    out_dir = tmp_path / "out"
+
+    code = prepare_main(
+        [
+            "--input",
+            str(source),
+            "--output-dir",
+            str(out_dir),
+            "--val-ratio",
+            "0.05",
+            "--test-ratio",
+            "0.05",
+        ]
+    )
+
+    assert code == 0
+    manifest = json.loads((out_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["counts"]["train"] == 1
+    assert manifest["counts"]["val"] == 1
+    assert manifest["counts"]["test"] == 1
+    assert len(_read_jsonl(out_dir / "train.jsonl")) == 1
+    assert len(_read_jsonl(out_dir / "val.jsonl")) == 1
+    assert len(_read_jsonl(out_dir / "test.jsonl")) == 1
 
 
 def test_prepare_strict_privacy_fails_on_any_redaction(tmp_path: Path) -> None:

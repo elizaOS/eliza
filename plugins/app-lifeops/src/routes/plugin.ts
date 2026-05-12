@@ -1,9 +1,6 @@
 import type http from "node:http";
-import { sendJson as httpSendJson, sendJsonError as httpSendJsonError } from "@elizaos/core";
 import { TLSSocket } from "node:tls";
 import { handleConnectorAccountRoutes } from "@elizaos/agent";
-import {
-  readJsonBody as httpReadJsonBody } from "@elizaos/shared";
 import type {
   AgentRuntime,
   Plugin,
@@ -13,12 +10,15 @@ import type {
   UUID,
 } from "@elizaos/core";
 import {
+  sendJson as httpSendJson,
+  sendJsonError as httpSendJsonError,
   ROLE_RANK,
   resolveCanonicalOwnerId,
   resolveEntityRole,
   stringToUuid,
 } from "@elizaos/core";
-import { createRuntimeScheduledTaskRunner } from "../lifeops/scheduled-task/runtime-wiring.js";
+import { readJsonBody as httpReadJsonBody } from "@elizaos/shared";
+import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
 import { handleEntityRoutes } from "./entities.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 import { handleLifeOpsRoutes } from "./lifeops-routes.js";
@@ -610,8 +610,7 @@ function scheduledTasksRouteHandler(): PluginRouteHandler {
         ctx.error(ctx.res, "Agent runtime is not available", 503);
         return null;
       }
-      return createRuntimeScheduledTaskRunner({
-        runtime,
+      return getScheduledTaskRunner(runtime, {
         agentId: runtime.agentId,
       });
     },
@@ -754,10 +753,7 @@ const lifeOpsPluginRoutes: Route[] = [
   ...buildRawRoutes(LIFEOPS_STATIC_ROUTES, lifeOpsRouteHandler()),
   ...buildRawRoutes(LIFEOPS_DYNAMIC_ROUTES, lifeOpsRouteHandler()),
   // W1-A — ScheduledTask spine REST surface (`docs/audit/wave1-interfaces.md` §1.6).
-  ...buildRawRoutes(
-    SCHEDULED_TASKS_ROUTE_PATHS,
-    scheduledTasksRouteHandler(),
-  ),
+  ...buildRawRoutes(SCHEDULED_TASKS_ROUTE_PATHS, scheduledTasksRouteHandler()),
   ...buildRawRoutes(LIFEOPS_SLEEP_ROUTES, sleepRouteHandler()),
   ...buildRawRoutes(WEBSITE_BLOCKER_ROUTES, websiteBlockerRouteHandler()),
 ];

@@ -18,20 +18,20 @@ import fs from "node:fs";
 import type http from "node:http";
 import type { ReadJsonBodyOptions } from "@elizaos/core";
 import { type AgentRuntime, logger, type UUID } from "@elizaos/core";
-import type {
-  CompleteLifeOpsBrowserSessionRequest,
-  ConfirmLifeOpsBrowserSessionRequest,
-  CreateLifeOpsBrowserSessionRequest,
-} from "../lifeops-session-contracts.js";
 import {
-  type BrowserBridgeCompanionAuthErrorCode,
   BROWSER_BRIDGE_PACKAGE_PATH_TARGETS,
+  type BrowserBridgeCompanionAuthErrorCode,
   type CreateBrowserBridgeCompanionAutoPairRequest,
   type CreateBrowserBridgeCompanionPairingRequest,
   type SyncBrowserBridgeStateRequest,
   type UpdateBrowserBridgeSessionProgressRequest,
   type UpdateBrowserBridgeSettingsRequest,
 } from "../contracts.js";
+import type {
+  CompleteLifeOpsBrowserSessionRequest,
+  ConfirmLifeOpsBrowserSessionRequest,
+  CreateLifeOpsBrowserSessionRequest,
+} from "../lifeops-session-contracts.js";
 import {
   buildBrowserBridgeCompanionPackage,
   getBrowserBridgeCompanionDownloadFile,
@@ -172,7 +172,9 @@ function cleanupRateLimitBuckets(windowMs: number): void {
   lastRateLimitCleanup = now;
   const cutoff = now - windowMs;
   for (const [key, entry] of rateLimitBuckets) {
-    entry.timestamps = entry.timestamps.filter((timestamp) => timestamp > cutoff);
+    entry.timestamps = entry.timestamps.filter(
+      (timestamp) => timestamp > cutoff,
+    );
     if (entry.timestamps.length === 0) rateLimitBuckets.delete(key);
   }
 }
@@ -287,7 +289,8 @@ function createBrowserBridgeTelemetrySpan(meta: {
       durationMs: Math.max(0, Date.now() - startedAt),
     };
     if (typeof meta.timeoutMs === "number") event.timeoutMs = meta.timeoutMs;
-    if (typeof args?.statusCode === "number") event.statusCode = args.statusCode;
+    if (typeof args?.statusCode === "number")
+      event.statusCode = args.statusCode;
     if (outcome === "failure") {
       event.errorKind =
         sanitizeTelemetryToken(args?.errorKind) ??

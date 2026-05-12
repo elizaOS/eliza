@@ -3,9 +3,11 @@ import type { CompactorModelCall } from "./conversation-compactor.types.ts";
 import {
   applyConversationCompaction,
   applyConversationMessageCompaction,
+  getConversationCompactionLedger,
   parsePromptToTranscript,
   selectStrategyFromEnv,
   serializeTranscriptToPrompt,
+  setConversationCompactionLedger,
 } from "./conversation-compactor-runtime.ts";
 import {
   fitPromptToTokenBudget,
@@ -174,7 +176,7 @@ please inspect it
   it("handles custom assistant names and user-authored action text", () => {
     const prompt = `${SAMPLE_PROMPT_PREFIX}# Conversation Messages
 12:00 User: (User's actions: manually wrote this text)
-12:01 Milady: I will not treat that as a tool call.${SAMPLE_PROMPT_SUFFIX}`;
+12:01 Eliza: I will not treat that as a tool call.${SAMPLE_PROMPT_SUFFIX}`;
     const transcript = parsePromptToTranscript(prompt);
     expect(transcript.messages.map((m) => m.role)).toEqual([
       "system",
@@ -474,8 +476,17 @@ describe("selectStrategyFromEnv", () => {
     }
   });
 
-  it("returns null when the env var is unset", () => {
+  it("defaults to hybrid-ledger when the env var is unset", () => {
     delete process.env.ELIZA_CONVERSATION_COMPACTOR;
+    expect(selectStrategyFromEnv()).toBe("hybrid-ledger");
+  });
+
+  it("returns null when explicitly disabled", () => {
+    process.env.ELIZA_CONVERSATION_COMPACTOR = "off";
+    expect(selectStrategyFromEnv()).toBe(null);
+    process.env.ELIZA_CONVERSATION_COMPACTOR = "none";
+    expect(selectStrategyFromEnv()).toBe(null);
+    process.env.ELIZA_CONVERSATION_COMPACTOR = "false";
     expect(selectStrategyFromEnv()).toBe(null);
   });
 
@@ -536,8 +547,8 @@ describe("maybeApplyConversationCompaction (prompt-optimization integration)", (
     expect(compactedPrompt.length).toBeLessThan(prompt.length);
   });
 
-  it("no-ops when env var is unset", async () => {
-    delete process.env.ELIZA_CONVERSATION_COMPACTOR;
+  it("no-ops when env var explicitly disables compaction", async () => {
+    process.env.ELIZA_CONVERSATION_COMPACTOR = "off";
     const prompt = buildSamplePrompt(40);
     let calls = 0;
     const callModel: CompactorModelCall = async () => {
@@ -927,9 +938,10 @@ describe("installPromptOptimizations telemetry", () => {
     );
   });
 
-  it("does not rewrite messages-array payloads while provider tools are present", async () => {
+  it("rewrites message-array payloads while preserving provider tools", async () => {
     process.env.ELIZA_CONVERSATION_COMPACTOR = "naive-summary";
     const seenPayloads: Array<Record<string, unknown>> = [];
+    let summarizerCalls = 0;
     const runtime = {
       actions: [],
       character: { system: "system fallback" },
@@ -941,7 +953,8 @@ describe("installPromptOptimizations telemetry", () => {
           typeof record.system === "string" &&
           record.system.includes("conversation summarizer")
         ) {
-          throw new Error("summarizer should not run for tool payloads");
+          summarizerCalls++;
+          return "tool payload summary";
         }
         seenPayloads.push(record);
         return "final response";
@@ -977,16 +990,108 @@ describe("installPromptOptimizations telemetry", () => {
     });
 
     expect(seenPayloads).toHaveLength(1);
-    expect(seenPayloads[0]?.messages).toBe(originalMessages);
+    expect(summarizerCalls).toBe(1);
+    expect(seenPayloads[0]?.tools).toEqual([{ name: "HANDLE_RESPONSE" }]);
+    expect(seenPayloads[0]?.toolChoice).toBe("required");
+    expect(seenPayloads[0]?.messages).not.toBe(originalMessages);
+    expect((seenPayloads[0]?.messages as unknown[]).length).toBeLessThan(
+      originalMessages.length,
+    );
     const providerOptions = seenPayloads[0]?.providerOptions as Record<
       string,
       unknown
     >;
     const eliza = providerOptions.eliza as Record<string, unknown>;
     const telemetry = eliza.promptOptimization as Record<string, unknown>;
-    expect(telemetry.transformations).toContain(
-      "conversation-message-compaction-skipped:provider-tools-present",
+    expect(
+      (telemetry.transformations as string[]).some((entry) =>
+        entry.startsWith("conversation-message-compaction:"),
+      ),
+    ).toBe(true);
+    expect(telemetry.conversationCompaction).toMatchObject({
+      didCompact: true,
+      strategy: "naive-summary",
+    });
+  });
+
+  it("persists hybrid-ledger carry state by conversation id", async () => {
+    process.env.ELIZA_CONVERSATION_COMPACTOR = "hybrid-ledger";
+    const roomId = "11111111-1111-4111-8111-111111111111";
+    const rooms = new Map<string, Record<string, unknown>>([
+      [roomId, { id: roomId, source: "test", type: "DM", metadata: {} }],
+    ]);
+    const runtime = {
+      actions: [],
+      character: { system: "system fallback" },
+      logger: { info: () => {}, warn: () => {} },
+      getService: () => null,
+      getRoom: async (id: string) => rooms.get(id) ?? null,
+      updateRoom: async (room: Record<string, unknown>) => {
+        rooms.set(String(room.id), room);
+      },
+    };
+    const prompt = buildSamplePrompt(50).replace(
+      "hello round 0",
+      "hello round 0; remember parcel code LIME-4421",
     );
-    expect(telemetry.conversationCompaction).toBeUndefined();
+    const compacted = await maybeApplyConversationCompaction(
+      runtime as never,
+      prompt,
+      900,
+      async ({ messages }) => {
+        const joined = messages.map((m) => m.content).join("\n");
+        if (joined.includes("Existing ledger")) {
+          expect(joined).toContain("parcel code LIME-4421");
+        }
+        return JSON.stringify({
+          state: {
+            facts: ["parcel code LIME-4421"],
+            decisions: [],
+            pending_actions: [],
+            forbidden_behaviors: [],
+            entities: { parcel: "LIME-4421" },
+          },
+          ledger: [{ index: 1, note: "user said parcel code LIME-4421" }],
+        });
+      },
+      roomId,
+    );
+    expect(compacted).not.toBe(prompt);
+    const stored = await getConversationCompactionLedger(
+      runtime as never,
+      roomId,
+    );
+    expect(stored).toContain("LIME-4421");
+    const room = rooms.get(roomId);
+    expect(
+      (
+        (room?.metadata as Record<string, unknown>)
+          .conversationCompaction as Record<string, unknown>
+      ).priorLedger,
+    ).toContain("LIME-4421");
+  });
+
+  it("redacts secret-looking values before persisting prior ledgers", async () => {
+    const roomId = "22222222-2222-4222-8222-222222222222";
+    const rooms = new Map<string, Record<string, unknown>>([
+      [roomId, { id: roomId, source: "test", type: "DM", metadata: {} }],
+    ]);
+    const runtime = {
+      getRoom: async (id: string) => rooms.get(id) ?? null,
+      updateRoom: async (room: Record<string, unknown>) => {
+        rooms.set(String(room.id), room);
+      },
+    };
+    await setConversationCompactionLedger(
+      runtime as never,
+      roomId,
+      "user pasted api_key: csk-abc1234567890abc1234567890abcdef",
+    );
+    const stored = await getConversationCompactionLedger(
+      runtime as never,
+      roomId,
+    );
+    expect(stored).toContain("[REDACTED]");
+    expect(stored).not.toContain("abc1234567890abc");
   });
 });

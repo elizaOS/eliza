@@ -1,9 +1,47 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if ! command -v pod >/dev/null 2>&1; then
-  echo "CocoaPods is required but 'pod' is not installed." >&2
+resolve_pod() {
+  if command -v pod >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if command -v ruby >/dev/null 2>&1 && command -v gem >/dev/null 2>&1; then
+    local ruby_user_dir
+    ruby_user_dir="$(ruby -rrubygems -e 'print Gem.user_dir' 2>/dev/null || true)"
+    if [ -n "${ruby_user_dir}" ] && [ -x "${ruby_user_dir}/bin/pod" ]; then
+      export PATH="${ruby_user_dir}/bin:${PATH}"
+      return 0
+    fi
+  fi
+
+  for candidate in /opt/homebrew/bin/pod /usr/local/bin/pod; do
+    if [ -x "${candidate}" ]; then
+      export PATH="$(dirname "${candidate}"):${PATH}"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+if ! resolve_pod || ! command -v pod >/dev/null 2>&1; then
+  cat >&2 <<'EOF'
+CocoaPods is required but 'pod' is not installed.
+
+Install it with one of the local developer paths:
+  brew install cocoapods
+  gem install --user-install cocoapods
+
+After a user-local gem install, make sure Ruby's user gem bin directory is on PATH.
+This iOS local build path supports Xcode/developer sideloading; it does not
+require or assume enterprise distribution.
+EOF
   exit 127
+fi
+
+if [[ "${RUBYOPT:-}" != *"-rlogger"* ]]; then
+  export RUBYOPT="-rlogger${RUBYOPT:+ ${RUBYOPT}}"
 fi
 
 PODS_REPOS_DIR="${HOME}/.cocoapods/repos"

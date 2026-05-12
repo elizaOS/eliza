@@ -51,13 +51,25 @@ export interface CapturedAction {
 }
 
 let _capturedAction: CapturedAction | null = null;
+let _capturedActions: CapturedAction[] = [];
 
 export function getCapturedAction(): CapturedAction | null {
   return _capturedAction;
 }
 
+export function getCapturedActions(): CapturedAction[] {
+  return [..._capturedActions];
+}
+
 export function clearCapturedAction(): void {
   _capturedAction = null;
+  _capturedActions = [];
+}
+
+function recordCapturedAction(action: CapturedAction): CapturedAction {
+  _capturedAction = action;
+  _capturedActions.push(action);
+  return action;
 }
 
 // ---------------------------------------------------------------------------
@@ -72,6 +84,7 @@ providers:
 action-based benchmarks: call BENCHMARK_ACTION with one of:
 - AgentBench: { "command": "search[laptop] | click[42] | ls | SELECT ..." }
 - Tau-bench: { "tool_name": "...", "arguments": { ... } }
+- LifeOpsBench: { "tool_name": "CALENDAR", "arguments": { "subaction": "update_event", ... } }
 - Mind2Web: { "operation": "CLICK|TYPE|SELECT", "element_id": "...", "value": "..." }
 
 reply-based benchmarks: use REPLY with text payload:
@@ -100,9 +113,91 @@ rules:
 // Provider
 // ---------------------------------------------------------------------------
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function compactJson(value: unknown, maxLength = 500): string {
+  const raw =
+    typeof value === "string" ? value : (JSON.stringify(value, null, 2) ?? "");
+  return raw.length > maxLength ? `${raw.slice(0, maxLength)}...` : raw;
+}
+
+function formatToolLine(t: Record<string, unknown>): string {
+  const fn = isPlainRecord(t.function) ? t.function : undefined;
+  const name = t.name ?? fn?.name ?? "unknown";
+  const desc = t.description ?? fn?.description ?? "";
+  const params = t.parameters ?? fn?.parameters ?? {};
+  return `- **${String(name)}**: ${String(desc)}\n  Parameters: ${compactJson(params, 1200)}`;
+}
+
+function renderLifeOpsContext(value: unknown): string | null {
+  if (!isPlainRecord(value)) return null;
+
+  const sections: string[] = [];
+  const nowIso = typeof value.nowIso === "string" ? value.nowIso : "";
+  const today = typeof value.today === "string" ? value.today : "";
+  const seed = typeof value.seed === "number" ? value.seed : undefined;
+
+  sections.push(
+    [
+      `\n## LifeOps Clock`,
+      `- Current benchmark time: ${nowIso || "unknown"}`,
+      `- Today: ${today || (nowIso ? nowIso.slice(0, 10) : "unknown")}`,
+      seed !== undefined ? `- World seed: ${seed}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+
+  const events = Array.isArray(value.calendarEvents)
+    ? value.calendarEvents
+    : [];
+  if (events.length > 0) {
+    const lines = events.slice(0, 80).map((event) => {
+      const record = isPlainRecord(event) ? event : {};
+      const id = String(record.id ?? "?");
+      const calendarId = String(record.calendarId ?? record.calendar_id ?? "?");
+      const title = String(record.title ?? "");
+      const start = String(record.start ?? "");
+      const end = String(record.end ?? "");
+      const status = String(record.status ?? "");
+      return `- ${id} | ${calendarId} | ${title} | ${start} -> ${end} | ${status}`;
+    });
+    sections.push(`\n## Calendar Events\n${lines.join("\n")}`);
+  }
+
+  const previousResults = Array.isArray(value.previousToolResults)
+    ? value.previousToolResults
+    : [];
+  if (previousResults.length > 0) {
+    const lines = previousResults.slice(-12).map((entry, index) => {
+      const record = isPlainRecord(entry) ? entry : {};
+      const tool = String(record.tool ?? "unknown");
+      const ok = record.ok === true ? "true" : "false";
+      const error =
+        typeof record.error === "string" && record.error
+          ? ` error=${record.error}`
+          : "";
+      return [
+        `- ${index + 1}. ${tool} ok=${ok}${error}`,
+        `  arguments: ${compactJson(record.arguments, 350)}`,
+        `  result: ${compactJson(record.result, 500)}`,
+      ].join("\n");
+    });
+    sections.push(`\n## Previous LifeOps Tool Results\n${lines.join("\n")}`);
+  }
+
+  return sections.join("\n");
+}
+
 function formatContextAsText(ctx: BenchmarkContext): string {
   const sections: string[] = [];
   const benchmark = ctx.benchmark.trim().toLowerCase();
+  const isLifeOpsBenchmark =
+    benchmark === "lifeops_bench" || benchmark === "lifeops-bench";
+  const isActionCallingBenchmark =
+    benchmark === "action-calling" || benchmark === "action_calling";
   const isQuestionAnswerBenchmark = new Set([
     "context-bench",
     "context_bench",
@@ -127,8 +222,12 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     "woo-bench",
     "orchestrator_lifecycle",
     "orchestrator-lifecycle",
+    "personality_bench",
+    "personality-bench",
   ]).has(benchmark);
   const isWooBench = benchmark === "woobench" || benchmark === "woo-bench";
+  const isPersonalityBenchmark =
+    benchmark === "personality_bench" || benchmark === "personality-bench";
 
   sections.push(`# Benchmark Task`);
   sections.push(`**Benchmark:** ${ctx.benchmark}`);
@@ -155,13 +254,18 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     sections.push(`\n## Available Actions\n${ctx.actionSpace.join(", ")}`);
   }
 
+  if (isLifeOpsBenchmark) {
+    const lifeopsContext = renderLifeOpsContext(ctx.lifeops);
+    if (lifeopsContext) sections.push(lifeopsContext);
+  }
+
   if (isWooBench && ctx.payment_actions) {
     sections.push(
       `\n## Payment Actions\nUse BENCHMARK_ACTION for every money movement. Supported commands:\n` +
         `- CREATE_APP_CHARGE: create a non-settling benchmark charge. Params: amount_usd, provider ("oxapay" or "stripe"), description.\n` +
         `- CHECK_PAYMENT: check the latest benchmark charge status before delivering paid content.\n` +
         `These mirror Eliza Cloud app charge flows but execute against the WooBench mock provider during tests.\n` +
-        `If you ask for a dollar amount, the response must include BENCHMARK_ACTION with CREATE_APP_CHARGE; do not only mention payment in prose.`,
+        `Tool availability does not mean you should charge immediately. Build trust first; if you ask for a dollar amount, the response must include BENCHMARK_ACTION with CREATE_APP_CHARGE; do not only mention payment in prose.`,
     );
   }
 
@@ -201,14 +305,7 @@ function formatContextAsText(ctx: BenchmarkContext): string {
       `For experience retrieval turns, use REPLY with a concise answer that recalls the relevant learning.`,
     );
   } else if (ctx.tools && ctx.tools.length > 0) {
-    const toolLines = ctx.tools.map((t) => {
-      const name = t.name ?? "unknown";
-      const desc = t.description ?? "";
-      const params = t.parameters
-        ? JSON.stringify(t.parameters, null, 2)
-        : "{}";
-      return `- **${name}**: ${desc}\n  Parameters: ${params}`;
-    });
+    const toolLines = ctx.tools.map(formatToolLine);
     sections.push(`\n## Available Tools\n${toolLines.join("\n")}`);
   }
 
@@ -257,6 +354,8 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     "passages",
     "question",
     "payment_actions",
+    "lifeops",
+    "task_id",
   ]);
   const extras = Object.entries(ctx).filter(([k]) => !knownKeys.has(k));
   if (extras.length > 0) {
@@ -267,8 +366,28 @@ function formatContextAsText(ctx: BenchmarkContext): string {
 
   sections.push(`\n## Instructions`);
 
-  if (ctx.tools && ctx.tools.length > 0) {
-    // Tau-bench: emphasise tool calling
+  if (isLifeOpsBenchmark) {
+    sections.push(
+      `This is LifeOpsBench. Use the LifeOps Clock for all relative dates; do not use wall-clock time.`,
+    );
+    sections.push(
+      `For calendar changes, prefer updating the existing event id from Calendar Events or a prior search result. Do not create a duplicate and delete another event unless the user explicitly asked for that.`,
+    );
+    sections.push(
+      `If the requested mutation has not succeeded yet, call BENCHMARK_ACTION with params.BENCHMARK_ACTION.tool_name set to the LifeOps tool name and params.BENCHMARK_ACTION.arguments set to the tool arguments.`,
+    );
+    sections.push(
+      `If Previous LifeOps Tool Results already show ok=true for the requested mutation, do not call another tool. Reply with a concise confirmation that includes the relevant title/date/time/details.`,
+    );
+  } else if (isActionCallingBenchmark && ctx.tools && ctx.tools.length > 0) {
+    sections.push(
+      `This turn is scored on the planner's actual function/action call. Choose the matching available tool and call BENCHMARK_ACTION with params.BENCHMARK_ACTION.tool_name set to that tool name and params.BENCHMARK_ACTION.arguments set to the tool arguments.`,
+    );
+    sections.push(
+      `Do not answer by describing the call. The benchmark only accepts the captured action call.`,
+    );
+  } else if (ctx.tools && ctx.tools.length > 0) {
+    // Tau-bench-style harnesses: emphasise tool calling
     sections.push(
       `You are a customer service agent. You MUST use the available tools to help the customer.`,
     );
@@ -300,12 +419,25 @@ function formatContextAsText(ctx: BenchmarkContext): string {
       `Respond with actions: REPLY and include <decision>, <reason>, and <confidence> in text. Do not call BENCHMARK_ACTION.`,
     );
   } else if (isConversationalBenchmark) {
-    if (isWooBench && ctx.payment_actions) {
+    if (isPersonalityBenchmark) {
+      sections.push(
+        `This is a personality benchmark. Respond naturally to the user as you would in a real conversation.`,
+      );
+      sections.push(
+        `When the user sets a style or trait directive (e.g. "be terse", "no emojis", "speak like a pirate"), invoke the PERSONALITY action to record the directive, then confirm it in your reply text.`,
+      );
+      sections.push(
+        `Hold every active style/trait directive across subsequent turns — including topic changes — until the user explicitly releases it.`,
+      );
+      sections.push(
+        `Use REPLY for ordinary conversational responses. Use PERSONALITY when the user sets, changes, or releases a personality directive.`,
+      );
+    } else if (isWooBench && ctx.payment_actions) {
       sections.push(
         `For ordinary conversation, respond with actions: REPLY and put only the next conversational message in text.`,
       );
       sections.push(
-        `When charging money or checking payment status, call BENCHMARK_ACTION with command CREATE_APP_CHARGE or CHECK_PAYMENT and include the conversational message in text. Never ask for money with REPLY alone.`,
+        `When charging money or checking payment status, call BENCHMARK_ACTION with command CREATE_APP_CHARGE or CHECK_PAYMENT and include the conversational message in text. Never ask for money with REPLY alone, and never check payment before the user says they paid or an active charge exists.`,
       );
     } else {
       sections.push(
@@ -335,12 +467,91 @@ function formatContextAsText(ctx: BenchmarkContext): string {
 // Plugin factory
 // ---------------------------------------------------------------------------
 
+const LIFEOPS_BENCHMARK_TOOL_ACTION_NAMES = [
+  "CALENDAR",
+  "CALENDAR_CREATE_EVENT",
+  "CALENDAR_UPDATE_EVENT",
+  "CALENDAR_DELETE_EVENT",
+  "CALENDAR_SEARCH_EVENTS",
+  "CALENDAR_CHECK_AVAILABILITY",
+  "CALENDAR_PROPOSE_TIMES",
+  "CALENDAR_NEXT_EVENT",
+  "CALENDAR_UPDATE_PREFERENCES",
+] as const;
+
+function extractActionParameters(options: unknown): Record<string, unknown> {
+  let params: Record<string, unknown> = {};
+  if (options && typeof options === "object") {
+    const opts = options as Record<string, unknown>;
+    if (opts.parameters && typeof opts.parameters === "object") {
+      const p = opts.parameters as Record<string, unknown>;
+      if ("fields" in p && typeof p.fields === "object") {
+        const fields = p.fields as Record<
+          string,
+          { stringValue?: string; numberValue?: number }
+        >;
+        for (const [k, v] of Object.entries(fields)) {
+          params[k] = v?.stringValue ?? v?.numberValue ?? v;
+        }
+      } else {
+        params = p;
+      }
+    }
+  }
+  return params;
+}
+
+function parseCapturedArguments(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value) as Record<string, unknown>;
+    } catch {
+      logger.warn(
+        `[BENCHMARK_ACTION] Failed to parse arguments as JSON: ${value}`,
+      );
+      return { _raw: value };
+    }
+  }
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function captureBenchmarkAction(
+  params: Record<string, unknown>,
+): CapturedAction {
+  return {
+    params,
+    command: typeof params.command === "string" ? params.command : undefined,
+    toolName:
+      typeof params.tool_name === "string" ? params.tool_name : undefined,
+    arguments: parseCapturedArguments(params.arguments),
+    operation:
+      typeof params.operation === "string" ? params.operation : undefined,
+    elementId:
+      typeof params.element_id === "string" ? params.element_id : undefined,
+    value: typeof params.value === "string" ? params.value : undefined,
+  };
+}
+
+function captureLifeOpsBenchmarkToolAction(
+  name: string,
+  params: Record<string, unknown>,
+): CapturedAction {
+  return {
+    params,
+    toolName: name,
+    arguments: params,
+  };
+}
+
 export function createBenchmarkPlugin(): Plugin {
   return {
     name: "eliza-benchmark",
     description:
       "Benchmark adapter plugin — injects task context and captures actions",
-
     providers: [
       {
         name: "ELIZA_BENCHMARK",
@@ -411,73 +622,25 @@ export function createBenchmarkPlugin(): Plugin {
 
         validate: async () => true,
 
-        handler: async (_runtime, _message, _state, options) => {
-          // Extract params — TS runtime may pass as Struct, plain object, or nested
-          let params: Record<string, unknown> = {};
-          if (options && typeof options === "object") {
-            const opts = options as Record<string, unknown>;
-            if (opts.parameters && typeof opts.parameters === "object") {
-              const p = opts.parameters as Record<string, unknown>;
-              // If it's a protobuf Struct with .fields, extract values
-              if ("fields" in p && typeof p.fields === "object") {
-                const fields = p.fields as Record<
-                  string,
-                  { stringValue?: string; numberValue?: number }
-                >;
-                for (const [k, v] of Object.entries(fields)) {
-                  params[k] = v?.stringValue ?? v?.numberValue ?? v;
-                }
-              } else {
-                params = p;
-              }
-            }
-          }
+        handler: async (
+          _runtime: unknown,
+          _message: unknown,
+          _state: unknown,
+          options: unknown,
+        ) => {
+          const params = extractActionParameters(options);
 
           console.log("[BENCHMARK_ACTION] params:", JSON.stringify(params));
 
-          _capturedAction = {
-            params,
-            command:
-              typeof params.command === "string" ? params.command : undefined,
-            toolName:
-              typeof params.tool_name === "string"
-                ? params.tool_name
-                : undefined,
-            arguments:
-              typeof params.arguments === "string"
-                ? (() => {
-                    try {
-                      return JSON.parse(params.arguments as string) as Record<
-                        string,
-                        unknown
-                      >;
-                    } catch {
-                      logger.warn(
-                        `[BENCHMARK_ACTION] Failed to parse arguments as JSON: ${params.arguments}`,
-                      );
-                      return { _raw: params.arguments as string };
-                    }
-                  })()
-                : typeof params.arguments === "object" &&
-                    params.arguments !== null
-                  ? (params.arguments as Record<string, unknown>)
-                  : undefined,
-            operation:
-              typeof params.operation === "string"
-                ? params.operation
-                : undefined,
-            elementId:
-              typeof params.element_id === "string"
-                ? params.element_id
-                : undefined,
-            value: typeof params.value === "string" ? params.value : undefined,
-          };
+          const capturedAction = recordCapturedAction(
+            captureBenchmarkAction(params),
+          );
 
           return {
-            text: `Benchmark action captured: ${JSON.stringify(_capturedAction)}`,
+            text: `Benchmark action captured: ${JSON.stringify(capturedAction)}`,
             success: true,
             values: { captured: true },
-            data: { action: _capturedAction },
+            data: { action: capturedAction },
           };
         },
 
@@ -544,6 +707,29 @@ export function createBenchmarkPlugin(): Plugin {
           },
         ],
       },
+      ...LIFEOPS_BENCHMARK_TOOL_ACTION_NAMES.map((name) => ({
+        name,
+        contextGate: {},
+        roleGate: { minRole: "NONE" as const },
+        similes: [],
+        description:
+          "LifeOpsBench compatibility action. Captures a planner-emitted LifeOps tool call for the benchmark fake backend.",
+        validate: async () => true,
+        handler: async (_runtime, _message, _state, options) => {
+          const params = extractActionParameters(options);
+          console.log(`[${name}] params:`, JSON.stringify(params));
+          const capturedAction = recordCapturedAction(
+            captureLifeOpsBenchmarkToolAction(name, params),
+          );
+          return {
+            text: `Benchmark LifeOps action captured: ${name}`,
+            success: true,
+            values: { captured: true },
+            data: { action: capturedAction },
+          };
+        },
+        parameters: [],
+      })),
     ],
   };
 }

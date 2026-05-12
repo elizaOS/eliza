@@ -1,9 +1,9 @@
 import { WebPlugin } from "@capacitor/core";
 import type {
   AgentPlugin,
-  AgentStartOptions,
   AgentRequestOptions,
   AgentRequestResult,
+  AgentStartOptions,
   AgentStatus,
   ChatResult,
   LocalAgentTokenResult,

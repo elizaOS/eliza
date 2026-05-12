@@ -1,4 +1,11 @@
 import { AgentNotReadyError } from "./config-and-auth-rpc";
+import {
+	finiteNumber,
+	isRecord,
+	nullableString,
+	optionalFiniteNumber,
+	optionalString,
+} from "./rpc-parse-utils";
 import type {
 	AgentSelfStatusSnapshot,
 	CorePluginEntry,
@@ -7,29 +14,6 @@ import type {
 } from "./rpc-schema";
 
 const DEFAULT_TIMEOUT_MS = 4_000;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function finiteNumber(value: unknown): number | null {
-	return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-function nullableString(value: unknown): string | null | undefined {
-	if (value === null) return null;
-	return typeof value === "string" ? value : undefined;
-}
-
-function optionalString(value: unknown): string | undefined | false {
-	if (value === undefined) return undefined;
-	return typeof value === "string" ? value : false;
-}
-
-function optionalFiniteNumber(value: unknown): number | undefined | false {
-	if (value === undefined) return undefined;
-	return typeof value === "number" && Number.isFinite(value) ? value : false;
-}
 
 function parseStringArray(value: unknown): string[] | null {
 	if (!Array.isArray(value)) return null;

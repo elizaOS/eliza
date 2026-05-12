@@ -1,0 +1,98 @@
+[
+  {
+    "customer_id": "CUS-1201",
+    "name": "Huarui Precision Manufacturing",
+    "industry": "Manufacturing",
+    "tier": "vip",
+    "annual_revenue": 1200000,
+    "status": "active",
+    "contract_end": "2027-03-31",
+    "sales_rep": "Director Zhao",
+    "notes": "Core key account, uses advanced data analytics + custom modules, strong demand for AI quality inspection",
+    "contact_person": "Director Zhao"
+  },
+  {
+    "customer_id": "CUS-1202",
+    "name": "Dingsheng Machinery Group",
+    "industry": "Manufacturing",
+    "tier": "vip",
+    "annual_revenue": 960000,
+    "status": "active",
+    "contract_end": "2026-12-31",
+    "sales_rep": "Director Zhao",
+    "notes": "VIP customer, currently evaluating Competitor A's AI features, renewal at risk",
+    "contact_person": "Director Zhao"
+  },
+  {
+    "customer_id": "CUS-1203",
+    "name": "Zhonglian Automation",
+    "industry": "Manufacturing",
+    "tier": "standard",
+    "annual_revenue": 420000,
+    "status": "active",
+    "contract_end": "2026-09-30",
+    "sales_rep": "Director Zhao",
+    "notes": "Standard customer, interested in upgrading, focusing on MES integration",
+    "contact_person": "Director Zhao"
+  },
+  {
+    "customer_id": "CUS-1204",
+    "name": "Renhe Hospital Group",
+    "industry": "Healthcare",
+    "tier": "vip",
+    "annual_revenue": 880000,
+    "status": "active",
+    "contract_end": "2027-06-30",
+    "sales_rep": "Director Wang",
+    "notes": "Tier-A hospital group, uses EMR data analytics module, expansion potential under favorable policies",
+    "contact_person": "Director Wang"
+  },
+  {
+    "customer_id": "CUS-1205",
+    "name": "Kangning Community Healthcare",
+    "industry": "Healthcare",
+    "tier": "standard",
+    "annual_revenue": 280000,
+    "status": "active",
+    "contract_end": "2026-08-31",
+    "sales_rep": "Director Wang",
+    "notes": "Community healthcare facility, standard edition user, interested in hybrid cloud deployment",
+    "contact_person": "Director Wang"
+  },
+  {
+    "customer_id": "CUS-1206",
+    "name": "Qihang Education Technology",
+    "industry": "Education",
+    "tier": "standard",
+    "annual_revenue": 240000,
+    "status": "active",
+    "contract_end": "2026-07-31",
+    "sales_rep": "Director Li",
+    "notes": "K12 education institution, uses student data analytics platform",
+    "contact_person": "Director Li"
+  },
+  {
+    "customer_id": "CUS-1207",
+    "name": "Mingyuan University",
+    "industry": "Education",
+    "tier": "standard",
+    "annual_revenue": 180000,
+    "status": "churned",
+    "contract_end": "2026-02-28",
+    "sales_rep": "Director Li",
+    "notes": "Churned, reason: budget cuts, switched to free solution",
+    "contact_person": "Director Li"
+  },
+  {
+    "customer_id": "CUS-1208",
+    "name": "Xinda Financial Holdings",
+    "industry": "Finance",
+    "tier": "vip",
+    "annual_revenue": 1500000,
+    "status": "active",
+    "contract_end": "2027-12-31",
+    "sales_rep": "Director Zhao",
+    "notes": "One of the largest customers, uses full compliance + analytics suite, compliance certification is key renewal factor",
+    "contact_person": "Director Zhao"
+  }
+]

@@ -132,7 +132,7 @@ function getWorkspacePackageExportAliases(
 
 function getPackageSourceAliases(
   packageName: string,
-  sourceRoot: string,
+  _sourceRoot: string,
   {
     includeElizaAlias = false,
     rootReplacement,
@@ -140,7 +140,7 @@ function getPackageSourceAliases(
     includeElizaAlias?: boolean;
     rootReplacement: string;
   },
-	): ModuleAlias[] {
+): ModuleAlias[] {
   return [
     ...(includeElizaAlias
       ? [

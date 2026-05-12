@@ -1,0 +1,26 @@
+version = "1.0"
+
+[metadata]
+author_name = "Haotian Shen"
+author_email = "dalyshen@berkeley.edu"
+difficulty = "hard"
+category = "seismology"
+tags = ["science", "earth-science", "seismology", "ai4science"]
+
+[verifier]
+timeout_sec = 240.0
+
+[agent]
+timeout_sec = 3600.0
+
+[environment]
+build_timeout_sec = 900.0
+cpus = 8
+memory_mb = 8192
+storage_mb = 10240
+gpus = 0
+allow_internet = true
+
+[verifier.env]
+
+[solution.env]

@@ -3,7 +3,7 @@
   Native Windows hardware verification runner for Eliza-1 local inference.
 
 .DESCRIPTION
-  Builds the requested Windows target, then runs model-backed llama-cli graph
+  Builds the requested Windows target, then runs model-backed llama-bench + llama-completion graph
   smoke with --cache-type-k for TurboQuant, QJL, and PolarQuant aliases. This
   script fails when hardware/toolchain/model prerequisites are missing. A pass
   is a runtime dispatch smoke, not a symbol check.
@@ -18,7 +18,7 @@
     WINDOWS_SKIP_GRAPH_SMOKE=1 exits non-zero after preflight; it is not
       recordable hardware evidence.
     ELIZA_DFLASH_SMOKE_CACHE_TYPES/TOKENS/NGL/PROMPT/EXTRA_ARGS tune the
-      llama-cli graph smoke.
+      llama-bench graph smoke.
     ELIZA_STATE_DIR controls the default native binary lookup root.
 #>
 
@@ -136,7 +136,7 @@ function Resolve-CacheType([string] $Help, [string] $Family, [string[]] $Aliases
       return [pscustomobject]@{ Family = $Family; Cache = $alias }
     }
   }
-  Fail "llama-cli help does not advertise a cache-type alias for $Family"
+  Fail "llama-bench help does not advertise a cache-type alias for $Family"
 }
 
 trap {
@@ -208,10 +208,15 @@ if ([string]::IsNullOrWhiteSpace($BinDir)) {
   $BinDir = Join-Path $stateDir "local-inference/bin/dflash/$Target"
 }
 
-$cli = Join-Path $BinDir "llama-cli.exe"
-if (-not (Test-Path $cli)) {
-  Fail "missing llama-cli.exe in $BinDir"
+# Driver: llama-bench, not llama-cli. The fork's llama-cli is conversation-only
+# and busy-loops on stdin EOF; llama-bench runs the same prompt-eval + token-gen
+# graph passes (incl. the Turbo/QJL/Polar KV-cache ops) non-interactively and
+# exits cleanly. llama-completion handles the real GGUF generation step.
+$bench = Join-Path $BinDir "llama-bench.exe"
+if (-not (Test-Path $bench)) {
+  Fail "missing llama-bench.exe in $BinDir (rebuild target $Target; the build script ships llama-bench + llama-completion alongside llama-server)"
 }
+$completion = Join-Path $BinDir "llama-completion.exe"
 $env:PATH = "$BinDir;$env:PATH"
 
 if ($env:WINDOWS_SKIP_GRAPH_SMOKE -eq "1") {
@@ -229,10 +234,10 @@ if ([string]::IsNullOrWhiteSpace($ReportDir)) {
 }
 New-Item -ItemType Directory -Force -Path $ReportDir | Out-Null
 
-$helpLog = Join-Path $ReportDir "$Target-llama-cli-help.log"
-$helpText = (& $cli --help 2>&1 | Tee-Object -FilePath $helpLog | Out-String)
+$helpLog = Join-Path $ReportDir "$Target-llama-bench-help.log"
+$helpText = (& $bench --help 2>&1 | Tee-Object -FilePath $helpLog | Out-String)
 if ($helpText -notmatch "--cache-type-k") {
-  Fail "llama-cli help does not expose --cache-type-k; see $helpLog"
+  Fail "llama-bench help does not expose --cache-type-k; see $helpLog"
 }
 
 $runs = @()
@@ -279,10 +284,10 @@ $summary = Join-Path $ReportDir "$Target-graph-smoke.summary"
 
 foreach ($run in $runs) {
   $log = Join-Path $ReportDir "$Target-$($run.Family)-$($run.Cache).log"
-  Write-Host "[windows_runner] target=$Target family=$($run.Family) cache=$($run.Cache)"
-  & $cli -m $Model -p $prompt -n $tokens -ngl $ngl --cache-type-k $run.Cache @extraArgs *> $log
+  Write-Host "[windows_runner] target=$Target family=$($run.Family) cache=$($run.Cache) (llama-bench)"
+  & $bench -m $Model -ngl $ngl --cache-type-k $run.Cache -p 16 -n $tokens -fa 1 -r 1 @extraArgs *> $log
   if ($LASTEXITCODE -ne 0) {
-    Fail "llama-cli graph smoke failed for cache=$($run.Cache); see $log"
+    Fail "llama-bench graph smoke failed for cache=$($run.Cache); see $log"
   }
   $logText = Get-Content -Raw -Path $log
   if ($logText -notmatch $backendPattern) {
@@ -296,6 +301,31 @@ foreach ($run in $runs) {
     status = "pass"
   }
   Add-Content -Path $summary -Value "PASS $($run.Family) cache=$($run.Cache) log=$log"
+}
+
+# Real GGUF next-token generation via llama-completion (the conversation-free
+# generation driver). Skipped only if the build didn't ship it.
+if (Test-Path $completion) {
+  $genLog = Join-Path $ReportDir "$Target-gen-check.log"
+  Write-Host "[windows_runner] target=$Target GGUF generation (llama-completion)"
+  & $completion -m $Model -p $prompt -n $tokens -ngl $ngl --no-warmup @extraArgs *> $genLog
+  if ($LASTEXITCODE -ne 0) {
+    Fail "llama-completion GGUF generation failed; see $genLog"
+  }
+  $genText = Get-Content -Raw -Path $genLog
+  if ($genText -notmatch $backendPattern) {
+    Fail "backend pattern '$backendPattern' not observed during GGUF generation; see $genLog"
+  }
+  $script:Runs += [ordered]@{
+    family = "gen-check"
+    cache = "n/a"
+    log = $genLog
+    backendPattern = $backendPattern
+    status = "pass"
+  }
+  Add-Content -Path $summary -Value "PASS gen-check log=$genLog"
+} else {
+  Add-Content -Path $summary -Value "SKIP gen-check (llama-completion.exe not installed)"
 }
 
 Add-Content -Path $summary -Value "finished_at=$((Get-Date).ToUniversalTime().ToString("s"))Z"

@@ -1,10 +1,3 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
 import {
   LIFEOPS_SIGNAL_CAPABILITIES,
   type LifeOpsConnectorDegradation,
@@ -196,9 +189,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
       const sendReady = signalServiceCanSend(signalService);
       const connected =
         signalServiceConnected(signalService) || inboundReady || sendReady;
-      const grantedCapabilities = connected
-        ? FULL_SIGNAL_CAPABILITIES
-        : [];
+      const grantedCapabilities = connected ? FULL_SIGNAL_CAPABILITIES : [];
       const capabilities = signalReadyCapabilities({
         granted: grantedCapabilities,
         inboundReady,

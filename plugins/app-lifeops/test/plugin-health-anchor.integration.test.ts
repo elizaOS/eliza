@@ -17,27 +17,27 @@
  *      completion-check.
  */
 
-import { describe, expect, it } from "vitest";
 import {
+  type BusFamilyContribution,
+  type BusFamilyRegistry,
   HEALTH_ANCHORS,
   HEALTH_BUS_FAMILIES,
   HEALTH_CONNECTOR_KINDS,
-  registerHealthAnchors,
-  registerHealthBusFamilies,
   type AnchorContribution as HealthAnchorContribution,
   type AnchorRegistry as HealthAnchorRegistry,
-  type BusFamilyContribution,
-  type BusFamilyRegistry,
   type RuntimeWithHealthRegistries,
+  registerHealthAnchors,
+  registerHealthBusFamilies,
 } from "@elizaos/plugin-health";
-import {
-  createAnchorRegistry,
-  createConsolidationRegistry,
-} from "../src/lifeops/scheduled-task/consolidation-policy.ts";
+import { describe, expect, it } from "vitest";
 import {
   createCompletionCheckRegistry,
   registerBuiltInCompletionChecks,
 } from "../src/lifeops/scheduled-task/completion-check-registry.ts";
+import {
+  createAnchorRegistry,
+  createConsolidationRegistry,
+} from "../src/lifeops/scheduled-task/consolidation-policy.ts";
 import {
   createEscalationLadderRegistry,
   registerDefaultEscalationLadders,

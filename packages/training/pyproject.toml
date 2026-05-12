@@ -1,5 +1,5 @@
 [project]
-name = "milady-training"
+name = "eliza-training"
 version = "0.1.0"
 description = "Fine-tuning pipeline for Eliza-1 on Eliza-native Vercel AI SDK trajectory rows."
 readme = "README.md"
@@ -36,7 +36,6 @@ train = [
   "accelerate>=1.1.0",
   "peft>=0.14.0",
   "trl>=0.13.0",
-  "bitsandbytes>=0.45.0",
   "datasets>=3.2.0",
   "wandb>=0.18.0",
   "apollo-torch>=1.0.3",
@@ -67,20 +66,20 @@ train = [
   # from ~2k to ~8k on the same 16 GB budget.
   "liger-kernel>=0.5.0",
   # GGUF Q4_K_M quantization (scripts/quantization/gguf-q4_k_m_apply.py).
-  # The wrapper prefers a vendored stock llama.cpp checkout under
-  # packages/training/vendor/llama.cpp (run scripts/vendor_llama_cpp.sh),
-  # but the llama-cpp-python wheel also ships a usable `gguf` python module
-  # so the HF→f16 GGUF convert step works without the vendored checkout.
-  # The Q4_K_M *quantize* step still needs the `llama-quantize` binary the
-  # vendor script builds. NOTE: the custom GGML types Q4_POLAR/QJL1_256/
-  # TurboQuant are NOT in this wheel — those need the elizaOS/llama.cpp
-  # fork via $LLAMA_CPP_DIR.
+  # The wrapper uses the in-repo llama.cpp fork submodule at
+  # packages/inference/llama.cpp (its convert_hf_to_gguf.py + a one-shot
+  # CPU cmake build of llama-quantize/llama-cli — see the script's
+  # _VENDOR_HINT), but the llama-cpp-python wheel also ships a usable
+  # `gguf` python module so the HF→f16 GGUF convert step works even
+  # without that build. The Q4_K_M *quantize* step still needs a real
+  # `llama-quantize` binary. NOTE: the custom GGML types Q4_POLAR/QJL1_256/
+  # TurboQuant are only in the fork — same submodule, or $LLAMA_CPP_DIR.
   "llama-cpp-python>=0.3.0",
-  # convert_hf_to_gguf.py (vendored stock llama.cpp) imports `gguf` AND
-  # `mistral_common` at module load — both must be installed or the
-  # HF→GGUF convert step dies on import. The vendor script also installs
-  # these from requirements/requirements-convert_hf_to_gguf.txt, but pin
-  # them here so `uv run --extra train` works standalone.
+  # convert_hf_to_gguf.py imports `gguf` AND `mistral_common` at module
+  # load — both must be installed or the HF→GGUF convert step dies on
+  # import. The fork's requirements/requirements-convert_hf_to_gguf.txt
+  # also installs these, but pin them here so `uv run --extra train`
+  # works standalone.
   "gguf>=0.10.0",
   "mistral_common>=1.8.3",
   # pytest is consumed by the pre-flight gate (scripts/preflight.sh) and
@@ -127,7 +126,7 @@ serve = [
   "transformers>=4.46.0",
   # OpenAI client used by scripts/inference/test_apc_dflash_tool_calls.py to
   # speak vLLM's OpenAI-compatible chat completions endpoint. The harness
-  # is the production gate that unlocks `MILADY_APC_DRAFTER_VERIFIED=1` on
+  # is the production gate that unlocks `ELIZA_APC_DRAFTER_VERIFIED=1` on
   # any new vLLM build for the Qwen3.5/3.6 hybrid path (omlx#825).
   "openai>=1.50.0",
 ]

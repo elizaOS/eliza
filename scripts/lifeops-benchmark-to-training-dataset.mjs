@@ -31,8 +31,8 @@
 import {
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -52,7 +52,7 @@ function arg(name, fallback) {
 const runDir = resolve(arg("--run-dir", ""));
 if (!runDir || !existsSync(runDir)) {
   console.error(
-    "[bench->ds] --run-dir <dir> required (e.g. ~/.milady/runs/lifeops/lifeops-bench-...)",
+    "[bench->ds] --run-dir <dir> required (e.g. ~/.eliza/runs/lifeops/lifeops-bench-...)",
   );
   process.exit(2);
 }
@@ -124,7 +124,7 @@ for (const file of walkJson(trajectoryDir)) {
   let trajectory;
   try {
     trajectory = JSON.parse(readFileSync(file, "utf8"));
-  } catch (err) {
+  } catch (_err) {
     skipped += 1;
     continue;
   }
@@ -132,7 +132,9 @@ for (const file of walkJson(trajectoryDir)) {
     skipped += 1;
     continue;
   }
-  const planner = trajectory.stages.find((s) => s.kind === "planner" && s.model);
+  const planner = trajectory.stages.find(
+    (s) => s.kind === "planner" && s.model,
+  );
   if (!planner) {
     skipped += 1;
     continue;
@@ -153,9 +155,15 @@ for (const file of walkJson(trajectoryDir)) {
   // (`model.toolCalls`). Anthropic tool-use returns tool_calls with empty
   // response; serialize them as JSON so the optimizer has something to score.
   let modelOutput = "";
-  if (typeof planner.model.response === "string" && planner.model.response.trim().length > 0) {
+  if (
+    typeof planner.model.response === "string" &&
+    planner.model.response.trim().length > 0
+  ) {
     modelOutput = planner.model.response;
-  } else if (Array.isArray(planner.model.toolCalls) && planner.model.toolCalls.length > 0) {
+  } else if (
+    Array.isArray(planner.model.toolCalls) &&
+    planner.model.toolCalls.length > 0
+  ) {
     modelOutput = JSON.stringify({ toolCalls: planner.model.toolCalls });
   }
 
@@ -170,9 +178,7 @@ for (const file of walkJson(trajectoryDir)) {
     boundary: "vercel_ai_sdk.generateText",
     request: {
       system: PLANNER_BASELINE,
-      messages: [
-        { role: "user", content: userPrompt },
-      ],
+      messages: [{ role: "user", content: userPrompt }],
     },
     response: {
       text: modelOutput,
@@ -202,7 +208,7 @@ console.log(
 const metaPath = `${outputPath.replace(/\.jsonl$/, "")}.meta.json`;
 writeFileSync(
   metaPath,
-  JSON.stringify(
+  `${JSON.stringify(
     {
       generatedAt: new Date().toISOString(),
       runDir,
@@ -213,6 +219,6 @@ writeFileSync(
     },
     null,
     2,
-  ) + "\n",
+  )}\n`,
 );
 console.log(`[bench->ds] meta -> ${metaPath}`);

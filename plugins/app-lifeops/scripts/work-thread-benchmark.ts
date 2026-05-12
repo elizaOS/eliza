@@ -3,14 +3,18 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
-  ResponseHandlerEvaluatorContext,
+  ResponseHandlerFieldContext,
+  ResponseHandlerResult,
   State,
 } from "@elizaos/core";
-import { workThreadAction } from "../src/actions/work-thread.ts";
-import { createWorkThreadStore } from "../src/lifeops/work-threads/store.ts";
-import { workThreadResponseHandlerEvaluator } from "../src/lifeops/work-threads/response-handler-evaluator.ts";
-import { workThreadsProvider } from "../src/providers/work-threads.ts";
 import { createMockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
+import { workThreadAction } from "../src/actions/work-thread.ts";
+import {
+  type ThreadOp,
+  threadOpsFieldEvaluator,
+} from "../src/lifeops/work-threads/field-evaluator-thread-ops.ts";
+import { createWorkThreadStore } from "../src/lifeops/work-threads/store.ts";
+import { workThreadsProvider } from "../src/providers/work-threads.ts";
 
 type Sample = {
   name: string;
@@ -42,11 +46,7 @@ function percentile(values: number[], p: number): number {
   return sorted[index] ?? 0;
 }
 
-function message(
-  runtime: IAgentRuntime,
-  roomId: string,
-  text: string,
-): Memory {
+function message(runtime: IAgentRuntime, roomId: string, text: string): Memory {
   return {
     id: `${roomId}:bench:${Math.random().toString(36).slice(2)}` as Memory["id"],
     entityId: runtime.agentId,
@@ -69,32 +69,46 @@ function state(): State {
   return { values: {}, data: {}, text: "" } as State;
 }
 
-function evaluatorContext(
+function fieldContext(
   runtime: IAgentRuntime,
   msg: Memory,
-): ResponseHandlerEvaluatorContext {
+): ResponseHandlerFieldContext {
   return {
     runtime,
     message: msg,
     state: state(),
-    messageHandler: {
-      processMessage: "RESPOND",
-      thought: "",
-      plan: {
-        contexts: [],
-        requiresTool: false,
-        simple: true,
-        contextSlices: [],
-        candidateActions: [],
-        parentActionHints: [],
-      },
-    },
-    availableContexts: [
-      { id: "tasks" },
-      { id: "messaging" },
-      { id: "automation" },
-    ],
+    senderRole: "OWNER",
+    turnSignal: new AbortController().signal,
   };
+}
+
+function responseHandlerResult(): ResponseHandlerResult {
+  return {
+    shouldRespond: "RESPOND",
+    contexts: [],
+    intents: [],
+    candidateActionNames: [],
+    replyText: "",
+    facts: [],
+    relationships: [],
+    addressedTo: [],
+  };
+}
+
+async function applyThreadOpsField(
+  runtime: IAgentRuntime,
+  msg: Memory,
+  ops: ThreadOp[],
+): Promise<ResponseHandlerResult> {
+  const parsed = responseHandlerResult();
+  parsed.threadOps = ops;
+  const effect = await threadOpsFieldEvaluator.handle?.({
+    ...fieldContext(runtime, msg),
+    value: ops,
+    parsed,
+  });
+  effect?.mutateResult?.(parsed);
+  return parsed;
 }
 
 async function runThreadAction(
@@ -115,7 +129,9 @@ async function runThreadAction(
   return result as ActionResult;
 }
 
-function operationResults(result: ActionResult): Array<Record<string, unknown>> {
+function operationResults(
+  result: ActionResult,
+): Array<Record<string, unknown>> {
   const operations = result.data?.operations;
   if (!Array.isArray(operations)) {
     throw new Error("expected thread operation results");
@@ -177,20 +193,24 @@ async function main(): Promise<void> {
         throw new Error("provider failed to surface active work threads");
       }
       const shouldRun = await measure("evaluator.shouldRun", () =>
-        workThreadResponseHandlerEvaluator.shouldRun(
-          evaluatorContext(runtime, roomA),
+        Promise.resolve(
+          threadOpsFieldEvaluator.shouldRun?.(fieldContext(runtime, roomA)),
         ),
       );
       if (!shouldRun) {
         throw new Error("evaluator shouldRun returned false for active work");
       }
-      const patch = await measure("evaluator.evaluate", () =>
-        workThreadResponseHandlerEvaluator.evaluate(
-          evaluatorContext(runtime, roomA),
-        ),
+      const staged = await measure("evaluator.handle", () =>
+        applyThreadOpsField(runtime, roomA, [
+          {
+            type: "steer",
+            workThreadId: threadIds[0],
+            instruction: "Benchmark route through threadOps.",
+          },
+        ]),
       );
-      if (!patch?.requiresTool) {
-        throw new Error("evaluator did not force planner routing");
+      if (!staged.candidateActionNames.includes("work_thread")) {
+        throw new Error("field evaluator did not stage planner routing");
       }
     }
 

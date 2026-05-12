@@ -21,9 +21,7 @@ export type SensitiveCallbackEvent =
 
 export type SensitiveCallbackEventName = SensitiveCallbackEvent["name"];
 
-export type SensitiveCallbackListener = (
-  event: SensitiveCallbackEvent,
-) => void | Promise<void>;
+export type SensitiveCallbackListener = (event: SensitiveCallbackEvent) => void | Promise<void>;
 
 export interface SensitiveCallbackFilter {
   sensitiveRequestId?: string;
@@ -37,14 +35,8 @@ export interface SensitiveCallbackWaitFilter {
 
 export interface SensitiveCallbackBus {
   publish(event: SensitiveCallbackEvent): Promise<void>;
-  subscribe(
-    filter: SensitiveCallbackFilter,
-    listener: SensitiveCallbackListener,
-  ): () => void;
-  waitFor(
-    filter: SensitiveCallbackWaitFilter,
-    timeoutMs: number,
-  ): Promise<SensitiveCallbackEvent>;
+  subscribe(filter: SensitiveCallbackFilter, listener: SensitiveCallbackListener): () => void;
+  waitFor(filter: SensitiveCallbackWaitFilter, timeoutMs: number): Promise<SensitiveCallbackEvent>;
 }
 
 export interface CreateSensitiveCallbackBusDeps {
@@ -56,15 +48,9 @@ interface Subscription {
   listener: SensitiveCallbackListener;
 }
 
-function matches(
-  filter: SensitiveCallbackFilter,
-  event: SensitiveCallbackEvent,
-): boolean {
+function matches(filter: SensitiveCallbackFilter, event: SensitiveCallbackEvent): boolean {
   if (filter.name && filter.name !== event.name) return false;
-  if (
-    filter.sensitiveRequestId &&
-    filter.sensitiveRequestId !== event.sensitiveRequestId
-  ) {
+  if (filter.sensitiveRequestId && filter.sensitiveRequestId !== event.sensitiveRequestId) {
     return false;
   }
   return true;
@@ -107,10 +93,7 @@ export function createSensitiveCallbackBus(
       );
     },
 
-    subscribe(
-      filter: SensitiveCallbackFilter,
-      listener: SensitiveCallbackListener,
-    ): () => void {
+    subscribe(filter: SensitiveCallbackFilter, listener: SensitiveCallbackListener): () => void {
       const sub: Subscription = { filter, listener };
       subscriptions.add(sub);
       return () => {
@@ -134,15 +117,12 @@ export function createSensitiveCallbackBus(
           );
         }, timeoutMs);
 
-        unsubscribe = this.subscribe(
-          { sensitiveRequestId: filter.sensitiveRequestId },
-          (event) => {
-            if (!names.has(event.name)) return;
-            clearTimeout(timer);
-            if (unsubscribe) unsubscribe();
-            resolve(event);
-          },
-        );
+        unsubscribe = this.subscribe({ sensitiveRequestId: filter.sensitiveRequestId }, (event) => {
+          if (!names.has(event.name)) return;
+          clearTimeout(timer);
+          if (unsubscribe) unsubscribe();
+          resolve(event);
+        });
       });
     },
   };

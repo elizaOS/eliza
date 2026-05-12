@@ -1,0 +1,47 @@
+---
+# Network Configuration - prod-web-node03
+# Last modified: 2024-10-02T08:15:00Z by admin
+
+hostname: prod-web-node03
+domain: internal.corp.local
+fqdn: prod-web-node03.internal.corp.local
+
+dns:
+  servers:
+    - 10.20.30.2
+    - 10.20.30.3
+  search_domains:
+    - internal.corp.local
+  options:
+    timeout: 2
+    attempts: 3
+    rotate: true
+
+interfaces:
+  ens3f0:
+    type: ethernet
+    address: 10.20.30.103/24
+    gateway: 10.20.30.1
+    mtu: 9216
+    vlan: 30
+    description: "Primary production network"
+  ens3f1:
+    type: ethernet
+    address: 192.168.50.103/24
+    mtu: 1500
+    vlan: 50
+    description: "Management / backup network"
+
+routing:
+  default_gateway: 10.20.30.1
+  static_routes:
+    - destination: 172.16.0.0/16
+      via: 10.20.30.254
+      metric: 200
+      description: "Route to internal services network"
+
+ntp:
+  servers:
+    - 10.20.30.2
+    - 10.20.30.3
+  timezone: UTC

@@ -4,7 +4,9 @@ import path from "node:path";
 
 const packageDirArg = process.argv[2];
 if (!packageDirArg) {
-  console.error("Usage: node scripts/flatten-tsc-package-output.mjs <package-dir>");
+  console.error(
+    "Usage: node scripts/flatten-tsc-package-output.mjs <package-dir>",
+  );
   process.exit(1);
 }
 

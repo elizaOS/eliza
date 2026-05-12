@@ -3,8 +3,10 @@
 Mirrors ``packages/benchmarks/lib/src/model-tiers.ts``. Keep the four tier
 names (``small`` / ``mid`` / ``large`` / ``frontier``) and the override env
 var names (``MODEL_NAME_OVERRIDE`` / ``MODEL_BASE_URL_OVERRIDE`` /
-``MODEL_BUNDLE_OVERRIDE``) in lockstep with the TS module — every harness in
-the pipeline reads from the same env contract.
+``MODEL_BUNDLE_OVERRIDE``) in lockstep with the TS module. Direct orchestrator
+runs also export ``BENCHMARK_MODEL_NAME`` / ``MODEL_NAME`` / ``CEREBRAS_MODEL``;
+those are accepted as lower-priority aliases so LifeOps rows use the same
+requested model as the standard benchmark adapters.
 """
 
 from __future__ import annotations
@@ -23,6 +25,12 @@ ModelTierProvider = Literal[
 ]
 
 _VALID_TIERS: frozenset[str] = frozenset({"small", "mid", "large", "frontier"})
+_MODEL_NAME_ENV_PRIORITY: tuple[str, ...] = (
+    "MODEL_NAME_OVERRIDE",
+    "BENCHMARK_MODEL_NAME",
+    "MODEL_NAME",
+    "CEREBRAS_MODEL",
+)
 
 
 @dataclass(frozen=True)
@@ -40,16 +48,16 @@ DEFAULT_TIERS: dict[ModelTier, TierSpec] = {
     "small": TierSpec(
         tier="small",
         provider="local-llama-cpp",
-        model_name="qwen3-0.6b-q8_0",
-        bundle_path="~/.eliza/local-inference/models/eliza-1-0.6b.bundle",
+        model_name="qwen3-0.8b-q8_0",
+        bundle_path="~/.eliza/local-inference/models/eliza-1-0.8b.bundle",
         context_window=32_768,
         notes="Tier-A smoke lane; dflash fork or Ollama fallback",
     ),
     "mid": TierSpec(
         tier="mid",
         provider="local-llama-cpp",
-        model_name="qwen3-1.7b-q4_k_m",
-        bundle_path="~/.eliza/local-inference/models/eliza-1-1.7b.bundle",
+        model_name="qwen3-2b-q4_k_m",
+        bundle_path="~/.eliza/local-inference/models/eliza-1-2b.bundle",
         context_window=65_536,
         notes="Tier-B manual/scheduled",
     ),
@@ -88,7 +96,7 @@ def resolve_tier(env: Optional[Mapping[str, str]] = None) -> TierSpec:
 
     base = DEFAULT_TIERS[tier_key]
 
-    name_override = (env_map.get("MODEL_NAME_OVERRIDE") or "").strip() or None
+    name_override = _first_env_value(env_map, _MODEL_NAME_ENV_PRIORITY)
     base_url_override = (env_map.get("MODEL_BASE_URL_OVERRIDE") or "").strip() or None
     bundle_override = (env_map.get("MODEL_BUNDLE_OVERRIDE") or "").strip() or None
 
@@ -101,6 +109,15 @@ def resolve_tier(env: Optional[Mapping[str, str]] = None) -> TierSpec:
         context_window=base.context_window,
         notes=base.notes,
     )
+
+
+def _first_env_value(env_map: Mapping[str, str], keys: tuple[str, ...]) -> Optional[str]:
+    """Return the first non-empty environment value in priority order."""
+    for key in keys:
+        value = (env_map.get(key) or "").strip()
+        if value:
+            return value
+    return None
 
 
 __all__ = [

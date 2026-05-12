@@ -3,7 +3,7 @@
 # (multi-arch build is the same .cu set + same kernel definitions; per-kernel
 # symbol count is independent of arch).
 
-QJL family: 9 symbols (was 0 in v0.3.0-milady per W3-D's audit)
+QJL family: 9 symbols (was 0 in v0.3.0-eliza per W3-D's audit)
   T attn_score_qjl_cuda
   T dequantize_row_qjl1_256_cuda
   T quantize_row_qjl1_256_cuda
@@ -14,7 +14,7 @@ QJL family: 9 symbols (was 0 in v0.3.0-milady per W3-D's audit)
   T _Z61__device_stub__Z19qjl_quantize_kernel...
   T _Z63__device_stub__Z21qjl_dequantize_kernel...
 
-Polar family: 10 symbols (was 0 in v0.3.0-milady)
+Polar family: 10 symbols (was 0 in v0.3.0-eliza)
   T dequantize_row_q4_polar_cuda
   T get_rows_q4_polar_cuda
   T mul_mat_q4_polar_q8_0_cuda
@@ -26,7 +26,7 @@ Polar family: 10 symbols (was 0 in v0.3.0-milady)
   W _Z23polar_dequantize_kernelIfE...
   b _ZL25k_polar_q4_centroids_cuda                            # __constant__ table
 
-TBQ3_TCQ family: 7 symbols (was 0 in v0.3.0-milady)
+TBQ3_TCQ family: 7 symbols (was 0 in v0.3.0-eliza)
   T dequantize_row_tbq3_tcq_cuda
   T mul_mat_tbq3_tcq_q8_0_cuda
   T _Z23tbq3_tcq_mul_mat_kernel...

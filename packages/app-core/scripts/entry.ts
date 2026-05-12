@@ -2,7 +2,7 @@
 /**
  * Thin shim that defers to the real CLI entry at ../src/entry.ts.
  *
- * The Milady root `start:eliza` script invokes this path via
+ * The Eliza root `start:eliza` script invokes this path via
  * `node scripts/run-eliza-app-core-script.mjs entry.ts start`, which expects
  * the file to live under `<app-core>/scripts/`. The actual implementation
  * lives at `src/entry.ts` (built into `dist/entry.js`); keeping this shim

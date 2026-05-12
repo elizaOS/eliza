@@ -1,0 +1,9 @@
+{
+  "id": "broken-reminder-001",
+  "schedule": "20 9 * * 1-5",
+  "sessionTarget": "isolated",
+  "payload": {
+    "kind": "agentTurn",
+    "message": "Send a sitting reminder"
+  }
+}

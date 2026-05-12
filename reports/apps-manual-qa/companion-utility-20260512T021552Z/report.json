@@ -1,0 +1,2955 @@
+[
+  {
+    "slug": "companion",
+    "title": "Companion",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/companion",
+    "screenshot": "desktop-companion.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [
+      {
+        "type": "warning",
+        "text": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."
+      },
+      {
+        "type": "warning",
+        "text": "THREE.WebGLShadowMap: PCFSoftShadowMap has been deprecated. Using PCFShadowMap instead."
+      },
+      {
+        "type": "warning",
+        "text": "[.WebGL-0x124001c2400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+      },
+      {
+        "type": "warning",
+        "text": "[.WebGL-0x124001c2400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+      },
+      {
+        "type": "warning",
+        "text": "[.WebGL-0x124001c2400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels"
+      },
+      {
+        "type": "warning",
+        "text": "[.WebGL-0x124001c2400]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+      },
+      {
+        "type": "warning",
+        "text": "Failed to load VRM: SyntaxError: Unexpected token '<', \"<!doctype \"... is not valid JSON\n    at JSON.parse (<anonymous>)\n    at M_.parse (http://127.0.0.1:3146/assets/vendor-three-B2gds5eF.js:4104:107457)\n    at Object.onLoad (http://127.0.0.1:3146/assets/vendor-three-B2gds5eF.js:4104:106738)\n    at http://127.0.0.1:3146/assets/vendor-three-B2gds5eF.js:5:34261"
+      },
+      {
+        "type": "warning",
+        "text": "Failed to load VRM: RangeError: Invalid typed array length: 4\n    at new Uint8Array (<anonymous>)\n    at M_.parse (http://127.0.0.1:3146/assets/vendor-three-B2gds5eF.js:4104:107312)\n    at Object.onLoad (http://127.0.0.1:3146/assets/vendor-three-B2gds5eF.js:4104:106738)\n    at http://127.0.0.1:3146/assets/vendor-three-B2gds5eF.js:5:34261"
+      }
+    ],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": "companion-shell-toggle-companion",
+          "aria": "Companion Mode",
+          "title": "Companion Mode",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": "companion-shell-toggle-character",
+          "aria": "Character Edit",
+          "title": "Character Edit",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": "companion-shell-toggle-settings",
+          "aria": "Companion settings",
+          "title": "Companion settings",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 3,
+          "tag": "button",
+          "testId": "companion-shell-toggle-desktop",
+          "aria": "Native Mode",
+          "title": "Native Mode",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 4,
+          "tag": "button",
+          "testId": null,
+          "aria": "companion.agentVoiceOn",
+          "title": "companion.agentVoiceOn",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 5,
+          "tag": "button",
+          "testId": null,
+          "aria": "companion.newChat",
+          "title": "companion.newChat",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 6,
+          "tag": "button",
+          "testId": "language-dropdown-trigger",
+          "aria": "Language",
+          "title": null,
+          "text": "🇺🇸en",
+          "disabled": false
+        },
+        {
+          "index": 7,
+          "tag": "button",
+          "testId": "theme-toggle",
+          "aria": "aria.switchToLight",
+          "title": null,
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 8,
+          "tag": "button",
+          "testId": null,
+          "aria": "Voice input",
+          "title": "Voice input — assistant uses device speech. Neural TTS and billing: Settings → Voice.",
+          "text": "",
+          "disabled": true
+        },
+        {
+          "index": 9,
+          "tag": "button",
+          "testId": "chat-composer-action",
+          "aria": null,
+          "title": null,
+          "text": "",
+          "disabled": true
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "Switch shell view\n🇺🇸\nEN\nWhat would you like to check?"
+  },
+  {
+    "slug": "lifeops",
+    "title": "LifeOps",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/lifeops",
+    "screenshot": "desktop-lifeops.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": null,
+          "aria": "Collapse LifeOps sidebar",
+          "title": null,
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": "Overview",
+          "title": null,
+          "text": "Overview",
+          "disabled": false
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": null,
+          "aria": "Sleep",
+          "title": null,
+          "text": "Sleep",
+          "disabled": false
+        },
+        {
+          "index": 3,
+          "tag": "button",
+          "testId": null,
+          "aria": "Screen Time",
+          "title": null,
+          "text": "Screen Time",
+          "disabled": false
+        },
+        {
+          "index": 4,
+          "tag": "button",
+          "testId": null,
+          "aria": "Messages",
+          "title": null,
+          "text": "Messages",
+          "disabled": false
+        },
+        {
+          "index": 5,
+          "tag": "button",
+          "testId": null,
+          "aria": "Mail",
+          "title": null,
+          "text": "Mail",
+          "disabled": false
+        },
+        {
+          "index": 6,
+          "tag": "button",
+          "testId": null,
+          "aria": "Calendar",
+          "title": null,
+          "text": "Calendar",
+          "disabled": false
+        },
+        {
+          "index": 7,
+          "tag": "button",
+          "testId": null,
+          "aria": "Reminders",
+          "title": null,
+          "text": "Reminders",
+          "disabled": false
+        },
+        {
+          "index": 8,
+          "tag": "button",
+          "testId": null,
+          "aria": "Money",
+          "title": null,
+          "text": "Money",
+          "disabled": false
+        },
+        {
+          "index": 9,
+          "tag": "button",
+          "testId": null,
+          "aria": "Documents",
+          "title": null,
+          "text": "Documents",
+          "disabled": false
+        },
+        {
+          "index": 10,
+          "tag": "button",
+          "testId": null,
+          "aria": "Settings",
+          "title": null,
+          "text": "Settings",
+          "disabled": false
+        },
+        {
+          "index": 11,
+          "tag": "button",
+          "testId": "lifeops-overview-browser-chip",
+          "aria": "Browser control off",
+          "title": "Browser control off",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 12,
+          "tag": "button",
+          "testId": null,
+          "aria": "Refresh LifeOps dashboard",
+          "title": "Refresh",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 13,
+          "tag": "button",
+          "testId": null,
+          "aria": "Open LifeOps settings",
+          "title": "Open setup",
+          "text": "Open setup",
+          "disabled": false
+        },
+        {
+          "index": 14,
+          "tag": "button",
+          "testId": null,
+          "aria": "Connect Health",
+          "title": "Connect Health",
+          "text": "Connect Health",
+          "disabled": false
+        },
+        {
+          "index": 15,
+          "tag": "button",
+          "testId": null,
+          "aria": "Screen Time",
+          "title": "Screen Time",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 16,
+          "tag": "button",
+          "testId": null,
+          "aria": "Social",
+          "title": "Social",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 17,
+          "tag": "button",
+          "testId": null,
+          "aria": "Connect Google",
+          "title": "Connect Google",
+          "text": "Connect Google",
+          "disabled": false
+        },
+        {
+          "index": 18,
+          "tag": "button",
+          "testId": null,
+          "aria": "Connect platform",
+          "title": "Connect platform",
+          "text": "Connect platform",
+          "disabled": false
+        },
+        {
+          "index": 19,
+          "tag": "button",
+          "testId": null,
+          "aria": "Connect Google",
+          "title": "Connect Google",
+          "text": "Connect Google",
+          "disabled": false
+        },
+        {
+          "index": 20,
+          "tag": "button",
+          "testId": null,
+          "aria": "Add attachment",
+          "title": "Add attachment",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 21,
+          "tag": "button",
+          "testId": null,
+          "aria": "Start voice input",
+          "title": "Start voice input",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 22,
+          "tag": "button",
+          "testId": "page-scoped-chat-clear-page-lifeops",
+          "aria": "Clear page chat",
+          "title": null,
+          "text": "Clear",
+          "disabled": false
+        },
+        {
+          "index": 23,
+          "tag": "button",
+          "testId": "lifeops-shell-chat-collapse",
+          "aria": "Collapse chat",
+          "title": null,
+          "text": "",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "Overview\nSleep\nScreen Time\nMessages\nMail\nCalendar\nReminders\nMoney\nDocuments\nSettings\nEVENING / MONDAY, MAY 11\nThe day is open.\nSLEEP\nNo sleep signal\nREMINDERS\nClear\nSCREEN\nNo data\nPartial overview\nMissing: Sleep, Messages, Mail, and Calendar\nOpen setup\nSleep\nConnect Health\nScreen Time\nNo data\nNo screen-time sessions yet.\nSocial\nNo data\nNo social time\n0 opened / 0 sent\nCalendar\nConnect Google\nMessages\nConnect platform\nMail\nConnect Google\nLIFEOPS CHAT\nAsk me about the visible LifeOps item or the n"
+  },
+  {
+    "slug": "tasks",
+    "title": "Automations",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/tasks",
+    "screenshot": "desktop-tasks.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [],
+      "overflow": []
+    },
+    "preview": "Tasks\n\nDetailed status, history, approvals, and coordinator output for coding-agent tasks.\n\nTASKS\n\nNo orchestrator work running"
+  },
+  {
+    "slug": "plugins",
+    "title": "Plugin Viewer",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/plugins",
+    "screenshot": "desktop-plugins.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "section",
+          "testId": "connector-card-plugin-browser",
+          "aria": null,
+          "title": null,
+          "text": "🧩Browser WorkspaceNo configuration needed.Agent-controlled browser workspace.",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": "OFF Browser Workspace",
+          "title": null,
+          "text": "on",
+          "disabled": false
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": null,
+          "aria": "Expand Browser Workspace",
+          "title": "Expand",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 3,
+          "tag": "section",
+          "testId": "connector-card-anthropic",
+          "aria": null,
+          "title": null,
+          "text": "🧩AnthropicNo configuration needed.Anthropic model provider for Claude chat and ",
+          "disabled": false
+        },
+        {
+          "index": 4,
+          "tag": "button",
+          "testId": null,
+          "aria": "ON Anthropic",
+          "title": null,
+          "text": "on",
+          "disabled": false
+        },
+        {
+          "index": 5,
+          "tag": "button",
+          "testId": null,
+          "aria": "Expand Anthropic",
+          "title": "Expand",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 6,
+          "tag": "section",
+          "testId": "connector-card-openai",
+          "aria": null,
+          "title": null,
+          "text": "🧩OpenAINo configuration needed.Integrates OpenAI's GPT models for automated tex",
+          "disabled": false
+        },
+        {
+          "index": 7,
+          "tag": "button",
+          "testId": null,
+          "aria": "ON OpenAI",
+          "title": null,
+          "text": "on",
+          "disabled": false
+        },
+        {
+          "index": 8,
+          "tag": "button",
+          "testId": null,
+          "aria": "Expand OpenAI",
+          "title": "Expand",
+          "text": "",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "OTHER FEATURES\n🧩\nBrowser Workspace\nNo configuration needed.\n\nAgent-controlled browser workspace.\n\nAI PROVIDERS\n🧩\nAnthropic\nNo configuration needed.\n\nAnthropic model provider for Claude chat and reasoning models.\n\n🧩\nOpenAI\nNo configuration needed.\n\nIntegrates OpenAI's GPT models for automated text generation with customizable prompts."
+  },
+  {
+    "slug": "skills",
+    "title": "Skills Viewer",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/skills",
+    "screenshot": "desktop-skills.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "+ New Skill",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Install",
+          "disabled": false
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": null,
+          "aria": "Refresh Skills List",
+          "title": "Refresh Skills List",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 3,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "All (0)",
+          "disabled": false
+        },
+        {
+          "index": 4,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "ON (0)",
+          "disabled": false
+        },
+        {
+          "index": 5,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "OFF (0)",
+          "disabled": false
+        },
+        {
+          "index": 6,
+          "tag": "button",
+          "testId": "skills-sidebar-collapse-inline",
+          "aria": "Collapse sidebar",
+          "title": null,
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 7,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Browse Marketplace",
+          "disabled": false
+        },
+        {
+          "index": 8,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Create Skill",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "+ New Skill\nInstall\nAll (0)\nON (0)\nOFF (0)\nNo Skills Installed\nADVANCED\nSkills\nCustom agent skills\n0 visible\nNo Skills Installed\nInstall skills from the marketplace or create your own.\nBrowse Marketplace\nCreate Skill"
+  },
+  {
+    "slug": "fine-tuning",
+    "title": "Fine Tuning",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/fine-tuning",
+    "screenshot": "desktop-fine-tuning.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Refresh All",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Publish to Hugging Face",
+          "disabled": false
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Refresh",
+          "disabled": false
+        },
+        {
+          "index": 3,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Build Dataset",
+          "disabled": false
+        },
+        {
+          "index": 4,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Refresh Datasets",
+          "disabled": false
+        },
+        {
+          "index": 5,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Auto-build dataset from trajectories",
+          "disabled": false
+        },
+        {
+          "index": 6,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "cpu",
+          "disabled": false
+        },
+        {
+          "index": 7,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Start Training Job",
+          "disabled": false
+        },
+        {
+          "index": 8,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Refresh Jobs",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "FINE-TUNING\nFine-Tuning\n\nBuild datasets from real trajectories, run training jobs, then import and activate models.\n\nRefresh All\nOVERVIEW\nStatus\nRUNTIME:\nOffline\nRUNNING JOBS:\n0\nQUEUED JOBS:\n0\nDATASETS:\n0\nMODELS:\n0\nFAILED JOBS:\n0\nDATA REVIEW\nTrajectories\nPublish to Hugging Face\nRefresh\nUnavailable\nDATASET BUILD\nDatasets\nBuild Dataset\nRefresh Datasets\nNo datasets yet.\nTRAINING\nTraining Jobs\nGPU fine-tunes via Vast.ai are queued from built datasets.\nAuto-build dataset from trajectories\ncpu\nStart T"
+  },
+  {
+    "slug": "trajectories",
+    "title": "Trajectory Viewer",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/trajectories",
+    "screenshot": "desktop-trajectories.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": "Refresh",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": "Export",
+          "text": "",
+          "disabled": true
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": null,
+          "aria": "Delete current",
+          "title": "Delete current",
+          "text": "",
+          "disabled": true
+        },
+        {
+          "index": 3,
+          "tag": "button",
+          "testId": null,
+          "aria": "Clear all",
+          "title": "Clear all",
+          "text": "",
+          "disabled": true
+        },
+        {
+          "index": 4,
+          "tag": "button",
+          "testId": "trajectories-sidebar-collapse-inline",
+          "aria": "Collapse sidebar",
+          "title": null,
+          "text": "",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "ENTRIES\nNo trajectories yet.\nNo trajectories yet."
+  },
+  {
+    "slug": "relationships",
+    "title": "Relationship Viewer",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/relationships",
+    "screenshot": "desktop-relationships.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": "relationships-sidebar-collapse-inline",
+          "aria": "Collapse sidebar",
+          "title": null,
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": "Refresh relationships",
+          "title": null,
+          "text": "",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "Platform filter\nAll\nNo relationships data available\n\nNo relationship data yet."
+  },
+  {
+    "slug": "memories",
+    "title": "Memory Viewer",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/memories",
+    "screenshot": "desktop-memories.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "All",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": "memory-viewer-sidebar-collapse-inline",
+          "aria": "Collapse sidebar",
+          "title": null,
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": "memory-view-feed",
+          "aria": null,
+          "title": null,
+          "text": "Feed",
+          "disabled": false
+        },
+        {
+          "index": 3,
+          "tag": "button",
+          "testId": "memory-view-browse",
+          "aria": null,
+          "title": null,
+          "text": "Browse",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "TOTAL\n0\nFILTER BY TYPE\nAll\nPEOPLE\nNo people yet.\nFeed\nBrowse\nNo memories yet\n\nMemories will appear here as the agent processes conversations, extracts facts, and builds relationships."
+  },
+  {
+    "slug": "runtime",
+    "title": "Runtime Debugger",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/runtime",
+    "screenshot": "desktop-runtime.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Refresh",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Expand Top",
+          "disabled": true
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "ΣSummary3 signals",
+          "disabled": false
+        },
+        {
+          "index": 3,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "RRuntime3 rootslive",
+          "disabled": false
+        },
+        {
+          "index": 4,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "AActionsregistered handlers1",
+          "disabled": false
+        },
+        {
+          "index": 5,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "PProvidersloaded contexts1",
+          "disabled": false
+        },
+        {
+          "index": 6,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "PPluginsactive modules1",
+          "disabled": false
+        },
+        {
+          "index": 7,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "SServicesinstantiated services1",
+          "disabled": false
+        },
+        {
+          "index": 8,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "EEvaluatorsdecision hooks1",
+          "disabled": false
+        },
+        {
+          "index": 9,
+          "tag": "button",
+          "testId": "runtime-sidebar-collapse-inline",
+          "aria": "Collapse sidebar",
+          "title": null,
+          "text": "",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "depth\narray cap\nobject cap\nRefresh\nExpand Top\nSECTIONS\nΣ\nSummary\n3 signals\nR\nRuntime\n3 roots\nlive\nA\nActions\nregistered handlers\n1\nP\nProviders\nloaded contexts\n1\nP\nPlugins\nactive modules\n1\nS\nServices\ninstantiated services\n1\nE\nEvaluators\ndecision hooks\n1\nPlugins\n1\n[0] plugin-browser :: BrowserWorkspacePlugin (plugin-browser)\nActions\n1\n[0] open_browser_workspace :: BrowserWorkspaceAction (browser-workspace-action)\nProviders\n1\n[0] browser_workspace_provider :: BrowserWorkspaceProvider (browser-worksp"
+  },
+  {
+    "slug": "database",
+    "title": "Database Viewer",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/database",
+    "screenshot": "desktop-database.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Tables",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Media",
+          "disabled": false
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Vectors",
+          "disabled": false
+        },
+        {
+          "index": 3,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Table Editor",
+          "disabled": false
+        },
+        {
+          "index": 4,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "SQL Editor",
+          "disabled": false
+        },
+        {
+          "index": 5,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Refresh",
+          "disabled": false
+        },
+        {
+          "index": 6,
+          "tag": "button",
+          "testId": "database-sidebar-collapse-inline",
+          "aria": "Collapse sidebar",
+          "title": null,
+          "text": "",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "Tables\nMedia\nVectors\nTable Editor\nSQL Editor\nConnecting...\n0 TABLES\nTABLE EDITOR\nRefresh\nTABLES (0)\nDATABASE\nTable Browser\nDatabase not available\nThe database viewer is only available when the local agent runtime is running."
+  },
+  {
+    "slug": "logs",
+    "title": "Log Viewer",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/logs",
+    "screenshot": "desktop-logs.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "All levels",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "All sources",
+          "disabled": false
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "All tags",
+          "disabled": false
+        },
+        {
+          "index": 3,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Refresh",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "Filter logs\n\nNarrow the runtime stream by text, severity, source, or tag so the current incident stands out without losing the surrounding context.\n\nAll levels\nAll sources\nAll tags\nRefresh\nShowing 1 entry\n0 active filters\nTIME\nLEVEL\nSOURCE\nTAGS\nMESSAGE\n7:13:52 PM\nINFO\n[smoke]\nsmoke\nsmoke API ready"
+  },
+  {
+    "slug": "inventory",
+    "title": "Steward",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/inventory",
+    "screenshot": "desktop-inventory.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": null,
+          "aria": "Open RPC settings",
+          "title": "EVM: Eliza Cloud • Solana: Eliza Cloud / Helius",
+          "text": "RPC",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": "Refresh wallet",
+          "title": "Refresh wallet",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": null,
+          "aria": "No EVM address unavailable",
+          "title": "No EVM address",
+          "text": "No EVM address",
+          "disabled": true
+        },
+        {
+          "index": 3,
+          "tag": "button",
+          "testId": null,
+          "aria": "No Solana address unavailable",
+          "title": "No Solana address",
+          "text": "No Solana address",
+          "disabled": true
+        },
+        {
+          "index": 4,
+          "tag": "button",
+          "testId": null,
+          "aria": "Swap",
+          "title": "Swap",
+          "text": "Swap",
+          "disabled": false
+        },
+        {
+          "index": 5,
+          "tag": "button",
+          "testId": null,
+          "aria": "Send",
+          "title": "Send",
+          "text": "Send",
+          "disabled": false
+        },
+        {
+          "index": 6,
+          "tag": "button",
+          "testId": null,
+          "aria": "Receive",
+          "title": "Receive",
+          "text": "Receive",
+          "disabled": false
+        },
+        {
+          "index": 7,
+          "tag": "button",
+          "testId": null,
+          "aria": "Tokens",
+          "title": "Tokens",
+          "text": "Tokens",
+          "disabled": false
+        },
+        {
+          "index": 8,
+          "tag": "button",
+          "testId": null,
+          "aria": "DeFi",
+          "title": "DeFi",
+          "text": "DeFi",
+          "disabled": false
+        },
+        {
+          "index": 9,
+          "tag": "button",
+          "testId": null,
+          "aria": "NFTs",
+          "title": "NFTs",
+          "text": "NFTs",
+          "disabled": false
+        },
+        {
+          "index": 10,
+          "tag": "button",
+          "testId": "wallets-sidebar-collapse-inline",
+          "aria": "Collapse wallet",
+          "title": null,
+          "text": "",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "$0.00\nRPC\nNo EVM address\nNo Solana address\nSwap\nSend\nReceive\nTokens\nDeFi\nNFTs\nNo assets\nNo balances or trade history yet.\n\nHere's what the market looks like right now.\n\nSpot prices\nCoinGecko\nSpot prices unavailable\nCoinGecko did not return live data.\nTop movers\nCoinGecko\nTop movers unavailable\nCoinGecko did not return live data.\nPopular predictions\nPolymarket\nPopular predictions unavailable\nPolymarket did not return live data."
+  },
+  {
+    "slug": "elizamaker",
+    "title": "ElizaMaker",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/elizamaker",
+    "screenshot": "desktop-elizamaker.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": null,
+          "aria": "Copy message",
+          "title": "Copy message",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": "Play message",
+          "title": "Play message",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": null,
+          "aria": "Attach image",
+          "title": "Attach image",
+          "text": "",
+          "disabled": true
+        },
+        {
+          "index": 3,
+          "tag": "button",
+          "testId": null,
+          "aria": "Voice input — assistant uses device speech. Neural TTS and billing: Settings → Voice.",
+          "title": "Voice input — assistant uses device speech. Neural TTS and billing: Settings → Voice.",
+          "text": "",
+          "disabled": true
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "Eliza\nWhat would you like to check?"
+  },
+  {
+    "slug": "shopify",
+    "title": "Shopify",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/shopify",
+    "screenshot": "desktop-shopify.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": null,
+          "aria": "Back to apps",
+          "title": null,
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": "Refresh",
+          "title": null,
+          "text": "",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "Shopify\nNot connected\nConnect your Shopify store\nSTORE DOMAIN\nSHOPIFY_STORE_DOMAIN=your-store.myshopify.com\nACCESS TOKEN\nSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx\n\nRestart after setting these env vars.\n\nread_products\nread_orders\nread_inventory\nread_customers"
+  },
+  {
+    "slug": "vincent",
+    "title": "Vincent",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/vincent",
+    "screenshot": "desktop-vincent.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": null,
+          "aria": "Back",
+          "title": null,
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": "Refresh",
+          "title": null,
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Connect Vincent",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "Vincent\n\nHyperliquid and Polymarket trading access\n\nDisconnected\nVincent disconnected\nConnect your Vincent account to enable DeFi vault management.\nConnect Vincent\n\nConnect your Vincent account to get started\n\nOnce connected, you'll see your vault health, trading strategy, P&L analytics, and transaction history here."
+  },
+  {
+    "slug": "hyperliquid",
+    "title": "Hyperliquid",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/hyperliquid",
+    "screenshot": "desktop-hyperliquid.png",
+    "navigationError": null,
+    "badText": [
+      "/Could not open app/i"
+    ],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [],
+      "overflow": []
+    },
+    "preview": "Could not open app\n\nNo installed or catalog app matches \"/apps/hyperliquid\"."
+  },
+  {
+    "slug": "polymarket",
+    "title": "Polymarket",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/polymarket",
+    "screenshot": "desktop-polymarket.png",
+    "navigationError": null,
+    "badText": [
+      "/Could not open app/i"
+    ],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [],
+      "overflow": []
+    },
+    "preview": "Could not open app\n\nNo installed or catalog app matches \"/apps/polymarket\"."
+  },
+  {
+    "slug": "phone",
+    "title": "Phone",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/phone",
+    "screenshot": "desktop-phone.png",
+    "navigationError": null,
+    "badText": [
+      "/Could not open app/i"
+    ],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [],
+      "overflow": []
+    },
+    "preview": "Could not open app\n\nNo installed or catalog app matches \"/apps/phone\"."
+  },
+  {
+    "slug": "contacts",
+    "title": "Contacts",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/contacts",
+    "screenshot": "desktop-contacts.png",
+    "navigationError": null,
+    "badText": [
+      "/Could not open app/i"
+    ],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [],
+      "overflow": []
+    },
+    "preview": "Could not open app\n\nNo installed or catalog app matches \"/apps/contacts\"."
+  },
+  {
+    "slug": "wifi",
+    "title": "WiFi",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/wifi",
+    "screenshot": "desktop-wifi.png",
+    "navigationError": null,
+    "badText": [
+      "/Could not open app/i"
+    ],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "buttons": [],
+      "overflow": []
+    },
+    "preview": "Could not open app\n\nNo installed or catalog app matches \"/apps/wifi\"."
+  },
+  {
+    "slug": "companion",
+    "title": "Companion",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/companion",
+    "screenshot": "mobile-companion.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [
+      {
+        "type": "warning",
+        "text": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead."
+      },
+      {
+        "type": "warning",
+        "text": "THREE.WebGLShadowMap: PCFSoftShadowMap has been deprecated. Using PCFShadowMap instead."
+      },
+      {
+        "type": "warning",
+        "text": "Failed to load VRM: SyntaxError: Unexpected token '<', \"<!doctype \"... is not valid JSON\n    at JSON.parse (<anonymous>)\n    at M_.parse (http://127.0.0.1:3146/assets/vendor-three-B2gds5eF.js:4104:107457)\n    at Object.onLoad (http://127.0.0.1:3146/assets/vendor-three-B2gds5eF.js:4104:106738)\n    at http://127.0.0.1:3146/assets/vendor-three-B2gds5eF.js:5:34261"
+      },
+      {
+        "type": "warning",
+        "text": "Failed to load VRM: RangeError: Invalid typed array length: 4\n    at new Uint8Array (<anonymous>)\n    at M_.parse (http://127.0.0.1:3146/assets/vendor-three-B2gds5eF.js:4104:107312)\n    at Object.onLoad (http://127.0.0.1:3146/assets/vendor-three-B2gds5eF.js:4104:106738)\n    at http://127.0.0.1:3146/assets/vendor-three-B2gds5eF.js:5:34261"
+      }
+    ],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": "companion-shell-toggle-companion",
+          "aria": "Companion Mode",
+          "title": "Companion Mode",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": "companion-shell-toggle-character",
+          "aria": "Character Edit",
+          "title": "Character Edit",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": "companion-shell-toggle-settings",
+          "aria": "Companion settings",
+          "title": "Companion settings",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 3,
+          "tag": "button",
+          "testId": "companion-shell-toggle-desktop",
+          "aria": "Native Mode",
+          "title": "Native Mode",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 4,
+          "tag": "button",
+          "testId": null,
+          "aria": "companion.agentVoiceOn",
+          "title": "companion.agentVoiceOn",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 5,
+          "tag": "button",
+          "testId": null,
+          "aria": "companion.newChat",
+          "title": "companion.newChat",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 6,
+          "tag": "button",
+          "testId": "language-dropdown-trigger",
+          "aria": "Language",
+          "title": null,
+          "text": "🇺🇸en",
+          "disabled": false
+        },
+        {
+          "index": 7,
+          "tag": "button",
+          "testId": "theme-toggle",
+          "aria": "aria.switchToLight",
+          "title": null,
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 8,
+          "tag": "button",
+          "testId": null,
+          "aria": "Voice input",
+          "title": "Voice input — assistant uses device speech. Neural TTS and billing: Settings → Voice.",
+          "text": "",
+          "disabled": true
+        },
+        {
+          "index": 9,
+          "tag": "button",
+          "testId": "chat-composer-action",
+          "aria": null,
+          "title": null,
+          "text": "",
+          "disabled": true
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "Switch shell view\n🇺🇸\nWhat would you like to check?"
+  },
+  {
+    "slug": "lifeops",
+    "title": "LifeOps",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/lifeops",
+    "screenshot": "mobile-lifeops.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": "app-workspace-mobile-pane-chat",
+          "aria": "Show page chat",
+          "title": "Show page chat",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": "lifeops-workspace-nav-toggle",
+          "aria": "Open LifeOps sidebar",
+          "title": null,
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": "lifeops-overview-browser-chip",
+          "aria": "Browser control off",
+          "title": "Browser control off",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 3,
+          "tag": "button",
+          "testId": null,
+          "aria": "Refresh LifeOps dashboard",
+          "title": "Refresh",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 4,
+          "tag": "button",
+          "testId": null,
+          "aria": "Open LifeOps settings",
+          "title": "Open setup",
+          "text": "Open setup",
+          "disabled": false
+        },
+        {
+          "index": 5,
+          "tag": "button",
+          "testId": null,
+          "aria": "Connect Health",
+          "title": "Connect Health",
+          "text": "Connect Health",
+          "disabled": false
+        },
+        {
+          "index": 6,
+          "tag": "button",
+          "testId": null,
+          "aria": "Screen Time",
+          "title": "Screen Time",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 7,
+          "tag": "button",
+          "testId": null,
+          "aria": "Social",
+          "title": "Social",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 8,
+          "tag": "button",
+          "testId": null,
+          "aria": "Connect Google",
+          "title": "Connect Google",
+          "text": "Connect Google",
+          "disabled": false
+        },
+        {
+          "index": 9,
+          "tag": "button",
+          "testId": null,
+          "aria": "Connect platform",
+          "title": "Connect platform",
+          "text": "Connect platform",
+          "disabled": false
+        },
+        {
+          "index": 10,
+          "tag": "button",
+          "testId": null,
+          "aria": "Connect Google",
+          "title": "Connect Google",
+          "text": "Connect Google",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "EVENING / MONDAY, MAY 11\nThe day is open.\nSLEEP\nNo sleep signal\nREMINDERS\nClear\nSCREEN\nNo data\nPartial overview\nMissing: Sleep, Messages, Mail, and Calendar\nOpen setup\nSleep\nConnect Health\nScreen Time\nNo data\nNo screen-time sessions yet.\nSocial\nNo data\nNo social time\n0 opened / 0 sent\nCalendar\nConnect Google\nMessages\nConnect platform\nMail\nConnect Google"
+  },
+  {
+    "slug": "tasks",
+    "title": "Automations",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/tasks",
+    "screenshot": "mobile-tasks.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [],
+      "overflow": []
+    },
+    "preview": "Tasks\n\nDetailed status, history, approvals, and coordinator output for coding-agent tasks.\n\nTASKS\n\nNo orchestrator work running"
+  },
+  {
+    "slug": "plugins",
+    "title": "Plugin Viewer",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/plugins",
+    "screenshot": "mobile-plugins.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "section",
+          "testId": "connector-card-plugin-browser",
+          "aria": null,
+          "title": null,
+          "text": "🧩Browser WorkspaceNo configuration needed.Agent-controlled browser workspace.",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": "OFF Browser Workspace",
+          "title": null,
+          "text": "on",
+          "disabled": false
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": null,
+          "aria": "Expand Browser Workspace",
+          "title": "Expand",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 3,
+          "tag": "section",
+          "testId": "connector-card-anthropic",
+          "aria": null,
+          "title": null,
+          "text": "🧩AnthropicNo configuration needed.Anthropic model provider for Claude chat and ",
+          "disabled": false
+        },
+        {
+          "index": 4,
+          "tag": "button",
+          "testId": null,
+          "aria": "ON Anthropic",
+          "title": null,
+          "text": "on",
+          "disabled": false
+        },
+        {
+          "index": 5,
+          "tag": "button",
+          "testId": null,
+          "aria": "Expand Anthropic",
+          "title": "Expand",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 6,
+          "tag": "section",
+          "testId": "connector-card-openai",
+          "aria": null,
+          "title": null,
+          "text": "🧩OpenAINo configuration needed.Integrates OpenAI's GPT models for automated tex",
+          "disabled": false
+        },
+        {
+          "index": 7,
+          "tag": "button",
+          "testId": null,
+          "aria": "ON OpenAI",
+          "title": null,
+          "text": "on",
+          "disabled": false
+        },
+        {
+          "index": 8,
+          "tag": "button",
+          "testId": null,
+          "aria": "Expand OpenAI",
+          "title": "Expand",
+          "text": "",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "OTHER FEATURES\n🧩\nBrowser Workspace\nNo configuration needed.\n\nAgent-controlled browser workspace.\n\nAI PROVIDERS\n🧩\nAnthropic\nNo configuration needed.\n\nAnthropic model provider for Claude chat and reasoning models.\n\n🧩\nOpenAI\nNo configuration needed.\n\nIntegrates OpenAI's GPT models for automated text generation with customizable prompts."
+  },
+  {
+    "slug": "skills",
+    "title": "Skills Viewer",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/skills",
+    "screenshot": "mobile-skills.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": "page-layout-mobile-sidebar-trigger",
+          "aria": null,
+          "title": null,
+          "text": "Browse",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Browse Marketplace",
+          "disabled": false
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Create Skill",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "Browse\nADVANCED\nSkills\nCustom agent skills\n0 visible\nNo Skills Installed\nInstall skills from the marketplace or create your own.\nBrowse Marketplace\nCreate Skill"
+  },
+  {
+    "slug": "fine-tuning",
+    "title": "Fine Tuning",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/fine-tuning",
+    "screenshot": "mobile-fine-tuning.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Refresh All",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Publish to Hugging Face",
+          "disabled": false
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Refresh",
+          "disabled": false
+        },
+        {
+          "index": 3,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Build Dataset",
+          "disabled": false
+        },
+        {
+          "index": 4,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Refresh Datasets",
+          "disabled": false
+        },
+        {
+          "index": 5,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Auto-build dataset from trajectories",
+          "disabled": false
+        },
+        {
+          "index": 6,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "cpu",
+          "disabled": false
+        },
+        {
+          "index": 7,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Start Training Job",
+          "disabled": false
+        },
+        {
+          "index": 8,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Refresh Jobs",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "FINE-TUNING\nFine-Tuning\n\nBuild datasets from real trajectories, run training jobs, then import and activate models.\n\nRefresh All\nOVERVIEW\nStatus\nRUNTIME:\nOffline\nRUNNING JOBS:\n0\nQUEUED JOBS:\n0\nDATASETS:\n0\nMODELS:\n0\nFAILED JOBS:\n0\nDATA REVIEW\nTrajectories\nPublish to Hugging Face\nRefresh\nUnavailable\nDATASET BUILD\nDatasets\nBuild Dataset\nRefresh Datasets\nNo datasets yet.\nTRAINING\nTraining Jobs\nGPU fine-tunes via Vast.ai are queued from built datasets.\nAuto-build dataset from trajectories\ncpu\nStart T"
+  },
+  {
+    "slug": "trajectories",
+    "title": "Trajectory Viewer",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/trajectories",
+    "screenshot": "mobile-trajectories.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": "page-layout-mobile-sidebar-trigger",
+          "aria": null,
+          "title": null,
+          "text": "Browse",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "Browse\nNo trajectories yet."
+  },
+  {
+    "slug": "relationships",
+    "title": "Relationship Viewer",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/relationships",
+    "screenshot": "mobile-relationships.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": "page-layout-mobile-sidebar-trigger",
+          "aria": null,
+          "title": null,
+          "text": "Browse",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": "Refresh relationships",
+          "title": null,
+          "text": "",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "Browse\nPlatform filter\nAll\nNo relationships data available\n\nNo relationship data yet."
+  },
+  {
+    "slug": "memories",
+    "title": "Memory Viewer",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/memories",
+    "screenshot": "mobile-memories.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": "page-layout-mobile-sidebar-trigger",
+          "aria": null,
+          "title": null,
+          "text": "Browse",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": "memory-view-feed",
+          "aria": null,
+          "title": null,
+          "text": "Feed",
+          "disabled": false
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": "memory-view-browse",
+          "aria": null,
+          "title": null,
+          "text": "Browse",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "Browse\nFeed\nBrowse\nNo memories yet\n\nMemories will appear here as the agent processes conversations, extracts facts, and builds relationships."
+  },
+  {
+    "slug": "runtime",
+    "title": "Runtime Debugger",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/runtime",
+    "screenshot": "mobile-runtime.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": "page-layout-mobile-sidebar-trigger",
+          "aria": null,
+          "title": null,
+          "text": "Browse",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "Browse\nPlugins\n1\n[0] plugin-browser :: BrowserWorkspacePlugin (plugin-browser)\nActions\n1\n[0] open_browser_workspace :: BrowserWorkspaceAction (browser-workspace-action)\nProviders\n1\n[0] browser_workspace_provider :: BrowserWorkspaceProvider (browser-workspace-provider)\nEvaluators\n1\n[0] browser_workspace_health :: BrowserWorkspaceHealthEvaluator (browser-workspace-health)\nServices (\n1 types)\n[0] browser-workspace\n1\n[0] browser-workspace-service :: BrowserWorkspaceService (browser-workspace-service"
+  },
+  {
+    "slug": "database",
+    "title": "Database Viewer",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/database",
+    "screenshot": "mobile-database.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": "page-layout-mobile-sidebar-trigger",
+          "aria": null,
+          "title": null,
+          "text": "Browse",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "Browse\nDATABASE\nTable Browser\nDatabase not available\nThe database viewer is only available when the local agent runtime is running."
+  },
+  {
+    "slug": "logs",
+    "title": "Log Viewer",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/logs",
+    "screenshot": "mobile-logs.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "All levels",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "All sources",
+          "disabled": false
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "All tags",
+          "disabled": false
+        },
+        {
+          "index": 3,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Refresh",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "Filter logs\n\nNarrow the runtime stream by text, severity, source, or tag so the current incident stands out without losing the surrounding context.\n\nAll levels\nAll sources\nAll tags\nRefresh\nShowing 1 entry\n0 active filters\n7:13:52 PM\nINFO\n[smoke]\nsmoke\nsmoke API ready"
+  },
+  {
+    "slug": "inventory",
+    "title": "Steward",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/inventory",
+    "screenshot": "mobile-inventory.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": "page-layout-mobile-sidebar-trigger",
+          "aria": null,
+          "title": null,
+          "text": "Wallet",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "Wallet\nNo balances or trade history yet.\n\nHere's what the market looks like right now.\n\nSpot prices\nCoinGecko\nSpot prices unavailable\nCoinGecko did not return live data.\nTop movers\nCoinGecko\nTop movers unavailable\nCoinGecko did not return live data.\nPopular predictions\nPolymarket\nPopular predictions unavailable\nPolymarket did not return live data."
+  },
+  {
+    "slug": "elizamaker",
+    "title": "ElizaMaker",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/elizamaker",
+    "screenshot": "mobile-elizamaker.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": null,
+          "aria": "Copy message",
+          "title": "Copy message",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": "Play message",
+          "title": "Play message",
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": null,
+          "aria": "Attach image",
+          "title": "Attach image",
+          "text": "",
+          "disabled": true
+        },
+        {
+          "index": 3,
+          "tag": "button",
+          "testId": null,
+          "aria": "Voice input — assistant uses device speech. Neural TTS and billing: Settings → Voice.",
+          "title": "Voice input — assistant uses device speech. Neural TTS and billing: Settings → Voice.",
+          "text": "",
+          "disabled": true
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "Eliza\nWhat would you like to check?"
+  },
+  {
+    "slug": "shopify",
+    "title": "Shopify",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/shopify",
+    "screenshot": "mobile-shopify.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": null,
+          "aria": "Back to apps",
+          "title": null,
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": "Refresh",
+          "title": null,
+          "text": "",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "Shopify\nNot connected\nConnect your Shopify store\nSTORE DOMAIN\nSHOPIFY_STORE_DOMAIN=your-store.myshopify.com\nACCESS TOKEN\nSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx\n\nRestart after setting these env vars.\n\nread_products\nread_orders\nread_inventory\nread_customers"
+  },
+  {
+    "slug": "vincent",
+    "title": "Vincent",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/vincent",
+    "screenshot": "mobile-vincent.png",
+    "navigationError": null,
+    "badText": [],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [
+        {
+          "index": 0,
+          "tag": "button",
+          "testId": null,
+          "aria": "Back",
+          "title": null,
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 1,
+          "tag": "button",
+          "testId": null,
+          "aria": "Refresh",
+          "title": null,
+          "text": "",
+          "disabled": false
+        },
+        {
+          "index": 2,
+          "tag": "button",
+          "testId": null,
+          "aria": null,
+          "title": null,
+          "text": "Connect Vincent",
+          "disabled": false
+        }
+      ],
+      "overflow": []
+    },
+    "preview": "Vincent\n\nHyperliquid and Polymarket trading access\n\nDisconnected\nVincent disconnected\nConnect your Vincent account to enable DeFi vault management.\nConnect Vincent\n\nConnect your Vincent account to get started\n\nOnce connected, you'll see your vault health, trading strategy, P&L analytics, and transaction history here."
+  },
+  {
+    "slug": "hyperliquid",
+    "title": "Hyperliquid",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/hyperliquid",
+    "screenshot": "mobile-hyperliquid.png",
+    "navigationError": null,
+    "badText": [
+      "/Could not open app/i"
+    ],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [],
+      "overflow": []
+    },
+    "preview": "Could not open app\n\nNo installed or catalog app matches \"/apps/hyperliquid\"."
+  },
+  {
+    "slug": "polymarket",
+    "title": "Polymarket",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/polymarket",
+    "screenshot": "mobile-polymarket.png",
+    "navigationError": null,
+    "badText": [
+      "/Could not open app/i"
+    ],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [],
+      "overflow": []
+    },
+    "preview": "Could not open app\n\nNo installed or catalog app matches \"/apps/polymarket\"."
+  },
+  {
+    "slug": "phone",
+    "title": "Phone",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/phone",
+    "screenshot": "mobile-phone.png",
+    "navigationError": null,
+    "badText": [
+      "/Could not open app/i"
+    ],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [],
+      "overflow": []
+    },
+    "preview": "Could not open app\n\nNo installed or catalog app matches \"/apps/phone\"."
+  },
+  {
+    "slug": "contacts",
+    "title": "Contacts",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/contacts",
+    "screenshot": "mobile-contacts.png",
+    "navigationError": null,
+    "badText": [
+      "/Could not open app/i"
+    ],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [],
+      "overflow": []
+    },
+    "preview": "Could not open app\n\nNo installed or catalog app matches \"/apps/contacts\"."
+  },
+  {
+    "slug": "wifi",
+    "title": "WiFi",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3146/?appWindow=1#/apps/wifi",
+    "screenshot": "mobile-wifi.png",
+    "navigationError": null,
+    "badText": [
+      "/Could not open app/i"
+    ],
+    "consoleIssues": [],
+    "pageErrors": [],
+    "failedRequests": [
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/vrm",
+        "errorText": "net::ERR_ABORTED"
+      },
+      {
+        "url": "http://127.0.0.1:3146/api/avatar/background",
+        "errorText": "net::ERR_ABORTED"
+      }
+    ],
+    "metrics": {
+      "title": "Eliza",
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "buttons": [],
+      "overflow": []
+    },
+    "preview": "Could not open app\n\nNo installed or catalog app matches \"/apps/wifi\"."
+  }
+]

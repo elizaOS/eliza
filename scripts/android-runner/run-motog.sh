@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-motog.sh — Android arm64 runner: cross-compile the v0.4.0-milady
+# run-motog.sh — Android arm64 runner: cross-compile the v0.4.0-eliza
 # llama.cpp fork for arm64-v8a, push the on-device agent bundle plus
 # libllama / DFlash llama-server, stage an Eliza-1 GGUF on the device,
 # hit /api/health and a 5-prompt
@@ -19,7 +19,7 @@
 #   ANDROID_RUNNER_SERIAL    adb serial (default: first arm64-v8a device)
 #   ANDROID_RUNNER_ELIZA1_GGUF   path to an Eliza-1 GGUF
 #   ANDROID_RUNNER_REPORT_DIR    override report output dir
-#   ANDROID_RUNNER_PACKAGE       override package id (default: ai.milady.milady)
+#   ANDROID_RUNNER_PACKAGE       override package id (default: ai.eliza.eliza)
 #   ANDROID_RUNNER_PORT          host-side adb-forward port (default: 31337)
 #
 # Refusal contract:
@@ -41,7 +41,7 @@ DATE_STAMP="$(date -u +%Y-%m-%d)"
 REPORT_DIR="${ANDROID_RUNNER_REPORT_DIR:-${REPO_ROOT}/reports/porting/${DATE_STAMP}}"
 REPORT_FILE="${REPORT_DIR}/motog-smoke.md"
 TMP_LOG="$(mktemp -t motog-smoke.XXXXXX.log)"
-PACKAGE="${ANDROID_RUNNER_PACKAGE:-ai.milady.milady}"
+PACKAGE="${ANDROID_RUNNER_PACKAGE:-ai.eliza.eliza}"
 HOST_PORT="${ANDROID_RUNNER_PORT:-31337}"
 DEVICE_PORT="${ANDROID_RUNNER_DEVICE_PORT:-31337}"
 
@@ -131,7 +131,7 @@ fi
 # -- 3. Verify the package is installed ---------------------------------------
 PKG_LIST=$(adb -s "${SERIAL}" shell pm list packages "${PACKAGE}" 2>/dev/null | tr -d '\r')
 if ! printf '%s\n' "${PKG_LIST}" | grep -Fxq "package:${PACKAGE}"; then
-  fail "package ${PACKAGE} is not installed on ${SERIAL}. Sideload the Milady APK first: \`adb install path/to/milady.apk\`."
+  fail "package ${PACKAGE} is not installed on ${SERIAL}. Sideload the Eliza APK first: \`adb install path/to/eliza.apk\`."
 fi
 log "preflight: package ${PACKAGE} installed"
 
@@ -240,7 +240,7 @@ if [ "${SKIP_MODELS}" = "0" ]; then
       {
         find "${HOME}/.cache/eliza/local-inference/models" -maxdepth 5 -type f -iname '*eliza-1-mobile*.gguf' 2>/dev/null
         find "${HOME}/.eliza/local-inference/models" -maxdepth 5 -type f -iname '*eliza-1-mobile*.gguf' 2>/dev/null
-        find "${HOME}/.milady/local-inference/models" -maxdepth 5 -type f -iname '*eliza-1-mobile*.gguf' 2>/dev/null
+        find "${HOME}/.eliza/local-inference/models" -maxdepth 5 -type f -iname '*eliza-1-mobile*.gguf' 2>/dev/null
       } | head -1
     )
   fi

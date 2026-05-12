@@ -21,6 +21,7 @@ import argparse
 import logging
 import re
 from collections.abc import Iterable, Sequence
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from ._base import (
@@ -64,8 +65,19 @@ SMOKE_FIXTURES: tuple[dict[str, object], ...] = (
 )
 
 
-_FINAL_RE = re.compile(r"####\s*(-?\d[\d,]*)")
+_FINAL_RE = re.compile(r"####\s*(-?\d[\d,]*(?:\.\d+)?)")
 _NUMBER_RE = re.compile(r"-?\d[\d,]*(?:\.\d+)?")
+
+
+def _parse_integer_token(token: str) -> int | None:
+    normalized = token.replace(",", "")
+    try:
+        value = Decimal(normalized)
+    except InvalidOperation:
+        return None
+    if value != value.to_integral_value():
+        return None
+    return int(value)
 
 
 def _parse_final_answer(text: str) -> int | None:
@@ -77,24 +89,11 @@ def _parse_final_answer(text: str) -> int | None:
         return None
     match = _FINAL_RE.search(text)
     if match:
-        token = match.group(1).replace(",", "")
-        try:
-            return int(token)
-        except ValueError:
-            return None
+        return _parse_integer_token(match.group(1))
     candidates = _NUMBER_RE.findall(text)
     if not candidates:
         return None
-    token = candidates[-1].replace(",", "")
-    if "." in token:
-        try:
-            return int(round(float(token)))
-        except ValueError:
-            return None
-    try:
-        return int(token)
-    except ValueError:
-        return None
+    return _parse_integer_token(candidates[-1])
 
 
 def _gold_from_answer(answer: str) -> int | None:

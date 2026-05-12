@@ -9,9 +9,9 @@ import {
   filterActionResultForEgress,
 } from "./privacy-egress.js";
 import {
+  createCalendlySingleUseLinkWithRuntimeService,
   createXPostWithRuntimeService,
   fetchXDirectMessagesWithRuntimeService,
-  createCalendlySingleUseLinkWithRuntimeService,
   getCalendlyAvailabilityWithRuntimeService,
   getXAccountStatusWithRuntimeService,
   listCalendlyEventTypesWithRuntimeService,
@@ -157,10 +157,10 @@ describe("runtime service delegates", () => {
       accountId: "acct-owner-1",
       value: [memory],
     });
-    expect(fetchDirectMessagesForAccount).toHaveBeenCalledWith(
-      "acct-owner-1",
-      { participantId: undefined, limit: 5 },
-    );
+    expect(fetchDirectMessagesForAccount).toHaveBeenCalledWith("acct-owner-1", {
+      participantId: undefined,
+      limit: 5,
+    });
 
     await expect(
       createXPostWithRuntimeService({
@@ -186,12 +186,7 @@ describe("runtime service delegates", () => {
       value: {
         configured: true,
         connected: true,
-        grantedCapabilities: [
-          "x.read",
-          "x.write",
-          "x.dm.read",
-          "x.dm.write",
-        ],
+        grantedCapabilities: ["x.read", "x.write", "x.dm.read", "x.dm.write"],
       },
     });
   });
@@ -216,9 +211,9 @@ describe("runtime service delegates", () => {
       status: "unavailable",
       reason: "X runtime service sendDirectMessageForAccount failed.",
     });
-    expect(result.status === "unavailable" ? result.error : null).toBeInstanceOf(
-      Error,
-    );
+    expect(
+      result.status === "unavailable" ? result.error : null,
+    ).toBeInstanceOf(Error);
   });
 
   it("returns unavailable when X runtime service is unavailable", async () => {
@@ -365,7 +360,10 @@ describe("runtime service delegates", () => {
       text: "ping",
     });
 
-    expect(read).toMatchObject({ status: "handled", accountId: "acct-owner-1" });
+    expect(read).toMatchObject({
+      status: "handled",
+      accountId: "acct-owner-1",
+    });
     expect(getRecentMessages).toHaveBeenCalledWith(10, "acct-owner-1");
     expect(sent).toMatchObject({
       status: "handled",
@@ -430,7 +428,9 @@ describe("runtime service delegates", () => {
     }));
     const runtime = runtimeWithServices({
       calendly: {
-        isConnected: vi.fn((accountId?: string) => accountId === "acct-owner-1"),
+        isConnected: vi.fn(
+          (accountId?: string) => accountId === "acct-owner-1",
+        ),
         listEventTypes,
         listScheduledEvents,
         getAvailability,

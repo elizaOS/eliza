@@ -34,7 +34,7 @@ describe("message service benchmark integration contracts", () => {
 			"function isBenchmarkForcingToolCall(message: Memory)",
 		);
 		// Env-var opt-in is required (default behavior unchanged for chat).
-		expect(source).toContain("MILADY_BENCH_FORCE_TOOL_CALL");
+		expect(source).toContain("ELIZA_BENCH_FORCE_TOOL_CALL");
 		// Detection must also require an inbound benchmark signal so a
 		// co-resident chat process is unaffected even if the env var leaks.
 		expect(source).toContain('content.source === "benchmark"');

@@ -24,9 +24,8 @@
 
 import {
   existsSync,
-  mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   statSync,
   writeFileSync,
 } from "node:fs";
@@ -100,7 +99,11 @@ for (const agent of AGENT_CANDIDATES) {
   }
   const scenarios = Array.isArray(parsed.scenarios) ? parsed.scenarios : [];
   const passed = scenarios.filter(
-    (s) => typeof s.total_score === "number" && typeof s.max_score === "number" && s.max_score > 0 && s.total_score >= s.max_score,
+    (s) =>
+      typeof s.total_score === "number" &&
+      typeof s.max_score === "number" &&
+      s.max_score > 0 &&
+      s.total_score >= s.max_score,
   ).length;
   perAgent.push({
     agent,
@@ -118,7 +121,9 @@ for (const agent of AGENT_CANDIDATES) {
     eval_cost_usd:
       typeof parsed.eval_cost_usd === "number" ? parsed.eval_cost_usd : null,
     total_latency_ms:
-      typeof parsed.total_latency_ms === "number" ? parsed.total_latency_ms : null,
+      typeof parsed.total_latency_ms === "number"
+        ? parsed.total_latency_ms
+        : null,
     model_name: parsed.model_name ?? null,
     judge_model_name: parsed.judge_model_name ?? null,
     seeds: typeof parsed.seeds === "number" ? parsed.seeds : null,
@@ -127,7 +132,10 @@ for (const agent of AGENT_CANDIDATES) {
       scenario_id: s.scenario_id,
       seed: s.seed,
       passed:
-        typeof s.total_score === "number" && typeof s.max_score === "number" && s.max_score > 0 && s.total_score >= s.max_score,
+        typeof s.total_score === "number" &&
+        typeof s.max_score === "number" &&
+        s.max_score > 0 &&
+        s.total_score >= s.max_score,
       total_score: s.total_score ?? null,
       max_score: s.max_score ?? null,
       terminated_reason: s.terminated_reason ?? null,
@@ -160,7 +168,9 @@ lines.push(`# LifeOps Multi-Agent Benchmark Report`);
 lines.push(``);
 if (runId) lines.push(`Run ID: \`${runId}\``);
 lines.push(`Run dir: \`${runDir}\``);
-lines.push(`Agents present: ${perAgent.length === 0 ? "_none_" : perAgent.map((a) => `\`${a.agent}\``).join(", ")}`);
+lines.push(
+  `Agents present: ${perAgent.length === 0 ? "_none_" : perAgent.map((a) => `\`${a.agent}\``).join(", ")}`,
+);
 lines.push(``);
 
 if (perAgent.length === 0) {
@@ -170,7 +180,9 @@ if (perAgent.length === 0) {
 } else {
   lines.push(`## Headline (side-by-side)`);
   lines.push(``);
-  lines.push(`| agent | scenarios | passed | pass@1 | mean score | total cost | agent cost | eval cost | wall time |`);
+  lines.push(
+    `| agent | scenarios | passed | pass@1 | mean score | total cost | agent cost | eval cost | wall time |`,
+  );
   lines.push(`| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |`);
   for (const a of perAgent) {
     lines.push(
@@ -191,12 +203,8 @@ if (perAgent.length === 0) {
   if (domainList.length === 0) {
     lines.push(`_(no per-domain scores in any agent result)_`);
   } else {
-    lines.push(
-      `| domain | ${perAgent.map((a) => a.agent).join(" | ")} |`,
-    );
-    lines.push(
-      `| --- | ${perAgent.map(() => "---:").join(" | ")} |`,
-    );
+    lines.push(`| domain | ${perAgent.map((a) => a.agent).join(" | ")} |`);
+    lines.push(`| --- | ${perAgent.map(() => "---:").join(" | ")} |`);
     for (const d of domainList) {
       const row = [d];
       for (const a of perAgent) {
@@ -215,9 +223,7 @@ if (perAgent.length === 0) {
   } else if (uniquePass.length === 0) {
     lines.push(`No scenarios where exactly one agent passed.`);
   } else {
-    lines.push(
-      `Scenarios where exactly one agent passed (worth inspecting):`,
-    );
+    lines.push(`Scenarios where exactly one agent passed (worth inspecting):`);
     lines.push(``);
     lines.push(`| scenario | only agent to pass |`);
     lines.push(`| --- | --- |`);
@@ -236,7 +242,7 @@ if (perAgent.length === 0) {
 }
 
 const reportPath = join(runDir, "report.md");
-writeFileSync(reportPath, lines.join("\n") + "\n");
+writeFileSync(reportPath, `${lines.join("\n")}\n`);
 console.log(`[lifeops-multiagent-report] wrote ${reportPath}`);
 
 const reportJson = {
@@ -250,5 +256,5 @@ const reportJson = {
   cross_agent_diffs: uniquePass,
 };
 const reportJsonPath = join(runDir, "report.json");
-writeFileSync(reportJsonPath, JSON.stringify(reportJson, null, 2) + "\n");
+writeFileSync(reportJsonPath, `${JSON.stringify(reportJson, null, 2)}\n`);
 console.log(`[lifeops-multiagent-report] wrote ${reportJsonPath}`);

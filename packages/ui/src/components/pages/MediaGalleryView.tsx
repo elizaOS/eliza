@@ -188,7 +188,8 @@ export function MediaGalleryView({
     setError("");
     try {
       // Discover tables
-      const { tables } = await client.getDatabaseTables();
+      const { tables: rawTables } = await client.getDatabaseTables();
+      const tables = Array.isArray(rawTables) ? rawTables : [];
       const allMedia: MediaItem[] = [];
 
       // Scan tables likely to contain media: memories, messages, media, attachments, files
@@ -219,7 +220,8 @@ export function MediaGalleryView({
           const result: QueryResult = await client.executeDatabaseQuery(
             `SELECT * FROM "${tableName}" LIMIT ${scanLimit}`,
           );
-          const items = extractMediaFromRows(result.rows, tableName);
+          const rows = Array.isArray(result.rows) ? result.rows : [];
+          const items = extractMediaFromRows(rows, tableName);
           allMedia.push(...items);
         } catch {
           // skip tables that fail

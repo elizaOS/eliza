@@ -1,0 +1,41 @@
+[
+  {
+    "transaction_id": "TXN-1601",
+    "date": "2025-08-15",
+    "amount": 200000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-003",
+    "customer_name": "Huaxin Tech",
+    "type": "Customer Compensation",
+    "category": "Compensation Expense",
+    "description": "Huaxin Tech 2025 Q2 service interruption compensation",
+    "approved_by": "Lisa Wang",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-1602",
+    "date": "2025-10-20",
+    "amount": 30000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-001",
+    "customer_name": "Mingda Group",
+    "type": "Customer Compensation",
+    "category": "Compensation Expense",
+    "description": "Mingda Group 2025 Q3 delivery delay compensation",
+    "approved_by": "Michael Zhang",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-1603",
+    "date": "2025-09-10",
+    "amount": 80000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-004",
+    "customer_name": "Botong IT",
+    "type": "Customer Compensation",
+    "category": "Compensation Expense",
+    "description": "Botong IT 2025 Q3 feature defect compensation",
+    "approved_by": "Lisa Wang",
+    "status": "completed"
+  }
+]

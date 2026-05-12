@@ -1,0 +1,46 @@
+[
+  {
+    "event_id": "evt_201",
+    "title": "Product Plan Review",
+    "start_time": "2026-03-27T09:00:00+08:00",
+    "end_time": "2026-03-27T10:30:00+08:00",
+    "location": "Conference Room A",
+    "organizer": "Wang Ming",
+    "attendees": ["Wang Ming", "Li Hua", "Zhao Lei"],
+    "description": "Discuss Q2 product plan, please prepare relevant materials in advance",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_202",
+    "title": "Client Demo",
+    "start_time": "2026-03-27T11:00:00+08:00",
+    "end_time": "2026-03-27T12:00:00+08:00",
+    "location": "Conference Room B",
+    "organizer": "Zhao Lei",
+    "attendees": ["Zhao Lei", "Zhang Wei", "External:Director Chen"],
+    "description": "Demo new features for Director Chen, important client — be well prepared",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_203",
+    "title": "Tech Stack Selection Discussion",
+    "start_time": "2026-03-27T14:00:00+08:00",
+    "end_time": "2026-03-27T15:30:00+08:00",
+    "location": "Tech Area Open Space",
+    "organizer": "Li Hua",
+    "attendees": ["Li Hua", "Ma Qiang", "Zhou Ming"],
+    "description": "Discuss microservice framework selection, candidates: Spring Cloud / Dubbo",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_204",
+    "title": "All-Hands Weekly Meeting",
+    "start_time": "2026-03-27T16:00:00+08:00",
+    "end_time": "2026-03-27T17:00:00+08:00",
+    "location": "Main Conference Room",
+    "organizer": "Wang Ming",
+    "attendees": ["Wang Ming", "Li Hua", "Zhao Lei", "Ma Qiang", "Zhang Wei", "Zhou Ming"],
+    "description": "This week's work summary and next week's plan",
+    "status": "confirmed"
+  }
+]

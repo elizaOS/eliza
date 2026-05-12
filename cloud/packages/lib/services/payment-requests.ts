@@ -84,8 +84,8 @@ export interface PaymentRequestsService {
   cancel(id: string, organizationId: string, reason?: string): Promise<PaymentRequestRow>;
   expirePast(now?: Date): Promise<string[]>;
   /**
-   * Settlement is provider-driven and arrives via PaymentCallbackBus
-   * (sibling B-cloud-bus worktree). The bus subscriber calls these.
+   * Settlement is provider-driven and called by provider webhook routes before
+   * they fan out notifications on PaymentCallbackBus.
    */
   markSettled(
     id: string,
@@ -340,6 +340,9 @@ class PaymentRequestsServiceImpl implements PaymentRequestsService {
       id,
       "markSettled lookup",
     );
+    if (existing.status === "settled" && existing.settlementTxRef === settlementTxRef) {
+      return existing;
+    }
     assertNotTerminal(existing, "settle");
 
     const settledAt = new Date();
@@ -405,6 +408,9 @@ class PaymentRequestsServiceImpl implements PaymentRequestsService {
       id,
       "markFailed lookup",
     );
+    if (existing.status === "failed") {
+      return existing;
+    }
     assertNotTerminal(existing, "fail");
 
     const updated = requireRow(

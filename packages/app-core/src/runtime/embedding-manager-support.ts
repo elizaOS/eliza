@@ -217,7 +217,7 @@ function sanitizeModelRepo(repo: string): string {
 function sanitizeModelFilename(filename: string): string {
   const trimmed = filename.trim();
   // Permit forward-slash separated path segments so canonical HF-style ids like
-  // `text/eliza-1-lite-0_6b-32k.gguf` (a real subdirectory in the upstream repo
+  // `text/eliza-1-0_8b-32k.gguf` (a real subdirectory in the upstream repo
   // and the on-disk layout under `modelsDir`) pass validation. Each segment is
   // restricted to `[A-Za-z0-9._-]+`, which alone would let `.` / `..` through;
   // we reject those explicitly below. `resolveModelPath` provides
@@ -458,7 +458,9 @@ export async function ensureModel(
   }
 
   const log = getLogger();
-  fs.mkdirSync(path.resolve(modelsDir), { recursive: true });
+  // modelPath may be namespaced (text/eliza-1.gguf); create the file's
+  // parent dir, not just modelsDir, or createWriteStream throws ENOENT.
+  fs.mkdirSync(path.dirname(path.resolve(modelPath)), { recursive: true });
 
   const url = `https://huggingface.co/${safeRepo}/resolve/main/${safeFilename}`;
   log.info(

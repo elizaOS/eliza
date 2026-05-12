@@ -14,10 +14,8 @@ export * from "./app-registry";
 export * from "./app-route-plugin-registry";
 export * from "./build-variant";
 export * from "./character";
-// cloud-routing has zero Node deps (pure type narrowing + string building),
-// so the browser entry can re-export it. Several renderer-visible app-core
-// modules (e.g. services/sensitive-requests/public-link-adapter) depend on
-// `toRuntimeSettings` and the route helpers.
+// `cloud-routing` is pure data (no Node deps) — safe in the browser bundle;
+// app-core sensitive-request code depends on `toRuntimeSettings` and route helpers.
 export * from "./cloud-routing";
 export * from "./connectors";
 export * from "./connectors/account-manager";
@@ -46,6 +44,7 @@ export * from "./runtime";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/execute-planned-tool-call";
+export * from "./runtime/rlm";
 export * from "./runtime/schema-compat";
 export * from "./runtime/sub-planner";
 export * from "./runtime/system-prompt";
@@ -88,9 +87,29 @@ export * from "./utils/description-compressed-lint";
 // Export browser-compatible utilities
 export * from "./utils/environment";
 export { formatError } from "./utils/format-error";
+export * from "./utils/read-env";
+export * from "./utils/streaming";
+export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
 
 export function resolveStateDir(): string {
 	return "/.eliza";
+}
+
+// Browser stubs for Node-only path helpers. These exist on the Node entry
+// (see utils/state-dir.ts) and are imported by server-side runtime modules
+// (e.g. @elizaos/agent/src/config/paths.ts) that may be statically reached
+// by the renderer bundle's dep graph. The values returned are unused in the
+// browser; we just need named exports so Rollup's static analysis succeeds.
+export function resolveOAuthDir(): string {
+	return "/.eliza/oauth";
+}
+
+export function resolveUserPath(input: string): string {
+	return input;
+}
+
+export function getElizaNamespace(): string {
+	return "eliza";
 }
 
 export async function runPluginMigrations(): Promise<void> {}

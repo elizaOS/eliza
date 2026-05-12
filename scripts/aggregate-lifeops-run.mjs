@@ -4,12 +4,12 @@
  * + `report.json` + `steps.csv` for analysis.
  *
  * Inputs (in order of precedence):
- *   --run-dir <dir>          (default: $MILADY_LIFEOPS_RUN_DIR)
- *   --trajectory-dir <dir>   (default: <runDir>/trajectories or $MILADY_TRAJECTORY_DIR)
- *   --run-id <id>            (default: $MILADY_LIFEOPS_RUN_ID — used to filter)
- *   --harness <name>         (default: $MILADY_BENCH_HARNESS or "eliza")
- *   --model-tier <tier>      (default: $MILADY_BENCH_MODEL_TIER or "large")
- *   --pre-release            (default: false unless $MILADY_BENCH_PRE_RELEASE=1)
+ *   --run-dir <dir>          (default: $ELIZA_LIFEOPS_RUN_DIR)
+ *   --trajectory-dir <dir>   (default: <runDir>/trajectories or $ELIZA_TRAJECTORY_DIR)
+ *   --run-id <id>            (default: $ELIZA_LIFEOPS_RUN_ID — used to filter)
+ *   --harness <name>         (default: $ELIZA_BENCH_HARNESS or "eliza")
+ *   --model-tier <tier>      (default: $ELIZA_BENCH_MODEL_TIER or "large")
+ *   --pre-release            (default: false unless $ELIZA_BENCH_PRE_RELEASE=1)
  *
  * Output layout (created if missing):
  *   <runDir>/scenarios/<idx>-<scenarioId>/
@@ -37,6 +37,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
+  HARNESSES,
+  MODEL_TIERS,
   REPORT_SCHEMA_VERSION,
   ReportSchema,
 } from "@elizaos-benchmarks/lib";
@@ -47,42 +49,42 @@ function arg(name, fallback) {
   return idx >= 0 && idx + 1 < args.length ? args[idx + 1] : fallback;
 }
 
-const runDir = path.resolve(arg("--run-dir", process.env.MILADY_LIFEOPS_RUN_DIR ?? ""));
+const runDir = path.resolve(arg("--run-dir", process.env.ELIZA_LIFEOPS_RUN_DIR ?? ""));
 if (!runDir) {
   console.error(
-    "[aggregate-lifeops-run] --run-dir required (or set MILADY_LIFEOPS_RUN_DIR).",
+    "[aggregate-lifeops-run] --run-dir required (or set ELIZA_LIFEOPS_RUN_DIR).",
   );
   process.exit(2);
 }
 const trajectoryDir = path.resolve(
   arg(
     "--trajectory-dir",
-    process.env.MILADY_TRAJECTORY_DIR ?? path.join(runDir, "trajectories"),
+    process.env.ELIZA_TRAJECTORY_DIR ?? path.join(runDir, "trajectories"),
   ),
 );
-const runIdFilter = arg("--run-id", process.env.MILADY_LIFEOPS_RUN_ID);
+const runIdFilter = arg("--run-id", process.env.ELIZA_LIFEOPS_RUN_ID);
 
-const HARNESS_VALID = new Set(["hermes", "openclaw", "eliza"]);
-const MODEL_TIER_VALID = new Set(["small", "mid", "large", "frontier"]);
+const HARNESS_VALID = new Set(HARNESSES);
+const MODEL_TIER_VALID = new Set(MODEL_TIERS);
 
 const harness = arg(
   "--harness",
-  process.env.MILADY_BENCH_HARNESS ?? "eliza",
+  process.env.ELIZA_BENCH_HARNESS ?? "eliza",
 );
 if (!HARNESS_VALID.has(harness)) {
   console.error(
-    `[aggregate-lifeops-run] --harness must be one of hermes|openclaw|eliza (got ${harness})`,
+    `[aggregate-lifeops-run] --harness must be one of ${HARNESSES.join("|")} (got ${harness})`,
   );
   process.exit(2);
 }
 
 const modelTierCli = arg(
   "--model-tier",
-  process.env.MILADY_BENCH_MODEL_TIER ?? "large",
+  process.env.ELIZA_BENCH_MODEL_TIER ?? "large",
 );
 if (!MODEL_TIER_VALID.has(modelTierCli)) {
   console.error(
-    `[aggregate-lifeops-run] --model-tier must be one of small|mid|large|frontier (got ${modelTierCli})`,
+    `[aggregate-lifeops-run] --model-tier must be one of ${MODEL_TIERS.join("|")} (got ${modelTierCli})`,
   );
   process.exit(2);
 }
@@ -90,7 +92,7 @@ if (!MODEL_TIER_VALID.has(modelTierCli)) {
 const preReleaseFlag =
   process.argv.includes("--pre-release") ||
   ["1", "true", "yes"].includes(
-    (process.env.MILADY_BENCH_PRE_RELEASE ?? "").trim().toLowerCase(),
+    (process.env.ELIZA_BENCH_PRE_RELEASE ?? "").trim().toLowerCase(),
   );
 
 if (!fs.existsSync(trajectoryDir)) {
@@ -265,7 +267,10 @@ for (const { t } of trajectories) {
     const cacheRead = safeNum(usage.cacheReadInputTokens);
     const cacheCreate = safeNum(usage.cacheCreationInputTokens);
     const totalInput = inputTokens + cacheRead + cacheCreate;
-    const cacheHitPct = pct(cacheRead, totalInput);
+    // Per-step `cache_hit_pct` is null when the step recorded no input
+    // tokens (e.g. tool / evaluation phases). Aggregating zeros there would
+    // wrongly drag the mean toward "no cache" instead of "not applicable".
+    const cacheHitPct = totalInput > 0 ? pct(cacheRead, totalInput) : null;
 
     bucket.promptTokens += inputTokens;
     bucket.completionTokens += outputTokens;
@@ -302,7 +307,7 @@ for (const { t } of trajectories) {
     if (s.kind === "toolSearch") bucket.toolSearches += 1;
 
     // Append the stage to the schema-shaped `reportStages` collection. Only
-    // kinds in Wave 0's `StageKind` enum land in `report.json`; the rest
+    // kinds in the `StageKind` enum land in `report.json`; the rest
     // (e.g. `messageHandler`) stay out of the schema artifact but still flow
     // into the markdown / CSV / JSONL outputs.
     const stageKindMap = {
@@ -633,7 +638,7 @@ lines.push(`- raw trajectories: \`${path.relative(runDir, trajectoryDir)}/\``);
 fs.writeFileSync(reportMdPath, lines.join("\n") + "\n");
 
 // ---------------------------------------------------------------------------
-// report.json (Wave 0 canonical schema: lifeops-bench-v1)
+// report.json (canonical schema: lifeops-bench-v1)
 // ---------------------------------------------------------------------------
 
 const scenariosArray = [];

@@ -16,7 +16,7 @@ manifest, kernel ABI, GGML pin).
 (commit `08032d57`; `git submodule update --init --recursive`, which `bun install`
 runs). This is the unified fork: TurboQuant (turbo3/turbo4/turbo3_tcq) + QJL
 (`block_qjl1_256`, `GGML_OP_ATTN_SCORE_QJL`, `GGML_OP_FUSED_ATTN_QJL_TBQ`) +
-PolarQuant (`block_q4_polar`, `Q4_POLAR=47`) + the milady Metal/Vulkan/CUDA
+PolarQuant (`block_q4_polar`, `Q4_POLAR=47`) + the eliza Metal/Vulkan/CUDA
 kernels + DFlash spec-decode (`--spec-type dflash`, the `dflash-draft` GGUF arch)
 + the post-refactor `llama-server` (`server-task.cpp` / `server-common.cpp` with
 `grammar_lazy` / `json_schema` / `response_format` / `prefill_assistant`), on
@@ -24,10 +24,13 @@ upstream b8198. Both build paths consume it: `build-llama-cpp-dflash.mjs`
 (desktop/server/Windows/iOS) and `aosp/compile-libllama.mjs` (Android) default to
 the submodule checkout. `ELIZA_DFLASH_LLAMA_CPP_REMOTE` / `_REF` (or `--cache-dir`
 / `--src-dir`) still force a standalone clone for fork bisects. (`v1.0.0-eliza` is
-the same tree as the prior `v0.4.0-milady` tag, re-tagged on the elizaOS rename. A
-full rebase onto a recent upstream llama.cpp remains a follow-up — the
-conflict-prone files are the quant-slot enums in `ggml-common.h` / `ggml.h` and the
-`Q1_0` block layout, which upstream redefined incompatibly with the fork's.)
+the same tree as the prior `v0.4.0-eliza` tag, re-tagged on the elizaOS rename. A
+full rebase onto a recent upstream llama.cpp remains a **deferred** follow-up — not
+a blocker for structured output (the b8198 base already has `grammar_lazy` /
+`json_schema` / `response_format` / `prefill_assistant`); the conflict-prone files
+are the quant-slot enums in `ggml-common.h` / `ggml.h` and the `Q1_0` block layout,
+which upstream redefined incompatibly with the fork's. Full cost / conflict surface
+/ trigger conditions: [`docs/porting/upstream-rebase-plan.md`](../../docs/porting/upstream-rebase-plan.md).)
 
 ---
 
@@ -46,9 +49,10 @@ Backbones (do not change without explicit human approval):
   do not name these as "Qwen" in any user-facing string. Internally,
   manifests record the upstream lineage and license; the UI shows
   "Eliza-1 <tier>".
-- **Voice (TTS):** OmniVoice (Qwen3-TTS lineage). The repo at
-  `https://github.com/ServeurpersoCom/omnivoice.cpp` is the C++ source
-  we fuse with llama.cpp. The omnivoice-singing variant adds an
+- **Voice (TTS):** OmniVoice (Qwen3-TTS lineage). The upstream repo at
+  `https://github.com/ServeurpersoCom/omnivoice.cpp`, mirrored for builds at
+  `https://github.com/elizaOS/omnivoice.cpp`, is the C++ source we fuse with
+  llama.cpp. The omnivoice-singing variant adds an
   emotion + singing tag vocabulary (`[singing]`, `[happy]`, `[sad]`,
   `[whisper]`, `[angry]`, `[nervous]`, `[calm]`, `[excited]`, and
   preserved non-verbals `[laughter]`, `[sigh]`). Per Wave-6 user
@@ -86,7 +90,7 @@ Three runtime modes — every code path must work in all three:
 
 Settings rules (enforce in UI + API layer, not just docs):
 - `cloud` mode hides every local-model UI surface, every
-  `MILADY_LOCAL_*` setting, and the local-inference settings panel
+  `ELIZA_LOCAL_*` setting, and the local-inference settings panel
   entirely. The cloud setting page is the only model-related surface.
 - `local-only` mode (a sub-state of `local`) hides every cloud setting
   and every cloud-routed provider. The user must not be able to
@@ -113,11 +117,12 @@ hosted under the `elizaos` HuggingFace org under `eliza-1-<tier>`.
 
 | Tier            | Tagline                       | Text  | Voice          | Vision | Context  | DFlash | Quant default                   |
 | --------------- | ----------------------------- | ----- | -------------- | ------ | -------- | ------ | ------------------------------- |
-| `0_6b`     | low-RAM phones, CPU fallback  | 0.6B  | OmniVoice 0.6B | no     | 32k      | yes    | TurboQuant Q3 + Polar Q4 KV     |
-| `1_7b`   | modern phones                 | 1.7B  | OmniVoice 0.6B | no     | 32k–64k  | yes    | TurboQuant Q3/Q4 + QJL K-cache  |
-| `9b`    | laptops, 24GB phones, 48GB Mac| ~9B   | OmniVoice 1.7B | mmproj | 64k–128k | yes    | TurboQuant Q4 + QJL + Polar     |
-| `27b`       | 96GB+ Mac, high-VRAM desktop  | 27B   | OmniVoice 1.7B | mmproj | 128k–256k| yes    | TurboQuant Q4 + QJL + Polar     |
-| `27b-256k`   | server / workstation          | 27B   | OmniVoice 1.7B | mmproj | up to max| yes    | CUDA TurboQuant + QJL + Polar   |
+| `0_6b`       | low-RAM phones, CPU fallback   | 0.6B  | OmniVoice 0.6B | no     | 32k      | yes    | TurboQuant Q3 + Polar Q4 KV     |
+| `1_7b`         | modern phones                  | 1.7B    | OmniVoice 0.6B | no     | 32k–64k  | yes    | TurboQuant Q3/Q4 + QJL K-cache  |
+| `4b`         | flagship phones, small desktops| 4B    | OmniVoice 0.6B | mmproj | 64k      | yes    | TurboQuant Q4 + QJL + Polar     |
+| `9b`         | laptops, 24GB phones, 48GB Mac | ~9B   | OmniVoice 1.7B | mmproj | 64k–128k | yes    | TurboQuant Q4 + QJL + Polar     |
+| `27b`        | 96GB+ Mac, high-VRAM desktop   | 27B   | OmniVoice 1.7B | mmproj | 128k–256k| yes    | TurboQuant Q4 + QJL + Polar     |
+| `27b-256k`  | server / workstation           | 27B   | OmniVoice 1.7B | mmproj | up to max| yes    | CUDA TurboQuant + QJL + Polar   |
 
 Context-length variants (32k / 64k / 128k / 256k) are *not* separate
 tiers — they are dimensions inside a tier. A tier's manifest lists which
@@ -295,7 +300,7 @@ mic / file → ASR → text tokens
   That regresses memory and adds a 1–10ms scheduling tax per turn.
 - We do not run a "TTS-only mode" that skips DFlash. DFlash is always
   on. If the user disables speculative decoding for debugging, that is
-  a developer-only flag (`MILADY_DFLASH_DISABLE=1`), it is not a user
+  a developer-only flag (`ELIZA_DFLASH_DISABLE=1`), it is not a user
   setting, and it MUST log a loud warning every turn.
 - We do not split voice into "fast TTS" and "high-quality TTS" tiers.
   One voice model per tier, fused, optimized.
@@ -462,7 +467,7 @@ backend nightly.
   produce numerically identical output (within published tolerance) to
   the C reference in `packages/inference/reference/` and to the
   upstream CUDA implementation in
-  `packages/native-plugins/{qjl-cpu,polarquant-cpu}` and the buun-llama-cpp
+  `packages/native-plugins/{qjl-cpu,polarquant-cpu}` and the `elizaOS/llama.cpp`
   fork. New kernels follow the same pattern: ship the C reference and
   a JSON fixture before shipping the Vulkan/Metal port.
 - **Hardware verification is non-optional.** A "compiles cleanly"
@@ -495,10 +500,8 @@ backend nightly.
   from the in-repo `packages/inference/llama.cpp` submodule.
 - `packages/training/AGENTS.md` — the training-side contract, including
   what the bundle/publish flow expects.
-- `/Users/shawwalters/eliza-workspace/milady/CLAUDE.md` — repo-wide
-  conventions (port handling, scope discipline, elizaOS naming).
-- `/Users/shawwalters/eliza-workspace/milady/AGENTS.md` — repo-wide
-  cleanup mandate. The non-negotiable architecture rules apply here
-  too: dependencies point inward, no polymorphism for runtime branching
-  in code (kernels are a registry, not an `if`), no `try/catch` that
-  swallows.
+- the repo-root `AGENTS.md` — repo-wide cleanup mandate and conventions
+  (port handling, scope discipline, elizaOS naming). The non-negotiable
+  architecture rules apply here too: dependencies point inward, no
+  polymorphism for runtime branching in code (kernels are a registry,
+  not an `if`), no `try/catch` that swallows.

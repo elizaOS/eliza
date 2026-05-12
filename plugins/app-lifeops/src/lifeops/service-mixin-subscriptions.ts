@@ -1,10 +1,3 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
 import type {
   BrowserBridgeAction,
   BrowserBridgeCompanionStatus,
@@ -73,6 +66,17 @@ type ComputerUseBrowserService = {
     params: BrowserActionParams,
   ): Promise<BrowserActionResult>;
 };
+
+function isComputerUseBrowserService(
+  service: unknown,
+): service is ComputerUseBrowserService {
+  return (
+    Boolean(service) &&
+    typeof service === "object" &&
+    typeof (service as { executeBrowserAction?: unknown })
+      .executeBrowserAction === "function"
+  );
+}
 
 type BrowserSignalProbe = {
   status:
@@ -906,9 +910,10 @@ export function withSubscriptions<
         return { cancellation, candidate };
       }
 
-      const computerUse = this.runtime.getService(
-        "computeruse",
-      ) as ComputerUseBrowserService | null;
+      const computerUseService = this.runtime.getService("computeruse");
+      const computerUse = isComputerUseBrowserService(computerUseService)
+        ? computerUseService
+        : null;
       if (!computerUse) {
         cancellation = {
           ...cancellation,

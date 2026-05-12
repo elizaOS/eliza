@@ -1,13 +1,22 @@
-// @ts-nocheck — pending migration: @huggingface/transformers 3->4
-// (PreTrainedModel/Florence2 interface changes), @elizaos/core logger
-// signature drift (structured-context overload removed), and
-// GenerateTextParams.{modelType,runtime} field removal. Tracked separately.
 import fs from "node:fs";
 import path from "node:path";
 import { PassThrough, Readable } from "node:stream";
 import { logger } from "@elizaos/core";
 import { pipeline, type TextToAudioPipeline } from "@huggingface/transformers";
 import { MODEL_SPECS } from "../types";
+
+interface TextToAudioOutput {
+  audio: Float32Array;
+  sampling_rate: number;
+}
+
+function isTextToAudioOutput(value: unknown): value is TextToAudioOutput {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const output = value as { audio?: unknown; sampling_rate?: unknown };
+  return output.audio instanceof Float32Array && typeof output.sampling_rate === "number";
+}
 
 function getWavHeader(
   audioLength: number,
@@ -183,8 +192,12 @@ export class TTSManager {
         }),
       });
 
-      const audioFloat32 = output.audio as Float32Array;
-      const samplingRate = output.sampling_rate as number;
+      if (!isTextToAudioOutput(output)) {
+        throw new Error("TTS pipeline returned an invalid audio output shape.");
+      }
+
+      const audioFloat32 = output.audio;
+      const samplingRate = output.sampling_rate;
 
       logger.info(
         { samplingRate, length: audioFloat32.length },

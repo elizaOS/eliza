@@ -29,13 +29,15 @@ output:
 JSON only. One JSON object. No prose, no <think>.
 
 Example:
-contactName: Jane Doe
-entityId:
-categories: vip,colleague
-notes: Met at the design summit
-timezone: America/New_York
-language: English
-reason: Important collaborator to remember
+{
+  "contactName": "Jane Doe",
+  "entityId": null,
+  "categories": "vip,colleague",
+  "notes": "Met at the design summit",
+  "timezone": "America/New_York",
+  "language": "English",
+  "reason": "Important collaborator to remember"
+}
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;
@@ -59,8 +61,10 @@ Your last autonomous note: "{{lastThought}}"
 Continue from that note. Output a JSON thought and take action if needed.
 
 Example (no action this round):
-thought: Continuing from prior note; nothing new to act on.
-actions:
+{
+  "thought": "Continuing from prior note; nothing new to act on.",
+  "actions": []
+}
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;
@@ -83,8 +87,10 @@ USER CONTEXT (most recent last):
 Think briefly, then output a JSON thought and take action if needed.
 
 Example (no action this round):
-thought: Inspecting current state; nothing to act on this round.
-actions:
+{
+  "thought": "Inspecting current state; nothing to act on this round.",
+  "actions": []
+}
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;
@@ -111,8 +117,10 @@ Your last autonomous note: "{{lastThought}}"
 Continue the task. Output a JSON thought and take action now.
 
 Example (no action this round):
-thought: Waiting on prior step to complete; nothing to do this round.
-actions:
+{
+  "thought": "Waiting on prior step to complete; nothing to do this round.",
+  "actions": []
+}
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;
@@ -136,9 +144,15 @@ USER CHAT CONTEXT (most recent last):
 Decide what to do next. Output a JSON thought, then take the most useful action.
 
 Example:
-thought: Need to gather UI state before acting.
-actions[1]:
-  - name: COMPUTER_USE_INSPECT
+{
+  "thought": "Need to gather UI state before acting.",
+  "actions": [
+    {
+      "name": "COMPUTER_USE_INSPECT",
+      "parameters": {}
+    }
+  ]
+}
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;
@@ -155,9 +169,11 @@ export const chooseOptionTemplate = `# Task: Choose an option from available cho
 # Instructions:
 Select the most appropriate option based on context. Provide reasoning and selected option ID.
 
-JSON:
-thought: Your reasoning for the selection
-selected_id: The ID of the selected option
+JSON shape:
+{
+  "thought": "Your reasoning for the selection",
+  "selected_id": "The ID of the selected option"
+}
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;
@@ -661,8 +677,7 @@ export const messageHandlerTemplate = `task: {{#if directMessage}}Decide the pla
 available_contexts:
 {{availableContexts}}
 
-{{#if directMessage}}- this is a direct message; shouldRespond is hardcoded to RESPOND
-- do not include shouldRespond; only write replyText, contexts, and thought
+{{#if directMessage}}- this is a direct/private message; when the schema includes shouldRespond, set RESPOND for real user speech/message, IGNORE only for empty/noise/ambient transcript that is not asking you to engage, and STOP only when the user explicitly asks you to stop. If the schema omits shouldRespond, do not invent it.
 {{else}}shouldRespond:
 - RESPOND: agent should answer or do work
 - IGNORE: skip this message
@@ -696,15 +711,15 @@ Domain routing (when context is available):
 - relationship cadence ("follow up with David", "last talked to Alice", "how long since I spoke with Sam") -> contacts; one-off dated todos to call/text -> tasks
 - explicit phone/call/dial a third party -> phone + contacts; do NOT include calendar just because the call is about an appointment
 - device-targeted or broadcast reminders ("to my phone", "all devices", "broadcast") -> automation + connectors (not simple chat); tasks may be secondary
-- owner password/saved-login lookup ("look up my GitHub password") -> settings + secrets so PASSWORD_MANAGER handles it; never answer with the raw secret in Stage 1
+- owner password/saved-login lookup ("look up my GitHub password") -> settings + secrets so CREDENTIALS handles it; never answer with the raw secret in Stage 1
 - website/social-site focus blocking -> automation + settings; app blocking -> automation + settings (not screen_time unless reporting)
-- real flight/hotel/trip booking -> browser + calendar + payments + tasks so BOOK_TRAVEL owns the workflow
+- real flight/hotel/trip booking -> browser + calendar + payments + tasks so PERSONAL_ASSISTANT action=book_travel owns the workflow
 - Calendly availability + single-use booking links -> calendar + connectors, even when the message contains a Calendly API URL
 - health/wearable reads (steps/sleep/heart rate/workouts) -> health
 - X/Twitter DMs -> messaging + connectors; X/Twitter timeline/feed/mentions/post search -> social_posting + connectors (not generic web browsing)
 - desktop/native-app/browser/Finder/window screenshots or control -> browser or automation (not media alone)
 - LifeOps browser bridge/companion/extension/tab/settings -> browser; settings/connectors as secondary when configuration/connection state is asked
-- durable owner facts and stable personal preferences, especially travel/booking preferences ("remember that I prefer aisle seats", "save my hotel preferences") -> memory; add PROFILE as a parent action hint when possible; do not route these to documents unless the user explicitly asks to create/search/edit a document or file
+- durable owner facts and stable personal preferences, especially travel/booking preferences ("remember that I prefer aisle seats", "save my hotel preferences") -> memory + settings; do not route these to documents unless the user explicitly asks to create/search/edit a document or file
 
 Otherwise: list every relevant context id; planning will run and tools will be selected from those contexts. If only general is available and a tool is still needed, use contexts=["general"].
 

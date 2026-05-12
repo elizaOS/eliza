@@ -1,10 +1,14 @@
 package ai.elizaos.app;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+
+import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -15,6 +19,8 @@ import java.lang.reflect.Method;
 public class MainActivity extends BridgeActivity {
 
     private static final String TAG = "ElizaMainActivity";
+
+    private static final int REQUEST_CODE_POST_NOTIFICATIONS = 1001;
 
     /**
      * One UA marker entry. The MainActivity reads `systemProp` via
@@ -63,6 +69,7 @@ public class MainActivity extends BridgeActivity {
         }
 
         registerPlugin(AgentPlugin.class);
+        registerPlugin(BatteryOptimizationPlugin.class);
         super.onCreate(savedInstanceState);
 
         // The Capacitor WebView serves the renderer at https://localhost
@@ -87,7 +94,7 @@ public class MainActivity extends BridgeActivity {
         }
 
         // Auto-start the local Eliza agent runtime as a foreground service.
-        // shouldAutoStart() returns true on branded devices (AOSP/MiladyOS —
+        // shouldAutoStart() returns true on branded devices (AOSP/ElizaOS —
         // the device IS the agent) and on stock Android only when the user
         // picked Local mode in onboarding. Cloud/Remote modes skip this so
         // we don't burn battery on a service they never call. The boot
@@ -96,6 +103,31 @@ public class MainActivity extends BridgeActivity {
         if (ElizaAgentService.shouldAutoStart(this)) {
             ElizaAgentService.start(this);
         }
+
+        requestPostNotificationsIfNeeded();
+        ElizaWorkScheduler.enqueuePeriodic(getApplicationContext());
+    }
+
+    /**
+     * On API 33+ (Tiramisu) Android requires runtime consent for posting
+     * notifications. The foreground gateway service already declares the
+     * permission in the manifest, but without runtime grant its notification
+     * is suppressed. We request it lazily and non-blockingly here — if the
+     * user denies, the FGS still runs and pushes notifications only when
+     * later re-granted in system settings.
+     */
+    private void requestPostNotificationsIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return;
+        }
+        int state = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS);
+        if (state == PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        requestPermissions(
+            new String[] { Manifest.permission.POST_NOTIFICATIONS },
+            REQUEST_CODE_POST_NOTIFICATIONS
+        );
     }
 
     @Override

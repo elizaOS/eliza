@@ -1,7 +1,7 @@
 (() => {
   let labels = [];
   const selector_id_table = {};
-  var generateQuerySelector = (el) => {
+  var _generateQuerySelector = (el) => {
     function cssEscape(value) {
       if (!value) return "";
       // Escape backslash first, then all other CSS special characters.
@@ -26,25 +26,25 @@
     var idPresent = false; // Add a flag to check if an ID is present
 
     if (el.id !== "") {
-      str += "#" + cssEscape(el.id);
+      str += `#${cssEscape(el.id)}`;
       idPresent = true; // Set the flag to true if there's an ID
     }
 
     if (el.className) {
       const classes = el.className.split(/\s+/).filter(Boolean); // Filter out empty strings
       for (let i = 0; i < classes.length; i++) {
-        str += "." + cssEscape(classes[i]);
+        str += `.${cssEscape(classes[i])}`;
       }
     }
 
     // Only add :nth-of-type() if no ID is present
     if (!idPresent) {
-      str += ":nth-of-type(" + (getChildIndex(el) + 1) + ")";
+      str += `:nth-of-type(${getChildIndex(el) + 1})`;
     }
 
     // Use '>' combinator if parent is not 'HTML'
-    var parentSelector = generateQuerySelector(el.parentNode);
-    return parentSelector === "HTML" ? str : parentSelector + " > " + str;
+    var parentSelector = _generateQuerySelector(el.parentNode);
+    return parentSelector === "HTML" ? str : `${parentSelector} > ${str}`;
   };
 
   function unmarkPage() {
@@ -60,7 +60,7 @@
   function markPage() {
     unmarkPage();
 
-    var bodyRect = document.body.getBoundingClientRect();
+    var _bodyRect = document.body.getBoundingClientRect();
 
     var items = Array.prototype.slice
       .call(document.querySelectorAll("*"))
@@ -143,10 +143,10 @@
         var borderColor = getRandomColor();
         newElement.style.outline = `2px dashed ${borderColor}`;
         newElement.style.position = "fixed";
-        newElement.style.left = bbox.left + "px";
-        newElement.style.top = bbox.top + "px";
-        newElement.style.width = bbox.width + "px";
-        newElement.style.height = bbox.height + "px";
+        newElement.style.left = `${bbox.left}px`;
+        newElement.style.top = `${bbox.top}px`;
+        newElement.style.width = `${bbox.width}px`;
+        newElement.style.height = `${bbox.height}px`;
         newElement.style.pointerEvents = "none";
         newElement.style.boxSizing = "border-box";
         newElement.style.zIndex = 2147483647;

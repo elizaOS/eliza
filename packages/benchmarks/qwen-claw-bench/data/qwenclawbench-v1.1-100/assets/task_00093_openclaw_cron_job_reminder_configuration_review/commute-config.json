@@ -1,0 +1,32 @@
+{
+  "commute": {
+    "morningSubway": {
+      "time": "07:57",
+      "line": "Line 13",
+      "station": "Xizhimen",
+      "direction": "Dongzhimen",
+      "reminderMinutesBefore": 10
+    },
+    "eveningSubway": {
+      "time": "18:47",
+      "line": "Line 13",
+      "station": "Wudaokou",
+      "direction": "Xizhimen",
+      "reminderMinutesBefore": 10
+    },
+    "timezone": "Asia/Shanghai",
+    "activeDays": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+    "holidays": ["2026-01-29", "2026-01-30", "2026-01-31", "2026-02-01", "2026-02-02"],
+    "backupTransport": "DiDi ride-hailing"
+  },
+  "weatherAlerts": {
+    "city": "Beijing",
+    "alertTimes": ["16:00", "22:00"],
+    "triggers": ["rain", "snow", "extreme_cold", "extreme_heat", "heavy_wind"],
+    "thresholds": {
+      "coldBelowC": -10,
+      "heatAboveC": 35,
+      "windAboveKmh": 50
+    }
+  }
+}

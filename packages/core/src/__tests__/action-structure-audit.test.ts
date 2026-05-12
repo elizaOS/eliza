@@ -8,10 +8,16 @@ const RETIRED_GENERATED_ACTION_NAMES = [
 	"CHECKIN",
 	"CLEAR_HISTORY",
 	"CREATE_PLAN",
+	"CREATE_PAYMENT_REQUEST",
 	"DESKTOP",
+	"DEVICE_FILE_READ",
+	"DEVICE_FILE_WRITE",
+	"DEVICE_LIST_DIR",
 	"DISCORD_SETUP_CREDENTIALS",
+	"DOC",
 	"ENTER_WORKTREE",
 	"EXIT_WORKTREE",
+	"DELIVER_PAYMENT_LINK",
 	"FIRST_RUN",
 	"FORM_RESTORE",
 	"LIFE",
@@ -33,9 +39,9 @@ const RETIRED_GENERATED_ACTION_NAMES = [
 	"PASSWORD_MANAGER",
 	"GOOGLE_CALENDAR",
 	"NOSTR_PUBLISH_PROFILE",
-	"PAYMENT",
 	"PLACE_CALL",
 	"READ_ATTACHMENT",
+	"SHELL_HISTORY",
 	"SHELL_COMMAND",
 	"START_TUNNEL",
 	"STOP_TUNNEL",
@@ -51,6 +57,11 @@ const RETIRED_GENERATED_ACTION_NAMES = [
 	"CREATE_TODO",
 	"COMPLETE_TODO",
 	"LIST_TODOS",
+	"MYSTICISM_PAYMENT",
+	"VERIFY_PAYMENT_PAYLOAD",
+	"SETTLE_PAYMENT",
+	"AWAIT_PAYMENT_CALLBACK",
+	"CANCEL_PAYMENT_REQUEST",
 	"EDIT_TODO",
 	"DELETE_TODO",
 	"TOKEN_INFO",
@@ -64,8 +75,9 @@ const RETIRED_GENERATED_ACTION_NAMES = [
 	// Secrets leaves consolidated under the single SECRETS umbrella with
 	// action=get|set|delete|list|check|mirror|request. The previous
 	// top-level MANAGE_SECRET / SET_SECRET / atomic leaves are gone — the
-	// planner sees only SECRETS plus its promoted virtuals (SECRETS_GET,
-	// SECRETS_SET, ...) and the separate SECRETS_UPDATE_SETTINGS.
+	// planner sees only SECRETS and the separate SECRETS_UPDATE_SETTINGS.
+	// No virtual promoted subactions (SECRETS_GET, SECRETS_SET, …) are
+	// registered; callers supply action=<verb> on the umbrella directly.
 	"MANAGE_SECRET",
 	"SET_SECRET",
 	"GET_SECRET",
@@ -118,6 +130,15 @@ const PAGE_DELEGATE_REPLACES = [
 	"OWNER_ACTIONS",
 ] as const;
 
+const REQUIRED_OWNER_SURFACE_ACTION_NAMES = [
+	"SCHEDULED_TASKS",
+	"CREDENTIALS",
+	"PERSONAL_ASSISTANT",
+	"OWNER_DOCUMENTS",
+	"PAYMENT",
+	"FILE",
+] as const;
+
 const LEGACY_DISCRIMINATORS = new Set([
 	"subaction",
 	"op",
@@ -133,6 +154,20 @@ describe("action structure audit guards", () => {
 		for (const retired of RETIRED_GENERATED_ACTION_NAMES) {
 			expect(names.has(retired), retired).toBe(false);
 		}
+	});
+
+	it("keeps canonical owner surfaces present in generated canonical docs", () => {
+		const names = new Set(allActionDocs.map((action) => action.name));
+		const retired = new Set<string>(RETIRED_GENERATED_ACTION_NAMES);
+		for (const name of REQUIRED_OWNER_SURFACE_ACTION_NAMES) {
+			expect(retired.has(name), `${name} must not be marked retired`).toBe(
+				false,
+			);
+			expect(names.has(name), `${name} must be generated`).toBe(true);
+		}
+		expect(retired.has("PAYMENT"), "PAYMENT is not a retired parent").toBe(
+			false,
+		);
 	});
 
 	it("requires schemas with legacy discriminator aliases to expose action", () => {
@@ -207,5 +242,33 @@ describe("action structure audit guards", () => {
 		expect(new Set(schema?.enum ?? [])).toEqual(
 			new Set(["get", "set", "delete", "list", "check", "mirror", "request"]),
 		);
+	});
+
+	it("todo atomic leaf names are retired and absent from generated canonical docs", () => {
+		// The five core atomic todo leaves (CREATE_TODO, COMPLETE_TODO, LIST_TODOS,
+		// EDIT_TODO, DELETE_TODO) were removed from packages/core advancedActions.
+		// The canonical todo planner surfaces are:
+		//   - TODO (plugin-todos): general user-scoped todo store
+		//   - OWNER_TODOS (app-lifeops): owner-specific definition-tracking store
+		// Neither is registered in packages/core itself; both are plugin-provided.
+		const TODO_LEAF_NAMES = [
+			"CREATE_TODO",
+			"COMPLETE_TODO",
+			"LIST_TODOS",
+			"EDIT_TODO",
+			"DELETE_TODO",
+		] as const;
+		const retired = new Set<string>(RETIRED_GENERATED_ACTION_NAMES);
+		const generated = new Set(allActionDocs.map((action) => action.name));
+		for (const name of TODO_LEAF_NAMES) {
+			expect(
+				retired.has(name),
+				`${name} must be in the retired-name guard`,
+			).toBe(true);
+			expect(
+				generated.has(name),
+				`${name} must not appear as a top-level action in generated docs`,
+			).toBe(false);
+		}
 	});
 });

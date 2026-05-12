@@ -1,0 +1,10 @@
+Project,PackageId,Version,Source,ExportBatch
+LocTool.App,Microsoft.Extensions.DependencyInjection,8.0.1,staging-pin-export,Sprint8-20240322
+LocTool.Core,EPPlus,7.1.0,staging-pin-export,Sprint8-20240322
+LocTool.Core,Microsoft.Extensions.Logging.Abstractions,8.0.1,staging-pin-export,Sprint8-20240322
+LocTool.ViewModel,CommunityToolkit.Mvvm,8.3.0,staging-pin-export,Sprint8-20240322
+LocTool.Tests,xunit,2.8.0,staging-pin-export,Sprint8-20240322
+LocTool.Tests,xunit.runner.visualstudio,2.5.8,staging-pin-export,Sprint8-20240322
+LocTool.Tests,Microsoft.NET.Test.Sdk,17.10.0,staging-pin-export,Sprint8-20240322
+LocTool.Tests,Moq,4.20.72,staging-pin-export,Sprint8-20240322
+LocTool.Tests,coverlet.collector,6.0.1,staging-pin-export,Sprint8-20240322

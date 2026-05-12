@@ -5,9 +5,10 @@
  * into the parameters before dispatch.
  *
  * The parent umbrella stays registered alongside its virtuals so the planner
- * can still pick the umbrella directly with custom params; the virtuals
- * exist to GUIDE the planner toward the right subaction by giving every
- * subaction a discoverable top-level entry in the action catalogue.
+ * can still pick the umbrella directly with custom params. The helper also
+ * records the virtuals on `parent.subActions`, so retrieval can index their
+ * names/examples under the parent instead of ranking every virtual as an
+ * unrelated top-level action.
  */
 
 import type {
@@ -32,6 +33,14 @@ import {
 export interface SubactionPromotionOverrides {
 	/** Override the virtual action's description. */
 	description?: string;
+	/**
+	 * Override the virtual action's compressed description — the short
+	 * one-line blurb the planner sees in tier-A / tier-B summaries. When
+	 * unset, the virtual inherits the parent's `descriptionCompressed`,
+	 * which can be too generic for sub-actions that need a sharper signal
+	 * (e.g. `TASKS_SPAWN_AGENT` competing with inline `FILE.write`).
+	 */
+	descriptionCompressed?: string;
 	/** Add similes specific to this virtual subaction. */
 	similes?: readonly string[];
 	/** Filter / replace examples used for the virtual. */
@@ -170,10 +179,11 @@ function buildVirtualValidator(parent: Action): Validator {
 /**
  * Promote each subaction of an umbrella action to a virtual top-level Action.
  *
- * Returns `[parent, ...virtuals]`. The parent is unchanged and stays at index
- * 0 so callers can safely spread the result into a plugin's `actions: [...]`
- * array. Virtual actions inject the parent's structural discriminator into
- * `options.parameters` before delegating to the parent's handler.
+ * Returns `[parent, ...virtuals]`. The parent stays at index 0 so callers can
+ * safely spread the result into a plugin's `actions: [...]` array. The parent
+ * is annotated with the virtual names as `subActions`; virtual actions inject
+ * the parent's structural discriminator into `options.parameters` before
+ * delegating to the parent's handler.
  *
  * Calling this function twice on the same parent is idempotent: the second
  * call returns a freshly-built but structurally identical set of virtuals.
@@ -210,7 +220,8 @@ export function promoteSubactionsToActions(
 		const virtual: PromotedAction = {
 			name: virtualName,
 			description,
-			descriptionCompressed: parent.descriptionCompressed,
+			descriptionCompressed:
+				override.descriptionCompressed ?? parent.descriptionCompressed,
 			similes,
 			examples,
 			handler: buildVirtualHandler(parent, subKey),
@@ -238,6 +249,11 @@ export function promoteSubactionsToActions(
 		return virtual;
 	});
 
+	attachVirtualSubactions(
+		parent,
+		virtuals.map((virtual) => virtual.name),
+	);
+
 	return [parent, ...virtuals];
 }
 
@@ -247,4 +263,34 @@ export function promoteSubactionsToActions(
  */
 export function isPromotedSubactionVirtual(action: Action): boolean {
 	return Boolean((action as PromotedAction)[PROMOTED_MARKER]);
+}
+
+function attachVirtualSubactions(
+	parent: Action,
+	virtualNames: readonly string[],
+) {
+	if (virtualNames.length === 0) {
+		return;
+	}
+
+	const existing = parent.subActions ?? [];
+	const seen = new Set(
+		existing.map((entry) =>
+			toUpperSnake(typeof entry === "string" ? entry : entry.name),
+		),
+	);
+	const additions = virtualNames.filter((name) => {
+		const normalized = toUpperSnake(name);
+		if (seen.has(normalized)) {
+			return false;
+		}
+		seen.add(normalized);
+		return true;
+	});
+
+	if (additions.length === 0) {
+		return;
+	}
+
+	parent.subActions = [...existing, ...additions];
 }

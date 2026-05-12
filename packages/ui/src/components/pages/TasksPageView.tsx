@@ -6,7 +6,10 @@ export function TasksPageView() {
   const { t } = useApp();
 
   return (
-    <div className="device-layout mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 lg:px-6">
+    <div
+      className="device-layout mx-auto flex w-full max-w-6xl flex-col gap-4 px-4 py-4 lg:px-6"
+      data-testid="tasks-view"
+    >
       <div className="space-y-1.5">
         <h1 className="text-lg font-semibold tracking-[-0.01em] text-txt">
           {t("taskseventspanel.Tasks", { defaultValue: "Tasks" })}

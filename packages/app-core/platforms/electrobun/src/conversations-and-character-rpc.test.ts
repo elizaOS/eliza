@@ -8,7 +8,7 @@
  * rationale.
  */
 
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "vitest";
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import {
 	type CharacterReader,

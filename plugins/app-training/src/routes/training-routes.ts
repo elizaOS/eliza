@@ -1,9 +1,12 @@
-import type { RouteHelpers, RouteRequestContext } from "@elizaos/core";
 import type { Trajectory } from "@elizaos/agent";
+import type {
+  AgentRuntime,
+  RouteHelpers,
+  RouteRequestContext,
+} from "@elizaos/core";
 import { parsePositiveInteger } from "@elizaos/shared";
-import type { AgentRuntime } from "@elizaos/core";
 import { AGENT_CONTEXTS, type AgentContext } from "../core/context-types.js";
-import type { RoleplayExecutionReport } from "../core/roleplay-executor.js";
+import { createHashAnonymizer } from "../core/privacy-filter.js";
 import {
   ALL_TRAINING_BACKENDS,
   ALL_TRAINING_TASKS,
@@ -17,7 +20,6 @@ import {
   loadRun,
   triggerTraining,
 } from "../core/training-orchestrator.js";
-import { createHashAnonymizer } from "../core/privacy-filter.js";
 import { resolveHfUploadConfig } from "../core/trajectory-hf-upload.js";
 import type {
   TrajectoryTaskDatasetExport,
@@ -634,7 +636,8 @@ export async function handleTrainingRoutes(
 
     const cerebrasKey = process.env.CEREBRAS_API_KEY;
     const trainProvider =
-      process.env.TRAIN_MODEL_PROVIDER?.trim() ?? process.env.TRAINING_PROVIDER?.trim();
+      process.env.TRAIN_MODEL_PROVIDER?.trim() ??
+      process.env.TRAINING_PROVIDER?.trim();
     const anthropicKey =
       resolveStringSetting(runtime?.getSetting?.("ANTHROPIC_API_KEY")) ??
       process.env.ANTHROPIC_API_KEY;
@@ -724,7 +727,8 @@ export async function handleTrainingRoutes(
 
     const cerebrasKey = process.env.CEREBRAS_API_KEY;
     const trainProvider =
-      process.env.TRAIN_MODEL_PROVIDER?.trim() ?? process.env.TRAINING_PROVIDER?.trim();
+      process.env.TRAIN_MODEL_PROVIDER?.trim() ??
+      process.env.TRAINING_PROVIDER?.trim();
     const anthropicKey =
       resolveStringSetting(runtime?.getSetting?.("ANTHROPIC_API_KEY")) ??
       process.env.ANTHROPIC_API_KEY;
@@ -1001,7 +1005,7 @@ export async function handleTrainingRoutes(
     if (!hfConfig) {
       error(
         res,
-        "HuggingFace publishing is not configured. Set MILADY_TRAJECTORY_HF_REPO and an HF token (HF_TOKEN / HUGGING_FACE_HUB_TOKEN).",
+        "HuggingFace publishing is not configured. Set ELIZA_TRAJECTORY_HF_REPO and an HF token (HF_TOKEN / HUGGING_FACE_HUB_TOKEN).",
         409,
       );
       return true;
@@ -1050,7 +1054,10 @@ export async function handleTrainingRoutes(
           body.outputDir ?? `.tmp/training-trajectory-publish-${Date.now()}`,
         tasks: narrowTrainingTasks(body.tasks),
         // Privacy filter forced on with the default hash anonymizer.
-        privacy: { apply: true, options: { anonymizer: createHashAnonymizer() } },
+        privacy: {
+          apply: true,
+          options: { anonymizer: createHashAnonymizer() },
+        },
         uploadToHuggingFace: hfConfig,
         source: {
           kind: "training-trajectories-publish-route",

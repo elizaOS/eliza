@@ -1,7 +1,3 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces phantom errors because the
-// local TBase constraint can't see sibling mixin methods.
 import { basename } from "node:path";
 import type { Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";

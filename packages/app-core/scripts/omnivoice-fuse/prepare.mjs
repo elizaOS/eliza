@@ -22,18 +22,18 @@ import fs from "node:fs";
 import path from "node:path";
 
 const OMNIVOICE_REPO =
-  process.env.MILADY_OMNIVOICE_REMOTE ||
-  "https://github.com/ServeurpersoCom/omnivoice.cpp.git";
+  process.env.ELIZA_OMNIVOICE_REMOTE ||
+  "https://github.com/elizaOS/omnivoice.cpp.git";
 
 // Master HEAD as of 2026-05-10. Bump per the runbook in README.md.
 export const OMNIVOICE_REF =
-  process.env.MILADY_OMNIVOICE_REF || "38f824023d12b21a7c324651b18bd90f16d8bb86";
+  process.env.ELIZA_OMNIVOICE_REF || "38f824023d12b21a7c324651b18bd90f16d8bb86";
 
 // The ServeurpersoCom ggml submodule pin we explicitly DO NOT include
 // in the fused build. Recorded so verify-symbols.mjs can assert that no
 // `omnivoice/ggml` directory is left dangling under the llama.cpp tree.
 export const OMNIVOICE_GGML_REF =
-  process.env.MILADY_OMNIVOICE_GGML_REF ||
+  process.env.ELIZA_OMNIVOICE_GGML_REF ||
   "0e3980ef205ea3639650f59e54cfeecd7d947700";
 
 // Subdirectory inside the llama.cpp checkout where omnivoice sources
@@ -87,16 +87,20 @@ function copyDirRecursive(src, dst) {
 function replaceBetween(source, startMarker, endMarker, replacement) {
   const start = source.indexOf(startMarker);
   if (start < 0) {
-    throw new Error(`[omnivoice-fuse] compatibility patch anchor not found: ${startMarker}`);
+    throw new Error(
+      `[omnivoice-fuse] compatibility patch anchor not found: ${startMarker}`,
+    );
   }
   const end = source.indexOf(endMarker, start);
   if (end < 0) {
-    throw new Error(`[omnivoice-fuse] compatibility patch end anchor not found: ${endMarker}`);
+    throw new Error(
+      `[omnivoice-fuse] compatibility patch end anchor not found: ${endMarker}`,
+    );
   }
   return source.slice(0, start) + replacement + source.slice(end);
 }
 
-function writeMiladyFfiAdapter({ graftRoot, commit }) {
+function writeElizaFfiAdapter({ graftRoot, commit }) {
   const ffiHeaderSrc = new URL("./ffi.h", import.meta.url).pathname;
   const ffiHeaderDst = path.join(graftRoot, "src", "ffi.h");
   fs.copyFileSync(ffiHeaderSrc, ffiHeaderDst);
@@ -112,10 +116,12 @@ function writeMiladyFfiAdapter({ graftRoot, commit }) {
 #include "mtmd-helper.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <cctype>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -140,9 +146,13 @@ struct EliInferenceContext {
     llama_sampler * asr_sampler = nullptr;
     int asr_sample_rate = 0;
     int asr_n_batch = 512;
+    std::atomic<bool> tts_cancel{false};
     std::mutex tts_mutex;
     std::mutex asr_mutex;
 };
+
+#define ELIZA_STRINGIFY_IMPL(x) #x
+#define ELIZA_STRINGIFY(x) ELIZA_STRINGIFY_IMPL(x)
 
 static char * eliza_strdup(const std::string & s) {
     char * out = (char *) std::malloc(s.size() + 1);
@@ -161,7 +171,8 @@ static bool eliza_is_region(const char * region_name) {
         (std::strcmp(region_name, "tts") == 0 ||
          std::strcmp(region_name, "asr") == 0 ||
          std::strcmp(region_name, "text") == 0 ||
-         std::strcmp(region_name, "dflash") == 0);
+         std::strcmp(region_name, "dflash") == 0 ||
+         std::strcmp(region_name, "vad") == 0);
 }
 
 static std::vector<std::string> eliza_find_ggufs(const std::filesystem::path & dir) {
@@ -250,6 +261,30 @@ static int eliza_thread_count(bool batch) {
     return (int) std::max(1u, std::min(hw, cap));
 }
 
+static void eliza_apply_tts_env_overrides(ov_tts_params * params) {
+    if (!params) return;
+    if (const char * env = std::getenv("ELIZA_TTS_MASKGIT_STEPS")) {
+        int n = std::atoi(env);
+        if (n >= 1 && n <= 64) {
+            params->mg_num_step = n;
+        }
+    }
+    if (const char * env = std::getenv("ELIZA_TTS_CHUNK_DURATION_SEC")) {
+        char * end = nullptr;
+        float v = std::strtof(env, &end);
+        if (end != env && v > 0.0f && v <= 120.0f) {
+            params->chunk_duration_sec = v;
+        }
+    }
+    if (const char * env = std::getenv("ELIZA_TTS_CHUNK_THRESHOLD_SEC")) {
+        char * end = nullptr;
+        float v = std::strtof(env, &end);
+        if (end != env && v > 0.0f && v <= 120.0f) {
+            params->chunk_threshold_sec = v;
+        }
+    }
+}
+
 /* ASR thread budget. The voice-realtime caps in eliza_thread_count() exist
  * so TTS + the DFlash drafter keep cores free during a streaming turn; the
  * ASR Whisper-style audio encoder (the mmproj prefill via
@@ -301,15 +336,36 @@ static std::string eliza_llama_token_piece(const llama_vocab * vocab, llama_toke
     return "";
 }
 
+static std::string eliza_trim_ascii(std::string value);
+
+static std::string eliza_asr_force_language() {
+    const char * env = std::getenv("ELIZA_ASR_FORCE_LANGUAGE");
+    if (!env) return "English";
+    std::string value = eliza_trim_ascii(env);
+    std::string lower = value;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+        return (char) std::tolower(c);
+    });
+    if (lower.empty() || lower == "0" || lower == "false" || lower == "none" || lower == "auto") {
+        return "";
+    }
+    return value;
+}
+
 static std::string eliza_format_asr_prompt(llama_model * model) {
     (void) model;
-    // Qwen3-ASR's generation prompt is intentionally minimal: the audio
-    // placeholder is the entire user turn and decoding starts immediately
-    // at the assistant turn. Extra natural-language instructions cause
-    // role-token chatter instead of a clean transcript.
-    return std::string("<|im_start|>user\\n") +
+    // Mirrors Qwen3-ASR's chat-template structure: empty system context,
+    // one user audio turn, and a generation prompt. Appending
+    // "language X<asr_text>" follows the upstream text-only forcing path
+    // and avoids returning language metadata or role-token chatter.
+    std::string prompt = std::string("<|im_start|>system\\n<|im_end|>\\n<|im_start|>user\\n") +
         mtmd_default_marker() +
         "<|im_end|>\\n<|im_start|>assistant\\n";
+    std::string language = eliza_asr_force_language();
+    if (!language.empty()) {
+        prompt += "language " + language + "<asr_text>";
+    }
+    return prompt;
 }
 
 static std::string eliza_trim_ascii(std::string value) {
@@ -332,8 +388,13 @@ static std::string eliza_clean_asr_transcript(std::string transcript) {
         transcript = transcript.substr(marker + asr_marker.size());
     }
     const char * sentinels[] = {
+        "<|im_start|>",
         "<|im_end|>",
         "<|endoftext|>",
+        "<|audio_start|>",
+        "<|audio_end|>",
+        "<|vision_start|>",
+        "<|vision_end|>",
         "</s>",
     };
     for (const char * sentinel : sentinels) {
@@ -342,7 +403,66 @@ static std::string eliza_clean_asr_transcript(std::string transcript) {
             transcript = transcript.substr(0, pos);
         }
     }
-    return eliza_trim_ascii(transcript);
+    transcript = eliza_trim_ascii(transcript);
+    for (const char * sentinel : sentinels) {
+        std::string full(sentinel);
+        if (full.rfind(transcript, 0) == 0) {
+            return "";
+        }
+    }
+    return transcript;
+}
+
+static bool eliza_asr_has_text_payload(const std::string & transcript) {
+    for (unsigned char c : transcript) {
+        if (std::isalnum(c)) return true;
+    }
+    return false;
+}
+
+static int eliza_map_ov_status(ov_status rc) {
+    if (rc == OV_STATUS_OK) return ELIZA_OK;
+    if (rc == OV_STATUS_OOM) return ELIZA_ERR_OOM;
+    if (rc == OV_STATUS_CANCELLED) return ELIZA_ERR_CANCELLED;
+    if (rc == OV_STATUS_INVALID_PARAMS || rc == OV_STATUS_INSTRUCT_INVALID) return ELIZA_ERR_INVALID_ARG;
+    return ELIZA_ERR_FFI_FAULT;
+}
+
+static bool eliza_tts_cancel_requested(void * user_data) {
+    EliInferenceContext * ctx = (EliInferenceContext *) user_data;
+    return ctx && ctx->tts_cancel.load(std::memory_order_acquire);
+}
+
+struct ElizaScopedTtsForward {
+    EliInferenceContext * ctx;
+
+    explicit ElizaScopedTtsForward(EliInferenceContext * c) : ctx(c) {
+        if (ctx) ctx->tts_cancel.store(false, std::memory_order_release);
+    }
+
+    ~ElizaScopedTtsForward() {
+        if (ctx) ctx->tts_cancel.store(false, std::memory_order_release);
+    }
+};
+
+struct ElizaTtsStreamState {
+    EliInferenceContext * ctx;
+    eliza_tts_chunk_cb on_chunk;
+    void * user_data;
+    bool callback_cancelled;
+};
+
+static bool eliza_tts_stream_chunk(const float * samples, int n_samples, void * user_data) {
+    ElizaTtsStreamState * state = (ElizaTtsStreamState *) user_data;
+    if (!state || !state->on_chunk) return false;
+    if (state->ctx && state->ctx->tts_cancel.load(std::memory_order_acquire)) return false;
+    const int rc = state->on_chunk(samples, n_samples < 0 ? 0 : (size_t) n_samples, 0, state->user_data);
+    if (rc != 0) {
+        state->callback_cancelled = true;
+        if (state->ctx) state->ctx->tts_cancel.store(true, std::memory_order_release);
+        return false;
+    }
+    return !(state->ctx && state->ctx->tts_cancel.load(std::memory_order_acquire));
 }
 
 static void eliza_free_asr(EliInferenceContext * ctx) {
@@ -477,10 +597,11 @@ static int eliza_load_asr(EliInferenceContext * ctx, char ** out_error) {
 extern "C" {
 
 const char * eliza_inference_abi_version(void) {
-    // ABI v2 adds the streaming-ASR session API (eliza_inference_asr_stream_*).
+    // Keep this tied to ffi.h so ABI bumps cannot drift between the
+    // generated adapter and the TypeScript loader.
     // Keep in lockstep with ELIZA_INFERENCE_ABI_VERSION in
     // packages/app-core/src/services/local-inference/voice/ffi-bindings.ts.
-    return "2";
+    return ELIZA_STRINGIFY(ELIZA_INFERENCE_ABI_VERSION);
 }
 
 EliInferenceContext * eliza_inference_create(
@@ -590,15 +711,19 @@ int eliza_inference_tts_synthesize(
 
     std::lock_guard<std::mutex> lock(ctx->tts_mutex);
     if (!ctx->ov) {
-        eliza_set_error(out_error, "[libelizainference] tts_synthesize: TTS region is not acquired; call mmap_acquire(\\\"tts\\\") after arming voice");
+        eliza_set_error(out_error, "[libelizainference] tts_synthesize: TTS region is not acquired; call mmap_acquire(\\"tts\\") after arming voice");
         return ELIZA_ERR_INVALID_ARG;
     }
+    ElizaScopedTtsForward forward(ctx);
 
     std::string text_owned(text, text_len);
     ov_tts_params params;
     ov_tts_default_params(&params);
+    eliza_apply_tts_env_overrides(&params);
     params.text = text_owned.c_str();
     params.instruct = speaker_preset_id ? speaker_preset_id : "";
+    params.cancel = eliza_tts_cancel_requested;
+    params.cancel_user_data = ctx;
 
     ov_audio audio = {};
     ov_status rc = ov_synthesize(ctx->ov, &params, &audio);
@@ -607,7 +732,7 @@ int eliza_inference_tts_synthesize(
         msg += ov_last_error();
         ov_audio_free(&audio);
         eliza_set_error(out_error, msg);
-        return rc == OV_STATUS_OOM ? ELIZA_ERR_OOM : ELIZA_ERR_FFI_FAULT;
+        return eliza_map_ov_status(rc);
     }
     if (audio.n_samples < 0 || (size_t) audio.n_samples > max_samples) {
         std::string msg = "[libelizainference] output buffer too small; required samples=" +
@@ -641,7 +766,7 @@ int eliza_inference_asr_transcribe(
 
     std::lock_guard<std::mutex> lock(ctx->asr_mutex);
     if (!ctx->asr_model || !ctx->asr_lctx || !ctx->asr_mtmd || !ctx->asr_sampler) {
-        eliza_set_error(out_error, "[libelizainference] asr_transcribe: ASR region is not acquired; call mmap_acquire(\\\"asr\\\") after arming voice input");
+        eliza_set_error(out_error, "[libelizainference] asr_transcribe: ASR region is not acquired; call mmap_acquire(\\"asr\\") after arming voice input");
         return ELIZA_ERR_INVALID_ARG;
     }
 
@@ -712,12 +837,13 @@ int eliza_inference_asr_transcribe(
             }
             transcript += piece;
             std::string cleaned_partial = eliza_clean_asr_transcript(transcript);
-            if (!cleaned_partial.empty()) {
+            if (eliza_asr_has_text_payload(cleaned_partial)) {
                 const char last = cleaned_partial.back();
                 const bool sentence_complete = last == '.' || last == '?' || last == '!';
                 if (piece.find('\\n') != std::string::npos ||
-                    transcript.find("<|im_start|>") != std::string::npos ||
                     transcript.find("<|im_end|>") != std::string::npos ||
+                    transcript.find("<|endoftext|>") != std::string::npos ||
+                    transcript.find("</s>") != std::string::npos ||
                     sentence_complete) {
                     completed = true;
                     break;
@@ -733,12 +859,10 @@ int eliza_inference_asr_transcribe(
         }
     }
     if (!completed) {
-        std::string cleaned_partial = eliza_clean_asr_transcript(transcript);
-        if (cleaned_partial.empty()) {
-            eliza_set_error(out_error, "[libelizainference] asr_transcribe: decode reached token cap before EOG and produced no transcript");
-            return ELIZA_ERR_FFI_FAULT;
-        }
-        transcript = cleaned_partial;
+        eliza_set_error(out_error,
+            "[libelizainference] asr_transcribe: decode reached token cap before EOG; "
+            "refusing to return a possibly truncated transcript");
+        return ELIZA_ERR_FFI_FAULT;
     } else {
         transcript = eliza_clean_asr_transcript(transcript);
     }
@@ -758,10 +882,10 @@ int eliza_inference_asr_transcribe(
  * decoder above; the windowed streaming-session decoder is not yet wired
  * (W7). Per packages/inference/AGENTS.md §3 we do NOT fake it — the
  * capability probe returns 0 so EngineVoiceBridge / StreamingTranscriber
- * pick the batch path (or the whisper.cpp interim adapter) instead of
- * opening a session that would only return ELIZA_ERR_NOT_IMPLEMENTED.
+ * pick the fused batch ASR adapter instead of opening a session that would
+ * only return ELIZA_ERR_NOT_IMPLEMENTED.
  * These symbols exist so the ABI surface is complete and the loader's
- * version check (ffi-bindings.ts expects v2) succeeds.
+ * version check (ffi-bindings.ts expects v3) succeeds.
  */
 
 int eliza_inference_asr_stream_supported(void) {
@@ -830,17 +954,15 @@ void eliza_inference_asr_stream_close(EliAsrStream * stream) {
 
 /* ---- Streaming TTS + DFlash verifier callback (ABI v2) ------------- *
  *
- * The batch \`eliza_inference_tts_synthesize\` above is the implemented TTS
- * path. The chunk-streaming entry, hard-cancel, and the native DFlash
- * verifier-event callback are W7 fused-runtime work — until then
- * \`eliza_inference_tts_stream_supported()\` returns 0 so EngineVoiceBridge
- * uses the batch path / synthesizes verifier events from llama-server SSE
- * deltas, exactly as it does today. We do NOT fake these (AGENTS.md §3);
- * they exist so the ABI surface ffi-bindings.ts expects is complete.
+ * TTS streaming is backed by OmniVoice's real \`ov_tts_params.on_chunk\`
+ * path and cooperative cancel hook. The native DFlash verifier-event
+ * callback is still not wired in this generated adapter, so the JS
+ * scheduler continues to synthesize verifier events from llama-server SSE
+ * deltas until that text-generation path moves in-process.
  */
 
 int eliza_inference_tts_stream_supported(void) {
-    return 0;
+    return OV_ABI_VERSION >= 2 ? 1 : 0;
 }
 
 int eliza_inference_tts_synthesize_stream(
@@ -851,25 +973,66 @@ int eliza_inference_tts_synthesize_stream(
     eliza_tts_chunk_cb on_chunk,
     void * user_data,
     char ** out_error) {
-    (void) ctx;
-    (void) text;
-    (void) text_len;
-    (void) speaker_preset_id;
-    (void) on_chunk;
-    (void) user_data;
-    eliza_set_error(out_error,
-        "[libelizainference] streaming TTS is not implemented in this build "
-        "(eliza_inference_tts_stream_supported() == 0); use the batch synthesize path");
-    return ELIZA_ERR_NOT_IMPLEMENTED;
+    if (!ctx || !on_chunk) {
+        eliza_set_error(out_error, "[libelizainference] tts_synthesize_stream: invalid arguments");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    if (!text || text_len == 0) {
+        eliza_set_error(out_error, "[libelizainference] tts_synthesize_stream: text is required");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+
+    std::lock_guard<std::mutex> lock(ctx->tts_mutex);
+    if (!ctx->ov) {
+        eliza_set_error(out_error, "[libelizainference] tts_synthesize_stream: TTS region is not acquired; call mmap_acquire(\\"tts\\") after arming voice");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    ElizaScopedTtsForward forward(ctx);
+
+    std::string text_owned(text, text_len);
+    ov_tts_params params;
+    ov_tts_default_params(&params);
+    eliza_apply_tts_env_overrides(&params);
+    params.text = text_owned.c_str();
+    params.instruct = speaker_preset_id ? speaker_preset_id : "";
+    params.cancel = eliza_tts_cancel_requested;
+    params.cancel_user_data = ctx;
+
+    ElizaTtsStreamState state = {
+        ctx,
+        on_chunk,
+        user_data,
+        false,
+    };
+    params.on_chunk = eliza_tts_stream_chunk;
+    params.on_chunk_user_data = &state;
+
+    ov_status rc = ov_synthesize(ctx->ov, &params, nullptr);
+    const bool cancelled =
+        rc == OV_STATUS_CANCELLED ||
+        state.callback_cancelled ||
+        ctx->tts_cancel.load(std::memory_order_acquire);
+    (void) on_chunk(nullptr, 0, 1, user_data);
+    if (cancelled) {
+        return ELIZA_ERR_CANCELLED;
+    }
+    if (rc != OV_STATUS_OK) {
+        std::string msg = "[libelizainference] ov_synthesize(stream) failed: ";
+        msg += ov_last_error();
+        eliza_set_error(out_error, msg);
+        return eliza_map_ov_status(rc);
+    }
+    return ELIZA_OK;
 }
 
 int eliza_inference_cancel_tts(
     EliInferenceContext * ctx,
     char ** out_error) {
-    (void) ctx;
     (void) out_error;
-    // Cancelling nothing is not an error; there is no in-flight streaming
-    // forward pass in this build (streaming TTS is not implemented).
+    if (ctx) {
+        ctx->tts_cancel.store(true, std::memory_order_release);
+    }
+    // Cancelling nothing is not an error.
     return ELIZA_OK;
 }
 
@@ -885,6 +1048,55 @@ int eliza_inference_set_verifier_callback(
         "[libelizainference] native DFlash verifier callback is not implemented in this build; "
         "the JS scheduler synthesizes verifier events from llama-server streaming deltas");
     return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+/* ---- Native VAD (ABI v3) ------------------------------------------- *
+ *
+ * The JS runtime can use the ONNX Silero path today. Native VAD is an
+ * additive fused-runtime backend; until the fused target wires it,
+ * advertise unsupported and return structured not-implemented errors.
+ */
+
+int eliza_inference_vad_supported(void) {
+    return 0;
+}
+
+EliVad * eliza_inference_vad_open(
+    EliInferenceContext * ctx,
+    int sample_rate_hz,
+    char ** out_error) {
+    (void) ctx;
+    (void) sample_rate_hz;
+    eliza_set_error(out_error,
+        "[libelizainference] native VAD is not implemented in this build "
+        "(eliza_inference_vad_supported() == 0); use the ONNX Silero VAD path");
+    return nullptr;
+}
+
+int eliza_inference_vad_process(
+    EliVad * vad,
+    const float * pcm,
+    size_t n_samples,
+    float * out_probability,
+    char ** out_error) {
+    (void) vad;
+    (void) pcm;
+    (void) n_samples;
+    (void) out_probability;
+    eliza_set_error(out_error, "[libelizainference] native VAD is not implemented in this build");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+int eliza_inference_vad_reset(
+    EliVad * vad,
+    char ** out_error) {
+    (void) vad;
+    eliza_set_error(out_error, "[libelizainference] native VAD is not implemented in this build");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+void eliza_inference_vad_close(EliVad * vad) {
+    (void) vad;
 }
 
 void eliza_inference_free_string(char * str) {
@@ -971,14 +1183,14 @@ function inspectPreparedOmnivoiceSurface({ graftRoot }) {
   };
 }
 
-function applyMiladyGgmlCompatibility({ graftRoot, commit }) {
+function applyElizaGgmlCompatibility({ graftRoot, commit }) {
   const dacPath = path.join(graftRoot, "src", "dac-decoder.h");
   let source = fs.readFileSync(dacPath, "utf8");
-  const loadCtw = `// Load ConvTranspose1d weights in milady ggml's native kernel layout.
+  const loadCtw = `// Load ConvTranspose1d weights in eliza ggml's native kernel layout.
 // Source-side layout is (IC, OC, K), represented by ggml as ne=(K, OC, IC).
-// milady ggml already ships GGML_OP_CONV_TRANSPOSE_1D for CPU/CUDA/Metal/
+// eliza ggml already ships GGML_OP_CONV_TRANSPOSE_1D for CPU/CUDA/Metal/
 // Vulkan, while omnivoice's fork used a private col2im_1d op. Keeping the
-// native layout lets the fused build share the patched milady ggml without
+// native layout lets the fused build share the patched eliza ggml without
 // adding a second custom op.
 static void dac_load_ctw(struct ggml_tensor * dst, const GGUFModel & gf, const std::string & name) {
     struct ggml_tensor * mt = ggml_get_tensor(gf.meta, name.c_str());
@@ -1031,9 +1243,9 @@ static void dac_load_ctw(struct ggml_tensor * dst, const GGUFModel & gf, const s
     loadCtw,
   );
 
-  const convT = `// ConvTranspose1d using milady ggml's native GGML_OP_CONV_TRANSPOSE_1D.
+  const convT = `// ConvTranspose1d using eliza ggml's native GGML_OP_CONV_TRANSPOSE_1D.
 // The upstream omnivoice fork used a private col2im_1d op with padding.
-// milady's native op requires p0=0, so we crop pad samples from both ends
+// eliza's native op requires p0=0, so we crop pad samples from both ends
 // and then apply output_pad to match the original length contract.
 static struct ggml_tensor * dac_conv_t1d(struct ggml_context * ctx,
                                          struct ggml_tensor *  w,
@@ -1097,7 +1309,7 @@ static struct ggml_tensor * dac_conv_t1d(struct ggml_context * ctx,
   codecSource = codecSource.replace(
     codecBackendAnchor,
     `    // Keep the MaskGIT/LM path on the selected accelerator, but pin the
-    // audio tokenizer / DAC codec to CPU on Apple Metal. The merged milady
+    // audio tokenizer / DAC codec to CPU on Apple Metal. The merged eliza
     // ggml Metal DAC decode graph has been observed to stall immediately
     // after "[TTS] Decode"; using CPU here keeps one fused process and one
     // model lifecycle while avoiding the bad Metal codec scheduler path.
@@ -1134,10 +1346,10 @@ static struct ggml_tensor * dac_conv_t1d(struct ggml_context * ctx,
 
   fs.writeFileSync(
     path.join(graftRoot, "src", "version.h"),
-    `#pragma once\n#define OMNIVOICE_VERSION "${commit.slice(0, 12)} (milady-fused)"\n`,
+    `#pragma once\n#define OMNIVOICE_VERSION "${commit.slice(0, 12)} (eliza-fused)"\n`,
     "utf8",
   );
-  writeMiladyFfiAdapter({ graftRoot, commit });
+  writeElizaFfiAdapter({ graftRoot, commit });
 }
 
 // Ensure a clone of omnivoice.cpp at OMNIVOICE_REF lives under
@@ -1185,9 +1397,7 @@ function readOmnivoiceGgmlSubmoduleCommit(checkoutDir) {
     stdio: ["ignore", "pipe", "pipe"],
   });
   if (result.status !== 0) return null;
-  const match = /^160000\s+commit\s+([0-9a-f]{40})/.exec(
-    result.stdout || "",
-  );
+  const match = /^160000\s+commit\s+([0-9a-f]{40})/.exec(result.stdout || "");
   return match ? match[1] : null;
 }
 
@@ -1290,7 +1500,7 @@ function replaceRequired(source, from, to, label) {
   return source.replace(from, to);
 }
 
-function applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot }) {
+function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
   const touched = [];
 
   const clipImplPath = path.join(llamaCppRoot, "tools", "mtmd", "clip-impl.h");
@@ -1324,7 +1534,12 @@ function applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot }) {
     touched.push("tools/mtmd/clip-impl.h");
   }
 
-  const clipModelPath = path.join(llamaCppRoot, "tools", "mtmd", "clip-model.h");
+  const clipModelPath = path.join(
+    llamaCppRoot,
+    "tools",
+    "mtmd",
+    "clip-model.h",
+  );
   let clipModel = fs.readFileSync(clipModelPath, "utf8");
   if (!clipModel.includes("conv_out_w")) {
     clipModel = replaceRequired(
@@ -1347,7 +1562,13 @@ function applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot }) {
     touched.push("tools/mtmd/clip-model.h");
   }
 
-  const modelsHeaderPath = path.join(llamaCppRoot, "tools", "mtmd", "models", "models.h");
+  const modelsHeaderPath = path.join(
+    llamaCppRoot,
+    "tools",
+    "mtmd",
+    "models",
+    "models.h",
+  );
   let modelsHeader = fs.readFileSync(modelsHeaderPath, "utf8");
   if (!modelsHeader.includes("clip_graph_qwen3a")) {
     modelsHeader = replaceRequired(
@@ -1360,13 +1581,24 @@ function applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot }) {
     touched.push("tools/mtmd/models/models.h");
   }
 
-  const qwen3aPath = path.join(llamaCppRoot, "tools", "mtmd", "models", "qwen3a.cpp");
+  const qwen3aPath = path.join(
+    llamaCppRoot,
+    "tools",
+    "mtmd",
+    "models",
+    "qwen3a.cpp",
+  );
   if (!fs.existsSync(qwen3aPath)) {
     fs.writeFileSync(qwen3aPath, QWEN3A_MODEL_CPP, "utf8");
     touched.push("tools/mtmd/models/qwen3a.cpp");
   }
 
-  const mtmdCmakePath = path.join(llamaCppRoot, "tools", "mtmd", "CMakeLists.txt");
+  const mtmdCmakePath = path.join(
+    llamaCppRoot,
+    "tools",
+    "mtmd",
+    "CMakeLists.txt",
+  );
   let mtmdCmake = fs.readFileSync(mtmdCmakePath, "utf8");
   if (!mtmdCmake.includes("models/qwen3a.cpp")) {
     mtmdCmake = replaceRequired(
@@ -1389,7 +1621,11 @@ function applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot }) {
       "clip.cpp qwen3a graph dispatch",
     );
   }
-  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n                case PROJECTOR_TYPE_GLMA")) {
+  if (
+    !clip.includes(
+      "case PROJECTOR_TYPE_QWEN3A:\n                case PROJECTOR_TYPE_GLMA",
+    )
+  ) {
     clip = replaceRequired(
       clip,
       "                case PROJECTOR_TYPE_QWEN2A:\n                case PROJECTOR_TYPE_GLMA:",
@@ -1397,15 +1633,23 @@ function applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot }) {
       "clip.cpp qwen3a hparams",
     );
   }
-  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n                {\n                    model.conv2d_1_w")) {
+  if (
+    !clip.includes(
+      "case PROJECTOR_TYPE_QWEN3A:\n                {\n                    model.conv2d_1_w",
+    )
+  ) {
     clip = replaceRequired(
       clip,
       "            case PROJECTOR_TYPE_VOXTRAL:\n                {",
-      "            case PROJECTOR_TYPE_QWEN3A:\n                {\n                    model.conv2d_1_w = get_tensor(string_format(TN_CONV2D, 1, \"weight\"));\n                    model.conv2d_1_b = get_tensor(string_format(TN_CONV2D, 1, \"bias\"));\n                    model.conv2d_2_w = get_tensor(string_format(TN_CONV2D, 2, \"weight\"));\n                    model.conv2d_2_b = get_tensor(string_format(TN_CONV2D, 2, \"bias\"));\n                    model.conv2d_3_w = get_tensor(string_format(TN_CONV2D, 3, \"weight\"));\n                    model.conv2d_3_b = get_tensor(string_format(TN_CONV2D, 3, \"bias\"));\n                    model.conv_out_w = get_tensor(string_format(TN_CONV_OUT, \"weight\"));\n                    model.conv_out_b = get_tensor(string_format(TN_CONV_OUT, \"bias\"), false);\n                    model.mm_1_w = get_tensor(string_format(TN_MM_AUDIO_MLP, 1, \"weight\"));\n                    model.mm_1_b = get_tensor(string_format(TN_MM_AUDIO_MLP, 1, \"bias\"));\n                    model.mm_2_w = get_tensor(string_format(TN_MM_AUDIO_MLP, 2, \"weight\"));\n                    model.mm_2_b = get_tensor(string_format(TN_MM_AUDIO_MLP, 2, \"bias\"));\n                } break;\n            case PROJECTOR_TYPE_VOXTRAL:\n                {",
+      '            case PROJECTOR_TYPE_QWEN3A:\n                {\n                    model.conv2d_1_w = get_tensor(string_format(TN_CONV2D, 1, "weight"));\n                    model.conv2d_1_b = get_tensor(string_format(TN_CONV2D, 1, "bias"));\n                    model.conv2d_2_w = get_tensor(string_format(TN_CONV2D, 2, "weight"));\n                    model.conv2d_2_b = get_tensor(string_format(TN_CONV2D, 2, "bias"));\n                    model.conv2d_3_w = get_tensor(string_format(TN_CONV2D, 3, "weight"));\n                    model.conv2d_3_b = get_tensor(string_format(TN_CONV2D, 3, "bias"));\n                    model.conv_out_w = get_tensor(string_format(TN_CONV_OUT, "weight"));\n                    model.conv_out_b = get_tensor(string_format(TN_CONV_OUT, "bias"), false);\n                    model.mm_1_w = get_tensor(string_format(TN_MM_AUDIO_MLP, 1, "weight"));\n                    model.mm_1_b = get_tensor(string_format(TN_MM_AUDIO_MLP, 1, "bias"));\n                    model.mm_2_w = get_tensor(string_format(TN_MM_AUDIO_MLP, 2, "weight"));\n                    model.mm_2_b = get_tensor(string_format(TN_MM_AUDIO_MLP, 2, "bias"));\n                } break;\n            case PROJECTOR_TYPE_VOXTRAL:\n                {',
       "clip.cpp qwen3a tensor loads",
     );
   }
-  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n            {\n                // 3x stride-2 conv2d")) {
+  if (
+    !clip.includes(
+      "case PROJECTOR_TYPE_QWEN3A:\n            {\n                // 3x stride-2 conv2d",
+    )
+  ) {
     clip = replaceRequired(
       clip,
       "        case PROJECTOR_TYPE_GLMA:\n            {",
@@ -1413,7 +1657,11 @@ function applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot }) {
       "clip.cpp qwen3a output token count",
     );
   }
-  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_ULTRAVOX")) {
+  if (
+    !clip.includes(
+      "case PROJECTOR_TYPE_QWEN3A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_ULTRAVOX",
+    )
+  ) {
     clip = replaceRequired(
       clip,
       "        case PROJECTOR_TYPE_QWEN2A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_ULTRAVOX:",
@@ -1421,7 +1669,11 @@ function applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot }) {
       "clip.cpp qwen3a input setup",
     );
   }
-  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n            return ctx->model.mm_2_w->ne[1];")) {
+  if (
+    !clip.includes(
+      "case PROJECTOR_TYPE_QWEN3A:\n            return ctx->model.mm_2_w->ne[1];",
+    )
+  ) {
     clip = replaceRequired(
       clip,
       "        case PROJECTOR_TYPE_QWEN2A:\n            return ctx->model.mm_fc_w->ne[1];\n        case PROJECTOR_TYPE_GLMA:",
@@ -1429,7 +1681,11 @@ function applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot }) {
       "clip.cpp qwen3a mmproj embedding dim",
     );
   }
-  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_VOXTRAL")) {
+  if (
+    !clip.includes(
+      "case PROJECTOR_TYPE_QWEN3A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_VOXTRAL",
+    )
+  ) {
     clip = replaceRequired(
       clip,
       "        case PROJECTOR_TYPE_QWEN2A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_VOXTRAL:",
@@ -1444,7 +1700,11 @@ function applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot }) {
 
   const mtmdPath = path.join(llamaCppRoot, "tools", "mtmd", "mtmd.cpp");
   let mtmd = fs.readFileSync(mtmdPath, "utf8");
-  if (!mtmd.includes("case PROJECTOR_TYPE_QWEN3A:\n            case PROJECTOR_TYPE_QWEN25O:")) {
+  if (
+    !mtmd.includes(
+      "case PROJECTOR_TYPE_QWEN3A:\n            case PROJECTOR_TYPE_QWEN25O:",
+    )
+  ) {
     mtmd = replaceRequired(
       mtmd,
       "            case PROJECTOR_TYPE_QWEN2A:\n            case PROJECTOR_TYPE_QWEN25O:",
@@ -1452,11 +1712,27 @@ function applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot }) {
       "mtmd.cpp qwen3a audio preprocessor",
     );
   }
-  if (!mtmd.includes("proj == PROJECTOR_TYPE_QWEN3A")) {
+  if (
+    !mtmd.includes('aud_beg = "<|audio_start|>";') ||
+    !mtmd.includes("proj == PROJECTOR_TYPE_QWEN3A")
+  ) {
     mtmd = replaceRequired(
       mtmd,
-      "        if (proj == PROJECTOR_TYPE_QWEN2A) {",
-      "        if (proj == PROJECTOR_TYPE_QWEN2A || proj == PROJECTOR_TYPE_QWEN3A || proj == PROJECTOR_TYPE_QWEN25O) {",
+      `        if (proj == PROJECTOR_TYPE_QWEN2A) {
+            // <|audio_bos|> ... (embeddings) ... <|audio_eos|>
+            aud_beg = "<|audio_bos|>";
+            aud_end = "<|audio_eos|>";
+`,
+      `        if (proj == PROJECTOR_TYPE_QWEN3A) {
+            // <|audio_start|> ... (embeddings replacing <|audio_pad|>) ... <|audio_end|>
+            aud_beg = "<|audio_start|>";
+            aud_end = "<|audio_end|>";
+
+        } else if (proj == PROJECTOR_TYPE_QWEN2A || proj == PROJECTOR_TYPE_QWEN25O) {
+            // <|audio_bos|> ... (embeddings) ... <|audio_eos|>
+            aud_beg = "<|audio_bos|>";
+            aud_end = "<|audio_eos|>";
+`,
       "mtmd.cpp qwen3a audio special tokens",
     );
   }
@@ -1466,7 +1742,7 @@ function applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot }) {
   }
 
   return {
-    name: "milady-qwen3a-mtmd-backport",
+    name: "eliza-qwen3a-mtmd-backport",
     status: touched.length > 0 ? "applied" : "already-applied",
     files: touched,
   };
@@ -1490,7 +1766,7 @@ export function prepareOmnivoiceFusion({
   }
   if (!fs.existsSync(path.join(llamaCppRoot, "ggml", "CMakeLists.txt"))) {
     throw new Error(
-      `[omnivoice-fuse] llamaCppRoot=${llamaCppRoot} missing ggml/CMakeLists.txt; the milady ggml is required for fusion`,
+      `[omnivoice-fuse] llamaCppRoot=${llamaCppRoot} missing ggml/CMakeLists.txt; the eliza ggml is required for fusion`,
     );
   }
 
@@ -1535,7 +1811,7 @@ export function prepareOmnivoiceFusion({
       path.join(graftRoot, subdir),
     );
   }
-  applyMiladyGgmlCompatibility({ graftRoot, commit: head });
+  applyElizaGgmlCompatibility({ graftRoot, commit: head });
   const sourceSurface = inspectPreparedOmnivoiceSurface({ graftRoot });
 
   // examples/ is data-only (audio prompts, sample text). Copy on a
@@ -1558,7 +1834,7 @@ export function prepareOmnivoiceFusion({
 
   // Apply any reconciliation patches keyed to specific drifts.
   const patchesDir = new URL("./patches/", import.meta.url).pathname;
-  const qwen3aBackport = applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot });
+  const qwen3aBackport = applyElizaQwen3AsrMtmdSupport({ llamaCppRoot });
   const appliedPatches = [
     qwen3aBackport,
     ...applyPatches({ patchesDir, llamaCppRoot }),

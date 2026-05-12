@@ -10,7 +10,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { logger, resolveStateDir } from "@elizaos/core";
 import type {
   KeyValidationResult,
   SolanaTokenBalance,
@@ -20,8 +19,9 @@ import type {
   WalletImportResult,
   WalletKeys,
 } from "@elizaos/core";
+import { logger, resolveStateDir } from "@elizaos/core";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
-import { ethers } from "ethers";
+import * as ethers from "ethers";
 
 type StewardAgentWalletPayload = {
   walletAddress?: string;

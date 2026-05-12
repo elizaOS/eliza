@@ -1,0 +1,40 @@
+# Messaging Service Configuration
+# Controls how automated messages are delivered
+
+providers:
+  telegram:
+    enabled: true
+    bot_token_env: "TELEGRAM_BOT_TOKEN"
+    default_parse_mode: "MarkdownV2"
+    channels:
+      daily_reads:
+        chat_id: "-1001987654321"
+        name: "Daily Book Reads"
+        description: "Channel for daily book recommendations"
+      admin:
+        chat_id: "123456789"
+        name: "Admin Notifications"
+        description: "Private alerts for task failures"
+    rate_limit:
+      messages_per_second: 1
+      burst: 3
+
+  discord:
+    enabled: true
+    webhook_url_env: "DISCORD_WEBHOOK_URL"
+    channels:
+      daily_reads:
+        channel_id: "1198765432109876543"
+        name: "book-recommendations"
+
+formatting:
+  book_recommendation:
+    include_emoji: true
+    include_rating: true
+    include_genre_tag: true
+    max_description_length: 200
+
+message_defaults:
+  silent: false
+  disable_link_preview: false
+  timeout_seconds: 30

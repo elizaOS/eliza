@@ -104,7 +104,7 @@ export async function exitWorktreeHandler(
   }
 
   coreLogger.debug(
-    `${CODING_TOOLS_LOG_PREFIX} EXIT_WORKTREE from ${popped.entered} -> ${popped.previousCwd} cleaned=${cleaned}`,
+    `${CODING_TOOLS_LOG_PREFIX} WORKTREE action=exit from ${popped.entered} -> ${popped.previousCwd} cleaned=${cleaned}`,
   );
 
   const maxActionResultBytes = 2000;

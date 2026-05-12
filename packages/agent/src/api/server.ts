@@ -106,6 +106,7 @@ import {
   isMobilePlatform,
   normalizeCharacterLanguage,
   resolveApiBindHost,
+  resolveDesktopApiPort,
   resolveServerOnlyPort,
   resolveStylePresetByAvatarIndex,
 } from "@elizaos/shared";
@@ -2394,10 +2395,10 @@ async function handleRequest(
   // Extracted to @elizaos/plugin-imessage setup-routes.ts (Plugin.routes).
   // The plugin registers rawPath routes that serve the same legacy paths.
 
-  // ── Telegram setup routes (/api/telegram-setup/*) ────────────────────
+  // ── Telegram setup routes (/api/setup/telegram/*) ────────────────────
   // Extracted to @elizaos/plugin-telegram setup-routes.ts (Plugin.routes).
 
-  // ── Telegram account routes (/api/telegram-account/*) ────────────────
+  // ── Telegram account routes (/api/setup/telegram-account/*) ──────────
   // Extracted to @elizaos/plugin-telegram account-setup-routes.ts (Plugin.routes).
 
   // ── Discord Local routes (/api/discord-local/*) — extracted to @elizaos/plugin-discord (setup-routes.ts) ──
@@ -2934,7 +2935,15 @@ export async function startApiServer(opts?: {
   const apiStartTime = Date.now();
   console.log(`[eliza-api] startApiServer called`);
 
-  const port = opts?.port ?? resolveServerOnlyPort(process.env);
+  // Honor ELIZA_API_PORT first (set by the desktop launcher → 31337) so
+  // the renderer's hardcoded API base reaches this server. CLI-mode
+  // (no ELIZA_API_PORT) keeps the legacy `resolveServerOnlyPort` default
+  // of 2138, so this change is transparent for non-desktop users.
+  const port =
+    opts?.port ??
+    (process.env.ELIZA_API_PORT
+      ? resolveDesktopApiPort(process.env)
+      : resolveServerOnlyPort(process.env));
   const host = resolveApiBindHost(process.env);
   ensureApiTokenForBindHost(host);
   console.log(`[eliza-api] Token check done (${Date.now() - apiStartTime}ms)`);

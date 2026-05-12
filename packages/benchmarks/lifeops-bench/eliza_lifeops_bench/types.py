@@ -50,6 +50,15 @@ class MessageTurn:
 
     `tool_calls` is the raw assistant tool-call payload (when role == "assistant").
     `tool_call_id` and `name` correlate a `role == "tool"` turn back to the call.
+
+    Per-turn telemetry (`cost_usd`, `latency_ms`, `input_tokens`,
+    `output_tokens`) lives on the dataclass itself so the runner can read it
+    without ``getattr`` games. All four are :data:`None` when the provider
+    didn't expose the corresponding number — per AGENTS.md Cmd #8, missing
+    data stays nullable rather than masquerading as ``0.0`` / ``0``. This
+    matters for sub-turns that are pure user / tool messages (no model call
+    happened, so there is nothing to bill or time) and for unpriced models
+    where pricing tables can't compute a real cost.
     """
 
     role: Literal["user", "assistant", "system", "tool"]
@@ -57,6 +66,10 @@ class MessageTurn:
     name: str | None = None
     tool_calls: list[dict[str, Any]] | None = None
     tool_call_id: str | None = None
+    cost_usd: float | None = None
+    latency_ms: float | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -129,6 +142,69 @@ class Scenario:
     disruptions: list[Disruption] = field(default_factory=list)
 
 
+def attach_usage_cache_fields(turn: Any, usage: dict[str, Any]) -> None:
+    """Parse OpenAI / Cerebras / Anthropic-shaped ``usage`` onto a turn.
+
+    Sets ``input_tokens`` / ``output_tokens`` / ``cache_read_input_tokens`` /
+    ``cache_creation_input_tokens`` / ``cache_supported`` as attributes on
+    ``turn`` (via ``setattr``) so :class:`LifeOpsBenchRunner` can pick them
+    up with ``getattr``. Cache fields stay ``None`` when the provider does
+    not report them — per AGENTS.md Cmd #8, no silent ``0`` fallback.
+
+    Used by the hermes-adapter and openclaw-adapter LifeOpsBench glue. The
+    eliza-adapter receives camelCase rollups from the TS bench server and
+    handles them inline (different wire shape, different boundary).
+
+    Supported usage shapes:
+
+    * OpenAI / Cerebras OpenAI-compat::
+
+          {"prompt_tokens": 1234, "completion_tokens": 56,
+           "prompt_tokens_details": {"cached_tokens": 800}}
+
+    * Anthropic native usage::
+
+          {"input_tokens": 1234, "output_tokens": 56,
+           "cache_read_input_tokens": 800,
+           "cache_creation_input_tokens": 200}
+    """
+    prompt = usage.get("prompt_tokens")
+    completion = usage.get("completion_tokens")
+    if not isinstance(prompt, (int, float)):
+        prompt = usage.get("input_tokens")
+    if not isinstance(completion, (int, float)):
+        completion = usage.get("output_tokens")
+    if isinstance(prompt, (int, float)):
+        setattr(turn, "input_tokens", int(prompt))
+    if isinstance(completion, (int, float)):
+        setattr(turn, "output_tokens", int(completion))
+
+    prompt_details = usage.get("prompt_tokens_details") or {}
+    cache_read_raw = (
+        prompt_details.get("cached_tokens")
+        if isinstance(prompt_details, dict)
+        else None
+    )
+    if cache_read_raw is None:
+        cache_read_raw = usage.get("cache_read_input_tokens")
+    cache_creation_raw = usage.get("cache_creation_input_tokens")
+
+    cache_read_value: int | None = (
+        int(cache_read_raw) if isinstance(cache_read_raw, (int, float)) else None
+    )
+    cache_creation_value: int | None = (
+        int(cache_creation_raw)
+        if isinstance(cache_creation_raw, (int, float))
+        else None
+    )
+    setattr(turn, "cache_read_input_tokens", cache_read_value)
+    setattr(turn, "cache_creation_input_tokens", cache_creation_value)
+    # Adapters that call this helper front Cerebras / OpenAI / Anthropic —
+    # all support prompt caching, so cache_supported is a hard-true. Local
+    # backends bypass this helper entirely.
+    setattr(turn, "cache_supported", True)
+
+
 def compute_cache_hit_pct(
     input_tokens: int | None,
     cache_read_input_tokens: int | None,
@@ -169,6 +245,12 @@ class TurnResult:
     reports zero tokens cached"). Per AGENTS.md Cmd #8: nullable cache fields
     stay nullable, no silent ``0`` fallbacks.
 
+    ``cost_usd`` and ``latency_ms`` are likewise nullable: ``None`` when the
+    provider didn't expose the number (unpriced model in the pricing table
+    for ``cost_usd``; pre-flight error for ``latency_ms``). The run-level
+    ``ScenarioResult.total_cost_usd`` / ``total_latency_ms`` skip None
+    entries when summing — see :class:`ScenarioResult` for the invariant.
+
     ``cache_supported`` is a hard boolean — set explicitly per provider, never
     inferred from missing data. Anthropic, OpenAI (with prompt cache key),
     and Cerebras ``gpt-oss-120b`` (default-on, 128-token blocks) all report
@@ -180,10 +262,11 @@ class TurnResult:
     agent_message: str
     agent_actions: list[Action]
     user_response: str
-    latency_ms: int
+    latency_ms: int | None
     input_tokens: int
     output_tokens: int
-    cost_usd: float
+    cost_usd: float | None = None
+    tool_results: list[dict[str, Any]] = field(default_factory=list)
     cache_read_input_tokens: int | None = None
     cache_creation_input_tokens: int | None = None
     cache_hit_pct: float | None = None

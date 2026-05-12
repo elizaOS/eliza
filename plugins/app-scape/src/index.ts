@@ -1,4 +1,4 @@
-import { gatePluginSessionForHostedApp } from "@elizaos/agent";
+import { gatePluginSessionForHostedApp } from "@elizaos/agent/services/app-session-gate";
 import type { Plugin, ServiceClass } from "@elizaos/core";
 
 import { scapeActions } from "./actions/index.js";
@@ -78,6 +78,7 @@ export type {
   JournalProgressEntry,
   JournalState,
 } from "./journal/types.js";
+export * from "./routes.js";
 export { BotSdk } from "./sdk/index.js";
 export type {
   AnyActionFrame,
@@ -91,5 +92,4 @@ export { BotManager } from "./services/bot-manager.js";
 // without plumbing through the default export).
 export { ScapeGameService } from "./services/game-service.js";
 export { JournalService } from "./services/journal-service.js";
-export * from "./routes.js";
 export * from "./ui/index.js";

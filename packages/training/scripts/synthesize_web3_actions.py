@@ -1,7 +1,7 @@
 """Synthesize ~900 canonical training records for web3 plugin actions.
 
 Targets 9 actions across plugin-evm and plugin-solana. Emits the canonical
-flat eliza shape (see SCHEMA.md / lib/eliza_record.py) with TOON
+flat eliza shape (see SCHEMA.md / lib/eliza_record.py) with native JSON
 `tool_calls[N]` envelopes as `expectedResponse`.
 
 Output:
@@ -51,7 +51,7 @@ log = logging.getLogger("synth-web3")
 AGENT_NAMES = [
     "Iris", "Kai", "Ava", "Nova", "Echo", "Sage", "Atlas", "Lyra",
     "Pico", "Lumi", "Rune", "Vega", "Sol", "Orion", "Mira", "Tess",
-    "milady", "Eliza", "Hex", "Cipher", "Onchain", "Forge",
+    "eliza", "Eliza", "Hex", "Cipher", "Onchain", "Forge",
 ]
 
 # 22 personas — varied crypto-user archetypes

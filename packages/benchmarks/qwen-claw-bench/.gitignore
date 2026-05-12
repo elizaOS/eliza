@@ -1,0 +1,24 @@
+# Secrets
+/openclaw_config/.env
+/openclaw_config/openclaw.json
+
+# Runtime data
+/results/
+/logs/
+/tmp/
+/benchmark.log
+/run.sh
+
+# Python
+/scripts/__pycache__/
+
+# IDEs
+/.vscode/
+/.idea/
+/.claude/
+/CLAUDE.md
+
+# Leaderboard
+/leaderboard/
+
+!/data/*

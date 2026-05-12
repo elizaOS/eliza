@@ -12,13 +12,13 @@ Rules (applied in order, only to assistant `reply` text and memoryEntries):
 5. Cap at 1200 chars (replies) / 800 chars (memoryEntries) at last sentence
    boundary that fits.
 
-Operates on TOON-encoded `expectedResponse` for task_type `reply` only.
+Operates on native JSON-encoded `expectedResponse` for task_type `reply` only.
 Also strips memoryEntries[*].content on every record (assistant turns).
 
 Streams. Reads `data/final/train_cleaned.jsonl`, writes
 `data/final/train_deslopped.jsonl` and `manifest_deslopped.json`.
 
-Conservative: TOON shape is preserved by string-substituting the inner text
+Conservative: native JSON shape is preserved by string-substituting the inner text
 field. We do NOT round-trip through bun encoder — that's 1.5M extra forks.
 """
 from __future__ import annotations
@@ -112,17 +112,17 @@ def deslop_text(text: str, *, cap: int) -> tuple[str, list[str]]:
     return text, fired
 
 
-# TOON `text: "..."` extraction — captures the value across multi-line strings.
+# native JSON `text: "..."` extraction — captures the value across multi-line strings.
 # In our corpus, multi-line text uses a `text:` line followed by indented
 # content, OR `text: "<single-line>"`. We handle both.
-TOON_TEXT_LINE_RE = re.compile(
+NATIVE_JSON_TEXT_LINE_RE = re.compile(
     r'(^|\n)(text:\s*)("(?:[^"\\]|\\.)*")(\s*(?=\n|$))',
     re.DOTALL,
 )
 
 
-def deslop_toon_reply(toon: str, stats: dict) -> str:
-    """Replace `text: "<value>"` content in TOON reply with deslopped version."""
+def deslop_payload_reply(payload: str, stats: dict) -> str:
+    """Replace `text: "<value>"` content in native JSON reply with deslopped version."""
     def _replace(match: re.Match) -> str:
         prefix, key, quoted, suffix = match.groups()
         try:
@@ -135,7 +135,7 @@ def deslop_toon_reply(toon: str, stats: dict) -> str:
                 stats[f"reply.{f}"] = stats.get(f"reply.{f}", 0) + 1
             stats["reply.changed"] = stats.get("reply.changed", 0) + 1
         return f"{prefix}{key}{json.dumps(new_inner, ensure_ascii=False)}{suffix}"
-    return TOON_TEXT_LINE_RE.sub(_replace, toon)
+    return NATIVE_JSON_TEXT_LINE_RE.sub(_replace, payload)
 
 
 def deslop_record(rec: dict, stats: dict) -> dict:
@@ -144,7 +144,7 @@ def deslop_record(rec: dict, stats: dict) -> dict:
     if tt == "reply":
         er = rec.get("expectedResponse")
         if isinstance(er, str) and er:
-            new_er = deslop_toon_reply(er, stats)
+            new_er = deslop_payload_reply(er, stats)
             if new_er != er:
                 rec["expectedResponse"] = new_er
 
@@ -155,7 +155,7 @@ def deslop_record(rec: dict, stats: dict) -> dict:
             if not isinstance(m, dict):
                 continue
             role = (m.get("role") or "").lower()
-            if role not in ("assistant", "agent", "milady"):
+            if role not in ("assistant", "agent", "eliza"):
                 continue
             c = m.get("content")
             if not isinstance(c, str) or not c:

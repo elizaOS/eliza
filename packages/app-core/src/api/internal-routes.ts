@@ -87,7 +87,7 @@ let cachedDeviceSecret: string | null = null;
  */
 export function getDeviceSecret(): string {
   if (cachedDeviceSecret === null) {
-    const fromEnv = process.env.MILADY_DEVICE_SECRET;
+    const fromEnv = process.env.ELIZA_DEVICE_SECRET;
     if (typeof fromEnv === "string" && fromEnv.length >= 16) {
       cachedDeviceSecret = fromEnv;
     } else {

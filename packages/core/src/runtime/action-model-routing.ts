@@ -87,6 +87,10 @@ export function isLocalProvider(provider: string): boolean {
 		normalized.includes("mlx") ||
 		normalized.includes("llama.cpp") ||
 		normalized.includes("llamacpp") ||
+		normalized.includes("eliza-local-inference") ||
+		normalized.includes("eliza-device-bridge") ||
+		normalized.includes("capacitor-llama") ||
+		normalized.includes("eliza-aosp-llama") ||
 		normalized === "local"
 	);
 }

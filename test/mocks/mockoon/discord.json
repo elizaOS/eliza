@@ -17,7 +17,7 @@
       "responses": [
         {
           "uuid": "bbbb1111-aaaa-4000-8000-000000020040",
-          "body": "[\n  {\n    \"id\": \"1234567890123456789\",\n    \"name\": \"Milady\",\n    \"icon\": null,\n    \"owner\": true,\n    \"permissions\": \"2147483647\",\n    \"features\": []\n  },\n  {\n    \"id\": \"9876543210987654321\",\n    \"name\": \"BluePine Dev\",\n    \"icon\": null,\n    \"owner\": false,\n    \"permissions\": \"1073741824\",\n    \"features\": []\n  }\n]",
+          "body": "[\n  {\n    \"id\": \"1234567890123456789\",\n    \"name\": \"Eliza\",\n    \"icon\": null,\n    \"owner\": true,\n    \"permissions\": \"2147483647\",\n    \"features\": []\n  },\n  {\n    \"id\": \"9876543210987654321\",\n    \"name\": \"BluePine Dev\",\n    \"icon\": null,\n    \"owner\": false,\n    \"permissions\": \"1073741824\",\n    \"features\": []\n  }\n]",
           "latency": 0,
           "statusCode": 200,
           "label": "happy path",
@@ -482,7 +482,7 @@
       "responses": [
         {
           "uuid": "bbbb1111-aaaa-4000-8000-00000002004f",
-          "body": "{\n  \"id\": \"8889999999999999\",\n  \"channel_id\": \"{{urlParam 'channelId'}}\",\n  \"author\": {\n    \"id\": \"5559999000000001\",\n    \"username\": \"miladybot\",\n    \"bot\": true\n  },\n  \"content\": \"Mock outbound message\",\n  \"timestamp\": \"2026-05-09T18:00:00.000Z\",\n  \"edited_timestamp\": null,\n  \"attachments\": [],\n  \"embeds\": []\n}",
+          "body": "{\n  \"id\": \"8889999999999999\",\n  \"channel_id\": \"{{urlParam 'channelId'}}\",\n  \"author\": {\n    \"id\": \"5559999000000001\",\n    \"username\": \"elizabot\",\n    \"bot\": true\n  },\n  \"content\": \"Mock outbound message\",\n  \"timestamp\": \"2026-05-09T18:00:00.000Z\",\n  \"edited_timestamp\": null,\n  \"attachments\": [],\n  \"embeds\": []\n}",
           "latency": 0,
           "statusCode": 200,
           "label": "happy path",

@@ -28,10 +28,12 @@ def test_extract_letter_handles_bare_letter() -> None:
 
 def test_extract_letter_finds_answer_in_sentence() -> None:
     assert _extract_letter("The correct answer is C because…") == "C"
+    assert _extract_letter("Answer: B") == "B"
 
 
 def test_extract_letter_returns_none_when_no_letter() -> None:
     assert _extract_letter("I don't know.") is None
+    assert _extract_letter("Because the premise is underspecified.") is None
     assert _extract_letter("") is None
 
 

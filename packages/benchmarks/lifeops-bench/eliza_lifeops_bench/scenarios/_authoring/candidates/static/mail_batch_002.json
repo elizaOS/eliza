@@ -18,9 +18,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Project Alpha"
-    ],
+    "required_outputs": ["Project Alpha"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -44,10 +42,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Thursday",
-      "2pm"
-    ],
+    "required_outputs": ["Thursday", "2pm"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -71,9 +66,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "archive"
-    ],
+    "required_outputs": ["archive"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -96,9 +89,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "urgent"
-    ],
+    "required_outputs": ["urgent"],
     "first_question_fallback": {
       "canned_answer": "Just my primary Gmail inbox; I\u2019ll treat newsletters as non\u2011urgent.",
       "applies_when": "agent asks which folder to triage"
@@ -126,9 +117,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "newsletter"
-    ],
+    "required_outputs": ["newsletter"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -152,10 +141,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "thank\u2011you",
-      "health"
-    ],
+    "required_outputs": ["thank\u2011you", "health"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -180,9 +166,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "update"
-    ],
+    "required_outputs": ["update"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -207,9 +191,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "unread"
-    ],
+    "required_outputs": ["unread"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -233,10 +215,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Monday",
-      "10am"
-    ],
+    "required_outputs": ["Monday", "10am"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -260,9 +239,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Quarterly Review"
-    ],
+    "required_outputs": ["Quarterly Review"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -287,9 +264,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "ticket"
-    ],
+    "required_outputs": ["ticket"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -314,9 +289,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Q2 Financial Report"
-    ],
+    "required_outputs": ["Q2 Financial Report"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -340,9 +313,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "apology"
-    ],
+    "required_outputs": ["apology"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -367,9 +338,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "bug"
-    ],
+    "required_outputs": ["bug"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -394,9 +363,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Invoice"
-    ],
+    "required_outputs": ["Invoice"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -421,9 +388,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "pending"
-    ],
+    "required_outputs": ["pending"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -447,10 +412,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "thank\u2011you",
-      "wellness"
-    ],
+    "required_outputs": ["thank\u2011you", "wellness"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -475,9 +437,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Canceled"
-    ],
+    "required_outputs": ["Canceled"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -502,9 +462,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "summary"
-    ],
+    "required_outputs": ["summary"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -529,9 +487,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "security"
-    ],
+    "required_outputs": ["security"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,

@@ -70,29 +70,38 @@ class SourceArtifact:
 
 
 TEXT_SOURCES: Final[dict[str, SourceArtifact]] = {
-    "0_6b": SourceArtifact(
+    "0_8b": SourceArtifact(
         kind="text",
-        repo="Qwen/Qwen3-0.6B-GGUF",
-        filename="Qwen3-0.6B-Q8_0.gguf",
-        destination="source/text/qwen3-0.6b-q8_0.gguf",
+        repo="unsloth/Qwen3.5-0.8B-GGUF",
+        filename="Qwen3.5-0.8B-Q8_0.gguf",
+        destination="source/text/qwen3.5-0.8b-q8_0.gguf",
         license="apache-2.0",
         status="source-only",
         notes=(
-            "No Qwen3.5 0.6B GGUF exists in the current Hub search results.",
-            "Final Eliza-1 0.6B still needs training plus Q3_K_M quantization.",
+            "GGUF mirror for the official Qwen/Qwen3.5-0.8B base.",
+            "Final Eliza-1 0.8B still needs training plus Q3_K_M quantization.",
         ),
     ),
-    "1_7b": SourceArtifact(
+    "2b": SourceArtifact(
         kind="text",
-        repo="Qwen/Qwen3-1.7B-GGUF",
-        filename="Qwen3-1.7B-Q8_0.gguf",
-        destination="source/text/qwen3-1.7b-q8_0.gguf",
+        repo="unsloth/Qwen3.5-2B-GGUF",
+        filename="Qwen3.5-2B-Q8_0.gguf",
+        destination="source/text/qwen3.5-2b-q8_0.gguf",
         license="apache-2.0",
         status="source-only",
         notes=(
-            "No Qwen3.5 1.7B GGUF exists in the current Hub search results.",
-            "Final Eliza-1 1.7B still needs training plus Q4_K_M quantization.",
+            "GGUF mirror for the official Qwen/Qwen3.5-2B base.",
+            "Final Eliza-1 2B still needs training plus Q4_K_M quantization.",
         ),
+    ),
+    "4b": SourceArtifact(
+        kind="text",
+        repo="unsloth/Qwen3.5-4B-GGUF",
+        filename="Qwen3.5-4B-Q8_0.gguf",
+        destination="source/text/qwen3.5-4b-q8_0.gguf",
+        license="apache-2.0",
+        status="source-only",
+        notes=("Final Eliza-1 4B still needs training plus Q4_K_M quantization.",),
     ),
     "9b": SourceArtifact(
         kind="text",
@@ -126,11 +135,23 @@ TEXT_SOURCES: Final[dict[str, SourceArtifact]] = {
             "Same text source as 27b; final 256k artifact needs long-context eval.",
         ),
     ),
+    "27b-1m": SourceArtifact(
+        kind="text",
+        repo="batiai/Qwen3.6-27B-GGUF",
+        filename="Qwen-Qwen3.6-27B-Q4_K_M.gguf",
+        destination="source/text/qwen3.6-27b-q4_k_m.gguf",
+        license="apache-2.0",
+        status="conversion-candidate",
+        notes=(
+            "Same text source as 27b; final 1m artifact needs GH200-class long-context eval.",
+        ),
+    ),
 }
 
 DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
-    "0_6b": None,
-    "1_7b": None,
+    "0_8b": None,
+    "2b": None,
+    "4b": None,
     "9b": SourceArtifact(
         kind="dflash",
         repo="lym00/Qwen3.5-9B-DFlash-GGUF-Test",
@@ -160,11 +181,29 @@ DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
         status="conversion-candidate",
         notes=("Same drafter source as 27b; final 256k acceptance gate remains open.",),
     ),
+    "27b-1m": SourceArtifact(
+        kind="dflash",
+        repo="spiritbuun/Qwen3.6-27B-DFlash-GGUF",
+        filename="dflash-draft-3.6-q8_0.gguf",
+        destination="source/dflash/qwen3.6-27b-dflash-q8_0.gguf",
+        license="mit",
+        status="conversion-candidate",
+        notes=("Same drafter source as 27b; final 1m acceptance gate remains open.",),
+    ),
 }
 
 VISION_SOURCES: Final[dict[str, SourceArtifact | None]] = {
-    "0_6b": None,
-    "1_7b": None,
+    "0_8b": None,
+    "2b": None,
+    "4b": SourceArtifact(
+        kind="vision",
+        repo="unsloth/Qwen3.5-4B-GGUF",
+        filename="mmproj-F16.gguf",
+        destination="source/vision/qwen3.5-4b-mmproj-f16.gguf",
+        license="apache-2.0",
+        status="source-only",
+        notes=("Final Eliza-1 4B vision/mmproj release artifact is not produced yet.",),
+    ),
     "9b": SourceArtifact(
         kind="vision",
         repo="unsloth/Qwen3.5-9B-GGUF",
@@ -191,6 +230,15 @@ VISION_SOURCES: Final[dict[str, SourceArtifact | None]] = {
         license="apache-2.0",
         status="source-only",
         notes=("Same vision source as 27b; final 256k image eval remains open.",),
+    ),
+    "27b-1m": SourceArtifact(
+        kind="vision",
+        repo="batiai/Qwen3.6-27B-GGUF",
+        filename="mmproj-Qwen-Qwen3.6-27B-Q6_K.gguf",
+        destination="source/vision/qwen3.6-27b-mmproj-q6_k.gguf",
+        license="apache-2.0",
+        status="source-only",
+        notes=("Same vision source as 27b; final 1m image eval remains open.",),
     ),
 }
 

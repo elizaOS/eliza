@@ -2,21 +2,21 @@
  * App-blocker enforcer.
  *
  * Wraps the `app-blocker` engine (iOS Family Controls / Android Usage Access)
- * as a {@link BlockerContribution}. The umbrella `APP_BLOCK` action dispatches
- * through this entry instead of importing engine functions directly so a new
+ * as a {@link BlockerContribution}. BLOCK target=app dispatches through this
+ * entry instead of importing engine functions directly so a new
  * mobile-blocker backend (e.g. a desktop screen-time tie-in) is a registration
  * call.
  */
 
-import type {
-  BlockAppsOptions,
-  BlockAppsResult,
-} from "../../app-blocker/types.js";
 import {
   getAppBlockerStatus,
   startAppBlock,
   stopAppBlock,
 } from "../../app-blocker/engine.js";
+import type {
+  BlockAppsOptions,
+  BlockAppsResult,
+} from "../../app-blocker/types.js";
 import type {
   BlockerAvailability,
   BlockerContribution,
@@ -28,14 +28,17 @@ export const appBlockerContribution: BlockerContribution<
   BlockAppsResult
 > = {
   kind: "app",
-  describe: { label: "Phone-app blocker (iOS Family Controls / Android Usage Access)" },
+  describe: {
+    label: "Phone-app blocker (iOS Family Controls / Android Usage Access)",
+  },
 
   async verifyAvailable(): Promise<BlockerAvailability> {
     const status = await getAppBlockerStatus();
     if (!status.available) {
       return {
         available: false,
-        reason: status.reason ?? "App blocking is not available on this device.",
+        reason:
+          status.reason ?? "App blocking is not available on this device.",
         permission: "denied",
       };
     }

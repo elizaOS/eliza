@@ -27,5 +27,5 @@ vendored copy MUST be removed from the repo and replaced with an equivalent
 clean-room implementation, or with a pip dependency once one is published.
 
 If you are the upstream author and would like attribution corrections, license
-clarification, or removal, please open an issue against the milady/training
+clarification, or removal, please open an issue against the eliza/training
 repository.

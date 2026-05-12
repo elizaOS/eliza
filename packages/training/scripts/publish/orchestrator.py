@@ -71,6 +71,7 @@ from benchmarks.eliza1_gates import (  # noqa: E402  - sys.path mutated above
 )
 from scripts.manifest.eliza1_manifest import (  # noqa: E402
     ELIZA_1_BACKENDS,
+    ELIZA_1_PROVENANCE_SLOTS,
     ELIZA_1_VOICE_MANIFEST_VERSION,
     REQUIRED_KERNELS_BY_TIER,
     SUPPORTED_BACKENDS_BY_TIER,
@@ -154,6 +155,12 @@ REQUIRED_KERNEL_MANIFEST_KEYS: tuple[str, ...] = (
     "codebook_hash",
     "per_block_tolerance",
 )
+REQUIRED_KERNEL_TARGETS_BY_SIDECAR: Mapping[str, tuple[str, ...]] = {
+    "turboquant.json": ("turbo3", "turbo4", "turbo3_tcq"),
+    "fused_turboquant.json": ("turbo3", "turbo4", "turbo3_tcq"),
+    "qjl_config.json": ("qjl1_256",),
+    "polarquant_config.json": ("polar_q4",),
+}
 
 RELEASE_EVIDENCE_PATH = Path("evidence/release.json")
 CHECKSUMS_PATH = Path("checksums/SHA256SUMS")
@@ -166,6 +173,9 @@ REQUIRED_RELEASE_FINAL_FLAGS: tuple[str, ...] = (
     "platformEvidence",
     "sizeFirstRepoIds",
 )
+BASE_V1_RELEASE_FINAL_FLAGS: tuple[str, ...] = tuple(
+    flag for flag in REQUIRED_RELEASE_FINAL_FLAGS if flag != "weights"
+)
 REQUIRED_GRAPH_CACHE_FAMILIES: tuple[str, ...] = (
     "turbo3",
     "turbo4",
@@ -175,11 +185,13 @@ REQUIRED_GRAPH_CACHE_FAMILIES: tuple[str, ...] = (
 )
 # Tier matrix — tagline + lineage taken from inference/AGENTS.md §2.
 TIER_TAGLINES: Mapping[str, str] = {
-    "0_6b": "low-RAM phones, CPU fallback",
-    "1_7b": "modern phones",
+    "0_8b": "low-RAM phones, CPU fallback",
+    "2b": "modern phones",
+    "4b": "flagship phones, small desktops",
     "9b": "laptops, 24GB phones, 48GB Mac",
     "27b": "96GB+ Mac, high-VRAM desktop",
     "27b-256k": "server / workstation",
+    "27b-1m": "GH200-class long-context server",
 }
 
 DEFAULT_VOICE_CAPABILITIES: tuple[str, ...] = ("tts", "emotion-tags", "singing")
@@ -192,11 +204,13 @@ EXPRESSIVE_GATE_NAMES: tuple[str, ...] = (
 # Default RAM budgets (MB). Tightened pre-publish from real measurements
 # on reference hardware; the bundle's sidecar can override.
 DEFAULT_RAM_BUDGET_MB: Mapping[str, tuple[int, int]] = {
-    "0_6b": (1500, 1800),
-    "1_7b": (3500, 4500),
+    "0_8b": (1500, 1800),
+    "2b": (3500, 4500),
+    "4b": (6000, 8000),
     "9b": (7000, 9500),
     "27b": (24000, 32000),
     "27b-256k": (48000, 64000),
+    "27b-1m": (96000, 128000),
 }
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -285,43 +299,66 @@ def _find_sidecar(bundle: Path, names: Sequence[str]) -> Path | None:
     return None
 
 
+def _find_sidecar_by_name(bundle: Path, name: str) -> Path | None:
+    return _find_sidecar(bundle, (name,))
+
+
+def _kernel_targets(kernel_manifest: Mapping[str, Any]) -> set[str]:
+    targets = kernel_manifest.get("kernel_target")
+    if isinstance(targets, str):
+        return {targets}
+    if isinstance(targets, list):
+        return {str(target) for target in targets}
+    return set()
+
+
 def _validate_quantization_sidecars(bundle: Path) -> list[Path]:
     found: list[Path] = []
     for method, names in REQUIRED_QUANTIZATION_SIDECARS.items():
-        sidecar = _find_sidecar(bundle, names)
-        if sidecar is None:
-            raise OrchestratorError(
-                "bundle layout: missing quantization sidecar for "
-                f"{method}; expected one of {', '.join(names)} in bundle root, "
-                "text/, dflash/, or evals/",
-                EXIT_MISSING_FILE,
-            )
-        data = _read_sidecar(sidecar)
-        kernel_manifest = data.get("kernel_manifest")
-        if not isinstance(kernel_manifest, dict):
-            raise OrchestratorError(
-                f"quantization sidecar {sidecar} missing kernel_manifest object",
-                EXIT_BUNDLE_LAYOUT_FAIL,
-            )
-        missing_keys = [
-            key
-            for key in REQUIRED_KERNEL_MANIFEST_KEYS
-            if key not in kernel_manifest
-        ]
-        if missing_keys:
-            raise OrchestratorError(
-                f"quantization sidecar {sidecar} has incomplete "
-                f"kernel_manifest; missing {missing_keys}",
-                EXIT_BUNDLE_LAYOUT_FAIL,
-            )
-        targets = kernel_manifest.get("kernel_target")
-        if not isinstance(targets, list) or not targets:
-            raise OrchestratorError(
-                f"quantization sidecar {sidecar} kernel_manifest.kernel_target "
-                "must be a non-empty array",
-                EXIT_BUNDLE_LAYOUT_FAIL,
-            )
-        found.append(sidecar)
+        for name in names:
+            sidecar = _find_sidecar_by_name(bundle, name)
+            if sidecar is None:
+                raise OrchestratorError(
+                    "bundle layout: missing quantization sidecar for "
+                    f"{method}; expected {name} in bundle root, text/, "
+                    "dflash/, evals/, or quantization/",
+                    EXIT_MISSING_FILE,
+                )
+            data = _read_sidecar(sidecar)
+            kernel_manifest = data.get("kernel_manifest")
+            if not isinstance(kernel_manifest, dict):
+                raise OrchestratorError(
+                    f"quantization sidecar {sidecar} missing kernel_manifest object",
+                    EXIT_BUNDLE_LAYOUT_FAIL,
+                )
+            missing_keys = [
+                key
+                for key in REQUIRED_KERNEL_MANIFEST_KEYS
+                if key not in kernel_manifest
+            ]
+            if missing_keys:
+                raise OrchestratorError(
+                    f"quantization sidecar {sidecar} has incomplete "
+                    f"kernel_manifest; missing {missing_keys}",
+                    EXIT_BUNDLE_LAYOUT_FAIL,
+                )
+            targets = _kernel_targets(kernel_manifest)
+            if not targets:
+                raise OrchestratorError(
+                    f"quantization sidecar {sidecar} kernel_manifest.kernel_target "
+                    "must be a non-empty array",
+                    EXIT_BUNDLE_LAYOUT_FAIL,
+                )
+            expected_targets = set(REQUIRED_KERNEL_TARGETS_BY_SIDECAR[name])
+            missing_targets = sorted(expected_targets - targets)
+            if missing_targets:
+                raise OrchestratorError(
+                    f"quantization sidecar {sidecar} targets {sorted(targets)} "
+                    f"but must cover {sorted(expected_targets)}; missing "
+                    f"{missing_targets}",
+                    EXIT_BUNDLE_LAYOUT_FAIL,
+                )
+            found.append(sidecar)
     return found
 
 
@@ -577,8 +614,18 @@ def _assert_checksum_coverage(
             EXIT_RELEASE_EVIDENCE_FAIL,
         )
 
+    missing_recorded_files = [
+        rel for rel in sorted(recorded) if not (ctx.bundle_dir / rel).is_file()
+    ]
+    if missing_recorded_files:
+        raise OrchestratorError(
+            "release evidence: checksum manifest references missing file(s): "
+            f"{missing_recorded_files}",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+
     mismatched: list[str] = []
-    for rel in expected:
+    for rel in sorted(recorded):
         actual = _sha256_file(ctx.bundle_dir / rel)
         if recorded[rel] != actual:
             mismatched.append(rel)
@@ -666,6 +713,66 @@ def _require_existing_json_report(
     return data
 
 
+def _required_provenance_slots(
+    layout: Mapping[str, Sequence[Path]],
+) -> tuple[str, ...]:
+    slots = ["text", "voice", "drafter"]
+    for slot in ("asr", "vad", "embedding", "vision"):
+        if layout.get(slot):
+            slots.append(slot)
+    return tuple(slots)
+
+
+def _provenance_from_release_evidence(
+    evidence: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Return the manifest provenance block implied by release evidence."""
+
+    source_models = evidence.get("sourceModels")
+    if not isinstance(source_models, dict):
+        return None
+    return {
+        "releaseState": evidence.get("releaseState"),
+        "finetuned": evidence.get("finetuned"),
+        "sourceModels": {
+            slot: dict(source)
+            for slot, source in source_models.items()
+            if isinstance(source, Mapping)
+        },
+    }
+
+
+def _validate_base_v1_provenance(
+    *,
+    evidence: Mapping[str, Any],
+    layout: Mapping[str, Sequence[Path]],
+    errors: list[str],
+) -> None:
+    if evidence.get("finetuned") is not False:
+        errors.append("finetuned must be false for releaseState='base-v1'")
+
+    source_models = evidence.get("sourceModels")
+    if not isinstance(source_models, dict) or not source_models:
+        errors.append("sourceModels must be a non-empty object for releaseState='base-v1'")
+        return
+
+    for slot, source in source_models.items():
+        if slot not in ELIZA_1_PROVENANCE_SLOTS:
+            errors.append(f"sourceModels contains unknown component slot {slot!r}")
+            continue
+        if not isinstance(source, dict):
+            errors.append(f"sourceModels.{slot} must be an object")
+            continue
+        if not isinstance(source.get("repo"), str) or not source.get("repo"):
+            errors.append(f"sourceModels.{slot}.repo must be a non-empty string")
+
+    for slot in _required_provenance_slots(layout):
+        if slot not in source_models:
+            errors.append(
+                f"sourceModels.{slot} required for releaseState='base-v1'"
+            )
+
+
 def _validate_runtime_dispatch_report(rel_path: str, data: Mapping[str, Any]) -> None:
     errors: list[str] = []
     if data.get("runtimeReady") is not True:
@@ -748,7 +855,10 @@ def _validate_platform_report(
 
 
 def validate_release_evidence(
-    ctx: PublishContext, layout: Mapping[str, Sequence[Path]]
+    ctx: PublishContext,
+    layout: Mapping[str, Sequence[Path]],
+    *,
+    allow_uploaded_evidence: bool = False,
 ) -> dict[str, Any]:
     """Validate final release evidence before any upload path runs.
 
@@ -770,14 +880,25 @@ def validate_release_evidence(
         errors.append(f"repoId must be {ctx.repo_id!r}")
 
     release_state = evidence.get("releaseState")
-    if release_state not in {"upload-candidate", "final"}:
-        errors.append("releaseState must be 'upload-candidate' or 'final'")
+    if release_state not in {"base-v1", "upload-candidate", "final"}:
+        errors.append("releaseState must be 'base-v1', 'upload-candidate', or 'final'")
+    elif release_state == "base-v1":
+        _validate_base_v1_provenance(
+            evidence=evidence,
+            layout=layout,
+            errors=errors,
+        )
 
     final = evidence.get("final")
     if not isinstance(final, dict):
         errors.append("final must be an object")
     else:
-        for flag in REQUIRED_RELEASE_FINAL_FLAGS:
+        required_final_flags = (
+            BASE_V1_RELEASE_FINAL_FLAGS
+            if release_state == "base-v1"
+            else REQUIRED_RELEASE_FINAL_FLAGS
+        )
+        for flag in required_final_flags:
             if final.get(flag) is not True:
                 errors.append(f"final.{flag} must be true")
 
@@ -803,11 +924,32 @@ def validate_release_evidence(
         if missing_weights:
             errors.append(f"weights missing shipped artifact(s): {missing_weights}")
 
+    missing_artifacts: list[str] = []
+
     eval_reports = evidence.get("evalReports")
     if not isinstance(eval_reports, list) or "evals/aggregate.json" not in eval_reports:
         errors.append("evalReports must include 'evals/aggregate.json'")
-    elif not all((ctx.bundle_dir / str(p)).is_file() for p in eval_reports):
-        errors.append("evalReports contains missing file(s)")
+    elif not all(isinstance(p, str) for p in eval_reports):
+        errors.append("evalReports must be an array of strings")
+    else:
+        missing_eval_report_files = [
+            p for p in eval_reports if not (ctx.bundle_dir / p).is_file()
+        ]
+        expected_eval_reports = sorted(
+            f"evals/{p.name}"
+            for p in (ctx.bundle_dir / "evals").iterdir()
+            if p.is_file()
+        )
+        missing_from_evidence = sorted(set(expected_eval_reports) - set(eval_reports))
+        if missing_eval_report_files:
+            missing_artifacts.append(
+                f"evalReports contains missing file(s): {missing_eval_report_files}"
+            )
+        if missing_from_evidence:
+            errors.append(
+                "evalReports missing shipped eval/report file(s): "
+                f"{missing_from_evidence}"
+            )
 
     license_files = evidence.get("licenseFiles")
     expected_licenses = [
@@ -821,6 +963,13 @@ def validate_release_evidence(
         errors.append("hf must be an object")
     elif hf.get("repoId") != ctx.repo_id:
         errors.append(f"hf.repoId must be {ctx.repo_id!r}")
+
+    if missing_artifacts:
+        raise OrchestratorError(
+            "release evidence missing artifact(s):\n  - "
+            + "\n  - ".join(missing_artifacts),
+            EXIT_MISSING_FILE,
+        )
 
     if errors:
         raise OrchestratorError(
@@ -872,11 +1021,25 @@ def validate_release_evidence(
             require_runtime_ready=False,
         )
 
-    if release_state == "final":
+    if release_state == "final" or (
+        release_state == "base-v1"
+        and isinstance(hf, dict)
+        and hf.get("status") == "uploaded"
+    ):
+        if (
+            release_state == "base-v1"
+            and not ctx.dry_run
+            and not allow_uploaded_evidence
+        ):
+            raise OrchestratorError(
+                "release evidence: base-v1 evidence must carry "
+                "hf.status='pending-upload' before a real publish",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
         upload_evidence = hf.get("uploadEvidence") if isinstance(hf, dict) else None
         if not isinstance(upload_evidence, dict):
             raise OrchestratorError(
-                "release evidence: final releaseState requires hf.uploadEvidence",
+                "release evidence: uploaded releaseState requires hf.uploadEvidence",
                 EXIT_RELEASE_EVIDENCE_FAIL,
             )
         if upload_evidence.get("repoId") != ctx.repo_id:
@@ -903,11 +1066,25 @@ def validate_release_evidence(
                 "an array of paths",
                 EXIT_RELEASE_EVIDENCE_FAIL,
             )
+        expected_uploaded_paths = {
+            "eliza-1.manifest.json",
+            "README.md",
+            *(target for _, target in _build_upload_list(ctx, layout)),
+        }
+        missing_uploaded_paths = sorted(
+            expected_uploaded_paths - set(uploaded_paths)
+        )
+        if missing_uploaded_paths:
+            raise OrchestratorError(
+                "release evidence: hf.uploadEvidence.uploadedPaths missing "
+                f"payload path(s): {missing_uploaded_paths}",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
     elif not ctx.dry_run:
         hf_status = hf.get("status") if isinstance(hf, dict) else None
-        if hf_status != "pending-upload":
+        if hf_status != "pending-upload" and not allow_uploaded_evidence:
             raise OrchestratorError(
-                "release evidence: upload-candidate evidence must carry "
+                "release evidence: pre-upload evidence must carry "
                 "hf.status='pending-upload' before a real publish",
                 EXIT_RELEASE_EVIDENCE_FAIL,
             )
@@ -1124,6 +1301,22 @@ def run_eval_gates(ctx: PublishContext) -> tuple[GateReport, dict[str, Any]]:
         results["e2e_loop_ok"] = results["thirty_turn_ok"]
         eval_blob = dict(eval_blob)
         eval_blob["results"] = results
+    if isinstance(results, dict):
+        dflash_report = _dflash_report_eval(ctx)
+        enriched_results = dict(results)
+        if (
+            _optional_float(enriched_results.get("dflash_acceptance")) is None
+            and _optional_float(dflash_report.get("acceptanceRate")) is not None
+        ):
+            enriched_results["dflash_acceptance"] = dflash_report["acceptanceRate"]
+        if (
+            _optional_float(enriched_results.get("dflash_speedup")) is None
+            and _optional_float(dflash_report.get("speedup")) is not None
+        ):
+            enriched_results["dflash_speedup"] = dflash_report["speedup"]
+        if enriched_results != results:
+            eval_blob = dict(eval_blob)
+            eval_blob["results"] = enriched_results
 
     gates_doc = load_gates(ctx.gates_path) if ctx.gates_path else None
     report = apply_gates(eval_blob, gates_doc)
@@ -1296,6 +1489,22 @@ def _kernel_manifest_fragments_from_layout(
     return fragments
 
 
+def _optional_float(value: Any) -> float | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _dflash_report_eval(ctx: PublishContext) -> Mapping[str, Any]:
+    report_path = ctx.bundle_dir / "evals" / "dflash-accept.json"
+    if not report_path.is_file():
+        return {}
+    data = json.loads(report_path.read_text())
+    return data if isinstance(data, dict) else {}
+
+
 def assemble_manifest(
     ctx: PublishContext,
     *,
@@ -1304,6 +1513,7 @@ def assemble_manifest(
     gate_report: GateReport,
     eval_blob: Mapping[str, Any],
     version: str,
+    release_evidence: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the manifest dict via the manifest module's typed builder.
 
@@ -1361,6 +1571,19 @@ def assemble_manifest(
         "e2e_loop_ok",
         opt_in_alias_for="thirty_turn_ok",
     )
+    dflash_report = _dflash_report_eval(ctx)
+    dflash_acceptance_rate = _optional_float(results.get("dflash_acceptance"))
+    if dflash_acceptance_rate is None:
+        dflash_acceptance_rate = _optional_float(dflash_report.get("acceptanceRate"))
+    dflash_speedup = _optional_float(results.get("dflash_speedup"))
+    if dflash_speedup is None:
+        dflash_speedup = _optional_float(dflash_report.get("speedup"))
+    dflash_passed = bool(
+        dflash_acceptance_rate is not None
+        and dflash_speedup is not None
+        and _gate_passed(gate_report, "dflash_acceptance")
+        and _gate_passed(gate_report, "dflash_speedup")
+    )
 
     required_kernels, optional_kernels = _required_kernels_for(ctx.tier, layout)
 
@@ -1378,6 +1601,7 @@ def assemble_manifest(
         and expressive_passed
         and e2e_loop_ok
         and thirty_turn_ok
+        and dflash_passed
     )
 
     try:
@@ -1409,12 +1633,21 @@ def assemble_manifest(
             expressive_mos=expressive_mos,
             expressive_tag_leakage=expressive_tag_leakage,
             expressive_passed=expressive_passed,
+            dflash_eval=bool(files_map.get("dflash")),
+            dflash_acceptance_rate=dflash_acceptance_rate,
+            dflash_speedup=dflash_speedup,
+            dflash_passed=dflash_passed,
             voice_capabilities=DEFAULT_VOICE_CAPABILITIES,
             voice_version=ELIZA_1_VOICE_MANIFEST_VERSION,
             voice_frozen=True,
             voice_cache_speaker_preset=VOICE_PRESET_CACHE_PATH,
             voice_cache_phrase_seed=VOICE_PRESET_CACHE_PATH,
             kernel_manifest_fragments=_kernel_manifest_fragments_from_layout(layout),
+            provenance=(
+                _provenance_from_release_evidence(release_evidence)
+                if release_evidence is not None
+                else None
+            ),
         )
     except Eliza1ManifestError as exc:
         raise OrchestratorError(
@@ -1772,7 +2005,8 @@ def finalize_release_evidence(
             EXIT_RELEASE_EVIDENCE_FAIL,
         )
 
-    evidence["releaseState"] = "final"
+    if evidence.get("releaseState") != "base-v1":
+        evidence["releaseState"] = "final"
     hf["repoId"] = ctx.repo_id
     hf["status"] = "uploaded"
     hf["uploadEvidence"] = dict(upload_evidence)
@@ -1780,7 +2014,7 @@ def finalize_release_evidence(
     release_path.write_text(json.dumps(evidence, indent=2, sort_keys=False) + "\n")
 
     checksum_path = _write_checksum_manifest(ctx, layout)
-    validate_release_evidence(ctx, layout)
+    validate_release_evidence(ctx, layout, allow_uploaded_evidence=True)
     return release_path, checksum_path
 
 
@@ -1888,7 +2122,7 @@ def run(ctx: PublishContext) -> int:
         layout = validate_bundle_layout(ctx)
 
         log.info("[stage 2/7] validate release evidence")
-        validate_release_evidence(ctx, layout)
+        release_evidence = validate_release_evidence(ctx, layout)
 
         log.info("[stage 3/7] kernel verification for tier %s", ctx.tier)
         backends = run_kernel_verification(ctx)
@@ -1909,6 +2143,7 @@ def run(ctx: PublishContext) -> int:
             gate_report=gate_report,
             eval_blob=eval_blob,
             version=version,
+            release_evidence=release_evidence,
         )
         manifest_path = ctx.bundle_dir / "eliza-1.manifest.json"
         manifest_path.write_text(

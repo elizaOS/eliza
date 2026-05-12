@@ -366,6 +366,29 @@ function findNearestScriptDir(cwd, scriptsByDir, repoRoot) {
   return repoRoot;
 }
 
+function findUniqueWorkspaceScriptDir(scriptName, scriptsByDir, repoRoot) {
+  const matches = [];
+  for (const [scriptDir, scripts] of scriptsByDir.entries()) {
+    const relative = rel(repoRoot, scriptDir);
+    if (
+      Object.hasOwn(scripts, scriptName) &&
+      !relative.startsWith("packages/elizaos/templates/")
+    ) {
+      matches.push(scriptDir);
+    }
+  }
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function isLaunchdocsFile(repoRoot, filePath) {
+  const relative = rel(repoRoot, filePath);
+  return (
+    relative.startsWith("packages/docs/docs/launchdocs/") ||
+    relative.startsWith("packages/docs/launchdocs/") ||
+    relative.startsWith("launchdocs/")
+  );
+}
+
 function lineForOffset(text, offset) {
   return text.slice(0, offset).split("\n").length;
 }
@@ -446,6 +469,16 @@ function checkCommands({ repoRoot, docFiles, contentByFile, scriptsByDir }) {
       );
       const scripts = scriptsByDir.get(scriptDir) ?? {};
       if (!Object.hasOwn(scripts, scriptName)) {
+        if (isLaunchdocsFile(repoRoot, filePath)) {
+          const workspaceScriptDir = findUniqueWorkspaceScriptDir(
+            scriptName,
+            scriptsByDir,
+            repoRoot,
+          );
+          if (workspaceScriptDir) {
+            continue;
+          }
+        }
         errors.push({
           type: "missing-script",
           file: rel(repoRoot, filePath),

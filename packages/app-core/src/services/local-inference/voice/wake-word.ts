@@ -50,13 +50,45 @@ export const OPENWAKEWORD_EMBEDDING_REL_PATH = path.join(
   OPENWAKEWORD_DIR_REL_PATH,
   "embedding_model.onnx",
 );
-/** Default wake-word head shipped with a voice bundle (the wake phrase). */
+/**
+ * Default wake-word head shipped with a voice bundle (the wake phrase).
+ * The documented default Eliza-1 wake phrase is **"hey eliza"** — a
+ * two-word, four-syllable phrase the openWakeWord TTS-augmented pipeline
+ * handles well. It is replaceable: retrain on a different `--phrase` via
+ * `packages/training/scripts/wakeword/train_eliza1_wakeword_head.py` and
+ * re-point this constant + `WAKEWORD_FILES` in the asset-staging script.
+ */
 export const OPENWAKEWORD_DEFAULT_HEAD = "hey-eliza";
 /** Relative path of the default wake-word head ONNX inside a bundle. */
 export const OPENWAKEWORD_DEFAULT_HEAD_REL_PATH = path.join(
   OPENWAKEWORD_DIR_REL_PATH,
   `${OPENWAKEWORD_DEFAULT_HEAD}.onnx`,
 );
+
+/**
+ * Heads that are placeholders, not a head trained on the Eliza-1 wake
+ * phrase.
+ *
+ * The `hey-eliza.onnx` currently shipped in bundles is the upstream
+ * openWakeWord `hey_jarvis` head renamed — it fires on "hey jarvis", NOT
+ * "hey eliza". Wake word is opt-in and off by default, so this is an
+ * experimental surface until a real head is trained on "hey eliza" via
+ * `packages/training/scripts/wakeword/train_eliza1_wakeword_head.py` and
+ * staged into the tier bundles (see
+ * `packages/inference/reports/porting/2026-05-11/wakeword-head-plan.md`).
+ * Once that real head ships, remove `hey-eliza` from this set — `hey_jarvis`
+ * stays (it is, by definition, the wrong phrase). The engine emits a
+ * one-time warning whenever a session enables a placeholder head so nobody
+ * mistakes it for a finished feature.
+ */
+export const OPENWAKEWORD_PLACEHOLDER_HEADS: ReadonlySet<string> = new Set([
+  "hey-eliza",
+  "hey_jarvis",
+]);
+
+export function isPlaceholderWakeWordHead(head: string): boolean {
+  return OPENWAKEWORD_PLACEHOLDER_HEADS.has(head.trim());
+}
 
 /** Audio chunk the streaming pipeline consumes, in samples (80 ms @ 16 kHz). */
 const FRAME_SAMPLES = 1280;

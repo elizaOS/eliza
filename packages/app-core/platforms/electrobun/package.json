@@ -1,43 +1,43 @@
 {
-  "name": "@elizaos/electrobun",
-  "version": "2.0.0-beta.1",
-  "type": "module",
-  "files": [
-    "assets",
-    "entitlements",
-    "scripts",
-    "src",
-    "electrobun.config.ts",
-    "README.md",
-    "tsconfig.json"
-  ],
-  "scripts": {
-    "dev": "bun run build:preload && PATH=\"$PWD/scripts/bin:$PATH\" bunx electrobun dev",
-    "build": "bun run build:preload && ELECTROBUN_SKIP_CODESIGN=1 PATH=\"$PWD/scripts/bin:$PATH\" bunx electrobun build",
-    "typecheck": "tsc --noEmit",
-    "test": "bunx vitest run --config vitest.electrobun.config.ts --passWithNoTests",
-    "lint": "bunx @biomejs/biome check src",
-    "build:preload": "node ../../scripts/build-electrobun-preload.mjs",
-    "build:whisper": "bash scripts/build-whisper.sh",
-    "build:whisper:universal": "bash scripts/build-whisper-universal.sh",
-    "build:native-effects": "bash scripts/build-macos-effects.sh"
-  },
-  "dependencies": {
-    "@elizaos/app-core": "2.0.0-beta.1",
-    "@elizaos/electrobun-carrots": "workspace:*",
-    "@elizaos/plugin-browser": "2.0.0-beta.1",
-    "@elizaos/shared": "2.0.0-beta.1",
-    "bonjour-service": "1.3.0",
-    "electrobun": "^1.18.1"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^2.4.14",
-    "@types/bun": "^1.3.8",
-    "rcedit": "4.0.1",
-    "typescript": "^6.0.3",
-    "vitest": "^4.0.18"
-  },
-  "publishConfig": {
-    "access": "public"
-  }
+	"name": "@elizaos/electrobun",
+	"version": "2.0.0-beta.1",
+	"type": "module",
+	"files": [
+		"assets",
+		"entitlements",
+		"scripts",
+		"src",
+		"electrobun.config.ts",
+		"README.md",
+		"tsconfig.json"
+	],
+	"scripts": {
+		"dev": "bun run build:preload && PATH=\"$PWD/scripts/bin:$PATH\" bunx electrobun dev",
+		"build": "bun run build:preload && ELECTROBUN_SKIP_CODESIGN=1 PATH=\"$PWD/scripts/bin:$PATH\" bunx electrobun build",
+		"typecheck": "tsc --noEmit",
+		"test": "bunx vitest run --config vitest.electrobun.config.ts --passWithNoTests",
+		"lint": "bunx @biomejs/biome check src",
+		"build:preload": "node ../../scripts/build-electrobun-preload.mjs",
+		"build:whisper": "bash scripts/build-whisper.sh",
+		"build:whisper:universal": "bash scripts/build-whisper-universal.sh",
+		"build:native-effects": "bash scripts/build-macos-effects.sh"
+	},
+	"dependencies": {
+		"@elizaos/app-core": "2.0.0-beta.1",
+		"@elizaos/electrobun-carrots": "workspace:*",
+		"@elizaos/plugin-browser": "2.0.0-beta.1",
+		"@elizaos/shared": "2.0.0-beta.1",
+		"bonjour-service": "1.3.0",
+		"electrobun": "^1.18.1"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.14",
+		"@types/bun": "^1.3.8",
+		"rcedit": "4.0.1",
+		"typescript": "^6.0.3",
+		"vitest": "^4.0.18"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
 }

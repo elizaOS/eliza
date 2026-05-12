@@ -126,8 +126,18 @@ declare module "@elizaos/plugin-elizacloud" {
     baseUrl: string;
     bridgeUrl?: string;
   }
+  export interface CloudOnboardingObserver {
+    [key: string]: unknown;
+  }
+  export class ClackObserver implements CloudOnboardingObserver {
+    constructor(clack: unknown);
+    [key: string]: unknown;
+  }
+  export class NullCloudOnboardingObserver implements CloudOnboardingObserver {
+    [key: string]: unknown;
+  }
   export function runCloudOnboarding(
-    clack: unknown,
+    observer: CloudOnboardingObserver,
     name: string,
     chosenTemplate?: unknown,
   ): Promise<CloudOnboardingResult | null>;
@@ -282,34 +292,6 @@ declare module "@elizaos/plugin-signal" {
   ): boolean;
   export function signalLogout(workspaceDir: string, accountId?: string): void;
 }
-declare module "@elizaos/plugin-discord" {
-  export interface DiscordProfileLike {
-    displayName?: string | null;
-    username?: string | null;
-    avatarUrl?: string | null;
-    rawUserId?: string | null;
-  }
-
-  export function cacheDiscordAvatarUrl(...args: unknown[]): Promise<string>;
-  export function getDiscordAvatarCacheDir(): string;
-  export function getDiscordAvatarCachePath(fileName: string): string;
-  export function cacheDiscordAvatarForRuntime(
-    ...args: unknown[]
-  ): Promise<string | undefined>;
-  export function isCanonicalDiscordSource(source: unknown): boolean;
-  export function resolveDiscordMessageAuthorProfile(
-    ...args: unknown[]
-  ): Promise<DiscordProfileLike | null>;
-  export function resolveDiscordUserProfile(
-    ...args: unknown[]
-  ): Promise<DiscordProfileLike | null>;
-  export function resolveStoredDiscordEntityProfile(
-    ...args: unknown[]
-  ): Promise<DiscordProfileLike | null>;
-  const discordPlugin: unknown;
-  export default discordPlugin;
-}
-
 declare module "@elizaos/plugin-whatsapp" {
   import type { Plugin } from "@elizaos/core";
 
@@ -379,6 +361,7 @@ declare module "@elizaos/plugin-imessage" {
 }
 declare module "@elizaos/plugin-local-embedding";
 declare module "@elizaos/plugin-ollama";
+declare module "@elizaos/plugin-mlx";
 declare module "@elizaos/plugin-openai";
 declare module "@elizaos/plugin-shell";
 declare module "@elizaos/plugin-x402" {
@@ -557,4 +540,53 @@ declare module "jsdom" {
     window: Window & typeof globalThis;
     serialize(): string;
   }
+}
+
+declare module "@elizaos/plugin-discord" {
+  import type { AgentRuntime } from "@elizaos/core";
+
+  export interface DiscordUserProfile {
+    avatarUrl?: string;
+    displayName?: string;
+    username?: string;
+  }
+
+  export interface DiscordMessageAuthorProfile extends DiscordUserProfile {
+    rawUserId?: string;
+  }
+
+  export interface StoredDiscordEntityProfile extends DiscordUserProfile {
+    rawUserId?: string;
+  }
+
+  export function cacheDiscordAvatarUrl(
+    url: string | undefined,
+    options?: {
+      fetchImpl?: typeof fetch;
+      userId?: string;
+    },
+  ): Promise<string | undefined>;
+  export function getDiscordAvatarCacheDir(): string;
+  export function getDiscordAvatarCachePath(fileName: string): string;
+  export function isCanonicalDiscordSource(
+    source: string | null | undefined,
+  ): boolean;
+  export function cacheDiscordAvatarForRuntime(
+    runtime: AgentRuntime,
+    avatarUrl: string | undefined,
+    userId?: string,
+  ): Promise<string | undefined>;
+  export function resolveDiscordMessageAuthorProfile(
+    runtime: AgentRuntime,
+    channelId: string,
+    messageId: string,
+  ): Promise<DiscordMessageAuthorProfile | null>;
+  export function resolveDiscordUserProfile(
+    runtime: AgentRuntime,
+    userId: string,
+  ): Promise<DiscordUserProfile | null>;
+  export function resolveStoredDiscordEntityProfile(
+    runtime: AgentRuntime,
+    entityId: string | undefined,
+  ): Promise<StoredDiscordEntityProfile | null>;
 }

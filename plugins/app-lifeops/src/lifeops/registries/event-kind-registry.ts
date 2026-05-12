@@ -135,8 +135,6 @@ export function getEventKindRegistry(
   return registries.get(runtime) ?? null;
 }
 
-export function __resetEventKindRegistryForTests(
-  runtime: IAgentRuntime,
-): void {
+export function __resetEventKindRegistryForTests(runtime: IAgentRuntime): void {
   registries.delete(runtime);
 }

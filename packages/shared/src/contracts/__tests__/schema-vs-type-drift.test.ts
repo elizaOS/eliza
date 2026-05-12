@@ -17,8 +17,8 @@
 
 import { describe, expect, it } from "bun:test";
 import {
-	ConversationScopeSchema,
-	ConversationAutomationTypeSchema,
+  ConversationAutomationTypeSchema,
+  ConversationScopeSchema,
 } from "../conversation-routes";
 
 // `VALID_SCOPES` lives in agent/api/conversation-metadata.ts as the
@@ -27,55 +27,55 @@ import {
 // is the contract being asserted; any change here is a deliberate
 // schema migration the test forces us to acknowledge.
 const VALID_CONVERSATION_SCOPES = new Set([
-	"general",
-	"automation-coordinator",
-	"automation-workflow",
-	"automation-workflow-draft",
-	"automation-draft",
-	"page-character",
-	"page-apps",
-	"page-connectors",
-	"page-phone",
-	"page-plugins",
-	"page-lifeops",
-	"page-settings",
-	"page-wallet",
-	"page-browser",
-	"page-automations",
+  "general",
+  "automation-coordinator",
+  "automation-workflow",
+  "automation-workflow-draft",
+  "automation-draft",
+  "page-character",
+  "page-apps",
+  "page-connectors",
+  "page-phone",
+  "page-plugins",
+  "page-lifeops",
+  "page-settings",
+  "page-wallet",
+  "page-browser",
+  "page-automations",
 ]);
 
 const VALID_CONVERSATION_AUTOMATION_TYPES = new Set([
-	"coordinator_text",
-	"workflow",
+  "coordinator_text",
+  "workflow",
 ]);
 
 function zodEnumOptions(schema: { options: readonly string[] }): Set<string> {
-	return new Set(schema.options);
+  return new Set(schema.options);
 }
 
 describe("Zod schema ↔ runtime allowlist drift", () => {
-	it("ConversationScopeSchema matches VALID_SCOPES exactly", () => {
-		const zodSet = zodEnumOptions(ConversationScopeSchema);
-		const missingFromZod = [...VALID_CONVERSATION_SCOPES].filter(
-			(scope) => !zodSet.has(scope),
-		);
-		const extraInZod = [...zodSet].filter(
-			(scope) => !VALID_CONVERSATION_SCOPES.has(scope),
-		);
-		expect({ missingFromZod, extraInZod }).toEqual({
-			missingFromZod: [],
-			extraInZod: [],
-		});
-	});
+  it("ConversationScopeSchema matches VALID_SCOPES exactly", () => {
+    const zodSet = zodEnumOptions(ConversationScopeSchema);
+    const missingFromZod = [...VALID_CONVERSATION_SCOPES].filter(
+      (scope) => !zodSet.has(scope),
+    );
+    const extraInZod = [...zodSet].filter(
+      (scope) => !VALID_CONVERSATION_SCOPES.has(scope),
+    );
+    expect({ missingFromZod, extraInZod }).toEqual({
+      missingFromZod: [],
+      extraInZod: [],
+    });
+  });
 
-	it("ConversationAutomationTypeSchema matches VALID_AUTOMATION_TYPES exactly", () => {
-		const zodSet = zodEnumOptions(ConversationAutomationTypeSchema);
-		const missing = [...VALID_CONVERSATION_AUTOMATION_TYPES].filter(
-			(t) => !zodSet.has(t),
-		);
-		const extra = [...zodSet].filter(
-			(t) => !VALID_CONVERSATION_AUTOMATION_TYPES.has(t),
-		);
-		expect({ missing, extra }).toEqual({ missing: [], extra: [] });
-	});
+  it("ConversationAutomationTypeSchema matches VALID_AUTOMATION_TYPES exactly", () => {
+    const zodSet = zodEnumOptions(ConversationAutomationTypeSchema);
+    const missing = [...VALID_CONVERSATION_AUTOMATION_TYPES].filter(
+      (t) => !zodSet.has(t),
+    );
+    const extra = [...zodSet].filter(
+      (t) => !VALID_CONVERSATION_AUTOMATION_TYPES.has(t),
+    );
+    expect({ missing, extra }).toEqual({ missing: [], extra: [] });
+  });
 });

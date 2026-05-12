@@ -21,9 +21,10 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
-import { extname, resolve, join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import net from "node:net";
+import { dirname, extname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { WebSocket, WebSocketServer } from "ws";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../..");
@@ -101,15 +102,20 @@ function contentTypeFor(filePath) {
 function resolveDistAsset(pathname) {
   // Strip leading slash + try the path verbatim, then index.html fallback for SPA.
   const segments = pathname.replace(/^\/+/, "").split("/").filter(Boolean);
-  if (segments.length > 0) {
-    const candidate = resolve(APP_DIST, segments.join("/"));
+  const isAssetRequest = extname(pathname).length > 0;
+  for (let index = 0; index < segments.length; index += 1) {
+    const candidate = resolve(APP_DIST, segments.slice(index).join("/"));
     if (
       candidate.startsWith(APP_DIST) &&
       existsSync(candidate) &&
-      statSync(candidate).isFile()
+      statSync(candidate).isFile() &&
+      extname(candidate).length > 0
     ) {
       return candidate;
     }
+  }
+  if (isAssetRequest) {
+    return null;
   }
   return join(APP_DIST, "index.html");
 }
@@ -151,6 +157,60 @@ async function proxyToApi({ apiBase, request, response }) {
   const buf = Buffer.from(await upstream.arrayBuffer());
   response.end(buf);
 }
+
+function relayWebSocket({ apiBase, request, clientSocket }) {
+  const requestUrl = new URL(request.url ?? "/ws", "http://127.0.0.1");
+  const upstreamUrl = new URL(apiBase);
+  upstreamUrl.protocol = upstreamUrl.protocol === "https:" ? "wss:" : "ws:";
+  upstreamUrl.pathname = requestUrl.pathname;
+  upstreamUrl.search = requestUrl.search;
+
+  const upstreamSocket = new WebSocket(upstreamUrl);
+  const pendingClientMessages = [];
+
+  const closeSocket = (socket) => {
+    if (
+      socket.readyState === WebSocket.OPEN ||
+      socket.readyState === WebSocket.CONNECTING
+    ) {
+      socket.close();
+    }
+  };
+
+  clientSocket.on("message", (data, isBinary) => {
+    if (upstreamSocket.readyState === WebSocket.OPEN) {
+      upstreamSocket.send(data, { binary: isBinary });
+      return;
+    }
+    if (upstreamSocket.readyState === WebSocket.CONNECTING) {
+      pendingClientMessages.push({ data, isBinary });
+    }
+  });
+
+  upstreamSocket.on("open", () => {
+    for (const message of pendingClientMessages.splice(0)) {
+      upstreamSocket.send(message.data, { binary: message.isBinary });
+    }
+  });
+
+  upstreamSocket.on("message", (data, isBinary) => {
+    if (clientSocket.readyState === WebSocket.OPEN) {
+      clientSocket.send(data, { binary: isBinary });
+    }
+  });
+
+  clientSocket.on("close", () => closeSocket(upstreamSocket));
+  upstreamSocket.on("close", () => closeSocket(clientSocket));
+  clientSocket.on("error", () => closeSocket(upstreamSocket));
+  upstreamSocket.on("error", () => closeSocket(clientSocket));
+}
+
+process.on("uncaughtException", (err) => {
+  console.error("[ai-qa static-stack] uncaughtException:", err);
+});
+process.on("unhandledRejection", (err) => {
+  console.error("[ai-qa static-stack] unhandledRejection:", err);
+});
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
@@ -209,24 +269,77 @@ async function main() {
     process.exit(3);
   }
 
-  const uiServer = createServer(async (request, response) => {
+  function sendError(response, error) {
+    if (response.headersSent || response.writableEnded) {
+      // Already replying — best we can do is end and log.
+      if (!response.writableEnded) response.end();
+      console.error("[ai-qa static-stack] late error after headers:", error);
+      return;
+    }
     try {
-      const url = new URL(request.url ?? "/", "http://127.0.0.1");
-      if (url.pathname.startsWith("/api/")) {
-        await proxyToApi({ apiBase, request, response });
-        return;
-      }
-      const filePath = resolveDistAsset(url.pathname);
-      const body = readFileSync(filePath);
-      response.writeHead(200, {
-        "content-type": contentTypeFor(filePath),
-        "cache-control": "no-store",
-      });
-      response.end(body);
-    } catch (error) {
       response.writeHead(500, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: String(error) }));
+    } catch (writeError) {
+      console.error("[ai-qa static-stack] failed to send 500:", writeError);
     }
+  }
+
+  const uiServer = createServer((request, response) => {
+    response.on("error", (err) => {
+      console.error("[ai-qa static-stack] response error:", err.message);
+    });
+    Promise.resolve()
+      .then(async () => {
+        const url = new URL(request.url ?? "/", "http://127.0.0.1");
+        if (url.pathname.startsWith("/api/")) {
+          await proxyToApi({ apiBase, request, response });
+          return;
+        }
+        const filePath = resolveDistAsset(url.pathname);
+        if (!filePath) {
+          response.writeHead(404, {
+            "content-type": "application/json",
+            "cache-control": "no-store",
+          });
+          response.end(JSON.stringify({ error: "Static asset not found" }));
+          return;
+        }
+        const body = readFileSync(filePath);
+        if (!response.headersSent) {
+          response.writeHead(200, {
+            "content-type": contentTypeFor(filePath),
+            "cache-control": "no-store",
+          });
+        }
+        response.end(body);
+      })
+      .catch((error) => sendError(response, error));
+  });
+  const wss = new WebSocketServer({ noServer: true });
+  uiServer.on("upgrade", (request, socket, head) => {
+    const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+    if (requestUrl.pathname !== "/ws") {
+      socket.destroy();
+      return;
+    }
+    wss.handleUpgrade(request, socket, head, (clientSocket) => {
+      relayWebSocket({ apiBase, request, clientSocket });
+    });
+  });
+  uiServer.on("close", () => {
+    for (const client of wss.clients) {
+      client.close();
+    }
+    wss.close();
+  });
+  uiServer.on("clientError", (err, socket) => {
+    console.error("[ai-qa static-stack] client error:", err.message);
+    try {
+      socket.destroy();
+    } catch {}
+  });
+  uiServer.on("error", (err) => {
+    console.error("[ai-qa static-stack] server error:", err.message);
   });
 
   await new Promise((resolveP, rejectP) => {

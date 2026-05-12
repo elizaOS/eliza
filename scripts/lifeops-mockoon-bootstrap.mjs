@@ -44,11 +44,10 @@ import {
   openSync,
   readdirSync,
   readFileSync,
-  writeFileSync,
   unlinkSync,
+  writeFileSync,
 } from "node:fs";
 import { connect } from "node:net";
-import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
@@ -69,12 +68,26 @@ function resolveMockoonBin() {
   }
   // Try $PATH.
   const which = spawnSync("which", ["mockoon-cli"], { encoding: "utf8" });
-  if (which.status === 0 && which.stdout.trim() && existsSync(which.stdout.trim())) {
+  if (
+    which.status === 0 &&
+    which.stdout.trim() &&
+    existsSync(which.stdout.trim())
+  ) {
     return { kind: "bin", cmd: which.stdout.trim() };
   }
   // Repo-local npm cache from `npx @mockoon/cli@latest`.
   if (existsSync(MOCKOON_NPX_CACHE_BIN)) {
     return { kind: "bin", cmd: MOCKOON_NPX_CACHE_BIN };
+  }
+  // Codex desktop shells may not include Homebrew's bin directory even when
+  // Node/npm are installed there.
+  const homebrewNpx = "/opt/homebrew/bin/npx";
+  if (existsSync(homebrewNpx)) {
+    return { kind: "npx", cmd: homebrewNpx };
+  }
+  const localBunx = join(REPO_ROOT, "node_modules", ".bin", "bunx");
+  if (existsSync(localBunx)) {
+    return { kind: "bunx", cmd: localBunx };
   }
   // Last resort: npx itself. Slow cold start (~30s per env) but correct.
   return { kind: "npx", cmd: "npx" };
@@ -142,8 +155,11 @@ function spawnMockoonProcess(bin, envPath, port) {
   let cmd;
   let args;
   if (bin.kind === "npx") {
-    cmd = "npx";
+    cmd = bin.cmd;
     args = ["--yes", "@mockoon/cli@latest", ...baseArgs];
+  } else if (bin.kind === "bunx") {
+    cmd = bin.cmd;
+    args = ["--bun", "@mockoon/cli@latest", ...baseArgs];
   } else {
     cmd = bin.cmd;
     args = baseArgs;
@@ -250,13 +266,29 @@ export async function ensureMockoonRunning(options = {}) {
       console.log(
         `[${label}] ${d.name} already listening on ${d.port}, skipping spawn`,
       );
-      connectors.push({ name: d.name, connector: d.fileBase, port: d.port, pid: null, ownedHere: false });
+      connectors.push({
+        name: d.name,
+        connector: d.fileBase,
+        port: d.port,
+        pid: null,
+        ownedHere: false,
+      });
       continue;
     }
     const child = spawnMockoonProcess(bin, d.envPath, d.port);
     writePidFile(d.fileBase, child.pid);
-    ownedPids.push({ fileBase: d.fileBase, path: join(PID_DIR, `${d.fileBase}.pid`), pid: child.pid });
-    connectors.push({ name: d.name, connector: d.fileBase, port: d.port, pid: child.pid, ownedHere: true });
+    ownedPids.push({
+      fileBase: d.fileBase,
+      path: join(PID_DIR, `${d.fileBase}.pid`),
+      pid: child.pid,
+    });
+    connectors.push({
+      name: d.name,
+      connector: d.fileBase,
+      port: d.port,
+      pid: child.pid,
+      ownedHere: true,
+    });
     console.log(`[${label}] started ${d.name} pid=${child.pid} port=${d.port}`);
   }
 
@@ -270,9 +302,7 @@ export async function ensureMockoonRunning(options = {}) {
         `[${label}] FAIL ${c.name} did not bind port ${c.port} within ${timeoutMs}ms — see ${LOG_DIR}/${c.name}.log`,
       );
     } else {
-      console.log(
-        `[${label}] ready ${c.name} on http://127.0.0.1:${c.port}`,
-      );
+      console.log(`[${label}] ready ${c.name} on http://127.0.0.1:${c.port}`);
     }
   }
 
@@ -339,7 +369,9 @@ async function cliMain() {
     let down = 0;
     for (const d of descriptors) {
       const up = await isPortListening(d.port);
-      console.log(`${up ? "UP  " : "DOWN"}  ${d.name.padEnd(20)} port=${d.port}`);
+      console.log(
+        `${up ? "UP  " : "DOWN"}  ${d.name.padEnd(20)} port=${d.port}`,
+      );
       if (!up) down += 1;
     }
     process.exit(down === 0 ? 0 : 1);
@@ -362,7 +394,9 @@ async function cliMain() {
     );
     return;
   }
-  console.error("usage: lifeops-mockoon-bootstrap.mjs [--start|--stop|--status]");
+  console.error(
+    "usage: lifeops-mockoon-bootstrap.mjs [--start|--stop|--status]",
+  );
   process.exit(2);
 }
 

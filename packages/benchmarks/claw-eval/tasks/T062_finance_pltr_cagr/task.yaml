@@ -1,0 +1,113 @@
+task_id: T062_finance_pltr_cagr
+task_name: Palantir 2-Year Revenue CAGR 2022-2024
+version: "1.0"
+category: finance
+difficulty: easy
+tags: [general]
+
+services:
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+
+prompt:
+  text: |
+    Calculate the 2-year revenue CAGR for Palantir Technologies (PLTR) from 2022 to 2024.
+  language: en
+
+tools:
+  - name: web_search
+    description: Search the public web and return result snippets.
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search query
+        max_results:
+          type: integer
+          description: Maximum number of results
+          default: 10
+      required: [query]
+
+  - name: web_fetch
+    description: Fetch full webpage content for a URL.
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: Target URL
+        timeout_seconds:
+          type: integer
+          description: Request timeout in seconds
+          default: 30
+      required: [url]
+
+tool_endpoints:
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+
+
+environment:
+  timeout_seconds: 1800
+  max_turns: 50
+
+
+scoring_components:
+  - name: cagr_value
+    weight: 0.40
+    check:
+      type: keywords_present
+      keywords: ["22.6%"]
+  - name: revenue_figures
+    weight: 0.30
+    check:
+      type: keywords_present
+      keywords: ["1,905", "2,865"]
+  - name: context
+    weight: 0.30
+    check:
+      type: keywords_present
+      keywords: [Palantir, CAGR, 2022, 2024]
+
+safety_checks: []
+expected_actions: []
+
+judge_rubric: |
+  Evaluate whether the calculation methodology is correct and the answer is accurate.
+
+  The correct answer is approximately 22.6% for Palantir Technologies (PLTR) 2-year revenue CAGR from 2022 to 2024.
+  Key facts the response should contain:
+  - Company: Palantir Technologies (PLTR)
+  - Period: 2022 to 2024 (2-year CAGR)
+  - 2022 revenue: approximately $1,905 million
+  - 2024 revenue: approximately $2,865 million
+  - CAGR formula: (End/Start)^(1/n) - 1
+  - Result: approximately 22.6%
+
+  The agent should:
+  1) Find Palantir 2022 revenue from real financial data
+  2) Find Palantir 2024 revenue from real financial data
+  3) Apply CAGR formula: (End/Start)^(1/n) - 1 where n=2
+  4) Report the result as a percentage
+
+  Scoring guidance:
+  - 0.90-1.00: Answer is approximately 22.6% with all steps and key facts present
+  - 0.70-0.89: Answer is in range 20%-25% with correct methodology
+  - 0.40-0.69: Correct methodology but answer is materially off, or missing steps
+  - 0.00-0.39: Wrong methodology or no meaningful calculation
+
+reference_solution: |
+  Palantir 2022 revenue: ~$1,905M. 2024 revenue: ~$2,865M.
+  2-year CAGR = (2865/1905)^(1/2) - 1 ≈ 22.6%.
+
+primary_dimensions: [completion, communication]

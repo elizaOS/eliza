@@ -1,4 +1,5 @@
 import { AgentNotReadyError } from "./config-and-auth-rpc";
+import { finiteNumber } from "./rpc-parse-utils";
 import type {
 	InboxChatsParams,
 	InboxChatsSnapshot,
@@ -72,10 +73,6 @@ function stringList(value: unknown): string[] | null {
 	return strings.length === value.length ? strings : null;
 }
 
-function finiteCount(value: unknown): number | null {
-	return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 export type InboxMessagesReader = (
 	port: number,
 	params?: InboxMessagesParams,
@@ -91,7 +88,7 @@ export const readInboxMessagesViaHttp: InboxMessagesReader = async (
 	);
 	if (!raw) return null;
 	const messages = objectRecords(raw.messages);
-	const count = finiteCount(raw.count);
+	const count = finiteNumber(raw.count);
 	if (!messages || count === null) return null;
 	return { messages, count };
 };
@@ -119,7 +116,7 @@ export const readInboxChatsViaHttp: InboxChatsReader = async (port, params) => {
 	);
 	if (!raw) return null;
 	const chats = objectRecords(raw.chats);
-	const count = finiteCount(raw.count);
+	const count = finiteNumber(raw.count);
 	if (!chats || count === null) return null;
 	return { chats, count };
 };

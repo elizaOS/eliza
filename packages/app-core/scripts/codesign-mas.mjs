@@ -20,9 +20,9 @@
  *                         [--out=path/to/out.pkg]
  *
  * Env equivalents (CLI args win):
- *   MILADY_MAS_SIGNING_IDENTITY
- *   MILADY_MAS_INSTALLER_IDENTITY
- *   MILADY_APPLE_TEAM_ID
+ *   ELIZA_MAS_SIGNING_IDENTITY
+ *   ELIZA_MAS_INSTALLER_IDENTITY
+ *   ELIZA_APPLE_TEAM_ID
  *
  * Exits non-zero on any signing or verification failure. No try/catch sludge.
  */
@@ -215,10 +215,10 @@ function main() {
   const dryRun = Boolean(args["dry-run"]);
 
   const identity =
-    args.identity ?? process.env.MILADY_MAS_SIGNING_IDENTITY ?? null;
+    args.identity ?? process.env.ELIZA_MAS_SIGNING_IDENTITY ?? null;
   if (!identity) {
     console.error(
-      "error: --identity or MILADY_MAS_SIGNING_IDENTITY required " +
+      "error: --identity or ELIZA_MAS_SIGNING_IDENTITY required " +
         '(e.g. "3rd Party Mac Developer Application: Acme (TEAMID)")',
     );
     process.exit(2);
@@ -226,7 +226,7 @@ function main() {
 
   const installerIdentity =
     args["installer-identity"] ??
-    process.env.MILADY_MAS_INSTALLER_IDENTITY ??
+    process.env.ELIZA_MAS_INSTALLER_IDENTITY ??
     null;
 
   plistLint(PARENT_ENTITLEMENTS);

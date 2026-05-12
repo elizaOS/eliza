@@ -47,9 +47,16 @@ function readParameters(options: unknown): Record<string, unknown> {
 function readAction(options: unknown): GitHubActionName | undefined {
   const params = readParameters(options);
   const raw =
-    params.action ?? params.subaction ?? params.op ?? params.operation ?? params.verb;
+    params.action ??
+    params.subaction ??
+    params.op ??
+    params.operation ??
+    params.verb;
   if (typeof raw !== "string") return undefined;
-  const normalized = raw.trim().toLowerCase().replace(/[-\s]+/g, "_");
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]+/g, "_");
   return (GITHUB_ACTIONS as readonly string[]).includes(normalized)
     ? (normalized as GitHubActionName)
     : undefined;
@@ -120,7 +127,11 @@ export const githubAction: Action = {
       name: "state",
       description: "PR state for pr_list: open, closed, or all.",
       required: false,
-      schema: { type: "string", enum: ["open", "closed", "all"], default: "open" },
+      schema: {
+        type: "string",
+        enum: ["open", "closed", "all"],
+        default: "open",
+      },
     },
     {
       name: "author",
@@ -130,9 +141,13 @@ export const githubAction: Action = {
     },
     {
       name: "review_action",
-      description: "For action=pr_review: approve, request-changes, or comment.",
+      description:
+        "For action=pr_review: approve, request-changes, or comment.",
       required: false,
-      schema: { type: "string", enum: ["approve", "request-changes", "comment"] },
+      schema: {
+        type: "string",
+        enum: ["approve", "request-changes", "comment"],
+      },
     },
     {
       name: "title",
@@ -166,7 +181,8 @@ export const githubAction: Action = {
     },
     {
       name: "accountId",
-      description: "Optional GitHub account id from GITHUB_ACCOUNTS. Defaults by role.",
+      description:
+        "Optional GitHub account id from GITHUB_ACCOUNTS. Defaults by role.",
       required: false,
       schema: { type: "string" },
     },

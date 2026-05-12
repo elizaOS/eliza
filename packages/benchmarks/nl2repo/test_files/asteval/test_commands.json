@@ -1,0 +1,1 @@
+["echo \"version = '0.0.1'\" > asteval/version.py","pip install -e .","pytest --continue-on-collection-errors tests"]

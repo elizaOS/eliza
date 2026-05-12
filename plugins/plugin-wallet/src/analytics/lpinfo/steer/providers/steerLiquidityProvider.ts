@@ -1,4 +1,3 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import type { SteerLiquidityService } from "../services/steerLiquidityService";
 import type {
@@ -7,6 +6,18 @@ import type {
 } from "../steer-display-types.js";
 
 const STEER_LIQUIDITY_TEXT_LIMIT = 4000;
+
+function getVaultTokenAddress(
+  vaultToken: SteerVaultDetailInput["token0"],
+): string {
+  if (!vaultToken || vaultToken === "Unknown") {
+    return "Unknown";
+  }
+
+  return typeof vaultToken === "string"
+    ? vaultToken
+    : vaultToken.address || "Unknown";
+}
 
 /**
  * Steer Finance Liquidity Protocol Provider
@@ -180,7 +191,7 @@ export const steerLiquidityProvider: Provider = {
 
     return {
       data,
-      values: {} as Record<string, unknown>,
+      values: {},
       text,
     };
   },
@@ -474,8 +485,10 @@ async function getSingleAssetDepositInfo(
         depositInfo += `   🔄 Strategy: ${vault.strategyType}\n`;
         depositInfo += `   🏊 Pool: ${vault.poolAddress || "N/A"}\n`;
         depositInfo += `   📝 Single-Asset Contract: ${vault.singleAssetDepositContract}\n`;
-        depositInfo += `   🪙 Token0: ${vault.token0} (${getTokenSymbol(typeof vault.token0 === "string" ? vault.token0 : vault.token0?.address || "Unknown")})\n`;
-        depositInfo += `   🪙 Token1: ${vault.token1} (${getTokenSymbol(typeof vault.token1 === "string" ? vault.token1 : vault.token1?.address || "Unknown")})\n`;
+        const token0Address = getVaultTokenAddress(vault.token0);
+        const token1Address = getVaultTokenAddress(vault.token1);
+        depositInfo += `   🪙 Token0: ${token0Address} (${getTokenSymbol(token0Address)})\n`;
+        depositInfo += `   🪙 Token1: ${token1Address} (${getTokenSymbol(token1Address)})\n`;
 
         // Add additional APY breakdown if available
         if (vault.apr1d || vault.apr7d || vault.apr14d) {
@@ -501,7 +514,11 @@ async function getSingleAssetDepositInfo(
         depositInfo += `\n`;
 
         depositInfo += `   💡 Single-Asset Deposit Features:\n`;
-        depositInfo += `      • Deposit only one token (${tokenIdentifier === vault.token0.toLowerCase() ? "Token0" : "Token1"})\n`;
+        const depositSide =
+          tokenIdentifier.toLowerCase() === token0Address.toLowerCase()
+            ? "Token0"
+            : "Token1";
+        depositInfo += `      • Deposit only one token (${depositSide})\n`;
         depositInfo += `      • Automatic internal swap to balance the pair\n`;
         depositInfo += `      • Configurable slippage protection\n`;
         depositInfo += `      • Preview functionality before execution\n`;

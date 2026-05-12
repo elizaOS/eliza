@@ -6,10 +6,6 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
-import {
-  executeRawSql,
-  sqlQuote,
-} from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
 import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 
 export default scenario({
@@ -61,9 +57,7 @@ export default scenario({
       type: "custom",
       name: "single-summary-not-three-paragraphs",
       predicate: (ctx: ScenarioContext) => {
-        const reply = String(
-          ctx.turns?.[0]?.responseText ?? "",
-        );
+        const reply = String(ctx.turns?.[0]?.responseText ?? "");
         if (!reply) return "empty reply";
         // Heuristic: more than 5 paragraph breaks suggests the agent is
         // not summarizing.

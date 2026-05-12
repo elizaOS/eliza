@@ -51,20 +51,20 @@ $pgliteDataDir = Join-Path $tempRoot ("pglite-" + [Guid]::NewGuid().ToString("N"
 New-Item -ItemType Directory -Force -Path $pgliteDataDir | Out-Null
 $env:PGLITE_DATA_DIR = $pgliteDataDir
 if ($env:GITHUB_ENV) {
-  Add-Content -Path $env:GITHUB_ENV -Value "MILADY_TEST_WINDOWS_APPDATA_PATH=$($env:APPDATA)"
-  Add-Content -Path $env:GITHUB_ENV -Value "MILADY_TEST_WINDOWS_LOCALAPPDATA_PATH=$($env:LOCALAPPDATA)"
+  Add-Content -Path $env:GITHUB_ENV -Value "ELIZA_TEST_WINDOWS_APPDATA_PATH=$($env:APPDATA)"
+  Add-Content -Path $env:GITHUB_ENV -Value "ELIZA_TEST_WINDOWS_LOCALAPPDATA_PATH=$($env:LOCALAPPDATA)"
   Add-Content -Path $env:GITHUB_ENV -Value "ELIZA_TEST_WINDOWS_APPDATA_PATH=$($env:APPDATA)"
   Add-Content -Path $env:GITHUB_ENV -Value "ELIZA_TEST_WINDOWS_LOCALAPPDATA_PATH=$($env:LOCALAPPDATA)"
   Add-Content -Path $env:GITHUB_ENV -Value "PGLITE_DATA_DIR=$pgliteDataDir"
 }
-# Packaged builds can still use the default elizaOS brand config before Milady
+# Packaged builds can still use the default elizaOS brand config before Eliza
 # overrides are loaded, so include all known startup log locations.
 $legacyStartupLog = Join-Path $env:APPDATA "Eliza\\eliza-startup.log"
 $defaultStartupLog = Join-Path $env:APPDATA "elizaOS\\eliza-startup.log"
-$miladyStartupLog = Join-Path $env:APPDATA "Milady\\eliza-startup.log"
-$startupLog = Join-Path $env:APPDATA "Milady\\milady-startup.log"
-$startupLogs = @($startupLog, $miladyStartupLog, $defaultStartupLog, $legacyStartupLog) | Select-Object -Unique
-$defaultAvatarAssetSlugs = @("eliza-1", "milady-1")
+$elizaStartupLog = Join-Path $env:APPDATA "Eliza\\eliza-startup.log"
+$startupLog = Join-Path $env:APPDATA "Eliza\\eliza-startup.log"
+$startupLogs = @($startupLog, $elizaStartupLog, $defaultStartupLog, $legacyStartupLog) | Select-Object -Unique
+$defaultAvatarAssetSlugs = @("eliza-1", "eliza-1")
 $selfExtractionRoot = Join-Path $env:LOCALAPPDATA "com.elizaai.eliza"
 $tempExtractDir = Join-Path $tempRoot ("eliza-windows-smoke-" + [Guid]::NewGuid().ToString("N"))
 $persistLauncherDir = $env:ELIZA_TEST_WINDOWS_LAUNCHER_DIR
@@ -382,11 +382,11 @@ Stop-ElizaProcesses
 $env:ELECTROBUN_CONSOLE = "1"
 $env:ELIZA_FORCE_AUTOSTART_AGENT = "1"
 $env:ELIZA_STARTUP_SESSION_ID = $startupSessionId
-$env:MILADY_STARTUP_SESSION_ID = $startupSessionId
+$env:ELIZA_STARTUP_SESSION_ID = $startupSessionId
 $env:ELIZA_STARTUP_STATE_FILE = $startupStateFile
 $env:ELIZA_STARTUP_EVENTS_FILE = $startupEventsFile
-$env:MILADY_STARTUP_STATE_FILE = $startupStateFile
-$env:MILADY_STARTUP_EVENTS_FILE = $startupEventsFile
+$env:ELIZA_STARTUP_STATE_FILE = $startupStateFile
+$env:ELIZA_STARTUP_EVENTS_FILE = $startupEventsFile
 $BackendPort = Resolve-BackendPort $BackendPort
 $env:ELIZA_API_PORT = "$BackendPort"
 $env:ELIZA_API_PORT = "$BackendPort"
@@ -420,15 +420,15 @@ $requireInstaller = $env:ELIZA_WINDOWS_SMOKE_REQUIRE_INSTALLER -eq "1"
 if (-not $requireInstaller) {
   $requireInstaller = $env:ELIZA_WINDOWS_SMOKE_REQUIRE_INSTALLER -eq "1"
 }
-$installerRoot = if ($env:MILADY_TEST_WINDOWS_INSTALL_DIR) {
-  $env:MILADY_TEST_WINDOWS_INSTALL_DIR
+$installerRoot = if ($env:ELIZA_TEST_WINDOWS_INSTALL_DIR) {
+  $env:ELIZA_TEST_WINDOWS_INSTALL_DIR
 } elseif ($env:ELIZA_TEST_WINDOWS_INSTALL_DIR) {
   # The release workflow exports ELIZA_TEST_WINDOWS_INSTALL_DIR for legacy
   # contract compatibility; accept either prefix so a short, MAX_PATH-safe
   # install dir actually flows through to the Inno /DIR override on CI.
   $env:ELIZA_TEST_WINDOWS_INSTALL_DIR
 } else {
-  Join-Path $tempRoot ("milady-installed-" + [Guid]::NewGuid().ToString("N").Substring(0, 8))
+  Join-Path $tempRoot ("eliza-installed-" + [Guid]::NewGuid().ToString("N").Substring(0, 8))
 }
 if ($requireInstaller) {
   $launcher = $null

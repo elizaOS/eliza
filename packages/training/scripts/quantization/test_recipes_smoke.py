@@ -45,11 +45,11 @@ def test_polarquant_recipe_serializes_with_paper_metadata():
 def test_polarquant_dry_run_emits_recipe_json(capsys):
     from polarquant_apply import main
 
-    rc = main(["--model", "Qwen/Qwen3-0.6B", "--output", "/tmp/_polarquant_unused", "--dry-run"])
+    rc = main(["--model", "Qwen/Qwen3-0.8B", "--output", "/tmp/_polarquant_unused", "--dry-run"])
     assert rc == 0
     out = capsys.readouterr().out
     payload = json.loads(out)
-    assert payload["model"] == "Qwen/Qwen3-0.6B"
+    assert payload["model"] == "Qwen/Qwen3-0.8B"
     assert payload["recipe"]["bits"] == 4
 
 
@@ -59,7 +59,7 @@ def test_polarquant_dry_run_rejects_missing_calibration(tmp_path):
     bogus = tmp_path / "does-not-exist.jsonl"
     with pytest.raises(FileNotFoundError):
         main([
-            "--model", "Qwen/Qwen3-0.6B",
+            "--model", "Qwen/Qwen3-0.8B",
             "--output", str(tmp_path / "out"),
             "--calibration", str(bogus),
             "--dry-run",
@@ -83,7 +83,7 @@ def test_fused_turboquant_dry_run_rejects_missing_calibration(tmp_path):
     bogus = tmp_path / "does-not-exist.jsonl"
     with pytest.raises(FileNotFoundError):
         main([
-            "--model", "Qwen/Qwen3-0.6B",
+            "--model", "Qwen/Qwen3-0.8B",
             "--output", str(tmp_path / "out"),
             "--calibration", str(bogus),
             "--dry-run",
@@ -98,7 +98,7 @@ def test_fp8_apply_dry_run_emits_capability_json(capsys):
     JSON output."""
     from fp8_apply import main
 
-    rc = main(["--model", "Qwen/Qwen3-0.6B", "--output", "/tmp/_fp8_unused", "--dry-run"])
+    rc = main(["--model", "Qwen/Qwen3-0.8B", "--output", "/tmp/_fp8_unused", "--dry-run"])
     assert rc == 0
     payload = json.loads(capsys.readouterr().out)
     assert "fp8_ok" in payload
@@ -106,7 +106,7 @@ def test_fp8_apply_dry_run_emits_capability_json(capsys):
 
 
 def test_qjl_apply_kv_bytes_per_token_analytic_qwen():
-    """Sanity-check the analytic KV-bytes formula on a real Qwen3-0.6B config.
+    """Sanity-check the analytic KV-bytes formula on a real Qwen3-0.8B config.
 
     No model download — just metadata via AutoConfig.
     """
@@ -115,7 +115,7 @@ def test_qjl_apply_kv_bytes_per_token_analytic_qwen():
 
     from qjl_apply import kv_bytes_per_token_analytic
 
-    cfg = AutoConfig.from_pretrained("Qwen/Qwen3-0.6B", trust_remote_code=True)
+    cfg = AutoConfig.from_pretrained("Qwen/Qwen3-0.8B", trust_remote_code=True)
     base_bpt, quant_bpt = kv_bytes_per_token_analytic(
         cfg,
         key_quantization_bits=256,
@@ -208,7 +208,7 @@ def test_push_model_resolves_repo_id_with_quant_suffix():
     from push_model_to_hf import resolve_repo_id
 
     # Source of truth is training/model_registry.py. The real published tiers
-    # are the size-first eliza-1-{0_6b,1_7b,4b} ids (Qwen3-{0.6B,1.7B,4B}
+    # are the size-first eliza-1-{0_8b,2b,4b} ids (Qwen3-{0.8B,2B,4B}
     # lineage); qwen3.5-2b / qwen3.5-9b are unresolved-checkpoint placeholders
     # with empty eliza_short_name, so they only resolve through their base key.
     assert resolve_repo_id("qwen3-4b", None, "default", None) == "elizaos/eliza-1-4b"

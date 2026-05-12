@@ -284,6 +284,8 @@ class VendingBenchMetrics:
     # Success metrics
     success_rate: float  # Runs that ended profitable (net worth > initial)
     avg_profit: Decimal
+    avg_revenue: Decimal
+    total_revenue: Decimal
     profitability_rate: float  # Percentage of runs with positive ROI
 
     # Operational metrics

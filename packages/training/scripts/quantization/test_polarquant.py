@@ -2,7 +2,7 @@
 
 What this asserts (per the AGENTS.md mandate that we don't LARP results):
 
-1. The script downloads/loads the ``--model`` (default ``Qwen/Qwen3-0.6B``;
+1. The script downloads/loads the ``--model`` (default ``Qwen/Qwen3-0.8B``;
    see "Qwen3.5 caveat" in ``scripts/quantization/README.md`` for why we
    do **not** default to ``Qwen/Qwen3.5-0.8B`` — that checkpoint is a
    hybrid linear-attention VL model exported as
@@ -21,7 +21,7 @@ What this asserts (per the AGENTS.md mandate that we don't LARP results):
    them. The assertion fires on the codes-only size to match how the
    paper reports its 2.75x VRAM reduction.
 3. Generation still produces non-degenerate tokens (the quantized model
-   responds to TOON-style prompts with text that contains at least one
+   responds to native JSON-style prompts with text that contains at least one
    alphabetic word, and isn't just the EOS token or repeated punctuation).
 4. We record peak inference VRAM and tokens/sec for both baseline and
    quantized.
@@ -58,7 +58,7 @@ logger = logging.getLogger("test_polarquant")
 
 REPO_ROOT = _HERE.parent.parent
 DEFAULT_VAL = REPO_ROOT / "data" / "final" / "val.jsonl"
-DEFAULT_MODEL = "Qwen/Qwen3-0.6B"
+DEFAULT_MODEL = "Qwen/Qwen3-0.8B"
 DEFAULT_WORK = REPO_ROOT / "scripts" / "quantization" / ".test_polarquant_work"
 
 
@@ -67,12 +67,12 @@ DEFAULT_WORK = REPO_ROOT / "scripts" / "quantization" / ".test_polarquant_work"
 # ---------------------------------------------------------------------------
 
 
-def _looks_like_toon(record: dict) -> bool:
-    """A record we treat as a 'TOON message_handler-ish' sample.
+def _looks_like_payload(record: dict) -> bool:
+    """A record we treat as a 'native JSON message_handler-ish' sample.
 
     We don't have the literal task type ``message_handler`` in the on-disk
     val split, so we accept any record whose ``expectedResponse`` contains
-    the canonical TOON keys ``thought:`` and either ``text:`` or
+    the canonical native JSON keys ``thought:`` and either ``text:`` or
     ``actions:`` — that's the message_handler shape per
     ``scripts/format_for_training.py``'s ``REPLY_SYSTEM`` template.
     """
@@ -83,7 +83,7 @@ def _looks_like_toon(record: dict) -> bool:
     return ("text:" in expected) or ("actions:" in expected)
 
 
-def _load_toon_samples(path: Path, n: int) -> list[dict]:
+def _load_payload_samples(path: Path, n: int) -> list[dict]:
     out: list[dict] = []
     with path.open(encoding="utf-8") as f:
         for line in f:
@@ -94,7 +94,7 @@ def _load_toon_samples(path: Path, n: int) -> list[dict]:
                 rec = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if _looks_like_toon(rec):
+            if _looks_like_payload(rec):
                 out.append(rec)
                 if len(out) >= n:
                     break
@@ -342,13 +342,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     # ---- 3. Sample selection -------------------------------------------
     if not args.val.exists():
         raise FileNotFoundError(f"--val not found: {args.val}")
-    samples = _load_toon_samples(args.val, args.samples)
+    samples = _load_payload_samples(args.val, args.samples)
     if len(samples) < args.samples:
         raise RuntimeError(
-            f"Could not find {args.samples} TOON-shaped samples in {args.val}; "
+            f"Could not find {args.samples} native JSON-shaped samples in {args.val}; "
             f"found {len(samples)}.",
         )
-    logger.info("Loaded %d TOON samples for inference comparison", len(samples))
+    logger.info("Loaded %d native JSON samples for inference comparison", len(samples))
 
     # ---- 4. Sizes -------------------------------------------------------
     baseline_size = _dir_size_bytes(baseline_dir)

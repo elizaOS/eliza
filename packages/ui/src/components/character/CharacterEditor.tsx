@@ -7,6 +7,7 @@ import {
   VOICE_CONFIG_UPDATED_EVENT,
 } from "../../events/index";
 import { useChatAvatarVoiceBridge, useVoiceChat } from "../../hooks";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useApp } from "../../state/useApp";
 import { normalizeCharacterMessageExamples } from "../../utils/character-message-examples";
 import {
@@ -159,6 +160,7 @@ export function CharacterEditor({
   inModal?: boolean;
   onHeaderActionsChange?: (actions: ReactNode | null) => void;
 } = {}) {
+  useRenderGuard("CharacterEditor");
   const {
     tab,
     setTab,
@@ -1084,6 +1086,9 @@ export function CharacterEditor({
             ? "relative flex flex-col justify-end w-full flex-1 gap-2 overflow-hidden select-none transition-[width,margin-left] duration-[400ms] ease-in-out [-webkit-tap-highlight-color:transparent] max-[600px]:overflow-visible"
             : "flex flex-col w-full flex-1 items-center justify-center"
         }
+        data-no-camera-zoom={sceneOverlay ? "true" : undefined}
+        data-no-camera-drag={sceneOverlay ? "true" : undefined}
+        data-testid={sceneOverlay ? "companion-character-editor" : undefined}
       >
         <div className="text-muted text-sm">
           {t("charactereditor.LoadingCharacterData", {
@@ -1104,6 +1109,7 @@ export function CharacterEditor({
       }
       data-no-camera-zoom={sceneOverlay ? "true" : undefined}
       data-no-camera-drag={sceneOverlay ? "true" : undefined}
+      data-testid={sceneOverlay ? "companion-character-editor" : undefined}
       onWheel={sceneOverlay ? (e) => e.stopPropagation() : undefined}
     >
       <div

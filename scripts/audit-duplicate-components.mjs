@@ -678,7 +678,7 @@ function staticStringText(node) {
   return values.join("\n");
 }
 
-function stripComments(text) {
+function _stripComments(text) {
   return text
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
@@ -789,7 +789,7 @@ function collectReturnExpressions(node) {
   return returns;
 }
 
-function isEmptyProvider(provider, sourceFile) {
+function isEmptyProvider(provider, _sourceFile) {
   const implementation = getProviderGetImplementation(provider.node);
   if (!implementation) return false;
 
@@ -805,9 +805,7 @@ function isEmptyProvider(provider, sourceFile) {
       : null;
   if (!body) return false;
   const returns = collectReturnExpressions(body);
-  return (
-    returns.length > 0 && returns.every(isEmptyProviderReturnExpression)
-  );
+  return returns.length > 0 && returns.every(isEmptyProviderReturnExpression);
 }
 
 function shouldBeProviderByName(actionName) {
@@ -1269,7 +1267,7 @@ function collectPromptIssues(repoRoot, promptFiles) {
             line: index + 1,
             match: trimmed.slice(0, 180),
             message:
-              "planner-facing structured prompt appears to require JSON/XML; prefer TOON unless downstream API requires JSON",
+              "planner-facing structured prompt appears to require text-serialized JSON/XML; prefer native function/tool calling or JSON schema",
             rule: "planner-structured-format",
             severity: "error",
           }),

@@ -1,0 +1,13 @@
+{
+  "tool": "embedding_bench",
+  "date": "2026-05-12T05:57:53.436Z",
+  "host": "Apple M4 Max",
+  "cpus": 16,
+  "totalRamMb": 131072,
+  "status": "skipped",
+  "reason": "no llama-server binary found (build one: node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cpu)",
+  "resolved": {
+    "bin": null,
+    "model": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle/text/eliza-1-0_6b-32k.gguf"
+  }
+}

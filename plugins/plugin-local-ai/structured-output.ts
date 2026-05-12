@@ -1,5 +1,3 @@
-// @ts-nocheck — depends on @elizaos/core types currently bundled with the
-// rest of plugin-local-ai under nocheck pending a core-types pass.
 import type { JSONSchema, ToolDefinition } from "@elizaos/core";
 import {
   type ChatModelFunctionCall,
@@ -21,6 +19,9 @@ export interface ToolCallResult {
 export interface StructuredOutputContext {
   llama: Llama;
 }
+
+type LlamaFunctionDefinition = ChatSessionModelFunctions[string];
+type LlamaJsonSchemaGrammarForAnySchema = LlamaJsonSchemaGrammar<GbnfJsonSchema>;
 
 /**
  * Convert an elizaOS-shaped JSON schema to the Gbnf variant accepted by
@@ -44,17 +45,18 @@ export function toGbnfJsonSchema(schema: JSONSchema | undefined): GbnfJsonSchema
  * The runtime is responsible for executing the tool and looping back.
  */
 export function buildLlamaFunctions(tools: readonly ToolDefinition[]): ChatSessionModelFunctions {
-  const out: Record<string, ReturnType<typeof defineChatSessionFunction>> = {};
+  const out: Record<string, LlamaFunctionDefinition> = {};
   for (const tool of tools) {
     if (!tool?.name) continue;
+    const params = toGbnfJsonSchema(tool.parameters);
     out[tool.name] = defineChatSessionFunction({
       description: tool.description,
-      params: toGbnfJsonSchema(tool.parameters) as never,
+      params: params as never,
       // The handler intentionally returns a sentinel. We collect the parsed
       // call from `promptWithMeta`'s response array; we do not execute the
       // tool in-process. node-llama-cpp requires a handler to be defined.
       handler: () => "[deferred to runtime]",
-    });
+    }) as LlamaFunctionDefinition;
   }
   return out;
 }
@@ -94,12 +96,12 @@ export function extractToolCalls(
 export function buildJsonSchemaGrammar(
   llama: Llama,
   schema: JSONSchema
-): LlamaJsonSchemaGrammar<GbnfJsonSchema> {
+): LlamaJsonSchemaGrammarForAnySchema {
   const gbnf = toGbnfJsonSchema(schema);
   if (gbnf == null) {
     throw new Error("[plugin-local-ai] responseSchema is required to build a JSON schema grammar");
   }
-  return new LlamaJsonSchemaGrammar(llama, gbnf as GbnfJsonSchema);
+  return new LlamaJsonSchemaGrammar(llama, gbnf as never) as LlamaJsonSchemaGrammarForAnySchema;
 }
 
 /**

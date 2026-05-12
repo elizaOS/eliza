@@ -281,9 +281,7 @@
       "Executor flags any category exceeding 20% and names it.",
       "Executor creates a note with the summary after persona approval."
     ],
-    "world_assertions": [
-      "Note titled \"May 2026 spending summary\" appears."
-    ]
+    "world_assertions": ["Note titled \"May 2026 spending summary\" appears."]
   },
   {
     "id": "live.finance.renovation_fund_14",
@@ -369,9 +367,7 @@
       "Executor shares projection amount.",
       "Executor creates a note with projection after persona consent."
     ],
-    "world_assertions": [
-      "Note titled \"Q2 income projection\" exists."
-    ]
+    "world_assertions": ["Note titled \"Q2 income projection\" exists."]
   },
   {
     "id": "live.finance.gift_budget_18",
@@ -435,9 +431,7 @@
       "Executor confirms amount and date.",
       "Executor creates a transaction on the chosen account after approval."
     ],
-    "world_assertions": [
-      "Transaction of $800 appears on selected account."
-    ]
+    "world_assertions": ["Transaction of $800 appears on selected account."]
   },
   {
     "id": "live.finance.reimbursement_21",

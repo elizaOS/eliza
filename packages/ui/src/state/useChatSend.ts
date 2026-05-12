@@ -22,8 +22,10 @@ import {
   normalizeSlashCommandName,
 } from "../chat";
 import type { Tab } from "../navigation";
+import { clearChatDraft } from "./ChatComposerContext";
 import { isConversationRecord } from "./chat-conversation-guards";
 import {
+  applyStreamingTextModification,
   formatSearchBullet,
   type LoadConversationMessagesResult,
   mergeStreamingText,
@@ -670,15 +672,11 @@ export function useChatSend(deps: UseChatSendDeps) {
             if (nextText === streamedAssistantText) return;
             streamedAssistantText = nextText;
             setChatFirstTokenReceived(true);
-            setConversationMessages((prev) =>
-              prev.map((message) =>
-                message.id !== assistantMsgId
-                  ? message
-                  : message.text === nextText
-                    ? message
-                    : { ...message, text: nextText },
-              ),
-            );
+            applyStreamingTextModification(setConversationMessages, {
+              messageId: assistantMsgId,
+              mode: "replace",
+              fullText: nextText,
+            });
           },
           channelType,
           controller.signal,
@@ -688,42 +686,28 @@ export function useChatSend(deps: UseChatSendDeps) {
         );
 
         if (!data.text.trim()) {
-          setConversationMessages((prev) =>
-            prev.filter((message) => message.id !== assistantMsgId),
-          );
+          applyStreamingTextModification(setConversationMessages, {
+            messageId: assistantMsgId,
+            mode: "drop",
+          });
         } else if (
           shouldApplyFinalStreamText(streamedAssistantText, data.text)
         ) {
-          setConversationMessages((prev) => {
-            let changed = false;
-            const next = prev.map((message) => {
-              if (message.id !== assistantMsgId) return message;
-              if (
-                message.text === data.text &&
-                message.failureKind === data.failureKind
-              ) {
-                return message;
-              }
-              changed = true;
-              return {
-                ...message,
-                text: data.text,
-                ...(data.failureKind ? { failureKind: data.failureKind } : {}),
-              };
-            });
-            return changed ? next : prev;
+          applyStreamingTextModification(setConversationMessages, {
+            messageId: assistantMsgId,
+            mode: "complete",
+            fullText: data.text,
+            ...(data.failureKind ? { failureKind: data.failureKind } : {}),
           });
         } else if (data.failureKind) {
           // Streaming text already matched but the server flagged a failure
           // class — stamp it on the assistant turn so the renderer can swap
           // in the gate UI (e.g. "Connect a provider").
-          setConversationMessages((prev) =>
-            prev.map((message) =>
-              message.id === assistantMsgId
-                ? { ...message, failureKind: data.failureKind }
-                : message,
-            ),
-          );
+          applyStreamingTextModification(setConversationMessages, {
+            messageId: assistantMsgId,
+            mode: "fail",
+            failureKind: data.failureKind,
+          });
         }
         if (data.usage) {
           setChatLastUsage({
@@ -736,13 +720,10 @@ export function useChatSend(deps: UseChatSendDeps) {
         }
 
         if (!data.completed && streamedAssistantText.trim()) {
-          setConversationMessages((prev) =>
-            prev.map((message) =>
-              message.id === assistantMsgId
-                ? { ...message, interrupted: true }
-                : message,
-            ),
-          );
+          applyStreamingTextModification(setConversationMessages, {
+            messageId: assistantMsgId,
+            mode: "interrupt",
+          });
         }
 
         // Action callbacks can persist additional assistant turns that are not
@@ -949,6 +930,11 @@ export function useChatSend(deps: UseChatSendDeps) {
       chatPendingImagesRef.current = [];
       setChatInput("");
       setChatPendingImages([]);
+      // The composer draft for this conversation is now stale — the
+      // user just sent it. Clear before the debounce window so a
+      // background-app pause cannot snapshot the empty-then-restored
+      // value back to storage.
+      clearChatDraft(activeConversationIdRef.current);
 
       await sendChatText(claimedInput, {
         channelType,
@@ -1057,15 +1043,11 @@ export function useChatSend(deps: UseChatSendDeps) {
               if (nextText === streamedAssistantText) return;
               streamedAssistantText = nextText;
               setChatFirstTokenReceived(true);
-              setConversationMessages((prev) =>
-                prev.map((message) =>
-                  message.id !== assistantMsgId
-                    ? message
-                    : message.text === nextText
-                      ? message
-                      : { ...message, text: nextText },
-                ),
-              );
+              applyStreamingTextModification(setConversationMessages, {
+                messageId: assistantMsgId,
+                mode: "replace",
+                fullText: nextText,
+              });
             },
             "DM",
             controller.signal,
@@ -1075,51 +1057,32 @@ export function useChatSend(deps: UseChatSendDeps) {
           );
 
           if (!data.text.trim()) {
-            setConversationMessages((prev) =>
-              prev.filter((message) => message.id !== assistantMsgId),
-            );
+            applyStreamingTextModification(setConversationMessages, {
+              messageId: assistantMsgId,
+              mode: "drop",
+            });
           } else if (
             shouldApplyFinalStreamText(streamedAssistantText, data.text)
           ) {
-            setConversationMessages((prev) => {
-              let changed = false;
-              const next = prev.map((message) => {
-                if (message.id !== assistantMsgId) return message;
-                if (
-                  message.text === data.text &&
-                  message.failureKind === data.failureKind
-                ) {
-                  return message;
-                }
-                changed = true;
-                return {
-                  ...message,
-                  text: data.text,
-                  ...(data.failureKind
-                    ? { failureKind: data.failureKind }
-                    : {}),
-                };
-              });
-              return changed ? next : prev;
+            applyStreamingTextModification(setConversationMessages, {
+              messageId: assistantMsgId,
+              mode: "complete",
+              fullText: data.text,
+              ...(data.failureKind ? { failureKind: data.failureKind } : {}),
             });
           } else if (data.failureKind) {
-            setConversationMessages((prev) =>
-              prev.map((message) =>
-                message.id === assistantMsgId
-                  ? { ...message, failureKind: data.failureKind }
-                  : message,
-              ),
-            );
+            applyStreamingTextModification(setConversationMessages, {
+              messageId: assistantMsgId,
+              mode: "fail",
+              failureKind: data.failureKind,
+            });
           }
 
           if (!data.completed && streamedAssistantText.trim()) {
-            setConversationMessages((prev) =>
-              prev.map((message) =>
-                message.id === assistantMsgId
-                  ? { ...message, interrupted: true }
-                  : message,
-              ),
-            );
+            applyStreamingTextModification(setConversationMessages, {
+              messageId: assistantMsgId,
+              mode: "interrupt",
+            });
           }
 
           // Keep the visible thread authoritative when the server stores

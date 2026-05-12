@@ -11,36 +11,18 @@
     "stripInternal": true,
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "paths": {
-      "@elizaos/ui": [
-        "./src/index.ts"
-      ],
-      "@elizaos/core": [
-        "../core/dist/index.d.ts"
-      ],
-      "@elizaos/shared": [
-        "../shared/dist/index.d.ts"
-      ],
-      "@elizaos/agent": [
-        "../agent/dist/packages/agent/src/index.d.ts"
-      ],
-      "@elizaos/app-core": [
-        "../app-core/dist/index.d.ts"
-      ],
+      "@elizaos/ui": ["./src/index.ts"],
+      "@elizaos/core": ["../core/dist/index.d.ts"],
+      "@elizaos/shared": ["../shared/dist/index.d.ts"],
+      "@elizaos/agent": ["../agent/dist/packages/agent/src/index.d.ts"],
+      "@elizaos/app-core": ["../app-core/dist/index.d.ts"],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/dist/index.d.ts"
       ],
-      "@elizaos/app-wallet": [
-        "../../plugins/app-wallet/src/index.ts"
-      ],
-      "@elizaos/plugin-browser": [
-        "../../plugins/plugin-browser/src/index.ts"
-      ],
-      "@elizaos/plugin-video": [
-        "../../plugins/plugin-video/dist/index.d.ts"
-      ],
-      "@elizaos/capacitor-*": [
-        "../native-plugins/*/dist/index.d.ts"
-      ],
+      "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
+      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
+      "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
+      "@elizaos/capacitor-*": ["../native-plugins/*/dist/index.d.ts"],
       "@elizaos/native-activity-tracker": [
         "../native-plugins/activity-tracker/dist/index.d.ts"
       ]
@@ -52,8 +34,5 @@
     "src/**/*.test.ts",
     "src/**/*.test.tsx"
   ],
-  "include": [
-    "src",
-    "../agent/src/external-modules.d.ts"
-  ]
+  "include": ["src", "../agent/src/external-modules.d.ts"]
 }

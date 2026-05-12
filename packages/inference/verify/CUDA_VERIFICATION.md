@@ -61,7 +61,7 @@ unit; see the agent handoff.
    older nvcc on Ubuntu 24.04 — install the official 12.8+ toolkit from
    https://developer.nvidia.com/cuda-downloads for `sm_120` device code
    (older toolkits still work via `compute_90` PTX JIT).
-3. The fork checkout under `~/.cache/eliza-dflash/milady-llama-cpp/` is needed
+3. The fork checkout under `~/.cache/eliza-dflash/eliza-llama-cpp/` is needed
    only for the model-backed graph smoke step (`build:llama-dflash --target
    linux-x64-cuda`), not for `make cuda-verify`.
 

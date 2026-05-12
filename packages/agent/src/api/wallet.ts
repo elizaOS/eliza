@@ -20,7 +20,7 @@ import type {
   WalletKeys,
 } from "@elizaos/shared";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
-import { ethers } from "ethers";
+import * as ethers from "ethers";
 import { resolveStewardCredentialsPath } from "../config/paths.ts";
 import { computeValueUsd } from "./wallet-dex-prices.ts";
 

@@ -64,6 +64,7 @@ def build_evaluate_command(
     output_dir: Path,
     model: str,
     base_url: str | None = None,
+    config_path: Path | None = None,
     extra_args: list[str] | None = None,
 ) -> list[str]:
     """Construct the exact argv used to invoke a hermes-agent eval.
@@ -86,6 +87,8 @@ def build_evaluate_command(
         f"--env.data_dir_to_save_evals={save_dir}",
         "--env.use_wandb=false",
     ]
+    if config_path is not None:
+        cmd.extend(["--config", str(config_path)])
     if base_url:
         cmd.append(f"--openai.base_url={base_url}")
     if extra_args:
@@ -165,15 +168,34 @@ def run_hermes_env(
         else os.environ.get("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1")
     )
 
+    config_env_overrides: dict[str, Any] = {
+        "terminal_backend": "local",
+        "use_wandb": False,
+    }
     forwarded_args: list[str] = list(extra_args or [])
+    if not _has_forwarded_arg(forwarded_args, "--env.terminal_backend"):
+        forwarded_args.append("--env.terminal_backend=local")
     if max_tasks is not None:
-        # hermes-agent envs accept max_eval_samples via the standard
-        # BaseEnvConfig fields. Different envs expose different names; the
-        # safest, env-wide knob is the generic group/eval size cap. Callers
-        # who want tighter control can pass --env.task_filter via extra_args.
-        forwarded_args.append(f"--env.max_eval_samples={int(max_tasks)}")
+        # The hermes-agent env CLIs do not expose a single generic
+        # max_eval_samples flag. Use each env's supported filter knobs for
+        # smoke-sized runs and let callers override with explicit args.
+        if env_id == "tblite" and task_filter is None:
+            task_filter = "broken-python"
+        elif env_id == "terminalbench_2" and task_filter is None:
+            task_filter = "fix-git"
+        elif env_id == "yc_bench":
+            config_env_overrides.setdefault("presets", ["fast_test"])
+            config_env_overrides.setdefault("seeds", [1])
     if task_filter is not None:
         forwarded_args.append(f"--env.task_filter={task_filter}")
+
+    config_path = _write_runtime_config(
+        output_dir=output_dir,
+        api_key=resolved_api_key,
+        base_url=resolved_base_url,
+        model=model,
+        env_overrides=config_env_overrides,
+    )
 
     cmd = build_evaluate_command(
         env_id,
@@ -182,6 +204,7 @@ def run_hermes_env(
         output_dir=output_dir,
         model=model,
         base_url=resolved_base_url,
+        config_path=config_path,
         extra_args=forwarded_args,
     )
 
@@ -193,6 +216,7 @@ def run_hermes_env(
     # Modal or Docker workloads silently. Callers who want a different backend
     # must pass --env.terminal_backend=... in extra_args.
     env["TERMINAL_ENV"] = "local"
+    env["PATH"] = f"{venv_python.parent}{os.pathsep}{env.get('PATH', '')}"
     env.setdefault("PYTHONUNBUFFERED", "1")
 
     stdout_path = output_dir / f"{env_id}.stdout.log"
@@ -234,27 +258,78 @@ def run_hermes_env(
     )
 
 
+def _has_forwarded_arg(args: list[str], key: str) -> bool:
+    return any(arg == key or arg.startswith(f"{key}=") for arg in args)
+
+
+def _write_runtime_config(
+    *,
+    output_dir: Path,
+    api_key: str,
+    base_url: str,
+    model: str,
+    env_overrides: dict[str, Any],
+) -> Path:
+    config_path = output_dir / "hermes_env_config.yaml"
+    lines = [
+        "openai:",
+        f"  api_key: {_yaml_scalar(api_key)}",
+        f"  base_url: {_yaml_scalar(base_url)}",
+        f"  model_name: {_yaml_scalar(model)}",
+        "  server_type: openai",
+        "  health_check: false",
+        "env:",
+    ]
+    for key, value in env_overrides.items():
+        lines.extend(_yaml_key_value(key, value, indent="  "))
+    config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return config_path
+
+
+def _yaml_key_value(key: str, value: Any, *, indent: str) -> list[str]:
+    if isinstance(value, list):
+        lines = [f"{indent}{key}:"]
+        for item in value:
+            lines.append(f"{indent}  - {_yaml_scalar(item)}")
+        return lines
+    return [f"{indent}{key}: {_yaml_scalar(value)}"]
+
+
+def _yaml_scalar(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    import json
+
+    return json.dumps("" if value is None else str(value))
+
+
 def parse_hermes_env_result(
     env_id: str,
     *,
     evals_root: Path,
     duration_s: float,
 ) -> HermesEnvResult:
-    """Parse the samples.jsonl + eval-summary.json hermes-agent writes.
+    """Parse the samples.jsonl + eval-summary/metrics JSON hermes-agent writes.
 
     Public for tests so they can feed in a fake directory structure.
     """
     evals_root = Path(evals_root)
     summary_path = _find_first(evals_root, "eval-summary.json") or _find_first(
         evals_root, "summary.json"
-    )
+    ) or _find_first(evals_root, "metrics.json")
     samples_path = _find_first(evals_root, "samples.jsonl")
-    if summary_path is None or samples_path is None:
+    if summary_path is None:
         raise FileNotFoundError(
             f"hermes env {env_id} did not produce expected artifacts under {evals_root}. "
-            f"Looked for eval-summary.json + samples.jsonl. "
+            f"Looked for eval-summary.json, summary.json, or metrics.json. "
             f"Found summary={summary_path}, samples={samples_path}"
         )
+    if samples_path is None:
+        samples_path = evals_root / "samples.jsonl"
+        samples_path.parent.mkdir(parents=True, exist_ok=True)
+        samples_path.write_text("", encoding="utf-8")
 
     summary_raw = json.loads(summary_path.read_text(encoding="utf-8"))
     metrics = _coerce_metrics(summary_raw)
@@ -288,6 +363,20 @@ def _coerce_metrics(summary_raw: object) -> dict[str, Any]:
         nested = summary_raw.get("metrics")
         if isinstance(nested, dict):
             return dict(nested)
+        results = summary_raw.get("results")
+        if isinstance(results, dict):
+            all_metrics = results.get("all")
+            if isinstance(all_metrics, dict):
+                metrics = dict(all_metrics)
+                for key, value in list(all_metrics.items()):
+                    if isinstance(key, str) and "/" in key:
+                        metrics.setdefault(key.rsplit("/", 1)[-1], value)
+                config = summary_raw.get("config_general")
+                if isinstance(config, dict):
+                    metrics["total_evaluation_time_seconds"] = config.get(
+                        "total_evaluation_time_seconds"
+                    )
+                return metrics
         return dict(summary_raw)
     return {}
 
@@ -299,7 +388,16 @@ def _pick_score(metrics: dict[str, Any]) -> tuple[float, bool]:
     ``reward`` > ``score``. Falls back to ``0.0`` when nothing recognisable
     is present. All recognised scores are higher-is-better.
     """
-    for key in ("accuracy", "pass_rate", "mean_reward", "reward", "score"):
+    for key in (
+        "accuracy",
+        "pass_rate",
+        "avg_composite_score",
+        "survival_rate",
+        "mean_reward",
+        "reward",
+        "placeholder",
+        "score",
+    ):
         val = metrics.get(key)
         if isinstance(val, (int, float)):
             return float(val), True

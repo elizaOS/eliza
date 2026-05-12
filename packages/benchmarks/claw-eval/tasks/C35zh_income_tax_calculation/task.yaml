@@ -1,0 +1,169 @@
+task_id: C35zh_income_tax_calculation
+task_name: 个税计算
+version: '2.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: 2024年个税汇算清缴，专项附加扣除也填了，但最后算出来还要补税一千多，这正常吗？是不是年终奖计税方式选错了？有没有办法重新选？
+  language: zh
+tools:
+- name: Bash
+  description: 在沙箱环境中执行 shell 命令（如 python3 -c "..."），返回 stdout/stderr。适合进行精确数值计算。
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+        description: 要执行的 shell 命令
+      timeout_seconds:
+        type: integer
+        description: 超时时间（秒），默认30
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: 搜索互联网，返回相关网页结果列表（标题、链接、摘要）。可用于查询最新个税政策、专项附加扣除标准、年终奖过渡政策等时效性信息。
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+        description: 搜索关键词或查询语句
+      max_results:
+        type: integer
+        description: 最大返回结果数
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: 获取指定URL的完整网页内容，提取正文文字。
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+        description: 要获取的网页URL
+      timeout_seconds:
+        type: integer
+        description: 请求超时时间（秒）
+        default: 30
+    required:
+    - url
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## 核心身份
+
+
+    你是一名企业财务主管，在一家中型制造业公司的财务部干了将近十年，目前带一个四人小团队，负责日常账务处理、月度结账、预算编制、费用审核和管理层财务汇报。你做事雷厉风行，习惯拿数据说话，对报表里一分钱的差异都要追到底，团队里没人敢拖你交代的事。工作中用得最多的是用友财务系统和 Excel，但也仅限于"会用"，背后的技术原理你完全不关心。生活中你主要靠手机搞定一切——银行 App、记账软件、微信，电脑上装软件、改设置这种事一律叫
+    IT 同事来弄。
+
+
+    你今天打开 OpenClaw，是因为午饭时一个同事说"这个 AI 什么都能问，特别快"。你刚在个税APP上完成了2024年度汇算清缴，结果显示需要补税，你觉得不太对劲，想找个工具帮你算算看是不是哪里搞错了。
+
+
+    你日常接触最多的是资产负债表、损益表、现金流量表、预算差异分析这些财务本行的东西。个人生活里，你用「随手记」管家庭账本，清楚地知道每月家庭支出结构。你懂个税年度汇算的基本操作流程，知道专项附加扣除有哪些大类，但对具体计算细节（比如累计预扣法、年终奖两种计税方式的税负差异）并不精通。编程、设计、学术研究这些领域跟你完全不沾边。
+
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+
+    第一批信息（助手问基本参数时提供）：
+
+    - 月薪：到手约18000元（你说的就是"到手"，即银行卡每月实际到账金额，五险一金和个税已经扣完了）
+
+    - 有年终奖
+
+    - 汇算清缴APP上显示要补税，你记得好像是一千多块
+
+    - 你觉得不太对，因为专项附加扣除明明都填了
+
+
+    第二批信息（助手问到具体扣除或财务状况时提供）：
+
+    - 五险一金：每月个人缴纳部分约3500元
+
+    - 专项附加扣除：赡养老人3000元/月（独生子女，赡养60岁以上父母）+ 住房贷款利息1000元/月，合计4000元/月
+
+    - 年终奖：50000元
+
+    - 去年汇算清缴时选的是"年终奖单独计税"
+
+
+    第三批信息（助手深入追问或分析后你补充提供）：
+
+    - 你有个同事，收入跟你差不多，去年选的是"并入综合所得"，结果汇算时补税比你少（甚至退了税），你不理解为什么
+
+    - 你不太确定自己是不是把所有该填的专项附加扣除都填了——小孩明年才上小学，子女教育扣除好像还不能享受？但你听说有3岁以下婴幼儿照护的扣除，你家小孩已经5岁了，这个能不能填你搞不清
+
+    - 你的个税APP上显示的年度应纳税所得额和你自己心算的对不上，你怀疑是不是哪笔收入多算了
+
+
+    ## 隐含矛盾（你自己不知道这些矛盾，只是如实回答助手的问题）
+
+
+    矛盾1: 你说"补税一千多"，但根据你的实际参数（税前约22267元/月，五险一金3500，专项附加扣除4000，年终奖50000单独计税），累计预扣法下工资部分全年预扣税额 = 年度应纳税额 = 9200元，年终奖单独计税4790元。如果参数完全准确且选了单独计税，汇算清缴应该补税为0（累计预扣法精确匹配）。"补税一千多"说明要么你的参数有误（到手不是精确18000而是偏高），要么还有其他未申报的收入（如稿酬、劳务报酬），要么你在汇算时实际选的是并入综合所得而非单独计税。好的助手应该通过计算发现这个矛盾并追问原因。
+
+
+    矛盾2: 你说"专项附加扣除也填了"，但你可能漏填了项目。你家小孩5岁，3岁以下婴幼儿照护已不适用，子女教育要等到上小学（6岁入学）才能享受——所以目前确实不能享受这两项。但好的助手应该帮你逐一核实是否有其他可享受但未填报的扣除项（如继续教育等）。
+
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+
+    如果助手没有追问这些深入信息，你也不要主动全部倒出来。
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: '注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，
+
+    收集信息后再给出计算和建议。用户可能会追问或修改需求，请耐心回应。
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: final_answer_quality
+  weight: 0.8
+  check:
+    type: llm_judge
+    description: 最终回答的正确性与清晰度
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在个税计算多轮咨询中的整体表现。\n  - 澄清质量(20%)：是否主动收集了关键信息\n  - 最终回答质量(80%)：回答是否正确、完整、有用"
+reference_solution: '1. 询问关键信息：税前月薪（或到手月薪及五险一金扣除额）, 年终奖金额, 每月五险一金个人缴纳金额, 已享受的全部专项附加扣除项目及金额
+
+  2. 收到用户信息后给出：根据到手18000反推税前工资约22267元，计算年应纳税所得额117204元
+
+  3. 分别计算年终奖单独计税（税额4790元）和并入综合所得（总税16521元）两种方式下的应纳税额
+
+  4. 对比得出单独计税全年税负13990元 vs 并入综合16521元，单独计税更优
+
+  5. 发现用户说的补税一千多与计算结果不符，追问可能原因
+
+  6. 说明汇算清缴期内可以在个税APP重新选择计税方式'
+primary_dimensions:
+- completion
+- safety

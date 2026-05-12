@@ -26,14 +26,19 @@ test.describe("Anonymous Chat Flow", () => {
   });
 
   test("dashboard chat page loads and has chat elements", async ({ page }) => {
-    const response = await page.goto(`${BASE_URL}/dashboard/chat`);
-    expect(response?.status()).toBe(200);
-
-    await page.waitForLoadState("domcontentloaded");
-
-    // Page should have rendered without critical errors
     const errors: string[] = [];
     page.on("pageerror", (err) => errors.push(err.message));
+
+    const response = await page.goto(`${BASE_URL}/dashboard/chat`, {
+      waitUntil: "domcontentloaded",
+    });
+    expect(response?.status()).toBe(200);
+
+    await expect(
+      page.getByRole("textbox", {
+        name: /ask for a comparison/i,
+      }),
+    ).toBeVisible();
 
     // Allow some time for dynamic content
     await page.waitForTimeout(2000);

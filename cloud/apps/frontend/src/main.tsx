@@ -48,11 +48,21 @@ const hasMatchingPrerenderedMarkup =
   rootEl.dataset.prerenderMismatch !== "true" &&
   (prerenderPath ?? "/") === normalizedPath;
 
+performance.mark("eliza:cloud-hydration-start");
 if (hasMatchingPrerenderedMarkup) {
   hydrateRoot(rootEl, tree);
 } else {
+  performance.mark("eliza:cloud-prerender-mismatch");
   if (rootEl.firstElementChild !== null) {
     rootEl.textContent = "";
   }
   createRoot(rootEl).render(tree);
 }
+requestAnimationFrame(() => {
+  performance.mark("eliza:cloud-hydration-end");
+  performance.measure(
+    "eliza:cloud-hydration",
+    "eliza:cloud-hydration-start",
+    "eliza:cloud-hydration-end",
+  );
+});

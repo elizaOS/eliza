@@ -45,9 +45,7 @@ export default scenario({
       type: "custom",
       name: "agent-answers-percentage-or-no-data",
       predicate: (ctx: ScenarioContext) => {
-        const reply = String(
-          ctx.turns?.[0]?.responseText ?? "",
-        ).toLowerCase();
+        const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
         if (!reply) return "empty reply";
         const responded =
           /\d+%/.test(reply) ||

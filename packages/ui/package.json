@@ -42,8 +42,105 @@
     "./styles": "./dist/styles.js",
     "./styles/*.css": "./dist/styles/*.css",
     "./api/client-types-cloud": "./dist/api/client-types-cloud.js",
+    "./components/character/CharacterEditor": "./dist/components/character/CharacterEditor.js",
+    "./components/chat/widgets/types": "./dist/components/chat/widgets/types.js",
     "./config/app-config": "./dist/config/app-config.js",
     "./onboarding-config": "./dist/onboarding-config.js",
+    "./api": {
+      "import": "./dist/api/index.js",
+      "default": "./dist/api/index.js",
+      "types": "./dist/api/index.d.ts"
+    },
+    "./bridge": {
+      "import": "./dist/bridge/index.js",
+      "default": "./dist/bridge/index.js",
+      "types": "./dist/bridge/index.d.ts"
+    },
+    "./chat": {
+      "import": "./dist/chat/index.js",
+      "default": "./dist/chat/index.js",
+      "types": "./dist/chat/index.d.ts"
+    },
+    "./components": {
+      "import": "./dist/components/index.js",
+      "default": "./dist/components/index.js",
+      "types": "./dist/components/index.d.ts"
+    },
+    "./config": {
+      "import": "./dist/config/index.js",
+      "default": "./dist/config/index.js",
+      "types": "./dist/config/index.d.ts"
+    },
+    "./content-packs": {
+      "import": "./dist/content-packs/index.js",
+      "default": "./dist/content-packs/index.js",
+      "types": "./dist/content-packs/index.d.ts"
+    },
+    "./desktop-runtime": {
+      "import": "./dist/desktop-runtime/index.js",
+      "default": "./dist/desktop-runtime/index.js",
+      "types": "./dist/desktop-runtime/index.d.ts"
+    },
+    "./events": {
+      "import": "./dist/events/index.js",
+      "default": "./dist/events/index.js",
+      "types": "./dist/events/index.d.ts"
+    },
+    "./hooks": {
+      "import": "./dist/hooks/index.js",
+      "default": "./dist/hooks/index.js",
+      "types": "./dist/hooks/index.d.ts"
+    },
+    "./i18n": {
+      "import": "./dist/i18n/index.js",
+      "default": "./dist/i18n/index.js",
+      "types": "./dist/i18n/index.d.ts"
+    },
+    "./layouts": {
+      "import": "./dist/layouts/index.js",
+      "default": "./dist/layouts/index.js",
+      "types": "./dist/layouts/index.d.ts"
+    },
+    "./navigation": {
+      "import": "./dist/navigation/index.js",
+      "default": "./dist/navigation/index.js",
+      "types": "./dist/navigation/index.d.ts"
+    },
+    "./platform": {
+      "import": "./dist/platform/index.js",
+      "default": "./dist/platform/index.js",
+      "types": "./dist/platform/index.d.ts"
+    },
+    "./providers": {
+      "import": "./dist/providers/index.js",
+      "default": "./dist/providers/index.js",
+      "types": "./dist/providers/index.d.ts"
+    },
+    "./state": {
+      "import": "./dist/state/index.js",
+      "default": "./dist/state/index.js",
+      "types": "./dist/state/index.d.ts"
+    },
+    "./types": {
+      "import": "./dist/types/index.js",
+      "default": "./dist/types/index.js",
+      "types": "./dist/types/index.d.ts"
+    },
+    "./utils": {
+      "import": "./dist/utils/index.js",
+      "default": "./dist/utils/index.js",
+      "types": "./dist/utils/index.d.ts"
+    },
+    "./voice": {
+      "import": "./dist/voice/index.js",
+      "default": "./dist/voice/index.js",
+      "types": "./dist/voice/index.d.ts"
+    },
+    "./widgets": {
+      "import": "./dist/widgets/index.js",
+      "default": "./dist/widgets/index.js",
+      "types": "./dist/widgets/index.d.ts"
+    },
     "./dist/styles/*.css": "./dist/styles/*.css",
     "./*.css": "./dist/*.css",
     "./*": {
@@ -55,6 +152,9 @@
   "peerDependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
+  },
+  "optionalDependencies": {
+    "@elizaos/capacitor-bun-runtime": "0.1.0"
   },
   "dependencies": {
     "@elizaos/core": "2.0.0-beta.1",

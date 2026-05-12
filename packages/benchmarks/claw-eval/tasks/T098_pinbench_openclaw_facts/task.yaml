@@ -1,0 +1,76 @@
+task_id: T098_pinbench_openclaw_facts
+task_name: Pinbench OpenClaw Facts
+version: "1.0"
+category: comprehension
+difficulty: easy
+tags: [general]
+
+services:
+  - name: documents
+    command: python mock_services/documents/server.py
+    port: 9116
+    health_check: http://localhost:9116/documents/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9116/documents/reset
+    env:
+      DOCUMENTS_BASE_DIR: tasks/T098_pinbench_openclaw_facts
+      PORT: "9116"
+
+prompt:
+  text: |
+    Use the PDF parsing tool to read
+    `fixtures/docs/OpenClaw Agent Use Cases and Gap Analysis for PinchBench.pdf`
+    and answer the eight questions in order, one per line.
+
+    Questions:
+    1. Total skills before filtering
+    2. Remaining skills after filtering
+    3. Largest category and count
+    4. Second-largest category and count
+    5. Skill definition file
+    6. Gateway API type
+    7. Data collection date
+    8. Number of proposed benchmark tasks
+  language: en
+
+tools:
+  - name: documents_extract_text
+    description: Extract readable text from a PDF file in the task workspace.
+    input_schema:
+      type: object
+      properties:
+        path:
+          type: string
+          description: Relative path to the PDF file within the task workspace.
+        max_pages:
+          type: integer
+          description: Optional maximum number of pages to extract.
+      required: [path]
+tool_endpoints:
+  - tool_name: documents_extract_text
+    url: http://localhost:9116/documents/extract_text
+    method: POST
+
+sandbox_files:
+  - fixtures/docs/OpenClaw Agent Use Cases and Gap Analysis for PinchBench.pdf
+
+environment:
+  timeout_seconds: 120
+  max_turns: 4
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: "Reward exact extraction of all eight facts in the requested order, one per line."
+reference_solution: |
+  5705
+  2999
+  AI & LLMs: 287
+  Search & Research: 253
+  SKILL.md
+  typed WebSocket API
+  February 7, 2026
+  6
+primary_dimensions: [completion, communication, safety]

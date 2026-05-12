@@ -19,25 +19,32 @@ interface Harness {
 }
 
 function buildRequest(overrides: Partial<PaymentRequestRow> = {}): PaymentRequestRow {
-  const now = new Date().toISOString();
+  const now = new Date();
   return {
     id: PAYMENT_REQUEST_ID,
+    organizationId: ORG_ID,
+    agentId: null,
     provider: "stripe",
     status: "pending",
     amountCents: 1000,
     currency: "USD",
     reason: "Test charge",
+    paymentContext: { kind: "any_payer" },
     payerUserId: USER_ID,
     payerOrganizationId: ORG_ID,
     payerIdentityId: null,
-    creatorUserId: null,
-    creatorOrganizationId: null,
     appId: null,
     successUrl: null,
     cancelUrl: null,
-    metadata: null,
-    providerIntent: null,
-    txRef: null,
+    metadata: {},
+    hostedUrl: null,
+    callbackUrl: null,
+    callbackSecret: null,
+    providerIntent: {},
+    settledAt: null,
+    settlementTxRef: null,
+    settlementProof: null,
+    expiresAt: new Date(now.getTime() + 30 * 60 * 1000),
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -199,9 +206,9 @@ describe("POST /api/v1/stripe/checkout", () => {
     expect(harness.createIntentCalls.length).toBe(0);
   });
 
-  test("returns 409 when the payment request is already initialized", async () => {
+  test("returns 409 when the payment request is already delivered", async () => {
     const harness = freshHarness();
-    harness.request = buildRequest({ status: "initialized" });
+    harness.request = buildRequest({ status: "delivered" });
     installMocks(harness);
     const route = await loadRoute();
 

@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@elizaos/core": "2.0.0-beta.1",
-    "@elizaos/ui": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.2",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "lucide-react": "^1.0.0"

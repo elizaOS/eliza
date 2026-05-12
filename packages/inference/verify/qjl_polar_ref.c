@@ -365,7 +365,7 @@ void eliza_polar_mul_mv(const eliza_block_q4_polar * k_blocks,
 
 /* ---------- Fused attention: GGML_OP_FUSED_ATTN_QJL_TBQ + Polar V variant ----------
  *
- * Bit-exact to fused_attn_qjl_tbq_ref in the milady-llama-cpp fork
+ * Bit-exact to fused_attn_qjl_tbq_ref in the eliza-llama-cpp fork
  * (ggml/src/ggml-cpu/fused-attn-qjl-tbq.c). The score for one (head hq,
  * token t) is the QJL attention score with the canonical paper scale, then
  * scaled by sm_scale:

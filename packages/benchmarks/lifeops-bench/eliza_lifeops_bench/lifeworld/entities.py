@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
 
 class EntityKind(str, Enum):
@@ -38,6 +38,8 @@ class EntityKind(str, Enum):
     SUBSCRIPTION = "subscription"
     HEALTH_METRIC = "health_metric"
     LOCATION_POINT = "location_point"
+    SCHEDULED_TASK = "scheduled_task"
+    WORKOUT = "workout"
 
 
 Relationship = Literal["family", "friend", "work", "acquaintance"]
@@ -166,10 +168,30 @@ class Reminder:
 
 
 @dataclass(frozen=True)
+class ScheduledTask:
+    id: str
+    kind: str
+    prompt_instructions: str
+    trigger: dict[str, Any] = field(default_factory=dict)
+    state: str = "active"
+    output: dict[str, Any] | None = None
+    subject: dict[str, Any] | None = None
+    priority: str | None = None
+    should_fire: dict[str, Any] | None = None
+    completion_check: dict[str, Any] | None = None
+    pipeline: dict[str, Any] | None = None
+    respects_global_pause: bool = True
+    metadata: dict[str, Any] = field(default_factory=dict)
+    created_at: str = ""
+    updated_at: str = ""
+
+
+@dataclass(frozen=True)
 class ReminderList:
     id: str
     name: str
     source: ReminderSource = "apple-reminders"
+    last_reviewed_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -234,6 +256,23 @@ class LocationPoint:
     recorded_at: str
 
 
+WorkoutSource = Literal["apple-health", "fitbit", "oura", "manual", "garmin", "strava"]
+
+
+@dataclass(frozen=True)
+class WorkoutRecord:
+    """A single workout session logged by the user."""
+
+    id: str
+    activity_type: str
+    duration_minutes: int
+    calories: int | None = None
+    source: WorkoutSource = "manual"
+    recorded_at: str = ""
+    distance_km: float | None = None
+    notes: str = ""
+
+
 # Map enum -> dataclass — used by LifeWorld.add for type validation and
 # by the JSON codec to reconstruct typed entities from plain dicts.
 ENTITY_CLASS_FOR_KIND: dict[EntityKind, type] = {
@@ -252,4 +291,6 @@ ENTITY_CLASS_FOR_KIND: dict[EntityKind, type] = {
     EntityKind.SUBSCRIPTION: Subscription,
     EntityKind.HEALTH_METRIC: HealthMetric,
     EntityKind.LOCATION_POINT: LocationPoint,
+    EntityKind.SCHEDULED_TASK: ScheduledTask,
+    EntityKind.WORKOUT: WorkoutRecord,
 }

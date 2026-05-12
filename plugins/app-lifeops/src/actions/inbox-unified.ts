@@ -296,8 +296,8 @@ export const inboxUnifiedAction: Action & {
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   parameters: [
     {
-      name: "subaction",
-      description: "Which operation: list | search | summarize.",
+      name: "action",
+      description: "Canonical inbox operation: list | search | summarize.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {

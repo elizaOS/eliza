@@ -23,8 +23,8 @@ automatically. Anything not in this order fails `codesign --verify --deep
 
 When building the store variant on macOS without `ELECTROBUN_SKIP_CODESIGN=1`:
 
-- `MILADY_MAS_SIGNING_IDENTITY` — e.g. `"3rd Party Mac Developer Application: Acme (TEAMID)"`. Required.
-- `MILADY_MAS_INSTALLER_IDENTITY` — e.g. `"3rd Party Mac Developer Installer: Acme (TEAMID)"`. Optional. If set, `codesign-mas.mjs` runs `productbuild` after verification to produce a `.pkg` suitable for App Store Connect upload.
+- `ELIZA_MAS_SIGNING_IDENTITY` — e.g. `"3rd Party Mac Developer Application: Acme (TEAMID)"`. Required.
+- `ELIZA_MAS_INSTALLER_IDENTITY` — e.g. `"3rd Party Mac Developer Installer: Acme (TEAMID)"`. Optional. If set, `codesign-mas.mjs` runs `productbuild` after verification to produce a `.pkg` suitable for App Store Connect upload.
 
 The signing identities come from Apple Developer Portal → Certificates →
 "Mac App Distribution" and "Mac Installer Distribution". They are tied to a
@@ -45,8 +45,8 @@ debugging the walk order against a real built bundle.
 The desktop build script invokes the codesign step automatically:
 
 ```
-MILADY_MAS_SIGNING_IDENTITY="3rd Party Mac Developer Application: ..." \
-MILADY_MAS_INSTALLER_IDENTITY="3rd Party Mac Developer Installer: ..." \
+ELIZA_MAS_SIGNING_IDENTITY="3rd Party Mac Developer Application: ..." \
+ELIZA_MAS_INSTALLER_IDENTITY="3rd Party Mac Developer Installer: ..." \
 bun run build:desktop -- --build-variant=store
 ```
 

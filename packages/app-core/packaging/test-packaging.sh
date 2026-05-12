@@ -255,8 +255,8 @@ check "Store: no session/system bus socket" bash -c "! grep -E -q -- '^[[:space:
 check "Store: has --share=network" grep -E -q -- "--share=network" "$SCRIPT_DIR/flatpak/ai.elizaos.App.store.yml"
 check "Store: has wayland socket" grep -E -q -- "--socket=wayland" "$SCRIPT_DIR/flatpak/ai.elizaos.App.store.yml"
 check "Store: has fallback-x11 socket" grep -E -q -- "--socket=fallback-x11" "$SCRIPT_DIR/flatpak/ai.elizaos.App.store.yml"
-check "Store: persists state dir" grep -E -q -- "--persist=\.milady" "$SCRIPT_DIR/flatpak/ai.elizaos.App.store.yml"
-check "Store wrapper sets MILADY_BUILD_VARIANT=store" grep -q 'MILADY_BUILD_VARIANT=store' "$SCRIPT_DIR/flatpak/elizaos-app-wrapper.store.sh"
+check "Store: persists state dir" grep -E -q -- "--persist=\.eliza" "$SCRIPT_DIR/flatpak/ai.elizaos.App.store.yml"
+check "Store wrapper sets ELIZA_BUILD_VARIANT=store" grep -q 'ELIZA_BUILD_VARIANT=store' "$SCRIPT_DIR/flatpak/elizaos-app-wrapper.store.sh"
 
 echo ""
 

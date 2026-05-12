@@ -1,7 +1,4 @@
-import {
-  registerDetailExtension,
-  registerOperatorSurface,
-} from "@elizaos/ui";
+import { registerDetailExtension, registerOperatorSurface } from "@elizaos/ui";
 import { ClawvilleDetailExtension } from "./ClawvilleDetailExtension.js";
 import { ClawvilleOperatorSurface } from "./ClawvilleOperatorSurface.js";
 

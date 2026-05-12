@@ -126,3 +126,4 @@ export * from "./user-sessions";
 export * from "./user-voices";
 export * from "./users";
 export * from "./vendor-connections";
+export * from "./voice-imprints";

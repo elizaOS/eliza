@@ -29,6 +29,17 @@ import type { PlatformPolicy, StartupEvent } from "./startup-coordinator";
 import type { RestoringSessionCtx } from "./startup-phase-restore";
 import type { OnboardingStep } from "./types";
 
+function isCapacitorNative(): boolean {
+  try {
+    const cap = (globalThis as Record<string, unknown>).Capacitor as
+      | { isNativePlatform?: () => boolean }
+      | undefined;
+    return Boolean(cap?.isNativePlatform?.());
+  } catch {
+    return false;
+  }
+}
+
 export interface PollingBackendDeps {
   setStartupError: (v: StartupErrorState | null) => void;
   setAuthRequired: (v: boolean) => void;
@@ -326,12 +337,21 @@ export async function runPollingBackend(
     } catch (err) {
       const ae = asApiLikeError(err);
       if (ae?.status === 401 && !client.hasToken()) {
-        deps.setAuthRequired(true);
-        deps.setPairingEnabled(latestAuth.pairingEnabled);
-        deps.setPairingExpiresAt(latestAuth.expiresAt);
-        deps.setOnboardingLoading(false);
-        dispatch({ type: "BACKEND_AUTH_REQUIRED" });
-        return;
+        // On Capacitor native the bearer token is injected asynchronously by
+        // the native Agent plugin after the WebView boots. The first poll can
+        // fire before that injection completes, producing a spurious 401 even
+        // though the agent is up and will accept the token momentarily. Fall
+        // through to the retry loop so the next iteration picks up the token.
+        // On non-Capacitor runtimes there is no injection race — exit to the
+        // pairing gate immediately as before.
+        if (!isCapacitorNative()) {
+          deps.setAuthRequired(true);
+          deps.setPairingEnabled(latestAuth.pairingEnabled);
+          deps.setPairingExpiresAt(latestAuth.expiresAt);
+          deps.setOnboardingLoading(false);
+          dispatch({ type: "BACKEND_AUTH_REQUIRED" });
+          return;
+        }
       }
       if (
         (ae?.status === 401 || ae?.status === 429) &&

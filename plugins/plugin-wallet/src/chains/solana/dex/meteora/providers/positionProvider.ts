@@ -1,4 +1,3 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import {
   elizaLogger,
   type IAgentRuntime,
@@ -64,7 +63,9 @@ export const meteoraPositionProvider: Provider = {
       "agent",
     ];
     const __providerRegex = new RegExp(`\\b(${__providerKeywords.join("|")})\\b`, "i");
-    const __recentMessages = state?.recentMessagesData || [];
+    const __recentMessages = Array.isArray(state?.recentMessagesData)
+      ? (state.recentMessagesData as Memory[])
+      : [];
     const __isRelevant =
       validateActionKeywords(message, __recentMessages, __providerKeywords) ||
       validateActionRegex(message, __recentMessages, __providerRegex);
@@ -127,7 +128,7 @@ export const meteoraPositionProvider: Provider = {
         text: positionText,
       };
     } catch (error) {
-      elizaLogger.error("Error in Meteora position provider:", error);
+      elizaLogger.error(`Error in Meteora position provider: ${formatUnknownError(error)}`);
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       return {
         data: {
@@ -143,6 +144,10 @@ export const meteoraPositionProvider: Provider = {
     }
   },
 };
+
+function formatUnknownError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 const fetchPositions = async (
   connection: Connection,

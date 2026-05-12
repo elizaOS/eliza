@@ -87,20 +87,20 @@
     </div>
   </body>
   <script>
-    $(document).ready(function() {
+    $(document).ready(() => {
       $('input:radio').each(function() {
         //console.log($(this).val());
-        let options = JSON.parse(`{{ options | tojson }}`);
-        let optionValues = $.map(options, function(value, key) { return value });
+        const options = JSON.parse(`{{ options | tojson }}`);
+        const optionValues = $.map(options, (value, _key) => value);
         //console.log(optionValues);
         if (optionValues.includes($(this).val())) {
           $(this).prop('checked', true);
 
-          let option_to_image = JSON.parse(`{{ product_info.option_to_image | tojson }}`);
+          const option_to_image = JSON.parse(`{{ product_info.option_to_image | tojson }}`);
 //          console.log($(this).val());
 //          console.log(options);
 //          console.log(option_to_image);
-          let image_url = option_to_image[$(this).val()];
+          const image_url = option_to_image[$(this).val()];
 
           //console.log(image_url);
           if (image_url) {

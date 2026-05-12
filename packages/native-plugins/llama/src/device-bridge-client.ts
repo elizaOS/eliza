@@ -80,6 +80,11 @@ type AgentInbound =
       temperature?: number;
     }
   | { type: "embed"; correlationId: string; input: string }
+  | {
+      type: "formatChat";
+      correlationId: string;
+      messages: { role: string; content: string }[];
+    }
   | { type: "ping"; at: number };
 
 type DeviceOutbound =
@@ -114,6 +119,18 @@ type DeviceOutbound =
       tokens: number;
     }
   | { type: "embedResult"; correlationId: string; ok: false; error: string }
+  | {
+      type: "formatChatResult";
+      correlationId: string;
+      ok: true;
+      prompt: string | null;
+    }
+  | {
+      type: "formatChatResult";
+      correlationId: string;
+      ok: false;
+      error: string;
+    }
   | { type: "pong"; at: number };
 
 export interface DeviceBridgeClientConfig {
@@ -326,8 +343,7 @@ export class DeviceBridgeClient {
     // upstream plugin gains a real probe path that returns trustworthy
     // values (`source === "native"`), we let it win.
     const native = await probeNativeIosCapabilities();
-    const useNativeOverride =
-      native !== null && hardware.source !== "native";
+    const useNativeOverride = native !== null && hardware.source !== "native";
 
     const platform = useNativeOverride
       ? (native?.platform ?? hardware.platform)
@@ -362,7 +378,7 @@ export class DeviceBridgeClient {
         : hardware.cpuCores
       : hardware.cpuCores;
     const gpu = useNativeOverride
-      ? native?.gpu && native.gpu.available
+      ? native?.gpu?.available
         ? ({
             backend:
               native.gpu.backend === "metal" ||
@@ -533,6 +549,30 @@ export class DeviceBridgeClient {
       } catch (err) {
         this.send(ws, {
           type: "embedResult",
+          correlationId: msg.correlationId,
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+      return;
+    }
+
+    if (msg.type === "formatChat") {
+      try {
+        const capacitorLlama = await loadCapacitorLlama();
+        const prompt =
+          typeof capacitorLlama.formatChat === "function"
+            ? await capacitorLlama.formatChat(msg.messages)
+            : null;
+        this.send(ws, {
+          type: "formatChatResult",
+          correlationId: msg.correlationId,
+          ok: true,
+          prompt,
+        });
+      } catch (err) {
+        this.send(ws, {
+          type: "formatChatResult",
           correlationId: msg.correlationId,
           ok: false,
           error: err instanceof Error ? err.message : String(err),

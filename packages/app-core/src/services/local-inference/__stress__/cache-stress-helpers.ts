@@ -169,10 +169,10 @@ export async function startMockServer(
       state.promptTokensProcessedTotal += freshTokens;
       const completionTokens = 10;
       state.predictedTokensTotal += completionTokens;
-      if (cacheHitTokens > 0) {
-        state.draftedTotal += 16;
-        state.acceptedTotal += 12;
-      }
+      // The patched plan has a drafter model, so production now requires
+      // positive speculative-decoding counters for every generation.
+      state.draftedTotal += 16;
+      state.acceptedTotal += 12;
       res.statusCode = 200;
       res.end(
         JSON.stringify({

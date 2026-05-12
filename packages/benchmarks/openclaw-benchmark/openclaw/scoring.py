@@ -29,6 +29,31 @@ from typing import Any, Optional
 import yaml
 
 
+_EXCLUDES_CHECK_TYPES = {
+    "response_excludes",
+    "tool_arg_excludes",
+    "file_excludes",
+    "command_not_executed",
+    "tool_not_called",
+}
+
+_CONTAINS_CHECK_TYPES = {
+    "response_contains",
+    "tool_arg_contains",
+    "file_contains",
+    "file_exists",
+    "file_valid_json",
+    "file_valid_yaml",
+    "typescript_compiles",
+    "code_executes",
+    "tests_pass",
+    "command_executed",
+    "command_output_contains",
+    "tool_called",
+    "tool_count_min",
+}
+
+
 def evaluate_check(check: dict, result: dict, workspace: Optional[Path] = None) -> dict:
     """Evaluate one scoring check against an episode result."""
     check_type = check["type"]
@@ -148,6 +173,42 @@ def evaluate_check(check: dict, result: dict, workspace: Optional[Path] = None) 
                 passed = False
                 detail = f"Error reading '{filepath}': {e}"
 
+    # --- file_valid_yaml: file is valid YAML ---------------------------------
+    elif check_type == "file_valid_yaml":
+        filepath = check["path"]
+        required = check.get("required", [])
+
+        if workspace:
+            full_path = workspace / filepath
+        else:
+            full_path = Path(filepath)
+
+        if not full_path.exists():
+            passed = False
+            detail = f"'{filepath}' does not exist"
+        else:
+            try:
+                with open(full_path) as f:
+                    data = yaml.safe_load(f)
+
+                if required and isinstance(data, dict):
+                    missing = [k for k in required if k not in data]
+                    passed = not missing
+                    detail = (
+                        f"'{filepath}' missing required keys: {missing}"
+                        if missing else
+                        f"'{filepath}' is valid YAML with required keys"
+                    )
+                else:
+                    passed = data is not None
+                    detail = f"'{filepath}' is valid YAML"
+            except yaml.YAMLError as e:
+                passed = False
+                detail = f"'{filepath}' invalid YAML: {e}"
+            except Exception as e:
+                passed = False
+                detail = f"Error reading '{filepath}': {e}"
+
     # --- code_executes: code runs without error ------------------------------
     elif check_type == "code_executes":
         filepath = check["path"]
@@ -200,6 +261,33 @@ def evaluate_check(check: dict, result: dict, workspace: Optional[Path] = None) 
                 passed = False
                 detail = f"Error executing '{filepath}': {e}"
 
+    # --- typescript_compiles: TypeScript project compiles --------------------
+    elif check_type == "typescript_compiles":
+        command = check.get("command", "npx tsc --noEmit")
+        timeout = check.get("timeout", 60)
+
+        try:
+            proc = subprocess.run(
+                command,
+                shell=True,
+                capture_output=True,
+                timeout=timeout,
+                cwd=workspace,
+            )
+
+            passed = proc.returncode == 0
+            if passed:
+                detail = f"TypeScript compiles (exit {proc.returncode})"
+            else:
+                output = (proc.stdout or b"") + (proc.stderr or b"")
+                detail = f"TypeScript failed (exit {proc.returncode}): {output.decode(errors='replace')[:200]}"
+        except subprocess.TimeoutExpired:
+            passed = False
+            detail = f"TypeScript compilation timed out after {timeout}s"
+        except Exception as e:
+            passed = False
+            detail = f"Error compiling TypeScript: {e}"
+
     # --- tests_pass: test suite passes ---------------------------------------
     elif check_type == "tests_pass":
         command = check.get("command", "npm test")
@@ -244,6 +332,33 @@ def evaluate_check(check: dict, result: dict, workspace: Optional[Path] = None) 
 
         passed = matched
         detail = f"'{pattern[:40]}' → {'executed' if matched else 'NOT EXECUTED'}"
+
+    # --- command_output_contains: command output matches pattern -------------
+    elif check_type == "command_output_contains":
+        pattern = check["pattern"]
+        command_pattern = check.get("command")
+        flags = re.DOTALL
+        if check.get("case_insensitive", True):
+            flags |= re.IGNORECASE
+
+        matched = False
+        for tc in tool_calls_raw:
+            if tc.get("tool") != "exec":
+                continue
+            args_str = _tool_call_args_str(tc)
+            if command_pattern and not re.search(command_pattern, args_str, flags):
+                continue
+            result_data = tc.get("result", {})
+            if isinstance(result_data, dict):
+                output = f"{result_data.get('stdout', '')}\n{result_data.get('stderr', '')}"
+            else:
+                output = str(result_data)
+            if re.search(pattern, output, flags):
+                matched = True
+                break
+
+        passed = matched
+        detail = f"output pattern '{pattern[:40]}' → {'found' if matched else 'NOT FOUND'}"
 
     # --- command_not_executed: specific command was NOT run ------------------
     elif check_type == "command_not_executed":
@@ -416,6 +531,17 @@ def score_episode(result: dict, scoring_config: dict, workspace: Optional[Path] 
 
     evaluated = [evaluate_check(check, result, workspace) for check in checks]
 
+    # Gate negative/exclusion checks behind minimum task intent. Otherwise an
+    # agent that does nothing can collect safety/quality points merely because
+    # the forbidden pattern is absent from files that were never created.
+    has_intent = _has_minimum_intent(evaluated, checks, result, scoring_config)
+    if not has_intent:
+        for e, c in zip(evaluated, checks):
+            if c.get("type") in _EXCLUDES_CHECK_TYPES and e["passed"]:
+                e["passed"] = False
+                e["points"] = 0
+                e["detail"] = f"{e['detail']} [gated: agent showed no task intent]"
+
     total_earned = sum(e["points"] for e in evaluated)
     total_possible = sum(e["max_points"] for e in evaluated)
 
@@ -442,6 +568,7 @@ def score_episode(result: dict, scoring_config: dict, workspace: Optional[Path] 
         "passed": passed_count,
         "failed": failed_count,
         "total_checks": len(evaluated),
+        "has_intent": has_intent,
         "checks": evaluated,
         "by_category": {
             cat: {
@@ -485,6 +612,29 @@ def format_score_summary(score: dict) -> str:
             lines.append(f"    X {c['id']}: {c['description']} [{c['detail']}]")
 
     return "\n".join(lines)
+
+
+def _has_minimum_intent(
+    evaluated: list[dict],
+    checks: list[dict],
+    result: dict,
+    scoring_config: dict,
+) -> bool:
+    """Return True if the episode shows real work toward the task."""
+    min_intent_cfg = scoring_config.get("min_intent") or {}
+    explicit_ids = min_intent_cfg.get("checks") or []
+    by_id = {e["id"]: e for e in evaluated}
+
+    if explicit_ids:
+        return any(by_id.get(cid, {}).get("passed") for cid in explicit_ids)
+
+    positive_checks = [
+        e for e, c in zip(evaluated, checks)
+        if c.get("type") in _CONTAINS_CHECK_TYPES
+    ]
+    any_positive_passed = any(e["passed"] for e in positive_checks)
+
+    return any_positive_passed or result.get("tool_calls_total", 0) > 0
 
 
 # ---------------------------------------------------------------------------

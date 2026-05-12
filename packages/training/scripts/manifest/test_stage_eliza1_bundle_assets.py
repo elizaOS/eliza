@@ -33,6 +33,8 @@ class FakeHfApi:
                 "Qwen3-ASR-1.7B-bf16.gguf",
                 "mmproj-Qwen3-ASR-1.7B-Q8_0.gguf",
             ]
+        if repo_id == "ggml-org/whisper-vad":
+            return ["ggml-silero-v5.1.2.bin"]
         return []
 
 
@@ -45,6 +47,7 @@ def _args(tmp_path: Path, tier: str) -> argparse.Namespace:
         asr_repo=None,
         asr_file=None,
         asr_mmproj_file=None,
+        include_vad_onnx_fallback=False,
         skip_wakeword=False,
         upload_repo=None,
         upload_prefix="",
@@ -52,7 +55,7 @@ def _args(tmp_path: Path, tier: str) -> argparse.Namespace:
     )
 
 
-def test_stage_dry_run_uses_qwen_asr_gguf_and_vad_sidecar(
+def test_stage_dry_run_uses_qwen_asr_gguf_and_native_vad(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -75,11 +78,20 @@ def test_stage_dry_run_uses_qwen_asr_gguf_and_vad_sidecar(
         (tmp_path / "9b" / "asr" / "eliza-1-asr-mmproj.gguf").as_posix(),
     ) in staged
     assert (
-        "onnx-community/silero-vad",
-        "onnx/model_int8.onnx",
-        (tmp_path / "9b" / "vad" / "silero-vad-int8.onnx").as_posix(),
+        "ggml-org/whisper-vad",
+        "ggml-silero-v5.1.2.bin",
+        (tmp_path / "9b" / "vad" / "silero-vad-v5.1.2.ggml.bin").as_posix(),
     ) in staged
     assert report["asrMmprojRemotePath"] == "mmproj-Qwen3-ASR-0.6B-Q8_0.gguf"
+    assert report["vad"] == {
+        "nativeRepo": "ggml-org/whisper-vad",
+        "nativeRemotePath": "ggml-silero-v5.1.2.bin",
+        "nativeBundlePath": "vad/silero-vad-v5.1.2.ggml.bin",
+        "format": "ggml",
+        "onnxFallbackIncluded": False,
+        "onnxFallbackRepo": None,
+        "onnxFallbackBundlePath": None,
+    }
     # Optional wake-word graphs are staged by default (dry-run records the
     # planned downloads).
     ww = {
@@ -105,12 +117,44 @@ def test_skip_wakeword_omits_wake_graphs(tmp_path: Path, monkeypatch) -> None:
     assert not any("url" in f for f in report["files"])
 
 
+def test_stage_dry_run_can_include_legacy_onnx_vad_fallback(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(stage, "HfApi", FakeHfApi)
+    args = _args(tmp_path, "9b")
+    args.include_vad_onnx_fallback = True
+    report = stage.stage_assets(args)
+    staged = {
+        (f["repo"], f["remotePath"], Path(f["path"]).as_posix())
+        for f in report["files"]
+        if "repo" in f
+    }
+    assert (
+        "onnx-community/silero-vad",
+        "onnx/model_int8.onnx",
+        (tmp_path / "9b" / "vad" / "silero-vad-int8.onnx").as_posix(),
+    ) in staged
+    assert report["vad"]["onnxFallbackIncluded"] is True
+    assert report["vad"]["onnxFallbackRepo"] == "onnx-community/silero-vad"
+
+
 def test_stage_dry_run_uses_larger_asr_for_pro_tier(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
     report = stage.stage_assets(_args(tmp_path, "27b"))
+    assert report["asrRepo"] == "ggml-org/Qwen3-ASR-1.7B-GGUF"
+    assert report["asrRemotePath"] == "Qwen3-ASR-1.7B-Q8_0.gguf"
+
+
+def test_stage_dry_run_uses_larger_asr_for_27b_1m_tier(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(stage, "HfApi", FakeHfApi)
+    report = stage.stage_assets(_args(tmp_path, "27b-1m"))
     assert report["asrRepo"] == "ggml-org/Qwen3-ASR-1.7B-GGUF"
     assert report["asrRemotePath"] == "Qwen3-ASR-1.7B-Q8_0.gguf"
 
@@ -123,6 +167,9 @@ def test_non_dry_run_writes_asr_vad_and_wakeword_license_notes(
     assert (tmp_path / "licenses" / "LICENSE.vad").is_file()
     assert (tmp_path / "licenses" / "LICENSE.wakeword").is_file()
     assert "Qwen3-ASR" in (tmp_path / "licenses" / "LICENSE.asr").read_text()
+    vad = (tmp_path / "licenses" / "LICENSE.vad").read_text()
+    assert "GGML" in vad
+    assert "vad/silero-vad-v5.1.2.ggml.bin" in vad
     ww = (tmp_path / "licenses" / "LICENSE.wakeword").read_text()
     assert "openWakeWord" in ww
     assert "Apache-2.0" in ww
@@ -170,15 +217,15 @@ def test_real_stage_writes_evidence_report_without_downloading(
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
     monkeypatch.setattr(stage, "copy_hf_file", fake_copy_hf_file)
     monkeypatch.setattr(stage, "download_url_file", fake_download_url_file)
-    args = _args(tmp_path, "0_6b")
+    args = _args(tmp_path, "0_8b")
     args.dry_run = False
 
     report = stage.stage_assets(args)
 
     assert report["dryRun"] is False
     assert copied
-    assert (tmp_path / "0_6b" / "wake" / "hey-eliza.onnx").is_file()
+    assert (tmp_path / "0_8b" / "wake" / "hey-eliza.onnx").is_file()
     evidence = json.loads(
-        (tmp_path / "0_6b" / "evidence" / "bundle-assets.json").read_text()
+        (tmp_path / "0_8b" / "evidence" / "bundle-assets.json").read_text()
     )
     assert evidence["asrRepo"] == "ggml-org/Qwen3-ASR-0.6B-GGUF"

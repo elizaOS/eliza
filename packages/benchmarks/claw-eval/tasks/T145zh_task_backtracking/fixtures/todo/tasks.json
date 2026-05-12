@@ -1,0 +1,10 @@
+[
+  {"task_id":"TODO-801","title":"撰写Q1总结报告","status":"in_progress","priority":"high","due_date":"2026-03-28","progress":60,"notes":"已完成数据收集和初步分析，还需补充3月数据和撰写总结部分","created_at":"2026-03-10"},
+  {"task_id":"TODO-802","title":"鼎新软件定制方案","status":"pending","priority":"high","due_date":"2026-03-20","progress":30,"notes":"等待客户确认最终需求，3月15日会议后客户说要内部再讨论","blocked_by":"等客户确认需求","created_at":"2026-03-01"},
+  {"task_id":"TODO-803","title":"提交绩效评估表","status":"completed","priority":"medium","due_date":"2026-03-25","progress":100,"notes":"已于3月23日完成并提交到系统","completed_at":"2026-03-23","created_at":"2026-03-15"},
+  {"task_id":"TODO-804","title":"更新产品文档","status":"in_progress","priority":"medium","due_date":"2026-03-31","progress":40,"created_at":"2026-03-12"},
+  {"task_id":"TODO-805","title":"团队周报汇总","status":"pending","priority":"low","due_date":"2026-03-28","created_at":"2026-03-20"},
+  {"task_id":"TODO-806","title":"准备季度团建活动","status":"pending","priority":"low","due_date":"2026-04-10","created_at":"2026-03-18"},
+  {"task_id":"TODO-807","title":"整理会议室预约流程","status":"completed","priority":"low","due_date":"2026-03-20","completed_at":"2026-03-19","created_at":"2026-03-10"},
+  {"task_id":"TODO-808","title":"学习新版API文档","status":"pending","priority":"medium","due_date":"2026-04-05","created_at":"2026-03-22"}
+]

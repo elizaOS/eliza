@@ -7,11 +7,13 @@ function printHelp(): void {
 Usage:
   eliza-autonomous serve
   eliza-autonomous runtime
+  eliza-autonomous ios-bridge --stdio
   eliza-autonomous benchmark [options]
 
 Commands:
   serve      Start the autonomous backend in server-only mode
   runtime    Boot the runtime without entering the API/CLI wrapper
+  ios-bridge Run the iOS full-engine stdio bridge
   benchmark  Run a benchmark task headlessly against the agent
 
 Benchmark options:
@@ -45,6 +47,12 @@ export async function runAutonomousCli(
   if (command === "runtime") {
     const { bootElizaRuntime } = await import("../runtime/index.ts");
     await bootElizaRuntime();
+    return;
+  }
+
+  if (command === "ios-bridge") {
+    const { runIosBridgeCli } = await import("./ios-bridge.ts");
+    await runIosBridgeCli(argv);
     return;
   }
 

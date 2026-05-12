@@ -3,7 +3,7 @@
  *
  * Claude Code writes a full JSONL transcript of every PTY session it owns
  * to `~/.claude/projects/<encoded-workdir>/<session-uuid>.jsonl`. The PTY
- * service today injects `MILADY_PARENT_TRAJECTORY_STEP_ID` into the spawn
+ * service today injects `ELIZA_PARENT_TRAJECTORY_STEP_ID` into the spawn
  * env but never reads those logs back, so reasoning blocks, tool calls,
  * and per-call token usage are discarded — the parent trajectory only
  * captures ANSI-stripped stdout.
@@ -19,7 +19,7 @@
  *   2. Parses each JSONL line into a strongly-typed event union.
  *   3. Normalizes assistant + user turns into trajectory step records the
  *      runtime can persist as child steps of the parent step pointed at by
- *      `MILADY_PARENT_TRAJECTORY_STEP_ID`.
+ *      `ELIZA_PARENT_TRAJECTORY_STEP_ID`.
  *
  * Privacy:
  *   The trajectory DB stores the user's own data on their own machine
@@ -209,8 +209,8 @@ export interface SessionLogReadResult {
 
 /**
  * Claude Code's per-project log dir encoding. Empirically `/` → `-` and the
- * leading dot of a hidden segment is also `-`, so `/Users/x/.milady/...`
- * becomes `-Users-x--milady-...`. Tested against real on-disk samples.
+ * leading dot of a hidden segment is also `-`, so `/Users/x/.eliza/...`
+ * becomes `-Users-x--eliza-...`. Tested against real on-disk samples.
  */
 export function encodeClaudeCodeProjectDir(workdir: string): string {
   return workdir.replace(/\//g, "-").replace(/\./g, "-");

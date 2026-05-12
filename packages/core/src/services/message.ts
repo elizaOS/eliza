@@ -18,8 +18,8 @@ import {
 import {
 	decideReplyGate,
 	enforceVerbosity,
-	getPersonalityStore,
 } from "../features/advanced-capabilities/personality";
+import { getPersonalityStore } from "../features/advanced-capabilities/personality/services/personality-store.ts";
 import { looksLikeNonActionableChatter } from "../features/basic-capabilities/providers/non-actionable-chatter";
 import { logger } from "../logger";
 import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
@@ -57,8 +57,10 @@ import {
 	type FactsAndRelationshipsRunResult,
 	runFactsAndRelationshipsStage,
 } from "../runtime/facts-and-relationships";
+import { parseJsonObject } from "../runtime/json-output";
 import { getLocalizedExamplesProvider } from "../runtime/localized-examples-provider";
 import {
+	getMessageHandlerReply,
 	parseMessageHandlerOutput,
 	routeMessageHandlerOutput,
 	SIMPLE_CONTEXT_ID,
@@ -78,12 +80,21 @@ import {
 	type PlannerTrajectory,
 	runPlannerLoop,
 } from "../runtime/planner-loop";
-import { buildResponseGrammar } from "../runtime/response-grammar";
+import {
+	buildResponseGrammar,
+	withGuidedDecodeProviderOptions,
+} from "../runtime/response-grammar";
 import {
 	type ResponseHandlerEvaluator,
 	type ResponseHandlerPatch,
 	runResponseHandlerEvaluators,
 } from "../runtime/response-handler-evaluators";
+import type {
+	ResponseHandlerFieldContext,
+	ResponseHandlerFieldRunResult,
+	ResponseHandlerResult,
+	ResponseHandlerSenderRole,
+} from "../runtime/response-handler-field-evaluator";
 import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
 import {
@@ -94,6 +105,7 @@ import {
 import { isExplicitSelfModificationRequest } from "../should-respond";
 import {
 	getModelStreamChunkDeliveryDepth,
+	getStreamingContext,
 	runWithStreamingContext,
 	type StreamingContext,
 } from "../streaming-context";
@@ -196,6 +208,30 @@ import {
 const PLANNER_CONTROL_ACTIONS = new Set(
 	["REPLY", "RESPOND", "IGNORE", "STOP"].map(normalizeActionIdentifier),
 );
+
+function mergeAbortSignals(
+	signals: Array<AbortSignal | undefined>,
+): AbortSignal | undefined {
+	const active = signals.filter(
+		(signal): signal is AbortSignal => signal !== undefined,
+	);
+	if (active.length === 0) return undefined;
+	if (active.length === 1) return active[0];
+	const controller = new AbortController();
+	const abort = (signal: AbortSignal) => {
+		if (!controller.signal.aborted) {
+			controller.abort(signal.reason);
+		}
+	};
+	for (const signal of active) {
+		if (signal.aborted) {
+			abort(signal);
+			break;
+		}
+		signal.addEventListener("abort", () => abort(signal), { once: true });
+	}
+	return controller.signal;
+}
 
 function canonicalPlannerControlActionName(actionName: string): string | null {
 	const normalized = normalizeActionIdentifier(actionName);
@@ -522,6 +558,7 @@ export function resolvePlannerActionName(
 	runtime: Pick<IAgentRuntime, "actions" | "logger">,
 	actionLookup: Map<string, Action> | undefined,
 	actionName: string,
+	options?: { strict?: boolean },
 ): string[] {
 	const lookup =
 		actionLookup ?? buildRuntimeActionLookup(runtime as IAgentRuntime);
@@ -534,7 +571,9 @@ export function resolvePlannerActionName(
 		return resolved;
 	}
 
-	if (actionLookup) {
+	// In strict mode don't fall back to the full registry — LLM aliases
+	// like WRITE -> FILE would defeat a candidateActions narrow.
+	if (actionLookup && !options?.strict) {
 		const runtimeResolved = resolvePlannerActionNameFromLookup(
 			runtime,
 			buildRuntimeActionLookup(runtime as IAgentRuntime),
@@ -903,7 +942,7 @@ function hasInboundBenchmarkContext(message: Memory): boolean {
 
 /**
  * Returns true when the current turn was issued by a benchmark harness AND the
- * `MILADY_BENCH_FORCE_TOOL_CALL` env opt-in is set. Used to bias the planner
+ * `ELIZA_BENCH_FORCE_TOOL_CALL` env opt-in is set. Used to bias the planner
  * toward emitting structured tool calls instead of routing every turn through
  * `REPLY`, which is what LifeOpsBench and similar harnesses score against.
  *
@@ -917,7 +956,7 @@ function hasInboundBenchmarkContext(message: Memory): boolean {
  * bench-server metadata get the tool-call boost.
  */
 function isBenchmarkForcingToolCall(message: Memory): boolean {
-	if (process.env.MILADY_BENCH_FORCE_TOOL_CALL !== "1") return false;
+	if (process.env.ELIZA_BENCH_FORCE_TOOL_CALL !== "1") return false;
 	const content = message.content;
 	if (!content) return false;
 	if (content.source === "benchmark") return true;
@@ -1308,11 +1347,27 @@ export type V5MessageRuntimeStage1Result =
 			result: StrategyResult;
 	  };
 
+type ResponseHandlerEarlyReplyEvent = {
+	text: string;
+	messageHandler: MessageHandlerResult;
+};
+
 function getV5ModelText(raw: string | GenerateTextResult): string {
 	if (typeof raw === "string") {
 		return raw;
 	}
 	return typeof raw.text === "string" ? raw.text : JSON.stringify(raw);
+}
+
+function isVoiceChannelMessage(message: Pick<Memory, "content">): boolean {
+	return (
+		message.content?.channelType === ChannelType.VOICE_DM ||
+		message.content?.channelType === ChannelType.VOICE_GROUP
+	);
+}
+
+function normalizeVisibleTextForDuplicateCheck(text: string): string {
+	return text.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 function createV5ReplyStrategyResult(args: {
@@ -1756,7 +1811,7 @@ function buildV5PlannerActionSurface(params: {
 
 	if (
 		params.actions.length === 0 ||
-		process.env.MILADY_TIERED_ACTION_SURFACE === "0"
+		process.env.ELIZA_TIERED_ACTION_SURFACE === "0"
 	) {
 		return buildFullV5PlannerActionSurface({
 			actions: params.actions,
@@ -1769,7 +1824,7 @@ function buildV5PlannerActionSurface(params: {
 	const catalog = buildActionCatalog([...params.actions], {
 		localizedExamples: params.localizedExamples,
 	});
-	const measurementMode = process.env.MILADY_RETRIEVAL_MEASUREMENT === "1";
+	const measurementMode = process.env.ELIZA_RETRIEVAL_MEASUREMENT === "1";
 	const retrieval = retrieveActions({
 		catalog,
 		messageText: getUserMessageText(params.message) ?? "",
@@ -1785,6 +1840,7 @@ function buildV5PlannerActionSurface(params: {
 	const tieredSurface = tierActionResults({
 		catalog,
 		results: retrieval.results,
+		narrowToCandidateActions: candidateActions,
 	});
 	const toolSearchEndedAt = Date.now();
 	const exposedActionNames = new Set(
@@ -2059,6 +2115,32 @@ function contextAvailableForRepair(
 	);
 }
 
+/**
+ * Resolve a Stage 1 repair's `parentActionHints` to the first umbrella from
+ * `preferred` that is present in `availableActionNames`. When none of the
+ * preferred umbrellas are present, fall back to `fallback` so legacy callers
+ * (and runtimes that don't expose the umbrella action) still receive a usable
+ * hint.
+ *
+ * Names are compared case-insensitively after the same identifier normalization
+ * the planner alias map uses (`A_B` and `AB` both match the `AB` umbrella).
+ */
+function resolveActionAwareParentHint(
+	preferred: readonly string[],
+	fallback: string,
+	availableActionNames: readonly string[] | undefined,
+): string {
+	const available = new Set(
+		(availableActionNames ?? []).map((name) => normalizeActionIdentifier(name)),
+	);
+	for (const candidate of preferred) {
+		if (available.has(normalizeActionIdentifier(candidate))) {
+			return candidate;
+		}
+	}
+	return fallback;
+}
+
 function addRepairPlanToPatch(
 	patch: {
 		setContexts?: AgentContext[];
@@ -2219,6 +2301,7 @@ function getStage1PasswordManagerRepairPlan(args: {
 function getStage1CheckinRepairPlan(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
+	availableActionNames?: readonly string[];
 }): {
 	contexts: AgentContext[];
 	candidateActions: string[];
@@ -2246,6 +2329,15 @@ function getStage1CheckinRepairPlan(args: {
 	).filter((context) =>
 		contextAvailableForRepair(context, args.availableContexts),
 	);
+	// Action-aware umbrella: prefer the dedicated `CHECKIN` action when the
+	// runtime exposes it (LifeOps deployments), otherwise fall back to the
+	// generic `SCHEDULED_TASKS` umbrella that hosts check-in subactions in
+	// vanilla runtimes.
+	const parentActionHint = resolveActionAwareParentHint(
+		["CHECKIN"],
+		"SCHEDULED_TASKS",
+		args.availableActionNames,
+	);
 	return {
 		contexts: contexts.length > 0 ? contexts : ["tasks"],
 		candidateActions: nightIntent
@@ -2253,7 +2345,7 @@ function getStage1CheckinRepairPlan(args: {
 			: morningIntent
 				? ["morning_checkin", "run_morning_checkin", "lifeops_morning_checkin"]
 				: ["run_checkin", "daily_checkin", "lifeops_checkin"],
-		parentActionHints: ["CHECKIN"],
+		parentActionHints: [parentActionHint],
 	};
 }
 
@@ -2396,6 +2488,7 @@ function getStage1CalendarSignatureDeadlineRepairPlan(args: {
 function getStage1KnownToolRepairPlan(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
+	availableActionNames?: readonly string[];
 }): {
 	contexts: AgentContext[];
 	candidateActions: string[];
@@ -2415,6 +2508,7 @@ function getStage1KnownToolRepairPlan(args: {
 function buildFallbackStage1PlanForKnownToolRequest(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
+	availableActionNames?: readonly string[];
 }): MessageHandlerResult | null {
 	const repair = getStage1KnownToolRepairPlan(args);
 	if (!repair) {
@@ -2437,6 +2531,7 @@ function buildFallbackStage1PlanForKnownToolRequest(args: {
 function buildKnownToolRequestResponseHandlerPatch(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
+	availableActionNames?: readonly string[];
 }): ResponseHandlerPatch | null {
 	const text = (getUserMessageText(args.message) ?? "").trim();
 	if (!text) {
@@ -2560,10 +2655,13 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 			priority: 20,
 			shouldRun: ({ message }) =>
 				Boolean((getUserMessageText(message) ?? "").trim()),
-			evaluate: ({ message, availableContexts }) =>
+			evaluate: ({ runtime, message, availableContexts }) =>
 				buildKnownToolRequestResponseHandlerPatch({
 					message,
 					availableContexts,
+					availableActionNames: (runtime.actions ?? []).map(
+						(action) => action.name,
+					),
 				}) ?? undefined,
 		},
 	];
@@ -2699,14 +2797,14 @@ function selectMessageHandlerTask(
 function renderMessageHandlerInstructions(
 	runtime: OptimizedPromptRuntimeLike,
 	availableContexts: readonly ContextDefinition[],
-	options?: { directMessage?: boolean },
+	options?: { directMessage?: boolean; responseHandlerFields?: string },
 ): string {
 	const baseline = resolveOptimizedPromptForRuntime(
 		runtime,
 		selectMessageHandlerTask(availableContexts),
 		messageHandlerTemplate,
 	);
-	return composePrompt({
+	const rendered = composePrompt({
 		state: {
 			directMessage: options?.directMessage ? "true" : "",
 			availableContexts: formatAvailableContextsForPrompt(availableContexts),
@@ -2714,13 +2812,23 @@ function renderMessageHandlerInstructions(
 		},
 		template: baseline,
 	}).trim();
+	if (!options?.responseHandlerFields?.trim()) {
+		return rendered;
+	}
+	return [
+		rendered,
+		"",
+		"## Response Handler Fields",
+		"Populate every registered response-handler field exactly according to the sections below. Use the field's empty value when it is not applicable.",
+		options.responseHandlerFields.trim(),
+	].join("\n");
 }
 
 function renderMessageHandlerModelInput(
 	runtime: OptimizedPromptRuntimeLike,
 	context: ContextObject,
 	availableContexts: readonly ContextDefinition[] = [],
-	options?: { directMessage?: boolean },
+	options?: { directMessage?: boolean; responseHandlerFields?: string },
 ): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
@@ -2848,6 +2956,13 @@ function parseToolArguments(value: unknown): Record<string, unknown> | null {
 function parseMessageHandlerNativeToolCall(
 	raw: GenerateTextResult,
 ): MessageHandlerResult | null {
+	const args = extractHandleResponseToolArguments(raw);
+	return args ? parseMessageHandlerOutput(JSON.stringify(args)) : null;
+}
+
+function extractHandleResponseToolArguments(
+	raw: GenerateTextResult,
+): Record<string, unknown> | null {
 	const toolCalls = Array.isArray(raw.toolCalls) ? raw.toolCalls : [];
 	for (const entry of toolCalls) {
 		if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
@@ -2865,7 +2980,7 @@ function parseMessageHandlerNativeToolCall(
 		if (!args || !looksLikeMessageHandlerToolArguments(args)) {
 			continue;
 		}
-		return parseMessageHandlerOutput(JSON.stringify(args));
+		return args;
 	}
 	return null;
 }
@@ -2887,6 +3002,158 @@ function looksLikeMessageHandlerToolArguments(
 		args.thought !== undefined ||
 		args.extract !== undefined
 	);
+}
+
+function extractMessageHandlerRawParsed(
+	raw: string | GenerateTextResult,
+): Record<string, unknown> | null {
+	if (typeof raw !== "string") {
+		return (
+			extractHandleResponseToolArguments(raw) ??
+			parseJsonObject<Record<string, unknown>>(getV5ModelText(raw))
+		);
+	}
+	return parseJsonObject<Record<string, unknown>>(raw);
+}
+
+function normalizeRawParsedForFieldRegistry(
+	raw: Record<string, unknown>,
+): Record<string, unknown> {
+	const normalized = { ...raw };
+	const plan =
+		raw.plan && typeof raw.plan === "object" && !Array.isArray(raw.plan)
+			? (raw.plan as Record<string, unknown>)
+			: undefined;
+	const fields = plan ?? raw;
+	if (normalized.shouldRespond === undefined) {
+		normalized.shouldRespond = raw.processMessage ?? raw.action ?? "RESPOND";
+	}
+	if (normalized.replyText === undefined) {
+		normalized.replyText =
+			raw.replyText ?? raw.reply ?? fields.replyText ?? fields.reply ?? "";
+	}
+	if (normalized.contexts === undefined) {
+		normalized.contexts = fields.contexts ?? [];
+	}
+	if (normalized.candidateActionNames === undefined) {
+		normalized.candidateActionNames =
+			raw.candidateActionNames ?? fields.candidateActions ?? [];
+	}
+	const extract =
+		raw.extract &&
+		typeof raw.extract === "object" &&
+		!Array.isArray(raw.extract)
+			? (raw.extract as Record<string, unknown>)
+			: undefined;
+	if (normalized.facts === undefined) {
+		normalized.facts = extract?.facts ?? raw.facts ?? [];
+	}
+	if (normalized.relationships === undefined) {
+		normalized.relationships =
+			extract?.relationships ?? raw.relationships ?? [];
+	}
+	if (normalized.addressedTo === undefined) {
+		normalized.addressedTo = extract?.addressedTo ?? raw.addressedTo ?? [];
+	}
+	return normalized;
+}
+
+function messageHandlerFromFieldResult(
+	result: ResponseHandlerResult,
+	fieldRun?: ResponseHandlerFieldRunResult,
+): MessageHandlerResult {
+	const contexts = Array.isArray(result.contexts)
+		? result.contexts.map((context) => String(context).trim()).filter(Boolean)
+		: [];
+	const candidateActions = Array.isArray(result.candidateActionNames)
+		? result.candidateActionNames
+				.map((action) => String(action).trim())
+				.filter(Boolean)
+		: [];
+	const facts = Array.isArray(result.facts)
+		? result.facts.map((fact) => String(fact).trim()).filter(Boolean)
+		: [];
+	const relationships = Array.isArray(result.relationships)
+		? result.relationships
+				.map((entry) => {
+					if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+						return null;
+					}
+					const rel = entry as Record<string, unknown>;
+					const subject =
+						typeof rel.subject === "string" ? rel.subject.trim() : "";
+					const predicate =
+						typeof rel.predicate === "string" ? rel.predicate.trim() : "";
+					const object =
+						typeof rel.object === "string" ? rel.object.trim() : "";
+					return subject && predicate && object
+						? { subject, predicate, object }
+						: null;
+				})
+				.filter(
+					(
+						entry,
+					): entry is { subject: string; predicate: string; object: string } =>
+						entry !== null,
+				)
+		: [];
+	const addressedTo = Array.isArray(result.addressedTo)
+		? result.addressedTo
+				.map((addressed) => String(addressed).trim())
+				.filter(Boolean)
+		: [];
+	const preempt = fieldRun?.preempt;
+	const processMessage =
+		preempt?.mode === "ignore"
+			? "IGNORE"
+			: result.shouldRespond === "STOP"
+				? "STOP"
+				: result.shouldRespond === "IGNORE"
+					? "IGNORE"
+					: "RESPOND";
+	const preemptDirect =
+		preempt?.mode === "ack-and-stop" || preempt?.mode === "direct-reply";
+	const replyText =
+		typeof result.replyText === "string" ? result.replyText : "";
+	const routedContexts = preemptDirect
+		? Array.from(new Set([...contexts, SIMPLE_CONTEXT_ID]))
+		: contexts;
+	const initialPlanningContexts = routedContexts.filter(
+		(context) => context !== SIMPLE_CONTEXT_ID,
+	);
+	const shouldPlan =
+		!preemptDirect &&
+		(initialPlanningContexts.length > 0 || candidateActions.length > 0);
+	const finalContexts =
+		shouldPlan && initialPlanningContexts.length === 0
+			? Array.from(
+					new Set([
+						...routedContexts.filter(
+							(context) => context !== SIMPLE_CONTEXT_ID,
+						),
+						"general",
+					]),
+				)
+			: routedContexts;
+	const plan: MessageHandlerResult["plan"] = {
+		contexts: finalContexts,
+		reply: replyText,
+		simple: preemptDirect ? true : !shouldPlan,
+		requiresTool: shouldPlan,
+	};
+	if (candidateActions.length > 0) {
+		plan.candidateActions = candidateActions;
+	}
+	const extract =
+		facts.length > 0 || relationships.length > 0 || addressedTo.length > 0
+			? { facts, relationships, addressedTo }
+			: undefined;
+	return {
+		processMessage,
+		thought: fieldRun?.preempt?.reason ?? "",
+		plan,
+		...(extract ? { extract } : {}),
+	};
 }
 
 function parseMessageHandlerModelOutput(
@@ -3272,10 +3539,7 @@ function shouldTreatPlannerContactAliasAsLifeReminder(
 	message: Memory,
 ): boolean {
 	const normalizedName = normalizeActionIdentifier(toolCall.name);
-	if (
-		normalizedName !== normalizeActionIdentifier("ADD_CONTACT") &&
-		normalizedName !== normalizeActionIdentifier("RELATIONSHIP")
-	) {
+	if (normalizedName !== normalizeActionIdentifier("ADD_CONTACT")) {
 		return false;
 	}
 	const text = (getUserMessageText(message) ?? "").toLowerCase();
@@ -3510,21 +3774,6 @@ async function runDeterministicPlannerFallback(args: {
 	};
 }
 
-function shouldTreatPlannerLifeAsDeviceIntent(
-	resolvedName: string,
-	_message: Memory,
-): boolean {
-	if (
-		normalizeActionIdentifier(resolvedName) !==
-		normalizeActionIdentifier("LIFE")
-	) {
-		return false;
-	}
-	// DEVICE_INTENT is no longer a planner-visible action. Legacy LIFE plans for
-	// device-wide delivery should not be rewritten into another retired action.
-	return false;
-}
-
 function shouldTreatPlannerWebAsCalendlyCalendar(
 	resolvedName: string,
 	message: Memory,
@@ -3611,28 +3860,6 @@ function shouldTreatPlannerConnectorAsMessage(
 			/\b(?:dm|dms|direct messages?|messages?)\b/i.test(text)) ||
 		(/\b(?:discord|slack|telegram|signal|whatsapp)\b/i.test(text) &&
 			/\b(?:post|send|message|dm|channel)\b/i.test(text))
-	);
-}
-
-function shouldTreatPlannerDeviceIntentAsLifeReminder(
-	resolvedName: string,
-	message: Memory,
-): boolean {
-	if (
-		normalizeActionIdentifier(resolvedName) !==
-		normalizeActionIdentifier("DEVICE_INTENT")
-	) {
-		return false;
-	}
-	const text = getUserMessageText(message) ?? "";
-	if (
-		/\b(?:device|devices|phone|mobile|desktop|broadcast|push)\b/i.test(text)
-	) {
-		return false;
-	}
-	return (
-		/\b(?:remember|remind|reminder)\b/i.test(text) &&
-		/\b(?:call|phone|text|message|email)\b/i.test(text)
 	);
 }
 
@@ -3942,9 +4169,7 @@ function normalizeAliasedPlannerToolCall(
 	message: Memory,
 ): PlannerToolCall {
 	const normalizedResolvedName = normalizeActionIdentifier(resolvedName);
-	const isOwnerSurface =
-		normalizedResolvedName === normalizeActionIdentifier("LIFE") ||
-		OWNER_SURFACE_ACTIONS.has(normalizedResolvedName);
+	const isOwnerSurface = OWNER_SURFACE_ACTIONS.has(normalizedResolvedName);
 	if (!isOwnerSurface) {
 		if (normalizedResolvedName === normalizeActionIdentifier("BLOCK")) {
 			const originalName = normalizeActionIdentifier(toolCall.name);
@@ -4056,10 +4281,14 @@ async function executeV5PlannedToolCall(
 
 	const actions = args.executorOptions?.actions ?? args.runtime.actions;
 	const actionLookup = buildRuntimeActionLookup({ actions });
+	// Different reference means the caller narrowed the surface; resolve
+	// strictly so LLM aliases can't escape through the global fallback.
+	const strictResolve = actions !== args.runtime.actions;
 	const resolvedNames = resolvePlannerActionName(
 		args.runtime,
 		actionLookup,
 		unwrappedToolCall.name,
+		{ strict: strictResolve },
 	);
 	const resolvedName = resolvedNames[0] ?? unwrappedToolCall.name;
 	const forceContactReminderToLife =
@@ -4067,44 +4296,23 @@ async function executeV5PlannedToolCall(
 			unwrappedToolCall,
 			args.executorCtx.message,
 		);
-	const forceLifeToDeviceIntent =
-		!forceContactReminderToLife &&
-		shouldTreatPlannerLifeAsDeviceIntent(
-			resolvedName,
-			args.executorCtx.message,
-		);
-	const forceDeviceIntentToLife =
-		!forceContactReminderToLife &&
-		!forceLifeToDeviceIntent &&
-		shouldTreatPlannerDeviceIntentAsLifeReminder(
-			resolvedName,
-			args.executorCtx.message,
-		);
 	const forceWebToCalendlyCalendar =
 		!forceContactReminderToLife &&
-		!forceLifeToDeviceIntent &&
-		!forceDeviceIntentToLife &&
 		shouldTreatPlannerWebAsCalendlyCalendar(
 			resolvedName,
 			args.executorCtx.message,
 		);
 	const forceWebToBookTravel =
 		!forceContactReminderToLife &&
-		!forceLifeToDeviceIntent &&
-		!forceDeviceIntentToLife &&
 		!forceWebToCalendlyCalendar &&
 		shouldTreatPlannerWebAsBookTravel(resolvedName, args.executorCtx.message);
 	const forceBrowserToAutofill =
 		!forceContactReminderToLife &&
-		!forceLifeToDeviceIntent &&
-		!forceDeviceIntentToLife &&
 		!forceWebToCalendlyCalendar &&
 		!forceWebToBookTravel &&
 		shouldTreatPlannerBrowserAsAutofill(resolvedName, args.executorCtx.message);
 	const forceConnectorToPost =
 		!forceContactReminderToLife &&
-		!forceLifeToDeviceIntent &&
-		!forceDeviceIntentToLife &&
 		!forceWebToCalendlyCalendar &&
 		!forceWebToBookTravel &&
 		!forceBrowserToAutofill &&
@@ -4115,8 +4323,6 @@ async function executeV5PlannedToolCall(
 		shouldTreatPlannerConnectorAsPost(resolvedName, args.executorCtx.message);
 	const forceConnectorToMessage =
 		!forceContactReminderToLife &&
-		!forceLifeToDeviceIntent &&
-		!forceDeviceIntentToLife &&
 		!forceWebToCalendlyCalendar &&
 		!forceWebToBookTravel &&
 		!forceBrowserToAutofill &&
@@ -4126,63 +4332,58 @@ async function executeV5PlannedToolCall(
 		);
 	const effectiveResolvedName = forceContactReminderToLife
 		? "OWNER_REMINDERS"
-		: forceLifeToDeviceIntent
-			? "MESSAGE"
-			: forceDeviceIntentToLife
-				? "OWNER_REMINDERS"
-				: forceWebToCalendlyCalendar
-					? "CALENDAR"
-					: forceWebToBookTravel
-						? "PERSONAL_ASSISTANT"
-						: forceBrowserToAutofill
-							? "CREDENTIALS"
-							: forceConnectorToPost
-								? "POST"
-								: forceConnectorToMessage
-									? "MESSAGE"
-									: resolvedName;
-	const toolCallForNormalization =
-		forceContactReminderToLife || forceDeviceIntentToLife
+		: forceWebToCalendlyCalendar
+			? "CALENDAR"
+			: forceWebToBookTravel
+				? "PERSONAL_ASSISTANT"
+				: forceBrowserToAutofill
+					? "CREDENTIALS"
+					: forceConnectorToPost
+						? "POST"
+						: forceConnectorToMessage
+							? "MESSAGE"
+							: resolvedName;
+	const toolCallForNormalization = forceContactReminderToLife
+		? {
+				...unwrappedToolCall,
+				params: {
+					action: "create",
+					subaction: "create",
+					intent: getUserMessageText(args.executorCtx.message),
+					details: {
+						contactName: stringParam(unwrappedToolCall.params?.name),
+						relationship: stringParam(unwrappedToolCall.params?.relationship),
+						originalPlannerAction: unwrappedToolCall.name,
+					},
+				},
+			}
+		: forceWebToBookTravel
 			? {
 					...unwrappedToolCall,
+					name: "PERSONAL_ASSISTANT",
 					params: {
-						action: "create",
-						subaction: "create",
+						...(unwrappedToolCall.params &&
+						typeof unwrappedToolCall.params === "object"
+							? unwrappedToolCall.params
+							: {}),
+						action: "book_travel",
 						intent: getUserMessageText(args.executorCtx.message),
-						details: {
-							contactName: stringParam(unwrappedToolCall.params?.name),
-							relationship: stringParam(unwrappedToolCall.params?.relationship),
-							originalPlannerAction: unwrappedToolCall.name,
-						},
 					},
 				}
-			: forceWebToBookTravel
+			: forceBrowserToAutofill
 				? {
 						...unwrappedToolCall,
-						name: "PERSONAL_ASSISTANT",
+						name: "CREDENTIALS",
 						params: {
 							...(unwrappedToolCall.params &&
 							typeof unwrappedToolCall.params === "object"
 								? unwrappedToolCall.params
 								: {}),
-							action: "book_travel",
-							intent: getUserMessageText(args.executorCtx.message),
+							action: "fill",
+							subaction: "fill",
 						},
 					}
-				: forceBrowserToAutofill
-					? {
-							...unwrappedToolCall,
-							name: "CREDENTIALS",
-							params: {
-								...(unwrappedToolCall.params &&
-								typeof unwrappedToolCall.params === "object"
-									? unwrappedToolCall.params
-									: {}),
-								action: "fill",
-								subaction: "fill",
-							},
-						}
-					: unwrappedToolCall;
+				: unwrappedToolCall;
 	const toolCall = normalizeAliasedPlannerToolCall(
 		toolCallForNormalization,
 		effectiveResolvedName,
@@ -4300,6 +4501,9 @@ export async function runV5MessageRuntimeStage1(args: {
 	state: State;
 	responseId: UUID;
 	plannerLoopConfig?: PlannerLoopParams["config"];
+	onResponseHandlerEarlyReply?: (
+		event: ResponseHandlerEarlyReplyEvent,
+	) => Promise<void> | void;
 }): Promise<V5MessageRuntimeStage1Result> {
 	const senderRole =
 		getTrajectoryContext()?.userRole ??
@@ -4316,7 +4520,7 @@ export async function runV5MessageRuntimeStage1(args: {
 	});
 
 	// G10/G11: construct the per-trajectory recorder. No-op when disabled via
-	// MILADY_TRAJECTORY_RECORDING=0. Failures inside the recorder must NEVER
+	// ELIZA_TRAJECTORY_RECORDING=0. Failures inside the recorder must NEVER
 	// propagate up — the recorder is observability, not load-bearing.
 	const recordingEnabled = isTrajectoryRecordingEnabled();
 	const recorder: TrajectoryRecorder | undefined = recordingEnabled
@@ -4354,11 +4558,29 @@ export async function runV5MessageRuntimeStage1(args: {
 			args.message.content?.channelType === ChannelType.VOICE_DM ||
 			args.message.content?.channelType === ChannelType.API ||
 			args.message.content?.channelType === ChannelType.SELF;
+		const stage1TurnSignal =
+			getStreamingContext()?.abortSignal ?? new AbortController().signal;
+		const responseHandlerFieldContext: ResponseHandlerFieldContext = {
+			runtime: args.runtime,
+			message: args.message,
+			state: args.state,
+			senderRole: senderRole as ResponseHandlerSenderRole,
+			turnSignal: stage1TurnSignal,
+		};
+		const responseHandlerFieldPrompt =
+			await args.runtime.responseHandlerFieldRegistry.composePromptSlices(
+				responseHandlerFieldContext,
+			);
+		const responseHandlerSchema =
+			args.runtime.responseHandlerFieldRegistry.composeSchema();
 		const messageHandlerInput = renderMessageHandlerModelInput(
 			args.runtime,
 			context,
 			availableContexts,
-			{ directMessage: directMessageChannel },
+			{
+				directMessage: directMessageChannel,
+				responseHandlerFields: responseHandlerFieldPrompt.rendered,
+			},
 		);
 		const stage1PrefixHashes = computePrefixHashes(
 			messageHandlerInput.promptSegments,
@@ -4377,6 +4599,9 @@ export async function runV5MessageRuntimeStage1(args: {
 		const messageHandlerTools = [
 			createHandleResponseTool({
 				directMessage: directMessageChannel,
+				parameters: responseHandlerSchema,
+				description:
+					"Stage 1 — populate the registered response-handler fields exactly once before any PLAN_ACTIONS calls. Use empty values for non-applicable fields.",
 			}),
 		];
 		const messageHandlerProviderOptions = withModelInputBudgetProviderOptions(
@@ -4457,19 +4682,50 @@ export async function runV5MessageRuntimeStage1(args: {
 				streamStructured: true,
 				responseSkeleton: responseGrammar.responseSkeleton,
 				grammar: responseGrammar.grammar,
-				providerOptions: messageHandlerProviderOptions,
+				// Guided structured decode on by default for Stage 1 (the call always
+				// carries a forced skeleton): the local engine derives the
+				// deterministic-token prefill plan and the fork fast-forwards the
+				// forced scaffold spans. Opt out with `MILADY_LOCAL_GUIDED_DECODE=0`.
+				// Cloud adapters ignore `providerOptions.eliza.guidedDecode`.
+				providerOptions: withGuidedDecodeProviderOptions(
+					messageHandlerProviderOptions,
+				),
 			},
 		)) as string | GenerateTextResult;
 		const messageHandlerEndedAt = Date.now();
-		let messageHandler = parseMessageHandlerModelOutput(rawMessageHandler);
+		const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
+		let fieldRunResult: ResponseHandlerFieldRunResult | null = null;
+		let messageHandler: MessageHandlerResult | null = null;
+		if (rawFieldParsed) {
+			fieldRunResult = await args.runtime.responseHandlerFieldRegistry.dispatch(
+				{
+					rawParsed: normalizeRawParsedForFieldRegistry(rawFieldParsed),
+					runtime: args.runtime,
+					message: args.message,
+					state: args.state,
+					senderRole: senderRole as ResponseHandlerSenderRole,
+					turnSignal: stage1TurnSignal,
+				},
+			);
+			messageHandler = messageHandlerFromFieldResult(
+				fieldRunResult.parsed,
+				fieldRunResult,
+			);
+		}
+		if (!messageHandler) {
+			messageHandler = parseMessageHandlerModelOutput(rawMessageHandler);
+		}
 		if (!messageHandler) {
 			messageHandler =
 				buildFallbackStage1PlanForKnownToolRequest({
 					message: args.message,
 					availableContexts,
+					availableActionNames: (args.runtime.actions ?? []).map(
+						(action) => action.name,
+					),
 				}) ?? buildFallbackStage1DirectReplyPlan();
 		}
-		if (!messageHandler && process.env.MILADY_DEBUG_STAGE1 === "1") {
+		if (!messageHandler && process.env.ELIZA_DEBUG_STAGE1 === "1") {
 			args.runtime.logger?.warn?.(
 				{
 					raw:
@@ -4495,6 +4751,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				"v5 messageHandler returned invalid MessageHandlerResult",
 			);
 		}
+		const parsedResponseHandlerReply = getMessageHandlerReply(messageHandler);
 
 		if (recorder && trajectoryId) {
 			await recordMessageHandlerStage({
@@ -4562,14 +4819,20 @@ export async function runV5MessageRuntimeStage1(args: {
 			});
 		}
 
-		const responseHandlerEvaluation = await runResponseHandlerEvaluators({
-			runtime: args.runtime,
-			message: args.message,
-			state: args.state,
-			messageHandler,
-			availableContexts,
-			evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
-		});
+		const responseHandlerEvaluation = fieldRunResult?.preempt
+			? {
+					activeEvaluators: [],
+					appliedPatches: [],
+					errors: [],
+				}
+			: await runResponseHandlerEvaluators({
+					runtime: args.runtime,
+					message: args.message,
+					state: args.state,
+					messageHandler,
+					availableContexts,
+					evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
+				});
 		messageHandler.plan.contexts = filterSelectedContextsForRole(
 			messageHandler.plan.contexts,
 			availableContexts,
@@ -4612,6 +4875,20 @@ export async function runV5MessageRuntimeStage1(args: {
 
 		const selectedContexts =
 			route.type === "planning_needed" ? route.contexts : [];
+		const routedResponseHandlerReply = getMessageHandlerReply(messageHandler);
+		const earlyReplyText =
+			routedResponseHandlerReply || parsedResponseHandlerReply;
+		const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
+		const earlyReplySent =
+			messageHandler.processMessage === "RESPOND" &&
+			earlyReplyText.length > 0 &&
+			typeof onResponseHandlerEarlyReply === "function";
+		if (earlyReplySent && typeof onResponseHandlerEarlyReply === "function") {
+			await onResponseHandlerEarlyReply({
+				text: earlyReplyText,
+				messageHandler,
+			});
+		}
 		const plannerProviderNames = selectV5PlannerStateProviderNames({
 			runtime: args.runtime,
 			message: args.message,
@@ -4755,6 +5032,18 @@ export async function runV5MessageRuntimeStage1(args: {
 							"Call at least one exposed non-terminal tool that can attempt the current request.",
 				})
 			: plannerContextWithDecision;
+		const plannerContextAfterEarlyReply = earlyReplySent
+			? appendContextEvent(effectivePlannerContext, {
+					id: `early-reply:${messageHandlerEndedAt}`,
+					type: "instruction",
+					source: "message-service",
+					createdAt: Date.now(),
+					content:
+						"The Stage 1 router already sent this visible reply to the user before planning: " +
+						JSON.stringify(earlyReplyText) +
+						". Do not repeat it. Send only additional follow-up text if the planner or tool work adds something new.",
+				})
+			: effectivePlannerContext;
 		const evaluatorEffects: EvaluatorEffects = {
 			copyToClipboard: () => undefined,
 			messageToUser: () => undefined,
@@ -4779,7 +5068,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		try {
 			plannerResult = await runPlannerLoop({
 				runtime: plannerRuntime,
-				context: effectivePlannerContext,
+				context: plannerContextAfterEarlyReply,
 				config: args.plannerLoopConfig,
 				tools: plannerTools.length > 0 ? plannerTools : undefined,
 				requireNonTerminalToolCall,
@@ -4790,7 +5079,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					executeV5PlannedToolCall({
 						runtime: args.runtime,
 						toolCall,
-						plannerContext: effectivePlannerContext,
+						plannerContext: plannerContextAfterEarlyReply,
 						executorCtx: {
 							message: args.message,
 							state: plannerState,
@@ -4822,7 +5111,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				plannerState,
 				selectedContexts,
 				senderRole,
-				plannerContext: effectivePlannerContext,
+				plannerContext: plannerContextAfterEarlyReply,
 				plannerRuntime,
 				actions: exposedPlannerActions,
 				evaluatorEffects,
@@ -4855,26 +5144,31 @@ export async function runV5MessageRuntimeStage1(args: {
 				? withActionResultsForPrompt(plannerState, actionResults)
 				: plannerState;
 		const plannedText = String(plannerResult.finalMessage ?? "").trim();
+		const plannedTextRepeatsEarlyReply =
+			earlyReplySent &&
+			normalizeVisibleTextForDuplicateCheck(plannedText) ===
+				normalizeVisibleTextForDuplicateCheck(earlyReplyText);
 
 		return {
 			kind: "planned_reply",
 			messageHandler,
-			result: plannedText
-				? createV5ReplyStrategyResult({
-						...args,
-						state: finalPlannerState,
-						text: plannedText,
-						thought:
-							plannerResult.evaluator?.thought ??
-							plannerResult.trajectory.steps.at(-1)?.thought ??
-							messageHandler.thought,
-					})
-				: {
-						responseContent: null,
-						responseMessages: [],
-						state: finalPlannerState,
-						mode: "none",
-					},
+			result:
+				plannedText && !plannedTextRepeatsEarlyReply
+					? createV5ReplyStrategyResult({
+							...args,
+							state: finalPlannerState,
+							text: plannedText,
+							thought:
+								plannerResult.evaluator?.thought ??
+								plannerResult.trajectory.steps.at(-1)?.thought ??
+								messageHandler.thought,
+						})
+					: {
+							responseContent: null,
+							responseMessages: [],
+							state: finalPlannerState,
+							mode: "none",
+						},
 		};
 	} catch (err) {
 		endStatus = "errored";
@@ -5153,6 +5447,60 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 }
 
 /**
+ * Build the prompt sent to the fallback "failure reply" model when the
+ * planner trajectory errors out (rate limits, transient network failure,
+ * provider 5xx). The prompt forbids the model from emitting any
+ * substantive answer to the user's question — including answers that
+ * appear "obvious" from recent-conversation context — because the
+ * grounding trajectory never ran.
+ *
+ * Why a separate exported function: this prompt is load-bearing for
+ * correctness (a previous version's "if you can plausibly act, do it"
+ * escape hatch caused gpt-oss-120b on Cerebras to hallucinate a git
+ * SHA from prior chat context during a live battle test, even though
+ * no tool was actually called). Pinning the hard rules in tests means
+ * a future "let's make the failure reply more helpful" refactor can't
+ * silently re-introduce the hallucination vector.
+ *
+ * @param recentMessages Plain-text projection of the recent conversation
+ * (whatever the caller has at hand — typically `state.values.recentMessages`).
+ */
+export function buildFailureReplyPrompt(recentMessages: string): string {
+	return [
+		"You hit a transient model error and have to send a short user-facing reply.",
+		"Write a one or two sentence reply in plain language.",
+		"",
+		"Hard rules:",
+		"- Stay in character. Keep your usual voice and tone.",
+		"- NEVER mention internal mechanism words such as: planner, action_planner,",
+		"  XML, JSON, schema, structured output, model, retries, sonnet,",
+		"  opus, claude, anthropic, prompt, parse, parser, xml plan, decision",
+		"  loop, runtime, dispatch, or hand off. The user does not know or care",
+		"  what those are.",
+		"- Do not use em-dashes or en-dashes. Use a plain hyphen, period, or comma.",
+		"- Acknowledge that something went wrong and suggest a retry. Examples:",
+		'  "something flaked, try again in a sec",',
+		'  "weird hiccup, give me another shot in a moment",',
+		'  "got stuck on my end, retry that?"',
+		"- NEVER answer the user's question on the merits in this reply. Even",
+		"  if the answer looks obvious from context (a SHA, a count, a price,",
+		"  a date, a status, a file path, a name, a result), DO NOT emit it.",
+		"  The trajectory that would have GROUNDED the answer failed, so any",
+		"  factual claim you make here is by definition ungrounded. The user",
+		"  will retry, the real run will produce the grounded answer, and",
+		"  meanwhile you must not invent one from recent-conversation context.",
+		"- Do not paraphrase or echo the user's question as if you were about",
+		"  to answer it. Just say something went wrong and invite a retry.",
+		"- Return only the reply text. No labels, no XML, no JSON, no <think>.",
+		"",
+		"Recent Conversation:",
+		recentMessages,
+		"",
+		"Reply:",
+	].join("\n");
+}
+
+/**
  * True when a plugin registered at least one core text delegate (chat / planning).
  * Embeddings-only (local-ai) and TTS do not count — without a matching delegate,
  * `dynamicPromptExecFromState` can fail with "No handler found for delegate type".
@@ -5272,15 +5620,11 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["SCHEDULE_RECURRING_EVENT", "CALENDAR"],
 		["SCHEDULE_RECURRING_MEETING", "CALENDAR"],
 		["SCHEDULE_RECURRING", "CALENDAR"],
-		["BOOK_TRAVEL_ACTION", "PERSONAL_ASSISTANT"],
-		["BOOK_TRAVEL", "PERSONAL_ASSISTANT"],
-		["SCHEDULING_NEGOTIATION", "PERSONAL_ASSISTANT"],
 		["CAPTURE_TRAVEL_PREFERENCES", "REPLY"],
 		["CAPTURE_BOOKING_PREFERENCES", "REPLY"],
 		["CREATE_TRAVEL_PREFERENCES", "REPLY"],
 		["SET_PREFERENCES", "REPLY"],
 		["SET_TRAVEL_PREFERENCES", "REPLY"],
-		["PROFILE", "REPLY"],
 		["CREATE_FOLLOWUP", "SCHEDULED_TASKS"],
 		["GET_PENDING_ASSETS", "MESSAGE"],
 		["GET_PENDING_ITEMS", "MESSAGE"],
@@ -5366,15 +5710,15 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["SET_GOAL", "OWNER_GOALS"],
 		["CREATE_REMINDER", "OWNER_REMINDERS"],
 		["SET_REMINDER_RULE", "OWNER_REMINDERS"],
-		["CHECK_IN", "CHECKIN"],
-		["LIFE_CHECK_IN", "CHECKIN"],
-		["MORNING_CHECKIN", "CHECKIN"],
-		["MORNING_CHECK_IN", "CHECKIN"],
-		["NIGHT_CHECKIN", "CHECKIN"],
-		["NIGHT_CHECK_IN", "CHECKIN"],
-		["RUN_CHECKIN", "CHECKIN"],
-		["RUN_MORNING_CHECKIN", "CHECKIN"],
-		["RUN_NIGHT_CHECKIN", "CHECKIN"],
+		["CHECK_IN", "SCHEDULED_TASKS"],
+		["LIFE_CHECK_IN", "SCHEDULED_TASKS"],
+		["MORNING_CHECKIN", "SCHEDULED_TASKS"],
+		["MORNING_CHECK_IN", "SCHEDULED_TASKS"],
+		["NIGHT_CHECKIN", "SCHEDULED_TASKS"],
+		["NIGHT_CHECK_IN", "SCHEDULED_TASKS"],
+		["RUN_CHECKIN", "SCHEDULED_TASKS"],
+		["RUN_MORNING_CHECKIN", "SCHEDULED_TASKS"],
+		["RUN_NIGHT_CHECKIN", "SCHEDULED_TASKS"],
 		["AUTOMATION_RUN", "REPLY"],
 		["DAILY_BRIEF", "REPLY"],
 		["MEMORY_SET", "REPLY"],
@@ -5394,13 +5738,11 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["CALENDAR_CHECK_AVAILABILITY", "CALENDAR"],
 		["BLOCK_WEBSITE", "BLOCK"],
 		["WEBSITE_BLOCKER", "BLOCK"],
-		["WEBSITE_BLOCK", "BLOCK"],
 		["AUTOMATION_FOCUS_BLOCK", "BLOCK"],
 		["FOCUS_BLOCK", "BLOCK"],
 		["SET_APP_BLOCK", "BLOCK"],
 		["PHONE_SET_APP_BLOCK", "BLOCK"],
 		["PHONE_BLOCK_APPS", "BLOCK"],
-		["APP_BLOCK", "BLOCK"],
 		["BLOCK_APPS", "BLOCK"],
 		["ADMIN_REJECT_APPROVAL", "RESOLVE_REQUEST"],
 		["REJECT_APPROVAL", "RESOLVE_REQUEST"],
@@ -5733,18 +6075,9 @@ function buildCanonicalActionRepairPrompt(args: {
 		args.plannerReplyText.trim().length > 0
 			? args.plannerReplyText.trim()
 			: "(empty)";
-	const rawPlannerActions =
-		args.rawPlannerActions.length > 0
-			? `planner_actions_raw[${args.rawPlannerActions.length}]: ${args.rawPlannerActions.join(",")}`
-			: "planner_actions_raw[0]:";
-	const rawPlannerProviders =
-		args.rawPlannerProviders.length > 0
-			? `planner_providers_raw[${args.rawPlannerProviders.length}]: ${args.rawPlannerProviders.join(",")}`
-			: "planner_providers_raw[0]:";
-	const availableRuntimeActions =
-		args.availableActionNames.length > 0
-			? `available_runtime_actions[${args.availableActionNames.length}]: ${args.availableActionNames.join(",")}`
-			: "available_runtime_actions[0]:";
+	const rawPlannerActions = `planner_actions_raw: ${JSON.stringify(args.rawPlannerActions)}`;
+	const rawPlannerProviders = `planner_providers_raw: ${JSON.stringify(args.rawPlannerProviders)}`;
+	const availableRuntimeActions = `available_runtime_actions: ${JSON.stringify(args.availableActionNames)}`;
 
 	return [
 		"You are repairing an action-planner output that used a non-canonical action name.",
@@ -5768,7 +6101,7 @@ function buildCanonicalActionRepairPrompt(args: {
 		"",
 		"Example:",
 		'user_message: "Pull up a dossier on Satya Nadella."',
-		"planner_actions_raw[1]: LOOKUP",
+		'planner_actions_raw: ["LOOKUP"]',
 		"output:",
 		JSON.stringify(
 			{
@@ -6172,7 +6505,6 @@ function findDirectOwnedActionSuggestion(
 	if (looksLikeLocalShellRequest(messageText)) {
 		const shellAction = findRuntimeActionByNames(runtime, [
 			"SHELL",
-			"SHELL_COMMAND",
 			"RUN_IN_TERMINAL",
 			"RUN_COMMAND",
 			"EXECUTE_COMMAND",
@@ -6425,10 +6757,9 @@ function _hasSelectedShellCommandAction(
 		responseContent?.actions?.some(
 			(actionName) =>
 				typeof actionName === "string" &&
-				[
-					normalizeActionIdentifier("SHELL"),
-					normalizeActionIdentifier("SHELL_COMMAND"),
-				].includes(normalizeActionIdentifier(actionName)),
+				[normalizeActionIdentifier("SHELL")].includes(
+					normalizeActionIdentifier(actionName),
+				),
 		) ?? false
 	);
 }
@@ -7700,7 +8031,7 @@ export class DefaultMessageService implements IMessageService {
 	): Promise<MessageProcessingResult> {
 		// Analysis-mode token detection runs BEFORE any planner work so the
 		// agent never hallucinates a "performing an analysis" reply. Gated by
-		// `MILADY_ENABLE_ANALYSIS_MODE` / `NODE_ENV=development`. See
+		// `ELIZA_ENABLE_ANALYSIS_MODE` / `NODE_ENV=development`. See
 		// services/analysis-mode-handler.ts and review #15.
 		const analysisActivation = maybeHandleAnalysisActivation({
 			text: message.content?.text,
@@ -7874,6 +8205,13 @@ export class DefaultMessageService implements IMessageService {
 									);
 								}
 
+								// First-sentence cloud-TTS path. The local-inference voice loop
+								// uses VoiceScheduler/PhraseChunker instead
+								// (packages/app-core/src/services/local-inference/voice/scheduler.ts) —
+								// this is not duplicated, it's the cloud-deployment counterpart
+								// (packages/core can't import packages/app-core; the two paths live
+								// at different layers and only one is active per deployment).
+								//
 								// Only run first-sentence TTS detection when `accumulated` is present.
 								// Raw-token streams (no accumulated) may contain partial
 								// structured output that would garble hasFirstSentence() and TTS.
@@ -8128,18 +8466,38 @@ export class DefaultMessageService implements IMessageService {
 					const firstSentenceSent = false;
 					const firstSentenceText = "";
 
-					const processingPromise = runWithStreamingContext(
-						streamingContext,
-						() =>
-							this.processMessage(
-								runtime,
-								message,
-								instrumentedCallback,
-								responseId,
-								runId,
-								startTime,
-								opts,
-							),
+					const processingPromise = runtime.turnControllers.runWith(
+						message.roomId,
+						(turnSignal) => {
+							const abortSignal = mergeAbortSignals([
+								opts.abortSignal,
+								turnSignal,
+							]);
+							const scopedStreamingContext: StreamingContext | undefined =
+								streamingContext
+									? {
+											...streamingContext,
+											...(abortSignal ? { abortSignal } : {}),
+										}
+									: abortSignal
+										? {
+												onStreamChunk: async () => undefined,
+												messageId: responseId,
+												abortSignal,
+											}
+										: undefined;
+							return runWithStreamingContext(scopedStreamingContext, () =>
+								this.processMessage(
+									runtime,
+									message,
+									instrumentedCallback,
+									responseId,
+									runId,
+									startTime,
+									opts,
+								),
+							);
+						},
 					);
 
 					const result = await Promise.race([
@@ -8482,6 +8840,53 @@ export class DefaultMessageService implements IMessageService {
 		let routedDecision: ContextRoutingDecision | null = null;
 		let strategyResult: StrategyResult | null = null;
 		let _usedV5Runtime = false;
+		const earlyReplyMessages: Memory[] = [];
+		const persistedEarlyReplyIds = new Set<string>();
+		const voiceResponseHandlerFastPath = isVoiceChannelMessage(message);
+		const deliverResponseHandlerEarlyReply = voiceResponseHandlerFastPath
+			? async (event: ResponseHandlerEarlyReplyEvent): Promise<void> => {
+					const text = event.text.trim();
+					if (!text || !message.id) return;
+					const earlyResponseId = asUUID(v4());
+					const earlyContent: Content = {
+						thought: event.messageHandler.thought,
+						actions: ["REPLY"],
+						providers: [],
+						text,
+						simple: true,
+						responseId: earlyResponseId,
+						inReplyTo: createUniqueUuid(runtime, message.id),
+					};
+					await runtime.applyPipelineHooks(
+						"outgoing_before_deliver",
+						outgoingPipelineHookContext(earlyContent, {
+							source: "response-handler",
+							roomId: message.roomId,
+							message,
+							responseId: earlyResponseId,
+						}),
+					);
+					const earlyMemory: Memory = {
+						id: earlyResponseId,
+						entityId: runtime.agentId,
+						agentId: runtime.agentId,
+						content: earlyContent,
+						roomId: message.roomId,
+						createdAt: Date.now(),
+					};
+					await runtime.createMemory(earlyMemory, "messages");
+					await this.emitMessageSent(
+						runtime,
+						earlyMemory,
+						message.content.source ?? "messageHandler",
+					);
+					earlyReplyMessages.push(earlyMemory);
+					persistedEarlyReplyIds.add(earlyResponseId);
+					if (callback) {
+						await callback(earlyContent);
+					}
+				}
+			: undefined;
 
 		const parallelJoin: { translatedUserText?: string } = {};
 		const setTranslatedUserText = (text: string) => {
@@ -8548,6 +8953,7 @@ export class DefaultMessageService implements IMessageService {
 						message,
 						state,
 						responseId,
+						onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
 					}),
 					runtime.applyPipelineHooks(
 						"parallel_with_should_respond",
@@ -8718,7 +9124,10 @@ export class DefaultMessageService implements IMessageService {
 			}
 
 			responseContent = result.responseContent;
-			responseMessages = result.responseMessages;
+			responseMessages =
+				earlyReplyMessages.length > 0
+					? [...earlyReplyMessages, ...result.responseMessages]
+					: result.responseMessages;
 			state = result.state;
 			mode = result.mode;
 
@@ -8799,6 +9208,12 @@ export class DefaultMessageService implements IMessageService {
 				mode !== "actions"
 			) {
 				for (const responseMemory of responseMessages) {
+					if (
+						responseMemory.id &&
+						persistedEarlyReplyIds.has(responseMemory.id)
+					) {
+						continue;
+					}
 					// Update the content in case inReplyTo was added
 					if (responseContent) {
 						responseMemory.content = responseContent;
@@ -8844,6 +9259,12 @@ export class DefaultMessageService implements IMessageService {
 					);
 					if (responseMessages.length > 0) {
 						for (const responseMemory of responseMessages) {
+							if (
+								responseMemory.id &&
+								persistedEarlyReplyIds.has(responseMemory.id)
+							) {
+								continue;
+							}
 							if (responseContent) {
 								responseMemory.content = responseContent;
 							}
@@ -8957,7 +9378,10 @@ export class DefaultMessageService implements IMessageService {
 				"Saved terminal response to memory",
 			);
 
-			if (callback) {
+			if (
+				callback &&
+				!(terminalAction === "IGNORE" && isVoiceChannelMessage(message))
+			) {
 				await callback(terminalContent);
 			}
 		}
@@ -9589,31 +10013,7 @@ export class DefaultMessageService implements IMessageService {
 			state,
 			message,
 		);
-		const failurePrompt = [
-			"You hit a transient model error and have to send a short user-facing reply.",
-			"Write a one or two sentence reply in plain language.",
-			"",
-			"Hard rules:",
-			"- Stay in character. Keep your usual voice and tone.",
-			"- NEVER mention internal mechanism words such as: planner, action_planner,",
-			"  XML, JSON, schema, structured output, model, retries, sonnet,",
-			"  opus, claude, anthropic, prompt, parse, parser, xml plan, decision",
-			"  loop, runtime, dispatch, or hand off. The user does not know or care",
-			"  what those are.",
-			"- Do not use em-dashes or en-dashes. Use a plain hyphen, period, or comma.",
-			"- Just acknowledge that something went wrong and suggest a retry.",
-			'  Examples: "something flaked, try again in a sec",',
-			'  "weird hiccup, give me another shot in a moment",',
-			'  "got stuck on my end, retry that?"',
-			"- If the user already gave a clear command and you can plausibly act,",
-			"  acknowledge it and offer to take the action directly. Keep it short.",
-			"- Return only the reply text. No labels, no XML, no JSON, no <think>.",
-			"",
-			"Recent Conversation:",
-			recentMessages,
-			"",
-			"Reply:",
-		].join("\n");
+		const failurePrompt = buildFailureReplyPrompt(recentMessages);
 
 		const attempt = await this.generateFailureReplyText(
 			runtime,

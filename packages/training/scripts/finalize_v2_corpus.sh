@@ -5,10 +5,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-echo ">>> Step 1/5: TOON repair on every synth file"
+echo ">>> Step 1/5: native JSON repair on every synth file"
 for f in data/synthesized/evaluators/*.jsonl data/synthesized/phase3/*.jsonl; do
   [ -s "$f" ] || continue
-  python3 scripts/transform_repair_toon_bullets.py --input "$f" --output "$f" 2>&1 | tail -1
+  python3 scripts/transform_repair_payload_bullets.py --input "$f" --output "$f" 2>&1 | tail -1
 done
 
 echo
