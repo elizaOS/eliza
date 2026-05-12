@@ -330,6 +330,24 @@ sudo mkdir -p \$HF_HOME && sudo chown -R \$USER \$HF_HOME || true
 ${hf_tok:+export HUGGING_FACE_HUB_TOKEN='$hf_tok'; export HF_TOKEN='$hf_tok'}
 export ELIZA1_FULLCORPUS_UPSAMPLE='$upsample'
 uv sync --extra train
+# The pinned torch (2.11+cu130) needs an NVIDIA driver >=580; the Nebius
+# cuda12.8 public image ships 570.x (CUDA 12.8 only) so torch.cuda.is_available()
+# is False. Swap to torch 2.11.0+cu128 (same torch version → ABI-compatible with
+# liger/bitsandbytes/apollo; just a cu12 backend the 570 driver supports), drop
+# the leftover cu13 nvidia stack, and force-refresh nvidia-cusparselt-cu12 (uv's
+# uninstall can leave a stale dist-info without the .so). REMOTE_TORCH_OVERRIDE=skip
+# disables this on an image whose driver is >=580.
+if [ "${REMOTE_TORCH_OVERRIDE:-cu128}" != "skip" ]; then
+  if ! .venv/bin/python -c 'import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)' 2>/dev/null; then
+    echo "[remote] torch can't see CUDA (driver too old for cu130) — swapping to torch 2.11.0+cu128"
+    uv pip uninstall --python .venv/bin/python torch torchvision triton 2>/dev/null || true
+    cu13pkgs="\$(uv pip list --python .venv/bin/python 2>/dev/null | awk '/^nvidia-[a-z0-9-]+ /{print \$1}')"
+    [ -n "\$cu13pkgs" ] && uv pip uninstall --python .venv/bin/python \$cu13pkgs 2>/dev/null || true
+    uv pip install --python .venv/bin/python 'torch==2.11.0' --index-url https://download.pytorch.org/whl/cu128
+    uv pip install --python .venv/bin/python --reinstall nvidia-cusparselt-cu12
+    .venv/bin/python -c 'import torch; assert torch.cuda.is_available(), "still no CUDA after torch swap"; x=torch.randn(64,64,device="cuda"); _=(x@x).sum().item(); print("[remote] torch", torch.__version__, "cuda OK on", torch.cuda.get_device_name(0))'
+  fi
+fi
 ${hf_tok:+uv run hf auth login --token "\$HUGGING_FACE_HUB_TOKEN" --add-to-git-credential || true}
 if [ "$SYNC_FULLCORPUS_SOURCES" = "1" ]; then
   echo "[remote] rebuilding data/final-eliza1-fullcorpus/ (upsample=\$ELIZA1_FULLCORPUS_UPSAMPLE)"
