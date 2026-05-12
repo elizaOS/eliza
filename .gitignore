@@ -475,12 +475,16 @@ packages/benchmarks/benchmark_results/
 # Build artifacts: js.map files in test directories and app-core test helpers
 packages/app-core/test/**/*.js.map
 packages/app-core/test/**/*.d.ts.map
+plugins/**/test/**/*.js.map
+plugins/**/test/**/*.d.ts.map
 test/**/*.js.map
 test/**/*.d.ts.map
 
 # Compiled build output in test directories (next to .ts sources)
 packages/app-core/test/**/*.js
 packages/app-core/test/**/*.d.ts
+plugins/**/test/**/*.js
+plugins/**/test/**/*.d.ts
 test/**/*.js
 test/**/*.d.ts
 test_output/
