@@ -167,14 +167,19 @@ _UMBRELLA_SUBACTIONS: dict[str, tuple[str, frozenset[str]]] = {
             }
         ),
     ),
-    # ENTITY umbrella: contacts / identity surface. `set_relationship` is
-    # an additional surface some agents emit interchangeably with
-    # `set_identity` for the relationship-only update path.
+    # ENTITY umbrella: contacts / identity surface.
+    # P1-5: `create` is the canonical TS subaction; `add` is the legacy alias
+    # (scenario corpus uses `add`). `create_contact` covers the promoted
+    # ENTITY_CREATE_CONTACT form some agents emit. `set_relationship` covers
+    # the relationship-only update path some agents emit as `set_identity`.
     "ENTITY": (
         "subaction",
         frozenset(
             {
+                "create",
                 "add",
+                "create_contact",
+                "read",
                 "list",
                 "set_identity",
                 "set_relationship",
@@ -270,8 +275,8 @@ _READ_ONLY_SUBACTIONS: dict[str, frozenset[str]] = {
         }
     ),
     # ENTITY: log_interaction and list are no-ops; add and set_identity
-    # mutate the contact store.
-    "ENTITY": frozenset({"log_interaction", "list"}),
+    # mutate the contact store. `read` is the TS canonical alias for `list`.
+    "ENTITY": frozenset({"log_interaction", "list", "read"}),
     # LIFE: review/update/skip/list are no-ops in the runner because
     # alarm definitions and skip logs aren't modeled. create/complete/snooze
     # do mutate reminders. policy_* are configuration writes — treat as
@@ -454,6 +459,39 @@ def _try_parse_iso(value: Any) -> datetime | None:
     return dt
 
 
+def _coerce_passengers(value: Any) -> list[dict[str, str]] | None:
+    """Coerce a passengers value to a canonical array form for comparison.
+
+    The agent may emit a bare integer count (e.g. ``2``) while the GT scenario
+    uses an array of passenger objects (e.g. ``[{type: "adult"}, ...]``). Both
+    represent the same booking intent — the count is what matters, not the
+    field names inside each passenger dict. Returns a list of length N with
+    placeholder objects, or None if the value is not coercible.
+    """
+    if isinstance(value, int) and value > 0:
+        return [{"name": f"passenger_{i + 1}", "seat_class": "economy"} for i in range(value)]
+    if isinstance(value, float) and value > 0 and value == int(value):
+        n = int(value)
+        return [{"name": f"passenger_{i + 1}", "seat_class": "economy"} for i in range(n)]
+    if isinstance(value, list):
+        return value  # already array form; return as-is for length comparison
+    return None
+
+
+def _passengers_equivalent(predicted: Any, expected: Any) -> bool:
+    """Compare two passengers kwarg values by passenger count only.
+
+    Accepts: integer count, array of any passenger-shaped dicts (field names
+    are ignored — only the array length is compared). This lets ``passengers: 2``
+    score correctly against GT ``[{type: "adult"}, {type: "adult"}]``.
+    """
+    pred_arr = _coerce_passengers(predicted)
+    exp_arr = _coerce_passengers(expected)
+    if pred_arr is None or exp_arr is None:
+        return predicted == expected
+    return len(pred_arr) == len(exp_arr)
+
+
 def _values_equivalent(predicted: Any, expected: Any) -> bool:
     """Compare two kwarg values with date-tolerance and string normalization.
 
@@ -562,7 +600,15 @@ def _kwargs_match(predicted: dict[str, Any], expected: dict[str, Any]) -> bool:
             if key in _SOFT_KWARGS:
                 continue
             return False
-        if not _values_equivalent(predicted[key], exp_value):
+        pred_value = predicted[key]
+        # passengers: accept integer count ↔ array-of-objects as equivalent
+        # when the count matches. Agents often emit a bare integer while GT
+        # scenarios use [{type:"adult"}, ...] or [{name:…, seat_class:…}, …].
+        if key == "passengers":
+            if not _passengers_equivalent(pred_value, exp_value):
+                return False
+            continue
+        if not _values_equivalent(pred_value, exp_value):
             return False
     return True
 
