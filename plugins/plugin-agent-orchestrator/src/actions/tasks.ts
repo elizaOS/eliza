@@ -2583,16 +2583,6 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
   },
 
   examples: [
-    // ── delegation / sub-agent spawn (action=spawn_agent) ─────────────
-    // These few-shots are the canonical signal that maps "spawn a sub-
-    // agent / delegate this / fire up a coding agent" → TASKS with
-    // action=spawn_agent. Without them, weaker planner LLMs (e.g.
-    // gpt-oss-120b on Cerebras at high prompt sizes) sometimes pick
-    // inline FILE.write or hallucinate a refusal. The cluster covers
-    // explicit verbs (spawn / delegate / fire up), explicit nouns
-    // (sub-agent / coding agent / sub-process), and the
-    // user-naming-the-adapter case (opencode / claude / codex) so the
-    // few-shot matches whatever provider the user has wired.
     [
       {
         name: "{{name1}}",
