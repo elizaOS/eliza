@@ -208,8 +208,12 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     "woo-bench",
     "orchestrator_lifecycle",
     "orchestrator-lifecycle",
+    "personality_bench",
+    "personality-bench",
   ]).has(benchmark);
   const isWooBench = benchmark === "woobench" || benchmark === "woo-bench";
+  const isPersonalityBenchmark =
+    benchmark === "personality_bench" || benchmark === "personality-bench";
 
   sections.push(`# Benchmark Task`);
   sections.push(`**Benchmark:** ${ctx.benchmark}`);
@@ -394,7 +398,20 @@ function formatContextAsText(ctx: BenchmarkContext): string {
       `Respond with actions: REPLY and include <decision>, <reason>, and <confidence> in text. Do not call BENCHMARK_ACTION.`,
     );
   } else if (isConversationalBenchmark) {
-    if (isWooBench && ctx.payment_actions) {
+    if (isPersonalityBenchmark) {
+      sections.push(
+        `This is a personality benchmark. Respond naturally to the user as you would in a real conversation.`,
+      );
+      sections.push(
+        `When the user sets a style or trait directive (e.g. "be terse", "no emojis", "speak like a pirate"), invoke the PERSONALITY action to record the directive, then confirm it in your reply text.`,
+      );
+      sections.push(
+        `Hold every active style/trait directive across subsequent turns — including topic changes — until the user explicitly releases it.`,
+      );
+      sections.push(
+        `Use REPLY for ordinary conversational responses. Use PERSONALITY when the user sets, changes, or releases a personality directive.`,
+      );
+    } else if (isWooBench && ctx.payment_actions) {
       sections.push(
         `For ordinary conversation, respond with actions: REPLY and put only the next conversational message in text.`,
       );
