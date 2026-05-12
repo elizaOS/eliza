@@ -37,6 +37,35 @@ bun run --cwd packages/inference/voice-bench bench \
   --output run.json
 ```
 
+### Running on GPU (single-GPU tier)
+
+For Linux + NVIDIA hosts, the harness ships per-GPU autotune profiles
+under `packages/inference/configs/gpu/` (3090, 4090, 5090, H200). The
+inference engine for this tier is **llama.cpp / llama-server** — not
+vLLM or SGLang.
+
+Detect the host card and print the resolved autotune plan:
+
+```bash
+bun run --cwd packages/inference/voice-bench bench gpu
+# Or narrowed to a specific bundle:
+bun run --cwd packages/inference/voice-bench bench gpu --bundle eliza-1-9b
+```
+
+The subcommand calls `nvidia-smi --query-gpu=name,memory.total` and
+loads the matching JSON config file. On a CPU-only host (e.g. CI without
+a GPU runner) it prints `{ "nvidiaPresent": false }` and exits 0.
+
+Once a real `PipelineDriver` is wired for `--backend cuda`, the GPU
+matrix in `configs/gpu/matrix.json` enumerates the (GPU, bundle,
+ctx_size) tuples we benchmark. Each row maps to one autotune config.
+
+Per-GPU expected metrics live in the config JSON files and are flagged
+`"_provenance": "extrapolated"` until a real run replaces them. The
+override mechanism + per-GPU known limits are documented in
+[`packages/inference/configs/gpu/SPECS.md`](../configs/gpu/SPECS.md) and
+[`docs/inference/gpu-tier.md`](../../../docs/inference/gpu-tier.md).
+
 Unit tests:
 
 ```bash

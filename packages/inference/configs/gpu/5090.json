@@ -1,0 +1,87 @@
+{
+  "$schema": "./gpu-config.schema.json",
+  "id": "rtx-5090",
+  "name": "NVIDIA GeForce RTX 5090",
+  "match_names": ["RTX 5090", "GeForce RTX 5090"],
+  "vram_gb": 32,
+  "compute_capability": "12.0",
+  "arch": "blackwell",
+  "memory_bandwidth_gbs": 1792,
+  "fp8": true,
+  "fp4": true,
+  "flash_attn_3": true,
+  "llama_server_flags": {
+    "n_gpu_layers": 999,
+    "ctx_size": 65536,
+    "batch_size": 4096,
+    "ubatch_size": 1024,
+    "n_parallel": 12,
+    "cache_type_k": "qjl1_256",
+    "cache_type_v": "q4_polar",
+    "flash_attn": true,
+    "split_mode": "none",
+    "main_gpu": 0,
+    "mlock": true,
+    "no_mmap": false,
+    "no_kv_offload": false,
+    "ctx_checkpoints": 16,
+    "ctx_checkpoint_interval": 8192,
+    "draft_max": 24,
+    "draft_min": 4,
+    "draft_p_min": 0.5
+  },
+  "bundle_recommendations": {
+    "text-1.7b": {
+      "ctx_size": 131072,
+      "max_parallel": 24
+    },
+    "text-7b": {
+      "ctx_size": 131072,
+      "max_parallel": 12
+    },
+    "text-27b": {
+      "ctx_size": 65536,
+      "max_parallel": 4
+    },
+    "voice": {
+      "ctx_size": 8192,
+      "max_parallel": 8,
+      "batch_size": 1024,
+      "ubatch_size": 256
+    },
+    "eliza-1-2b": {
+      "ctx_size": 131072,
+      "max_parallel": 24
+    },
+    "eliza-1-4b": {
+      "ctx_size": 131072,
+      "max_parallel": 12
+    },
+    "eliza-1-9b": {
+      "ctx_size": 131072,
+      "max_parallel": 12
+    },
+    "eliza-1-27b": {
+      "ctx_size": 65536,
+      "max_parallel": 4
+    },
+    "eliza-1-27b-256k": {
+      "ctx_size": 262144,
+      "max_parallel": 1,
+      "no_kv_offload": true
+    }
+  },
+  "expected_metrics": {
+    "ttfa_p50_ms": 160,
+    "ttfa_p95_ms": 240,
+    "rtf": 0.3,
+    "tokens_per_second_decode": 220,
+    "_provenance": "extrapolated"
+  },
+  "known_limits": [
+    "sm_120 kernel coverage in llama.cpp is early; QJL/Polar requires CAPABILITIES.json probe",
+    "flash-attn-3 supported but tuned for sm_90 (Hopper) first",
+    "27B-256k is single-slot only and requires kvSpillToCpu opt-in"
+  ],
+  "_provenance": "extrapolated; numbers derived from VRAM + mem-bw math in SPECS.md"
+}
