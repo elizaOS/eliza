@@ -388,10 +388,33 @@ function writeWav16(file, samples, sampleRate) {
 // WER (Levenshtein over normalized word lists)
 // --------------------------------------------------------------------------
 
+// Standard ASR-WER text normalization, applied identically to ref and hyp:
+// lowercase → expand common contractions → strip punctuation (keep
+// intra-word apostrophes for the few not expanded) → collapse whitespace.
+// Keep this in sync with the eval suite's documented normalization (see
+// `eval_asr_wer` in packages/training/scripts/eval/eliza1_eval_suite.py).
+const CONTRACTIONS = [
+  [/\bwon't\b/g, "will not"],
+  [/\bcan't\b/g, "cannot"],
+  [/\bshan't\b/g, "shall not"],
+  [/\bain't\b/g, "is not"],
+  [/\blet's\b/g, "let us"],
+  [/\b(\w+)'ll\b/g, "$1 will"],
+  [/\b(\w+)'ve\b/g, "$1 have"],
+  [/\b(\w+)'re\b/g, "$1 are"],
+  [/\b(\w+)'d\b/g, "$1 would"],
+  [/\b(\w+)n't\b/g, "$1 not"],
+  [/\b(\w+)'m\b/g, "$1 am"],
+  // possessive / "it's" → "it is" is ambiguous; only expand the unambiguous
+  // verb forms above. Leave other 's attached, then strip below.
+];
+
 function normalizeWords(s) {
-  return (s || "")
-    .toLowerCase()
+  let t = (s || "").toLowerCase();
+  for (const [re, rep] of CONTRACTIONS) t = t.replace(re, rep);
+  return t
     .replace(/[^\p{L}\p{N}\s']/gu, " ")
+    .replace(/'/g, "")
     .replace(/\s+/g, " ")
     .trim()
     .split(" ")
@@ -1006,7 +1029,6 @@ async function main() {
       DYLD_LIBRARY_PATH: `${engine.dir}${path.delimiter}${process.env.DYLD_LIBRARY_PATH || ""}`,
       ELIZA_OMNIVOICE_MODEL: files.ttsModel,
       ELIZA_OMNIVOICE_CODEC: files.ttsCodec,
-      ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT: "1",
     };
     const serverArgs = [
       "-m", files.text,
