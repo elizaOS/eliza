@@ -253,11 +253,11 @@ def _entry(**kw) -> ModelEntry:
 DFLASH_DRAFTER_BASE: dict[str, str] = {
     # Qwen3.5/3.6 targets — drafter base is Qwen3.5-0.8B-Base; distill-target: ~0.6B Qwen3.5-arch.
     "eliza-1-2b": "Qwen/Qwen3.5-0.8B-Base",
+    "eliza-1-4b": "Qwen/Qwen3.5-0.8B-Base",
     "eliza-1-9b": "Qwen/Qwen3.5-0.8B-Base",
     "eliza-1-27b": "Qwen/Qwen3.5-0.8B-Base",
     # Qwen3 legacy targets — drafter base stays on the Qwen3 vocab (151936).
     "eliza-1-1_7b": "Qwen/Qwen3-0.6B",
-    "eliza-1-4b": "Qwen/Qwen3-0.6B",
     # eliza-1-0_6b / eliza-1-0_8b: no drafter (smallest tiers).
 }
 
@@ -372,7 +372,7 @@ REGISTRY: dict[str, ModelEntry] = {
     # Referenced by scripts (train_vast.sh, train_nebius.sh, push_*), docs,
     # and tests.
     "qwen3.5-2b": _entry(
-        hf_id="Qwen/Qwen3.5-2B", short_name="qwen3.5-2b",
+        hf_id="Qwen/Qwen3.5-2B-Base", short_name="qwen3.5-2b",
         eliza_short_name="eliza-1-2b", eliza_repo_id="elizaos/eliza-1-2b",
         abliteration_repo_id="elizaos/eliza-1-2b-uncensored",
         params_billion=2.27, tier=Tier.LOCAL,
@@ -382,11 +382,28 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=6, infer_kv_heads=2, infer_kv_head_dim=256,
         quantization_after=("polarquant", "turboquant", "qjl", "fp8", "gguf-q4_k_m"),
-        notes="Mid local tier (eliza-1-2b). qwen3-1.7b (eliza-1-1_7b) is the "
-              "lighter alternative for 16 GB consumer GPUs.",
+        notes="Mid local tier (eliza-1-2b). Trains from Qwen/Qwen3.5-2B-Base "
+              "(pretrain checkpoint, not the instruct release). qwen3-1.7b "
+              "(eliza-1-1_7b) is the lighter Qwen3 alternative for 16 GB GPUs.",
+    ),
+    "qwen3.5-4b": _entry(
+        hf_id="Qwen/Qwen3.5-4B-Base", short_name="qwen3.5-4b",
+        eliza_short_name="eliza-1-4b", eliza_repo_id="elizaos/eliza-1-4b",
+        abliteration_repo_id="elizaos/eliza-1-4b-uncensored",
+        params_billion=4.0, tier=Tier.LOCAL,
+        seq_len=8192, optimizer="apollo_mini", optimizer_rank=1,
+        micro_batch=1, grad_accum=16, train_mem_gb_budget=28.0,
+        train_dtype="bf16",
+        infer_max_in=131072, infer_max_out=16384,
+        infer_kv_layers=7, infer_kv_heads=2, infer_kv_head_dim=256,
+        quantization_after=("polarquant", "turboquant", "qjl", "fp8", "gguf-q4_k_m"),
+        notes="Local/workstation tier (eliza-1-4b) on the Qwen3.5-4B-Base "
+              "backbone. Full-param APOLLO SFT fits a single H200 easily. "
+              "Replaces the legacy qwen3-4b for the Qwen3.5 fused-model line "
+              "(shares the 248k tokenizer + dflash drafter base).",
     ),
     "qwen3.5-9b": _entry(
-        hf_id="Qwen/Qwen3.5-9B", short_name="qwen3.5-9b",
+        hf_id="Qwen/Qwen3.5-9B-Base", short_name="qwen3.5-9b",
         eliza_short_name="eliza-1-9b", eliza_repo_id="elizaos/eliza-1-9b",
         abliteration_repo_id="elizaos/eliza-1-9b-uncensored",
         params_billion=9.0, tier=Tier.WORKSTATION,
@@ -396,9 +413,35 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=8, infer_kv_heads=4, infer_kv_head_dim=256,
         quantization_after=("polarquant", "turboquant", "qjl", "fp8", "gguf-q4_k_m"),
-        notes="Workstation tier (eliza-1-9b). Full-param APOLLO SFT needs an "
-              "80 GB-class GPU (H100 / A100-80) or FSDP across two.",
+        notes="Workstation tier (eliza-1-9b). Trains from "
+              "Qwen/Qwen3.5-9B-Base (pretrain checkpoint, not the instruct "
+              "release). Full-param APOLLO SFT needs an 80 GB-class GPU "
+              "(H100 / H200 / A100-80) or FSDP across two.",
     ),
+    "qwen3.5-27b": _entry(
+        hf_id="Qwen/Qwen3.5-27B", short_name="qwen3.5-27b",
+        eliza_short_name="eliza-1-27b", eliza_repo_id="elizaos/eliza-1-27b",
+        abliteration_repo_id="elizaos/eliza-1-27b-uncensored",
+        params_billion=27.0, tier=Tier.CLOUD,
+        seq_len=32768, optimizer="apollo_mini", optimizer_rank=1,
+        micro_batch=1, grad_accum=16, train_mem_gb_budget=130.0,
+        train_dtype="bf16",
+        infer_max_in=131072, infer_max_out=16384,
+        infer_kv_layers=16, infer_kv_heads=4, infer_kv_head_dim=256,
+        quantization_after=("polarquant", "turboquant", "qjl", "fp8", "gguf-q4_k_m"),
+        notes="Cloud tier (eliza-1-27b). Trains from Qwen/Qwen3.5-27B (no "
+              "-Base variant published; the 27B release IS the base pretrain "
+              "checkpoint). With apollo_mini (rank-1 fp32 moments, "
+              "negligible memory) + grad-checkpointed bf16 + Liger fused CE "
+              "at micro_batch=1 seq=32k, the working-set sums to ~115-130 GB "
+              "and FITS A SINGLE 141 GB H200 SXM. Run with FSDP_WORLD_SIZE=1 "
+              "on gpu-h200x1; only fall back to gpu-h200x2 (8× H200, "
+              "expensive) if the live run blows the per-GPU budget.",
+        extra={"nebius_machine": "H200-1x", "fsdp_world_size": "1"},
+    ),
+    # The legacy Qwen3.6-27B entry — kept addressable for any caller that
+    # still passes that key, but the canonical 27B is now qwen3.5-27b. Both
+    # map to eliza-1-27b in the runtime catalog.
     "qwen3.6-27b": _entry(
         hf_id="Qwen/Qwen3.6-27B", short_name="qwen3.6-27b",
         eliza_short_name="eliza-1-27b", eliza_repo_id="elizaos/eliza-1-27b",
@@ -410,7 +453,10 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=16, infer_kv_heads=4, infer_kv_head_dim=256,
         quantization_after=("polarquant", "turboquant", "qjl", "fp8", "gguf-q4_k_m"),
-        notes="Cloud tier (eliza-1-27b). Trains under FSDP across 2× H200.",
+        notes="LEGACY 27B entry on the Qwen3.6 backbone. Prefer qwen3.5-27b "
+              "for the eliza-1 fused-model line — dflash kernels are "
+              "validated against Qwen3.5, not Qwen3.6. Kept here so older "
+              "tier_to_registry_key callers keep resolving.",
         extra={"nebius_machine": "H200-2x", "fsdp_world_size": "2"},
     ),
 }
