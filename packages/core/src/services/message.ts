@@ -140,6 +140,7 @@ import type {
 	GenerateTextAttachment,
 	GenerateTextParams,
 	GenerateTextResult,
+	JSONSchema,
 	PromptSegment,
 	TextToSpeechParams,
 	ToolDefinition,
@@ -3029,6 +3030,189 @@ function normalizeRawParsedForFieldRegistry(
 	return normalized;
 }
 
+const PROTOCOL_ACTION_NAMES_FOR_REFUSAL = new Set([
+	"REPLY",
+	"IGNORE",
+	"STOP",
+	"CONTINUE",
+	"NONE",
+]);
+
+const REFUSAL_PHRASE_PATTERN =
+	/(?:^|[^A-Za-z])(?:I'?m unable|I cannot|I can'?t|unable to spawn|policy restriction|due to policy)/i;
+
+/**
+ * When the response handler produces a self-contradicting envelope —
+ * `candidateActions` shortlists a real (non-protocol) action AND
+ * `plan.reply` is an unambiguous refusal — drop the prose. The
+ * structured `candidateActions` field is trajectory ground truth (a
+ * discrete, machine-readable decision); the prose is the alignment
+ * artifact of safety-tuned models on verbs like "spawn / delegate /
+ * agent". When they disagree, trust the candidate and let the planner
+ * stage act — shipping a refusal that contradicts what the agent is
+ * about to do confuses the user.
+ *
+ * Detection is intentionally narrow:
+ *  - `candidateActions` must include at least one non-protocol action
+ *    (REPLY/IGNORE/STOP/CONTINUE/NONE don't count)
+ *  - `plan.reply` must contain an unambiguous refusal phrase
+ *  - `plan.prefiredToolCall` must NOT be set (a prefired call already
+ *    means we extracted a call-shape from the reply, so there's no
+ *    contradiction left to suppress)
+ *
+ * If any of these don't hold the function returns the input unchanged.
+ * This is a downstream consistency fix, NOT regex-on-output-for-routing
+ * (routing has already happened via `candidateActions` before this
+ * function runs).
+ */
+function applyRefusalContradictionSuppression(
+	result: MessageHandlerResult,
+): MessageHandlerResult {
+	const plan = result.plan;
+	if (!plan) return result;
+	if (plan.prefiredToolCall) return result;
+	const reply = typeof plan.reply === "string" ? plan.reply : "";
+	if (!reply) return result;
+	if (!REFUSAL_PHRASE_PATTERN.test(reply)) return result;
+	const candidateActions = Array.isArray(plan.candidateActions)
+		? plan.candidateActions
+		: [];
+	const hasNonProtocolCandidate = candidateActions.some(
+		(name) =>
+			typeof name === "string" &&
+			!PROTOCOL_ACTION_NAMES_FOR_REFUSAL.has(name.trim().toUpperCase()),
+	);
+	if (!hasNonProtocolCandidate) return result;
+	return {
+		...result,
+		thought: `${result.thought ?? ""}\n[refusal-contradiction-suppression] response handler emitted refusal text alongside non-protocol candidateActions=[${candidateActions.join(",")}]; dropping prose, letting planner act on the candidate.`.trim(),
+		plan: {
+			...plan,
+			reply: "",
+		},
+	};
+}
+
+/**
+ * Detect a bare `{action: "...", params: {...}}` call shape on an
+ * already-parsed object (the response handler's structured tool args or
+ * parsed content JSON). Returns the action + params if the shape matches
+ * AND none of the standard HANDLE_RESPONSE envelope fields are present
+ * (the presence of `shouldRespond` / `contexts` / `replyText` / `thought`
+ * means the model DID populate the envelope and we should not short-
+ * circuit). Used by the response-handler short-circuit path; same
+ * fail-closed contract as `extractPlanActionsCallFromText`.
+ */
+export function extractPrefiredCallFromRawParsed(
+	raw: Record<string, unknown>,
+): { name: string; params: Record<string, unknown> } | null {
+	const action = typeof raw.action === "string" ? raw.action.trim() : "";
+	if (!action) return null;
+	// If the envelope ALSO populated standard handler fields, the model
+	// produced a normal plan — let the field registry handle it. The call-
+	// shape short-circuit only fires when the object IS the call shape and
+	// not a hybrid envelope.
+	const hasEnvelopeField =
+		typeof raw.shouldRespond === "string" ||
+		typeof raw.replyText === "string" ||
+		Array.isArray(raw.contexts) ||
+		Array.isArray(raw.candidateActionNames) ||
+		Array.isArray(raw.candidateActions) ||
+		typeof raw.thought === "string" ||
+		typeof raw.requiresTool === "boolean" ||
+		(typeof raw.plan === "object" && raw.plan !== null);
+	if (hasEnvelopeField) return null;
+	// Action name must be UPPER_SNAKE_CASE-shaped (the canonical action /
+	// virtual-subaction naming) — reject things like normalizeMessageHandlerAction's
+	// fallback values ("RESPOND" / "IGNORE" / "STOP") which would otherwise
+	// be valid `action` strings but aren't tool-call action names.
+	if (action === "RESPOND" || action === "IGNORE" || action === "STOP") {
+		return null;
+	}
+	const params =
+		raw.params && typeof raw.params === "object" && !Array.isArray(raw.params)
+			? (raw.params as Record<string, unknown>)
+			: null;
+	if (!params) return null;
+	return { name: action, params };
+}
+
+/**
+ * Detect a single, well-formed `PLAN_ACTIONS(<JSON>)` block in a string of
+ * model content text. Returns the parsed action name + params, or `null` if
+ * the text isn't an unambiguous call-shape emission.
+ *
+ * Strictly conservative — fails closed on:
+ * - empty / missing text
+ * - any prose before or after the call block
+ * - more than one PLAN_ACTIONS block
+ * - malformed JSON inside the parens
+ * - missing or empty `action` field
+ *
+ * Why we tolerate this in the first place: weaker / Cerebras-aligned
+ * planner LLMs (gpt-oss-120b, qwen-3-235b-instruct) emit the literal call
+ * shape as message content when they "know what to do" but can't reliably
+ * invoke the function-call API. Without this layer, those models look
+ * broken from the user side even though their structured intent is
+ * already correct.
+ */
+export function extractPlanActionsCallFromText(text: unknown): {
+	name: string;
+	params: Record<string, unknown>;
+} | null {
+	if (typeof text !== "string") return null;
+	if (text.length === 0) return null;
+	// Strip <think>...</think> reasoning blocks first.
+	const withoutThink = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+	if (!withoutThink) return null;
+	// Strip a single outer code fence if present (```json ... ``` or ``` ... ```).
+	const fenceMatch = withoutThink.match(
+		/^```(?:json|js|ts|javascript|typescript)?\s*\n([\s\S]*?)\n?```\s*$/,
+	);
+	const inner = fenceMatch ? fenceMatch[1].trim() : withoutThink;
+	// Two acceptable shapes (Cerebras-served gpt-oss / qwen-instruct emit
+	// either depending on whether the planner runs in wrapper-tool mode or
+	// native-tools mode):
+	//
+	//   1. `PLAN_ACTIONS({...})` — the wrapper-mode call shape, sometimes
+	//      with trailing `}))` over-correction.
+	//   2. `{"action":"NAME","params":{...}}` — the bare object shape the
+	//      model emits when it's been shown native function tools but
+	//      Cerebras's serverless inference didn't carry the call through
+	//      the function-call API.
+	//
+	// Both have to be a single whole-string match — any surrounding prose,
+	// multiple blocks, or invalid JSON falls through.
+	const wrapperPasses =
+		(inner.match(/PLAN_ACTIONS\s*\(/g) ?? []).length === 1;
+	const wrapperMatch = wrapperPasses
+		? inner.match(/^PLAN_ACTIONS\s*\(\s*(\{[\s\S]*\})\s*[);\s]*$/)
+		: null;
+	const bareMatch = wrapperMatch
+		? null
+		: inner.match(/^(\{[\s\S]*\})\s*[);\s]*$/);
+	const jsonBody = wrapperMatch?.[1] ?? bareMatch?.[1] ?? null;
+	if (!jsonBody) return null;
+	// JSON body must parse strictly — no tolerance for malformed payload.
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(jsonBody);
+	} catch {
+		return null;
+	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return null;
+	}
+	const obj = parsed as Record<string, unknown>;
+	const action = typeof obj.action === "string" ? obj.action.trim() : "";
+	if (!action) return null;
+	const params =
+		obj.params && typeof obj.params === "object" && !Array.isArray(obj.params)
+			? (obj.params as Record<string, unknown>)
+			: {};
+	return { name: action, params };
+}
+
 function messageHandlerFromFieldResult(
 	result: ResponseHandlerResult,
 	fieldRun?: ResponseHandlerFieldRunResult,
@@ -3084,8 +3268,34 @@ function messageHandlerFromFieldResult(
 					: "RESPOND";
 	const preemptDirect =
 		preempt?.mode === "ack-and-stop" || preempt?.mode === "direct-reply";
-	const replyText =
+	const rawReplyText =
 		typeof result.replyText === "string" ? result.replyText : "";
+
+	// Weaker / Cerebras-aligned planner LLMs occasionally emit the entire
+	// `PLAN_ACTIONS({...})` call shape inside the response-handler's
+	// `replyText` as plain content text — instead of invoking it as a tool
+	// call. When that happens AND the parsed JSON resolves to a valid action,
+	// the V5 dispatch is bypassed entirely and the bot just ships the JSON
+	// as a Discord message. The user sees code that didn't run.
+	//
+	// `extractPlanActionsCallFromText` is a strictly-conservative parser:
+	// it requires the ENTIRE post-cleanup text to be a single
+	// `PLAN_ACTIONS(<JSON>)` block (optionally code-fence-wrapped) with
+	// strict JSON. Any surrounding prose, additional text, multiple blocks,
+	// or invalid JSON falls through to the existing soft-hint path.
+	//
+	// When extraction succeeds, the replyText is suppressed (we don't want
+	// to leak `PLAN_ACTIONS(...)` JSON to the user channel) and a
+	// `prefiredToolCall` is staged on the plan. The planner-loop call site
+	// detects that field and dispatches the action directly, skipping the
+	// planner LLM call that the model just told us was unreachable.
+	const prefiredToolCall = extractPlanActionsCallFromText(rawReplyText);
+	const replyText = prefiredToolCall ? "" : rawReplyText;
+	const augmentedCandidateActions =
+		prefiredToolCall && !candidateActions.includes(prefiredToolCall.name)
+			? [prefiredToolCall.name, ...candidateActions]
+			: candidateActions;
+
 	const routedContexts = preemptDirect
 		? Array.from(new Set([...contexts, SIMPLE_CONTEXT_ID]))
 		: contexts;
@@ -3094,7 +3304,9 @@ function messageHandlerFromFieldResult(
 	);
 	const shouldPlan =
 		!preemptDirect &&
-		(initialPlanningContexts.length > 0 || candidateActions.length > 0);
+		(initialPlanningContexts.length > 0 ||
+			augmentedCandidateActions.length > 0 ||
+			prefiredToolCall !== null);
 	const finalContexts =
 		shouldPlan && initialPlanningContexts.length === 0
 			? Array.from(
@@ -3109,11 +3321,17 @@ function messageHandlerFromFieldResult(
 	const plan: MessageHandlerResult["plan"] = {
 		contexts: finalContexts,
 		reply: replyText,
-		simple: preemptDirect ? true : !shouldPlan,
+		simple: prefiredToolCall ? false : preemptDirect ? true : !shouldPlan,
 		requiresTool: shouldPlan,
 	};
-	if (candidateActions.length > 0) {
-		plan.candidateActions = candidateActions;
+	if (augmentedCandidateActions.length > 0) {
+		plan.candidateActions = augmentedCandidateActions;
+	}
+	if (prefiredToolCall) {
+		plan.prefiredToolCall = {
+			name: prefiredToolCall.name,
+			params: prefiredToolCall.params as Record<string, JsonValue>,
+		};
 	}
 	const extract =
 		facts.length > 0 || relationships.length > 0 || addressedTo.length > 0
@@ -3131,15 +3349,54 @@ function parseMessageHandlerModelOutput(
 	raw: string | GenerateTextResult,
 ): MessageHandlerResult | null {
 	if (typeof raw !== "string") {
+		// PLAN_ACTIONS-in-content recovery has to run BEFORE the generic
+		// `parseMessageHandlerOutput` — that parser would consume the bare
+		// `{"action": "...", "params": {...}}` shape as a response-handler
+		// envelope (interpreting `action` as `shouldRespond`) and silently
+		// drop the params. The extractor fails closed on any ambiguity, so
+		// it's safe to try first.
 		return (
 			parseMessageHandlerNativeToolCall(raw) ??
+			synthesizePrefiredToolCallFromText(getV5ModelText(raw)) ??
 			parseMessageHandlerOutput(getV5ModelText(raw)) ??
 			synthesizeSimpleReplyFromPlainText(getV5ModelText(raw))
 		);
 	}
 	return (
-		parseMessageHandlerOutput(raw) ?? synthesizeSimpleReplyFromPlainText(raw)
+		synthesizePrefiredToolCallFromText(raw) ??
+		parseMessageHandlerOutput(raw) ??
+		synthesizeSimpleReplyFromPlainText(raw)
 	);
+}
+
+/**
+ * Wraps `extractPlanActionsCallFromText` as a `MessageHandlerResult` builder
+ * so it can sit alongside `parseMessageHandlerOutput` /
+ * `parseMessageHandlerNativeToolCall` in the parse priority chain. When the
+ * extractor finds a clean call shape, this synthesizes a plan with the
+ * `prefiredToolCall` field staged so the planner-loop call site short-
+ * circuits and dispatches directly through the existing executor path.
+ */
+function synthesizePrefiredToolCallFromText(
+	raw: string | undefined | null,
+): MessageHandlerResult | null {
+	const extracted = extractPlanActionsCallFromText(raw);
+	if (!extracted) return null;
+	return {
+		processMessage: "RESPOND",
+		thought:
+			"Recovered planner action from response-handler content (PLAN_ACTIONS-in-text or bare-object call shape); dispatching directly via prefired tool call.",
+		plan: {
+			contexts: ["general"],
+			candidateActions: [extracted.name],
+			requiresTool: true,
+			simple: false,
+			prefiredToolCall: {
+				name: extracted.name,
+				params: extracted.params as Record<string, JsonValue>,
+			},
+		},
+	};
 }
 
 /**
@@ -3162,6 +3419,33 @@ function synthesizeSimpleReplyFromPlainText(
 	// Strip <think>...</think> blocks emitted by reasoning models.
 	const cleaned = trimmed.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
 	const replyText = cleaned || trimmed;
+
+	// Before falling through to a simple reply, check whether the model
+	// actually emitted a clean `PLAN_ACTIONS(<JSON>)` call shape as
+	// content text. Weaker / Cerebras-aligned planners do this routinely
+	// — see `extractPlanActionsCallFromText` for the strictly-conservative
+	// parsing contract. When extraction succeeds, route the turn through
+	// the planner dispatch with `prefiredToolCall` set so the action
+	// actually executes instead of being shipped as message text.
+	const prefiredToolCall = extractPlanActionsCallFromText(replyText);
+	if (prefiredToolCall) {
+		return {
+			processMessage: "RESPOND",
+			thought:
+				"Recovered planner action from response-handler content (PLAN_ACTIONS-in-text); dispatching directly.",
+			plan: {
+				contexts: ["general"],
+				candidateActions: [prefiredToolCall.name],
+				requiresTool: true,
+				simple: false,
+				prefiredToolCall: {
+					name: prefiredToolCall.name,
+					params: prefiredToolCall.params as Record<string, JsonValue>,
+				},
+			},
+		};
+	}
+
 	return {
 		processMessage: "RESPOND",
 		thought:
@@ -4432,15 +4716,121 @@ function subPlannerResultToPlannerToolResult(
  * shortcut still emits HANDLE_RESPONSE through its own dedicated call).
  */
 function collectPlannerTools(context: ContextObject): ToolDefinition[] {
-	const hasAnyAction = context.events.some(
-		(event) =>
+	type ToolEventShape = {
+		type: string;
+		tool?: {
+			name?: string;
+			description?: string;
+			parameters?: unknown;
+			// The per-action tool event carries the source `Action` so
+			// downstream consumers can read `subActions` / promoted-marker
+			// metadata. We use it in native mode to skip umbrella parents
+			// whose virtual sub-actions are already exposed individually
+			// (otherwise the LLM sees both `TASKS` and `TASKS_SPAWN_AGENT`
+			// and picks the umbrella without a discriminator).
+			action?: {
+				subActions?: ReadonlyArray<unknown>;
+			};
+		};
+	};
+	const toolEvents = context.events.filter(
+		(event): event is ContextEvent & ToolEventShape =>
 			event.type === "tool" &&
 			"tool" in event &&
 			Boolean(
-				(event as { tool?: { name?: string } }).tool?.name?.trim().length,
+				(event as ToolEventShape).tool?.name?.trim().length,
 			),
 	);
-	return hasAnyAction ? [...STABLE_PLANNER_TOOLS] : [];
+	if (toolEvents.length === 0) {
+		return [];
+	}
+
+	// Default: expose ONE stable wrapper tool (`PLAN_ACTIONS`). Tool block
+	// is byte-identical across turns, which is the dominant cache-hit
+	// signal for Cerebras-style prompt caches. The planner LLM picks an
+	// action by string name inside the wrapper and the dispatcher unwraps
+	// it at the parse boundary.
+	//
+	// Opt-in alternative: `ELIZA_PLANNER_NATIVE_TOOLS=1` exposes each
+	// gated action as its OWN top-level function tool. Trades prompt-cache
+	// stability for native-function-call reliability — for planner LLMs
+	// with weaker function-calling discipline (Cerebras-hosted instruct
+	// variants like gpt-oss-120b and qwen-3-235b-instruct) the wrapper's
+	// string-name-then-nested-params indirection is the dominant failure
+	// surface: the model either picks the wrong action string, hallucinates
+	// an unregistered name, or emits the entire PLAN_ACTIONS call shape as
+	// content text instead of invoking the tool. Native mode eliminates
+	// that indirection — the model sees `TASKS_SPAWN_AGENT(task, agentType)`
+	// directly and uses its native function-call API to invoke it.
+	//
+	// The executor (`executeV5PlannedToolCall` -> `unwrapPlanActionsToolCall`)
+	// already handles direct action-name tool calls as a no-op-unwrap, so
+	// no downstream changes are needed.
+	const useNativeTools = process.env.ELIZA_PLANNER_NATIVE_TOOLS === "1";
+	if (!useNativeTools) {
+		return [...STABLE_PLANNER_TOOLS];
+	}
+
+	// First pass: collect names of umbrella parents that have virtual
+	// sub-actions exposed in THIS tool list. We need to skip the parent
+	// in native mode — exposing both `TASKS` and `TASKS_SPAWN_AGENT` makes
+	// the LLM pick the umbrella (more general name) without setting its
+	// discriminator, then the runtime dispatch fails with "Action TASKS
+	// has no sub-actions available in the current context". The virtuals
+	// carry the same parameter schema with the discriminator pinned, so
+	// dropping the umbrella loses nothing — every parameter shape is
+	// still reachable through one of the virtuals.
+	const exposedNames = new Set<string>();
+	for (const event of toolEvents) {
+		const name = event.tool?.name?.trim();
+		if (name) exposedNames.add(name);
+	}
+	const umbrellasToSkip = new Set<string>();
+	for (const event of toolEvents) {
+		const subActions = event.tool?.action?.subActions;
+		if (!Array.isArray(subActions) || subActions.length === 0) continue;
+		const parentName = event.tool?.name?.trim();
+		if (!parentName) continue;
+		const anyVirtualExposed = subActions.some((entry) => {
+			const virtualName =
+				typeof entry === "string"
+					? entry
+					: entry &&
+						typeof entry === "object" &&
+						typeof (entry as { name?: unknown }).name === "string"
+						? ((entry as { name: string }).name)
+						: null;
+			return virtualName ? exposedNames.has(virtualName) : false;
+		});
+		if (anyVirtualExposed) {
+			umbrellasToSkip.add(parentName);
+		}
+	}
+
+	const seen = new Set<string>();
+	const native: ToolDefinition[] = [];
+	for (const event of toolEvents) {
+		const tool = event.tool;
+		if (!tool) continue;
+		const name = typeof tool.name === "string" ? tool.name.trim() : "";
+		if (!name || seen.has(name)) continue;
+		if (umbrellasToSkip.has(name)) continue;
+		seen.add(name);
+		const parameters =
+			tool.parameters && typeof tool.parameters === "object"
+				? (tool.parameters as JSONSchema)
+				: undefined;
+		native.push({
+			name,
+			...(typeof tool.description === "string" && tool.description.trim()
+				? { description: tool.description }
+				: {}),
+			...(parameters ? { parameters } : {}),
+			type: "function",
+			strict: true,
+		});
+	}
+	return native;
 }
 
 function collectPreviousActionResults(
@@ -4671,7 +5061,35 @@ export async function runV5MessageRuntimeStage1(args: {
 		const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
 		let fieldRunResult: ResponseHandlerFieldRunResult | null = null;
 		let messageHandler: MessageHandlerResult | null = null;
-		if (rawFieldParsed) {
+		// Prefired-call short-circuit: when the response handler emitted a
+		// bare `{"action":"...","params":{...}}` call shape as its tool args
+		// or content (Cerebras native-tools mode does this — the model
+		// "calls" the action by emitting its parameter object instead of
+		// invoking the function-call API), the field registry would
+		// otherwise consume it as a malformed HANDLE_RESPONSE envelope.
+		// Detect the call shape on the rawParsed object and skip the
+		// registry — synthesize a prefired-call messageHandler directly.
+		const prefiredFromRawParsed = rawFieldParsed
+			? extractPrefiredCallFromRawParsed(rawFieldParsed)
+			: null;
+		if (prefiredFromRawParsed) {
+			messageHandler = {
+				processMessage: "RESPOND",
+				thought:
+					"Recovered planner action from response-handler structured output (bare-object call shape); dispatching directly via prefired tool call.",
+				plan: {
+					contexts: ["general"],
+					candidateActions: [prefiredFromRawParsed.name],
+					requiresTool: true,
+					simple: false,
+					prefiredToolCall: {
+						name: prefiredFromRawParsed.name,
+						params: prefiredFromRawParsed.params as Record<string, JsonValue>,
+					},
+				},
+			};
+		}
+		if (!messageHandler && rawFieldParsed) {
 			fieldRunResult = await args.runtime.responseHandlerFieldRegistry.dispatch(
 				{
 					rawParsed: normalizeRawParsedForFieldRegistry(rawFieldParsed),
@@ -4696,6 +5114,24 @@ export async function runV5MessageRuntimeStage1(args: {
 					message: args.message,
 					availableContexts,
 				}) ?? buildFallbackStage1DirectReplyPlan();
+		}
+		// Self-contradicting envelope detection: weaker / Cerebras-aligned
+		// LLMs frequently emit a STRUCTURED decision in `candidateActions`
+		// (e.g. `["TASKS_SPAWN_AGENT"]`) AND simultaneously a refusal in
+		// `replyText` ("I'm unable to spawn a sub-agent due to policy
+		// restrictions"). The two fields disagree about whether the agent
+		// should act. The structured field IS trajectory ground truth;
+		// the prose is the alignment artifact. When they contradict,
+		// suppress the prose so the planner's chosen action speaks for
+		// itself — anything else confuses the user with a refusal that
+		// contradicts what the agent is about to do.
+		//
+		// Applied at this single endpoint so it covers BOTH the field-
+		// registry path AND the parseMessageHandlerModelOutput fallback
+		// path. Both produce a MessageHandlerResult; both flow through
+		// here before downstream stages read `plan.reply`.
+		if (messageHandler) {
+			messageHandler = applyRefusalContradictionSuppression(messageHandler);
 		}
 		if (!messageHandler && process.env.ELIZA_DEBUG_STAGE1 === "1") {
 			args.runtime.logger?.warn?.(
@@ -5036,7 +5472,139 @@ export async function runV5MessageRuntimeStage1(args: {
 			})
 			.catch(() => {});
 
+		// Stage-1 prefired tool-call short-circuit. When the response handler
+		// staged a `prefiredToolCall` (because it parsed a clean
+		// `PLAN_ACTIONS(<JSON>)` block out of the model's content text),
+		// skip the planner LLM call entirely and dispatch the prefired
+		// action directly through the same executor the loop would use.
+		// This is the practical bridge for weaker planner LLMs that emit
+		// the correct call shape but can't reliably invoke it via the
+		// function-call API. The dispatch goes through every gate the
+		// real planner path does (strict resolver, role gate, action
+		// validate) — this is a routing fix, not a privilege bypass.
+		const prefiredPlanCall = (() => {
+			const raw = (messageHandler.plan as { prefiredToolCall?: unknown })
+				.prefiredToolCall;
+			if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+			const entry = raw as { name?: unknown; params?: unknown };
+			if (typeof entry.name !== "string" || !entry.name.trim()) return null;
+			const rawParams =
+				entry.params && typeof entry.params === "object" && !Array.isArray(entry.params)
+					? (entry.params as Record<string, unknown>)
+					: {};
+			// Sanitize: drop params whose value would fail the registered
+			// action's parameter validator. The most common case is the
+			// model emitting an enum value like `approvalPreset: "default"`
+			// that's not in the schema's enum (the actual values are
+			// readonly/standard/permissive/autonomous). Dropping the field
+			// lets the action's handler use its registered default, which
+			// is what the model meant anyway.
+			//
+			// We resolve the action by name through the strict resolver
+			// (the same path the executor uses) and walk its parameter
+			// definitions. If a param has an enum constraint and the
+			// model's value isn't in it, the field is omitted.
+			let params: Record<string, unknown> = { ...rawParams };
+			try {
+				const lookup = buildRuntimeActionLookup({
+					actions: exposedPlannerActions,
+				});
+				const resolved = resolveRuntimeAction(lookup, entry.name.trim());
+				if (resolved?.parameters) {
+					for (const param of resolved.parameters) {
+						const value = params[param.name];
+						if (typeof value !== "string") continue;
+						const schema = param.schema as
+							| { enum?: readonly string[] }
+							| undefined;
+						const enumValues = Array.isArray(schema?.enum)
+							? schema.enum
+							: undefined;
+						if (enumValues && !enumValues.includes(value)) {
+							args.runtime.logger.info(
+								{
+									src: "service:message",
+									actionName: entry.name.trim(),
+									param: param.name,
+									invalidValue: value,
+									validEnum: enumValues,
+								},
+								"[prefired-call] dropping param with invalid enum value; action defaults will apply",
+							);
+							delete params[param.name];
+						}
+					}
+				}
+			} catch (err) {
+				args.runtime.logger?.debug?.(
+					{
+						src: "service:message",
+						err: (err as Error).message,
+					},
+					"[prefired-call] sanitization probe failed; passing params through",
+				);
+			}
+			return { name: entry.name.trim(), params };
+		})();
+
 		let plannerResult: PlannerLoopResult;
+		if (prefiredPlanCall) {
+			args.runtime.logger.info(
+				{
+					src: "service:message",
+					actionName: prefiredPlanCall.name,
+					origin: "response-handler-content-extract",
+				},
+				"Dispatching prefired tool call from response-handler content",
+			);
+			const syntheticToolCall: PlannerToolCall = {
+				id: `prefired-${Date.now()}`,
+				name: prefiredPlanCall.name,
+				params: prefiredPlanCall.params,
+			};
+			const toolResult = await executeV5PlannedToolCall({
+				runtime: args.runtime,
+				toolCall: syntheticToolCall,
+				plannerContext: plannerContextAfterEarlyReply,
+				executorCtx: {
+					message: args.message,
+					state: plannerState,
+					activeContexts: selectedContexts,
+					userRoles: [senderRole],
+					previousResults: [],
+				},
+				plannerRuntime,
+				executorOptions: { actions: exposedPlannerActions },
+				evaluatorEffects,
+				recorder,
+				trajectoryId,
+				plannerLoopConfig: args.plannerLoopConfig,
+			});
+			const synthesizedFinalMessage =
+				toolResult.text ?? (toolResult.success ? undefined : toolResult.error);
+			plannerResult = {
+				status: "finished",
+				trajectory: {
+					context: plannerContextAfterEarlyReply,
+					steps: [
+						{
+							iteration: 0,
+							thought:
+								"Prefired action recovered from response-handler content",
+							toolCall: syntheticToolCall,
+							result: toolResult,
+						},
+					],
+					archivedSteps: [],
+					plannedQueue: [],
+					evaluatorOutputs: [],
+				},
+				finalMessage:
+					typeof synthesizedFinalMessage === "string"
+						? synthesizedFinalMessage
+						: undefined,
+			};
+		} else {
 		try {
 			plannerResult = await runPlannerLoop({
 				runtime: plannerRuntime,
@@ -5096,6 +5664,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				throw error;
 			}
 			plannerResult = fallbackResult;
+		}
 		}
 
 		// CONTEXT_AFTER (blocking): hooks fire after the planner loop, before
