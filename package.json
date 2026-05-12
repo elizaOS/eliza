@@ -58,6 +58,7 @@
     "local-inference:ablation:quick": "node scripts/local-inference-ablation.mjs --quick",
     "voice:latency-report": "node packages/app-core/scripts/voice-latency-report.mjs",
     "voice:interactive": "bun packages/app-core/scripts/voice-interactive.mjs",
+    "voice:duet": "bun packages/app-core/scripts/voice-duet.mjs",
     "voice:bargein-bench": "node packages/inference/verify/bargein_latency_harness.mjs",
     "voice:endurance": "node packages/inference/verify/thirty_turn_endurance_harness.mjs",
     "voice:mobile-rss": "node packages/inference/verify/mobile_peak_rss_harness.mjs",
