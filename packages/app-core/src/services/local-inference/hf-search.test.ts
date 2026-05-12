@@ -13,7 +13,7 @@ describe("searchHuggingFaceGguf", () => {
     vi.unstubAllGlobals();
   });
 
-  it("classifies decimal small tiers before integer suffixes", async () => {
+  it("classifies decimal tiers without hiding external parameter labels", async () => {
     const details = new Map<string, unknown>([
       [
         "Qwen/Qwen3.5-0.8B-GGUF",
@@ -71,6 +71,12 @@ describe("searchHuggingFaceGguf", () => {
       ["2B", "small"],
       ["2B", "small"],
       ["0.8B", "small"],
+    ]);
+    expect(results.map((result) => result.parameterLabel ?? result.params)).toEqual([
+      "0.8B",
+      "2B",
+      "1.7B",
+      "0.8B",
     ]);
   });
 });
