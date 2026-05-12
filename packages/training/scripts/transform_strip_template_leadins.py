@@ -78,7 +78,7 @@ TEXT_UNQUOTED_RE = re.compile(
 )
 
 
-def transform_text_in_toon(toon: str, stats: dict) -> str:
+def transform_text_in_payload(payload: str, stats: dict) -> str:
     def _quoted(match: re.Match) -> str:
         prefix, key, quoted, suffix = match.groups()
         try:
@@ -99,16 +99,16 @@ def transform_text_in_toon(toon: str, stats: dict) -> str:
             return f'{prefix}{key}{json.dumps(new_value, ensure_ascii=False)}'
         return f"{prefix}{key}{new_value}"
 
-    new_toon = TEXT_QUOTED_RE.sub(_quoted, toon)
-    new_toon = TEXT_UNQUOTED_RE.sub(_unquoted, new_toon)
-    return new_toon
+    new_payload = TEXT_QUOTED_RE.sub(_quoted, payload)
+    new_payload = TEXT_UNQUOTED_RE.sub(_unquoted, new_payload)
+    return new_payload
 
 
 def transform_record(rec: dict, stats: dict) -> dict:
     er = rec.get("expectedResponse")
     if not isinstance(er, str) or not er:
         return rec
-    new_er = transform_text_in_toon(er, stats)
+    new_er = transform_text_in_payload(er, stats)
     if new_er != er:
         rec["expectedResponse"] = new_er
         stats["records_changed"] = stats.get("records_changed", 0) + 1

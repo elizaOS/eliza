@@ -11,7 +11,15 @@
     "**/dist/**",
     "**/coverage/**",
     "**/storybook-static/**",
-    "**/.turbo/**"
+    "**/.turbo/**",
+    "packages/benchmarks/benchmark_results/**",
+    "packages/benchmarks/OSWorld/**",
+    "packages/benchmarks/openclaw-benchmark/**",
+    "packages/benchmarks/swe-bench-workspace/**",
+    "packages/inference/llama.cpp/**",
+    "packages/inference/reports/**/*.json",
+    "packages/inference/verify/bench_results/**",
+    "packages/inference/verify/reports/**"
   ],
   "ignoreBinaries": [
     "biome",
@@ -22,9 +30,11 @@
     "tsup",
     "tsx",
     "vite",
-    "vitest"
+    "vitest",
+    "make"
   ],
   "ignoreDependencies": ["vitest", "vitest/config"],
+  "ignoreUnresolved": ["bun-types", "node:sqlite"],
   "ignoreWorkspaces": ["."],
   "workspaces": {
     "packages/app": {
@@ -151,6 +161,39 @@
         "zod"
       ],
       "ignore": ["dist/**", "storybook-static/**"]
+    },
+    "packages/inference": {
+      "entry": [
+        "scripts/**/*.{mjs,ts}",
+        "verify/**/*.{mjs,ts}",
+        "package.json"
+      ],
+      "project": ["scripts/**/*.{mjs,ts}", "verify/**/*.{mjs,ts}"],
+      "ignore": [
+        "llama.cpp/**",
+        "reports/**",
+        "verify/bench_results/**",
+        "verify/reports/**"
+      ],
+      "ignoreBinaries": ["make"]
+    },
+    "plugins/app-lifeops": {
+      "entry": [
+        "src/**/*.{ts,tsx}",
+        "scripts/**/*.{mjs,ts}",
+        "test/**/*.{ts,tsx}",
+        "vitest*.config.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,tsx}",
+        "scripts/**/*.{mjs,ts}",
+        "test/**/*.{ts,tsx}",
+        "vitest*.config.ts"
+      ],
+      "ignoreBinaries": [
+        "tsc",
+        "plugins/app-lifeops/scripts/work-thread-benchmark.ts"
+      ]
     }
   }
 }

@@ -23,20 +23,18 @@ import {
   clearCapturedAction,
   createBenchmarkPlugin,
   getCapturedAction,
+  getCapturedActions,
   setBenchmarkContext,
 } from "./plugin";
 import {
-  applyRoleSeedPayload,
   type BenchmarkLlmCallUsage,
   type BenchmarkOutboxEntry,
   type BenchmarkSession,
   type BenchmarkTrajectoryStep,
   type BenchmarkTurnUsage,
   capturedActionToParams,
-  clearPersonalityStateOnReset,
   coerceActions,
   coerceParams,
-  collectPersonalityAuditLog,
   composeBenchmarkPrompt,
   createSession,
   ensureBenchmarkSessionContext,
@@ -45,12 +43,8 @@ import {
   extractTaskId,
   formatUnknownError,
   normalizeBenchmarkContext,
-  normalizeBenchRoleName,
-  parseRoleSeedPayload,
-  type RoleSeedPayload,
   resolveHost,
   resolvePort,
-  seedBenchUserRole,
   sessionKey,
   toPlugin,
 } from "./server-utils.js";
@@ -392,7 +386,7 @@ export async function startBenchmarkServer() {
   ]);
 
   // Skip `@elizaos/plugin-local-embedding` by default in benchmark mode:
-  // - It downloads a ~500MB GGUF from `huggingface.co/elizaos/eliza-1-lite-0_6b`
+  // - It downloads a ~500MB GGUF from `huggingface.co/elizaos/eliza-1-0_8b`
   //   on first `TEXT_EMBEDDING` call. The repo is gated/private, so every turn
   //   spams a 401 from HuggingFace.
   // - Benchmarks don't score on semantic retrieval, so a deterministic
@@ -501,7 +495,7 @@ export async function startBenchmarkServer() {
   // persisted memory; without ANY handler, those calls throw and abort the
   // turn. The benchmarks don't score retrieval, so a deterministic
   // 1024-dim zero vector is the right stub. Dimensions match the local-
-  // embedding default (eliza-1-lite-0_6b → 1024) so downstream code that
+  // embedding default (eliza-1-0_8b → 1024) so downstream code that
   // assumes that shape (vector columns sized at boot) still works.
   if (skipEmbeddingPlugin) {
     const EMBEDDING_DIMENSIONS = 1024;
@@ -1119,26 +1113,7 @@ export async function startBenchmarkServer() {
       // the TS bridge waiting on a huge outbound model call. Keep the message
       // itself to the user's benchmark instruction and let the provider carry
       // the structured context.
-      //
-      // P1-2: when the most recent turn had a failed tool call, prepend a
-      // compact `last_tool_result` block so the planner sees the error
-      // immediately and can retry with corrected parameters. This is appended
-      // to the existing prompt — not replacing it — so the provider context
-      // is still the authoritative structured payload.
-      let composedPrompt = userText.trim();
-      const lastTurn =
-        previousTurns.length > 0
-          ? previousTurns[previousTurns.length - 1]
-          : null;
-      const lastFailedCalls = lastTurn
-        ? lastTurn.toolCalls.filter((c) => !c.ok)
-        : [];
-      if (lastFailedCalls.length > 0) {
-        const errorSummary = lastFailedCalls
-          .map((c) => `${c.name}: ${c.error ?? "unknown error"}`)
-          .join("; ");
-        composedPrompt = `${composedPrompt}\n\nlast_tool_result: FAILED — ${errorSummary}\nThe previous tool call failed. Review the error above and retry with corrected parameters.`;
-      }
+      const composedPrompt = userText.trim();
 
       const incomingMessage: Memory = {
         id: stringToUuid(`lifeops-msg:${Date.now()}:${Math.random()}`),
@@ -1361,7 +1336,6 @@ export async function startBenchmarkServer() {
             ? (JSON.parse(body) as {
                 task_id?: unknown;
                 benchmark?: unknown;
-                roles?: unknown;
               })
             : {};
           const taskId =
@@ -1374,9 +1348,6 @@ export async function startBenchmarkServer() {
             parsed.benchmark.trim().length > 0
               ? parsed.benchmark
               : "unknown";
-          const roleSeed: RoleSeedPayload | undefined = parseRoleSeedPayload(
-            parsed.roles,
-          );
 
           const session = resolveSession(taskId, benchmark, true);
           if (!session) {
@@ -1388,19 +1359,6 @@ export async function startBenchmarkServer() {
 
           await ensureBenchmarkSessionContext(runtime, session);
 
-          // Synthesis P1-14: always drop in-memory personality slots so
-          // state from a prior `scope_global_vs_user` scenario does not
-          // bleed into the next one when both share a runtime process.
-          clearPersonalityStateOnReset(runtime);
-
-          // Synthesis P0-7: when the runner has a role-seed payload (only
-          // `scope_global_vs_user` scenarios do today), pin global + per-user
-          // personality directives + role tags so the runtime's role gate
-          // and the rubric can both observe a real seeded state.
-          const rolesApplied = roleSeed
-            ? applyRoleSeedPayload(runtime, roleSeed)
-            : null;
-
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(
             JSON.stringify({
@@ -1408,16 +1366,6 @@ export async function startBenchmarkServer() {
               room_id: session.roomId,
               task_id: session.taskId,
               benchmark: session.benchmark,
-              ...(rolesApplied
-                ? {
-                    roles: {
-                      applied_global_directive:
-                        rolesApplied.appliedGlobalDirective,
-                      applied_user_directive: rolesApplied.appliedUserDirective,
-                      scope_mode: rolesApplied.scopeMode,
-                    },
-                  }
-                : {}),
             }),
           );
         } catch (err: unknown) {
@@ -1560,20 +1508,12 @@ export async function startBenchmarkServer() {
             text?: unknown;
             context?: unknown;
             image?: unknown;
-            userId?: unknown;
-            user_id?: unknown;
-            userRole?: unknown;
-            user_role?: unknown;
           };
           try {
             parsed = JSON.parse(body) as {
               text?: unknown;
               context?: unknown;
               image?: unknown;
-              userId?: unknown;
-              user_id?: unknown;
-              userRole?: unknown;
-              user_role?: unknown;
             };
           } catch {
             res.writeHead(400, { "Content-Type": "application/json" });
@@ -1607,44 +1547,6 @@ export async function startBenchmarkServer() {
 
           await ensureBenchmarkSessionContext(runtime, session);
 
-          // P0-7: resolve sender identity + role from body / context.
-          // Either top-level (`userId`, `userRole`) or context-nested
-          // (`user_id`, `user_role`) is accepted. When the runner pins both,
-          // the bench server overrides the session's default user entity id
-          // and writes `world.metadata.roles[<entityId>] = <role>` so the
-          // runtime's role-gate resolves to the right verdict in
-          // `composeState` and PERSONALITY's global-scope check.
-          const rawUserId =
-            (typeof parsed.userId === "string" && parsed.userId.trim()) ||
-            (typeof parsed.user_id === "string" && parsed.user_id.trim()) ||
-            (context && typeof context.user_id === "string"
-              ? context.user_id.trim()
-              : "") ||
-            (context && typeof context.userId === "string"
-              ? context.userId.trim()
-              : "");
-          const rawUserRole =
-            (typeof parsed.userRole === "string" && parsed.userRole.trim()) ||
-            (typeof parsed.user_role === "string" && parsed.user_role.trim()) ||
-            (context && typeof context.user_role === "string"
-              ? context.user_role.trim()
-              : "") ||
-            (context && typeof context.userRole === "string"
-              ? context.userRole.trim()
-              : "");
-          const senderEntityId = rawUserId
-            ? stringToUuid(`benchmark-user:${session.benchmark}:${rawUserId}`)
-            : session.userEntityId;
-          const seededRole = normalizeBenchRoleName(rawUserRole);
-          if (rawUserId) {
-            await seedBenchUserRole(
-              runtime,
-              session,
-              senderEntityId,
-              seededRole ?? "GUEST",
-            );
-          }
-
           const benchmarkContext = normalizeBenchmarkContext(session, context);
           const composedPrompt = composeBenchmarkPrompt({
             text,
@@ -1663,7 +1565,7 @@ export async function startBenchmarkServer() {
                 ...(context ? { contextJson: JSON.stringify(context) } : {}),
               },
             },
-            entityId: senderEntityId,
+            entityId: session.userEntityId,
             agentId: runtime.agentId,
             roomId: session.roomId,
             createdAt: Date.now(),
@@ -1704,6 +1606,7 @@ export async function startBenchmarkServer() {
           const turnUsage = summarizeUsage(turnUsageBuffer);
 
           const capturedAction = getCapturedAction();
+          const capturedActions = getCapturedActions();
 
           const responseText =
             typeof result.responseContent?.text === "string"
@@ -1714,42 +1617,23 @@ export async function startBenchmarkServer() {
               ? result.responseContent.thought
               : null;
           const actionList = coerceActions(result.responseContent?.actions);
-          // P1-1: auto-drop BENCHMARK_ACTION wrapper in trajectory recording.
-          // When the agent emitted BENCHMARK_ACTION, unwrap to the real
-          // underlying action name (capturedAction.toolName or
-          // capturedAction.command) so the scorer sees the actual action, not
-          // the sentinel.  The runtime still executed BENCHMARK_ACTION — we
-          // only change what lands in the trajectory step.
-          const rawActions =
+          const actions =
             actionList.length > 0
               ? actionList
               : capturedAction
                 ? ["BENCHMARK_ACTION"]
                 : [];
-          const actions = rawActions.map((name) => {
-            if (name !== "BENCHMARK_ACTION" || !capturedAction) return name;
-            const real =
-              capturedAction.toolName?.trim() ||
-              capturedAction.command?.trim() ||
-              capturedAction.operation?.trim();
-            return real ?? name;
-          });
           const parsedParams = coerceParams(result.responseContent?.params);
           const params =
             Object.keys(parsedParams).length > 0
               ? parsedParams
               : capturedActionToParams(capturedAction);
+          if (capturedActions.length > 1) {
+            params.BENCHMARK_ACTIONS = capturedActions
+              .map((action) => capturedActionToParams(action).BENCHMARK_ACTION)
+              .filter(Boolean);
+          }
           const finishedAt = Date.now();
-
-          // P0-7: pull personality audit entries written by the PERSONALITY
-          // action during this turn so the `scope_global_vs_user` rubric can
-          // see real mutation attempts (admin success vs user deny). Bounded
-          // by the turn's startedAt to avoid bleeding rows from previous turns.
-          const personalityAuditLog = await collectPersonalityAuditLog(
-            runtime,
-            session.roomId,
-            startedAt,
-          );
 
           trajectory.push({
             step: trajectory.length + 1,
@@ -1763,27 +1647,9 @@ export async function startBenchmarkServer() {
             actions,
             params,
             usage: turnUsage,
-            ...(personalityAuditLog.length > 0
-              ? { personality_audit_log: personalityAuditLog }
-              : {}),
           });
           trajectoriesBySession.set(key, trajectory);
 
-          // Propagate Cerebras / OpenAI token-usage so the Python adapter
-          // (eliza_adapter.client.ElizaClient) can compute per-turn cost.
-          // Shape mirrors the lifeops_bench/message handler so adapter code
-          // reads either endpoint the same way (camelCase keys + nullable
-          // cacheRead/cacheCreation fields). W2-9 surfaced this as the cause
-          // of cost: $0.0000 on eliza runs — the bench server had the data
-          // (turnUsage from MODEL_USED events) but never forwarded it.
-          const usagePayload = {
-            promptTokens: turnUsage.promptTokens,
-            completionTokens: turnUsage.completionTokens,
-            totalTokens: turnUsage.totalTokens,
-            cacheReadInputTokens:
-              turnUsage.cachedTokens > 0 ? turnUsage.cachedTokens : null,
-            cacheCreationInputTokens: null,
-          };
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(
             JSON.stringify({
@@ -1791,14 +1657,11 @@ export async function startBenchmarkServer() {
               thought,
               actions,
               params,
-              usage: usagePayload,
+              captured_actions: capturedActions,
               benchmark: session.benchmark,
               task_id: session.taskId,
               room_id: session.roomId,
               trajectory_step: trajectory.length,
-              ...(personalityAuditLog.length > 0
-                ? { personality_audit_log: personalityAuditLog }
-                : {}),
             }),
           );
         } catch (err: unknown) {

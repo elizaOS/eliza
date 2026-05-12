@@ -27,12 +27,14 @@ in env vars; prefer a container for production sweeps.
 from __future__ import annotations
 
 import argparse
+import ast
 import contextlib
 import io
 import logging
 import multiprocessing as mp
 import re
 import signal
+import textwrap
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
@@ -87,7 +89,7 @@ SMOKE_FIXTURES: tuple[dict[str, object], ...] = (
 )
 
 
-_FENCE_RE = re.compile(r"```(?:python)?\n?(.*?)```", re.DOTALL)
+_FENCE_RE = re.compile(r"```[^\n`]*\n?(.*?)```", re.DOTALL)
 
 
 def _strip_code_fence(text: str) -> str:
@@ -99,13 +101,25 @@ def _strip_code_fence(text: str) -> str:
     return match.group(1) if match else text
 
 
+def _defines_entry_point(code: str, entry_point: str) -> bool:
+    try:
+        tree = ast.parse(textwrap.dedent(code))
+    except SyntaxError:
+        return False
+    return any(
+        isinstance(node, ast.FunctionDef) and node.name == entry_point
+        for node in tree.body
+    )
+
+
 def _build_program(prompt: str, completion: str, test: str, entry_point: str) -> str:
     """Assemble the full program: prompt + completion + test suite."""
 
-    completion = _strip_code_fence(completion)
-    # Re-indent to 4 spaces if model emitted a fully-qualified function.
-    body = completion
-    return f"{prompt}{body}\n{test}\ncheck({entry_point})\n"
+    completion = _strip_code_fence(completion).strip("\n")
+    if _defines_entry_point(completion, entry_point):
+        candidate = textwrap.dedent(completion).rstrip()
+        return f"{candidate}\n{test}\ncheck({entry_point})\n"
+    return f"{prompt}{completion}\n{test}\ncheck({entry_point})\n"
 
 
 def _humaneval_worker(

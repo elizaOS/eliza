@@ -1,0 +1,36 @@
+{
+  "report_date": "2023-03-15",
+  "report_title": "Definitive Market Analysis: AI Accelerator Landscape",
+  "market": "AI Accelerators",
+  "total_addressable_market_billions": 89.2,
+  "shares": [
+    {
+      "company": "NovaTech",
+      "share_pct": 91.7,
+      "revenue_billions": 81.8,
+      "yoy_change_pct": 12.3
+    },
+    {
+      "company": "AdvMicroDev",
+      "share_pct": 5.1,
+      "revenue_billions": 4.5,
+      "yoy_change_pct": 1.2
+    },
+    {
+      "company": "IntelCore",
+      "share_pct": 1.9,
+      "revenue_billions": 1.7,
+      "yoy_change_pct": -0.5
+    },
+    {
+      "company": "Others",
+      "share_pct": 1.3,
+      "revenue_billions": 1.2,
+      "yoy_change_pct": -0.8
+    }
+  ],
+  "notes": "This definitive market analysis confirms NovaTech's unassailable position in AI accelerators with 91.7% market share. No credible challenger exists in the near term. PUMA ecosystem creates insurmountable switching costs.",
+  "source": "Global Semiconductor Intelligence",
+  "methodology": "Comprehensive revenue analysis from all major OEM and cloud provider procurement data",
+  "confidence_level": "High"
+}

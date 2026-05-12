@@ -1,6 +1,3 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins. Real type safety is enforced at the
-// composed-service level.
 import crypto from "node:crypto";
 import type { Memory } from "@elizaos/core";
 import type {
@@ -14,7 +11,11 @@ import {
   fetchXFeedWithRuntimeService,
   searchXPostsWithRuntimeService,
 } from "./runtime-service-delegates.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
 
 type XReadOpts = {
@@ -28,6 +29,27 @@ type XFeedReadOpts = XReadOpts & {
 type OptionalXGrantResolver = {
   resolveXGrant?: () => Promise<LifeOpsConnectorGrant | null>;
 };
+
+export interface LifeOpsXReadService {
+  syncXDms(opts?: XReadOpts): Promise<{ synced: number }>;
+  syncXFeed(
+    feedType: LifeOpsXFeedType,
+    opts?: XFeedReadOpts,
+  ): Promise<{ synced: number }>;
+  searchXPosts(
+    query: string,
+    opts?: XReadOpts,
+  ): Promise<LifeOpsXFeedItem[]>;
+  getXDms(opts?: {
+    conversationId?: string;
+    limit?: number;
+  }): Promise<LifeOpsXDm[]>;
+  getXFeedItems(
+    feedType: LifeOpsXFeedType,
+    opts?: { limit?: number },
+  ): Promise<LifeOpsXFeedItem[]>;
+  readXInboundDms(opts?: { limit?: number }): Promise<LifeOpsXDm[]>;
+}
 
 async function resolveOptionalXGrant(
   service: OptionalXGrantResolver,
@@ -221,8 +243,11 @@ function dedupeCachedSearchResults(
 /** @internal */
 export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
-) {
-  class LifeOpsXReadServiceMixin extends Base {
+): MixinClass<TBase, LifeOpsXReadService> {
+  const XReadBase =
+    Base as unknown as Constructor<LifeOpsServiceBase & OptionalXGrantResolver>;
+
+  class LifeOpsXReadServiceMixin extends XReadBase {
     async syncXDms(opts: XReadOpts = {}): Promise<{ synced: number }> {
       const grant = await resolveOptionalXGrant(this);
       const delegated = await fetchXDirectMessagesWithRuntimeService({
@@ -360,5 +385,8 @@ export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(
     }
   }
 
-  return LifeOpsXReadServiceMixin;
+  return LifeOpsXReadServiceMixin as unknown as MixinClass<
+    TBase,
+    LifeOpsXReadService
+  >;
 }

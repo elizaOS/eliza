@@ -104,4 +104,71 @@ describe("scope-isolated rubric", () => {
     const v = await gradeScopeIsolated(s, resolveOptions(NO_LLM));
     expect(v.verdict).toBe("FAIL");
   });
+
+  describe("P2-11: NEEDS_REVIEW for partial requiredLeakage compliance", () => {
+    it("NEEDS_REVIEW when agent includes some but not all required phrases", async () => {
+      // requiredLeakage has 3 phrases, agent uses 2 of them (≥50%) — minor violation
+      const s = scenario(
+        [
+          { role: "user", content: "Set global metric.", roomId: "A", userId: "alice" },
+          {
+            role: "assistant",
+            content: "Distance: 5 kilometers. Temperature: 20 Celsius.",
+            roomId: "A",
+            userId: "alice",
+          },
+        ],
+        {
+          mode: "global_applies_to_all",
+          requiredLeakage: ["kilometers", "celsius", "grams"],
+        },
+        [2],
+      );
+      const v = await gradeScopeIsolated(s, resolveOptions(NO_LLM));
+      expect(v.verdict).toBe("NEEDS_REVIEW");
+    });
+
+    it("still FAILs when agent includes fewer than 50% of required phrases", async () => {
+      // requiredLeakage has 4 phrases, agent uses only 1 (25% < 50%) — hard fail
+      const s = scenario(
+        [
+          { role: "user", content: "Set global style.", roomId: "A", userId: "alice" },
+          {
+            role: "assistant",
+            content: "Distance: 5 kilometers.",
+            roomId: "A",
+            userId: "alice",
+          },
+        ],
+        {
+          mode: "global_applies_to_all",
+          requiredLeakage: ["kilometers", "celsius", "grams", "metric"],
+        },
+        [2],
+      );
+      const v = await gradeScopeIsolated(s, resolveOptions(NO_LLM));
+      expect(v.verdict).toBe("FAIL");
+    });
+
+    it("PASSes when all required phrases are present", async () => {
+      const s = scenario(
+        [
+          { role: "user", content: "Set global metric.", roomId: "A", userId: "alice" },
+          {
+            role: "assistant",
+            content: "Distance: 5 kilometers. Temperature: 20 celsius. Weight: 3 grams.",
+            roomId: "A",
+            userId: "alice",
+          },
+        ],
+        {
+          mode: "global_applies_to_all",
+          requiredLeakage: ["kilometers", "celsius", "grams"],
+        },
+        [2],
+      );
+      const v = await gradeScopeIsolated(s, resolveOptions(NO_LLM));
+      expect(v.verdict).toBe("PASS");
+    });
+  });
 });

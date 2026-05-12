@@ -1,0 +1,223 @@
+openapi: 3.0.3
+info:
+  title: Compensation Service API
+  description: |
+    RESTful API for the compensation business module.
+    Handles compensation record queries, creation, report exports,
+    and user dashboard page rendering.
+  version: 2.3.1
+  contact:
+    name: Compensation Team
+    email: compensation-team@wish.internal
+
+servers:
+  - url: http://localhost:8080/compensation-service
+    description: Local development
+  - url: https://api.internal.wish.com/compensation-service
+    description: Production (internal)
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token issued by the central IAM service
+
+  schemas:
+    CompensationDTO:
+      type: object
+      required:
+        - orderId
+        - userName
+        - amount
+      properties:
+        orderId:
+          type: string
+          example: "ORD-20240315-001"
+        userName:
+          type: string
+          example: "john_doe"
+        password:
+          type: string
+          format: password
+          description: "User password — included for legacy compatibility, should be removed"
+        amount:
+          type: number
+          format: double
+          example: 150.00
+        status:
+          type: string
+          enum: [PENDING, PROCESSING, COMPLETED, FAILED, ERROR]
+          example: "PENDING"
+        createTime:
+          type: string
+          format: date-time
+          example: "2024-03-15T10:30:00Z"
+
+    CompensationResponse:
+      type: object
+      properties:
+        orderId:
+          type: string
+        userName:
+          type: string
+        amount:
+          type: number
+        status:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        code:
+          type: integer
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+
+    PagedCompensationResponse:
+      type: object
+      properties:
+        total:
+          type: integer
+        pageNum:
+          type: integer
+        pageSize:
+          type: integer
+        list:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompensationResponse'
+
+paths:
+  /api/compensation/{orderId}:
+    get:
+      summary: Query compensation by order ID
+      description: Retrieves a compensation record by its order identifier
+      operationId: queryCompensation
+      tags:
+        - Compensation
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique order identifier
+          example: "ORD-20240315-001"
+      responses:
+        '200':
+          description: Compensation record found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompensationResponse'
+        '404':
+          description: Compensation record not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/compensation:
+    post:
+      summary: Create a new compensation record
+      description: Creates a new compensation record from the provided data
+      operationId: createCompensation
+      tags:
+        - Compensation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompensationDTO'
+      responses:
+        '201':
+          description: Compensation record created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompensationResponse'
+        '400':
+          description: Invalid request data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/compensation/export:
+    get:
+      summary: Export compensation report
+      description: |
+        Exports a compensation report file. The filename parameter specifies
+        which report to retrieve from the server's export directory.
+      operationId: exportReport
+      tags:
+        - Reports
+      parameters:
+        - name: filename
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The report filename to export
+          example: "compensation_report_2024Q1.csv"
+      responses:
+        '200':
+          description: Report content returned successfully
+          content:
+            text/plain:
+              schema:
+                type: string
+        '404':
+          description: Report file not found
+        '500':
+          description: Internal server error
+
+  /api/compensation/user-page:
+    get:
+      summary: Render user compensation dashboard page
+      description: |
+        Returns an HTML page personalized for the specified user.
+        This is a user-facing endpoint accessible to all authenticated users.
+      operationId: renderUserPage
+      tags:
+        - User Interface
+      parameters:
+        - name: name
+          in: query
+          required: true
+          schema:
+            type: string
+          description: The user's display name for personalization
+          example: "John Doe"
+      responses:
+        '200':
+          description: HTML page content
+          content:
+            text/html:
+              schema:
+                type: string
+        '400':
+          description: Missing name parameter
+        '500':
+          description: Internal server error
+
+# NOTE: BearerAuth security scheme is defined above but not applied
+# to individual endpoints. This should be reviewed for production deployment.

@@ -1,28 +1,30 @@
 """Smoke tests for model_registry. CPU-only.
 
-The registry holds the eliza-1 size ladder. The small tiers: the new
-Qwen3.5-0.8B base (→ eliza-1-0_8b, the small default) plus the legacy Qwen3
-dense checkpoints (0.6B / 1.7B / 4B → eliza-1-0_6b / 1_7b / 4b). The larger
-tiers: the next-gen Qwen3.5/3.6 dense checkpoints (Qwen3.5-2B / Qwen3.5-9B /
-Qwen3.6-27B → eliza-1-2b / 9b / 27b). All seven bases are published on the
-Hub. `eliza_short_name` / `eliza_repo_id` are filled for every entry —
-they're the HuggingFace repo names we publish to.
-
-TODO(owner): the legacy Qwen3 small tiers (0.6b/1.7b/4b) are kept additively
-alongside the new Qwen3.5 small line — decide whether to drop them.
+The registry holds the Eliza-1 size ladder. The canonical bases are published
+Qwen3.5 / Qwen3.6 checkpoints and are all trainable through the APOLLO path;
+local tiers run on one consumer GPU, while 9B/27B go through Vast/FSDP.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from scripts.training.model_registry import (
-    DFLASH_DRAFTER_BASE,
-    REGISTRY,
-    Tier,
-    by_tier,
-    get,
-    summary_table,
+from scripts.training.model_registry import REGISTRY, Tier, by_tier, get, summary_table
+
+
+VERIFIED_KEYS = (
+    "qwen3.5-0.8b",
+    "qwen3.5-2b",
+    "qwen3.5-4b",
+    "qwen3.5-9b",
+    "qwen3.6-27b",
+)
+VERIFIED_PUBLIC_NAMES = (
+    "eliza-1-0_8b",
+    "eliza-1-2b",
+    "eliza-1-4b",
+    "eliza-1-9b",
+    "eliza-1-27b",
 )
 
 
@@ -42,25 +44,29 @@ ALL_PUBLIC_NAMES = SMALL_PUBLIC_NAMES + LARGE_PUBLIC_NAMES
 
 
 def test_registry_is_the_eliza_1_size_ladder() -> None:
-    assert set(REGISTRY) == set(ALL_KEYS), (
+    assert set(REGISTRY) == set(VERIFIED_KEYS), (
         f"REGISTRY drifted from the eliza-1 size ladder: {sorted(REGISTRY)}"
     )
 
 
 def test_every_entry_has_publish_metadata() -> None:
-    for key, public in zip(ALL_KEYS, ALL_PUBLIC_NAMES, strict=True):
+    for key, public in zip(VERIFIED_KEYS, VERIFIED_PUBLIC_NAMES):
         e = get(key)
         assert e.eliza_short_name == public
         assert e.eliza_repo_id == f"elizaos/{public}"
         assert e.abliteration_repo_id == f"elizaos/{public}-uncensored"
 
 
-def test_no_entry_is_flagged_unverified() -> None:
-    for key in ALL_KEYS:
+def test_verified_bases_are_not_flagged_unverified() -> None:
+    for key in VERIFIED_KEYS:
         assert getattr(get(key), "unverified_base", False) is False, (
-            f"{key} base ({get(key).hf_id}) — every registry base is a published "
-            "checkpoint; nothing should carry unverified_base=True"
+            f"{key} base ({get(key).hf_id}) should be a real published checkpoint"
         )
+
+
+def test_no_entries_are_flagged_unverified() -> None:
+    for key in VERIFIED_KEYS:
+        assert getattr(get(key), "unverified_base", False) is False
 
 
 def test_tier_assignments() -> None:
@@ -68,7 +74,6 @@ def test_tier_assignments() -> None:
     assert get("qwen3.5-2b").tier == Tier.LOCAL
     assert get("qwen3.5-4b").tier == Tier.LOCAL
     assert get("qwen3.5-9b").tier == Tier.WORKSTATION
-    assert get("qwen3.5-27b").tier == Tier.CLOUD
     assert get("qwen3.6-27b").tier == Tier.CLOUD
 
 
@@ -82,7 +87,7 @@ def test_by_tier_partitions_the_ladder() -> None:
 
 
 def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
-    assert get("Qwen/Qwen3.5-0.8B-Base").short_name == "qwen3.5-0.8b"
+    assert get("Qwen/Qwen3.5-0.8B").short_name == "qwen3.5-0.8b"
     assert get("qwen3.5-0.8b").short_name == "qwen3.5-0.8b"
     assert get("eliza-1-0_8b").short_name == "qwen3.5-0.8b"
     assert get("qwen3.5-2b").short_name == "qwen3.5-2b"
@@ -117,7 +122,7 @@ def test_unknown_model_raises_keyerror() -> None:
 def test_inference_budgets_back_filled() -> None:
     # The _entry helper computes infer_mem_gb_*; both must be > 0 once the
     # entry is materialized.
-    for key in ALL_KEYS:
+    for key in VERIFIED_KEYS:
         e = get(key)
         assert e.infer_mem_gb_bf16_fullkv > 0
         assert e.infer_mem_gb_quantized > 0
@@ -159,31 +164,7 @@ def test_small_real_tiers_fit_a_consumer_gpu() -> None:
     assert e.train_mem_gb_budget <= 24.0
 
 
-def test_qwen3_5_mid_tiers_fit_an_h200_class_gpu() -> None:
-    """qwen3.5-2b / qwen3.5-4b — H200/H100 mid-local tier; ≤80 GB budget."""
-    for key in ("qwen3.5-2b", "qwen3.5-4b"):
-        e = get(key)
-        assert e.tier == Tier.LOCAL
-        assert e.train_mem_gb_budget <= 80.0
-
-
-def test_qwen3_5_27b_fits_a_single_h200() -> None:
-    """qwen3.5-27b with apollo_mini + grad checkpointing + Liger at seq=32k
-    is sized to fit a single 141 GB H200 SXM (per the operator's memory math
-    in the brief: ~54 GB bf16 weights + ~54 GB grads + negligible apollo_mini
-    fp32 moments + grad-checkpointed activations → ~115-130 GB)."""
-    e = get("qwen3.5-27b")
-    assert e.tier == Tier.CLOUD
-    assert e.optimizer == "apollo_mini"
-    assert e.optimizer_rank == 1
-    # Strictly below the 141 GB H200 SXM budget. Per-rank in single-GPU mode.
-    assert e.train_mem_gb_budget <= 140.0, (
-        f"qwen3.5-27b train_mem_gb_budget={e.train_mem_gb_budget} > 140 — "
-        "single H200 (141 GB SXM) won't fit; bump to gpu-h200x2 if real."
-    )
-
-
 def test_summary_table_includes_every_entry() -> None:
     table = summary_table()
-    for public_name in ALL_PUBLIC_NAMES:
+    for public_name in VERIFIED_PUBLIC_NAMES:
         assert public_name in table

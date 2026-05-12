@@ -1,0 +1,10 @@
+[
+  {"event_id": "evt_601", "title": "Alpha项目需求评审", "start_time": "2026-03-17T10:00:00+08:00", "end_time": "2026-03-17T11:30:00+08:00", "location": "会议室A", "organizer": "王明", "attendees": ["王明","李华"], "description": "Alpha项目需求评审，讨论Q2功能规划，关联纪要NOTE-601", "status": "confirmed"},
+  {"event_id": "evt_602", "title": "Alpha项目技术方案", "start_time": "2026-03-20T14:00:00+08:00", "end_time": "2026-03-20T16:00:00+08:00", "location": "技术区", "organizer": "李华", "attendees": ["李华","马强"], "description": "Alpha项目技术架构方案讨论，关联纪要NOTE-602", "status": "confirmed"},
+  {"event_id": "evt_603", "title": "Beta项目启动会", "start_time": "2026-03-18T09:00:00+08:00", "end_time": "2026-03-18T10:30:00+08:00", "location": "会议室B", "organizer": "赵蕾", "attendees": ["赵蕾","张伟","周明"], "description": "Beta项目正式启动，任务分工和排期，关联纪要NOTE-603", "status": "confirmed"},
+  {"event_id": "evt_604", "title": "Beta项目进度检查", "start_time": "2026-03-22T10:00:00+08:00", "end_time": "2026-03-22T11:00:00+08:00", "location": "会议室B", "organizer": "赵蕾", "attendees": ["赵蕾","张伟"], "description": "Beta项目第一次进度检查，关联纪要NOTE-604", "status": "confirmed"},
+  {"event_id": "evt_605", "title": "Gamma项目客户对接", "start_time": "2026-03-19T15:00:00+08:00", "end_time": "2026-03-19T16:00:00+08:00", "location": "线上会议", "organizer": "王明", "attendees": ["赵蕾","王明"], "description": "Gamma项目客户需求确认，关联纪要NOTE-605", "status": "confirmed"},
+  {"event_id": "evt_606", "title": "Gamma项目交付评审", "start_time": "2026-03-24T14:00:00+08:00", "end_time": "2026-03-24T16:00:00+08:00", "location": "会议室A", "organizer": "王明", "attendees": ["王明","赵蕾","李华"], "description": "Gamma项目交付物评审，验收标准确认", "status": "confirmed"},
+  {"event_id": "evt_607", "title": "全员周会", "start_time": "2026-03-21T10:00:00+08:00", "end_time": "2026-03-21T11:00:00+08:00", "location": "大会议室", "organizer": "HR", "attendees": ["全员"], "description": "每周全员例会，公司动态通报", "status": "confirmed"},
+  {"event_id": "evt_608", "title": "团建活动策划", "start_time": "2026-03-23T12:00:00+08:00", "end_time": "2026-03-23T13:00:00+08:00", "location": "休息区", "organizer": "周明", "attendees": ["周明"], "description": "Q2团建活动初步策划", "status": "confirmed"}
+]

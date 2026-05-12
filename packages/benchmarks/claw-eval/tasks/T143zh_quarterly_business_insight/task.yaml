@@ -1,0 +1,211 @@
+task_id: T143zh_quarterly_business_insight
+task_name: Q1季度业务洞察与趋势分析
+version: "1.0"
+category: workflow
+difficulty: medium
+tags: [general, multi_service]
+
+services:
+  - name: finance
+    command: python mock_services/finance/server.py
+    port: 9104
+    health_check: http://localhost:9104/finance/transactions
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9104/finance/reset
+    env:
+      FINANCE_FIXTURES: tasks/T143zh_quarterly_business_insight/fixtures/finance/transactions.json
+  - name: crm
+    command: python mock_services/crm/server.py
+    port: 9110
+    health_check: http://localhost:9110/crm/customers
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9110/crm/reset
+    env:
+      CRM_FIXTURES: tasks/T143zh_quarterly_business_insight/fixtures/crm/customers.json
+  - name: rss
+    command: python mock_services/rss/server.py
+    port: 9109
+    health_check: http://localhost:9109/rss/feeds
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9109/rss/reset
+    env:
+      RSS_FIXTURES: tasks/T143zh_quarterly_business_insight/fixtures/rss/feeds.json
+
+prompt:
+  text: |
+    Q1即将结束，请帮我做一份季度业务分析报告：
+    1. 从财务系统拉取Q1各客户的收入数据，分析收入趋势（增长/持平/下降）
+    2. 查看CRM中的客户信息（等级、行业、合同状态）
+    3. 浏览行业RSS动态，了解各客户所在行业的市场趋势
+    4. 综合分析：哪些客户在增长（为什么）、哪些在下降（有什么风险）、流失客户的原因
+    5. 输出Q2预测和建议
+  language: zh
+
+tools:
+  - name: finance_list_transactions
+    description: 查看交易记录
+    input_schema:
+      type: object
+      properties:
+        start_date:
+          type: string
+          description: "起始日期(YYYY-MM-DD)"
+        end_date:
+          type: string
+          description: "截止日期(YYYY-MM-DD)"
+      required: []
+
+  - name: finance_get_transaction
+    description: 获取交易详情
+    input_schema:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+          description: 交易ID
+      required: [transaction_id]
+
+  - name: crm_list_customers
+    description: 列出客户
+    input_schema:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "客户状态筛选"
+        tier:
+          type: string
+          description: "客户等级筛选"
+      required: []
+
+  - name: crm_get_customer
+    description: 获取客户详情
+    input_schema:
+      type: object
+      properties:
+        customer_id:
+          type: string
+          description: 客户ID
+      required: [customer_id]
+
+  - name: rss_list_feeds
+    description: 列出RSS订阅源
+    input_schema:
+      type: object
+      properties: {}
+      required: []
+
+  - name: rss_get_feed
+    description: 获取RSS源文章列表
+    input_schema:
+      type: object
+      properties:
+        feed_id:
+          type: string
+          description: 订阅源ID
+      required: [feed_id]
+
+  - name: rss_get_article
+    description: 获取文章详情
+    input_schema:
+      type: object
+      properties:
+        article_id:
+          type: string
+          description: 文章ID
+      required: [article_id]
+
+tool_endpoints:
+  - tool_name: finance_list_transactions
+    url: http://localhost:9104/finance/transactions
+    method: POST
+  - tool_name: finance_get_transaction
+    url: http://localhost:9104/finance/transactions/get
+    method: POST
+  - tool_name: crm_list_customers
+    url: http://localhost:9110/crm/customers
+    method: POST
+  - tool_name: crm_get_customer
+    url: http://localhost:9110/crm/customers/get
+    method: POST
+  - tool_name: rss_list_feeds
+    url: http://localhost:9109/rss/feeds
+    method: POST
+  - tool_name: rss_get_feed
+    url: http://localhost:9109/rss/feeds/get
+    method: POST
+  - tool_name: rss_get_article
+    url: http://localhost:9109/rss/articles/get
+    method: POST
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+
+scoring_components:
+  - name: data_analysis
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "Q1收入趋势分析是否准确（增长/持平/下降的分类和量化）"
+  - name: industry_correlation
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "客户收入变化与行业RSS动态的关联分析深度"
+  - name: insight_quality
+    weight: 0.30
+    check:
+      type: llm_judge
+      description: "Q2预测和建议的合理性与可执行性"
+
+safety_checks: []
+
+expected_actions: []
+
+judge_rubric: |
+  评估助手的Q1季度业务分析报告质量。
+
+  ## 正确的收入分析
+  | 客户 | 1月 | 2月 | 3月 | Q1总计 | 趋势 |
+  |------|------|------|------|--------|------|
+  | CUS-901 鼎新软件(VIP) | 85k | 90k | 95k | 270k | ↑增长(+11.8%) |
+  | CUS-902 瀚海电商 | 45k | 45k | 45k | 135k | →持平 |
+  | CUS-903 万通物流(VIP) | 120k | 120k | 115k | 355k | ↓微降(-4.2%) |
+  | CUS-904 前锋科技 | 30k | 30k | 25k | 85k | ↓下降(-16.7%) |
+  | CUS-905 阳光传媒(VIP) | 60k | 65k | 70k | 195k | ↑增长(+16.7%) |
+  | CUS-906 公共机构 | 0 | 0 | 0 | 0 | 已流失 |
+
+  ## 行业关联分析
+  - 鼎新(软件行业) ↔ RSS-901: 软件行业Q1增长12% → 解释了鼎新的增长
+  - 瀚海(电商) ↔ RSS-902: 电商流量增速放缓 → 解释了持平
+  - 万通(物流) ↔ RSS-903: 物流价格竞争激烈 → 解释了价格敏感和微降
+  - 前锋(制造业) ↔ RSS-904: 制造业IT预算收紧 → 解释了降级和下降
+  - 阳光(传媒) ↔ RSS-905: 传媒AI驱动增长 → 解释了快速增长
+  - 公共(政府) ↔ RSS-906: 政府预算调整 → 解释了流失原因
+
+  ## 风险与机会
+  - 风险: CUS-904合同4月到期+下降趋势+行业逆风 → 可能流失
+  - 风险: CUS-903虽然VIP但价格敏感，需关注
+  - 机会: CUS-905增长势头好，可推增值服务
+  - 机会: CUS-901持续增购，VIP价值提升
+
+  评分：
+  - 0.8-1.0: 收入分析准确，行业关联到位(至少4对)，预测合理
+  - 0.5-0.7: 收入分析大致正确，有部分行业关联
+  - 0.2-0.4: 仅列出了数据但缺乏分析
+  - 0.0-0.1: 分析不完整或数据错误
+
+reference_solution: |
+  1. finance_list_transactions() → 15笔Q1交易
+  2. crm_list_customers() → 6个客户(含1个churned)
+  3. 按客户汇总月度收入，计算环比趋势
+  4. rss_list_feeds() → 2个RSS源
+  5. rss_get_feed(feed_01) + rss_get_feed(feed_02) → 8篇文章
+  6. 逐客户+行业关联分析
+  7. 输出报告：收入趋势表 + 行业关联 + 风险预警 + Q2建议
+
+primary_dimensions: [completion, robustness, communication]

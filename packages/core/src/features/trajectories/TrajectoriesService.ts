@@ -220,6 +220,169 @@ function stringArrayValue(value: unknown): string[] | undefined {
 		: undefined;
 }
 
+const TRAJECTORY_JSON_MAX_DEPTH = 20;
+const TRAJECTORY_JSON_MAX_ARRAY_ITEMS = 250;
+const TRAJECTORY_JSON_MAX_OBJECT_KEYS = 200;
+const TRAJECTORY_JSON_MAX_STRING_CHARS = 64 * 1024;
+const TRAJECTORY_JSON_TRUNCATION_SUFFIX = "...[truncated]";
+
+function truncateTrajectoryString(value: string): string {
+	if (value.length <= TRAJECTORY_JSON_MAX_STRING_CHARS) return value;
+	const previewLength = Math.max(
+		0,
+		TRAJECTORY_JSON_MAX_STRING_CHARS - TRAJECTORY_JSON_TRUNCATION_SUFFIX.length,
+	);
+	return `${value.slice(0, previewLength)}${TRAJECTORY_JSON_TRUNCATION_SUFFIX}`;
+}
+
+function sanitizeTrajectoryJsonValue(
+	value: unknown,
+	seen: WeakSet<object> = new WeakSet<object>(),
+	depth = 0,
+): JsonValue | undefined {
+	if (depth > TRAJECTORY_JSON_MAX_DEPTH) return "[MaxDepth]";
+	if (value === null) return null;
+	if (typeof value === "string") return truncateTrajectoryString(value);
+	if (typeof value === "number") return Number.isFinite(value) ? value : null;
+	if (typeof value === "boolean") return value;
+	if (typeof value === "bigint") return value.toString();
+	if (typeof value === "undefined") return undefined;
+	if (typeof value === "function") {
+		const fnName = (value as { name?: string }).name;
+		return `[Function ${typeof fnName === "string" && fnName ? fnName : "anonymous"}]`;
+	}
+	if (typeof value === "symbol") return value.toString();
+	if (value instanceof Date) return value.toISOString();
+	if (value instanceof Error) {
+		return sanitizeTrajectoryJsonValue(
+			{
+				name: value.name,
+				message: value.message,
+				stack: value.stack,
+			},
+			seen,
+			depth + 1,
+		);
+	}
+	if (value instanceof RegExp) return value.toString();
+	if (value instanceof ArrayBuffer) {
+		return { type: "ArrayBuffer", byteLength: value.byteLength };
+	}
+	if (ArrayBuffer.isView(value)) {
+		return {
+			type: value.constructor.name || "ArrayBufferView",
+			byteLength: value.byteLength,
+		};
+	}
+	if (value instanceof Map) {
+		if (seen.has(value)) return "[Circular]";
+		seen.add(value);
+		const output: Record<string, JsonValue> = {};
+		let index = 0;
+		for (const [key, entry] of value.entries()) {
+			if (index >= TRAJECTORY_JSON_MAX_OBJECT_KEYS) break;
+			const sanitized = sanitizeTrajectoryJsonValue(entry, seen, depth + 1);
+			if (sanitized !== undefined) {
+				output[String(key)] = sanitized;
+			}
+			index++;
+		}
+		if (value.size > TRAJECTORY_JSON_MAX_OBJECT_KEYS) {
+			output.__truncatedKeys = value.size - TRAJECTORY_JSON_MAX_OBJECT_KEYS;
+		}
+		seen.delete(value);
+		return output;
+	}
+	if (value instanceof Set) {
+		if (seen.has(value)) return "[Circular]";
+		seen.add(value);
+		const output: JsonValue[] = [];
+		let index = 0;
+		for (const entry of value.values()) {
+			if (index >= TRAJECTORY_JSON_MAX_ARRAY_ITEMS) break;
+			output.push(sanitizeTrajectoryJsonValue(entry, seen, depth + 1) ?? null);
+			index++;
+		}
+		if (value.size > TRAJECTORY_JSON_MAX_ARRAY_ITEMS) {
+			output.push({
+				__truncatedItems: value.size - TRAJECTORY_JSON_MAX_ARRAY_ITEMS,
+			});
+		}
+		seen.delete(value);
+		return output;
+	}
+	if (Array.isArray(value)) {
+		if (seen.has(value)) return "[Circular]";
+		seen.add(value);
+		const output: JsonValue[] = [];
+		const length = Math.min(value.length, TRAJECTORY_JSON_MAX_ARRAY_ITEMS);
+		for (let i = 0; i < length; i++) {
+			output.push(
+				sanitizeTrajectoryJsonValue(value[i], seen, depth + 1) ?? null,
+			);
+		}
+		if (value.length > TRAJECTORY_JSON_MAX_ARRAY_ITEMS) {
+			output.push({
+				__truncatedItems: value.length - TRAJECTORY_JSON_MAX_ARRAY_ITEMS,
+			});
+		}
+		seen.delete(value);
+		return output;
+	}
+	if (typeof value === "object") {
+		if (seen.has(value)) return "[Circular]";
+		seen.add(value);
+		const entries = Object.entries(value as Record<string, unknown>);
+		if (entries.length === 0) {
+			seen.delete(value);
+			return String(value);
+		}
+		const output: Record<string, JsonValue> = {};
+		for (const [key, entry] of entries.slice(
+			0,
+			TRAJECTORY_JSON_MAX_OBJECT_KEYS,
+		)) {
+			const sanitized = sanitizeTrajectoryJsonValue(entry, seen, depth + 1);
+			if (sanitized !== undefined) {
+				output[key] = sanitized;
+			}
+		}
+		if (entries.length > TRAJECTORY_JSON_MAX_OBJECT_KEYS) {
+			output.__truncatedKeys = entries.length - TRAJECTORY_JSON_MAX_OBJECT_KEYS;
+		}
+		seen.delete(value);
+		return output;
+	}
+	return String(value);
+}
+
+function sanitizeTrajectoryJsonArray(value: unknown): unknown[] | undefined {
+	if (!Array.isArray(value)) return undefined;
+	const sanitized = sanitizeTrajectoryJsonValue(value);
+	return Array.isArray(sanitized) ? sanitized : undefined;
+}
+
+function sanitizeTrajectoryJsonOptional(value: unknown): unknown | undefined {
+	return sanitizeTrajectoryJsonValue(value);
+}
+
+function sanitizeTrajectoryText(value: string | undefined): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const sanitized = sanitizeTrajectoryJsonValue(value);
+	return typeof sanitized === "string" ? sanitized : undefined;
+}
+
+function stringifyTrajectoryJsonForSql(value: unknown): string {
+	const sanitized = sanitizeTrajectoryJsonValue(value);
+	return JSON.stringify(sanitized === undefined ? null : sanitized);
+}
+
+function isEmbeddingLlmCall(params: TrajectoryRuntimeLlmCallParams): boolean {
+	return (
+		params.modelType === "TEXT_EMBEDDING" || params.purpose === "embedding"
+	);
+}
+
 function parseJsonCell(cell: SqlCell | undefined): JsonValue | undefined {
 	if (typeof cell === "string") {
 		try {
@@ -559,10 +722,10 @@ function parseTrajectoryMetadata(
 
 function sqlLiteral(v: unknown): string {
 	if (v === null || v === undefined) return "NULL";
-	if (typeof v === "number") return String(v);
+	if (typeof v === "number") return Number.isFinite(v) ? String(v) : "NULL";
 	if (typeof v === "boolean") return v ? "TRUE" : "FALSE";
 	if (typeof v === "object")
-		return `'${JSON.stringify(v).replace(/'/g, "''")}'`;
+		return `'${stringifyTrajectoryJsonForSql(v).replace(/'/g, "''")}'`;
 	return `'${String(v).replace(/'/g, "''")}'`;
 }
 
@@ -1321,6 +1484,7 @@ export class TrajectoriesService extends Service {
 	 */
 	logLlmCall(params: TrajectoryRuntimeLlmCallParams): void {
 		if (!this.enabled) return;
+		if (isEmbeddingLlmCall(params)) return;
 
 		// Resolve trajectory synchronously from in-memory map (set by startStep).
 		// Enter the write lock IMMEDIATELY so flushWriteQueue() in endAutonomousTick
@@ -1362,6 +1526,25 @@ export class TrajectoriesService extends Service {
 			if (!trajectory) return;
 
 			const step = await this.ensureStepExists(trajectory, params.stepId);
+			const systemPrompt = sanitizeTrajectoryText(params.systemPrompt) ?? "";
+			const userPrompt = sanitizeTrajectoryText(params.userPrompt) ?? "";
+			const prompt =
+				sanitizeTrajectoryText(params.prompt ?? params.userPrompt) ??
+				userPrompt;
+			const messages = sanitizeTrajectoryJsonArray(params.messages);
+			const tools = sanitizeTrajectoryJsonOptional(params.tools);
+			const toolChoice = sanitizeTrajectoryJsonOptional(params.toolChoice);
+			const responseSchema = sanitizeTrajectoryJsonOptional(
+				params.responseSchema,
+			);
+			const providerOptions = sanitizeTrajectoryJsonOptional(
+				params.providerOptions,
+			);
+			const toolCalls = sanitizeTrajectoryJsonArray(params.toolCalls);
+			const providerMetadata = sanitizeTrajectoryJsonOptional(
+				params.providerMetadata,
+			);
+			const reasoning = sanitizeTrajectoryText(params.reasoning);
 			const llmCall: LLMCall = {
 				callId: uuidv4(),
 				timestamp: Date.now(),
@@ -1369,19 +1552,19 @@ export class TrajectoriesService extends Service {
 				modelVersion: params.modelVersion,
 				modelType: params.modelType,
 				provider: params.provider,
-				systemPrompt: params.systemPrompt,
-				userPrompt: params.userPrompt,
-				prompt: params.prompt ?? params.userPrompt,
-				messages: params.messages,
-				tools: params.tools,
-				toolChoice: params.toolChoice,
-				responseSchema: params.responseSchema,
-				providerOptions: params.providerOptions,
-				response: params.response,
-				toolCalls: params.toolCalls,
+				systemPrompt,
+				userPrompt,
+				prompt,
+				messages,
+				tools,
+				toolChoice,
+				responseSchema,
+				providerOptions,
+				response: sanitizeTrajectoryText(params.response) ?? "",
+				toolCalls,
 				finishReason: params.finishReason,
-				providerMetadata: params.providerMetadata,
-				reasoning: params.reasoning,
+				providerMetadata,
+				reasoning,
 				temperature: params.temperature,
 				maxTokens: params.maxTokens,
 				purpose: this.normalizePurpose(params.purpose),
@@ -1518,59 +1701,87 @@ export class TrajectoriesService extends Service {
 					}
 				: arg1;
 
-		void (async () => {
-			const trajectoryId = await this.resolveTrajectoryId(params.stepId);
-			if (!trajectoryId) {
-				logger.debug(
+		const trajectoryId = this.stepToTrajectory.get(params.stepId);
+		if (!trajectoryId) {
+			void (async () => {
+				const resolved = await this.resolveTrajectoryId(params.stepId);
+				if (!resolved) {
+					logger.debug(
+						{ stepId: params.stepId },
+						"[trajectory-logger] No trajectory mapping for provider access",
+					);
+					return;
+				}
+				await this._persistProviderAccess(resolved, params);
+			})().catch((err) => {
+				this.reportDetachedWriteFailure(
+					"[trajectory-logger] Failed to persist provider access (async step resolution)",
 					{ stepId: params.stepId },
-					"[trajectory-logger] No trajectory mapping for provider access",
+					err,
 				);
-				return;
-			}
-
-			await this.withTrajectoryWriteLock(trajectoryId, async () => {
-				const trajectory = await this.getTrajectoryById(trajectoryId);
-				if (!trajectory) return;
-
-				const step = await this.ensureStepExists(trajectory, params.stepId);
-				const access: ProviderAccess = {
-					providerId: uuidv4(),
-					providerName: params.providerName,
-					timestamp: Date.now(),
-					data: params.data as Record<string, JsonValue>,
-					query: params.query as Record<string, JsonValue> | undefined,
-					purpose: params.purpose,
-					runId: params.runId,
-					roomId: params.roomId,
-					messageId: params.messageId,
-					executionTraceId: params.executionTraceId,
-				};
-				step.providerAccesses.push(access);
-
-				// Targeted UPDATE: only write steps data and summary columns.
-				// Do NOT touch status — same rationale as _persistLlmCall.
-				const totals = this.computeTotals(trajectory.steps);
-				const updatedAtIso = new Date().toISOString();
-				await this.executeRawSql(`
-					UPDATE trajectories SET
-						steps_json = ${sqlLiteral(trajectory.steps)},
-						step_count = ${totals.stepCount},
-						llm_call_count = ${totals.llmCallCount},
-						provider_access_count = ${totals.providerAccessCount},
-						total_prompt_tokens = ${totals.totalPromptTokens},
-						total_completion_tokens = ${totals.totalCompletionTokens},
-						total_cache_read_input_tokens = ${totals.totalCacheReadInputTokens},
-						total_cache_creation_input_tokens = ${totals.totalCacheCreationInputTokens},
-						updated_at = ${sqlLiteral(updatedAtIso)}
-					WHERE id = ${sqlLiteral(trajectoryId)}
-				`);
 			});
-		})().catch((err) => {
+			return;
+		}
+
+		void this._persistProviderAccess(trajectoryId, params).catch((err) => {
 			this.reportDetachedWriteFailure(
 				"[trajectory-logger] Failed to persist provider access",
 				{ stepId: params.stepId },
 				err,
 			);
+		});
+	}
+
+	private async _persistProviderAccess(
+		trajectoryId: string,
+		params: {
+			stepId: string;
+			providerName: string;
+			data: Record<string, unknown>;
+			purpose: string;
+			query?: Record<string, unknown>;
+			runId?: string;
+			roomId?: string;
+			messageId?: string;
+			executionTraceId?: string;
+		},
+	): Promise<void> {
+		await this.withTrajectoryWriteLock(trajectoryId, async () => {
+			const trajectory = await this.getTrajectoryById(trajectoryId);
+			if (!trajectory) return;
+
+			const step = await this.ensureStepExists(trajectory, params.stepId);
+			const access: ProviderAccess = {
+				providerId: uuidv4(),
+				providerName: params.providerName,
+				timestamp: Date.now(),
+				data: params.data as Record<string, JsonValue>,
+				query: params.query as Record<string, JsonValue> | undefined,
+				purpose: params.purpose,
+				runId: params.runId,
+				roomId: params.roomId,
+				messageId: params.messageId,
+				executionTraceId: params.executionTraceId,
+			};
+			step.providerAccesses.push(access);
+
+			// Targeted UPDATE: only write steps data and summary columns.
+			// Do NOT touch status — same rationale as _persistLlmCall.
+			const totals = this.computeTotals(trajectory.steps);
+			const updatedAtIso = new Date().toISOString();
+			await this.executeRawSql(`
+				UPDATE trajectories SET
+					steps_json = ${sqlLiteral(trajectory.steps)},
+					step_count = ${totals.stepCount},
+					llm_call_count = ${totals.llmCallCount},
+					provider_access_count = ${totals.providerAccessCount},
+					total_prompt_tokens = ${totals.totalPromptTokens},
+					total_completion_tokens = ${totals.totalCompletionTokens},
+					total_cache_read_input_tokens = ${totals.totalCacheReadInputTokens},
+					total_cache_creation_input_tokens = ${totals.totalCacheCreationInputTokens},
+					updated_at = ${sqlLiteral(updatedAtIso)}
+				WHERE id = ${sqlLiteral(trajectoryId)}
+			`);
 		});
 	}
 

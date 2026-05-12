@@ -23,7 +23,7 @@
 #                                   the picked GPU target's driver / sm level
 #                                   must support it.
 #   7. format ceiling violations → per-task_type schema (planner envelope,
-#                                   TOON-decoded routing tokens, tool-call
+#                                   native JSON-decoded routing tokens, tool-call
 #                                   action shape, default-thought leaks) —
 #                                   things `eliza_record.is_valid()` doesn't
 #                                   catch. Trainer ingests the data anyway
@@ -70,7 +70,7 @@ MIN_CONTENT_PCT="${ELIZA_PREFLIGHT_MIN_CONTENT_PCT:-80}"
 case "$REGISTRY_KEY" in
   qwen3.5-2b|qwen3.5-9b) DEFAULT_GPU_TARGET="blackwell6000-1x" ;;
   qwen3.6-27b)           DEFAULT_GPU_TARGET="b200-2x" ;;
-  qwen3-0.6b)            DEFAULT_GPU_TARGET="blackwell6000-1x" ;;
+  qwen3.5-0.8b)            DEFAULT_GPU_TARGET="blackwell6000-1x" ;;
   *)                     DEFAULT_GPU_TARGET="blackwell6000-2x" ;;
 esac
 VAST_GPU_TARGET="${VAST_GPU_TARGET:-$DEFAULT_GPU_TARGET}"
@@ -612,7 +612,7 @@ fi
 # the eliza runtime parses. Catches the format drift DATASET_REVIEW.md
 # documented (default-thought leaks, lowercase routing actions, missing
 # REPLY/IGNORE/STOP, malformed planner envelopes, tool-calls that don't
-# decode to TOON, etc.).
+# decode to native JSON, etc.).
 log "[7/8] format ceiling — validate_corpus.py --strict on data/final/{train,val,test}.jsonl"
 FORMAT_DETAIL_FILE="$(mktemp)"
 trap 'rm -f "$SUMMARY_TMP" "$SCHEMA_DETAIL_FILE" "$MEM_DETAIL_FILE" "$SMOKE_DETAIL_FILE" "$CUDA_DETAIL_FILE" "$FORMAT_DETAIL_FILE"' EXIT
@@ -674,7 +674,7 @@ scripts/lib/eliza_record.DEFAULT_THOUGHT_LEAKS. Aggregate count above
 threshold = fail.
 
 Cheap: streams JSONL line by line, only inspects the first ~1KB of
-expectedResponse to find the thought line, never touches the bun TOON
+expectedResponse to find the thought line, never touches the bun native JSON
 decoder.
 """
 from __future__ import annotations

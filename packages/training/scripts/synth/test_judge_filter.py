@@ -5,7 +5,7 @@ fixture set so we exercise the real format/content scorers — no live AI judge
 call (gated off by `ELIZA_REWARD_USE_AI_JUDGE`, default 0). A second test
 suite drives `filter_stream` with a mocked judge function to assert routing
 math, since the real scorer's output for some bucket+response pairs depends
-on TOON parser details that are tested elsewhere.
+on native JSON parser details that are tested elsewhere.
 
 Run:
     cd packages/training && pytest -xvs scripts/synth/test_judge_filter.py
@@ -73,7 +73,7 @@ def test_extract_raw_eliza_shape_uses_expected_response() -> None:
         "currentMessage": {"content": "please finalize"},
         "expectedResponse": (
             "thought: finalize\n"
-            "actions[1]:\n"
+            "tool_calls[0]\n"
             "  - name: FINALIZE_WORKSPACE\n"
             "providers: \"\"\n"
             "text: done"
@@ -359,7 +359,7 @@ def test_cli_invocation_writes_files_and_summary(tmp_path: Path) -> None:
                 "role": "model",
                 "content": (
                     "thought: finalize\n"
-                    "actions[1]:\n"
+                    "tool_calls[0]\n"
                     "  - name: FINALIZE_WORKSPACE\n"
                     "providers: \"\"\n"
                     "text: done"
@@ -371,7 +371,7 @@ def test_cli_invocation_writes_files_and_summary(tmp_path: Path) -> None:
         "ground_truth": {
             "expected": (
                 "thought: finalize\n"
-                "actions[1]:\n"
+                "tool_calls[0]\n"
                 "  - name: FINALIZE_WORKSPACE\n"
                 "providers: \"\"\n"
                 "text: done"

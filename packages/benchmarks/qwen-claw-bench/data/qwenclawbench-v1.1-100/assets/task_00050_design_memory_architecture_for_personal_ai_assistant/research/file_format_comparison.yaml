@@ -1,0 +1,103 @@
+# File Format Comparison for Memory Storage
+# Evaluated: 2024-01-16
+# Context: Local-first personal AI assistant memory system
+# Evaluation criteria weighted for: human readability, metadata support,
+#   append performance, and ecosystem tooling
+
+formats:
+  - name: "JSON"
+    description: "Standard JavaScript Object Notation"
+    human_readable: true
+    supports_metadata: true
+    append_friendly: false  # Must parse/rewrite entire file to append
+    avg_parse_time_ms: 2.1
+    compression_ratio: 0.45
+    tooling_ecosystem_score: 5
+    max_practical_file_size_mb: 50
+    notes: >
+      Excellent tooling and universal support. However, not append-friendly
+      since adding an entry requires parsing the entire file and rewriting.
+      Good for config files and small datasets, less ideal for growing logs.
+
+  - name: "YAML"
+    description: "YAML Ain't Markup Language"
+    human_readable: true
+    supports_metadata: true
+    append_friendly: false  # Similar to JSON — structural integrity requires full parse
+    avg_parse_time_ms: 8.4
+    compression_ratio: 0.42
+    tooling_ecosystem_score: 4
+    max_practical_file_size_mb: 10
+    notes: >
+      More human-readable than JSON but significantly slower to parse.
+      Good for configuration and small structured documents. Not suitable
+      for high-volume append workloads. YAML parsing edge cases can cause
+      subtle bugs (e.g., Norway problem with 'NO' being parsed as boolean).
+
+  - name: "Markdown with YAML Frontmatter"
+    description: "Markdown body with structured YAML metadata header"
+    human_readable: true
+    supports_metadata: true
+    append_friendly: true  # Each entry is a separate file; new entries = new files
+    avg_parse_time_ms: 3.5
+    compression_ratio: 0.38
+    tooling_ecosystem_score: 4
+    max_practical_file_size_mb: 5
+    notes: >
+      Best combination of human readability and metadata support. Each memory
+      entry is a standalone .md file with YAML frontmatter for tags, timestamps,
+      and relationships, plus Markdown body for the actual content. Easily
+      browsable in any text editor or Obsidian-like tool. Recommended for
+      episodic and semantic memory entries.
+
+  - name: "SQLite"
+    description: "Embedded relational database stored as a single file"
+    human_readable: false
+    supports_metadata: true
+    append_friendly: true
+    avg_parse_time_ms: 0.8
+    compression_ratio: 0.55
+    tooling_ecosystem_score: 5
+    max_practical_file_size_mb: 10000
+    notes: >
+      Excellent performance and query capabilities. Built-in FTS5 for
+      full-text search. Single-file storage is portable. However, not
+      human-readable — requires tooling to inspect. Good for indices and
+      search acceleration, less ideal as the primary human-browsable store.
+
+  - name: "JSONL (JSON Lines)"
+    description: "Newline-delimited JSON — one JSON object per line"
+    human_readable: true
+    supports_metadata: true
+    append_friendly: true  # Just append a new line
+    avg_parse_time_ms: 1.8
+    compression_ratio: 0.47
+    tooling_ecosystem_score: 4
+    max_practical_file_size_mb: 500
+    notes: >
+      Excellent for append-heavy workloads. Each line is independent so
+      appending is O(1). Can be processed line-by-line without loading
+      entire file. Good for working memory logs and event streams.
+      Less human-readable than Markdown for long-form content.
+
+  - name: "MessagePack"
+    description: "Binary serialization format — like JSON but binary"
+    human_readable: false
+    supports_metadata: true
+    append_friendly: true
+    avg_parse_time_ms: 0.6
+    compression_ratio: 0.65
+    tooling_ecosystem_score: 2
+    max_practical_file_size_mb: 1000
+    notes: >
+      Fastest parse times and best compression. However, completely
+      opaque to human inspection. Limited tooling ecosystem compared
+      to JSON/YAML. Could be useful for embedding vector storage where
+      human readability is not needed.
+
+# Recommendation Summary:
+# - Primary storage (episodic/semantic): Markdown with YAML frontmatter
+# - Working memory / event log: JSONL
+# - Search index: SQLite (with FTS5)
+# - Embedding vectors: MessagePack or numpy .npy files
+# - Configuration: YAML

@@ -44,6 +44,7 @@ export * from "./runtime";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/execute-planned-tool-call";
+export * from "./runtime/rlm";
 export * from "./runtime/schema-compat";
 export * from "./runtime/sub-planner";
 export * from "./runtime/system-prompt";

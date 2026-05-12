@@ -1,0 +1,14 @@
+{
+  "sun": {"color": "#FDD835", "radius": 40},
+  "planets": [
+    {"name": "Mercury", "color": "#9E9E9E", "radius": 6, "orbit_radius": 80, "period": 3},
+    {"name": "Venus", "color": "#FFB74D", "radius": 10, "orbit_radius": 120, "period": 5},
+    {"name": "Earth", "color": "#42A5F5", "radius": 11, "orbit_radius": 170, "period": 8},
+    {"name": "Mars", "color": "#EF5350", "radius": 8, "orbit_radius": 220, "period": 12},
+    {"name": "Jupiter", "color": "#FF8A65", "radius": 22, "orbit_radius": 300, "period": 20},
+    {"name": "Saturn", "color": "#FFCC80", "radius": 18, "orbit_radius": 380, "period": 30, "has_ring": true}
+  ],
+  "background": "#0D1B2A",
+  "show_orbits": true,
+  "show_labels": true
+}

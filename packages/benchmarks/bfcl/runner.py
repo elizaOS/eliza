@@ -459,7 +459,7 @@ class BFCLRunner:
 
         try:
             # Get stratified sample
-            sample = self.dataset.get_sample(n, categories)
+            sample = self.dataset.get_sample(n, categories, require_ground_truth=True)
             logger.info(f"Running sample of {len(sample)} tests")
 
             results: list[BFCLResult] = []

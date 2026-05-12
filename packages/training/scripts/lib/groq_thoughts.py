@@ -395,14 +395,14 @@ async def run_round(
 
 # ─────────────────────────── shared parsers ───────────────────────────
 
-def has_thought(toon: str) -> bool:
-    """Return True if a TOON record has a non-empty `thought:` line.
+def has_thought(payload: str) -> bool:
+    """Return True if a native JSON record has a non-empty `thought:` line.
 
     Accepts both bare (`thought: ...`) and quoted (`"thought": ...`) keys.
     """
-    if not toon:
+    if not payload:
         return False
-    for line in toon.splitlines():
+    for line in payload.splitlines():
         s = line.strip()
         key: str | None = None
         if s.startswith("thought:"):
@@ -417,20 +417,20 @@ def has_thought(toon: str) -> bool:
     return False
 
 
-def extract_response_text(toon: str) -> str:
-    """Pull human-readable assistant text out of a TOON expectedResponse.
+def extract_response_text(payload: str) -> str:
+    """Pull human-readable assistant text out of a native JSON expectedResponse.
 
     For reply: `text:`/`thought:` shape — returns the text.
     For tool_call/mcp_tool_call: `tool_calls[N]{name,arguments}` — returns
     a short summary of the calls.
     For agent_trace: usually contains `text:` too.
     """
-    if not toon:
+    if not payload:
         return ""
     text_val = ""
     tool_summary: list[str] = []
     in_tools = False
-    for raw in toon.splitlines():
+    for raw in payload.splitlines():
         line = raw.rstrip()
         s = line.strip()
         if s.startswith("text:"):
@@ -448,4 +448,4 @@ def extract_response_text(toon: str) -> str:
         return text_val
     if tool_summary:
         return "[tool calls] " + "; ".join(tool_summary[:3])
-    return toon[:300]
+    return payload[:300]

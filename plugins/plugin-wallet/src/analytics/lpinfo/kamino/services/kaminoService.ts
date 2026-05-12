@@ -1,4 +1,3 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger, Service } from "@elizaos/core";
 
@@ -28,9 +27,17 @@ interface KaminoUserMarketRef {
   discovered: boolean;
 }
 
+export interface KaminoUserPosition {
+  token?: string;
+  amount?: number;
+  value?: number;
+  apy?: number;
+  market?: string;
+}
+
 interface KaminoUserPositionsOk {
-  lending: unknown[];
-  borrowing: unknown[];
+  lending: KaminoUserPosition[];
+  borrowing: KaminoUserPosition[];
   totalValue: number;
   markets: KaminoUserMarketRef[];
   userAccounts: number;
@@ -38,15 +45,17 @@ interface KaminoUserPositionsOk {
 }
 
 interface KaminoUserPositionsErr {
-  lending: unknown[];
-  borrowing: unknown[];
+  lending: KaminoUserPosition[];
+  borrowing: KaminoUserPosition[];
   totalValue: number;
   error: string;
 }
 
-type KaminoUserPositions = KaminoUserPositionsOk | KaminoUserPositionsErr;
+export type KaminoUserPositions =
+  | KaminoUserPositionsOk
+  | KaminoUserPositionsErr;
 
-interface KaminoMarketOverviewRow {
+export interface KaminoMarketOverviewRow {
   address: string;
   marketName: string;
   dataSize: number;
@@ -80,7 +89,7 @@ interface KaminoMarketOverviewErr {
 
 type KaminoMarketOverview = KaminoMarketOverviewOk | KaminoMarketOverviewErr;
 
-interface KaminoReserve {
+export interface KaminoReserve {
   market: string;
   marketName: string;
   dataSize: number;
@@ -113,6 +122,19 @@ interface KaminoConnectionTestResult {
   timestamp: string;
 }
 
+function getStringSetting(
+  runtime: IAgentRuntime | undefined,
+  key: string,
+  fallback: string,
+): string {
+  const value = runtime?.getSetting(key);
+  return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+function formatLogError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /**
  * Kamino Lending Protocol Service
  * Handles interactions with Kamino lending protocol using the official API
@@ -126,11 +148,14 @@ export class KaminoService extends Service {
   capabilityDescription =
     "Provides standardized access to Kamino lending protocol via the official API." as const;
 
-  constructor(runtime: IAgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
 
-    this.apiBaseUrl =
-      runtime.getSetting("KAMINO_API_URL") || KAMINO_API_BASE_URL;
+    this.apiBaseUrl = getStringSetting(
+      runtime,
+      "KAMINO_API_URL",
+      KAMINO_API_BASE_URL,
+    );
 
     logger.log(`KaminoService initialized with API: ${this.apiBaseUrl}`);
     logger.log(`Program ID: ${KAMINO_LEND_PROGRAM_ID}`);
@@ -161,7 +186,10 @@ export class KaminoService extends Service {
 
       return await response.json();
     } catch (error) {
-      logger.error(`API request failed for ${endpoint}:`, error);
+      logger.error(
+        `API request failed for ${endpoint}:`,
+        formatLogError(error),
+      );
       throw error;
     }
   }
@@ -195,7 +223,7 @@ export class KaminoService extends Service {
       );
       return userPositions;
     } catch (error) {
-      logger.error("Error fetching user positions:", error);
+      logger.error("Error fetching user positions:", formatLogError(error));
       return {
         lending: [],
         borrowing: [],
@@ -231,7 +259,7 @@ export class KaminoService extends Service {
         }
         logger.log(`Found ${stakingYields.length} staking yields`);
       } catch (error) {
-        logger.warn("Error fetching staking yields:", error);
+        logger.warn("Error fetching staking yields:", formatLogError(error));
       }
 
       // Get Limo trades to discover trading pairs
@@ -248,7 +276,7 @@ export class KaminoService extends Service {
         }
         logger.log(`Found ${limoTrades.length} Limo trades`);
       } catch (error) {
-        logger.warn("Error fetching Limo trades:", error);
+        logger.warn("Error fetching Limo trades:", formatLogError(error));
       }
 
       // Limit to first 20 markets to avoid overwhelming
@@ -257,7 +285,7 @@ export class KaminoService extends Service {
 
       return limitedMarkets;
     } catch (error) {
-      logger.error("Error discovering markets:", error);
+      logger.error("Error discovering markets:", formatLogError(error));
       return [];
     }
   }
@@ -314,7 +342,10 @@ export class KaminoService extends Service {
           ),
         );
       } catch (error) {
-        logger.warn("Error fetching staking yields for overview:", error);
+        logger.warn(
+          "Error fetching staking yields for overview:",
+          formatLogError(error),
+        );
       }
 
       // Get Limo trades for volume data
@@ -326,7 +357,10 @@ export class KaminoService extends Service {
         }, 0);
         overview.limoTrades = limoTrades.length;
       } catch (error) {
-        logger.warn("Error fetching Limo trades for overview:", error);
+        logger.warn(
+          "Error fetching Limo trades for overview:",
+          formatLogError(error),
+        );
       }
 
       // Create market entries
@@ -346,7 +380,7 @@ export class KaminoService extends Service {
       );
       return overview;
     } catch (error) {
-      logger.error("Error fetching market overview:", error);
+      logger.error("Error fetching market overview:", formatLogError(error));
       return {
         totalMarkets: 0,
         totalTvl: 0,
@@ -394,7 +428,10 @@ export class KaminoService extends Service {
           }
         }
       } catch (error) {
-        logger.warn("Error fetching staking yields for reserves:", error);
+        logger.warn(
+          "Error fetching staking yields for reserves:",
+          formatLogError(error),
+        );
       }
 
       // Get Limo trades to understand trading opportunities
@@ -424,13 +461,19 @@ export class KaminoService extends Service {
           }
         }
       } catch (error) {
-        logger.warn("Error fetching Limo trades for reserves:", error);
+        logger.warn(
+          "Error fetching Limo trades for reserves:",
+          formatLogError(error),
+        );
       }
 
       logger.log(`Found ${reserves.length} reserves`);
       return reserves;
     } catch (error) {
-      logger.error("Error fetching available reserves:", error);
+      logger.error(
+        "Error fetching available reserves:",
+        formatLogError(error),
+      );
       return [];
     }
   }
@@ -455,7 +498,7 @@ export class KaminoService extends Service {
       logger.log("Program info retrieved successfully");
       return info;
     } catch (error) {
-      logger.error("Error fetching program info:", error);
+      logger.error("Error fetching program info:", formatLogError(error));
       throw error;
     }
   }
@@ -665,7 +708,7 @@ export class KaminoService extends Service {
           `API connection test passed. Found ${stakingYields.length} staking yields`,
         );
       } catch (error) {
-        logger.error("API connection test failed:", error);
+        logger.error("API connection test failed:", formatLogError(error));
       }
 
       // Test Limo trades endpoint
@@ -677,7 +720,7 @@ export class KaminoService extends Service {
           `Limo trades test passed. Found ${limoTrades.length} trades`,
         );
       } catch (error) {
-        logger.error("Limo trades test failed:", error);
+        logger.error("Limo trades test failed:", formatLogError(error));
       }
 
       // Test market discovery
@@ -686,13 +729,13 @@ export class KaminoService extends Service {
         results.marketCount = markets.length;
         logger.log(`Market discovery test: ${markets.length} markets found`);
       } catch (error) {
-        logger.error("Market discovery test failed:", error);
+        logger.error("Market discovery test failed:", formatLogError(error));
       }
 
       logger.log("Connection test completed");
       return results;
     } catch (error) {
-      logger.error("Error in connection test:", error);
+      logger.error("Error in connection test:", formatLogError(error));
       throw error;
     }
   }
@@ -727,12 +770,12 @@ export class KaminoService extends Service {
 
       // Test connection on startup
       const testResults = await this.testConnection();
-      logger.log("Startup connection test results:", testResults);
+      logger.log({ testResults }, "Startup connection test results");
 
       this.isRunning = true;
       logger.log("KaminoService started successfully");
     } catch (error) {
-      logger.error("Failed to start KaminoService:", error);
+      logger.error("Failed to start KaminoService:", formatLogError(error));
       throw error;
     }
   }
@@ -747,7 +790,7 @@ export class KaminoService extends Service {
       this.isRunning = false;
       logger.log("KaminoService stopped successfully");
     } catch (error) {
-      logger.error("Failed to stop KaminoService:", error);
+      logger.error("Failed to stop KaminoService:", formatLogError(error));
       throw error;
     }
   }

@@ -1,0 +1,66 @@
+#!/usr/bin/env bun
+/**
+ * voice-bench CLI.
+ *
+ *   voice-bench --bundle eliza-1-1.7b --backend metal --scenario all --runs 3 --output results.json
+ *
+ * Currently only the mock driver is wired. Wiring the real pipeline is
+ * a follow-up: see README.md "Wiring the real pipeline" section.
+ */
+
+import { writeFileSync, readFileSync, existsSync } from "node:fs";
+import { MockPipelineDriver } from "../src/mock-driver.ts";
+import { parseCliArgs, runBench } from "../src/runner.ts";
+import { evaluateGates } from "../src/gates.ts";
+import type { BenchRun } from "../src/types.ts";
+
+async function main(): Promise<void> {
+  const args = parseCliArgs(process.argv.slice(2));
+
+  if (args.backend !== "mock") {
+    process.stderr.write(
+      `[voice-bench] backend "${args.backend}" not yet wired in this build — only "mock" is available.\n` +
+        `[voice-bench] See packages/inference/voice-bench/README.md for the follow-up plan.\n`,
+    );
+    process.exit(2);
+  }
+
+  const driver = new MockPipelineDriver({ backend: args.backend });
+  const scenarios = args.scenario === "all" ? undefined : [args.scenario];
+
+  const run = await runBench({
+    driver,
+    bundleId: args.bundle,
+    scenarios,
+    runs: args.runs,
+  });
+
+  const json = JSON.stringify(run, null, 2);
+  if (args.output) {
+    writeFileSync(args.output, json);
+    process.stdout.write(`[voice-bench] wrote ${args.output}\n`);
+  } else {
+    process.stdout.write(`${json}\n`);
+  }
+
+  let baselineRun: BenchRun | undefined;
+  if (args.baseline) {
+    if (!existsSync(args.baseline)) {
+      process.stderr.write(`[voice-bench] baseline not found: ${args.baseline}\n`);
+      process.exit(2);
+    }
+    baselineRun = JSON.parse(readFileSync(args.baseline, "utf8")) as BenchRun;
+  }
+
+  const report = evaluateGates({ current: run, baseline: baselineRun });
+  process.stdout.write(`\n${report.markdown}\n`);
+  if (!report.passed) {
+    process.stderr.write("[voice-bench] gate FAIL\n");
+    process.exit(1);
+  }
+}
+
+main().catch((err) => {
+  process.stderr.write(`[voice-bench] fatal: ${err instanceof Error ? err.stack : String(err)}\n`);
+  process.exit(2);
+});

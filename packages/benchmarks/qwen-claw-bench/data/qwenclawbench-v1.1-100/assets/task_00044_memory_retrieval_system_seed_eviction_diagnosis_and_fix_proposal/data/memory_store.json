@@ -1,0 +1,2091 @@
+{
+  "memories": [
+    {
+      "id": 1,
+      "timestamp": "2023-01-01T00:21:29Z",
+      "keywords": [
+        "authorization",
+        "endpoint",
+        "rate_limit",
+        "caching"
+      ],
+      "relevance_score": 0.884,
+      "content": "Integration test coverage for authorization increased to 85%."
+    },
+    {
+      "id": 2,
+      "timestamp": "2023-01-05T00:43:17Z",
+      "keywords": [
+        "api",
+        "canary",
+        "tracing"
+      ],
+      "relevance_score": 0.873,
+      "content": "Capacity planning: api storage projected to exceed limits by Q3."
+    },
+    {
+      "id": 3,
+      "timestamp": "2023-01-06T05:49:04Z",
+      "keywords": [
+        "deployment",
+        "rollback",
+        "monitoring",
+        "onboarding"
+      ],
+      "relevance_score": 0.828,
+      "content": "Scheduled maintenance for deployment infrastructure next sprint."
+    },
+    {
+      "id": 4,
+      "timestamp": "2023-01-08T12:36:05Z",
+      "keywords": [
+        "tracing",
+        "session",
+        "metrics"
+      ],
+      "relevance_score": 0.85,
+      "content": "Rollback triggered due to tracing compatibility issue."
+    },
+    {
+      "id": 5,
+      "timestamp": "2023-01-12T06:04:05Z",
+      "keywords": [
+        "onboarding",
+        "rollback",
+        "throttle"
+      ],
+      "relevance_score": 0.969,
+      "content": "Implemented new onboarding strategy to improve system throughput."
+    },
+    {
+      "id": 6,
+      "timestamp": "2023-01-15T02:15:11Z",
+      "keywords": [
+        "database",
+        "api",
+        "monitoring"
+      ],
+      "relevance_score": 0.838,
+      "content": "User reported database issue during peak traffic on January 15, 2023."
+    },
+    {
+      "id": 7,
+      "timestamp": "2023-01-16T23:32:35Z",
+      "keywords": [
+        "authentication",
+        "logging"
+      ],
+      "relevance_score": 0.841,
+      "content": "New authentication dashboard deployed for operations team."
+    },
+    {
+      "id": 8,
+      "timestamp": "2023-01-19T10:12:31Z",
+      "keywords": [
+        "replication",
+        "notification"
+      ],
+      "relevance_score": 0.884,
+      "content": "Integration test coverage for replication increased to 85%."
+    },
+    {
+      "id": 9,
+      "timestamp": "2023-01-23T17:08:53Z",
+      "keywords": [
+        "monitoring",
+        "encryption",
+        "query"
+      ],
+      "relevance_score": 0.886,
+      "content": "Research spike on alternative monitoring approaches completed."
+    },
+    {
+      "id": 10,
+      "timestamp": "2023-01-24T01:58:22Z",
+      "keywords": [
+        "replication",
+        "endpoint",
+        "metrics"
+      ],
+      "relevance_score": 0.91,
+      "content": "Migration plan drafted for legacy replication subsystem."
+    },
+    {
+      "id": 11,
+      "timestamp": "2023-01-27T03:56:51Z",
+      "keywords": [
+        "alerting",
+        "session",
+        "query"
+      ],
+      "relevance_score": 0.817,
+      "content": "Customer feedback: alerting workflow is confusing for new users."
+    },
+    {
+      "id": 12,
+      "timestamp": "2023-01-30T18:40:34Z",
+      "keywords": [
+        "replication",
+        "logging",
+        "notification"
+      ],
+      "relevance_score": 0.86,
+      "content": "Feature request: enhance replication to support multi-tenant environments."
+    },
+    {
+      "id": 13,
+      "timestamp": "2023-02-02T19:49:55Z",
+      "keywords": [
+        "authorization",
+        "metrics",
+        "monitoring"
+      ],
+      "relevance_score": 0.895,
+      "content": "Performance benchmark showed authorization latency reduced by 40%."
+    },
+    {
+      "id": 14,
+      "timestamp": "2023-02-03T20:49:37Z",
+      "keywords": [
+        "indexing",
+        "monitoring",
+        "throttle"
+      ],
+      "relevance_score": 0.811,
+      "content": "Load test revealed indexing bottleneck under 10k concurrent users."
+    },
+    {
+      "id": 15,
+      "timestamp": "2023-02-05T14:33:27Z",
+      "keywords": [
+        "retention",
+        "replication"
+      ],
+      "relevance_score": 0.928,
+      "content": "Refactored retention handler to reduce memory consumption."
+    },
+    {
+      "id": 16,
+      "timestamp": "2023-02-10T07:20:04Z",
+      "keywords": [
+        "onboarding",
+        "token"
+      ],
+      "relevance_score": 0.953,
+      "content": "Refactored onboarding handler to reduce memory consumption."
+    },
+    {
+      "id": 17,
+      "timestamp": "2023-02-10T07:29:45Z",
+      "keywords": [
+        "monitoring",
+        "metrics",
+        "throttle"
+      ],
+      "relevance_score": 0.817,
+      "content": "Documentation updated for monitoring configuration parameters."
+    },
+    {
+      "id": 18,
+      "timestamp": "2023-02-13T17:17:19Z",
+      "keywords": [
+        "authentication",
+        "logging"
+      ],
+      "relevance_score": 0.949,
+      "content": "Scheduled maintenance for authentication infrastructure next sprint."
+    },
+    {
+      "id": 19,
+      "timestamp": "2023-02-18T10:48:11Z",
+      "keywords": [
+        "rate_limit",
+        "token"
+      ],
+      "relevance_score": 0.895,
+      "content": "User reported rate_limit issue during peak traffic on February 18, 2023."
+    },
+    {
+      "id": 20,
+      "timestamp": "2023-02-20T18:43:59Z",
+      "keywords": [
+        "canary"
+      ],
+      "relevance_score": 0.85,
+      "content": "Added retry logic to canary service for improved reliability."
+    },
+    {
+      "id": 21,
+      "timestamp": "2023-02-23T19:53:58Z",
+      "keywords": [
+        "tracing",
+        "endpoint",
+        "api",
+        "replication"
+      ],
+      "relevance_score": 0.832,
+      "content": "Research spike on alternative tracing approaches completed."
+    },
+    {
+      "id": 22,
+      "timestamp": "2023-02-24T17:43:52Z",
+      "keywords": [
+        "logging"
+      ],
+      "relevance_score": 0.855,
+      "content": "Security audit flagged logging component for review."
+    },
+    {
+      "id": 23,
+      "timestamp": "2023-02-26T07:01:12Z",
+      "keywords": [
+        "api",
+        "authentication"
+      ],
+      "relevance_score": 0.856,
+      "content": "Documentation updated for api configuration parameters."
+    },
+    {
+      "id": 24,
+      "timestamp": "2023-03-02T05:54:20Z",
+      "keywords": [
+        "notification"
+      ],
+      "relevance_score": 0.841,
+      "content": "Bug fix deployed for notification module after regression detected."
+    },
+    {
+      "id": 25,
+      "timestamp": "2023-03-05T05:42:13Z",
+      "keywords": [
+        "retention",
+        "tracing",
+        "token"
+      ],
+      "relevance_score": 0.976,
+      "content": "User reported retention issue during peak traffic on March 05, 2023."
+    },
+    {
+      "id": 26,
+      "timestamp": "2023-03-08T01:51:56Z",
+      "keywords": [
+        "indexing",
+        "blue_green",
+        "preferences",
+        "onboarding"
+      ],
+      "relevance_score": 0.94,
+      "content": "Incident post-mortem: indexing failure caused 15-minute outage."
+    },
+    {
+      "id": 27,
+      "timestamp": "2023-03-10T15:18:57Z",
+      "keywords": [
+        "authorization",
+        "scaling",
+        "throttle",
+        "alerting"
+      ],
+      "relevance_score": 0.854,
+      "content": "Bug fix deployed for authorization module after regression detected."
+    },
+    {
+      "id": 28,
+      "timestamp": "2023-03-11T22:18:23Z",
+      "keywords": [
+        "retention",
+        "blue_green"
+      ],
+      "relevance_score": 0.818,
+      "content": "Migration plan drafted for legacy retention subsystem."
+    },
+    {
+      "id": 29,
+      "timestamp": "2023-03-15T05:42:41Z",
+      "keywords": [
+        "user_profile",
+        "encryption"
+      ],
+      "relevance_score": 0.967,
+      "content": "Feature request: enhance user_profile to support multi-tenant environments."
+    },
+    {
+      "id": 30,
+      "timestamp": "2023-03-17T04:46:01Z",
+      "keywords": [
+        "retention",
+        "monitoring",
+        "blue_green",
+        "tracing"
+      ],
+      "relevance_score": 0.809,
+      "content": "Incident post-mortem: retention failure caused 15-minute outage."
+    },
+    {
+      "id": 31,
+      "timestamp": "2023-03-19T08:02:48Z",
+      "keywords": [
+        "rollback"
+      ],
+      "relevance_score": 0.948,
+      "content": "New rollback dashboard deployed for operations team."
+    },
+    {
+      "id": 32,
+      "timestamp": "2023-03-23T02:13:02Z",
+      "keywords": [
+        "rollback",
+        "canary",
+        "webhook",
+        "authorization"
+      ],
+      "relevance_score": 0.853,
+      "content": "Feature request: enhance rollback to support multi-tenant environments."
+    },
+    {
+      "id": 33,
+      "timestamp": "2023-03-27T08:57:09Z",
+      "keywords": [
+        "deployment",
+        "preferences",
+        "onboarding"
+      ],
+      "relevance_score": 0.976,
+      "content": "Security audit flagged deployment component for review."
+    },
+    {
+      "id": 34,
+      "timestamp": "2023-03-29T11:23:01Z",
+      "keywords": [
+        "authentication",
+        "throttle"
+      ],
+      "relevance_score": 0.95,
+      "content": "Bug fix deployed for authentication module after regression detected."
+    },
+    {
+      "id": 35,
+      "timestamp": "2023-03-29T19:14:00Z",
+      "keywords": [
+        "deployment",
+        "session"
+      ],
+      "relevance_score": 0.838,
+      "content": "Refactored deployment handler to reduce memory consumption."
+    },
+    {
+      "id": 36,
+      "timestamp": "2023-04-03T15:59:25Z",
+      "keywords": [
+        "preferences",
+        "api",
+        "authentication"
+      ],
+      "relevance_score": 0.908,
+      "content": "Integration test coverage for preferences increased to 85%."
+    },
+    {
+      "id": 37,
+      "timestamp": "2023-04-05T09:47:38Z",
+      "keywords": [
+        "rate_limit",
+        "onboarding",
+        "authentication"
+      ],
+      "relevance_score": 0.894,
+      "content": "Security audit flagged rate_limit component for review."
+    },
+    {
+      "id": 38,
+      "timestamp": "2023-04-08T10:23:26Z",
+      "keywords": [
+        "caching",
+        "rollback"
+      ],
+      "relevance_score": 0.908,
+      "content": "New caching dashboard deployed for operations team."
+    },
+    {
+      "id": 39,
+      "timestamp": "2023-04-10T07:27:32Z",
+      "keywords": [
+        "preferences",
+        "session"
+      ],
+      "relevance_score": 0.84,
+      "content": "Added retry logic to preferences service for improved reliability."
+    },
+    {
+      "id": 40,
+      "timestamp": "2023-04-11T21:33:48Z",
+      "keywords": [
+        "retention",
+        "throttle"
+      ],
+      "relevance_score": 0.944,
+      "content": "New retention dashboard deployed for operations team."
+    },
+    {
+      "id": 41,
+      "timestamp": "2023-04-16T13:25:38Z",
+      "keywords": [
+        "logging",
+        "throttle",
+        "deployment"
+      ],
+      "relevance_score": 0.722,
+      "content": "Feature request: enhance logging to support multi-tenant environments."
+    },
+    {
+      "id": 42,
+      "timestamp": "2023-04-18T12:49:39Z",
+      "keywords": [
+        "blue_green",
+        "caching",
+        "throttle"
+      ],
+      "relevance_score": 0.554,
+      "content": "Research spike on alternative blue_green approaches completed."
+    },
+    {
+      "id": 43,
+      "timestamp": "2023-04-19T04:22:07Z",
+      "keywords": [
+        "onboarding",
+        "query"
+      ],
+      "relevance_score": 0.672,
+      "content": "Documentation updated for onboarding configuration parameters."
+    },
+    {
+      "id": 44,
+      "timestamp": "2023-04-23T15:52:46Z",
+      "keywords": [
+        "onboarding"
+      ],
+      "relevance_score": 0.671,
+      "content": "Implemented new onboarding strategy to improve system throughput."
+    },
+    {
+      "id": 45,
+      "timestamp": "2023-04-26T14:36:40Z",
+      "keywords": [
+        "user_profile",
+        "onboarding"
+      ],
+      "relevance_score": 0.704,
+      "content": "Refactored user_profile handler to reduce memory consumption."
+    },
+    {
+      "id": 46,
+      "timestamp": "2023-04-29T07:30:45Z",
+      "keywords": [
+        "throttle",
+        "token",
+        "indexing"
+      ],
+      "relevance_score": 0.837,
+      "content": "Refactored throttle handler to reduce memory consumption."
+    },
+    {
+      "id": 47,
+      "timestamp": "2023-04-29T21:52:48Z",
+      "keywords": [
+        "replication",
+        "preferences",
+        "endpoint",
+        "onboarding"
+      ],
+      "relevance_score": 0.576,
+      "content": "Added retry logic to replication service for improved reliability."
+    },
+    {
+      "id": 48,
+      "timestamp": "2023-05-02T09:59:06Z",
+      "keywords": [
+        "rate_limit",
+        "deployment"
+      ],
+      "relevance_score": 0.755,
+      "content": "Added retry logic to rate_limit service for improved reliability."
+    },
+    {
+      "id": 49,
+      "timestamp": "2023-05-07T01:19:45Z",
+      "keywords": [
+        "user_profile",
+        "retention",
+        "scaling"
+      ],
+      "relevance_score": 0.369,
+      "content": "Scheduled maintenance for user_profile infrastructure next sprint."
+    },
+    {
+      "id": 50,
+      "timestamp": "2023-05-10T04:42:59Z",
+      "keywords": [
+        "encryption",
+        "indexing",
+        "authorization"
+      ],
+      "relevance_score": 0.776,
+      "content": "Team discussed encryption optimization in weekly architecture review."
+    },
+    {
+      "id": 51,
+      "timestamp": "2023-05-12T01:15:28Z",
+      "keywords": [
+        "scaling",
+        "database"
+      ],
+      "relevance_score": 0.507,
+      "content": "Load test revealed scaling bottleneck under 10k concurrent users."
+    },
+    {
+      "id": 52,
+      "timestamp": "2023-05-15T18:24:27Z",
+      "keywords": [
+        "session",
+        "database",
+        "tracing",
+        "onboarding"
+      ],
+      "relevance_score": 0.476,
+      "content": "Security audit flagged session component for review."
+    },
+    {
+      "id": 53,
+      "timestamp": "2023-05-15T23:32:27Z",
+      "keywords": [
+        "user_profile",
+        "metrics",
+        "tracing"
+      ],
+      "relevance_score": 0.617,
+      "content": "Team discussed user_profile optimization in weekly architecture review."
+    },
+    {
+      "id": 54,
+      "timestamp": "2023-05-18T20:43:23Z",
+      "keywords": [
+        "webhook",
+        "scaling",
+        "tracing",
+        "logging"
+      ],
+      "relevance_score": 0.846,
+      "content": "Documentation updated for webhook configuration parameters."
+    },
+    {
+      "id": 55,
+      "timestamp": "2023-05-20T21:43:54Z",
+      "keywords": [
+        "session",
+        "monitoring",
+        "scaling"
+      ],
+      "relevance_score": 0.545,
+      "content": "Scheduled maintenance for session infrastructure next sprint."
+    },
+    {
+      "id": 56,
+      "timestamp": "2023-05-25T01:40:15Z",
+      "keywords": [
+        "endpoint"
+      ],
+      "relevance_score": 0.79,
+      "content": "Load test revealed endpoint bottleneck under 10k concurrent users."
+    },
+    {
+      "id": 57,
+      "timestamp": "2023-05-25T16:48:35Z",
+      "keywords": [
+        "retention",
+        "session"
+      ],
+      "relevance_score": 0.711,
+      "content": "Security audit flagged retention component for review."
+    },
+    {
+      "id": 58,
+      "timestamp": "2023-05-28T17:06:10Z",
+      "keywords": [
+        "query",
+        "authentication",
+        "database"
+      ],
+      "relevance_score": 0.434,
+      "content": "Team discussed query optimization in weekly architecture review."
+    },
+    {
+      "id": 59,
+      "timestamp": "2023-05-30T21:25:19Z",
+      "keywords": [
+        "endpoint",
+        "logging",
+        "authentication",
+        "replication"
+      ],
+      "relevance_score": 0.578,
+      "content": "New endpoint dashboard deployed for operations team."
+    },
+    {
+      "id": 60,
+      "timestamp": "2023-06-03T11:25:12Z",
+      "keywords": [
+        "canary",
+        "scaling"
+      ],
+      "relevance_score": 0.538,
+      "content": "Security audit flagged canary component for review."
+    },
+    {
+      "id": 61,
+      "timestamp": "2023-06-07T05:26:56Z",
+      "keywords": [
+        "database",
+        "indexing",
+        "metrics"
+      ],
+      "relevance_score": 0.679,
+      "content": "Incident post-mortem: database failure caused 15-minute outage."
+    },
+    {
+      "id": 62,
+      "timestamp": "2023-06-10T04:31:32Z",
+      "keywords": [
+        "deployment",
+        "preferences"
+      ],
+      "relevance_score": 0.795,
+      "content": "Customer feedback: deployment workflow is confusing for new users."
+    },
+    {
+      "id": 63,
+      "timestamp": "2023-06-10T06:20:47Z",
+      "keywords": [
+        "query",
+        "endpoint",
+        "blue_green"
+      ],
+      "relevance_score": 0.556,
+      "content": "Security audit flagged query component for review."
+    },
+    {
+      "id": 64,
+      "timestamp": "2023-06-13T19:08:20Z",
+      "keywords": [
+        "rate_limit",
+        "canary",
+        "caching",
+        "preferences"
+      ],
+      "relevance_score": 0.659,
+      "content": "Incident post-mortem: rate_limit failure caused 15-minute outage."
+    },
+    {
+      "id": 65,
+      "timestamp": "2023-06-16T08:40:45Z",
+      "keywords": [
+        "monitoring",
+        "metrics"
+      ],
+      "relevance_score": 0.426,
+      "content": "User reported monitoring issue during peak traffic on June 16, 2023."
+    },
+    {
+      "id": 66,
+      "timestamp": "2023-06-18T23:04:42Z",
+      "keywords": [
+        "metrics",
+        "authorization",
+        "throttle"
+      ],
+      "relevance_score": 0.703,
+      "content": "Security audit flagged metrics component for review."
+    },
+    {
+      "id": 67,
+      "timestamp": "2023-06-23T05:07:11Z",
+      "keywords": [
+        "canary",
+        "throttle"
+      ],
+      "relevance_score": 0.778,
+      "content": "Scheduled maintenance for canary infrastructure next sprint."
+    },
+    {
+      "id": 68,
+      "timestamp": "2023-06-23T06:05:20Z",
+      "keywords": [
+        "authentication",
+        "session"
+      ],
+      "relevance_score": 0.465,
+      "content": "Bug fix deployed for authentication module after regression detected."
+    },
+    {
+      "id": 69,
+      "timestamp": "2023-06-25T15:41:20Z",
+      "keywords": [
+        "user_profile",
+        "monitoring"
+      ],
+      "relevance_score": 0.398,
+      "content": "Capacity planning: user_profile storage projected to exceed limits by Q3."
+    },
+    {
+      "id": 70,
+      "timestamp": "2023-06-29T13:08:13Z",
+      "keywords": [
+        "webhook",
+        "monitoring",
+        "replication"
+      ],
+      "relevance_score": 0.478,
+      "content": "Team discussed webhook optimization in weekly architecture review."
+    },
+    {
+      "id": 71,
+      "timestamp": "2023-07-01T01:50:08Z",
+      "keywords": [
+        "rollback",
+        "alerting",
+        "preferences"
+      ],
+      "relevance_score": 0.399,
+      "content": "Implemented new rollback strategy to improve system throughput."
+    },
+    {
+      "id": 72,
+      "timestamp": "2023-07-03T10:56:42Z",
+      "keywords": [
+        "preferences",
+        "notification",
+        "rate_limit"
+      ],
+      "relevance_score": 0.668,
+      "content": "Security audit flagged preferences component for review."
+    },
+    {
+      "id": 73,
+      "timestamp": "2023-07-08T07:46:57Z",
+      "keywords": [
+        "logging",
+        "database",
+        "onboarding",
+        "retention"
+      ],
+      "relevance_score": 0.51,
+      "content": "Feature request: enhance logging to support multi-tenant environments."
+    },
+    {
+      "id": 74,
+      "timestamp": "2023-07-08T07:54:58Z",
+      "keywords": [
+        "replication",
+        "endpoint",
+        "retention"
+      ],
+      "relevance_score": 0.846,
+      "content": "Bug fix deployed for replication module after regression detected."
+    },
+    {
+      "id": 75,
+      "timestamp": "2023-07-13T08:33:49Z",
+      "keywords": [
+        "api"
+      ],
+      "relevance_score": 0.724,
+      "content": "Scheduled maintenance for api infrastructure next sprint."
+    },
+    {
+      "id": 76,
+      "timestamp": "2023-07-16T23:41:53Z",
+      "keywords": [
+        "encryption"
+      ],
+      "relevance_score": 0.481,
+      "content": "Team discussed encryption optimization in weekly architecture review."
+    },
+    {
+      "id": 77,
+      "timestamp": "2023-07-17T03:16:41Z",
+      "keywords": [
+        "token"
+      ],
+      "relevance_score": 0.692,
+      "content": "Scheduled maintenance for token infrastructure next sprint."
+    },
+    {
+      "id": 78,
+      "timestamp": "2023-07-21T08:04:17Z",
+      "keywords": [
+        "blue_green",
+        "rollback"
+      ],
+      "relevance_score": 0.634,
+      "content": "Refactored blue_green handler to reduce memory consumption."
+    },
+    {
+      "id": 79,
+      "timestamp": "2023-07-21T10:53:01Z",
+      "keywords": [
+        "session",
+        "scaling",
+        "blue_green"
+      ],
+      "relevance_score": 0.722,
+      "content": "Capacity planning: session storage projected to exceed limits by Q3."
+    },
+    {
+      "id": 80,
+      "timestamp": "2023-07-25T08:13:42Z",
+      "keywords": [
+        "endpoint",
+        "query",
+        "metrics"
+      ],
+      "relevance_score": 0.491,
+      "content": "Documentation updated for endpoint configuration parameters."
+    },
+    {
+      "id": 81,
+      "timestamp": "2023-07-27T00:21:40Z",
+      "keywords": [
+        "canary",
+        "token"
+      ],
+      "relevance_score": 0.788,
+      "content": "Documentation updated for canary configuration parameters."
+    },
+    {
+      "id": 82,
+      "timestamp": "2023-07-30T20:40:28Z",
+      "keywords": [
+        "tracing",
+        "rate_limit",
+        "notification"
+      ],
+      "relevance_score": 0.696,
+      "content": "Team discussed tracing optimization in weekly architecture review."
+    },
+    {
+      "id": 83,
+      "timestamp": "2023-08-03T06:55:58Z",
+      "keywords": [
+        "encryption"
+      ],
+      "relevance_score": 0.377,
+      "content": "Customer feedback: encryption workflow is confusing for new users."
+    },
+    {
+      "id": 84,
+      "timestamp": "2023-08-05T00:04:52Z",
+      "keywords": [
+        "endpoint",
+        "token"
+      ],
+      "relevance_score": 0.794,
+      "content": "Research spike on alternative endpoint approaches completed."
+    },
+    {
+      "id": 85,
+      "timestamp": "2023-08-07T21:25:10Z",
+      "keywords": [
+        "authorization"
+      ],
+      "relevance_score": 0.414,
+      "content": "Incident post-mortem: authorization failure caused 15-minute outage."
+    },
+    {
+      "id": 86,
+      "timestamp": "2023-08-11T19:06:56Z",
+      "keywords": [
+        "monitoring",
+        "endpoint"
+      ],
+      "relevance_score": 0.713,
+      "content": "Refactored monitoring handler to reduce memory consumption."
+    },
+    {
+      "id": 87,
+      "timestamp": "2023-08-12T09:38:00Z",
+      "keywords": [
+        "tracing",
+        "database"
+      ],
+      "relevance_score": 0.823,
+      "content": "Documentation updated for tracing configuration parameters."
+    },
+    {
+      "id": 88,
+      "timestamp": "2023-08-15T19:45:15Z",
+      "keywords": [
+        "rate_limit"
+      ],
+      "relevance_score": 0.449,
+      "content": "Added retry logic to rate_limit service for improved reliability."
+    },
+    {
+      "id": 89,
+      "timestamp": "2023-08-17T14:40:14Z",
+      "keywords": [
+        "authorization",
+        "preferences"
+      ],
+      "relevance_score": 0.704,
+      "content": "Rollback triggered due to authorization compatibility issue."
+    },
+    {
+      "id": 90,
+      "timestamp": "2023-08-21T00:54:46Z",
+      "keywords": [
+        "user_profile",
+        "canary"
+      ],
+      "relevance_score": 0.801,
+      "content": "Migration plan drafted for legacy user_profile subsystem."
+    },
+    {
+      "id": 91,
+      "timestamp": "2023-08-23T01:39:38Z",
+      "keywords": [
+        "rollback",
+        "throttle"
+      ],
+      "relevance_score": 0.808,
+      "content": "Security audit flagged rollback component for review."
+    },
+    {
+      "id": 92,
+      "timestamp": "2023-08-25T16:15:25Z",
+      "keywords": [
+        "tracing",
+        "deployment"
+      ],
+      "relevance_score": 0.36,
+      "content": "Integration test coverage for tracing increased to 85%."
+    },
+    {
+      "id": 93,
+      "timestamp": "2023-08-28T21:04:04Z",
+      "keywords": [
+        "database",
+        "authorization"
+      ],
+      "relevance_score": 0.669,
+      "content": "Integration test coverage for database increased to 85%."
+    },
+    {
+      "id": 94,
+      "timestamp": "2023-08-31T11:31:48Z",
+      "keywords": [
+        "notification",
+        "database"
+      ],
+      "relevance_score": 0.643,
+      "content": "Feature request: enhance notification to support multi-tenant environments."
+    },
+    {
+      "id": 95,
+      "timestamp": "2023-09-04T00:19:29Z",
+      "keywords": [
+        "token",
+        "throttle",
+        "indexing",
+        "alerting"
+      ],
+      "relevance_score": 0.685,
+      "content": "Customer feedback: token workflow is confusing for new users."
+    },
+    {
+      "id": 96,
+      "timestamp": "2023-09-06T14:06:58Z",
+      "keywords": [
+        "webhook",
+        "monitoring",
+        "indexing"
+      ],
+      "relevance_score": 0.643,
+      "content": "Feature request: enhance webhook to support multi-tenant environments."
+    },
+    {
+      "id": 97,
+      "timestamp": "2023-09-07T15:47:36Z",
+      "keywords": [
+        "authorization",
+        "authentication"
+      ],
+      "relevance_score": 0.818,
+      "content": "Customer feedback: authorization workflow is confusing for new users."
+    },
+    {
+      "id": 98,
+      "timestamp": "2023-09-10T00:25:32Z",
+      "keywords": [
+        "authorization",
+        "metrics",
+        "blue_green"
+      ],
+      "relevance_score": 0.376,
+      "content": "Customer feedback: authorization workflow is confusing for new users."
+    },
+    {
+      "id": 99,
+      "timestamp": "2023-09-12T04:43:33Z",
+      "keywords": [
+        "session",
+        "tracing"
+      ],
+      "relevance_score": 0.775,
+      "content": "Research spike on alternative session approaches completed."
+    },
+    {
+      "id": 100,
+      "timestamp": "2023-09-15T06:56:49Z",
+      "keywords": [
+        "deployment",
+        "query",
+        "endpoint"
+      ],
+      "relevance_score": 0.818,
+      "content": "Rollback triggered due to deployment compatibility issue."
+    },
+    {
+      "id": 101,
+      "timestamp": "2023-09-18T09:04:26Z",
+      "keywords": [
+        "throttle"
+      ],
+      "relevance_score": 0.73,
+      "content": "Load test revealed throttle bottleneck under 10k concurrent users."
+    },
+    {
+      "id": 102,
+      "timestamp": "2023-09-20T10:03:08Z",
+      "keywords": [
+        "canary",
+        "onboarding",
+        "scaling",
+        "throttle"
+      ],
+      "relevance_score": 0.639,
+      "content": "Security audit flagged canary component for review."
+    },
+    {
+      "id": 103,
+      "timestamp": "2023-09-23T05:08:39Z",
+      "keywords": [
+        "rollback",
+        "indexing"
+      ],
+      "relevance_score": 0.546,
+      "content": "Team discussed rollback optimization in weekly architecture review."
+    },
+    {
+      "id": 104,
+      "timestamp": "2023-09-25T08:29:17Z",
+      "keywords": [
+        "retention",
+        "api",
+        "canary",
+        "endpoint"
+      ],
+      "relevance_score": 0.745,
+      "content": "Documentation updated for retention configuration parameters."
+    },
+    {
+      "id": 105,
+      "timestamp": "2023-09-28T17:32:39Z",
+      "keywords": [
+        "rollback",
+        "database"
+      ],
+      "relevance_score": 0.6,
+      "content": "Performance benchmark showed rollback latency reduced by 40%."
+    },
+    {
+      "id": 106,
+      "timestamp": "2023-10-02T07:23:11Z",
+      "keywords": [
+        "deployment"
+      ],
+      "relevance_score": 0.503,
+      "content": "Security audit flagged deployment component for review."
+    },
+    {
+      "id": 107,
+      "timestamp": "2023-10-05T03:19:44Z",
+      "keywords": [
+        "preferences",
+        "rollback"
+      ],
+      "relevance_score": 0.314,
+      "content": "Customer feedback: preferences workflow is confusing for new users."
+    },
+    {
+      "id": 108,
+      "timestamp": "2023-10-06T10:44:04Z",
+      "keywords": [
+        "rollback",
+        "encryption"
+      ],
+      "relevance_score": 0.614,
+      "content": "User reported rollback issue during peak traffic on October 06, 2023."
+    },
+    {
+      "id": 109,
+      "timestamp": "2023-10-08T04:32:56Z",
+      "keywords": [
+        "metrics",
+        "token",
+        "database"
+      ],
+      "relevance_score": 0.49,
+      "content": "Capacity planning: metrics storage projected to exceed limits by Q3."
+    },
+    {
+      "id": 110,
+      "timestamp": "2023-10-10T19:36:43Z",
+      "keywords": [
+        "throttle",
+        "authentication",
+        "canary",
+        "blue_green"
+      ],
+      "relevance_score": 0.343,
+      "content": "Migration plan drafted for legacy throttle subsystem."
+    },
+    {
+      "id": 111,
+      "timestamp": "2023-10-13T16:33:58Z",
+      "keywords": [
+        "alerting",
+        "blue_green",
+        "onboarding"
+      ],
+      "relevance_score": 0.615,
+      "content": "Documentation updated for alerting configuration parameters."
+    },
+    {
+      "id": 112,
+      "timestamp": "2023-10-18T03:30:13Z",
+      "keywords": [
+        "webhook",
+        "query",
+        "api"
+      ],
+      "relevance_score": 0.209,
+      "content": "Capacity planning: webhook storage projected to exceed limits by Q3."
+    },
+    {
+      "id": 113,
+      "timestamp": "2023-10-18T22:20:49Z",
+      "keywords": [
+        "retention"
+      ],
+      "relevance_score": 0.554,
+      "content": "User reported retention issue during peak traffic on October 18, 2023."
+    },
+    {
+      "id": 114,
+      "timestamp": "2023-10-22T21:36:27Z",
+      "keywords": [
+        "scaling"
+      ],
+      "relevance_score": 0.478,
+      "content": "User reported scaling issue during peak traffic on October 22, 2023."
+    },
+    {
+      "id": 115,
+      "timestamp": "2023-10-25T15:52:03Z",
+      "keywords": [
+        "indexing",
+        "authentication"
+      ],
+      "relevance_score": 0.659,
+      "content": "Performance benchmark showed indexing latency reduced by 40%."
+    },
+    {
+      "id": 116,
+      "timestamp": "2023-10-27T05:27:49Z",
+      "keywords": [
+        "authentication",
+        "alerting",
+        "query",
+        "onboarding"
+      ],
+      "relevance_score": 0.4,
+      "content": "Feature request: enhance authentication to support multi-tenant environments."
+    },
+    {
+      "id": 117,
+      "timestamp": "2023-10-30T17:29:57Z",
+      "keywords": [
+        "token",
+        "api",
+        "indexing"
+      ],
+      "relevance_score": 0.662,
+      "content": "Refactored token handler to reduce memory consumption."
+    },
+    {
+      "id": 118,
+      "timestamp": "2023-11-02T01:45:49Z",
+      "keywords": [
+        "encryption",
+        "canary"
+      ],
+      "relevance_score": 0.508,
+      "content": "Research spike on alternative encryption approaches completed."
+    },
+    {
+      "id": 119,
+      "timestamp": "2023-11-04T17:42:24Z",
+      "keywords": [
+        "metrics",
+        "database",
+        "notification"
+      ],
+      "relevance_score": 0.352,
+      "content": "Incident post-mortem: metrics failure caused 15-minute outage."
+    },
+    {
+      "id": 120,
+      "timestamp": "2023-11-05T23:10:08Z",
+      "keywords": [
+        "indexing",
+        "tracing"
+      ],
+      "relevance_score": 0.211,
+      "content": "Added retry logic to indexing service for improved reliability."
+    },
+    {
+      "id": 121,
+      "timestamp": "2023-11-08T12:17:28Z",
+      "keywords": [
+        "database",
+        "tracing"
+      ],
+      "relevance_score": 0.247,
+      "content": "Rollback triggered due to database compatibility issue."
+    },
+    {
+      "id": 122,
+      "timestamp": "2023-11-12T01:54:45Z",
+      "keywords": [
+        "replication",
+        "rate_limit"
+      ],
+      "relevance_score": 0.326,
+      "content": "Added retry logic to replication service for improved reliability."
+    },
+    {
+      "id": 123,
+      "timestamp": "2023-11-14T14:15:37Z",
+      "keywords": [
+        "session"
+      ],
+      "relevance_score": 0.301,
+      "content": "Load test revealed session bottleneck under 10k concurrent users."
+    },
+    {
+      "id": 124,
+      "timestamp": "2023-11-18T08:15:55Z",
+      "keywords": [
+        "tracing",
+        "scaling"
+      ],
+      "relevance_score": 0.526,
+      "content": "Load test revealed tracing bottleneck under 10k concurrent users."
+    },
+    {
+      "id": 125,
+      "timestamp": "2023-11-18T11:16:32Z",
+      "keywords": [
+        "deployment",
+        "database"
+      ],
+      "relevance_score": 0.608,
+      "content": "Performance benchmark showed deployment latency reduced by 40%."
+    },
+    {
+      "id": 126,
+      "timestamp": "2023-11-21T06:17:48Z",
+      "keywords": [
+        "caching",
+        "rollback",
+        "session",
+        "user_profile"
+      ],
+      "relevance_score": 0.382,
+      "content": "Integration test coverage for caching increased to 85%."
+    },
+    {
+      "id": 127,
+      "timestamp": "2023-11-25T09:54:54Z",
+      "keywords": [
+        "blue_green",
+        "user_profile"
+      ],
+      "relevance_score": 0.359,
+      "content": "Capacity planning: blue_green storage projected to exceed limits by Q3."
+    },
+    {
+      "id": 128,
+      "timestamp": "2023-11-26T07:23:45Z",
+      "keywords": [
+        "session",
+        "query"
+      ],
+      "relevance_score": 0.219,
+      "content": "Migration plan drafted for legacy session subsystem."
+    },
+    {
+      "id": 129,
+      "timestamp": "2023-11-30T10:26:33Z",
+      "keywords": [
+        "canary",
+        "session",
+        "tracing"
+      ],
+      "relevance_score": 0.732,
+      "content": "Feature request: enhance canary to support multi-tenant environments."
+    },
+    {
+      "id": 130,
+      "timestamp": "2023-12-02T13:27:07Z",
+      "keywords": [
+        "metrics",
+        "webhook"
+      ],
+      "relevance_score": 0.394,
+      "content": "Refactored metrics handler to reduce memory consumption."
+    },
+    {
+      "id": 131,
+      "timestamp": "2023-12-04T15:46:11Z",
+      "keywords": [
+        "notification",
+        "user_profile",
+        "onboarding"
+      ],
+      "relevance_score": 0.221,
+      "content": "Feature request: enhance notification to support multi-tenant environments."
+    },
+    {
+      "id": 132,
+      "timestamp": "2023-12-07T21:34:40Z",
+      "keywords": [
+        "database",
+        "webhook"
+      ],
+      "relevance_score": 0.711,
+      "content": "Rollback triggered due to database compatibility issue."
+    },
+    {
+      "id": 133,
+      "timestamp": "2023-12-09T03:30:47Z",
+      "keywords": [
+        "deployment"
+      ],
+      "relevance_score": 0.609,
+      "content": "Load test revealed deployment bottleneck under 10k concurrent users."
+    },
+    {
+      "id": 134,
+      "timestamp": "2023-12-11T20:22:48Z",
+      "keywords": [
+        "indexing"
+      ],
+      "relevance_score": 0.64,
+      "content": "Rollback triggered due to indexing compatibility issue."
+    },
+    {
+      "id": 135,
+      "timestamp": "2023-12-15T04:39:05Z",
+      "keywords": [
+        "alerting"
+      ],
+      "relevance_score": 0.452,
+      "content": "Customer feedback: alerting workflow is confusing for new users."
+    },
+    {
+      "id": 136,
+      "timestamp": "2023-12-19T21:58:33Z",
+      "keywords": [
+        "indexing",
+        "logging",
+        "query",
+        "rollback"
+      ],
+      "relevance_score": 0.321,
+      "content": "Bug fix deployed for indexing module after regression detected."
+    },
+    {
+      "id": 137,
+      "timestamp": "2023-12-20T02:20:07Z",
+      "keywords": [
+        "rollback",
+        "metrics",
+        "endpoint"
+      ],
+      "relevance_score": 0.74,
+      "content": "User reported rollback issue during peak traffic on December 20, 2023."
+    },
+    {
+      "id": 138,
+      "timestamp": "2023-12-24T21:49:00Z",
+      "keywords": [
+        "encryption",
+        "tracing"
+      ],
+      "relevance_score": 0.365,
+      "content": "Bug fix deployed for encryption module after regression detected."
+    },
+    {
+      "id": 139,
+      "timestamp": "2023-12-25T10:23:13Z",
+      "keywords": [
+        "database",
+        "monitoring",
+        "session",
+        "api"
+      ],
+      "relevance_score": 0.5,
+      "content": "User reported database issue during peak traffic on December 25, 2023."
+    },
+    {
+      "id": 140,
+      "timestamp": "2023-12-27T07:13:20Z",
+      "keywords": [
+        "indexing",
+        "query"
+      ],
+      "relevance_score": 0.455,
+      "content": "Load test revealed indexing bottleneck under 10k concurrent users."
+    },
+    {
+      "id": 141,
+      "timestamp": "2024-01-01T08:10:07Z",
+      "keywords": [
+        "rate_limit",
+        "query",
+        "caching"
+      ],
+      "relevance_score": 0.391,
+      "content": "Bug fix deployed for rate_limit module after regression detected."
+    },
+    {
+      "id": 142,
+      "timestamp": "2024-01-01T18:58:57Z",
+      "keywords": [
+        "api",
+        "rollback"
+      ],
+      "relevance_score": 0.653,
+      "content": "Bug fix deployed for api module after regression detected."
+    },
+    {
+      "id": 143,
+      "timestamp": "2024-01-06T14:47:45Z",
+      "keywords": [
+        "authorization",
+        "monitoring"
+      ],
+      "relevance_score": 0.705,
+      "content": "New authorization dashboard deployed for operations team."
+    },
+    {
+      "id": 144,
+      "timestamp": "2024-01-06T22:59:11Z",
+      "keywords": [
+        "session",
+        "authorization"
+      ],
+      "relevance_score": 0.713,
+      "content": "Security audit flagged session component for review."
+    },
+    {
+      "id": 145,
+      "timestamp": "2024-01-12T04:52:22Z",
+      "keywords": [
+        "onboarding",
+        "replication"
+      ],
+      "relevance_score": 0.673,
+      "content": "Implemented new onboarding strategy to improve system throughput."
+    },
+    {
+      "id": 146,
+      "timestamp": "2024-01-14T11:46:51Z",
+      "keywords": [
+        "authorization",
+        "database",
+        "user_profile"
+      ],
+      "relevance_score": 0.417,
+      "content": "Team discussed authorization optimization in weekly architecture review."
+    },
+    {
+      "id": 147,
+      "timestamp": "2024-01-14T19:08:07Z",
+      "keywords": [
+        "session",
+        "token",
+        "onboarding",
+        "rollback"
+      ],
+      "relevance_score": 0.744,
+      "content": "Rollback triggered due to session compatibility issue."
+    },
+    {
+      "id": 148,
+      "timestamp": "2024-01-18T15:56:53Z",
+      "keywords": [
+        "blue_green"
+      ],
+      "relevance_score": 0.54,
+      "content": "Team discussed blue_green optimization in weekly architecture review."
+    },
+    {
+      "id": 149,
+      "timestamp": "2024-01-20T05:36:19Z",
+      "keywords": [
+        "query",
+        "authorization",
+        "caching"
+      ],
+      "relevance_score": 0.635,
+      "content": "Performance benchmark showed query latency reduced by 40%."
+    },
+    {
+      "id": 150,
+      "timestamp": "2024-01-23T23:16:40Z",
+      "keywords": [
+        "authentication",
+        "endpoint"
+      ],
+      "relevance_score": 0.641,
+      "content": "Customer feedback: authentication workflow is confusing for new users."
+    },
+    {
+      "id": 151,
+      "timestamp": "2024-01-26T12:40:02Z",
+      "keywords": [
+        "query",
+        "canary",
+        "replication"
+      ],
+      "relevance_score": 0.275,
+      "content": "Security audit flagged query component for review."
+    },
+    {
+      "id": 152,
+      "timestamp": "2024-01-27T06:30:15Z",
+      "keywords": [
+        "indexing",
+        "preferences",
+        "retention"
+      ],
+      "relevance_score": 0.219,
+      "content": "Performance benchmark showed indexing latency reduced by 40%."
+    },
+    {
+      "id": 153,
+      "timestamp": "2024-02-01T04:34:00Z",
+      "keywords": [
+        "tracing",
+        "onboarding",
+        "authentication"
+      ],
+      "relevance_score": 0.728,
+      "content": "Incident post-mortem: tracing failure caused 15-minute outage."
+    },
+    {
+      "id": 154,
+      "timestamp": "2024-02-03T10:41:27Z",
+      "keywords": [
+        "token",
+        "encryption"
+      ],
+      "relevance_score": 0.292,
+      "content": "Capacity planning: token storage projected to exceed limits by Q3."
+    },
+    {
+      "id": 155,
+      "timestamp": "2024-02-04T20:13:04Z",
+      "keywords": [
+        "throttle"
+      ],
+      "relevance_score": 0.569,
+      "content": "Incident post-mortem: throttle failure caused 15-minute outage."
+    },
+    {
+      "id": 156,
+      "timestamp": "2024-02-08T18:38:29Z",
+      "keywords": [
+        "rollback",
+        "caching"
+      ],
+      "relevance_score": 0.324,
+      "content": "Capacity planning: rollback storage projected to exceed limits by Q3."
+    },
+    {
+      "id": 157,
+      "timestamp": "2024-02-11T12:40:27Z",
+      "keywords": [
+        "rate_limit",
+        "rollback"
+      ],
+      "relevance_score": 0.657,
+      "content": "Bug fix deployed for rate_limit module after regression detected."
+    },
+    {
+      "id": 158,
+      "timestamp": "2024-02-14T12:05:46Z",
+      "keywords": [
+        "rollback",
+        "indexing"
+      ],
+      "relevance_score": 0.315,
+      "content": "Bug fix deployed for rollback module after regression detected."
+    },
+    {
+      "id": 159,
+      "timestamp": "2024-02-17T10:41:05Z",
+      "keywords": [
+        "tracing",
+        "scaling",
+        "throttle"
+      ],
+      "relevance_score": 0.328,
+      "content": "Capacity planning: tracing storage projected to exceed limits by Q3."
+    },
+    {
+      "id": 160,
+      "timestamp": "2024-02-17T23:03:11Z",
+      "keywords": [
+        "retention"
+      ],
+      "relevance_score": 0.276,
+      "content": "Scheduled maintenance for retention infrastructure next sprint."
+    },
+    {
+      "id": 161,
+      "timestamp": "2024-02-21T20:02:02Z",
+      "keywords": [
+        "canary",
+        "caching",
+        "metrics",
+        "endpoint"
+      ],
+      "relevance_score": 0.64,
+      "content": "Feature request: enhance canary to support multi-tenant environments."
+    },
+    {
+      "id": 162,
+      "timestamp": "2024-02-22T21:05:05Z",
+      "keywords": [
+        "authentication",
+        "rollback",
+        "notification"
+      ],
+      "relevance_score": 0.529,
+      "content": "Bug fix deployed for authentication module after regression detected."
+    },
+    {
+      "id": 163,
+      "timestamp": "2024-02-26T08:23:12Z",
+      "keywords": [
+        "rate_limit",
+        "tracing",
+        "blue_green"
+      ],
+      "relevance_score": 0.38,
+      "content": "Refactored rate_limit handler to reduce memory consumption."
+    },
+    {
+      "id": 164,
+      "timestamp": "2024-02-28T21:17:45Z",
+      "keywords": [
+        "encryption",
+        "scaling"
+      ],
+      "relevance_score": 0.24,
+      "content": "User reported encryption issue during peak traffic on February 28, 2024."
+    },
+    {
+      "id": 165,
+      "timestamp": "2024-03-01T20:30:59Z",
+      "keywords": [
+        "authentication"
+      ],
+      "relevance_score": 0.725,
+      "content": "Refactored authentication handler to reduce memory consumption."
+    },
+    {
+      "id": 166,
+      "timestamp": "2024-03-04T00:45:25Z",
+      "keywords": [
+        "authentication",
+        "throttle"
+      ],
+      "relevance_score": 0.274,
+      "content": "Team discussed authentication optimization in weekly architecture review."
+    },
+    {
+      "id": 167,
+      "timestamp": "2024-03-09T08:27:39Z",
+      "keywords": [
+        "user_profile",
+        "onboarding",
+        "retention",
+        "blue_green"
+      ],
+      "relevance_score": 0.678,
+      "content": "Migration plan drafted for legacy user_profile subsystem."
+    },
+    {
+      "id": 168,
+      "timestamp": "2024-03-11T10:27:44Z",
+      "keywords": [
+        "logging",
+        "monitoring"
+      ],
+      "relevance_score": 0.344,
+      "content": "Customer feedback: logging workflow is confusing for new users."
+    },
+    {
+      "id": 169,
+      "timestamp": "2024-03-14T09:57:25Z",
+      "keywords": [
+        "onboarding",
+        "canary"
+      ],
+      "relevance_score": 0.37,
+      "content": "Capacity planning: onboarding storage projected to exceed limits by Q3."
+    },
+    {
+      "id": 170,
+      "timestamp": "2024-03-15T14:12:13Z",
+      "keywords": [
+        "query",
+        "api",
+        "database"
+      ],
+      "relevance_score": 0.205,
+      "content": "Migration plan drafted for legacy query subsystem."
+    },
+    {
+      "id": 171,
+      "timestamp": "2024-03-17T00:27:57Z",
+      "keywords": [
+        "logging",
+        "database",
+        "metrics"
+      ],
+      "relevance_score": 0.256,
+      "content": "Customer feedback: logging workflow is confusing for new users."
+    },
+    {
+      "id": 172,
+      "timestamp": "2024-03-21T08:32:13Z",
+      "keywords": [
+        "encryption",
+        "metrics",
+        "logging"
+      ],
+      "relevance_score": 0.71,
+      "content": "Feature request: enhance encryption to support multi-tenant environments."
+    },
+    {
+      "id": 173,
+      "timestamp": "2024-03-23T08:15:14Z",
+      "keywords": [
+        "deployment",
+        "api",
+        "rollback"
+      ],
+      "relevance_score": 0.718,
+      "content": "Scheduled maintenance for deployment infrastructure next sprint."
+    },
+    {
+      "id": 174,
+      "timestamp": "2024-03-24T17:49:44Z",
+      "keywords": [
+        "rollback",
+        "replication"
+      ],
+      "relevance_score": 0.352,
+      "content": "Refactored rollback handler to reduce memory consumption."
+    },
+    {
+      "id": 175,
+      "timestamp": "2024-03-28T08:38:21Z",
+      "keywords": [
+        "scaling",
+        "indexing",
+        "session",
+        "tracing"
+      ],
+      "relevance_score": 0.402,
+      "content": "Research spike on alternative scaling approaches completed."
+    },
+    {
+      "id": 176,
+      "timestamp": "2024-03-31T00:25:47Z",
+      "keywords": [
+        "preferences"
+      ],
+      "relevance_score": 0.613,
+      "content": "Team discussed preferences optimization in weekly architecture review."
+    },
+    {
+      "id": 177,
+      "timestamp": "2024-04-02T23:03:14Z",
+      "keywords": [
+        "rate_limit"
+      ],
+      "relevance_score": 0.444,
+      "content": "Documentation updated for rate_limit configuration parameters."
+    },
+    {
+      "id": 178,
+      "timestamp": "2024-04-04T22:39:45Z",
+      "keywords": [
+        "caching",
+        "logging"
+      ],
+      "relevance_score": 0.326,
+      "content": "Research spike on alternative caching approaches completed."
+    },
+    {
+      "id": 179,
+      "timestamp": "2024-04-09T02:33:56Z",
+      "keywords": [
+        "authentication"
+      ],
+      "relevance_score": 0.442,
+      "content": "Research spike on alternative authentication approaches completed."
+    },
+    {
+      "id": 180,
+      "timestamp": "2024-04-10T08:47:26Z",
+      "keywords": [
+        "caching",
+        "database",
+        "canary",
+        "monitoring"
+      ],
+      "relevance_score": 0.228,
+      "content": "Refactored caching handler to reduce memory consumption."
+    },
+    {
+      "id": 181,
+      "timestamp": "2024-04-11T14:26:39Z",
+      "keywords": [
+        "tracing",
+        "alerting",
+        "query"
+      ],
+      "relevance_score": 0.634,
+      "content": "Refactored tracing handler to reduce memory consumption."
+    },
+    {
+      "id": 182,
+      "timestamp": "2024-04-14T23:16:50Z",
+      "keywords": [
+        "notification",
+        "throttle"
+      ],
+      "relevance_score": 0.36,
+      "content": "Incident post-mortem: notification failure caused 15-minute outage."
+    },
+    {
+      "id": 183,
+      "timestamp": "2024-04-19T22:39:58Z",
+      "keywords": [
+        "rate_limit",
+        "monitoring"
+      ],
+      "relevance_score": 0.696,
+      "content": "Feature request: enhance rate_limit to support multi-tenant environments."
+    },
+    {
+      "id": 184,
+      "timestamp": "2024-04-20T04:12:43Z",
+      "keywords": [
+        "token",
+        "retention",
+        "scaling"
+      ],
+      "relevance_score": 0.243,
+      "content": "Added retry logic to token service for improved reliability."
+    },
+    {
+      "id": 185,
+      "timestamp": "2024-04-23T01:38:26Z",
+      "keywords": [
+        "authorization",
+        "monitoring",
+        "database"
+      ],
+      "relevance_score": 0.686,
+      "content": "Documentation updated for authorization configuration parameters."
+    },
+    {
+      "id": 186,
+      "timestamp": "2024-04-25T16:01:11Z",
+      "keywords": [
+        "scaling",
+        "authorization"
+      ],
+      "relevance_score": 0.68,
+      "content": "Scheduled maintenance for scaling infrastructure next sprint."
+    },
+    {
+      "id": 187,
+      "timestamp": "2024-04-30T03:00:39Z",
+      "keywords": [
+        "database"
+      ],
+      "relevance_score": 0.208,
+      "content": "Incident post-mortem: database failure caused 15-minute outage."
+    },
+    {
+      "id": 188,
+      "timestamp": "2024-05-01T12:01:08Z",
+      "keywords": [
+        "token",
+        "monitoring",
+        "blue_green"
+      ],
+      "relevance_score": 0.432,
+      "content": "Security audit flagged token component for review."
+    },
+    {
+      "id": 189,
+      "timestamp": "2024-05-03T13:50:07Z",
+      "keywords": [
+        "tracing",
+        "caching"
+      ],
+      "relevance_score": 0.623,
+      "content": "Incident post-mortem: tracing failure caused 15-minute outage."
+    },
+    {
+      "id": 190,
+      "timestamp": "2024-05-06T19:10:51Z",
+      "keywords": [
+        "webhook",
+        "encryption"
+      ],
+      "relevance_score": 0.368,
+      "content": "Feature request: enhance webhook to support multi-tenant environments."
+    },
+    {
+      "id": 191,
+      "timestamp": "2024-05-08T07:29:13Z",
+      "keywords": [
+        "blue_green",
+        "endpoint"
+      ],
+      "relevance_score": 0.567,
+      "content": "Performance benchmark showed blue_green latency reduced by 40%."
+    },
+    {
+      "id": 192,
+      "timestamp": "2024-05-10T10:36:55Z",
+      "keywords": [
+        "authorization"
+      ],
+      "relevance_score": 0.281,
+      "content": "Migration plan drafted for legacy authorization subsystem."
+    },
+    {
+      "id": 193,
+      "timestamp": "2024-05-15T03:06:06Z",
+      "keywords": [
+        "token",
+        "notification"
+      ],
+      "relevance_score": 0.675,
+      "content": "Feature request: enhance token to support multi-tenant environments."
+    },
+    {
+      "id": 194,
+      "timestamp": "2024-05-15T15:25:42Z",
+      "keywords": [
+        "query",
+        "monitoring"
+      ],
+      "relevance_score": 0.31,
+      "content": "Research spike on alternative query approaches completed."
+    },
+    {
+      "id": 195,
+      "timestamp": "2024-05-20T07:41:46Z",
+      "keywords": [
+        "rate_limit",
+        "alerting",
+        "canary"
+      ],
+      "relevance_score": 0.616,
+      "content": "Team discussed rate_limit optimization in weekly architecture review."
+    },
+    {
+      "id": 196,
+      "timestamp": "2024-05-22T09:18:26Z",
+      "keywords": [
+        "blue_green",
+        "canary"
+      ],
+      "relevance_score": 0.541,
+      "content": "Added retry logic to blue_green service for improved reliability."
+    },
+    {
+      "id": 197,
+      "timestamp": "2024-05-24T11:51:00Z",
+      "keywords": [
+        "database",
+        "token"
+      ],
+      "relevance_score": 0.441,
+      "content": "Implemented new database strategy to improve system throughput."
+    },
+    {
+      "id": 198,
+      "timestamp": "2024-05-25T17:28:37Z",
+      "keywords": [
+        "metrics"
+      ],
+      "relevance_score": 0.269,
+      "content": "Team discussed metrics optimization in weekly architecture review."
+    },
+    {
+      "id": 199,
+      "timestamp": "2024-05-28T15:26:26Z",
+      "keywords": [
+        "api",
+        "onboarding",
+        "rate_limit"
+      ],
+      "relevance_score": 0.236,
+      "content": "Bug fix deployed for api module after regression detected."
+    },
+    {
+      "id": 200,
+      "timestamp": "2024-06-01T15:07:28Z",
+      "keywords": [
+        "blue_green",
+        "api",
+        "indexing"
+      ],
+      "relevance_score": 0.349,
+      "content": "Incident post-mortem: blue_green failure caused 15-minute outage."
+    }
+  ],
+  "total_count": 200
+}

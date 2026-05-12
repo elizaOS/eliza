@@ -1,0 +1,68 @@
+[
+  {
+    "transaction_id": "TXN-701",
+    "date": "2026-03-24",
+    "amount": 3200.00,
+    "currency": "CNY",
+    "type": "差旅费报销",
+    "category": "费用报销",
+    "description": "张伟出差北京差旅费，发票号INV-001",
+    "status": "completed",
+    "approved_by": "王经理"
+  },
+  {
+    "transaction_id": "TXN-702",
+    "date": "2026-03-24",
+    "amount": 680.00,
+    "currency": "CNY",
+    "type": "办公用品报销",
+    "category": "费用报销",
+    "description": "李华办公用品采购，发票号INV-002",
+    "status": "completed",
+    "approved_by": "王经理"
+  },
+  {
+    "transaction_id": "TXN-703",
+    "date": "2026-03-24",
+    "amount": 5000.00,
+    "currency": "CNY",
+    "type": "培训费报销",
+    "category": "费用报销",
+    "description": "王明外部培训费，发票号INV-003",
+    "status": "pending",
+    "approved_by": "张总监"
+  },
+  {
+    "transaction_id": "TXN-704",
+    "date": "2026-03-24",
+    "amount": 420.00,
+    "currency": "CNY",
+    "type": "餐饮报销",
+    "category": "费用报销",
+    "description": "陈静客户招待餐费，发票号INV-004",
+    "status": "completed",
+    "approved_by": "李主管"
+  },
+  {
+    "transaction_id": "TXN-705",
+    "date": "2026-03-20",
+    "amount": 12000.00,
+    "currency": "CNY",
+    "type": "水电费",
+    "category": "运营成本",
+    "description": "3月份办公楼水电费",
+    "status": "completed",
+    "approved_by": "行政部"
+  },
+  {
+    "transaction_id": "TXN-706",
+    "date": "2026-03-25",
+    "amount": 350000.00,
+    "currency": "CNY",
+    "type": "员工工资",
+    "category": "人力成本",
+    "description": "2026年3月员工工资发放",
+    "status": "completed",
+    "approved_by": "财务总监"
+  }
+]

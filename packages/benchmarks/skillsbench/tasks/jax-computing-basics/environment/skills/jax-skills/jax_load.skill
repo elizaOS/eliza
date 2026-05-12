@@ -1,0 +1,7 @@
+name: jax-load
+description: Load numpy data file into JAX arrays
+inputs:
+  path: string
+outputs:
+  data: any
+implementation: jax_skills.load

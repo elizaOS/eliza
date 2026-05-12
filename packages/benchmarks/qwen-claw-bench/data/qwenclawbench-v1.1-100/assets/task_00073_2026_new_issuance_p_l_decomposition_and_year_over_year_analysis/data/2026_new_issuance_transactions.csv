@@ -1,0 +1,25 @@
+deal_id,deal_date,settlement_date,issuer_name,sector,deal_type,currency,deal_size_mm,our_allocation_mm,our_role,underwriting_fee_mm,trading_pnl_mm,total_pnl_mm,fee_rate_bps,status,deal_lead,notes
+NI-2026002,2026-01-17,2026-01-22,Meridian Health Systems,Healthcare,Bond Issuance,GBP,1292.1,51.53,Co-Manager,12.02,1.79,13.81,93.0,Completed,S. Chen,
+NI-2026003,2026-01-20,2026-01-23,GreenPeak Energy Corp.,Energy,IPO,EUR,785.54,31.96,Co-Manager,9.74,1.89,11.63,124.0,Completed,R. Patel,
+NI-2026004,2026-02-03,2026-02-08,Atlas Financial Group,Financial Services,Bond Issuance,USD,4458.06,504.09,Co-Manager,102.54,-164.15,-61.61,230.0,Completed,M. Williams,Credit downgrade during bookbuilding; deal repriced lower
+NI-2026001,2026-02-05,2026-02-10,NovaTech Solutions Inc.,Technology,IPO,EUR,2447.76,260.68,Joint Bookrunner,33.04,14.53,47.57,135.0,Completed,J. Morrison,Strong AI sector demand; 4.2x oversubscribed
+NI-2026007,2026-03-15,2026-03-20,Quantum Dynamics Ltd.,Technology,Convertible Bond,GBP,1112.39,75.24,Bookrunner,32.15,-0.43,31.72,289.0,Completed,S. Chen,
+NI-2026006,2026-03-17,2026-03-20,PrimeCraft Consumer Holdings,Consumer Goods,Secondary Offering,EUR,1876.22,100.85,Joint Bookrunner,49.34,-80.48,-31.14,263.0,Settled,J. Morrison,Consumer sentiment crash; aftermarket sell-off
+NI-2026008,2026-03-19,2026-03-24,Stellar Biomedical Corp.,Healthcare,IPO,USD,1683.21,75.64,Lead Underwriter,33.16,-1.23,31.93,197.0,Completed,R. Patel,Biotech rally; priced at top of range
+NI-2026012,2026-04-21,2026-04-28,Apex Capital Markets,Financial Services,ABS,USD,716.42,78.24,Co-Lead,6.88,-14.88,-8.0,96.0,Completed,S. Chen,ABS tranche mispriced; adverse selection on retained piece
+NI-2026005,2026-04-22,2026-04-25,Horizon Real Estate Trust,Real Estate,ABS,CNY,902.9,57.88,Joint Bookrunner,19.86,2.84,22.7,220.0,Settled,A. Thompson,
+NI-2026009,2026-04-24,2026-04-27,Pacific Infrastructure Partners,Industrials,Bond Issuance,GBP,1011.04,41.77,Lead Underwriter,8.49,0.99,9.48,84.0,Settled,M. Williams,
+NI-2026010,2026-04-24,2026-04-29,TrueNorth Telecom Inc.,Telecommunications,Private Placement,CNY,1767.26,65.77,Co-Lead,44.89,-103.9,-59.01,254.0,Settled,A. Thompson,Regulatory investigation announced post-pricing; severe drop
+NI-2026011,2026-05-28,2026-06-04,BlueWave Semiconductor,Technology,IPO,USD,2458.37,251.97,Bookrunner,71.78,2.55,74.33,292.0,Completed,J. Morrison,Semiconductor supercycle; excellent aftermarket performance
+NI-2026015,2026-06-11,2026-06-16,Pinnacle Consumer Brands,Consumer Goods,IPO,EUR,1159.37,50.79,Co-Lead,8.0,-0.9,7.1,69.0,Completed,A. Thompson,
+NI-2026018,2026-06-25,2026-06-30,NextGen Wireless Corp.,Telecommunications,Bond Issuance,EUR,2237.69,86.52,Bookrunner,26.18,-47.09,-20.91,117.0,Completed,R. Patel,Rising rate environment; bond price declined sharply post-issuance
+NI-2026014,2026-07-02,2026-07-09,Vanguard Logistics Group,Industrials,Secondary Offering,USD,500.8,17.28,Bookrunner,6.16,-9.0,-2.84,123.0,Completed,M. Williams,Logistics sector downturn; weak institutional demand
+NI-2026013,2026-07-07,2026-07-14,SunCrest Solar Holdings,Energy,Bond Issuance,USD,1105.76,106.63,Bookrunner,12.38,5.04,17.42,112.0,Completed,R. Patel,
+NI-2026016,2026-07-09,2026-07-16,Emerald Pharma Inc.,Healthcare,Convertible Bond,USD,1007.19,54.78,Co-Lead,12.79,1.64,14.43,127.0,Settled,J. Morrison,
+NI-2026020,2026-07-27,2026-08-01,Ironclad Defense Systems,Industrials,IPO,CNY,2497.49,117.62,Co-Lead,50.95,-76.02,-25.07,204.0,Settled,A. Thompson,Defense budget concerns; deal broke issue price
+NI-2026017,2026-08-09,2026-08-16,CityGate Properties REIT,Real Estate,ABS,EUR,2011.13,121.6,Lead Underwriter,40.02,4.34,44.36,199.0,Completed,S. Chen,
+NI-2026019,2026-08-17,2026-08-20,OceanView Resort Group,Consumer Goods,Private Placement,USD,1633.65,82.82,Co-Lead,22.71,1.76,24.47,139.0,Settled,M. Williams,
+NI-2026022,2026-09-13,2026-09-16,Redwood Insurance Holdings,Financial Services,Bond Issuance,EUR,4403.85,348.04,Co-Manager,62.98,10.9,73.88,143.0,Settled,S. Chen,
+NI-2026021,2026-09-18,2026-09-21,DataStream Analytics,Technology,Secondary Offering,USD,1497.7,158.82,Joint Bookrunner,27.41,-2.92,24.49,183.0,Settled,J. Morrison,
+NI-2026024,2026-09-27,2026-10-04,BrightPath Education Tech,Technology,IPO,USD,2645.37,301.29,Co-Manager,43.12,9.48,52.6,163.0,Settled,M. Williams,EdTech momentum; priced above range
+NI-2026023,2026-10-17,2026-10-24,WindForce Renewables,Energy,Convertible Bond,CNY,540.94,28.25,Bookrunner,9.79,-12.11,-2.32,181.0,Settled,R. Patel,Renewable energy policy reversal fears; convertible underwater

@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-837dd91b3c3015b3b044875d04ed3be9bb3b75d1
+Repository: protonmail/webclients
+Base Commit: fd4617a85ab6b714f3d41581ce2ca5eae9b0230d
+Test Files: ["components/newFeatureTag/NewFeatureTag.test.ts", "packages/components/components/newFeatureTag/NewFeatureTag.test.tsx"]
+FAIL_TO_PASS: ["components/newFeatureTag/NewFeatureTag.test.tsx | should add a Spotlight"]
+PASS_TO_PASS: ["components/newFeatureTag/NewFeatureTag.test.tsx | NewFeatureTag should be always shown by default", "components/newFeatureTag/NewFeatureTag.test.tsx | NewFeatureTag should be show once with showOnce", "components/newFeatureTag/NewFeatureTag.test.tsx | NewFeatureTag should not be shown if date end", "components/newFeatureTag/NewFeatureTag.test.tsx | should not render if it was not in the proper environment"]

@@ -6,8 +6,8 @@
   "runs": 5, "warmup": 1,
   "thread_sweep": [1],
   "kernels": [
-    { "name": "qjl_score_i8", "n_outputs": 131072, "min_us_by_threads": [1706.00], "ns_per_out_t1": 13.0157 },
-    { "name": "qjl_score_fp32", "n_outputs": 131072, "min_us_by_threads": [5206.00], "ns_per_out_t1": 39.7186 },
-    { "name": "polar_preht_dot", "n_outputs": 131072, "min_us_by_threads": [5924.00], "ns_per_out_t1": 45.1965 }
+    { "name": "qjl_score_i8", "n_outputs": 131072, "min_us_by_threads": [1896.00], "ns_per_out_t1": 14.4653 },
+    { "name": "qjl_score_fp32", "n_outputs": 131072, "min_us_by_threads": [5821.00], "ns_per_out_t1": 44.4107 },
+    { "name": "polar_preht_dot", "n_outputs": 131072, "min_us_by_threads": [6511.00], "ns_per_out_t1": 49.6750 }
   ]
 }

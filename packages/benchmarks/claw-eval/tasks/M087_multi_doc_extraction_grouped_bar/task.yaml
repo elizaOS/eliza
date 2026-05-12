@@ -1,0 +1,48 @@
+task_id: M087_multi_doc_extraction_grouped_bar
+task_name: Multi-Document Extraction - LLM Instruct Comparison
+version: "1.0"
+category: doc_extraction
+difficulty: hard
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    I am conducting a comparative study on flagship instruction-tuned large
+    language models. Please download and read these two PDFs:
+    - https://arxiv.org/pdf/2412.19437
+    - https://arxiv.org/pdf/2412.15115
+
+    Extract the performance scores for three specific models: DeepSeek-V3,
+    Qwen2.5-72B-Instruct, and LLaMA-3.1-405B-Instruct, across two benchmarks:
+    GPQA-Diamond (Pass@1) and AIME 2024 (Pass@1).
+
+    Save the synthesized data into a file named
+    /workspace/llm_instruct_comparison.csv with exactly three columns: Model,
+    GPQA_Diamond, and AIME_2024.
+
+    Then, create a Grouped Bar Chart comparing these three models side-by-side on
+    the two benchmarks. Save the final image as /workspace/llm_instruct_chart.png.
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files: []
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/llm_instruct_comparison.csv
+  - /workspace/llm_instruct_chart.png
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Download 2 PDFs (DeepSeek-V3 and Qwen2.5 reports), extract GPQA-Diamond
+  and AIME 2024 Pass@1 scores for 3 instruction-tuned models, save CSV and
+  grouped bar chart.
+primary_dimensions:
+  - completion
+  - robustness

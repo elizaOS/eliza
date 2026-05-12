@@ -1,0 +1,78 @@
+{
+  "multiple_choice": {
+    "scoring_method": "exact_match",
+    "max_points": 1,
+    "rubric_dimensions": ["correctness"],
+    "automated_scoring_feasibility": "high",
+    "description": "Single correct answer from 4-5 options. Score is binary: 1 for correct, 0 for incorrect.",
+    "example_prompt_suffix": "Choose the best answer from the options below.",
+    "requires_human_review": false
+  },
+  "open_ended": {
+    "scoring_method": "rubric_based",
+    "max_points": 5,
+    "rubric_dimensions": ["accuracy", "completeness", "clarity", "relevance", "depth"],
+    "automated_scoring_feasibility": "medium",
+    "description": "Free-form response evaluated on multiple quality dimensions. Requires LLM-as-judge or human review.",
+    "example_prompt_suffix": "Provide a detailed response.",
+    "requires_human_review": true
+  },
+  "code_generation": {
+    "scoring_method": "test_case_pass_rate",
+    "max_points": 1,
+    "rubric_dimensions": ["functional_correctness", "edge_case_handling", "code_quality"],
+    "automated_scoring_feasibility": "high",
+    "description": "Code evaluated by executing against hidden test cases. Primary metric is pass@1.",
+    "example_prompt_suffix": "Write a function that solves the following problem.",
+    "requires_human_review": false,
+    "execution_environment": "sandboxed_docker",
+    "timeout_per_test_sec": 10
+  },
+  "mathematical_proof": {
+    "scoring_method": "rubric_based",
+    "max_points": 5,
+    "rubric_dimensions": ["logical_validity", "completeness", "rigor", "notation_correctness", "final_answer"],
+    "automated_scoring_feasibility": "low",
+    "description": "Mathematical proofs require expert review for logical validity. Automated checking limited to final numerical answers.",
+    "example_prompt_suffix": "Prove the following statement. Show all steps.",
+    "requires_human_review": true
+  },
+  "creative_writing": {
+    "scoring_method": "rubric_based",
+    "max_points": 5,
+    "rubric_dimensions": ["creativity", "coherence", "style", "engagement", "adherence_to_prompt"],
+    "automated_scoring_feasibility": "low",
+    "description": "Subjective evaluation of creative output. High inter-rater variability expected.",
+    "example_prompt_suffix": "Write a creative piece based on the following prompt.",
+    "requires_human_review": true
+  },
+  "logical_reasoning": {
+    "scoring_method": "exact_match",
+    "max_points": 1,
+    "rubric_dimensions": ["correctness", "reasoning_chain_validity"],
+    "automated_scoring_feasibility": "high",
+    "description": "Problems with deterministic correct answers. Chain-of-thought can be optionally evaluated.",
+    "example_prompt_suffix": "Solve the following logic problem. Provide your answer and reasoning.",
+    "requires_human_review": false
+  },
+  "fact_retrieval": {
+    "scoring_method": "f1_overlap",
+    "max_points": 1,
+    "rubric_dimensions": ["factual_accuracy", "specificity"],
+    "automated_scoring_feasibility": "high",
+    "description": "Factual questions with verifiable answers. Scored by token-level F1 against reference answer.",
+    "example_prompt_suffix": "Answer the following factual question concisely.",
+    "requires_human_review": false
+  },
+  "multi_turn_dialogue": {
+    "scoring_method": "rubric_based",
+    "max_points": 5,
+    "rubric_dimensions": ["context_retention", "coherence", "helpfulness", "instruction_adherence", "conversation_flow"],
+    "automated_scoring_feasibility": "medium",
+    "description": "Multi-turn conversations evaluated for consistency and quality across turns. Requires stateful evaluation.",
+    "example_prompt_suffix": "Continue the conversation naturally.",
+    "requires_human_review": true,
+    "min_turns": 3,
+    "max_turns": 8
+  }
+}

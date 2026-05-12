@@ -1,0 +1,8 @@
+[
+  {"contact_id":"CON-1601","name":"Zhao Lei","email":"zhaolei@company.com","phone":"13800161001","department":"Sales","title":"Senior Account Manager","responsibilities":["VIP customer management","Contract renewals","CUS-1601 Dingxin Software","CUS-1603 Wantong Logistics","CUS-1605 Sunshine Media"]},
+  {"contact_id":"CON-1602","name":"Zhang Wei","email":"zhangwei@company.com","phone":"13800161002","department":"Sales","title":"Account Manager","responsibilities":["Standard customer management","New customer acquisition","CUS-1602 Hanhai E-commerce","CUS-1604 Qianfeng Technology","CUS-1606 Public Institution"]},
+  {"contact_id":"CON-1603","name":"Wang Ming","email":"wangming@company.com","phone":"13800161003","department":"Customer Success","title":"Customer Success Manager","responsibilities":["Customer health monitoring","Renewal support","Satisfaction tracking for all customers"]},
+  {"contact_id":"CON-1604","name":"Li Hua","email":"lihua@company.com","phone":"13800161004","department":"Engineering","title":"Technical Support Engineer","responsibilities":["Technical support","Incident resolution","System maintenance"]},
+  {"contact_id":"CON-1605","name":"Ma Qiang","email":"maqiang@company.com","phone":"13800161005","department":"Operations","title":"Operations Lead","responsibilities":["System operations","Server management","Deployment and releases"]},
+  {"contact_id":"CON-1606","name":"Liu Yang","email":"liuyang@company.com","phone":"13800161006","department":"Finance","title":"Finance Lead","responsibilities":["Contract review","Accounts receivable management","Financial reporting"]}
+]

@@ -1,0 +1,203 @@
+task_id: T130_business_trip_planning
+task_name: Business Trip Planning
+version: "1.0"
+category: workflow
+difficulty: medium
+tags: [general, multi_service]
+
+services:
+  - name: gmail
+    command: python mock_services/gmail/server.py
+    port: 9100
+    health_check: http://localhost:9100/gmail/messages
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9100/gmail/reset
+    env:
+      GMAIL_FIXTURES: tasks/T130_business_trip_planning/fixtures/gmail/inbox.json
+  - name: calendar
+    command: python mock_services/calendar/server.py
+    port: 9101
+    health_check: http://localhost:9101/calendar/events
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9101/calendar/reset
+    env:
+      CALENDAR_FIXTURES: tasks/T130_business_trip_planning/fixtures/calendar/events.json
+  - name: contacts
+    command: python mock_services/contacts/server.py
+    port: 9103
+    health_check: http://localhost:9103/contacts/search
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9103/contacts/reset
+    env:
+      CONTACTS_FIXTURES: tasks/T130_business_trip_planning/fixtures/contacts/contacts.json
+
+prompt:
+  text: |
+    There are several business trip invitation emails in my inbox. Please help me plan:
+    1. Review all business trip related emails
+    2. Check the calendar for conflicts on the corresponding dates
+    3. Look up contact information for local colleagues at each trip destination
+    4. Provide a comprehensive trip recommendation after analysis:
+       - Which itineraries conflict and require trade-offs
+       - Recommended trip arrangement
+       - Contact list for each destination
+  language: en
+
+tools:
+  - name: gmail_list_messages
+    description: Get inbox email list
+    input_schema:
+      type: object
+      properties:
+        days_back:
+          type: integer
+          description: Get emails from the last N days
+          default: 7
+        max_results:
+          type: integer
+          description: Maximum number of results
+          default: 20
+      required: []
+
+  - name: gmail_get_message
+    description: Get email details by message ID
+    input_schema:
+      type: object
+      properties:
+        message_id:
+          type: string
+          description: Message ID
+      required: [message_id]
+
+  - name: calendar_list_events
+    description: List calendar events
+    input_schema:
+      type: object
+      properties:
+        start_date:
+          type: string
+          description: "Start date (YYYY-MM-DD)"
+        end_date:
+          type: string
+          description: "End date (YYYY-MM-DD)"
+      required: []
+
+  - name: calendar_get_event
+    description: Get event details
+    input_schema:
+      type: object
+      properties:
+        event_id:
+          type: string
+          description: Event ID
+      required: [event_id]
+
+  - name: contacts_search
+    description: Search internal contacts directory
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search keyword
+        department:
+          type: string
+          description: Filter by department
+      required: [query]
+
+  - name: contacts_get
+    description: Get contact details
+    input_schema:
+      type: object
+      properties:
+        contact_id:
+          type: string
+          description: Contact ID
+      required: [contact_id]
+
+tool_endpoints:
+  - tool_name: gmail_list_messages
+    url: http://localhost:9100/gmail/messages
+    method: POST
+  - tool_name: gmail_get_message
+    url: http://localhost:9100/gmail/messages/get
+    method: POST
+  - tool_name: calendar_list_events
+    url: http://localhost:9101/calendar/events
+    method: POST
+  - tool_name: calendar_get_event
+    url: http://localhost:9101/calendar/events/get
+    method: POST
+  - tool_name: contacts_search
+    url: http://localhost:9103/contacts/search
+    method: POST
+  - tool_name: contacts_get
+    url: http://localhost:9103/contacts/get
+    method: POST
+
+environment:
+  mock_today: "2026-03-25"
+  timeout_seconds: 600
+  max_turns: 30
+
+scoring_components:
+  - name: conflict_analysis
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "Whether the three-way conflict on 4/2 between Shanghai, Shenzhen, and the local product review was correctly identified"
+  - name: trip_recommendation
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "Whether a reasonable trade-off suggestion was given (Shanghai VIP takes priority over Shenzhen tech exchange)"
+  - name: contact_preparation
+    weight: 0.30
+    check:
+      type: llm_judge
+      description: "Whether the contact list for each destination was provided"
+
+safety_checks: []
+
+expected_actions: []
+
+judge_rubric: |
+  Evaluate the quality of the assistant's business trip planning proposal.
+
+  ## Correct Conflict Analysis
+  - 4/2: Shanghai client visit (msg_801) vs Shenzhen tech exchange (msg_802) vs local product review (evt_401)
+    -> Three-way conflict! Cannot attend all three on the same day
+  - 4/5: Beijing annual meeting (msg_803) — already confirmed on calendar (evt_403) + flight booked -> no conflict
+  - msg_804 and msg_805 are distractors
+
+  ## Reasonable Recommendations
+  - Choose Shanghai for 4/2 (VIP client has highest priority), decline or reschedule Shenzhen
+  - Local product review needs to be rescheduled (coordinate with Wang Ming)
+  - 4/5 Beijing is confirmed, attend as planned
+  - Suggested itinerary: 4/2 Shanghai -> 4/3 free (or visit Shenzhen) -> 4/4 travel to Beijing -> 4/5 Beijing meeting
+
+  ## Contact List
+  - Shanghai: Manager Chen (CT-401), Director Wu (CT-402)
+  - Shenzhen: Li Wei (CT-403), Engineer Huang (CT-404)
+  - Beijing: VP Zhang (CT-405), Secretary Liu (CT-406)
+
+  Scoring:
+  - 0.8-1.0: Conflict correctly identified, reasonable recommendations, contacts complete
+  - 0.5-0.7: Conflicts mostly identified, recommendation direction correct
+  - 0.2-0.4: Incomplete analysis
+  - 0.0-0.1: Not completed
+
+reference_solution: |
+  1. gmail_list_messages() -> 5 emails, identify 3 trip invitations
+  2. calendar_list_events(4/1~4/7) -> check schedule conflicts
+  3. 4/2: Shanghai (VIP) vs Shenzhen vs local review -> conflict
+  4. 4/5: Beijing confirmed -> OK
+  5. contacts_search("Shanghai") -> Manager Chen, Director Wu
+  6. contacts_search("Shenzhen") -> Li Wei, Engineer Huang
+  7. contacts_search("Beijing") -> VP Zhang, Secretary Liu
+  8. Recommendation: Choose Shanghai for 4/2 (VIP priority), coordinate review reschedule
+
+primary_dimensions: [completion, robustness, communication]

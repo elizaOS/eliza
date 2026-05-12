@@ -49,19 +49,19 @@
   "exports": {
     "./package.json": "./package.json",
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "default": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     },
     "./platform/native-plugin-entrypoints": {
+      "types": "./dist/platform/native-plugin-entrypoints.d.ts",
       "import": "./dist/platform/native-plugin-entrypoints.js",
-      "default": "./dist/platform/native-plugin-entrypoints.js",
-      "types": "./dist/platform/native-plugin-entrypoints.d.ts"
+      "default": "./dist/platform/native-plugin-entrypoints.js"
     },
     "./platform/empty-node-module": {
+      "types": "./dist/platform/empty-node-module.d.ts",
       "import": "./dist/platform/empty-node-module.js",
-      "default": "./dist/platform/empty-node-module.js",
-      "types": "./dist/platform/empty-node-module.d.ts"
+      "default": "./dist/platform/empty-node-module.js"
     }
   },
   "peerDependencies": {

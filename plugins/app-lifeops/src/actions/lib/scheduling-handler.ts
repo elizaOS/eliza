@@ -1,16 +1,16 @@
 /**
- * LifeOps scheduling-with-others actions.
+ * LifeOps scheduling-with-others handlers.
  *
- * Adds three actions on top of the existing CALENDAR_ACTION CRUD path:
+ * Provides three handler functions dispatched from the CALENDAR umbrella:
  *
- *  - PROPOSE_MEETING_TIMES: reads the owner's busy calendar + meeting
+ *  - runProposeMeetingTimesHandler: reads the owner's busy calendar + meeting
  *    preferences (preferred hours, blackout windows, travel buffer) and
  *    returns candidate slots that can be offered to another party.
- *  - CHECK_AVAILABILITY: given an ISO start/end window, reports whether
- *    the owner is free or busy and lists overlapping events.
- *  - UPDATE_MEETING_PREFERENCES: persist the owner's preferred meeting
- *    hours, blackout windows, and travel buffer to the LifeOps profile
- *    (stored alongside the existing owner profile in scheduler task
+ *  - runCheckAvailabilityHandler: given an ISO start/end window, reports
+ *    whether the owner is free or busy and lists overlapping events.
+ *  - runUpdateMeetingPreferencesHandler: persist the owner's preferred
+ *    meeting hours, blackout windows, and travel buffer to the LifeOps
+ *    profile (stored alongside the existing owner profile in scheduler task
  *    metadata — no new table).
  *
  * Every user-visible reply runs through `renderLifeOpsActionReply` so the raw
@@ -20,8 +20,6 @@
  */
 
 import type {
-  Action,
-  ActionExample,
   ActionResult,
   HandlerCallback,
   HandlerOptions,
@@ -412,7 +410,7 @@ function makeSchedulingRespond(args: {
   runtime: IAgentRuntime;
   message: Memory;
   state: State | undefined;
-  callback: Parameters<NonNullable<Action["handler"]>>[4];
+  callback: HandlerCallback | undefined;
   actionName: string;
 }): <T extends NonNullable<ActionResult["data"]> | undefined>(
   payload: SchedulingRespondPayload<T>,
@@ -442,51 +440,15 @@ function makeSchedulingRespond(args: {
   };
 }
 
-export const proposeMeetingTimesAction: Action & {
-  suppressPostActionContinuation?: boolean;
-} = {
-  name: "PROPOSE_MEETING_TIMES",
-  similes: [
-    "SUGGEST_MEETING_TIMES",
-    "OFFER_MEETING_SLOTS",
-    "FIND_MEETING_SLOTS",
-    "PROPOSE_SLOTS",
-    "BUNDLE_MEETINGS_WHILE_TRAVELING",
-    "BULK_RESCHEDULE_MEETINGS",
-    "RESCHEDULE_MEETINGS",
-  ],
-  tags: [
-    "domain:calendar",
-    "capability:read",
-    "surface:remote-api",
-    "surface:internal",
-  ],
-  description:
-    "Propose concrete meeting time slots to offer to another person. This is " +
-    "the dedicated action for any 'propose N times', 'suggest N slots', " +
-    "'offer three times', 'find me three slots', 'give me a few times' request " +
-    "targeted at another person or team. It reads the owner's calendar busy " +
-    "times and meeting preferences (preferred hours, blackout windows, travel " +
-    "buffer) and returns three available slots by default over the next seven " +
-    "days. Also correct for bundled scheduling while traveling or concrete " +
-    "reschedule options. " +
-    "STRONG POSITIVE TRIGGERS — route HERE, not to CALENDAR or PERSONAL_ASSISTANT action=scheduling: " +
-    "'propose three times for a sync with a person', 'suggest a few times for " +
-    "a partner', 'offer a colleague three 30-minute slots', 'find us three options " +
-    "next week', 'give me slots to send to a teammate'. " +
-    "DO NOT use this for small talk, weather, or vague conversation. " +
-    "DO NOT use this to check the owner's calendar, create a calendar event, " +
-    "or view upcoming events — that is CALENDAR. " +
-    "DO NOT use this to start a multi-turn scheduling negotiation record — " +
-    "that is PERSONAL_ASSISTANT action=scheduling. This action just generates " +
-    "the candidate slots; the scheduling workflow tracks the negotiation lifecycle around them.",
-  descriptionCompressed:
-    "Propose available meeting slots from the owner's calendar and meeting preferences; not calendar CRUD or negotiation tracking.",
-  contexts: ["calendar", "contacts", "tasks"],
-  roleGate: { minRole: "OWNER" },
-  suppressPostActionContinuation: true,
-  validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
-  handler: async (runtime, message, state, options, callback) => {
+// Dispatched from the CALENDAR umbrella (action=propose_times).
+// Not a planner-visible Action — no name:, similes:, or registration.
+export async function runProposeMeetingTimesHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: HandlerOptions | undefined,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
     const respond = makeSchedulingRespond({
       runtime,
       message,
@@ -619,78 +581,17 @@ export const proposeMeetingTimesAction: Action & {
         bundleLocationLabel,
       },
     });
-  },
-  parameters: [
-    {
-      name: "durationMinutes",
-      description:
-        "Meeting length in minutes. Defaults to the owner's configured default duration.",
-      schema: { type: "number" as const },
-    },
-    {
-      name: "daysAhead",
-      description:
-        "Number of days ahead to search. Defaults to 7. Ignored when windowStart/windowEnd are supplied.",
-      schema: { type: "number" as const },
-    },
-    {
-      name: "slotCount",
-      description: "Number of candidate slots to return. Defaults to 3.",
-      schema: { type: "number" as const },
-    },
-    {
-      name: "windowStart",
-      description: "Optional ISO-8601 earliest start for the search window.",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "windowEnd",
-      description: "Optional ISO-8601 latest end for the search window.",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "timeZone",
-      description:
-        "Optional IANA time zone override when the user is temporarily traveling and wants proposals shown in that local time.",
-      schema: { type: "string" as const },
-    },
-  ],
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "While I'm traveling, try to bundle meetings with PendingReality and Ryan on the same day if possible.",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "I'll propose bundled meeting slots that cluster those meetings together while you're traveling.",
-        },
-      },
-    ],
-  ],
-};
+}
 
-export const checkAvailabilityAction: Action = {
-  name: "CHECK_AVAILABILITY",
-  similes: ["AM_I_FREE", "AVAILABILITY_CHECK", "FREE_BUSY"],
-  tags: [
-    "domain:calendar",
-    "capability:read",
-    "surface:remote-api",
-    "cost:cheap",
-  ],
-  description:
-    "Check whether the owner is free or busy across a specific ISO-8601 " +
-    "time window. Returns a free/busy summary and any overlapping events.",
-  descriptionCompressed:
-    "Check owner free/busy for one ISO-8601 time window and list overlapping events.",
-  contexts: ["calendar", "contacts", "tasks"],
-  roleGate: { minRole: "OWNER" },
-  validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
-  handler: async (runtime, message, state, options, callback) => {
+// Dispatched from the CALENDAR umbrella (action=check_availability).
+// Not a planner-visible Action — no name:, similes:, or registration.
+export async function runCheckAvailabilityHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: HandlerOptions | undefined,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
     const respond = makeSchedulingRespond({
       runtime,
       message,
@@ -789,84 +690,17 @@ export const checkAvailabilityAction: Action = {
         timeZone: preferences.timeZone,
       },
     });
-  },
-  parameters: [
-    {
-      name: "startAt",
-      description: "ISO-8601 start of the window to check.",
-      required: true,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "endAt",
-      description: "ISO-8601 end of the window to check.",
-      required: true,
-      schema: { type: "string" as const },
-    },
-  ],
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Am I free tomorrow between 2pm and 4pm?",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "You're free from Tue, Apr 20, 2:00 PM to Tue, Apr 20, 4:00 PM.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Do I have anything on my calendar Friday afternoon?",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "You have 1 conflict in that window: Design review with the team.",
-        },
-      },
-    ],
-  ] as ActionExample[][],
-};
+}
 
-export const updateMeetingPreferencesAction: Action & {
-  suppressPostActionContinuation?: boolean;
-} = {
-  name: "UPDATE_MEETING_PREFERENCES",
-  similes: [
-    "SET_MEETING_PREFERENCES",
-    "SAVE_MEETING_PREFERENCES",
-    "SET_PREFERRED_TIMES",
-    "SET_BLACKOUT_WINDOWS",
-    "SLEEP_WINDOW",
-    "NO_CALL_HOURS",
-    "PROTECT_SLEEP",
-  ],
-  tags: [
-    "domain:calendar",
-    "capability:write",
-    "capability:update",
-    "surface:internal",
-  ],
-  description:
-    "Persist the owner's meeting scheduling preferences: preferred start/end " +
-    "of day (24h HH:MM local), blackout windows, default meeting duration, " +
-    "and travel buffer. These drive PROPOSE_MEETING_TIMES. Use this for durable " +
-    "sleep windows, no-call hours, and other recurring scheduling rules.",
-  descriptionCompressed:
-    "Persist owner meeting preferences: preferred hours, blackout windows, default duration, and travel buffer.",
-  contexts: ["calendar", "contacts", "tasks", "settings"],
-  roleGate: { minRole: "OWNER" },
-  suppressPostActionContinuation: true,
-  validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
-  handler: async (runtime, message, state, options, callback) => {
+// Dispatched from the CALENDAR umbrella (action=update_preferences).
+// Not a planner-visible Action — no name:, similes:, or registration.
+export async function runUpdateMeetingPreferencesHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: HandlerOptions | undefined,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
     const respond = makeSchedulingRespond({
       runtime,
       message,
@@ -924,73 +758,7 @@ export const updateMeetingPreferencesAction: Action & {
       },
       data: { preferences: updated, updatedFields: Object.keys(patch) },
     });
-  },
-  parameters: [
-    {
-      name: "timeZone",
-      description: "IANA time zone used to interpret preferred hours.",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "preferredStartLocal",
-      description:
-        "Earliest preferred meeting start time-of-day (local HH:MM, 24h).",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "preferredEndLocal",
-      description:
-        "Latest preferred meeting end time-of-day (local HH:MM, 24h).",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "defaultDurationMinutes",
-      description: "Default meeting duration in minutes (5–480).",
-      schema: { type: "number" as const },
-    },
-    {
-      name: "travelBufferMinutes",
-      description: "Minutes to reserve before/after each meeting (0–240).",
-      schema: { type: "number" as const },
-    },
-    {
-      name: "blackoutWindows",
-      description:
-        "Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun..6=Sat) }.",
-      schema: { type: "array" as const },
-    },
-  ],
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "No calls between 11pm and 8am unless I explicitly say it's okay.",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Updated your meeting preferences to block calls from 11:00 PM to 8:00 AM unless you override it.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Keep my mornings protected for deep work and don't schedule meetings before 10am.",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Stored your meeting preferences so mornings stay protected and meetings start at 10:00 AM or later.",
-        },
-      },
-    ],
-  ] as ActionExample[][],
-};
+}
 
 // ── Multi-turn scheduling negotiation action ─────────────────────────────
 

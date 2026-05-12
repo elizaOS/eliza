@@ -17,7 +17,7 @@ import type {
   BscUnsignedTradeTx,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { ethers } from "ethers";
+import * as ethers from "ethers";
 import {
   normalizeRpcUrl,
   resolveBscRpcUrls as resolveWalletBscRpcUrls,

@@ -22,18 +22,13 @@ the eliza runtime actually parses for each `metadata.task_type`:
                                  chosen action MUST be TASK_CALL or the tool
                                  name itself.
 
-  shell_command               JSON with `command` field (or planner action
-                                 carrying `params.command`); SHELL (legacy
-                                 name SHELL_COMMAND also accepted) must be in
-                                 availableActions.
+  shell_command               JSON with `command` field; SHELL must
+                                 be in availableActions.
 
-  agent_trace (planning)      JSON envelope: `actions` (each with a `name`)
-                                 plus an OPTIONAL `thought` — adapters omit
-                                 `thought` when the upstream record carries
-                                 no real reasoning, and the runtime parser
-                                 tolerates that. When `simple: true` the
-                                 actions list MUST be exactly one entry
-                                 (REPLY-only / single).
+  agent_trace (planning)      JSON envelope: `thought` + `actions`,
+                                 each action with a `name`. When
+                                 `simple: true` the actions list MUST be
+                                 exactly one entry (REPLY-only / single).
 
   mcp_tool_call / mcp_routing /
   claude_distill / reasoning_cot
@@ -89,11 +84,7 @@ ACTION_IGNORE = "IGNORE"
 ACTION_STOP = "STOP"
 ACTION_REPLY = "REPLY"
 ACTION_TASK_CALL = "TASK_CALL"
-# `SHELL_COMMAND` was renamed to `SHELL` in the runtime (config/eliza1_action_aliases.json,
-# action-docs.ts; mirrors lib/eliza_record.ACTION_SHELL). Accept either form so a
-# re-packed corpus using the new name validates while older rows still pass.
 ACTION_SHELL = "SHELL"
-SHELL_ACTION_NAMES = {ACTION_SHELL, "SHELL_COMMAND"}
 ROUTING_ACTIONS = {ACTION_RESPOND, ACTION_IGNORE, ACTION_STOP}
 
 # DATASET_REVIEW.md-flagged default-thought leaks. Single source of truth
@@ -155,34 +146,17 @@ def validate_native_v1(rec: dict) -> list[tuple[str, str]]:
 ROUTING_TASK_TYPES = {"should_respond_with_context", "should_respond",
                       "context_routing", "routing"}
 
-# Runtime post-turn evaluator / structured-handler prompts. Each makes its own
-# LLM call, returns a structured JSON object (ops / summary / extracted option /
-# secrets / reflection / drafted post …), and takes NO actions — so an empty
-# availableActions list is the canonical shape, not a bug. See
-# scripts/synthesize_evaluator_prompts.py + scripts/synthesize_phase3_actions.py
-# and docs/dataset/RUNTIME_PHASES.md §"Phase 3/4".
-EVALUATOR_TASK_TYPES = {
-    "reflection", "reflection_evaluator",
-    "fact_extractor", "fact_extraction", "summarization",
-    "long_term_extraction", "relationship_extraction",
-    "skill_extraction", "skill_refinement",
-    "extract_option", "extract_secret_operation", "extract_secret_request",
-    "extract_secrets", "post_creation", "post_action_decision",
-    "remove_contact",
-}
-
 # task_types that are intentionally permissive (downstream-shape preserving).
 PERMISSIVE_TASK_TYPES = {
     "mcp_tool_call", "mcp_routing", "claude_distill", "reasoning_cot",
     "scam_defense", "n8n_workflow_generation", "media_description",
-    "abliteration_harmful", "abliteration_harmless", "mobile_action",
-} | EVALUATOR_TASK_TYPES
+    "reflection", "reflection_evaluator", "abliteration_harmful",
+    "abliteration_harmless", "mobile_action",
+}
 
-# `claude_distill` legitimately ships with availableActions=[]; so do the
-# evaluator / structured-handler prompts (they don't pick actions) and the
-# bare `reply` (replyTemplate) dialog-generation shape. Everything else must
-# have at least one action.
-EMPTY_ACTIONS_OK = {"claude_distill", "reply"} | EVALUATOR_TASK_TYPES
+# `claude_distill` legitimately ships with availableActions=[]; everything
+# else must have at least one action.
+EMPTY_ACTIONS_OK = {"claude_distill"}
 
 
 def _load_source_allowlist() -> set[str]:
@@ -212,29 +186,7 @@ def _load_source_allowlist() -> set[str]:
         "synthesized_agent_orch", "synthesized_reasoning",
         "synthesized_multiparty",
     })
-    # Per-task synthesis sources emitted by synthesize_evaluator_prompts.py
-    # (`synth-evaluator-<task>`) and synthesize_phase3_actions.py
-    # (`synth-phase3-<task>`).
-    for task in (
-        "reflection", "reflection_evaluator", "fact_extractor",
-        "fact_extraction", "summarization", "long_term_extraction",
-        "relationship_extraction", "skill_extraction", "skill_refinement",
-    ):
-        sources.add(f"synth-evaluator-{task}")
-    for task in (
-        "reply", "extract_option", "extract_secret_operation",
-        "extract_secret_request", "post_creation", "post_action_decision",
-        "remove_contact",
-    ):
-        sources.add(f"synth-phase3-{task}")
     return sources
-
-
-# Synthesis-source prefixes: any `metadata.source_dataset` starting with one of
-# these is a locally-generated synthesis dataset and is allowlisted by
-# construction (the per-task variants are too numerous to enumerate exactly,
-# and `pack_dataset.py` already gates these by task_type).
-SYNTH_SOURCE_PREFIXES = ("synth-evaluator-", "synth-phase3-", "synthesized_")
 
 
 SOURCE_ALLOWLIST: set[str] = _load_source_allowlist()
@@ -243,7 +195,7 @@ SOURCE_ALLOWLIST: set[str] = _load_source_allowlist()
 # ──────────────────────── decode helpers ────────────────────────
 
 
-def _try_decode_toon(text: str) -> tuple[bool, Any, str]:
+def _try_decode_payload(text: str) -> tuple[bool, Any, str]:
     """Structured decode for native v5 JSON expectedResponse values.
 
     Returns `(ok, value, error)`.
@@ -304,26 +256,16 @@ def _planner_actions(decoded: Any) -> list[dict[str, Any]] | None:
 def validate_reply(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
     errs: list[tuple[str, str]] = []
     actions = set(_action_names(rec.get("availableActions", [])))
-    # `reply` is the runtime `replyTemplate` (dialog generation) — it produces
-    # `{thought, text}` directly and does not pick actions. Adapters that wrap
-    # it with [REPLY, IGNORE] do so defensively; an empty list is the bare
-    # dialog-generation shape and is legitimate. When actions ARE listed they
-    # must include REPLY+IGNORE (catches typos / wrong-cased entries).
-    if actions:
-        if ACTION_REPLY not in actions:
-            errs.append(("reply_missing_REPLY_action",
-                         "non-empty availableActions on a reply row must include REPLY"))
-        if ACTION_IGNORE not in actions:
-            errs.append(("reply_missing_IGNORE_action",
-                         "non-empty availableActions on a reply row must include IGNORE"))
-    # currentMessage is normally a {user, assistant} turn; `tool` also occurs
-    # when the supervised reply is responding to a tool/action result (the
-    # REPLY action firing after a tool ran) — format_for_training renders that
-    # as a user-side turn, so it is a valid shape.
+    if ACTION_REPLY not in actions:
+        errs.append(("reply_missing_REPLY_action",
+                     "adapter must include REPLY in availableActions for task_type=reply"))
+    if ACTION_IGNORE not in actions:
+        errs.append(("reply_missing_IGNORE_action",
+                     "adapter must include IGNORE in availableActions for task_type=reply"))
     role = (rec.get("currentMessage") or {}).get("role")
-    if role not in ("user", "assistant", "tool"):
+    if role not in ("user", "assistant"):
         errs.append(("reply_currentMessage_role_invalid",
-                     f"currentMessage.role={role!r}, must be 'user', 'assistant' or 'tool'"))
+                     f"currentMessage.role={role!r}, must be 'user' or 'assistant'"))
     return errs
 
 
@@ -343,7 +285,7 @@ def validate_routing(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
                      "expectedResponse is empty"))
         return errs
     # Two acceptable shapes: a bare token "RESPOND"/"IGNORE"/"STOP", or a
-    # TOON document with `action:` carrying the token (LIGHT/MultiLIGHT).
+    # native JSON document with `action:` carrying the token (LIGHT/MultiLIGHT).
     if expected in ROUTING_ACTIONS:
         return errs
     if isinstance(decoded, dict):
@@ -355,7 +297,7 @@ def validate_routing(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
             return errs
         errs.append((
             "routing_decoded_no_action_field",
-            "TOON document for routing must have `action: RESPOND|IGNORE|STOP`",
+            "native JSON document for routing must have `action: RESPOND|IGNORE|STOP`",
         ))
         return errs
     errs.append((
@@ -369,12 +311,12 @@ def validate_routing(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
 def validate_tool_call(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
     errs: list[tuple[str, str]] = []
     if decoded is None:
-        errs.append(("tool_call_invalid_toon",
-                     "expectedResponse failed to TOON-decode"))
+        errs.append(("tool_call_invalid_payload",
+                     "expectedResponse failed to native JSON-decode"))
         return errs
     if not isinstance(decoded, dict):
         errs.append(("tool_call_decoded_not_object",
-                     f"decoded TOON is {type(decoded).__name__}, not an object"))
+                     f"decoded native JSON is {type(decoded).__name__}, not an object"))
         return errs
     # Two valid shapes:
     #   1. `{tool_calls: [{name, arguments}, ...]}` — the spec preference.
@@ -423,20 +365,20 @@ def validate_tool_call(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
 def validate_shell_command(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
     errs: list[tuple[str, str]] = []
     if decoded is None:
-        errs.append(("shell_invalid_toon",
-                     "expectedResponse failed to TOON-decode"))
+        errs.append(("shell_invalid_payload",
+                     "expectedResponse failed to native JSON-decode"))
         return errs
     if not isinstance(decoded, dict):
         errs.append(("shell_decoded_not_object",
-                     f"decoded TOON is {type(decoded).__name__}, not an object"))
+                     f"decoded native JSON is {type(decoded).__name__}, not an object"))
         return errs
-    # Either a top-level `command: ...` or a planner envelope whose
-    # SHELL (a.k.a. legacy SHELL_COMMAND) action carries `params.command`.
+    # Either a top-level `command: ...` or a planner envelope whose canonical
+    # SHELL action carries `params.command`.
     command = decoded.get("command")
     if not (isinstance(command, str) and command.strip()):
         planner_actions = _planner_actions(decoded) or []
         cmd_action = next((a for a in planner_actions
-                           if a.get("name") in SHELL_ACTION_NAMES), None)
+                           if a.get("name") == ACTION_SHELL), None)
         if cmd_action is None:
             errs.append(("shell_missing_command_field",
                          "shell_command task needs `command:` or "
@@ -449,7 +391,7 @@ def validate_shell_command(rec: dict, decoded: Any | None) -> list[tuple[str, st
                 errs.append(("shell_action_missing_params_command",
                              "SHELL action needs params.command non-empty"))
     actions = set(_action_names(rec.get("availableActions", [])))
-    if not (actions & SHELL_ACTION_NAMES):
+    if ACTION_SHELL not in actions:
         errs.append(("shell_missing_SHELL_action",
                      "availableActions must contain SHELL for task_type=shell_command"))
     return errs
@@ -458,24 +400,16 @@ def validate_shell_command(rec: dict, decoded: Any | None) -> list[tuple[str, st
 def validate_agent_trace(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
     errs: list[tuple[str, str]] = []
     if decoded is None:
-        errs.append(("agent_trace_invalid_toon",
-                     "expectedResponse failed to TOON-decode"))
+        errs.append(("agent_trace_invalid_payload",
+                     "expectedResponse failed to native JSON-decode"))
         return errs
     if not isinstance(decoded, dict):
         errs.append(("agent_trace_decoded_not_object",
-                     f"decoded TOON is {type(decoded).__name__}, not an object"))
+                     f"decoded native JSON is {type(decoded).__name__}, not an object"))
         return errs
-    # `thought` is OPTIONAL in the planner envelope. The adapters
-    # (lib/adapters.py:_planner_envelope) deliberately OMIT the `thought:` key
-    # when the upstream record carries no real reasoning trace, rather than
-    # synthesizing a placeholder phrase — and the runtime planner parser
-    # tolerates a missing `thought:` (basic-capabilities/actions/reply.ts
-    # defaults it to ""). If present it must be a non-empty string.
-    if "thought" in decoded:
-        t = decoded.get("thought")
-        if not (isinstance(t, str) and t.strip()):
-            errs.append(("agent_trace_thought_not_string",
-                         "planner envelope `thought:` present but not a non-empty string"))
+    if not isinstance(decoded.get("thought"), str):
+        errs.append(("agent_trace_missing_thought",
+                     "planner envelope needs `thought:` (string)"))
     actions = decoded.get("actions")
     if not isinstance(actions, list) or not actions:
         errs.append(("agent_trace_missing_actions",
@@ -517,11 +451,19 @@ TASK_TYPE_VALIDATORS = {
     "tool_call":                   validate_tool_call,
     "shell_command":               validate_shell_command,
     "agent_trace":                 validate_agent_trace,
+    "mcp_tool_call":               validate_permissive,
+    "mcp_routing":                 validate_permissive,
+    "claude_distill":              validate_permissive,
+    "reasoning_cot":               validate_permissive,
+    "scam_defense":                validate_permissive,
+    "n8n_workflow_generation":     validate_permissive,
+    "media_description":           validate_permissive,
+    "reflection":                  validate_permissive,
+    "reflection_evaluator":        validate_permissive,
+    "abliteration_harmful":        validate_permissive,
+    "abliteration_harmless":       validate_permissive,
+    "mobile_action":               validate_permissive,
 }
-# Every permissive task_type (including the runtime evaluator / structured-
-# handler prompts) routes to validate_permissive.
-for _tt in PERMISSIVE_TASK_TYPES:
-    TASK_TYPE_VALIDATORS.setdefault(_tt, validate_permissive)
 
 
 # ──────────────────────── schema-agnostic checks ────────────────────────
@@ -575,10 +517,8 @@ def schema_agnostic_checks(rec: dict, decoded: Any | None) -> list[tuple[str, st
         errs.append(("empty_currentMessage_content",
                      "currentMessage.content must be a non-empty string"))
 
-    # 4. source_dataset is in the known-source allowlist (or a recognized
-    #    locally-generated synthesis prefix).
-    if (source and source not in SOURCE_ALLOWLIST
-            and not source.startswith(SYNTH_SOURCE_PREFIXES)):
+    # 4. source_dataset is in the known-source allowlist
+    if source and source not in SOURCE_ALLOWLIST:
         errs.append((
             "unknown_source_dataset",
             f"metadata.source_dataset={source!r} not in datasets.yaml or "
@@ -619,7 +559,7 @@ def validate_record(rec: dict) -> list[tuple[str, str]]:
     if task_type in {"tool_call", "shell_command", "agent_trace",
                      "should_respond_with_context", "should_respond",
                      "context_routing", "routing"} or task_type.startswith("mobile_"):
-        ok, value, _err = _try_decode_toon(expected)
+        ok, value, _err = _try_decode_payload(expected)
         decoded = value if ok else None
 
     errs = schema_agnostic_checks(rec, decoded)
@@ -688,9 +628,6 @@ def run(input_path: Path, report_path: Path, *, strict: bool,
             continue
 
         errs = validate_record(rec)
-        # `_warning`-suffixed codes are surfaced in the report but do not flip
-        # a record to invalid (e.g. tool_call rows missing metadata.toolSpecs).
-        hard_errs = [e for e in errs if not e[0].endswith("_warning")]
         if not errs:
             valid += 1
             continue
@@ -708,9 +645,6 @@ def run(input_path: Path, report_path: Path, *, strict: bool,
                     "error": code,
                     "fix_hint": hint,
                 })
-        if not hard_errs:
-            valid += 1
-            continue
         if strict:
             _emit(report_path, total, valid, err_by_task, err_by_source, failing)
             return 1

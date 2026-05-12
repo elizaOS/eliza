@@ -1,0 +1,78 @@
+{
+  "model_name": "RAG-TF-v2.1",
+  "sensor_id": "S-4021",
+  "scenario": "peak",
+  "forecast_horizon": 12,
+  "step_interval_minutes": 5,
+  "forecast_start": "2024-03-15 11:10:00",
+  "forecast_values": [
+    111.3,
+    113.5,
+    109.1,
+    109.2,
+    106.0,
+    103.5,
+    96.0,
+    97.6,
+    98.0,
+    94.4,
+    93.0,
+    90.5
+  ],
+  "confidence_intervals_95pct": [
+    [
+      93.4,
+      129.2
+    ],
+    [
+      96.0,
+      131.0
+    ],
+    [
+      95.6,
+      122.6
+    ],
+    [
+      96.9,
+      121.5
+    ],
+    [
+      88.2,
+      123.8
+    ],
+    [
+      86.0,
+      121.0
+    ],
+    [
+      81.7,
+      110.3
+    ],
+    [
+      80.1,
+      115.1
+    ],
+    [
+      84.5,
+      111.5
+    ],
+    [
+      80.0,
+      108.8
+    ],
+    [
+      79.6,
+      106.4
+    ],
+    [
+      76.9,
+      104.1
+    ]
+  ],
+  "generated_at": "2024-03-15T11:10:00Z",
+  "retrieval_context": {
+    "similar_days_used": 15,
+    "retrieval_method": "cosine_similarity",
+    "embedding_model": "traffic-embed-v3"
+  }
+}

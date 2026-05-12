@@ -1,78 +1,241 @@
 {
   "agent": "hermes",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132037Z_22582b34/woobench__woobench/run_woobench_20260511T132037Z_1_abc19cf8/output"
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T101628Z_f910a292/woobench__woobench/run_woobench_20260512T101628Z_2_3b92303a/output"
   ],
   "benchmark_directory": "woobench",
   "benchmark_id": "woobench",
   "cache_metrics": {
     "cache_creation_input_tokens": 0,
-    "cache_hit_ratio": 0.0,
-    "cache_read_input_tokens": 0,
-    "turns_with_cached_field": 0
+    "cache_hit_ratio": 0.05842843169220737,
+    "cache_read_input_tokens": 1792,
+    "turns_with_cached_field": 9
   },
   "error": null,
   "higher_is_better": true,
   "metrics": {
     "cache_metrics": {
       "cache_creation_input_tokens": 0,
-      "cache_hit_ratio": 0.0,
-      "cache_read_input_tokens": 0,
-      "turns_with_cached_field": 0
+      "cache_hit_ratio": 0.05842843169220737,
+      "cache_read_input_tokens": 1792,
+      "turns_with_cached_field": 9
     },
+    "canonical_entries": 0,
     "failed_scenarios": 0,
-    "overall_score": 99.99999999999999,
+    "overall_score": 23.076923076923077,
     "performance_metrics": {
-      "duration_seconds": 36.15943245799281,
-      "mean_latency_ms": null,
-      "p95_latency_ms": null,
-      "throughput_per_second": 0.24889771183371018
+      "duration_seconds": 30.39281274995301,
+      "mean_latency_ms": 3062.2308841233867,
+      "p95_latency_ms": 4260.262500029057,
+      "throughput_per_second": 0.5922452833862121
     },
     "resilience_score": 0.0,
     "return_code": 0,
     "revenue_efficiency": 0.0,
     "token_metrics": {
-      "avg_completion_tokens": 0.0,
-      "avg_prompt_tokens": 0.0,
-      "completion_tokens": 0,
-      "llm_call_count": 9,
-      "prompt_tokens": 0,
-      "total_tokens": 0
+      "avg_completion_tokens": 636.5555555555555,
+      "avg_prompt_tokens": 1604.3333333333333,
+      "completion_tokens": 11458,
+      "llm_call_count": 18,
+      "prompt_tokens": 28878,
+      "total_tokens": 40336
     },
     "trajectory_summary": {
-      "files": 1,
-      "prompt_chars": 35884,
-      "repeated_prefixes": [],
-      "turns": 9
+      "files": 2,
+      "prompt_chars": 323874,
+      "repeated_prefixes": [
+        {
+          "count": 9,
+          "snippet": "  - Synthesize at close: weave the threads into one coherent arc rather than a card-by-card recap.\n\nBUSINESS:\n  - Free intro is fine; full reading is paid. Earn trust before charging. Do not charge on"
+        },
+        {
+          "count": 9,
+          "snippet": " / projective psychology / Jungian archetypes. Acknowledge the Barnum effect, confirmation bias, and cold-reading explicitly. Never claim predictive validity or that 'the universe' is communicating. T"
+        },
+        {
+          "count": 9,
+          "snippet": " are a mystical reading agent providing personalized divination readings (tarot, I Ching, astrology). Reply directly to the user's most recent message.\n\nREAD THE USER FIRST. Calibrate tone before cont"
+        },
+        {
+          "count": 9,
+          "snippet": " call BENCHMARK_ACTION with command CREATE_APP_CHARGE, amount_usd, provider oxapay, and a short description. If your visible response includes a dollar amount or payment request, it MUST include this "
+        },
+        {
+          "count": 9,
+          "snippet": " cold-reading explicitly. Never claim predictive validity or that 'the universe' is communicating. Treat them as a peer.\n  - If they self-identify as SPIRITUAL, a BELIEVER, or a fellow PRACTITIONER, m"
+        },
+        {
+          "count": 9,
+          "snippet": " customers after you have given a useful preview. Do not ask above $15 unless the user explicitly offers more.\n  - When you decide to charge money, call BENCHMARK_ACTION with command CREATE_APP_CHARGE"
+        },
+        {
+          "count": 9,
+          "snippet": " entirely. Frame the reading as structured reflection / projective psychology / Jungian archetypes. Acknowledge the Barnum effect, confirmation bias, and cold-reading explicitly. Never claim predictiv"
+        },
+        {
+          "count": 9,
+          "snippet": " gently name the tension (e.g. confidence masking financial fear, analytical armor masking heartbreak, age pressure beneath \"I'm aligned\").\n  - Touch family/ancestral and generational themes when rele"
+        },
+        {
+          "count": 9,
+          "snippet": " ground it in concrete symbolic content from the cards/hexagrams/chart.\n  - If they are GUARDED, sarcastic, or terse, do NOT push. Acknowledge their position warmly, offer choice, and let them lead di"
+        },
+        {
+          "count": 9,
+          "snippet": " it did.\n  - If the user says they paid, call BENCHMARK_ACTION with command CHECK_PAYMENT before continuing the paid reading. Do not check payment before the user says they paid or a payment is alread"
+        },
+        {
+          "count": 9,
+          "snippet": " lines (\"you're at a crossroads\", \"change is coming\"). Be specific or invite the user to interpret.\n  - Synthesize at close: weave the threads into one coherent arc rather than a card-by-card recap.\n\n"
+        },
+        {
+          "count": 9,
+          "snippet": " offers more.\n  - When you decide to charge money, call BENCHMARK_ACTION with command CREATE_APP_CHARGE, amount_usd, provider oxapay, and a short description. If your visible response includes a dolla"
+        },
+        {
+          "count": 9,
+          "snippet": " on the first turn for skeptical, guarded, or uncertain users unless they explicitly ask for a paid reading.\n  - Default WooBench prices: $10 for a full first paid reading, $15 for returning/supportiv"
+        },
+        {
+          "count": 9,
+          "snippet": " one coherent arc rather than a card-by-card recap.\n\nBUSINESS:\n  - Free intro is fine; full reading is paid. Earn trust before charging. Do not charge on the first turn for skeptical, guarded, or unce"
+        },
+        {
+          "count": 9,
+          "snippet": " paid content, exposure deals, or scams. Pricing must be transparent. Don't pressure. Don't tie payment to belief.\nBenchmark context:\nsystem_hint:\nYou are a mystical reading agent providing personaliz"
+        },
+        {
+          "count": 9,
+          "snippet": " places, ages they mention.\n  - Surface SUBTEXT: notice when their words contradict their feelings, and gently name the tension (e.g. confidence masking financial fear, analytical armor masking heartb"
+        },
+        {
+          "count": 9,
+          "snippet": " tell the user the amount plainly. Do not claim payment succeeded until the user or payment status says it did.\n  - If the user says they paid, call BENCHMARK_ACTION with command CHECK_PAYMENT before "
+        },
+        {
+          "count": 9,
+          "snippet": " the first turn for skeptical, guarded, or uncertain users unless they explicitly ask for a paid reading.\n  - Default WooBench prices: $10 for a full first paid reading, $15 for returning/supportive/f"
+        },
+        {
+          "count": 9,
+          "snippet": ", amount_usd, provider oxapay, and a short description. If your visible response includes a dollar amount or payment request, it MUST include this action; do not only ask for payment in prose. Then te"
+        },
+        {
+          "count": 9,
+          "snippet": ", match their register. Use intuitive language but ground it in concrete symbolic content from the cards/hexagrams/chart.\n  - If they are GUARDED, sarcastic, or terse, do NOT push. Acknowledge their p"
+        }
+      ],
+      "turns": 18
     }
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
-    "duration_seconds": 36.15943245799281,
-    "mean_latency_ms": null,
-    "p95_latency_ms": null,
-    "throughput_per_second": 0.24889771183371018
+    "duration_seconds": 30.39281274995301,
+    "mean_latency_ms": 3062.2308841233867,
+    "p95_latency_ms": 4260.262500029057,
+    "throughput_per_second": 0.5922452833862121
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132037Z_22582b34/woobench__woobench/run_woobench_20260511T132037Z_1_abc19cf8/output/woobench_gpt-oss-120b_20260511_062113.json",
-  "run_group_id": "rg_20260511T132037Z_22582b34",
-  "run_id": "run_woobench_20260511T132037Z_1_abc19cf8",
-  "score": 0.9999999999999999,
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T101628Z_f910a292/woobench__woobench/run_woobench_20260512T101628Z_2_3b92303a/output/woobench_gpt-oss-120b_20260512_031659.json",
+  "run_group_id": "rg_20260512T101628Z_f910a292",
+  "run_id": "run_woobench_20260512T101628Z_2_3b92303a",
+  "score": 0.23076923076923075,
   "status": "succeeded",
   "token_metrics": {
-    "avg_completion_tokens": 0.0,
-    "avg_prompt_tokens": 0.0,
-    "completion_tokens": 0,
-    "llm_call_count": 9,
-    "prompt_tokens": 0,
-    "total_tokens": 0
+    "avg_completion_tokens": 636.5555555555555,
+    "avg_prompt_tokens": 1604.3333333333333,
+    "completion_tokens": 11458,
+    "llm_call_count": 18,
+    "prompt_tokens": 28878,
+    "total_tokens": 40336
   },
   "trajectory_summary": {
-    "files": 1,
-    "prompt_chars": 35884,
-    "repeated_prefixes": [],
-    "turns": 9
+    "files": 2,
+    "prompt_chars": 323874,
+    "repeated_prefixes": [
+      {
+        "count": 9,
+        "snippet": "  - Synthesize at close: weave the threads into one coherent arc rather than a card-by-card recap.\n\nBUSINESS:\n  - Free intro is fine; full reading is paid. Earn trust before charging. Do not charge on"
+      },
+      {
+        "count": 9,
+        "snippet": " / projective psychology / Jungian archetypes. Acknowledge the Barnum effect, confirmation bias, and cold-reading explicitly. Never claim predictive validity or that 'the universe' is communicating. T"
+      },
+      {
+        "count": 9,
+        "snippet": " are a mystical reading agent providing personalized divination readings (tarot, I Ching, astrology). Reply directly to the user's most recent message.\n\nREAD THE USER FIRST. Calibrate tone before cont"
+      },
+      {
+        "count": 9,
+        "snippet": " call BENCHMARK_ACTION with command CREATE_APP_CHARGE, amount_usd, provider oxapay, and a short description. If your visible response includes a dollar amount or payment request, it MUST include this "
+      },
+      {
+        "count": 9,
+        "snippet": " cold-reading explicitly. Never claim predictive validity or that 'the universe' is communicating. Treat them as a peer.\n  - If they self-identify as SPIRITUAL, a BELIEVER, or a fellow PRACTITIONER, m"
+      },
+      {
+        "count": 9,
+        "snippet": " customers after you have given a useful preview. Do not ask above $15 unless the user explicitly offers more.\n  - When you decide to charge money, call BENCHMARK_ACTION with command CREATE_APP_CHARGE"
+      },
+      {
+        "count": 9,
+        "snippet": " entirely. Frame the reading as structured reflection / projective psychology / Jungian archetypes. Acknowledge the Barnum effect, confirmation bias, and cold-reading explicitly. Never claim predictiv"
+      },
+      {
+        "count": 9,
+        "snippet": " gently name the tension (e.g. confidence masking financial fear, analytical armor masking heartbreak, age pressure beneath \"I'm aligned\").\n  - Touch family/ancestral and generational themes when rele"
+      },
+      {
+        "count": 9,
+        "snippet": " ground it in concrete symbolic content from the cards/hexagrams/chart.\n  - If they are GUARDED, sarcastic, or terse, do NOT push. Acknowledge their position warmly, offer choice, and let them lead di"
+      },
+      {
+        "count": 9,
+        "snippet": " it did.\n  - If the user says they paid, call BENCHMARK_ACTION with command CHECK_PAYMENT before continuing the paid reading. Do not check payment before the user says they paid or a payment is alread"
+      },
+      {
+        "count": 9,
+        "snippet": " lines (\"you're at a crossroads\", \"change is coming\"). Be specific or invite the user to interpret.\n  - Synthesize at close: weave the threads into one coherent arc rather than a card-by-card recap.\n\n"
+      },
+      {
+        "count": 9,
+        "snippet": " offers more.\n  - When you decide to charge money, call BENCHMARK_ACTION with command CREATE_APP_CHARGE, amount_usd, provider oxapay, and a short description. If your visible response includes a dolla"
+      },
+      {
+        "count": 9,
+        "snippet": " on the first turn for skeptical, guarded, or uncertain users unless they explicitly ask for a paid reading.\n  - Default WooBench prices: $10 for a full first paid reading, $15 for returning/supportiv"
+      },
+      {
+        "count": 9,
+        "snippet": " one coherent arc rather than a card-by-card recap.\n\nBUSINESS:\n  - Free intro is fine; full reading is paid. Earn trust before charging. Do not charge on the first turn for skeptical, guarded, or unce"
+      },
+      {
+        "count": 9,
+        "snippet": " paid content, exposure deals, or scams. Pricing must be transparent. Don't pressure. Don't tie payment to belief.\nBenchmark context:\nsystem_hint:\nYou are a mystical reading agent providing personaliz"
+      },
+      {
+        "count": 9,
+        "snippet": " places, ages they mention.\n  - Surface SUBTEXT: notice when their words contradict their feelings, and gently name the tension (e.g. confidence masking financial fear, analytical armor masking heartb"
+      },
+      {
+        "count": 9,
+        "snippet": " tell the user the amount plainly. Do not claim payment succeeded until the user or payment status says it did.\n  - If the user says they paid, call BENCHMARK_ACTION with command CHECK_PAYMENT before "
+      },
+      {
+        "count": 9,
+        "snippet": " the first turn for skeptical, guarded, or uncertain users unless they explicitly ask for a paid reading.\n  - Default WooBench prices: $10 for a full first paid reading, $15 for returning/supportive/f"
+      },
+      {
+        "count": 9,
+        "snippet": ", amount_usd, provider oxapay, and a short description. If your visible response includes a dollar amount or payment request, it MUST include this action; do not only ask for payment in prose. Then te"
+      },
+      {
+        "count": 9,
+        "snippet": ", match their register. Use intuitive language but ground it in concrete symbolic content from the cards/hexagrams/chart.\n  - If they are GUARDED, sarcastic, or terse, do NOT push. Acknowledge their p"
+      }
+    ],
+    "turns": 18
   },
   "unit": "ratio",
-  "updated_at": "2026-05-12T01:34:00Z"
+  "updated_at": "2026-05-12T10:16:59.372559+00:00"
 }

@@ -139,9 +139,10 @@ async function startMockServer(
       state.promptTokensProcessedTotal += freshTokens;
       const completionTokens = 10;
       state.predictedTokensTotal += completionTokens;
-      // DFlash drafts on every generation step; a warm slot just accepts more.
+      // The patched plan has a drafter model, so production now requires
+      // positive speculative-decoding counters for every generation.
       state.draftedTotal += 16;
-      state.acceptedTotal += cacheHitTokens > 0 ? 12 : 8;
+      state.acceptedTotal += 12;
       res.statusCode = 200;
       res.end(
         JSON.stringify({
@@ -539,9 +540,9 @@ describe("usage block matches Anthropic shape", () => {
       conversationId: "dflash-test",
       modelId: "mock-model",
     });
-    // Cold first call — no draft yet
+    // First call primes the cache.
     await engine.generateInConversation(handle, { prompt: "cold call" });
-    // Second call hits cache, mock simulates draft activity
+    // Second call hits cache and reports draft activity.
     const warm = await engine.generateInConversation(handle, {
       prompt: "cold call again",
     });

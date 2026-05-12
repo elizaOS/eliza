@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { loadElizaInferenceFfi } from "../../src/services/local-inference/voice/ffi-bindings";
 
 function arg(name: string, fallback: string): string {
@@ -73,10 +74,14 @@ const dylib = arg(
 );
 const bundle = arg(
   "--bundle",
-  `${process.env.HOME}/.eliza/local-inference/models/eliza-1-1_7b.bundle`,
+  `${process.env.HOME}/.eliza/local-inference/models/eliza-1-0_6b.bundle`,
 );
 const wav = arg("--wav", "/tmp/eliza-asr-hello.wav");
-const expected = arg("--expected", "hello world").toLowerCase();
+const out = process.argv.includes("--out") ? arg("--out", "") : "";
+const expected = arg(
+  process.argv.includes("--expect") ? "--expect" : "--expected",
+  "hello world",
+).toLowerCase();
 
 function normalizeTranscript(text: string): string {
   return text
@@ -119,6 +124,10 @@ try {
     transcribeMs,
     totalMs: performance.now() - started,
   };
+  if (out) {
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, `${JSON.stringify(result, null, 2)}\n`);
+  }
   console.log(JSON.stringify(result, null, 2));
   if (!ok) process.exit(2);
 } finally {

@@ -75,12 +75,7 @@ class ModelEntry:
     """One of: apollo, apollo_mini."""
 
     optimizer_rank: int
-    """APOLLO low-rank projection dim. Only meaningful when ``optimizer ==
-    "apollo"`` (full APOLLO). The ``apollo_mini`` tiers are rank-1 by
-    definition — ``build_apollo_mini_optimizer*`` and ``memory_calc.py``'s
-    ``APOLLO_MINI`` branch both ignore this value — so those entries carry
-    ``optimizer_rank=1`` to stay truthful. Bump to 256/512 here only if a
-    tier is ever promoted from ``apollo_mini`` to full ``apollo``."""
+    """APOLLO low-rank dim."""
 
     micro_batch: int
     grad_accum: int
@@ -153,11 +148,11 @@ class ModelEntry:
 
     unverified_base: bool = False
     """True for entries whose ``hf_id`` does not resolve to a published
-    HuggingFace checkpoint. ``train_local.py`` / ``run_pipeline.py`` refuse
-    to run with an unverified entry unless the caller passes an explicit
-    ``--model`` override (or sets ``ELIZA_ALLOW_UNVERIFIED_BASE=1``). No
-    registry entry currently sets this; the guard remains for future
-    speculative tiers."""
+    HuggingFace checkpoint as of 2026-05. Kept in the registry only because
+    other scripts/tests reference the key. ``train_local.py`` /
+    ``run_pipeline.py`` refuse to run with an unverified entry unless the
+    caller passes an explicit ``--model`` override (or sets
+    ``ELIZA_ALLOW_UNVERIFIED_BASE=1``)."""
 
     notes: str = ""
     extra: dict[str, str] = field(default_factory=dict)
@@ -285,7 +280,7 @@ REGISTRY: dict[str, ModelEntry] = {
     # checkpoint (`Qwen/Qwen3.5-0.8B-Base`), not the instruct release —
     # same architecture/tokenizer, no chat-SFT pre-baked in.
     "qwen3.5-0.8b": _entry(
-        hf_id="Qwen/Qwen3.5-0.8B-Base", short_name="qwen3.5-0.8b",
+        hf_id="Qwen/Qwen3.5-0.8B", short_name="qwen3.5-0.8b",
         eliza_short_name="eliza-1-0_8b", eliza_repo_id="elizaos/eliza-1-0_8b",
         abliteration_repo_id="elizaos/eliza-1-0_8b-uncensored",
         params_billion=0.8, tier=Tier.LOCAL,
@@ -342,7 +337,7 @@ REGISTRY: dict[str, ModelEntry] = {
               "(shares the 248k tokenizer + dflash drafter base).",
     ),
     "qwen3.5-9b": _entry(
-        hf_id="Qwen/Qwen3.5-9B-Base", short_name="qwen3.5-9b",
+        hf_id="Qwen/Qwen3.5-9B", short_name="qwen3.5-9b",
         eliza_short_name="eliza-1-9b", eliza_repo_id="elizaos/eliza-1-9b",
         abliteration_repo_id="elizaos/eliza-1-9b-uncensored",
         params_billion=9.0, tier=Tier.WORKSTATION,
@@ -352,64 +347,46 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=8, infer_kv_heads=4, infer_kv_head_dim=256,
         quantization_after=("polarquant", "turboquant", "qjl", "fp8", "gguf-q4_k_m"),
-        notes="Workstation tier (eliza-1-9b). Trains from "
-              "Qwen/Qwen3.5-9B-Base (pretrain checkpoint, not the instruct "
-              "release). Full-param APOLLO SFT needs an 80 GB-class GPU "
-              "(H100 / H200 / A100-80) or FSDP across two.",
+        notes="Workstation/cloud tier. Full-param APOLLO SFT uses Vast/FSDP "
+              "and the 9B Qwen3.5 checkpoint.",
     ),
-    "qwen3.5-27b": _entry(
-        hf_id="Qwen/Qwen3.5-27B", short_name="qwen3.5-27b",
-        eliza_short_name="eliza-1-27b", eliza_repo_id="elizaos/eliza-1-27b",
-        abliteration_repo_id="elizaos/eliza-1-27b-uncensored",
-        params_billion=27.0, tier=Tier.CLOUD,
-        seq_len=32768, optimizer="apollo_mini", optimizer_rank=1,
-        micro_batch=1, grad_accum=16, train_mem_gb_budget=130.0,
-        train_dtype="bf16",
-        infer_max_in=131072, infer_max_out=16384,
-        infer_kv_layers=16, infer_kv_heads=4, infer_kv_head_dim=256,
-        quantization_after=("polarquant", "turboquant", "qjl", "fp8", "gguf-q4_k_m"),
-        notes="Cloud tier (eliza-1-27b). Trains from Qwen/Qwen3.5-27B (no "
-              "-Base variant published; the 27B release IS the base pretrain "
-              "checkpoint). With apollo_mini (rank-1 fp32 moments, "
-              "negligible memory) + grad-checkpointed bf16 + Liger fused CE "
-              "at micro_batch=1 seq=32k, the working-set sums to ~115-130 GB "
-              "and FITS A SINGLE 141 GB H200 SXM. Run with FSDP_WORLD_SIZE=1 "
-              "on gpu-h200x1; only fall back to gpu-h200x2 (8× H200, "
-              "expensive) if the live run blows the per-GPU budget.",
-        extra={"nebius_machine": "H200-1x", "fsdp_world_size": "1"},
-    ),
-    # The legacy Qwen3.6-27B entry — kept addressable for any caller that
-    # still passes that key, but the canonical 27B is now qwen3.5-27b. Both
-    # map to eliza-1-27b in the runtime catalog.
     "qwen3.6-27b": _entry(
         hf_id="Qwen/Qwen3.6-27B", short_name="qwen3.6-27b",
         eliza_short_name="eliza-1-27b", eliza_repo_id="elizaos/eliza-1-27b",
         abliteration_repo_id="elizaos/eliza-1-27b-uncensored",
         params_billion=27.0, tier=Tier.CLOUD,
-        seq_len=65536, optimizer="apollo_mini", optimizer_rank=1,
+        seq_len=65536, optimizer="apollo_mini", optimizer_rank=512,
         micro_batch=1, grad_accum=8, train_mem_gb_budget=190.0,
         train_dtype="bf16",
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=16, infer_kv_heads=4, infer_kv_head_dim=256,
         quantization_after=("polarquant", "turboquant", "qjl", "fp8", "gguf-q4_k_m"),
-        notes="LEGACY 27B entry on the Qwen3.6 backbone. Prefer qwen3.5-27b "
-              "for the eliza-1 fused-model line — dflash kernels are "
-              "validated against Qwen3.5, not Qwen3.6. Kept here so older "
-              "tier_to_registry_key callers keep resolving.",
-        extra={"nebius_machine": "H200-2x", "fsdp_world_size": "2"},
+        notes="Cloud tier. Full-param APOLLO SFT uses Vast/FSDP; the registry "
+              "default keeps seq_len conservative and lets operators bump it "
+              "per run after memory preflight.",
+        extra={"vast_gpu_target": "h200-2x", "fsdp_world_size": "2"},
     ),
 }
 
 
 def get(name: str) -> ModelEntry:
-    key = name.lower().replace("/", "-").replace("qwen-", "qwen").replace("qwen_", "qwen")
+    raw = name.strip()
+    lowered = raw.lower()
+    key = lowered.replace("/", "-").replace("_", "-")
+    aliases = {
+        "qwen3-4b": "qwen3.5-4b",
+        "qwen-qwen3-4b": "qwen3.5-4b",
+        "qwen/qwen3-4b": "qwen3.5-4b",
+    }
+    key = aliases.get(lowered, aliases.get(key, key))
     if key in REGISTRY:
         return REGISTRY[key]
     for entry in REGISTRY.values():
         if (
-            entry.hf_id == name
-            or entry.short_name == name
-            or entry.eliza_short_name == name
+            entry.hf_id == raw
+            or entry.hf_id.lower() == lowered
+            or entry.short_name == raw
+            or entry.eliza_short_name == raw
             or entry.eliza_short_name.lower() == key
         ):
             return entry

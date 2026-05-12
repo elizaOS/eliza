@@ -45,7 +45,6 @@ import {
   peekTaskResponse,
 } from "./ansi-utils.js";
 import { ensureBundledClaudeCodeSkills } from "./claude-code-skill-installer.js";
-import { CODEX_SKILL_ESSENTIALS } from "./codex-essentials.js";
 import {
   type MergeCodexSessionResult,
   mergeCodexSessionIntoTrajectory,
@@ -63,7 +62,6 @@ import {
   captureSessionOpen,
   isDebugCaptureEnabled,
 } from "./debug-capture.js";
-import { OPENCODE_SKILL_ESSENTIALS } from "./opencode-essentials.js";
 import {
   handleGeminiAuth as handleGeminiAuthFlow,
   pushDefaultRules as pushDefaultAutoResponseRules,
@@ -187,13 +185,14 @@ const TOOL_DISCOVERY_HINTS: Record<CodingAgentType, string> = {
   claude: CLAUDE_SKILL_ESSENTIALS,
   gemini:
     "Your tool list is defined in `.gemini/settings.json`. Use `run_shell_command` for shell, `read_file`/`write_file` for I/O. Read settings before assuming a tool is missing.",
-  codex: CODEX_SKILL_ESSENTIALS,
+  codex:
+    "Your tool list is the OpenAI Codex runtime's built-in set (`exec_command`, `apply_patch`, `read_file`, etc.). Session approval settings are injected by the Eliza runtime before startup.",
   aider:
     "Your tools are aider's slash commands (`/run`, `/edit`, `/add`, etc.); see `.aider.conf.yml` if present for any overrides.",
   hermes: "",
   shell: "",
   pi: "",
-  opencode: OPENCODE_SKILL_ESSENTIALS,
+  opencode: "",
 };
 
 function buildWorkspaceLockMemory(
@@ -363,54 +362,9 @@ function prependWorkspaceLockToTask(
 }
 
 /**
- * BEGIN / END markers used to wrap the orchestrator-injected portion of
- * `AGENTS.md` when opencode (or any future shell-routed adapter) spawns
- * into a workdir that may already have a user-owned AGENTS.md. Stripping
- * by marker makes the write idempotent across re-spawns.
- *
- * Exported for unit tests so the merge behavior stays pinned even when
- * the surrounding spawn pipeline is refactored.
- */
-export const OPENCODE_AGENTS_MD_BEGIN_MARKER =
-  "<!-- BEGIN ELIZA SUB-AGENT BRIEF -->";
-export const OPENCODE_AGENTS_MD_END_MARKER =
-  "<!-- END ELIZA SUB-AGENT BRIEF -->";
-
-/**
- * Build the AGENTS.md content for an opencode spawn. If the workdir
- * already has an AGENTS.md, replace any prior brief block (matched by
- * the BEGIN/END markers) and ensure the new brief is at the top so
- * opencode reads our rules before the user's project rules. If the
- * workdir is fresh, the output is just the brief block.
- *
- * Idempotent: passing the previous output back in as `existing` yields
- * the same result, so re-spawns never accumulate duplicate briefs.
- */
-export function mergeOpencodeAgentsMd(
-  existing: string,
-  briefContent: string,
-): string {
-  const block = `${OPENCODE_AGENTS_MD_BEGIN_MARKER}\n${briefContent}\n${OPENCODE_AGENTS_MD_END_MARKER}`;
-  if (!existing) return block;
-  // Strip any prior brief block (idempotent re-run). The markers contain
-  // only `<`, `!`, `-`, `>`, and space — none are JS regex metacharacters
-  // outside character classes, so a literal substitution is enough.
-  const stripped = existing
-    .replace(
-      new RegExp(
-        `${OPENCODE_AGENTS_MD_BEGIN_MARKER}[\\s\\S]*?${OPENCODE_AGENTS_MD_END_MARKER}\\n?`,
-        "g",
-      ),
-      "",
-    )
-    .trimStart();
-  return stripped ? `${block}\n\n${stripped}` : block;
-}
-
-/**
  * Setting keys consulted to locate the parent agent's HTTP API. Order
  * matters: we prefer the explicit override (`SERVER_PORT`) over deployment
- * env vars (`ELIZA_API_PORT`, `MILADY_API_PORT`). The fallback `2138`
+ * env vars (`ELIZA_API_PORT`, `ELIZA_PORT`). The fallback `2138`
  * targets the dev-UI (Vite) port, which does NOT serve
  * `/api/coding-agents/*` — that lives on the API server. The dev-UI
  * port answer was correct only for the legacy single-port topology
@@ -423,7 +377,7 @@ export function mergeOpencodeAgentsMd(
 const SERVER_PORT_SETTING_KEYS = [
   "SERVER_PORT",
   "ELIZA_API_PORT",
-  "MILADY_API_PORT",
+  "ELIZA_PORT",
 ] as const;
 
 /** @internal — exported for unit tests in `pty-service-server-port.test.ts`. */
@@ -959,16 +913,7 @@ export class PTYService {
         }
       : options.env;
     const workdir = options.workdir ?? process.cwd();
-    // For hint lookup, use the originally-requested type so opencode picks
-    // up OPENCODE_SKILL_ESSENTIALS even though it normalizes to the shell
-    // adapter for spawn purposes. Pi has no brief (the shell hint is "").
-    const workspaceLockHintType: CodingAgentType = opencodeRequested
-      ? "opencode"
-      : resolvedAgentType;
-    const workspaceLock = buildWorkspaceLockMemory(
-      workdir,
-      workspaceLockHintType,
-    );
+    const workspaceLock = buildWorkspaceLockMemory(workdir, resolvedAgentType);
     const workspaceTaskPrefix = buildInlineWorkspaceTaskPrefix(workdir);
     const serverPort = resolveServerPort(this.runtime);
     const parentRuntimeBridge = buildParentRuntimeBridgeMemory(
@@ -1033,38 +978,6 @@ export class PTYService {
         this.log(
           `Failed to write memory file for ${resolvedAgentType}: ${err}`,
         );
-      }
-    }
-
-    // OpenCode runs through the shell adapter (no first-class OpencodeAdapter
-    // in coding-agent-adapters yet) so the standard writeMemoryFile path is
-    // skipped above. opencode reads `AGENTS.md` from its cwd by convention
-    // (same as Codex), so we write the same workspaceLock + parent bridge +
-    // caller memory there explicitly. If the workdir already has an
-    // AGENTS.md, prepend our content with markers so the user's existing
-    // project rules are preserved.
-    if (opencodeRequested) {
-      const fullMemory = [
-        workspaceLock,
-        parentRuntimeBridge,
-        options.memoryContent,
-      ]
-        .filter((section) => section?.trim())
-        .join("\n\n---\n\n");
-      try {
-        const agentsMdPath = join(workdir, "AGENTS.md");
-        let existing = "";
-        try {
-          existing = await readFile(agentsMdPath, "utf-8");
-        } catch {
-          // file doesn't exist — we'll create fresh
-        }
-        const next = mergeOpencodeAgentsMd(existing, fullMemory);
-        await mkdir(dirname(agentsMdPath), { recursive: true });
-        await writeFile(agentsMdPath, next, "utf-8");
-        this.log(`Wrote opencode brief to ${agentsMdPath}`);
-      } catch (err) {
-        this.log(`Failed to write opencode AGENTS.md: ${err}`);
       }
     }
 
@@ -1186,13 +1099,8 @@ export class PTYService {
     }
 
     // Ensure injected config/memory files are gitignored so agents don't
-    // commit them. Appends to existing .gitignore if present. Opencode
-    // resolves to "shell" but still gets an AGENTS.md write above, so
-    // include it here too.
-    if (
-      (resolvedAgentType !== "shell" || opencodeRequested) &&
-      workdir !== process.cwd()
-    ) {
+    // commit them. Appends to existing .gitignore if present.
+    if (resolvedAgentType !== "shell" && workdir !== process.cwd()) {
       await this.ensureOrchestratorGitignore(workdir);
     }
 
@@ -1766,21 +1674,24 @@ export class PTYService {
    * Precedence: config file (`eliza.json` env section, written by the UI)
    * > runtime/env setting > "claude" fallback.
    */
-  get defaultAgentType(): CodingAgentType {
+  get defaultAgentType(): AdapterType {
     return this.explicitDefaultAgentType ?? "claude";
   }
 
-  private get explicitDefaultAgentType(): CodingAgentType | null {
+  private get explicitDefaultAgentType(): AdapterType | null {
     const fromConfig = readConfigEnvKey("PARALLAX_DEFAULT_AGENT_TYPE");
     const fromRuntimeOrEnv =
       fromConfig ||
       (this.runtime.getSetting("PARALLAX_DEFAULT_AGENT_TYPE") as
         | string
         | undefined);
-    if (!fromRuntimeOrEnv) return null;
-    const lowered = fromRuntimeOrEnv.toLowerCase();
-    if (["claude", "gemini", "codex", "aider", "opencode"].includes(lowered)) {
-      return lowered as CodingAgentType;
+    if (
+      fromRuntimeOrEnv &&
+      ["claude", "gemini", "codex", "aider"].includes(
+        fromRuntimeOrEnv.toLowerCase(),
+      )
+    ) {
+      return fromRuntimeOrEnv.toLowerCase() as AdapterType;
     }
     return null;
   }

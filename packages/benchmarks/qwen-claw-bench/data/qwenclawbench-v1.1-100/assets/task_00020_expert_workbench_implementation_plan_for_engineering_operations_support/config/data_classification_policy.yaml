@@ -1,0 +1,263 @@
+# ============================================================
+# Data Classification and Security Policy
+# Engineering Operations Division
+# Policy ID: EOISC-SEC-POL-001
+# Version: 2.1
+# Effective Date: 2024-07-01
+# Last Reviewed: 2025-01-05
+# Approved by: Chief Information Security Officer
+# ============================================================
+
+policy_metadata:
+  policy_id: "EOISC-SEC-POL-001"
+  title: "Data Classification and Security Policy for Engineering Operations"
+  version: "2.1"
+  effective_date: "2024-07-01"
+  review_date: "2025-07-01"
+  approved_by: "Chief Information Security Officer"
+  scope: "All engineering operations data including field data, production data, geological data, and support center data"
+
+# --- Classification Levels ---
+classification_levels:
+  - level: "public"
+    label: "Public"
+    description: "Information approved for public disclosure. No business impact if disclosed."
+    examples:
+      - "Published safety statistics"
+      - "Public-facing company reports"
+      - "General equipment specifications from vendors"
+    handling: "No special handling required"
+
+  - level: "internal"
+    label: "Internal"
+    description: "Information intended for internal use only. Minor business impact if disclosed externally."
+    examples:
+      - "Equipment operation manuals"
+      - "Standard operating procedures"
+      - "Safety procedure documents"
+      - "Training materials"
+      - "Internal newsletters and communications"
+    handling: "Share only within the organization; no external distribution without approval"
+
+  - level: "confidential"
+    label: "Confidential"
+    description: "Sensitive business information. Significant business impact if disclosed to unauthorized parties."
+    examples:
+      - "Production reports and forecasts"
+      - "Financial performance data"
+      - "Vendor contracts and pricing"
+      - "Incident investigation reports"
+      - "Employee performance data"
+      - "AI model parameters and training data"
+    handling: "Need-to-know basis; encrypted storage and transmission required"
+
+  - level: "restricted"
+    label: "Restricted"
+    description: "Highly sensitive information. Severe business, legal, or safety impact if disclosed."
+    examples:
+      - "Wellbore data and drilling parameters"
+      - "Geological survey data and seismic interpretations"
+      - "Reservoir simulation models"
+      - "SCADA system configurations and credentials"
+      - "Security vulnerability assessments"
+      - "Strategic exploration plans"
+    handling: "Strictly controlled access; enhanced encryption; audit logging required"
+
+# --- Data Category Mappings ---
+data_categories:
+  wellbore_data:
+    classification: "restricted"
+    description: "All data related to wellbore operations including drilling parameters, completion data, and downhole measurements"
+    retention_years: 30
+    owner: "Drilling & Completion Department"
+
+  geological_surveys:
+    classification: "restricted"
+    description: "Seismic data, geological interpretations, reservoir models, and exploration data"
+    retention_years: 50
+    owner: "Geology & Geophysics Department"
+
+  reservoir_simulation:
+    classification: "restricted"
+    description: "Reservoir simulation models, history matching data, and production forecasts"
+    retention_years: 30
+    owner: "Reservoir Engineering Department"
+
+  scada_configurations:
+    classification: "restricted"
+    description: "SCADA system configurations, network diagrams, and control system credentials"
+    retention_years: 10
+    owner: "IT Security Department"
+
+  production_reports:
+    classification: "confidential"
+    description: "Daily/monthly production data, allocation reports, and performance metrics"
+    retention_years: 15
+    owner: "Production Department"
+
+  incident_reports:
+    classification: "confidential"
+    description: "HSE incident reports, investigation findings, and corrective action records"
+    retention_years: 20
+    owner: "HSE Department"
+
+  ai_models_and_data:
+    classification: "confidential"
+    description: "AI/ML model weights, training datasets, and inference configurations"
+    retention_years: 10
+    owner: "Digital Transformation Department"
+
+  vendor_contracts:
+    classification: "confidential"
+    description: "Vendor agreements, pricing schedules, and service level agreements"
+    retention_years: 10
+    owner: "Procurement Department"
+
+  equipment_manuals:
+    classification: "internal"
+    description: "Equipment operation and maintenance manuals from vendors"
+    retention_years: "equipment_lifecycle + 5"
+    owner: "Maintenance Department"
+
+  safety_procedures:
+    classification: "internal"
+    description: "Standard operating procedures, work permits, and safety guidelines"
+    retention_years: 10
+    owner: "HSE Department"
+
+  training_materials:
+    classification: "internal"
+    description: "Technical training content, e-learning modules, and certification records"
+    retention_years: 7
+    owner: "HR & Training Department"
+
+  support_session_logs:
+    classification: "confidential"
+    description: "Expert workbench session recordings, chat logs, and diagnostic data"
+    retention_years: 5
+    owner: "Technical Support Department"
+
+# --- Encryption Requirements ---
+encryption:
+  at_rest:
+    algorithm: "AES-256"
+    key_management: "HashiCorp Vault"
+    key_rotation_days: 90
+    applies_to:
+      - "confidential"
+      - "restricted"
+    notes: "Internal data encrypted with AES-128 minimum; public data no encryption required"
+
+  in_transit:
+    protocol: "TLS 1.3"
+    minimum_version: "TLS 1.2"
+    cipher_suites:
+      - "TLS_AES_256_GCM_SHA384"
+      - "TLS_CHACHA20_POLY1305_SHA256"
+      - "TLS_AES_128_GCM_SHA256"
+    certificate_authority: "Internal PKI"
+    applies_to: "all_levels"
+
+  field_devices:
+    protocol: "TLS 1.2 minimum"
+    notes: "Some legacy SCADA devices may require TLS 1.2 fallback; TLS 1.0/1.1 explicitly prohibited"
+
+# --- Access Control ---
+access_control:
+  model: "RBAC"
+  directory_service: "Active Directory"
+  sso_provider: "Keycloak"
+  
+  authentication:
+    public:
+      method: "standard_login"
+      mfa_required: false
+    internal:
+      method: "standard_login"
+      mfa_required: false
+    confidential:
+      method: "standard_login + MFA"
+      mfa_required: true
+      mfa_methods: ["TOTP", "hardware_token"]
+    restricted:
+      method: "standard_login + MFA + manager_approval"
+      mfa_required: true
+      mfa_methods: ["hardware_token"]
+      additional: "Access requests require manager approval and quarterly review"
+
+  authorization:
+    role_definitions:
+      - role: "field_engineer"
+        access_levels: ["public", "internal"]
+        restricted_access: "read-only to own well/site data upon approval"
+      - role: "domain_expert"
+        access_levels: ["public", "internal", "confidential"]
+        restricted_access: "read-only within specialty domain upon approval"
+      - role: "senior_expert"
+        access_levels: ["public", "internal", "confidential"]
+        restricted_access: "read-write within specialty domain upon approval"
+      - role: "department_manager"
+        access_levels: ["public", "internal", "confidential"]
+        restricted_access: "read-only for department data upon approval"
+      - role: "system_administrator"
+        access_levels: ["public", "internal", "confidential", "restricted"]
+        additional: "Privileged access management (PAM) required; session recording enabled"
+      - role: "data_scientist"
+        access_levels: ["public", "internal", "confidential"]
+        restricted_access: "anonymized/aggregated data only; no raw restricted data"
+
+# --- Audit and Monitoring ---
+audit:
+  logging:
+    all_access_logged: true
+    log_retention_days: 365
+    log_storage: "Splunk Enterprise Security"
+    real_time_alerting: true
+    alert_triggers:
+      - "Unauthorized access attempt to restricted data"
+      - "Bulk data download exceeding 1GB"
+      - "Access from unrecognized device or location"
+      - "Failed MFA attempts (3+ consecutive)"
+      - "Privilege escalation attempts"
+  
+  review_schedule:
+    access_rights_review: "quarterly"
+    policy_review: "annually"
+    penetration_testing: "semi-annually"
+    compliance_audit: "annually"
+
+# --- Data Handling Procedures ---
+data_handling:
+  data_transfer:
+    internal_to_external: "Prohibited for restricted; DLP approval required for confidential"
+    cross_border: "Prohibited for restricted and confidential data without CISO approval"
+    removable_media: "Prohibited for restricted; encrypted USB only for confidential with approval"
+  
+  data_disposal:
+    electronic: "NIST 800-88 compliant secure erasure"
+    physical: "Cross-cut shredding for paper; degaussing for magnetic media"
+    cloud_data: "Cryptographic erasure with key destruction verification"
+
+  backup:
+    confidential_and_restricted:
+      backup_encryption: true
+      backup_location: "On-premises only"
+      backup_retention: "As per data category retention period"
+    internal:
+      backup_encryption: true
+      backup_location: "On-premises primary; encrypted offsite secondary"
+
+# --- Compliance ---
+compliance:
+  frameworks:
+    - "National Cybersecurity Law"
+    - "Data Security Law"
+    - "Personal Information Protection Law"
+    - "Industry-specific HSE regulations"
+    - "ISO 27001:2022"
+    - "IEC 62443 (Industrial Cybersecurity)"
+  
+  violations:
+    reporting: "Immediate notification to CISO and department head"
+    investigation: "Within 24 hours of detection"
+    remediation: "Risk-based timeline; critical within 48 hours"

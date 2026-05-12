@@ -11,13 +11,12 @@
 //   layers map but are not the same enum.
 // - The schema URL `https://elizalabs.ai/schemas/eliza-1.manifest.v1.json` is
 //   exported as a JSON Schema sibling file in this directory.
-// - Shared-vocabulary invariant: every text-bearing GGUF in an Eliza-1 bundle
-//   — the text/vision model, the DFlash drafter, the Qwen3-ASR text decoder,
-//   and (on 1.7B+) the Qwen3-Embedding model — is Qwen-lineage and shares the
-//   same Qwen2 BPE vocabulary (151 936 tokens) and the same merges table. This
-//   is what makes (a) DFlash speculative decoding correct (spec decoding only
-//   works if token ids match), (b) zero re-tokenization between ASR output and
-//   text input (inference/AGENTS.md §1), and (c) the drafter GGUFs ship without
+// - Shared-vocabulary invariant: every speculative-decoding GGUF in an
+//   Eliza-1 bundle — the text/vision model and the DFlash drafter — is
+//   Qwen3.5/Qwen3.6-lineage and shares the same Qwen3.5 BPE vocabulary
+//   (248 320 tokens) and the same merges table. This is what makes
+//   (a) DFlash speculative decoding correct (spec decoding only works if token
+//   ids match), and (b) the drafter GGUFs ship without
 //   their own `tokenizer.ggml.merges` (repaired at load time from the text GGUF
 //   by `resolveDflashDrafter` in `../dflash-server.ts`). The shared *vocabulary*
 //   is not the same thing as a shared *token-embedding tensor*: each component
@@ -34,12 +33,12 @@ export const ELIZA_1_MANIFEST_SCHEMA_VERSION = "1" as const;
 export const ELIZA_1_MANIFEST_SCHEMA_URL =
   "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json" as const;
 
-// The shared Qwen2 BPE vocabulary every text-bearing component in an Eliza-1
-// bundle uses. Exported so runtime code can assert it (a GGUF whose
+// The shared Qwen3.5 BPE vocabulary every text/drafter component in an
+// Eliza-1 bundle uses. Exported so runtime code can assert it (a GGUF whose
 // `tokenizer.ggml.tokens` length differs from this is not an Eliza-1 component
 // and the merges-repair / zero-re-tokenization assumptions do not hold).
-export const ELIZA_1_TOKENIZER_FAMILY = "eliza1" as const;
-export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 151_936 as const;
+export const ELIZA_1_TOKENIZER_FAMILY = "qwen35" as const;
+export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
 
 // Tiers — see packages/inference/AGENTS.md §2 (Tier matrix). `27b-1m` is the
 // GH200-class 1M-context variant of the 27B tier. `0_8b` and `2b` are the
@@ -51,7 +50,6 @@ export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 151_936 as const;
 // DEPRECATED and no new SFT runs target them — see catalog.ts +
 // packages/training/scripts/training/model_registry.py.
 export const ELIZA_1_TIERS = [
-  "0_8b",
   "0_6b",
   "1_7b",
   "2b",
@@ -140,12 +138,11 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 //   same requirement dynamically for any bundle that declares a >64k text file,
 //   so a future tier cannot publish long-context text without TCQ.
 //
-// The `q3` vs `q4` choice is tier-driven: the legacy 0.6B tier ships Q3;
-// 0.8B and larger ship Q4.
+// The `q3` vs `q4` choice is tier-driven: 0_6b ships Q3; 1_7b and larger
+// ship Q4.
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
-  "0_8b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
   "0_6b": ["turboquant_q3", "qjl", "polarquant", "dflash"],
   "1_7b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
   "2b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
@@ -161,7 +158,6 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
 export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Backend>>
 > = {
-  "0_8b": ["metal", "vulkan", "cpu"],
   "0_6b": ["metal", "vulkan", "cpu"],
   "1_7b": ["metal", "vulkan", "cpu"],
   "2b": ["metal", "vulkan", "cpu"],
@@ -219,15 +215,15 @@ export const Eliza1FilesSchema = z.object({
   dflash: z.array(Eliza1FileEntrySchema).min(1),
   cache: z.array(Eliza1FileEntrySchema).min(1),
   // Wave-6 (2026-05-10): the omni bundle ships a per-bundle dedicated
-  // embedding model (Qwen3-Embedding-0.6B-GGUF on non-0.6B tiers) and
+  // embedding model (Qwen3-Embedding-0.6B-GGUF on non-lite tiers) and
   // a Silero-VAD ONNX + an optional openWakeWord ONNX. All three are
-  // optional in the schema — the 0.6B tier intentionally omits the
+  // optional in the schema — the 0_6b tier intentionally omits the
   // dedicated embedding (pools from text backbone) and a tier may
   // ship without wake-word support.
   //
   // Schema-level optionality: empty array = "this bundle does not
   // ship this component"; the validator enforces tier-specific
-  // consistency rules (e.g. 1.7B-and-up MUST ship `embedding[]`).
+  // consistency rules (e.g. 1_7b-and-up MUST ship `embedding[]`).
   embedding: z.array(Eliza1FileEntrySchema).optional(),
   vad: z.array(Eliza1FileEntrySchema).optional(),
   wakeword: z.array(Eliza1FileEntrySchema).optional(),
@@ -372,34 +368,19 @@ export const Eliza1RamBudgetSchema = z
 // Release-state vocabulary. `base-v1` is the v1 product: the upstream BASE
 // models — GGUF-converted via the elizaOS/llama.cpp fork and fully
 // Eliza-optimized (every quant/kernel trick in inference/AGENTS.md §3) —
-// but NOT fine-tuned (fine-tuning ships in v2). `base-v1-candidate` is the
-// in-progress state of a base-v1 bundle before every release-blocking
-// gate (real fork-built bytes, every supported-backend kernel verify,
-// every required platform-dispatch report, the runnable-on-base evals) is
-// green — it is NOT publishable. `finetuned-v2` is the v2 state;
-// `local-standin` is a non-publishable staging shape; `upload-candidate` /
-// `final` are the historical fine-tuned-v1 publish states retained for
-// forward-compat. Mirrors `ELIZA_1_RELEASE_STATES` in
+// but NOT fine-tuned (fine-tuning ships in v2). `finetuned-v2` is the v2
+// state; `local-standin` is a non-publishable staging shape;
+// `upload-candidate` / `final` are the historical fine-tuned-v1 publish
+// states retained for forward-compat. Mirrors `ELIZA_1_RELEASE_STATES` in
 // `packages/training/scripts/manifest/eliza1_manifest.py`.
 export const ELIZA_1_RELEASE_STATES = [
   "local-standin",
-  "base-v1-candidate",
   "base-v1",
   "finetuned-v2",
   "upload-candidate",
   "final",
 ] as const;
 export type Eliza1ReleaseState = (typeof ELIZA_1_RELEASE_STATES)[number];
-
-// Release-channel vocabulary recorded on a published manifest. `recommended`
-// is the fine-tuned Eliza-1 (ships in v2) — the one the recommendation
-// engine surfaces as a device default. `base-v1` is the upstream-base +
-// kernel-optimized release: every quant/kernel trick applied, but the text
-// weights are the upstream base GGUFs (not the fine-tuned Eliza-1). A
-// `base-v1`-channel manifest MUST be `defaultEligible: false`. Mirrors
-// `ELIZA_1_RELEASE_CHANNELS` (Python side).
-export const ELIZA_1_RELEASE_CHANNELS = ["recommended", "base-v1"] as const;
-export type Eliza1ReleaseChannel = (typeof ELIZA_1_RELEASE_CHANNELS)[number];
 
 // Provenance slots — the bundle components whose upstream source repo a
 // `base-v1` manifest must record. Mirrors `ELIZA_1_PROVENANCE_SLOTS`
@@ -467,12 +448,6 @@ export const Eliza1ManifestSchema = z
     // per shipped component. The contract validator requires per-component
     // coverage when `releaseState === "base-v1"`.
     provenance: Eliza1ProvenanceSchema.optional(),
-    // Optional. Defaults to `"recommended"` (the fine-tuned Eliza-1 — the
-    // device default). A `"base-v1"`-channel manifest is the upstream-base
-    // + kernel-optimized release; it MUST be `defaultEligible: false` (the
-    // recommendation engine never surfaces it as a default — see
-    // inference/AGENTS.md §6).
-    releaseChannel: z.enum(ELIZA_1_RELEASE_CHANNELS).optional(),
     defaultEligible: z.boolean(),
   })
   // The id MUST encode the tier so catalogs can derive tier from id without
@@ -483,15 +458,5 @@ export const Eliza1ManifestSchema = z
     {
       message: "id must start with `eliza-1-<tier>`",
       path: ["id"],
-    },
-  )
-  // A `base-v1`-channel manifest is the upstream-base release — never a
-  // device default. Mirrors inference/AGENTS.md §6 and the Python manifest
-  // builder.
-  .refine(
-    (m) => m.releaseChannel !== "base-v1" || m.defaultEligible === false,
-    {
-      message: "releaseChannel=base-v1 requires defaultEligible: false",
-      path: ["defaultEligible"],
     },
   );

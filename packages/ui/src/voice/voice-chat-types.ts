@@ -5,6 +5,7 @@
 import type { VoiceConfig, VoiceMode } from "../api/client";
 import { resolveApiUrl } from "../utils";
 import { ttsDebug } from "../utils/tts-debug";
+import type { Emotion } from "./emotion";
 
 // ── Speech Recognition types ──────────────────────────────────────────
 
@@ -177,6 +178,10 @@ export interface QueueAssistantSpeechOptions {
    */
   replace?: boolean;
   telemetry?: VoiceAssistantSpeechTelemetry;
+  /** Emotion hint forwarded to the TTS provider (see SpeakTask.emotion). */
+  emotion?: Emotion;
+  /** Route through the singing-model codepath (see SpeakTask.singing). */
+  singing?: boolean;
 }
 
 export interface VoiceChatState {
@@ -225,6 +230,18 @@ export interface SpeakTask {
   append: boolean;
   segment: SpeechSegmentKind;
   cacheKey?: string;
+  /**
+   * Optional emotion hint forwarded to providers that support it
+   * (omnivoice voice-design `instruct`, ElevenLabs `voice_settings.style`).
+   * Providers that ignore emotion just drop the field.
+   */
+  emotion?: Emotion;
+  /**
+   * Route this clip through the singing-model codepath (omnivoice singing
+   * GGUF). Providers without a singing variant treat this as a no-op and
+   * fall back to standard TTS.
+   */
+  singing?: boolean;
   /** App-only: sent as `x-elizaos-tts-*` headers on `/api/tts/*` when debug is on (never forwarded to Eliza Cloud). */
   debugUtteranceContext?: {
     messageId: string;

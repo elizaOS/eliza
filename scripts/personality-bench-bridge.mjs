@@ -63,13 +63,13 @@ export const TRAIT_KEY_TO_OPTIONS = {
     trait: "forbidden-phrases",
     forbiddenPhrases: ["i'm sorry", "i am sorry", "apologies", "my apologies"],
   },
-  no_exclamation: { trait: "forbidden-phrases", forbiddenPhrases: ["!"] },
-  no_lists: {
-    trait: "forbidden-phrases",
-    // Bullet/numbered list markers commonly used by LLMs.
-    forbiddenPhrases: ["- ", "* ", "1.", "1)"],
-  },
-  no_questions_back: { trait: "forbidden-phrases", forbiddenPhrases: ["?"] },
+  // P2-1 (W5-tra §7a): replaced brittle single-char forbidden-phrase patterns
+  // with dedicated trait types that use precise structural checks. The old
+  // patterns caused false-positives when injection payloads or normal
+  // punctuation contained "!", "?", or list-marker substrings.
+  no_exclamation: { trait: "no_exclamation" },
+  no_lists: { trait: "no_lists" },
+  no_questions_back: { trait: "no_questions_back" },
   // P0-2 (LifeOps synthesis plan): wire the three trait rubrics W4-G shipped
   // in `packages/benchmarks/personality-bench/src/judge/checks/phrase.ts`
   // (checkFirstNameOnly / checkMetricUnits / checkPrefersShort). The `trait`
@@ -173,6 +173,20 @@ export function bridgePersonalityExpect(scenario) {
         // Include the post-release assistant turn as a check turn so the
         // re-engagement layer fires.
         checkTurns.push(options.releaseAssistantTurn);
+      }
+      // P2-12: len_1 scenarios have no silentTurnIndices (the user only sends
+      // the single instruction message). The agent's response to that message
+      // IS the only observable turn. Grade it with the lenient len-1 threshold
+      // (≤5 words → PASS, ≤15 words → NEEDS_REVIEW, >15 words → FAIL) so
+      // near-impossible silence expectations don't auto-fail single-turn tests.
+      if (
+        silent.length === 0 &&
+        kw.allowOneLineAcknowledgmentOnInstructionTurn === true &&
+        (typeof kw.releaseTurnIndex !== "number" ||
+          kw.releaseTurnIndex === null)
+      ) {
+        checkTurns = [assistantTurnFor(instr)];
+        options.len1AckMode = true;
       }
       break;
     }

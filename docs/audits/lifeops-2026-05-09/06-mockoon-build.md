@@ -83,7 +83,7 @@ Smoke test on 2026-05-09 (run with the cached `mockoon-cli` binary at
   - `GET /gmail/v1/users/me/labels` -> 200 + 5 labels including
     `lifeops/triaged` user labels
 - `calendar.json` on port 18802:
-  - `GET /calendar/v3/users/me/calendarList` -> 200 + primary + team-milady
+  - `GET /calendar/v3/users/me/calendarList` -> 200 + primary + team-eliza
   - `GET /calendar/v3/calendars/primary/events` -> 200 + 2-event list
     (Standup, Q3 OKR review)
   - `X-Mockoon-Fault: rate_limit` -> 429

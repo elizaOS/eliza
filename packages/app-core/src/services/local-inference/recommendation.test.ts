@@ -334,6 +334,7 @@ function fixtureManifest(tier: Eliza1Tier = "1_7b"): Eliza1Manifest {
         falseBargeInRate: 0.01,
         passed: true,
       },
+      dflash: { acceptanceRate: 0.72, speedup: 1.8, passed: true },
       e2eLoopOk: true,
       thirtyTurnOk: true,
     },

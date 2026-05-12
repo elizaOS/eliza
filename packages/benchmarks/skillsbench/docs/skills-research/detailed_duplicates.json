@@ -1,0 +1,845 @@
+{
+  "0.95": {
+    "unique_count": 257,
+    "duplicate_count": 0,
+    "cluster_count": 0,
+    "clusters": []
+  },
+  "0.9": {
+    "unique_count": 257,
+    "duplicate_count": 0,
+    "cluster_count": 0,
+    "clusters": []
+  },
+  "0.85": {
+    "unique_count": 253,
+    "duplicate_count": 4,
+    "cluster_count": 4,
+    "clusters": [
+      [
+        {
+          "name": "Playwright Browser Automation",
+          "source": "PulseMCP",
+          "similarity": 1.0
+        },
+        {
+          "name": "Playwright",
+          "source": "PulseMCP",
+          "similarity": 0.8643004613615358
+        }
+      ],
+      [
+        {
+          "name": "ClinVar",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "ClinPGx",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8548178378419856
+        }
+      ],
+      [
+        {
+          "name": "Ensembl",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "Ensembl",
+          "source": "claude-scientific-skills",
+          "similarity": 0.858253850057395
+        }
+      ],
+      [
+        {
+          "name": "PubMed",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "Literature Review",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8640150183070391
+        }
+      ]
+    ]
+  },
+  "0.8": {
+    "unique_count": 230,
+    "duplicate_count": 27,
+    "cluster_count": 17,
+    "clusters": [
+      [
+        {
+          "name": "Playwright Browser Automation",
+          "source": "PulseMCP",
+          "similarity": 1.0
+        },
+        {
+          "name": "Playwright",
+          "source": "PulseMCP",
+          "similarity": 0.8643004613615358
+        },
+        {
+          "name": "playwright-skill",
+          "source": "awesome-claude-skills",
+          "similarity": 0.8047064774254236
+        }
+      ],
+      [
+        {
+          "name": "Browserbase",
+          "source": "PulseMCP",
+          "similarity": 1.0
+        },
+        {
+          "name": "browserbase/mcp-server-browserbase",
+          "source": "awesome-mcp-servers",
+          "similarity": 0.802949581782849
+        }
+      ],
+      [
+        {
+          "name": "BioPython",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "scikit-bio",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8113236511961137
+        }
+      ],
+      [
+        {
+          "name": "gget",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "geniml",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8045852814494141
+        },
+        {
+          "name": "gtars",
+          "source": "claude-scientific-skills",
+          "similarity": 0.825075827614269
+        }
+      ],
+      [
+        {
+          "name": "RDKit",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "MedChem",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8225181498690367
+        }
+      ],
+      [
+        {
+          "name": "Datamol",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "Molfeat",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8156660927440446
+        }
+      ],
+      [
+        {
+          "name": "ClinicalTrials.gov",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "ClinVar",
+          "source": "claude-scientific-skills",
+          "similarity": 0.806297293745356
+        },
+        {
+          "name": "ClinPGx",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8113195768826932
+        },
+        {
+          "name": "FDA Databases",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8324144631761081
+        },
+        {
+          "name": "Clinical Decision Support",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8132165240898807
+        },
+        {
+          "name": "NCBI Gene",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8211669769218097
+        }
+      ],
+      [
+        {
+          "name": "Ensembl",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "Ensembl",
+          "source": "claude-scientific-skills",
+          "similarity": 0.858253850057395
+        }
+      ],
+      [
+        {
+          "name": "histolab",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "PathML",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8312772772900674
+        }
+      ],
+      [
+        {
+          "name": "scikit-learn",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "scikit-survival",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8090875369132524
+        }
+      ],
+      [
+        {
+          "name": "PyMC",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "PyMOO",
+          "source": "claude-scientific-skills",
+          "similarity": 0.808009989309907
+        }
+      ],
+      [
+        {
+          "name": "Matplotlib",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "Plotly",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8263418907813446
+        }
+      ],
+      [
+        {
+          "name": "Protocols.io",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "Benchling",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8014128457912598
+        },
+        {
+          "name": "LabArchives",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8151279025732636
+        }
+      ],
+      [
+        {
+          "name": "PDB",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "HMDB",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8111161185121932
+        }
+      ],
+      [
+        {
+          "name": "PubChem",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "ChEMBL",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8137665074883669
+        },
+        {
+          "name": "DrugBank",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8143493533795729
+        }
+      ],
+      [
+        {
+          "name": "PubMed",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "bioRxiv",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8309794695721183
+        },
+        {
+          "name": "Literature Review",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8640150183070391
+        },
+        {
+          "name": "Scientific Writing",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8491818613430804
+        }
+      ],
+      [
+        {
+          "name": "iOS Simulator Skill",
+          "source": "mcpservers.org",
+          "similarity": 1.0
+        },
+        {
+          "name": "ios-simulator-skill",
+          "source": "awesome-claude-skills",
+          "similarity": 0.8350551184310455
+        }
+      ]
+    ]
+  },
+  "0.75": {
+    "unique_count": 196,
+    "duplicate_count": 61,
+    "cluster_count": 29,
+    "clusters": [
+      [
+        {
+          "name": "Playwright Browser Automation",
+          "source": "PulseMCP",
+          "similarity": 1.0
+        },
+        {
+          "name": "Playwriter",
+          "source": "PulseMCP",
+          "similarity": 0.7608983324875481
+        },
+        {
+          "name": "Playwright",
+          "source": "PulseMCP",
+          "similarity": 0.8643004613615358
+        },
+        {
+          "name": "playwright-skill",
+          "source": "awesome-claude-skills",
+          "similarity": 0.8047064774254236
+        }
+      ],
+      [
+        {
+          "name": "Context7",
+          "source": "PulseMCP",
+          "similarity": 1.0
+        },
+        {
+          "name": "Context7",
+          "source": "netresearch",
+          "similarity": 0.7775908171324583
+        }
+      ],
+      [
+        {
+          "name": "Browserbase",
+          "source": "PulseMCP",
+          "similarity": 1.0
+        },
+        {
+          "name": "browserbase/mcp-server-browserbase",
+          "source": "awesome-mcp-servers",
+          "similarity": 0.802949581782849
+        }
+      ],
+      [
+        {
+          "name": "BioPython",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "pysam",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7587592177521535
+        },
+        {
+          "name": "scikit-bio",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8113236511961137
+        },
+        {
+          "name": "BioServices",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7706892098160212
+        }
+      ],
+      [
+        {
+          "name": "AnnData",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "Arboreto",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7605061732939356
+        },
+        {
+          "name": "Cellxgene Census",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7630564196272477
+        },
+        {
+          "name": "geniml",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7686083816941294
+        }
+      ],
+      [
+        {
+          "name": "scvi-tools",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "deepTools",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7736815584944755
+        }
+      ],
+      [
+        {
+          "name": "gget",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "gtars",
+          "source": "claude-scientific-skills",
+          "similarity": 0.825075827614269
+        },
+        {
+          "name": "ETE Toolkit",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7615830133437833
+        }
+      ],
+      [
+        {
+          "name": "RDKit",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "Datamol",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7607068618883059
+        },
+        {
+          "name": "Molfeat",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7714092859962625
+        },
+        {
+          "name": "DeepChem",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7967616568274747
+        },
+        {
+          "name": "TorchDrug",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7689768144536837
+        },
+        {
+          "name": "DiffDock",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7633132363439212
+        },
+        {
+          "name": "MedChem",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8225181498690367
+        },
+        {
+          "name": "PyTDC",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7985407160450013
+        }
+      ],
+      [
+        {
+          "name": "matchms",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "pyOpenMS",
+          "source": "claude-scientific-skills",
+          "similarity": 0.782898859684739
+        }
+      ],
+      [
+        {
+          "name": "ClinicalTrials.gov",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "ClinVar",
+          "source": "claude-scientific-skills",
+          "similarity": 0.806297293745356
+        },
+        {
+          "name": "ClinPGx",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8113195768826932
+        },
+        {
+          "name": "COSMIC",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7745255935647759
+        },
+        {
+          "name": "FDA Databases",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8324144631761081
+        },
+        {
+          "name": "Clinical Decision Support",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8132165240898807
+        },
+        {
+          "name": "NCBI Gene",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8211669769218097
+        }
+      ],
+      [
+        {
+          "name": "Ensembl",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "Ensembl",
+          "source": "claude-scientific-skills",
+          "similarity": 0.858253850057395
+        }
+      ],
+      [
+        {
+          "name": "histolab",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "PathML",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8312772772900674
+        }
+      ],
+      [
+        {
+          "name": "PyTorch Lightning",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "Torch Geometric",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7578527530120769
+        }
+      ],
+      [
+        {
+          "name": "Stable Baselines3",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "SHAP",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7547336398054366
+        }
+      ],
+      [
+        {
+          "name": "scikit-learn",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "scikit-survival",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8090875369132524
+        },
+        {
+          "name": "statsmodels",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7926361956866693
+        }
+      ],
+      [
+        {
+          "name": "PyMC",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "PyMOO",
+          "source": "claude-scientific-skills",
+          "similarity": 0.808009989309907
+        }
+      ],
+      [
+        {
+          "name": "Pymatgen",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "Astropy",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7707634132143016
+        },
+        {
+          "name": "PennyLane",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7503369540410808
+        }
+      ],
+      [
+        {
+          "name": "Cirq",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "Qiskit",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7912171786094085
+        }
+      ],
+      [
+        {
+          "name": "Dask",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "Vaex",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7549201907816518
+        }
+      ],
+      [
+        {
+          "name": "Matplotlib",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "Seaborn",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7676509848587051
+        },
+        {
+          "name": "Plotly",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8263418907813446
+        },
+        {
+          "name": "GeoPandas",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7821346605272997
+        },
+        {
+          "name": "NetworkX",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7798248855706617
+        },
+        {
+          "name": "SymPy",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7802492186859237
+        },
+        {
+          "name": "ReportLab",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7904465933884054
+        }
+      ],
+      [
+        {
+          "name": "Protocols.io",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "Benchling",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8014128457912598
+        },
+        {
+          "name": "LabArchives",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8151279025732636
+        }
+      ],
+      [
+        {
+          "name": "UniProt",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "PDB",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7950736408582957
+        }
+      ],
+      [
+        {
+          "name": "PubChem",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "ChEMBL",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8137665074883669
+        },
+        {
+          "name": "DrugBank",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8143493533795729
+        },
+        {
+          "name": "ZINC",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7548810706781052
+        },
+        {
+          "name": "Metabolomics Workbench",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7562046966094369
+        }
+      ],
+      [
+        {
+          "name": "HMDB",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "BRENDA",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7572775915722203
+        }
+      ],
+      [
+        {
+          "name": "GEO",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "ENA",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7669575872182831
+        }
+      ],
+      [
+        {
+          "name": "GWAS Catalog",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "Open Targets",
+          "source": "claude-scientific-skills",
+          "similarity": 0.7539436020406796
+        }
+      ],
+      [
+        {
+          "name": "PubMed",
+          "source": "claude-scientific-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "bioRxiv",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8309794695721183
+        },
+        {
+          "name": "Literature Review",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8640150183070391
+        },
+        {
+          "name": "Scientific Writing",
+          "source": "claude-scientific-skills",
+          "similarity": 0.8491818613430804
+        },
+        {
+          "name": "Citation Management",
+          "source": "claude-scientific-skills",
+          "similarity": 0.775219818575862
+        }
+      ],
+      [
+        {
+          "name": "iOS Simulator Skill",
+          "source": "mcpservers.org",
+          "similarity": 1.0
+        },
+        {
+          "name": "ios-simulator-skill",
+          "source": "awesome-claude-skills",
+          "similarity": 0.8350551184310455
+        }
+      ],
+      [
+        {
+          "name": "superpowers",
+          "source": "awesome-claude-skills",
+          "similarity": 1.0
+        },
+        {
+          "name": "superpowers-lab",
+          "source": "awesome-claude-skills",
+          "similarity": 0.779679291613541
+        }
+      ]
+    ]
+  }
+}

@@ -7,6 +7,7 @@ import type {
 	Memory,
 	UUID,
 } from "../../../../types/index.ts";
+import { isSyntheticConversationArtifactMemory } from "../../../../utils/synthetic-conversation-artifact.ts";
 import type { ExperienceService } from "../service.ts";
 import { type Experience, ExperienceType, OutcomeType } from "../types.ts";
 
@@ -247,23 +248,7 @@ function safeText(value: unknown): string {
 }
 
 function isSyntheticMemory(memory: Memory): boolean {
-	const metadata = isRecord(memory.metadata) ? memory.metadata : {};
-	const source = typeof metadata.source === "string" ? metadata.source : "";
-	const tags = Array.isArray(metadata.tags)
-		? metadata.tags.filter((tag): tag is string => typeof tag === "string")
-		: [];
-	const text =
-		typeof memory.content?.text === "string" ? memory.content.text : "";
-	return (
-		/\b(?:compaction|compactor|synthetic|summary)\b/i.test(source) ||
-		tags.some((tag) =>
-			/\b(?:compaction|compactor|synthetic|summary)\b/i.test(tag),
-		) ||
-		/^\[(?:conversation|system) (?:summary|hybrid-ledger|state)\]/i.test(
-			text.trim(),
-		) ||
-		/^compacted prior planner trajectory steps/i.test(text.trim())
-	);
+	return isSyntheticConversationArtifactMemory(memory);
 }
 
 function getMessageText(memory: Memory): string {

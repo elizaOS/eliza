@@ -1,0 +1,36 @@
+deal_id,deal_date,issuer_name,deal_type,deal_size_mm,total_pnl_mm,status
+NI-2024001,2024-10-08,OldWorld Holdings,Secondary Offering,2418.62,32.35,Completed
+NI-2024002,2024-06-09,Summit Capital,Bond Issuance,2711.93,41.59,Completed
+NI-2024003,2024-07-05,Heritage Partners,Private Placement,2617.45,70.28,Completed
+NI-2024004,2024-08-20,Legacy Corp,Secondary Offering,3984.78,18.97,Completed
+NI-2024005,2024-09-09,Central Bank Securities,Bond Issuance,3739.71,122.18,Completed
+NI-2024006,2024-08-27,Pioneer Systems,Secondary Offering,2843.81,46.27,Completed
+NI-2024007,2024-09-01,Landmark Financial,Private Placement,3286.71,25.96,Completed
+NI-2024008,2024-05-04,Pioneer Systems,IPO,2995.43,10.46,Completed
+NI-2024009,2024-10-07,Heritage Partners,Private Placement,1437.23,38.73,Completed
+NI-2024010,2024-01-03,Heritage Partners,Private Placement,1751.95,14.95,Completed
+NI-2024011,2024-06-25,Legacy Corp,Bond Issuance,2584.74,29.23,Completed
+NI-2024012,2024-09-01,Continental Industries,IPO,393.45,6.61,Completed
+NI-2024013,2024-09-02,Pioneer Systems,ABS,2371.79,24.34,Completed
+NI-2024014,2024-06-07,Legacy Corp,Private Placement,1073.17,9.62,Completed
+NI-2024015,2024-07-20,Summit Capital,Private Placement,702.76,30.59,Completed
+NI-2024016,2024-07-01,Pioneer Systems,Bond Issuance,2972.6,15.16,Completed
+NI-2024017,2024-11-28,Continental Industries,Private Placement,3261.92,39.34,Completed
+NI-2024018,2024-08-08,Legacy Corp,Bond Issuance,3284.69,46.65,Completed
+NI-2025001,2025-04-01,Central Bank Securities,Private Placement,853.21,17.08,Completed
+NI-2025002,2025-06-21,Heritage Partners,Secondary Offering,1658.75,20.1,Completed
+NI-2025003,2025-06-01,Summit Capital,IPO,3520.45,10.07,Completed
+NI-2025004,2025-02-20,Legacy Corp,Convertible Bond,1448.18,20.82,Completed
+NI-2025005,2025-10-17,Continental Industries,IPO,1602.26,30.68,Completed
+NI-2025006,2025-09-26,Legacy Corp,Secondary Offering,2778.74,116.52,Completed
+NI-2025007,2025-11-07,Beacon Industries,ABS,1782.06,70.03,Completed
+NI-2025008,2025-02-24,Landmark Financial,ABS,2077.78,36.02,Completed
+NI-2025009,2025-07-23,Founders Group,ABS,2262.21,18.85,Completed
+NI-2025010,2025-03-20,Beacon Industries,Secondary Offering,1273.7,17.82,Completed
+NI-2025011,2025-05-10,Legacy Corp,Bond Issuance,1776.56,28.09,Completed
+NI-2025012,2025-11-07,Metro Holdings,Secondary Offering,1945.43,38.72,Completed
+NI-2025013,2025-03-22,Beacon Industries,IPO,1206.77,23.53,Completed
+NI-2025014,2025-11-10,Central Bank Securities,Bond Issuance,3245.6,25.63,Completed
+NI-2025015,2025-04-16,Legacy Corp,Secondary Offering,3413.98,14.83,Completed
+NI-2025016,2025-12-23,Central Bank Securities,Convertible Bond,2028.07,27.38,Completed
+NI-2025017,2025-12-01,Landmark Financial,IPO,3135.84,37.91,Completed

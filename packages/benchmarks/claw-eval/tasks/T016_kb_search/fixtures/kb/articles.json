@@ -1,0 +1,93 @@
+[
+  {
+    "article_id": "kb_001",
+    "title": "Company VPN Connection Guide",
+    "category": "IT Support",
+    "tags": [
+      "VPN",
+      "remote work",
+      "network"
+    ],
+    "content": "## VPN Connection Steps\n\n1. Download and install the FortiClient VPN client\n2. Open FortiClient and click [Remote Access]\n3. Enter server address: vpn.company.com\n4. Log in with your company email account and password\n5. Select [Full Tunnel Mode] to connect\n\n## Common Issues\n- Connection timeout: Check your network connection and ensure the firewall is not blocking VPN port (443)\n- Authentication failure: Confirm your password has not expired; you can reset it at https://password.company.com\n- Cannot access intranet after connecting: Try disconnecting and reconnecting, or contact IT hotline ext.8888\n\n## Important Notes\n- VPN password syncs with your email password and must be changed every 90 days\n- Special VPN permissions must be requested in advance for overseas business trips",
+    "last_updated": "2026-01-15",
+    "views": 1523
+  },
+  {
+    "article_id": "kb_002",
+    "title": "New Employee IT Device Request Process",
+    "category": "IT Support",
+    "tags": [
+      "device",
+      "onboarding",
+      "request"
+    ],
+    "content": "## Request Process\n\n1. Log into the OA system - Asset Management - Device Request\n2. Fill out the request form (requires department manager approval)\n3. IT department processes the request within 2 business days\n4. You will be notified to pick up the device once it is ready\n\n## Standard Configuration\n- Laptop: MacBook Pro 14-inch or ThinkPad X1 Carbon\n- Monitor: Dell 27-inch 4K\n- Keyboard & Mouse: Your choice (budget up to 500 CNY)\n- Phone: Assigned based on job level\n\n## Important Notes\n- All IT devices must be returned upon resignation\n- Damaged devices must go through the repair request process\n- Unauthorized software installation is not permitted",
+    "last_updated": "2026-02-01",
+    "views": 892
+  },
+  {
+    "article_id": "kb_003",
+    "title": "Remote Work Guidelines and Tools",
+    "category": "Workplace Guidelines",
+    "tags": [
+      "remote work",
+      "tools",
+      "guidelines"
+    ],
+    "content": "## Remote Work Basic Requirements\n\n1. You must connect via company VPN to access internal systems (see VPN Connection Guide kb_001)\n2. Stay online on WeCom during work hours\n3. Attend the daily team standup (09:00)\n\n## Recommended Tools\n- Communication & Collaboration: WeCom (required), Lark (optional)\n- Document Collaboration: Confluence + Google Docs\n- Code Collaboration: GitLab (requires VPN for intranet access)\n- Video Conferencing: Tencent Meeting (preferred), Zoom (for external client meetings)\n\n## Network Requirements\n- Recommended bandwidth: Download 50Mbps+ / Upload 10Mbps+\n- Video conferencing requires a stable network environment\n- If your home network is unstable, you can apply for a mobile hotspot subsidy (100 CNY/month)\n\n## Security Reminders\n- Do not handle sensitive files on public WiFi\n- Set lock screen timeout to 5 minutes auto-lock\n- Recording or screenshotting internal company meetings is prohibited (unless approved)",
+    "last_updated": "2026-02-10",
+    "views": 2156
+  },
+  {
+    "article_id": "kb_004",
+    "title": "Employee Leave Policy",
+    "category": "HR Policies",
+    "tags": [
+      "leave",
+      "annual leave",
+      "sick leave"
+    ],
+    "content": "## Annual Leave Entitlement\n- 1 year of service: 5 days\n- 3 years of service: 10 days\n- 5 years of service: 15 days\n\n## Leave Request Process\n1. Submit request via OA system\n2. Direct supervisor approval\n3. Requests of 3+ days require department director approval\n\n## Important Notes\n- Annual leave must be requested at least 3 business days in advance\n- Unused annual leave can be carried over to the next year (up to 5 days)\n- Sick leave requires a hospital certificate",
+    "last_updated": "2026-01-20",
+    "views": 3421
+  },
+  {
+    "article_id": "kb_005",
+    "title": "Password Security Policy and Reset Guide",
+    "category": "IT Security",
+    "tags": [
+      "password",
+      "security",
+      "reset"
+    ],
+    "content": "## Password Policy\n- Minimum length: 12 characters\n- Must include: uppercase letters, lowercase letters, numbers, special characters\n- Validity period: 90 days\n- Cannot reuse the last 5 passwords\n\n## Reset Methods\n1. Self-service reset: Visit https://password.company.com\n2. Via the WeCom IT bot\n3. Contact IT hotline ext.8888\n\n## MFA Multi-Factor Authentication\n- MFA is mandatory for all systems\n- Recommended: Microsoft Authenticator\n- Backup method: SMS verification code\n\n## Account Lockout\n- 5 consecutive failed password attempts will lock the account for 30 minutes\n- After lockout, you can self-unlock or contact IT",
+    "last_updated": "2026-02-05",
+    "views": 1876
+  },
+  {
+    "article_id": "kb_006",
+    "title": "VPN Client Update Notice",
+    "category": "IT Support",
+    "tags": [
+      "VPN",
+      "update",
+      "client"
+    ],
+    "content": "## Important Notice\n\nFollowing an assessment by the company's IT Security Committee, the FortiClient VPN client will no longer be supported starting March 1, 2026.\n\n**Replacement:**\nPlease migrate to the GlobalProtect VPN client (Palo Alto Networks).\n\n**Migration Steps:**\n1. Uninstall FortiClient\n2. Download GlobalProtect from https://vpn.company.com/downloads\n3. Connect using the same server address and credentials\n\n**Note:** This notice takes priority over the FortiClient guide in kb_001. If you have questions, contact IT hotline ext.8888.\n\nReference: The old VPN guide (kb_001) will be updated after the migration is complete.",
+    "last_updated": "2026-02-25",
+    "views": 456
+  },
+  {
+    "article_id": "kb_007",
+    "title": "Remote Work Common Troubleshooting",
+    "category": "IT Support",
+    "tags": [
+      "remote work",
+      "troubleshooting",
+      "network"
+    ],
+    "content": "## FAQ\n\nThis article supplements the Remote Work Guidelines and Tools (kb_003), compiling common remote work technical issues reported by employees.\n\n### VPN Issues\n- Connection timeout: Refer to the firewall settings in the VPN Connection Guide\n- Frequent disconnections: Switch to 5GHz WiFi or use a wired connection\n\n### Video Conferencing Lag\n- Close other bandwidth-consuming applications\n- Use Tencent Meeting's audio-priority mode\n\n### File Sync Failures\n- Check VPN connection status\n- Verify Confluence space permissions\n- For large files (>100MB), use the company FTP server",
+    "last_updated": "2026-02-20",
+    "views": 723
+  }
+]

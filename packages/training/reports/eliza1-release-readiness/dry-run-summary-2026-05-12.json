@@ -1,0 +1,201 @@
+{
+  "generatedAt": "2026-05-12T07:55:16Z",
+  "kind": "eliza1-release-readiness-dry-run",
+  "reports": [
+    {
+      "bundleDir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle",
+      "command": [
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/training/.venv/bin/python",
+        "-m",
+        "scripts.publish.orchestrator",
+        "--tier",
+        "0_6b",
+        "--bundle-dir",
+        "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle",
+        "--public",
+        "--dry-run",
+        "--metal-verification",
+        "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle/evals/metal_verify.json"
+      ],
+      "exitCode": 16,
+      "final": {
+        "evals": false,
+        "hashes": true,
+        "kernelDispatchReports": false,
+        "licenses": true,
+        "platformEvidence": false,
+        "sizeFirstRepoIds": false,
+        "weights": true
+      },
+      "publishBlockingReasons": [
+        "eval gates not green for the staged bytes: gateReport.passed is not true",
+        "kernel-dispatch (verify-on-device) not runtimeReady on every supported backend for 0_6b: pending ['cpu', 'metal', 'vulkan']",
+        "platform evidence not 'pass' on every required target for 0_6b: pending ['android-adreno-vulkan', 'android-mali-vulkan', 'darwin-arm64-metal', 'ios-arm64-metal', 'linux-x64-cpu', 'linux-x64-vulkan', 'windows-arm64-cpu', 'windows-arm64-vulkan', 'windows-x64-cpu', 'windows-x64-vulkan']",
+        "sizeFirstRepoIds not recorded (set by the HF-push stage)",
+        "releaseState is 'local-refresh-not-release-ready', not a publishable state (needs base-v1: the real fork-build GGUFs + provenance.sourceModels + the runnable-on-base evals \u2014 the GPU/operator workstream owns that step)",
+        "publish orchestrator will refuse to upload until the above clear"
+      ],
+      "publishEligible": false,
+      "releaseState": "local-refresh-not-release-ready",
+      "stderr": "[stage 1/7] validate bundle layout (/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle)\n[stage 2/7] validate release evidence\norchestrator error: release evidence invalid:\n  - releaseState must be 'base-v1', 'upload-candidate', or 'final'\n  - final.evals must be true\n  - final.kernelDispatchReports must be true\n  - final.platformEvidence must be true\n  - final.sizeFirstRepoIds must be true\n",
+      "stdout": "",
+      "tier": "0_6b"
+    },
+    {
+      "bundleDir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle",
+      "command": [
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/training/.venv/bin/python",
+        "-m",
+        "scripts.publish.orchestrator",
+        "--tier",
+        "1_7b",
+        "--bundle-dir",
+        "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle",
+        "--public",
+        "--dry-run",
+        "--metal-verification",
+        "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/evals/metal_verify.json"
+      ],
+      "exitCode": 16,
+      "final": {
+        "evals": false,
+        "hashes": true,
+        "kernelDispatchReports": false,
+        "licenses": true,
+        "platformEvidence": false,
+        "sizeFirstRepoIds": false,
+        "weights": true
+      },
+      "publishBlockingReasons": [
+        "eval gates not green for the staged bytes: evals/aggregate.json missing gateReport",
+        "kernel-dispatch (verify-on-device) not runtimeReady on every supported backend for 1_7b: pending ['cpu', 'metal', 'vulkan']",
+        "platform evidence not 'pass' on every required target for 1_7b: pending ['android-adreno-vulkan', 'android-mali-vulkan', 'darwin-arm64-metal', 'ios-arm64-metal', 'linux-x64-cpu', 'linux-x64-vulkan', 'windows-arm64-cpu', 'windows-arm64-vulkan', 'windows-x64-cpu', 'windows-x64-vulkan']",
+        "sizeFirstRepoIds not recorded (set by the HF-push stage)",
+        "releaseState is 'local-standin', not a publishable state (needs base-v1: the real fork-build GGUFs + provenance.sourceModels + the runnable-on-base evals \u2014 the GPU/operator workstream owns that step)",
+        "publish orchestrator will refuse to upload until the above clear"
+      ],
+      "publishEligible": false,
+      "releaseState": "local-standin",
+      "stderr": "[stage 1/7] validate bundle layout (/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle)\n[stage 2/7] validate release evidence\norchestrator error: release evidence invalid:\n  - releaseState must be 'base-v1', 'upload-candidate', or 'final'\n  - final.evals must be true\n  - final.kernelDispatchReports must be true\n  - final.platformEvidence must be true\n  - final.sizeFirstRepoIds must be true\n",
+      "stdout": "",
+      "tier": "1_7b"
+    },
+    {
+      "bundleDir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b-256k.bundle",
+      "command": [
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/training/.venv/bin/python",
+        "-m",
+        "scripts.publish.orchestrator",
+        "--tier",
+        "27b-256k",
+        "--bundle-dir",
+        "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b-256k.bundle",
+        "--public",
+        "--dry-run",
+        "--metal-verification",
+        "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b-256k.bundle/evals/metal_verify.json"
+      ],
+      "exitCode": 16,
+      "final": {
+        "evals": false,
+        "hashes": true,
+        "kernelDispatchReports": false,
+        "licenses": true,
+        "platformEvidence": false,
+        "sizeFirstRepoIds": false,
+        "weights": true
+      },
+      "publishBlockingReasons": [
+        "eval gates not green for the staged bytes: evals/aggregate.json missing gateReport",
+        "kernel-dispatch (verify-on-device) not runtimeReady on every supported backend for 27b-256k: pending ['cpu', 'cuda', 'metal', 'rocm', 'vulkan']",
+        "platform evidence not 'pass' on every required target for 27b-256k: pending ['darwin-arm64-metal', 'linux-aarch64-cuda', 'linux-x64-cpu', 'linux-x64-cuda', 'linux-x64-rocm', 'linux-x64-vulkan']",
+        "sizeFirstRepoIds not recorded (set by the HF-push stage)",
+        "releaseState is 'local-standin', not a publishable state (needs base-v1: the real fork-build GGUFs + provenance.sourceModels + the runnable-on-base evals \u2014 the GPU/operator workstream owns that step)",
+        "publish orchestrator will refuse to upload until the above clear"
+      ],
+      "publishEligible": false,
+      "releaseState": "local-standin",
+      "stderr": "[stage 1/7] validate bundle layout (/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b-256k.bundle)\n[stage 2/7] validate release evidence\norchestrator error: release evidence invalid:\n  - releaseState must be 'base-v1', 'upload-candidate', or 'final'\n  - final.evals must be true\n  - final.kernelDispatchReports must be true\n  - final.platformEvidence must be true\n  - final.sizeFirstRepoIds must be true\n",
+      "stdout": "",
+      "tier": "27b-256k"
+    },
+    {
+      "bundleDir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b.bundle",
+      "command": [
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/training/.venv/bin/python",
+        "-m",
+        "scripts.publish.orchestrator",
+        "--tier",
+        "27b",
+        "--bundle-dir",
+        "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b.bundle",
+        "--public",
+        "--dry-run",
+        "--metal-verification",
+        "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b.bundle/evals/metal_verify.json"
+      ],
+      "exitCode": 16,
+      "final": {
+        "evals": false,
+        "hashes": true,
+        "kernelDispatchReports": false,
+        "licenses": true,
+        "platformEvidence": false,
+        "sizeFirstRepoIds": false,
+        "weights": true
+      },
+      "publishBlockingReasons": [
+        "eval gates not green for the staged bytes: evals/aggregate.json missing gateReport",
+        "kernel-dispatch (verify-on-device) not runtimeReady on every supported backend for 27b: pending ['cpu', 'cuda', 'metal', 'rocm', 'vulkan']",
+        "platform evidence not 'pass' on every required target for 27b: pending ['darwin-arm64-metal', 'linux-x64-cpu', 'linux-x64-cuda', 'linux-x64-rocm', 'linux-x64-vulkan', 'windows-x64-cuda', 'windows-x64-vulkan']",
+        "sizeFirstRepoIds not recorded (set by the HF-push stage)",
+        "releaseState is 'local-standin', not a publishable state (needs base-v1: the real fork-build GGUFs + provenance.sourceModels + the runnable-on-base evals \u2014 the GPU/operator workstream owns that step)",
+        "publish orchestrator will refuse to upload until the above clear"
+      ],
+      "publishEligible": false,
+      "releaseState": "local-standin",
+      "stderr": "[stage 1/7] validate bundle layout (/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b.bundle)\n[stage 2/7] validate release evidence\norchestrator error: release evidence invalid:\n  - releaseState must be 'base-v1', 'upload-candidate', or 'final'\n  - final.evals must be true\n  - final.kernelDispatchReports must be true\n  - final.platformEvidence must be true\n  - final.sizeFirstRepoIds must be true\n",
+      "stdout": "",
+      "tier": "27b"
+    },
+    {
+      "bundleDir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle",
+      "command": [
+        "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/training/.venv/bin/python",
+        "-m",
+        "scripts.publish.orchestrator",
+        "--tier",
+        "9b",
+        "--bundle-dir",
+        "/Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle",
+        "--public",
+        "--dry-run",
+        "--metal-verification",
+        "/Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle/evals/metal_verify.json"
+      ],
+      "exitCode": 16,
+      "final": {
+        "evals": false,
+        "hashes": true,
+        "kernelDispatchReports": false,
+        "licenses": true,
+        "platformEvidence": false,
+        "sizeFirstRepoIds": false,
+        "weights": true
+      },
+      "publishBlockingReasons": [
+        "eval gates not green for the staged bytes: evals/aggregate.json missing gateReport",
+        "kernel-dispatch (verify-on-device) not runtimeReady on every supported backend for 9b: pending ['cpu', 'cuda', 'metal', 'rocm', 'vulkan']",
+        "platform evidence not 'pass' on every required target for 9b: pending ['android-adreno-vulkan', 'android-mali-vulkan', 'darwin-arm64-metal', 'ios-arm64-metal', 'linux-x64-cpu', 'linux-x64-cuda', 'linux-x64-rocm', 'linux-x64-vulkan', 'windows-x64-cpu', 'windows-x64-cuda', 'windows-x64-vulkan']",
+        "sizeFirstRepoIds not recorded (set by the HF-push stage)",
+        "releaseState is 'local-standin', not a publishable state (needs base-v1: the real fork-build GGUFs + provenance.sourceModels + the runnable-on-base evals \u2014 the GPU/operator workstream owns that step)",
+        "publish orchestrator will refuse to upload until the above clear"
+      ],
+      "publishEligible": false,
+      "releaseState": "local-standin",
+      "stderr": "[stage 1/7] validate bundle layout (/Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle)\n[stage 2/7] validate release evidence\norchestrator error: release evidence invalid:\n  - releaseState must be 'base-v1', 'upload-candidate', or 'final'\n  - final.evals must be true\n  - final.kernelDispatchReports must be true\n  - final.platformEvidence must be true\n  - final.sizeFirstRepoIds must be true\n",
+      "stdout": "",
+      "tier": "9b"
+    }
+  ]
+}

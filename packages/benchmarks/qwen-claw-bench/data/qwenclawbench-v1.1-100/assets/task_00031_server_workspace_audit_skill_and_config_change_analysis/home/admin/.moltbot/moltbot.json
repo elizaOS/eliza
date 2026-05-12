@@ -1,0 +1,40 @@
+{
+  "name": "moltbot",
+  "version": "1.4.2",
+  "instance": "fzw-server",
+  "gateway": {
+    "bind": "127.0.0.1:3781",
+    "remote": {
+      "url": "https://fzw.best:3781",
+      "enabled": false
+    }
+  },
+  "plugins": {
+    "telegram": {
+      "enabled": true,
+      "token": "7281943650:AAFAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+      "webhook": {
+        "enabled": false,
+        "url": "",
+        "secret": ""
+      },
+      "allowedUsers": [6839201475],
+      "parseMode": "MarkdownV2"
+    }
+  },
+  "model": "claude-sonnet-4-20250514",
+  "thinking": false,
+  "memory": {
+    "enabled": true,
+    "path": "/home/admin/.moltbot/memory"
+  },
+  "workspace": "/home/admin/clawd",
+  "heartbeat": {
+    "enabled": true,
+    "intervalMs": 1800000
+  },
+  "logging": {
+    "level": "info",
+    "file": "/home/admin/.moltbot/moltbot.log"
+  }
+}

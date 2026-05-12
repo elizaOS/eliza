@@ -1,0 +1,83 @@
+[
+  {
+    "job_id": "JOB-901",
+    "name": "工单自动分配",
+    "schedule": "*/5 * * * *",
+    "status": "enabled",
+    "last_run": "2026-03-25T16:55:00Z",
+    "last_status": "success",
+    "description": "每5分钟检查未分配工单并自动分配",
+    "tags": [
+      "sla",
+      "automation"
+    ],
+    "cron_expression": "*/5 * * * *",
+    "enabled": true,
+    "action": "每5分钟检查未分配工单并自动分配",
+    "next_run": null,
+    "created_at": "2025-06-01T00:00:00Z",
+    "created_by": "system",
+    "execution_history": [
+      {
+        "run_at": "2026-03-25T16:55:00Z",
+        "status": "success",
+        "duration_s": 60
+      }
+    ]
+  },
+  {
+    "job_id": "JOB-902",
+    "name": "SLA超时告警",
+    "schedule": "*/15 * * * *",
+    "status": "enabled",
+    "last_run": "2026-03-25T14:00:00Z",
+    "last_status": "failed",
+    "error_message": "邮件服务连接失败: SMTP timeout after 30s",
+    "description": "每15分钟检查即将超时的工单并发送告警",
+    "tags": [
+      "sla",
+      "alert"
+    ],
+    "failure_count": 8,
+    "first_failure": "2026-03-24T08:00:00",
+    "cron_expression": "*/15 * * * *",
+    "enabled": true,
+    "action": "每15分钟检查即将超时的工单并发送告警",
+    "next_run": null,
+    "created_at": "2025-06-01T00:00:00Z",
+    "created_by": "system",
+    "execution_history": [
+      {
+        "run_at": "2026-03-25T14:00:00Z",
+        "status": "failed",
+        "duration_s": 60
+      }
+    ]
+  },
+  {
+    "job_id": "JOB-903",
+    "name": "每日SLA报告",
+    "schedule": "0 9 * * *",
+    "status": "enabled",
+    "last_run": "2026-03-25T09:00:00Z",
+    "last_status": "success",
+    "description": "每天9点生成前一天的SLA达标报告",
+    "tags": [
+      "sla",
+      "report"
+    ],
+    "cron_expression": "0 9 * * *",
+    "enabled": true,
+    "action": "每天9点生成前一天的SLA达标报告",
+    "next_run": null,
+    "created_at": "2025-06-01T00:00:00Z",
+    "created_by": "system",
+    "execution_history": [
+      {
+        "run_at": "2026-03-25T09:00:00Z",
+        "status": "success",
+        "duration_s": 60
+      }
+    ]
+  }
+]

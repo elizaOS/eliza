@@ -1,18 +1,18 @@
-"""Legacy prompt-template TOON synthesizer.
+"""Legacy prompt-template native JSON synthesizer.
 
 This script is not a native v5 JSON export path. It remains only for old
 prompt-template compatibility coverage where `registry.json` still declares
-`output_format: toon`.
+`output_format: payload`.
 
-For every entry in `data/prompts/registry.json` whose output format is `toon`,
+For every entry in `data/prompts/registry.json` whose output format is `payload`,
 this script:
 
   1. Builds N synthetic input scenarios using a teacher model. Variables are
      sampled from a small pool of agent personae and seed conversations.
   2. Renders the eliza prompt template with those variables.
-  3. Asks the teacher to produce the TOON response per the prompt's spec.
-  4. Validates the response by piping it through the bun TOON decoder
-     (so we know the model hasn't violated TOON syntax).
+  3. Asks the teacher to produce the native JSON response per the prompt's spec.
+  4. Validates the response by piping it through the bun native JSON decoder
+     (so we know the model hasn't violated native JSON syntax).
   5. Writes one canonical ElizaRecord per (task_id, scenario) into
      `data/synthesized/<task_id>.jsonl`.
 
@@ -221,13 +221,13 @@ small student model. The student must learn to follow elizaOS prompt
 templates exactly. You will be given:
   1. The full prompt template the student will see (with variables
      pre-rendered).
-  2. The exact TOON output schema (key names) the student must produce.
+  2. The exact native JSON output schema (key names) the student must produce.
 
-Your job is to produce ONE single TOON document that satisfies the prompt
+Your job is to produce ONE single native JSON document that satisfies the prompt
 and the schema. Output nothing else — no prose, no fences, no
-<think> blocks. Just the TOON document.
+<think> blocks. Just the native JSON document.
 
-TOON syntax recap:
+native JSON syntax recap:
   - "key: value" for scalars (booleans use literal `true` / `false`)
   - "key: " (empty value) for missing fields
   - For nested objects: a key with no value, then indented children
@@ -266,7 +266,7 @@ def synthesize_for_task(
             f"PROMPT TEMPLATE (the student will see this):\n\n"
             f"{rendered}\n\n"
             f"REQUIRED OUTPUT KEYS: {keys_hint}\n\n"
-            f"Return ONE TOON document and nothing else."
+            f"Return ONE native JSON document and nothing else."
         )
         try:
             target = call_teacher(teacher, SYNTH_SYSTEM, user_prompt)
@@ -276,10 +276,10 @@ def synthesize_for_task(
         # Strip fences if the teacher added any
         target = target.strip()
         if target.startswith("```"):
-            target = re.sub(r"^```(?:toon|json)?\s*\n?|\n?```$", "", target, flags=re.S).strip()
-        # Sanity check that it looks like TOON
+            target = re.sub(r"^```(?:payload|json)?\s*\n?|\n?```$", "", target, flags=re.S).strip()
+        # Sanity check that it looks like native JSON
         if not re.search(r"^[A-Za-z_][A-Za-z0-9_]*\s*:", target, re.M):
-            log.warning("teacher returned non-TOON output for %s: %s",
+            log.warning("teacher returned non-native JSON output for %s: %s",
                         prompt_entry["task_id"], target[:200])
             return None
 

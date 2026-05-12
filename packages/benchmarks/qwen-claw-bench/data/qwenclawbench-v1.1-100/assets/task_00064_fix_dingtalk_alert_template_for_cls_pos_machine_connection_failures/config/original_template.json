@@ -1,0 +1,1 @@
+{"msgtype":"text","text":{"content":"告警名称: 收银机连接异常告警\n告警时间: {{.NotifyTime}}\n\n{{range .QueryResult[0]}}{{if and .sn .shopNo .message}}设备SN: {{.sn}} \n门店名: {{.shopName}}  \n门店NO: {{.shopNo}}\n日志时间: {{.logtime}} \n\t告警信息: {{.message}}\n---\n{{end}}告警详情: {{.DetailUrl}} \n通知类型: {{.NotifyType}}\n{{end}}"}}

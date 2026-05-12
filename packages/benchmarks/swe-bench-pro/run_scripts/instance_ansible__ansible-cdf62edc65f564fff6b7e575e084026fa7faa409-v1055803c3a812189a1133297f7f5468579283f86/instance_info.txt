@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-cdf62edc65f564fff6b7e575e084026fa7faa409-v1055803c3a812189a1133297f7f5468579283f86
+Repository: ansible/ansible
+Base Commit: caba47dd3f3f37e989357bce676e420ff8b6a86f
+Test Files: ["test/units/modules/test_service_facts.py"]
+FAIL_TO_PASS: ["test/units/modules/test_service_facts.py::TestAIXScanService::test_gather_services"]
+PASS_TO_PASS: []

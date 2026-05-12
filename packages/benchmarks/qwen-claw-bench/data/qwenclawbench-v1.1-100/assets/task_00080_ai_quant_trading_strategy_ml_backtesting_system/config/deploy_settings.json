@@ -1,0 +1,22 @@
+{
+  "environment": "production",
+  "api_endpoint": "https://api.quantplatform.io/v2",
+  "redis_host": "redis-prod-cluster.internal:6379",
+  "redis_db": 3,
+  "max_position_size": 50000,
+  "risk_limit": 0.05,
+  "max_daily_trades": 20,
+  "alert_email": "ops-team@quantplatform.io",
+  "slack_webhook": "https://hooks.slack.com/services/T0XXXXX/B0XXXXX/xxxxxxxxxxx",
+  "logging_level": "INFO",
+  "heartbeat_interval_sec": 60,
+  "auto_shutdown_on_drawdown": true,
+  "drawdown_threshold": -0.10,
+  "_comment": "Backtest params below mirror live-trading scale; use these when validating backtests against production conditions",
+  "backtest_params": {
+    "initial_capital": 250000,
+    "commission_rate": 0.0005,
+    "slippage_bps": 2,
+    "confidence_threshold": 0.55
+  }
+}

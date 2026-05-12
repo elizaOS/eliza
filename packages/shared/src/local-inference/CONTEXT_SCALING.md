@@ -8,7 +8,7 @@ the largest context window that actually fits, and which optimization should run
 when there is spare memory vs when there isn't?**
 
 The short version: on the small tiers (0.6B / 1.7B) the binding limit is the
-*base model's positional range* (Qwen3-0.6B/1.7B ship `max_position_embeddings =
+*base model's positional range* (Qwen3-0.6B / 1.7B ship `max_position_embeddings =
 40960`), **not** the KV-cache memory — the compressed cache fits 32k in well
 under 1 GiB on any device. On the big tiers (9B / 27B) and the RoPE-extended
 27B variants the limit flips: positional range is huge, KV-cache memory is what
@@ -33,13 +33,13 @@ Qwen3 dense base shapes (from each base model's `config.json`; the registry's
 
 | Eliza-1 tier      | base model        | layers | kv heads | head_dim | native ctx (`max_position_embeddings`) | GGUF (quant)        |
 | ----------------- | ----------------- | -----: | -------: | -------: | -------------------------------------: | ------------------- |
-| `eliza-1-0_6b`    | Qwen3-0.6B        |     28 |        8 |      128 |                                  40960 | ~0.5 GB (Q3_K_M)    |
-| `eliza-1-1_7b`    | Qwen3-1.7B        |     28 |        8 |      128 |                                  40960 | ~1.2 GB (Q4-class)  |
-| `eliza-1-4b`*     | Qwen3-4B          |     36 |        8 |      128 |                                  40960 | ~2.6 GB (Q4_K_M)    |
+| `eliza-1-0_6b`    | Qwen3.5-0.6B        |     28 |        8 |      128 |                                  40960 | ~0.5 GB (Q3_K_M)    |
+| `eliza-1-1_7b`    | Qwen3.5-1.7B        |     28 |        8 |      128 |                                  40960 | ~1.4 GB (Q4-class)  |
+| `eliza-1-4b`*     | Qwen3.5-4B          |     36 |        8 |      128 |                                  40960 | ~2.6 GB (Q4_K_M)    |
 | `eliza-1-9b`†     | (aspirational)    |      8‡ |        4 |      256 |                          64k → 1M (ext) | ~5.4 GB (Q4_K_M)    |
 | `eliza-1-27b`†    | (aspirational)    |     16‡ |        4 |      256 |                         128k → 1M (ext) | ~16.8 GB (Q4_K_M)   |
 
-\* `eliza-1-4b` exists in `model_registry.py` (real, `Qwen/Qwen3-4B`) but **not
+\* `eliza-1-4b` exists in `model_registry.py` (real, `Qwen/Qwen3.5-4B`) but **not
 yet in `catalog.ts`** — flagged below.  
 † 9B/27B are `unverified_base=True` placeholders in the registry; the catalog
 tiers are aspirational sizes. Numbers below use the registry's hybrid-attention
@@ -64,7 +64,7 @@ overhead per block of 256 sketch dims). PolarQuant on the V-cache is ~4-bit +
 per-block scales. These are the figures `model_registry._compute_inference_mem`
 and `kv-spill.estimateQuantizedKvBytesPerToken` are both sized against
 (`QUANTIZED_KV_BYTES_PER_TOKEN_BY_PARAMS` = 1200 / 2400 / 9000 / 22000 B/tok for
-0.6B/1.7B/9B/27B — consistent with the per-layer math here once you account for
+0.6B / 1.7B/9B/27B — consistent with the per-layer math here once you account for
 the realized ratios).
 
 Resulting **bytes/token across the whole KV cache**:
@@ -141,7 +141,7 @@ Takeaways:
   *f16* KV. The compressed cache would let the 9B run >1M tokens on 16 GB if
   the weights supported it (they don't natively yet — see "RoPE extension").
 - **0.6B / 1.7B on a 16-24 GB GPU are wildly under-utilizing the device.**
-  Weights are 0.5-1.2 GB. After that there are 14-23 GB of unused VRAM. The
+  Weights are 0.5-1.4 GB. After that there are 14-23 GB of unused VRAM. The
   catalog ships them at `32768` context (≈0.6 GiB compressed KV, ≈3.5 GiB at
   f16). Even at f16 KV the 0.6B's 32k window costs 3.5 GiB — fits 16 GB four
   times over. This is the headroom the overhead-aware policy (§5) should spend.
@@ -188,7 +188,7 @@ margin, preferring qjl+polarq4" the task asks for.
 ### HIGH — default to the compressed cache whenever context > 8k (already done, keep it)
 
 `kvCacheForContext()` already returns `{ typeK: "qjl1_256", typeV: "q4_polar" }`
-for any context > 8192, and every shipping tier is > 8k. So the 0.6B/1.7B at 32k
+for any context > 8192, and every shipping tier is > 8k. So the 0.6B / 1.7B at 32k
 already cost ~0.6-0.7 GiB of KV, not 3.5 GiB. Nothing to change — but the doc
 above is the justification, and the memory-aware selector (above) must keep
 using `qjl+polarq4` as the assumed layout, not f16.
@@ -213,7 +213,7 @@ confirms the spill path meets the text latency budget; otherwise leave it.
 ### LOW / informational — no safe catalog `contextLength` bump for the small tiers
 
 It is tempting to read "0.6B fits 800k tokens of KV on 16 GB" and bump
-`contextLength` from 32768 to something huge. **Don't.** Qwen3-0.6B/1.7B have
+`contextLength` from 32768 to something huge. **Don't.** Qwen3-0.6B / 1.7B have
 `max_position_embeddings = 40960`; past that the model produces garbage without
 a YaRN/RoPE-scaled GGUF. The catalog's `32768` is correct. The win is the
 *runtime* selector raising `contextSize` toward 40960 on roomy devices, not the
@@ -293,7 +293,7 @@ The levers, in priority order, when there's spare memory:
    the compressed cache.
 3. **Then more accurate KV** (f16 / q8_0) — only worth it when there's enough
    slack to hold f16 *and* the chosen context, which on consumer cards means
-   the 0.6B/1.7B/9B tiers, not the 27B. `kvCacheForContext` would need a
+   the 0.6B / 1.7B/9B tiers, not the 27B. `kvCacheForContext` would need a
    `preferAccurateKvWhenHeadroom` branch keyed off probed VRAM.
 4. **Then a bigger drafter** (better acceptance rate → faster decode) — e.g.
    the 1.7B distilled drafter in front of the 0.6B target, or the existing 9B
@@ -315,8 +315,7 @@ error) stays — a slow voice session is worse than a clear "this device can't d
 
 ## Summary of what changed / recommended
 
-- **No catalog edit.** The per-tier `contextLength` values are correct: 0.6B /
-  1.7B at `32768` sit just below the base models' `max_position_embeddings`
+- **No catalog edit.** The per-tier `contextLength` values are correct: 0.6B / 1.7B at `32768` sit just below the base models' `max_position_embeddings`
   (40960); 9B at `65536` and 27B at `131072` match their RoPE-extended GGUFs;
   the `27b-256k` / `27b-1m` variants and their `minRamGb` gates are right. The
   compressed-cache default (`kvCacheForContext` → `qjl1_256` + `q4_polar` for

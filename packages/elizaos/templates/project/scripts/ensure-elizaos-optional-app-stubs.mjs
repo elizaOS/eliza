@@ -264,7 +264,7 @@ export function getBuildVariant() {
   }
   const raw =
     (typeof process !== "undefined" &&
-      (process.env?.ELIZA_BUILD_VARIANT ?? process.env?.MILADY_BUILD_VARIANT)) ||
+      (process.env?.ELIZA_BUILD_VARIANT ?? process.env?.ELIZA_BUILD_VARIANT)) ||
     "";
   const normalized = raw.trim().toLowerCase();
   __elizaosBuildVariantResolved = __elizaosBuildVariantValues.has(normalized)
@@ -303,7 +303,7 @@ function __elizaosSandboxBuildVariant() {
   }
   const raw =
     (typeof process !== "undefined" &&
-      (process.env?.ELIZA_BUILD_VARIANT ?? process.env?.MILADY_BUILD_VARIANT)) ||
+      (process.env?.ELIZA_BUILD_VARIANT ?? process.env?.ELIZA_BUILD_VARIANT)) ||
     "";
   const normalized = raw.trim().toLowerCase();
   __elizaosSandboxResolvedVariant = __elizaosSandboxBuildVariants.has(normalized)
@@ -400,7 +400,7 @@ function getBuildVariant() {
   if (resolvedVariant !== null) return resolvedVariant;
   const raw =
     (typeof process !== "undefined" &&
-      (process.env?.ELIZA_BUILD_VARIANT ?? process.env?.MILADY_BUILD_VARIANT)) ||
+      (process.env?.ELIZA_BUILD_VARIANT ?? process.env?.ELIZA_BUILD_VARIANT)) ||
     "";
   const normalized = raw.trim().toLowerCase();
   resolvedVariant = BUILD_VARIANTS.has(normalized) ? normalized : "direct";

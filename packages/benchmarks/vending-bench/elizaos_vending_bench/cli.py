@@ -466,6 +466,7 @@ def generate_report_from_results(args: argparse.Namespace) -> int:
 
     net_worths = [float(r.final_net_worth) for r in results] or [0.0]
     profits = [float(r.profit) for r in results] or [0.0]
+    revenues = [float(r.total_revenue) for r in results] or [0.0]
     total_days = sum(r.simulation_days for r in results)
     total_tokens = sum(r.total_tokens for r in results)
 
@@ -487,6 +488,8 @@ def generate_report_from_results(args: argparse.Namespace) -> int:
         median_net_worth=_to_decimal(sorted(net_worths)[len(net_worths) // 2]),
         success_rate=_to_float(metrics_raw.get("success_rate", 0.0)),
         avg_profit=_to_decimal(sum(profits) / len(profits) if profits else 0.0),
+        avg_revenue=_to_decimal(metrics_raw.get("avg_revenue", sum(revenues) / len(revenues) if revenues else 0.0)),
+        total_revenue=_to_decimal(metrics_raw.get("total_revenue", sum(revenues))),
         profitability_rate=_to_float(metrics_raw.get("profitability_rate", 0.0)),
         avg_items_sold=_to_float(metrics_raw.get("avg_items_sold", 0.0)),
         avg_orders_placed=_to_float(metrics_raw.get("avg_orders_placed", 0.0)),

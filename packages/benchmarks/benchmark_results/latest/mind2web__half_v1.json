@@ -1,0 +1,33 @@
+{
+  "agent": "half_v1",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T102050Z_733a34a7/mind2web__mind2web/half_v1_mind2web_20260512T102050Z_1_2cf0bda7/output"
+  ],
+  "benchmark_directory": "mind2web",
+  "benchmark_id": "mind2web",
+  "cache_metrics": {},
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "calibration_depth": "direct_score",
+    "calibration_spec_version": "calibration_v1",
+    "return_code": 0,
+    "synthetic_expected_score": 0.5,
+    "synthetic_harness": "half_v1",
+    "synthetic_is_meaningful": true,
+    "synthetic_note": "no result template registered; wrote generic payload at mind2web-half_v1-calibration.json and recorded expected aggregate score directly",
+    "synthetic_strategy": "function_call"
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {},
+  "provider": "cerebras",
+  "result_json_path": null,
+  "run_group_id": "rg_20260512T102050Z_733a34a7",
+  "run_id": "half_v1_mind2web_20260512T102050Z_1_2cf0bda7",
+  "score": 0.5,
+  "status": "succeeded",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": "ratio",
+  "updated_at": "2026-05-12T10:20:50.980130+00:00"
+}

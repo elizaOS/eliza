@@ -1,7 +1,7 @@
 # eliza-1 — Training Pipeline
 
-Fine-tunes the **eliza-1** model series (`eliza-1-2b`, `eliza-1-9b`,
-`eliza-1-27b`) on Eliza-native Vercel AI SDK trajectory rows: the exact
+Fine-tunes the **eliza-1** model series (`eliza-1-0_8b`, `eliza-1-2b`,
+`eliza-1-4b`, `eliza-1-9b`, `eliza-1-27b`) on Eliza-native Vercel AI SDK trajectory rows: the exact
 request sent to the model plus the exact normalized response returned by the
 model, including native tool calls.
 
@@ -25,7 +25,9 @@ arXiv:2412.05270), not LoRA.
 
 | registry key | eliza release | base               | tier        | default training target             | optimizer    |
 |--------------|---------------|--------------------|-------------|-------------------------------------|--------------|
+| qwen3.5-0.8b | eliza-1-0_8b  | Qwen/Qwen3.5-0.8B  | local       | 16 GB consumer GPU                  | apollo_mini  |
 | qwen3.5-2b   | eliza-1-2b    | Qwen/Qwen3.5-2B    | local       | 16 GB consumer GPU                  | apollo_mini  |
+| qwen3.5-4b   | eliza-1-4b    | Qwen/Qwen3.5-4B    | local       | 24 GB consumer/workstation GPU      | apollo_mini  |
 | qwen3.5-9b   | eliza-1-9b    | Qwen/Qwen3.5-9B    | workstation | Vast 1× RTX Pro 6000 Blackwell      | apollo       |
 | qwen3.6-27b  | eliza-1-27b   | Qwen/Qwen3.6-27B   | cloud       | Vast 2× B200 with FSDP              | apollo_mini  |
 

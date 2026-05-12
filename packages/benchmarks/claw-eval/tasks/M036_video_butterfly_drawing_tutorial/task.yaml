@@ -1,0 +1,31 @@
+task_id: M036_video_butterfly_drawing_tutorial
+task_name: Butterfly Drawing Tutorial Notes
+version: "2.0"
+category: multimodal
+difficulty: medium
+tags: [multimodal]
+prompt:
+  text: |
+    朋友推荐了这个蝴蝶手绘视频说画得特别好，我想跟着学。画画前，我需要准备哪些材料？视频里面一共画了几个阶段/步骤，帮我梳理每个关键步骤，并给每个步骤附上一个可视化图片，给我一个画画教程笔记。
+  language: zh
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/Dm3nyBNhkp8.mp4
+
+sandbox_grader_files: []
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+primary_dimensions:
+  - completion
+  - robustness

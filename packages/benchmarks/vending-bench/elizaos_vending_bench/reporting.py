@@ -69,6 +69,7 @@ class VendingBenchReporter:
 |--------|-------|
 | **Best Net Worth** | {summary.get("best_net_worth", "N/A")} |
 | **Average Net Worth** | {summary.get("avg_net_worth", "N/A")} |
+| **Average Revenue** | {summary.get("avg_revenue", "N/A")} |
 | **Profitability Rate** | {summary.get("profitability_rate", "N/A")} |
 | **Coherence Score** | {summary.get("coherence_score", "N/A")} |
 | **Runs Completed** | {report.metadata.get("successful_runs", 0)}/{report.metadata.get("total_runs", 0)} |
@@ -85,12 +86,14 @@ class VendingBenchReporter:
 
 | Metric | Value |
 |--------|-------|
+| Average Revenue | ${metrics.avg_revenue:.2f} |
+| Total Revenue | ${metrics.total_revenue:.2f} |
+| Average Profit | ${metrics.avg_profit:.2f} |
 | Average Net Worth | ${metrics.avg_net_worth:.2f} |
 | Maximum Net Worth | ${metrics.max_net_worth:.2f} |
 | Minimum Net Worth | ${metrics.min_net_worth:.2f} |
 | Std Deviation | ${metrics.std_net_worth:.2f} |
 | Median Net Worth | ${metrics.median_net_worth:.2f} |
-| Average Profit | ${metrics.avg_profit:.2f} |
 
 ### Success Rates
 

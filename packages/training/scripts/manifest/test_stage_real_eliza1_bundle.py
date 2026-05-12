@@ -69,7 +69,7 @@ def _seed_recipes(root: Path) -> Path:
 
 def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(stage, "_repo_root", lambda: tmp_path)
-    bundle = tmp_path / "eliza-1-0_6b.bundle"
+    bundle = tmp_path / "eliza-1-0_8b.bundle"
     bundle.mkdir(parents=True)
     _seed_assets(bundle)
     recipes = _seed_recipes(tmp_path / "recipes")
@@ -77,9 +77,9 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     drafter_gguf = _write(tmp_path / "src" / "drafter.gguf", b"drafter-weights")
 
     args = argparse.Namespace(
-        tier="0_6b", bundle_dir=bundle, text_gguf=text_gguf, drafter_gguf=drafter_gguf,
+        tier="0_8b", bundle_dir=bundle, text_gguf=text_gguf, drafter_gguf=drafter_gguf,
         recipes_dir=recipes, vision_gguf=None,
-        text_lineage_repo="Qwen/Qwen3-0.6B", text_lineage_rev="deadbeef",
+        text_lineage_repo="Qwen/Qwen3.5-0.8B", text_lineage_rev="deadbeef",
         text_lineage_note="substitute base", text_substituted=True, drafter_stamp_only=True,
         skip_assets=True, skip_wakeword=True, link_mode="copy",
         version="1.0.0-staged.1", generated_at="2026-05-11T00:00:00Z", force=False,
@@ -93,10 +93,10 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     assert report["manifestValidation"]["publishReadyOk"] is False
 
     manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
-    assert manifest["id"] == "eliza-1-0_6b"
+    assert manifest["id"] == "eliza-1-0_8b"
     assert manifest["defaultEligible"] is False
-    assert manifest["lineage"]["text"]["base"] == "Qwen/Qwen3-0.6B@deadbeef"
-    # 0_6b ships no separate embedding artifact (text backbone IS the embedding).
+    assert manifest["lineage"]["text"]["base"] == "Qwen/Qwen3.5-0.8B@deadbeef"
+    # 0_8b ships no separate embedding artifact (text backbone IS the embedding).
     assert "embedding" not in manifest["lineage"]
     assert manifest["files"]["text"][0]["ctx"] == 32768
     assert manifest["files"]["vad"][0]["path"] == "vad/silero-vad-v5.1.2.ggml.bin"
@@ -128,10 +128,10 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_stage_real_bundle_embedding_tier_keeps_embedding_lineage(tmp_path: Path, monkeypatch) -> None:
-    """Non-0_6b tiers ship a separate embedding artifact; if present, its
+    """Non-0_8b tiers ship a separate embedding artifact; if present, its
     lineage entry must survive (the bundle stager places it before lineage)."""
     monkeypatch.setattr(stage, "_repo_root", lambda: tmp_path)
-    bundle = tmp_path / "eliza-1-1_7b.bundle"
+    bundle = tmp_path / "eliza-1-2b.bundle"
     bundle.mkdir(parents=True)
     _seed_assets(bundle)
     _write(bundle / "embedding" / "eliza-1-embedding.gguf", b"embedding-weights")
@@ -139,9 +139,9 @@ def test_stage_real_bundle_embedding_tier_keeps_embedding_lineage(tmp_path: Path
     text_gguf = _write(tmp_path / "src" / "text.gguf", b"text-weights")
     drafter_gguf = _write(tmp_path / "src" / "drafter.gguf", b"drafter-weights")
     args = argparse.Namespace(
-        tier="1_7b", bundle_dir=bundle, text_gguf=text_gguf, drafter_gguf=drafter_gguf,
+        tier="2b", bundle_dir=bundle, text_gguf=text_gguf, drafter_gguf=drafter_gguf,
         recipes_dir=recipes, vision_gguf=None,
-        text_lineage_repo="Qwen/Qwen3-1.7B", text_lineage_rev="cafebabe",
+        text_lineage_repo="Qwen/Qwen3.5-2B", text_lineage_rev="cafebabe",
         text_lineage_note="substitute base", text_substituted=True, drafter_stamp_only=True,
         skip_assets=True, skip_wakeword=True, link_mode="copy",
         version="1.0.0-staged.1", generated_at="2026-05-11T00:00:00Z", force=False,
@@ -151,6 +151,6 @@ def test_stage_real_bundle_embedding_tier_keeps_embedding_lineage(tmp_path: Path
     manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
     assert manifest["lineage"]["embedding"]["base"] == "Qwen/Qwen3-Embedding-0.6B"
     assert manifest["files"]["embedding"][0]["path"] == "embedding/eliza-1-embedding.gguf"
-    # Two context variants for 1_7b.
+    # Two context variants for 2b.
     ctxs = sorted(f["ctx"] for f in manifest["files"]["text"])
     assert ctxs == [32768, 65536]

@@ -1,0 +1,237 @@
+{
+  "api_version": "2.0.0",
+  "description": "Public API contract for audio-player-core",
+  "modules": {
+    "QueueManager": {
+      "description": "Manages the playback queue lifecycle",
+      "methods": {
+        "add_track": {
+          "description": "Add a track to the queue",
+          "params": [
+            {"name": "track", "type": "Track", "required": true},
+            {"name": "position", "type": "Option<usize>", "required": false, "default": "None (append to end)"}
+          ],
+          "return_type": "Result<usize, PlayerError>",
+          "return_description": "Index where the track was inserted",
+          "errors": ["QueueFull", "InvalidTrack"]
+        },
+        "remove_track": {
+          "description": "Remove a track from the queue by index or ID",
+          "params": [
+            {"name": "target", "type": "QueueTarget", "required": true}
+          ],
+          "return_type": "Result<Track, PlayerError>",
+          "return_description": "The removed track",
+          "errors": ["TrackNotFound", "IndexOutOfBounds"]
+        },
+        "reorder": {
+          "description": "Move a track from one position to another",
+          "params": [
+            {"name": "from_index", "type": "usize", "required": true},
+            {"name": "to_index", "type": "usize", "required": true}
+          ],
+          "return_type": "Result<(), PlayerError>",
+          "errors": ["IndexOutOfBounds"]
+        },
+        "clear": {
+          "description": "Remove all tracks from the queue",
+          "params": [],
+          "return_type": "Result<Vec<Track>, PlayerError>",
+          "return_description": "All removed tracks"
+        },
+        "load_persisted": {
+          "description": "Load the queue from persistent storage (SQLite)",
+          "params": [],
+          "return_type": "Result<Vec<Track>, PlayerError>",
+          "errors": ["StorageError", "CorruptedData"]
+        },
+        "save": {
+          "description": "Persist the current queue to storage",
+          "params": [],
+          "return_type": "Result<(), PlayerError>",
+          "errors": ["StorageError"]
+        }
+      }
+    },
+    "PlaybackEngine": {
+      "description": "Controls audio playback operations",
+      "methods": {
+        "play": {
+          "description": "Start or resume playback",
+          "params": [],
+          "return_type": "Result<(), PlayerError>",
+          "errors": ["NoTrackLoaded", "AudioBackendError"]
+        },
+        "pause": {
+          "description": "Pause current playback",
+          "params": [],
+          "return_type": "Result<(), PlayerError>",
+          "errors": ["NotPlaying"]
+        },
+        "stop": {
+          "description": "Stop playback and reset position",
+          "params": [],
+          "return_type": "Result<(), PlayerError>"
+        },
+        "next": {
+          "description": "Skip to the next track",
+          "params": [],
+          "return_type": "Result<Option<Track>, PlayerError>",
+          "return_description": "The new current track, or None if queue ended",
+          "errors": ["QueueEmpty"]
+        },
+        "prev": {
+          "description": "Skip to the previous track",
+          "params": [],
+          "return_type": "Result<Option<Track>, PlayerError>",
+          "return_description": "The new current track, or None if at beginning",
+          "errors": ["QueueEmpty"]
+        },
+        "seek": {
+          "description": "Seek to a position in the current track",
+          "params": [
+            {"name": "position_ms", "type": "u64", "required": true}
+          ],
+          "return_type": "Result<u64, PlayerError>",
+          "return_description": "Actual position after seeking (clamped to duration)",
+          "errors": ["NoTrackLoaded", "SeekNotSupported"]
+        },
+        "set_speed": {
+          "description": "Set playback speed",
+          "params": [
+            {"name": "speed", "type": "f32", "required": true, "constraints": {"min": 0.25, "max": 4.0}}
+          ],
+          "return_type": "Result<f32, PlayerError>",
+          "return_description": "Actual speed set (clamped to valid range)",
+          "errors": ["InvalidSpeed"]
+        },
+        "get_position": {
+          "description": "Get current playback position",
+          "params": [],
+          "return_type": "Option<Duration>",
+          "return_description": "Current position, or None if no track loaded"
+        },
+        "get_duration": {
+          "description": "Get duration of the current track",
+          "params": [],
+          "return_type": "Option<Duration>",
+          "return_description": "Track duration, or None if no track loaded"
+        }
+      }
+    },
+    "CacheManager": {
+      "description": "Manages the decoded audio cache",
+      "methods": {
+        "prefetch": {
+          "description": "Prefetch upcoming tracks into cache",
+          "params": [
+            {"name": "track_ids", "type": "Vec<String>", "required": true}
+          ],
+          "return_type": "Result<Vec<CachePrefetchResult>, PlayerError>",
+          "errors": ["CacheFull", "TrackNotFound"]
+        },
+        "evict": {
+          "description": "Manually evict a track from cache",
+          "params": [
+            {"name": "track_id", "type": "String", "required": true}
+          ],
+          "return_type": "Result<bool, PlayerError>",
+          "return_description": "true if track was in cache and evicted"
+        },
+        "get_cached": {
+          "description": "Retrieve cached audio data for a track",
+          "params": [
+            {"name": "track_id", "type": "String", "required": true}
+          ],
+          "return_type": "Option<CachedTrackData>"
+        },
+        "cache_stats": {
+          "description": "Get current cache statistics",
+          "params": [],
+          "return_type": "CacheStats",
+          "return_description": "Current cache usage, hit rate, and entry count"
+        }
+      }
+    },
+    "StateStore": {
+      "description": "Persists and restores player state using sled",
+      "methods": {
+        "save_state": {
+          "description": "Save the current player state",
+          "params": [
+            {"name": "state", "type": "PlayerState", "required": true}
+          ],
+          "return_type": "Result<(), PlayerError>",
+          "errors": ["StorageError", "SerializationError"]
+        },
+        "load_state": {
+          "description": "Load the most recently saved player state",
+          "params": [],
+          "return_type": "Result<Option<PlayerState>, PlayerError>",
+          "errors": ["StorageError", "DeserializationError"]
+        },
+        "clear_state": {
+          "description": "Clear all persisted state",
+          "params": [],
+          "return_type": "Result<(), PlayerError>",
+          "errors": ["StorageError"]
+        }
+      }
+    }
+  },
+  "types": {
+    "Track": {
+      "fields": {
+        "track_id": "String (UUID v4)",
+        "title": "String",
+        "artist": "String",
+        "album": "String",
+        "duration_ms": "u64",
+        "file_path": "PathBuf",
+        "codec": "Codec",
+        "file_size_bytes": "u64",
+        "sample_rate": "u32",
+        "bit_depth": "u16",
+        "channels": "u8"
+      }
+    },
+    "Codec": {
+      "variants": ["Mp3", "Flac", "Ogg", "Wav", "Aac"]
+    },
+    "QueueTarget": {
+      "variants": ["ByIndex(usize)", "ByTrackId(String)"]
+    },
+    "PlayMode": {
+      "variants": ["Sequential", "Shuffle", "RepeatOne", "RepeatAll"]
+    },
+    "PlayerError": {
+      "variants": [
+        "QueueFull",
+        "QueueEmpty",
+        "TrackNotFound",
+        "IndexOutOfBounds",
+        "InvalidTrack",
+        "NoTrackLoaded",
+        "NotPlaying",
+        "SeekNotSupported",
+        "InvalidSpeed",
+        "AudioBackendError(String)",
+        "StorageError(String)",
+        "SerializationError(String)",
+        "DeserializationError(String)",
+        "CacheFull",
+        "CorruptedData"
+      ]
+    },
+    "CacheStats": {
+      "fields": {
+        "total_size_bytes": "u64",
+        "max_size_bytes": "u64",
+        "entry_count": "usize",
+        "hit_count": "u64",
+        "miss_count": "u64",
+        "hit_rate": "f64"
+      }
+    }
+  }
+}

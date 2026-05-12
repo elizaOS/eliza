@@ -83,7 +83,7 @@ def test_readiness_mentions_vad_native_ggml_caveat() -> None:
 
 def test_release_status_blockers_detect_local_standin_evidence(tmp_path: Path) -> None:
     plan = build_plan()
-    bundle = tmp_path / "bundles" / "eliza-1-1_7b.bundle"
+    bundle = tmp_path / "bundles" / "eliza-1-2b.bundle"
     (bundle / "evidence").mkdir(parents=True)
     (bundle / "evidence" / "release.json").write_text(
         json.dumps(
@@ -104,8 +104,8 @@ def test_release_status_blockers_detect_local_standin_evidence(tmp_path: Path) -
         )
     )
     blockers = release_status_blockers(tmp_path / "bundles", plan)
-    assert any("releaseState" in item for item in blockers["1_7b"])
-    assert any("final.weights" in item for item in blockers["1_7b"])
+    assert any("releaseState" in item for item in blockers["2b"])
+    assert any("final.weights" in item for item in blockers["2b"])
 
     text = render_readiness(plan, missing={}, blockers=blockers)
     assert "Publish-blocking status:" in text
@@ -118,7 +118,7 @@ def test_release_status_blockers_accept_base_v1_evidence(tmp_path: Path) -> None
     blocker for `base-v1` because the bytes are the upstream base GGUFs by
     design (recorded via `sourceModels`)."""
     plan = build_plan()
-    bundle = tmp_path / "bundles" / "eliza-1-1_7b.bundle"
+    bundle = tmp_path / "bundles" / "eliza-1-2b.bundle"
     (bundle / "evidence").mkdir(parents=True)
     (bundle / "evidence" / "release.json").write_text(
         json.dumps(
@@ -127,12 +127,12 @@ def test_release_status_blockers_accept_base_v1_evidence(tmp_path: Path) -> None
                 "publishEligible": True,
                 "finetuned": False,
                 "sourceModels": {
-                    "text": {"repo": "Qwen/Qwen3-1.7B-GGUF"},
+                    "text": {"repo": "Qwen/Qwen3.5-2B-GGUF"},
                     "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
                     "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
                     "vad": {"repo": "ggml-org/whisper-vad"},
                     "embedding": {"repo": "Qwen/Qwen3-Embedding-0.6B-GGUF"},
-                    "drafter": {"repo": "elizaos/eliza-1-1_7b"},
+                    "drafter": {"repo": "elizaos/eliza-1-2b"},
                 },
                 "final": {
                     # weights are the upstream base GGUFs by design — not a
@@ -150,14 +150,14 @@ def test_release_status_blockers_accept_base_v1_evidence(tmp_path: Path) -> None
         )
     )
     blockers = release_status_blockers(tmp_path / "bundles", plan)
-    assert blockers["1_7b"] == []
+    assert blockers["2b"] == []
 
 
 def test_release_status_blockers_base_v1_requires_finetuned_false(
     tmp_path: Path,
 ) -> None:
     plan = build_plan()
-    bundle = tmp_path / "bundles" / "eliza-1-1_7b.bundle"
+    bundle = tmp_path / "bundles" / "eliza-1-2b.bundle"
     (bundle / "evidence").mkdir(parents=True)
     (bundle / "evidence" / "release.json").write_text(
         json.dumps(
@@ -165,7 +165,7 @@ def test_release_status_blockers_base_v1_requires_finetuned_false(
                 "releaseState": "base-v1",
                 "publishEligible": True,
                 "finetuned": True,  # contradicts base-v1
-                "sourceModels": {"text": {"repo": "Qwen/Qwen3-1.7B-GGUF"}},
+                "sourceModels": {"text": {"repo": "Qwen/Qwen3.5-2B-GGUF"}},
                 "final": {
                     "weights": False,
                     "hashes": True,
@@ -180,4 +180,4 @@ def test_release_status_blockers_base_v1_requires_finetuned_false(
         )
     )
     blockers = release_status_blockers(tmp_path / "bundles", plan)
-    assert any("finetuned" in item for item in blockers["1_7b"])
+    assert any("finetuned" in item for item in blockers["2b"])

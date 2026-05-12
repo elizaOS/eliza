@@ -1,0 +1,114 @@
+{
+  "timestamp": "2026-02-10T09:16:00Z",
+  "run_id": 8421,
+  "chain": "ethereum",
+  "total_supply_usd": 2891700000,
+  "total_borrowed_usd": 1799600000,
+  "total_available_liquidity_usd": 1092100000,
+  "global_utilization": 0.622,
+  "alerts": [],
+  "markets": [
+    {
+      "symbol": "WETH",
+      "address": "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+      "price_usd": 2741.5,
+      "total_supply_usd": 812700000,
+      "total_borrowed_usd": 487600000,
+      "available_liquidity_usd": 325100000,
+      "utilization": 0.600,
+      "supply_apy": 0.0210,
+      "borrow_apy": 0.0280
+    },
+    {
+      "symbol": "wstETH",
+      "address": "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0",
+      "price_usd": 3248.7,
+      "total_supply_usd": 498000000,
+      "total_borrowed_usd": 99600000,
+      "available_liquidity_usd": 398400000,
+      "utilization": 0.200,
+      "supply_apy": 0.0080,
+      "borrow_apy": 0.0120
+    },
+    {
+      "symbol": "USDC",
+      "address": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "price_usd": 1.0000,
+      "total_supply_usd": 700000000,
+      "total_borrowed_usd": 590100000,
+      "available_liquidity_usd": 109900000,
+      "utilization": 0.843,
+      "supply_apy": 0.0380,
+      "borrow_apy": 0.0520
+    },
+    {
+      "symbol": "USDS",
+      "address": "0xdC035D45d973E3EC169d2276DDab16f1e407384F",
+      "price_usd": 1.0000,
+      "total_supply_usd": 356000000,
+      "total_borrowed_usd": 295500000,
+      "available_liquidity_usd": 60500000,
+      "utilization": 0.830,
+      "supply_apy": 0.0410,
+      "borrow_apy": 0.0550
+    },
+    {
+      "symbol": "DAI",
+      "address": "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+      "price_usd": 1.0000,
+      "total_supply_usd": 285000000,
+      "total_borrowed_usd": 225200000,
+      "available_liquidity_usd": 59800000,
+      "utilization": 0.790,
+      "supply_apy": 0.0390,
+      "borrow_apy": 0.0520
+    },
+    {
+      "symbol": "rETH",
+      "address": "0xae78736Cd615f374D3085123A210448E74Fc6393",
+      "price_usd": 2998.4,
+      "total_supply_usd": 60000000,
+      "total_borrowed_usd": 30000000,
+      "available_liquidity_usd": 30000000,
+      "utilization": 0.500,
+      "supply_apy": 0.0090,
+      "borrow_apy": 0.0150
+    },
+    {
+      "symbol": "cbBTC",
+      "address": "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf",
+      "price_usd": 97600.0,
+      "total_supply_usd": 118500000,
+      "total_borrowed_usd": 59300000,
+      "available_liquidity_usd": 59200000,
+      "utilization": 0.500,
+      "supply_apy": 0.0120,
+      "borrow_apy": 0.0180
+    },
+    {
+      "symbol": "weETH",
+      "address": "0xCd5fE23C85820F7B72D0926FC9b05b43E359b7ee",
+      "price_usd": 2695.3,
+      "total_supply_usd": 61500000,
+      "total_borrowed_usd": 12300000,
+      "available_liquidity_usd": 49200000,
+      "utilization": 0.200,
+      "supply_apy": 0.0070,
+      "borrow_apy": 0.0110
+    }
+  ],
+  "savings": {
+    "sUSDS": {
+      "vault": "0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD",
+      "tvl_usd": 1820000000,
+      "apy": 0.0625,
+      "status": "active"
+    },
+    "sUSDC": {
+      "vault": "0x0000000000000000000000000000000000000000",
+      "tvl_usd": null,
+      "apy": null,
+      "status": "not_deployed"
+    }
+  }
+}

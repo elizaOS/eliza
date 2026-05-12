@@ -20,6 +20,7 @@ import { LifeOpsService } from "../src/lifeops/service.ts";
 import {
   acceptCanonicalIdentityMerge,
   assertCanonicalIdentityMerged,
+  CANONICAL_IDENTITY_PLATFORMS,
   getCanonicalIdentityGraph,
   getCanonicalPersonDetail,
   seedCanonicalIdentityFixture,
@@ -34,6 +35,14 @@ function makeMessage(runtime: IAgentRuntime, text: string) {
     roomId: runtime.agentId,
     content: { text },
   };
+}
+
+function getEntityActionHandler() {
+  const { handler } = entityAction;
+  if (!handler) {
+    throw new Error("entityAction handler is required for relationships tests");
+  }
+  return handler;
 }
 
 describe("relationships handler — real PGLite", () => {
@@ -151,7 +160,7 @@ describe("relationships handler — real PGLite", () => {
   });
 
   it("entityAction list handler returns ActionResult", async () => {
-    const result = await entityAction.handler?.(
+    const result = await getEntityActionHandler()(
       runtime,
       makeMessage(runtime, "show me my contacts") as never,
       undefined,
@@ -164,7 +173,7 @@ describe("relationships handler — real PGLite", () => {
   });
 
   it("entityAction add handler persists a new contact", async () => {
-    const result = await entityAction.handler?.(
+    const result = await getEntityActionHandler()(
       runtime,
       makeMessage(runtime, "add Eve to rolodex") as never,
       undefined,
@@ -190,7 +199,7 @@ describe("relationships handler — real PGLite", () => {
   });
 
   it("entityAction add rejects missing fields", async () => {
-    const result = await entityAction.handler?.(
+    const result = await getEntityActionHandler()(
       runtime,
       makeMessage(runtime, "add contact") as never,
       undefined,
@@ -224,7 +233,7 @@ describe("relationships handler — real PGLite", () => {
       search: fixture.personName,
       limit: 10,
     });
-    expect(before.people).toHaveLength(4);
+    expect(before.people).toHaveLength(CANONICAL_IDENTITY_PLATFORMS.length);
 
     await acceptCanonicalIdentityMerge(runtime, fixture);
 
@@ -254,10 +263,18 @@ describe("relationships handler — real PGLite", () => {
 
     const detail = await getCanonicalPersonDetail(runtime, fixture.personName);
     expect(detail).toBeTruthy();
-    expect(detail?.memberEntityIds).toHaveLength(4);
-    expect(detail?.identities).toHaveLength(4);
-    expect(detail?.recentConversations).toHaveLength(4);
-    expect(detail?.identityEdges).toHaveLength(3);
+    expect(detail?.memberEntityIds).toHaveLength(
+      CANONICAL_IDENTITY_PLATFORMS.length,
+    );
+    expect(detail?.identities).toHaveLength(
+      CANONICAL_IDENTITY_PLATFORMS.length,
+    );
+    expect(detail?.recentConversations).toHaveLength(
+      CANONICAL_IDENTITY_PLATFORMS.length,
+    );
+    expect(detail?.identityEdges).toHaveLength(
+      CANONICAL_IDENTITY_PLATFORMS.length - 1,
+    );
     const transcript =
       detail?.recentConversations
         .flatMap((entry) => entry.messages.map((message) => message.text))
@@ -266,5 +283,6 @@ describe("relationships handler — real PGLite", () => {
     expect(transcript).toContain("Signal:");
     expect(transcript).toContain("Telegram:");
     expect(transcript).toContain("WhatsApp:");
+    expect(transcript).toContain("Discord:");
   });
 });

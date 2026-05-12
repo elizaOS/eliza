@@ -1,0 +1,45 @@
+@import "tailwindcss";
+
+@theme {
+  --font-custom: 'CustomFont', sans-serif;
+  --color-card-light: #f5f5f5;
+  --color-card-dark: #2a2a2a;
+}
+
+@font-face {
+  font-family: 'CustomFont';
+  src: url('/fonts/custom.woff2') format('woff2');
+}
+
+@layer base {
+  body {
+    font-family: var(--font-custom);
+    background-color: #ffffff;
+    color: #000000;
+    transition: background-color 0.3s, color 0.3s;
+  }
+
+  [data-theme='dark'] body {
+    background-color: #1a1a1a;
+    color: #ffffff;
+  }
+
+  :root {
+    --card-bg: #f5f5f5;
+    --border-color: #e5e5e5;
+    --text-muted: #737373;
+    --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  }
+
+  [data-theme='dark'] {
+    --card-bg: #262626;
+    --border-color: #404040;
+    --text-muted: #a3a3a3;
+    --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}

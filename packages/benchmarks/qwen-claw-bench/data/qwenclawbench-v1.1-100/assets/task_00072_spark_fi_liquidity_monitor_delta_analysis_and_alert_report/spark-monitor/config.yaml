@@ -1,0 +1,134 @@
+# Spark.fi Liquidity Monitor Configuration
+# Last updated: 2026-02-08
+
+# RPC endpoints (SparkLend is on Ethereum mainnet + Gnosis)
+rpc:
+  ethereum:
+    primary: "https://eth-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}"
+    fallback: "https://rpc.ankr.com/eth"
+    chain_id: 1
+  gnosis:
+    primary: "https://rpc.gnosischain.com"
+    fallback: "https://gnosis-mainnet.public.blastapi.io"
+    chain_id: 100
+
+# SparkLend contract addresses (Aave v3 fork)
+contracts:
+  ethereum:
+    pool: "0xC13e21B648A5Ee794902342038FF3aDAB66BE987"
+    pool_data_provider: "0xFc21d6d146E6086B8359705C8b28512a983db0cb"
+    oracle: "0x8105f69D9C41644c6A0803fDA7D03Aa70996cFD2"
+    pool_addresses_provider: "0x02C3eA4e34C0cBd694D2adFa2c690EECbC1793eE"
+  gnosis:
+    pool: "0x2Dae5307c5E3FD1CF5A72Cb6F698f915860607e0"
+    pool_data_provider: "0x2a002054A06546bB5a264D57A81347e23Af91D18"
+
+# Monitored assets (SparkLend core markets)
+assets:
+  - symbol: "WETH"
+    address: "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"
+    decimals: 18
+    liquidity_floor_usd: 50000000    # $50M minimum available liquidity
+    utilization_ceiling: 0.85         # Alert if utilization > 85%
+
+  - symbol: "wstETH"
+    address: "0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0"
+    decimals: 18
+    liquidity_floor_usd: 30000000
+    utilization_ceiling: 0.80
+
+  - symbol: "USDC"
+    address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+    decimals: 6
+    liquidity_floor_usd: 100000000   # $100M - core stablecoin
+    utilization_ceiling: 0.90
+
+  - symbol: "USDS"
+    address: "0xdC035D45d973E3EC169d2276DDab16f1e407384F"
+    decimals: 18
+    liquidity_floor_usd: 80000000
+    utilization_ceiling: 0.90
+
+  - symbol: "DAI"
+    address: "0x6B175474E89094C44Da98b954EedeAC495271d0F"
+    decimals: 18
+    liquidity_floor_usd: 40000000
+    utilization_ceiling: 0.90
+
+  - symbol: "rETH"
+    address: "0xae78736Cd615f374D3085123A210448E74Fc6393"
+    decimals: 18
+    liquidity_floor_usd: 15000000
+    utilization_ceiling: 0.75
+
+  - symbol: "cbBTC"
+    address: "0xcbB7C0000aB88B473b1f5aFd9ef808440eed33Bf"
+    decimals: 8
+    liquidity_floor_usd: 20000000
+    utilization_ceiling: 0.80
+
+  - symbol: "weETH"
+    address: "0xCd5fE23C85820F7B72D0926FC9b05b43E359b7ee"
+    decimals: 18
+    liquidity_floor_usd: 10000000
+    utilization_ceiling: 0.75
+
+# Spark Liquidity Layer monitoring
+liquidity_layer:
+  subgraph_url: "https://api.thegraph.com/subgraphs/name/spark-protocol/spark-liquidity-layer"
+  min_total_tvl_usd: 800000000      # Alert if total TVL drops below $800M
+  tvl_drop_pct_threshold: 10         # Alert on >10% TVL drop in 1 hour
+
+# Spark Savings (sUSDS / sUSDC)
+savings:
+  susds_vault: "0xa3931d71877C0E7a3148CB7Eb4463524FEc27fbD"
+  susdc_vault: "0x0000000000000000000000000000000000000000"  # TBD - not yet deployed
+  min_savings_tvl_usd: 1500000000
+  apy_floor: 0.03                    # Alert if APY drops below 3%
+
+# Alert thresholds
+alerts:
+  # Percentage change thresholds (1-hour window)
+  liquidity_drop_pct: 15             # Alert on >15% drop in available liquidity
+  borrow_rate_spike_bps: 200         # Alert on >200bps rate increase
+  supply_rate_drop_bps: 150          # Alert on >150bps rate decrease
+
+  # Absolute thresholds
+  health_factor_warning: 1.15        # Monitor positions with HF < 1.15
+  large_position_usd: 5000000        # Track positions > $5M
+
+# Notification channels
+notifications:
+  telegram:
+    enabled: true
+    bot_token: "${TELEGRAM_BOT_TOKEN}"
+    chat_id: "${TELEGRAM_CHAT_ID}"
+  discord:
+    enabled: false
+    webhook_url: "${DISCORD_WEBHOOK_URL}"
+  email:
+    enabled: false
+    smtp_host: "smtp.gmail.com"
+    smtp_port: 587
+    from_addr: "alerts@example.com"
+    to_addr: "defi-team@example.com"
+
+# Monitoring schedule
+schedule:
+  poll_interval_seconds: 300          # Check every 5 minutes
+  detailed_report_cron: "0 */6 * * *" # Full report every 6 hours
+  daily_summary_cron: "0 9 * * *"     # Daily summary at 9 AM UTC
+
+# Data storage
+storage:
+  snapshots_dir: "./data/snapshots"
+  reports_dir: "./data/reports"
+  max_snapshots: 2880                 # Keep 10 days of 5-min snapshots
+  export_format: "json"
+
+# Logging
+logging:
+  level: "INFO"
+  file: "./logs/spark-monitor.log"
+  max_size_mb: 50
+  backup_count: 5

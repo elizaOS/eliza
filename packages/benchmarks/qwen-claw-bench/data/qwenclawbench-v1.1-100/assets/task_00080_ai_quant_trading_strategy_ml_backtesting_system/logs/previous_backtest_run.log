@@ -1,0 +1,39 @@
+2023-10-28 09:15:01,234 INFO  [main] Starting AI Quant Backtesting System v0.3.2
+2023-10-28 09:15:01,235 INFO  [main] Loading configuration from config/strategy_params.yaml
+2023-10-28 09:15:01,241 INFO  [data] Loading OHLCV data from data/ohlcv_sample.csv
+2023-10-28 09:15:01,387 INFO  [data] Loaded 504 rows, date range: 2022-01-03 to 2023-12-07
+2023-10-28 09:15:01,388 INFO  [data] Price range: $79.86 - $122.39
+2023-10-28 09:15:01,389 INFO  [features] Computing Adaptive Bollinger Bands (window=20, std=2.0)
+2023-10-28 09:15:01,412 INFO  [features] Computing RSI (period=14)
+2023-10-28 09:15:01,425 INFO  [features] Computing ATR (period=14)
+2023-10-28 09:15:01,438 INFO  [features] Computing RSI divergence detection
+2023-10-28 09:15:01,456 WARNING [features] 30 rows contain NaN values after feature computation (warmup period)
+2023-10-28 09:15:01,457 INFO  [features] Dropping 30 NaN rows, 474 rows remaining
+2023-10-28 09:15:01,458 INFO  [labels] Computing triple barrier labels (profit_take=0.02, stop_loss=-0.02, max_holding=10)
+2023-10-28 09:15:01,623 INFO  [labels] Label distribution: 0=287 (61.4%), 1=180 (38.6%)
+2023-10-28 09:15:01,624 WARNING [labels] Class imbalance detected, ratio=1.59:1
+2023-10-28 09:15:01,625 INFO  [model] Training XGBoost classifier (n_estimators=150, max_depth=5, lr=0.05)
+2023-10-28 09:15:01,626 INFO  [model] Train/test split: 327 train, 140 test (temporal split)
+2023-10-28 09:15:01,627 INFO  [model] scale_pos_weight=1.594
+2023-10-28 09:15:03,891 INFO  [model] Training complete in 2.26s
+2023-10-28 09:15:03,912 INFO  [model] Test accuracy: 0.6143
+2023-10-28 09:15:03,913 INFO  [model] Test F1 score: 0.5721
+2023-10-28 09:15:03,914 INFO  [model] Test AUC: 0.6534
+2023-10-28 09:15:03,915 INFO  [model] Top features: bb_pct (0.182), rsi (0.156), atr_norm (0.143), bb_bandwidth (0.121)
+2023-10-28 09:15:03,916 INFO  [backtest] Starting event-driven backtest
+2023-10-28 09:15:03,917 INFO  [backtest] Initial capital: $100,000.00
+2023-10-28 09:15:03,918 INFO  [backtest] Commission rate: 0.001, Slippage: 5 bps
+2023-10-28 09:15:04,102 INFO  [backtest] Executed 47 trades (23 long entries, 24 exits)
+2023-10-28 09:15:04,103 WARNING [backtest] 3 signals skipped due to confidence below threshold
+2023-10-28 09:15:04,104 INFO  [backtest] ============ RESULTS ============
+2023-10-28 09:15:04,105 INFO  [backtest] Total Return: 12.30%
+2023-10-28 09:15:04,106 INFO  [backtest] Sharpe Ratio: 0.85
+2023-10-28 09:15:04,107 INFO  [backtest] Max Drawdown: -8.42%
+2023-10-28 09:15:04,108 INFO  [backtest] Win Rate: 52.17%
+2023-10-28 09:15:04,109 INFO  [backtest] Buy-and-Hold Return: 18.65%
+2023-10-28 09:15:04,110 INFO  [backtest] ================================
+2023-10-28 09:15:04,234 INFO  [viz] Saved equity curve to output/equity_curve.png
+2023-10-28 09:15:04,345 INFO  [viz] Saved drawdown chart to output/drawdown.png
+2023-10-28 09:15:04,456 INFO  [viz] Saved feature importance to output/feature_importance.png
+2023-10-28 09:15:04,567 INFO  [viz] Saved trade markers to output/trade_markers.png
+2023-10-28 09:15:04,568 INFO  [main] Backtest complete. Results saved to output/

@@ -1,4 +1,3 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { BIRDEYE_SUPPORTED_CHAINS } from "../utils";
 
 // Types

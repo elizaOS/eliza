@@ -837,27 +837,35 @@ function buildScopeRoleSeed(scenario, roomId, roomMeta) {
   const variantKey = typeof kw.variantKey === "string" ? kw.variantKey : "";
 
   // Authored variant key → scoped seed mode for the new RoleSeedPayload
-  // shape. Multiple authored variants land on the same conceptual mode
-  // because the rubric's check differs by mode, not by variant.
+  // shape. The rubric mode (from SCOPE_VARIANT_TO_MODE in
+  // personality-bench-bridge.mjs) is the canonical judge-side discriminator;
+  // scopeMode is only the server-side seeding tag used to pre-load roles.
   let scopeMode = null;
   if (
     variantKey === "user_tries_global_should_refuse" ||
     kw.forbidGlobalChangeFromUser === true
   ) {
+    // User attempts a global change against a hardened admin global — refuse.
     scopeMode = "conflict_implicit";
-  } else if (variantKey === "admin_global_then_user_override") {
+  } else if (
+    variantKey === "admin_global_then_user_override" ||
+    variantKey === "admin_global_terse_user_verbose" ||
+    variantKey === "admin_global_formal_user_casual"
+  ) {
+    // Admin set a global; user has an allowed per-session override. The
+    // server must seed both the global slot and the user slot.
     scopeMode = "conflict_explicit";
   } else if (
-    variantKey === "admin_global_terse_user_verbose" ||
-    variantKey === "admin_global_formal_user_casual" ||
     variantKey === "global_applies_to_admin_only" ||
     variantKey === "admin_global_setting_applies_to_all"
   ) {
+    // Admin global directive — seed the global slot.
     scopeMode = "global_wins";
   } else if (
     variantKey === "user_overrides_persist_across_unrelated_turns" ||
     variantKey === "per_user_isolation"
   ) {
+    // Per-user setting stays in the user's own room only.
     scopeMode = "user_wins";
   }
 

@@ -1,0 +1,49 @@
+task_id: M085_doc_figure_reproduction_bar
+task_name: Document Figure Reproduction - Grouped Bar Chart
+version: "1.0"
+category: doc_extraction
+difficulty: hard
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/2512.17495v2.pdf
+
+    I am preparing a presentation on the GroundingME benchmark and I need to
+    accurately recreate its performance gain chart.
+
+    Please locate Figure 5 ("Performance gain of different models by enabling
+    thinking mode") in the paper. Write a Python script named
+    /workspace/reproduce_fig5.py that fully reconstructs this chart. You must
+    ensure all details are completely consistent with the original figure.
+
+    Execute your script to generate the chart and save the final image as
+    /workspace/figure5_reproduce.png.
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files:
+  - fixtures/2512.17495v2.pdf
+sandbox_grader_files: []
+local_grader_files:
+  - fixtures/gt.png
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/reproduce_fig5.py
+  - /workspace/figure5_reproduce.png
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Read PDF Figure 5, write Python script using matplotlib/seaborn to
+  procedurally reconstruct the grouped bar chart with 7 models, No Think/Think
+  bars, red gain annotations, and individual bar values. Execute to generate PNG.
+primary_dimensions:
+  - completion
+  - robustness

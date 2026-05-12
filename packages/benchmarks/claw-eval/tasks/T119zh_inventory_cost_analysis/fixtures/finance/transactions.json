@@ -1,0 +1,89 @@
+[
+  {
+    "transaction_id": "TXN-801",
+    "date": "2026-03-10",
+    "amount": 3750.00,
+    "currency": "CNY",
+    "type": "采购",
+    "category": "办公用品",
+    "description": "A4打印纸 150箱 × 25元/箱",
+    "status": "completed",
+    "reference": "ITEM-801"
+  },
+  {
+    "transaction_id": "TXN-802",
+    "date": "2026-03-12",
+    "amount": 3600.00,
+    "currency": "CNY",
+    "type": "采购",
+    "category": "耗材",
+    "description": "墨盒HP-12A 20个 × 180元/个",
+    "status": "completed",
+    "reference": "ITEM-802"
+  },
+  {
+    "transaction_id": "TXN-803",
+    "date": "2026-03-15",
+    "amount": 15750.00,
+    "currency": "CNY",
+    "type": "采购",
+    "category": "IT设备",
+    "description": "机械键盘 45个 × 350元/个",
+    "status": "completed",
+    "reference": "ITEM-803"
+  },
+  {
+    "transaction_id": "TXN-804",
+    "date": "2026-03-18",
+    "amount": 26400.00,
+    "currency": "CNY",
+    "type": "采购",
+    "category": "IT设备",
+    "description": "显示器24寸 12台 × 2200元/台",
+    "status": "completed",
+    "reference": "ITEM-804"
+  },
+  {
+    "transaction_id": "TXN-805",
+    "date": "2026-03-08",
+    "amount": 3000.00,
+    "currency": "CNY",
+    "type": "采购",
+    "category": "耗材",
+    "description": "USB数据线 200根 × 15元/根",
+    "status": "completed",
+    "reference": "ITEM-805"
+  },
+  {
+    "transaction_id": "TXN-806a",
+    "date": "2026-03-05",
+    "amount": 480.00,
+    "currency": "CNY",
+    "type": "采购",
+    "category": "办公用品",
+    "description": "鼠标垫第一批 60个 × 8元/个",
+    "status": "completed",
+    "reference": "ITEM-806"
+  },
+  {
+    "transaction_id": "TXN-806b",
+    "date": "2026-03-20",
+    "amount": 480.00,
+    "currency": "CNY",
+    "type": "采购",
+    "category": "办公用品",
+    "description": "鼠标垫第二批 40个 × 12元/个",
+    "status": "completed",
+    "reference": "ITEM-806"
+  },
+  {
+    "transaction_id": "TXN-807",
+    "date": "2026-03-01",
+    "amount": 85000.00,
+    "currency": "CNY",
+    "type": "运营",
+    "category": "租金",
+    "description": "办公室3月份租金",
+    "status": "completed"
+  }
+]

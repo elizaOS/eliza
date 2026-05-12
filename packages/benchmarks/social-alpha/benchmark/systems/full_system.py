@@ -18,6 +18,7 @@ import json
 import math
 import os
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from ..protocol import ExtractionResult, SocialAlphaSystem, UserTrustScore
@@ -97,6 +98,105 @@ NOISE examples (no recommendation):
 - You MUST return exactly {count} objects"""
 
 
+@dataclass(frozen=True)
+class _LLMEndpoint:
+    provider: str
+    model: str
+    api_key: str
+    base_url: str
+    key_var: str
+
+
+_OPENAI_COMPATIBLE_BASE_URLS = {
+    "openai": "https://api.openai.com/v1",
+    "groq": "https://api.groq.com/openai/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "cerebras": "https://api.cerebras.ai/v1",
+    "vllm": "http://127.0.0.1:8001/v1",
+}
+
+_OPENAI_COMPATIBLE_KEY_VARS = {
+    "openai": "OPENAI_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "cerebras": "CEREBRAS_API_KEY",
+    "vllm": "VLLM_API_KEY",
+}
+
+
+def _provider_from_api_base(api_base: str) -> str:
+    lower = api_base.lower()
+    if "groq.com" in lower:
+        return "groq"
+    if "openrouter.ai" in lower:
+        return "openrouter"
+    if "cerebras.ai" in lower:
+        return "cerebras"
+    if "127.0.0.1" in lower or "localhost" in lower:
+        return "vllm"
+    return ""
+
+
+def _detect_llm_provider(model: str) -> str:
+    env_provider = (
+        os.environ.get("BENCHMARK_MODEL_PROVIDER")
+        or os.environ.get("MODEL_PROVIDER")
+        or ""
+    ).strip().lower()
+    if env_provider:
+        return env_provider
+
+    lower = model.lower()
+    for provider in _OPENAI_COMPATIBLE_BASE_URLS:
+        if lower.startswith(f"{provider}/"):
+            return provider
+
+    provider_from_base = _provider_from_api_base(os.environ.get("OPENAI_BASE_URL", ""))
+    if provider_from_base:
+        return provider_from_base
+
+    for provider, key_var in _OPENAI_COMPATIBLE_KEY_VARS.items():
+        if os.environ.get(key_var):
+            return provider
+    return "openai"
+
+
+def _strip_provider_prefix(model: str, provider: str) -> str:
+    prefix = f"{provider}/"
+    if model.lower().startswith(prefix):
+        return model[len(prefix):]
+    return model
+
+
+def _resolve_llm_endpoint(model: str) -> _LLMEndpoint:
+    provider = _detect_llm_provider(model)
+    if provider not in _OPENAI_COMPATIBLE_BASE_URLS:
+        supported = ", ".join(sorted(_OPENAI_COMPATIBLE_BASE_URLS))
+        raise RuntimeError(f"Unsupported FullSystem provider '{provider}'. Supported: {supported}")
+
+    key_var = _OPENAI_COMPATIBLE_KEY_VARS[provider]
+    api_key = os.environ.get(key_var, "")
+    if provider == "vllm" and not api_key:
+        api_key = os.environ.get("OPENAI_API_KEY", "local-vllm")
+    if not api_key:
+        raise RuntimeError(f"{key_var} not set in environment for provider={provider}")
+
+    provider_base_var = f"{provider.upper()}_BASE_URL"
+    base_url = (
+        os.environ.get("OPENAI_BASE_URL", "").strip()
+        or os.environ.get(provider_base_var, "").strip()
+        or _OPENAI_COMPATIBLE_BASE_URLS[provider]
+    )
+
+    return _LLMEndpoint(
+        provider=provider,
+        model=_strip_provider_prefix(model, provider),
+        api_key=api_key,
+        base_url=base_url.rstrip("/"),
+        key_var=key_var,
+    )
+
+
 class _ExtractionCache:
     """Persistent disk cache for LLM extraction results."""
 
@@ -130,8 +230,13 @@ class _ExtractionCache:
         return len(self._mem)
 
 
-def _call_openai(message: str, model: str, api_key: str) -> dict:
-    """Call OpenAI API for extraction. Returns parsed JSON result."""
+def _call_openai(
+    message: str,
+    model: str,
+    api_key: str,
+    base_url: str = "https://api.openai.com/v1",
+) -> dict:
+    """Call an OpenAI-compatible chat completions API for extraction."""
     import urllib.request
     import urllib.error
 
@@ -145,7 +250,7 @@ def _call_openai(message: str, model: str, api_key: str) -> dict:
     }).encode()
 
     req = urllib.request.Request(
-        "https://api.openai.com/v1/chat/completions",
+        f"{base_url.rstrip('/')}/chat/completions",
         data=body,
         headers={
             "Content-Type": "application/json",
@@ -175,15 +280,20 @@ def _call_openai(message: str, model: str, api_key: str) -> dict:
     return _error_result("Max retries exceeded")
 
 
-def _call_openai_batch_parallel(messages: list[str], model: str, api_key: str) -> list[dict]:
-    """Call OpenAI for multiple messages concurrently using threads (1 call per message)."""
+def _call_openai_batch_parallel(
+    messages: list[str],
+    model: str,
+    api_key: str,
+    base_url: str = "https://api.openai.com/v1",
+) -> list[dict]:
+    """Call an OpenAI-compatible API concurrently using threads."""
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
     results: list[dict] = [_error_result("not processed")] * len(messages)
     with ThreadPoolExecutor(max_workers=20) as pool:
         futures = {}
         for i, msg in enumerate(messages):
-            fut = pool.submit(_call_openai, msg, model, api_key)
+            fut = pool.submit(_call_openai, msg, model, api_key, base_url)
             futures[fut] = i
         for fut in as_completed(futures):
             idx = futures[fut]
@@ -195,7 +305,10 @@ def _call_openai_batch_parallel(messages: list[str], model: str, api_key: str) -
 
 
 def _call_openai_batch_single(
-    messages: list[str], model: str, api_key: str,
+    messages: list[str],
+    model: str,
+    api_key: str,
+    base_url: str = "https://api.openai.com/v1",
     ticker_watch: dict[str, int] | None = None,
 ) -> list[dict]:
     """Send multiple messages in ONE API call and parse the array response.
@@ -231,7 +344,7 @@ def _call_openai_batch_single(
     }).encode()
 
     req = urllib.request.Request(
-        "https://api.openai.com/v1/chat/completions",
+        f"{base_url.rstrip('/')}/chat/completions",
         data=body,
         headers={
             "Content-Type": "application/json",
@@ -427,10 +540,10 @@ class FullSystem(SocialAlphaSystem):
 
     def __init__(self, cache_dir: str | Path = ".benchmark_cache",
                  model: str = "openai/gpt-oss-120b") -> None:
-        self._api_key = os.environ.get("OPENAI_API_KEY", "")
-        self._model = model  # explicit model, don't trust env for this
-        if not self._api_key:
-            raise RuntimeError("OPENAI_API_KEY not set in environment")
+        self._endpoint = _resolve_llm_endpoint(model)
+        self._api_key = self._endpoint.api_key
+        self._api_base_url = self._endpoint.base_url
+        self._model = self._endpoint.model
 
         self._cache = _ExtractionCache(cache_dir)
         self._users: dict[str, _UserState] = {}
@@ -486,7 +599,7 @@ class FullSystem(SocialAlphaSystem):
 
         # Call LLM
         self._api_calls += 1
-        result_raw = _call_openai(message_text, self._model, self._api_key)
+        result_raw = _call_openai(message_text, self._model, self._api_key, self._api_base_url)
         self._cache.put(message_text, result_raw)
 
         # Progress + save cache periodically
@@ -638,9 +751,26 @@ class FullSystem(SocialAlphaSystem):
             futures = {}
             for sb_idx, sb in enumerate(sub_batches):
                 if use_batch and len(sb) > 1:
-                    fut = pool.submit(_call_openai_batch_single, sb, self._model, self._api_key, self._ticker_watch)
+                    fut = pool.submit(
+                        _call_openai_batch_single,
+                        sb,
+                        self._model,
+                        self._api_key,
+                        self._api_base_url,
+                        self._ticker_watch,
+                    )
                 else:
-                    fut = pool.submit(lambda m: [_call_openai(m[0], self._model, self._api_key)], sb)
+                    fut = pool.submit(
+                        lambda m: [
+                            _call_openai(
+                                m[0],
+                                self._model,
+                                self._api_key,
+                                self._api_base_url,
+                            )
+                        ],
+                        sb,
+                    )
                 futures[fut] = (sb_idx, sb)
 
             for fut in as_completed(futures):

@@ -1,32 +1,3 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
-
-import {
-  completeHealthConnectorOAuth,
-  deleteStoredHealthToken,
-  detectHealthBackend,
-  getDailySummary,
-  getDataPoints,
-  getRecentSummaries,
-  type HealthBackend,
-  type HealthBridgeConfig,
-  HealthBridgeError,
-  HealthConnectorApiError,
-  type HealthDailySummary,
-  type HealthDataPoint,
-  HealthOAuthError,
-  healthConnectorCapabilities,
-  readStoredHealthToken,
-  refreshStoredHealthToken,
-  resolveHealthOAuthConfig,
-  startHealthConnectorOAuth,
-  syncHealthConnectorData,
-} from "@elizaos/plugin-health";
 import type {
   DisconnectLifeOpsHealthConnectorRequest,
   GetLifeOpsHealthSummaryRequest,
@@ -47,6 +18,27 @@ import {
   LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES,
   LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
 } from "../contracts/index.js";
+import {
+  detectHealthBackend,
+  getDailySummary,
+  getDataPoints,
+  getRecentSummaries,
+  type HealthBackend,
+  type HealthBridgeConfig,
+  HealthBridgeError,
+  type HealthDailySummary,
+  type HealthDataPoint,
+  HealthConnectorApiError,
+  syncHealthConnectorData,
+  completeHealthConnectorOAuth,
+  deleteStoredHealthToken,
+  HealthOAuthError,
+  healthConnectorCapabilities,
+  readStoredHealthToken,
+  refreshStoredHealthToken,
+  resolveHealthOAuthConfig,
+  startHealthConnectorOAuth,
+} from "@elizaos/plugin-health";
 import {
   createLifeOpsConnectorGrant,
   createLifeOpsHealthSyncState,
@@ -905,7 +897,7 @@ export function withHealth<TBase extends Constructor<LifeOpsServiceBase>>(
     }
   }
 
-  return LifeOpsHealthServiceMixin as MixinClass<
+  return LifeOpsHealthServiceMixin as unknown as MixinClass<
     TBase,
     LifeOpsHealthServicePublic
   >;

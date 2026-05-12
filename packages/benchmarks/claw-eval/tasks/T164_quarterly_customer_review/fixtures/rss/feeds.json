@@ -1,0 +1,128 @@
+[
+  {
+    "article_id": "RSS-1601",
+    "title": "Software Industry Continues Strong Q1 Growth in 2026",
+    "summary": "The software development industry saw overall Q1 growth of 15%, with enterprise SaaS subscription penetration exceeding 60%. Leading software companies are significantly increasing R&D investment.",
+    "tags": [
+      "software",
+      "SaaS",
+      "growth"
+    ],
+    "url": "https://tech-observer.example.com/1601",
+    "content": "The software development industry saw overall Q1 growth of 15%, with enterprise SaaS subscription penetration exceeding 60%. Leading software companies are significantly increasing R&D investment.",
+    "category": "Software, SaaS, Growth",
+    "source": "Tech Industry Observer",
+    "published_at": "2026-03-20T00:00:00Z",
+    "word_count": 196
+  },
+  {
+    "article_id": "RSS-1602",
+    "title": "E-commerce Competition Intensifies, Squeezing Margins",
+    "summary": "Q1 e-commerce growth slowed to 5%, with small and mid-sized platforms facing fierce competition. Multiple companies have begun cutting IT spending to control costs.",
+    "tags": [
+      "e-commerce",
+      "competition",
+      "cost"
+    ],
+    "url": "https://tech-observer.example.com/1602",
+    "content": "Q1 e-commerce growth slowed to 5%, with small and mid-sized platforms facing fierce competition. Multiple companies have begun cutting IT spending to control costs.",
+    "category": "E-commerce, Competition, Cost",
+    "source": "Tech Industry Observer",
+    "published_at": "2026-03-18T00:00:00Z",
+    "word_count": 164
+  },
+  {
+    "article_id": "RSS-1603",
+    "title": "Logistics Industry Digital Investment Continues to Rise",
+    "summary": "Logistics companies increased Q1 digital investment by 25% year-over-year. Leading logistics firms are expanding system coverage, driving strong IT service demand.",
+    "tags": [
+      "logistics",
+      "digitalization",
+      "growth"
+    ],
+    "url": "https://tech-observer.example.com/1603",
+    "content": "Logistics companies increased Q1 digital investment by 25% year-over-year. Leading logistics firms are expanding system coverage, driving strong IT service demand.",
+    "category": "Logistics, Digitalization, Growth",
+    "source": "Tech Industry Observer",
+    "published_at": "2026-03-22T00:00:00Z",
+    "word_count": 163
+  },
+  {
+    "article_id": "RSS-1604",
+    "title": "Manufacturing IT Budgets See Major Cuts",
+    "summary": "Amid a global economic slowdown, manufacturing companies are broadly tightening IT budgets. SaaS renewal rates dropped 8 percentage points, with some companies downgrading or canceling subscriptions.",
+    "tags": [
+      "manufacturing",
+      "budget cuts",
+      "risk"
+    ],
+    "url": "https://tech-observer.example.com/1604",
+    "content": "Amid a global economic slowdown, manufacturing companies are broadly tightening IT budgets. SaaS renewal rates dropped 8 percentage points, with some companies downgrading or canceling subscriptions.",
+    "category": "Manufacturing, Budget Cuts, Risk",
+    "source": "Tech Industry Observer",
+    "published_at": "2026-03-15T00:00:00Z",
+    "word_count": 199
+  },
+  {
+    "article_id": "RSS-1605",
+    "title": "Media Industry Enters AI-Driven Golden Era",
+    "summary": "AI content generation and intelligent distribution technology are driving cost reduction and efficiency gains in the media industry. Advertiser digital spending grew 22% in Q1, with industry sentiment continuing to rise.",
+    "tags": [
+      "media",
+      "AI",
+      "growth"
+    ],
+    "url": "https://market-weekly.example.com/1605",
+    "content": "AI content generation and intelligent distribution technology are driving cost reduction and efficiency gains in the media industry. Advertiser digital spending grew 22% in Q1, with industry sentiment continuing to rise.",
+    "category": "Media, AI, Growth",
+    "source": "Market Trends Weekly",
+    "published_at": "2026-03-21T00:00:00Z",
+    "word_count": 220
+  },
+  {
+    "article_id": "RSS-1606",
+    "title": "Government Informatization Progresses Steadily",
+    "summary": "Multiple government agencies maintained stable 2026 informatization budgets, with key investments in data governance and security compliance. SaaS procurement remains at prior-year levels.",
+    "tags": [
+      "government",
+      "informatization",
+      "stable"
+    ],
+    "url": "https://market-weekly.example.com/1606",
+    "content": "Multiple government agencies maintained stable 2026 informatization budgets, with key investments in data governance and security compliance. SaaS procurement remains at prior-year levels.",
+    "category": "Government, Informatization, Stable",
+    "source": "Market Trends Weekly",
+    "published_at": "2026-03-19T00:00:00Z",
+    "word_count": 188
+  },
+  {
+    "article_id": "RSS-1607",
+    "title": "Q1 Enterprise Services Investment Roundup",
+    "summary": "The enterprise services sector completed 58 funding rounds in Q1, with AI-related projects accounting for over 65%.",
+    "tags": [
+      "investment",
+      "AI"
+    ],
+    "url": "https://market-weekly.example.com/1607",
+    "content": "The enterprise services sector completed 58 funding rounds in Q1, with AI-related projects accounting for over 65%.",
+    "category": "Investment, AI",
+    "source": "Market Trends Weekly",
+    "published_at": "2026-03-23T00:00:00Z",
+    "word_count": 115
+  },
+  {
+    "article_id": "RSS-1608",
+    "title": "Semiconductor Industry Capacity Continues to Expand",
+    "summary": "Global semiconductor capacity expanded 12% in Q1, with domestic manufacturers accelerating their catch-up efforts.",
+    "tags": [
+      "semiconductor",
+      "capacity"
+    ],
+    "url": "https://market-weekly.example.com/1608",
+    "content": "Global semiconductor capacity expanded 12% in Q1, with domestic manufacturers accelerating their catch-up efforts.",
+    "category": "Semiconductor, Capacity",
+    "source": "Market Trends Weekly",
+    "published_at": "2026-03-24T00:00:00Z",
+    "word_count": 114
+  }
+]

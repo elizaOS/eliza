@@ -1,4 +1,3 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   type Address,
@@ -7,8 +6,6 @@ import {
   createWalletClient,
   http,
   maxUint128,
-  type PublicClient,
-  type WalletClient,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import * as viemChains from "viem/chains";
@@ -32,6 +29,13 @@ import {
 } from "../types.ts";
 
 const SUPPORTED_CHAIN_IDS = [56, 1, 42161, 8453]; // BSC, Ethereum, Arbitrum, Base
+
+type EvmPublicClient = ReturnType<typeof createPublicClient>;
+type EvmWalletClient = ReturnType<typeof createWalletClient>;
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 function getViemChain(chainId: number): Chain {
   const chainMap: Record<number, Chain> = {
@@ -68,8 +72,8 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
   public readonly capabilityDescription =
     "Provides PancakeSwap V3 liquidity pool management for EVM chains.";
 
-  private publicClients: Map<number, PublicClient> = new Map();
-  private walletClients: Map<number, WalletClient> = new Map();
+  private publicClients: Map<number, EvmPublicClient> = new Map();
+  private walletClients: Map<number, EvmWalletClient> = new Map();
   private rpcUrls: Map<number, string> = new Map();
 
   constructor(runtime?: IAgentRuntime) {
@@ -98,7 +102,7 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
     }
   }
 
-  private getPublicClient(chainId: number): PublicClient {
+  private getPublicClient(chainId: number): EvmPublicClient {
     let client = this.publicClients.get(chainId);
     if (client) return client;
 
@@ -114,7 +118,10 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
     return client;
   }
 
-  private getWalletClient(chainId: number, privateKey: `0x${string}`): WalletClient {
+  private getWalletClient(
+    chainId: number,
+    privateKey: `0x${string}`,
+  ): EvmWalletClient {
     const cacheKey = chainId;
     let client = this.walletClients.get(cacheKey);
     if (client) return client;
@@ -282,11 +289,13 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
         poolAddress,
         tokenA: {
           address: token0 as Address,
+          mint: token0 as Address,
           symbol: symbol0 as string,
           decimals: Number(decimals0),
         },
         tokenB: {
           address: token1 as Address,
+          mint: token1 as Address,
           symbol: symbol1 as string,
           decimals: Number(decimals1),
         },
@@ -300,7 +309,10 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
 
       return poolInfo;
     } catch (error) {
-      logger.error(`[PancakeSwapV3LpService] Error fetching pool info for ${poolAddress}:`, error);
+      logger.error(
+        `[PancakeSwapV3LpService] Error fetching pool info for ${poolAddress}:`,
+        errorMessage(error),
+      );
       return null;
     }
   }
@@ -396,10 +408,14 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
         },
       };
     } catch (error) {
-      logger.error("[PancakeSwapV3LpService] Error adding liquidity:", error);
+      logger.error(
+        "[PancakeSwapV3LpService] Error adding liquidity:",
+        errorMessage(error),
+      );
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error adding liquidity",
+        error:
+          error instanceof Error ? error.message : "Unknown error adding liquidity",
       };
     }
   }
@@ -490,7 +506,10 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
           });
           await walletClient.writeContract(burnRequest);
         } catch (burnError) {
-          logger.debug("[PancakeSwapV3LpService] Could not burn position NFT:", burnError);
+          logger.debug(
+            "[PancakeSwapV3LpService] Could not burn position NFT:",
+            errorMessage(burnError),
+          );
         }
       }
 
@@ -503,10 +522,16 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
         gasUsed: receipt.gasUsed,
       };
     } catch (error) {
-      logger.error("[PancakeSwapV3LpService] Error removing liquidity:", error);
+      logger.error(
+        "[PancakeSwapV3LpService] Error removing liquidity:",
+        errorMessage(error),
+      );
       return {
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error removing liquidity",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Unknown error removing liquidity",
       };
     }
   }
@@ -544,7 +569,10 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
         tokensOwed1: result[11],
       };
     } catch (error) {
-      logger.error(`[PancakeSwapV3LpService] Error fetching position ${tokenId}:`, error);
+      logger.error(
+        `[PancakeSwapV3LpService] Error fetching position ${tokenId}:`,
+        errorMessage(error),
+      );
       return null;
     }
   }
@@ -623,6 +651,8 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
             symbol: symbol1 as string,
           },
         ],
+        accruedFees: [],
+        rewards: [],
       };
     }
 
@@ -678,7 +708,10 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
         }
       }
     } catch (error) {
-      logger.error("[PancakeSwapV3LpService] Error fetching all positions:", error);
+      logger.error(
+        "[PancakeSwapV3LpService] Error fetching all positions:",
+        errorMessage(error),
+      );
     }
 
     return positions;
@@ -713,12 +746,16 @@ export class PancakeSwapV3LpService extends Service implements IEvmLpService {
   ): Promise<void> {
     const publicClient = this.getPublicClient(chainId);
     const walletClient = this.getWalletClient(chainId, privateKey);
+    const ownerAddress = walletClient.account?.address;
+    if (!ownerAddress) {
+      throw new Error("Wallet account is required to approve token spending.");
+    }
 
     const allowance = await publicClient.readContract({
       address: tokenAddress,
       abi: ERC20_ABI,
       functionName: "allowance",
-      args: [walletClient.account?.address, spenderAddress],
+      args: [ownerAddress, spenderAddress],
     });
 
     if ((allowance as bigint) >= amount) {

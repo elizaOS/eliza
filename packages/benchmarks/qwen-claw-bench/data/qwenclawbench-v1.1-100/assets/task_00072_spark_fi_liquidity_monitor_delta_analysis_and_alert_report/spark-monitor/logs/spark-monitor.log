@@ -1,0 +1,79 @@
+2026-02-10 09:16:21 [INFO] Starting scheduled monitoring run #8421
+2026-02-10 09:16:22 [ERROR] Ethereum primary RPC failed: HTTP 401 Unauthorized (ALCHEMY_API_KEY not configured)
+2026-02-10 09:16:22 [INFO] Falling back to https://rpc.ankr.com/eth
+2026-02-10 09:16:25 [INFO] Connected to Ethereum mainnet via fallback RPC
+2026-02-10 09:16:36 [INFO] Fetched pool data for 8 assets
+2026-02-10 09:16:37 [INFO] Connecting to Gnosis chain: https://rpc.gnosischain.com
+2026-02-10 09:16:49 [ERROR] Gnosis primary RPC timeout (12s)
+2026-02-10 09:16:50 [INFO] Falling back to https://gnosis-mainnet.public.blastapi.io
+2026-02-10 09:17:01 [ERROR] Gnosis fallback RPC timeout (11s)
+2026-02-10 09:17:01 [WARNING] Gnosis chain skipped — both RPCs unreachable
+2026-02-10 09:17:02 [INFO] Snapshot saved → spark-monitor/data/snapshots/snapshot_2026-02-10T09-16-00Z.json
+2026-02-10 09:17:02 [INFO] Run #8421 complete. 0 alerts generated.
+2026-02-10 09:17:02 [INFO] Next run in 300s
+2026-02-10 09:21:23 [INFO] Starting scheduled monitoring run #8422
+2026-02-10 09:21:25 [ERROR] Ethereum primary RPC failed: HTTP 401 Unauthorized
+2026-02-10 09:21:26 [INFO] Falling back to https://rpc.ankr.com/eth
+2026-02-10 09:21:29 [INFO] Connected to Ethereum mainnet via fallback RPC
+2026-02-10 09:21:40 [INFO] Fetched pool data for 8 assets
+2026-02-10 09:21:41 [WARNING] Gnosis chain skipped — both RPCs unreachable (persistent)
+2026-02-10 09:21:42 [INFO] Snapshot saved → spark-monitor/data/snapshots/snapshot_2026-02-10T09-21-00Z.json
+2026-02-10 09:21:42 [INFO] Run #8422 complete. 0 alerts generated.
+[... runs #8423–#8432 complete normally with 0 alerts ...]
+2026-02-10 10:16:23 [INFO] Starting scheduled monitoring run #8433
+2026-02-10 10:16:24 [ERROR] Ethereum primary RPC failed: HTTP 401 Unauthorized (ALCHEMY_API_KEY not configured)
+2026-02-10 10:16:24 [INFO] Falling back to https://rpc.ankr.com/eth
+2026-02-10 10:16:27 [INFO] Connected to Ethereum mainnet via fallback RPC
+2026-02-10 10:16:38 [INFO] Fetched pool data for 8 assets
+2026-02-10 10:16:39 [WARNING] Gnosis chain skipped — both RPCs unreachable (persistent)
+2026-02-10 10:16:40 [INFO] Snapshot saved → spark-monitor/data/snapshots/snapshot_2026-02-10T10-16-00Z.json
+2026-02-10 10:16:41 [WARNING] ALERT [CRITICAL] USDC: utilization=0.941 exceeds ceiling=0.900
+2026-02-10 10:16:41 [WARNING] ALERT [WARNING] sUSDS: APY=2.80% below floor=3.00%
+2026-02-10 10:16:42 [INFO] Run #8433 complete. 2 alerts generated.
+2026-02-10 10:16:42 [INFO] Next run in 300s
+2026-02-10 10:21:24 [INFO] Starting scheduled monitoring run #8434
+2026-02-10 10:21:24 [ERROR] Ethereum primary RPC failed: HTTP 401 Unauthorized
+2026-02-10 10:21:25 [ERROR] Fallback RPC error: 429 Too Many Requests (rate limited)
+2026-02-10 10:21:25 [INFO] Retrying in 10s...
+2026-02-10 10:21:36 [ERROR] Fallback RPC error: 429 Too Many Requests
+2026-02-10 10:21:36 [CRITICAL] All Ethereum RPCs unavailable — aborting run #8434
+2026-02-10 10:26:24 [INFO] Starting scheduled monitoring run #8435
+2026-02-10 10:26:25 [ERROR] Ethereum primary RPC failed: HTTP 401 Unauthorized
+2026-02-10 10:26:25 [ERROR] Fallback RPC error: 429 Too Many Requests
+2026-02-10 10:26:25 [CRITICAL] All Ethereum RPCs unavailable — aborting run #8435
+2026-02-10 10:31:24 [INFO] Starting scheduled monitoring run #8436
+2026-02-10 10:31:25 [ERROR] Ethereum primary RPC failed: HTTP 401 Unauthorized
+2026-02-10 10:31:25 [ERROR] Fallback RPC error: 429 Too Many Requests
+2026-02-10 10:31:25 [CRITICAL] All Ethereum RPCs unavailable — aborting run #8436
+2026-02-10 10:36:24 [INFO] Starting scheduled monitoring run #8437
+2026-02-10 10:36:24 [ERROR] Ethereum primary RPC failed: HTTP 401 Unauthorized
+2026-02-10 10:36:25 [ERROR] Fallback RPC error: 429 Too Many Requests
+2026-02-10 10:36:25 [CRITICAL] All Ethereum RPCs unavailable — aborting run #8437
+2026-02-10 10:41:24 [INFO] Starting scheduled monitoring run #8438
+2026-02-10 10:41:25 [ERROR] Ethereum primary RPC failed: HTTP 401 Unauthorized
+2026-02-10 10:41:25 [ERROR] Fallback RPC error: 429 Too Many Requests
+2026-02-10 10:41:25 [CRITICAL] All Ethereum RPCs unavailable — aborting run #8438
+2026-02-10 10:46:24 [INFO] Starting scheduled monitoring run #8439
+2026-02-10 10:46:25 [ERROR] Ethereum primary RPC failed: HTTP 401 Unauthorized
+2026-02-10 10:46:25 [ERROR] Fallback RPC error: 429 Too Many Requests
+2026-02-10 10:46:25 [CRITICAL] All Ethereum RPCs unavailable — aborting run #8439
+2026-02-10 10:51:24 [INFO] Starting scheduled monitoring run #8440
+2026-02-10 10:51:25 [ERROR] Ethereum primary RPC failed: HTTP 401 Unauthorized
+2026-02-10 10:51:25 [ERROR] Fallback RPC error: 429 Too Many Requests
+2026-02-10 10:51:25 [CRITICAL] All Ethereum RPCs unavailable — aborting run #8440
+2026-02-10 10:56:24 [INFO] Starting scheduled monitoring run #8441
+2026-02-10 10:56:24 [ERROR] Ethereum primary RPC failed: HTTP 401 Unauthorized
+2026-02-10 10:56:25 [ERROR] Fallback RPC error: 429 Too Many Requests
+2026-02-10 10:56:25 [CRITICAL] All Ethereum RPCs unavailable — aborting run #8441
+2026-02-10 11:01:24 [INFO] Starting scheduled monitoring run #8442
+2026-02-10 11:01:25 [ERROR] Ethereum primary RPC failed: HTTP 401 Unauthorized
+2026-02-10 11:01:25 [ERROR] Fallback RPC error: 429 Too Many Requests
+2026-02-10 11:01:25 [CRITICAL] All Ethereum RPCs unavailable — aborting run #8442
+2026-02-10 11:06:24 [INFO] Starting scheduled monitoring run #8443
+2026-02-10 11:06:25 [ERROR] Ethereum primary RPC failed: HTTP 401 Unauthorized
+2026-02-10 11:06:25 [ERROR] Fallback RPC error: 429 Too Many Requests
+2026-02-10 11:06:25 [CRITICAL] All Ethereum RPCs unavailable — aborting run #8443
+2026-02-10 11:11:24 [INFO] Starting scheduled monitoring run #8444
+2026-02-10 11:11:25 [ERROR] Ethereum primary RPC failed: HTTP 401 Unauthorized
+2026-02-10 11:11:25 [ERROR] Fallback RPC error: 429 Too Many Requests
+2026-02-10 11:11:25 [CRITICAL] All Ethereum RPCs unavailable — aborting run #8444

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  attributeVoiceImprintObservations,
   cosineSimilarity,
   matchVoiceImprint,
   normalizeVoiceEmbedding,
@@ -101,5 +102,74 @@ describe("speaker-imprint", () => {
       second.centroidEmbedding[1],
     );
     expect(second.confidence).toBeCloseTo(0.65, 6);
+  });
+
+  it("attributes diarized observation embeddings without granting synthesis or identity authority", () => {
+    const profiles: VoiceImprintProfile[] = [
+      {
+        id: "cluster-owner",
+        label: "Owner",
+        displayName: "Owner",
+        entityId: "entity-owner",
+        centroidEmbedding: [1, 0],
+        embeddingModel: "eliza-voice-embed-v1",
+        confidence: 0.9,
+      },
+      {
+        id: "cluster-guest",
+        label: "Guest",
+        entityId: "entity-guest",
+        centroidEmbedding: [0, 1],
+        embeddingModel: "eliza-voice-embed-v1",
+        confidence: 0.8,
+      },
+    ];
+    const source = {
+      kind: "local_mic" as const,
+      deviceId: "default-input",
+      roomId: "room-1",
+    };
+
+    const result = attributeVoiceImprintObservations({
+      defaultSource: source,
+      profiles,
+      threshold: 0.8,
+      observations: [
+        {
+          id: "obs-owner-1",
+          segmentId: "seg-owner-1",
+          text: "I am the owner",
+          startMs: 0,
+          endMs: 1200,
+          embedding: [0.99, 0.02],
+          embeddingModel: "eliza-voice-embed-v1",
+        },
+        {
+          id: "obs-guest-1",
+          segmentId: "seg-guest-1",
+          text: "and I am a guest",
+          startMs: 1300,
+          endMs: 2100,
+          embedding: [0.02, 0.99],
+          embeddingModel: "eliza-voice-embed-v1",
+        },
+      ],
+    });
+
+    expect(result.summary).toMatchObject({
+      totalObservations: 2,
+      matchedObservations: 2,
+      unmatchedObservations: 0,
+    });
+    expect(result.primarySpeaker?.entityId).toBe("entity-owner");
+    expect(result.segments.map((segment) => segment.speaker?.entityId)).toEqual(
+      ["entity-owner", "entity-guest"],
+    );
+    expect(result.segments[0].metadata).toMatchObject({
+      attributionOnly: true,
+      imprintClusterId: "cluster-owner",
+      imprintObservationId: "obs-owner-1",
+      entityId: "entity-owner",
+    });
   });
 });

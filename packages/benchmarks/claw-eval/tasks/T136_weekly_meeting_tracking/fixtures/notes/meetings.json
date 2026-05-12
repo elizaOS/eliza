@@ -1,0 +1,49 @@
+[
+  {
+    "note_id": "NOTE-501",
+    "title": "Product Requirements Weekly Meeting Minutes 3/16",
+    "content": "## Product Requirements Weekly Meeting\n\n### Action Items\n1. [Wang Ming] Complete requirements prioritization document, due 3/22\n2. [Li Hua] Evaluate microservices decomposition feasibility, due 3/25\n3. [Zhao Lei] Collect and summarize customer feedback, due 3/20",
+    "participants": [
+      "Wang Ming",
+      "Li Hua",
+      "Zhao Lei"
+    ],
+    "tags": [
+      "product",
+      "requirements"
+    ],
+    "created_at": "2026-03-16T10:00:00Z",
+    "duration_minutes": 60
+  },
+  {
+    "note_id": "NOTE-502",
+    "title": "Technical Review Meeting Minutes 3/18",
+    "content": "## Technical Review\n\n### Action Items\n1. [Li Hua] Write API gateway design document, due 3/25\n2. [Ma Qiang] Complete stress test report, due 3/22\n3. [Zhou Ming] Frontend performance optimization plan, due 3/24",
+    "participants": [
+      "Li Hua",
+      "Ma Qiang",
+      "Zhou Ming"
+    ],
+    "tags": [
+      "technical",
+      "architecture"
+    ],
+    "created_at": "2026-03-18T10:00:00Z",
+    "duration_minutes": 60
+  },
+  {
+    "note_id": "NOTE-503",
+    "title": "Customer Progress Sync Meeting Minutes 3/20",
+    "content": "## Customer Progress\n\n### Action Items\n1. [Zhao Lei] Update Dingxin Software contract proposal, due 3/25\n2. [Wang Ming] Arrange tech team to support Wantong Logistics POC, due 3/27",
+    "participants": [
+      "Zhao Lei",
+      "Wang Ming"
+    ],
+    "tags": [
+      "customer",
+      "sales"
+    ],
+    "created_at": "2026-03-20T10:00:00Z",
+    "duration_minutes": 60
+  }
+]

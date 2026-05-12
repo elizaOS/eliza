@@ -118,17 +118,21 @@ import "@elizaos/app-polymarket";
 // page, and chat sidebar wallet-status widget) with the app shell registries.
 // Must precede the first shell render.
 import "@elizaos/app-wallet";
-// Side-effect: register the AOSP-only Phone / Contacts / WiFi overlay apps.
+// Side-effect: register the AOSP-only Phone / Contacts / Messages / Device
+// Settings / WiFi overlay apps.
 // Each `register` module gates itself on `isElizaOS()` so stock Android, iOS,
 // desktop, and web bundles bring the modules in without registering anything.
-// On Eliza-derived AOSP images (ElizaOS, ElizaOS, …) the corresponding
+// On Eliza-derived AOSP images (ElizaOS or a white-label fork) the corresponding
 // overlay app shows up in the apps catalog and is launchable as a system
 // surface. `@elizaos/app-phone` already side-effect-registers via the
 // `PhoneCompanionApp` named import above, but the explicit imports here keep
-// the three apps symmetric and survive a future barrel cleanup that drops
+// these apps symmetric and survive a future barrel cleanup that drops
 // `register.js` from the package index.
-import "@elizaos/app-contacts";
-import "@elizaos/app-wifi";
+import "@elizaos/app-contacts/register";
+import "@elizaos/app-device-settings/register";
+import "@elizaos/app-messages/register";
+import "@elizaos/app-phone/register";
+import "@elizaos/app-wifi/register";
 import { shouldUseCloudOnlyBranding } from "@elizaos/ui";
 import {
   APP_BRANDING_BASE,
@@ -201,10 +205,13 @@ const IOS_RUNTIME_ENV_CONFIG = resolveIosRuntimeConfig(import.meta.env);
 const DEVICE_BRIDGE_ID_KEY = `${APP_NAMESPACE}_device_bridge_id`;
 const BACKGROUND_RUNNER_LABEL = "eliza-tasks";
 const BACKGROUND_RUNNER_CONFIG_RETRY_MS = 5_000;
+const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
+const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 
 let mobileDeviceBridgeClient: DeviceBridgeClient | null = null;
 let mobileDeviceBridgeStartPromise: Promise<void> | null = null;
 let mobileRuntimeModeListenerInstalled = false;
+let keyboardListenersRegistered = false;
 let lifecycleListenersRegistered = false;
 let networkStatusListenerRegistered = false;
 
@@ -352,6 +359,206 @@ function logNativePluginUnavailable(pluginName: string, error: unknown): void {
   );
 }
 
+function parseSmokeJsonBody(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const body = (value as { body?: unknown }).body;
+  if (typeof body !== "string") return null;
+  try {
+    return JSON.parse(body);
+  } catch {
+    return null;
+  }
+}
+
+function assertSmokeHttpOk(label: string, value: unknown): void {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} did not return an object`);
+  }
+  const status = (value as { status?: unknown }).status;
+  if (typeof status !== "number" || status < 200 || status >= 300) {
+    throw new Error(`${label} returned HTTP ${String(status ?? "unknown")}`);
+  }
+}
+
+async function writeIosFullBunSmokeResult(
+  result: Record<string, unknown>,
+): Promise<void> {
+  const value = JSON.stringify({
+    ...result,
+    updatedAt: new Date().toISOString(),
+  });
+  try {
+    window.localStorage.setItem(IOS_FULL_BUN_SMOKE_RESULT_KEY, value);
+  } catch {
+    // Ignore localStorage failures; Preferences is the simulator harness source of truth.
+  }
+  await Preferences.set({
+    key: IOS_FULL_BUN_SMOKE_RESULT_KEY,
+    value,
+  });
+}
+
+async function runIosFullBunSmokeIfRequested(): Promise<void> {
+  let requested = false;
+  try {
+    const request = await Preferences.get({
+      key: IOS_FULL_BUN_SMOKE_REQUEST_KEY,
+    });
+    requested = request.value === "1";
+  } catch {
+    requested = false;
+  }
+  if (!requested) {
+    try {
+      requested =
+        window.localStorage.getItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY) === "1";
+    } catch {
+      requested = false;
+    }
+  }
+  if (!requested) return;
+
+  await writeIosFullBunSmokeResult({
+    ok: false,
+    phase: "running",
+    startedAt: new Date().toISOString(),
+  });
+
+  try {
+    const { ElizaBunRuntime } = await import("@elizaos/capacitor-bun-runtime");
+    const started = await ElizaBunRuntime.start({
+      engine: "bun",
+      argv: ["bun", "public/agent/agent-bundle.js", "ios-bridge", "--stdio"],
+      env: {
+        ELIZA_PLATFORM: "ios",
+        ELIZA_MOBILE_PLATFORM: "ios",
+        ELIZA_IOS_LOCAL_BACKEND: "1",
+        ELIZA_IOS_FULL_BUN_SMOKE: "1",
+        ELIZA_HEADLESS: "1",
+        ELIZA_API_BIND: "127.0.0.1",
+        LOG_LEVEL: "error",
+      },
+    });
+    if (!started.ok) {
+      throw new Error(
+        started.error ?? "ElizaBunRuntime.start returned ok=false",
+      );
+    }
+
+    const status = await ElizaBunRuntime.getStatus();
+    if (!status.ready || status.engine !== "bun") {
+      throw new Error(
+        `ElizaBunRuntime status was ready=${String(status.ready)} engine=${status.engine ?? "unknown"}`,
+      );
+    }
+
+    const bridgeStatus = await ElizaBunRuntime.call({
+      method: "status",
+      args: { timeoutMs: 60_000 },
+    });
+    const health = await ElizaBunRuntime.call({
+      method: "http_request",
+      args: {
+        method: "GET",
+        path: "/api/health",
+        headers: { accept: "application/json" },
+        timeoutMs: 120_000,
+      },
+    });
+    assertSmokeHttpOk("full Bun /api/health", health.result);
+    const healthJson = parseSmokeJsonBody(health.result) as {
+      ready?: unknown;
+      runtime?: unknown;
+    } | null;
+    if (
+      !healthJson ||
+      healthJson.ready !== true ||
+      healthJson.runtime !== "ok"
+    ) {
+      throw new Error(
+        `full Bun /api/health returned unexpected body: ${JSON.stringify(healthJson)}`,
+      );
+    }
+
+    const fetchHealthResponse = await fetch(
+      `${MOBILE_LOCAL_AGENT_API_BASE}/api/health`,
+      { headers: { accept: "application/json" } },
+    );
+    if (!fetchHealthResponse.ok) {
+      throw new Error(
+        `WebView fetch bridge /api/health returned HTTP ${fetchHealthResponse.status}`,
+      );
+    }
+    const fetchHealth = (await fetchHealthResponse.json()) as {
+      ready?: unknown;
+      runtime?: unknown;
+    };
+    if (fetchHealth.ready !== true || fetchHealth.runtime !== "ok") {
+      throw new Error(
+        `WebView fetch bridge /api/health returned unexpected body: ${JSON.stringify(fetchHealth)}`,
+      );
+    }
+
+    const created = await ElizaBunRuntime.call({
+      method: "http_request",
+      args: {
+        method: "POST",
+        path: "/api/conversations",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ title: "iOS Full Bun Smoke" }),
+        timeoutMs: 120_000,
+      },
+    });
+    assertSmokeHttpOk("full Bun POST /api/conversations", created.result);
+    const createdJson = parseSmokeJsonBody(created.result) as {
+      conversation?: { id?: unknown };
+    } | null;
+    const conversationId = createdJson?.conversation?.id;
+    if (typeof conversationId !== "string" || !conversationId) {
+      throw new Error("full Bun conversation create did not return an id");
+    }
+
+    const sendMessage = await ElizaBunRuntime.call({
+      method: "send_message",
+      args: {
+        message: "iOS full Bun simulator smoke",
+        conversationId,
+        metadata: { smoke: "ios-full-bun" },
+        timeoutMs: 180_000,
+      },
+    });
+
+    await writeIosFullBunSmokeResult({
+      ok: true,
+      phase: "complete",
+      finishedAt: new Date().toISOString(),
+      runtimeStatus: status,
+      bridgeStatus: bridgeStatus.result,
+      health: healthJson,
+      fetchHealth,
+      conversationId,
+      sendMessage: sendMessage.result,
+    });
+  } catch (error) {
+    await writeIosFullBunSmokeResult({
+      ok: false,
+      phase: "failed",
+      finishedAt: new Date().toISOString(),
+      error: error instanceof Error ? error.message : String(error),
+    });
+  } finally {
+    try {
+      window.localStorage.removeItem(IOS_FULL_BUN_SMOKE_REQUEST_KEY);
+    } catch {
+      // Ignore localStorage failures; Preferences removal below is authoritative.
+    }
+    await Preferences.remove({ key: IOS_FULL_BUN_SMOKE_REQUEST_KEY });
+  }
+}
+
 async function initializeAgent(): Promise<void> {
   try {
     const status = await Agent.getStatus();
@@ -367,6 +574,7 @@ async function initializeAgent(): Promise<void> {
 async function initializePlatform(): Promise<void> {
   await initializeStorageBridge();
   initializeCapacitorBridge();
+  void runIosFullBunSmokeIfRequested();
 
   if (isIOS || isAndroid) {
     await initializeStatusBar();
@@ -410,12 +618,15 @@ async function initializeStatusBar(): Promise<void> {
 }
 
 async function initializeKeyboard(): Promise<void> {
+  if (keyboardListenersRegistered) return;
+
   if (isIOS) {
     await Keyboard.setResizeMode({ mode: KeyboardResize.None });
     await Keyboard.setScroll({ isDisabled: true });
     await Keyboard.setAccessoryBarVisible({ isVisible: true });
   }
 
+  keyboardListenersRegistered = true;
   Keyboard.addListener("keyboardWillShow", (info) => {
     document.body.style.setProperty(
       "--keyboard-height",
@@ -569,6 +780,13 @@ function handleDeepLink(url: string): void {
             console.error(
               `${APP_LOG_PREFIX} Invalid gateway URL protocol:`,
               validatedUrl.protocol,
+            );
+            break;
+          }
+          if (!isTrustedApiBaseUrl(validatedUrl)) {
+            console.warn(
+              `${APP_LOG_PREFIX} Rejected untrusted gateway URL host:`,
+              validatedUrl.hostname,
             );
             break;
           }
@@ -760,6 +978,31 @@ function isPopoutWindow(): boolean {
   return getWindowUrlSearchParams().has("popout");
 }
 
+function isTrustedPrivateHttpHost(host: string): boolean {
+  return (
+    /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    host.endsWith(".local") ||
+    host.endsWith(".internal") ||
+    host.endsWith(".ts.net")
+  );
+}
+
+function isTrustedApiBaseUrl(parsed: URL): boolean {
+  const host = parsed.hostname;
+  return (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "[::1]" ||
+    host === "::1" ||
+    host === window.location.hostname ||
+    parsed.protocol === "https:" ||
+    (parsed.protocol === "http:" && isTrustedPrivateHttpHost(host))
+  );
+}
+
 /**
  * Validates an apiBase string and applies it to the boot config.
  * Allows localhost, loopback, HTTPS, and private-network HTTP hosts.
@@ -767,26 +1010,13 @@ function isPopoutWindow(): boolean {
 function validateAndSetApiBase(apiBase: string): void {
   try {
     const parsed = new URL(apiBase);
-    const host = parsed.hostname;
-    const allowPrivateHttp =
-      /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
-      /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host) ||
-      /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host) ||
-      /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}$/.test(host) ||
-      host.endsWith(".local") ||
-      host.endsWith(".internal") ||
-      host.endsWith(".ts.net");
-    if (
-      host === "localhost" ||
-      host === "127.0.0.1" ||
-      host === "::1" ||
-      host === window.location.hostname ||
-      parsed.protocol === "https:" ||
-      (parsed.protocol === "http:" && allowPrivateHttp)
-    ) {
+    if (isTrustedApiBaseUrl(parsed)) {
       setBootConfig({ ...getBootConfig(), apiBase });
     } else {
-      console.warn(`${APP_LOG_PREFIX} Rejected non-local apiBase:`, host);
+      console.warn(
+        `${APP_LOG_PREFIX} Rejected non-local apiBase:`,
+        parsed.hostname,
+      );
     }
   } catch {
     if (apiBase.startsWith("/") && !apiBase.startsWith("//")) {

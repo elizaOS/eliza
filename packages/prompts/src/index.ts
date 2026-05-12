@@ -29,13 +29,15 @@ output:
 JSON only. One JSON object. No prose, no <think>.
 
 Example:
-contactName: Jane Doe
-entityId:
-categories: vip,colleague
-notes: Met at the design summit
-timezone: America/New_York
-language: English
-reason: Important collaborator to remember
+{
+  "contactName": "Jane Doe",
+  "entityId": null,
+  "categories": "vip,colleague",
+  "notes": "Met at the design summit",
+  "timezone": "America/New_York",
+  "language": "English",
+  "reason": "Important collaborator to remember"
+}
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;
@@ -59,8 +61,10 @@ Your last autonomous note: "{{lastThought}}"
 Continue from that note. Output a JSON thought and take action if needed.
 
 Example (no action this round):
-thought: Continuing from prior note; nothing new to act on.
-actions:
+{
+  "thought": "Continuing from prior note; nothing new to act on.",
+  "actions": []
+}
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;
@@ -83,8 +87,10 @@ USER CONTEXT (most recent last):
 Think briefly, then output a JSON thought and take action if needed.
 
 Example (no action this round):
-thought: Inspecting current state; nothing to act on this round.
-actions:
+{
+  "thought": "Inspecting current state; nothing to act on this round.",
+  "actions": []
+}
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;
@@ -111,8 +117,10 @@ Your last autonomous note: "{{lastThought}}"
 Continue the task. Output a JSON thought and take action now.
 
 Example (no action this round):
-thought: Waiting on prior step to complete; nothing to do this round.
-actions:
+{
+  "thought": "Waiting on prior step to complete; nothing to do this round.",
+  "actions": []
+}
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;
@@ -136,9 +144,15 @@ USER CHAT CONTEXT (most recent last):
 Decide what to do next. Output a JSON thought, then take the most useful action.
 
 Example:
-thought: Need to gather UI state before acting.
-actions[1]:
-  - name: COMPUTER_USE_INSPECT
+{
+  "thought": "Need to gather UI state before acting.",
+  "actions": [
+    {
+      "name": "COMPUTER_USE_INSPECT",
+      "parameters": {}
+    }
+  ]
+}
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;
@@ -155,9 +169,11 @@ export const chooseOptionTemplate = `# Task: Choose an option from available cho
 # Instructions:
 Select the most appropriate option based on context. Provide reasoning and selected option ID.
 
-JSON:
-thought: Your reasoning for the selection
-selected_id: The ID of the selected option
+JSON shape:
+{
+  "thought": "Your reasoning for the selection",
+  "selected_id": "The ID of the selected option"
+}
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;
@@ -661,8 +677,7 @@ export const messageHandlerTemplate = `task: {{#if directMessage}}Decide the pla
 available_contexts:
 {{availableContexts}}
 
-{{#if directMessage}}- this is a direct message; shouldRespond is hardcoded to RESPOND
-- do not include shouldRespond; only write replyText, contexts, and thought
+{{#if directMessage}}- this is a direct/private message; when the schema includes shouldRespond, set RESPOND for real user speech/message, IGNORE only for empty/noise/ambient transcript that is not asking you to engage, and STOP only when the user explicitly asks you to stop. If the schema omits shouldRespond, do not invent it.
 {{else}}shouldRespond:
 - RESPOND: agent should answer or do work
 - IGNORE: skip this message

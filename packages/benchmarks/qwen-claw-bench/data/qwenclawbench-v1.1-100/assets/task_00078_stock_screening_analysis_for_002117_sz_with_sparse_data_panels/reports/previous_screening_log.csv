@@ -1,0 +1,51 @@
+run_date,stock_id,stock_name,recommendation,confidence,info_quality
+2025-11-20,601688.SH,Huatai Securities,include,0.65,sparse
+2025-11-20,000002.SZ,China Vanke,exclude,0.75,conflicting
+2025-11-20,000725.SZ,BOE Technology,exclude,0.3,rich
+2025-11-20,002271.SZ,Oriental Yuhong,hold,0.54,sparse
+2025-11-20,002475.SZ,Luxshare Precision,include,0.5,conflicting
+2025-11-20,300124.SZ,Inovance Technology,hold,0.93,sparse
+2025-11-20,000568.SZ,Luzhou Laojiao,include,0.78,rich
+2025-11-20,601398.SH,ICBC,exclude,0.34,sparse
+2025-11-20,002271.SZ,Oriental Yuhong,hold,0.32,sparse
+2025-11-20,002352.SZ,S.F. Holding,hold,0.71,rich
+2025-11-20,601668.SH,China State Construction,exclude,0.64,sparse
+2025-11-20,600900.SH,China Yangtze Power,hold,0.91,rich
+2025-11-20,600585.SH,Anhui Conch Cement,hold,0.73,rich
+2025-11-20,601888.SH,China Tourism Group,include,0.31,conflicting
+2025-11-20,601688.SH,Huatai Securities,include,0.63,conflicting
+2025-11-20,002475.SZ,Luxshare Precision,include,0.65,conflicting
+2025-11-20,603259.SH,WuXi AppTec,include,0.79,sparse
+2025-11-20,000568.SZ,Luzhou Laojiao,include,0.83,conflicting
+2025-11-20,601688.SH,Huatai Securities,include,0.34,conflicting
+2025-11-20,300015.SZ,Aier Eye Hospital,hold,0.89,rich
+2025-11-20,002475.SZ,Luxshare Precision,hold,0.92,sparse
+2025-11-20,600585.SH,Anhui Conch Cement,exclude,0.83,conflicting
+2025-11-20,600585.SH,Anhui Conch Cement,hold,0.75,rich
+2025-11-20,600276.SH,Hengrui Medicine,hold,0.28,rich
+2025-11-20,601888.SH,China Tourism Group,include,0.49,rich
+2025-11-20,600276.SH,Hengrui Medicine,include,0.68,conflicting
+2025-11-20,601398.SH,ICBC,hold,0.44,rich
+2025-11-20,300750.SZ,CATL,include,0.81,rich
+2025-11-20,601688.SH,Huatai Securities,hold,0.28,sparse
+2025-11-20,300750.SZ,CATL,exclude,0.53,rich
+2025-11-20,000725.SZ,BOE Technology,include,0.8,sparse
+2025-11-20,002714.SZ,Muyuan Foods,include,0.41,conflicting
+2025-11-20,002304.SZ,Yanghe Brewery,exclude,0.59,rich
+2025-11-20,601398.SH,ICBC,hold,0.75,conflicting
+2025-11-20,002271.SZ,Oriental Yuhong,include,0.89,rich
+2025-11-20,002415.SZ,Hikvision,include,0.89,sparse
+2025-11-20,300124.SZ,Inovance Technology,hold,0.7,sparse
+2025-11-20,000333.SZ,Midea Group,include,0.58,sparse
+2025-11-20,002714.SZ,Muyuan Foods,exclude,0.78,conflicting
+2025-11-20,002594.SZ,BYD Company,hold,0.26,rich
+2025-11-20,000651.SZ,Gree Electric,hold,0.56,sparse
+2025-11-20,002714.SZ,Muyuan Foods,hold,0.51,rich
+2025-11-20,002475.SZ,Luxshare Precision,hold,0.34,sparse
+2025-11-20,600887.SH,Yili Group,include,0.56,conflicting
+2025-11-20,601668.SH,China State Construction,exclude,0.32,void
+2025-11-20,002271.SZ,Oriental Yuhong,exclude,0.51,rich
+2025-11-20,002352.SZ,S.F. Holding,hold,0.66,sparse
+2025-11-20,600887.SH,Yili Group,hold,0.88,conflicting
+2025-11-20,002352.SZ,S.F. Holding,hold,0.59,sparse
+2025-11-20,002352.SZ,S.F. Holding,hold,0.79,rich

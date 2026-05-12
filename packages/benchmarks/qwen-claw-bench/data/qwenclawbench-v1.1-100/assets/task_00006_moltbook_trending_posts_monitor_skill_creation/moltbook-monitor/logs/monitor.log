@@ -1,0 +1,50 @@
+[2026-02-09T03:00:05Z] [INFO] Starting Moltbook monitor run (category=all, dry_run=false, force=false)
+[2026-02-09T03:00:05Z] [INFO] Fetching trending posts from Moltbook API...
+[2026-02-09T03:00:06Z] [INFO] Fetched 25 trending posts
+[2026-02-09T03:00:06Z] [INFO] After dedup: 6 new posts
+[2026-02-09T03:00:06Z] [INFO] Classification: {"viral": 1, "hot": 2, "normal": 3}
+[2026-02-09T03:00:07Z] [INFO] Webhook 'moltbot-primary': OK
+[2026-02-09T03:00:07Z] [INFO] Telegram 'tg-moltbook-feed': OK
+[2026-02-09T03:00:07Z] [INFO] Monitor run complete. Pushed 6 posts.
+[2026-02-09T06:00:04Z] [INFO] Starting Moltbook monitor run (category=all, dry_run=false, force=false)
+[2026-02-09T06:00:05Z] [INFO] Fetching trending posts from Moltbook API...
+[2026-02-09T06:00:05Z] [INFO] Fetched 25 trending posts
+[2026-02-09T06:00:06Z] [INFO] After dedup: 3 new posts
+[2026-02-09T06:00:06Z] [INFO] Classification: {"viral": 0, "hot": 1, "normal": 2}
+[2026-02-09T06:00:06Z] [INFO] Webhook 'moltbot-primary': OK
+[2026-02-09T06:00:07Z] [INFO] Telegram 'tg-moltbook-feed': OK
+[2026-02-09T06:00:07Z] [INFO] Monitor run complete. Pushed 3 posts.
+[2026-02-09T09:00:03Z] [INFO] Starting Moltbook monitor run (category=all, dry_run=false, force=false)
+[2026-02-09T09:00:04Z] [INFO] Fetching trending posts from Moltbook API...
+[2026-02-09T09:00:04Z] [INFO] Fetched 25 trending posts
+[2026-02-09T09:00:04Z] [INFO] After dedup: 5 new posts
+[2026-02-09T09:00:04Z] [INFO] Classification: {"viral": 1, "hot": 3, "normal": 1}
+[2026-02-09T09:00:05Z] [INFO] Webhook 'moltbot-primary': OK
+[2026-02-09T09:00:05Z] [INFO] Telegram 'tg-moltbook-feed': OK
+[2026-02-09T09:00:05Z] [INFO] Monitor run complete. Pushed 5 posts.
+[2026-02-09T12:00:04Z] [INFO] Starting Moltbook monitor run (category=all, dry_run=false, force=false)
+[2026-02-09T12:00:05Z] [INFO] Fetching trending posts from Moltbook API...
+[2026-02-09T12:00:06Z] [ERROR] API request failed: HTTP 429 Too Many Requests
+[2026-02-09T12:00:06Z] [WARN] Retrying in 30 seconds...
+[2026-02-09T12:00:37Z] [INFO] Fetched 25 trending posts
+[2026-02-09T12:00:37Z] [INFO] After dedup: 7 new posts
+[2026-02-09T12:00:37Z] [INFO] Classification: {"viral": 2, "hot": 3, "normal": 2}
+[2026-02-09T12:00:38Z] [INFO] Webhook 'moltbot-primary': OK
+[2026-02-09T12:00:38Z] [INFO] Telegram 'tg-moltbook-feed': OK
+[2026-02-09T12:00:38Z] [INFO] Monitor run complete. Pushed 7 posts.
+[2026-02-09T15:00:04Z] [INFO] Starting Moltbook monitor run (category=all, dry_run=false, force=false)
+[2026-02-09T15:00:05Z] [INFO] Fetching trending posts from Moltbook API...
+[2026-02-09T15:00:05Z] [INFO] Fetched 25 trending posts
+[2026-02-09T15:00:05Z] [INFO] After dedup: 2 new posts
+[2026-02-09T15:00:06Z] [INFO] Classification: {"viral": 0, "hot": 1, "normal": 1}
+[2026-02-09T15:00:06Z] [INFO] Webhook 'moltbot-primary': OK
+[2026-02-09T15:00:06Z] [INFO] Telegram 'tg-moltbook-feed': OK
+[2026-02-09T15:00:06Z] [INFO] Monitor run complete. Pushed 2 posts.
+[2026-02-09T15:30:11Z] [INFO] Starting Moltbook monitor run (category=all, dry_run=false, force=false)
+[2026-02-09T15:30:12Z] [INFO] Fetching trending posts from Moltbook API...
+[2026-02-09T15:30:12Z] [INFO] Fetched 25 trending posts
+[2026-02-09T15:30:12Z] [INFO] After dedup: 4 new posts
+[2026-02-09T15:30:12Z] [INFO] Classification: {"viral": 0, "hot": 2, "normal": 2}
+[2026-02-09T15:30:13Z] [INFO] Webhook 'moltbot-primary': OK
+[2026-02-09T15:30:13Z] [INFO] Telegram 'tg-moltbook-feed': OK
+[2026-02-09T15:30:13Z] [INFO] Monitor run complete. Pushed 4 posts.

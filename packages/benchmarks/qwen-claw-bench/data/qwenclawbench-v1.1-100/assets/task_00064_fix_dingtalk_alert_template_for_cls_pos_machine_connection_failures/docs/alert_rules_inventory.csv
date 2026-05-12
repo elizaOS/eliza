@@ -1,0 +1,16 @@
+rule_id,rule_name,severity,query,threshold,channel,status
+ALR-014,CDN回源率告警,info,cdn_metrics | where origin_ratio > 0.3,origin_ratio > 0.3,email,disabled
+ALR-007,内存使用率告警,warning,host_metrics | where mem_usage > 90,mem_usage > 90,email,disabled
+ALR-003,订单延迟告警,critical,order_log | where latency > 5000,count > 10,"dingtalk,email",active
+ALR-013,容器重启告警,warning,k8s_events | where reason='Restarted',count > 3,dingtalk,active
+ALR-006,支付网关超时告警,critical,payment_log | where status='timeout',count > 3,"dingtalk,sms",active
+ALR-010,SSL证书过期告警,critical,cert_monitor | where days_left < 7,days_left < 7,"dingtalk,email,sms",active
+ALR-001,收款机连接失败告警,critical,pos_conn_fail | stats count(*) as cnt,cnt > 0,"dingtalk,sms",active
+ALR-004,磁盘空间不足告警,warning,host_metrics | where disk_usage > 85,disk_usage > 85,email,active
+ALR-002,CPU使用率告警,warning,host_metrics | where cpu_usage > 90,cpu_usage > 90,dingtalk,active
+ALR-008,API错误率告警,critical,api_access_log | where status >= 500,error_rate > 0.05,"dingtalk,email",active
+ALR-012,登录异常告警,critical,auth_log | where login_fail_count > 10,count > 10,"dingtalk,sms",active
+ALR-009,消息队列积压告警,warning,mq_metrics | where pending > 10000,pending > 10000,dingtalk,active
+ALR-015,门店离线告警,critical,store_heartbeat | where offline_min > 10,count > 0,"dingtalk,wecom",active
+ALR-011,网络丢包率告警,warning,network_metrics | where packet_loss > 1,packet_loss > 1,email,disabled
+ALR-005,数据库慢查询告警,warning,db_slow_query | where duration > 3000,count > 5,dingtalk,active

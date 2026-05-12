@@ -371,16 +371,16 @@ def build_canonical_surface(eliza_root: Path) -> tuple[dict, list[str]]:
 # corpus surface extraction
 # ---------------------------------------------------------------------------
 
-# TOON: `actions[N]: NAME` or `actions: NAME` (single-action syntactic sugar)
-TOON_ACTIONS_RE = re.compile(
+# native JSON: `tool_calls[] NAME` or `actions: NAME` (single-action syntactic sugar)
+NATIVE_JSON_ACTIONS_RE = re.compile(
     r"actions(?:\[\d+\])?\s*:\s*([A-Z][A-Z0-9_]+(?:\s*,\s*[A-Z][A-Z0-9_]+)*)",
 )
-# TOON: `action: NAME` (singular) — used in routing emit shapes.
-TOON_ACTION_SINGULAR_RE = re.compile(
+# native JSON: `action: NAME` (singular) — used in routing emit shapes.
+NATIVE_JSON_ACTION_SINGULAR_RE = re.compile(
     r"\baction\s*:\s*\"?([A-Z][A-Z0-9_]+)\"?",
 )
-# TOON: `providers[N]: NAME` (or array form `providers[N,2]:`).
-TOON_PROVIDERS_RE = re.compile(
+# native JSON: `providers: [] NAME` (or array form `providers[N,2]:`).
+NATIVE_JSON_PROVIDERS_RE = re.compile(
     r"providers(?:\[[^\]]*\])?\s*:\s*([A-Z][A-Z0-9_]+(?:\s*,\s*[A-Z][A-Z0-9_]+)*)",
 )
 # JSON-shape inside expectedResponse for action_planner: `"actions": ["X","Y"]`.
@@ -397,12 +397,12 @@ XML_PROVIDER_RE = re.compile(r"<provider>\s*([A-Z][A-Z0-9_]+)\s*</provider>")
 
 def _scan_actions(text: str) -> set[str]:
     found: set[str] = set()
-    for m in TOON_ACTIONS_RE.finditer(text):
+    for m in NATIVE_JSON_ACTIONS_RE.finditer(text):
         for tok in m.group(1).split(","):
             tok = tok.strip()
             if tok:
                 found.add(tok)
-    for m in TOON_ACTION_SINGULAR_RE.finditer(text):
+    for m in NATIVE_JSON_ACTION_SINGULAR_RE.finditer(text):
         found.add(m.group(1))
     for m in JSON_ACTIONS_RE.finditer(text):
         for tok in re.findall(r'"([A-Z][A-Z0-9_]+)"', m.group(1)):
@@ -414,7 +414,7 @@ def _scan_actions(text: str) -> set[str]:
 
 def _scan_providers(text: str) -> set[str]:
     found: set[str] = set()
-    for m in TOON_PROVIDERS_RE.finditer(text):
+    for m in NATIVE_JSON_PROVIDERS_RE.finditer(text):
         for tok in m.group(1).split(","):
             tok = tok.strip()
             if tok:

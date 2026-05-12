@@ -1,7 +1,7 @@
 """Synthesize ~900 canonical training records for web3 plugin actions.
 
 Targets 9 actions across plugin-evm and plugin-solana. Emits the canonical
-flat eliza shape (see SCHEMA.md / lib/eliza_record.py) with TOON
+flat eliza shape (see SCHEMA.md / lib/eliza_record.py) with native JSON
 `tool_calls[N]` envelopes as `expectedResponse`.
 
 Output:

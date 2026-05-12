@@ -40,6 +40,19 @@ export function normalizeSystemPromptRole(
 	return normalized || undefined;
 }
 
+// Mirrors `@elizaos/shared/src/utils/name-tokens.ts:replaceNameTokens`.
+// Inlined because `@elizaos/core` does not depend on `@elizaos/shared` at
+// runtime. Onboarding-preset characters ship with `{{name}}` / `{{agentName}}`
+// tokens in `system` and `bio` (PR #7101 deliberately preserves them on save
+// so renames propagate), so the canonical prompt builder must resolve them
+// before forwarding text to the model.
+function substituteNamePlaceholders(value: string, name: string): string {
+	if (!value) return value;
+	return value
+		.replace(/\{\{\s*name\s*\}\}/g, name)
+		.replace(/\{\{\s*agentName\s*\}\}/g, name);
+}
+
 export function buildCanonicalSystemPrompt(args: {
 	character?: Pick<Character, "name" | "system" | "bio"> | null;
 	userRole?: RoleGateRole | string | null;

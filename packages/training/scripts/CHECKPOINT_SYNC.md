@@ -13,7 +13,7 @@ checkpoint_sync_loop.sh  ── pulls checkpoint-* dirs from Vast every 30 min
 training/checkpoints/<run-name>/checkpoint-<N>/
        │
        ▼
-eval_loop.sh             ── scores each new checkpoint with eliza_bench
+eval_loop.sh             ── scores each new checkpoint with native_tool_call_bench
        │
        ▼
 training/checkpoints/<run-name>/_progress.jsonl

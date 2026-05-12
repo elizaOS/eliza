@@ -48,6 +48,8 @@ const SYNCED_KEYS = new Set([
   "eliza:ios-local-agent:browser-workspace:v1",
   "eliza:ios-local-agent:wallet-market-overview:v1",
   "eliza:ios-local-agent:eliza-1-bundles:v1",
+  "eliza:ios-full-bun-smoke:request",
+  "eliza:ios-full-bun-smoke:result",
 ]);
 
 // In-memory cache of values from Preferences (for native)

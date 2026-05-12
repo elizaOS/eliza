@@ -1,5 +1,5 @@
 {
-  "generatedAtIso": "2026-05-12T00:55:18.904Z",
+  "generatedAtIso": "2026-05-12T07:09:58.830Z",
   "provider": "cerebras",
   "model": "gpt-oss-120b",
   "domainsGraded": 28,
@@ -55,12 +55,12 @@
       "domain": 4,
       "title": "Routines & multi-step daily flows",
       "verdict": "pass",
-      "rationale": "All tasks reached their expected terminal states and pipeline children were created with correct statuses and parent links.",
+      "rationale": "All tasks reached their expected terminal states and pipeline children were created and scheduled as defined",
       "usage": {
         "promptTokens": 2160,
-        "completionTokens": 85,
-        "totalTokens": 2245,
-        "cachedTokens": 1024
+        "completionTokens": 79,
+        "totalTokens": 2239,
+        "cachedTokens": 0
       },
       "tasksObserved": 3,
       "logEntriesObserved": 5
@@ -69,12 +69,12 @@
       "domain": 5,
       "title": "Tasks (one-off)",
       "verdict": "pass",
-      "rationale": "The task reached completed status with correct fields and early completion is allowed; no required logs or fields are missing.",
+      "rationale": "The task reached completed status with appropriate reason despite early completion, which is allowed per rules.",
       "usage": {
         "promptTokens": 1460,
-        "completionTokens": 87,
-        "totalTokens": 1547,
-        "cachedTokens": 1408
+        "completionTokens": 106,
+        "totalTokens": 1566,
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 2
@@ -102,7 +102,7 @@
         "promptTokens": 1386,
         "completionTokens": 96,
         "totalTokens": 1482,
-        "cachedTokens": 1280
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -153,12 +153,12 @@
       "domain": 11,
       "title": "Follow-up repair (relationships)",
       "verdict": "pass",
-      "rationale": "The watcher completed via the subject_updated check as expected, with correct terminal status and log entries.",
+      "rationale": "The watcher task completed as expected with correct status and completion check handling.",
       "usage": {
         "promptTokens": 1699,
-        "completionTokens": 92,
-        "totalTokens": 1791,
-        "cachedTokens": 1024
+        "completionTokens": 94,
+        "totalTokens": 1793,
+        "cachedTokens": 0
       },
       "tasksObserved": 1,
       "logEntriesObserved": 4
@@ -172,7 +172,7 @@
         "promptTokens": 1752,
         "completionTokens": 85,
         "totalTokens": 1837,
-        "cachedTokens": 1664
+        "cachedTokens": 1024
       },
       "tasksObserved": 2,
       "logEntriesObserved": 3
@@ -228,7 +228,7 @@
         "promptTokens": 1717,
         "completionTokens": 122,
         "totalTokens": 1839,
-        "cachedTokens": 1664
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 4
@@ -326,7 +326,7 @@
         "promptTokens": 1395,
         "completionTokens": 119,
         "totalTokens": 1514,
-        "cachedTokens": 1280
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -354,7 +354,7 @@
         "promptTokens": 1347,
         "completionTokens": 95,
         "totalTokens": 1442,
-        "cachedTokens": 1280
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -382,7 +382,7 @@
         "promptTokens": 1380,
         "completionTokens": 75,
         "totalTokens": 1455,
-        "cachedTokens": 1280
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1

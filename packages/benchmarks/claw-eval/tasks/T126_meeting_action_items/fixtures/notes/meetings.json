@@ -1,0 +1,54 @@
+[
+  {
+    "note_id": "NOTE-301",
+    "title": "Product Requirements Review Meeting Notes",
+    "content": "## Product Requirements Review 2026-03-20\n\n### Attendees: Wang Ming, Li Hua, Zhao Lei, Zhang Wei\n\n### Discussion Points\n1. Q2 new feature scheduling confirmation\n2. Customer feedback issue handling\n\n### Action Items\n- [Wang Ming] Complete Q2 product roadmap document, due 3/28\n- [Li Hua] Research competitor new features and produce report, due 3/30\n- [Zhao Lei] Compile Top 10 customer requirements list, due 3/27\n- [Zhang Wei] Complete security compliance assessment report, due 3/31",
+    "participants": [
+      "Wang Ming",
+      "Li Hua",
+      "Zhao Lei",
+      "Zhang Wei"
+    ],
+    "tags": [
+      "product",
+      "requirements",
+      "Q2"
+    ],
+    "created_at": "2026-03-20T10:00:00Z",
+    "duration_minutes": 60
+  },
+  {
+    "note_id": "NOTE-302",
+    "title": "Technical Architecture Review Meeting Notes",
+    "content": "## Technical Architecture Review 2026-03-21\n\n### Attendees: Li Hua, Ma Qiang, Zhou Ming\n\n### Discussion Points\n1. Microservice decomposition plan\n2. Database migration plan\n\n### Action Items\n- [Li Hua] Write microservice decomposition technical plan, due 4/3\n- [Ma Qiang] Prepare database migration test environment, due 3/28\n- [Zhou Ming] Upgrade frontend component library to v3.0, due 4/5",
+    "participants": [
+      "Li Hua",
+      "Ma Qiang",
+      "Zhou Ming"
+    ],
+    "tags": [
+      "technical",
+      "architecture",
+      "microservices"
+    ],
+    "created_at": "2026-03-21T10:00:00Z",
+    "duration_minutes": 60
+  },
+  {
+    "note_id": "NOTE-303",
+    "title": "Management Weekly Meeting Notes",
+    "content": "## Management Weekly Meeting 2026-03-22\n\n### Attendees: General Manager, Wang Ming, Zhao Lei\n\n### Discussion Points\n1. Q1 performance review\n2. Team expansion plan\n\n### Action Items\n- [Wang Ming] Prepare Q1 technical team performance summary, due 3/29\n- [Zhao Lei] Submit key customer renewal strategy proposal, due 3/30",
+    "participants": [
+      "General Manager",
+      "Wang Ming",
+      "Zhao Lei"
+    ],
+    "tags": [
+      "management",
+      "weekly",
+      "Q1"
+    ],
+    "created_at": "2026-03-22T10:00:00Z",
+    "duration_minutes": 60
+  }
+]

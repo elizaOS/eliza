@@ -1,0 +1,9 @@
+{
+  "block_size": 512,
+  "cache_capacity_blocks": 4096,
+  "policy": "S3FIFO",
+  "s3fifo": {
+    "small_ratio": 0.1,
+    "max_freq": 3
+  }
+}

@@ -90,9 +90,6 @@ def _extract_letter(text: str) -> str | None:
     if not text:
         return None
     stripped = text.strip().upper()
-    # Fast path: response is just "A" or "A." or "A)".
-    if stripped[:1] in _LETTER_OPTIONS:
-        return stripped[:1]
     match = _LETTER_RE.search(stripped)
     return match.group(1) if match else None
 

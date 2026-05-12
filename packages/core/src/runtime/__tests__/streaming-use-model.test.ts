@@ -81,6 +81,41 @@ describe("AgentRuntime structured streaming", () => {
 		]);
 	});
 
+	it("does not turn streamStructured into provider streaming for non-local handlers", async () => {
+		const runtime = makeRuntime();
+		const streamed: string[] = [];
+		const raw =
+			'{"shouldRespond":"RESPOND","contexts":["general"],"intents":[],"replyText":"auth-ok","facts":[]}';
+		const handler = vi.fn(async (_runtime, params: unknown) => {
+			const streamingParams = params as {
+				stream?: boolean;
+				onStreamChunk?: (chunk: string) => Promise<void> | void;
+			};
+			expect(streamingParams.stream).toBe(false);
+			expect(streamingParams.onStreamChunk).toBeUndefined();
+			return raw;
+		});
+		runtime.registerModel(ModelType.RESPONSE_HANDLER, handler, "openai");
+
+		const result = await runWithStreamingContext(
+			{
+				messageId: "message-1",
+				onStreamChunk: (chunk) => {
+					streamed.push(chunk);
+				},
+			},
+			() =>
+				runtime.useModel(ModelType.RESPONSE_HANDLER, {
+					messages: [],
+					streamStructured: true,
+					responseSkeleton,
+				}),
+		);
+
+		expect(result).toBe(raw);
+		expect(streamed).toEqual([]);
+	});
+
 	it("treats built-in Eliza local providers as local model routes", () => {
 		expect(isLocalProvider("eliza-local-inference")).toBe(true);
 		expect(isLocalProvider("eliza-device-bridge")).toBe(true);

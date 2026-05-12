@@ -1,0 +1,42 @@
+[
+  {
+    "factor_name": "herding",
+    "description": "The tendency of investors to follow the crowd, buying or selling stocks based on the actions of other market participants rather than independent analysis.",
+    "relevance_to_sparse_data": "When technical, news, and sentiment data are unavailable, investors are more likely to rely on observed market behavior of peers, amplifying herding effects. The absence of independent signals increases dependence on social proof."
+  },
+  {
+    "factor_name": "disposition_effect",
+    "description": "The tendency to sell winning investments too early and hold losing investments too long, driven by the asymmetric emotional impact of gains versus losses.",
+    "relevance_to_sparse_data": "With sparse data, investors may anchor to historical purchase prices more strongly, as there are fewer informational cues to update their reference points. This can lead to suboptimal holding or selling decisions."
+  },
+  {
+    "factor_name": "overconfidence",
+    "description": "The tendency to overestimate one's own knowledge, predictive ability, or the precision of one's information, leading to excessive trading or concentrated positions.",
+    "relevance_to_sparse_data": "Paradoxically, some investors become more confident when data is sparse because there is less contradictory evidence. They may fill information gaps with their own narratives, leading to overconfident assessments."
+  },
+  {
+    "factor_name": "anchoring",
+    "description": "The cognitive bias where individuals rely too heavily on an initial piece of information (the anchor) when making subsequent judgments or decisions.",
+    "relevance_to_sparse_data": "When current technical and sentiment data are unavailable, investors tend to anchor heavily on the last known data points such as historical prices, outdated analyst targets, or stale fundamental metrics, even when these may no longer be relevant."
+  },
+  {
+    "factor_name": "loss_aversion",
+    "description": "The psychological tendency where the pain of losing is approximately twice as powerful as the pleasure of gaining, leading to risk-averse behavior in gains and risk-seeking behavior in losses.",
+    "relevance_to_sparse_data": "Data scarcity increases perceived uncertainty, which amplifies loss aversion. Investors facing information voids may demand higher risk premiums or avoid the stock entirely, even if fundamentals are sound."
+  },
+  {
+    "factor_name": "recency_bias",
+    "description": "The tendency to weight recent events or observations more heavily than earlier ones when forming expectations about the future.",
+    "relevance_to_sparse_data": "When real-time data panels are unavailable, the most recent available data points (e.g., last closing price, most recent quarterly earnings) carry disproportionate weight in decision-making, potentially ignoring longer-term trends."
+  },
+  {
+    "factor_name": "information_cascade",
+    "description": "A phenomenon where individuals make decisions sequentially, and each person's decision is influenced by the decisions of those who acted before them, potentially leading to suboptimal collective outcomes.",
+    "relevance_to_sparse_data": "In data-sparse environments, information cascades are more likely because investors have less private information to counterbalance the observed actions of others. A few early trades can set off a chain reaction."
+  },
+  {
+    "factor_name": "ambiguity_aversion",
+    "description": "The preference for known risks over unknown risks. Investors tend to avoid situations where the probability distribution of outcomes is unknown or unclear.",
+    "relevance_to_sparse_data": "When tech, news, and sentiment panels are all unavailable, the level of ambiguity is extremely high. Ambiguity-averse investors will significantly discount the stock or avoid it altogether, even if the expected value based on available fundamentals is favorable."
+  }
+]

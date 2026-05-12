@@ -1,0 +1,191 @@
+task_id: T135zh_weekly_meeting_tracking
+task_name: 周会行动项跟踪
+version: "1.0"
+category: workflow
+difficulty: medium
+tags: [general, multi_service]
+
+services:
+  - name: calendar
+    command: python mock_services/calendar/server.py
+    port: 9101
+    health_check: http://localhost:9101/calendar/events
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9101/calendar/reset
+    env:
+      CALENDAR_FIXTURES: tasks/T135zh_weekly_meeting_tracking/fixtures/calendar/events.json
+  - name: notes
+    command: python mock_services/notes/server.py
+    port: 9105
+    health_check: http://localhost:9105/notes/list
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9105/notes/reset
+    env:
+      NOTES_FIXTURES: tasks/T135zh_weekly_meeting_tracking/fixtures/notes/meetings.json
+  - name: todo
+    command: python mock_services/todo/server.py
+    port: 9102
+    health_check: http://localhost:9102/todo/tasks
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9102/todo/reset
+    env:
+      TODO_FIXTURES: tasks/T135zh_weekly_meeting_tracking/fixtures/todo/tasks.json
+
+prompt:
+  text: |
+    请帮我生成上周的会议行动项跟踪报告：
+    1. 查看上周的日历会议
+    2. 找到有纪要的会议，查看行动项
+    3. 在待办中查找每个行动项的完成状态
+    4. 找出遗漏的行动项（纪要中有但待办中没有的）
+    5. 输出周进度报告：按会议分组，标注每项状态和完成率
+  language: zh
+
+tools:
+  - name: calendar_list_events
+    description: 查看日历事件
+    input_schema:
+      type: object
+      properties:
+        start_date:
+          type: string
+          description: "起始日期(YYYY-MM-DD)"
+        end_date:
+          type: string
+          description: "截止日期(YYYY-MM-DD)"
+      required: []
+  - name: calendar_get_event
+    description: 获取事件详情
+    input_schema:
+      type: object
+      properties:
+        event_id:
+          type: string
+          description: 事件ID
+      required: [event_id]
+  - name: notes_list
+    description: 列出会议纪要
+    input_schema:
+      type: object
+      properties:
+        tag:
+          type: string
+          description: 按标签筛选
+      required: []
+  - name: notes_get
+    description: 获取纪要详情
+    input_schema:
+      type: object
+      properties:
+        note_id:
+          type: string
+          description: 纪要ID
+      required: [note_id]
+  - name: todo_list_tasks
+    description: 查看待办事项列表
+    input_schema:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "状态筛选(pending/completed/all)"
+          default: all
+      required: []
+  - name: todo_get_task
+    description: 获取待办详情
+    input_schema:
+      type: object
+      properties:
+        task_id:
+          type: string
+          description: 待办ID
+      required: [task_id]
+
+tool_endpoints:
+  - tool_name: calendar_list_events
+    url: http://localhost:9101/calendar/events
+    method: POST
+  - tool_name: calendar_get_event
+    url: http://localhost:9101/calendar/events/get
+    method: POST
+  - tool_name: notes_list
+    url: http://localhost:9105/notes/list
+    method: POST
+  - tool_name: notes_get
+    url: http://localhost:9105/notes/get
+    method: POST
+  - tool_name: todo_list_tasks
+    url: http://localhost:9102/todo/tasks
+    method: POST
+  - tool_name: todo_get_task
+    url: http://localhost:9102/todo/tasks/get
+    method: POST
+
+environment:
+  mock_today: "2026-03-26"
+  timeout_seconds: 600
+  max_turns: 30
+
+scoring_components:
+  - name: tracking_accuracy
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "8个行动项的状态追踪是否准确（3完成/2进行中/2未开始/1遗漏）"
+  - name: gap_identification
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "是否识别出遗漏项（万通POC无待办）和逾期项"
+  - name: report_structure
+    weight: 0.30
+    check:
+      type: llm_judge
+      description: "报告按会议分组，含完成率统计"
+
+safety_checks: []
+expected_actions: []
+
+judge_rubric: |
+  评估周会行动项跟踪报告质量。
+
+  ## 8个行动项及状态
+  NOTE-501(产品周会):
+  1. 王明-需求排序(截止3/22) → TODO-501 completed ✓
+  2. 李华-微服务评估(截止3/25) → TODO-502 in_progress ⚠
+  3. 赵蕾-客户反馈(截止3/20) → TODO-503 completed ✓
+
+  NOTE-502(技术评审):
+  4. 李华-API网关设计(截止3/25) → TODO-504 in_progress ⚠
+  5. 马强-压力测试(截止3/22) → TODO-505 completed ✓
+  6. 周明-前端优化(截止3/24) → TODO-506 pending ✗ (已逾期!)
+
+  NOTE-503(客户进展):
+  7. 赵蕾-鼎新合同(截止3/25) → TODO-507 pending ⚠
+  8. 王明-万通POC(截止3/27) → 无对应待办！遗漏 ✗
+
+  ## 完成率: 3/8 = 37.5%
+  ## 关键发现：
+  - TODO-506已逾期(截止3/24已过)
+  - 行动项8(万通POC)遗漏，需补建
+  - TODO-508~510是日常任务，非会议行动项
+
+  评分：
+  - 0.8-1.0: 8项全部追踪正确，遗漏和逾期标注到位
+  - 0.5-0.7: 大部分追踪正确
+  - 0.2-0.4: 追踪不完整
+  - 0.0-0.1: 未完成
+
+reference_solution: |
+  1. calendar_list_events(3/16~3/22) → 5个会议
+  2. 识别3个有纪要的会议(evt_501→NOTE-501, evt_502→NOTE-502, evt_503→NOTE-503)
+  3. notes_get → 提取8个行动项
+  4. todo_list_tasks(all) → 10个待办
+  5. 匹配行动项→待办状态
+  6. 发现遗漏（万通POC无待办）
+  7. 输出按会议分组的进度报告
+
+primary_dimensions: [completion, robustness, communication]

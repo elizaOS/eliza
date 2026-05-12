@@ -32,7 +32,9 @@ LOG_DIR = ROOT / "data" / "synthesized" / "harness" / "logs"
 
 DEFAULT_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 DEFAULT_API_KEY_ENV = "GROQ_API_KEY"
-DEFAULT_DEV_MODEL = "openai/gpt-oss-120b"
+# Development models are intentionally not pinned here. Pass --model or set
+# ELIZA_HARNESS_MODEL / ELIZA_COLLECTION_MODEL for the provider under test.
+DEFAULT_DEV_MODEL = ""
 
 
 def default_teacher_model() -> str:
@@ -353,6 +355,11 @@ def main() -> None:
         help="omit OpenAI JSON response_format for compatible endpoints that do not support it",
     )
     args = ap.parse_args()
+    if not args.model:
+        raise SystemExit(
+            "--model is required unless ELIZA_HARNESS_MODEL or "
+            "ELIZA_COLLECTION_MODEL is set"
+        )
     asyncio.run(main_async(args))
 
 
