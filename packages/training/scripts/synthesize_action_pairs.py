@@ -43,6 +43,7 @@ from lib.eliza_record import (  # noqa: E402
     ACTION_IGNORE,
     ACTION_REPLY,
     ACTION_RESPOND,
+    ACTION_SHELL,
     ACTION_STOP,
     ACTION_TASK_CALL,
     build,
@@ -1877,7 +1878,7 @@ def gen_shell_command_extraction(encoder: ExpectedResponseEncoder, rng: random.R
         yield build_record(
             encoder=encoder, task_id="plugin-shell.command_extraction", user_msg=ask,
             expected=json.dumps(out, indent=2),
-            available_actions=[ACTION_TASK_CALL, ACTION_REPLY, "SHELL_COMMAND"],
+            available_actions=[ACTION_TASK_CALL, ACTION_REPLY, ACTION_SHELL],
             source_dataset="synth-action-pairs-plugins", rng=rng,
         )
 

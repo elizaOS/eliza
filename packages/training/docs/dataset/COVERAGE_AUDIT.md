@@ -31,7 +31,7 @@ or drop for each.
 | `tool_call`                     | 2     | hermes-fc, glaive, bitagent, toucan         | KEEP — phase-2 plan whose action[0]=TASK_CALL |
 | `mcp_tool_call`                 | 2     | mcp-agent, mcp-routing                      | KEEP |
 | `mcp_routing`                   | 2     | mcp-routing                                 | TRANSFORM — wrap `{server,tool,arguments}` into the phase-2 envelope under `tool_calls[0].params` |
-| `shell_command`                 | 2     | nemotron-terminal, agent-trove (shell)      | KEEP — phase-2 plan whose action[0]=SHELL_COMMAND |
+| `shell_command`                 | 2     | nemotron-terminal, agent-trove (shell)      | KEEP — phase-2 plan whose action[0]=SHELL |
 | `mobile_action`                 | 2     | mobile traces                               | KEEP — phase-2 plan |
 | `scam_defense`                  | 2     | scambench, scam-defense-corpus              | KEEP — phase-2 plan |
 | `n8n_workflow_generation`       | 2*    | n8n-workflow                                | DROP from main mix; route to a separate fine-tune. The runtime never emits an n8n workflow as part of a phase-2 plan. |
