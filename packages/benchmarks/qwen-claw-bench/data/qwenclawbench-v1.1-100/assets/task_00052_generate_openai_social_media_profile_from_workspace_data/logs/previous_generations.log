@@ -1,0 +1,25 @@
+[2024-02-15 08:37:00.286] [INFO ] [ProfileGenerator] Profile generation for [DeepMind] completed successfully. All validations passed.
+[2024-02-15 08:50:03.064] [ERROR] [ProfileGenerator] Profile generation for [Samsung AI] retry: gender field contains non-English value
+[2024-02-15 09:06:59.097] [INFO ] [ProfileGenerator] Profile generation for [Hugging Face] completed successfully. All validations passed.
+[2024-02-15 09:02:04.599] [ERROR] [ProfileGenerator] Profile generation for [Samsung AI] failed: output JSON contains additional properties not in schema
+[2024-02-15 08:40:33.498] [WARN ] [ProfileGenerator] Profile generation for [Stability AI] - validation warning: gender field contains non-English value
+[2024-02-15 09:24:54.619] [ERROR] [ProfileGenerator] Profile generation for [Cohere] retry: persona contains newline characters - validation failed
+[2024-02-15 09:40:40.367] [INFO ] [ProfileGenerator] Profile generation for [DeepMind] completed successfully. All validations passed.
+[2024-02-15 10:30:45.178] [ERROR] [ProfileGenerator] Profile generation for [Hugging Face] retry: encoding error: non-UTF8 characters detected in persona field
+[2024-02-15 09:42:01.602] [WARN ] [ProfileGenerator] Profile generation for [Mistral AI] - validation warning: interested_topics contains duplicate entries
+[2024-02-15 09:00:28.508] [INFO ] [ProfileGenerator] Profile generation for [DeepMind] completed successfully. All validations passed.
+[2024-02-15 08:52:33.434] [INFO ] [ProfileGenerator] Profile generation for [IBM Watson] completed successfully. All validations passed.
+[2024-02-15 09:06:43.629] [INFO ] [ProfileGenerator] Profile generation for [Anthropic] completed successfully. All validations passed.
+[2024-02-15 11:45:38.876] [INFO ] [ProfileGenerator] Profile generation for [Anthropic] completed successfully. All validations passed.
+[2024-02-15 08:44:04.018] [INFO ] [ProfileGenerator] Profile generation for [IBM Watson] completed successfully. All validations passed.
+[2024-02-15 10:00:12.734] [WARN ] [ProfileGenerator] Profile generation for [Anthropic] - validation warning: profession field is empty string
+[2024-02-15 09:02:32.458] [INFO ] [ProfileGenerator] Profile generation for [Mistral AI] completed successfully. All validations passed.
+[2024-02-15 09:21:23.883] [INFO ] [ProfileGenerator] Profile generation for [Meta AI] completed successfully. All validations passed.
+[2024-02-15 10:00:36.284] [WARN ] [ProfileGenerator] Profile generation for [IBM Watson] - validation warning: country field is null
+[2024-02-15 09:27:18.768] [ERROR] [ProfileGenerator] Profile generation for [Cohere] retry: interested_topics array is empty
+[2024-02-15 08:50:45.091] [WARN ] [ProfileGenerator] Profile generation for [Hugging Face] - validation warning: encoding error: non-UTF8 characters detected in persona field
+[2024-02-15 13:03:57.571] [WARN ] [ProfileGenerator] Profile generation for [IBM Watson] - validation warning: persona contains newline characters - validation failed
+[2024-02-15 11:04:38.985] [INFO ] [ProfileGenerator] Profile generation for [Mistral AI] completed successfully. All validations passed.
+[2024-02-15 08:53:53.819] [WARN ] [ProfileGenerator] Profile generation for [Stability AI] - validation warning: gender field contains non-English value
+[2024-02-15 11:18:14.478] [INFO ] [ProfileGenerator] Profile generation for [Samsung AI] completed successfully. All validations passed.
+[2024-02-15 11:00:06.959] [INFO ] [ProfileGenerator] Profile generation for [Anthropic] completed successfully. All validations passed.

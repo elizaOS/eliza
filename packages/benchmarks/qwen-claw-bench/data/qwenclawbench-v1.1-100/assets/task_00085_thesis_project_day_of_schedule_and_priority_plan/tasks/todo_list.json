@@ -1,0 +1,74 @@
+[
+  {
+    "id": "T001",
+    "title": "Finalize thesis abstract",
+    "estimated_minutes": 30,
+    "status": "done",
+    "category": "writing",
+    "priority": "high",
+    "dependencies": []
+  },
+  {
+    "id": "T002",
+    "title": "Complete literature review section",
+    "estimated_minutes": 60,
+    "status": "in-progress",
+    "category": "writing",
+    "priority": "high",
+    "dependencies": []
+  },
+  {
+    "id": "T003",
+    "title": "Format references in APA style",
+    "estimated_minutes": 45,
+    "status": "not-started",
+    "category": "formatting",
+    "priority": "medium",
+    "dependencies": ["T002"]
+  },
+  {
+    "id": "T004",
+    "title": "Proofread full thesis",
+    "estimated_minutes": 90,
+    "status": "not-started",
+    "category": "review",
+    "priority": "high",
+    "dependencies": ["T002", "T003"]
+  },
+  {
+    "id": "T005",
+    "title": "Create thesis defense PPT",
+    "estimated_minutes": 120,
+    "status": "not-started",
+    "category": "presentation",
+    "priority": "high",
+    "dependencies": ["T001", "T002"]
+  },
+  {
+    "id": "T006",
+    "title": "Prepare thesis outline document",
+    "estimated_minutes": 40,
+    "status": "done",
+    "category": "writing",
+    "priority": "medium",
+    "dependencies": []
+  },
+  {
+    "id": "T007",
+    "title": "Submit thesis to advisor for review",
+    "estimated_minutes": 15,
+    "status": "not-started",
+    "category": "review",
+    "priority": "high",
+    "dependencies": ["T004"]
+  },
+  {
+    "id": "T008",
+    "title": "Export final PDF",
+    "estimated_minutes": 10,
+    "status": "not-started",
+    "category": "formatting",
+    "priority": "low",
+    "dependencies": ["T004", "T007"]
+  }
+]

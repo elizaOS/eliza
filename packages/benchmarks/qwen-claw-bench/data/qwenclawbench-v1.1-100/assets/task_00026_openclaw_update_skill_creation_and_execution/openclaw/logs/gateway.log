@@ -1,0 +1,12 @@
+2026-02-10T05:58:12.334Z [INFO] Gateway starting (PID 12847)
+2026-02-10T05:58:12.412Z [INFO] Loading config from /home/user/workspace/openclaw/config.yaml
+2026-02-10T05:58:12.589Z [INFO] Model: claude-3.5-sonnet-20241022 (fallback: gpt-4o)
+2026-02-10T05:58:12.601Z [INFO] Channels: telegram(enabled) discord(enabled) whatsapp(disabled)
+2026-02-10T05:58:12.715Z [INFO] Plugins loaded: device-pair, brave-search
+2026-02-10T05:58:12.890Z [INFO] Heartbeat enabled (interval: 30min)
+2026-02-10T05:58:13.102Z [INFO] Telegram bot connected: @claw_assistant_bot
+2026-02-10T05:58:13.445Z [INFO] Discord client ready (guild: 1098765432100000000)
+2026-02-10T05:58:13.450Z [INFO] Gateway listening on 0.0.0.0:3017
+2026-02-10T05:58:13.451Z [INFO] Version: 2025.12.8
+2026-02-10T06:28:13.500Z [INFO] Heartbeat tick #1 — no tasks pending
+2026-02-10T06:58:13.502Z [INFO] Heartbeat tick #2 — no tasks pending

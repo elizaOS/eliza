@@ -1,0 +1,158 @@
+# Integration Test Log - prototype_v0.3 - Test Run 2024-12-18
+# Environment: staging-cluster-02 | K8s namespace: prototype-v03
+# Test Suite: full-integration-regression v0.3.7
+# ============================================================
+2024-12-18 08:09:54.000 [WARN ] [scada-connector     ] Slow query detected in scada-connector: query took 15.53s (threshold: 1s)
+2024-12-18 08:24:48.000 [ERROR] [mes-adapter         ] Deserialization error in mes-adapter: unexpected field 'legacy_status' in response from /api/v0.3/experts/available
+2024-12-18 08:25:52.000 [INFO ] [notification-svc    ] Health check passed for notification-svc - all dependencies healthy
+2024-12-18 08:26:56.000 [INFO ] [scada-connector     ] API call to /api/v0.3/auth/token completed successfully - 463 items returned
+2024-12-18 08:30:32.000 [INFO ] [data-pipeline       ] Successfully connected to /api/v0.3/mes/production - response 200 OK (7802ms)
+2024-12-18 08:35:20.000 [INFO ] [video-stream        ] Authentication token refreshed for service account video-stream
+2024-12-18 08:36:00.000 [WARN ] [erp-bridge          ] Certificate for erp-bridge expires in 30 days - renewal recommended
+2024-12-18 08:38:42.000 [INFO ] [video-stream        ] Successfully connected to /api/v0.3/mes/production - response 200 OK (8121ms)
+2024-12-18 08:53:21.000 [INFO ] [scada-connector     ] Connection pool for scada-connector: 27/50 active connections
+2024-12-18 08:54:03.000 [INFO ] [video-stream        ] API call to /api/v0.3/video/stream completed successfully - 3304 items returned
+2024-12-18 08:56:13.000 [ERROR] [notification-svc    ] Authentication failure for notification-svc: invalid service account credentials - token expired
+2024-12-18 08:56:31.000 [INFO ] [erp-bridge          ] Configuration reloaded for erp-bridge - no changes detected
+2024-12-18 08:56:41.000 [INFO ] [auth-service        ] Configuration reloaded for auth-service - no changes detected
+2024-12-18 08:57:49.000 [INFO ] [video-stream        ] Rate limiter for /api/v0.3/knowledge/search: 2986/1000 requests in current window
+2024-12-18 09:02:02.000 [ERROR] [config-service      ] Rate limit exceeded for /api/v0.3/audit/log: 1247 requests in 60s window (limit: 1000)
+2024-12-18 09:02:20.000 [INFO ] [model-inference     ] Successfully connected to /api/v0.3/knowledge/search - response 200 OK (271ms)
+2024-12-18 09:03:46.000 [INFO ] [auth-service        ] Authentication token refreshed for service account auth-service
+2024-12-18 09:04:23.000 [INFO ] [model-inference     ] Authentication token refreshed for service account model-inference
+2024-12-18 09:06:24.000 [INFO ] [knowledge-api       ] Configuration reloaded for knowledge-api - no changes detected
+2024-12-18 09:08:25.000 [INFO ] [knowledge-api       ] API call to /api/v0.3/files/upload completed successfully - 967 items returned
+2024-12-18 09:09:27.000 [INFO ] [file-storage        ] Data sync completed for file-storage: 1446 records processed in 22.69s
+2024-12-18 09:10:13.000 [INFO ] [model-inference     ] Configuration reloaded for model-inference - no changes detected
+2024-12-18 09:15:15.000 [INFO ] [search-engine       ] SSL certificate for search-engine valid until 2025-06-15
+2024-12-18 09:17:54.000 [INFO ] [session-mgr         ] Configuration reloaded for session-mgr - no changes detected
+2024-12-18 09:17:55.000 [INFO ] [video-stream        ] API call to /api/v0.3/incidents/create completed successfully - 2094 items returned
+2024-12-18 09:22:02.000 [INFO ] [iot-gateway         ] Rate limiter for /api/v0.3/sessions/create: 4855/1000 requests in current window
+2024-12-18 09:22:39.000 [INFO ] [notification-svc    ] SSL certificate for notification-svc valid until 2025-06-15
+2024-12-18 09:25:15.000 [ERROR] [file-storage        ] FAILED: Connection refused to /api/v0.3/experts/available - service unavailable (attempt 49/3)
+2024-12-18 09:25:22.000 [ERROR] [session-mgr         ] Timeout: /api/v0.3/audit/log did not respond within 30000ms - circuit breaker OPEN
+2024-12-18 09:28:17.000 [INFO ] [video-stream        ] Cache hit ratio for video-stream: 94% over last 5 minutes
+2024-12-18 09:28:55.000 [INFO ] [mes-adapter         ] Connection pool for mes-adapter: 49/50 active connections
+2024-12-18 09:38:32.000 [ERROR] [auth-service        ] SOAP-to-REST bridge failure: /api/v0.3/sessions/create returned XML but JSON expected
+2024-12-18 09:44:55.000 [ERROR] [search-engine       ] SOAP interface /api/v0.3/sessions/create returned fault: 'Method not supported in prototype_v0.3'
+2024-12-18 09:45:39.000 [WARN ] [erp-bridge          ] Slow query detected in erp-bridge: query took 37.55s (threshold: 1s)
+2024-12-18 09:46:45.000 [ERROR] [file-storage        ] Data sync FAILED for file-storage: schema mismatch - expected 12 columns, got 15
+2024-12-18 09:47:33.000 [WARN ] [auth-service        ] Timeout warning: /api/v0.3/sessions/create response time 2610ms exceeds 2000ms threshold
+2024-12-18 09:47:35.000 [WARN ] [data-pipeline       ] Deprecated SOAP interface /api/v0.3/sessions/create still receiving traffic - 2142 calls/hour
+2024-12-18 09:54:09.000 [INFO ] [scada-connector     ] Health check passed for scada-connector - all dependencies healthy
+2024-12-18 10:04:42.000 [INFO ] [notification-svc    ] Configuration reloaded for notification-svc - no changes detected
+2024-12-18 10:06:48.000 [INFO ] [model-inference     ] API call to /soap/v1/legacy-erp completed successfully - 3432 items returned
+2024-12-18 10:09:36.000 [INFO ] [data-pipeline       ] Cache hit ratio for data-pipeline: 55% over last 5 minutes
+2024-12-18 10:11:58.000 [INFO ] [video-stream        ] SSL certificate for video-stream valid until 2025-06-15
+2024-12-18 10:13:53.000 [INFO ] [scada-connector     ] Connection pool for scada-connector: 40/50 active connections
+2024-12-18 10:14:04.000 [INFO ] [iot-gateway         ] Batch processing completed: 4872 records ingested from iot-gateway
+2024-12-18 10:16:54.000 [INFO ] [video-stream        ] Connection pool for video-stream: 44/50 active connections
+2024-12-18 10:17:21.000 [INFO ] [auth-service        ] Metrics exported to Prometheus - auth-service latency p99=426ms
+2024-12-18 10:19:41.000 [WARN ] [file-storage        ] Memory usage for file-storage at 82% - approaching warning threshold
+2024-12-18 10:20:23.000 [WARN ] [file-storage        ] Slow query detected in file-storage: query took 10.36s (threshold: 1s)
+2024-12-18 10:27:05.000 [ERROR] [session-mgr         ] Rate limit exceeded for /api/v0.3/audit/log: 1247 requests in 60s window (limit: 1000)
+2024-12-18 10:28:34.000 [WARN ] [model-inference     ] Queue depth for model-inference at 2294 messages - above normal baseline
+2024-12-18 10:29:54.000 [ERROR] [notification-svc    ] Data sync FAILED for notification-svc: schema mismatch - expected 12 columns, got 15
+2024-12-18 10:30:31.000 [WARN ] [iot-gateway         ] Stale connection detected in iot-gateway pool - recycling
+2024-12-18 10:33:35.000 [ERROR] [session-mgr         ] SOAP interface /api/v0.3/iot/telemetry returned fault: 'Method not supported in prototype_v0.3'
+2024-12-18 10:34:24.000 [INFO ] [config-service      ] Rate limiter for /api/v0.3/video/stream: 3156/1000 requests in current window
+2024-12-18 10:35:42.000 [INFO ] [knowledge-api       ] API call to /api/v0.3/files/upload completed successfully - 4923 items returned
+2024-12-18 10:37:42.000 [WARN ] [mes-adapter         ] Connection pool near capacity for mes-adapter: 36/50 active connections
+2024-12-18 10:37:56.000 [INFO ] [iot-gateway         ] Batch processing completed: 2445 records ingested from iot-gateway
+2024-12-18 10:41:20.000 [INFO ] [audit-logger        ] Rate limiter for /soap/v1/legacy-scada: 223/1000 requests in current window
+2024-12-18 10:45:34.000 [INFO ] [search-engine       ] Health check passed for search-engine - all dependencies healthy
+2024-12-18 10:51:29.000 [INFO ] [file-storage        ] Configuration reloaded for file-storage - no changes detected
+2024-12-18 10:53:14.000 [INFO ] [mes-adapter         ] Health check passed for mes-adapter - all dependencies healthy
+2024-12-18 11:01:38.000 [INFO ] [data-pipeline       ] Rate limiter for /api/v0.3/auth/token: 3194/1000 requests in current window
+2024-12-18 11:02:53.000 [INFO ] [notification-svc    ] Rate limiter for /api/v0.3/files/upload: 3248/1000 requests in current window
+2024-12-18 11:03:25.000 [INFO ] [erp-bridge          ] Batch processing completed: 1299 records ingested from erp-bridge
+2024-12-18 11:10:35.000 [ERROR] [scada-connector     ] Data sync FAILED for scada-connector: schema mismatch - expected 12 columns, got 15
+2024-12-18 11:12:52.000 [ERROR] [data-pipeline       ] SSL handshake failed for data-pipeline: certificate chain incomplete
+2024-12-18 11:16:39.000 [ERROR] [config-service      ] Authentication failure for config-service: invalid service account credentials - token expired
+2024-12-18 11:20:51.000 [WARN ] [scada-connector     ] Retry attempt 2/3 for /api/v0.3/files/upload after connection reset
+2024-12-18 11:23:59.000 [INFO ] [search-engine       ] Batch processing completed: 2414 records ingested from search-engine
+2024-12-18 11:31:29.000 [INFO ] [erp-bridge          ] Health check passed for erp-bridge - all dependencies healthy
+2024-12-18 11:31:47.000 [ERROR] [audit-logger        ] FAILED: Connection refused to /api/v0.3/video/stream - service unavailable (attempt 22/3)
+2024-12-18 11:32:22.000 [INFO ] [config-service      ] Successfully connected to /api/v0.3/knowledge/search - response 200 OK (3785ms)
+2024-12-18 11:34:01.000 [INFO ] [data-pipeline       ] Cache hit ratio for data-pipeline: 45% over last 5 minutes
+2024-12-18 11:36:07.000 [ERROR] [auth-service        ] SOAP interface /api/v0.3/mes/production returned fault: 'Method not supported in prototype_v0.3'
+2024-12-18 11:53:26.000 [INFO ] [video-stream        ] Connection pool for video-stream: 40/50 active connections
+2024-12-18 11:53:55.000 [WARN ] [scada-connector     ] Slow query detected in scada-connector: query took 41.35s (threshold: 1s)
+2024-12-18 11:54:07.000 [WARN ] [scada-connector     ] Certificate for scada-connector expires in 30 days - renewal recommended
+2024-12-18 11:54:38.000 [WARN ] [search-engine       ] Data sync lag for search-engine: 32.68s behind real-time
+2024-12-18 11:55:55.000 [ERROR] [audit-logger        ] Rate limit exceeded for /api/v0.3/files/upload: 1247 requests in 60s window (limit: 1000)
+2024-12-18 11:57:48.000 [INFO ] [iot-gateway         ] Data sync completed for iot-gateway: 1106 records processed in 33.46s
+2024-12-18 11:58:53.000 [WARN ] [iot-gateway         ] Queue depth for iot-gateway at 545 messages - above normal baseline
+2024-12-18 12:01:23.000 [ERROR] [session-mgr         ] Data sync FAILED for session-mgr: schema mismatch - expected 12 columns, got 15
+2024-12-18 12:06:33.000 [INFO ] [scada-connector     ] Rate limiter for /api/v0.3/experts/available: 4604/1000 requests in current window
+2024-12-18 12:17:00.000 [WARN ] [data-pipeline       ] Connection pool near capacity for data-pipeline: 29/50 active connections
+2024-12-18 12:19:17.000 [WARN ] [notification-svc    ] Timeout warning: /api/v0.3/audit/log response time 4757ms exceeds 2000ms threshold
+2024-12-18 12:20:23.000 [INFO ] [scada-connector     ] API call to /api/v0.3/incidents/create completed successfully - 4681 items returned
+2024-12-18 12:21:36.000 [INFO ] [config-service      ] Connection pool for config-service: 34/50 active connections
+2024-12-18 12:21:59.000 [INFO ] [audit-logger        ] Health check passed for audit-logger - all dependencies healthy
+2024-12-18 12:24:36.000 [INFO ] [scada-connector     ] Cache hit ratio for scada-connector: 46% over last 5 minutes
+2024-12-18 12:33:10.000 [INFO ] [knowledge-api       ] Health check passed for knowledge-api - all dependencies healthy
+2024-12-18 12:33:15.000 [INFO ] [file-storage        ] SSL certificate for file-storage valid until 2025-06-15
+2024-12-18 12:33:55.000 [INFO ] [video-stream        ] Cache hit ratio for video-stream: 49% over last 5 minutes
+2024-12-18 12:39:18.000 [ERROR] [config-service      ] Authentication failure for config-service: invalid service account credentials - token expired
+2024-12-18 12:51:23.000 [ERROR] [scada-connector     ] Deserialization error in scada-connector: unexpected field 'legacy_status' in response from /api/v0.3/experts/available
+2024-12-18 12:53:49.000 [INFO ] [config-service      ] Authentication token refreshed for service account config-service
+2024-12-18 12:57:00.000 [INFO ] [config-service      ] Configuration reloaded for config-service - no changes detected
+2024-12-18 13:01:38.000 [INFO ] [session-mgr         ] Authentication token refreshed for service account session-mgr
+2024-12-18 13:02:09.000 [WARN ] [iot-gateway         ] Retry attempt 2/3 for /soap/v1/legacy-erp after connection reset
+2024-12-18 13:12:19.000 [INFO ] [session-mgr         ] Cache hit ratio for session-mgr: 93% over last 5 minutes
+2024-12-18 13:18:33.000 [WARN ] [file-storage        ] Queue depth for file-storage at 2156 messages - above normal baseline
+2024-12-18 13:20:05.000 [WARN ] [video-stream        ] Memory usage for video-stream at 82% - approaching warning threshold
+2024-12-18 13:20:31.000 [INFO ] [erp-bridge          ] API call to /api/v0.3/iot/telemetry completed successfully - 2185 items returned
+2024-12-18 13:20:46.000 [INFO ] [model-inference     ] Connection pool for model-inference: 28/50 active connections
+2024-12-18 13:20:51.000 [INFO ] [data-pipeline       ] Batch processing completed: 4137 records ingested from data-pipeline
+2024-12-18 13:25:25.000 [WARN ] [video-stream        ] Timeout warning: /api/v0.3/auth/token response time 821ms exceeds 2000ms threshold
+2024-12-18 13:33:30.000 [INFO ] [video-stream        ] Cache hit ratio for video-stream: 68% over last 5 minutes
+2024-12-18 13:33:35.000 [ERROR] [notification-svc    ] SOAP-to-REST bridge failure: /api/v0.3/knowledge/search returned XML but JSON expected
+2024-12-18 13:35:56.000 [ERROR] [session-mgr         ] FAILED: Connection refused to /api/v0.3/iot/telemetry - service unavailable (attempt 41/3)
+2024-12-18 13:36:22.000 [WARN ] [data-pipeline       ] Timeout warning: /api/v0.3/audit/log response time 7095ms exceeds 2000ms threshold
+2024-12-18 13:43:01.000 [WARN ] [config-service      ] Stale connection detected in config-service pool - recycling
+2024-12-18 13:43:04.000 [WARN ] [model-inference     ] Data sync lag for model-inference: 34.75s behind real-time
+2024-12-18 13:43:21.000 [WARN ] [data-pipeline       ] Memory usage for data-pipeline at 82% - approaching warning threshold
+2024-12-18 13:44:28.000 [INFO ] [config-service      ] Configuration reloaded for config-service - no changes detected
+2024-12-18 13:48:38.000 [INFO ] [notification-svc    ] Metrics exported to Prometheus - notification-svc latency p99=3869ms
+2024-12-18 13:54:22.000 [INFO ] [data-pipeline       ] Data sync completed for data-pipeline: 1982 records processed in 29.97s
+2024-12-18 13:55:54.000 [INFO ] [erp-bridge          ] Batch processing completed: 1957 records ingested from erp-bridge
+2024-12-18 14:01:00.000 [INFO ] [video-stream        ] Data sync completed for video-stream: 950 records processed in 38.51s
+2024-12-18 14:01:43.000 [INFO ] [knowledge-api       ] Authentication token refreshed for service account knowledge-api
+2024-12-18 14:05:28.000 [INFO ] [config-service      ] Successfully connected to /api/v0.3/sessions/create - response 200 OK (5265ms)
+2024-12-18 14:11:23.000 [ERROR] [audit-logger        ] Timeout: /api/v0.3/erp/workorders did not respond within 30000ms - circuit breaker OPEN
+2024-12-18 14:11:29.000 [WARN ] [scada-connector     ] Stale connection detected in scada-connector pool - recycling
+2024-12-18 14:13:33.000 [INFO ] [model-inference     ] Successfully connected to /soap/v1/legacy-scada - response 200 OK (7336ms)
+2024-12-18 14:15:11.000 [WARN ] [search-engine       ] Stale connection detected in search-engine pool - recycling
+2024-12-18 14:15:52.000 [INFO ] [video-stream        ] SSL certificate for video-stream valid until 2025-06-15
+2024-12-18 14:17:28.000 [INFO ] [audit-logger        ] Rate limiter for /api/v0.3/iot/telemetry: 4238/1000 requests in current window
+2024-12-18 14:24:27.000 [INFO ] [auth-service        ] SSL certificate for auth-service valid until 2025-06-15
+2024-12-18 14:25:50.000 [ERROR] [data-pipeline       ] Rate limit exceeded for /api/v0.3/files/upload: 1247 requests in 60s window (limit: 1000)
+2024-12-18 14:28:38.000 [WARN ] [notification-svc    ] Queue depth for notification-svc at 2911 messages - above normal baseline
+2024-12-18 14:29:12.000 [INFO ] [audit-logger        ] Rate limiter for /api/v0.3/scada/readings: 474/1000 requests in current window
+2024-12-18 14:29:33.000 [INFO ] [session-mgr         ] Configuration reloaded for session-mgr - no changes detected
+2024-12-18 14:34:07.000 [INFO ] [knowledge-api       ] Data sync completed for knowledge-api: 2106 records processed in 23.75s
+2024-12-18 14:42:34.000 [INFO ] [iot-gateway         ] Rate limiter for /api/v0.3/scada/readings: 3783/1000 requests in current window
+2024-12-18 14:58:09.000 [ERROR] [search-engine       ] Timeout: /api/v0.3/erp/workorders did not respond within 30000ms - circuit breaker OPEN
+2024-12-18 15:03:46.000 [ERROR] [erp-bridge          ] SOAP interface /api/v0.3/auth/token returned fault: 'Method not supported in prototype_v0.3'
+2024-12-18 15:04:42.000 [INFO ] [mes-adapter         ] Authentication token refreshed for service account mes-adapter
+2024-12-18 15:05:38.000 [ERROR] [session-mgr         ] Data sync FAILED for session-mgr: schema mismatch - expected 12 columns, got 15
+2024-12-18 15:06:27.000 [WARN ] [session-mgr         ] Deprecated SOAP interface /soap/v1/legacy-scada still receiving traffic - 5000 calls/hour
+2024-12-18 15:06:43.000 [INFO ] [iot-gateway         ] API call to /api/v0.3/mes/production completed successfully - 635 items returned
+2024-12-18 15:07:45.000 [INFO ] [knowledge-api       ] Data sync completed for knowledge-api: 1137 records processed in 15.46s
+2024-12-18 15:09:27.000 [INFO ] [model-inference     ] Metrics exported to Prometheus - model-inference latency p99=5008ms
+2024-12-18 15:15:05.000 [INFO ] [mes-adapter         ] Connection pool for mes-adapter: 47/50 active connections
+2024-12-18 15:17:23.000 [INFO ] [data-pipeline       ] API call to /api/v0.3/knowledge/search completed successfully - 1545 items returned
+2024-12-18 15:22:09.000 [WARN ] [data-pipeline       ] Retry attempt 2/3 for /api/v0.3/auth/token after connection reset
+2024-12-18 15:22:55.000 [INFO ] [audit-logger        ] Batch processing completed: 908 records ingested from audit-logger
+2024-12-18 15:28:04.000 [INFO ] [notification-svc    ] Authentication token refreshed for service account notification-svc
+2024-12-18 15:45:55.000 [ERROR] [data-pipeline       ] FAILED: Connection refused to /api/v0.3/auth/token - service unavailable (attempt 34/3)
+2024-12-18 15:49:00.000 [INFO ] [mes-adapter         ] Successfully connected to /api/v0.3/mes/production - response 200 OK (1493ms)
+2024-12-18 15:52:19.000 [INFO ] [video-stream        ] Connection pool for video-stream: 25/50 active connections
+2024-12-18 15:53:01.000 [ERROR] [scada-connector     ] Data sync FAILED for scada-connector: schema mismatch - expected 12 columns, got 15
+2024-12-18 15:58:59.000 [INFO ] [audit-logger        ] Data sync completed for audit-logger: 771 records processed in 17.96s
+# ============================================================
+# Test Run Complete: 150 events logged
+# Summary: INFO=91, WARN=30, ERROR=29
+# Overall Status: PARTIAL PASS - 12 known issues documented

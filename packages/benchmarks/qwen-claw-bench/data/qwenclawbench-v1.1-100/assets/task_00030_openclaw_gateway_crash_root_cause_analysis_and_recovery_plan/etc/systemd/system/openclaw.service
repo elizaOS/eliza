@@ -1,0 +1,24 @@
+[Unit]
+Description=OpenClaw AI Gateway Service
+After=network-online.target
+Wants=network-online.target
+Documentation=https://docs.openclaw.ai
+
+[Service]
+Type=simple
+User=node
+Group=node
+WorkingDirectory=/home/node/workspace
+ExecStart=/usr/local/bin/openclaw gateway start --foreground
+ExecStop=/usr/local/bin/openclaw gateway stop
+ExecReload=/bin/kill -USR1 $MAINPID
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/var/log/openclaw/gateway.log
+StandardError=append:/var/log/openclaw/gateway-error.log
+LimitNOFILE=65536
+Environment=NODE_ENV=production
+Environment=OPENCLAW_HOME=/home/node/.openclaw
+
+[Install]
+WantedBy=multi-user.target

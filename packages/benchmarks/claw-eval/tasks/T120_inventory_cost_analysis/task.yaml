@@ -1,0 +1,154 @@
+task_id: T120_inventory_cost_analysis
+task_name: Inventory Cost Analysis
+version: "1.0"
+category: ops
+difficulty: medium
+tags: [general, multi_service]
+
+services:
+  - name: inventory
+    command: python mock_services/inventory/server.py
+    port: 9108
+    health_check: http://localhost:9108/inventory/products
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9108/inventory/reset
+    env:
+      INVENTORY_FIXTURES: tasks/T120_inventory_cost_analysis/fixtures/inventory/items.json
+  - name: finance
+    command: python mock_services/finance/server.py
+    port: 9104
+    health_check: http://localhost:9104/finance/transactions
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9104/finance/reset
+    env:
+      FINANCE_FIXTURES: tasks/T120_inventory_cost_analysis/fixtures/finance/transactions.json
+
+prompt:
+  text: |
+    Please help me perform a cross-verification of inventory and procurement costs:
+    1. Review the quantity and unit cost of all current inventory items
+    2. Review the corresponding procurement transaction records in the finance system
+    3. Compare: whether the unit price in inventory records matches the actual purchase price
+    4. Identify categories with cost anomalies (unit price discrepancies, different prices across batches, etc.)
+    5. Output a cost analysis report
+  language: en
+
+tools:
+  - name: inventory_list_items
+    description: View inventory list
+    input_schema:
+      type: object
+      properties:
+        category:
+          type: string
+          description: Filter by category
+      required: []
+
+  - name: inventory_get_item
+    description: Get inventory item details
+    input_schema:
+      type: object
+      properties:
+        product_id:
+          type: string
+          description: Product ID
+      required: [product_id]
+
+  - name: finance_list_transactions
+    description: View transaction records
+    input_schema:
+      type: object
+      properties:
+        start_date:
+          type: string
+          description: "Start date (YYYY-MM-DD)"
+        end_date:
+          type: string
+          description: "End date (YYYY-MM-DD)"
+      required: []
+
+  - name: finance_get_transaction
+    description: Get transaction details
+    input_schema:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+          description: Transaction ID
+      required: [transaction_id]
+
+tool_endpoints:
+  - tool_name: inventory_list_items
+    url: http://localhost:9108/inventory/products
+    method: POST
+  - tool_name: inventory_get_item
+    url: http://localhost:9108/inventory/products/get
+    method: POST
+  - tool_name: finance_list_transactions
+    url: http://localhost:9104/finance/transactions
+    method: POST
+  - tool_name: finance_get_transaction
+    url: http://localhost:9104/finance/transactions/get
+    method: POST
+
+environment:
+  timeout_seconds: 300
+  max_turns: 20
+
+scoring_components:
+  - name: anomaly_detection
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "Whether both the monitor unit price discrepancy and the mousepad batch pricing difference are discovered"
+  - name: cost_reconciliation
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "Whether cost reconciliation for all 6 categories is complete and accurate"
+  - name: report_quality
+    weight: 0.30
+    check:
+      type: llm_judge
+      description: "Whether the cost analysis report is clearly structured, data accurate, and recommendations actionable"
+
+safety_checks: []
+
+expected_actions: []
+
+judge_rubric: |
+  Evaluate the quality of the assistant's inventory cost analysis report.
+
+  ## Correct reconciliation results
+  1. ITEM-801 A4 paper: 150 x 25 = 3750 vs TXN-801 (3750) -> consistent
+  2. ITEM-802 Ink cartridge: 20 x 180 = 3600 vs TXN-802 (3600) -> consistent
+  3. ITEM-803 Keyboard: 45 x 350 = 15750 vs TXN-803 (15750) -> consistent
+  4. ITEM-804 Monitor: inventory unit_cost=1500, but TXN-804 actual purchase 12 x 2200 = 26400
+     -> unit price discrepancy: inventory 1500 vs actual 2200, 700 per unit difference
+  5. ITEM-805 USB cable: 200 x 15 = 3000 vs TXN-805 (3000) -> consistent
+  6. ITEM-806 Mousepad: inventory unit_cost=8
+     -> TXN-806a: 60 x 8 = 480 (first batch) + TXN-806b: 40 x 12 = 480 (second batch)
+     -> Two batches at different prices (8 vs 12), inventory only records first batch price
+
+  ## Key findings
+  - Monitor cost discrepancy is the largest (700/unit x 12 units = 8400 total difference)
+  - Mousepad has different batch prices, needs weighted average cost calculation
+  - TXN-807 (rent) is a non-procurement transaction and should be excluded
+
+  Scoring:
+  - 0.8-1.0: Both anomalies discovered, all 6 categories reconciled
+  - 0.5-0.7: At least 1 anomaly found, most categories reconciled
+  - 0.2-0.4: Reconciliation incomplete
+  - 0.0-0.1: Analysis not completed
+
+reference_solution: |
+  1. inventory_list_items() -> 6 inventory items
+  2. finance_list_transactions() -> 8 transactions
+  3. Cross-compare unit_cost x quantity vs transaction amount for each item
+  4. Discover anomaly 1: ITEM-804 monitor (inventory 1500 vs actual 2200)
+  5. Discover anomaly 2: ITEM-806 mousepad (two batch prices 8 vs 12)
+  6. Output cost analysis report
+
+primary_dimensions: [completion, robustness, communication]

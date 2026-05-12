@@ -1,0 +1,120 @@
+# Keyword Extraction Configuration Rules
+# Version: 2.1
+# Last updated: 2026-03-18
+
+stop_words:
+  # Chinese particles and function words
+  - "吧"
+  - "啊"
+  - "的"
+  - "了"
+  - "我"
+  - "你"
+  - "他"
+  - "她"
+  - "它"
+  - "们"
+  - "是"
+  - "在"
+  - "有"
+  - "和"
+  - "与"
+  - "也"
+  - "都"
+  - "就"
+  - "还"
+  - "把"
+  - "被"
+  - "让"
+  - "给"
+  - "从"
+  - "到"
+  - "对"
+  - "这"
+  - "那"
+  - "哪"
+  - "什么"
+  - "怎么"
+  - "一下"
+  - "一些"
+  - "可以"
+  - "能"
+  - "会"
+  - "要"
+  - "想"
+  - "看看"
+  - "帮"
+  - "请"
+  - "嗯"
+  - "哦"
+  - "呢"
+  - "吗"
+  - "呀"
+  - "嘛"
+
+intent_rules:
+  # Priority resolution: when multiple intents trigger simultaneously, the intent with
+  # HIGHER priority value takes precedence (higher number = more specific = preferred).
+  # Resolution order: search_file (2) > search_memory (1) > general (0).
+
+  search_file:
+    description: "Intent for queries related to finding or referencing files"
+    trigger_patterns:
+      - "文件"
+      - "图片"
+      - "视频"
+      - "文档"
+      - "表格"
+      - "项目文件"
+      - ".mp4"
+      - ".mov"
+      - ".xlsx"
+      - ".docx"
+      - ".prproj"
+      - ".aep"
+      - ".mogrt"
+      - "上传"
+      - "下载"
+      - "打开"
+    priority: 2
+
+  search_memory:
+    description: "Intent for queries referencing past conversations or stored memories"
+    trigger_patterns:
+      - "之前"
+      - "上次"
+      - "记得"
+      - "历史"
+      - "对话"
+      - "讨论过"
+      - "说过"
+      - "提到过"
+      - "以前"
+      - "回忆"
+      - "继续"
+      - "接着"
+    priority: 1
+
+  general:
+    description: "Default intent for general queries and information requests"
+    trigger_patterns:
+      - "什么是"
+      - "如何"
+      - "帮我"
+      - "解释"
+      - "介绍"
+      - "推荐"
+      - "建议"
+      - "怎样"
+    priority: 0
+
+extraction_settings:
+  max_keywords: 6
+  max_words_per_keyword: 4
+  preserve_proper_nouns: true
+  preserve_technical_terms: true
+  min_keyword_length: 2
+  language: "zh-CN"
+  fallback_language: "en"
+  deduplication: true
+  case_sensitive: false

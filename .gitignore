@@ -218,6 +218,15 @@ tasks/
 !packages/benchmarks/app-eval/tasks/*-tasks.json
 !packages/benchmarks/app-eval/tasks/*_evaluator.py
 !plugins/plugin-agent-skills/src/tasks/
+# Vendored benchmark task fixtures — these ARE the benchmark, not generated.
+# We own all benchmark code in-tree; no submodules (only llama.cpp is a submodule).
+!packages/benchmarks/claw-eval/tasks/
+!packages/benchmarks/claw-eval/tasks/**
+!packages/benchmarks/skillsbench/tasks/
+!packages/benchmarks/skillsbench/tasks/**
+!packages/benchmarks/swe-bench-pro/run_scripts/**
+!packages/benchmarks/nl2repo/test_files/
+!packages/benchmarks/nl2repo/test_files/**
 
 # Development database and tool directories
 **/data/
@@ -228,6 +237,13 @@ tasks/
 # tarot, iching, and astrology all import their data tables from those JSONs.
 !plugins/plugin-mysticism/src/engines/*/data/
 !plugins/plugin-mysticism/src/engines/*/data/**
+# Benchmark fixture data is vendored, not generated.
+!packages/benchmarks/qwen-claw-bench/data/
+!packages/benchmarks/qwen-claw-bench/data/**
+!packages/benchmarks/swe-bench-multilingual/tests/test_data/
+!packages/benchmarks/swe-bench-multilingual/tests/test_data/**
+!packages/benchmarks/swe-bench-pro/helper_code/data/
+!packages/benchmarks/swe-bench-pro/helper_code/data/**
 **/.roo/
 **/.roomodes/
 **/.taskmaster/

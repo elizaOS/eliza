@@ -1,0 +1,55 @@
+2026-03-05 09:00:02 [INFO] Starting daily book recommendation (channel=telegram, dry_run=False)
+2026-03-05 09:00:02 [INFO] Loaded 15 books from database
+2026-03-05 09:00:03 [INFO] Selected book: Sapiens: A Brief History of Humankind by Yuval Noah Harari
+2026-03-05 09:00:04 [INFO] Updated recommendation history for book_id=2
+2026-03-05 09:00:04 [INFO] Book recommendation sent successfully
+2026-03-08 09:00:01 [INFO] Starting daily book recommendation (channel=telegram, dry_run=False)
+2026-03-08 09:00:01 [INFO] Loaded 15 books from database
+2026-03-08 09:00:02 [INFO] Selected book: Meditations by Marcus Aurelius
+2026-03-08 09:00:03 [INFO] Updated recommendation history for book_id=8
+2026-03-08 09:00:03 [INFO] Book recommendation sent successfully
+2026-03-10 09:00:01 [INFO] Starting daily book recommendation (channel=telegram, dry_run=False)
+2026-03-10 09:00:02 [INFO] Loaded 15 books from database
+2026-03-10 09:00:02 [INFO] Selected book: Thinking, Fast and Slow by Daniel Kahneman
+2026-03-10 09:00:03 [INFO] Updated recommendation history for book_id=1
+2026-03-10 09:00:03 [INFO] Book recommendation sent successfully
+2026-03-12 09:00:01 [INFO] Starting daily book recommendation (channel=telegram, dry_run=False)
+2026-03-12 09:00:02 [INFO] Loaded 15 books from database
+2026-03-12 09:00:02 [INFO] Selected book: Atomic Habits by James Clear
+2026-03-12 09:00:03 [INFO] Updated recommendation history for book_id=3
+2026-03-12 09:00:03 [INFO] Book recommendation sent successfully
+2026-03-14 09:00:02 [INFO] Starting daily book recommendation (channel=telegram, dry_run=False)
+2026-03-14 09:00:02 [INFO] Loaded 15 books from database
+2026-03-14 09:00:03 [INFO] Selected book: Range: Why Generalists Triumph in a Specialized World by David Epstein
+2026-03-14 09:00:03 [INFO] Updated recommendation history for book_id=14
+2026-03-14 09:00:04 [INFO] Book recommendation sent successfully
+2026-03-15 09:00:01 [INFO] Starting daily book recommendation (channel=telegram, dry_run=False)
+2026-03-15 09:00:01 [INFO] Loaded 15 books from database
+2026-03-15 09:00:02 [INFO] Selected book: Deep Work by Cal Newport
+2026-03-15 09:00:02 [INFO] Updated recommendation history for book_id=5
+2026-03-15 09:00:02 [INFO] Book recommendation sent successfully
+2026-03-17 09:00:01 [INFO] Starting daily book recommendation (channel=telegram, dry_run=False)
+2026-03-17 09:00:01 [INFO] Loaded 15 books from database
+2026-03-17 09:00:02 [INFO] Selected book: Essentialism: The Disciplined Pursuit of Less by Greg McKeown
+2026-03-17 09:00:03 [INFO] Updated recommendation history for book_id=10
+2026-03-17 09:00:03 [INFO] Book recommendation sent successfully
+2026-03-18 09:00:01 [INFO] Starting daily book recommendation (channel=telegram, dry_run=False)
+2026-03-18 09:00:01 [INFO] Loaded 15 books from database
+2026-03-18 09:00:02 [INFO] Selected book: The Three-Body Problem by Liu Cixin
+2026-03-18 09:00:02 [INFO] Updated recommendation history for book_id=12
+2026-03-18 09:00:02 [INFO] Book recommendation sent successfully
+2026-03-19 09:00:01 [INFO] Starting daily book recommendation (channel=telegram, dry_run=False)
+2026-03-19 09:00:01 [INFO] Loaded 15 books from database
+2026-03-19 09:00:02 [INFO] Selected book: Man's Search for Meaning by Viktor E. Frankl
+2026-03-19 09:00:03 [ERROR] Failed to send book recommendation
+2026-03-19 09:00:03 [ERROR] Telegram API error: HTTPError 429 Too Many Requests - retry_after=3600
+2026-03-19 09:05:03 [INFO] Retry attempt 1/3 for book_id=7
+2026-03-19 09:05:04 [ERROR] Telegram API error: HTTPError 429 Too Many Requests - retry_after=3600
+2026-03-19 09:10:04 [INFO] Retry attempt 2/3 for book_id=7
+2026-03-19 09:10:05 [ERROR] Telegram API error: HTTPError 429 Too Many Requests - retry_after=3600
+2026-03-19 09:15:05 [INFO] Retry attempt 3/3 for book_id=7
+2026-03-19 09:15:06 [ERROR] Telegram API error: HTTPError 429 Too Many Requests - retry_after=3600
+2026-03-19 09:15:06 [ERROR] All 3 retry attempts exhausted for book_id=7. Task failed.
+2026-03-19 09:15:06 [WARNING] Sending failure alert to admin channel
+2026-03-19 09:15:07 [ERROR] Alert delivery also failed: HTTPError 429 Too Many Requests
+2026-03-19 09:15:07 [ERROR] CRITICAL: Daily book recommendation task FAILED — no message sent, no alert delivered

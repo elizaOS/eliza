@@ -1,0 +1,46 @@
+[
+  {
+    "event_id": "evt_401",
+    "title": "Product Review Meeting",
+    "start_time": "2026-04-02T09:00:00+08:00",
+    "end_time": "2026-04-02T12:00:00+08:00",
+    "location": "Local - Conference Room A",
+    "organizer": "Wang Ming",
+    "attendees": ["me", "Wang Ming", "Zhou Ming"],
+    "description": "Q2 product review, discuss new feature priorities",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_402",
+    "title": "No plans",
+    "start_time": "2026-04-03T00:00:00+08:00",
+    "end_time": "2026-04-03T23:59:00+08:00",
+    "location": "",
+    "organizer": "",
+    "attendees": [],
+    "description": "Free day",
+    "status": "free"
+  },
+  {
+    "event_id": "evt_403",
+    "title": "Beijing Annual Meeting",
+    "start_time": "2026-04-05T09:00:00+08:00",
+    "end_time": "2026-04-05T18:00:00+08:00",
+    "location": "Beijing HQ",
+    "organizer": "HR",
+    "attendees": ["All department heads"],
+    "description": "Flight booked: depart 4/4, return 4/6",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_404",
+    "title": "Team Building Activity",
+    "start_time": "2026-04-07T14:00:00+08:00",
+    "end_time": "2026-04-07T18:00:00+08:00",
+    "location": "Local - Company grounds",
+    "organizer": "HR",
+    "attendees": ["All staff"],
+    "description": "Q2 team building",
+    "status": "confirmed"
+  }
+]

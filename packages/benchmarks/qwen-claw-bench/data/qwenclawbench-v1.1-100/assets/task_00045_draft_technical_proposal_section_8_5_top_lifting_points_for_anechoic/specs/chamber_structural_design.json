@@ -1,0 +1,78 @@
+{
+  "document_info": {
+    "title": "Anechoic Chamber Structural Design Parameters",
+    "document_number": "APC-2024-0087-STR-001",
+    "revision": "C1",
+    "date": "2024-01-20",
+    "status": "Issued for Construction"
+  },
+  "chamber_dimensions": {
+    "internal_length_m": 24,
+    "internal_width_m": 16,
+    "internal_height_m": 20,
+    "external_length_m": 25.2,
+    "external_width_m": 17.2,
+    "external_height_m": 21.5,
+    "clear_working_height_m": 18,
+    "notes": "Clear working height measured from finished floor to underside of lowest absorber tip"
+  },
+  "roof_structure": {
+    "type": "steel_truss",
+    "truss_span_m": 16,
+    "truss_spacing_m": 3,
+    "truss_depth_m": 1.8,
+    "top_chord_section": "H300x300x10x15",
+    "bottom_chord_section": "H250x250x9x14",
+    "web_member_section": "H150x150x7x10",
+    "steel_grade": "Q345B",
+    "connection_type": "bolted_and_welded",
+    "bolt_grade": "10.9S",
+    "roof_dead_load_kN_per_m2": 1.2,
+    "roof_live_load_kN_per_m2": 0.5,
+    "additional_suspended_load_kN_per_m2": 0.3,
+    "total_roof_design_load_kN_per_m2": 2.0
+  },
+  "shielding_enclosure": {
+    "material": "welded_steel_plates",
+    "plate_thickness_mm": 2,
+    "plate_material_grade": "Q235B",
+    "weld_type": "continuous_fillet",
+    "weld_leg_size_mm": 3,
+    "shielding_effectiveness": {
+      "target_at_200MHz_dB": 100,
+      "target_at_1GHz_dB": 100,
+      "target_at_10GHz_dB": 90,
+      "target_at_18GHz_dB": 80,
+      "measurement_standard": "IEEE 299"
+    },
+    "grounding": {
+      "grounding_resistance_ohm_max": 1.0,
+      "grounding_conductor_size_mm2": 95,
+      "grounding_points_count": 8,
+      "bonding_strap_material": "tinned_copper"
+    }
+  },
+  "foundation": {
+    "turntable_pit_depth_m": 1.5,
+    "turntable_pit_diameter_m": 3.0,
+    "floor_slab_thickness_mm": 300,
+    "floor_finish": "conductive_epoxy",
+    "floor_flatness_mm_per_3m": 3,
+    "floor_loading_capacity_kN_per_m2": 20
+  },
+  "column_grid": {
+    "longitudinal_spacing_m": 6,
+    "transverse_spacing_m": 8,
+    "column_section": "H400x400x13x21",
+    "column_steel_grade": "Q345B",
+    "grid_labels_longitudinal": ["A", "B", "C", "D", "E"],
+    "grid_labels_transverse": ["1", "2", "3"]
+  },
+  "seismic_design": {
+    "seismic_intensity": 7,
+    "site_category": "II",
+    "design_earthquake_group": 1,
+    "importance_factor": 1.0,
+    "design_standard": "GB50011-2010"
+  }
+}

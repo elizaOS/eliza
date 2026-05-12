@@ -1,0 +1,49 @@
+task_id: M082_multi_doc_extraction_scatter
+task_name: Multi-Document Extraction - Math Reasoning Scatter
+version: "1.0"
+category: doc_extraction
+difficulty: hard
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    I am researching the capabilities of recent RL-based reasoning models.
+    Please download and read these two PDFs:
+    - https://arxiv.org/pdf/2501.12948
+    - https://arxiv.org/pdf/2505.09388
+
+    Extract the "Pass@1" accuracy scores for two specific math benchmarks:
+    "AIME 2024" and "MATH-500". I need this data for four models (thinking
+    models): DeepSeek-R1, DeepSeek-R1-Zero, Qwen3-235B-A22B, and OpenAI-o1.
+
+    Save the data into a file named /workspace/reasoning_math.csv with three
+    columns: Model, AIME_2024, and MATH_500.
+
+    Then, create a 2D Scatter Plot comparing these models, with AIME 2024 on the
+    x-axis and MATH-500 on the y-axis. Ensure each data point has a text
+    annotation next to it displaying the model's name. Save the image as
+    /workspace/math_reasoning_scatter.png.
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files: []
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/reasoning_math.csv
+  - /workspace/math_reasoning_scatter.png
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Download 2 PDFs (DeepSeek-R1 and Qwen3 reports), extract AIME 2024 and
+  MATH-500 Pass@1 scores for 4 thinking models, save CSV and scatter plot
+  with model name annotations.
+primary_dimensions:
+  - completion
+  - robustness

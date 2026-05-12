@@ -1,0 +1,515 @@
+{
+  "snapshot_timestamp": "2024-11-14T06:00:00Z",
+  "total_nodes": 30,
+  "graph_version": 47,
+  "description": "Shared knowledge graph snapshot - contains entity relationships across all agents",
+  "classification_summary": {
+    "public": 9,
+    "internal": 12,
+    "confidential": 6,
+    "restricted": 3
+  },
+  "notes": "Snapshot generated from production graph at scheduled checkpoint. Node versions reflect last committed state.",
+  "nodes": [
+    {
+      "id": "kg_001",
+      "name": "API Rate Limits",
+      "type": "product_config",
+      "owner_agent": "ops_agent",
+      "classification": "internal",
+      "last_updated": "2024-11-10T12:00:00Z",
+      "version": 12,
+      "dependencies": [
+        "kg_004"
+      ],
+      "tags": [
+        "config",
+        "rate-limiting"
+      ]
+    },
+    {
+      "id": "kg_002",
+      "name": "Feature Flags",
+      "type": "product_config",
+      "owner_agent": "coding_agent",
+      "classification": "internal",
+      "last_updated": "2024-11-09T08:00:00Z",
+      "version": 12,
+      "dependencies": [
+        "kg_013"
+      ],
+      "tags": [
+        "config",
+        "feature-management"
+      ]
+    },
+    {
+      "id": "kg_003",
+      "name": "Pricing Tiers",
+      "type": "product_config",
+      "owner_agent": "analytics_agent",
+      "classification": "public",
+      "last_updated": "2024-11-07T03:00:00Z",
+      "version": 12,
+      "dependencies": [
+        "kg_017",
+        "kg_018",
+        "kg_020"
+      ],
+      "tags": [
+        "pricing",
+        "customer-facing"
+      ]
+    },
+    {
+      "id": "kg_004",
+      "name": "Service Endpoints Registry",
+      "type": "product_config",
+      "owner_agent": "ops_agent",
+      "classification": "internal",
+      "last_updated": "2024-11-10T12:00:00Z",
+      "version": 3,
+      "dependencies": [
+        "kg_001",
+        "kg_025"
+      ],
+      "tags": [
+        "config",
+        "infrastructure"
+      ]
+    },
+    {
+      "id": "kg_005",
+      "name": "Notification Templates",
+      "type": "product_config",
+      "owner_agent": "customer_agent",
+      "classification": "public",
+      "last_updated": "2024-10-16T19:00:00Z",
+      "version": 4,
+      "dependencies": [
+        "kg_011"
+      ],
+      "tags": [
+        "templates",
+        "customer-facing"
+      ]
+    },
+    {
+      "id": "kg_006",
+      "name": "Customer API v2 Spec",
+      "type": "api_endpoint",
+      "owner_agent": "coding_agent",
+      "classification": "public",
+      "last_updated": "2024-10-29T18:00:00Z",
+      "version": 1,
+      "dependencies": [
+        "kg_003",
+        "kg_008",
+        "kg_010"
+      ],
+      "tags": [
+        "api",
+        "customer-facing",
+        "documentation"
+      ]
+    },
+    {
+      "id": "kg_007",
+      "name": "Internal Analytics API",
+      "type": "api_endpoint",
+      "owner_agent": "analytics_agent",
+      "classification": "internal",
+      "last_updated": "2024-10-03T19:00:00Z",
+      "version": 5,
+      "dependencies": [
+        "kg_014"
+      ],
+      "tags": [
+        "api",
+        "analytics"
+      ]
+    },
+    {
+      "id": "kg_008",
+      "name": "Payment Gateway Integration",
+      "type": "api_endpoint",
+      "owner_agent": "ops_agent",
+      "classification": "confidential",
+      "last_updated": "2024-10-12T18:00:00Z",
+      "version": 12,
+      "dependencies": [
+        "kg_009",
+        "kg_004"
+      ],
+      "tags": [
+        "api",
+        "payments",
+        "sensitive"
+      ]
+    },
+    {
+      "id": "kg_009",
+      "name": "Auth Service Endpoints",
+      "type": "api_endpoint",
+      "owner_agent": "ops_agent",
+      "classification": "confidential",
+      "last_updated": "2024-10-06T11:00:00Z",
+      "version": 5,
+      "dependencies": [
+        "kg_023"
+      ],
+      "tags": [
+        "api",
+        "authentication",
+        "sensitive"
+      ]
+    },
+    {
+      "id": "kg_010",
+      "name": "Public Documentation API",
+      "type": "api_endpoint",
+      "owner_agent": "research_agent",
+      "classification": "public",
+      "last_updated": "2024-10-28T09:00:00Z",
+      "version": 11,
+      "dependencies": [
+        "kg_028"
+      ],
+      "tags": [
+        "api",
+        "documentation"
+      ]
+    },
+    {
+      "id": "kg_011",
+      "name": "Customer Onboarding Flow",
+      "type": "workflow",
+      "owner_agent": "customer_agent",
+      "classification": "internal",
+      "last_updated": "2024-11-12T21:00:00Z",
+      "version": 10,
+      "dependencies": [
+        "kg_005",
+        "kg_016"
+      ],
+      "tags": [
+        "workflow",
+        "customer"
+      ]
+    },
+    {
+      "id": "kg_012",
+      "name": "Incident Response Playbook",
+      "type": "workflow",
+      "owner_agent": "ops_agent",
+      "classification": "internal",
+      "last_updated": "2024-11-06T10:00:00Z",
+      "version": 8,
+      "dependencies": [
+        "kg_021",
+        "kg_004"
+      ],
+      "tags": [
+        "workflow",
+        "operations"
+      ]
+    },
+    {
+      "id": "kg_013",
+      "name": "Code Review Pipeline",
+      "type": "workflow",
+      "owner_agent": "coding_agent",
+      "classification": "internal",
+      "last_updated": "2024-10-10T16:00:00Z",
+      "version": 10,
+      "dependencies": [
+        "kg_002"
+      ],
+      "tags": [
+        "workflow",
+        "development"
+      ]
+    },
+    {
+      "id": "kg_014",
+      "name": "Data Ingestion Pipeline",
+      "type": "workflow",
+      "owner_agent": "analytics_agent",
+      "classification": "internal",
+      "last_updated": "2024-10-26T19:00:00Z",
+      "version": 10,
+      "dependencies": [
+        "kg_007",
+        "kg_017"
+      ],
+      "tags": [
+        "workflow",
+        "analytics"
+      ]
+    },
+    {
+      "id": "kg_015",
+      "name": "Research Synthesis Workflow",
+      "type": "workflow",
+      "owner_agent": "research_agent",
+      "classification": "public",
+      "last_updated": "2024-10-01T13:00:00Z",
+      "version": 4,
+      "dependencies": [
+        "kg_010",
+        "kg_028"
+      ],
+      "tags": [
+        "workflow",
+        "research"
+      ]
+    },
+    {
+      "id": "kg_016",
+      "name": "Enterprise Accounts",
+      "type": "customer_segment",
+      "owner_agent": "customer_agent",
+      "classification": "confidential",
+      "last_updated": "2024-10-31T01:00:00Z",
+      "version": 8,
+      "dependencies": [
+        "kg_019"
+      ],
+      "tags": [
+        "customer",
+        "enterprise",
+        "sensitive"
+      ]
+    },
+    {
+      "id": "kg_017",
+      "name": "SMB Tier Definitions",
+      "type": "customer_segment",
+      "owner_agent": "analytics_agent",
+      "classification": "internal",
+      "last_updated": "2024-10-05T23:00:00Z",
+      "version": 3,
+      "dependencies": [
+        "kg_020"
+      ],
+      "tags": [
+        "customer",
+        "segmentation"
+      ]
+    },
+    {
+      "id": "kg_018",
+      "name": "Churn Risk Profiles",
+      "type": "customer_segment",
+      "owner_agent": "analytics_agent",
+      "classification": "confidential",
+      "last_updated": "2024-10-07T14:00:00Z",
+      "version": 1,
+      "dependencies": [
+        "kg_016",
+        "kg_017"
+      ],
+      "tags": [
+        "analytics",
+        "churn",
+        "sensitive"
+      ]
+    },
+    {
+      "id": "kg_019",
+      "name": "Customer Contact Preferences",
+      "type": "customer_segment",
+      "owner_agent": "customer_agent",
+      "classification": "confidential",
+      "last_updated": "2024-10-21T03:00:00Z",
+      "version": 3,
+      "dependencies": [],
+      "tags": [
+        "customer",
+        "pii",
+        "sensitive"
+      ]
+    },
+    {
+      "id": "kg_020",
+      "name": "Geographic Distribution",
+      "type": "customer_segment",
+      "owner_agent": "analytics_agent",
+      "classification": "public",
+      "last_updated": "2024-10-11T11:00:00Z",
+      "version": 1,
+      "dependencies": [],
+      "tags": [
+        "analytics",
+        "demographics"
+      ]
+    },
+    {
+      "id": "kg_021",
+      "name": "Production K8s Manifests",
+      "type": "deployment_config",
+      "owner_agent": "ops_agent",
+      "classification": "internal",
+      "last_updated": "2024-10-19T21:00:00Z",
+      "version": 6,
+      "dependencies": [
+        "kg_022",
+        "kg_025"
+      ],
+      "tags": [
+        "deployment",
+        "kubernetes"
+      ]
+    },
+    {
+      "id": "kg_022",
+      "name": "Staging Environment Config",
+      "type": "deployment_config",
+      "owner_agent": "ops_agent",
+      "classification": "internal",
+      "last_updated": "2024-11-06T14:00:00Z",
+      "version": 5,
+      "dependencies": [
+        "kg_025"
+      ],
+      "tags": [
+        "deployment",
+        "staging"
+      ]
+    },
+    {
+      "id": "kg_023",
+      "name": "Database Connection Strings",
+      "type": "deployment_config",
+      "owner_agent": "ops_agent",
+      "classification": "restricted",
+      "last_updated": "2024-10-04T02:00:00Z",
+      "version": 6,
+      "dependencies": [],
+      "tags": [
+        "credentials",
+        "restricted"
+      ]
+    },
+    {
+      "id": "kg_024",
+      "name": "SSL Certificates Metadata",
+      "type": "deployment_config",
+      "owner_agent": "ops_agent",
+      "classification": "restricted",
+      "last_updated": "2024-11-02T03:00:00Z",
+      "version": 1,
+      "dependencies": [],
+      "tags": [
+        "certificates",
+        "restricted"
+      ]
+    },
+    {
+      "id": "kg_025",
+      "name": "CDN Configuration",
+      "type": "deployment_config",
+      "owner_agent": "ops_agent",
+      "classification": "internal",
+      "last_updated": "2024-10-27T16:00:00Z",
+      "version": 4,
+      "dependencies": [],
+      "tags": [
+        "infrastructure",
+        "cdn"
+      ]
+    },
+    {
+      "id": "kg_026",
+      "name": "Product FAQ Knowledge Base",
+      "type": "knowledge_entity",
+      "owner_agent": "research_agent",
+      "classification": "public",
+      "last_updated": "2024-10-03T05:00:00Z",
+      "version": 7,
+      "dependencies": [
+        "kg_003",
+        "kg_005",
+        "kg_016",
+        "kg_030"
+      ],
+      "tags": [
+        "knowledge",
+        "customer-facing",
+        "faq"
+      ]
+    },
+    {
+      "id": "kg_027",
+      "name": "Competitor Analysis Report",
+      "type": "knowledge_entity",
+      "owner_agent": "research_agent",
+      "classification": "confidential",
+      "last_updated": "2024-10-10T08:00:00Z",
+      "version": 12,
+      "dependencies": [
+        "kg_018",
+        "kg_020"
+      ],
+      "tags": [
+        "research",
+        "competitive-intel",
+        "sensitive"
+      ]
+    },
+    {
+      "id": "kg_028",
+      "name": "Technical Documentation Index",
+      "type": "knowledge_entity",
+      "owner_agent": "research_agent",
+      "classification": "public",
+      "last_updated": "2024-10-16T18:00:00Z",
+      "version": 7,
+      "dependencies": [
+        "kg_006",
+        "kg_010",
+        "kg_009",
+        "kg_023",
+        "kg_030"
+      ],
+      "tags": [
+        "documentation",
+        "technical"
+      ]
+    },
+    {
+      "id": "kg_029",
+      "name": "API Key Rotation Schedule",
+      "type": "knowledge_entity",
+      "owner_agent": "ops_agent",
+      "classification": "restricted",
+      "last_updated": "2024-10-10T02:00:00Z",
+      "version": 5,
+      "dependencies": [
+        "kg_024"
+      ],
+      "tags": [
+        "security",
+        "key-management",
+        "restricted"
+      ]
+    },
+    {
+      "id": "kg_030",
+      "name": "Public Release Notes",
+      "type": "knowledge_entity",
+      "owner_agent": "coding_agent",
+      "classification": "public",
+      "last_updated": "2024-10-26T19:00:00Z",
+      "version": 9,
+      "dependencies": [
+        "kg_002",
+        "kg_013"
+      ],
+      "tags": [
+        "releases",
+        "documentation"
+      ]
+    }
+  ]
+}

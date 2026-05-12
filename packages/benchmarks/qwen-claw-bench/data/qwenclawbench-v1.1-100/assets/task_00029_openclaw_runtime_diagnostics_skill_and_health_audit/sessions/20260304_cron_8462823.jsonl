@@ -1,0 +1,5 @@
+{"type": "session_start", "session_id": "cron_8462823", "model": "claude-opus-4-0-20250115", "created_at": "2026-03-04T18:05:56.777047", "user_id": "system", "channel": "internal"}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-03-04T18:10:32.386819", "session_id": "cron_8462823", "seq": 1}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-03-04T18:12:00.467745", "session_id": "cron_8462823", "seq": 2}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-04T18:15:48.100458", "session_id": "cron_8462823", "seq": 3, "usage": {"prompt_tokens": 7082, "completion_tokens": 3022, "total_tokens": 3062}}
+{"type": "session_end", "session_id": "cron_8462823", "ended_at": "2026-03-04T18:15:58.100458", "total_messages": 3, "status": "completed"}

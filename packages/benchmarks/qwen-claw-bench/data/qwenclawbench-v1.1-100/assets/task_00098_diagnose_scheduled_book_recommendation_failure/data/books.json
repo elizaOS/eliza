@@ -1,0 +1,137 @@
+[
+  {
+    "id": 1,
+    "title": "Thinking, Fast and Slow",
+    "author": "Daniel Kahneman",
+    "genre": "Psychology",
+    "rating": 4.6,
+    "description": "An exploration of the two systems that drive the way we think — fast intuitive thinking and slow deliberate thinking.",
+    "last_recommended": "2026-03-10"
+  },
+  {
+    "id": 2,
+    "title": "Sapiens: A Brief History of Humankind",
+    "author": "Yuval Noah Harari",
+    "genre": "History",
+    "rating": 4.5,
+    "description": "A sweeping narrative of humanity's creation and evolution that explores how biology and history have defined us.",
+    "last_recommended": "2026-03-05"
+  },
+  {
+    "id": 3,
+    "title": "Atomic Habits",
+    "author": "James Clear",
+    "genre": "Self-Help",
+    "rating": 4.7,
+    "description": "A proven framework for improving every day through tiny changes in behavior that compound into remarkable results.",
+    "last_recommended": "2026-03-12"
+  },
+  {
+    "id": 4,
+    "title": "The Design of Everyday Things",
+    "author": "Don Norman",
+    "genre": "Design",
+    "rating": 4.3,
+    "description": "A powerful primer on how and why some products satisfy customers while others frustrate them.",
+    "last_recommended": "2026-02-28"
+  },
+  {
+    "id": 5,
+    "title": "Deep Work",
+    "author": "Cal Newport",
+    "genre": "Productivity",
+    "rating": 4.4,
+    "description": "Rules for focused success in a distracted world, offering strategies for cultivating deep concentration.",
+    "last_recommended": "2026-03-15"
+  },
+  {
+    "id": 6,
+    "title": "The Pragmatic Programmer",
+    "author": "David Thomas & Andrew Hunt",
+    "genre": "Technology",
+    "rating": 4.6,
+    "description": "A timeless guide to software development that covers topics from personal responsibility to career development.",
+    "last_recommended": "2026-03-01"
+  },
+  {
+    "id": 7,
+    "title": "Man's Search for Meaning",
+    "author": "Viktor E. Frankl",
+    "genre": "Philosophy",
+    "rating": 4.7,
+    "description": "A memoir and philosophical work exploring how meaning can be found even in the most brutal conditions.",
+    "last_recommended": "2026-02-20"
+  },
+  {
+    "id": 8,
+    "title": "Meditations",
+    "author": "Marcus Aurelius",
+    "genre": "Philosophy",
+    "rating": 4.5,
+    "description": "Personal writings of the Roman Emperor on Stoic philosophy, self-discipline, and resilience.",
+    "last_recommended": "2026-03-08"
+  },
+  {
+    "id": 9,
+    "title": "The Almanack of Naval Ravikant",
+    "author": "Eric Jorgenson",
+    "genre": "Business",
+    "rating": 4.5,
+    "description": "A collection of Naval's wisdom and experience on wealth creation and finding happiness.",
+    "last_recommended": "2026-02-25"
+  },
+  {
+    "id": 10,
+    "title": "Essentialism: The Disciplined Pursuit of Less",
+    "author": "Greg McKeown",
+    "genre": "Productivity",
+    "rating": 4.3,
+    "description": "A systematic discipline for discerning what is absolutely essential and eliminating everything that is not.",
+    "last_recommended": "2026-03-17"
+  },
+  {
+    "id": 11,
+    "title": "Educated",
+    "author": "Tara Westover",
+    "genre": "Memoir",
+    "rating": 4.6,
+    "description": "A memoir of a woman who grew up in a survivalist family and went on to earn a PhD from Cambridge.",
+    "last_recommended": null
+  },
+  {
+    "id": 12,
+    "title": "The Three-Body Problem",
+    "author": "Liu Cixin",
+    "genre": "Science Fiction",
+    "rating": 4.4,
+    "description": "A hard science fiction novel that imagines humanity's first contact with an alien civilization.",
+    "last_recommended": "2026-03-03"
+  },
+  {
+    "id": 13,
+    "title": "Factfulness",
+    "author": "Hans Rosling",
+    "genre": "Science",
+    "rating": 4.5,
+    "description": "Ten reasons we're wrong about the world and why things are better than you think.",
+    "last_recommended": null
+  },
+  {
+    "id": 14,
+    "title": "Range: Why Generalists Triumph in a Specialized World",
+    "author": "David Epstein",
+    "genre": "Science",
+    "rating": 4.3,
+    "description": "Makes the case for breadth of experience in a world that increasingly prizes specialization.",
+    "last_recommended": "2026-03-14"
+  },
+  {
+    "id": 15,
+    "title": "The Mom Test",
+    "author": "Rob Fitzpatrick",
+    "genre": "Business",
+    "rating": 4.6,
+    "description": "How to talk to customers and learn if your business is a good idea when everyone is lying to you.",
+    "last_recommended": null
+  }
+]

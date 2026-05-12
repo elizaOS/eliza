@@ -1,0 +1,132 @@
+task_id: C11zh_container_orchestration
+task_name: "容器编排"
+version: '2.0'
+category: user_agent
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: "我想在 Docker Compose 里限制一下 GPU 资源，请问 deploy.resources 应该怎么写？另外如果想让容器只用指定的显卡，具体该怎么配置呀？"
+  language: zh
+tools:
+  - name: Bash
+    description: 在沙箱环境中执行 shell 命令，返回 stdout/stderr。
+    input_schema:
+      type: object
+      properties:
+        command:
+          type: string
+          description: 要执行的 shell 命令
+      required: [command]
+
+  - name: web_search
+    description: 搜索互联网，返回相关网页结果列表（标题、链接、摘要）。可用于查询Docker Compose最新语法、nvidia-container-toolkit文档等。
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: 搜索关键词或查询语句
+        max_results:
+          type: integer
+          description: 最大返回结果数
+          default: 10
+      required: [query]
+
+  - name: web_fetch
+    description: 获取指定URL的完整网页内容，提取正文文字。
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: 要获取的网页URL
+        timeout_seconds:
+          type: integer
+          description: 请求超时时间（秒）
+          default: 30
+      required: [url]
+
+services:
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+
+tool_endpoints:
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+user_agent:
+  enabled: true
+  persona: |
+    ## 核心身份
+
+    你是一名在某国家重点实验室任职的高级研究工程师（Senior Research Engineer），主要负责为实验室的多个课题组搭建和维护科研计算平台与数据基础设施。你的日常工作包括管理十余台 Linux 服务器组成的内部集群、用 Docker 和 docker-compose 将各类科研应用和数据处理流水线容器化部署、维护存储实验数据的 PostgreSQL 和 MySQL 实例、用 Python 和 Go 为课题组编写内部工具与 REST API 接口。你在技术选型和架构设计上有较大的自主权，但不直接管人——你更像是整个实验室的技术基石，所有人的计算任务最终都要经过你维护的基础设施。你做事讲究系统性，习惯先在脑中理清全局架构再动手，对技术方案有自己清晰的评判标准，不会盲目跟风。
+
+    你刚结束一轮持续两周的基础设施迁移——把实验室几个跑了三四年的裸机服务整体迁移到容器化部署，过程中踩了一堆内核版本兼容、存储卷权限、网络配置的坑，身心都有点疲惫但还算有成就感。现在迁移基本稳定了，你手头积压了几个一直没来得及处理的事，需要高效地逐个清理。
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+    第一批信息（助手给出基础语法后追问时提供）：
+    - GPU显存能在compose层面限制吗（引出显存隔离需求）
+    - 机器上混着用，有几台是A100 80G，还有两台是4090 24G
+    - Docker版本：24.x，NVIDIA Container Toolkit已经装了
+
+    第二批信息（助手了解硬件后提供）：
+    - A100走MIG没问题，4090那边只能靠应用层限了（4090不支持MIG）
+    - A100先按3g.40gb x 2来切（一张卡切两个instance，每个40G显存）
+    - CUDA 12.2，驱动535.x
+
+    第三批信息（要求完整交付物时提供）：
+    - 场景是三个课题组各跑一个推理服务（vLLM serving + 7B模型）
+    - 两台A100机器用MIG切分，一台4090机器走CUDA_VISIBLE_DEVICES + 应用层限制
+    - 要一个能直接拿去改的完整docker-compose.yml模板（每个文件的内容都要完整）
+    - 如果助手只给了目录结构或代码片段，要追问"完整文件内容呢"
+
+    第四批信息（助手给出方案后的追问）：
+    - 你发现一个问题：其中一个课题组的模型需要加载到两张卡上（tensor parallel=2），但MIG切了之后单个instance只有40G，不够一个完整模型
+    - 这个课题组的模型是13B的，至少需要完整80G——是不是有一台A100不能切MIG，得留整卡给他们？
+    - 另外他们的推理服务需要挂载宿主机上的/data/models目录作为只读volume
+
+    第五批信息（如果助手非常深入）：
+    - 你们的内网有一个Harbor私有镜像仓库，所有镜像从那儿拉
+    - 你想在compose里加一个health check，用curl检查vLLM的/health端点
+    - 有个课题组的学生经常把容器跑崩了占满显存不释放，你想加restart policy和resource limits
+
+    ## 隐含矛盾（你自己不知道，只是如实回答）
+    你说"A100先按3g.40gb x 2来切"，但3g.40gb是A100 80G的一种MIG profile，实际上3g.40gb分配的是40GB显存和3个GPC（GPU Processing Clusters）。两台A100如果各切两个3g.40gb，就有4个MIG instances。但你说有三个课题组——第四个instance空着？或者其中一个课题组需要完整80G不能MIG？好的助手应该注意到instance数量和课题组数量的匹配问题，主动问清楚分配方案。
+    此外，4090不支持MIG但你说"4090那边只能靠应用层限了"——好的助手应该确认：是用CUDA_MPS、还是CUDA_VISIBLE_DEVICES、还是在PyTorch/vLLM层面限制gpu_memory_utilization？三种方案隔离程度不同。
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+    如果助手没有追问这些深入信息，你也不要主动全部倒出来。
+  max_rounds: 8
+  system_prompt_suffix: "注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，\n收集信息后再给出完整配置方案。用户可能会追问或修改需求，请耐心回应。\n"
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: final_answer_quality
+  weight: 0.8
+  check:
+    type: llm_judge
+    description: 最终回答的正确性与清晰度
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在容器编排多轮咨询中的整体表现。\n  - 澄清质量(20%)：是否主动收集了关键信息\n  - 最终回答质量(80%)：回答是否正确、完整、有用"
+reference_solution: "1. 询问关键信息：GPU型号, 显存限制需求, 部署场景和规模, 交付物形式\n2. 收到用户信息后给出：包含MIG配置说明、针对A100和4090的差异化docker-compose.yml模板、以及应用层显存限制的实现方案。"
+primary_dimensions:
+- completion
+- safety

@@ -1,0 +1,42 @@
+{
+  "thesis_id": "TH-0042",
+  "symbol": "LAUSDT",
+  "direction": "LONG",
+  "thesis_summary": "LA token expected to rally on upcoming mainnet launch and increasing TVL. Strong support at 0.2350 level with bullish divergence on 4H RSI.",
+  "entry_date": "2024-11-18",
+  "entry_price": 0.2439,
+  "target_price": 0.2800,
+  "stop_loss": 0.2280,
+  "risk_reward_ratio": 2.27,
+  "invalidation_conditions": [
+    {
+      "id": "INV-1",
+      "condition": "Price closes below 0.2350 on 4H",
+      "description": "Key support break"
+    },
+    {
+      "id": "INV-2",
+      "condition": "TVL drops below $50M",
+      "description": "Fundamental deterioration"
+    },
+    {
+      "id": "INV-3",
+      "condition": "BTC drops below $88,000",
+      "description": "Macro risk-off event"
+    },
+    {
+      "id": "INV-4",
+      "condition": "RSI 4H drops below 30 without bullish divergence",
+      "description": "Momentum collapse"
+    },
+    {
+      "id": "INV-5",
+      "condition": "Cumulative 24h funding rate drops below -0.10%",
+      "description": "Persistent negative funding signals overcrowded longs and margin erosion"
+    }
+  ],
+  "time_horizon": "7-14 days",
+  "confidence": "medium-high",
+  "author": "trading_desk",
+  "created_at": "2024-11-18T08:15:00Z"
+}

@@ -1,0 +1,22 @@
+[
+  {
+    "message_id": "msg_1201",
+    "from": "wangzong@wantong-logistics.com",
+    "to": "support@company.com",
+    "subject": "URGENT! Production system down for over 2 hours, severely impacting business",
+    "date": "2026-03-26T12:10:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important", "urgent"],
+    "body": "Hello, this is General Manager Wang from Wantong Logistics.\n\nOur production system has been completely unusable since 10:00 AM today, that's over 2 hours now! All work for our 200+ employees has come to a standstill, logistics dispatch is completely interrupted, and estimated losses exceed 50,000 CNY per hour.\n\nWe already submitted ticket TK-1201, but have not received any substantive response so far. Our contract clearly stipulates a 4-hour onsite response SLA. Please immediately arrange a technician to come to our Pudong office for onsite support!\n\nIf no technician arrives onsite by 2:00 PM, we will formally file an SLA violation complaint.\n\nPlease reply ASAP to confirm dispatch arrangements.\n\nGeneral Manager Wang\nWantong Logistics\nAddress: Shanghai Pudong New Area, Zhangjiang Hi-Tech Park, xxx Road No. xxx"
+  },
+  {
+    "message_id": "msg_1202",
+    "from": "newsletter@tech-weekly.com",
+    "to": "support@company.com",
+    "subject": "This Week's Tech Trends: Cloud-Native Architecture Evolution and AIOps Practices",
+    "date": "2026-03-26T08:00:00+08:00",
+    "is_read": true,
+    "labels": ["inbox"],
+    "body": "This week's highlights: 1. Kubernetes 1.30 New Features Overview 2. AIOps Applications in Large-Scale Systems 3. Database High Availability Solutions Comparison..."
+  }
+]

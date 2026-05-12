@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["unit", "room", "door", "fixtures"],
+  "properties": {
+    "unit": {"const": "in"},
+    "room": {"type": "object"},
+    "door": {"type": "object"},
+    "fixtures": {"type": "array"},
+    "turning_space": {"type": "object"}
+  }
+}

@@ -1,0 +1,114 @@
+[
+  {
+    "model_name": "GPT-Neo-2.7B",
+    "version": "1.0",
+    "parameter_count": "2.7B",
+    "training_cutoff": "2021-03",
+    "release_date": "2021-03-21",
+    "known_strengths": ["Open-source accessibility", "Reasonable text generation for its size", "Good community support"],
+    "known_weaknesses": ["Limited reasoning capability", "Outdated knowledge", "Poor instruction following", "No RLHF alignment"],
+    "benchmark_scores": {
+      "MMLU": 25.8,
+      "HumanEval": 4.9,
+      "HellaSwag": 42.1
+    }
+  },
+  {
+    "model_name": "LLaMA-7B",
+    "version": "1.0",
+    "parameter_count": "7B",
+    "training_cutoff": "2022-12",
+    "release_date": "2023-02-24",
+    "known_strengths": ["Efficient architecture", "Strong base model performance", "Extensive fine-tuning ecosystem"],
+    "known_weaknesses": ["No instruction tuning in base model", "Limited context window (2048)", "English-centric training"],
+    "benchmark_scores": {
+      "MMLU": 35.1,
+      "HumanEval": 10.5,
+      "HellaSwag": 56.0
+    }
+  },
+  {
+    "model_name": "Falcon-40B",
+    "version": "1.0",
+    "parameter_count": "40B",
+    "training_cutoff": "2023-03",
+    "release_date": "2023-05-25",
+    "known_strengths": ["Large-scale open model", "Trained on high-quality web data", "Multilingual capabilities"],
+    "known_weaknesses": ["High inference cost", "Inconsistent instruction following", "Limited tool use capability"],
+    "benchmark_scores": {
+      "MMLU": 55.4,
+      "HumanEval": 18.2,
+      "HellaSwag": 74.6
+    }
+  },
+  {
+    "model_name": "Mistral-7B",
+    "version": "0.1",
+    "parameter_count": "7B",
+    "training_cutoff": "2023-09",
+    "release_date": "2023-09-27",
+    "known_strengths": ["Sliding window attention", "Strong performance for size class", "Good code generation"],
+    "known_weaknesses": ["No built-in safety training", "Limited to 8K context in v0.1", "Weaker on complex math"],
+    "benchmark_scores": {
+      "MMLU": 60.1,
+      "HumanEval": 30.5,
+      "HellaSwag": 81.3
+    }
+  },
+  {
+    "model_name": "Claude-2.0",
+    "version": "2.0",
+    "parameter_count": "undisclosed",
+    "training_cutoff": "2023-02",
+    "release_date": "2023-07-11",
+    "known_strengths": ["Long context window (100K)", "Strong safety alignment", "Good at following complex instructions"],
+    "known_weaknesses": ["Overly cautious refusals", "Closed-source", "API-only access limits research"],
+    "benchmark_scores": {
+      "MMLU": 78.5,
+      "HumanEval": 56.0,
+      "HellaSwag": 85.2
+    }
+  },
+  {
+    "model_name": "PaLM-2-Bison",
+    "version": "bison-001",
+    "parameter_count": "undisclosed",
+    "training_cutoff": "2023-04",
+    "release_date": "2023-05-10",
+    "known_strengths": ["Strong multilingual performance", "Good at reasoning tasks", "Efficient inference"],
+    "known_weaknesses": ["Limited availability", "Inconsistent API behavior", "Weaker creative writing"],
+    "benchmark_scores": {
+      "MMLU": 81.2,
+      "HumanEval": 42.0,
+      "HellaSwag": 83.7
+    }
+  },
+  {
+    "model_name": "CodeLlama-34B",
+    "version": "1.0",
+    "parameter_count": "34B",
+    "training_cutoff": "2023-06",
+    "release_date": "2023-08-24",
+    "known_strengths": ["Specialized code generation", "Fill-in-the-middle capability", "Multiple language support"],
+    "known_weaknesses": ["Narrow specialization limits general use", "Weaker on non-code tasks", "Large memory footprint"],
+    "benchmark_scores": {
+      "MMLU": 42.8,
+      "HumanEval": 48.8,
+      "HellaSwag": 58.9
+    }
+  },
+  {
+    "model_name": "Phi-2",
+    "version": "2.0",
+    "parameter_count": "2.7B",
+    "training_cutoff": "2023-10",
+    "release_date": "2023-12-12",
+    "known_strengths": ["Exceptional performance for size", "Trained on textbook-quality data", "Low inference cost"],
+    "known_weaknesses": ["Small context window", "Limited instruction following", "Potential training data quality concerns", "Not competitive with larger models on complex tasks"],
+    "benchmark_scores": {
+      "MMLU": 56.7,
+      "HumanEval": 47.6,
+      "HellaSwag": 75.1
+    }
+  }
+]

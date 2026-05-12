@@ -1,0 +1,13 @@
+hostname,primary_ip,vlan,location,role,os,last_updated
+prod-db-node01,10.20.30.101,30,DC1-Rack-A04,database-primary,Ubuntu 22.04,2024-10-15
+prod-db-node02,10.20.30.102,30,DC1-Rack-A04,database-replica,Ubuntu 22.04,2024-10-15
+prod-web-node03,10.20.30.107,30,DC1-Rack-B02,web-server,Ubuntu 22.04,2024-06-15
+prod-web-node04,10.20.30.104,30,DC1-Rack-B02,web-server,Ubuntu 22.04,2024-10-15
+prod-app-node01,10.20.30.111,30,DC1-Rack-C01,application-server,Ubuntu 22.04,2024-10-15
+prod-app-node02,10.20.30.112,30,DC1-Rack-C01,application-server,Ubuntu 22.04,2024-10-15
+prod-cache-node01,10.20.30.121,30,DC1-Rack-B03,redis-cache,Ubuntu 22.04,2024-10-15
+prod-lb-node01,10.20.30.10,30,DC1-Rack-A01,load-balancer,Ubuntu 22.04,2024-10-15
+prod-lb-node02,10.20.30.11,30,DC1-Rack-A01,load-balancer,Ubuntu 22.04,2024-10-15
+prod-mon-node01,10.20.30.131,30,DC1-Rack-D01,monitoring,Ubuntu 22.04,2024-10-15
+prod-log-node01,10.20.30.141,30,DC1-Rack-D02,log-aggregator,Ubuntu 22.04,2024-10-15
+prod-ci-node01,10.20.30.151,30,DC1-Rack-D03,ci-cd-runner,Ubuntu 22.04,2024-10-15

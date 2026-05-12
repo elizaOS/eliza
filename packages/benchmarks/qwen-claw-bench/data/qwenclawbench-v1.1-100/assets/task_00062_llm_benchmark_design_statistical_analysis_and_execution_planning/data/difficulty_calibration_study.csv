@@ -1,0 +1,151 @@
+question_id,dimension,intended_difficulty,actual_pass_rate,avg_latency,model_id
+Q0001,Mathematics,medium,0.413,7028.4,M1
+Q0002,Logical Deduction,easy,0.843,7599.3,M2
+Q0003,Reasoning,medium,0.583,5417.5,M1
+Q0004,Logical Deduction,hard,0.23,15034.8,M2
+Q0005,Logical Deduction,easy,0.849,20086.4,M1
+Q0006,Instruction Following,hard,0.286,29816.8,M3
+Q0007,Logical Deduction,medium,0.475,8151.1,M2
+Q0008,Reasoning,hard,0.393,7785.1,M2
+Q0009,Creative Writing,medium,0.457,4035.1,M2
+Q0010,Reading Comprehension,hard,0.279,24632.7,M1
+Q0011,Mathematics,hard,0.439,23149.0,M5
+Q0012,Scientific Knowledge,hard,0.165,6595.9,M2
+Q0013,Common Sense,medium,0.665,4004.2,M3
+Q0014,Summarization,easy,0.905,21323.0,M1
+Q0015,Summarization,medium,0.589,8337.8,M4
+Q0016,Code Generation,medium,0.497,3794.9,M1
+Q0017,Creative Writing,easy,0.925,19861.9,M5
+Q0018,Logical Deduction,easy,0.68,5531.8,M4
+Q0019,Creative Writing,easy,0.927,5583.2,M3
+Q0020,Data Analysis,hard,0.208,13387.4,M4
+Q0021,Creative Writing,medium,0.558,7555.6,M3
+Q0022,Instruction Following,medium,0.578,8825.2,M2
+Q0023,Data Analysis,hard,0.257,9142.1,M2
+Q0024,Common Sense,easy,0.917,10334.7,M3
+Q0025,Reading Comprehension,medium,0.524,3978.0,M1
+Q0026,Common Sense,medium,0.567,3012.1,M2
+Q0027,Language Understanding,medium,0.659,6974.9,M5
+Q0028,Summarization,medium,0.437,4382.1,M2
+Q0029,Data Analysis,hard,0.112,5420.8,M2
+Q0030,Data Analysis,hard,0.108,37746.8,M5
+Q0031,Mathematics,hard,0.3,20206.2,M2
+Q0032,Reading Comprehension,hard,0.384,13682.9,M3
+Q0033,Code Generation,medium,0.543,4737.7,M1
+Q0034,Code Generation,hard,0.372,9375.7,M2
+Q0035,Instruction Following,hard,0.369,10450.7,M5
+Q0036,Data Analysis,easy,0.868,13447.6,M3
+Q0037,Language Understanding,hard,0.149,16970.5,M1
+Q0038,Common Sense,easy,0.669,5049.9,M4
+Q0039,Code Generation,medium,0.361,14136.2,M4
+Q0040,Mathematics,easy,0.756,5279.2,M5
+Q0041,Language Understanding,hard,0.134,23690.4,M5
+Q0042,Common Sense,medium,0.484,5371.7,M2
+Q0043,Language Understanding,medium,0.415,10885.5,M1
+Q0044,Reasoning,hard,0.196,14589.1,M4
+Q0045,Reasoning,hard,0.147,6224.8,M1
+Q0046,Summarization,hard,0.266,9137.2,M1
+Q0047,Language Understanding,medium,0.667,13285.0,M2
+Q0048,Code Generation,medium,0.39,20750.4,M5
+Q0049,Language Understanding,medium,0.387,6130.4,M1
+Q0050,Data Analysis,hard,0.226,13154.0,M5
+Q0051,Summarization,medium,0.662,16570.7,M4
+Q0052,Mathematics,medium,0.679,17869.3,M5
+Q0053,Summarization,hard,0.413,10273.9,M5
+Q0054,Logical Deduction,easy,0.874,7954.1,M5
+Q0055,Logical Deduction,easy,0.784,44180.4,M3
+Q0056,Reasoning,hard,0.215,14487.4,M4
+Q0057,Data Analysis,easy,0.663,10717.6,M2
+Q0058,Reasoning,medium,0.683,8786.4,M3
+Q0059,Common Sense,hard,0.306,12080.4,M2
+Q0060,Reasoning,medium,0.538,42109.8,M5
+Q0061,Creative Writing,medium,0.579,7175.2,M3
+Q0062,Code Generation,medium,0.512,9836.4,M1
+Q0063,Reasoning,easy,0.774,7169.0,M2
+Q0064,Mathematics,medium,0.649,5220.0,M3
+Q0065,Common Sense,hard,0.162,15772.9,M2
+Q0066,Instruction Following,medium,0.574,9818.0,M1
+Q0067,Logical Deduction,hard,0.178,22980.8,M3
+Q0068,Language Understanding,medium,0.67,5303.9,M2
+Q0069,Data Analysis,medium,0.642,3000,M3
+Q0070,Data Analysis,medium,0.687,4253.7,M4
+Q0071,Code Generation,easy,0.773,5927.4,M5
+Q0072,Summarization,easy,0.849,8008.3,M3
+Q0073,Instruction Following,medium,0.69,7994.8,M2
+Q0074,Reasoning,easy,0.693,7384.8,M4
+Q0075,Data Analysis,hard,0.326,20874.4,M4
+Q0076,Code Generation,medium,0.41,7488.0,M1
+Q0077,Language Understanding,hard,0.132,13379.4,M2
+Q0078,Mathematics,medium,0.419,4581.4,M2
+Q0079,Logical Deduction,easy,0.841,7660.2,M5
+Q0080,Data Analysis,easy,0.908,3535.7,M1
+Q0081,Code Generation,medium,0.466,12160.9,M2
+Q0082,Logical Deduction,easy,0.784,11892.4,M4
+Q0083,Reasoning,easy,0.764,9089.9,M4
+Q0084,Language Understanding,easy,0.903,12167.1,M4
+Q0085,Scientific Knowledge,easy,0.705,6118.0,M4
+Q0086,Reasoning,medium,0.524,12059.5,M2
+Q0087,Logical Deduction,hard,0.375,13958.8,M1
+Q0088,Reasoning,hard,0.106,17559.4,M3
+Q0089,Mathematics,medium,0.632,6536.3,M5
+Q0090,Mathematics,hard,0.435,17240.6,M2
+Q0091,Common Sense,medium,0.443,4381.3,M2
+Q0092,Instruction Following,medium,0.579,4512.1,M2
+Q0093,Language Understanding,easy,0.864,9115.3,M3
+Q0094,Data Analysis,hard,0.378,13005.2,M2
+Q0095,Summarization,easy,0.874,12281.9,M1
+Q0096,Mathematics,easy,0.937,11741.2,M1
+Q0097,Creative Writing,medium,0.689,7908.7,M5
+Q0098,Scientific Knowledge,medium,0.473,5306.8,M3
+Q0099,Reading Comprehension,hard,0.116,20902.5,M1
+Q0100,Data Analysis,medium,0.468,6251.7,M3
+Q0101,Reasoning,easy,0.761,7628.2,M2
+Q0102,Reading Comprehension,hard,0.288,11501.7,M5
+Q0103,Reasoning,hard,0.227,7443.9,M2
+Q0104,Data Analysis,medium,0.607,5347.9,M3
+Q0105,Scientific Knowledge,hard,0.282,7669.0,M5
+Q0106,Reasoning,medium,0.354,7909.2,M4
+Q0107,Instruction Following,medium,0.366,6585.9,M4
+Q0108,Language Understanding,medium,0.387,8772.4,M1
+Q0109,Language Understanding,hard,0.313,11342.5,M1
+Q0110,Scientific Knowledge,hard,0.151,13830.3,M4
+Q0111,Common Sense,easy,0.884,14347.8,M1
+Q0112,Summarization,medium,0.657,7266.4,M5
+Q0113,Scientific Knowledge,easy,0.662,3000,M3
+Q0114,Instruction Following,easy,0.898,6710.5,M2
+Q0115,Mathematics,hard,0.18,14934.3,M5
+Q0116,Instruction Following,hard,0.424,29351.4,M5
+Q0117,Scientific Knowledge,hard,0.336,16637.8,M2
+Q0118,Creative Writing,easy,0.822,4877.3,M1
+Q0119,Language Understanding,easy,0.917,7120.4,M2
+Q0120,Instruction Following,hard,0.199,14277.0,M5
+Q0121,Mathematics,medium,0.507,9681.7,M3
+Q0122,Instruction Following,easy,0.944,13638.0,M5
+Q0123,Logical Deduction,hard,0.109,8462.0,M4
+Q0124,Language Understanding,easy,0.909,4464.4,M3
+Q0125,Common Sense,hard,0.419,15376.3,M1
+Q0126,Reading Comprehension,hard,0.146,8460.6,M2
+Q0127,Reasoning,medium,0.384,23341.4,M3
+Q0128,Reading Comprehension,medium,0.5,5334.9,M4
+Q0129,Logical Deduction,medium,0.42,8078.2,M3
+Q0130,Reasoning,medium,0.453,3000,M3
+Q0131,Reasoning,hard,0.363,16079.7,M1
+Q0132,Common Sense,medium,0.44,9147.9,M4
+Q0133,Reading Comprehension,medium,0.455,20925.4,M4
+Q0134,Code Generation,medium,0.587,5234.4,M1
+Q0135,Language Understanding,hard,0.183,12975.8,M4
+Q0136,Reasoning,hard,0.106,10461.5,M1
+Q0137,Code Generation,medium,0.608,8484.1,M5
+Q0138,Scientific Knowledge,medium,0.607,18757.2,M1
+Q0139,Language Understanding,medium,0.399,8913.4,M2
+Q0140,Logical Deduction,medium,0.398,14753.2,M3
+Q0141,Creative Writing,easy,0.867,4183.2,M3
+Q0142,Reading Comprehension,hard,0.198,4745.3,M4
+Q0143,Mathematics,medium,0.397,12905.4,M4
+Q0144,Common Sense,medium,0.356,17832.5,M4
+Q0145,Data Analysis,easy,0.882,5932.0,M5
+Q0146,Creative Writing,medium,0.601,12583.2,M5
+Q0147,Instruction Following,easy,0.807,20584.6,M4
+Q0148,Summarization,easy,0.828,3292.0,M3
+Q0149,Scientific Knowledge,easy,0.948,3161.9,M2
+Q0150,Common Sense,hard,0.436,9479.3,M1

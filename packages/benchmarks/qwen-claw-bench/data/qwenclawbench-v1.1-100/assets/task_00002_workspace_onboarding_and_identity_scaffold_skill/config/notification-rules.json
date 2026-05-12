@@ -1,0 +1,50 @@
+{
+  "rules": [
+    {
+      "id": "rule_001",
+      "name": "Urgent Email Alert",
+      "trigger": "email.urgent",
+      "action": "notify",
+      "channel": "telegram",
+      "priority": "high",
+      "enabled": true,
+      "cooldown_ms": 600000
+    },
+    {
+      "id": "rule_002",
+      "name": "Calendar Reminder",
+      "trigger": "calendar.upcoming",
+      "action": "notify",
+      "channel": "telegram",
+      "priority": "medium",
+      "threshold_minutes": 120,
+      "enabled": true,
+      "cooldown_ms": 1800000
+    },
+    {
+      "id": "rule_003",
+      "name": "CI Failure",
+      "trigger": "github.ci_failure",
+      "action": "notify",
+      "channel": "telegram",
+      "priority": "high",
+      "enabled": true,
+      "cooldown_ms": 300000
+    },
+    {
+      "id": "rule_004",
+      "name": "Weather Alert",
+      "trigger": "weather.severe",
+      "action": "notify",
+      "channel": "telegram",
+      "priority": "low",
+      "enabled": false,
+      "cooldown_ms": 3600000
+    }
+  ],
+  "defaults": {
+    "channel": "telegram",
+    "quiet_hours": true,
+    "max_daily_alerts": 20
+  }
+}

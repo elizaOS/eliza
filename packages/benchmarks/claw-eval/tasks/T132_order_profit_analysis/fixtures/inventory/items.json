@@ -1,0 +1,74 @@
+[
+  {
+    "product_id": "PROD-01",
+    "name": "Basic SaaS License",
+    "category": "Software License",
+    "quantity": 1000,
+    "unit": "unit",
+    "unit_cost": 8000.00,
+    "selling_price": 30000.00,
+    "location": "Virtual",
+    "reorder_level": 0,
+    "supplier": "In-house"
+  },
+  {
+    "product_id": "PROD-02",
+    "name": "Premium SaaS License",
+    "category": "Software License",
+    "quantity": 500,
+    "unit": "unit",
+    "unit_cost": 20000.00,
+    "selling_price": 60000.00,
+    "location": "Virtual",
+    "reorder_level": 0,
+    "supplier": "In-house"
+  },
+  {
+    "product_id": "PROD-03",
+    "name": "Data Analytics Module",
+    "category": "Add-on Module",
+    "quantity": 300,
+    "unit": "unit",
+    "unit_cost": 15000.00,
+    "selling_price": 50000.00,
+    "location": "Virtual",
+    "reorder_level": 0,
+    "supplier": "In-house"
+  },
+  {
+    "product_id": "PROD-04",
+    "name": "API Integration Suite",
+    "category": "Add-on Module",
+    "quantity": 200,
+    "unit": "unit",
+    "unit_cost": 12000.00,
+    "selling_price": 50000.00,
+    "location": "Virtual",
+    "reorder_level": 0,
+    "supplier": "In-house"
+  },
+  {
+    "product_id": "PROD-05",
+    "name": "Implementation Service (Standard)",
+    "category": "Service",
+    "quantity": 100,
+    "unit": "person-day",
+    "unit_cost": 5000.00,
+    "selling_price": 15000.00,
+    "location": "",
+    "reorder_level": 0,
+    "supplier": "Internal Team"
+  },
+  {
+    "product_id": "PROD-06",
+    "name": "Annual Technical Support",
+    "category": "Service",
+    "quantity": 100,
+    "unit": "unit",
+    "unit_cost": 10000.00,
+    "selling_price": 25000.00,
+    "location": "",
+    "reorder_level": 0,
+    "supplier": "Internal Team"
+  }
+]

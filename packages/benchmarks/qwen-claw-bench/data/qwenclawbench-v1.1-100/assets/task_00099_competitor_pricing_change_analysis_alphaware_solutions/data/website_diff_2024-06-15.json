@@ -1,0 +1,41 @@
+{
+  "change_id": "CHG-4491",
+  "url": "https://www.alphaware-solutions.example.com/pricing",
+  "detected_at": "2024-06-15T08:32:00Z",
+  "page_title": "AlphaWare Pricing Plans",
+  "diff_type": "content_modified",
+  "screenshot_before": "screenshots/alphaware_pricing_2024-06-14.png",
+  "screenshot_after": "screenshots/alphaware_pricing_2024-06-15.png",
+  "old_content": "<div class=\"pricing-card enterprise\"><h2>Enterprise Plan</h2><p class=\"enterprise-price\">$299/mo</p><p class=\"enterprise-seats\">Up to 50 seats</p><ul class=\"features\"><li>Unlimited projects</li><li>Priority support</li><li>Custom integrations</li><li>SSO &amp; SAML</li><li>Dedicated account manager</li></ul><a href=\"/contact-sales\" class=\"cta-btn\">Contact Sales</a></div>",
+  "new_content": "<div class=\"pricing-card enterprise\"><h2>Enterprise Plan</h2><p class=\"enterprise-price\">$249/mo</p><p class=\"enterprise-seats\">Up to 100 seats</p><ul class=\"features\"><li>Unlimited projects</li><li>Priority support</li><li>Custom integrations</li><li>SSO &amp; SAML</li><li>Dedicated account manager</li></ul><div class=\"addon-section\"><h3>New Add-ons</h3><div class=\"ai-addon\"><span class=\"addon-name\">AI Assistant Add-on</span> &mdash; <span class=\"addon-price\">$49/mo</span><p class=\"addon-desc\">Intelligent workflow automation, predictive analytics, and smart recommendations powered by AI.</p></div></div><a href=\"/contact-sales\" class=\"cta-btn\">Contact Sales</a></div>",
+  "elements_changed": [
+    {
+      "selector": ".enterprise-price",
+      "attribute": "textContent",
+      "old_value": "$299/mo",
+      "new_value": "$249/mo",
+      "change_type": "price_decrease"
+    },
+    {
+      "selector": ".enterprise-seats",
+      "attribute": "textContent",
+      "old_value": "Up to 50 seats",
+      "new_value": "Up to 100 seats",
+      "change_type": "feature_upgrade"
+    },
+    {
+      "selector": ".ai-addon",
+      "attribute": "element",
+      "old_value": null,
+      "new_value": "AI Assistant Add-on — $49/mo",
+      "change_type": "new_element"
+    }
+  ],
+  "meta": {
+    "http_status": 200,
+    "response_time_ms": 342,
+    "content_hash_before": "sha256:a3f8c1d9e4b7206f5c8a1d3e9b7f4c2a1d8e5b3f",
+    "content_hash_after": "sha256:7b2e9f4a1c6d8e3b5a0f7c2d9e1b4a6f8c3d5e7a",
+    "monitoring_agent": "SiteWatch Pro v3.2.1"
+  }
+}

@@ -1,0 +1,66 @@
+# OpenClaw Gateway Configuration
+# Last modified: 2026-02-09T22:30:00+08:00
+
+gateway:
+  bind: "0.0.0.0:3117"
+  remote:
+    url: "https://claw.example-team.com"
+  logLevel: "info"
+  sessionTimeout: 3600
+  heartbeat:
+    enabled: true
+    intervalMs: 1800000
+
+models:
+  default: "claude-sonnet-4-20250514"
+  fallback: "deepseek-r1"
+  providers:
+    - name: anthropic
+      apiKey: "sk-ant-****redacted****"
+      models: ["claude-sonnet-4-20250514", "claude-opus-4-0-20250115"]
+    - name: openai
+      apiKey: "sk-****redacted****"
+      models: ["gpt-4o-2025-01-10"]
+    - name: deepseek
+      apiKey: "sk-****redacted****"
+      models: ["deepseek-r1"]
+
+plugins:
+  entries:
+    feishu:
+      enabled: true
+      config:
+        appId: "cli_a90c427613b85bc8"
+        appSecret: "****redacted****"
+        verificationToken: "****redacted****"
+        encryptKey: "****redacted****"
+    device-pair:
+      enabled: false
+
+sessions:
+  storage:
+    type: "jsonl"
+    path: "./sessions"
+    retentionDays: 90
+    maxFileSizeMB: 50
+  isolation:
+    subagentTimeout: 300
+    cronSessionTarget: "isolated"
+
+workspace:
+  path: "/home/admin/.openclaw/workspace"
+  
+skills:
+  paths:
+    - "/home/admin/.openclaw/workspace/skills"
+    - "/home/admin/.local/share/pnpm/global/5/.pnpm/openclaw@2026.2.6-3/node_modules/openclaw/skills"
+
+cron:
+  enabled: true
+  jobs: []
+
+backup:
+  enabled: true
+  schedule: "0 3 * * *"
+  retentionDays: 30
+  path: "./.openclaw/backups"

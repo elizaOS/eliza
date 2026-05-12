@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ADA Bathroom Layer Inventory",
+  "type": "object",
+  "required": ["unit", "source_file", "layers_found"],
+  "properties": {
+    "unit": {
+      "const": "in"
+    },
+    "source_file": {
+      "type": "string"
+    },
+    "layers_found": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["entity_count", "entity_types"],
+        "properties": {
+          "entity_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "entity_types": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "additionalProperties": true
+}

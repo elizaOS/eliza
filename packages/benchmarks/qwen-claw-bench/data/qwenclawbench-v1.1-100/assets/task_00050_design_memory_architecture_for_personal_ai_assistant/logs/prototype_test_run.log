@@ -1,0 +1,200 @@
+[2024-01-10 14:23:18.964] [WARN ] [search  ] Memory usage approaching limit: 1512MB / 4096MB
+[2024-01-10 14:23:33.921] [DEBUG] [storage ] Initializing inverted index with capacity 50000
+[2024-01-10 14:23:48.292] [DEBUG] [search  ] Allocated 251KB for JSON parse buffer
+[2024-01-10 14:24:02.197] [INFO ] [distill ] Index build completed in 7.9s
+[2024-01-10 14:24:16.918] [DEBUG] [index   ] Checking file integrity: memory_560.json
+[2024-01-10 14:24:31.291] [ERROR] [embed   ] Failed to parse legacy format: 2024-01-09_notes.txt — invalid UTF-8 at byte 48604
+[2024-01-10 14:24:40.930] [DEBUG] [search  ] Initializing inverted index with capacity 50000
+[2024-01-10 14:24:47.277] [DEBUG] [config  ] Hashing document 1743 — SHA256: 2c184d276d31148b
+[2024-01-10 14:24:47.330] [WARN ] [search  ] Retry attempt 1/3 for file write: 2024-01-04_notes.txt
+[2024-01-10 14:24:49.722] [DEBUG] [search  ] Scanning directory: memory_store/ (4702 entries)
+[2024-01-10 14:24:54.537] [WARN ] [index   ] Slow query detected: 'test coverage' took 661ms (threshold: 2000ms)
+[2024-01-10 14:24:58.948] [ERROR] [index   ] SQLite lock timeout exceeded — switching to flat files
+[2024-01-10 14:25:08.759] [DEBUG] [config  ] Allocated 1989KB for JSON parse buffer
+[2024-01-10 14:25:19.427] [DEBUG] [core    ] Hashing document 8186 — SHA256: 49211bb9f361f9d7
+[2024-01-10 14:25:19.871] [WARN ] [storage ] Deprecated config key 'legacy_mode' found — ignoring
+[2024-01-10 14:25:33.956] [WARN ] [config  ] Memory usage approaching limit: 1921MB / 4096MB
+[2024-01-10 14:25:44.308] [INFO ] [storage ] Search query executed: 'deployment pipeline' — 80 results in 1456ms
+[2024-01-10 14:25:53.750] [DEBUG] [config  ] Cache hit ratio: 0.78
+[2024-01-10 14:26:00.651] [DEBUG] [index   ] Reading file: memory_store/session_5156.txt
+[2024-01-10 14:26:11.369] [DEBUG] [storage ] Checking file integrity: index_segment_12.dat
+[2024-01-10 14:26:12.151] [WARN ] [storage ] SQLite lock timeout exceeded — switching to flat files
+[2024-01-10 14:26:27.845] [DEBUG] [index   ] Thread pool size: 4
+[2024-01-10 14:26:41.672] [DEBUG] [search  ] Thread pool size: 4
+[2024-01-10 14:26:51.369] [DEBUG] [storage ] Allocated 634KB for JSON parse buffer
+[2024-01-10 14:26:58.044] [WARN ] [search  ] Duplicate entry detected: ep-61533 — skipping
+[2024-01-10 14:27:03.798] [WARN ] [distill ] Slow query detected: 'meeting notes Q4' took 2583ms (threshold: 2000ms)
+[2024-01-10 14:27:12.877] [WARN ] [search  ] Duplicate entry detected: ep-70103 — skipping
+[2024-01-10 14:27:13.048] [INFO ] [index   ] Loaded 4444 documents into index
+[2024-01-10 14:27:25.118] [DEBUG] [storage ] Initializing inverted index with capacity 50000
+[2024-01-10 14:27:31.477] [INFO ] [storage ] Working memory pruned: 12 items removed
+[2024-01-10 14:27:42.845] [DEBUG] [index   ] Cache hit ratio: 0.38
+[2024-01-10 14:27:44.497] [INFO ] [distill ] Health check passed: all subsystems operational
+[2024-01-10 14:27:55.060] [WARN ] [config  ] Stale lock file found: memory_store/.lock_2972 — removing
+[2024-01-10 14:28:05.785] [INFO ] [core    ] Vector index rebuilt: 43923 vectors in 384 dimensions
+[2024-01-10 14:28:11.438] [DEBUG] [core    ] Reading file: memory_store/session_9989.txt
+[2024-01-10 14:28:20.399] [DEBUG] [distill ] Reading file: memory_store/session_5605.txt
+[2024-01-10 14:28:21.543] [INFO ] [config  ] Health check passed: all subsystems operational
+[2024-01-10 14:28:34.051] [DEBUG] [distill ] File handle opened: fd=105
+[2024-01-10 14:28:38.274] [DEBUG] [embed   ] Scanning directory: memory_store/ (1807 entries)
+[2024-01-10 14:28:48.295] [INFO ] [embed   ] Backup snapshot created: 467MB
+[2024-01-10 14:28:57.778] [INFO ] [storage ] Vector index rebuilt: 40023 vectors in 384 dimensions
+[2024-01-10 14:29:09.403] [WARN ] [embed   ] File size exceeds 512KB limit: index_segment_15.dat (554KB) — truncating
+[2024-01-10 14:29:13.435] [DEBUG] [index   ] Hashing document 1747 — SHA256: a6f27227e8fb4f3a
+[2024-01-10 14:29:18.901] [DEBUG] [embed   ] Checking file integrity: 2024-01-03_notes.txt
+[2024-01-10 14:29:18.995] [INFO ] [embed   ] Full-text index updated incrementally: +4 documents
+[2024-01-10 14:29:27.671] [INFO ] [distill ] Working memory pruned: 6 items removed
+[2024-01-10 14:29:33.107] [DEBUG] [search  ] GC cycle completed: freed 134KB
+[2024-01-10 14:29:39.522] [ERROR] [storage ] JSON parse error in 2024-01-05_notes.txt: unexpected token at line 379
+[2024-01-10 14:29:51.700] [WARN ] [embed   ] Stale lock file found: memory_store/.lock_5919 — removing
+[2024-01-10 14:29:57.860] [INFO ] [embed   ] Storage usage: 1118MB / 10240MB (18.0%)
+[2024-01-10 14:30:03.891] [DEBUG] [core    ] Reading file: memory_store/session_5000.txt
+[2024-01-10 14:30:14.454] [DEBUG] [embed   ] Write buffer flushed: 63364 bytes
+[2024-01-10 14:30:15.046] [ERROR] [core    ] Failed to parse legacy format: index_segment_2.dat — unexpected EOF
+[2024-01-10 14:30:18.638] [INFO ] [core    ] Working memory pruned: 9 items removed
+[2024-01-10 14:30:24.112] [INFO ] [storage ] Loaded 116 documents into index
+[2024-01-10 14:30:26.368] [ERROR] [config  ] SQLite lock timeout exceeded — switching to flat files
+[2024-01-10 14:30:38.086] [DEBUG] [distill ] Loading config from config.json
+[2024-01-10 14:30:42.652] [INFO ] [embed   ] Working memory pruned: 14 items removed
+[2024-01-10 14:30:54.304] [INFO ] [config  ] Working memory pruned: 8 items removed
+[2024-01-10 14:30:58.697] [DEBUG] [distill ] Reading file: memory_store/session_3786.txt
+[2024-01-10 14:31:03.255] [WARN ] [storage ] Stale lock file found: memory_store/.lock_8905 — removing
+[2024-01-10 14:31:17.278] [DEBUG] [index   ] Scanning directory: memory_store/ (3741 entries)
+[2024-01-10 14:31:26.448] [ERROR] [distill ] Index corruption detected: segment 16 has invalid checksum
+[2024-01-10 14:31:27.728] [WARN ] [embed   ] SQLite lock timeout exceeded — switching to flat files
+[2024-01-10 14:31:28.655] [DEBUG] [config  ] Checking file integrity: index_segment_6.dat
+[2024-01-10 14:31:29.327] [INFO ] [core    ] Session 4000 saved to episodic store
+[2024-01-10 14:31:31.870] [DEBUG] [index   ] Decompressing archive block 101
+[2024-01-10 14:31:34.749] [DEBUG] [core    ] Token count for current chunk: 1131
+[2024-01-10 14:31:34.754] [WARN ] [storage ] Memory usage approaching limit: 364MB / 4096MB
+[2024-01-10 14:31:37.074] [WARN ] [embed   ] Memory usage approaching limit: 1404MB / 4096MB
+[2024-01-10 14:31:38.379] [INFO ] [index   ] Health check passed: all subsystems operational
+[2024-01-10 14:31:40.649] [DEBUG] [distill ] Parsing YAML frontmatter for entry ep-76872
+[2024-01-10 14:31:49.663] [WARN ] [core    ] Stale lock file found: memory_store/.lock_2349 — removing
+[2024-01-10 14:31:57.758] [WARN ] [index   ] Duplicate entry detected: ep-99991 — skipping
+[2024-01-10 14:32:03.211] [ERROR] [core    ] Index corruption detected: B-tree node 1451 has orphaned children
+[2024-01-10 14:32:03.817] [INFO ] [distill ] Working memory pruned: 10 items removed
+[2024-01-10 14:32:10.871] [WARN ] [search  ] Slow query detected: 'deployment pipeline' took 809ms (threshold: 2000ms)
+[2024-01-10 14:32:17.954] [DEBUG] [search  ] Scanning directory: memory_store/ (3428 entries)
+[2024-01-10 14:32:30.453] [INFO ] [distill ] Health check passed: all subsystems operational
+[2024-01-10 14:32:39.388] [DEBUG] [distill ] GC cycle completed: freed 7561KB
+[2024-01-10 14:32:53.477] [DEBUG] [storage ] GC cycle completed: freed 7401KB
+[2024-01-10 14:32:58.324] [INFO ] [config  ] Session 8896 saved to episodic store
+[2024-01-10 14:33:10.105] [INFO ] [search  ] Loaded 224 documents into index
+[2024-01-10 14:33:24.572] [DEBUG] [core    ] Cache hit ratio: 0.34
+[2024-01-10 14:33:36.191] [DEBUG] [embed   ] Checking file integrity: memory_121.json
+[2024-01-10 14:33:42.966] [INFO ] [distill ] Storage usage: 230MB / 10240MB (14.3%)
+[2024-01-10 14:33:50.531] [INFO ] [embed   ] Distillation cycle completed: 14 facts extracted
+[2024-01-10 14:33:54.856] [ERROR] [storage ] Failed to parse legacy format: 2024-01-01_notes.txt — invalid UTF-8 at byte 10293
+[2024-01-10 14:34:08.519] [WARN ] [storage ] Embedding dimension mismatch: expected 384, got 256 — re-encoding
+[2024-01-10 14:34:19.354] [DEBUG] [search  ] Checking file integrity: 2024-01-09_notes.txt
+[2024-01-10 14:34:26.554] [ERROR] [config  ] Permission denied: cannot write to memory_store/episodic/
+[2024-01-10 14:34:41.075] [INFO ] [core    ] Distillation cycle completed: 6 facts extracted
+[2024-01-10 14:34:47.996] [WARN ] [config  ] Deprecated config key 'legacy_mode' found — ignoring
+[2024-01-10 14:35:02.006] [INFO ] [index   ] Health check passed: all subsystems operational
+[2024-01-10 14:35:06.770] [INFO ] [core    ] Search query executed: 'meeting notes Q4' — 52 results in 2994ms
+[2024-01-10 14:35:11.393] [DEBUG] [storage ] Token count for current chunk: 1400
+[2024-01-10 14:35:20.994] [DEBUG] [core    ] Write buffer flushed: 4697 bytes
+[2024-01-10 14:35:33.605] [DEBUG] [index   ] Cache hit ratio: 0.66
+[2024-01-10 14:35:44.940] [DEBUG] [config  ] Reading file: memory_store/session_4680.txt
+[2024-01-10 14:35:53.558] [INFO ] [search  ] Working memory pruned: 4 items removed
+[2024-01-10 14:35:56.095] [ERROR] [storage ] JSON parse error in 2024-01-06_notes.txt: unexpected token at line 349
+[2024-01-10 14:36:05.549] [ERROR] [config  ] File not found: index_segment_5.dat
+[2024-01-10 14:36:13.865] [ERROR] [storage ] Failed to parse legacy format: 2024-01-08_notes.txt — invalid UTF-8 at byte 15482
+[2024-01-10 14:36:28.660] [INFO ] [search  ] Memory system initialized successfully
+[2024-01-10 14:36:39.330] [DEBUG] [search  ] Cache hit ratio: 0.49
+[2024-01-10 14:36:52.178] [DEBUG] [embed   ] Scanning directory: memory_store/ (2178 entries)
+[2024-01-10 14:36:59.657] [INFO ] [distill ] Distillation cycle completed: 11 facts extracted
+[2024-01-10 14:37:12.504] [DEBUG] [distill ] Parsing YAML frontmatter for entry ep-55658
+[2024-01-10 14:37:16.963] [INFO ] [index   ] Search query executed: 'deployment pipeline' — 4 results in 2720ms
+[2024-01-10 14:37:25.409] [WARN ] [search  ] SQLite lock timeout exceeded — switching to flat files
+[2024-01-10 14:37:36.384] [WARN ] [storage ] Retry attempt 3/3 for file write: memory_871.json
+[2024-01-10 14:37:49.159] [DEBUG] [search  ] Write buffer flushed: 33795 bytes
+[2024-01-10 14:38:03.163] [INFO ] [search  ] Memory system initialized successfully
+[2024-01-10 14:38:05.862] [WARN ] [core    ] Stale lock file found: memory_store/.lock_3828 — removing
+[2024-01-10 14:38:16.753] [WARN ] [distill ] Index fragmentation at 45% — consider rebuild
+[2024-01-10 14:38:19.565] [INFO ] [config  ] Distillation cycle started
+[2024-01-10 14:38:30.847] [ERROR] [distill ] Failed to parse legacy format: 2024-01-02_notes.txt — unexpected EOF
+[2024-01-10 14:38:41.781] [WARN ] [distill ] Stale lock file found: memory_store/.lock_7961 — removing
+[2024-01-10 14:38:54.680] [WARN ] [index   ] Stale lock file found: memory_store/.lock_4924 — removing
+[2024-01-10 14:39:07.299] [DEBUG] [index   ] Initializing inverted index with capacity 100000
+[2024-01-10 14:39:09.802] [INFO ] [embed   ] Index build completed in 28.4s
+[2024-01-10 14:39:17.214] [ERROR] [core    ] Permission denied: cannot write to memory_store/index/
+[2024-01-10 14:39:27.604] [WARN ] [embed   ] Slow query detected: 'meeting notes Q4' took 727ms (threshold: 2000ms)
+[2024-01-10 14:39:32.894] [DEBUG] [search  ] Parsing YAML frontmatter for entry ep-65201
+[2024-01-10 14:39:41.559] [DEBUG] [index   ] Loading config from config.json
+[2024-01-10 14:39:47.398] [WARN ] [config  ] Embedding dimension mismatch: expected 384, got 512 — re-encoding
+[2024-01-10 14:39:48.218] [ERROR] [search  ] Out of memory during index build: requested 1607MB, available 155MB
+[2024-01-10 14:39:52.160] [DEBUG] [core    ] Decompressing archive block 100
+[2024-01-10 14:40:02.652] [DEBUG] [index   ] Token count for current chunk: 520
+[2024-01-10 14:40:03.797] [INFO ] [core    ] Working memory pruned: 9 items removed
+[2024-01-10 14:40:08.612] [DEBUG] [index   ] Thread pool size: 2
+[2024-01-10 14:40:15.806] [DEBUG] [core    ] Token count for current chunk: 1128
+[2024-01-10 14:40:21.481] [DEBUG] [embed   ] Cache hit ratio: 0.91
+[2024-01-10 14:40:22.076] [DEBUG] [config  ] Initializing inverted index with capacity 100000
+[2024-01-10 14:40:32.483] [WARN ] [index   ] Retry attempt 2/3 for file write: session_3939.txt
+[2024-01-10 14:40:44.364] [DEBUG] [embed   ] Reading file: memory_store/session_4274.txt
+[2024-01-10 14:40:54.571] [INFO ] [config  ] Health check passed: all subsystems operational
+[2024-01-10 14:41:09.107] [DEBUG] [config  ] Reading file: memory_store/session_6188.txt
+[2024-01-10 14:41:09.860] [ERROR] [core    ] Permission denied: cannot write to memory_store/index/
+[2024-01-10 14:41:25.821] [DEBUG] [distill ] Loading config from config.json
+[2024-01-10 14:41:39.867] [INFO ] [config  ] Index build completed in 9.6s
+[2024-01-10 14:41:46.584] [DEBUG] [core    ] Thread pool size: 4
+[2024-01-10 14:41:55.060] [INFO ] [embed   ] Search query executed: 'meeting notes Q4' — 113 results in 1201ms
+[2024-01-10 14:42:08.965] [ERROR] [embed   ] Failed to parse legacy format: index_segment_6.dat — invalid UTF-8 at byte 32593
+[2024-01-10 14:42:12.464] [WARN ] [search  ] SQLite lock timeout exceeded — switching to flat files
+[2024-01-10 14:42:21.341] [WARN ] [index   ] Memory usage approaching limit: 1519MB / 4096MB
+[2024-01-10 14:42:27.622] [WARN ] [search  ] File size exceeds 512KB limit: session_1158.txt (1286KB) — truncating
+[2024-01-10 14:42:41.385] [DEBUG] [distill ] Checking file integrity: index_segment_3.dat
+[2024-01-10 14:42:45.471] [DEBUG] [core    ] Parsing YAML frontmatter for entry ep-68851
+[2024-01-10 14:42:59.733] [DEBUG] [index   ] Cache hit ratio: 0.55
+[2024-01-10 14:43:12.474] [ERROR] [index   ] Index corruption detected: B-tree node 9173 has orphaned children
+[2024-01-10 14:43:21.780] [DEBUG] [core    ] Decompressing archive block 83
+[2024-01-10 14:43:32.540] [DEBUG] [distill ] Initializing inverted index with capacity 10000
+[2024-01-10 14:43:33.267] [DEBUG] [search  ] Write buffer flushed: 4855 bytes
+[2024-01-10 14:43:34.248] [DEBUG] [config  ] File handle opened: fd=26
+[2024-01-10 14:43:48.866] [DEBUG] [search  ] Hashing document 8527 — SHA256: 78f93dd586754bdb
+[2024-01-10 14:44:03.636] [INFO ] [distill ] Distillation cycle started
+[2024-01-10 14:44:06.558] [INFO ] [embed   ] Session 8544 saved to episodic store
+[2024-01-10 14:44:21.001] [DEBUG] [search  ] Hashing document 5707 — SHA256: b9f5642674b570c7
+[2024-01-10 14:44:36.630] [DEBUG] [storage ] Cache hit ratio: 0.37
+[2024-01-10 14:44:46.413] [DEBUG] [storage ] File handle opened: fd=25
+[2024-01-10 14:44:54.212] [DEBUG] [storage ] Allocated 3097KB for JSON parse buffer
+[2024-01-10 14:44:54.871] [INFO ] [search  ] Index build completed in 24.2s
+[2024-01-10 14:45:06.160] [WARN ] [config  ] SQLite lock timeout exceeded — switching to flat files
+[2024-01-10 14:45:12.467] [INFO ] [core    ] Vector index rebuilt: 49572 vectors in 384 dimensions
+[2024-01-10 14:45:23.746] [INFO ] [search  ] Distillation cycle started
+[2024-01-10 14:45:34.168] [INFO ] [config  ] Full-text index updated incrementally: +20 documents
+[2024-01-10 14:45:45.695] [INFO ] [embed   ] Distillation cycle completed: 2 facts extracted
+[2024-01-10 14:45:56.680] [DEBUG] [config  ] Loading config from config.json
+[2024-01-10 14:45:58.675] [INFO ] [storage ] Search query executed: 'deployment pipeline' — 83 results in 1529ms
+[2024-01-10 14:46:07.054] [DEBUG] [embed   ] Token count for current chunk: 1677
+[2024-01-10 14:46:14.356] [INFO ] [distill ] Embedding model loaded: all-MiniLM-L6-v2 (80MB)
+[2024-01-10 14:46:27.205] [INFO ] [storage ] Full-text index updated incrementally: +35 documents
+[2024-01-10 14:46:31.227] [DEBUG] [embed   ] Loading config from config.json
+[2024-01-10 14:46:43.737] [DEBUG] [distill ] Reading file: memory_store/session_2096.txt
+[2024-01-10 14:46:51.753] [DEBUG] [distill ] File handle opened: fd=173
+[2024-01-10 14:47:07.327] [INFO ] [embed   ] Health check passed: all subsystems operational
+[2024-01-10 14:47:15.299] [WARN ] [embed   ] Slow query detected: 'deployment pipeline' took 1379ms (threshold: 2000ms)
+[2024-01-10 14:47:28.536] [INFO ] [storage ] Session 5556 saved to episodic store
+[2024-01-10 14:47:39.590] [ERROR] [search  ] SQLite lock timeout exceeded — switching to flat files
+[2024-01-10 14:47:43.703] [DEBUG] [storage ] Thread pool size: 4
+[2024-01-10 14:47:56.928] [DEBUG] [embed   ] Reading file: memory_store/session_7334.txt
+[2024-01-10 14:48:11.443] [ERROR] [index   ] Index corruption detected: segment 20 has invalid checksum
+[2024-01-10 14:48:23.081] [WARN ] [distill ] Slow query detected: 'meeting notes Q4' took 3324ms (threshold: 2000ms)
+[2024-01-10 14:48:23.292] [ERROR] [config  ] SQLite lock timeout exceeded — switching to flat files
+[2024-01-10 14:48:38.677] [DEBUG] [core    ] Token count for current chunk: 757
+[2024-01-10 14:48:41.465] [DEBUG] [config  ] Write buffer flushed: 55856 bytes
+[2024-01-10 14:48:50.251] [DEBUG] [distill ] Parsing YAML frontmatter for entry ep-59589
+[2024-01-10 14:48:55.404] [WARN ] [config  ] Retry attempt 3/3 for file write: index_segment_11.dat
+[2024-01-10 14:49:09.698] [WARN ] [storage ] Duplicate entry detected: ep-32956 — skipping
+[2024-01-10 14:49:17.476] [INFO ] [core    ] Loaded 3997 documents into index
+[2024-01-10 14:49:18.267] [DEBUG] [storage ] Hashing document 5381 — SHA256: 2da1789746d2bf0e
+[2024-01-10 14:49:29.140] [DEBUG] [embed   ] Allocated 2011KB for JSON parse buffer
+[2024-01-10 14:49:32.070] [ERROR] [embed   ] Out of memory during index build: requested 3796MB, available 41MB
+[2024-01-10 14:49:42.777] [INFO ] [distill ] Loaded 3045 documents into index
+[2024-01-10 14:49:58.503] [ERROR] [search  ] Index corruption detected: segment 6 has invalid checksum
+[2024-01-10 14:50:01.282] [WARN ] [search  ] Embedding dimension mismatch: expected 384, got 256 — re-encoding
+[2024-01-10 14:50:10.303] [DEBUG] [core    ] Reading file: memory_store/session_8323.txt
+[2024-01-10 14:50:15.071] [INFO ] [distill ] Full-text index updated incrementally: +46 documents
+[2024-01-10 14:50:21.121] [DEBUG] [distill ] Checking file integrity: memory_244.json

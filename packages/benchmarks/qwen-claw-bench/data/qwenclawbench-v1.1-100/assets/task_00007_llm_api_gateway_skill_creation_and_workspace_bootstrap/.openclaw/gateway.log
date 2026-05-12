@@ -1,0 +1,12 @@
+[2026-02-10T11:42:01.233Z] INFO  Gateway starting on 0.0.0.0:3000
+[2026-02-10T11:42:01.450Z] INFO  Loading skills from /opt/openclaw/skills (4 found)
+[2026-02-10T11:42:01.452Z] INFO  Loading skills from /home/node/workspace/skills (2 found)
+[2026-02-10T11:42:01.510Z] INFO  Plugin device-pair enabled
+[2026-02-10T11:42:01.680Z] INFO  Heartbeat scheduler started (interval: 1800000ms)
+[2026-02-10T11:42:01.682Z] INFO  Gateway ready
+[2026-02-10T11:42:15.100Z] INFO  Session main connected (agent=simulator)
+[2026-02-10T11:43:22.500Z] INFO  Model request: anthropic/claude-sonnet-4-20250514 (1247 tokens in, 385 tokens out)
+[2026-02-10T12:12:01.700Z] INFO  Heartbeat tick — no pending tasks
+[2026-02-10T12:15:33.201Z] WARN  SearXNG instance at http://localhost:8888 returned 503 — retrying
+[2026-02-10T12:15:35.400Z] INFO  SearXNG retry succeeded
+[2026-02-10T12:18:04.100Z] INFO  Model request: anthropic/claude-sonnet-4-20250514 (890 tokens in, 220 tokens out)

@@ -1,0 +1,20 @@
+version = "1.0"
+
+[metadata]
+author_name = "Xuanqing Liu"
+author_email = "xuanqingliu@outlook.com"
+difficulty = "medium"
+category = "image-processing"
+tags = ["video-processing", "image-processing", "computer-vision"]
+
+[verifier]
+timeout_sec = 900.0
+
+[agent]
+timeout_sec = 900.0
+
+[environment]
+build_timeout_sec = 600.0
+cpus = 1
+memory_mb = 4096
+storage_mb = 10240

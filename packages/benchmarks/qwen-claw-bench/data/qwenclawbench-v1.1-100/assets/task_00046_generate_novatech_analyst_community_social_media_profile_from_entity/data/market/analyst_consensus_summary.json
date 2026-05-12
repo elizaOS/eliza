@@ -1,0 +1,23 @@
+{
+  "ticker": "NVTK",
+  "company": "NovaTech",
+  "as_of_date": "2024-12-14",
+  "analyst_count": 74,
+  "consensus_rating": "Strong Buy",
+  "target_price_low": 155.00,
+  "target_price_high": 432.78,
+  "median_target": 325.50,
+  "mean_target": 312.40,
+  "rating_distribution": {
+    "Strong Buy": 22,
+    "Buy": 18,
+    "Outperform": 16,
+    "Hold": 12,
+    "Underperform": 4,
+    "Sell": 2
+  },
+  "price_upside_pct": 14.2,
+  "current_price": 285.10,
+  "source": "MarketConsensus Analytics",
+  "notes": "Consensus reflects strong institutional conviction despite recent datacenter revenue softness."
+}

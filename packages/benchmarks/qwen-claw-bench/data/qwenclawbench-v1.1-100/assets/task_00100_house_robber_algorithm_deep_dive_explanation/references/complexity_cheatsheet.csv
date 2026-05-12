@@ -1,0 +1,16 @@
+problem_name,time_complexity,space_complexity,approach
+Fibonacci (naive),O(2^n),O(n),Recursion
+Fibonacci (memoized),O(n),O(n),Top-down DP
+Fibonacci (tabulation),O(n),O(n),Bottom-up DP
+Fibonacci (optimized),O(n),O(1),Rolling variables
+Climbing Stairs,O(n),O(1),Rolling variables
+House Robber (naive),O(2^n),O(n),Recursion
+House Robber (memoized),O(n),O(n),Top-down DP
+House Robber (tabulation),O(n),O(n),Bottom-up DP
+House Robber (optimized),O(n),O(n),Rolling variables
+Coin Change,O(n*amount),O(amount),Bottom-up DP
+Longest Increasing Subsequence,O(n^2),O(n),Bottom-up DP
+Longest Common Subsequence,O(m*n),O(m*n),Bottom-up DP
+0/1 Knapsack,O(n*W),O(n*W),Bottom-up DP
+Edit Distance,O(m*n),O(m*n),Bottom-up DP
+Unique Paths,O(m*n),O(n),Space-optimized DP
