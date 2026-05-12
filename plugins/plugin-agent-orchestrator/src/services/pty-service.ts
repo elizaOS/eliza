@@ -908,8 +908,16 @@ export class PTYService {
 
     const piRequested = isPiAgentType(options.agentType);
     const opencodeRequested = isOpencodeAgentType(options.agentType);
-    const resolvedAgentType: CodingAgentType =
-      piRequested || opencodeRequested ? "shell" : options.agentType;
+    // Pi still routes through the generic shell adapter (no first-class
+    // PiAdapter upstream). Opencode is now a real adapter in
+    // `coding-agent-adapters` 0.17+ — route to "opencode" directly so
+    // PTYService picks up `OpencodeAdapter` from `getAdapter("opencode")`
+    // (native ready/loading/auth detection, AGENTS.md path, env injection).
+    const resolvedAgentType: CodingAgentType = piRequested
+      ? "shell"
+      : opencodeRequested
+        ? "opencode"
+        : options.agentType;
     const effectiveApprovalPreset =
       options.approvalPreset ??
       (resolvedAgentType !== "shell" ? this.defaultApprovalPreset : undefined);
@@ -2095,7 +2103,8 @@ export class PTYService {
     types?: AdapterType[],
   ): Promise<PreflightResult[]> {
     const agentTypes =
-      types ?? (["claude", "gemini", "codex", "aider"] as AdapterType[]);
+      types ??
+      (["claude", "gemini", "codex", "aider", "opencode"] as AdapterType[]);
     const cacheKey = agentTypes.join(",");
     const now = Date.now();
     const cached = this.preflightCache.get(cacheKey);
