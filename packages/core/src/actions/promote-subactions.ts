@@ -256,7 +256,10 @@ export function isPromotedSubactionVirtual(action: Action): boolean {
 	return Boolean((action as PromotedAction)[PROMOTED_MARKER]);
 }
 
-function attachVirtualSubactions(parent: Action, virtualNames: readonly string[]) {
+function attachVirtualSubactions(
+	parent: Action,
+	virtualNames: readonly string[],
+) {
 	if (virtualNames.length === 0) {
 		return;
 	}

@@ -60,10 +60,11 @@ function makeStubAction(): Action {
     examples: [],
     validate: async () => true,
     handler: async (_runtime, _message, _state, options) => {
-      const sub =
-        ((options as HandlerOptions | undefined)?.parameters as
+      const sub = (
+        (options as HandlerOptions | undefined)?.parameters as
           | Record<string, unknown>
-          | undefined)?.subaction;
+          | undefined
+      )?.subaction;
       return {
         success: true,
         text: `dispatched ${String(sub)}`,
@@ -88,10 +89,11 @@ function makeCanonicalActionStub(): Action {
       },
     ],
     handler: async (_runtime, _message, _state, options) => {
-      const action =
-        ((options as HandlerOptions | undefined)?.parameters as
+      const action = (
+        (options as HandlerOptions | undefined)?.parameters as
           | Record<string, unknown>
-          | undefined)?.action;
+          | undefined
+      )?.action;
       return {
         success: true,
         text: `dispatched ${String(action)}`,
@@ -131,11 +133,7 @@ describe("promoteSubactionsToActions", () => {
   it("listSubactionsFromParameters reads the canonical action enum", () => {
     expect(
       listSubactionsFromParameters(makeCanonicalActionStub().parameters),
-    ).toEqual([
-      "list",
-      "create",
-      "delete",
-    ]);
+    ).toEqual(["list", "create", "delete"]);
   });
 
   it("listSubactionsFromParameters falls back to legacy aliases", () => {
@@ -240,7 +238,7 @@ describe("promoteSubactionsToActions", () => {
     const stub: Action = {
       name: "BARE",
       description: "no subactions",
-      handler: async () => ({ success: true } satisfies ActionResult),
+      handler: async () => ({ success: true }) satisfies ActionResult,
       validate: async () => true,
     };
     expect(promoteSubactionsToActions(stub)).toEqual([stub]);
@@ -310,7 +308,8 @@ describe("SCHEDULED_TASKS promotion + alias normalization", () => {
           text: "stub-ok",
           data: {
             action: (parameters as Record<string, unknown> | undefined)?.action,
-            subaction: (parameters as Record<string, unknown> | undefined)?.subaction,
+            subaction: (parameters as Record<string, unknown> | undefined)
+              ?.subaction,
           },
         } satisfies ActionResult;
       }),

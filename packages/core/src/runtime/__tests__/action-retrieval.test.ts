@@ -92,7 +92,8 @@ describe("action catalogue and retrieval", () => {
 	it("groups promoted virtual subactions under their umbrella parent", () => {
 		const [parent, ...virtuals] = promoteSubactionsToActions({
 			name: "PAYMENT",
-			description: "Create, deliver, verify, settle, await, and cancel payments.",
+			description:
+				"Create, deliver, verify, settle, await, and cancel payments.",
 			parameters: [
 				{
 					name: "action",
