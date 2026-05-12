@@ -4,8 +4,8 @@ This is the handoff between this package (the offline training /
 quantization / GGUF pipeline) and the Milady runtime
 (`packages/app-core`, `packages/shared`). It assumes you already have a
 freshly produced `eliza-1-<tier>.gguf` (e.g. from
-`scripts/optimize_for_milady.py`, which also writes a
-`gguf/milady_manifest.json` next to it).
+`scripts/optimize_for_eliza1.py`, which also writes a
+`gguf/eliza1_manifest.json` next to it).
 
 There are two ways to get the runtime to use that file as the
 `TEXT_LARGE` model: **point at a local file** (fast, for testing the
@@ -56,7 +56,7 @@ A catalog entry is **not required** to load a local file — the catalog
 (`runtime.kvCache`, `runtime.dflash`, `runtime.optimizations`). Without a
 catalog entry the loader falls back to plain defaults; supply the
 fork-only KV cache types (`qjl1_256` / `tbq3_0` / `q4_polar`) via
-per-load overrides if you need them and you're on the milady llama.cpp
+per-load overrides if you need them and you're on the elizaOS/llama.cpp
 fork.
 
 ## B. The machinery that picks it up
@@ -138,12 +138,12 @@ manifest:
 
 ```bash
 # Print the entry + where it goes (recommended):
-uv run python scripts/emit_milady_catalog.py \
-    --manifest checkpoints/eliza-1-0_6b/gguf/milady_manifest.json
+uv run python scripts/emit_eliza1_catalog.py \
+    --manifest checkpoints/eliza-1-0_6b/gguf/eliza1_manifest.json
 
 # Or produce a unified diff against the canonical shared catalog:
-uv run python scripts/emit_milady_catalog.py \
-    --manifest checkpoints/eliza-1-0_6b/gguf/milady_manifest.json \
+uv run python scripts/emit_eliza1_catalog.py \
+    --manifest checkpoints/eliza-1-0_6b/gguf/eliza1_manifest.json \
     --catalog packages/shared/src/local-inference/catalog.ts \
     --output reports/training/catalog-eliza-1-0_6b.diff
 ```
@@ -151,7 +151,7 @@ uv run python scripts/emit_milady_catalog.py \
 The canonical catalog is **`packages/shared/src/local-inference/catalog.ts`**
 (`@elizaos/shared/local-inference/catalog`). The
 `packages/app-core/src/services/local-inference/catalog.ts` path is a
-re-export shim — do not edit it. `emit_milady_catalog.py` does not
+re-export shim — do not edit it. `emit_eliza1_catalog.py` does not
 rewrite the file; it prints a labeled patch fragment and names the file
 to apply it to. If you are introducing a **new** tier id (not just
 refreshing `ggufFile` / `hfRepo` on an existing tier), you must also add
