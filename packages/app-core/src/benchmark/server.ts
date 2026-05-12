@@ -49,8 +49,6 @@ import {
   toPlugin,
 } from "./server-utils.js";
 
-// Load environment variables BEFORE anything else
-// This ensures API keys are available when plugins initialize.
 // `dotenv.config({ path: cwd/.env })` only finds the file when the bench server
 // is started from the repo root. When `ElizaServerManager` spawns us with
 // `cwd=packages/app-core`, there is no `.env` next to that directory — so the
@@ -347,7 +345,6 @@ async function collectSessionDiagnostics(
   };
 }
 
-// Proper robust server implementation
 export async function startBenchmarkServer() {
   const port = resolvePort();
   elizaLogger.info(
@@ -519,9 +516,6 @@ export async function startBenchmarkServer() {
         "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-embedding instead.",
     );
   }
-
-  // Trust is now a built-in core capability — enable via ENABLE_TRUST character setting.
-  // No need to load as a separate plugin.
 
   // Load LLM provider plugins based on environment.
   //
@@ -1023,7 +1017,6 @@ export async function startBenchmarkServer() {
   const sessions = new Map<string, BenchmarkSession>();
   let lastSessionKey: string | null = null;
 
-  // Session TTL eviction (R4)
   const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
   const SESSION_SWEEP_INTERVAL_MS = 60_000;
   const sessionCreatedAt = new Map<string, number>();
@@ -1264,11 +1257,6 @@ export async function startBenchmarkServer() {
         totalTokens: turnUsageBuffer.reduce((s, c) => s + c.totalTokens, 0),
         ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
       };
-
-      // Touch the backend so unused-import linters do not strip the
-      // LifeOpsFakeBackend type — and so future planner integrations can
-      // pre-warm the backend before action execution.
-      void (backend as LifeOpsFakeBackend);
 
       return { text: responseText, toolCalls, usage };
     },

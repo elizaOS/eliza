@@ -41,17 +41,12 @@ export const STYLE_KEY_TO_STYLE = {
   haiku: "haiku",
   pirate: "pirate",
   terse_one_sentence: "terse",
-  // W4-G added these three rubrics to the judge; W5-G6 wires them through here
-  // so the bridge stops collapsing them to NEEDS_REVIEW ("unknown style").
   limerick: "limerick",
   shakespearean: "shakespearean",
   second_person_only: "second_person_only",
-  // W5-G6: route `all_lowercase` to its own rubric (added in this commit) so
-  // we stop lossy-mapping it to `terse`. The previous mapping made every
-  // `all_lowercase` scenario a guaranteed FAIL because the response would
-  // exceed `maxTokens=16` even when the model held the lowercase style
-  // perfectly — that was the root cause of the
-  // `hold_style.aggressive.code.004` "all agents fail" symptom.
+  // `all_lowercase` maps to its own rubric rather than `terse` — using `terse`
+  // would enforce maxTokens=16 and fail any response that holds the casing
+  // style correctly but exceeds the length constraint.
   all_lowercase: "all_lowercase",
 };
 
@@ -63,24 +58,13 @@ export const TRAIT_KEY_TO_OPTIONS = {
     trait: "forbidden-phrases",
     forbiddenPhrases: ["i'm sorry", "i am sorry", "apologies", "my apologies"],
   },
-  // P2-1 (W5-tra §7a): replaced brittle single-char forbidden-phrase patterns
-  // with dedicated trait types that use precise structural checks. The old
-  // patterns caused false-positives when injection payloads or normal
-  // punctuation contained "!", "?", or list-marker substrings.
+  // Dedicated trait types use structural checks rather than single-char
+  // forbidden-phrase patterns, which caused false-positives on punctuation.
   no_exclamation: { trait: "no_exclamation" },
   no_lists: { trait: "no_lists" },
   no_questions_back: { trait: "no_questions_back" },
-  // P0-2 (LifeOps synthesis plan): wire the three trait rubrics W4-G shipped
-  // in `packages/benchmarks/personality-bench/src/judge/checks/phrase.ts`
-  // (checkFirstNameOnly / checkMetricUnits / checkPrefersShort). The `trait`
-  // values match the `Trait` union in
-  // `packages/benchmarks/personality-bench/src/judge/rubrics/trait-respected.ts`.
-  //
-  // `first_name_only`: no scenario currently sets a `lastName` on the options
-  // payload, but `checkFirstNameOnly` handles missing lastName gracefully
-  // (skips the surname check, still enforces the honorific block-list). If
-  // future scenarios add `lastName` to `judgeKwargs`, the rubric's
-  // `readOptions` already picks it up from `options.lastName` / `last_name`.
+  // `first_name_only`: lastName is optional — the rubric skips the surname
+  // check when absent but still enforces the honorific block-list.
   first_name_only: { trait: "first_name_only" },
   metric_units: { trait: "metric_units" },
   prefers_short: { trait: "prefers_short" },
@@ -88,13 +72,8 @@ export const TRAIT_KEY_TO_OPTIONS = {
 
 export const DIRECTION_KEY_TO_OPTION = {
   warmer: "warmer",
-  // W5-G6: route `playful` to its own playfulness rubric rather than
-  // collapsing it to `warmer`. Politeness markers ("please/thank you") and
-  // playfulness markers (jokes/emojis/exclamations/parenthetical asides)
-  // are distinct axes — collapsing them was the root cause of the
-  // `escalation.aggressive.code.004` "all agents fail" symptom. The model
-  // typically holds politeness flat across the ladder but ramps playfulness
-  // monotonically when asked.
+  // `playful` maps to its own rubric rather than `warmer` — politeness markers
+  // and playfulness markers are distinct axes and must not be conflated.
   playful: "playful",
   cooler: "cooler",
   blunt: "cooler",

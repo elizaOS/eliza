@@ -10,8 +10,6 @@
  * delegated to the shared `CerebrasJudge` class in scenario-runner. The
  * personality-bench-specific multi-pass loop, perturbations, and verdict
  * aggregation stay here.
- *
- * No real Anthropic Opus judge here per the W3-3 brief.
  */
 
 import { CerebrasJudge } from "../../../../../scenario-runner/src/cerebras-judge.ts";
