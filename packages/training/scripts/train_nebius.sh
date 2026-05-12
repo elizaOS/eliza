@@ -265,22 +265,24 @@ sync_tree() {
   local target; target="$(ssh_target)"
   echo "[train_nebius][sync] rsyncing packages/training/ → $target:$REMOTE_TRAIN_DIR"
   ssh -o StrictHostKeyChecking=no "$target" "sudo mkdir -p $REMOTE_TRAIN_DIR && sudo chown -R \$USER $REMOTE_TRAIN_DIR"
-  rsync -avh --delete \
-    --exclude '.venv/' --exclude 'data/raw/' --exclude 'checkpoints/' --exclude 'wandb/' \
+  rsync -avhz --delete \
+    --exclude '.venv/' --exclude '.git/' --exclude 'wandb/' --exclude 'benchmarks/' \
+    --exclude 'data/raw/' --exclude 'data/normalized/' --exclude 'data/synthesized/' \
     --exclude 'data/final/' --exclude 'data/final-eliza1-fullcorpus/' --exclude 'datasets/' \
+    --exclude 'checkpoints/' --exclude '.hypothesis/' --exclude '.logs/' --exclude '.pytest_cache/' \
     "$ROOT/" "$target:$REMOTE_TRAIN_DIR/"
 
   if [ "$SYNC_FULLCORPUS_SOURCES" = "1" ]; then
     echo "[train_nebius][sync] sending corpus sources (data/final/ + datasets/eliza1-sft-0_6b/) for remote rebuild"
-    rsync -avh --partial --info=progress2 "$ROOT/data/final/" "$target:$REMOTE_TRAIN_DIR/data/final/"
-    rsync -avh --partial "$ROOT/datasets/eliza1-sft-0_6b/" "$target:$REMOTE_TRAIN_DIR/datasets/eliza1-sft-0_6b/"
+    rsync -avhz --partial --info=progress2 "$ROOT/data/final/" "$target:$REMOTE_TRAIN_DIR/data/final/"
+    rsync -avhz --partial "$ROOT/datasets/eliza1-sft-0_6b/" "$target:$REMOTE_TRAIN_DIR/datasets/eliza1-sft-0_6b/"
   else
     # Send exactly the corpus the run trains on (TRAIN/VAL/TEST dirs).
     for f in "$TRAIN_FILE" "$VAL_FILE" "$TEST_FILE"; do
       local d; d="$(dirname "$f")"
       ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/$d"
       echo "[train_nebius][sync] sending $f"
-      rsync -avh --partial --info=progress2 "$ROOT/$f" "$target:$REMOTE_TRAIN_DIR/$f"
+      rsync -avhz --partial --info=progress2 "$ROOT/$f" "$target:$REMOTE_TRAIN_DIR/$f"
     done
   fi
 }
@@ -352,9 +354,9 @@ fetch() {
   local target; target="$(ssh_target)"
   echo "[train_nebius][fetch] pulling checkpoints + benchmarks + reports"
   mkdir -p "$ROOT/checkpoints/$RUN_NAME" "$ROOT/benchmarks/$RUN_NAME" "$ROOT/reports"
-  rsync -avh --info=progress2 "$target:$REMOTE_TRAIN_DIR/checkpoints/$RUN_NAME/" "$ROOT/checkpoints/$RUN_NAME/" || true
-  rsync -avh --info=progress2 "$target:$REMOTE_TRAIN_DIR/benchmarks/$RUN_NAME/" "$ROOT/benchmarks/$RUN_NAME/" || true
-  rsync -avh --info=progress2 "$target:$REMOTE_TRAIN_DIR/reports/" "$ROOT/reports/" || true
+  rsync -avhz --info=progress2 "$target:$REMOTE_TRAIN_DIR/checkpoints/$RUN_NAME/" "$ROOT/checkpoints/$RUN_NAME/" || true
+  rsync -avhz --info=progress2 "$target:$REMOTE_TRAIN_DIR/benchmarks/$RUN_NAME/" "$ROOT/benchmarks/$RUN_NAME/" || true
+  rsync -avhz --info=progress2 "$target:$REMOTE_TRAIN_DIR/reports/" "$ROOT/reports/" || true
 }
 
 teardown() {
