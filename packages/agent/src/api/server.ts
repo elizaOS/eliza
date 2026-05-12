@@ -224,6 +224,7 @@ import { handleProviderSwitchRoutes } from "./provider-switch-routes.ts";
 import { handleRegistryRoutes } from "./registry-routes.ts";
 import { RegistryService } from "./registry-service.ts";
 import { handleRelationshipsRoutes } from "./relationships-routes.ts";
+import { tryHandleHonoRuntimeRoute } from "./hono-mount.ts";
 import {
   isPublicRuntimePluginRoute,
   tryHandleRuntimePluginRoute,
@@ -2883,6 +2884,21 @@ async function handleRequest(
       method,
       runtime: state.runtime,
       res,
+    })
+  ) {
+    return;
+  }
+
+  // ── Hono adapter for runtime.routes with `routeHandler` (new shape) ─────
+  // Covers any plugin route registered via the new return-shape RouteHandler
+  // contract. Legacy Express-shaped `handler` routes are still served by
+  // `tryHandleRuntimePluginRoute` above.
+  if (
+    await tryHandleHonoRuntimeRoute({
+      req,
+      res,
+      runtime: state.runtime,
+      isAuthorized: () => isAuthorized(req),
     })
   ) {
     return;
