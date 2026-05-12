@@ -42,8 +42,8 @@
     "./styles": "./dist/styles.js",
     "./styles/*.css": "./dist/styles/*.css",
     "./api/client-types-cloud": "./dist/api/client-types-cloud.js",
-    "./components/character/CharacterEditor": "./src/components/character/CharacterEditor.tsx",
-    "./components/chat/widgets/types": "./src/components/chat/widgets/types.ts",
+    "./components/character/CharacterEditor": "./dist/components/character/CharacterEditor.js",
+    "./components/chat/widgets/types": "./dist/components/chat/widgets/types.js",
     "./config/app-config": "./dist/config/app-config.js",
     "./onboarding-config": "./dist/onboarding-config.js",
     "./api": {
