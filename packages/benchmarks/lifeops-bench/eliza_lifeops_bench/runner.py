@@ -1378,8 +1378,31 @@ class LifeOpsBenchRunner:
                         )
                     )
 
-            agent_cost = float(getattr(agent_turn, "cost_usd", 0.0) or 0.0)
-            await self._charge(agent_cost, scenario.id, seed, bucket="agent")
+            # Per-turn cost / latency are nullable on MessageTurn — `None`
+            # means the provider didn't expose the number (unpriced model,
+            # pre-flight error). Per AGENTS.md Cmd #8 we keep the None
+            # through to the TurnResult rather than masking with 0.0. The
+            # budget charge uses 0.0 locally because there is no real spend
+            # to charge against when the value is unknown.
+            agent_cost_raw = getattr(agent_turn, "cost_usd", None)
+            agent_cost: float | None = (
+                float(agent_cost_raw)
+                if isinstance(agent_cost_raw, (int, float))
+                else None
+            )
+            await self._charge(
+                agent_cost if agent_cost is not None else 0.0,
+                scenario.id,
+                seed,
+                bucket="agent",
+            )
+
+            latency_raw = getattr(agent_turn, "latency_ms", None)
+            latency_value: int | None = (
+                int(latency_raw)
+                if isinstance(latency_raw, (int, float))
+                else None
+            )
 
             # Cache telemetry: adapters set these as attributes on the
             # MessageTurn when the provider reported them. `None` means the
@@ -1409,7 +1432,7 @@ class LifeOpsBenchRunner:
                 agent_message=agent_turn.content,
                 agent_actions=agent_actions,
                 user_response="",
-                latency_ms=int(getattr(agent_turn, "latency_ms", 0) or 0),
+                latency_ms=latency_value,
                 input_tokens=input_tokens_val,
                 output_tokens=int(getattr(agent_turn, "output_tokens", 0) or 0),
                 cost_usd=agent_cost,
@@ -1511,8 +1534,16 @@ class LifeOpsBenchRunner:
             total_score=0.0,
             max_score=1.0,
             terminated_reason=terminated_reason,  # type: ignore[arg-type]
-            total_cost_usd=sum(t.cost_usd for t in turns),
-            total_latency_ms=sum(t.latency_ms for t in turns),
+            # Skip None per-turn values when aggregating — "unpriced" /
+            # "no timing data" is distinct from "$0" / "0 ms" (AGENTS.md
+            # Cmd #8). Invariant: ``total_cost_usd ==
+            # sum(t.cost_usd for t in turns if t.cost_usd is not None)``.
+            total_cost_usd=sum(
+                t.cost_usd for t in turns if t.cost_usd is not None
+            ),
+            total_latency_ms=sum(
+                t.latency_ms for t in turns if t.latency_ms is not None
+            ),
             error=None,
         )
         result.total_score = score_scenario(result, scenario)

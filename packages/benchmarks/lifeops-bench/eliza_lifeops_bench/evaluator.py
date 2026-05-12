@@ -103,7 +103,11 @@ class LifeOpsEvaluator:
             max_tokens=400,
         )
         response = await self.simulated_user_client.complete(call)
-        self.simulated_user_cost_usd += response.cost_usd
+        if response.cost_usd is not None:
+            # Unpriced models skip the accumulator so simulated-user spend
+            # tracks only billable calls — "unpriced" is not the same as
+            # "free" (AGENTS.md Cmd #8).
+            self.simulated_user_cost_usd += response.cost_usd
         content = (response.content or "").strip()
         if not content:
             content = "(no response)"
@@ -133,7 +137,9 @@ class LifeOpsEvaluator:
             max_tokens=200,
         )
         response = await self.judge_client.complete(call)
-        self.judge_cost_usd += response.cost_usd
+        if response.cost_usd is not None:
+            # Unpriced models skip the accumulator (AGENTS.md Cmd #8).
+            self.judge_cost_usd += response.cost_usd
         verdict = (response.content or "").strip()
         first_line = verdict.splitlines()[0].strip().upper() if verdict else ""
         satisfied = first_line.startswith("YES")

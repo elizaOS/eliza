@@ -123,9 +123,13 @@ async def _cerebras_call(
     )
     if response.content is None:
         raise RuntimeError("Cerebras response had no content")
+    # Unpriced models surface as ``None`` from the client; treat as 0.0
+    # locally here so the authoring tool's spend log still aggregates a
+    # number. The benchmark runner pipeline preserves ``None`` end-to-end.
+    cost_value = float(response.cost_usd) if response.cost_usd is not None else 0.0
     return (
         response.content,
-        response.cost_usd,
+        cost_value,
         response.usage.prompt_tokens,
         response.usage.completion_tokens,
     )
