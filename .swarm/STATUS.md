@@ -319,3 +319,113 @@ HF cards say DEPRECATED:
   `scripts/quantization/gguf_eliza1_apply.py` (PolarQuant Q4_POLAR + QJL1_256
   + TBQ3_0/TBQ4_0 + eliza1 manifest), then push to `elizaos/eliza-1-0_8b`
   via the orchestrator, then 2b → 4b → 9b → 27b on the same H200 in sequence.
+
+## CUDA-FULL-BUILD-2 run (2026-05-12 ~13:46 PDT, picking up after rate-limited cuda-full-build #1)
+
+The earlier agent had already completed the **non-fused** `linux-x64-cuda` build
+(install at `~/.eliza/local-inference/bin/dflash/linux-x64-cuda/`, forkCommit
+`a61c93aaa5` = v1.2.0-eliza, builtAt 2026-05-12T17:16:58Z, libggml-cuda.so.0.9.7
+473 MB, real sm_120a SASS via CUDA 12.8). This round picked up:
+
+### Item 1 — Smoke the installed CUDA binaries: DONE
+- `llama-bench` (-ngl 99 -p 512 -n 128) on the eliza-1-{0_6b,1_7b} bundle text
+  GGUFs + base Qwen3-{0.6B,1.7B}-Q8_0:
+  - 0_6b bundle (Q3_K_M) d=0:    pp512 **19932** / tg128 **345.5** t/s
+  - 0_6b bundle      d=16000:    pp512 **1956**  / tg128 **108.5** t/s
+  - 1_7b bundle (Q4_K_M) d=0:    pp512 **11931** / tg128 **194.7** t/s
+  - 1_7b bundle      d=16000:    pp512 **1797**  / tg128 **84.9**  t/s
+  - base 0.6B-Q8_0       d=0:    pp512 **20979** / tg128 **356.3** t/s
+  - base 0.6B-Q8_0   d=16000:    pp512 **1968**  / tg128 **107.0** t/s
+  - base 1.7B-Q8_0       d=0:    pp512 **12414** / tg128 **158.7** t/s
+  - base 1.7B-Q8_0   d=16000:    pp512 **1790**  / tg128 **80.0**  t/s
+- `llama-server -ngl 99 --port 19998 --metrics`: 4 GPU slots, `/health → ok`,
+  `POST /completion` 32-token decode at **420.57 tps decode / 1092.66 tps
+  prefill** on the 0_6b bundle.
+
+### Item 2 — make cuda-verify cuda-verify-fused cuda-hardware: DONE
+- `cuda-verify`: **8/8 PASS** across turbo3/turbo4/turbo3_tcq/qjl/polar/polar_qjl
+  + fused QJL-K/TBQ-V attention (1920/1920 outputs, 4 GQA/n_kv cases). Max
+  diff ≤ 9.5e-6 / 4.47e-7. All on RTX 5080 Laptop sm_120.
+- `cuda-verify-fused`: **1920/1920 PASS** (warp-cooperative fused kernel
+  matching the production `cuda/fused-attn-qjl-tbq.cu`).
+- `cuda-hardware` (cuda_runner.sh --gen-check against the installed
+  libggml-cuda.so): fixture parity **PASS**; graph dispatch smoke **FAILS** with
+  `no cache-type alias for turbo3` — expected on the **non-fused** build
+  (CAPABILITIES.json `dflash: false`, `missingRequiredKernels: ["dflash"]`);
+  the `--cache-type-k tbq3_0/...` aliases are only added by the
+  `dflash`/`fused`-build patch path. The fused build (item 3) carries them.
+
+### Item 3 — `linux-x64-cuda-fused` build: **IN FLIGHT** (PID 3658604)
+- Started 13:57 PDT. After fixing a fork-merge regression in
+  `packages/app-core/scripts/omnivoice-fuse/prepare.mjs` (the qwen3a mtmd
+  audio-token patch detector didn't recognize the operator's
+  fork-merged-into-QWEN2A audio_bos/eos branch; commit `7e360b1801`), the
+  build now proceeds past `prepareOmnivoiceFusion` and is grinding through
+  ggml-cuda template-instance compilation (~25 min in, ~48% complete).
+- Build config: CUDACXX=/usr/local/cuda-12.8/bin/nvcc, 6 parallel jobs,
+  arch list `90a;90;89;86;80;100;120` (real sm_120 SASS), DGGML_CUDA_FUSED_ATTN_QJL=ON,
+  ELIZA_FUSE_OMNIVOICE=ON.
+- ETA ~30 more min (heavy `fattn-vec-instance-*.cu` + `mmf-instance-*.cu`
+  templates at 7 archs each). Log: `/tmp/cuda-fused-build.log`.
+
+### Item 4 — `linux-x64-vulkan-fused` build: **NOT STARTED** (sequential after item 3)
+
+### Item 5 — e2e_loop_bench on CUDA: **NOT STARTED** (needs item 3)
+### Item 6 — d16k llama-bench sweep CPU+CUDA: **CUDA DONE** (item 1 above).
+  CPU side: re-attempted on 1_7b bundle (-t 4 niced) but the 16k-token
+  prefill takes >5 min under build contention; the master report's
+  `n/r⁵` footnote (15 min/model under CPU contention) is accurate and
+  unchanged.
+### Item 7 — action-sel + personality benches: **DEFERRED**.
+  The action-selection-runner.ts test requires bringing up a full elizaOS
+  runtime + plugins + vitest + a live LLM provider — this is hours of
+  setup that doesn't fit this rate-limited round. The personality bench
+  similarly requires either a live agent run (recording trajectories) or
+  the calibration-only judge mode (which scores the JUDGE, not the model).
+  Defer to a follow-up agent with time to wire up local-llama-cpp +
+  ELIZA_RUN_ACTION_BENCHMARK=1 + Cerebras judge.
+### Item 8 — ncu profiling: **NOT ATTEMPTED**.
+  Requires sudo on this host (perf counters → ERR_NVGPUCTRPERM); skip
+  cleanly per the brief.
+### Item 9 — push to HF: **DONE**.
+  Pushed 15 files to `elizaos/eliza-1-evals` (dataset):
+  - `bench/harness-2026-05-12/cuda-llama-bench-rtx5080-{eliza1bundle,base}-{0_6b,1_7b}*-{d0,d16k}*.log`
+  - `bench/harness-2026-05-12/cuda-llama-server-rtx5080-completion-32t-2026-05-12.json`
+  - `bench/harness-2026-05-12/report.{md,json}` (refreshed)
+  - `kernel-verify/cuda-runtime-dispatch-evidence.json` (new fullIntegrationBuild block)
+  - `kernel-verify/cuda-verify[-fused]-rtx5080-2026-05-12.log` (8/8 + 1920/1920)
+  - `kernel-verify/kernel-contract.json` (refreshed nextGate)
+  - `kernel-verify/PLATFORM_MATRIX.md` (refreshed linux-x64-cuda row)
+  - `harness-benchmark-2026-05-12.md` (refreshed master table)
+  - HF commit: <https://huggingface.co/datasets/elizaos/eliza-1-evals/commit/35515d6b6d0f549d09369720fa04261ff94f322a>
+
+### CUDA-FULL-BUILD-2 commits on `develop`
+- `7e360b1801` — omnivoice-fuse: make qwen3a mtmd patch idempotent for fork's
+  merged-into-QWEN2A audio_bos/eos branch (unblocks every fused build target).
+- `f0aa1744ce` — record verified-here for full linux-x64-cuda integration build
+  on RTX 5080 (cuda-runtime-dispatch-evidence + kernel-contract + PLATFORM_MATRIX +
+  remaining-work-ledger + harness-benchmark master table all updated with the new
+  real-install bench numbers and verify evidence).
+
+### Genuinely-remaining (handed off — operator / time-gated)
+1. **linux-x64-cuda-fused build finalize** (item 3, in flight): wait for
+   `/tmp/cuda-fused-build.log` to reach `install -> ` + `omnivoice
+   verifyFusedSymbols`. PID 3658604. ETA ~30 min from this writeup.
+2. **e2e_loop_bench on CUDA-fused** (item 5): once item 3 finishes,
+   `bun packages/inference/verify/e2e_loop_bench.mjs --tier 0_6b
+   --backend cuda --bundle ~/.eliza/local-inference/models/eliza-1-0_6b.bundle
+   --turns 1 --report packages/inference/reports/porting/2026-05-12/e2e-loop-cuda-2026-05-12.json`.
+   **Goal: voice_rtf ≤ 0.5** (the publish gate per RELEASE_V1.md).
+3. **linux-x64-vulkan-fused build + e2e** (items 4 + 5): sequential after item 3.
+4. **action-sel + personality benches** (item 7): stand up a llama-server on
+   the test-SFT GGUF (`checkpoints/eliza-1-0_6b-apollo-1778551769/
+   milady-optimized-gpu/final-Q4_K_M.gguf`) on a free port, point
+   action-selection-runner.ts (`ELIZA_RUN_ACTION_BENCHMARK=1 OPENAI_BASE_URL=
+   http://127.0.0.1:<port>/v1 LOCAL_LLAMA_CPP_API_KEY=local`) + personality-bench
+   runner (`CEREBRAS_API_KEY=<key> ELIZA_PERSONALITY_AGENT=eliza-runtime
+   bun run personality:bench`) at the local endpoint. Fill the
+   action-selection accuracy + personality PASS% cells in
+   `eliza1-harness-benchmark-2026-05-12.{md,json}`.
+5. **ncu profiling** (item 8): unblocked by `sudo modprobe nvidia
+   NVreg_RestrictProfilingToAdminUsers=0` (or run nsight on a profiler-permit
+   host). Not in scope for this run.
