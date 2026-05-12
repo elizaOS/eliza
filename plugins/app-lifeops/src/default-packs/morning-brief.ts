@@ -68,7 +68,7 @@ export const morningBriefPack: DefaultPack = {
   key: MORNING_BRIEF_PACK_KEY,
   label: "Morning brief",
   description:
-    "Assembled morning briefing on wake — overdue todos, meetings, wins, inbox, calendar, contacts, promises. Delegates assembly to the CheckinService used by /CHECKIN today, so a fresh user gets the same content the planner would.",
+    "Assembled morning briefing on wake — overdue todos, meetings, wins, inbox, calendar, contacts, promises. Delegates assembly to the scheduled briefing service, so a fresh user gets the same content the planner would.",
   defaultEnabled: true,
   records: [morningBriefRecord],
   uiHints: {
@@ -84,8 +84,8 @@ export const morningBriefPack: DefaultPack = {
  * to render the prompt (stub anchor resolution scenario) or use `summaryText`
  * directly.
  *
- * The CheckinService.runMorningCheckin path is the same path /CHECKIN uses;
- * this is the parity contract.
+ * The scheduled briefing assembler is shared with the interactive morning
+ * briefing workflow; this is the parity contract.
  */
 export async function assembleMorningBrief(
   runtime: IAgentRuntime,

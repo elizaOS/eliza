@@ -5,6 +5,14 @@ const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
 let browserWorkspaceCounter = 0;
 let browserWorkspaceTabs = [];
 let lifeOpsAppEnabled = true;
+let conversationCounter = 0;
+let messageCounter = 0;
+const stubConversations = [];
+const stubConversationMessages = new Map();
+const ONE_PIXEL_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+  "base64",
+);
 
 const stubPlugins = [
   {
@@ -168,6 +176,18 @@ const stubCatalogApps = [
     category: "social",
   }),
   stubCatalogApp({
+    name: "@elizaos/app-steward",
+    displayName: "Steward",
+    description: "Review wallet approvals and inventory status.",
+    capabilities: ["wallet", "approvals", "inventory"],
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-elizamaker",
+    displayName: "ElizaMaker",
+    description: "Run drop, mint, whitelist, and verification workflows.",
+    capabilities: ["drops", "minting", "whitelist"],
+  }),
+  stubCatalogApp({
     name: "@elizaos/app-shopify",
     displayName: "Shopify",
     description: "Manage Shopify store operations from the agent workspace.",
@@ -178,6 +198,20 @@ const stubCatalogApps = [
     displayName: "Vincent",
     description: "Manage Vincent DeFi account access and trading context.",
     category: "platform",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-hyperliquid",
+    displayName: "Hyperliquid",
+    description: "Inspect Hyperliquid markets, positions, and order status.",
+    category: "platform",
+    capabilities: ["hyperliquid", "trading", "wallet"],
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-polymarket",
+    displayName: "Polymarket",
+    description: "Browse prediction markets and native trading readiness.",
+    category: "platform",
+    capabilities: ["polymarket", "prediction-markets", "wallet"],
   }),
 ];
 
@@ -388,6 +422,113 @@ const emptyWalletMarketOverview = {
   prices: [],
   movers: [],
   predictions: [],
+};
+
+const stubHyperliquidStatus = {
+  publicReadReady: true,
+  signerReady: false,
+  executionReady: false,
+  executionBlockedReason:
+    "Signed Hyperliquid exchange mutations are disabled in UI smoke.",
+  accountAddress: null,
+  apiBaseUrl: "https://api.hyperliquid.xyz",
+  credentialMode: "none",
+  readiness: {
+    publicReads: true,
+    accountReads: false,
+    signer: false,
+    execution: false,
+  },
+  account: {
+    address: null,
+    source: "none",
+    guidance:
+      "Connect a managed vault or configure an account address for account reads.",
+  },
+  vault: {
+    configured: false,
+    ready: false,
+    address: null,
+    guidance: "Public market reads do not require a vault.",
+  },
+  apiWallet: {
+    configured: false,
+    guidance: "API-wallet delegation is optional.",
+  },
+};
+
+const stubHyperliquidMarkets = {
+  markets: [
+    {
+      name: "BTC",
+      index: 0,
+      szDecimals: 5,
+      maxLeverage: 50,
+      onlyIsolated: false,
+      isDelisted: false,
+    },
+    {
+      name: "ETH",
+      index: 1,
+      szDecimals: 4,
+      maxLeverage: 50,
+      onlyIsolated: false,
+      isDelisted: false,
+    },
+  ],
+  source: "hyperliquid-info-meta",
+  fetchedAt: "2026-01-01T00:00:00.000Z",
+};
+
+const stubPolymarketStatus = {
+  publicReads: {
+    ready: true,
+    reason: null,
+    gammaApiBase: "https://gamma-api.polymarket.com",
+    dataApiBase: "https://data-api.polymarket.com",
+  },
+  trading: {
+    ready: false,
+    credentialsReady: false,
+    missing: [
+      "POLYMARKET_PRIVATE_KEY",
+      "CLOB_API_KEY",
+      "CLOB_API_SECRET",
+      "CLOB_API_PASSPHRASE",
+    ],
+    reason: "Trading is disabled in UI smoke.",
+    clobApiBase: "https://clob.polymarket.com",
+  },
+};
+
+const stubPolymarketMarket = {
+  id: "ui-smoke-market",
+  slug: "ui-smoke-market",
+  question: "Will the UI smoke suite stay green?",
+  description: "Deterministic fixture market for app-window QA.",
+  category: "QA",
+  active: true,
+  closed: false,
+  archived: false,
+  restricted: false,
+  enableOrderBook: true,
+  conditionId: "0xsmoke",
+  clobTokenIds: ["yes-token", "no-token"],
+  outcomes: [
+    { name: "Yes", price: "0.72" },
+    { name: "No", price: "0.28" },
+  ],
+  liquidity: "10000",
+  volume: "42000",
+  volume24hr: "1200",
+  lastTradePrice: "0.72",
+  bestBid: "0.71",
+  bestAsk: "0.73",
+  image: null,
+  icon: null,
+  endDate: null,
+  startDate: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
 const smokeGeneratedAt = "2026-01-01T00:00:00.000Z";
@@ -662,6 +803,54 @@ function parsePositiveInt(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function createStubConversation({
+  title = "New chat",
+  metadata = {},
+} = {}) {
+  conversationCounter += 1;
+  const createdAt = nowIso();
+  const conversation = {
+    id: `stub-conversation-${conversationCounter}`,
+    title:
+      typeof title === "string" && title.trim().length > 0
+        ? title.trim()
+        : "New chat",
+    roomId: `stub-room-${conversationCounter}`,
+    metadata:
+      metadata && typeof metadata === "object" && !Array.isArray(metadata)
+        ? metadata
+        : {},
+    createdAt,
+    updatedAt: createdAt,
+  };
+  stubConversations.unshift(conversation);
+  stubConversationMessages.set(conversation.id, []);
+  return conversation;
+}
+
+function findStubConversation(id) {
+  return stubConversations.find((conversation) => conversation.id === id);
+}
+
+function createStubMessage(role, text) {
+  messageCounter += 1;
+  return {
+    id: `stub-message-${messageCounter}`,
+    role,
+    text: typeof text === "string" ? text : "",
+    timestamp: Date.now(),
+  };
+}
+
+function appendStubMessage(conversationId, message) {
+  const messages = stubConversationMessages.get(conversationId) ?? [];
+  messages.push(message);
+  stubConversationMessages.set(conversationId, messages);
+  const conversation = findStubConversation(conversationId);
+  if (conversation) conversation.updatedAt = nowIso();
+  return message;
+}
+
 function buildRuntimeSnapshot(url) {
   const maxDepth = parsePositiveInt(url.searchParams.get("depth"), 10);
   const maxArrayLength = parsePositiveInt(
@@ -878,6 +1067,13 @@ function sendEmpty(req, res, status) {
   res.end();
 }
 
+function sendBinary(req, res, status, contentType, body) {
+  applyCors(req, res);
+  res.statusCode = status;
+  res.setHeader("Content-Type", contentType);
+  res.end(req.method === "HEAD" ? undefined : body);
+}
+
 function sendSseHeaders(req, res) {
   applyCors(req, res);
   res.writeHead(200, {
@@ -946,13 +1142,27 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "HEAD" && url.pathname === "/api/avatar/vrm") {
-    sendEmpty(req, res, 404);
+  if (
+    (req.method === "GET" || req.method === "HEAD") &&
+    url.pathname === "/api/avatar/vrm"
+  ) {
+    sendBinary(req, res, 200, "application/octet-stream", Buffer.alloc(0));
     return;
   }
 
-  if (req.method === "HEAD" && url.pathname === "/api/avatar/background") {
-    sendEmpty(req, res, 404);
+  if (
+    (req.method === "GET" || req.method === "HEAD") &&
+    url.pathname === "/api/avatar/background"
+  ) {
+    sendBinary(req, res, 200, "image/png", ONE_PIXEL_PNG);
+    return;
+  }
+
+  if (
+    (req.method === "GET" || req.method === "HEAD") &&
+    url.pathname.startsWith("/api/apps/hero/")
+  ) {
+    sendBinary(req, res, 200, "image/png", ONE_PIXEL_PNG);
     return;
   }
 
@@ -1025,6 +1235,15 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/emote") {
+    const body = (await readJsonBody(req)) || {};
+    sendJson(req, res, 200, {
+      ok: true,
+      emoteId: typeof body.emoteId === "string" ? body.emoteId : null,
+    });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/status") {
     sendJson(req, res, 200, {
       state: "running",
@@ -1055,8 +1274,257 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/conversations") {
-    sendJson(req, res, 200, { conversations: [] });
+  if (req.method === "GET" && url.pathname === "/api/vincent/strategy") {
+    sendJson(req, res, 200, { connected: false, strategy: null });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/vincent/trading-profile"
+  ) {
+    sendJson(req, res, 200, { connected: false, profile: null });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/shopify/status") {
+    sendJson(req, res, 200, { connected: false, shop: null });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/shopify/products") {
+    sendJson(req, res, 200, { products: [], total: 0, page: 1, pageSize: 25 });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/shopify/orders") {
+    sendJson(req, res, 200, { orders: [], total: 0 });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/shopify/inventory") {
+    sendJson(req, res, 200, { items: [], locations: [] });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/shopify/customers") {
+    sendJson(req, res, 200, { customers: [], total: 0 });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/hyperliquid/status") {
+    sendJson(req, res, 200, stubHyperliquidStatus);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/hyperliquid/markets") {
+    sendJson(req, res, 200, stubHyperliquidMarkets);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/hyperliquid/positions") {
+    sendJson(req, res, 200, {
+      accountAddress: null,
+      positions: [],
+      readBlockedReason:
+        "Connect an account address to read Hyperliquid positions.",
+      fetchedAt: null,
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/hyperliquid/orders") {
+    sendJson(req, res, 200, {
+      accountAddress: null,
+      orders: [],
+      readBlockedReason: "Connect an account address to read open orders.",
+      fetchedAt: null,
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/polymarket/status") {
+    sendJson(req, res, 200, stubPolymarketStatus);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/polymarket/markets") {
+    sendJson(req, res, 200, {
+      markets: [stubPolymarketMarket],
+      source: { api: "gamma", endpoint: "/markets" },
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/polymarket/market") {
+    sendJson(req, res, 200, {
+      market: stubPolymarketMarket,
+      source: { api: "gamma", endpoint: "/markets" },
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/polymarket/orderbook") {
+    sendJson(req, res, 200, {
+      tokenId: url.searchParams.get("token_id") ?? "yes-token",
+      market: stubPolymarketMarket.id,
+      assetId: null,
+      bids: [{ price: "0.71", size: "100" }],
+      asks: [{ price: "0.73", size: "100" }],
+      bestBid: "0.71",
+      bestBidSize: "100",
+      bestAsk: "0.73",
+      bestAskSize: "100",
+      midpoint: "0.72",
+      spread: "0.02",
+      bidLevels: 1,
+      askLevels: 1,
+      lastTradePrice: "0.72",
+      tickSize: "0.01",
+      source: { api: "clob", endpoint: "/book" },
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/polymarket/orders") {
+    sendJson(req, res, 200, {
+      enabled: false,
+      reason: "Trading is disabled in UI smoke.",
+      requiredForTrading: [
+        "POLYMARKET_PRIVATE_KEY",
+        "CLOB_API_KEY",
+        "CLOB_API_SECRET",
+        "CLOB_API_PASSPHRASE",
+      ],
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/polymarket/positions") {
+    sendJson(req, res, 200, {
+      positions: [],
+      source: { api: "data", endpoint: "/positions" },
+    });
+    return;
+  }
+
+  if (url.pathname === "/api/conversations") {
+    if (req.method === "GET") {
+      sendJson(req, res, 200, { conversations: stubConversations });
+      return;
+    }
+    if (req.method === "POST") {
+      const body = (await readJsonBody(req)) || {};
+      const conversation = createStubConversation({
+        title: body.title,
+        metadata: body.metadata,
+      });
+      sendJson(req, res, 200, { conversation });
+      return;
+    }
+  }
+
+  const conversationMessagesMatch = url.pathname.match(
+    /^\/api\/conversations\/([^/]+)\/messages(?:\/(stream|truncate))?$/,
+  );
+  if (conversationMessagesMatch) {
+    const conversationId = decodeURIComponent(conversationMessagesMatch[1]);
+    const action = conversationMessagesMatch[2] ?? null;
+    const conversation = findStubConversation(conversationId);
+    if (!conversation) {
+      sendJson(req, res, 404, { error: "Conversation not found" });
+      return;
+    }
+
+    if (req.method === "GET" && action === null) {
+      sendJson(req, res, 200, {
+        messages: stubConversationMessages.get(conversationId) ?? [],
+      });
+      return;
+    }
+
+    if (req.method === "POST" && action === "truncate") {
+      stubConversationMessages.set(conversationId, []);
+      conversation.updatedAt = nowIso();
+      sendJson(req, res, 200, { ok: true, messages: [] });
+      return;
+    }
+
+    if (req.method === "POST" && action === "stream") {
+      const body = (await readJsonBody(req)) || {};
+      appendStubMessage(conversationId, createStubMessage("user", body.text));
+      const text =
+        "This is a stubbed QA response. The app surface is loaded and interactive.";
+      appendStubMessage(conversationId, createStubMessage("assistant", text));
+      sendSseHeaders(req, res);
+      writeSseEvent(res, { type: "token", text, fullText: text });
+      writeSseEvent(res, { type: "done", fullText: text, agentName: "Eliza" });
+      res.end();
+      return;
+    }
+
+    if (req.method === "POST" && action === null) {
+      const body = (await readJsonBody(req)) || {};
+      appendStubMessage(conversationId, createStubMessage("user", body.text));
+      const text =
+        "This is a stubbed QA response. The app surface is loaded and interactive.";
+      appendStubMessage(conversationId, createStubMessage("assistant", text));
+      sendJson(req, res, 200, { text, agentName: "Eliza" });
+      return;
+    }
+  }
+
+  const conversationMatch = url.pathname.match(/^\/api\/conversations\/([^/]+)$/);
+  if (conversationMatch) {
+    const conversationId = decodeURIComponent(conversationMatch[1]);
+    const conversation = findStubConversation(conversationId);
+    if (!conversation) {
+      sendJson(req, res, 404, { error: "Conversation not found" });
+      return;
+    }
+    if (req.method === "PATCH") {
+      const body = (await readJsonBody(req)) || {};
+      if (typeof body.title === "string" && body.title.trim().length > 0) {
+        conversation.title = body.title.trim();
+      }
+      if (
+        Object.hasOwn(body, "metadata") &&
+        body.metadata &&
+        typeof body.metadata === "object" &&
+        !Array.isArray(body.metadata)
+      ) {
+        conversation.metadata = body.metadata;
+      }
+      conversation.updatedAt = nowIso();
+      sendJson(req, res, 200, { conversation });
+      return;
+    }
+    if (req.method === "DELETE") {
+      const index = stubConversations.findIndex(
+        (item) => item.id === conversationId,
+      );
+      if (index >= 0) stubConversations.splice(index, 1);
+      stubConversationMessages.delete(conversationId);
+      sendJson(req, res, 200, { ok: true });
+      return;
+    }
+  }
+
+  const conversationGreetingMatch = url.pathname.match(
+    /^\/api\/conversations\/([^/]+)\/greeting$/,
+  );
+  if (req.method === "POST" && conversationGreetingMatch) {
+    const conversationId = decodeURIComponent(conversationGreetingMatch[1]);
+    if (!findStubConversation(conversationId)) {
+      sendJson(req, res, 404, { error: "Conversation not found" });
+      return;
+    }
+    sendJson(req, res, 200, {
+      text: "What would you like to check?",
+      agentName: "Eliza",
+      generated: false,
+      persisted: true,
+    });
     return;
   }
 

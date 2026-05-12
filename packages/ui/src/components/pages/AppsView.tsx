@@ -1184,6 +1184,7 @@ export function AppsView() {
               searchQuery={searchQuery}
               visibleApps={visibleApps}
               onLaunch={(app) => void handleLaunch(app)}
+              onRetry={() => void loadApps()}
               onToggleFavorite={handleToggleFavorite}
             />
           </>

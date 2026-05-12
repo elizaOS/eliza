@@ -80,10 +80,7 @@ interface OpenAIModerationResponse {
 
 type ModerationRequestInput =
   | string
-  | Array<
-      | { type: "text"; text: string }
-      | { type: "image_url"; image_url: { url: string } }
-    >;
+  | Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }>;
 
 const HARD_BLOCK_THRESHOLDS: Partial<Record<OpenAIModerationCategory, number>> = {
   "sexual/minors": 0.2,
@@ -178,7 +175,10 @@ function buildModerationInput(text: string, imageUrls: string[]): ModerationRequ
   return parts;
 }
 
-function emptyReview(input: ContentSafetyInput, mode: "enforce" | "warn" | "off"): ContentSafetyReview {
+function emptyReview(
+  input: ContentSafetyInput,
+  mode: "enforce" | "warn" | "off",
+): ContentSafetyReview {
   return {
     allowed: true,
     blocked: false,
@@ -250,8 +250,7 @@ export class ContentSafetyService {
       return review;
     }
 
-    const apiKey =
-      env.OPENAI_MODERATION_API_KEY?.trim() || env.OPENAI_API_KEY?.trim() || undefined;
+    const apiKey = env.OPENAI_MODERATION_API_KEY?.trim() || env.OPENAI_API_KEY?.trim() || undefined;
     if (!apiKey) {
       if (requireConfigured(env, input)) {
         throw new ApiError(503, "internal_error", "Content safety moderation is not configured");

@@ -16,6 +16,10 @@
  * instead of crashing the process.
  */
 
+import {
+  type ResponseSkeleton,
+  ResponseSkeletonStreamExtractor,
+} from "@elizaos/core";
 import type { LocalInferenceLoadArgs } from "./active-model";
 import type {
   GenerateArgs as BackendGenerateArgs,
@@ -84,6 +88,32 @@ import type {
  * rollback"). Overridable per call via `runVoiceTurn({ maxDraftTokens })`.
  */
 const DEFAULT_VOICE_MAX_DRAFT_TOKENS = 8;
+const DEFAULT_VOICE_SKELETON_STREAM_FIELDS = new Set([
+  "replyText",
+  "text",
+  "messageToUser",
+]);
+
+function resolveVoiceSkeletonStreamFields(
+  skeleton: ResponseSkeleton | undefined,
+): string[] {
+  if (!skeleton) return [];
+  const fields: string[] = [];
+  const seen = new Set<string>();
+  for (const span of skeleton.spans) {
+    const key = span.key;
+    if (
+      span.kind === "free-string" &&
+      key &&
+      DEFAULT_VOICE_SKELETON_STREAM_FIELDS.has(key) &&
+      !seen.has(key)
+    ) {
+      seen.add(key);
+      fields.push(key);
+    }
+  }
+  return fields;
+}
 
 /**
  * Idle-unload timeout (J3). After this long with no `useModel` activity
@@ -1418,8 +1448,7 @@ export class LocalInferenceEngine {
         OPENWAKEWORD_DEFAULT_HEAD,
         OpenWakeWordDetector,
       } = await import("./voice/wake-word");
-      const headName =
-        opts.wakeWord.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
+      const headName = opts.wakeWord.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
       if (isPlaceholderWakeWordHead(headName)) {
         console.warn(
           `[voice] wake word head '${headName}' is a PLACEHOLDER (the upstream openWakeWord "hey jarvis" head, renamed) — it fires on "hey jarvis", not the Eliza-1 wake phrase. Experimental, opt-in only; see packages/inference/reports/porting/2026-05-11/wakeword-head-plan.md.`,
@@ -1741,10 +1770,35 @@ export class LocalInferenceEngine {
     let verifierHandled = false;
     const callerOnTextChunk = args.onTextChunk;
     const callerOnVerifierEvent = args.onVerifierEvent;
+    let structuredVoicePush = Promise.resolve();
+    const structuredVoiceFields =
+      args.streamStructured === true
+        ? resolveVoiceSkeletonStreamFields(args.responseSkeleton)
+        : [];
+    const structuredVoiceExtractor =
+      structuredVoiceFields.length > 0 && args.responseSkeleton
+        ? new ResponseSkeletonStreamExtractor({
+            skeleton: args.responseSkeleton,
+            streamFields: structuredVoiceFields,
+            abortSignal: bargeAbort.signal,
+            onChunk: (chunk: string) => {
+              if (chunk.length === 0) return;
+              streamedAny = true;
+              const token: TextToken = { index: nextIndex++, text: chunk };
+              structuredVoicePush = structuredVoicePush.then(() =>
+                bridge.pushAcceptedToken(token),
+              );
+            },
+          })
+        : null;
     const wrapped = {
       ...args,
       signal: bargeAbort.signal,
       onVerifierEvent: async (event: VerifierStreamEvent) => {
+        if (structuredVoiceExtractor) {
+          await callerOnVerifierEvent?.(event);
+          return;
+        }
         verifierHandled = true;
         if (event.kind === "accept" && event.tokens.length > 0) {
           streamedAny = true;
@@ -1755,6 +1809,11 @@ export class LocalInferenceEngine {
         await callerOnVerifierEvent?.(event);
       },
       onTextChunk: async (chunk: string) => {
+        if (structuredVoiceExtractor) {
+          structuredVoiceExtractor.push(chunk);
+          await callerOnTextChunk?.(chunk);
+          return;
+        }
         if (chunk.length > 0 && !verifierHandled) {
           streamedAny = true;
           const token: TextToken = { index: nextIndex++, text: chunk };
@@ -1768,7 +1827,15 @@ export class LocalInferenceEngine {
       args: wrapped,
       finish: async (finalText: string) => {
         try {
+          if (structuredVoiceExtractor) {
+            if (!streamedAny && finalText.length > 0) {
+              structuredVoiceExtractor.push(finalText);
+            }
+            structuredVoiceExtractor.flush();
+            await structuredVoicePush;
+          }
           if (
+            !structuredVoiceExtractor &&
             !streamedAny &&
             finalText.length > 0 &&
             !bargeAbort.signal.aborted

@@ -2,9 +2,9 @@
  * Website-blocker enforcer.
  *
  * Wraps the `website-blocker` engine (hosts-file editor + iOS/Android native
- * backends when registered) as a {@link BlockerContribution}. The umbrella
- * `WEBSITE_BLOCK` action dispatches through this entry instead of importing
- * engine functions directly so adding a new website-blocker backend is a
+ * backends when registered) as a {@link BlockerContribution}. BLOCK
+ * target=website dispatches through this entry instead of importing engine
+ * functions directly so adding a new website-blocker backend is a
  * registration call.
  */
 

@@ -216,6 +216,8 @@ function refreshIosRuntimeSymbolShim({ sliceDir, isSimulator }) {
     "-isysroot",
     sdkPath,
     minVersionFlag,
+    "-I",
+    path.join(sliceDir, "include"),
     "-fvisibility=default",
     "-c",
     source,

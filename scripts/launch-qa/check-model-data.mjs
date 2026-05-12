@@ -146,51 +146,11 @@ function findSecretHits(text) {
   return hits;
 }
 
-function validateMessagesRow(row) {
-  const errors = [];
-  if (typeof row !== "object" || row === null || Array.isArray(row)) {
-    return ["row must be a JSON object"];
-  }
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
-  if (!Array.isArray(row.messages)) {
-    return ["row.messages must be an array"];
-  }
-  if (row.messages.length === 0) {
-    errors.push("row.messages must not be empty");
-  }
-
-  let hasUser = false;
-  let hasAssistant = false;
-  row.messages.forEach((message, index) => {
-    if (
-      typeof message !== "object" ||
-      message === null ||
-      Array.isArray(message)
-    ) {
-      errors.push(`messages[${index}] must be an object`);
-      return;
-    }
-    const role = message.role;
-    if (!["system", "user", "model", "assistant", "tool"].includes(role)) {
-      errors.push(
-        `messages[${index}].role must be system, user, model, assistant, or tool`,
-      );
-    }
-    if (typeof message.content !== "string" || message.content.trim() === "") {
-      errors.push(`messages[${index}].content must be a non-empty string`);
-    }
-    if (role === "user") hasUser = true;
-    if (role === "model" || role === "assistant") hasAssistant = true;
-  });
-
-  if (!hasUser) {
-    errors.push("row.messages must include at least one user message");
-  }
-  if (!hasAssistant) {
-    errors.push(
-      "row.messages must include at least one model or assistant message",
-    );
-  }
+function validateMetadataAndReward(row, errors) {
   if (
     "metadata" in row &&
     (typeof row.metadata !== "object" || row.metadata === null)
@@ -200,8 +160,179 @@ function validateMessagesRow(row) {
   if ("reward" in row && typeof row.reward !== "number") {
     errors.push("row.reward must be a number when present");
   }
+}
+
+function validateMessageArray(messages, label) {
+  const errors = [];
+  const stats = { hasUser: false, hasAssistant: false };
+  if (!Array.isArray(messages)) {
+    return { errors: [`${label} must be an array`], stats };
+  }
+  if (messages.length === 0) {
+    errors.push(`${label} must not be empty`);
+  }
+
+  messages.forEach((message, index) => {
+    if (!isRecord(message)) {
+      errors.push(`${label}[${index}] must be an object`);
+      return;
+    }
+    const role = message.role;
+    if (
+      !["system", "developer", "user", "model", "assistant", "tool"].includes(
+        role,
+      )
+    ) {
+      errors.push(
+        `${label}[${index}].role must be system, developer, user, model, assistant, or tool`,
+      );
+    }
+    if (typeof message.content !== "string" || message.content.trim() === "") {
+      errors.push(`${label}[${index}].content must be a non-empty string`);
+    }
+    if (role === "user") stats.hasUser = true;
+    if (role === "model" || role === "assistant") stats.hasAssistant = true;
+  });
+
+  return { errors, stats };
+}
+
+function validateElizaNativeRow(row) {
+  const errors = [];
+  if (!isRecord(row)) {
+    return ["row must be a JSON object"];
+  }
+  if (row.format !== "eliza_native_v1") {
+    errors.push('row.format must be "eliza_native_v1"');
+  }
+  if ("boundary" in row && typeof row.boundary !== "string") {
+    errors.push("row.boundary must be a string when present");
+  }
+
+  const request = row.request;
+  if (!isRecord(request)) {
+    errors.push("row.request must be an object");
+  } else {
+    if ("system" in request && typeof request.system !== "string") {
+      errors.push("row.request.system must be a string when present");
+    }
+    const hasPrompt =
+      typeof request.prompt === "string" && request.prompt.trim() !== "";
+    let hasUser = hasPrompt;
+    if ("prompt" in request && typeof request.prompt !== "string") {
+      errors.push("row.request.prompt must be a string when present");
+    }
+    if ("messages" in request) {
+      const result = validateMessageArray(
+        request.messages,
+        "row.request.messages",
+      );
+      errors.push(...result.errors);
+      hasUser = hasUser || result.stats.hasUser;
+    } else if (!hasPrompt) {
+      errors.push("row.request must include messages or prompt");
+    }
+    if (!hasUser) {
+      errors.push(
+        "row.request must include at least one user message or prompt",
+      );
+    }
+  }
+
+  const response = row.response;
+  if (!isRecord(response)) {
+    errors.push("row.response must be an object");
+  } else {
+    let hasResponse = false;
+    if ("text" in response) {
+      if (typeof response.text !== "string") {
+        errors.push("row.response.text must be a string when present");
+      } else if (response.text.trim() !== "") {
+        hasResponse = true;
+      }
+    }
+    if ("toolCalls" in response) {
+      if (!Array.isArray(response.toolCalls)) {
+        errors.push("row.response.toolCalls must be an array when present");
+      } else if (response.toolCalls.length > 0) {
+        hasResponse = true;
+      }
+    }
+    if (!hasResponse) {
+      errors.push("row.response must include non-empty text or toolCalls");
+    }
+  }
+
+  validateMetadataAndReward(row, errors);
+  return errors;
+}
+
+function validateMessagesRow(row) {
+  const errors = [];
+  if (!isRecord(row)) {
+    return ["row must be a JSON object"];
+  }
+
+  if (row.format === "eliza_native_v1") {
+    return validateElizaNativeRow(row);
+  }
+
+  if (!Array.isArray(row.messages)) {
+    return ["row.messages must be an array"];
+  }
+  const result = validateMessageArray(row.messages, "row.messages");
+  errors.push(...result.errors);
+
+  if (!result.stats.hasUser) {
+    errors.push("row.messages must include at least one user message");
+  }
+  if (!result.stats.hasAssistant) {
+    errors.push(
+      "row.messages must include at least one model or assistant message",
+    );
+  }
+  validateMetadataAndReward(row, errors);
 
   return errors;
+}
+
+function collectRowTextStats(row) {
+  const roles = {};
+  let contentChars = 0;
+  const addMessage = (message) => {
+    if (!isRecord(message)) return;
+    if (typeof message.role === "string") {
+      roles[message.role] = (roles[message.role] ?? 0) + 1;
+    }
+    if (typeof message.content === "string") {
+      contentChars += message.content.length;
+    }
+  };
+  const addText = (value) => {
+    if (typeof value === "string") {
+      contentChars += value.length;
+    }
+  };
+
+  if (row?.format === "eliza_native_v1") {
+    addText(row.request?.system);
+    addText(row.request?.prompt);
+    for (const message of Array.isArray(row.request?.messages)
+      ? row.request.messages
+      : []) {
+      addMessage(message);
+    }
+    addText(row.response?.text);
+    if (Array.isArray(row.response?.toolCalls)) {
+      contentChars += JSON.stringify(row.response.toolCalls).length;
+    }
+    return { roles, contentChars };
+  }
+
+  for (const message of Array.isArray(row?.messages) ? row.messages : []) {
+    addMessage(message);
+  }
+  return { roles, contentChars };
 }
 
 function checkJsonlFile({ repoRoot, filePath }) {
@@ -240,15 +371,10 @@ function checkJsonlFile({ repoRoot, filePath }) {
       });
     }
 
-    for (const message of Array.isArray(row.messages) ? row.messages : []) {
-      if (message && typeof message === "object") {
-        if (typeof message.role === "string") {
-          roles[message.role] = (roles[message.role] ?? 0) + 1;
-        }
-        if (typeof message.content === "string") {
-          contentChars += message.content.length;
-        }
-      }
+    const rowTextStats = collectRowTextStats(row);
+    contentChars += rowTextStats.contentChars;
+    for (const [role, count] of Object.entries(rowTextStats.roles)) {
+      roles[role] = (roles[role] ?? 0) + count;
     }
 
     const secretHits = findSecretHits(line);

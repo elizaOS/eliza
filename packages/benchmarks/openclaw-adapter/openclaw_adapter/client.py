@@ -451,6 +451,12 @@ def _response_from_payload(payload: Mapping[str, object]) -> MessageResponse:
     """
     text = _first_str(payload, ("reply", "message", "content", "text", "output"))
     thought = _first_str(payload, ("reasoning", "reasoning_content", "thought"))
+    if not text:
+        text = _text_from_payloads(payload)
+    if not text:
+        meta = payload.get("meta")
+        if isinstance(meta, Mapping):
+            text = _first_str(meta, ("finalAssistantVisibleText", "finalAssistantRawText"))
     raw_tool_calls = _collect_tool_calls(payload)
 
     actions: list[str] = []
@@ -469,7 +475,13 @@ def _response_from_payload(payload: Mapping[str, object]) -> MessageResponse:
         params[name] = args if args is not None else {}
 
     extras: dict[str, object] = {}
+    usage = _usage_from_meta(payload)
+    if usage:
+        params.setdefault("usage", usage)
+        extras["usage"] = usage
     for key in ("usage", "sessionId", "session_id", "agent", "id"):
+        if key == "usage" and "usage" in extras:
+            continue
         value = payload.get(key)
         if value is not None and key not in params:
             extras[key] = value
@@ -497,6 +509,50 @@ def _first_str(payload: Mapping[str, object], keys: Sequence[str]) -> str:
             if isinstance(nested, str) and nested:
                 return nested
     return ""
+
+
+def _text_from_payloads(payload: Mapping[str, object]) -> str:
+    payloads = payload.get("payloads")
+    if not isinstance(payloads, Sequence) or isinstance(payloads, (str, bytes)):
+        return ""
+    for item in payloads:
+        if not isinstance(item, Mapping):
+            continue
+        text = item.get("text")
+        if isinstance(text, str) and text:
+            return text
+        nested = item.get("payload")
+        if isinstance(nested, Mapping):
+            nested_text = nested.get("text") or nested.get("content")
+            if isinstance(nested_text, str) and nested_text:
+                return nested_text
+    return ""
+
+
+def _usage_from_meta(payload: Mapping[str, object]) -> dict[str, object]:
+    meta = payload.get("meta")
+    if not isinstance(meta, Mapping):
+        return {}
+    agent_meta = meta.get("agentMeta")
+    if not isinstance(agent_meta, Mapping):
+        return {}
+    usage = agent_meta.get("lastCallUsage") or agent_meta.get("usage")
+    if not isinstance(usage, Mapping):
+        return {}
+    input_tokens = usage.get("input", 0)
+    output_tokens = usage.get("output", 0)
+    cache_read = usage.get("cacheRead", 0)
+    cache_write = usage.get("cacheWrite", 0)
+    total = usage.get("total", 0)
+    return {
+        "prompt_tokens": input_tokens,
+        "completion_tokens": output_tokens,
+        "total_tokens": total,
+        "prompt_tokens_details": {
+            "cached_tokens": cache_read,
+            "cache_write_tokens": cache_write,
+        },
+    }
 
 
 def _collect_tool_calls(payload: Mapping[str, object]) -> list[dict[str, object]]:

@@ -351,19 +351,6 @@ export interface CreateRuntimeRunnerOptions {
   now?: () => Date;
 }
 
-/**
- * Service-aware accessor re-export. Callers should prefer
- * `getScheduledTaskRunner` over `createRuntimeScheduledTaskRunner` so the
- * runner is constructed once per runtime (in `ScheduledTaskRunnerService`)
- * instead of per call. The bare `createRuntimeScheduledTaskRunner` factory
- * remains exported below for the service itself and for tests that want a
- * standalone runner without registering the service.
- */
-export {
-  getScheduledTaskRunner,
-  ScheduledTaskRunnerService,
-} from "./service.js";
-
 export function createRuntimeScheduledTaskRunner(
   opts: CreateRuntimeRunnerOptions,
 ): ScheduledTaskRunnerHandle {

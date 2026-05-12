@@ -6,10 +6,10 @@
   "benchmark_directory": "realm",
   "benchmark_id": "realm",
   "cache_metrics": {
-    "cache_read_input_tokens": 0,
     "cache_creation_input_tokens": 0,
-    "turns_with_cached_field": 0,
-    "cache_hit_ratio": 0.0
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
   },
   "error": null,
   "higher_is_better": true,
@@ -17,10 +17,10 @@
     "avg_efficiency": 0.5,
     "avg_plan_quality": 1.0,
     "cache_metrics": {
-      "cache_read_input_tokens": 0,
       "cache_creation_input_tokens": 0,
-      "turns_with_cached_field": 0,
-      "cache_hit_ratio": 0.0
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
     },
     "overall_success_rate": 1.0,
     "passed_tasks": 1,
@@ -32,19 +32,19 @@
     },
     "return_code": 0,
     "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
       "llm_call_count": 2,
       "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "avg_prompt_tokens": 0.0,
-      "avg_completion_tokens": 0.0
+      "total_tokens": 0
     },
     "total_tasks": 1,
     "trajectory_summary": {
       "files": 2,
-      "turns": 2,
       "prompt_chars": 14,
-      "repeated_prefixes": []
+      "repeated_prefixes": [],
+      "turns": 2
     }
   },
   "model": "gpt-oss-120b",
@@ -61,19 +61,19 @@
   "score": 1.0,
   "status": "succeeded",
   "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
     "llm_call_count": 2,
     "prompt_tokens": 0,
-    "completion_tokens": 0,
-    "total_tokens": 0,
-    "avg_prompt_tokens": 0.0,
-    "avg_completion_tokens": 0.0
+    "total_tokens": 0
   },
   "trajectory_summary": {
     "files": 2,
-    "turns": 2,
     "prompt_chars": 14,
-    "repeated_prefixes": []
+    "repeated_prefixes": [],
+    "turns": 2
   },
   "unit": "ratio",
-  "updated_at": "2026-05-11T14:03:02.355834+00:00"
+  "updated_at": "2026-05-12T01:34:00Z"
 }

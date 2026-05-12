@@ -496,7 +496,10 @@ export class FfiBatchTranscriber extends BaseStreamingTranscriber {
 
     // Commit any prefix that has scrolled fully out of the sliding window.
     while (total - this.committedSamples > this.windowSamples) {
-      const chunkEnd = Math.min(total, this.committedSamples + this.windowSamples);
+      const chunkEnd = Math.min(
+        total,
+        this.committedSamples + this.windowSamples,
+      );
       const chunk = this.buf.subarray(this.committedSamples, chunkEnd);
       const text = this.decodeWindow(chunk);
       this.committed = joinTranscriptParts(this.committed, text);

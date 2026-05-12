@@ -19,12 +19,14 @@ from eliza_lifeops_bench.scorer import (
     _canonicalize_action,
     _kwargs_match,
     compare_actions,
+    output_substring_match,
     score_scenario,
 )
 from eliza_lifeops_bench.types import (
     Action,
     Domain,
     FirstQuestionFallback,
+    MessageTurn,
     Persona,
     Scenario,
     ScenarioMode,
@@ -216,7 +218,7 @@ def test_kwargs_match_intent_present_but_mismatched_still_fails() -> None:
 
 
 def test_score_scenario_state_match_plus_granular_action_no_longer_zeroed() -> None:
-    """Repro for openclaw: granular action + state_hash=True must score > 0."""
+    """Repro for openclaw: granular action + state_hash=True is semantically successful."""
     scenario = _scenario(
         ground_truth_actions=[
             Action(
@@ -243,10 +245,137 @@ def test_score_scenario_state_match_plus_granular_action_no_longer_zeroed() -> N
         ],
     )
     score = score_scenario(result, scenario)
-    # action_score=0.5 (name match, kwargs differ on naming), state_score=1.0,
-    # substring_score=1.0 (no required outputs).
-    # 0.5*1.0 + 0.4*0.5 + 0.1*1.0 = 0.80.
-    assert score == pytest.approx(0.80)
+    # action_score is promoted to 1.0 because the state hash matched and the
+    # action name matched after canonicalization.
+    assert score == pytest.approx(1.0)
+
+
+def test_output_substring_match_accepts_calendar_confirmation_synonym() -> None:
+    """A successful calendar creation can say 'added to your calendar'."""
+    matches = output_substring_match(
+        [
+            MessageTurn(
+                role="assistant",
+                content="Your 30-minute focus block was added to your calendar.",
+            )
+        ],
+        ["scheduled", "focus block"],
+    )
+
+    assert matches == [True, True]
+
+
+def test_output_substring_match_accepts_24_hour_time_for_pm_requirement() -> None:
+    """`15:00 UTC` is the same output fact as `3pm`."""
+    matches = output_substring_match(
+        [
+            MessageTurn(
+                role="assistant",
+                content='I moved "Sync: the roadmap" to 15:00-17:00 UTC.',
+            )
+        ],
+        ["3pm", "roadmap"],
+    )
+
+    assert matches == [True, True]
+
+
+def test_output_substring_match_accepts_pm_punctuation_spacing() -> None:
+    """Human spelling variants such as `p.m.` should not miss the time check."""
+    matches = output_substring_match(
+        [
+            MessageTurn(
+                role="assistant",
+                content="The meeting is now set for 3 p.m.",
+            )
+        ],
+        ["15:00"],
+    )
+
+    assert matches == [True]
+
+
+def test_output_substring_match_accepts_utc_time_for_am_requirement() -> None:
+    """A 24-hour morning time should match the equivalent `am` requirement."""
+    matches = output_substring_match(
+        [
+            MessageTurn(
+                role="assistant",
+                content="Your deep work block is scheduled at 10:00 UTC.",
+            )
+        ],
+        ["10am"],
+    )
+
+    assert matches == [True]
+
+
+def test_output_substring_match_rejects_different_clock_time() -> None:
+    """The time equivalence layer must not turn any hour-like text into a hit."""
+    matches = output_substring_match(
+        [
+            MessageTurn(
+                role="assistant",
+                content="I moved it to 13:00 UTC and added a 3 minute buffer.",
+            )
+        ],
+        ["3pm"],
+    )
+
+    assert matches == [False]
+
+
+def test_output_substring_match_normalizes_unicode_hyphen() -> None:
+    """Scenario-authored nonbreaking hyphens should match normal hyphen output."""
+    matches = output_substring_match(
+        [
+            MessageTurn(
+                role="assistant",
+                content="Your wind-down reminder is scheduled.",
+            )
+        ],
+        ["wind‑down"],
+    )
+
+    assert matches == [True]
+
+
+def test_score_scenario_state_match_plus_partial_action_and_synonym_passes() -> None:
+    """Cerebras smoke: correct state + alias kwargs + calendar confirmation should pass."""
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(
+                name="CALENDAR",
+                kwargs={
+                    "subaction": "create_event",
+                    "title": "deep work",
+                    "details": {
+                        "calendarId": "cal_primary",
+                        "start": "2026-05-11T10:00:00Z",
+                        "end": "2026-05-11T10:30:00Z",
+                    },
+                },
+            )
+        ],
+        required_outputs=["scheduled", "deep work"],
+    )
+    result = _result(
+        state_hash_match=True,
+        agent_actions=[
+            Action(
+                name="CALENDAR",
+                kwargs={
+                    "subaction": "create_event",
+                    "title": "deep work",
+                    "start_time": "2026-05-11T10:00:00Z",
+                    "duration_minutes": 30,
+                },
+            )
+        ],
+        output_substring_matches=[True, True],
+    )
+
+    assert score_scenario(result, scenario) == pytest.approx(1.0)
 
 
 def test_score_scenario_hermes_intent_only_gap_now_full_credit() -> None:

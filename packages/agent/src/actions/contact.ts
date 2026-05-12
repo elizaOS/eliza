@@ -1873,11 +1873,7 @@ export const contactAction: Action = {
     "APPROVE_IDENTITY_MERGE",
     "DISMISS_IDENTITY_MERGE",
     // Activity aliases
-    "GET_RELATIONSHIP_ACTIVITY",
-    "RELATIONSHIPS_ACTIVITY",
-    "LIST_RELATIONSHIP_ACTIVITY",
     "RECENT_ROLODEX_ACTIVITY",
-    "RELATIONSHIP_FEED",
     // Search aliases
     "FIND_PERSON",
     "LOOKUP_USER",

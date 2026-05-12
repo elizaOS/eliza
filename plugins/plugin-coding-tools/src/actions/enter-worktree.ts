@@ -120,7 +120,7 @@ export async function enterWorktreeHandler(
   session.pushWorktree(conversationId, worktreePath);
 
   coreLogger.debug(
-    `${CODING_TOOLS_LOG_PREFIX} ENTER_WORKTREE branch=${name} path=${worktreePath} base=${base}`,
+    `${CODING_TOOLS_LOG_PREFIX} WORKTREE action=enter branch=${name} path=${worktreePath} base=${base}`,
   );
 
   const maxActionResultBytes = 2000;

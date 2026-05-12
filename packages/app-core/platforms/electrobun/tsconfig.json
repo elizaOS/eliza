@@ -42,6 +42,12 @@
       "@elizaos/plugin-elizacloud/*": [
         "../../../../plugins/plugin-elizacloud/src/*"
       ],
+      "@elizaos/plugin-local-inference": [
+        "../../../../plugins/plugin-local-inference/src/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/*": [
+        "../../../../plugins/plugin-local-inference/src/*"
+      ],
       "@elizaos/plugin-signal": [
         "../../../../plugins/plugin-signal/src/index.ts"
       ],

@@ -239,24 +239,31 @@ const DFLASH_METRIC_ALIASES = {
 } as const;
 
 export function parseDflashMetrics(body: string): DflashMetricsSnapshot | null {
-  const samples = new Map<string, number>();
+  const samples = new Map<
+    string,
+    { unlabeled: number | null; labeledSum: number }
+  >();
   for (const rawLine of body.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) continue;
     const match = line.match(
-      /^([a-zA-Z_:][\w:]*)(?:\{[^}]*\})?\s+([+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?)/,
+      /^([a-zA-Z_:][\w:]*)(\{[^}]*\})?\s+([+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?)/i,
     );
     if (!match) continue;
     const name = match[1];
-    const value = Number(match[2]);
+    const labels = match[2];
+    const value = Number(match[3]);
     if (!name || !Number.isFinite(value)) continue;
-    samples.set(name, (samples.get(name) ?? 0) + value);
+    const bucket = samples.get(name) ?? { unlabeled: null, labeledSum: 0 };
+    if (labels) bucket.labeledSum += value;
+    else bucket.unlabeled = value;
+    samples.set(name, bucket);
   }
 
   const readFirst = (aliases: readonly string[]): number | null => {
     for (const alias of aliases) {
-      const value = samples.get(alias);
-      if (value !== undefined) return value;
+      const bucket = samples.get(alias);
+      if (bucket !== undefined) return bucket.unlabeled ?? bucket.labeledSum;
     }
     return null;
   };
@@ -277,6 +284,28 @@ export function parseDflashMetrics(body: string): DflashMetricsSnapshot | null {
 function readBool(name: string): boolean {
   const raw = process.env[name]?.trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes";
+}
+
+function allowZeroDraftForDiagnostics(): boolean {
+  return readBool("ELIZA_DFLASH_ALLOW_ZERO_DRAFT");
+}
+
+export function shouldRequireActiveDflashForRequest(
+  plan:
+    | Pick<DflashServerPlan, "disableDrafter" | "draftMin">
+    | null
+    | undefined,
+  maxTokens: number | null | undefined,
+): boolean {
+  if (!plan || plan.disableDrafter || allowZeroDraftForDiagnostics()) {
+    return false;
+  }
+  if (!Number.isFinite(maxTokens) || maxTokens == null) return true;
+  // The verifier can only test a draft after the first target token, and
+  // llama.cpp's server refuses drafts smaller than draftMin. One-token
+  // prewarm and tiny control probes should not be mistaken for a skipped
+  // DFlash path.
+  return maxTokens >= Math.max(1, plan.draftMin) + 2;
 }
 
 /**
@@ -332,19 +361,58 @@ function managedDflashBinaryPath(): string {
  * communicating over IPC"). We prefer the fused binary over the stock one
  * whenever both exist for the active backend.
  */
-function fusedBackendKey(): string {
+/**
+ * Resolve the llama-server fork backend tag for the current host.
+ *
+ * Precedence:
+ *   1. `ELIZA_DFLASH_BACKEND` — explicit operator override (any value).
+ *   2. `darwin` → always `metal`.
+ *   3. `HIP_VISIBLE_DEVICES` / `ROCR_VISIBLE_DEVICES` set → `rocm`.
+ *   4. `CUDA_VISIBLE_DEVICES` set (and not `-1`) → `cuda`.
+ *   5. **Installed-build probe** — if an accelerated fork build directory
+ *      exists under `<root>/bin/dflash/<platform>-<arch>-<backend>[-fused]/`
+ *      with a `llama-server` binary in it, prefer that backend (cuda before
+ *      vulkan before rocm). This is what makes a downloaded/built CUDA fork
+ *      artifact actually get used on a fresh Windows/Linux desktop install,
+ *      where none of the `*_VISIBLE_DEVICES` env vars are set — without it
+ *      the runtime always keyed `…-cpu` and silently ran the CPU fork even
+ *      with a CUDA build sitting on disk.
+ *   6. Fall back to `cpu`.
+ *
+ * `suffix` is `"-fused"` for the omnivoice-grafted build dir, `""` for the
+ * stock build dir.
+ */
+function accelBackendKey(suffix: "" | "-fused"): string {
   const forced = process.env.ELIZA_DFLASH_BACKEND?.trim().toLowerCase();
-  const backend = forced
-    ? forced
-    : process.platform === "darwin"
-      ? "metal"
-      : process.env.HIP_VISIBLE_DEVICES || process.env.ROCR_VISIBLE_DEVICES
-        ? "rocm"
-        : process.env.CUDA_VISIBLE_DEVICES &&
-            process.env.CUDA_VISIBLE_DEVICES !== "-1"
-          ? "cuda"
-          : "cpu";
-  return `${process.platform}-${process.arch}-${backend}-fused`;
+  if (forced) return `${process.platform}-${process.arch}-${forced}${suffix}`;
+  if (process.platform === "darwin") {
+    return `${process.platform}-${process.arch}-metal${suffix}`;
+  }
+  if (process.env.HIP_VISIBLE_DEVICES || process.env.ROCR_VISIBLE_DEVICES) {
+    return `${process.platform}-${process.arch}-rocm${suffix}`;
+  }
+  if (
+    process.env.CUDA_VISIBLE_DEVICES &&
+    process.env.CUDA_VISIBLE_DEVICES !== "-1"
+  ) {
+    return `${process.platform}-${process.arch}-cuda${suffix}`;
+  }
+  for (const backend of ["cuda", "vulkan", "rocm"] as const) {
+    const dir = path.join(
+      localInferenceRoot(),
+      "bin",
+      "dflash",
+      `${process.platform}-${process.arch}-${backend}${suffix}`,
+    );
+    if (fs.existsSync(path.join(dir, "llama-server"))) {
+      return `${process.platform}-${process.arch}-${backend}${suffix}`;
+    }
+  }
+  return `${process.platform}-${process.arch}-cpu${suffix}`;
+}
+
+function fusedBackendKey(): string {
+  return accelBackendKey("-fused");
 }
 
 function managedFusedDflashDir(): string {
@@ -568,18 +636,7 @@ function candidateBinaryPaths(): string[] {
 }
 
 function platformKey(): string {
-  const forced = process.env.ELIZA_DFLASH_BACKEND?.trim().toLowerCase();
-  if (forced) return `${process.platform}-${process.arch}-${forced}`;
-  const backend =
-    process.platform === "darwin"
-      ? "metal"
-      : process.env.HIP_VISIBLE_DEVICES || process.env.ROCR_VISIBLE_DEVICES
-        ? "rocm"
-        : process.env.CUDA_VISIBLE_DEVICES &&
-            process.env.CUDA_VISIBLE_DEVICES !== "-1"
-          ? "cuda"
-          : "cpu";
-  return `${process.platform}-${process.arch}-${backend}`;
+  return accelBackendKey("");
 }
 
 export function resolveDflashBinary(): string | null {
@@ -2411,6 +2468,27 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     const after = await fetchMetricsSnapshot(baseUrl);
     const responseUsage = json ? extractResponseUsage(json) : undefined;
     const usage = diffSnapshots(before, after, responseUsage);
+    const maxTokens =
+      typeof payload.max_tokens === "number" ? payload.max_tokens : null;
+    const metricsCanProveDflashActivity =
+      before.scrapeOk === true &&
+      after.scrapeOk === true &&
+      before.hasGenerationCounters === true &&
+      after.hasGenerationCounters === true;
+    if (
+      shouldRequireActiveDflashForRequest(this.loadedPlan, maxTokens) &&
+      metricsCanProveDflashActivity &&
+      (usage.dflash_drafted_tokens ?? 0) <= 0
+    ) {
+      throw new Error(
+        "[dflash] speculative decoding was required for this Eliza-1 generation, " +
+          "but llama-server produced zero drafted tokens. This usually means the " +
+          "DFlash drafter path initialized as a generic draft model or the " +
+          "bundle's drafter does not match the target checkpoint. Rebuild with " +
+          "the native dflash-draft speculative path or set " +
+          "ELIZA_DFLASH_ALLOW_ZERO_DRAFT=1 only for local diagnostics.",
+      );
+    }
     this.touchSlot(slotId);
     return { text, usage, slotId };
   }

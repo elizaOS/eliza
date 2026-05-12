@@ -63,6 +63,11 @@
       "default": "./dist/dev-settings-table.js",
       "types": "./dist/dev-settings-table.d.ts"
     },
+    "./onboarding-presets": {
+      "import": "./dist/onboarding-presets.js",
+      "default": "./dist/onboarding-presets.js",
+      "types": "./dist/onboarding-presets.d.ts"
+    },
     "./runtime-env": {
       "import": "./dist/runtime-env.js",
       "default": "./dist/runtime-env.js",

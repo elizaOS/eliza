@@ -15,6 +15,7 @@ export * from "@elizaos/ui";
 export { App } from "./App.tsx";
 export * from "./api/index.ts";
 export * from "./api/response.ts";
+export { sendJson, sendJsonError } from "./api/response.ts";
 export * from "./bridge/index.ts";
 export * from "./chat/index.ts";
 export * from "./components/apps/extensions/registry.ts";

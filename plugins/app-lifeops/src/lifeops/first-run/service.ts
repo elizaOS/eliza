@@ -521,7 +521,7 @@ export class FirstRunService {
     };
   }
 
-  /** Used by `LIFEOPS.wipe`. Clears state but does NOT rerun first-run. */
+  /** Clears lifecycle state without rerunning first-run. */
   async resetState(): Promise<void> {
     await this.stateStore.reset();
   }

@@ -150,6 +150,16 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     order: 11,
     windowPath: "/apps/logs",
   },
+  {
+    name: "@elizaos/app-task-coordinator",
+    displayName: "Automations",
+    description: "Create, inspect, and manage scheduled tasks and workflows.",
+    heroImage: "/api/apps/hero/tasks",
+    targetTab: "tasks",
+    capabilities: ["tasks", "workflows", "automations"],
+    order: 12,
+    windowPath: "/apps/tasks",
+  },
 ] as const;
 
 const INTERNAL_TOOL_APP_BY_NAME = new Map(

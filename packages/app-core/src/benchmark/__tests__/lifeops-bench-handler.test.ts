@@ -192,6 +192,75 @@ describe("LifeOpsFakeBackend", () => {
     const matches = result.result as Array<{ id: string }>;
     expect(matches.map((m) => m.id)).toContain("e1");
   });
+
+  it("supports promoted calendar update aliases with fuzzy title lookup", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const result = backend.applyAction("CALENDAR_UPDATE_EVENT", {
+      event_name: "meeting",
+      new_start: "2026-05-11T15:00:00Z",
+      duration_minutes: 90,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatchObject({
+      id: "ev1",
+      start: "2026-05-11T15:00:00Z",
+      end: "2026-05-11T16:30:00Z",
+    });
+  });
+
+  it("treats a non-id eventId as a title and accepts camelCase times", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const result = backend.applyAction("CALENDAR", {
+      subaction: "update_event",
+      eventId: "Existing meeting",
+      newStart: "2026-05-11T15:00:00Z",
+      newEnd: "2026-05-11T17:00:00Z",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatchObject({
+      id: "ev1",
+      start: "2026-05-11T15:00:00Z",
+      end: "2026-05-11T17:00:00Z",
+    });
+  });
+
+  it("accepts update_event start/end inside an updates object", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const result = backend.applyAction("CALENDAR_UPDATE_EVENT", {
+      event_id: "ev1",
+      updates: {
+        start: "2026-05-11T15:00:00Z",
+        end: "2026-05-11T17:00:00Z",
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatchObject({
+      id: "ev1",
+      start: "2026-05-11T15:00:00Z",
+      end: "2026-05-11T17:00:00Z",
+    });
+  });
+
+  it("returns matching events for calendar search aliases", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const result = backend.applyAction("CALENDAR_SEARCH_EVENTS", {
+      query: "meeting",
+      time_range: {
+        start: "2026-05-11T00:00:00Z",
+        end: "2026-05-11T23:59:59Z",
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatchObject([{ id: "ev1" }]);
+  });
 });
 
 describe("LifeOpsBenchHandler", () => {

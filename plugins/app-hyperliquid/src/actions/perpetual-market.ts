@@ -1,4 +1,3 @@
-import { Service } from "@elizaos/core";
 import type {
   Action,
   ActionResult,
@@ -9,6 +8,7 @@ import type {
   ProviderDataRecord,
   State,
 } from "@elizaos/core";
+import { Service } from "@elizaos/core";
 import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
 import type {
   HyperliquidMarket,
@@ -177,7 +177,10 @@ function readKind(
 
 function normalizeOp(value: unknown): HyperliquidOp | null {
   if (typeof value !== "string") return null;
-  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   if ((HYPERLIQUID_OPS as readonly string[]).includes(normalized)) {
     return normalized as HyperliquidOp;
   }
@@ -224,10 +227,18 @@ function hasSelectedContext(
       if (typeof item === "string") selected.add(item);
     }
   };
-  collect((state?.values as Record<string, unknown> | undefined)?.selectedContexts);
-  collect((state?.data as Record<string, unknown> | undefined)?.selectedContexts);
-  const contextObject = (state?.data as Record<string, unknown> | undefined)?.contextObject as
-    | { trajectoryPrefix?: { selectedContexts?: unknown }; metadata?: { selectedContexts?: unknown } }
+  collect(
+    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  collect(
+    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  const contextObject = (state?.data as Record<string, unknown> | undefined)
+    ?.contextObject as
+    | {
+        trajectoryPrefix?: { selectedContexts?: unknown };
+        metadata?: { selectedContexts?: unknown };
+      }
     | undefined;
   collect(contextObject?.trajectoryPrefix?.selectedContexts);
   collect(contextObject?.metadata?.selectedContexts);
@@ -241,7 +252,9 @@ function hasKeywordIntent(
 ): boolean {
   const text = [
     typeof message.content?.text === "string" ? message.content.text : "",
-    typeof state?.values?.recentMessages === "string" ? state.values.recentMessages : "",
+    typeof state?.values?.recentMessages === "string"
+      ? state.values.recentMessages
+      : "",
   ]
     .join("\n")
     .toLowerCase();
@@ -375,7 +388,8 @@ async function handleMarket(
     readStringParam(options, "name") ??
     readStringParam(options, "symbol");
   if (!coin) {
-    const text = "Provide a Hyperliquid coin/asset symbol (e.g. BTC, ETH, SOL).";
+    const text =
+      "Provide a Hyperliquid coin/asset symbol (e.g. BTC, ETH, SOL).";
     return emitFailure(callback, text, "missing_market_identifier", {
       actionName: PERPETUAL_MARKET_ACTION_NAME,
       op: "read" satisfies HyperliquidOp,
@@ -427,7 +441,9 @@ async function handlePositions(
             (position) =>
               `- ${position.coin}: size ${position.size}` +
               (position.entryPx ? ` entry ${position.entryPx}` : "") +
-              (position.unrealizedPnl ? ` uPnL ${position.unrealizedPnl}` : "") +
+              (position.unrealizedPnl
+                ? ` uPnL ${position.unrealizedPnl}`
+                : "") +
               (position.leverageValue !== null
                 ? ` ${position.leverageType ?? "leverage"} ${position.leverageValue}x`
                 : ""),
@@ -505,8 +521,7 @@ async function handlePlaceOrderOperation(
   } catch {
     status = null;
   }
-  const reason =
-    status?.executionBlockedReason ?? PLACE_ORDER_DISABLED_REASON;
+  const reason = status?.executionBlockedReason ?? PLACE_ORDER_DISABLED_REASON;
   const text = `Hyperliquid order placement is disabled.\nReason: ${reason}`;
   return {
     ...(await emit(callback, text, {
@@ -558,7 +573,10 @@ interface PerpetualMarketProvider extends PerpetualMarketProviderMetadata {
 }
 
 function normalizeProviderKey(value: string): string {
-  return value.trim().toLowerCase().replace(/[\s_-]+/g, "");
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
 }
 
 function readTarget(
@@ -722,15 +740,6 @@ export const perpetualMarketAction: Action = {
       description: "Perpetual market operation: read or place_order.",
       required: false,
       schema: { type: "string", enum: ["read", "place_order"] },
-    },
-    {
-      name: "subaction",
-      description: "Legacy alias for action. Accepts place-order as place_order.",
-      required: false,
-      schema: {
-        type: "string",
-        enum: ["read", "place_order", "place-order"],
-      },
     },
     {
       name: "kind",

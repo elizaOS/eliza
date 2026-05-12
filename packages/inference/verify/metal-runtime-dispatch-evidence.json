@@ -65,8 +65,8 @@
       "smokeCommand": "make -C packages/inference/verify dispatch-smoke",
       "smokeScores": 32,
       "maxDiff": 2.384e-7,
-      "evidenceDate": "2026-05-10",
-      "notes": "dispatch_smoke links against the built fork's libggml-metal.dylib and drives GGML_OP_ATTN_SCORE_QJL through kernel_attn_score_qjl1_256_multi."
+      "evidenceDate": "2026-05-11",
+      "notes": "dispatch_smoke links against the built fork's libggml-metal.dylib and drives GGML_OP_ATTN_SCORE_QJL through kernel_attn_score_qjl1_256_multi. Runtime tokens_per_threadgroup remains default 32, with ELIZA_METAL_QJL_TOKENS_PER_TG available for per-device autotune experiments."
     },
     "polar": {
       "runtimeCapabilityKey": "polarquant",
@@ -75,15 +75,16 @@
       "shippedSymbols": [
         "kernel_get_rows_q4_polar",
         "kernel_mul_mv_q4_polar_f32",
-        "kernel_mul_mv_q4_polar_preht_f32"
+        "kernel_mul_mv_q4_polar_preht_f32",
+        "kernel_attn_score_q4_polar_preht_f32"
       ],
       "graphOp": "GGML_OP_ATTN_SCORE_POLAR",
       "smokeTarget": "dispatch-smoke",
       "smokeCommand": "make -C packages/inference/verify dispatch-smoke",
-      "smokeScores": 64,
-      "maxDiff": 1.907e-6,
+      "smokeScores": 128,
+      "maxDiff": 3.815e-6,
       "evidenceDate": "2026-05-11",
-      "notes": "dispatch_smoke covers both use_qjl=0 and use_qjl=1 through GGML_OP_ATTN_SCORE_POLAR and kernel_mul_mv_q4_polar_f32. The pre-Hadamard symbol is standalone verified and shipped, but requires an H*q graph pretransform before runtime routing can use it."
+      "notes": "dispatch_smoke covers raw-q use_qjl=0/1 through kernel_mul_mv_q4_polar_f32 and pre-Hadamard use_qjl=0/1 through ggml_attn_score_polar_preht plus kernel_attn_score_q4_polar_preht_f32. The preHT route is only valid when the graph explicitly supplies H*q."
     }
   }
 }

@@ -6,10 +6,7 @@
 import { Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
-import {
-  type StewardVerifyEnv,
-  verifyStewardTokenCached,
-} from "@/lib/auth/steward-client";
+import { type StewardVerifyEnv, verifyStewardTokenCached } from "@/lib/auth/steward-client";
 import { syncUserFromSteward } from "@/lib/steward-sync";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -76,13 +73,10 @@ app.post("/", async (c) => {
       });
     } catch (error) {
       logStewardAuth("sync-failed", null);
-      console.error(
-        "[steward-auth] Failed to sync Steward user before setting cookie",
-        {
-          stewardUserId: claims.userId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-      );
+      console.error("[steward-auth] Failed to sync Steward user before setting cookie", {
+        stewardUserId: claims.userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       return c.json(
         {
           error: "Could not sync Steward user",

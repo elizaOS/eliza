@@ -59,6 +59,7 @@ import {
   CUDA_KERNEL_CMAKE_FLAGS,
   patchCudaKernels as patchCudaKernelsImpl,
 } from "./kernel-patches/cuda-kernels.mjs";
+import { patchDflashDrafterArch as patchDflashDrafterArchImpl } from "./kernel-patches/dflash-drafter-arch.mjs";
 import { patchMetalKernels as patchMetalKernelsImpl } from "./kernel-patches/metal-kernels.mjs";
 import { patchServerOmnivoiceRoute as patchServerOmnivoiceRouteImpl } from "./kernel-patches/server-omnivoice-route.mjs";
 import { patchServerStructuredOutput as patchServerStructuredOutputImpl } from "./kernel-patches/server-structured-output.mjs";
@@ -224,6 +225,27 @@ function envFlag(name) {
   const value = process.env[name]?.trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes" || value === "on";
 }
+
+function prependLocalToolDirs() {
+  const candidates = [
+    path.join(os.homedir(), "Library", "Python", "3.13", "bin"),
+    path.join(os.homedir(), "Library", "Python", "3.12", "bin"),
+    path.join(os.homedir(), "Library", "Python", "3.11", "bin"),
+    path.join(os.homedir(), "Library", "Python", "3.10", "bin"),
+    path.join(os.homedir(), "Library", "Python", "3.9", "bin"),
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+  ].filter((dir) => fs.existsSync(dir));
+
+  if (candidates.length === 0) return;
+  const current = process.env.PATH ? process.env.PATH.split(path.delimiter) : [];
+  const merged = [...candidates, ...current].filter(
+    (dir, idx, arr) => dir && arr.indexOf(dir) === idx,
+  );
+  process.env.PATH = merged.join(path.delimiter);
+}
+
+prependLocalToolDirs();
 
 function run(cmd, args, opts = {}) {
   const result = spawnSync(cmd, args, {
@@ -1312,9 +1334,9 @@ function parseArgs(argv) {
           "  ELIZA_DFLASH_LLAMA_CPP_REMOTE / ELIZA_DFLASH_LLAMA_CPP_REF",
           "                         Build from a standalone clone of the given fork/ref instead of",
           "                         the in-repo submodule.",
-          "  ELIZA_DFLASH_LEGACY_DRAFTER_RUNTIME=0",
-          "                         For darwin-arm64-metal only, opt out of the",
-          "                         automatic spiritbuun/buun-llama-cpp runtime",
+          "  ELIZA_DFLASH_LEGACY_DRAFTER_RUNTIME=1",
+          "                         For darwin-arm64-metal only, opt in to the",
+          "                         temporary spiritbuun/buun-llama-cpp runtime",
           "                         bridge that can load general.architecture=dflash-draft.",
           "                         Bridge CAPABILITIES.json is diagnostic and publishable=false.",
         ].join("\n"),
@@ -1433,6 +1455,7 @@ function ensureCheckout(cacheDir, ref) {
 //     smoke on native Vulkan hardware before QJL/Polar/Turbo capability bits
 //     can flip true.
 function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
+  patchDflashDrafterArchImpl(cacheDir, { dryRun });
   // Wave A1: mirror the verified standalone QJL CPU SIMD TUs (AVX-VNNI int8
   // score path, ARMv8.4 dotprod, runtime-cpuid dispatcher) over the fork's
   // stale ggml-cpu/qjl/ snapshot and wire them into the ggml-cpu build. Runs
@@ -1551,6 +1574,38 @@ function isRuntimeLibrary(name) {
   );
 }
 
+function cleanGeneratedTargetOutput(outDir) {
+  if (!fs.existsSync(outDir)) return;
+  for (const name of fs.readdirSync(outDir)) {
+    const generated =
+      name === "CAPABILITIES.json" ||
+      name === "default.metallib" ||
+      name === "gguf-py" ||
+      name === "include" ||
+      /^llama-/.test(name) ||
+      /^lib.*\.a$/.test(name) ||
+      isRuntimeLibrary(name);
+    if (!generated) continue;
+    const targetPath = path.join(outDir, name);
+    const stat = fs.lstatSync(targetPath);
+    if (stat.isSymbolicLink() || stat.isFile()) {
+      fs.unlinkSync(targetPath);
+    } else {
+      fs.rmSync(targetPath, { recursive: true, force: true });
+    }
+  }
+}
+
+function copyBuildArtifact(src, dst) {
+  fs.rmSync(dst, { recursive: true, force: true });
+  const stat = fs.lstatSync(src);
+  if (stat.isSymbolicLink()) {
+    fs.symlinkSync(fs.readlinkSync(src), dst);
+  } else {
+    fs.copyFileSync(src, dst);
+  }
+}
+
 function makeDarwinInstallSelfContained(outDir, names, buildBinDir) {
   if (process.platform !== "darwin") return;
   for (const name of names) {
@@ -1570,7 +1625,7 @@ function useLegacyDflashDrafterRuntime(target) {
   const explicit = process.env.ELIZA_DFLASH_LEGACY_DRAFTER_RUNTIME;
   const enabled =
     explicit === undefined
-      ? true
+      ? false
       : envFlag("ELIZA_DFLASH_LEGACY_DRAFTER_RUNTIME");
   return (
     enabled &&
@@ -1877,6 +1932,8 @@ function installLegacyDflashDrafterRuntime({ target, outDir, args }) {
 function probeKernels(target, buildDir, outDir, cacheDir = null) {
   const { platform, backend } = parseTarget(target);
   const canRunOnHost = canRunTargetOnHost(target);
+  const hasNativeDflash =
+    cacheDir !== null && sourceContainsDflashDraft(cacheDir);
   const kernels = {
     dflash: false,
     turbo3: false,
@@ -1907,7 +1964,7 @@ function probeKernels(target, buildDir, outDir, cacheDir = null) {
       });
       const help = `${result.stdout || ""}\n${result.stderr || ""}`;
       const lc = help.toLowerCase();
-      kernels.dflash = /dflash/.test(lc);
+      kernels.dflash = hasNativeDflash && /dflash/.test(lc);
       // The fork's CLI advertises tbq3_0/tbq4_0 as cache-type names (the
       // user-facing identifier for GGML_TYPE_TBQ3_0/_TBQ4_0). Also accept
       // the legacy `turbo3`/`turbo4` strings the original probe expected,
@@ -1960,7 +2017,7 @@ function probeKernels(target, buildDir, outDir, cacheDir = null) {
     const objects = collectFilesUnder(buildDir, /\.(o|obj|air|spv)$/);
     const names = objects.join("\n").toLowerCase();
     // Per-backend kernels (CUDA/Metal/Vulkan emit per-kernel object files).
-    kernels.dflash = /dflash|flash[-_]?attn[-_]?ext/.test(names);
+    kernels.dflash = hasNativeDflash && /dflash/.test(names);
     kernels.turbo3 = /turbo3/.test(names);
     kernels.turbo4 = /turbo4/.test(names);
     kernels.turbo3_tcq = /turbo3[-_]?tcq|tcq/.test(names);
@@ -1968,23 +2025,12 @@ function probeKernels(target, buildDir, outDir, cacheDir = null) {
     kernels.polarquant = /polar(?:quant)?|q4[-_]?polar/.test(names);
     // CPU build inlines the turbo quantization paths inside ggml-cpu and
     // links a single ggml-turbo-quant.c.o into ggml-base. Treat its presence
-    // as evidence both turbo3 and turbo4 paths are compiled in. Likewise,
-    // the fork wires DFlash through ggml-cpu's flash-attn entry, so dflash
-    // is also implicit when ggml-turbo-quant is present on CPU targets.
+    // as evidence both turbo3 and turbo4 paths are compiled in. DFlash is
+    // not inferred from turbo/flash-attention objects: publishable Eliza-1
+    // builds must carry the native dflash-draft speculative state.
     if (backend === "cpu" && /ggml-turbo-quant\.c\.o/.test(names)) {
       kernels.turbo3 = true;
       kernels.turbo4 = true;
-      kernels.dflash = true;
-    }
-    // For non-CPU backends, presence of the backend's flash-attn unit is a
-    // strong proxy for dflash (the fork hangs DFlash off the existing FA
-    // kernel registration).
-    if (
-      !kernels.dflash &&
-      (backend === "cuda" || backend === "vulkan" || backend === "metal") &&
-      /(flash[-_]?attn|fattn)/.test(names)
-    ) {
-      kernels.dflash = true;
     }
   }
 
@@ -2112,6 +2158,8 @@ function buildIosRuntimeSymbolShim({ target, outDir }) {
     "-isysroot",
     sdkPath,
     minVersionFlag,
+    "-I",
+    path.join(outDir, "include"),
     "-fvisibility=default",
     "-c",
     source,
@@ -2682,6 +2730,7 @@ function buildTarget({ target, args, ctx }) {
   );
 
   fs.mkdirSync(outDir, { recursive: true });
+  cleanGeneratedTargetOutput(outDir);
 
   const installedNames = [];
   const installedBaseNames = [];
@@ -2758,7 +2807,7 @@ function buildTarget({ target, args, ctx }) {
     for (const name of installedNames) {
       const src = path.join(binDir, name);
       const dst = path.join(outDir, name);
-      fs.copyFileSync(src, dst);
+      copyBuildArtifact(src, dst);
       if (executableNames.includes(name.replace(/\.(exe)$/i, ""))) {
         fs.chmodSync(dst, 0o755);
       }
@@ -2779,7 +2828,7 @@ function buildTarget({ target, args, ctx }) {
         );
       }
       const metallibDst = path.join(outDir, "default.metallib");
-      fs.copyFileSync(metallibCandidate, metallibDst);
+      copyBuildArtifact(metallibCandidate, metallibDst);
       installedNames.push("default.metallib");
       console.log(
         `[dflash-build] installed default.metallib (${fs.statSync(metallibDst).size} bytes) -> ${outDir}`,

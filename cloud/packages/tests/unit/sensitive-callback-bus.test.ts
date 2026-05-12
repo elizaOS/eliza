@@ -96,10 +96,7 @@ describe("sensitive-callback-bus", () => {
   test("waitFor rejects on timeout", async () => {
     const bus = createSensitiveCallbackBus();
     await expect(
-      bus.waitFor(
-        { sensitiveRequestId: "s_never", names: ["SensitiveRequestSubmitted"] },
-        25,
-      ),
+      bus.waitFor({ sensitiveRequestId: "s_never", names: ["SensitiveRequestSubmitted"] }, 25),
     ).rejects.toThrow(/timed out/);
   });
 
@@ -140,10 +137,7 @@ describe("sensitive-callback-bus", () => {
     await bus.publish(makeSubmitted("s_clean"));
     await p;
     await expect(
-      bus.waitFor(
-        { sensitiveRequestId: "s_to", names: ["SensitiveRequestSubmitted"] },
-        10,
-      ),
+      bus.waitFor({ sensitiveRequestId: "s_to", names: ["SensitiveRequestSubmitted"] }, 10),
     ).rejects.toThrow(/timed out/);
 
     let count = 0;

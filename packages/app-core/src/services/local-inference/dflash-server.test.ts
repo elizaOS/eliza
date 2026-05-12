@@ -19,6 +19,7 @@ import {
   resolveDflashBinary,
   resolveDflashKvOffload,
   resolveFusedDflashBinary,
+  shouldRequireActiveDflashForRequest,
 } from "./dflash-server";
 
 const originalEnv = { ...process.env };
@@ -350,6 +351,21 @@ llamacpp:n_drafted_accepted 75
     expect(snapshot?.acceptanceRate).toBeCloseTo(0.75, 5);
   });
 
+  it("prefers unlabelled totals over labelled shard samples", () => {
+    const text = `llamacpp:n_decode_total 64
+llamacpp:n_drafted_total{slot_id="0"} 10
+llamacpp:n_drafted_total{slot_id="1"} 20
+llamacpp:n_drafted_total 40
+llamacpp:n_drafted_accepted_total{slot_id="0"} 4
+llamacpp:n_drafted_accepted_total{slot_id="1"} 5
+llamacpp:n_drafted_accepted_total 12
+`;
+    const snapshot = parseDflashMetrics(text);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.drafted).toBe(40);
+    expect(snapshot?.accepted).toBe(12);
+  });
+
   it("returns null when the response has no speculative counters", () => {
     const text = `# HELP some_other_metric Random gauge.
 # TYPE some_other_metric gauge
@@ -367,6 +383,51 @@ llamacpp:n_drafted_accepted_total 0
     expect(snapshot).not.toBeNull();
     expect(snapshot?.drafted).toBe(0);
     expect(Number.isNaN(snapshot?.acceptanceRate)).toBe(true);
+  });
+});
+
+describe("shouldRequireActiveDflashForRequest", () => {
+  it("does not require draft evidence for tiny prewarm-style requests", () => {
+    expect(
+      shouldRequireActiveDflashForRequest(
+        { draftMin: 2, disableDrafter: false },
+        1,
+      ),
+    ).toBe(false);
+    expect(
+      shouldRequireActiveDflashForRequest(
+        { draftMin: 2, disableDrafter: false },
+        3,
+      ),
+    ).toBe(false);
+  });
+
+  it("requires draft evidence once the request is long enough to verify a draft", () => {
+    expect(
+      shouldRequireActiveDflashForRequest(
+        { draftMin: 2, disableDrafter: false },
+        4,
+      ),
+    ).toBe(true);
+  });
+
+  it("does not require draft evidence when the drafter is deliberately disabled", () => {
+    expect(
+      shouldRequireActiveDflashForRequest(
+        { draftMin: 2, disableDrafter: true },
+        128,
+      ),
+    ).toBe(false);
+  });
+
+  it("allows zero draft only behind the local diagnostics escape hatch", () => {
+    process.env.ELIZA_DFLASH_ALLOW_ZERO_DRAFT = "1";
+    expect(
+      shouldRequireActiveDflashForRequest(
+        { draftMin: 2, disableDrafter: false },
+        128,
+      ),
+    ).toBe(false);
   });
 });
 

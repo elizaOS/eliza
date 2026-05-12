@@ -3,7 +3,7 @@
 //
 // What this module does:
 //
-//   1. Copies the five verified standalone Metal shaders from
+//   1. Copies the required and optimization standalone Metal shaders from
 //      packages/inference/metal/ into the fork's tree at
 //      ggml/src/ggml-metal/milady-shipped/<kernel>.metal. The standalones are
 //      self-contained TUs (only #include <metal_stdlib>; their own structs,
@@ -52,15 +52,19 @@ const STANDALONE_METAL_DIR = path.resolve(
 
 // Map: standalone-shader-filename → in-fork relative path (under cacheDir).
 // Each standalone is copied verbatim — its content is not edited. Per agent
-// contract: the 5 standalone shaders are verified and must not be touched.
+// contract, verified shader math lives under packages/inference/metal/ and the
+// fork copy is a generated shipping copy.
 //
-// The fused-attention + Polar pre-Hadamard-query standalones (fused_attn_*,
-// polar_preht) are AUTHORED but hardware-verify pending (no Apple HW on the
-// authoring machine — verified bit-for-bit on the Vulkan ports). They ship in
-// the metallib so a Metal host can run metal-verify-fused / dispatch-smoke; the
-// build gate still treats their runtime-ready capability bit as not-yet-flipped
-// (fused_attn is an optimization on top of the five required kernels, AGENTS.md
-// §3 — not a required kernel) until a Metal host reports a fused dispatch smoke.
+// Apple M4 Max verification on 2026-05-11:
+//   * metal-verify: turbo3, turbo4, turbo3_tcq, qjl, polar, polar+QJL,
+//     polar_preht, polar_preht+QJL all 8/8 PASS.
+//   * metal-verify-multiblock: TurboQuant/QJL multi-block variants PASS.
+//   * metal-verify-fused: fused_attn_qjl_tbq and fused_attn_qjl_polar PASS.
+//
+// Runtime dispatch is flipped only for the graph ops listed in
+// METAL_RUNTIME_DISPATCH_GATES. The fused-attention kernels are shipped and
+// verified, but remain an explicit runtime promotion step because they replace
+// a larger score/softmax/V subgraph rather than one standalone score op.
 export const METAL_KERNEL_FILES = [
   "turbo3.metal",
   "turbo4.metal",
@@ -520,7 +524,17 @@ function patchMetalQjlAttnOpsCpp(cacheDir, { dryRun }) {
   );
   const original = fs.readFileSync(opsPath, "utf8");
   if (original.includes(SENTINEL_QJL_ATTN)) {
-    let upgraded = original.replace(
+    let upgraded = original;
+    if (!upgraded.includes("#include <cstdlib>")) {
+      upgraded = upgraded.replace(
+        `#include <cmath>
+`,
+        `#include <cmath>
+#include <cstdlib>
+`,
+      );
+    }
+    upgraded = upgraded.replace(
       `struct milady_qjl_score_args {
     uint32_t n_heads;
     uint32_t n_kv_heads;
@@ -535,13 +549,45 @@ function patchMetalQjlAttnOpsCpp(cacheDir, { dryRun }) {
     uint32_t tokens_per_threadgroup;
 };`,
     );
+    if (!upgraded.includes("static inline uint32_t milady_env_u32")) {
+      upgraded = upgraded.replace(
+        `static inline ggml_metal_buffer_id milady_metal_buffer_offset(ggml_metal_buffer_id id, size_t extra) {
+    id.offs += extra;
+    return id;
+}
+`,
+        `static inline ggml_metal_buffer_id milady_metal_buffer_offset(ggml_metal_buffer_id id, size_t extra) {
+    id.offs += extra;
+    return id;
+}
+
+static inline uint32_t milady_env_u32(const char * name, uint32_t fallback, uint32_t min_value, uint32_t max_value) {
+    const char * raw = std::getenv(name);
+    if (raw == nullptr || raw[0] == '\\0') {
+        return fallback;
+    }
+    char * end = nullptr;
+    const unsigned long parsed = std::strtoul(raw, &end, 10);
+    if (end == raw || *end != '\\0' || parsed < min_value || parsed > max_value) {
+        GGML_LOG_WARN("%s: ignoring invalid %s=%s (expected %u..%u)\\n",
+                      __func__, name, raw, min_value, max_value);
+        return fallback;
+    }
+    return (uint32_t) parsed;
+}
+`,
+      );
+    }
     upgraded = upgraded.replace(
       `        /* n_tokens   = */ n_tokens,
         /* proj_dim   = */ 256u,
     };`,
       `        /* n_tokens   = */ n_tokens,
         /* proj_dim   = */ 256u,
-        /* tokens_per_threadgroup = */ 32u,
+        // M4 Max 2026-05-11 sweeps show N=4/8/16/32 trade median vs p99.
+        // Keep N=32 as the tail-latency-biased default until per-device
+        // autotuning can persist a device-specific table.
+        /* tokens_per_threadgroup = */ milady_env_u32("ELIZA_METAL_QJL_TOKENS_PER_TG", 32u, 1u, 64u),
     };`,
     );
     upgraded = upgraded.replace(
@@ -581,6 +627,21 @@ struct milady_qjl_score_args {
 static inline ggml_metal_buffer_id milady_metal_buffer_offset(ggml_metal_buffer_id id, size_t extra) {
     id.offs += extra;
     return id;
+}
+
+static inline uint32_t milady_env_u32(const char * name, uint32_t fallback, uint32_t min_value, uint32_t max_value) {
+    const char * raw = std::getenv(name);
+    if (raw == nullptr || raw[0] == '\\0') {
+        return fallback;
+    }
+    char * end = nullptr;
+    const unsigned long parsed = std::strtoul(raw, &end, 10);
+    if (end == raw || *end != '\\0' || parsed < min_value || parsed > max_value) {
+        GGML_LOG_WARN("%s: ignoring invalid %s=%s (expected %u..%u)\\n",
+                      __func__, name, raw, min_value, max_value);
+        return fallback;
+    }
+    return (uint32_t) parsed;
 }
 
 int ggml_metal_op_attn_score_qjl(ggml_metal_op_t ctx, int idx) {
@@ -625,7 +686,10 @@ int ggml_metal_op_attn_score_qjl(ggml_metal_op_t ctx, int idx) {
         /* n_kv_heads = */ n_kv_heads,
         /* n_tokens   = */ n_tokens,
         /* proj_dim   = */ 256u,
-        /* tokens_per_threadgroup = */ 32u,
+        // M4 Max 2026-05-11 sweeps show N=4/8/16/32 trade median vs p99.
+        // Keep N=32 as the tail-latency-biased default until per-device
+        // autotuning can persist a device-specific table.
+        /* tokens_per_threadgroup = */ milady_env_u32("ELIZA_METAL_QJL_TOKENS_PER_TG", 32u, 1u, 64u),
     };
 
     auto pipeline = ggml_metal_library_get_pipeline_attn_score_qjl(lib);
@@ -655,6 +719,15 @@ int ggml_metal_op_attn_score_qjl(ggml_metal_op_t ctx, int idx) {
 
 `;
   let patched = original.replace(funcAnchor, opFunc + funcAnchor);
+  if (!patched.includes("#include <cstdlib>")) {
+    patched = patched.replace(
+      `#include <cmath>
+`,
+      `#include <cmath>
+#include <cstdlib>
+`,
+    );
+  }
 
   const switchAnchor = `        case GGML_OP_FLASH_ATTN_EXT:
             {
@@ -812,6 +885,18 @@ export function patchGgmlTbqPolarAttnOps(cacheDir, { dryRun }) {
             struct ggml_tensor  * q,
             struct ggml_tensor  * packed_k,
             int                   n_kv_heads,
+            bool                  use_qjl);
+
+    // PolarQuant packed-K attention score with pre-Hadamarded query.
+    // q_preht MUST contain H*q for each query head, where H is the same
+    // unnormalised 128-point Walsh-Hadamard transform used by the PolarQuant
+    // decoder. This is faster than ggml_attn_score_polar() because the backend
+    // can use dot(H*x, q) == dot(x, H*q) and avoid one Hadamard per K row.
+    GGML_API struct ggml_tensor * ggml_attn_score_polar_preht(
+            struct ggml_context * ctx,
+            struct ggml_tensor  * q_preht,
+            struct ggml_tensor  * packed_k,
+            int                   n_kv_heads,
             bool                  use_qjl);`,
     );
     changed = true;
@@ -898,14 +983,15 @@ struct ggml_tensor * ggml_attn_score_tbq(
     return result;
 }
 
-// ggml_attn_score_polar
+// ggml_attn_score_polar_impl
 //
-struct ggml_tensor * ggml_attn_score_polar(
+static struct ggml_tensor * ggml_attn_score_polar_impl(
         struct ggml_context * ctx,
         struct ggml_tensor  * q,
         struct ggml_tensor  * packed_k,
         int                   n_kv_heads,
-        bool                  use_qjl) {
+        bool                  use_qjl,
+        bool                  q_preht) {
     GGML_ASSERT(q != NULL);
     GGML_ASSERT(packed_k != NULL);
     GGML_ASSERT(q->type == GGML_TYPE_F32);
@@ -924,7 +1010,7 @@ struct ggml_tensor * ggml_attn_score_polar(
     const int64_t ne[4] = { n_kv_tokens, n_heads, q->ne[2], q->ne[3] };
     struct ggml_tensor * result = ggml_new_tensor(ctx, GGML_TYPE_F32, 4, ne);
 
-    int32_t params[2] = { n_kv_heads, use_qjl ? 1 : 0 };
+    int32_t params[3] = { n_kv_heads, use_qjl ? 1 : 0, q_preht ? 1 : 0 };
     ggml_set_op_params(result, params, sizeof(params));
 
     result->op     = GGML_OP_ATTN_SCORE_POLAR;
@@ -932,6 +1018,28 @@ struct ggml_tensor * ggml_attn_score_polar(
     result->src[1] = packed_k;
 
     return result;
+}
+
+// ggml_attn_score_polar
+//
+struct ggml_tensor * ggml_attn_score_polar(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * q,
+        struct ggml_tensor  * packed_k,
+        int                   n_kv_heads,
+        bool                  use_qjl) {
+    return ggml_attn_score_polar_impl(ctx, q, packed_k, n_kv_heads, use_qjl, false);
+}
+
+// ggml_attn_score_polar_preht
+//
+struct ggml_tensor * ggml_attn_score_polar_preht(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * q_preht,
+        struct ggml_tensor  * packed_k,
+        int                   n_kv_heads,
+        bool                  use_qjl) {
+    return ggml_attn_score_polar_impl(ctx, q_preht, packed_k, n_kv_heads, use_qjl, true);
 }
 
 `;
@@ -978,6 +1086,9 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_scor
         enum ggml_type        type);
 
 struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_score_polar(
+        ggml_metal_library_t lib);
+
+struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_score_polar_preht(
         ggml_metal_library_t lib);`,
   );
   if (!dryRun) fs.writeFileSync(headerPath, patched, "utf8");
@@ -1038,6 +1149,23 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_score_polar
     if (!res.pipeline) {
         GGML_LOG_ERROR("attn_score_polar: kernel '%s' missing from default.metallib\\n", name);
         GGML_ABORT("attn_score_polar: pipeline compile failed");
+    }
+    res.nr0 = 1;
+    res.nr1 = 1;
+    res.nsg = 1;
+    res.smem = 0;
+    return res;
+}
+
+ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_score_polar_preht(ggml_metal_library_t lib) {
+    const char * name = "kernel_attn_score_q4_polar_preht_f32";
+    ggml_metal_pipeline_with_params res = ggml_metal_library_get_pipeline(lib, name);
+    if (!res.pipeline) {
+        res = ggml_metal_library_compile_pipeline(lib, name, name, nullptr);
+    }
+    if (!res.pipeline) {
+        GGML_LOG_ERROR("attn_score_polar_preht: kernel '%s' missing from default.metallib\\n", name);
+        GGML_ABORT("attn_score_polar_preht: pipeline compile failed");
     }
     res.nr0 = 1;
     res.nr1 = 1;
@@ -1117,10 +1245,13 @@ function patchMetalTbqPolarOpsCpp(cacheDir, { dryRun }) {
 }
 
 static inline uint32_t milady_tbq_blocks_per_threadgroup(ggml_type type) {
+    // M4 Max multiblock/autotune bench best medians (2026-05-12):
+    //   TBQ3=8, TBQ4=32, TBQ3_TCQ=16. Voice-mode policy can still force N=1
+    //   at a higher scheduler layer when barge-in latency dominates.
     switch (type) {
-        case GGML_TYPE_TBQ3_0:   return 8u;
-        case GGML_TYPE_TBQ4_0:   return 32u;
-        case GGML_TYPE_TBQ3_TCQ: return 4u;
+        case GGML_TYPE_TBQ3_0:   return milady_env_u32("ELIZA_METAL_TBQ3_BLOCKS_PER_TG", 8u, 1u, 64u);
+        case GGML_TYPE_TBQ4_0:   return milady_env_u32("ELIZA_METAL_TBQ4_BLOCKS_PER_TG", 32u, 1u, 64u);
+        case GGML_TYPE_TBQ3_TCQ: return milady_env_u32("ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG", 16u, 1u, 64u);
         default: GGML_ABORT("unsupported TurboQuant attention score type");
     }
 }
@@ -1158,6 +1289,15 @@ struct milady_polar_score_args {
     uint32_t use_qjl;
 };
 
+struct milady_polar_preht_score_args {
+    uint32_t head_dim;
+    uint32_t n_kv;
+    uint32_t kv_stride_blocks;
+    uint32_t q_head;
+    uint32_t head_offset_bytes;
+    uint32_t use_qjl;
+};
+
 static const float k_milady_tbq3_tcq_codebook[512] = {
 ${tcqCodebook}
 };
@@ -1172,13 +1312,13 @@ static inline uint32_t milady_tbq_blocks_per_row(ggml_type type) {
 }
 
 static inline uint32_t milady_tbq_blocks_per_threadgroup(ggml_type type) {
-    // M4 Max multiblock bench best medians (2026-05-10):
-    //   TBQ3=8, TBQ4=32, TBQ3_TCQ=4. Voice-mode policy can still force N=1
+    // M4 Max multiblock/autotune bench best medians (2026-05-12):
+    //   TBQ3=8, TBQ4=32, TBQ3_TCQ=16. Voice-mode policy can still force N=1
     //   at a higher scheduler layer when barge-in latency dominates.
     switch (type) {
-        case GGML_TYPE_TBQ3_0:   return 8u;
-        case GGML_TYPE_TBQ4_0:   return 32u;
-        case GGML_TYPE_TBQ3_TCQ: return 4u;
+        case GGML_TYPE_TBQ3_0:   return milady_env_u32("ELIZA_METAL_TBQ3_BLOCKS_PER_TG", 8u, 1u, 64u);
+        case GGML_TYPE_TBQ4_0:   return milady_env_u32("ELIZA_METAL_TBQ4_BLOCKS_PER_TG", 32u, 1u, 64u);
+        case GGML_TYPE_TBQ3_TCQ: return milady_env_u32("ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG", 16u, 1u, 64u);
         default: GGML_ABORT("unsupported TurboQuant attention score type");
     }
 }
@@ -1289,6 +1429,7 @@ int ggml_metal_op_attn_score_polar(ggml_metal_op_t ctx, int idx) {
     const uint32_t n_kv_heads  = (uint32_t) params[0];
     const uint32_t n_tokens    = (uint32_t) pk->ne[1];
     const uint32_t use_qjl     = (uint32_t) (params[1] != 0);
+    const uint32_t q_preht     = (uint32_t) (params[2] != 0);
     const int64_t  n_batch     = q->ne[2];
     const int64_t  ne3         = q->ne[3];
 
@@ -1303,33 +1444,62 @@ int ggml_metal_op_attn_score_polar(ggml_metal_op_t ctx, int idx) {
     GGML_ASSERT(pk->nb[1] == ggml_row_size(GGML_TYPE_Q4_POLAR, 128));
     GGML_ASSERT(pk->nb[2] == (size_t) n_tokens * pk->nb[1]);
 
-    milady_polar_score_args args = {
-        /* n_rows = */ n_tokens,
-        /* head_dim = */ 128u,
-        /* use_qjl = */ use_qjl,
-    };
-
-    auto pipeline = ggml_metal_library_get_pipeline_attn_score_polar(lib);
-
     const ggml_metal_buffer_id q_base   = ggml_metal_get_buffer_id(q);
     const ggml_metal_buffer_id pk_base  = ggml_metal_get_buffer_id(pk);
     const ggml_metal_buffer_id dst_base = ggml_metal_get_buffer_id(op);
     const uint32_t gqa = n_heads / n_kv_heads;
 
-    ggml_metal_encoder_set_pipeline(enc, pipeline);
-    ggml_metal_encoder_set_bytes(enc, &args, sizeof(args), 3);
+    if (q_preht != 0u) {
+        auto pipeline = ggml_metal_library_get_pipeline_attn_score_polar_preht(lib);
+        ggml_metal_encoder_set_pipeline(enc, pipeline);
 
-    for (int64_t i3 = 0; i3 < ne3; ++i3) {
-        const size_t q_i3   = (size_t) i3 * q->nb[3];
-        const size_t pk_i3  = (size_t) i3 * pk->nb[3];
-        const size_t dst_i3 = (size_t) i3 * op->nb[3];
-        for (int64_t ib = 0; ib < n_batch; ++ib) {
-            for (uint32_t h = 0; h < n_heads; ++h) {
-                const uint32_t h_k = h / gqa;
-                ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(pk_base,  pk_i3 + (size_t) h_k * pk->nb[2]), 0);
-                ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(q_base,   q_i3  + (size_t) ib * q->nb[2]  + (size_t) h   * q->nb[1]),  1);
-                ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(dst_base, dst_i3 + (size_t) ib * op->nb[2] + (size_t) h   * op->nb[1]), 2);
-                ggml_metal_encoder_dispatch_threadgroups(enc, (int) n_tokens, 1, 1, 32, 1, 1);
+        for (int64_t i3 = 0; i3 < ne3; ++i3) {
+            const size_t q_i3   = (size_t) i3 * q->nb[3];
+            const size_t pk_i3  = (size_t) i3 * pk->nb[3];
+            const size_t dst_i3 = (size_t) i3 * op->nb[3];
+            for (int64_t ib = 0; ib < n_batch; ++ib) {
+                ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(q_base,   q_i3  + (size_t) ib * q->nb[2]), 0);
+                ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(pk_base,  pk_i3),                         1);
+                ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(dst_base, dst_i3 + (size_t) ib * op->nb[2]), 2);
+                for (uint32_t h = 0; h < n_heads; ++h) {
+                    const uint32_t h_k = h / gqa;
+                    milady_polar_preht_score_args args = {
+                        /* head_dim = */ 128u,
+                        /* n_kv = */ n_tokens,
+                        /* kv_stride_blocks = */ 1u,
+                        /* q_head = */ h,
+                        /* head_offset_bytes = */ (uint32_t) ((size_t) h_k * pk->nb[2]),
+                        /* use_qjl = */ use_qjl,
+                    };
+                    ggml_metal_encoder_set_bytes(enc, &args, sizeof(args), 3);
+                    ggml_metal_encoder_dispatch_threadgroups(enc, (int) n_tokens, 1, 1, 32, 1, 1);
+                }
+            }
+        }
+    } else {
+        milady_polar_score_args args = {
+            /* n_rows = */ n_tokens,
+            /* head_dim = */ 128u,
+            /* use_qjl = */ use_qjl,
+        };
+
+        auto pipeline = ggml_metal_library_get_pipeline_attn_score_polar(lib);
+
+        ggml_metal_encoder_set_pipeline(enc, pipeline);
+        ggml_metal_encoder_set_bytes(enc, &args, sizeof(args), 3);
+
+        for (int64_t i3 = 0; i3 < ne3; ++i3) {
+            const size_t q_i3   = (size_t) i3 * q->nb[3];
+            const size_t pk_i3  = (size_t) i3 * pk->nb[3];
+            const size_t dst_i3 = (size_t) i3 * op->nb[3];
+            for (int64_t ib = 0; ib < n_batch; ++ib) {
+                for (uint32_t h = 0; h < n_heads; ++h) {
+                    const uint32_t h_k = h / gqa;
+                    ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(pk_base,  pk_i3 + (size_t) h_k * pk->nb[2]), 0);
+                    ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(q_base,   q_i3  + (size_t) ib * q->nb[2]  + (size_t) h   * q->nb[1]),  1);
+                    ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(dst_base, dst_i3 + (size_t) ib * op->nb[2] + (size_t) h   * op->nb[1]), 2);
+                    ggml_metal_encoder_dispatch_threadgroups(enc, (int) n_tokens, 1, 1, 32, 1, 1);
+                }
             }
         }
     }
@@ -1466,12 +1636,27 @@ export function patchMetalDispatch(cacheDir, { dryRun = false } = {}) {
     console.log(`${dryRun ? "(dry-run) " : ""}${message}`);
   }
   const qjlAttn = patchMetalQjlAttnDispatch(cacheDir, { dryRun });
-  const tbqPolarAttn = patchMetalTbqPolarAttnDispatch(cacheDir, { dryRun });
+  const qjlAnchorsAlreadyPresent = [
+    path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-device.h"),
+    path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-ops.h"),
+    path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-ops.cpp"),
+  ].every(
+    (file) =>
+      fs.existsSync(file) &&
+      fs.readFileSync(file, "utf8").includes(SENTINEL_QJL_ATTN),
+  );
+  const tbqPolarAttn =
+    dryRun && !qjlAnchorsAlreadyPresent
+      ? { deferredUntilQjlPatchWrites: true }
+      : patchMetalTbqPolarAttnDispatch(cacheDir, { dryRun });
   console.log(
     `[metal-dispatch] ${dryRun ? "(dry-run) " : ""}wired dedicated GGML_OP_ATTN_SCORE_QJL dispatch via kernel_attn_score_qjl1_256_multi`,
   );
   console.log(
-    `[metal-dispatch] ${dryRun ? "(dry-run) " : ""}wired dedicated GGML_OP_ATTN_SCORE_TBQ / GGML_OP_ATTN_SCORE_POLAR dispatch via shipped TurboQuant and PolarQuant kernels`,
+    `[metal-dispatch] ${dryRun ? "(dry-run) " : ""}wired dedicated GGML_OP_ATTN_SCORE_TBQ / GGML_OP_ATTN_SCORE_POLAR dispatch via shipped TurboQuant and PolarQuant kernels` +
+      (tbqPolarAttn.deferredUntilQjlPatchWrites
+        ? " (deferred in dry-run until QJL patch writes anchors)"
+        : ""),
   );
   console.log(
     `[metal-dispatch] ${dryRun ? "(dry-run) " : ""}runtime-ready gates: ` +

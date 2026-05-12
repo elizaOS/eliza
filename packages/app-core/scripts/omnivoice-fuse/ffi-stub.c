@@ -6,7 +6,7 @@
  * the real fused omnivoice + llama.cpp build to exist.
  *
  * What works:
- *   - `eliza_inference_abi_version()` returns "1".
+ *   - `eliza_inference_abi_version()` returns the ABI version from `ffi.h`.
  *   - `eliza_inference_create(bundle_dir, ...)` validates the path
  *     argument and returns a tiny heap-allocated context. Bundle_dir
  *     must be non-NULL and non-empty; nothing on disk is required, so

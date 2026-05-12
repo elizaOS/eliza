@@ -2,7 +2,6 @@
   "schema": "eliza.eliza1_action_aliases.v1",
   "description": "Removed/renamed action name -> current canonical action name. Applied during Eliza-1 trajectory SFT preparation (scripts/prepare_eliza1_trajectory_dataset.py) to every action / tool-call name, including eliza_native_v1 response.toolCalls[].toolName. Exact aliases are applied before prefix aliases. The canonical action catalog is packages/core/src/generated/action-docs.ts; see packages/training/docs/dataset/CANONICAL_RECORD.md for the two-layer corpus-record / training-example model.",
   "aliases": {
-    "SHELL_COMMAND": "SHELL",
     "RUN_COMMAND": "SHELL",
     "EXECUTE_COMMAND": "SHELL",
     "RUN_IN_TERMINAL": "SHELL",
@@ -24,20 +23,16 @@
     "RESPOND": "REPLY",
     "RESPONSE": "REPLY",
     "GREET": "REPLY",
-    "PAYMENT": "MONEY",
-    "PAYMENTS": "MONEY",
-    "SUBSCRIPTION": "MONEY",
-    "SUBSCRIPTIONS": "MONEY",
-    "ROCKET_MONEY": "MONEY",
-    "AUDIT_SUBSCRIPTIONS": "MONEY_SUBSCRIPTION_AUDIT",
-    "MANAGE_SUBSCRIPTIONS": "MONEY_SUBSCRIPTION_AUDIT",
-    "APP_BLOCK": "BLOCK",
+    "PAYMENTS": "PAYMENT",
+    "SUBSCRIPTION": "OWNER_FINANCES",
+    "ROCKET_MONEY": "OWNER_FINANCES",
+    "AUDIT_SUBSCRIPTIONS": "OWNER_FINANCES_SUBSCRIPTION_AUDIT",
+    "MANAGE_SUBSCRIPTIONS": "OWNER_FINANCES_SUBSCRIPTION_AUDIT",
     "APP_BLOCKER": "BLOCK",
     "SET_APP_BLOCK": "BLOCK",
     "PHONE_SET_APP_BLOCK": "BLOCK",
     "PHONE_BLOCK_APPS": "BLOCK",
     "BLOCK_APPS": "BLOCK",
-    "WEBSITE_BLOCK": "BLOCK",
     "WEBSITE_BLOCKER": "BLOCK",
     "BLOCK_WEBSITE": "BLOCK",
     "SITE_BLOCKER": "BLOCK",
@@ -46,10 +41,6 @@
     "AUTOMATION_FOCUS_BLOCK": "BLOCK"
   },
   "prefixAliases": [
-    {
-      "from": "SHELL_COMMAND_",
-      "to": "SHELL_"
-    },
     {
       "from": "RUN_COMMAND_",
       "to": "SHELL_"

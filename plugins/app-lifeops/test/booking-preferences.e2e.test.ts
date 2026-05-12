@@ -38,14 +38,15 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
     let roomId: UUID;
 
     beforeAll(async () => {
+      ownerId = crypto.randomUUID() as UUID;
+      roomId = crypto.randomUUID() as UUID;
+
       mocked = await createMockedTestRuntime({
         seedLifeOpsSimulator: true,
         withLLM: true,
         preferredProvider: provider?.name,
       });
-
-      ownerId = crypto.randomUUID() as UUID;
-      roomId = crypto.randomUUID() as UUID;
+      mocked.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", ownerId);
     }, 120_000);
 
     afterAll(async () => {

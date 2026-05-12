@@ -101,6 +101,7 @@ def _execute_action(action: Action, world: LifeWorld) -> dict[str, Any]:
     raise `UnsupportedAction` — never silently no-op. The runner catches and
     surfaces these so gaps land in `LIFEOPS_BENCH_GAPS.md`.
     """
+    action = _normalize_action(action)
     handler = _ACTION_HANDLERS.get(action.name)
     if handler is None:
         raise UnsupportedAction(
@@ -109,9 +110,42 @@ def _execute_action(action: Action, world: LifeWorld) -> dict[str, Any]:
     return handler(world, action.kwargs, action.name)
 
 
+def _initial_user_content(scenario: Scenario) -> str:
+    return (
+        f"Current benchmark time: {scenario.now_iso}. "
+        "Interpret relative dates against this timestamp, not the wall-clock date.\n\n"
+        f"{scenario.instruction}"
+    )
+
+
 def supported_actions() -> set[str]:
     """Return every action name the executor knows how to apply against a LifeWorld."""
     return set(_ACTION_HANDLERS.keys())
+
+
+_PROMOTED_ACTION_DEFAULTS: dict[str, tuple[str, str, str]] = {
+    "CALENDAR_CREATE_EVENT": ("CALENDAR", "subaction", "create_event"),
+    "CALENDAR_UPDATE_EVENT": ("CALENDAR", "subaction", "update_event"),
+    "CALENDAR_DELETE_EVENT": ("CALENDAR", "subaction", "delete_event"),
+    "CALENDAR_PROPOSE_TIMES": ("CALENDAR", "subaction", "propose_times"),
+    "CALENDAR_SEARCH_EVENTS": ("CALENDAR", "subaction", "search_events"),
+    "CALENDAR_CHECK_AVAILABILITY": ("CALENDAR", "subaction", "check_availability"),
+    "CALENDAR_NEXT_EVENT": ("CALENDAR", "subaction", "next_event"),
+    "CALENDAR_UPDATE_PREFERENCES": ("CALENDAR", "subaction", "update_preferences"),
+}
+
+
+def _normalize_action(action: Action) -> Action:
+    """Canonicalize planner-facing aliases before executor dispatch."""
+    if action.name in {"REPLY", "RESPOND"}:
+        return Action(name="REPLY", kwargs=action.kwargs)
+    promoted = _PROMOTED_ACTION_DEFAULTS.get(action.name)
+    if promoted is None:
+        return action
+    parent, discriminator, value = promoted
+    kwargs = dict(action.kwargs)
+    kwargs.setdefault(discriminator, value)
+    return Action(name=parent, kwargs=kwargs)
 
 
 _OPENAI_FUNCTION_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -453,12 +487,27 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
         propose_times, search_events, check_availability,
         next_event, update_preferences
     """
-    sub = _required(kw, "subaction", action=name, sub="<missing>")
+    sub = kw.get("subaction") or kw.get("action") or kw.get("operation")
+    if not sub:
+        sub = _required(kw, "subaction", action=name, sub="<missing>")
     details = _details(kw)
     if sub == "create_event":
-        calendar_id = details.get("calendarId") or kw.get("calendarId")
-        start = details.get("start") or kw.get("start")
-        end = details.get("end") or kw.get("end")
+        calendar_id = (
+            details.get("calendarId")
+            or kw.get("calendarId")
+            or details.get("calendar_id")
+            or kw.get("calendar_id")
+            or _primary_calendar_id(world)
+        )
+        start = (
+            details.get("start")
+            or kw.get("start")
+            or details.get("start_time")
+            or kw.get("start_time")
+        )
+        end = details.get("end") or kw.get("end") or details.get("end_time") or kw.get("end_time")
+        if start and not end:
+            end = _shift_iso(str(start), minutes=_duration_minutes(kw, details, 30))
         title = kw.get("title") or details.get("title") or "Untitled"
         if not calendar_id or not start or not end:
             raise KeyError(
@@ -470,6 +519,9 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
             or details.get("eventId")
             or _synthetic_id("event_auto", {"t": title, "s": start, "e": end, "c": calendar_id})
         )
+        if event_id in world.calendar_events:
+            event = world.calendar_events[str(event_id)]
+            return {"id": event.id, "title": event.title, "idempotent": True}
         event = world.create_calendar_event(
             event_id=event_id,
             calendar_id=calendar_id,
@@ -484,25 +536,118 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
         )
         return {"id": event.id, "title": event.title}
     if sub == "update_event":
-        event_id = _required(details, "eventId", action=name, sub=sub)
-        start = _required(details, "start", action=name, sub=sub)
-        end = _required(details, "end", action=name, sub=sub)
-        event = world.move_event(event_id, start=start, end=end)
+        updates = kw.get("updates") or details.get("updates") or {}
+        if not isinstance(updates, dict):
+            updates = {}
+        requested_event_id = (
+            details.get("eventId")
+            or kw.get("eventId")
+            or details.get("event_id")
+            or kw.get("event_id")
+            or details.get("id")
+            or kw.get("id")
+        )
+        event = _find_calendar_event(
+            world,
+            event_id=requested_event_id,
+            title=details.get("title")
+            or kw.get("title")
+            or updates.get("title")
+            or details.get("event_name")
+            or kw.get("event_name")
+            or (
+                requested_event_id
+                if isinstance(requested_event_id, str)
+                and requested_event_id not in world.calendar_events
+                else None
+            ),
+            date_hint=details.get("start")
+            or kw.get("start")
+            or details.get("new_start")
+            or kw.get("new_start")
+            or details.get("newStart")
+            or kw.get("newStart")
+            or updates.get("start")
+            or updates.get("new_start")
+            or updates.get("newStart")
+            or details.get("date")
+            or kw.get("date"),
+        )
+        if event is None:
+            raise KeyError(
+                f"{name}/{sub} missing required field 'eventId' in kwargs={sorted(kw)}"
+            )
+        start = (
+            details.get("start")
+            or kw.get("start")
+            or details.get("new_start")
+            or kw.get("new_start")
+            or details.get("newStart")
+            or kw.get("newStart")
+            or updates.get("start")
+            or updates.get("new_start")
+            or updates.get("newStart")
+            or event.start
+        )
+        end = (
+            details.get("end")
+            or kw.get("end")
+            or details.get("new_end")
+            or kw.get("new_end")
+            or details.get("newEnd")
+            or kw.get("newEnd")
+            or updates.get("end")
+            or updates.get("new_end")
+            or updates.get("newEnd")
+        )
+        if not end:
+            end = _shift_iso(str(start), minutes=_duration_minutes(kw, details, 60))
+        event = world.move_event(event.id, start=start, end=end)
         return {"id": event.id, "start": event.start, "end": event.end}
     if sub == "delete_event":
-        event_id = _required(details, "eventId", action=name, sub=sub)
-        event = world.cancel_event(event_id)
+        requested_event_id = (
+            details.get("eventId")
+            or kw.get("eventId")
+            or details.get("event_id")
+            or kw.get("event_id")
+            or details.get("id")
+            or kw.get("id")
+        )
+        event = _find_calendar_event(
+            world,
+            event_id=requested_event_id,
+            title=details.get("title")
+            or kw.get("title")
+            or details.get("event_name")
+            or kw.get("event_name"),
+            date_hint=details.get("date")
+            or kw.get("date")
+            or details.get("start")
+            or kw.get("start"),
+        )
+        if event is None:
+            if requested_event_id:
+                return {
+                    "ok": False,
+                    "noop": True,
+                    "missing_id": str(requested_event_id),
+                    "subaction": sub,
+                }
+            raise KeyError(
+                f"{name}/{sub} missing required field 'eventId' in kwargs={sorted(kw)}"
+            )
+        event = world.cancel_event(event.id)
         return {"id": event.id, "status": event.status}
-    if sub in {
-        "propose_times",
-        "search_events",
-        "check_availability",
-        "next_event",
-        "update_preferences",
-    }:
-        # Read-only or planner-config subactions; LifeWorld has no place to
-        # persist these, so they're no-ops by design. State hash matches
-        # because both replays are no-ops.
+    if sub in {"search_events", "check_availability", "next_event"}:
+        return {
+            "subaction": sub,
+            "ok": True,
+            "events": _search_calendar_events(world, kw, details),
+        }
+    if sub in {"propose_times", "update_preferences"}:
+        # Planner-config subactions; LifeWorld has no place to persist these,
+        # so they're no-ops by design. State hash matches because both replays
+        # are no-ops.
         return {"subaction": sub, "ok": True, "noop": True}
     raise UnsupportedAction(
         f"unsupported action in execute path: CALENDAR/{sub} — file gap in LIFEOPS_BENCH_GAPS.md"
@@ -1023,6 +1168,175 @@ def _shift_iso(iso: str, *, minutes: int) -> str:
     return f"{out}Z"
 
 
+def _try_parse_iso(value: str) -> datetime | None:
+    s = value.strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _primary_calendar_id(world: LifeWorld) -> str | None:
+    primary = next((cal for cal in world.calendars.values() if cal.is_primary), None)
+    if primary is not None:
+        return primary.id
+    first = next(iter(world.calendars.values()), None)
+    return first.id if first is not None else None
+
+
+def _duration_minutes(kw: dict[str, Any], details: dict[str, Any], fallback: int) -> int:
+    raw = (
+        details.get("duration_minutes")
+        or kw.get("duration_minutes")
+        or kw.get("duration")
+        or details.get("duration")
+    )
+    if isinstance(raw, (int, float)):
+        return max(1, int(raw))
+    if isinstance(raw, str):
+        match = re.fullmatch(r"\s*(\d+)\s*(m|min|minute|minutes|h|hr|hour|hours)?\s*", raw)
+        if match:
+            value = int(match.group(1))
+            unit = match.group(2) or "minutes"
+            return max(1, value * 60 if unit.startswith("h") else value)
+    hours = details.get("duration_hours") or kw.get("duration_hours")
+    if isinstance(hours, (int, float)):
+        return max(1, int(hours * 60))
+    return fallback
+
+
+def _find_calendar_event(
+    world: LifeWorld,
+    *,
+    event_id: Any = None,
+    title: Any = None,
+    date_hint: Any = None,
+) -> Any:
+    if isinstance(event_id, str) and event_id in world.calendar_events:
+        return world.calendar_events[event_id]
+    if isinstance(title, str) and title.strip():
+        wanted = title.strip().lower()
+        active_events = [
+            event
+            for event in world.calendar_events.values()
+            if event.status != "cancelled"
+        ]
+        matches = [
+            event for event in active_events if event.title.strip().lower() == wanted
+        ]
+        if not matches:
+            matches = [
+                event
+                for event in active_events
+                if wanted in event.title.strip().lower()
+                or event.title.strip().lower() in wanted
+            ]
+        if matches:
+            hint = _try_parse_iso(str(date_hint)) if isinstance(date_hint, str) else None
+            if hint is None:
+                hint = _try_parse_iso(world.now_iso)
+            hint_date = hint.date() if hint is not None else None
+
+            def rank(event: Any) -> tuple[int, float, int, str]:
+                event_start = _try_parse_iso(str(event.start))
+                same_day = (
+                    0
+                    if hint_date is not None
+                    and event_start is not None
+                    and event_start.date() == hint_date
+                    else 1
+                )
+                distance = (
+                    abs((event_start - hint).total_seconds())
+                    if event_start is not None and hint is not None
+                    else float("inf")
+                )
+                primary = 0 if event.calendar_id == "cal_primary" else 1
+                return (same_day, distance, primary, event.id)
+
+            return sorted(matches, key=rank)[0]
+    return None
+
+
+def _search_calendar_events(
+    world: LifeWorld,
+    kw: dict[str, Any],
+    details: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    details = details or {}
+    query_raw = (
+        kw.get("query")
+        or details.get("query")
+        or kw.get("title")
+        or details.get("title")
+        or kw.get("event_name")
+        or details.get("event_name")
+        or ""
+    )
+    query = str(query_raw).strip().lower()
+    date_raw = kw.get("date") or details.get("date")
+    if date_raw == "today":
+        date_filter = world.now_iso[:10]
+    elif isinstance(date_raw, str) and re.match(r"^\d{4}-\d{2}-\d{2}", date_raw):
+        date_filter = date_raw[:10]
+    else:
+        date_filter = None
+
+    time_range = kw.get("time_range") or details.get("time_range") or {}
+    if not isinstance(time_range, dict):
+        time_range = {}
+    start = (
+        kw.get("start")
+        or details.get("start")
+        or kw.get("startDate")
+        or details.get("startDate")
+        or time_range.get("start")
+    )
+    end = (
+        kw.get("end")
+        or details.get("end")
+        or kw.get("endDate")
+        or details.get("endDate")
+        or time_range.get("end")
+    )
+
+    def matches(event: Any) -> bool:
+        if getattr(event, "status", None) == "cancelled":
+            return False
+        title = str(getattr(event, "title", "")).lower()
+        if query and query not in title and title not in query:
+            return False
+        event_start = str(getattr(event, "start", ""))
+        event_end = str(getattr(event, "end", ""))
+        if date_filter and event_start[:10] != date_filter:
+            return False
+        if isinstance(start, str) and event_end < start:
+            return False
+        if isinstance(end, str) and event_start > end:
+            return False
+        return True
+
+    return [
+        {
+            "id": event.id,
+            "calendar_id": event.calendar_id,
+            "title": event.title,
+            "start": event.start,
+            "end": event.end,
+            "status": event.status,
+        }
+        for event in sorted(
+            (event for event in world.calendar_events.values() if matches(event)),
+            key=lambda event: (event.start, event.id),
+        )
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Registry — every action name the executor knows
 # ---------------------------------------------------------------------------
@@ -1087,6 +1401,10 @@ _ACTION_HANDLERS: dict[
     "SCHEDULED_TASK_CREATE": _u_scheduled_task_create,
     "SCHEDULED_TASK_SNOOZE": _u_scheduled_task_mutate,
     "SCHEDULED_TASK_UPDATE": _u_scheduled_task_mutate,
+    # Conversational terminal sentinels are valid assistant outcomes. They
+    # have no LifeWorld side effect and should not be reported as executor
+    # coverage gaps.
+    "REPLY": lambda _world, kw, _name: {"ok": True, "noop": True, "reply": kw},
     # Promoted CALENDAR_* names (the manifest exporter promotes
     # subactions into top-level action names). Each promoted name carries
     # `subaction` in its kwargs already, so route to `_u_calendar` unchanged.
@@ -1319,7 +1637,7 @@ class LifeOpsBenchRunner:
 
         world = self.world_factory(seed, scenario.now_iso)
         history: list[MessageTurn] = [
-            MessageTurn(role="user", content=scenario.instruction),
+            MessageTurn(role="user", content=_initial_user_content(scenario)),
         ]
         turns: list[TurnResult] = []
         terminated_reason: str = "max_turns"
@@ -1342,39 +1660,67 @@ class LifeOpsBenchRunner:
             history.append(agent_turn)
 
             agent_actions = _extract_actions_from_turn(agent_turn)
+            tool_results: list[dict[str, Any]] = []
             for action in agent_actions:
                 # Execution failures don't crash the run — we surface them as
                 # tool-error messages and let scoring penalize via state mismatch.
+                tool_call_id = _extract_tool_call_id(agent_turn, action)
                 try:
                     result_payload = _execute_action(action, world)
+                    tool_results.append(
+                        {
+                            "name": action.name,
+                            "tool_call_id": tool_call_id,
+                            "content": json.dumps(result_payload),
+                            "payload": result_payload,
+                        }
+                    )
                     history.append(
                         MessageTurn(
                             role="tool",
                             content=json.dumps(result_payload),
                             name=action.name,
-                            tool_call_id=_extract_tool_call_id(agent_turn, action),
+                            tool_call_id=tool_call_id,
                         )
                     )
                 except UnsupportedAction as exc:
                     logger.warning("Unsupported action in scenario %s: %s", scenario.id, exc)
+                    error_payload = {"error": "unsupported_action", "message": str(exc)}
+                    tool_results.append(
+                        {
+                            "name": action.name,
+                            "tool_call_id": tool_call_id,
+                            "content": json.dumps(error_payload),
+                            "payload": error_payload,
+                        }
+                    )
                     history.append(
                         MessageTurn(
                             role="tool",
-                            content=json.dumps({"error": "unsupported_action", "message": str(exc)}),
+                            content=json.dumps(error_payload),
                             name=action.name,
-                            tool_call_id=_extract_tool_call_id(agent_turn, action),
+                            tool_call_id=tool_call_id,
                         )
                     )
                 except (KeyError, ValueError, TypeError) as exc:
                     logger.warning(
                         "Action %s failed in scenario %s: %s", action.name, scenario.id, exc
                     )
+                    error_payload = {"error": "execution_failed", "message": str(exc)}
+                    tool_results.append(
+                        {
+                            "name": action.name,
+                            "tool_call_id": tool_call_id,
+                            "content": json.dumps(error_payload),
+                            "payload": error_payload,
+                        }
+                    )
                     history.append(
                         MessageTurn(
                             role="tool",
-                            content=json.dumps({"error": "execution_failed", "message": str(exc)}),
+                            content=json.dumps(error_payload),
                             name=action.name,
-                            tool_call_id=_extract_tool_call_id(agent_turn, action),
+                            tool_call_id=tool_call_id,
                         )
                     )
 
@@ -1436,6 +1782,7 @@ class LifeOpsBenchRunner:
                 input_tokens=input_tokens_val,
                 output_tokens=int(getattr(agent_turn, "output_tokens", 0) or 0),
                 cost_usd=agent_cost,
+                tool_results=tool_results,
                 cache_read_input_tokens=cache_read,
                 cache_creation_input_tokens=cache_creation,
                 cache_hit_pct=compute_cache_hit_pct(

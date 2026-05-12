@@ -105,7 +105,11 @@ describe("embeddingServerForRoute", () => {
   it("1_7b dedicated-region route → sidecar over the embedding/ GGUF", () => {
     const bundleRoot = tmpBundle();
     writeGguf(
-      path.join(bundleRoot, EMBEDDING_DIR_REL_PATH, "qwen3-embedding-0.6b.gguf"),
+      path.join(
+        bundleRoot,
+        EMBEDDING_DIR_REL_PATH,
+        "qwen3-embedding-0.6b.gguf",
+      ),
     );
     const route = buildLocalEmbeddingRoute({
       bundleRoot,

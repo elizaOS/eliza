@@ -491,6 +491,17 @@ function extractRequiredStateFragments(
     .join("\n");
 
   for (const match of userText.matchAll(
+    /\bfor\s+memory\s+slot\s+([A-Z][A-Za-z0-9_-]*),\s*(.+?)(?:\.|!|\n|$)/gi,
+  )) {
+    const slot = cleanSentenceFragment(match[1]);
+    const fact = cleanSentenceFragment(match[2]);
+    if (slot && fact) {
+      fragments.facts.push(`memory slot ${slot}: ${fact}`);
+      pushEntity(fragments.entities, `memory slot ${slot}`, fact);
+    }
+  }
+
+  for (const match of userText.matchAll(
     /\b(?:critical:\s*)?never\s+(.+?)(?:\.|!|\n|$)/gi,
   )) {
     const forbidden = cleanSentenceFragment(match[1]);
@@ -677,6 +688,12 @@ function extractToolOutcomeFacts(region: CompactorMessage[]): string[] {
     const who = toolName ? ` from ${toolName}` : "";
     const where = turn !== undefined ? ` at turn ${turn}` : "";
     facts.push(`Tool result${where}${who}: ${parsed.value}`);
+    if (turn !== undefined) {
+      facts.push(`tool result turn ${turn}: ${parsed.value}`);
+      if (toolName) {
+        facts.push(`${toolName} result at turn ${turn}: ${parsed.value}`);
+      }
+    }
   }
 
   // Some older harnesses flatten tool output into regular messages. Preserve

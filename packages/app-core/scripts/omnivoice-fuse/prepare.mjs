@@ -23,7 +23,7 @@ import path from "node:path";
 
 const OMNIVOICE_REPO =
   process.env.MILADY_OMNIVOICE_REMOTE ||
-  "https://github.com/ServeurpersoCom/omnivoice.cpp.git";
+  "https://github.com/elizaOS/omnivoice.cpp.git";
 
 // Master HEAD as of 2026-05-10. Bump per the runbook in README.md.
 export const OMNIVOICE_REF =
@@ -144,6 +144,9 @@ struct EliInferenceContext {
     std::mutex asr_mutex;
 };
 
+#define ELIZA_STRINGIFY_IMPL(x) #x
+#define ELIZA_STRINGIFY(x) ELIZA_STRINGIFY_IMPL(x)
+
 static char * eliza_strdup(const std::string & s) {
     char * out = (char *) std::malloc(s.size() + 1);
     if (!out) return nullptr;
@@ -161,7 +164,8 @@ static bool eliza_is_region(const char * region_name) {
         (std::strcmp(region_name, "tts") == 0 ||
          std::strcmp(region_name, "asr") == 0 ||
          std::strcmp(region_name, "text") == 0 ||
-         std::strcmp(region_name, "dflash") == 0);
+         std::strcmp(region_name, "dflash") == 0 ||
+         std::strcmp(region_name, "vad") == 0);
 }
 
 static std::vector<std::string> eliza_find_ggufs(const std::filesystem::path & dir) {
@@ -477,10 +481,11 @@ static int eliza_load_asr(EliInferenceContext * ctx, char ** out_error) {
 extern "C" {
 
 const char * eliza_inference_abi_version(void) {
-    // ABI v2 adds the streaming-ASR session API (eliza_inference_asr_stream_*).
+    // Keep this tied to ffi.h so ABI bumps cannot drift between the
+    // generated adapter and the TypeScript loader.
     // Keep in lockstep with ELIZA_INFERENCE_ABI_VERSION in
     // packages/app-core/src/services/local-inference/voice/ffi-bindings.ts.
-    return "2";
+    return ELIZA_STRINGIFY(ELIZA_INFERENCE_ABI_VERSION);
 }
 
 EliInferenceContext * eliza_inference_create(
@@ -733,12 +738,10 @@ int eliza_inference_asr_transcribe(
         }
     }
     if (!completed) {
-        std::string cleaned_partial = eliza_clean_asr_transcript(transcript);
-        if (cleaned_partial.empty()) {
-            eliza_set_error(out_error, "[libelizainference] asr_transcribe: decode reached token cap before EOG and produced no transcript");
-            return ELIZA_ERR_FFI_FAULT;
-        }
-        transcript = cleaned_partial;
+        eliza_set_error(out_error,
+            "[libelizainference] asr_transcribe: decode reached token cap before EOG; "
+            "refusing to return a possibly truncated transcript");
+        return ELIZA_ERR_FFI_FAULT;
     } else {
         transcript = eliza_clean_asr_transcript(transcript);
     }
@@ -757,11 +760,11 @@ int eliza_inference_asr_transcribe(
  * The fused build ships the v1 batch \`eliza_inference_asr_transcribe\`
  * decoder above; the windowed streaming-session decoder is not yet wired
  * (W7). Per packages/inference/AGENTS.md §3 we do NOT fake it — the
- * capability probe returns 0 so EngineVoiceBridge / StreamingTranscriber
- * pick the batch path (or the whisper.cpp interim adapter) instead of
- * opening a session that would only return ELIZA_ERR_NOT_IMPLEMENTED.
+     * capability probe returns 0 so EngineVoiceBridge / StreamingTranscriber
+     * pick the fused batch ASR adapter instead of opening a session that would
+     * only return ELIZA_ERR_NOT_IMPLEMENTED.
  * These symbols exist so the ABI surface is complete and the loader's
- * version check (ffi-bindings.ts expects v2) succeeds.
+ * version check (ffi-bindings.ts expects v3) succeeds.
  */
 
 int eliza_inference_asr_stream_supported(void) {
@@ -885,6 +888,55 @@ int eliza_inference_set_verifier_callback(
         "[libelizainference] native DFlash verifier callback is not implemented in this build; "
         "the JS scheduler synthesizes verifier events from llama-server streaming deltas");
     return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+/* ---- Native VAD (ABI v3) ------------------------------------------- *
+ *
+ * The JS runtime can use the ONNX Silero path today. Native VAD is an
+ * additive fused-runtime backend; until the fused target wires it,
+ * advertise unsupported and return structured not-implemented errors.
+ */
+
+int eliza_inference_vad_supported(void) {
+    return 0;
+}
+
+EliVad * eliza_inference_vad_open(
+    EliInferenceContext * ctx,
+    int sample_rate_hz,
+    char ** out_error) {
+    (void) ctx;
+    (void) sample_rate_hz;
+    eliza_set_error(out_error,
+        "[libelizainference] native VAD is not implemented in this build "
+        "(eliza_inference_vad_supported() == 0); use the ONNX Silero VAD path");
+    return nullptr;
+}
+
+int eliza_inference_vad_process(
+    EliVad * vad,
+    const float * pcm,
+    size_t n_samples,
+    float * out_probability,
+    char ** out_error) {
+    (void) vad;
+    (void) pcm;
+    (void) n_samples;
+    (void) out_probability;
+    eliza_set_error(out_error, "[libelizainference] native VAD is not implemented in this build");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+int eliza_inference_vad_reset(
+    EliVad * vad,
+    char ** out_error) {
+    (void) vad;
+    eliza_set_error(out_error, "[libelizainference] native VAD is not implemented in this build");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+void eliza_inference_vad_close(EliVad * vad) {
+    (void) vad;
 }
 
 void eliza_inference_free_string(char * str) {

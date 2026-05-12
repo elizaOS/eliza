@@ -1,0 +1,207 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-12T01:59:29.742Z",
+  "harness": "packages/inference/verify/e2e_loop_bench.mjs",
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 16,
+    "cpuModel": "Apple M4 Max",
+    "totalMemMb": 131072
+  },
+  "request": {
+    "tier": "0_6b",
+    "backend": "metal",
+    "turns": 3,
+    "nPredict": 4,
+    "ttsSteps": 8,
+    "micTtsSteps": 32
+  },
+  "bundle": {
+    "dir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle",
+    "tier": "0_6b",
+    "ramBudgetMb": {
+      "min": 1500,
+      "recommended": 1800
+    }
+  },
+  "engine": {
+    "dir": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused",
+    "backend": "metal",
+    "fused": true,
+    "caps": {
+      "dflash": true,
+      "turbo3": true,
+      "turbo4": true,
+      "turbo3_tcq": true,
+      "qjl_full": true,
+      "polarquant": true,
+      "lookahead": true,
+      "ngramDraft": true
+    }
+  },
+  "status": "needs-optimization",
+  "reason": "voice loop completed, but required Eliza-1 optimizations were not all active",
+  "e2eLoopOk": true,
+  "thirtyTurnOk": null,
+  "summary": {
+    "turns": 3,
+    "asrLatencyMsMedian": 385.8,
+    "asrWerMean": 10.4444,
+    "asrWerByTurn": [
+      0,
+      31.3333,
+      0
+    ],
+    "firstTokenMsMedian": 45.9,
+    "firstTokenMsP50": 45.9,
+    "decodeTokPerSecMedian": 22.98,
+    "dflashAcceptanceRateMean": null,
+    "dflashDraftedTotal": 0,
+    "dflashAcceptedTotal": 0,
+    "firstAudioFromMicMsMedian": 9762.8,
+    "firstAudioFromTokenMsMedian": 7997.3,
+    "ttsRtfMedian": 5.7506,
+    "ttsRtfMean": 5.0051,
+    "totalTurnMsMedian": 9763.1,
+    "bargeInCancelMs": 0.32,
+    "serverPeakRssMb": null,
+    "ramBudgetRecommendedMb": 1800,
+    "ramWithinBudget": null,
+    "leakSuspected": false,
+    "dflashAcceptanceRateOverall": null,
+    "flowCompletedOk": true,
+    "optimizationReadyOk": false,
+    "requiredOptimizations": {
+      "dflashDraftingActive": false,
+      "streamingTtsActive": false
+    }
+  },
+  "bargeIn": {
+    "httpAbortMs": 0.32,
+    "nativeCancelMs": 0.04,
+    "nativeCancelRc": 0,
+    "ttsStreamSupported": false,
+    "note": "batch-only TTS build (eliza_inference_tts_stream_supported()==0); barge-in measured as the client/sink-side HTTP abort latency (the PCM-ring-drain surrogate). cancel_tts is a no-op here."
+  },
+  "turns": [
+    {
+      "turn": 1,
+      "asr": {
+        "latencyMs": 385.8,
+        "transcript": "What is the capital of France?",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 45.9,
+        "decodeTokPerSec": 17.27,
+        "predictedN": 4,
+        "promptTokPerSec": 163.81,
+        "content": "The capital of France"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 1,
+        "audioSec": 1.36,
+        "wallMs": 9091.3,
+        "rtf": 6.6848,
+        "perPhrase": [
+          {
+            "phrase": "The capital of France",
+            "durationHintSec": 1.18,
+            "audioSec": 1.36,
+            "wallMs": 9091.2,
+            "rtf": 6.6847
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 9762.8,
+      "firstAudioFromTokenMs": 9331.1,
+      "totalTurnMs": 9763.1
+    },
+    {
+      "turn": 2,
+      "asr": {
+        "latencyMs": 2989,
+        "transcript": "<morrowday tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow tomorrow",
+        "wer": 31.3333
+      },
+      "gen": {
+        "firstTokenMs": 123,
+        "decodeTokPerSec": 22.98,
+        "predictedN": 4,
+        "promptTokPerSec": 1603.65,
+        "content": "tomorrow tomorrow tomorrow tomorrow"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 1,
+        "audioSec": 1.36,
+        "wallMs": 7820.9,
+        "rtf": 5.7506,
+        "perPhrase": [
+          {
+            "phrase": "tomorrow tomorrow tomorrow tomorrow",
+            "durationHintSec": 1.18,
+            "audioSec": 1.36,
+            "wallMs": 7820.8,
+            "rtf": 5.7506
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 11109.3,
+      "firstAudioFromTokenMs": 7997.3,
+      "totalTurnMs": 11109.3
+    },
+    {
+      "turn": 3,
+      "asr": {
+        "latencyMs": 274.5,
+        "transcript": "Tell me a short fact about the ocean.",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 22,
+        "decodeTokPerSec": 60.05,
+        "predictedN": 4,
+        "promptTokPerSec": 454.5,
+        "content": "The ocean is a"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 1,
+        "audioSec": 1.36,
+        "wallMs": 3508.6,
+        "rtf": 2.5798,
+        "perPhrase": [
+          {
+            "phrase": "The ocean is a",
+            "durationHintSec": 1.18,
+            "audioSec": 1.36,
+            "wallMs": 3508.5,
+            "rtf": 2.5798
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 3875.5,
+      "firstAudioFromTokenMs": 3579.1,
+      "totalTurnMs": 3875.6
+    }
+  ],
+  "serverLog": "slot   load_model: id  2 | task -1 | new slot, n_ctx = 1024\nllama_context: constructing llama_context\nllama_context: n_seq_max     = 1\nllama_context: n_ctx         = 1024\nllama_context: n_ctx_seq     = 1024\nllama_context: n_batch       = 1024\nllama_context: n_ubatch      = 512\nllama_context: causal_attn   = 0\nllama_context: flash_attn    = auto\nllama_context: kv_unified    = true\nllama_context: freq_base     = 10000000.0\nllama_context: freq_scale    = 1\nllama_context: n_ctx_seq (1024) < n_ctx_train (262144) -- the full capacity of the model will not be utilized\nggml_metal_init: allocating\nggml_metal_init: found device: Apple M4 Max\nggml_metal_init: picking default device: Apple M4 Max\nggml_metal_init: use fusion         = true\nggml_metal_init: use concurrency    = true\nggml_metal_init: use graph optimize = true\nllama_context:        CPU  output buffer size =     0.95 MiB\nllama_kv_cache:       MTL0 KV buffer size =    20.00 MiB\nllama_kv_cache: size =   20.00 MiB (  1024 cells,   5 layers,  1/1 seqs), K (f16):   10.00 MiB, V (f16):   10.00 MiB\nsched_reserve: reserving ...\nsched_reserve: Flash Attention was auto, set to enabled\nsched_reserve:       MTL0 compute buffer size =  1167.03 MiB\nsched_reserve:        CPU compute buffer size =    37.01 MiB\nsched_reserve: graph nodes  = 208\nsched_reserve: graph splits = 3\nsched_reserve: reserve took 47.45 ms, sched copies = 1\nthe target and draft vocabs are not compatible - tokens will be translated between the two\nslot   load_model: id  3 | task -1 | speculative decoding context initialized\nslot   load_model: id  3 | task -1 | new slot, n_ctx = 1024\nsrv    load_model: prompt cache is enabled, size limit: 8192 MiB\nsrv    load_model: use `--cache-ram 0` to disable the prompt cache\nsrv    load_model: for more info see https://github.com/ggml-org/llama.cpp/pull/16391\ninit: chat template, example_format: '<|im_start|>system\nYou are a helpful assistant<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\nHi there<|im_end|>\n<|im_start|>user\nHow are you?<|im_end|>\n<|im_start|>assistant\n'\nsrv          init: init: chat template, thinking = 1\nmain: model loaded\nmain: server is listening on http://127.0.0.1:49006\nmain: starting the main loop...\nsrv  update_slots: all slots are idle\n[OmniVoice] omnivoice.cpp 38f824023d12 (milady-fused)\n[Load] LM backend: MTL0 (CPU threads: 8)\nggml_metal_init: allocating\nggml_metal_init: found device: Apple M4 Max\nggml_metal_init: picking default device: Apple M4 Max\nggml_metal_init: use fusion         = true\nggml_metal_init: use concurrency    = true\nggml_metal_init: use graph optimize = true\n[GGUF] /Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle/tts/omnivoice-base-Q4_K_M.gguf: 312 tensors, data at offset 5339136\n[LM-Load] Loaded: 28L H=1024 FFN=3072 Nh=16 Nkv=8 D=128 theta=1000000 eps=1e-06 | audio: K=8 V=1025 mask_id=1024\n[Qwen3] Attn: Q+K fused, V separate\n[Qwen3] MLP: gate+up fused\n[WeightCtx] Loaded 312 tensors, 383.5 MB into backend\n[BPE] Loaded from GGUF: 151676 vocab, 151387 merges, eos_id=151643\n[BPE] Registered 7 OmniVoice special tokens (total specials=8)\n[PipelineCodec] Metal codec fallback: requested=MTL0 selected=CPU reason=merged-ggml-dac-decode-stall\n[GGUF] /Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle/tts/omnivoice-tokenizer-Q4_K_M.gguf: 486 tensors, data at offset 43680\n[WeightCtx] Loaded 52 tensors, 11.1 MB into backend\n[DAC] Loaded: 5 blocks, upsample 960x (8*5*4*2*3), 24 kHz mono out, weights 38.7 MB\n[DAC-Enc] Loaded: 5 blocks, downsample 960x (8*5*4*2*3), 24 kHz mono in, weights 98.0 MB\n[Sem-Enc] Loaded: 2 blocks, hidden=768, no temporal downsample, weights 28.1 MB\n[HuBERT-Feat] Loaded: 7 conv layers, cumul stride 320, weights 8.0 MB\n[HuBERT-Proj] Loaded: LN(512) + Linear(512 -> 768), weights 0.2 MB\n[HuBERT-EncInit] Loaded: pos_conv k=128 g=16 + LN(768), weights 9.0 MB\n[HuBERT-Stack] Loaded: 12 layers, hidden=768 heads=12 ffn=3072, weights 47.8 MB\n[PipelineCodec] Loaded codec: sr=24000 hop=960 backend=CPU\n[TTS-Long] Single-shot path: T=48 frames (1.92s), threshold=750 frames\n[Prompt] Built: B'=2 K=8 S=63 N1=6 N2=9 Sref=0 Stgt=48 c_len=63 u_len=48 denoise=0\n[TTS] Prompt: B'=2 K=8 S=63 c_len=63 u_len=48\n[MaskGIT] Start: T=48 K=8 S=63 num_step=32 guidance=2.00 t_shift=0.100 layer_pen=5.00 cls_t=0.00 pos_t=5.00\n[MaskGIT-Step] 1/32 demask=2 remaining=382\n[MaskGIT-Step] 2/32 demask=2 remaining=380\n[MaskGIT-Step] 3/32 demask=2 remaining=378\n[MaskGIT-Step] 4/32 demask=2 remaining=376\n[MaskGIT-Step] 5/32 demask=2 remaining=374\n[MaskGIT-Step] 6/32 demask=2 remaining=372\n[MaskGIT-Step] 7/32 demask=2 remaining=370\n[MaskGIT-Step] 8/32 demask=2 remaining=368\n[MaskGIT-Step] 9/32 demask=3 remaining=365\n[MaskGIT-Step] 10/32 demask=3 remaining=362\n[MaskGIT-Step] 11/32 demask=3 remaining=359\n[MaskGIT-Step] 12/32 demask=3 remaining=356\n[MaskGIT-Step] 13/32 demask=3 remaining=353\n[MaskGIT-Step] 14/32 demask=4 remaining=349\n[MaskGIT-Step] 15/32 demask=4 remaining=345\n[MaskGIT-Step] 16/32 demask=4 remaining=341\n[MaskGIT-Step] 17/32 demask=5 remaining=336\n[MaskGIT-Step] 18/32 demask=5 remaining=331\n[MaskGIT-Step] 19/32 demask=6 remaining=325\n[MaskGIT-Step] 20/32 demask=6 remaining=319\n[MaskGIT-Step] 21/32 demask=7 remaining=312\n[MaskGIT-Step] 22/32 demask=8 remaining=304\n[MaskGIT-Step] 23/32 demask=9 remaining=295\n[MaskGIT-Step] 24/32 demask=11 remaining=284\n[MaskGIT-Step] 25/32 demask=13 remaining=271\n[MaskGIT-Step] 26/32 demask=16 remaining=255\n[MaskGIT-Step] 27/32 demask=19 remaining=236\n[MaskGIT-Step] 28/32 demask=24 remaining=212\n[MaskGIT-Step] 29/32 demask=31 remaining=181\n[MaskGIT-Step] 30/32 demask=42 remaining=139\n[MaskGIT-Step] 31/32 demask=60 remaining=79\n[MaskGIT-Step] 32/32 demask=79 remaining=0\n[MaskGIT] Total LM forward: 2165.23 ms across 32 steps (avg 67.66 ms/step)\n[TTS] Decode: K=8 T=48 expected_samples=46080\n[TTS-Long] Post-proc: 46080 -> 50400 samples (2.10s at 24000 Hz, ref_rms=-1.0000)\nsrv  log_server_r: done request: POST /v1/audio/speech 127.0.0.1 200\n[TTS-Long] Single-shot path: T=66 frames (2.64s), threshold=750 frames\n[Prompt] Built: B'=2 K=8 S=81 N1=6 N2=9 Sref=0 Stgt=66 c_len=81 u_len=66 denoise=0\n[TTS] Prompt: B'=2 K=8 S=81 c_len=81 u_len=66\n[MaskGIT] Start: T=66 K=8 S=81 num_step=32 guidance=2.00 t_shift=0.100 layer_pen=5.00 cls_t=0.00 pos_t=5.00\n[MaskGIT-Step] 1/32 demask=2 remaining=526\n[MaskGIT-Step] 2/32 demask=2 remaining=524\n[MaskGIT-Step] 3/32 demask=2 remaining=522\n[MaskGIT-Step] 4/32 demask=3 remaining=519\n[MaskGIT-Step] 5/32 demask=3 remaining=516\n[MaskGIT-Step] 6/32 demask=3 remaining=513\n[MaskGIT-Step] 7/32 demask=3 remaining=510\n[MaskGIT-Step] 8/32 demask=3 remaining=507\n[MaskGIT-Step] 9/32 demask=3 remaining=504\n[MaskGIT-Step] 10/32 demask=4 remaining=500\n[MaskGIT-Step] 11/32 demask=4 remaining=496\n[MaskGIT-Step] 12/32 demask=4 remaining=492\n[MaskGIT-Step] 13/32 demask=4 remaining=488\n[MaskGIT-Step] 14/32 demask=5 remaining=483\n[MaskGIT-Step] 15/32 demask=5 remaining=478\n[MaskGIT-Step] 16/32 demask=6 remaining=472\n[MaskGIT-Step] 17/32 demask=6 remaining=466\n[MaskGIT-Step] 18/32 demask=7 remaining=459\n[MaskGIT-Step] 19/32 demask=8 remaining=451\n[MaskGIT-Step] 20/32 demask=9 remaining=442\n[MaskGIT-Step] 21/32 demask=10 remaining=432\n[MaskGIT-Step] 22/32 demask=11 remaining=421\n[MaskGIT-Step] 23/32 demask=13 remaining=408\n[MaskGIT-Step] 24/32 demask=15 remaining=393\n[MaskGIT-Step] 25/32 demask=18 remaining=375\n[MaskGIT-Step] 26/32 demask=21 remaining=354\n[MaskGIT-Step] 27/32 demask=26 remaining=328\n[MaskGIT-Step] 28/32 demask=33 remaining=295\n[MaskGIT-Step] 29/32 demask=43 remaining=252\n[MaskGIT-Step] 30/32 demask=58 remaining=194\n[MaskGIT-Step] 31/32 demask=83 remaining=111\n[MaskGIT-Step] 32/32 demask=111 remaining=0\n[MaskGIT] Total LM forward: 3252.70 ms across 32 steps (avg 101.65 ms/step)\n[TTS] Decode: K=8 T=66 expected_samples=63360\n[TTS-Long] Post-proc: 63360 -> 62160 samples (2.59s at 24000 Hz, ref_rms=-1.0000)\nsrv  log_server_r: done request: POST /v1/audio/speech 127.0.0.1 200\n[TTS-Long] Single-shot path: T=54 frames (2.16s), threshold=750 frames\n[Prompt] Built: B'=2 K=8 S=71 N1=6 N2=11 Sref=0 Stgt=54 c_len=71 u_len=54 denoise=0\n[TTS] Prompt: B'=2 K=8 S=71 c_len=71 u_len=54\n[MaskGIT] Start: T=54 K=8 S=71 num_step=32 guidance=2.00 t_shift=0.100 layer_pen=5.00 cls_t=0.00 pos_t=5.00\n[MaskGIT-Step] 1/32 demask=2 remaining=430\n[MaskGIT-Step] 2/32 demask=2 remaining=428\n[MaskGIT-Step] 3/32 demask=2 remaining=426\n[MaskGIT-Step] 4/32 demask=2 remaining=424\n[MaskGIT-Step] 5/32 demask=2 remaining=422\n[MaskGIT-Step] 6/32 demask=2 remaining=420\n[MaskGIT-Step] 7/32 demask=3 remaining=417\n[MaskGIT-Step] 8/32 demask=3 remaining=414\n[MaskGIT-Step] 9/32 demask=3 remaining=411\n[MaskGIT-Step] 10/32 demask=3 remaining=408\n[MaskGIT-Step] 11/32 demask=3 remaining=405\n[MaskGIT-Step] 12/32 demask=3 remaining=402\n[MaskGIT-Step] 13/32 demask=4 remaining=398\n[MaskGIT-Step] 14/32 demask=4 remaining=394\n[MaskGIT-Step] 15/32 demask=4 remaining=390\n[MaskGIT-Step] 16/32 demask=5 remaining=385\n[MaskGIT-Step] 17/32 demask=5 remaining=380\n[MaskGIT-Step] 18/32 demask=6 remaining=374\n[MaskGIT-Step] 19/32 demask=6 remaining=368\n[MaskGIT-Step] 20/32 demask=7 remaining=361\n[MaskGIT-Step] 21/32 demask=8 remaining=353\n[MaskGIT-Step] 22/32 demask=9 remaining=344\n[MaskGIT-Step] 23/32 demask=11 remaining=333\n[MaskGIT-Step] 24/32 demask=12 remaining=321\n[MaskGIT-Step] 25/32 demask=14 remaining=307\n[MaskGIT-Step] 26/32 demask=17 remaining=290\n[MaskGIT-Step] 27/32 demask=21 remaining=269\n[MaskGIT-Step] 28/32 demask=27 remaining=242\n[MaskGIT-Step] 29/32 demask=35 remaining=207\n[MaskGIT-Step] 30/32 demask=47 remaining=160\n[MaskGIT-Step] 31/32 demask=68 remaining=92\n[MaskGIT-Step] 32/32 demask=92 remaining=0\n[MaskGIT] Total LM forward: 5003.21 ms across 32 steps (avg 156.35 ms/step)\n[TTS] Decode: K=8 T=54 expected_samples=51840\n[TTS-Long] Post-proc: 51840 -> 48720 samples (2.03s at 24000 Hz, ref_rms=-1.0000)\nsrv  log_server_r: done request: POST /v1/audio/speech 127.0.0.1 200\nsrv  update_slots: all slots are idle\nslot get_availabl: id  3 | task -1 | selected slot by LRU, t_last = -1\nslot launch_slot_: id  3 | task -1 | sampler chain: logits -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> top-p -> min-p -> ?xtc -> temp-ext -> dist \nslot launch_slot_: id  3 | task 1 | processing task, is_child = 0\nslot update_slots: id  3 | task 1 | new prompt, n_ctx_slot = 1024, n_keep = 0, task.n_tokens = 7\nslot update_slots: id  3 | task 1 | n_tokens = 0, memory_seq_rm [0, end)\nslot init_sampler: id  3 | task 1 | init sampler, took 0.00 ms, tokens: text = 7, total = 7\nslot update_slots: id  3 | task 1 | prompt processing done, n_tokens = 7, batch.n_tokens = 7\nsrv  log_server_r: done request: POST /completion 127.0.0.1 200\nslot print_timing: id  3 | task 1 | \nprompt eval time =      42.73 ms /     7 tokens (    6.10 ms per token,   163.81 tokens per second)\n       eval time =     231.66 ms /     4 tokens (   57.92 ms per token,    17.27 tokens per second)\n      total time =     274.39 ms /    11 tokens\nstatistics draft: #calls(b,g,a) = 1 1 0, #gen drafts = 0, #acc drafts = 0, #gen tokens = 0, #acc tokens = 0, dur(b,g,a) = 0.000, 208.539, 0.000 ms\nslot      release: id  3 | task 1 | stop processing: n_tokens = 10, truncated = 0\nsrv  update_slots: all slots are idle\nsrv  update_slots: all slots are idle\n[TTS-Long] Single-shot path: T=29 frames (1.16s), threshold=750 frames\n[Prompt] Built: B'=2 K=8 S=41 N1=6 N2=6 Sref=0 Stgt=29 c_len=41 u_len=29 denoise=0\n[TTS] Prompt: B'=2 K=8 S=41 c_len=41 u_len=29\n[MaskGIT] Start: T=29 K=8 S=41 num_step=8 guidance=2.00 t_shift=0.100 layer_pen=5.00 cls_t=0.00 pos_t=5.00\n[MaskGIT-Step] 1/8 demask=4 remaining=228\n[MaskGIT-Step] 2/8 demask=5 remaining=223\n[MaskGIT-Step] 3/8 demask=6 remaining=217\n[MaskGIT-Step] 4/8 demask=8 remaining=209\n[MaskGIT-Step] 5/8 demask=13 remaining=196\n[MaskGIT-Step] 6/8 demask=21 remaining=175\n[MaskGIT-Step] 7/8 demask=42 remaining=133\n[MaskGIT-Step] 8/8 demask=133 remaining=0\n[MaskGIT] Total LM forward: 333.90 ms across 8 steps (avg 41.74 ms/step)\n[TTS] Decode: K=8 T=29 expected_samples=27840\n[TTS-Long] Post-proc: 27840 -> 32640 samples (1.36s at 24000 Hz, ref_rms=-1.0000)\nsrv  log_server_r: done request: POST /v1/audio/speech 127.0.0.1 200\nsrv  update_slots: all slots are idle\nslot get_availabl: id  2 | task -1 | selected slot by LRU, t_last = -1\nslot launch_slot_: id  2 | task -1 | sampler chain: logits -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> top-p -> min-p -> ?xtc -> temp-ext -> dist \nslot launch_slot_: id  2 | task 8 | processing task, is_child = 0\nslot update_slots: id  2 | task 8 | new prompt, n_ctx_slot = 1024, n_keep = 0, task.n_tokens = 191\nslot update_slots: id  2 | task 8 | n_tokens = 0, memory_seq_rm [0, end)\nslot init_sampler: id  2 | task 8 | init sampler, took 0.05 ms, tokens: text = 191, total = 191\nslot update_slots: id  2 | task 8 | prompt processing done, n_tokens = 191, batch.n_tokens = 191\nsrv  log_server_r: done request: POST /completion 127.0.0.1 200\nslot print_timing: id  2 | task 8 | \nprompt eval time =     119.10 ms /   191 tokens (    0.62 ms per token,  1603.65 tokens per second)\n       eval time =     174.05 ms /     4 tokens (   43.51 ms per token,    22.98 tokens per second)\n      total time =     293.15 ms /   195 tokens\nstatistics draft: #calls(b,g,a) = 1 1 0, #gen drafts = 0, #acc drafts = 0, #gen tokens = 0, #acc tokens = 0, dur(b,g,a) = 0.000, 110.077, 0.000 ms\nslot      release: id  2 | task 8 | stop processing: n_tokens = 194, truncated = 0\nsrv  update_slots: all slots are idle\nsrv  update_slots: all slots are idle\n[TTS-Long] Single-shot path: T=29 frames (1.16s), threshold=750 frames\n[Prompt] Built: B'=2 K=8 S=42 N1=6 N2=7 Sref=0 Stgt=29 c_len=42 u_len=29 denoise=0\n[TTS] Prompt: B'=2 K=8 S=42 c_len=42 u_len=29\n[MaskGIT] Start: T=29 K=8 S=42 num_step=8 guidance=2.00 t_shift=0.100 layer_pen=5.00 cls_t=0.00 pos_t=5.00\n[MaskGIT-Step] 1/8 demask=4 remaining=228\n[MaskGIT-Step] 2/8 demask=5 remaining=223\n[MaskGIT-Step] 3/8 demask=6 remaining=217\n[MaskGIT-Step] 4/8 demask=8 remaining=209\n[MaskGIT-Step] 5/8 demask=13 remaining=196\n[MaskGIT-Step] 6/8 demask=21 remaining=175\n[MaskGIT-Step] 7/8 demask=42 remaining=133\n[MaskGIT-Step] 8/8 demask=133 remaining=0\n[MaskGIT] Total LM forward: 681.45 ms across 8 steps (avg 85.18 ms/step)\n[TTS] Decode: K=8 T=29 expected_samples=27840\n[TTS-Long] Post-proc: 27840 -> 32640 samples (1.36s at 24000 Hz, ref_rms=-1.0000)\nsrv  log_server_r: done request: POST /v1/audio/speech 127.0.0.1 200\nsrv  update_slots: all slots are idle\nslot get_availabl: id  1 | task -1 | selected slot by LRU, t_last = -1\nslot launch_slot_: id  1 | task -1 | sampler chain: logits -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> top-p -> min-p -> ?xtc -> temp-ext -> dist \nslot launch_slot_: id  1 | task 15 | processing task, is_child = 0\nslot update_slots: id  1 | task 15 | new prompt, n_ctx_slot = 1024, n_keep = 0, task.n_tokens = 9\nslot update_slots: id  1 | task 15 | n_tokens = 0, memory_seq_rm [0, end)\nslot init_sampler: id  1 | task 15 | init sampler, took 0.00 ms, tokens: text = 9, total = 9\nslot update_slots: id  1 | task 15 | prompt processing done, n_tokens = 9, batch.n_tokens = 9\nsrv  log_server_r: done request: POST /completion 127.0.0.1 200\nslot print_timing: id  1 | task 15 | \nprompt eval time =      19.80 ms /     9 tokens (    2.20 ms per token,   454.50 tokens per second)\n       eval time =      66.61 ms /     4 tokens (   16.65 ms per token,    60.05 tokens per second)\n      total time =      86.41 ms /    13 tokens\nstatistics draft: #calls(b,g,a) = 1 1 0, #gen drafts = 0, #acc drafts = 0, #gen tokens = 0, #acc tokens = 0, dur(b,g,a) = 0.000, 50.359, 0.000 ms\nslot      release: id  1 | task 15 | stop processing: n_tokens = 12, truncated = 0\nsrv  update_slots: all slots are idle\nsrv  update_slots: all slots are idle\n[TTS-Long] Single-shot path: T=29 frames (1.16s), threshold=750 frames\n[Prompt] Built: B'=2 K=8 S=41 N1=6 N2=6 Sref=0 Stgt=29 c_len=41 u_len=29 denoise=0\n[TTS] Prompt: B'=2 K=8 S=41 c_len=41 u_len=29\n[MaskGIT] Start: T=29 K=8 S=41 num_step=8 guidance=2.00 t_shift=0.100 layer_pen=5.00 cls_t=0.00 pos_t=5.00\n[MaskGIT-Step] 1/8 demask=4 remaining=228\n[MaskGIT-Step] 2/8 demask=5 remaining=223\n[MaskGIT-Step] 3/8 demask=6 remaining=217\n[MaskGIT-Step] 4/8 demask=8 remaining=209\n[MaskGIT-Step] 5/8 demask=13 remaining=196\n[MaskGIT-Step] 6/8 demask=21 remaining=175\n[MaskGIT-Step] 7/8 demask=42 remaining=133\n[MaskGIT-Step] 8/8 demask=133 remaining=0\n[MaskGIT] Total LM forward: 199.38 ms across 8 steps (avg 24.92 ms/step)\n[TTS] Decode: K=8 T=29 expected_samples=27840\n[TTS-Long] Post-proc: 27840 -> 32640 samples (1.36s at 24000 Hz, ref_rms=-1.0000)\nsrv  log_server_r: done request: POST /v1/audio/speech 127.0.0.1 200\n[TTS-Long] Single-shot path: T=326 frames (13.04s), threshold=750 frames\n[Prompt] Built: B'=2 K=8 S=375 N1=6 N2=43 Sref=0 Stgt=326 c_len=375 u_len=326 denoise=0\n[TTS] Prompt: B'=2 K=8 S=375 c_len=375 u_len=326\n[MaskGIT] Start: T=326 K=8 S=375 num_step=32 guidance=2.00 t_shift=0.100 layer_pen=5.00 cls_t=0.00 pos_t=5.00\n"
+}

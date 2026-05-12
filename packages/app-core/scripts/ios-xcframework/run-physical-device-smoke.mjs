@@ -999,7 +999,7 @@ schemes:
 `,
   );
 
-  runInherit("xcodegen", ["generate"], { cwd: tempDir });
+  runInherit("xcrun", ["xcodegen", "generate"], { cwd: tempDir });
 }
 
 function writeReport(reportPath, report) {

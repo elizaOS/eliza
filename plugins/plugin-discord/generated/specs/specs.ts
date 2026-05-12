@@ -22,35 +22,11 @@ export type ProviderDoc = {
 
 export const coreActionsSpec = {
   "version": "1.0.0",
-  "actions": [
-    {
-      "name": "DISCORD_SETUP_CREDENTIALS",
-      "description": "Start Discord credential setup or account pairing when the user requests setup.",
-      "descriptionCompressed": "Set up Discord credentials.",
-      "similes": [
-        "SETUP_CREDENTIALS",
-        "PAIR_CONNECTOR",
-        "CONNECT_ACCOUNT"
-      ],
-      "parameters": []
-    }
-  ]
+  "actions": []
 } as const;
 export const allActionsSpec = {
   "version": "1.0.0",
-  "actions": [
-    {
-      "name": "DISCORD_SETUP_CREDENTIALS",
-      "description": "Start Discord credential setup or account pairing when the user requests setup.",
-      "descriptionCompressed": "Set up Discord credentials.",
-      "similes": [
-        "SETUP_CREDENTIALS",
-        "PAIR_CONNECTOR",
-        "CONNECT_ACCOUNT"
-      ],
-      "parameters": []
-    }
-  ]
+  "actions": []
 } as const;
 export const coreProvidersSpec = {
   "version": "1.0.0",

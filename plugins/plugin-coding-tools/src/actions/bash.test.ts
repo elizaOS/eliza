@@ -6,23 +6,29 @@ import { describe, expect, it, vi } from "vitest";
 
 import { SandboxService, SessionCwdService } from "../services/index.js";
 import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
-import { bashAction } from "./bash.js";
+import { shellAction } from "./bash.js";
 
 interface RuntimeOptions {
   blockedPaths?: string;
-  bashTimeoutMs?: number;
+  shellTimeoutMs?: number;
+  shellHistoryCommands?: string[];
+  withShellHistoryService?: boolean;
 }
 
 async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   runtime: IAgentRuntime;
   sandbox: SandboxService;
   session: SessionCwdService;
+  shellHistoryService?: {
+    clearCommandHistory: ReturnType<typeof vi.fn>;
+    getCommandHistory: ReturnType<typeof vi.fn>;
+  };
 }> {
   const settings: Record<string, unknown> = {};
   if (opts.blockedPaths)
     settings.CODING_TOOLS_BLOCKED_PATHS = opts.blockedPaths;
-  if (opts.bashTimeoutMs !== undefined)
-    settings.CODING_TOOLS_BASH_TIMEOUT_MS = opts.bashTimeoutMs;
+  if (opts.shellTimeoutMs !== undefined)
+    settings.CODING_TOOLS_SHELL_TIMEOUT_MS = opts.shellTimeoutMs;
 
   const services = new Map<string, unknown>();
   const runtime = {
@@ -35,8 +41,22 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   const session = await SessionCwdService.start(runtime);
   services.set(SANDBOX_SERVICE, sandbox);
   services.set(SESSION_CWD_SERVICE, session);
+  const shellHistoryService =
+    opts.withShellHistoryService || opts.shellHistoryCommands
+      ? {
+          clearCommandHistory: vi.fn(),
+          getCommandHistory: vi.fn((_conversationId: string, limit?: number) =>
+            (opts.shellHistoryCommands ?? [])
+              .slice(0, limit ?? opts.shellHistoryCommands?.length ?? 0)
+              .map((command) => ({ command })),
+          ),
+        }
+      : undefined;
+  if (shellHistoryService) {
+    services.set("shell", shellHistoryService);
+  }
 
-  return { runtime, sandbox, session };
+  return { runtime, sandbox, session, shellHistoryService };
 }
 
 function makeMessage(roomId = "11111111-aaaa-bbbb-cccc-222222222222"): Memory {
@@ -50,10 +70,10 @@ function makeMessage(roomId = "11111111-aaaa-bbbb-cccc-222222222222"): Memory {
   } as Memory;
 }
 
-describe("bashAction", () => {
+describe("shellAction", () => {
   it("runs a simple foreground command (echo hello)", async () => {
     const { runtime } = await makeRuntime();
-    const result = await bashAction.handler!(
+    const result = await shellAction.handler!(
       runtime,
       makeMessage(),
       undefined,
@@ -71,7 +91,7 @@ describe("bashAction", () => {
     await fs.mkdir(blocked, { recursive: true });
     try {
       const { runtime } = await makeRuntime({ blockedPaths: blocked });
-      const result = await bashAction.handler!(
+      const result = await shellAction.handler!(
         runtime,
         makeMessage(),
         undefined,
@@ -86,7 +106,7 @@ describe("bashAction", () => {
 
   it("returns a timeout failure when the command exceeds its budget", async () => {
     const { runtime } = await makeRuntime();
-    const result = await bashAction.handler!(
+    const result = await shellAction.handler!(
       runtime,
       makeMessage(),
       undefined,
@@ -99,7 +119,7 @@ describe("bashAction", () => {
   it("respects an explicit cwd", async () => {
     const tmpRoot = path.resolve(os.tmpdir());
     const { runtime } = await makeRuntime();
-    const result = await bashAction.handler!(
+    const result = await shellAction.handler!(
       runtime,
       makeMessage(),
       undefined,
@@ -111,7 +131,7 @@ describe("bashAction", () => {
 
   it("returns command_failed when the command exits non-zero", async () => {
     const { runtime } = await makeRuntime();
-    const result = await bashAction.handler!(
+    const result = await shellAction.handler!(
       runtime,
       makeMessage(),
       undefined,
@@ -121,5 +141,43 @@ describe("bashAction", () => {
     expect(result.text).toContain("command_failed");
     const data = result.data as Record<string, unknown> | undefined;
     expect(data?.exit_code).toBe(7);
+  });
+
+  it("clears shell history through the canonical SHELL action", async () => {
+    const { runtime, shellHistoryService } = await makeRuntime({
+      withShellHistoryService: true,
+    });
+    const result = await shellAction.handler!(
+      runtime,
+      makeMessage(),
+      undefined,
+      { action: "clear_history" },
+    );
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("history has been cleared");
+    expect(shellHistoryService?.clearCommandHistory).toHaveBeenCalledOnce();
+    const data = result.data as Record<string, unknown> | undefined;
+    expect(data?.action).toBe("clear_history");
+  });
+
+  it("views shell history through the canonical SHELL action", async () => {
+    const { runtime, shellHistoryService } = await makeRuntime({
+      shellHistoryCommands: ["git status", "bun test"],
+    });
+    const result = await shellAction.handler!(
+      runtime,
+      makeMessage(),
+      undefined,
+      { action: "view_history", limit: 1 },
+    );
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("git status");
+    expect(result.text).not.toContain("bun test");
+    expect(shellHistoryService?.getCommandHistory).toHaveBeenCalledWith(
+      expect.any(String),
+      1,
+    );
+    const data = result.data as Record<string, unknown> | undefined;
+    expect(data?.action).toBe("view_history");
   });
 });

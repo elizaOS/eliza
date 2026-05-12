@@ -189,10 +189,10 @@ def attach_usage_cache_fields(turn: Any, usage: dict[str, Any]) -> None:
         cache_read_raw = usage.get("cache_read_input_tokens")
     cache_creation_raw = usage.get("cache_creation_input_tokens")
 
-    cache_read_value: Optional[int] = (
+    cache_read_value: int | None = (
         int(cache_read_raw) if isinstance(cache_read_raw, (int, float)) else None
     )
-    cache_creation_value: Optional[int] = (
+    cache_creation_value: int | None = (
         int(cache_creation_raw)
         if isinstance(cache_creation_raw, (int, float))
         else None
@@ -265,7 +265,8 @@ class TurnResult:
     latency_ms: int | None
     input_tokens: int
     output_tokens: int
-    cost_usd: float | None
+    cost_usd: float | None = None
+    tool_results: list[dict[str, Any]] = field(default_factory=list)
     cache_read_input_tokens: int | None = None
     cache_creation_input_tokens: int | None = None
     cache_hit_pct: float | None = None

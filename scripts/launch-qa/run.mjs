@@ -10,6 +10,7 @@ const repoRoot = path.resolve(scriptDir, "..", "..");
 
 const QUICK_TASK_IDS = new Set([
   "mobile-artifacts",
+  "ui-focused",
   "app-core-focused",
   "agent-focused",
   "lifeops-focused",
@@ -53,17 +54,31 @@ const TASKS = [
       "run",
       "--config",
       "packages/app-core/vitest.config.ts",
-      "packages/app-core/src/api/client-cloud-direct-auth.test.ts",
-      "packages/app-core/src/state/persistence-cloud-active-server.test.ts",
       "packages/app-core/scripts/startup-integration-script-drift.test.ts",
     ],
     requiredFiles: [
-      "packages/app-core/src/api/client-cloud-direct-auth.test.ts",
-      "packages/app-core/src/state/persistence-cloud-active-server.test.ts",
       "packages/app-core/scripts/startup-integration-script-drift.test.ts",
     ],
     description:
-      "Focused app-core cloud auth, persistence, and startup script drift tests",
+      "Focused app-core startup script drift tests",
+  },
+  {
+    id: "ui-focused",
+    tier: 0,
+    command: "bunx",
+    args: [
+      "vitest",
+      "run",
+      "--config",
+      "packages/ui/vitest.config.ts",
+      "packages/ui/src/api/client-cloud-direct-auth.test.ts",
+      "packages/ui/src/state/persistence-cloud-active-server.test.ts",
+    ],
+    requiredFiles: [
+      "packages/ui/src/api/client-cloud-direct-auth.test.ts",
+      "packages/ui/src/state/persistence-cloud-active-server.test.ts",
+    ],
+    description: "Focused UI cloud auth and persistence tests",
   },
   {
     id: "agent-focused",
@@ -74,14 +89,12 @@ const TASKS = [
       "run",
       "--config",
       "packages/agent/vitest.config.ts",
-      "packages/agent/src/actions/search.test.ts",
-      "packages/agent/src/runtime/operations/vault-integration.test.ts",
+      "packages/agent/test/runtime/operations/vault-integration.test.ts",
     ],
     requiredFiles: [
-      "packages/agent/src/actions/search.test.ts",
-      "packages/agent/src/runtime/operations/vault-integration.test.ts",
+      "packages/agent/test/runtime/operations/vault-integration.test.ts",
     ],
-    description: "Focused agent search and vault runtime tests",
+    description: "Focused agent vault runtime tests",
   },
   {
     id: "lifeops-focused",
@@ -236,15 +249,26 @@ function parseArgs(argv) {
   return args;
 }
 
+function taskMissingReasons(task) {
+  const missing = [];
+  if (
+    task.optionalScript &&
+    !fs.existsSync(path.join(repoRoot, task.optionalScript))
+  ) {
+    missing.push(`optional script missing: ${task.optionalScript}`);
+  }
+  for (const file of task.requiredFiles ?? []) {
+    if (!fs.existsSync(path.join(repoRoot, task.cwd ?? "", file))) {
+      missing.push(
+        `required file missing: ${path.join(task.cwd ?? "", file).split(path.sep).join("/")}`,
+      );
+    }
+  }
+  return missing;
+}
+
 function taskExists(task) {
-  return (
-    (!task.optionalScript ||
-      fs.existsSync(path.join(repoRoot, task.optionalScript))) &&
-    (!task.requiredFiles ||
-      task.requiredFiles.every((file) =>
-        fs.existsSync(path.join(repoRoot, task.cwd ?? "", file)),
-      ))
-  );
+  return taskMissingReasons(task).length === 0;
 }
 
 function tasksForSuite(suite) {
@@ -282,11 +306,12 @@ Suites:
 }
 
 async function runTask(task, options) {
-  if (!taskExists(task)) {
+  const missingReasons = taskMissingReasons(task);
+  if (missingReasons.length > 0) {
     return {
       id: task.id,
       status: "skipped",
-      reason: `optional script missing: ${task.optionalScript}`,
+      reason: missingReasons.join("; "),
     };
   }
 

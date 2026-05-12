@@ -413,6 +413,30 @@ def _run_e2e_loop_bench(ctx: EvalContext, turns: int) -> dict[str, Any]:
         "--report", str(out_json),
         "--quiet",
     ]
+    wavs = os.environ.get("ELIZA_EVAL_E2E_WAVS") or os.environ.get("ELIZA_EVAL_E2E_WAV")
+    refs = os.environ.get("ELIZA_EVAL_E2E_REFS") or os.environ.get("ELIZA_EVAL_E2E_REF")
+    n_predict = os.environ.get("ELIZA_EVAL_E2E_N_PREDICT")
+    endurance_n_predict = os.environ.get("ELIZA_EVAL_E2E_ENDURANCE_N_PREDICT")
+    tts_steps = os.environ.get("ELIZA_EVAL_E2E_TTS_STEPS")
+    mic_tts_steps = os.environ.get("ELIZA_EVAL_E2E_MIC_TTS_STEPS")
+    ctx_tokens = os.environ.get("ELIZA_EVAL_E2E_CTX")
+    ngl = os.environ.get("ELIZA_EVAL_E2E_NGL")
+    if wavs:
+        args += ["--wav", wavs]
+    if refs:
+        args += ["--ref", refs]
+    if n_predict:
+        args += ["--n-predict", n_predict]
+    if endurance_n_predict:
+        args += ["--endurance-n-predict", endurance_n_predict]
+    if tts_steps:
+        args += ["--tts-steps", tts_steps]
+    if mic_tts_steps:
+        args += ["--mic-tts-steps", mic_tts_steps]
+    if ctx_tokens:
+        args += ["--ctx", ctx_tokens]
+    if ngl:
+        args += ["--ngl", ngl]
     if ctx.engine is not None:
         args += ["--bin-dir", str(ctx.engine.bin_dir)]
     # An endurance run on CPU is many minutes; give it room (the harness has
@@ -447,7 +471,18 @@ def _run_e2e_loop_bench(ctx: EvalContext, turns: int) -> dict[str, Any]:
 
 
 def _e2e_summary(report: dict[str, Any]) -> dict[str, Any] | None:
-    return report.get("summary") if isinstance(report, dict) and report.get("status") == "ok" else None
+    if not isinstance(report, dict):
+        return None
+    summary = report.get("summary")
+    if not isinstance(summary, dict):
+        return None
+    # `needs-optimization` means the real ASR → text → TTS loop completed, but
+    # one or more optimization gates (currently DFlash drafting or streaming
+    # TTS) were inactive. The metric evals still need the real latency/WER/RTF
+    # numbers from that run; optimization readiness is judged by separate gates.
+    if report.get("status") == "ok" or report.get("e2eLoopOk") is True or summary.get("flowCompletedOk") is True:
+        return summary
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -992,7 +1027,7 @@ def eval_dflash_accept(ctx: EvalContext) -> dict[str, Any]:
             "outputTail": "\n".join(out.strip().splitlines()[-30:]),
             "binary": str(spec),
         }
-    if not drafted or accepted is None:
+    if drafted is None or accepted is None:
         return {
             **base,
             "status": "not-run",
@@ -1002,6 +1037,23 @@ def eval_dflash_accept(ctx: EvalContext) -> dict[str, Any]:
             "reason": "could not parse n_drafted / n_drafted_accepted from speculative run",
             "outputTail": "\n".join(out.strip().splitlines()[-30:]),
             "binary": str(spec),
+        }
+    if drafted == 0:
+        return {
+            **base,
+            "status": "fail",
+            "acceptanceRate": 0.0,
+            "drafted": 0,
+            "accepted": accepted,
+            "tokensPredicted": n_predict,
+            "wallSeconds": round(wall_s, 2),
+            "target": str(target),
+            "drafter": str(drafter),
+            "binary": str(spec),
+            "reason": (
+                "speculative run completed but produced zero draft tokens; "
+                "this is a real DFlash readiness failure, not missing data"
+            ),
         }
     rate = round(accepted / drafted, 4)
     return {

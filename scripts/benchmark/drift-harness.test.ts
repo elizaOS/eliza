@@ -23,6 +23,7 @@ import {
   planFacts,
   planToolCalls,
   probeFact,
+  probeToolCall,
   rng,
   runDriftHarness,
 } from "./drift-harness";
@@ -244,6 +245,61 @@ describe("probeFact exact recall scoring", () => {
         exactMatch: true,
       },
     });
+    expect(outcome.correct).toBe(false);
+  });
+
+  it("scores final answers inside reasoning traces without global hedge pollution", async () => {
+    const client: ModelClient = {
+      chat: async () => ({
+        content:
+          "Maybe the user asked earlier; scan the notes. The recorded result was LIME-4421.",
+      }),
+    };
+    const outcome = await probeFact({
+      client,
+      model: "fake",
+      judgeModel: "fake",
+      judgeWithModel: false,
+      history: [],
+      systemPrompt: "test",
+      fact: {
+        id: "fact_1",
+        turn: 1,
+        kind: "code",
+        utterance: "The code is LIME-4421.",
+        expected: "LIME-4421",
+        question: "What is the code?",
+        exactMatch: true,
+      },
+    });
+
+    expect(outcome.correct).toBe(true);
+  });
+
+  it("still rejects a hedge local to the expected value", async () => {
+    const client: ModelClient = {
+      chat: async () => ({
+        content: "The code might be LIME-4421.",
+      }),
+    };
+    const outcome = await probeFact({
+      client,
+      model: "fake",
+      judgeModel: "fake",
+      judgeWithModel: false,
+      history: [],
+      systemPrompt: "test",
+      fact: {
+        id: "fact_1",
+        turn: 1,
+        kind: "code",
+        utterance: "The code is LIME-4421.",
+        expected: "LIME-4421",
+        question: "What is the code?",
+        exactMatch: true,
+      },
+    });
+
     expect(outcome.correct).toBe(false);
   });
 
@@ -609,6 +665,25 @@ describe("planFacts balanced kind distribution", () => {
     }
   });
 
+  it("disambiguates repeated fact kinds with memory slots", () => {
+    const facts = planFacts({
+      totalTurns: 200,
+      count: FACT_KINDS.length * 2,
+      seed: 17,
+    });
+    const repeated = facts.filter(
+      (fact) => facts.filter((other) => other.kind === fact.kind).length > 1,
+    );
+
+    expect(repeated.length).toBe(facts.length);
+    for (const fact of repeated) {
+      expect(fact.utterance).toMatch(/For memory slot /);
+      expect(fact.question).toMatch(/For memory slot /);
+    }
+    const questions = repeated.map((fact) => fact.question);
+    expect(new Set(questions).size).toBe(questions.length);
+  });
+
   it("does not produce api_key facts", () => {
     const facts = planFacts({ totalTurns: 200, count: 24, seed: 5 });
     expect(facts.some((f) => (f.kind as string) === "api_key")).toBe(false);
@@ -698,6 +773,79 @@ describe("planToolCalls and tool-call probes", () => {
     const summary = sink.events.find((e) => e.event === "summary");
     if (!summary || summary.event !== "summary") throw new Error("unreachable");
     expect(summary.perKindAccuracy.tool_call?.total).toBe(1);
+  });
+
+  it("rejects contaminated tool-call answers that include another identifier", async () => {
+    const client: ModelClient = {
+      chat: async () => ({
+        content: "The fetch_metric result was DEAD00-11, then ABC123-22.",
+      }),
+    };
+
+    const outcome = await probeToolCall({
+      client,
+      model: "fake",
+      history: [],
+      systemPrompt: "test",
+      toolCall: {
+        id: "tool_25",
+        turn: 25,
+        toolName: "fetch_metric",
+        toolValue: "ABC123-22",
+        question: "What did the fetch_metric tool return at turn 25?",
+      },
+    });
+
+    expect(outcome.correct).toBe(false);
+    expect(outcome.judgeReasoning).toContain("contaminated");
+  });
+
+  it("accepts isolated tool-call answers with explanatory text", async () => {
+    const client: ModelClient = {
+      chat: async () => ({
+        content: "The fetch_metric result at turn 25 was ABC123-22.",
+      }),
+    };
+
+    const outcome = await probeToolCall({
+      client,
+      model: "fake",
+      history: [],
+      systemPrompt: "test",
+      toolCall: {
+        id: "tool_25",
+        turn: 25,
+        toolName: "fetch_metric",
+        toolValue: "ABC123-22",
+        question: "What did the fetch_metric tool return at turn 25?",
+      },
+    });
+
+    expect(outcome.correct).toBe(true);
+  });
+
+  it("accepts repeated copies of the same tool-call value", async () => {
+    const client: ModelClient = {
+      chat: async () => ({
+        content: "ABC123-22\n\nABC123-22",
+      }),
+    };
+
+    const outcome = await probeToolCall({
+      client,
+      model: "fake",
+      history: [],
+      systemPrompt: "test",
+      toolCall: {
+        id: "tool_25",
+        turn: 25,
+        toolName: "fetch_metric",
+        toolValue: "ABC123-22",
+        question: "What did the fetch_metric tool return at turn 25?",
+      },
+    });
+
+    expect(outcome.correct).toBe(true);
   });
 
   it("emits tool_call/tool_result turn events alongside the user/assistant pair", async () => {

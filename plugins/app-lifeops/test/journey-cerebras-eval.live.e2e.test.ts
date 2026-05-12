@@ -631,28 +631,36 @@ describeIfKey("Domain 3 — Habits", () => {
 describeIfKey("Domain 4 — Routines & multi-step daily flows", () => {
   it("morning routine chains check-in → recap → output via pipeline.onComplete", async () => {
     const h = makeHarness();
-    // The recap is scheduled first so we have a string ref for the
-    // check-in's pipeline.onComplete (ScheduledTaskRef = string | ScheduledTask).
-    const recap = await h.runner.schedule(
-      input({
-        kind: "recap",
-        promptInstructions: "morning recap",
-        pipeline: {
-          onComplete: [
-            input({ kind: "output", promptInstructions: "send brief" }),
-          ],
-        },
-      }),
-    );
+    const recapInput = input({
+      kind: "recap",
+      promptInstructions: "morning recap",
+    });
+    const briefInput = input({
+      kind: "output",
+      promptInstructions: "send brief",
+    });
     const checkin = await h.runner.schedule(
       input({
         kind: "checkin",
         promptInstructions: "did you sleep ok?",
         trigger: { kind: "during_window", windowKey: "morning" },
-        pipeline: { onComplete: [recap.taskId] },
+        pipeline: {
+          onComplete: [
+            {
+              ...recapInput,
+              pipeline: { onComplete: [briefInput] },
+            } as unknown as ScheduledTask,
+          ],
+        },
       }),
     );
     await h.runner.apply(checkin.taskId, "complete");
+    const afterCheckin = await h.runner.list();
+    const recap = afterCheckin.find(
+      (task) => task.promptInstructions === "morning recap",
+    );
+    expect(recap).toBeDefined();
+    if (!recap) throw new Error("recap missing after check-in completion");
     await h.runner.apply(recap.taskId, "complete");
     const tasks = await h.runner.list();
     const log = await collectLog(h.logStore, h.agentId, tasks.map((t) => t.taskId));
@@ -660,9 +668,9 @@ describeIfKey("Domain 4 — Routines & multi-step daily flows", () => {
       domain: 4,
       title: "Routines & multi-step daily flows",
       description:
-        "A morning routine is one check-in → recap → send-brief output, chained via pipeline.onComplete (string-ref into recap, recap.onComplete inlines the brief).",
+        "A morning routine is one check-in → recap → send-brief output, chained via pipeline.onComplete so each child is created by parent completion.",
       scenarioSummary:
-        "Schedule recap (with onComplete=[send brief]) then check-in (with onComplete=[recap.taskId]); complete check-in then complete recap.",
+        "Schedule check-in with inline recap.onComplete=[send brief]; complete check-in to create recap, then complete recap.",
       tasks,
       logEntries: log,
     });

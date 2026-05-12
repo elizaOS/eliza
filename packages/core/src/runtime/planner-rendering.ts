@@ -10,6 +10,82 @@ import {
 } from "./provider-cache-plan";
 
 /**
+ * Options for {@link trajectoryStepsToMessages}.
+ */
+export interface TrajectoryStepsToMessagesOptions {
+	/**
+	 * When set, caps each rendered tool-result string to this many characters.
+	 *
+	 * A single pathologically-large tool result (a 30 KB shell output, a
+	 * full file read, a multi-thousand-line grep) can blow the planner's
+	 * compaction budget single-handedly when it lives inside the
+	 * kept-verbatim window after compaction. This cap renders such results
+	 * as `<head> ... [N chars truncated] ... <tail>` so the planner still
+	 * sees the beginning and end of the result (which is where structure
+	 * lives) without paying for the middle.
+	 *
+	 * **The trajectory itself is unchanged** — the raw `PlannerStep.result`
+	 * still carries the full content for archival, recorder, replay, and
+	 * any downstream consumer that wants the unredacted output. Only the
+	 * wire-shape message that goes to the next planner call is truncated.
+	 *
+	 * Default: undefined (no cap — exact pre-PR behavior).
+	 */
+	maxToolResultChars?: number;
+}
+
+/**
+ * Truncate a tool-result string to fit within `maxChars` by keeping a head
+ * + tail and stitching in a deterministic marker. Pure function — exported
+ * so the evaluator/recorder can mirror the exact rendering rule.
+ *
+ * Returns the input unchanged when it already fits OR when `maxChars` is
+ * unset / non-positive / not finite.
+ */
+export function truncateToolResultText(
+	text: string,
+	maxChars: number | undefined,
+): string {
+	if (
+		typeof maxChars !== "number" ||
+		!Number.isFinite(maxChars) ||
+		maxChars <= 0
+	) {
+		return text;
+	}
+	if (text.length <= maxChars) {
+		return text;
+	}
+
+	const limit = Math.floor(maxChars);
+	const markerFor = (count: number) => ` [${count} chars truncated] `;
+
+	for (
+		let preserveBudget = limit - markerFor(text.length).length;
+		preserveBudget > 0;
+		preserveBudget--
+	) {
+		const headFloor = preserveBudget >= 20 ? 10 : 1;
+		const tailFloor = preserveBudget >= 20 ? 10 : preserveBudget > 1 ? 1 : 0;
+		const headChars = Math.max(headFloor, Math.floor(preserveBudget * 0.6));
+		const tailChars = Math.max(tailFloor, preserveBudget - headChars);
+		const preservedChars = headChars + tailChars;
+		const truncatedCount = text.length - preservedChars;
+		if (truncatedCount <= 0) {
+			return text.slice(0, limit);
+		}
+		const marker = markerFor(truncatedCount);
+		if (preservedChars + marker.length <= limit) {
+			const head = text.slice(0, headChars);
+			const tail = text.slice(text.length - tailChars);
+			return `${head}${marker}${tail}`;
+		}
+	}
+
+	return text.slice(0, limit);
+}
+
+/**
  * Convert completed trajectory steps into proper assistant/tool message pairs
  * for native tool-calling. Skips steps that lack a toolCall or result (e.g.
  * terminal-only steps). The resulting array grows append-only across planner
@@ -28,7 +104,10 @@ import {
  * planner-loop then iterates until `TrajectoryLimitExceeded` on every
  * shell-tool turn.
  */
-export function trajectoryStepsToMessages(steps: PlannerStep[]): ChatMessage[] {
+export function trajectoryStepsToMessages(
+	steps: PlannerStep[],
+	options: TrajectoryStepsToMessagesOptions = {},
+): ChatMessage[] {
 	const messages: ChatMessage[] = [];
 	for (const step of steps) {
 		if (!step.toolCall || !step.result) {
@@ -52,6 +131,11 @@ export function trajectoryStepsToMessages(steps: PlannerStep[]): ChatMessage[] {
 			content: assistantContent,
 		});
 
+		const rawResultText = toolMessageContent(step.result);
+		const renderedResultText = truncateToolResultText(
+			rawResultText,
+			options.maxToolResultChars,
+		);
 		messages.push({
 			role: "tool",
 			content: [
@@ -59,7 +143,7 @@ export function trajectoryStepsToMessages(steps: PlannerStep[]): ChatMessage[] {
 					type: "tool-result",
 					toolCallId,
 					toolName: step.toolCall.name,
-					output: { type: "text", value: toolMessageContent(step.result) },
+					output: { type: "text", value: renderedResultText },
 				},
 			],
 		});

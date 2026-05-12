@@ -160,8 +160,8 @@ function buildEconomicText(
 
   // Payment capability
   parts.push("### Payment Capability");
-  parts.push("- To request payment, use the REQUEST_PAYMENT action");
-  parts.push("- To check payment status, use the CHECK_PAYMENT action");
+  parts.push("- To request payment, use PAYMENT with action=request");
+  parts.push("- To check payment status, use PAYMENT with action=check");
   parts.push("- You choose the amount — there is no fixed price");
   parts.push(
     `- Your configured base rates: tarot $${pricing.tarot}, i ching $${pricing.iching}, astrology $${pricing.astrology}`

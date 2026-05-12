@@ -3,7 +3,6 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { FRAME_FILE } from "@elizaos/plugin-browser";
 import { logger } from "@elizaos/core";
-import sharp from "sharp";
 
 export type LifeOpsScreenFocus =
   | "work"
@@ -41,11 +40,26 @@ export interface LifeOpsScreenOcrAdapter {
   extractText(imageBuffer: Buffer): Promise<string | null>;
 }
 
+export type LifeOpsScreenImageStats = {
+  width: number;
+  height: number;
+  averageLuma: number;
+  lumaStdDev: number;
+  darkRatio: number;
+  brightRatio: number;
+  edgeRatio: number;
+};
+
+export interface LifeOpsScreenImageAnalyzer {
+  analyze(imageBuffer: Buffer): Promise<LifeOpsScreenImageStats>;
+}
+
 export interface LifeOpsScreenContextSamplerOptions {
   framePath?: string;
   minSampleIntervalMs?: number;
   maxFrameAgeMs?: number;
   ocr?: LifeOpsScreenOcrAdapter | null;
+  imageAnalyzer?: LifeOpsScreenImageAnalyzer | null;
 }
 
 const DEFAULT_MIN_SAMPLE_INTERVAL_MS = 5 * 60_000;
@@ -110,15 +124,16 @@ const TRANSITION_KEYWORDS = [
   "launchpad",
 ];
 
-type ImageStats = {
-  width: number;
-  height: number;
-  averageLuma: number;
-  lumaStdDev: number;
-  darkRatio: number;
-  brightRatio: number;
-  edgeRatio: number;
-};
+type SharpFactory = typeof import("sharp");
+type SharpModuleWithDefault = { default: SharpFactory };
+
+let sharpImportPromise: Promise<SharpFactory> | null = null;
+
+function hasDefaultSharpFactory(
+  mod: SharpFactory | SharpModuleWithDefault,
+): mod is SharpModuleWithDefault {
+  return typeof (mod as SharpModuleWithDefault).default === "function";
+}
 
 function normalizeText(value: string | null | undefined): string {
   return (value ?? "")
@@ -132,7 +147,17 @@ function keywordMatches(text: string, keywords: readonly string[]): string[] {
   return keywords.filter((keyword) => lower.includes(keyword));
 }
 
-async function analyzeImage(buffer: Buffer): Promise<ImageStats> {
+async function loadSharp(): Promise<SharpFactory> {
+  sharpImportPromise ??= import("sharp").then((mod) =>
+    hasDefaultSharpFactory(mod) ? mod.default : mod,
+  );
+  return await sharpImportPromise;
+}
+
+async function analyzeImageWithSharp(
+  buffer: Buffer,
+): Promise<LifeOpsScreenImageStats> {
+  const sharp = await loadSharp();
   const image = sharp(buffer).rotate().greyscale().resize({
     width: 160,
     withoutEnlargement: true,
@@ -179,9 +204,18 @@ async function analyzeImage(buffer: Buffer): Promise<ImageStats> {
   };
 }
 
+async function analyzeImage(
+  buffer: Buffer,
+  analyzer: LifeOpsScreenImageAnalyzer | null | undefined,
+): Promise<LifeOpsScreenImageStats> {
+  return analyzer
+    ? await analyzer.analyze(buffer)
+    : await analyzeImageWithSharp(buffer);
+}
+
 function inferFocusFromSignals(args: {
   text: string | null;
-  stats: ImageStats;
+  stats: LifeOpsScreenImageStats;
 }): {
   focus: LifeOpsScreenFocus;
   contextTags: string[];
@@ -303,8 +337,9 @@ export async function analyzeLifeOpsScreenBuffer(args: {
   capturedAtMs: number;
   sampledAtMs: number;
   stale: boolean;
+  imageAnalyzer?: LifeOpsScreenImageAnalyzer | null;
 }): Promise<LifeOpsScreenContextSummary> {
-  const stats = await analyzeImage(args.frameBytes);
+  const stats = await analyzeImage(args.frameBytes, args.imageAnalyzer);
   const inference = inferFocusFromSignals({
     text: args.ocrText,
     stats,
@@ -391,6 +426,7 @@ export class LifeOpsScreenContextSampler {
         capturedAtMs: stat.mtimeMs,
         sampledAtMs: nowMs,
         stale,
+        imageAnalyzer: this.options.imageAnalyzer,
       });
 
       this.lastSampleAtMs = nowMs;

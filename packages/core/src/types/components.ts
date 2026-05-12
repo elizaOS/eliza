@@ -301,7 +301,7 @@ export interface Action {
 	 * domain-routing prose in the v5 planner template. Format:
 	 *   "<TRIGGER> -> <action> [+ secondary contexts]; <do/don't note>"
 	 * Examples:
-	 *   - BOOK_TRAVEL: "real flight/hotel/trip booking -> BOOK_TRAVEL; no browse-first or web-search-first"
+	 *   - PERSONAL_ASSISTANT: "real flight/hotel/trip booking -> PERSONAL_ASSISTANT action=book_travel; no browse-first or web-search-first"
 	 *   - VOICE_CALL:  "explicit call/phone/dial a person/business -> VOICE_CALL first; calendar/email secondary"
 	 * Surfaced into the planner prompt via {{actionRoutingHints}} so each
 	 * action carries its own routing rule alongside its description.

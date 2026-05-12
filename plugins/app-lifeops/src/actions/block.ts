@@ -1,8 +1,8 @@
 /**
  * BLOCK umbrella — Audit B Defer #1.
  *
- * Folds the previous standalone `APP_BLOCK` (phone apps) and `WEBSITE_BLOCK`
- * (desktop hosts file / SelfControl) actions into a single umbrella keyed by
+ * Folds phone-app blocking and desktop website blocking into a single
+ * umbrella keyed by
  * `target: "app" | "website"`. The runtime backends stay untouched: each
  * action value dispatches into the existing backend handlers.
  *
@@ -183,10 +183,13 @@ function resolveTarget(
   if (fromParams) return fromParams;
   const subactionRaw = params.action ?? params.subaction;
   const fromSubaction = inferTargetFromSubaction(
-    typeof subactionRaw === "string" ? subactionRaw.trim().toLowerCase() : undefined,
+    typeof subactionRaw === "string"
+      ? subactionRaw.trim().toLowerCase()
+      : undefined,
   );
   if (fromSubaction) return fromSubaction;
-  const text = typeof message.content?.text === "string" ? message.content.text : "";
+  const text =
+    typeof message.content?.text === "string" ? message.content.text : "";
   return inferTargetFromText(text);
 }
 
@@ -243,7 +246,10 @@ const examples: ActionExample[][] = [
     },
   ],
   [
-    { name: "{{name1}}", content: { text: "Is there a website block running?" } },
+    {
+      name: "{{name1}}",
+      content: { text: "Is there a website block running?" },
+    },
     {
       name: "{{agentName}}",
       content: {
@@ -269,26 +275,18 @@ export const blockAction: Action & {
 } = {
   name: ACTION_NAME,
   similes: [
-    // Legacy umbrella names — keep so cached planner outputs and the
-    // `lifeops` provider's route hints keep resolving.
-    "WEBSITE_BLOCK",
-    "APP_BLOCK",
-    // Legacy similes from the two folded actions. Scoped to phone-app /
-    // desktop-website blocking only — calendar time-blocking ("block out 2
-    // hours for deep work") routes through CALENDAR.create_event, not BLOCK.
-    // Names like FOCUS_BLOCK / AUTOMATION_FOCUS_BLOCK / TIME_BLOCK that
-    // suggest scheduling a calendar block are intentionally NOT similes here.
-    "WEBSITE_BLOCKER",
+    // Scoped to phone-app / desktop-website blocking only. Calendar
+    // time-blocking requests route through
+    // CALENDAR.create_event, not BLOCK. Names like FOCUS_BLOCK /
+    // AUTOMATION_FOCUS_BLOCK / TIME_BLOCK that suggest scheduling a calendar
+    // block are intentionally NOT similes here.
     "SELFCONTROL",
     "SITE_BLOCKER",
     "HOSTS_BLOCK",
     "BLOCK_WEBSITE",
-    "APP_BLOCKER",
     "SHIELD_APPS",
     "FAMILY_CONTROLS",
     "PHONE_FOCUS",
-    "SET_APP_BLOCK",
-    "PHONE_SET_APP_BLOCK",
     "PHONE_BLOCK_APPS",
     "BLOCK_APPS",
   ],
@@ -370,13 +368,15 @@ export const blockAction: Action & {
     },
     {
       name: "ruleId",
-      description: "(target=website, action=release) ID of the managed block rule to release.",
+      description:
+        "(target=website, action=release) ID of the managed block rule to release.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "reason",
-      description: "(target=website, action=release) Optional reason recorded on the rule when released.",
+      description:
+        "(target=website, action=release) Optional reason recorded on the rule when released.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -432,7 +432,7 @@ export const blockAction: Action & {
     if (!target) {
       return {
         success: false,
-        text: "BLOCK requires `target: \"app\"` or `target: \"website\"`.",
+        text: 'BLOCK requires `target: "app"` or `target: "website"`.',
         data: { actionName: ACTION_NAME, error: "MISSING_TARGET" },
       };
     }

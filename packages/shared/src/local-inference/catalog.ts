@@ -201,9 +201,17 @@ function kvCacheForContext(
   contextLength: number,
 ): NonNullable<CatalogModel["runtime"]>["kvCache"] {
   if (contextLength > 8192) {
-    return { typeK: "qjl1_256", typeV: "q4_polar", requiresFork: "buun-llama-cpp" };
+    return {
+      typeK: "qjl1_256",
+      typeV: "q4_polar",
+      requiresFork: "buun-llama-cpp",
+    };
   }
-  return { typeK: "turbo3_0", typeV: "turbo4_0", requiresFork: "buun-llama-cpp" };
+  return {
+    typeK: "turbo3_0",
+    typeV: "turbo4_0",
+    requiresFork: "buun-llama-cpp",
+  };
 }
 
 function runtimeFor(

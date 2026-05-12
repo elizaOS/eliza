@@ -57,6 +57,7 @@ export function CompanionPerformanceSettings() {
                 className="min-h-touch flex-1 basis-[calc(50%-0.25rem)] rounded-lg border px-2 py-1.5 text-xs-tight font-semibold !whitespace-normal sm:basis-0"
                 onClick={() => setCompanionVrmPowerMode(mode)}
                 aria-pressed={active}
+                data-testid={`settings-companion-vrm-power-${mode}`}
               >
                 {t(`settings.companionVrmPower.${mode}`)}
               </Button>
@@ -93,6 +94,7 @@ export function CompanionPerformanceSettings() {
                     className="min-h-touch flex-1 basis-[calc(50%-0.25rem)] rounded-lg border px-2 py-1.5 text-xs-tight font-semibold !whitespace-normal sm:basis-0"
                     onClick={() => setCompanionHalfFramerateMode(mode)}
                     aria-pressed={active}
+                    data-testid={`settings-companion-half-framerate-${mode}`}
                   >
                     {t(`settings.companionHalfFramerate.${mode}`)}
                   </Button>
@@ -124,6 +126,7 @@ export function CompanionPerformanceSettings() {
               aria-label={t("settings.companionAnimateWhenHidden.title", {
                 defaultValue: "Animate in background",
               })}
+              data-testid="settings-companion-animate-when-hidden-toggle"
             />
           </div>
         </div>

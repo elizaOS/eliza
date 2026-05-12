@@ -12,6 +12,7 @@ let transport: AgentRequestTransport | null = null;
 let globalRequestHandlerInstalled = false;
 let globalFetchBridgeInstalled = false;
 let originalFetch: typeof fetch | null = null;
+let fullBunRuntime: Promise<FullBunRuntimePlugin | null> | null = null;
 
 type FetchWithOptionalPreconnect = typeof fetch & {
   preconnect?: (...args: unknown[]) => unknown;
@@ -32,6 +33,23 @@ export interface IosLocalAgentNativeRequestResult {
   body: string;
 }
 
+interface FullBunRuntimePlugin {
+  start(options: {
+    engine: "bun";
+    argv?: string[];
+    env?: Record<string, string>;
+  }): Promise<{ ok: boolean; error?: string }>;
+  getStatus(): Promise<{ ready: boolean; engine?: "bun" | "compat" }>;
+  call(options: {
+    method: string;
+    args?: unknown;
+  }): Promise<{ result: unknown }>;
+}
+
+interface FullBunRuntimeModule {
+  ElizaBunRuntime: FullBunRuntimePlugin;
+}
+
 declare global {
   interface Window {
     __ELIZA_IOS_LOCAL_AGENT_REQUEST__?: (
@@ -43,6 +61,17 @@ declare global {
 function isNativeIos(): boolean {
   try {
     return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
+  } catch {
+    return false;
+  }
+}
+
+function isFullBunRuntimePluginAvailable(): boolean {
+  try {
+    const capacitor = Capacitor as typeof Capacitor & {
+      isPluginAvailable?: (name: string) => boolean;
+    };
+    return capacitor.isPluginAvailable?.("ElizaBunRuntime") === true;
   } catch {
     return false;
   }
@@ -69,6 +98,138 @@ function isSafeLocalPath(path: string): boolean {
   );
 }
 
+function requestPathFromUrl(url: string): string {
+  const parsed = new URL(url, "http://127.0.0.1:31337");
+  return `${parsed.pathname}${parsed.search}`;
+}
+
+function headersToRecord(headers: Headers): Record<string, string> {
+  const out: Record<string, string> = {};
+  headers.forEach((value, key) => {
+    out[key] = value;
+  });
+  return out;
+}
+
+function normalizeNativeResult(
+  value: unknown,
+): IosLocalAgentNativeRequestResult | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (
+    typeof record.status !== "number" ||
+    typeof record.statusText !== "string" ||
+    typeof record.body !== "string" ||
+    !record.headers ||
+    typeof record.headers !== "object" ||
+    Array.isArray(record.headers)
+  ) {
+    return null;
+  }
+  const headers: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(record.headers)) {
+    if (typeof raw === "string") headers[key] = raw;
+  }
+  return {
+    status: record.status,
+    statusText: record.statusText,
+    headers,
+    body: record.body,
+  };
+}
+
+async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
+  if (!isNativeIos()) return null;
+  if (!isFullBunRuntimePluginAvailable()) return null;
+  fullBunRuntime ??= (async () => {
+    try {
+      const mod = (await import(
+        "@elizaos/capacitor-bun-runtime"
+      )) as FullBunRuntimeModule;
+      const runtime = mod.ElizaBunRuntime;
+      const started = await runtime.start({
+        engine: "bun",
+        argv: ["bun", "public/agent/agent-bundle.js", "ios-bridge", "--stdio"],
+        env: {
+          ELIZA_PLATFORM: "ios",
+          ELIZA_MOBILE_PLATFORM: "ios",
+          ELIZA_IOS_LOCAL_BACKEND: "1",
+          ELIZA_HEADLESS: "1",
+          ELIZA_API_BIND: "127.0.0.1",
+          LOG_LEVEL: "error",
+        },
+      });
+      if (!started.ok) return null;
+      const status = await runtime.getStatus();
+      if (!status.ready || status.engine !== "bun") return null;
+      return runtime;
+    } catch {
+      return null;
+    }
+  })();
+  return fullBunRuntime;
+}
+
+async function tryFullBunNativeRequest(
+  options: IosLocalAgentNativeRequestOptions,
+): Promise<IosLocalAgentNativeRequestResult | null> {
+  const runtime = await getFullBunRuntime();
+  if (!runtime) return null;
+  const response = await runtime.call({
+    method: "http_request",
+    args: {
+      method: options.method,
+      path: options.path,
+      headers: options.headers,
+      body: options.body,
+      timeoutMs: options.timeoutMs,
+    },
+  });
+  const result = normalizeNativeResult(response.result);
+  if (!result) {
+    throw new Error("Full Bun iOS bridge returned an invalid HTTP response");
+  }
+  return result;
+}
+
+async function requestToNativeBridgeOptions(
+  request: Request,
+  context?: { timeoutMs?: number },
+): Promise<IosLocalAgentNativeRequestOptions> {
+  const method = request.method.trim().toUpperCase();
+  return {
+    method,
+    path: requestPathFromUrl(request.url),
+    headers: headersToRecord(request.headers),
+    body: method === "GET" || method === "HEAD" ? null : await request.text(),
+    timeoutMs: context?.timeoutMs,
+  };
+}
+
+function nativeResultToResponse(
+  result: IosLocalAgentNativeRequestResult,
+): Response {
+  const body =
+    result.status === 204 || result.status === 205 || result.status === 304
+      ? null
+      : result.body;
+  return new Response(body, {
+    status: result.status,
+    statusText: result.statusText,
+    headers: result.headers,
+  });
+}
+
+async function dispatchIosLocalAgentRequest(
+  request: Request,
+  context?: { timeoutMs?: number },
+): Promise<Response> {
+  const options = await requestToNativeBridgeOptions(request, context);
+  return nativeResultToResponse(
+    await handleIosLocalAgentNativeRequest(options),
+  );
+}
+
 export async function handleIosLocalAgentNativeRequest(
   options: IosLocalAgentNativeRequestOptions,
 ): Promise<IosLocalAgentNativeRequestResult> {
@@ -82,6 +243,13 @@ export async function handleIosLocalAgentNativeRequest(
   if (!/^[A-Z]{1,16}$/.test(method)) {
     throw new Error("Unsupported HTTP method");
   }
+
+  const fullBunResult = await tryFullBunNativeRequest({
+    ...options,
+    method,
+    path,
+  });
+  if (fullBunResult) return fullBunResult;
 
   startIosLocalAgentKernel();
   const response = await handleIosLocalAgentRequest(
@@ -160,7 +328,7 @@ export function installIosLocalAgentFetchBridge(): void {
     const bridgedRequest = request
       ? new Request(bridgedUrl, request)
       : new Request(bridgedUrl, init);
-    return handleIosLocalAgentRequest(bridgedRequest);
+    return dispatchIosLocalAgentRequest(bridgedRequest);
   }) as typeof fetch;
   const nativeFetchWithPreconnect = nativeFetch as FetchWithOptionalPreconnect;
   if (typeof nativeFetchWithPreconnect.preconnect === "function") {
@@ -175,11 +343,10 @@ export async function iosInProcessAgentTransportForUrl(
   url: string,
 ): Promise<AgentRequestTransport | null> {
   if (!isIosInProcessLocalAgentUrl(url)) return null;
-  startIosLocalAgentKernel();
   installIosLocalAgentNativeRequestBridge();
   installIosLocalAgentFetchBridge();
   transport ??= createIttpAgentTransport((request, context) =>
-    handleIosLocalAgentRequest(request, context),
+    dispatchIosLocalAgentRequest(request, context),
   );
   return transport;
 }

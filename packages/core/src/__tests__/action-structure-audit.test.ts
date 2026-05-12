@@ -8,10 +8,16 @@ const RETIRED_GENERATED_ACTION_NAMES = [
 	"CHECKIN",
 	"CLEAR_HISTORY",
 	"CREATE_PLAN",
+	"CREATE_PAYMENT_REQUEST",
 	"DESKTOP",
+	"DEVICE_FILE_READ",
+	"DEVICE_FILE_WRITE",
+	"DEVICE_LIST_DIR",
 	"DISCORD_SETUP_CREDENTIALS",
+	"DOC",
 	"ENTER_WORKTREE",
 	"EXIT_WORKTREE",
+	"DELIVER_PAYMENT_LINK",
 	"FIRST_RUN",
 	"FORM_RESTORE",
 	"LIFE",
@@ -33,9 +39,9 @@ const RETIRED_GENERATED_ACTION_NAMES = [
 	"PASSWORD_MANAGER",
 	"GOOGLE_CALENDAR",
 	"NOSTR_PUBLISH_PROFILE",
-	"PAYMENT",
 	"PLACE_CALL",
 	"READ_ATTACHMENT",
+	"SHELL_HISTORY",
 	"SHELL_COMMAND",
 	"START_TUNNEL",
 	"STOP_TUNNEL",
@@ -51,6 +57,11 @@ const RETIRED_GENERATED_ACTION_NAMES = [
 	"CREATE_TODO",
 	"COMPLETE_TODO",
 	"LIST_TODOS",
+	"MYSTICISM_PAYMENT",
+	"VERIFY_PAYMENT_PAYLOAD",
+	"SETTLE_PAYMENT",
+	"AWAIT_PAYMENT_CALLBACK",
+	"CANCEL_PAYMENT_REQUEST",
 	"EDIT_TODO",
 	"DELETE_TODO",
 	"TOKEN_INFO",
@@ -118,6 +129,15 @@ const PAGE_DELEGATE_REPLACES = [
 	"OWNER_ACTIONS",
 ] as const;
 
+const REQUIRED_OWNER_SURFACE_ACTION_NAMES = [
+	"SCHEDULED_TASKS",
+	"CREDENTIALS",
+	"PERSONAL_ASSISTANT",
+	"OWNER_DOCUMENTS",
+	"PAYMENT",
+	"FILE",
+] as const;
+
 const LEGACY_DISCRIMINATORS = new Set([
 	"subaction",
 	"op",
@@ -133,6 +153,20 @@ describe("action structure audit guards", () => {
 		for (const retired of RETIRED_GENERATED_ACTION_NAMES) {
 			expect(names.has(retired), retired).toBe(false);
 		}
+	});
+
+	it("keeps canonical owner surfaces present in generated canonical docs", () => {
+		const names = new Set(allActionDocs.map((action) => action.name));
+		const retired = new Set<string>(RETIRED_GENERATED_ACTION_NAMES);
+		for (const name of REQUIRED_OWNER_SURFACE_ACTION_NAMES) {
+			expect(retired.has(name), `${name} must not be marked retired`).toBe(
+				false,
+			);
+			expect(names.has(name), `${name} must be generated`).toBe(true);
+		}
+		expect(retired.has("PAYMENT"), "PAYMENT is not a retired parent").toBe(
+			false,
+		);
 	});
 
 	it("requires schemas with legacy discriminator aliases to expose action", () => {

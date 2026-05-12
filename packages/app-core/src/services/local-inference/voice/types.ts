@@ -60,6 +60,64 @@ export interface OmniVoiceBackend {
   }): Promise<AudioChunk>;
 }
 
+/**
+ * One PCM segment delivered by a streaming OmniVoice runtime. This is the
+ * scheduler-facing TypeScript contract for the future native streaming ABI:
+ * the current v1/batch ABI remains valid, and backends that implement this
+ * seam can additionally surface first-audio before a full phrase finishes.
+ */
+export interface TtsPcmChunk {
+  pcm: Float32Array;
+  sampleRate: number;
+  isFinal: boolean;
+}
+
+export interface StreamingTtsBackend {
+  synthesizeStream(args: {
+    phrase: Phrase;
+    preset: SpeakerPreset;
+    cancelSignal: { cancelled: boolean };
+    onChunk: (chunk: TtsPcmChunk) => boolean | undefined;
+    onKernelTick?: () => void;
+  }): Promise<{ cancelled: boolean }>;
+}
+
+/** Opaque native handle for a streaming ASR session in the v2 ABI shape. */
+export type StreamingAsrHandle = bigint;
+
+/**
+ * TS-only v2 streaming ABI contract. Implementations can satisfy this beside
+ * the existing synchronous v1 methods; callers should test the support flags
+ * rather than probe-and-catch. Native bindings may carry context handles on
+ * top of this shape; the scheduler-facing stream semantics stay the same.
+ */
+export interface VoiceStreamingAbiV2 {
+  ttsStreamSupported(): boolean;
+  ttsSynthesizeStream(args: {
+    text: string;
+    speakerPresetId: string | null;
+    onChunk: (chunk: {
+      pcm: Float32Array;
+      isFinal: boolean;
+    }) => boolean | undefined;
+  }): { cancelled: boolean };
+  cancelTts(): void;
+  asrStreamSupported(): boolean;
+  asrStreamOpen(args: { sampleRateHz: number }): StreamingAsrHandle;
+  asrStreamFeed(args: { stream: StreamingAsrHandle; pcm: Float32Array }): void;
+  asrStreamPartial(args: {
+    stream: StreamingAsrHandle;
+    maxTextBytes?: number;
+    maxTokens?: number;
+  }): { partial: string; tokens?: number[] };
+  asrStreamFinish(args: {
+    stream: StreamingAsrHandle;
+    maxTextBytes?: number;
+    maxTokens?: number;
+  }): { partial: string; tokens?: number[] };
+  asrStreamClose(stream: StreamingAsrHandle): void;
+}
+
 export interface TranscriptionAudio {
   pcm: Float32Array;
   sampleRate: number;
@@ -424,3 +482,85 @@ export interface SchedulerConfig {
    */
   maxInFlightPhrases?: number;
 }
+
+export interface VoiceSchedulerPhraseTelemetry {
+  id: number;
+  text: string;
+  fromIndex: number;
+  toIndex: number;
+  terminator: Phrase["terminator"];
+  tokenCount: number;
+  textBytes: number;
+}
+
+export type VoiceAudioSource = "cache" | "synthesis";
+
+export type VoiceTtsCancelReason =
+  | "barge-in"
+  | "rollback"
+  | "pending-tts"
+  | "synthesis-cancelled";
+
+export type VoiceSchedulerTelemetryEvent =
+  | {
+      type: "phrase-dispatch";
+      atMs: number;
+      phrase: VoiceSchedulerPhraseTelemetry;
+      inFlightPhrases: number;
+    }
+  | {
+      type: "phrase-cache-hit" | "phrase-cache-miss";
+      atMs: number;
+      phrase: VoiceSchedulerPhraseTelemetry;
+    }
+  | {
+      type: "tts-start";
+      atMs: number;
+      phrase: VoiceSchedulerPhraseTelemetry;
+      inFlightPhrases: number;
+    }
+  | {
+      type: "tts-first-audio";
+      atMs: number;
+      phrase: VoiceSchedulerPhraseTelemetry;
+      source: VoiceAudioSource;
+      samples: number;
+      sampleRate: number;
+    }
+  | {
+      type: "audio-committed";
+      atMs: number;
+      phrase: VoiceSchedulerPhraseTelemetry;
+      source: VoiceAudioSource;
+      samples: number;
+      sampleRate: number;
+      flushedSamples: number;
+      paused: boolean;
+      ringBufferSamples: number;
+      sinkBufferedSamples: number;
+    }
+  | {
+      type: "tts-cancel";
+      atMs: number;
+      phrase: VoiceSchedulerPhraseTelemetry;
+      reason: VoiceTtsCancelReason;
+    }
+  | {
+      type: "rollback";
+      atMs: number;
+      phraseId: number;
+      range: RejectedTokenRange;
+      reason: "rejected-tokens";
+    }
+  | {
+      type: "barge-in";
+      atMs: number;
+      ringBufferSamplesDrained: number;
+      sinkBufferedSamplesDrained: number;
+      inFlightPhrasesCancelled: number;
+      wasPaused: boolean;
+    };
+
+export type VoiceSchedulerTelemetryListener = (
+  event: VoiceSchedulerTelemetryEvent,
+) => void;

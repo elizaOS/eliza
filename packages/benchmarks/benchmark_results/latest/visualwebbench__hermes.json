@@ -1,80 +1,81 @@
 {
   "agent": "hermes",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131933Z_ea799936/visualwebbench__visualwebbench/run_visualwebbench_20260511T131934Z_1_ba3e5fdf/output"
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T191828Z_0b639171/visualwebbench__visualwebbench/run_visualwebbench_20260511T191828Z_1_ab9fac47/output"
   ],
   "benchmark_directory": "visualwebbench",
   "benchmark_id": "visualwebbench",
   "cache_metrics": {
-    "cache_read_input_tokens": 0,
     "cache_creation_input_tokens": 0,
-    "turns_with_cached_field": 0,
-    "cache_hit_ratio": 0.0
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 2
   },
   "error": null,
   "higher_is_better": true,
   "metrics": {
-    "average_latency_ms": 1380.5809020996094,
+    "average_latency_ms": 1030.818223953247,
     "bbox_accuracy": 0,
     "cache_metrics": {
-      "cache_read_input_tokens": 0,
       "cache_creation_input_tokens": 0,
-      "turns_with_cached_field": 0,
-      "cache_hit_ratio": 0.0
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 2
     },
+    "canonical_entries": 0,
     "choice_accuracy": 0,
     "exact_accuracy": 0,
     "overall_accuracy": 0.0,
     "performance_metrics": {
-      "duration_seconds": 2.1756862080073915,
-      "mean_latency_ms": 1380.5809020996094,
-      "p95_latency_ms": 1380.5809020996094,
-      "throughput_per_second": 0.9192502083430982
+      "duration_seconds": 1.9710808340169024,
+      "mean_latency_ms": 1030.818223953247,
+      "p95_latency_ms": 1030.818223953247,
+      "throughput_per_second": 1.0146717300904209
     },
     "return_code": 0,
     "token_metrics": {
+      "avg_completion_tokens": 391.0,
+      "avg_prompt_tokens": 115.0,
+      "completion_tokens": 782,
       "llm_call_count": 2,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "avg_prompt_tokens": 0.0,
-      "avg_completion_tokens": 0.0
+      "prompt_tokens": 230,
+      "total_tokens": 1012
     },
     "total_tasks": 1,
     "trajectory_summary": {
       "files": 2,
-      "turns": 2,
       "prompt_chars": 38,
-      "repeated_prefixes": []
+      "repeated_prefixes": [],
+      "turns": 2
     }
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
-    "duration_seconds": 2.1756862080073915,
-    "mean_latency_ms": 1380.5809020996094,
-    "p95_latency_ms": 1380.5809020996094,
-    "throughput_per_second": 0.9192502083430982
+    "duration_seconds": 1.9710808340169024,
+    "mean_latency_ms": 1030.818223953247,
+    "p95_latency_ms": 1030.818223953247,
+    "throughput_per_second": 1.0146717300904209
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131933Z_ea799936/visualwebbench__visualwebbench/run_visualwebbench_20260511T131934Z_1_ba3e5fdf/output/visualwebbench-results.json",
-  "run_group_id": "rg_20260511T131933Z_ea799936",
-  "run_id": "run_visualwebbench_20260511T131934Z_1_ba3e5fdf",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T191828Z_0b639171/visualwebbench__visualwebbench/run_visualwebbench_20260511T191828Z_1_ab9fac47/output/visualwebbench-results.json",
+  "run_group_id": "rg_20260511T191828Z_0b639171",
+  "run_id": "run_visualwebbench_20260511T191828Z_1_ab9fac47",
   "score": 0.0,
   "status": "succeeded",
   "token_metrics": {
+    "avg_completion_tokens": 391.0,
+    "avg_prompt_tokens": 115.0,
+    "completion_tokens": 782,
     "llm_call_count": 2,
-    "prompt_tokens": 0,
-    "completion_tokens": 0,
-    "total_tokens": 0,
-    "avg_prompt_tokens": 0.0,
-    "avg_completion_tokens": 0.0
+    "prompt_tokens": 230,
+    "total_tokens": 1012
   },
   "trajectory_summary": {
     "files": 2,
-    "turns": 2,
     "prompt_chars": 38,
-    "repeated_prefixes": []
+    "repeated_prefixes": [],
+    "turns": 2
   },
   "unit": "ratio",
-  "updated_at": "2026-05-11T14:03:03.202850+00:00"
+  "updated_at": "2026-05-12T01:34:00Z"
 }

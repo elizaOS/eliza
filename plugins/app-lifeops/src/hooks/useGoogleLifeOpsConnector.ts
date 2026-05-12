@@ -1,7 +1,6 @@
-import { client } from "@elizaos/ui";
+import { client, dispatchFocusConnector } from "@elizaos/ui";
 import { isApiError } from "@elizaos/ui";
 import { APP_RESUME_EVENT } from "@elizaos/shared";
-import { dispatchFocusConnector } from "@elizaos/ui/events";
 import { useApp } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {

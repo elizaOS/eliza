@@ -49,9 +49,10 @@ Backbones (do not change without explicit human approval):
   do not name these as "Qwen" in any user-facing string. Internally,
   manifests record the upstream lineage and license; the UI shows
   "Eliza-1 <tier>".
-- **Voice (TTS):** OmniVoice (Qwen3-TTS lineage). The repo at
-  `https://github.com/ServeurpersoCom/omnivoice.cpp` is the C++ source
-  we fuse with llama.cpp. The omnivoice-singing variant adds an
+- **Voice (TTS):** OmniVoice (Qwen3-TTS lineage). The upstream repo at
+  `https://github.com/ServeurpersoCom/omnivoice.cpp`, mirrored for builds at
+  `https://github.com/elizaOS/omnivoice.cpp`, is the C++ source we fuse with
+  llama.cpp. The omnivoice-singing variant adds an
   emotion + singing tag vocabulary (`[singing]`, `[happy]`, `[sad]`,
   `[whisper]`, `[angry]`, `[nervous]`, `[calm]`, `[excited]`, and
   preserved non-verbals `[laughter]`, `[sigh]`). Per Wave-6 user

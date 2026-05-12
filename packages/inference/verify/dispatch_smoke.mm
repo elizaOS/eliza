@@ -295,8 +295,10 @@ static float dot_turbo3_tcq_adapter(const float * q, const eliza_block_turbo3_tc
     return eliza_dot_q_turbo3_tcq(q, k);
 }
 
-static bool run_polar_smoke(bool use_qjl, float * max_err_out) {
-    const char * label = use_qjl ? "PolarQuant(use_qjl=1)" : "PolarQuant(use_qjl=0)";
+static bool run_polar_smoke(bool use_qjl, bool preht, float * max_err_out) {
+    const char * label = preht
+        ? (use_qjl ? "PolarQuantPreHT(use_qjl=1)" : "PolarQuantPreHT(use_qjl=0)")
+        : (use_qjl ? "PolarQuant(use_qjl=1)" : "PolarQuant(use_qjl=0)");
     const size_t row_size = ggml_row_size(GGML_TYPE_Q4_POLAR, HEAD_DIM);
     if (row_size != sizeof(eliza_block_q4_polar)) {
         std::fprintf(stderr,
@@ -309,6 +311,12 @@ static bool run_polar_smoke(bool use_qjl, float * max_err_out) {
     std::vector<float> q_heads(N_HEADS * HEAD_DIM);
     fill_k_rows(k_rows);
     fill_q_heads(q_heads);
+    std::vector<float> q_input = q_heads;
+    if (preht) {
+        for (int h = 0; h < N_HEADS; ++h) {
+            eliza_polar_hadamard_inplace(q_input.data() + h * HEAD_DIM);
+        }
+    }
 
     std::vector<eliza_block_q4_polar> blocks(N_TOKENS * N_KV_HEADS);
     for (int row = 0; row < N_TOKENS * N_KV_HEADS; ++row) {
@@ -337,12 +345,14 @@ static bool run_polar_smoke(bool use_qjl, float * max_err_out) {
     if (!ctx) return false;
     ggml_tensor * q = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, HEAD_DIM, N_HEADS, 1, 1);
     ggml_tensor * pk = ggml_new_tensor_4d(ctx, GGML_TYPE_Q4_POLAR, HEAD_DIM, N_TOKENS, N_KV_HEADS, 1);
-    ggml_tensor * scores = ggml_attn_score_polar(ctx, q, pk, N_KV_HEADS, use_qjl);
+    ggml_tensor * scores = preht
+        ? ggml_attn_score_polar_preht(ctx, q, pk, N_KV_HEADS, use_qjl)
+        : ggml_attn_score_polar(ctx, q, pk, N_KV_HEADS, use_qjl);
     ggml_cgraph * gf = ggml_new_graph(ctx);
     ggml_build_forward_expand(gf, scores);
 
     std::vector<float> got;
-    const bool ok = compute_graph(ctx, gf, q, q_heads.data(), q_heads.size() * sizeof(float),
+    const bool ok = compute_graph(ctx, gf, q, q_input.data(), q_input.size() * sizeof(float),
                                   pk, blocks.data(), blocks.size() * sizeof(eliza_block_q4_polar), scores, got) &&
                     check_scores(label, got, expected, max_err_out);
     ggml_free(ctx);
@@ -375,10 +385,16 @@ int main() {
                 quantize_turbo3_tcq_adapter, dot_turbo3_tcq_adapter, 1, e);
         }},
         { "GGML_OP_ATTN_SCORE_POLAR/use_qjl=0", [](float * e) {
-            return run_polar_smoke(false, e);
+            return run_polar_smoke(false, false, e);
         }},
         { "GGML_OP_ATTN_SCORE_POLAR/use_qjl=1", [](float * e) {
-            return run_polar_smoke(true, e);
+            return run_polar_smoke(true, false, e);
+        }},
+        { "GGML_OP_ATTN_SCORE_POLAR_PREHT/use_qjl=0", [](float * e) {
+            return run_polar_smoke(false, true, e);
+        }},
+        { "GGML_OP_ATTN_SCORE_POLAR_PREHT/use_qjl=1", [](float * e) {
+            return run_polar_smoke(true, true, e);
         }},
     };
 

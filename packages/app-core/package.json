@@ -69,6 +69,7 @@
   },
   "optionalDependencies": {
     "@elizaos/capacitor-appblocker": "2.0.0-beta.1",
+    "@elizaos/capacitor-bun-runtime": "0.1.0",
     "@elizaos/capacitor-camera": "2.0.0-beta.1",
     "@elizaos/capacitor-canvas": "2.0.0-beta.1",
     "@elizaos/capacitor-contacts": "2.0.0-beta.1",

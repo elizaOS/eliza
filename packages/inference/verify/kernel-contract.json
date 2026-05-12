@@ -94,7 +94,7 @@
   },
   "fusedAttn": {
     "capabilityKey": "fused_attn",
-    "description": "Fused attention forward (QJL-K score -> online softmax -> quantized-V mix, score vector never materialized). C reference: eliza_fused_attn_qjl_tbq3 (bit-exact to the fork's GGML_OP_FUSED_ATTN_QJL_TBQ CPU op) and eliza_fused_attn_qjl_polar in packages/inference/verify/qjl_polar_ref.{h,c}. This is an optimization on top of the existing five score/softmax/V-mix kernels (AGENTS.md §3) — a backend that cannot dispatch the fused op routes through the standalone path, it does not silently degrade. NOT in requiredRuntimeCapabilityKeys / manifestKernelNames yet: no backend has verified a fused dispatch, so the capability is not part of the build-script required-kernel gate. Promote it (and add a manifest kernel name) only once a backend reports a runtime-ready fused smoke.",
+    "description": "Fused attention forward (QJL-K score -> online softmax -> quantized-V mix, score vector never materialized). C reference: eliza_fused_attn_qjl_tbq3 (bit-exact to the fork's GGML_OP_FUSED_ATTN_QJL_TBQ CPU op) and eliza_fused_attn_qjl_polar in packages/inference/verify/qjl_polar_ref.{h,c}. This is an optimization on top of the existing five score/softmax/V-mix kernels (AGENTS.md §3) — a backend that cannot dispatch the fused op routes through the standalone path, it does not silently degrade. NOT in requiredRuntimeCapabilityKeys / manifestKernelNames yet: only Vulkan has verified a fused graph dispatch, so the capability is not part of the build-script required-kernel gate. Promote it (and add a manifest kernel name) only once the target backend reports a runtime-ready fused smoke.",
     "contractDocs": [
       "reports/porting/2026-05-11/fused-attn-op-contract.md",
       "reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md"
@@ -143,7 +143,7 @@
         "evidenceFile": "verify/vulkan-runtime-dispatch-evidence.json"
       }
     },
-    "nextGate": "Vulkan fused dispatch is verified on real Intel ANV (GGML_OP_FUSED_ATTN_QJL_TBQ graph route, vulkan-dispatch-smoke 7/7, max diff 4.5e-8; standalone fused 1920/1920 PASS). Remaining: run metal-verify-fused on an Apple-Silicon Mac (metal/fused_attn_*.metal + metal/polar_preht.metal authored, byte-faithful to the Vulkan ports) and cuda-verify-fused on an NVIDIA host (cuda_verify already parses fused_attn_qjl_tbq.json; cuda/fused-attn-qjl-tbq.cu authored). fused_attn stays out of requiredRuntimeCapabilityKeys / manifestKernelNames — it is an optimization on top of the five required kernels (AGENTS.md §3), not a required kernel — until all backends report a runtime-ready fused smoke and the manifest schema adds a fused kernel name."
+    "nextGate": "Vulkan fused dispatch is verified on real Intel ANV (GGML_OP_FUSED_ATTN_QJL_TBQ graph route, vulkan-dispatch-smoke 7/7, max diff 4.5e-8; standalone fused 1920/1920 PASS). Metal standalone fused-attn + polar_preht are hardware-verified on Apple M4 Max via metal-verify-fused, but Metal still needs a built-fork graph-dispatch smoke before fusedAttn.runtimeStatus.metal can flip runtime-ready. CUDA still needs cuda-verify-fused on an NVIDIA host (cuda_verify already parses fused_attn_qjl_tbq.json; cuda/fused-attn-qjl-tbq.cu authored). fused_attn stays out of requiredRuntimeCapabilityKeys / manifestKernelNames — it is an optimization on top of the five required kernels (AGENTS.md §3), not a required kernel — until all backends report a runtime-ready fused smoke and the manifest schema adds a fused kernel name."
   },
   "kernels": [
     {

@@ -11,10 +11,9 @@
  *     `src/lifeops/connectors/calendly.ts`). The standalone `calendlyAction`
  *     in `./lib/calendly-handler.ts` is now a top-level Action — Calendly is a
  *     provider, not a CALENDAR subaction.
- *   - `negotiate_*` verbs moved out into the new
- *     `SCHEDULING_NEGOTIATION` action defined in
- *     `./lib/scheduling-handler.ts`. Multi-turn negotiation is a long-running
- *     stateful actor, not a calendar verb (§7, §8.3).
+ *   - multi-turn scheduling negotiation is delegated through
+ *     PERSONAL_ASSISTANT action=scheduling. It is a long-running stateful
+ *     actor, not a calendar verb (§7, §8.3).
  *
  * What stays compound here is exactly the irreducible calendar-provider
  * surface plus `bulk_reschedule`, which `HARDCODING_AUDIT.md` §7 explicitly
@@ -601,10 +600,10 @@ export const calendarAction: Action & {
     "Manage live calendar events plus availability and meeting preferences. Subactions: " +
     "feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, " +
     "check_availability, propose_times, update_preferences. " +
-    "Use CALENDLY for calendly.com URLs and SCHEDULING_NEGOTIATION for multi-turn proposal/response flows.",
+    "Use CALENDLY for calendly.com URLs and PERSONAL_ASSISTANT action=scheduling for multi-turn proposal/response flows.",
   descriptionCompressed:
     "calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
-  // "general" included for the same reason as LIFE: messageHandler routes
+  // "general" included so messageHandler can route direct owner calendar
   // most user-facing event/scheduling requests to "general" rather than
   // "calendar", so retrieval would otherwise filter CALENDAR out before
   // the planner sees it. See `12-real-root-cause.md`.

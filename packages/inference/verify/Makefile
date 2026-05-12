@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
+.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock metal-bench-fused cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -292,12 +292,12 @@ metal-verify-multiblock: metal_verify reference-test
 # (eliza_fused_attn_qjl_tbq3 / eliza_fused_attn_qjl_polar / eliza_polar_mul_mv).
 # 1e-3 absolute tolerance.
 #
-# AUTHORED — hardware-verify pending: the kernels are byte-faithful mirrors of
-# the hardware-verified Vulkan ports (vulkan/fused_attn_*.comp, vulkan/polar_preht.comp,
-# Intel ARL Mesa ANV). They require an Apple-Silicon Mac to run this target; until
-# then the fused_attn Metal capability bit stays not-runtime-ready (fused_attn is
-# an optimization on top of the five required kernels — AGENTS.md §3 — not a
-# required kernel).
+# Hardware-verified on Apple M4 Max: the kernels are byte-faithful mirrors of the
+# hardware-verified Vulkan ports (vulkan/fused_attn_*.comp, vulkan/polar_preht.comp,
+# Intel ARL Mesa ANV). This standalone fixture gate still does not make the
+# fused_attn Metal capability runtime-ready; that requires a built-fork Metal
+# graph-dispatch smoke. fused_attn is an optimization on top of the five required
+# kernels — AGENTS.md §3 — not a required kernel.
 # Backend-neutral contract: reports/porting/2026-05-11/fused-attn-op-contract.md
 # Metal-specific design: reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md
 metal-verify-fused: metal_verify reference-test
@@ -340,6 +340,14 @@ metal-bench-multiblock: metal_bench
 	@mkdir -p bench_results
 	./metal_bench --mode multiblock --out bench_results/m4max_multiblock_2026-05-10.json
 
+# Fused-attention benchmark for the standalone Metal QJL-K + quantized-V
+# kernels. This complements metal-verify-fused: correctness stays in
+# metal_verify, while this target records the one-pass online-softmax kernel
+# cost at a 9B-class single-token decode shape.
+metal-bench-fused: metal_bench
+	@mkdir -p bench_results
+	./metal_bench --mode fused --out bench_results/m4max_fused_2026-05-12.json
+
 # CPU reference baseline. Single-threaded scalar C, no GPU. Same workload
 # constants as metal_bench so the BENCHMARK doc can join the two tables.
 cpu-bench: cpu_bench
@@ -363,8 +371,10 @@ $(POLAR_CPU_LIB):
 	cmake --build $(POLAR_CPU_DIR)/build --target polarquant >/dev/null
 
 cpu-simd-bench: cpu_simd_bench
+OPENMP_FLAGS ?= $(shell printf '' | $(CC) -x c -fopenmp -E - >/dev/null 2>&1 && printf '%s' '-fopenmp')
+
 cpu_simd_bench: cpu_simd_bench.c $(QJL_CPU_LIB) $(POLAR_CPU_LIB)
-	$(CC) -O3 -march=native -fopenmp -std=c11 \
+	$(CC) -O3 -march=native $(OPENMP_FLAGS) -std=c11 \
 	    -I$(QJL_CPU_DIR)/include -I$(QJL_CPU_DIR)/src -I$(POLAR_CPU_DIR)/include \
 	    cpu_simd_bench.c $(QJL_CPU_LIB) $(POLAR_CPU_LIB) -lm -o cpu_simd_bench
 
@@ -383,7 +393,9 @@ bench: cpu-bench
 	    echo "[bench] running metal_bench --mode fp16ref ..." && \
 	    ./metal_bench --mode fp16ref --out bench_results/m4max_fp16ref_2026-05-10.json && \
 	    echo "[bench] running metal_bench --mode multiblock ..." && \
-	    ./metal_bench --mode multiblock --out bench_results/m4max_multiblock_2026-05-10.json ; \
+	    ./metal_bench --mode multiblock --out bench_results/m4max_multiblock_2026-05-10.json && \
+	    echo "[bench] running metal_bench --mode fused ..." && \
+	    ./metal_bench --mode fused --out bench_results/m4max_fused_2026-05-12.json ; \
 	else \
 	    echo "[bench] skipping metal_bench (xcrun not found — macOS only)" ; \
 	fi
@@ -615,9 +627,11 @@ else
 	  echo "[verify-fork] metal/turbo3_tcq (patched shipped: turbo3_tcq.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/turbo3_tcq.metal kernel_turbo3_tcq_dot      fixtures/turbo3_tcq.json && \
 	  echo "[verify-fork] metal/qjl     (patched shipped: qjl.metal)"         && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/qjl.metal        kernel_attn_score_qjl1_256 fixtures/qjl.json        && \
 	  echo "[verify-fork] metal/polar   (patched shipped: polar.metal)"       && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar.json      && \
-	  echo "[verify-fork] metal/polar_preht (patched shipped: polar.metal)"   && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_preht_f32 fixtures/polar.json && \
-	  echo "[verify-fork] metal/polar_preht + QJL residual (patched shipped: polar.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal kernel_mul_mv_q4_polar_preht_f32 fixtures/polar_qjl.json && \
-	  echo "[verify-fork] metal: 5/5 patched shipped shader files plus Polar preht variants verified against the same fixtures as the standalones"; \
+		  echo "[verify-fork] metal/polar_preht (patched shipped: polar.metal)"   && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_preht_f32 fixtures/polar.json && \
+		  echo "[verify-fork] metal/polar_preht + QJL residual (patched shipped: polar.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal kernel_mul_mv_q4_polar_preht_f32 fixtures/polar_qjl.json && \
+		  echo "[verify-fork] metal/fused_attn_qjl_tbq (patched shipped: fused_attn_qjl_tbq.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/fused_attn_qjl_tbq.metal kernel_fused_attn_qjl_tbq3_f32 fixtures/fused_attn_qjl_tbq.json && \
+		  echo "[verify-fork] metal/fused_attn_qjl_polar (patched shipped: fused_attn_qjl_polar.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/fused_attn_qjl_polar.metal kernel_fused_attn_qjl_polar_f32 fixtures/fused_attn_qjl_polar.json && \
+		  echo "[verify-fork] metal: 7/7 patched shipped shader files plus Polar preht/fused-attn variants verified against the same fixtures as the standalones"; \
 	else \
 	  echo "[verify-fork] xcrun not found — skipping Metal fork verification (macOS only)"; \
 	fi
@@ -639,9 +653,15 @@ else
 	      $(ELIZA_DFLASH_FORK_VULKAN_DIR)/polar_preht.comp -o bench_results/fork-spv/polar_preht.spv || exit 1; \
 	    echo "[verify-fork] vulkan/polar_preht (fork: vulkan-shaders/polar_preht.comp)"; \
 	    ./vulkan_verify bench_results/fork-spv/polar_preht.spv fixtures/polar.json || exit 1; \
-	    echo "[verify-fork] vulkan/polar_preht + QJL residual (fork: vulkan-shaders/polar_preht.comp)"; \
-	    ./vulkan_verify bench_results/fork-spv/polar_preht.spv fixtures/polar_qjl.json || exit 1; \
-	    echo "[verify-fork] vulkan: 6/6 fork score shaders + polar residual/preht variants verified against standalone fixtures"; \
+		    echo "[verify-fork] vulkan/polar_preht + QJL residual (fork: vulkan-shaders/polar_preht.comp)"; \
+		    ./vulkan_verify bench_results/fork-spv/polar_preht.spv fixtures/polar_qjl.json || exit 1; \
+		    for f in fused_attn_qjl_tbq fused_attn_qjl_polar; do \
+		      $(GLSLC) --target-env=vulkan1.1 --target-spv=spv1.3 -fshader-stage=compute \
+		        $(ELIZA_DFLASH_FORK_VULKAN_DIR)/$$f.comp -o bench_results/fork-spv/$$f.spv || exit 1; \
+		      echo "[verify-fork] vulkan/$$f (fork: vulkan-shaders/$$f.comp)"; \
+		      ./vulkan_verify bench_results/fork-spv/$$f.spv fixtures/$$f.json || exit 1; \
+		    done; \
+		    echo "[verify-fork] vulkan: 8/8 fork score/fused shaders + polar residual/preht variants verified against standalone fixtures"; \
 	  else \
 	    echo "[verify-fork] vulkan_verify not buildable on this host — skipping Vulkan fork verification"; \
 	  fi; \

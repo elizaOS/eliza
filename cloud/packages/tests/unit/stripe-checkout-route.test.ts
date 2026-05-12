@@ -199,9 +199,9 @@ describe("POST /api/v1/stripe/checkout", () => {
     expect(harness.createIntentCalls.length).toBe(0);
   });
 
-  test("returns 409 when the payment request is already initialized", async () => {
+  test("returns 409 when the payment request is already delivered", async () => {
     const harness = freshHarness();
-    harness.request = buildRequest({ status: "initialized" });
+    harness.request = buildRequest({ status: "delivered" });
     installMocks(harness);
     const route = await loadRoute();
 

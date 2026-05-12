@@ -28,8 +28,12 @@
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/capacitor-wifi": [
         "../../packages/native-plugins/wifi/src/index.ts"
+      ],
+      "@elizaos/capacitor-bun-runtime": [
+        "../../packages/native-plugins/bun-runtime/src/index.ts"
       ],
       "@elizaos/plugin-discord-local": [
         "../../plugins/plugin-discord-local/src/index.ts"

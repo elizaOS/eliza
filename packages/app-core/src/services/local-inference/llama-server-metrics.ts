@@ -18,7 +18,7 @@
  * For DFlash speculative decoding, the fork additionally publishes:
  *
  *   llamacpp:n_drafted_total          — drafter-emitted tokens
- *   llamacpp:n_accepted_total         — accepted speculative tokens
+ *   llamacpp:n_drafted_accepted_total — accepted speculative tokens
  *
  * The mapping into Anthropic shape:
  *
@@ -26,7 +26,7 @@
  *   n_tokens_predicted_total                         → output_tokens
  *   n_prompt_tokens_processed_total                  → cache_creation_input_tokens
  *   prompt_tokens_total - n_prompt_tokens_processed_total → cache_read_input_tokens
- *   n_drafted_total / n_accepted_total               → DFlash extension fields
+ *   n_drafted_total / n_drafted_accepted_total       → DFlash extension fields
  *
  * Counters are taken as deltas across two snapshots: take one before
  * `generate`, one after, and subtract. Losing a few samples to process
@@ -37,6 +37,10 @@
 export interface LlamaServerMetricSnapshot {
   /** Wall-clock ms when the snapshot was taken; useful for diagnostics. */
   takenAtMs: number;
+  /** True when `/metrics` was fetched and parsed. False means scrape failure. */
+  scrapeOk?: boolean;
+  /** True when the scrape included at least one generation/speculation counter. */
+  hasGenerationCounters?: boolean;
   promptTokensTotal: number;
   predictedTokensTotal: number;
   /** Tokens that had to be freshly prefilled — i.e. cache MISS this turn. */
@@ -49,12 +53,21 @@ export interface LlamaServerMetricSnapshot {
   kvCacheUsedCells: number;
 }
 
-const METRIC_KEYS: Record<string, keyof LlamaServerMetricSnapshot> = {
+type MetricNumericField = Exclude<
+  keyof LlamaServerMetricSnapshot,
+  "scrapeOk" | "hasGenerationCounters"
+>;
+
+const METRIC_KEYS: Record<string, MetricNumericField> = {
   "llamacpp:prompt_tokens_total": "promptTokensTotal",
   "llamacpp:n_tokens_predicted_total": "predictedTokensTotal",
   "llamacpp:n_prompt_tokens_processed_total": "promptTokensProcessedTotal",
   "llamacpp:n_drafted_total": "draftedTotal",
+  "llamacpp:n_drafted": "draftedTotal",
+  "llamacpp:n_drafted_accepted_total": "acceptedTotal",
+  "llamacpp:n_drafted_accepted": "acceptedTotal",
   "llamacpp:n_accepted_total": "acceptedTotal",
+  "llamacpp:n_accepted": "acceptedTotal",
   "llamacpp:kv_cache_tokens": "kvCacheTokens",
   "llamacpp:kv_cache_used_cells": "kvCacheUsedCells",
 };
@@ -65,9 +78,12 @@ const METRIC_KEYS: Record<string, keyof LlamaServerMetricSnapshot> = {
  * recognise are not interesting and metric exporters add new ones over
  * time.
  *
- * llama-server exposes one sample per metric (no labels), e.g.
+ * llama-server usually exposes one sample per metric (no labels), e.g.
  *   `llamacpp:prompt_tokens_total 1234`
- * So we only care about the simple `metric_name <number>` form.
+ * Some DFlash forks expose per-slot labelled samples, e.g.
+ *   `llamacpp:n_drafted_accepted_total{slot_id="0"} 12`
+ * Labelled samples are summed unless an unlabelled total exists for the same
+ * canonical field, in which case the unlabelled total wins.
  */
 export function parsePrometheusMetrics(
   body: string,
@@ -75,6 +91,8 @@ export function parsePrometheusMetrics(
 ): LlamaServerMetricSnapshot {
   const snapshot: LlamaServerMetricSnapshot = {
     takenAtMs,
+    scrapeOk: true,
+    hasGenerationCounters: false,
     promptTokensTotal: 0,
     predictedTokensTotal: 0,
     promptTokensProcessedTotal: 0,
@@ -83,24 +101,47 @@ export function parsePrometheusMetrics(
     kvCacheTokens: 0,
     kvCacheUsedCells: 0,
   };
+  const buckets = new Map<
+    MetricNumericField,
+    { unlabeled: number | null; labeledSum: number }
+  >();
+  let hasGenerationCounters = false;
+
   for (const rawLine of body.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) continue;
-    // Prometheus line format: `name{labels?} value [timestamp]`. We
-    // accept the unlabelled form llama-server actually emits. Labelled
-    // forms are skipped — there's no per-slot label exposed today, and
-    // if one is added later we want the maintainer to opt in here.
+    // Prometheus line format: `name{labels?} value [timestamp]`.
     const match = line.match(
-      /^([a-zA-Z_:][\w:]*)\s+([+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?)/,
+      /^([a-zA-Z_:][\w:]*)(\{[^}]*\})?\s+([+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?)/i,
     );
     if (!match) continue;
     const name = match[1];
-    const value = Number(match[2]);
+    const labels = match[2];
+    const value = Number(match[3]);
     if (!Number.isFinite(value) || name === undefined) continue;
     const field = METRIC_KEYS[name];
     if (!field) continue;
-    snapshot[field] = value;
+    if (
+      field === "promptTokensTotal" ||
+      field === "predictedTokensTotal" ||
+      field === "promptTokensProcessedTotal" ||
+      field === "draftedTotal" ||
+      field === "acceptedTotal"
+    ) {
+      hasGenerationCounters = true;
+    }
+    const bucket = buckets.get(field) ?? { unlabeled: null, labeledSum: 0 };
+    if (labels) bucket.labeledSum += value;
+    else bucket.unlabeled = value;
+    buckets.set(field, bucket);
   }
+
+  for (const [field, bucket] of buckets) {
+    snapshot[field] = bucket.unlabeled ?? bucket.labeledSum;
+  }
+
+  snapshot.hasGenerationCounters = hasGenerationCounters;
+
   return snapshot;
 }
 
@@ -196,10 +237,8 @@ function clampNonNegative(value: number): number {
 /**
  * GET `/metrics` from a running llama-server and parse it. Errors fall
  * back to a zero-valued snapshot rather than throwing — observability
- * MUST NOT break generation. Callers that want to detect scrape failures
- * should compare `before.takenAtMs` against `after.takenAtMs`: a zero
- * snapshot pair (both fields all-zero) means scraping returned nothing
- * useful.
+ * MUST NOT break generation. `scrapeOk=false` tells callers that the
+ * zeros are not evidence of absent DFlash/KV activity.
  */
 export async function fetchMetricsSnapshot(
   baseUrl: string,
@@ -208,6 +247,8 @@ export async function fetchMetricsSnapshot(
   const takenAtMs = Date.now();
   const empty: LlamaServerMetricSnapshot = {
     takenAtMs,
+    scrapeOk: false,
+    hasGenerationCounters: false,
     promptTokensTotal: 0,
     predictedTokensTotal: 0,
     promptTokensProcessedTotal: 0,

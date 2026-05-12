@@ -219,11 +219,19 @@ export async function runDflashDoctor(): Promise<DflashDoctorReport> {
           "Server loaded but /metrics returned no speculative counters yet (no recent traffic).",
       });
     } else if (metrics.drafted === 0) {
+      const status: DflashDoctorStatus = metrics.decoded > 0 ? "fail" : "warn";
       checks.push({
         id: "acceptance-rate",
-        status: "warn",
+        status,
         label: "Acceptance rate",
-        detail: "Server loaded but drafter has not produced any tokens yet.",
+        detail:
+          metrics.decoded > 0
+            ? `Server decoded ${metrics.decoded} tokens but the drafter produced zero draft tokens. DFlash is not active.`
+            : "Server loaded but drafter has not produced any tokens yet (no generation traffic observed).",
+        fix:
+          metrics.decoded > 0
+            ? "Verify the runtime is using the native dflash-draft speculative path and that the drafter was distilled against this exact target checkpoint."
+            : undefined,
       });
     } else {
       const rate = metrics.acceptanceRate;

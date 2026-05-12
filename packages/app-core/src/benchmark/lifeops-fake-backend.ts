@@ -368,6 +368,40 @@ export class LifeOpsFakeBackend {
 
   applyAction(name: string, kwargs: Record<string, unknown>): ActionResult {
     switch (name) {
+      // LifeOpsBench exposes Eliza-style umbrella/promoted names to planners.
+      // Canonicalize those into the fake backend's lower-case method surface
+      // before dispatch so tool results are useful on follow-up turns.
+      case "CALENDAR":
+        return this.applyCalendarUmbrella(kwargs);
+      case "CALENDAR_CREATE_EVENT":
+        return this.applyCalendarUmbrella({
+          ...kwargs,
+          subaction: kwargs.subaction ?? "create_event",
+        });
+      case "CALENDAR_UPDATE_EVENT":
+        return this.applyCalendarUmbrella({
+          ...kwargs,
+          subaction: kwargs.subaction ?? "update_event",
+        });
+      case "CALENDAR_DELETE_EVENT":
+        return this.applyCalendarUmbrella({
+          ...kwargs,
+          subaction: kwargs.subaction ?? "delete_event",
+        });
+      case "CALENDAR_SEARCH_EVENTS":
+        return this.applyCalendarUmbrella({
+          ...kwargs,
+          subaction: kwargs.subaction ?? "search_events",
+        });
+      case "CALENDAR_CHECK_AVAILABILITY":
+      case "CALENDAR_PROPOSE_TIMES":
+      case "CALENDAR_NEXT_EVENT":
+      case "CALENDAR_UPDATE_PREFERENCES":
+        return this.applyCalendarUmbrella({
+          ...kwargs,
+          subaction: kwargs.subaction ?? "list_events",
+        });
+
       // ---- calendar
       case "calendar.create_event":
         return { ok: true, result: this.createEvent(kwargs) };
@@ -419,6 +453,194 @@ export class LifeOpsFakeBackend {
   }
 
   // ----- calendar handlers ---------------------------------------------
+
+  private applyCalendarUmbrella(kw: Record<string, unknown>): ActionResult {
+    const subaction = pickString(kw, ["subaction", "action", "operation"], "");
+    if (subaction === "create_event") {
+      const start = pickString(
+        kw,
+        ["start", "start_time", "startAt"],
+        this.nowIso,
+      );
+      const end =
+        pickStringOrNull(kw, ["end", "end_time", "endAt"]) ??
+        shiftIso(start, durationMinutes(kw, 30));
+      const title = pickString(
+        kw,
+        ["title", "summary", "event_name"],
+        "Untitled",
+      );
+      const existing = this.findCalendarEvent({ title, start });
+      if (existing)
+        return { ok: true, result: { ...existing, idempotent: true } };
+      return {
+        ok: true,
+        result: this.createEvent({
+          ...kw,
+          title,
+          start,
+          end,
+          calendarId: pickString(
+            kw,
+            ["calendarId", "calendar_id"],
+            "cal_primary",
+          ),
+        }),
+      };
+    }
+
+    if (subaction === "update_event") {
+      const updates = isRecord(kw.updates) ? kw.updates : {};
+      const merged = { ...kw, ...updates };
+      const requestedId = pickStringOrNull(merged, [
+        "eventId",
+        "event_id",
+        "id",
+      ]);
+      const event = this.findCalendarEvent({
+        id: requestedId,
+        title:
+          pickStringOrNull(merged, ["title", "event_name", "query"]) ??
+          (requestedId && !this.stores.calendar_event[requestedId]
+            ? requestedId
+            : null),
+        dateHint:
+          pickStringOrNull(merged, [
+            "new_start",
+            "newStart",
+            "start",
+            "date",
+          ]) ?? this.nowIso,
+      });
+      if (!event) {
+        return { ok: false, result: { missing: "calendar_event", kwargs: kw } };
+      }
+      const start = pickString(
+        merged,
+        ["new_start", "newStart", "start", "start_time"],
+        event.start,
+      );
+      const end =
+        pickStringOrNull(merged, ["new_end", "newEnd", "end", "end_time"]) ??
+        shiftIso(
+          start,
+          durationMinutes(
+            merged,
+            durationBetweenMinutes(event.start, event.end),
+          ),
+        );
+      return { ok: true, result: this.moveEvent({ id: event.id, start, end }) };
+    }
+
+    if (subaction === "delete_event") {
+      const event = this.findCalendarEvent({
+        id: pickStringOrNull(kw, ["eventId", "event_id", "id"]),
+        title: pickStringOrNull(kw, ["title", "event_name", "query"]),
+        dateHint: pickStringOrNull(kw, ["date", "start"]) ?? this.nowIso,
+      });
+      if (!event) {
+        return { ok: false, result: { missing: "calendar_event", kwargs: kw } };
+      }
+      return { ok: true, result: this.cancelEvent({ id: event.id }) };
+    }
+
+    if (
+      subaction === "search_events" ||
+      subaction === "list_events" ||
+      subaction === "check_availability" ||
+      subaction === "propose_times" ||
+      subaction === "next_event" ||
+      subaction === "update_preferences"
+    ) {
+      return { ok: true, result: this.searchCalendarEvents(kw) };
+    }
+
+    throw new LifeOpsBackendUnsupportedError(
+      `CALENDAR/${subaction || "<missing>"}`,
+      "unknown calendar subaction",
+    );
+  }
+
+  private searchCalendarEvents(kw: Record<string, unknown>): CalendarEvent[] {
+    const query = (
+      pickStringOrNull(kw, ["query", "q", "title", "event_name"]) ?? ""
+    ).toLowerCase();
+    const dateRaw = pickStringOrNull(kw, ["date"]);
+    const timeRange = isRecord(kw.time_range) ? kw.time_range : {};
+    const date =
+      dateRaw === "today"
+        ? this.nowIso.slice(0, 10)
+        : dateRaw && /^\d{4}-\d{2}-\d{2}/.test(dateRaw)
+          ? dateRaw.slice(0, 10)
+          : null;
+    const start =
+      pickStringOrNull(kw, ["start", "from", "windowStart", "startDate"]) ??
+      pickStringOrNull(timeRange, ["start", "from", "windowStart"]);
+    const end =
+      pickStringOrNull(kw, ["end", "to", "windowEnd", "endDate"]) ??
+      pickStringOrNull(timeRange, ["end", "to", "windowEnd"]);
+    return Object.values(this.stores.calendar_event)
+      .filter((event) => {
+        if (event.status === "cancelled") return false;
+        if (query && !event.title.toLowerCase().includes(query)) return false;
+        if (date && event.start.slice(0, 10) !== date) return false;
+        if (start && event.end < start) return false;
+        if (end && event.start > end) return false;
+        return true;
+      })
+      .sort((a, b) => a.start.localeCompare(b.start));
+  }
+
+  private findCalendarEvent(args: {
+    id?: string | null;
+    title?: string | null;
+    start?: string | null;
+    dateHint?: string | null;
+  }): CalendarEvent | null {
+    if (args.id && this.stores.calendar_event[args.id]) {
+      return this.stores.calendar_event[args.id];
+    }
+    const title = args.title?.trim().toLowerCase();
+    const start = args.start?.trim();
+    let matches = Object.values(this.stores.calendar_event).filter(
+      (event) => event.status !== "cancelled",
+    );
+    if (title) {
+      const exact = matches.filter(
+        (event) => event.title.trim().toLowerCase() === title,
+      );
+      matches =
+        exact.length > 0
+          ? exact
+          : matches.filter((event) => {
+              const eventTitle = event.title.trim().toLowerCase();
+              return eventTitle.includes(title) || title.includes(eventTitle);
+            });
+    }
+    if (start) {
+      const exact = matches.find((event) => event.start === start);
+      if (exact) return exact;
+    }
+    if (matches.length === 0) return null;
+    const hint =
+      parseIso(args.dateHint ?? this.nowIso) ?? parseIso(this.nowIso);
+    const hintDate = hint?.toISOString().slice(0, 10);
+    return matches.sort((a, b) => {
+      const aDate = a.start.slice(0, 10);
+      const bDate = b.start.slice(0, 10);
+      const sameDayDelta =
+        (aDate === hintDate ? 0 : 1) - (bDate === hintDate ? 0 : 1);
+      if (sameDayDelta !== 0) return sameDayDelta;
+      const aDistance = timestampDistance(a.start, hint);
+      const bDistance = timestampDistance(b.start, hint);
+      if (aDistance !== bDistance) return aDistance - bDistance;
+      const primaryDelta =
+        (a.calendar_id === "cal_primary" ? 0 : 1) -
+        (b.calendar_id === "cal_primary" ? 0 : 1);
+      if (primaryDelta !== 0) return primaryDelta;
+      return a.id.localeCompare(b.id);
+    })[0];
+  }
 
   private createEvent(kw: Record<string, unknown>): CalendarEvent {
     const calendarId = pickString(
@@ -754,6 +976,10 @@ function pickString(
   return fallback;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 function pickStringOrNull(
   kw: Record<string, unknown>,
   keys: string[],
@@ -789,6 +1015,65 @@ function pickStringArray(
     }
   }
   return [];
+}
+
+function durationMinutes(
+  kw: Record<string, unknown>,
+  fallback: number,
+): number {
+  for (const key of ["duration_minutes", "durationMinutes", "duration"]) {
+    const value = kw[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return Math.max(1, Math.round(value));
+    }
+    if (typeof value === "string") {
+      const match = value
+        .trim()
+        .match(/^(\d+)\s*(m|min|minute|minutes|h|hr|hour|hours)?$/i);
+      if (match) {
+        const amount = Number(match[1]);
+        const unit = match[2]?.toLowerCase() ?? "minutes";
+        return Math.max(1, unit.startsWith("h") ? amount * 60 : amount);
+      }
+    }
+  }
+  const hours = kw.duration_hours ?? kw.durationHours;
+  if (typeof hours === "number" && Number.isFinite(hours)) {
+    return Math.max(1, Math.round(hours * 60));
+  }
+  return fallback;
+}
+
+function durationBetweenMinutes(start: string, end: string): number {
+  const startDate = parseIso(start);
+  const endDate = parseIso(end);
+  if (!startDate || !endDate) return 60;
+  return Math.max(
+    1,
+    Math.round((endDate.getTime() - startDate.getTime()) / 60_000),
+  );
+}
+
+function shiftIso(start: string, minutes: number): string {
+  const date = parseIso(start);
+  if (!date) return start;
+  return new Date(date.getTime() + minutes * 60_000)
+    .toISOString()
+    .replace(".000Z", "Z");
+}
+
+function parseIso(value: string): Date | null {
+  const raw = value.trim();
+  if (!raw) return null;
+  const date = new Date(raw);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function timestampDistance(value: string, hint: Date | null): number {
+  if (!hint) return Number.POSITIVE_INFINITY;
+  const date = parseIso(value);
+  if (!date) return Number.POSITIVE_INFINITY;
+  return Math.abs(date.getTime() - hint.getTime());
 }
 
 function nextSeq(store: Record<string, unknown>, prefix: string): string {

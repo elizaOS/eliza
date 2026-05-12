@@ -63,9 +63,9 @@ export interface PendingPromptsStore {
   ): Promise<PendingPrompt[]>;
   /** Resolve a pending prompt (called when the runner records a terminal verb). */
   resolve(roomId: string, taskId: string): Promise<void>;
-  /** Remove all entries for a task (used by `LIFEOPS.wipe`). */
+  /** Remove all entries for a task during lifecycle cleanup. */
   forgetTask(taskId: string): Promise<void>;
-  /** Remove every recorded entry (used by `LIFEOPS.wipe`). */
+  /** Remove every recorded entry during lifecycle cleanup. */
   clearAll(): Promise<void>;
 }
 

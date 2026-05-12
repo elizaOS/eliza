@@ -11,7 +11,7 @@ export const DIRECT_ROUTE_CASES = [
   {
     name: "tasks",
     path: "/apps/tasks",
-    selector: '[data-testid="automations-shell"]',
+    selector: '[data-testid="tasks-view"]',
   },
   {
     name: "plugins",
@@ -64,6 +64,20 @@ export const DIRECT_ROUTE_CASES = [
     selector: '[data-testid="logs-view"]',
   },
   {
+    name: "inventory",
+    path: "/apps/inventory",
+    selector: '[data-testid="wallet-shell"]',
+  },
+  {
+    name: "elizamaker",
+    path: "/apps/elizamaker",
+    readyChecks: [
+      { selector: '[data-testid="chat-composer-textarea"]' },
+      { selector: '[data-testid="terminal-channel-panel"]' },
+      { text: "What would you like to check?" },
+    ],
+  },
+  {
     name: "companion",
     path: "/apps/companion",
     selector: '[data-testid="companion-root"]',
@@ -87,6 +101,18 @@ export const DIRECT_ROUTE_CASES = [
       { text: "Connect your Vincent account to get started" },
       { text: "Vincent" },
     ],
+    timeoutMs: 90_000,
+  },
+  {
+    name: "hyperliquid",
+    path: "/apps/hyperliquid",
+    selector: '[data-testid="hyperliquid-shell"]',
+    timeoutMs: 90_000,
+  },
+  {
+    name: "polymarket",
+    path: "/apps/polymarket",
+    selector: '[data-testid="polymarket-shell"]',
     timeoutMs: 90_000,
   },
 ] as const;

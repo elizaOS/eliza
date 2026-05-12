@@ -116,7 +116,7 @@ export function clearAllChatDrafts(): void {
     const toRemove: string[] = [];
     for (let i = 0; i < window.localStorage.length; i++) {
       const key = window.localStorage.key(i);
-      if (key && key.startsWith(CHAT_DRAFT_STORAGE_PREFIX)) {
+      if (key?.startsWith(CHAT_DRAFT_STORAGE_PREFIX)) {
         toRemove.push(key);
       }
     }
@@ -154,12 +154,9 @@ export function useChatComposerDraftPersistence({
     lastRestoredRef.current = activeConversationId;
     if (!activeConversationId) return;
     const saved = readChatDraft(activeConversationId);
-    if (saved !== null && saved !== chatInput) {
+    if (saved !== null) {
       setChatInput(saved);
     }
-    // chatInput intentionally excluded — restoring is a per-conversation
-    // event, not a per-keystroke one.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConversationId, setChatInput]);
 
   // Persist on change (debounced).

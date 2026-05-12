@@ -2,9 +2,9 @@ import {
   Badge,
   Button,
   client,
+  dispatchFocusConnector,
   useApp,
 } from "@elizaos/ui";
-import { dispatchFocusConnector } from "@elizaos/ui/events";
 import type {
   LifeOpsCapabilityState,
   LifeOpsManualOverrideKind,

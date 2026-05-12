@@ -1,0 +1,225 @@
+[
+  {
+    "viewport": "desktop",
+    "scenario": "tasks",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-after-fixes-2/desktop-tasks.png",
+    "messages": [],
+    "dom": {
+      "text": [
+        "Tasks",
+        "Tasks View Description",
+        "TASKS",
+        "No orchestrator work running"
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontal": false
+    }
+  },
+  {
+    "viewport": "desktop",
+    "scenario": "lifeops",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-after-fixes-2/desktop-lifeops.png",
+    "messages": [],
+    "dom": {
+      "text": [
+        "Overview",
+        "Sleep",
+        "Screen Time",
+        "Messages",
+        "Mail",
+        "Calendar",
+        "Reminders",
+        "Money",
+        "Documents",
+        "Settings",
+        "EVENING / MONDAY, MAY 11",
+        "The day is open.",
+        "SLEEP",
+        "No sleep signal",
+        "REMINDERS",
+        "Clear",
+        "SCREEN",
+        "No data",
+        "Partial overview",
+        "Missing: Sleep, Messages, Mail, and Calendar",
+        "Open setup",
+        "Sleep",
+        "Connect Health",
+        "Screen Time",
+        "No data",
+        "No screen-time sessions yet.",
+        "Social",
+        "No data",
+        "No social time",
+        "0 opened / 0 sent",
+        "Calendar",
+        "Connect Google",
+        "Messages",
+        "Connect platform",
+        "Mail",
+        "Connect Google",
+        "LIFEOPS CHAT",
+        "Ask me about the visible LifeOps item or the next action you want handled.",
+        "Clear"
+      ],
+      "red": [],
+      "overflow": [
+        {
+          "text": "SleepConnect Health",
+          "by": 42
+        },
+        {
+          "text": "Calendar",
+          "by": 59
+        },
+        {
+          "text": "Mail",
+          "by": 26
+        }
+      ],
+      "horizontal": false
+    }
+  },
+  {
+    "viewport": "desktop",
+    "scenario": "database",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-after-fixes-2/desktop-database.png",
+    "messages": [],
+    "dom": {
+      "text": [
+        "Tables",
+        "Media",
+        "Vectors",
+        "Vectors",
+        "LIST VIEW",
+        "List",
+        "2D",
+        "3D",
+        "Search",
+        "Loading memories...",
+        "Memory Detail",
+        "Select a memory from the sidebar to inspect its content, metadata, and embedding values."
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontal": false
+    }
+  },
+  {
+    "viewport": "desktop",
+    "scenario": "shopify",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-after-fixes-2/desktop-shopify.png",
+    "messages": [],
+    "dom": {
+      "text": [
+        "Shopify",
+        "Not connected",
+        "Connect your Shopify store",
+        "STORE DOMAIN",
+        "SHOPIFY_STORE_DOMAIN=your-store.myshopify.com",
+        "ACCESS TOKEN",
+        "SHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+        "Restart after setting these env vars. Required scopes: read_products, read_orders, read_inventory, and read_customers scopes."
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontal": false
+    }
+  },
+  {
+    "viewport": "mobile",
+    "scenario": "tasks",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-after-fixes-2/mobile-tasks.png",
+    "messages": [],
+    "dom": {
+      "text": [
+        "Tasks",
+        "Tasks View Description",
+        "TASKS",
+        "No orchestrator work running"
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontal": false
+    }
+  },
+  {
+    "viewport": "mobile",
+    "scenario": "lifeops",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-after-fixes-2/mobile-lifeops.png",
+    "messages": [],
+    "dom": {
+      "text": [
+        "EVENING / MONDAY, MAY 11",
+        "The day is open.",
+        "SLEEP",
+        "No sleep signal",
+        "REMINDERS",
+        "Clear",
+        "SCREEN",
+        "No data",
+        "Partial overview",
+        "Missing: Sleep, Messages, Mail, and Calendar",
+        "Open setup",
+        "Sleep",
+        "Connect Health",
+        "Screen Time",
+        "No data",
+        "No screen-time sessions yet.",
+        "Social",
+        "No data",
+        "No social time",
+        "0 opened / 0 sent",
+        "Calendar",
+        "Connect Google",
+        "Messages",
+        "Connect platform",
+        "Mail",
+        "Connect Google"
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontal": false
+    }
+  },
+  {
+    "viewport": "mobile",
+    "scenario": "database",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-after-fixes-2/mobile-database.png",
+    "messages": [],
+    "dom": {
+      "text": [
+        "Browse",
+        "DATABASE",
+        "Table Browser",
+        "Database not available",
+        "The database viewer is only available when the local agent runtime is running."
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontal": false
+    }
+  },
+  {
+    "viewport": "mobile",
+    "scenario": "shopify",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/focused-after-fixes-2/mobile-shopify.png",
+    "messages": [],
+    "dom": {
+      "text": [
+        "Shopify",
+        "Not connected",
+        "Connect your Shopify store",
+        "STORE DOMAIN",
+        "SHOPIFY_STORE_DOMAIN=your-store.myshopify.com",
+        "ACCESS TOKEN",
+        "SHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+        "Restart after setting these env vars. Required scopes: read_products, read_orders, read_inventory, and read_customers scopes."
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontal": false
+    }
+  }
+]

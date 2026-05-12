@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, test } from "vitest";
 import type { State, UUID } from "../../../../types/index.ts";
 import { userPersonalityProvider } from "../providers/user-personality.ts";
-import { GLOBAL_PERSONALITY_SCOPE } from "../types.ts";
 import { initStore, makeFakeRuntime, makeMessage } from "./test-helpers.ts";
 
 const emptyState: State = { values: {}, data: {}, text: "" };

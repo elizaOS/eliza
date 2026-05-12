@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -174,8 +175,25 @@ def main() -> int:
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
     config = create_config(args)
+    server_mgr = None
+    provider = (config.provider or "").strip().lower()
+    needs_eliza_bridge = (
+        not config.dry_run
+        and provider in {"eliza", "eliza-bridge", "eliza-ts"}
+        and os.environ.get("BENCHMARK_HARNESS", "").strip().lower()
+        not in {"hermes", "openclaw"}
+    )
 
     try:
+        if needs_eliza_bridge and (
+            not os.environ.get("ELIZA_BENCH_URL") or not os.environ.get("ELIZA_BENCH_TOKEN")
+        ):
+            from eliza_adapter.server_manager import ElizaServerManager
+
+            server_mgr = ElizaServerManager()
+            server_mgr.start()
+            os.environ["ELIZA_BENCH_TOKEN"] = server_mgr.token
+            os.environ["ELIZA_BENCH_URL"] = f"http://localhost:{server_mgr.port}"
         results = asyncio.run(run(config))
     except KeyboardInterrupt:
         logger.info("VisualWebBench interrupted")
@@ -185,6 +203,9 @@ def main() -> int:
         if args.json:
             print(json.dumps({"error": str(exc)}, indent=2))
         return 1
+    finally:
+        if server_mgr is not None:
+            server_mgr.stop()
 
     if args.json:
         print(json.dumps(results, indent=2, default=str))

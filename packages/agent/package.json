@@ -34,6 +34,7 @@
     "prepublishOnly": "bun run build:dist",
     "build": "bun run build:dist",
     "build:mobile": "bun run scripts/build-mobile-bundle.mjs",
+    "build:ios-bun": "bun run scripts/build-mobile-bundle.mjs --target=ios",
     "build:ios-jsc": "bun run scripts/build-mobile-bundle.mjs --target=ios-jsc",
     "build:docker-dist": "rm -rf dist && tsc --noCheck -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/agent --compiled-prefix=packages/agent/src",
     "typecheck": "tsc --noEmit -p tsconfig.json",

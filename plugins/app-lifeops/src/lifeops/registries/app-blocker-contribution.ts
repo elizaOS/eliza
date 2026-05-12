@@ -2,8 +2,8 @@
  * App-blocker enforcer.
  *
  * Wraps the `app-blocker` engine (iOS Family Controls / Android Usage Access)
- * as a {@link BlockerContribution}. The umbrella `APP_BLOCK` action dispatches
- * through this entry instead of importing engine functions directly so a new
+ * as a {@link BlockerContribution}. BLOCK target=app dispatches through this
+ * entry instead of importing engine functions directly so a new
  * mobile-blocker backend (e.g. a desktop screen-time tie-in) is a registration
  * call.
  */

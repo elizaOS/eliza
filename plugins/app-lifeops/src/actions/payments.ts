@@ -217,11 +217,9 @@ async function runPaymentsActionInner(
 }
 
 /**
- * Handler function backing the MONEY umbrella's payments subactions.
- *
- * Folded out of the legacy `PAYMENTS` action surface — Audit B Defer #4. The
- * umbrella in `./money.ts` is the only caller; no Action object is
- * registered for this handler anymore.
+ * Handler function backing OWNER_FINANCES payment-source and spending
+ * subactions. The umbrella in `./money.ts` is the only caller; no Action object
+ * is registered for this handler.
  */
 export async function runPaymentsHandler(
   runtime: IAgentRuntime,

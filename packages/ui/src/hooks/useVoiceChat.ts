@@ -66,6 +66,7 @@ import {
   MAX_CACHED_SEGMENTS,
   matchesVoiceLocale,
   normalizeSpeechLocale,
+  type QueueAssistantSpeechOptions,
   resolveEffectiveVoiceConfig,
   resolveVoiceMode,
   resolveVoiceProxyEndpoint,
@@ -90,6 +91,8 @@ import {
 
 export { nextIdleMouthOpen } from "../voice/voice-chat-playback";
 export type {
+  QueueAssistantSpeechOptions,
+  VoiceAssistantSpeechTelemetry,
   VoiceCaptureMode,
   VoiceChatOptions,
   VoiceChatState,
@@ -1144,6 +1147,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           provider: "elevenlabs",
           cached,
           startedAtMs: playStartMs,
+          ...task.telemetry,
         });
       });
     },
@@ -1232,6 +1236,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             provider: "browser",
             cached: false,
             startedAtMs: performance.now(),
+            ...task.telemetry,
           });
           speechTimeoutRef.current = setTimeout(finish, estimatedMs);
           return;
@@ -1332,6 +1337,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
             provider: "browser",
             cached: false,
             startedAtMs: browserPlayStartMsRef.value,
+            ...task.telemetry,
           });
         };
         const endBrowserUtterance = () => {
@@ -1470,7 +1476,19 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         cancelPlayback();
       }
 
-      queueRef.current.push({ ...task, text: speakable });
+      queueRef.current.push({
+        ...task,
+        text: speakable,
+        telemetry: task.telemetry
+          ? {
+              ...task.telemetry,
+              queuedAtMs:
+                typeof performance !== "undefined"
+                  ? performance.now()
+                  : Date.now(),
+            }
+          : undefined,
+      });
       ttsDebug("enqueueSpeech", {
         segment: task.segment,
         append: task.append,
@@ -1537,17 +1555,23 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     const isFirstClip = state.queuedSpeakablePrefix.length === 0;
     enqueueSpeech({
       text: unsent,
-      append: !isFirstClip,
+      append: !isFirstClip || !state.replacePlaybackOnFirstClip,
       segment: isFirstClip ? "full" : "remainder",
       cacheKey,
       debugUtteranceContext: dbgUtterance,
+      telemetry: state.telemetry,
     });
 
     state.queuedSpeakablePrefix = latest;
   }, [enqueueSpeech, makeElevenCacheKey]);
 
   const queueAssistantSpeech = useCallback(
-    (messageId: string, text: string, isFinal: boolean) => {
+    (
+      messageId: string,
+      text: string,
+      isFinal: boolean,
+      queueOptions?: QueueAssistantSpeechOptions,
+    ) => {
       if (!messageId) return;
 
       const speakable = toSpeakableText(text);
@@ -1570,6 +1594,13 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           queuedSpeakablePrefix: "",
           latestSpeakable: "",
           finalQueued: false,
+          replacePlaybackOnFirstClip: queueOptions?.replace !== false,
+          telemetry: queueOptions?.telemetry,
+        };
+      } else if (queueOptions?.telemetry) {
+        current.telemetry = {
+          ...current.telemetry,
+          ...queueOptions.telemetry,
         };
       }
 
@@ -1606,6 +1637,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           segment: "full",
           cacheKey,
           debugUtteranceContext: dbgUtterance,
+          telemetry: state.telemetry,
         });
         state.queuedSpeakablePrefix = speakable;
         state.finalQueued = true;
@@ -1655,10 +1687,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           : undefined;
         enqueueSpeech({
           text: unsent,
-          append: !isFirstClip,
+          append: !isFirstClip || !state.replacePlaybackOnFirstClip,
           segment: isFirstClip ? "full" : "remainder",
           cacheKey,
           debugUtteranceContext: dbgUtterance,
+          telemetry: state.telemetry,
         });
         state.queuedSpeakablePrefix = speakable;
         if (isFinal) state.finalQueued = true;

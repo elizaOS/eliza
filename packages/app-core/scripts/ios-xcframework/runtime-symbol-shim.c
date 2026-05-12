@@ -24,6 +24,90 @@
 
 #define ELIZA_INFERENCE_ABI_VERSION_STRING "1"
 
+typedef int32_t llama_token;
+typedef int32_t llama_pos;
+typedef int32_t llama_seq_id;
+
+struct llama_model_tensor_buft_override {
+    const char * pattern;
+    void * buft;
+};
+
+struct llama_model_kv_override;
+
+struct llama_model_params {
+    void ** devices;
+    const struct llama_model_tensor_buft_override * tensor_buft_overrides;
+    int32_t n_gpu_layers;
+    int split_mode;
+    int32_t main_gpu;
+    const float * tensor_split;
+    void * progress_callback;
+    void * progress_callback_user_data;
+    const struct llama_model_kv_override * kv_overrides;
+    bool vocab_only;
+    bool use_mmap;
+    bool use_direct_io;
+    bool use_mlock;
+    bool check_tensors;
+    bool use_extra_bufts;
+    bool no_host;
+    bool no_alloc;
+};
+
+struct llama_sampler_seq_config {
+    llama_seq_id seq_id;
+    void * sampler;
+};
+
+struct llama_context_params {
+    uint32_t n_ctx;
+    uint32_t n_batch;
+    uint32_t n_ubatch;
+    uint32_t n_seq_max;
+    int32_t n_threads;
+    int32_t n_threads_batch;
+    int rope_scaling_type;
+    int pooling_type;
+    int attention_type;
+    int flash_attn_type;
+    float rope_freq_base;
+    float rope_freq_scale;
+    float yarn_ext_factor;
+    float yarn_attn_factor;
+    float yarn_beta_fast;
+    float yarn_beta_slow;
+    uint32_t yarn_orig_ctx;
+    float defrag_thold;
+    void * cb_eval;
+    void * cb_eval_user_data;
+    int type_k;
+    int type_v;
+    void * abort_callback;
+    void * abort_callback_data;
+    bool embeddings;
+    bool offload_kqv;
+    bool no_perf;
+    bool op_offload;
+    bool swa_full;
+    bool kv_unified;
+    struct llama_sampler_seq_config * samplers;
+    size_t n_samplers;
+};
+
+struct llama_batch {
+    int32_t n_tokens;
+    llama_token * token;
+    float * embd;
+    llama_pos * pos;
+    int32_t * n_seq_id;
+    llama_seq_id ** seq_id;
+    int8_t * logits;
+};
+
+extern void llama_log_set(void * log_callback, void * user_data);
+extern bool llama_supports_gpu_offload(void);
+
 struct EliInferenceContext {
     char * bundle_dir;
 };
@@ -238,4 +322,70 @@ int eliza_inference_asr_transcribe(
 
 void eliza_inference_free_string(char * str) {
     free(str);
+}
+
+/* ---- Swift direct llama.cpp bridge helpers ------------------------ */
+
+void milady_llama_batch_append(
+    struct llama_batch * batch,
+    llama_token token,
+    llama_pos pos,
+    bool logits_out);
+
+void milady_llama_model_params_set_n_gpu_layers(
+    struct llama_model_params * params,
+    int32_t n) {
+    if (params != NULL) params->n_gpu_layers = n;
+}
+
+void milady_llama_context_params_set_n_ctx(
+    struct llama_context_params * params,
+    uint32_t n) {
+    if (params != NULL) params->n_ctx = n;
+}
+
+void milady_llama_context_params_set_n_threads(
+    struct llama_context_params * params,
+    int32_t n,
+    int32_t n_batch) {
+    if (params == NULL) return;
+    params->n_threads = n;
+    params->n_threads_batch = n_batch;
+}
+
+void milady_llama_batch_set_single(
+    struct llama_batch * batch,
+    llama_token token,
+    llama_pos pos,
+    bool logits_out) {
+    if (batch == NULL) return;
+    batch->n_tokens = 0;
+    milady_llama_batch_append(batch, token, pos, logits_out);
+}
+
+void milady_llama_batch_append(
+    struct llama_batch * batch,
+    llama_token token,
+    llama_pos pos,
+    bool logits_out) {
+    if (batch == NULL) return;
+    const int32_t i = batch->n_tokens;
+    batch->token[i] = token;
+    batch->pos[i] = pos;
+    batch->n_seq_id[i] = 1;
+    batch->seq_id[i][0] = 0;
+    batch->logits[i] = logits_out ? 1 : 0;
+    batch->n_tokens++;
+}
+
+void milady_llama_batch_reset(struct llama_batch * batch) {
+    if (batch != NULL) batch->n_tokens = 0;
+}
+
+void milady_llama_log_silence(void) {
+    llama_log_set(NULL, NULL);
+}
+
+bool milady_llama_has_metal(void) {
+    return llama_supports_gpu_offload();
 }

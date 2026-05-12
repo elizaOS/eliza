@@ -56,6 +56,9 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
+  "optionalDependencies": {
+    "@elizaos/capacitor-bun-runtime": "0.1.0"
+  },
   "dependencies": {
     "@elizaos/core": "2.0.0-beta.1",
     "@elizaos/plugin-browser": "2.0.0-beta.1",

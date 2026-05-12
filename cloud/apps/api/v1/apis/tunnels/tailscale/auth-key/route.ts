@@ -70,8 +70,7 @@ app.post("/", async (c) => {
     if (tunnelProxyHost && !hostnameSigningSecret && !allowUnsignedHostnames) {
       return c.json(
         {
-          error:
-            "Tunnel hostname signing is not configured. Set TUNNEL_HOSTNAME_SIGNING_SECRET.",
+          error: "Tunnel hostname signing is not configured. Set TUNNEL_HOSTNAME_SIGNING_SECRET.",
         },
         503,
       );
@@ -196,11 +195,7 @@ function readUsdAmount(value: unknown, fallback: number): number {
     return fallback;
   }
   const parsed = typeof value === "number" ? value : Number.parseFloat(value.trim());
-  if (
-    !Number.isFinite(parsed) ||
-    parsed < 0 ||
-    parsed > MAX_TUNNEL_AUTH_KEY_COST_USD
-  ) {
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > MAX_TUNNEL_AUTH_KEY_COST_USD) {
     return fallback;
   }
   return Math.round(parsed * 1_000_000) / 1_000_000;

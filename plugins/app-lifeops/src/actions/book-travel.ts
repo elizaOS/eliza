@@ -232,7 +232,7 @@ async function extractBookTravelPlanWithLlm(args: {
   ).join("\n");
 
   const prompt = [
-    "Extract structured booking data for the BOOK_TRAVEL action.",
+    "Extract structured booking data for PERSONAL_ASSISTANT action=book_travel.",
     "Return JSON only as a single object with exactly these keys:",
     "offerId: string or null",
     "origin: IATA airport code or null",
@@ -324,7 +324,7 @@ function buildApprovalText(request: ApprovalRequest): string {
   return `Queued travel approval for ${route}. Once you approve, I will ${orderType}, complete payment, and sync the itinerary to your calendar. Current quote: ${total}.`;
 }
 
-// Internal BOOK_TRAVEL handler. The travel surface is delegated to from the
+// Internal travel-booking handler. The travel surface is delegated to from the
 // registered PERSONAL_ASSISTANT umbrella in owner-surfaces.ts; this module no
 // longer publishes a planner-visible Action. Approval execution still lives
 // here as `executeApprovedBookTravel` and is invoked by RESOLVE_REQUEST.
@@ -356,7 +356,8 @@ export async function runBookTravelHandler(
             requiresConfirmation: true,
           },
           data: {
-            actionName: "BOOK_TRAVEL",
+            actionName: "PERSONAL_ASSISTANT",
+            action: "book_travel",
             error: error.code,
             featureKey: error.featureKey,
             requiresConfirmation: true,
@@ -407,7 +408,8 @@ export async function runBookTravelHandler(
           missing,
         },
         data: {
-          actionName: "BOOK_TRAVEL",
+          actionName: "PERSONAL_ASSISTANT",
+          action: "book_travel",
           error: "MISSING_BOOKING_DETAILS",
           requiresConfirmation: true,
           missing,
@@ -427,7 +429,7 @@ export async function runBookTravelHandler(
       const { origin, destination, departureDate } = merged;
       if (!origin || !destination || !departureDate) {
         throw new Error(
-          "BOOK_TRAVEL validated fields are unexpectedly missing",
+          "PERSONAL_ASSISTANT action=book_travel validated fields are unexpectedly missing",
         );
       }
       search = {
@@ -458,7 +460,7 @@ export async function runBookTravelHandler(
       // entry rather than a hard failure: the user sees the booking
       // intent and the top-up prompt together and can approve once they
       // have credit. We bail out here because we don't have a quoted
-      // offer yet — the next BOOK_TRAVEL invocation after top-up will
+      // offer yet — the next book_travel invocation after top-up will
       // re-quote.
       const paymentRequired: X402PaymentRequirement = err.requirements[0];
       const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
@@ -467,7 +469,7 @@ export async function runBookTravelHandler(
           ? message.entityId
           : String(runtime.agentId);
       const request = await queue.enqueue({
-        requestedBy: "BOOK_TRAVEL",
+        requestedBy: "PERSONAL_ASSISTANT",
         subjectUserId,
         action: "book_travel",
         payload: {
@@ -510,7 +512,8 @@ export async function runBookTravelHandler(
           requiresConfirmation: true,
         },
         data: {
-          actionName: "BOOK_TRAVEL",
+          actionName: "PERSONAL_ASSISTANT",
+          action: "book_travel",
           error: err.code,
           requestId: request.id,
           requiresConfirmation: true,
@@ -529,7 +532,7 @@ export async function runBookTravelHandler(
         ? message.entityId
         : String(runtime.agentId);
     const request = await queue.enqueue({
-      requestedBy: "BOOK_TRAVEL",
+      requestedBy: "PERSONAL_ASSISTANT",
       subjectUserId,
       action: "book_travel",
       payload: {
@@ -556,7 +559,8 @@ export async function runBookTravelHandler(
         offerId: prepared.offer.id,
       },
       data: {
-        actionName: "BOOK_TRAVEL",
+        actionName: "PERSONAL_ASSISTANT",
+        action: "book_travel",
         requestId: request.id,
         state: request.state,
         offerId: prepared.offer.id,
@@ -568,7 +572,7 @@ export async function runBookTravelHandler(
 }
 
 // Callback invoked by the approval queue once an owner approves a queued
-// BOOK_TRAVEL request. Exported because approval.ts dispatches here after
+// book_travel request. Exported because approval.ts dispatches here after
 // a request transitions from pending -> approved.
 export async function executeApprovedBookTravel(args: {
   runtime: IAgentRuntime;
@@ -632,7 +636,8 @@ export async function executeApprovedBookTravel(args: {
       calendarEventId: booked.calendarEvent?.id ?? null,
     },
     data: {
-      actionName: "BOOK_TRAVEL",
+      actionName: "PERSONAL_ASSISTANT",
+      action: "book_travel",
       requestId: done.id,
       state: done.state,
       bookingReference: booked.order.bookingReference,

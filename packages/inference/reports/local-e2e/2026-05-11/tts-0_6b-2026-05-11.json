@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-11T19:03:18.095Z",
+  "status": "ok",
+  "tool": "llama-omnivoice-server",
+  "backend": "darwin-arm64-metal-fused",
+  "input": "hello world",
+  "seed": 42,
+  "bundle": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle",
+  "model": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle/tts/omnivoice-base-Q4_K_M.gguf",
+  "codec": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle/tts/omnivoice-tokenizer-Q4_K_M.gguf",
+  "outputWav": "packages/inference/reports/local-e2e/2026-05-11/audio/tts-0_6b-hello.wav",
+  "wav": {
+    "bytes": 76844,
+    "riff": "RIFF",
+    "wave": "WAVE",
+    "sampleRateHz": 24000,
+    "channels": 1,
+    "bitsPerSample": 16,
+    "dataBytes": 76800,
+    "samples": 38400,
+    "audioSeconds": 1.6
+  }
+}

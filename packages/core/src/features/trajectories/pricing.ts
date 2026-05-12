@@ -231,6 +231,116 @@ export const MODEL_PRICES_USD_PER_M_TOKENS: Record<
 };
 
 /**
+ * Per-model maximum input context window, in tokens.
+ *
+ * Used by `buildModelInputBudget` when the caller does not pass an explicit
+ * `contextWindowTokens` — letting the compaction planner size its budget to
+ * the actual model ceiling instead of a one-size-fits-all default.
+ *
+ * Numbers reflect the smallest documented input-context limit per family,
+ * captured from the provider's docs as of 2026-05-11. A few providers
+ * advertise larger windows on specific tiers; using the conservative
+ * number gives a safety margin and avoids per-tier lookup that we cannot
+ * resolve at compaction-decision time.
+ *
+ * This table SHOULD line up with `MODEL_PRICES_USD_PER_M_TOKENS` keys, but
+ * does not have to be a strict superset/subset: the price table sometimes
+ * carries a model under a provider's naming convention (e.g. Groq's
+ * `llama-3.3-70b-versatile`) while the same family appears in the window
+ * table under a different vendor's name (Cerebras's `llama3.1-8b`). When
+ * adding entries, prefer the canonical id the provider returns from
+ * `GET /v1/models` rather than aliasing — the lookup helper's substring
+ * fallback keeps the two tables interoperable for versioned ids without
+ * forcing every alias to be enumerated.
+ *
+ * Local-tier entries are omitted on purpose: callers building a budget for
+ * an Ollama / LM Studio / llama.cpp / local provider should pass an
+ * explicit `contextWindowTokens` for the loaded GGUF, since the actual
+ * window varies per-file.
+ */
+export const MODEL_CONTEXT_WINDOW_TOKENS: Record<string, number> = {
+	// ---- Anthropic ----------------------------------------------------------
+	// Source: https://docs.anthropic.com/en/docs/about-claude/models (captured 2026-05-11)
+	"claude-opus-4-7": 200_000,
+	"claude-sonnet-4-6": 200_000,
+	"claude-haiku-4-5": 200_000,
+
+	// ---- OpenAI -------------------------------------------------------------
+	// Source: https://platform.openai.com/docs/models (captured 2026-05-11)
+	"gpt-5.5": 200_000,
+	"gpt-5.5-mini": 128_000,
+
+	// ---- Google -------------------------------------------------------------
+	// Source: https://ai.google.dev/gemini-api/docs/models (captured 2026-05-11)
+	"gemini-2.5-pro": 1_048_576,
+	"gemini-2.5-flash": 1_048_576,
+
+	// ---- Cerebras -----------------------------------------------------------
+	// Source: api.cerebras.ai/v1 self-reported limits (`context_length_exceeded`
+	// body cites the per-model ceiling). Captured 2026-05-11.
+	"gpt-oss-120b": 131_000,
+	"qwen-3-235b-a22b-instruct-2507": 64_000,
+	"zai-glm-4.7": 131_000,
+	"llama3.1-8b": 32_000,
+
+	// ---- Groq ---------------------------------------------------------------
+	// Source: https://console.groq.com/docs/models (captured 2026-05-11)
+	"openai/gpt-oss-120b": 131_000,
+	"llama-3.3-70b-versatile": 131_000,
+	"llama-3.1-8b-instant": 131_000,
+};
+
+/**
+ * Result of a context-window lookup. Carries the matched table key so callers
+ * can surface "matched as family X" diagnostics if needed — mirrors
+ * `PriceLookupResult`.
+ */
+export interface ContextWindowLookupResult {
+	matchedKey: string;
+	contextWindowTokens: number;
+}
+
+/**
+ * Look up the documented input-context window for a model name.
+ *
+ * Returns null when the model has no entry — callers should fall back to
+ * `DEFAULT_CONTEXT_WINDOW_TOKENS` (see `runtime/model-input-budget`) or to
+ * a provider-supplied number.
+ *
+ * Matching strategy (parallel to `lookupModelPrice`):
+ *   1. exact key match
+ *   2. longest-key **substring** match — every table key whose
+ *      lowercased form appears anywhere in the lowercased model name is
+ *      a candidate, and the longest such key wins. This handles
+ *      versioned ids like `claude-haiku-4-5-20251001` (resolves to
+ *      `claude-haiku-4-5`) and provider prefixes like `openai/gpt-5.5`
+ *      (resolves to `gpt-5.5`) uniformly. The substring fallback is
+ *      permissive by design: an adversarial / synthetic id such as
+ *      `acme-gpt-oss-120b-finetune` would also match the `gpt-oss-120b`
+ *      entry, which is the right answer when the finetune inherits its
+ *      parent's context window — and a safe under-estimate otherwise.
+ */
+export function lookupModelContextWindow(
+	modelName: string | undefined,
+): ContextWindowLookupResult | null {
+	if (!modelName) return null;
+	const exact = MODEL_CONTEXT_WINDOW_TOKENS[modelName];
+	if (typeof exact === "number") {
+		return { matchedKey: modelName, contextWindowTokens: exact };
+	}
+
+	const normalized = modelName.toLowerCase();
+	const candidates = Object.keys(MODEL_CONTEXT_WINDOW_TOKENS)
+		.filter((k) => normalized.includes(k.toLowerCase()))
+		.sort((a, b) => b.length - a.length);
+	const match = candidates[0];
+	if (!match) return null;
+	const tokens = MODEL_CONTEXT_WINDOW_TOKENS[match];
+	if (typeof tokens !== "number") return null;
+	return { matchedKey: match, contextWindowTokens: tokens };
+}
+
+/**
  * Provider tags that emit cost 0 with no warning when no model entry is
  * found. Local inference is a real zero, not a missing price — per
  * AGENTS.md: "cost=0 for local is a real zero (not 'missing'). No fallback

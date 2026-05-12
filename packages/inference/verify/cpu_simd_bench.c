@@ -89,10 +89,10 @@ static double run_qjl_fp32(int nthreads) {
 #endif
     for (int hq = 0; hq < N_HEADS; hq++) {
         const int hk = hq / gqa;
-        qjl_score_qk_avx2(g_q_sketch_f32 + (size_t)hq * QJL_PROJECTION_DIM,
-                          g_k_qjl + (size_t)hk * g_ntok,
-                          1, 1, g_ntok,
-                          g_qjl_scores + (size_t)hq * g_ntok);
+        qjl_score_qk(g_q_sketch_f32 + (size_t)hq * QJL_PROJECTION_DIM,
+                     g_k_qjl + (size_t)hk * g_ntok,
+                     1, 1, g_ntok,
+                     g_qjl_scores + (size_t)hq * g_ntok);
     }
     (void)nthreads;
     return now_us() - t0;
@@ -145,6 +145,13 @@ int main(int argc, char **argv) {
             while (tok && nthreads < 16) { threads[nthreads++] = atoi(tok); tok = strtok(NULL, " ,"); }
         }
     }
+#ifndef _OPENMP
+    if (nthreads != 1 || threads[0] != 1) {
+        fprintf(stderr, "[cpu_simd_bench] OpenMP unavailable; running single-thread SIMD bench only\n");
+    }
+    threads[0] = 1;
+    nthreads = 1;
+#endif
     if (runs < 1) runs = 1;
     if (ntok < 1) ntok = 1;
     g_ntok = ntok;

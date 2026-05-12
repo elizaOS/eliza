@@ -72,7 +72,6 @@ A comprehensive shell command execution plugin for ElizaOS with PTY support, bac
 ```
 plugin-shell/
 ├── typescript/          # TypeScript implementation
-│   ├── actions/         # EXECUTE_COMMAND, CLEAR_SHELL_HISTORY
 │   ├── providers/       # SHELL_HISTORY provider
 │   ├── services/        # ShellService
 │   ├── utils/           # Path validation, security checks
@@ -170,9 +169,11 @@ if (execResult.status === "running") {
 // Get the service from an Eliza agent runtime
 const shellService = runtime.getService<ShellService>("shell");
 ```
-## 📋 Available Actions
+## 📋 Shell Operations
 
-### EXECUTE_COMMAND
+Shell execution is exposed through the canonical `SHELL` action in
+`@elizaos/plugin-coding-tools`. This plugin supplies the shell service,
+approval service, and history provider.
 
 Executes ANY shell command within the allowed directory, including file operations.
 
@@ -207,14 +208,12 @@ Manage running and finished shell sessions. Supports the following operations:
 - `kill the process swift-reef`
 - `send enter to session brisk-cove`
 
-### CLEAR_SHELL_HISTORY
-
-Clears the command history for the current conversation.
+### Shell History
 
 **Examples:**
 
-- `clear my shell history`
-- `reset the terminal history`
+- `SHELL action=clear_history`
+- `SHELL action=view_history`
 
 ## 🧠 Shell History Provider
 

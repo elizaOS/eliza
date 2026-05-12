@@ -77,7 +77,7 @@
     "test:repo-unit:special": "SKIP_DB_DEPENDENT=1 SKIP_SERVER_CHECK=true bun test --preload ./packages/tests/load-env.ts packages/tests/unit/credits.test.ts packages/tests/unit/eliza-app/discord-auth.test.ts packages/tests/unit/eliza-agent-web-ui.test.ts",
     "test:repo-unit:isolated": "SKIP_DB_DEPENDENT=1 SKIP_SERVER_CHECK=true bun test --preload ./packages/tests/load-env.ts packages/tests/unit/docker-infrastructure.test.ts && SKIP_DB_DEPENDENT=1 SKIP_SERVER_CHECK=true bun test --preload ./packages/tests/load-env.ts packages/tests/unit/oauth/secrets-adapter-utils.test.ts && SKIP_DB_DEPENDENT=1 SKIP_SERVER_CHECK=true bun test --preload ./packages/tests/load-env.ts packages/tests/unit/market-price-preview-route.test.ts",
     "test:integration:db": "SKIP_SERVER_CHECK=true bun test --max-concurrency=1 --preload ./packages/tests/load-env.ts packages/tests/integration/db/idempotency.test.ts packages/tests/integration/db/message-router-service.test.ts packages/tests/integration/db/twilio-automation-service.test.ts",
-    "test:integration": "bun test --max-concurrency=1 --preload ./packages/tests/e2e/preload.ts packages/tests/integration --timeout 120000",
+    "test:integration": "node packages/scripts/run-integration-tests.mjs",
     "test:properties": "bun test --max-concurrency=1 --preload ./packages/tests/load-env.ts packages/tests/properties --timeout 300000",
     "test:runtime": "bun run build:linked-workspaces && bun test --max-concurrency=1 --preload ./packages/tests/load-env.ts packages/tests/runtime --timeout 120000",
     "test:mcp": "bun test --preload ./packages/tests/load-env.ts packages/tests/runtime/mcp-loading.test.ts --timeout 120000",

@@ -92,6 +92,17 @@ export {
   type SharedTokenizer,
 } from "./shared-resources";
 export {
+  cosineSimilarity,
+  DEFAULT_VOICE_IMPRINT_MATCH_THRESHOLD,
+  matchVoiceImprint,
+  normalizeVoiceEmbedding,
+  updateVoiceImprintCentroid,
+  type VoiceImprintCentroidUpdate,
+  type VoiceImprintMatch,
+  type VoiceImprintProfile,
+  voiceSpeakerFromImprintMatch,
+} from "./speaker-imprint";
+export {
   DEFAULT_VOICE_ID,
   DEFAULT_VOICE_PRESET_REL_PATH,
   type LoadedPresetBundle,

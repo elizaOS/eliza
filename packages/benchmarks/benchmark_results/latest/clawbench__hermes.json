@@ -6,19 +6,19 @@
   "benchmark_directory": "clawbench",
   "benchmark_id": "clawbench",
   "cache_metrics": {
-    "cache_read_input_tokens": 0,
     "cache_creation_input_tokens": 0,
-    "turns_with_cached_field": 0,
-    "cache_hit_ratio": 0.0
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
   },
   "error": null,
   "higher_is_better": true,
   "metrics": {
     "cache_metrics": {
-      "cache_read_input_tokens": 0,
       "cache_creation_input_tokens": 0,
-      "turns_with_cached_field": 0,
-      "cache_hit_ratio": 0.0
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
     },
     "nonzero_return_code_with_result": 2,
     "passed": 6,
@@ -31,19 +31,19 @@
     "return_code": 2,
     "score": 0.4643,
     "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
       "llm_call_count": 1,
       "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "avg_prompt_tokens": 0.0,
-      "avg_completion_tokens": 0.0
+      "total_tokens": 0
     },
     "total": 13,
     "trajectory_summary": {
       "files": 1,
-      "turns": 1,
       "prompt_chars": 692,
-      "repeated_prefixes": []
+      "repeated_prefixes": [],
+      "turns": 1
     }
   },
   "model": "gpt-oss-120b",
@@ -60,19 +60,19 @@
   "score": 0.4643,
   "status": "succeeded",
   "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
     "llm_call_count": 1,
     "prompt_tokens": 0,
-    "completion_tokens": 0,
-    "total_tokens": 0,
-    "avg_prompt_tokens": 0.0,
-    "avg_completion_tokens": 0.0
+    "total_tokens": 0
   },
   "trajectory_summary": {
     "files": 1,
-    "turns": 1,
     "prompt_chars": 692,
-    "repeated_prefixes": []
+    "repeated_prefixes": [],
+    "turns": 1
   },
   "unit": "ratio",
-  "updated_at": "2026-05-11T14:02:59.898068+00:00"
+  "updated_at": "2026-05-12T01:33:59Z"
 }

@@ -48,20 +48,27 @@ type CaptureRecord = {
 const HERE = dirname(fileURLToPath(import.meta.url));
 // HERE = packages/app/test/ui-smoke → up 4 levels = repo root
 const REPO_ROOT = resolve(HERE, "../../../..");
-const RUN_ID = process.env.AI_QA_RUN_ID ?? new Date().toISOString().replace(/[:.]/g, "-");
+const RUN_ID =
+  process.env.AI_QA_RUN_ID ?? new Date().toISOString().replace(/[:.]/g, "-");
 const REPORT_DIR = resolve(REPO_ROOT, "reports", "ai-qa", RUN_ID);
 
 const ROUTE_FILTER = process.env.AI_QA_ROUTE_FILTER ?? "";
-const VIEWPORT_FILTER = (process.env.AI_QA_VIEWPORTS ?? "desktop,mobile") as string;
+const VIEWPORT_FILTER = (process.env.AI_QA_VIEWPORTS ??
+  "desktop,mobile") as string;
 const THEME_FILTER = (process.env.AI_QA_THEMES ?? "light,dark") as string;
 
 const SELECTED_VIEWPORTS: readonly ViewportName[] = VIEWPORT_FILTER.split(",")
   .map((v) => v.trim())
-  .filter((v): v is ViewportName => v === "desktop" || v === "tablet" || v === "mobile");
+  .filter(
+    (v): v is ViewportName =>
+      v === "desktop" || v === "tablet" || v === "mobile",
+  );
 
 const SELECTED_THEMES: readonly Theme[] = THEME_FILTER.split(",")
   .map((t) => t.trim())
   .filter((t): t is Theme => t === "light" || t === "dark");
+
+test.use({ trace: "off", video: "off" });
 
 const ROUTES_TO_RUN: readonly AiQaRoute[] = ROUTE_FILTER
   ? AI_QA_ROUTES.filter((route) => {
@@ -71,6 +78,15 @@ const ROUTES_TO_RUN: readonly AiQaRoute[] = ROUTE_FILTER
       );
     })
   : AI_QA_ROUTES;
+
+function viewportsForRoute(route: AiQaRoute): readonly ViewportName[] {
+  if (!route.viewports || route.viewports.length === 0) {
+    return SELECTED_VIEWPORTS;
+  }
+  return SELECTED_VIEWPORTS.filter((viewport) =>
+    route.viewports?.includes(viewport),
+  );
+}
 
 async function ensureDir(path: string): Promise<void> {
   await mkdir(path, { recursive: true });
@@ -113,7 +129,10 @@ async function applyTheme(page: Page, theme: Theme): Promise<void> {
       localStorage.setItem("eliza-theme", targetTheme);
       document.documentElement.dataset.theme = targetTheme;
       document.documentElement.classList.toggle("dark", targetTheme === "dark");
-      document.documentElement.classList.toggle("light", targetTheme === "light");
+      document.documentElement.classList.toggle(
+        "light",
+        targetTheme === "light",
+      );
     } catch {}
   }, theme);
   await page.emulateMedia({ colorScheme: theme });
@@ -180,7 +199,8 @@ async function captureButtonInventory(page: Page): Promise<ButtonRecord[]> {
       const testId = node.getAttribute("data-testid");
       if (testId) return `[data-testid="${testId}"]`;
       const ariaLabel = node.getAttribute("aria-label");
-      if (ariaLabel) return `${node.tagName.toLowerCase()}[aria-label="${ariaLabel.slice(0, 60)}"]`;
+      if (ariaLabel)
+        return `${node.tagName.toLowerCase()}[aria-label="${ariaLabel.slice(0, 60)}"]`;
       const text = (node.textContent ?? "").trim().slice(0, 40);
       if (text) return `${node.tagName.toLowerCase()}:has-text("${text}")`;
       return node.tagName.toLowerCase();
@@ -192,8 +212,7 @@ async function captureButtonInventory(page: Page): Promise<ButtonRecord[]> {
         seen.add(node);
         const rect = node.getBoundingClientRect();
         if (rect.width === 0 || rect.height === 0) continue;
-        const role =
-          node.getAttribute("role") ?? node.tagName.toLowerCase();
+        const role = node.getAttribute("role") ?? node.tagName.toLowerCase();
         const text = (node.textContent ?? "").trim().slice(0, 80);
         const testId = node.getAttribute("data-testid");
         const ariaLabel = node.getAttribute("aria-label");
@@ -298,7 +317,7 @@ test.describe("ai-qa capture", () => {
   });
 
   for (const route of ROUTES_TO_RUN) {
-    for (const viewport of SELECTED_VIEWPORTS) {
+    for (const viewport of viewportsForRoute(route)) {
       for (const theme of SELECTED_THEMES) {
         test(`${route.id} @ ${viewport} ${theme}`, async ({ browser }) => {
           test.setTimeout((route.timeoutMs ?? 30_000) + 60_000);

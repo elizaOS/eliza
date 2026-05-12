@@ -24,6 +24,10 @@ import {
   DEFAULT_WARM_POOL_POLICY,
   type WarmPoolPolicy,
 } from "@/lib/services/containers/agent-warm-pool-forecast";
+import {
+  type ImageRolloutSummary,
+  summarizeImageRollout,
+} from "@/lib/services/containers/image-rollout-status";
 import { logger } from "@/lib/utils/logger";
 
 // ---------------------------------------------------------------------------
@@ -369,6 +373,23 @@ export class WarmPoolManager {
       failed: failed.length,
     });
     return { decision, replaced, failed };
+  }
+
+  async rolloutStatus(image: string): Promise<ImageRolloutSummary> {
+    const rows = containersEnv.warmPoolEnabled()
+      ? await agentSandboxesRepository.listUnclaimedPool()
+      : [];
+    return summarizeImageRollout({
+      desiredImage: image,
+      enabled: containersEnv.warmPoolEnabled(),
+      rows: rows.map((r) => ({
+        id: r.id,
+        docker_image: r.docker_image,
+        node_id: r.node_id,
+        pool_ready_at: r.pool_ready_at,
+        health_url: r.health_url,
+      })),
+    });
   }
 
   private async collectHourlyBuckets(windowHours: number): Promise<number[]> {

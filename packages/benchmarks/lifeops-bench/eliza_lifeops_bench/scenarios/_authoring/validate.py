@@ -27,6 +27,13 @@ from .taxonomy import (
 VALID_DOMAIN_VALUES: frozenset[str] = frozenset(d.value for d in Domain)
 VALID_MODE_VALUES: frozenset[str] = frozenset({"static", "live"})
 VALID_PERSONA_IDS: frozenset[str] = frozenset(p.id for p in ALL_PERSONAS)
+PARAMETER_ALIASES: dict[str, str] = {
+    # Production manifests generally call the discriminator `action`; the
+    # benchmark corpus uses the runtime-facing names that the executor
+    # dispatches on.
+    "subaction": "action",
+    "operation": "action",
+}
 
 
 @dataclass(frozen=True)
@@ -264,15 +271,10 @@ def _check_actions(
         umbrella_discriminator = umbrella[0] if umbrella is not None else None
 
         for required_field in required:
-            if required_field not in kwargs:
-                # Treat the umbrella discriminator alias as satisfying the
-                # required field — `subaction='create_event'` covers a schema
-                # that requires `action`, and vice versa.
-                if (
-                    umbrella_discriminator is not None
-                    and umbrella_discriminator in kwargs
-                ):
-                    continue
+            if required_field not in kwargs and not any(
+                alias in kwargs and target == required_field
+                for alias, target in PARAMETER_ALIASES.items()
+            ):
                 issues.append(
                     ValidationIssue(
                         path=f"{prefix}.kwargs.{required_field}",
@@ -283,7 +285,10 @@ def _check_actions(
                 )
 
         for kw_name, kw_value in kwargs.items():
-            if kw_name not in properties:
+            declared_name = kw_name
+            if declared_name not in properties:
+                declared_name = PARAMETER_ALIASES.get(kw_name, kw_name)
+            if declared_name not in properties:
                 # Accept the umbrella discriminator field (e.g. `subaction` on
                 # CALENDAR) even when the manifest schema names the field
                 # differently — the scorer treats them as equivalent.
@@ -304,7 +309,7 @@ def _check_actions(
                     )
                 )
             else:
-                expected_type = properties[kw_name].get("type")
+                expected_type = properties[declared_name].get("type")
                 if expected_type and not _matches_type(kw_value, expected_type):
                     issues.append(
                         ValidationIssue(

@@ -21,6 +21,7 @@ const apiBase = argValue("--api-base");
 const authTokenArg = argValue("--auth-token");
 const requireInstalled = process.argv.includes("--require-installed");
 const exerciseAppCoreApi = process.argv.includes("--live") || Boolean(apiBase);
+const iosSelectLocal = process.argv.includes("--ios-select-local");
 const androidSelectLocal = process.argv.includes("--android-select-local");
 const androidBackground = process.argv.includes("--android-background");
 const iosBackground = process.argv.includes("--ios-background");
@@ -41,6 +42,7 @@ Options:
   --live                           Exercise the app-core local-agent HTTP API on Android
   --api-base URL                   Exercise an already-reachable app-core HTTP API
   --auth-token TOKEN               Bearer token for protected app-core API routes
+  --ios-select-local               Pre-seed iOS onboarding/runtime state for Local mode before launch
   --android-select-local           Tap through Android first-run Local runtime selection
   --android-background             Background Android, force-fire the WorkManager job, and poll /api/health
   --ios-background                 Background iOS, fire a BGTaskScheduler task via LLDB, and poll /api/health
@@ -153,12 +155,68 @@ function launchIosSimulatorApp() {
     return { udid, installed: false };
   }
 
+  if (iosSelectLocal) {
+    preseedIosLocalRuntime(udid, id);
+  }
+
   console.log(
     `[local-chat-smoke] Launching ${id} in the booted simulator (${udid}).`,
   );
   tryExec("xcrun", ["simctl", "launch", udid, id]);
   tryExec("xcrun", ["simctl", "openurl", udid, "elizaos://chat"]);
   return { udid, installed: true };
+}
+
+function writeIosDefaultsString(udid, domain, key, value) {
+  // Capacitor Preferences stores the default group as `CapacitorStorage.<key>`
+  // in iOS UserDefaults. The JS API strips that prefix; simulator pre-seed has
+  // to write the native key directly because the app is not running yet. Use
+  // the simulator's `defaults` tool so the same cfprefsd domain that the app's
+  // UserDefaults.standard reads is updated.
+  const nativeKey = `CapacitorStorage.${key}`;
+  requireExec(
+    "xcrun",
+    [
+      "simctl",
+      "spawn",
+      udid,
+      "defaults",
+      "write",
+      domain,
+      nativeKey,
+      "-string",
+      value,
+    ],
+    `Failed to write iOS preference ${key}.`,
+  );
+}
+
+function flushIosPreferencesCache(udid) {
+  // `defaults write <container>/Library/Preferences/<bundle-id>` updates the
+  // plist on disk, but a booted simulator can keep the old domain cached in
+  // cfprefsd. Kill it before app launch so Capacitor Preferences sees the
+  // pre-seeded values on first read.
+  tryExec("xcrun", ["simctl", "spawn", udid, "killall", "cfprefsd"], {
+    allowFailure: true,
+  });
+}
+
+function preseedIosLocalRuntime(udid, id) {
+  const activeServer = JSON.stringify({
+    id: "local:mobile",
+    kind: "remote",
+    label: "On-device agent",
+    apiBase: "http://127.0.0.1:31337",
+  });
+
+  tryExec("xcrun", ["simctl", "terminate", udid, id], { allowFailure: true });
+  writeIosDefaultsString(udid, id, "eliza:mobile-runtime-mode", "local");
+  writeIosDefaultsString(udid, id, "eliza:onboarding-complete", "1");
+  writeIosDefaultsString(udid, id, "elizaos:active-server", activeServer);
+  flushIosPreferencesCache(udid);
+  console.log(
+    `[local-chat-smoke] Pre-seeded iOS Local runtime preferences for ${id}.`,
+  );
 }
 
 function androidDeviceSerial(adb) {

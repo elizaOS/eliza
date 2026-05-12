@@ -42,8 +42,15 @@ export async function handleUpdateRoutes(
       fetchAllChannelVersions,
       CHANNEL_DIST_TAGS,
     } = await import("../services/update-checker.ts");
-    const { detectInstallMethod } = await import("../services/self-updater.ts");
+    const { isTrustedLocalRequest } = await import("./server-auth.ts");
+    const { detectInstallMethod, getUpdateActionPlan } = await import(
+      "../services/self-updater.ts"
+    );
     const channel = resolveChannel(state.config.update);
+    const installMethod = detectInstallMethod();
+    const updatePlan = getUpdateActionPlan(installMethod, channel, {
+      remoteDisplay: !isTrustedLocalRequest(req),
+    });
 
     const [check, versions] = await Promise.all([
       checkForUpdate({ force: req.url?.includes("force=true") }),
@@ -53,7 +60,14 @@ export async function handleUpdateRoutes(
     json(res, {
       currentVersion: VERSION,
       channel,
-      installMethod: detectInstallMethod(),
+      installMethod,
+      updateAuthority: updatePlan.authority,
+      nextAction: updatePlan.nextAction,
+      canAutoUpdate: updatePlan.canAutoUpdate,
+      canExecuteUpdate: updatePlan.canExecuteFromContext,
+      remoteDisplay: updatePlan.remoteDisplay,
+      updateCommand: updatePlan.command,
+      updateInstructions: updatePlan.message,
       updateAvailable: check.updateAvailable,
       latestVersion: check.latestVersion,
       channels: {

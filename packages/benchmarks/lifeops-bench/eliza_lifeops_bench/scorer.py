@@ -19,6 +19,7 @@ from __future__ import annotations
 import math
 import re
 import statistics
+import unicodedata
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
@@ -46,6 +47,35 @@ DATE_TOLERANCE_SECONDS = 60
 # they don't drive any behavior the executor cares about.
 _SOFT_KWARGS: frozenset[str] = frozenset(
     {"intent", "rationale", "thought", "reasoning"}
+)
+
+_OUTPUT_EQUIVALENTS: dict[str, tuple[str, ...]] = {
+    "scheduled": (
+        "scheduled",
+        "added to your calendar",
+        "on your calendar",
+        "booked",
+        "created",
+    ),
+    "rescheduled": (
+        "rescheduled",
+        "moved",
+        "updated",
+        "changed",
+    ),
+}
+
+_TIME_12H_RE = re.compile(
+    r"(?<![a-z0-9])"
+    r"(?P<hour>1[0-2]|0?[1-9])"
+    r"(?:[:.](?P<minute>[0-5]\d))?"
+    r"\s*(?P<ampm>am|pm)\b"
+)
+_TIME_24H_RE = re.compile(
+    r"(?<!\d)"
+    r"(?P<hour>[01]?\d|2[0-3])"
+    r":(?P<minute>[0-5]\d)"
+    r"(?:\s*(?:utc|z))?\b"
 )
 
 
@@ -171,6 +201,68 @@ def _normalize_string(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip().lower()
 
 
+def _normalize_output_text(s: str) -> str:
+    normalized = unicodedata.normalize("NFKC", s)
+    normalized = normalized.replace("\u00a0", " ").replace("\u202f", " ")
+    normalized = re.sub(r"[\u2010-\u2015]", "-", normalized)
+    normalized = normalized.lower()
+    normalized = re.sub(r"\b([ap])\s*\.?\s*m\.?\b", r"\1m", normalized)
+    return re.sub(r"\s+", " ", normalized).strip()
+
+
+def _extract_time_minutes(text: str) -> set[int]:
+    """Extract explicit clock times as minutes after midnight.
+
+    Used only for required-output matching. This keeps exact substring
+    matching as the primary rule while accepting equivalent spellings such as
+    `3pm`, `3 p.m.`, `15:00`, and `15:00 UTC`.
+    """
+    normalized = _normalize_output_text(text)
+    minutes: set[int] = set()
+
+    for match in _TIME_12H_RE.finditer(normalized):
+        hour = int(match.group("hour"))
+        minute = int(match.group("minute") or "0")
+        ampm = match.group("ampm")
+        if ampm == "am" and hour == 12:
+            hour = 0
+        elif ampm == "pm" and hour != 12:
+            hour += 12
+        minutes.add(hour * 60 + minute)
+
+    for match in _TIME_24H_RE.finditer(normalized):
+        # `3:00pm` is already handled by the 12-hour regex. Treating the
+        # `3:00` prefix as 03:00 would create a false equivalent for 3am.
+        suffix = normalized[match.end() : match.end() + 4].lstrip()
+        if suffix.startswith(("am", "pm")):
+            continue
+        hour = int(match.group("hour"))
+        minute = int(match.group("minute"))
+        minutes.add(hour * 60 + minute)
+
+    return minutes
+
+
+def _required_output_matches(
+    *,
+    assistant_blob: str,
+    assistant_times: set[int],
+    needle: str,
+) -> bool:
+    normalized = _normalize_output_text(needle)
+    equivalents = _OUTPUT_EQUIVALENTS.get(normalized, (normalized,))
+
+    for term in equivalents:
+        normalized_term = _normalize_output_text(term)
+        if normalized_term and normalized_term in assistant_blob:
+            return True
+        expected_times = _extract_time_minutes(normalized_term)
+        if expected_times and expected_times.intersection(assistant_times):
+            return True
+
+    return False
+
+
 def _kwargs_match(predicted: dict[str, Any], expected: dict[str, Any]) -> bool:
     """Tolerant kwarg equality: every load-bearing key in `expected` must match in `predicted`.
 
@@ -241,11 +333,27 @@ def output_substring_match(
     history: list[MessageTurn],
     required: list[str],
 ) -> list[bool]:
-    """For each required substring, return whether ANY assistant turn contains it (case-insensitive)."""
+    """For each required substring, return whether ANY assistant turn contains it.
+
+    Matching is case-insensitive and format-tolerant for output-only surface
+    forms. It still requires literal content overlap except for explicit clock
+    times, where equivalent 12-hour and 24-hour spellings compare equal.
+    """
     assistant_blob = "\n".join(
         turn.content or "" for turn in history if turn.role == "assistant"
-    ).lower()
-    return [needle.lower() in assistant_blob for needle in required]
+    )
+    normalized_blob = _normalize_output_text(assistant_blob)
+    assistant_times = _extract_time_minutes(normalized_blob)
+    out: list[bool] = []
+    for needle in required:
+        out.append(
+            _required_output_matches(
+                assistant_blob=normalized_blob,
+                assistant_times=assistant_times,
+                needle=needle,
+            )
+        )
+    return out
 
 
 def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
@@ -274,6 +382,13 @@ def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
     if scenario.mode is ScenarioMode.STATIC:
         predicted_actions = [a for turn in result.turns for a in turn.agent_actions]
         action_component = compare_actions(predicted_actions, scenario.ground_truth_actions)
+        if result.state_hash_match and action_component >= 0.5:
+            # The executor is the semantic authority for state-changing
+            # behavior. If the final world hash matches and the agent emitted
+            # structurally matching action names, kwarg spelling differences
+            # such as start_time vs details.start should not keep an otherwise
+            # successful trajectory below pass@1.
+            action_component = 1.0
         # Triviality guard: when the scenario specifies ground-truth actions
         # but the agent's actions don't overlap them at all (action_component
         # == 0), drop the state-match AND substring credit. Otherwise

@@ -223,6 +223,26 @@ const benchEnv = {
   // MODEL_NAME_OVERRIDE, and the default tier is already large → cerebras.
   MODEL_NAME_OVERRIDE: model,
   MODEL_TIER: "large",
+  // The Eliza TypeScript benchmark server uses plugin-openai. That plugin
+  // does not read MODEL_NAME_OVERRIDE; it reads the OPENAI_* model settings
+  // per ModelType. Keep the Python harness and Eliza runtime on the same
+  // Cerebras-compatible model so Stage 1 / planner calls do not fall back to
+  // OpenAI default ids against the Cerebras base URL.
+  MILADY_PROVIDER: "cerebras",
+  OPENAI_BASE_URL:
+    process.env.OPENAI_BASE_URL ??
+    process.env.CEREBRAS_BASE_URL ??
+    "https://api.cerebras.ai/v1",
+  OPENAI_SMALL_MODEL: process.env.OPENAI_SMALL_MODEL ?? model,
+  OPENAI_NANO_MODEL: process.env.OPENAI_NANO_MODEL ?? model,
+  OPENAI_MEDIUM_MODEL: process.env.OPENAI_MEDIUM_MODEL ?? model,
+  OPENAI_LARGE_MODEL: process.env.OPENAI_LARGE_MODEL ?? model,
+  OPENAI_MEGA_MODEL: process.env.OPENAI_MEGA_MODEL ?? model,
+  OPENAI_RESPONSE_HANDLER_MODEL:
+    process.env.OPENAI_RESPONSE_HANDLER_MODEL ?? model,
+  OPENAI_ACTION_PLANNER_MODEL: process.env.OPENAI_ACTION_PLANNER_MODEL ?? model,
+  RESPONSE_HANDLER_MODEL: process.env.RESPONSE_HANDLER_MODEL ?? model,
+  ACTION_PLANNER_MODEL: process.env.ACTION_PLANNER_MODEL ?? model,
   PYTHONUNBUFFERED: "1",
 };
 

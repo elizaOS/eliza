@@ -79,6 +79,15 @@ function locateFusedServer({ outDir, target }) {
   return null;
 }
 
+function locateProductServer({ outDir, target }) {
+  const names = target.startsWith("windows-") ? ["llama-server.exe"] : ["llama-server"];
+  for (const name of names) {
+    const full = path.join(outDir, name);
+    if (fs.existsSync(full)) return full;
+  }
+  return null;
+}
+
 function dumpSymbols({ tool, file }) {
   const result = spawnSync(tool.cmd, [...tool.args, file], {
     encoding: "utf8",
@@ -165,7 +174,7 @@ function hasElfNeededLlama(lib) {
  *   - The shared library MUST exist.
  *   - The library's exports MUST contain /llama_/ and /ov_/
  *     symbol families.
- *   - The library MUST export every `eliza_inference_*` ABI v2 symbol
+ *   - The library MUST export every `eliza_inference_*` ABI v3 symbol
  *     declared in `ffi.h`; otherwise the JS/Bun bridge can dlopen a
  *     half-fused artifact and only fail later at voice activation.
  *
@@ -191,6 +200,12 @@ export const REQUIRED_ELIZA_INFERENCE_SYMBOLS = Object.freeze([
   "eliza_inference_tts_synthesize_stream",
   "eliza_inference_cancel_tts",
   "eliza_inference_set_verifier_callback",
+  // ABI v3 — native Silero VAD backend.
+  "eliza_inference_vad_supported",
+  "eliza_inference_vad_open",
+  "eliza_inference_vad_process",
+  "eliza_inference_vad_reset",
+  "eliza_inference_vad_close",
   "eliza_inference_free_string",
 ]);
 
@@ -290,15 +305,30 @@ function verifyFusedSymbolsInner({ outDir, target }) {
   );
   if (missingAbiSymbols.length > 0) {
     throw new Error(
-      `[omnivoice-fuse] symbol-verify: libelizainference at ${lib} is missing ABI v2 symbol(s): ${missingAbiSymbols.join(", ")}. Rebuild the fused target against packages/app-core/scripts/omnivoice-fuse/ffi.h.`,
+      `[omnivoice-fuse] symbol-verify: libelizainference at ${lib} is missing ABI v3 symbol(s): ${missingAbiSymbols.join(", ")}. Rebuild the fused target against packages/app-core/scripts/omnivoice-fuse/ffi.h.`,
     );
   }
 
-  // Optional fused-server check: it's expected, but the route-mount work
-  // is a TODO (see cmake-graft.mjs). If it exists, verify its symbol
-  // families too — the executable must drag in omnivoice-core, not just
-  // llama. If it doesn't exist, that's also acceptable for now (the
-  // shared library is the contract surface for the bridges).
+  const productServer = locateProductServer({ outDir, target });
+  if (!productServer) {
+    throw new Error(
+      `[omnivoice-fuse] symbol-verify: fused target did not install llama-server in ${outDir}; /v1/audio/speech cannot be served from the product HTTP runtime`,
+    );
+  }
+  const productServerSyms = dumpSymbols({ tool, file: productServer });
+  const productServerReport = {
+    llamaSymbolCount: countExportedSymbolFamily(productServerSyms, "llama"),
+    omnivoiceSymbolCount: countExportedSymbolFamily(productServerSyms, "ov"),
+    path: productServer,
+  };
+  if (productServerReport.omnivoiceSymbolCount === 0) {
+    throw new Error(
+      `[omnivoice-fuse] symbol-verify: product llama-server at ${productServer} does not link OmniVoice symbols; /v1/audio/speech route would be a dead mount`,
+    );
+  }
+
+  // Legacy CLI smoke target: not product-serving, but useful for manual
+  // OmniVoice checks and co-residency evidence when present.
   let serverReport = null;
   const server = locateFusedServer({ outDir, target });
   if (server) {
@@ -322,6 +352,7 @@ function verifyFusedSymbolsInner({ outDir, target }) {
     omnivoiceSymbols: [...REQUIRED_OMNIVOICE_SYMBOLS],
     abiSymbolCount: REQUIRED_ELIZA_INFERENCE_SYMBOLS.length,
     abiSymbols: [...REQUIRED_ELIZA_INFERENCE_SYMBOLS],
+    productServer: productServerReport,
     server: serverReport,
   };
 }

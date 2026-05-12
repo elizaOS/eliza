@@ -1,0 +1,83 @@
+{
+  "agent": "openclaw",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T190215Z_e42de904/interrupt-bench__interrupt_bench/run_interrupt_bench_20260511T190215Z_2_abd29ea1/output"
+  ],
+  "benchmark_directory": "interrupt-bench",
+  "benchmark_id": "interrupt_bench",
+  "cache_metrics": {
+    "cache_creation_input_tokens": 0,
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "aggregate": 94.609375,
+    "boundary_violations": 0,
+    "cache_metrics": {
+      "cache_creation_input_tokens": 0,
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
+    },
+    "canonical_entries": 0,
+    "finalScore": 94.609375,
+    "judgeBonus": 0,
+    "mode": "cerebras",
+    "model": "gpt-oss-120b",
+    "passTier": "90",
+    "performance_metrics": {
+      "duration_seconds": 15.318516541010467,
+      "mean_latency_ms": 1500.9,
+      "p95_latency_ms": 5046.0,
+      "throughput_per_second": 0.6528047264386322
+    },
+    "return_code": 0,
+    "scenario_count": 10,
+    "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
+      "llm_call_count": 10,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    },
+    "trajectory_summary": {
+      "files": 1,
+      "prompt_chars": 0,
+      "repeated_prefixes": [],
+      "turns": 10
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 15.318516541010467,
+    "mean_latency_ms": 1500.9,
+    "p95_latency_ms": 5046.0,
+    "throughput_per_second": 0.6528047264386322
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T190215Z_e42de904/interrupt-bench__interrupt_bench/run_interrupt_bench_20260511T190215Z_2_abd29ea1/output/report.json",
+  "run_group_id": "rg_20260511T190215Z_e42de904",
+  "run_id": "run_interrupt_bench_20260511T190215Z_2_abd29ea1",
+  "score": 0.94609375,
+  "status": "succeeded",
+  "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
+    "llm_call_count": 10,
+    "prompt_tokens": 0,
+    "total_tokens": 0
+  },
+  "trajectory_summary": {
+    "files": 1,
+    "prompt_chars": 0,
+    "repeated_prefixes": [],
+    "turns": 10
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-12T01:33:59Z"
+}

@@ -395,7 +395,7 @@ export async function createScenarioRuntime(
   // is broad enough that small-model classifiers pick it for any request that
   // mentions a person or fact ("remember my favorite color is blue",
   // "remind me to email Alex"), which crowds out CREATE_TASK, MESSAGE,
-  // RELATIONSHIP, LIFE, etc. For the scenario runner — which is testing
+  // CONTACT, OWNER_REMINDERS, etc. For the scenario runner — which is testing
   // user-facing action routing, not profile editing — dropping it unblocks
   // the realistic cases. Real runtimes keep UPDATE_ENTITY enabled.
   const bannedActions = new Set(["UPDATE_ENTITY"]);

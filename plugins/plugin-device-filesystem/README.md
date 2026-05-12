@@ -1,13 +1,17 @@
 # @elizaos/plugin-device-filesystem
 
-Mobile-safe filesystem actions for the elizaOS runtime.
+Mobile-safe filesystem bridge for the elizaOS runtime.
 
-Adds three planner-visible actions backed by a single `DeviceFilesystemBridge`
-service:
+Adds a single `DeviceFilesystemBridge` service. Planner-visible read, write, and
+directory list operations are routed through the canonical `FILE` action with
+`target=device`:
 
-- `DEVICE_FILE_READ` — read a file from the user's device-files root.
-- `DEVICE_FILE_WRITE` — write a file to the user's device-files root.
-- `DEVICE_LIST_DIR` — list a directory inside the user's device-files root.
+- `FILE` with `action=read`, `target=device` — read a file from the user's
+  device-files root.
+- `FILE` with `action=write`, `target=device` — write a file to the user's
+  device-files root.
+- `FILE` with `action=ls`, `target=device` — list a directory inside the user's
+  device-files root.
 
 ## Backends
 
@@ -23,12 +27,12 @@ The bridge picks one of two backends at startup:
 Both backends reject absolute paths, `..` traversal, NUL bytes, and (on Node)
 any resolution that escapes the workspace root.
 
-## Why not just use `plugin-coding-tools`?
+## FILE integration
 
-`plugin-coding-tools` is a developer-only Read/Write/Bash surface for Bun on
-desktop and the privileged AOSP build. It binds to Node `fs` against arbitrary
-absolute paths, and it's intentionally absent from Mobile and Store builds. This
-plugin is the user-facing equivalent that ships everywhere the agent runs.
+This package owns only the device filesystem bridge. It does not register
+planner-facing file actions. The `@elizaos/plugin-coding-tools` `FILE` action
+discovers the bridge by the `device_filesystem` service type and delegates
+`target=device` operations to it.
 
 ## iOS Info.plist (apply in the milady parent repo)
 

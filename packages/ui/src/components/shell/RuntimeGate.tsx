@@ -23,7 +23,6 @@ import { Capacitor } from "@capacitor/core";
 import { ChevronLeft } from "lucide-react";
 import * as React from "react";
 import { client } from "../../api";
-import { APP_RESUME_EVENT } from "../../events";
 import type {
   CloudCompatAgent,
   CloudCompatJob,
@@ -33,6 +32,7 @@ import {
   type GatewayDiscoveryEndpoint,
   gatewayEndpointToApiBase,
 } from "../../bridge/gateway-discovery";
+import { APP_RESUME_EVENT } from "../../events";
 import { normalizeLanguage } from "../../i18n";
 import type { UiLanguage } from "../../i18n/messages";
 import { autoDownloadRecommendedLocalModelInBackground } from "../../onboarding/auto-download-recommended";
