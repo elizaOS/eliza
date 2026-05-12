@@ -1,8 +1,8 @@
 // Shared DLMM module export to avoid bundler issues
 import DLMMDefault, { autoFillYByStrategy, StrategyType } from "@meteora-ag/dlmm";
 
-export { autoFillYByStrategy, StrategyType };
 export type { LbPosition } from "@meteora-ag/dlmm";
+export { autoFillYByStrategy, StrategyType };
 
 type DLMMConstructor = typeof DLMMDefault;
 type DLMMModule = DLMMConstructor | { default: DLMMConstructor };

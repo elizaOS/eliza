@@ -36,6 +36,7 @@
  * `engine.voice-turn.test.ts`.
  */
 
+import assert from "node:assert";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -423,7 +424,8 @@ describe("interactive voice path — wiring (stub backends)", () => {
       lifecycleLoaders: lifecycleLoadersOk(),
     });
     await engine.armVoice();
-    const bridge = engine.voice()!;
+    const bridge = engine.voice();
+    assert(bridge != null, "voice bridge not initialized after armVoice");
 
     // Build the wrapped generate args the same way `engine.generate` does in
     // voice mode (`voiceStreamingArgs` composes the scheduler's barge-in
@@ -507,7 +509,8 @@ describe("interactive voice path — wiring (stub backends)", () => {
       lifecycleLoaders: lifecycleLoadersOk(),
     });
     await engine.armVoice();
-    const bridge = engine.voice()!;
+    const bridge = engine.voice();
+    assert(bridge != null, "voice bridge not initialized after armVoice");
     const signals: string[] = [];
     bridge.scheduler.bargeIn.onSignal((s) => signals.push(s.type));
 
@@ -556,7 +559,8 @@ describe.skipIf(!realBackendPresent)(
       await eng.load(target.path);
       eng.startVoice({ bundleRoot: targetBundleRoot, useFfiBackend: true });
       await eng.armVoice();
-      const bridge = eng.voice()!;
+      const bridge = eng.voice();
+      assert(bridge != null, "voice bridge not initialized after armVoice");
 
       const fx = makeSpeechWithSilenceFixture({
         sampleRate: 16_000,

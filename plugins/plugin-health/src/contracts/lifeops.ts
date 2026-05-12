@@ -1693,7 +1693,11 @@ export interface LifeOpsAwakeProbability {
  *  for the same night and were combined (e.g. Oura duration + Apple HRV).
  *  Absent (`null`) when `source === "activity_gap"` or the provider is unknown.
  */
-export type LifeOpsSleepHealthProvider = "apple_health" | "oura" | "merged" | null;
+export type LifeOpsSleepHealthProvider =
+  | "apple_health"
+  | "oura"
+  | "merged"
+  | null;
 
 export interface LifeOpsSleepCycleEvidence {
   startAt: string;

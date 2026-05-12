@@ -176,7 +176,6 @@ describe("hasRoleAccess against a seeded bench world", () => {
     const allowed = await hasRoleAccess(
       // biome-ignore lint/suspicious/noExplicitAny: cross-module structural fake.
       runtime as any,
-      // biome-ignore lint/suspicious/noExplicitAny: cross-module structural fake.
       {
         id: stringToUuid("probe-admin-msg"),
         entityId: adminEntityId,
@@ -184,6 +183,7 @@ describe("hasRoleAccess against a seeded bench world", () => {
         roomId: session.roomId,
         content: { text: "probe", source: "benchmark" },
         createdAt: Date.now(),
+        // biome-ignore lint/suspicious/noExplicitAny: cross-module structural fake.
       } as any,
       "ADMIN",
     );
@@ -201,7 +201,6 @@ describe("hasRoleAccess against a seeded bench world", () => {
     const allowed = await hasRoleAccess(
       // biome-ignore lint/suspicious/noExplicitAny: cross-module structural fake.
       runtime as any,
-      // biome-ignore lint/suspicious/noExplicitAny: cross-module structural fake.
       {
         id: stringToUuid("probe-user-msg"),
         entityId: userEntityId,
@@ -209,6 +208,7 @@ describe("hasRoleAccess against a seeded bench world", () => {
         roomId: session.roomId,
         content: { text: "probe", source: "benchmark" },
         createdAt: Date.now(),
+        // biome-ignore lint/suspicious/noExplicitAny: cross-module structural fake.
       } as any,
       "ADMIN",
     );
@@ -225,7 +225,6 @@ describe("hasRoleAccess against a seeded bench world", () => {
     const allowed = await hasRoleAccess(
       // biome-ignore lint/suspicious/noExplicitAny: cross-module structural fake.
       runtime as any,
-      // biome-ignore lint/suspicious/noExplicitAny: cross-module structural fake.
       {
         id: stringToUuid("probe-owner-msg"),
         entityId: BENCHMARK_OWNER_ENTITY_ID,
@@ -233,6 +232,7 @@ describe("hasRoleAccess against a seeded bench world", () => {
         roomId: session.roomId,
         content: { text: "probe", source: "benchmark" },
         createdAt: Date.now(),
+        // biome-ignore lint/suspicious/noExplicitAny: cross-module structural fake.
       } as any,
       "ADMIN",
     );

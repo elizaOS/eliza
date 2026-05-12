@@ -292,10 +292,7 @@ export class MeteoraLpService extends Service {
         if (!positionAccount) {
           throw new Error(`Position account not found: ${poolOrPositionIdentifier}`);
         }
-        const dlmmPool = await DLMM.create(
-          this.connection,
-          positionAccount.owner
-        );
+        const dlmmPool = await DLMM.create(this.connection, positionAccount.owner);
         position = await dlmmPool.getPosition(positionPubKey);
         poolAddress = dlmmPool.pubkey.toBase58();
       } catch (_e) {

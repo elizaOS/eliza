@@ -493,7 +493,7 @@ async function writeReport(reportPath, payload) {
   await fs.mkdir(path.dirname(out), { recursive: true }).catch(() => {});
   await fs.writeFile(out, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
   // A markdown sidecar.
-  const mdPath = out.replace(/\.json$/i, "") + ".md";
+  const mdPath = `${out.replace(/\.json$/i, "")}.md`;
   const h = payload.latency?.histograms ?? {};
   const m = payload.runMetrics ?? {};
   const lines = [
@@ -744,7 +744,7 @@ async function main() {
     return outcome;
   };
 
-  const sharedEvents = (room, label, onComplete) => ({
+  const sharedEvents = (_room, label, onComplete) => ({
     onSpeculativeStart: (t) =>
       tag("spec", "dim", `${label} off partial: "${t}"`),
     onSpeculativeAbort: () =>

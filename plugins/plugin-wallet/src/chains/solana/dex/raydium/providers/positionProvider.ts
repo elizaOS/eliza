@@ -254,12 +254,7 @@ function toRaydiumPositionRecord(position: Record<string, unknown>): RaydiumPosi
   const tickLower = position.tickLower;
   const tickUpper = position.tickUpper;
 
-  if (
-    !poolId ||
-    !nftMint ||
-    typeof tickLower !== "number" ||
-    typeof tickUpper !== "number"
-  ) {
+  if (!poolId || !nftMint || typeof tickLower !== "number" || typeof tickUpper !== "number") {
     logger.warn("Skipping Raydium LP position with unsupported SDK shape.");
     return null;
   }

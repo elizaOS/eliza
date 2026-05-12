@@ -146,7 +146,7 @@ describe("streamLlamaPrompt", () => {
         for await (const _ of result.textStream) {
           // unreachable
         }
-      })(),
+      })()
     ).rejects.toThrow("boom");
 
     // usage / finishReason are best-effort — they should resolve to

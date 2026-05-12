@@ -1612,12 +1612,19 @@ export class LifeOpsFakeBackend {
       return { ok: true, result: this.listTransactions(kw) };
     }
 
-    if (subaction === "subscription_cancel" || subaction === "cancel_subscription") {
+    if (
+      subaction === "subscription_cancel" ||
+      subaction === "cancel_subscription"
+    ) {
       return { ok: true, result: this.cancelSubscription(kw) };
     }
 
     // All other MONEY subactions are read-only; return relevant data where cheap.
-    if (subaction === "subscription_audit" || subaction === "subscription_status" || subaction === "list_sources") {
+    if (
+      subaction === "subscription_audit" ||
+      subaction === "subscription_status" ||
+      subaction === "list_sources"
+    ) {
       const subs = Object.values(this.stores.subscription);
       return { ok: true, result: { subaction, subscriptions: subs } };
     }
@@ -1654,7 +1661,11 @@ export class LifeOpsFakeBackend {
 
     const txns = Object.values(this.stores.transaction).filter((txn) => {
       if (category && txn.category.toLowerCase() !== category) return false;
-      if (merchantContains && !txn.merchant.toLowerCase().includes(merchantContains)) return false;
+      if (
+        merchantContains &&
+        !txn.merchant.toLowerCase().includes(merchantContains)
+      )
+        return false;
       if (onlyDebits && txn.amount_cents >= 0) return false;
       if (effectiveStart && txn.posted_at < effectiveStart) return false;
       if (endDate && txn.posted_at > endDate) return false;
@@ -1663,7 +1674,11 @@ export class LifeOpsFakeBackend {
 
     txns.sort((a, b) => b.posted_at.localeCompare(a.posted_at));
 
-    return { subaction: "list_transactions", transactions: txns, count: txns.length };
+    return {
+      subaction: "list_transactions",
+      transactions: txns,
+      count: txns.length,
+    };
   }
 
   private cancelSubscription(kw: Record<string, unknown>): {
@@ -1676,9 +1691,21 @@ export class LifeOpsFakeBackend {
       return { ok: true, reason: "unconfirmed" };
     }
 
-    const serviceSlug = pickString(kw, ["serviceSlug", "service_slug"], "").toLowerCase();
-    const serviceName = pickString(kw, ["serviceName", "service_name", "name"], "").toLowerCase();
-    const subscriptionId = pickStringOrNull(kw, ["subscription_id", "subscriptionId", "id"]);
+    const serviceSlug = pickString(
+      kw,
+      ["serviceSlug", "service_slug"],
+      "",
+    ).toLowerCase();
+    const serviceName = pickString(
+      kw,
+      ["serviceName", "service_name", "name"],
+      "",
+    ).toLowerCase();
+    const subscriptionId = pickStringOrNull(kw, [
+      "subscription_id",
+      "subscriptionId",
+      "id",
+    ]);
 
     // Find by id first, then slug, then exact name, then fuzzy name.
     let targetId: string | null = null;
@@ -1691,16 +1718,11 @@ export class LifeOpsFakeBackend {
       for (const [sid, sub] of Object.entries(this.stores.subscription)) {
         const subName = sub.name.toLowerCase();
         const subSlug = subName.replace(/\s+/g, "-").replace(/\+/g, "-plus");
-        if (serviceSlug && subSlug === serviceSlug) { targetId = sid; break; }
-        if (serviceName && subName === serviceName) { targetId = sid; break; }
-      }
-    }
-
-    if (targetId === null) {
-      // Fuzzy match on name as a last resort.
-      for (const [sid, sub] of Object.entries(this.stores.subscription)) {
-        const subName = sub.name.toLowerCase();
-        if (serviceName && (subName.includes(serviceName) || serviceName.includes(subName))) {
+        if (serviceSlug && subSlug === serviceSlug) {
+          targetId = sid;
+          break;
+        }
+        if (serviceName && subName === serviceName) {
           targetId = sid;
           break;
         }
@@ -1708,7 +1730,24 @@ export class LifeOpsFakeBackend {
     }
 
     if (targetId === null) {
-      return { ok: false, reason: `no subscription matched name='${serviceName}' slug='${serviceSlug}'` };
+      // Fuzzy match on name as a last resort.
+      for (const [sid, sub] of Object.entries(this.stores.subscription)) {
+        const subName = sub.name.toLowerCase();
+        if (
+          serviceName &&
+          (subName.includes(serviceName) || serviceName.includes(subName))
+        ) {
+          targetId = sid;
+          break;
+        }
+      }
+    }
+
+    if (targetId === null) {
+      return {
+        ok: false,
+        reason: `no subscription matched name='${serviceName}' slug='${serviceSlug}'`,
+      };
     }
 
     const sub = this.stores.subscription[targetId];

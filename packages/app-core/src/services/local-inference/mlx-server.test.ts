@@ -122,7 +122,7 @@ describe("MlxLocalServer: spawn-and-route (mocked mlx_lm.server)", () => {
       svc = null;
     }
     if (server) {
-      await new Promise<void>((r) => server!.close(() => r()));
+      await new Promise<void>((r) => server?.close(() => r()));
       server = null;
     }
   });
@@ -153,8 +153,8 @@ describe("MlxLocalServer: spawn-and-route (mocked mlx_lm.server)", () => {
       res.statusCode = 404;
       res.end();
     });
-    await new Promise<void>((r) => server!.listen(0, "127.0.0.1", () => r()));
-    const port = (server!.address() as AddressInfo).port;
+    await new Promise<void>((r) => server?.listen(0, "127.0.0.1", () => r()));
+    const port = (server?.address() as AddressInfo).port;
 
     // Drive the adapter against the mock HTTP server directly (no spawn): the
     // class exposes the route/health logic, so we point baseUrl at the mock by
@@ -192,8 +192,8 @@ describe("MlxLocalServer: spawn-and-route (mocked mlx_lm.server)", () => {
       res.statusCode = 404;
       res.end();
     });
-    await new Promise<void>((r) => server!.listen(0, "127.0.0.1", () => r()));
-    const port = (server!.address() as AddressInfo).port;
+    await new Promise<void>((r) => server?.listen(0, "127.0.0.1", () => r()));
+    const port = (server?.address() as AddressInfo).port;
     class TestMlx extends MlxLocalServer {
       attach(baseUrl: string) {
         // @ts-expect-error

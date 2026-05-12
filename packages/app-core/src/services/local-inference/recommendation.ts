@@ -28,9 +28,11 @@ import type {
 // type so the ladder definitions can't drift from the canonical list.
 // Adding a tier requires extending the manifest module; this file picks
 // it up automatically.
+const TIER_0_8B: Eliza1TierId = "eliza-1-0_8b";
 const TIER_0_6B: Eliza1TierId = "eliza-1-0_6b";
 const TIER_1_7B: Eliza1TierId = "eliza-1-1_7b";
 const TIER_2B: Eliza1TierId = "eliza-1-2b";
+const TIER_4B: Eliza1TierId = "eliza-1-4b";
 const TIER_9B: Eliza1TierId = "eliza-1-9b";
 const TIER_27B: Eliza1TierId = "eliza-1-27b";
 const TIER_27B_256K: Eliza1TierId = "eliza-1-27b-256k";
@@ -79,23 +81,23 @@ const SLOT_LADDERS: Record<
   },
   "apple-silicon": {
     TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
-    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_2B, TIER_1_7B],
+    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_1_7B],
   },
   "linux-gpu": {
     TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
-    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_2B, TIER_1_7B],
+    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_1_7B],
   },
   "linux-cpu": {
     TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
-    TEXT_LARGE: [TIER_9B, TIER_2B, TIER_1_7B],
+    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B, TIER_1_7B],
   },
   "desktop-gpu": {
     TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
-    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_2B, TIER_1_7B],
+    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_1_7B],
   },
   "desktop-cpu": {
     TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
-    TEXT_LARGE: [TIER_9B, TIER_2B, TIER_1_7B],
+    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B, TIER_1_7B],
   },
 };
 

@@ -296,18 +296,19 @@ def test_kwargs_match_intent_present_but_mismatched_is_ignored() -> None:
 def test_score_scenario_state_match_plus_granular_action_no_longer_zeroed() -> None:
     """Repro for openclaw: granular action + state_hash=True is no longer zeroed.
 
-    NOTE: pre-P0-8 this asserted score=1.0 because the state-hash → action
-    promotion turned partial credit into full credit. P0-8 disables that
-    promotion on read-only scenarios (CALENDAR/check_availability is a
-    runner no-op) because the state-hash trivially matches and isn't real
-    signal. The agent here got the name right but the kwargs wrong
-    (`start`/`end` vs GT `startAt`/`endAt`), so partial action credit
-    (0.5) is the correct semantic outcome.
+    The agent emits CALENDAR_CHECK_AVAILABILITY with `start`/`end` kwargs while
+    the GT uses `startAt`/`endAt`. The `_KWARG_ALIASES` table maps startAt→start
+    and endAt→end, so these are equivalent. `intent` is in `_SOFT_KWARGS` so
+    its absence doesn't penalize. Result: full action match → 1.0.
+
+    NOTE: earlier versions of this test expected 0.65 (partial credit at 0.5)
+    because the kwarg alias table didn't yet normalize `startAt`→`start`. The
+    alias was added in the W4-A kwarg canonicalization pass. The correct
+    expectation is now 1.0.
 
     READ weights: 0.1 state + 0.7 action + 0.2 substring.
-    state=1.0, action=0.5 (name match, kwarg mismatch), substring=1.0
-    (no required_outputs → defaults to 1.0).
-    → 0.1*1.0 + 0.7*0.5 + 0.2*1.0 = 0.65.
+    state=1.0, action=1.0 (kwargs match via aliases), substring=1.0.
+    → 0.1 + 0.7 + 0.2 = 1.0.
     """
     scenario = _scenario(
         ground_truth_actions=[
@@ -335,7 +336,8 @@ def test_score_scenario_state_match_plus_granular_action_no_longer_zeroed() -> N
         ],
     )
     score = score_scenario(result, scenario)
-    assert score == pytest.approx(0.65)
+    # startAt→start alias + intent is soft → full action match → 1.0
+    assert score == pytest.approx(1.0)
 
 
 def test_output_substring_match_accepts_calendar_confirmation_synonym() -> None:
@@ -930,16 +932,15 @@ def test_canonicalize_preserves_existing_subaction_kwarg() -> None:
         ("MESSAGE", "read_with_contact"),
         ("ENTITY", "list"),
         ("ENTITY", "log_interaction"),
-        ("LIFE", "review"),
+        # LIFE/review removed — read_with_side_effects (P2-9)
         ("LIFE", "update"),
         ("LIFE", "skip"),
         ("LIFE", "list"),
         ("HEALTH", "today"),
         ("HEALTH", "trend"),
-        ("HEALTH", "trends"),
+        # HEALTH/trends + HEALTH/summary removed — read_with_side_effects (P2-9)
         ("HEALTH", "by_metric"),
         ("HEALTH", "status"),
-        ("HEALTH", "summary"),
         ("MONEY", "dashboard"),
         ("MONEY", "list_sources"),
         ("MONEY", "list_transactions"),
@@ -1148,8 +1149,8 @@ def test_p0_8_read_scenario_partial_action_no_longer_promoted() -> None:
         ],
     )
     score = score_scenario(result, scenario)
-    # READ weights: 0.1*1 (state) + 0.7*0.5 (partial action) + 0.2*1 (empty subs) = 0.65
-    assert score == pytest.approx(0.65)
+    # Triviality guard: BLOCK is hash-inert + wrong kwargs → no creditable overlap → 0.0
+    assert score == pytest.approx(0.0)
     assert score < 0.9  # contractual: must drop well below pre-P0-8 1.0 inflation
 
 
@@ -1289,7 +1290,10 @@ def test_p0_8_message_read_with_zane_source_mismatch_loses_points() -> None:
     GT: MESSAGE/read_with_contact with source=slack.
     Agent: MESSAGE/read_with_contact with source=gmail → name match, kwargs differ.
     Pre-P0-8: state=True (no-op) → score ~0.7-1.0.
-    Post-P0-8 (READ weights): 0.1*1 + 0.7*0.5 + 0.2*1 = 0.65.
+    Post-P0-8 (+ triviality guard): MESSAGE/read_with_contact is hash-inert.
+    `_has_creditable_action_overlap` requires full kwargs match for hash-inert
+    actions; source mismatch → no creditable overlap → triviality guard fires
+    → score 0.0. The contractual requirement (no longer 1.0) is satisfied.
     """
     scenario = _scenario(
         ground_truth_actions=[
@@ -1318,7 +1322,8 @@ def test_p0_8_message_read_with_zane_source_mismatch_loses_points() -> None:
         ],
     )
     score = score_scenario(result, scenario)
-    assert score == pytest.approx(0.65)
+    # Triviality guard: hash-inert action with wrong source → 0.0
+    assert score == pytest.approx(0.0)
     assert score < 0.9  # no longer inflates to 1.0
 
 
@@ -1339,3 +1344,136 @@ def test_p0_8_mixed_scenario_split_weights() -> None:
     )
     # Mixed weights: 0.35 + 0.5 + 0.15 = 1.0 on perfect run.
     assert score_scenario(result, scenario) == pytest.approx(1.0)
+
+
+# ---------------------------------------------------------------------------
+# P2-10: MESSAGE/send source-mismatch penalty (W8-C).
+#
+# When the agent calls MESSAGE(operation="send") targeting a different contact
+# than the GT specifies, the name-only partial credit (0.5) is halved to 0.25.
+# The agent still gets some credit for using MESSAGE/send — just materially
+# less for hitting the wrong person.
+# ---------------------------------------------------------------------------
+
+
+def test_p2_10_message_send_wrong_contact_halves_partial_credit() -> None:
+    """MESSAGE/send to wrong contact: name match alone → 0.25 (not 0.5).
+
+    GT: MESSAGE(operation=send, target=contact_00002, source=imessage).
+    Agent: MESSAGE(operation=send, target=contact_00099, source=imessage).
+    Kwargs don't match → partial. P2-10 penalty: 0.5 * 0.5 = 0.25.
+    """
+    gt = [
+        Action(
+            name="MESSAGE",
+            kwargs={
+                "operation": "send",
+                "source": "imessage",
+                "targetKind": "contact",
+                "target": "contact_00002",
+                "message": "hello",
+            },
+        )
+    ]
+    predicted = [
+        Action(
+            name="MESSAGE",
+            kwargs={
+                "operation": "send",
+                "source": "imessage",
+                "targetKind": "contact",
+                "target": "contact_00099",  # wrong contact
+                "message": "hello",
+            },
+        )
+    ]
+    assert compare_actions(predicted, gt) == pytest.approx(0.25)
+
+
+def test_p2_10_message_send_correct_contact_no_penalty() -> None:
+    """MESSAGE/send to correct contact with all matching kwargs → 1.0 (no regression)."""
+    gt = [
+        Action(
+            name="MESSAGE",
+            kwargs={
+                "operation": "send",
+                "source": "imessage",
+                "target": "Hannah Hill",
+                "message": "on my way",
+            },
+        )
+    ]
+    predicted = [
+        Action(
+            name="MESSAGE",
+            kwargs={
+                "operation": "send",
+                "source": "imessage",
+                "target": "Hannah Hill",
+                "message": "on my way",
+            },
+        )
+    ]
+    assert compare_actions(predicted, gt) == pytest.approx(1.0)
+
+
+def test_p2_10_message_send_case_insensitive_contact_match_no_penalty() -> None:
+    """Contact name match is case-insensitive — no penalty when names agree."""
+    gt = [
+        Action(
+            name="MESSAGE",
+            kwargs={"operation": "send", "target": "Hannah Hill", "message": "hi"},
+        )
+    ]
+    predicted = [
+        Action(
+            name="MESSAGE",
+            kwargs={"operation": "send", "target": "hannah hill", "message": "hi"},
+        )
+    ]
+    # Both sides have same contact (case-normalized) and same message → full match.
+    assert compare_actions(predicted, gt) == pytest.approx(1.0)
+
+
+def test_p2_10_message_non_send_operation_no_penalty() -> None:
+    """P2-10 penalty only fires on operation=send, not on read ops."""
+    gt = [
+        Action(
+            name="MESSAGE",
+            kwargs={
+                "operation": "read_with_contact",
+                "source": "slack",
+                "contact": "Zane",
+            },
+        )
+    ]
+    predicted = [
+        Action(
+            name="MESSAGE",
+            kwargs={
+                "operation": "read_with_contact",
+                "source": "gmail",  # source mismatch handled by P0-8 READ weights
+                "contact": "Zane",
+            },
+        )
+    ]
+    # P2-10 doesn't fire for read ops — standard 0.5 name-only partial credit.
+    assert compare_actions(predicted, gt) == pytest.approx(0.5)
+
+
+def test_p2_10_message_send_no_contact_in_gt_no_penalty() -> None:
+    """When GT doesn't specify a contact key, no source-mismatch penalty applies."""
+    gt = [
+        Action(
+            name="MESSAGE",
+            kwargs={"operation": "send", "source": "imessage", "targetKind": "group", "roomId": "group_abc"},
+        )
+    ]
+    predicted = [
+        Action(
+            name="MESSAGE",
+            kwargs={"operation": "send", "source": "imessage", "targetKind": "group", "roomId": "group_xyz"},
+        )
+    ]
+    # roomId mismatch → 0.5 partial, but no contact key → no P2-10 penalty.
+    assert compare_actions(predicted, gt) == pytest.approx(0.5)

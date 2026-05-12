@@ -8,7 +8,11 @@
  * Linear-interpolation resample of mono `Float32Array` PCM. Returns the input
  * unchanged when the rates already match.
  */
-export function resampleLinear(pcm: Float32Array, fromRate: number, toRate: number): Float32Array;
+export function resampleLinear(
+  pcm: Float32Array,
+  fromRate: number,
+  toRate: number,
+): Float32Array;
 
 /**
  * One direction of the duet cross-ring: takes a producing agent's TTS PCM,

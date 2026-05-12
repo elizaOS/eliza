@@ -1121,7 +1121,12 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": ["evaluate", "record_interaction", "request_elevation", "update_role"]
+            "enum": [
+              "evaluate",
+              "record_interaction",
+              "request_elevation",
+              "update_role"
+            ]
           }
         },
         {
@@ -1194,7 +1199,10 @@
               "type": "object",
               "properties": {
                 "entityId": { "type": "string" },
-                "newRole": { "type": "string", "enum": ["OWNER", "ADMIN", "NONE"] }
+                "newRole": {
+                  "type": "string",
+                  "enum": ["OWNER", "ADMIN", "NONE"]
+                }
               }
             }
           }
@@ -1217,7 +1225,9 @@
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "Record that Alice kept their promise to help with the project" }
+            "content": {
+              "text": "Record that Alice kept their promise to help with the project"
+            }
           },
           {
             "name": "{{name2}}",
@@ -1230,7 +1240,9 @@
         [
           {
             "name": "{{name1}}",
-            "content": { "text": "I need permission to manage roles to help moderate spam" }
+            "content": {
+              "text": "I need permission to manage roles to help moderate spam"
+            }
           },
           {
             "name": "{{name2}}",
