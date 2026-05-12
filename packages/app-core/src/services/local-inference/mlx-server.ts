@@ -169,7 +169,8 @@ export function mlxBackendEligible(): {
   if (!python) {
     return {
       eligible: false,
-      reason: "no Python interpreter with `mlx-lm` importable (pip install mlx-lm)",
+      reason:
+        "no Python interpreter with `mlx-lm` importable (pip install mlx-lm)",
       python: null,
       modelDir: null,
     };
@@ -184,7 +185,12 @@ export function mlxBackendEligible(): {
       modelDir: null,
     };
   }
-  return { eligible: true, reason: "mlx-lm + MLX model present", python, modelDir };
+  return {
+    eligible: true,
+    reason: "mlx-lm + MLX model present",
+    python,
+    modelDir,
+  };
 }
 
 interface MlxServerStatus {
@@ -275,7 +281,9 @@ export class MlxLocalServer {
         this.child = null;
         this.baseUrl = null;
         if (code !== 0 && signal !== "SIGTERM") {
-          console.warn(`[mlx] mlx_lm.server exited code=${code} signal=${signal}`);
+          console.warn(
+            `[mlx] mlx_lm.server exited code=${code} signal=${signal}`,
+          );
         }
       }
     });
@@ -285,7 +293,11 @@ export class MlxLocalServer {
     let lastErr: unknown = null;
     while (Date.now() < deadline) {
       try {
-        const res = await this.fetchWithTimeout(`${this.baseUrl}/v1/models`, {}, 4000);
+        const res = await this.fetchWithTimeout(
+          `${this.baseUrl}/v1/models`,
+          {},
+          4000,
+        );
         if (res.ok) {
           const json = (await res.json()) as { data?: Array<{ id?: string }> };
           this.servedModelName = json?.data?.[0]?.id ?? null;
@@ -359,7 +371,9 @@ export class MlxLocalServer {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`[mlx] /v1/chat/completions HTTP ${res.status}: ${text.slice(0, 400)}`);
+      throw new Error(
+        `[mlx] /v1/chat/completions HTTP ${res.status}: ${text.slice(0, 400)}`,
+      );
     }
     if (!wantStream) {
       const json = (await res.json()) as {

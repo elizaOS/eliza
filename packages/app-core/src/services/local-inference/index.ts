@@ -31,12 +31,6 @@ export {
 export { getDflashRuntimeStatus } from "./dflash-server";
 export { assessFit, probeHardware } from "./hardware";
 export {
-  MLX_BACKEND_ID,
-  mlxBackendEligible,
-  mlxLocalServer,
-  MlxLocalServer,
-} from "./mlx-server";
-export {
   estimateQuantizedKvBytesPerToken,
   KV_SPILL_MIN_CONTEXT,
   type KvGeometry,
@@ -69,6 +63,12 @@ export {
   type LocalUsageBlock,
   parsePrometheusMetrics,
 } from "./llama-server-metrics";
+export {
+  MLX_BACKEND_ID,
+  MlxLocalServer,
+  mlxBackendEligible,
+  mlxLocalServer,
+} from "./mlx-server";
 export { buildTextGenerationReadiness } from "./readiness";
 export {
   assessCatalogModelFit,
