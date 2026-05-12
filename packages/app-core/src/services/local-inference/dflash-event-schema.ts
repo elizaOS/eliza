@@ -106,11 +106,43 @@ export interface DflashSpeculateEndEvent {
   ts: number;
 }
 
+/**
+ * L1 — per-step verify summary emitted by the native C-side DFlash
+ * engine. One of these arrives per speculative-decoding verify step, on
+ * the `dflash` SSE field alongside (or instead of) the batch-event
+ * shape. Fired only when `ELIZA_NATIVE_DFLASH_EVENTS=1` is set on the
+ * server side (TypeScript feature-flag: `useNativeDflashEvents`).
+ *
+ * Fields match the wire format in `docs/eliza-1-dflash-events-wire.md`:
+ *   - `drafted_count` — tokens the drafter proposed in this step.
+ *   - `accept_count`  — tokens the verifier accepted (≤ drafted_count).
+ *   - `reject_index`  — index within the drafted sequence where the
+ *                       first rejection occurred (-1 when all accepted).
+ *   - `correction_token_id` — token id emitted by the verifier at the
+ *                             rejection point; null when all accepted.
+ *   - `verify_latency_ms` — wall-clock ms from drafter proposal start
+ *                           to verifier accept/reject decision.
+ */
+export interface DflashVerifyStreamEvent {
+  kind: "dflash-verify";
+  /** Number of tokens the drafter proposed in this step. */
+  drafted_count: number;
+  /** Number of tokens accepted by the verifier. */
+  accept_count: number;
+  /** Index within the drafted sequence where the first rejection occurred (-1 = all accepted). */
+  reject_index: number;
+  /** The correction token id emitted by the verifier at the rejection point (null when all accepted). */
+  correction_token_id: number | null;
+  /** Wall-clock ms from drafter proposal start to verifier accept/reject decision. */
+  verify_latency_ms: number;
+}
+
 export type DflashStreamEvent =
   | DflashAcceptEvent
   | DflashRejectEvent
   | DflashSpeculateStartEvent
-  | DflashSpeculateEndEvent;
+  | DflashSpeculateEndEvent
+  | DflashVerifyStreamEvent;
 
 export type DflashStreamEventKind = DflashStreamEvent["kind"];
 
@@ -152,11 +184,55 @@ function isNonNegativeInt(value: unknown): value is number {
  * Parse a JSON value into a `DflashStreamEvent`. Returns null on any shape
  * mismatch — the caller treats parse failures as "no native event present"
  * and falls back to the legacy synthesis path.
+ *
+ * NOTE: the `dflash-verify` variant does not carry a `ts` field (see the
+ * `DflashVerifyStreamEvent` interface); its case is handled before the `ts`
+ * guard so callers do not need to inject a synthetic timestamp.
  */
 export function parseDflashStreamEvent(raw: unknown): DflashStreamEvent | null {
   if (!raw || typeof raw !== "object") return null;
   const obj = raw as Record<string, unknown>;
   const kind = obj.kind;
+
+  // dflash-verify has no ts field — parse it before the ts guard.
+  if (kind === "dflash-verify") {
+    if (
+      !isNonNegativeInt(obj.drafted_count) ||
+      !isNonNegativeInt(obj.accept_count)
+    ) {
+      return null;
+    }
+    if ((obj.accept_count as number) > (obj.drafted_count as number))
+      return null;
+    if (
+      typeof obj.reject_index !== "number" ||
+      !Number.isInteger(obj.reject_index) ||
+      obj.reject_index < -1
+    ) {
+      return null;
+    }
+    if (obj.correction_token_id !== null) {
+      if (!isNonNegativeInt(obj.correction_token_id)) return null;
+    }
+    if (
+      !isFiniteNumber(obj.verify_latency_ms) ||
+      (obj.verify_latency_ms as number) < 0
+    ) {
+      return null;
+    }
+    return {
+      kind: "dflash-verify",
+      drafted_count: obj.drafted_count as number,
+      accept_count: obj.accept_count as number,
+      reject_index: obj.reject_index as number,
+      correction_token_id:
+        obj.correction_token_id === null
+          ? null
+          : (obj.correction_token_id as number),
+      verify_latency_ms: obj.verify_latency_ms as number,
+    };
+  }
+
   const ts = isFiniteNumber(obj.ts) ? obj.ts : null;
   if (ts === null) return null;
   switch (kind) {
@@ -268,6 +344,33 @@ export const dflashBatchEventSchema = z.object({
 });
 
 export type DflashBatchEvent = z.infer<typeof dflashBatchEventSchema>;
+
+/**
+ * Canonical Zod schema for the native DFlash verifier-batch wire shape as
+ * described in the task spec. Adds the `native: true` discriminator field so
+ * downstream consumers can narrow the type without inspecting `type`. This is
+ * a strict superset of `dflashBatchEventSchema`; existing code that uses the
+ * latter is unaffected.
+ *
+ * Wire shape (emitted by the C-side `--dflash-emit-events` patch):
+ * ```json
+ * { "type": "dflash_event", "native": true,
+ *   "draft_tokens": [...], "accept_count": N,
+ *   "reject_range": [s, e] | null, "accept_tokens": [...],
+ *   "timing": { "proposal_ms": X, "verify_ms": Y } }
+ * ```
+ */
+export const DFlashNativeEventSchema = z.object({
+  type: z.literal("dflash_event"),
+  native: z.literal(true),
+  draft_tokens: z.array(z.number().int()),
+  accept_count: z.number().int().nonnegative(),
+  reject_range: z.tuple([z.number().int(), z.number().int()]).nullable(),
+  accept_tokens: z.array(z.number().int()),
+  timing: z.object({ proposal_ms: z.number(), verify_ms: z.number() }),
+});
+
+export type DFlashNativeEvent = z.infer<typeof DFlashNativeEventSchema>;
 
 /**
  * Translate one parsed verifier-batch event into the discriminated-union
