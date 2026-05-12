@@ -26,6 +26,15 @@ Throughput / context-scaling numbers: `benchmarks/THROUGHPUT.md`,
 `packages/shared/src/local-inference/CONTEXT_SCALING.md`. APOLLO config audit
 + memory math: `benchmarks/APOLLO_TUNING.md`.
 
+Benchmark-aligned SFT dataset for the 0.6b (focused mix-in; not the full
+`data/final` corpus): `datasets/eliza1-sft-0_6b/` — ChatML `{"messages":[...]}`
+rows (`train_local.py --train-file` compatible), built by
+`scripts/build_eliza1_sft_0_6b.py` from `action-selection-cases.ts` +
+personality-bench calibration sets, augmented with Cerebras `gpt-oss-120b`
+(`CEREBRAS_API_KEY` env). See `datasets/eliza1-sft-0_6b/README.md` for the task
+mix, eval-alignment rationale, and the HF upload manifest. Use it standalone for
+the 0.6b or concatenate ahead of `data/final/train.jsonl`.
+
 ## Cloud tiers (9B / 27B — cannot train on a 16 GB laptop GPU)
 
 These two tiers train against the next-gen Qwen3.5/3.6 dense checkpoints and
