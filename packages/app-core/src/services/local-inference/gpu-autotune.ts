@@ -166,21 +166,18 @@ export const GPU_CONFIGS: Readonly<Record<GpuProfileId, GpuConfig>> = {
       draft_p_min: 0.5,
     },
     bundle_recommendations: {
-      "text-1.7b": {
-        ctx_size: 32768,
-        max_parallel: 8,
-        cache_type_k: "q8_0",
-        cache_type_v: "q4_0",
-      },
-      "text-7b": { ctx_size: 32768, max_parallel: 4 },
-      "text-27b": { ctx_size: 16384, max_parallel: 2 },
       voice: {
         ctx_size: 8192,
         max_parallel: 4,
         batch_size: 1024,
         ubatch_size: 256,
       },
-      "eliza-1-2b": { ctx_size: 32768, max_parallel: 8 },
+      "eliza-1-2b": {
+        ctx_size: 32768,
+        max_parallel: 8,
+        cache_type_k: "q8_0",
+        cache_type_v: "q4_0",
+      },
       "eliza-1-4b": { ctx_size: 65536, max_parallel: 4 },
       "eliza-1-9b": { ctx_size: 65536, max_parallel: 4 },
       "eliza-1-27b": { ctx_size: 32768, max_parallel: 2 },
@@ -232,9 +229,6 @@ export const GPU_CONFIGS: Readonly<Record<GpuProfileId, GpuConfig>> = {
       draft_p_min: 0.5,
     },
     bundle_recommendations: {
-      "text-1.7b": { ctx_size: 65536, max_parallel: 16 },
-      "text-7b": { ctx_size: 65536, max_parallel: 8 },
-      "text-27b": { ctx_size: 32768, max_parallel: 2 },
       voice: {
         ctx_size: 8192,
         max_parallel: 4,
@@ -291,9 +285,6 @@ export const GPU_CONFIGS: Readonly<Record<GpuProfileId, GpuConfig>> = {
       draft_p_min: 0.5,
     },
     bundle_recommendations: {
-      "text-1.7b": { ctx_size: 131072, max_parallel: 24 },
-      "text-7b": { ctx_size: 131072, max_parallel: 12 },
-      "text-27b": { ctx_size: 65536, max_parallel: 4 },
       voice: {
         ctx_size: 8192,
         max_parallel: 8,
@@ -355,9 +346,6 @@ export const GPU_CONFIGS: Readonly<Record<GpuProfileId, GpuConfig>> = {
       draft_p_min: 0.5,
     },
     bundle_recommendations: {
-      "text-1.7b": { ctx_size: 1048576, max_parallel: 64 },
-      "text-7b": { ctx_size: 1048576, max_parallel: 32 },
-      "text-27b": { ctx_size: 131072, max_parallel: 16 },
       voice: {
         ctx_size: 16384,
         max_parallel: 32,

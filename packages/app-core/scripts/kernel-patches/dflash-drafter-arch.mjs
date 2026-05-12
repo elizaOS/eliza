@@ -253,12 +253,12 @@ function patchModelCpp(source, rel) {
                 ml.get_key(LLM_KV_DFLASH_N_TARGET_FEATURES,    hparams.dflash_n_target_features, false);
 
                 const std::string key = ml.llm_kv(LLM_KV_DFLASH_TARGET_LAYER_IDS);
-                const int kid = gguf_find_key(ml.meta.get(), key.c_str());
-                if (kid >= 0 && gguf_get_kv_type(ml.meta.get(), kid) == GGUF_TYPE_ARRAY) {
-                    const enum gguf_type arr_type = gguf_get_arr_type(ml.meta.get(), kid);
-                    const size_t n = gguf_get_arr_n(ml.meta.get(), kid);
+                const int kid = gguf_find_key(ml.metadata, key.c_str());
+                if (kid >= 0 && gguf_get_kv_type(ml.metadata, kid) == GGUF_TYPE_ARRAY) {
+                    const enum gguf_type arr_type = gguf_get_arr_type(ml.metadata, kid);
+                    const size_t n = gguf_get_arr_n(ml.metadata, kid);
                     hparams.dflash_n_target_layers = std::min((uint32_t) n, (uint32_t) 8);
-                    const void * data = gguf_get_arr_data(ml.meta.get(), kid);
+                    const void * data = gguf_get_arr_data(ml.metadata, kid);
                     for (uint32_t i = 0; i < hparams.dflash_n_target_layers; ++i) {
                         if (arr_type == GGUF_TYPE_UINT32) {
                             hparams.dflash_target_layer_ids[i] = ((const uint32_t *) data)[i];

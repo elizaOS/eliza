@@ -370,7 +370,8 @@ function hipArchListFlag() {
 // Resolve the Android NDK root.
 //
 // Order: $ANDROID_NDK_HOME, $ANDROID_NDK_ROOT, $ANDROID_NDK,
-//        $HOME/Android/Sdk/ndk/<sole-or-newest-subdir>.
+//        $ANDROID_HOME/ndk, $ANDROID_SDK_ROOT/ndk,
+//        $HOME/Library/Android/sdk/ndk, $HOME/Android/Sdk/ndk.
 function resolveAndroidNdk() {
   const envCandidates = [
     process.env.ANDROID_NDK_HOME,
@@ -386,8 +387,21 @@ function resolveAndroidNdk() {
       return candidate;
     }
   }
-  const ndkDir = path.join(os.homedir(), "Android", "Sdk", "ndk");
-  if (fs.existsSync(ndkDir)) {
+  const sdkRoots = [
+    process.env.ANDROID_HOME,
+    process.env.ANDROID_SDK_ROOT,
+    path.join(os.homedir(), "Library", "Android", "sdk"),
+    path.join(os.homedir(), "Android", "Sdk"),
+  ].filter((value, index, values) => {
+    return (
+      typeof value === "string" &&
+      value.trim().length > 0 &&
+      values.indexOf(value) === index
+    );
+  });
+  for (const sdkRoot of sdkRoots) {
+    const ndkDir = path.join(sdkRoot, "ndk");
+    if (!fs.existsSync(ndkDir)) continue;
     const versions = fs
       .readdirSync(ndkDir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory())
@@ -416,7 +430,12 @@ function resolveAndroidNdk() {
 // the path so CAPABILITIES.json / logs can show where it came from.
 function findAndroidVulkanInclude(ndk) {
   if (!ndk) return null;
-  const hostDirs = ["linux-x86_64", "darwin-x86_64", "windows-x86_64"];
+  const hostDirs = [
+    "linux-x86_64",
+    "darwin-arm64",
+    "darwin-x86_64",
+    "windows-x86_64",
+  ];
   for (const host of hostDirs) {
     const candidate = path.join(
       ndk,
@@ -440,7 +459,12 @@ function findAndroidVulkanInclude(ndk) {
 function findGlslc(ndk) {
   if (has("glslc")) return "glslc";
   if (ndk) {
-    const hostDirs = ["linux-x86_64", "darwin-x86_64", "windows-x86_64"];
+    const hostDirs = [
+      "linux-x86_64",
+      "darwin-arm64",
+      "darwin-x86_64",
+      "windows-x86_64",
+    ];
     for (const host of hostDirs) {
       const candidate = path.join(ndk, "shader-tools", host, "glslc");
       if (fs.existsSync(candidate)) return candidate;
@@ -713,6 +737,69 @@ function patchGgmlQ1G32Quantizer(cacheDir, { dryRun = false } = {}) {
   console.log(
     "[dflash-build] patched ggml-quants.c duplicate q1_0_ref into q1_0_g32_ref",
   );
+}
+
+// The current fork pin also carries stale ggml type-trait drift from an older
+// QJL/TBQ slot layout: a duplicate minimal TBQ3_TCQ initializer shadows the
+// real one, and a reserved [45] hole collides with the current TBQ4_0 enum.
+// Normalize it after each clean checkout so every local/fused/mobile build
+// sees the same cache-type table.
+function patchGgmlTypeTraitDrift(cacheDir, { dryRun = false } = {}) {
+  const ggmlPath = path.join(cacheDir, "ggml", "src", "ggml.c");
+  if (!fs.existsSync(ggmlPath)) {
+    throw new Error(
+      `[dflash-build] patchGgmlTypeTraitDrift: ${ggmlPath} missing — fork layout broken`,
+    );
+  }
+  let content = fs.readFileSync(ggmlPath, "utf8");
+  const original = content;
+
+  const duplicateTbq3Tcq = `    [GGML_TYPE_TBQ3_TCQ] = {
+        .type_name                = "tbq3_tcq",
+        .blck_size                = QK_TBQ3_TCQ,
+        .type_size                = sizeof(block_tbq3_tcq),
+        .is_quantized             = true,
+    },
+`;
+  const firstTbq3Tcq = content.indexOf("    [GGML_TYPE_TBQ3_TCQ] = {");
+  const secondTbq3Tcq =
+    firstTbq3Tcq >= 0
+      ? content.indexOf("    [GGML_TYPE_TBQ3_TCQ] = {", firstTbq3Tcq + 1)
+      : -1;
+  if (secondTbq3Tcq >= 0) {
+    const duplicateAtSecond = content.slice(
+      secondTbq3Tcq,
+      secondTbq3Tcq + duplicateTbq3Tcq.length,
+    );
+    if (duplicateAtSecond !== duplicateTbq3Tcq) {
+      throw new Error(
+        `[dflash-build] patchGgmlTypeTraitDrift: unexpected duplicate TBQ3_TCQ initializer shape in ${ggmlPath}`,
+      );
+    }
+    content =
+      content.slice(0, secondTbq3Tcq) +
+      content.slice(secondTbq3Tcq + duplicateTbq3Tcq.length);
+  }
+
+  const staleReserved45 = `    [45] = { // RESERVED — was GGML_TYPE_COUNT pre-QJL; left as a hole so a
+             // GGUF that recorded this id under the old build is unambiguously
+             // not a QJL block at runtime.
+        .type_name                = "TYPE_45 RESERVED (pre-QJL GGML_TYPE_COUNT)",
+        .blck_size                = 0,
+        .type_size                = 0,
+        .is_quantized             = false,
+    },
+`;
+  content = content.replace(staleReserved45, "");
+
+  if (content !== original) {
+    if (!dryRun) {
+      fs.writeFileSync(ggmlPath, content, "utf8");
+    }
+    console.log(
+      "[dflash-build] patched ggml.c stale TBQ3_TCQ/[45] type-trait drift",
+    );
+  }
 }
 
 // Patch `ggml/src/ggml-cuda/CMakeLists.txt` so the staged fused-attn TU
@@ -1040,7 +1127,7 @@ function cmakeFlagsForTarget(target, ctx) {
   if (platform === "android") {
     if (!ctx.androidNdk) {
       throw new Error(
-        "Android target requested but ANDROID_NDK_HOME is not set and no NDK was found under ~/Android/Sdk/ndk",
+        "Android target requested but ANDROID_NDK_HOME is not set and no NDK was found under ANDROID_HOME, ANDROID_SDK_ROOT, ~/Library/Android/sdk, or ~/Android/Sdk",
       );
     }
     flags.push(
@@ -1509,6 +1596,7 @@ function ensureCheckout(cacheDir, ref) {
 //     can flip true.
 function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   patchGgmlQ1G32Quantizer(cacheDir, { dryRun });
+  patchGgmlTypeTraitDrift(cacheDir, { dryRun });
   patchDflashDrafterArchImpl(cacheDir, { dryRun });
   // Wave A1: mirror the verified standalone QJL CPU SIMD TUs (AVX-VNNI int8
   // score path, ARMv8.4 dotprod, runtime-cpuid dispatcher) over the fork's
@@ -2133,22 +2221,35 @@ function probeKernels(target, buildDir, outDir, cacheDir = null) {
       cacheDir,
     ).symbols;
     const evidence = readVulkanRuntimeDispatchEvidence();
-    kernels.turbo3 = vulkanCapabilityRuntimeReady("turbo3", shipped, evidence);
-    kernels.turbo4 = vulkanCapabilityRuntimeReady("turbo4", shipped, evidence);
+    kernels.turbo3 = vulkanCapabilityRuntimeReady(
+      "turbo3",
+      shipped,
+      evidence,
+      target,
+    );
+    kernels.turbo4 = vulkanCapabilityRuntimeReady(
+      "turbo4",
+      shipped,
+      evidence,
+      target,
+    );
     kernels.turbo3_tcq = vulkanCapabilityRuntimeReady(
       "turbo3_tcq",
       shipped,
       evidence,
+      target,
     );
     kernels.qjl_full = vulkanCapabilityRuntimeReady(
       "qjl_full",
       shipped,
       evidence,
+      target,
     );
     kernels.polarquant = vulkanCapabilityRuntimeReady(
       "polarquant",
       shipped,
       evidence,
+      target,
     );
   }
   return kernels;
@@ -2401,8 +2502,33 @@ function readVulkanRuntimeDispatchEvidence() {
   }
 }
 
-function vulkanEvidenceForCapability(capabilityKey, evidence) {
-  const kernels = evidence?.data?.kernels;
+function vulkanEvidencePayloadForTarget(evidence, target) {
+  const data = evidence?.data;
+  if (!data || typeof data !== "object") return null;
+  if (target && data.targets && typeof data.targets === "object") {
+    const targetPayload = data.targets[target];
+    if (targetPayload && typeof targetPayload === "object") {
+      return targetPayload;
+    }
+  }
+  if (!target || !data.target || data.target === target) return data;
+  return null;
+}
+
+function vulkanEvidenceAvailableTargets(evidence) {
+  const data = evidence?.data;
+  if (!data || typeof data !== "object") return [];
+  const targets = [];
+  if (data.target) targets.push(data.target);
+  if (data.targets && typeof data.targets === "object") {
+    targets.push(...Object.keys(data.targets));
+  }
+  return [...new Set(targets)].sort();
+}
+
+function vulkanEvidenceForCapability(capabilityKey, evidence, target) {
+  const payload = vulkanEvidencePayloadForTarget(evidence, target);
+  const kernels = payload?.kernels;
   if (!kernels || typeof kernels !== "object") return null;
   return (
     Object.values(kernels).find(
@@ -2414,17 +2540,17 @@ function vulkanEvidenceForCapability(capabilityKey, evidence) {
   );
 }
 
-function vulkanEvidenceRuntimeReady(capabilityKey, evidence) {
-  const entry = vulkanEvidenceForCapability(capabilityKey, evidence);
+function vulkanEvidenceRuntimeReady(capabilityKey, evidence, target) {
+  const entry = vulkanEvidenceForCapability(capabilityKey, evidence, target);
   return Boolean(
     entry?.runtimeReady === true && entry?.status === "runtime-ready",
   );
 }
 
-function vulkanCapabilityRuntimeReady(capabilityKey, shipped, evidence) {
+function vulkanCapabilityRuntimeReady(capabilityKey, shipped, evidence, target) {
   return Boolean(
     shipped?.[capabilityKey] &&
-      vulkanEvidenceRuntimeReady(capabilityKey, evidence),
+      vulkanEvidenceRuntimeReady(capabilityKey, evidence, target),
   );
 }
 
@@ -2434,13 +2560,15 @@ function vulkanRuntimeDispatchKernelStatus(
   sourceFiles,
   evidence,
   requiredSmoke,
+  target,
 ) {
-  const entry = vulkanEvidenceForCapability(capabilityKey, evidence);
+  const entry = vulkanEvidenceForCapability(capabilityKey, evidence, target);
   const symbolShipped = Boolean(shipped?.[capabilityKey]);
   const runtimeReady = vulkanCapabilityRuntimeReady(
     capabilityKey,
     shipped,
     evidence,
+    target,
   );
   const status = runtimeReady
     ? "runtime-ready"
@@ -2559,7 +2687,7 @@ function probeVulkanShippedKernelSymbols(buildDir, outDir, cacheDir) {
   };
 }
 
-function vulkanRuntimeDispatchStatus(shippedKernels) {
+function vulkanRuntimeDispatchStatus(shippedKernels, target) {
   const shipped = shippedKernels?.symbols ?? {};
   const sourceFiles = shippedKernels?.sourceFiles ?? {};
   const evidence = readVulkanRuntimeDispatchEvidence();
@@ -2570,12 +2698,17 @@ function vulkanRuntimeDispatchStatus(shippedKernels) {
       sourceFiles,
       evidence,
       `vulkan-dispatch-smoke must route ${shader} through ggml-vulkan graph execution and match the fixture/reference`,
+      target,
     );
+  const selectedEvidence = vulkanEvidencePayloadForTarget(evidence, target);
   return {
     sourceOfTruth:
       "dispatch-ready requires a built-fork GGML Vulkan graph smoke, not SPIR-V files or pipeline slots",
     evidencePath: evidence.path,
     evidenceLoaded: Boolean(evidence.data),
+    evidenceTarget: target,
+    evidenceTargetLoaded: Boolean(selectedEvidence),
+    evidenceAvailableTargets: vulkanEvidenceAvailableTargets(evidence),
     evidenceError: evidence.error ?? null,
     smokeTargets: {
       nativeLinux: "make -C packages/inference/verify vulkan-native-smoke",
@@ -2614,7 +2747,7 @@ function writeCapabilities({
     backend === "metal"
       ? metalRuntimeDispatchStatus(shippedKernels)
       : backend === "vulkan"
-        ? vulkanRuntimeDispatchStatus(shippedKernels)
+        ? vulkanRuntimeDispatchStatus(shippedKernels, target)
         : null;
   const allowUnverifiedVulkanBuild =
     backend === "vulkan" &&
