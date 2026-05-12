@@ -653,6 +653,19 @@ async function spawnElizaServer({ extraEnv = {} } = {}) {
   // enforcer / PERSONALITY action. The bench server reads this directly
   // (see `runtimeSettingKeys` in server.ts) and passes it through to the
   // AgentRuntime character settings.
+  //
+  // Optional runtime-inference override: when ELIZA_PERSONALITY_RUNTIME_OPENAI_BASE_URL
+  // is set, the agent-under-test routes its inference through that endpoint (e.g. a
+  // local llama-server hosting a checkpoint GGUF). Cerebras stays the judge.
+  const runtimeBaseUrlOverride = (
+    process.env.ELIZA_PERSONALITY_RUNTIME_OPENAI_BASE_URL ?? ""
+  ).trim();
+  const runtimeApiKeyOverride =
+    (process.env.ELIZA_PERSONALITY_RUNTIME_OPENAI_API_KEY ?? "").trim() ||
+    (runtimeBaseUrlOverride ? "local" : "");
+  const runtimeModelOverride =
+    (process.env.ELIZA_PERSONALITY_RUNTIME_MODEL ?? "").trim() || model;
+  const useRuntimeOverride = runtimeBaseUrlOverride.length > 0;
   const env = {
     ...process.env,
     ELIZA_BENCH_HOST: host,
@@ -661,16 +674,16 @@ async function spawnElizaServer({ extraEnv = {} } = {}) {
     // Cerebras path — same provider config the bench server expects when
     // OPENAI_BASE_URL points at api.cerebras.ai.
     CEREBRAS_API_KEY: cerebrasApiKey,
-    OPENAI_BASE_URL: cerebrasBaseUrl,
-    OPENAI_API_KEY: cerebrasApiKey,
-    ELIZA_PROVIDER: "cerebras",
-    BENCHMARK_MODEL_PROVIDER: "cerebras",
-    OPENAI_LARGE_MODEL: model,
-    OPENAI_SMALL_MODEL: model,
-    OPENAI_MEDIUM_MODEL: model,
-    LARGE_MODEL: model,
-    SMALL_MODEL: model,
-    MEDIUM_MODEL: model,
+    OPENAI_BASE_URL: useRuntimeOverride ? runtimeBaseUrlOverride : cerebrasBaseUrl,
+    OPENAI_API_KEY: useRuntimeOverride ? runtimeApiKeyOverride : cerebrasApiKey,
+    ELIZA_PROVIDER: useRuntimeOverride ? "openai" : "cerebras",
+    BENCHMARK_MODEL_PROVIDER: useRuntimeOverride ? "openai" : "cerebras",
+    OPENAI_LARGE_MODEL: useRuntimeOverride ? runtimeModelOverride : model,
+    OPENAI_SMALL_MODEL: useRuntimeOverride ? runtimeModelOverride : model,
+    OPENAI_MEDIUM_MODEL: useRuntimeOverride ? runtimeModelOverride : model,
+    LARGE_MODEL: useRuntimeOverride ? runtimeModelOverride : model,
+    SMALL_MODEL: useRuntimeOverride ? runtimeModelOverride : model,
+    MEDIUM_MODEL: useRuntimeOverride ? runtimeModelOverride : model,
     ADVANCED_CAPABILITIES: "true",
     // W1-9 fix — keep planner deterministic for benchmark turns.
     ELIZA_BENCH_FORCE_TOOL_CALL: process.env.ELIZA_BENCH_FORCE_TOOL_CALL ?? "1",
