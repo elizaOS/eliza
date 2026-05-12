@@ -1,8 +1,7 @@
 export { detectHealthBackend } from "@elizaos/plugin-health";
 export { blockAction } from "./actions/block.js";
-// Legacy alias — external consumers (e.g. packages/agent fallback resolver) still
-// look up `websiteBlockAction` by name. The BLOCK umbrella absorbed the legacy
-// `WEBSITE_BLOCK` surface as a simile, so the alias points at the umbrella.
+// External consumers that still import `websiteBlockAction` get the canonical
+// BLOCK umbrella.
 export { blockAction as websiteBlockAction } from "./actions/block.js";
 export { calendarAction } from "./actions/calendar.js";
 export { connectorAction } from "./actions/connector.js";

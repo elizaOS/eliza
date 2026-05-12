@@ -269,15 +269,11 @@ export const blockAction: Action & {
 } = {
   name: ACTION_NAME,
   similes: [
-    // Legacy umbrella names — keep so cached planner outputs and the
-    // `lifeops` provider's route hints keep resolving.
-    "WEBSITE_BLOCK",
-    "APP_BLOCK",
-    // Legacy similes from the two folded actions. Scoped to phone-app /
-    // desktop-website blocking only — calendar time-blocking ("block out 2
-    // hours for deep work") routes through CALENDAR.create_event, not BLOCK.
-    // Names like FOCUS_BLOCK / AUTOMATION_FOCUS_BLOCK / TIME_BLOCK that
-    // suggest scheduling a calendar block are intentionally NOT similes here.
+    // Scoped to phone-app / desktop-website blocking only — calendar
+    // time-blocking ("block out 2 hours for deep work") routes through
+    // CALENDAR.create_event, not BLOCK. Names like FOCUS_BLOCK /
+    // AUTOMATION_FOCUS_BLOCK / TIME_BLOCK that suggest scheduling a calendar
+    // block are intentionally NOT similes here.
     "WEBSITE_BLOCKER",
     "SELFCONTROL",
     "SITE_BLOCKER",

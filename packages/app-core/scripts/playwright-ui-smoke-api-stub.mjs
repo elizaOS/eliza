@@ -1235,6 +1235,15 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/emote") {
+    const body = (await readJsonBody(req)) || {};
+    sendJson(req, res, 200, {
+      ok: true,
+      emoteId: typeof body.emoteId === "string" ? body.emoteId : null,
+    });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/status") {
     sendJson(req, res, 200, {
       state: "running",
