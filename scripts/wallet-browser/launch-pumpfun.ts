@@ -49,15 +49,15 @@ interface CliFlags {
 
 function parseFlags(argv: string[]): CliFlags {
   const brief =
-    valueOf(argv, "--brief") ??
+    flagValue(argv, "--brief") ??
     "a memecoin about a sentient toaster discovering enlightenment by burning the perfect bagel — wholesome, internet-native, brief";
   const dryRun = argv.includes("--dry-run");
   const headed = argv.includes("--headed") || !process.env.CI;
   const rpc =
-    valueOf(argv, "--rpc") ??
+    flagValue(argv, "--rpc") ??
     process.env.SOLANA_RPC_URL ??
     "https://api.mainnet-beta.solana.com";
-  const slowStr = valueOf(argv, "--slow");
+  const slowStr = flagValue(argv, "--slow");
   const slow = slowStr ? Number(slowStr) : 0;
   const signToken =
     process.env.WALLET_BROWSER_SIGN_TOKEN ??
@@ -65,7 +65,7 @@ function parseFlags(argv: string[]): CliFlags {
   return { brief, dryRun, headed, rpc, slow, signToken };
 }
 
-function valueOf(argv: string[], flag: string): string | undefined {
+function flagValue(argv: string[], flag: string): string | undefined {
   const i = argv.indexOf(flag);
   if (i === -1) return undefined;
   return argv[i + 1];

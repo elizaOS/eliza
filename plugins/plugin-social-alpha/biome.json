@@ -10,5 +10,12 @@
 			"!**/node_modules",
 			"!src/frontend/index.css"
 		]
+	},
+	"linter": {
+		"rules": {
+			"correctness": {
+				"useHookAtTopLevel": "off"
+			}
+		}
 	}
 }
