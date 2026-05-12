@@ -1274,6 +1274,44 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/vincent/strategy") {
+    sendJson(req, res, 200, { connected: false, strategy: null });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/vincent/trading-profile"
+  ) {
+    sendJson(req, res, 200, { connected: false, profile: null });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/shopify/status") {
+    sendJson(req, res, 200, { connected: false, shop: null });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/shopify/products") {
+    sendJson(req, res, 200, { products: [], total: 0, page: 1, pageSize: 25 });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/shopify/orders") {
+    sendJson(req, res, 200, { orders: [], total: 0 });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/shopify/inventory") {
+    sendJson(req, res, 200, { items: [], locations: [] });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/shopify/customers") {
+    sendJson(req, res, 200, { customers: [], total: 0 });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/hyperliquid/status") {
     sendJson(req, res, 200, stubHyperliquidStatus);
     return;

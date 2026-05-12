@@ -886,7 +886,12 @@ export class EngineVoiceBridge {
    * no FFI handle or the build pre-dates the verifier callback.
    */
   hasNativeVerifier(): boolean {
-    return this.ffi !== null && this.ffiCtx !== null;
+    // ABI v3 exports `eliza_inference_set_verifier_callback`, but the
+    // current generated adapter returns ELIZA_ERR_NOT_IMPLEMENTED until the
+    // native DFlash speculative loop is ported into libelizainference. Do
+    // not let callers skip the SSE verifier fallback merely because the
+    // symbol exists.
+    return false;
   }
 
   /**

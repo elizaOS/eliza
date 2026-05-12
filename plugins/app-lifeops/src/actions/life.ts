@@ -2034,7 +2034,7 @@ async function isForeignPageScope(
 // LIFE itself is no longer planner-visible — owner-surfaces re-publishes the
 // individual reminder/alarm/goal/todo/routine umbrellas that delegate into
 // `runLifeOperationHandler` below.
-export const LIFE_TAGS: string[] = [
+export const OWNER_OPERATION_TAGS: string[] = [
   "domain:reminders",
   "capability:read",
   "capability:write",
@@ -2044,7 +2044,7 @@ export const LIFE_TAGS: string[] = [
   "surface:internal",
 ];
 
-export const LIFE_CONTEXTS: AgentContext[] = [
+export const OWNER_OPERATION_CONTEXTS: AgentContext[] = [
   "general",
   "tasks",
   "todos",
@@ -2052,10 +2052,10 @@ export const LIFE_CONTEXTS: AgentContext[] = [
   "health",
 ];
 
-export const LIFE_ROLE_GATE = { minRole: "OWNER" } as const;
-export const LIFE_SUPPRESS_POST_ACTION_CONTINUATION = true;
+export const OWNER_OPERATION_ROLE_GATE = { minRole: "OWNER" } as const;
+export const OWNER_OPERATION_SUPPRESS_POST_ACTION_CONTINUATION = true;
 
-export const LIFE_VALIDATE = async (
+export const OWNER_OPERATION_VALIDATE = async (
   runtime: IAgentRuntime,
   message: Memory,
 ): Promise<boolean> => {

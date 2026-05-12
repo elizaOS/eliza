@@ -17,11 +17,11 @@ import {
 } from "./health.js";
 import { runSchedulingNegotiationHandler } from "./lib/scheduling-handler.js";
 import {
-  LIFE_CONTEXTS,
-  LIFE_ROLE_GATE,
-  LIFE_SUPPRESS_POST_ACTION_CONTINUATION,
-  LIFE_TAGS,
-  LIFE_VALIDATE,
+  OWNER_OPERATION_CONTEXTS,
+  OWNER_OPERATION_ROLE_GATE,
+  OWNER_OPERATION_SUPPRESS_POST_ACTION_CONTINUATION,
+  OWNER_OPERATION_TAGS,
+  OWNER_OPERATION_VALIDATE,
   runLifeOperationHandler,
 } from "./life.js";
 import {
@@ -158,11 +158,11 @@ function makeOwnerLifeAction(args: {
     description: args.description,
     descriptionCompressed: args.descriptionCompressed,
     routingHint: `${args.descriptionCompressed} -> ${args.name}; owner-only LifeOps surface`,
-    tags: LIFE_TAGS,
-    contexts: LIFE_CONTEXTS,
-    roleGate: LIFE_ROLE_GATE,
-    suppressPostActionContinuation: LIFE_SUPPRESS_POST_ACTION_CONTINUATION,
-    validate: LIFE_VALIDATE,
+    tags: OWNER_OPERATION_TAGS,
+    contexts: OWNER_OPERATION_CONTEXTS,
+    roleGate: OWNER_OPERATION_ROLE_GATE,
+    suppressPostActionContinuation: OWNER_OPERATION_SUPPRESS_POST_ACTION_CONTINUATION,
+    validate: OWNER_OPERATION_VALIDATE,
     parameters: [
       {
         name: "action",
@@ -394,7 +394,7 @@ export const ownerHealthAction: Action = {
     },
     ...HEALTH_PARAMETERS.filter((parameter) => parameter.name !== "subaction"),
   ],
-  validate: LIFE_VALIDATE,
+  validate: OWNER_OPERATION_VALIDATE,
   handler: (runtime, message, state, options, callback) =>
     runHealthHandler(
       runtime,
@@ -428,7 +428,7 @@ export const ownerScreenTimeAction: Action = {
       (parameter) => parameter.name !== "subaction",
     ),
   ],
-  validate: LIFE_VALIDATE,
+  validate: OWNER_OPERATION_VALIDATE,
   handler: (runtime, message, state, options, callback) =>
     runScreenTimeHandler(
       runtime,
@@ -455,7 +455,7 @@ export const ownerFinancesAction: Action = {
     },
     ...MONEY_PARAMETERS.filter((parameter) => parameter.name !== "subaction"),
   ],
-  validate: LIFE_VALIDATE,
+  validate: OWNER_OPERATION_VALIDATE,
   handler: (runtime, message, state, options, _callback) =>
     runMoneyHandler(runtime, message, state, mirrorActionToSubaction(options)),
 };

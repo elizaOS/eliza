@@ -37,6 +37,10 @@
 export interface LlamaServerMetricSnapshot {
   /** Wall-clock ms when the snapshot was taken; useful for diagnostics. */
   takenAtMs: number;
+  /** True when `/metrics` was fetched and parsed. False means scrape failure. */
+  scrapeOk?: boolean;
+  /** True when the scrape included at least one generation/speculation counter. */
+  hasGenerationCounters?: boolean;
   promptTokensTotal: number;
   predictedTokensTotal: number;
   /** Tokens that had to be freshly prefilled — i.e. cache MISS this turn. */
@@ -82,6 +86,8 @@ export function parsePrometheusMetrics(
 ): LlamaServerMetricSnapshot {
   const snapshot: LlamaServerMetricSnapshot = {
     takenAtMs,
+    scrapeOk: true,
+    hasGenerationCounters: false,
     promptTokensTotal: 0,
     predictedTokensTotal: 0,
     promptTokensProcessedTotal: 0,
@@ -94,6 +100,7 @@ export function parsePrometheusMetrics(
     keyof LlamaServerMetricSnapshot,
     { unlabeled: number | null; labeledSum: number }
   >();
+  let hasGenerationCounters = false;
 
   for (const rawLine of body.split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -109,6 +116,15 @@ export function parsePrometheusMetrics(
     if (!Number.isFinite(value) || name === undefined) continue;
     const field = METRIC_KEYS[name];
     if (!field) continue;
+    if (
+      field === "promptTokensTotal" ||
+      field === "predictedTokensTotal" ||
+      field === "promptTokensProcessedTotal" ||
+      field === "draftedTotal" ||
+      field === "acceptedTotal"
+    ) {
+      hasGenerationCounters = true;
+    }
     const bucket = buckets.get(field) ?? { unlabeled: null, labeledSum: 0 };
     if (labels) bucket.labeledSum += value;
     else bucket.unlabeled = value;
@@ -118,6 +134,8 @@ export function parsePrometheusMetrics(
   for (const [field, bucket] of buckets) {
     snapshot[field] = bucket.unlabeled ?? bucket.labeledSum;
   }
+
+  snapshot.hasGenerationCounters = hasGenerationCounters;
 
   return snapshot;
 }
@@ -214,10 +232,8 @@ function clampNonNegative(value: number): number {
 /**
  * GET `/metrics` from a running llama-server and parse it. Errors fall
  * back to a zero-valued snapshot rather than throwing — observability
- * MUST NOT break generation. Callers that want to detect scrape failures
- * should compare `before.takenAtMs` against `after.takenAtMs`: a zero
- * snapshot pair (both fields all-zero) means scraping returned nothing
- * useful.
+ * MUST NOT break generation. `scrapeOk=false` tells callers that the
+ * zeros are not evidence of absent DFlash/KV activity.
  */
 export async function fetchMetricsSnapshot(
   baseUrl: string,
@@ -226,6 +242,8 @@ export async function fetchMetricsSnapshot(
   const takenAtMs = Date.now();
   const empty: LlamaServerMetricSnapshot = {
     takenAtMs,
+    scrapeOk: false,
+    hasGenerationCounters: false,
     promptTokensTotal: 0,
     predictedTokensTotal: 0,
     promptTokensProcessedTotal: 0,
