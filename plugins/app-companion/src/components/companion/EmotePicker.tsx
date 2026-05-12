@@ -384,7 +384,7 @@ export function EmotePicker() {
     <div
       ref={panelRef}
       data-testid="emote-picker"
-      className="fixed bottom-4 left-4 w-[320px] rounded-xl shadow-2xl"
+      className="pointer-events-auto fixed bottom-4 left-4 w-[320px] rounded-xl shadow-2xl"
       style={{
         background: "rgba(18, 22, 32, 0.96)",
         border: "1px solid rgba(240, 178, 50, 0.18)",
