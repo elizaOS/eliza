@@ -458,12 +458,8 @@ export async function ensureModel(
   }
 
   const log = getLogger();
-  // Bundled embedding filenames are namespaced under `text/`, `tts/`, etc.
-  // (e.g. `text/eliza-1-lite-0_6b-32k.gguf`), and the download target is
-  // `<modelsDir>/<filename>`. We need to create the *file's* parent dir
-  // (`<modelsDir>/text`), not just `modelsDir`. Without this, downloadFile's
-  // `fs.createWriteStream(dest)` emits an ENOENT that escapes the warmup
-  // catch as an uncaughtException, kills the agent at boot.
+  // modelPath may be namespaced (text/eliza-1.gguf); create the file's
+  // parent dir, not just modelsDir, or createWriteStream throws ENOENT.
   fs.mkdirSync(path.dirname(path.resolve(modelPath)), { recursive: true });
 
   const url = `https://huggingface.co/${safeRepo}/resolve/main/${safeFilename}`;

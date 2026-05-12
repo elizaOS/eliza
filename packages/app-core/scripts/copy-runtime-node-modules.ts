@@ -1565,22 +1565,9 @@ function copyPgliteCompatibilityAssets(targetDist: string): void {
   }
 }
 
-/**
- * Defense-in-depth check: every package marked `alwaysBundled` must land in
- * `dist/node_modules/<name>/package.json` once the copy + prune phases are
- * done. The existing `missingAlwaysBundled` tracker already throws when a
- * package fails to *resolve*, but it can't catch:
- *
- *  - a future filter refactor that silently skips a CORE plugin in the
- *    transitive walk (the same class of bug as elizaOS/eliza#7617's
- *    transitive-filter change — companion safety net),
- *  - `pruneCopiedPackageDir` removing a load-bearing file like
- *    `package.json` because a new rule pattern grew too aggressive.
- *
- * Re-walking the dist and asserting presence is O(N) over the bundled set,
- * runs once per build, and fails the build loudly so the regression never
- * ships.
- */
+// Post-copy assertion: missingAlwaysBundled catches resolve failures, but
+// can't catch a transitive-walk filter silently skipping a CORE plugin or
+// pruneCopiedPackageDir removing a load-bearing package.json.
 export function assertRequiredBundledPackagesLanded(
   targetNodeModules: string,
   alwaysBundled: ReadonlySet<string>,
@@ -1774,16 +1761,11 @@ function main(): void {
         continue;
       }
 
-      // Same filter we apply at initial discovery: runtime plugins that
-      // aren't in `alwaysBundled` (CORE_PLUGINS / OPTIONAL_CORE_PLUGINS /
-      // BASELINE_*) are post-release-installable and must not be physically
-      // bundled into the desktop runtime. Without this guard, an
-      // alwaysBundled package's non-optional peerDependency or dependency
-      // on a post-release plugin (e.g. @elizaos/app-wallet → peerDep on
-      // @elizaos/plugin-wallet) drags the entire transitive tree in,
-      // including @orca-so/whirlpools → @solana-program/* → @solana/kit
-      // with three coexisting major versions of @solana/codecs* nested
-      // 8 levels deep, which then trips `assertTarSafeRuntimePaths`.
+      // Same filter as initial discovery: non-alwaysBundled plugins are
+      // post-release-installable and must not enter the transitive walk.
+      // Without this, a peerDep on an optional plugin drags its entire
+      // deep tree (e.g. @solana/codecs* nested 8 levels) into the bundle
+      // and trips assertTarSafeRuntimePaths.
       if (!shouldBundleDiscoveredPackage(dep.name, alwaysBundled)) {
         filteredOptionalPlugins.add(dep.name);
         continue;
