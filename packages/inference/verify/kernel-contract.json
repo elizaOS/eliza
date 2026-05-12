@@ -574,16 +574,18 @@
       "nextGate": "Run Windows CUDA hardware runner first, then fused Windows CUDA voice/runtime smoke."
     },
     "android-x86_64-cpu": {
-      "kernelVerification": "compile-only",
-      "runtimeDispatch": "needs-runtime-smoke",
-      "deviceRun": "needs-hardware",
-      "nextGate": "Real target: NDK cross-build (-DANDROID_ABI=x86_64, AVX/AVX2/FMA/F16C forced; the fork CPU QJL/Polar AVX2 paths compile). Built locally \u2014 real Android x86_64 ELF (interpreter /system/bin/linker64). Run the full 8-step Cuttlefish cvd smoke (aosp/smoke-cuttlefish.mjs) on the x86_64 Linux box under KVM with a model staged in the privileged APK. On the live cvd this wave: 5/6 infra steps PASS (cvd reachable, APK installed abi=x86_64, ElizaAgentService start, /api/health agentState=running runtime=ok, bearer token); step 6 chat completion failed because no model is staged in the release APK on that cvd instance. Vulkan-on-cvd (gfxstream/SwiftShader) is best-effort \u2014 a SwiftShader fallback is software and produces no recordable evidence."
+      "kernelVerification": "runtime-ready",
+      "runtimeDispatch": "runtime-ready",
+      "deviceRun": "verified",
+      "evidenceFile": "verify/evidence/platform/android-x86_64-cpu.json",
+      "nextGate": "Kernel C-reference parity now verified on Cuttlefish (cvd-1) via the cross-compiled gen_fixture --self-test (NDK r29 Android Clang 20.0.0, target x86_64-unknown-linux-android24, scores bit-identical to host: turbo3=-2.501480 / turbo4=-23.721790 / turbo3_tcq=-4.822659 / qjl=3.696591 / polar=-1.994053 / polar_qjl=-1.438744, fused-attn + tbq V-cache parity OK). The cross-compiled fork llama-server loads on the cvd and exposes the full Eliza-1 KV-cache-type whitelist (tbq3_0, tbq4_0, qjl1_256, q4_polar, tbq3_tcq); version banner `built with Clang 20.0.0 for Android x86_64`, fork 536ff214. Evidence file verify/evidence/platform/android-x86_64-cpu.json. The remaining (orthogonal) gate is the full 8-step Cuttlefish cvd smoke (aosp/smoke-cuttlefish.mjs) \u2014 5/6 infra steps PASS already; step 6 chat completion needs a model staged in the privileged APK (build-aosp.mjs --launch rebuild). Vulkan-on-cvd (gfxstream/SwiftShader) stays diagnostic-only: a SwiftShader fallback is software and produces no recordable evidence (verify/evidence/platform/android-x86_64-vulkan.json captures the 8/8 diagnostic pass)."
     },
     "android-x86_64-vulkan": {
       "kernelVerification": "standalone-verified",
       "runtimeDispatch": "needs-hardware",
       "deviceRun": "needs-hardware",
-      "nextGate": "NDK cross-build with -DANDROID_ABI=x86_64 + Vulkan headers. Graph dispatch needs real ChromeOS x86_64 GPU (Adreno/Mali under ARCVM) \u2014 cvd virtio-gpu is gfxstream/SwiftShader (software \u2192 no recordable evidence per fail-closed). Adreno/Mali ChromeOS hardware = needs-hardware."
+      "evidenceFile": "verify/evidence/platform/android-x86_64-vulkan.json",
+      "nextGate": "NDK cross-build with -DANDROID_ABI=x86_64 + Vulkan headers. Cross-build of vulkan_verify (Android Clang 20.0.0, target x86_64-unknown-linux-android28) loads on cvd-1 and dispatches all 8 SPIR-V fixture cases (turbo3, turbo4, turbo3_tcq, qjl, polar x2, polar_preht x2) \u2014 PASS with max diff < 1e-5, but the cvd virtio-gpu ICD is SwiftShader (software, vendor 0x1ae0); per the fail-closed software-ICD rule, this is DIAGNOSTIC-ONLY and NOT recordable runtime-ready evidence (evidence file verify/evidence/platform/android-x86_64-vulkan.json). Graph dispatch needs real ChromeOS x86_64 GPU (Adreno/Mali under ARCVM) or a passed-through host GPU via crosvm gfxstream + real-GPU host."
     },
     "android-x86_64-cpu-fused": {
       "kernelVerification": "compile-only",
