@@ -9,7 +9,7 @@ publish orchestrator can hash and validate the final bundle.
 
 Default sources:
   - TTS: Serveurperso/OmniVoice-GGUF, Apache-2.0 GGUF artifacts.
-  - ASR: ggml-org/Qwen3-ASR-*-GGUF, GGUF artifacts.
+  - ASR: ggml-org/Qwen3-ASR-0.6B-GGUF / Qwen3-ASR-1.7B-GGUF, GGUF artifacts.
   - VAD: ggml-org/whisper-vad, native GGML Silero VAD v5.1.2 model.
     The legacy onnx-community/silero-vad int8 ONNX model can be staged as
     an explicit fallback with --include-vad-onnx-fallback.
@@ -49,13 +49,13 @@ VOICE_REPO: Final[str] = "Serveurperso/OmniVoice-GGUF"
 VAD_NATIVE_REPO: Final[str] = "ggml-org/whisper-vad"
 VAD_ONNX_REPO: Final[str] = "onnx-community/silero-vad"
 ASR_REPO_BY_TIER: Final[dict[str, str]] = {
-    "0_8b": "ggml-org/Qwen3-ASR-0.8B-GGUF",
-    "2b": "ggml-org/Qwen3-ASR-0.8B-GGUF",
-    "4b": "ggml-org/Qwen3-ASR-0.8B-GGUF",
-    "9b": "ggml-org/Qwen3-ASR-0.8B-GGUF",
-    "27b": "ggml-org/Qwen3-ASR-2B-GGUF",
-    "27b-256k": "ggml-org/Qwen3-ASR-2B-GGUF",
-    "27b-1m": "ggml-org/Qwen3-ASR-2B-GGUF",
+    "0_8b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
+    "2b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
+    "4b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
+    "9b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
+    "27b": "ggml-org/Qwen3-ASR-1.7B-GGUF",
+    "27b-256k": "ggml-org/Qwen3-ASR-1.7B-GGUF",
+    "27b-1m": "ggml-org/Qwen3-ASR-1.7B-GGUF",
 }
 GGUF_QUANT_PREFERENCE: Final[tuple[str, ...]] = (
     "Q4_K_M",
@@ -361,7 +361,8 @@ def write_license_notes(bundle_dir: Path, *, dry_run: bool) -> None:
             "Declared upstream license: Apache-2.0.\n"
         ),
         "LICENSE.asr": (
-            "ASR GGUF assets staged from ggml-org/Qwen3-ASR-*-GGUF.\n"
+            "ASR GGUF assets staged from ggml-org/Qwen3-ASR-0.6B-GGUF "
+            "or ggml-org/Qwen3-ASR-1.7B-GGUF.\n"
             "Review upstream Apache-2.0 license and model card before release.\n"
         ),
         "LICENSE.vad": (

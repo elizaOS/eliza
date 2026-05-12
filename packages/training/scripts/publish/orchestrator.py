@@ -82,6 +82,7 @@ from scripts.manifest.eliza1_manifest import (  # noqa: E402
     KernelVerification,
     LineageEntry,
     build_manifest,
+    canonical_qwen_source_repo_error,
     parse_text_ctx_from_filename,
     required_voice_artifacts_for_tier,
 )
@@ -765,6 +766,10 @@ def _validate_base_v1_provenance(
             continue
         if not isinstance(source.get("repo"), str) or not source.get("repo"):
             errors.append(f"sourceModels.{slot}.repo must be a non-empty string")
+        elif (
+            repo_error := canonical_qwen_source_repo_error(slot, source["repo"])
+        ) is not None:
+            errors.append(f"sourceModels.{slot}.repo {repo_error}")
 
     for slot in _required_provenance_slots(layout):
         if slot not in source_models:

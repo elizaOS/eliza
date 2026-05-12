@@ -149,7 +149,7 @@ def test_stage_real_bundle_embedding_tier_keeps_embedding_lineage(tmp_path: Path
     report = stage.stage_real_bundle(args)
     assert report["checksumValidation"]["ok"] is True
     manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
-    assert manifest["lineage"]["embedding"]["base"] == "Qwen/Qwen3-Embedding-0.8B"
+    assert manifest["lineage"]["embedding"]["base"] == "Qwen/Qwen3-Embedding-0.6B-GGUF"
     assert manifest["files"]["embedding"][0]["path"] == "embedding/eliza-1-embedding.gguf"
     # Two context variants for 2b.
     ctxs = sorted(f["ctx"] for f in manifest["files"]["text"])

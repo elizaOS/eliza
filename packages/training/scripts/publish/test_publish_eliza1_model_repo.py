@@ -81,6 +81,16 @@ def test_plan_bundle_reports_missing_manifest_file(tmp_path: Path):
     assert any("dflash/drafter-2b.gguf" in e for e in plan.errors)
 
 
+def test_plan_bundle_reports_manifest_sha_mismatch(tmp_path: Path):
+    bundle = _write_bundle(tmp_path, "2b")
+    (bundle / "dflash" / "drafter-2b.gguf").write_bytes(b"changed")
+
+    plan = P.plan_bundle(tmp_path, "2b")
+
+    assert plan.uploadable is False
+    assert any("sha256 mismatch for dflash/drafter-2b.gguf" in e for e in plan.errors)
+
+
 def test_voice_policy_can_warn_or_block(tmp_path: Path):
     _write_bundle(tmp_path, "2b", voice_path="tts/omnivoice-base-Q4_K_M.gguf")
 

@@ -101,13 +101,13 @@ DEFAULT_STUDENT_BASE: dict[str, str] = {
 # can distinguish "trained against a small-tier-ish directory" from "trained
 # against the exact Eliza-1 target".
 DEFAULT_TARGET_MODEL: dict[str, str] = {
-    "0_8b": "elizaos/eliza-1-0_8b",
-    "2b": "elizaos/eliza-1-2b",
-    "4b": "elizaos/eliza-1-4b",
-    "9b": "elizaos/eliza-1-9b",
-    "27b": "elizaos/eliza-1-27b",
-    "27b-256k": "elizaos/eliza-1-27b-256k",
-    "27b-1m": "elizaos/eliza-1-27b-1m",
+    "0_8b": "elizaos/eliza-1/bundles/0_8b",
+    "2b": "elizaos/eliza-1/bundles/2b",
+    "4b": "elizaos/eliza-1/bundles/4b",
+    "9b": "elizaos/eliza-1/bundles/9b",
+    "27b": "elizaos/eliza-1/bundles/27b",
+    "27b-256k": "elizaos/eliza-1/bundles/27b-256k",
+    "27b-1m": "elizaos/eliza-1/bundles/27b-1m",
 }
 
 # Acceptance-rate gate per tier — the drafter is publish-blocking below this.

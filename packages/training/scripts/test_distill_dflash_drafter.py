@@ -123,7 +123,7 @@ def test_manifest_records_exact_tokenizer_hashes() -> None:
     manifest = _build_manifest(
         args=args,
         student_base=DEFAULT_STUDENT_BASE["0_8b"],
-        target_model_id="elizaos/eliza-1-0_8b",
+        target_model_id="elizaos/eliza-1/bundles/0_8b",
         target_checkpoint=Path("checkpoints/eliza-1-0_8b/final"),
         target_gguf=Path("out/eliza-1-0_8b/text/eliza-1-0_8b-32k.gguf"),
         target_sha256="0" * 64,
@@ -135,7 +135,7 @@ def test_manifest_records_exact_tokenizer_hashes() -> None:
         synthetic=False,
     )
 
-    assert manifest["targetModelId"] == "elizaos/eliza-1-0_8b"
+    assert manifest["targetModelId"] == "elizaos/eliza-1/bundles/0_8b"
     assert manifest["targetTokenizerSha256"] == parity["target"]["sha256"]
     assert manifest["studentTokenizerSha256"] == parity["student"]["sha256"]
     assert manifest["tokenizerParity"]["matches"] is True

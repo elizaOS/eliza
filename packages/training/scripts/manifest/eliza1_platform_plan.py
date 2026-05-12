@@ -21,6 +21,7 @@ try:
         SUPPORTED_BACKENDS_BY_TIER,
         VOICE_PRESET_CACHE_PATH,
         VOICE_QUANT_BY_TIER,
+        canonical_qwen_source_repo_error,
         required_voice_artifacts_for_tier,
     )
 except ImportError:  # pragma: no cover - script execution path
@@ -30,6 +31,7 @@ except ImportError:  # pragma: no cover - script execution path
         SUPPORTED_BACKENDS_BY_TIER,
         VOICE_PRESET_CACHE_PATH,
         VOICE_QUANT_BY_TIER,
+        canonical_qwen_source_repo_error,
         required_voice_artifacts_for_tier,
     )
 
@@ -366,6 +368,22 @@ def release_status_blockers(
                         tier_blockers.append(
                             "`evidence/release.json`: base-v1 release missing `sourceModels`"
                         )
+                    else:
+                        for slot, source in evidence["sourceModels"].items():
+                            repo = (
+                                source.get("repo")
+                                if isinstance(source, dict)
+                                else None
+                            )
+                            if isinstance(repo, str):
+                                repo_error = canonical_qwen_source_repo_error(
+                                    slot, repo
+                                )
+                                if repo_error is not None:
+                                    tier_blockers.append(
+                                        "`evidence/release.json`: "
+                                        f"sourceModels.{slot}.repo {repo_error}"
+                                    )
                 required_final_flags = (
                     _RELEASE_FINAL_FLAGS_BASE_V1
                     if release_state == "base-v1"
@@ -448,8 +466,10 @@ def render_readiness(
         "readiness path.",
         "- Canonical small text tiers are Qwen3.5 0.8B (`0_8b`) and "
         "Qwen3.5 2B (`2b`). ASR and embedding are real Qwen3 upstream "
-        "exceptions: Qwen3-ASR and Qwen3-Embedding artifacts must stay "
-        "Qwen3, not be renamed to Qwen3.5.",
+        "exceptions: use the published Qwen3-ASR 0.6B / 1.7B GGUF repos "
+        "and Qwen3-Embedding 0.6B / 4B / 8B GGUF repos; do not invent "
+        "Qwen3.5-ASR, Qwen3.5-Embedding, Qwen3-ASR-0.8B/2B, or "
+        "Qwen3-Embedding-0.8B/2B repo IDs.",
         "- v1 release shape (`releaseState=base-v1`): the upstream BASE models "
         "— GGUF-converted via the elizaOS/llama.cpp fork and fully "
         "Eliza-optimized (every quant/kernel trick in `packages/inference/AGENTS.md` "

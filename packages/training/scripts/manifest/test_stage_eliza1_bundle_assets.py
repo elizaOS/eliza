@@ -21,17 +21,17 @@ class FakeHfApi:
 
     def list_repo_files(self, repo_id: str, repo_type: str) -> list[str]:
         assert repo_type == "model"
-        if repo_id == "ggml-org/Qwen3-ASR-0.8B-GGUF":
+        if repo_id == "ggml-org/Qwen3-ASR-0.6B-GGUF":
             return [
-                "Qwen3-ASR-0.8B-Q8_0.gguf",
-                "Qwen3-ASR-0.8B-bf16.gguf",
-                "mmproj-Qwen3-ASR-0.8B-Q8_0.gguf",
+                "Qwen3-ASR-0.6B-Q8_0.gguf",
+                "Qwen3-ASR-0.6B-bf16.gguf",
+                "mmproj-Qwen3-ASR-0.6B-Q8_0.gguf",
             ]
-        if repo_id == "ggml-org/Qwen3-ASR-2B-GGUF":
+        if repo_id == "ggml-org/Qwen3-ASR-1.7B-GGUF":
             return [
-                "Qwen3-ASR-2B-Q8_0.gguf",
-                "Qwen3-ASR-2B-bf16.gguf",
-                "mmproj-Qwen3-ASR-2B-Q8_0.gguf",
+                "Qwen3-ASR-1.7B-Q8_0.gguf",
+                "Qwen3-ASR-1.7B-bf16.gguf",
+                "mmproj-Qwen3-ASR-1.7B-Q8_0.gguf",
             ]
         if repo_id == "ggml-org/whisper-vad":
             return ["ggml-silero-v5.1.2.bin"]
@@ -68,13 +68,13 @@ def test_stage_dry_run_uses_qwen_asr_gguf_and_native_vad(
         if "repo" in f
     }
     assert (
-        "ggml-org/Qwen3-ASR-0.8B-GGUF",
-        "Qwen3-ASR-0.8B-Q8_0.gguf",
+        "ggml-org/Qwen3-ASR-0.6B-GGUF",
+        "Qwen3-ASR-0.6B-Q8_0.gguf",
         (tmp_path / "9b" / "asr" / "eliza-1-asr.gguf").as_posix(),
     ) in staged
     assert (
-        "ggml-org/Qwen3-ASR-0.8B-GGUF",
-        "mmproj-Qwen3-ASR-0.8B-Q8_0.gguf",
+        "ggml-org/Qwen3-ASR-0.6B-GGUF",
+        "mmproj-Qwen3-ASR-0.6B-Q8_0.gguf",
         (tmp_path / "9b" / "asr" / "eliza-1-asr-mmproj.gguf").as_posix(),
     ) in staged
     assert (
@@ -82,7 +82,7 @@ def test_stage_dry_run_uses_qwen_asr_gguf_and_native_vad(
         "ggml-silero-v5.1.2.bin",
         (tmp_path / "9b" / "vad" / "silero-vad-v5.1.2.ggml.bin").as_posix(),
     ) in staged
-    assert report["asrMmprojRemotePath"] == "mmproj-Qwen3-ASR-0.8B-Q8_0.gguf"
+    assert report["asrMmprojRemotePath"] == "mmproj-Qwen3-ASR-0.6B-Q8_0.gguf"
     assert report["vad"] == {
         "nativeRepo": "ggml-org/whisper-vad",
         "nativeRemotePath": "ggml-silero-v5.1.2.bin",
@@ -145,8 +145,8 @@ def test_stage_dry_run_uses_larger_asr_for_pro_tier(
 ) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
     report = stage.stage_assets(_args(tmp_path, "27b"))
-    assert report["asrRepo"] == "ggml-org/Qwen3-ASR-2B-GGUF"
-    assert report["asrRemotePath"] == "Qwen3-ASR-2B-Q8_0.gguf"
+    assert report["asrRepo"] == "ggml-org/Qwen3-ASR-1.7B-GGUF"
+    assert report["asrRemotePath"] == "Qwen3-ASR-1.7B-Q8_0.gguf"
 
 
 def test_stage_dry_run_uses_larger_asr_for_27b_1m_tier(
@@ -155,8 +155,8 @@ def test_stage_dry_run_uses_larger_asr_for_27b_1m_tier(
 ) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
     report = stage.stage_assets(_args(tmp_path, "27b-1m"))
-    assert report["asrRepo"] == "ggml-org/Qwen3-ASR-2B-GGUF"
-    assert report["asrRemotePath"] == "Qwen3-ASR-2B-Q8_0.gguf"
+    assert report["asrRepo"] == "ggml-org/Qwen3-ASR-1.7B-GGUF"
+    assert report["asrRemotePath"] == "Qwen3-ASR-1.7B-Q8_0.gguf"
 
 
 def test_non_dry_run_writes_asr_vad_and_wakeword_license_notes(
@@ -228,4 +228,4 @@ def test_real_stage_writes_evidence_report_without_downloading(
     evidence = json.loads(
         (tmp_path / "0_8b" / "evidence" / "bundle-assets.json").read_text()
     )
-    assert evidence["asrRepo"] == "ggml-org/Qwen3-ASR-0.8B-GGUF"
+    assert evidence["asrRepo"] == "ggml-org/Qwen3-ASR-0.6B-GGUF"

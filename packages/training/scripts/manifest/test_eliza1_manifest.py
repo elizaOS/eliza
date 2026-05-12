@@ -544,7 +544,7 @@ def _base_v1_provenance() -> dict:
                 "convertedVia": "<fork>/convert_hf_to_gguf.py",
             },
             "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
-            "asr": {"repo": "ggml-org/Qwen3-ASR-0.8B-GGUF"},
+            "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
             "vad": {"repo": "ggml-org/whisper-vad"},
             "vision": {"repo": "unsloth/Qwen3.5-9B-GGUF", "file": "mmproj-F16.gguf"},
             "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/9b/dflash/drafter-9b.gguf"},
@@ -587,6 +587,32 @@ def test_base_v1_provenance_requires_coverage_for_shipped_components():
         build_manifest(**kwargs)
     assert any("provenance.sourceModels.asr" in e for e in exc.value.errors)
     assert any("provenance.sourceModels.vision" in e for e in exc.value.errors)
+
+
+def test_base_v1_provenance_rejects_fake_qwen_asr_and_embedding_repos():
+    kwargs = base_kwargs("9b")
+    kwargs["lineage"] = {
+        **kwargs["lineage"],
+        "embedding": LineageEntry(base="qwen3-embedding", license="apache-2.0"),
+    }
+    kwargs["files"] = {
+        **kwargs["files"],
+        "embedding": [FileEntry(path="embedding/eliza-1-embedding.gguf", sha256=SHA)],
+    }
+    kwargs["embed_mteb_score"] = 0.62
+    kwargs["embed_mteb_passed"] = True
+    prov = _base_v1_provenance()
+    prov["sourceModels"]["asr"] = {"repo": "ggml-org/Qwen3-ASR-0.8B-GGUF"}
+    prov["sourceModels"]["embedding"] = {
+        "repo": "Qwen/Qwen3-Embedding-0.8B-GGUF"
+    }
+    kwargs["provenance"] = prov
+
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+
+    assert any("Qwen3-ASR-0.8B-GGUF" in e for e in exc.value.errors)
+    assert any("Qwen3-Embedding-0.8B-GGUF" in e for e in exc.value.errors)
 
 
 def test_provenance_rejects_unknown_release_state():

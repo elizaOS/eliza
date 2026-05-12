@@ -76,7 +76,8 @@ def test_readiness_mentions_vad_native_ggml_caveat() -> None:
     assert "vad/silero-vad-int8.onnx" in text
     assert "Qwen3.5 0.8B (`0_8b`)" in text
     assert "Qwen3.5 2B (`2b`)" in text
-    assert "Qwen3-ASR and Qwen3-Embedding artifacts must stay Qwen3" in text
+    assert "published Qwen3-ASR 0.6B / 1.7B GGUF repos" in text
+    assert "Qwen3-Embedding-0.8B/2B repo IDs" in text
     assert "VAD latency/boundary/endpoint/false-barge-in" in text
     assert "Release evidence must use real final hashes" in text
     assert "No-larp release readiness" in text
@@ -151,9 +152,9 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
                 "sourceModels": {
                     "text": {"repo": "Qwen/Qwen3.5-2B-GGUF"},
                     "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
-                    "asr": {"repo": "ggml-org/Qwen3-ASR-0.8B-GGUF"},
+                    "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
                     "vad": {"repo": "ggml-org/whisper-vad"},
-                    "embedding": {"repo": "Qwen/Qwen3-Embedding-0.8B-GGUF"},
+                    "embedding": {"repo": "Qwen/Qwen3-Embedding-0.6B-GGUF"},
                     "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/2b/dflash/drafter-2b.gguf"},
                 },
                 "final": {
@@ -230,6 +231,48 @@ def test_release_status_blockers_base_v1_blocks_pending_upload(
     blockers = release_status_blockers(tmp_path / "bundles", plan)
     assert any("hf.status" in item for item in blockers["2b"])
     assert any("hf.uploadEvidence missing" in item for item in blockers["2b"])
+
+
+def test_release_status_blockers_base_v1_rejects_fake_qwen_component_repos(
+    tmp_path: Path,
+) -> None:
+    plan = build_plan()
+    bundle = tmp_path / "bundles" / "eliza-1-2b.bundle"
+    (bundle / "evidence").mkdir(parents=True)
+    (bundle / "evidence" / "release.json").write_text(
+        json.dumps(
+            {
+                "releaseState": "base-v1",
+                "publishEligible": True,
+                "finetuned": False,
+                "sourceModels": {
+                    "text": {"repo": "Qwen/Qwen3.5-2B-GGUF"},
+                    "asr": {"repo": "ggml-org/Qwen3-ASR-2B-GGUF"},
+                    "embedding": {"repo": "Qwen/Qwen3-Embedding-0.8B-GGUF"},
+                },
+                "final": {
+                    "weights": False,
+                    "hashes": True,
+                    "evals": True,
+                    "licenses": True,
+                    "kernelDispatchReports": True,
+                    "platformEvidence": True,
+                    "sizeFirstRepoIds": True,
+                },
+                "weights": [],
+                "checksumManifest": "checksums/SHA256SUMS",
+                "hf": {
+                    "repoId": "elizaos/eliza-1",
+                    "status": "pending-upload",
+                },
+            }
+        )
+    )
+
+    blockers = release_status_blockers(tmp_path / "bundles", plan)
+
+    assert any("Qwen3-ASR-2B-GGUF" in item for item in blockers["2b"])
+    assert any("Qwen3-Embedding-0.8B-GGUF" in item for item in blockers["2b"])
 
 
 def test_release_status_blockers_base_v1_requires_finetuned_false(

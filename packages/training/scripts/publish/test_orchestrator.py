@@ -313,7 +313,7 @@ def _source_models() -> dict[str, dict[str, str]]:
         "text": {"repo": "unsloth/Qwen3.5-9B-GGUF", "file": "text.gguf"},
         "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
         "drafter": {"repo": "elizaos/eliza-1-9b-drafter"},
-        "asr": {"repo": "ggml-org/Qwen3-ASR-0.8B-GGUF"},
+        "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
         "vad": {"repo": "ggml-org/whisper-vad"},
         "vision": {"repo": "unsloth/Qwen3.5-9B-GGUF", "file": "mmproj.gguf"},
     }
@@ -665,6 +665,25 @@ def test_base_v1_release_evidence_requires_source_models(tmp_path: Path) -> None
     release_path = bundle / "evidence" / "release.json"
     release = json.loads(release_path.read_text())
     del release["sourceModels"]["vision"]
+    release_path.write_text(json.dumps(release, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_base_v1_release_evidence_rejects_fake_qwen_component_repos(
+    tmp_path: Path,
+) -> None:
+    bundle = _build_fixture_bundle(tmp_path, release_state="base-v1")
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["sourceModels"]["asr"] = {"repo": "ggml-org/Qwen3-ASR-2B-GGUF"}
+    release["sourceModels"]["embedding"] = {
+        "repo": "Qwen/Qwen3-Embedding-0.8B-GGUF"
+    }
     release_path.write_text(json.dumps(release, indent=2))
     _write_checksums(bundle)
     metal = _metal_report(tmp_path)
