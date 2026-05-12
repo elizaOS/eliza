@@ -150,6 +150,31 @@ const SUPPORTED_TARGETS = [
   "linux-x64-cuda",
   "linux-x64-rocm",
   "linux-x64-vulkan",
+  // Intel OpenVINO backend on Linux x64 (ggml-org/llama.cpp PR #15307,
+  // merged into upstream master on 2026-04-08; this fork cherry-picks
+  // the ggml-openvino/ directory). Builds a single llama-server binary
+  // that can target the Intel CPU, Intel iGPU/dGPU (Arc / Xe / Lunar
+  // Lake / Meteor Lake / Panther Lake), OR the Intel NPU (Lunar Lake AI
+  // Boost ~48 TOPS, Meteor Lake NCE, Arrow Lake) — the device is
+  // selected at RUNTIME via `GGML_OPENVINO_DEVICE={CPU,GPU,NPU,GPU.0,
+  // GPU.1}`. NPU coverage is the unique value here: SYCL/Vulkan/CUDA do
+  // not cover the NPU, OpenVINO does, and NPU inference draws ~2-3 W
+  // vs ~15-25 W for the iGPU on the same model. Requires the OpenVINO
+  // Runtime (`apt install openvino-2026.x.x` from
+  // https://apt.repos.intel.com/openvino, or extract the tarball under
+  // /opt/intel/openvino_2026/); `source
+  // /opt/intel/openvino_2026/setupvars.sh` exports `OpenVINO_DIR` and
+  // `LD_LIBRARY_PATH` so CMake's `find_package(OpenVINO)` succeeds and
+  // the runtime can dlopen `libopenvino.so` at execution time. The
+  // W4-B custom kernels (turbo3 / turbo4 / turbo3_tcq / qjl /
+  // polarquant / dflash) do NOT have an OpenVINO backend — those are
+  // CUDA / Vulkan / Metal / CPU only — so this target runs plain ggml
+  // ops translated to OpenVINO compute graphs. The kernel-patches
+  // dispatch in patchAllKernels() correctly no-ops for `backend ===
+  // "openvino"` (the per-backend branches around line 1490 only match
+  // cuda/vulkan/metal). Supported quantizations: FP16, Q8_0, Q4_0,
+  // Q4_1, Q4_K, Q4_K_M (with runtime conversion for Q5_K / Q6_K).
+  "linux-x64-openvino",
   // Linux aarch64. Required for the `server-h200` tier (GH200 = aarch64
   // host + H100/H200 GPU) and for Ampere Altra / AWS Graviton CPU-only
   // deployments. Both targets require a real arm64 Linux host (or a
@@ -880,6 +905,11 @@ function cmakeFlagsForTarget(target, ctx) {
   //     existing `backend === "cpu" && arch === "x64"` / `arm64` blocks
   //     in the `platform === "windows"` section (and a new linux-cpu
   //     block here if a non-native pin is ever needed).
+  //   * OPENVINO-AGENT TODO: extra flags for `linux-x64-openvino` (and
+  //     future `windows-x64-openvino`) go in the `backend ===
+  //     "openvino"` branch below. Eliza-kernel OpenVINO backends, if
+  //     they're ever written, would plug into the same branch alongside
+  //     an entry in patchAllKernels() at the bottom of this file.
   // ──────────────────────────────────────────────────────────────────
   const { platform, arch, backend, isSimulator } = parseTarget(target);
   const flags = ["-DLLAMA_BUILD_TESTS=OFF", "-DLLAMA_BUILD_EXAMPLES=ON"];
@@ -888,7 +918,13 @@ function cmakeFlagsForTarget(target, ctx) {
   flags.push(`-DGGML_NATIVE=${isCross ? "OFF" : "ON"}`);
 
   // Disable backends we don't want by default; flip the chosen one back on.
-  const offByDefault = ["GGML_METAL", "GGML_CUDA", "GGML_HIP", "GGML_VULKAN"];
+  const offByDefault = [
+    "GGML_METAL",
+    "GGML_CUDA",
+    "GGML_HIP",
+    "GGML_VULKAN",
+    "GGML_OPENVINO",
+  ];
   for (const name of offByDefault) flags.push(`-D${name}=OFF`);
 
   if (backend === "metal") {
@@ -935,6 +971,30 @@ function cmakeFlagsForTarget(target, ctx) {
     // narrow/extend with ELIZA_DFLASH_CMAKE_FLAGS; those flags append
     // after this list and win on a CMake conflict.
     flags.push(hipArchListFlag());
+  } else if (backend === "openvino") {
+    // Intel OpenVINO backend. Builds plain ggml-openvino from the
+    // cherry-picked upstream tree (no Eliza kernel patches — those
+    // branches in patch*Kernels() only match cuda/vulkan/metal).
+    // Operator must source the OpenVINO setupvars script (e.g.
+    // `source /opt/intel/openvino_2026/setupvars.sh`) so OpenVINO_DIR
+    // / INTEL_OPENVINO_DIR and LD_LIBRARY_PATH are set before this
+    // script runs. CMake then resolves `find_package(OpenVINO)` from
+    // those env vars.
+    flags[flags.indexOf("-DGGML_OPENVINO=OFF")] = "-DGGML_OPENVINO=ON";
+    // Pass OpenVINO_DIR explicitly when present — find_package() will
+    // honor it. Some OpenVINO tarballs install to non-standard paths
+    // (/opt/intel/openvino_<ver>/runtime/cmake) which CMake's default
+    // search heuristics miss.
+    const openvinoDir =
+      process.env.OpenVINO_DIR || process.env.INTEL_OPENVINO_DIR;
+    if (openvinoDir) {
+      // INTEL_OPENVINO_DIR points at /opt/intel/openvino_<ver>/, but
+      // find_package() wants the runtime/cmake subdirectory. Normalize.
+      const cmakeDir = openvinoDir.endsWith("/cmake")
+        ? openvinoDir
+        : path.join(openvinoDir, "runtime", "cmake");
+      flags.push(`-DOpenVINO_DIR=${cmakeDir}`);
+    }
   } else if (backend === "vulkan") {
     flags[flags.indexOf("-DGGML_VULKAN=OFF")] = "-DGGML_VULKAN=ON";
     if (ctx.glslc) flags.push(`-DVulkan_GLSLC_EXECUTABLE=${ctx.glslc}`);
@@ -1189,6 +1249,16 @@ function targetCompatibility(target, ctx) {
   }
   if (backend === "vulkan" && !ctx.glslc) {
     return { ok: false, reason: "no glslc (Vulkan shader compiler)" };
+  }
+  if (
+    backend === "openvino" &&
+    !(process.env.OpenVINO_DIR || process.env.INTEL_OPENVINO_DIR)
+  ) {
+    return {
+      ok: false,
+      reason:
+        "no OpenVINO_DIR / INTEL_OPENVINO_DIR — source /opt/intel/openvino_<ver>/setupvars.sh first",
+    };
   }
   if (backend === "metal" && process.platform !== "darwin") {
     return { ok: false, reason: "metal requires macOS" };
