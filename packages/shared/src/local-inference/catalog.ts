@@ -178,7 +178,8 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
       repo: "Qwen/Qwen3.6-27B",
     },
     "eliza-1-27b-1m": {
-      repo: "Qwen/Qwen3.6-27B",
+      repo: "batiai/Qwen3.6-27B-GGUF",
+      file: "Qwen-Qwen3.6-27B-Q4_K_M.gguf",
     },
   };
 
@@ -189,7 +190,7 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
     "eliza-1-9b": { repo: "Qwen/Qwen3.5-9B" },
     "eliza-1-27b": { repo: "Qwen/Qwen3.6-27B" },
     "eliza-1-27b-256k": { repo: "Qwen/Qwen3.6-27B" },
-    "eliza-1-27b-1m": { repo: "Qwen/Qwen3.6-27B" },
+    // 27b-1m intentionally omits vision — KV-cache budget at 1M context
   };
 
   const usesLargeAsr = id.startsWith("eliza-1-27b");
