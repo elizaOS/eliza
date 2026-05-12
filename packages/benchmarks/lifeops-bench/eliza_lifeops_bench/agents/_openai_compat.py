@@ -172,12 +172,14 @@ class OpenAICompatAgent:
         temperature: float = 0.0,
         reasoning_effort: str = "low",
         max_tokens: int | None = None,
+        system_prompt: str | None = None,
     ) -> None:
         self._client_factory = client_factory
         self._client: BaseClient | None = None
         self._temperature = temperature
         self._reasoning_effort = reasoning_effort
         self._max_tokens = max_tokens
+        self._system_prompt = system_prompt or LIFEOPS_TOOL_SYSTEM_PROMPT
         self.total_cost_usd: float = 0.0
         self.total_input_tokens: int = 0
         self.total_output_tokens: int = 0
@@ -196,7 +198,7 @@ class OpenAICompatAgent:
     ) -> MessageTurn:
         messages = message_turns_to_openai(history)
         if tools and not any(msg.get("role") == "system" for msg in messages):
-            messages.insert(0, {"role": "system", "content": LIFEOPS_TOOL_SYSTEM_PROMPT})
+            messages.insert(0, {"role": "system", "content": self._system_prompt})
         call = ClientCall(
             messages=messages,
             tools=list(tools) if tools else None,

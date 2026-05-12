@@ -10,11 +10,7 @@ Important caveats:
 - v1 release shape (`releaseState=base-v1`): the upstream BASE models — GGUF-converted via the elizaOS/llama.cpp fork and fully Eliza-optimized (every quant/kernel trick in `packages/inference/AGENTS.md` §3) — but NOT fine-tuned. `evidence/release.json` records `finetuned=false` and a `sourceModels` map (which upstream HF repo each component comes from). For `base-v1`, `final.weights` need not be `true` (the bytes are the upstream base GGUFs by design) — but `final.{hashes,evals,licenses,kernelDispatchReports,platformEvidence,sizeFirstRepoIds}` must all be `true`, and the runnable-on-base evals (text perplexity vs the upstream GGUF, voice RTF, ASR WER, VAD latency/boundary/endpoint/false-barge-in, dflash acceptance, e2e loop, 30-turn) must pass — but NOT a fine-tuned-text-quality eval. Fine-tuning ships in v2 (`releaseState=finetuned-v2`).
 - Release evidence must use real final hashes, evals, licenses, platform reports, and Hugging Face upload records — and real GGUF/quant-sidecar bytes from a real fork build. Fabricated hashes / not-yet-built tiers are blockers.
 
-<<<<<<< HEAD
-## 0_6b
-=======
 ## 0_8b
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 - Text quant: `Q3_K_M`
 - Voice quant: `Q4_K_M`
@@ -22,22 +18,14 @@ Important caveats:
 - Required platform evidence: `darwin-arm64-metal`, `ios-arm64-metal`, `linux-x64-vulkan`, `android-adreno-vulkan`, `android-mali-vulkan`, `linux-x64-cpu`, `windows-x64-cpu`, `windows-x64-vulkan`, `windows-arm64-cpu`, `windows-arm64-vulkan`
 
 Required files:
-<<<<<<< HEAD
-- `text/eliza-1-0_6b-32k.gguf`
-=======
 - `text/eliza-1-0_8b-32k.gguf`
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 - `tts/omnivoice-base-Q4_K_M.gguf`
 - `tts/omnivoice-tokenizer-Q4_K_M.gguf`
 - `asr/eliza-1-asr.gguf`
 - `asr/eliza-1-asr-mmproj.gguf`
 - `vad/silero-vad-v5.1.2.ggml.bin`
-<<<<<<< HEAD
-- `dflash/drafter-0_6b.gguf`
-=======
 - `vision/mmproj-0_8b.gguf`
 - `dflash/drafter-0_8b.gguf`
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 - `dflash/target-meta.json`
 - `cache/voice-preset-default.bin`
 - `evals/aggregate.json`
@@ -53,10 +41,7 @@ Required files:
 - `licenses/LICENSE.vad`
 - `licenses/LICENSE.dflash`
 - `licenses/LICENSE.eliza-1`
-<<<<<<< HEAD
-=======
 - `licenses/LICENSE.vision`
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 - `checksums/SHA256SUMS`
 - `evidence/release.json`
 - `quantization/turboquant.json`
@@ -67,11 +52,6 @@ Required files:
 Optional fallback files:
 - `vad/silero-vad-int8.onnx`
 
-<<<<<<< HEAD
-Missing files/evidence: none recorded by this check.
-
-## 1_7b
-=======
 Missing files/evidence:
 - `asr/eliza-1-asr-mmproj.gguf`
 - `asr/eliza-1-asr.gguf`
@@ -115,7 +95,6 @@ Missing files/evidence:
 - `vision/mmproj-0_8b.gguf`
 
 ## 2b
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 - Text quant: `Q4_K_M`
 - Voice quant: `Q4_K_M`
@@ -123,24 +102,15 @@ Missing files/evidence:
 - Required platform evidence: `darwin-arm64-metal`, `ios-arm64-metal`, `linux-x64-vulkan`, `android-adreno-vulkan`, `android-mali-vulkan`, `linux-x64-cpu`, `windows-x64-cpu`, `windows-x64-vulkan`, `windows-arm64-cpu`, `windows-arm64-vulkan`
 
 Required files:
-<<<<<<< HEAD
-- `text/eliza-1-1_7b-32k.gguf`
-- `text/eliza-1-1_7b-64k.gguf`
-=======
 - `text/eliza-1-2b-32k.gguf`
 - `text/eliza-1-2b-64k.gguf`
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 - `tts/omnivoice-base-Q4_K_M.gguf`
 - `tts/omnivoice-tokenizer-Q4_K_M.gguf`
 - `asr/eliza-1-asr.gguf`
 - `asr/eliza-1-asr-mmproj.gguf`
 - `vad/silero-vad-v5.1.2.ggml.bin`
-<<<<<<< HEAD
-- `dflash/drafter-1_7b.gguf`
-=======
 - `vision/mmproj-2b.gguf`
 - `dflash/drafter-2b.gguf`
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 - `dflash/target-meta.json`
 - `cache/voice-preset-default.bin`
 - `evals/aggregate.json`
@@ -156,10 +126,7 @@ Required files:
 - `licenses/LICENSE.vad`
 - `licenses/LICENSE.dflash`
 - `licenses/LICENSE.eliza-1`
-<<<<<<< HEAD
-=======
 - `licenses/LICENSE.vision`
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 - `checksums/SHA256SUMS`
 - `evidence/release.json`
 - `quantization/turboquant.json`
@@ -170,9 +137,6 @@ Required files:
 Optional fallback files:
 - `vad/silero-vad-int8.onnx`
 
-<<<<<<< HEAD
-Missing files/evidence: none recorded by this check.
-=======
 Missing files/evidence:
 - `asr/eliza-1-asr-mmproj.gguf`
 - `asr/eliza-1-asr.gguf`
@@ -310,7 +274,6 @@ Missing files/evidence:
 - `tts/omnivoice-tokenizer-Q4_K_M.gguf`
 - `vad/silero-vad-v5.1.2.ggml.bin`
 - `vision/mmproj-4b.gguf`
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 ## 9b
 
@@ -359,9 +322,6 @@ Required files:
 Optional fallback files:
 - `vad/silero-vad-int8.onnx`
 
-<<<<<<< HEAD
-Missing files/evidence: none recorded by this check.
-=======
 Missing files/evidence:
 - `vad/silero-vad-v5.1.2.ggml.bin`
 
@@ -372,7 +332,6 @@ Publish-blocking status:
 - `evidence/release.json`: final.sizeFirstRepoIds is not true
 - `evidence/release.json`: publishEligible is not true
 - `evidence/release.json`: releaseState is `local-standin`, not one of ['base-v1', 'upload-candidate', 'final']
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 ## 27b
 
@@ -421,9 +380,6 @@ Required files:
 Optional fallback files:
 - `vad/silero-vad-int8.onnx`
 
-<<<<<<< HEAD
-Missing files/evidence: none recorded by this check.
-=======
 Missing files/evidence:
 - `vad/silero-vad-v5.1.2.ggml.bin`
 
@@ -434,7 +390,6 @@ Publish-blocking status:
 - `evidence/release.json`: final.sizeFirstRepoIds is not true
 - `evidence/release.json`: publishEligible is not true
 - `evidence/release.json`: releaseState is `local-standin`, not one of ['base-v1', 'upload-candidate', 'final']
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 ## 27b-256k
 
@@ -482,9 +437,6 @@ Required files:
 Optional fallback files:
 - `vad/silero-vad-int8.onnx`
 
-<<<<<<< HEAD
-Missing files/evidence: none recorded by this check.
-=======
 Missing files/evidence:
 - `vad/silero-vad-v5.1.2.ggml.bin`
 
@@ -495,7 +447,6 @@ Publish-blocking status:
 - `evidence/release.json`: final.sizeFirstRepoIds is not true
 - `evidence/release.json`: publishEligible is not true
 - `evidence/release.json`: releaseState is `local-standin`, not one of ['base-v1', 'upload-candidate', 'final']
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 ## 27b-1m
 
@@ -511,10 +462,7 @@ Required files:
 - `asr/eliza-1-asr.gguf`
 - `asr/eliza-1-asr-mmproj.gguf`
 - `vad/silero-vad-v5.1.2.ggml.bin`
-<<<<<<< HEAD
-=======
 - `vision/mmproj-27b-1m.gguf`
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 - `dflash/drafter-27b-1m.gguf`
 - `dflash/target-meta.json`
 - `cache/voice-preset-default.bin`
@@ -538,9 +486,6 @@ Required files:
 Optional fallback files:
 - `vad/silero-vad-int8.onnx`
 
-<<<<<<< HEAD
-Missing files/evidence: none recorded by this check.
-=======
 Missing files/evidence:
 - `asr/eliza-1-asr-mmproj.gguf`
 - `asr/eliza-1-asr.gguf`
@@ -569,4 +514,3 @@ Missing files/evidence:
 - `tts/omnivoice-tokenizer-Q8_0.gguf`
 - `vad/silero-vad-v5.1.2.ggml.bin`
 - `vision/mmproj-27b-1m.gguf`
->>>>>>> origin/shaw/fine-tune-apollo-pipeline

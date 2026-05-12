@@ -89,55 +89,24 @@ export function apiBaseToDeviceBridgeUrl(apiBase: string): string {
 export function resolveIosRuntimeConfig(env: RuntimeEnv): IosRuntimeConfig {
   const mode = normalizeMode(
     readString(env, [
-<<<<<<< HEAD
-      "VITE_ELIZA_IOS_RUNTIME_MODE",
-      "VITE_ELIZA_MOBILE_RUNTIME_MODE",
-=======
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
       "VITE_ELIZA_IOS_RUNTIME_MODE",
       "VITE_ELIZA_MOBILE_RUNTIME_MODE",
     ]),
   );
   const apiBase = readString(env, [
-<<<<<<< HEAD
-    "VITE_ELIZA_IOS_API_BASE",
-    "VITE_ELIZA_MOBILE_API_BASE",
-=======
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     "VITE_ELIZA_IOS_API_BASE",
     "VITE_ELIZA_MOBILE_API_BASE",
   ])?.replace(/\/+$/, "");
   const apiToken = readString(env, [
-<<<<<<< HEAD
-    "VITE_ELIZA_IOS_API_TOKEN",
-    "VITE_ELIZA_MOBILE_API_TOKEN",
-=======
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     "VITE_ELIZA_IOS_API_TOKEN",
     "VITE_ELIZA_MOBILE_API_TOKEN",
   ]);
   const explicitDeviceBridgeUrl = readString(env, [
-<<<<<<< HEAD
-    "VITE_ELIZA_DEVICE_BRIDGE_URL",
-    "VITE_ELIZA_DEVICE_BRIDGE_URL",
-  ]);
-  const deviceBridgeToken = readString(env, [
-    "VITE_ELIZA_DEVICE_BRIDGE_TOKEN",
-    "VITE_ELIZA_DEVICE_BRIDGE_TOKEN",
-  ]);
-  const tunnelRelayUrl = readString(env, [
-    "VITE_ELIZA_TUNNEL_RELAY_URL",
-    "VITE_ELIZA_TUNNEL_RELAY_URL",
-  ]);
-  const tunnelPairingToken = readString(env, [
-    "VITE_ELIZA_TUNNEL_PAIRING_TOKEN",
-=======
     "VITE_ELIZA_DEVICE_BRIDGE_URL",
   ]);
   const deviceBridgeToken = readString(env, ["VITE_ELIZA_DEVICE_BRIDGE_TOKEN"]);
   const tunnelRelayUrl = readString(env, ["VITE_ELIZA_TUNNEL_RELAY_URL"]);
   const tunnelPairingToken = readString(env, [
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     "VITE_ELIZA_TUNNEL_PAIRING_TOKEN",
   ]);
 

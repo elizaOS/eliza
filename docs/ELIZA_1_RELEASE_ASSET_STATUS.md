@@ -35,12 +35,6 @@ step-by-step "run these commands to ship v1" sequence see [`RELEASE_V1.md`](RELE
 | [`packages/inference/AGENTS.md`](packages/inference/AGENTS.md) | The **canonical contract** for the on-device inference stack (tier matrix, bundle layout, mandatory kernels, manifest schema, publishing, verification gates). The durable "current state" facts live here and in this status doc. |
 | [`ELIZA_1_VOICE_SWARM.md`](ELIZA_1_VOICE_SWARM.md) | **Historical record** of the voice swarm wave plan — COMPLETE. Not an active plan; the durable facts moved to `packages/inference/AGENTS.md` and this doc. |
 | [`docs/porting/upstream-rebase-plan.md`](docs/porting/upstream-rebase-plan.md) | The **deferred** plan to rebase the fork onto current upstream llama.cpp. NOT a v1 blocker — the fork already carries `grammar_lazy` / `json_schema` / structured output. |
-<<<<<<< HEAD
-| [`scripts/release-v1-prep.mjs`](scripts/release-v1-prep.mjs) (`bun run release:v1:prep`) | The **prep command** — runs every release step that needs no GPU/Metal/Android/HF-write host (build-dflash dry-run, manifest + recipe test suites, `py_compile`, quant `--dry-run`s, DFlash synthetic smoke, platform-plan regen + idempotency, gate-collect per tier, CPU C reference + kernel-contract) and prints the remaining `[hw]` checklist with the host + command per step. |
-| [`scripts/hf-transfer-eliza1.sh`](scripts/hf-transfer-eliza1.sh) | The **HF org transfer** — `huggingface-cli repo move milady-ai/<old> elizaos/<new>` for the legacy per-tier `*-optimized`/`*-drafter` bundles + `repo create elizaos/eliza-1-<tier>` for the canonical bundle repos. Dry-run by default; `--execute` needs an `HF_TOKEN` with write to both orgs. |
-| [`packages/training/scripts/publish/HF_PUBLISH_PLAN.md`](packages/training/scripts/publish/HF_PUBLISH_PLAN.md) | The **HF publish plan** — repo plan + honest model/dataset/results card drafts + the orchestrator upload sequence + the conservative subset to publish if the fine-tune does not beat baseline. The `elizaos/eliza-1-*` repos are now created + public (base GGUFs + manifests + cards for the bundle repos; the `eliza-1-0_6b-sft-weights` test-SFT *candidate*; the `eliza-1-0_6b-sft`/`eliza-1-training` corpora; the `eliza-1-evals` results) — the fork-built `base-v1` weights and the fine-tuned `recommended` channel are still gated on hardware evidence + the full-corpus SFT. |
-=======
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 ---
 
@@ -77,24 +71,13 @@ component.
 | ASR | `ggml-org/Qwen3-ASR-0.6B-GGUF` (0.6B/1.7B/9B) / `ggml-org/Qwen3-ASR-1.7B-GGUF` (27B tiers) | `asr/eliza-1-asr.gguf` + `asr/eliza-1-asr-mmproj.gguf` | tokenizer fused with the text backbone (zero re-tokenization) |
 | VAD | Silero VAD v5.1.2 (MIT) | `vad/silero-vad-v5.1.2.ggml.bin` (native GGML; legacy bundles may also carry the `vad/silero-vad-int8.onnx` fallback — not the release path) | none |
 | Embedding | `Qwen/Qwen3-Embedding-0.6B-GGUF` (1.7B+ tiers) | `embedding/...gguf` | none beyond fork conversion; the `0_6b` tier omits it (pools from the text backbone with `--pooling last`) |
-<<<<<<< HEAD
-| Drafter (DFlash) | distilled (KD, NOT fine-tuning of the target) from each tier's base text model; published under `elizaos/eliza-1-<tier>`. **Until distilled, the staging scripts use `Qwen/Qwen3-0.6B` (0_6b/1_7b) / `Qwen/Qwen3-1.7B` (9b/27b) as the documented substitute** — same convention as the text backbones. | `dflash/drafter-<tier>.gguf` + `dflash/target-meta.json` | drafter GGUF stamps `dflash-draft.target_checkpoint_sha256` = sha256 of the tier's text GGUF; shared 151,936-token Qwen2 vocab + `tokenizer.ggml.merges` repair |
-=======
 | Drafter (DFlash) | distilled (KD, NOT fine-tuning of the target) from each tier's base text model; published under `elizaos/eliza-1-<tier>` | `dflash/drafter-<tier>.gguf` + `dflash/target-meta.json` | drafter GGUF stamps `dflash-draft.target_checkpoint_sha256` |
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 | Voice preset cache | placeholder until a real fused build emits one | `cache/voice-preset-default.bin` | n/a |
 
 ---
 
 ## What is done in this checkout (no GPU / reference HW needed)
 
-<<<<<<< HEAD
-Run `bun run release:v1:prep` to execute all of these in one go (it also prints
-the per-step remaining hardware/network/HF checklist). All no-HW steps are
-green in this checkout.
-
-=======
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 - The patched fork (`elizaOS/llama.cpp @ v1.0.0-eliza`, upstream base `b8198`)
   ships in-tree as a git submodule at `packages/inference/llama.cpp`; `bun
   install` initializes it. It carries TurboQuant (`turbo3`/`turbo4`/`turbo3_tcq`),
@@ -120,141 +103,9 @@ green in this checkout.
   (`eliza1_manifest.py`), the platform-plan generator (`eliza1_platform_plan.py`),
   and the publish orchestrator (gates on `releaseState ∈ {base-v1, upload-candidate,
   final}` + the `final.*` flags + `finetuned=false` + the `sourceModels` map).
-<<<<<<< HEAD
-- The publish channel split: the manifest carries `releaseChannel` (`"recommended"`
-  | `"base-v1"`); the orchestrator + `publish_all_eliza1.sh` take `--base-v1`
-  (alias `--release-channel base-v1`). The `base-v1` channel forces
-  `defaultEligible: false`, emits the mandatory `provenance` block + the
-  README "upstream-base, NOT the fine-tuned Eliza-1, not a recommended default"
-  banner, relaxes `final.weights` + the held-out text-quality gate — and
-  enforces **every other gate** (kernel verify on every supported backend,
-  every required platform-dispatch report, the runnable-on-base evals, every
-  license attestation) exactly as on the `recommended` channel. The
-  fine-tuned `recommended` release ships in v2.
-- Local release-shaped bundles exist for all five tiers for runtime-layout smoke
-  (placeholder/substitute bytes — not yet fork-built from the upstream base
-  weights; `releaseState` is `weights-staged`, not `base-v1`). Each bundle's
-  `evidence/release.json` records `repoId: elizaos/eliza-1-<tier>` (the
-  destination the orchestrator enforces) and a `relatedRepos` block pointing
-  at the published `eliza-1-evals` / `eliza-1-0_6b-sft` / `eliza-1-0_6b-sft-weights`
-  artifacts (the SFT-weights entry flagged `test-sft-candidate`,
-  `defaultEligible: false`, NOT the `recommended` channel); there is one bundle
-  repo per tier — no separate `-sft`/`-ft` variant repo. The orchestrator's
-  `--base-v1 --dry-run` on `0_6b` **and** `1_7b` still exits at stage 2 with
-  `EXIT_RELEASE_EVIDENCE_FAIL` (16): `releaseState=weights-staged` is not a
-  publishable state; `final.{evals,kernelDispatchReports,platformEvidence,
-  sizeFirstRepoIds}=false`; `evidence.finetuned`/`evidence.sourceModels` absent.
-  No upload was performed (see each bundle's `evidence/base-v1-dry-run-*.log`).
-- HF publish state (as of 2026-05-12): the `elizaos/eliza-1-*` repos are
-  **created and public** (per [`packages/training/scripts/publish/HF_PUBLISH_PLAN.md`](packages/training/scripts/publish/HF_PUBLISH_PLAN.md);
-  wave token has write to the `elizaos` org):
-  - **Model bundle repos** — [`elizaos/eliza-1-0_6b`](https://huggingface.co/elizaos/eliza-1-0_6b)
-    (upstream Qwen3-0.6B-Q8_0 GGUF + `manifest.json` + card),
-    [`elizaos/eliza-1-1_7b`](https://huggingface.co/elizaos/eliza-1-1_7b)
-    (upstream Qwen3-1.7B-Q8_0 GGUF + manifest + card),
-    [`elizaos/eliza-1-9b`](https://huggingface.co/elizaos/eliza-1-9b)
-    (manifest + card; GGUF blob upload not completed — `manifest.json` records
-    the sha + the `unsloth/Qwen3.5-9B-GGUF` source). All three are
-    `releaseState: local-standin`, `publishEligible: false`, **not
-    `defaultEligible`** — the bytes are the upstream BASE GGUFs, not the
-    fork-built `base-v1` and not the fine-tuned Eliza-1. One bundle repo per
-    tier; there is no separate `-sft`/`-ft` variant bundle repo.
-  - **Test-SFT candidate** — [`elizaos/eliza-1-0_6b-sft-weights`](https://huggingface.co/elizaos/eliza-1-0_6b-sft-weights)
-    (model): the APOLLO test-SFT checkpoint (8000-row slice, `eval_loss 1.315`)
-    — `model.safetensors` + config/tokenizer/chat-template + `gguf/eliza-1-0_6b-sft-Q4_K_M.gguf`.
-    Conditional-go (beats base on every measured metric, regresses none, but
-    `format_ok=0.20 < 0.5` smoke / `0.7` full publish floor). Published as a
-    **candidate** — **not `defaultEligible`, not the `recommended` channel**;
-    the in-progress full-corpus SFT supersedes it.
-  - **Datasets** — [`elizaos/eliza-1-0_6b-sft`](https://huggingface.co/datasets/elizaos/eliza-1-0_6b-sft)
-    (the 0.6B-tier SFT corpus, privacy-filtered, `Qwen/Qwen3-0.6B`-substitute
-    chat template; staged copy at `packages/training/datasets/eliza1-sft-0_6b/`),
-    [`elizaos/eliza-1-training`](https://huggingface.co/datasets/elizaos/eliza-1-training)
-    (the broader SFT corpus, populated).
-  - **Evals** — [`elizaos/eliza-1-evals`](https://huggingface.co/datasets/elizaos/eliza-1-evals)
-    (dataset): baseline-vs-test-SFT bench tables, `eliza1_eval_suite.py`
-    outputs, CUDA (RTX 5080) + Vulkan (Intel ANV) + CPU kernel-verify
-    evidence, throughput snapshots, `MODELS_STATUS.md`. Metal/iOS/Android
-    kernel-verify are **not** there — no hardware yet.
-  - **Voice/ASR/VAD** — [`elizaos/eliza-1-assets`](https://huggingface.co/elizaos/eliza-1-assets)
-    (frozen `1_7b` voice/ASR/VAD bytes), unchanged.
-  - **Full `elizaos/*` repo set (as of 2026-05-12, refreshed by the HF-publish agent):**
-    bundle repos `elizaos/eliza-1-{0_6b,1_7b,9b,27b,27b-256k,27b-1m}` (the
-    `27b*` three are SKELETON — honest "STATUS: pending — blocked on the
-    fork-built GGUFs + hardware evidence" card + a manifest skeleton with the
-    per-component lineage; the auto-publish path fills them); raw-fine-tune
-    repos `elizaos/eliza-1-{0_6b,1_7b,9b,27b}-sft` (pending cards — auto-publish
-    on a green SFT gate; the 0.6b test-SFT candidate lives at
-    `eliza-1-0_6b-sft-weights`); fused-kernel single-GGUF repos
-    `elizaos/eliza-1-{0_6b,1_7b,9b,27b}-optimized` (renamed off the legacy
-    `-milady-optimized` infix; pending cards); DFlash drafter companion repos
-    `elizaos/eliza-1-{0_6b,1_7b,9b,27b}-drafter` (renamed off `-milady-drafter`;
-    pending cards); datasets `elizaos/eliza-1-{training,0_6b-sft,sft-0_6b,evals}`
-    (`eliza-1-0_6b-sft` is canonical, refreshed with the structured_decode +
-    voice_emotion + tool_use tasks; `eliza-1-sft-0_6b` is a pointer alias;
-    `eliza-1-evals` refreshed with `eliza1_gates.yaml`/`.py` thresholds).
-    `huggingface_hub` ≥ 1.x ships `hf` not `huggingface-cli`; `scripts/hf-transfer-eliza1.sh`
-    auto-detects either. The `milady-ai/*` → `elizaos/*` org transfer is a
-    **no-op** — `milady-ai` has no Eliza-1 model/dataset repos to move (the
-    pre-rename pipeline never uploaded there, or they were moved earlier);
-    `scripts/hf-transfer-eliza1.sh --execute` ran cleanly (all "skipped: not
-    found"; the canonical `elizaos/eliza-1-<tier>` repos `repo create --exist-ok`).
-  - **Auto-publish hook:** `packages/training/scripts/run_pipeline.py` stage 7
-    now auto-selects the publish channel (`recommended` if the held-out
-    text-quality gate is green, else `base-v1`), passes `--base-v1`/
-    `--metal-verification` to `scripts.publish.orchestrator`, and emits a clear
-    `published: <url>` / `blocked: <gate>` line. A red eval gate already aborts
-    at stage 4b before quantize. `bun run publish:eliza1` (= `packages/training/
-    scripts/publish/publish_eliza1_all.py`) publishes everything-currently-
-    publishable (the SFT datasets + the evals) and prints a PUBLISHED/PENDING
-    summary with the per-tier orchestrator-dry-run verdict for the gated bundles;
-    `bun run publish:eliza1:dry-run` reports without pushing. Tests:
-    `python3 -m pytest packages/training/scripts/{test_hf_publish.py,publish/,manifest/,test_publish_eliza1_dataset_candidate.py}` →
-    157 passed, 1 skipped.
-  No production `base-v1` bundle weights have been pushed to any
-  `elizaos/eliza-1-<tier>` main revision — the full-corpus SFT + the
-  fork-build + the hardware-evidence work produce those. The fine-tuned
-  `recommended` channel is gated on the FINETUNE workstream's go/no-go; the
-  only fine-tune runs present
-  (`packages/training/checkpoints/eliza-1-{0_6b,1_7b}-apollo-*`) are
-  smoke/slice-mode with FAILED absolute gates (`format_ok` 0.2–0.33 < 0.5
-  floor) — published only as the `eliza-1-0_6b-sft-weights` candidate. The
-  0.6b full-corpus APOLLO SFT run (`checkpoints/eliza-1-0_6b-apollo-fullcorpus-*`)
-  is at ~checkpoint-1000 with no `final/` checkpoint yet (no live trainer process
-  observed); `eliza-1-0_6b-sft` (model weights) + the `eliza-1-0_6b` bundle
-  auto-publish the moment that run produces a `final/` checkpoint with a green
-  `gate_report.json` that beats the `Qwen3-0.6B` baseline.
-- DFlash drafters staged + stamped for `0_6b`/`1_7b`: `dflash/drafter-<tier>.gguf`
-  (the `Qwen/Qwen3-0.6B` substitute), `qwen3` arch, plain-AR shape, shared
-  151,936-token vocab with the `tokenizer.ggml.merges` repair intact,
-  `dflash-draft.target_checkpoint_sha256` matches the tier's text GGUF
-  (`target-meta.json` `matchesTargetCheckpoint: true`). Speculative-path smoke
-  (`dflash_drafter_runtime_smoke.mjs --bench`, `linux-x64-cpu` fork build,
-  `llama-speculative-simple`): 0_6b `n_drafted=23 n_accept=19` (82.6%, 2.09×
-  tok/s); 1_7b acceptance 47.1% (1.41×). `distill_dflash_drafter.py`
-  `--synthetic-smoke` + `--stamp-only` run offline here; a full KD distill (every
-  tier) + the acceptance eval that fills `target-meta.json`
-  `acceptanceRate`/`acceptanceWindow` need a GPU host (commands in
-  `packages/inference/reports/porting/2026-05-11/remaining-work-ledger.md` →
-  "DFlash drafter staging + stamping"). The `linux-x64-cpu` build reports
-  `dflash:false` (stock kernels) — a `dflash`-kernel fork build is still needed
-  for the fused-attn speculative path before publish.
-- **`--base-v1 --dry-run` verdict (`eliza-1-0_6b` / `eliza-1-1_7b`):** BLOCKED
-  with `EXIT_RELEASE_EVIDENCE_FAIL` (16) — see each bundle's
-  `evidence/base-v1-dry-run-*.log`. Blockers: `releaseState=weights-staged`
-  (substitute bytes, not a real fork build); `final.evals` false (`voice_rtf`
-  ≈6–9× vs ≤0.5 and `asr_wer` 1.0 vs ≤0.1 fail even with text-quality relaxed;
-  VAD/e2e/30-turn missing); `final.kernelDispatchReports` false (Metal/iOS/
-  Android pending); `final.platformEvidence` false (all stubs);
-  `final.sizeFirstRepoIds` false; no `finetuned`/`sourceModels` in the
-  evidence. No upload was performed — the kernel-verification + license gates
-  AGENTS.md §7 forbids bypassing are not yet satisfiable. `RELEASE_V1.md`
-  §10 lists the exact prerequisites.
-=======
 - Local release-shaped bundles exist for all five tiers for runtime-layout smoke
   (placeholder/substitute bytes — not yet fork-built from the upstream base
   weights; `releaseState` is not yet `base-v1`).
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 ## What still needs a GPU or reference hardware
 

@@ -25,61 +25,53 @@
  * silently coerced to false.
  */
 
-import { existsSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 
 import { expandHome } from "./local-llama-cpp.ts";
 
 export const ELIZA_ONE_MODEL_SIZES = [
-<<<<<<< HEAD
-  "0.6b",
-  "1.7b",
-  "9b",
-  "27b",
-  "27b-1m",
-=======
 	"0.8b",
 	"2b",
 	"9b",
 	"27b",
 	"27b-1m",
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 ] as const;
 export type ElizaOneModelSize = (typeof ELIZA_ONE_MODEL_SIZES)[number];
 
 export const ELIZA_ONE_RELEASE_STATES = [
-  "local-standin",
-  "candidate",
-  "final",
+	"local-standin",
+	"candidate",
+	"final",
 ] as const;
 export type ElizaOneReleaseState = (typeof ELIZA_ONE_RELEASE_STATES)[number];
 
 export interface ElizaOneBundleManifest {
-  bundleId: string;
-  modelSize: ElizaOneModelSize;
-  releaseState: ElizaOneReleaseState;
-  publishEligible: boolean;
-  final: { weights: boolean };
-  /** Absolute filesystem path to the .gguf inside the bundle. */
-  weightsPath: string;
-  /** Absolute filesystem path to the DFlash drafter, if present. */
-  draftersPath?: string;
-  sha256: string;
+	bundleId: string;
+	modelSize: ElizaOneModelSize;
+	releaseState: ElizaOneReleaseState;
+	publishEligible: boolean;
+	final: { weights: boolean };
+	/** Absolute filesystem path to the .gguf inside the bundle. */
+	weightsPath: string;
+	/** Absolute filesystem path to the DFlash drafter, if present. */
+	draftersPath?: string;
+	sha256: string;
 }
 
 function isModelSize(value: unknown): value is ElizaOneModelSize {
-  return (
-    typeof value === "string" &&
-    (ELIZA_ONE_MODEL_SIZES as readonly string[]).includes(value)
-  );
+	return (
+		typeof value === "string" &&
+		(ELIZA_ONE_MODEL_SIZES as readonly string[]).includes(value)
+	);
 }
 
 function isReleaseState(value: unknown): value is ElizaOneReleaseState {
-  return (
-    typeof value === "string" &&
-    (ELIZA_ONE_RELEASE_STATES as readonly string[]).includes(value)
-  );
+	return (
+		typeof value === "string" &&
+		(ELIZA_ONE_RELEASE_STATES as readonly string[]).includes(value)
+	);
 }
 
 /**
@@ -95,131 +87,133 @@ function isReleaseState(value: unknown): value is ElizaOneReleaseState {
  *   - weights file referenced by `weightsPath` does not exist on disk
  */
 export async function readElizaOneBundle(
-  bundlePath: string,
+	bundlePath: string,
 ): Promise<ElizaOneBundleManifest> {
-  const resolvedBundlePath = path.resolve(expandHome(bundlePath));
-  if (!existsSync(resolvedBundlePath)) {
-    throw new Error(
-      `eliza-1 bundle directory does not exist: ${resolvedBundlePath}`,
-    );
-  }
-  const stat = statSync(resolvedBundlePath);
-  if (!stat.isDirectory()) {
-    throw new Error(
-      `eliza-1 bundle path is not a directory: ${resolvedBundlePath}`,
-    );
-  }
-  const manifestPath = path.join(resolvedBundlePath, "manifest.json");
-  if (!existsSync(manifestPath)) {
-    throw new Error(`eliza-1 bundle is missing manifest.json: ${manifestPath}`);
-  }
-  const raw = await readFile(manifestPath, "utf8");
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (err) {
-    throw new Error(
-      `eliza-1 manifest.json is not valid JSON (${manifestPath}): ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  }
-  if (!parsed || typeof parsed !== "object") {
-    throw new Error(`eliza-1 manifest.json must be an object: ${manifestPath}`);
-  }
-  const obj = parsed as Record<string, unknown>;
+	const resolvedBundlePath = path.resolve(expandHome(bundlePath));
+	if (!existsSync(resolvedBundlePath)) {
+		throw new Error(
+			`eliza-1 bundle directory does not exist: ${resolvedBundlePath}`,
+		);
+	}
+	const stat = statSync(resolvedBundlePath);
+	if (!stat.isDirectory()) {
+		throw new Error(
+			`eliza-1 bundle path is not a directory: ${resolvedBundlePath}`,
+		);
+	}
+	const manifestPath = path.join(resolvedBundlePath, "manifest.json");
+	if (!existsSync(manifestPath)) {
+		throw new Error(`eliza-1 bundle is missing manifest.json: ${manifestPath}`);
+	}
+	const raw = await readFile(manifestPath, "utf8");
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch (err) {
+		throw new Error(
+			`eliza-1 manifest.json is not valid JSON (${manifestPath}): ${
+				err instanceof Error ? err.message : String(err)
+			}`,
+		);
+	}
+	if (!parsed || typeof parsed !== "object") {
+		throw new Error(
+			`eliza-1 manifest.json must be an object: ${manifestPath}`,
+		);
+	}
+	const obj = parsed as Record<string, unknown>;
 
-  const bundleId = obj.bundleId;
-  if (typeof bundleId !== "string" || bundleId.length === 0) {
-    throw new Error(
-      `eliza-1 manifest.json missing required string field 'bundleId': ${manifestPath}`,
-    );
-  }
+	const bundleId = obj.bundleId;
+	if (typeof bundleId !== "string" || bundleId.length === 0) {
+		throw new Error(
+			`eliza-1 manifest.json missing required string field 'bundleId': ${manifestPath}`,
+		);
+	}
 
-  const modelSize = obj.modelSize;
-  if (!isModelSize(modelSize)) {
-    throw new Error(
-      `eliza-1 manifest.json has invalid 'modelSize' (${String(
-        modelSize,
-      )}); expected one of ${ELIZA_ONE_MODEL_SIZES.join(", ")}`,
-    );
-  }
+	const modelSize = obj.modelSize;
+	if (!isModelSize(modelSize)) {
+		throw new Error(
+			`eliza-1 manifest.json has invalid 'modelSize' (${String(
+				modelSize,
+			)}); expected one of ${ELIZA_ONE_MODEL_SIZES.join(", ")}`,
+		);
+	}
 
-  const releaseState = obj.releaseState;
-  if (!isReleaseState(releaseState)) {
-    throw new Error(
-      `eliza-1 manifest.json has invalid 'releaseState' (${String(
-        releaseState,
-      )}); expected one of ${ELIZA_ONE_RELEASE_STATES.join(", ")}`,
-    );
-  }
+	const releaseState = obj.releaseState;
+	if (!isReleaseState(releaseState)) {
+		throw new Error(
+			`eliza-1 manifest.json has invalid 'releaseState' (${String(
+				releaseState,
+			)}); expected one of ${ELIZA_ONE_RELEASE_STATES.join(", ")}`,
+		);
+	}
 
-  if (typeof obj.publishEligible !== "boolean") {
-    throw new Error(
-      `eliza-1 manifest.json missing required boolean field 'publishEligible': ${manifestPath}`,
-    );
-  }
-  const publishEligible = obj.publishEligible;
+	if (typeof obj.publishEligible !== "boolean") {
+		throw new Error(
+			`eliza-1 manifest.json missing required boolean field 'publishEligible': ${manifestPath}`,
+		);
+	}
+	const publishEligible = obj.publishEligible;
 
-  const finalRaw = obj.final;
-  if (!finalRaw || typeof finalRaw !== "object") {
-    throw new Error(
-      `eliza-1 manifest.json missing required object field 'final': ${manifestPath}`,
-    );
-  }
-  const finalObj = finalRaw as Record<string, unknown>;
-  if (typeof finalObj.weights !== "boolean") {
-    throw new Error(
-      `eliza-1 manifest.json missing required boolean field 'final.weights': ${manifestPath}`,
-    );
-  }
+	const finalRaw = obj.final;
+	if (!finalRaw || typeof finalRaw !== "object") {
+		throw new Error(
+			`eliza-1 manifest.json missing required object field 'final': ${manifestPath}`,
+		);
+	}
+	const finalObj = finalRaw as Record<string, unknown>;
+	if (typeof finalObj.weights !== "boolean") {
+		throw new Error(
+			`eliza-1 manifest.json missing required boolean field 'final.weights': ${manifestPath}`,
+		);
+	}
 
-  const weightsRaw = obj.weightsPath;
-  if (typeof weightsRaw !== "string" || weightsRaw.length === 0) {
-    throw new Error(
-      `eliza-1 manifest.json missing required string field 'weightsPath': ${manifestPath}`,
-    );
-  }
-  const weightsPath = path.isAbsolute(weightsRaw)
-    ? weightsRaw
-    : path.join(resolvedBundlePath, weightsRaw);
-  if (!existsSync(weightsPath)) {
-    throw new Error(
-      `eliza-1 bundle weights file does not exist: ${weightsPath} (referenced by ${manifestPath})`,
-    );
-  }
+	const weightsRaw = obj.weightsPath;
+	if (typeof weightsRaw !== "string" || weightsRaw.length === 0) {
+		throw new Error(
+			`eliza-1 manifest.json missing required string field 'weightsPath': ${manifestPath}`,
+		);
+	}
+	const weightsPath = path.isAbsolute(weightsRaw)
+		? weightsRaw
+		: path.join(resolvedBundlePath, weightsRaw);
+	if (!existsSync(weightsPath)) {
+		throw new Error(
+			`eliza-1 bundle weights file does not exist: ${weightsPath} (referenced by ${manifestPath})`,
+		);
+	}
 
-  let draftersPath: string | undefined;
-  const draftersRaw = obj.draftersPath;
-  if (typeof draftersRaw === "string" && draftersRaw.length > 0) {
-    const resolved = path.isAbsolute(draftersRaw)
-      ? draftersRaw
-      : path.join(resolvedBundlePath, draftersRaw);
-    if (!existsSync(resolved)) {
-      throw new Error(
-        `eliza-1 bundle drafters file does not exist: ${resolved} (referenced by ${manifestPath})`,
-      );
-    }
-    draftersPath = resolved;
-  }
+	let draftersPath: string | undefined;
+	const draftersRaw = obj.draftersPath;
+	if (typeof draftersRaw === "string" && draftersRaw.length > 0) {
+		const resolved = path.isAbsolute(draftersRaw)
+			? draftersRaw
+			: path.join(resolvedBundlePath, draftersRaw);
+		if (!existsSync(resolved)) {
+			throw new Error(
+				`eliza-1 bundle drafters file does not exist: ${resolved} (referenced by ${manifestPath})`,
+			);
+		}
+		draftersPath = resolved;
+	}
 
-  const sha256 = obj.sha256;
-  if (typeof sha256 !== "string" || sha256.length === 0) {
-    throw new Error(
-      `eliza-1 manifest.json missing required string field 'sha256': ${manifestPath}`,
-    );
-  }
+	const sha256 = obj.sha256;
+	if (typeof sha256 !== "string" || sha256.length === 0) {
+		throw new Error(
+			`eliza-1 manifest.json missing required string field 'sha256': ${manifestPath}`,
+		);
+	}
 
-  return {
-    bundleId,
-    modelSize,
-    releaseState,
-    publishEligible,
-    final: { weights: finalObj.weights },
-    weightsPath,
-    draftersPath,
-    sha256,
-  };
+	return {
+		bundleId,
+		modelSize,
+		releaseState,
+		publishEligible,
+		final: { weights: finalObj.weights },
+		weightsPath,
+		draftersPath,
+		sha256,
+	};
 }
 
 /**
@@ -228,8 +222,8 @@ export async function readElizaOneBundle(
  * green: `releaseState=final`, `publishEligible=true`, and `final.weights=true`.
  */
 export function bundleIsPreRelease(manifest: ElizaOneBundleManifest): boolean {
-  if (manifest.releaseState !== "final") return true;
-  if (!manifest.publishEligible) return true;
-  if (!manifest.final.weights) return true;
-  return false;
+	if (manifest.releaseState !== "final") return true;
+	if (!manifest.publishEligible) return true;
+	if (!manifest.final.weights) return true;
+	return false;
 }

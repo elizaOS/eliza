@@ -87,15 +87,11 @@ function copyDirRecursive(src, dst) {
 function replaceBetween(source, startMarker, endMarker, replacement) {
   const start = source.indexOf(startMarker);
   if (start < 0) {
-    throw new Error(
-      `[omnivoice-fuse] compatibility patch anchor not found: ${startMarker}`,
-    );
+    throw new Error(`[omnivoice-fuse] compatibility patch anchor not found: ${startMarker}`);
   }
   const end = source.indexOf(endMarker, start);
   if (end < 0) {
-    throw new Error(
-      `[omnivoice-fuse] compatibility patch end anchor not found: ${endMarker}`,
-    );
+    throw new Error(`[omnivoice-fuse] compatibility patch end anchor not found: ${endMarker}`);
   }
   return source.slice(0, start) + replacement + source.slice(end);
 }
@@ -133,12 +129,6 @@ function writeElizaFfiAdapter({ graftRoot, commit }) {
 #include <thread>
 #include <vector>
 
-#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
-#  include <sys/mman.h>
-#  include <unistd.h>
-#  define ELIZA_HAVE_MADVISE 1
-#endif
-
 struct EliInferenceContext {
     std::string bundle_dir;
     std::string tts_model_path;
@@ -155,11 +145,6 @@ struct EliInferenceContext {
     std::atomic<bool> tts_cancel{false};
     std::mutex tts_mutex;
     std::mutex asr_mutex;
-    // Set non-zero by eliza_inference_cancel_tts(); polled by the ov_cancel_cb
-    // / ov_audio_chunk_cb that eliza_inference_tts_synthesize_stream installs
-    // so an in-flight streaming forward pass aborts at the next chunk boundary
-    // (AGENTS.md §4 barge-in). Cleared at the start of each streaming call.
-    std::atomic<int> tts_cancel{0};
 };
 
 #define ELIZA_STRINGIFY_IMPL(x) #x
@@ -722,7 +707,7 @@ int eliza_inference_tts_synthesize(
 
     std::lock_guard<std::mutex> lock(ctx->tts_mutex);
     if (!ctx->ov) {
-        eliza_set_error(out_error, "[libelizainference] tts_synthesize: TTS region is not acquired; call mmap_acquire(\\"tts\\") after arming voice");
+        eliza_set_error(out_error, "[libelizainference] tts_synthesize: TTS region is not acquired; call mmap_acquire(\\\"tts\\\") after arming voice");
         return ELIZA_ERR_INVALID_ARG;
     }
     ElizaScopedTtsForward forward(ctx);
@@ -777,7 +762,7 @@ int eliza_inference_asr_transcribe(
 
     std::lock_guard<std::mutex> lock(ctx->asr_mutex);
     if (!ctx->asr_model || !ctx->asr_lctx || !ctx->asr_mtmd || !ctx->asr_sampler) {
-        eliza_set_error(out_error, "[libelizainference] asr_transcribe: ASR region is not acquired; call mmap_acquire(\\"asr\\") after arming voice input");
+        eliza_set_error(out_error, "[libelizainference] asr_transcribe: ASR region is not acquired; call mmap_acquire(\\\"asr\\\") after arming voice input");
         return ELIZA_ERR_INVALID_ARG;
     }
 
@@ -963,28 +948,8 @@ void eliza_inference_asr_stream_close(EliAsrStream * stream) {
     (void) stream;
 }
 
-/* ---- Streaming TTS + hard-cancel (ABI v2) ------------------------- *
+/* ---- Streaming TTS + DFlash verifier callback (ABI v2) ------------- *
  *
-<<<<<<< HEAD
- * Real implementation: OmniVoice (omnivoice.cpp) already runs a chunked
- * streaming pipeline when \`ov_tts_params.on_chunk\` is non-NULL — audio is
- * post-processed and emitted chunk-by-chunk (cadence ≈ chunk_duration_sec)
- * instead of accumulated into one buffer. We bridge that to the
- * \`eliza_tts_chunk_cb\` ABI: each OmniVoice chunk forwards to the caller's
- * callback; a non-zero return (or eliza_inference_cancel_tts on another
- * thread flipping ctx->tts_cancel) aborts via the ov_cancel_cb at the next
- * chunk boundary (AGENTS.md §4 barge-in). One final \`is_final == 1\` call
- * with a zero-length tail marks the end (or the cancel point).
- *
- * The phrase chunker drives chunk size from the JS side (it hands TTS one
- * short phrase per call), so we keep OmniVoice's own chunk_duration small
- * too — first-PCM latency is bounded by the first MaskGIT decode of the
- * first phrase, not the whole utterance.
- */
-
-int eliza_inference_tts_stream_supported(void) {
-    return 1;
-=======
  * TTS streaming is backed by OmniVoice's real \`ov_tts_params.on_chunk\`
  * path and cooperative cancel hook. The native DFlash verifier-event
  * callback is still not wired in this generated adapter, so the JS
@@ -994,50 +959,7 @@ int eliza_inference_tts_stream_supported(void) {
 
 int eliza_inference_tts_stream_supported(void) {
     return OV_ABI_VERSION >= 2 ? 1 : 0;
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 }
-
-namespace {
-
-struct EliTtsStreamState {
-    EliInferenceContext * ctx = nullptr;
-    eliza_tts_chunk_cb on_chunk = nullptr;
-    void * user_data = nullptr;
-    // Set when on_chunk returned non-zero or ctx->tts_cancel was flipped.
-    int caller_cancelled = 0;
-};
-
-bool eliza_tts_should_cancel(EliTtsStreamState * st) {
-    if (!st) return false;
-    if (st->caller_cancelled) return true;
-    if (st->ctx && st->ctx->tts_cancel.load(std::memory_order_relaxed) != 0) {
-        st->caller_cancelled = 1;
-        return true;
-    }
-    return false;
-}
-
-// ov_cancel_cb: polled between chunks. Return true to abort.
-bool eliza_tts_ov_cancel_cb(void * user_data) {
-    return eliza_tts_should_cancel(static_cast<EliTtsStreamState *>(user_data));
-}
-
-// ov_audio_chunk_cb: one decoded PCM segment. Forward to the ABI callback;
-// returning false aborts the synthesis with OV_STATUS_CANCELLED.
-bool eliza_tts_ov_chunk_cb(const float * samples, int n_samples, void * user_data) {
-    EliTtsStreamState * st = static_cast<EliTtsStreamState *>(user_data);
-    if (!st || !st->on_chunk) return false;
-    if (eliza_tts_should_cancel(st)) return false;
-    if (n_samples < 0) n_samples = 0;
-    int rc = st->on_chunk(samples, (size_t) n_samples, /*is_final=*/0, st->user_data);
-    if (rc != 0) {
-        st->caller_cancelled = 1;
-        return false;
-    }
-    return !eliza_tts_should_cancel(st);
-}
-
-} // namespace
 
 int eliza_inference_tts_synthesize_stream(
     EliInferenceContext * ctx,
@@ -1056,63 +978,16 @@ int eliza_inference_tts_synthesize_stream(
         return ELIZA_ERR_INVALID_ARG;
     }
 
-<<<<<<< HEAD
-    // Clear any stale cancel flag, then hold tts_mutex for the forward pass.
-    // eliza_inference_cancel_tts MUST NOT take this mutex — it only flips the
-    // atomic, which the chunk/cancel callbacks (running on this thread) poll.
-    ctx->tts_cancel.store(0, std::memory_order_relaxed);
-    std::lock_guard<std::mutex> lock(ctx->tts_mutex);
-    if (!ctx->ov) {
-        eliza_set_error(out_error, "[libelizainference] tts_synthesize_stream: TTS region is not acquired; call mmap_acquire(\\"tts\\") after arming voice");
-        return ELIZA_ERR_INVALID_ARG;
-    }
-
-    EliTtsStreamState state;
-    state.ctx = ctx;
-    state.on_chunk = on_chunk;
-    state.user_data = user_data;
-=======
     std::lock_guard<std::mutex> lock(ctx->tts_mutex);
     if (!ctx->ov) {
         eliza_set_error(out_error, "[libelizainference] tts_synthesize_stream: TTS region is not acquired; call mmap_acquire(\\\"tts\\\") after arming voice");
         return ELIZA_ERR_INVALID_ARG;
     }
     ElizaScopedTtsForward forward(ctx);
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
     std::string text_owned(text, text_len);
     ov_tts_params params;
     ov_tts_default_params(&params);
-<<<<<<< HEAD
-    params.text = text_owned.c_str();
-    params.instruct = speaker_preset_id ? speaker_preset_id : "";
-    // Small chunks: the JS phrase chunker already hands one phrase per call,
-    // so keep OmniVoice's own segmentation tight for low first-PCM latency.
-    params.chunk_duration_sec = 1.0f;
-    params.chunk_threshold_sec = 0.0f;
-    params.on_chunk = &eliza_tts_ov_chunk_cb;
-    params.on_chunk_user_data = &state;
-    params.cancel = &eliza_tts_ov_cancel_cb;
-    params.cancel_user_data = &state;
-
-    ov_audio audio = {};
-    ov_status rc = ov_synthesize(ctx->ov, &params, &audio);
-    ov_audio_free(&audio);
-
-    // Always emit the terminator so the consumer can release per-utterance
-    // state (matches ffi.h: on_chunk is called once more with is_final == 1).
-    on_chunk(nullptr, 0, /*is_final=*/1, user_data);
-
-    if (state.caller_cancelled || rc == OV_STATUS_CANCELLED) {
-        eliza_set_error(out_error, "[libelizainference] tts_synthesize_stream: cancelled");
-        return ELIZA_ERR_CANCELLED;
-    }
-    if (rc != OV_STATUS_OK) {
-        std::string msg = "[libelizainference] ov_synthesize (streaming) failed: ";
-        msg += ov_last_error();
-        eliza_set_error(out_error, msg);
-        return rc == OV_STATUS_OOM ? ELIZA_ERR_OOM : ELIZA_ERR_FFI_FAULT;
-=======
     eliza_apply_tts_env_overrides(&params);
     params.text = text_owned.c_str();
     params.instruct = speaker_preset_id ? speaker_preset_id : "";
@@ -1142,7 +1017,6 @@ int eliza_inference_tts_synthesize_stream(
         msg += ov_last_error();
         eliza_set_error(out_error, msg);
         return eliza_map_ov_status(rc);
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     }
     return ELIZA_OK;
 }
@@ -1151,17 +1025,10 @@ int eliza_inference_cancel_tts(
     EliInferenceContext * ctx,
     char ** out_error) {
     (void) out_error;
-<<<<<<< HEAD
-    // Hard-cancel: flip the atomic the in-flight streaming pass polls. Must
-    // NOT take tts_mutex (the synthesis thread holds it for the whole pass).
-    // Cancelling nothing is not an error.
-    if (ctx) ctx->tts_cancel.store(1, std::memory_order_relaxed);
-=======
     if (ctx) {
         ctx->tts_cancel.store(true, std::memory_order_release);
     }
     // Cancelling nothing is not an error.
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     return ELIZA_OK;
 }
 
@@ -1526,7 +1393,9 @@ function readOmnivoiceGgmlSubmoduleCommit(checkoutDir) {
     stdio: ["ignore", "pipe", "pipe"],
   });
   if (result.status !== 0) return null;
-  const match = /^160000\s+commit\s+([0-9a-f]{40})/.exec(result.stdout || "");
+  const match = /^160000\s+commit\s+([0-9a-f]{40})/.exec(
+    result.stdout || "",
+  );
   return match ? match[1] : null;
 }
 
@@ -1663,12 +1532,7 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
     touched.push("tools/mtmd/clip-impl.h");
   }
 
-  const clipModelPath = path.join(
-    llamaCppRoot,
-    "tools",
-    "mtmd",
-    "clip-model.h",
-  );
+  const clipModelPath = path.join(llamaCppRoot, "tools", "mtmd", "clip-model.h");
   let clipModel = fs.readFileSync(clipModelPath, "utf8");
   if (!clipModel.includes("conv_out_w")) {
     clipModel = replaceRequired(
@@ -1691,13 +1555,7 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
     touched.push("tools/mtmd/clip-model.h");
   }
 
-  const modelsHeaderPath = path.join(
-    llamaCppRoot,
-    "tools",
-    "mtmd",
-    "models",
-    "models.h",
-  );
+  const modelsHeaderPath = path.join(llamaCppRoot, "tools", "mtmd", "models", "models.h");
   let modelsHeader = fs.readFileSync(modelsHeaderPath, "utf8");
   if (!modelsHeader.includes("clip_graph_qwen3a")) {
     modelsHeader = replaceRequired(
@@ -1710,24 +1568,13 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
     touched.push("tools/mtmd/models/models.h");
   }
 
-  const qwen3aPath = path.join(
-    llamaCppRoot,
-    "tools",
-    "mtmd",
-    "models",
-    "qwen3a.cpp",
-  );
+  const qwen3aPath = path.join(llamaCppRoot, "tools", "mtmd", "models", "qwen3a.cpp");
   if (!fs.existsSync(qwen3aPath)) {
     fs.writeFileSync(qwen3aPath, QWEN3A_MODEL_CPP, "utf8");
     touched.push("tools/mtmd/models/qwen3a.cpp");
   }
 
-  const mtmdCmakePath = path.join(
-    llamaCppRoot,
-    "tools",
-    "mtmd",
-    "CMakeLists.txt",
-  );
+  const mtmdCmakePath = path.join(llamaCppRoot, "tools", "mtmd", "CMakeLists.txt");
   let mtmdCmake = fs.readFileSync(mtmdCmakePath, "utf8");
   if (!mtmdCmake.includes("models/qwen3a.cpp")) {
     mtmdCmake = replaceRequired(
@@ -1750,11 +1597,7 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
       "clip.cpp qwen3a graph dispatch",
     );
   }
-  if (
-    !clip.includes(
-      "case PROJECTOR_TYPE_QWEN3A:\n                case PROJECTOR_TYPE_GLMA",
-    )
-  ) {
+  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n                case PROJECTOR_TYPE_GLMA")) {
     clip = replaceRequired(
       clip,
       "                case PROJECTOR_TYPE_QWEN2A:\n                case PROJECTOR_TYPE_GLMA:",
@@ -1762,23 +1605,15 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
       "clip.cpp qwen3a hparams",
     );
   }
-  if (
-    !clip.includes(
-      "case PROJECTOR_TYPE_QWEN3A:\n                {\n                    model.conv2d_1_w",
-    )
-  ) {
+  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n                {\n                    model.conv2d_1_w")) {
     clip = replaceRequired(
       clip,
       "            case PROJECTOR_TYPE_VOXTRAL:\n                {",
-      '            case PROJECTOR_TYPE_QWEN3A:\n                {\n                    model.conv2d_1_w = get_tensor(string_format(TN_CONV2D, 1, "weight"));\n                    model.conv2d_1_b = get_tensor(string_format(TN_CONV2D, 1, "bias"));\n                    model.conv2d_2_w = get_tensor(string_format(TN_CONV2D, 2, "weight"));\n                    model.conv2d_2_b = get_tensor(string_format(TN_CONV2D, 2, "bias"));\n                    model.conv2d_3_w = get_tensor(string_format(TN_CONV2D, 3, "weight"));\n                    model.conv2d_3_b = get_tensor(string_format(TN_CONV2D, 3, "bias"));\n                    model.conv_out_w = get_tensor(string_format(TN_CONV_OUT, "weight"));\n                    model.conv_out_b = get_tensor(string_format(TN_CONV_OUT, "bias"), false);\n                    model.mm_1_w = get_tensor(string_format(TN_MM_AUDIO_MLP, 1, "weight"));\n                    model.mm_1_b = get_tensor(string_format(TN_MM_AUDIO_MLP, 1, "bias"));\n                    model.mm_2_w = get_tensor(string_format(TN_MM_AUDIO_MLP, 2, "weight"));\n                    model.mm_2_b = get_tensor(string_format(TN_MM_AUDIO_MLP, 2, "bias"));\n                } break;\n            case PROJECTOR_TYPE_VOXTRAL:\n                {',
+      "            case PROJECTOR_TYPE_QWEN3A:\n                {\n                    model.conv2d_1_w = get_tensor(string_format(TN_CONV2D, 1, \"weight\"));\n                    model.conv2d_1_b = get_tensor(string_format(TN_CONV2D, 1, \"bias\"));\n                    model.conv2d_2_w = get_tensor(string_format(TN_CONV2D, 2, \"weight\"));\n                    model.conv2d_2_b = get_tensor(string_format(TN_CONV2D, 2, \"bias\"));\n                    model.conv2d_3_w = get_tensor(string_format(TN_CONV2D, 3, \"weight\"));\n                    model.conv2d_3_b = get_tensor(string_format(TN_CONV2D, 3, \"bias\"));\n                    model.conv_out_w = get_tensor(string_format(TN_CONV_OUT, \"weight\"));\n                    model.conv_out_b = get_tensor(string_format(TN_CONV_OUT, \"bias\"), false);\n                    model.mm_1_w = get_tensor(string_format(TN_MM_AUDIO_MLP, 1, \"weight\"));\n                    model.mm_1_b = get_tensor(string_format(TN_MM_AUDIO_MLP, 1, \"bias\"));\n                    model.mm_2_w = get_tensor(string_format(TN_MM_AUDIO_MLP, 2, \"weight\"));\n                    model.mm_2_b = get_tensor(string_format(TN_MM_AUDIO_MLP, 2, \"bias\"));\n                } break;\n            case PROJECTOR_TYPE_VOXTRAL:\n                {",
       "clip.cpp qwen3a tensor loads",
     );
   }
-  if (
-    !clip.includes(
-      "case PROJECTOR_TYPE_QWEN3A:\n            {\n                // 3x stride-2 conv2d",
-    )
-  ) {
+  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n            {\n                // 3x stride-2 conv2d")) {
     clip = replaceRequired(
       clip,
       "        case PROJECTOR_TYPE_GLMA:\n            {",
@@ -1786,11 +1621,7 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
       "clip.cpp qwen3a output token count",
     );
   }
-  if (
-    !clip.includes(
-      "case PROJECTOR_TYPE_QWEN3A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_ULTRAVOX",
-    )
-  ) {
+  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_ULTRAVOX")) {
     clip = replaceRequired(
       clip,
       "        case PROJECTOR_TYPE_QWEN2A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_ULTRAVOX:",
@@ -1798,11 +1629,7 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
       "clip.cpp qwen3a input setup",
     );
   }
-  if (
-    !clip.includes(
-      "case PROJECTOR_TYPE_QWEN3A:\n            return ctx->model.mm_2_w->ne[1];",
-    )
-  ) {
+  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n            return ctx->model.mm_2_w->ne[1];")) {
     clip = replaceRequired(
       clip,
       "        case PROJECTOR_TYPE_QWEN2A:\n            return ctx->model.mm_fc_w->ne[1];\n        case PROJECTOR_TYPE_GLMA:",
@@ -1810,11 +1637,7 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
       "clip.cpp qwen3a mmproj embedding dim",
     );
   }
-  if (
-    !clip.includes(
-      "case PROJECTOR_TYPE_QWEN3A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_VOXTRAL",
-    )
-  ) {
+  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_VOXTRAL")) {
     clip = replaceRequired(
       clip,
       "        case PROJECTOR_TYPE_QWEN2A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_VOXTRAL:",
@@ -1829,11 +1652,7 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
 
   const mtmdPath = path.join(llamaCppRoot, "tools", "mtmd", "mtmd.cpp");
   let mtmd = fs.readFileSync(mtmdPath, "utf8");
-  if (
-    !mtmd.includes(
-      "case PROJECTOR_TYPE_QWEN3A:\n            case PROJECTOR_TYPE_QWEN25O:",
-    )
-  ) {
+  if (!mtmd.includes("case PROJECTOR_TYPE_QWEN3A:\n            case PROJECTOR_TYPE_QWEN25O:")) {
     mtmd = replaceRequired(
       mtmd,
       "            case PROJECTOR_TYPE_QWEN2A:\n            case PROJECTOR_TYPE_QWEN25O:",

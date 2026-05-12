@@ -47,22 +47,14 @@ export function getAllOverlayApps(): OverlayApp[] {
 /**
  * Get overlay apps that are available on the current platform. Filters
  * out `androidOnly: true` apps unless this is an AOSP Eliza-derived Android
-<<<<<<< HEAD
- * build (ElizaOS, ElizaOS, or any other white-label fork). Used by the apps
-=======
  * build (ElizaOS or any white-label fork). Used by the apps
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
  * catalog UI so stock Android, iOS, desktop, and web users don't see
  * privileged OS-control tiles that launch into permanent error states.
  *
  * AOSP detection: the framework's `MainActivity.applyElizaOSUserAgentSuffix`
  * appends an `ElizaOS/<tag>` token to the WebView UA when `ro.elizaos.product`
  * is set by the product makefile. Every Eliza-derived AOSP image carries this
-<<<<<<< HEAD
- * marker; white-label brands (ElizaOS, …) layer additional brand-specific
-=======
  * marker; white-label brands layer additional brand-specific
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
  * markers on top via `app.config.ts > android.userAgentMarkers`. Stock Android
  * APKs leave the UA untouched.
  *
@@ -137,13 +129,8 @@ function detectPlatformForCatalog(userAgent: string): string {
 }
 
 /**
-<<<<<<< HEAD
- * True when running on an AOSP Eliza-derived Android build (ElizaOS, ElizaOS,
- * any white-label fork). Tests may pass an explicit context. Shared with
-=======
  * True when running on an AOSP Eliza-derived Android build (ElizaOS or any
  * white-label fork). Tests may pass an explicit context. Shared with
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
  * `catalog-loader.ts` so it can apply the same gate to installed/static apps,
  * not just overlay apps that happen to be registered already.
  */

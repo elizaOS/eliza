@@ -127,14 +127,6 @@ function collectJsonFiles(dir, recursive = true) {
         if (recursive) stack.push(full);
         continue;
       }
-<<<<<<< HEAD
-      if (
-        entry.isFile() &&
-        entry.name.startsWith(prefix) &&
-        entry.name.endsWith(".json")
-      ) {
-        matches.push({ full, mtime: fs.statSync(full).mtimeMs });
-=======
       if (entry.isFile() && entry.name.endsWith(".json")) files.push(full);
     }
   }
@@ -159,7 +151,6 @@ function newestJsonReportWhere(dirs, predicate, { recursive = true } = {}) {
         if (predicate(meta)) matches.push(meta);
       } catch {
         // Skip partially written reports.
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
       }
     }
   }
@@ -509,36 +500,6 @@ async function main() {
     [HARDWARE_RESULTS_ROOT, path.join(REPORTS_ROOT, "porting")],
     ({ name }) => name.toLowerCase().includes("ios") && name.toLowerCase().includes("smoke"),
   );
-  // The two-agents-talking duet bench (`voice-duet.mjs --report …`), written
-  // under `reports/porting/<date>/voice-duet-bench-<model>.json` — match the
-  // tier under test, newest by mtime. Source for the re-anchored
-  // `first_token_latency_ms` (= `ttftFromUtteranceEndMs.p50`),
-  // `first_audio_latency_ms` / `duet_round_trip_ms` (=
-  // `firstAudioIntoPeerRingFromUtteranceEndMs.p50`),
-  // `structured_decode_token_savings_pct`, and `expressive_tag_faithfulness`
-  // (= `emotionFidelity.accuracy`).
-  const voiceDuetBench = newestReportRecursiveWhere(
-    path.join(REPORTS_ROOT, "porting"),
-    "voice-duet-bench-",
-    (data) => {
-      const m = String(data?.model ?? "");
-      return (
-        m === args.tier ||
-        m === `eliza-1-${args.tier}` ||
-        m.endsWith(`-${args.tier}`)
-      );
-    },
-  );
-  const duetH = voiceDuetBench?.data?.latency?.histograms ?? {};
-  const duetRunM = voiceDuetBench?.data?.runMetrics ?? {};
-  const duetTtftFromUtteranceEndMs = duetH?.ttftFromUtteranceEndMs?.p50 ?? null;
-  const duetRoundTripMs =
-    duetH?.firstAudioIntoPeerRingFromUtteranceEndMs?.p50 ?? null;
-  const duetStructuredSavingsPct =
-    duetRunM?.structuredDecodeTokenSavingsPct?.p50 ?? null;
-  const duetDflashAcceptance = duetRunM?.dflashAcceptRate ?? null;
-  const duetEmotionFidelity =
-    voiceDuetBench?.data?.emotionFidelity?.accuracy ?? null;
 
   const e2eDflashDrafted = e2eLoop?.data?.summary?.dflashDraftedTotal;
   const e2eDflashAccepted = e2eLoop?.data?.summary?.dflashAcceptedTotal;
@@ -569,7 +530,9 @@ async function main() {
     e2eEnduranceLoop?.data?.thirtyTurnOk ??
     null;
   const e2eLoopOk =
-    endurance?.data?.summary?.e2eLoopOk ?? e2eLoop?.data?.e2eLoopOk ?? null;
+    endurance?.data?.summary?.e2eLoopOk ??
+    e2eLoop?.data?.e2eLoopOk ??
+    null;
   const voiceRtf =
     averageStepRtf(ttsSweep?.data) ??
     e2eLoop?.data?.summary?.ttsRtfMedian ??
@@ -579,26 +542,15 @@ async function main() {
   const asrWer =
     asrExternal?.data?.aggregate?.wer ??
     null;
-<<<<<<< HEAD
-  const asrWer = e2eLoop?.data?.summary?.asrWerMean ?? null;
-  // first_token_latency_ms is re-anchored to the duet's `peer-utterance-end`
-  // (`ttftFromUtteranceEndMs.p50`); fall back to the single-agent e2e loop's
-  // `firstTokenMsMedian` (vad-trigger anchor) when no duet report exists.
-=======
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   const firstTokenLatencyMs =
-    duetTtftFromUtteranceEndMs ??
     e2eLoop?.data?.summary?.firstTokenMsMedian ??
     e2eLoop?.data?.summary?.firstTokenMsP50 ??
     null;
   const firstAudioLatencyMs =
-    duetRoundTripMs ??
-    e2eLoop?.data?.summary?.firstAudioFromMicMsMedian ??
-    null;
+    e2eLoop?.data?.summary?.firstAudioFromMicMsMedian ?? null;
   const peakRssMb =
     endurance?.data?.summary?.peakRssMb ??
     e2eLoop?.data?.summary?.serverPeakRssMb ??
-    voiceDuetBench?.data?.runMetrics?.rss?.maxMb ??
     mobileRss?.data?.summary?.peakRssMb ??
     null;
   const thermalThrottlePct =
@@ -618,14 +570,8 @@ async function main() {
     evalAggregate?.data?.results?.expressive_tag_leakage ??
     null;
 
-<<<<<<< HEAD
-  // Map metric name → measured value. Text quality and `expressive_mos` /
-  // `expressive_tag_leakage` stay null here — they come from the training-side
-  // eval blob / a human panel, not runtime harnesses.
-=======
   // Map metric name → measured value. Missing values stay null: that means
   // not measured, not passed.
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   const measured = {
     text_eval: textEvalScore,
     voice_rtf: voiceRtf,
@@ -636,22 +582,14 @@ async function main() {
     vad_false_bargein_per_hour: vadFalseBargeInPerHour,
     first_token_latency_ms: firstTokenLatencyMs,
     first_audio_latency_ms: firstAudioLatencyMs,
-    duet_round_trip_ms: duetRoundTripMs,
-    structured_decode_token_savings_pct: duetStructuredSavingsPct,
     barge_in_cancel_ms: bargeInCancelMs,
     thirty_turn_ok: thirtyTurnOk,
     e2e_loop_ok: e2eLoopOk,
-    dflash_acceptance: dflashAcceptance ?? duetDflashAcceptance,
+    dflash_acceptance: dflashAcceptance,
     dflash_speedup: dflashSpeedup,
-<<<<<<< HEAD
-    expressive_tag_faithfulness: duetEmotionFidelity,
-    expressive_mos: null,
-    expressive_tag_leakage: null,
-=======
     expressive_tag_faithfulness: expressiveTagFaithfulness,
     expressive_mos: expressiveMos,
     expressive_tag_leakage: expressiveTagLeakage,
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     peak_rss_mb: peakRssMb,
     thermal_throttle_pct: thermalThrottlePct,
   };

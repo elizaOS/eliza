@@ -49,11 +49,7 @@ node scripts/benchmark/profile-inference.mjs \
 |---|---|---|
 | `--target <url>` | `http://localhost:31337` | Agent API base URL |
 | `--config <path>` | auto-detected per host (see below) | Matrix config |
-<<<<<<< HEAD
-| `--token <str>` | `ELIZA_API_TOKEN` / `MILADY_API_TOKEN` env | API token if the server is auth-gated |
-=======
 | `--token <str>` | `ELIZA_API_TOKEN` / `ELIZA_API_TOKEN` env | API token if the server is auth-gated |
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 | `--out <dir>` | `reports/porting/<YYYY-MM-DD>` | Output directory for `profile.json` + `profile.md` |
 | `--non-streaming` | streaming on | Use sync `/messages` instead of SSE; no first-token latency |
 | `--load-timeout-ms <n>` | `120000` | Per-load timeout |

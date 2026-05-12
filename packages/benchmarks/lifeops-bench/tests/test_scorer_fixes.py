@@ -19,6 +19,7 @@ from eliza_lifeops_bench.scorer import (
     _canonicalize_action,
     _classify_scenario_kind,
     _is_read_only_action,
+    _is_read_with_side_effects_action,
     _kwargs_match,
     compare_actions,
     compile_benchmark_result,

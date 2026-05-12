@@ -4,11 +4,7 @@ import { shellHistoryProvider } from "./providers";
 import { ShellService } from "./services/shellService";
 
 function terminalSupportedByEnv(env: Record<string, string | undefined>): boolean {
-<<<<<<< HEAD
-  const variant = (env.ELIZA_BUILD_VARIANT ?? env.MILADY_BUILD_VARIANT ?? "").trim().toLowerCase();
-=======
   const variant = (env.ELIZA_BUILD_VARIANT ?? "").trim().toLowerCase();
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   if (variant === "store") return false;
   const platform = env.ELIZA_PLATFORM?.trim().toLowerCase();
   const mobile =

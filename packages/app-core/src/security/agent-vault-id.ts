@@ -10,11 +10,7 @@ export const ELIZA_AGENT_VAULT_SERVICE = "ai.elizaos.agent.vault";
 
 /**
  * Canonical state directory for this process. Mirrors the canonical
-<<<<<<< HEAD
- * `ELIZA_STATE_DIR` > `ELIZA_STATE_DIR` > `~/.${namespace}` precedence
-=======
  * `ELIZA_STATE_DIR` > `~/.${namespace}` precedence
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
  * and uses `realpathSync` when the path exists so symlinks normalize
  * consistently.
  */

@@ -2,11 +2,7 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-<<<<<<< HEAD
-import { join, relative, resolve } from "node:path";
-=======
 import { delimiter, join, relative, resolve } from "node:path";
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 const ROOT = resolve(import.meta.dirname, "..");
 const ROOT_KNIP_CONFIG = existsSync(join(ROOT, "knip.json"))

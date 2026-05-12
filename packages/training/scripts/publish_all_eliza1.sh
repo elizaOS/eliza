@@ -28,20 +28,9 @@
 # <bundles-root>/<tier>/evals/metal_verify.json (the orchestrator picks
 # up that path automatically when passed via --metal-verification).
 #
-# Release channel: pass --base-v1 (or --release-channel base-v1) to publish
-# the upstream-base + kernel-optimized release instead of the (default)
-# fine-tuned `recommended` channel. base-v1 forces defaultEligible=false,
-# requires a provenance.sourceModels map in each bundle's
-# evidence/release.json, accepts releaseState in {base-v1, final}, and
-# treats the held-out text-quality gate as N/A — but every other gate
-# (kernel verify on every supported backend, every required
-# platform-dispatch report, the runnable-on-base evals, every license
-# attestation) is enforced exactly as on the recommended channel.
-#
 # Usage:
 #   scripts/publish_all_eliza1.sh --bundles-root ./bundles
 #   scripts/publish_all_eliza1.sh --bundles-root ./bundles --dry-run
-#   scripts/publish_all_eliza1.sh --bundles-root ./bundles --base-v1 --dry-run
 #   scripts/publish_all_eliza1.sh --bundles-root ./bundles --filter-tier 9b
 #   scripts/publish_all_eliza1.sh --bundles-root ./bundles --metal-verification-9b /path/to/metal.json
 #
@@ -62,7 +51,6 @@ DRY_RUN=0
 PUBLIC=0
 FILTER_TIER=""
 BUNDLES_ROOT=""
-RELEASE_CHANNEL="recommended"
 METAL_PATH_0_6B=""
 METAL_PATH_1_7B=""
 METAL_PATH_9B=""
@@ -71,19 +59,13 @@ METAL_PATH_27B_256K=""
 METAL_PATH_27B_1M=""
 
 usage() {
-<<<<<<< HEAD
-  sed -n '2,49p' "$0" | sed 's/^# \?//'
-=======
   sed -n '2,40{s/^# //;s/^#//;p;}' "${SCRIPT_PATH}"
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run)            DRY_RUN=1; shift ;;
     --public)             PUBLIC=1; shift ;;
-    --base-v1)            RELEASE_CHANNEL="base-v1"; shift ;;
-    --release-channel)    RELEASE_CHANNEL="$2"; shift 2 ;;
     --filter-tier)        FILTER_TIER="$2"; shift 2 ;;
     --bundles-root)       BUNDLES_ROOT="$2"; shift 2 ;;
     --metal-verification-0_8b)    METAL_PATH_0_6B="$2"; shift 2 ;;
@@ -104,11 +86,6 @@ if [[ -z "${BUNDLES_ROOT}" ]]; then
   echo "--bundles-root is required" >&2
   exit 2
 fi
-
-case "${RELEASE_CHANNEL}" in
-  recommended|base-v1) ;;
-  *) echo "--release-channel must be 'recommended' or 'base-v1' (got '${RELEASE_CHANNEL}')" >&2; exit 2 ;;
-esac
 
 UV_BIN=""
 if command -v uv >/dev/null 2>&1; then
@@ -159,7 +136,6 @@ publish_one() {
   local -a args=(
     --tier "${tier}"
     --bundle-dir "${bundle_dir}"
-    --release-channel "${RELEASE_CHANNEL}"
   )
   (( DRY_RUN == 1 )) && args+=(--dry-run)
   (( PUBLIC == 1 )) && args+=(--public)

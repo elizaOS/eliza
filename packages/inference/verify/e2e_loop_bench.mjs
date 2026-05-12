@@ -92,7 +92,6 @@ function parseArgs(argv) {
     ),
     report: process.env.ELIZA_E2E_REPORT || "",
     quiet: process.env.ELIZA_E2E_QUIET === "1",
-    json: process.env.ELIZA_E2E_JSON === "1",
   };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -130,16 +129,9 @@ function parseArgs(argv) {
     else if (a === "--ngl") args.ngl = next();
     else if (a === "--report") args.report = next();
     else if (a === "--quiet") args.quiet = true;
-    else if (a === "--json") {
-      args.json = true;
-      args.quiet = true;
-    } else if (a === "--help" || a === "-h") {
+    else if (a === "--help" || a === "-h") {
       console.log(
-<<<<<<< HEAD
-        "Usage: bun packages/inference/verify/e2e_loop_bench.mjs --bundle <dir> --tier <id> [--backend cpu|vulkan|cuda] [--turns N] [--wav a,b] [--report out.json] [--json] [--quiet]",
-=======
         "Usage: bun packages/inference/verify/e2e_loop_bench.mjs --bundle <dir> --tier <id> [--backend cpu|vulkan|cuda|metal] [--turns N] [--wav a,b] [--report out.json]",
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
       );
       process.exit(0);
     } else throw new Error(`unknown argument: ${a}`);
@@ -402,33 +394,10 @@ function writeWav16(file, samples, sampleRate) {
 // WER (Levenshtein over normalized word lists)
 // --------------------------------------------------------------------------
 
-// Standard ASR-WER text normalization, applied identically to ref and hyp:
-// lowercase → expand common contractions → strip punctuation (keep
-// intra-word apostrophes for the few not expanded) → collapse whitespace.
-// Keep this in sync with the eval suite's documented normalization (see
-// `eval_asr_wer` in packages/training/scripts/eval/eliza1_eval_suite.py).
-const CONTRACTIONS = [
-  [/\bwon't\b/g, "will not"],
-  [/\bcan't\b/g, "cannot"],
-  [/\bshan't\b/g, "shall not"],
-  [/\bain't\b/g, "is not"],
-  [/\blet's\b/g, "let us"],
-  [/\b(\w+)'ll\b/g, "$1 will"],
-  [/\b(\w+)'ve\b/g, "$1 have"],
-  [/\b(\w+)'re\b/g, "$1 are"],
-  [/\b(\w+)'d\b/g, "$1 would"],
-  [/\b(\w+)n't\b/g, "$1 not"],
-  [/\b(\w+)'m\b/g, "$1 am"],
-  // possessive / "it's" → "it is" is ambiguous; only expand the unambiguous
-  // verb forms above. Leave other 's attached, then strip below.
-];
-
 function normalizeWords(s) {
-  let t = (s || "").toLowerCase();
-  for (const [re, rep] of CONTRACTIONS) t = t.replace(re, rep);
-  return t
+  return (s || "")
+    .toLowerCase()
     .replace(/[^\p{L}\p{N}\s']/gu, " ")
-    .replace(/'/g, "")
     .replace(/\s+/g, " ")
     .trim()
     .split(" ")
@@ -1104,6 +1073,7 @@ async function main() {
       DYLD_LIBRARY_PATH: `${engine.dir}${path.delimiter}${process.env.DYLD_LIBRARY_PATH || ""}`,
       ELIZA_OMNIVOICE_MODEL: files.ttsModel,
       ELIZA_OMNIVOICE_CODEC: files.ttsCodec,
+      ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT: "1",
     };
     const serverArgs = [
       "-m", files.text,
@@ -1364,13 +1334,6 @@ function finish(report, args, logFn) {
     );
   } else {
     logFn(`RESULT status=${report.status}: ${report.reason}`);
-  }
-  if (args.json) {
-    // Machine-readable: emit the (single-run) report on stdout, same as the
-    // sibling harnesses (`embedding_bench.mjs`, `guided_decode_token_bench.mjs`,
-    // `bargein_latency_harness.mjs`, …). `--json` implies `--quiet` so stdout
-    // stays parseable.
-    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   }
   // The bench exits 0 whenever it produced its output (including needs-*),
   // matching the eval-suite honesty contract; a non-zero exit means a harness

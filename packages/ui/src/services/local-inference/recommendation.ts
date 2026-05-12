@@ -37,34 +37,20 @@ const BYTES_PER_GB = 1024 ** 3;
  * tier that fits the platform; desktops/servers pick larger tiers
  * first when memory headroom allows.
  */
-// TODO(owner): the small tiers are moving to the Qwen3.5 backbone
-// (eliza-1-0_8b / eliza-1-2b). The legacy Qwen3 tiers (0_6b/1_7b) are kept
-// here additively; eliza-1-0_8b is slotted between them by size (0.8B Q4 >
-// 0.6B Q3, < 1.7B). Re-order / drop the legacy tiers once the owner decides.
-// Mirrors the app-core SLOT_LADDERS — keep the two in sync.
 const SLOT_LADDERS: Record<
   RecommendationPlatformClass,
   Record<TextGenerationSlot, string[]>
 > = {
   mobile: {
-<<<<<<< HEAD
-    TEXT_SMALL: ["eliza-1-0_6b", "eliza-1-0_8b", "eliza-1-1_7b"],
-    TEXT_LARGE: ["eliza-1-1_7b", "eliza-1-0_8b", "eliza-1-0_6b"],
-  },
-  "apple-silicon": {
-    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_8b", "eliza-1-0_6b"],
-    TEXT_LARGE: ["eliza-1-27b", "eliza-1-9b", "eliza-1-1_7b"],
-=======
     TEXT_SMALL: ["eliza-1-0_6b", "eliza-1-1_7b"],
     TEXT_LARGE: ["eliza-1-4b", "eliza-1-1_7b", "eliza-1-0_6b"],
   },
   "apple-silicon": {
     TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
     TEXT_LARGE: ["eliza-1-27b", "eliza-1-9b", "eliza-1-4b", "eliza-1-1_7b"],
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   },
   "linux-gpu": {
-    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_8b", "eliza-1-0_6b"],
+    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
     TEXT_LARGE: [
       "eliza-1-27b-256k",
       "eliza-1-27b",
@@ -74,16 +60,11 @@ const SLOT_LADDERS: Record<
     ],
   },
   "linux-cpu": {
-<<<<<<< HEAD
-    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_8b", "eliza-1-0_6b"],
-    TEXT_LARGE: ["eliza-1-9b", "eliza-1-1_7b"],
-=======
     TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
     TEXT_LARGE: ["eliza-1-9b", "eliza-1-4b", "eliza-1-1_7b"],
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   },
   "desktop-gpu": {
-    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_8b", "eliza-1-0_6b"],
+    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
     TEXT_LARGE: [
       "eliza-1-27b-256k",
       "eliza-1-27b",
@@ -93,13 +74,8 @@ const SLOT_LADDERS: Record<
     ],
   },
   "desktop-cpu": {
-<<<<<<< HEAD
-    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_8b", "eliza-1-0_6b"],
-    TEXT_LARGE: ["eliza-1-9b", "eliza-1-1_7b"],
-=======
     TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
     TEXT_LARGE: ["eliza-1-9b", "eliza-1-4b", "eliza-1-1_7b"],
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   },
 };
 

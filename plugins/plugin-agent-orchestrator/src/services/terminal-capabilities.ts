@@ -63,12 +63,7 @@ function isTruthyEnv(value: string | undefined): boolean {
 }
 
 function isStoreBuild(): boolean {
-<<<<<<< HEAD
-  const variant =
-    process.env.ELIZA_BUILD_VARIANT ?? process.env.MILADY_BUILD_VARIANT ?? "";
-=======
   const variant = process.env.ELIZA_BUILD_VARIANT ?? "";
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   return variant.trim().toLowerCase() === "store";
 }
 

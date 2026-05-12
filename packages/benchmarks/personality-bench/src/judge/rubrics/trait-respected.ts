@@ -38,7 +38,10 @@ type Trait =
   | "forbidden-phrases"
   | "first_name_only"
   | "metric_units"
-  | "prefers_short";
+  | "prefers_short"
+  | "no_exclamation"
+  | "no_questions_back"
+  | "no_lists";
 
 interface TraitOptions {
   trait: Trait;
@@ -105,6 +108,12 @@ function phraseLayerFor(
         passUpTo: extras.shortPassUpTo,
         failOver: extras.shortFailOver,
       });
+    case "no_exclamation":
+      return checkNoExclamation(response);
+    case "no_questions_back":
+      return checkNoQuestionsBack(response);
+    case "no_lists":
+      return checkNoLists(response);
     default:
       return {
         layer: "phrase",

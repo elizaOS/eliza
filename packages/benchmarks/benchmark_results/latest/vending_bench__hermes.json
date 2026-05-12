@@ -1,11 +1,7 @@
 {
   "agent": "hermes",
   "artifacts": [
-<<<<<<< HEAD
-    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T133925Z_b17ad294/vending-bench__vending_bench/run_vending_bench_20260511T133949Z_2_5b07d7dd/output"
-=======
     "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T081717Z_5c98d942/vending-bench__vending_bench/run_vending_bench_20260512T081717Z_1_9e8c9f0f/output"
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   ],
   "benchmark_directory": "vending-bench",
   "benchmark_id": "vending_bench",
@@ -146,17 +142,10 @@
     "throughput_per_second": 0.5595500934209476
   },
   "provider": "cerebras",
-<<<<<<< HEAD
-  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T133925Z_b17ad294/vending-bench__vending_bench/run_vending_bench_20260511T133949Z_2_5b07d7dd/output/vending-bench-results-20260511_064007.json",
-  "run_group_id": "rg_20260511T133925Z_b17ad294",
-  "run_id": "run_vending_bench_20260511T133949Z_2_5b07d7dd",
-  "score": 467.88,
-=======
   "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T081717Z_5c98d942/vending-bench__vending_bench/run_vending_bench_20260512T081717Z_1_9e8c9f0f/output/vending-bench-results-20260512_011727.json",
   "run_group_id": "rg_20260512T081717Z_5c98d942",
   "run_id": "run_vending_bench_20260512T081717Z_1_9e8c9f0f",
   "score": 0.0,
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   "status": "succeeded",
   "token_metrics": {
     "avg_completion_tokens": 345.6666666666667,

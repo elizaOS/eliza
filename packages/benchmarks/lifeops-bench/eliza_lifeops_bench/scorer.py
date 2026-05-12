@@ -45,8 +45,11 @@ DATE_TOLERANCE_SECONDS = 60
 # free-form natural-language fields that scenarios sometimes embed as
 # planning hints — no real agent reliably produces a verbatim copy, and
 # they don't drive any behavior the executor cares about.
+# `source_used` is runner-injected metadata on HEALTH by_metric responses
+# (which source won deduplication); GT scenarios pre-date this field so its
+# absence in GT kwargs must not penalise the agent's predicted action.
 _SOFT_KWARGS: frozenset[str] = frozenset(
-    {"intent", "rationale", "thought", "reasoning"}
+    {"intent", "rationale", "thought", "reasoning", "source_used"}
 )
 
 _OUTPUT_EQUIVALENTS: dict[str, tuple[str, ...]] = {
@@ -321,13 +324,17 @@ _READ_ONLY_SUBACTIONS: dict[str, frozenset[str]] = {
     # ENTITY: log_interaction and list are no-ops; add and set_identity
     # mutate the contact store. `read` is the TS canonical alias for `list`.
     "ENTITY": frozenset({"log_interaction", "list", "read"}),
-    # LIFE: review/update/skip/list are no-ops in the runner because
-    # alarm definitions and skip logs aren't modeled. create/complete/snooze
-    # do mutate reminders. policy_* are configuration writes — treat as
-    # write so a wrong policy doesn't get the state-hash freebie.
-    "LIFE": frozenset({"review", "update", "skip", "list"}),
-    # HEALTH: every subaction is a read (runner is fully no-op).
-    "HEALTH": frozenset({"today", "trend", "trends", "by_metric", "status", "summary"}),
+    # LIFE: update/skip/list are no-ops in the runner because alarm definitions
+    # and skip logs aren't modeled. create/complete/snooze do mutate reminders.
+    # policy_* are configuration writes — treat as write so a wrong policy
+    # doesn't get the state-hash freebie.
+    # NOTE: `review` is intentionally excluded — it now writes last_reviewed_at
+    # to reminder lists, so it lives in _READ_WITH_SIDE_EFFECTS_SUBACTIONS.
+    "LIFE": frozenset({"update", "skip", "list"}),
+    # HEALTH: today/trend/by_metric/status are pure reads (runner is fully no-op).
+    # NOTE: `summary` and `trends` are excluded — they write last_reviewed_at to
+    # health metrics metadata, so they live in _READ_WITH_SIDE_EFFECTS_SUBACTIONS.
+    "HEALTH": frozenset({"today", "trend", "by_metric", "status"}),
     # MONEY: read verbs are all no-ops. subscription_cancel mutates
     # when confirmed=True; add_source / remove_source / import_csv mutate.
     "MONEY": frozenset(
@@ -363,6 +370,29 @@ _READ_ONLY_SUBACTIONS: dict[str, frozenset[str]] = {
 }
 
 
+# Read-with-side-effects subactions per umbrella. These operations are
+# primarily reads (return data to the user) but also write a small metadata
+# mutation — e.g. LIFE_REVIEW stamps last_reviewed_at on reminder lists,
+# and HEALTH summary/trends could stamp a last_queried_at field. Because
+# they DO mutate state, the pure-read weight (0.1 state_hash) is too low,
+# but the full write weight (0.5 state_hash) is also wrong since the primary
+# signal is still action correctness. Intermediate weights apply:
+#   READ_WITH_SIDE_EFFECTS: 0.15 state + 0.55 substring + 0.3 action
+#
+# Keep in lockstep with runner.py — when a subaction here is promoted to a
+# full write (state hash becomes the primary signal), move it to the write
+# category instead (i.e. remove it from both maps).
+_READ_WITH_SIDE_EFFECTS_SUBACTIONS: dict[str, frozenset[str]] = {
+    # LIFE: review stamps last_reviewed_at on the target reminder list.
+    "LIFE": frozenset({"review"}),
+    # HEALTH: summary and trends are listed in runner._DISCRIMINATORS as
+    # read-only but are expected to update health metadata (last_queried_at).
+    # Using the intermediate weight acknowledges the side-effect without
+    # giving the full write state-hash weight.
+    "HEALTH": frozenset({"summary", "trends"}),
+}
+
+
 def _is_read_only_action(action: Action) -> bool:
     """True if the (canonical umbrella, subaction) is a runner no-op.
 
@@ -379,30 +409,60 @@ def _is_read_only_action(action: Action) -> bool:
     return False
 
 
-def _classify_scenario_kind(scenario: Scenario) -> str:
-    """Classify a scenario as 'read', 'write', or 'mixed' from its GT actions.
+def _is_read_with_side_effects_action(action: Action) -> bool:
+    """True if the (canonical umbrella, subaction) is a read-with-side-effects op.
 
-    A scenario is `read` only when EVERY ground-truth action canonicalizes
-    to a known read-only (umbrella, subaction) pair. Any unrecognized
-    name (or any known write) flips it to `write` / `mixed`. Scenarios
-    with no ground-truth actions stay `write` so we don't accidentally
-    re-weight LIVE-mode scoring.
+    These operations primarily return data but also write small metadata
+    mutations (e.g. last_reviewed_at). They get intermediate scoring weights
+    rather than pure-read or pure-write weights.
+
+    The caller should canonicalize first (`_canonicalize_action`).
+    """
+    rwse = _READ_WITH_SIDE_EFFECTS_SUBACTIONS.get(action.name)
+    if rwse is None:
+        return False
+    field, _ = _UMBRELLA_SUBACTIONS.get(action.name, ("subaction", frozenset()))
+    sub = action.kwargs.get(field)
+    if isinstance(sub, str):
+        return sub in rwse
+    return False
+
+
+def _classify_scenario_kind(scenario: Scenario) -> str:
+    """Classify a scenario as 'read', 'write', 'mixed', or 'read_with_side_effects'.
+
+    Classification rules (applied to every GT action after canonicalization):
+
+    - `read`: every GT action is a runner no-op (pure read, no state change).
+    - `read_with_side_effects`: every GT action is either a pure read or a
+      read-with-side-effects op (e.g. LIFE_REVIEW writing last_reviewed_at),
+      with at least one read_with_side_effects action present.
+    - `write`: at least one GT action is a full mutating write and no reads
+      or read_with_side_effects are present.
+    - `mixed`: a combination of write actions with read or
+      read_with_side_effects actions.
+
+    Scenarios with no GT actions stay `write` so LIVE-mode weighting
+    (which doesn't use action_score) is unaffected.
     """
     if not scenario.ground_truth_actions:
         return "write"
     saw_read = False
+    saw_rwse = False
     saw_write = False
     for action in scenario.ground_truth_actions:
         canon = _canonicalize_action(action)
         if _is_read_only_action(canon):
             saw_read = True
+        elif _is_read_with_side_effects_action(canon):
+            saw_rwse = True
         else:
             saw_write = True
-    if saw_read and not saw_write:
-        return "read"
-    if saw_write and not saw_read:
-        return "write"
-    return "mixed"
+    if saw_write:
+        return "write" if not (saw_read or saw_rwse) else "mixed"
+    if saw_rwse:
+        return "read_with_side_effects"
+    return "read"
 
 
 # Owner-surface aliases. The personal-assistant front controller exposes a
@@ -477,7 +537,9 @@ _HASH_INERT_ACTION_NAMES: frozenset[str] = frozenset(
         "BLOCK_UNBLOCK",
         "HEALTH",
         "LIFE",
-        "LIFE_REVIEW",
+        # NOTE: LIFE_REVIEW was removed — it now writes last_reviewed_at to
+        # reminder lists (read_with_side_effects). The hash is no longer
+        # trivially unchanged, so it must NOT be treated as hash-inert.
         "LIFE_SKIP",
         "LIFE_UPDATE",
         "MONEY",
@@ -836,6 +898,11 @@ def _action_is_hash_inert(action: Action) -> bool:
     """Whether final-world hash equality cannot validate this action's kwargs."""
     action = _canonicalize_action(action)
     if action.name in _HASH_INERT_ACTION_NAMES:
+        # Carve-out: LIFE(subaction=review) now writes last_reviewed_at to
+        # reminder lists so the hash IS meaningful for LIFE/review calls.
+        # All other LIFE subactions in the inert set are still no-ops.
+        if action.name == "LIFE" and action.kwargs.get("subaction") == "review":
+            return False
         return True
     if action.name == "MONEY_SUBSCRIPTION_CANCEL":
         return not bool(action.kwargs.get("confirmed", False))
@@ -991,7 +1058,17 @@ def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
       `source: gmail`-mismatched MESSAGE/read_with_contact actually
       loses points instead of getting the 0.5 state_hash freebie.
 
-    * MIXED scenarios (some reads + some writes): split the difference,
+    * READ_WITH_SIDE_EFFECTS scenarios (every GT action is a read or a
+      read-with-side-effects op like LIFE/review or HEALTH/summary, with
+      at least one side-effecting action present):
+          0.15 state_hash + 0.3 action_score + 0.55 substring_score.
+      These operations write small metadata mutations (e.g. last_reviewed_at)
+      so the state hash is no longer trivially unchanged — but the primary
+      signal is still action + output correctness, not the mutation. The
+      0.15 state weight acknowledges the side-effect without giving the full
+      write weight (0.5) to the hash component.
+
+    * MIXED scenarios (some reads/rwse + some writes): split the difference,
       keeping state_hash credibility for the write portion while
       penalizing wrong reads — 0.35 state_hash + 0.5 action_score +
       0.15 substring_score.
@@ -1065,6 +1142,8 @@ def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
 
         if kind == "read":
             state_weight, action_weight, substring_weight = 0.1, 0.7, 0.2
+        elif kind == "read_with_side_effects":
+            state_weight, action_weight, substring_weight = 0.15, 0.3, 0.55
         elif kind == "mixed":
             state_weight, action_weight, substring_weight = 0.35, 0.5, 0.15
         else:

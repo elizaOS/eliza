@@ -280,6 +280,10 @@ class LifeWorld:
         """Push a reminder's due time. Used for the LIFE_SNOOZE umbrella subaction."""
         return self.update(EntityKind.REMINDER, reminder_id, due_at=new_due_at)
 
+    def touch_reminder_list_reviewed(self, list_id: str) -> ReminderList:
+        """Stamp last_reviewed_at on a reminder list. Used by LIFE_REVIEW."""
+        return self.update(EntityKind.REMINDER_LIST, list_id, last_reviewed_at=self.now_iso)
+
     # ----------------------------------------------------- Subscription helpers
 
     def cancel_subscription(self, subscription_id: str) -> Subscription:

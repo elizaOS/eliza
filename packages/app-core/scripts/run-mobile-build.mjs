@@ -2165,11 +2165,7 @@ function generatePodfile() {
   ];
   if (!includeLlama) {
     console.log(
-<<<<<<< HEAD
-      "[mobile-build] iOS Podfile: omitting local runtime pods (ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA not set)",
-=======
       "[mobile-build] iOS Podfile: omitting llama.cpp pod (ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA not set)",
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     );
   }
   if (includeFullBunEngine) {
@@ -4225,16 +4221,8 @@ function withCocoaPodsEnv(baseEnv = process.env) {
 
 function configureIosLocalBuildDefaults() {
   setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "local");
-<<<<<<< HEAD
-  setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "local");
-  setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "local");
   setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "local");
   setDefaultProcessEnv("ELIZA_IOS_INCLUDE_LLAMA", "1");
-  setDefaultProcessEnv("ELIZA_IOS_INCLUDE_LLAMA", "1");
-=======
-  setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "local");
-  setDefaultProcessEnv("ELIZA_IOS_INCLUDE_LLAMA", "1");
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   setDefaultProcessEnv(
     "ELIZA_IOS_BUILD_DESTINATION",
     "generic/platform=iOS Simulator",

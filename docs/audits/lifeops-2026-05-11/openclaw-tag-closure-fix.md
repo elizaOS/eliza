@@ -4,13 +4,7 @@ This historical audit originally described a parser fix for OpenClaw's
 old text-embedded tool-call envelope. That protocol is no longer a
 supported target for elizaOS benchmarks or training paths.
 
-<<<<<<< HEAD
-In the W1-3 baseline at
-`~/.eliza/runs/lifeops/lifeops-openclaw-baseline-1778514437/lifeops_gpt-oss-120b_20260511_084802.json`,
-3 of 25 scenarios scored 0.0 with `agent_actions: []`:
-=======
 Current policy:
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 - Eliza-native benchmarks must send OpenAI-compatible `tools` and score
   returned `tool_calls`.

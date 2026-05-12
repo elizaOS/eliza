@@ -63,7 +63,6 @@ def _run(bundle: Path, monkeypatch, *, text_eval_model: Path | None = None):
         backend=None,
         text_eval_model=text_eval_model,
         text_corpus=None,
-        asr_corpus=None,
         threads=2,
         timeout=30,
     )
@@ -198,11 +197,7 @@ def _run_real(bundle: Path, monkeypatch, *, bench_report: dict | None, bench_rep
         return (bench_report_30 if (turns >= 8 and bench_report_30 is not None) else bench_report)
 
     monkeypatch.setattr(suite, "_run_e2e_loop_bench", _fake_bench)
-<<<<<<< HEAD
-    args = suite.argparse.Namespace(bundle_dir=bundle, tier="0_6b", backend=None, text_eval_model=None, text_corpus=None, asr_corpus=None, threads=2, timeout=30)
-=======
     args = suite.argparse.Namespace(bundle_dir=bundle, tier="0_8b", backend=None, text_eval_model=None, text_corpus=None, threads=2, timeout=30)
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     ctx = suite.build_context(args)
     return suite.run_suite(ctx)
 

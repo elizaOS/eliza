@@ -85,19 +85,10 @@ from benchmarks.eliza1_gates import apply_gates
 VISION_TIERS: Final[set[str]] = {"4b", "9b", "27b", "27b-256k", "27b-1m"}
 EMBEDDING_TIERS: Final[set[str]] = {"2b", "4b", "9b", "27b", "27b-256k", "27b-1m"}
 
-# `(min, recommended)` MB per tier — keep in sync with
-# `scripts/publish/orchestrator.py::DEFAULT_RAM_BUDGET_MB`. `0_6b`/`1_7b`
-# reflect the 2026-05-11 e2e voice-loop benchmark (fused `llama-server`
-# voice-on co-resident footprint: ~3.1 GB / ~4.8 GB server peak RSS).
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
-<<<<<<< HEAD
-    "0_6b": (2500, 3700),
-    "1_7b": (4000, 5500),
-=======
     "0_8b": (1800, 2400),
     "2b": (3500, 5000),
     "4b": (6000, 8000),
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     "9b": (7000, 9500),
     "27b": (24000, 32000),
     "27b-256k": (48000, 64000),

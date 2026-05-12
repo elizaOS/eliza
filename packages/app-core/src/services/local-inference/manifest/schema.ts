@@ -41,18 +41,8 @@ export const ELIZA_1_TOKENIZER_FAMILY = "qwen35" as const;
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
 
 // Tiers — see packages/inference/AGENTS.md §2 (Tier matrix). `27b-1m` is the
-// GH200-class 1M-context variant of the 27B tier. `0_8b` is the new smallest
-// tier on the Qwen3.5-0.8B backbone (the small tiers move to the Qwen3.5
-// family); `0_6b` / `1_7b` are kept as a legacy Qwen3 line — see catalog.ts.
-// TODO(owner): the Qwen3.5-2B / Qwen3.5-4B mid-local tiers are wired into
-// the training registry (scripts/training/model_registry.py) and the
-// training run-on-cloud / train_nebius launchers; they ship into the
-// runtime manifest only after the canonical catalog (`catalog.ts` source
-// models, drafters) and recommendation ladders are extended. Land that as
-// a follow-up so the manifest schema, gates yaml, and catalog stay in
-// lockstep.
+// GH200-class 1M-context variant of the 27B tier.
 export const ELIZA_1_TIERS = [
-  "0_8b",
   "0_6b",
   "1_7b",
   "4b",
@@ -140,17 +130,11 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 //   same requirement dynamically for any bundle that declares a >64k text file,
 //   so a future tier cannot publish long-context text without TCQ.
 //
-<<<<<<< HEAD
-// The `q3` vs `q4` choice is tier-driven: the legacy 0.6B tier ships Q3;
-// 0.8B and larger ship Q4.
-=======
 // The `q3` vs `q4` choice is tier-driven: 0_6b ships Q3; 1_7b and larger
 // ship Q4.
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
-  "0_8b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
   "0_6b": ["turboquant_q3", "qjl", "polarquant", "dflash"],
   "1_7b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
   "4b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
@@ -160,17 +144,11 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
   "27b-1m": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 };
 
-<<<<<<< HEAD
-// Backends each tier is expected to support on shipped hardware. The small
-// tiers (0.8B / 0.6B / 1.7B) do not need cuda/rocm.
-=======
 // Backends each tier is expected to support on shipped hardware. The 0_6b and
 // 1_7b tiers do not need cuda/rocm.
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Backend>>
 > = {
-  "0_8b": ["metal", "vulkan", "cpu"],
   "0_6b": ["metal", "vulkan", "cpu"],
   "1_7b": ["metal", "vulkan", "cpu"],
   "4b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
@@ -380,41 +358,19 @@ export const Eliza1RamBudgetSchema = z
 // Release-state vocabulary. `base-v1` is the v1 product: the upstream BASE
 // models — GGUF-converted via the elizaOS/llama.cpp fork and fully
 // Eliza-optimized (every quant/kernel trick in inference/AGENTS.md §3) —
-<<<<<<< HEAD
-// but NOT fine-tuned (fine-tuning ships in v2). `base-v1-candidate` is the
-// in-progress state of a base-v1 bundle before every release-blocking
-// gate (real fork-built bytes, every supported-backend kernel verify,
-// every required platform-dispatch report, the runnable-on-base evals) is
-// green — it is NOT publishable. `finetuned-v2` is the v2 state;
-// `local-standin` is a non-publishable staging shape; `upload-candidate` /
-// `final` are the historical fine-tuned-v1 publish states retained for
-// forward-compat. Mirrors `ELIZA_1_RELEASE_STATES` in
-=======
 // but NOT fine-tuned (fine-tuning ships in v2). `finetuned-v2` is the v2
 // state; `local-standin` is a non-publishable staging shape;
 // `upload-candidate` / `final` are the historical fine-tuned-v1 publish
 // states retained for forward-compat. Mirrors `ELIZA_1_RELEASE_STATES` in
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 // `packages/training/scripts/manifest/eliza1_manifest.py`.
 export const ELIZA_1_RELEASE_STATES = [
   "local-standin",
-  "base-v1-candidate",
   "base-v1",
   "finetuned-v2",
   "upload-candidate",
   "final",
 ] as const;
 export type Eliza1ReleaseState = (typeof ELIZA_1_RELEASE_STATES)[number];
-
-// Release-channel vocabulary recorded on a published manifest. `recommended`
-// is the fine-tuned Eliza-1 (ships in v2) — the one the recommendation
-// engine surfaces as a device default. `base-v1` is the upstream-base +
-// kernel-optimized release: every quant/kernel trick applied, but the text
-// weights are the upstream base GGUFs (not the fine-tuned Eliza-1). A
-// `base-v1`-channel manifest MUST be `defaultEligible: false`. Mirrors
-// `ELIZA_1_RELEASE_CHANNELS` (Python side).
-export const ELIZA_1_RELEASE_CHANNELS = ["recommended", "base-v1"] as const;
-export type Eliza1ReleaseChannel = (typeof ELIZA_1_RELEASE_CHANNELS)[number];
 
 // Provenance slots — the bundle components whose upstream source repo a
 // `base-v1` manifest must record. Mirrors `ELIZA_1_PROVENANCE_SLOTS`
@@ -482,12 +438,6 @@ export const Eliza1ManifestSchema = z
     // per shipped component. The contract validator requires per-component
     // coverage when `releaseState === "base-v1"`.
     provenance: Eliza1ProvenanceSchema.optional(),
-    // Optional. Defaults to `"recommended"` (the fine-tuned Eliza-1 — the
-    // device default). A `"base-v1"`-channel manifest is the upstream-base
-    // + kernel-optimized release; it MUST be `defaultEligible: false` (the
-    // recommendation engine never surfaces it as a default — see
-    // inference/AGENTS.md §6).
-    releaseChannel: z.enum(ELIZA_1_RELEASE_CHANNELS).optional(),
     defaultEligible: z.boolean(),
   })
   // The id MUST encode the tier so catalogs can derive tier from id without
@@ -498,15 +448,5 @@ export const Eliza1ManifestSchema = z
     {
       message: "id must start with `eliza-1-<tier>`",
       path: ["id"],
-    },
-  )
-  // A `base-v1`-channel manifest is the upstream-base release — never a
-  // device default. Mirrors inference/AGENTS.md §6 and the Python manifest
-  // builder.
-  .refine(
-    (m) => m.releaseChannel !== "base-v1" || m.defaultEligible === false,
-    {
-      message: "releaseChannel=base-v1 requires defaultEligible: false",
-      path: ["defaultEligible"],
     },
   );

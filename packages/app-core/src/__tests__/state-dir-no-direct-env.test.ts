@@ -1,16 +1,8 @@
 /**
-<<<<<<< HEAD
- * Guard: no callsite in `packages/app-core/src/` reads `ELIZA_STATE_DIR` /
- * `ELIZA_STATE_DIR` without going through `resolveStateDir()` or pairing both
- * env vars in the same window. The canonical resolver lives in
- * `@elizaos/core/utils/state-dir.ts` and honors the documented precedence
- * `ELIZA_STATE_DIR > ELIZA_STATE_DIR > ~/.${ELIZA_NAMESPACE ?? "eliza"}`.
-=======
  * Guard: stale state-dir alias migrations should not leave duplicate fallback
  * chains such as `ELIZA_STATE_DIR || ELIZA_STATE_DIR` in app-core source.
  * The canonical resolver lives in `@elizaos/core/utils/state-dir.ts` and
  * honors `ELIZA_STATE_DIR > ~/.${ELIZA_NAMESPACE ?? "eliza"}`.
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -49,11 +41,7 @@ function walkSrc(root: string): string[] {
 }
 
 describe("state-dir consolidation", () => {
-<<<<<<< HEAD
-  it("no callsite reads ELIZA_STATE_DIR without honoring ELIZA_STATE_DIR in the same window", () => {
-=======
   it("does not contain duplicate ELIZA_STATE_DIR fallback chains", () => {
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     const files = walkSrc(APP_CORE_SRC);
     const offenders: string[] = [];
     for (const file of files) {
@@ -62,26 +50,7 @@ describe("state-dir consolidation", () => {
         const line = lines[i] ?? "";
         const trimmed = line.trim();
         if (trimmed.startsWith("//") || trimmed.startsWith("*")) continue;
-<<<<<<< HEAD
-        if (
-          !/process\.env\.ELIZA_STATE_DIR\b/.test(line) &&
-          !/\benv\.ELIZA_STATE_DIR\b/.test(line)
-        ) {
-          continue;
-        }
-        // Check a 5-line window for ELIZA_STATE_DIR pairing OR resolveStateDir usage.
-        const windowStart = Math.max(0, i - 2);
-        const windowEnd = Math.min(lines.length, i + 3);
-        const window = lines.slice(windowStart, windowEnd).join("\n");
-        if (
-          window.includes("ELIZA_STATE_DIR") ||
-          window.includes("resolveStateDir")
-        ) {
-          continue;
-        }
-=======
         if (!/ELIZA_STATE_DIR[\s\S]*ELIZA_STATE_DIR/.test(line)) continue;
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
         offenders.push(`${file}:${i + 1}: ${trimmed}`);
       }
     }

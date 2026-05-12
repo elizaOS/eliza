@@ -36,11 +36,7 @@ Eliza-owned models directory so it shows up as an `eliza-download`:
 $ELIZA_STATE_DIR/local-inference/models/<id>.gguf
 ```
 
-<<<<<<< HEAD
-(`$ELIZA_STATE_DIR` falls back to `$MILADY_STATE_DIR`, then `~/.eliza`.
-=======
 (`$ELIZA_STATE_DIR` falls back to `$ELIZA_STATE_DIR`, then `~/.eliza`.
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 The directory is `elizaModelsDir()` in
 `packages/shared/src/local-inference/paths.ts`; the local-inference root
 is `<state-dir>/local-inference/`.)
@@ -108,11 +104,7 @@ Once a model is installed (either source), three layers route a
 Relevant env vars / files (no hardcoded ports here, this is all
 state-dir + mode):
 
-<<<<<<< HEAD
-- `ELIZA_STATE_DIR` / `MILADY_STATE_DIR` — root for
-=======
 - `ELIZA_STATE_DIR` / `ELIZA_STATE_DIR` — root for
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   `<state-dir>/local-inference/{models,registry.json,assignments.json,routing.json,downloads}`.
 - Runtime mode — local-inference handlers only register when the runtime
   mode is `local` or `local-only` (`shouldRegisterLocalInferenceHandlers`).
@@ -122,10 +114,8 @@ state-dir + mode):
   mirror (catalog only; doesn't affect local files).
 - `ELIZA_LOCAL_SESSION_POOL_SIZE` — desktop in-process KV-slot pool size.
 
-## C. No eval gate / rollback before activation (runtime-side gap; tracked here)
+## C. No eval gate / rollback before activation — TODO
 
-This is a runtime / `packages/app-core` gap, not a training-package one — it
-is documented here because the offline-side eval gates live in this package.
 There is currently **no eval-gate or automatic-rollback step between
 "GGUF produced" and "model active as `TEXT_LARGE`"** in the runtime.
 `switchTo` loads whatever id you point it at; if generation quality
