@@ -174,7 +174,7 @@ describe("perpetualMarketAction handler", () => {
   ) {
     const runtime = makeRuntime(service);
     const callback = vi.fn() as unknown as HandlerCallback;
-    const result = await perpetualMarketAction.handler!(
+    const result = await perpetualMarketAction.handler?.(
       runtime,
       makeMessage(),
       makeState(["finance"]),

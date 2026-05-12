@@ -11,7 +11,6 @@ import type { ScreenSize, WindowInfo } from "../types.js";
 import {
   commandExists,
   currentPlatform,
-  escapeAppleScript,
   runCommand,
   validateInt,
   validateWindowId,

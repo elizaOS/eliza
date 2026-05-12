@@ -241,7 +241,7 @@ describe("threadOpsFieldEvaluator", () => {
           addressedTo: [],
         },
       };
-      const effect = await threadOpsFieldEvaluator.handle!(handleCtx);
+      const effect = await threadOpsFieldEvaluator.handle?.(handleCtx);
       expect(effect).toBeDefined();
       expect(effect?.preempt).toEqual({
         mode: "ack-and-stop",
@@ -267,7 +267,7 @@ describe("threadOpsFieldEvaluator", () => {
           addressedTo: [],
         },
       };
-      const effect = await threadOpsFieldEvaluator.handle!(handleCtx);
+      const effect = await threadOpsFieldEvaluator.handle?.(handleCtx);
       const mutated = { ...handleCtx.parsed } as Record<string, unknown>;
       effect?.mutateResult?.(mutated as never);
       expect(mutated.replyText).toBe("Stopped — partial work preserved.");
@@ -298,7 +298,7 @@ describe("threadOpsFieldEvaluator", () => {
           addressedTo: [],
         },
       };
-      const effect = await threadOpsFieldEvaluator.handle!(handleCtx);
+      const effect = await threadOpsFieldEvaluator.handle?.(handleCtx);
       const mutated = { ...handleCtx.parsed } as Record<string, unknown>;
       effect?.mutateResult?.(mutated as never);
       expect(mutated.candidateActionNames).toContain("WORK_THREAD");
@@ -326,7 +326,7 @@ describe("threadOpsFieldEvaluator", () => {
           addressedTo: [],
         },
       };
-      const effect = await threadOpsFieldEvaluator.handle!(handleCtx);
+      const effect = await threadOpsFieldEvaluator.handle?.(handleCtx);
       expect(effect).toBeUndefined();
     });
   });

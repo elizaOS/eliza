@@ -21,12 +21,9 @@ import {
   type ModelEventPayload,
   type ModelParamsMap,
   type ModelResultMap,
-  type Plugin,
-  type PromptSegment,
   type RunEventPayload,
   stringToUuid,
   type TokenUsage,
-  type ToolDefinition,
   type UUID,
 } from "@elizaos/core";
 import localEmbeddingPlugin from "@elizaos/plugin-local-embedding";
@@ -450,7 +447,7 @@ function safeSnapshot(v: unknown, depth = 4): unknown {
   if (depth < 0) return "[truncated]";
   if (v == null) return v;
   if (typeof v === "string")
-    return v.length > 12000 ? v.slice(0, 12000) + "…" : v;
+    return v.length > 12000 ? `${v.slice(0, 12000)}…` : v;
   if (typeof v !== "object") return v;
   if (Array.isArray(v))
     return v.slice(0, 50).map((x) => safeSnapshot(x, depth - 1));
@@ -607,10 +604,10 @@ async function initialize() {
     await runtime.initialize();
     initState = "ready";
     console.log(`\n  AGENT CONSOLE  (elizaOS)  →  http://localhost:${PORT}`);
-    console.log(`  provider: ${provider!.name}`);
+    console.log(`  provider: ${provider?.name}`);
     console.log(`  large model: ${process.env.OPENAI_LARGE_MODEL}`);
     console.log(`  small model: ${process.env.OPENAI_SMALL_MODEL}`);
-    console.log(`  base URL:    ${provider!.baseUrl}\n`);
+    console.log(`  base URL:    ${provider?.baseUrl}\n`);
   } catch (err: any) {
     initState = "error";
     initError = err?.message ?? String(err);
@@ -624,7 +621,7 @@ async function handleUserMessage(text: string) {
       tag({
         type: "log",
         level: "error",
-        message: "runtime not ready: " + (initError ?? "initializing…"),
+        message: `runtime not ready: ${initError ?? "initializing…"}`,
       }),
     );
     return;
@@ -641,9 +638,9 @@ async function handleUserMessage(text: string) {
     trajectoryId: id,
     color,
     userMessage: text,
-    provider: provider!.name,
+    provider: provider?.name,
     model: process.env.OPENAI_LARGE_MODEL,
-    baseUrl: provider!.baseUrl,
+    baseUrl: provider?.baseUrl,
     character: character.name,
     t: startedAt,
   });
@@ -667,7 +664,7 @@ async function handleUserMessage(text: string) {
     });
 
     let postRespondError: string | null = null;
-    activeRunPromise = runtime.messageService!.handleMessage(
+    activeRunPromise = runtime.messageService?.handleMessage(
       runtime,
       messageMemory,
       async (content: any) => {
@@ -818,10 +815,10 @@ const server = Bun.serve({
 
     if (url.pathname === "/status") {
       return Response.json({
-        provider: provider!.name,
+        provider: provider?.name,
         model: process.env.OPENAI_LARGE_MODEL,
         smallModel: process.env.OPENAI_SMALL_MODEL,
-        baseUrl: provider!.baseUrl,
+        baseUrl: provider?.baseUrl,
         runtimeState: initState,
         runtimeError: initError,
         agent: character.name,

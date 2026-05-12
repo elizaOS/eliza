@@ -156,7 +156,7 @@ describe("deriveOverdueFollowupTasks", () => {
       list: async () => [makeOverdueRelationship({ id: "r-no-cadence" })],
     };
     const seeds = await deriveOverdueFollowupTasks(store);
-    expect(seeds[0]!.metadata?.cadenceDays).toBe(0);
+    expect(seeds[0]?.metadata?.cadenceDays).toBe(0);
   });
 });
 

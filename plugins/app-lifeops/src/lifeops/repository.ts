@@ -62,7 +62,6 @@ import {
   type LifeOpsScreenTimeDaily,
   type LifeOpsScreenTimeSession,
   type LifeOpsSleepCycleEvidence,
-  type LifeOpsSleepCycleType,
   type LifeOpsTaskDefinition,
   type LifeOpsTelemetryEvent,
   type LifeOpsTelemetryFamily,
@@ -120,7 +119,6 @@ import {
   toBoolean,
   toNumber,
   toText,
-  withTransaction,
 } from "./sql.js";
 import type {
   LifeOpsSubscriptionAudit,
@@ -211,10 +209,7 @@ export {
   createLifeOpsSleepEpisode,
 } from "@elizaos/plugin-health";
 
-import type {
-  LifeOpsPersistedSleepEpisodeSource,
-  LifeOpsSleepEpisodeRecord,
-} from "@elizaos/plugin-health";
+import type { LifeOpsSleepEpisodeRecord } from "@elizaos/plugin-health";
 
 export interface LifeOpsCachedInboxMessage extends LifeOpsInboxMessage {
   cachedAt: string;

@@ -288,8 +288,8 @@ export function fromPyAutoGUI(code: string): DesktopActionParams | null {
   // pyautogui.hotkey('mod', 'key') — variable number of args
   const hotkeyMatch = trimmed.match(/pyautogui\.hotkey\((.+)\)/);
   if (hotkeyMatch) {
-    const keys = hotkeyMatch[1]!
-      .split(",")
+    const keys = hotkeyMatch[1]
+      ?.split(",")
       .map((k) => k.trim().replace(/['"]/g, ""));
     return { action: "key_combo", key: keys.join("+") };
   }

@@ -152,7 +152,7 @@ function simulateOneDay({ packs, day, dayIndex }) {
   return fires;
 }
 
-function computeFireMinutes(record, day) {
+function computeFireMinutes(record, _day) {
   const trigger = record.trigger;
   switch (trigger.kind) {
     case "relative_to_anchor":
@@ -552,7 +552,7 @@ function main() {
     const outPath = path.isAbsolute(args.out)
       ? args.out
       : path.resolve(repoRoot, args.out);
-    writeFileSync(outPath, json + "\n", "utf8");
+    writeFileSync(outPath, `${json}\n`, "utf8");
     console.log(
       `[simulate-default-packs] wrote ${log.summary.totalFires} fires across ${log.days.length} days → ${outPath}`,
     );
@@ -561,7 +561,7 @@ function main() {
     );
     return;
   }
-  process.stdout.write(json + "\n");
+  process.stdout.write(`${json}\n`);
 }
 
 main();

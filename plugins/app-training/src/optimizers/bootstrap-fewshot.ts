@@ -62,7 +62,7 @@ function trimDemonstrationInput(rawInput: string): string {
     return candidate;
   }
   if (candidate && candidate.length > 0) {
-    return candidate.slice(0, 600).trimEnd() + " …";
+    return `${candidate.slice(0, 600).trimEnd()} …`;
   }
   // Fallback: first 400 chars + "..." + last 200 chars so the model sees
   // both the framing and the request without the middle bulk.

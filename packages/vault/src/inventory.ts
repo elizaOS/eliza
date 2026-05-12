@@ -126,7 +126,7 @@ export function inferProviderId(key: string): string | null {
   const lookup = PROVIDER_KEY_TO_ID[key];
   if (lookup) return lookup;
   const m = /^([A-Z][A-Z0-9_]*)_API_KEY$/.exec(key);
-  if (m) return m[1]!.toLowerCase();
+  if (m) return m[1]?.toLowerCase();
   return null;
 }
 

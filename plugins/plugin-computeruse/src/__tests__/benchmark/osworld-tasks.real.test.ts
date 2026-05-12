@@ -102,9 +102,9 @@ describeIfBenchmark("OSWorld task subset benchmark", () => {
         ? Math.round(results.reduce((s, r) => s + r.timeMs, 0) / total)
         : 0;
     console.log(
-      `║ Passed: ${passed}/${total} (${rate}%)  |  Avg: ${avgMs}ms/task`.padEnd(
+      `${`║ Passed: ${passed}/${total} (${rate}%)  |  Avg: ${avgMs}ms/task`.padEnd(
         66,
-      ) + "║",
+      )}║`,
     );
 
     // Domain breakdown
@@ -114,12 +114,12 @@ describeIfBenchmark("OSWorld task subset benchmark", () => {
       const dPassed = dTasks.filter((r) => r.passed).length;
       const dRate = Math.round((dPassed / dTasks.length) * 100);
       console.log(
-        `║   ${d.padEnd(6)}: ${dPassed}/${dTasks.length} (${dRate}%)`.padEnd(
+        `${`║   ${d.padEnd(6)}: ${dPassed}/${dTasks.length} (${dRate}%)`.padEnd(
           66,
-        ) + "║",
+        )}║`,
       );
     }
-    console.log("╚" + "═".repeat(66) + "╝\n");
+    console.log(`╚${"═".repeat(66)}╝\n`);
   });
 
   // ── FILE DOMAIN ─────────────────────────────────────────────────────

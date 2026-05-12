@@ -50,7 +50,7 @@ describe("ConsolidationRegistry", () => {
     });
     const tasks: ScheduledTask[] = (
       ["low", "high", "medium"] as ScheduledTaskPriority[]
-    ).map((priority, i) => baseTask({ taskId: `t-${priority}`, priority }));
+    ).map((priority, _i) => baseTask({ taskId: `t-${priority}`, priority }));
     void tasks; // silence unused if any
     const taskList: ScheduledTask[] = ["low", "high", "medium"].map((p, i) =>
       baseTask({

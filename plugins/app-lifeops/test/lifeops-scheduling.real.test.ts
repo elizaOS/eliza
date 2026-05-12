@@ -31,9 +31,7 @@ import {
 import {
   checkAvailabilityAction,
   computeProposedSlots,
-  extractBundledMeetingCounterparties,
   formatProposedSlotsReply,
-  proposeMeetingTimesAction,
   runSchedulingNegotiationHandler,
   updateMeetingPreferencesAction,
 } from "../src/actions/lib/scheduling-handler.js";
@@ -246,7 +244,7 @@ describe("life-ops scheduling-with-others handlers (real PGLite)", () => {
   });
 
   it("CALENDAR.update_preferences persists preferences to scheduler task metadata", async () => {
-    const result = await updateMeetingPreferencesAction.handler!(
+    const result = await updateMeetingPreferencesAction.handler?.(
       runtime,
       makeMessage(runtime, "set my preferences") as never,
       undefined,
@@ -281,7 +279,7 @@ describe("life-ops scheduling-with-others handlers (real PGLite)", () => {
   });
 
   it("CALENDAR.update_preferences rejects an empty patch", async () => {
-    const result = await updateMeetingPreferencesAction.handler!(
+    const result = await updateMeetingPreferencesAction.handler?.(
       runtime,
       makeMessage(runtime, "set my preferences") as never,
       undefined,
@@ -295,7 +293,7 @@ describe("life-ops scheduling-with-others handlers (real PGLite)", () => {
   });
 
   it("CALENDAR.check_availability rejects an invalid window (end <= start)", async () => {
-    const result = await checkAvailabilityAction.handler!(
+    const result = await checkAvailabilityAction.handler?.(
       runtime,
       makeMessage(runtime, "am I free") as never,
       undefined,

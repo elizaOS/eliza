@@ -17,10 +17,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  type AnchorRegistry,
-  createAnchorRegistry,
-} from "../scheduled-task/consolidation-policy.js";
+import type { AnchorRegistry } from "../scheduled-task/consolidation-policy.js";
 import type {
   AnchorContext,
   AnchorContribution,

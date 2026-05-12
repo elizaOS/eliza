@@ -10,15 +10,12 @@ import {
   findBankItemByName,
   findGroundItemByName,
   findInventoryItem,
-  findInventoryItemById,
   findLocByName,
   findNpcByName,
   findShopItemByName,
   getOptionIndex,
-  getSkillLevel,
   isInventoryFull,
   waitForMovementComplete,
-  walkStepToward,
   withDoorRetry,
 } from "./actions-helpers.js";
 import type { BotSDK } from "./index.js";
@@ -129,8 +126,8 @@ export class BotActions {
     if ("success" in state) return state;
 
     const startDist = distance(
-      state.player!.worldX,
-      state.player!.worldZ,
+      state.player?.worldX,
+      state.player?.worldZ,
       x,
       z,
     );
@@ -530,7 +527,7 @@ export class BotActions {
     );
     if (!food) return fail("EAT_FOOD", "No food found in inventory");
 
-    const hpBefore = state.player!.hp;
+    const hpBefore = state.player?.hp;
 
     try {
       await this.sdk.sendUseInventory(food.slot);
@@ -944,7 +941,7 @@ export class BotActions {
       await this.walkTo(npc.worldX, npc.worldZ, `approach ${npc.name}`);
     }
 
-    const opIdx = getOptionIndex(npc.options, "Trade");
+    const _opIdx = getOptionIndex(npc.options, "Trade");
 
     try {
       await this.sdk.sendOpenShop(npc.nid);

@@ -290,7 +290,7 @@ describe("form_extractor evaluator", () => {
     };
     const runtime = makeRuntime(formService);
     const message = makeMessage("my email is jane@example.com");
-    const prepared = await formEvaluator.prepare!({
+    const prepared = await formEvaluator.prepare?.({
       runtime,
       message,
       state: EMPTY_STATE,
@@ -330,7 +330,7 @@ describe("form_extractor evaluator", () => {
       entityId,
     };
 
-    const extractionsProcessor = formEvaluator.processors!.find(
+    const extractionsProcessor = formEvaluator.processors?.find(
       (p) => p.name === "formExtractions",
     )!;
     const result = await extractionsProcessor.process({
@@ -385,7 +385,7 @@ describe("form_extractor evaluator", () => {
       entityId,
     };
 
-    const intentProcessor = formEvaluator.processors!.find(
+    const intentProcessor = formEvaluator.processors?.find(
       (p) => p.name === "formIntent",
     )!;
     const result = await intentProcessor.process({

@@ -18,7 +18,7 @@ async function loadTfModules(): Promise<boolean> {
     cocoSsd = await import("@tensorflow-models/coco-ssd");
     poseDetection = await import("@tensorflow-models/pose-detection");
     return true;
-  } catch (err) {
+  } catch (_err) {
     logger.warn(
       "[VisionModels] TensorFlow.js native addon not available — " +
         "falling back to description-based detection. " +

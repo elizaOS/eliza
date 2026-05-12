@@ -377,7 +377,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<StartLifeOpsXConnectorResponse> {
       const side =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
-      const mode =
+      const _mode =
         normalizeOptionalConnectorMode(request.mode, "mode") ?? xDefaultMode();
       const requestedAccountId = xRequestedAccountId(request);
       const runtimeStatus = await getXAccountStatusWithRuntimeService({
@@ -597,9 +597,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
             isInbound:
               typeof x.isInbound === "boolean"
                 ? x.isInbound
-                : metadata.fromBot === true
-                  ? false
-                  : true,
+                : metadata.fromBot !== true,
             text: memory.content?.text ?? "",
             receivedAt:
               Number.isFinite(Number(memory.createdAt)) &&

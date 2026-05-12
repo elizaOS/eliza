@@ -31,7 +31,7 @@ export const botStateProvider: Provider = {
     try {
       const service = getRs2004scapeStateService(runtime);
       const state = service?.getBotState?.();
-      if (!state || !state.connected) {
+      if (!state?.connected) {
         return { text: providerText({ status: "not_connected" }) };
       }
       if (!state.inGame || !state.player) {

@@ -85,10 +85,6 @@ export class CalendlyService extends Service {
 
   private clientsByAccountId = new Map<string, CalendlyClientEntry>();
 
-  constructor(runtime?: IAgentRuntime) {
-    super(runtime);
-  }
-
   static override async start(
     runtime: IAgentRuntime,
   ): Promise<CalendlyService> {

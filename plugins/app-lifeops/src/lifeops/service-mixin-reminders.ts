@@ -166,7 +166,6 @@ import {
   buildReminderResponseClaim,
   classifyReminderOwnerResponse,
   decideReminderReviewTransition,
-  isReminderBusyDay,
   isReminderReviewClosed,
   normalizeReminderIntensityInput,
   parseReminderOwnerResponseSemanticClassification,
@@ -200,11 +199,7 @@ import {
   DEFAULT_TELEMETRY_RETENTION_DAYS,
   runTelemetryRetention,
 } from "./telemetry-retention.js";
-import {
-  addMinutes,
-  getWeekdayForLocalDate,
-  getZonedDateParts,
-} from "./time.js";
+import { addMinutes, getZonedDateParts } from "./time.js";
 import {
   readTwilioCredentialsFromEnv,
   sendTwilioSms,

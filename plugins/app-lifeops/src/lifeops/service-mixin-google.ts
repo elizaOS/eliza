@@ -17,7 +17,6 @@ import type {
 import {
   disconnectedGoogleStatus,
   googleAccountIdFromGrantId,
-  googleCapabilitiesForAccount,
   googleGrantFromAccount,
   googleGrantIdForAccount,
   googleScopesForAccount,
