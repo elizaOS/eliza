@@ -3,9 +3,9 @@
  *
  * Unauthed but signature-verified Stripe webhook for the unified
  * payment_requests flow. Verifies the signature via the Stripe
- * adapter, dedupes by Stripe event id, then publishes a
- * `PaymentSettled` / `PaymentFailed` event to the in-process
- * payment callback bus.
+ * adapter, dedupes by Stripe event id, persists the payment request
+ * transition, then publishes a `PaymentSettled` / `PaymentFailed`
+ * event to the in-process payment callback bus.
  *
  * Distinct from the legacy `/api/stripe/webhook` route, which feeds
  * the app-credit / org-credit settlement queue.

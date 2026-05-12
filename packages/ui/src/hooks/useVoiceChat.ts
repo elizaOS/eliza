@@ -75,7 +75,6 @@ import {
   type QueueAssistantSpeechOptions,
   TALKMODE_STOP_SETTLE_MS,
   toArrayBuffer,
-  type VoiceAssistantSpeechTelemetry,
   type VoiceCaptureMode,
   type VoiceChatOptions,
   type VoiceChatState,

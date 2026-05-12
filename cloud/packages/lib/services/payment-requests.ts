@@ -84,8 +84,8 @@ export interface PaymentRequestsService {
   cancel(id: string, organizationId: string, reason?: string): Promise<PaymentRequestRow>;
   expirePast(now?: Date): Promise<string[]>;
   /**
-   * Settlement is provider-driven and arrives via PaymentCallbackBus
-   * (sibling B-cloud-bus worktree). The bus subscriber calls these.
+   * Settlement is provider-driven and called by provider webhook routes before
+   * they fan out notifications on PaymentCallbackBus.
    */
   markSettled(
     id: string,

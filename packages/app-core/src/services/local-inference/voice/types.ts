@@ -88,15 +88,18 @@ export type StreamingAsrHandle = bigint;
 /**
  * TS-only v2 streaming ABI contract. Implementations can satisfy this beside
  * the existing synchronous v1 methods; callers should test the support flags
- * rather than probe-and-catch. `ffi-bindings.ts` maps the current native
- * symbols onto this shape.
+ * rather than probe-and-catch. Native bindings may carry context handles on
+ * top of this shape; the scheduler-facing stream semantics stay the same.
  */
 export interface VoiceStreamingAbiV2 {
   ttsStreamSupported(): boolean;
   ttsSynthesizeStream(args: {
     text: string;
     speakerPresetId: string | null;
-    onChunk: (chunk: { pcm: Float32Array; isFinal: boolean }) => boolean | undefined;
+    onChunk: (chunk: {
+      pcm: Float32Array;
+      isFinal: boolean;
+    }) => boolean | undefined;
   }): { cancelled: boolean };
   cancelTts(): void;
   asrStreamSupported(): boolean;
