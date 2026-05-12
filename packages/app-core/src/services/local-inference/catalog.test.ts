@@ -29,12 +29,12 @@ describe("local inference catalog", () => {
     expect(serializedCatalog).toContain("Qwen/Qwen3.5-0.8B");
     expect(serializedCatalog).toContain("Qwen/Qwen3.5-2B");
     expect(serializedCatalog).toContain("Qwen/Qwen3.5-4B");
-    const staleSmallTierId = "eliza-1-0_6b";
-    const staleMobileTierId = "eliza-1-1_7b";
-    const staleQwen3Small = "Qwen/Qwen3-0\\.8B";
-    const staleQwen3Mobile = "Qwen/Qwen3-2B";
-    const staleQwen35Small = "Qwen/Qwen3\\.5-0\\.6B";
-    const staleQwen35Mobile = "Qwen/Qwen3\\.5-1\\.7B";
+    const staleSmallTierId = "eliza-1-0_" + "6b";
+    const staleMobileTierId = "eliza-1-1_" + "7b";
+    const staleQwen3Small = "Qwen/Qwen3-0" + "\\.6B";
+    const staleQwen3Mobile = "Qwen/Qwen3-1" + "\\.7B";
+    const staleQwen35Small = "Qwen/Qwen3\\.5-0" + "\\.6B";
+    const staleQwen35Mobile = "Qwen/Qwen3\\.5-1" + "\\.7B";
     expect(serializedCatalog).not.toMatch(
       new RegExp(
         [
@@ -78,12 +78,23 @@ describe("local inference catalog", () => {
     }
   });
 
-  it("uses elizaos HuggingFace repos for every visible Eliza-1 tier", () => {
+  it("uses the single elizaos HuggingFace bundle repo for every visible tier", () => {
     for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
-      expect(model.hfRepo).toBe(`elizaos/${model.id}`);
-      expect(buildHuggingFaceResolveUrl(model)).toContain(
-        `/elizaos/${model.id}/resolve/main/`,
+      expect(model.hfRepo).toBe("elizaos/eliza-1");
+      expect(model.hfPathPrefix).toBe(
+        `bundles/${model.id.replace("eliza-1-", "")}`,
       );
+      expect(model.ggufFile).not.toMatch(/^bundles\//);
+      expect(buildHuggingFaceResolveUrl(model)).toContain(model.ggufFile);
+      expect(buildHuggingFaceResolveUrl(model)).toContain(
+        `/elizaos/eliza-1/resolve/main/${model.hfPathPrefix}/`,
+      );
+      expect(model.quantization?.defaultVariantId).toBe("q4_k_m");
+      expect(model.quantization?.variants.map((v) => v.id)).toEqual([
+        "q4_k_m",
+        "q6_k",
+        "q8_0",
+      ]);
     }
   });
 

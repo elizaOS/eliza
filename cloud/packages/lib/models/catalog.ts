@@ -389,7 +389,7 @@ export const GROQ_NATIVE_MODEL_ID_MAP: Record<string, string> = {
 export const VAST_NATIVE_MODELS: CatalogModel[] = [
   // ─── eliza-1 series ────────────────────────────────────────────────
   // Self-hosted on Vast.ai. Manifests live in
-  // training/cloud/vast-pyworker/eliza-1-{2b,9b,27b}.json.
+  // cloud/services/vast-pyworker/manifests/eliza-1-*.json.
   {
     id: "vast/eliza-1-2b",
     object: "model",
@@ -425,6 +425,18 @@ export const VAST_NATIVE_MODELS: CatalogModel[] = [
     type: "language",
     context_window: 131072,
     tags: ["self-hosted", "vllm", "fp8", "turboquant", "eliza-eliza-1"],
+  },
+  {
+    id: "vast/eliza-1-27b-256k",
+    object: "model",
+    created: 0,
+    owned_by: "vast",
+    name: "Eliza-1 27B 256K",
+    description:
+      "Single RTX 3090 long-context lane. Served via llama.cpp/GGUF with q4_0 KV cache, flash attention, one decode slot, and 262K context. DFlash remains benchmark-gated for this lane. HF: elizaos/eliza-1",
+    type: "language",
+    context_window: 262144,
+    tags: ["self-hosted", "llama.cpp", "gguf", "q4-kv", "rtx-3090", "eliza-eliza-1"],
   },
 ] as const;
 

@@ -5,12 +5,19 @@
  * size-first: `eliza-1-0_8b`, `eliza-1-2b`, `eliza-1-4b`, `eliza-1-9b`,
  * `eliza-1-27b`, `eliza-1-27b-256k`, and `eliza-1-27b-1m`.
  *
- * HF-search results from outside `elizaos/eliza-1-*` must never be marked
- * default-eligible. The final downloadable GGUF bundles live under the
- * `elizaos` organization; the `sourceModel` block records upstream provenance.
+ * HF-search results from outside the single `elizaos/eliza-1` repo must never
+ * be marked default-eligible. The `sourceModel` block records upstream
+ * provenance; downloadable GGUF bundles live under `bundles/<tier>/`.
  */
 
-import type { CatalogModel, LocalRuntimeKernel } from "./types.js";
+import type {
+  CatalogModel,
+  CatalogQuantizationId,
+  CatalogQuantizationVariant,
+  LocalRuntimeKernel,
+} from "./types.js";
+
+export const ELIZA_1_HF_REPO = "elizaos/eliza-1" as const;
 
 export const ELIZA_1_TIER_IDS = [
   "eliza-1-0_8b",
@@ -58,6 +65,23 @@ function drafterId(id: Eliza1TierId): `${Eliza1TierId}-drafter` {
   return `${id}-drafter`;
 }
 
+function tierSlug(id: Eliza1TierId): string {
+  return id.slice("eliza-1-".length);
+}
+
+function bundleRemotePrefix(id: Eliza1TierId): string {
+  return `bundles/${tierSlug(id)}`;
+}
+
+function bundlePath(id: Eliza1TierId, rel: string): string {
+  void id;
+  return rel;
+}
+
+function bundleRemotePath(id: Eliza1TierId, rel: string): string {
+  return `${bundleRemotePrefix(id)}/${rel}`;
+}
+
 type SourceComponentMap = NonNullable<
   CatalogModel["sourceModel"]
 >["components"];
@@ -77,13 +101,15 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["omnivoice", "kokoro"],
-  "eliza-1-2b": ["omnivoice", "kokoro"],
-  "eliza-1-4b": ["omnivoice", "kokoro"],
+  "eliza-1-0_8b": ["kokoro"],
+  "eliza-1-2b": ["kokoro"],
+  "eliza-1-4b": ["kokoro"],
+  // 9B straddles the product line: mobile/laptop installs can use Kokoro,
+  // while workstation/server installs can use OmniVoice cloning.
   "eliza-1-9b": ["omnivoice", "kokoro"],
-  "eliza-1-27b": ["omnivoice", "kokoro"],
-  "eliza-1-27b-256k": ["omnivoice", "kokoro"],
-  "eliza-1-27b-1m": ["omnivoice", "kokoro"],
+  "eliza-1-27b": ["omnivoice"],
+  "eliza-1-27b-256k": ["omnivoice"],
+  "eliza-1-27b-1m": ["omnivoice"],
 };
 
 /** Source repo for the Kokoro-82M ONNX export — same artifact across tiers. */
@@ -91,6 +117,7 @@ export const KOKORO_SOURCE_REPO = "onnx-community/Kokoro-82M-v1.0-ONNX";
 
 function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   const omnivoice = { repo: "Serveurperso/OmniVoice-GGUF" } as const;
+  const kokoro = { repo: KOKORO_SOURCE_REPO } as const;
   const silero = { repo: "onnx-community/silero-vad" } as const;
   const embedding = { repo: "Qwen/Qwen3-Embedding-0.6B-GGUF" } as const;
   const asrSmall = { repo: "ggml-org/Qwen3-ASR-0.6B-GGUF" } as const;
@@ -117,14 +144,16 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   };
 
   const usesLargeAsr = id.startsWith("eliza-1-27b");
+  const primaryVoice =
+    ELIZA_1_VOICE_BACKENDS[id][0] === "kokoro" ? kokoro : omnivoice;
   const components: SourceComponentMap = {
     text: textByTier[id],
-    voice: omnivoice,
+    voice: primaryVoice,
     asr: usesLargeAsr ? asrLarge : asrSmall,
     vad: silero,
     drafter: {
-      repo: `elizaos/${id}`,
-      file: `dflash/drafter-${id.slice("eliza-1-".length)}.gguf`,
+      repo: ELIZA_1_HF_REPO,
+      file: bundleRemotePath(id, `dflash/drafter-${tierSlug(id)}.gguf`),
     },
   };
   if (id !== "eliza-1-0_8b") components.embedding = embedding;
@@ -146,6 +175,46 @@ function kvCacheForContext(
     typeK: "turbo3_0",
     typeV: "turbo4_0",
     requiresFork: "buun-llama-cpp",
+  };
+}
+
+const QUANT_SUFFIX: Record<CatalogQuantizationId, string> = {
+  q4_k_m: "q4_k_m",
+  q6_k: "q6_k",
+  q8_0: "q8_0",
+};
+
+function textQuantizationMatrix(args: {
+  id: Eliza1TierId;
+  primaryGgufFile: string;
+  q4SizeGb: number;
+  q4MinRamGb: number;
+}): NonNullable<CatalogModel["quantization"]> {
+  const fileBase = args.primaryGgufFile.replace(/\.gguf$/, "");
+  const mk = (
+    id: CatalogQuantizationId,
+    label: CatalogQuantizationVariant["label"],
+    scale: number,
+    minRamScale: number,
+    status: CatalogQuantizationVariant["status"],
+  ): CatalogQuantizationVariant => ({
+    id,
+    label,
+    ggufFile:
+      id === "q4_k_m"
+        ? args.primaryGgufFile
+        : `${fileBase}-${QUANT_SUFFIX[id]}.gguf`,
+    sizeGb: Number((args.q4SizeGb * scale).toFixed(1)),
+    minRamGb: Math.ceil(args.q4MinRamGb * minRamScale),
+    status,
+  });
+  return {
+    defaultVariantId: "q4_k_m",
+    variants: [
+      mk("q4_k_m", "4-bit", 1, 1, "published"),
+      mk("q6_k", "6-bit", 1.45, 1.35, "planned"),
+      mk("q8_0", "8-bit", 1.95, 1.8, "planned"),
+    ],
   };
 }
 
@@ -218,7 +287,8 @@ function drafterCompanion(args: {
   return {
     id: drafterId(args.id),
     displayName: `${args.displayName} drafter`,
-    hfRepo: `elizaos/${args.id}`,
+    hfRepo: ELIZA_1_HF_REPO,
+    hfPathPrefix: bundleRemotePrefix(args.id),
     ggufFile: args.ggufFile,
     params: args.params,
     quant: "Eliza-1 drafter companion",
@@ -238,9 +308,10 @@ export const MODEL_CATALOG: CatalogModel[] = [
   {
     id: "eliza-1-0_8b",
     displayName: "eliza-1-0_8b",
-    hfRepo: "elizaos/eliza-1-0_8b",
-    ggufFile: "text/eliza-1-0_8b-32k.gguf",
-    bundleManifestFile: "eliza-1.manifest.json",
+    hfRepo: ELIZA_1_HF_REPO,
+    hfPathPrefix: bundleRemotePrefix("eliza-1-0_8b"),
+    ggufFile: bundlePath("eliza-1-0_8b", "text/eliza-1-0_8b-32k.gguf"),
+    bundleManifestFile: bundlePath("eliza-1-0_8b", "eliza-1.manifest.json"),
     params: "0.8B",
     quant: "Eliza-1 optimized local runtime",
     sizeGb: 0.7,
@@ -252,13 +323,19 @@ export const MODEL_CATALOG: CatalogModel[] = [
     companionModelIds: ["eliza-1-0_8b-drafter"],
     sourceModel: sourceModelForTier("eliza-1-0_8b"),
     runtime: runtimeFor("eliza-1-0_8b", 32768),
+    quantization: textQuantizationMatrix({
+      id: "eliza-1-0_8b",
+      primaryGgufFile: bundlePath("eliza-1-0_8b", "text/eliza-1-0_8b-32k.gguf"),
+      q4SizeGb: 0.7,
+      q4MinRamGb: 2,
+    }),
     blurb:
       "eliza-1-0_8b - low-RAM phones and CPU-only fallback with the optimized local runtime.",
   },
   drafterCompanion({
     id: "eliza-1-0_8b",
     displayName: "eliza-1-0_8b",
-    ggufFile: "dflash/drafter-0_8b.gguf",
+    ggufFile: bundlePath("eliza-1-0_8b", "dflash/drafter-0_8b.gguf"),
     params: "0.8B",
     sizeGb: 0.3,
     minRamGb: 2,
@@ -267,9 +344,10 @@ export const MODEL_CATALOG: CatalogModel[] = [
   {
     id: "eliza-1-2b",
     displayName: "eliza-1-2b",
-    hfRepo: "elizaos/eliza-1-2b",
-    ggufFile: "text/eliza-1-2b-32k.gguf",
-    bundleManifestFile: "eliza-1.manifest.json",
+    hfRepo: ELIZA_1_HF_REPO,
+    hfPathPrefix: bundleRemotePrefix("eliza-1-2b"),
+    ggufFile: bundlePath("eliza-1-2b", "text/eliza-1-2b-32k.gguf"),
+    bundleManifestFile: bundlePath("eliza-1-2b", "eliza-1.manifest.json"),
     params: "2B",
     quant: "Eliza-1 optimized local runtime",
     sizeGb: 1.5,
@@ -281,14 +359,20 @@ export const MODEL_CATALOG: CatalogModel[] = [
     companionModelIds: ["eliza-1-2b-drafter"],
     sourceModel: sourceModelForTier("eliza-1-2b"),
     runtime: runtimeFor("eliza-1-2b", 32768),
+    quantization: textQuantizationMatrix({
+      id: "eliza-1-2b",
+      primaryGgufFile: bundlePath("eliza-1-2b", "text/eliza-1-2b-32k.gguf"),
+      q4SizeGb: 1.5,
+      q4MinRamGb: 4,
+    }),
     blurb:
       "eliza-1-2b - modern phone default with text and voice prepared for the optimized local runtime.",
   },
   drafterCompanion({
     id: "eliza-1-2b",
     displayName: "eliza-1-2b",
-    ggufFile: "dflash/drafter-2b.gguf",
-    params: "0.8B",
+    ggufFile: bundlePath("eliza-1-2b", "dflash/drafter-2b.gguf"),
+    params: "2B",
     sizeGb: 0.35,
     minRamGb: 4,
     bucket: "small",
@@ -296,9 +380,10 @@ export const MODEL_CATALOG: CatalogModel[] = [
   {
     id: "eliza-1-4b",
     displayName: "eliza-1-4b",
-    hfRepo: "elizaos/eliza-1-4b",
-    ggufFile: "text/eliza-1-4b-64k.gguf",
-    bundleManifestFile: "eliza-1.manifest.json",
+    hfRepo: ELIZA_1_HF_REPO,
+    hfPathPrefix: bundleRemotePrefix("eliza-1-4b"),
+    ggufFile: bundlePath("eliza-1-4b", "text/eliza-1-4b-64k.gguf"),
+    bundleManifestFile: bundlePath("eliza-1-4b", "eliza-1.manifest.json"),
     params: "4B",
     quant: "Eliza-1 optimized local runtime",
     sizeGb: 2.8,
@@ -310,14 +395,20 @@ export const MODEL_CATALOG: CatalogModel[] = [
     companionModelIds: ["eliza-1-4b-drafter"],
     sourceModel: sourceModelForTier("eliza-1-4b"),
     runtime: runtimeFor("eliza-1-4b", 65536),
+    quantization: textQuantizationMatrix({
+      id: "eliza-1-4b",
+      primaryGgufFile: bundlePath("eliza-1-4b", "text/eliza-1-4b-64k.gguf"),
+      q4SizeGb: 2.8,
+      q4MinRamGb: 8,
+    }),
     blurb:
       "eliza-1-4b - flagship-phone and small-desktop tier with text, voice, and vision in the optimized local runtime.",
   },
   drafterCompanion({
     id: "eliza-1-4b",
     displayName: "eliza-1-4b",
-    ggufFile: "dflash/drafter-4b.gguf",
-    params: "0.6B",
+    ggufFile: bundlePath("eliza-1-4b", "dflash/drafter-4b.gguf"),
+    params: "0.8B",
     sizeGb: 0.35,
     minRamGb: 8,
     bucket: "mid",
@@ -325,9 +416,10 @@ export const MODEL_CATALOG: CatalogModel[] = [
   {
     id: "eliza-1-9b",
     displayName: "eliza-1-9b",
-    hfRepo: "elizaos/eliza-1-9b",
-    ggufFile: "text/eliza-1-9b-64k.gguf",
-    bundleManifestFile: "eliza-1.manifest.json",
+    hfRepo: ELIZA_1_HF_REPO,
+    hfPathPrefix: bundleRemotePrefix("eliza-1-9b"),
+    ggufFile: bundlePath("eliza-1-9b", "text/eliza-1-9b-64k.gguf"),
+    bundleManifestFile: bundlePath("eliza-1-9b", "eliza-1.manifest.json"),
     params: "9B",
     quant: "Eliza-1 optimized local runtime",
     sizeGb: 5.4,
@@ -340,14 +432,20 @@ export const MODEL_CATALOG: CatalogModel[] = [
     sourceModel: sourceModelForTier("eliza-1-9b"),
     runtime: runtimeFor("eliza-1-9b", 65536),
     gpuProfile: "rtx-3090",
+    quantization: textQuantizationMatrix({
+      id: "eliza-1-9b",
+      primaryGgufFile: bundlePath("eliza-1-9b", "text/eliza-1-9b-64k.gguf"),
+      q4SizeGb: 5.4,
+      q4MinRamGb: 12,
+    }),
     blurb:
       "eliza-1-9b - laptop / 24 GB phone / 48 GB Mac default with text, voice, and vision in the optimized local runtime.",
   },
   drafterCompanion({
     id: "eliza-1-9b",
     displayName: "eliza-1-9b",
-    ggufFile: "dflash/drafter-9b.gguf",
-    params: "1.7B",
+    ggufFile: bundlePath("eliza-1-9b", "dflash/drafter-9b.gguf"),
+    params: "2B",
     sizeGb: 1.2,
     minRamGb: 12,
     bucket: "mid",
@@ -355,9 +453,10 @@ export const MODEL_CATALOG: CatalogModel[] = [
   {
     id: "eliza-1-27b",
     displayName: "eliza-1-27b",
-    hfRepo: "elizaos/eliza-1-27b",
-    ggufFile: "text/eliza-1-27b-128k.gguf",
-    bundleManifestFile: "eliza-1.manifest.json",
+    hfRepo: ELIZA_1_HF_REPO,
+    hfPathPrefix: bundleRemotePrefix("eliza-1-27b"),
+    ggufFile: bundlePath("eliza-1-27b", "text/eliza-1-27b-128k.gguf"),
+    bundleManifestFile: bundlePath("eliza-1-27b", "eliza-1.manifest.json"),
     params: "27B",
     quant: "Eliza-1 optimized local runtime",
     sizeGb: 16.8,
@@ -370,13 +469,19 @@ export const MODEL_CATALOG: CatalogModel[] = [
     sourceModel: sourceModelForTier("eliza-1-27b"),
     runtime: runtimeFor("eliza-1-27b", 131072),
     gpuProfile: "rtx-4090",
+    quantization: textQuantizationMatrix({
+      id: "eliza-1-27b",
+      primaryGgufFile: bundlePath("eliza-1-27b", "text/eliza-1-27b-128k.gguf"),
+      q4SizeGb: 16.8,
+      q4MinRamGb: 32,
+    }),
     blurb:
       "eliza-1-27b - 96 GB+ Mac and high-VRAM desktop default with text, voice, vision, and 128k context.",
   },
   drafterCompanion({
     id: "eliza-1-27b",
     displayName: "eliza-1-27b",
-    ggufFile: "dflash/drafter-27b.gguf",
+    ggufFile: bundlePath("eliza-1-27b", "dflash/drafter-27b.gguf"),
     params: "4B",
     sizeGb: 2.4,
     minRamGb: 32,
@@ -385,9 +490,10 @@ export const MODEL_CATALOG: CatalogModel[] = [
   {
     id: "eliza-1-27b-256k",
     displayName: "eliza-1-27b-256k",
-    hfRepo: "elizaos/eliza-1-27b-256k",
-    ggufFile: "text/eliza-1-27b-256k.gguf",
-    bundleManifestFile: "eliza-1.manifest.json",
+    hfRepo: ELIZA_1_HF_REPO,
+    hfPathPrefix: bundleRemotePrefix("eliza-1-27b-256k"),
+    ggufFile: bundlePath("eliza-1-27b-256k", "text/eliza-1-27b-256k.gguf"),
+    bundleManifestFile: bundlePath("eliza-1-27b-256k", "eliza-1.manifest.json"),
     params: "27B",
     quant: "Eliza-1 optimized local runtime",
     sizeGb: 16.8,
@@ -400,13 +506,22 @@ export const MODEL_CATALOG: CatalogModel[] = [
     sourceModel: sourceModelForTier("eliza-1-27b-256k"),
     runtime: runtimeFor("eliza-1-27b-256k", 262144),
     gpuProfile: "rtx-5090",
+    quantization: textQuantizationMatrix({
+      id: "eliza-1-27b-256k",
+      primaryGgufFile: bundlePath(
+        "eliza-1-27b-256k",
+        "text/eliza-1-27b-256k.gguf",
+      ),
+      q4SizeGb: 16.8,
+      q4MinRamGb: 96,
+    }),
     blurb:
       "eliza-1-27b-256k - workstation tier with the largest context window in the line.",
   },
   drafterCompanion({
     id: "eliza-1-27b-256k",
     displayName: "eliza-1-27b-256k",
-    ggufFile: "dflash/drafter-27b-256k.gguf",
+    ggufFile: bundlePath("eliza-1-27b-256k", "dflash/drafter-27b-256k.gguf"),
     params: "4B",
     sizeGb: 2.4,
     minRamGb: 96,
@@ -415,9 +530,10 @@ export const MODEL_CATALOG: CatalogModel[] = [
   {
     id: "eliza-1-27b-1m",
     displayName: "eliza-1-27b-1m",
-    hfRepo: "elizaos/eliza-1-27b-1m",
-    ggufFile: "text/eliza-1-27b-1m.gguf",
-    bundleManifestFile: "eliza-1.manifest.json",
+    hfRepo: ELIZA_1_HF_REPO,
+    hfPathPrefix: bundleRemotePrefix("eliza-1-27b-1m"),
+    ggufFile: bundlePath("eliza-1-27b-1m", "text/eliza-1-27b-1m.gguf"),
+    bundleManifestFile: bundlePath("eliza-1-27b-1m", "eliza-1.manifest.json"),
     params: "27B",
     quant: "Eliza-1 optimized local runtime",
     sizeGb: 16.8,
@@ -430,13 +546,19 @@ export const MODEL_CATALOG: CatalogModel[] = [
     sourceModel: sourceModelForTier("eliza-1-27b-1m"),
     runtime: runtimeFor("eliza-1-27b-1m", 1_048_576),
     gpuProfile: "h200",
+    quantization: textQuantizationMatrix({
+      id: "eliza-1-27b-1m",
+      primaryGgufFile: bundlePath("eliza-1-27b-1m", "text/eliza-1-27b-1m.gguf"),
+      q4SizeGb: 16.8,
+      q4MinRamGb: 200,
+    }),
     blurb:
       "eliza-1-27b-1m - H200-class server tier with a 1M-token context window and memory-optimized KV cache layout for 141 GiB HBM3e hosts.",
   },
   drafterCompanion({
     id: "eliza-1-27b-1m",
     displayName: "eliza-1-27b-1m",
-    ggufFile: "dflash/drafter-27b-1m.gguf",
+    ggufFile: bundlePath("eliza-1-27b-1m", "dflash/drafter-27b-1m.gguf"),
     params: "4B",
     sizeGb: 2.4,
     minRamGb: 200,
@@ -452,11 +574,19 @@ export function buildHuggingFaceResolveUrlForPath(
   model: CatalogModel,
   filePath: string,
 ): string {
+  const cleanFilePath = filePath.replace(/^\/+/, "");
+  const cleanPrefix = model.hfPathPrefix?.replace(/^\/+|\/+$/g, "");
+  const pathWithPrefix =
+    cleanPrefix &&
+    cleanFilePath !== cleanPrefix &&
+    !cleanFilePath.startsWith(`${cleanPrefix}/`)
+      ? `${cleanPrefix}/${cleanFilePath}`
+      : cleanFilePath;
   if (model.hub === "modelscope") {
     const base =
       process.env.ELIZA_MODELSCOPE_BASE_URL?.trim().replace(/\/+$/, "") ||
       "https://www.modelscope.cn";
-    const encodedPath = filePath
+    const encodedPath = pathWithPrefix
       .split("/")
       .map((segment) => encodeURIComponent(segment))
       .join("/");
@@ -465,7 +595,7 @@ export function buildHuggingFaceResolveUrlForPath(
   const base =
     process.env.ELIZA_HF_BASE_URL?.trim().replace(/\/+$/, "") ||
     "https://huggingface.co";
-  const encodedPath = filePath
+  const encodedPath = pathWithPrefix
     .split("/")
     .map((segment) => encodeURIComponent(segment))
     .join("/");

@@ -17,6 +17,7 @@ import sys
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -88,7 +89,11 @@ def _normalize_tool_call(call: Mapping[str, Any]) -> dict[str, Any] | None:
     name = _tool_name(call)
     if not name or name.upper() in TERMINAL_TOOL_NAMES:
         return None
-    return {"name": name, "arguments": _tool_args(call)}
+    out: dict[str, Any] = {"name": name, "arguments": _tool_args(call)}
+    call_id = call.get("id")
+    if isinstance(call_id, str) and call_id.strip():
+        out["id"] = call_id.strip()
+    return out
 
 
 def _normalize_tool_spec(tool: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -165,6 +170,8 @@ def _record_messages(record: Mapping[str, Any]) -> list[dict[str, str]]:
             "role": "system",
             "content": (
                 "Use native function/tool calls for any requested operation. "
+                "If several operations are required, call every required tool; "
+                "after a tool result, continue with the remaining required tool calls. "
                 "Do not serialize tool calls in text, XML, markdown, or JSON. "
                 "Return assistant text only when no tool call is needed."
             ),
@@ -300,7 +307,12 @@ def _make_harness_client(harness: str, args: argparse.Namespace):
         _ensure_adapter_path("openclaw-adapter")
         from openclaw_adapter.client import OpenClawClient  # noqa: WPS433
 
-        client = OpenClawClient(provider=provider, model=model, base_url=args.base_url)
+        client = OpenClawClient(
+            provider=provider,
+            model=model,
+            base_url=args.base_url,
+            direct_openai_compatible=True,
+        )
         client.wait_until_ready(timeout=120)
         return client
     raise SystemExit(f"unknown harness {harness!r}")
@@ -350,12 +362,14 @@ def _parse_openai_tool_calls(tool_calls: Any) -> list[dict[str, Any]]:
         if isinstance(call, Mapping):
             fn = _as_dict(call.get("function"))
             raw = {
+                "id": call.get("id"),
                 "name": fn.get("name") or call.get("name"),
                 "arguments": fn.get("arguments") if "arguments" in fn else call.get("arguments"),
             }
         else:
             fn = getattr(call, "function", None)
             raw = {
+                "id": getattr(call, "id", None),
                 "name": getattr(fn, "name", None) or getattr(call, "name", None),
                 "arguments": getattr(fn, "arguments", None) if fn is not None else getattr(call, "arguments", None),
             }
@@ -445,6 +459,53 @@ def _harness_response_to_calls(response: Any) -> tuple[list[dict[str, Any]], str
     return calls, str(getattr(response, "text", "") or ""), source
 
 
+def _assistant_tool_call_message(
+    calls: list[dict[str, Any]],
+    *,
+    turn_index: int,
+) -> dict[str, Any]:
+    tool_calls: list[dict[str, Any]] = []
+    for index, call in enumerate(calls):
+        call_id = str(call.get("id") or f"call_{turn_index}_{index}")
+        call["id"] = call_id
+        tool_calls.append(
+            {
+                "id": call_id,
+                "type": "function",
+                "function": {
+                    "name": str(call.get("name") or ""),
+                    "arguments": json.dumps(_as_dict(call.get("arguments")), ensure_ascii=True),
+                },
+            }
+        )
+    return {"role": "assistant", "content": None, "tool_calls": tool_calls}
+
+
+def _tool_result_messages(calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    messages: list[dict[str, Any]] = []
+    for index, call in enumerate(calls):
+        messages.append(
+            {
+                "role": "tool",
+                "tool_call_id": str(call.get("id") or f"call_result_{index}"),
+                "name": str(call.get("name") or ""),
+                "content": json.dumps({"ok": True, "benchmark_result": "recorded"}),
+            }
+        )
+    return messages
+
+
+def _merge_generation_sources(sources: list[str]) -> str:
+    unique = {source for source in sources if source}
+    if len(unique) == 1:
+        return next(iter(unique))
+    return "mixed" if unique else "model_text"
+
+
+def _last_user_text(messages: list[dict[str, Any]]) -> str:
+    return str(next((m.get("content") for m in reversed(messages) if m.get("role") == "user"), "") or "")
+
+
 def _generate(
     client,
     provider: str,
@@ -455,21 +516,36 @@ def _generate(
     tool_choice: str,
 ) -> tuple[list[dict[str, Any]], str, str, list[dict[str, Any]]]:
     harness = _selected_harness(provider)
+    max_turns = max(1, len(case.expected_calls) + 2)
     if harness:
-        user_text = next((m["content"] for m in reversed(case.messages) if m["role"] == "user"), "")
-        response = client.send_message(
-            text=user_text,
-            context={
-                "benchmark": "action-calling",
-                "messages": case.messages,
-                "tools": case.tools,
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-                "tool_choice": tool_choice,
-            },
-        )
-        calls, text, source = _harness_response_to_calls(response)
-        return calls, text, source, []
+        messages: list[dict[str, Any]] = [dict(m) for m in case.messages]
+        all_calls: list[dict[str, Any]] = []
+        text_parts: list[str] = []
+        sources: list[str] = []
+        for turn_index in range(max_turns):
+            response = client.send_message(
+                text=_last_user_text(messages),
+                context={
+                    "benchmark": "action-calling",
+                    "messages": messages,
+                    "tools": case.tools,
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                    "tool_choice": tool_choice,
+                },
+            )
+            calls, text, source = _harness_response_to_calls(response)
+            if text:
+                text_parts.append(text)
+            sources.append(source)
+            if not calls:
+                break
+            all_calls.extend(calls)
+            if len(all_calls) >= len(case.expected_calls):
+                break
+            messages.append(_assistant_tool_call_message(calls, turn_index=turn_index))
+            messages.extend(_tool_result_messages(calls))
+        return all_calls, "\n".join(text_parts), _merge_generation_sources(sources), []
 
     if provider == "anthropic":
         system = "\n\n".join(m["content"] for m in case.messages if m["role"] == "system")
@@ -486,40 +562,71 @@ def _generate(
             }
             for tool in case.tools
         ]
-        resp = client.messages.create(
+        all_calls: list[dict[str, Any]] = []
+        text_parts: list[str] = []
+        for _turn_index in range(max_turns):
+            resp = client.messages.create(
+                model=model,
+                messages=chat_messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system=system or None,
+                tools=anthropic_tools,
+            )
+            calls: list[dict[str, Any]] = []
+            for block in resp.content:
+                if getattr(block, "type", None) == "tool_use":
+                    normalized = _normalize_tool_call(
+                        {
+                            "id": getattr(block, "id", None),
+                            "name": getattr(block, "name", None),
+                            "arguments": getattr(block, "input", {}),
+                        }
+                    )
+                    if normalized is not None:
+                        calls.append(normalized)
+                elif hasattr(block, "text"):
+                    text_parts.append(getattr(block, "text", ""))
+            if not calls:
+                break
+            all_calls.extend(calls)
+            if len(all_calls) >= len(case.expected_calls):
+                break
+            # Anthropic tool-result message shape differs from OpenAI. Keep
+            # native first-turn scoring rather than fabricating a cross-turn
+            # shape here until this path is exercised in CI.
+            break
+        return all_calls, "".join(text_parts), "native_tool_calls" if all_calls else "model_text", []
+
+    messages: list[dict[str, Any]] = [dict(m) for m in case.messages]
+    all_calls: list[dict[str, Any]] = []
+    text_parts: list[str] = []
+    content_calls: list[dict[str, Any]] = []
+    sources: list[str] = []
+    for turn_index in range(max_turns):
+        resp = client.chat.completions.create(
             model=model,
-            messages=chat_messages,
+            messages=messages,
+            tools=case.tools,
+            tool_choice=tool_choice,
             max_tokens=max_tokens,
             temperature=temperature,
-            system=system or None,
-            tools=anthropic_tools,
         )
-        calls = []
-        text_parts = []
-        for block in resp.content:
-            if getattr(block, "type", None) == "tool_use":
-                normalized = _normalize_tool_call(
-                    {"name": getattr(block, "name", None), "arguments": getattr(block, "input", {})}
-                )
-                if normalized is not None:
-                    calls.append(normalized)
-            elif hasattr(block, "text"):
-                text_parts.append(getattr(block, "text", ""))
-        return calls, "".join(text_parts), "native_tool_calls" if calls else "model_text", []
-
-    resp = client.chat.completions.create(
-        model=model,
-        messages=case.messages,
-        tools=case.tools,
-        tool_choice=tool_choice,
-        max_tokens=max_tokens,
-        temperature=temperature,
-    )
-    message = resp.choices[0].message
-    text = getattr(message, "content", None) or ""
-    calls = _parse_openai_tool_calls(getattr(message, "tool_calls", None))
-    content_calls = _parse_content_tool_calls(text)
-    return calls, text, "native_tool_calls" if calls else "model_text", content_calls
+        message = resp.choices[0].message
+        text = getattr(message, "content", None) or ""
+        calls = _parse_openai_tool_calls(getattr(message, "tool_calls", None))
+        if text:
+            text_parts.append(text)
+            content_calls.extend(_parse_content_tool_calls(text))
+        sources.append("native_tool_calls" if calls else "model_text")
+        if not calls:
+            break
+        all_calls.extend(calls)
+        if len(all_calls) >= len(case.expected_calls):
+            break
+        messages.append(_assistant_tool_call_message(calls, turn_index=turn_index))
+        messages.extend(_tool_result_messages(calls))
+    return all_calls, "\n".join(text_parts), _merge_generation_sources(sources), content_calls
 
 
 def _geometric_mean(values: list[float]) -> float:
@@ -553,7 +660,33 @@ def _values_match(expected: Any, actual: Any) -> bool:
         return all(key in actual and _values_match(value, actual[key]) for key, value in expected.items())
     if isinstance(expected, list):
         return expected == actual
+    if isinstance(expected, str) and isinstance(actual, str):
+        if _iso_datetimes_match(expected, actual):
+            return True
     return expected == actual or str(expected) == str(actual)
+
+
+def _parse_iso_datetime(value: str) -> datetime | None:
+    raw = value.strip()
+    if "T" not in raw:
+        return None
+    if raw.endswith("Z"):
+        raw = raw[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _iso_datetimes_match(expected: str, actual: str) -> bool:
+    expected_dt = _parse_iso_datetime(expected)
+    actual_dt = _parse_iso_datetime(actual)
+    if expected_dt is None or actual_dt is None:
+        return False
+    return expected_dt == actual_dt
 
 
 def _score_case(

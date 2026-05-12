@@ -59,6 +59,25 @@ const preferencesCache = new Map<string, string>();
 let initialized = false;
 let storageProxyInstalled = false;
 
+const PREFERENCE_READ_TIMEOUT_MS = 1_500;
+
+async function readPreferenceWithTimeout(
+  key: string,
+): Promise<string | null> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  try {
+    const timeout = new Promise<null>((resolve) => {
+      timeoutId = setTimeout(() => resolve(null), PREFERENCE_READ_TIMEOUT_MS);
+    });
+    const result = await Promise.race([Preferences.get({ key }), timeout]);
+    return result?.value ?? null;
+  } catch {
+    return null;
+  } finally {
+    if (timeoutId !== null) clearTimeout(timeoutId);
+  }
+}
+
 /**
  * Initialize the storage bridge
  *
@@ -74,17 +93,23 @@ export async function initializeStorageBridge(): Promise<void> {
     return;
   }
 
-  // Load all synced keys from Preferences into cache
-  for (const key of SYNCED_KEYS) {
-    const result = await Preferences.get({ key });
-    if (result.value !== null) {
-      preferencesCache.set(key, result.value);
-      // Also set in localStorage for immediate availability
-      try {
-        window.localStorage.setItem(key, result.value);
-      } catch {
-        // localStorage might fail in some contexts
-      }
+  // Load synced keys from Preferences into cache. Native plugin calls can hang
+  // during very early WebView startup on some simulator builds; keep hydration
+  // best-effort so a single stale preference read cannot block first paint.
+  const entries = await Promise.all(
+    Array.from(SYNCED_KEYS, async (key) => [
+      key,
+      await readPreferenceWithTimeout(key),
+    ] as const),
+  );
+  for (const [key, value] of entries) {
+    if (value === null) continue;
+    preferencesCache.set(key, value);
+    // Also set in localStorage for immediate availability
+    try {
+      window.localStorage.setItem(key, value);
+    } catch {
+      // localStorage might fail in some contexts
     }
   }
 
@@ -120,10 +145,13 @@ function setupStorageProxy(): void {
     // If it's a synced key, also persist to Preferences
     if (SYNCED_KEYS.has(key)) {
       preferencesCache.set(key, value);
-      // Fire and forget - we don't wait for this
-      Preferences.set({ key, value }).catch((err) => {
-        console.error(`[Storage Bridge] Failed to persist ${key}:`, err);
-      });
+      // Fire and forget on a later task. Some native bridge calls can stall
+      // during early WebView startup; localStorage writes must stay sync-fast.
+      setTimeout(() => {
+        Preferences.set({ key, value }).catch((err) => {
+          console.error(`[Storage Bridge] Failed to persist ${key}:`, err);
+        });
+      }, 0);
     }
   };
 
@@ -142,9 +170,11 @@ function setupStorageProxy(): void {
 
     if (SYNCED_KEYS.has(key)) {
       preferencesCache.delete(key);
-      Preferences.remove({ key }).catch((err) => {
-        console.error(`[Storage Bridge] Failed to remove ${key}:`, err);
-      });
+      setTimeout(() => {
+        Preferences.remove({ key }).catch((err) => {
+          console.error(`[Storage Bridge] Failed to remove ${key}:`, err);
+        });
+      }, 0);
     }
   };
 

@@ -220,6 +220,7 @@ function engineGenerateArgsFromParams(
   grammar?: string;
   streamStructured?: boolean;
   onTextChunk?: (chunk: string) => void | Promise<void>;
+  voiceOutput?: "user-visible" | "internal";
 } {
   const streamStructured = params.streamStructured === true;
   // Surface per-token chunks to the caller. The runtime passes the agent
@@ -242,6 +243,9 @@ function engineGenerateArgsFromParams(
     grammar: params.grammar,
     streamStructured: streamStructured || undefined,
     onTextChunk,
+    voiceOutput:
+      params.voiceOutput ??
+      (typeof params.onStreamChunk === "function" ? "user-visible" : undefined),
   };
 }
 

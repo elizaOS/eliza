@@ -29,6 +29,14 @@ public final class ElizaBunRuntime {
     private var fullBunEngine: FullBunEngineHost?
     private weak var plugin: CAPPlugin?
 
+    public typealias RuntimeStatus = (
+        ready: Bool,
+        engine: String,
+        bridgeVersion: String?,
+        model: String?,
+        tokensPerSecond: Double?
+    )
+
     // MARK: - Init
 
     public init(plugin: CAPPlugin?) {
@@ -47,17 +55,17 @@ public final class ElizaBunRuntime {
         env: [String: String],
         completion: @escaping (Result<StartOutcome, Error>) -> Void
     ) {
-        if isRunning {
-            completion(.success(StartOutcome(bridgeVersion: bridgeVersion ?? BridgeInstaller.version)))
-            return
-        }
-
         queue.async { [weak self] in
             guard let self = self else { return }
             RuntimeQueue.current = self.queue
             if self.isRunning {
-                completion(.success(StartOutcome(bridgeVersion: self.bridgeVersion ?? BridgeInstaller.version)))
-                return
+                if let fullBunEngine = self.fullBunEngine, !fullBunEngine.isRunning {
+                    self.isRunning = false
+                    self.fullBunEngine = nil
+                } else {
+                    completion(.success(StartOutcome(bridgeVersion: self.bridgeVersion ?? BridgeInstaller.version)))
+                    return
+                }
             }
             do {
                 try self.bootstrap(
@@ -79,6 +87,22 @@ public final class ElizaBunRuntime {
         queue.async { [weak self] in
             self?.teardown()
             completion()
+        }
+    }
+
+    public func currentStatus(completion: @escaping (RuntimeStatus) -> Void) {
+        queue.async { [weak self] in
+            guard let self = self else {
+                completion((false, "compat", nil, nil, nil))
+                return
+            }
+            completion((
+                self.isRunning,
+                self.engineMode,
+                self.bridgeVersion,
+                self.loadedModelPath,
+                self.tokensPerSecond
+            ))
         }
     }
 

@@ -119,8 +119,8 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
     }
   }
   return {
-    bundle: args.bundle ?? "eliza-1-1.7b",
-    backend: args.backend ?? "mock",
+    bundle: args.bundle ?? "eliza-1-2b",
+    backend: args.backend ?? "real",
     scenario: args.scenario ?? "all",
     runs: Number.parseInt(args.runs ?? "1", 10) || 1,
     output: args.output,

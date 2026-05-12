@@ -213,7 +213,7 @@ export class BargeInController implements WordsDetectedSink {
     timestampMs: number;
   }): void {
     if (args.wordCount < 1) return;
-    if (!this.agentSpeaking && !this.awaitingWordConfirm) return;
+    if (!this.agentSpeaking || !this.awaitingWordConfirm) return;
     // Authoritative: real user speech. Hard-stop.
     this.hardStop("barge-in-words", args.timestampMs);
   }

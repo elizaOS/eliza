@@ -175,6 +175,11 @@ export * from "./runtime/context-registry";
 export * from "./runtime/cost-table";
 export * from "./runtime/execute-planned-tool-call";
 export {
+	type ExtractedPlanAction,
+	type ExtractOptions,
+	extractPlanActionsFromContent,
+} from "./runtime/plan-actions-extractor";
+export {
 	detectLocaleFromText,
 	type ResolveOwnerLocaleOptions,
 	resolveOwnerLocale,

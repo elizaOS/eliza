@@ -544,10 +544,10 @@ def _base_v1_provenance() -> dict:
                 "convertedVia": "<fork>/convert_hf_to_gguf.py",
             },
             "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
-            "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
+            "asr": {"repo": "ggml-org/Qwen3-ASR-0.8B-GGUF"},
             "vad": {"repo": "ggml-org/whisper-vad"},
             "vision": {"repo": "unsloth/Qwen3.5-9B-GGUF", "file": "mmproj-F16.gguf"},
-            "drafter": {"repo": "elizaos/eliza-1-9b"},
+            "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/9b/dflash/drafter-9b.gguf"},
         },
     }
 

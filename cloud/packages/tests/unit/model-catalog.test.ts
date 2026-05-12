@@ -31,8 +31,7 @@ describe("Vast catalog helpers", () => {
     expect(isVastNativeModel("vast/eliza-1-2b")).toBe(true);
     expect(isVastNativeModel("vast/eliza-1-9b")).toBe(true);
     expect(isVastNativeModel("vast/eliza-1-27b")).toBe(true);
-    expect(isVastNativeModel("vast/eliza-1-9b")).toBe(true);
-    expect(isVastNativeModel("vast/eliza-1-27b")).toBe(true);
+    expect(isVastNativeModel("vast/eliza-1-27b-256k")).toBe(true);
     expect(isVastNativeModel("openai/gpt-5.4")).toBe(false);
   });
 });

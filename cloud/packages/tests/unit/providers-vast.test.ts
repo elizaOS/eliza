@@ -111,7 +111,7 @@ describe("VastProvider", () => {
     expect(body.object).toBe("list");
     expect(body.data.map((m) => m.id)).toContain("vast/eliza-1-27b");
     expect(body.data.map((m) => m.id)).toContain("vast/eliza-1-2b");
-    expect(body.data.map((m) => m.id)).toContain("vast/eliza-1-27b");
+    expect(body.data.map((m) => m.id)).toContain("vast/eliza-1-27b-256k");
   });
 
   test("getModel returns the entry when present, 404 otherwise", async () => {
@@ -137,6 +137,7 @@ describe("VastProvider", () => {
 describe("Vast endpoint config", () => {
   test("derives stable env suffixes for model-specific endpoints", () => {
     expect(vastModelEnvSuffix("vast/eliza-1-27b")).toBe("ELIZA_1_27B");
+    expect(vastModelEnvSuffix("vast/eliza-1-27b-256k")).toBe("ELIZA_1_27B_256K");
   });
 
   test("resolves a dedicated model endpoint before the global endpoint", () => {
@@ -164,6 +165,17 @@ describe("Vast endpoint config", () => {
     };
     expect(resolveVastFallbackModel("vast/eliza-1-27b", (name) => env[name] ?? null)).toBe(
       "vast/eliza-1-9b",
+    );
+  });
+
+  test("falls back from the 256K 27B lane to the standard 27B lane", () => {
+    const env: Record<string, string> = {
+      VAST_API_KEY: "global-key",
+      VAST_BASE_URL_ELIZA_1_27B_256K: "https://openai.vast.ai/eliza-cloud-eliza-1-27b-256k",
+      VAST_BASE_URL_ELIZA_1_27B: "https://openai.vast.ai/eliza-cloud-eliza-1-27b",
+    };
+    expect(resolveVastFallbackModel("vast/eliza-1-27b-256k", (name) => env[name] ?? null)).toBe(
+      "vast/eliza-1-27b",
     );
   });
 });

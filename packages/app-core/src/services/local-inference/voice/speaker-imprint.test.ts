@@ -167,9 +167,19 @@ describe("speaker-imprint", () => {
     );
     expect(result.segments[0].metadata).toMatchObject({
       attributionOnly: true,
+      evidenceKind: "voice_imprint_attribution",
+      identityAuthority: false,
+      synthesisAuthorization: false,
+      diarizationMode: "attribution_only",
       imprintClusterId: "cluster-owner",
       imprintObservationId: "obs-owner-1",
       entityId: "entity-owner",
+    });
+    expect(result.segments[0].speaker?.metadata).toMatchObject({
+      attributionOnly: true,
+      evidenceKind: "voice_imprint_attribution",
+      identityAuthority: false,
+      synthesisAuthorization: false,
     });
   });
 });

@@ -49,13 +49,13 @@ VOICE_REPO: Final[str] = "Serveurperso/OmniVoice-GGUF"
 VAD_NATIVE_REPO: Final[str] = "ggml-org/whisper-vad"
 VAD_ONNX_REPO: Final[str] = "onnx-community/silero-vad"
 ASR_REPO_BY_TIER: Final[dict[str, str]] = {
-    "0_8b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
-    "2b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
-    "4b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
-    "9b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
-    "27b": "ggml-org/Qwen3-ASR-1.7B-GGUF",
-    "27b-256k": "ggml-org/Qwen3-ASR-1.7B-GGUF",
-    "27b-1m": "ggml-org/Qwen3-ASR-1.7B-GGUF",
+    "0_8b": "ggml-org/Qwen3-ASR-0.8B-GGUF",
+    "2b": "ggml-org/Qwen3-ASR-0.8B-GGUF",
+    "4b": "ggml-org/Qwen3-ASR-0.8B-GGUF",
+    "9b": "ggml-org/Qwen3-ASR-0.8B-GGUF",
+    "27b": "ggml-org/Qwen3-ASR-2B-GGUF",
+    "27b-256k": "ggml-org/Qwen3-ASR-2B-GGUF",
+    "27b-1m": "ggml-org/Qwen3-ASR-2B-GGUF",
 }
 GGUF_QUANT_PREFERENCE: Final[tuple[str, ...]] = (
     "Q4_K_M",

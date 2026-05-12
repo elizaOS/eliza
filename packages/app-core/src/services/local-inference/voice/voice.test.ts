@@ -448,6 +448,38 @@ describe("VoiceScheduler end-to-end", () => {
     }
   });
 
+  it("time-budget flushes a buffered phrase without waiting for another token", async () => {
+    vi.useFakeTimers();
+    try {
+      const backend = new StubBackend();
+      const sink = new InMemoryAudioSink();
+      const phraseEvents: Phrase[] = [];
+      const sched = new VoiceScheduler(
+        {
+          chunkerConfig: { maxAccumulationMs: 50, maxTokensPerPhrase: 100 },
+          preset: makePreset(),
+          ringBufferCapacity: 4096,
+          sampleRate: 24000,
+        },
+        { backend, sink },
+        { onPhrase: (p) => phraseEvents.push(p) },
+      );
+
+      await sched.accept(tok(0, "Hello"));
+      expect(phraseEvents).toHaveLength(0);
+
+      await vi.advanceTimersByTimeAsync(51);
+      await sched.waitIdle();
+
+      expect(phraseEvents.map((p) => p.text)).toEqual(["Hello"]);
+      expect(phraseEvents[0].terminator).toBe("max-cap");
+      expect(backend.calls).toBe(1);
+      expect(sink.totalWritten()).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("streams TTS chunks into the ring buffer and caches the assembled phrase", async () => {
     const backend = new StreamingBackend();
     const sink = new InMemoryAudioSink();

@@ -103,7 +103,7 @@ describe("iOS local agent transport bridge", () => {
     });
   });
 
-  it("uses the full Bun native bridge when the runtime plugin is available", async () => {
+  it("uses an already-running full Bun native bridge when the runtime plugin is available", async () => {
     capacitorState.pluginAvailable = true;
     const start = vi.fn(async () => ({ ok: true }));
     const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
@@ -129,9 +129,7 @@ describe("iOS local agent transport bridge", () => {
       body: '{"hello":"ios"}',
     });
 
-    expect(start).toHaveBeenCalledWith(
-      expect.objectContaining({ engine: "bun" }),
-    );
+    expect(start).not.toHaveBeenCalled();
     expect(getStatus).toHaveBeenCalled();
     expect(call).toHaveBeenCalledWith({
       method: "http_request",
@@ -146,6 +144,115 @@ describe("iOS local agent transport bridge", () => {
       headers: { "x-engine": "bun" },
       body: '{"ok":true}',
     });
+  });
+
+  it("starts the full Bun native bridge when the runtime plugin is available but not running", async () => {
+    capacitorState.pluginAvailable = true;
+    const start = vi.fn(async () => ({ ok: true }));
+    const getStatus = vi
+      .fn()
+      .mockResolvedValueOnce({ ready: false })
+      .mockResolvedValueOnce({ ready: true, engine: "bun" });
+    const call = vi.fn(async () => ({
+      result: {
+        status: 200,
+        statusText: "OK",
+        headers: { "content-type": "application/json" },
+        body: '{"ok":true}',
+      },
+    }));
+    vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
+      ElizaBunRuntime: { start, getStatus, call },
+    }));
+
+    const { handleIosLocalAgentNativeRequest } = await import(
+      "./ios-local-agent-transport"
+    );
+    const response = await handleIosLocalAgentNativeRequest({
+      method: "GET",
+      path: "/api/health",
+    });
+
+    expect(start).toHaveBeenCalledWith(
+      expect.objectContaining({ engine: "bun" }),
+    );
+    expect(response).toMatchObject({
+      status: 200,
+      body: '{"ok":true}',
+    });
+  });
+
+  it("requires the full Bun bridge during the in-app smoke even if Capacitor platform detection is early", async () => {
+    capacitorState.isNative = false;
+    const start = vi.fn(async () => ({ ok: true }));
+    const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
+    const call = vi.fn(async () => ({
+      result: {
+        status: 200,
+        statusText: "OK",
+        headers: { "content-type": "application/json" },
+        body: '{"ready":true}',
+      },
+    }));
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "eliza:ios-full-bun-smoke:request" ? "1" : null,
+    });
+    vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
+      ElizaBunRuntime: { start, getStatus, call },
+    }));
+
+    const { handleIosLocalAgentNativeRequest } = await import(
+      "./ios-local-agent-transport"
+    );
+    const response = await handleIosLocalAgentNativeRequest({
+      path: "/api/health",
+    });
+
+    expect(call).toHaveBeenCalledWith({
+      method: "http_request",
+      args: expect.objectContaining({ path: "/api/health" }),
+    });
+    expect(response.status).toBe(200);
+  });
+
+  it("does not await Capacitor plugin proxies that expose a then member", async () => {
+    capacitorState.pluginAvailable = true;
+    const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
+    const call = vi.fn(async () => ({
+      result: {
+        status: 200,
+        statusText: "OK",
+        headers: { "content-type": "application/json" },
+        body: '{"ok":true}',
+      },
+    }));
+    const then = vi.fn();
+    vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
+      ElizaBunRuntime: {
+        start: vi.fn(async () => ({ ok: true })),
+        getStatus,
+        call,
+        then,
+      },
+    }));
+
+    const { handleIosLocalAgentNativeRequest, primeIosFullBunRuntime } =
+      await import("./ios-local-agent-transport");
+    primeIosFullBunRuntime({
+      start: vi.fn(async () => ({ ok: true })),
+      getStatus,
+      call,
+      then,
+    } as never);
+
+    const response = await handleIosLocalAgentNativeRequest({
+      method: "GET",
+      path: "/api/health",
+    });
+
+    expect(then).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
   });
 
   it("rejects absolute paths from the native request bridge", async () => {

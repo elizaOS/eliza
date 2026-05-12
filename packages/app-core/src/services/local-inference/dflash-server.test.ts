@@ -20,6 +20,7 @@ import {
   resolveDflashKvOffload,
   resolveFusedDflashBinary,
   shouldRequireActiveDflashForRequest,
+  validateDflashDrafterCompatibility,
 } from "./dflash-server";
 
 const originalEnv = { ...process.env };
@@ -42,6 +43,79 @@ function makeManagedBinary(root: string): string {
   fs.writeFileSync(managed, "#!/bin/sh\n", "utf8");
   fs.chmodSync(managed, 0o755);
   return managed;
+}
+
+function u32(value: number): Buffer {
+  const out = Buffer.alloc(4);
+  out.writeUInt32LE(value, 0);
+  return out;
+}
+
+function u64(value: number): Buffer {
+  const out = Buffer.alloc(8);
+  out.writeBigUInt64LE(BigInt(value), 0);
+  return out;
+}
+
+function ggufString(value: string): Buffer {
+  const body = Buffer.from(value, "utf8");
+  return Buffer.concat([u64(body.length), body]);
+}
+
+function ggufScalar(type: number, value: string | number | boolean): Buffer {
+  if (type === 8) return ggufString(String(value));
+  if (type === 4) return u32(Number(value));
+  if (type === 5) {
+    const out = Buffer.alloc(4);
+    out.writeInt32LE(Number(value), 0);
+    return out;
+  }
+  if (type === 7) return Buffer.from([value ? 1 : 0]);
+  throw new Error(`unsupported test scalar type ${type}`);
+}
+
+function ggufArray(
+  innerType: number,
+  values: Array<string | number | boolean>,
+): Buffer {
+  return Buffer.concat([
+    u32(9),
+    u32(innerType),
+    u64(values.length),
+    ...values.map((value) => ggufScalar(innerType, value)),
+  ]);
+}
+
+function writeTinyGguf(
+  file: string,
+  opts: { architecture: string; tokens?: string[]; merges?: string[] },
+): void {
+  const metadata: Array<[string, Buffer]> = [
+    [
+      "general.architecture",
+      Buffer.concat([u32(8), ggufString(opts.architecture)]),
+    ],
+    ["tokenizer.ggml.model", Buffer.concat([u32(8), ggufString("gpt2")])],
+    ["tokenizer.ggml.pre", Buffer.concat([u32(8), ggufString("qwen2")])],
+    ["tokenizer.ggml.tokens", ggufArray(8, opts.tokens ?? ["a", "b", "c"])],
+    ["tokenizer.ggml.token_type", ggufArray(5, [1, 1, 1])],
+    ["tokenizer.ggml.merges", ggufArray(8, opts.merges ?? ["a b"])],
+    ["tokenizer.ggml.eos_token_id", Buffer.concat([u32(4), u32(2)])],
+    ["tokenizer.ggml.bos_token_id", Buffer.concat([u32(4), u32(1)])],
+    ["tokenizer.ggml.padding_token_id", Buffer.concat([u32(4), u32(0)])],
+    ["tokenizer.ggml.add_bos_token", Buffer.concat([u32(7), Buffer.from([1])])],
+  ];
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    Buffer.concat([
+      Buffer.from("GGUF", "utf8"),
+      u32(3),
+      u64(0),
+      u64(metadata.length),
+      ...metadata.flatMap(([key, encoded]) => [ggufString(key), encoded]),
+    ]),
+  );
 }
 
 async function readBody(req: http.IncomingMessage): Promise<string> {
@@ -254,24 +328,24 @@ describe("fused-vs-two-process spawn selection", () => {
 
   it("findBundleOmnivoiceAssets resolves tts/ GGUFs from the text model path", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-bundle-test-"));
-    const bundle = path.join(root, "eliza-1-1_7b.bundle");
+    const bundle = path.join(root, "eliza-1-2b.bundle");
     fs.mkdirSync(path.join(bundle, "text"), { recursive: true });
     fs.mkdirSync(path.join(bundle, "tts"), { recursive: true });
-    fs.writeFileSync(path.join(bundle, "text", "eliza-1-1_7b-32k.gguf"), "x");
-    fs.writeFileSync(path.join(bundle, "tts", "omnivoice-0.6b.gguf"), "x");
+    fs.writeFileSync(path.join(bundle, "text", "eliza-1-2b-32k.gguf"), "x");
+    fs.writeFileSync(path.join(bundle, "tts", "omnivoice-0.8b.gguf"), "x");
     fs.writeFileSync(
-      path.join(bundle, "tts", "omnivoice-tokenizer-0.6b.gguf"),
+      path.join(bundle, "tts", "omnivoice-tokenizer-0.8b.gguf"),
       "x",
     );
     const assets = findBundleOmnivoiceAssets(
-      path.join(bundle, "text", "eliza-1-1_7b-32k.gguf"),
+      path.join(bundle, "text", "eliza-1-2b-32k.gguf"),
     );
     expect(assets).not.toBeNull();
     expect(assets?.modelPath).toBe(
-      path.join(bundle, "tts", "omnivoice-0.6b.gguf"),
+      path.join(bundle, "tts", "omnivoice-0.8b.gguf"),
     );
     expect(assets?.codecPath).toBe(
-      path.join(bundle, "tts", "omnivoice-tokenizer-0.6b.gguf"),
+      path.join(bundle, "tts", "omnivoice-tokenizer-0.8b.gguf"),
     );
     // A non-bundle layout (no text/ parent) returns null.
     expect(findBundleOmnivoiceAssets(path.join(root, "model.gguf"))).toBeNull();
@@ -418,6 +492,69 @@ describe("shouldRequireActiveDflashForRequest", () => {
         128,
       ),
     ).toBe(false);
+  });
+});
+
+describe("validateDflashDrafterCompatibility", () => {
+  it("passes a plain autoregressive drafter with matching tokenizer metadata", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-gguf-test-"));
+    const target = path.join(root, "target.gguf");
+    const drafter = path.join(root, "drafter.gguf");
+    const binary = path.join(root, "llama-server");
+    fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
+    writeTinyGguf(target, { architecture: "qwen3" });
+    writeTinyGguf(drafter, { architecture: "qwen3" });
+
+    const report = validateDflashDrafterCompatibility({
+      targetModelPath: target,
+      drafterModelPath: drafter,
+      binaryPath: binary,
+    });
+
+    expect(report.compatible).toBe(true);
+    expect(report.tokenizerMismatches).toEqual([]);
+  });
+
+  it("rejects tokenizer metadata mismatches before runtime startup", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-gguf-test-"));
+    const target = path.join(root, "target.gguf");
+    const drafter = path.join(root, "drafter.gguf");
+    const binary = path.join(root, "llama-server");
+    fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
+    writeTinyGguf(target, { architecture: "qwen3", tokens: ["a", "b", "c"] });
+    writeTinyGguf(drafter, { architecture: "qwen3", tokens: ["x", "y", "z"] });
+
+    const report = validateDflashDrafterCompatibility({
+      targetModelPath: target,
+      drafterModelPath: drafter,
+      binaryPath: binary,
+    });
+
+    expect(report.compatible).toBe(false);
+    expect(report.reason).toContain("tokenizer metadata mismatch");
+    expect(report.tokenizerMismatches.map((m) => m.key)).toContain(
+      "tokenizer.ggml.tokens",
+    );
+  });
+
+  it("rejects dflash-draft architecture unless the binary advertises loader support", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-gguf-test-"));
+    const target = path.join(root, "target.gguf");
+    const drafter = path.join(root, "drafter.gguf");
+    const binary = path.join(root, "llama-server");
+    fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
+    writeTinyGguf(target, { architecture: "qwen3" });
+    writeTinyGguf(drafter, { architecture: "dflash-draft" });
+
+    const report = validateDflashDrafterCompatibility({
+      targetModelPath: target,
+      drafterModelPath: drafter,
+      binaryPath: binary,
+    });
+
+    expect(report.compatible).toBe(false);
+    expect(report.reason).toContain("dflash-draft");
+    expect(report.reason).toContain("does not advertise");
   });
 });
 

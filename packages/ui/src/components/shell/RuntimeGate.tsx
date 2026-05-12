@@ -430,6 +430,7 @@ export function RuntimeGate() {
   const pollTimerRef = React.useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
+  const provisionRunIdRef = React.useRef(0);
 
   // Remote sub-view
   const [remoteUrl, setRemoteUrl] = React.useState("");
@@ -603,6 +604,7 @@ export function RuntimeGate() {
   // ── Cleanup poll on unmount ───────────────────────────────────────
   React.useEffect(() => {
     return () => {
+      provisionRunIdRef.current += 1;
       if (pollTimerRef.current) {
         clearInterval(pollTimerRef.current);
         pollTimerRef.current = null;
@@ -616,9 +618,12 @@ export function RuntimeGate() {
   // setProvisionStatus / setError / finishAsCloud against a screen the user
   // had already left, racing with their next choice.
   React.useEffect(() => {
-    if (subView !== "cloud" && pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
+    if (subView !== "cloud") {
+      provisionRunIdRef.current += 1;
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
     }
   }, [subView]);
 
@@ -632,7 +637,8 @@ export function RuntimeGate() {
   // ── Completion helpers ─────────────────────────────────────────────
 
   const finishAsCloud = React.useCallback(
-    async (agent: CloudCompatAgent) => {
+    async (agent: CloudCompatAgent, shouldContinue?: () => boolean) => {
+      if (shouldContinue?.() === false) return;
       // Refuse to complete cloud onboarding without a usable agent URL —
       // persisting an active server with no apiBase puts the next boot
       // into an infinite loopback poll (`https://localhost/api/auth/status`)
@@ -641,6 +647,7 @@ export function RuntimeGate() {
       // instead of silently writing a broken active-server record.
       let apiBase = resolveCloudAgentApiBase(agent);
       if (!apiBase) {
+        if (shouldContinue?.() === false) return;
         setError(
           t("runtimegate.cloudAgentMissingUrl", {
             defaultValue:
@@ -650,12 +657,14 @@ export function RuntimeGate() {
         setCloudStage("retry");
         return;
       }
+      if (shouldContinue?.() === false) return;
       setCloudStage("connecting");
 
       let label = agent.agent_name;
       let accessToken: string | undefined;
       try {
         const launchRes = await client.launchCloudCompatAgent(agent.agent_id);
+        if (shouldContinue?.() === false) return;
         const launchConnection = launchRes.data?.connection;
         const launchApiBase = normalizeRuntimeUrl(launchConnection?.apiBase);
         const launchToken = launchConnection?.token?.trim();
@@ -676,6 +685,7 @@ export function RuntimeGate() {
           label = launchRes.data.agentName;
         }
       } catch (err) {
+        if (shouldContinue?.() === false) return;
         setError(
           displayErrorMessage(
             err,
@@ -688,6 +698,7 @@ export function RuntimeGate() {
         return;
       }
 
+      if (shouldContinue?.() === false) return;
       savePersistedActiveServer({
         id: `cloud:${agent.agent_id}`,
         kind: "cloud",
@@ -932,6 +943,9 @@ export function RuntimeGate() {
 
   const provisionAndConnect = React.useCallback(
     async (agentId: string, existingJobId?: string) => {
+      const runId = provisionRunIdRef.current + 1;
+      provisionRunIdRef.current = runId;
+      const isCurrentRun = () => provisionRunIdRef.current === runId;
       if (pollTimerRef.current) {
         clearInterval(pollTimerRef.current);
         pollTimerRef.current = null;
@@ -959,6 +973,7 @@ export function RuntimeGate() {
         let startStatusTimer: ReturnType<typeof setTimeout> | undefined;
         try {
           startStatusTimer = setTimeout(() => {
+            if (!isCurrentRun()) return;
             setProvisionStatus(
               t("runtimegate.waitingForProvisioningJob", {
                 defaultValue: "Waiting for Cloud to accept provisioning...",
@@ -973,6 +988,7 @@ export function RuntimeGate() {
             }),
           );
         } catch (err) {
+          if (!isCurrentRun()) return;
           setError(
             displayErrorMessage(
               err,
@@ -986,6 +1002,7 @@ export function RuntimeGate() {
         } finally {
           if (startStatusTimer) clearTimeout(startStatusTimer);
         }
+        if (!isCurrentRun()) return;
         if (!provRes.success) {
           setError(
             provRes.error ||
@@ -1021,10 +1038,11 @@ export function RuntimeGate() {
       const fetchAgentWithUrl = async (
         deadlineMs: number,
       ): Promise<CloudCompatAgent | null> => {
-        while (Date.now() < deadlineMs) {
+        while (isCurrentRun() && Date.now() < deadlineMs) {
           const statusRes = await client
             .getCloudCompatAgentStatus(agentId)
             .catch(() => null);
+          if (!isCurrentRun()) return null;
           if (statusRes?.success && statusRes.data) {
             const s = statusRes.data;
             if (s.status === "failed" || s.status === "suspended") {
@@ -1048,6 +1066,7 @@ export function RuntimeGate() {
               const agentRes = await client
                 .getCloudCompatAgent(agentId)
                 .catch(() => null);
+              if (!isCurrentRun()) return null;
               if (agentRes?.success) {
                 return {
                   ...agentRes.data,
@@ -1061,6 +1080,7 @@ export function RuntimeGate() {
           const agentRes = await client
             .getCloudCompatAgent(agentId)
             .catch(() => null);
+          if (!isCurrentRun()) return null;
           if (agentRes?.success) {
             const agent = agentRes.data;
             if (agent.bridge_url || agent.webUiUrl || agent.web_ui_url) {
@@ -1089,16 +1109,18 @@ export function RuntimeGate() {
                 : null,
             )
             .catch(() => null);
+          if (!isCurrentRun()) return;
           if (readyFromProvisionUrl) {
-            await finishAsCloud(readyFromProvisionUrl);
+            await finishAsCloud(readyFromProvisionUrl, isCurrentRun);
             return;
           }
         }
         const ready = await fetchAgentWithUrl(
           Date.now() + AGENT_URL_WAIT_DEADLINE_MS,
         );
+        if (!isCurrentRun()) return;
         if (ready) {
-          await finishAsCloud(ready);
+          await finishAsCloud(ready, isCurrentRun);
         } else {
           setError(
             t("runtimegate.agentNotReady", {
@@ -1113,6 +1135,7 @@ export function RuntimeGate() {
 
       let consecutivePollFailures = 0;
       const stopPollingWithError = (message: string) => {
+        if (!isCurrentRun()) return;
         if (pollTimerRef.current) clearInterval(pollTimerRef.current);
         pollTimerRef.current = null;
         setError(message);
@@ -1122,6 +1145,7 @@ export function RuntimeGate() {
         Date.now() +
         Math.max(PROVISION_JOB_WAIT_DEADLINE_MS, provisionExpectedDurationMs);
       const pollProvisionJob = async () => {
+        if (!isCurrentRun()) return;
         if (Date.now() >= provisionJobDeadlineMs) {
           stopPollingWithError(
             t("runtimegate.provisioningStillRunning", {
@@ -1135,6 +1159,7 @@ export function RuntimeGate() {
         try {
           jobRes = await client.getCloudCompatJobStatus(jobId);
         } catch (err) {
+          if (!isCurrentRun()) return;
           consecutivePollFailures += 1;
           if (consecutivePollFailures >= 3) {
             stopPollingWithError(
@@ -1148,6 +1173,7 @@ export function RuntimeGate() {
           return;
         }
 
+        if (!isCurrentRun()) return;
         if (!jobRes.success) {
           consecutivePollFailures += 1;
           if (consecutivePollFailures >= 3) {
@@ -1181,11 +1207,13 @@ export function RuntimeGate() {
                   )
                   .catch(() => null)
               : null;
+          if (!isCurrentRun()) return;
           const ready =
             readyFromJob ??
             (await fetchAgentWithUrl(Date.now() + AGENT_URL_WAIT_DEADLINE_MS));
+          if (!isCurrentRun()) return;
           if (ready) {
-            await finishAsCloud(ready);
+            await finishAsCloud(ready, isCurrentRun);
           } else {
             setError(
               t("runtimegate.agentNotReady", {
@@ -1206,6 +1234,7 @@ export function RuntimeGate() {
       };
 
       void pollProvisionJob();
+      if (!isCurrentRun()) return;
       pollTimerRef.current = setInterval(() => {
         void pollProvisionJob();
       }, pollingIntervalMs ?? 2500);
@@ -1275,7 +1304,7 @@ export function RuntimeGate() {
             await provisionAndConnect(primary.agent_id);
             return;
           }
-          await finishAsCloud(primary);
+          await finishAsCloud(primary, () => !cancelled);
           return;
         }
       }

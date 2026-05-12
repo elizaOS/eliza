@@ -39,6 +39,8 @@ export const CacheKeys = {
   app: {
     /** Cache app by ID */
     byId: (appId: string) => `app:${appId}:v1`,
+    /** Short-lived app-auth authorization code, keyed by code hash */
+    authCode: (codeHash: string) => `app:auth-code:${codeHash}:v1`,
     /** Cache app by slug */
     bySlug: (slug: string) => `app:slug:${slug}:v1`,
     /** Cache app by API key ID (for fast auth lookups) */

@@ -115,6 +115,17 @@ function resolveVoiceSkeletonStreamFields(
   return fields;
 }
 
+function skeletonHasFreeStringKey(
+  skeleton: ResponseSkeleton | undefined,
+  key: string,
+): boolean {
+  return (
+    skeleton?.spans.some(
+      (span) => span.kind === "free-string" && span.key === key,
+    ) ?? false
+  );
+}
+
 /**
  * Idle-unload timeout (J3). After this long with no `useModel` activity
  * (text generation, embeddings, voice turns) the engine unloads the active
@@ -751,7 +762,7 @@ export class LocalInferenceEngine {
     null;
   /**
    * Lazily-started embedding `llama-server` sidecar for the active bundle
-   * (over the text GGUF on `0_6b`, over the `embedding/` GGUF on larger
+   * (over the text GGUF on `0_8b`, over the `embedding/` GGUF on larger
    * tiers). `null` until the first `embed()` call. Torn down on `unload()`.
    */
   private embeddingServer: EmbeddingServer | null = null;
@@ -1402,7 +1413,24 @@ export class LocalInferenceEngine {
     ]);
 
     const micSource = opts.micSource ?? new DesktopMicSource();
-    const vad = opts.vad ?? (await vadMod.createSileroVadDetector());
+    const vad =
+      opts.vad ??
+      (await vadMod.createSileroVadDetector({
+        bundleRoot: bridge.bundlePath(),
+        ffi: bridge.ffi,
+        ctx: bridge.ffi
+          ? () => {
+              const ctx = bridge.ffiCtx;
+              if (ctx === null) {
+                throw new VoiceStartupError(
+                  "missing-ffi",
+                  "[voice] Cannot initialize native VAD: fused FFI context is not loaded.",
+                );
+              }
+              return ctx;
+            }
+          : undefined,
+      }));
 
     // ASR — throws `AsrUnavailableError` when neither the fused decoder nor
     // whisper.cpp is present. Gated on the VAD so silent frames aren't
@@ -1419,6 +1447,7 @@ export class LocalInferenceEngine {
           ((roomId: string) => {
             void this.prewarmConversation(roomId, "");
           }),
+        playFirstAudioFiller: () => this.playFirstAudioFiller(),
         generate: opts.generate,
       },
       {
@@ -1631,10 +1660,10 @@ export class LocalInferenceEngine {
 
   /**
    * Build the local-embedding route for an activated Eliza-1 bundle.
-   * On `0_6b` the embedding model is the text backbone with `--pooling
-   * last` (no separate GGUF); on `1_7b`/`9b`/`27b`/`27b-256k`/`27b-1m` a
+   * On `0_8b` the embedding model is the text backbone with `--pooling
+   * last` (no separate GGUF); on `2b`/`9b`/`27b`/`27b-256k`/`27b-1m` a
    * dedicated 1024-dim Matryoshka `embedding/` region is used. See
-   * AGENTS.md §1. Throws `VoiceStartupError` when a non-`0_6b` tier is
+   * AGENTS.md §1. Throws `VoiceStartupError` when a non-`0_8b` tier is
    * missing its dedicated region — no fallback to pooled text (which would
    * regress the dimension contract).
    */
@@ -1671,8 +1700,8 @@ export class LocalInferenceEngine {
    * Embed text via the active Eliza-1 bundle's local embedding model.
    *
    * The first call lazily starts a dedicated embedding `llama-server`
-   * sidecar (over the text backbone GGUF on `0_6b`, over the dedicated
-   * `embedding/eliza-1-embedding.gguf` on `1_7b`+) launched with
+   * sidecar (over the text backbone GGUF on `0_8b`, over the dedicated
+   * `embedding/eliza-1-embedding.gguf` on `2b`+) launched with
    * `--embeddings --pooling last`; subsequent calls reuse it. The result
    * is Matryoshka-truncated to `dim` (default 1024) and L2-normalized.
    *
@@ -1733,7 +1762,23 @@ export class LocalInferenceEngine {
 
     const bridge = this.voiceBridge;
     const voiceOn = bridge?.lifecycle.current().kind === "voice-on";
-    if (!voiceOn || !bridge) {
+    const structuredVoiceFields =
+      args.streamStructured === true
+        ? resolveVoiceSkeletonStreamFields(args.responseSkeleton)
+        : [];
+    const hasShouldRespondGate =
+      args.streamStructured === true &&
+      skeletonHasFreeStringKey(args.responseSkeleton, "shouldRespond");
+    const extractorStreamFields =
+      hasShouldRespondGate && !structuredVoiceFields.includes("shouldRespond")
+        ? ["shouldRespond", ...structuredVoiceFields]
+        : structuredVoiceFields;
+    const userVisibleVoice =
+      args.voiceOutput === "user-visible" ||
+      (args.voiceOutput === undefined &&
+        (typeof args.onTextChunk === "function" ||
+          structuredVoiceFields.length > 0));
+    if (!voiceOn || !bridge || !userVisibleVoice) {
       return {
         args,
         finish: async () => {},
@@ -1771,23 +1816,51 @@ export class LocalInferenceEngine {
     const callerOnTextChunk = args.onTextChunk;
     const callerOnVerifierEvent = args.onVerifierEvent;
     let structuredVoicePush = Promise.resolve();
-    const structuredVoiceFields =
-      args.streamStructured === true
-        ? resolveVoiceSkeletonStreamFields(args.responseSkeleton)
-        : [];
+    let shouldRespondText = "";
+    let shouldRespondAllowsVoice: boolean | null = hasShouldRespondGate
+      ? null
+      : true;
+    const pendingStructuredReplyChunks: string[] = [];
+    const pushStructuredVoiceChunk = (chunk: string) => {
+      streamedAny = true;
+      const token: TextToken = { index: nextIndex++, text: chunk };
+      structuredVoicePush = structuredVoicePush.then(() =>
+        bridge.pushAcceptedToken(token),
+      );
+    };
     const structuredVoiceExtractor =
       structuredVoiceFields.length > 0 && args.responseSkeleton
         ? new ResponseSkeletonStreamExtractor({
             skeleton: args.responseSkeleton,
-            streamFields: structuredVoiceFields,
+            streamFields: extractorStreamFields,
             abortSignal: bargeAbort.signal,
-            onChunk: (chunk: string) => {
+            onChunk: (chunk: string, field?: string) => {
               if (chunk.length === 0) return;
-              streamedAny = true;
-              const token: TextToken = { index: nextIndex++, text: chunk };
-              structuredVoicePush = structuredVoicePush.then(() =>
-                bridge.pushAcceptedToken(token),
-              );
+              if (field === "shouldRespond") {
+                shouldRespondText += chunk;
+                const normalized = shouldRespondText
+                  .trim()
+                  .toUpperCase()
+                  .replace(/^[^A-Z]+/, "");
+                if (normalized.startsWith("IG") || normalized.startsWith("ST")) {
+                  shouldRespondAllowsVoice = false;
+                  pendingStructuredReplyChunks.length = 0;
+                } else if (normalized.startsWith("RE")) {
+                  shouldRespondAllowsVoice = true;
+                  for (const pending of pendingStructuredReplyChunks.splice(0)) {
+                    pushStructuredVoiceChunk(pending);
+                  }
+                }
+                return;
+              }
+              if (hasShouldRespondGate) {
+                if (shouldRespondAllowsVoice === false) return;
+                if (shouldRespondAllowsVoice !== true) {
+                  pendingStructuredReplyChunks.push(chunk);
+                  return;
+                }
+              }
+              pushStructuredVoiceChunk(chunk);
             },
           })
         : null;

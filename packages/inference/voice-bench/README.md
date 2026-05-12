@@ -26,15 +26,13 @@ mic → ASR → drafter ∥ verifier → chunker → TTS pipeline (see
 ## Running
 
 ```bash
-# Run all scenarios against the mock driver and write JSON
-bun run --cwd packages/inference/voice-bench bench \
-  --bundle eliza-1-1.7b --backend mock --scenario all --runs 3 \
-  --output run.json
+# The mock-only CLI path is disabled. Use the real VoiceBench runner:
+packages/benchmarks/voicebench/run.sh --profile=groq \
+  --dataset=packages/benchmarks/voicebench/fixtures/manifest-groq.json
 
 # Compare to a recorded baseline; exit 1 on regression
-bun run --cwd packages/inference/voice-bench bench \
-  --baseline baselines/M4Max-metal.json \
-  --output run.json
+packages/benchmarks/voicebench/run.sh --profile=elevenlabs \
+  --dataset=packages/benchmarks/voicebench/fixtures/manifest-elevenlabs.json
 ```
 
 ### Running on GPU (single-GPU tier)
@@ -125,7 +123,7 @@ baseline:
 
 ```bash
 bun run --cwd packages/inference/voice-bench bench \
-  --bundle eliza-1-1.7b --backend metal --runs 5 \
+  --bundle eliza-1-2b --backend metal --runs 5 \
   --output packages/inference/voice-bench/baselines/M4Max-metal.json
 ```
 
@@ -133,8 +131,8 @@ Commit the JSON. Future PRs compare against it.
 
 ## Wiring the real pipeline (follow-up)
 
-The current build ships **only** the `MockPipelineDriver`. The real
-pipeline driver is a follow-up — the contract is the
+The runnable mock-only CLI is disabled. The `MockPipelineDriver` remains
+test-only scaffolding; the real pipeline driver is a follow-up — the contract is the
 `PipelineDriver` interface in `src/types.ts`. To wire it:
 
 1. Construct a `VoicePipeline` (`packages/app-core/.../voice/pipeline.ts`)
@@ -160,8 +158,9 @@ pipeline driver is a follow-up — the contract is the
 5. Register the driver under a backend name (`metal`, `cuda`, `vulkan`,
    `cpu`) and add a case in `bin/voice-bench`.
 
-`MockPipelineDriver` is a faithful skeleton of the timing model — copy
-its structure for the real driver.
+The real driver should emit the same event sequence as the unit-test
+driver, but benchmark artifacts produced by test drivers are not release
+evidence.
 
 ## Known limitations
 
@@ -171,8 +170,8 @@ its structure for the real driver.
   corpus.
 - **GPU utilization is not yet sampled.** The Metal/Vulkan counter hooks
   are TBD; the field is optional in `BenchMetrics`.
-- **DFlash stats are driver-supplied.** The mock returns dummy values;
-  the real driver must hook into `dflash-server`.
+- **DFlash stats are driver-supplied.** The real driver must hook into
+  `dflash-server`; mock values are not accepted for release evidence.
 - **Single-process only.** The harness runs the driver in-process. For
   cold-start measurement that includes shell startup, the runner needs a
   subprocess wrapper — a follow-up.

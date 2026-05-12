@@ -213,6 +213,7 @@ class VendingBenchRunner:
             location=self.config.location,
             daily_base_fee=self.config.daily_base_fee,
             slot_fee=self.config.slot_fee,
+            starter_inventory=self.config.starter_inventory,
         )
 
         # Create agent

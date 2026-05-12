@@ -75,7 +75,11 @@ class BFCLRunner:
             or os.environ.get("BENCHMARK_AGENT")
             or ""
         ).strip().lower()
-        effective_provider = "hermes" if harness == "hermes" and provider == "eliza" else provider
+        effective_provider = (
+            harness
+            if harness in {"hermes", "openclaw"} and provider == "eliza"
+            else provider
+        )
 
         if use_mock_agent:
             self.agent: BFCLAgent | MockBFCLAgent = MockBFCLAgent(config)
@@ -93,6 +97,17 @@ class BFCLRunner:
             from hermes_adapter.bfcl import HermesBFCLAgent
 
             self.agent = HermesBFCLAgent(model_name=model)
+            self._model_name = model or self.agent.model_name
+        elif effective_provider == "openclaw":
+            import sys
+            from pathlib import Path
+
+            adapter_path = Path(__file__).resolve().parents[1] / "openclaw-adapter"
+            if adapter_path.exists() and str(adapter_path) not in sys.path:
+                sys.path.insert(0, str(adapter_path))
+            from openclaw_adapter.bfcl import OpenClawBFCLAgent
+
+            self.agent = OpenClawBFCLAgent(model_name=model)
             self._model_name = model or self.agent.model_name
         elif effective_provider == "eliza":
             # Route LLM calls through the elizaOS TypeScript benchmark bridge.

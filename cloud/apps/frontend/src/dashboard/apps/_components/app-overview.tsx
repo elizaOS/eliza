@@ -36,7 +36,7 @@ import {
   TrendingUp,
   XCircle,
 } from "lucide-react";
-import { type JSX, useEffect, useState } from "react";
+import { type JSX, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -73,6 +73,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [monetizationEnabled, setMonetizationEnabled] = useState<boolean | null>(null);
   const [totalEarnings, setTotalEarnings] = useState<number | null>(null);
+  const hideApiKeyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -81,17 +82,28 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
     setTimeout(() => setCopiedItem(null), 2000);
   };
 
-  useEffect(() => {
-    if (showApiKey) {
-      setDisplayApiKey(showApiKey);
-      setShowKey(true);
-      const timer = setTimeout(() => {
-        setDisplayApiKey("");
-        setShowKey(false);
-      }, 60000);
-      return () => clearTimeout(timer);
+  const revealApiKey = useCallback((apiKey: string) => {
+    if (hideApiKeyTimerRef.current) {
+      clearTimeout(hideApiKeyTimerRef.current);
     }
-  }, [showApiKey]);
+    setDisplayApiKey(apiKey);
+    setShowKey(true);
+    hideApiKeyTimerRef.current = setTimeout(() => {
+      setDisplayApiKey("");
+      setShowKey(false);
+      hideApiKeyTimerRef.current = null;
+    }, 60000);
+  }, []);
+
+  useEffect(() => {
+    if (showApiKey) revealApiKey(showApiKey);
+  }, [showApiKey, revealApiKey]);
+
+  useEffect(() => {
+    return () => {
+      if (hideApiKeyTimerRef.current) clearTimeout(hideApiKeyTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const fetchMonetization = async () => {
@@ -127,8 +139,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
       if (typeof data.apiKey !== "string" || data.apiKey.length === 0) {
         throw new Error("Regeneration response did not include an API key");
       }
-      setDisplayApiKey(data.apiKey);
-      setShowKey(true);
+      revealApiKey(data.apiKey);
       toast.success("API key regenerated");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to regenerate");

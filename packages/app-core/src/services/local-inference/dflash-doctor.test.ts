@@ -4,23 +4,6 @@ vi.mock("./registry", () => ({
   listInstalledModels: vi.fn(async () => []),
 }));
 
-vi.mock("./dflash-server", () => {
-  return {
-    getDflashRuntimeStatus: () => ({
-      enabled: true,
-      required: false,
-      binaryPath: "/tmp/llama-server-stub",
-      reason: "ok",
-      capabilities: null,
-    }),
-    dflashLlamaServer: {
-      hasLoadedModel: () => false,
-      currentModelPath: () => null,
-      getMetrics: async () => null,
-    },
-  };
-});
-
 afterEach(() => {
   vi.restoreAllMocks();
 });

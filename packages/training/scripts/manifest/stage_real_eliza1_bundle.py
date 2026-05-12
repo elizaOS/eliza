@@ -273,7 +273,7 @@ def _write_licenses(bundle_dir: Path, *, tier: str, text_lineage_repo: str, forc
     if tier in EMBEDDING_TIERS:
         texts["LICENSE.embedding"] = (
             "Eliza-1 embedding model license notice.\n\n"
-            "The text-embedding artifact is Qwen3-Embedding-0.6B (Apache-2.0, 1024-dim Matryoshka, 32k ctx). "
+            "The text-embedding artifact is Qwen3-Embedding-0.8B (Apache-2.0, 1024-dim Matryoshka, 32k ctx). "
             "Lineage recorded in eliza-1.manifest.json's lineage.embedding block.\n\n"
             "Apache License 2.0 — https://www.apache.org/licenses/LICENSE-2.0\n"
         )
@@ -502,7 +502,7 @@ def _write_lineage(*, bundle_dir: Path, tier: str, text_repo: str, text_rev: str
     if has_vision and "vision" not in data:
         data["vision"] = {"base": f"{text_repo}-vision-tower@{text_rev}", "license": "apache-2.0"}
     if has_embedding:
-        data["embedding"] = {"base": "Qwen/Qwen3-Embedding-0.6B", "license": "apache-2.0"}
+        data["embedding"] = {"base": "Qwen/Qwen3-Embedding-0.8B", "license": "apache-2.0"}
     _json_write(path, data)
     out: dict[str, LineageEntry] = {}
     for slot, spec in data.items():
@@ -574,7 +574,7 @@ def _write_release_evidence(*, bundle_dir: Path, tier: str, generated_at: str,
         license_files.append("licenses/LICENSE.embedding")
     _json_write(bundle_dir / "evidence" / "release.json", {
         "schemaVersion": 1, "generatedAt": generated_at, "tier": tier,
-        "repoId": f"elizaos/eliza-1-{tier}", "releaseState": "weights-staged",
+        "repoId": "elizaos/eliza-1", "repoPath": f"bundles/{tier}", "releaseState": "weights-staged",
         "publishEligible": False, "defaultEligible": False,
         "final": {
             "weights": True,             # the real release weights are in the bundle
@@ -596,7 +596,7 @@ def _write_release_evidence(*, bundle_dir: Path, tier: str, generated_at: str,
         "licenseFiles": license_files,
         "kernelDispatchReports": {b: f"evals/{b}_dispatch.json" for b in SUPPORTED_BACKENDS_BY_TIER[tier]},
         "platformEvidence": {"linux-x64-cpu": "evidence/platform/linux-x64-cpu.json"},
-        "hf": {"repoId": f"elizaos/eliza-1-{tier}", "status": "blocked-weights-staged"},
+        "hf": {"repoId": "elizaos/eliza-1", "pathPrefix": f"bundles/{tier}", "status": "blocked-weights-staged"},
         "publishBlockingReasons": list(reasons),
     })
 
@@ -646,15 +646,15 @@ def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
         )
         assets_mod.stage_assets(assets_args)
 
-    # 2. Stage embedding (non-0_8b) — Qwen3-Embedding-0.6B GGUF.
+    # 2. Stage embedding (non-0_8b) — Qwen3-Embedding-0.8B GGUF.
     has_embedding = tier in EMBEDDING_TIERS
     if has_embedding and not args.skip_assets:
         try:
             from huggingface_hub import HfApi, hf_hub_download
             api = HfApi()
-            rev = str(api.model_info("Qwen/Qwen3-Embedding-0.6B-GGUF").sha)
-            cached = Path(hf_hub_download(repo_id="Qwen/Qwen3-Embedding-0.6B-GGUF",
-                                          filename="Qwen3-Embedding-0.6B-Q8_0.gguf", revision=rev,
+            rev = str(api.model_info("Qwen/Qwen3-Embedding-0.8B-GGUF").sha)
+            cached = Path(hf_hub_download(repo_id="Qwen/Qwen3-Embedding-0.8B-GGUF",
+                                          filename="Qwen3-Embedding-0.8B-Q8_0.gguf", revision=rev,
                                           repo_type="model"))
             dest = bundle_dir / "embedding" / "eliza-1-embedding.gguf"
             dest.parent.mkdir(parents=True, exist_ok=True)

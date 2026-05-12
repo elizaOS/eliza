@@ -79,7 +79,7 @@ print_android_usb_hint() {
   matches="$(system_profiler SPUSBDataType 2>/dev/null | grep -Ei -B3 -A8 'android|pixel|google|samsung|oneplus|motorola|moto|qualcomm|xiaomi|huawei|adb|mtp' || true)"
   if [[ -n "$matches" ]]; then
     echo "[android-vulkan-smoke] PREFLIGHT usb_android_hint=present"
-    printf '%s\n' "$matches" | head -120
+    printf '%s\n' "$matches" | awk 'NR <= 120 { print }'
     return 0
   fi
 
@@ -270,7 +270,7 @@ fi
 VKJSON="$(adb_cmd shell cmd gpu vkjson 2>/dev/null || true)"
 if [[ -n "$VKJSON" ]]; then
   echo "[android-vulkan-smoke] cmd gpu vkjson:"
-  printf '%s\n' "$VKJSON" | head -120
+  printf '%s\n' "$VKJSON" | awk 'NR <= 120 { print }'
 else
   echo "[android-vulkan-smoke] cmd gpu vkjson unavailable; fixture harness will enumerate Vulkan directly"
 fi

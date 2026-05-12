@@ -86,12 +86,12 @@ describe("Eliza-1 manifest schema constants", () => {
 
   it("uses canonical small-tier ids and tokenizer family", () => {
     expect(ELIZA_1_TOKENIZER_FAMILY).toBe("qwen35");
-    expect(ELIZA_1_TIERS.slice(0, 3)).toEqual(["0_6b", "1_7b", "4b"]);
+    expect(ELIZA_1_TIERS.slice(0, 3)).toEqual(["0_8b", "2b", "4b"]);
     expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
-      expect.arrayContaining(["0_6b", "1_7b"]),
+      expect.arrayContaining(["0_8b", "2b"]),
     );
-    const staleSmallTier = "0_" + "8b";
-    const staleMobileTier = "2" + "b";
+    const staleSmallTier = "0_" + "6b";
+    const staleMobileTier = "1_" + "7b";
     expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).not.toEqual(
       expect.arrayContaining([staleSmallTier, staleMobileTier]),
     );
@@ -306,8 +306,8 @@ describe("validateManifest — contract rejections", () => {
   });
 
   it("does not require cuda or rocm for tiers that don't ship on cuda/rocm", () => {
-    const m = baseManifest("0_6b");
-    // 0.6B tier doesn't ship on cuda/rocm; failures there should not block.
+    const m = baseManifest("0_8b");
+    // 0.8B tier doesn't ship on cuda/rocm; failures there should not block.
     m.kernels.verifiedBackends.cuda = {
       status: "fail",
       atCommit: "abc1234",

@@ -30,6 +30,9 @@ import type {
   VadEvent,
   VadEventSource,
   VoiceInputSource,
+  VoiceSegment,
+  VoiceSpeaker,
+  VoiceTurnMetadata,
 } from "./types";
 
 /* ---- test doubles -------------------------------------------------- */
@@ -218,6 +221,104 @@ describe("WhisperCppStreamingTranscriber", () => {
     expect(events.find((e) => e.kind === "final")).toMatchObject({
       kind: "final",
       update: { source },
+    });
+    t.dispose();
+  });
+
+  it("preserves owner voice-imprint attribution evidence in transcript metadata for storage", async () => {
+    const source: VoiceInputSource = {
+      kind: "local_mic",
+      deviceId: "built-in-mic",
+      roomId: "room-owner",
+    };
+    const speaker: VoiceSpeaker = {
+      id: "entity-owner",
+      label: "Owner",
+      displayName: "Owner",
+      source,
+      imprintClusterId: "cluster-owner",
+      imprintObservationId: "obs-owner-voice-1",
+      entityId: "entity-owner",
+      confidence: 0.92,
+      isLocalUser: true,
+      metadata: {
+        attributionOnly: true,
+        evidenceKind: "voice_imprint_attribution",
+        identityAuthority: false,
+        synthesisAuthorization: false,
+      },
+    };
+    const segments: VoiceSegment[] = [
+      {
+        id: "seg-owner-voice-1",
+        text: "owner voice sample",
+        startMs: 0,
+        endMs: 1200,
+        source,
+        speaker,
+        speakerId: speaker.id,
+        confidence: 0.9,
+        metadata: {
+          attributionOnly: true,
+          evidenceKind: "voice_imprint_attribution",
+          identityAuthority: false,
+          synthesisAuthorization: false,
+          diarizationMode: "attribution_only",
+          imprintClusterId: "cluster-owner",
+          imprintObservationId: "obs-owner-voice-1",
+          entityId: "entity-owner",
+        },
+      },
+    ];
+    const turn: VoiceTurnMetadata = {
+      turnId: "turn-owner-voice-1",
+      source,
+      primarySpeaker: speaker,
+      segments,
+      diarization: {
+        provider: "local",
+        model: "eliza-voice-imprint-v1",
+        metadata: { mode: "attribution_only" },
+      },
+    };
+    const t = new WhisperCppStreamingTranscriber({
+      decoder: async () => "owner voice sample",
+      metadata: { source, speaker, turn },
+      windowSeconds: 100,
+      stepSeconds: 0.01,
+    });
+    const events = collect(t);
+    t.feed({
+      pcm: new Float32Array(Math.round(0.02 * ASR_SAMPLE_RATE)).fill(0.05),
+      sampleRate: ASR_SAMPLE_RATE,
+      timestampMs: 0,
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    const final = await t.flush();
+
+    expect(final).toMatchObject({
+      source,
+      speaker,
+      segments,
+      turn,
+    });
+    expect(final.segments?.[0].metadata).toMatchObject({
+      attributionOnly: true,
+      evidenceKind: "voice_imprint_attribution",
+      identityAuthority: false,
+      synthesisAuthorization: false,
+      diarizationMode: "attribution_only",
+    });
+    expect(events.find((e) => e.kind === "final")).toMatchObject({
+      kind: "final",
+      update: {
+        speaker,
+        segments,
+        turn: {
+          primarySpeaker: speaker,
+          segments,
+        },
+      },
     });
     t.dispose();
   });

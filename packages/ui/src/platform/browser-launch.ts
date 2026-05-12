@@ -1,8 +1,16 @@
 import { client } from "../api";
+import { getBootConfig } from "../config/boot-config-store";
 import {
   createPersistedActiveServer,
   savePersistedActiveServer,
 } from "../state/persistence";
+
+const TRUSTED_CLOUD_LAUNCH_HOSTS = new Set([
+  "elizacloud.ai",
+  "www.elizacloud.ai",
+  "app.elizacloud.ai",
+  "api.elizacloud.ai",
+]);
 
 function getSearchParams(): URLSearchParams {
   if (typeof window === "undefined") {
@@ -33,6 +41,24 @@ function isCurrentHost(host: string): boolean {
   return typeof window !== "undefined" && host === window.location.hostname;
 }
 
+function isConfiguredCloudHost(host: string): boolean {
+  const configured = getBootConfig().cloudApiBase?.trim();
+  if (!configured) return false;
+  try {
+    return host === new URL(configured).hostname;
+  } catch {
+    return false;
+  }
+}
+
+function isTrustedCloudLaunchHost(host: string): boolean {
+  const normalized = host.toLowerCase();
+  return (
+    TRUSTED_CLOUD_LAUNCH_HOSTS.has(normalized) ||
+    isConfiguredCloudHost(normalized)
+  );
+}
+
 function normalizeLaunchApiBase(
   apiBase: string,
   options: { allowPublicHttps?: boolean } = {},
@@ -53,6 +79,7 @@ function normalizeLaunchApiBase(
       (parsed.protocol === "https:" &&
         (options.allowPublicHttps ||
           isAllowedHttpHost(parsed.hostname) ||
+          isConfiguredCloudHost(parsed.hostname) ||
           isCurrentHost(parsed.hostname))) ||
       (parsed.protocol === "http:" && isAllowedHttpHost(parsed.hostname))
     ) {
@@ -69,13 +96,20 @@ function normalizeLaunchApiBase(
 
 function normalizeLaunchBaseUrl(baseUrl: string): string {
   const parsed = new URL(baseUrl);
-  if (parsed.protocol !== "https:" && !isAllowedHttpHost(parsed.hostname)) {
-    throw new Error("Rejected invalid cloud launch base");
+  if (
+    (parsed.protocol === "https:" &&
+      (isAllowedHttpHost(parsed.hostname) ||
+        isCurrentHost(parsed.hostname) ||
+        isTrustedCloudLaunchHost(parsed.hostname))) ||
+    (parsed.protocol === "http:" && isAllowedHttpHost(parsed.hostname))
+  ) {
+    parsed.pathname = "";
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString().replace(/\/+$/, "");
   }
-  parsed.pathname = "";
-  parsed.search = "";
-  parsed.hash = "";
-  return parsed.toString().replace(/\/+$/, "");
+
+  throw new Error("Rejected invalid cloud launch base");
 }
 
 function stripLaunchParams(): void {

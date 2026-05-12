@@ -167,6 +167,7 @@ export class VoiceScheduler {
   private paused = false;
   private agentSpeakingUntilMs = 0;
   private agentSpeakingTimer: ReturnType<typeof setTimeout> | null = null;
+  private phraseFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     config: SchedulerConfig,
@@ -207,8 +208,11 @@ export class VoiceScheduler {
     const acc: AcceptedToken = { ...token, acceptedAt };
     const phrase = this.chunker.push(acc);
     if (phrase) {
+      this.clearPhraseFlushTimer();
       await this.dispatchPhrase(phrase);
+      return;
     }
+    this.armPhraseFlushTimer();
   }
 
   async reject(range: RejectedTokenRange): Promise<void> {
@@ -216,6 +220,7 @@ export class VoiceScheduler {
     // packed into a phrase) so the verifier's correction is not glued
     // onto stale text.
     this.chunker.dropPendingFrom(range.fromIndex);
+    this.armPhraseFlushTimer();
     const events = this.rollback.onRejected(range);
     let cancelledStreamingInFlight = false;
     for (const ev of events) {
@@ -241,6 +246,7 @@ export class VoiceScheduler {
   }
 
   async flushPending(): Promise<void> {
+    this.clearPhraseFlushTimer();
     const tail = this.chunker.flushPending();
     if (tail) {
       await this.dispatchPhrase(tail);
@@ -421,6 +427,7 @@ export class VoiceScheduler {
   cancelPendingTts(): void {
     this.paused = false;
     this.clearAgentSpeaking();
+    this.clearPhraseFlushTimer();
     this.ringBuffer.drain();
     this.chunker.reset();
     for (const inflight of this.inFlight.values()) {
@@ -712,6 +719,7 @@ export class VoiceScheduler {
     const inFlightPhrases = Array.from(this.inFlight.values());
     this.paused = false;
     this.clearAgentSpeaking();
+    this.clearPhraseFlushTimer();
     this.ringBuffer.drain();
     this.chunker.reset();
     for (const inflight of inFlightPhrases) {
@@ -741,6 +749,32 @@ export class VoiceScheduler {
 
   private emitTelemetry(event: VoiceSchedulerTelemetryEvent): void {
     this.events.onTelemetry?.(event);
+  }
+
+  private armPhraseFlushTimer(): void {
+    this.clearPhraseFlushTimer();
+    const delayMs = this.chunker.msUntilTimeBudget();
+    if (!Number.isFinite(delayMs)) return;
+    this.phraseFlushTimer = setTimeout(() => {
+      this.phraseFlushTimer = null;
+      const phrase = this.chunker.flushIfTimeBudgetExceeded();
+      if (!phrase) {
+        this.armPhraseFlushTimer();
+        return;
+      }
+      void this.dispatchPhrase(phrase).catch((err) => {
+        setTimeout(() => {
+          throw err;
+        }, 0);
+      });
+    }, Math.max(0, delayMs));
+  }
+
+  private clearPhraseFlushTimer(): void {
+    if (this.phraseFlushTimer) {
+      clearTimeout(this.phraseFlushTimer);
+      this.phraseFlushTimer = null;
+    }
   }
 
   private armAgentSpeakingTimer(): void {

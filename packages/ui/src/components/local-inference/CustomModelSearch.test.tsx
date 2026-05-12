@@ -102,7 +102,7 @@ describe("CustomModelSearch", () => {
     expect(onDownload).toHaveBeenCalledWith(hfModel);
   });
 
-  it("searches ModelScope explicitly but disables direct downloads", async () => {
+  it("searches ModelScope explicitly and routes downloads through the hub downloader", async () => {
     vi.useFakeTimers();
     const onDownload = vi.fn();
     const msModel: CatalogModel = {
@@ -132,10 +132,10 @@ describe("CustomModelSearch", () => {
     );
     expect(screen.getByText("ModelScope Qwen3.5 0.8B GGUF")).toBeTruthy();
     const download = screen.getByRole("button", {
-      name: "Download unavailable",
+      name: "Download",
     }) as HTMLButtonElement;
-    expect(download.disabled).toBe(true);
+    expect(download.disabled).toBe(false);
     fireEvent.click(download);
-    expect(onDownload).not.toHaveBeenCalled();
+    expect(onDownload).toHaveBeenCalledWith(msModel);
   });
 });

@@ -21,11 +21,6 @@
 // symbol out (the only consumer is a dynamic import in `cli/index.ts`,
 // which is enough for resolution but not for inclusion in some Bun.build
 // configurations). Mirror the `__elizaAospLlamaLoader` pattern.
-import {
-  registerAospLlamaLoader as __elizaAospLlamaLoader,
-  ensureAospLocalInferenceHandlers as __elizaAospLocalInferenceBootstrap,
-} from "@elizaos/plugin-aosp-local-inference";
-import { ensureMobileDeviceBridgeInferenceHandlers as __elizaMobileDeviceBridgeBootstrap } from "@elizaos/plugin-capacitor-bridge";
 import { runAutonomousCli } from "./cli/index.ts";
 
 // Pull @elizaos/app-{wifi,contacts,phone}'s runtime plugin adapter into the
@@ -40,28 +35,50 @@ import { runAutonomousCli } from "./cli/index.ts";
 // crash at module init when those workspace packages aren't installed.
 // Bun.build still bundles the target because the path is a string
 // literal, so the Android bundle keeps the same behavior.
-try {
-  await import("./runtime/android-app-plugins.ts");
-} catch {
-  // Android-only app plugins not bundled in this build; plugin-resolver.ts
-  // returns null for these IDs and the rest of the runtime is unaffected.
+if (process.env.ELIZA_PLATFORM === "android") {
+  try {
+    const {
+      registerAospLlamaLoader,
+      ensureAospLocalInferenceHandlers,
+    } = await import("@elizaos/plugin-aosp-local-inference");
+    (
+      globalThis as {
+        __elizaAospLlamaLoader?: typeof registerAospLlamaLoader;
+      }
+    ).__elizaAospLlamaLoader = registerAospLlamaLoader;
+    (
+      globalThis as {
+        __elizaAospLocalInferenceBootstrap?: typeof ensureAospLocalInferenceHandlers;
+      }
+    ).__elizaAospLocalInferenceBootstrap = ensureAospLocalInferenceHandlers;
+  } catch {
+    // Android-only local inference is optional outside the privileged AOSP build.
+  }
+
+  try {
+    await import("./runtime/android-app-plugins.ts");
+  } catch {
+    // Android-only app plugins not bundled in this build; plugin-resolver.ts
+    // returns null for these IDs and the rest of the runtime is unaffected.
+  }
 }
 
-(
-  globalThis as { __elizaAospLlamaLoader?: typeof __elizaAospLlamaLoader }
-).__elizaAospLlamaLoader = __elizaAospLlamaLoader;
-
-(
-  globalThis as {
-    __elizaAospLocalInferenceBootstrap?: typeof __elizaAospLocalInferenceBootstrap;
+if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED === "1") {
+  try {
+    const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
+      "@elizaos/plugin-capacitor-bridge"
+    );
+    (
+      globalThis as {
+        __elizaMobileDeviceBridgeBootstrap?: typeof ensureMobileDeviceBridgeInferenceHandlers;
+      }
+    ).__elizaMobileDeviceBridgeBootstrap =
+      ensureMobileDeviceBridgeInferenceHandlers;
+  } catch {
+    // Device bridge is explicitly opt-in; absence just leaves cloud/local-model
+    // provider selection to the runtime.
   }
-).__elizaAospLocalInferenceBootstrap = __elizaAospLocalInferenceBootstrap;
-
-(
-  globalThis as {
-    __elizaMobileDeviceBridgeBootstrap?: typeof __elizaMobileDeviceBridgeBootstrap;
-  }
-).__elizaMobileDeviceBridgeBootstrap = __elizaMobileDeviceBridgeBootstrap;
+}
 
 runAutonomousCli().catch((error) => {
   console.error(

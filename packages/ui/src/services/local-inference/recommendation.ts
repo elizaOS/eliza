@@ -6,6 +6,7 @@ import {
 import { assessFit } from "./hardware";
 import type {
   CatalogModel,
+  CatalogQuantizationVariant,
   HardwareFitLevel,
   HardwareProbe,
   TextGenerationSlot,
@@ -23,6 +24,7 @@ export interface RecommendedModelSelection {
   slot: TextGenerationSlot;
   platformClass: RecommendationPlatformClass;
   model: CatalogModel | null;
+  quantization: CatalogQuantizationVariant | null;
   fit: HardwareFitLevel | null;
   reason: string;
   alternatives: CatalogModel[];
@@ -42,40 +44,40 @@ const SLOT_LADDERS: Record<
   Record<TextGenerationSlot, string[]>
 > = {
   mobile: {
-    TEXT_SMALL: ["eliza-1-0_6b", "eliza-1-1_7b"],
-    TEXT_LARGE: ["eliza-1-4b", "eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b"],
+    TEXT_LARGE: ["eliza-1-2b", "eliza-1-4b", "eliza-1-0_8b"],
   },
   "apple-silicon": {
-    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
-    TEXT_LARGE: ["eliza-1-27b", "eliza-1-9b", "eliza-1-4b", "eliza-1-1_7b"],
+    TEXT_SMALL: ["eliza-1-2b", "eliza-1-0_8b"],
+    TEXT_LARGE: ["eliza-1-27b", "eliza-1-9b", "eliza-1-4b", "eliza-1-2b"],
   },
   "linux-gpu": {
-    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_SMALL: ["eliza-1-2b", "eliza-1-0_8b"],
     TEXT_LARGE: [
       "eliza-1-27b-256k",
       "eliza-1-27b",
       "eliza-1-9b",
       "eliza-1-4b",
-      "eliza-1-1_7b",
+      "eliza-1-2b",
     ],
   },
   "linux-cpu": {
-    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
-    TEXT_LARGE: ["eliza-1-9b", "eliza-1-4b", "eliza-1-1_7b"],
+    TEXT_SMALL: ["eliza-1-2b", "eliza-1-0_8b"],
+    TEXT_LARGE: ["eliza-1-9b", "eliza-1-4b", "eliza-1-2b"],
   },
   "desktop-gpu": {
-    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_SMALL: ["eliza-1-2b", "eliza-1-0_8b"],
     TEXT_LARGE: [
       "eliza-1-27b-256k",
       "eliza-1-27b",
       "eliza-1-9b",
       "eliza-1-4b",
-      "eliza-1-1_7b",
+      "eliza-1-2b",
     ],
   },
   "desktop-cpu": {
-    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
-    TEXT_LARGE: ["eliza-1-9b", "eliza-1-4b", "eliza-1-1_7b"],
+    TEXT_SMALL: ["eliza-1-2b", "eliza-1-0_8b"],
+    TEXT_LARGE: ["eliza-1-9b", "eliza-1-4b", "eliza-1-2b"],
   },
 };
 
@@ -157,6 +159,46 @@ function canFit(
   catalog: CatalogModel[],
 ): boolean {
   return assessCatalogModelFit(hardware, model, catalog) !== "wontfit";
+}
+
+function effectiveMemoryGb(hardware: HardwareProbe): number {
+  if (hardware.appleSilicon) return hardware.totalRamGb;
+  if (hardware.gpu) {
+    return Math.max(hardware.gpu.totalVramGb, hardware.totalRamGb * 0.5);
+  }
+  return hardware.totalRamGb * 0.5;
+}
+
+export function selectBestQuantizationVariant(
+  model: CatalogModel,
+  hardware: HardwareProbe,
+): CatalogQuantizationVariant | null {
+  const matrix = model.quantization;
+  if (!matrix) return null;
+  const published = matrix.variants.filter(
+    (variant) => variant.status === "published",
+  );
+  if (published.length === 0) return null;
+  const isMobile = classifyRecommendationPlatform(hardware) === "mobile";
+  const memGb = isMobile ? hardware.totalRamGb : effectiveMemoryGb(hardware);
+  const maxFootprintRatio = isMobile ? 0.65 : 0.7;
+  const rank: Record<CatalogQuantizationVariant["id"], number> = {
+    q8_0: 3,
+    q6_k: 2,
+    q4_k_m: 1,
+  };
+  const fitting = published
+    .filter(
+      (variant) =>
+        variant.minRamGb <= memGb && variant.sizeGb <= memGb * maxFootprintRatio,
+    )
+    .sort((left, right) => rank[right.id] - rank[left.id]);
+  return (
+    fitting[0] ??
+    published.find((variant) => variant.id === matrix.defaultVariantId) ??
+    published[0] ??
+    null
+  );
 }
 
 /**
@@ -284,14 +326,20 @@ export function selectRecommendedModelForSlot(
           kernelRequirementsSatisfied(model, binaryKernels),
         );
   const model = alternatives[0] ?? null;
+  const quantization = model
+    ? selectBestQuantizationVariant(model, hardware)
+    : null;
   const fit = model ? assessCatalogModelFit(hardware, model, catalog) : null;
   return {
     slot,
     platformClass,
     model,
+    quantization,
     fit,
     reason: model
-      ? `${platformClass} ${slot} ladder selected ${model.id}`
+      ? `${platformClass} ${slot} ladder selected ${model.id}${
+          quantization ? ` (${quantization.id})` : ""
+        }`
       : `${platformClass} ${slot} ladder has no fitting catalog model`,
     alternatives,
   };

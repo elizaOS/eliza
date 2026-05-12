@@ -77,6 +77,9 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
   private setupShutdownHandlers() {}
 
   private createClient(options: PGliteOptions): PGlite {
+    if (process.env.ELIZA_PGLITE_DISABLE_EXTENSIONS === "1") {
+      return new PGlite(options);
+    }
     return new PGlite({
       ...options,
       extensions: {

@@ -18,10 +18,13 @@ import { logger } from "@elizaos/core";
 import {
   type DflashStreamEvent,
   type DflashTurnStats,
+  type DflashVerifyStreamEvent,
   summarizeEvents,
 } from "./dflash-event-schema";
 
 const DEFAULT_HISTORY_LIMIT = 64;
+/** Rolling-window size for the per-step acceptance rate (Step 3). */
+const VERIFY_ACCEPTANCE_WINDOW = 50;
 
 export interface DflashTurnSummary extends DflashTurnStats {
   /** ms — wall time from collector open to close. */
@@ -79,9 +82,48 @@ export class DflashMetricsCollector {
   private readonly verifyTimesMs: number[] = [];
   private readonly proposalTimesMs: number[] = [];
 
+  // -------------------------------------------------------------------------
+  // L1 — dflash-verify event counters (Step 3)
+  // -------------------------------------------------------------------------
+
+  /** Total tokens proposed by the drafter across all verify events. */
+  private draftedTokensTotal = 0;
+  /** Total tokens accepted by the verifier across all verify events. */
+  private acceptedTokensTotal = 0;
+  /** Total tokens rejected by the verifier across all verify events. */
+  private rejectedTokensTotal = 0;
+  /**
+   * Circular buffer of per-step acceptance ratios (accept_count /
+   * drafted_count) for the rolling 50-event window. Stored as a fixed-size
+   * array with a write cursor; NaN entries indicate unfilled slots.
+   */
+  private readonly acceptanceWindow: number[] = new Array(
+    VERIFY_ACCEPTANCE_WINDOW,
+  ).fill(Number.NaN);
+  private acceptanceWindowCursor = 0;
+  private acceptanceWindowFilled = 0;
+
   record(event: DflashStreamEvent): void {
     if (this.finalized) return;
     this.events.push(event);
+
+    // L1 — handle dflash-verify events for totals + rolling acceptance rate
+    if (event.kind === "dflash-verify") {
+      this.draftedTokensTotal += event.drafted_count;
+      this.acceptedTokensTotal += event.accept_count;
+      this.rejectedTokensTotal += event.drafted_count - event.accept_count;
+      const stepRate =
+        event.drafted_count > 0
+          ? event.accept_count / event.drafted_count
+          : 1.0;
+      this.acceptanceWindow[this.acceptanceWindowCursor] = stepRate;
+      this.acceptanceWindowCursor =
+        (this.acceptanceWindowCursor + 1) % VERIFY_ACCEPTANCE_WINDOW;
+      if (this.acceptanceWindowFilled < VERIFY_ACCEPTANCE_WINDOW) {
+        this.acceptanceWindowFilled += 1;
+      }
+    }
+
     // Native discriminator: only the verifier-batch parser sets this flag.
     // accept/reject events from the legacy decision parser leave it
     // undefined, so the cast-and-check below is safe.
@@ -107,6 +149,63 @@ export class DflashMetricsCollector {
         }
       }
     }
+  }
+
+  /**
+   * Rolling acceptance rate over the last ≤50 `dflash-verify` steps.
+   * Returns `NaN` when no `dflash-verify` events have been recorded yet.
+   */
+  getAcceptanceRate(): number {
+    if (this.acceptanceWindowFilled === 0) return Number.NaN;
+    let sum = 0;
+    for (let i = 0; i < this.acceptanceWindowFilled; i += 1) {
+      const idx =
+        (this.acceptanceWindowCursor -
+          this.acceptanceWindowFilled +
+          i +
+          VERIFY_ACCEPTANCE_WINDOW) %
+        VERIFY_ACCEPTANCE_WINDOW;
+      sum += this.acceptanceWindow[idx];
+    }
+    return sum / this.acceptanceWindowFilled;
+  }
+
+  /**
+   * Cumulative draft/accept/reject token totals derived from all
+   * `dflash-verify` events recorded so far.
+   */
+  getDraftAcceptRejectTotals(): {
+    drafted: number;
+    accepted: number;
+    rejected: number;
+  } {
+    return {
+      drafted: this.draftedTokensTotal,
+      accepted: this.acceptedTokensTotal,
+      rejected: this.rejectedTokensTotal,
+    };
+  }
+
+  /**
+   * Prometheus-text lines for the L1 verify counters. Appended to the
+   * llama-server `/metrics` scrape by `DflashServer.scrapeMetrics()` when
+   * `useNativeDflashEvents` is active.
+   *
+   * Returns an empty string when no `dflash-verify` events have landed so
+   * the scrape page stays clean for stock builds.
+   */
+  formatPrometheusMetrics(): string {
+    if (this.draftedTokensTotal === 0 && this.acceptanceWindowFilled === 0) {
+      return "";
+    }
+    const rate = this.getAcceptanceRate();
+    const rateStr = Number.isNaN(rate) ? "NaN" : rate.toFixed(6);
+    return [
+      `dflash_drafted_tokens_total ${this.draftedTokensTotal}`,
+      `dflash_accepted_tokens_total ${this.acceptedTokensTotal}`,
+      `dflash_rejected_tokens_total ${this.rejectedTokensTotal}`,
+      `dflash_acceptance_rate ${rateStr}`,
+    ].join("\n");
   }
 
   /** Snapshot stats without finalizing — safe to call mid-turn. */

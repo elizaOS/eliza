@@ -63,6 +63,13 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Run a single scenario by ID (e.g. skeptic_tarot_01)",
     )
     parser.add_argument(
+        "--scenarios",
+        help=(
+            "Run a comma-separated list of scenario IDs "
+            "(e.g. friend_supporter_tarot_01,repeat_customer_tarot_01)"
+        ),
+    )
+    parser.add_argument(
         "--model",
         default="gpt-5",
         help="Evaluator model name (default: gpt-5)",
@@ -240,7 +247,30 @@ async def _run(args: argparse.Namespace) -> None:
 
     # Select scenarios
     scenarios = None
-    if args.scenario:
+    if args.scenarios:
+        from .scenarios import SCENARIOS_BY_ID
+
+        scenario_ids = [
+            item.strip()
+            for item in str(args.scenarios).split(",")
+            if item.strip()
+        ]
+        scenarios = []
+        missing: list[str] = []
+        for scenario_id in scenario_ids:
+            scenario = SCENARIOS_BY_ID.get(scenario_id)
+            if scenario is None:
+                missing.append(scenario_id)
+            else:
+                scenarios.append(scenario)
+        if missing:
+            print(
+                f"Error: scenario(s) not found: {', '.join(missing)}",
+                file=sys.stderr,
+            )
+            _list_scenarios()
+            sys.exit(1)
+    elif args.scenario:
         from .scenarios import SCENARIOS_BY_ID
         s = SCENARIOS_BY_ID.get(args.scenario)
         if s is None:

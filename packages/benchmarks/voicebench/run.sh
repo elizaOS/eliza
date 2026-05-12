@@ -62,7 +62,7 @@ export ELEVENLABS_MODEL_ID="${ELEVENLABS_MODEL_ID:-eleven_flash_v2_5}"
 export ELEVENLABS_OPTIMIZE_STREAMING_LATENCY="${ELEVENLABS_OPTIMIZE_STREAMING_LATENCY:-4}"
 export ELEVENLABS_OUTPUT_FORMAT="${ELEVENLABS_OUTPUT_FORMAT:-mp3_22050_32}"
 
-if [[ -z "${VOICEBENCH_AUDIO_PATH:-}" ]]; then
+if [[ -z "${VOICEBENCH_AUDIO_PATH:-}" && -z "${DATASET}" ]]; then
   CANDIDATE_AUDIO_PATHS=(
     "${SCRIPT_DIR}/shared/audio/default.wav"
     "${ROOT_DIR}/agent-town/public/assets/background.mp3"
@@ -75,18 +75,23 @@ if [[ -z "${VOICEBENCH_AUDIO_PATH:-}" ]]; then
   done
 fi
 
-if [[ -z "${VOICEBENCH_AUDIO_PATH:-}" ]]; then
-  echo "No audio file found. Set VOICEBENCH_AUDIO_PATH to a short audio clip."
+if [[ -z "${VOICEBENCH_AUDIO_PATH:-}" && -z "${DATASET}" ]]; then
+  echo "No audio file found. Set VOICEBENCH_AUDIO_PATH to a short audio clip or pass --dataset=manifest.json."
   echo "Mock audio is not accepted by the real benchmark runner."
   exit 1
 fi
-VOICEBENCH_AUDIO_PATH="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "${VOICEBENCH_AUDIO_PATH}")"
-if [[ ! -f "${VOICEBENCH_AUDIO_PATH}" ]]; then
-  echo "Audio file not found: ${VOICEBENCH_AUDIO_PATH}"
-  exit 1
+if [[ -n "${VOICEBENCH_AUDIO_PATH:-}" ]]; then
+  VOICEBENCH_AUDIO_PATH="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "${VOICEBENCH_AUDIO_PATH}")"
+  if [[ ! -f "${VOICEBENCH_AUDIO_PATH}" ]]; then
+    echo "Audio file not found: ${VOICEBENCH_AUDIO_PATH}"
+    exit 1
+  fi
 fi
 
-COMMON_ARGS=("--profile=${PROFILE}" "--audio=${VOICEBENCH_AUDIO_PATH}" "--timestamp=${TIMESTAMP}")
+COMMON_ARGS=("--profile=${PROFILE}" "--timestamp=${TIMESTAMP}")
+if [[ -n "${VOICEBENCH_AUDIO_PATH:-}" ]]; then
+  COMMON_ARGS+=("--audio=${VOICEBENCH_AUDIO_PATH}")
+fi
 if [[ -n "${ITERATIONS}" ]]; then
   COMMON_ARGS+=("--iterations=${ITERATIONS}")
 fi
@@ -109,7 +114,9 @@ if [[ "${PROFILE}" == "elevenlabs" && -z "${ELEVENLABS_API_KEY:-}" ]]; then
 fi
 
 echo "[voicebench] profile=${PROFILE}"
-echo "[voicebench] audio=${VOICEBENCH_AUDIO_PATH}"
+if [[ -n "${VOICEBENCH_AUDIO_PATH:-}" ]]; then
+  echo "[voicebench] audio=${VOICEBENCH_AUDIO_PATH}"
+fi
 if [[ -n "${DATASET}" ]]; then
   echo "[voicebench] dataset=${DATASET}"
 fi

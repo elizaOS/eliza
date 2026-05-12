@@ -50,6 +50,7 @@ const cancelAfterChunks = intArg("--cancel-after-chunks", 1);
 const maskgitSteps = intArg("--maskgit-steps", 0);
 const chunkDurationSec = positiveNumberArg("--chunk-duration-sec", 0);
 const chunkThresholdSec = positiveNumberArg("--chunk-threshold-sec", 0);
+const warmupRuns = intArg("--warmup-runs", 0);
 const outPath = arg("--out", "");
 const wavOutPath = arg("--wav-out", "");
 
@@ -137,16 +138,87 @@ const ffi = loadElizaInferenceFfi(dylib);
 const ctx = ffi.create(bundle);
 const started = performance.now();
 
+function codecBackendPolicy(path: string): {
+  status: "default" | "intentional-cpu-fallback";
+  requested: "default" | "Metal";
+  selected: "default" | "CPU";
+  reason: string | null;
+} {
+  const metalTarget =
+    process.platform === "darwin" &&
+    process.arch === "arm64" &&
+    /metal/i.test(path);
+  if (!metalTarget) {
+    return {
+      status: "default",
+      requested: "default",
+      selected: "default",
+      reason: null,
+    };
+  }
+  return {
+    status: "intentional-cpu-fallback",
+    requested: "Metal",
+    selected: "CPU",
+    reason: "merged-ggml-dac-decode-stall",
+  };
+}
+
 try {
   const acquireStarted = performance.now();
   ffi.mmapAcquire(ctx, "tts");
   const acquireMs = performance.now() - acquireStarted;
   const streamSupported = ffi.ttsStreamSupported();
+  const warmups: Array<{
+    firstAudioMs: number | null;
+    synthMs: number;
+    bodyChunks: number;
+    samples: number;
+    audioSeconds: number;
+    rtf: number | null;
+    cancelled: boolean;
+  }> = [];
+
+  for (let i = 0; streamSupported && i < warmupRuns; i++) {
+    let warmupFirstAudioMs: number | null = null;
+    let warmupBodyChunks = 0;
+    let warmupSamples = 0;
+    const warmupStarted = performance.now();
+    const result = ffi.ttsSynthesizeStream({
+      ctx,
+      text,
+      speakerPresetId: speakerPresetId || null,
+      onChunk: ({ pcm, isFinal }) => {
+        if (isFinal || pcm.length === 0) return false;
+        if (warmupBodyChunks === 0) {
+          warmupFirstAudioMs = performance.now() - warmupStarted;
+        }
+        warmupBodyChunks++;
+        warmupSamples += pcm.length;
+        return false;
+      },
+    });
+    const warmupSynthMs = performance.now() - warmupStarted;
+    const warmupAudioSeconds = warmupSamples / 24000;
+    warmups.push({
+      firstAudioMs: warmupFirstAudioMs,
+      synthMs: warmupSynthMs,
+      bodyChunks: warmupBodyChunks,
+      samples: warmupSamples,
+      audioSeconds: warmupAudioSeconds,
+      rtf:
+        warmupAudioSeconds > 0 ? warmupSynthMs / 1000 / warmupAudioSeconds : null,
+      cancelled: result.cancelled,
+    });
+  }
 
   let chunks = 0;
   let bodyChunks = 0;
   let finalChunks = 0;
   let samples = 0;
+  let firstAudioMs: number | null = null;
+  let firstChunkSamples = 0;
+  let largestChunkSamples = 0;
   let nativeCancelCalled = false;
   let cancelRequested = false;
   let cancelled = false;
@@ -166,9 +238,14 @@ try {
           return false;
         }
         bodyChunks++;
+        if (firstAudioMs === null) {
+          firstAudioMs = performance.now() - synthStarted;
+          firstChunkSamples = pcm.length;
+        }
+        largestChunkSamples = Math.max(largestChunkSamples, pcm.length);
         samples += pcm.length;
         if (wavOutPath && pcm.length > 0) {
-          pcmChunks.push(pcm);
+          pcmChunks.push(new Float32Array(pcm));
         }
         if (
           cancelMode !== "none" &&
@@ -233,12 +310,20 @@ try {
     finalChunks,
     samples,
     audioSeconds: samples / 24000,
+    firstAudioMs,
+    firstChunkSamples,
+    firstChunkAudioSeconds: firstChunkSamples / 24000,
+    largestChunkSamples,
+    largestChunkAudioSeconds: largestChunkSamples / 24000,
     wavOut: wavOutPath || null,
     wavBytes,
     acquireMs,
     synthMs,
     rtf: samples > 0 ? synthMs / 1000 / (samples / 24000) : null,
     totalMs: performance.now() - started,
+    warmupRuns,
+    warmups,
+    codecBackendPolicy: codecBackendPolicy(dylib),
     reason: ok
       ? null
       : streamSupported

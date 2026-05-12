@@ -40,8 +40,11 @@ function catalogFixture(overrides: Partial<CatalogModel>): CatalogModel {
   };
 }
 
+const originalFetch = globalThis.fetch;
+
 afterEach(() => {
-  vi.unstubAllGlobals();
+  globalThis.fetch = originalFetch;
+  vi.clearAllMocks();
 });
 
 describe("local inference catalog", () => {
@@ -114,12 +117,12 @@ describe("local inference catalog", () => {
   });
 
   it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
-    // Size tiers: 0.6B/1.7B = 32k, 4B/9B = 64k, 27B = 128k,
+    // Size tiers: 0.8B/2B = 32k, 4B/9B = 64k, 27B = 128k,
     // 27B-256k = 256k, 27B-1m = 1M. The catalog records the largest
     // ctx the bundle's manifest will advertise for each tier.
     const expected: Record<string, number> = {
-      "eliza-1-0_6b": 32768,
-      "eliza-1-1_7b": 32768,
+      "eliza-1-0_8b": 32768,
+      "eliza-1-2b": 32768,
       "eliza-1-4b": 65536,
       "eliza-1-9b": 65536,
       "eliza-1-27b": 131072,
@@ -232,11 +235,11 @@ describe("local model custom search providers", () => {
     );
     expect(getLocalModelSearchProvider("modelscope")).toMatchObject({
       searchSupported: true,
-      downloadSupported: false,
+      downloadSupported: true,
     });
   });
 
-  it("wraps ModelScope GGUF results without enabling downloads", async () => {
+  it("wraps ModelScope GGUF results as downloadable explicit search results", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (
@@ -252,7 +255,7 @@ describe("local model custom search providers", () => {
       }
       return new Response("not found", { status: 404 });
     });
-    vi.stubGlobal("fetch", fetchMock);
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const response = await searchLocalModelProvider(
       "modelscope",
@@ -263,11 +266,7 @@ describe("local model custom search providers", () => {
     expect(response.results).toHaveLength(1);
     expect(response.results[0]).toMatchObject({
       providerId: "modelscope",
-      download: {
-        supported: false,
-        reason:
-          "ModelScope direct downloads are not implemented in this build.",
-      },
+      download: { supported: true },
     });
     expect(response.results[0]?.model.id).toMatch(/^modelscope:/);
   });
@@ -276,21 +275,21 @@ describe("local model custom search providers", () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.startsWith("https://huggingface.co/api/models?")) {
-        return jsonResponse([{ id: "Qwen/Qwen3.5-0.6B-GGUF" }]);
+        return jsonResponse([{ id: "Qwen/Qwen3.5-0.8B-GGUF" }]);
       }
       if (
-        url === "https://huggingface.co/api/models/Qwen%2FQwen3.5-0.6B-GGUF"
+        url === "https://huggingface.co/api/models/Qwen%2FQwen3.5-0.8B-GGUF"
       ) {
         return jsonResponse({
-          id: "Qwen/Qwen3.5-0.6B-GGUF",
+          id: "Qwen/Qwen3.5-0.8B-GGUF",
           tags: ["gguf"],
-          siblings: [{ rfilename: "qwen3.5-0.6b-q4_k_m.gguf", size: 512 }],
+          siblings: [{ rfilename: "qwen3.5-0.8b-q4_k_m.gguf", size: 512 }],
           pipeline_tag: "text-generation",
         });
       }
       return new Response("not found", { status: 404 });
     });
-    vi.stubGlobal("fetch", fetchMock);
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const response = await searchLocalModelProvider("huggingface", "qwen", 1);
 

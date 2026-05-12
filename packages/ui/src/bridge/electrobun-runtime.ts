@@ -59,5 +59,27 @@ export function getBackendStartupTimeoutMs(): number {
   ) {
     return 180_000;
   }
+  const capacitor = (
+    globalThis as {
+      Capacitor?: {
+        getPlatform?: () => string;
+        isNativePlatform?: () => boolean;
+      };
+    }
+  ).Capacitor;
+  try {
+    if (
+      capacitor?.isNativePlatform?.() === true &&
+      capacitor.getPlatform?.() === "ios"
+    ) {
+      const mode =
+        typeof window !== "undefined"
+          ? window.localStorage?.getItem("eliza:mobile-runtime-mode")
+          : null;
+      if (mode === "local") return 180_000;
+    }
+  } catch {
+    // Fall through to the cloud/remote budget.
+  }
   return 30_000;
 }

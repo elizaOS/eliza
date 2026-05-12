@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Target catalog tier: eliza-1-0_8b (see packages/shared/src/local-inference/catalog.ts)
 # Distill the DFlash drafter for Eliza-1 tier 0_8b.
 #
 # This is the smallest tier. Per distill_dflash_drafter.DEFAULT_STUDENT_BASE,
