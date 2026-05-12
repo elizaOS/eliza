@@ -46,17 +46,54 @@ export function isElectrobunRuntime(): boolean {
   return hasElectrobunRendererBridge();
 }
 
+function isCapacitorNativePlatform(): boolean {
+  try {
+    // Lazy import keeps @capacitor/core out of the desktop / web bundle
+    // graph. @elizaos/ui declares @capacitor/core as a devDependency, so
+    // the import only resolves when a Capacitor app (mobile native) is
+    // the consumer; everywhere else this throws and we fall through.
+    const cap = (
+      globalThis as unknown as {
+        Capacitor?: {
+          isNativePlatform?: () => boolean;
+          getPlatform?: () => string;
+        };
+      }
+    ).Capacitor;
+    if (!cap) return false;
+    if (typeof cap.isNativePlatform === "function" && cap.isNativePlatform()) {
+      return true;
+    }
+    if (typeof cap.getPlatform === "function") {
+      const p = cap.getPlatform();
+      return p === "ios" || p === "android";
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export function getBackendStartupTimeoutMs(): number {
   if (isElectrobunRuntime()) return 180_000;
-  // ElizaOS runs the on-device agent in the same APK; cold-boot is
-  // ~30s PGlite migration + ~30s agent registration before the API is
-  // reachable, vs. <5s for cloud/remote backends. Use the same 3-minute
-  // budget as the desktop path so the splash poll loop catches it
-  // instead of dead-ending on a "Backend Timeout" card.
+  // Any build that hosts the on-device agent in the same process gets
+  // the 3-minute budget. Three paths qualify:
+  //  - Electrobun desktop (handled above)
+  //  - AOSP / branded ElizaOS Capacitor builds — UA carries `ElizaOS/<tag>`
+  //  - Stock Capacitor sideloads (Pixel 6a, Solana Seeker, Moto G,
+  //    iOS test installs) — UA has no ElizaOS marker but still runs
+  //    the bundled agent on 127.0.0.1:31337. Cold-boot is ~30s PGlite
+  //    migration + ~30s agent registration before /api/auth/status
+  //    binds, vs. <5s for cloud/remote backends.
+  // Web / hosted-cloud builds keep the snappy 30s budget so a real
+  // backend outage surfaces fast instead of staring at the splash.
   if (
     typeof navigator !== "undefined" &&
     /\bElizaOS\//.test(navigator.userAgent ?? "")
   ) {
+    return 180_000;
+  }
+  if (isCapacitorNativePlatform()) {
     return 180_000;
   }
   return 30_000;
