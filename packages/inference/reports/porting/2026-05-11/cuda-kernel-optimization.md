@@ -28,9 +28,10 @@ call — the fork build (which compiles `ggml-cpu`) failed with
 `-Werror=implicit-function-declaration`. Added a `static inline` cached wrapper
 over the fork's `polar_qjl_signs()` to the shim.
 
-**Build env note:** `ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1` is required
-(the pinned fork ref predates the post-refactor `llama-server` features the
-default patch asserts; the resulting binary is dev-only, which is fine here).
+**Build env note:** no env var needed for the structured-output patch — it is
+now tolerant of fork drift (reports present/absent features, never fails). The
+`v1.0.0-eliza` fork carries `grammar_lazy` / `json_schema` / `response_format` /
+`prefill_assistant`, so the patch applies cleanly.
 
 ## 2. Hardware verification
 
@@ -151,6 +152,3 @@ attention on.
 - CUDA TTS/ASR `llama-bench` runs (out of time after 6+ rebuilds forced by a
   concurrent sibling CUDA build saturating this box).
 - P2/P3 kernel optimizations (need a graph-wired microbench harness + Nsight).
-- The fork's `llama-server` structured-output patch can't be applied against
-  the current pinned ref (`ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1`) — a
-  fork rebase is the fix, tracked elsewhere.

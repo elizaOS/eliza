@@ -33,31 +33,26 @@ what is still missing for the vision-bearing tiers (`9b`, `27b`, `27b-256k`,
   recommendation / downloader code treats vision as optional and never *requires*
   it for any tier. That matches the contract.
 
-## Gap: mmproj is never wired into the runtime spawn
+## mmproj is now auto-wired from the bundle manifest (was a gap, fixed 2026-05-11)
 
-`dflash-server.ts` *can* pass `--mmproj <path>` — it reads
-`process.env.ELIZA_LOCAL_MMPROJ` or `optimizations?.mmproj` and appends
-`--mmproj` (line ~1360). **But `runtimeFor()` in `packages/shared/src/local-inference/catalog.ts` never sets `optimizations.mmproj`**, and nothing in
-`engine.ts` / `active-model.ts` derives the mmproj path from the downloaded
-bundle's `manifest.files.vision[0].path` and threads it down. So today, even on
-a fully-downloaded `9b`/`27b` bundle, `llama-server` is launched without
-`--mmproj` — vision is dead unless the operator manually sets
-`ELIZA_LOCAL_MMPROJ`. (Image input itself — `--image` / the `/v1/chat/completions`
+`dflash-server.ts`'s `load()` derives `--mmproj` from the bundle's
+`eliza-1.manifest.json` `files.vision[0].path` (`findBundleVisionMmproj()`),
+folds it into `optimizations.mmproj`, and the arg builder appends `--mmproj`.
+Vision-capable tiers (`9b` / `27b` / `27b-256k` / `27b-1m`) load their projector
+automatically; text-only tiers (`0_6b` / `1_7b`) get `null` and run text-only.
+`ELIZA_LOCAL_MMPROJ` is now a debug override (point at a hand-built projector),
+not the only path. Image input itself — `--image` / the `/v1/chat/completions`
 multimodal content blocks — is handled by upstream `llama-server` + `libmtmd`
-once `--mmproj` is on the command line, so no extra wiring is needed there;
-the missing piece is purely "tell llama-server where the projector file is".)
+once `--mmproj` is on the command line.
 
 There is no `0_6b`/`1_7b` work here — they are text-only and correct as shipped.
 
 ## What's still needed for the vision tiers (not buildable on this machine — no 9b/27b weights here)
 
-1. **Wire mmproj end-to-end.** When a bundle's manifest declares
-   `files.vision[0]`, the engine should resolve that file's local path and pass
-   it as `optimizations.mmproj` (or directly as `--mmproj`) on the
-   `llama-server` spawn — same pattern as the text GGUF path resolution. This
-   is the one concrete code change blocking vision on the big tiers; it belongs
-   in `engine.ts` / `dflash-server.ts`'s arg builder, not in `runtimeFor()`
-   (the catalog can't know the on-disk path).
+1. ~~**Wire mmproj end-to-end.**~~ Done — `findBundleVisionMmproj()` +
+   `load()` thread the manifest path to `--mmproj`; covered by a unit test
+   against a synthetic manifest in `dflash-server.test.ts`. The remaining items
+   need real 9b/27b weights:
 2. **Verify-on-device should exercise vision** for tiers that ship mmproj: the
    one-time post-download verify pass (AGENTS.md §7 item 4) currently does
    text + voice + barge-in; add a 1-image multimodal generation step for

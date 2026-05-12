@@ -298,9 +298,12 @@ mic / file → ASR → text tokens
 - We do not run text and voice in two processes communicating over IPC.
   That regresses memory and adds a 1–10ms scheduling tax per turn.
 - We do not run a "TTS-only mode" that skips DFlash. DFlash is always
-  on. If the user disables speculative decoding for debugging, that is
-  a developer-only flag (`ELIZA_DFLASH_DISABLE=1`), it is not a user
-  setting, and it MUST log a loud warning every turn.
+  on (auto-detected from the managed `llama-server` binary — there is no
+  "enable DFlash" setting). If the user disables speculative decoding for
+  debugging, that is the single developer-only kill-switch
+  `ELIZA_DFLASH_DISABLE=1` (`MILADY_DFLASH_DISABLE=1` is a back-compat
+  alias); it is not a user setting, and it MUST log a loud warning every
+  turn.
 - We do not split voice into "fast TTS" and "high-quality TTS" tiers.
   One voice model per tier, fused, optimized.
 
