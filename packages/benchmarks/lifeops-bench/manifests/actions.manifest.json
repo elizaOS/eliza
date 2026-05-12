@@ -18699,8 +18699,7 @@
       "_surfaces": [],
       "_risk": null,
       "_cost": null
-<<<<<<< HEAD
-=======
+
     },
     {
       "type": "function",
@@ -19833,7 +19832,7 @@
       ],
       "_risk": null,
       "_cost": null
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
+
     }
   ]
 }
