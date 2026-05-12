@@ -250,22 +250,40 @@ function emptyWalletTradingProfile(url: URL) {
 
 /** Installs baseline API routes for smoke tests before flow-specific overrides. */
 export async function installDefaultAppRoutes(page: Page): Promise<void> {
-  // VRM model assets (vrms/<slug>.vrm.gz) — the preview server doesn't carry
-  // the runtime boot-config's vrmAssets, so resolveAppAssetUrl(`vrms/...`)
-  // 404s. Serve a real bundled VRM so the companion canvas renders without a
-  // console error. previews/backgrounds PNGs are best-effort: a 404 there is
-  // harmless (the canvas falls back), so leave those to fallback().
-  await page.route("**/vrms/*.vrm.gz", async (route) => {
-    const body = bundledVrmGz();
-    if (!body) {
-      await route.fallback();
+  // VRM assets (vrms/<slug>.vrm.gz + vrms/previews|backgrounds/<slug>.png) —
+  // the preview server doesn't carry the runtime boot-config's vrmAssets, so
+  // resolveAppAssetUrl(`vrms/...`) 404s. Serve a real bundled VRM (so the
+  // companion canvas renders a model) and a 1×1 PNG for the preview/background
+  // thumbnails (the canvas falls back if those are absent, but a 404 still
+  // shows as a console error). Match `**/vrms/**` to catch any sub-path.
+  const ONE_PX_PNG = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  await page.route("**/vrms/**", async (route) => {
+    const url = route.request().url();
+    if (/\.vrm(\.gz)?(\?|$)/i.test(url)) {
+      const body = bundledVrmGz();
+      if (!body) {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        headers: { "content-type": "application/octet-stream" },
+        body,
+      });
       return;
     }
-    await route.fulfill({
-      status: 200,
-      headers: { "content-type": "application/octet-stream" },
-      body,
-    });
+    if (/\.png(\?|$)/i.test(url)) {
+      await route.fulfill({
+        status: 200,
+        headers: { "content-type": "image/png" },
+        body: ONE_PX_PNG,
+      });
+      return;
+    }
+    await route.fallback();
   });
 
   await page.route("**/api/health", async (route) => {

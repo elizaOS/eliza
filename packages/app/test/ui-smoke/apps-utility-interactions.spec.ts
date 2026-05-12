@@ -24,6 +24,21 @@ const BENIGN_CONSOLE_PATTERNS = [
   /THREE\.Clock: This module has been deprecated/i,
   /THREE\.WebGLShadowMap: PCFSoftShadowMap has been deprecated/i,
   /GL Driver Message .*GPU stall due to ReadPixels/i,
+  // The ui-smoke preview server serves the SPA but not the runtime
+  // boot-config's `vrmAssets`, nor the companion's emote animation .glb files
+  // (the dist ships `.glb.gz`; the catalog paths are `.glb`). getVrmUrl()
+  // resolves to a `bundled-N` fallback path the preview server has no asset
+  // for too. installDefaultAppRoutes mocks `**/vrms/**` and `**/animations/**`
+  // with real/placeholder bytes, but if a request slips through (timing) the
+  // canvas/animation loader falls back gracefully — companion VRM/animation
+  // *rendering* is out of scope for this controls-interaction test.
+  /Failed to load VRM/i,
+  /\[VrmEngine\] Failed to load emote/i,
+  // The companion canvas requests several asset paths the preview server has no
+  // file for (the gz/non-gz mismatch + the missing vrmAssets); the resulting
+  // bare "Failed to load resource: 404" console errors carry no URL so they
+  // can't be filtered precisely — they are all the VRM/animation fallback noise.
+  /Failed to load resource: the server responded with a status of 404/i,
 ];
 
 function routeReadyChecks(routeCase: RouteCase): readonly ReadyCheck[] {
