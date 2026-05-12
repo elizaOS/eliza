@@ -24,6 +24,7 @@ import type {
   CarrotManifest,
   CarrotPermissionGrant,
   CarrotRegistry,
+  CarrotRuntimeContext,
   HostPermission,
   JsonObject,
   JsonValue,
@@ -520,6 +521,25 @@ export function writeCarrotInstallRecord(
   return normalized;
 }
 
+export function buildCarrotRuntimeContext(
+  currentDir: string,
+  stateDir: string,
+  carrotId: string,
+  permissionsGranted: CarrotPermissionGrant,
+  authToken: string | null = null,
+): CarrotRuntimeContext {
+  const grantedPermissions = normalizeCarrotPermissions(permissionsGranted);
+  return {
+    currentDir,
+    statePath: join(stateDir, "state.json"),
+    logsPath: join(stateDir, "logs.txt"),
+    permissions: flattenCarrotPermissions(grantedPermissions),
+    grantedPermissions,
+    authToken,
+    channel: `carrot:${carrotId}`,
+  };
+}
+
 export function writeCarrotWorkerBootstrap(
   currentDir: string,
   manifest: CarrotManifest,
@@ -542,13 +562,12 @@ export function writeCarrotWorkerBootstrap(
     [
       `globalThis.__bunnyCarrotBootstrap = ${JSON.stringify({
         manifest,
-        context: {
+        context: buildCarrotRuntimeContext(
           currentDir,
-          statePath: join(stateDir, "state.json"),
-          logsPath: join(stateDir, "logs.txt"),
-          permissions: flattenCarrotPermissions(install.permissionsGranted),
-          grantedPermissions: install.permissionsGranted,
-        },
+          stateDir,
+          manifest.id,
+          install.permissionsGranted,
+        ),
       })};`,
       `await import(${JSON.stringify(workerImportPath)});`,
       "",

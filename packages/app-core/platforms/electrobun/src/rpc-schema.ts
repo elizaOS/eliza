@@ -535,6 +535,59 @@ export interface AgentStatusSnapshot {
 	cloud?: AgentCloudStatusSnapshot;
 }
 
+export type AgentAutomationMode = "connectors-only" | "full";
+export type TradePermissionMode =
+	| "user-sign-only"
+	| "manual-local-key"
+	| "agent-auto"
+	| "disabled";
+
+export interface AgentSelfStatusSnapshot {
+	generatedAt: string;
+	state: AgentStatusState;
+	agentName: string;
+	model: string | null;
+	provider: string | null;
+	automationMode: AgentAutomationMode;
+	tradePermissionMode: TradePermissionMode;
+	shellEnabled: boolean;
+	wallet: {
+		walletSource: "local" | "managed" | "none";
+		evmAddress: string | null;
+		evmAddressShort: string | null;
+		solanaAddress: string | null;
+		solanaAddressShort: string | null;
+		hasWallet: boolean;
+		hasEvm: boolean;
+		hasSolana: boolean;
+		localSignerAvailable: boolean;
+		managedBscRpcReady: boolean;
+		rpcReady: boolean;
+		pluginEvmLoaded: boolean;
+		pluginEvmRequired: boolean;
+		executionReady: boolean;
+		executionBlockedReason: string | null;
+	};
+	plugins: {
+		totalActive: number;
+		active: string[];
+		aiProviders: string[];
+		connectors: string[];
+	};
+	capabilities: {
+		canTrade: boolean;
+		canLocalTrade: boolean;
+		canAutoTrade: boolean;
+		canUseBrowser: boolean;
+		canUseComputer: boolean;
+		canRunTerminal: boolean;
+		canInstallPlugins: boolean;
+		canConfigurePlugins: boolean;
+		canConfigureConnectors: boolean;
+	};
+	registrySummary?: string;
+}
+
 export type AgentUpdateReleaseChannel = "stable" | "beta" | "nightly";
 
 export interface AgentUpdateStatusSnapshot {
@@ -620,6 +673,30 @@ export interface RuntimeDebugSnapshot {
 		evaluators: unknown;
 		services: unknown;
 	};
+}
+
+export interface TriggerHealthSnapshot {
+	triggersEnabled: boolean;
+	activeTriggers: number;
+	disabledTriggers: number;
+	totalExecutions: number;
+	totalFailures: number;
+	totalSkipped: number;
+	lastExecutionAt?: number;
+}
+
+export interface CorePluginEntry {
+	npmName: string;
+	id: string;
+	name: string;
+	isCore: boolean;
+	loaded: boolean;
+	enabled: boolean;
+}
+
+export interface CorePluginsSnapshot {
+	core: CorePluginEntry[];
+	optional: CorePluginEntry[];
 }
 
 export interface DesktopStartupDiagnostics {
@@ -868,6 +945,18 @@ export type ElizaDesktopRPCSchema = {
 			getRuntimeSnapshot: {
 				params: RuntimeDebugSnapshotParams | undefined;
 				response: RuntimeDebugSnapshot;
+			};
+			getAgentSelfStatus: {
+				params: undefined;
+				response: AgentSelfStatusSnapshot;
+			};
+			getTriggerHealth: {
+				params: undefined;
+				response: TriggerHealthSnapshot;
+			};
+			getCorePlugins: {
+				params: undefined;
+				response: CorePluginsSnapshot;
 			};
 			/**
 			 * Aggregated boot/startup snapshot. Combines `agentStatus` with the

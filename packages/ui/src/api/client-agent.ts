@@ -985,6 +985,15 @@ ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
 };
 
 ElizaClient.prototype.getAgentSelfStatus = async function (this: ElizaClient) {
+  try {
+    const viaRpc = await invokeDesktopBridgeRequest<AgentSelfStatusSnapshot>({
+      rpcMethod: "getAgentSelfStatus",
+      ipcChannel: "agent",
+    });
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* fall through */
+  }
   return this.fetch("/api/agent/self-status");
 };
 
@@ -2001,6 +2010,15 @@ ElizaClient.prototype.emitTriggerEvent = async function (
 };
 
 ElizaClient.prototype.getTriggerHealth = async function (this: ElizaClient) {
+  try {
+    const viaRpc = await invokeDesktopBridgeRequest<TriggerHealthSnapshot>({
+      rpcMethod: "getTriggerHealth",
+      ipcChannel: "agent",
+    });
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* fall through */
+  }
   return this.fetch("/api/triggers/health");
 };
 
@@ -2132,6 +2150,15 @@ ElizaClient.prototype.fetchModels = async function (
 };
 
 ElizaClient.prototype.getCorePlugins = async function (this: ElizaClient) {
+  try {
+    const viaRpc = await invokeDesktopBridgeRequest<CorePluginsResponse>({
+      rpcMethod: "getCorePlugins",
+      ipcChannel: "agent",
+    });
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* fall through */
+  }
   return this.fetch("/api/plugins/core");
 };
 

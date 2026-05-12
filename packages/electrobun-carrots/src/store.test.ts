@@ -1,9 +1,16 @@
 import { describe, expect, it } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   assertCarrotPayload,
+  buildCarrotRuntimeContext,
   CarrotStoreError,
   ensureCarrotSourceDirectory,
   getCarrotStorePaths,
@@ -123,6 +130,35 @@ describe("carrot store", () => {
 
       const all = loadInstalledCarrots(storeRoot);
       expect(all.map((carrot) => carrot.manifest.id)).toEqual(["bunny.search"]);
+      if (!loaded) throw new Error("Expected carrot to load.");
+      const bootstrap = readFileSync(loaded.workerPath, "utf8");
+      expect(bootstrap).toContain('"authToken":null');
+      expect(bootstrap).toContain('"channel":"carrot:bunny.search"');
+    }));
+
+  it("builds a complete carrot runtime context", () =>
+    withTempDir((dir) => {
+      expect(
+        buildCarrotRuntimeContext(
+          join(dir, "current"),
+          join(dir, "state"),
+          "bunny.search",
+          { host: { windows: true }, bun: { read: true } },
+          "token-1",
+        ),
+      ).toEqual({
+        currentDir: join(dir, "current"),
+        statePath: join(dir, "state", "state.json"),
+        logsPath: join(dir, "state", "logs.txt"),
+        permissions: ["host:windows", "bun:read", "isolation:shared-worker"],
+        grantedPermissions: {
+          host: { windows: true },
+          bun: { read: true },
+          isolation: "shared-worker",
+        },
+        authToken: "token-1",
+        channel: "carrot:bunny.search",
+      });
     }));
 
   it("builds a public store snapshot for host and UI callers", () =>
