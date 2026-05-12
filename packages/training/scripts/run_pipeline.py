@@ -298,7 +298,18 @@ def main() -> int:
     ap.add_argument(
         "--eval-mode", choices=("smoke", "full"), default="smoke",
         help="Eval-gate mode written into evals/aggregate.json and used for "
-             "the gate report. smoke = structural gates only (default).",
+             "the gate report. smoke = structural gates only (default). NOTE: "
+             "this pipeline only produces the structural format_ok metric; the "
+             "held-out quality / voice / e2e measurements that full-mode gates "
+             "expect come from scripts/eval/eliza1_eval_suite.py run against a "
+             "staged bundle (the publish orchestrator runs that) — `full` here "
+             "just tags the report mode.",
+    )
+    ap.add_argument(
+        "--allow-unvalidated-corpus", action="store_true",
+        help="Skip the validate_corpus.py --strict gate that normally runs on "
+             "the train/val/test splits before fine-tuning. AGENTS.md mandates "
+             "the validator; this escape hatch is for emergencies only.",
     )
     pub = ap.add_mutually_exclusive_group()
     pub.add_argument("--publish", dest="publish", action="store_true",
@@ -449,6 +460,42 @@ def main() -> int:
     summary["val_file"] = str(val_file)
     summary["test_file"] = str(test_file)
 
+    # ── corpus gate: validate_corpus.py --strict on the splits before training.
+    # AGENTS.md: "No raw output → fine-tune in one step." Both the from-scratch
+    # path and the trajectory→SFT path must clear the schema / stale-action /
+    # render gate before train_local.py touches the data.
+    if not args.skip_finetune:
+        review_dir = ROOT / "data" / "synthesized" / "review"
+        review_dir.mkdir(parents=True, exist_ok=True)
+        corpus_bad: list[str] = []
+        for split_name, split_path in (("train", train_file), ("val", val_file), ("test", test_file)):
+            if not split_path.exists():
+                corpus_bad.append(f"{split_name}:missing")
+                continue
+            rc = run([
+                "uv", "run", "--extra", "train", "python", "scripts/validate_corpus.py",
+                "--input", str(split_path),
+                "--report", str(review_dir / f"format_validation_{run_name}_{split_name}.json"),
+                "--strict",
+            ], cwd=ROOT)
+            if rc != 0:
+                corpus_bad.append(f"{split_name}:invalid")
+        summary["stages"]["corpus_validation"] = {
+            "splits": [str(train_file), str(val_file), str(test_file)],
+            "invalid": corpus_bad,
+            "enforced": not args.allow_unvalidated_corpus,
+        }
+        if corpus_bad:
+            msg = ("corpus validation failed: " + ", ".join(corpus_bad)
+                   + " — inspect data/synthesized/review/format_validation_*.json "
+                     "and fix the named adapter/source")
+            if args.allow_unvalidated_corpus:
+                log.warning("%s (continuing: --allow-unvalidated-corpus)", msg)
+            else:
+                log.error("%s; aborting (pass --allow-unvalidated-corpus to override)", msg)
+                (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+                return 1
+
     finetuned_model = ckpt_dir / "final"
 
     def _bench(model: str, out_sub: str) -> dict[str, int]:
@@ -576,6 +623,15 @@ def main() -> int:
     summary["stages"]["gate_report"] = {"path": str(gate_report_path),
                                         "passed": gate_blob.get("passed")}
     log.info("wrote %s (passed=%s)", gate_report_path, gate_blob.get("passed"))
+
+    # If this run is a publish run, a red (or un-computable) gate aborts here —
+    # before wasting quantize + bundle time — rather than only being caught by
+    # the downstream publish orchestrator's re-check of aggregate.json.
+    if args.publish and gate_blob.get("passed") is not True:
+        log.error("publish run but eval gate did not pass (%s); aborting before quantize",
+                  json.dumps(gate_blob.get("failures") or gate_blob.get("error")))
+        (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+        return 1
 
     # ───────────── stage 5: quantize ──────────────────────────────────
     quantizers = [q.strip() for q in args.quantizers.split(",") if q.strip()]
