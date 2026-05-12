@@ -177,3 +177,28 @@ The vast.ai variant works but requires a live `VAST_API_KEY` (not set on this bo
 4. **Voice-duet headline numbers** (TTFT-from-utterance-end p50/p90/p99, dflash accept-rate, structured-decode token-savings %, emotion-fidelity): blocked behind a separate **duet-harness SQL bootstrap fix** — the duet harness's in-memory SQL backend lacks an embeddings provider seeded to the right `dim_*` column. CPU kernel is no longer the blocker. Once that's fixed: `bun run voice:duet --turns 20 --report packages/inference/reports/porting/2026-05-12/voice-duet-bench-eliza-1-0_6b.json`.
 5. **`Tests` CI quiet-window confirmation**: needs a window without concurrent commits to let `Tests` reach a terminal state and confirm the prior dev-condition + skills/native-plugins fixes resolve Client/Plugin Tests.
 6. **SFT completion + auto-publish**: ~24h ETA; on completion the operator/hook publishes `elizaos/eliza-1-0_6b-sft` weights when the gate clears `format_ok ≥ 0.70`.
+
+## FINALIZE-5 run — H200 SFT sequence (2026-05-12 ~08:00– PDT)
+
+### Item 0 — Qwen3.5-only model registry alignment + 0_8b/2b/4b/27b wiring: **DONE**
+
+Operator brief (2026-05-12): the eliza-1 fused-model line is Qwen3.5-only (Qwen3 dense bases don't work with dflash). Sibling commits `0ae9ff6983` (qwen3.5-4b/27b in train_vast.sh) + `2e56f07cfc` (KNOWN_TIERS) + concurrent model-registry purge of the legacy Qwen3 entries got most of the way; this round closes out the remaining ladder consistency:
+
+- `5954c7731f` — finish wiring qwen3.5-{2b,4b,9b,27b}-Base in `model_registry.py` + add tier_to_registry_key entries in `run-on-cloud.sh` + gates yaml blocks for 2b/4b + tests updated. 27b sized to fit a single 141 GB H200 SXM with apollo_mini + grad checkpointing + Liger at seq=32k (~115-130 GB working set).
+- `fef2d45500` — reconcile after the sibling Qwen3.5-only registry purge: drop deleted qwen3-{0.6b,1.7b,4b} from test_model_registry + DFLASH_DRAFTER_BASE; `train_nebius.sh` FSDP wrap class is unconditionally Qwen3_5DecoderLayer; `manifest/schema.ts` REQUIRED_KERNELS_BY_TIER + SUPPORTED_BACKENDS_BY_TIER add 2b/4b rows.
+
+### Item 1 — eliza-1-0_8b H200 SFT: **IN FLIGHT**
+
+- Single H200 SXM (`gpu-h200-sxm` / `1gpu-16vcpu-200gb`) on Nebius. RUN_NAME `eliza-1-0_8b-apollo-fullcorpus-h200-1778599158`; NEBIUS_VM_NAME `eliza-train-h200-0_8b`; instance id `computeinstance-e00c8dzb9rxmr75v6j` at 89.169.113.255.
+- Full corpus: SYNC_FULLCORPUS_SOURCES=1 + ELIZA1_FULLCORPUS_UPSAMPLE=8 — `scripts/build_eliza1_fullcorpus.py` rebuilds `data/final-eliza1-fullcorpus/` on the VM from `data/final/` + `datasets/eliza1-sft-0_6b/` (~76.9k train rows).
+- HF repos created: `elizaos/eliza-1-0_8b{,-sft,-optimized,-drafter}` — all four exist, ready for publish.
+- Watcher: `/tmp/nebius-finish-q35-0_8b.sh` armed against FULL_PID=3295117. Backstop teardown on (a) full driver gone + instance still up, (b) 12h deadline.
+- Prior launch (RUN 1778597485) aborted at ~5 min with `unknown Eliza-1 tier 'eliza-1-0_8b'` (KNOWN_TIERS hadn't been fixed); VM correctly auto-tore-down via train_nebius's `full` EXIT trap. KNOWN_TIERS fix landed (2e56f07cfc), relaunched cleanly.
+
+### Item 2 — 2B → 4B → 9B → 27B H200 SFT sequence: **STAGED, NOT LAUNCHED**
+
+Per the brief: after each tier's gate report lands green, launch the next via `REGISTRY_KEY=qwen3.5-{2b,4b,9b,27b} NEBIUS_VM_NAME=eliza-train-h200-{2b,4b,9b,27b} RUN_NAME=eliza-1-{2b,4b,9b,27b}-apollo-fullcorpus-h200-<ts> bash train_nebius.sh full`. For 27B the registry budget (130 GB) fits one H200; only fall back to gpu-h200x2 if a real run blows that.
+
+### FINALIZE-5 commits on `develop`
+- `5954c7731f` — training(eliza-1): finish wiring qwen3.5-{2b,4b,9b,27b}-Base + Qwen/Qwen3.5-27B (registry + run-on-cloud tier_to_registry_key + gates yaml 2b/4b blocks + tests).
+- `fef2d45500` — training(eliza-1): align with 2026-05-12 Qwen3.5-only directive (post-purge test/wrapper/schema reconciliation).
