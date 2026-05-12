@@ -111,9 +111,15 @@ function extractQuantLabel(filename: string): string {
 function inferParams(
   name: string,
   tags: string[],
-): { params: CatalogModel["params"]; bucket: ModelBucket } {
+): {
+  params: CatalogModel["params"];
+  bucket: ModelBucket;
+  parameterLabel?: string;
+} {
   const lower = `${name} ${tags.join(" ")}`.toLowerCase();
-  const sizes: Array<[RegExp, CatalogModel["params"], ModelBucket]> = [
+  const sizes: Array<
+    [RegExp, CatalogModel["params"], ModelBucket, string?]
+  > = [
     [/\b32b\b/, "32B", "xl"],
     [/\b27b\b/, "27B", "large"],
     [/\b24b\b/, "24B", "large"],
@@ -122,17 +128,23 @@ function inferParams(
     [/\b14b\b/, "14B", "large"],
     [/\b13b\b/, "14B", "large"],
     [/\b9b\b/, "9B", "mid"],
-    [/\b0\.6b\b/, "0.8B", "small"],
+    [/\b0\.6b\b/, "0.8B", "small", "0.6B"],
     [/\b0\.8b\b/, "0.8B", "small"],
-    [/\b1\.7b\b/, "2B", "small"],
+    [/\b1\.7b\b/, "2B", "small", "1.7B"],
     [/\b8b\b/, "8B", "mid"],
     [/\b7b\b/, "7B", "mid"],
     [/\b3b\b/, "3B", "small"],
     [/\b2b\b/, "2B", "small"],
     [/\b1b\b/, "1B", "small"],
   ];
-  for (const [re, params, bucket] of sizes) {
-    if (re.test(lower)) return { params, bucket };
+  for (const [re, params, bucket, parameterLabel] of sizes) {
+    if (re.test(lower)) {
+      return {
+        params,
+        bucket,
+        ...(parameterLabel ? { parameterLabel } : {}),
+      };
+    }
   }
   return { params: "7B", bucket: "mid" };
 }
@@ -239,7 +251,10 @@ export async function searchHuggingFaceGguf(
 
     const sizeBytes = sibling.size ?? 0;
     const sizeGb = sizeBytes > 0 ? sizeBytes / 1024 ** 3 : 4;
-    const { params, bucket } = inferParams(id, detail.tags ?? []);
+    const { params, bucket, parameterLabel } = inferParams(
+      id,
+      detail.tags ?? [],
+    );
     const quant = extractQuantLabel(sibling.rfilename);
     const category = inferCategory(detail.tags ?? [], detail.pipeline_tag);
     const displayName = id.split("/").pop() ?? id;
@@ -254,6 +269,7 @@ export async function searchHuggingFaceGguf(
       hfRepo: id,
       ggufFile: sibling.rfilename,
       params,
+      ...(parameterLabel ? { parameterLabel } : {}),
       quant,
       sizeGb: Math.round(sizeGb * 10) / 10,
       minRamGb,

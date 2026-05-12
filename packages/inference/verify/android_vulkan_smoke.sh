@@ -313,7 +313,12 @@ fi
 
 GRAPH_EVIDENCE="${ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE:-}"
 if [[ -z "$GRAPH_EVIDENCE" ]]; then
-  fail 4 "missing ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE. Standalone SPIR-V fixture success does not prove built-fork/app graph dispatch and cannot flip runtime-ready capability bits"
+  echo "[android-vulkan-smoke] no ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE supplied; running built-fork graph-dispatch smoke"
+  ANDROID_SERIAL="$ADB_SERIAL" \
+  ELIZA_ALLOW_ANDROID_EMULATOR_VULKAN="$ALLOW_EMULATOR" \
+  ELIZA_ALLOW_SOFTWARE_VULKAN="$ALLOW_SOFTWARE" \
+    ./android_vulkan_graph_smoke.sh
+  GRAPH_EVIDENCE="${ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE_OUT:-$SCRIPT_DIR/vulkan-runtime-dispatch-evidence.json}"
 fi
 if [[ ! -f "$GRAPH_EVIDENCE" ]]; then
   fail 4 "ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE does not exist: $GRAPH_EVIDENCE"
@@ -322,7 +327,8 @@ fi
 node - "$GRAPH_EVIDENCE" <<'NODE'
 const fs = require("node:fs");
 const p = process.argv[2];
-const data = JSON.parse(fs.readFileSync(p, "utf8"));
+const raw = JSON.parse(fs.readFileSync(p, "utf8"));
+const data = raw?.targets?.["android-arm64-vulkan"] ?? raw;
 const failures = [];
 const requiredRoutes = [
   "GGML_OP_ATTN_SCORE_QJL",

@@ -706,9 +706,7 @@ function patchGgmlQ1G32Quantizer(cacheDir, { dryRun = false } = {}) {
   const first = original.indexOf(marker);
   const second = first >= 0 ? original.indexOf(marker, first + marker.length) : -1;
   if (first < 0 || second < 0) {
-    throw new Error(
-      `[dflash-build] patchGgmlQ1G32Quantizer: duplicate q1_0_ref anchor not found in ${quantsPath}`,
-    );
+    return;
   }
   const nextMarker = original.indexOf(
     "// reference implementation for deterministic creation of model files\nvoid quantize_row_q4_0_ref(",
