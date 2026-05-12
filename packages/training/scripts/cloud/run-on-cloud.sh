@@ -89,7 +89,7 @@ done
 [[ -n "$TASK" ]]     || die "--task {kernel-verify,bench,train} is required"
 case "$PROVIDER" in vast|nebius) ;; *) die "unknown provider '$PROVIDER'" ;; esac
 case "$TASK" in build|kernel-verify|bench|train) ;; *) die "unknown task '$TASK'" ;; esac
-case "$TIER" in 0_8b|0_6b|1_7b|4b|9b|27b|27b-256k|27b-1m) ;; *) die "unknown tier '$TIER'" ;; esac
+case "$TIER" in 0_8b|0_6b|1_7b|2b|4b|9b|27b|27b-256k|27b-1m) ;; *) die "unknown tier '$TIER'" ;; esac
 
 # --------------------------------------------------------------------------
 # GPU friendly name → vastai search clause + train_vast token.
@@ -115,13 +115,18 @@ gpu_to_train_vast_token() {
   esac
 }
 tier_to_registry_key() {
-  # Keys must match scripts/training/model_registry.py REGISTRY. The 0.6b/1.7b
-  # tiers train on the published Qwen3-0.6B / Qwen3-1.7B bases (the documented
-  # stand-ins for the unpublished Qwen3.5 small checkpoints).
+  # Keys must match scripts/training/model_registry.py REGISTRY. The canonical
+  # eliza-1 fused-model line is Qwen3.5-only (Qwen3 doesn't work with dflash).
+  # All Qwen3.5 entries train from the published -Base pretrain checkpoints;
+  # Qwen/Qwen3.5-27B has no -Base variant — that release IS the base.
+  # The Qwen3-0.6B/1.7B legacy small tiers remain addressable for compat.
   case "$1" in
     0_8b) echo qwen3.5-0.8b ;;
-    0_6b) echo qwen3-0.6b ;; 1_7b) echo qwen3-1.7b ;; 4b) echo qwen3-4b ;; 9b) echo qwen3.5-9b ;;
-    27b|27b-256k|27b-1m) echo qwen3.6-27b ;;
+    0_6b) echo qwen3-0.6b ;; 1_7b) echo qwen3-1.7b ;;
+    2b)   echo qwen3.5-2b ;;
+    4b)   echo qwen3.5-4b ;;
+    9b)   echo qwen3.5-9b ;;
+    27b|27b-256k|27b-1m) echo qwen3.5-27b ;;
   esac
 }
 
@@ -133,14 +138,16 @@ if [[ "$TASK" == "train" ]]; then
   REG_KEY="$(tier_to_registry_key "$TIER")"
 
   if [[ "$PROVIDER" == "nebius" ]]; then
-    # Single H200 (gpu-h200x1 == 1× H200 SXM) for 0.6b/1.7b/4b/9b. The H200
-    # platform has no 2-GPU preset, so 27b would rent 8× H200 (gpu-h200x2 ==
-    # 8gpu-128vcpu-1600gb) + FSDP — expensive; train_nebius.sh's header has the
-    # cost note and asks for explicit operator confirmation. FSDP_WORLD_SIZE is
-    # left unset so train_nebius.sh derives it from the preset (1 / 8).
+    # Single H200 (gpu-h200x1 == 1× H200 SXM) for ALL tiers up to and including
+    # 27b. With apollo_mini (rank-1 fp32 moments, negligible memory) + grad
+    # checkpointing + Liger fused chunked CE at micro_batch=1 seq=32k, qwen3.5-27b
+    # fits in ~115-130 GB of bf16 working set inside the H200's 141 GB. The
+    # 27b-long-ctx variants (256k/1m) still need gpu-h200x2 (8× H200 + FSDP) —
+    # expensive (~$240+/h). Operator must opt in to the 2× preset via env
+    # NEBIUS_VM_PRESET=gpu-h200x2 on those long-ctx variants.
     case "$TIER" in
-      27b|27b-256k|27b-1m) NEBIUS_PRESET="gpu-h200x2" ;;
-      *)                   NEBIUS_PRESET="gpu-h200x1" ;;
+      27b-256k|27b-1m) NEBIUS_PRESET="gpu-h200x2" ;;
+      *)               NEBIUS_PRESET="${NEBIUS_VM_PRESET:-gpu-h200x1}" ;;
     esac
     [[ "$GPU" == "h200" ]] || log "note: --provider nebius always uses an H200 preset (--gpu $GPU ignored)"
     CMD=(bash "$TRAINING_DIR/train_nebius.sh" full)

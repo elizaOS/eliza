@@ -100,7 +100,7 @@ import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
 const REMOTE =
   process.env.ELIZA_DFLASH_LLAMA_CPP_REMOTE ||
   "https://github.com/elizaOS/llama.cpp.git";
-const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "v1.1.0-eliza";
+const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "v1.2.0-eliza";
 // The in-repo submodule checkout of the fork. When it is initialized this is
 // the default build source (no clone needed); see resolveSourceCheckout().
 const SUBMODULE_DIR = path.resolve(

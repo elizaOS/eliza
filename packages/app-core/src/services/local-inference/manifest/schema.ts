@@ -45,6 +45,13 @@ export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 151_936 as const;
 // GH200-class 1M-context variant of the 27B tier. `0_8b` is the new smallest
 // tier on the Qwen3.5-0.8B backbone (the small tiers move to the Qwen3.5
 // family); `0_6b` / `1_7b` are kept as a legacy Qwen3 line — see catalog.ts.
+// TODO(owner): the Qwen3.5-2B / Qwen3.5-4B mid-local tiers are wired into
+// the training registry (scripts/training/model_registry.py) and the
+// training run-on-cloud / train_nebius launchers; they ship into the
+// runtime manifest only after the canonical catalog (`catalog.ts` source
+// models, drafters) and recommendation ladders are extended. Land that as
+// a follow-up so the manifest schema, gates yaml, and catalog stay in
+// lockstep.
 export const ELIZA_1_TIERS = [
   "0_8b",
   "0_6b",

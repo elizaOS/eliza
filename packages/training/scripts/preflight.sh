@@ -351,8 +351,10 @@ shape = SHAPES[REGISTRY_KEY]
 opt_map = {
     "apollo": TrainOpt.APOLLO,
     "apollo_mini": TrainOpt.APOLLO_MINI,
-    "adamw": TrainOpt.ADAMW,
 }
+# TrainOpt only has APOLLO / APOLLO_MINI now (eliza-1 is APOLLO-only); the
+# legacy "adamw" entry from older preflight versions silently fell back to
+# APOLLO_MINI anyway. Keep the same default for any unknown optimizer name.
 optimizer = opt_map.get(entry.optimizer, TrainOpt.APOLLO_MINI)
 
 cfg = TrainConfig(
