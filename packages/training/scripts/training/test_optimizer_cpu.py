@@ -98,6 +98,45 @@ def test_apollo_mini_state_smaller_than_full_apollo() -> None:
     )
 
 
+@pytest.mark.parametrize("builder_name", ["apollo", "apollo_mini"])
+def test_apollo_step_decreases_loss_on_synthetic_problem(builder_name: str) -> None:
+    """An APOLLO / APOLLO-Mini optimizer step must actually reduce a tiny
+    cross-entropy loss — the projector + norm-growth scaling is a no-op proxy
+    for AdamW only if the update direction is right. Fixed-input, fixed-target
+    overfit: 30 steps on a 2-layer toy LM, loss must drop monotonically enough
+    to land well below the starting value."""
+    pytest.importorskip("apollo_torch")
+    torch.manual_seed(0)
+    model = _TinyLM(vocab=32, hidden=48, n_layers=2)
+    ids = torch.randint(0, 32, (4, 6))
+    target = torch.randint(0, 32, (4, 6))
+
+    if builder_name == "apollo":
+        opt = build_apollo_optimizer(model, lr=5e-3, weight_decay=0.0, rank=8)
+    else:
+        opt = build_apollo_mini_optimizer(model, lr=5e-3, weight_decay=0.0)
+
+    def ce() -> torch.Tensor:
+        logits = model(ids)  # (B, S, V)
+        return nn.functional.cross_entropy(
+            logits.reshape(-1, logits.size(-1)), target.reshape(-1)
+        )
+
+    start = ce().item()
+    last = start
+    for _ in range(30):
+        opt.zero_grad(set_to_none=True)
+        loss = ce()
+        loss.backward()
+        opt.step()
+        last = loss.item()
+    assert last < start, f"{builder_name}: loss did not decrease ({start:.4f} -> {last:.4f})"
+    assert last < start * 0.7, (
+        f"{builder_name}: loss only dropped {start:.4f} -> {last:.4f}; "
+        "expected the synthetic overfit to fall below 70% of the start"
+    )
+
+
 def test_apollo_refuses_when_no_2d_weights() -> None:
     pytest.importorskip("apollo_torch")
 

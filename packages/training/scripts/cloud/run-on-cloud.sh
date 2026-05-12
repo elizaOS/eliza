@@ -110,17 +110,42 @@ gpu_to_train_vast_token() {
   esac
 }
 tier_to_registry_key() {
+  # Keys must match scripts/training/model_registry.py REGISTRY. The 0.6b/1.7b
+  # tiers train on the published Qwen3-0.6B / Qwen3-1.7B bases (the documented
+  # stand-ins for the unpublished Qwen3.5 small checkpoints).
   case "$1" in
-    0_6b) echo qwen3.5-0.6b ;; 1_7b) echo qwen3.5-1.7b ;; 9b) echo qwen3.5-9b ;;
+    0_6b) echo qwen3-0.6b ;; 1_7b) echo qwen3-1.7b ;; 9b) echo qwen3.5-9b ;;
     27b|27b-256k|27b-1m) echo qwen3.6-27b ;;
   esac
 }
 
 # --------------------------------------------------------------------------
 # --task train: delegate to the existing battle-tested launcher.
+#   vast   → train_vast.sh provision-and-train  (canonical)
+#   nebius → train_nebius.sh full               (emergency fallback; H200)
 if [[ "$TASK" == "train" ]]; then
-  [[ "$PROVIDER" == "vast" ]] || die "--task train --provider $PROVIDER not wired here; run ../train_nebius.sh directly for Nebius (emergency fallback only)"
   REG_KEY="$(tier_to_registry_key "$TIER")"
+
+  if [[ "$PROVIDER" == "nebius" ]]; then
+    # Single H200 for 0.6b/1.7b/9b; the 2× H200 preset is only needed for 27b.
+    case "$TIER" in
+      27b|27b-256k|27b-1m) NEBIUS_PRESET="gpu-h200x2"; NEBIUS_WORLD=2 ;;
+      *)                   NEBIUS_PRESET="gpu-h200x1"; NEBIUS_WORLD=1 ;;
+    esac
+    [[ "$GPU" == "h200" ]] || log "note: --provider nebius always uses an H200 preset (--gpu $GPU ignored)"
+    CMD=(bash "$TRAINING_DIR/train_nebius.sh" full)
+    log "delegating to train_nebius.sh — registry-key=$REG_KEY preset=$NEBIUS_PRESET world=$NEBIUS_WORLD"
+    if [[ "$DRYRUN" == 1 ]]; then
+      echo "[run-on-cloud] DRY-RUN plan:"
+      echo "  REGISTRY_KEY=$REG_KEY NEBIUS_VM_PRESET=$NEBIUS_PRESET FSDP_WORLD_SIZE=$NEBIUS_WORLD ${CMD[*]}"
+      echo "  (no VM provisioned; no charges)"
+      exit 0
+    fi
+    [[ "$PAY" == 1 ]] || die "refusing to provision without --yes-i-will-pay (train runs cost real money — see ../train_nebius.sh)"
+    [[ -n "${NEBIUS_PROJECT_ID:-}" ]] || die "NEBIUS_PROJECT_ID not set — fail-closed (see ../train_nebius.sh)"
+    exec env REGISTRY_KEY="$REG_KEY" NEBIUS_VM_PRESET="$NEBIUS_PRESET" FSDP_WORLD_SIZE="$NEBIUS_WORLD" "${CMD[@]}"
+  fi
+
   TOKEN="$(gpu_to_train_vast_token "$GPU")"
   CMD=(bash "$TRAINING_DIR/train_vast.sh" provision-and-train --registry-key "$REG_KEY" --epochs 1)
   log "delegating to train_vast.sh — registry-key=$REG_KEY gpu-token=${TOKEN:-auto}"
