@@ -2441,6 +2441,13 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         scenario = extra.get("scenario")
         if isinstance(scenario, str) and scenario.strip():
             args.extend(["--scenario", scenario.strip()])
+        scenarios = extra.get("scenarios")
+        if isinstance(scenarios, list):
+            scenario_ids = [str(item).strip() for item in scenarios if str(item).strip()]
+            if scenario_ids:
+                args.extend(["--scenarios", ",".join(scenario_ids)])
+        elif isinstance(scenarios, str) and scenarios.strip():
+            args.extend(["--scenarios", scenarios.strip()])
         system = extra.get("system")
         if isinstance(system, str) and system.strip():
             args.extend(["--system", system.strip()])

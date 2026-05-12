@@ -179,17 +179,17 @@ describe("selectGpuConfig — bundle-aware overrides", () => {
     return { name, totalMemoryMiB };
   }
 
-  it("4090 + text-1.7b -> 16 parallel @ 64k", () => {
+  it("4090 + eliza-1-2b -> 16 parallel @ 64k", () => {
     const res = selectGpuConfig(info("NVIDIA GeForce RTX 4090", 24576), {
-      bundleId: "text-1.7b",
+      bundleId: "eliza-1-2b",
     });
     expect(res?.flags.n_parallel).toBe(16);
     expect(res?.flags.ctx_size).toBe(65536);
   });
 
-  it("4090 + text-27b -> 2 parallel @ 32k", () => {
+  it("4090 + eliza-1-27b -> 2 parallel @ 32k", () => {
     const res = selectGpuConfig(info("NVIDIA GeForce RTX 4090", 24576), {
-      bundleId: "text-27b",
+      bundleId: "eliza-1-27b",
     });
     expect(res?.flags.n_parallel).toBe(2);
     expect(res?.flags.ctx_size).toBe(32768);
@@ -217,9 +217,9 @@ describe("selectGpuConfig — bundle-aware overrides", () => {
     }
   });
 
-  it("3090 + text-1.7b overrides cache_type_v to q4_0 (no Polar on sm_86)", () => {
+  it("3090 + eliza-1-2b overrides cache_type_v to q4_0 (no Polar on sm_86)", () => {
     const res = selectGpuConfig(info("NVIDIA GeForce RTX 3090", 24576), {
-      bundleId: "text-1.7b",
+      bundleId: "eliza-1-2b",
     });
     expect(res?.flags.cache_type_v).toBe("q4_0");
   });
@@ -233,7 +233,7 @@ describe("selectGpuConfig — bundle-aware overrides", () => {
 
   it("per-call overrides take precedence over bundle overrides", () => {
     const res = selectGpuConfig(info("NVIDIA GeForce RTX 4090", 24576), {
-      bundleId: "text-1.7b",
+      bundleId: "eliza-1-2b",
       overrides: { n_parallel: 4, ctx_size: 8192 },
     });
     expect(res?.flags.n_parallel).toBe(4);
