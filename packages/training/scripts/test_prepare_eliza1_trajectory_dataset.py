@@ -206,7 +206,7 @@ def test_prepare_lifeops_result_uses_scores_and_alias_prefixes(tmp_path: Path) -
 
     assert len(train) == 1
     assert train[0]["source"]["kind"] == "lifeops_bench_result"
-    assert train[0]["actions"][0]["name"] == "MONEY"
+    assert train[0]["actions"][0]["name"] == "PAYMENT"
     assert train[0]["quality"]["weight"] == 1.0
     assert len(repair) == 1
     assert repair[0]["actions"][0]["name"] == "BLOCK_RELEASE"

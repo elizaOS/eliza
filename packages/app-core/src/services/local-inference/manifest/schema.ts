@@ -472,7 +472,10 @@ export const Eliza1ManifestSchema = z
   // A `base-v1`-channel manifest is the upstream-base release — never a
   // device default. Mirrors inference/AGENTS.md §6 and the Python manifest
   // builder.
-  .refine((m) => m.releaseChannel !== "base-v1" || m.defaultEligible === false, {
-    message: "releaseChannel=base-v1 requires defaultEligible: false",
-    path: ["defaultEligible"],
-  });
+  .refine(
+    (m) => m.releaseChannel !== "base-v1" || m.defaultEligible === false,
+    {
+      message: "releaseChannel=base-v1 requires defaultEligible: false",
+      path: ["defaultEligible"],
+    },
+  );

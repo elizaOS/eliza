@@ -17,6 +17,17 @@
  * (typically `@elizaos/<basename>`), and ensures
  * `node_modules/@elizaos/<basename>` resolves to the workspace dir via
  * a relative symlink. Idempotent — skips packages that already resolve.
+ *
+ * Second job — repair *nested* `@elizaos/*` symlinks that escape the repo.
+ * When this checkout is cloned inside another workspace (the `milady`
+ * wrapper has `eliza/` as a gitignored sibling), `bun install` sometimes
+ * writes `plugins/<pkg>/node_modules/@elizaos/shared` (and friends) as a
+ * symlink that climbs *out* of the eliza repo into the wrapper's hoisted
+ * `node_modules` — pinning a published `@elizaos/shared` that lags the
+ * workspace source. The result is `Export named '...' not found in
+ * @elizaos/shared/index.js` at runtime boot. We re-point any nested
+ * `node_modules/@elizaos/<name>` symlink at the in-repo workspace package
+ * whenever one exists.
  */
 
 import {
@@ -103,14 +114,68 @@ function ensureSymlink(linkPath, targetDir) {
   return true;
 }
 
+function isInsideRepo(absPath) {
+  const rel = relative(REPO_ROOT, absPath);
+  return rel === "" || (!rel.startsWith("..") && !resolve(rel).startsWith(".."));
+}
+
+/**
+ * Re-point any nested `node_modules/@elizaos/<name>` symlink under a
+ * workspace package at the in-repo workspace package when one exists and
+ * the current target escapes the repo (a stale hoisted-dep symlink).
+ */
+function repairNestedElizaSymlinks(pkgDir, workspaceByName, repaired) {
+  const scopeDir = join(pkgDir, "node_modules", "@elizaos");
+  if (!existsSync(scopeDir)) return;
+  let entries;
+  try {
+    entries = readdirSync(scopeDir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const name = `@elizaos/${entry.name}`;
+    const targetDir = workspaceByName.get(name);
+    if (!targetDir) continue; // not a workspace package — leave it alone
+    const linkPath = join(scopeDir, entry.name);
+    const stat = lstatSync(linkPath, { throwIfNoEntry: false });
+    if (!stat || !stat.isSymbolicLink()) continue; // real dir written by bun — don't touch
+    let resolved = null;
+    try {
+      resolved = realpathSync(linkPath);
+    } catch {
+      /* broken link — fall through and repair */
+    }
+    if (resolved && resolved === realpathSync(targetDir)) continue; // already correct
+    if (resolved && isInsideRepo(resolved)) continue; // points elsewhere in-repo — not our problem
+    try {
+      unlinkSync(linkPath);
+      const rel = relative(dirname(linkPath), targetDir);
+      symlinkSync(rel, linkPath, "dir");
+      repaired.push(`${relative(REPO_ROOT, linkPath)} -> ${rel}`);
+    } catch (err) {
+      console.warn(
+        `[ensure-workspace-symlinks] failed to repair nested ${linkPath}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+}
+
 function main() {
   const created = [];
   const skipped = [];
+  const repaired = [];
 
-  for (const pkgDir of listWorkspacePackageDirs()) {
+  const workspaceDirs = listWorkspacePackageDirs();
+  const workspaceByName = new Map();
+  for (const pkgDir of workspaceDirs) {
     const name = readPackageName(pkgDir);
-    if (!name || !name.startsWith("@elizaos/")) continue;
+    if (name?.startsWith("@elizaos/")) workspaceByName.set(name, pkgDir);
+  }
 
+  for (const [name, pkgDir] of workspaceByName) {
     const linkPath = join(REPO_ROOT, "node_modules", name);
     try {
       const made = ensureSymlink(linkPath, pkgDir);
@@ -125,9 +190,16 @@ function main() {
     }
   }
 
+  for (const pkgDir of workspaceDirs) {
+    repairNestedElizaSymlinks(pkgDir, workspaceByName, repaired);
+  }
+
   console.log(
-    `[ensure-workspace-symlinks] created=${created.length} skipped=${skipped.length}`,
+    `[ensure-workspace-symlinks] created=${created.length} skipped=${skipped.length} repaired-nested=${repaired.length}`,
   );
+  for (const line of repaired) {
+    console.log(`[ensure-workspace-symlinks]   repaired ${line}`);
+  }
 }
 
 main();
