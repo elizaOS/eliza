@@ -73,7 +73,7 @@ component.
 | ASR | `ggml-org/Qwen3-ASR-0.6B-GGUF` (0.6B/1.7B/9B) / `ggml-org/Qwen3-ASR-1.7B-GGUF` (27B tiers) | `asr/eliza-1-asr.gguf` + `asr/eliza-1-asr-mmproj.gguf` | tokenizer fused with the text backbone (zero re-tokenization) |
 | VAD | Silero VAD v5.1.2 (MIT) | `vad/silero-vad-v5.1.2.ggml.bin` (native GGML; legacy bundles may also carry the `vad/silero-vad-int8.onnx` fallback — not the release path) | none |
 | Embedding | `Qwen/Qwen3-Embedding-0.6B-GGUF` (1.7B+ tiers) | `embedding/...gguf` | none beyond fork conversion; the `0_6b` tier omits it (pools from the text backbone with `--pooling last`) |
-| Drafter (DFlash) | distilled (KD, NOT fine-tuning of the target) from each tier's base text model; published under `elizaos/eliza-1-<tier>` | `dflash/drafter-<tier>.gguf` + `dflash/target-meta.json` | drafter GGUF stamps `dflash-draft.target_checkpoint_sha256` |
+| Drafter (DFlash) | distilled (KD, NOT fine-tuning of the target) from each tier's base text model; published under `elizaos/eliza-1-<tier>`. **Until distilled, the staging scripts use `Qwen/Qwen3-0.6B` (0_6b/1_7b) / `Qwen/Qwen3-1.7B` (9b/27b) as the documented substitute** — same convention as the text backbones. | `dflash/drafter-<tier>.gguf` + `dflash/target-meta.json` | drafter GGUF stamps `dflash-draft.target_checkpoint_sha256` = sha256 of the tier's text GGUF; shared 151,936-token Qwen2 vocab + `tokenizer.ggml.merges` repair |
 | Voice preset cache | placeholder until a real fused build emits one | `cache/voice-preset-default.bin` | n/a |
 
 ---
@@ -122,6 +122,21 @@ green in this checkout.
 - Local release-shaped bundles exist for all five tiers for runtime-layout smoke
   (placeholder/substitute bytes — not yet fork-built from the upstream base
   weights; `releaseState` is `weights-staged`, not `base-v1`).
+- DFlash drafters staged + stamped for `0_6b`/`1_7b`: `dflash/drafter-<tier>.gguf`
+  (the `Qwen/Qwen3-0.6B` substitute), `qwen3` arch, plain-AR shape, shared
+  151,936-token vocab with the `tokenizer.ggml.merges` repair intact,
+  `dflash-draft.target_checkpoint_sha256` matches the tier's text GGUF
+  (`target-meta.json` `matchesTargetCheckpoint: true`). Speculative-path smoke
+  (`dflash_drafter_runtime_smoke.mjs --bench`, `linux-x64-cpu` fork build,
+  `llama-speculative-simple`): 0_6b `n_drafted=23 n_accept=19` (82.6%, 2.09×
+  tok/s); 1_7b acceptance 47.1% (1.41×). `distill_dflash_drafter.py`
+  `--synthetic-smoke` + `--stamp-only` run offline here; a full KD distill (every
+  tier) + the acceptance eval that fills `target-meta.json`
+  `acceptanceRate`/`acceptanceWindow` need a GPU host (commands in
+  `packages/inference/reports/porting/2026-05-11/remaining-work-ledger.md` →
+  "DFlash drafter staging + stamping"). The `linux-x64-cpu` build reports
+  `dflash:false` (stock kernels) — a `dflash`-kernel fork build is still needed
+  for the fused-attn speculative path before publish.
 - **`--base-v1 --dry-run` verdict (`eliza-1-0_6b` / `eliza-1-1_7b`):** BLOCKED
   with `EXIT_RELEASE_EVIDENCE_FAIL` (16) — see each bundle's
   `evidence/base-v1-dry-run-*.log`. Blockers: `releaseState=weights-staged`

@@ -306,6 +306,83 @@ are sequential within a turn) — ~1 GB on `0_6b`, which would let the
 - Upload only to `elizaos/eliza-1-*` repos. Any red gate forces
   `defaultEligible=false`.
 
+### DFlash drafter staging + stamping (2026-05-11)
+
+- Drafter GGUFs are staged for the two locally-stageable tiers:
+  `~/.eliza/local-inference/models/eliza-1-0_6b.bundle/dflash/drafter-0_6b.gguf`
+  and `…/eliza-1-1_7b.bundle/dflash/drafter-1_7b.gguf`. Both are the
+  upstream `Qwen/Qwen3-0.6B` GGUF (the documented substitute used by the
+  staging scripts until the distilled drafters exist) — `general.architecture
+  = qwen3`, plain-AR shape (`token_embd.weight` + `blk.*.attn_*` present, no
+  `dflash_fc.weight`/`dflash_hidden_norm.weight`), `tokenizer.ggml.model =
+  gpt2`, `tokenizer.ggml.tokens` len 151936, `tokenizer.ggml.merges` len
+  151387 — the shared-vocab merges-repair is intact on both.
+- `dflash-draft.target_checkpoint_sha256` verified to match the tier's text
+  GGUF sha256 on both bundles (0_6b → `a8fb6f0b…`, 1_7b → `ee006af4…`), and
+  `dflash/target-meta.json` records `drafter.matchesTargetCheckpoint: true`.
+  Re-stamp (idempotent) is exercised via `distill_dflash_drafter.py
+  --stamp-only --drafter-gguf <gguf> --target-gguf <text gguf>`.
+- `distill_dflash_drafter.py` is runnable end-to-end here: `--synthetic-smoke`
+  (no torch/GPU) writes a well-formed drafter GGUF + run manifest;
+  `--stamp-only` rewrites the target hash in place via gguf-py's
+  `gguf_new_metadata`. A **full distill needs a GPU host**; the command for
+  the cloud runner is in the FINETUNE coordination note below.
+- Speculative-path runtime smoke (`packages/inference/verify/dflash_drafter_runtime_smoke.mjs --bench`)
+  against the `linux-x64-cpu` fork build (`forkCommit eae44e75…`,
+  `llama-speculative-simple`): **0_6b** — `n_drafted=23 n_accept=19`
+  acceptance **82.6%**, 32→67 tok/s (**2.09×**); **1_7b** — `n_drafted` >0,
+  acceptance **47.1%**, 25.5→36.1 tok/s (**1.41×**). `metadataStatus =
+  metadata_loadable`, `hasTargetCheckpointSha256: true`,
+  `gpt2TokenizerHasMerges: true` on both. (Acceptance is inflated/skewed by
+  the drafter currently being the same/adjacent Qwen3 base as the target; the
+  real KD'd drafter's window is what the eval harness records into
+  `target-meta.json`.) Note: the `linux-x64-cpu` build reports `dflash:false`
+  in `CAPABILITIES.json` (stock kernels) — `--spec-type dflash` is
+  functionally identical to `--spec-type draft` in the fork, so the draft loop
+  still exercises the drafter; a `dflash`-capable build is still needed for the
+  fused-attn/KV path before publish.
+- Still blocked here (no GPU / no real bytes): the actual KD distill for every
+  tier; staging `9b`/`27b`/`27b-256k`/`27b-1m` drafters (need the real text
+  bytes + HF network for the `Qwen/Qwen3-1.7B` student); a `dflash`-kernel
+  fork build for the fused-attn speculative path; the acceptance-rate eval
+  that fills `target-meta.json` `acceptanceRate`/`acceptanceWindow`.
+
+#### Coordination note — FINETUNE agent (task #45, the 0.6b fine-tune)
+
+When you produce a fine-tuned `0_6b` text checkpoint (and its final shipped
+GGUF), the drafter for that tier MUST be re-distilled and re-stamped against
+the **new** text GGUF — the stamp invariant is `drafter
+dflash-draft.target_checkpoint_sha256 == sha256(final text GGUF in the same
+bundle)`, and `dflash-doctor`/the publish gate refuse a drafter whose hash
+does not match. Two paths:
+
+1. **Re-distill (correct, GPU-only):**
+   ```
+   uv run --extra train python packages/training/scripts/distill_dflash_drafter.py \
+     --tier 0_6b \
+     --target-checkpoint <fine-tuned 0_6b HF dir> \
+     --target-gguf <out>/eliza-1-0_6b/text/eliza-1-0_6b-32k.gguf \
+     --student-base Qwen/Qwen3-0.6B \
+     --dataset <the 0_6b SFT corpus jsonl> \
+     --epochs 1 --batch-size 8 --grad-accum 4 \
+     --out-dir <out>/eliza-1-0_6b/dflash
+   ```
+   This writes `drafter-0_6b.gguf` + `drafter-0_6b.distill.json` and stamps
+   the target hash. Then re-run the bundle stager so `target-meta.json`'s
+   `drafter.sha256` / `targetCheckpointSha256` / `matchesTargetCheckpoint`
+   are refreshed, and run the DFlash acceptance eval to fill
+   `acceptanceRate`/`acceptanceWindow` (gate ≥0.45 for 0_6b).
+2. **Re-stamp only (stop-gap, no GPU — keeps the substitute drafter bytes):**
+   ```
+   uv run --extra train python packages/training/scripts/distill_dflash_drafter.py \
+     --tier 0_6b --stamp-only \
+     --drafter-gguf ~/.eliza/local-inference/models/eliza-1-0_6b.bundle/dflash/drafter-0_6b.gguf \
+     --target-gguf ~/.eliza/local-inference/models/eliza-1-0_6b.bundle/text/eliza-1-0_6b-32k.gguf
+   ```
+   Use only if the fine-tune lands before a GPU run is available — it keeps
+   `matchesTargetCheckpoint` green so the bundle still loads, but acceptance
+   will degrade and the publish gate's acceptance eval stays blocking.
+
 ### Done in this pass (publish pipeline + downloader contract)
 
 - `publish_all_eliza1.sh` now prints the per-tier publish summary and
