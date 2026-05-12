@@ -80,6 +80,9 @@ function dumpSymbolsBestEffort({ tool, file }) {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 30_000,
+    // The full symbol table of a static-linked executable is large (~1 MB+);
+    // the default 1 MB maxBuffer trips ENOBUFS, which would mask the table.
+    maxBuffer: 64 * 1024 * 1024,
   });
   if (result.error || (typeof result.status === "number" && result.status !== 0)) {
     return "";
@@ -130,6 +133,7 @@ function dumpSymbols({ tool, file }) {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 30_000,
+    maxBuffer: 64 * 1024 * 1024,
   });
   if (result.error) {
     throw new Error(
