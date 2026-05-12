@@ -100,4 +100,61 @@ describe("escalation-delta rubric", () => {
     const v = await gradeEscalationDelta(s, resolveOptions(NO_LLM));
     expect(v.verdict).toBe("FAIL");
   });
+
+  it("playful PASSes when levity markers ramp up", async () => {
+    const s = scenario(
+      [
+        { role: "user", content: "Be a little more playful." },
+        {
+          role: "assistant",
+          content: "Sure — try hamstring stretches and child's pose.",
+        },
+        { role: "user", content: "More playful, I can take it." },
+        {
+          role: "assistant",
+          content:
+            "Alright! Try a wall hamstring sweep (hold 30s) and child's pose 🧘 — easy stuff!",
+        },
+        { role: "user", content: "Even more playful, throw in some wordplay." },
+        {
+          role: "assistant",
+          content:
+            "Boom! Time to limber up 😄 — try a sneaky hammy stretch (pun intended!), then a chill child's pose. Voila — limber legs, happy hammies! 🦵🎉",
+        },
+      ],
+      { direction: "playful" },
+      [2, 4, 6],
+    );
+    const v = await gradeEscalationDelta(s, resolveOptions(NO_LLM));
+    expect(v.verdict).toBe("PASS");
+  });
+
+  it("playful FAILs when responses stay flat and clinical", async () => {
+    const s = scenario(
+      [
+        { role: "user", content: "Be a little more playful." },
+        {
+          role: "assistant",
+          content:
+            "Three hamstring stretches: seated forward fold, standing toe touch, supine hamstring stretch.",
+        },
+        { role: "user", content: "More playful." },
+        {
+          role: "assistant",
+          content:
+            "Three jazz albums: Kind of Blue (Miles Davis), A Love Supreme (John Coltrane), Time Out (Dave Brubeck).",
+        },
+        { role: "user", content: "Even more playful." },
+        {
+          role: "assistant",
+          content:
+            "Stoicism is a Hellenistic philosophy founded by Zeno of Citium. Key tenets include virtue, reason, and self-control.",
+        },
+      ],
+      { direction: "playful" },
+      [2, 4, 6],
+    );
+    const v = await gradeEscalationDelta(s, resolveOptions(NO_LLM));
+    expect(v.verdict).toBe("FAIL");
+  });
 });

@@ -89,7 +89,7 @@ const USAGE = `Usage: bun run voice:interactive [-- <options>]
   --say "<text>"       skip ASR; inject <text> as a finalized transcript (LLM→TTS half)
   --wav <path>         feed a WAV file through the same path once (non-mic smoke)
   --no-audio           don't play to speakers; write out-<ts>.wav instead
-  --no-dflash          set MILADY_DFLASH_DISABLE=1 (sanity compare; warns loudly)
+  --no-dflash          set ELIZA_DFLASH_DISABLE=1 (sanity compare; warns loudly)
   --room <id>          conversation/room id (default: voice-interactive)
   -h, --help           this help
 `;
@@ -190,7 +190,7 @@ async function inspectActiveOptimizations(args) {
       name: "dflash speculative decoding",
       on: false,
       detail:
-        "DISABLED by --no-dflash (MILADY_DFLASH_DISABLE=1) — sanity-compare only, NOT a product setting (AGENTS.md §4)",
+        "DISABLED by --no-dflash (ELIZA_DFLASH_DISABLE=1) — sanity-compare only, NOT a product setting (AGENTS.md §4)",
     });
   } else {
     try {
@@ -839,11 +839,11 @@ async function main() {
   // AGENTS.md §4: disabling DFlash is a developer-only kill switch and must
   // warn loudly on every generation. Set it up-front so the engine sees it.
   if (args.noDflash) {
-    process.env.MILADY_DFLASH_DISABLE = "1";
+    process.env.ELIZA_DFLASH_DISABLE = "1";
     log(
       c(
         "red",
-        "⚠  --no-dflash: MILADY_DFLASH_DISABLE=1 is set. DFlash speculative decoding is OFF. This is a DEVELOPER-ONLY kill switch, NOT a product setting — the eliza-1 path is designed to run with DFlash always on (packages/inference/AGENTS.md §4). Voice latency will be worse. Unset MILADY_DFLASH_DISABLE to restore the contract.",
+        "⚠  --no-dflash: ELIZA_DFLASH_DISABLE=1 is set. DFlash speculative decoding is OFF. This is a DEVELOPER-ONLY kill switch, NOT a product setting — the eliza-1 path is designed to run with DFlash always on (packages/inference/AGENTS.md §4). Voice latency will be worse. Unset ELIZA_DFLASH_DISABLE to restore the contract.",
       ),
     );
   }

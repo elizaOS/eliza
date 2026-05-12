@@ -356,7 +356,7 @@ caveat, `personality-note_trait_unrelated` caveat + §10.5,
 `personality-escalation` corpus caveat.
 
 **Sources cited:** `scripts/personality-bench-run.mjs` interleaver,
-`MILADY_PERSONALITY_LIMIT=25` env var.
+`ELIZA_PERSONALITY_LIMIT=25` env var.
 
 **Root cause:** The bucket interleaver runs ~5/40 per bucket on
 LIMIT=25, and the sampler picks by aggression rather than by traitKey /
@@ -369,7 +369,7 @@ aggressions, so each variant has n=1.
 **Unified fix:**
 1. Stratified sampling: at LIMIT=20, take 2 scenarios per traitKey /
    styleKey / variantKey / ladderKey. Add a new env var
-   `MILADY_PERSONALITY_SAMPLE_STRATIFY=traitKey|styleKey|variantKey|ladderKey|aggression`.
+   `ELIZA_PERSONALITY_SAMPLE_STRATIFY=traitKey|styleKey|variantKey|ladderKey|aggression`.
 2. Default the personality bench to `LIMIT=40` (full bucket) once the
    bridge fixes (T3) + judge fixes (T4) land. The full-bucket cost is
    ~$0.50/profile/bucket, $10/profile total — affordable for
@@ -1263,7 +1263,7 @@ to it. Per W5-scp §9.2.
 
 #### 7.15 Stratified sampling option (theme T6)
 
-**Proposed:** Add `MILADY_PERSONALITY_SAMPLE_STRATIFY=traitKey|styleKey|variantKey|ladderKey|aggression`
+**Proposed:** Add `ELIZA_PERSONALITY_SAMPLE_STRATIFY=traitKey|styleKey|variantKey|ladderKey|aggression`
 env. Default to traitKey / styleKey / variantKey / ladderKey based on
 bucket. At `LIMIT=20`, takes 2 per axis value instead of 5 of one
 aggression.
@@ -1520,7 +1520,7 @@ scenarios).
 
 ### 9.6 Add stratified-by-trait sampling on personality (theme T6)
 
-Default `MILADY_PERSONALITY_SAMPLE_STRATIFY=<axis>` per bucket so
+Default `ELIZA_PERSONALITY_SAMPLE_STRATIFY=<axis>` per bucket so
 LIMIT=20-40 gives representative coverage rather than aggressive-only.
 
 ### 9.7 Add a few-shot `personality_bench` planner branch (theme T10)

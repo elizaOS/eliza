@@ -157,6 +157,3 @@ export const ELIZA_DEFAULT_THEME: ThemeDefinition = {
     durationNormal: "200ms",
   },
 };
-
-// TODO: replace with real Eliza palette
-export const ELIZA_DEFAULT_THEME: ThemeDefinition = ELIZA_DEFAULT_THEME;

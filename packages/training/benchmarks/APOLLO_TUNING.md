@@ -70,12 +70,12 @@ Dev box: RTX 5080 Laptop (16 GB, sm_120). Test model `eliza-1-0_6b`.
 - **`torch.compile(model)` — not used.** `train_local.py` never calls it.
   On a Qwen3-0.6B forward+backward with gradient checkpointing this is
   typically +15–30% step time. It is genuinely finicky with the custom
-  `_MiladySFTTrainer.compute_loss` override (graph break on the
+  `_ElizaSFTTrainer.compute_loss` override (graph break on the
   `outputs.loss is not None` branch) and with APOLLO's per-step
   `state["projector"].project(grad, step)` (a Python-side call inside the
   optimizer — that's fine, the optimizer isn't compiled, only the model
   forward/backward is). Worth an **opt-in env flag with a hard fallback**
-  (`MILADY_TORCH_COMPILE=1` → `model = torch.compile(model, mode="default")`
+  (`ELIZA_TORCH_COMPILE=1` → `model = torch.compile(model, mode="default")`
   inside a try/except that logs and continues on any compile error). Not
   added here: the change interacts with Liger's module-patching (Liger
   replaces forward methods *after* compile would capture them, so compile
@@ -95,7 +95,7 @@ Dev box: RTX 5080 Laptop (16 GB, sm_120). Test model `eliza-1-0_6b`.
 - **bf16 vs `train_dtype`.** Registry `train_dtype="bf16"` for every real
   tier; `train_local.py` loads `torch_dtype=torch.bfloat16` and sets
   `bf16=True` in `SFTConfig` when on CUDA. Consistent. fp8 (`te_fp8.py`) is a
-  no-op on sm_120 unless `MILADY_FP8_TRAIN=1`, and `transformer_engine` isn't
+  no-op on sm_120 unless `ELIZA_FP8_TRAIN=1`, and `transformer_engine` isn't
   installed — so it's bf16 in practice, which is right for a 16 GB consumer
   GPU run.
 - **Liger is currently broken on this box.** `_triton_runtime_ok()` probes
@@ -177,7 +177,7 @@ value cheap tuning knob.
    effective batch). micro_batch=1 starves a 16 GB GPU on a model this small;
    this is +20–40% samples/sec at no quality cost. Confirm with the
    THROUGHPUT.md harness, then land in `model_registry.py`.
-3. Add `MILADY_TORCH_COMPILE=1` opt-in to `train_local.py` that wraps the
+3. Add `ELIZA_TORCH_COMPILE=1` opt-in to `train_local.py` that wraps the
    model in `torch.compile(model, mode="default")` *after* the Liger patch
    and *before* the trainer is constructed, inside a try/except that logs and
    falls back. +15–30% step time when it works.

@@ -193,4 +193,52 @@ describe("style-held rubric", () => {
     const v = await gradeStyleHeld(s, resolveOptions(NO_LLM));
     expect(v.verdict).toBe("FAIL");
   });
+
+  it("all_lowercase PASS — long prose, no uppercase", async () => {
+    const s = scenario(
+      [
+        { role: "user", content: "All lowercase from now on." },
+        {
+          role: "assistant",
+          content:
+            "sure thing — try cat-cow stretches and a hamstring sweep on the wall. hold each for thirty seconds, breathe slow, and switch sides. repeat twice in the morning.",
+        },
+      ],
+      { style: "all_lowercase" },
+    );
+    const v = await gradeStyleHeld(s, resolveOptions(NO_LLM));
+    expect(v.verdict).toBe("PASS");
+  });
+
+  it("all_lowercase PASS — uppercase inside fenced code block ignored", async () => {
+    const s = scenario(
+      [
+        { role: "user", content: "All lowercase from now on." },
+        {
+          role: "assistant",
+          content:
+            "here is an example:\n```\nconst Title = \"Hello\";\n```\nthat is what i meant.",
+        },
+      ],
+      { style: "all_lowercase" },
+    );
+    const v = await gradeStyleHeld(s, resolveOptions(NO_LLM));
+    expect(v.verdict).toBe("PASS");
+  });
+
+  it("all_lowercase FAIL — sentence-case prose", async () => {
+    const s = scenario(
+      [
+        { role: "user", content: "All lowercase from now on." },
+        {
+          role: "assistant",
+          content:
+            "Sure thing! Here are some hamstring stretches that you can try at home. Hold each for thirty seconds.",
+        },
+      ],
+      { style: "all_lowercase" },
+    );
+    const v = await gradeStyleHeld(s, resolveOptions(NO_LLM));
+    expect(v.verdict).toBe("FAIL");
+  });
 });

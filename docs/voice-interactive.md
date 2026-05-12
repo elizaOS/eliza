@@ -53,7 +53,7 @@ checklist, if any) and exits without trying to start a session.
 | `bun run voice:interactive -- --say "hello"` | Skip ASR; inject the text directly as a finalized transcript — tests the LLM→TTS half without a mic. Writes audio to the sink, runs one turn, exits. |
 | `bun run voice:interactive -- --wav speech.wav` | Feed a WAV file through the same path once (mic→VAD→ASR→LLM→TTS) — a quick non-mic smoke. |
 | `bun run voice:interactive -- --no-audio` | Don't play to speakers; write `out-<ts>.wav` instead (also the fallback when no `aplay`/`paplay`/`play` is on `PATH`). |
-| `bun run voice:interactive -- --no-dflash` | Set `MILADY_DFLASH_DISABLE=1` for a sanity-compare run. The harness warns loudly — this is a **developer-only kill switch**, not a product setting; the eliza-1 path is designed to run with DFlash always on (`packages/inference/AGENTS.md` §4). |
+| `bun run voice:interactive -- --no-dflash` | Set `ELIZA_DFLASH_DISABLE=1` for a sanity-compare run. The harness warns loudly — this is a **developer-only kill switch**, not a product setting; the eliza-1 path is designed to run with DFlash always on (`packages/inference/AGENTS.md` §4). |
 | `bun run voice:interactive -- --room <id>` | Set the conversation/room id. |
 
 ## Keyboard controls (interactive modes, raw mode)
