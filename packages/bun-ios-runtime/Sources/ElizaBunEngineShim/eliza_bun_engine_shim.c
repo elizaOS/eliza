@@ -25,6 +25,7 @@ enum {
 static pthread_mutex_t g_call_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t g_error_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t g_state_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t g_host_callback_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int g_running = 0;
 static int g_starting = 0;
 static uint64_t g_next_id = 1;
@@ -39,6 +40,7 @@ static int g_stderr_thread_started = 0;
 static volatile int g_stderr_thread_stop = 0;
 static volatile int g_bun_exited = 0;
 static volatile uint32_t g_bun_exit_code = 0;
+static eliza_bun_engine_host_call_callback g_host_callback = NULL;
 static char g_last_error[ELIZA_LAST_ERROR_BYTES] = {0};
 
 static void close_fd(int *fd);
@@ -473,6 +475,86 @@ static int64_t extract_line_id(const char *line) {
   return id;
 }
 
+static char *extract_json_string_field(const char *json, const char *field) {
+  if (!json || !field) return NULL;
+  size_t field_len = strlen(field);
+  size_t pattern_len = field_len + 3;
+  char *pattern = (char *)malloc(pattern_len + 1);
+  if (!pattern) return NULL;
+  snprintf(pattern, pattern_len + 1, "\"%s\"", field);
+  const char *p = strstr(json, pattern);
+  free(pattern);
+  if (!p) return NULL;
+  p += field_len + 2;
+  p = strchr(p, ':');
+  if (!p) return NULL;
+  p++;
+  p = skip_ws(p);
+  if (*p != '"') return NULL;
+  return parse_json_string(&p);
+}
+
+static char *extract_json_value_field(const char *json, const char *field) {
+  if (!json || !field) return NULL;
+  size_t field_len = strlen(field);
+  size_t pattern_len = field_len + 3;
+  char *pattern = (char *)malloc(pattern_len + 1);
+  if (!pattern) return NULL;
+  snprintf(pattern, pattern_len + 1, "\"%s\"", field);
+  const char *p = strstr(json, pattern);
+  free(pattern);
+  if (!p) return NULL;
+  p += field_len + 2;
+  p = strchr(p, ':');
+  if (!p) return NULL;
+  p++;
+  p = skip_ws(p);
+  const char *start = p;
+  int depth = 0;
+  int in_string = 0;
+  int escaped = 0;
+  while (*p) {
+    char ch = *p;
+    if (in_string) {
+      if (escaped) {
+        escaped = 0;
+      } else if (ch == '\\') {
+        escaped = 1;
+      } else if (ch == '"') {
+        in_string = 0;
+      }
+      p++;
+      continue;
+    }
+    if (ch == '"') {
+      in_string = 1;
+      p++;
+      continue;
+    }
+    if (ch == '{' || ch == '[') {
+      depth++;
+      p++;
+      continue;
+    }
+    if (ch == '}' || ch == ']') {
+      if (depth == 0) break;
+      depth--;
+      p++;
+      continue;
+    }
+    if (depth == 0 && ch == ',') break;
+    p++;
+  }
+  const char *end = p;
+  while (end > start && isspace((unsigned char)*(end - 1))) end--;
+  size_t len = (size_t)(end - start);
+  char *out = (char *)malloc(len + 1);
+  if (!out) return NULL;
+  memcpy(out, start, len);
+  out[len] = '\0';
+  return out;
+}
+
 static int extract_timeout_ms(const char *json) {
   int timeout_ms = ELIZA_DEFAULT_CALL_TIMEOUT_MS;
   const char *p = json ? strstr(json, "\"timeoutMs\"") : NULL;
@@ -512,6 +594,85 @@ static int is_ready_line(const char *line, char **error_out) {
     return -1;
   }
   return strstr(line, "\"ok\":true") ? 1 : 0;
+}
+
+static int is_host_call_line(const char *line) {
+  return line && strstr(line, "\"type\"") && strstr(line, "\"host_call\"");
+}
+
+static char *host_callback_missing_json(const char *method) {
+  char message[512];
+  snprintf(
+      message,
+      sizeof(message),
+      "No native host callback is registered for Bun host call %s",
+      method && method[0] ? method : "(missing)");
+  return error_json(message);
+}
+
+static int service_host_call_line(const char *line) {
+  char *call_id = extract_json_string_field(line, "id");
+  char *method = extract_json_string_field(line, "method");
+  char *payload = extract_json_value_field(line, "payload");
+  if (!payload) payload = xstrdup("null");
+  if (!call_id || !method || !payload) {
+    free(call_id);
+    free(method);
+    free(payload);
+    set_last_error("Malformed Bun host_call frame");
+    return -1;
+  }
+
+  pthread_mutex_lock(&g_host_callback_mutex);
+  eliza_bun_engine_host_call_callback callback = g_host_callback;
+  pthread_mutex_unlock(&g_host_callback_mutex);
+
+  int timeout_ms = extract_timeout_ms(line);
+  char *envelope = callback
+      ? callback(method, payload, timeout_ms)
+      : host_callback_missing_json(method);
+  if (!envelope) envelope = error_json("Native host callback returned null");
+
+  char *escaped_id = json_escape(call_id);
+  if (!escaped_id) {
+    free(call_id);
+    free(method);
+    free(payload);
+    free(envelope);
+    set_last_error("out of memory while responding to host_call");
+    return -1;
+  }
+
+  size_t response_len = strlen(escaped_id) + strlen(envelope) + 48;
+  char *response = (char *)malloc(response_len);
+  if (!response) {
+    free(call_id);
+    free(method);
+    free(payload);
+    free(envelope);
+    free(escaped_id);
+    set_last_error("out of memory while responding to host_call");
+    return -1;
+  }
+  snprintf(
+      response,
+      response_len,
+      "{\"type\":\"host_result\",\"id\":%s,\"envelope\":%s}\n",
+      escaped_id,
+      envelope);
+
+  int write_result = write_all(g_stdin_write_fd, response, strlen(response));
+  free(call_id);
+  free(method);
+  free(payload);
+  free(envelope);
+  free(escaped_id);
+  free(response);
+  if (write_result != 0) {
+    set_last_error("failed to write native host_result to Bun bridge");
+    return -1;
+  }
+  return 0;
 }
 
 static void *stderr_drain_thread(void *arg) {
@@ -757,7 +918,7 @@ static int wait_for_ready(int stdout_fd, int timeout_ms) {
 }
 
 const char *eliza_bun_engine_abi_version(void) {
-  return "2";
+  return "3";
 }
 
 const char *eliza_bun_engine_last_error(void) {
@@ -766,6 +927,14 @@ const char *eliza_bun_engine_last_error(void) {
   snprintf(snapshot, sizeof(snapshot), "%s", g_last_error);
   pthread_mutex_unlock(&g_error_mutex);
   return snapshot;
+}
+
+int32_t eliza_bun_engine_set_host_callback(
+    eliza_bun_engine_host_call_callback callback) {
+  pthread_mutex_lock(&g_host_callback_mutex);
+  g_host_callback = callback;
+  pthread_mutex_unlock(&g_host_callback_mutex);
+  return 0;
 }
 
 int32_t eliza_bun_engine_start(
@@ -956,6 +1125,15 @@ char *eliza_bun_engine_call(const char *method, const char *payload_json) {
         return timeout_json(timeout_ms);
       }
       return error_json("Bun bridge closed before returning a response");
+    }
+    if (is_host_call_line(line)) {
+      int host_result = service_host_call_line(line);
+      free(line);
+      if (host_result != 0) {
+        pthread_mutex_unlock(&g_call_mutex);
+        return error_json("failed to service native host call");
+      }
+      continue;
     }
     if (extract_line_id(line) == (int64_t)id) {
       pthread_mutex_unlock(&g_call_mutex);

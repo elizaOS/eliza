@@ -369,7 +369,10 @@ function statusTextForCode(status: number): string {
   return "";
 }
 
-function timeoutResponse(label: string, timeoutMs: number): {
+function timeoutResponse(
+  label: string,
+  timeoutMs: number,
+): {
   status: number;
   statusText: string;
   headers: Record<string, string>;
@@ -534,10 +537,7 @@ function parseJsonBody(body: string): unknown {
   }
 }
 
-function jsonResponse(
-  status: number,
-  body: unknown,
-): BufferedHttpResponse {
+function jsonResponse(status: number, body: unknown): BufferedHttpResponse {
   const text = JSON.stringify(body);
   return {
     status,
@@ -665,7 +665,9 @@ function runtimeAgentName(runtime: IAgentRuntime): string {
     : "Eliza";
 }
 
-function parseRequestBody(payload: HttpRequestPayload): Record<string, unknown> {
+function parseRequestBody(
+  payload: HttpRequestPayload,
+): Record<string, unknown> {
   const raw = payloadBodyAsRaw(payload);
   if (!raw) return {};
   if (Buffer.isBuffer(raw)) {
@@ -710,6 +712,694 @@ function createIosConversation(
   };
   backend.conversations.set(id, conversation);
   return conversation;
+}
+
+function installHostCallProtocol(
+  write: (frame: BridgeOutboundFrame) => void,
+): void {
+  hostProtocolWrite = write;
+}
+
+function tryHandleHostResultLine(line: string): boolean {
+  if (!line.includes('"host_result"')) return false;
+  let parsed: HostResultFrame;
+  try {
+    parsed = JSON.parse(line) as HostResultFrame;
+  } catch {
+    return false;
+  }
+  if (parsed.type !== "host_result" || typeof parsed.id !== "string") {
+    return false;
+  }
+  const pending = pendingHostCalls.get(parsed.id);
+  if (!pending) return true;
+  pendingHostCalls.delete(parsed.id);
+  clearTimeout(pending.timeout);
+  const envelope =
+    parsed.envelope && typeof parsed.envelope === "object"
+      ? (parsed.envelope as Record<string, unknown>)
+      : (parsed as unknown as Record<string, unknown>);
+  if (envelope.ok === false) {
+    pending.reject(
+      new Error(
+        typeof envelope.error === "string"
+          ? envelope.error
+          : "Native host call failed",
+      ),
+    );
+    return true;
+  }
+  pending.resolve(envelope.result);
+  return true;
+}
+
+function callIosHost(
+  method: string,
+  payload: unknown,
+  timeoutMs = 120_000,
+): Promise<unknown> {
+  if (!hostProtocolWrite) {
+    return Promise.reject(
+      new Error("iOS native host-call protocol is not installed"),
+    );
+  }
+  const id = `host-${nextHostCallId++}`;
+  const boundedTimeout = Math.max(1_000, Math.min(timeoutMs, 30 * 60_000));
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      pendingHostCalls.delete(id);
+      reject(
+        new Error(
+          `Native iOS host call ${method} timed out after ${boundedTimeout}ms`,
+        ),
+      );
+    }, boundedTimeout);
+    pendingHostCalls.set(id, { resolve, reject, timeout });
+    hostProtocolWrite({
+      type: "host_call",
+      id,
+      method,
+      payload,
+      timeoutMs: boundedTimeout,
+    });
+  });
+}
+
+function resolveMobileStateDir(): string {
+  const explicit =
+    process.env.ELIZA_STATE_DIR ||
+    process.env.MILADY_STATE_DIR ||
+    process.env.ELIZA_HOME;
+  if (explicit?.trim()) return explicit.trim();
+  if (process.env.HOME?.trim()) {
+    return path.join(process.env.HOME.trim(), ".eliza");
+  }
+  return "/tmp/eliza";
+}
+
+function localInferenceRootPath(): string {
+  return path.join(resolveMobileStateDir(), "local-inference");
+}
+
+function localInferenceRegistryPath(): string {
+  return path.join(localInferenceRootPath(), "registry.json");
+}
+
+function localInferenceAssignmentsPath(): string {
+  return path.join(localInferenceRootPath(), "assignments.json");
+}
+
+function localInferenceRoutingPath(): string {
+  return path.join(localInferenceRootPath(), "routing.json");
+}
+
+function readJsonObjectFile(filePath: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(readFileSync(filePath, "utf8"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function positiveInteger(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return Math.floor(value);
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
+  }
+  return null;
+}
+
+function readAssignments(): Record<string, string> {
+  const parsed = readJsonObjectFile(localInferenceAssignmentsPath());
+  const raw = parsed.assignments;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out: Record<string, string> = {};
+  for (const [slot, modelId] of Object.entries(raw)) {
+    if (typeof modelId === "string" && modelId.trim()) {
+      out[slot] = modelId.trim();
+    }
+  }
+  return out;
+}
+
+function scanGgufFiles(root: string): InstalledModelEntry[] {
+  const models: InstalledModelEntry[] = [];
+  const visit = (dir: string, depth: number): void => {
+    if (depth > 5 || models.length >= 200) return;
+    let entries: string[] = [];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry);
+      let stats: ReturnType<typeof statSync>;
+      try {
+        stats = statSync(fullPath);
+      } catch {
+        continue;
+      }
+      if (stats.isDirectory()) {
+        visit(fullPath, depth + 1);
+      } else if (stats.isFile() && entry.toLowerCase().endsWith(".gguf")) {
+        const id = path.basename(entry, path.extname(entry));
+        models.push({
+          id,
+          displayName: id,
+          path: fullPath,
+          sizeBytes: stats.size,
+          installedAt: new Date(stats.mtimeMs).toISOString(),
+          lastUsedAt: null,
+          source: "external-scan",
+        });
+      }
+    }
+  };
+  visit(root, 0);
+  return models;
+}
+
+function readInstalledModels(): InstalledModelEntry[] {
+  const parsed = readJsonObjectFile(localInferenceRegistryPath());
+  const rawModels = Array.isArray(parsed.models) ? parsed.models : [];
+  const fromRegistry = rawModels
+    .map((entry): InstalledModelEntry | null => {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+        return null;
+      }
+      const record = entry as Record<string, unknown>;
+      if (typeof record.id !== "string" || typeof record.path !== "string") {
+        return null;
+      }
+      if (!existsSync(record.path)) return null;
+      return {
+        id: record.id,
+        displayName:
+          typeof record.displayName === "string"
+            ? record.displayName
+            : record.id,
+        path: record.path,
+        sizeBytes: positiveInteger(record.sizeBytes) ?? 0,
+        installedAt:
+          typeof record.installedAt === "string"
+            ? record.installedAt
+            : new Date().toISOString(),
+        lastUsedAt:
+          typeof record.lastUsedAt === "string" ? record.lastUsedAt : null,
+        source: typeof record.source === "string" ? record.source : undefined,
+        bundleVerifiedAt:
+          typeof record.bundleVerifiedAt === "string"
+            ? record.bundleVerifiedAt
+            : undefined,
+        dimensions: positiveInteger(record.dimensions) ?? undefined,
+        embeddingDimension:
+          positiveInteger(record.embeddingDimension) ?? undefined,
+        embeddingDimensions:
+          positiveInteger(record.embeddingDimensions) ?? undefined,
+      };
+    })
+    .filter((entry): entry is InstalledModelEntry => Boolean(entry));
+  if (fromRegistry.length > 0) return fromRegistry;
+  return scanGgufFiles(path.join(localInferenceRootPath(), "models"));
+}
+
+function isEmbeddingModel(model: InstalledModelEntry): boolean {
+  const lowered = model.id.toLowerCase();
+  return (
+    lowered.includes("embed") ||
+    lowered.includes("bge-") ||
+    lowered.includes("nomic") ||
+    lowered.includes("gte-") ||
+    lowered.includes("e5-")
+  );
+}
+
+function resolveAssignedModel(slot: string): InstalledModelEntry | null {
+  const installed = readInstalledModels().filter(
+    (model) => !isEmbeddingModel(model),
+  );
+  const assignments = readAssignments();
+  const assigned = assignments[slot];
+  if (assigned) {
+    const model = installed.find((entry) => entry.id === assigned);
+    if (model) return model;
+  }
+  if (nativeLlamaState.modelPath) {
+    const current = installed.find(
+      (entry) => entry.path === nativeLlamaState.modelPath,
+    );
+    if (current) return current;
+  }
+  return (
+    installed.sort((left, right) => {
+      const leftUsed = left.lastUsedAt ? Date.parse(left.lastUsedAt) : 0;
+      const rightUsed = right.lastUsedAt ? Date.parse(right.lastUsedAt) : 0;
+      if (rightUsed !== leftUsed) return rightUsed - leftUsed;
+      return (right.sizeBytes ?? 0) - (left.sizeBytes ?? 0);
+    })[0] ?? null
+  );
+}
+
+function nativeLlamaContextSize(): number {
+  return (
+    positiveInteger(process.env.ELIZA_IOS_LLAMA_CONTEXT_SIZE) ??
+    positiveInteger(process.env.MILADY_IOS_LLAMA_CONTEXT_SIZE) ??
+    positiveInteger(process.env.ELIZA_LOCAL_CONTEXT_SIZE) ??
+    4096
+  );
+}
+
+async function ensureNativeModelLoaded(
+  slot: string,
+): Promise<NativeLlamaState> {
+  const model = resolveAssignedModel(slot);
+  if (!model) {
+    throw new Error(
+      `[ios-native-llama] No local GGUF model is installed under ${path.join(
+        localInferenceRootPath(),
+        "models",
+      )}. Download or install a model before using local generation.`,
+    );
+  }
+  if (
+    nativeLlamaState.contextId != null &&
+    nativeLlamaState.modelPath === model.path &&
+    nativeLlamaState.status === "ready"
+  ) {
+    return nativeLlamaState;
+  }
+
+  await unloadNativeLlamaModel();
+  nativeLlamaState.status = "loading";
+  nativeLlamaState.modelId = model.id;
+  nativeLlamaState.modelPath = model.path;
+  nativeLlamaState.loadedAt = null;
+  delete nativeLlamaState.error;
+  try {
+    const result = await callIosHost(
+      "llama_load_model",
+      {
+        path: model.path,
+        modelId: model.id,
+        context_size: nativeLlamaContextSize(),
+        use_gpu: process.env.ELIZA_IOS_LLAMA_USE_GPU !== "0",
+      },
+      10 * 60_000,
+    );
+    const record =
+      result && typeof result === "object" && !Array.isArray(result)
+        ? (result as Record<string, unknown>)
+        : {};
+    const contextId =
+      positiveInteger(record.context_id) ?? positiveInteger(record.contextId);
+    if (contextId == null) {
+      throw new Error("Native llama load returned no context_id");
+    }
+    nativeLlamaState.contextId = contextId;
+    nativeLlamaState.loadedAt = new Date().toISOString();
+    nativeLlamaState.status = "ready";
+    return nativeLlamaState;
+  } catch (error) {
+    nativeLlamaState.contextId = null;
+    nativeLlamaState.loadedAt = null;
+    nativeLlamaState.status = "error";
+    nativeLlamaState.error =
+      error instanceof Error ? error.message : String(error);
+    throw error;
+  }
+}
+
+async function unloadNativeLlamaModel(): Promise<void> {
+  const contextId = nativeLlamaState.contextId;
+  nativeLlamaState.contextId = null;
+  nativeLlamaState.loadedAt = null;
+  nativeLlamaState.status = "idle";
+  if (contextId != null) {
+    await callIosHost("llama_free", { context_id: contextId }, 30_000).catch(
+      () => undefined,
+    );
+  }
+  nativeLlamaState.modelId = null;
+  nativeLlamaState.modelPath = null;
+  delete nativeLlamaState.error;
+}
+
+function flattenChatParamsForPrompt(params: GenerateTextParams): string {
+  if (typeof params.prompt === "string" && params.prompt.length > 0) {
+    return params.prompt;
+  }
+  const blocks: string[] = [];
+  const messages = params.messages ?? [];
+  const hasSystemMessage = messages.some(
+    (message) => message.role === "system",
+  );
+  if (!hasSystemMessage && typeof params.system === "string" && params.system) {
+    blocks.push(`system:\n${params.system}`);
+  }
+  for (const message of messages) {
+    const role =
+      message.role === "system" ||
+      message.role === "assistant" ||
+      message.role === "tool"
+        ? message.role
+        : "user";
+    if (typeof message.content === "string") {
+      if (message.content) blocks.push(`${role}:\n${message.content}`);
+      continue;
+    }
+    if (Array.isArray(message.content)) {
+      const text = message.content
+        .map((part) =>
+          part && typeof part === "object" && "text" in part
+            ? String((part as { text?: unknown }).text ?? "")
+            : "",
+        )
+        .filter(Boolean)
+        .join("\n");
+      if (text) blocks.push(`${role}:\n${text}`);
+    }
+  }
+  blocks.push("assistant:");
+  return blocks.join("\n\n");
+}
+
+function makeIosNativeGenerateHandler(slot: string): GenerateTextHandler {
+  return async (_runtime, params) => {
+    const state = await ensureNativeModelLoaded(slot);
+    if (state.contextId == null) {
+      throw new Error(
+        "[ios-native-llama] model load did not produce a context",
+      );
+    }
+    const prompt = flattenChatParamsForPrompt(params);
+    const result = await callIosHost(
+      "llama_generate",
+      {
+        context_id: state.contextId,
+        prompt,
+        max_tokens: positiveInteger(params.maxTokens) ?? 256,
+        temperature:
+          typeof params.temperature === "number" ? params.temperature : 0.7,
+        top_p: typeof params.topP === "number" ? params.topP : 0.95,
+        top_k: positiveInteger(params.topK) ?? 40,
+        stop: params.stopSequences ?? [],
+      },
+      Math.max(120_000, (positiveInteger(params.maxTokens) ?? 256) * 2_000),
+    );
+    const record =
+      result && typeof result === "object" && !Array.isArray(result)
+        ? (result as Record<string, unknown>)
+        : {};
+    const text =
+      typeof record.text === "string" ? record.text : String(result ?? "");
+    if (params.onStreamChunk && text) {
+      await params.onStreamChunk(text, crypto.randomUUID(), text);
+    }
+    return text;
+  };
+}
+
+function installIosNativeLlamaHandlers(runtime: IAgentRuntime): void {
+  const flagged = runtime as IAgentRuntime & {
+    __iosNativeLlamaHandlersInstalled?: boolean;
+  };
+  if (flagged.__iosNativeLlamaHandlersInstalled) return;
+  const runtimeWithRegistration = runtime as RuntimeWithModelRegistration;
+  if (typeof runtimeWithRegistration.registerModel !== "function") return;
+  for (const modelType of TEXT_GENERATION_MODEL_TYPES) {
+    runtimeWithRegistration.registerModel(
+      modelType,
+      makeIosNativeGenerateHandler(modelType),
+      IOS_NATIVE_LLAMA_PROVIDER,
+      IOS_NATIVE_LLAMA_PRIORITY,
+    );
+  }
+  flagged.__iosNativeLlamaHandlersInstalled = true;
+}
+
+async function nativeHardwareInfo(): Promise<Record<string, unknown>> {
+  try {
+    const result = await callIosHost("llama_hardware_info", {}, 10_000);
+    return result && typeof result === "object" && !Array.isArray(result)
+      ? (result as Record<string, unknown>)
+      : {};
+  } catch (error) {
+    return {
+      backend: "unknown",
+      total_ram_gb: 0,
+      available_ram_gb: 0,
+      cpu_cores: 0,
+      is_simulator: process.env.SIMULATOR_DEVICE_NAME ? true : undefined,
+      metal_supported: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+async function nativeLlamaDeviceStatus(): Promise<Record<string, unknown>> {
+  const hardware = await nativeHardwareInfo();
+  const totalRamGb = Number(hardware.total_ram_gb ?? 0);
+  const cpuCores = Number(hardware.cpu_cores ?? 0);
+  const metalSupported = hardware.metal_supported === true;
+  return {
+    enabled: true,
+    connected: true,
+    transport: "bun-host-ipc",
+    devices: [
+      {
+        deviceId: IOS_NATIVE_LLAMA_DEVICE_ID,
+        capabilities: {
+          platform: "ios",
+          deviceModel:
+            hardware.is_simulator === true ? "iOS Simulator" : "iOS Device",
+          totalRamGb,
+          cpuCores,
+          gpu: {
+            backend: "metal",
+            available: metalSupported,
+          },
+        },
+        loadedPath: nativeLlamaState.modelPath,
+        connectedSince: nativeLlamaState.loadedAt ?? new Date().toISOString(),
+      },
+    ],
+    primaryDeviceId: IOS_NATIVE_LLAMA_DEVICE_ID,
+    pendingRequests: pendingHostCalls.size,
+    modelPath: nativeLlamaState.modelPath,
+  };
+}
+
+function nativeLlamaActiveSnapshot(): Record<string, unknown> {
+  return {
+    modelId: nativeLlamaState.modelId,
+    modelPath: nativeLlamaState.modelPath,
+    loadedAt: nativeLlamaState.loadedAt,
+    status: nativeLlamaState.status,
+    provider: IOS_NATIVE_LLAMA_PROVIDER,
+    transport: "bun-host-ipc",
+    ...(nativeLlamaState.error ? { error: nativeLlamaState.error } : {}),
+  };
+}
+
+async function nativeLocalInferenceProviders(): Promise<
+  Record<string, unknown>
+> {
+  const installed = readInstalledModels();
+  return {
+    providers: [
+      {
+        id: IOS_NATIVE_LLAMA_PROVIDER,
+        label: "Eliza-1 on-device runtime (iOS)",
+        kind: "local",
+        description:
+          "Runs Eliza-1 natively through the full Bun host IPC bridge.",
+        supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+        configureHref: null,
+        enableState: {
+          enabled: true,
+          reason: "Native iOS llama bridge connected",
+        },
+        registeredSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+        transport: "bun-host-ipc",
+      },
+      {
+        id: "eliza-local-inference",
+        label: "Eliza-1 local inference",
+        kind: "local",
+        description: "Eliza-1 bundles installed in this agent state directory.",
+        supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
+        configureHref: "#local-inference-panel",
+        enableState: {
+          enabled: installed.length > 0,
+          reason:
+            installed.length > 0
+              ? "Eliza-1 bundle installed"
+              : "No Eliza-1 bundle installed",
+        },
+        registeredSlots:
+          installed.length > 0 ? ["TEXT_SMALL", "TEXT_LARGE"] : [],
+      },
+    ],
+  };
+}
+
+function routingPreferencesSnapshot(): Record<string, unknown> {
+  const parsed = readJsonObjectFile(localInferenceRoutingPath());
+  const preferences =
+    parsed.preferences && typeof parsed.preferences === "object"
+      ? (parsed.preferences as Record<string, unknown>)
+      : { preferredProvider: {}, policy: {} };
+  return {
+    registrations: ["TEXT_SMALL", "TEXT_LARGE"].map((modelType) => ({
+      modelType,
+      provider: IOS_NATIVE_LLAMA_PROVIDER,
+      priority: IOS_NATIVE_LLAMA_PRIORITY,
+      registeredAt: new Date().toISOString(),
+    })),
+    preferences,
+  };
+}
+
+async function nativeHubSnapshot(
+  legacy: BufferedHttpResponse | null,
+): Promise<Record<string, unknown>> {
+  const base =
+    legacy && legacy.status >= 200 && legacy.status < 300
+      ? parseJsonBody(legacy.body)
+      : {};
+  const object =
+    base && typeof base === "object" && !Array.isArray(base)
+      ? (base as Record<string, unknown>)
+      : {};
+  const hardware = await nativeHardwareInfo();
+  return {
+    ...object,
+    installed: readInstalledModels(),
+    active: nativeLlamaActiveSnapshot(),
+    device: await nativeLlamaDeviceStatus(),
+    providers: (await nativeLocalInferenceProviders()).providers,
+    hardware: {
+      totalRamGb: Number(hardware.total_ram_gb ?? 0),
+      freeRamGb: Number(hardware.available_ram_gb ?? 0),
+      gpu: {
+        backend: "metal",
+        available: hardware.metal_supported === true,
+      },
+      cpuCores: Number(hardware.cpu_cores ?? 0),
+      platform: "ios",
+      arch: hardware.is_simulator === true ? "simulator" : "arm64",
+      appleSilicon: hardware.metal_supported === true,
+      recommendedBucket: "small",
+      source: "ios-native-llama",
+    },
+    assignments: readAssignments(),
+  };
+}
+
+async function runBufferedLegacyLocalInferenceRoute(
+  method: string,
+  rawPath: string,
+  payload: HttpRequestPayload,
+): Promise<BufferedHttpResponse | null> {
+  const { handleLocalInferenceRoutes } = await import(
+    "@elizaos/plugin-local-inference"
+  );
+  const headers = normalizeHeaderRecord(payload.headers);
+  const { req, res, captured } = buildBufferedRoutePair({
+    method,
+    path: rawPath,
+    headers,
+    bodyText: bodyTextForLegacyRoute(payload),
+  });
+
+  const handled = await handleLocalInferenceRoutes(req, res);
+  if (!handled) return null;
+  return bufferedRouteResponse(captured);
+}
+
+async function handleNativeIosLocalInferenceRoute(
+  method: string,
+  rawPath: string,
+  payload: HttpRequestPayload,
+  legacy: () => Promise<BufferedHttpResponse | null>,
+): Promise<BufferedHttpResponse | null> {
+  const { pathname } = splitPathAndQuery(rawPath);
+  if (method === "GET" && pathname === "/api/local-inference/device") {
+    return jsonResponse(200, await nativeLlamaDeviceStatus());
+  }
+  if (method === "GET" && pathname === "/api/local-inference/providers") {
+    return jsonResponse(200, await nativeLocalInferenceProviders());
+  }
+  if (method === "GET" && pathname === "/api/local-inference/hardware") {
+    return jsonResponse(200, (await nativeHubSnapshot(null)).hardware);
+  }
+  if (method === "GET" && pathname === "/api/local-inference/routing") {
+    return jsonResponse(200, routingPreferencesSnapshot());
+  }
+  if (method === "GET" && pathname === "/api/local-inference/active") {
+    return jsonResponse(200, nativeLlamaActiveSnapshot());
+  }
+  if (method === "POST" && pathname === "/api/local-inference/active") {
+    const body = parseRequestBody(payload);
+    const modelId = typeof body.modelId === "string" ? body.modelId : "";
+    const installed = readInstalledModels();
+    const target = installed.find((model) => model.id === modelId);
+    if (!target) {
+      return jsonResponse(404, { error: `Model not installed: ${modelId}` });
+    }
+    mkdirSync(localInferenceRootPath(), { recursive: true });
+    nativeLlamaState.modelId = target.id;
+    nativeLlamaState.modelPath = target.path;
+    await ensureNativeModelLoaded("TEXT_SMALL");
+    return jsonResponse(200, nativeLlamaActiveSnapshot());
+  }
+  if (method === "DELETE" && pathname === "/api/local-inference/active") {
+    await unloadNativeLlamaModel();
+    return jsonResponse(200, nativeLlamaActiveSnapshot());
+  }
+  if (method === "GET" && pathname === "/api/local-inference/hub") {
+    return jsonResponse(200, await nativeHubSnapshot(await legacy()));
+  }
+  return null;
+}
+
+async function handleBufferedLocalInferenceRoute(
+  method: string,
+  rawPath: string,
+  payload: HttpRequestPayload,
+): Promise<BufferedHttpResponse | null> {
+  const { pathname } = splitPathAndQuery(rawPath);
+  if (!pathname.startsWith("/api/local-inference/")) return null;
+
+  if (
+    method === "GET" &&
+    (pathname === "/api/local-inference/downloads/stream" ||
+      pathname === "/api/local-inference/device/stream")
+  ) {
+    return jsonResponse(501, {
+      error:
+        "Streaming local-inference endpoints are not available over the iOS stdio bridge",
+      code: "streaming_not_supported",
+    });
+  }
+
+  const runLegacy = async () =>
+    runBufferedLegacyLocalInferenceRoute(method, rawPath, payload);
+  const native = await handleNativeIosLocalInferenceRoute(
+    method,
+    rawPath,
+    payload,
+    runLegacy,
+  );
+  if (native) return native;
+  return runLegacy();
 }
 
 async function ensureConversationConnection(
@@ -794,10 +1484,14 @@ async function handleDirectConversationMessage(
 
   const chunks: string[] = [];
   try {
-    await runtime.messageService.handleMessage(runtime, message, async (content) => {
-      if (content?.text) chunks.push(content.text);
-      return [];
-    });
+    await runtime.messageService.handleMessage(
+      runtime,
+      message,
+      async (content) => {
+        if (content?.text) chunks.push(content.text);
+        return [];
+      },
+    );
   } catch (err) {
     chunks.push(
       err instanceof Error
@@ -830,7 +1524,9 @@ async function handleDirectCoreRoute(
       runtime: "ok",
       database: "ok",
       plugins: {
-        loaded: Array.isArray((backend.runtime as { plugins?: unknown }).plugins)
+        loaded: Array.isArray(
+          (backend.runtime as { plugins?: unknown }).plugins,
+        )
           ? ((backend.runtime as { plugins?: unknown[] }).plugins?.length ?? 0)
           : 0,
         failed: 0,
@@ -843,6 +1539,13 @@ async function handleDirectCoreRoute(
       iosBridge: "bun",
     });
   }
+
+  const localInference = await handleBufferedLocalInferenceRoute(
+    method,
+    rawPath,
+    payload,
+  );
+  if (localInference) return localInference;
 
   if (method === "GET" && pathname === "/api/conversations") {
     return jsonResponse(200, {
@@ -950,7 +1653,7 @@ async function dispatchBridgeRequest(
           error:
             host.bootError instanceof Error
               ? host.bootError.message
-            : String(host.bootError),
+              : String(host.bootError),
         };
       }
       if (payload.timeoutMs !== undefined) {
@@ -963,7 +1666,7 @@ async function dispatchBridgeRequest(
       }
       return { ready: false, phase: "starting", apiPort: 0 };
     case "http_request":
-    case "http_fetch":
+    case "http_fetch": {
       const backendForFetch = await awaitIosBridgeBackend(
         host,
         bridgeTimeoutMs(payload.timeoutMs),
@@ -973,13 +1676,15 @@ async function dispatchBridgeRequest(
         backendForFetch,
         (request.payload ?? {}) as HttpRequestPayload,
       );
-    case "send_message":
+    }
+    case "send_message": {
       const backendForMessage = await awaitIosBridgeBackend(
         host,
         bridgeTimeoutMs(payload.timeoutMs),
         method,
       );
       return sendMessage(backendForMessage, request.payload);
+    }
     default:
       throw new Error(`Unknown iOS bridge method: ${method || "(missing)"}`);
   }
@@ -1040,10 +1745,11 @@ export async function runIosBridgeCli(
 
   const protocolWrite = process.stdout.write.bind(process.stdout);
   const restoreStdout = reserveStdoutForBridgeProtocol();
-  const writeProtocolLine = (value: BridgeFrame) => {
+  const writeProtocolLine = (value: BridgeOutboundFrame) => {
     protocolWrite(`${JSON.stringify(value)}\n`);
   };
 
+  installHostCallProtocol(writeProtocolLine);
   const host = startIosBridgeHost();
   process.on("unhandledRejection", (reason) => {
     console.error(
@@ -1052,7 +1758,10 @@ export async function runIosBridgeCli(
     );
   });
   process.on("uncaughtException", (error) => {
-    console.error("[ios-bridge] uncaught exception:", error.stack || error.message);
+    console.error(
+      "[ios-bridge] uncaught exception:",
+      error.stack || error.message,
+    );
   });
   writeProtocolLine({
     type: "ready",
@@ -1123,20 +1832,25 @@ export async function runIosBridgeCli(
       if (newline < 0) break;
       const line = bufferedInput.slice(0, newline).replace(/\r$/, "");
       bufferedInput = bufferedInput.slice(newline + 1);
-      pending = pending.then(() => handleLine(line)).catch((err) => {
-        writeProtocolLine({
-          id: null,
-          ok: false,
-          error: err instanceof Error ? err.message : String(err),
+      if (tryHandleHostResultLine(line)) continue;
+      pending = pending
+        .then(() => handleLine(line))
+        .catch((err) => {
+          writeProtocolLine({
+            id: null,
+            ok: false,
+            error: err instanceof Error ? err.message : String(err),
+          });
         });
-      });
     }
   });
   stdin.once("end", () => {
     if (bufferedInput.trim()) {
       const line = bufferedInput;
       bufferedInput = "";
-      pending = pending.then(() => handleLine(line));
+      if (!tryHandleHostResultLine(line)) {
+        pending = pending.then(() => handleLine(line));
+      }
     }
     stopBridge?.();
   });

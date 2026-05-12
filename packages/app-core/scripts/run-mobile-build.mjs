@@ -125,7 +125,7 @@ const androidAgentSpikeDir = path.join(
   "spike-android-agent",
 );
 const IOS_BUN_ENGINE_FRAMEWORK_NAME = "ElizaBunEngine";
-const IOS_BUN_ENGINE_ABI_VERSION = "2";
+const IOS_BUN_ENGINE_ABI_VERSION = "3";
 const iosBunRuntimePackageRoot = path.join(packagesRoot, "bun-ios-runtime");
 const defaultIosBunEngineXcframework = path.join(
   iosBunRuntimePackageRoot,
@@ -135,6 +135,7 @@ const defaultIosBunEngineXcframework = path.join(
 const IOS_BUN_ENGINE_REQUIRED_SYMBOLS = [
   "_eliza_bun_engine_abi_version",
   "_eliza_bun_engine_last_error",
+  "_eliza_bun_engine_set_host_callback",
   "_eliza_bun_engine_start",
   "_eliza_bun_engine_stop",
   "_eliza_bun_engine_is_running",

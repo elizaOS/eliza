@@ -37,10 +37,8 @@ import { runAutonomousCli } from "./cli/index.ts";
 // literal, so the Android bundle keeps the same behavior.
 if (process.env.ELIZA_PLATFORM === "android") {
   try {
-    const {
-      registerAospLlamaLoader,
-      ensureAospLocalInferenceHandlers,
-    } = await import("@elizaos/plugin-aosp-local-inference");
+    const { registerAospLlamaLoader, ensureAospLocalInferenceHandlers } =
+      await import("@elizaos/plugin-aosp-local-inference");
     (
       globalThis as {
         __elizaAospLlamaLoader?: typeof registerAospLlamaLoader;

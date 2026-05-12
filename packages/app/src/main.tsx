@@ -537,6 +537,20 @@ function parseIosFullBunSmokeHttpJson<T>(label: string, value: unknown): T {
   }
 }
 
+function assertSmokeObject(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} did not return an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function assertSmokeArray(value: unknown, label: string): unknown[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} did not return an array`);
+  }
+  return value;
+}
+
 async function withIosFullBunSmokeTimeout<T>(
   label: string,
   timeoutMs: number,
@@ -733,6 +747,98 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       fetchHealth,
     });
 
+    const localInferenceHub = await fetchIosFullBunSmokeJson<
+      Record<string, unknown>
+    >(
+      "WebView fetch bridge /api/local-inference/hub",
+      "/api/local-inference/hub",
+      undefined,
+      IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS,
+    );
+    assertSmokeArray(localInferenceHub.catalog, "local-inference hub catalog");
+    assertSmokeArray(localInferenceHub.installed, "local-inference hub installed");
+    assertSmokeObject(localInferenceHub.active, "local-inference hub active");
+    assertSmokeObject(localInferenceHub.assignments, "local-inference hub assignments");
+
+    const localInferenceProviders = await fetchIosFullBunSmokeJson<
+      Record<string, unknown>
+    >(
+      "WebView fetch bridge /api/local-inference/providers",
+      "/api/local-inference/providers",
+    );
+    const providerList = assertSmokeArray(
+      localInferenceProviders.providers,
+      "local-inference providers",
+    );
+    const capacitorProvider = providerList
+      .map((provider) => assertSmokeObject(provider, "local-inference provider"))
+      .find((provider) => provider.id === "capacitor-llama");
+    if (!capacitorProvider) {
+      throw new Error("local-inference providers did not include capacitor-llama");
+    }
+    const slots = assertSmokeArray(
+      capacitorProvider.registeredSlots,
+      "capacitor-llama registeredSlots",
+    );
+    if (!slots.includes("TEXT_SMALL") || !slots.includes("TEXT_LARGE")) {
+      throw new Error("capacitor-llama did not register TEXT_SMALL/TEXT_LARGE");
+    }
+
+    const localInferenceDevice = await fetchIosFullBunSmokeJson<
+      Record<string, unknown>
+    >(
+      "WebView fetch bridge /api/local-inference/device",
+      "/api/local-inference/device",
+      undefined,
+      30_000,
+    );
+    if (
+      localInferenceDevice.enabled !== true ||
+      localInferenceDevice.connected !== true ||
+      localInferenceDevice.transport !== "bun-host-ipc"
+    ) {
+      throw new Error(
+        `local-inference native bridge returned unexpected status: ${JSON.stringify(localInferenceDevice)}`,
+      );
+    }
+    assertSmokeArray(localInferenceDevice.devices, "local-inference device list");
+
+    const [localInferenceActive, localInferenceInstalled, localInferenceRouting] =
+      await Promise.all([
+        fetchIosFullBunSmokeJson<Record<string, unknown>>(
+          "WebView fetch bridge /api/local-inference/active",
+          "/api/local-inference/active",
+        ),
+        fetchIosFullBunSmokeJson<Record<string, unknown>>(
+          "WebView fetch bridge /api/local-inference/installed",
+          "/api/local-inference/installed",
+        ),
+        fetchIosFullBunSmokeJson<Record<string, unknown>>(
+          "WebView fetch bridge /api/local-inference/routing",
+          "/api/local-inference/routing",
+        ),
+      ]);
+    assertSmokeArray(localInferenceInstalled.models, "local-inference installed models");
+    assertSmokeArray(localInferenceRouting.registrations, "local-inference routing registrations");
+    assertSmokeObject(localInferenceRouting.preferences, "local-inference routing preferences");
+
+    await writeIosFullBunSmokeResult({
+      ok: false,
+      phase: "running",
+      step: "local-inference-ok",
+      runtimeStatus: status,
+      bridgeStatus: bridgeStatus.result,
+      fetchHealth,
+      localInference: {
+        hub: localInferenceHub,
+        providers: localInferenceProviders,
+        device: localInferenceDevice,
+        active: localInferenceActive,
+        installed: localInferenceInstalled,
+        routing: localInferenceRouting,
+      },
+    });
+
     const created = await fetchIosFullBunSmokeJson<{
       conversation?: { id?: unknown };
     }>("WebView fetch bridge POST /api/conversations", "/api/conversations", {
@@ -784,6 +890,14 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       runtimeStatus: status,
       bridgeStatus: bridgeStatus.result,
       fetchHealth,
+      localInference: {
+        hub: localInferenceHub,
+        providers: localInferenceProviders,
+        device: localInferenceDevice,
+        active: localInferenceActive,
+        installed: localInferenceInstalled,
+        routing: localInferenceRouting,
+      },
       conversationId,
       sendMessage,
     });
