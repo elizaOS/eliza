@@ -9,6 +9,13 @@ for the live gap state see
 
 Legend: `[x]` done in this checkout, `[ ]` pending, `[hw]` pending and needs GPU / reference hardware.
 
+> **`bun run release:v1:prep`** runs every `[x]` line in section A in one command
+> (build-dflash dry-run, the manifest + quant-recipe test suites, `py_compile` on
+> the pipeline scripts, the quant `--dry-run`s, the DFlash synthetic smoke, the
+> platform-plan regen + idempotency check, gate-collect per tier, CPU C reference
+> + kernel-contract) and prints the `[hw]` lines below as the remaining checklist
+> with the host + command per step. See `RELEASE_V1.md`.
+
 > v1 is the upstream BASE models, GGUF-converted via the `elizaOS/llama.cpp`
 > fork with all section 3 kernel optimizations, not fine-tuned. The text eval
 > is perplexity-vs-the-upstream-GGUF parity, not a fine-tuned-quality threshold.
@@ -24,7 +31,7 @@ Legend: `[x]` done in this checkout, `[ ]` pending, `[hw]` pending and needs GPU
 - [x] `uv run --extra train python packages/training/scripts/distill_dflash_drafter.py --tier 1_7b --synthetic-smoke ...` - DFlash distill pipeline + GGUF metadata write (no torch / GPU).
 - [x] CPU SIMD self-tests on x86_64 - `qjl_int8_smoke`, `qjl_avxvnni_smoke`; `ctest --test-dir build` in `polarquant-cpu` (5/5).
 - [x] `bun run test` / `bun run verify` for `packages/app-core/src/services/local-inference/` - engine, downloader, dflash-server, voice streaming, verify-on-device.
-- [ ] `python3 packages/training/scripts/manifest/eliza1_platform_plan.py --out ... --readiness-md ...` and `node .../render-ios-smoke-report.mjs` regenerate cleanly and idempotently on every status change.
+- [x] `python3 packages/training/scripts/manifest/eliza1_platform_plan.py --out ELIZA_1_GGUF_PLATFORM_PLAN.json --readiness-md ELIZA_1_GGUF_READINESS.md` regenerates cleanly and idempotently (asserted by `bun run release:v1:prep`); `node .../render-ios-smoke-report.mjs` regenerates `ios-physical-device-smoke.md` from the latest JSON. Both must be re-run + committed on every status change.
 - [hw] `make -C packages/inference/verify cuda-preprocess-check` - host-side CUDA API/layout surface check. Requires the fork's CUDA headers staged via `build-llama-cpp-dflash.mjs --target linux-x64-cuda --no-build`; no `nvcc` needed.
 
 ## B. Kernel verification (per supported backend, against shipped quantized bytes)
@@ -86,6 +93,7 @@ gate (C/D/E above) exactly as the default `recommended` channel. The fine-tuned
 - [hw] `licenses/` embeds verbatim SPDX text + `license-manifest.json` sidecar per component (`Serveurperso/OmniVoice-GGUF` non-commercial CC terms, `ggml-org/Qwen3-ASR-*`, Silero MIT, etc.); the publish orchestrator refuses upload otherwise.
 - [hw] `HF_TOKEN=… bash packages/training/scripts/publish_all_eliza1.sh --bundles-root <dir> --base-v1 --public` - per-tier publish summary, aborts on first failing tier, propagates the structured exit code. Real upload needs `HF_TOKEN` with write access to `elizaos/*` (operator's, not CI).
 - [hw] Upload commit/URL preserved in `evidence/release.json` (`hf.uploadEvidence`).
+- [hw] `bash scripts/hf-transfer-eliza1.sh --execute` - move the legacy `milady-ai/*` HF model repos (the per-tier `*-optimized`/`*-drafter` bundles) into `elizaos/*` and `repo create elizaos/eliza-1-<tier>` for the canonical bundle repos. Dry-run (`bash scripts/hf-transfer-eliza1.sh`) is safe anywhere; `--execute` needs an `HF_TOKEN` with write access to BOTH `milady-ai` and `elizaos`. Then `sync_catalog_from_hf.py --org elizaos`.
 
 ## G. Local M4 Max evidence and optimization follow-ups
 

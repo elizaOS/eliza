@@ -12,6 +12,18 @@ and which GPU (if any) it needs. Heavy GPU steps cannot run on a CPU-only
 host — wire them, run what runs, and leave a `base-v1`-labelled placeholder
 (never a fabricated hash) where a byte can't be produced yet.
 
+**One-command prep.** `bun run release:v1:prep` runs every step below that
+needs no GPU / Metal / Android / HF-write host (build-dflash dry-run, the
+manifest/quant-recipe test suites, `py_compile` on the pipeline scripts, the
+quant recipe `--dry-run`s, the DFlash synthetic smoke, the platform-plan
+regeneration + idempotency check, gate-collect per tier with `needs-data`
+placeholders, and the CPU C reference + kernel-contract check). It then prints
+the remaining checklist — what's left and which hardware / network / HF
+credentials each remaining step needs. Run that first; everything it does not
+do is in the "What needs which GPU" table at the bottom and in
+`ELIZA_1_TESTING_TODO.md` as `[hw]` lines. (`--quick` skips the slower steps;
+`--json` for a machine-readable summary.)
+
 References you must skim first:
 `packages/inference/AGENTS.md` (§2 tier matrix / bundle layout, §3 mandatory
 kernels, §6 manifest schema, §7 HF publishing/downloader, §8 verification
@@ -200,11 +212,20 @@ available.
 
 ---
 
-## 6. Stage the bundle (CPU-safe)
+## 6. Stage the bundle (CPU-safe; needs the non-text source assets present)
 
 ```bash
+# First: stage the non-text source assets (TTS / ASR / VAD / embedding / vision)
+# from HF into the bundle dir (network host) — stage_local_eliza1_bundle.py reads
+# them from `tts/`, `asr/`, `vad/`, `cache/` etc.; it does NOT synthesize voice
+# GGUF placeholders, so those dirs must be populated first:
+uv run python packages/training/scripts/manifest/stage_eliza1_source_weights.py  --tier 9b --bundle-dir ~/.eliza/local-inference/models/eliza-1-9b.bundle
+uv run python packages/training/scripts/manifest/stage_eliza1_bundle_assets.py   --tier 9b --bundle-dir ~/.eliza/local-inference/models/eliza-1-9b.bundle --link-mode hardlink
+# Then: complete the release-shaped layout (text/dflash/vision standins + evals/
+# evidence/quantization sidecars/checksums):
 uv run python packages/training/scripts/manifest/stage_local_eliza1_bundle.py \
-  --tier 9b --all-contexts --bundle-dir ~/.eliza/local-inference/models/eliza-1-9b.bundle
+  --tier 9b --all-contexts --bundle-dir ~/.eliza/local-inference/models/eliza-1-9b.bundle \
+  --release-state base-v1
 ```
 
 This assembles the exact layout (`text/`, `tts/` + tokenizer, `asr/` +
@@ -212,10 +233,13 @@ mmproj, `vad/silero-vad-v5.1.2.ggml.bin`, `vision/mmproj-*` on 9B+,
 `dflash/drafter-*.gguf` + `dflash/target-meta.json`,
 `cache/voice-preset-default.bin`, `evals/*.json`, `licenses/*`,
 `checksums/SHA256SUMS`, `evidence/release.json`, `quantization/*.json`).
-For a not-yet-built byte it stages a `base-v1`-labelled placeholder with the
-real source provenance — **never a fabricated SHA256**, and
-`evidence/release.json` stays honest (`publishEligible:false` with the
-specific missing artifact named).
+For a not-yet-built text/drafter/vision byte it stages a local stand-in (a
+real GGUF from the local model cache) with the source provenance — **never a
+fabricated SHA256** — and `evidence/release.json` stays honest
+(`publishEligible:false` with the specific missing artifact named). Without the
+non-text source assets staged first, the manifest validator rejects the bundle
+(`files.voice / files.cache: at least one entry required`) — that's intentional,
+not a fabricated-placeholder fallback.
 
 When the real bytes exist, regenerate `evidence/release.json` with
 `releaseState=base-v1`, `finetuned=false`, the `sourceModels` map, and
@@ -405,17 +429,42 @@ and every platform-dispatch report is green for the exact shipped bytes, and
 `publishEligible=true`. Preserve the upload commit/URL in
 `evidence/release.json` (`hf.uploadEvidence`) to flip to `final`-equivalent.
 
+### 10a. HF org transfer (`milady-ai/*` → `elizaos/*`)
+
+The code/docs publish to `elizaos/eliza-1-<tier>`, but the *pre-rename
+pipeline's* uploaded repos still live under the old `milady-ai` HF namespace
+(the `-milady-optimized` / `-milady-drafter` per-tier bundles + the
+`*-optimized` / `*-drafter` base-model variants; inventory in
+`packages/inference/reports/porting/2026-05-10/eliza-1-repos/`). HF preserves
+git history + download stats across a `repo move`, so move (don't re-upload):
+
+```bash
+# Dry-run first (prints every move/create; touches nothing):
+bash scripts/hf-transfer-eliza1.sh
+# Then, with an HF_TOKEN that has WRITE access to BOTH `milady-ai` and `elizaos`:
+HF_TOKEN=hf_xxx bash scripts/hf-transfer-eliza1.sh --execute
+# → `huggingface-cli repo move milady-ai/<old> elizaos/<new>` per legacy repo
+#   + `huggingface-cli repo create elizaos/eliza-1-<tier> --exist-ok` for the
+#     canonical per-tier bundle repos (created empty; the publish path fills them).
+```
+
+Then refresh the catalog:
+`uv run python packages/training/scripts/sync_catalog_from_hf.py --org elizaos --out packages/inference/reports/porting/$(date -u +%Y-%m-%d)/catalog-diff.json`.
+
 ---
 
 ## What needs which GPU (summary)
 
-| Step | Host |
-|---|---|
-| Fork converter (`convert_hf_to_gguf.py`), `gguf_eliza1_apply.py`, sidecar generation, bundle staging, checksums, platform-plan regen, manifest build, `distill_dflash_drafter.py --synthetic-smoke`, `--stamp-only` | CPU host (the fork is in-tree at `packages/inference/llama.cpp`; this environment can run these once the source weights are present) |
-| Fork build with kernel patches, `metal_verify` / `vulkan_verify` / `cuda_verify` / `rocm_verify`, platform-dispatch smokes | the target backend's hardware (Metal Mac, CUDA NVIDIA, Vulkan Linux/Android, ROCm AMD; GH200-class aarch64+CUDA for the `27b-1m` tier) |
-| PolarQuant code generation, TurboQuant skip-layer calibration, DFlash distillation, text perplexity / RTF / WER / VAD / dflash / e2e / 30-turn evals | a GPU big enough for the tier (consumer GPU for 0.6B/1.7B; ≥24 GB for 9B; ≥48 GB / multi-GPU for 27B) |
+| Step | Host | `release:v1:prep` runs it? |
+|---|---|---|
+| Fork converter (`convert_hf_to_gguf.py`), `gguf_eliza1_apply.py`, sidecar generation, bundle staging (when the source weights are present), checksums, platform-plan regen, manifest build, `distill_dflash_drafter.py --synthetic-smoke`, `--stamp-only`, quant recipe `--dry-run`s, CPU C reference + kernel-contract | CPU host (the fork is in-tree at `packages/inference/llama.cpp`) | yes — the no-HW step set (`bun run release:v1:prep`). Full bundle staging needs the source GGUFs/safetensors downloaded first (network host); the prep command reports that as a remaining `[needs-data]` step. |
+| Fork build with kernel patches, `metal_verify` / `vulkan_verify` / `cuda_verify` / `rocm_verify`, platform-dispatch smokes (`verify/{cuda,rocm,gh200}_runner.sh`, `windows_runner.ps1`) | the target backend's hardware (Metal Mac, CUDA NVIDIA, Vulkan Linux/Android, ROCm AMD; GH200-class aarch64+CUDA for the `27b-1m` tier) | no — listed in the prep checklist as `[hw]`. |
+| PolarQuant code generation, TurboQuant skip-layer calibration, DFlash distillation, text perplexity / RTF / WER / VAD / dflash / e2e / 30-turn / mobile RSS+thermal evals | a GPU big enough for the tier (consumer GPU for 0.6B/1.7B; ≥24 GB for 9B; ≥48 GB / multi-GPU for 27B) + reference devices for the mobile/voice rows | no — listed in the prep checklist as `[hw]`. |
+| HF publish (`publish_all_eliza1.sh`) + the `milady-ai → elizaos` org transfer (`scripts/hf-transfer-eliza1.sh --execute`) | an `HF_TOKEN` with write access to `elizaos/*` (publish) / to both `milady-ai` and `elizaos` (transfer) | no — listed in the prep checklist; dry-run paths are safe to run anywhere. |
 
-This environment is CPU-only with no source weights staged yet, so the GPU/HW
-rows are wired (correct invocations above) but not executed here. Everything in
-the CPU row is implemented and tested (`python -m pytest packages/training/scripts/manifest/`,
-`packages/training/scripts/quantization/test_recipes_smoke.py`).
+`bun run release:v1:prep` is the authoritative "to ship v1, do this" command:
+it runs every no-HW step (16–19 checks, all green in this checkout) and prints
+the remaining hardware / network / HF list above. Everything in the no-HW set
+is implemented and tested (`python -m pytest packages/training/scripts/manifest/`,
+`packages/training/scripts/quantization/test_recipes_smoke.py`,
+`make -C packages/inference/verify reference-test kernel-contract`).
