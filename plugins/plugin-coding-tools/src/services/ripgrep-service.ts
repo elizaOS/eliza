@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { execFile } from "node:child_process";
 import { type IAgentRuntime, Service, logger as coreLogger } from "@elizaos/core";
 import { CODING_TOOLS_LOG_PREFIX, RIPGREP_SERVICE } from "../types.js";
 
@@ -104,109 +104,47 @@ function runRipgrep(
   mode: RipgrepMode,
 ): Promise<RipgrepResult> {
   return new Promise((resolve) => {
-    if (process.env.CODING_TOOLS_RG_DEBUG === "1") {
-      console.error("rg-debug-start", { rg, args, mode });
-    }
-    let stdout = "";
-    let stderr = "";
-    let truncated = false;
-    let stdoutDone = false;
-    let stderrDone = false;
-    let processDone = false;
-    let exitCode = -1;
-    let settled = false;
     const HARD_CAP_BYTES = 5_000_000;
 
-    const maybeResolve = () => {
-      if (settled || !processDone || !stdoutDone || !stderrDone) return;
-      settled = true;
-      if (process.env.CODING_TOOLS_RG_DEBUG === "1") {
-        console.error("rg-debug-resolve", {
-          mode,
-          stdout,
-          stderr,
-          exitCode,
-          stdoutDone,
-          stderrDone,
-          processDone,
-        });
-      }
-      resolve({
-        mode,
-        output: stdout || stderr,
-        exitCode,
-        truncated,
-      });
-    };
-
-    let proc: ChildProcess;
-    try {
-      proc = spawn(rg, args, { stdio: ["ignore", "pipe", "pipe"] });
-    } catch (err) {
-      resolve({
-        mode,
-        output: `ripgrep spawn failed: ${(err as Error).message}`,
-        exitCode: -1,
-        truncated: false,
-      });
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      proc.kill("SIGTERM");
-    }, 30_000);
-
-    if (proc.stdout) {
-      proc.stdout.on("data", (chunk: Buffer) => {
-        if (stdout.length + chunk.length > HARD_CAP_BYTES) {
-          truncated = true;
-          proc.kill("SIGTERM");
+    execFile(
+      rg,
+      args,
+      {
+        encoding: "utf8",
+        maxBuffer: HARD_CAP_BYTES,
+        timeout: 30_000,
+      },
+      (error, stdout, stderr) => {
+        const output = stdout || stderr;
+        if (!error) {
+          resolve({ mode, output, exitCode: 0, truncated: false });
           return;
         }
-        stdout += chunk.toString("utf8");
-      });
-      proc.stdout.on("end", () => {
-        stdoutDone = true;
-        maybeResolve();
-      });
-      proc.stdout.on("close", () => {
-        stdoutDone = true;
-        maybeResolve();
-      });
-    } else {
-      stdoutDone = true;
-    }
-    if (proc.stderr) {
-      proc.stderr.on("data", (chunk: Buffer) => {
-        stderr += chunk.toString("utf8");
-      });
-      proc.stderr.on("end", () => {
-        stderrDone = true;
-        maybeResolve();
-      });
-      proc.stderr.on("close", () => {
-        stderrDone = true;
-        maybeResolve();
-      });
-    } else {
-      stderrDone = true;
-    }
-    proc.on("close", (code) => {
-      clearTimeout(timer);
-      exitCode = typeof code === "number" ? code : -1;
-      processDone = true;
-      maybeResolve();
-    });
-    proc.on("error", (err) => {
-      clearTimeout(timer);
-      if (settled) return;
-      settled = true;
-      resolve({
-        mode,
-        output: `ripgrep error: ${err.message}`,
-        exitCode: -1,
-        truncated: false,
-      });
-    });
+
+        const err = error as NodeJS.ErrnoException & {
+          killed?: boolean;
+          signal?: NodeJS.Signals | null;
+        };
+        if (err.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
+          resolve({ mode, output, exitCode: 0, truncated: true });
+          return;
+        }
+        if (typeof err.code === "number") {
+          resolve({ mode, output, exitCode: err.code, truncated: false });
+          return;
+        }
+        const timedOut = err.killed || err.signal === "SIGTERM";
+        resolve({
+          mode,
+          output:
+            output ||
+            (timedOut
+              ? "ripgrep timed out after 30000ms"
+              : `ripgrep error: ${err.message}`),
+          exitCode: -1,
+          truncated: false,
+        });
+      },
+    );
   });
 }
