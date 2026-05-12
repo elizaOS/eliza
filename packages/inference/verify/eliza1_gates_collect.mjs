@@ -212,6 +212,36 @@ async function main() {
     "e2e-loop-",
     (data) => (data?.summary?.turns ?? data?.request?.turns ?? 0) >= 30,
   );
+  // The two-agents-talking duet bench (`voice-duet.mjs --report …`), written
+  // under `reports/porting/<date>/voice-duet-bench-<model>.json` — match the
+  // tier under test, newest by mtime. Source for the re-anchored
+  // `first_token_latency_ms` (= `ttftFromUtteranceEndMs.p50`),
+  // `first_audio_latency_ms` / `duet_round_trip_ms` (=
+  // `firstAudioIntoPeerRingFromUtteranceEndMs.p50`),
+  // `structured_decode_token_savings_pct`, and `expressive_tag_faithfulness`
+  // (= `emotionFidelity.accuracy`).
+  const voiceDuetBench = newestReportRecursiveWhere(
+    path.join(REPORTS_ROOT, "porting"),
+    "voice-duet-bench-",
+    (data) => {
+      const m = String(data?.model ?? "");
+      return (
+        m === args.tier ||
+        m === `eliza-1-${args.tier}` ||
+        m.endsWith(`-${args.tier}`)
+      );
+    },
+  );
+  const duetH = voiceDuetBench?.data?.latency?.histograms ?? {};
+  const duetRunM = voiceDuetBench?.data?.runMetrics ?? {};
+  const duetTtftFromUtteranceEndMs = duetH?.ttftFromUtteranceEndMs?.p50 ?? null;
+  const duetRoundTripMs =
+    duetH?.firstAudioIntoPeerRingFromUtteranceEndMs?.p50 ?? null;
+  const duetStructuredSavingsPct =
+    duetRunM?.structuredDecodeTokenSavingsPct?.p50 ?? null;
+  const duetDflashAcceptance = duetRunM?.dflashAcceptRate ?? null;
+  const duetEmotionFidelity =
+    voiceDuetBench?.data?.emotionFidelity?.accuracy ?? null;
 
   const e2eDflashDrafted = e2eLoop?.data?.summary?.dflashDraftedTotal;
   const e2eDflashAccepted = e2eLoop?.data?.summary?.dflashAcceptedTotal;
@@ -250,22 +280,30 @@ async function main() {
     e2eLoop?.data?.summary?.ttsRtfMean ??
     null;
   const asrWer = e2eLoop?.data?.summary?.asrWerMean ?? null;
+  // first_token_latency_ms is re-anchored to the duet's `peer-utterance-end`
+  // (`ttftFromUtteranceEndMs.p50`); fall back to the single-agent e2e loop's
+  // `firstTokenMsMedian` (vad-trigger anchor) when no duet report exists.
   const firstTokenLatencyMs =
+    duetTtftFromUtteranceEndMs ??
     e2eLoop?.data?.summary?.firstTokenMsMedian ??
     e2eLoop?.data?.summary?.firstTokenMsP50 ??
     null;
   const firstAudioLatencyMs =
-    e2eLoop?.data?.summary?.firstAudioFromMicMsMedian ?? null;
+    duetRoundTripMs ??
+    e2eLoop?.data?.summary?.firstAudioFromMicMsMedian ??
+    null;
   const peakRssMb =
     endurance?.data?.summary?.peakRssMb ??
     e2eLoop?.data?.summary?.serverPeakRssMb ??
+    voiceDuetBench?.data?.runMetrics?.rss?.maxMb ??
     mobileRss?.data?.summary?.peakRssMb ??
     null;
   const thermalThrottlePct =
     mobileRss?.data?.summary?.thermalThrottlePct ?? null;
 
-  // Map metric name → measured value. Text and expressive quality stay null
-  // here — they come from the training-side eval blob, not runtime harnesses.
+  // Map metric name → measured value. Text quality and `expressive_mos` /
+  // `expressive_tag_leakage` stay null here — they come from the training-side
+  // eval blob / a human panel, not runtime harnesses.
   const measured = {
     text_eval: null,
     voice_rtf: voiceRtf,
@@ -276,12 +314,14 @@ async function main() {
     vad_false_bargein_per_hour: vadFalseBargeInPerHour,
     first_token_latency_ms: firstTokenLatencyMs,
     first_audio_latency_ms: firstAudioLatencyMs,
+    duet_round_trip_ms: duetRoundTripMs,
+    structured_decode_token_savings_pct: duetStructuredSavingsPct,
     barge_in_cancel_ms: bargeInCancelMs,
     thirty_turn_ok: thirtyTurnOk,
     e2e_loop_ok: e2eLoopOk,
-    dflash_acceptance: dflashAcceptance,
+    dflash_acceptance: dflashAcceptance ?? duetDflashAcceptance,
     dflash_speedup: dflashSpeedup,
-    expressive_tag_faithfulness: null,
+    expressive_tag_faithfulness: duetEmotionFidelity,
     expressive_mos: null,
     expressive_tag_leakage: null,
     peak_rss_mb: peakRssMb,
