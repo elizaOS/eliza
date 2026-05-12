@@ -492,6 +492,41 @@ def _score_from_configbench_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
+def _score_from_voicebench_quality_json(data: JSONValue) -> ScoreExtraction:
+    """Extract scores from VoiceBench-quality results.
+
+    VoiceBench-quality reports a per-suite score in ``[0, 1]`` plus an
+    unweighted mean across the suites that ran (mirroring upstream's
+    reporting convention). Higher is better.
+    """
+    root = expect_dict(data, ctx="voicebench_quality:root")
+    score = expect_float(
+        get_required(root, "score", ctx="voicebench_quality:root"),
+        ctx="voicebench_quality:score",
+    )
+    per_suite_raw = root.get("per_suite") or {}
+    per_suite: dict[str, float] = {}
+    if isinstance(per_suite_raw, dict):
+        for key, value in per_suite_raw.items():
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                per_suite[str(key)] = float(value)
+    metrics: dict[str, JSONValue] = {
+        "agent": root.get("agent") or "",
+        "judge_model": root.get("judge_model") or "",
+        "stt_provider": root.get("stt_provider") or "",
+        "n": root.get("n") or 0,
+        "elapsed_s": root.get("elapsed_s") or 0,
+    }
+    for suite_key, suite_score in per_suite.items():
+        metrics[f"suite.{suite_key}"] = suite_score
+    return ScoreExtraction(
+        score=score,
+        unit="score",
+        higher_is_better=True,
+        metrics=metrics,
+    )
+
+
 def _score_from_voicebench_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from VoiceBench results.
 
@@ -2040,6 +2075,55 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _voicebench_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="voicebench-typescript-*.json")
 
+    # VoiceBench-quality - vendored upstream VoiceBench (Chen et al. 2024)
+    def _voicebench_quality_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        """Build the elizaos-voicebench CLI invocation.
+
+        ``model.model`` selects the agent backend (``eliza``/``hermes``/
+        ``openclaw``/``echo``); defaults to ``echo`` for hermetic runs.
+        Provider ``mock`` (or no provider + no agent override) flips on
+        ``--mock`` so the run uses bundled fixtures + a stub judge and
+        does not need an API key.
+        """
+        agent_raw = extra.get("agent")
+        if isinstance(agent_raw, str) and agent_raw.strip():
+            agent = agent_raw.strip()
+        elif model.model in {"eliza", "hermes", "openclaw", "echo"}:
+            agent = str(model.model)
+        else:
+            agent = "echo"
+        provider_name = (model.provider or "").strip().lower()
+        mock_flag = bool(extra.get("mock")) or provider_name == "mock" or agent == "echo"
+        args = [
+            python,
+            "-m",
+            "elizaos_voicebench",
+            "--agent",
+            agent,
+            "--output",
+            str(output_dir),
+        ]
+        suite_raw = extra.get("suite")
+        if isinstance(suite_raw, str) and suite_raw.strip():
+            args.extend(["--suite", suite_raw.strip()])
+        limit = extra.get("limit")
+        if isinstance(limit, int) and limit > 0:
+            args.extend(["--limit", str(limit)])
+        judge_model = extra.get("judge_model")
+        if isinstance(judge_model, str) and judge_model.strip():
+            args.extend(["--judge-model", judge_model.strip()])
+        stt_provider = extra.get("stt_provider")
+        if isinstance(stt_provider, str) and stt_provider.strip():
+            args.extend(["--stt-provider", stt_provider.strip()])
+        if mock_flag:
+            args.append("--mock")
+        return args
+
+    def _voicebench_quality_result(output_dir: Path) -> Path:
+        return output_dir / "voicebench-quality-results.json"
+
     # Social-Alpha - trust-marketplace benchmark on real Discord crypto chat data
     def _social_alpha_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         """Build command for Social-Alpha.
@@ -3100,6 +3184,29 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_voicebench_cmd,
             locate_result=_voicebench_result,
             extract_score=_score_from_voicebench_json,
+        ),
+        BenchmarkDefinition(
+            id="voicebench_quality",
+            display_name="VoiceBench (quality)",
+            description=(
+                "Vendored VoiceBench (Chen et al. 2024) — 8-suite quality "
+                "benchmark over 6783 spoken instructions"
+            ),
+            cwd_rel="packages/benchmarks/voicebench-quality",
+            requirements=BenchmarkRequirements(
+                env_vars=("CEREBRAS_API_KEY", "GROQ_API_KEY"),
+                paths=("packages/benchmarks/voicebench-quality/elizaos_voicebench",),
+                notes=(
+                    "Cascaded STT (Groq Whisper) → text adapter (eliza/hermes/openclaw). "
+                    "Judged suites scored by gpt-oss-120b on Cerebras. "
+                    "Score is the unweighted mean of per-suite scores in [0, 1]; "
+                    "higher is better. Set extra.mock=true (or provider=mock) for "
+                    "a hermetic smoke run with no API keys."
+                ),
+            ),
+            build_command=_voicebench_quality_cmd,
+            locate_result=_voicebench_quality_result,
+            extract_score=_score_from_voicebench_quality_json,
         ),
         BenchmarkDefinition(
             id="social_alpha",
