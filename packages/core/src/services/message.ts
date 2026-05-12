@@ -57,6 +57,7 @@ import {
 	type FactsAndRelationshipsRunResult,
 	runFactsAndRelationshipsStage,
 } from "../runtime/facts-and-relationships";
+import { parseJsonObject } from "../runtime/json-output";
 import { getLocalizedExamplesProvider } from "../runtime/localized-examples-provider";
 import {
 	parseMessageHandlerOutput,
@@ -99,8 +100,8 @@ import {
 } from "../runtime/trajectory-recorder";
 import { isExplicitSelfModificationRequest } from "../should-respond";
 import {
-	getStreamingContext,
 	getModelStreamChunkDeliveryDepth,
+	getStreamingContext,
 	runWithStreamingContext,
 	type StreamingContext,
 } from "../streaming-context";
@@ -170,7 +171,6 @@ import {
 	parseJSONObjectFromText,
 	truncateToCompleteSentence,
 } from "../utils";
-import { parseJsonObject } from "../runtime/json-output";
 import {
 	collectActionResultSizeWarnings,
 	formatActionResultsForPrompt,
@@ -2964,11 +2964,7 @@ function normalizeRawParsedForFieldRegistry(
 	}
 	if (normalized.replyText === undefined) {
 		normalized.replyText =
-			raw.replyText ??
-			raw.reply ??
-			fields.replyText ??
-			fields.reply ??
-			"";
+			raw.replyText ?? raw.reply ?? fields.replyText ?? fields.reply ?? "";
 	}
 	if (normalized.contexts === undefined) {
 		normalized.contexts = fields.contexts ?? [];
@@ -2978,14 +2974,17 @@ function normalizeRawParsedForFieldRegistry(
 			raw.candidateActionNames ?? fields.candidateActions ?? [];
 	}
 	const extract =
-		raw.extract && typeof raw.extract === "object" && !Array.isArray(raw.extract)
+		raw.extract &&
+		typeof raw.extract === "object" &&
+		!Array.isArray(raw.extract)
 			? (raw.extract as Record<string, unknown>)
 			: undefined;
 	if (normalized.facts === undefined) {
 		normalized.facts = extract?.facts ?? raw.facts ?? [];
 	}
 	if (normalized.relationships === undefined) {
-		normalized.relationships = extract?.relationships ?? raw.relationships ?? [];
+		normalized.relationships =
+			extract?.relationships ?? raw.relationships ?? [];
 	}
 	if (normalized.addressedTo === undefined) {
 		normalized.addressedTo = extract?.addressedTo ?? raw.addressedTo ?? [];
@@ -3048,7 +3047,8 @@ function messageHandlerFromFieldResult(
 					: "RESPOND";
 	const preemptDirect =
 		preempt?.mode === "ack-and-stop" || preempt?.mode === "direct-reply";
-	const replyText = typeof result.replyText === "string" ? result.replyText : "";
+	const replyText =
+		typeof result.replyText === "string" ? result.replyText : "";
 	const routedContexts = preemptDirect
 		? Array.from(new Set([...contexts, SIMPLE_CONTEXT_ID]))
 		: contexts;
@@ -4687,15 +4687,16 @@ export async function runV5MessageRuntimeStage1(args: {
 		let fieldRunResult: ResponseHandlerFieldRunResult | null = null;
 		let messageHandler: MessageHandlerResult | null = null;
 		if (rawFieldParsed) {
-			fieldRunResult =
-				await args.runtime.responseHandlerFieldRegistry.dispatch({
+			fieldRunResult = await args.runtime.responseHandlerFieldRegistry.dispatch(
+				{
 					rawParsed: normalizeRawParsedForFieldRegistry(rawFieldParsed),
 					runtime: args.runtime,
 					message: args.message,
 					state: args.state,
 					senderRole: senderRole as ResponseHandlerSenderRole,
 					turnSignal: stage1TurnSignal,
-				});
+				},
+			);
 			messageHandler = messageHandlerFromFieldResult(
 				fieldRunResult.parsed,
 				fieldRunResult,
@@ -8385,7 +8386,10 @@ export class DefaultMessageService implements IMessageService {
 							]);
 							const scopedStreamingContext: StreamingContext | undefined =
 								streamingContext
-									? { ...streamingContext, ...(abortSignal ? { abortSignal } : {}) }
+									? {
+											...streamingContext,
+											...(abortSignal ? { abortSignal } : {}),
+										}
 									: abortSignal
 										? {
 												onStreamChunk: async () => undefined,

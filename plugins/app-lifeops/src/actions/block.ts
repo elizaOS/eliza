@@ -303,15 +303,15 @@ export const blockAction: Action & {
     "risk:irreversible",
   ],
   description:
-    "Block or unblock specific phone apps (Family Controls / Usage Access) " +
-    "and desktop websites (hosts file / SelfControl). NOT for calendar time-blocks " +
-    "or focus blocks on the calendar — use CALENDAR (subaction=create_event) to " +
-    "carve out blocks of time for deep work. " +
+    "Block or unblock specific phone apps (Family Controls / Usage Access) and " +
+    "desktop websites (hosts file / SelfControl). Scope: phone apps and websites only. " +
+    "NOT for blocking out time on the calendar / focus blocks / deep-work blocks / " +
+    "carving out hours — those route to CALENDAR (subaction=create_event). " +
     "Pick `target: app` for phone-app blocking or `target: website` for desktop website blocking. " +
     "Actions: block, unblock, status (all targets); request_permission, release, list_active (website only). " +
     "Website blocks always draft first and require confirmed:true; release also requires confirmed:true.",
   descriptionCompressed:
-    "block/unblock specific phone apps + desktop websites (NOT calendar time-blocks); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
+    "block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focus-blocks — those go to CALENDAR create_event); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
   contexts: ["screen_time", "browser", "automation", "tasks", "settings"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,

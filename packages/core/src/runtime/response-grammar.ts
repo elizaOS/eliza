@@ -499,7 +499,10 @@ export function buildResponseGrammar(
 		builder.root(rootParts);
 		const grammar = builder.build();
 		const skeleton: ResponseSkeleton = { spans, id: cacheKey };
-		const result: ResponseGrammarResult = { responseSkeleton: skeleton, grammar };
+		const result: ResponseGrammarResult = {
+			responseSkeleton: skeleton,
+			grammar,
+		};
 		stage1Cache.set(cacheKey, result);
 		return result;
 	}
