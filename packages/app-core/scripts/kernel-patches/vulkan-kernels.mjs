@@ -297,9 +297,18 @@ function applyPatches(cacheDir, { dryRun }) {
   return results;
 }
 
-function ensureLineAfter(text, anchor, line, ctx) {
+function ensureLineAfter(text, anchor, line, ctx, { dryRun = false } = {}) {
   if (text.includes(line)) return { text, changed: false };
   if (!text.includes(anchor)) {
+    if (dryRun) {
+      // In dry-run nothing earlier in the chain actually wrote, so the
+      // staging patch's anchor isn't present yet — that's expected, not a
+      // failure. Report it as "would repair once the staging patch lands".
+      console.log(
+        `[vulkan-kernels] (dry-run) repair anchor not yet present in ${ctx} (added by the staging patch); would insert: ${line.trim()}`,
+      );
+      return { text, changed: true };
+    }
     throw new Error(
       `[vulkan-kernels] repair anchor not found in ${ctx}: ${anchor}`,
     );
@@ -322,7 +331,9 @@ function repairPolarPrehtShaderRegistration(cacheDir, { dryRun }) {
   const anchor = `    string_to_spv("eliza_polar",          "polar.comp",          {});`;
   const line = `    string_to_spv("eliza_polar_preht",    "polar_preht.comp",    {});`;
   const original = fs.readFileSync(targetPath, "utf8");
-  const repaired = ensureLineAfter(original, anchor, line, targetPath);
+  const repaired = ensureLineAfter(original, anchor, line, targetPath, {
+    dryRun,
+  });
   if (repaired.changed && !dryRun) {
     fs.writeFileSync(targetPath, repaired.text, "utf8");
   }
@@ -350,6 +361,7 @@ function repairPolarPrehtPipeline(cacheDir, { dryRun }) {
       `    vk_pipeline pipeline_eliza_polar;`,
       `    vk_pipeline pipeline_eliza_polar_preht;`,
       targetPath,
+      { dryRun },
     );
     text = r.text;
     changed = changed || r.changed;
@@ -360,6 +372,7 @@ function repairPolarPrehtPipeline(cacheDir, { dryRun }) {
       `    ggml_vk_create_pipeline(device, device->pipeline_eliza_polar,          "eliza_polar",          eliza_polar_len,          eliza_polar_data,          "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);`,
       `    ggml_vk_create_pipeline(device, device->pipeline_eliza_polar_preht,    "eliza_polar_preht",    eliza_polar_preht_len,    eliza_polar_preht_data,    "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);`,
       targetPath,
+      { dryRun },
     );
     text = r.text;
     changed = changed || r.changed;

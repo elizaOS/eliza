@@ -70,7 +70,10 @@ import {
   VoiceStartupError,
 } from "./voice/engine-bridge";
 import type { VoicePipelineEvents } from "./voice/pipeline";
-import { dflashTextRunner } from "./voice/pipeline-impls";
+import {
+  type DflashTextRunner,
+  dflashTextRunner,
+} from "./voice/pipeline-impls";
 import {
   createEvictableModelRole,
   SharedResourceRegistry,
@@ -1604,6 +1607,13 @@ export class LocalInferenceEngine {
    * verifier are wired against the running DFlash llama-server; the ASR is
    * the fused ABI's ASR. Requires `startVoice()` + `armVoice()` first.
    *
+   * `opts.textRunner` lets a host that runs its own text engine in-process
+   * (the iOS/Android FFI path — `@elizaos/plugin-aosp-local-inference`'s
+   * `AospDflashAdapter` / the `LlamaCpp.xcframework` shim — which does NOT
+   * spawn `llama-server`) supply its own {@link DflashTextRunner}. When
+   * omitted, the desktop/server path is used: the module-level
+   * `dflashLlamaServer` singleton (the spawned fork `llama-server`).
+   *
    * Resolves with the turn's exit reason (`done` / `token-cap` /
    * `cancelled`). A missing ASR region in voice mode surfaces as a
    * `VoiceStartupError` — no silent cloud fallback (AGENTS.md §3).
@@ -1614,13 +1624,20 @@ export class LocalInferenceEngine {
       maxDraftTokens?: number;
       maxGeneratedTokens?: number;
       events?: VoicePipelineEvents;
+      /**
+       * In-process text runner for the mobile FFI path. Must implement the
+       * same `DflashTextRunner` contract (`hasDrafter()` +
+       * `generateWithVerifierEvents()`); the AOSP/Capacitor bridge wraps
+       * its libllama-context-backed speculative loop in one.
+       */
+      textRunner?: DflashTextRunner;
     } = {},
   ): Promise<"done" | "token-cap" | "cancelled"> {
     this.markActivity();
     const bridge = this.requireVoiceBridge("run a voice turn");
     return bridge.runVoiceTurn(
       audio,
-      dflashTextRunner(dflashLlamaServer),
+      opts.textRunner ?? dflashTextRunner(dflashLlamaServer),
       {
         maxDraftTokens: opts.maxDraftTokens ?? DEFAULT_VOICE_MAX_DRAFT_TOKENS,
         maxGeneratedTokens: opts.maxGeneratedTokens,

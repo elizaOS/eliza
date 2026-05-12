@@ -65,7 +65,37 @@ make -C packages/inference/verify reference-test                   # CPU host: m
 ```
 
 The build MUST fail if any required kernel patch is missing
-(inference/AGENTS.md §3). There is no "kernels-missing fallback build".
+(inference/AGENTS.md §3). There is no "kernels-missing fallback build"
+**for a publishable artifact**. There is, however, an opt-in, loudly-warned,
+**non-publishable** "reduced-optimization local mode" so the voice pipeline
+runs on backends that can't dispatch a required kernel yet (ROCm/HIP; the
+`turbo3_tcq` cache type): `ELIZA_DFLASH_ALLOW_REDUCED_KERNELS=1` lets
+`build-llama-cpp-dflash.mjs` finish such a target with `publishable: false` +
+`reducedOptimizationLocalMode: true`, and `MILADY_LOCAL_ALLOW_STOCK_KV=1`
+makes the runtime load it with stock `f16` KV. Neither is a default, and
+`defaultEligible` bundles still require the verified kernels per backend.
+
+### Per-platform voice support matrix
+
+The full mic → VAD → ASR → forced-grammar LLM (DFlash) → streaming TTS →
+audio-out loop must run on **every platform regardless of GPU
+architecture**. The current state per `{platform × GPU backend}` —
+runtime path (`llama-server` spawn vs in-process FFI), kernel coverage,
+mic + player, VAD runtime, TTS/ASR backend, and verified vs
+needs-hardware/needs-SDK — is the table in
+[`docs/voice-interactive.md` § "Cross-platform voice support matrix"](docs/voice-interactive.md#cross-platform-voice-support-matrix),
+generated live by `bun run voice:interactive -- --platform-report`, with
+the per-row evidence in
+[`packages/inference/reports/porting/2026-05-11/needs-hardware-ledger.md`](packages/inference/reports/porting/2026-05-11/needs-hardware-ledger.md).
+Summary: Metal (Apple Silicon, all 5 kernels graph-dispatched) and the
+CUDA fork binary are the fully-optimized desktop targets; Linux/Windows
+CPU + Vulkan run via the same `llama-server` path with the kernel patches
+applied (CPU advertises `dflash`/`turbo3`/`turbo4`/`qjl_full`/`polarquant`,
+`turbo3_tcq` only matters for the 27b-256k tiers); iOS/Android run via the
+in-process FFI path (`@elizaos/llama-cpp-capacitor` /
+`@elizaos/plugin-aosp-local-inference`) and need an Xcode / Android-Studio
+build for the on-device fused lib (`ios-arm64-metal-fused`,
+`android-arm64-{cpu,vulkan}-fused` — to add).
 
 ---
 

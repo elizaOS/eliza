@@ -59,6 +59,7 @@ import readline from "node:readline";
 function parseArgs(argv) {
   const out = {
     listActive: false,
+    platformReport: false,
     say: null,
     wav: null,
     noAudio: false,
@@ -69,6 +70,8 @@ function parseArgs(argv) {
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === "--list-active") out.listActive = true;
+    else if (a === "--platform-report" || a === "--list-active-platforms")
+      out.platformReport = true;
     else if (a === "--no-audio") out.noAudio = true;
     else if (a === "--no-dflash") out.noDflash = true;
     else if (a === "--say") out.say = argv[++i] ?? "";
@@ -86,6 +89,10 @@ function parseArgs(argv) {
 const USAGE = `Usage: bun run voice:interactive [-- <options>]
 
   --list-active        print which optimizations are active, then exit
+  --platform-report    print the cross-platform voice support matrix, then exit
+                       (runtime path / kernel coverage / mic+player / VAD
+                        runtime / TTS+ASR backend per platform×GPU; verified vs
+                        needs-hardware/needs-SDK)
   --say "<text>"       skip ASR; inject <text> as a finalized transcript (LLM→TTS half)
   --wav <path>         feed a WAV file through the same path once (non-mic smoke)
   --no-audio           don't play to speakers; write out-<ts>.wav instead
@@ -165,7 +172,9 @@ async function inspectActiveOptimizations(args) {
   // ── Bundle installed? ──────────────────────────────────────────────────
   let bundleRoot = null;
   try {
-    const { elizaModelsDir } = await import("../../shared/src/local-inference/paths.ts");
+    const { elizaModelsDir } = await import(
+      "../../shared/src/local-inference/paths.ts"
+    );
     const candidate = path.join(
       elizaModelsDir(),
       `${(catalogEntry?.id ?? "eliza-1-1_7b").replace(/[^a-zA-Z0-9._-]/g, "_")}.bundle`,
@@ -175,12 +184,15 @@ async function inspectActiveOptimizations(args) {
     /* reported via the catalog branch already */
   }
   if (bundleRoot) {
-    active.push({ name: "bundle", on: true, detail: `installed at ${bundleRoot}` });
+    active.push({
+      name: "bundle",
+      on: true,
+      detail: `installed at ${bundleRoot}`,
+    });
   } else {
     missing.push({
       what: `the ${catalogEntry?.id ?? "eliza-1-1_7b"} bundle is not installed`,
-      fix:
-        "download it (run the harness without --list-active for the auto-download prompt) or follow RELEASE_V1.md to acquire/convert/quantize the bundle, then place it under <state-dir>/local-inference/models/<id>.bundle/",
+      fix: "download it (run the harness without --list-active for the auto-download prompt) or follow RELEASE_V1.md to acquire/convert/quantize the bundle, then place it under <state-dir>/local-inference/models/<id>.bundle/",
     });
   }
 
@@ -208,7 +220,8 @@ async function inspectActiveOptimizations(args) {
         // declares (AGENTS.md §3). If the installed llama-server's
         // CAPABILITIES.json doesn't advertise them all, `engine.load()`
         // will reject — surface that here, not deep in the load path.
-        const required = catalogEntry?.runtime?.optimizations?.requiresKernel ?? [];
+        const required =
+          catalogEntry?.runtime?.optimizations?.requiresKernel ?? [];
         const advertised = status.capabilities?.kernels ?? null;
         if (required.length > 0 && advertised) {
           const lacking = required.filter((k) => advertised[k] !== true);
@@ -267,14 +280,21 @@ async function inspectActiveOptimizations(args) {
     if (!ttsLibPath) {
       let liRoot = null;
       try {
-        liRoot = (await import("../../shared/src/local-inference/paths.ts")).localInferenceRoot();
+        liRoot = (
+          await import("../../shared/src/local-inference/paths.ts")
+        ).localInferenceRoot();
       } catch {
         /* ignore */
       }
       const fusedTargets =
         liRoot && process.env.ELIZA_INFERENCE_MANAGED_LOOKUP?.trim() !== "0"
           ? ["metal", "vulkan", "cuda", "cpu"].map((b) =>
-              path.join(liRoot, "bin", "dflash", `${process.platform}-${os.arch()}-${b}-fused`),
+              path.join(
+                liRoot,
+                "bin",
+                "dflash",
+                `${process.platform}-${os.arch()}-${b}-fused`,
+              ),
             )
           : [];
       const libDirs = [
@@ -310,7 +330,8 @@ async function inspectActiveOptimizations(args) {
     active.push({
       name: "streaming OmniVoice TTS",
       on: false,
-      detail: "no fused build — the stub backend emits silence and is rejected by startVoiceSession",
+      detail:
+        "no fused build — the stub backend emits silence and is rejected by startVoiceSession",
     });
   }
 
@@ -325,7 +346,8 @@ async function inspectActiveOptimizations(args) {
       );
       const bin = resolveWhisperBinary();
       const model = resolveWhisperModelPath();
-      if (bin && model) asrBackend = `whisper.cpp (${bin} + ${path.basename(model)})`;
+      if (bin && model)
+        asrBackend = `whisper.cpp (${bin} + ${path.basename(model)})`;
     } catch {
       /* fall through */
     }
@@ -373,16 +395,39 @@ async function inspectActiveOptimizations(args) {
   // ── Mic ────────────────────────────────────────────────────────────────
   const wantsMic = !args?.say && !args?.wav;
   if (wantsMic) {
-    // DesktopMicSource shells arecord/sox; we can't easily probe without
-    // spawning, so just note the requirement.
-    active.push({
-      name: "mic input (DesktopMicSource)",
-      on: true,
-      detail:
-        process.platform === "win32"
-          ? "Windows has no universal CLI recorder — DesktopMicSource.start() will throw; use --wav or --say here"
-          : "shells arecord / sox to capture mono 16 kHz PCM (must be on PATH)",
-    });
+    let recorderName = null;
+    try {
+      const { resolveDesktopRecorder } = await import(
+        "../src/services/local-inference/voice/mic-source.ts"
+      );
+      const rec = resolveDesktopRecorder(16_000);
+      recorderName = rec ? rec.program : null;
+    } catch {
+      /* ignore */
+    }
+    const recHint =
+      process.platform === "win32"
+        ? "Windows: ffmpeg -f dshow (DirectShow), or the renderer's getUserMedia → PushMicSource"
+        : process.platform === "darwin"
+          ? "macOS: sox -d (rec), or ffmpeg -f avfoundation"
+          : "Linux: arecord (alsa-utils) / parec (PulseAudio) / sox";
+    if (recorderName) {
+      active.push({
+        name: "mic input (DesktopMicSource)",
+        on: true,
+        detail: `using '${recorderName}' to capture mono 16 kHz PCM (${recHint})`,
+      });
+    } else {
+      missing.push({
+        what: `no CLI mic recorder on PATH for ${process.platform}`,
+        fix: `install one (${recHint}), or feed PCM via PushMicSource (the renderer's getUserMedia, or --wav / --say), or use the Capacitor Microphone plugin on mobile`,
+      });
+      active.push({
+        name: "mic input (DesktopMicSource)",
+        on: false,
+        detail: `no recorder found; ${recHint}`,
+      });
+    }
   }
 
   // ── Always-wired pipeline pieces (these are structural, not gated) ─────
@@ -423,7 +468,16 @@ async function inspectActiveOptimizations(args) {
       "voiceLatencyTracer — vad-trigger → audio-first-played checkpoints; derived TTFT/TTFA/TTAP; printed per-turn + as a histogram on 'p'",
   });
 
-  return { active, missing, catalogEntry, drafterEntry, bundleRoot, ttsBackend, asrBackend, vadPath };
+  return {
+    active,
+    missing,
+    catalogEntry,
+    drafterEntry,
+    bundleRoot,
+    ttsBackend,
+    asrBackend,
+    vadPath,
+  };
 }
 
 function printActive(report, args) {
@@ -437,7 +491,12 @@ function printActive(report, args) {
   }
   log("");
   if (report.missing.length > 0) {
-    log(c("yellow", `Missing prerequisites (${report.missing.length}) — fix each before a real interactive turn:`));
+    log(
+      c(
+        "yellow",
+        `Missing prerequisites (${report.missing.length}) — fix each before a real interactive turn:`,
+      ),
+    );
     log("");
     for (const m of report.missing) {
       log(`  ${c("red", "•")} ${m.what}`);
@@ -445,9 +504,344 @@ function printActive(report, args) {
     }
     log("");
   } else {
-    log(c("green", "All prerequisites present — ready for an interactive voice turn."));
+    log(
+      c(
+        "green",
+        "All prerequisites present — ready for an interactive voice turn.",
+      ),
+    );
     log("");
   }
+}
+
+// ---------------------------------------------------------------------------
+// Cross-platform voice support matrix
+// ---------------------------------------------------------------------------
+
+/**
+ * The static cross-platform support matrix for the Eliza-1 voice pipeline:
+ * for each {platform × GPU backend}, what runtime path it uses
+ * (llama-server-spawn vs in-process FFI), what kernel coverage the build
+ * produces, what mic + player it shells, what VAD runtime, what TTS/ASR
+ * backend, and what is verified vs needs-hardware/needs-SDK.
+ *
+ * This is the durable description; the `verified` column reflects the
+ * current state recorded in `packages/inference/README.md` and
+ * `packages/inference/reports/porting/2026-05-11/needs-hardware-ledger.md`.
+ */
+const PLATFORM_MATRIX = [
+  {
+    platform: "Linux x64",
+    backends: [
+      {
+        gpu: "cpu",
+        runtime: "llama-server (spawn)",
+        kernels:
+          "TurboQuant/QJL/Polar CPU SIMD TUs compiled in; turbo3_tcq decode CPU",
+        mic: "arecord / parec / sox",
+        player: "aplay / paplay / sox / ffplay",
+        vad: "onnxruntime-node",
+        ttsAsr:
+          "fused libelizainference (CPU build) / whisper.cpp ASR fallback",
+        verified:
+          "CPU SIMD kernels reference-verified; build runs on this host",
+      },
+      {
+        gpu: "cuda",
+        runtime: "llama-server (spawn) — fork binary ships .cu/.cuh for all 5",
+        kernels: "dflash + turbo3/4/tcq + qjl + polar (CUDA, fork binary)",
+        mic: "arecord / parec / sox",
+        player: "aplay / paplay / sox / ffplay",
+        vad: "onnxruntime-node",
+        ttsAsr: "fused libelizainference (CUDA build)",
+        verified:
+          "CUDA kernels hardware-verified on RTX 5080; build needs nvcc (not present here)",
+      },
+      {
+        gpu: "rocm",
+        runtime: "llama-server (spawn)",
+        kernels:
+          "HIP build; custom kernels not yet HIP-ported → reduced-optimization local mode (stock f16 KV; MILADY_LOCAL_ALLOW_STOCK_KV=1)",
+        mic: "arecord / parec / sox",
+        player: "aplay / paplay / sox / ffplay",
+        vad: "onnxruntime-node",
+        ttsAsr: "fused libelizainference (HIP build)",
+        verified: "needs ROCm host (hipcc); not built here",
+      },
+      {
+        gpu: "vulkan",
+        runtime: "llama-server (spawn)",
+        kernels:
+          "dflash + turbo3/4/tcq + qjl + polar shaders staged + dispatch source-patched (runtime-verified Intel ANV; needs-hardware elsewhere)",
+        mic: "arecord / parec / sox",
+        player: "aplay / paplay / sox / ffplay",
+        vad: "onnxruntime-node",
+        ttsAsr: "fused libelizainference (Vulkan build)",
+        verified:
+          "Vulkan shaders + fused-attn graph dispatch verified on Intel ARL ANV; build runs on this host",
+      },
+    ],
+  },
+  {
+    platform: "Linux aarch64",
+    backends: [
+      {
+        gpu: "cpu",
+        runtime: "llama-server (spawn)",
+        kernels:
+          "TurboQuant/QJL/Polar CPU SIMD TUs (ARMv8.4 dotprod path) compiled in",
+        mic: "arecord / parec / sox",
+        player: "aplay / paplay / sox / ffplay",
+        vad: "onnxruntime-node (arm64)",
+        ttsAsr: "fused libelizainference (CPU build)",
+        verified: "needs an arm64 Linux host or cross-toolchain (not present)",
+      },
+      {
+        gpu: "cuda",
+        runtime: "llama-server (spawn) — GH200 (aarch64 + Hopper)",
+        kernels: "dflash + turbo3/4/tcq + qjl + polar (CUDA, fork binary)",
+        mic: "arecord / parec / sox",
+        player: "aplay / paplay / sox / ffplay",
+        vad: "onnxruntime-node (arm64)",
+        ttsAsr: "fused libelizainference (CUDA build)",
+        verified:
+          "needs aarch64+CUDA host (GH200/Grace-Hopper); not built here",
+      },
+    ],
+  },
+  {
+    platform: "Windows x64",
+    backends: [
+      {
+        gpu: "cpu",
+        runtime:
+          "llama-server (spawn) — QJL TUs folded into ggml-base for the DLL link",
+        kernels: "TurboQuant/QJL/Polar CPU SIMD TUs compiled in",
+        mic: "ffmpeg -f dshow (DirectShow) — or renderer getUserMedia → PushMicSource",
+        player: "ffplay (ffmpeg) — or renderer AudioContext",
+        vad: "onnxruntime-node",
+        ttsAsr:
+          "fused libelizainference (CPU build) / whisper.cpp ASR fallback",
+        verified:
+          "build needs MSVC/mingw (cross from this Linux host: --dry-run only)",
+      },
+      {
+        gpu: "cuda",
+        runtime: "llama-server (spawn)",
+        kernels: "dflash + turbo3/4/tcq + qjl + polar (CUDA, fork binary)",
+        mic: "ffmpeg -f dshow — or renderer getUserMedia",
+        player: "ffplay — or renderer AudioContext",
+        vad: "onnxruntime-node",
+        ttsAsr: "fused libelizainference (CUDA build)",
+        verified: "needs Windows + CUDA SDK; not built here",
+      },
+      {
+        gpu: "vulkan",
+        runtime: "llama-server (spawn)",
+        kernels:
+          "dflash + turbo3/4/tcq + qjl + polar shaders + dispatch source-patched (needs-hardware)",
+        mic: "ffmpeg -f dshow — or renderer getUserMedia",
+        player: "ffplay — or renderer AudioContext",
+        vad: "onnxruntime-node",
+        ttsAsr: "fused libelizainference (Vulkan build)",
+        verified:
+          "needs Windows + a Vulkan 1.3 GPU; build cross-config --dry-run only here",
+      },
+    ],
+  },
+  {
+    platform: "Windows arm64",
+    backends: [
+      {
+        gpu: "cpu",
+        runtime: "llama-server (spawn) — Snapdragon X / Copilot+ PC",
+        kernels: "TurboQuant/QJL/Polar CPU SIMD TUs (NEON path) compiled in",
+        mic: "ffmpeg -f dshow — or renderer getUserMedia → PushMicSource",
+        player: "ffplay — or renderer AudioContext",
+        vad: "onnxruntime-node (arm64)",
+        ttsAsr: "fused libelizainference (CPU build)",
+        verified:
+          "needs an MSVC arm64 cross-toolchain or a native Windows arm64 host",
+      },
+      {
+        gpu: "vulkan",
+        runtime: "llama-server (spawn) — Adreno X1 (Vulkan 1.3)",
+        kernels:
+          "dflash + turbo3/4/tcq + qjl + polar shaders + dispatch source-patched (needs-hardware)",
+        mic: "ffmpeg -f dshow — or renderer getUserMedia",
+        player: "ffplay — or renderer AudioContext",
+        vad: "onnxruntime-node (arm64)",
+        ttsAsr: "fused libelizainference (Vulkan build)",
+        verified: "needs Windows arm64 + Adreno; not built here",
+      },
+    ],
+  },
+  {
+    platform: "macOS arm64",
+    backends: [
+      {
+        gpu: "metal",
+        runtime:
+          "llama-server (spawn) — fused build serves /v1/audio/speech in-process",
+        kernels:
+          "dflash + turbo3/4/tcq + qjl + polar — all 5 graph-dispatched on Apple Silicon",
+        mic: "sox -d (rec) — or ffmpeg -f avfoundation — or renderer getUserMedia",
+        player:
+          "sox/play — or ffplay — (afplay needs a file, not used) — or renderer AudioContext",
+        vad: "onnxruntime-node (arm64)",
+        ttsAsr:
+          "fused libelizainference.dylib (real OmniVoice TTS + Qwen3-ASR, full graph)",
+        verified:
+          "Metal kernels hardware-verified on M4 Max; needs a macOS arm64 host to build",
+      },
+    ],
+  },
+  {
+    platform: "iOS arm64",
+    backends: [
+      {
+        gpu: "metal",
+        runtime:
+          "in-process FFI (@elizaos/llama-cpp-capacitor LlamaCpp.xcframework + @elizaos/plugin-aosp-local-inference aosp-llama/dflash adapters) — NOT llama-server-spawn",
+        kernels:
+          "static .a + embedded default.metallib carry the 5 milady kernel symbols; runtime graph dispatch on-device same as macOS Metal once the xcframework is rebuilt with them",
+        mic: "Capacitor Microphone plugin → PushMicSource (no CLI recorder on iOS)",
+        player:
+          "Capacitor audio sink → PcmRingBuffer → native AudioQueue/AVAudioEngine",
+        vad: "onnxruntime-mobile (iOS) / Capacitor ONNX bridge — NOT onnxruntime-node",
+        ttsAsr:
+          "fused libelizainference (ios-arm64-metal-fused — to add) carried inside the xcframework, or the Capacitor framework links omnivoice symbols",
+        verified:
+          "needs an Xcode build (macOS + Xcode): packages/app-core/scripts/ios-xcframework/build-xcframework.mjs + a physical-device smoke",
+      },
+    ],
+  },
+  {
+    platform: "Android arm64",
+    backends: [
+      {
+        gpu: "cpu",
+        runtime:
+          "in-process FFI (@elizaos/plugin-aosp-local-inference compile-libllama.mjs → libllama .so + aosp-llama/dflash adapters) — NOT llama-server-spawn",
+        kernels:
+          "TurboQuant/QJL/Polar CPU SIMD TUs (NEON path) compiled into the .so",
+        mic: "Capacitor Microphone plugin → PushMicSource",
+        player: "Capacitor audio sink → PcmRingBuffer → native AudioTrack",
+        vad: "onnxruntime-mobile (Android) / Capacitor ONNX bridge",
+        ttsAsr:
+          "fused libelizainference (android-arm64-cpu-fused — to add) inside the AAR",
+        verified:
+          "needs an Android Studio / NDK build (compile-libllama.mjs cross-compiles)",
+      },
+      {
+        gpu: "vulkan",
+        runtime:
+          "in-process FFI (libllama .so, Vulkan backend) — NOT llama-server-spawn",
+        kernels:
+          "dflash + turbo3/4/tcq + qjl + polar shaders + dispatch source-patched (needs-hardware: needs a physical Android Vulkan device)",
+        mic: "Capacitor Microphone plugin → PushMicSource",
+        player: "Capacitor audio sink → PcmRingBuffer → native AudioTrack",
+        vad: "onnxruntime-mobile (Android) / Capacitor ONNX bridge",
+        ttsAsr:
+          "fused libelizainference (android-arm64-vulkan-fused — to add) inside the AAR",
+        verified:
+          "needs Android NDK + a Vulkan-1.3 Android device for the dispatch smoke",
+      },
+    ],
+  },
+];
+
+/** Inspect what the *host* would actually use, for the local row callout. */
+async function inspectHostPeripherals() {
+  const out = { recorder: null, player: null, ort: null, ortError: null };
+  try {
+    const { resolveDesktopRecorder } = await import(
+      "../src/services/local-inference/voice/mic-source.ts"
+    );
+    const rec = resolveDesktopRecorder(16_000);
+    out.recorder = rec ? rec.program : null;
+  } catch {
+    /* ignore */
+  }
+  try {
+    const { resolveSystemPlayerName } = await import(
+      "../src/services/local-inference/voice/system-audio-sink.ts"
+    );
+    out.player = resolveSystemPlayerName(24_000);
+  } catch {
+    /* ignore */
+  }
+  try {
+    const { loadOnnxRuntime } = await import(
+      "../src/services/local-inference/voice/onnx-runtime.ts"
+    );
+    await loadOnnxRuntime();
+    out.ort = "onnxruntime-node";
+  } catch (err) {
+    out.ortError = err instanceof Error ? err.message : String(err);
+  }
+  return out;
+}
+
+async function printPlatformReport() {
+  log("");
+  log(c("bold", "Eliza-1 voice — cross-platform support matrix"));
+  log(
+    c(
+      "dim",
+      "mic → VAD → ASR → forced-grammar LLM (DFlash) → streaming TTS → audio out",
+    ),
+  );
+  log("");
+  for (const row of PLATFORM_MATRIX) {
+    log(c("cyan", `## ${row.platform}`));
+    for (const b of row.backends) {
+      log(`  ${c("bold", b.gpu.toUpperCase())}`);
+      log(`    runtime path : ${b.runtime}`);
+      log(`    kernels      : ${b.kernels}`);
+      log(`    mic          : ${b.mic}`);
+      log(`    player       : ${b.player}`);
+      log(`    VAD runtime  : ${b.vad}`);
+      log(`    TTS/ASR      : ${b.ttsAsr}`);
+      log(`    status       : ${c("dim", b.verified)}`);
+    }
+    log("");
+  }
+  const host = await inspectHostPeripherals();
+  log(
+    c(
+      "bold",
+      `Host (${process.platform}-${process.arch}) — what this machine would use:`,
+    ),
+  );
+  log(
+    `  mic recorder : ${host.recorder ?? c("yellow", "(none on PATH — use PushMicSource / a connector)")}`,
+  );
+  log(
+    `  audio player : ${host.player ?? c("yellow", "(none on PATH — falls back to WavFileAudioSink)")}`,
+  );
+  log(
+    `  ONNX runtime : ${
+      host.ort
+        ? host.ort
+        : c(
+            "yellow",
+            `(unavailable — ${host.ortError ?? "onnxruntime-node not installed"}; VAD disabled)`,
+          )
+    }`,
+  );
+  log("");
+  log(
+    c(
+      "dim",
+      "Kernel coverage rule (AGENTS.md §3 vs the works-everywhere directive): the build dispatches\n" +
+        "  the kernels on every backend where it can (Metal: all 5; CUDA: fork binary; Vulkan: source-\n" +
+        "  patched; CPU: SIMD TUs); where it can't yet (ROCm/HIP), set MILADY_LOCAL_ALLOW_STOCK_KV=1 to\n" +
+        "  run with stock f16 KV (reduced-optimization local mode — loud warning, NOT publishable, NOT a\n" +
+        "  default). defaultEligible bundles still require the verified kernels per backend.",
+    ),
+  );
+  log("");
 }
 
 // ---------------------------------------------------------------------------
@@ -457,7 +851,9 @@ function printActive(report, args) {
 async function tryAutoDownloadVad(bundleRoot) {
   // Silero v5 VAD (MIT, ~2 MB, public).
   try {
-    const { localInferenceRoot } = await import("../../shared/src/local-inference/paths.ts");
+    const { localInferenceRoot } = await import(
+      "../../shared/src/local-inference/paths.ts"
+    );
     const dest = path.join(localInferenceRoot(), "vad", "silero-vad-int8.onnx");
     if (existsSync(dest)) return dest;
     // ONNX community mirror of the official silero-vad model.
@@ -472,7 +868,11 @@ async function tryAutoDownloadVad(bundleRoot) {
     await fs.writeFile(dest, buf);
     return dest;
   } catch (err) {
-    tag("setup", "yellow", `Silero VAD auto-download failed: ${err instanceof Error ? err.message : String(err)}`);
+    tag(
+      "setup",
+      "yellow",
+      `Silero VAD auto-download failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
     return null;
   }
 }
@@ -488,7 +888,11 @@ async function tryAutoDownloadWhisper() {
     const model = await downloadWhisperModel();
     return { bin, model };
   } catch (err) {
-    tag("setup", "yellow", `whisper model auto-download failed: ${err instanceof Error ? err.message : String(err)}`);
+    tag(
+      "setup",
+      "yellow",
+      `whisper model auto-download failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
     return null;
   }
 }
@@ -496,13 +900,21 @@ async function tryAutoDownloadWhisper() {
 async function tryAutoDownloadBundle(catalogEntry) {
   if (!catalogEntry) return null;
   try {
-    const { Downloader } = await import("../src/services/local-inference/downloader.ts");
-    const { elizaModelsDir } = await import("../../shared/src/local-inference/paths.ts");
+    const { Downloader } = await import(
+      "../src/services/local-inference/downloader.ts"
+    );
+    const { elizaModelsDir } = await import(
+      "../../shared/src/local-inference/paths.ts"
+    );
     const dest = path.join(
       elizaModelsDir(),
       `${catalogEntry.id.replace(/[^a-zA-Z0-9._-]/g, "_")}.bundle`,
     );
-    tag("setup", "blue", `downloading the ${catalogEntry.id} bundle (this is large — multiple GB)… → ${dest}`);
+    tag(
+      "setup",
+      "blue",
+      `downloading the ${catalogEntry.id} bundle (this is large — multiple GB)… → ${dest}`,
+    );
     const dl = new Downloader();
     await new Promise((resolve, reject) => {
       const unsub = dl.subscribe((job) => {
@@ -522,7 +934,11 @@ async function tryAutoDownloadBundle(catalogEntry) {
     });
     return existsSync(dest) ? dest : null;
   } catch (err) {
-    tag("setup", "yellow", `bundle auto-download failed: ${err instanceof Error ? err.message : String(err)} — follow RELEASE_V1.md to acquire it manually`);
+    tag(
+      "setup",
+      "yellow",
+      `bundle auto-download failed: ${err instanceof Error ? err.message : String(err)} — follow RELEASE_V1.md to acquire it manually`,
+    );
     return null;
   }
 }
@@ -533,23 +949,38 @@ async function tryAutoDownloadBundle(catalogEntry) {
 
 async function makeAudioSink(opts) {
   const { sampleRate, noAudio } = opts;
-  const {
-    SystemAudioSink,
-    WavFileAudioSink,
-  } = await import("../src/services/local-inference/voice/system-audio-sink.ts");
+  const { SystemAudioSink, WavFileAudioSink } = await import(
+    "../src/services/local-inference/voice/system-audio-sink.ts"
+  );
   if (noAudio) {
     const out = path.resolve(process.cwd(), `out-${Date.now()}.wav`);
     const sink = new WavFileAudioSink({ sampleRate, filePath: out });
-    return { sink, describe: () => `WAV file: ${out}`, finalize: () => sink.finalize() };
+    return {
+      sink,
+      describe: () => `WAV file: ${out}`,
+      finalize: () => sink.finalize(),
+    };
   }
   const sink = new SystemAudioSink({ sampleRate });
   if (!sink.available()) {
     const out = path.resolve(process.cwd(), `out-${Date.now()}.wav`);
-    tag("audio", "yellow", `no playback device (aplay/afplay/paplay not on PATH) — falling back to a WAV file: ${out}`);
+    tag(
+      "audio",
+      "yellow",
+      `no playback device (aplay/afplay/paplay not on PATH) — falling back to a WAV file: ${out}`,
+    );
     const wsink = new WavFileAudioSink({ sampleRate, filePath: out });
-    return { sink: wsink, describe: () => `WAV file: ${out}`, finalize: () => wsink.finalize() };
+    return {
+      sink: wsink,
+      describe: () => `WAV file: ${out}`,
+      finalize: () => wsink.finalize(),
+    };
   }
-  return { sink, describe: () => `system playback (${sink.player()})`, finalize: async () => sink.dispose() };
+  return {
+    sink,
+    describe: () => `system playback (${sink.player()})`,
+    finalize: async () => sink.dispose(),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -567,16 +998,25 @@ async function makeAudioSink(opts) {
  */
 async function ensureBundleRegistered(catalogEntry, bundleRoot) {
   if (!catalogEntry || !bundleRoot || !existsSync(bundleRoot)) return null;
-  const { listInstalledModels } = await import("../src/services/local-inference/registry.ts");
+  const { listInstalledModels } = await import(
+    "../src/services/local-inference/registry.ts"
+  );
   const installed = await listInstalledModels();
   const already = installed.find((m) => m.id === catalogEntry.id);
   if (already?.path && existsSync(already.path)) return already;
 
-  const { upsertElizaModel } = await import("../src/services/local-inference/registry.ts");
-  const manifestPath = path.join(bundleRoot, catalogEntry.bundleManifestFile ?? "eliza-1.manifest.json");
+  const { upsertElizaModel } = await import(
+    "../src/services/local-inference/registry.ts"
+  );
+  const manifestPath = path.join(
+    bundleRoot,
+    catalogEntry.bundleManifestFile ?? "eliza-1.manifest.json",
+  );
   const textGguf = path.join(bundleRoot, catalogEntry.ggufFile);
   if (!existsSync(textGguf)) {
-    throw new Error(`bundle at ${bundleRoot} is missing the primary text GGUF ${catalogEntry.ggufFile}`);
+    throw new Error(
+      `bundle at ${bundleRoot} is missing the primary text GGUF ${catalogEntry.ggufFile}`,
+    );
   }
   const stat = await fs.stat(textGguf);
   const now = new Date().toISOString();
@@ -600,12 +1040,20 @@ async function ensureBundleRegistered(catalogEntry, bundleRoot) {
     ...bundleMeta,
   };
   await upsertElizaModel(model);
-  tag("setup", "blue", `registered ${catalogEntry.id} bundle in the local-inference registry (text=${textGguf})`);
+  tag(
+    "setup",
+    "blue",
+    `registered ${catalogEntry.id} bundle in the local-inference registry (text=${textGguf})`,
+  );
 
   // Register the DFlash drafter companion too (so the engine wires -md).
-  const companionId = catalogEntry.runtime?.dflash?.drafterModelId ?? catalogEntry.companionModelIds?.[0];
+  const companionId =
+    catalogEntry.runtime?.dflash?.drafterModelId ??
+    catalogEntry.companionModelIds?.[0];
   if (companionId) {
-    const { findCatalogModel } = await import("../../shared/src/local-inference/catalog.ts");
+    const { findCatalogModel } = await import(
+      "../../shared/src/local-inference/catalog.ts"
+    );
     const companion = findCatalogModel(companionId);
     if (companion) {
       const drafterGguf = path.join(bundleRoot, companion.ggufFile);
@@ -626,7 +1074,11 @@ async function ensureBundleRegistered(catalogEntry, bundleRoot) {
           companionFor: catalogEntry.id,
           ...bundleMeta,
         });
-        tag("setup", "blue", `registered ${companion.id} (DFlash drafter) at ${drafterGguf}`);
+        tag(
+          "setup",
+          "blue",
+          `registered ${companion.id} (DFlash drafter) at ${drafterGguf}`,
+        );
       }
     }
   }
@@ -654,14 +1106,22 @@ async function bootStandaloneRuntime({ roomId }) {
   let sqlPlugin;
   let bootstrapPlugin;
   try {
-    sqlPlugin = (await import("@elizaos/plugin-sql")).default ?? (await import("@elizaos/plugin-sql")).sqlPlugin;
+    sqlPlugin =
+      (await import("@elizaos/plugin-sql")).default ??
+      (await import("@elizaos/plugin-sql")).sqlPlugin;
   } catch (err) {
-    throw new Error(`@elizaos/plugin-sql not available: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(
+      `@elizaos/plugin-sql not available: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
   try {
-    bootstrapPlugin = (await import("@elizaos/plugin-bootstrap")).default ?? (await import("@elizaos/plugin-bootstrap")).bootstrapPlugin;
+    bootstrapPlugin =
+      (await import("@elizaos/plugin-bootstrap")).default ??
+      (await import("@elizaos/plugin-bootstrap")).bootstrapPlugin;
   } catch (err) {
-    throw new Error(`@elizaos/plugin-bootstrap not available: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(
+      `@elizaos/plugin-bootstrap not available: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   // In-memory DB; assign the eliza-1-1_7b model to TEXT_SMALL.
@@ -670,7 +1130,9 @@ async function bootStandaloneRuntime({ roomId }) {
   const runtime = new AgentRuntime({
     character: {
       name: "Eliza",
-      bio: ["A local-first AI assistant running the eliza-1-1_7b model with the full optimized voice stack."],
+      bio: [
+        "A local-first AI assistant running the eliza-1-1_7b model with the full optimized voice stack.",
+      ],
       messageExamples: [],
       adjectives: [],
       plugins: [],
@@ -706,7 +1168,9 @@ async function bootStandaloneRuntime({ roomId }) {
   // The `generate` callback for the voice turn controller.
   const generate = async (request, onChunk) => {
     if (!runtime.messageService?.handleMessage) {
-      throw new Error("[voice] runtime.messageService.handleMessage is unavailable (plugin-bootstrap not loaded?)");
+      throw new Error(
+        "[voice] runtime.messageService.handleMessage is unavailable (plugin-bootstrap not loaded?)",
+      );
     }
     const entityId = `${roomId}-user`;
     const incoming = {
@@ -722,7 +1186,9 @@ async function bootStandaloneRuntime({ roomId }) {
       const text = typeof content?.text === "string" ? content.text : "";
       if (text.trim().length > 0) {
         // Stream the delta into TTS.
-        const delta = text.startsWith(replyText) ? text.slice(replyText.length) : text;
+        const delta = text.startsWith(replyText)
+          ? text.slice(replyText.length)
+          : text;
         replyText = text.length >= replyText.length ? text : replyText;
         if (delta.length > 0) await onChunk?.(delta);
       }
@@ -731,9 +1197,14 @@ async function bootStandaloneRuntime({ roomId }) {
     // The message service streams `replyText` field-by-field via the
     // local engine's `onStreamChunk` → `onTextChunk` → voice scheduler when
     // voice is armed; the callback above mirrors the final text for the UI.
-    const result = await runtime.messageService.handleMessage(runtime, incoming, callback);
+    const result = await runtime.messageService.handleMessage(
+      runtime,
+      incoming,
+      callback,
+    );
     const finalText =
-      typeof result?.responseContent?.text === "string" && result.responseContent.text.trim().length > 0
+      typeof result?.responseContent?.text === "string" &&
+      result.responseContent.text.trim().length > 0
         ? result.responseContent.text
         : replyText;
     return {
@@ -817,11 +1288,18 @@ async function printLatencyHistogram() {
     log(c("bold", "  Voice latency histogram (p50 / p90 / p99, ms)"));
     for (const [key, s] of Object.entries(summaries)) {
       if (!s || s.count === 0) continue;
-      log(`    ${c("cyan", key.padEnd(28))}  n=${String(s.count).padEnd(4)} p50=${fmtMs(s.p50)} p90=${fmtMs(s.p90)} p99=${fmtMs(s.p99)}`);
+      log(
+        `    ${c("cyan", key.padEnd(28))}  n=${String(s.count).padEnd(4)} p50=${fmtMs(s.p50)} p90=${fmtMs(s.p90)} p99=${fmtMs(s.p99)}`,
+      );
     }
     log("");
   } catch (err) {
-    log(c("yellow", `  (histogram unavailable: ${err instanceof Error ? err.message : String(err)})`));
+    log(
+      c(
+        "yellow",
+        `  (histogram unavailable: ${err instanceof Error ? err.message : String(err)})`,
+      ),
+    );
   }
 }
 
@@ -833,6 +1311,13 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
     log(USAGE);
+    process.exit(0);
+  }
+
+  // Cross-platform support matrix — pure inspection, never starts a model
+  // or a session. Always exits 0 (it's a status report).
+  if (args.platformReport) {
+    await printPlatformReport();
     process.exit(0);
   }
 
@@ -900,12 +1385,21 @@ async function main() {
   try {
     await ensureBundleRegistered(report.catalogEntry, report.bundleRoot);
   } catch (err) {
-    log(c("red", `Failed to register the eliza-1-1_7b bundle: ${err instanceof Error ? err.message : String(err)}`));
+    log(
+      c(
+        "red",
+        `Failed to register the eliza-1-1_7b bundle: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
     process.exit(1);
   }
 
   // ── Boot runtime ───────────────────────────────────────────────────────
-  tag("boot", "blue", "starting standalone AgentRuntime (in-memory, eliza-1-1_7b → TEXT_SMALL)…");
+  tag(
+    "boot",
+    "blue",
+    "starting standalone AgentRuntime (in-memory, eliza-1-1_7b → TEXT_SMALL)…",
+  );
   let runtime;
   let generate;
   let prewarmResponseHandler;
@@ -915,38 +1409,74 @@ async function main() {
     generate = booted.generate;
     prewarmResponseHandler = booted.prewarmResponseHandler;
   } catch (err) {
-    log(c("red", `Failed to boot the runtime: ${err instanceof Error ? err.message : String(err)}`));
-    log(c("dim", "This is a missing-dependency / install issue, not a transient error. Fix the dependency and re-run."));
+    log(
+      c(
+        "red",
+        `Failed to boot the runtime: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
+    log(
+      c(
+        "dim",
+        "This is a missing-dependency / install issue, not a transient error. Fix the dependency and re-run.",
+      ),
+    );
     process.exit(1);
   }
-  tag("boot", "green", `runtime ready — agent=${runtime.character?.name ?? "Eliza"}`);
+  tag(
+    "boot",
+    "green",
+    `runtime ready — agent=${runtime.character?.name ?? "Eliza"}`,
+  );
 
   // ── Engine + voice bridge ──────────────────────────────────────────────
-  const { localInferenceEngine } = await import("../src/services/local-inference/engine.ts");
+  const { localInferenceEngine } = await import(
+    "../src/services/local-inference/engine.ts"
+  );
   const engine = localInferenceEngine;
 
   // Load the eliza-1-1_7b model into the engine (this activates the bundle).
   try {
-    const { listInstalledModels } = await import("../src/services/local-inference/registry.ts");
+    const { listInstalledModels } = await import(
+      "../src/services/local-inference/registry.ts"
+    );
     const installed = await listInstalledModels();
     const target = installed.find((m) => m.id === "eliza-1-1_7b");
-    if (!target) throw new Error("eliza-1-1_7b is not registered as an installed model");
+    if (!target)
+      throw new Error("eliza-1-1_7b is not registered as an installed model");
     await engine.load(target.path);
   } catch (err) {
-    log(c("red", `Failed to activate the eliza-1-1_7b bundle in the engine: ${err instanceof Error ? err.message : String(err)}`));
+    log(
+      c(
+        "red",
+        `Failed to activate the eliza-1-1_7b bundle in the engine: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
     process.exit(1);
   }
 
   // Sample rate from the bridge default (24 kHz).
   const SAMPLE_RATE = 24_000;
-  const audio = await makeAudioSink({ sampleRate: SAMPLE_RATE, noAudio: args.noAudio });
+  const audio = await makeAudioSink({
+    sampleRate: SAMPLE_RATE,
+    noAudio: args.noAudio,
+  });
 
   // Start + arm voice (fused backend).
   try {
-    engine.startVoice({ bundleRoot: report.bundleRoot, useFfiBackend: true, sink: audio.sink });
+    engine.startVoice({
+      bundleRoot: report.bundleRoot,
+      useFfiBackend: true,
+      sink: audio.sink,
+    });
     await engine.armVoice();
   } catch (err) {
-    log(c("red", `Failed to start/arm voice: ${err instanceof Error ? err.message : String(err)}`));
+    log(
+      c(
+        "red",
+        `Failed to start/arm voice: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
     await engine.unload().catch(() => {});
     process.exit(1);
   }
@@ -962,7 +1492,12 @@ async function main() {
   const shutdown = async (code = 0) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    log(c("dim", "\n[shutdown] stopping session, disarming voice, unloading model…"));
+    log(
+      c(
+        "dim",
+        "\n[shutdown] stopping session, disarming voice, unloading model…",
+      ),
+    );
     try {
       controller?.stop();
     } catch {
@@ -994,7 +1529,11 @@ async function main() {
   };
 
   const forceStop = () => {
-    tag("barge-in", "yellow", "hard-stop — force-stopping the in-flight LLM/drafter + TTS for this turn");
+    tag(
+      "barge-in",
+      "yellow",
+      "hard-stop — force-stopping the in-flight LLM/drafter + TTS for this turn",
+    );
     try {
       engine.triggerBargeIn();
     } catch {
@@ -1007,8 +1546,10 @@ async function main() {
   if (bridge?.scheduler?.bargeIn?.onSignal) {
     bridge.scheduler.bargeIn.onSignal((signal) => {
       if (signal.type === "pause-tts") tag("barge-in", "yellow", "paused");
-      else if (signal.type === "resume-tts") tag("barge-in", "green", "resumed");
-      else if (signal.type === "hard-stop") tag("barge-in", "red", "hard-stop (words detected)");
+      else if (signal.type === "resume-tts")
+        tag("barge-in", "green", "resumed");
+      else if (signal.type === "hard-stop")
+        tag("barge-in", "red", "hard-stop (words detected)");
     });
   }
   // Native verifier → rollback queue (no-op when not on the fused build).
@@ -1038,11 +1579,18 @@ async function main() {
   };
 
   const events = {
-    onSpeculativeStart: (transcript) => tag("speculative", "dim", `generating off partial: "${transcript}"`),
-    onSpeculativeAbort: () => tag("speculative", "dim", "aborted (speech resumed)"),
-    onSpeculativePromoted: () => tag("speculative", "green", "promoted (matched final transcript)"),
+    onSpeculativeStart: (transcript) =>
+      tag("speculative", "dim", `generating off partial: "${transcript}"`),
+    onSpeculativeAbort: () =>
+      tag("speculative", "dim", "aborted (speech resumed)"),
+    onSpeculativePromoted: () =>
+      tag("speculative", "green", "promoted (matched final transcript)"),
     onTurnComplete: async (outcome) => {
-      tag("envelope", "green", `shouldRespond=${outcome.replyText && outcome.replyText.length > 0 ? "RESPOND" : "IGNORE/STOP"} replyText.len=${outcome.replyText?.length ?? 0}`);
+      tag(
+        "envelope",
+        "green",
+        `shouldRespond=${outcome.replyText && outcome.replyText.length > 0 ? "RESPOND" : "IGNORE/STOP"} replyText.len=${outcome.replyText?.length ?? 0}`,
+      );
       await printTurnLatency(args.room);
       // Idle-time phrase-cache prewarm after each turn.
       engine.prewarmIdleVoicePhrases().catch(() => {});
@@ -1057,17 +1605,28 @@ async function main() {
     tag("mode", "blue", `--say: injecting transcript "${args.say}"`);
     try {
       // Mark the latency trace's vad-trigger so the trace has a t0.
-      const { markVoiceLatency } = await import("../src/services/local-inference/latency-trace.ts");
+      const { markVoiceLatency } = await import(
+        "../src/services/local-inference/latency-trace.ts"
+      );
       markVoiceLatency(args.room, "vad-trigger");
       markVoiceLatency(args.room, "asr-final");
       const signal = new AbortController().signal;
-      const outcome = await wrappedGenerate({ transcript: args.say, final: true, signal });
+      const outcome = await wrappedGenerate({
+        transcript: args.say,
+        final: true,
+        signal,
+      });
       await events.onTurnComplete(outcome);
       // Settle TTS so audio committed to the ring buffer surfaces.
       await bridge?.settle?.();
       await new Promise((r) => setTimeout(r, 200));
     } catch (err) {
-      log(c("red", `--say turn failed: ${err instanceof Error ? err.message : String(err)}`));
+      log(
+        c(
+          "red",
+          `--say turn failed: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
       await shutdown(1);
       return;
     }
@@ -1084,16 +1643,28 @@ async function main() {
       await shutdown(1);
       return;
     }
-    tag("mode", "blue", `--wav: feeding ${wavPath} through the voice path once`);
+    tag(
+      "mode",
+      "blue",
+      `--wav: feeding ${wavPath} through the voice path once`,
+    );
     try {
-      const { PushMicSource } = await import("../src/services/local-inference/voice/mic-source.ts");
-      const { decodeMonoPcm16Wav } = await import("../src/services/local-inference/voice/engine-bridge.ts");
-      const { createSileroVadDetector } = await import("../src/services/local-inference/voice/vad.ts");
+      const { PushMicSource } = await import(
+        "../src/services/local-inference/voice/mic-source.ts"
+      );
+      const { decodeMonoPcm16Wav } = await import(
+        "../src/services/local-inference/voice/engine-bridge.ts"
+      );
+      const { createSileroVadDetector } = await import(
+        "../src/services/local-inference/voice/vad.ts"
+      );
       const wavBytes = await fs.readFile(wavPath);
       const decoded = decodeMonoPcm16Wav(new Uint8Array(wavBytes));
       const push = new PushMicSource({ sampleRate: decoded.sampleRate });
       micSource = push;
-      const vad = await createSileroVadDetector({ modelPath: process.env.ELIZA_VAD_MODEL_PATH });
+      const vad = await createSileroVadDetector({
+        modelPath: process.env.ELIZA_VAD_MODEL_PATH,
+      });
       controller = await engine.startVoiceSession({
         roomId: args.room,
         micSource: push,
@@ -1110,7 +1681,11 @@ async function main() {
         events,
       });
       // Feed the WAV PCM (the PushMicSource re-frames it). Convert int16→float.
-      const view = new DataView(decoded.pcm.buffer, decoded.pcm.byteOffset, decoded.pcm.byteLength);
+      const view = new DataView(
+        decoded.pcm.buffer,
+        decoded.pcm.byteOffset,
+        decoded.pcm.byteLength,
+      );
       const n = Math.floor(decoded.pcm.byteLength / 2);
       const f = new Float32Array(n);
       for (let i = 0; i < n; i++) f[i] = view.getInt16(i * 2, true) / 0x8000;
@@ -1121,7 +1696,12 @@ async function main() {
       await new Promise((r) => setTimeout(r, 4000));
       await bridge?.settle?.();
     } catch (err) {
-      log(c("red", `--wav turn failed: ${err instanceof Error ? err.message : String(err)}`));
+      log(
+        c(
+          "red",
+          `--wav turn failed: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
       await shutdown(1);
       return;
     }
@@ -1131,12 +1711,22 @@ async function main() {
   }
 
   // ── Real mic interactive ───────────────────────────────────────────────
-  tag("mode", "blue", "real mic — speak into your microphone. Controls: s=force-stop  m=mute  p=histogram  q=quit  (Ctrl-C twice = quit)");
+  tag(
+    "mode",
+    "blue",
+    "real mic — speak into your microphone. Controls: s=force-stop  m=mute  p=histogram  q=quit  (Ctrl-C twice = quit)",
+  );
   try {
-    const { DesktopMicSource } = await import("../src/services/local-inference/voice/mic-source.ts");
-    const { createSileroVadDetector } = await import("../src/services/local-inference/voice/vad.ts");
+    const { DesktopMicSource } = await import(
+      "../src/services/local-inference/voice/mic-source.ts"
+    );
+    const { createSileroVadDetector } = await import(
+      "../src/services/local-inference/voice/vad.ts"
+    );
     micSource = new DesktopMicSource();
-    const vad = await createSileroVadDetector({ modelPath: process.env.ELIZA_VAD_MODEL_PATH });
+    const vad = await createSileroVadDetector({
+      modelPath: process.env.ELIZA_VAD_MODEL_PATH,
+    });
     controller = await engine.startVoiceSession({
       roomId: args.room,
       micSource,
@@ -1162,11 +1752,26 @@ async function main() {
       });
     }
   } catch (err) {
-    log(c("red", `Failed to start the mic voice session: ${err instanceof Error ? err.message : String(err)}`));
+    log(
+      c(
+        "red",
+        `Failed to start the mic voice session: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
     if (process.platform === "win32") {
-      log(c("dim", "Windows has no universal CLI recorder — use --wav <path> or --say \"<text>\" instead."));
+      log(
+        c(
+          "dim",
+          'Windows has no universal CLI recorder — use --wav <path> or --say "<text>" instead.',
+        ),
+      );
     } else {
-      log(c("dim", "Is arecord (alsa-utils) or sox on PATH? Try: sudo apt install alsa-utils  (or)  brew install sox"));
+      log(
+        c(
+          "dim",
+          "Is arecord (alsa-utils) or sox on PATH? Try: sudo apt install alsa-utils  (or)  brew install sox",
+        ),
+      );
     }
     await shutdown(1);
     return;
@@ -1237,6 +1842,11 @@ async function main() {
 }
 
 main().catch(async (err) => {
-  console.error(c("red", `[voice-interactive] fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`));
+  console.error(
+    c(
+      "red",
+      `[voice-interactive] fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
+    ),
+  );
   process.exit(1);
 });

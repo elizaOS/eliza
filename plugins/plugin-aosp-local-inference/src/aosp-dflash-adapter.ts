@@ -78,6 +78,35 @@ export interface DflashGenerateOptions {
   stopSequences?: string[];
   maxTokens?: number;
   temperature?: number;
+  /** Per-request abort (barge-in / kill-switch); cancels the outgoing fetch. */
+  signal?: AbortSignal;
+  /** Incremental accepted text deltas (SSE), one chunk per token group. */
+  onTextChunk?: (chunk: string) => void;
+}
+
+/**
+ * Structural mirror of `app-core`'s `DflashTextRunner` (the voice pipeline's
+ * draft/verify text contract) — re-declared here so this plugin can produce
+ * one without importing app-core (the dependency direction stays
+ * app-core → runtime → this plugin, never reversed). The host wires the
+ * returned runner into `LocalInferenceEngine.runVoiceTurn({ textRunner })`.
+ */
+export interface DflashVoiceTextRunner {
+  /** True only when a llama-server with a configured `--model-draft` is up. */
+  hasDrafter(): boolean;
+  /**
+   * Run one streamed completion and report verifier-shaped accept events
+   * (synthesized from OpenAI SSE deltas — the mobile fork's `--spec-type
+   * dflash` does the actual draft/verify; this surfaces accepted text).
+   */
+  generateWithVerifierEvents(
+    args: DflashGenerateOptions & {
+      onVerifierEvent: (event: {
+        kind: "accept";
+        tokens: Array<{ text: string }>;
+      }) => void | Promise<void>;
+    },
+  ): Promise<{ text: string }>;
 }
 
 export interface DflashAdapter {
@@ -85,6 +114,13 @@ export interface DflashAdapter {
   unloadModel(): Promise<void>;
   currentModelPath(): string | null;
   generate(args: DflashGenerateOptions): Promise<string>;
+  /**
+   * Adapt this adapter onto the voice pipeline's text-runner contract. The
+   * host passes the result into `engine.runVoiceTurn({ textRunner })` so the
+   * voice loop's drafter/verifier runs against the in-process libllama
+   * server instead of the desktop-spawned `llama-server`.
+   */
+  voiceTextRunner(): DflashVoiceTextRunner;
 }
 
 /**
@@ -292,7 +328,11 @@ class AospDflashAdapter implements DflashAdapter {
         : "";
       // Clean up the child if it is still alive so we don't orphan it.
       if (this.child && !this.child.killed && this.child.exitCode === null) {
-        try { this.child.kill("SIGTERM"); } catch { /* ignore */ }
+        try {
+          this.child.kill("SIGTERM");
+        } catch {
+          /* ignore */
+        }
       }
       this.child = null;
       this.baseUrl = null;
@@ -338,23 +378,60 @@ class AospDflashAdapter implements DflashAdapter {
       throw new Error("[aosp-dflash] generate called before loadModel");
     }
     const url = `${this.baseUrl}/v1/chat/completions`;
+    const streaming = typeof args.onTextChunk === "function";
     const body = {
       messages: [{ role: "user", content: args.prompt }],
       temperature: args.temperature ?? 0.7,
       max_tokens: args.maxTokens ?? 512,
       stop: args.stopSequences ?? [],
-      stream: false,
+      stream: streaming,
     };
     const res = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
+      signal: args.signal,
     });
     if (!res.ok) {
       const errBody = await res.text().catch(() => "");
       throw new Error(
         `[aosp-dflash] llama-server returned HTTP ${res.status}: ${errBody}`,
       );
+    }
+    if (streaming && res.body) {
+      // OpenAI-shaped SSE: lines `data: {...}` with `choices[0].delta.content`,
+      // terminated by `data: [DONE]`.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      let text = "";
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data:")) continue;
+          const payload = trimmed.slice(5).trim();
+          if (payload === "[DONE]") continue;
+          let delta: string | undefined;
+          try {
+            const obj = JSON.parse(payload) as {
+              choices?: Array<{ delta?: { content?: string } }>;
+            };
+            delta = obj.choices?.[0]?.delta?.content;
+          } catch {
+            continue;
+          }
+          if (typeof delta === "string" && delta.length > 0) {
+            text += delta;
+            args.onTextChunk?.(delta);
+          }
+        }
+      }
+      return text;
     }
     const json = (await res.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
@@ -366,6 +443,31 @@ class AospDflashAdapter implements DflashAdapter {
       );
     }
     return content;
+  }
+
+  voiceTextRunner(): DflashVoiceTextRunner {
+    return {
+      hasDrafter: () => this.loadedDrafter !== null,
+      generateWithVerifierEvents: async (args) => {
+        const text = await this.generate({
+          prompt: args.prompt,
+          maxTokens: args.maxTokens,
+          temperature: args.temperature ?? 0,
+          stopSequences: args.stopSequences,
+          signal: args.signal,
+          onTextChunk: (chunk) => {
+            // Synthesize verifier accept events from streamed deltas. The
+            // mobile fork's `--spec-type dflash` does the real draft/verify;
+            // accepted text reaching us is, by construction, verifier-accepted.
+            void args.onVerifierEvent({
+              kind: "accept",
+              tokens: [{ text: chunk }],
+            });
+          },
+        });
+        return { text };
+      },
+    };
   }
 }
 

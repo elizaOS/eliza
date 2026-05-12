@@ -7,10 +7,16 @@
  * samples; for an interactive session the harness needs the audio to
  * actually come out of the speakers.
  *
- * `SystemAudioSink` mirrors how `DesktopMicSource` shells `arecord`/`sox`:
- * it pipes raw 16-bit signed-LE PCM to a long-lived player process
- * (`aplay` on Linux, `afplay` doesn't accept stdin so we use `play`/`sox`
- * there too via `paplay`/`play -` fallbacks, `play -t raw -` from `sox`).
+ * `SystemAudioSink` shells out to a long-lived player that reads raw 16-bit
+ * signed-LE PCM on stdin. Per-platform selection (priority order):
+ *   - Linux:   `aplay` (alsa-utils), else `paplay` (PulseAudio), else
+ *              `play`/`sox` (sox), else `ffplay` (ffmpeg).
+ *   - macOS:   `play`/`sox` (sox), else `ffplay` (ffmpeg). `afplay` needs a
+ *              file (no stdin) so it cannot be used for streaming.
+ *   - Windows: `ffplay` (ffmpeg), else `play`/`sox` if installed. PowerShell's
+ *              `Media.SoundPlayer` also needs a file, not a stream, so it's not
+ *              used here — the renderer's `AudioContext` path (feeding nothing
+ *              here; the renderer plays directly) is the no-ffmpeg route.
  * If no player is on `PATH`, `available()` returns false and the harness
  * falls back to `WavFileAudioSink` (writes a rolling WAV) — never silence.
  *
@@ -51,81 +57,120 @@ function floatToPcm16(pcm: Float32Array): Buffer {
   return out;
 }
 
-/** Pick a CLI player that accepts raw PCM16-LE on stdin. */
+function soxRawArgs(sampleRate: number): string[] {
+  return [
+    "-q",
+    "-t",
+    "raw",
+    "-r",
+    String(sampleRate),
+    "-e",
+    "signed",
+    "-b",
+    "16",
+    "-c",
+    "1",
+    "-",
+  ];
+}
+
+function ffplayRawArgs(sampleRate: number): string[] {
+  // ffplay reads raw PCM with -f s16le; -nodisp suppresses the window,
+  // -autoexit quits at EOF, -i - reads stdin.
+  return [
+    "-loglevel",
+    "error",
+    "-nodisp",
+    "-autoexit",
+    "-f",
+    "s16le",
+    "-ar",
+    String(sampleRate),
+    "-ac",
+    "1",
+    "-i",
+    "-",
+  ];
+}
+
+/** Pick a CLI player that reads raw PCM16-LE on stdin, for the host platform. */
 function resolvePlayer(
   sampleRate: number,
 ): { bin: string; args: string[] } | null {
-  // Linux: aplay (alsa-utils) reads raw PCM with explicit format flags.
-  const aplay = which("aplay");
-  if (aplay) {
-    return {
-      bin: aplay,
-      args: [
-        "-q",
-        "-f",
-        "S16_LE",
-        "-c",
-        "1",
-        "-r",
-        String(sampleRate),
-        "-t",
-        "raw",
-        "-",
-      ],
-    };
+  if (process.platform === "linux") {
+    const aplay = which("aplay");
+    if (aplay) {
+      return {
+        bin: aplay,
+        args: [
+          "-q",
+          "-f",
+          "S16_LE",
+          "-c",
+          "1",
+          "-r",
+          String(sampleRate),
+          "-t",
+          "raw",
+          "-",
+        ],
+      };
+    }
+    const paplay = which("paplay");
+    if (paplay) {
+      return {
+        bin: paplay,
+        args: [
+          "--raw",
+          `--format=s16le`,
+          "--channels=1",
+          `--rate=${sampleRate}`,
+        ],
+      };
+    }
+    const play = which("play");
+    if (play) return { bin: play, args: soxRawArgs(sampleRate) };
+    const sox = which("sox");
+    if (sox) return { bin: sox, args: [...soxRawArgs(sampleRate), "-d"] };
+    const ffplay = which("ffplay");
+    if (ffplay) return { bin: ffplay, args: ffplayRawArgs(sampleRate) };
+    return null;
   }
-  // PulseAudio: paplay also reads raw on stdin.
-  const paplay = which("paplay");
-  if (paplay) {
-    return {
-      bin: paplay,
-      args: ["--raw", `--format=s16le`, "--channels=1", `--rate=${sampleRate}`],
-    };
+  if (process.platform === "darwin") {
+    // `afplay` needs a file (no stdin), so it can't stream — use sox/ffplay.
+    const play = which("play");
+    if (play) return { bin: play, args: soxRawArgs(sampleRate) };
+    const sox = which("sox");
+    if (sox) return { bin: sox, args: [...soxRawArgs(sampleRate), "-d"] };
+    const ffplay = which("ffplay");
+    if (ffplay) return { bin: ffplay, args: ffplayRawArgs(sampleRate) };
+    return null;
   }
-  // sox's `play` reads raw with `-t raw - ` and stdin.
+  if (process.platform === "win32") {
+    const ffplay = which("ffplay");
+    if (ffplay) return { bin: ffplay, args: ffplayRawArgs(sampleRate) };
+    const play = which("play");
+    if (play) return { bin: play, args: soxRawArgs(sampleRate) };
+    const sox = which("sox");
+    if (sox) return { bin: sox, args: [...soxRawArgs(sampleRate), "-d"] };
+    return null;
+  }
+  // Other (BSD, etc.) — best-effort sox/ffplay.
   const play = which("play");
-  if (play) {
-    return {
-      bin: play,
-      args: [
-        "-q",
-        "-t",
-        "raw",
-        "-r",
-        String(sampleRate),
-        "-e",
-        "signed",
-        "-b",
-        "16",
-        "-c",
-        "1",
-        "-",
-      ],
-    };
-  }
-  const sox = which("sox");
-  if (sox) {
-    return {
-      bin: sox,
-      args: [
-        "-q",
-        "-t",
-        "raw",
-        "-r",
-        String(sampleRate),
-        "-e",
-        "signed",
-        "-b",
-        "16",
-        "-c",
-        "1",
-        "-",
-        "-d",
-      ],
-    };
-  }
-  // macOS afplay needs a file (no stdin), so we can't stream to it. Skip.
+  if (play) return { bin: play, args: soxRawArgs(sampleRate) };
+  const ffplay = which("ffplay");
+  if (ffplay) return { bin: ffplay, args: ffplayRawArgs(sampleRate) };
   return null;
+}
+
+/**
+ * Exported view of {@link resolvePlayer} for the cross-platform preflight
+ * (`voice:interactive --platform-report`). Returns the bare program name
+ * (no args) the host would stream synthesized audio to, or `null`.
+ */
+export function resolveSystemPlayerName(sampleRate = 24_000): string | null {
+  const spec = resolvePlayer(sampleRate);
+  return spec ? path.basename(spec.bin) : null;
 }
 
 export interface SystemAudioSinkOptions {

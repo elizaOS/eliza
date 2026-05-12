@@ -44,6 +44,7 @@ export {
   type DesktopMicSourceOptions,
   PushMicSource,
   pipeMicToRingBuffer,
+  resolveDesktopRecorder,
 } from "./mic-source";
 export {
   CharacterPhonemeStub,
