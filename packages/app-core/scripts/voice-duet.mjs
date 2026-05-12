@@ -775,11 +775,13 @@ async function main() {
   // ── Boot agent A's engine (sink → aToB ring) ───────────────────────────
   const vadA = await vadMod.createSileroVadDetector({
     modelPath: process.env.ELIZA_VAD_MODEL_PATH,
+    bundleRoot,
   });
   const vadB = args.twoProcess
     ? null
     : await vadMod.createSileroVadDetector({
         modelPath: process.env.ELIZA_VAD_MODEL_PATH,
+        bundleRoot,
       });
 
   // The cross-agent loop bookkeeping.
@@ -1305,6 +1307,7 @@ async function runAsPeerB(args) {
     await engine.armVoice();
     const vad = await vadMod.createSileroVadDetector({
       modelPath: process.env.ELIZA_VAD_MODEL_PATH,
+      bundleRoot,
     });
     await engine.startVoiceSession({
       roomId: roomB,

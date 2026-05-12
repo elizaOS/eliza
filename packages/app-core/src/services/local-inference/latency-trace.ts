@@ -56,6 +56,7 @@ import type { VadEvent, VadEventSource } from "./voice/types";
  * recorded as-is and flagged; we never reorder or clamp.
  */
 export const VOICE_CHECKPOINTS = [
+  "peer-utterance-end",
   "vad-trigger",
   "vad-speech-start",
   "prewarm-fired",
@@ -63,9 +64,11 @@ export const VOICE_CHECKPOINTS = [
   "asr-final",
   "llm-first-token",
   "llm-first-replytext-char",
+  "replyText-first-emotion-tag",
   "phrase-1-to-tts",
   "tts-first-audio-chunk",
   "audio-first-played",
+  "audio-first-into-peer-ring",
 ] as const;
 
 export type VoiceCheckpoint = (typeof VOICE_CHECKPOINTS)[number];
@@ -86,6 +89,10 @@ const CHECKPOINT_ORDER: Readonly<Record<VoiceCheckpoint, number>> =
  * the turn — there is no fallback estimate.
  */
 export interface LatencyDerived {
+  /** peer-utterance-end -> llm-first-token, used by voice-duet. */
+  ttftFromUtteranceEndMs: number | null;
+  /** peer-utterance-end -> audio-first-into-peer-ring, used by voice-duet. */
+  firstAudioIntoPeerRingFromUtteranceEndMs: number | null;
   /** vad-trigger → llm-first-token (time-to-first-token). */
   ttftMs: number | null;
   /** vad-trigger → tts-first-audio-chunk (time-to-first-audio). */
@@ -102,6 +109,8 @@ export interface LatencyDerived {
   llmFirstTokenAfterAsrMs: number | null;
   /** llm-first-token → llm-first-replytext-char (envelope-skip overhead). */
   envelopeToReplyTextMs: number | null;
+  /** llm-first-replytext-char -> replyText-first-emotion-tag. */
+  emotionTagOverheadMs: number | null;
   /** llm-first-replytext-char → phrase-1-to-tts (chunker hand-off lag). */
   replyTextToPhrase1Ms: number | null;
   /** phrase-1-to-tts → tts-first-audio-chunk (TTS first-chunk latency). */
@@ -112,6 +121,8 @@ export interface LatencyDerived {
 
 /** The derived-metric keys, in display order. */
 export const LATENCY_DERIVED_KEYS = [
+  "ttftFromUtteranceEndMs",
+  "firstAudioIntoPeerRingFromUtteranceEndMs",
   "ttftMs",
   "ttfaMs",
   "ttapMs",
@@ -120,6 +131,7 @@ export const LATENCY_DERIVED_KEYS = [
   "prewarmLatencyMs",
   "llmFirstTokenAfterAsrMs",
   "envelopeToReplyTextMs",
+  "emotionTagOverheadMs",
   "replyTextToPhrase1Ms",
   "ttsFirstChunkMs",
   "audioSinkLatencyMs",
@@ -130,6 +142,11 @@ export type LatencyDerivedKey = (typeof LATENCY_DERIVED_KEYS)[number];
 const DERIVED_SPANS: Readonly<
   Record<LatencyDerivedKey, readonly [VoiceCheckpoint, VoiceCheckpoint]>
 > = {
+  ttftFromUtteranceEndMs: ["peer-utterance-end", "llm-first-token"],
+  firstAudioIntoPeerRingFromUtteranceEndMs: [
+    "peer-utterance-end",
+    "audio-first-into-peer-ring",
+  ],
   ttftMs: ["vad-trigger", "llm-first-token"],
   ttfaMs: ["vad-trigger", "tts-first-audio-chunk"],
   ttapMs: ["vad-trigger", "audio-first-played"],
@@ -138,6 +155,10 @@ const DERIVED_SPANS: Readonly<
   prewarmLatencyMs: ["vad-trigger", "prewarm-fired"],
   llmFirstTokenAfterAsrMs: ["asr-final", "llm-first-token"],
   envelopeToReplyTextMs: ["llm-first-token", "llm-first-replytext-char"],
+  emotionTagOverheadMs: [
+    "llm-first-replytext-char",
+    "replyText-first-emotion-tag",
+  ],
   replyTextToPhrase1Ms: ["llm-first-replytext-char", "phrase-1-to-tts"],
   ttsFirstChunkMs: ["phrase-1-to-tts", "tts-first-audio-chunk"],
   audioSinkLatencyMs: ["tts-first-audio-chunk", "audio-first-played"],
@@ -234,6 +255,107 @@ class BoundedHistogram {
       min: sorted[0] as number,
       max: sorted[n - 1] as number,
       mean: sum / n,
+    };
+  }
+}
+
+export interface VoiceRunTurnMetrics {
+  dflashAcceptRate?: number | null;
+  dflashAccepted?: number | null;
+  dflashDrafted?: number | null;
+  structuredDecodeTokenSavingsPct?: number | null;
+  tokensPerSecond?: number | null;
+  serverRssMb?: number | null;
+}
+
+export interface VoiceRunMetricsSummary {
+  turns: number;
+  dflashAcceptRate: number | null;
+  dflashAccepted: number;
+  dflashDrafted: number;
+  structuredDecodeTokenSavingsPct: HistogramSummary;
+  tokensPerSecond: HistogramSummary;
+  rss: {
+    count: number;
+    firstMb: number | null;
+    lastMb: number | null;
+    maxMb: number | null;
+    leakSuspected: boolean;
+  };
+}
+
+/**
+ * Run-level accumulator for voice demos and sweeps. It records measured values
+ * only; missing DFlash/schema/tok-s/RSS counters remain null or empty
+ * histograms in the summary.
+ */
+export class VoiceRunMetrics {
+  private turns = 0;
+  private dflashAccepted = 0;
+  private dflashDrafted = 0;
+  private readonly structuredDecodeSavings = new BoundedHistogram(256);
+  private readonly tokensPerSecond = new BoundedHistogram(256);
+  private readonly rssSamples: number[] = [];
+
+  recordTurn(metrics: VoiceRunTurnMetrics): void {
+    this.turns += 1;
+    if (
+      Number.isFinite(metrics.dflashAccepted) &&
+      Number.isFinite(metrics.dflashDrafted) &&
+      (metrics.dflashDrafted ?? 0) > 0
+    ) {
+      this.dflashAccepted += Math.max(
+        0,
+        Math.floor(metrics.dflashAccepted ?? 0),
+      );
+      this.dflashDrafted += Math.max(
+        0,
+        Math.floor(metrics.dflashDrafted ?? 0),
+      );
+    } else if (
+      Number.isFinite(metrics.dflashAcceptRate) &&
+      (metrics.dflashAcceptRate ?? -1) >= 0 &&
+      (metrics.dflashAcceptRate ?? 2) <= 1
+    ) {
+      this.dflashAccepted += metrics.dflashAcceptRate ?? 0;
+      this.dflashDrafted += 1;
+    }
+    if (Number.isFinite(metrics.structuredDecodeTokenSavingsPct)) {
+      this.structuredDecodeSavings.add(
+        metrics.structuredDecodeTokenSavingsPct ?? 0,
+      );
+    }
+    if (Number.isFinite(metrics.tokensPerSecond)) {
+      this.tokensPerSecond.add(metrics.tokensPerSecond ?? 0);
+    }
+    if (Number.isFinite(metrics.serverRssMb)) {
+      this.rssSamples.push(metrics.serverRssMb ?? 0);
+    }
+  }
+
+  summary(): VoiceRunMetricsSummary {
+    const first = this.rssSamples[0] ?? null;
+    const last = this.rssSamples[this.rssSamples.length - 1] ?? null;
+    const max =
+      this.rssSamples.length > 0 ? Math.max(...this.rssSamples) : null;
+    return {
+      turns: this.turns,
+      dflashAcceptRate:
+        this.dflashDrafted > 0
+          ? this.dflashAccepted / this.dflashDrafted
+          : null,
+      dflashAccepted: Math.round(this.dflashAccepted),
+      dflashDrafted: Math.round(this.dflashDrafted),
+      structuredDecodeTokenSavingsPct: this.structuredDecodeSavings.summary(),
+      tokensPerSecond: this.tokensPerSecond.summary(),
+      rss: {
+        count: this.rssSamples.length,
+        firstMb: first,
+        lastMb: last,
+        maxMb: max,
+        leakSuspected:
+          first !== null && last !== null && last > first * 1.15 + 256,
+      },
     };
   }
 }
