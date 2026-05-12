@@ -317,17 +317,12 @@ export function createWebPolicy(): PlatformPolicy {
 }
 
 export function createMobilePolicy(): PlatformPolicy {
-  // Stock-Android Capacitor apps (Milady, etc.) can host a bundled on-
-  // device agent over loopback even without the AOSP `ElizaOS/` UA
-  // marker — the same APK ships the chat GGUF and runs the bun agent
-  // process on first launch. Cold-boot on a Pixel 6a-class Tensor G1
-  // takes ~120–180 s to finish PGlite migration + load the bundled
-  // ~770 MB chat GGUF before `/api/status` binds; the previous 15 s
-  // `backendTimeoutMs` raced the WebView's startup-coordinator to
-  // "AGENT TIMEOUT" on every first-run install. Match the ElizaOS
-  // policy budget — Milady-class hosts ship the same bundled GGUFs and
-  // walk the same boot critical path, and agents that stay starting
-  // past 5 min are a real fault worth surfacing.
+  // iOS Capacitor apps that bundle an on-device agent (white-label forks,
+  // etc.) hit this path — Android goes to createAndroidPolicy() first at
+  // the routing layer. iOS local-agent builds need the same 180s/300s budget
+  // as AOSP: cold-boot on an A-class chip still takes ~60–120s for PGlite
+  // migration + GGUF mmap before /api/status binds. supportsLocalRuntime:true
+  // enables the LOCAL onboarding tile for these builds.
   return {
     supportsLocalRuntime: true,
     backendTimeoutMs: 180_000,
