@@ -14,7 +14,6 @@
  * end-to-end without needing a database.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   FirstRunService,
