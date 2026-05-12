@@ -17,6 +17,7 @@
       "!**/.next/**",
       "!**/node_modules/**",
       "!**/public",
+      "!packages/inference/llama.cpp/**",
       "!packages/elizaos/templates",
       "!packages/app-core/test/contracts/lib/openzeppelin-contracts",
       "!packages/benchmarks/evm/metrics",
