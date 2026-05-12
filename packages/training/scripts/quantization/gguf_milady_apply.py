@@ -81,11 +81,13 @@ def _load_sidecar(path: Path) -> dict[str, object] | None:
 
 
 def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
-    """Locate ``convert_hf_to_gguf.py`` in the milady fork checkout.
+    """Locate ``convert_hf_to_gguf.py`` in the elizaOS/llama.cpp fork checkout.
 
     Resolution order: --llama-cpp-dir → $LLAMA_CPP_DIR → the in-repo fork
-    submodule (packages/inference/llama.cpp) → ~/.cache/eliza-dflash/
-    milady-llama-cpp → ~/src/milady-llama.cpp → $PATH.
+    submodule (``packages/inference/llama.cpp``, the single canonical
+    llama.cpp checkout) → the standalone clone at
+    ``~/.cache/eliza-dflash/eliza-llama-cpp`` (used when the build scripts'
+    ELIZA_DFLASH_LLAMA_CPP_REMOTE/_REF override forces one) → $PATH.
     """
     cands: list[Path] = []
     if llama_cpp_dir is not None:
@@ -101,10 +103,7 @@ def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
         if cand.is_dir():
             cands.append(cand)
             break
-    cands += [
-        Path.home() / ".cache" / "eliza-dflash" / "milady-llama-cpp",
-        Path.home() / "src" / "milady-llama.cpp",
-    ]
+    cands.append(Path.home() / ".cache" / "eliza-dflash" / "eliza-llama-cpp")
     for c in cands:
         cand = c / "convert_hf_to_gguf.py"
         if cand.exists():
