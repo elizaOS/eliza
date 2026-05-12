@@ -168,47 +168,37 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
         "log_interaction, or list."
     ),
     "LIFE_CREATE": (
-        "Create personal life records such as reminders, alarms, workouts, or health "
-        "metrics. Wire shape: title is a TOP-LEVEL flat field — do NOT put it inside "
-        "details. Typed fields (due/listId/kind/cadence/timeOfDay/distanceKm/"
-        "durationMinutes/metric/value/occurredAtIso) go inside details, not at the "
-        "top level. Example: "
-        '{"subaction":"create","title":"Pick up dry cleaning",'
-        '"details":{"due":"2026-05-12T09:00:00Z","kind":"reminder",'
-        '"listId":"list_personal"}}.'
-    ),
-    "LIFE_UPDATE": (
-        "Update a reminder or alarm definition. Wire shape: target is a TOP-LEVEL "
-        "flat field (e.g. reminder_*); changed fields go inside details, not at the "
-        "top level. Example: "
-        '{"subaction":"update","target":"reminder_abc","details":{"title":"New name",'
-        '"due":"2026-05-12T10:00:00Z"}}.'
-    ),
-    "LIFE_DELETE": (
-        "Delete a reminder or alarm definition by id. Wire shape: target is a "
-        "TOP-LEVEL flat field — do NOT nest it inside details. Example: "
-        '{"subaction":"delete","target":"reminder_abc"}.'
+        "Create a life record. Required: subaction='create', title:str, kind='definition', "
+        "and details:{kind ∈ {reminder, alarm, workout, health_metric}, ...typed fields}. "
+        "For reminder/alarm: details.due (ISO8601) and details.listId (default 'list_personal'); "
+        "alarms also take cadence ∈ {daily, weekly}, timeOfDay 'HH:MM', dayOfWeek:[str] (weekly). "
+        "Workout: details.distanceKm, durationMinutes, effort, occurredAtIso. "
+        "Health metric: details.metric (e.g. weight_kg), value:float, occurredAtIso."
     ),
     "LIFE_COMPLETE": (
-        "Complete a target, usually a reminder. Wire shape: target is a TOP-LEVEL "
-        "flat field (e.g. reminder_abc). Do NOT put target inside details. Example: "
-        '{"subaction":"complete","target":"reminder_abc"}.'
-    ),
-    "LIFE_SKIP": (
-        "Skip one occurrence of a recurring reminder/alarm. Wire shape: target is a "
-        "TOP-LEVEL flat field. Example: "
-        '{"subaction":"skip","target":"reminder_abc"}.'
+        "Mark a reminder complete. Required: subaction='complete', target='reminder_*' id. "
+        "Only reminder_* targets are supported; other ids raise UnsupportedAction."
     ),
     "LIFE_SNOOZE": (
-        "Snooze a reminder-like target. Wire shape: target and minutes are TOP-LEVEL "
-        "flat fields — do NOT put either inside details. Example: "
-        '{"subaction":"snooze","target":"reminder_abc","minutes":15}.'
+        "Push a reminder's due time forward. Required: subaction='snooze', "
+        "target='reminder_*' id, minutes:int. The new due_at is the existing due_at "
+        "(or world.now_iso) plus minutes."
     ),
     "LIFE_REVIEW": (
-        "Review life records without mutating state. Wire shape: subaction is a "
-        "TOP-LEVEL flat field; optional filters (kind/listId/from/to) go inside "
-        "details. Example: "
-        '{"subaction":"review","details":{"kind":"reminder","listId":"list_personal"}}.'
+        "Read-only listing of life records. Required: subaction='review'. No state mutation."
+    ),
+    "LIFE_DELETE": (
+        "Delete a reminder by id. Required: subaction='delete', target='reminder_*' id. "
+        "Alarm definitions (no concrete id) are a structured no-op for parity with the executor."
+    ),
+    "LIFE_UPDATE": (
+        "Update an alarm/reminder definition. Required: subaction='update', kind='definition', "
+        "title:str, details:{...fields to patch} (e.g. timeOfDay, cadence). Modeled as a no-op "
+        "because definitions aren't a separate LifeWorld entity."
+    ),
+    "LIFE_SKIP": (
+        "Skip one occurrence of an alarm/reminder. Required: subaction='skip', kind='definition', "
+        "title:str, details:{skipDate:'YYYY-MM-DD' or skipDates:[...]}. No-op (no skip-log entity)."
     ),
     "HEALTH": "Read health data without mutating state.",
     "MONEY": "Read financial state or route a money subaction.",
@@ -293,6 +283,7 @@ _DISCRIMINATORS: dict[str, tuple[str, list[str]]] = {
     "LIFE_SKIP": ("subaction", ["skip"]),
     "LIFE_SNOOZE": ("subaction", ["snooze"]),
     "LIFE_REVIEW": ("subaction", ["review"]),
+    "LIFE_UPDATE": ("subaction", ["update"]),
     "SCHEDULED_TASK_UPDATE": ("subaction", ["update"]),
     "SCHEDULED_TASK_SNOOZE": ("subaction", ["snooze"]),
     "HEALTH": ("subaction", ["by_metric", "summary", "trends"]),
