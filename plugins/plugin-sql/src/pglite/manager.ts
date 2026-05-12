@@ -237,6 +237,30 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
       return "missing";
     }
 
+    // iOS embedded mode is single-tenant: Bun runs as a thread inside the
+    // host app process, and ElizaBunRuntime serializes engine starts. Any
+    // leftover postmaster.pid is by definition stale — either from a prior
+    // app launch, or from a prior Bun thread in this same process that
+    // already exited. The standard `process.kill(pid, 0)` heuristic
+    // produces false positives here because the recorded PID matches the
+    // current iOS app PID.
+    if (process.env.ELIZA_IOS_LOCAL_BACKEND === "1") {
+      try {
+        unlinkSync(pidPath);
+        logger.info(
+          { src: "plugin:sql", dataDir, pidPath },
+          "iOS embedded mode: removed leftover PGlite postmaster.pid"
+        );
+        return "cleared-stale";
+      } catch (err) {
+        logger.warn(
+          { src: "plugin:sql", dataDir, error: this.getErrorText(err) },
+          "iOS embedded mode: failed to remove postmaster.pid"
+        );
+        return "check-failed";
+      }
+    }
+
     try {
       const content = readFileSync(pidPath, "utf-8");
       const firstLine = content.split("\n")[0]?.trim();

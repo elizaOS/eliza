@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   computeAcceptanceRate,
+  dflashBatchEventSchema,
   type DflashStreamEvent,
+  expandDflashBatchEvent,
   groupByRound,
+  parseDflashBatchEvent,
   parseDflashFieldFromSseChunk,
   parseDflashStreamEvent,
   summarizeEvents,
@@ -154,6 +157,154 @@ describe("parseDflashFieldFromSseChunk", () => {
       ],
     });
     expect(events.map((e) => e.kind)).toEqual(["accept", "speculate-end"]);
+  });
+
+  it("parses the native verifier-batch shape (all accepted, no reject)", () => {
+    const events = parseDflashFieldFromSseChunk({
+      dflash: {
+        type: "dflash_event",
+        draft_tokens: [10, 11, 12],
+        accept_count: 3,
+        reject_range: null,
+        accept_tokens: [10, 11, 12],
+        timing: { proposal_ms: 2.5, verify_ms: 7.25 },
+        ts: 9999,
+      },
+    });
+    expect(events).toHaveLength(1);
+    const ev = events[0];
+    expect(ev?.kind).toBe("accept");
+    if (ev?.kind === "accept") {
+      expect(ev.drafted).toEqual([10, 11, 12]);
+      expect(ev.accepted).toEqual([10, 11, 12]);
+      expect(ev.nativeEvent).toBe(true);
+      expect(ev.timing).toEqual({ proposalMs: 2.5, verifyMs: 7.25 });
+      expect(ev.ts).toBe(9999);
+    }
+  });
+
+  it("parses the native verifier-batch shape with a reject range", () => {
+    const events = parseDflashFieldFromSseChunk({
+      dflash: {
+        type: "dflash_event",
+        draft_tokens: [10, 11, 12, 13],
+        accept_count: 2,
+        reject_range: [12, 13],
+        accept_tokens: [10, 11],
+        timing: { proposal_ms: 1, verify_ms: 5 },
+      },
+    });
+    expect(events).toHaveLength(2);
+    expect(events[0]?.kind).toBe("accept");
+    expect(events[1]?.kind).toBe("reject");
+    if (events[1]?.kind === "reject") {
+      expect(events[1].rejectRange).toEqual([12, 13]);
+      expect(events[1].nativeEvent).toBe(true);
+      expect(events[1].timing).toEqual({ proposalMs: 1, verifyMs: 5 });
+    }
+  });
+
+  it("parses an array mixing native batch + legacy decision events", () => {
+    const events = parseDflashFieldFromSseChunk({
+      dflash: [
+        { kind: "speculate-start", round: 0, ts: 0 },
+        {
+          type: "dflash_event",
+          draft_tokens: [1, 2],
+          accept_count: 2,
+          reject_range: null,
+          accept_tokens: [1, 2],
+          timing: { proposal_ms: 0.5, verify_ms: 2 },
+        },
+      ],
+    });
+    expect(events.map((e) => e.kind)).toEqual(["speculate-start", "accept"]);
+    expect((events[1] as { nativeEvent?: boolean }).nativeEvent).toBe(true);
+    expect((events[0] as { nativeEvent?: boolean }).nativeEvent).toBeUndefined();
+  });
+
+  it("rejects native batch when accept_count disagrees with accept_tokens", () => {
+    // Parser drops the entry silently (returns [] from the batch path,
+    // and we don't fall back to legacy for an already-recognised shape).
+    const events = parseDflashFieldFromSseChunk({
+      dflash: {
+        type: "dflash_event",
+        draft_tokens: [1, 2, 3],
+        accept_count: 5, // > 3, invalid
+        reject_range: null,
+        accept_tokens: [1, 2, 3],
+        timing: { proposal_ms: 1, verify_ms: 1 },
+      },
+    });
+    expect(events).toHaveLength(0);
+  });
+});
+
+describe("dflashBatchEventSchema (verifier-batch native shape)", () => {
+  it("validates a minimal batch", () => {
+    const parsed = dflashBatchEventSchema.safeParse({
+      type: "dflash_event",
+      draft_tokens: [1, 2],
+      accept_count: 2,
+      reject_range: null,
+      accept_tokens: [1, 2],
+      timing: { proposal_ms: 1, verify_ms: 2 },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects negative token ids", () => {
+    const parsed = dflashBatchEventSchema.safeParse({
+      type: "dflash_event",
+      draft_tokens: [-1],
+      accept_count: 0,
+      reject_range: null,
+      accept_tokens: [],
+      timing: { proposal_ms: 0, verify_ms: 0 },
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects negative timing", () => {
+    const parsed = dflashBatchEventSchema.safeParse({
+      type: "dflash_event",
+      draft_tokens: [],
+      accept_count: 0,
+      reject_range: null,
+      accept_tokens: [],
+      timing: { proposal_ms: -1, verify_ms: 0 },
+    });
+    expect(parsed.success).toBe(false);
+  });
+
+  it("rejects wrong discriminator", () => {
+    expect(parseDflashBatchEvent({ type: "not_dflash_event" })).toBeNull();
+    expect(parseDflashBatchEvent({})).toBeNull();
+    expect(parseDflashBatchEvent(null)).toBeNull();
+  });
+
+  it("expands all-accepted batch into exactly one accept event", () => {
+    const events = expandDflashBatchEvent({
+      type: "dflash_event",
+      draft_tokens: [1, 2, 3],
+      accept_count: 3,
+      reject_range: null,
+      accept_tokens: [1, 2, 3],
+      timing: { proposal_ms: 3, verify_ms: 5 },
+    });
+    expect(events.map((e) => e.kind)).toEqual(["accept"]);
+  });
+
+  it("expands partial-accept batch with reject into accept + reject", () => {
+    const events = expandDflashBatchEvent({
+      type: "dflash_event",
+      draft_tokens: [1, 2, 3, 4],
+      accept_count: 2,
+      reject_range: [2, 3],
+      accept_tokens: [1, 2],
+      timing: { proposal_ms: 1, verify_ms: 1 },
+    });
+    expect(events.map((e) => e.kind)).toEqual(["accept", "reject"]);
   });
 });
 

@@ -11,16 +11,53 @@
  * C-side reference implementation sketch. This file owns the TypeScript
  * representation, runtime validators, and accumulator helpers.
  *
- * The protocol is additive — clients that do not read the `dflash` field
- * keep working unchanged, and the feature is opt-in via
+ * Two wire shapes are recognised on the SSE stream — both additive and
+ * translated into the same `DflashStreamEvent` discriminated union:
+ *
+ *  1. The original "decision" shape: `{kind:"accept"|"reject"|"speculate-*"}`
+ *     embedded under `dflash`.
+ *  2. The "verifier-batch" shape: the fork emits, after each verifier
+ *     batch,
+ *     ```json
+ *     {"type":"dflash_event",
+ *      "draft_tokens":[...],"accept_count":N,
+ *      "reject_range":[s,e]|null,"accept_tokens":[...],
+ *      "timing":{"proposal_ms":X,"verify_ms":Y}}
+ *     ```
+ *     under the top-level `dflash` field. Parsed via `dflashBatchEventSchema`
+ *     (Zod) and translated into one `accept` event (always) plus one
+ *     `reject` event (when `reject_range != null`). The parsed events are
+ *     flagged with `nativeEvent: true` and carry per-batch `timing` so the
+ *     metrics collector can count native vs synthesized batches and
+ *     bucket verify-time p50/p95.
+ *
+ * The protocol is additive — clients that do not read these fields keep
+ * working unchanged, and the feature is opt-in via
  * `optimizations.nativeDflashEvents` on each catalog bundle plus a runtime
  * `/health` capability probe.
  */
+import { z } from "zod";
+
+/**
+ * Per-verifier-batch timing the C-side records and emits on the batch
+ * event. `proposalMs` is wall time spent in the drafter loop for the
+ * proposal; `verifyMs` is wall time spent in the verifier forward pass.
+ */
+export interface DflashBatchTiming {
+  proposalMs: number;
+  verifyMs: number;
+}
 
 /**
  * One accepted draft batch: the drafter proposed `drafted` token ids; the
  * verifier accepted the prefix `accepted` (which is always a prefix of
  * `drafted`). Empty `accepted` means everything was rejected.
+ *
+ * `nativeEvent` is `true` for events parsed from the C-side
+ * "verifier-batch" wire shape (`type:"dflash_event"`). Events parsed from
+ * the original `kind:"accept"` decision shape leave it `undefined` —
+ * downstream code treats undefined as "not native". The metrics collector
+ * uses this discriminator to bucket native vs synthesized counts.
  */
 export interface DflashAcceptEvent {
   kind: "accept";
@@ -28,12 +65,18 @@ export interface DflashAcceptEvent {
   accepted: readonly number[];
   /** Server monotonic timestamp in ms. */
   ts: number;
+  /** True when parsed from the native `type:"dflash_event"` wire shape. */
+  nativeEvent?: true;
+  /** Per-batch timing; populated only when `nativeEvent` is true. */
+  timing?: DflashBatchTiming;
 }
 
 /**
  * The verifier rejected a contiguous span [from, to] of previously-streamed
  * drafted tokens, and replaced position `from` with `correctedToken`.
  * Indices are in target output order and inclusive on both ends.
+ *
+ * See `DflashAcceptEvent` for the `nativeEvent` / `timing` discriminator.
  */
 export interface DflashRejectEvent {
   kind: "reject";
@@ -41,6 +84,10 @@ export interface DflashRejectEvent {
   rejectRange: readonly [number, number];
   correctedToken: number;
   ts: number;
+  /** True when parsed from the native `type:"dflash_event"` wire shape. */
+  nativeEvent?: true;
+  /** Per-batch timing; populated only when `nativeEvent` is true. */
+  timing?: DflashBatchTiming;
 }
 
 /** A new speculation round began (drafter starts drafting a fresh batch). */
@@ -171,11 +218,146 @@ export function parseDflashStreamEvent(raw: unknown): DflashStreamEvent | null {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Zod schema for the "verifier-batch" wire shape emitted by the
+// `--dflash-emit-events` patch in the fork's server.cpp:
+//
+//   { "type": "dflash_event",
+//     "draft_tokens":  [int...],
+//     "accept_count":  int,
+//     "reject_range":  [int, int] | null,
+//     "accept_tokens": [int...],
+//     "timing":        { "proposal_ms": number, "verify_ms": number } }
+//
+// Translation rules (`expandDflashBatchEvent`):
+//   - Always produces one `kind: "accept"` event with `drafted=draft_tokens`
+//     and `accepted=accept_tokens` (which by protocol is the first
+//     `accept_count` ids of `draft_tokens`).
+//   - When `reject_range != null`, additionally produces one `kind: "reject"`
+//     event with `rejectRange=reject_range`. The `correctedToken` is the
+//     last id in `accept_tokens` (the verifier's correction).
+//   - Both produced events carry `nativeEvent: true` plus a copy of
+//     `timing`. This is the only path that sets those fields.
+// ---------------------------------------------------------------------------
+
+const tokenIdSchema = z.number().int().nonnegative();
+const millisecondsSchema = z.number().nonnegative().finite();
+
+/** Public Zod schema for the verifier-batch wire shape. Exported for tests. */
+export const dflashBatchEventSchema = z.object({
+  type: z.literal("dflash_event"),
+  draft_tokens: z.array(tokenIdSchema),
+  accept_count: z.number().int().nonnegative(),
+  reject_range: z
+    .union([
+      z.tuple([
+        z.number().int().nonnegative(),
+        z.number().int().nonnegative(),
+      ]),
+      z.null(),
+    ])
+    .optional()
+    .default(null),
+  accept_tokens: z.array(tokenIdSchema),
+  timing: z.object({
+    proposal_ms: millisecondsSchema,
+    verify_ms: millisecondsSchema,
+  }),
+  /** Server monotonic timestamp in ms. Optional — defaults to 0 if absent. */
+  ts: z.number().finite().optional(),
+});
+
+export type DflashBatchEvent = z.infer<typeof dflashBatchEventSchema>;
+
+/**
+ * Translate one parsed verifier-batch event into the discriminated-union
+ * representation. Returns an empty array when the batch is structurally
+ * inconsistent (e.g. `accept_count !== accept_tokens.length`) rather than
+ * throwing; the caller treats parse failures as "no native event present"
+ * and falls back to the legacy synthesis path.
+ */
+export function expandDflashBatchEvent(
+  batch: DflashBatchEvent,
+): DflashStreamEvent[] {
+  const ts = typeof batch.ts === "number" ? batch.ts : 0;
+  const drafted = batch.draft_tokens;
+  const accepted = batch.accept_tokens;
+  // Invariants per protocol: accept_count == accept_tokens.length and
+  // accept_tokens is the `accept_count` prefix of draft_tokens. We tolerate
+  // either invariant being slightly off (caller-side bugs in the C fork are
+  // common during transition merges) by trusting `accept_tokens` for the
+  // accepted list but rejecting the whole batch when accept_count clearly
+  // disagrees with the protocol.
+  if (batch.accept_count !== accepted.length) return [];
+  if (accepted.length > drafted.length) return [];
+  const timing: DflashBatchTiming = {
+    proposalMs: batch.timing.proposal_ms,
+    verifyMs: batch.timing.verify_ms,
+  };
+  const events: DflashStreamEvent[] = [];
+  const acceptEvent: DflashAcceptEvent = {
+    kind: "accept",
+    drafted,
+    accepted,
+    ts,
+    nativeEvent: true,
+    timing,
+  };
+  events.push(acceptEvent);
+  const range = batch.reject_range ?? null;
+  if (range && range[1] >= range[0] && range[0] >= 0) {
+    // Corrected token: the last id in `accept_tokens` (the verifier's
+    // bonus / correction). When accept_tokens is empty, the verifier did
+    // not yet emit a correction in this batch — drop the reject event
+    // rather than guessing.
+    const correctedToken =
+      accepted.length > 0 ? accepted[accepted.length - 1] : null;
+    if (correctedToken !== null) {
+      const rejectEvent: DflashRejectEvent = {
+        kind: "reject",
+        drafted,
+        rejectRange: [range[0], range[1]],
+        correctedToken,
+        ts,
+        nativeEvent: true,
+        timing,
+      };
+      events.push(rejectEvent);
+    }
+  }
+  return events;
+}
+
+/**
+ * Parse a single SSE-chunk field value as a verifier-batch event. Returns
+ * the expanded `DflashStreamEvent[]` on success, `null` when the value is
+ * not the verifier-batch shape (caller should try the legacy parser
+ * instead), or `[]` on shape mismatch within the verifier-batch path
+ * (caller does NOT fall back to legacy for the same entry).
+ */
+export function parseDflashBatchEvent(
+  raw: unknown,
+): DflashStreamEvent[] | null {
+  if (!raw || typeof raw !== "object") return null;
+  // Cheap discriminator probe: only run the Zod parse when the `type`
+  // tag matches. Avoids paying the schema cost on every legacy event.
+  if ((raw as Record<string, unknown>).type !== "dflash_event") return null;
+  const result = dflashBatchEventSchema.safeParse(raw);
+  if (!result.success) return [];
+  return expandDflashBatchEvent(result.data);
+}
+
 /**
  * Parse the optional `dflash` field on an SSE chunk. The native protocol
  * carries either a single event or an array of events on a single chunk
  * (e.g. `speculate-start` + `accept` co-emitted). Returns `[]` when the
  * field is absent or malformed.
+ *
+ * Each entry is tried first against the verifier-batch shape (Zod), then
+ * against the legacy discriminated-union shape. The first parser that
+ * recognises the entry wins; failures from a recognised parser drop the
+ * entry rather than spilling into the other (so a malformed batch does
+ * not silently fall back to legacy synthesis).
  */
 export function parseDflashFieldFromSseChunk(
   parsed: unknown,
@@ -183,16 +365,22 @@ export function parseDflashFieldFromSseChunk(
   if (!parsed || typeof parsed !== "object") return [];
   const field = (parsed as Record<string, unknown>).dflash;
   if (field === undefined || field === null) return [];
-  if (Array.isArray(field)) {
-    const out: DflashStreamEvent[] = [];
-    for (const entry of field) {
-      const ev = parseDflashStreamEvent(entry);
-      if (ev) out.push(ev);
+  const out: DflashStreamEvent[] = [];
+  const pushEntry = (entry: unknown): void => {
+    const batch = parseDflashBatchEvent(entry);
+    if (batch !== null) {
+      for (const ev of batch) out.push(ev);
+      return;
     }
+    const ev = parseDflashStreamEvent(entry);
+    if (ev) out.push(ev);
+  };
+  if (Array.isArray(field)) {
+    for (const entry of field) pushEntry(entry);
     return out;
   }
-  const ev = parseDflashStreamEvent(field);
-  return ev ? [ev] : [];
+  pushEntry(field);
+  return out;
 }
 
 // ---------------------------------------------------------------------------

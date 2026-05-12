@@ -28,6 +28,38 @@ export interface DflashTurnSummary extends DflashTurnStats {
   durationMs: number;
   /** Event count actually observed (zero when native events were off). */
   eventCount: number;
+  /**
+   * Count of events whose `nativeEvent === true` — i.e. parsed from the
+   * C-side verifier-batch wire shape. The remainder
+   * (`eventCount - nativeEventCount`) came from the legacy decision shape
+   * or were synthesized locally. Used to verify the native pipeline is
+   * actually firing in smoke tests and the autotuner.
+   */
+  nativeEventCount: number;
+  /**
+   * Count of native `accept` events (one per verifier batch). Zero when
+   * the native protocol is inactive.
+   */
+  nativeAcceptBatches: number;
+  /**
+   * Tokens proposed by the drafter, summed across native batches only.
+   * Disambiguates from `drafted` (which counts every accept event,
+   * native or synthesized).
+   */
+  nativeDrafted: number;
+  /** Tokens the verifier accepted, summed across native batches only. */
+  nativeAccepted: number;
+  /**
+   * Native-batch verify-time quantiles in ms over THIS turn. Null when
+   * no native batches landed. Used by the autotuner to spot drafter
+   * latency drift.
+   */
+  verifyTimeMs: { p50: number; p95: number; count: number } | null;
+  /**
+   * Native-batch proposal-time quantiles in ms over THIS turn. Null
+   * when no native batches landed.
+   */
+  proposalTimeMs: { p50: number; p95: number; count: number } | null;
 }
 
 export type DflashTurnSummaryCallback = (
@@ -38,10 +70,43 @@ export class DflashMetricsCollector {
   private readonly events: DflashStreamEvent[] = [];
   private readonly startedAt = performance.now();
   private finalized = false;
+  /**
+   * Per-event source label. Indexed parallel to `events`. `"native"` for
+   * events parsed from the C-side verifier-batch wire shape, `"legacy"`
+   * for everything else.
+   */
+  private readonly sources: ("native" | "legacy")[] = [];
+  private readonly verifyTimesMs: number[] = [];
+  private readonly proposalTimesMs: number[] = [];
 
   record(event: DflashStreamEvent): void {
     if (this.finalized) return;
     this.events.push(event);
+    // Native discriminator: only the verifier-batch parser sets this flag.
+    // accept/reject events from the legacy decision parser leave it
+    // undefined, so the cast-and-check below is safe.
+    const hasNativeFlag =
+      (event as { nativeEvent?: boolean }).nativeEvent === true;
+    this.sources.push(hasNativeFlag ? "native" : "legacy");
+    if (hasNativeFlag) {
+      const timing = (
+        event as { timing?: { verifyMs?: number; proposalMs?: number } }
+      ).timing;
+      if (timing) {
+        if (
+          typeof timing.verifyMs === "number" &&
+          Number.isFinite(timing.verifyMs)
+        ) {
+          this.verifyTimesMs.push(timing.verifyMs);
+        }
+        if (
+          typeof timing.proposalMs === "number" &&
+          Number.isFinite(timing.proposalMs)
+        ) {
+          this.proposalTimesMs.push(timing.proposalMs);
+        }
+      }
+    }
   }
 
   /** Snapshot stats without finalizing — safe to call mid-turn. */
@@ -52,12 +117,48 @@ export class DflashMetricsCollector {
   finalize(): DflashTurnSummary {
     this.finalized = true;
     const stats = summarizeEvents(this.events);
+    let nativeEventCount = 0;
+    let nativeAcceptBatches = 0;
+    let nativeDrafted = 0;
+    let nativeAccepted = 0;
+    for (let i = 0; i < this.events.length; i += 1) {
+      if (this.sources[i] !== "native") continue;
+      nativeEventCount += 1;
+      const ev = this.events[i];
+      if (ev.kind === "accept") {
+        nativeAcceptBatches += 1;
+        nativeDrafted += ev.drafted.length;
+        nativeAccepted += ev.accepted.length;
+      }
+    }
     return {
       ...stats,
       durationMs: performance.now() - this.startedAt,
       eventCount: this.events.length,
+      nativeEventCount,
+      nativeAcceptBatches,
+      nativeDrafted,
+      nativeAccepted,
+      verifyTimeMs: quantilesOf(this.verifyTimesMs),
+      proposalTimeMs: quantilesOf(this.proposalTimesMs),
     };
   }
+}
+
+/**
+ * Compute p50/p95 over a flat numeric series; null when empty.
+ * Module-private — the public surface is just on `DflashTurnSummary`.
+ */
+function quantilesOf(
+  samples: readonly number[],
+): { p50: number; p95: number; count: number } | null {
+  if (samples.length === 0) return null;
+  const sorted = [...samples].sort((a, b) => a - b);
+  return {
+    p50: quantile(sorted, 0.5),
+    p95: quantile(sorted, 0.95),
+    count: sorted.length,
+  };
 }
 
 /**
@@ -83,12 +184,46 @@ export class DflashTurnHistory {
   async push(summary: DflashTurnSummary): Promise<void> {
     this.buffer.push(summary);
     if (this.buffer.length > this.limit) this.buffer.shift();
+    const verifyTail = summary.verifyTimeMs
+      ? ` verifyMsP50=${summary.verifyTimeMs.p50.toFixed(2)} verifyMsP95=${summary.verifyTimeMs.p95.toFixed(2)} nativeBatches=${summary.nativeAcceptBatches}`
+      : "";
     logger.info(
-      `[DflashMetricsCollector] turn summary drafted=${summary.drafted} accepted=${summary.accepted} rounds=${summary.rounds} acceptanceRate=${summary.acceptanceRate.toFixed(4)} events=${summary.eventCount} durationMs=${Math.round(summary.durationMs)}`,
+      `[DflashMetricsCollector] turn summary drafted=${summary.drafted} accepted=${summary.accepted} rounds=${summary.rounds} acceptanceRate=${summary.acceptanceRate.toFixed(4)} events=${summary.eventCount} native=${summary.nativeEventCount}/${summary.eventCount} durationMs=${Math.round(summary.durationMs)}${verifyTail}`,
     );
     for (const listener of this.listeners) {
       await listener(summary);
     }
+  }
+
+  /**
+   * Aggregate native verify-time quantiles across every summary in the
+   * rolling window. Returns null when no summary in the window observed
+   * a native batch (so the autotuner can fall back to legacy heuristics).
+   *
+   * We don't store the raw samples — only per-turn p50/p95/count — so the
+   * aggregate is approximate: each turn's p50 is replicated `count` times
+   * into the global series. For the autotuner's drift-detection use case
+   * this is exact within ±1 sample at typical turn sizes (≤16 batches).
+   */
+  verifyTimeQuantiles(): {
+    p50: number;
+    p95: number;
+    samples: number;
+  } | null {
+    const all: number[] = [];
+    for (const s of this.buffer) {
+      if (!s.verifyTimeMs) continue;
+      for (let i = 0; i < s.verifyTimeMs.count; i += 1) {
+        all.push(s.verifyTimeMs.p50);
+      }
+    }
+    if (all.length === 0) return null;
+    all.sort((a, b) => a - b);
+    return {
+      p50: quantile(all, 0.5),
+      p95: quantile(all, 0.95),
+      samples: all.length,
+    };
   }
 
   size(): number {

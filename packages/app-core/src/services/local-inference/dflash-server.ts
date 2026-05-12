@@ -36,6 +36,15 @@ import {
   parseDflashFieldFromSseChunk,
 } from "./dflash-event-schema";
 import {
+  diffDflashVerifyMetrics,
+  type DflashVerifyEvent,
+  type DflashVerifyMetricSample,
+  type DflashVerifyStats,
+  fetchDflashVerifyMetricSample,
+  parseDflashVerifyEventsFromSseChunk,
+  summarizeVerifyEvents,
+} from "./dflash-verify-event";
+import {
   DflashMetricsCollector,
   dflashTurnHistory,
 } from "./dflash-metrics-collector";
@@ -180,6 +189,18 @@ export interface DflashGenerateArgs extends StructuredGenerateParams {
    * this callback is never invoked.
    */
   onDflashEvent?: (event: DflashStreamEvent) => void | Promise<void>;
+  /**
+   * L1 — optional listener for the per-step `dflashVerify` event
+   * (`docs/eliza-1-dflash-events-wire.md`). Fires only when BOTH the
+   * bundle opts in via `optimizations.useNativeDflashEvents` AND the
+   * running server advertises `capabilities.dflashVerifyEvents`. When
+   * either gate is false the verify event on the SSE stream is silently
+   * ignored and the legacy synthesized `onVerifierEvent` accept stream
+   * runs unchanged. The event carries exact reject indices and per-token
+   * logprobs the legacy synthesis cannot derive — see the wire-format
+   * doc for the autotuner / voice rollback consumers.
+   */
+  onDflashVerifyEvent?: (event: DflashVerifyEvent) => void | Promise<void>;
 }
 
 /**
@@ -208,6 +229,34 @@ export interface DflashGenerateResult {
    * to scraping `/metrics` via `usage.dflash_drafted_tokens` etc.
    */
   dflashStats?: DflashTurnStats;
+  /**
+   * L1 — per-step verify-event stats derived from the `dflashVerify`
+   * SSE field. Populated only when BOTH the bundle opts in via
+   * `optimizations.useNativeDflashEvents` AND the running server
+   * advertises `capabilities.dflashVerifyEvents`. `null` when the
+   * feature is off OR when no verify event arrived (a stock binary
+   * with the flag flipped will still produce `null` here).
+   *
+   * Cross-check this against `dflashStats`: `dflashStats.drafted`
+   * should equal `dflashVerifyStats.draftedTokens` and
+   * `dflashStats.accepted` should equal `acceptedTokens`. Divergence
+   * is evidence the SSE stream dropped chunks or the fork's emission
+   * is mis-aligned with the speculative loop.
+   */
+  dflashVerifyStats?: DflashVerifyStats | null;
+  /**
+   * L1 — Prometheus `/metrics` delta for the two new counters
+   * (`llamacpp:n_drafted_rejected_total`,
+   * `llamacpp:n_verify_steps_total`). `null` when the fork did not
+   * expose those counters (stock build) or the scrape failed. The
+   * acceptanceRate sub-field is null here; compose it from
+   * `usage.dflash_drafted_tokens` / `usage.dflash_accepted_tokens`.
+   */
+  dflashRawMetrics?: {
+    rejectedTokens: number;
+    verifySteps: number;
+    acceptanceRate: number | null;
+  } | null;
 }
 
 export interface DflashMetricsSnapshot {
@@ -1208,6 +1257,14 @@ async function fetchStreamingChatCompletion(
      */
     onDflashEvent?: (event: DflashStreamEvent) => void | Promise<void>;
     /**
+     * L1 — listener for the `dflashVerify` per-step events. Fires
+     * alongside the existing OpenAI delta (additive). The caller plumbs
+     * the feature-flag gate; when the flag is OFF, the caller MUST NOT
+     * pass this callback so the legacy synthesis path runs byte-
+     * identical to before. See `useNativeDflashVerifyEvents()`.
+     */
+    onDflashVerifyEvent?: (event: DflashVerifyEvent) => void | Promise<void>;
+    /**
      * When true, do NOT fire the legacy synthesized `accept` event for
      * each text chunk — the native event stream is authoritative. Set
      * by the caller when `nativeDflashEventsEnabled()` resolved true.
@@ -1265,6 +1322,19 @@ async function fetchStreamingChatCompletion(
         const nativeEvents = parseDflashFieldFromSseChunk(parsed);
         for (const ev of nativeEvents) {
           await callbacks.onDflashEvent(ev);
+        }
+      }
+
+      // L1 — per-step verify events on the `dflashVerify` top-level
+      // field. Parsed independently of the union-shape events above so
+      // a binary can ship either or both protocols. The caller-side
+      // feature flag (useNativeDflashVerifyEvents) gates whether
+      // `callbacks.onDflashVerifyEvent` is wired; when unwired the
+      // event is silently ignored even if the C side emits it.
+      if (callbacks.onDflashVerifyEvent) {
+        const verifyEvents = parseDflashVerifyEventsFromSseChunk(parsed);
+        for (const ev of verifyEvents) {
+          await callbacks.onDflashVerifyEvent(ev);
         }
       }
 
@@ -1779,6 +1849,15 @@ export class DflashLlamaServer implements LocalInferenceBackend {
    * probed", `false` means "probed and missing or absent".
    */
   private nativeDflashEventsCapability: boolean | null = null;
+
+  /**
+   * L1 — cached result of the `/health` capability probe for the
+   * per-step verify event protocol. `capabilities.dflashVerifyEvents`
+   * is additive to `dflashNativeEvents`; this field tracks it
+   * separately so a binary that ships only the union-shape events can
+   * still drive the legacy native-event path.
+   */
+  private nativeDflashVerifyEventsCapability: boolean | null = null;
 
   hasLoadedModel(): boolean {
     return this.child !== null && this.loadedPlan !== null;
@@ -2449,6 +2528,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     this.cacheParallel = DEFAULT_CACHE_PARALLEL;
     this.lastOptimizations = null;
     this.nativeDflashEventsCapability = null;
+    this.nativeDflashVerifyEventsCapability = null;
     if (!child) return;
     // Best-effort: tell llama-server to flush per-conversation KV state
     // to disk before we kill it. If the dispatcher restarts the server
@@ -2648,6 +2728,10 @@ export class DflashLlamaServer implements LocalInferenceBackend {
    * is cached for the lifetime of the spawned process. Returns false on
    * any error or when the field is absent — the legacy synthesis path is
    * always the safe fallback. Visible for tests via `probeNativeDflashEvents`.
+   *
+   * L1 — also caches `capabilities.dflashVerifyEvents` in
+   * `nativeDflashVerifyEventsCapability` from the same `/health` call so
+   * the per-step verify protocol piggybacks on the single probe.
    */
   private async probeNativeDflashEventsCapability(): Promise<boolean> {
     if (this.nativeDflashEventsCapability !== null) {
@@ -2656,9 +2740,11 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     const baseUrl = this.baseUrl;
     if (!baseUrl) {
       this.nativeDflashEventsCapability = false;
+      this.nativeDflashVerifyEventsCapability = false;
       return false;
     }
     let detected = false;
+    let verifyDetected = false;
     try {
       const res = await fetch(`${baseUrl}/health`, {
         signal: AbortSignal.timeout(2_000),
@@ -2668,16 +2754,52 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         if (body && typeof body === "object") {
           const caps = (body as Record<string, unknown>).capabilities;
           if (caps && typeof caps === "object") {
-            detected =
-              (caps as Record<string, unknown>).dflashNativeEvents === true;
+            const capRecord = caps as Record<string, unknown>;
+            detected = capRecord.dflashNativeEvents === true;
+            verifyDetected = capRecord.dflashVerifyEvents === true;
           }
         }
       }
     } catch {
       detected = false;
+      verifyDetected = false;
     }
     this.nativeDflashEventsCapability = detected;
+    this.nativeDflashVerifyEventsCapability = verifyDetected;
     return detected;
+  }
+
+  /**
+   * L1 — should this turn consume the per-step `dflashVerify` event
+   * protocol? True when BOTH:
+   *   1. The loaded bundle opts in via
+   *      `optimizations.useNativeDflashEvents`.
+   *   2. The running server advertises
+   *      `capabilities.dflashVerifyEvents`.
+   * Otherwise the verify-event stream is ignored on the wire and the
+   * legacy synthesis (`onVerifierEvent`) path runs unchanged. Same
+   * shape as `nativeDflashEventsEnabled()` so callers can mix and
+   * match: a binary can ship the union events without the L1 verify
+   * events, or vice versa.
+   */
+  private async useNativeDflashVerifyEvents(): Promise<boolean> {
+    const optimizations = this.lastOptimizations as
+      | (LocalRuntimeOptimizations & {
+          useNativeDflashEvents?: boolean;
+          nativeDflashEvents?: boolean;
+        })
+      | null
+      | undefined;
+    // Accept both the L1 flag name and the prior `nativeDflashEvents`
+    // bundle flag — the brief promotes `useNativeDflashEvents` as the
+    // canonical name; older bundles may still use the prior spelling.
+    const bundleOptIn = Boolean(
+      optimizations?.useNativeDflashEvents ?? optimizations?.nativeDflashEvents,
+    );
+    if (!bundleOptIn) return false;
+    // Forces the /health probe to run; sets the verify capability cache.
+    await this.probeNativeDflashEventsCapability();
+    return this.nativeDflashVerifyEventsCapability === true;
   }
 
   /**
