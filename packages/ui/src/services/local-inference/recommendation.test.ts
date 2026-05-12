@@ -84,12 +84,11 @@ describe("local inference recommendations", () => {
     expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-2b");
   });
 
-  it("falls back to the 0.6B tier on minimal mobile", () => {
-    // 4b needs 8 GB minRam; below that the ladder steps down
-    // through 1_7b (4 GB minRam) to 0_6b (2 GB minRam). Below 2 GB
-    // nothing fits.
+  it("falls back to the 0.8B tier on minimal mobile", () => {
+    // 2b needs 4 GB minRam; below that the mobile TEXT_LARGE ladder steps
+    // down to 0_8b (2 GB minRam). Below 2 GB nothing fits.
     const cases: Array<[number, string | null]> = [
-      [3.5, "eliza-1-0_6b"],
+      [3.5, "eliza-1-0_8b"],
       [1.5, null],
     ];
 
