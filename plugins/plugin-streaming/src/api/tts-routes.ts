@@ -149,7 +149,9 @@ export async function handleTtsRoutes(ctx: TtsRouteContext): Promise<boolean> {
     if (!body) return true;
 
     const text =
-      typeof body.text === "string" ? sanitizeSpeechText(body.text) : "";
+      typeof body.text === "string"
+        ? sanitizeLocalInferenceSpeechText(body.text)
+        : "";
     if (!text) {
       error(res, "Missing text", 400);
       return true;
@@ -454,4 +456,19 @@ function sniffAudioContentType(bytes: Uint8Array): string {
     return "audio/mpeg";
   }
   return "application/octet-stream";
+}
+
+function sanitizeLocalInferenceSpeechText(input: string): string {
+  let text = input.normalize("NFKC");
+  text = text.replace(/<think\b[^>]*>[\s\S]*?(?:<\/think>|$)/gi, " ");
+  text = text.replace(
+    /<(analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi,
+    " ",
+  );
+  text = text.replace(/```[\s\S]*?```/g, " ");
+  text = text.replace(/`([^`]+)`/g, "$1");
+  text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+  text = text.replace(/<[^>\n]+>/g, " ");
+  text = text.replace(/\bhttps?:\/\/\S+/gi, " ");
+  return text.replace(/\s+/g, " ").trim();
 }

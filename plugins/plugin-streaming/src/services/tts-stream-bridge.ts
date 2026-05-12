@@ -460,6 +460,26 @@ function isRedactedSecret(val: string): boolean {
   return /^\*+$/.test(val) || val === "REDACTED" || val === "[REDACTED]";
 }
 
+function hasLocalInferenceTtsHandler(runtime: IAgentRuntime | undefined): boolean {
+  const registrations = (runtime as { models?: unknown } | undefined)?.models;
+  if (registrations instanceof Map) {
+    const handlers = registrations.get(ModelType.TEXT_TO_SPEECH);
+    return (
+      Array.isArray(handlers) &&
+      handlers.some((entry) => {
+        const provider = (entry as { provider?: unknown }).provider;
+        return (
+          typeof provider === "string" &&
+          LOCAL_TTS_PROVIDER_IDS.includes(
+            provider as (typeof LOCAL_TTS_PROVIDER_IDS)[number],
+          )
+        );
+      })
+    );
+  }
+  return false;
+}
+
 /**
  * Resolve TTS configuration from eliza config, finding the best available
  * provider with valid API keys.
@@ -486,7 +506,7 @@ export function resolveTtsConfig(
           preferredProvider === "local-inference" ||
           ttsConfig.provider === "local-inference"
         ) {
-          return runtime?.getModel?.(ModelType.TEXT_TO_SPEECH)
+          return hasLocalInferenceTtsHandler(runtime)
             ? { provider: "local-inference", runtime }
             : null;
         }
