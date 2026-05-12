@@ -94,23 +94,54 @@ export class RipgrepService extends Service {
     }
     args.push("--", options.pattern, options.path);
 
-    return runRipgrep(this.binary(), args);
+    return runRipgrep(this.binary(), args, mode);
   }
 }
 
-function runRipgrep(rg: string, args: string[]): Promise<RipgrepResult> {
+function runRipgrep(
+  rg: string,
+  args: string[],
+  mode: RipgrepMode,
+): Promise<RipgrepResult> {
   return new Promise((resolve) => {
     let stdout = "";
     let stderr = "";
     let truncated = false;
+    let stdoutDone = false;
+    let stderrDone = false;
+    let processDone = false;
+    let exitCode = -1;
+    let settled = false;
     const HARD_CAP_BYTES = 5_000_000;
+
+    const maybeResolve = () => {
+      if (settled || !processDone || !stdoutDone || !stderrDone) return;
+      settled = true;
+      if (process.env.CODING_TOOLS_RG_DEBUG === "1") {
+        console.error("rg-debug-resolve", {
+          mode,
+          stdout,
+          stderr,
+          exitCode,
+          stdoutDone,
+          stderrDone,
+          processDone,
+        });
+      }
+      resolve({
+        mode,
+        output: stdout || stderr,
+        exitCode,
+        truncated,
+      });
+    };
 
     let proc: ChildProcess;
     try {
       proc = spawn(rg, args, { stdio: ["ignore", "pipe", "pipe"] });
     } catch (err) {
       resolve({
-        mode: "content",
+        mode,
         output: `ripgrep spawn failed: ${(err as Error).message}`,
         exitCode: -1,
         truncated: false,
@@ -122,30 +153,53 @@ function runRipgrep(rg: string, args: string[]): Promise<RipgrepResult> {
       proc.kill("SIGTERM");
     }, 30_000);
 
-    proc.stdout?.on("data", (chunk: Buffer) => {
-      if (stdout.length + chunk.length > HARD_CAP_BYTES) {
-        truncated = true;
-        proc.kill("SIGTERM");
-        return;
-      }
-      stdout += chunk.toString("utf8");
-    });
-    proc.stderr?.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf8");
-    });
+    if (proc.stdout) {
+      proc.stdout.on("data", (chunk: Buffer) => {
+        if (stdout.length + chunk.length > HARD_CAP_BYTES) {
+          truncated = true;
+          proc.kill("SIGTERM");
+          return;
+        }
+        stdout += chunk.toString("utf8");
+      });
+      proc.stdout.on("end", () => {
+        stdoutDone = true;
+        maybeResolve();
+      });
+      proc.stdout.on("close", () => {
+        stdoutDone = true;
+        maybeResolve();
+      });
+    } else {
+      stdoutDone = true;
+    }
+    if (proc.stderr) {
+      proc.stderr.on("data", (chunk: Buffer) => {
+        stderr += chunk.toString("utf8");
+      });
+      proc.stderr.on("end", () => {
+        stderrDone = true;
+        maybeResolve();
+      });
+      proc.stderr.on("close", () => {
+        stderrDone = true;
+        maybeResolve();
+      });
+    } else {
+      stderrDone = true;
+    }
     proc.on("close", (code) => {
       clearTimeout(timer);
-      resolve({
-        mode: "content",
-        output: stdout || stderr,
-        exitCode: typeof code === "number" ? code : -1,
-        truncated,
-      });
+      exitCode = typeof code === "number" ? code : -1;
+      processDone = true;
+      maybeResolve();
     });
     proc.on("error", (err) => {
       clearTimeout(timer);
+      if (settled) return;
+      settled = true;
       resolve({
-        mode: "content",
+        mode,
         output: `ripgrep error: ${err.message}`,
         exitCode: -1,
         truncated: false,

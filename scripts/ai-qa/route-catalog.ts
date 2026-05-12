@@ -150,17 +150,6 @@ const SUPPLEMENTAL_NON_GAME_APP_ROUTES: readonly AiQaRoute[] = [
     readyMode: "any",
     timeoutMs: 90_000,
   },
-  {
-    id: "app-elizamaker",
-    label: "App: ElizaMaker",
-    path: "/apps/elizamaker",
-    readyChecks: [
-      { selector: '[data-testid="terminal-channel-panel"]' },
-      { text: "What would you like to check?" },
-    ],
-    readyMode: "any",
-    timeoutMs: 90_000,
-  },
 ];
 
 /**

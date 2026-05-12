@@ -627,9 +627,11 @@ else
 	  echo "[verify-fork] metal/turbo3_tcq (patched shipped: turbo3_tcq.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/turbo3_tcq.metal kernel_turbo3_tcq_dot      fixtures/turbo3_tcq.json && \
 	  echo "[verify-fork] metal/qjl     (patched shipped: qjl.metal)"         && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/qjl.metal        kernel_attn_score_qjl1_256 fixtures/qjl.json        && \
 	  echo "[verify-fork] metal/polar   (patched shipped: polar.metal)"       && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar.json      && \
-	  echo "[verify-fork] metal/polar_preht (patched shipped: polar.metal)"   && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_preht_f32 fixtures/polar.json && \
-	  echo "[verify-fork] metal/polar_preht + QJL residual (patched shipped: polar.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal kernel_mul_mv_q4_polar_preht_f32 fixtures/polar_qjl.json && \
-	  echo "[verify-fork] metal: 5/5 patched shipped shader files plus Polar preht variants verified against the same fixtures as the standalones"; \
+		  echo "[verify-fork] metal/polar_preht (patched shipped: polar.metal)"   && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_preht_f32 fixtures/polar.json && \
+		  echo "[verify-fork] metal/polar_preht + QJL residual (patched shipped: polar.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal kernel_mul_mv_q4_polar_preht_f32 fixtures/polar_qjl.json && \
+		  echo "[verify-fork] metal/fused_attn_qjl_tbq (patched shipped: fused_attn_qjl_tbq.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/fused_attn_qjl_tbq.metal kernel_fused_attn_qjl_tbq3_f32 fixtures/fused_attn_qjl_tbq.json && \
+		  echo "[verify-fork] metal/fused_attn_qjl_polar (patched shipped: fused_attn_qjl_polar.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/fused_attn_qjl_polar.metal kernel_fused_attn_qjl_polar_f32 fixtures/fused_attn_qjl_polar.json && \
+		  echo "[verify-fork] metal: 7/7 patched shipped shader files plus Polar preht/fused-attn variants verified against the same fixtures as the standalones"; \
 	else \
 	  echo "[verify-fork] xcrun not found — skipping Metal fork verification (macOS only)"; \
 	fi
@@ -651,9 +653,15 @@ else
 	      $(ELIZA_DFLASH_FORK_VULKAN_DIR)/polar_preht.comp -o bench_results/fork-spv/polar_preht.spv || exit 1; \
 	    echo "[verify-fork] vulkan/polar_preht (fork: vulkan-shaders/polar_preht.comp)"; \
 	    ./vulkan_verify bench_results/fork-spv/polar_preht.spv fixtures/polar.json || exit 1; \
-	    echo "[verify-fork] vulkan/polar_preht + QJL residual (fork: vulkan-shaders/polar_preht.comp)"; \
-	    ./vulkan_verify bench_results/fork-spv/polar_preht.spv fixtures/polar_qjl.json || exit 1; \
-	    echo "[verify-fork] vulkan: 6/6 fork score shaders + polar residual/preht variants verified against standalone fixtures"; \
+		    echo "[verify-fork] vulkan/polar_preht + QJL residual (fork: vulkan-shaders/polar_preht.comp)"; \
+		    ./vulkan_verify bench_results/fork-spv/polar_preht.spv fixtures/polar_qjl.json || exit 1; \
+		    for f in fused_attn_qjl_tbq fused_attn_qjl_polar; do \
+		      $(GLSLC) --target-env=vulkan1.1 --target-spv=spv1.3 -fshader-stage=compute \
+		        $(ELIZA_DFLASH_FORK_VULKAN_DIR)/$$f.comp -o bench_results/fork-spv/$$f.spv || exit 1; \
+		      echo "[verify-fork] vulkan/$$f (fork: vulkan-shaders/$$f.comp)"; \
+		      ./vulkan_verify bench_results/fork-spv/$$f.spv fixtures/$$f.json || exit 1; \
+		    done; \
+		    echo "[verify-fork] vulkan: 8/8 fork score/fused shaders + polar residual/preht variants verified against standalone fixtures"; \
 	  else \
 	    echo "[verify-fork] vulkan_verify not buildable on this host — skipping Vulkan fork verification"; \
 	  fi; \

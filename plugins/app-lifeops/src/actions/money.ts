@@ -1,20 +1,19 @@
 /**
- * MONEY umbrella handler — Audit B Defer #4.
+ * OWNER_FINANCES backend handler.
  *
- * Folds the previous standalone PAYMENTS (8 subactions) and SUBSCRIPTIONS (3
- * subactions) backends behind a single dispatch function. The OWNER_FINANCES
- * umbrella in `./owner-surfaces.ts` wraps this handler with the canonical
- * `action` discriminator on the registered surface.
+ * Folds payment-source, transaction, spending-summary, recurring-charge, and
+ * subscription-audit backends behind a single dispatch function. The
+ * OWNER_FINANCES umbrella in `./owner-surfaces.ts` wraps this handler with the
+ * canonical `action` discriminator on the registered surface.
  *
- * Subaction enum (PAYMENTS verbs first, then `subscription_*` to disambiguate
- * from any future PAYMENTS verb that might collide):
+ * Subaction enum:
  *   dashboard | list_sources | add_source | remove_source | import_csv |
  *   list_transactions | spending_summary | recurring_charges |
  *   subscription_audit | subscription_cancel | subscription_status
  *
  * Routing: a single discriminator (`subaction`) selects the backend. The
- * `subscription_*` verbs delegate to the SUBSCRIPTIONS backend; everything
- * else delegates to the PAYMENTS backend.
+ * `subscription_*` verbs delegate to the subscription backend; everything
+ * else delegates to the finance backend.
  */
 import type {
   ActionParameter,
@@ -31,13 +30,9 @@ import { runSubscriptionsHandler } from "./subscriptions.js";
 const SUBSCRIPTION_PREFIX = "subscription_";
 
 /**
- * Public similes preserved on the OWNER_FINANCES umbrella so cached planner
- * output and the lifeops provider's routing hints keep resolving.
+ * Public similes for the OWNER_FINANCES umbrella.
  */
-export const MONEY_LEGACY_SIMILES: readonly string[] = [
-  "MONEY",
-  "PAYMENTS",
-  "SUBSCRIPTIONS",
+export const OWNER_FINANCE_SIMILES: readonly string[] = [
   "SPENDING",
   "ROCKET_MONEY",
   "BANK_TRANSACTIONS",
@@ -52,7 +47,7 @@ export const MONEY_LEGACY_SIMILES: readonly string[] = [
 ];
 
 /**
- * Parameter schema for the MONEY backend — the OWNER_FINANCES umbrella
+ * Parameter schema for the OWNER_FINANCES backend — the registered umbrella
  * surfaces this as its public param list (after renaming `subaction` →
  * `action`).
  */
@@ -254,10 +249,6 @@ function rewriteSubactionForBackend(
 
 /**
  * Handler function backing the OWNER_FINANCES umbrella.
- *
- * Folded out of the legacy `MONEY` umbrella surface — Audit F. The umbrella
- * in `./owner-surfaces.ts` is the only caller; no `MONEY`-named action is
- * registered.
  */
 export async function runMoneyHandler(
   runtime: IAgentRuntime,

@@ -42,18 +42,18 @@ type RuntimeActionLike = Pick<
 
 const LIFEOPS_PUBLIC_MODULE: string = "@elizaos/app-lifeops";
 
-let ownerWebsiteBlockFallbackPromise: Promise<RuntimeActionLike | null> | null =
+let ownerBlockFallbackPromise: Promise<RuntimeActionLike | null> | null =
   null;
 
 async function resolveBuiltInFallbackAction(
   actionName: string,
 ): Promise<RuntimeActionLike | null> {
-  if (actionName !== "WEBSITE_BLOCK") {
+  if (actionName !== "BLOCK") {
     return null;
   }
 
-  if (!ownerWebsiteBlockFallbackPromise) {
-    ownerWebsiteBlockFallbackPromise = import(
+  if (!ownerBlockFallbackPromise) {
+    ownerBlockFallbackPromise = import(
       /* @vite-ignore */ LIFEOPS_PUBLIC_MODULE
     )
       .then((mod) => mod as Record<string, RuntimeActionLike | undefined>)
@@ -61,7 +61,7 @@ async function resolveBuiltInFallbackAction(
       .catch(() => null);
   }
 
-  return ownerWebsiteBlockFallbackPromise;
+  return ownerBlockFallbackPromise;
 }
 
 export function inferBalanceChainFromText(
@@ -225,7 +225,7 @@ export async function executeFallbackParsedActions(
           currentText,
         );
       const shouldSuppressSuccessFallbackText =
-        parsed.name === "WEBSITE_BLOCK" &&
+        parsed.name === "BLOCK" &&
         actionSucceeded === true &&
         currentTextLooksLikeCompletedWebsiteBlock;
       if (fallbackText) {

@@ -25,8 +25,8 @@ import {
   runLifeOperationHandler,
 } from "./life.js";
 import {
-  MONEY_LEGACY_SIMILES,
   MONEY_PARAMETERS,
+  OWNER_FINANCE_SIMILES,
   runMoneyHandler,
 } from "./money.js";
 import { runScheduleHandler } from "./schedule.js";
@@ -441,7 +441,7 @@ export const ownerScreenTimeAction: Action = {
 
 export const ownerFinancesAction: Action = {
   name: "OWNER_FINANCES",
-  similes: ["MONEY", "FINANCES", "SUBSCRIPTIONS", ...MONEY_LEGACY_SIMILES],
+  similes: ["FINANCES", ...OWNER_FINANCE_SIMILES],
   description:
     "Owner finances: payment sources, transaction imports, spending summaries, recurring charges, and subscription audits.",
   descriptionCompressed:

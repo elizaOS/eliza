@@ -4,13 +4,15 @@ import {
   matchVoiceImprint,
   normalizeVoiceEmbedding,
   updateVoiceImprintCentroid,
-  voiceSpeakerFromImprintMatch,
   type VoiceImprintProfile,
+  voiceSpeakerFromImprintMatch,
 } from "./speaker-imprint";
 
 describe("speaker-imprint", () => {
   it("normalizes embeddings and computes cosine similarity", () => {
-    expect(normalizeVoiceEmbedding([3, 4])).toEqual([0.6, 0.8]);
+    const normalized = normalizeVoiceEmbedding([3, 4]);
+    expect(normalized[0]).toBeCloseTo(0.6, 6);
+    expect(normalized[1]).toBeCloseTo(0.8, 6);
     expect(cosineSimilarity([2, 0], [4, 0])).toBeCloseTo(1, 6);
     expect(cosineSimilarity([1, 0], [0, 1])).toBeCloseTo(0, 6);
   });
@@ -43,8 +45,9 @@ describe("speaker-imprint", () => {
 
     expect(match?.profile.id).toBe("cluster-a");
     expect(match?.similarity).toBeGreaterThan(0.99);
+    if (!match) throw new Error("expected voice imprint match");
     const speaker = voiceSpeakerFromImprintMatch({
-      match: match!,
+      match,
       observationId: "obs-1",
       source: { kind: "local_mic", deviceId: "mic-1" },
     });
@@ -94,7 +97,9 @@ describe("speaker-imprint", () => {
       observationConfidence: 0.5,
     });
     expect(second.sampleCount).toBe(2);
-    expect(second.centroidEmbedding[0]).toBeGreaterThan(second.centroidEmbedding[1]);
+    expect(second.centroidEmbedding[0]).toBeGreaterThan(
+      second.centroidEmbedding[1],
+    );
     expect(second.confidence).toBeCloseTo(0.65, 6);
   });
 });

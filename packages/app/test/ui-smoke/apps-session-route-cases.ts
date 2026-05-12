@@ -71,7 +71,11 @@ export const DIRECT_ROUTE_CASES = [
   {
     name: "elizamaker",
     path: "/apps/elizamaker",
-    selector: '[data-testid="chat-composer-textarea"]',
+    readyChecks: [
+      { selector: '[data-testid="chat-composer-textarea"]' },
+      { selector: '[data-testid="terminal-channel-panel"]' },
+      { text: "What would you like to check?" },
+    ],
   },
   {
     name: "companion",

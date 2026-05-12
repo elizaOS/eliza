@@ -3491,8 +3491,7 @@ function shouldTreatPlannerContactAliasAsLifeReminder(
 ): boolean {
 	const normalizedName = normalizeActionIdentifier(toolCall.name);
 	if (
-		normalizedName !== normalizeActionIdentifier("ADD_CONTACT") &&
-		normalizedName !== normalizeActionIdentifier("RELATIONSHIP")
+		normalizedName !== normalizeActionIdentifier("ADD_CONTACT")
 	) {
 		return false;
 	}
@@ -3728,21 +3727,6 @@ async function runDeterministicPlannerFallback(args: {
 	};
 }
 
-function shouldTreatPlannerLifeAsDeviceIntent(
-	resolvedName: string,
-	_message: Memory,
-): boolean {
-	if (
-		normalizeActionIdentifier(resolvedName) !==
-		normalizeActionIdentifier("LIFE")
-	) {
-		return false;
-	}
-	// DEVICE_INTENT is no longer a planner-visible action. Legacy LIFE plans for
-	// device-wide delivery should not be rewritten into another retired action.
-	return false;
-}
-
 function shouldTreatPlannerWebAsCalendlyCalendar(
 	resolvedName: string,
 	message: Memory,
@@ -3829,28 +3813,6 @@ function shouldTreatPlannerConnectorAsMessage(
 			/\b(?:dm|dms|direct messages?|messages?)\b/i.test(text)) ||
 		(/\b(?:discord|slack|telegram|signal|whatsapp)\b/i.test(text) &&
 			/\b(?:post|send|message|dm|channel)\b/i.test(text))
-	);
-}
-
-function shouldTreatPlannerDeviceIntentAsLifeReminder(
-	resolvedName: string,
-	message: Memory,
-): boolean {
-	if (
-		normalizeActionIdentifier(resolvedName) !==
-		normalizeActionIdentifier("DEVICE_INTENT")
-	) {
-		return false;
-	}
-	const text = getUserMessageText(message) ?? "";
-	if (
-		/\b(?:device|devices|phone|mobile|desktop|broadcast|push)\b/i.test(text)
-	) {
-		return false;
-	}
-	return (
-		/\b(?:remember|remind|reminder)\b/i.test(text) &&
-		/\b(?:call|phone|text|message|email)\b/i.test(text)
 	);
 }
 
@@ -4160,9 +4122,7 @@ function normalizeAliasedPlannerToolCall(
 	message: Memory,
 ): PlannerToolCall {
 	const normalizedResolvedName = normalizeActionIdentifier(resolvedName);
-	const isOwnerSurface =
-		normalizedResolvedName === normalizeActionIdentifier("LIFE") ||
-		OWNER_SURFACE_ACTIONS.has(normalizedResolvedName);
+	const isOwnerSurface = OWNER_SURFACE_ACTIONS.has(normalizedResolvedName);
 	if (!isOwnerSurface) {
 		if (normalizedResolvedName === normalizeActionIdentifier("BLOCK")) {
 			const originalName = normalizeActionIdentifier(toolCall.name);
@@ -4285,44 +4245,23 @@ async function executeV5PlannedToolCall(
 			unwrappedToolCall,
 			args.executorCtx.message,
 		);
-	const forceLifeToDeviceIntent =
-		!forceContactReminderToLife &&
-		shouldTreatPlannerLifeAsDeviceIntent(
-			resolvedName,
-			args.executorCtx.message,
-		);
-	const forceDeviceIntentToLife =
-		!forceContactReminderToLife &&
-		!forceLifeToDeviceIntent &&
-		shouldTreatPlannerDeviceIntentAsLifeReminder(
-			resolvedName,
-			args.executorCtx.message,
-		);
 	const forceWebToCalendlyCalendar =
 		!forceContactReminderToLife &&
-		!forceLifeToDeviceIntent &&
-		!forceDeviceIntentToLife &&
 		shouldTreatPlannerWebAsCalendlyCalendar(
 			resolvedName,
 			args.executorCtx.message,
 		);
 	const forceWebToBookTravel =
 		!forceContactReminderToLife &&
-		!forceLifeToDeviceIntent &&
-		!forceDeviceIntentToLife &&
 		!forceWebToCalendlyCalendar &&
 		shouldTreatPlannerWebAsBookTravel(resolvedName, args.executorCtx.message);
 	const forceBrowserToAutofill =
 		!forceContactReminderToLife &&
-		!forceLifeToDeviceIntent &&
-		!forceDeviceIntentToLife &&
 		!forceWebToCalendlyCalendar &&
 		!forceWebToBookTravel &&
 		shouldTreatPlannerBrowserAsAutofill(resolvedName, args.executorCtx.message);
 	const forceConnectorToPost =
 		!forceContactReminderToLife &&
-		!forceLifeToDeviceIntent &&
-		!forceDeviceIntentToLife &&
 		!forceWebToCalendlyCalendar &&
 		!forceWebToBookTravel &&
 		!forceBrowserToAutofill &&
@@ -4333,8 +4272,6 @@ async function executeV5PlannedToolCall(
 		shouldTreatPlannerConnectorAsPost(resolvedName, args.executorCtx.message);
 	const forceConnectorToMessage =
 		!forceContactReminderToLife &&
-		!forceLifeToDeviceIntent &&
-		!forceDeviceIntentToLife &&
 		!forceWebToCalendlyCalendar &&
 		!forceWebToBookTravel &&
 		!forceBrowserToAutofill &&
@@ -4344,11 +4281,7 @@ async function executeV5PlannedToolCall(
 		);
 	const effectiveResolvedName = forceContactReminderToLife
 		? "OWNER_REMINDERS"
-		: forceLifeToDeviceIntent
-			? "MESSAGE"
-			: forceDeviceIntentToLife
-				? "OWNER_REMINDERS"
-				: forceWebToCalendlyCalendar
+		: forceWebToCalendlyCalendar
 					? "CALENDAR"
 					: forceWebToBookTravel
 						? "PERSONAL_ASSISTANT"
@@ -4360,7 +4293,7 @@ async function executeV5PlannedToolCall(
 									? "MESSAGE"
 									: resolvedName;
 	const toolCallForNormalization =
-		forceContactReminderToLife || forceDeviceIntentToLife
+		forceContactReminderToLife
 			? {
 					...unwrappedToolCall,
 					params: {
@@ -5573,15 +5506,11 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["SCHEDULE_RECURRING_EVENT", "CALENDAR"],
 		["SCHEDULE_RECURRING_MEETING", "CALENDAR"],
 		["SCHEDULE_RECURRING", "CALENDAR"],
-		["BOOK_TRAVEL_ACTION", "PERSONAL_ASSISTANT"],
-		["BOOK_TRAVEL", "PERSONAL_ASSISTANT"],
-		["SCHEDULING_NEGOTIATION", "PERSONAL_ASSISTANT"],
 		["CAPTURE_TRAVEL_PREFERENCES", "REPLY"],
 		["CAPTURE_BOOKING_PREFERENCES", "REPLY"],
 		["CREATE_TRAVEL_PREFERENCES", "REPLY"],
 		["SET_PREFERENCES", "REPLY"],
 		["SET_TRAVEL_PREFERENCES", "REPLY"],
-		["PROFILE", "REPLY"],
 		["CREATE_FOLLOWUP", "SCHEDULED_TASKS"],
 		["GET_PENDING_ASSETS", "MESSAGE"],
 		["GET_PENDING_ITEMS", "MESSAGE"],
@@ -5695,13 +5624,11 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["CALENDAR_CHECK_AVAILABILITY", "CALENDAR"],
 		["BLOCK_WEBSITE", "BLOCK"],
 		["WEBSITE_BLOCKER", "BLOCK"],
-		["WEBSITE_BLOCK", "BLOCK"],
 		["AUTOMATION_FOCUS_BLOCK", "BLOCK"],
 		["FOCUS_BLOCK", "BLOCK"],
 		["SET_APP_BLOCK", "BLOCK"],
 		["PHONE_SET_APP_BLOCK", "BLOCK"],
 		["PHONE_BLOCK_APPS", "BLOCK"],
-		["APP_BLOCK", "BLOCK"],
 		["BLOCK_APPS", "BLOCK"],
 		["ADMIN_REJECT_APPROVAL", "RESOLVE_REQUEST"],
 		["REJECT_APPROVAL", "RESOLVE_REQUEST"],
@@ -6473,7 +6400,6 @@ function findDirectOwnedActionSuggestion(
 	if (looksLikeLocalShellRequest(messageText)) {
 		const shellAction = findRuntimeActionByNames(runtime, [
 			"SHELL",
-			"SHELL_COMMAND",
 			"RUN_IN_TERMINAL",
 			"RUN_COMMAND",
 			"EXECUTE_COMMAND",
@@ -6728,7 +6654,6 @@ function _hasSelectedShellCommandAction(
 				typeof actionName === "string" &&
 				[
 					normalizeActionIdentifier("SHELL"),
-					normalizeActionIdentifier("SHELL_COMMAND"),
 				].includes(normalizeActionIdentifier(actionName)),
 		) ?? false
 	);

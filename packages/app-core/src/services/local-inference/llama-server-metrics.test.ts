@@ -98,7 +98,7 @@ describe("fetchMetricsSnapshot", () => {
 
   it("marks scrape failures so callers do not treat zero counters as evidence", async () => {
     globalThis.fetch = (async () =>
-      new Response("not found", { status: 404 })) as typeof fetch;
+      new Response("not found", { status: 404 })) as unknown as typeof fetch;
 
     const snapshot = await fetchMetricsSnapshot("http://127.0.0.1:9999");
 

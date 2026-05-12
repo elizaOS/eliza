@@ -2561,6 +2561,22 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"block/unblock specific phone apps + desktop websites (NOT calendar time-blocks); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
+			similes: [
+				"block out 2 hours for deep work",
+				"WEBSITE_BLOCKER",
+				"SELFCONTROL",
+				"SITE_BLOCKER",
+				"HOSTS_BLOCK",
+				"BLOCK_WEBSITE",
+				"APP_BLOCKER",
+				"SHIELD_APPS",
+				"FAMILY_CONTROLS",
+				"PHONE_FOCUS",
+				"SET_APP_BLOCK",
+				"PHONE_SET_APP_BLOCK",
+				"PHONE_BLOCK_APPS",
+				"BLOCK_APPS",
+			],
 			exampleCalls: [
 				{
 					user: "Use BLOCK with the provided parameters.",
@@ -3863,7 +3879,7 @@ export const allActionsSpec = {
 		{
 			name: "ENTITY",
 			description:
-				"Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: create, read, set_identity, set_relationship, log_interaction, merge. For rolodex/contact lifecycle (CRUD on a single contact's profile) use CONTACT; ENTITY is the owner-graph umbrella for identity, relationships, and interaction history. Use SCHEDULED_TASK for follow-up cadence; use LIFE for one-off dated reminders to call/text someone.",
+				"Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: create, read, set_identity, set_relationship, log_interaction, merge. For rolodex/contact lifecycle (CRUD on a single contact's profile) use CONTACT; ENTITY is the owner-graph umbrella for identity, relationships, and interaction history. Use SCHEDULED_TASKS for follow-up cadence; use OWNER_REMINDERS for one-off dated reminders to call/text someone.",
 			parameters: [
 				{
 					name: "action",
@@ -7879,18 +7895,11 @@ export const allActionsSpec = {
 				},
 			],
 			similes: [
-				"START_TAILSCALE",
-				"STOP_TAILSCALE",
-				"GET_TAILSCALE_STATUS",
 				"OPEN_TUNNEL",
 				"CREATE_TUNNEL",
-				"TAILSCALE_UP",
 				"CLOSE_TUNNEL",
-				"TAILSCALE_DOWN",
-				"TAILSCALE_STATUS",
 				"CHECK_TUNNEL",
 				"TUNNEL_INFO",
-				"TUNNEL_STATUS",
 			],
 			exampleCalls: [
 				{

@@ -26,7 +26,7 @@ export type RetrieveActionsInput = {
 	/**
 	 * The messageHandler-selected contexts for this turn. Used as a *weight*
 	 * (boost actions whose declared `contexts` intersect this set) — never
-	 * as a filter. Filtering by context masked LIFE/CALENDAR/etc. when the
+	 * as a filter. Filtering by context masked OWNER_TODOS/CALENDAR/etc. when the
 	 * messageHandler routed to "general"; weighting keeps them retrievable
 	 * while still preferring on-context candidates when scores are close.
 	 */
@@ -294,8 +294,8 @@ export function retrieveActions(
 		// intersect this parent's declared `contexts`, give it a meaningful
 		// additive bump. The boost is large enough to reorder tier-A when a
 		// context-aligned candidate has a comparable raw retrieval score
-		// (e.g. LIFE vs BLOCK both keyword-match "every day" — context says
-		// the user is in tasks/general, so LIFE wins). Context alone is not a
+		// (e.g. OWNER_ROUTINES vs BLOCK both keyword-match "every day" — context
+		// says the user is in tasks/general, so OWNER_ROUTINES wins). Context alone is not a
 		// retrieval signal; otherwise every action sharing a broad context can
 		// leak into Tier B without matching the turn.
 		const parentContexts: readonly unknown[] = Array.isArray(parent.contexts)

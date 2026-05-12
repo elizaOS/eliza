@@ -41,7 +41,9 @@ export function normalizeVoiceEmbedding(
   for (let i = 0; i < embedding.length; i += 1) {
     const value = Number(embedding[i]);
     if (!Number.isFinite(value)) {
-      throw new Error(`[voice-imprint] embedding contains non-finite value at ${i}`);
+      throw new Error(
+        `[voice-imprint] embedding contains non-finite value at ${i}`,
+      );
     }
     out[i] = value;
     sumSq += value * value;
@@ -130,7 +132,10 @@ export function matchVoiceImprint(args: {
     if (profile.centroidEmbedding.length !== args.embedding.length) {
       continue;
     }
-    const similarity = cosineSimilarity(args.embedding, profile.centroidEmbedding);
+    const similarity = cosineSimilarity(
+      args.embedding,
+      profile.centroidEmbedding,
+    );
     if (similarity < threshold) continue;
     const confidence = clamp01(
       ((similarity - threshold) / Math.max(0.0001, 1 - threshold)) *

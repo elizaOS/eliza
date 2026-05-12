@@ -11,9 +11,7 @@
  *
  * Follow-up cadence (`add_follow_up`, `complete_follow_up`,
  * `follow_up_list`, `days_since`, `list_overdue_followups`,
- * `mark_followup_done`, `set_followup_threshold`) lives on `SCHEDULED_TASK`.
- * The legacy `RELATIONSHIP` umbrella name is preserved as a simile so the
- * planner does not regress on cached prompts.
+ * `mark_followup_done`, `set_followup_threshold`) lives on `SCHEDULED_TASKS`.
  */
 
 import type {

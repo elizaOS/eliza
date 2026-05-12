@@ -49,7 +49,7 @@ export interface OwnerQuietHours {
 /**
  * Source of truth for a stored fact. `first_run` distinguishes answers
  * captured by the first-run capability from answers captured by the
- * planner via `PROFILE.save`. `connector_inferred` covers values an
+ * owner-profile extraction evaluator. `connector_inferred` covers values an
  * adapter wrote (e.g. timezone from Google Calendar). `agent_inferred`
  * covers LLM-derived values (e.g. relationshipStatus extracted from a
  * conversation).

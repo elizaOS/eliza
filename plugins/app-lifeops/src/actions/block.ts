@@ -1,8 +1,8 @@
 /**
  * BLOCK umbrella — Audit B Defer #1.
  *
- * Folds the previous standalone `APP_BLOCK` (phone apps) and `WEBSITE_BLOCK`
- * (desktop hosts file / SelfControl) actions into a single umbrella keyed by
+ * Folds phone-app blocking and desktop website blocking into a single
+ * umbrella keyed by
  * `target: "app" | "website"`. The runtime backends stay untouched: each
  * action value dispatches into the existing backend handlers.
  *

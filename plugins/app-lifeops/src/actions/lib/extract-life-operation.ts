@@ -14,8 +14,7 @@ export const LIFE_OPERATION_VALUES = [
   "snooze",
   "review",
   // Owner policy verbs — write reminder intensity / escalation rules on
-  // OwnerFactStore. PROFILE no longer carries these (its surface is
-  // `save | capture_phone`).
+  // OwnerFactStore.
   "policy_set_reminder",
   "policy_configure_escalation",
   "query_calendar_today",

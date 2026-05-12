@@ -171,7 +171,6 @@ export const replyAction = {
 	roleGate: { minRole: "USER" },
 	similes: [
 		...((spec.similes ?? []) as string[]),
-		"ASK_USER_QUESTION",
 		"ASK",
 		"CLARIFY",
 	],
@@ -230,7 +229,7 @@ export const replyAction = {
 		callback?: HandlerCallback,
 		responses?: Memory[],
 	): Promise<ActionResult> => {
-		// Structured-question branch (absorbs old ASK_USER_QUESTION action).
+		// Structured-question branch.
 		const rawQuestions = readQuestionsParam(_options);
 		if (rawQuestions !== undefined) {
 			if (!Array.isArray(rawQuestions)) {

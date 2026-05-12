@@ -1245,10 +1245,13 @@ function patchMetalTbqPolarOpsCpp(cacheDir, { dryRun }) {
 }
 
 static inline uint32_t milady_tbq_blocks_per_threadgroup(ggml_type type) {
+    // M4 Max multiblock/autotune bench best medians (2026-05-12):
+    //   TBQ3=8, TBQ4=32, TBQ3_TCQ=16. Voice-mode policy can still force N=1
+    //   at a higher scheduler layer when barge-in latency dominates.
     switch (type) {
         case GGML_TYPE_TBQ3_0:   return milady_env_u32("ELIZA_METAL_TBQ3_BLOCKS_PER_TG", 8u, 1u, 64u);
         case GGML_TYPE_TBQ4_0:   return milady_env_u32("ELIZA_METAL_TBQ4_BLOCKS_PER_TG", 32u, 1u, 64u);
-        case GGML_TYPE_TBQ3_TCQ: return milady_env_u32("ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG", 4u, 1u, 64u);
+        case GGML_TYPE_TBQ3_TCQ: return milady_env_u32("ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG", 16u, 1u, 64u);
         default: GGML_ABORT("unsupported TurboQuant attention score type");
     }
 }
@@ -1309,13 +1312,13 @@ static inline uint32_t milady_tbq_blocks_per_row(ggml_type type) {
 }
 
 static inline uint32_t milady_tbq_blocks_per_threadgroup(ggml_type type) {
-    // M4 Max multiblock bench best medians (2026-05-10):
-    //   TBQ3=8, TBQ4=32, TBQ3_TCQ=4. Voice-mode policy can still force N=1
+    // M4 Max multiblock/autotune bench best medians (2026-05-12):
+    //   TBQ3=8, TBQ4=32, TBQ3_TCQ=16. Voice-mode policy can still force N=1
     //   at a higher scheduler layer when barge-in latency dominates.
     switch (type) {
         case GGML_TYPE_TBQ3_0:   return milady_env_u32("ELIZA_METAL_TBQ3_BLOCKS_PER_TG", 8u, 1u, 64u);
         case GGML_TYPE_TBQ4_0:   return milady_env_u32("ELIZA_METAL_TBQ4_BLOCKS_PER_TG", 32u, 1u, 64u);
-        case GGML_TYPE_TBQ3_TCQ: return milady_env_u32("ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG", 4u, 1u, 64u);
+        case GGML_TYPE_TBQ3_TCQ: return milady_env_u32("ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG", 16u, 1u, 64u);
         default: GGML_ABORT("unsupported TurboQuant attention score type");
     }
 }
