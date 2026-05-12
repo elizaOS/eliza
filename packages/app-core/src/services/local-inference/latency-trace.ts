@@ -208,7 +208,10 @@ const DERIVED_SPANS: Readonly<
     "peer-utterance-end",
     "llm-first-replytext-char",
   ],
-  firstTtsPcmFromUtteranceEndMs: ["peer-utterance-end", "tts-first-audio-chunk"],
+  firstTtsPcmFromUtteranceEndMs: [
+    "peer-utterance-end",
+    "tts-first-audio-chunk",
+  ],
   firstAudioIntoPeerRingFromUtteranceEndMs: [
     "peer-utterance-end",
     "audio-first-into-peer-ring",
@@ -760,13 +763,14 @@ export class VoiceRunMetrics {
   );
   private readonly rssSamples: number[] = [];
 
-  constructor(
-    private readonly opts: { leakGrowthMbThreshold?: number } = {},
-  ) {}
+  constructor(private readonly opts: { leakGrowthMbThreshold?: number } = {}) {}
 
   recordTurn(m: VoiceTurnMetrics): void {
     this.turns += 1;
-    if (typeof m.dflashAccepted === "number" && Number.isFinite(m.dflashAccepted))
+    if (
+      typeof m.dflashAccepted === "number" &&
+      Number.isFinite(m.dflashAccepted)
+    )
       this.dflashAccepted += m.dflashAccepted;
     if (typeof m.dflashDrafted === "number" && Number.isFinite(m.dflashDrafted))
       this.dflashDrafted += m.dflashDrafted;
@@ -806,12 +810,13 @@ export class VoiceRunMetrics {
     }
     const growthMb =
       firstMb !== null && lastMb !== null ? lastMb - firstMb : null;
-    const leakSuspected =
-      monotone && growthMb !== null && growthMb > threshold;
+    const leakSuspected = monotone && growthMb !== null && growthMb > threshold;
     return {
       turns: this.turns,
       dflashAcceptRate:
-        this.dflashDrafted > 0 ? this.dflashAccepted / this.dflashDrafted : null,
+        this.dflashDrafted > 0
+          ? this.dflashAccepted / this.dflashDrafted
+          : null,
       dflashAccepted: this.dflashAccepted,
       dflashDrafted: this.dflashDrafted,
       dflashAcceptRateHistogram: this.acceptRateHist.summary(),

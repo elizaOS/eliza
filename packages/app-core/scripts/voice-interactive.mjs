@@ -1844,9 +1844,15 @@ async function main() {
 }
 
 // Re-used by the two-agents duet harness (`voice-duet.mjs`): the prereq
-// inspector + the cross-platform matrix. Guarded so importing this module
-// (instead of running it) doesn't kick off the interactive `main()`.
-export { inspectActiveOptimizations, printPlatformReport, PLATFORM_MATRIX };
+// inspector, the bundle-registration helper, and the cross-platform matrix.
+// Guarded so importing this module (instead of running it) doesn't kick off
+// the interactive `main()`.
+export {
+  inspectActiveOptimizations,
+  ensureBundleRegistered,
+  printPlatformReport,
+  PLATFORM_MATRIX,
+};
 
 if (import.meta.main) {
   main().catch(async (err) => {

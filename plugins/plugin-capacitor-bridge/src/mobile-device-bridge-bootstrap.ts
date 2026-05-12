@@ -188,7 +188,12 @@ type DeviceOutbound =
 			ok: true;
 			prompt: string | null;
 	  }
-	| { type: "formatChatResult"; correlationId: string; ok: false; error: string }
+	| {
+			type: "formatChatResult";
+			correlationId: string;
+			ok: false;
+			error: string;
+	  }
 	| { type: "pong"; at: number };
 
 type AgentOutbound =
@@ -940,11 +945,10 @@ function flattenChatParamsToLlama3Prompt(params: GenerateTextParams): string {
 	for (const m of messages) {
 		const content =
 			typeof (m as { content?: unknown }).content === "string"
-				? ((m as { content: string }).content)
+				? (m as { content: string }).content
 				: "";
 		if (!content) continue;
-		const role =
-			((m as { role?: string }).role ?? "user").toLowerCase();
+		const role = ((m as { role?: string }).role ?? "user").toLowerCase();
 		const safeRole =
 			role === "system" || role === "assistant" || role === "user"
 				? role
@@ -982,9 +986,7 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 		let nativePrompt: string | null = null;
 		if (messagesForTemplate) {
 			try {
-				nativePrompt = await mobileDeviceBridge.formatChat(
-					messagesForTemplate,
-				);
+				nativePrompt = await mobileDeviceBridge.formatChat(messagesForTemplate);
 			} catch (err) {
 				logger.warn(
 					`[mobile-device-bridge] getFormattedChat failed, falling back to flatten: ${err instanceof Error ? err.message : String(err)}`,
@@ -1018,11 +1020,10 @@ function collectMessagesForNativeTemplate(
 	for (const m of messages) {
 		const content =
 			typeof (m as { content?: unknown }).content === "string"
-				? ((m as { content: string }).content)
+				? (m as { content: string }).content
 				: "";
 		if (!content) continue;
-		const role =
-			((m as { role?: string }).role ?? "user").toLowerCase();
+		const role = ((m as { role?: string }).role ?? "user").toLowerCase();
 		const safeRole =
 			role === "system" || role === "assistant" || role === "user"
 				? role

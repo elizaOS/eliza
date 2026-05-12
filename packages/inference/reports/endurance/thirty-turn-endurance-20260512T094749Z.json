@@ -1,0 +1,23 @@
+{
+  "generatedAt": "2026-05-12T09:47:49.242Z",
+  "harness": "packages/inference/verify/thirty_turn_endurance_harness.mjs",
+  "turns": 30,
+  "voiceLoopExercised": false,
+  "backendPresent": true,
+  "reason": "assembled voice path (engine.startVoice + turn controller) not yet wired to this harness — pending W9; host-level leak/RSS check still ran",
+  "assertions": {
+    "noCrash": true,
+    "crashError": null,
+    "rssLeakWithinCap": true,
+    "rssGrowthMb": 60.19,
+    "rssGrowthCapMb": 64,
+    "peakRssWithinBundleCap": true,
+    "peakRssMb": 105.12,
+    "bundleRssCapMb": null
+  },
+  "summary": {
+    "thirtyTurnOk": null,
+    "e2eLoopOk": null,
+    "peakRssMb": null
+  }
+}

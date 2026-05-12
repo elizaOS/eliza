@@ -322,9 +322,7 @@ describe("withGuidedDecodeProviderOptions", () => {
 
 	it("creates the eliza bag when absent", () => {
 		for (const k of ENV_KEYS) delete process.env[k];
-		const opts = withGuidedDecodeProviderOptions(
-			{} as Record<string, unknown>,
-		);
+		const opts = withGuidedDecodeProviderOptions({} as Record<string, unknown>);
 		expect((opts as { eliza?: { guidedDecode?: unknown } }).eliza).toEqual({
 			guidedDecode: true,
 		});
@@ -332,9 +330,7 @@ describe("withGuidedDecodeProviderOptions", () => {
 
 	it("is a no-op when the operator opts out via MILADY_LOCAL_GUIDED_DECODE=0", () => {
 		process.env.MILADY_LOCAL_GUIDED_DECODE = "0";
-		const opts = withGuidedDecodeProviderOptions(
-			{} as Record<string, unknown>,
-		);
+		const opts = withGuidedDecodeProviderOptions({} as Record<string, unknown>);
 		expect((opts as { eliza?: unknown }).eliza).toBeUndefined();
 	});
 
