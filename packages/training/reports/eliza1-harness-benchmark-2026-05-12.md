@@ -115,3 +115,24 @@ stand-in chain, not the eventual fused ASR. Voice RTF >> 1 is CPU-only stand-in 
 
 Machine-readable: [`eliza1-harness-benchmark-2026-05-12.json`](./eliza1-harness-benchmark-2026-05-12.json).
 Raw `llama-bench` JSON: `/tmp/eliza1-bench/*_d0.json` (also pushed to the HF dataset under `bench/`).
+
+---
+
+## Fused-build e2e_loop_bench (added 2026-05-12, post #66 CUDA-FINISH-4)
+
+Real fused runtime — `llama-server` + omnivoice TTS + dflash + ASR — driven through 1 voice turn on the 0_6b bundle. The publish gate is `voice_rtf ≤ 0.5`.
+
+| backend | install path | pp_tps (prompt) | tg_tps (decode) | first_token_ms | voice_rtf (TTS) | total_turn_ms | dflash_accept | peak_rss_mb | gate ≤0.5 | report |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **linux-x64-cuda-fused** (RTX 5080 sm_120, CUDA 12.8) | `~/.eliza/local-inference/bin/dflash/linux-x64-cuda-fused` | **111.65** | **64.82** | 43.3 | **0.4255** | 3073.6 | 12/12=1.000 | 2340 | **PASS** | [`packages/inference/reports/porting/2026-05-12/e2e-loop-cuda-2026-05-12.json`](../../inference/reports/porting/2026-05-12/e2e-loop-cuda-2026-05-12.json) |
+| **linux-x64-vulkan-fused** (Intel ARL iGPU, Mesa ANV 25.2.8) | `~/.eliza/local-inference/bin/dflash/linux-x64-vulkan-fused` | — | 12.13 | 493.4 | 1.7269 | 17163.1 | 31/31=1.000 | 1370 | **FAIL** (iGPU class) | [`packages/inference/reports/porting/2026-05-12/e2e-loop-vulkan-2026-05-12.json`](../../inference/reports/porting/2026-05-12/e2e-loop-vulkan-2026-05-12.json) |
+
+**Kernel parity (fused build, this re-run):**
+
+- `make cuda-verify-fused`: **1920/1920 PASS** on RTX 5080 sm_120, max diff 5.066e-07 (`logs/cuda-verify-fused-fusedbuild-rtx5080-2026-05-12.log`).
+- `make cuda-hardware`: 6/6 fixture sets PASS against the fused install (`turbo3`, `turbo4`, `turbo3_tcq`, `qjl`, `polar`, `polar_qjl`, `fused_attn_qjl_tbq` 1920/1920). Graph-smoke gated on `llama-bench` (not in the fused target list — non-blocking tooling gap, kernel parity is the substance) (`logs/cuda-hardware-fusedbuild-rtx5080-2026-05-12.log`).
+- `make vulkan-verify-fused`: **all PASS** on Intel ARL iGPU, 4 fixture sets × `fused_attn_qjl_tbq` + `fused_attn_qjl_polar` + their causal-prefix variants = 6912 outputs total (1920 + 1536 + 1920 + 1536); max diff 6.258e-07 (`logs/vulkan-verify-fused-fusedbuild-anv-2026-05-12.log`).
+
+**Build details:** both fused builds rebuilt from clean dirs against fork commit `a61c93aaa5899c17bb1bc32b5645ebb4276c2746` (v1.0.0-eliza), omnivoice pin `38f824023d12b21a7c324651b18bd90f16d8bb86`. CUDA build used `CUDACXX=/usr/local/cuda-12.8/bin/nvcc` + GCC 13.3 host — sm_120a real cubins (no PTX JIT for the consumer Blackwell card). Vulkan build used `/home/shaw/Android/Sdk/ndk/29.0.13113456/shader-tools/linux-x86_64/glslc` + cached vulkan-headers / spirv-headers. Both installs declare `publishable: true`, `missingRequiredKernels: []` in their CAPABILITIES.json.
+
+**Publish-gate take-away:** the **CUDA fused build clears `voice_rtf ≤ 0.5` on RTX 5080**. The Vulkan fused build is functionally correct (kernel parity, e2e completes) but Intel ARL iGPU is too slow for the ≤0.5 gate (1.7269) — the gate is a discrete-GPU target. Vulkan parity testing on a faster Vulkan card (e.g. RDNA3 RX 7800 / RTX 4080 in pure-Vulkan mode) would be the next step for a Vulkan-side voice-rtf number.
