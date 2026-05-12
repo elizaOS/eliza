@@ -289,11 +289,7 @@ run_remote() {
   local target; target="$(ssh_target)"
   local launch
   if [ "$FSDP_WORLD_SIZE" -gt 1 ]; then
-    launch="accelerate launch --num_processes $FSDP_WORLD_SIZE --mixed_precision bf16 --use_fsdp \
-      --fsdp_sharding_strategy FULL_SHARD --fsdp_state_dict_type SHARDED_STATE_DICT \
-      --fsdp_offload_params false --fsdp_cpu_ram_efficient_loading true --fsdp_sync_module_states true \
-      --fsdp_use_orig_params true --fsdp_auto_wrap_policy TRANSFORMER_BASED_WRAP \
-      --fsdp_transformer_layer_cls_to_wrap $FSDP_WRAP_CLS --fsdp_backward_prefetch BACKWARD_PRE"
+    launch="accelerate launch --num_processes $FSDP_WORLD_SIZE --mixed_precision bf16 --use_fsdp --fsdp_sharding_strategy FULL_SHARD --fsdp_state_dict_type SHARDED_STATE_DICT --fsdp_offload_params false --fsdp_cpu_ram_efficient_loading true --fsdp_sync_module_states true --fsdp_use_orig_params true --fsdp_auto_wrap_policy TRANSFORMER_BASED_WRAP --fsdp_transformer_layer_cls_to_wrap $FSDP_WRAP_CLS --fsdp_backward_prefetch BACKWARD_PRE"
   else
     launch="python"
   fi
@@ -301,31 +297,55 @@ run_remote() {
   [ "$PUSH_AFTER" = "1" ] && push_flag="--publish"
   local base_bench_flag=""
   [ "$BENCHMARK_AFTER" = "1" ] || base_bench_flag="--skip-base-bench"
+  local upsample="${ELIZA1_FULLCORPUS_UPSAMPLE:-1}"
+  local hf_tok="${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}"
+  local log="$REMOTE_TRAIN_DIR/run_${RUN_NAME}.log"
 
   echo "[train_nebius][run] run_pipeline.py registry=$REGISTRY_KEY run=$RUN_NAME world=$FSDP_WORLD_SIZE"
-  echo "[train_nebius][run] corpus: train=$TRAIN_FILE val=$VAL_FILE test=$TEST_FILE rebuild_fullcorpus=$SYNC_FULLCORPUS_SOURCES"
-  ssh -o StrictHostKeyChecking=no "$target" "bash -lc '
-    set -euo pipefail
-    cd $REMOTE_TRAIN_DIR
-    export PATH=\$HOME/.local/bin:\$PATH
-    export HF_HOME=/opt/hf-cache
-    sudo mkdir -p \$HF_HOME && sudo chown -R \$USER \$HF_HOME
-    uv sync --extra train
-    if [ -n \"\${HUGGING_FACE_HUB_TOKEN:-}\" ]; then
-      uv run hf auth login --token \"\$HUGGING_FACE_HUB_TOKEN\" --add-to-git-credential || true
+  echo "[train_nebius][run] corpus: train=$TRAIN_FILE val=$VAL_FILE test=$TEST_FILE rebuild_fullcorpus=$SYNC_FULLCORPUS_SOURCES upsample=$upsample"
+
+  # Write the remote runner script (avoids quoting hell), then launch it under
+  # tmux so it survives ssh drops. Poll the log for the sentinel.
+  ssh -o StrictHostKeyChecking=no "$target" "cat > $REMOTE_TRAIN_DIR/.run_pipeline.sh" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+cd $REMOTE_TRAIN_DIR
+export PATH=\$HOME/.local/bin:\$PATH
+export HF_HOME=/opt/hf-cache
+sudo mkdir -p \$HF_HOME && sudo chown -R \$USER \$HF_HOME || true
+${hf_tok:+export HUGGING_FACE_HUB_TOKEN='$hf_tok'; export HF_TOKEN='$hf_tok'}
+export ELIZA1_FULLCORPUS_UPSAMPLE='$upsample'
+uv sync --extra train
+${hf_tok:+uv run hf auth login --token "\$HUGGING_FACE_HUB_TOKEN" --add-to-git-credential || true}
+if [ "$SYNC_FULLCORPUS_SOURCES" = "1" ]; then
+  echo "[remote] rebuilding data/final-eliza1-fullcorpus/ (upsample=\$ELIZA1_FULLCORPUS_UPSAMPLE)"
+  uv run --extra train python scripts/build_eliza1_fullcorpus.py
+fi
+uv run --extra train $launch scripts/run_pipeline.py \\
+  --registry-key $REGISTRY_KEY --run-name $RUN_NAME \\
+  --epochs 1 --lr 1e-5 --use-liger on \\
+  --train-file $TRAIN_FILE --val-file $VAL_FILE --test-file $TEST_FILE \\
+  --eval-mode full --bench-per-bucket 200 --skip-throughput-bench \\
+  --quantizers $QUANTIZE_AFTER --eliza1-bundle $base_bench_flag $push_flag
+echo "RUN_PIPELINE_DONE_OK"
+EOF
+  ssh -o StrictHostKeyChecking=no "$target" "chmod +x $REMOTE_TRAIN_DIR/.run_pipeline.sh; tmux kill-session -t elizatrain 2>/dev/null || true; tmux new-session -d -s elizatrain \"bash $REMOTE_TRAIN_DIR/.run_pipeline.sh 2>&1 | tee $log; echo RUN_PIPELINE_EXIT=\\\$? >> $log\""
+  echo "[train_nebius][run] launched under tmux 'elizatrain' on $target — log: $log"
+  echo "[train_nebius][run] polling for completion (this is a long run)..."
+  local i=0
+  while true; do
+    sleep 60; i=$((i+1))
+    local tail_out; tail_out="$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$target" "tail -n 3 $log 2>/dev/null" 2>/dev/null || echo '(ssh hiccup)')"
+    echo "[train_nebius][run] +$((i))m | $(echo "$tail_out" | tr '\n' ' ' | tr '\r' ' ' | tail -c 200)"
+    if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$target" "grep -q 'RUN_PIPELINE_EXIT=' $log 2>/dev/null"; then
+      local rc; rc="$(ssh -o StrictHostKeyChecking=no "$target" "grep 'RUN_PIPELINE_EXIT=' $log | tail -1 | sed 's/.*=//'" 2>/dev/null || echo '?')"
+      echo "[train_nebius][run] pipeline finished (RUN_PIPELINE_EXIT=$rc)"
+      ssh -o StrictHostKeyChecking=no "$target" "grep -q RUN_PIPELINE_DONE_OK $log" || { echo "[train_nebius][run] WARN: did not see DONE_OK sentinel — run may have failed"; }
+      [ "$rc" = "0" ] || return 1
+      break
     fi
-    if [ \"$SYNC_FULLCORPUS_SOURCES\" = \"1\" ]; then
-      echo \"[remote] rebuilding data/final-eliza1-fullcorpus/\"
-      uv run --extra train python scripts/build_eliza1_fullcorpus.py
-    fi
-    uv run --extra train $launch scripts/run_pipeline.py \\
-      --registry-key $REGISTRY_KEY \\
-      --run-name $RUN_NAME \\
-      --epochs 1 --lr 1e-5 --use-liger on \\
-      --train-file $TRAIN_FILE --val-file $VAL_FILE --test-file $TEST_FILE \\
-      --eval-mode full --bench-per-bucket 200 --skip-throughput-bench \\
-      --quantizers $QUANTIZE_AFTER --eliza1-bundle $base_bench_flag $push_flag
-  '"
+    if [ "$i" -gt 360 ]; then echo "[train_nebius][run] ERROR: still running after 6h — bailing (VM left up; ssh in to investigate or run teardown)"; return 1; fi
+  done
 }
 
 fetch() {
