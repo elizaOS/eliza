@@ -1779,9 +1779,7 @@ export class PTYService {
         | undefined);
     if (!fromRuntimeOrEnv) return null;
     const lowered = fromRuntimeOrEnv.toLowerCase();
-    if (
-      ["claude", "gemini", "codex", "aider", "opencode"].includes(lowered)
-    ) {
+    if (["claude", "gemini", "codex", "aider", "opencode"].includes(lowered)) {
       return lowered as CodingAgentType;
     }
     return null;
