@@ -5384,6 +5384,60 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 }
 
 /**
+ * Build the prompt sent to the fallback "failure reply" model when the
+ * planner trajectory errors out (rate limits, transient network failure,
+ * provider 5xx). The prompt forbids the model from emitting any
+ * substantive answer to the user's question — including answers that
+ * appear "obvious" from recent-conversation context — because the
+ * grounding trajectory never ran.
+ *
+ * Why a separate exported function: this prompt is load-bearing for
+ * correctness (a previous version's "if you can plausibly act, do it"
+ * escape hatch caused gpt-oss-120b on Cerebras to hallucinate a git
+ * SHA from prior chat context during a live battle test, even though
+ * no tool was actually called). Pinning the hard rules in tests means
+ * a future "let's make the failure reply more helpful" refactor can't
+ * silently re-introduce the hallucination vector.
+ *
+ * @param recentMessages Plain-text projection of the recent conversation
+ * (whatever the caller has at hand — typically `state.values.recentMessages`).
+ */
+export function buildFailureReplyPrompt(recentMessages: string): string {
+	return [
+		"You hit a transient model error and have to send a short user-facing reply.",
+		"Write a one or two sentence reply in plain language.",
+		"",
+		"Hard rules:",
+		"- Stay in character. Keep your usual voice and tone.",
+		"- NEVER mention internal mechanism words such as: planner, action_planner,",
+		"  XML, JSON, schema, structured output, model, retries, sonnet,",
+		"  opus, claude, anthropic, prompt, parse, parser, xml plan, decision",
+		"  loop, runtime, dispatch, or hand off. The user does not know or care",
+		"  what those are.",
+		"- Do not use em-dashes or en-dashes. Use a plain hyphen, period, or comma.",
+		"- Acknowledge that something went wrong and suggest a retry. Examples:",
+		'  "something flaked, try again in a sec",',
+		'  "weird hiccup, give me another shot in a moment",',
+		'  "got stuck on my end, retry that?"',
+		"- NEVER answer the user's question on the merits in this reply. Even",
+		"  if the answer looks obvious from context (a SHA, a count, a price,",
+		"  a date, a status, a file path, a name, a result), DO NOT emit it.",
+		"  The trajectory that would have GROUNDED the answer failed, so any",
+		"  factual claim you make here is by definition ungrounded — the user",
+		"  will retry, the real run will produce the grounded answer, and",
+		"  meanwhile you must not invent one from recent-conversation context.",
+		"- Do not paraphrase or echo the user's question as if you were about",
+		"  to answer it. Just say something went wrong and invite a retry.",
+		"- Return only the reply text. No labels, no XML, no JSON, no <think>.",
+		"",
+		"Recent Conversation:",
+		recentMessages,
+		"",
+		"Reply:",
+	].join("\n");
+}
+
+/**
  * True when a plugin registered at least one core text delegate (chat / planning).
  * Embeddings-only (local-ai) and TTS do not count — without a matching delegate,
  * `dynamicPromptExecFromState` can fail with "No handler found for delegate type".
@@ -9905,31 +9959,7 @@ export class DefaultMessageService implements IMessageService {
 			state,
 			message,
 		);
-		const failurePrompt = [
-			"You hit a transient model error and have to send a short user-facing reply.",
-			"Write a one or two sentence reply in plain language.",
-			"",
-			"Hard rules:",
-			"- Stay in character. Keep your usual voice and tone.",
-			"- NEVER mention internal mechanism words such as: planner, action_planner,",
-			"  XML, JSON, schema, structured output, model, retries, sonnet,",
-			"  opus, claude, anthropic, prompt, parse, parser, xml plan, decision",
-			"  loop, runtime, dispatch, or hand off. The user does not know or care",
-			"  what those are.",
-			"- Do not use em-dashes or en-dashes. Use a plain hyphen, period, or comma.",
-			"- Just acknowledge that something went wrong and suggest a retry.",
-			'  Examples: "something flaked, try again in a sec",',
-			'  "weird hiccup, give me another shot in a moment",',
-			'  "got stuck on my end, retry that?"',
-			"- If the user already gave a clear command and you can plausibly act,",
-			"  acknowledge it and offer to take the action directly. Keep it short.",
-			"- Return only the reply text. No labels, no XML, no JSON, no <think>.",
-			"",
-			"Recent Conversation:",
-			recentMessages,
-			"",
-			"Reply:",
-		].join("\n");
+		const failurePrompt = buildFailureReplyPrompt(recentMessages);
 
 		const attempt = await this.generateFailureReplyText(
 			runtime,
