@@ -24,7 +24,10 @@
   worth doing only when (a) there is a concrete upstream feature we want
   (e.g. a newer quant kernel, a server fix), and (b) GPU/Metal runners are
   available to re-verify the TurboQuant Q1_0 path on upstream's new block
-  layout.
+  layout. A 2026-05-11 attempt confirmed the target tag (`b9113`), the
+  exact replay command, and the conflict surface — it dies on the first
+  replayed commit (the `Q1_0` slot collision) and the resolution is the
+  kernel re-port below. See "Rebase attempt — 2026-05-11" near the bottom.
 - The `v1.0.0-eliza` tag = the kernel-complete `v0.4.0-eliza`/`v0.2.0-eliza`
   lineage tree, re-tagged for the org rename. A real newer rebase produces a
   new `v1.x` tag.
@@ -117,6 +120,92 @@ and it is hardware-verified at the levels recorded in
    and `compile-libllama.mjs`, the `min_llama_cpp_tag` in the training
    manifest emitter, and `packages/inference/AGENTS.md` / this doc /
    `unified-fork-strategy.md`.
+
+## Rebase attempt — 2026-05-11 (partial; aborted at conflict #1)
+
+A rebase attempt was run to confirm the conflict surface and pick the target
+tag. **Outcome: not completed — the work is exactly the multi-engineer,
+GPU+Metal-gated re-port this doc describes.** The eliza repo's pin is unchanged
+(`packages/inference/llama.cpp @ v1.0.0-eliza`, `.gitmodules` / `build-llama-cpp-dflash.mjs`
+/ `compile-libllama.mjs` untouched).
+
+What was established:
+
+- **Target upstream tag: `b9113`** (`1ec7ba0c14f33f17e980daeeda5f35b225d41994`),
+  the latest `bNNNN` upstream release tag at the time. It has the redefined
+  `block_q1_0` with `QK1_0 = 128` and `GGML_TYPE_Q1_0 = 41` (slot 40 is now
+  `GGML_TYPE_NVFP4`), plus `GGML_TYPE_COUNT = 42`.
+- **Fork lineage to replay: `7f5ee549..elizaOS/llama.cpp@eliza/main` — 34
+  commits, 8 of them merges** (`merge: TBQ`, `merge: QJL`, `merge: Q4_POLAR + QJL1_256`,
+  `merge: Metal kernels`, `merge: DFlash`, `merge: W3-B fused CPU kernels`,
+  `merge: W4-B CUDA kernels`, and one integration-branch fast-forward merge).
+  `7f5ee549` ("ggml: fix ggml_is_contiguous_n for ne == 1 (#20092)") = the
+  fork's upstream merge-base, also tagged `milady-v2026.05.09-base` on the fork
+  (the doc's "b8198-area base"). So the rebase command is
+  `git rebase --rebase-merges --onto b9113 7f5ee549 eliza/main`.
+- **It conflicts immediately, on the very first replayed commit**
+  `a1ae4dd13` ("ggml: add Q1_0 and Q1_0_g128 1-bit quantization support (CPU,
+  Metal, CUDA)") — 28 conflicted files, 81 conflict regions, before any commit
+  applies cleanly. The conflict is the `Q1_0` collision this doc names:
+  - the fork's `a1ae4dd13` defines `block_q1_0` with `QK1_0 = 32` at slot 40
+    *and* `block_q1_0_g128` with `QK1_0_g128 = 128` at slot 41;
+  - upstream `b9113` already owns slot 40 (`NVFP4`) and slot 41 (`Q1_0`,
+    `QK1_0 = 128` — which ≈ the fork's `block_q1_0_g128`).
+  - Conflicted files: `ggml/include/ggml.h`, `ggml/src/ggml-common.h`,
+    `ggml/src/ggml.c`, `ggml/src/ggml-quants.{c,h}`,
+    `ggml/src/ggml-cpu/{quants.c,quants.h,ggml-cpu.c,ops.cpp}` +
+    `ggml-cpu/arch/{arm,x86}/quants.c`,
+    `ggml/src/ggml-cuda/{convert.cu,dequantize.cuh,ggml-cuda.cu,mmq.cu,mmq.cuh,mmvq.cu,vecdotq.cuh}`,
+    `ggml/src/ggml-metal/{ggml-metal-device.cpp,ggml-metal-impl.h,ggml-metal-ops.cpp,ggml-metal.metal}`,
+    `gguf-py/gguf/constants.py`, `include/llama.h`,
+    `src/{llama-model-loader.cpp,llama-quant.cpp}`,
+    `tests/test-quantize-fns.cpp`, `tools/quantize/quantize.cpp`. (This matches
+    the "conflict surface" list above almost exactly.)
+
+The resolution this implies (not yet done — it is the deferred work):
+
+1. **Drop the fork's `block_q1_0_g128` / `GGML_TYPE_Q1_0_g128`.** Upstream's
+   `GGML_TYPE_Q1_0` (slot 41, `QK1_0 = 128`) *is* that type — re-point every
+   fork reference to `Q1_0_g128` / `block_q1_0_g128` at upstream's `Q1_0`.
+2. **Rename the fork's 32-element block type to a non-colliding slot** (e.g.
+   `GGML_TYPE_Q1_0_B32` / `block_q1_0_b32` at a free slot ≥ 48, after the
+   eliza `TBQ3_0=43`/`TBQ4_0=44`/`QJL1_256=46`/`Q4_POLAR=47` slots — and bump
+   `GGML_TYPE_COUNT` accordingly) and **re-point the TurboQuant CUDA + Metal +
+   CPU kernels** (the mmq / mmvq / vecdotq / fused-attn paths + the
+   `ggml-metal/eliza-kernels/*.metal` shaders) at the renamed type. Decision
+   to make here: keep TBQ on the 32-element block under the renamed type (the
+   smaller change, but keeps a 32-element 1-bit type forever) **or** migrate
+   TBQ to upstream's 128-element `Q1_0` layout (the more-correct, bigger
+   change — re-tiles/re-packs the CUDA mmq/mmvq and the Metal threadgroup
+   shapes). Either way, **bit-exact parity vs the reference + a model-backed
+   graph smoke on real CUDA *and* real Apple-Silicon Metal is the acceptance
+   bar** — CI has neither on free runners (`unified-fork-strategy.md` §G).
+3. **Then** replay the remaining 33 commits (TBQ → QJL → Q4_POLAR/QJL1_256 →
+   Metal → DFlash → W3-B fused CPU → W4-B CUDA) on top of the resolved base.
+   Several of these touch `block_q1_0` directly and will need follow-on
+   resolution once step 2's rename lands.
+4. Re-reconcile the structured-output server patch (or confirm `b9113`'s
+   `tools/server/` now carries it natively and drop the fork copy — `b9113` is
+   post-server-refactor, so it very likely does).
+5. Adapt to upstream's `ggml-metal` restructure: `b9113` has
+   `ggml-metal-{device,impl,ops}.cpp` + `ggml-metal.metal` (the `.m` → `.cpp`
+   split is already done in the fork's base too, but the file shapes drifted).
+   Re-slot the `ggml-metal/eliza-kernels/*.metal` shaders + dispatcher
+   entries.
+6. Run the full CI matrix (`unified-fork-strategy.md` §G) **plus**
+   `kernel-verify-gpu`. No green-GPU + green-Metal run, no merge. Then tag
+   `v1.1.0-eliza` and bump `LLAMA_CPP_TAG`/`REF`/`MIN_COMMIT` in
+   `build-llama-cpp-dflash.mjs` + `compile-libllama.mjs`, the
+   `min_llama_cpp_tag` in the training manifest emitter, and the docs.
+
+**Bottom line:** the rebase is mechanically straightforward to *start*
+(`git rebase --rebase-merges --onto b9113 7f5ee549 eliza/main`) and the target
+tag is settled, but step 2 — the Q1_0 slot rename + the TurboQuant kernel
+re-port — is the real cost, and it cannot be merged without GPU + Apple-Silicon
+Metal hardware verification. Until that capacity exists, `v1.0.0-eliza` stays
+the pinned working tree (it carries every eliza kernel, DFlash, and the
+structured-output server surface, and is hardware-verified at the levels in
+`packages/inference/README.md`).
 
 ## See also
 

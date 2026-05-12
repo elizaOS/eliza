@@ -55,17 +55,31 @@ const JSON_OUT = args.includes("--json");
 const results = [];
 
 function have(cmd) {
-  const r = spawnSync(process.platform === "win32" ? "where" : "command", ["-v", cmd], {
-    shell: true,
-    stdio: "ignore",
-  });
+  const r = spawnSync(
+    process.platform === "win32" ? "where" : "command",
+    ["-v", cmd],
+    {
+      shell: true,
+      stdio: "ignore",
+    },
+  );
   return r.status === 0;
 }
 
-function step(name, cmd, cmdArgs, { cwd = REPO_ROOT, env = {}, allowMissing = null } = {}) {
+function step(
+  name,
+  cmd,
+  cmdArgs,
+  { cwd = REPO_ROOT, env = {}, allowMissing = null } = {},
+) {
   if (allowMissing && !have(allowMissing)) {
-    results.push({ name, status: "skipped", detail: `'${allowMissing}' not on PATH` });
-    if (!JSON_OUT) console.log(`  SKIP  ${name}  ('${allowMissing}' not on PATH)`);
+    results.push({
+      name,
+      status: "skipped",
+      detail: `'${allowMissing}' not on PATH`,
+    });
+    if (!JSON_OUT)
+      console.log(`  SKIP  ${name}  ('${allowMissing}' not on PATH)`);
     return;
   }
   if (!JSON_OUT) console.log(`  ...   ${name}`);
@@ -78,41 +92,56 @@ function step(name, cmd, cmdArgs, { cwd = REPO_ROOT, env = {}, allowMissing = nu
   const ok = r.status === 0;
   let detail;
   if (!ok) {
-    const tail = `${r.stdout || ""}${r.stderr || ""}`.trim().split("\n").slice(-8).join("\n");
+    const tail = `${r.stdout || ""}${r.stderr || ""}`
+      .trim()
+      .split("\n")
+      .slice(-8)
+      .join("\n");
     detail = `exit ${r.status}${tail ? `\n${tail}` : ""}`;
   }
   results.push({ name, status: ok ? "ok" : "fail", detail });
-  if (!JSON_OUT) console.log(`  ${ok ? "OK  " : "FAIL"}  ${name}${ok ? "" : `  — exit ${r.status}`}`);
-  if (!ok && !JSON_OUT && detail) console.log(detail.split("\n").map((l) => `        ${l}`).join("\n"));
+  if (!JSON_OUT)
+    console.log(
+      `  ${ok ? "OK  " : "FAIL"}  ${name}${ok ? "" : `  — exit ${r.status}`}`,
+    );
+  if (!ok && !JSON_OUT && detail)
+    console.log(
+      detail
+        .split("\n")
+        .map((l) => `        ${l}`)
+        .join("\n"),
+    );
 }
 
 if (!JSON_OUT) {
   console.log("=== Eliza-1 v1 release prep — no-hardware steps ===\n");
   console.log("Runbook: RELEASE_V1.md   QA checklist: ELIZA_1_TESTING_TODO.md");
-  console.log("HW catalog: packages/inference/reports/porting/2026-05-11/needs-hardware-ledger.md\n");
+  console.log(
+    "HW catalog: packages/inference/reports/porting/2026-05-11/needs-hardware-ledger.md\n",
+  );
 }
 
 // --- 1. Build plumbing ---------------------------------------------------------
-step(
-  "build-llama-cpp-dflash.mjs --target linux-x64-cpu --dry-run",
-  "node",
-  ["packages/app-core/scripts/build-llama-cpp-dflash.mjs", "--target", "linux-x64-cpu", "--dry-run"],
-);
+step("build-llama-cpp-dflash.mjs --target linux-x64-cpu --dry-run", "node", [
+  "packages/app-core/scripts/build-llama-cpp-dflash.mjs",
+  "--target",
+  "linux-x64-cpu",
+  "--dry-run",
+]);
 
 // --- 2. Manifest / bundle / platform-plan / source-staging / evidence tests ----
-step(
-  "pytest packages/training/scripts/manifest/",
-  "python3",
-  ["-m", "pytest", "packages/training/scripts/manifest/", "-q"],
-);
+step("pytest packages/training/scripts/manifest/", "python3", [
+  "-m",
+  "pytest",
+  "packages/training/scripts/manifest/",
+  "-q",
+]);
 
 // --- 3. Quant recipe parity + codebook-hash pins (slower) ----------------------
 if (!QUICK) {
-  step(
-    "quantization/test_recipes_smoke.py",
-    "python3",
-    ["packages/training/scripts/quantization/test_recipes_smoke.py"],
-  );
+  step("quantization/test_recipes_smoke.py", "python3", [
+    "packages/training/scripts/quantization/test_recipes_smoke.py",
+  ]);
 }
 
 // --- 4. py_compile the release-pipeline scripts --------------------------------
@@ -134,7 +163,11 @@ const PY_SCRIPTS = [
   "packages/training/scripts/manifest/eliza1_platform_plan.py",
   "packages/training/scripts/manifest/finalize_eliza1_evidence.py",
 ];
-step("py_compile release-pipeline scripts", "python3", ["-m", "py_compile", ...PY_SCRIPTS]);
+step("py_compile release-pipeline scripts", "python3", [
+  "-m",
+  "py_compile",
+  ...PY_SCRIPTS,
+]);
 
 // --- 5. Quant recipe --dry-runs (CLI surface + recipe params) ------------------
 for (const [label, script, extra] of [
@@ -142,52 +175,42 @@ for (const [label, script, extra] of [
   ["fused_turboquant_apply --dry-run", "fused_turboquant_apply.py", []],
   ["qjl_apply --dry-run", "qjl_apply.py", []],
 ]) {
-  step(
-    label,
-    "python3",
-    [
-      `packages/training/scripts/quantization/${script}`,
-      "--model",
-      "Qwen/Qwen3-0.6B",
-      "--output",
-      `${process.env.TMPDIR || "/tmp"}/eliza1-prep-${script}`,
-      "--dry-run",
-      ...extra,
-    ],
-  );
-}
-step(
-  "polarquant_apply --dry-run",
-  "python3",
-  [
-    "packages/training/scripts/quantization/polarquant_apply.py",
+  step(label, "python3", [
+    `packages/training/scripts/quantization/${script}`,
     "--model",
     "Qwen/Qwen3-0.6B",
     "--output",
-    `${process.env.TMPDIR || "/tmp"}/eliza1-prep-polarquant`,
+    `${process.env.TMPDIR || "/tmp"}/eliza1-prep-${script}`,
     "--dry-run",
-  ],
-);
+    ...extra,
+  ]);
+}
+step("polarquant_apply --dry-run", "python3", [
+  "packages/training/scripts/quantization/polarquant_apply.py",
+  "--model",
+  "Qwen/Qwen3-0.6B",
+  "--output",
+  `${process.env.TMPDIR || "/tmp"}/eliza1-prep-polarquant`,
+  "--dry-run",
+]);
 
 // --- 6. DFlash distill synthetic smoke (no torch / GPU) ------------------------
-step(
-  "distill_dflash_drafter.py --tier 1_7b --synthetic-smoke",
-  "python3",
-  [
-    "packages/training/scripts/distill_dflash_drafter.py",
-    "--tier",
-    "1_7b",
-    "--synthetic-smoke",
-    "--out-dir",
-    `${process.env.TMPDIR || "/tmp"}/eliza1-prep-dflash-smoke`,
-  ],
-);
+step("distill_dflash_drafter.py --tier 1_7b --synthetic-smoke", "python3", [
+  "packages/training/scripts/distill_dflash_drafter.py",
+  "--tier",
+  "1_7b",
+  "--synthetic-smoke",
+  "--out-dir",
+  `${process.env.TMPDIR || "/tmp"}/eliza1-prep-dflash-smoke`,
+]);
 
 // --- 7. Platform plan regenerates idempotently --------------------------------
 {
   const planPath = path.join(REPO_ROOT, "ELIZA_1_GGUF_PLATFORM_PLAN.json");
   const mdPath = path.join(REPO_ROOT, "ELIZA_1_GGUF_READINESS.md");
-  const before = [planPath, mdPath].map((p) => (fs.existsSync(p) ? fs.readFileSync(p, "utf8") : ""));
+  const before = [planPath, mdPath].map((p) =>
+    fs.existsSync(p) ? fs.readFileSync(p, "utf8") : "",
+  );
   step(
     "eliza1_platform_plan.py regenerates ELIZA_1_GGUF_{PLATFORM_PLAN.json,READINESS.md}",
     "python3",
@@ -199,14 +222,20 @@ step(
       "ELIZA_1_GGUF_READINESS.md",
     ],
   );
-  const after = [planPath, mdPath].map((p) => (fs.existsSync(p) ? fs.readFileSync(p, "utf8") : ""));
+  const after = [planPath, mdPath].map((p) =>
+    fs.existsSync(p) ? fs.readFileSync(p, "utf8") : "",
+  );
   if (before[0] !== after[0] || before[1] !== after[1]) {
     results.push({
       name: "eliza1_platform_plan.py idempotency",
       status: "fail",
-      detail: "regenerating ELIZA_1_GGUF_PLATFORM_PLAN.json / ELIZA_1_GGUF_READINESS.md changed them — commit the regenerated files",
+      detail:
+        "regenerating ELIZA_1_GGUF_PLATFORM_PLAN.json / ELIZA_1_GGUF_READINESS.md changed them — commit the regenerated files",
     });
-    if (!JSON_OUT) console.log("  FAIL  eliza1_platform_plan.py idempotency — regenerated files differ; commit them");
+    if (!JSON_OUT)
+      console.log(
+        "  FAIL  eliza1_platform_plan.py idempotency — regenerated files differ; commit them",
+      );
   } else {
     results.push({ name: "eliza1_platform_plan.py idempotency", status: "ok" });
     if (!JSON_OUT) console.log("  OK    eliza1_platform_plan.py idempotency");
@@ -214,12 +243,22 @@ step(
 }
 
 // --- 8. Gate-collect per tier (needs-data placeholders, no eval bytes) --------
-for (const tier of ["0_6b", "1_7b", "9b", "27b", "27b-256k", "27b-1m"]) {
-  step(
-    `eliza1_gates_collect.mjs --tier ${tier} --json`,
-    "node",
-    ["packages/inference/verify/eliza1_gates_collect.mjs", "--tier", tier, "--json"],
+// Write the per-tier aggregate report to a tmp path so a prep run doesn't drop a
+// timestamped file into packages/inference/reports/gates/ every time.
+{
+  const tmpReportDir = fs.mkdtempSync(
+    path.join(process.env.TMPDIR || "/tmp", "eliza1-prep-gates-"),
   );
+  for (const tier of ["0_6b", "1_7b", "9b", "27b", "27b-256k", "27b-1m"]) {
+    step(`eliza1_gates_collect.mjs --tier ${tier}`, "node", [
+      "packages/inference/verify/eliza1_gates_collect.mjs",
+      "--tier",
+      tier,
+      "--json",
+      "--report",
+      path.join(tmpReportDir, `eliza1-gates-${tier}.json`),
+    ]);
+  }
 }
 
 // --- 9. CPU C reference + kernel-contract (only with make/cc) ------------------
@@ -244,33 +283,88 @@ const skipped = results.filter((r) => r.status === "skipped");
 const ok = results.filter((r) => r.status === "ok");
 
 const REMAINING_HW = [
-  ["Fork build per backend + metal/vulkan/cuda/rocm verify + platform-dispatch smokes", "the target backend's hardware (Metal Mac, CUDA NVIDIA, Vulkan Linux/Android, ROCm AMD; GH200-class aarch64+CUDA for 27b-1m)", "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>; make -C packages/inference/verify {metal,vulkan,cuda,rocm}_verify; verify/{cuda,rocm,gh200}_runner.sh / windows_runner.ps1"],
-  ["PolarQuant code generation + TurboQuant skip-layer calibration", "a GPU big enough for the tier (consumer for 0.6B/1.7B; ≥24 GB for 9B; ≥48 GB / multi-GPU for 27B)", "uv run --extra train python packages/training/scripts/quantization/{polarquant,turboquant}_apply.py --model <hf-ckpt> --output ... --device cuda"],
-  ["DFlash drafter real distillation run", "a GPU (the student forwards the dataset)", "uv run --extra train python packages/training/scripts/distill_dflash_drafter.py --tier <t> --target-checkpoint <dir> --target-gguf <gguf> --student-base <qwen3> --dataset <jsonl> --out-dir ..."],
-  ["Acquire the base weights + stage the full bundle", "a network host (the source GGUFs/safetensors download)", "uv run python packages/training/scripts/manifest/stage_eliza1_source_weights.py --tier <t> --bundle-dir ...; uv run python packages/training/scripts/manifest/stage_eliza1_bundle_assets.py --tier <t> --bundle-dir ... --link-mode hardlink; uv run python packages/training/scripts/manifest/stage_local_eliza1_bundle.py --tier <t> --all-contexts --bundle-dir ... --release-state base-v1"],
-  ["base-v1 evals: text perplexity vs upstream GGUF, voice RTF, ASR WER, VAD latency, dflash acceptance, e2e loop, 30-turn, mobile RSS/thermal", "a GPU big enough for the tier + reference devices for mobile/voice", "node packages/inference/verify/dflash_drafter_runtime_smoke.mjs --bench; bun run voice:interactive; node packages/inference/verify/{thirty_turn_endurance,mobile_peak_rss,bargein_latency}_harness.mjs; uv run python -m packages.training.benchmarks.eliza1_gates <aggregate.json>"],
-  ["Publish to HuggingFace under elizaos/eliza-1-<tier>", "HF_TOKEN with write access to elizaos/*", "bash packages/training/scripts/publish_all_eliza1.sh --bundles-root <dir> --dry-run  (then drop --dry-run)"],
-  ["Move legacy HF repos out of milady-ai into elizaos + create the per-tier bundle repos", "HF_TOKEN with write access to BOTH milady-ai and elizaos", "bash scripts/hf-transfer-eliza1.sh           (dry-run; then --execute)"],
+  [
+    "Fork build per backend + metal/vulkan/cuda/rocm verify + platform-dispatch smokes",
+    "the target backend's hardware (Metal Mac, CUDA NVIDIA, Vulkan Linux/Android, ROCm AMD; GH200-class aarch64+CUDA for 27b-1m)",
+    "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>; make -C packages/inference/verify {metal,vulkan,cuda,rocm}_verify; verify/{cuda,rocm,gh200}_runner.sh / windows_runner.ps1",
+  ],
+  [
+    "PolarQuant code generation + TurboQuant skip-layer calibration",
+    "a GPU big enough for the tier (consumer for 0.6B/1.7B; ≥24 GB for 9B; ≥48 GB / multi-GPU for 27B)",
+    "uv run --extra train python packages/training/scripts/quantization/{polarquant,turboquant}_apply.py --model <hf-ckpt> --output ... --device cuda",
+  ],
+  [
+    "DFlash drafter real distillation run",
+    "a GPU (the student forwards the dataset)",
+    "uv run --extra train python packages/training/scripts/distill_dflash_drafter.py --tier <t> --target-checkpoint <dir> --target-gguf <gguf> --student-base <qwen3> --dataset <jsonl> --out-dir ...",
+  ],
+  [
+    "Acquire the base weights + stage the full bundle",
+    "a network host (the source GGUFs/safetensors download)",
+    "uv run python packages/training/scripts/manifest/stage_eliza1_source_weights.py --tier <t> --bundle-dir ...; uv run python packages/training/scripts/manifest/stage_eliza1_bundle_assets.py --tier <t> --bundle-dir ... --link-mode hardlink; uv run python packages/training/scripts/manifest/stage_local_eliza1_bundle.py --tier <t> --all-contexts --bundle-dir ... --release-state base-v1",
+  ],
+  [
+    "base-v1 evals: text perplexity vs upstream GGUF, voice RTF, ASR WER, VAD latency, dflash acceptance, e2e loop, 30-turn, mobile RSS/thermal",
+    "a GPU big enough for the tier + reference devices for mobile/voice",
+    "node packages/inference/verify/dflash_drafter_runtime_smoke.mjs --bench; bun run voice:interactive; node packages/inference/verify/{thirty_turn_endurance,mobile_peak_rss,bargein_latency}_harness.mjs; uv run python -m packages.training.benchmarks.eliza1_gates <aggregate.json>",
+  ],
+  [
+    "Publish to HuggingFace under elizaos/eliza-1-<tier>",
+    "HF_TOKEN with write access to elizaos/*",
+    "bash packages/training/scripts/publish_all_eliza1.sh --bundles-root <dir> --dry-run  (then drop --dry-run)",
+  ],
+  [
+    "Move legacy HF repos out of milady-ai into elizaos + create the per-tier bundle repos",
+    "HF_TOKEN with write access to BOTH milady-ai and elizaos",
+    "bash scripts/hf-transfer-eliza1.sh           (dry-run; then --execute)",
+  ],
 ];
 
 if (JSON_OUT) {
-  console.log(JSON.stringify({ noHardwareSteps: results, remainingHardware: REMAINING_HW.map(([what, host, cmd]) => ({ what, host, cmd })), ok: failed.length === 0 }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        noHardwareSteps: results,
+        remainingHardware: REMAINING_HW.map(([what, host, cmd]) => ({
+          what,
+          host,
+          cmd,
+        })),
+        ok: failed.length === 0,
+      },
+      null,
+      2,
+    ),
+  );
 } else {
   console.log("");
-  console.log(`=== No-hardware steps: ${ok.length} ok, ${failed.length} failed, ${skipped.length} skipped ===`);
+  console.log(
+    `=== No-hardware steps: ${ok.length} ok, ${failed.length} failed, ${skipped.length} skipped ===`,
+  );
   if (failed.length) {
-    console.log("\nFailed steps (these are real regressions — fix before shipping):");
-    for (const f of failed) console.log(`  - ${f.name}${f.detail ? `\n      ${f.detail.split("\n").join("\n      ")}` : ""}`);
+    console.log(
+      "\nFailed steps (these are real regressions — fix before shipping):",
+    );
+    for (const f of failed)
+      console.log(
+        `  - ${f.name}${f.detail ? `\n      ${f.detail.split("\n").join("\n      ")}` : ""}`,
+      );
   }
   console.log("\n=== Remaining: needs hardware / network / HF credentials ===");
-  console.log("(also in ELIZA_1_TESTING_TODO.md as [hw] lines, with per-backend detail in needs-hardware-ledger.md)\n");
+  console.log(
+    "(also in ELIZA_1_TESTING_TODO.md as [hw] lines, with per-backend detail in needs-hardware-ledger.md)\n",
+  );
   for (const [what, host, cmd] of REMAINING_HW) {
     console.log(`  [ ] ${what}`);
     console.log(`      host: ${host}`);
     console.log(`      run:  ${cmd}`);
     console.log("");
   }
-  console.log(failed.length ? "release:v1:prep FAILED — see failed steps above." : "release:v1:prep OK — every no-hardware step passed. The remaining work is the hardware/network/HF list above.");
+  console.log(
+    failed.length
+      ? "release:v1:prep FAILED — see failed steps above."
+      : "release:v1:prep OK — every no-hardware step passed. The remaining work is the hardware/network/HF list above.",
+  );
 }
 
 process.exit(failed.length === 0 ? 0 : 1);
