@@ -73,23 +73,24 @@ those backends on this host. CPU rows are real runs against the
 | barge-in cancel latency | 5.2 ms (client-side HTTP abort surrogate — `cancel_tts` is a no-op on the batch-only build; native streaming-cancel symbols are stubbed) |
 | server peak RSS | 3070 MB — **over** manifest `ramBudgetMb.recommended` (1800 MB): the fused process holds text + drafter + omnivoice (base + tokenizer + DAC + HuBERT + sem-enc) all resident |
 
-### 1.7B — CPU (`linux-x64-cpu-fused`, 1 turn, 16-token response, ≤3 TTS phrases)
+### 1.7B — CPU (`linux-x64-cpu-fused`, 1 turn)
 
-Run under heavy CPU contention from a concurrent fork CUDA build (`-j5..-j24`)
-— TTS RTF in particular is inflated by that, not a true idle figure.
+Two 1-turn runs (16-token response, ≤3 TTS phrases) under varying CPU
+contention from concurrent CUDA builds — TTS RTF is inflated by that, not a
+true idle figure.
 
-| metric | value |
-|---|---|
-| ASR latency (FFI transcribe) | 4430 ms |
-| ASR WER (round-trip) | 1.00 (transcript: `"[0."`) — ASR GGUF is stand-in quality |
-| first-token latency | 87 ms |
-| decode tokens/sec | 12.0 tok/s |
-| DFlash acceptance | 0.333 (2/6 — drafter ≈ copy of target; lower draft-window hit ratio on 1.7B) |
-| first-audio (mic-in → first PCM of phrase 1) | ~25.3 s (3-phrase TTS at >1×-RTF dominates) |
-| TTS RTF (median over phrases) | 10.5 (CPU MaskGIT under build contention) |
-| total turn latency | 58.9 s |
-| barge-in cancel latency | 0.7 ms (client-side HTTP abort surrogate; `cancel_tts` no-op on batch-only build) |
-| server peak RSS | 4485 MB — **within** manifest `ramBudgetMb.recommended` (4500 MB) ✓ |
+| metric | run A (heavy contention) | run B (eval-suite, lighter) |
+|---|---|---|
+| ASR latency (FFI transcribe) | 4430 ms | 5510 ms |
+| ASR WER (round-trip) | 1.00 (`"[0."`) | 1.00 — ASR GGUF is stand-in quality |
+| first-token latency | 87 ms | 61 ms |
+| decode tokens/sec | 12.0 | 27.1 tok/s |
+| DFlash acceptance | 0.333 (2/6) | 0.889 (8/9) — drafter ≈ copy of target; high variance at small token counts |
+| first-audio (mic-in → first PCM) | ~25.3 s | ~29.5 s |
+| TTS RTF (median over phrases) | 10.5 | 6.53 |
+| total turn latency | 58.9 s | 58.0 s |
+| barge-in cancel latency | 0.7 ms | 1.6 ms — client-side HTTP-abort surrogate; `cancel_tts` no-op on batch-only build |
+| server peak RSS | 4485 MB (≤ budget) | 4502 MB — **just over** manifest `ramBudgetMb.recommended` (4500 MB) |
 
 ### Vulkan / CUDA — both tiers
 
