@@ -64,6 +64,7 @@ import {
   normalizeMobileRuntimeMode,
   preSeedAndroidLocalRuntimeIfFresh,
   resolveWindowShellRoute,
+  routeOnboardingDeepLink,
   SHARE_TARGET_EVENT,
   type ShareTargetPayload,
   setBootConfig,
@@ -72,7 +73,6 @@ import {
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui";
-import { routeOnboardingDeepLink } from "@elizaos/ui/onboarding/deep-link-handler";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 // Side-effect: register LifeOps sidebar widgets + client methods on ElizaClient.

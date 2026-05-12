@@ -196,6 +196,7 @@ export * from "./layouts";
 export * from "./lib/floating-layers";
 export * from "./lib/utils";
 export * from "./navigation";
+export * from "./onboarding/deep-link-handler";
 export * from "./onboarding/mobile-runtime-mode";
 export * from "./onboarding/pre-seed-local-runtime";
 export * from "./onboarding-config";

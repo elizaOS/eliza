@@ -1022,6 +1022,10 @@ export default defineConfig({
         find: /^@elizaos\/ui\/styles$/,
         replacement: path.join(uiPkgRoot, "src/styles.ts"),
       },
+      {
+        find: /^@elizaos\/ui\/(.+)$/,
+        replacement: path.join(uiPkgRoot, "src/$1"),
+      },
       // Browser-safe aliases for local app plugin package roots.
       ...createAppPluginBrowserAliases(),
       // Dynamic aliases for local app plugin package subpaths.
@@ -1087,6 +1091,10 @@ export default defineConfig({
           {
             find: /^@elizaos\/ui$/,
             replacement: path.join(uiSource, "index.ts"),
+          },
+          {
+            find: /^@elizaos\/ui\/(.+)$/,
+            replacement: path.join(uiSource, "$1"),
           },
           {
             find: /^@elizaos\/agent$/,
