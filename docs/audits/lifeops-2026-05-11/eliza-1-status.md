@@ -20,19 +20,32 @@ in `report.json`.
 
 ## Per-bundle status
 
-All bundles validated SHA256 ✓ under
-`~/.eliza/local-inference/models/eliza-1-<size>.bundle/`.
+> **2026-05-11 (Wave-6 G4 refresh):** the table below reflects the *intended*
+> per-tier release state. The on-disk reality on this checkout (after the
+> G4 sub-agent pulled real Qwen weights from HF) is recorded in
+> [`g4-bundle-status.md`](./g4-bundle-status.md). Short version: 0.6b / 1.7b /
+> 9b now have real, sha-matched base weights staged locally with bench-harness
+> `manifest.json` files; 27b / 27b-1m are blocked on a ≈ 16.5 GiB upstream
+> pull (disk budget) and have no on-disk bundle yet. No drafter for any tier
+> on this host. No `eliza-1-*` repo is published on Hugging Face — the only
+> public elizaos HF asset is the empty `elizaos/eliza-1-assets/1_7b/` scaffold.
 
 | Bundle ID         | Size    | releaseState   | publishEligible | final.weights | DFlash drafter | Weights validated | preRelease |
 |-------------------|---------|----------------|-----------------|---------------|----------------|-------------------|------------|
 | `eliza-1-0.6b`    | 0.6b    | local-standin  | false           | false         | **missing**    | ✓                 | **true**   |
 | `eliza-1-1.7b`    | 1.7b    | local-standin  | false           | false         | **missing**    | ✓                 | **true**   |
-| `eliza-1-9b`      | 9b      | local-standin  | false           | false         | present        | ✓                 | **true**   |
-| `eliza-1-27b`     | 27b     | local-standin  | false           | false         | present        | ✓                 | **true**   |
-| `eliza-1-27b-1m`  | 27b-1m  | local-standin  | false           | false         | present        | ✓                 | **true**   |
+| `eliza-1-9b`      | 9b      | local-standin  | false           | false         | **missing**    | ✓                 | **true**   |
+| `eliza-1-27b`     | 27b     | local-standin  | false           | false         | **missing**    | (no bundle on host) | **true** |
+| `eliza-1-27b-1m`  | 27b-1m  | local-standin  | false           | false         | **missing**    | (no bundle on host) | **true** |
 
 DFlash drafter gaps: per `ELIZA_1_PRODUCTION_READINESS_REVIEW.md`, the 0.6B
-and 1.7B bundles ship without a paired drafter. The dflash server still
+and 1.7B bundles ship without a paired drafter (no upstream drafter has been
+distilled yet against those text checkpoints). The 9B / 27B / 27B-1m tiers
+have historical drafter binaries on a separate Linux build host
+(`qwen3.5-9b-dflash-q8_0.gguf` and family) but those distilled artifacts
+are not on this Mac checkout and are not published on Hugging Face — the
+drafter pipeline is `packages/training/scripts/distill_dflash_drafter.py`
+on a CUDA host. The dflash server still
 spawns against the base weights for these sizes but loses speculative
 decoding throughput.
 
