@@ -332,19 +332,58 @@ function managedDflashBinaryPath(): string {
  * communicating over IPC"). We prefer the fused binary over the stock one
  * whenever both exist for the active backend.
  */
-function fusedBackendKey(): string {
+/**
+ * Resolve the llama-server fork backend tag for the current host.
+ *
+ * Precedence:
+ *   1. `ELIZA_DFLASH_BACKEND` — explicit operator override (any value).
+ *   2. `darwin` → always `metal`.
+ *   3. `HIP_VISIBLE_DEVICES` / `ROCR_VISIBLE_DEVICES` set → `rocm`.
+ *   4. `CUDA_VISIBLE_DEVICES` set (and not `-1`) → `cuda`.
+ *   5. **Installed-build probe** — if an accelerated fork build directory
+ *      exists under `<root>/bin/dflash/<platform>-<arch>-<backend>[-fused]/`
+ *      with a `llama-server` binary in it, prefer that backend (cuda before
+ *      vulkan before rocm). This is what makes a downloaded/built CUDA fork
+ *      artifact actually get used on a fresh Windows/Linux desktop install,
+ *      where none of the `*_VISIBLE_DEVICES` env vars are set — without it
+ *      the runtime always keyed `…-cpu` and silently ran the CPU fork even
+ *      with a CUDA build sitting on disk.
+ *   6. Fall back to `cpu`.
+ *
+ * `suffix` is `"-fused"` for the omnivoice-grafted build dir, `""` for the
+ * stock build dir.
+ */
+function accelBackendKey(suffix: "" | "-fused"): string {
   const forced = process.env.ELIZA_DFLASH_BACKEND?.trim().toLowerCase();
-  const backend = forced
-    ? forced
-    : process.platform === "darwin"
-      ? "metal"
-      : process.env.HIP_VISIBLE_DEVICES || process.env.ROCR_VISIBLE_DEVICES
-        ? "rocm"
-        : process.env.CUDA_VISIBLE_DEVICES &&
-            process.env.CUDA_VISIBLE_DEVICES !== "-1"
-          ? "cuda"
-          : "cpu";
-  return `${process.platform}-${process.arch}-${backend}-fused`;
+  if (forced) return `${process.platform}-${process.arch}-${forced}${suffix}`;
+  if (process.platform === "darwin") {
+    return `${process.platform}-${process.arch}-metal${suffix}`;
+  }
+  if (process.env.HIP_VISIBLE_DEVICES || process.env.ROCR_VISIBLE_DEVICES) {
+    return `${process.platform}-${process.arch}-rocm${suffix}`;
+  }
+  if (
+    process.env.CUDA_VISIBLE_DEVICES &&
+    process.env.CUDA_VISIBLE_DEVICES !== "-1"
+  ) {
+    return `${process.platform}-${process.arch}-cuda${suffix}`;
+  }
+  for (const backend of ["cuda", "vulkan", "rocm"] as const) {
+    const dir = path.join(
+      localInferenceRoot(),
+      "bin",
+      "dflash",
+      `${process.platform}-${process.arch}-${backend}${suffix}`,
+    );
+    if (fs.existsSync(path.join(dir, "llama-server"))) {
+      return `${process.platform}-${process.arch}-${backend}${suffix}`;
+    }
+  }
+  return `${process.platform}-${process.arch}-cpu${suffix}`;
+}
+
+function fusedBackendKey(): string {
+  return accelBackendKey("-fused");
 }
 
 function managedFusedDflashDir(): string {
@@ -568,18 +607,7 @@ function candidateBinaryPaths(): string[] {
 }
 
 function platformKey(): string {
-  const forced = process.env.ELIZA_DFLASH_BACKEND?.trim().toLowerCase();
-  if (forced) return `${process.platform}-${process.arch}-${forced}`;
-  const backend =
-    process.platform === "darwin"
-      ? "metal"
-      : process.env.HIP_VISIBLE_DEVICES || process.env.ROCR_VISIBLE_DEVICES
-        ? "rocm"
-        : process.env.CUDA_VISIBLE_DEVICES &&
-            process.env.CUDA_VISIBLE_DEVICES !== "-1"
-          ? "cuda"
-          : "cpu";
-  return `${process.platform}-${process.arch}-${backend}`;
+  return accelBackendKey("");
 }
 
 export function resolveDflashBinary(): string | null {
