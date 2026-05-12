@@ -462,7 +462,7 @@ backend nightly.
   produce numerically identical output (within published tolerance) to
   the C reference in `packages/inference/reference/` and to the
   upstream CUDA implementation in
-  `packages/native-plugins/{qjl-cpu,polarquant-cpu}` and the buun-llama-cpp
+  `packages/native-plugins/{qjl-cpu,polarquant-cpu}` and the `elizaOS/llama.cpp`
   fork. New kernels follow the same pattern: ship the C reference and
   a JSON fixture before shipping the Vulkan/Metal port.
 - **Hardware verification is non-optional.** A "compiles cleanly"
@@ -495,10 +495,8 @@ backend nightly.
   from the in-repo `packages/inference/llama.cpp` submodule.
 - `packages/training/AGENTS.md` — the training-side contract, including
   what the bundle/publish flow expects.
-- `/Users/shawwalters/eliza-workspace/milady/CLAUDE.md` — repo-wide
-  conventions (port handling, scope discipline, elizaOS naming).
-- `/Users/shawwalters/eliza-workspace/milady/AGENTS.md` — repo-wide
-  cleanup mandate. The non-negotiable architecture rules apply here
-  too: dependencies point inward, no polymorphism for runtime branching
-  in code (kernels are a registry, not an `if`), no `try/catch` that
-  swallows.
+- the repo-root `AGENTS.md` — repo-wide cleanup mandate and conventions
+  (port handling, scope discipline, elizaOS naming). The non-negotiable
+  architecture rules apply here too: dependencies point inward, no
+  polymorphism for runtime branching in code (kernels are a registry,
+  not an `if`), no `try/catch` that swallows.
