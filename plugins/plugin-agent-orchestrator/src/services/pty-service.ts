@@ -997,11 +997,22 @@ export class PTYService {
       hasCallerMemoryContent || resolvedAgentType === "shell"
         ? options.initialTask
         : prependWorkspaceLockToTask(options.initialTask, workspaceTaskPrefix);
+    // Pi still routes through the shell bridge (PTY types the bare
+    // shell command into bash), so its task needs `toPiCommand` to wrap
+    // it as a runnable command line.
+    //
+    // OpenCode used to go the same way (`toOpencodeCommand` returned
+    // `opencode run --dangerously-skip-permissions '<task>'`). It's now
+    // a canonical adapter (eliza#7609, parallax 0.17+) — `OpencodeAdapter`
+    // owns the `opencode run --dangerously-skip-permissions` wrapping
+    // and reads the raw task off `adapterConfig.initialPrompt`. Applying
+    // `toOpencodeCommand` here would double-wrap, producing
+    // `opencode run --dangerously-skip-permissions opencode run --dangerously-skip-permissions '<task>'`
+    // when the adapter then appends the wrapped string as its prompt arg.
+    // Pass opencode the RAW task; the adapter handles the rest.
     const resolvedInitialTask = piRequested
       ? toPiCommand(effectiveInitialTask)
-      : opencodeRequested
-        ? toOpencodeCommand(effectiveInitialTask)
-        : effectiveInitialTask;
+      : effectiveInitialTask;
 
     // Store workdir for later retrieval
     this.sessionWorkdirs.set(sessionId, workdir);
@@ -2865,12 +2876,21 @@ export class PTYService {
   }
 
   private isAdapterBackedAgentType(value: unknown): value is AdapterType {
+    // opencode joined the canonical adapter list in eliza#7609 (parallax
+    // 0.17+). `OpencodeAdapter.getArgs` passes the task as a positional
+    // arg to `opencode run --dangerously-skip-permissions <task>` — its
+    // run mode does NOT accept stdin prompts the way claude/codex do.
+    // Without `opencode` in this allowlist, PTYService falls through to
+    // the legacy shell-bridge that pipes the task into PTY stdin, which
+    // opencode silently ignores, leading to "task may not have been
+    // accepted (only 0 new lines after 5000ms)" retry loops.
     return (
       value === "claude" ||
       value === "gemini" ||
       value === "codex" ||
       value === "aider" ||
-      value === "hermes"
+      value === "hermes" ||
+      value === "opencode"
     );
   }
 

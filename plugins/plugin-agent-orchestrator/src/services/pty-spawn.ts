@@ -365,7 +365,15 @@ export function setupDeferredTaskDelivery(
     agentType === "claude" ||
     agentType === "gemini" ||
     agentType === "codex" ||
-    agentType === "aider";
+    agentType === "aider" ||
+    agentType === "hermes" ||
+    // opencode joined the canonical adapter list in parallax 0.17+ /
+    // eliza#7609. Sister to `PTYService.isAdapterBackedAgentType` —
+    // kept in sync so opencode uses `OpencodeAdapter.getArgs` (the
+    // task is appended as a positional CLI arg) instead of the shell-
+    // bridge path that pipes the task to PTY stdin (which opencode
+    // silently ignores in run mode).
+    agentType === "opencode";
   const adapter = isAdapterBackedAgent
     ? ctx.getAdapter(agentType as AdapterType)
     : null;
@@ -545,7 +553,16 @@ export function buildSpawnConfig(
       ...(options.customCredentials
         ? { custom: options.customCredentials }
         : {}),
-      interactive: !codexExecMode,
+      // OpenCode's `run` subcommand is non-interactive — it takes the
+      // task as a POSITIONAL CLI arg and exits. The TUI (bare `opencode`)
+      // doesn't accept tasks that way. When we have an `initialTask`
+      // for opencode, force `interactive: false` so OpencodeAdapter.getArgs
+      // returns `['run', '--dangerously-skip-permissions', '<task>']`
+      // instead of `[]` (which spawns the TUI). Codex exec mode is the
+      // same shape (non-interactive when we have a task to deliver).
+      interactive:
+        !codexExecMode &&
+        !(options.agentType === "opencode" && options.initialTask?.trim()),
       ...(codexExecMode
         ? {
             initialPrompt: options.initialTask?.trim(),
