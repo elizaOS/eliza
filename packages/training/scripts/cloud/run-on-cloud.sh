@@ -17,9 +17,9 @@
 # Usage:
 #   run-on-cloud.sh --provider vast   --task build         --gpu h100 --yes-i-will-pay
 #   run-on-cloud.sh --provider vast   --task kernel-verify --gpu h100 [--yes-i-will-pay]
-#   run-on-cloud.sh --provider vast   --task bench         --gpu rtx4090 --tier 0_6b --yes-i-will-pay
+#   run-on-cloud.sh --provider vast   --task bench         --gpu rtx4090 --tier 0_8b --yes-i-will-pay
 #   run-on-cloud.sh --provider vast   --task train         --gpu b200 --tier 27b --yes-i-will-pay
-#   run-on-cloud.sh --provider nebius --task train         --gpu h200 --tier 0_6b --yes-i-will-pay
+#   run-on-cloud.sh --provider nebius --task train         --gpu h200 --tier 0_8b --yes-i-will-pay
 #   run-on-cloud.sh --provider vast   --task kernel-verify --gpu h100 --dry-run     # no spend
 #
 # Tasks:
@@ -39,7 +39,9 @@
 #   h100 | h200 | a100 | a100-80 | rtx4090 | rtx5090 | b200 | l40s | blackwell6000
 #
 # Tiers (informational for kernel-verify; sizes the model for bench/train):
-#   0_6b | 1_7b | 4b | 9b | 27b | 27b-256k | 27b-1m
+#   0_8b | 2b | 4b | 9b | 27b | 27b-256k | 27b-1m
+# The legacy Qwen3 tiers (0_6b / 1_7b) were dropped 2026-05-12 — those bases
+# don't work with the eliza-1 dflash spec-decode path.
 #
 # Required env per provider:
 #   vast    VAST_API_KEY            (or `vastai set api-key <key>` beforehand)
@@ -61,7 +63,7 @@ GIT_REMOTE="$(git -C "$REPO_ROOT" config --get remote.origin.url 2>/dev/null || 
 PROVIDER=""
 TASK=""
 GPU="h100"
-TIER="0_6b"
+TIER="0_8b"
 PAY=0
 DRYRUN=0
 SSH_PUBKEY="${SSH_PUBKEY:-$HOME/.ssh/id_ed25519.pub}"

@@ -31,6 +31,7 @@ import type {
 const TIER_0_8B: Eliza1TierId = "eliza-1-0_8b";
 const TIER_0_6B: Eliza1TierId = "eliza-1-0_6b";
 const TIER_1_7B: Eliza1TierId = "eliza-1-1_7b";
+const TIER_2B: Eliza1TierId = "eliza-1-2b";
 const TIER_9B: Eliza1TierId = "eliza-1-9b";
 const TIER_27B: Eliza1TierId = "eliza-1-27b";
 const TIER_27B_256K: Eliza1TierId = "eliza-1-27b-256k";
@@ -65,34 +66,37 @@ const SLOT_LADDERS: Record<
   RecommendationPlatformClass,
   Record<TextGenerationSlot, ReadonlyArray<Eliza1TierId>>
 > = {
-  // TODO(owner): the small tiers are moving to the Qwen3.5 backbone
-  // (eliza-1-0_8b / eliza-1-2b). The legacy Qwen3 tiers (0_6b/1_7b) are
-  // kept here additively; eliza-1-0_8b is slotted between them by size
-  // (0.8B Q4 > 0.6B Q3, < 1.7B). Re-order / drop the legacy tiers once the
-  // owner decides — also see FIRST_RUN_DEFAULT_MODEL_ID in catalog.ts.
+  // Per the 2026-05-12 operator directive, the Qwen3.5 line is the
+  // default — eliza-1-0_8b (Qwen3.5-0.8B) is the small default;
+  // eliza-1-2b (Qwen3.5-2B) is the mid default. The legacy Qwen3 tiers
+  // (eliza-1-0_6b / eliza-1-1_7b) stay in the ladders as DEPRECATED
+  // fallbacks so existing user bundles still resolve — but they sit
+  // BELOW the Qwen3.5 tiers in the preference order (a host that
+  // could run 0_8b or 2b should never get pushed onto the deprecated
+  // Qwen3 tiers).
   mobile: {
-    TEXT_SMALL: [TIER_0_6B, TIER_0_8B, TIER_1_7B],
-    TEXT_LARGE: [TIER_1_7B, TIER_0_8B, TIER_0_6B],
+    TEXT_SMALL: [TIER_0_8B, TIER_0_6B, TIER_2B, TIER_1_7B],
+    TEXT_LARGE: [TIER_2B, TIER_0_8B, TIER_1_7B, TIER_0_6B],
   },
   "apple-silicon": {
-    TEXT_SMALL: [TIER_1_7B, TIER_0_8B, TIER_0_6B],
-    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_1_7B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_2B, TIER_1_7B],
   },
   "linux-gpu": {
-    TEXT_SMALL: [TIER_1_7B, TIER_0_8B, TIER_0_6B],
-    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_1_7B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_2B, TIER_1_7B],
   },
   "linux-cpu": {
-    TEXT_SMALL: [TIER_1_7B, TIER_0_8B, TIER_0_6B],
-    TEXT_LARGE: [TIER_9B, TIER_1_7B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_9B, TIER_2B, TIER_1_7B],
   },
   "desktop-gpu": {
-    TEXT_SMALL: [TIER_1_7B, TIER_0_8B, TIER_0_6B],
-    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_1_7B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_2B, TIER_1_7B],
   },
   "desktop-cpu": {
-    TEXT_SMALL: [TIER_1_7B, TIER_0_8B, TIER_0_6B],
-    TEXT_LARGE: [TIER_9B, TIER_1_7B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_9B, TIER_2B, TIER_1_7B],
   },
 };
 
