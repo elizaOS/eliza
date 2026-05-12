@@ -192,6 +192,40 @@ const OWNER_ROUTINES_EXAMPLES: ReadonlyArray<PromptExampleEntry> = [
       },
     },
   },
+  {
+    exampleKey: "OWNER_ROUTINES.example.0",
+    locale: "fr",
+    user: {
+      name: "{{name1}}",
+      content: {
+        text: "aide-moi a me brosser les dents a 8 h et 21 h tous les jours",
+      },
+    },
+    agent: {
+      name: "{{agentName}}",
+      content: {
+        text: 'Je peux configurer une habitude "Brush teeth" pour 8 h et 21 h tous les jours. Confirmez et je l\'enregistrerai.',
+        actions: ["OWNER_ROUTINES"],
+      },
+    },
+  },
+  {
+    exampleKey: "OWNER_ROUTINES.example.0",
+    locale: "ja",
+    user: {
+      name: "{{name1}}",
+      content: {
+        text: "毎日8時と21時に歯磨きを手伝って",
+      },
+    },
+    agent: {
+      name: "{{agentName}}",
+      content: {
+        text: "毎日8時と21時の習慣として歯磨きを設定できます。確認したら保存します。",
+        actions: ["OWNER_ROUTINES"],
+      },
+    },
+  },
 ];
 
 export function registerDefaultPromptPack(
