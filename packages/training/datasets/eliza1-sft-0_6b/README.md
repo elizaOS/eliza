@@ -38,8 +38,8 @@ ChatML JSONL — one row per line:
 
 ```json
 {"messages": [{"role": "system|user|assistant", "content": "..."}, ...],
- "task": "action_selection|tool_use|personality|assistant",
- "provenance": "benchmark:<file>#<id> | cerebras:<task>",
+ "task": "action_selection|tool_use|personality|assistant|structured_decode|voice_emotion",
+ "provenance": "benchmark:<file>#<id> | synthetic:<task> | cerebras:<task>",
  "tags": ["..."]}
 ```
 
@@ -56,7 +56,9 @@ at format time — they are metadata for stratified sampling and audits.
 | `action_selection` | ~68 | `packages/app-core/test/benchmarks/action-selection-cases.ts` — user turn → the action the agent should pick (or a plain reply for `expectedAction: null`), rendered as `ACTION: NAME {params}` + a short confirmation. 1:1 with the action-selection benchmark case ids. |
 | `tool_use` | ~730 | Cerebras-generated agent-loop turns over the canonical action catalog (`OWNER_TODOS`, `CALENDAR`, `MESSAGE`, `BLOCK`, …, `REPLY`): more domain/phrasing variety, ambiguous cases, negative (no-action) cases. |
 | `personality` | ~37 | `packages/benchmarks/personality-bench/tests/calibration/{hand-graded,adversarial}.jsonl` — PASS-graded trajectories for the five rubrics (`shut_up`, `hold_style`, `note_trait_unrelated`, `escalation`, `scope_global_vs_user`). Silence-on-demand rows are truncated to the last trainable assistant turn. |
-| `assistant` | ~750 | Cerebras-generated general assistant turns (concise factual Q&A, explanations of speculative decoding / quantization / VAD / on-device inference — the topics the `eliza1_eval_suite` held-out text-eval corpus probes), plus polite refusals (`cerebras:refusal`) and short multi-turn exchanges (`cerebras:multiturn`). |
+| `assistant` | ~370 | Cerebras-generated general assistant turns (concise factual Q&A, explanations of speculative decoding / quantization / VAD / on-device inference — the topics the `eliza1_eval_suite` held-out text-eval corpus probes), plus polite refusals (`cerebras:refusal`) and short multi-turn exchanges (`cerebras:multiturn`). |
+| `structured_decode` | ~250 | Stage-1 response-envelope turns: the W3 flat **JSON** envelope `@elizaos/core` `buildResponseGrammar` constrains — `{"shouldRespond":"RESPOND\|IGNORE\|STOP","thought":...,"replyText":...,"contexts":[...],"contextSlices":[...],"candidateActions":[...],"parentActionHints":[...],"requiresTool":<bool>,"extract":{...}}` (`shouldRespond` dropped on direct DM/voice/API channels). Key order matches `packages/core/src/runtime/response-grammar.ts::STAGE1_ENVELOPE_KEYS`. Deterministic seed rows (`synthetic:stage1-envelope#{direct,full}`) + Cerebras augmentation (`cerebras:stage1-envelope`). This is what makes `format_ok` measure a real target instead of 0%. (On-wire form is JSON, not "TOON" — it matches the runtime model call.) |
+| `voice_emotion` | ~245 | Spoken replies carrying omnivoice-singing inline expressive tags in `replyText` — `[happy] [sad] [angry] [nervous] [calm] [excited] [whisper] [singing]` plus the preserved non-verbals `[laughter] [sigh]`, scoped until the next tag or end of phrase. Deterministic seed rows (`synthetic:voice-emotion-tags`) + Cerebras augmentation (`cerebras:voice-emotion-tags`). The parse/generate/interpret schema the TTS emotion controls consume. |
 
 ## Eval alignment
 
@@ -70,7 +72,10 @@ This dataset is shaped to move the **text** metrics of
   assistants, quantization, voice-activity detection).
 - **`format_ok`** (parsable-output rate; floor 0.70): the `action_selection`
   and `tool_use` rows teach the `ACTION: NAME {json-params}` + short-reply
-  structured surface the agent loop and benchmarks expect.
+  structured surface; the `structured_decode` rows teach the W3 flat JSON
+  response envelope `buildResponseGrammar` constrains (the Stage-1
+  message-handler document) — without those rows the smoke task mix never
+  emitted the envelope and `format_pct` measured 0%.
 - **personality-bench**: the `personality` rows are PASS-graded exemplars of
   silence on demand, style stickiness, trait respect, escalation, and per-user
   vs global scope.
