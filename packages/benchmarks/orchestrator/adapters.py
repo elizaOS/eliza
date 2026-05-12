@@ -53,6 +53,8 @@ IGNORED_BENCHMARK_DIRS = {
     "orchestrator",
     "qwen-claw-bench",
     "qwen-web-bench",
+    # Python package shim for benchmarks.registry, not a benchmark adapter dir.
+    "registry",
     "scripts",
     "skillsbench",
     "swe-bench-pro",
@@ -1557,6 +1559,9 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
     registry_default_extra: dict[str, dict[str, Any]] = {
         "agentbench": {
             "elizaos": True,
+            "env": ["os"],
+            "max_tasks": 1,
+            "no_docker": True,
         },
         "context_bench": {
             "quick": True,
@@ -1578,6 +1583,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_tasks": 1,
             "sample": True,
             "timeout": 180,
+            "no_docker": True,
             "no_markdown": True,
             "no_sessions": True,
             "no_leaderboard": True,

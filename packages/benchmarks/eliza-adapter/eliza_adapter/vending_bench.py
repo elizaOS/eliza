@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import logging
 import json
+import re
 import uuid
 from typing import Optional
 
@@ -37,71 +38,97 @@ from eliza_adapter.client import ElizaClient
 logger = logging.getLogger(__name__)
 
 
+_VENDING_ACTIONS = {
+    "VIEW_BUSINESS_STATE",
+    "VIEW_STATE",
+    "VIEW_SUPPLIERS",
+    "SET_PRICE",
+    "PLACE_ORDER",
+    "RESTOCK_SLOT",
+    "COLLECT_CASH",
+    "UPDATE_NOTES",
+    "CHECK_DELIVERIES",
+    "ADVANCE_DAY",
+}
+
+
+def _extract_json_candidate(text: str) -> str:
+    stripped = (text or "").strip()
+    if "```json" in stripped:
+        return stripped.split("```json", 1)[1].split("```", 1)[0].strip()
+    if "```" in stripped:
+        return stripped.split("```", 1)[1].split("```", 1)[0].strip()
+    tool_match = re.search(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", stripped, re.DOTALL)
+    if tool_match:
+        return tool_match.group(1).strip()
+    return stripped
+
+
+def _normalize_vending_payload(payload: object) -> str | None:
+    if not isinstance(payload, dict):
+        return None
+    data = {str(k).strip(): v for k, v in payload.items()}
+    arguments = data.get("arguments")
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except json.JSONDecodeError:
+            arguments = None
+    if isinstance(arguments, dict):
+        data.update({str(k).strip(): v for k, v in arguments.items()})
+
+    raw_action = (
+        data.get("action")
+        or data.get("name")
+        or data.get("command")
+        or data.get("tool_name")
+    )
+    if not isinstance(raw_action, str):
+        return None
+    normalized = raw_action.strip().upper()
+    if normalized == "VIEW_STATE":
+        normalized = "VIEW_BUSINESS_STATE"
+    if normalized not in _VENDING_ACTIONS:
+        return None
+
+    out = {
+        str(k).strip(): v
+        for k, v in data.items()
+        if str(k).strip() not in {"action", "name", "command", "tool_name", "arguments"}
+    }
+    out["action"] = normalized
+    return json.dumps(out)
+
+
 def _looks_like_vending_json(text: str) -> bool:
     try:
-        parsed = json.loads(text)
+        parsed = json.loads(_extract_json_candidate(text))
     except Exception:
         return False
-    return isinstance(parsed, dict) and isinstance(parsed.get("action"), str)
-
-
-def _fallback_vending_action(user_prompt: str) -> str:
-    has_pending = "pending orders" in user_prompt.lower() and "no pending orders" not in user_prompt.lower()
-    if has_pending:
-        return json.dumps({"action": "ADVANCE_DAY"})
-    return json.dumps(
-        {
-            "action": "PLACE_ORDER",
-            "supplier_id": "beverage_dist",
-            "items": {"water": 12},
-            "reasoning": "Initial stock order for a high-demand product.",
-        }
-    )
+    return _normalize_vending_payload(parsed) is not None
 
 
 def _response_to_vending_json(text: str, params: dict, user_prompt: str) -> str:
     stripped = (text or "").strip()
-    if _looks_like_vending_json(stripped):
-        return stripped
+    try:
+        normalized = _normalize_vending_payload(json.loads(_extract_json_candidate(stripped)))
+        if normalized is not None:
+            return normalized
+    except Exception:
+        pass
 
     action_params = params.get("BENCHMARK_ACTION")
-    if isinstance(action_params, dict):
-        raw_action = (
-            action_params.get("action")
-            or action_params.get("command")
-            or action_params.get("tool_name")
-        )
-        if isinstance(raw_action, str):
-            normalized = raw_action.strip().upper()
-            if normalized in {
-                "VIEW_BUSINESS_STATE",
-                "VIEW_STATE",
-                "VIEW_SUPPLIERS",
-                "SET_PRICE",
-                "PLACE_ORDER",
-                "RESTOCK_SLOT",
-                "COLLECT_CASH",
-                "UPDATE_NOTES",
-                "CHECK_DELIVERIES",
-                "ADVANCE_DAY",
-            }:
-                data = {
-                    k: v
-                    for k, v in action_params.items()
-                    if k not in {"command", "action", "tool_name", "arguments"}
-                }
-                arguments = action_params.get("arguments")
-                if isinstance(arguments, str):
-                    try:
-                        arguments = json.loads(arguments)
-                    except json.JSONDecodeError:
-                        arguments = None
-                if isinstance(arguments, dict):
-                    data.update(arguments)
-                data["action"] = normalized
-                return json.dumps(data)
+    normalized = _normalize_vending_payload(action_params)
+    if normalized is not None:
+        return normalized
+    action_params_many = params.get("BENCHMARK_ACTIONS")
+    if isinstance(action_params_many, list):
+        for item in action_params_many:
+            normalized = _normalize_vending_payload(item)
+            if normalized is not None:
+                return normalized
 
-    return _fallback_vending_action(user_prompt)
+    return stripped
 
 
 class ElizaVendingProvider:

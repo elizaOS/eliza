@@ -15,7 +15,11 @@ from benchmarks.orchestrator.runner import _rebuild_latest_result_snapshots
 from benchmarks.orchestrator.types import BenchmarkAdapter, ExecutionContext, ScoreSummary
 
 
-def _adapter(benchmark_id: str) -> BenchmarkAdapter:
+def _adapter(
+    benchmark_id: str,
+    *,
+    agent_compatibility: tuple[str, ...] = ("eliza", "hermes", "openclaw"),
+) -> BenchmarkAdapter:
     def command_builder(_ctx: ExecutionContext, _adapter: BenchmarkAdapter) -> list[str]:
         return []
 
@@ -37,7 +41,7 @@ def _adapter(benchmark_id: str) -> BenchmarkAdapter:
         command_builder=command_builder,
         result_locator=result_locator,
         score_extractor=score_extractor,
-        agent_compatibility=("eliza", "hermes", "openclaw"),
+        agent_compatibility=agent_compatibility,
     )
 
 
@@ -383,7 +387,12 @@ def test_rebuild_latest_skips_stale_compatibility_incompatible_rows(
     _rebuild_latest_result_snapshots(
         conn,
         tmp_path,
-        {"loca_bench": _adapter("loca_bench")},
+        {
+            "loca_bench": _adapter(
+                "loca_bench",
+                agent_compatibility=("eliza", "hermes", "openclaw"),
+            )
+        },
     )
 
     payload = json.loads(
@@ -393,3 +402,99 @@ def test_rebuild_latest_skips_stale_compatibility_incompatible_rows(
     )
     assert payload["run_id"] == "run_success"
     assert payload["status"] == "succeeded"
+
+
+def test_rebuild_latest_routes_current_incompatible_rows_out_of_latest(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["loca_bench"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="loca_bench",
+        agent="openclaw",
+        run_id="run_incompat",
+        started_at="2026-05-12T00:10:00+00:00",
+        status="incompatible",
+        score=None,
+        metrics={
+            "reason": "harness_not_in_compatibility",
+            "harness": "openclaw",
+            "supported_harnesses": ["eliza", "hermes"],
+        },
+        token_metrics={},
+    )
+    stale_latest = tmp_path / "latest" / "loca_bench__openclaw.json"
+    stale_latest.parent.mkdir(parents=True, exist_ok=True)
+    stale_latest.write_text("{}", encoding="utf-8")
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"loca_bench": _adapter("loca_bench", agent_compatibility=("eliza", "hermes"))},
+    )
+
+    assert not stale_latest.exists()
+    quarantine = tmp_path / "quarantine" / "loca_bench__openclaw.json"
+    assert quarantine.exists()
+    payload = json.loads(quarantine.read_text(encoding="utf-8"))
+    assert payload["status"] == "incompatible"
+    assert payload["quarantine_reason"] == "incompatible_harness"
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+    assert index["latest"] == {}
+
+
+def test_rebuild_latest_prunes_unknown_benchmark_snapshots(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["bfcl", "eliza-format"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="bfcl",
+        agent="eliza",
+        run_id="run_bfcl",
+        started_at="2026-05-12T00:00:00+00:00",
+    )
+    _seed_run(
+        conn,
+        benchmark_id="eliza-format",
+        agent="eliza",
+        run_id="run_unknown",
+        started_at="2026-05-12T00:10:00+00:00",
+    )
+    unknown_latest = tmp_path / "latest" / "eliza-format__eliza.json"
+    unknown_latest.parent.mkdir(parents=True, exist_ok=True)
+    unknown_latest.write_text("{}", encoding="utf-8")
+
+    _rebuild_latest_result_snapshots(conn, tmp_path, {"bfcl": _adapter("bfcl")})
+
+    assert (tmp_path / "latest" / "bfcl__eliza.json").exists()
+    assert not unknown_latest.exists()
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+    latest_files = {
+        path.name
+        for path in (tmp_path / "latest").glob("*.json")
+        if path.name != "index.json"
+    }
+    indexed_files = {
+        Path(row["path"]).name
+        for row in index["latest"].values()
+    }
+    assert latest_files == indexed_files == {"bfcl__eliza.json"}
