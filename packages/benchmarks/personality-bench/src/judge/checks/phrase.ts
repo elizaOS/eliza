@@ -393,6 +393,58 @@ export function warmthScore(response: string): number {
   return score;
 }
 
+/**
+ * Playfulness markers — distinct from warmth ("please/thank you"). Playful
+ * responses carry levity: emojis, exclamation, parenthetical asides,
+ * wordplay/puns, onomatopoeia, hedged-jokey phrases, and lighthearted
+ * interjections.
+ */
+const PLAYFUL_TOKENS = [
+  /\bhah?a+\b/i,
+  /\bhehe?\b/i,
+  /\blol\b/i,
+  /\boops\b/i,
+  /\byikes\b/i,
+  /\bwoo+t?\b/i,
+  /\bvoil[aà]\b/i,
+  /\bta-?da\b/i,
+  /\btada\b/i,
+  /\bboom\b/i,
+  /\bzap\b/i,
+  /\bspoiler\b/i,
+  /\bpun intended\b/i,
+  /\bno pun intended\b/i,
+  /\bbtw\b/i,
+  /\bfun fact\b/i,
+  /\bpro tip\b/i,
+];
+
+/**
+ * Numeric playfulness score used by the escalation rubric for the `playful`
+ * direction. Emojis, exclamations, parenthetical asides, and lighthearted
+ * tokens count toward the score. Distinct from `warmthScore` which captures
+ * politeness markers ("please/thank you") that do not necessarily move in
+ * lockstep with playfulness.
+ */
+export function playfulScore(response: string): number {
+  let score = 0;
+  for (const re of PLAYFUL_TOKENS) {
+    if (re.test(response)) score += 1;
+  }
+  const emojis = countEmojis(response);
+  score += emojis * 0.75;
+  const excls = (response.match(/!/g) ?? []).length;
+  score += Math.min(excls, 6) * 0.5;
+  // Parenthetical asides — a hallmark of conversational playfulness.
+  const parentheticals = (response.match(/\([^)]{1,80}\)/g) ?? []).length;
+  score += Math.min(parentheticals, 4) * 0.25;
+  // En/em dashes used for jokey asides.
+  const dashAsides = (response.match(/—[^—\n]{1,80}—|– [^–\n]{1,80} –/g) ?? [])
+    .length;
+  score += Math.min(dashAsides, 2) * 0.25;
+  return score;
+}
+
 /** Token count helper exposed for tests. */
 export function tokenCount(text: string): number {
   return tokenize(text).length;
@@ -954,5 +1006,59 @@ export function checkSecondPersonOnly(response: string): LayerResult {
     confidence: 0.85,
     reason: `second-person voice: you/your×${secondPerson}, first-person×${firstPerson}`,
     evidence: { firstPerson, secondPerson },
+  };
+}
+
+/**
+ * The all-lowercase check. Used by the `hold_style.*.all_lowercase.*` slice.
+ *
+ * The user directive is "type everything in lowercase from now on — no capital
+ * letters". We strip fenced code blocks (their casing is dictated by the
+ * language, not by the prose-style directive), then count uppercase letters in
+ * the remaining prose. Standalone acronyms inside the prose still count as
+ * violations because the directive is explicit ("no capital letters").
+ *
+ * A small tolerance — one uppercase letter — covers the rare model artefact
+ * of a stray cap at the start of a numbered point ("1. The …"). Anything more
+ * than that is a failure.
+ */
+export function checkAllLowercase(response: string): LayerResult {
+  const trimmed = response.trim();
+  if (trimmed.length === 0) {
+    return {
+      layer: "phrase",
+      verdict: "NEEDS_REVIEW",
+      confidence: 0.4,
+      reason: "empty response — can't verify lowercase style",
+    };
+  }
+  // Strip fenced code blocks — their casing is language-dictated, not prose.
+  const prose = trimmed.replace(/```[\s\S]*?```/g, "");
+  // Also strip inline code spans for the same reason.
+  const proseNoInline = prose.replace(/`[^`]*`/g, "");
+  const uppercaseMatches = proseNoInline.match(/[A-Z]/g) ?? [];
+  const upper = uppercaseMatches.length;
+  // Tolerate at most one stray uppercase letter (typical "1. The ..." artefact).
+  const MAX_TOLERATED = 1;
+  if (upper <= MAX_TOLERATED) {
+    return {
+      layer: "phrase",
+      verdict: "PASS",
+      confidence: 0.95,
+      reason:
+        upper === 0
+          ? "all-lowercase prose (no uppercase letters)"
+          : `${upper} uppercase letter (within tolerance ${MAX_TOLERATED})`,
+      evidence: { uppercase: upper },
+    };
+  }
+  // Sample up to 5 of the offending letters so failure logs stay useful.
+  const sample = uppercaseMatches.slice(0, 5).join("");
+  return {
+    layer: "phrase",
+    verdict: "FAIL",
+    confidence: 0.95,
+    reason: `${upper} uppercase letter(s) in prose (e.g. "${sample}") — directive was all-lowercase`,
+    evidence: { uppercase: upper, sample },
   };
 }

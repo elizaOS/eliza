@@ -211,7 +211,18 @@ const STYLE_KEY_TO_STYLE = {
   haiku: "haiku",
   pirate: "pirate",
   terse_one_sentence: "terse",
-  all_lowercase: "terse", // closest deterministic check available
+  // W4-G added these three rubrics to the judge; W5-G6 wires them through here
+  // so the bridge stops collapsing them to NEEDS_REVIEW ("unknown style").
+  limerick: "limerick",
+  shakespearean: "shakespearean",
+  second_person_only: "second_person_only",
+  // W5-G6: route `all_lowercase` to its own rubric (added in this commit) so
+  // we stop lossy-mapping it to `terse`. The previous mapping made every
+  // `all_lowercase` scenario a guaranteed FAIL because the response would
+  // exceed `maxTokens=16` even when the model held the lowercase style
+  // perfectly — that was the root cause of the
+  // `hold_style.aggressive.code.004` "all agents fail" symptom.
+  all_lowercase: "all_lowercase",
 };
 
 const TRAIT_KEY_TO_OPTIONS = {
