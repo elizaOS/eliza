@@ -158,9 +158,7 @@ function createSyntheticXGrant(
     mode,
     metadata: {
       source: "plugin-x-runtime",
-      ...(accountId
-        ? { accountId, connectorAccountId: accountId }
-        : {}),
+      ...(accountId ? { accountId, connectorAccountId: accountId } : {}),
     },
     lastRefreshAt: new Date().toISOString(),
   });
@@ -421,9 +419,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
             : {},
         metadata: {
           source: "plugin-x-runtime",
-          ...(accountId
-            ? { accountId, connectorAccountId: accountId }
-            : {}),
+          ...(accountId ? { accountId, connectorAccountId: accountId } : {}),
         },
       });
       return {
@@ -526,7 +522,11 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     async getXDmDigest(
-      opts: { accountId?: string; limit?: number; conversationId?: string } = {},
+      opts: {
+        accountId?: string;
+        limit?: number;
+        conversationId?: string;
+      } = {},
     ): Promise<{
       generatedAt: string;
       conversationId: string | null;

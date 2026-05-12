@@ -51,10 +51,14 @@ function readShimConfig(): Promise<WalletShimStored | null> {
   return new Promise((resolve) => {
     try {
       // Manifest V3: chrome.storage.local is async-callback or Promise-based.
-      const api = (globalThis as unknown as {
-        chrome?: typeof chrome;
-        browser?: typeof chrome;
-      }).chrome ?? (globalThis as unknown as { browser?: typeof chrome }).browser;
+      const api =
+        (
+          globalThis as unknown as {
+            chrome?: typeof chrome;
+            browser?: typeof chrome;
+          }
+        ).chrome ??
+        (globalThis as unknown as { browser?: typeof chrome }).browser;
       if (!api?.storage?.local?.get) {
         resolve(null);
         return;
@@ -65,10 +69,7 @@ function readShimConfig(): Promise<WalletShimStored | null> {
         resolve(stored ?? null);
       });
       // Some browsers (Firefox) return a Promise instead of using callback.
-      if (
-        maybe &&
-        typeof (maybe as Promise<unknown>).then === "function"
-      ) {
+      if (maybe && typeof (maybe as Promise<unknown>).then === "function") {
         (maybe as Promise<{ walletShim?: WalletShimStored }>)
           .then((items) => resolve(items?.walletShim ?? null))
           .catch(() => resolve(null));

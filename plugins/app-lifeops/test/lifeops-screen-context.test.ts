@@ -18,9 +18,9 @@ describe("LifeOps screen context", () => {
     vi.doUnmock("sharp");
     vi.resetModules();
     await Promise.all(
-      tempRoots.splice(0).map((tempRoot) =>
-        rm(tempRoot, { recursive: true, force: true }),
-      ),
+      tempRoots
+        .splice(0)
+        .map((tempRoot) => rm(tempRoot, { recursive: true, force: true })),
     );
   });
 

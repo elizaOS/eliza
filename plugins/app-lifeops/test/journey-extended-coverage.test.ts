@@ -45,8 +45,8 @@ import {
 import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
-  TestNoopScheduledTaskDispatcher,
   type ScheduledTaskRunnerHandle,
+  TestNoopScheduledTaskDispatcher,
 } from "../src/lifeops/scheduled-task/runner.ts";
 import { createInMemoryScheduledTaskLogStore } from "../src/lifeops/scheduled-task/state-log.ts";
 import type {

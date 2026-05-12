@@ -18,7 +18,11 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { Service, type IAgentRuntime, type ServiceTypeName } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  Service,
+  type ServiceTypeName,
+} from "@elizaos/core";
 import type {
   AnonymizerLookup,
   FilterableTrajectory,

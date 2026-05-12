@@ -70,7 +70,10 @@ export async function dispatchCrossChannelSend(
         const messagingService = service as LegacyMessagingService;
         if (typeof messagingService.sendTelegramMessage === "function") {
           try {
-            await messagingService.sendTelegramMessage({ target, message: body });
+            await messagingService.sendTelegramMessage({
+              target,
+              message: body,
+            });
             return ok(channel, target, body);
           } catch {
             // Fall through to the runtime connector path. Test and desktop

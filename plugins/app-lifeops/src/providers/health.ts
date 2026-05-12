@@ -7,6 +7,7 @@ import type {
 } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { LifeOpsService } from "../lifeops/service.js";
+
 const HEALTH_DAILY_LIMIT = 4;
 
 function formatHealthNumber(value: number | null): string | null {

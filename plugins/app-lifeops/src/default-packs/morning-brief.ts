@@ -18,19 +18,15 @@
  * until W1-A's `src/lifeops/scheduled-task/types.ts` lands.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   buildCheckinSummaryPrompt,
-  type CheckinSourceService,
   CheckinService,
+  type CheckinSourceService,
 } from "../lifeops/checkin/checkin-service.js";
-import type {
-  CheckinKind,
-  CheckinReport,
-} from "../lifeops/checkin/types.js";
+import type { CheckinKind, CheckinReport } from "../lifeops/checkin/types.js";
 import type { ScheduledTaskSeed } from "./contract-stubs.js";
 import type { DefaultPack } from "./registry-types.js";
-
-import type { IAgentRuntime } from "@elizaos/core";
 
 export const MORNING_BRIEF_PACK_KEY = "morning-brief";
 

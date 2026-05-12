@@ -152,7 +152,7 @@ export async function uploadTrajectoryJsonlToHuggingFace(
     };
   }
   const error = result.missing
-    ? "HuggingFace CLI not found. Install it with `pip install -U \"huggingface_hub[cli]\"` (provides `hf` / `huggingface-cli`) to enable trajectory uploads."
+    ? 'HuggingFace CLI not found. Install it with `pip install -U "huggingface_hub[cli]"` (provides `hf` / `huggingface-cli`) to enable trajectory uploads.'
     : `hf upload failed: ${result.stderr.trim().slice(0, 500)}`;
   return {
     uploaded: false,

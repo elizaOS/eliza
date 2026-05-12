@@ -1,9 +1,9 @@
-import { TooltipHint } from "@elizaos/ui";
 import {
   Sidebar,
   SidebarContent,
   SidebarPanel,
   SidebarScrollRegion,
+  TooltipHint,
   TooltipProvider,
 } from "@elizaos/ui";
 import {

@@ -91,6 +91,7 @@ export interface CheckinCollectorErrors {
  * inside this file.
  */
 import type { SleepRecap } from "@elizaos/plugin-health";
+
 export type { SleepRecap };
 
 export interface CheckinReport {

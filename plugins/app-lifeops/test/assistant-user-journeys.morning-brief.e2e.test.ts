@@ -3,10 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  buildCharacterFromConfig,
-  createElizaPlugin,
-} from "@elizaos/agent";
+import { buildCharacterFromConfig, createElizaPlugin } from "@elizaos/agent";
 import {
   AgentRuntime,
   ChannelType,
@@ -28,6 +25,7 @@ import {
   LIVE_TESTS_ENABLED,
   selectLifeOpsLiveProvider,
 } from "./helpers/lifeops-live-harness.ts";
+import { judgeTextWithLlm } from "./helpers/lifeops-live-judge.ts";
 import {
   ensureRoom,
   GOOGLE_CLIENT_ID,
@@ -36,7 +34,6 @@ import {
   normalizeText,
   seedMorningBriefFixtures,
 } from "./helpers/lifeops-morning-brief-fixtures.ts";
-import { judgeTextWithLlm } from "./helpers/lifeops-live-judge.ts";
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");
@@ -307,7 +304,9 @@ describeIf(LIVE_SUITE_ENABLED)(
       // reason — instead of just acknowledging the request. This replaces the
       // "did the agent crash?" probe with a content-shape rubric judged by
       // Cerebras, plus a structural check that the reply isn't trivially short.
-      expect(response).not.toMatch(/something (?:went wrong|flaked)|try again/i);
+      expect(response).not.toMatch(
+        /something (?:went wrong|flaked)|try again/i,
+      );
       expect(
         response.length,
         `Morning brief reply too short to contain the requested sections; got: ${response.slice(0, 200)}`,

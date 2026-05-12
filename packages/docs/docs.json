@@ -1164,10 +1164,7 @@
           },
           {
             "group": "Contributing",
-            "pages": [
-              "guides/contributing",
-              "guides/registry"
-            ]
+            "pages": ["guides/contributing", "guides/registry"]
           },
           {
             "group": "Desktop Development",

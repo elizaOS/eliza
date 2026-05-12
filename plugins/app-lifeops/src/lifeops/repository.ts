@@ -116,11 +116,11 @@ import {
   sqlNumber,
   sqlQuote,
   sqlText,
+  type TransactionalDb,
   toBoolean,
   toNumber,
   toText,
   withTransaction,
-  type TransactionalDb,
 } from "./sql.js";
 import type {
   LifeOpsSubscriptionAudit,
@@ -210,6 +210,7 @@ export {
   createLifeOpsHealthWorkout,
   createLifeOpsSleepEpisode,
 } from "@elizaos/plugin-health";
+
 import type {
   LifeOpsPersistedSleepEpisodeSource,
   LifeOpsSleepEpisodeRecord,
@@ -1015,7 +1016,10 @@ function parseCalendarEvent(
     id: toText(row.id),
     externalId: toText(row.external_event_id),
     agentId: toText(row.agent_id),
-    provider: toText(row.provider, "google") as LifeOpsCalendarEvent["provider"],
+    provider: toText(
+      row.provider,
+      "google",
+    ) as LifeOpsCalendarEvent["provider"],
     side: toText(row.side, "owner") as LifeOpsCalendarEvent["side"],
     calendarId: toText(row.calendar_id),
     connectorAccountId: row.connector_account_id
@@ -1332,10 +1336,7 @@ function parseWorkflowDefinition(
     ),
     permissionPolicy: parseJsonValue<
       LifeOpsWorkflowDefinition["permissionPolicy"]
-    >(
-      row.permission_policy_json,
-      DEFAULT_WORKFLOW_PERMISSION_POLICY,
-    ),
+    >(row.permission_policy_json, DEFAULT_WORKFLOW_PERMISSION_POLICY),
     status: toText(row.status) as LifeOpsWorkflowDefinition["status"],
     createdBy: toText(row.created_by) as LifeOpsWorkflowDefinition["createdBy"],
     metadata: parseJsonRecord(row.metadata_json),
@@ -1527,7 +1528,11 @@ function parseBrowserCompanionPendingPairingTokens(
       if (typeof candidate === "string" && candidate.length > 0) {
         return { hash: candidate, expiresAt: null };
       }
-      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      if (
+        !candidate ||
+        typeof candidate !== "object" ||
+        Array.isArray(candidate)
+      ) {
         return null;
       }
       const record = candidate as Record<string, unknown>;
@@ -1892,15 +1897,12 @@ function parseScheduleRegularity(value: unknown): LifeOpsScheduleRegularity {
 function parseTelemetryEventRow(
   row: Record<string, unknown>,
 ): LifeOpsTelemetryEvent {
-  const payload = parseJsonValue<LifeOpsTelemetryPayload>(
-    row.payload_json,
-    {
-      family: "manual_override_event",
-      platform: "macos_desktop",
-      kind: "going_to_bed",
-      note: null,
-    },
-  );
+  const payload = parseJsonValue<LifeOpsTelemetryPayload>(row.payload_json, {
+    family: "manual_override_event",
+    platform: "macos_desktop",
+    kind: "going_to_bed",
+    note: null,
+  });
   return {
     id: toText(row.id),
     agentId: toText(row.agent_id),
@@ -2271,8 +2273,7 @@ function parseOptionalJsonRecord<T>(value: unknown): T | undefined {
 function parseScheduledTaskRow(
   row: Record<string, unknown>,
 ): import("./scheduled-task/types.js").ScheduledTask {
-  type StateShape =
-    import("./scheduled-task/types.js").ScheduledTaskState;
+  type StateShape = import("./scheduled-task/types.js").ScheduledTaskState;
   type TaskShape = import("./scheduled-task/types.js").ScheduledTask;
   const stateRaw = parseJsonRecord(row.state_json);
   const state: StateShape = {
@@ -2356,8 +2357,7 @@ function parseScheduledTaskRow(
 function parseScheduledTaskLogRow(
   row: Record<string, unknown>,
 ): import("./scheduled-task/types.js").ScheduledTaskLogEntry {
-  type LogShape =
-    import("./scheduled-task/types.js").ScheduledTaskLogEntry;
+  type LogShape = import("./scheduled-task/types.js").ScheduledTaskLogEntry;
   return {
     logId: toText(row.id),
     taskId: toText(row.task_id),
@@ -2387,10 +2387,9 @@ function parseThreadSourceRefs(
 function parseWorkThreadRow(
   row: Record<string, unknown>,
 ): import("./work-threads/types.js").WorkThread {
-  const primary =
-    parseOptionalJsonRecord<import("./work-threads/types.js").ThreadSourceRef>(
-      row.primary_source_ref_json,
-    ) ?? { connector: "unknown" };
+  const primary = parseOptionalJsonRecord<
+    import("./work-threads/types.js").ThreadSourceRef
+  >(row.primary_source_ref_json) ?? { connector: "unknown" };
   return {
     id: toText(row.id),
     agentId: toText(row.agent_id),
@@ -2529,7 +2528,9 @@ export class LifeOpsRepository {
   static async ensureSchedulingNegotiationColumns(
     runtime: IAgentRuntime,
   ): Promise<void> {
-    if (!(await tableExists(runtime, "app_lifeops.life_scheduling_negotiations"))) {
+    if (
+      !(await tableExists(runtime, "app_lifeops.life_scheduling_negotiations"))
+    ) {
       return;
     }
     await executeRawSql(
@@ -8020,7 +8021,9 @@ export class LifeOpsRepository {
       clauses.push(`owner_visible = TRUE`);
     }
     if (filter?.status) {
-      const arr = Array.isArray(filter.status) ? filter.status : [filter.status];
+      const arr = Array.isArray(filter.status)
+        ? filter.status
+        : [filter.status];
       const inList = arr
         .filter((s) => typeof s === "string" && s.length > 0)
         .map((s) => sqlQuote(s))
@@ -8028,9 +8031,7 @@ export class LifeOpsRepository {
       if (inList.length > 0) {
         // status is stored inside state_json — we filter post-fetch
         // but include the full row in case the caller wants it.
-        clauses.push(
-          `(state_json::jsonb ->> 'status') IN (${inList})`,
-        );
+        clauses.push(`(state_json::jsonb ->> 'status') IN (${inList})`);
       }
     }
     if (typeof filter?.dueAtOrBeforeIso === "string") {
@@ -8053,10 +8054,7 @@ export class LifeOpsRepository {
     return rows.map(parseScheduledTaskRow);
   }
 
-  async deleteScheduledTask(
-    agentId: string,
-    taskId: string,
-  ): Promise<void> {
+  async deleteScheduledTask(agentId: string, taskId: string): Promise<void> {
     await executeRawSql(
       this.runtime,
       `DELETE FROM app_lifeops.life_scheduled_tasks
@@ -8103,7 +8101,8 @@ export class LifeOpsRepository {
       `agent_id = ${sqlQuote(args.agentId)}`,
       `task_id = ${sqlQuote(args.taskId)}`,
     ];
-    if (args.sinceIso) clauses.push(`occurred_at >= ${sqlQuote(args.sinceIso)}`);
+    if (args.sinceIso)
+      clauses.push(`occurred_at >= ${sqlQuote(args.sinceIso)}`);
     if (args.untilIso) clauses.push(`occurred_at < ${sqlQuote(args.untilIso)}`);
     if (args.excludeRollups) clauses.push(`rolled_up = FALSE`);
     const limit =
@@ -8319,7 +8318,9 @@ export class LifeOpsRepository {
   ): Promise<import("./work-threads/types.js").WorkThread[]> {
     const clauses: string[] = [`agent_id = ${sqlQuote(agentId)}`];
     if (filter.statuses && filter.statuses.length > 0) {
-      const statuses = filter.statuses.map((status) => sqlQuote(status)).join(", ");
+      const statuses = filter.statuses
+        .map((status) => sqlQuote(status))
+        .join(", ");
       clauses.push(`status IN (${statuses})`);
     }
     if (filter.ownerEntityId) {

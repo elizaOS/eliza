@@ -89,10 +89,7 @@ function parseJsonObject(text: string): Record<string, unknown> | null {
   }
 }
 
-function readLegacyField(
-  text: string,
-  fieldName: string,
-): string | undefined {
+function readLegacyField(text: string, fieldName: string): string | undefined {
   const lineMatch = new RegExp(`(^|\\n)${fieldName}:\\s*([^\\n]+)`, "i").exec(
     text,
   );

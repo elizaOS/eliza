@@ -2,9 +2,9 @@ import {
   type ActionResult,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
 import {
   DEFAULT_AUTOFILL_WHITELIST,

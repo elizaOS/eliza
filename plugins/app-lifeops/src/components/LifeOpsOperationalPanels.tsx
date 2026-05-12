@@ -1,3 +1,7 @@
+import type {
+  LifeOpsCapabilityState,
+  LifeOpsManualOverrideKind,
+} from "@elizaos/shared";
 import {
   Badge,
   Button,
@@ -5,10 +9,6 @@ import {
   dispatchFocusConnector,
   useApp,
 } from "@elizaos/ui";
-import type {
-  LifeOpsCapabilityState,
-  LifeOpsManualOverrideKind,
-} from "@elizaos/shared";
 import {
   Activity,
   Clock3,

@@ -9,6 +9,7 @@ import type {
 } from "@elizaos/core";
 import { ChannelType, setEntityRole, stringToUuid } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createMockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
 import { workThreadAction } from "../src/actions/work-thread.ts";
 import { processDueScheduledTasks } from "../src/lifeops/scheduled-task/scheduler.ts";
 import {
@@ -17,7 +18,6 @@ import {
 } from "../src/lifeops/work-threads/field-evaluator-thread-ops.ts";
 import { createWorkThreadStore } from "../src/lifeops/work-threads/store.ts";
 import { workThreadsProvider } from "../src/providers/work-threads.ts";
-import { createMockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
 
 let cleanupRuntime: (() => Promise<void>) | undefined;
 
@@ -126,7 +126,9 @@ async function runThreadAction(
   return result as ActionResult;
 }
 
-function operationResults(result: ActionResult): Array<Record<string, unknown>> {
+function operationResults(
+  result: ActionResult,
+): Array<Record<string, unknown>> {
   const operations = result.data?.operations;
   if (!Array.isArray(operations)) {
     throw new Error("expected thread operation results");
@@ -182,7 +184,9 @@ describe("LifeOps work threads", () => {
     const idleRoom = message(runtime, "room-idle", "hello there");
     expect(await workThreadAction.validate?.(runtime, idleRoom)).toBe(false);
     expect(
-      await threadOpsFieldEvaluator.shouldRun?.(fieldContext(runtime, idleRoom)),
+      await threadOpsFieldEvaluator.shouldRun?.(
+        fieldContext(runtime, idleRoom),
+      ),
     ).toBe(false);
     const idleProviderResult = await workThreadsProvider.get(
       runtime,
@@ -207,11 +211,11 @@ describe("LifeOps work threads", () => {
     const threadId = operationResults(created)[0].workThreadId as string;
     expect(threadId).toBeTruthy();
 
-    const providerResult = await workThreadsProvider.get(
-      runtime,
-      roomA,
-      { values: {}, data: {}, text: "" } as State,
-    );
+    const providerResult = await workThreadsProvider.get(runtime, roomA, {
+      values: {},
+      data: {},
+      text: "",
+    } as State);
     expect(providerResult.values?.workThreadCount).toBe(1);
     expect(providerResult.text).toContain(threadId);
     expect(providerResult.text).toContain("mutable-current-channel");
@@ -291,11 +295,11 @@ describe("LifeOps work threads", () => {
     expect(
       await threadOpsFieldEvaluator.shouldRun?.(fieldContext(runtime, roomA)),
     ).toBe(true);
-    const providerWithNoise = await workThreadsProvider.get(
-      runtime,
-      roomA,
-      { values: {}, data: {}, text: "" } as State,
-    );
+    const providerWithNoise = await workThreadsProvider.get(runtime, roomA, {
+      values: {},
+      data: {},
+      text: "",
+    } as State);
     expect(providerWithNoise.text).toContain(threadId);
     for (const noisyThreadId of noisyThreadIds) {
       const stoppedNoise = await runThreadAction(runtime, noiseRoom, [
@@ -625,9 +629,15 @@ describe("LifeOps work threads", () => {
     const userMessage = sharedMessageUser("continue this thread");
     expect(await workThreadAction.validate?.(runtime, userMessage)).toBe(false);
     expect(
-      await threadOpsFieldEvaluator.shouldRun?.(fieldContext(runtime, userMessage)),
+      await threadOpsFieldEvaluator.shouldRun?.(
+        fieldContext(runtime, userMessage),
+      ),
     ).toBe(false);
-    const userProvider = await workThreadsProvider.get(runtime, userMessage, state);
+    const userProvider = await workThreadsProvider.get(
+      runtime,
+      userMessage,
+      state,
+    );
     expect(userProvider.values?.workThreadCount).toBe(0);
     const deniedUserAction = await runThreadAction(runtime, userMessage, [
       {
@@ -729,15 +739,19 @@ describe("LifeOps work threads", () => {
       sourceWorkThreadId: privateBId,
     });
 
-    const merged = await runThreadAction(runtime, sharedMessageA("merge these"), [
-      {
-        type: "merge",
-        workThreadId: sharedPlanId,
-        sourceWorkThreadIds: [sharedBudgetId],
-        summary: "Merged launch plan and budget.",
-        instruction: "Treat launch plan and budget as one workstream.",
-      },
-    ]);
+    const merged = await runThreadAction(
+      runtime,
+      sharedMessageA("merge these"),
+      [
+        {
+          type: "merge",
+          workThreadId: sharedPlanId,
+          sourceWorkThreadIds: [sharedBudgetId],
+          summary: "Merged launch plan and budget.",
+          instruction: "Treat launch plan and budget as one workstream.",
+        },
+      ],
+    );
     expect(merged.success).toBe(true);
 
     const store = createWorkThreadStore(runtime);
@@ -757,9 +771,17 @@ describe("LifeOps work threads", () => {
     expect(mergedSource?.metadata?.mergedIntoWorkThreadId).toBe(sharedPlanId);
     expect(stillPrivateB?.status).toBe("active");
 
-    const stopped = await runThreadAction(runtime, sharedMessageB("stop this"), [
-      { type: "stop", workThreadId: sharedPlanId, reason: "Merged work done." },
-    ]);
+    const stopped = await runThreadAction(
+      runtime,
+      sharedMessageB("stop this"),
+      [
+        {
+          type: "stop",
+          workThreadId: sharedPlanId,
+          reason: "Merged work done.",
+        },
+      ],
+    );
     expect(stopped.success).toBe(true);
 
     const stoppedAgain = await runThreadAction(

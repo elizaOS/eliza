@@ -57,9 +57,9 @@ export const activityProfileProvider: Provider = {
         agentIds: [runtime.agentId],
         tags: [...PROACTIVE_TASK_TAGS],
       });
-      const task = tasks.slice(0, MAX_PROFILE_TASKS).find(
-        (t) => t.name === "PROACTIVE_AGENT" && isRecord(t.metadata),
-      );
+      const task = tasks
+        .slice(0, MAX_PROFILE_TASKS)
+        .find((t) => t.name === "PROACTIVE_AGENT" && isRecord(t.metadata));
       const metadata = isRecord(task?.metadata) ? task.metadata : null;
       const profile = readProfileFromMetadata(metadata);
 

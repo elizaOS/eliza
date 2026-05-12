@@ -5,6 +5,12 @@
 // safety is enforced at the composed-service level (LifeOpsService class).
 // Refactoring requires either declaration-merging every cross-mixin method
 // or moving to a single composed interface — tracked as separate work.
+
+import {
+  computePersonalBaseline,
+  computeSleepRegularity,
+  type SleepRegularityEpisodeLike,
+} from "@elizaos/plugin-health";
 import type {
   LifeOpsPersonalBaselineResponse,
   LifeOpsSleepHistoryEpisode,
@@ -14,11 +20,6 @@ import type {
 } from "@elizaos/shared";
 import { resolveDefaultTimeZone } from "./defaults.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
-import {
-  computePersonalBaseline,
-  computeSleepRegularity,
-  type SleepRegularityEpisodeLike,
-} from "@elizaos/plugin-health";
 
 const DEFAULT_HISTORY_WINDOW_DAYS = 365;
 const DEFAULT_REGULARITY_WINDOW_DAYS = 30;

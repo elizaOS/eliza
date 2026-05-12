@@ -1,6 +1,6 @@
 import {
-  getDefaultTriageService,
   type ActionResult,
+  getDefaultTriageService,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -22,7 +22,6 @@ import { credentialsAction } from "./actions/credentials.js";
 import { ownerDocumentsAction } from "./actions/document.js";
 import { entityAction } from "./actions/entity.js";
 import { inboxUnifiedAction } from "./actions/inbox-unified.js";
-import { prioritizeAction } from "./actions/prioritize.js";
 import {
   ownerAlarmsAction,
   ownerFinancesAction,
@@ -34,6 +33,7 @@ import {
   ownerTodosAction,
   personalAssistantAction,
 } from "./actions/owner-surfaces.js";
+import { prioritizeAction } from "./actions/prioritize.js";
 import { remoteDesktopAction } from "./actions/remote-desktop.js";
 import { resolveRequestAction } from "./actions/resolve-request.js";
 import { scheduledTaskAction } from "./actions/scheduled-task.js";
@@ -51,6 +51,9 @@ import {
   FOLLOWUP_TRACKER_TASK_NAME,
   registerFollowupTrackerWorker,
 } from "./followup/index.js";
+import { InboxTriageRepository } from "./inbox/repository.js";
+import { createApprovalQueue } from "./lifeops/approval-queue.js";
+import type { ApprovalChannel } from "./lifeops/approval-queue.types.js";
 import {
   createChannelRegistry,
   registerChannelRegistry,
@@ -77,6 +80,7 @@ import {
   createOwnerFactStore,
   registerOwnerFactStore,
 } from "./lifeops/owner/fact-store.js";
+import { ownerProfileExtractionEvaluator } from "./lifeops/owner/profile-extraction-evaluator.js";
 import {
   createAnchorRegistry,
   createEventKindRegistry,
@@ -101,6 +105,7 @@ import {
   LIFEOPS_TASK_NAME,
   registerLifeOpsTaskWorker,
 } from "./lifeops/runtime.js";
+import { ScheduledTaskRunnerService } from "./lifeops/scheduled-task/service.js";
 import { lifeOpsSchema } from "./lifeops/schema.js";
 import {
   createSendPolicyRegistry,
@@ -110,12 +115,12 @@ import {
   createActivitySignalBus,
   registerActivitySignalBus,
 } from "./lifeops/signals/bus.js";
+import { threadOpsFieldEvaluator } from "./lifeops/work-threads/field-evaluator-thread-ops.js";
 import { browserBridgeProvider } from "./provider.js";
 // Activity-profile (proactive agent: GM/GN/nudges)
 import { activityProfileProvider } from "./providers/activity-profile.js";
 import { appBlockerProvider } from "./providers/app-blocker.js";
 import { crossChannelContextProvider } from "./providers/cross-channel-context.js";
-
 // LifeOps core providers
 import { firstRunProvider } from "./providers/first-run.js";
 import { healthProvider } from "./providers/health.js";
@@ -124,8 +129,8 @@ import { lifeOpsProvider } from "./providers/lifeops.js";
 import { pendingPromptsProvider } from "./providers/pending-prompts.js";
 import { recentTaskStatesProvider } from "./providers/recent-task-states.js";
 import { roomPolicyProvider } from "./providers/room-policy.js";
-import { workThreadsProvider } from "./providers/work-threads.js";
 import { websiteBlockerProvider } from "./providers/website-blocker.js";
+import { workThreadsProvider } from "./providers/work-threads.js";
 import { BrowserBridgePluginService } from "./service.js";
 import { registerBlockRuleReconcilerWorker } from "./website-blocker/chat-integration/index.js";
 import {
@@ -133,13 +138,7 @@ import {
   type SelfControlPluginConfig,
   setSelfControlPluginConfig,
 } from "./website-blocker/engine.js";
-import { ScheduledTaskRunnerService } from "./lifeops/scheduled-task/service.js";
 import { WebsiteBlockerService } from "./website-blocker/service.js";
-import { threadOpsFieldEvaluator } from "./lifeops/work-threads/field-evaluator-thread-ops.js";
-import { ownerProfileExtractionEvaluator } from "./lifeops/owner/profile-extraction-evaluator.js";
-import { InboxTriageRepository } from "./inbox/repository.js";
-import { createApprovalQueue } from "./lifeops/approval-queue.js";
-import type { ApprovalChannel } from "./lifeops/approval-queue.types.js";
 
 const GOOGLE_CONNECTOR_PLUGIN_PACKAGE = "@elizaos/plugin-google";
 const GOOGLE_CONNECTOR_PLUGIN_NAME = "google";
@@ -170,13 +169,9 @@ function looksLikeMissedCallRepairApproval(text: string): boolean {
 function looksLikeFlightConflictQuestion(text: string): boolean {
   const normalized = text.toLowerCase();
   return (
-    /\b(?:flight|flights?|airport|jfk|sfo|lax|ewr|lga)\b/u.test(
-      normalized,
-    ) &&
+    /\b(?:flight|flights?|airport|jfk|sfo|lax|ewr|lga)\b/u.test(normalized) &&
     /\b(?:meeting|board|calendar|appointment|event)\b/u.test(normalized) &&
-    /\b(?:land|lands|arrival|arrive|make|conflict|rebook)\b/u.test(
-      normalized,
-    )
+    /\b(?:land|lands|arrival|arrive|make|conflict|rebook)\b/u.test(normalized)
   );
 }
 
@@ -206,8 +201,7 @@ function looksLikePortalUploadRequest(text: string): boolean {
 
 function buildPortalUploadIntakeResponse(): ActionResult {
   return {
-    text:
-      "I need the portal link and the deck file or file path before I can upload it. Once you provide both, I will ask for approval to confirm before signing in or submitting anything.",
+    text: "I need the portal link and the deck file or file path before I can upload it. Once you provide both, I will ask for approval to confirm before signing in or submitting anything.",
     success: true,
     data: {
       actionName: "COMPUTER_USE",
@@ -236,7 +230,8 @@ async function queueDocumentSignatureRequest(args: {
   const text = getMessageText(args.message);
   const documentName = /\bnda\b/iu.test(text) ? "NDA" : "Document";
   const documentId = `signature-${String(args.message.id ?? Date.now())}`;
-  const signatureUrl = text.match(/https?:\/\/\S+/u)?.[0] ?? "pending-signature-url";
+  const signatureUrl =
+    text.match(/https?:\/\/\S+/u)?.[0] ?? "pending-signature-url";
   const subjectUserId =
     typeof args.message.entityId === "string"
       ? args.message.entityId
@@ -676,9 +671,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     PresenceSignalBridgeService,
     ScheduledTaskRunnerService,
   ],
-  responseHandlerEvaluators: [
-    ownerProfileExtractionEvaluator,
-  ],
+  responseHandlerEvaluators: [ownerProfileExtractionEvaluator],
   responseHandlerFieldEvaluators: [threadOpsFieldEvaluator],
   init: async (
     pluginConfig: Record<string, unknown>,
@@ -712,14 +705,18 @@ const rawAppLifeOpsPlugin: Plugin = {
     const connectorRegistry = createConnectorRegistry();
     registerDefaultConnectorPack(connectorRegistry, runtime);
     registerConnectorRegistry(runtime, connectorRegistry);
-    (runtime as IAgentRuntime & { connectorRegistry?: typeof connectorRegistry })
-      .connectorRegistry = connectorRegistry;
+    (
+      runtime as IAgentRuntime & {
+        connectorRegistry?: typeof connectorRegistry;
+      }
+    ).connectorRegistry = connectorRegistry;
 
     const channelRegistry = createChannelRegistry();
     registerDefaultChannelPack(channelRegistry, runtime);
     registerChannelRegistry(runtime, channelRegistry);
-    (runtime as IAgentRuntime & { channelRegistry?: typeof channelRegistry })
-      .channelRegistry = channelRegistry;
+    (
+      runtime as IAgentRuntime & { channelRegistry?: typeof channelRegistry }
+    ).channelRegistry = channelRegistry;
 
     const sendPolicyRegistry = createSendPolicyRegistry();
     registerSendPolicyRegistry(runtime, sendPolicyRegistry);
@@ -729,21 +726,26 @@ const rawAppLifeOpsPlugin: Plugin = {
     const anchorRegistry = createAnchorRegistry();
     registerAppLifeOpsAnchors(anchorRegistry);
     registerAnchorRegistry(runtime, anchorRegistry);
-    (runtime as IAgentRuntime & { anchorRegistry?: typeof anchorRegistry })
-      .anchorRegistry = anchorRegistry;
+    (
+      runtime as IAgentRuntime & { anchorRegistry?: typeof anchorRegistry }
+    ).anchorRegistry = anchorRegistry;
 
     const eventKindRegistry = createEventKindRegistry();
     registerAppLifeOpsEventKinds(eventKindRegistry);
     registerEventKindRegistry(runtime, eventKindRegistry);
-    (runtime as IAgentRuntime & { eventKindRegistry?: typeof eventKindRegistry })
-      .eventKindRegistry = eventKindRegistry;
+    (
+      runtime as IAgentRuntime & {
+        eventKindRegistry?: typeof eventKindRegistry;
+      }
+    ).eventKindRegistry = eventKindRegistry;
 
     const familyRegistry = createFamilyRegistry();
     registerBuiltinTelemetryFamilies(familyRegistry);
     registerAppLifeOpsBusFamilies(familyRegistry);
     registerFamilyRegistry(runtime, familyRegistry);
-    (runtime as IAgentRuntime & { busFamilyRegistry?: typeof familyRegistry })
-      .busFamilyRegistry = familyRegistry;
+    (
+      runtime as IAgentRuntime & { busFamilyRegistry?: typeof familyRegistry }
+    ).busFamilyRegistry = familyRegistry;
 
     const workflowStepRegistry = createWorkflowStepRegistry();
     registerDefaultWorkflowStepPack(workflowStepRegistry);
@@ -1046,19 +1048,6 @@ export {
   type PendingPromptRecordInput,
   type PendingPromptsStore,
 } from "./lifeops/pending-prompts/store.js";
-export {
-  createWorkThreadStore,
-  type CreateWorkThreadInput,
-  type ThreadSourceRef,
-  type UpdateWorkThreadInput,
-  type WorkThread,
-  type WorkThreadEvent,
-  type WorkThreadEventType,
-  type WorkThreadListFilter,
-  type WorkThreadStatus,
-  type WorkThreadStore,
-} from "./lifeops/work-threads/index.js";
-export { threadOpsFieldEvaluator } from "./lifeops/work-threads/field-evaluator-thread-ops.js";
 // LifeOps runtime exports
 export {
   ensureLifeOpsSchedulerTask,
@@ -1080,9 +1069,13 @@ export type {
   EscalationLadderRegistry,
   EscalationStep,
   GateDecision,
+  ProcessDueScheduledTasksRequest,
+  ProcessDueScheduledTasksResult,
   ScheduledTask,
   ScheduledTaskCompletionCheck,
   ScheduledTaskContextRequest,
+  ScheduledTaskDueContext,
+  ScheduledTaskDueDecision,
   ScheduledTaskEscalation,
   ScheduledTaskFilter,
   ScheduledTaskKind,
@@ -1099,10 +1092,6 @@ export type {
   ScheduledTaskSubject,
   ScheduledTaskTrigger,
   ScheduledTaskVerb,
-  ProcessDueScheduledTasksRequest,
-  ProcessDueScheduledTasksResult,
-  ScheduledTaskDueContext,
-  ScheduledTaskDueDecision,
   TaskGateContribution,
   TaskGateRegistry,
   TerminalState,
@@ -1118,20 +1107,33 @@ export {
   createTaskGateRegistry,
   DEFAULT_ESCALATION_LADDERS,
   PRIORITY_DEFAULT_LADDER_KEYS,
+  processDueScheduledTasks,
   registerBuiltInCompletionChecks,
   registerBuiltInGates,
   registerDefaultEscalationLadders,
   registerStubAnchors,
-  processDueScheduledTasks,
   STATE_LOG_DEFAULT_RETENTION_DAYS,
 } from "./lifeops/scheduled-task/index.js";
 export type { CreateRuntimeRunnerOptions } from "./lifeops/scheduled-task/runtime-wiring.js";
 export { createRuntimeScheduledTaskRunner } from "./lifeops/scheduled-task/runtime-wiring.js";
+export type { GetScheduledTaskRunnerOptions } from "./lifeops/scheduled-task/service.js";
 export {
   getScheduledTaskRunner,
   ScheduledTaskRunnerService,
 } from "./lifeops/scheduled-task/service.js";
-export type { GetScheduledTaskRunnerOptions } from "./lifeops/scheduled-task/service.js";
+export { threadOpsFieldEvaluator } from "./lifeops/work-threads/field-evaluator-thread-ops.js";
+export {
+  type CreateWorkThreadInput,
+  createWorkThreadStore,
+  type ThreadSourceRef,
+  type UpdateWorkThreadInput,
+  type WorkThread,
+  type WorkThreadEvent,
+  type WorkThreadEventType,
+  type WorkThreadListFilter,
+  type WorkThreadStatus,
+  type WorkThreadStore,
+} from "./lifeops/work-threads/index.js";
 export { appBlockerProvider } from "./providers/app-blocker.js";
 export type { FirstRunAffordance } from "./providers/first-run.js";
 export { firstRunProvider } from "./providers/first-run.js";

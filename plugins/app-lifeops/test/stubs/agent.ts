@@ -36,7 +36,9 @@ export function computeNextCronRunAtMs(): number {
   return Date.now() + 60_000;
 }
 
-export function parseCronExpression(expression: string): { expression: string } {
+export function parseCronExpression(expression: string): {
+  expression: string;
+} {
   return { expression };
 }
 
@@ -84,7 +86,9 @@ export function createElizaPlugin(plugin: unknown): unknown {
   return plugin;
 }
 
-export async function startApiServer(): Promise<{ close: () => Promise<void> }> {
+export async function startApiServer(): Promise<{
+  close: () => Promise<void>;
+}> {
   return { close: async () => undefined };
 }
 

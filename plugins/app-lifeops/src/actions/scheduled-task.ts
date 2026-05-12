@@ -374,7 +374,12 @@ async function handleCreate(
     ...(params.output
       ? { output: params.output }
       : scope.roomId
-        ? { output: { destination: "channel", target: `in_app:${scope.roomId}` } }
+        ? {
+            output: {
+              destination: "channel",
+              target: `in_app:${scope.roomId}`,
+            },
+          }
         : {}),
     ...(params.pipeline ? { pipeline: params.pipeline } : {}),
     ...(Object.keys(metadata).length > 0 ? { metadata } : {}),

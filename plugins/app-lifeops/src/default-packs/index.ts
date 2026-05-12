@@ -38,24 +38,27 @@ export type {
 } from "./contract-stubs.js";
 export type { DefaultPack, DefaultPackRegistry } from "./registry-types.js";
 
+import { DEFAULT_CONSOLIDATION_POLICIES } from "./consolidation-policies.js";
+import type { ConnectorRegistryStub } from "./contract-stubs.js";
 import {
   DAILY_RHYTHM_PACK_KEY,
   DAILY_RHYTHM_RECORD_IDS,
   dailyRhythmPack,
 } from "./daily-rhythm.js";
+import { DEFAULT_ESCALATION_LADDERS } from "./escalation-ladders.js";
 import {
+  buildFollowupTaskForRelationship,
   DEFAULT_FOLLOWUP_CADENCE_DAYS,
+  deriveOverdueFollowupTasks,
   FOLLOWUP_STARTER_PACK_KEY,
   FOLLOWUP_STARTER_RECORD_IDS,
-  buildFollowupTaskForRelationship,
-  deriveOverdueFollowupTasks,
   followupStarterPack,
 } from "./followup-starter.js";
 import {
-  HABIT_STARTER_KEYS,
-  HABIT_STARTERS_PACK_KEY,
-  HABIT_STARTER_RECORDS,
   buildSeedingOfferMessage,
+  HABIT_STARTER_KEYS,
+  HABIT_STARTER_RECORDS,
+  HABIT_STARTERS_PACK_KEY,
   habitStartersPack,
 } from "./habit-starters.js";
 import {
@@ -66,34 +69,29 @@ import {
   isInboxTriageEligible,
 } from "./inbox-triage-starter.js";
 import {
-  MORNING_BRIEF_PACK_KEY,
-  MORNING_BRIEF_RECORD_IDS,
-  assembleMorningBrief,
-  buildMorningBriefPromptFromReport,
-  morningBriefPack,
-} from "./morning-brief.js";
-import {
-  QUIET_THRESHOLD_DAYS,
-  QUIET_USER_WATCHER_PACK_KEY,
-  QUIET_USER_WATCHER_RECORD_IDS,
-  type QuietUserWatcherObservation,
-  deriveQuietObservations,
-  quietUserWatcherPack,
-  runQuietUserWatcher,
-} from "./quiet-user-watcher.js";
-
-import { DEFAULT_CONSOLIDATION_POLICIES } from "./consolidation-policies.js";
-import { DEFAULT_ESCALATION_LADDERS } from "./escalation-ladders.js";
-import {
-  type PromptLintFinding,
-  type PromptLintRuleKind,
   formatFindings,
   lintPack,
   lintPacks,
   lintPromptText,
+  type PromptLintFinding,
+  type PromptLintRuleKind,
 } from "./lint.js";
-
-import type { ConnectorRegistryStub } from "./contract-stubs.js";
+import {
+  assembleMorningBrief,
+  buildMorningBriefPromptFromReport,
+  MORNING_BRIEF_PACK_KEY,
+  MORNING_BRIEF_RECORD_IDS,
+  morningBriefPack,
+} from "./morning-brief.js";
+import {
+  deriveQuietObservations,
+  QUIET_THRESHOLD_DAYS,
+  QUIET_USER_WATCHER_PACK_KEY,
+  QUIET_USER_WATCHER_RECORD_IDS,
+  type QuietUserWatcherObservation,
+  quietUserWatcherPack,
+  runQuietUserWatcher,
+} from "./quiet-user-watcher.js";
 import type { DefaultPack } from "./registry-types.js";
 
 /**
@@ -120,9 +118,9 @@ export function getAllDefaultPacks(): DefaultPack[] {
  * (e.g. `inbox-triage-starter`) are filtered out when their capabilities
  * aren't registered.
  */
-export function getDefaultEnabledPacks(options: {
-  connectorRegistry?: ConnectorRegistryStub | null;
-} = {}): DefaultPack[] {
+export function getDefaultEnabledPacks(
+  options: { connectorRegistry?: ConnectorRegistryStub | null } = {},
+): DefaultPack[] {
   return DEFAULT_PACKS.filter((pack) => pack.defaultEnabled).filter((pack) => {
     if (!pack.requiredCapabilities || pack.requiredCapabilities.length === 0) {
       return true;
@@ -153,43 +151,46 @@ export function getDefaultPack(key: string): DefaultPack | null {
 
 // -- Re-exports for consumers --
 
+export type {
+  PromptLintFinding,
+  PromptLintRuleKind,
+  QuietUserWatcherObservation,
+};
 export {
+  assembleMorningBrief,
+  buildFollowupTaskForRelationship,
+  buildMorningBriefPromptFromReport,
+  buildSeedingOfferMessage,
   DAILY_RHYTHM_PACK_KEY,
   DAILY_RHYTHM_RECORD_IDS,
   DEFAULT_CONSOLIDATION_POLICIES,
   DEFAULT_ESCALATION_LADDERS,
   DEFAULT_FOLLOWUP_CADENCE_DAYS,
-  FOLLOWUP_STARTER_PACK_KEY,
-  FOLLOWUP_STARTER_RECORD_IDS,
-  HABIT_STARTER_KEYS,
-  HABIT_STARTERS_PACK_KEY,
-  HABIT_STARTER_RECORDS,
-  INBOX_TRIAGE_RECORD_IDS,
-  INBOX_TRIAGE_REQUIRED_CAPABILITIES,
-  INBOX_TRIAGE_STARTER_PACK_KEY,
-  MORNING_BRIEF_PACK_KEY,
-  MORNING_BRIEF_RECORD_IDS,
-  QUIET_THRESHOLD_DAYS,
-  QUIET_USER_WATCHER_PACK_KEY,
-  QUIET_USER_WATCHER_RECORD_IDS,
-  assembleMorningBrief,
-  buildFollowupTaskForRelationship,
-  buildMorningBriefPromptFromReport,
-  buildSeedingOfferMessage,
   dailyRhythmPack,
   deriveOverdueFollowupTasks,
   deriveQuietObservations,
+  FOLLOWUP_STARTER_PACK_KEY,
+  FOLLOWUP_STARTER_RECORD_IDS,
   followupStarterPack,
   formatFindings,
+  HABIT_STARTER_KEYS,
+  HABIT_STARTER_RECORDS,
+  HABIT_STARTERS_PACK_KEY,
   habitStartersPack,
+  INBOX_TRIAGE_RECORD_IDS,
+  INBOX_TRIAGE_REQUIRED_CAPABILITIES,
+  INBOX_TRIAGE_STARTER_PACK_KEY,
   inboxTriageStarterPack,
   isInboxTriageEligible,
   lintPack,
   lintPacks,
   lintPromptText,
+  MORNING_BRIEF_PACK_KEY,
+  MORNING_BRIEF_RECORD_IDS,
   morningBriefPack,
+  QUIET_THRESHOLD_DAYS,
+  QUIET_USER_WATCHER_PACK_KEY,
+  QUIET_USER_WATCHER_RECORD_IDS,
   quietUserWatcherPack,
   runQuietUserWatcher,
 };
-
-export type { PromptLintFinding, PromptLintRuleKind, QuietUserWatcherObservation };

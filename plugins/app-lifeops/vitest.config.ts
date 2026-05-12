@@ -113,12 +113,7 @@ const telegramSessionsEntry = path.join(
   "sessions",
   "index.js",
 );
-const pluginHealthSrc = path.join(
-  elizaRoot,
-  "plugins",
-  "plugin-health",
-  "src",
-);
+const pluginHealthSrc = path.join(elizaRoot, "plugins", "plugin-health", "src");
 
 const defaultUnitExcludes = [
   "dist/**",

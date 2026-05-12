@@ -1,5 +1,5 @@
-import type { SelectedLiveProvider } from "./lifeops-live-harness.ts";
 import { judgeWithCerebras } from "./lifeops-eval-model.ts";
+import type { SelectedLiveProvider } from "./lifeops-live-harness.ts";
 
 export type LlmJudgeResult = {
   passed: boolean;

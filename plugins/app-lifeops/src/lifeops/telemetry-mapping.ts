@@ -9,12 +9,12 @@
  */
 
 import crypto from "node:crypto";
+import { resolveActivitySignalReliability } from "@elizaos/plugin-health";
 import type {
   LifeOpsActivitySignal,
   LifeOpsTelemetryEvent,
   LifeOpsTelemetryPayload,
 } from "@elizaos/shared";
-import { resolveActivitySignalReliability } from "@elizaos/plugin-health";
 
 export function deriveTelemetryDedupeKey(
   family: string,

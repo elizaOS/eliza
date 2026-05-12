@@ -53,7 +53,9 @@ function trimDemonstrationInput(rawInput: string): string {
   // planner inputs typically end with "<TURN-N>\nuser: <message>" or a
   // similar marker.
   const userMatch =
-    rawInput.match(/(?:^|\n)user(?:\s+message)?\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i) ??
+    rawInput.match(
+      /(?:^|\n)user(?:\s+message)?\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i,
+    ) ??
     rawInput.match(/(?:^|\n)user_message\s*:\s*([^\n]+(?:\n(?!\w+:)[^\n]+)*)/i);
   const candidate = userMatch?.[1]?.trim();
   if (candidate && candidate.length > 0 && candidate.length <= 600) {

@@ -1,0 +1,75 @@
+{
+  "generatedAt": "2026-05-12T09:07:57.880Z",
+  "verifier": "packages/inference/verify/dflash_drafter_runtime_smoke.mjs",
+  "targetModel": "/home/shaw/.eliza/local-inference/models/eliza-1-1_7b.bundle/text/eliza-1-1_7b-64k.gguf",
+  "drafterModel": "/home/shaw/.eliza/local-inference/models/eliza-1-1_7b.bundle/dflash/drafter-1_7b.gguf",
+  "checks": {
+    "drafterShape": "plain-ar",
+    "upstreamDflashShapeOk": false,
+    "plainArShapeOk": true,
+    "hasTargetCheckpointSha256": true,
+    "gpt2TokenizerHasMerges": true
+  },
+  "metadata": {
+    "version": 3,
+    "tensorCount": 311,
+    "kvCount": 31,
+    "architecture": "qwen3",
+    "drafterShape": "plain-ar",
+    "tokenizerModel": "gpt2",
+    "tokenizerPre": "qwen2",
+    "hasTokenizerMerges": true,
+    "targetCheckpointSha256": "ee006af450f9b34a214c9f7b3fa6f62d5d33cf8d74b3e0cd23493a66806b2a14",
+    "dflash": {},
+    "upstreamRequiredTensors": {
+      "dflash_fc.weight": false,
+      "dflash_hidden_norm.weight": false,
+      "output_norm.weight": true
+    },
+    "plainArMarkers": {
+      "token_embd.weight": true,
+      "blk.0.attn_q.weight": true,
+      "blk.0.attn_k.weight": true
+    }
+  },
+  "runtime": [
+    {
+      "label": "installed",
+      "binary": "/home/shaw/.eliza/local-inference/bin/dflash/darwin-arm64-metal/llama-speculative-simple",
+      "args": [
+        "-m",
+        "/home/shaw/.eliza/local-inference/models/eliza-1-1_7b.bundle/text/eliza-1-1_7b-64k.gguf",
+        "-md",
+        "/home/shaw/.eliza/local-inference/models/eliza-1-1_7b.bundle/dflash/drafter-1_7b.gguf",
+        "-p",
+        "Hello",
+        "-n",
+        "1",
+        "-c",
+        "128",
+        "-cd",
+        "128",
+        "-ngl",
+        "0",
+        "-ngld",
+        "0",
+        "--device",
+        "none",
+        "--device-draft",
+        "none",
+        "--draft",
+        "1",
+        "--draft-min",
+        "1",
+        "--draft-p-min",
+        "0.1"
+      ],
+      "status": null,
+      "signal": null,
+      "classification": "binary_missing",
+      "outputTail": ""
+    }
+  ],
+  "metadataStatus": "metadata_loadable",
+  "metadataFailures": []
+}

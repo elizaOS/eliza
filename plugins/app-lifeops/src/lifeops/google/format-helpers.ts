@@ -1,8 +1,4 @@
-import type {
-  IAgentRuntime,
-  Memory,
-  ProviderDataRecord,
-} from "@elizaos/core";
+import type { IAgentRuntime, Memory, ProviderDataRecord } from "@elizaos/core";
 import {
   assertActiveTrajectoryForLlmCall,
   ModelType,

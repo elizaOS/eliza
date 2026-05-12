@@ -10,7 +10,13 @@
  * production code as soon as the call hits it.
  */
 
-import type { Agent, Character, IAgentRuntime, Task, UUID } from "@elizaos/core";
+import type {
+  Agent,
+  Character,
+  IAgentRuntime,
+  Task,
+  UUID,
+} from "@elizaos/core";
 
 export interface MinimalRuntimeStub extends Partial<IAgentRuntime> {
   agentId: UUID;
@@ -33,7 +39,8 @@ export function createMinimalRuntimeStub(
   overrides: Partial<MinimalRuntimeStub> = {},
 ): IAgentRuntime {
   const cache = new Map<string, unknown>();
-  const agentId = ("test-agent-" + Math.random().toString(36).slice(2, 8)) as UUID;
+  const agentId = ("test-agent-" +
+    Math.random().toString(36).slice(2, 8)) as UUID;
   let agentRecord: Agent | null = null;
   const tasks: Array<{
     id: string;

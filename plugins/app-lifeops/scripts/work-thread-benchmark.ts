@@ -7,6 +7,7 @@ import type {
   ResponseHandlerResult,
   State,
 } from "@elizaos/core";
+import { createMockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
 import { workThreadAction } from "../src/actions/work-thread.ts";
 import {
   type ThreadOp,
@@ -14,7 +15,6 @@ import {
 } from "../src/lifeops/work-threads/field-evaluator-thread-ops.ts";
 import { createWorkThreadStore } from "../src/lifeops/work-threads/store.ts";
 import { workThreadsProvider } from "../src/providers/work-threads.ts";
-import { createMockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
 
 type Sample = {
   name: string;
@@ -46,11 +46,7 @@ function percentile(values: number[], p: number): number {
   return sorted[index] ?? 0;
 }
 
-function message(
-  runtime: IAgentRuntime,
-  roomId: string,
-  text: string,
-): Memory {
+function message(runtime: IAgentRuntime, roomId: string, text: string): Memory {
   return {
     id: `${roomId}:bench:${Math.random().toString(36).slice(2)}` as Memory["id"],
     entityId: runtime.agentId,
@@ -133,7 +129,9 @@ async function runThreadAction(
   return result as ActionResult;
 }
 
-function operationResults(result: ActionResult): Array<Record<string, unknown>> {
+function operationResults(
+  result: ActionResult,
+): Array<Record<string, unknown>> {
   const operations = result.data?.operations;
   if (!Array.isArray(operations)) {
     throw new Error("expected thread operation results");

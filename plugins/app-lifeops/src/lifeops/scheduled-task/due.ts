@@ -104,7 +104,13 @@ function localHHMMToIso(
   const parts = localParts(now, timeZone);
   const hour = Math.floor(minutes / 60);
   const minute = minutes % 60;
-  const localAsUtc = Date.UTC(parts.year, parts.month - 1, parts.day, hour, minute);
+  const localAsUtc = Date.UTC(
+    parts.year,
+    parts.month - 1,
+    parts.day,
+    hour,
+    minute,
+  );
   const offsetFormatter = new Intl.DateTimeFormat("en-US", {
     timeZone,
     timeZoneName: "longOffset",
@@ -240,9 +246,11 @@ async function resolveAnchorIso(
   context: ScheduledTaskDueContext,
 ): Promise<string | null> {
   const ownerFacts = context.ownerFacts ?? {};
-  const registryAnchor = context.anchors?.get(trigger.anchorKey) as
-    | { resolve?: (ctx: unknown) => Promise<{ atIso: string } | null> | { atIso: string } | null }
-    | null;
+  const registryAnchor = context.anchors?.get(trigger.anchorKey) as {
+    resolve?: (
+      ctx: unknown,
+    ) => Promise<{ atIso: string } | null> | { atIso: string } | null;
+  } | null;
   if (typeof registryAnchor?.resolve === "function") {
     const resolved = await registryAnchor.resolve({
       nowIso: context.now.toISOString(),
@@ -259,7 +267,11 @@ async function resolveAnchorIso(
     trigger.anchorKey === "wake.observed" ||
     trigger.anchorKey === "morning.start"
   ) {
-    return localHHMMToIso(context.now, ownerFacts.morningWindow?.start, timeZone);
+    return localHHMMToIso(
+      context.now,
+      ownerFacts.morningWindow?.start,
+      timeZone,
+    );
   }
   if (trigger.anchorKey === "bedtime.target") {
     return (
@@ -268,7 +280,11 @@ async function resolveAnchorIso(
     );
   }
   if (trigger.anchorKey === "night.start") {
-    return localHHMMToIso(context.now, ownerFacts.eveningWindow?.start, timeZone);
+    return localHHMMToIso(
+      context.now,
+      ownerFacts.eveningWindow?.start,
+      timeZone,
+    );
   }
   if (trigger.anchorKey === "lunch.start") {
     return localHHMMToIso(context.now, "12:00", timeZone);
@@ -305,15 +321,22 @@ function windowBoundsMinutes(
   windowKey: string,
   ownerFacts: OwnerFactsView,
 ): Array<{ name: string; start: number; end: number }> {
-  const morningStart = minutesFromHHMM(ownerFacts.morningWindow?.start) ?? 6 * 60;
+  const morningStart =
+    minutesFromHHMM(ownerFacts.morningWindow?.start) ?? 6 * 60;
   const morningEnd = minutesFromHHMM(ownerFacts.morningWindow?.end) ?? 11 * 60;
-  const eveningStart = minutesFromHHMM(ownerFacts.eveningWindow?.start) ?? 18 * 60;
+  const eveningStart =
+    minutesFromHHMM(ownerFacts.eveningWindow?.start) ?? 18 * 60;
   const eveningEnd = minutesFromHHMM(ownerFacts.eveningWindow?.end) ?? 22 * 60;
   const afternoonStart = morningEnd;
   const afternoonEnd = eveningStart;
-  const windows: Record<string, Array<{ name: string; start: number; end: number }>> = {
+  const windows: Record<
+    string,
+    Array<{ name: string; start: number; end: number }>
+  > = {
     morning: [{ name: "morning", start: morningStart, end: morningEnd }],
-    afternoon: [{ name: "afternoon", start: afternoonStart, end: afternoonEnd }],
+    afternoon: [
+      { name: "afternoon", start: afternoonStart, end: afternoonEnd },
+    ],
     evening: [{ name: "evening", start: eveningStart, end: eveningEnd }],
     night: [
       { name: "night", start: eveningEnd, end: 24 * 60 },
@@ -364,7 +387,10 @@ export async function isScheduledTaskDue(
   if (task.state.status === "dismissed") {
     return { due: false, reason: "dismissed" };
   }
-  if (isTerminalStatus(task.state.status) && !isRecurringTrigger(task.trigger)) {
+  if (
+    isTerminalStatus(task.state.status) &&
+    !isRecurringTrigger(task.trigger)
+  ) {
     return { due: false, reason: "terminal_non_recurring" };
   }
   const nowMs = context.now.getTime();

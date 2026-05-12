@@ -5,6 +5,28 @@
 // safety is enforced at the composed-service level (LifeOpsService class).
 // Refactoring requires either declaration-merging every cross-mixin method
 // or moving to a single composed interface — tracked as separate work.
+
+import {
+  completeHealthConnectorOAuth,
+  deleteStoredHealthToken,
+  detectHealthBackend,
+  getDailySummary,
+  getDataPoints,
+  getRecentSummaries,
+  type HealthBackend,
+  type HealthBridgeConfig,
+  HealthBridgeError,
+  HealthConnectorApiError,
+  type HealthDailySummary,
+  type HealthDataPoint,
+  HealthOAuthError,
+  healthConnectorCapabilities,
+  readStoredHealthToken,
+  refreshStoredHealthToken,
+  resolveHealthOAuthConfig,
+  startHealthConnectorOAuth,
+  syncHealthConnectorData,
+} from "@elizaos/plugin-health";
 import type {
   DisconnectLifeOpsHealthConnectorRequest,
   GetLifeOpsHealthSummaryRequest,
@@ -25,27 +47,6 @@ import {
   LIFEOPS_HEALTH_CONNECTOR_CAPABILITIES,
   LIFEOPS_HEALTH_CONNECTOR_PROVIDERS,
 } from "../contracts/index.js";
-import {
-  detectHealthBackend,
-  getDailySummary,
-  getDataPoints,
-  getRecentSummaries,
-  type HealthBackend,
-  type HealthBridgeConfig,
-  HealthBridgeError,
-  type HealthDailySummary,
-  type HealthDataPoint,
-  HealthConnectorApiError,
-  syncHealthConnectorData,
-  completeHealthConnectorOAuth,
-  deleteStoredHealthToken,
-  HealthOAuthError,
-  healthConnectorCapabilities,
-  readStoredHealthToken,
-  refreshStoredHealthToken,
-  resolveHealthOAuthConfig,
-  startHealthConnectorOAuth,
-} from "@elizaos/plugin-health";
 import {
   createLifeOpsConnectorGrant,
   createLifeOpsHealthSyncState,

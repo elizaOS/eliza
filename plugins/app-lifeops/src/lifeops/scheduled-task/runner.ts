@@ -14,8 +14,8 @@
  *    both are set.
  */
 
-import type { CompletionCheckRegistry } from "./completion-check-registry.js";
 import type { DispatchResult } from "../connectors/contract.js";
+import type { CompletionCheckRegistry } from "./completion-check-registry.js";
 import type {
   AnchorRegistry,
   ConsolidationRegistry,
@@ -196,9 +196,7 @@ export interface ScheduledTaskDispatchRecord {
 }
 
 export interface ScheduledTaskDispatcher {
-  dispatch(
-    record: ScheduledTaskDispatchRecord,
-  ): Promise<DispatchResult | void>;
+  dispatch(record: ScheduledTaskDispatchRecord): Promise<DispatchResult | void>;
 }
 
 /**
@@ -1046,8 +1044,7 @@ export function createScheduledTaskRunner(
         output: claimed.output,
       });
     } catch (error) {
-      const wrapped =
-        error instanceof Error ? error : new Error(String(error));
+      const wrapped = error instanceof Error ? error : new Error(String(error));
       return { kind: "dispatch_failed", task: claimed, error: wrapped };
     }
     if (dispatchResult) {

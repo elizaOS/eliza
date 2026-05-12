@@ -8,12 +8,7 @@
  * Dismiss flag is persisted via localStorage under
  * LIFEOPS_SETUP_GATE_DISMISSED_KEY.
  */
-import {
-  Button,
-  dispatchFocusConnector,
-  Input,
-  useApp,
-} from "@elizaos/ui";
+import { Button, dispatchFocusConnector, Input, useApp } from "@elizaos/ui";
 import { CalendarDays, MessageCircle, SkipForward } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";

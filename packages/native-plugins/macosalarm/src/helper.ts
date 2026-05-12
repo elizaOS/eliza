@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,9 +10,10 @@ import type {
 
 const HELPER_ENV_OVERRIDE = "ELIZA_MACOSALARM_HELPER_BIN";
 
-export interface HelperSpawn {
-  (bin: string, args: string[]): ChildProcessWithoutNullStreams;
-}
+export type HelperSpawn = (
+  bin: string,
+  args: string[],
+) => ChildProcessWithoutNullStreams;
 
 export interface HelperRunOptions {
   spawnImpl?: HelperSpawn;

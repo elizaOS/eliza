@@ -134,7 +134,7 @@ function simulateOneDay({ packs, day, dayIndex }) {
         fires.push({
           packKey: pack.key,
           recordKey:
-            (record.metadata?.recordKey ?? record.idempotencyKey) ?? "unknown",
+            record.metadata?.recordKey ?? record.idempotencyKey ?? "unknown",
           kind: record.kind,
           priority: record.priority,
           ownerVisible: record.ownerVisible,
@@ -495,8 +495,7 @@ function findRecordFor(packs, packKey, recordKey) {
   if (!pack) return null;
   return (
     pack.records.find(
-      (r) =>
-        (r.metadata?.recordKey ?? r.idempotencyKey ?? null) === recordKey,
+      (r) => (r.metadata?.recordKey ?? r.idempotencyKey ?? null) === recordKey,
     ) ?? null
   );
 }
@@ -504,7 +503,8 @@ function findRecordFor(packs, packKey, recordKey) {
 function synthesizeTimestamp(dayIndex, minuteOfDay) {
   // Anchor the simulation at 2026-05-10 (Sun) UTC for readability.
   const baseUtcMs = Date.UTC(2026, 4, 10, 0, 0, 0);
-  const ms = baseUtcMs + dayIndex * 24 * 60 * 60 * 1000 + minuteOfDay * 60 * 1000;
+  const ms =
+    baseUtcMs + dayIndex * 24 * 60 * 60 * 1000 + minuteOfDay * 60 * 1000;
   return new Date(ms).toISOString();
 }
 
