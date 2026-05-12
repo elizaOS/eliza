@@ -6,7 +6,12 @@
  * failures or empty inputs.
  */
 
-import type { HandlerOptions, IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import type {
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,9 +29,11 @@ import {
   setPrioritizeLoaders,
 } from "../src/actions/prioritize.js";
 
-function makeRuntime(options: {
-  useModel?: (modelType: string, args: { prompt: string }) => Promise<string>;
-} = {}): IAgentRuntime {
+function makeRuntime(
+  options: {
+    useModel?: (modelType: string, args: { prompt: string }) => Promise<string>;
+  } = {},
+): IAgentRuntime {
   return {
     agentId: "agent-prioritize-test" as UUID,
     logger: {
@@ -155,7 +162,12 @@ describe("PRIORITIZE umbrella action — focus ranking", () => {
       const [modelType] = useModel.mock.calls[0]!;
       expect(modelType).toBe(ModelType.TEXT_LARGE);
       const data = result.data as {
-        ranked: { id: string; rank: number; score: number; reasoning: string }[];
+        ranked: {
+          id: string;
+          rank: number;
+          score: number;
+          reasoning: string;
+        }[];
       };
       expect(data.ranked).toHaveLength(2);
       expect(data.ranked[0]).toMatchObject({

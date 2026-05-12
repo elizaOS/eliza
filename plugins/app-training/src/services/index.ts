@@ -23,14 +23,14 @@ export {
   type TriggerStatusSnapshot,
 } from "./training-trigger.js";
 export {
-  VastTrainingService,
-  VastServiceError,
   type CheckpointInfo,
   type CreateJobInput,
   type EvalCheckpointInput,
   type RegistryListing,
   type VastRegistry,
   type VastRegistryEntry,
+  VastServiceError,
+  VastTrainingService,
   type VastTrainingServiceOptions,
 } from "./training-vast-service.js";
 export {

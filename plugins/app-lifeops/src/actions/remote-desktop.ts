@@ -44,13 +44,16 @@ const SUBACTIONS: SubactionsMap<RemoteSubaction> = {
     optional: ["pairingCode"],
   },
   status: {
-    description: "Look up one remote session by id via the stored session backend.",
-    descriptionCompressed: "lookup remote session sessionId stored-session-backend",
+    description:
+      "Look up one remote session by id via the stored session backend.",
+    descriptionCompressed:
+      "lookup remote session sessionId stored-session-backend",
     required: ["sessionId"],
   },
   end: {
     description: "Close a remote session by id via the stored session backend.",
-    descriptionCompressed: "close remote session sessionId stored-session-backend",
+    descriptionCompressed:
+      "close remote session sessionId stored-session-backend",
     required: ["sessionId"],
   },
   list: {
@@ -335,7 +338,8 @@ export const remoteDesktopAction: Action & {
     {
       name: "action",
       description: "One of: start, status, end, list, revoke.",
-      descriptionCompressed: "remote-desktop action: start|status|end|list|revoke",
+      descriptionCompressed:
+        "remote-desktop action: start|status|end|list|revoke",
       required: false,
       schema: {
         type: "string" as const,
@@ -345,8 +349,7 @@ export const remoteDesktopAction: Action & {
     },
     {
       name: "sessionId",
-      description:
-        "Session id - required for status, end, and revoke actions.",
+      description: "Session id - required for status, end, and revoke actions.",
       descriptionCompressed: "session id (status|end|revoke)",
       required: false,
       schema: { type: "string" as const },

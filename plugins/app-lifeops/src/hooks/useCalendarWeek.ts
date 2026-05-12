@@ -5,8 +5,8 @@
  * switch to day or month views by passing windowDays.
  */
 
-import { client, useApp } from "@elizaos/ui";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { client, useApp } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type CalendarViewMode = "day" | "week" | "month";

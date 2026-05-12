@@ -1,10 +1,10 @@
-import { client, useApp } from "@elizaos/ui";
 import type {
   LifeOpsInbox,
   LifeOpsInboxChannel,
   LifeOpsInboxMessage,
   LifeOpsInboxThreadGroup,
 } from "@elizaos/shared";
+import { client, useApp } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 export type InboxChannel = "all" | LifeOpsInboxChannel;

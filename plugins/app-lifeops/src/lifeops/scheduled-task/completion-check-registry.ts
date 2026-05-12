@@ -49,7 +49,9 @@ function resolveSinceIso(
   if (requireSinceTaskFired && firedAt) {
     return firedAt;
   }
-  const minutes = Number.isFinite(lookbackMinutes) ? Number(lookbackMinutes) : 60;
+  const minutes = Number.isFinite(lookbackMinutes)
+    ? Number(lookbackMinutes)
+    : 60;
   return isoMinusMinutes(context.nowIso, minutes);
 }
 
@@ -110,7 +112,11 @@ const healthSignalObservedCheck: CompletionCheckContribution = {
       return false;
     }
     const requireSince = params.requireSinceTaskFired !== false;
-    const sinceIso = resolveSinceIso(context, params.lookbackMinutes, requireSince);
+    const sinceIso = resolveSinceIso(
+      context,
+      params.lookbackMinutes,
+      requireSince,
+    );
     const observed = await context.activity.hasSignalSince({
       signalKind: params.signalKind,
       sinceIso,

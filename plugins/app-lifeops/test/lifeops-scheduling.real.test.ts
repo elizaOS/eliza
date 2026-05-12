@@ -289,9 +289,9 @@ describe("life-ops scheduling-with-others handlers (real PGLite)", () => {
       async () => {},
     );
     expect(result?.success).toBe(false);
-    expect(
-      (result as { data?: { error?: string } }).data?.error,
-    ).toBe("NO_FIELDS");
+    expect((result as { data?: { error?: string } }).data?.error).toBe(
+      "NO_FIELDS",
+    );
   });
 
   it("CALENDAR.check_availability rejects an invalid window (end <= start)", async () => {
@@ -308,8 +308,8 @@ describe("life-ops scheduling-with-others handlers (real PGLite)", () => {
       async () => {},
     );
     expect(result?.success).toBe(false);
-    expect(
-      (result as { data?: { error?: string } }).data?.error,
-    ).toBe("INVALID_WINDOW");
+    expect((result as { data?: { error?: string } }).data?.error).toBe(
+      "INVALID_WINDOW",
+    );
   });
 });

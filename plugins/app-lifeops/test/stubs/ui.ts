@@ -45,4 +45,3 @@ export function registerBuiltinWidgets(): void {}
 export function getAppBlockerPlugin(): Record<string, unknown> {
   return {};
 }
-

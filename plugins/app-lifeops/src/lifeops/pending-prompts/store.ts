@@ -16,10 +16,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  asCacheRuntime,
-  type RuntimeCacheLike,
-} from "../runtime-cache.js";
+import { asCacheRuntime, type RuntimeCacheLike } from "../runtime-cache.js";
 
 export type ExpectedReplyKind = "any" | "yes_no" | "approval" | "free_form";
 

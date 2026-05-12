@@ -15,6 +15,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
+import { asCacheRuntime } from "../runtime-cache.js";
 import type { ScheduledTask, ScheduledTaskInput } from "../wave1-types.js";
 import {
   buildDefaultsPack,
@@ -42,11 +43,10 @@ import {
   type FirstRunRecord,
   type FirstRunStateStore,
   type OwnerFactProvenance,
+  type OwnerFactStore,
   type OwnerFacts,
   type OwnerFactsPatch,
-  type OwnerFactStore,
 } from "./state.js";
-import { asCacheRuntime } from "../runtime-cache.js";
 
 // --- Runner injection ------------------------------------------------------
 

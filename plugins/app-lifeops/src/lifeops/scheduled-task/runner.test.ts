@@ -39,8 +39,8 @@ import {
 import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
-  TestNoopScheduledTaskDispatcher,
   type ScheduledTaskRunnerHandle,
+  TestNoopScheduledTaskDispatcher,
 } from "./runner.js";
 import {
   createInMemoryScheduledTaskLogStore,

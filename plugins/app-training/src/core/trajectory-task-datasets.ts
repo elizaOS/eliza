@@ -1,12 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type {
-  Trajectory,
-  TrajectoryLlmCall,
-} from "@elizaos/agent";
+import type { Trajectory, TrajectoryLlmCall } from "@elizaos/agent";
 import {
-  ELIZA_NATIVE_MODEL_BOUNDARIES,
   buildElizaNativeTrajectoryRows,
+  ELIZA_NATIVE_MODEL_BOUNDARIES,
   ELIZA_NATIVE_TRAJECTORY_FORMAT,
   type ElizaNativeTrajectoryRow,
 } from "@elizaos/core";
@@ -72,7 +69,10 @@ const TASK_FILE_NAMES: Record<TrajectoryTrainingTask, string> = {
 
 const NATIVE_MODEL_BOUNDARIES = new Set<string>(ELIZA_NATIVE_MODEL_BOUNDARIES);
 
-type TaskExampleMap = Record<TrajectoryTrainingTask, ElizaNativeTrainingExample[]>;
+type TaskExampleMap = Record<
+  TrajectoryTrainingTask,
+  ElizaNativeTrainingExample[]
+>;
 type TaskCountMap = Record<TrajectoryTrainingTask, number>;
 type TaskTrajectoryIdMap = Record<TrajectoryTrainingTask, Set<string>>;
 

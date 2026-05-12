@@ -118,9 +118,9 @@ describe("SCHEDULED_TASK action", () => {
       [],
     );
     expect(result?.success).toBe(false);
-    expect(
-      (result?.data as { error?: string } | undefined)?.error,
-    ).toBe("MISSING_SUBACTION");
+    expect((result?.data as { error?: string } | undefined)?.error).toBe(
+      "MISSING_SUBACTION",
+    );
   });
 
   it("get returns NOT_FOUND for an unknown taskId", async () => {
@@ -136,8 +136,8 @@ describe("SCHEDULED_TASK action", () => {
       [],
     );
     expect(result?.success).toBe(false);
-    expect(
-      (result?.data as { error?: string } | undefined)?.error,
-    ).toBe("NOT_FOUND");
+    expect((result?.data as { error?: string } | undefined)?.error).toBe(
+      "NOT_FOUND",
+    );
   });
 });

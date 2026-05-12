@@ -12,8 +12,8 @@
  *         ../core/src/i18n/generated/validation-keyword-data.ts (standalone)
  */
 
-import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
-import { dirname, join, basename } from "node:path";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

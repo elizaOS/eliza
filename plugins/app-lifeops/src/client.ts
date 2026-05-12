@@ -2,20 +2,17 @@
 import "./api/client-lifeops.js";
 // `ElizaClient` comes from the UI barrel so the client extension augments the
 // same class instance used by the frontend shell.
-import { ElizaClient } from "@elizaos/ui";
-import {
-  type AppBlockerPermissionResult,
-  type AppBlockerPluginLike,
-  type AppBlockerStatus,
-  type BlockAppsOptions,
-  type BlockAppsResult,
-  type InstalledApp,
-  type SelectAppsResult,
-  type UnblockAppsResult,
+import { ElizaClient, getAppBlockerPlugin } from "@elizaos/ui";
+import type {
+  AppBlockerPermissionResult,
+  AppBlockerPluginLike,
+  AppBlockerStatus,
+  BlockAppsOptions,
+  BlockAppsResult,
+  InstalledApp,
+  SelectAppsResult,
+  UnblockAppsResult,
 } from "./app-blocker/types.js";
-import {
-  getAppBlockerPlugin,
-} from "@elizaos/ui";
 
 function requireAppBlockerPlugin(): AppBlockerPluginLike {
   const plugin = getAppBlockerPlugin();

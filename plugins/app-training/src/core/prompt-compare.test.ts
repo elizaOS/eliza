@@ -3,10 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { LlmAdapter, OptimizationExample } from "../optimizers/index.js";
-import {
-  comparePrompts,
-  formatComparisonSummary,
-} from "./prompt-compare.js";
+import { comparePrompts, formatComparisonSummary } from "./prompt-compare.js";
 
 /** Deterministic adapter that returns whatever string the test wires
  *  up per (system, user) key. Mirrors the "in-memory adapter" pattern

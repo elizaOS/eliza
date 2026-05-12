@@ -343,8 +343,7 @@ export class DeviceBridgeClient {
     // upstream plugin gains a real probe path that returns trustworthy
     // values (`source === "native"`), we let it win.
     const native = await probeNativeIosCapabilities();
-    const useNativeOverride =
-      native !== null && hardware.source !== "native";
+    const useNativeOverride = native !== null && hardware.source !== "native";
 
     const platform = useNativeOverride
       ? (native?.platform ?? hardware.platform)

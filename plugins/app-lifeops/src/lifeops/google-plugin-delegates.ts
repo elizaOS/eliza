@@ -1,6 +1,6 @@
 import {
-  getConnectorAccountManager,
   type ConnectorAccount,
+  getConnectorAccountManager,
   type IAgentRuntime,
   type Metadata,
 } from "@elizaos/core";
@@ -148,7 +148,8 @@ export function googleCapabilitiesForAccount(
   }
   if (
     scopes.some(
-      (scope) => scope.includes("gmail.modify") || scope.includes("gmail.settings"),
+      (scope) =>
+        scope.includes("gmail.modify") || scope.includes("gmail.settings"),
     )
   ) {
     values.push("google.gmail.manage");
@@ -182,7 +183,9 @@ export function googleCapabilitiesForAccount(
   if (normalized.has("google.drive.write" as LifeOpsGoogleCapability)) {
     normalized.add("google.drive.read" as LifeOpsGoogleCapability);
   }
-  return normalizeGrantCapabilities([...normalized]) as LifeOpsGoogleCapability[];
+  return normalizeGrantCapabilities([
+    ...normalized,
+  ]) as LifeOpsGoogleCapability[];
 }
 
 export function googleScopesForAccount(
@@ -239,10 +242,12 @@ export function googleIdentityForAccount(
 export function googleAccountEmail(account: ConnectorAccount): string | null {
   const identity = googleIdentityForAccount(account);
   return (
-    stringValue(identity?.email) ??
-    stringValue(account.displayHandle) ??
-    null
-  )?.toLowerCase() ?? null;
+    (
+      stringValue(identity?.email) ??
+      stringValue(account.displayHandle) ??
+      null
+    )?.toLowerCase() ?? null
+  );
 }
 
 export function googleGrantFromAccount(args: {
@@ -363,9 +368,14 @@ export async function listGoogleConnectorAccounts(args: {
   const manager = getConnectorAccountManager(args.runtime);
   const accounts = await manager.listAccounts("google");
   return accounts
-    .filter((account) => account.status !== "disabled" && account.status !== "revoked")
+    .filter(
+      (account) =>
+        account.status !== "disabled" && account.status !== "revoked",
+    )
     .filter((account) =>
-      args.requestedSide ? googleSideForAccount(account) === args.requestedSide : true,
+      args.requestedSide
+        ? googleSideForAccount(account) === args.requestedSide
+        : true,
     );
 }
 
@@ -413,10 +423,9 @@ export function requireGoogleWorkspaceService(
   return service as IGoogleWorkspaceService;
 }
 
-export function requireGoogleServiceMethod<K extends keyof IGoogleWorkspaceService>(
-  runtime: RuntimeWithService,
-  method: K,
-): IGoogleWorkspaceService[K] {
+export function requireGoogleServiceMethod<
+  K extends keyof IGoogleWorkspaceService,
+>(runtime: RuntimeWithService, method: K): IGoogleWorkspaceService[K] {
   const service = requireGoogleWorkspaceService(runtime);
   const fn = service[method];
   if (typeof fn !== "function") {
@@ -433,7 +442,11 @@ export function requireCapability(args: {
   capability: LifeOpsGoogleCapability | string;
   message: string;
 }): void {
-  if (!args.grant.capabilities.includes(args.capability as LifeOpsGoogleCapability)) {
+  if (
+    !args.grant.capabilities.includes(
+      args.capability as LifeOpsGoogleCapability,
+    )
+  ) {
     fail(403, args.message);
   }
 }
@@ -486,7 +499,11 @@ export function lifeOpsGmailMessageFromGoogle(args: {
     isUnread: labels.includes("UNREAD"),
     isImportant: labels.includes("IMPORTANT"),
     likelyReplyNeeded: labels.includes("INBOX") && !labels.includes("SENT"),
-    triageScore: labels.includes("IMPORTANT") ? 90 : labels.includes("UNREAD") ? 70 : 40,
+    triageScore: labels.includes("IMPORTANT")
+      ? 90
+      : labels.includes("UNREAD")
+        ? 70
+        : 40,
     triageReason: labels.includes("IMPORTANT")
       ? "Marked important in Gmail."
       : labels.includes("UNREAD")
@@ -599,7 +616,9 @@ export function googleCalendarEventInput(args: {
   timeZone?: string | null;
   description?: string | null;
   location?: string | null;
-  attendees?: readonly { email?: string | null; displayName?: string | null }[] | null;
+  attendees?:
+    | readonly { email?: string | null; displayName?: string | null }[]
+    | null;
 }): GoogleCalendarEventInput {
   return {
     accountId: args.accountId,
@@ -627,7 +646,9 @@ export function googleCalendarEventPatchInput(args: {
   timeZone?: string | null;
   description?: string;
   location?: string;
-  attendees?: readonly { email?: string | null; displayName?: string | null }[] | null;
+  attendees?:
+    | readonly { email?: string | null; displayName?: string | null }[]
+    | null;
 }): GoogleCalendarEventPatchInput {
   return {
     accountId: args.accountId,

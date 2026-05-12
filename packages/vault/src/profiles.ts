@@ -23,8 +23,8 @@
 import {
   META_PREFIX,
   profileStorageKey,
-  readEntryMeta,
   ROUTING_KEY,
+  readEntryMeta,
 } from "./inventory.js";
 import type { Vault } from "./vault.js";
 

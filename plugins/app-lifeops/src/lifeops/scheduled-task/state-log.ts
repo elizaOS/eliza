@@ -43,14 +43,7 @@ export function createInMemoryScheduledTaskLogStore(): ScheduledTaskLogStore {
     async append(entry) {
       rows.push({ ...entry });
     },
-    async list({
-      agentId,
-      taskId,
-      sinceIso,
-      untilIso,
-      excludeRollups,
-      limit,
-    }) {
+    async list({ agentId, taskId, sinceIso, untilIso, excludeRollups, limit }) {
       let view = rows
         .filter((r) => r.agentId === agentId && r.taskId === taskId)
         .filter((r) => (excludeRollups ? !r.rolledUp : true))

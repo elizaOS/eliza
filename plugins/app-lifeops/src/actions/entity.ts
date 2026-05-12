@@ -27,15 +27,15 @@ import {
   LIFEOPS_MESSAGE_CHANNELS,
   type LifeOpsMessageChannel,
 } from "@elizaos/shared";
-import { LifeOpsService } from "../lifeops/service.js";
-import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { runLifeOpsJsonModel } from "../lifeops/google/format-helpers.js";
+import { LifeOpsRepository } from "../lifeops/repository.js";
+import { LifeOpsService } from "../lifeops/service.js";
 import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
 } from "../lifeops/voice/grounded-reply.js";
-import { LifeOpsRepository } from "../lifeops/repository.js";
+import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
 
 type Subaction =
   | "create"

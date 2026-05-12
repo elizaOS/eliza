@@ -1,7 +1,4 @@
-import type {
-  Trajectory,
-  TrajectoryListResult,
-} from "@elizaos/agent";
+import type { Trajectory, TrajectoryListResult } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
 import { createHashAnonymizer } from "../core/privacy-filter.js";
 import { buildTrajectoryExportBundle } from "../core/trajectory-export-bundle.js";
@@ -20,7 +17,9 @@ export class NotImplementedError extends Error {
   }
 }
 
-export function isNotImplementedError(err: unknown): err is NotImplementedError {
+export function isNotImplementedError(
+  err: unknown,
+): err is NotImplementedError {
   return err instanceof NotImplementedError;
 }
 
@@ -115,9 +114,7 @@ export class TrainingService implements TrainingServiceWithRuntime {
     });
     const trajectories = (
       await Promise.all(
-        listed.trajectories.map((item) =>
-          service.getTrajectoryDetail(item.id),
-        ),
+        listed.trajectories.map((item) => service.getTrajectoryDetail(item.id)),
       )
     ).filter((t): t is Trajectory => t !== null);
     const minCalls = options.minLlmCallsPerTrajectory ?? 0;

@@ -8,8 +8,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent";
-import { whatsappAuthExists } from "@elizaos/plugin-whatsapp";
 import type { Plugin } from "@elizaos/core";
+import { whatsappAuthExists } from "@elizaos/plugin-whatsapp";
 import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared";
 import {
   fetchWhatsAppMessagesWithRuntimeService,

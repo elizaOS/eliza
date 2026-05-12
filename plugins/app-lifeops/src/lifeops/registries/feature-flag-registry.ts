@@ -127,7 +127,9 @@ class InMemoryFeatureFlagRegistry implements FeatureFlagRegistry {
 export function createFeatureFlagRegistry(args: {
   builtinKeys: ReadonlySet<LifeOpsFeatureKey>;
 }): FeatureFlagRegistry {
-  return new InMemoryFeatureFlagRegistry(args.builtinKeys as ReadonlySet<string>);
+  return new InMemoryFeatureFlagRegistry(
+    args.builtinKeys as ReadonlySet<string>,
+  );
 }
 
 // ---------------------------------------------------------------------------

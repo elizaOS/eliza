@@ -29,10 +29,8 @@ const APP_CORE_ENTRIES_DIR = path.join(
 );
 const PLUGINS_DIR = path.join(ELIZA_REPO_ROOT, "plugins");
 
-const PACKAGE_NAME_RE =
-  /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
-const GITHUB_REPO_RE =
-  /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+const PACKAGE_NAME_RE = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
+const GITHUB_REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const SAFE_DIRECTORY_RE = /^[A-Za-z0-9._/-]+$/;
 const SAFE_BRANCH_RE = /^[A-Za-z0-9._/-]+$/;
 const VALID_KINDS = new Set(["app", "connector", "plugin"]);
@@ -306,7 +304,9 @@ function normalizeAppMeta(packageName, pkg, manifest, appCoreEntry) {
 
   return {
     displayName:
-      app.displayName || appCoreEntry?.name || titleFromPackageName(packageName),
+      app.displayName ||
+      appCoreEntry?.name ||
+      titleFromPackageName(packageName),
     category: app.category || appCoreEntry?.subtype || "app",
     launchType: app.launchType || mapLaunchType(appCoreLaunch.type),
     launchUrl:
@@ -406,12 +406,16 @@ function builtinEntryForPackage(pluginDir, pkg, manifest, appCoreEntry) {
   const directory = `plugins/${pluginDir}`;
   const repo = BUILTIN_REPO;
   const appMeta =
-    kind === "app" ? normalizeAppMeta(packageName, pkg, manifest, appCoreEntry) : null;
+    kind === "app"
+      ? normalizeAppMeta(packageName, pkg, manifest, appCoreEntry)
+      : null;
   const homepage =
     pkg.homepage ||
     `https://github.com/${repo}/tree/${BUILTIN_BRANCH}/${directory}#readme`;
   const description =
-    pkg.description || appCoreEntry?.description || titleFromPackageName(packageName);
+    pkg.description ||
+    appCoreEntry?.description ||
+    titleFromPackageName(packageName);
   const topics = uniqueStrings([
     pkg.keywords || [],
     pkg.elizaos?.plugin?.capabilities || [],
@@ -485,7 +489,9 @@ function normalizeThirdPartyMeta(filePath) {
   }
   assertPackageName(packageName, context);
   if (packageName.startsWith("@elizaos/")) {
-    throw new Error(`${context}: @elizaos/* packages are reserved for built-ins`);
+    throw new Error(
+      `${context}: @elizaos/* packages are reserved for built-ins`,
+    );
   }
   if (!repo) {
     throw new Error(`${context}: "repository" must be github:owner/repo`);
@@ -506,10 +512,7 @@ function normalizeThirdPartyMeta(filePath) {
   if (meta.tags !== undefined && !Array.isArray(meta.tags)) {
     throw new Error(`${context}: "tags" must be an array of strings`);
   }
-  if (
-    meta.description !== undefined &&
-    typeof meta.description !== "string"
-  ) {
+  if (meta.description !== undefined && typeof meta.description !== "string") {
     throw new Error(`${context}: "description" must be a string`);
   }
 
@@ -533,7 +536,8 @@ function normalizeThirdPartyMeta(filePath) {
     appMeta:
       kind === "app"
         ? {
-            displayName: meta.app?.displayName || titleFromPackageName(packageName),
+            displayName:
+              meta.app?.displayName || titleFromPackageName(packageName),
             category: meta.app?.category || "app",
             launchType: meta.app?.launchType || "url",
             launchUrl: meta.app?.launchUrl || null,

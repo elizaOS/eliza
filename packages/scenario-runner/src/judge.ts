@@ -5,7 +5,7 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { ModelType, logger } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import {
   getEvalModelClient,
   isCerebrasEvalEnabled,

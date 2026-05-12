@@ -12,14 +12,9 @@ import {
   createAnchorRegistry,
   createConsolidationRegistry,
 } from "./consolidation-policy.js";
-import type {
-  ScheduledTask,
-  ScheduledTaskPriority,
-} from "./types.js";
+import type { ScheduledTask, ScheduledTaskPriority } from "./types.js";
 
-const baseTask = (
-  overrides: Partial<ScheduledTask> = {},
-): ScheduledTask => ({
+const baseTask = (overrides: Partial<ScheduledTask> = {}): ScheduledTask => ({
   taskId: "t1",
   kind: "reminder",
   promptInstructions: "x",
@@ -55,9 +50,7 @@ describe("ConsolidationRegistry", () => {
     });
     const tasks: ScheduledTask[] = (
       ["low", "high", "medium"] as ScheduledTaskPriority[]
-    ).map((priority, i) =>
-      baseTask({ taskId: `t-${priority}`, priority }),
-    );
+    ).map((priority, i) => baseTask({ taskId: `t-${priority}`, priority }));
     void tasks; // silence unused if any
     const taskList: ScheduledTask[] = ["low", "high", "medium"].map((p, i) =>
       baseTask({

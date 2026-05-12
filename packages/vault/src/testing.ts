@@ -11,10 +11,10 @@
 import { promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createVault, type Vault } from "./vault.js";
 import { generateMasterKey } from "./crypto.js";
 import { inMemoryMasterKey } from "./master-key.js";
 import type { AuditRecord } from "./types.js";
+import { createVault, type Vault } from "./vault.js";
 
 export interface TestVault {
   readonly vault: Vault;

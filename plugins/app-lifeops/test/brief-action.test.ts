@@ -6,7 +6,12 @@
  * sections from the injected loaders, and dispatches via simile names.
  */
 
-import type { HandlerOptions, IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import type {
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,9 +29,11 @@ import {
   setBriefComposers,
 } from "../src/actions/brief.js";
 
-function makeRuntime(options: {
-  useModel?: (modelType: string, args: { prompt: string }) => Promise<string>;
-} = {}): IAgentRuntime {
+function makeRuntime(
+  options: {
+    useModel?: (modelType: string, args: { prompt: string }) => Promise<string>;
+  } = {},
+): IAgentRuntime {
   return {
     agentId: "agent-brief-test" as UUID,
     logger: {
@@ -36,8 +43,7 @@ function makeRuntime(options: {
       debug: () => undefined,
     },
     useModel:
-      options.useModel ??
-      (async () => "Composed narrative from the model."),
+      options.useModel ?? (async () => "Composed narrative from the model."),
   } as unknown as IAgentRuntime;
 }
 
@@ -173,7 +179,9 @@ describe("BRIEF umbrella action — Daily Operations", () => {
       expect(data.briefing.sections.inbox).toHaveLength(1);
       expect(data.briefing.sections.life).toHaveLength(1);
       expect(data.briefing.sections.money).toHaveLength(1);
-      expect(data.briefing.narrative).toBe("Composed narrative from the model.");
+      expect(data.briefing.narrative).toBe(
+        "Composed narrative from the model.",
+      );
     });
 
     it("honors include flags by suppressing whole sections", async () => {
@@ -203,7 +211,10 @@ describe("BRIEF umbrella action — Daily Operations", () => {
         action: "WEEKLY_BRIEF",
       });
       expect(result.success).toBe(true);
-      const data = result.data as { subaction: string; briefing: { period: string } };
+      const data = result.data as {
+        subaction: string;
+        briefing: { period: string };
+      };
       expect(data.subaction).toBe("compose_weekly");
       expect(data.briefing.period).toBe("this_week");
     });

@@ -36,7 +36,9 @@ const REMOVED_CALENDAR_SUBACTIONS = [
   "negotiate_list_proposals",
 ];
 
-function findCalendarActionEnum(action: typeof calendarAction): readonly string[] {
+function findCalendarActionEnum(
+  action: typeof calendarAction,
+): readonly string[] {
   return listSubactionsFromParameters(action.parameters);
 }
 
@@ -74,8 +76,12 @@ describe("W2-C: CALENDAR umbrella narrowing", () => {
 
   it("CALENDAR.description does not advertise calendly_ or negotiate_ subactions", () => {
     const description = calendarAction.description ?? "";
-    expect(description).not.toMatch(/\bcalendly_(availability|list_event_types|upcoming|single_use_link)\b/);
-    expect(description).not.toMatch(/\bnegotiate_(start|propose|respond|finalize|cancel|list_active|list_proposals)\b/);
+    expect(description).not.toMatch(
+      /\bcalendly_(availability|list_event_types|upcoming|single_use_link)\b/,
+    );
+    expect(description).not.toMatch(
+      /\bnegotiate_(start|propose|respond|finalize|cancel|list_active|list_proposals)\b/,
+    );
   });
 });
 

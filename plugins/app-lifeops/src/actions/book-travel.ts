@@ -7,6 +7,7 @@ import type {
   State,
 } from "@elizaos/core";
 import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import { INTERNAL_URL } from "../lifeops/access.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import type {
   ApprovalQueue,
@@ -25,7 +26,6 @@ import {
 } from "../lifeops/x402-payment-handler.js";
 import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./lib/recent-context.js";
-import { INTERNAL_URL } from "../lifeops/access.js";
 
 type BookTravelPassengerInput = {
   offerPassengerId?: string | null;
@@ -335,197 +335,134 @@ export async function runBookTravelHandler(
   options: unknown,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
-    try {
-      await requireFeatureEnabled(runtime, "travel.book_flight");
-    } catch (error) {
-      if (error instanceof FeatureNotEnabledError) {
-        const text = error.message;
-        if (callback) {
-          await callback({ text });
-        }
-        // FEATURE_NOT_ENABLED is a "needs setup / confirmation" terminal
-        // state — the action correctly identified what to do; the owner
-        // just needs to enable the feature (e.g. sign in to Eliza Cloud).
-        return {
-          text,
-          success: false,
-          values: {
-            success: false,
-            error: error.code,
-            featureKey: error.featureKey,
-            requiresConfirmation: true,
-          },
-          data: {
-            actionName: "PERSONAL_ASSISTANT",
-            action: "book_travel",
-            error: error.code,
-            featureKey: error.featureKey,
-            requiresConfirmation: true,
-          },
-        };
-      }
-      throw error;
-    }
-
-    const params = getParams(options as HandlerOptions | undefined);
-    const extracted = await extractBookTravelPlanWithLlm({
-      runtime,
-      message,
-      state,
-      params,
-    });
-    const merged = mergePlans(params, extracted);
-
-    const missing: string[] = [];
-    if (!merged.offerId) {
-      if (!merged.origin) {
-        missing.push("origin airport");
-      }
-      if (!merged.destination) {
-        missing.push("destination airport");
-      }
-      if (!merged.departureDate) {
-        missing.push("departure date");
-      }
-    }
-    missing.push(...listMissingPassengerFields(merged.passengers));
-    if (missing.length > 0) {
-      const text = buildMissingInfoText(missing);
+  try {
+    await requireFeatureEnabled(runtime, "travel.book_flight");
+  } catch (error) {
+    if (error instanceof FeatureNotEnabledError) {
+      const text = error.message;
       if (callback) {
         await callback({ text });
       }
-      // Selection + execution were correct: the user asked to book travel,
-      // the action ran, and we now need the user to fill in missing trip
-      // details. Mark as awaiting-confirmation so the native planner stops
-      // chaining and the benchmark scorer treats this as completed.
+      // FEATURE_NOT_ENABLED is a "needs setup / confirmation" terminal
+      // state — the action correctly identified what to do; the owner
+      // just needs to enable the feature (e.g. sign in to Eliza Cloud).
       return {
         text,
         success: false,
         values: {
           success: false,
-          error: "MISSING_BOOKING_DETAILS",
+          error: error.code,
+          featureKey: error.featureKey,
           requiresConfirmation: true,
-          missing,
         },
         data: {
           actionName: "PERSONAL_ASSISTANT",
           action: "book_travel",
-          error: "MISSING_BOOKING_DETAILS",
+          error: error.code,
+          featureKey: error.featureKey,
           requiresConfirmation: true,
-          missing,
         },
       };
     }
+    throw error;
+  }
 
-    const service = new LifeOpsService(runtime);
-    let search: {
-      origin: string;
-      destination: string;
-      departureDate: string;
-      returnDate?: string;
-      passengers: number;
-    } | null = null;
-    if (!merged.offerId) {
-      const { origin, destination, departureDate } = merged;
-      if (!origin || !destination || !departureDate) {
-        throw new Error(
-          "PERSONAL_ASSISTANT action=book_travel validated fields are unexpectedly missing",
-        );
-      }
-      search = {
-        origin,
-        destination,
-        departureDate,
-        returnDate: merged.returnDate ?? undefined,
-        passengers: merged.passengerCount ?? merged.passengers.length,
-      };
+  const params = getParams(options as HandlerOptions | undefined);
+  const extracted = await extractBookTravelPlanWithLlm({
+    runtime,
+    message,
+    state,
+    params,
+  });
+  const merged = mergePlans(params, extracted);
+
+  const missing: string[] = [];
+  if (!merged.offerId) {
+    if (!merged.origin) {
+      missing.push("origin airport");
     }
-
-    let prepared: Awaited<ReturnType<typeof service.prepareFlightBooking>>;
-    try {
-      prepared = await service.prepareFlightBooking({
-        offerId: merged.offerId,
-        search,
-        passengers: merged.passengers,
-        calendarSync: merged.calendarSync,
-      });
-    } catch (err) {
-      if (
-        !(err instanceof PaymentRequiredError) ||
-        err.requirements.length === 0
-      ) {
-        throw err;
-      }
-      // Surface the x402 payment-required signal as part of the approval
-      // entry rather than a hard failure: the user sees the booking
-      // intent and the top-up prompt together and can approve once they
-      // have credit. We bail out here because we don't have a quoted
-      // offer yet — the next book_travel invocation after top-up will
-      // re-quote.
-      const paymentRequired: X402PaymentRequirement = err.requirements[0];
-      const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
-      const subjectUserId =
-        typeof message.entityId === "string"
-          ? message.entityId
-          : String(runtime.agentId);
-      const request = await queue.enqueue({
-        requestedBy: "PERSONAL_ASSISTANT",
-        subjectUserId,
+    if (!merged.destination) {
+      missing.push("destination airport");
+    }
+    if (!merged.departureDate) {
+      missing.push("departure date");
+    }
+  }
+  missing.push(...listMissingPassengerFields(merged.passengers));
+  if (missing.length > 0) {
+    const text = buildMissingInfoText(missing);
+    if (callback) {
+      await callback({ text });
+    }
+    // Selection + execution were correct: the user asked to book travel,
+    // the action ran, and we now need the user to fill in missing trip
+    // details. Mark as awaiting-confirmation so the native planner stops
+    // chaining and the benchmark scorer treats this as completed.
+    return {
+      text,
+      success: false,
+      values: {
+        success: false,
+        error: "MISSING_BOOKING_DETAILS",
+        requiresConfirmation: true,
+        missing,
+      },
+      data: {
+        actionName: "PERSONAL_ASSISTANT",
         action: "book_travel",
-        payload: {
-          action: "book_travel",
-          kind: "flight",
-          provider: "duffel",
-          itineraryRef: merged.offerId ?? "pending-quote",
-          totalCents: 0,
-          currency: "USD",
-          offerId: merged.offerId,
-          summary: merged.offerId
-            ? `Booking for offer ${merged.offerId}`
-            : `${merged.origin ?? "?"} → ${merged.destination ?? "?"}`,
-          cost: null,
-          paymentRequired: {
-            amount: paymentRequired.amount,
-            asset: paymentRequired.asset,
-            network: paymentRequired.network,
-            payTo: paymentRequired.payTo,
-            scheme: paymentRequired.scheme,
-            expiresAt: paymentRequired.expiresAt,
-            description: paymentRequired.description,
-          },
-        },
-        channel: "internal",
-        reason: `Top up ${paymentRequired.amount} ${paymentRequired.asset} on ${paymentRequired.network} to book travel`,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      });
-      const text = `Eliza Cloud needs a top-up before I can quote this trip: ${paymentRequired.amount} ${paymentRequired.asset} on ${paymentRequired.network}. I queued it for approval so you can review and pay together.`;
-      if (callback) {
-        await callback({ text });
-      }
-      return {
-        text,
-        success: false,
-        values: {
-          success: false,
-          error: err.code,
-          requestId: request.id,
-          requiresConfirmation: true,
-        },
-        data: {
-          actionName: "PERSONAL_ASSISTANT",
-          action: "book_travel",
-          error: err.code,
-          requestId: request.id,
-          requiresConfirmation: true,
-          paymentRequired: {
-            asset: paymentRequired.asset,
-            network: paymentRequired.network,
-            amount: paymentRequired.amount,
-          },
-        },
-      };
-    }
+        error: "MISSING_BOOKING_DETAILS",
+        requiresConfirmation: true,
+        missing,
+      },
+    };
+  }
 
+  const service = new LifeOpsService(runtime);
+  let search: {
+    origin: string;
+    destination: string;
+    departureDate: string;
+    returnDate?: string;
+    passengers: number;
+  } | null = null;
+  if (!merged.offerId) {
+    const { origin, destination, departureDate } = merged;
+    if (!origin || !destination || !departureDate) {
+      throw new Error(
+        "PERSONAL_ASSISTANT action=book_travel validated fields are unexpectedly missing",
+      );
+    }
+    search = {
+      origin,
+      destination,
+      departureDate,
+      returnDate: merged.returnDate ?? undefined,
+      passengers: merged.passengerCount ?? merged.passengers.length,
+    };
+  }
+
+  let prepared: Awaited<ReturnType<typeof service.prepareFlightBooking>>;
+  try {
+    prepared = await service.prepareFlightBooking({
+      offerId: merged.offerId,
+      search,
+      passengers: merged.passengers,
+      calendarSync: merged.calendarSync,
+    });
+  } catch (err) {
+    if (
+      !(err instanceof PaymentRequiredError) ||
+      err.requirements.length === 0
+    ) {
+      throw err;
+    }
+    // Surface the x402 payment-required signal as part of the approval
+    // entry rather than a hard failure: the user sees the booking
+    // intent and the top-up prompt together and can approve once they
+    // have credit. We bail out here because we don't have a quoted
+    // offer yet — the next book_travel invocation after top-up will
+    // re-quote.
+    const paymentRequired: X402PaymentRequirement = err.requirements[0];
     const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
     const subjectUserId =
       typeof message.entityId === "string"
@@ -537,38 +474,101 @@ export async function runBookTravelHandler(
       action: "book_travel",
       payload: {
         action: "book_travel",
-        ...prepared.payload,
+        kind: "flight",
+        provider: "duffel",
+        itineraryRef: merged.offerId ?? "pending-quote",
+        totalCents: 0,
+        currency: "USD",
+        offerId: merged.offerId,
+        summary: merged.offerId
+          ? `Booking for offer ${merged.offerId}`
+          : `${merged.origin ?? "?"} → ${merged.destination ?? "?"}`,
+        cost: null,
+        paymentRequired: {
+          amount: paymentRequired.amount,
+          asset: paymentRequired.asset,
+          network: paymentRequired.network,
+          payTo: paymentRequired.payTo,
+          scheme: paymentRequired.scheme,
+          expiresAt: paymentRequired.expiresAt,
+          description: paymentRequired.description,
+        },
       },
       channel: "internal",
-      reason: `Book ${prepared.payload.summary ?? "travel itinerary"} after explicit approval`,
+      reason: `Top up ${paymentRequired.amount} ${paymentRequired.asset} on ${paymentRequired.network} to book travel`,
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
     });
-
-    const text = buildApprovalText(request);
+    const text = `Eliza Cloud needs a top-up before I can quote this trip: ${paymentRequired.amount} ${paymentRequired.asset} on ${paymentRequired.network}. I queued it for approval so you can review and pay together.`;
     if (callback) {
       await callback({ text });
     }
-
     return {
       text,
-      success: true,
+      success: false,
       values: {
-        success: true,
+        success: false,
+        error: err.code,
         requestId: request.id,
-        state: request.state,
-        offerId: prepared.offer.id,
+        requiresConfirmation: true,
       },
       data: {
         actionName: "PERSONAL_ASSISTANT",
         action: "book_travel",
+        error: err.code,
         requestId: request.id,
-        state: request.state,
-        offerId: prepared.offer.id,
-        totalAmount: prepared.offer.totalAmount,
-        totalCurrency: prepared.offer.totalCurrency,
-        orderType: prepared.orderType,
+        requiresConfirmation: true,
+        paymentRequired: {
+          asset: paymentRequired.asset,
+          network: paymentRequired.network,
+          amount: paymentRequired.amount,
+        },
       },
     };
+  }
+
+  const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+  const subjectUserId =
+    typeof message.entityId === "string"
+      ? message.entityId
+      : String(runtime.agentId);
+  const request = await queue.enqueue({
+    requestedBy: "PERSONAL_ASSISTANT",
+    subjectUserId,
+    action: "book_travel",
+    payload: {
+      action: "book_travel",
+      ...prepared.payload,
+    },
+    channel: "internal",
+    reason: `Book ${prepared.payload.summary ?? "travel itinerary"} after explicit approval`,
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  });
+
+  const text = buildApprovalText(request);
+  if (callback) {
+    await callback({ text });
+  }
+
+  return {
+    text,
+    success: true,
+    values: {
+      success: true,
+      requestId: request.id,
+      state: request.state,
+      offerId: prepared.offer.id,
+    },
+    data: {
+      actionName: "PERSONAL_ASSISTANT",
+      action: "book_travel",
+      requestId: request.id,
+      state: request.state,
+      offerId: prepared.offer.id,
+      totalAmount: prepared.offer.totalAmount,
+      totalCurrency: prepared.offer.totalCurrency,
+      orderType: prepared.orderType,
+    },
+  };
 }
 
 // Callback invoked by the approval queue once an owner approves a queued

@@ -5,13 +5,13 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { isLoopbackUrl, toRecord } from "../utils.js";
 import {
   FINAL_CHECK_KEYS,
   type ScenarioContext,
   type ScenarioFinalCheck,
 } from "@elizaos/scenario-schema";
 import type { FinalCheckReport, FinalCheckStatus } from "../types.ts";
+import { isLoopbackUrl, toRecord } from "../utils.js";
 
 export interface FinalCheckHandlerContext {
   runtime: IAgentRuntime;
@@ -137,7 +137,6 @@ function matchesExpectedFields(
     valuesEqual(readPath(value, path), expectedValue),
   );
 }
-
 
 type GmailMockRequest = {
   environment?: string;
@@ -356,28 +355,16 @@ function actionMatchesChannel(
   }
   switch (channel) {
     case "gmail":
-      return [
-        "MESSAGE",
-        "MESSAGE",
-        "MESSAGE",
-      ].includes(action.actionName);
+      return ["MESSAGE", "MESSAGE", "MESSAGE"].includes(action.actionName);
     case "discord":
     case "telegram":
     case "signal":
     case "imessage":
     case "whatsapp":
     case "sms":
-      return [
-        "MESSAGE",
-        "MESSAGE",
-        "MESSAGE",
-      ].includes(action.actionName);
+      return ["MESSAGE", "MESSAGE", "MESSAGE"].includes(action.actionName);
     case "x-dm":
-      return [
-        "X",
-        "MESSAGE",
-        "MESSAGE",
-      ].includes(action.actionName);
+      return ["X", "MESSAGE", "MESSAGE"].includes(action.actionName);
     case "desktop":
     case "mobile":
     case "phone_call":

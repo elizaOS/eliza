@@ -9,6 +9,13 @@
  */
 
 import { describe, expect, it } from "vitest";
+import type {
+  RecentTaskStatesProvider,
+  RecentTaskStatesSummary,
+  RelationshipFilterStub,
+  RelationshipStoreStub,
+  RelationshipStub,
+} from "../src/default-packs/index.js";
 import {
   buildFollowupTaskForRelationship,
   buildSeedingOfferMessage,
@@ -16,13 +23,6 @@ import {
   deriveQuietObservations,
   HABIT_STARTER_KEYS,
   runQuietUserWatcher,
-} from "../src/default-packs/index.js";
-import type {
-  RecentTaskStatesProvider,
-  RecentTaskStatesSummary,
-  RelationshipFilterStub,
-  RelationshipStoreStub,
-  RelationshipStub,
 } from "../src/default-packs/index.js";
 
 describe("deriveQuietObservations", () => {
@@ -34,9 +34,7 @@ describe("deriveQuietObservations", () => {
 
   it("flags quiet_for_days when expired-checkin streak >= 3", () => {
     const observations = deriveQuietObservations(
-      summary([
-        { kind: "checkin", outcome: "expired", consecutive: 4 },
-      ]),
+      summary([{ kind: "checkin", outcome: "expired", consecutive: 4 }]),
     );
     expect(observations.find((o) => o.kind === "quiet_for_days")).toBeDefined();
   });

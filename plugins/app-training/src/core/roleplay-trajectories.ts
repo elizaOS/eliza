@@ -139,7 +139,9 @@ export async function exportRoleplayEpisodes(
   await writeFile(manifestPath, `${manifestLines.join("\n")}\n`);
 
   const tuningLines = samples.map((sample) =>
-    JSON.stringify(toElizaNativeFormat(sample, true) as ElizaNativeTrainingExample),
+    JSON.stringify(
+      toElizaNativeFormat(sample, true) as ElizaNativeTrainingExample,
+    ),
   );
   await writeFile(tuningPath, `${tuningLines.join("\n")}\n`);
 
