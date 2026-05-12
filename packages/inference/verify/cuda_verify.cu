@@ -46,6 +46,7 @@
 #include <vector>
 
 #include <cuda_runtime.h>
+#include <cuda_fp16.h>
 
 // CPU reference declarations — used only for an on-host double-check of the
 // fixture's expected_scores (the same .o that metal_verify / vulkan_verify

@@ -85,10 +85,8 @@ import type {
   RejectedTokenRange,
   SchedulerConfig,
   SpeakerPreset,
-  StreamingTtsBackend,
   StreamingTranscriber,
   TextToken,
-  TtsPcmChunk,
   TranscriptionAudio,
   VadEventSource,
 } from "./types";
@@ -113,7 +111,56 @@ const STUB_PCM_STREAM_CHUNKS = 4;
 
 /** Re-exported from `./errors` so existing `engine-bridge` importers don't churn. */
 export { VoiceStartupError };
-export type { StreamingTtsBackend, TtsPcmChunk } from "./types";
+
+/**
+ * One PCM segment delivered to a `StreamingTtsBackend.synthesizeStream`
+ * consumer (W9's scheduler) as TTS decodes it. `isFinal` marks the
+ * zero-length tail chunk that closes the phrase.
+ */
+export interface TtsPcmChunk {
+  pcm: Float32Array;
+  sampleRate: number;
+  isFinal: boolean;
+}
+
+/**
+ * Streaming-TTS seam between the fused `libelizainference` runtime and
+ * W9's voice scheduler. The scheduler calls `synthesizeStream(...)` for
+ * a phrase and writes each delivered `pcm` segment into the
+ * `PcmRingBuffer` on the same scheduler tick (AGENTS.md §4 —
+ * phrase-chunk → TTS within one scheduler tick); returning `true` from
+ * `onChunk` (or flipping `cancelSignal.cancelled`) hard-cancels the
+ * in-flight forward pass at the next kernel boundary (barge-in /
+ * DFlash-rejected tail).
+ *
+ * Both `OmniVoiceBackend` implementations in this module satisfy it:
+ *   - `FfiOmniVoiceBackend` forwards to
+ *     `eliza_inference_tts_synthesize_stream` when the loaded build
+ *     advertises streaming TTS (`tts_stream_supported() == 1`), else it
+ *     synthesizes whole and emits the result as one body chunk + a final
+ *     tail (no silent "streaming" lie — the chunk count just collapses
+ *     to one when the build is non-streaming);
+ *   - `StubOmniVoiceBackend` emits deterministic synthetic PCM split
+ *     into a fixed number of chunks so scheduler tests can observe the
+ *     incremental handoff without a real model.
+ */
+export interface StreamingTtsBackend {
+  /**
+   * Synthesize `phrase` with `preset` and deliver PCM in chunks. The
+   * scheduler owns the ring-buffer write inside `onChunk`. Resolves with
+   * `cancelled: true` if `onChunk` requested a stop (or `cancelSignal`
+   * was set), `false` on a clean finish. The final `onChunk` call always
+   * has `isFinal: true` (possibly a zero-length `pcm`) so the consumer
+   * can settle per-phrase state.
+   */
+  synthesizeStream(args: {
+    phrase: Phrase;
+    preset: SpeakerPreset;
+    cancelSignal: { cancelled: boolean };
+    onChunk: (chunk: TtsPcmChunk) => boolean | undefined;
+    onKernelTick?: () => void;
+  }): Promise<{ cancelled: boolean }>;
+}
 
 /** True when `backend` implements the `StreamingTtsBackend` seam. */
 export function isStreamingTtsBackend(
@@ -497,18 +544,6 @@ export interface EngineVoiceBridgeOptions {
   whisper?: WhisperCppOptions;
 }
 
-export function nativeRejectedRangeToRollbackRange(
-  event: Pick<NativeVerifierEvent, "rejectedFrom" | "rejectedTo">,
-): RejectedTokenRange | null {
-  if (event.rejectedFrom < 0 || event.rejectedTo <= event.rejectedFrom) {
-    return null;
-  }
-  return {
-    fromIndex: event.rejectedFrom,
-    toIndex: event.rejectedTo - 1,
-  };
-}
-
 /**
  * Wires the voice scaffold (`VoiceScheduler` + helpers) onto the engine.
  * One bridge per active voice session — created in
@@ -869,9 +904,11 @@ export class EngineVoiceBridge {
         })();
     return this.ffi.setVerifierCallback(ctx, (event) => {
       onEvent?.(event);
-      const rejected = nativeRejectedRangeToRollbackRange(event);
-      if (rejected) {
-        void this.pushRejectedRange(rejected);
+      if (event.rejectedFrom >= 0 && event.rejectedTo >= event.rejectedFrom) {
+        void this.pushRejectedRange({
+          fromIndex: event.rejectedFrom,
+          toIndex: event.rejectedTo,
+        });
       }
     });
   }
@@ -933,9 +970,9 @@ export class EngineVoiceBridge {
    * Construct a `StreamingTranscriber` for live ASR — the contract the
    * voice turn controller (W9) feeds mic frames into and the barge-in
    * word-confirm gate (W1) listens to. Resolves the adapter chain:
-   *   fused `libelizainference` streaming ASR when available; otherwise the
-   *   fused batch ASR path over the same bundled model; then whisper.cpp
-   *   interim adapter → `AsrUnavailableError`.
+   *   fused `libelizainference` streaming ASR (final path, gated on a
+   *   working decoder AND a bundled ASR model) → whisper.cpp interim
+   *   adapter → `AsrUnavailableError`.
    *
    * Pass W1's `vad` event stream to gate decoding to active speech
    * windows. Caller owns the returned transcriber's lifecycle (`dispose()`).
@@ -951,16 +988,15 @@ export class EngineVoiceBridge {
       asrBundlePresent: this.asrAvailable,
       vad: opts?.vad,
       whisper: this.whisper,
-      prefer: this.ffi && this.asrAvailable ? "fused" : "auto",
     });
   }
 
   /**
    * Batch transcription: one-shot over a whole PCM buffer. Drives a
-   * `StreamingTranscriber` (fused streaming ASR or whisper.cpp interim)
-   * — feeds the buffer as a single frame, `flush()`es, returns the final
-   * transcript. Throws `AsrUnavailableError` when no ASR backend is
-   * available — never a silent empty string.
+   * `StreamingTranscriber` (fused streaming ASR → fused-batch interim →
+   * whisper.cpp legacy interim) — feeds the buffer as a single frame,
+   * `flush()`es, returns the final transcript. Throws `AsrUnavailableError`
+   * when no ASR backend is available — never a silent empty string.
    */
   async transcribePcm(args: TranscriptionAudio): Promise<string> {
     this.assertVoiceOn("transcribe audio");
@@ -1030,12 +1066,14 @@ export class EngineVoiceBridge {
 
   /**
    * Resolve the pipeline's ASR backend: a real `StreamingTranscriber`
-   * (fused streaming ASR when available, fused batch ASR when the bundle
-   * ships an `asr/` region, else the whisper.cpp interim adapter) adapted
-   * onto the pipeline's batch token-iterator
+   * (fused `eliza_inference_asr_stream_*` streaming decoder when the loaded
+   * build advertises one; else the contract-clean fused-batch interim
+   * `eliza_inference_asr_transcribe` over a sliding window; else the
+   * whisper.cpp legacy interim — all gated on the bundle shipping an `asr/`
+   * region) adapted onto the pipeline's batch token-iterator
    * (`StreamingTranscriberTokenStreamer`). When no ASR backend is available
-   * the failure is surfaced as a `MissingAsrTranscriber` that throws on first
-   * use — AGENTS.md §3, no silent cloud fallback.
+   * the failure is surfaced as a `MissingAsrTranscriber` that throws on
+   * first use — AGENTS.md §3, no silent cloud fallback.
    */
   private resolveTranscriber():
     | StreamingTranscriberTokenStreamer
@@ -1048,7 +1086,6 @@ export class EngineVoiceBridge {
         getContext: ctxRef ? () => ctxRef.ensure() : undefined,
         asrBundlePresent: this.asrAvailable,
         whisper: this.whisper,
-        prefer: this.ffi && this.asrAvailable ? "fused" : "auto",
       });
     } catch (err) {
       if (err instanceof AsrUnavailableError) {

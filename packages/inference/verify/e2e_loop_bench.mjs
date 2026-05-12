@@ -72,6 +72,7 @@ function parseArgs(argv) {
     ttsAllPhrases: process.env.ELIZA_E2E_TTS_ALL_PHRASES === "1",
     ttsSteps: Number.parseInt(process.env.ELIZA_E2E_TTS_STEPS || "32", 10),
     micTtsSteps: Number.parseInt(process.env.ELIZA_E2E_MIC_TTS_STEPS || "32", 10),
+    maxTtsPhrases: Number.parseInt(process.env.ELIZA_E2E_MAX_TTS_PHRASES || "3", 10),
     threads: Number.parseInt(
       process.env.ELIZA_E2E_THREADS || String(Math.min(os.cpus().length, 12)),
       10,
@@ -116,6 +117,7 @@ function parseArgs(argv) {
     else if (a === "--tts-all-phrases") args.ttsAllPhrases = true;
     else if (a === "--tts-steps") args.ttsSteps = Number.parseInt(next(), 10);
     else if (a === "--mic-tts-steps") args.micTtsSteps = Number.parseInt(next(), 10);
+    else if (a === "--max-tts-phrases") args.maxTtsPhrases = Number.parseInt(next(), 10);
     else if (a === "--threads") args.threads = Number.parseInt(next(), 10);
     else if (a === "--ctx") args.ctx = Number.parseInt(next(), 10);
     else if (a === "--ngl") args.ngl = next();
@@ -704,7 +706,7 @@ async function synthPhrasePcm(port, text, turnTimeoutS, ttsSteps = 32, durationS
 // --------------------------------------------------------------------------
 
 async function runTurn(opts, turnIdx) {
-  const { port, ffiCtx, ffi, s, wav, refText, nPredict, turnTimeoutS, logFn, ttsAllPhrases, ttsSteps } = opts;
+  const { port, ffiCtx, ffi, s, wav, refText, nPredict, turnTimeoutS, logFn, ttsAllPhrases, ttsSteps, maxTtsPhrases } = opts;
   const turnT0 = performance.now();
 
   // 1) ASR: feed the WAV's mono PCM (resampled to 16 kHz) to the FFI.
@@ -763,8 +765,11 @@ async function runTurn(opts, turnIdx) {
   // CPU TTS would take ~45 min for no extra signal. So unless --tts-all-phrases
   // is requested, an endurance turn synthesizes only the first phrase (still
   // exercises the full TTS forward pass + the streaming handoff). A 1-turn
-  // run always synthesizes everything.
-  const phrases = ttsAllPhrases ? allPhrases : allPhrases.slice(0, 1);
+  // run synthesizes up to `maxTtsPhrases` (default 3) — more than 3 phrases
+  // adds no signal over the per-phrase RTF + first-audio it already measures,
+  // and a noisy base-model response can chunk into 10+ phrases which would
+  // dominate the wall clock on a >1×-RTF CPU TTS.
+  const phrases = ttsAllPhrases ? allPhrases.slice(0, Math.max(1, maxTtsPhrases || 3)) : allPhrases.slice(0, 1);
   const ttsRuns = [];
   let firstPhrasePcm = null;
   const ttsLoopT0 = performance.now();
@@ -837,9 +842,11 @@ async function runTurn(opts, turnIdx) {
 // --------------------------------------------------------------------------
 
 async function measureBargeIn(port, ffiCtx, ffi, s) {
-  // (a) client-side abort latency
-  const longText =
-    "Here is a fairly long answer that I will keep speaking for several seconds so that we can interrupt it partway through and measure how quickly the audio path stops consuming bytes after the barge in signal arrives.";
+  // (a) client-side abort latency. Keep the phrase short — the batch-only TTS
+  //     build has no in-flight cancel, so this synthesis runs to completion on
+  //     the server even after the client aborts; a long phrase would just burn
+  //     a >1×-RTF CPU MaskGIT pass for nothing.
+  const longText = "Here is a short answer that I will keep speaking so we can interrupt it.";
   const ctrl = new AbortController();
   const reqP = fetch(`http://127.0.0.1:${port}/v1/audio/speech`, {
     method: "POST",
@@ -1090,6 +1097,7 @@ async function main() {
           turnTimeoutS: args.turnTimeoutS, logFn,
           ttsAllPhrases: args.ttsAllPhrases ? true : fullTurn,
           ttsSteps: args.ttsSteps,
+          maxTtsPhrases: args.maxTtsPhrases,
         },
         t + 1,
       );

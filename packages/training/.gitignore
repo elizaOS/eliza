@@ -13,6 +13,7 @@ benchmarks/*
 !benchmarks/eliza1_gates.py
 !benchmarks/__init__.py
 !benchmarks/test_eliza1_gates.py
+!benchmarks/THROUGHPUT.md
 previews/
 local-corpora/
 wandb/

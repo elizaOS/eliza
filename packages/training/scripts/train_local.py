@@ -70,6 +70,21 @@ logging.basicConfig(
 log = logging.getLogger("train")
 
 
+def _triton_runtime_ok() -> bool:
+    """True iff Triton can initialize its CUDA backend (it JIT-compiles a small
+    `cuda_utils.c` against the interpreter's Python.h + a CUDA toolkit; missing
+    `python3.x-dev` headers or a stale toolkit makes that fail at the *first*
+    Triton kernel launch). Probed up front so Liger/fused-quant paths fall back
+    cleanly instead of crashing mid-run."""
+    try:
+        from triton.runtime import driver  # type: ignore
+        driver.active.get_current_device()
+        return True
+    except Exception as e:  # noqa: BLE001
+        log.warning("Triton runtime probe failed: %s", e)
+        return False
+
+
 def load_jsonl(path: Path, *, max_n: int | None = None) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as f:
@@ -367,6 +382,20 @@ def main() -> int:
         and (args.registry_key is None
              or getattr(_registry_get(args.registry_key), "use_liger", True))
     )
+    if use_liger and device == "cuda" and not _triton_runtime_ok():
+        # Liger is Triton kernels; if Triton can't JIT-compile its CUDA driver
+        # helper (e.g. missing python3.x-dev headers, mismatched CUDA toolkit)
+        # it dies at the *first* training step, not at apply time. Probe up
+        # front and fall back rather than crash 8 minutes into the run.
+        msg = ("Triton runtime probe failed — Liger kernel disabled, falling "
+               "back to HF defaults. Fix: install the Python dev headers for "
+               "this interpreter (apt install python3.x-dev) and a CUDA "
+               "toolkit Triton can use, or run with --use-liger off.")
+        if args.use_liger == "on":
+            log.warning("--use-liger=on requested but %s", msg)
+        else:
+            log.warning(msg)
+        use_liger = False
     if use_liger and device == "cuda":
         try:
             from liger_kernel.transformers import _apply_liger_kernel_to_instance
