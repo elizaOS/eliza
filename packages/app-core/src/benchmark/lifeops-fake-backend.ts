@@ -297,8 +297,20 @@ export class LifeOpsFakeBackend {
     "reminders.create",
     "reminders.complete",
     "reminders.list",
-    // Chat / messages
+    // Chat / messages — granular dotted form
     "messages.send",
+    "messages.send_draft",
+    "messages.draft_reply",
+    "messages.manage",
+    "messages.triage",
+    "messages.search_inbox",
+    "messages.list_channels",
+    "messages.read_channel",
+    "messages.read_with_contact",
+    // MESSAGE umbrella (mail + chat dispatch on `operation` / `source`)
+    "MESSAGE",
+    // CALENDAR umbrella (promoted granular siblings translated below)
+    "CALENDAR",
     // Notes
     "notes.create",
     // Contacts (read-only)
@@ -367,82 +379,108 @@ export class LifeOpsFakeBackend {
   // ----- action dispatch ------------------------------------------------
 
   applyAction(name: string, kwargs: Record<string, unknown>): ActionResult {
-    switch (name) {
-      // LifeOpsBench exposes Eliza-style umbrella/promoted names to planners.
-      // Canonicalize those into the fake backend's lower-case method surface
-      // before dispatch so tool results are useful on follow-up turns.
-      case "CALENDAR":
-        return this.applyCalendarUmbrella(kwargs);
-      case "CALENDAR_CREATE_EVENT":
-        return this.applyCalendarUmbrella({
-          ...kwargs,
-          subaction: kwargs.subaction ?? "create_event",
-        });
-      case "CALENDAR_UPDATE_EVENT":
-        return this.applyCalendarUmbrella({
-          ...kwargs,
-          subaction: kwargs.subaction ?? "update_event",
-        });
-      case "CALENDAR_DELETE_EVENT":
-        return this.applyCalendarUmbrella({
-          ...kwargs,
-          subaction: kwargs.subaction ?? "delete_event",
-        });
-      case "CALENDAR_SEARCH_EVENTS":
-        return this.applyCalendarUmbrella({
-          ...kwargs,
-          subaction: kwargs.subaction ?? "search_events",
-        });
-      case "CALENDAR_CHECK_AVAILABILITY":
-      case "CALENDAR_PROPOSE_TIMES":
-      case "CALENDAR_NEXT_EVENT":
-      case "CALENDAR_UPDATE_PREFERENCES":
-        return this.applyCalendarUmbrella({
-          ...kwargs,
-          subaction: kwargs.subaction ?? "list_events",
-        });
+    // LifeOpsBench exposes Eliza-style umbrella/promoted names to planners
+    // (`CALENDAR`, `CALENDAR_CREATE_EVENT`, `MESSAGE_TRIAGE`, ...).
+    // Translate them to the fake backend's canonical lower-case dotted
+    // surface (`calendar.create_event`, `messages.triage`) before dispatch
+    // so tool results are useful on follow-up turns. This is the
+    // executor-side analogue of the scorer's `_UMBRELLA_SUBACTIONS`
+    // canonicalization (W4-A).
+    const translation = umbrellaToLowercase(name, kwargs);
+    const dispatchName = translation.name;
+    const dispatchKwargs = translation.kwargs;
 
-      // ---- calendar
+    switch (dispatchName) {
+      // ---- calendar umbrella
+      case "CALENDAR":
+        return this.applyCalendarUmbrella(dispatchKwargs);
+
+      // ---- calendar (granular dotted form)
       case "calendar.create_event":
-        return { ok: true, result: this.createEvent(kwargs) };
+        return { ok: true, result: this.createEvent(dispatchKwargs) };
       case "calendar.move_event":
-        return { ok: true, result: this.moveEvent(kwargs) };
+        return { ok: true, result: this.moveEvent(dispatchKwargs) };
       case "calendar.cancel_event":
-        return { ok: true, result: this.cancelEvent(kwargs) };
+        return { ok: true, result: this.cancelEvent(dispatchKwargs) };
       case "calendar.list_events":
-        return { ok: true, result: this.listEvents(kwargs) };
+        return { ok: true, result: this.listEvents(dispatchKwargs) };
 
       // ---- mail
       case "mail.search":
-        return { ok: true, result: this.searchEmails(kwargs) };
+        return { ok: true, result: this.searchEmails(dispatchKwargs) };
       case "mail.create_draft":
-        return { ok: true, result: this.createDraft(kwargs) };
+        return { ok: true, result: this.createDraft(dispatchKwargs) };
       case "mail.send":
-        return { ok: true, result: this.sendEmail(kwargs) };
+        return { ok: true, result: this.sendEmail(dispatchKwargs) };
       case "mail.archive":
-        return { ok: true, result: this.archiveEmail(kwargs) };
+        return { ok: true, result: this.archiveEmail(dispatchKwargs) };
       case "mail.mark_read":
-        return { ok: true, result: this.markRead(kwargs) };
+        return { ok: true, result: this.markRead(dispatchKwargs) };
 
       // ---- reminders
       case "reminders.create":
-        return { ok: true, result: this.createReminder(kwargs) };
+        return { ok: true, result: this.createReminder(dispatchKwargs) };
       case "reminders.complete":
-        return { ok: true, result: this.completeReminder(kwargs) };
+        return { ok: true, result: this.completeReminder(dispatchKwargs) };
       case "reminders.list":
-        return { ok: true, result: this.listReminders(kwargs) };
+        return { ok: true, result: this.listReminders(dispatchKwargs) };
 
-      // ---- messages
+      // ---- messages (granular dotted form, routed through the umbrella
+      // dispatcher so kwargs vocabulary stays consistent).
       case "messages.send":
-        return { ok: true, result: this.sendMessage(kwargs) };
+        // Two ABIs collide here: the legacy seeded-conversation `sendMessage`
+        // path (kwargs: conversation_id/from_handle/...) and the Python
+        // umbrella `_send_chat_via_message` path (kwargs: source/target/
+        // targetKind/message). We prefer the umbrella shape when a
+        // `source` / `target` / `roomId` is provided, otherwise fall back
+        // to the legacy conversation-id shape.
+        if (
+          isUmbrellaChatShape(dispatchKwargs) ||
+          isUmbrellaMailShape(dispatchKwargs)
+        ) {
+          return this.applyMessageUmbrella({
+            ...dispatchKwargs,
+            operation: "send",
+          });
+        }
+        return { ok: true, result: this.sendMessage(dispatchKwargs) };
+      case "messages.send_draft":
+      case "messages.draft_reply":
+        return this.applyMessageUmbrella({
+          ...dispatchKwargs,
+          operation: "draft_reply",
+        });
+      case "messages.manage":
+        return this.applyMessageUmbrella({
+          ...dispatchKwargs,
+          operation: "manage",
+        });
+      case "messages.triage":
+      case "messages.search_inbox":
+      case "messages.list_channels":
+      case "messages.read_channel":
+      case "messages.read_with_contact":
+        return this.applyMessageUmbrella({
+          ...dispatchKwargs,
+          operation: dispatchName.slice("messages.".length),
+        });
+
+      // ---- MESSAGE umbrella (mail + chat). Mirrors Python `_u_message`
+      // in eliza_lifeops_bench/runner.py — `operation` field selects the
+      // subaction, `source` field disambiguates mail (gmail) vs chat
+      // channels (imessage / whatsapp / slack / ...). Drift from the
+      // Python kwargs shape is theme T8 in the bench synthesis plan;
+      // keep field names identical.
+      case "MESSAGE":
+        return this.applyMessageUmbrella(dispatchKwargs);
 
       // ---- notes
       case "notes.create":
-        return { ok: true, result: this.createNote(kwargs) };
+        return { ok: true, result: this.createNote(dispatchKwargs) };
 
       // ---- contacts (read)
       case "contacts.search":
-        return { ok: true, result: this.searchContacts(kwargs) };
+        return { ok: true, result: this.searchContacts(dispatchKwargs) };
 
       default:
         throw new LifeOpsBackendUnsupportedError(
@@ -926,6 +964,520 @@ export class LifeOpsFakeBackend {
     return msg;
   }
 
+  // ----- MESSAGE umbrella ----------------------------------------------
+  //
+  // Mirrors `_u_message` in eliza_lifeops_bench/runner.py. Operations:
+  //   send         — gmail (mail) or chat channel
+  //   draft_reply  — gmail draft, chat no-op
+  //   manage       — archive/mark_read/trash/star on mail
+  //   triage, search_inbox, list_channels, read_channel, read_with_contact
+  //                — read-only no-ops (return ok:true, noop:true)
+  //
+  // Field names match Python kwargs exactly (recipient_id is NOT renamed
+  // to `to`, threadId is preferred over thread_id when Python prefers it,
+  // etc.). Drift between Python and TS handler shapes is theme T8 in the
+  // synthesis plan; do not introduce a new drift here.
+  private applyMessageUmbrella(kw: Record<string, unknown>): ActionResult {
+    const op = pickString(kw, ["operation"], "");
+    if (!op) {
+      throw new Error("MESSAGE umbrella requires `operation`");
+    }
+    const source = pickString(kw, ["source"], "");
+
+    if (op === "send") {
+      if (source === "gmail") {
+        return { ok: true, result: this.sendEmailViaMessage(kw) };
+      }
+      return { ok: true, result: this.sendChatViaMessage(kw, source) };
+    }
+    if (op === "draft_reply") {
+      return { ok: true, result: this.draftReplyViaMessage(kw, source) };
+    }
+    if (op === "manage") {
+      return { ok: true, result: this.manageEmailViaMessage(kw) };
+    }
+    // P0-4: read-side MESSAGE ops. Returning seed slices from LifeWorld
+    // instead of `{noop: true}` lets the planner reason about real inbox
+    // and conversation state on follow-up turns. State-hash stays
+    // unchanged (these are reads, not writes) so scoring still mirrors
+    // Python `_u_message`, but the assistant trace is no longer blind.
+    if (op === "search_inbox") {
+      return { ok: true, result: this.searchInboxViaMessage(kw, source) };
+    }
+    if (op === "triage") {
+      return { ok: true, result: this.triageInboxViaMessage(kw, source) };
+    }
+    if (op === "list_channels") {
+      return { ok: true, result: this.listChannelsViaMessage(source) };
+    }
+    if (op === "read_channel") {
+      return { ok: true, result: this.readChannelViaMessage(kw, source) };
+    }
+    if (op === "read_with_contact") {
+      return { ok: true, result: this.readWithContactViaMessage(kw, source) };
+    }
+    throw new LifeOpsBackendUnsupportedError(
+      `MESSAGE/${op}`,
+      "unknown MESSAGE operation",
+    );
+  }
+
+  // ---- MESSAGE read-side helpers (P0-4) -------------------------------
+  //
+  // All return-only reads. They never mutate stores; they only project the
+  // existing LifeWorld into a shape the planner can take an informed next
+  // action on. Result envelopes intentionally echo `operation` + `source`
+  // so the assistant can disambiguate which channel/branch produced the
+  // payload across multi-turn conversations.
+
+  private searchInboxViaMessage(
+    kw: Record<string, unknown>,
+    source: string,
+  ): {
+    operation: "search_inbox";
+    source: string;
+    query: string;
+    matches: EmailMessage[];
+  } {
+    const query = pickString(kw, ["query", "q"], "");
+    // gmail is the only mail source today; non-gmail sources have no inbox
+    // store to project, but we still return the envelope so the planner
+    // sees an empty-result signal rather than an unsupported-method error.
+    const matches =
+      source === "gmail" || source === ""
+        ? this.searchEmails({ ...kw, query, folder: "inbox" })
+        : [];
+    return { operation: "search_inbox", source, query, matches };
+  }
+
+  private triageInboxViaMessage(
+    kw: Record<string, unknown>,
+    source: string,
+  ): {
+    operation: "triage";
+    source: string;
+    top: Array<{
+      id: string;
+      subject: string;
+      from_email: string;
+      received_at: string | null;
+      is_read: boolean;
+      priority: "high" | "normal";
+    }>;
+  } {
+    const limit = pickNumber(kw, ["limit", "max", "topN"], 5);
+    // Triage = rank unread inbox by recency, then mark "high" priority if
+    // sender domain matches a marker (boss/work/team/etc.) or subject hits
+    // the urgency lexicon. No mutation; this is just a ranked projection.
+    const HIGH_PRIORITY = /\b(urgent|asap|important|critical|deadline)\b/i;
+    const HIGH_SENDER = /(boss|exec|ceo|director|legal|hr|payroll|security)/i;
+    const ranked = Object.values(this.stores.email)
+      .filter((email) => email.folder === "inbox")
+      .sort((a, b) => (b.received_at ?? "").localeCompare(a.received_at ?? ""))
+      .slice(0, Math.max(1, limit))
+      .map((email) => ({
+        id: email.id,
+        subject: email.subject,
+        from_email: email.from_email,
+        received_at: email.received_at,
+        is_read: email.is_read,
+        priority:
+          HIGH_PRIORITY.test(email.subject) ||
+          HIGH_PRIORITY.test(email.body_plain) ||
+          HIGH_SENDER.test(email.from_email)
+            ? ("high" as const)
+            : ("normal" as const),
+      }));
+    return { operation: "triage", source, top: ranked };
+  }
+
+  private listChannelsViaMessage(source: string): {
+    operation: "list_channels";
+    source: string;
+    channels: Array<{
+      id: string;
+      channel: string;
+      title: string | null;
+      participants: string[];
+      last_activity_at: string;
+      is_group: boolean;
+    }>;
+  } {
+    const channels = Object.values(this.stores.conversation)
+      .filter((conv) => !source || conv.channel === source)
+      .map((conv) => ({
+        id: conv.id,
+        channel: conv.channel,
+        title: conv.title,
+        participants: [...conv.participants],
+        last_activity_at: conv.last_activity_at,
+        is_group: conv.is_group,
+      }))
+      .sort((a, b) => b.last_activity_at.localeCompare(a.last_activity_at));
+    return { operation: "list_channels", source, channels };
+  }
+
+  private readChannelViaMessage(
+    kw: Record<string, unknown>,
+    source: string,
+  ): {
+    operation: "read_channel";
+    source: string;
+    channel: string | null;
+    messages: ChatMessage[];
+  } {
+    const channel = pickStringOrNull(kw, [
+      "channel",
+      "channel_id",
+      "channelId",
+      "conversation_id",
+      "conversationId",
+      "roomId",
+    ]);
+    const limit = pickNumber(kw, ["limit", "max"], 25);
+    const messages = Object.values(this.stores.chat_message)
+      .filter((msg) => {
+        if (channel && msg.conversation_id !== channel) return false;
+        if (source && msg.channel !== source) return false;
+        return true;
+      })
+      .sort((a, b) => b.sent_at.localeCompare(a.sent_at))
+      .slice(0, Math.max(1, limit));
+    return { operation: "read_channel", source, channel, messages };
+  }
+
+  private readWithContactViaMessage(
+    kw: Record<string, unknown>,
+    source: string,
+  ): {
+    operation: "read_with_contact";
+    source: string;
+    contact: string | null;
+    messages: ChatMessage[];
+  } {
+    const contact = pickStringOrNull(kw, [
+      "contact",
+      "target",
+      "handle",
+      "with",
+    ]);
+    if (!contact) {
+      return {
+        operation: "read_with_contact",
+        source,
+        contact: null,
+        messages: [],
+      };
+    }
+    const needle = contact.toLowerCase();
+    // Find conversations whose participants include the contact, or whose
+    // title matches by display name. Then return that conversation's chat
+    // history (capped). The Python runner is a no-op here, but giving the
+    // planner real history changes the next-turn write decision.
+    const matchingConvIds = new Set<string>();
+    for (const conv of Object.values(this.stores.conversation)) {
+      if (source && conv.channel !== source) continue;
+      const titleMatch = conv.title?.toLowerCase().includes(needle) ?? false;
+      const participantMatch = conv.participants.some((p) =>
+        p.toLowerCase().includes(needle),
+      );
+      if (titleMatch || participantMatch) {
+        matchingConvIds.add(conv.id);
+      }
+    }
+    const limit = pickNumber(kw, ["limit", "max"], 25);
+    const messages = Object.values(this.stores.chat_message)
+      .filter((msg) => {
+        if (!matchingConvIds.has(msg.conversation_id)) return false;
+        if (source && msg.channel !== source) return false;
+        return true;
+      })
+      .sort((a, b) => b.sent_at.localeCompare(a.sent_at))
+      .slice(0, Math.max(1, limit));
+    return { operation: "read_with_contact", source, contact, messages };
+  }
+
+  private sendEmailViaMessage(kw: Record<string, unknown>): EmailMessage {
+    const toEmails = pickStringArray(kw, ["to_emails", "to"]);
+    if (toEmails.length === 0) {
+      throw new Error("MESSAGE/send (gmail) requires to_emails");
+    }
+    const subject = pickString(kw, ["subject"], "");
+    const body = pickString(kw, ["body", "body_plain"], "");
+    const fromEmail = pickString(kw, ["from_email"], "me@example.test");
+    const threadId =
+      pickStringOrNull(kw, ["threadId", "thread_id"]) ??
+      syntheticId("thread_auto", { to: [...toEmails].sort(), s: subject });
+    const messageId =
+      pickStringOrNull(kw, ["messageId", "message_id"]) ??
+      syntheticId("email_auto", { th: threadId, b: body, s: subject });
+    const msg: EmailMessage = {
+      id: messageId,
+      thread_id: threadId,
+      folder: "sent",
+      from_email: fromEmail,
+      to_emails: [...toEmails],
+      cc_emails: pickStringArray(kw, ["cc_emails", "cc"]),
+      subject,
+      body_plain: body,
+      sent_at: this.nowIso,
+      received_at: null,
+      is_read: true,
+      is_starred: false,
+      labels: pickStringArray(kw, ["labels"]),
+      attachments: pickStringArray(kw, ["attachments"]),
+    };
+    this.stores.email[messageId] = msg;
+    const existingThread = this.stores.email_thread[threadId];
+    if (!existingThread) {
+      const participants = Array.from(
+        new Set([fromEmail, ...toEmails, ...msg.cc_emails]),
+      ).sort();
+      this.stores.email_thread[threadId] = {
+        id: threadId,
+        subject,
+        message_ids: [messageId],
+        participants,
+        last_activity_at: this.nowIso,
+      };
+    } else {
+      this.stores.email_thread[threadId] = {
+        ...existingThread,
+        message_ids: [...existingThread.message_ids, messageId],
+        last_activity_at: this.nowIso,
+      };
+    }
+    return msg;
+  }
+
+  private sendChatViaMessage(
+    kw: Record<string, unknown>,
+    source: string,
+  ): ChatMessage {
+    const targetKind = pickString(kw, ["targetKind"], "contact");
+    const text = pickString(kw, ["message", "text"], "");
+    if (!text) {
+      throw new Error("MESSAGE/send (chat) requires message/text");
+    }
+    const channel = source || "imessage";
+
+    if (targetKind === "group") {
+      const roomId = pickString(kw, ["roomId"], "");
+      if (!roomId) {
+        throw new Error("MESSAGE/send (group) requires roomId");
+      }
+      this.ensureSyntheticConversation({
+        conversationId: roomId,
+        channel,
+        participants: ["+15550000000", "+15551111111"],
+        title: roomId,
+        isGroup: true,
+      });
+      const messageId = syntheticId("chat_auto", {
+        r: roomId,
+        t: text,
+        src: channel,
+      });
+      return this.appendChatMessage({
+        messageId,
+        conversationId: roomId,
+        fromHandle: "+15550000000",
+        toHandles: ["+15551111111"],
+        text,
+      });
+    }
+
+    const target = pickString(kw, ["target", "contact"], "");
+    if (!target) {
+      throw new Error("MESSAGE/send (contact) requires target");
+    }
+    const convId = syntheticId("conv_auto", { src: channel, to: target });
+    this.ensureSyntheticConversation({
+      conversationId: convId,
+      channel,
+      participants: ["+15550000000", target],
+      title: target,
+      isGroup: false,
+    });
+    const messageId = syntheticId("chat_auto", { c: convId, t: text });
+    return this.appendChatMessage({
+      messageId,
+      conversationId: convId,
+      fromHandle: "+15550000000",
+      toHandles: [target],
+      text,
+    });
+  }
+
+  private draftReplyViaMessage(
+    kw: Record<string, unknown>,
+    source: string,
+  ):
+    | EmailMessage
+    | { operation: string; source: string; ok: true; noop: true } {
+    if (source !== "gmail") {
+      return { operation: "draft_reply", source, ok: true, noop: true };
+    }
+    const parentId = pickString(kw, ["messageId"], "");
+    if (!parentId) {
+      throw new Error("MESSAGE/draft_reply requires messageId");
+    }
+    const parent = this.stores.email[parentId];
+    const threadId =
+      parent?.thread_id ?? syntheticId("thread_auto", { p: parentId });
+    const body = pickString(kw, ["body"], "");
+    const subject = parent
+      ? `Re: ${parent.subject}`
+      : pickString(kw, ["subject"], "Re:");
+    const fromEmail = pickString(kw, ["from_email"], "me@example.test");
+    const toEmails =
+      parent && parent.from_email
+        ? [parent.from_email]
+        : pickStringArray(kw, ["to_emails"]);
+    if (toEmails.length === 0) {
+      throw new Error(
+        `MESSAGE/draft_reply needs a parent email or to_emails (parent=${parentId})`,
+      );
+    }
+    const draftId = syntheticId("email_draft", { p: parentId, b: body });
+    const draft: EmailMessage = {
+      id: draftId,
+      thread_id: threadId,
+      folder: "drafts",
+      from_email: fromEmail,
+      to_emails: [...toEmails],
+      cc_emails: [],
+      subject,
+      body_plain: body,
+      sent_at: this.nowIso,
+      received_at: null,
+      is_read: true,
+      is_starred: false,
+      labels: [],
+      attachments: [],
+    };
+    this.stores.email[draftId] = draft;
+    return draft;
+  }
+
+  private manageEmailViaMessage(kw: Record<string, unknown>): {
+    id?: string;
+    folder?: EmailFolder;
+    is_read?: boolean;
+    is_starred?: boolean;
+    thread_id?: string;
+    archived_ids?: string[];
+  } {
+    const manageOp = pickString(kw, ["manageOperation"], "");
+    if (!manageOp) {
+      throw new Error("MESSAGE/manage requires manageOperation");
+    }
+    const msgId = pickStringOrNull(kw, ["messageId"]);
+    const threadId = pickStringOrNull(kw, ["threadId"]);
+
+    if (manageOp === "archive") {
+      if (msgId !== null) {
+        const archived = this.archiveEmail({ message_id: msgId });
+        return { id: archived.id, folder: archived.folder };
+      }
+      if (threadId !== null) {
+        const archivedIds: string[] = [];
+        for (const [eid, em] of Object.entries(this.stores.email)) {
+          if (em.thread_id === threadId && em.folder !== "archive") {
+            this.stores.email[eid] = { ...em, folder: "archive" };
+            archivedIds.push(eid);
+          }
+        }
+        return { thread_id: threadId, archived_ids: archivedIds };
+      }
+      throw new Error("MESSAGE/manage(archive) needs messageId or threadId");
+    }
+    if (manageOp === "mark_read") {
+      if (msgId === null) {
+        throw new Error("MESSAGE/manage(mark_read) needs messageId");
+      }
+      const updated = this.markRead({ message_id: msgId });
+      return { id: updated.id, is_read: updated.is_read };
+    }
+    if (manageOp === "trash") {
+      if (msgId === null) {
+        throw new Error("MESSAGE/manage(trash) needs messageId");
+      }
+      const existing = this.stores.email[msgId];
+      if (!existing) throw new Error(`unknown message_id: ${msgId}`);
+      const updated: EmailMessage = { ...existing, folder: "trash" };
+      this.stores.email[msgId] = updated;
+      return { id: updated.id, folder: updated.folder };
+    }
+    if (manageOp === "star") {
+      if (msgId === null) {
+        throw new Error("MESSAGE/manage(star) needs messageId");
+      }
+      const existing = this.stores.email[msgId];
+      if (!existing) throw new Error(`unknown message_id: ${msgId}`);
+      const starred = pickBool(kw, ["starred"], true);
+      const updated: EmailMessage = { ...existing, is_starred: starred };
+      this.stores.email[msgId] = updated;
+      return { id: updated.id, is_starred: updated.is_starred };
+    }
+    throw new LifeOpsBackendUnsupportedError(
+      `MESSAGE/manage/${manageOp}`,
+      "unknown manageOperation",
+    );
+  }
+
+  private ensureSyntheticConversation(args: {
+    conversationId: string;
+    channel: string;
+    participants: string[];
+    title: string | null;
+    isGroup: boolean;
+  }): Conversation {
+    const existing = this.stores.conversation[args.conversationId];
+    if (existing) return existing;
+    const conv: Conversation = {
+      id: args.conversationId,
+      channel: args.channel,
+      participants: [...args.participants],
+      title: args.title,
+      last_activity_at: this.nowIso,
+      is_group: args.isGroup,
+    };
+    this.stores.conversation[args.conversationId] = conv;
+    return conv;
+  }
+
+  private appendChatMessage(args: {
+    messageId: string;
+    conversationId: string;
+    fromHandle: string;
+    toHandles: string[];
+    text: string;
+  }): ChatMessage {
+    const conv = this.stores.conversation[args.conversationId];
+    if (!conv) {
+      throw new Error(`unknown conversation_id: ${args.conversationId}`);
+    }
+    const msg: ChatMessage = {
+      id: args.messageId,
+      channel: conv.channel,
+      conversation_id: args.conversationId,
+      from_handle: args.fromHandle,
+      to_handles: [...args.toHandles],
+      text: args.text,
+      sent_at: this.nowIso,
+      is_read: true,
+      is_outgoing: true,
+      attachments: [],
+    };
+    this.stores.chat_message[args.messageId] = msg;
+    this.stores.conversation[args.conversationId] = {
+      ...conv,
+      last_activity_at: this.nowIso,
+    };
+    return msg;
+  }
+
   // ----- note handlers --------------------------------------------------
 
   private createNote(kw: Record<string, unknown>): Note {
@@ -1074,6 +1626,36 @@ function timestampDistance(value: string, hint: Date | null): number {
   const date = parseIso(value);
   if (!date) return Number.POSITIVE_INFINITY;
   return Math.abs(date.getTime() - hint.getTime());
+}
+
+/**
+ * Stable deterministic id derived from a payload. Mirrors `_synthetic_id`
+ * in eliza_lifeops_bench/runner.py: canonical-JSON, sha256, first 12 hex
+ * chars. Two replays of the same MESSAGE action produce the same id, which
+ * is what makes state-hash matching possible for the eliza adapter.
+ */
+function syntheticId(prefix: string, payload: Record<string, unknown>): string {
+  const canonical = canonicalJson(payload);
+  const digest = createHash("sha256")
+    .update(canonical)
+    .digest("hex")
+    .slice(0, 12);
+  return `${prefix}_${digest}`;
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((v) => canonicalJson(v)).join(",")}]`;
+  }
+  const obj = value as Record<string, unknown>;
+  const keys = Object.keys(obj).sort();
+  const parts = keys.map(
+    (k) => `${JSON.stringify(k)}:${canonicalJson(obj[k])}`,
+  );
+  return `{${parts.join(",")}}`;
 }
 
 function nextSeq(store: Record<string, unknown>, prefix: string): string {

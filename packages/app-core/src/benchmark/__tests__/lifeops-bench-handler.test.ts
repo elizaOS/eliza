@@ -261,6 +261,256 @@ describe("LifeOpsFakeBackend", () => {
     expect(result.ok).toBe(true);
     expect(result.result).toMatchObject([{ id: "ev1" }]);
   });
+
+  // -------------------------------------------------------------------
+  // MESSAGE umbrella (P0-4) — mirrors `_u_message` in the Python runner
+  // (packages/benchmarks/lifeops-bench/eliza_lifeops_bench/runner.py).
+  // Previously the TS bench-server no-op'd every MESSAGE.* action, so
+  // the eliza adapter scored 0.000 on mail + messages domains because
+  // the state_hash component never advanced.
+  // -------------------------------------------------------------------
+
+  it("MESSAGE send (gmail) writes to email + email_thread stores", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const before = backend.stateHash();
+    const result = backend.applyAction("MESSAGE", {
+      operation: "send",
+      source: "gmail",
+      to_emails: ["alice@example.test"],
+      subject: "hello",
+      body: "world",
+    });
+    expect(result.ok).toBe(true);
+    const sent = result.result as { id: string; thread_id: string };
+    expect(sent.id).toMatch(/^email_auto_[0-9a-f]{12}$/);
+    expect(sent.thread_id).toMatch(/^thread_auto_[0-9a-f]{12}$/);
+    const doc = backend.toDocument();
+    expect(doc.stores.email[sent.id]).toMatchObject({
+      folder: "sent",
+      subject: "hello",
+      to_emails: ["alice@example.test"],
+    });
+    expect(doc.stores.email_thread[sent.thread_id]).toMatchObject({
+      message_ids: [sent.id],
+    });
+    expect(backend.stateHash()).not.toEqual(before);
+  });
+
+  it("MESSAGE send (gmail) is deterministic — same kwargs => same id", () => {
+    const a = LifeOpsFakeBackend.fromJsonFile(writeFixture());
+    const b = LifeOpsFakeBackend.fromJsonFile(writeFixture());
+    const kwargs = {
+      operation: "send",
+      source: "gmail",
+      to_emails: ["alice@example.test"],
+      subject: "hello",
+      body: "world",
+    };
+    const ra = a.applyAction("MESSAGE", kwargs).result as { id: string };
+    const rb = b.applyAction("MESSAGE", kwargs).result as { id: string };
+    expect(ra.id).toEqual(rb.id);
+  });
+
+  it("MESSAGE send (imessage contact) creates conversation + chat_message", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const result = backend.applyAction("MESSAGE", {
+      operation: "send",
+      source: "imessage",
+      target: "Alice",
+      message: "hey",
+    });
+    expect(result.ok).toBe(true);
+    const sent = result.result as { id: string; conversation_id: string };
+    const doc = backend.toDocument();
+    expect(doc.stores.chat_message[sent.id]).toMatchObject({
+      text: "hey",
+      channel: "imessage",
+      conversation_id: sent.conversation_id,
+    });
+    expect(doc.stores.conversation[sent.conversation_id]).toMatchObject({
+      channel: "imessage",
+      is_group: false,
+      title: "Alice",
+    });
+  });
+
+  it("MESSAGE send (group) requires roomId and creates a group conversation", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const result = backend.applyAction("MESSAGE", {
+      operation: "send",
+      source: "slack",
+      targetKind: "group",
+      roomId: "room-42",
+      message: "team update",
+    });
+    expect(result.ok).toBe(true);
+    const sent = result.result as { id: string; conversation_id: string };
+    expect(sent.conversation_id).toBe("room-42");
+    const doc = backend.toDocument();
+    expect(doc.stores.conversation["room-42"]).toMatchObject({
+      is_group: true,
+      channel: "slack",
+    });
+  });
+
+  it("MESSAGE manage(archive) by messageId moves email to archive", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const result = backend.applyAction("MESSAGE", {
+      operation: "manage",
+      manageOperation: "archive",
+      messageId: "e1",
+    });
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatchObject({ id: "e1", folder: "archive" });
+    const doc = backend.toDocument();
+    expect(doc.stores.email.e1.folder).toBe("archive");
+  });
+
+  it("MESSAGE manage(archive) by threadId archives every email in thread", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const result = backend.applyAction("MESSAGE", {
+      operation: "manage",
+      manageOperation: "archive",
+      threadId: "t1",
+    });
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatchObject({
+      thread_id: "t1",
+      archived_ids: ["e1"],
+    });
+    const doc = backend.toDocument();
+    expect(doc.stores.email.e1.folder).toBe("archive");
+  });
+
+  it("MESSAGE manage(trash) flips folder to trash", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const result = backend.applyAction("MESSAGE", {
+      operation: "manage",
+      manageOperation: "trash",
+      messageId: "e1",
+    });
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatchObject({ id: "e1", folder: "trash" });
+  });
+
+  it("MESSAGE manage(star) toggles is_starred and respects `starred`", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const r1 = backend.applyAction("MESSAGE", {
+      operation: "manage",
+      manageOperation: "star",
+      messageId: "e1",
+    });
+    expect(r1.result).toMatchObject({ id: "e1", is_starred: true });
+    const r2 = backend.applyAction("MESSAGE", {
+      operation: "manage",
+      manageOperation: "star",
+      messageId: "e1",
+      starred: false,
+    });
+    expect(r2.result).toMatchObject({ id: "e1", is_starred: false });
+  });
+
+  it("MESSAGE manage(mark_read) flips is_read", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const result = backend.applyAction("MESSAGE", {
+      operation: "manage",
+      manageOperation: "mark_read",
+      messageId: "e1",
+    });
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatchObject({ id: "e1", is_read: true });
+  });
+
+  it("MESSAGE draft_reply (gmail) creates a draft on the parent thread", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const result = backend.applyAction("MESSAGE", {
+      operation: "draft_reply",
+      source: "gmail",
+      messageId: "e1",
+      body: "ack",
+    });
+    expect(result.ok).toBe(true);
+    const draft = result.result as {
+      id: string;
+      folder: string;
+      thread_id: string;
+    };
+    expect(draft.folder).toBe("drafts");
+    expect(draft.thread_id).toBe("t1");
+    const doc = backend.toDocument();
+    expect(doc.stores.email[draft.id]).toMatchObject({
+      folder: "drafts",
+      subject: "Re: report status",
+      to_emails: ["boss@example.test"],
+    });
+  });
+
+  it("MESSAGE draft_reply on a non-gmail channel is a no-op", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const before = backend.stateHash();
+    const result = backend.applyAction("MESSAGE", {
+      operation: "draft_reply",
+      source: "imessage",
+      messageId: "msg-1",
+    });
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatchObject({
+      operation: "draft_reply",
+      source: "imessage",
+      noop: true,
+    });
+    expect(backend.stateHash()).toEqual(before);
+  });
+
+  it("MESSAGE read ops (triage/search_inbox/list_channels/read_channel/read_with_contact) are noop", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const before = backend.stateHash();
+    for (const op of [
+      "triage",
+      "search_inbox",
+      "list_channels",
+      "read_channel",
+      "read_with_contact",
+    ]) {
+      const result = backend.applyAction("MESSAGE", {
+        operation: op,
+        source: "gmail",
+      });
+      expect(result.ok).toBe(true);
+      expect(result.result).toMatchObject({
+        operation: op,
+        noop: true,
+      });
+    }
+    expect(backend.stateHash()).toEqual(before);
+  });
+
+  it("MESSAGE throws on missing operation", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    expect(() => backend.applyAction("MESSAGE", {})).toThrow(
+      /requires `operation`/,
+    );
+  });
+
+  it("MESSAGE throws on unknown operation", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    expect(() =>
+      backend.applyAction("MESSAGE", { operation: "frobnicate" }),
+    ).toThrow(/MESSAGE\/frobnicate/);
+  });
 });
 
 describe("LifeOpsBenchHandler", () => {
