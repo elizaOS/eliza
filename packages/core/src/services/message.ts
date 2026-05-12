@@ -558,6 +558,7 @@ export function resolvePlannerActionName(
 	runtime: Pick<IAgentRuntime, "actions" | "logger">,
 	actionLookup: Map<string, Action> | undefined,
 	actionName: string,
+	options?: { strict?: boolean },
 ): string[] {
 	const lookup =
 		actionLookup ?? buildRuntimeActionLookup(runtime as IAgentRuntime);
@@ -570,7 +571,16 @@ export function resolvePlannerActionName(
 		return resolved;
 	}
 
-	if (actionLookup) {
+	// When the caller provided a narrowed `actionLookup` AND opted into
+	// `strict` resolution (e.g. tier-A was hard-narrowed by candidateActions),
+	// don't fall back to the global runtime.actions lookup — the upstream
+	// stage decisively chose a subset and falling back would resolve LLM
+	// hallucinations (`WRITE` -> `FILE`) and defeat the narrow.
+	//
+	// The legacy fallback below stays for the non-strict path where the
+	// `actions` slice is just a soft hint and we want the resolver to
+	// repair common LLM alias/typo errors against the full registry.
+	if (actionLookup && !options?.strict) {
 		const runtimeResolved = resolvePlannerActionNameFromLookup(
 			runtime,
 			buildRuntimeActionLookup(runtime as IAgentRuntime),
@@ -1837,6 +1847,13 @@ function buildV5PlannerActionSurface(params: {
 	const tieredSurface = tierActionResults({
 		catalog,
 		results: retrieval.results,
+		// When the upstream messageHandler decided this turn maps to a
+		// specific parent (e.g. `TASKS_SPAWN_AGENT`), narrow tier-A to
+		// that parent so the planner can't pick a competing tier-A action
+		// (e.g. inline `FILE.write`) on weaker LLMs. Other tier-A parents
+		// fall to tier-B for retrieval fallback. No-op when nothing
+		// matches the candidate set.
+		narrowToCandidateActions: candidateActions,
 	});
 	const toolSearchEndedAt = Date.now();
 	const exposedActionNames = new Set(
@@ -4277,10 +4294,18 @@ async function executeV5PlannedToolCall(
 
 	const actions = args.executorOptions?.actions ?? args.runtime.actions;
 	const actionLookup = buildRuntimeActionLookup({ actions });
+	// When the caller passed a narrowed `actions` slice (different reference
+	// than the full registry), the upstream stage decisively trimmed the
+	// surface — usually because `candidateActions` mapped to a specific
+	// parent. Resolve strictly against that slice so LLM hallucinations
+	// (e.g. emitting `WRITE` when only `TASKS` was exposed) can't escape via
+	// the global runtime fallback.
+	const strictResolve = actions !== args.runtime.actions;
 	const resolvedNames = resolvePlannerActionName(
 		args.runtime,
 		actionLookup,
 		unwrappedToolCall.name,
+		{ strict: strictResolve },
 	);
 	const resolvedName = resolvedNames[0] ?? unwrappedToolCall.name;
 	const forceContactReminderToLife =
