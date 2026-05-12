@@ -368,6 +368,48 @@ by `patchServerKvCacheTypeNames`), and the reduced mode is the
 loudly-flagged hatch for the rest. Cross-platform support matrix:
 [`docs/voice-interactive.md`](../../docs/voice-interactive.md#cross-platform-voice-support-matrix).
 
+### Guided structured decoding (HTTP surface — not a mandatory kernel)
+
+When the model's job is a *structured* response (action selection / tool
+call / typed object), the runtime forces the JSON shape in the decode
+loop instead of letting the model spell out scaffolding it already
+knows:
+
+- `@elizaos/core` `buildResponseGrammar` / `buildPlannerActionGrammar`
+  walk the registered actions (the `normalizeActionName` ids are the
+  canonical short on-wire form) + Stage-1 field evaluators + context ids
+  and emit a `ResponseSkeleton` + a precise GBNF string. `message.ts`
+  (Stage 1) and `planner-loop.ts` (Stage 2) attach them to the model
+  call as `responseSkeleton` / `grammar`.
+- The local engine compiles the skeleton to a **lazy GBNF**
+  (`compileSkeletonToGbnf` in
+  `packages/app-core/src/services/local-inference/structured-output.ts`)
+  — single-value enums collapse to literals, so the model samples
+  nothing for a one-action turn.
+- On top of that, `compilePrefillPlan` derives an `ElizaPrefillPlan` —
+  the runs of bytes the schema *fully determines* (the JSON scaffold,
+  fixed key names, the rest of an enum after enough prefix), shipped on
+  the request as `eliza_prefill_plan`. A fork build that consumes it
+  splices those token ids without a forward pass and advances the
+  decoder to the next free param; the runtime sends it whenever guided
+  decode is on and degrades to the grammar-only path otherwise (the
+  lazy GBNF still forces the same bytes — correctness is unaffected).
+  `eliza_prefill_plan` is an elizaOS-fork extension reported (present /
+  absent) by `kernel-patches/server-structured-output.mjs`; absent in
+  the current pin. **Off by default** — `ensure-local-inference-handler.ts`
+  only builds the `ElizaHarnessSchema` (skeleton + grammar + prefill plan +
+  short/long name maps) when `providerOptions.eliza.guidedDecode === true`
+  or `MILADY_LOCAL_GUIDED_DECODE=1`; unguided generation is untouched.
+- Token-savings bench: `verify/guided_decode_token_bench.mjs` (static
+  mode always runs; `--bin … --model …` for a live wall-time delta).
+- Design + the prefill-plan format + measured savings:
+  [`reports/porting/2026-05-11/guided-structured-decoding.md`](reports/porting/2026-05-11/guided-structured-decoding.md).
+
+Structured output is an HTTP surface, NOT on the §3 mandatory-kernel
+path — text, voice, embedding, and the DFlash spec loop don't need it,
+so `server-structured-output.mjs` is *tolerant* (warns, never fails) and
+the §3 fail-closed rule does not apply to it.
+
 ---
 
 ## 5. Three modes — code organization

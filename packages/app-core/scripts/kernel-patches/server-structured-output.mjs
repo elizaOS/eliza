@@ -17,6 +17,13 @@
 //      `{ "verifier": { "rejected": [a, b] } }` SSE extension the runtime
 //      parses in dflash-server.ts `extractVerifierRejectRange` — see
 //      docs/porting/dflash-drafter-strategy.md "DFlash↔TTS Rollback Coupling")
+//   7. (future fork patch, not yet present) `eliza_prefill_plan` — the
+//      guided-structured-decode short-circuit: the request carries the runs of
+//      bytes the schema fully determines so the server splices their token ids
+//      without a forward pass and advances the decoder to the next free param.
+//      Reported (present/absent) like (1)–(4); the runtime sends it whenever
+//      guided decode is on and degrades to the grammar-only path when the fork
+//      doesn't consume it. See reports/porting/2026-05-11/guided-structured-decoding.md.
 //
 // Items (1)–(5) are upstream llama.cpp features that the v1.0.0-eliza fork
 // already carries (its server source is the post-refactor layout that split
@@ -107,6 +114,21 @@ const STRUCTURED_OUTPUT_FEATURES = [
     needles: ["prefill_assistant", "prefill_assistant_message"],
     feature:
       "assistant-turn prefill (prefill_assistant / prefill_assistant_message)",
+  },
+  {
+    // The eliza-harness guided-structured-decode extension: a per-request
+    // `eliza_prefill_plan` (the deterministic-token short-circuit — runs of
+    // bytes the schema fully determines, which the server can splice as token
+    // ids without a forward pass and advance the decoder to the next free
+    // param). See structured-output.ts `ElizaPrefillPlan` /
+    // reports/porting/2026-05-11/guided-structured-decoding.md. This is an
+    // elizaOS-fork extension, not upstream — absent today; when a fork build
+    // adds it, the runtime's prefill plan starts saving forward passes. Until
+    // then the lazy GBNF still forces the identical bytes, so the runtime is
+    // correct either way (it sends the field unconditionally when guided
+    // decode is on).
+    needles: ["eliza_prefill_plan"],
+    feature: "eliza prefill-plan token short-circuit (eliza_prefill_plan)",
   },
 ];
 

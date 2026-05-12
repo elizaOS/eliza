@@ -66,6 +66,18 @@ export interface StructuredGenerateParams {
    * one shot.
    */
   streamStructured?: boolean;
+  /**
+   * The eliza harness schema for this call — the compact descriptor bundling
+   * the response skeleton, a pre-built grammar (optional), the derived
+   * deterministic-token {@link ElizaPrefillPlan}, and the short/long name maps.
+   * When present, guided structured decode is *on* for this call: the engine
+   * sends the grammar AND the prefill plan, and seeds the leading literal run
+   * as an assistant-turn prefill. Absent → guided decode is off (the engine
+   * may still honour a bare `grammar` / `responseSkeleton`, but never emits a
+   * prefill plan). This is the off-by-default switch for the deterministic
+   * short-circuit.
+   */
+  elizaSchema?: ElizaHarnessSchema;
 }
 
 /** True when `kind` is a span the model actually samples. */
@@ -275,4 +287,285 @@ export function splitSkeletonAtFirstFree(skeleton: ResponseSkeleton): {
     idx += 1;
   }
   return { prefixLiteral, rest: skeleton.spans.slice(idx) };
+}
+
+// ---------------------------------------------------------------------------
+// Deterministic-token prefill plan
+// ---------------------------------------------------------------------------
+//
+// The grammar bounds the *search* but the model still spends one forward pass
+// per sampled token, including on the scaffold positions that the grammar
+// forces (the JSON braces, the fixed key names, the `": "` glue). A
+// constrained-decode server that understands the schema can do better: when a
+// run of bytes is *deterministically implied* by the schema given the branch
+// chosen so far, it can write those token ids straight into the sequence and
+// advance the decoder to the next free parameter without a forward pass. The
+// {@link ElizaPrefillPlan} is the compact metadata the engine sends so the
+// server can do exactly that.
+//
+// The plan is purely a *speedup hint*. A server that ignores it still produces
+// the identical output (the grammar already forces the same bytes); a server
+// that honours it produces the identical output faster. Off by default — the
+// engine only emits it when an `ElizaHarnessSchema` (or a `prefillPlan`) is
+// present on the request, never for unguided generation.
+
+/**
+ * One deterministically-forced byte run in an {@link ElizaPrefillPlan}. The
+ * runs alternate with the free (sampled) spans, so a run is unambiguously
+ * anchored by *position* in that alternation rather than by an absolute byte
+ * offset (the sampled spans have unknown length at plan time):
+ *
+ *   run[0]  free[0]  run[1]  free[1]  …  run[n]   (n = number of free spans)
+ *
+ * `afterFreeSpan` is `-1` for the leading run (before any free span — the
+ * assistant-turn prefill), then `0, 1, 2, …` for the run that follows free
+ * span 0, 1, 2, … . The server resumes sampling after writing each run; once
+ * the matching free span is sampled it writes the next run's token ids without
+ * a forward pass and advances the decoder to the next free span.
+ */
+export interface PrefillRun {
+  /**
+   * Index of the free span this run *follows*. `-1` = the leading run (the
+   * prefill); `k >= 0` = the run after free span `k`. The last run (`n`) is the
+   * tail scaffold (closing braces) after the final free span.
+   */
+  afterFreeSpan: number;
+  /** The deterministically-forced bytes. */
+  text: string;
+}
+
+/**
+ * Compact descriptor of the deterministic structure of a constrained decode:
+ * the ordered runs of bytes that are fixed (so the server can prefill their
+ * token ids and skip the forward passes) interleaved with the count of free
+ * positions, plus the leading literal run that should be seeded as an
+ * assistant-turn prefill (`prefix`). Sent on the request as `eliza_prefill_plan`.
+ *
+ * Purely a speedup hint — a server that ignores it produces the identical
+ * output because the lazy GBNF already forces the same bytes.
+ */
+export interface ElizaPrefillPlan {
+  /**
+   * The leading deterministic run — emitted as an assistant-turn prefill so
+   * the model never samples it. Empty when the skeleton opens with a free span.
+   */
+  prefix: string;
+  /**
+   * Deterministic byte runs alternating with the free spans (see
+   * {@link PrefillRun}), in output order, including the prefix run when
+   * non-empty.
+   */
+  runs: PrefillRun[];
+  /** Number of free (sampled) spans in the skeleton. `runs.length` is `freeCount + 1` minus the leading run when the skeleton starts free. */
+  freeCount: number;
+  /**
+   * Opaque cache key (mirrors the skeleton's `id`) so the server can cache the
+   * tokenised form of the runs across turns when the structure is unchanged.
+   */
+  id?: string;
+}
+
+/**
+ * Compute the {@link ElizaPrefillPlan} for a response skeleton: walk the spans,
+ * accumulating consecutive `literal` spans (and single-value enums collapsed to
+ * literals) into deterministic byte runs and counting the free spans. Adjacent
+ * literals merge into one run. Returns `null` when the skeleton has no
+ * deterministic runs at all (nothing to prefill).
+ *
+ * Invariant the consumer relies on: concatenating the runs interleaved with the
+ * (eventually-sampled) free-span values, in order, reproduces a byte-identical
+ * JSON document to what the lazy GBNF from {@link compileSkeletonToGbnf} would
+ * have produced. The tests assert this.
+ */
+export function compilePrefillPlan(
+  skeletonInput: ResponseSkeleton,
+): ElizaPrefillPlan | null {
+  const skeleton = collapseSkeleton(skeletonInput);
+  const runs: PrefillRun[] = [];
+  let freeCount = 0;
+  let pending = "";
+
+  const flushPending = (afterFreeSpan: number) => {
+    if (pending.length === 0) return;
+    runs.push({ afterFreeSpan, text: pending });
+    pending = "";
+  };
+
+  for (const span of skeleton.spans) {
+    if (span.kind === "literal") {
+      pending += span.value ?? "";
+      continue;
+    }
+    if (
+      span.kind === "enum" &&
+      Array.isArray(span.enumValues) &&
+      span.enumValues.length === 1
+    ) {
+      // Defensive: a producer that didn't collapse a single-value enum.
+      pending += JSON.stringify(String(span.enumValues[0]));
+      continue;
+    }
+    // A free position (enum ≥2 values, free-string, free-json). The
+    // deterministic run accumulated so far follows free span `freeCount - 1`
+    // (or is the leading prefill run when `freeCount === 0`).
+    flushPending(freeCount - 1);
+    freeCount += 1;
+  }
+  // Tail scaffold after the last free span.
+  flushPending(freeCount - 1);
+
+  if (runs.length === 0) return null;
+  const prefix = runs[0].afterFreeSpan === -1 ? runs[0].text : "";
+  return { prefix, runs, freeCount, id: skeleton.id };
+}
+
+/**
+ * Build the request-body fragment carrying the prefill plan. The server reads
+ * `eliza_prefill_plan` (a tolerant extension — old binaries ignore it and the
+ * grammar still forces the same bytes). Returns `{}` when there is no plan.
+ */
+export function prefillPlanRequestFields(
+  plan: ElizaPrefillPlan | null,
+): Record<string, unknown> {
+  if (!plan) return {};
+  return {
+    eliza_prefill_plan: {
+      prefix: plan.prefix,
+      runs: plan.runs.map((r) => ({
+        after_free_span: r.afterFreeSpan,
+        text: r.text,
+      })),
+      free_count: plan.freeCount,
+      id: plan.id,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Eliza harness schema — the compact descriptor the agent loop hands the engine
+// ---------------------------------------------------------------------------
+
+/**
+ * The compact, engine-facing descriptor for a structured output the agent loop
+ * wants forced. It is the bundle of (a) a {@link ResponseSkeleton} (which
+ * compiles to a lazy GBNF for the constrained-decode path), (b) the derived
+ * {@link ElizaPrefillPlan} (the deterministic-token short-circuit), and (c) the
+ * short-name ↔ long-name maps so the on-wire/decoded form uses canonical short
+ * action ids / enum values and the runtime expands them for the caller.
+ *
+ * Producers: `@elizaos/core` `buildPlannerActionGrammar` / `buildResponseGrammar`
+ * wrapped by {@link elizaHarnessSchemaFromSkeleton}. Consumer: the local engine
+ * (`dflash-server.ts` / `engine.ts`).
+ */
+export interface ElizaHarnessSchema {
+  /** Structure-forcing description; compiles to a lazy GBNF. */
+  skeleton: ResponseSkeleton;
+  /** Pre-built GBNF (wins over compiling the skeleton), when the producer made one. */
+  grammar?: string;
+  /** Deterministic-token short-circuit derived from the skeleton. */
+  prefillPlan: ElizaPrefillPlan | null;
+  /**
+   * Canonical short id → human-facing long name (display label), for any
+   * closed enum the descriptor pins (action ids, known enum values). The wire
+   * form is the short id; callers that want the long name look it up here.
+   * Empty when nothing needs expanding.
+   */
+  longNames: Record<string, string>;
+  /** Cache key (the skeleton's id). */
+  id?: string;
+}
+
+/**
+ * Wrap a {@link ResponseSkeleton} (+ optional pre-built grammar + name map)
+ * into an {@link ElizaHarnessSchema}, computing the prefill plan. This is the
+ * single place the prefill plan is derived so producers don't each reimplement
+ * it.
+ */
+export function elizaHarnessSchemaFromSkeleton(input: {
+  skeleton: ResponseSkeleton;
+  grammar?: string;
+  longNames?: Record<string, string>;
+}): ElizaHarnessSchema {
+  return {
+    skeleton: input.skeleton,
+    grammar: input.grammar,
+    prefillPlan: compilePrefillPlan(input.skeleton),
+    longNames: input.longNames ?? {},
+    id: input.skeleton.id,
+  };
+}
+
+/**
+ * Expand a canonical short id decoded out of a constrained generation back to
+ * its human-facing long name (display label), using the descriptor's
+ * {@link ElizaHarnessSchema.longNames} map (sourced from the action catalog).
+ * Identity when there is no mapping — the canonical action ids
+ * (`normalizeActionName` results, e.g. `SEND_MESSAGE`) are already the on-wire
+ * form, so this is only meaningful when a producer registered a separate
+ * display label.
+ */
+export function expandShortName(
+  schema: ElizaHarnessSchema | undefined,
+  shortId: string,
+): string {
+  if (!schema) return shortId;
+  return schema.longNames[shortId] ?? shortId;
+}
+
+/**
+ * Invert {@link expandShortName}: given a (possibly long) name the caller
+ * supplied, return the canonical short id the wire form expects. Identity when
+ * the name is already a known short id or no mapping matches.
+ */
+export function canonicalizeShortName(
+  schema: ElizaHarnessSchema | undefined,
+  name: string,
+): string {
+  if (!schema) return name;
+  if (Object.hasOwn(schema.longNames, name)) return name; // already a short id
+  for (const [shortId, longName] of Object.entries(schema.longNames)) {
+    if (longName === name) return shortId;
+  }
+  return name;
+}
+
+/**
+ * Resolve the GBNF + prefill plan + assistant-turn prefill to apply for a
+ * generation call given the structured params. Precedence for the grammar:
+ * an explicit `grammar` string, then a harness schema's `grammar`, then
+ * compiling the harness schema's / params' `responseSkeleton`. The prefill plan
+ * is only present when a harness schema is supplied (off by default).
+ */
+export function resolveGuidedDecodeForParams(
+  params: StructuredGenerateParams | undefined,
+): {
+  grammar: GbnfGrammar | null;
+  prefillPlan: ElizaPrefillPlan | null;
+  prefill: string | null;
+} {
+  if (!params) return { grammar: null, prefillPlan: null, prefill: null };
+  const schema = params.elizaSchema;
+  if (schema) {
+    const grammar: GbnfGrammar | null =
+      typeof schema.grammar === "string" && schema.grammar.trim().length > 0
+        ? { source: schema.grammar, lazy: false }
+        : compileSkeletonToGbnf(schema.skeleton);
+    const plan = schema.prefillPlan ?? compilePrefillPlan(schema.skeleton);
+    // Only use the plan's prefix when the caller didn't already supply one.
+    const prefill =
+      typeof params.prefill === "string" && params.prefill.length > 0
+        ? params.prefill
+        : plan && plan.prefix.length > 0
+          ? plan.prefix
+          : null;
+    return { grammar, prefillPlan: plan, prefill };
+  }
+  return {
+    grammar: resolveGrammarForParams(params),
+    prefillPlan: null,
+    prefill:
+      typeof params.prefill === "string" && params.prefill.length > 0
+        ? params.prefill
+        : null,
+  };
 }

@@ -7,12 +7,18 @@
 
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import type { ResponseSkeleton } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildChatCompletionBody,
   type DflashGenerateArgs,
   dflashLlamaServer,
 } from "./dflash-server";
+import {
+  compilePrefillPlan,
+  compileSkeletonToGbnf,
+  elizaHarnessSchemaFromSkeleton,
+} from "./structured-output";
 
 interface CapturedRequest {
   url: string;
@@ -131,6 +137,153 @@ describe("buildChatCompletionBody", () => {
     const body = buildChatCompletionBody(makeArgs(), 0, false);
     expect(body.messages).toEqual([{ role: "user", content: "say hello" }]);
     expect(body.continue_final_message).toBeUndefined();
+    expect(body.eliza_prefill_plan).toBeUndefined();
+  });
+
+  it("does NOT emit a prefill plan for a bare responseSkeleton (guided decode off by default)", () => {
+    const body = buildChatCompletionBody(
+      makeArgs({
+        responseSkeleton: {
+          spans: [
+            { kind: "literal", value: '{"action":"' },
+            { kind: "enum", key: "action", enumValues: ["A", "B"] },
+            { kind: "literal", value: '"}' },
+          ],
+        },
+      }),
+      0,
+      false,
+    );
+    // Grammar still applied (constrained decode), but no prefill plan and no
+    // assistant prefill — the plan only rides on an `elizaSchema`.
+    expect(typeof body.grammar).toBe("string");
+    expect(body.eliza_prefill_plan).toBeUndefined();
+    expect(body.messages).toEqual([{ role: "user", content: "say hello" }]);
+  });
+});
+
+const PLANNER_SKELETON: ResponseSkeleton = {
+  id: "planner#test",
+  spans: [
+    { kind: "literal", value: '{"action":' },
+    { kind: "enum", key: "action", enumValues: ["SEND_MESSAGE", "IGNORE"] },
+    { kind: "literal", value: ',"parameters":' },
+    { kind: "free-json", key: "parameters" },
+    { kind: "literal", value: ',"thought":' },
+    { kind: "free-string", key: "thought" },
+    { kind: "literal", value: "}" },
+  ],
+};
+
+describe("compilePrefillPlan", () => {
+  it("extracts the deterministic byte runs and counts the free spans", () => {
+    const plan = compilePrefillPlan(PLANNER_SKELETON);
+    expect(plan).not.toBeNull();
+    if (!plan) return;
+    expect(plan.freeCount).toBe(3); // enum(2), parameters, thought
+    expect(plan.prefix).toBe('{"action":');
+    expect(plan.runs.map((r) => [r.afterFreeSpan, r.text])).toEqual([
+      [-1, '{"action":'],
+      [0, ',"parameters":'],
+      [1, ',"thought":'],
+      [2, "}"],
+    ]);
+  });
+
+  it("collapses a single-value enum into the deterministic run (no free span)", () => {
+    // Mirrors the skeleton shape `buildPlannerActionGrammar` emits for a
+    // one-action turn: the JSON-quoting lives in the surrounding literals
+    // (`"` … `"}`), so `collapseSkeleton` lowers the enum to its bare value.
+    const plan = compilePrefillPlan({
+      spans: [
+        { kind: "literal", value: '{"action":"' },
+        { kind: "enum", key: "action", enumValues: ["ONLY_ONE"] },
+        { kind: "literal", value: '"}' },
+      ],
+    });
+    expect(plan).not.toBeNull();
+    if (!plan) return;
+    expect(plan.freeCount).toBe(0);
+    // The whole thing is one deterministic run — the model samples nothing.
+    expect(plan.runs).toEqual([
+      { afterFreeSpan: -1, text: '{"action":"ONLY_ONE"}' },
+    ]);
+    expect(plan.prefix).toBe('{"action":"ONLY_ONE"}');
+  });
+
+  it("returns null when there are no deterministic runs", () => {
+    expect(
+      compilePrefillPlan({ spans: [{ kind: "free-string", key: "x" }] }),
+    ).toBeNull();
+  });
+
+  it("prefill-plan runs interleaved with sampled values reproduce a valid JSON document byte-for-byte", () => {
+    // The lazy GBNF from compileSkeletonToGbnf forces this exact scaffold;
+    // assert the plan's deterministic runs + a sampled value reconstruct an
+    // identical JSON document (the consumer's correctness invariant).
+    const plan = compilePrefillPlan(PLANNER_SKELETON);
+    expect(plan).not.toBeNull();
+    expect(compileSkeletonToGbnf(PLANNER_SKELETON)).not.toBeNull();
+    if (!plan) return;
+    // Pretend the model sampled these for the 3 free spans (in order).
+    const sampled = ['"SEND_MESSAGE"', '{"channelId":"c1"}', '"reply now"'];
+    // Reassembly: run(afterFreeSpan=-1), free0, run(0), free1, run(1), free2, run(2).
+    let out = "";
+    for (const run of plan.runs) {
+      out += run.text;
+      const nextFree = run.afterFreeSpan + 1;
+      if (nextFree < plan.freeCount) out += sampled[nextFree];
+    }
+    expect(out).toBe(
+      '{"action":"SEND_MESSAGE","parameters":{"channelId":"c1"},"thought":"reply now"}',
+    );
+    expect(() => JSON.parse(out)).not.toThrow();
+  });
+});
+
+describe("elizaHarnessSchemaFromSkeleton + guided decode wiring", () => {
+  it("a request carrying an elizaSchema emits the grammar + prefill plan + assistant prefill", () => {
+    const schema = elizaHarnessSchemaFromSkeleton({
+      skeleton: PLANNER_SKELETON,
+      longNames: { SEND_MESSAGE: "Send a message" },
+    });
+    expect(schema.prefillPlan).not.toBeNull();
+    const body = buildChatCompletionBody(
+      makeArgs({ elizaSchema: schema }),
+      4,
+      false,
+    );
+    // Grammar present (lazy, since the skeleton opens with a literal).
+    expect(typeof body.grammar).toBe("string");
+    expect(body.grammar_lazy).toBe(true);
+    // Prefill plan present.
+    const plan = body.eliza_prefill_plan as
+      | { prefix: string; runs: unknown[]; free_count: number }
+      | undefined;
+    expect(plan).toBeDefined();
+    expect(plan?.prefix).toBe('{"action":');
+    expect(plan?.free_count).toBe(3);
+    // Leading literal run seeded as an assistant-turn prefill.
+    expect(body.messages).toEqual([
+      { role: "user", content: "say hello" },
+      { role: "assistant", content: '{"action":' },
+    ]);
+    expect(body.continue_final_message).toBe(true);
+  });
+
+  it("an explicit prefill on the args wins over the plan's leading run", () => {
+    const schema = elizaHarnessSchemaFromSkeleton({
+      skeleton: PLANNER_SKELETON,
+    });
+    const body = buildChatCompletionBody(
+      makeArgs({ elizaSchema: schema, prefill: '{"action":"SEND' }),
+      0,
+      false,
+    );
+    expect(body.messages).toEqual([
+      { role: "user", content: "say hello" },
+      { role: "assistant", content: '{"action":"SEND' },
+    ]);
   });
 });
 

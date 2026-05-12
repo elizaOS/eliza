@@ -52,7 +52,8 @@ import { localInferenceRoot } from "./paths";
 import { ramHeadroomReserveMb, resolveRamBudget } from "./ram-budget";
 import {
   grammarRequestFields,
-  resolveGrammarForParams,
+  prefillPlanRequestFields,
+  resolveGuidedDecodeForParams,
   type StructuredGenerateParams,
 } from "./structured-output";
 import type {
@@ -2563,10 +2564,12 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         ? dflashArgs.slotId
         : deriveSlotId(args.cacheKey ?? "", this.cacheParallel);
     const streaming = Boolean(args.onTextChunk || dflashArgs.onVerifierEvent);
-    const prefill =
-      typeof dflashArgs.prefill === "string" && dflashArgs.prefill.length > 0
-        ? dflashArgs.prefill
-        : "";
+    // The assistant-turn prefill that was seeded server-side (an explicit
+    // `prefill`, or the leading literal run of an `elizaSchema`'s prefill
+    // plan) — re-prepended to the streamed/returned tail so callers see the
+    // full structured envelope. Resolved by the same logic
+    // `buildChatCompletionBody` uses so the two never diverge.
+    const prefill = resolveGuidedDecodeForParams(dflashArgs).prefill ?? "";
     const payload = buildChatCompletionBody(dflashArgs, slotId, streaming);
     const before = await fetchMetricsSnapshot(baseUrl);
     let json: Record<string, unknown> | null = null;
@@ -2762,6 +2765,12 @@ export const dflashLlamaServer = new DflashLlamaServer();
  *     prefill is still re-prepended client-side).
  *   - `grammar` / `responseSkeleton` → `grammar` (+ `grammar_lazy` /
  *     `grammar_triggers` when the compiled skeleton is lazy).
+ *   - `elizaSchema` (guided structured decode, off by default) → the compiled
+ *     grammar PLUS `eliza_prefill_plan` (the deterministic-token short-circuit
+ *     — a tolerant extension a recent fork honours by splicing the forced
+ *     token runs without a forward pass; older binaries ignore it and the
+ *     grammar still forces the same bytes) PLUS the plan's leading literal run
+ *     as an assistant-turn prefill.
  *
  * `cache_prompt: true` is always safe — the worst case is the server matches
  * no prefix tokens and the request behaves like a cold call. Pinning by
@@ -2772,13 +2781,11 @@ export function buildChatCompletionBody(
   slotId: number,
   streaming: boolean,
 ): Record<string, unknown> {
+  const guided = resolveGuidedDecodeForParams(args);
+  const prefill = guided.prefill ?? "";
   const messages: Array<{ role: string; content: string }> = [
     { role: "user", content: args.prompt },
   ];
-  const prefill =
-    typeof args.prefill === "string" && args.prefill.length > 0
-      ? args.prefill
-      : "";
   if (prefill.length > 0) {
     messages.push({ role: "assistant", content: prefill });
   }
@@ -2799,10 +2806,11 @@ export function buildChatCompletionBody(
     // Some fork builds spell it `add_generation_prompt: false` instead.
     payload.add_generation_prompt = false;
   }
-  const grammar = resolveGrammarForParams(args);
-  if (grammar) {
-    Object.assign(payload, grammarRequestFields(grammar));
+  if (guided.grammar) {
+    Object.assign(payload, grammarRequestFields(guided.grammar));
   }
+  // Off by default: only emitted when `args.elizaSchema` carried a prefill plan.
+  Object.assign(payload, prefillPlanRequestFields(guided.prefillPlan));
   return payload;
 }
 

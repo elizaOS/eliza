@@ -1,10 +1,16 @@
 import type { ResponseSkeleton } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
+  canonicalizeShortName,
   collapseSkeleton,
+  compilePrefillPlan,
   compileSkeletonToGbnf,
+  elizaHarnessSchemaFromSkeleton,
+  expandShortName,
   grammarRequestFields,
+  prefillPlanRequestFields,
   resolveGrammarForParams,
+  resolveGuidedDecodeForParams,
   splitSkeletonAtFirstFree,
 } from "./structured-output";
 
@@ -148,5 +154,104 @@ describe("splitSkeletonAtFirstFree", () => {
       key: "shouldRespond",
       enumValues: ["RESPOND", "IGNORE", "STOP"],
     });
+  });
+});
+
+describe("compilePrefillPlan + prefillPlanRequestFields", () => {
+  it("merges adjacent literals into one deterministic run and counts free spans", () => {
+    const plan = compilePrefillPlan(envelopeSkeleton);
+    expect(plan).not.toBeNull();
+    if (!plan) return;
+    expect(plan.prefix).toBe('{\n  "shouldRespond": "');
+    expect(plan.freeCount).toBe(4); // shouldRespond enum, replyText, contexts, extract
+    expect(plan.runs[0]).toEqual({
+      afterFreeSpan: -1,
+      text: '{\n  "shouldRespond": "',
+    });
+    // The tail closing literal is the run after the last free span.
+    expect(plan.runs[plan.runs.length - 1]).toEqual({
+      afterFreeSpan: 3,
+      text: "\n}",
+    });
+  });
+
+  it("the request fragment carries the plan; empty when null", () => {
+    const plan = compilePrefillPlan(envelopeSkeleton);
+    const fields = prefillPlanRequestFields(plan);
+    expect(fields.eliza_prefill_plan).toBeDefined();
+    expect(prefillPlanRequestFields(null)).toEqual({});
+  });
+});
+
+describe("elizaHarnessSchemaFromSkeleton", () => {
+  it("bundles the skeleton, grammar, prefill plan and name map", () => {
+    const schema = elizaHarnessSchemaFromSkeleton({
+      skeleton: envelopeSkeleton,
+      grammar: 'root ::= "x"',
+      longNames: { RESPOND: "Respond to the user" },
+    });
+    expect(schema.skeleton).toBe(envelopeSkeleton);
+    expect(schema.grammar).toBe('root ::= "x"');
+    expect(schema.prefillPlan).not.toBeNull();
+    expect(schema.longNames.RESPOND).toBe("Respond to the user");
+    expect(schema.id).toBe("response-v1");
+  });
+});
+
+describe("resolveGuidedDecodeForParams", () => {
+  it("returns the grammar + prefill plan + leading-run prefill for an elizaSchema", () => {
+    const schema = elizaHarnessSchemaFromSkeleton({
+      skeleton: envelopeSkeleton,
+    });
+    const out = resolveGuidedDecodeForParams({ elizaSchema: schema });
+    expect(out.grammar?.lazy).toBe(true);
+    expect(out.prefillPlan).not.toBeNull();
+    expect(out.prefill).toBe('{\n  "shouldRespond": "');
+  });
+
+  it("prefers the schema's pre-built grammar over compiling the skeleton", () => {
+    const schema = elizaHarnessSchemaFromSkeleton({
+      skeleton: envelopeSkeleton,
+      grammar: 'root ::= "hi"',
+    });
+    const out = resolveGuidedDecodeForParams({ elizaSchema: schema });
+    expect(out.grammar?.source).toBe('root ::= "hi"');
+    expect(out.grammar?.lazy).toBe(false);
+  });
+
+  it("an explicit prefill on the params wins over the plan's leading run", () => {
+    const schema = elizaHarnessSchemaFromSkeleton({
+      skeleton: envelopeSkeleton,
+    });
+    const out = resolveGuidedDecodeForParams({
+      elizaSchema: schema,
+      prefill: "seed:",
+    });
+    expect(out.prefill).toBe("seed:");
+  });
+
+  it("no elizaSchema → no prefill plan (guided decode off), bare grammar still resolved", () => {
+    const out = resolveGuidedDecodeForParams({ grammar: 'root ::= "x"' });
+    expect(out.prefillPlan).toBeNull();
+    expect(out.grammar?.source).toBe('root ::= "x"');
+    expect(out.prefill).toBeNull();
+  });
+});
+
+describe("short ↔ long name round-trip", () => {
+  it("expands a decoded short id to its display label and back", () => {
+    const schema = elizaHarnessSchemaFromSkeleton({
+      skeleton: envelopeSkeleton,
+      longNames: { SEND_MESSAGE: "Send a message" },
+    });
+    expect(expandShortName(schema, "SEND_MESSAGE")).toBe("Send a message");
+    expect(canonicalizeShortName(schema, "Send a message")).toBe(
+      "SEND_MESSAGE",
+    );
+    // Identity for an unmapped value (canonical ids are already the wire form).
+    expect(expandShortName(schema, "IGNORE")).toBe("IGNORE");
+    expect(canonicalizeShortName(schema, "IGNORE")).toBe("IGNORE");
+    expect(expandShortName(undefined, "X")).toBe("X");
+    expect(canonicalizeShortName(undefined, "X")).toBe("X");
   });
 });

@@ -52,7 +52,7 @@ import {
   resolveDefaultPoolSize,
   SessionPool,
 } from "./session-pool";
-import { resolveGrammarForParams } from "./structured-output";
+import { resolveGuidedDecodeForParams } from "./structured-output";
 import type { InstalledModel } from "./types";
 import {
   buildLocalEmbeddingRoute,
@@ -225,14 +225,16 @@ interface LlamaContext {
 
 /**
  * Resolve the GBNF source for a node-llama-cpp constrained-decode call.
- * Precedence: an explicit `grammar` string on the args, then a compiled
- * forced skeleton (single-value enums collapsed to literals). Returns null
- * when neither is set — generation is unconstrained as before. node-llama-cpp
- * has no `grammar_lazy`, so a lazy grammar from the skeleton is applied
- * eagerly here; that's still correct (the leading literal is the trigger).
+ * Precedence: an explicit `grammar` string, then an `elizaSchema`'s grammar,
+ * then a compiled forced skeleton (single-value enums collapsed to literals).
+ * Returns null when none is set — generation is unconstrained as before.
+ * node-llama-cpp has no `grammar_lazy` and no token-splice prefill plan, so a
+ * lazy grammar from the skeleton is applied eagerly here (still correct — the
+ * leading literal is the trigger) and the prefill plan is ignored (the leading
+ * literal still gets seeded via `args.prefill`/`elizaSchema` upstream).
  */
 function resolveBindingGrammarSource(args: GenerateArgs): string | null {
-  const grammar = resolveGrammarForParams(args);
+  const grammar = resolveGuidedDecodeForParams(args).grammar;
   return grammar ? grammar.source : null;
 }
 
@@ -593,8 +595,10 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
       // Assistant-turn prefill: node-llama-cpp has no first-class "continue
       // this assistant message" knob, so we seed the prompt text with the
       // partial assistant turn and re-prepend it to the result so callers
-      // see the full assistant message.
-      const prefill = typeof args.prefill === "string" ? args.prefill : "";
+      // see the full assistant message. The prefill is an explicit
+      // `args.prefill` or the leading literal run of an `elizaSchema`'s
+      // prefill plan (resolved by the same helper the server path uses).
+      const prefill = resolveGuidedDecodeForParams(args).prefill ?? "";
       const promptText =
         prefill.length > 0 ? `${args.prompt}\n${prefill}` : args.prompt;
       if (args.onTextChunk || args.onVerifierEvent) {
