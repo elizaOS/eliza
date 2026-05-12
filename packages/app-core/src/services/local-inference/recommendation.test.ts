@@ -454,8 +454,8 @@ describe("canBundleBeDefaultOnDevice", () => {
   it("refuses when a required eval gate did not pass (contract-invalid)", () => {
     // textEval.passed=false against a strict (`defaultEligible:true`)
     // fixture trips `collectContractErrors`, which kicks `canSetAsDefault`
-    // back as contract-invalid. The disambiguation reason is the generic
-    // `contract-invalid` — covers any eval / kernel / lineage rule
+    // back as not-default-eligible. The disambiguation reason is the generic
+    // `not-default-eligible` — covers any eval / kernel / lineage rule
     // rejected by the validator.
     const m = fixtureManifest();
     m.evals.textEval = { score: 0.2, passed: false };
@@ -464,7 +464,7 @@ describe("canBundleBeDefaultOnDevice", () => {
     });
     expect(r).toMatchObject({
       canBeDefault: false,
-      reason: "contract-invalid",
+      reason: "not-default-eligible",
     });
   });
 });
