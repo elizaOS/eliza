@@ -289,3 +289,33 @@ HF cards say DEPRECATED:
 - `bunx vitest run packages/app-core/src/services/local-inference/{recommendation,active-model,readiness,catalog}.test.ts packages/ui/src/services/local-inference/{recommendation,catalog}.test.ts packages/ui/src/onboarding/auto-download-recommended.test.ts packages/app-core/scripts/eliza1-gates-yaml.test.ts` — 90/90 PASS.
 - `python3 -m pytest packages/training/scripts/{manifest,eval,publish,training/test_model_registry.py} packages/training/benchmarks` — 217/217 PASS.
 - HF deprecation: 11/14 cards uploaded (3 skipped: 4b-companion repos don't exist).
+
+## FINALIZE-5 training lane — 0_8b H200 SFT v4 (2026-05-12 ~20:51Z)
+
+- **Post-mortem committed** (`c25583aa3c`) for the three failed H200 attempts
+  (`eliza-1-0_8b-apollo-fullcorpus-h200-{1778595498,1778597485,1778601427}`):
+  Qwen3.5 chat template iterates `tool_call.arguments | items` → TypeError on
+  OpenAI-ChatML string-args rows in the eliza1-sft-0_6b mix-in. Full write-up
+  at `packages/training/reports/eliza1-h200-postmortem-2026-05-12.md`.
+- **Fix committed** (`ac35880c91`) on `develop`:
+  `train_local.py::build_dataset.render` now coerces `tool_call.arguments`
+  (string → dict) before `apply_chat_template`. Also lands the
+  `train_nebius.sh` rewrite (live nebius CLI + PIPESTATUS fix + UV_NO_SYNC
+  + ELIZA_NO_DEVICE_MAP + rsync rc-24 tolerance) that the three failed runs
+  were already using out-of-tree.
+- **v4 launch in flight** (single H200 SXM):
+  - run name `eliza-1-0_8b-apollo-fullcorpus-h200-1778619044`
+  - VM `eliza-train-h200-0_8b-v4` (IP 89.169.122.196) — `nebius compute v1
+    instance list` reports it `RUNNING`.
+  - Driver PID file: `/tmp/q35-0_8b-v4-full-pid.txt` (3652055).
+  - Watcher PID file: `/tmp/q35-0_8b-v4-watcher-pid.txt` (3652514) —
+    polls 120s, 12h deadline, line-anchored `^RUN_PIPELINE_EXIT=[0-9]`
+    sentinel + instance-up + driver-alive checks, always tears down on
+    completion or 12h. Watcher log: `/tmp/q35-0_8b-v4-watcher.log`.
+  - Hard-stop billing: `NEBIUS_PROJECT_ID=project-e00kfz6cpr00q21z892vec
+    NEBIUS_VM_NAME=eliza-train-h200-0_8b-v4 bash
+    packages/training/scripts/train_nebius.sh teardown`.
+- **On gate-green**: re-quant the new `final/` via
+  `scripts/quantization/gguf_eliza1_apply.py` (PolarQuant Q4_POLAR + QJL1_256
+  + TBQ3_0/TBQ4_0 + eliza1 manifest), then push to `elizaos/eliza-1-0_8b`
+  via the orchestrator, then 2b → 4b → 9b → 27b on the same H200 in sequence.
