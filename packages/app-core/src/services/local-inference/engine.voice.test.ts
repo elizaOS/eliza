@@ -334,10 +334,14 @@ describe("LocalInferenceEngine voice surface", () => {
       "tts-first-audio",
       "audio-committed",
     ]);
-    expect(telemetry.find((event) => event.type === "phrase-cache-hit")).toMatchObject({
+    expect(
+      telemetry.find((event) => event.type === "phrase-cache-hit"),
+    ).toMatchObject({
       phrase: { text: "Sure." },
     });
-    expect(telemetry.find((event) => event.type === "tts-first-audio")).toMatchObject({
+    expect(
+      telemetry.find((event) => event.type === "tts-first-audio"),
+    ).toMatchObject({
       source: "cache",
       samples: 3,
       sampleRate: 24000,
@@ -418,12 +422,16 @@ describe("LocalInferenceEngine voice surface", () => {
         tokenCount: 2,
       },
     });
-    expect(telemetry.find((event) => event.type === "tts-first-audio")).toMatchObject({
+    expect(
+      telemetry.find((event) => event.type === "tts-first-audio"),
+    ).toMatchObject({
       source: "synthesis",
       samples: 2,
       sampleRate: 24000,
     });
-    expect(telemetry.find((event) => event.type === "audio-committed")).toMatchObject({
+    expect(
+      telemetry.find((event) => event.type === "audio-committed"),
+    ).toMatchObject({
       source: "synthesis",
       samples: 2,
       flushedSamples: 2,
@@ -642,7 +650,9 @@ describe("LocalInferenceEngine voice surface", () => {
       range: { fromIndex: 4, toIndex: 5 },
       reason: "rejected-tokens",
     });
-    expect(telemetry.find((event) => event.type === "tts-cancel")).toMatchObject({
+    expect(
+      telemetry.find((event) => event.type === "tts-cancel"),
+    ).toMatchObject({
       type: "tts-cancel",
       phrase: { id: phrases[1].id },
       reason: "rollback",
@@ -876,7 +886,9 @@ describe("LocalInferenceEngine voice surface", () => {
     // the contract is "<= 1 kernel tick".
     const ticksAfter = bridge.scheduler.kernelTickCount();
     expect(ticksAfter - ticksBefore).toBeLessThanOrEqual(1);
-    expect(telemetry.find((event) => event.type === "tts-cancel")).toMatchObject({
+    expect(
+      telemetry.find((event) => event.type === "tts-cancel"),
+    ).toMatchObject({
       type: "tts-cancel",
       reason: "barge-in",
     });

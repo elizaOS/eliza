@@ -497,10 +497,7 @@ export class VoiceScheduler {
     this.events.onCancel?.();
   }
 
-  private emitTtsCancel(
-    phrase: Phrase,
-    reason: VoiceTtsCancelReason,
-  ): void {
+  private emitTtsCancel(phrase: Phrase, reason: VoiceTtsCancelReason): void {
     this.emitTelemetry({
       type: "tts-cancel",
       atMs: nowMs(),
