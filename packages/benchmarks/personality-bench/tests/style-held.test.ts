@@ -241,4 +241,26 @@ describe("style-held rubric", () => {
     const v = await gradeStyleHeld(s, resolveOptions(NO_LLM));
     expect(v.verdict).toBe("FAIL");
   });
+
+  // W7-H4 regression: real openclaw failure from `hold_style.aggressive.code.004`
+  // turn 14 — the model held lowercase prose perfectly but slipped the "HHW"
+  // acronym (household hazardous waste) twice. The judge must catch this as a
+  // FAIL with a precise reason so the slip never silently passes.
+  it("all_lowercase FAIL — uppercase acronym slip in prose (HHW)", async () => {
+    const s = scenario(
+      [
+        { role: "user", content: "All lowercase from now on." },
+        {
+          role: "assistant",
+          content:
+            "take the can to a household hazardous waste (HHW) collection site. most cities run a permanent HHW facility.",
+        },
+      ],
+      { style: "all_lowercase" },
+    );
+    const v = await gradeStyleHeld(s, resolveOptions(NO_LLM));
+    expect(v.verdict).toBe("FAIL");
+    expect(v.reason).toMatch(/uppercase letter/);
+    expect(v.reason).toMatch(/HHWHH/);
+  });
 });
