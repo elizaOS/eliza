@@ -23,6 +23,7 @@ import {
   planFacts,
   planToolCalls,
   probeFact,
+  probeToolCall,
   rng,
   runDriftHarness,
 } from "./drift-harness";
@@ -772,6 +773,55 @@ describe("planToolCalls and tool-call probes", () => {
     const summary = sink.events.find((e) => e.event === "summary");
     if (!summary || summary.event !== "summary") throw new Error("unreachable");
     expect(summary.perKindAccuracy.tool_call?.total).toBe(1);
+  });
+
+  it("rejects contaminated tool-call answers that include another identifier", async () => {
+    const client: ModelClient = {
+      chat: async () => ({
+        content: "The fetch_metric result was WRONG1-11, then OKAY22-22.",
+      }),
+    };
+
+    const outcome = await probeToolCall({
+      client,
+      model: "fake",
+      history: [],
+      systemPrompt: "test",
+      toolCall: {
+        id: "tool_25",
+        turn: 25,
+        toolName: "fetch_metric",
+        toolValue: "OKAY22-22",
+        question: "What did the fetch_metric tool return at turn 25?",
+      },
+    });
+
+    expect(outcome.correct).toBe(false);
+    expect(outcome.judgeReasoning).toContain("contaminated");
+  });
+
+  it("accepts isolated tool-call answers with explanatory text", async () => {
+    const client: ModelClient = {
+      chat: async () => ({
+        content: "The fetch_metric result at turn 25 was OKAY22-22.",
+      }),
+    };
+
+    const outcome = await probeToolCall({
+      client,
+      model: "fake",
+      history: [],
+      systemPrompt: "test",
+      toolCall: {
+        id: "tool_25",
+        turn: 25,
+        toolName: "fetch_metric",
+        toolValue: "OKAY22-22",
+        question: "What did the fetch_metric tool return at turn 25?",
+      },
+    });
+
+    expect(outcome.correct).toBe(true);
   });
 
   it("emits tool_call/tool_result turn events alongside the user/assistant pair", async () => {

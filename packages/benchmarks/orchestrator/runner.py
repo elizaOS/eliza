@@ -121,6 +121,18 @@ def _effective_request(adapter: BenchmarkAdapter, request: RunRequest) -> RunReq
     )
 
 
+def _is_harness_compatible(adapter: BenchmarkAdapter, harness_label: str) -> bool:
+    if not harness_label or harness_label == "random_v1":
+        return True
+    if harness_label == "compare":
+        # Model/provider compare is valid for normal multi-harness adapters,
+        # but not for adapters that run a single concrete implementation under
+        # the hood. CompactBench is currently Eliza-only; compare-mode rows
+        # would still exercise Eliza's TypeScript compactor.
+        return len(adapter.agent_compatibility) > 1
+    return harness_label in adapter.agent_compatibility
+
+
 def _result_subdir(run_root: Path, adapter: BenchmarkAdapter, run_id: str) -> Path:
     return run_root / f"{_sanitize_name(adapter.directory)}__{_sanitize_name(adapter.id)}" / run_id
 
@@ -612,15 +624,9 @@ def run_benchmarks(
         # Harness/agent compatibility — if the harness is not in the adapter's
         # supported list, record an ``incompatible`` outcome and skip without
         # spawning the subprocess. ``random_v1`` is a synthetic baseline and is
-        # handled above. ``compare`` must still be gated: otherwise an
-        # Eliza-only adapter such as CompactBench can be mislabeled as a
-        # Hermes/OpenClaw comparison.
+        # handled above. ``compare`` is allowed only for multi-harness adapters.
         harness_label = request.agent.strip().lower()
-        if (
-            harness_label
-            and harness_label != "random_v1"
-            and harness_label not in adapter.agent_compatibility
-        ):
+        if not _is_harness_compatible(adapter, harness_label):
             attempt = next_attempt_for_signature(conn, signature)
             run_id = (
                 f"incompat_{adapter.id}_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"

@@ -1,7 +1,7 @@
 {
   "agent": "hermes",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T020344Z_c28273e7/terminal-bench__terminal_bench/run_terminal_bench_20260512T020345Z_2_6b4a55f3/output"
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T020834Z_92a17afc/terminal-bench__terminal_bench/run_terminal_bench_20260512T020834Z_3_c265976a/output"
   ],
   "benchmark_directory": "terminal-bench",
   "benchmark_id": "terminal_bench",
@@ -24,10 +24,10 @@
     "canonical_entries": 0,
     "passed_tasks": 1,
     "performance_metrics": {
-      "duration_seconds": 9.834520416043233,
-      "mean_latency_ms": 83.30965042114258,
-      "p95_latency_ms": 83.30965042114258,
-      "throughput_per_second": 0.10168264009790266
+      "duration_seconds": 12.720066999958362,
+      "mean_latency_ms": 323.14276695251465,
+      "p95_latency_ms": 323.14276695251465,
+      "throughput_per_second": 0.07861593810813051
     },
     "return_code": 0,
     "token_metrics": {
@@ -48,15 +48,15 @@
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
-    "duration_seconds": 9.834520416043233,
-    "mean_latency_ms": 83.30965042114258,
-    "p95_latency_ms": 83.30965042114258,
-    "throughput_per_second": 0.10168264009790266
+    "duration_seconds": 12.720066999958362,
+    "mean_latency_ms": 323.14276695251465,
+    "p95_latency_ms": 323.14276695251465,
+    "throughput_per_second": 0.07861593810813051
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T020344Z_c28273e7/terminal-bench__terminal_bench/run_terminal_bench_20260512T020345Z_2_6b4a55f3/output/terminal-bench-20260511_190354.json",
-  "run_group_id": "rg_20260512T020344Z_c28273e7",
-  "run_id": "run_terminal_bench_20260512T020345Z_2_6b4a55f3",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T020834Z_92a17afc/terminal-bench__terminal_bench/run_terminal_bench_20260512T020834Z_3_c265976a/output/terminal-bench-20260511_190846.json",
+  "run_group_id": "rg_20260512T020834Z_92a17afc",
+  "run_id": "run_terminal_bench_20260512T020834Z_3_c265976a",
   "score": 1.0,
   "status": "succeeded",
   "token_metrics": {
@@ -74,5 +74,5 @@
     "turns": 1
   },
   "unit": "ratio",
-  "updated_at": "2026-05-12T02:03:54.966360+00:00"
+  "updated_at": "2026-05-12T02:08:46.931113+00:00"
 }

@@ -8,7 +8,7 @@ from benchmarks.orchestrator.adapters import (
     _score_from_compactbench,
     discover_adapters,
 )
-from benchmarks.orchestrator.runner import _effective_request
+from benchmarks.orchestrator.runner import _effective_request, _is_harness_compatible
 from benchmarks.orchestrator.types import ExecutionContext, RunRequest
 from benchmarks.registry import get_benchmark_registry
 
@@ -180,7 +180,14 @@ def test_compare_label_remains_incompatible_with_eliza_only_compactbench() -> No
 
     assert adapter.agent_compatibility == ("eliza",)
     assert effective.agent == "compare"
-    assert "compare" not in adapter.agent_compatibility
+    assert _is_harness_compatible(adapter, "compare") is False
+
+
+def test_compare_label_still_runs_multi_harness_adapters() -> None:
+    adapter = discover_adapters(_workspace_root()).adapters["context_bench"]
+
+    assert len(adapter.agent_compatibility) > 1
+    assert _is_harness_compatible(adapter, "compare") is True
 
 
 def test_scambench_registry_command_and_score_contract(tmp_path: Path) -> None:

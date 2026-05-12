@@ -4,8 +4,9 @@
  * `packages/training/benchmarks/eliza1_gates.yaml`, and emit:
  *   - an aggregate report under `packages/inference/reports/gates/`,
  *   - a manifest `evals`-block fragment (the subset W11 owns:
- *     `dflash` + `thirtyTurnOk`/`e2eLoopOk` + `vadLatencyMs`-shaped
- *     entries) the publish orchestrator / manifest writer can merge.
+ *     `voiceRtf`/`asrWer` + `dflash` + `thirtyTurnOk`/`e2eLoopOk` +
+ *     `vadLatencyMs`-shaped entries) the publish orchestrator / manifest
+ *     writer can merge.
  *
  * Sources scanned (newest file wins, by mtime):
  *   - dflash bench           — packages/inference/reports/dflash-bench/dflash-bench-*.json
@@ -326,10 +327,21 @@ async function main() {
       .filter((r) => r.measured !== null)
       .every((r) => r.status === "pass"),
   };
+  const gateByName = new Map(results.map((r) => [r.name, r]));
+  const voiceRtfEval = voiceRtf !== null && {
+    rtf: voiceRtf,
+    passed: gateByName.get("voice_rtf")?.status === "pass",
+  };
+  const asrWerEval = asrWer !== null && {
+    wer: asrWer,
+    passed: gateByName.get("asr_wer")?.status === "pass",
+  };
   const manifestEvalsFragment = {
     // Only emit `thirtyTurnOk`/`e2eLoopOk` when actually measured (true or
     // false from a real run). `null` means "not measured" — the publish
     // side keeps whatever it had / treats it as not-ready.
+    ...(voiceRtfEval ? { voiceRtf: voiceRtfEval } : {}),
+    ...(asrWerEval ? { asrWer: asrWerEval } : {}),
     ...(thirtyTurnOk !== null ? { thirtyTurnOk } : {}),
     ...(e2eLoopOk !== null ? { e2eLoopOk } : {}),
     ...(vadLatencyEval ? { vadLatencyMs: vadLatencyEval } : {}),
