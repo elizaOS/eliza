@@ -10,9 +10,9 @@ Stages (skippable individually; see flags):
                                                      checkpoints/<run>/gate_report.json
   5. PolarQuant + TurboQuant + QJL quantization   → checkpoints/<run>/final-<q>/
   6. Quantized benchmark                          → benchmarks/<run>/<q>/
-  6b. Milady-typed GGUF bundle (--milady-bundle,  → checkpoints/<run>/milady-optimized/
+  6b. Eliza-1-typed GGUF bundle (--eliza1-bundle,  → checkpoints/<run>/eliza1-optimized/
       auto-on if the elizaOS/llama.cpp fork is       (Q4_POLAR GGUF + qjl_config.json +
-      found): optimize_for_milady.py +                turboquant.json + milady_manifest.json),
+      found): optimize_for_eliza1.py +                turboquant.json + eliza1_manifest.json),
       optional DFlash drafter (--dflash-drafter)     checkpoints/<run>/dflash/drafter-<tier>.gguf
   7. Publish (--publish, requires --bundle-dir)   → python -m scripts.publish.orchestrator
 
@@ -78,7 +78,7 @@ def _read_json(path: Path) -> dict | None:
         return None
 
 
-def _resolve_milady_llama_cpp() -> Path | None:
+def _resolve_eliza1_llama_cpp() -> Path | None:
     """Locate the elizaOS/llama.cpp fork (Q4_POLAR / QJL1_256 / dflash GGML
     types). Order: $LLAMA_CPP_DIR → in-repo fork submodule
     (packages/inference/llama.cpp) → ~/.cache/eliza-dflash/milady-llama-cpp →
@@ -214,15 +214,15 @@ def main() -> int:
              "pure-PyTorch path if Triton is unavailable.",
     )
     mb = ap.add_mutually_exclusive_group()
-    mb.add_argument("--milady-bundle", dest="milady_bundle", action="store_true",
-                    help="Stage 6b: assemble the Milady-typed GGUF bundle via "
-                         "optimize_for_milady.py — PolarQuant 4-bit weights + "
+    mb.add_argument("--eliza1-bundle", dest="eliza1_bundle", action="store_true",
+                    help="Stage 6b: assemble the Eliza-1-typed GGUF bundle via "
+                         "optimize_for_eliza1.py — PolarQuant 4-bit weights + "
                          "QJL1_256 K-cache + TBQ V-cache sidecars + "
-                         "milady_manifest.json. Needs the elizaOS/llama.cpp "
+                         "eliza1_manifest.json. Needs the elizaOS/llama.cpp "
                          "fork (auto-detected; set $LLAMA_CPP_DIR to override).")
-    mb.add_argument("--no-milady-bundle", dest="milady_bundle", action="store_false",
-                    help="Skip the Milady GGUF bundle stage.")
-    ap.set_defaults(milady_bundle=None)  # None ⇒ auto (on iff the fork is found)
+    mb.add_argument("--no-eliza1-bundle", dest="eliza1_bundle", action="store_false",
+                    help="Skip the Eliza-1 GGUF bundle stage.")
+    ap.set_defaults(eliza1_bundle=None)  # None ⇒ auto (on iff the fork is found)
     ap.add_argument("--dflash-drafter", action="store_true",
                     help="Also distill a DFlash speculative-decode drafter for "
                          "this tier (distill_dflash_drafter.py). Needs a GPU for "
@@ -487,26 +487,26 @@ def main() -> int:
             rcs = _bench(str(ck), q)
             summary["stages"][f"{q}_bench"] = {"exit": rcs}
 
-    # ───────────── stage 6b: Milady-typed GGUF bundle ─────────────────
+    # ───────────── stage 6b: Eliza-1-typed GGUF bundle ─────────────────
     # PolarQuant 4-bit weights packed via the fork's Q4_POLAR GGML type +
-    # QJL1_256 K-cache & TBQ V-cache JSON sidecars + milady_manifest.json,
-    # optionally paired with a DFlash drafter. optimize_for_milady.py is the
+    # QJL1_256 K-cache & TBQ V-cache JSON sidecars + eliza1_manifest.json,
+    # optionally paired with a DFlash drafter. optimize_for_eliza1.py is the
     # canonical orchestrator (it re-runs polarquant→qjl→turboquant idempotently
     # and then converts via the fork) — run_pipeline just delegates to it.
-    fork_dir = _resolve_milady_llama_cpp()
-    want_bundle = args.milady_bundle if args.milady_bundle is not None else (fork_dir is not None)
+    fork_dir = _resolve_eliza1_llama_cpp()
+    want_bundle = args.eliza1_bundle if args.eliza1_bundle is not None else (fork_dir is not None)
     if want_bundle and not args.skip_quantize:
         if fork_dir is None:
-            log.error("--milady-bundle requested but no elizaOS/llama.cpp fork "
+            log.error("--eliza1-bundle requested but no elizaOS/llama.cpp fork "
                       "found (set $LLAMA_CPP_DIR or clone milady-llama-cpp); "
-                      "skipping the Milady GGUF bundle")
-            summary["stages"]["milady_bundle"] = {"skipped": "fork not found"}
+                      "skipping the Eliza-1 GGUF bundle")
+            summary["stages"]["eliza1_bundle"] = {"skipped": "fork not found"}
         elif not finetuned_model.exists():
-            log.warning("no fine-tuned checkpoint at %s — skipping Milady bundle",
+            log.warning("no fine-tuned checkpoint at %s — skipping Eliza-1 bundle",
                         finetuned_model)
-            summary["stages"]["milady_bundle"] = {"skipped": "no checkpoint"}
+            summary["stages"]["eliza1_bundle"] = {"skipped": "no checkpoint"}
         else:
-            opt_dir = ckpt_dir / "milady-optimized"
+            opt_dir = ckpt_dir / "eliza1-optimized"
             drafter_gguf: Path | None = None
             if args.dflash_drafter:
                 dflash_dir = ckpt_dir / "dflash"
@@ -526,7 +526,7 @@ def main() -> int:
                 drafter_gguf = cand if cand.exists() else None
             o_cmd = [
                 "uv", "run", "--extra", "train", "python",
-                "scripts/optimize_for_milady.py",
+                "scripts/optimize_for_eliza1.py",
                 "--base-model", str(finetuned_model),
                 "--output-dir", str(opt_dir),
                 "--apply", "polarquant", "qjl", "turboquant",
@@ -536,15 +536,15 @@ def main() -> int:
             ]
             if drafter_gguf is not None:
                 o_cmd += ["--drafter-repo", str(drafter_gguf)]
-            if args.publish and getattr(entry, "milady_repo_id", None):
-                o_cmd += ["--hf-repo", entry.milady_repo_id]
+            if args.publish and getattr(entry, "eliza_repo_id", None):
+                o_cmd += ["--hf-repo", entry.eliza_repo_id]
             rc = run(o_cmd, cwd=ROOT)
-            manifest = opt_dir / "milady_manifest.json"
-            summary["stages"]["milady_bundle"] = {
+            manifest = opt_dir / "eliza1_manifest.json"
+            summary["stages"]["eliza1_bundle"] = {
                 "exit": rc, "output": str(opt_dir),
                 "manifest": str(manifest) if manifest.exists() else None,
             }
-            log.info("Milady bundle exit=%d → %s", rc, opt_dir)
+            log.info("Eliza-1 bundle exit=%d → %s", rc, opt_dir)
 
     # ───────────── stage 7: publish ───────────────────────────────────
     if args.publish:
