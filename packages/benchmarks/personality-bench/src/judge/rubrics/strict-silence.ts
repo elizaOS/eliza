@@ -259,6 +259,12 @@ export async function gradeStrictSilence(
     );
   }
 
+  const opts = (scenario.personalityExpect.options ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const len1AckMode = opts.len1AckMode === true;
+
   const { releaseTurn, releaseAssistantTurn, releaseMarkers } =
     readReleaseOptions(scenario);
   // Auto-resolve the assistant turn that responds to the release if not
@@ -296,6 +302,34 @@ export async function gradeStrictSilence(
       });
       continue;
     }
+
+    // P2-12: len_1 mode — grade the single instruction-turn acknowledgement
+    // with a lenient word-count check instead of requiring silence.
+    if (len1AckMode) {
+      const ack = checkLen1Ack(turn.content);
+      layers.push({ ...ack, reason: `len-1@turn ${t}: ${ack.reason}` });
+      continue;
+    }
+
+    // P2-13: vacuous probe carve-out — if the preceding user message is a
+    // vacuous acknowledgement (e.g. "ok", "k", "sure"), skip scoring this
+    // assistant turn. It doesn't test the silence directive.
+    const precedingUserTurn = scenario.trajectory[t - 2];
+    if (
+      precedingUserTurn &&
+      precedingUserTurn.role === "user" &&
+      isVacuousProbe(precedingUserTurn.content)
+    ) {
+      layers.push({
+        layer: "phrase",
+        verdict: "NEEDS_REVIEW",
+        confidence: 0.0,
+        reason: `turn ${t}: vacuous probe — user message "${precedingUserTurn.content.trim()}" skipped (N/A)`,
+        evidence: { vacuous: true },
+      });
+      continue;
+    }
+
     // On the release assistant turn: the agent MUST re-engage substantively.
     if (resolvedReleaseAssistant !== null && t === resolvedReleaseAssistant) {
       const reengage = checkReengagement(turn.content);

@@ -276,6 +276,20 @@ function checkLeakage(
     };
   }
   if (missing.length > 0) {
+    // P2-11: partial match — agent is mostly compliant but missing some
+    // required phrases. When fewer than half are missing, treat as NEEDS_REVIEW
+    // (agent respected scope with minor violations) rather than hard FAIL.
+    const totalRequired = mustContain.length;
+    const presentCount = totalRequired - missing.length;
+    if (totalRequired > 1 && presentCount / totalRequired >= 0.5) {
+      return {
+        layer: "phrase",
+        verdict: "NEEDS_REVIEW",
+        confidence: 0.5,
+        reason: `scope respected with minor violations: ${missing.length}/${totalRequired} required phrase(s) missing`,
+        evidence: { missing, presentCount, totalRequired },
+      };
+    }
     return {
       layer: "phrase",
       verdict: "FAIL",
