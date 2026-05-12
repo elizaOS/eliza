@@ -189,7 +189,7 @@
         "@elizaos/app-clawville": "2.0.0-beta.1",
         "@elizaos/app-companion": "2.0.0-beta.1",
         "@elizaos/app-contacts": "2.0.0-beta.1",
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/app-defense-of-the-agents": "2.0.0-beta.1",
         "@elizaos/app-hyperliquid": "2.0.0-beta.1",
         "@elizaos/app-hyperscape": "2.0.0-beta.1",
@@ -231,7 +231,7 @@
         "@elizaos/plugin-wallet": "2.0.0-beta.1",
         "@elizaos/plugin-workflow": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
         "@pixiv/three-vrm": "^3.4.5",
         "llama-cpp-capacitor": "^0.1.5",
         "react": "^19.0.0",
@@ -1829,10 +1829,10 @@
       "version": "2.0.0-beta.1",
       "dependencies": {
         "@elizaos/agent": "2.0.0-beta.1",
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
       },
       "devDependencies": {
         "tsup": "^8.5.1",
@@ -1845,10 +1845,10 @@
       "name": "@elizaos/app-babylon",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
       },
       "devDependencies": {
         "tsup": "^8.5.1",
@@ -1858,10 +1858,10 @@
       "name": "@elizaos/app-clawville",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
       },
       "devDependencies": {
         "tsup": "^8.5.1",
@@ -1872,12 +1872,12 @@
       "version": "2.0.0-beta.1",
       "dependencies": {
         "@elizaos/agent": "2.0.0-beta.1",
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/app-task-coordinator": "2.0.0-beta.1",
         "@elizaos/app-wallet": "2.0.0-beta.1",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
@@ -1909,11 +1909,11 @@
       "name": "@elizaos/app-contacts",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/capacitor-contacts": "2.0.0-beta.1",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
@@ -1928,10 +1928,10 @@
       "name": "@elizaos/app-defense-of-the-agents",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
       },
       "devDependencies": {
         "tsup": "^8.5.1",
@@ -1965,10 +1965,10 @@
       "name": "@elizaos/app-hyperliquid",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
@@ -1979,10 +1979,10 @@
       "name": "@elizaos/app-hyperscape",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
       },
       "devDependencies": {
         "tsup": "^8.5.1",
@@ -1997,7 +1997,7 @@
       "dependencies": {
         "@capacitor/core": "8.3.1",
         "@elizaos/agent": "2.0.0-beta.1",
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/capacitor-appblocker": "2.0.0-beta.1",
         "@elizaos/capacitor-calendar": "2.0.0-beta.1",
         "@elizaos/capacitor-mobile-signals": "2.0.0-beta.1",
@@ -2016,7 +2016,7 @@
         "@elizaos/plugin-x": "2.0.0-beta.1",
         "@elizaos/scenario-schema": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
         "drizzle-orm": "0.45.2",
         "lucide-react": "^1.0.0",
         "react-plaid-link": "^4.0.1",
@@ -2043,12 +2043,12 @@
         "@capacitor/haptics": "8.0.2",
         "@capacitor/preferences": "^8.0.1",
         "@capacitor/push-notifications": "^8.0.0",
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/capacitor-phone": "2.0.0-beta.1",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/plugin-browser": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
@@ -2063,10 +2063,10 @@
       "name": "@elizaos/app-polymarket",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
@@ -2078,10 +2078,10 @@
       "version": "2.0.0-beta.1",
       "dependencies": {
         "@elizaos/agent": "2.0.0-beta.1",
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
       },
       "devDependencies": {
         "tsup": "^8.5.1",
@@ -2092,11 +2092,11 @@
       "version": "2.0.0-beta.1",
       "dependencies": {
         "@elizaos/agent": "2.0.0-beta.1",
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/plugin-computeruse": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
@@ -2111,9 +2111,9 @@
       "name": "@elizaos/app-shopify",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/core": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
@@ -2125,10 +2125,10 @@
       "version": "2.0.0-beta.1",
       "dependencies": {
         "@elizaos/agent": "2.0.0-beta.1",
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/plugin-wallet": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
         "@noble/curves": "2.2.0",
         "@simplewebauthn/browser": "^13.0.0",
         "@solana/web3.js": "1.98.4",
@@ -2146,7 +2146,7 @@
       "version": "2.0.0-beta.1",
       "dependencies": {
         "@elizaos/core": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
         "@xterm/addon-fit": "^0.11.0",
         "@xterm/xterm": "^6.0.0",
         "lucide-react": "^1.0.0",
@@ -2162,7 +2162,7 @@
         "@elizaos/agent": "2.0.0-beta.1",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
       },
       "devDependencies": {
         "tsup": "^8.5.1",
@@ -2175,9 +2175,9 @@
       "name": "@elizaos/app-trajectory-logger",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/core": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
@@ -2193,10 +2193,10 @@
       "version": "2.0.0-beta.1",
       "dependencies": {
         "@elizaos/agent": "2.0.0-beta.1",
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
@@ -2209,14 +2209,14 @@
       "dependencies": {
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
         "tsup": "^8.5.1",
       },
       "peerDependencies": {
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/plugin-wallet": "2.0.0-beta.1",
         "react": ">=18.0.0",
       },
@@ -2225,11 +2225,11 @@
       "name": "@elizaos/app-wifi",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/capacitor-wifi": "2.0.0-beta.1",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
