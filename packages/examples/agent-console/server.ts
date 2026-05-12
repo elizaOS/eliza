@@ -604,10 +604,10 @@ async function initialize() {
     await runtime.initialize();
     initState = "ready";
     console.log(`\n  AGENT CONSOLE  (elizaOS)  →  http://localhost:${PORT}`);
-    console.log(`  provider: ${provider?.name}`);
+    console.log(`  provider: ${provider!.name}`);
     console.log(`  large model: ${process.env.OPENAI_LARGE_MODEL}`);
     console.log(`  small model: ${process.env.OPENAI_SMALL_MODEL}`);
-    console.log(`  base URL:    ${provider?.baseUrl}\n`);
+    console.log(`  base URL:    ${provider!.baseUrl}\n`);
   } catch (err: any) {
     initState = "error";
     initError = err?.message ?? String(err);
@@ -638,9 +638,9 @@ async function handleUserMessage(text: string) {
     trajectoryId: id,
     color,
     userMessage: text,
-    provider: provider?.name,
+    provider: provider!.name,
     model: process.env.OPENAI_LARGE_MODEL,
-    baseUrl: provider?.baseUrl,
+    baseUrl: provider!.baseUrl,
     character: character.name,
     t: startedAt,
   });
@@ -664,7 +664,7 @@ async function handleUserMessage(text: string) {
     });
 
     let postRespondError: string | null = null;
-    activeRunPromise = runtime.messageService?.handleMessage(
+    activeRunPromise = runtime.messageService!.handleMessage(
       runtime,
       messageMemory,
       async (content: any) => {
@@ -815,10 +815,10 @@ const server = Bun.serve({
 
     if (url.pathname === "/status") {
       return Response.json({
-        provider: provider?.name,
+        provider: provider!.name,
         model: process.env.OPENAI_LARGE_MODEL,
         smallModel: process.env.OPENAI_SMALL_MODEL,
-        baseUrl: provider?.baseUrl,
+        baseUrl: provider!.baseUrl,
         runtimeState: initState,
         runtimeError: initError,
         agent: character.name,

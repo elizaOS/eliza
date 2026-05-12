@@ -153,14 +153,14 @@ describe("file operations (real)", () => {
       const result = await listDirectory(tempDir);
       expect(result.success).toBe(true);
       expect(result.items).toBeDefined();
-      expect(result.items?.length).toBeGreaterThanOrEqual(3);
+      expect(result.items!.length).toBeGreaterThanOrEqual(3);
 
-      const names = result.items?.map((e) => e.name);
+      const names = result.items!.map((e) => e.name);
       expect(names).toContain("a.txt");
       expect(names).toContain("b.txt");
       expect(names).toContain("subdir");
 
-      const subdir = result.items?.find((e) => e.name === "subdir");
+      const subdir = result.items!.find((e) => e.name === "subdir");
       expect(subdir?.type).toBe("directory");
     });
   });

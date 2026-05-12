@@ -126,8 +126,8 @@ export class BotActions {
     if ("success" in state) return state;
 
     const startDist = distance(
-      state.player?.worldX,
-      state.player?.worldZ,
+      state.player!.worldX,
+      state.player!.worldZ,
       x,
       z,
     );
@@ -527,7 +527,7 @@ export class BotActions {
     );
     if (!food) return fail("EAT_FOOD", "No food found in inventory");
 
-    const hpBefore = state.player?.hp;
+    const hpBefore = state.player!.hp;
 
     try {
       await this.sdk.sendUseInventory(food.slot);
