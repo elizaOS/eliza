@@ -141,3 +141,65 @@ UTC start). When it finishes, `run_pipeline.py` produces the gate report and the
 quant bundle automatically; whoever picks this up should read
 `checkpoints/eliza-1-0_6b-apollo-fullcorpus-1778563093/gate_report.json`, fill in
 the §6 table, and either publish (gate green) or iterate (gate red, per §6.7).
+
+Progress check (2026-05-12 ~02:00 UTC): step ~960/8538 (~11 %), loss plateau
+~10–12 around LR 1e-5, mid-run `eval_loss` 1.43 at step 500 (vs the test-SFT's
+final 1.315 — on track; this run is still <0.1 epoch in).
+
+## 8. Corpus addendum — structured_decode + voice_emotion tasks (2026-05-12, WS-3)
+
+The combined corpus this run trains on (`data/final-eliza1-fullcorpus/`) was
+built *before* the cross-cluster corpus additions landed, so it does **not**
+contain explicit Stage-1 response-envelope rows or voice-emotion rows. After
+this run, `build_eliza1_sft_0_6b.py` has been extended (commit on `develop`
+2026-05-12) with two new task generators:
+
+- `structured_decode` — the W3 flat JSON response envelope `@elizaos/core`
+  `buildResponseGrammar` constrains (`{"shouldRespond":"RESPOND|IGNORE|STOP",
+  "thought":...,"replyText":...,"contexts":[...],"contextSlices":[...],
+  "candidateActions":[...],"parentActionHints":[...],"requiresTool":<bool>,
+  "extract":{...}}`; `shouldRespond` dropped on direct DM/voice/API channels),
+  key order matching `packages/core/src/runtime/response-grammar.ts::
+  STAGE1_ENVELOPE_KEYS`. On-wire form is JSON (not "TOON"), matching the
+  runtime model call. Deterministic seed rows + Cerebras `gpt-oss-120b`
+  augmentation. ~250 rows in `datasets/eliza1-sft-0_6b/train.jsonl`.
+- `voice_emotion` — spoken replies with omnivoice-singing inline expressive
+  tags in `replyText` (`[happy]` `[sad]` `[angry]` `[nervous]` `[calm]`
+  `[excited]` `[whisper]` `[singing]` + non-verbals `[laughter]` `[sigh]`).
+  ~245 rows.
+
+**If this run's `format_ok` clears 0.70** → publish as planned (§6.6); the
+augmented corpus is the *next* iteration's improvement, not a blocker.
+**If it falls short** → the iteration is: rebuild the combined corpus from the
+*new* `eliza1-sft-0_6b` (now with the envelope rows that `format_ok` actually
+measures — the test-SFT mix never emitted the envelope at all, which is why
+`format_pct` was 0%), upsample `eliza1-sft-0_6b` 5–10× over `data/final`, and
+re-run (locally or on the H200 — see §9). The full-corpus run on the H200 was
+not launched this session because (a) the in-flight RTX-5080 run is healthy and
+11 % done, (b) `train_vast.sh`'s `run_remote` hardcodes
+`--fsdp_transformer_layer_cls_to_wrap Qwen3_5DecoderLayer` (the 0.6b/1.7b tiers
+are `Qwen3DecoderLayer`) and rsyncs only `data/final/` (not the combined
+corpus), and (c) `train_nebius.sh` is written against an older `nebius compute
+instance create` flag set (`--project-id` / `--boot-disk-spec`; the current CLI
+wants `--parent-id` / `--resources-platform` / `--boot-disk-*`). Both cloud
+credentials (vast `VAST_API_KEY`, nebius federation token) are present and the
+CLIs authenticate (`vastai show instances`, `nebius iam tenant list` both
+succeed) — the gap is the orchestration-script update + a babysat run window,
+not the creds.
+
+## 9. H200 run — exact resume (when an operator can babysit it)
+
+```bash
+# Option A — Nebius (after patching train_nebius.sh to the current CLI):
+NEBIUS_PROJECT_ID=project-e00kfz6cpr00q21z892vec HUGGING_FACE_HUB_TOKEN=<hf> \
+REGISTRY_KEY=qwen3-0.6b NEBIUS_VM_PRESET=gpu-h200x1 FSDP_WORLD_SIZE=1 \
+bash packages/training/scripts/cloud/run-on-cloud.sh --provider nebius --task train --gpu h200 --tier 0_6b --yes-i-will-pay
+# Then on the remote box rebuild the combined corpus before training:
+#   uv run python scripts/build_eliza1_fullcorpus.py
+#   (and point train at data/final-eliza1-fullcorpus/{train,val,test}.jsonl)
+
+# Option B — Vast (canonical; fix the FSDP wrap class + corpus rsync first, or
+# run train_local.py directly inside tmux on the remote):
+VAST_API_KEY=<key> ELIZA_VAST_MAX_USD=30 \
+bash packages/training/scripts/train_vast.sh provision-and-train --registry-key qwen3-0.6b --epochs 3
+```
