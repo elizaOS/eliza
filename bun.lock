@@ -147,6 +147,7 @@
         "puppeteer-core": "^24.37.5",
         "qrcode": "^1.5.4",
         "telegram": "2.26.22",
+        "tslib": "^2.8.1",
         "viem": "^2.48.8",
         "ws": "^8.19.0",
         "zod": "^4.4.3",
@@ -347,6 +348,7 @@
         "typescript": "^6.0.3",
         "vite": "^8.0.8",
         "vitest": "^4.0.18",
+        "yaml": "^2.8.4",
       },
       "optionalDependencies": {
         "@elizaos/capacitor-appblocker": "2.0.0-beta.1",

@@ -325,7 +325,7 @@ export class SteerLiquidityService extends Service {
       const steerClientConfig = {
         client: viemClient,
       } as unknown as SteerClientCtor[0];
-      this.steerClient = new SteerClient(steerClientConfig);
+      new SteerClient(steerClientConfig);
       logger.log("Steer SDK client initialized successfully");
     } catch (error) {
       logger.error(

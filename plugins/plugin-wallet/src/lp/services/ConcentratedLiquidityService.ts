@@ -31,15 +31,12 @@ export class ConcentratedLiquidityService
 
   async start(_runtime: IAgentRuntime): Promise<void> {
     // Service initialization
-    this.isInitialized = true;
     console.info(
       "ConcentratedLiquidityService started - awaiting DEX integration",
     );
   }
 
-  async stop(): Promise<void> {
-    this.isInitialized = false;
-  }
+  async stop(): Promise<void> {}
 
   async createConcentratedPosition(
     _userId: string,

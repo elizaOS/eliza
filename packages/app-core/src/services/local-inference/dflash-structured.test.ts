@@ -5,10 +5,8 @@
  * cache_prompt-prewarm semantics on the request body.
  */
 
-import http from "node:http";
-import type { AddressInfo } from "node:net";
 import type { ResponseSkeleton } from "@elizaos/core";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildChatCompletionBody,
   type DflashGenerateArgs,
@@ -29,15 +27,15 @@ function makeArgs(extra: Partial<DflashGenerateArgs> = {}): DflashGenerateArgs {
   return { prompt: "say hello", ...extra };
 }
 
-async function readBody(req: http.IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let body = "";
-    req.on("data", (chunk: Buffer) => {
-      body += chunk.toString();
-    });
-    req.on("end", () => resolve(body));
-    req.on("error", reject);
-  });
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+function readFetchBody(init: RequestInit | undefined): string {
+  const body = init?.body;
+  if (typeof body === "string") return body;
+  if (body instanceof Uint8Array) return new TextDecoder().decode(body);
+  return "";
 }
 
 async function startMock(): Promise<{
@@ -46,40 +44,41 @@ async function startMock(): Promise<{
   close: () => Promise<void>;
 }> {
   const captured: CapturedRequest[] = [];
-  const server = http.createServer(async (req, res) => {
-    if (req.method === "GET" && req.url === "/metrics") {
-      res.statusCode = 200;
-      res.end(
-        [
-          "llamacpp:prompt_tokens_total 0",
-          "llamacpp:n_tokens_predicted_total 0",
-          "llamacpp:n_drafted_total 2",
-          "llamacpp:n_accepted_total 2",
-        ].join("\n"),
-      );
-      return;
-    }
-    if (req.method === "POST" && req.url === "/v1/chat/completions") {
-      const body = JSON.parse(await readBody(req)) as Record<string, unknown>;
-      captured.push({ url: req.url, body });
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(
-        JSON.stringify({
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const rawUrl =
+        typeof input === "string" || input instanceof URL ? input : input.url;
+      const url = new URL(rawUrl);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.pathname === "/metrics") {
+        return new Response(
+          [
+            "llamacpp:prompt_tokens_total 0",
+            "llamacpp:n_tokens_predicted_total 0",
+            "llamacpp:n_drafted_total 2",
+            "llamacpp:n_accepted_total 2",
+          ].join("\n"),
+          { status: 200 },
+        );
+      }
+      if (method === "POST" && url.pathname === "/v1/chat/completions") {
+        const body = JSON.parse(readFetchBody(init)) as Record<string, unknown>;
+        captured.push({ url: url.pathname, body });
+        return Response.json({
           choices: [{ message: { content: "Hello" } }],
           usage: { prompt_tokens: 3, completion_tokens: 1 },
-        }),
-      );
-      return;
-    }
-    res.statusCode = 404;
-    res.end();
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const port = (server.address() as AddressInfo).port;
+        });
+      }
+      return new Response(null, { status: 404 });
+    }),
+  );
   return {
-    baseUrl: `http://127.0.0.1:${port}`,
+    baseUrl: "http://dflash-structured.test",
     captured,
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    close: async () => {
+      vi.unstubAllGlobals();
+    },
   };
 }
 
