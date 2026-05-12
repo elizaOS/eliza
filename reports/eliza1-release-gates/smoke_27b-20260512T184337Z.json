@@ -1,0 +1,23 @@
+{
+  "gate": "smoke_27b",
+  "status": "pass",
+  "completedAt": "2026-05-12T18:43:37.308Z",
+  "tier": "27b",
+  "model": "vast/eliza-1-27b-256k",
+  "standIn": true,
+  "modelArtifact": "unsloth/Qwen3.6-27B-GGUF/Qwen3.6-27B-UD-Q3_K_XL.gguf",
+  "baseUrl": "http://ssh3.vast.ai:11983",
+  "instanceId": "36201983",
+  "modelLoaded": true,
+  "modelIds": [
+    "vast/eliza-1-27b-256k"
+  ],
+  "generationOk": true,
+  "latencyMs": 1220,
+  "usage": {
+    "prompt_tokens": 36,
+    "completion_tokens": 6,
+    "total_tokens": 42
+  },
+  "summary": "27b smoke passed in 1220ms"
+}

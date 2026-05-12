@@ -1,0 +1,26 @@
+{
+  "id": "rtx-5090",
+  "display_name": "NVIDIA RTX 5090",
+  "vram_gb": 32,
+  "cuda_compute": "12.0",
+  "features": ["fp16", "bf16", "int8", "int4", "fp8", "fp4"],
+  "recommended_tiers": {
+    "primary": "14b-q8",
+    "secondary": "27b-q4",
+    "heavy": "27b-q8"
+  },
+  "llama_cpp_flags": {
+    "n_gpu_layers": 99,
+    "tensor_split": null,
+    "flash_attn": true,
+    "use_mmap": true,
+    "numa": false
+  },
+  "dflash": {
+    "enabled": true,
+    "drafter_tier": "1_7b",
+    "speculative_window": 8
+  },
+  "ctx_size_tokens": 131072,
+  "notes": "32 GB GDDR7, Blackwell. FP4 available. First consumer card to fit 27B at Q4. Native FP4 acceleration for speculative decoding."
+}

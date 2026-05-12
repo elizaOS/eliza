@@ -1,0 +1,104 @@
+# RTX 3090 — Ampere, 24 GiB GDDR6X, sm_86, 936 GB/s, no FP8.
+#
+# Per-bundle recommended llama-server flags. Source of truth for the runtime
+# is `packages/shared/src/local-inference/gpu-profiles.ts`; this file extends
+# those card-level defaults with per-bundle overrides + TPS expectations.
+#
+# All TPS numbers are *estimates* — they have not been measured on real
+# hardware. They feed the verification scripts' 10% tolerance check, which
+# compares against `llama-bench` output. See `docs/eliza-1-gpu-deployment.md`
+# for the canonical card-level table.
+
+gpu_id: rtx-3090
+gpu_arch: sm_86
+vram_gb: 24
+mem_bandwidth_gbps: 936
+fp8_supported: false
+fp4_supported: false
+nvlink: false
+
+bundle_recommendations:
+  eliza-1-0_8b:
+    n_gpu_layers: -1
+    ctx_size: 32768
+    parallel: 16
+    batch_size: 2048
+    ubatch_size: 512
+    kv_cache_k: turbo3_0
+    kv_cache_v: turbo4_0
+    flash_attention: true
+    estimated_decode_tps: 480
+    estimated_prefill_tps: 18000
+    notes: "Tiny model — bandwidth-bound at ~0.7 GiB weights; saturates at high parallel slots."
+  eliza-1-2b:
+    n_gpu_layers: -1
+    ctx_size: 32768
+    parallel: 8
+    batch_size: 2048
+    ubatch_size: 512
+    kv_cache_k: turbo3_0
+    kv_cache_v: turbo4_0
+    flash_attention: true
+    estimated_decode_tps: 280
+    estimated_prefill_tps: 9000
+    notes: "Phone-class default for desktop fallback chat."
+  eliza-1-4b:
+    n_gpu_layers: -1
+    ctx_size: 65536
+    parallel: 4
+    batch_size: 2048
+    ubatch_size: 512
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 180
+    estimated_prefill_tps: 5500
+    notes: "QJL+Polar KV at 64k; weights ~2.8 GiB + KV ~1.8 GiB."
+  eliza-1-9b:
+    n_gpu_layers: -1
+    ctx_size: 65536
+    parallel: 4
+    batch_size: 2048
+    ubatch_size: 512
+    kv_cache_k: q8_0
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 95
+    estimated_prefill_tps: 3000
+    notes: "Card's best fit. q8_0 K instead of qjl1_256 on Ampere (sm_86 lacks Polar K kernel in some forks)."
+  eliza-1-27b:
+    n_gpu_layers: 56          # partial offload — weights 16.8 GiB + 128k KV won't fit alongside 27B
+    ctx_size: 32768           # capped from catalog 128k to keep KV ~2 GiB
+    parallel: 2
+    batch_size: 1024
+    ubatch_size: 256
+    kv_cache_k: q8_0
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 25  # mixed CPU/GPU offload — bandwidth-limited on the host bus
+    estimated_prefill_tps: 700
+    notes: "Tight on 24 GiB; recommend the 9B bundle for primary use. 27B here is for offline batch only."
+
+dflash:
+  enabled: true
+  draft_min: 4
+  draft_max: 16
+  draft_gpu_layers: -1
+
+verify_recipe:
+  build_target: linux-x64-cuda
+  cuda_arch: 86
+  cmake_flags:
+    - "-DGGML_CUDA=ON"
+    - "-DCMAKE_CUDA_ARCHITECTURES=86"
+    - "-DGGML_CUDA_F16=ON"
+  expected_kernels:
+    - turbo3
+    - turbo4
+    - qjl_full
+    - polarquant
+    - dflash
+  unavailable_kernels:
+    - turbo3_tcq                 # tensor-core Q kernel requires sm_89+
+  smoke_bundle: eliza-1-9b       # default bundle used by `verify_3090.sh`
+  tolerance_pct: 10
