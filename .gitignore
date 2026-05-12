@@ -499,3 +499,5 @@ scripts/ai-qa/.static-stack.json
 packages/app-core/scripts/omnivoice-fuse/libelizainference_stub.so
 packages/app-core/scripts/omnivoice-fuse/libelizainference_stub.dylib
 packages/training/vendor/
+
+.swarm/
