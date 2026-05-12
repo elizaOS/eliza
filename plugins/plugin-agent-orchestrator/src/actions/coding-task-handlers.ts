@@ -36,7 +36,6 @@ import {
   isPiAgentType,
   normalizeAgentType,
   type SessionInfo,
-  toOpencodeCommand,
   toPiCommand,
 } from "../services/pty-types.js";
 import { diagnoseWorkspaceBootstrapFailure } from "../services/repo-input.js";
@@ -1075,11 +1074,15 @@ export async function handleMultiAgent(
         skillAwareness,
         skillAwareness?.manifestPath ?? null,
       );
+      // OpenCode is now a canonical adapter (eliza#7609, parallax 0.17+) —
+      // `OpencodeAdapter.getArgs` owns the `opencode run --dangerously-skip-permissions`
+      // wrapping and reads the raw task off `adapterConfig.initialPrompt`.
+      // Applying `toOpencodeCommand` here would double-wrap. Pass opencode
+      // the RAW task; the adapter handles the rest. Pi still routes through
+      // the shell bridge so it needs `toPiCommand`.
       const initialTask = specPiRequested
         ? toPiCommand(taskWithSkills)
-        : specOpencodeRequested
-          ? toOpencodeCommand(taskWithSkills)
-          : taskWithSkills;
+        : taskWithSkills;
       const displayType = specPiRequested
         ? "pi"
         : specOpencodeRequested
