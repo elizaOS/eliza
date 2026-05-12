@@ -1330,10 +1330,9 @@ export class LifeOpsFakeBackend {
       ? `Re: ${parent.subject}`
       : pickString(kw, ["subject"], "Re:");
     const fromEmail = pickString(kw, ["from_email"], "me@example.test");
-    const toEmails =
-      parent && parent.from_email
-        ? [parent.from_email]
-        : pickStringArray(kw, ["to_emails"]);
+    const toEmails = parent?.from_email
+      ? [parent.from_email]
+      : pickStringArray(kw, ["to_emails"]);
     if (toEmails.length === 0) {
       throw new Error(
         `MESSAGE/draft_reply needs a parent email or to_emails (parent=${parentId})`,

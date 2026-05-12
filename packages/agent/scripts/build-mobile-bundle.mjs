@@ -316,7 +316,7 @@ if (TARGET === "ios" || TARGET === "ios-jsc") {
     stubsDir,
     "ios-child-process.cjs",
   );
-  nativeStubs["child_process"] = path.join(stubsDir, "ios-child-process.cjs");
+  nativeStubs.child_process = path.join(stubsDir, "ios-child-process.cjs");
   nativeStubs["node:os"] = path.join(stubsDir, "ios-os.cjs");
   // Note: `bun:ffi` is provided natively by the iOS Bun runtime; the
   // ios-ffi.cjs stub only loads in dev/desktop fallbacks where this bundle
@@ -333,17 +333,17 @@ if (TARGET === "ios-jsc") {
   const throwStub = path.join(stubsDir, "ios-jsc-throw.cjs");
   const dnsStub = path.join(stubsDir, "ios-jsc-dns.cjs");
   nativeStubs["node:net"] = throwStub;
-  nativeStubs["net"] = throwStub;
+  nativeStubs.net = throwStub;
   nativeStubs["node:tls"] = throwStub;
-  nativeStubs["tls"] = throwStub;
+  nativeStubs.tls = throwStub;
   nativeStubs["node:dgram"] = throwStub;
-  nativeStubs["dgram"] = throwStub;
+  nativeStubs.dgram = throwStub;
   nativeStubs["node:cluster"] = throwStub;
-  nativeStubs["cluster"] = throwStub;
+  nativeStubs.cluster = throwStub;
   nativeStubs["node:worker_threads"] = throwStub;
-  nativeStubs["worker_threads"] = throwStub;
+  nativeStubs.worker_threads = throwStub;
   nativeStubs["node:dns"] = dnsStub;
-  nativeStubs["dns"] = dnsStub;
+  nativeStubs.dns = dnsStub;
   nativeStubs["node:dns/promises"] = dnsStub;
   nativeStubs["dns/promises"] = dnsStub;
   nativeStubs["bun:ffi"] = path.join(stubsDir, "ios-ffi.cjs");

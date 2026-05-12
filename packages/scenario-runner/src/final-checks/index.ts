@@ -345,7 +345,7 @@ function actionBlob(action: ScenarioContext["actionsCalled"][number]): string {
   return parts.join(" ").toLowerCase();
 }
 
-function actionMatchesChannel(
+function _actionMatchesChannel(
   action: ScenarioContext["actionsCalled"][number],
   channel: string,
 ): boolean {

@@ -175,8 +175,8 @@ function normalizeGithubRepo(value) {
   return `${owner}/${repo}`;
 }
 
-function repositoryFromPackage(pkg) {
-  if (!pkg || !pkg.repository) {
+function _repositoryFromPackage(pkg) {
+  if (!pkg?.repository) {
     return null;
   }
   if (typeof pkg.repository === "string") {
@@ -680,7 +680,7 @@ function buildOutputs() {
   return { generated, index, summary };
 }
 
-function fileContents(filePath, data) {
+function fileContents(_filePath, data) {
   return `${JSON.stringify(data, null, 2)}\n`;
 }
 

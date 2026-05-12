@@ -3,7 +3,7 @@ import fs from "node:fs";
 import { createServer, type Server } from "node:http";
 import net from "node:net";
 import path from "node:path";
-import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
+import type { AgentRuntime } from "@elizaos/core";
 import {
 	cleanForChat,
 	listAgentsAction,

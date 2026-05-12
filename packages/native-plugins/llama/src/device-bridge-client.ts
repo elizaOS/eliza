@@ -378,7 +378,7 @@ export class DeviceBridgeClient {
         : hardware.cpuCores
       : hardware.cpuCores;
     const gpu = useNativeOverride
-      ? native?.gpu && native.gpu.available
+      ? native?.gpu?.available
         ? ({
             backend:
               native.gpu.backend === "metal" ||
