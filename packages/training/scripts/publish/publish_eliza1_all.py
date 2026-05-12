@@ -50,8 +50,10 @@ REPO_ROOT = TRAINING_ROOT.parents[1]
 ORG = "elizaos"
 
 # Tier device bundles — we dry-run the orchestrator against the locally-staged
-# bundle (if present) and record which gate blocks a real publish.
-BUNDLE_TIERS = ("0_6b", "1_7b", "9b", "27b", "27b-256k", "27b-1m")
+# bundle (if present) and record which gate blocks a real publish. `0_8b` is
+# the new smallest tier (Qwen3.5-0.8B backbone); `0_6b` / `1_7b` are kept as a
+# legacy Qwen3 line — see packages/shared/src/local-inference/catalog.ts.
+BUNDLE_TIERS = ("0_8b", "0_6b", "1_7b", "9b", "27b", "27b-256k", "27b-1m")
 
 # Where the staged bundles live on a dev box (see RELEASE_V1.md). The path can
 # be overridden with --bundles-root.
