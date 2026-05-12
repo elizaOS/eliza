@@ -350,6 +350,30 @@ REGISTRY: dict[str, ModelEntry] = {
         notes="Workstation/cloud tier. Full-param APOLLO SFT uses Vast/FSDP "
               "and the 9B Qwen3.5 checkpoint.",
     ),
+    "qwen3.5-27b": _entry(
+        hf_id="Qwen/Qwen3.5-27B", short_name="qwen3.5-27b",
+        eliza_short_name="eliza-1-27b", eliza_repo_id="elizaos/eliza-1-27b",
+        abliteration_repo_id="elizaos/eliza-1-27b-uncensored",
+        params_billion=27.0, tier=Tier.CLOUD,
+        seq_len=32768, optimizer="apollo_mini", optimizer_rank=1,
+        micro_batch=1, grad_accum=16, train_mem_gb_budget=130.0,
+        train_dtype="bf16",
+        infer_max_in=131072, infer_max_out=16384,
+        infer_kv_layers=16, infer_kv_heads=4, infer_kv_head_dim=256,
+        quantization_after=("polarquant", "turboquant", "qjl", "fp8", "gguf-q4_k_m"),
+        notes="Cloud tier (eliza-1-27b). Trains from Qwen/Qwen3.5-27B (no "
+              "-Base variant published; the 27B release IS the base pretrain "
+              "checkpoint). With apollo_mini (rank-1 fp32 moments, "
+              "negligible memory) + grad-checkpointed bf16 + Liger fused CE "
+              "at micro_batch=1 seq=32k, the working-set sums to ~115-130 GB "
+              "and FITS A SINGLE 141 GB H200 SXM. Run with FSDP_WORLD_SIZE=1 "
+              "on gpu-h200x1; only fall back to gpu-h200x2 (8× H200, "
+              "expensive) if the live run blows the per-GPU budget.",
+        extra={"nebius_machine": "H200-1x", "fsdp_world_size": "1"},
+    ),
+    # The legacy Qwen3.6-27B entry — kept addressable for any caller that
+    # still passes that key, but the canonical 27B is qwen3.5-27b above.
+    # Both map to eliza-1-27b in the runtime catalog.
     "qwen3.6-27b": _entry(
         hf_id="Qwen/Qwen3.6-27B", short_name="qwen3.6-27b",
         eliza_short_name="eliza-1-27b", eliza_repo_id="elizaos/eliza-1-27b",
@@ -361,9 +385,10 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=16, infer_kv_heads=4, infer_kv_head_dim=256,
         quantization_after=("polarquant", "turboquant", "qjl", "fp8", "gguf-q4_k_m"),
-        notes="Cloud tier. Full-param APOLLO SFT uses Vast/FSDP; the registry "
-              "default keeps seq_len conservative and lets operators bump it "
-              "per run after memory preflight.",
+        notes="LEGACY 27B entry on the Qwen3.6 backbone. Prefer qwen3.5-27b "
+              "for the eliza-1 fused-model line — dflash kernels are "
+              "validated against Qwen3.5, not Qwen3.6. Kept here so older "
+              "tier_to_registry_key callers keep resolving.",
         extra={"vast_gpu_target": "h200-2x", "fsdp_world_size": "2"},
     ),
 }

@@ -9,7 +9,14 @@ from __future__ import annotations
 
 import pytest
 
-from scripts.training.model_registry import DFLASH_DRAFTER_BASE, REGISTRY, Tier, by_tier, get, summary_table
+from scripts.training.model_registry import (
+    DFLASH_DRAFTER_BASE,
+    REGISTRY,
+    Tier,
+    by_tier,
+    get,
+    summary_table,
+)
 
 
 VERIFIED_KEYS = (
@@ -17,6 +24,7 @@ VERIFIED_KEYS = (
     "qwen3.5-2b",
     "qwen3.5-4b",
     "qwen3.5-9b",
+    "qwen3.5-27b",
     "qwen3.6-27b",
 )
 VERIFIED_PUBLIC_NAMES = (
