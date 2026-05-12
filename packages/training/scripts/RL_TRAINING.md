@@ -29,7 +29,7 @@ export ELIZA_REWARD_USE_AI_JUDGE=1
 ## Smoke the reward function (CPU only)
 
 No GPU required — runs the verifiable scorer on hand-written prompts and
-catches regressions in `eliza_bench` integration.
+catches regressions in `native_tool_call_bench` integration.
 
 ```bash
 cd training
@@ -50,7 +50,7 @@ python scripts/eliza_reward_fn.py \
 
 Cheap warmup. Reads `data/synthesized/action_pairs/*.jsonl`, treats the
 synthesized `expectedResponse` as `chosen`, and synthesizes a corrupted
-`rejected` per record (perturbed action label / broken TOON envelope) so
+`rejected` per record (perturbed action label / broken native JSON envelope) so
 DPO has a clean preference signal without paying for a teacher rollout.
 
 ### Smoke (5 steps, any size, any GPU)
@@ -124,7 +124,7 @@ trainer.
 - `--kl-coef 0.001` — KL penalty vs the DPO reference. If the policy
   collapses to one mode (rewards saturate at the band's max), raise to
   0.01.
-- `--max-response-len 1024` — clamp to keep rollouts cheap. Our TOON
+- `--max-response-len 1024` — clamp to keep rollouts cheap. Our native JSON
   outputs are <500 tokens 99% of the time; this is a forward-pass cap, not
   a quality cap.
 

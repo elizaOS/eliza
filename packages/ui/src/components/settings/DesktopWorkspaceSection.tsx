@@ -18,6 +18,7 @@ import {
 } from "react";
 import { fetchWithCsrf } from "../../api/csrf-client";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useApp } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { copyTextToClipboard } from "../../utils/clipboard";
@@ -256,6 +257,7 @@ export function DesktopWorkspaceSection({
 }: {
   contentHeader?: ReactNode;
 } = {}) {
+  useRenderGuard("DesktopWorkspaceSection");
   const desktopRuntime = isElectrobunRuntime();
   const { relaunchDesktop, restartBackend, t } = useApp();
   const [snapshot, setSnapshot] = useState<DesktopWorkspaceSnapshot | null>(

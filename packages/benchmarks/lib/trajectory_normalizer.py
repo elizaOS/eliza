@@ -13,7 +13,7 @@ Supported sources:
   Boundary: ``openclaw_agent_v1``.
 * **Hermes-agent** — Atropos ``samples.jsonl`` rows in ShareGPT style:
   ``{"messages": [{"from": "human"|"gpt"|"tool", "value": ...}], "tools": [...]}``.
-  Tool calls in ``gpt`` turns are encoded as ``<tool_call>{json}</tool_call>``.
+  Tool calls must be carried as native ``tool_calls`` fields.
   Boundary: ``hermes_atropos_v1``.
 
 Stdlib only. Consumed by both Python (tests, viewer) and Node (eliza training).
@@ -24,22 +24,12 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import re
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
 logger = logging.getLogger(__name__)
-
-# The Hermes encoding matches what HermesToolCallParser does on the model side.
-# Two alternatives — closed `<tool_call>...</tool_call>` and unclosed
-# `<tool_call>...` at end-of-string (truncated generations) — are handled.
-_TOOL_CALL_RE = re.compile(
-    r"<tool_call>\s*(\{.*?\})\s*</tool_call>|<tool_call>\s*(\{.*)\Z",
-    re.DOTALL,
-)
-
 
 @dataclass(frozen=True)
 class CanonicalEntry:
@@ -259,43 +249,6 @@ _HERMES_ROLE_MAP = {
 }
 
 
-def _extract_hermes_tool_calls(text: str) -> tuple[str, list[dict[str, Any]]]:
-    """Strip Hermes ``<tool_call>{json}</tool_call>`` tags out of a string.
-
-    Returns the cleaned content (everything before the first tag,
-    matching VLLM's HermesToolCallParser semantics) and the list of
-    structured tool calls. Malformed JSON inside tags is silently
-    dropped at debug level — Hermes' own parser is equally lenient.
-    """
-    if "<tool_call>" not in text:
-        return text, []
-    matches = _TOOL_CALL_RE.findall(text)
-    tool_calls: list[dict[str, Any]] = []
-    for closed, unclosed in matches:
-        raw = closed if closed else unclosed
-        raw = raw.strip()
-        if not raw:
-            continue
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            logger.debug("Dropping malformed Hermes tool_call payload: %r", raw)
-            continue
-        name = data.get("name")
-        if not name:
-            continue
-        tool_calls.append(
-            {
-                "name": name,
-                "arguments": data.get("arguments", {}),
-                "id": data.get("id", ""),
-                "result": None,
-            }
-        )
-    cleaned = text[: text.find("<tool_call>")].strip()
-    return cleaned, tool_calls
-
-
 def _stringify_tool_value(value: Any) -> str:
     """Tool-role ``value`` fields are sometimes structured (dict/list)
     and sometimes already a string. Normalize to a single string."""
@@ -322,9 +275,8 @@ def normalize_hermes_samples_jsonl(
     final messages in ``row["messages"]`` map into
     ``request.messages``; the final assistant turn populates
     ``response``. ``from`` → role mapping: ``human``→user,
-    ``gpt``→assistant, ``tool``→tool, ``system``→system. Tool calls
-    embedded in assistant ``value`` as ``<tool_call>{...}</tool_call>``
-    are parsed out into structured ``response.toolCalls``.
+    ``gpt``→assistant, ``tool``→tool, ``system``→system. Tool calls are
+    read only from native ``tool_calls`` / ``toolCalls`` fields.
 
     Rows whose final message is not from ``gpt`` (rare — usually a
     truncated rollout) still produce an entry, with the trailing
@@ -377,9 +329,14 @@ def normalize_hermes_samples_jsonl(
         if split_idx != -1:
             final = msgs[split_idx]
             text_value = _stringify_tool_value(final.get("value"))
-            cleaned, tool_calls = _extract_hermes_tool_calls(text_value)
-            if cleaned:
-                response["text"] = cleaned
+            if text_value:
+                response["text"] = text_value
+            raw_calls = final.get("tool_calls") or final.get("toolCalls") or []
+            tool_calls = [
+                coerced
+                for raw_call in raw_calls
+                if (coerced := _coerce_tool_call(raw_call)) is not None
+            ] if isinstance(raw_calls, list) else []
             if tool_calls:
                 response["toolCalls"] = tool_calls
 

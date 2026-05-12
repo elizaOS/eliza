@@ -32,6 +32,7 @@
  * lighter refactor.
  */
 
+import { isAospElizaUserAgent } from "../platform/aosp-user-agent";
 import {
   ANDROID_LOCAL_AGENT_API_BASE,
   ANDROID_LOCAL_AGENT_LABEL,
@@ -39,7 +40,6 @@ import {
   persistMobileRuntimeModeForServerTarget,
   readPersistedMobileRuntimeMode,
 } from "./mobile-runtime-mode";
-import { isAospElizaUserAgent } from "../platform/aosp-user-agent";
 
 export { isAospElizaUserAgent } from "../platform/aosp-user-agent";
 

@@ -1214,6 +1214,16 @@ export async function startEliza(
 }
 
 function isDirectRuntimeRun(): boolean {
+  if (
+    (globalThis as { __ELIZA_MOBILE_BUNDLE__?: unknown })
+      .__ELIZA_MOBILE_BUNDLE__ === true ||
+    (globalThis as { __ELIZA_DISABLE_DIRECT_RUN?: unknown })
+      .__ELIZA_DISABLE_DIRECT_RUN === true ||
+    process.argv.includes("ios-bridge") ||
+    process.env.ELIZA_DISABLE_DIRECT_RUN === "1"
+  ) {
+    return false;
+  }
   const scriptArg = process.argv[1];
   if (!scriptArg) {
     return false;

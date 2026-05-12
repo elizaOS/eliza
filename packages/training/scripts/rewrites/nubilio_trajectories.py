@@ -14,7 +14,7 @@ Strategy:
      For the other branches there is no real "user message"; we set
      `currentMessage.content` to a synthetic placeholder describing the task
      so the record stays valid for the trainer.
-  4. Keep `expectedResponse` unchanged but verify it round-trips through TOON.
+  4. Keep `expectedResponse` unchanged but verify it round-trips through native JSON.
 
 If the record cannot be classified into one of the four supported sub-tasks
 it is annotated with `_needs_human_review: True` and routed to a separate

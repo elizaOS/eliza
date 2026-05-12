@@ -15,7 +15,7 @@
 #                                 records which model line this came from.
 #   --interval-seconds <n>       default 600 (10 min). Time between sweeps.
 #   --val-jsonl <path>           default training/data/smoke/val.jsonl.
-#   --max-examples <n>           default 50, per-bucket cap for eliza_bench.
+#   --max-examples <n>           default 50, per-bucket cap for native_tool_call_bench.
 #
 # On SIGTERM/SIGINT we exit cleanly between sweeps.
 

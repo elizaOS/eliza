@@ -751,7 +751,7 @@ export class LocalInferenceEngine {
     null;
   /**
    * Lazily-started embedding `llama-server` sidecar for the active bundle
-   * (over the text GGUF on `0_8b`, over the `embedding/` GGUF on larger
+   * (over the text GGUF on `0_6b`, over the `embedding/` GGUF on larger
    * tiers). `null` until the first `embed()` call. Torn down on `unload()`.
    */
   private embeddingServer: EmbeddingServer | null = null;
@@ -1631,10 +1631,10 @@ export class LocalInferenceEngine {
 
   /**
    * Build the local-embedding route for an activated Eliza-1 bundle.
-   * On `0_8b` the embedding model is the text backbone with `--pooling
-   * last` (no separate GGUF); on `2b`/`9b`/`27b`/`27b-256k`/`27b-1m` a
+   * On `0_6b` the embedding model is the text backbone with `--pooling
+   * last` (no separate GGUF); on `1_7b`/`9b`/`27b`/`27b-256k`/`27b-1m` a
    * dedicated 1024-dim Matryoshka `embedding/` region is used. See
-   * AGENTS.md §1. Throws `VoiceStartupError` when a non-`0_8b` tier is
+   * AGENTS.md §1. Throws `VoiceStartupError` when a non-`0_6b` tier is
    * missing its dedicated region — no fallback to pooled text (which would
    * regress the dimension contract).
    */
@@ -1671,8 +1671,8 @@ export class LocalInferenceEngine {
    * Embed text via the active Eliza-1 bundle's local embedding model.
    *
    * The first call lazily starts a dedicated embedding `llama-server`
-   * sidecar (over the text backbone GGUF on `0_8b`, over the dedicated
-   * `embedding/eliza-1-embedding.gguf` on `2b`+) launched with
+   * sidecar (over the text backbone GGUF on `0_6b`, over the dedicated
+   * `embedding/eliza-1-embedding.gguf` on `1_7b`+) launched with
    * `--embeddings --pooling last`; subsequent calls reuse it. The result
    * is Matryoshka-truncated to `dim` (default 1024) and L2-normalized.
    *

@@ -254,17 +254,17 @@ describe("fused-vs-two-process spawn selection", () => {
 
   it("findBundleOmnivoiceAssets resolves tts/ GGUFs from the text model path", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-bundle-test-"));
-    const bundle = path.join(root, "eliza-1-2b.bundle");
+    const bundle = path.join(root, "eliza-1-1_7b.bundle");
     fs.mkdirSync(path.join(bundle, "text"), { recursive: true });
     fs.mkdirSync(path.join(bundle, "tts"), { recursive: true });
-    fs.writeFileSync(path.join(bundle, "text", "eliza-1-2b-32k.gguf"), "x");
+    fs.writeFileSync(path.join(bundle, "text", "eliza-1-1_7b-32k.gguf"), "x");
     fs.writeFileSync(path.join(bundle, "tts", "omnivoice-0.6b.gguf"), "x");
     fs.writeFileSync(
       path.join(bundle, "tts", "omnivoice-tokenizer-0.6b.gguf"),
       "x",
     );
     const assets = findBundleOmnivoiceAssets(
-      path.join(bundle, "text", "eliza-1-2b-32k.gguf"),
+      path.join(bundle, "text", "eliza-1-1_7b-32k.gguf"),
     );
     expect(assets).not.toBeNull();
     expect(assets?.modelPath).toBe(

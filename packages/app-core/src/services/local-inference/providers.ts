@@ -136,7 +136,7 @@ const DEVICE_BRIDGE_PROVIDER: ProviderDefinition = {
 
 const CAPACITOR_LLAMA_PROVIDER: ProviderDefinition = {
   id: "capacitor-llama",
-  label: "eliza-1-2b runtime",
+  label: "eliza-1-1_7b runtime",
   kind: "local",
   description:
     "Runs Eliza-1 natively on iOS or Android via Capacitor. Only available in mobile builds.",

@@ -195,7 +195,7 @@ SOURCE_ALLOWLIST: set[str] = _load_source_allowlist()
 # ──────────────────────── decode helpers ────────────────────────
 
 
-def _try_decode_toon(text: str) -> tuple[bool, Any, str]:
+def _try_decode_payload(text: str) -> tuple[bool, Any, str]:
     """Structured decode for native v5 JSON expectedResponse values.
 
     Returns `(ok, value, error)`.
@@ -285,7 +285,7 @@ def validate_routing(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
                      "expectedResponse is empty"))
         return errs
     # Two acceptable shapes: a bare token "RESPOND"/"IGNORE"/"STOP", or a
-    # TOON document with `action:` carrying the token (LIGHT/MultiLIGHT).
+    # native JSON document with `action:` carrying the token (LIGHT/MultiLIGHT).
     if expected in ROUTING_ACTIONS:
         return errs
     if isinstance(decoded, dict):
@@ -297,7 +297,7 @@ def validate_routing(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
             return errs
         errs.append((
             "routing_decoded_no_action_field",
-            "TOON document for routing must have `action: RESPOND|IGNORE|STOP`",
+            "native JSON document for routing must have `action: RESPOND|IGNORE|STOP`",
         ))
         return errs
     errs.append((
@@ -311,12 +311,12 @@ def validate_routing(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
 def validate_tool_call(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
     errs: list[tuple[str, str]] = []
     if decoded is None:
-        errs.append(("tool_call_invalid_toon",
-                     "expectedResponse failed to TOON-decode"))
+        errs.append(("tool_call_invalid_payload",
+                     "expectedResponse failed to native JSON-decode"))
         return errs
     if not isinstance(decoded, dict):
         errs.append(("tool_call_decoded_not_object",
-                     f"decoded TOON is {type(decoded).__name__}, not an object"))
+                     f"decoded native JSON is {type(decoded).__name__}, not an object"))
         return errs
     # Two valid shapes:
     #   1. `{tool_calls: [{name, arguments}, ...]}` — the spec preference.
@@ -365,12 +365,12 @@ def validate_tool_call(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
 def validate_shell_command(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
     errs: list[tuple[str, str]] = []
     if decoded is None:
-        errs.append(("shell_invalid_toon",
-                     "expectedResponse failed to TOON-decode"))
+        errs.append(("shell_invalid_payload",
+                     "expectedResponse failed to native JSON-decode"))
         return errs
     if not isinstance(decoded, dict):
         errs.append(("shell_decoded_not_object",
-                     f"decoded TOON is {type(decoded).__name__}, not an object"))
+                     f"decoded native JSON is {type(decoded).__name__}, not an object"))
         return errs
     # Either a top-level `command: ...` or a planner envelope whose
     # SHELL_COMMAND action carries `params.command`.
@@ -400,12 +400,12 @@ def validate_shell_command(rec: dict, decoded: Any | None) -> list[tuple[str, st
 def validate_agent_trace(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
     errs: list[tuple[str, str]] = []
     if decoded is None:
-        errs.append(("agent_trace_invalid_toon",
-                     "expectedResponse failed to TOON-decode"))
+        errs.append(("agent_trace_invalid_payload",
+                     "expectedResponse failed to native JSON-decode"))
         return errs
     if not isinstance(decoded, dict):
         errs.append(("agent_trace_decoded_not_object",
-                     f"decoded TOON is {type(decoded).__name__}, not an object"))
+                     f"decoded native JSON is {type(decoded).__name__}, not an object"))
         return errs
     if not isinstance(decoded.get("thought"), str):
         errs.append(("agent_trace_missing_thought",
@@ -559,7 +559,7 @@ def validate_record(rec: dict) -> list[tuple[str, str]]:
     if task_type in {"tool_call", "shell_command", "agent_trace",
                      "should_respond_with_context", "should_respond",
                      "context_routing", "routing"} or task_type.startswith("mobile_"):
-        ok, value, _err = _try_decode_toon(expected)
+        ok, value, _err = _try_decode_payload(expected)
         decoded = value if ok else None
 
     errs = schema_agnostic_checks(rec, decoded)

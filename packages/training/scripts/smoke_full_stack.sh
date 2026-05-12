@@ -144,7 +144,7 @@ else
     fi
 fi
 
-# ---------- helper: run eliza_bench against a model dir ----------
+# ---------- helper: run native function-calling benchmark against a model dir ----------
 run_bench() {
     local label="$1"
     local model_arg="$2"
@@ -152,10 +152,10 @@ run_bench() {
     local out_dir="$BENCH_ROOT/$label"
     mkdir -p "$out_dir"
     echo "[smoke]   bench → $label"
-    # eliza_bench uses --model / --test-file / --out-dir (writes summary.json).
+    # native_tool_call_bench uses --model / --test-file / --out-dir (writes summary.json).
     # We point it at smoke val.jsonl with a tight per-bucket cap.
     # shellcheck disable=SC2086
-    "${PY_RUN[@]}" scripts/benchmark/eliza_bench.py \
+    "${PY_RUN[@]}" scripts/benchmark/native_tool_call_bench.py \
         --model "$model_arg" \
         $extra_arg \
         --test-file "$VAL_DATA" \
@@ -370,7 +370,7 @@ for sub in sorted(bench_root.iterdir()):
     d = json.loads(summary_path.read_text())
     buckets = d.get("buckets", {})
     n_total = sum(b.get("n", 0) for b in buckets.values())
-    fmt_ok = sum(b.get("format_ok", 0) for b in buckets.values())
+    fmt_ok = sum(b.get("structure_ok", 0) for b in buckets.values())
     cnt_ok = sum(b.get("content_ok", 0) for b in buckets.values())
     fmt_pct = 100.0 * fmt_ok / max(n_total, 1)
     cnt_pct = 100.0 * cnt_ok / max(n_total, 1)
@@ -379,8 +379,8 @@ for sub in sorted(bench_root.iterdir()):
     seen.append((sub.name, fmt_pct, cnt_pct, n_total))
     if sub.name == "sft":
         # Smoke gates content (semantic correctness — does the model pick
-        # the right action, RESPOND/IGNORE) rather than format. format_ok
-        # measures strict TOON syntax which 200 SFT steps on the smoke
+        # the right action, RESPOND/IGNORE) rather than structure. structure_ok
+        # measures native function-call / JSON structure, which 200 SFT steps on the smoke
         # split cannot achieve; the production runs (3 epochs, full data)
         # are gated on format>=95% by the publish pipeline, not here.
         # The smoke's job is to prove the pipeline runs end-to-end and

@@ -139,13 +139,13 @@ manifest:
 ```bash
 # Print the entry + where it goes (recommended):
 uv run python scripts/emit_eliza1_catalog.py \
-    --manifest checkpoints/eliza-1-0_6b/gguf/eliza1_manifest.json
+    --manifest checkpoints/eliza-1-0_8b/gguf/eliza1_manifest.json
 
 # Or produce a unified diff against the canonical shared catalog:
 uv run python scripts/emit_eliza1_catalog.py \
-    --manifest checkpoints/eliza-1-0_6b/gguf/eliza1_manifest.json \
+    --manifest checkpoints/eliza-1-0_8b/gguf/eliza1_manifest.json \
     --catalog packages/shared/src/local-inference/catalog.ts \
-    --output reports/training/catalog-eliza-1-0_6b.diff
+    --output reports/training/catalog-eliza-1-0_8b.diff
 ```
 
 The canonical catalog is **`packages/shared/src/local-inference/catalog.ts`**

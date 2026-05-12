@@ -2,15 +2,15 @@
  * Lazy embedding `llama-server` sidecar for Eliza-1 bundles.
  *
  * Per `packages/inference/AGENTS.md` §1, the embedding model is either the
- * text backbone with `--pooling last` (`0_8b`) or a dedicated
+ * text backbone with `--pooling last` (`0_6b`) or a dedicated
  * `embedding/eliza-1-embedding.gguf` (Qwen3-Embedding-0.6B) on the larger
  * tiers. This sidecar runs a *separate* `llama-server` against whichever
  * GGUF the route resolved:
- *   - `0_8b` pooled-text → the text backbone GGUF, with `--embeddings
+ *   - `0_6b` pooled-text → the text backbone GGUF, with `--embeddings
  *     --pooling last` (the model is 0.6B; the OS shares the mmap pages
  *     with the chat server's already-mapped copy of the same file — no
  *     duplicate *bundle* weights, AGENTS.md §1).
- *   - `2b`/`9b`/`27b`/`27b-256k`/`27b-1m` → the dedicated
+ *   - `1_7b`/`9b`/`27b`/`27b-256k`/`27b-1m` → the dedicated
  *     `embedding/eliza-1-embedding.gguf` (Qwen3-Embedding-0.6B).
  * In both cases the process is started **lazily, on the first `embed()`
  * call**, so a voice-off / RAG-off agent never pages the embedding
@@ -299,7 +299,7 @@ export class EmbeddingServer {
 
 /**
  * Build a lazy `EmbeddingServer` for a route's source. For `pooled-text`
- * (`0_8b`) the GGUF is the text backbone; for `dedicated-region` it is the
+ * (`0_6b`) the GGUF is the text backbone; for `dedicated-region` it is the
  * `embedding/` GGUF. Either way the sidecar gets `--embeddings --pooling
  * last` (the route's `embeddingServerFlags`).
  */

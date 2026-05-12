@@ -54,11 +54,8 @@ interface FilterState {
   searchQuery: string;
 }
 
-function mergeState<TState extends Record<string, unknown>>(
-  previous: TState,
-  updates: Partial<TState>,
-): TState {
-  const entries = Object.entries(updates) as Array<[keyof TState, unknown]>;
+function mergeState<TState extends object>(previous: TState, updates: Partial<TState>): TState {
+  const entries = Object.entries(updates) as Array<[keyof TState, TState[keyof TState]]>;
   if (entries.every(([key, value]) => Object.is(previous[key], value))) {
     return previous;
   }
@@ -276,9 +273,7 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
   };
 
   const downloadLogs = () => {
-    const logsText = logsState.logs
-      .map(formatLogLine)
-      .join("\n");
+    const logsText = logsState.logs.map(formatLogLine).join("\n");
 
     const blob = new Blob([logsText], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
@@ -303,15 +298,19 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
     toast.success("Log line copied");
   };
 
-  const filteredLogs = useMemo(() => logsState.logs.filter((log) => {
-    if (!filterState.searchQuery) return true;
-    const searchLower = filterState.searchQuery.toLowerCase();
-    return (
-      log.message.toLowerCase().includes(searchLower) ||
-      log.level.toLowerCase().includes(searchLower) ||
-      (log.metadata && JSON.stringify(log.metadata).toLowerCase().includes(searchLower))
-    );
-  }), [filterState.searchQuery, logsState.logs]);
+  const filteredLogs = useMemo(
+    () =>
+      logsState.logs.filter((log) => {
+        if (!filterState.searchQuery) return true;
+        const searchLower = filterState.searchQuery.toLowerCase();
+        return (
+          log.message.toLowerCase().includes(searchLower) ||
+          log.level.toLowerCase().includes(searchLower) ||
+          (log.metadata && JSON.stringify(log.metadata).toLowerCase().includes(searchLower))
+        );
+      }),
+    [filterState.searchQuery, logsState.logs],
+  );
 
   return (
     <BrandCard className="relative shadow-lg shadow-black/50" cornerSize="sm">

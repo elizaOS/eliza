@@ -207,7 +207,7 @@ def qjl_pure_pytorch_quantize(
 # ---------------------------------------------------------------------------
 
 
-def load_toon_prompts(n: int) -> list[dict]:
+def load_payload_prompts(n: int) -> list[dict]:
     out: list[dict] = []
     if not VAL_JSONL.exists():
         # Fall back to synthetic prompts if val.jsonl is unavailable.
@@ -246,8 +246,8 @@ def load_toon_prompts(n: int) -> list[dict]:
 def render_chat(tokenizer, record: dict) -> str:
     sys_prompt = (
         "You are an autonomous elizaOS agent. Decide which action to take "
-        "from `availableActions` and respond with ONE TOON document. "
-        "Always TOON. No fences, no <think>, no prose before or after."
+        "from `availableActions` and respond with ONE native JSON document. "
+        "Always native JSON. No fences, no <think>, no prose before or after."
     )
     msgs = [{"role": "system", "content": sys_prompt}]
     for m in record.get("memoryEntries") or []:
@@ -411,7 +411,7 @@ def main() -> int:
     model.eval()
 
     # Baseline generation (bf16 DynamicCache).
-    records = load_toon_prompts(args.num_prompts)
+    records = load_payload_prompts(args.num_prompts)
     rendered = [render_chat(tok, r) for r in records]
     log.info("running baseline bf16 generation on %d prompts", len(rendered))
     base_res = measure_generation(

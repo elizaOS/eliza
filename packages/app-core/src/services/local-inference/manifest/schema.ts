@@ -43,8 +43,8 @@ export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
 // Tiers — see packages/inference/AGENTS.md §2 (Tier matrix). `27b-1m` is the
 // GH200-class 1M-context variant of the 27B tier.
 export const ELIZA_1_TIERS = [
-  "0_8b",
-  "2b",
+  "0_6b",
+  "1_7b",
   "4b",
   "9b",
   "27b",
@@ -130,13 +130,13 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 //   same requirement dynamically for any bundle that declares a >64k text file,
 //   so a future tier cannot publish long-context text without TCQ.
 //
-// The `q3` vs `q4` choice is tier-driven: 0_8b ships Q3; 2b and larger
+// The `q3` vs `q4` choice is tier-driven: 0_6b ships Q3; 1_7b and larger
 // ship Q4.
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
-  "0_8b": ["turboquant_q3", "qjl", "polarquant", "dflash"],
-  "2b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
+  "0_6b": ["turboquant_q3", "qjl", "polarquant", "dflash"],
+  "1_7b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
   "4b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
   "9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
   "27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
@@ -144,13 +144,13 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
   "27b-1m": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 };
 
-// Backends each tier is expected to support on shipped hardware. The 0_8b and
-// 2b tiers do not need cuda/rocm.
+// Backends each tier is expected to support on shipped hardware. The 0_6b and
+// 1_7b tiers do not need cuda/rocm.
 export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Backend>>
 > = {
-  "0_8b": ["metal", "vulkan", "cpu"],
-  "2b": ["metal", "vulkan", "cpu"],
+  "0_6b": ["metal", "vulkan", "cpu"],
+  "1_7b": ["metal", "vulkan", "cpu"],
   "4b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
   "9b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
   "27b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
@@ -207,13 +207,13 @@ export const Eliza1FilesSchema = z.object({
   // Wave-6 (2026-05-10): the omni bundle ships a per-bundle dedicated
   // embedding model (Qwen3-Embedding-0.6B-GGUF on non-lite tiers) and
   // a Silero-VAD ONNX + an optional openWakeWord ONNX. All three are
-  // optional in the schema — the 0_8b tier intentionally omits the
+  // optional in the schema — the 0_6b tier intentionally omits the
   // dedicated embedding (pools from text backbone) and a tier may
   // ship without wake-word support.
   //
   // Schema-level optionality: empty array = "this bundle does not
   // ship this component"; the validator enforces tier-specific
-  // consistency rules (e.g. 2b-and-up MUST ship `embedding[]`).
+  // consistency rules (e.g. 1_7b-and-up MUST ship `embedding[]`).
   embedding: z.array(Eliza1FileEntrySchema).optional(),
   vad: z.array(Eliza1FileEntrySchema).optional(),
   wakeword: z.array(Eliza1FileEntrySchema).optional(),

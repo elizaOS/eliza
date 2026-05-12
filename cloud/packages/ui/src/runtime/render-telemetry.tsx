@@ -1,5 +1,9 @@
 "use client";
 
+// Mirror of eliza/packages/ui/src/hooks/useRenderGuard.ts. The cloud workspace
+// is a separate package tree and cannot depend on @elizaos/ui, so this file is
+// kept in lock-step manually. When changing one, change the other.
+
 import { useEffect, useRef } from "react";
 
 export const RENDER_TELEMETRY_EVENT = "eliza:render-telemetry";
@@ -24,6 +28,10 @@ export interface RenderTelemetryEvent {
   timestamps: number[];
   at: number;
 }
+
+type RenderTelemetrySink = (event: RenderTelemetryEvent) => void;
+
+let renderTelemetrySink: RenderTelemetrySink | null = null;
 
 function readEnvValue(key: string): boolean | string | undefined {
   const meta = import.meta as ImportMetaWithEnv;
@@ -52,7 +60,13 @@ function isRenderTelemetryEnabled(): boolean {
   );
 }
 
+function formatRenderTelemetryMessage(event: RenderTelemetryEvent): string {
+  return `[RenderTelemetry] "${event.name}" rendered ${event.renderCount} times within ${event.windowMs}ms`;
+}
+
 function emitRenderTelemetry(event: RenderTelemetryEvent): void {
+  renderTelemetrySink?.(event);
+
   const globalObject = globalThis as typeof globalThis & {
     __ELIZA_RENDER_TELEMETRY__?: RenderTelemetryEvent[];
   };
@@ -68,12 +82,16 @@ function emitRenderTelemetry(event: RenderTelemetryEvent): void {
     window.dispatchEvent(new CustomEvent(RENDER_TELEMETRY_EVENT, { detail: event }));
   }
 
-  const message = `[RenderTelemetry] "${event.name}" rendered ${event.renderCount} times within ${event.windowMs}ms`;
+  const message = formatRenderTelemetryMessage(event);
   if (event.severity === "error") {
     console.error(message, event);
     return;
   }
   console.info(message, event);
+}
+
+export function setRenderTelemetrySink(sink: RenderTelemetrySink | null): void {
+  renderTelemetrySink = sink;
 }
 
 export function useRenderGuard(name: string): void {

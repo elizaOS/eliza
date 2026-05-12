@@ -1,0 +1,42 @@
+# Kokoro fine-tune pipeline — pinned runtime deps.
+#
+# This file is the source of truth for `pip install -r requirements.txt`
+# (used by CI smoke and by users without `uv`). The same versions are
+# tracked by the `train` extra in packages/training/pyproject.toml so
+# `uv run --extra train` works without a second install.
+#
+# Every script in this directory imports these lazily; CI tests run with
+# the deps stubbed via PYTHONDONTWRITEBYTECODE + --dry-run.
+
+# Core training
+torch>=2.5.0,<2.12
+transformers>=4.46.0
+accelerate>=1.1.0
+peft>=0.14.0
+datasets>=3.2.0
+apollo-torch>=1.0.3
+pyyaml>=6.0.2
+
+# Kokoro runtime + phonemizer (community packages)
+kokoro>=0.9.4
+misaki[en]>=0.9.4
+
+# Audio prep
+librosa>=0.10.0
+soundfile>=0.12.0
+pyloudnorm>=0.1.1
+numpy>=1.26.0
+
+# Export
+onnx>=1.17.0
+onnxruntime>=1.20.0
+
+# Evaluation
+openai-whisper>=20240930
+speechbrain>=1.0.0
+
+# Logging (optional — pipeline runs without it)
+tensorboard>=2.18.0
+
+# Testing
+pytest>=8.0.0

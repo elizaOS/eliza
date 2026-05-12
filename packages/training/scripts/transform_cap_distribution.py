@@ -49,20 +49,20 @@ ELIZA_TIER_WHITELIST: frozenset[str] = frozenset({
     "scam-defense-corpus",    # Tier A — augmented v2 trajectories
 })
 
-# Action-name extractor for TOON-encoded `actions:` blocks. Matches the
+# Action-name extractor for native JSON-encoded `actions:` blocks. Matches the
 # first `name: <ACTION>` line under an `actions[N]{...}` header. We do
-# not parse the full TOON here — we just lift the first action name,
+# not parse the full native JSON here — we just lift the first action name,
 # which is all the cap logic needs and what the runtime executes first.
-_TOON_ACTION_NAME_RE = re.compile(
+_NATIVE_JSON_ACTION_NAME_RE = re.compile(
     r"actions(?:\[\d+\])?\s*\{[^}]*?\bname\s*:\s*([A-Z_][A-Z0-9_]*)",
     re.DOTALL,
 )
-_TOON_FIRST_NAME_RE = re.compile(
+_NATIVE_JSON_FIRST_NAME_RE = re.compile(
     r"^\s*-\s*name\s*:\s*([A-Z_][A-Z0-9_]*)\s*$",
     re.MULTILINE,
 )
 # Common eliza action shape: actions: [N] { name: TASK_CALL ...
-_TOON_ACTION_HEADER_RE = re.compile(
+_NATIVE_JSON_ACTION_HEADER_RE = re.compile(
     r"\bname\s*:\s*([A-Z_][A-Z0-9_]+)",
 )
 
@@ -78,18 +78,18 @@ def primary_action(rec: dict[str, Any]) -> str:
 
     Routing-style tasks (`reply`, `should_respond_with_context`, …)
     surface their action via `availableActions[0]`. Tool-call / shell
-    tasks surface it via the TOON `actions[0].name` field of
+    tasks surface it via the native JSON `tool_calls[0].name` field of
     `expectedResponse`. We try both, in order, and fall back to a
     canonical sentinel so cap logic always has a key.
     """
     md = rec.get("metadata") or {}
     task_type = (md.get("task_type") or "").lower()
 
-    # Tool-call / shell tasks: extract from TOON expectedResponse.
+    # Tool-call / shell tasks: extract from native JSON expectedResponse.
     if task_type in ("tool_call", "shell_command", "agent_trace"):
         er = rec.get("expectedResponse")
         if isinstance(er, str) and er:
-            m = _TOON_ACTION_HEADER_RE.search(er)
+            m = _NATIVE_JSON_ACTION_HEADER_RE.search(er)
             if m:
                 return m.group(1)
 
@@ -104,7 +104,7 @@ def primary_action(rec: dict[str, Any]) -> str:
     # didn't claim to be tool_call (some adapters mis-label).
     er = rec.get("expectedResponse")
     if isinstance(er, str) and er:
-        m = _TOON_ACTION_HEADER_RE.search(er)
+        m = _NATIVE_JSON_ACTION_HEADER_RE.search(er)
         if m:
             return m.group(1)
 

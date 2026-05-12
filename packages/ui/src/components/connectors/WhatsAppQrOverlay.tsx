@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useWhatsAppPairing } from "../../hooks";
 import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "../../hooks/useConnectorAccounts";
 import { useApp } from "../../state";
@@ -17,6 +18,54 @@ export function WhatsAppQrOverlay({
 }: WhatsAppQrOverlayProps) {
   const pairing = useWhatsAppPairing(accountId);
   const { t } = useApp();
+  const steps = useMemo(
+    () => [
+      {
+        id: "open-app",
+        content: t("whatsappqroverlay.OpenWhatsAppOnYou"),
+      },
+      {
+        id: "open-linked-devices",
+        content: (
+          <>
+            {t("whatsappqroverlay.Tap")}{" "}
+            <strong>{t("whatsappqroverlay.Menu")}</strong> or{" "}
+            <strong>{t("nav.settings")}</strong>{" "}
+            {t("whatsappqroverlay.andSelect")}{" "}
+            <strong>{t("whatsappqroverlay.LinkedDevices")}</strong>
+          </>
+        ),
+      },
+      {
+        id: "link-device",
+        content: (
+          <>
+            {t("whatsappqroverlay.Tap")}{" "}
+            <strong>{t("whatsappqroverlay.LinkADevice")}</strong>
+          </>
+        ),
+      },
+      {
+        id: "scan-code",
+        content: t("whatsappqroverlay.PointYourPhoneAt"),
+      },
+    ],
+    [t],
+  );
+  const footer = useMemo(
+    () => (
+      <div className="mt-3 flex items-center gap-2">
+        <span
+          className="inline-block h-1.5 w-1.5 animate-pulse rounded-full"
+          style={{ background: "var(--accent)" }}
+        />
+        <span className="text-2xs text-muted">
+          {t("whatsappqroverlay.QRRefreshesAutomat")}
+        </span>
+      </div>
+    ),
+    [t],
+  );
 
   return (
     <ConnectorQrPairingOverlay
@@ -40,48 +89,8 @@ export function WhatsAppQrOverlay({
       qrAlt="WhatsApp QR Code"
       generatingLabel={t("whatsappqroverlay.GeneratingQR")}
       scanTitle={t("whatsappqroverlay.ScanWithWhatsApp")}
-      steps={[
-        {
-          id: "open-app",
-          content: t("whatsappqroverlay.OpenWhatsAppOnYou"),
-        },
-        {
-          id: "open-linked-devices",
-          content: (
-            <>
-              {t("whatsappqroverlay.Tap")}{" "}
-              <strong>{t("whatsappqroverlay.Menu")}</strong> or{" "}
-              <strong>{t("nav.settings")}</strong>{" "}
-              {t("whatsappqroverlay.andSelect")}{" "}
-              <strong>{t("whatsappqroverlay.LinkedDevices")}</strong>
-            </>
-          ),
-        },
-        {
-          id: "link-device",
-          content: (
-            <>
-              {t("whatsappqroverlay.Tap")}{" "}
-              <strong>{t("whatsappqroverlay.LinkADevice")}</strong>
-            </>
-          ),
-        },
-        {
-          id: "scan-code",
-          content: t("whatsappqroverlay.PointYourPhoneAt"),
-        },
-      ]}
-      footer={
-        <div className="mt-3 flex items-center gap-2">
-          <span
-            className="inline-block h-1.5 w-1.5 animate-pulse rounded-full"
-            style={{ background: "var(--accent)" }}
-          />
-          <span className="text-2xs text-muted">
-            {t("whatsappqroverlay.QRRefreshesAutomat")}
-          </span>
-        </div>
-      }
+      steps={steps}
+      footer={footer}
     />
   );
 }

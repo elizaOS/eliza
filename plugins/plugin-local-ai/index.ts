@@ -239,6 +239,20 @@ function estimateUsage(prompt: string, response: unknown): NormalizedUsage {
   };
 }
 
+/**
+ * Project the plugin-local NormalizedUsage onto the public `TokenUsage`
+ * contract that `TextStreamResult.usage` resolves to. The `estimated` flag
+ * is plugin-local bookkeeping (used to decorate `MODEL_USED` events); core
+ * `TokenUsage` has no slot for it.
+ */
+function normalizedToTokenUsage(usage: NormalizedUsage): TokenUsage {
+  return {
+    promptTokens: usage.promptTokens,
+    completionTokens: usage.completionTokens,
+    totalTokens: usage.totalTokens,
+  };
+}
+
 function estimateEmbeddingUsage(text: string): NormalizedUsage {
   const promptTokens = estimateTokenCount(text);
   return {
@@ -766,6 +780,39 @@ class LocalAIManager {
       return { text, toolCalls: [], finishReason: meta.stopReason };
     }
 
+    // Streaming branch — only available for the plain-text plan (no tools,
+    // no schema, no JSON-object format). Tool / schema requests need the
+    // full response before extraction or validation, so they continue to
+    // buffer through `entry.session.promptWithMeta`.
+    //
+    // The runtime decides streaming via `params.stream === true` OR by
+    // setting `params.onStreamChunk`; we honour either signal so callers
+    // that omit `stream` but pass an SSE callback still get token deltas
+    // (matches the openrouter / anthropic plugins).
+    const streamParams = params as GenerateTextParams & {
+      onStreamChunk?: unknown;
+    };
+    const wantsStreaming =
+      params.stream === true || typeof streamParams.onStreamChunk === "function";
+
+    if (wantsStreaming) {
+      logger.info(
+        {
+          modelType,
+          promptLength: prompt.length,
+          cachedPrefixTokens: usedTokensBefore,
+        },
+        "[plugin-local-ai] text response (streaming)"
+      );
+      return streamLlamaPrompt({
+        session: entry.session,
+        prompt,
+        options: baseOptions,
+        estimateUsage: (p, fullText) => normalizedToTokenUsage(estimateUsage(p, fullText)),
+        postProcess: stripThinkTags,
+      });
+    }
+
     const responseText = await entry.session.prompt(prompt, baseOptions);
     const text = stripThinkTags(responseText);
     const usedTokensAfter = entry.session.sequence?.contextTokens?.length ?? 0;
@@ -954,6 +1001,53 @@ class LocalAIManager {
   }
 }
 
+/**
+ * Convert the manager's `LocalGenerationOutput` (string or stream) into the
+ * shape `runtime.useModel` expects:
+ *   - **Streaming:** return the `TextStreamResult` verbatim. The runtime's
+ *     `isTextStreamResult` check (`packages/core/src/runtime.ts:417`) keys
+ *     on the same four-field shape, drains `textStream`, and forwards every
+ *     chunk to `params.onStreamChunk` / the SSE bridge. We deliberately do
+ *     NOT also call `params.onStreamChunk` from inside the handler — that
+ *     would double-deliver each token.
+ *   - **Non-streaming, native shape:** wrap in `{ text, toolCalls, ... }`
+ *     for tool / schema callers.
+ *   - **Non-streaming, plain:** return the raw string.
+ *
+ * Usage tracking for the streaming path is wired via the stream's `usage`
+ * promise (`text-streaming.ts`), with a one-shot `MODEL_USED` emit when
+ * the stream completes — same pattern as plugin-ollama's
+ * `usagePromise.then(emitModelUsed)`.
+ */
+function finalizeTextResult(
+  runtime: IAgentRuntime,
+  modelType: ModelTypeName,
+  params: GenerateTextParams,
+  result: LocalGenerationOutput
+): string | LocalNativeTextModelResult | TextStreamResult {
+  if (isStreamResult(result)) {
+    const modelLabel = getLocalModelLabel(runtime, modelType);
+    void result.usage.then((usage) => {
+      if (!usage) return;
+      emitModelUsed(runtime, modelType, modelLabel, {
+        promptTokens: usage.promptTokens,
+        completionTokens: usage.completionTokens,
+        totalTokens: usage.totalTokens,
+        estimated: true,
+      });
+    });
+    return result;
+  }
+
+  emitModelUsed(
+    runtime,
+    modelType,
+    getLocalModelLabel(runtime, modelType),
+    estimateUsage(params.prompt ?? "", result.text)
+  );
+  return wantsNativeShape(params) ? buildNativeResult(result) : result.text;
+}
+
 const localAIManager = LocalAIManager.getInstance();
 
 export const localAiPlugin: Plugin = {
@@ -1028,13 +1122,7 @@ export const localAiPlugin: Plugin = {
         ...params,
         modelType: ModelType.TEXT_SMALL,
       });
-      emitModelUsed(
-        runtime,
-        ModelType.TEXT_SMALL,
-        getLocalModelLabel(runtime, ModelType.TEXT_SMALL),
-        estimateUsage(params.prompt ?? "", result.text)
-      );
-      return wantsNativeShape(params) ? buildNativeResult(result) : result.text;
+      return finalizeTextResult(runtime, ModelType.TEXT_SMALL, params, result);
     },
 
     [ModelType.TEXT_LARGE]: async (runtime: IAgentRuntime, params: GenerateTextParams) => {
@@ -1043,13 +1131,7 @@ export const localAiPlugin: Plugin = {
         ...params,
         modelType: ModelType.TEXT_LARGE,
       });
-      emitModelUsed(
-        runtime,
-        ModelType.TEXT_LARGE,
-        getLocalModelLabel(runtime, ModelType.TEXT_LARGE),
-        estimateUsage(params.prompt ?? "", result.text)
-      );
-      return wantsNativeShape(params) ? buildNativeResult(result) : result.text;
+      return finalizeTextResult(runtime, ModelType.TEXT_LARGE, params, result);
     },
 
     [ModelType.TEXT_EMBEDDING]: async (

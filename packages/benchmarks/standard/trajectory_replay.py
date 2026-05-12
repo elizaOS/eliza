@@ -64,7 +64,6 @@ import argparse
 import json
 import logging
 import os
-import re
 import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
@@ -451,27 +450,6 @@ def _extract_candidate_action_names(raw: dict[str, object]) -> tuple[str, ...]:
     return tuple(names)
 
 
-_TOOL_CALL_TEXT_RE = re.compile(
-    r"<tool_call>\s*(\{.*?\})\s*</tool_call>",
-    re.DOTALL,
-)
-
-
-def _extract_action_names_from_text(text: str) -> tuple[str, ...]:
-    """Extract Hermes/OpenClaw-style serialized tool calls from message text."""
-
-    names: list[str] = []
-    for raw_call in _TOOL_CALL_TEXT_RE.findall(text or ""):
-        try:
-            parsed = json.loads(raw_call)
-        except json.JSONDecodeError:
-            continue
-        name = _name_from_tool_call(parsed)
-        if name:
-            names.append(name)
-    return tuple(names)
-
-
 def _normalize_text_for_score(text: str) -> list[str]:
     lowered = text.lower()
     cleaned = "".join(ch if ch.isalnum() else " " for ch in lowered)
@@ -593,8 +571,6 @@ class TrajectoryReplayRunner:
             )
 
         candidate_actions = _extract_candidate_action_names(gen.raw)
-        if not candidate_actions:
-            candidate_actions = _extract_action_names_from_text(gen.text)
 
         baseline_actions = stage.baseline_action_names
         action_sequence_match = baseline_actions == candidate_actions

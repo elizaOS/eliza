@@ -1930,7 +1930,6 @@ serve = [
 train = [
     { name = "accelerate" },
     { name = "apollo-torch" },
-    { name = "bitsandbytes" },
     { name = "datasets" },
     { name = "fused-turboquant" },
     { name = "gguf", version = "0.18.0", source = { registry = "https://pypi.org/simple" } },
@@ -1954,7 +1953,6 @@ requires-dist = [
     { name = "anthropic", marker = "extra == 'reward'", specifier = ">=0.40.0" },
     { name = "apollo-torch", marker = "extra == 'train'", specifier = ">=1.0.3" },
     { name = "argostranslate", specifier = ">=1.11.0" },
-    { name = "bitsandbytes", marker = "extra == 'train'", specifier = ">=0.45.0" },
     { name = "datasets", specifier = ">=3.2.0" },
     { name = "datasets", marker = "extra == 'train'", specifier = ">=3.2.0" },
     { name = "fused-turboquant", marker = "extra == 'train'", specifier = ">=0.1.0" },

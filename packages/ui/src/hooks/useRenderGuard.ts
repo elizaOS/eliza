@@ -1,3 +1,8 @@
+// Mirrored at cloud/packages/ui/src/runtime/render-telemetry.tsx. The cloud
+// workspace is a separate package tree and cannot depend on @elizaos/ui, so
+// the two files are kept in lock-step manually. When changing one, change the
+// other.
+
 import { useEffect, useRef } from "react";
 
 export const RENDER_TELEMETRY_EVENT = "eliza:render-telemetry";

@@ -130,7 +130,7 @@ Useful knobs:
 
 `scripts/quantization/test_polarquant.py` runs the round-trip on
 `Qwen/Qwen3-0.8B` (the closest text-only causal-LM stand-in for
-`Qwen/Qwen3.5-0.8B` — see caveat above), using 5 TOON-shaped samples
+`Qwen/Qwen3.5-0.8B` — see caveat above), using 5 native JSON-shaped samples
 from `data/final/val.jsonl`. It asserts (a) the codes-only payload is
 at least 30% smaller than the fp16 baseline checkpoint and (b) the
 quantized model produces non-degenerate text on every sample.
@@ -299,7 +299,7 @@ out = model.generate(**tok("...", return_tensors="pt").to("cuda"),
 
 `scripts/quantization/test_turboquant.py` runs the round-trip on
 `Qwen/Qwen3-0.8B` (closest text-only stand-in for `Qwen/Qwen3.5-0.8B`
-— see caveat above), with 5 TOON-shaped prompts from
+— see caveat above), with 5 native JSON-shaped prompts from
 `data/final/val.jsonl` and a 4096-token long-context probe. It asserts
 (a) the per-token KV-cache size shrinks by at least 30% and (b) every
 quantized output is non-empty and not degenerate.

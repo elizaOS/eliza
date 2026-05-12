@@ -2,7 +2,7 @@
 
 Measured 2026-05-11 on an **RTX 5080 Laptop GPU** (16 GB, Blackwell sm_120,
 driver 580.142, CUDA 13.0 runtime / nvcc 12.0 toolkit) + an Intel Arrow Lake-U
-CPU (8 threads used). Historical model: `eliza-1-0_8b` (Qwen3.5-0.8B arch,
+CPU (8 threads used). Historical model: `eliza-1-0_6b` (Qwen3.5-0.6B arch,
 596 M params). This predates the Qwen3.5 tier migration; it is retained as a
 measurement record, not release evidence for the current `eliza-1-0_8b` tier.
 `run_pipeline.py` stage 6c writes a per-run `checkpoints/<run>/evals/throughput.json`
@@ -72,9 +72,9 @@ the bigger tiers and for VRAM-constrained hosts.
   *bigger* tiers — a Qwen3.5 drafter verifying for a 4 B / 9 B / 27 B model
   can 2–3× generation. `distill_dflash_drafter.py --tier <t> --student-base
   Qwen/Qwen3.5-0.8B` or `Qwen/Qwen3.5-2B` distils one; the catalog `runtimeFor()` already wires
-  `dflash.specType: "dflash"` + `draftGpuLayers: "auto"`. The 0.6 B tier
-  0.8 B tier is release-gated on measured net latency because its default
-  student is the same size family as the target.
+  `dflash.specType: "dflash"` + `draftGpuLayers: "auto"`. The 0.8 B tier is
+  release-gated on measured net latency because its default student is the
+  same size family as the target.
 
 ### Kernel (fork — coordinate with the inference team)
 - The fork's CUDA flash-attn kernels for the custom KV types
@@ -97,7 +97,7 @@ the bigger tiers and for VRAM-constrained hosts.
 - **`flash-attn` is not installed** — `lib/attn.py` falls back to `sdpa`.
   Installing `flash-attn` (`uv pip install flash-attn --no-build-isolation`,
   ~30–60 min compile against the system CUDA) speeds up SFT for the bigger
-  tiers; marginal for 0.6 B.
+  tiers; marginal for 0.8 B.
 - **FP8 training** — `te_fp8.py` exists but only swaps on sm_90 unless
   `ELIZA_FP8_TRAIN=1`; `transformer_engine` is not installed. Blackwell
   (sm_120) has native FP8/FP4 tensor cores, so FP8 SFT would be a real win for

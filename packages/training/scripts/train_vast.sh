@@ -83,7 +83,7 @@
 #                                (e.g. polarquant,turboquant,qjl,fp8,gguf-q4_k_m).
 #                                Each name resolves to
 #                                scripts/quantization/${name}_apply.py.
-#   BENCHMARK_AFTER            # 1 = run eliza_bench (default 1)
+#   BENCHMARK_AFTER            # 1 = run native function-calling benchmark (default 1)
 #   BENCH_MAX_PER_BUCKET       # default: 200 (auto-lowered to 100 for 27B)
 #   FSDP_WORLD_SIZE            # default: matches num_gpus of selected
 #                                VAST_GPU_TARGET (1 for *-1x, 2 for *-2x)
@@ -320,7 +320,7 @@ DEFAULT_QUANTIZE_AFTER="$(cd "$ROOT" && uv run python -c "from scripts.training.
 QUANTIZE_AFTER="${QUANTIZE_AFTER:-${DEFAULT_QUANTIZE_AFTER}}"
 BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
 
-# eliza_bench at --max-per-bucket 200 with --max-new-tokens=512 generates
+# native_tool_call_bench at --max-per-bucket 200 with --max-new-tokens=512 generates
 # ~600 forward passes per bucket × 4 buckets × 5 model variants ≈ 12k
 # generations. On a 27B bf16 model this is unnecessarily slow; cap to
 # 100/bucket for 27B unless caller overrides.
@@ -785,17 +785,17 @@ bench_remote() {
     echo "[train_vast] [bench] BENCHMARK_AFTER=0 — skipping"
     return 0
   fi
-  echo "[train_vast] [bench] eliza_bench: base + finetuned + quantized (max_per_bucket=$BENCH_MAX_PER_BUCKET)"
+  echo "[train_vast] [bench] native_tool_call_bench: base + finetuned + quantized (max_per_bucket=$BENCH_MAX_PER_BUCKET)"
   ssh_run "bash -lc '
     set -euo pipefail
     cd $REMOTE_TRAIN_DIR
     export PATH=\$HOME/.local/bin:\$PATH
     base_id=\$(uv run --extra train python -c \"from scripts.training.model_registry import get; print(get(\\\"$REGISTRY_KEY\\\").hf_id)\")
-    uv run --extra train python scripts/benchmark/eliza_bench.py \\
+    uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
         --model \$base_id \\
         --out-dir benchmarks/$RUN_NAME/base \\
         --max-per-bucket $BENCH_MAX_PER_BUCKET
-    uv run --extra train python scripts/benchmark/eliza_bench.py \\
+    uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
         --model checkpoints/$RUN_NAME/final \\
         --out-dir benchmarks/$RUN_NAME/finetuned \\
         --max-per-bucket $BENCH_MAX_PER_BUCKET
@@ -807,7 +807,7 @@ bench_remote() {
       cd $REMOTE_TRAIN_DIR
       export PATH=\$HOME/.local/bin:\$PATH
       if [ -d checkpoints/$RUN_NAME/final-${q} ]; then
-        uv run --extra train python scripts/benchmark/eliza_bench.py \\
+        uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
           --model checkpoints/$RUN_NAME/final-${q} \\
           --out-dir benchmarks/$RUN_NAME/${q} \\
           --max-per-bucket $BENCH_MAX_PER_BUCKET
@@ -1224,7 +1224,7 @@ Subcommands:
                                                  sft|dpo → accelerate launch + APOLLO
                                                  grpo    → bash train_grpo_verl.sh
   quantize                                     Apply QUANTIZE_AFTER list (remote, SFT only)
-  bench                                        Run eliza_bench on base + finetuned
+  bench                                        Run native function-calling benchmark on base + finetuned
   fetch                                        rsync checkpoints + benchmarks back
   full                                         provision -> sync -> run [-> quantize -> bench
                                                only for SFT] -> fetch

@@ -58,8 +58,8 @@ VAL_JSONL = ROOT / "data" / "final" / "val.jsonl"
 sys.path.insert(0, str(ROOT / "scripts"))
 
 
-def load_toon_message_handler_prompts(n: int) -> list[dict]:
-    """Pull n records whose expected response looks like a TOON message_handler doc."""
+def load_payload_message_handler_prompts(n: int) -> list[dict]:
+    """Pull n records whose expected response looks like a native JSON message_handler doc."""
     if not VAL_JSONL.exists():
         # Fall back to a synthetic prompt if the dataset isn't checked in. The
         # test still runs; only the realism of the prompt distribution suffers.
@@ -68,8 +68,8 @@ def load_toon_message_handler_prompts(n: int) -> list[dict]:
             {
                 "currentMessage": {
                     "content": (
-                        "Summarize the following operational TOON document in "
-                        "TOON format. Keep the field order exact."
+                        "Summarize the following operational native JSON document in "
+                        "native JSON format. Keep the field order exact."
                     )
                 },
                 "memoryEntries": [],
@@ -93,15 +93,15 @@ def load_toon_message_handler_prompts(n: int) -> list[dict]:
                 if len(out) >= n:
                     break
     if len(out) < n:
-        raise RuntimeError(f"Only found {len(out)} TOON prompts in {VAL_JSONL}")
+        raise RuntimeError(f"Only found {len(out)} native JSON prompts in {VAL_JSONL}")
     return out[:n]
 
 
 def render_chat(tokenizer, record: dict) -> str:
     sys_prompt = (
         "You are an autonomous elizaOS agent. Decide which action to take "
-        "from `availableActions` and respond with ONE TOON document. "
-        "Always TOON. No fences, no <think>, no prose before or after."
+        "from `availableActions` and respond with ONE native JSON document. "
+        "Always native JSON. No fences, no <think>, no prose before or after."
     )
     msgs = [{"role": "system", "content": sys_prompt}]
     for m in record.get("memoryEntries") or []:
@@ -259,7 +259,7 @@ def run_one_model(
     model.eval()
 
     # Build prompts at the requested token length.
-    records = load_toon_message_handler_prompts(num_prompts)
+    records = load_payload_message_handler_prompts(num_prompts)
     base_prompts = [render_chat(tok, r) for r in records]
     filler = (records[0].get("currentMessage") or {}).get(
         "content", "Continue the operational notes."

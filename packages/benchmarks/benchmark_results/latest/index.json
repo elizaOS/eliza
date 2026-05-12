@@ -38,9 +38,9 @@
     },
     "action-calling::eliza": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/action-calling__eliza.json",
-      "run_id": "run_action-calling_20260512T084954Z_5_a08a0ea1",
+      "run_id": "run_action-calling_20260512T105315Z_1_cd50e521",
       "status": "succeeded",
-      "updated_at": "2026-05-12T08:50:13.841326+00:00"
+      "updated_at": "2026-05-12T11:08:23.303416+00:00"
     },
     "action-calling::half_v1": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/action-calling__half_v1.json",
@@ -110,9 +110,9 @@
     },
     "agentbench::eliza": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/agentbench__eliza.json",
-      "run_id": "run_agentbench_20260511T132206Z_2_76de7819",
+      "run_id": "run_agentbench_20260512T110823Z_1_388fef4c",
       "status": "succeeded",
-      "updated_at": "2026-05-11T13:22:27.077070+00:00"
+      "updated_at": "2026-05-12T11:14:00.665360+00:00"
     },
     "agentbench::half_v1": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/agentbench__half_v1.json",
@@ -1837,5 +1837,5 @@
       "updated_at": "2026-05-12T10:20:49.974294+00:00"
     }
   },
-  "updated_at": "2026-05-12T10:53:15.881250+00:00"
+  "updated_at": "2026-05-12T11:14:00.670130+00:00"
 }

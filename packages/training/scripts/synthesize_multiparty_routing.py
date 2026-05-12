@@ -28,7 +28,7 @@ Output: data/synthesized/multiparty_should_respond.jsonl
 Each record matches the canonical eliza shape and uses task_type
 "should_respond" — same task_type the runtime's should_respond
 template/handler consumes — with the supervised target rendered as
-the TOON document {name, reasoning, action, primaryContext,
+the native JSON document {name, reasoning, action, primaryContext,
 secondaryContexts, evidenceTurnIds}.
 
 Usage:
@@ -132,7 +132,7 @@ def _build_record(
         "secondaryContexts": "",
         "evidenceTurnIds": "",
     }
-    toon = encoder.encode(target)
+    payload = encoder.encode(target)
 
     memory = [
         {
@@ -164,7 +164,7 @@ def _build_record(
         agentId=agent_name.lower(),
         memoryEntries=memory,
         currentMessage=current,
-        expectedResponse=toon,
+        expectedResponse=payload,
         availableActions=[ACTION_RESPOND, ACTION_IGNORE, ACTION_STOP],
         task_type="should_respond",
         source_dataset=slug,

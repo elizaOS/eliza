@@ -405,6 +405,20 @@ export interface VadDetectorConfig {
    *  segment is considered *paused* (kick speculative response). Default
    *  220 ms. */
   pauseHangoverMs?: number;
+  /**
+   * V1 — "fast endpoint" pause hangover, used when `fastEndpointEnabled`
+   * is true. Default 100 ms — short enough that a clean trailing-off
+   * end-of-utterance hits the speculative path quickly, but long enough
+   * to ride out mid-sentence micro-pauses. Gated by the flag so callers
+   * can opt in once they've validated the false-positive rate on their
+   * hardware. Default 100 ms.
+   */
+  fastPauseHangoverMs?: number;
+  /**
+   * V1 — when true, use `fastPauseHangoverMs` instead of `pauseHangoverMs`.
+   * Default false until the streaming-ASR fast path (V2) ships.
+   */
+  fastEndpointEnabled?: boolean;
   /** Consecutive ms paused before the segment *ends* (finalize the turn).
    *  Default 700 ms. Must be ≥ `pauseHangoverMs`. */
   endHangoverMs?: number;
@@ -414,6 +428,27 @@ export interface VadDetectorConfig {
   /** Interval between `speech-active` heartbeats while speaking. Default
    *  200 ms. */
   activeHeartbeatMs?: number;
+  /**
+   * V4 — adaptive pause hangover. When the windowed RMS is in a sharp
+   * downward trend across the last few frames (the user audibly trailed
+   * off rather than stopping mid-thought), the hangover used to detect a
+   * pause is scaled by this factor (clamped to a minimum). Default 0.5
+   * (halve the hangover); set to 1.0 to disable.
+   */
+  adaptiveHangoverScaleOnDrop?: number;
+  /**
+   * V4 — minimum hangover the adaptive scale is allowed to produce, ms.
+   * Default 50 ms. Prevents a steep drop from collapsing the hangover to
+   * zero and emitting a pause on a single quiet frame.
+   */
+  adaptiveHangoverFloorMs?: number;
+  /**
+   * V4 — energy derivative (ΔRMS over the V4 history window) below this
+   * value, combined with RMS below `offsetThreshold`, counts as "audibly
+   * trailed off". Default -0.02 (negative slope: RMS dropping at least
+   * 0.02 / window).
+   */
+  adaptiveHangoverDropThreshold?: number;
   /** RMS gate config (tier 1). */
   energyGate?: RmsEnergyGateConfig;
 }
@@ -527,9 +562,19 @@ export class VadDetector {
   private readonly onsetThreshold: number;
   private readonly offsetThreshold: number;
   private readonly pauseHangoverMs: number;
+  private readonly fastPauseHangoverMs: number;
+  private readonly fastEndpointEnabled: boolean;
   private readonly endHangoverMs: number;
   private readonly minSpeechMs: number;
   private readonly activeHeartbeatMs: number;
+  // V4 — adaptive hangover state.
+  private readonly adaptiveHangoverScaleOnDrop: number;
+  private readonly adaptiveHangoverFloorMs: number;
+  private readonly adaptiveHangoverDropThreshold: number;
+  // Rolling RMS history (last 3 windows ≈ 96 ms @ 16 kHz / 512). The
+  // sample-rate-of-drop check reads from this each window.
+  private readonly recentRms: number[] = [];
+  private static readonly RECENT_RMS_HISTORY = 3;
 
   private readonly vadListeners = new Set<VadEventListener>();
 
@@ -558,14 +603,53 @@ export class VadDetector {
     this.offsetThreshold =
       config.offsetThreshold ?? Math.max(0.1, this.onsetThreshold - 0.15);
     this.pauseHangoverMs = config.pauseHangoverMs ?? 220;
+    this.fastPauseHangoverMs = config.fastPauseHangoverMs ?? 100;
+    this.fastEndpointEnabled = config.fastEndpointEnabled ?? false;
     this.endHangoverMs = Math.max(
-      this.pauseHangoverMs,
+      this.fastEndpointEnabled ? this.fastPauseHangoverMs : this.pauseHangoverMs,
       config.endHangoverMs ?? 700,
     );
     this.minSpeechMs = config.minSpeechMs ?? 250;
     this.activeHeartbeatMs = config.activeHeartbeatMs ?? 200;
+    this.adaptiveHangoverScaleOnDrop = Math.max(
+      0.1,
+      Math.min(1, config.adaptiveHangoverScaleOnDrop ?? 0.5),
+    );
+    this.adaptiveHangoverFloorMs = Math.max(
+      0,
+      config.adaptiveHangoverFloorMs ?? 50,
+    );
+    this.adaptiveHangoverDropThreshold =
+      config.adaptiveHangoverDropThreshold ?? -0.02;
     this.energyGate = new RmsEnergyGate(config.energyGate);
     this.windowDurationMs = (silero.windowSamples / this.sampleRate) * 1000;
+  }
+
+  /**
+   * Effective pause hangover for this window. Starts from
+   * `fastPauseHangoverMs` or `pauseHangoverMs` (V1: gated on
+   * `fastEndpointEnabled`), then optionally scales it down when the RMS
+   * trajectory shows an audible trail-off (V4).
+   */
+  private effectivePauseHangoverMs(): number {
+    const base = this.fastEndpointEnabled
+      ? this.fastPauseHangoverMs
+      : this.pauseHangoverMs;
+    if (this.adaptiveHangoverScaleOnDrop >= 1) return base;
+    // V4 — need at least two samples to compute a slope.
+    if (this.recentRms.length < 2) return base;
+    const first = this.recentRms[0];
+    const last = this.recentRms[this.recentRms.length - 1];
+    // Slope per window (we sample once per window). Negative = trailing off.
+    const slope = (last - first) / (this.recentRms.length - 1);
+    const lastBelowOffset = last < this.offsetThreshold;
+    if (slope <= this.adaptiveHangoverDropThreshold && lastBelowOffset) {
+      return Math.max(
+        this.adaptiveHangoverFloorMs,
+        base * this.adaptiveHangoverScaleOnDrop,
+      );
+    }
+    return base;
   }
 
   onVadEvent(listener: VadEventListener): () => void {
@@ -638,6 +722,7 @@ export class VadDetector {
     this.clockMs = 0;
     this.phase = "idle";
     this.peakRmsInSegment = 0;
+    this.recentRms.length = 0;
     this.silero.reset();
     this.energyGate.reset();
   }
@@ -656,6 +741,12 @@ export class VadDetector {
   private async processWindow(window: Float32Array): Promise<void> {
     const prob = await this.silero.process(window);
     const windowRms = rms(window);
+    // V4 — keep a short rolling RMS history for the energy-rate-of-drop
+    // adaptive hangover. Three windows ≈ 96 ms at 16 kHz / 512 samples.
+    this.recentRms.push(windowRms);
+    if (this.recentRms.length > VadDetector.RECENT_RMS_HISTORY) {
+      this.recentRms.shift();
+    }
     // Clock at the *end* of this window.
     this.clockMs += this.windowDurationMs;
     const now = this.clockMs;
@@ -684,7 +775,7 @@ export class VadDetector {
           this.lastSpeechMs = now;
         }
         const quietMs = now - this.lastSpeechMs;
-        if (quietMs >= this.pauseHangoverMs) {
+        if (quietMs >= this.effectivePauseHangoverMs()) {
           this.phase = "paused";
           this.pauseStartedMs = this.lastSpeechMs;
           this.emit({

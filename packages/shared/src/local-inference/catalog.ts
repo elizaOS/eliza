@@ -2,7 +2,7 @@
  * Eliza-curated local model catalog.
  *
  * Eliza-1 is the only default-eligible model line. User-facing model ids are
- * size-first: `eliza-1-0_8b`, `eliza-1-2b`, `eliza-1-4b`, `eliza-1-9b`,
+ * size-first: `eliza-1-0_6b`, `eliza-1-1_7b`, `eliza-1-4b`, `eliza-1-9b`,
  * `eliza-1-27b`, `eliza-1-27b-256k`, and `eliza-1-27b-1m`.
  *
  * HF-search results from outside `elizaos/eliza-1-*` must never be marked
@@ -13,8 +13,8 @@
 import type { CatalogModel, LocalRuntimeKernel } from "./types.js";
 
 export const ELIZA_1_TIER_IDS = [
-  "eliza-1-0_8b",
-  "eliza-1-2b",
+  "eliza-1-0_6b",
+  "eliza-1-1_7b",
   "eliza-1-4b",
   "eliza-1-9b",
   "eliza-1-27b",
@@ -24,7 +24,7 @@ export const ELIZA_1_TIER_IDS = [
 
 export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
 
-export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-2b";
+export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-1_7b";
 
 export const DEFAULT_ELIGIBLE_MODEL_IDS: ReadonlySet<string> = new Set(
   ELIZA_1_TIER_IDS,
@@ -62,6 +62,33 @@ type SourceComponentMap = NonNullable<
   CatalogModel["sourceModel"]
 >["components"];
 
+/**
+ * Voice backend for a bundle. OmniVoice is the historical default — fully
+ * cloneable per-user voices via the fused libelizainference build. Kokoro
+ * is the streaming-first alternative: 24 kHz output, ~97ms CPU TTFB, fixed
+ * voice packs (no cloning). The runtime selector (`voice/kokoro/runtime-
+ * selection.ts`) picks at engine-arm time; this field is just the catalog
+ * advertisement of which option(s) the bundle ships artifacts for.
+ */
+export type VoiceBackendId = "omnivoice" | "kokoro";
+
+/** Per-bundle voice backend metadata. */
+export const ELIZA_1_VOICE_BACKENDS: Record<
+  Eliza1TierId,
+  ReadonlyArray<VoiceBackendId>
+> = {
+  "eliza-1-0_6b": ["omnivoice", "kokoro"],
+  "eliza-1-1_7b": ["omnivoice", "kokoro"],
+  "eliza-1-4b": ["omnivoice", "kokoro"],
+  "eliza-1-9b": ["omnivoice", "kokoro"],
+  "eliza-1-27b": ["omnivoice", "kokoro"],
+  "eliza-1-27b-256k": ["omnivoice", "kokoro"],
+  "eliza-1-27b-1m": ["omnivoice", "kokoro"],
+};
+
+/** Source repo for the Kokoro-82M ONNX export — same artifact across tiers. */
+export const KOKORO_SOURCE_REPO = "onnx-community/Kokoro-82M-v1.0-ONNX";
+
 function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   const omnivoice = { repo: "Serveurperso/OmniVoice-GGUF" } as const;
   const silero = { repo: "onnx-community/silero-vad" } as const;
@@ -70,8 +97,8 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   const asrLarge = { repo: "ggml-org/Qwen3-ASR-1.7B-GGUF" } as const;
 
   const textByTier: Record<Eliza1TierId, { repo: string; file?: string }> = {
-    "eliza-1-0_8b": { repo: "Qwen/Qwen3.5-0.8B" },
-    "eliza-1-2b": { repo: "Qwen/Qwen3.5-2B" },
+    "eliza-1-0_6b": { repo: "Qwen/Qwen3.5-0.6B" },
+    "eliza-1-1_7b": { repo: "Qwen/Qwen3.5-1.7B" },
     "eliza-1-4b": { repo: "Qwen/Qwen3.5-4B" },
     "eliza-1-9b": { repo: "Qwen/Qwen3.5-9B" },
     "eliza-1-27b": { repo: "Qwen/Qwen3.6-27B" },
@@ -100,7 +127,7 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
       file: `dflash/drafter-${id.slice("eliza-1-".length)}.gguf`,
     },
   };
-  if (id !== "eliza-1-0_8b") components.embedding = embedding;
+  if (id !== "eliza-1-0_6b") components.embedding = embedding;
   if (visionByTier[id]) components.vision = visionByTier[id];
   return { finetuned: false, components };
 }
@@ -142,7 +169,7 @@ function runtimeFor(
       draftContextSize: Math.min(contextLength, 65536),
       draftMin: 2,
       draftMax:
-        id === "eliza-1-0_8b" || id === "eliza-1-2b" || id === "eliza-1-4b"
+        id === "eliza-1-0_6b" || id === "eliza-1-1_7b" || id === "eliza-1-4b"
           ? 4
           : contextLength >= 131072
             ? 8
@@ -184,12 +211,12 @@ function drafterCompanion(args: {
 
 export const MODEL_CATALOG: CatalogModel[] = [
   {
-    id: "eliza-1-0_8b",
-    displayName: "eliza-1-0_8b",
-    hfRepo: "elizaos/eliza-1-0_8b",
-    ggufFile: "text/eliza-1-0_8b-32k.gguf",
+    id: "eliza-1-0_6b",
+    displayName: "eliza-1-0_6b",
+    hfRepo: "elizaos/eliza-1-0_6b",
+    ggufFile: "text/eliza-1-0_6b-32k.gguf",
     bundleManifestFile: "eliza-1.manifest.json",
-    params: "0.8B",
+    params: "0.6B",
     quant: "Eliza-1 optimized local runtime",
     sizeGb: 0.7,
     minRamGb: 2,
@@ -197,28 +224,28 @@ export const MODEL_CATALOG: CatalogModel[] = [
     bucket: "small",
     contextLength: 32768,
     tokenizerFamily: "qwen35",
-    companionModelIds: ["eliza-1-0_8b-drafter"],
-    sourceModel: sourceModelForTier("eliza-1-0_8b"),
-    runtime: runtimeFor("eliza-1-0_8b", 32768),
+    companionModelIds: ["eliza-1-0_6b-drafter"],
+    sourceModel: sourceModelForTier("eliza-1-0_6b"),
+    runtime: runtimeFor("eliza-1-0_6b", 32768),
     blurb:
-      "eliza-1-0_8b - low-RAM phones and CPU-only fallback with the optimized local runtime.",
+      "eliza-1-0_6b - low-RAM phones and CPU-only fallback with the optimized local runtime.",
   },
   drafterCompanion({
-    id: "eliza-1-0_8b",
-    displayName: "eliza-1-0_8b",
-    ggufFile: "dflash/drafter-0_8b.gguf",
-    params: "0.8B",
+    id: "eliza-1-0_6b",
+    displayName: "eliza-1-0_6b",
+    ggufFile: "dflash/drafter-0_6b.gguf",
+    params: "0.6B",
     sizeGb: 0.3,
     minRamGb: 2,
     bucket: "small",
   }),
   {
-    id: "eliza-1-2b",
-    displayName: "eliza-1-2b",
-    hfRepo: "elizaos/eliza-1-2b",
-    ggufFile: "text/eliza-1-2b-32k.gguf",
+    id: "eliza-1-1_7b",
+    displayName: "eliza-1-1_7b",
+    hfRepo: "elizaos/eliza-1-1_7b",
+    ggufFile: "text/eliza-1-1_7b-32k.gguf",
     bundleManifestFile: "eliza-1.manifest.json",
-    params: "2B",
+    params: "1.7B",
     quant: "Eliza-1 optimized local runtime",
     sizeGb: 1.5,
     minRamGb: 4,
@@ -226,17 +253,17 @@ export const MODEL_CATALOG: CatalogModel[] = [
     bucket: "small",
     contextLength: 32768,
     tokenizerFamily: "qwen35",
-    companionModelIds: ["eliza-1-2b-drafter"],
-    sourceModel: sourceModelForTier("eliza-1-2b"),
-    runtime: runtimeFor("eliza-1-2b", 32768),
+    companionModelIds: ["eliza-1-1_7b-drafter"],
+    sourceModel: sourceModelForTier("eliza-1-1_7b"),
+    runtime: runtimeFor("eliza-1-1_7b", 32768),
     blurb:
-      "eliza-1-2b - modern phone default with text and voice prepared for the optimized local runtime.",
+      "eliza-1-1_7b - modern phone default with text and voice prepared for the optimized local runtime.",
   },
   drafterCompanion({
-    id: "eliza-1-2b",
-    displayName: "eliza-1-2b",
-    ggufFile: "dflash/drafter-2b.gguf",
-    params: "0.8B",
+    id: "eliza-1-1_7b",
+    displayName: "eliza-1-1_7b",
+    ggufFile: "dflash/drafter-1_7b.gguf",
+    params: "0.6B",
     sizeGb: 0.35,
     minRamGb: 4,
     bucket: "small",
@@ -265,7 +292,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     id: "eliza-1-4b",
     displayName: "eliza-1-4b",
     ggufFile: "dflash/drafter-4b.gguf",
-    params: "0.8B",
+    params: "0.6B",
     sizeGb: 0.35,
     minRamGb: 8,
     bucket: "mid",
@@ -294,7 +321,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     id: "eliza-1-9b",
     displayName: "eliza-1-9b",
     ggufFile: "dflash/drafter-9b.gguf",
-    params: "2B",
+    params: "1.7B",
     sizeGb: 1.2,
     minRamGb: 12,
     bucket: "mid",

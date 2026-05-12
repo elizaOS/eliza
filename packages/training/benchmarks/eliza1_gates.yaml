@@ -159,7 +159,7 @@ dflash:
 # RSS gate is not required for the GH200-class `27b-1m` tier).
 # ---------------------------------------------------------------------------
 tiers:
-  0_6b:
+  0_8b:
     text_eval: { threshold: 0.55, required: true, provisional: true }
     voice_rtf: { threshold: 0.5, required: true, provisional: true }
     asr_wer: { threshold: 0.10, required: true, provisional: true }
@@ -179,7 +179,7 @@ tiers:
     expressive_tag_leakage: { threshold: 0.05, required: false, provisional: true }
     peak_rss_mb: { threshold: 1800, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 20, required: false, provisional: true, needs_hardware: true }
-  1_7b:
+  2b:
     text_eval: { threshold: 0.60, required: true, provisional: true }
     voice_rtf: { threshold: 0.45, required: true, provisional: true }
     asr_wer: { threshold: 0.08, required: true, provisional: true }
