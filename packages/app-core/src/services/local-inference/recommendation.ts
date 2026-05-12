@@ -458,10 +458,13 @@ export type BundleDefaultEligibility =
       canBeDefault: false;
       /** Distinct, machine-readable reason — surfaced to the UI alongside
        * the `BundleIncompatibleError` the downloader raises for the same
-       * conditions. */
+       * conditions. `contract-invalid` covers both the historic
+       * "not-default-eligible" case (eval gate not passed for a strict
+       * release) and any other manifest-contract failure caught by
+       * `collectContractErrors`. */
       reason:
         | "no-manifest"
-        | "not-default-eligible"
+        | "contract-invalid"
         | "ram-below-floor"
         | "kernels-unverified-on-device"
         | "not-verified-on-device";
@@ -474,8 +477,8 @@ export type BundleDefaultEligibility =
  * not default):
  *
  *  - the bundle ships a validated `eliza-1.manifest.json`,
- *  - the manifest is `defaultEligible` AND contract-valid (which in turn
- *    means every required kernel is verified AND every required eval passed —
+ *  - the manifest is contract-valid (every required kernel declared, every
+ *    required eval green for a strict release, lineage/files consistent —
  *    enforced by `canSetAsDefault` → `collectContractErrors`),
  *  - the device exposes at least one backend the manifest verified `pass` on
  *    out of the tier's supported set,
@@ -483,6 +486,11 @@ export type BundleDefaultEligibility =
  *  - the bundle has passed the one-time on-device verify pass
  *    (`InstalledModel.bundleVerifiedAt` is set) — a materialized-but-unverified
  *    bundle is never auto-selected, per AGENTS.md §7.
+ *
+ * `manifest.defaultEligible: true` is NOT required at the gate level — a
+ * `base-v1-candidate` bundle that passes every above condition is allowed
+ * to fill an empty default slot. The recommender prefers a strict release
+ * (`defaultEligible: true`) over a candidate when both are installed.
  */
 export function canBundleBeDefaultOnDevice(
   installed: InstalledModel,
@@ -509,13 +517,6 @@ export function canBundleBeDefaultOnDevice(
   if (canSetAsDefault(manifest, caps)) return { canBeDefault: true };
 
   // canSetAsDefault returned false — disambiguate why so the UI/log is precise.
-  if (!manifest.defaultEligible) {
-    return {
-      canBeDefault: false,
-      reason: "not-default-eligible",
-      detail: `${installed.id}: manifest defaultEligible is false (evals/kernels not all green at publish time)`,
-    };
-  }
   if (manifest.ramBudgetMb.min > caps.ramMb) {
     return {
       canBeDefault: false,
@@ -539,13 +540,13 @@ export function canBundleBeDefaultOnDevice(
       detail: `${installed.id}: no backend the device exposes (${deviceBackends}) has a 'pass' kernel-verify report in the manifest`,
     };
   }
-  // Contract-valid manifest, RAM ok, backend ok — but canSetAsDefault still
-  // said no. That can only be a contract-error path (e.g. an eval gate not
-  // passed) the manifest validator caught; surface it as not-default-eligible.
+  // RAM ok, backend ok — the failure must be a manifest-contract path the
+  // validator caught (e.g. a required-eval gate not passed for a strict
+  // release, a lineage/files mismatch, an inconsistent provenance block).
   return {
     canBeDefault: false,
-    reason: "not-default-eligible",
-    detail: `${installed.id}: manifest failed the default-eligibility contract check (an eval gate or kernel-coverage rule)`,
+    reason: "contract-invalid",
+    detail: `${installed.id}: manifest failed the contract check (an eval gate, kernel-coverage rule, or lineage/files consistency rule)`,
   };
 }
 

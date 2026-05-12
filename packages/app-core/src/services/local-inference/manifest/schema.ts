@@ -368,19 +368,40 @@ export const Eliza1RamBudgetSchema = z
 // Release-state vocabulary. `base-v1` is the v1 product: the upstream BASE
 // models — GGUF-converted via the elizaOS/llama.cpp fork and fully
 // Eliza-optimized (every quant/kernel trick in inference/AGENTS.md §3) —
-// but NOT fine-tuned (fine-tuning ships in v2). `finetuned-v2` is the v2
-// state; `local-standin` is a non-publishable staging shape;
-// `upload-candidate` / `final` are the historical fine-tuned-v1 publish
-// states retained for forward-compat. Mirrors `ELIZA_1_RELEASE_STATES` in
+// but NOT fine-tuned (fine-tuning ships in v2). `base-v1-candidate` is the
+// in-progress state of a base-v1 bundle before every release-blocking
+// gate (real fork-built bytes, every supported-backend kernel verify,
+// every required platform-dispatch report, the runnable-on-base evals)
+// has gone green. It is publishable to HuggingFace as a download target
+// and is installable on a device whose backend it verified, but is not
+// the strict release — its `defaultEligible` stays `false` at publish
+// time. `finetuned-v2` is the v2 state; `local-standin` is a non-publishable
+// staging shape; `upload-candidate` / `final` are the historical
+// fine-tuned-v1 publish states retained for forward-compat. Mirrors
+// `ELIZA_1_RELEASE_STATES` in
 // `packages/training/scripts/manifest/eliza1_manifest.py`.
 export const ELIZA_1_RELEASE_STATES = [
   "local-standin",
+  "base-v1-candidate",
   "base-v1",
   "finetuned-v2",
   "upload-candidate",
   "final",
 ] as const;
 export type Eliza1ReleaseState = (typeof ELIZA_1_RELEASE_STATES)[number];
+
+// Release-channel vocabulary recorded on a published manifest.
+// `recommended` is the fine-tuned Eliza-1 (ships in v2) — the channel a
+// device may auto-promote to the strict default. `base-v1` is the
+// upstream-base + kernel-optimized release: every quant/kernel trick
+// applied, but the text weights are the upstream base GGUFs (not the
+// fine-tuned Eliza-1). A `base-v1`-channel manifest MUST be
+// `defaultEligible: false` at publish time. The on-device gate
+// (`canSetAsDefault`) still promotes a contract-valid `base-v1` bundle to
+// the fallback default when no `recommended` channel bundle is installed —
+// see `validator.ts`. Mirrors `ELIZA_1_RELEASE_CHANNELS` (Python side).
+export const ELIZA_1_RELEASE_CHANNELS = ["recommended", "base-v1"] as const;
+export type Eliza1ReleaseChannel = (typeof ELIZA_1_RELEASE_CHANNELS)[number];
 
 // Provenance slots — the bundle components whose upstream source repo a
 // `base-v1` manifest must record. Mirrors `ELIZA_1_PROVENANCE_SLOTS`
@@ -448,7 +469,23 @@ export const Eliza1ManifestSchema = z
     // per shipped component. The contract validator requires per-component
     // coverage when `releaseState === "base-v1"`.
     provenance: Eliza1ProvenanceSchema.optional(),
+    // Optional. Defaults to `"recommended"` semantically when unset (the
+    // fine-tuned Eliza-1 — the channel allowed to auto-promote to the
+    // strict device default). A `"base-v1"`-channel manifest is the
+    // upstream-base + kernel-optimized release; it MUST be
+    // `defaultEligible: false` at publish time. The on-device gate
+    // (`canSetAsDefault`) still allows a contract-valid `base-v1` bundle
+    // to fill an empty default slot when no `recommended` channel bundle
+    // is installed; the recommender prefers `defaultEligible: true` over
+    // candidates whenever both are available.
+    releaseChannel: z.enum(ELIZA_1_RELEASE_CHANNELS).optional(),
     defaultEligible: z.boolean(),
+    // Optional. Free-text quant tag emitted by the publish-side manifest
+    // builder (e.g. `"Q3_K_S"`, `"Q4_K_M"`). Not consumed by the runtime
+    // validator — declared here so a manifest carrying it is not rejected
+    // by Zod's default strip behaviour silently masking a real publish
+    // field. Accepted as a permissive string.
+    textQuant: z.string().min(1).optional(),
   })
   // The id MUST encode the tier so catalogs can derive tier from id without
   // re-reading the manifest. Example: `id: "eliza-1-9b"`.
@@ -458,5 +495,17 @@ export const Eliza1ManifestSchema = z
     {
       message: "id must start with `eliza-1-<tier>`",
       path: ["id"],
+    },
+  )
+  // A `base-v1`-channel manifest is the upstream-base release. At publish
+  // time it MUST be `defaultEligible: false` — the on-device gate
+  // (`canSetAsDefault`) is the one that allows it to fill an empty default
+  // slot when no `recommended` bundle is installed. Mirrors
+  // inference/AGENTS.md §6 and the Python manifest builder.
+  .refine(
+    (m) => m.releaseChannel !== "base-v1" || m.defaultEligible === false,
+    {
+      message: "releaseChannel=base-v1 requires defaultEligible: false",
+      path: ["defaultEligible"],
     },
   );
