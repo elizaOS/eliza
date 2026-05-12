@@ -365,6 +365,42 @@ this HTTP-bench number alone.
 
 ## Training And Publishing Remaining Work
 
+**Qwen3.5 migration finished (2026-05-12):** the eliza-1 fused-model line is
+now Qwen3.5-only per the operator directive (Qwen3 dense bases don't work
+with the dflash spec-decode path — the kernels are validated against the
+Qwen3.5 architecture / 248320 tokenizer; a Qwen3 base has the wrong vocab
+and attention shape for the fused QJL / PolarQuant / TurboQuant paths).
+Concretely:
+
+- `model_registry.py`: dropped `qwen3-0.6b` / `qwen3-1.7b` / `qwen3-4b`.
+  Active entries: `qwen3.5-{0.8b,2b,4b,9b,27b}` + legacy `qwen3.6-27b`
+  (long-context 27B variant). 16/16 registry tests green.
+- `ELIZA_1_TIER_IDS` (`catalog.ts`) + `ELIZA_1_TIERS` (`schema.ts`,
+  `eliza1_manifest.py`): added `eliza-1-2b` (`2b` on the Python side).
+  Threaded through `eliza1_platform_plan.py`
+  (`TEXT_QUANT_BY_TIER` / `CONTEXTS_BY_TIER` /
+  `REQUIRED_PLATFORM_EVIDENCE_BY_TIER`),
+  `SUPPORTED_BACKENDS_BY_TIER`, `VOICE_QUANT_BY_TIER`,
+  `REQUIRED_KERNELS_BY_TIER`, the `MODEL_CATALOG` entry + drafter
+  companion, and the recommendation-ladder reorder (Qwen3.5 tiers lead;
+  legacy Qwen3 tiers stay in the ladder as DEPRECATED fallbacks).
+- `FIRST_RUN_DEFAULT_MODEL_ID` flipped from `eliza-1-1_7b` to
+  `eliza-1-0_8b` (Qwen3.5-0.8B-Base, the new small default).
+- HF deprecation cards uploaded to 11 legacy repos
+  (`elizaos/eliza-1-{0_6b,1_7b,4b}` + the `-{optimized,drafter,sft}`
+  companion repos + `-0_6b-sft-weights` + the `eliza-1-0_6b-sft` dataset
+  marked DEPRECATED-NAME — the dataset itself is JSONL with no
+  model-family dependency, so it stays usable on the Qwen3.5 line). The
+  three not-yet-created 4b-companion repos correctly 404 and are
+  skipped — see
+  `packages/training/scripts/publish/deprecate_legacy_qwen3_repos.py`.
+- `run-on-cloud.sh`: tier accept-list dropped `0_6b` / `1_7b`; default
+  tier flipped to `0_8b`; help block reflects the Qwen3.5 line.
+
+Closes audit punch items 7 (`2b` tier threading) and 8
+(legacy-Qwen3-tier-drop decision) from
+[`../2026-05-12/eliza1-e2e-audit-2026-05-12.md`](../2026-05-12/eliza1-e2e-audit-2026-05-12.md).
+
 **Master harness benchmark (2026-05-12):** one comparison run across every Eliza-1
 model + kernel artifact on this box — `packages/training/reports/eliza1-harness-benchmark-2026-05-12.{md,json}`,
 mirrored to the `elizaos/eliza-1-evals` HF dataset (`bench/`, top-level
