@@ -253,6 +253,11 @@ def main() -> int:
         help="Override registry memory budget. Run dies if reserved memory "
              "exceeds budget*1.10. Default: registry value or no enforcement."
     )
+    ap.add_argument(
+        "--resume-from-checkpoint", default=None,
+        help="Resume SFT from a Trainer checkpoint-N/ dir (or `True` to pick the "
+             "latest under the run's out_dir). Passed straight to Trainer.train()."
+    )
     args = ap.parse_args()
 
     from training.model_registry import get as _registry_get  # noqa: E402
@@ -721,7 +726,14 @@ def main() -> int:
         )))
         log.info("instrumentation enabled, budget=%.0fGB", args.memory_budget_gb)
 
-    trainer.train()
+    resume_arg: "str | bool | None" = args.resume_from_checkpoint
+    if isinstance(resume_arg, str) and resume_arg.strip().lower() in ("true", "1", "yes"):
+        resume_arg = True  # let Trainer pick the latest checkpoint-N/ under out_dir
+    if resume_arg:
+        log.info("resuming from checkpoint: %s", resume_arg)
+        trainer.train(resume_from_checkpoint=resume_arg)
+    else:
+        trainer.train()
     trainer.save_model(str(out_dir / "final"))
     tokenizer.save_pretrained(str(out_dir / "final"))
     log.info("done. adapter at %s", out_dir / "final")
