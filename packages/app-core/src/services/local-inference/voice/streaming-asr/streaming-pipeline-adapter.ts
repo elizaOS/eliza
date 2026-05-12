@@ -74,7 +74,8 @@ import type {
  */
 export class LocalAgreementBuffer {
   private readonly n: number;
-  private prev: string[] = [];
+  /** Rolling window of the last `n` hypotheses, oldest first. */
+  private window: string[][] = [];
   /** Monotonically growing committed word list. */
   private committed: string[] = [];
 
@@ -92,30 +93,45 @@ export class LocalAgreementBuffer {
    * prefix — the longest leading word sequence that has appeared
    * identically in `n` consecutive calls. Monotonically non-decreasing.
    *
-   * NOTE: This implementation handles n=2 via prev/current comparison;
-   * for n>2 it keeps a rolling window of the last n hypotheses.
+   * A rolling window of the last `n` hypotheses is maintained. Once the
+   * window is full, the agreed prefix is the intersection across all `n`
+   * entries — word i is in the agreed prefix only if it is identical in
+   * every hypothesis in the window.
    */
   stable(current: string[]): string[] {
-    const agreed: string[] = [];
-    const limit = Math.min(this.prev.length, current.length);
-    for (let i = 0; i < limit; i++) {
-      if (this.prev[i] === current[i]) {
-        agreed.push(current[i]);
-      } else {
-        break;
-      }
+    this.window.push(current);
+    if (this.window.length > this.n) {
+      this.window.shift();
     }
-    this.prev = current;
-    // Extend committed if we have a longer agreed prefix.
-    if (agreed.length > this.committed.length) {
-      this.committed = agreed;
+    // Need a full window of `n` hypotheses before any word can be agreed.
+    if (this.window.length < this.n) {
+      return this.committed;
+    }
+    // Intersect: the agreed prefix is the longest common leading prefix
+    // across all entries in the window.
+    const first = this.window[0]!;
+    let agreedLen = first.length;
+    for (let i = 1; i < this.window.length; i++) {
+      const h = this.window[i]!;
+      let matchLen = 0;
+      const limit = Math.min(agreedLen, h.length);
+      for (let j = 0; j < limit; j++) {
+        if (first[j] === h[j]) matchLen++;
+        else break;
+      }
+      agreedLen = matchLen;
+      if (agreedLen === 0) break;
+    }
+    // Extend committed if the new agreement is longer.
+    if (agreedLen > this.committed.length) {
+      this.committed = first.slice(0, agreedLen);
     }
     return this.committed;
   }
 
   /** Clear all state. Call at utterance boundaries. */
   reset(): void {
-    this.prev = [];
+    this.window = [];
     this.committed = [];
   }
 
