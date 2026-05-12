@@ -63,6 +63,19 @@ _OUTPUT_EQUIVALENTS: dict[str, tuple[str, ...]] = {
         "updated",
         "changed",
     ),
+    "cancel": (
+        "cancel",
+        "cancelled",
+        "canceled",
+        "removed",
+        "deleted",
+    ),
+    "slot": (
+        "slot",
+        "slots",
+        "opening",
+        "openings",
+    ),
 }
 
 _TIME_12H_RE = re.compile(
@@ -77,6 +90,37 @@ _TIME_24H_RE = re.compile(
     r":(?P<minute>[0-5]\d)"
     r"(?:\s*(?:utc|z))?\b"
 )
+
+_KWARG_ALIASES: dict[str, str] = {
+    "atIso": "at_iso",
+    "calendarId": "calendar_id",
+    "completionCheck": "completion_check",
+    "eventId": "event_id",
+    "entityId": "entity_id",
+    "displayName": "display_name",
+    "daysAhead": "days_ahead",
+    "durationMinutes": "duration_minutes",
+    "endAt": "end",
+    "end_time": "end",
+    "listId": "list_id",
+    "messageId": "message_id",
+    "newEnd": "end",
+    "newStart": "start",
+    "promptInstructions": "prompt_instructions",
+    "respectsGlobalPause": "respects_global_pause",
+    "roomId": "room_id",
+    "scheduledTaskId": "scheduled_task_id",
+    "shouldFire": "should_fire",
+    "slotCount": "slot_count",
+    "startAt": "start",
+    "start_time": "start",
+    "taskId": "task_id",
+    "threadId": "thread_id",
+    "windowEnd": "window_end",
+    "windowStart": "window_start",
+}
+
+_NESTED_KWARG_GROUPS: frozenset[str] = frozenset({"details", "updates"})
 
 
 # Umbrella action → (discriminator-field, allowed values) for the promoted
@@ -385,6 +429,100 @@ _OWNER_SURFACE_ALIASES: dict[str, str] = {
     "CONTACT": "ENTITY",
 }
 
+_DISCRIMINATOR_ACTION_ALIASES: dict[str, tuple[str, dict[str, str], frozenset[str]]] = {
+    "CALENDAR": (
+        "subaction",
+        {
+            "feed": "search_events",
+            "trip_window": "search_events",
+        },
+        _UMBRELLA_SUBACTIONS["CALENDAR"][1],
+    ),
+    "MESSAGE": (
+        "operation",
+        {
+            "draft_followup": "draft_reply",
+            "list_inbox": "search_inbox",
+            "respond": "send",
+            "search": "search_inbox",
+            "send_draft": "send",
+        },
+        _UMBRELLA_SUBACTIONS["MESSAGE"][1],
+    ),
+    "ENTITY": (
+        "subaction",
+        {
+            "create": "add",
+            "read": "list",
+        },
+        frozenset({"add", "list", "log_interaction", "set_identity"}),
+    ),
+}
+
+_ACTION_NAME_ALIASES: dict[str, str] = {
+    "SCHEDULED_TASKS_CREATE": "SCHEDULED_TASK_CREATE",
+    "SCHEDULED_TASKS_SNOOZE": "SCHEDULED_TASK_SNOOZE",
+    "SCHEDULED_TASKS_UPDATE": "SCHEDULED_TASK_UPDATE",
+}
+
+_HASH_INERT_ACTION_NAMES: frozenset[str] = frozenset(
+    {
+        "BOOK_TRAVEL",
+        "BLOCK",
+        "BLOCK_BLOCK",
+        "BLOCK_LIST_ACTIVE",
+        "BLOCK_RELEASE",
+        "BLOCK_REQUEST_PERMISSION",
+        "BLOCK_STATUS",
+        "BLOCK_UNBLOCK",
+        "HEALTH",
+        "LIFE",
+        "LIFE_REVIEW",
+        "LIFE_SKIP",
+        "LIFE_UPDATE",
+        "MONEY",
+        "MONEY_DASHBOARD",
+        "MONEY_LIST_SOURCES",
+        "MONEY_LIST_TRANSACTIONS",
+        "MONEY_RECURRING_CHARGES",
+        "MONEY_SPENDING_SUMMARY",
+        "MONEY_SUBSCRIPTION_AUDIT",
+        "MONEY_SUBSCRIPTION_STATUS",
+        "SCHEDULED_TASKS",
+        "SCHEDULED_TASKS_GET",
+        "SCHEDULED_TASKS_HISTORY",
+        "SCHEDULED_TASKS_LIST",
+    }
+)
+
+_HASH_INERT_UMBRELLA_SUBACTIONS: dict[str, tuple[str, frozenset[str]]] = {
+    "CALENDAR": (
+        "subaction",
+        frozenset(
+            {
+                "check_availability",
+                "next_event",
+                "propose_times",
+                "search_events",
+                "update_preferences",
+            }
+        ),
+    ),
+    "ENTITY": ("subaction", frozenset({"list", "log_interaction"})),
+    "MESSAGE": (
+        "operation",
+        frozenset(
+            {
+                "list_channels",
+                "read_channel",
+                "read_with_contact",
+                "search_inbox",
+                "triage",
+            }
+        ),
+    ),
+}
+
 
 def _canonicalize_action(action: Action) -> Action:
     """Fold a granular `<UMBRELLA>_<SUBACTION>` name into the umbrella form.
@@ -402,7 +540,9 @@ def _canonicalize_action(action: Action) -> Action:
     kwargs wins over the one inferred from the name (so an agent that
     emits both is consistent with itself).
     """
-    name = action.name
+    name = _ACTION_NAME_ALIASES.get(action.name, action.name)
+    if name != action.name:
+        action = Action(name=name, kwargs=action.kwargs)
 
     # PERSONAL_ASSISTANT_BOOK_TRAVEL is a fixed shorthand for the BOOK_TRAVEL
     # umbrella with no implicit subaction — leave subaction resolution to
@@ -425,6 +565,7 @@ def _canonicalize_action(action: Action) -> Action:
         new_kwargs.setdefault(field, candidate)
         return Action(name=umbrella, kwargs=new_kwargs)
 
+
     for umbrella, (field, subactions) in _UMBRELLA_SUBACTIONS.items():
         prefix = f"{umbrella}_"
         if not name.startswith(prefix):
@@ -435,6 +576,17 @@ def _canonicalize_action(action: Action) -> Action:
         new_kwargs = dict(action.kwargs)
         new_kwargs.setdefault(field, candidate)
         return Action(name=umbrella, kwargs=new_kwargs)
+    alias_config = _DISCRIMINATOR_ACTION_ALIASES.get(name)
+    if alias_config is not None:
+        field, aliases, allowed = alias_config
+        raw_action = action.kwargs.get("action")
+        if isinstance(raw_action, str):
+            candidate = aliases.get(raw_action, raw_action)
+            if candidate in allowed:
+                new_kwargs = dict(action.kwargs)
+                new_kwargs.setdefault(field, candidate)
+                new_kwargs.pop("action", None)
+                return Action(name=name, kwargs=new_kwargs)
     return action
 
 
@@ -523,6 +675,49 @@ def _values_equivalent(predicted: Any, expected: Any) -> bool:
     return predicted == expected
 
 
+def _canonical_kwarg_key(key: str) -> str:
+    return _KWARG_ALIASES.get(key, key)
+
+
+def _canonicalize_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Normalize structurally equivalent kwarg spellings for comparison only."""
+    out: dict[str, Any] = {}
+    nested: list[dict[str, Any]] = []
+    for raw_key, raw_value in kwargs.items():
+        key = _canonical_kwarg_key(raw_key)
+        if key in _NESTED_KWARG_GROUPS and isinstance(raw_value, dict):
+            nested.append(_canonicalize_kwargs(raw_value))
+            continue
+        value = (
+            _canonicalize_kwargs(raw_value)
+            if isinstance(raw_value, dict)
+            else raw_value
+        )
+        out[key] = value
+
+    # Scenario authors and adapters often disagree on whether `details` /
+    # `updates` fields are nested or top-level. Merge nested structured fields
+    # after top-level values so explicit top-level kwargs win.
+    for nested_kwargs in nested:
+        for key, value in nested_kwargs.items():
+            out.setdefault(key, value)
+    return out
+
+
+def _range_boundary_equivalent(key: str, predicted: Any, expected: Any) -> bool:
+    predicted_dt = _try_parse_iso(predicted)
+    expected_dt = _try_parse_iso(expected)
+    if predicted_dt is None or expected_dt is None:
+        return False
+    if predicted_dt.date() != expected_dt.date():
+        return False
+    if key == "window_start":
+        return predicted_dt <= expected_dt
+    if key == "window_end":
+        return predicted_dt >= expected_dt
+    return False
+
+
 def _normalize_string(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip().lower()
 
@@ -580,7 +775,9 @@ def _required_output_matches(
 
     for term in equivalents:
         normalized_term = _normalize_output_text(term)
-        if normalized_term and normalized_term in assistant_blob:
+        if normalized_term and _contains_normalized_phrase(
+            assistant_blob, normalized_term
+        ):
             return True
         expected_times = _extract_time_minutes(normalized_term)
         if expected_times and expected_times.intersection(assistant_times):
@@ -589,21 +786,34 @@ def _required_output_matches(
     return False
 
 
+def _contains_normalized_phrase(haystack: str, needle: str) -> bool:
+    """Return True when `needle` appears as a phrase, not inside another word."""
+    if not needle:
+        return False
+    pattern = re.escape(needle)
+    if needle[0].isalnum():
+        pattern = rf"(?<![a-z0-9]){pattern}"
+    if needle[-1].isalnum():
+        pattern = rf"{pattern}(?![a-z0-9])"
+    return re.search(pattern, haystack) is not None
+
+
 def _kwargs_match(predicted: dict[str, Any], expected: dict[str, Any]) -> bool:
     """Tolerant kwarg equality: every load-bearing key in `expected` must match in `predicted`.
 
     Extra keys on `predicted` are ignored — the agent may pass through more
     fields than the ground truth specifies.
 
-    Keys in `_SOFT_KWARGS` are documentation-only: when they appear in
-    `expected` but are absent from `predicted`, the match is still allowed.
-    When the agent DOES emit a soft kwarg, the value still has to be
-    equivalent (so we never silently accept a contradicting `intent`).
+    Keys in `_SOFT_KWARGS` are documentation-only and never load-bearing.
+    Real models often emit paraphrased `intent` fields while the executable
+    kwargs are correct, so soft fields are ignored on both sides.
     """
+    predicted = _canonicalize_kwargs(predicted)
+    expected = _canonicalize_kwargs(expected)
     for key, exp_value in expected.items():
+        if key in _SOFT_KWARGS:
+            continue
         if key not in predicted:
-            if key in _SOFT_KWARGS:
-                continue
             return False
         pred_value = predicted[key]
         # passengers: accept integer count ↔ array-of-objects as equivalent
@@ -613,8 +823,79 @@ def _kwargs_match(predicted: dict[str, Any], expected: dict[str, Any]) -> bool:
             if not _passengers_equivalent(pred_value, exp_value):
                 return False
             continue
+        if key in {"window_start", "window_end"} and _range_boundary_equivalent(
+            key, pred_value, exp_value
+        ):
+            continue
         if not _values_equivalent(pred_value, exp_value):
             return False
+    return True
+
+
+def _action_is_hash_inert(action: Action) -> bool:
+    """Whether final-world hash equality cannot validate this action's kwargs."""
+    action = _canonicalize_action(action)
+    if action.name in _HASH_INERT_ACTION_NAMES:
+        return True
+    if action.name == "MONEY_SUBSCRIPTION_CANCEL":
+        return not bool(action.kwargs.get("confirmed", False))
+    if action.name == "LIFE_DELETE":
+        target = action.kwargs.get("target")
+        return not (isinstance(target, str) and target.startswith("reminder_"))
+    discriminator = _HASH_INERT_UMBRELLA_SUBACTIONS.get(action.name)
+    if discriminator is None:
+        return False
+    field, values = discriminator
+    value = action.kwargs.get(field)
+    return isinstance(value, str) and value in values
+
+
+def _has_creditable_action_overlap(
+    predicted: list[Action],
+    ground_truth: list[Action],
+) -> bool:
+    """Return whether any emitted action is behaviorally creditable.
+
+    For mutating actions, a canonical name match is enough for partial credit
+    because a matching final state can validate the effect. For hash-inert
+    read-only/no-op actions, kwargs must match too; otherwise WrongAgent-like
+    same-tool calls can get free state-hash credit.
+    """
+    canon_predicted = [_canonicalize_action(p) for p in predicted]
+    canon_truth = [_canonicalize_action(g) for g in ground_truth]
+    for pred in canon_predicted:
+        for gt in canon_truth:
+            if pred.name != gt.name:
+                continue
+            if _action_is_hash_inert(gt):
+                if _kwargs_match(pred.kwargs, gt.kwargs):
+                    return True
+                continue
+            return True
+    return False
+
+
+def _state_hash_can_promote_action_score(
+    predicted: list[Action],
+    ground_truth: list[Action],
+) -> bool:
+    """Whether state equality can safely turn structural action overlap into 1.0."""
+    canon_predicted = [_canonicalize_action(p) for p in predicted]
+    canon_truth = [_canonicalize_action(g) for g in ground_truth]
+    consumed: set[int] = set()
+    for gt in canon_truth:
+        best_idx: int | None = None
+        for idx, pred in enumerate(canon_predicted):
+            if idx in consumed or pred.name != gt.name:
+                continue
+            if _action_is_hash_inert(gt) and not _kwargs_match(pred.kwargs, gt.kwargs):
+                continue
+            best_idx = idx
+            if _kwargs_match(pred.kwargs, gt.kwargs):
+                break
+        if best_idx is None:
+            return False
+        consumed.add(best_idx)
     return True
 
 
@@ -738,22 +1019,23 @@ def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
 
     if scenario.mode is ScenarioMode.STATIC:
         predicted_actions = [a for turn in result.turns for a in turn.agent_actions]
-        action_component = compare_actions(predicted_actions, scenario.ground_truth_actions)
-
-        kind = _classify_scenario_kind(scenario)
-
-        # The state-hash → action promotion only makes sense for writes:
-        # on a write scenario the world ending up correct is strong
-        # evidence the agent's call did the right thing, even if kwarg
-        # spellings drift (e.g. `start_time` vs `details.start`). On a
-        # read scenario the state hash always matches trivially, so
-        # promoting partial action credit to full is exactly the
-        # inflation P0-8 exists to remove.
+        action_component = compare_actions(
+            predicted_actions, scenario.ground_truth_actions
+        )
         if (
-            kind == "write"
-            and result.state_hash_match
+            result.state_hash_match
             and action_component >= 0.5
+            and _state_hash_can_promote_action_score(
+                predicted_actions, scenario.ground_truth_actions
+            )
         ):
+            # The executor is the semantic authority for state-changing
+            # behavior. If the final world hash matches and the agent emitted
+            # structurally matching action names, kwarg spelling differences
+            # such as start_time vs details.start should not keep an otherwise
+            # successful trajectory below pass@1. Read-only/no-op actions are
+            # excluded unless their kwargs match, because state equality cannot
+            # prove they looked up the right thing.
             action_component = 1.0
 
         # Triviality guard: when the scenario specifies ground-truth actions
@@ -769,7 +1051,13 @@ def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
         # action (name canonicalizes to a GT name), it isn't trivial — the
         # agent did real work. The triviality guard is reserved for the
         # "no action OR wrong action" case.
-        if scenario.ground_truth_actions and action_component == 0.0:
+        if scenario.ground_truth_actions and (
+            action_component == 0.0
+            or not _has_creditable_action_overlap(
+                predicted_actions, scenario.ground_truth_actions
+            )
+        ):
+            action_component = 0.0
             state_component = 0.0
             substring_component = 0.0
 
@@ -786,6 +1074,8 @@ def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
             + substring_weight * substring_component
         )
 
+    if result.terminated_reason != "satisfied":
+        return 0.0
     return 0.7 * state_component + 0.3 * substring_component
 
 
@@ -841,17 +1131,18 @@ def compile_benchmark_result(
     pass_k_values: list[float] = []
     domain_scores: dict[str, list[float]] = {}
 
-    for scenario_id, runs in per_scenario.items():
-        scenario = scenarios_by_id.get(scenario_id)
-        if scenario is None:
-            continue
-        n = len(runs)
+    expected_seed_count = max(1, seeds)
+    for scenario_id, scenario in scenarios_by_id.items():
+        runs = per_scenario.get(scenario_id, [])
+        n = max(expected_seed_count, len(runs))
         per_run_scores = [score_scenario(r, scenario) for r in runs]
         pass_1_hits += sum(1 for s in per_run_scores if s >= 0.99)
         pass_1_total += n
         c = sum(1 for s in per_run_scores if s >= 0.99)
-        pass_k_values.append(pass_at_k(c, n, min(seeds, n)))
-        domain_scores.setdefault(scenario.domain.value, []).extend(per_run_scores)
+        pass_k_values.append(pass_at_k(c, n, min(expected_seed_count, n)))
+        domain_scores.setdefault(scenario.domain.value, []).extend(
+            per_run_scores + [0.0] * (n - len(per_run_scores))
+        )
 
     mean_per_domain = {
         domain: statistics.mean(scores) for domain, scores in domain_scores.items()
