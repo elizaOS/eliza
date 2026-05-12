@@ -5,31 +5,22 @@
  * Idempotent: if the org already has a Steward tenant, returns the existing ID.
  *
  * This endpoint is called automatically during organization setup when
- * Steward-backed auth is enabled for the organization.
+ * Steward-backed auth is enabled for the organization. The actual
+ * provisioning logic lives in `ensureStewardTenant` so it can also be invoked
+ * from server-context flows (e.g. docker-sandbox creation) without going
+ * through the HTTP boundary.
  *
  * Body: { organizationId: string; tenantName?: string }
  * Returns: { tenantId: string; isNew: boolean }
  */
 
-import { eq } from "drizzle-orm";
-import { type Context, Hono } from "hono";
+import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { resolveServerStewardApiUrlFromEnv } from "@/lib/steward-url";
+import { ensureStewardTenant } from "@/lib/services/steward-tenant-config";
+import { isStewardPlatformConfigured } from "@/lib/services/steward-platform-users";
 import { logger } from "@/lib/utils/logger";
-import { dbWrite } from "@/packages/db/helpers";
-import { organizations } from "@/packages/db/schemas/organizations";
-import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
-
-function getStewardApiUrl(c: Context<AppEnv>): string {
-  return resolveServerStewardApiUrlFromEnv(c.env, new URL(c.req.url).origin);
-}
-
-function getPlatformKey(env: Bindings): string {
-  const key = (env.STEWARD_PLATFORM_KEYS ?? "").split(",")[0]?.trim();
-  if (!key) throw new Error("STEWARD_PLATFORM_KEYS is not configured");
-  return key;
-}
+import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
@@ -48,79 +39,32 @@ app.post("/", async (c) => {
       return c.json({ error: "Forbidden" }, 403);
     }
 
-    const [org] = await dbWrite
-      .select({
-        id: organizations.id,
-        slug: organizations.slug,
-        stewardTenantId: organizations.steward_tenant_id,
-      })
-      .from(organizations)
-      .where(eq(organizations.id, body.organizationId))
-      .limit(1);
-
-    if (!org) {
-      return c.json({ error: "Organization not found" }, 404);
-    }
-
-    // Idempotent — already provisioned
-    if (org.stewardTenantId) {
-      return c.json({ tenantId: org.stewardTenantId, isNew: false });
-    }
-
-    const tenantId = `elizacloud-${org.slug}`;
-    const tenantName = body.tenantName ?? `ElizaCloud — ${org.slug}`;
-
-    let platformKey: string;
-    try {
-      platformKey = getPlatformKey(c.env);
-    } catch {
+    if (!isStewardPlatformConfigured()) {
       logger.error("[steward-tenants] STEWARD_PLATFORM_KEYS not configured");
       return c.json({ error: "Steward not configured" }, 503);
     }
 
-    const stewardRes = await fetch(`${getStewardApiUrl(c)}/platform/tenants`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Steward-Platform-Key": platformKey,
-      },
-      body: JSON.stringify({ id: tenantId, name: tenantName }),
+    const result = await ensureStewardTenant(body.organizationId, {
+      tenantName: body.tenantName,
     });
 
-    const stewardData = (await stewardRes.json()) as {
-      ok: boolean;
-      apiKey?: string;
-      data?: { apiKey?: string };
-      error?: string;
-    };
-
-    if (stewardRes.status === 409) {
-      // Tenant already exists in Steward but not linked in our DB — re-link without API key
-      logger.warn(`[steward-tenants] Tenant ${tenantId} already exists in Steward, linking org`);
-      await dbWrite
-        .update(organizations)
-        .set({ steward_tenant_id: tenantId })
-        .where(eq(organizations.id, org.id));
-      return c.json({ tenantId, isNew: false });
+    return c.json(
+      { tenantId: result.tenantId, isNew: result.isNew },
+      result.isNew ? 201 : 200,
+    );
+  } catch (error) {
+    if (error instanceof Error && /not found$/.test(error.message)) {
+      return c.json({ error: "Organization not found" }, 404);
     }
-
-    if (!stewardRes.ok || !stewardData.ok) {
+    if (
+      error instanceof Error &&
+      error.message.startsWith("Failed to provision Steward tenant")
+    ) {
       logger.error("[steward-tenants] Failed to create Steward tenant", {
-        error: stewardData.error,
+        error: error.message,
       });
       return c.json({ error: "Failed to provision Steward tenant" }, 502);
     }
-
-    const apiKey = stewardData.apiKey ?? stewardData.data?.apiKey ?? "";
-
-    await dbWrite
-      .update(organizations)
-      .set({ steward_tenant_id: tenantId, steward_tenant_api_key: apiKey })
-      .where(eq(organizations.id, org.id));
-
-    logger.info(`[steward-tenants] Provisioned tenant ${tenantId} for org ${org.id}`);
-    return c.json({ tenantId, isNew: true }, 201);
-  } catch (error) {
     return failureResponse(c, error);
   }
 });
