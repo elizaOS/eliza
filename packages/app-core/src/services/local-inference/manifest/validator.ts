@@ -91,19 +91,36 @@ export function parseManifestOrThrow(input: unknown): Eliza1Manifest {
 
 /**
  * `canSetAsDefault` is the recommendation-engine gate. A manifest that
- * passes this is allowed to be picked as the default bundle for the
- * device — it is `defaultEligible`, contract-valid, AND every backend
- * it claims to verify is one the device exposes.
+ * passes this is allowed to fill an empty default slot for the device:
+ *
+ *   - the manifest is contract-valid (every required kernel declared, every
+ *     required eval green for a strict release, lineage/files consistent),
+ *   - the device RAM meets the manifest's `ramBudgetMb.min` floor,
+ *   - the device exposes at least one backend the manifest verified `pass`
+ *     on out of the tier's supported set.
+ *
+ * A `defaultEligible: true` manifest is the strict release: every supported
+ * backend kernel-verified `pass`, every required eval green. A
+ * `defaultEligible: false` manifest with `releaseState` in the candidate /
+ * staging vocabulary (`base-v1-candidate`, `local-standin`,
+ * `upload-candidate`) is still permitted to fill an empty default slot
+ * **when this device can run it** — the recommender prefers a strict
+ * release over a candidate when both are installed (see
+ * `isStrictReleaseManifest`). This mirrors the install gate
+ * (`downloader.assertBundleInstallable`): if the device can install + run
+ * the bundle, it can also fall back to running it as the default. The
+ * historic "candidate bundles must never be a default" rule produced the
+ * worse outcome of installing a bundle but leaving the model slot empty,
+ * forcing the user to manually pick the only model they had downloaded.
  *
  * The device-caps check rejects "this device has Vulkan only but the
- * manifest only verified Metal/CUDA" — a manifest may be globally
- * default-eligible but not on this device.
+ * manifest only verified Metal/CUDA" — a manifest may be contract-valid
+ * but not runnable on this device.
  */
 export function canSetAsDefault(
   manifest: Eliza1Manifest,
   device: Eliza1DeviceCaps,
 ): boolean {
-  if (!manifest.defaultEligible) return false;
   if (collectContractErrors(manifest).length > 0) return false;
   if (manifest.ramBudgetMb.min > device.ramMb) return false;
 
@@ -119,6 +136,16 @@ export function canSetAsDefault(
       manifest.kernels.verifiedBackends[b].status === "pass",
   );
   return overlapping.length > 0;
+}
+
+/**
+ * Strict release identifier: a `defaultEligible: true` manifest. The
+ * recommender uses this to prefer a strict release over a candidate
+ * bundle when both are installed and contract-valid. Mirrors the
+ * publish-side `eliza1_gates.yaml` strict bar.
+ */
+export function isStrictReleaseManifest(manifest: Eliza1Manifest): boolean {
+  return manifest.defaultEligible === true;
 }
 
 // ---------------------------------------------------------------------------
