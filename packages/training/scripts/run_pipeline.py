@@ -337,6 +337,11 @@ def main() -> int:
     ap.add_argument("--skip-quantize", action="store_true")
     ap.add_argument("--skip-bench", action="store_true")
     ap.add_argument(
+        "--resume-from-checkpoint", default=None,
+        help="Resume stage-2 SFT from a Trainer checkpoint-N/ dir (or `True` to "
+             "pick the latest under the run's out_dir). Forwarded to train_local.py.",
+    )
+    ap.add_argument(
         "--quantizers", default="polarquant,fused_turboquant,qjl",
         help="Comma-separated list of quantizers to apply post-training. "
              "Default = full stack: polarquant (4-bit weights) + "
@@ -566,6 +571,8 @@ def main() -> int:
             cmd += ["--grad-accum", str(args.grad_accum)]
         if args.max_seq_len:
             cmd += ["--max-seq-len", str(args.max_seq_len)]
+        if args.resume_from_checkpoint:
+            cmd += ["--resume-from-checkpoint", str(args.resume_from_checkpoint)]
         rc = run(cmd, cwd=ROOT)
         summary["stages"]["finetune"] = {"exit": rc, "checkpoint": str(finetuned_model)}
         if rc != 0:
