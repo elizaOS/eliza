@@ -41,6 +41,13 @@ export type PricingChargeUnit =
  * matches rows persisted under the old id until the next catalog refresh.
  */
 export const PRICING_MODEL_ALIASES = {
+  // Anthropic SDK ships -latest aliases that the cloud LLM gateway forwards
+  // verbatim. Mirror them onto the canonical catalog ids so billing resolves.
+  "anthropic/claude-3-5-haiku-latest": ["anthropic/claude-3.5-haiku"],
+  "anthropic/claude-3-5-sonnet-latest": ["anthropic/claude-3.7-sonnet"],
+  "anthropic/claude-3-7-sonnet-latest": ["anthropic/claude-3.7-sonnet"],
+  "anthropic/claude-opus-4-latest": ["anthropic/claude-opus-4"],
+  "anthropic/claude-sonnet-4-latest": ["anthropic/claude-sonnet-4"],
   "anthropic/claude-3.5-sonnet": ["anthropic/claude-3.7-sonnet"],
   "anthropic/claude-3.7-sonnet-reasoning": ["anthropic/claude-3.7-sonnet"],
   "anthropic/claude-4-opus": ["anthropic/claude-opus-4"],
@@ -108,7 +115,9 @@ export function buildPricingLegacyIdsByTarget(
   return rev;
 }
 
-export const PRICING_LEGACY_IDS_BY_TARGET = buildPricingLegacyIdsByTarget(PRICING_MODEL_ALIASES);
+export const PRICING_LEGACY_IDS_BY_TARGET = buildPricingLegacyIdsByTarget(
+  PRICING_MODEL_ALIASES,
+);
 
 export interface SupportedImageModelDefinition {
   modelId: string;
@@ -304,7 +313,8 @@ export const SUPPORTED_VIDEO_MODELS: SupportedVideoModelDefinition[] = [
     provider: "fal",
     billingSource: "fal",
     label: "Kling 3 Standard",
-    pageUrl: "https://fal.ai/models/fal-ai/kling-video/v3/standard/text-to-video",
+    pageUrl:
+      "https://fal.ai/models/fal-ai/kling-video/v3/standard/text-to-video",
     pricingParser: "kling",
     defaultParameters: {
       durationSeconds: 5,
@@ -343,7 +353,8 @@ export const SUPPORTED_VIDEO_MODELS: SupportedVideoModelDefinition[] = [
     provider: "fal",
     billingSource: "fal",
     label: "Hailuo 2.3 Standard",
-    pageUrl: "https://fal.ai/models/fal-ai/minimax/hailuo-2.3/standard/text-to-video",
+    pageUrl:
+      "https://fal.ai/models/fal-ai/minimax/hailuo-2.3/standard/text-to-video",
     pricingParser: "hailuo_standard",
     defaultParameters: {
       durationSeconds: 6,
@@ -354,7 +365,8 @@ export const SUPPORTED_VIDEO_MODELS: SupportedVideoModelDefinition[] = [
     provider: "fal",
     billingSource: "fal",
     label: "Hailuo 2.3 Pro",
-    pageUrl: "https://fal.ai/models/fal-ai/minimax/hailuo-2.3/pro/text-to-video",
+    pageUrl:
+      "https://fal.ai/models/fal-ai/minimax/hailuo-2.3/pro/text-to-video",
     pricingParser: "hailuo_pro",
     defaultParameters: {
       durationSeconds: 6,
@@ -632,9 +644,15 @@ export const ELEVENLABS_SNAPSHOT_PRICING: ElevenLabsSnapshotEntry[] = [
   },
 ] as const;
 
-export const SUPPORTED_VIDEO_MODEL_IDS = SUPPORTED_VIDEO_MODELS.map((model) => model.modelId);
-export const SUPPORTED_IMAGE_MODEL_IDS = SUPPORTED_IMAGE_MODELS.map((model) => model.modelId);
-export const SUPPORTED_MUSIC_MODEL_IDS = SUPPORTED_MUSIC_MODELS.map((model) => model.modelId);
+export const SUPPORTED_VIDEO_MODEL_IDS = SUPPORTED_VIDEO_MODELS.map(
+  (model) => model.modelId,
+);
+export const SUPPORTED_IMAGE_MODEL_IDS = SUPPORTED_IMAGE_MODELS.map(
+  (model) => model.modelId,
+);
+export const SUPPORTED_MUSIC_MODEL_IDS = SUPPORTED_MUSIC_MODELS.map(
+  (model) => model.modelId,
+);
 
 export function getSupportedVideoModelDefinition(modelId: string) {
   return SUPPORTED_VIDEO_MODELS.find((model) => model.modelId === modelId);
