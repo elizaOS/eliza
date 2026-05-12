@@ -5,9 +5,9 @@
 		"ignoreUnknown": true,
 		"includes": [
 			"**",
-			"!**/__tests__/e2e/benchmarks/data_processed/**",
-			"!**/dist/**",
-			"!**/node_modules/**",
+			"!**/__tests__/e2e/benchmarks/data_processed",
+			"!**/dist",
+			"!**/node_modules",
 			"!src/frontend/index.css"
 		]
 	}

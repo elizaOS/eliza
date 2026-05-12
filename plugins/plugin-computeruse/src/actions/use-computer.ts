@@ -51,9 +51,7 @@ function isMockComputerUseEnabled(): boolean {
 function getComputerUseService(
   runtime: IAgentRuntime,
 ): ComputerUseService | null {
-  return (
-    (runtime.getService("computeruse") as ComputerUseService) ?? null
-  );
+  return (runtime.getService("computeruse") as ComputerUseService) ?? null;
 }
 
 function buildMockDesktopResult(
@@ -381,7 +379,10 @@ export const useComputerAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Press Cmd+Shift+T to reopen the closed tab.", source: "chat" },
+        content: {
+          text: "Press Cmd+Shift+T to reopen the closed tab.",
+          source: "chat",
+        },
       },
       {
         name: "{{agentName}}",

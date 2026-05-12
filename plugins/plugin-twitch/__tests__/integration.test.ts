@@ -19,12 +19,12 @@ import twitchPlugin, {
   TwitchEventTypes,
   type TwitchMessage,
   type TwitchMessageSendOptions,
-  type TwitchSettings,
   TwitchNotConnectedError,
   TwitchPluginError,
   type TwitchSendResult,
   TwitchService,
   TwitchServiceNotInitializedError,
+  type TwitchSettings,
   type TwitchUserInfo,
 } from "../src/index.ts";
 import { TwitchWorkflowCredentialProvider } from "../src/workflow-credential-provider.ts";

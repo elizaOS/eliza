@@ -102,7 +102,7 @@ export function useVincentState({ setActionNotice, t }: VincentStateParams) {
 
   const handleVincentDisconnect = useCallback(async () => {
     try {
-        await vincentClient.vincentDisconnect();
+      await vincentClient.vincentDisconnect();
       setVincentConnected(false);
       setVincentConnectedAt(null);
       setVincentLoginError(null);

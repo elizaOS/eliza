@@ -1,5 +1,4 @@
-import { client, useApp, usePtySessions } from "@elizaos/ui";
-import { Button } from "@elizaos/ui";
+import { Button, client, useApp, usePtySessions } from "@elizaos/ui";
 import { Square, Terminal } from "lucide-react";
 import { useCallback } from "react";
 

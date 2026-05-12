@@ -6,10 +6,7 @@
 
 import type { ActionResult, HandlerCallback } from "@elizaos/core";
 import type { ComputerUseService } from "../services/computer-use-service.js";
-import type {
-  WindowActionParams,
-  WindowActionResult,
-} from "../types.js";
+import type { WindowActionParams, WindowActionResult } from "../types.js";
 import { toComputerUseActionResult } from "./helpers.js";
 
 const MAX_WINDOW_ROWS = 50;

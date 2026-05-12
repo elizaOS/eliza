@@ -1,4 +1,4 @@
-import { Plugin } from "@elizaos/core";
+import type { Plugin } from "@elizaos/core";
 import { VideoService } from "./services/video";
 
 const videoPlugin: Plugin = {

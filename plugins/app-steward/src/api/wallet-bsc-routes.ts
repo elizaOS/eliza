@@ -6,8 +6,8 @@
  */
 
 import type http from "node:http";
-import type { ReadJsonBodyOptions } from "@elizaos/core";
 import type { ElizaConfig } from "@elizaos/agent";
+import type { ReadJsonBodyOptions } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { ethers } from "ethers";
 

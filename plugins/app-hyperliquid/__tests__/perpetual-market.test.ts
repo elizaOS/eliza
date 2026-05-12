@@ -6,9 +6,9 @@ import type {
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  hyperliquidActions,
   PERPETUAL_MARKET_SERVICE_TYPE,
   PerpetualMarketService,
-  hyperliquidActions,
   perpetualMarketAction,
 } from "../src/actions/perpetual-market";
 import { hyperliquidPlugin } from "../src/plugin";
@@ -230,7 +230,10 @@ describe("perpetualMarketAction handler", () => {
       },
     });
     const service = await startService();
-    const { result } = await invoke({ action: "read", kind: "status" }, service);
+    const { result } = await invoke(
+      { action: "read", kind: "status" },
+      service,
+    );
     expect(result.success).toBe(true);
     expect(typeof result.text).toBe("string");
     const data = result.data as Record<string, unknown>;
@@ -328,7 +331,10 @@ describe("perpetualMarketAction handler", () => {
       },
     });
     const service = await startService();
-    const { result } = await invoke({ action: "read", kind: "markets" }, service);
+    const { result } = await invoke(
+      { action: "read", kind: "markets" },
+      service,
+    );
     expect(result.success).toBe(true);
     const data = result.data as { kind?: string; markets?: unknown[] };
     expect(data.kind).toBe("markets");
@@ -338,7 +344,10 @@ describe("perpetualMarketAction handler", () => {
   it("read kind=funding reports the not-yet-wired rationale", async () => {
     installFetchMock({});
     const service = await startService();
-    const { result } = await invoke({ action: "read", kind: "funding" }, service);
+    const { result } = await invoke(
+      { action: "read", kind: "funding" },
+      service,
+    );
     expect(result.success).toBe(true);
     const data = result.data as { kind?: string; notWired?: boolean };
     expect(data.kind).toBe("funding");
@@ -348,7 +357,10 @@ describe("perpetualMarketAction handler", () => {
   it("read kind=market requires a coin/asset identifier", async () => {
     installFetchMock({});
     const service = await startService();
-    const { result } = await invoke({ action: "read", kind: "market" }, service);
+    const { result } = await invoke(
+      { action: "read", kind: "market" },
+      service,
+    );
     expect(result.success).toBe(false);
     expect(result.error).toBe("missing_market_identifier");
   });

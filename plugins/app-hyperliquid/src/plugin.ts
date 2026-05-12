@@ -1,6 +1,9 @@
 import type http from "node:http";
 import type { Plugin, Route, RouteRequest, RouteResponse } from "@elizaos/core";
-import { PerpetualMarketService, hyperliquidActions } from "./actions/perpetual-market";
+import {
+  hyperliquidActions,
+  PerpetualMarketService,
+} from "./actions/perpetual-market";
 import { handleHyperliquidRoute } from "./routes";
 
 function toHttpIncomingMessage(req: RouteRequest): http.IncomingMessage {

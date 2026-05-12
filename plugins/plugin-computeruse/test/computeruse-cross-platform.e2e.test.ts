@@ -24,11 +24,11 @@
 import { platform } from "node:os";
 import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { ComputerUseService } from "../src/services/computer-use-service.js";
 import {
-  isAvailable as nutAvailable,
   loadFailureReason,
+  isAvailable as nutAvailable,
 } from "../src/platform/nut-driver.js";
+import { ComputerUseService } from "../src/services/computer-use-service.js";
 import type { ComputerActionResult } from "../src/types.js";
 
 const os = platform();

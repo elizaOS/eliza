@@ -6,7 +6,6 @@
  * - Validate wallet/rpc/chain/gas/token before producing a quote.
  */
 
-import { logger } from "@elizaos/core";
 import type {
   BscTradePreflightResponse,
   BscTradeQuoteRequest,
@@ -17,6 +16,7 @@ import type {
   BscUnsignedApprovalTx,
   BscUnsignedTradeTx,
 } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import { ethers } from "ethers";
 import {
   normalizeRpcUrl,

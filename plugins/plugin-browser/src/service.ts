@@ -1,11 +1,5 @@
 import type { Service, UUID } from "@elizaos/core";
 import type {
-  CompleteLifeOpsBrowserSessionRequest,
-  ConfirmLifeOpsBrowserSessionRequest,
-  CreateLifeOpsBrowserSessionRequest,
-  LifeOpsBrowserSession,
-} from "./lifeops-session-contracts.js";
-import type {
   BrowserBridgeCompanionAutoPairResponse,
   BrowserBridgeCompanionPairingResponse,
   BrowserBridgeCompanionRevokeResponse,
@@ -20,6 +14,12 @@ import type {
   UpdateBrowserBridgeSessionProgressRequest,
   UpdateBrowserBridgeSettingsRequest,
 } from "./contracts.js";
+import type {
+  CompleteLifeOpsBrowserSessionRequest,
+  ConfirmLifeOpsBrowserSessionRequest,
+  CreateLifeOpsBrowserSessionRequest,
+  LifeOpsBrowserSession,
+} from "./lifeops-session-contracts.js";
 
 export const BROWSER_BRIDGE_ROUTE_SERVICE_TYPE = "lifeops_browser_plugin";
 

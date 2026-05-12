@@ -1,12 +1,12 @@
 import {
+  elizaLogger,
   type IAgentRuntime,
-  ITranscriptionService,
+  type ITranscriptionService,
   IVideoService,
   type Media,
   type Service,
   ServiceType,
   stringToUuid,
-  elizaLogger,
   type VideoDownloadOptions,
   type VideoFormat,
   type VideoInfo,
@@ -394,7 +394,7 @@ export class VideoService extends IVideoService {
   ): Promise<Media> {
     const videoId =
       url.match(
-        /(?:youtu\.be\/|youtube\.com(?:\/embed\/|\/v\/|\/watch\?v=|\/watch\?.+&v=))([^\/&?]+)/, // eslint-disable-line
+        /(?:youtu\.be\/|youtube\.com(?:\/embed\/|\/v\/|\/watch\?v=|\/watch\?.+&v=))([^/&?]+)/, // eslint-disable-line
       )?.[1] || "";
     const videoUuid = this.getVideoId(videoId);
     const cacheKey = `${this.cacheKey}/${videoUuid}`;

@@ -109,9 +109,7 @@ function extractAgentStatus(
     totalDeposited:
       typeof record.totalDeposited === "number" ? record.totalDeposited : null,
     totalWithdrawn:
-      typeof record.totalWithdrawn === "number"
-        ? record.totalWithdrawn
-        : null,
+      typeof record.totalWithdrawn === "number" ? record.totalWithdrawn : null,
   };
 }
 

@@ -1,5 +1,9 @@
 import * as fs from "node:fs/promises";
-import { type IAgentRuntime, Service, logger as coreLogger } from "@elizaos/core";
+import {
+  logger as coreLogger,
+  type IAgentRuntime,
+  Service,
+} from "@elizaos/core";
 import type { FileMeta } from "../types.js";
 import { CODING_TOOLS_LOG_PREFIX, FILE_STATE_SERVICE } from "../types.js";
 
@@ -60,7 +64,10 @@ export class FileStateService extends Service {
   async assertWritable(
     conversationId: string,
     absPath: string,
-  ): Promise<{ ok: true } | { ok: false; reason: "must_read_first" | "stale_read"; message: string }> {
+  ): Promise<
+    | { ok: true }
+    | { ok: false; reason: "must_read_first" | "stale_read"; message: string }
+  > {
     let stat: Awaited<ReturnType<typeof fs.stat>>;
     try {
       stat = await fs.stat(absPath);

@@ -1401,7 +1401,9 @@ export const visionAction: Action = {
     _responses?: Memory[],
   ): Promise<ActionResult> => {
     const params = readActionParams(_options);
-    const explicitOp = normalizeOp(params.action ?? params.subaction ?? params.op);
+    const explicitOp = normalizeOp(
+      params.action ?? params.subaction ?? params.op,
+    );
     const inferredOp =
       explicitOp ?? inferOpFromMessage(message.content?.text ?? "");
 

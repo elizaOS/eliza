@@ -6,7 +6,10 @@ import { parseJSONObjectFromText } from "@elizaos/core";
  */
 
 function parsedParams(text: string): Record<string, unknown> {
-  const parsed = parseJSONObjectFromText(text) as Record<string, unknown> | null;
+  const parsed = parseJSONObjectFromText(text) as Record<
+    string,
+    unknown
+  > | null;
   const nested =
     parsed && typeof parsed.params === "object" && !Array.isArray(parsed.params)
       ? (parsed.params as Record<string, unknown>)

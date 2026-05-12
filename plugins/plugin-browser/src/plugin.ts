@@ -7,12 +7,6 @@
  */
 
 import type http from "node:http";
-import {
-  readJsonBody as httpReadJsonBody,
-  sendJson as httpSendJson,
-  sendJsonError as httpSendJsonError,
-  promoteSubactionsToActions,
-} from "@elizaos/core";
 import { TLSSocket } from "node:tls";
 import type {
   AgentRuntime,
@@ -21,7 +15,13 @@ import type {
   ServiceClass,
   UUID,
 } from "@elizaos/core";
-import { resolveCanonicalOwnerId } from "@elizaos/core";
+import {
+  readJsonBody as httpReadJsonBody,
+  sendJson as httpSendJson,
+  sendJsonError as httpSendJsonError,
+  promoteSubactionsToActions,
+  resolveCanonicalOwnerId,
+} from "@elizaos/core";
 import { browserAction } from "./actions/browser.js";
 import { manageBrowserBridgeAction } from "./actions/manage-browser-bridge.js";
 import { BrowserService } from "./browser-service.js";
