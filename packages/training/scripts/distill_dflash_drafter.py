@@ -77,19 +77,27 @@ log = logging.getLogger("distill_dflash_drafter")
 # scripts/manifest/stage_local_eliza1_bundle.py and the doctor's reader.
 GGUF_TARGET_CHECKPOINT_KEY = "dflash-draft.target_checkpoint_sha256"
 
-# Recommended student base per tier. The 0_6b and 1_7b tiers both draft for
-# a small target, so the drafter must be a fraction of the target's size to
-# pay for itself; the 9b/27b tiers can afford a bigger, more accurate drafter.
+# Recommended student base per tier. The 0_6b and 1_7b tiers draft for a small
+# Qwen3-dense target (152k vocab — use a Qwen3-dense student so the tokenizers
+# match). The 2b/9b/27b tiers run the Qwen3.5/3.6 hybrid-linear-attn family
+# (248320-vocab Qwen3.5 tokenizer): their drafter MUST share that tokenizer, so
+# a Qwen3-0.6B/1.7B drafter is WRONG (mismatched vocab → every drafted token
+# rejected). There is no published Qwen3.5-0.6B, so the Qwen3.5-family drafter
+# is either `Qwen/Qwen3.5-0.8B-Base` itself (smallest published Qwen3.5,
+# ~0.65B text-only after dropping the vision tower) or a from-scratch ~0.6B
+# Qwen3.5-arch student (`--student-config`, KD onto the 0.8B-Base's logits).
 DEFAULT_STUDENT_BASE: dict[str, str] = {
     "0_6b": "Qwen/Qwen3-0.6B",  # quantized to ~0.15GB after TurboQuant Q3
     "1_7b": "Qwen/Qwen3-0.6B",
-    "9b": "Qwen/Qwen3-1.7B",
-    "27b": "Qwen/Qwen3-1.7B",
-    "27b-256k": "Qwen/Qwen3-1.7B",
-    # 1M-context variant of the 27B tier: same student base as 27b/27b-256k.
-    # The long-context K-cache rides the trellis path (turbo3_tcq); the
-    # drafter itself is the same KD recipe.
-    "27b-1m": "Qwen/Qwen3-1.7B",
+    # Qwen3.5/3.6 tiers — 248320-vocab Qwen3.5 tokenizer:
+    "2b": "Qwen/Qwen3.5-0.8B-Base",
+    "9b": "Qwen/Qwen3.5-0.8B-Base",
+    "27b": "Qwen/Qwen3.5-0.8B-Base",
+    "27b-256k": "Qwen/Qwen3.5-0.8B-Base",
+    # 1M-context variant of the 27B tier: same student base. The long-context
+    # K-cache rides the trellis path (turbo3_tcq); the drafter is the same KD
+    # recipe.
+    "27b-1m": "Qwen/Qwen3.5-0.8B-Base",
 }
 
 # Acceptance-rate gate per tier — the drafter is publish-blocking below this.
@@ -99,6 +107,7 @@ DEFAULT_STUDENT_BASE: dict[str, str] = {
 ACCEPTANCE_GATE: dict[str, float] = {
     "0_6b": 0.45,
     "1_7b": 0.50,
+    "2b": 0.50,
     "9b": 0.55,
     "27b": 0.55,
     "27b-256k": 0.55,
@@ -192,6 +201,69 @@ def _write_gguf_target_hash(gguf_path: Path, target_sha256: str) -> None:
 
 def _dataset_hash(dataset_path: Path) -> str:
     return _sha256_file(dataset_path)
+
+
+def _looks_like_hf_id(value: str) -> bool:
+    """`org/name` with no path separators beyond the single `/` and no local
+    directory at that path → treat it as a HuggingFace hub id."""
+    p = Path(value)
+    if p.exists():
+        return False
+    return value.count("/") == 1 and not value.startswith((".", "/"))
+
+
+def _load_causal_lm(source: str, *, dtype: Any, trust_remote_code: bool = True):
+    """Load a causal LM from an HF id or local dir, transparently unwrapping a
+    multimodal `*ForConditionalGeneration` (e.g. `Qwen3_5ForConditionalGeneration`)
+    to its text-only causal sub-model so the drafter is a pure text model."""
+    from transformers import AutoConfig, AutoModel, AutoModelForCausalLM  # noqa: PLC0415
+
+    cfg = AutoConfig.from_pretrained(source, trust_remote_code=trust_remote_code)
+    archs = list(getattr(cfg, "architectures", None) or [])
+    is_conditional_gen = any(a.endswith("ForConditionalGeneration") for a in archs)
+    if is_conditional_gen and getattr(cfg, "text_config", None) is not None:
+        # Build the text decoder from `text_config` alone so we never touch the
+        # vision tower / MTP head — those are dead weight for a draft model.
+        text_cfg = cfg.text_config
+        model = AutoModelForCausalLM.from_config(
+            text_cfg, trust_remote_code=trust_remote_code, torch_dtype=dtype
+        )
+        full = AutoModel.from_pretrained(
+            source, trust_remote_code=trust_remote_code, torch_dtype=dtype
+        )
+        # The text submodule on a Qwen3.x-VL stack is `.model` (the language
+        # model); copy its weights into the standalone causal LM.
+        lm = getattr(full, "model", None) or getattr(full, "language_model", None)
+        if lm is not None:
+            missing, unexpected = model.model.load_state_dict(lm.state_dict(), strict=False)
+            if missing or unexpected:
+                log.warning(
+                    "text-submodel weight transfer: %d missing, %d unexpected keys",
+                    len(missing),
+                    len(unexpected),
+                )
+        del full
+        # Tied embeddings: re-tie after the transfer.
+        model.tie_weights()
+        return model.to(dtype=dtype)
+    return AutoModelForCausalLM.from_pretrained(
+        source, trust_remote_code=trust_remote_code, torch_dtype=dtype
+    )
+
+
+def _build_student_from_config(config_path: Path, *, dtype: Any, trust_remote_code: bool = True):
+    """Init a fresh (random-weight) student from a JSON config — used for the
+    from-scratch ~0.6B Qwen3.5-arch drafter (no published Qwen3.5-0.6B base)."""
+    from transformers import AutoConfig, AutoModelForCausalLM  # noqa: PLC0415
+
+    cfg = AutoConfig.from_pretrained(str(config_path), trust_remote_code=trust_remote_code)
+    # If the config is a multimodal wrapper, init only its text decoder.
+    if getattr(cfg, "text_config", None) is not None and any(
+        a.endswith("ForConditionalGeneration") for a in (getattr(cfg, "architectures", None) or [])
+    ):
+        cfg = cfg.text_config
+    model = AutoModelForCausalLM.from_config(cfg, trust_remote_code=trust_remote_code, torch_dtype=dtype)
+    return model.to(dtype=dtype)
 
 
 # --------------------------------------------------------------------------
@@ -294,17 +366,19 @@ def _build_manifest(
 # Real distillation
 # --------------------------------------------------------------------------
 def _run_distillation(args: argparse.Namespace) -> int:
-    if not args.target_checkpoint:
-        log.error("--target-checkpoint is required for a real run")
+    target_ref = args.target_checkpoint or args.target_base
+    if not target_ref:
+        log.error("pass --target-checkpoint <dir> or --target-base <hf-id> for a real run")
         return 2
     if not args.dataset:
         log.error("--dataset is required for a real run")
         return 2
-    target_checkpoint = Path(args.target_checkpoint)
-    dataset_path = Path(args.dataset)
-    if not target_checkpoint.exists():
+    target_is_hf = _looks_like_hf_id(target_ref)
+    target_checkpoint = None if target_is_hf else Path(target_ref)
+    if target_checkpoint is not None and not target_checkpoint.exists():
         log.error("target checkpoint %s does not exist", target_checkpoint)
         return 2
+    dataset_path = Path(args.dataset)
     if not dataset_path.exists():
         log.error("dataset %s does not exist", dataset_path)
         return 2
@@ -313,9 +387,18 @@ def _run_distillation(args: argparse.Namespace) -> int:
         log.error("--target-gguf %s does not exist", target_gguf)
         return 2
 
-    student_base = args.student_base or DEFAULT_STUDENT_BASE.get(args.tier)
-    if not student_base:
-        log.error("no default student base for tier %s; pass --student-base", args.tier)
+    # The student is either a published base (`--student-base`) or a
+    # from-scratch config (`--student-config`, for the ~0.6B Qwen3.5-arch
+    # drafter — no published Qwen3.5-0.6B exists). Exactly one.
+    student_config_path = Path(args.student_config) if args.student_config else None
+    student_base = None
+    if student_config_path is None:
+        student_base = args.student_base or DEFAULT_STUDENT_BASE.get(args.tier)
+        if not student_base:
+            log.error("no default student base for tier %s; pass --student-base or --student-config", args.tier)
+            return 2
+    elif not student_config_path.exists():
+        log.error("--student-config %s does not exist", student_config_path)
         return 2
 
     # The target checkpoint hash the drafter records. Prefer the final
@@ -323,6 +406,24 @@ def _run_distillation(args: argparse.Namespace) -> int:
     # back to a deterministic hash of the HF checkpoint's safetensors index.
     if target_gguf is not None:
         target_sha256 = _sha256_file(target_gguf)
+    elif target_is_hf:
+        # No local file to hash and no shipped GGUF yet — record the resolved
+        # HF revision so the sidecar is reproducible; the publish gate stamps
+        # the real GGUF sha via --stamp-only once the text bundle ships.
+        try:
+            from huggingface_hub import HfApi  # noqa: PLC0415
+
+            rev = HfApi().model_info(target_ref).sha
+        except Exception:
+            rev = "unknown"
+        target_sha256 = _sha256_text(f"hf:{target_ref}@{rev}")
+        log.warning(
+            "target is an HF id (%s@%s) with no shipped GGUF — recorded a "
+            "provisional hash; re-run --stamp-only --drafter-gguf <gguf> "
+            "--target-gguf <text gguf> before publishing.",
+            target_ref,
+            rev,
+        )
     else:
         index = target_checkpoint / "model.safetensors.index.json"
         single = target_checkpoint / "model.safetensors"
@@ -341,12 +442,19 @@ def _run_distillation(args: argparse.Namespace) -> int:
     import torch  # noqa: PLC0415
     from torch.nn import functional as F  # noqa: PLC0415
     from torch.utils.data import DataLoader  # noqa: PLC0415
-    from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
+    from transformers import AutoTokenizer  # noqa: PLC0415
 
-    log.info("loading target tokenizer + model from %s", target_checkpoint)
-    tgt_tok = AutoTokenizer.from_pretrained(target_checkpoint)
-    log.info("loading student base %s", student_base)
-    stu_tok = AutoTokenizer.from_pretrained(student_base)
+    log.info("loading target tokenizer + model from %s", target_ref)
+    tgt_tok = AutoTokenizer.from_pretrained(target_ref, trust_remote_code=True)
+    if student_base is not None:
+        log.info("loading student base %s", student_base)
+        stu_tok = AutoTokenizer.from_pretrained(student_base, trust_remote_code=True)
+    else:
+        # From-scratch student: it has no tokenizer of its own — it ships with
+        # the target's. Save the target tokenizer alongside the student so the
+        # GGUF carries the right 248320-vocab Qwen3.5 tokenizer.
+        stu_tok = tgt_tok
+        log.info("from-scratch student from %s (tokenizer inherited from target)", student_config_path)
 
     # Vocab parity is non-negotiable — speculative decode rejects every
     # drafted token if the two tokenizers disagree (dflash-doctor enforces
@@ -356,23 +464,24 @@ def _run_distillation(args: argparse.Namespace) -> int:
             "tokenizer mismatch: target (%s) and student (%s) do not share a "
             "vocabulary. Pick a student from the same Qwen family as the text "
             "backbone.",
-            target_checkpoint,
+            target_ref,
             student_base,
         )
         return 3
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     dtype = torch.bfloat16 if device == "cuda" else torch.float32
-    target = AutoModelForCausalLM.from_pretrained(
-        target_checkpoint, torch_dtype=dtype
-    ).to(device)
+    target = _load_causal_lm(target_ref, dtype=dtype).to(device)
     target.eval()
     for p in target.parameters():
         p.requires_grad_(False)
-    student = AutoModelForCausalLM.from_pretrained(
-        student_base, torch_dtype=torch.float32
-    ).to(device)
+    if student_config_path is not None:
+        student = _build_student_from_config(student_config_path, dtype=torch.float32).to(device)
+    else:
+        student = _load_causal_lm(student_base, dtype=torch.float32).to(device)
     student.train()
+    n_student_params = sum(p.numel() for p in student.parameters())
+    log.info("student parameter count: %.3fB", n_student_params / 1e9)
 
     # Distillation corpus: jsonl with a `text` field (or chat `messages`
     # rendered via the target's chat template). We only need the token
@@ -472,8 +581,10 @@ def _run_distillation(args: argparse.Namespace) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     hf_out = out_dir / f"drafter-{args.tier}-hf"
     student.save_pretrained(hf_out)
-    stu_tok.save_pretrained(hf_out)
-    log.info("saved distilled student to %s", hf_out)
+    # Always persist the *target's* tokenizer with the student so the GGUF
+    # carries the exact 248320-vocab Qwen3.5 tokenizer the targets verify with.
+    tgt_tok.save_pretrained(hf_out)
+    log.info("saved distilled student (%.3fB params) to %s", n_student_params / 1e9, hf_out)
 
     # Convert to GGUF via the fork's converter, then stamp the target hash.
     convert = _find_convert_script()
@@ -502,8 +613,8 @@ def _run_distillation(args: argparse.Namespace) -> int:
 
     manifest = _build_manifest(
         args=args,
-        student_base=student_base,
-        target_checkpoint=target_checkpoint,
+        student_base=(student_base or f"<from-scratch:{student_config_path}>"),
+        target_checkpoint=target_checkpoint if target_checkpoint is not None else Path(target_ref),
         target_gguf=target_gguf,
         target_sha256=target_sha256,
         dataset_hash=_dataset_hash(dataset_path),
@@ -512,6 +623,7 @@ def _run_distillation(args: argparse.Namespace) -> int:
         gate=ACCEPTANCE_GATE.get(args.tier),
         synthetic=False,
     )
+    manifest["studentParams"] = n_student_params
     manifest_path = out_dir / f"drafter-{args.tier}.distill.json"
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
     log.info("wrote distillation manifest %s", manifest_path)
@@ -545,12 +657,26 @@ def build_parser() -> argparse.ArgumentParser:
         choices=sorted(DEFAULT_STUDENT_BASE.keys()),
         help="Eliza-1 tier this drafter ships with.",
     )
-    p.add_argument("--target-checkpoint", help="HF dir of the fine-tuned text model.")
+    p.add_argument("--target-checkpoint", help="Local HF dir of the fine-tuned text model.")
+    p.add_argument(
+        "--target-base",
+        help="HF hub id of the target text model (e.g. Qwen/Qwen3.5-0.8B-Base) "
+        "when no local fine-tuned checkpoint exists yet — the drafter is "
+        "distilled to track this base's distribution; re-stamp with the "
+        "shipped text GGUF's sha via --stamp-only before publishing.",
+    )
     p.add_argument(
         "--target-gguf",
         help="Final shipped text GGUF; its sha256 is recorded in the drafter.",
     )
-    p.add_argument("--student-base", help="HF id/dir of the small student base.")
+    p.add_argument("--student-base", help="HF id/dir of the small published student base.")
+    p.add_argument(
+        "--student-config",
+        help="JSON config for a from-scratch (random-init) student — used for "
+        "the ~0.6B Qwen3.5-arch drafter, since no Qwen3.5-0.6B is published. "
+        "Mutually exclusive with --student-base. The student inherits the "
+        "target's tokenizer.",
+    )
     p.add_argument("--dataset", help="jsonl distillation corpus (text or messages).")
     p.add_argument("--out-dir", required=True)
     p.add_argument("--epochs", type=int, default=1)

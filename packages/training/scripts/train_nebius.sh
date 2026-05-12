@@ -414,6 +414,97 @@ fetch() {
   rsync -avhz --info=progress2 "$target:$REMOTE_TRAIN_DIR/reports/" "$ROOT/reports/" || true
 }
 
+# --- DFlash drafter distillation (distill_dflash_drafter.py) ----------------
+# Env knobs (defaults frugal — a small KD job, not a full pipeline):
+#   DFLASH_TIER            tier the drafter ships for (default 9b — the 0.6B
+#                          Qwen3.5-arch drafter serves the 2b/9b/27b tiers)
+#   DFLASH_TARGET_BASE     HF id of the target text model whose logits we
+#                          distill toward (default Qwen/Qwen3.5-0.8B-Base)
+#   DFLASH_STUDENT_CONFIG  from-scratch ~0.6B student config dir
+#                          (default configs/dflash-drafter-0_6b-qwen3_5)
+#   DFLASH_STUDENT_BASE    alternative: a published student HF id (overrides
+#                          DFLASH_STUDENT_CONFIG if set)
+#   DFLASH_DATASET         distillation corpus (default $TRAIN_FILE)
+#   DFLASH_EPOCHS / DFLASH_BATCH / DFLASH_GRAD_ACCUM / DFLASH_MAX_SEQ_LEN
+#                          default 1 / 8 / 4 / 2048
+#   DFLASH_MAX_SAMPLES     cap examples (default 0 = all; set e.g. 20000 for a
+#                          short budget-bounded run)
+#   DFLASH_OUT_DIR         remote+local out dir name (default
+#                          out/dflash-drafter-${DFLASH_TIER})
+run_distill_remote() {
+  local target; target="$(ssh_target)"
+  local tier="${DFLASH_TIER:-9b}"
+  local target_base="${DFLASH_TARGET_BASE:-Qwen/Qwen3.5-0.8B-Base}"
+  local student_cfg="${DFLASH_STUDENT_CONFIG:-configs/dflash-drafter-0_6b-qwen3_5}"
+  local student_base="${DFLASH_STUDENT_BASE:-}"
+  local ds="${DFLASH_DATASET:-$TRAIN_FILE}"
+  local epochs="${DFLASH_EPOCHS:-1}" batch="${DFLASH_BATCH:-8}" ga="${DFLASH_GRAD_ACCUM:-4}"
+  local msl="${DFLASH_MAX_SEQ_LEN:-2048}" maxn="${DFLASH_MAX_SAMPLES:-0}"
+  local out_dir="${DFLASH_OUT_DIR:-out/dflash-drafter-${tier}}"
+  local hf_tok="${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}"
+  local log="$REMOTE_TRAIN_DIR/distill_${RUN_NAME}.log"
+  local student_arg
+  if [ -n "$student_base" ]; then student_arg="--student-base $student_base"; else student_arg="--student-config $student_cfg"; fi
+
+  echo "[train_nebius][distill] tier=$tier target=$target_base student=${student_base:-$student_cfg} dataset=$ds epochs=$epochs batch=$batch ga=$ga seq=$msl max_samples=$maxn"
+  ssh -o StrictHostKeyChecking=no "$target" "cat > $REMOTE_TRAIN_DIR/.run_distill.sh" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+cd $REMOTE_TRAIN_DIR
+export PATH=\$HOME/.local/bin:\$PATH
+export CUDA_VISIBLE_DEVICES=0
+export HF_HOME=/opt/hf-cache
+sudo mkdir -p \$HF_HOME && sudo chown -R \$USER \$HF_HOME || true
+${hf_tok:+export HUGGING_FACE_HUB_TOKEN='$hf_tok'; export HF_TOKEN='$hf_tok'}
+uv sync --extra train
+# qwen3_5 (hybrid linear-attn) needs transformers >= 4.57.0.dev0; the train
+# extra pins >=4.46. Upgrade in-venv (matches the local box's 5.7.0).
+uv pip install --python .venv/bin/python -U 'transformers>=4.57.0' 'accelerate>=1.1.0'
+# Same cu130-driver problem as run_remote(): the Nebius cuda12.8 image ships a
+# 570.x driver; the cu130-pinned torch can't see CUDA. Swap to cu128.
+.venv/bin/python -c 'import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)' 2>/dev/null || {
+  echo "[remote][distill] torch cannot see CUDA — swapping to torch 2.11.0+cu128"
+  uv pip uninstall --python .venv/bin/python torch torchvision triton 2>/dev/null || true
+  cu13pkgs="\$(uv pip list --python .venv/bin/python 2>/dev/null | awk '/^nvidia-[a-z0-9-]+ /{print \$1}')"
+  [ -n "\$cu13pkgs" ] && uv pip uninstall --python .venv/bin/python \$cu13pkgs 2>/dev/null || true
+  uv pip install --python .venv/bin/python 'torch==2.11.0' --index-url https://download.pytorch.org/whl/cu128
+  uv pip install --python .venv/bin/python --reinstall nvidia-cusparselt-cu12
+  .venv/bin/python -c 'import torch; assert torch.cuda.is_available(); print("[remote][distill] torch", torch.__version__, "cuda OK on", torch.cuda.get_device_name(0))'
+}
+export UV_NO_SYNC=1 UV_FROZEN=1
+.venv/bin/python scripts/distill_dflash_drafter.py \\
+  --tier $tier --target-base $target_base $student_arg \\
+  --dataset $ds --out-dir $out_dir \\
+  --epochs $epochs --batch-size $batch --grad-accum $ga --max-seq-len $msl --max-samples $maxn
+echo DISTILL_DONE_OK
+EOF
+  ssh -o StrictHostKeyChecking=no "$target" "chmod +x $REMOTE_TRAIN_DIR/.run_distill.sh; tmux kill-session -t elizadistill 2>/dev/null || true; tmux new-session -d -s elizadistill \"bash $REMOTE_TRAIN_DIR/.run_distill.sh 2>&1 | tee $log; echo DISTILL_EXIT=\\\$? >> $log\""
+  echo "[train_nebius][distill] launched under tmux 'elizadistill' — log: $log"
+  local i=0
+  while true; do
+    sleep 60; i=$((i+1))
+    local tail_out; tail_out="$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$target" "tail -n 3 $log 2>/dev/null" 2>/dev/null || echo '(ssh hiccup)')"
+    echo "[train_nebius][distill] +$((i))m | $(echo "$tail_out" | tr '\n' ' ' | tr '\r' ' ' | tail -c 220)"
+    if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$target" "grep -q 'DISTILL_EXIT=' $log 2>/dev/null"; then
+      local rc; rc="$(ssh -o StrictHostKeyChecking=no "$target" "grep 'DISTILL_EXIT=' $log | tail -1 | sed 's/.*=//'" 2>/dev/null || echo '?')"
+      echo "[train_nebius][distill] finished (DISTILL_EXIT=$rc)"
+      [ "$rc" = "0" ] || return 1
+      break
+    fi
+    if [ "$i" -gt 240 ]; then echo "[train_nebius][distill] ERROR: still running after 4h — bailing (VM left up; ssh in or run teardown)"; return 1; fi
+  done
+}
+
+fetch_distill() {
+  local target; target="$(ssh_target)"
+  local tier="${DFLASH_TIER:-9b}"
+  local out_dir="${DFLASH_OUT_DIR:-out/dflash-drafter-${tier}}"
+  echo "[train_nebius][fetch-distill] pulling $out_dir + the run log"
+  mkdir -p "$ROOT/$out_dir"
+  rsync -avhz --info=progress2 "$target:$REMOTE_TRAIN_DIR/$out_dir/" "$ROOT/$out_dir/" || true
+  rsync -avhz "$target:$REMOTE_TRAIN_DIR/distill_${RUN_NAME}.log" "$ROOT/$out_dir/distill.log" 2>/dev/null || true
+}
+
 teardown() {
   local iid did
   iid="$(instance_id_by_name)"
@@ -431,6 +522,16 @@ teardown() {
   fi
 }
 
+sync_distill_dataset() {
+  # The distiller needs exactly one corpus file (DFLASH_DATASET / TRAIN_FILE).
+  local target; target="$(ssh_target)"
+  local ds="${DFLASH_DATASET:-$TRAIN_FILE}"
+  local d; d="$(dirname "$ds")"
+  ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/$d"
+  echo "[train_nebius][sync] sending distillation corpus $ds"
+  rsync -avhz --partial --info=progress2 "$ROOT/$ds" "$target:$REMOTE_TRAIN_DIR/$ds"
+}
+
 case "$cmd" in
   smoke) smoke ;;
   provision) provision ;;
@@ -439,12 +540,25 @@ case "$cmd" in
   fetch) fetch ;;
   teardown) teardown ;;
   ip) vm_ip ;;
+  distill) run_distill_remote ;;
+  fetch-distill) fetch_distill ;;
   full)
     trap 'echo "[train_nebius] full: ensuring teardown on exit"; teardown || true' EXIT
     provision
     sync_tree
     run_remote
     fetch
+    ;;
+  distill-full)
+    # Provision → sync training tree → sync the one corpus → distill → fetch
+    # the drafter → teardown. Frugal: a single H200 for ~1-3 GPU-h on a small
+    # KD job. Set DFLASH_MAX_SAMPLES for a short budget-bounded pass.
+    trap 'echo "[train_nebius] distill-full: ensuring teardown on exit"; teardown || true' EXIT
+    provision
+    sync_tree
+    sync_distill_dataset
+    run_distill_remote
+    fetch_distill
     ;;
   help|*) sed -n '1,80p' "$0" ;;
 esac
