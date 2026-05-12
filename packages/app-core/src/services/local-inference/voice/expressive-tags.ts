@@ -109,7 +109,15 @@ export function isExpressiveEmotionEnum(
 
 // Match `[tag]` with optional surrounding whitespace inside the brackets.
 // Anchored to the bracket characters; the inner text is captured for lookup.
-const TAG_RE = /\[\s*([a-zA-Z][a-zA-Z-]*)\s*\]/g;
+// **A fresh regex per call** — a global regex carries `lastIndex` state, and
+// `parseExpressiveTags` calls `String.prototype.replace` (which resets a
+// shared regex's `lastIndex` to 0) from inside its own `exec` loop on the same
+// pattern; sharing one object there is an infinite loop. `tagRegex()` hands
+// out independent instances.
+const TAG_RE_SOURCE = "\\[\\s*([a-zA-Z][a-zA-Z-]*)\\s*\\]";
+function tagRegex(): RegExp {
+  return new RegExp(TAG_RE_SOURCE, "g");
+}
 
 // ---------------------------------------------------------------------------
 // parseExpressiveTags
@@ -177,7 +185,8 @@ export function parseExpressiveTags(replyText: string): ParsedExpressiveText {
 
   const flush = (): void => {
     const raw = curRawParts.join("");
-    const clean = raw.replace(TAG_RE, "").trim();
+    // Fresh regex — must NOT touch `re`'s `lastIndex` (we're inside `re`'s loop).
+    const clean = raw.replace(tagRegex(), "").trim();
     // A segment with no visible text and no non-verbals carries nothing.
     if (clean.length === 0 && curNonverbals.length === 0) return;
     segments.push({
@@ -189,10 +198,16 @@ export function parseExpressiveTags(replyText: string): ParsedExpressiveText {
     });
   };
 
-  TAG_RE.lastIndex = 0;
+  const re = tagRegex();
   let m: RegExpExecArray | null;
   // biome-ignore lint/suspicious/noAssignInExpressions: standard regex-exec loop.
-  while ((m = TAG_RE.exec(text)) !== null) {
+  while ((m = re.exec(text)) !== null) {
+    // Zero-width matches can't happen (the pattern needs `[…]`), but guard
+    // anyway so a future pattern change can't wedge the loop.
+    if (m[0].length === 0) {
+      re.lastIndex += 1;
+      continue;
+    }
     const before = text.slice(cursor, m.index);
     cursor = m.index + m[0].length;
     const inner = (m[1] ?? "").toLowerCase();
@@ -243,7 +258,7 @@ export function parseExpressiveTags(replyText: string): ParsedExpressiveText {
   }
 
   return {
-    cleanText: text.replace(TAG_RE, "").replace(/\s+/g, " ").trim(),
+    cleanText: text.replace(tagRegex(), "").replace(/\s+/g, " ").trim(),
     segments,
     dominantEmotion,
     anySinging,
@@ -258,7 +273,7 @@ export function parseExpressiveTags(replyText: string): ParsedExpressiveText {
  *  the model's text, not a tag we recognise. */
 export function stripExpressiveTags(text: string): string {
   return text
-    .replace(TAG_RE, (full, inner) =>
+    .replace(tagRegex(), (full, inner) =>
       ALL_TAG_SET.has(String(inner).toLowerCase()) ? "" : full,
     )
     .replace(/[ \t]{2,}/g, " ")
