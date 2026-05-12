@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { TrajectoryRecorder } from "../trajectory-recorder";
 import { runPlannerLoop } from "../planner-loop";
+import type { TrajectoryRecorder } from "../trajectory-recorder";
 
 /**
  * Regression coverage for the structural fix that stops tool-diagnostic
@@ -97,7 +97,8 @@ describe("planner-loop — user-facing tool text isolation", () => {
 	});
 
 	it("uses userFacingText as the reply when a tool sets it", async () => {
-		const userFriendly = "Here are your 3 most recent PRs: #7593, #7592, #7588.";
+		const userFriendly =
+			"Here are your 3 most recent PRs: #7593, #7592, #7588.";
 		const runtime = {
 			useModel: vi
 				.fn()

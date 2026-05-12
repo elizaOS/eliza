@@ -10,7 +10,6 @@ const OVERLAY_REGISTRY_KEY = "__elizaosOverlayAppRegistry__";
 
 const ELIZAOS_AOSP_UA =
   "Mozilla/5.0 (Linux; Android 15; sdk_gphone64_x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/124.0.6367.243 Mobile Safari/537.36 ElizaOS/dev-2026-01";
-const ELIZAOS_AOSP_UA = `${ELIZAOS_AOSP_UA} ElizaOS/dev-2026-01`;
 const STOCK_ANDROID_UA =
   "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.243 Mobile Safari/537.36";
 const DESKTOP_LINUX_UA =

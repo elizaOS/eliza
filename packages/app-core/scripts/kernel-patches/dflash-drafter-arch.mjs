@@ -27,13 +27,25 @@ function requireIncludes(source, needle, rel) {
   }
 }
 
-function insertAfter(source, anchor, insertion, rel, present = insertion.trim()) {
+function insertAfter(
+  source,
+  anchor,
+  insertion,
+  rel,
+  present = insertion.trim(),
+) {
   if (source.includes(present)) return source;
   requireIncludes(source, anchor, rel);
   return source.replace(anchor, `${anchor}${insertion}`);
 }
 
-function insertBefore(source, anchor, insertion, rel, present = insertion.trim()) {
+function insertBefore(
+  source,
+  anchor,
+  insertion,
+  rel,
+  present = insertion.trim(),
+) {
   if (source.includes(present)) return source;
   requireIncludes(source, anchor, rel);
   return source.replace(anchor, `${insertion}${anchor}`);
@@ -323,7 +335,9 @@ export function patchDflashDrafterArch(llamaCppRoot, { dryRun = false } = {}) {
     patchTextFile(llamaCppRoot, rel, transform, touched);
   }
   if (touched.length === 0) {
-    console.log("[dflash-build] dflash-draft architecture support already present");
+    console.log(
+      "[dflash-build] dflash-draft architecture support already present",
+    );
   } else {
     console.log(
       `[dflash-build] patched dflash-draft architecture support: ${touched.join(", ")}`,

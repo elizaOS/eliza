@@ -19,7 +19,10 @@ const SCHEMA_PATH = resolve(PLATFORM_ROOT, "src/rpc-schema.ts");
 const HANDLERS_PATH = resolve(PLATFORM_ROOT, "src/rpc-handlers.ts");
 
 /** Extract top-level method names from `requests: { ... }` block in a schema side. */
-function extractSchemaMethods(source: string, side: "bun" | "webview"): Set<string> {
+function extractSchemaMethods(
+	source: string,
+	side: "bun" | "webview",
+): Set<string> {
 	const sideAnchor = `${side}: RPCSchema<{`;
 	const sideStart = source.indexOf(sideAnchor);
 	if (sideStart < 0) {
@@ -107,11 +110,7 @@ function extractHandlerKeys(source: string): Set<string> {
 		else if (ch === "(") parenDepth++;
 		else if (ch === ")") parenDepth--;
 		else if (ch === "\n") lineStart = j + 1;
-		else if (
-			(ch === ":" || ch === ",") &&
-			d === 0 &&
-			parenDepth === 0
-		) {
+		else if ((ch === ":" || ch === ",") && d === 0 && parenDepth === 0) {
 			const line = block.slice(lineStart, j);
 			// Property: identifier alone (shorthand) or identifier preceding colon.
 			// For shorthand, the line is just the identifier (with whitespace).

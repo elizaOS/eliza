@@ -803,10 +803,7 @@ function parsePositiveInt(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function createStubConversation({
-  title = "New chat",
-  metadata = {},
-} = {}) {
+function createStubConversation({ title = "New chat", metadata = {} } = {}) {
   conversationCounter += 1;
   const createdAt = nowIso();
   const conversation = {
@@ -1279,10 +1276,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (
-    req.method === "GET" &&
-    url.pathname === "/api/vincent/trading-profile"
-  ) {
+  if (req.method === "GET" && url.pathname === "/api/vincent/trading-profile") {
     sendJson(req, res, 200, { connected: false, profile: null });
     return;
   }
@@ -1474,7 +1468,9 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  const conversationMatch = url.pathname.match(/^\/api\/conversations\/([^/]+)$/);
+  const conversationMatch = url.pathname.match(
+    /^\/api\/conversations\/([^/]+)$/,
+  );
   if (conversationMatch) {
     const conversationId = decodeURIComponent(conversationMatch[1]);
     const conversation = findStubConversation(conversationId);

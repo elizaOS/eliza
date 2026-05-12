@@ -319,7 +319,9 @@ function makeBenchmarkConnectorMemory(args: {
     ),
     entityId: args.runtime.agentId,
     agentId: args.runtime.agentId,
-    roomId: stringToUuid(`benchmark-${args.source}-room-${args.runtime.agentId}`),
+    roomId: stringToUuid(
+      `benchmark-${args.source}-room-${args.runtime.agentId}`,
+    ),
     content: {
       text: args.text,
       source: args.source,
@@ -953,17 +955,16 @@ export function parsePlannedActionsFromResponse(response: string): string[] {
   if (!parsed) {
     return [];
   }
-  const rawActions =
-    Array.isArray(parsed)
-      ? parsed
-      : parsed.toolCalls ??
-        parsed.tool_calls ??
-        parsed.actions ??
-        parsed.action ??
-        parsed.actionName ??
-        parsed.name ??
-        parsed.tool ??
-        parsed.function;
+  const rawActions = Array.isArray(parsed)
+    ? parsed
+    : (parsed.toolCalls ??
+      parsed.tool_calls ??
+      parsed.actions ??
+      parsed.action ??
+      parsed.actionName ??
+      parsed.name ??
+      parsed.tool ??
+      parsed.function);
   const names = parseActionNamesFromValue(rawActions);
   if (
     names.length === 0 &&
@@ -1070,9 +1071,7 @@ async function seedBenchmarkCaseFixtures(
   //    is migrated against the per-case PGLite adapter. Idempotent — safe to
   //    call even when the runtime already ran plugin migrations at boot.
   try {
-    const { LifeOpsRepository } = (await import(
-      "@elizaos/app-lifeops"
-    )) as {
+    const { LifeOpsRepository } = (await import("@elizaos/app-lifeops")) as {
       LifeOpsRepository: {
         bootstrapSchema?: (r: AgentRuntime) => Promise<void>;
       };
@@ -1090,9 +1089,7 @@ async function seedBenchmarkCaseFixtures(
   // 2) Seed a David relationship row used by relationship-flow benchmark cases.
   try {
     const now = new Date().toISOString();
-    const { LifeOpsRepository } = await import(
-      "@elizaos/app-lifeops"
-    );
+    const { LifeOpsRepository } = await import("@elizaos/app-lifeops");
     const repo = new LifeOpsRepository(runtime);
     const relationshipRepo = repo as typeof repo & {
       upsertRelationship?: (rel: Record<string, unknown>) => Promise<unknown>;
@@ -1312,9 +1309,7 @@ async function seedBenchmarkCaseFixtures(
     let lastError: unknown;
     for (let attempt = 0; attempt < 20 && !seeded; attempt += 1) {
       try {
-        const approvalModule = await import(
-          "@elizaos/app-lifeops"
-        );
+        const approvalModule = await import("@elizaos/app-lifeops");
         const createApprovalQueue =
           (approvalModule as { createApprovalQueue?: unknown })
             .createApprovalQueue ??

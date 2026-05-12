@@ -52,10 +52,10 @@
 		"dev": "bun --hot build.ts",
 		"test": "vitest run",
 		"clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
-		"format": "../../node_modules/.bin/biome format --write .",
-		"format:check": "../../node_modules/.bin/biome format .",
-		"lint": "../../node_modules/.bin/biome check --write --unsafe .",
-		"lint:check": "../../node_modules/.bin/biome check .",
+		"format": "bunx @biomejs/biome format --write .",
+		"format:check": "bunx @biomejs/biome format .",
+		"lint": "bunx @biomejs/biome check --write --unsafe .",
+		"lint:check": "bunx @biomejs/biome check .",
 		"typecheck": "tsc --noEmit"
 	},
 	"publishConfig": {

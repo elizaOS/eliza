@@ -188,7 +188,7 @@ function patchQuantsQjl(cacheDir) {
       "[cpu-thread-parallelism] ggml_compute_forward_attn_score_qjl body not matched in quants-qjl.c",
     );
   }
-  const patched = original.replace(fnRe, ATTN_SCORE_QJL_FN + "\n");
+  const patched = original.replace(fnRe, `${ATTN_SCORE_QJL_FN}\n`);
   if (patched === original) {
     throw new Error(
       "[cpu-thread-parallelism] quants-qjl.c unchanged after patch attempt",
@@ -333,7 +333,7 @@ function patchFusedAttn(cacheDir) {
       "[cpu-thread-parallelism] ggml_compute_forward_fused_attn_qjl_tbq body not matched in fused-attn-qjl-tbq.c",
     );
   }
-  const patched = original.replace(fnRe, FUSED_ATTN_FN + "\n");
+  const patched = original.replace(fnRe, `${FUSED_ATTN_FN}\n`);
   if (patched === original) {
     throw new Error(
       "[cpu-thread-parallelism] fused-attn-qjl-tbq.c unchanged after patch attempt",

@@ -300,14 +300,20 @@ function runInherit(cmd, args, opts = {}) {
 function ensureTool(name) {
   const result = runCapture("xcrun", ["--find", name], { timeout: 30_000 });
   if (result.status !== 0 || !result.stdout.trim()) {
-    throw new Error(`[ios-smoke] required Xcode tool not found via xcrun: ${name}`);
+    throw new Error(
+      `[ios-smoke] required Xcode tool not found via xcrun: ${name}`,
+    );
   }
 }
 
 function parsePlistJson(plistPath) {
-  const result = runCapture("plutil", ["-convert", "json", "-o", "-", plistPath], {
-    timeout: 30_000,
-  });
+  const result = runCapture(
+    "plutil",
+    ["-convert", "json", "-o", "-", plistPath],
+    {
+      timeout: 30_000,
+    },
+  );
   if (result.status !== 0) {
     throw Object.assign(
       new Error(
@@ -320,7 +326,9 @@ function parsePlistJson(plistPath) {
     return JSON.parse(result.stdout);
   } catch (err) {
     throw Object.assign(
-      new Error(`[ios-smoke] malformed JSON from plutil for ${plistPath}: ${err}`),
+      new Error(
+        `[ios-smoke] malformed JSON from plutil for ${plistPath}: ${err}`,
+      ),
       { exitCode: EXIT.localPreflight },
     );
   }
@@ -358,7 +366,9 @@ function validateXcframeworkDeviceSlice(xcframework) {
   const libraryPath = path.join(xcframework, library.LibraryIdentifier);
   if (!fs.existsSync(libraryPath)) {
     throw Object.assign(
-      new Error(`[ios-smoke] xcframework device slice path is missing: ${libraryPath}`),
+      new Error(
+        `[ios-smoke] xcframework device slice path is missing: ${libraryPath}`,
+      ),
       { exitCode: EXIT.localPreflight, xcframeworkInfo: info },
     );
   }
@@ -400,14 +410,19 @@ function parseDevicectlDevices(text) {
 
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
-    if (!line || /^-+$/.test(line) || /^Name\s+Hostname\s+Identifier\s+State\s+Model/i.test(line)) {
+    if (
+      !line ||
+      /^-+$/.test(line) ||
+      /^Name\s+Hostname\s+Identifier\s+State\s+Model/i.test(line)
+    ) {
       continue;
     }
     const cols = line.split(/\s{2,}/).map((part) => part.trim());
     if (cols.length < 5) continue;
     const [name, hostname, id, state, model] = cols;
     const isIosPhysical =
-      /\b(iPhone|iPad|iPod)\b/i.test(name) || /\b(iPhone|iPad|iPod)\b/i.test(model);
+      /\b(iPhone|iPad|iPod)\b/i.test(name) ||
+      /\b(iPhone|iPad|iPod)\b/i.test(model);
     if (!isIosPhysical) continue;
     const record = {
       section: "CoreDevice",
@@ -419,7 +434,10 @@ function parseDevicectlDevices(text) {
       model,
       idSource: "devicectl",
     };
-    if (/(available|connected)/i.test(state) && !/unavailable|offline|disconnected/i.test(state)) {
+    if (
+      /(available|connected)/i.test(state) &&
+      !/unavailable|offline|disconnected/i.test(state)
+    ) {
       connected.push(record);
     } else {
       offline.push(record);
@@ -452,9 +470,14 @@ function listPhysicalIosDevices() {
     timeout: 90_000,
   });
   const coreDevices =
-    devicectl.status === 0 ? parseDevicectlDevices(devicectl.stdout) : { connected: [], offline: [] };
+    devicectl.status === 0
+      ? parseDevicectlDevices(devicectl.stdout)
+      : { connected: [], offline: [] };
   return {
-    connected: mergeDeviceLists(xctraceDevices.connected, coreDevices.connected),
+    connected: mergeDeviceLists(
+      xctraceDevices.connected,
+      coreDevices.connected,
+    ),
     offline: mergeDeviceLists(xctraceDevices.offline, coreDevices.offline),
     raw: xctrace.stdout,
     xctraceRaw: xctrace.stdout,
@@ -529,7 +552,9 @@ function ensureXcframework(args) {
     throw Object.assign(
       new Error(
         `[ios-smoke] LlamaCpp.xcframework not found in default locations:\n` +
-          defaultXcframeworkCandidates().map((p) => `  - ${p}`).join("\n") +
+          defaultXcframeworkCandidates()
+            .map((p) => `  - ${p}`)
+            .join("\n") +
           `\nRun with --build-if-missing, or pass --xcframework <path>.`,
       ),
       { exitCode: EXIT.missingXcframework },
@@ -586,44 +611,78 @@ function locateDeviceFrameworkBinary(xcframework) {
 
 function classifyXcodebuildFailure(result) {
   const text = `${result.stdout}\n${result.stderr}`;
-  if (/invalid option|Usage: xcodebuild/i.test(text)) return "xcodebuild-invocation";
+  if (/invalid option|Usage: xcodebuild/i.test(text))
+    return "xcodebuild-invocation";
   if (/Developer Mode/i.test(text)) return "developer-mode-disabled";
-  if (/device .*not trusted|not trusted by this computer|trust this computer/i.test(text)) {
+  if (
+    /device .*not trusted|not trusted by this computer|trust this computer/i.test(
+      text,
+    )
+  ) {
     return "device-not-trusted";
   }
-  if (/Tool-hosted testing is unavailable on device destinations|Select a host application for the test target/i.test(text)) {
+  if (
+    /Tool-hosted testing is unavailable on device destinations|Select a host application for the test target/i.test(
+      text,
+    )
+  ) {
     return "requires-host-app-test-target";
   }
   if (/not paired|pair/i.test(text)) return "device-not-paired";
   if (/locked/i.test(text)) return "device-locked";
-  if (/No profiles for|requires a provisioning profile|Signing for .* requires a development team|Code signing/i.test(text)) {
+  if (
+    /No profiles for|requires a provisioning profile|Signing for .* requires a development team|Code signing/i.test(
+      text,
+    )
+  ) {
     return "code-signing";
   }
-  if (/The device .* is not available|Unable to find a destination|Ineligible destinations/i.test(text)) {
+  if (
+    /The device .* is not available|Unable to find a destination|Ineligible destinations/i.test(
+      text,
+    )
+  ) {
     return "device-destination-unavailable";
   }
   if (/duplicate symbol|duplicate symbols/i.test(text)) {
     return "duplicate-static-linkage";
   }
-  if (/framework 'Accelerate' not found|Undefined symbol: _(?:cblas_|vDSP_)/i.test(text)) {
+  if (
+    /framework 'Accelerate' not found|Undefined symbol: _(?:cblas_|vDSP_)/i.test(
+      text,
+    )
+  ) {
     return "missing-system-framework-linkage";
   }
-  if (/Crash:\s+ElizaIosRuntimeSmokeHost\s+at\s+eliza_ios_ffi_abi_smoke_run|testLibElizaInferenceAbiV1CallsMatchHeader.*Failed|unexpected exit, crash, or test timeout/i.test(text)) {
+  if (
+    /Crash:\s+ElizaIosRuntimeSmokeHost\s+at\s+eliza_ios_ffi_abi_smoke_run|testLibElizaInferenceAbiV1CallsMatchHeader.*Failed|unexpected exit, crash, or test timeout/i.test(
+      text,
+    )
+  ) {
     return "voice-abi-runtime-crash";
   }
-  const undefinedSymbolFailure = /Undefined symbols|symbol\(s\) not found|ld: symbol/i.test(text);
+  const undefinedSymbolFailure =
+    /Undefined symbols|symbol\(s\) not found|ld: symbol/i.test(text);
   const missingVoiceAbi =
     undefinedSymbolFailure &&
-    /_eliza_inference_(?:abi_version|create|destroy|mmap_acquire|mmap_evict|tts_synthesize|asr_transcribe|free_string)\b/i.test(text);
+    /_eliza_inference_(?:abi_version|create|destroy|mmap_acquire|mmap_evict|tts_synthesize|asr_transcribe|free_string)\b/i.test(
+      text,
+    );
   const missingCapacitorBridge =
     undefinedSymbolFailure &&
-    /_llama_(?:init_context|release_context|completion|stop_completion|get_formatted_chat|toggle_native_log|embedding|embedding_register_context|embedding_unregister_context|get_model_info|get_context_ptr|get_last_error|free_string)\b/i.test(text);
+    /_llama_(?:init_context|release_context|completion|stop_completion|get_formatted_chat|toggle_native_log|embedding|embedding_register_context|embedding_unregister_context|get_model_info|get_context_ptr|get_last_error|free_string)\b/i.test(
+      text,
+    );
   if (missingVoiceAbi && missingCapacitorBridge) {
     return "missing-capacitor-bridge-and-voice-abi-symbols";
   }
   if (missingVoiceAbi) return "missing-voice-abi-symbols";
   if (missingCapacitorBridge) return "missing-capacitor-bridge-symbols";
-  if (/symbol\(s\) not found|Undefined symbols|Missing required Eliza-1 iOS runtime symbols/i.test(text)) {
+  if (
+    /symbol\(s\) not found|Undefined symbols|Missing required Eliza-1 iOS runtime symbols/i.test(
+      text,
+    )
+  ) {
     return "runtime-symbol-resolution";
   }
   return "xcodebuild-failed";
@@ -696,7 +755,11 @@ function writeSmokeProject({
   fs.mkdirSync(vendorDir, { recursive: true });
   fs.mkdirSync(hostDir, { recursive: true });
   fs.mkdirSync(testDir, { recursive: true });
-  fs.symlinkSync(xcframework, path.join(vendorDir, "LlamaCpp.xcframework"), "dir");
+  fs.symlinkSync(
+    xcframework,
+    path.join(vendorDir, "LlamaCpp.xcframework"),
+    "dir",
+  );
   fs.copyFileSync(
     path.join(__dirname, "..", "omnivoice-fuse", "ffi.h"),
     path.join(testDir, "ffi.h"),
@@ -735,7 +798,11 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
   );
 
   const voiceSymbols = skipVoiceAbi ? [] : VOICE_ABI_SYMBOLS;
-  const requiredRuntimeSymbols = [...LLAMA_SYMBOLS, ...KERNEL_SYMBOLS, ...voiceSymbols];
+  const requiredRuntimeSymbols = [
+    ...LLAMA_SYMBOLS,
+    ...KERNEL_SYMBOLS,
+    ...voiceSymbols,
+  ];
   const hostOtherLdFlags = hostRuntimeLinkerFlags({
     frameworkBinary,
     symbols: requiredRuntimeSymbols,
@@ -898,7 +965,7 @@ void eliza_ios_ffi_abi_smoke_free(char * message) {
   );
   fs.writeFileSync(
     path.join(testDir, "ElizaIosRuntimeSmokeTests.swift"),
-`import XCTest
+    `import XCTest
 import Metal
 import Darwin
 
@@ -923,7 +990,7 @@ final class ElizaIosRuntimeSmokeTests: XCTestCase {
     }
     XCTAssertTrue(
       missing.isEmpty,
-      "Missing required Eliza-1 iOS runtime symbols: \\(missing.joined(separator: \", \")). This is a runtime failure, not a shader-fixture failure."
+      "Missing required Eliza-1 iOS runtime symbols: \\(missing.joined(separator: ", ")). This is a runtime failure, not a shader-fixture failure."
     )
   }
 
@@ -1005,7 +1072,10 @@ schemes:
 function writeReport(reportPath, report) {
   if (!reportPath) return;
   fs.mkdirSync(path.dirname(path.resolve(reportPath)), { recursive: true });
-  fs.writeFileSync(path.resolve(reportPath), `${JSON.stringify(report, null, 2)}\n`);
+  fs.writeFileSync(
+    path.resolve(reportPath),
+    `${JSON.stringify(report, null, 2)}\n`,
+  );
 }
 
 function buildXcodeArgs({
@@ -1077,7 +1147,9 @@ async function main() {
     }
 
     const toolchain = {
-      xcodebuild: commandMetadata("xcodebuild", ["-version"], { timeout: 30_000 }),
+      xcodebuild: commandMetadata("xcodebuild", ["-version"], {
+        timeout: 30_000,
+      }),
       xctrace: commandMetadata("xcrun", ["xctrace", "version"], {
         timeout: 30_000,
       }),
@@ -1090,8 +1162,7 @@ async function main() {
 
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-ios-smoke-"));
     const derivedDataPath =
-      args.derivedDataPath ??
-      path.join(tempDir, "DerivedData");
+      args.derivedDataPath ?? path.join(tempDir, "DerivedData");
     const resultBundlePath =
       args.resultBundlePath ??
       path.join(tempDir, "ElizaIosRuntimeSmoke.xcresult");
@@ -1136,10 +1207,15 @@ async function main() {
     );
     console.log(`[ios-smoke] xcframework: ${xcframework}`);
     report.xcodebuild = runXcodebuildForReport(xcodeArgs, { cwd: tempDir });
-    if (report.xcodebuild.status !== 0 || report.xcodebuild.signal || report.xcodebuild.error) {
+    if (
+      report.xcodebuild.status !== 0 ||
+      report.xcodebuild.signal ||
+      report.xcodebuild.error
+    ) {
       report.blocker = {
         category: report.xcodebuild.failureCategory,
-        detail: "xcodebuild test did not complete successfully; see xcodebuild stdoutTail/stderrTail in this report.",
+        detail:
+          "xcodebuild test did not complete successfully; see xcodebuild stdoutTail/stderrTail in this report.",
       };
       throw Object.assign(
         new Error(

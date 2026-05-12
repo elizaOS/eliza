@@ -60,9 +60,7 @@ const stageMacosReleaseApp = getBooleanArg(args, "stage-macos-release-app");
 function resolveBuildVariant(raw) {
   if (raw === "store" || raw === "direct") return raw;
   if (raw === undefined || raw === null || raw === "") return "direct";
-  fail(
-    `Unknown --build-variant value: ${raw}. Expected "store" or "direct".`,
-  );
+  fail(`Unknown --build-variant value: ${raw}. Expected "store" or "direct".`);
 }
 const excludedOptionalPacks = [
   ...new Set([

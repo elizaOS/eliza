@@ -41,7 +41,10 @@ const __dirname = path.dirname(__filename);
 
 // packages/app-core/scripts/ios-xcframework → packages/app-core/scripts
 const SCRIPTS_DIR = path.resolve(__dirname, "..");
-const DFLASH_BUILD_SCRIPT = path.join(SCRIPTS_DIR, "build-llama-cpp-dflash.mjs");
+const DFLASH_BUILD_SCRIPT = path.join(
+  SCRIPTS_DIR,
+  "build-llama-cpp-dflash.mjs",
+);
 
 // Per AGENTS.md §3, the required kernels for any Eliza-1 binary.
 // Symbol presence here is checked against the produced static archive
@@ -113,7 +116,7 @@ const REQUIRED_IOS_RUNTIME_SYMBOLS = [
 ].map((symbol) => ({
   symbol,
   symbolPattern: new RegExp(`(?:^|\\s)_?${symbol}\\b`, "m"),
-    where: symbol.startsWith("eliza_inference_")
+  where: symbol.startsWith("eliza_inference_")
     ? "libelizainference ABI archive (fail-closed shim or real OmniVoice build)"
     : "llama-cpp-capacitor bridge archive",
 }));
@@ -158,7 +161,9 @@ function parseArgs(argv) {
     }
   }
   if (!args.output) {
-    throw new Error("--output <dir> is required (e.g. .../LlamaCpp.xcframework)");
+    throw new Error(
+      "--output <dir> is required (e.g. .../LlamaCpp.xcframework)",
+    );
   }
   return args;
 }
@@ -199,7 +204,11 @@ function refreshIosRuntimeSymbolShim({ sliceDir, isSimulator }) {
     throw new Error(`[ios-xcframework] runtime symbol shim missing: ${source}`);
   }
   const sdk = isSimulator ? "iphonesimulator" : "iphoneos";
-  const sdkPath = captureStdout("xcrun", ["--sdk", sdk, "--show-sdk-path"]).trim();
+  const sdkPath = captureStdout("xcrun", [
+    "--sdk",
+    sdk,
+    "--show-sdk-path",
+  ]).trim();
   const obj = path.join(sliceDir, "eliza-ios-runtime-shim.o");
   const archive = path.join(sliceDir, "libeliza-ios-runtime-shim.a");
   const minVersionFlag = isSimulator
@@ -502,7 +511,14 @@ function verifyXcframework(xcframeworkDir) {
       `[ios-xcframework] produced bundle missing Info.plist: ${xcframeworkDir}`,
     );
   }
-  const out = captureStdout("plutil", ["-extract", "AvailableLibraries", "json", "-o", "-", infoPlist]);
+  const out = captureStdout("plutil", [
+    "-extract",
+    "AvailableLibraries",
+    "json",
+    "-o",
+    "-",
+    infoPlist,
+  ]);
   let entries;
   try {
     entries = JSON.parse(out);
@@ -528,7 +544,9 @@ function verifyXcframework(xcframeworkDir) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (process.platform !== "darwin") {
-    throw new Error("[ios-xcframework] iOS xcframework packaging requires a macOS host with Xcode.");
+    throw new Error(
+      "[ios-xcframework] iOS xcframework packaging requires a macOS host with Xcode.",
+    );
   }
 
   const deviceDir = args.deviceArchiveDir ?? defaultSliceDir("ios-arm64-metal");
@@ -537,11 +555,15 @@ async function main() {
 
   if (args.buildIfMissing) {
     if (!fs.existsSync(path.join(deviceDir, "CAPABILITIES.json"))) {
-      console.log(`[ios-xcframework] device slice missing — invoking dflash build`);
+      console.log(
+        `[ios-xcframework] device slice missing — invoking dflash build`,
+      );
       run("node", [DFLASH_BUILD_SCRIPT, "--target", "ios-arm64-metal"]);
     }
     if (!fs.existsSync(path.join(simDir, "CAPABILITIES.json"))) {
-      console.log(`[ios-xcframework] simulator slice missing — invoking dflash build`);
+      console.log(
+        `[ios-xcframework] simulator slice missing — invoking dflash build`,
+      );
       run("node", [
         DFLASH_BUILD_SCRIPT,
         "--target",

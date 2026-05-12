@@ -365,8 +365,7 @@ export function resolveTrajectoryDir(): string {
 	if (explicit) return explicit;
 
 	const elizaState =
-		process.env.ELIZA_STATE_DIR?.trim() ||
-		process.env.MILADY_STATE_DIR?.trim();
+		process.env.ELIZA_STATE_DIR?.trim() || process.env.MILADY_STATE_DIR?.trim();
 	if (elizaState) return path.join(elizaState, "trajectories");
 
 	return path.join(homedir(), ".eliza", "trajectories");

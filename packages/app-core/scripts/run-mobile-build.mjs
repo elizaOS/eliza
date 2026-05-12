@@ -633,24 +633,17 @@ async function buildWeb(platform) {
   const env = {
     ...process.env,
     ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
-    ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
     ELIZA_BUILD_VARIANT: process.env.ELIZA_BUILD_VARIANT || buildVariant,
-    ELIZA_BUILD_VARIANT: process.env.ELIZA_BUILD_VARIANT || buildVariant,
-    ELIZA_RELEASE_AUTHORITY:
-      process.env.ELIZA_RELEASE_AUTHORITY || releaseAuthority,
     ELIZA_RELEASE_AUTHORITY:
       process.env.ELIZA_RELEASE_AUTHORITY || releaseAuthority,
     ...(androidRuntimeMode
       ? {
-          VITE_ELIZA_ANDROID_RUNTIME_MODE: androidRuntimeMode,
           VITE_ELIZA_ANDROID_RUNTIME_MODE: androidRuntimeMode,
         }
       : {}),
     ...(iosRuntimeMode
       ? {
           ELIZA_IOS_RUNTIME_MODE: iosRuntimeMode,
-          ELIZA_IOS_RUNTIME_MODE: iosRuntimeMode,
-          VITE_ELIZA_IOS_RUNTIME_MODE: iosRuntimeMode,
           VITE_ELIZA_IOS_RUNTIME_MODE: iosRuntimeMode,
         }
       : {}),
@@ -2547,7 +2540,8 @@ async function loadImageToolForBrandAssets(platform) {
       );
       return { kind: "magick", magick };
     }
-    const sips = process.platform === "darwin" ? resolveExecutable("sips") : null;
+    const sips =
+      process.platform === "darwin" ? resolveExecutable("sips") : null;
     if (sips) {
       console.warn(
         `[mobile-build] sharp is unavailable for ${platform} brand assets; using macOS sips fallback.`,
@@ -4056,14 +4050,10 @@ function setDefaultProcessEnv(key, value) {
 }
 
 function resolveRubyUserGemBin() {
-  const result = spawnSync(
-    "ruby",
-    ["-rrubygems", "-e", "print Gem.user_dir"],
-    {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    },
-  );
+  const result = spawnSync("ruby", ["-rrubygems", "-e", "print Gem.user_dir"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
   if (result.status !== 0) return null;
   const dir = result.stdout?.trim();
   if (!dir) return null;

@@ -165,7 +165,9 @@ async function inspectActiveOptimizations(args) {
   // ── Bundle installed? ──────────────────────────────────────────────────
   let bundleRoot = null;
   try {
-    const { elizaModelsDir } = await import("../../shared/src/local-inference/paths.ts");
+    const { elizaModelsDir } = await import(
+      "../../shared/src/local-inference/paths.ts"
+    );
     const candidate = path.join(
       elizaModelsDir(),
       `${(catalogEntry?.id ?? "eliza-1-1_7b").replace(/[^a-zA-Z0-9._-]/g, "_")}.bundle`,
@@ -175,12 +177,15 @@ async function inspectActiveOptimizations(args) {
     /* reported via the catalog branch already */
   }
   if (bundleRoot) {
-    active.push({ name: "bundle", on: true, detail: `installed at ${bundleRoot}` });
+    active.push({
+      name: "bundle",
+      on: true,
+      detail: `installed at ${bundleRoot}`,
+    });
   } else {
     missing.push({
       what: `the ${catalogEntry?.id ?? "eliza-1-1_7b"} bundle is not installed`,
-      fix:
-        "download it (run the harness without --list-active for the auto-download prompt) or follow RELEASE_V1.md to acquire/convert/quantize the bundle, then place it under <state-dir>/local-inference/models/<id>.bundle/",
+      fix: "download it (run the harness without --list-active for the auto-download prompt) or follow RELEASE_V1.md to acquire/convert/quantize the bundle, then place it under <state-dir>/local-inference/models/<id>.bundle/",
     });
   }
 
@@ -208,7 +213,8 @@ async function inspectActiveOptimizations(args) {
         // declares (AGENTS.md §3). If the installed llama-server's
         // CAPABILITIES.json doesn't advertise them all, `engine.load()`
         // will reject — surface that here, not deep in the load path.
-        const required = catalogEntry?.runtime?.optimizations?.requiresKernel ?? [];
+        const required =
+          catalogEntry?.runtime?.optimizations?.requiresKernel ?? [];
         const advertised = status.capabilities?.kernels ?? null;
         if (required.length > 0 && advertised) {
           const lacking = required.filter((k) => advertised[k] !== true);
@@ -267,14 +273,21 @@ async function inspectActiveOptimizations(args) {
     if (!ttsLibPath) {
       let liRoot = null;
       try {
-        liRoot = (await import("../../shared/src/local-inference/paths.ts")).localInferenceRoot();
+        liRoot = (
+          await import("../../shared/src/local-inference/paths.ts")
+        ).localInferenceRoot();
       } catch {
         /* ignore */
       }
       const fusedTargets =
         liRoot && process.env.ELIZA_INFERENCE_MANAGED_LOOKUP?.trim() !== "0"
           ? ["metal", "vulkan", "cuda", "cpu"].map((b) =>
-              path.join(liRoot, "bin", "dflash", `${process.platform}-${os.arch()}-${b}-fused`),
+              path.join(
+                liRoot,
+                "bin",
+                "dflash",
+                `${process.platform}-${os.arch()}-${b}-fused`,
+              ),
             )
           : [];
       const libDirs = [
@@ -310,7 +323,8 @@ async function inspectActiveOptimizations(args) {
     active.push({
       name: "streaming OmniVoice TTS",
       on: false,
-      detail: "no fused build — the stub backend emits silence and is rejected by startVoiceSession",
+      detail:
+        "no fused build — the stub backend emits silence and is rejected by startVoiceSession",
     });
   }
 
@@ -325,7 +339,8 @@ async function inspectActiveOptimizations(args) {
       );
       const bin = resolveWhisperBinary();
       const model = resolveWhisperModelPath();
-      if (bin && model) asrBackend = `whisper.cpp (${bin} + ${path.basename(model)})`;
+      if (bin && model)
+        asrBackend = `whisper.cpp (${bin} + ${path.basename(model)})`;
     } catch {
       /* fall through */
     }
@@ -423,10 +438,19 @@ async function inspectActiveOptimizations(args) {
       "voiceLatencyTracer — vad-trigger → audio-first-played checkpoints; derived TTFT/TTFA/TTAP; printed per-turn + as a histogram on 'p'",
   });
 
-  return { active, missing, catalogEntry, drafterEntry, bundleRoot, ttsBackend, asrBackend, vadPath };
+  return {
+    active,
+    missing,
+    catalogEntry,
+    drafterEntry,
+    bundleRoot,
+    ttsBackend,
+    asrBackend,
+    vadPath,
+  };
 }
 
-function printActive(report, args) {
+function printActive(report, _args) {
   log("");
   log(c("bold", "Eliza-1 interactive voice — active optimizations"));
   log("");
@@ -437,15 +461,25 @@ function printActive(report, args) {
   }
   log("");
   if (report.missing.length > 0) {
-    log(c("yellow", `Missing prerequisites (${report.missing.length}) — fix each before a real interactive turn:`));
+    log(
+      c(
+        "yellow",
+        `Missing prerequisites (${report.missing.length}) — fix each before a real interactive turn:`,
+      ),
+    );
     log("");
     for (const m of report.missing) {
       log(`  ${c("red", "•")} ${m.what}`);
-      log(`    ${c("dim", "→ " + m.fix)}`);
+      log(`    ${c("dim", `→ ${m.fix}`)}`);
     }
     log("");
   } else {
-    log(c("green", "All prerequisites present — ready for an interactive voice turn."));
+    log(
+      c(
+        "green",
+        "All prerequisites present — ready for an interactive voice turn.",
+      ),
+    );
     log("");
   }
 }
@@ -454,10 +488,12 @@ function printActive(report, args) {
 // Auto-download helpers (gated; never faked)
 // ---------------------------------------------------------------------------
 
-async function tryAutoDownloadVad(bundleRoot) {
+async function tryAutoDownloadVad(_bundleRoot) {
   // Silero v5 VAD (MIT, ~2 MB, public).
   try {
-    const { localInferenceRoot } = await import("../../shared/src/local-inference/paths.ts");
+    const { localInferenceRoot } = await import(
+      "../../shared/src/local-inference/paths.ts"
+    );
     const dest = path.join(localInferenceRoot(), "vad", "silero-vad-int8.onnx");
     if (existsSync(dest)) return dest;
     // ONNX community mirror of the official silero-vad model.
@@ -472,7 +508,11 @@ async function tryAutoDownloadVad(bundleRoot) {
     await fs.writeFile(dest, buf);
     return dest;
   } catch (err) {
-    tag("setup", "yellow", `Silero VAD auto-download failed: ${err instanceof Error ? err.message : String(err)}`);
+    tag(
+      "setup",
+      "yellow",
+      `Silero VAD auto-download failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
     return null;
   }
 }
@@ -488,7 +528,11 @@ async function tryAutoDownloadWhisper() {
     const model = await downloadWhisperModel();
     return { bin, model };
   } catch (err) {
-    tag("setup", "yellow", `whisper model auto-download failed: ${err instanceof Error ? err.message : String(err)}`);
+    tag(
+      "setup",
+      "yellow",
+      `whisper model auto-download failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
     return null;
   }
 }
@@ -496,13 +540,21 @@ async function tryAutoDownloadWhisper() {
 async function tryAutoDownloadBundle(catalogEntry) {
   if (!catalogEntry) return null;
   try {
-    const { Downloader } = await import("../src/services/local-inference/downloader.ts");
-    const { elizaModelsDir } = await import("../../shared/src/local-inference/paths.ts");
+    const { Downloader } = await import(
+      "../src/services/local-inference/downloader.ts"
+    );
+    const { elizaModelsDir } = await import(
+      "../../shared/src/local-inference/paths.ts"
+    );
     const dest = path.join(
       elizaModelsDir(),
       `${catalogEntry.id.replace(/[^a-zA-Z0-9._-]/g, "_")}.bundle`,
     );
-    tag("setup", "blue", `downloading the ${catalogEntry.id} bundle (this is large — multiple GB)… → ${dest}`);
+    tag(
+      "setup",
+      "blue",
+      `downloading the ${catalogEntry.id} bundle (this is large — multiple GB)… → ${dest}`,
+    );
     const dl = new Downloader();
     await new Promise((resolve, reject) => {
       const unsub = dl.subscribe((job) => {
@@ -522,7 +574,11 @@ async function tryAutoDownloadBundle(catalogEntry) {
     });
     return existsSync(dest) ? dest : null;
   } catch (err) {
-    tag("setup", "yellow", `bundle auto-download failed: ${err instanceof Error ? err.message : String(err)} — follow RELEASE_V1.md to acquire it manually`);
+    tag(
+      "setup",
+      "yellow",
+      `bundle auto-download failed: ${err instanceof Error ? err.message : String(err)} — follow RELEASE_V1.md to acquire it manually`,
+    );
     return null;
   }
 }
@@ -533,23 +589,38 @@ async function tryAutoDownloadBundle(catalogEntry) {
 
 async function makeAudioSink(opts) {
   const { sampleRate, noAudio } = opts;
-  const {
-    SystemAudioSink,
-    WavFileAudioSink,
-  } = await import("../src/services/local-inference/voice/system-audio-sink.ts");
+  const { SystemAudioSink, WavFileAudioSink } = await import(
+    "../src/services/local-inference/voice/system-audio-sink.ts"
+  );
   if (noAudio) {
     const out = path.resolve(process.cwd(), `out-${Date.now()}.wav`);
     const sink = new WavFileAudioSink({ sampleRate, filePath: out });
-    return { sink, describe: () => `WAV file: ${out}`, finalize: () => sink.finalize() };
+    return {
+      sink,
+      describe: () => `WAV file: ${out}`,
+      finalize: () => sink.finalize(),
+    };
   }
   const sink = new SystemAudioSink({ sampleRate });
   if (!sink.available()) {
     const out = path.resolve(process.cwd(), `out-${Date.now()}.wav`);
-    tag("audio", "yellow", `no playback device (aplay/afplay/paplay not on PATH) — falling back to a WAV file: ${out}`);
+    tag(
+      "audio",
+      "yellow",
+      `no playback device (aplay/afplay/paplay not on PATH) — falling back to a WAV file: ${out}`,
+    );
     const wsink = new WavFileAudioSink({ sampleRate, filePath: out });
-    return { sink: wsink, describe: () => `WAV file: ${out}`, finalize: () => wsink.finalize() };
+    return {
+      sink: wsink,
+      describe: () => `WAV file: ${out}`,
+      finalize: () => wsink.finalize(),
+    };
   }
-  return { sink, describe: () => `system playback (${sink.player()})`, finalize: async () => sink.dispose() };
+  return {
+    sink,
+    describe: () => `system playback (${sink.player()})`,
+    finalize: async () => sink.dispose(),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -567,16 +638,25 @@ async function makeAudioSink(opts) {
  */
 async function ensureBundleRegistered(catalogEntry, bundleRoot) {
   if (!catalogEntry || !bundleRoot || !existsSync(bundleRoot)) return null;
-  const { listInstalledModels } = await import("../src/services/local-inference/registry.ts");
+  const { listInstalledModels } = await import(
+    "../src/services/local-inference/registry.ts"
+  );
   const installed = await listInstalledModels();
   const already = installed.find((m) => m.id === catalogEntry.id);
   if (already?.path && existsSync(already.path)) return already;
 
-  const { upsertElizaModel } = await import("../src/services/local-inference/registry.ts");
-  const manifestPath = path.join(bundleRoot, catalogEntry.bundleManifestFile ?? "eliza-1.manifest.json");
+  const { upsertElizaModel } = await import(
+    "../src/services/local-inference/registry.ts"
+  );
+  const manifestPath = path.join(
+    bundleRoot,
+    catalogEntry.bundleManifestFile ?? "eliza-1.manifest.json",
+  );
   const textGguf = path.join(bundleRoot, catalogEntry.ggufFile);
   if (!existsSync(textGguf)) {
-    throw new Error(`bundle at ${bundleRoot} is missing the primary text GGUF ${catalogEntry.ggufFile}`);
+    throw new Error(
+      `bundle at ${bundleRoot} is missing the primary text GGUF ${catalogEntry.ggufFile}`,
+    );
   }
   const stat = await fs.stat(textGguf);
   const now = new Date().toISOString();
@@ -600,12 +680,20 @@ async function ensureBundleRegistered(catalogEntry, bundleRoot) {
     ...bundleMeta,
   };
   await upsertElizaModel(model);
-  tag("setup", "blue", `registered ${catalogEntry.id} bundle in the local-inference registry (text=${textGguf})`);
+  tag(
+    "setup",
+    "blue",
+    `registered ${catalogEntry.id} bundle in the local-inference registry (text=${textGguf})`,
+  );
 
   // Register the DFlash drafter companion too (so the engine wires -md).
-  const companionId = catalogEntry.runtime?.dflash?.drafterModelId ?? catalogEntry.companionModelIds?.[0];
+  const companionId =
+    catalogEntry.runtime?.dflash?.drafterModelId ??
+    catalogEntry.companionModelIds?.[0];
   if (companionId) {
-    const { findCatalogModel } = await import("../../shared/src/local-inference/catalog.ts");
+    const { findCatalogModel } = await import(
+      "../../shared/src/local-inference/catalog.ts"
+    );
     const companion = findCatalogModel(companionId);
     if (companion) {
       const drafterGguf = path.join(bundleRoot, companion.ggufFile);
@@ -626,7 +714,11 @@ async function ensureBundleRegistered(catalogEntry, bundleRoot) {
           companionFor: catalogEntry.id,
           ...bundleMeta,
         });
-        tag("setup", "blue", `registered ${companion.id} (DFlash drafter) at ${drafterGguf}`);
+        tag(
+          "setup",
+          "blue",
+          `registered ${companion.id} (DFlash drafter) at ${drafterGguf}`,
+        );
       }
     }
   }
@@ -654,14 +746,22 @@ async function bootStandaloneRuntime({ roomId }) {
   let sqlPlugin;
   let bootstrapPlugin;
   try {
-    sqlPlugin = (await import("@elizaos/plugin-sql")).default ?? (await import("@elizaos/plugin-sql")).sqlPlugin;
+    sqlPlugin =
+      (await import("@elizaos/plugin-sql")).default ??
+      (await import("@elizaos/plugin-sql")).sqlPlugin;
   } catch (err) {
-    throw new Error(`@elizaos/plugin-sql not available: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(
+      `@elizaos/plugin-sql not available: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
   try {
-    bootstrapPlugin = (await import("@elizaos/plugin-bootstrap")).default ?? (await import("@elizaos/plugin-bootstrap")).bootstrapPlugin;
+    bootstrapPlugin =
+      (await import("@elizaos/plugin-bootstrap")).default ??
+      (await import("@elizaos/plugin-bootstrap")).bootstrapPlugin;
   } catch (err) {
-    throw new Error(`@elizaos/plugin-bootstrap not available: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(
+      `@elizaos/plugin-bootstrap not available: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   // In-memory DB; assign the eliza-1-1_7b model to TEXT_SMALL.
@@ -670,7 +770,9 @@ async function bootStandaloneRuntime({ roomId }) {
   const runtime = new AgentRuntime({
     character: {
       name: "Eliza",
-      bio: ["A local-first AI assistant running the eliza-1-1_7b model with the full optimized voice stack."],
+      bio: [
+        "A local-first AI assistant running the eliza-1-1_7b model with the full optimized voice stack.",
+      ],
       messageExamples: [],
       adjectives: [],
       plugins: [],
@@ -706,7 +808,9 @@ async function bootStandaloneRuntime({ roomId }) {
   // The `generate` callback for the voice turn controller.
   const generate = async (request, onChunk) => {
     if (!runtime.messageService?.handleMessage) {
-      throw new Error("[voice] runtime.messageService.handleMessage is unavailable (plugin-bootstrap not loaded?)");
+      throw new Error(
+        "[voice] runtime.messageService.handleMessage is unavailable (plugin-bootstrap not loaded?)",
+      );
     }
     const entityId = `${roomId}-user`;
     const incoming = {
@@ -722,7 +826,9 @@ async function bootStandaloneRuntime({ roomId }) {
       const text = typeof content?.text === "string" ? content.text : "";
       if (text.trim().length > 0) {
         // Stream the delta into TTS.
-        const delta = text.startsWith(replyText) ? text.slice(replyText.length) : text;
+        const delta = text.startsWith(replyText)
+          ? text.slice(replyText.length)
+          : text;
         replyText = text.length >= replyText.length ? text : replyText;
         if (delta.length > 0) await onChunk?.(delta);
       }
@@ -731,9 +837,14 @@ async function bootStandaloneRuntime({ roomId }) {
     // The message service streams `replyText` field-by-field via the
     // local engine's `onStreamChunk` → `onTextChunk` → voice scheduler when
     // voice is armed; the callback above mirrors the final text for the UI.
-    const result = await runtime.messageService.handleMessage(runtime, incoming, callback);
+    const result = await runtime.messageService.handleMessage(
+      runtime,
+      incoming,
+      callback,
+    );
     const finalText =
-      typeof result?.responseContent?.text === "string" && result.responseContent.text.trim().length > 0
+      typeof result?.responseContent?.text === "string" &&
+      result.responseContent.text.trim().length > 0
         ? result.responseContent.text
         : replyText;
     return {
@@ -779,7 +890,7 @@ function fmtMs(v) {
   return v == null ? "—" : `${Math.round(v)}ms`;
 }
 
-async function printTurnLatency(roomId) {
+async function printTurnLatency(_roomId) {
   try {
     const { voiceLatencyTracer } = await import(
       "../src/services/local-inference/latency-trace.ts"
@@ -817,11 +928,18 @@ async function printLatencyHistogram() {
     log(c("bold", "  Voice latency histogram (p50 / p90 / p99, ms)"));
     for (const [key, s] of Object.entries(summaries)) {
       if (!s || s.count === 0) continue;
-      log(`    ${c("cyan", key.padEnd(28))}  n=${String(s.count).padEnd(4)} p50=${fmtMs(s.p50)} p90=${fmtMs(s.p90)} p99=${fmtMs(s.p99)}`);
+      log(
+        `    ${c("cyan", key.padEnd(28))}  n=${String(s.count).padEnd(4)} p50=${fmtMs(s.p50)} p90=${fmtMs(s.p90)} p99=${fmtMs(s.p99)}`,
+      );
     }
     log("");
   } catch (err) {
-    log(c("yellow", `  (histogram unavailable: ${err instanceof Error ? err.message : String(err)})`));
+    log(
+      c(
+        "yellow",
+        `  (histogram unavailable: ${err instanceof Error ? err.message : String(err)})`,
+      ),
+    );
   }
 }
 
@@ -900,12 +1018,21 @@ async function main() {
   try {
     await ensureBundleRegistered(report.catalogEntry, report.bundleRoot);
   } catch (err) {
-    log(c("red", `Failed to register the eliza-1-1_7b bundle: ${err instanceof Error ? err.message : String(err)}`));
+    log(
+      c(
+        "red",
+        `Failed to register the eliza-1-1_7b bundle: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
     process.exit(1);
   }
 
   // ── Boot runtime ───────────────────────────────────────────────────────
-  tag("boot", "blue", "starting standalone AgentRuntime (in-memory, eliza-1-1_7b → TEXT_SMALL)…");
+  tag(
+    "boot",
+    "blue",
+    "starting standalone AgentRuntime (in-memory, eliza-1-1_7b → TEXT_SMALL)…",
+  );
   let runtime;
   let generate;
   let prewarmResponseHandler;
@@ -915,38 +1042,74 @@ async function main() {
     generate = booted.generate;
     prewarmResponseHandler = booted.prewarmResponseHandler;
   } catch (err) {
-    log(c("red", `Failed to boot the runtime: ${err instanceof Error ? err.message : String(err)}`));
-    log(c("dim", "This is a missing-dependency / install issue, not a transient error. Fix the dependency and re-run."));
+    log(
+      c(
+        "red",
+        `Failed to boot the runtime: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
+    log(
+      c(
+        "dim",
+        "This is a missing-dependency / install issue, not a transient error. Fix the dependency and re-run.",
+      ),
+    );
     process.exit(1);
   }
-  tag("boot", "green", `runtime ready — agent=${runtime.character?.name ?? "Eliza"}`);
+  tag(
+    "boot",
+    "green",
+    `runtime ready — agent=${runtime.character?.name ?? "Eliza"}`,
+  );
 
   // ── Engine + voice bridge ──────────────────────────────────────────────
-  const { localInferenceEngine } = await import("../src/services/local-inference/engine.ts");
+  const { localInferenceEngine } = await import(
+    "../src/services/local-inference/engine.ts"
+  );
   const engine = localInferenceEngine;
 
   // Load the eliza-1-1_7b model into the engine (this activates the bundle).
   try {
-    const { listInstalledModels } = await import("../src/services/local-inference/registry.ts");
+    const { listInstalledModels } = await import(
+      "../src/services/local-inference/registry.ts"
+    );
     const installed = await listInstalledModels();
     const target = installed.find((m) => m.id === "eliza-1-1_7b");
-    if (!target) throw new Error("eliza-1-1_7b is not registered as an installed model");
+    if (!target)
+      throw new Error("eliza-1-1_7b is not registered as an installed model");
     await engine.load(target.path);
   } catch (err) {
-    log(c("red", `Failed to activate the eliza-1-1_7b bundle in the engine: ${err instanceof Error ? err.message : String(err)}`));
+    log(
+      c(
+        "red",
+        `Failed to activate the eliza-1-1_7b bundle in the engine: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
     process.exit(1);
   }
 
   // Sample rate from the bridge default (24 kHz).
   const SAMPLE_RATE = 24_000;
-  const audio = await makeAudioSink({ sampleRate: SAMPLE_RATE, noAudio: args.noAudio });
+  const audio = await makeAudioSink({
+    sampleRate: SAMPLE_RATE,
+    noAudio: args.noAudio,
+  });
 
   // Start + arm voice (fused backend).
   try {
-    engine.startVoice({ bundleRoot: report.bundleRoot, useFfiBackend: true, sink: audio.sink });
+    engine.startVoice({
+      bundleRoot: report.bundleRoot,
+      useFfiBackend: true,
+      sink: audio.sink,
+    });
     await engine.armVoice();
   } catch (err) {
-    log(c("red", `Failed to start/arm voice: ${err instanceof Error ? err.message : String(err)}`));
+    log(
+      c(
+        "red",
+        `Failed to start/arm voice: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
     await engine.unload().catch(() => {});
     process.exit(1);
   }
@@ -962,7 +1125,12 @@ async function main() {
   const shutdown = async (code = 0) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    log(c("dim", "\n[shutdown] stopping session, disarming voice, unloading model…"));
+    log(
+      c(
+        "dim",
+        "\n[shutdown] stopping session, disarming voice, unloading model…",
+      ),
+    );
     try {
       controller?.stop();
     } catch {
@@ -994,7 +1162,11 @@ async function main() {
   };
 
   const forceStop = () => {
-    tag("barge-in", "yellow", "hard-stop — force-stopping the in-flight LLM/drafter + TTS for this turn");
+    tag(
+      "barge-in",
+      "yellow",
+      "hard-stop — force-stopping the in-flight LLM/drafter + TTS for this turn",
+    );
     try {
       engine.triggerBargeIn();
     } catch {
@@ -1007,8 +1179,10 @@ async function main() {
   if (bridge?.scheduler?.bargeIn?.onSignal) {
     bridge.scheduler.bargeIn.onSignal((signal) => {
       if (signal.type === "pause-tts") tag("barge-in", "yellow", "paused");
-      else if (signal.type === "resume-tts") tag("barge-in", "green", "resumed");
-      else if (signal.type === "hard-stop") tag("barge-in", "red", "hard-stop (words detected)");
+      else if (signal.type === "resume-tts")
+        tag("barge-in", "green", "resumed");
+      else if (signal.type === "hard-stop")
+        tag("barge-in", "red", "hard-stop (words detected)");
     });
   }
   // Native verifier → rollback queue (no-op when not on the fused build).
@@ -1022,15 +1196,15 @@ async function main() {
   // logs the structured envelope fields as they close. The actual TTS
   // streaming happens inside `engine.generate` (voiceStreamingArgs wires
   // onStreamChunk → the voice scheduler) via the runtime message handler.
-  let lastReplyText = "";
+  let _lastReplyText = "";
   const wrappedGenerate = async (request) => {
     if (request.final) {
       tag("final", "bold", `"${request.transcript}"`);
     }
-    lastReplyText = "";
+    _lastReplyText = "";
     process.stdout.write(c("cyan", "[agent] "));
     const outcome = await generate(request, async (delta) => {
-      lastReplyText += delta;
+      _lastReplyText += delta;
       process.stdout.write(delta);
     });
     process.stdout.write("\n");
@@ -1038,11 +1212,18 @@ async function main() {
   };
 
   const events = {
-    onSpeculativeStart: (transcript) => tag("speculative", "dim", `generating off partial: "${transcript}"`),
-    onSpeculativeAbort: () => tag("speculative", "dim", "aborted (speech resumed)"),
-    onSpeculativePromoted: () => tag("speculative", "green", "promoted (matched final transcript)"),
+    onSpeculativeStart: (transcript) =>
+      tag("speculative", "dim", `generating off partial: "${transcript}"`),
+    onSpeculativeAbort: () =>
+      tag("speculative", "dim", "aborted (speech resumed)"),
+    onSpeculativePromoted: () =>
+      tag("speculative", "green", "promoted (matched final transcript)"),
     onTurnComplete: async (outcome) => {
-      tag("envelope", "green", `shouldRespond=${outcome.replyText && outcome.replyText.length > 0 ? "RESPOND" : "IGNORE/STOP"} replyText.len=${outcome.replyText?.length ?? 0}`);
+      tag(
+        "envelope",
+        "green",
+        `shouldRespond=${outcome.replyText && outcome.replyText.length > 0 ? "RESPOND" : "IGNORE/STOP"} replyText.len=${outcome.replyText?.length ?? 0}`,
+      );
       await printTurnLatency(args.room);
       // Idle-time phrase-cache prewarm after each turn.
       engine.prewarmIdleVoicePhrases().catch(() => {});
@@ -1057,17 +1238,28 @@ async function main() {
     tag("mode", "blue", `--say: injecting transcript "${args.say}"`);
     try {
       // Mark the latency trace's vad-trigger so the trace has a t0.
-      const { markVoiceLatency } = await import("../src/services/local-inference/latency-trace.ts");
+      const { markVoiceLatency } = await import(
+        "../src/services/local-inference/latency-trace.ts"
+      );
       markVoiceLatency(args.room, "vad-trigger");
       markVoiceLatency(args.room, "asr-final");
       const signal = new AbortController().signal;
-      const outcome = await wrappedGenerate({ transcript: args.say, final: true, signal });
+      const outcome = await wrappedGenerate({
+        transcript: args.say,
+        final: true,
+        signal,
+      });
       await events.onTurnComplete(outcome);
       // Settle TTS so audio committed to the ring buffer surfaces.
       await bridge?.settle?.();
       await new Promise((r) => setTimeout(r, 200));
     } catch (err) {
-      log(c("red", `--say turn failed: ${err instanceof Error ? err.message : String(err)}`));
+      log(
+        c(
+          "red",
+          `--say turn failed: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
       await shutdown(1);
       return;
     }
@@ -1084,16 +1276,28 @@ async function main() {
       await shutdown(1);
       return;
     }
-    tag("mode", "blue", `--wav: feeding ${wavPath} through the voice path once`);
+    tag(
+      "mode",
+      "blue",
+      `--wav: feeding ${wavPath} through the voice path once`,
+    );
     try {
-      const { PushMicSource } = await import("../src/services/local-inference/voice/mic-source.ts");
-      const { decodeMonoPcm16Wav } = await import("../src/services/local-inference/voice/engine-bridge.ts");
-      const { createSileroVadDetector } = await import("../src/services/local-inference/voice/vad.ts");
+      const { PushMicSource } = await import(
+        "../src/services/local-inference/voice/mic-source.ts"
+      );
+      const { decodeMonoPcm16Wav } = await import(
+        "../src/services/local-inference/voice/engine-bridge.ts"
+      );
+      const { createSileroVadDetector } = await import(
+        "../src/services/local-inference/voice/vad.ts"
+      );
       const wavBytes = await fs.readFile(wavPath);
       const decoded = decodeMonoPcm16Wav(new Uint8Array(wavBytes));
       const push = new PushMicSource({ sampleRate: decoded.sampleRate });
       micSource = push;
-      const vad = await createSileroVadDetector({ modelPath: process.env.ELIZA_VAD_MODEL_PATH });
+      const vad = await createSileroVadDetector({
+        modelPath: process.env.ELIZA_VAD_MODEL_PATH,
+      });
       controller = await engine.startVoiceSession({
         roomId: args.room,
         micSource: push,
@@ -1110,7 +1314,11 @@ async function main() {
         events,
       });
       // Feed the WAV PCM (the PushMicSource re-frames it). Convert int16→float.
-      const view = new DataView(decoded.pcm.buffer, decoded.pcm.byteOffset, decoded.pcm.byteLength);
+      const view = new DataView(
+        decoded.pcm.buffer,
+        decoded.pcm.byteOffset,
+        decoded.pcm.byteLength,
+      );
       const n = Math.floor(decoded.pcm.byteLength / 2);
       const f = new Float32Array(n);
       for (let i = 0; i < n; i++) f[i] = view.getInt16(i * 2, true) / 0x8000;
@@ -1121,7 +1329,12 @@ async function main() {
       await new Promise((r) => setTimeout(r, 4000));
       await bridge?.settle?.();
     } catch (err) {
-      log(c("red", `--wav turn failed: ${err instanceof Error ? err.message : String(err)}`));
+      log(
+        c(
+          "red",
+          `--wav turn failed: ${err instanceof Error ? err.message : String(err)}`,
+        ),
+      );
       await shutdown(1);
       return;
     }
@@ -1131,12 +1344,22 @@ async function main() {
   }
 
   // ── Real mic interactive ───────────────────────────────────────────────
-  tag("mode", "blue", "real mic — speak into your microphone. Controls: s=force-stop  m=mute  p=histogram  q=quit  (Ctrl-C twice = quit)");
+  tag(
+    "mode",
+    "blue",
+    "real mic — speak into your microphone. Controls: s=force-stop  m=mute  p=histogram  q=quit  (Ctrl-C twice = quit)",
+  );
   try {
-    const { DesktopMicSource } = await import("../src/services/local-inference/voice/mic-source.ts");
-    const { createSileroVadDetector } = await import("../src/services/local-inference/voice/vad.ts");
+    const { DesktopMicSource } = await import(
+      "../src/services/local-inference/voice/mic-source.ts"
+    );
+    const { createSileroVadDetector } = await import(
+      "../src/services/local-inference/voice/vad.ts"
+    );
     micSource = new DesktopMicSource();
-    const vad = await createSileroVadDetector({ modelPath: process.env.ELIZA_VAD_MODEL_PATH });
+    const vad = await createSileroVadDetector({
+      modelPath: process.env.ELIZA_VAD_MODEL_PATH,
+    });
     controller = await engine.startVoiceSession({
       roomId: args.room,
       micSource,
@@ -1162,11 +1385,26 @@ async function main() {
       });
     }
   } catch (err) {
-    log(c("red", `Failed to start the mic voice session: ${err instanceof Error ? err.message : String(err)}`));
+    log(
+      c(
+        "red",
+        `Failed to start the mic voice session: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
     if (process.platform === "win32") {
-      log(c("dim", "Windows has no universal CLI recorder — use --wav <path> or --say \"<text>\" instead."));
+      log(
+        c(
+          "dim",
+          'Windows has no universal CLI recorder — use --wav <path> or --say "<text>" instead.',
+        ),
+      );
     } else {
-      log(c("dim", "Is arecord (alsa-utils) or sox on PATH? Try: sudo apt install alsa-utils  (or)  brew install sox"));
+      log(
+        c(
+          "dim",
+          "Is arecord (alsa-utils) or sox on PATH? Try: sudo apt install alsa-utils  (or)  brew install sox",
+        ),
+      );
     }
     await shutdown(1);
     return;
@@ -1237,6 +1475,11 @@ async function main() {
 }
 
 main().catch(async (err) => {
-  console.error(c("red", `[voice-interactive] fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`));
+  console.error(
+    c(
+      "red",
+      `[voice-interactive] fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
+    ),
+  );
   process.exit(1);
 });

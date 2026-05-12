@@ -80,7 +80,9 @@ function locateFusedServer({ outDir, target }) {
 }
 
 function locateProductServer({ outDir, target }) {
-  const names = target.startsWith("windows-") ? ["llama-server.exe"] : ["llama-server"];
+  const names = target.startsWith("windows-")
+    ? ["llama-server.exe"]
+    : ["llama-server"];
   for (const name of names) {
     const full = path.join(outDir, name);
     if (fs.existsSync(full)) return full;
@@ -157,7 +159,10 @@ function hasElfNeededLlama(lib) {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 30_000,
     });
-    if (result.error || (typeof result.status === "number" && result.status !== 0)) {
+    if (
+      result.error ||
+      (typeof result.status === "number" && result.status !== 0)
+    ) {
       continue;
     }
     const out = result.stdout || "";
@@ -409,6 +414,9 @@ function main() {
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+if (
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
+) {
   main();
 }
