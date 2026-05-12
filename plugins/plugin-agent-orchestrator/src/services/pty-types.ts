@@ -68,8 +68,10 @@ export const normalizeAgentType = (input: string): CodingAgentType => {
     return "shell";
   }
   if (isOpencodeAgentType(normalized)) {
-    // OpenCode also runs through the generic shell adapter — see toOpencodeCommand.
-    return "shell";
+    // OpenCode is a first-class adapter in `coding-agent-adapters`
+    // (since 0.17). The orchestrator routes through `getAdapter("opencode")`
+    // for native brief delivery, env injection, and ready-state detection.
+    return "opencode";
   }
   const mapping: Record<string, CodingAgentType> = {
     claude: "claude",
