@@ -36,6 +36,7 @@ import {
 	type ChainingLoopConfig,
 	type FailureLike,
 	mergeChainingLoopConfig,
+	TrajectoryLimitExceeded,
 } from "./limits";
 import {
 	buildModelInputBudget,
@@ -133,6 +134,30 @@ export async function runPlannerLoop(
 	const requireNonTerminalToolCall =
 		params.requireNonTerminalToolCall === true &&
 		hasExposedNonTerminalTool(params.tools);
+
+	// Cumulative gross prompt-token counter, summed across every planner
+	// stage in this user turn. Tracked alongside the existing per-iter
+	// counters (terminalOnlyContinuations, requiredToolMisses) so the
+	// `maxTrajectoryPromptTokens` guard fires on the very call that crosses
+	// the threshold rather than at the next-iteration check-in.
+	let cumulativePromptTokens = 0;
+	const observePlannerUsage = (usage: {
+		promptTokens: number;
+		completionTokens: number;
+	}): void => {
+		cumulativePromptTokens += usage.promptTokens;
+		if (cumulativePromptTokens > config.maxTrajectoryPromptTokens) {
+			throw new TrajectoryLimitExceeded({
+				kind: "trajectory_token_budget",
+				max: config.maxTrajectoryPromptTokens,
+				observed: cumulativePromptTokens,
+				message:
+					`Trajectory prompt-token budget exceeded ` +
+					`(${cumulativePromptTokens}/${config.maxTrajectoryPromptTokens}) — ` +
+					`this turn is most likely stuck in a replan loop; aborting to bound cost.`,
+			});
+		}
+	};
 	// Tracks the most recent planner output's *explicit* `messageToUser` so the
 	// post-tool evaluator gate can use it as the final response when the
 	// trajectory ends cleanly. EXPLICIT means the planner's structured output
@@ -157,6 +182,7 @@ export async function runPlannerLoop(
 				trajectoryId: params.trajectoryId,
 				parentStageId: params.parentStageId,
 				iteration,
+				onUsage: observePlannerUsage,
 			});
 			// Treat `messageToUser` as authoritative ONLY when the planner's structured
 			// output carried it as an explicit field. The native-tool-call code path
@@ -964,6 +990,14 @@ async function callPlanner(params: {
 	trajectoryId?: string;
 	parentStageId?: string;
 	iteration?: number;
+	/**
+	 * Side-channel observer called once per model call with the gross
+	 * `promptTokens` reported by the provider. Used by `runPlannerLoop`
+	 * to enforce `ChainingLoopConfig.maxTrajectoryPromptTokens` without
+	 * changing this function's return type. Errors thrown from the
+	 * callback (e.g. `TrajectoryLimitExceeded`) propagate to the loop.
+	 */
+	onUsage?: (usage: { promptTokens: number; completionTokens: number }) => void;
 }): Promise<ReturnType<typeof parsePlannerOutput>> {
 	let renderedInput = renderPlannerModelInput({
 		context: params.context,
@@ -975,7 +1009,15 @@ async function callPlanner(params: {
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
 		tools: params.tools,
-		contextWindowTokens: params.config.contextWindowTokens,
+		// `modelName` lets the per-model context-window lookup fire when the
+		// caller provides one; otherwise we keep the explicit fallback.
+		// `contextWindowTokens` is only passed when explicitly set on config
+		// so the lookup result can take effect when the caller chose the
+		// looser per-model path.
+		modelName: params.config.contextWindowModelName,
+		...(params.config.contextWindowTokens
+			? { contextWindowTokens: params.config.contextWindowTokens }
+			: {}),
 		reserveTokens: params.config.compactionReserveTokens,
 	});
 	if (modelInputBudget.shouldCompact && params.config.compactionEnabled) {
@@ -1000,7 +1042,10 @@ async function callPlanner(params: {
 				messages: renderedInput.messages,
 				promptSegments: renderedInput.promptSegments,
 				tools: params.tools,
-				contextWindowTokens: params.config.contextWindowTokens,
+				modelName: params.config.contextWindowModelName,
+				...(params.config.contextWindowTokens
+					? { contextWindowTokens: params.config.contextWindowTokens }
+					: {}),
 				reserveTokens: params.config.compactionReserveTokens,
 			});
 		}
@@ -1083,6 +1128,31 @@ async function callPlanner(params: {
 	const endedAt = Date.now();
 
 	const parsed = parsePlannerOutput(raw);
+
+	// Notify the cumulative-token observer first, BEFORE recording, so the
+	// loop's `maxTrajectoryPromptTokens` guard fires immediately on the call
+	// that crossed the line — not after we've already done another iteration
+	// of bookkeeping. The recorder is observability and can tolerate the
+	// minor reordering; the budget guard is load-bearing.
+	//
+	// CONSEQUENCE for trajectory consumers: when `observePlannerUsage` throws
+	// `TrajectoryLimitExceeded(kind: "trajectory_token_budget")` the call
+	// that crossed the line is intentionally **not** recorded as a planner
+	// stage. The trajectory then ends one stage short of the actual model
+	// activity. Downstream consumers that reconstruct totals from recorded
+	// stages (the trajectory CLI cost report, cost-regression dashboards)
+	// should treat the loop-level `metrics.totalPromptTokens` (populated by
+	// the recorder on `endTrajectory`) as authoritative rather than summing
+	// stage-level usages.
+	if (params.onUsage) {
+		const usage = extractUsage(raw);
+		if (usage) {
+			params.onUsage({
+				promptTokens: usage.promptTokens ?? 0,
+				completionTokens: usage.completionTokens ?? 0,
+			});
+		}
+	}
 
 	await recordPlannerStage({
 		recorder: params.recorder,
@@ -1208,7 +1278,10 @@ async function maybeCompactBeforeNextModelCall(args: {
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
 		tools: args.tools,
-		contextWindowTokens: args.config.contextWindowTokens,
+		modelName: args.config.contextWindowModelName,
+		...(args.config.contextWindowTokens
+			? { contextWindowTokens: args.config.contextWindowTokens }
+			: {}),
 		reserveTokens: args.config.compactionReserveTokens,
 	});
 	if (!budget.shouldCompact) {
