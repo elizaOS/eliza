@@ -115,6 +115,51 @@ export interface LifeOpsBenchHandlerOptions {
 const DEFAULT_MAX_BODY_BYTES = 16 * 1024 * 1024;
 const ROUTE_PREFIX = "/api/benchmark/lifeops_bench";
 
+/**
+ * Maps `CALENDAR(subaction=X)` to the granular dotted method the fake backend
+ * exposes directly. Eliza's planner emits umbrella actions
+ * (`CALENDAR(subaction=create_event, …)`) while
+ * `LifeOpsFakeBackend.applyAction` keys off dotted names
+ * (`calendar.create_event`). Without this translation the calendar umbrella
+ * lands on the backend's umbrella router only by coincidence of name and
+ * silently no-ops on subactions the umbrella router does not implement, which
+ * is the root cause of the calendar state-mutation gap (synthesis plan P0-5).
+ *
+ * Entries here must point at routes that exist in
+ * `LifeOpsFakeBackend.SUPPORTED_METHODS`.
+ */
+const CALENDAR_SUBACTION_TO_GRANULAR: Record<string, string> = {
+  create_event: "calendar.create_event",
+  update_event: "calendar.move_event",
+  move_event: "calendar.move_event",
+  delete_event: "calendar.cancel_event",
+  cancel_event: "calendar.cancel_event",
+  list_events: "calendar.list_events",
+  search_events: "calendar.list_events",
+};
+
+/**
+ * Unwraps an umbrella tool call (currently CALENDAR) into the dotted granular
+ * form the fake backend dispatches directly, stripping `subaction` from the
+ * forwarded kwargs. When no mapping applies the original `{ name, kwargs }`
+ * is returned unchanged so the backend's umbrella router (or its
+ * `LifeOpsBackendUnsupportedError`) still owns the response.
+ */
+export function translateUmbrellaAction(
+  name: string,
+  kwargs: Record<string, unknown>,
+): { name: string; kwargs: Record<string, unknown> } {
+  if (name !== "CALENDAR") return { name, kwargs };
+  const subaction = kwargs.subaction;
+  if (typeof subaction !== "string" || subaction.length === 0) {
+    return { name, kwargs };
+  }
+  const granular = CALENDAR_SUBACTION_TO_GRANULAR[subaction];
+  if (!granular) return { name, kwargs };
+  const { subaction: _stripped, ...rest } = kwargs;
+  return { name: granular, kwargs: rest };
+}
+
 export class LifeOpsBenchHandler {
   private readonly sessions = new Map<string, LifeOpsBenchSession>();
   private readonly invokePlanner: LifeOpsPlannerInvocation;
@@ -287,10 +332,11 @@ export class LifeOpsBenchHandler {
     const executed: ToolCallRecord[] = [];
     for (const call of plannerResult.toolCalls) {
       const id = call.id ?? `call_${executed.length}`;
+      const translated = translateUmbrellaAction(call.name, call.arguments);
       try {
         const result: ActionResult = session.backend.applyAction(
-          call.name,
-          call.arguments,
+          translated.name,
+          translated.kwargs,
         );
         executed.push({
           id,

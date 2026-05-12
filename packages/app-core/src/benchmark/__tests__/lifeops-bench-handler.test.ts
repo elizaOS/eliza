@@ -11,7 +11,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { describe, expect, it } from "vitest";
-import { LifeOpsBenchHandler } from "../lifeops-bench-handler.js";
+import {
+  LifeOpsBenchHandler,
+  translateUmbrellaAction,
+} from "../lifeops-bench-handler.js";
 import { LifeOpsFakeBackend } from "../lifeops-fake-backend.js";
 
 // --------------------------------------------------------------------------
@@ -687,5 +690,184 @@ describe("LifeOpsBenchHandler", () => {
     expect(parsed.tool_calls).toHaveLength(1);
     expect(parsed.tool_calls[0].ok).toBe(false);
     expect(parsed.tool_calls[0].error).toMatch(/unsupported/);
+  });
+});
+
+// --------------------------------------------------------------------------
+// P0-5: CALENDAR umbrella → calendar.<subaction> translation.
+// --------------------------------------------------------------------------
+
+describe("translateUmbrellaAction (P0-5)", () => {
+  it("maps CALENDAR(subaction=create_event) to calendar.create_event and strips subaction", () => {
+    const translated = translateUmbrellaAction("CALENDAR", {
+      subaction: "create_event",
+      calendar_id: "cal_primary",
+      title: "deep work",
+      start: "2026-05-11T14:00:00Z",
+      end: "2026-05-11T14:30:00Z",
+    });
+    expect(translated.name).toBe("calendar.create_event");
+    expect(translated.kwargs).toEqual({
+      calendar_id: "cal_primary",
+      title: "deep work",
+      start: "2026-05-11T14:00:00Z",
+      end: "2026-05-11T14:30:00Z",
+    });
+  });
+
+  it("maps CALENDAR(subaction=delete_event) to calendar.cancel_event and strips subaction", () => {
+    const translated = translateUmbrellaAction("CALENDAR", {
+      subaction: "delete_event",
+      id: "ev1",
+    });
+    expect(translated.name).toBe("calendar.cancel_event");
+    expect(translated.kwargs).toEqual({ id: "ev1" });
+  });
+
+  it("passes CALENDAR without subaction through unchanged", () => {
+    const kwargs = { query: "meeting" };
+    const translated = translateUmbrellaAction("CALENDAR", kwargs);
+    expect(translated.name).toBe("CALENDAR");
+    expect(translated.kwargs).toBe(kwargs);
+  });
+
+  it("passes non-CALENDAR umbrellas through unchanged", () => {
+    const kwargs = { subaction: "send", text: "hi" };
+    const translated = translateUmbrellaAction("MESSAGE", kwargs);
+    expect(translated.name).toBe("MESSAGE");
+    expect(translated.kwargs).toBe(kwargs);
+  });
+});
+
+describe("LifeOpsBenchHandler CALENDAR umbrella unwrap (P0-5)", () => {
+  async function runUmbrellaScenario(args: {
+    taskId: string;
+    toolName: string;
+    toolArguments: Record<string, unknown>;
+  }): Promise<{ worldHashBefore: string; worldHashAfter: string }> {
+    const path = writeFixture();
+    const handler = new LifeOpsBenchHandler({
+      invokePlanner: async () => ({
+        text: "ok",
+        toolCalls: [
+          {
+            id: "c1",
+            name: args.toolName,
+            arguments: args.toolArguments,
+          },
+        ],
+      }),
+    });
+
+    // reset
+    {
+      const req = fakeReq("POST", {
+        task_id: args.taskId,
+        world_snapshot_path: path,
+        now_iso: "2026-05-10T12:00:00Z",
+      });
+      const res = fakeRes();
+      await handler.tryHandle(req, res, "/api/benchmark/lifeops_bench/reset");
+      expect(res.getStatus()).toBe(200);
+    }
+
+    // pre-state
+    const session = handler.getSession(args.taskId);
+    if (!session) throw new Error("session missing after reset");
+    const worldHashBefore = session.backend.stateHash();
+
+    // message
+    {
+      const req = fakeReq("POST", { task_id: args.taskId, text: "go" });
+      const res = fakeRes();
+      await handler.tryHandle(req, res, "/api/benchmark/lifeops_bench/message");
+      expect(res.getStatus()).toBe(200);
+      const parsed = JSON.parse(res.getBody());
+      expect(parsed.tool_calls[0]).toMatchObject({
+        name: args.toolName,
+        ok: true,
+      });
+    }
+
+    const worldHashAfter = session.backend.stateHash();
+    return { worldHashBefore, worldHashAfter };
+  }
+
+  it("CALENDAR(subaction=create_event, …) produces the same state mutation as calendar.create_event", async () => {
+    const kwargs = {
+      calendar_id: "cal_primary",
+      title: "deep work",
+      start: "2026-05-11T14:00:00Z",
+      end: "2026-05-11T14:30:00Z",
+    };
+
+    const umbrella = await runUmbrellaScenario({
+      taskId: "umbrella-create",
+      toolName: "CALENDAR",
+      toolArguments: { subaction: "create_event", ...kwargs },
+    });
+    const granular = await runUmbrellaScenario({
+      taskId: "granular-create",
+      toolName: "calendar.create_event",
+      toolArguments: kwargs,
+    });
+
+    expect(umbrella.worldHashBefore).toEqual(granular.worldHashBefore);
+    expect(umbrella.worldHashAfter).toEqual(granular.worldHashAfter);
+    expect(umbrella.worldHashAfter).not.toEqual(umbrella.worldHashBefore);
+  });
+
+  it("CALENDAR(subaction=delete_event, …) produces the same state mutation as calendar.cancel_event", async () => {
+    const kwargs = { id: "ev1" };
+
+    const umbrella = await runUmbrellaScenario({
+      taskId: "umbrella-delete",
+      toolName: "CALENDAR",
+      toolArguments: { subaction: "delete_event", ...kwargs },
+    });
+    const granular = await runUmbrellaScenario({
+      taskId: "granular-delete",
+      toolName: "calendar.cancel_event",
+      toolArguments: kwargs,
+    });
+
+    expect(umbrella.worldHashBefore).toEqual(granular.worldHashBefore);
+    expect(umbrella.worldHashAfter).toEqual(granular.worldHashAfter);
+    expect(umbrella.worldHashAfter).not.toEqual(umbrella.worldHashBefore);
+  });
+
+  it("CALENDAR without subaction does not crash and is reported as a tool_call", async () => {
+    const path = writeFixture();
+    const handler = new LifeOpsBenchHandler({
+      invokePlanner: async () => ({
+        text: "ok",
+        toolCalls: [
+          {
+            id: "c1",
+            name: "CALENDAR",
+            arguments: { query: "meeting" },
+          },
+        ],
+      }),
+    });
+
+    {
+      const req = fakeReq("POST", {
+        task_id: "umbrella-bare",
+        world_snapshot_path: path,
+        now_iso: "2026-05-10T12:00:00Z",
+      });
+      const res = fakeRes();
+      await handler.tryHandle(req, res, "/api/benchmark/lifeops_bench/reset");
+      expect(res.getStatus()).toBe(200);
+    }
+
+    const req = fakeReq("POST", { task_id: "umbrella-bare", text: "go" });
+    const res = fakeRes();
+    await handler.tryHandle(req, res, "/api/benchmark/lifeops_bench/message");
+    expect(res.getStatus()).toBe(200);
+    const parsed = JSON.parse(res.getBody());
+    expect(parsed.tool_calls).toHaveLength(1);
+    expect(parsed.tool_calls[0].name).toBe("CALENDAR");
   });
 });
