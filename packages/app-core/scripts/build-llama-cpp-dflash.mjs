@@ -438,7 +438,16 @@ function findAndroidVulkanInclude(ndk) {
 // Locate a glslc usable for the host. The Android NDK ships its own glslc
 // under shader-tools/<host>/glslc.
 function findGlslc(ndk) {
-  if (has("glslc")) return "glslc";
+  if (has("glslc")) {
+    // Resolve to absolute path. CMake interprets the bare string "glslc"
+    // as a relative FILEPATH against the source dir, which silently breaks
+    // vulkan-shaders-gen on Linux hosts where glslc lives at /usr/bin/glslc.
+    try {
+      const out = spawnSync("which", ["glslc"], { encoding: "utf8" }).stdout?.trim();
+      if (out) return out;
+    } catch {}
+    return "glslc";
+  }
   if (ndk) {
     const hostDirs = ["linux-x86_64", "darwin-x86_64", "windows-x86_64"];
     for (const host of hostDirs) {
