@@ -34,8 +34,9 @@ ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
 )
 
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
-    "0_6b",
-    "1_7b",
+    "0_8b",
+    "2b",
+    "4b",
     "9b",
     "27b",
     "27b-256k",
@@ -101,8 +102,15 @@ ELIZA_1_PROVENANCE_SLOTS: Final[tuple[str, ...]] = (
 )
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_6b": ("turboquant_q3", "qjl", "polarquant", "dflash"),
-    "1_7b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
+    "0_8b": ("turboquant_q3", "qjl", "polarquant", "dflash"),
+    "2b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
+    "4b": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
     "9b": (
         "turboquant_q4",
         "qjl",
@@ -134,8 +142,9 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_6b": ("metal", "vulkan", "cpu"),
-    "1_7b": ("metal", "vulkan", "cpu"),
+    "0_8b": ("metal", "vulkan", "cpu"),
+    "2b": ("metal", "vulkan", "cpu"),
+    "4b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
@@ -147,8 +156,9 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
-    "0_6b": "Q4_K_M",
-    "1_7b": "Q4_K_M",
+    "0_8b": "Q4_K_M",
+    "2b": "Q4_K_M",
+    "4b": "Q4_K_M",
     "9b": "Q8_0",
     "27b": "Q8_0",
     "27b-256k": "Q8_0",
@@ -930,6 +940,35 @@ def validate_manifest(
             )
         elif not gate["passed"]:
             readiness_errors.append("evals.expressive.passed: false")
+
+    # ── DFlash bench ────────────────────────────────────────────────────
+    # Staging manifests may record a missing/failing DFlash measurement, but
+    # a default-eligible bundle must prove speculative decoding was measured
+    # and passed. Keep this in lockstep with the TS runtime validator.
+    dflash_gate = evals.get("dflash")
+    if not _is_object(dflash_gate):
+        if manifest["defaultEligible"]:
+            errors.append("evals.dflash: required when defaultEligible=true")
+    else:
+        if dflash_gate["passed"] and (
+            dflash_gate["acceptanceRate"] is None
+            or dflash_gate["speedup"] is None
+        ):
+            errors.append(
+                "evals.dflash: passed=true but acceptanceRate/speedup is null"
+            )
+        if manifest["defaultEligible"]:
+            if not dflash_gate["passed"]:
+                readiness_errors.append(
+                    "evals.dflash.passed: false for defaultEligible manifest"
+                )
+            if (
+                dflash_gate["acceptanceRate"] is None
+                or dflash_gate["speedup"] is None
+            ):
+                errors.append(
+                    "evals.dflash: defaultEligible requires measured acceptanceRate and speedup"
+                )
 
     # ── base-v1 provenance coverage ─────────────────────────────────────
     # A `base-v1` manifest must record where every shipped component comes

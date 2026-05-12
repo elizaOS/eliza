@@ -355,6 +355,32 @@ describe("probeFact exact recall scoring", () => {
     expect(outcome.correct).toBe(true);
   });
 
+  it("accepts common month-name renderings for birthday facts", async () => {
+    const client: ModelClient = {
+      chat: async () => ({
+        content: "Your sister's birthday is September 21st.",
+      }),
+    };
+    const outcome = await probeFact({
+      client,
+      model: "fake",
+      judgeModel: "fake",
+      judgeWithModel: false,
+      history: [],
+      systemPrompt: "test",
+      fact: {
+        id: "fact_1",
+        turn: 1,
+        kind: "birthday",
+        utterance: "My sister's birthday is 09/21.",
+        expected: "09/21",
+        question: "When is my sister's birthday?",
+        exactMatch: true,
+      },
+    });
+    expect(outcome.correct).toBe(true);
+  });
+
   it("scores extracted REPLY action content instead of the JSON envelope", async () => {
     const client: ModelClient = {
       chat: async () => ({

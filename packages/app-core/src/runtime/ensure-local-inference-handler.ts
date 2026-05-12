@@ -368,7 +368,7 @@ function makeEmbeddingHandler(): EmbeddingHandler {
  * path: the engine has no `embed()` on the `LocalInferenceLoader` service
  * surface (that's only the AOSP / device-bridge loaders), but when an
  * Eliza-1 bundle is active it serves embeddings through the bundle's
- * local embedding model — pooled text on `0_6b`, the dedicated
+ * local embedding model — pooled text on `0_8b`, the dedicated
  * `embedding/` GGUF on larger tiers — via a lazily-started embedding
  * `llama-server` sidecar. Throws (→ runtime falls through to the
  * operator-configured provider) when no Eliza-1 bundle is loaded; no
@@ -761,7 +761,7 @@ export async function ensureLocalInferenceHandler(
   //   - The desktop/server `LocalInferenceEngine` path has no loader
   //     `embed()`, but when an Eliza-1 bundle is loaded it serves
   //     embeddings through the bundle's local embedding model (pooled text
-  //     on `0_6b`, the dedicated `embedding/` GGUF on larger tiers) via a
+  //     on `0_8b`, the dedicated `embedding/` GGUF on larger tiers) via a
   //     lazily-started embedding `llama-server` sidecar.
   // In neither case do we register a handler that would serve a silent
   // zero-vector — both throw when there's nothing real to call, so the

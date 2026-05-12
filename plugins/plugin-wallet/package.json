@@ -60,6 +60,7 @@
     "@lifi/data-types": "^6.0.0",
     "@lifi/sdk": "^3.7.9",
     "@lifi/types": "^17.18.0",
+    "@meteora-ag/dlmm": "1.9.7",
     "@noble/hashes": "^1.8.0",
     "@orca-so/whirlpools": "^2.2.0",
     "@orca-so/whirlpools-client": "^6.2.1",

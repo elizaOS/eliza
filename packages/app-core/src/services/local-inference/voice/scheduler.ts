@@ -14,7 +14,9 @@ import type {
   RejectedTokenRange,
   SchedulerConfig,
   SpeakerPreset,
+  StreamingTtsBackend,
   TextToken,
+  TtsPcmChunk,
   VoiceAudioSource,
   VoiceSchedulerPhraseTelemetry,
   VoiceSchedulerTelemetryEvent,
@@ -57,6 +59,10 @@ interface InFlight {
   done: Promise<void>;
 }
 
+interface NativeCancelableTtsBackend {
+  cancelTts(): void;
+}
+
 const DEFAULT_MAX_IN_FLIGHT_PHRASES = 4;
 
 function nowMs(): number {
@@ -73,6 +79,41 @@ function phraseTelemetry(phrase: Phrase): VoiceSchedulerPhraseTelemetry {
     tokenCount: Math.max(0, phrase.toIndex - phrase.fromIndex + 1),
     textBytes: new TextEncoder().encode(phrase.text).length,
   };
+}
+
+function isStreamingTtsBackend(
+  backend: OmniVoiceBackend,
+): backend is OmniVoiceBackend & StreamingTtsBackend {
+  return (
+    typeof (backend as Partial<StreamingTtsBackend>).synthesizeStream ===
+    "function"
+  );
+}
+
+function isNativeCancelableTtsBackend(
+  backend: OmniVoiceBackend,
+): backend is OmniVoiceBackend & NativeCancelableTtsBackend {
+  return (
+    typeof (backend as Partial<NativeCancelableTtsBackend>).cancelTts ===
+    "function"
+  );
+}
+
+function copyPcm(pcm: Float32Array): Float32Array {
+  return new Float32Array(pcm);
+}
+
+function concatPcm(
+  parts: ReadonlyArray<Float32Array>,
+  total: number,
+): Float32Array {
+  const out = new Float32Array(total);
+  let offset = 0;
+  for (const part of parts) {
+    out.set(part, offset);
+    offset += part.length;
+  }
+  return out;
 }
 
 export class VoiceScheduler {
@@ -140,10 +181,12 @@ export class VoiceScheduler {
     // onto stale text.
     this.chunker.dropPendingFrom(range.fromIndex);
     const events = this.rollback.onRejected(range);
+    let cancelledStreamingInFlight = false;
     for (const ev of events) {
       const inflight = this.inFlight.get(ev.phraseId);
       if (inflight) {
         inflight.cancelSignal.cancelled = true;
+        cancelledStreamingInFlight ||= isStreamingTtsBackend(this.backend);
         this.emitTtsCancel(inflight.phrase, "rollback");
       }
       this.rollback.drop(ev.phraseId);
@@ -155,6 +198,9 @@ export class VoiceScheduler {
         range,
         reason: ev.reason,
       });
+    }
+    if (cancelledStreamingInFlight) {
+      this.cancelNativeTts();
     }
   }
 
@@ -327,6 +373,7 @@ export class VoiceScheduler {
       inflight.cancelSignal.cancelled = true;
       this.emitTtsCancel(inflight.phrase, "pending-tts");
     }
+    this.cancelNativeTts();
   }
 
   private async dispatchPhrase(phrase: Phrase): Promise<void> {
@@ -370,67 +417,163 @@ export class VoiceScheduler {
     }
 
     const cancelSignal = { cancelled: false };
-    const done = (async () => {
-      try {
-        this.rollback.markSynthesizing(phrase.id);
-        this.emitTelemetry({
-          type: "tts-start",
-          atMs: nowMs(),
-          phrase: phraseTelemetry(phrase),
-          inFlightPhrases: this.inFlight.size,
-        });
-        const chunk = await this.backend.synthesize({
+    let resolveDone!: () => void;
+    let rejectDone!: (err: unknown) => void;
+    const done = new Promise<void>((resolve, reject) => {
+      resolveDone = resolve;
+      rejectDone = reject;
+    });
+    this.inFlight.set(phrase.id, { phrase, cancelSignal, done });
+    void this.runPhraseSynthesis(phrase, cancelSignal).then(
+      resolveDone,
+      rejectDone,
+    );
+  }
+
+  private async runPhraseSynthesis(
+    phrase: Phrase,
+    cancelSignal: { cancelled: boolean },
+  ): Promise<void> {
+    try {
+      this.rollback.markSynthesizing(phrase.id);
+      this.emitTelemetry({
+        type: "tts-start",
+        atMs: nowMs(),
+        phrase: phraseTelemetry(phrase),
+        inFlightPhrases: this.inFlight.size,
+      });
+      if (isStreamingTtsBackend(this.backend)) {
+        const cancelled = await this.synthesizePhraseStream(
           phrase,
-          preset: this.preset,
           cancelSignal,
-          onKernelTick: () => this.tickKernel(),
-        });
-        if (cancelSignal.cancelled) {
+        );
+        if (cancelled || cancelSignal.cancelled) {
           this.emitTtsCancel(phrase, "synthesis-cancelled");
-          return;
         }
-        if (!this.rollback.snapshot().some((e) => e.phrase.id === phrase.id)) {
-          return;
+        return;
+      }
+      const chunk = await this.backend.synthesize({
+        phrase,
+        preset: this.preset,
+        cancelSignal,
+        onKernelTick: () => this.tickKernel(),
+      });
+      if (cancelSignal.cancelled) {
+        this.emitTtsCancel(phrase, "synthesis-cancelled");
+        return;
+      }
+      if (!this.isPhraseTracked(phrase.id)) {
+        return;
+      }
+      this.phraseCache.put({
+        text: phrase.text,
+        pcm: chunk.pcm,
+        sampleRate: chunk.sampleRate,
+      });
+      this.commitAudio(chunk, phrase, "synthesis");
+    } finally {
+      this.inFlight.delete(phrase.id);
+    }
+  }
+
+  private async synthesizePhraseStream(
+    phrase: Phrase,
+    cancelSignal: { cancelled: boolean },
+  ): Promise<boolean> {
+    const backend = this.backend;
+    if (!isStreamingTtsBackend(backend)) return false;
+
+    const parts: Float32Array[] = [];
+    let totalSamples = 0;
+    let sampleRate = 0;
+    let firstAudio = true;
+    const result = await backend.synthesizeStream({
+      phrase,
+      preset: this.preset,
+      cancelSignal,
+      onKernelTick: () => this.tickKernel(),
+      onChunk: (chunk: TtsPcmChunk) => {
+        if (cancelSignal.cancelled || !this.isPhraseTracked(phrase.id)) {
+          return true;
         }
+        if (chunk.isFinal || chunk.pcm.length === 0) {
+          return cancelSignal.cancelled;
+        }
+        const pcm = copyPcm(chunk.pcm);
+        parts.push(pcm);
+        totalSamples += pcm.length;
+        sampleRate = chunk.sampleRate;
+        this.commitAudio(
+          {
+            phraseId: phrase.id,
+            fromIndex: phrase.fromIndex,
+            toIndex: phrase.toIndex,
+            pcm,
+            sampleRate: chunk.sampleRate,
+          },
+          phrase,
+          "synthesis",
+          { emitFirstAudio: firstAudio, markPlayed: false },
+        );
+        firstAudio = false;
+        return cancelSignal.cancelled;
+      },
+    });
+
+    const cancelled = result.cancelled || cancelSignal.cancelled;
+    if (!cancelled && this.isPhraseTracked(phrase.id)) {
+      this.rollback.markPlayed(phrase.id);
+      if (totalSamples > 0) {
         this.phraseCache.put({
           text: phrase.text,
-          pcm: chunk.pcm,
-          sampleRate: chunk.sampleRate,
+          pcm: concatPcm(parts, totalSamples),
+          sampleRate,
         });
-        this.commitAudio(chunk, phrase, "synthesis");
-      } finally {
-        this.inFlight.delete(phrase.id);
       }
-    })();
+    }
+    return cancelled;
+  }
 
-    this.inFlight.set(phrase.id, { phrase, cancelSignal, done });
+  private isPhraseTracked(phraseId: number): boolean {
+    return this.rollback
+      .snapshot()
+      .some((entry) => entry.phrase.id === phraseId);
+  }
+
+  private cancelNativeTts(): void {
+    if (isNativeCancelableTtsBackend(this.backend)) {
+      this.backend.cancelTts();
+    }
   }
 
   private commitAudio(
     chunk: AudioChunk,
     phrase: Phrase,
     source: VoiceAudioSource,
+    opts: { emitFirstAudio?: boolean; markPlayed?: boolean } = {},
   ): void {
-    this.emitTelemetry({
-      type: "tts-first-audio",
-      atMs: nowMs(),
-      phrase: phraseTelemetry(phrase),
-      source,
-      samples: chunk.pcm.length,
-      sampleRate: chunk.sampleRate,
-    });
+    if (opts.emitFirstAudio !== false) {
+      this.emitTelemetry({
+        type: "tts-first-audio",
+        atMs: nowMs(),
+        phrase: phraseTelemetry(phrase),
+        source,
+        samples: chunk.pcm.length,
+        sampleRate: chunk.sampleRate,
+      });
+    }
     this.rollback.markRingBuffered(chunk.phraseId);
     this.ringBuffer.write(chunk.pcm);
     // When TTS is paused by a provisional barge-in, keep the synthesized
     // PCM in the ring buffer but DON'T hand it to the sink yet — `resume-tts`
-    // flushes it; `hard-stop` drains it. (We still mark it "played" for the
-    // rollback queue: once it's committed past the chunker it can't be
-    // un-synthesized — only un-spoken.)
+    // flushes it; `hard-stop` drains it.
     let flushedSamples = 0;
     if (!this.paused) {
       flushedSamples = this.ringBuffer.flushToSink();
     }
-    this.rollback.markPlayed(chunk.phraseId);
+    if (opts.markPlayed !== false) {
+      this.rollback.markPlayed(chunk.phraseId);
+    }
     this.emitTelemetry({
       type: "audio-committed",
       atMs: nowMs(),
@@ -487,6 +630,7 @@ export class VoiceScheduler {
       inflight.cancelSignal.cancelled = true;
       this.emitTtsCancel(inflight.phrase, "barge-in");
     }
+    this.cancelNativeTts();
     this.emitTelemetry({
       type: "barge-in",
       atMs: nowMs(),

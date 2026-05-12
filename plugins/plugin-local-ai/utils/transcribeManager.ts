@@ -1,7 +1,3 @@
-// @ts-nocheck — pending migration: @huggingface/transformers 3->4
-// (PreTrainedModel/Florence2 interface changes), @elizaos/core logger
-// signature drift (structured-context overload removed), and
-// GenerateTextParams.{modelType,runtime} field removal. Tracked separately.
 import { exec } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -10,18 +6,61 @@ import { logger } from "@elizaos/core";
 
 const execAsync = promisify(exec);
 
-type WhisperModule = (
-  filePath: string,
-  options?: Record<string, unknown>
-) => Promise<Array<{ speech?: string }>>;
+interface WhisperOptions {
+  language?: string;
+  gen_file_txt?: boolean;
+  gen_file_subtitle?: boolean;
+  gen_file_vtt?: boolean;
+  word_timestamps?: boolean;
+  timestamp_size?: number;
+}
+
+interface WhisperConfig {
+  modelName?: string;
+  modelPath?: string;
+  whisperOptions?: WhisperOptions;
+}
+
+interface TranscriptSegment {
+  speech?: string;
+}
+
+type WhisperModule = (filePath: string, options?: WhisperConfig) => Promise<TranscriptSegment[]>;
+
+interface WhisperNodeModule {
+  whisper?: WhisperModule;
+  default?: WhisperModule | { whisper?: WhisperModule };
+}
+
+function isWhisperModule(value: unknown): value is WhisperModule {
+  return typeof value === "function";
+}
+
+function resolveWhisper(module: unknown): WhisperModule {
+  const candidate = module as WhisperNodeModule;
+  if (isWhisperModule(candidate.whisper)) {
+    return candidate.whisper;
+  }
+  if (isWhisperModule(candidate.default)) {
+    return candidate.default;
+  }
+  if (
+    candidate.default &&
+    typeof candidate.default === "object" &&
+    isWhisperModule(candidate.default.whisper)
+  ) {
+    return candidate.default.whisper;
+  }
+  throw new Error("whisper-node module did not expose a whisper function");
+}
 
 let whisperModule: WhisperModule | null = null;
 async function getWhisper(): Promise<WhisperModule> {
   if (!whisperModule) {
     const module = await import("whisper-node");
-    whisperModule = (module as { whisper: WhisperModule }).whisper;
+    whisperModule = resolveWhisper(module);
   }
-  return whisperModule as WhisperModule;
+  return whisperModule;
 }
 
 interface TranscriptionResult {
@@ -155,10 +194,7 @@ export class TranscribeManager {
       logger.error(
         {
           error: error instanceof Error ? error.message : String(error),
-          stderr:
-            error instanceof Error && "stderr" in error
-              ? String((error as NodeJS.ErrnoException).code)
-              : undefined,
+          stderr: error instanceof Error && "stderr" in error ? String(error.stderr) : undefined,
           timestamp: new Date().toISOString(),
         },
         "FFmpeg not found in PATH:"

@@ -1,78 +1,247 @@
 {
   "agent": "openclaw",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T134007Z_6b24d8c1/vending-bench__vending_bench/run_vending_bench_20260511T134010Z_2_b363ce71/output"
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T081747Z_90a5b8f6/vending-bench__vending_bench/run_vending_bench_20260512T081747Z_1_d1463a7a/output"
   ],
   "benchmark_directory": "vending-bench",
   "benchmark_id": "vending_bench",
   "cache_metrics": {
     "cache_creation_input_tokens": 0,
-    "cache_hit_ratio": 0.0,
-    "cache_read_input_tokens": 0,
-    "turns_with_cached_field": 0
+    "cache_hit_ratio": 0.5775490691103639,
+    "cache_read_input_tokens": 53760,
+    "turns_with_cached_field": 5
   },
   "error": null,
   "higher_is_better": true,
   "metrics": {
-    "avg_net_worth": "489.0",
+    "avg_items_sold": 0.0,
+    "avg_net_worth": "473.0",
+    "avg_orders_placed": 1.0,
+    "avg_profit": -27.0,
+    "avg_revenue": 0.0,
     "cache_metrics": {
       "cache_creation_input_tokens": 0,
-      "cache_hit_ratio": 0.0,
-      "cache_read_input_tokens": 0,
-      "turns_with_cached_field": 0
+      "cache_hit_ratio": 0.5775490691103639,
+      "cache_read_input_tokens": 53760,
+      "turns_with_cached_field": 5
     },
+    "canonical_entries": 0,
     "coherence_score": 1.0,
-    "max_net_worth": "489.0",
+    "max_net_worth": 473.0,
     "performance_metrics": {
-      "duration_seconds": 3.1546140420250595,
-      "mean_latency_ms": null,
-      "p95_latency_ms": null,
-      "throughput_per_second": 0.0
+      "duration_seconds": 80.03481412498513,
+      "mean_latency_ms": 15882.176208402961,
+      "p95_latency_ms": 18565.81791699864,
+      "throughput_per_second": 0.06247281329587181
     },
+    "primary_score_note": "Average revenue per run; net worth is tracked as a secondary metric so no-op/no-spend policies do not win smoke runs.",
     "profitability_rate": 0,
     "return_code": 0,
     "token_metrics": {
-      "avg_completion_tokens": 0.0,
-      "avg_prompt_tokens": 0.0,
-      "completion_tokens": 0,
-      "llm_call_count": 0,
-      "prompt_tokens": 0,
-      "total_tokens": 0
+      "avg_completion_tokens": 273.6,
+      "avg_prompt_tokens": 7864.6,
+      "completion_tokens": 1368,
+      "llm_call_count": 5,
+      "prompt_tokens": 39323,
+      "total_tokens": 94451
     },
+    "total_revenue": 0.0,
     "trajectory_summary": {
-      "files": 3,
-      "prompt_chars": 0,
-      "repeated_prefixes": [],
-      "turns": 0
+      "files": 4,
+      "prompt_chars": 42449,
+      "repeated_prefixes": [
+        {
+          "count": 5,
+          "snippet": "\n\n3. PLACE_ORDER - Order products from a supplier\n   {\"action\": \"PLACE_ORDER\", \"supplier_id\": \"supplier_id\", \"items\": {\"product_id\": quantity}}\n\n4. RESTOCK_SLOT - Put delivered products in machine slo"
+        },
+        {
+          "count": 5,
+          "snippet": "\n\n8. CHECK_DELIVERIES - Check order/delivery status\n   {\"action\": \"CHECK_DELIVERIES\"}\n\n9. ADVANCE_DAY - End your turn and proceed to next day\n   {\"action\": \"ADVANCE_DAY\"}\n\n## Important Tips:\n- **Use e"
+        },
+        {
+          "count": 5,
+          "snippet": "\n{\"action\": \"PLACE_ORDER\", \"supplier_id\": \"beverage_dist\", \"items\": {\"water\": 20, \"soda_cola\": 20}, \"reasoning\": \"Hot weather expected, stocking up on drinks\"}\n\n\n## Day 1 of your vending business\n\nCur"
+        },
+        {
+          "count": 5,
+          "snippet": "   {\"action\": \"ADVANCE_DAY\"}\n\n## Important Tips:\n- **Use exact product_ids** when ordering/restocking (e.g., \"water\" not \"bottled_water\", \"soda_cola\" not \"cola\")\n- Track your orders carefully - note e"
+        },
+        {
+          "count": 5,
+          "snippet": "   {\"action\": \"COLLECT_CASH\"}\n\n7. UPDATE_NOTES - Keep notes for yourself\n   {\"action\": \"UPDATE_NOTES\", \"key\": \"strategy\", \"content\": \"Your note here\"}\n\n8. CHECK_DELIVERIES - Check order/delivery statu"
+        },
+        {
+          "count": 5,
+          "snippet": "   {\"action\": \"PLACE_ORDER\", \"supplier_id\": \"supplier_id\", \"items\": {\"product_id\": quantity}}\n\n4. RESTOCK_SLOT - Put delivered products in machine slots\n   {\"action\": \"RESTOCK_SLOT\", \"row\": 0, \"column"
+        },
+        {
+          "count": 5,
+          "snippet": " \"SET_PRICE\", \"row\": 0, \"column\": 0, \"price\": 1.50}\n\n6. COLLECT_CASH - Collect revenue from machine\n   {\"action\": \"COLLECT_CASH\"}\n\n7. UPDATE_NOTES - Keep notes for yourself\n   {\"action\": \"UPDATE_NOTES"
+        },
+        {
+          "count": 5,
+          "snippet": " \"column\": 0, \"product_id\": \"product_id\", \"quantity\": 5}\n\n5. SET_PRICE - Adjust product prices\n   {\"action\": \"SET_PRICE\", \"row\": 0, \"column\": 0, \"price\": 1.50}\n\n6. COLLECT_CASH - Collect revenue from "
+        },
+        {
+          "count": 5,
+          "snippet": " \"items\": {\"water\": 20, \"soda_cola\": 20}, \"reasoning\": \"Hot weather expected, stocking up on drinks\"}\nuser: You are an AI managing a vending machine business. Your goal is to maximize profit over the "
+        },
+        {
+          "count": 5,
+          "snippet": " \"water\" not \"bottled_water\", \"soda_cola\" not \"cola\")\n- Track your orders carefully - note expected delivery dates\n- Weather affects demand: hot weather = more drinks, cold = more snacks\n- Don't let p"
+        },
+        {
+          "count": 5,
+          "snippet": " **Use exact product_ids** when ordering/restocking (e.g., \"water\" not \"bottled_water\", \"soda_cola\" not \"cola\")\n- Track your orders carefully - note expected delivery dates\n- Weather affects demand: h"
+        },
+        {
+          "count": 5,
+          "snippet": " Always end each day with ADVANCE_DAY once you\u2019ve finished necessary actions.\n- If you\u2019re unsure what to do next, ADVANCE_DAY.\n\n## Available Actions (respond with JSON):\n\n1. VIEW_BUSINESS_STATE - See "
+        },
+        {
+          "count": 5,
+          "snippet": " JSON containing your action. You may include a \"reasoning\" field to explain your decision:\n\n{\"action\": \"PLACE_ORDER\", \"supplier_id\": \"beverage_dist\", \"items\": {\"water\": 20, \"soda_cola\": 20}, \"reasoni"
+        },
+        {
+          "count": 5,
+          "snippet": " Manage orders and supplier relationships efficiently\n4. Track deliveries and restock on time\n5. Collect cash from the machine regularly\n6. Minimize stockouts and waste\n\n## Turn Discipline (important)"
+        },
+        {
+          "count": 5,
+          "snippet": " PLACE_ORDER. If you need multiple products, include them in a single order. If you already placed an order today, ADVANCE_DAY.\n- Do not spam CHECK_DELIVERIES: if deliveries are \"in_transit\", ADVANCE_"
+        },
+        {
+          "count": 5,
+          "snippet": " Your goal is to maximize profit over the simulation period.\n\n## Your Responsibilities:\n1. Keep the machine stocked with products customers want\n2. Set optimal prices based on demand and conditions\n3."
+        },
+        {
+          "count": 5,
+          "snippet": " error, do NOT retry the exact same parameters.** Try different parameters or ADVANCE_DAY.\n- Always end each day with ADVANCE_DAY once you\u2019ve finished necessary actions.\n- If you\u2019re unsure what to do "
+        },
+        {
+          "count": 5,
+          "snippet": " necessary actions.\n- If you\u2019re unsure what to do next, ADVANCE_DAY.\n\n## Available Actions (respond with JSON):\n\n1. VIEW_BUSINESS_STATE - See current inventory, cash, orders\n   {\"action\": \"VIEW_BUSINE"
+        },
+        {
+          "count": 5,
+          "snippet": " nothing.\n- When restocking: each slot has **max_capacity=10**. Restock \u226410 units per slot. If a slot is full, try a DIFFERENT slot.\n- **If an action shows an error, do NOT retry the exact same parame"
+        },
+        {
+          "count": 5,
+          "snippet": "\", \"key\": \"strategy\", \"content\": \"Your note here\"}\n\n8. CHECK_DELIVERIES - Check order/delivery status\n   {\"action\": \"CHECK_DELIVERIES\"}\n\n9. ADVANCE_DAY - End your turn and proceed to next day\n   {\"act"
+        }
+      ],
+      "turns": 5
     }
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
-    "duration_seconds": 3.1546140420250595,
-    "mean_latency_ms": null,
-    "p95_latency_ms": null,
-    "throughput_per_second": 0.0
+    "duration_seconds": 80.03481412498513,
+    "mean_latency_ms": 15882.176208402961,
+    "p95_latency_ms": 18565.81791699864,
+    "throughput_per_second": 0.06247281329587181
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T134007Z_6b24d8c1/vending-bench__vending_bench/run_vending_bench_20260511T134010Z_2_b363ce71/output/vending-bench-results-20260511_064013.json",
-  "run_group_id": "rg_20260511T134007Z_6b24d8c1",
-  "run_id": "run_vending_bench_20260511T134010Z_2_b363ce71",
-  "score": 489.0,
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T081747Z_90a5b8f6/vending-bench__vending_bench/run_vending_bench_20260512T081747Z_1_d1463a7a/output/vending-bench-results-20260512_011907.json",
+  "run_group_id": "rg_20260512T081747Z_90a5b8f6",
+  "run_id": "run_vending_bench_20260512T081747Z_1_d1463a7a",
+  "score": 0.0,
   "status": "succeeded",
   "token_metrics": {
-    "avg_completion_tokens": 0.0,
-    "avg_prompt_tokens": 0.0,
-    "completion_tokens": 0,
-    "llm_call_count": 0,
-    "prompt_tokens": 0,
-    "total_tokens": 0
+    "avg_completion_tokens": 273.6,
+    "avg_prompt_tokens": 7864.6,
+    "completion_tokens": 1368,
+    "llm_call_count": 5,
+    "prompt_tokens": 39323,
+    "total_tokens": 94451
   },
   "trajectory_summary": {
-    "files": 3,
-    "prompt_chars": 0,
-    "repeated_prefixes": [],
-    "turns": 0
+    "files": 4,
+    "prompt_chars": 42449,
+    "repeated_prefixes": [
+      {
+        "count": 5,
+        "snippet": "\n\n3. PLACE_ORDER - Order products from a supplier\n   {\"action\": \"PLACE_ORDER\", \"supplier_id\": \"supplier_id\", \"items\": {\"product_id\": quantity}}\n\n4. RESTOCK_SLOT - Put delivered products in machine slo"
+      },
+      {
+        "count": 5,
+        "snippet": "\n\n8. CHECK_DELIVERIES - Check order/delivery status\n   {\"action\": \"CHECK_DELIVERIES\"}\n\n9. ADVANCE_DAY - End your turn and proceed to next day\n   {\"action\": \"ADVANCE_DAY\"}\n\n## Important Tips:\n- **Use e"
+      },
+      {
+        "count": 5,
+        "snippet": "\n{\"action\": \"PLACE_ORDER\", \"supplier_id\": \"beverage_dist\", \"items\": {\"water\": 20, \"soda_cola\": 20}, \"reasoning\": \"Hot weather expected, stocking up on drinks\"}\n\n\n## Day 1 of your vending business\n\nCur"
+      },
+      {
+        "count": 5,
+        "snippet": "   {\"action\": \"ADVANCE_DAY\"}\n\n## Important Tips:\n- **Use exact product_ids** when ordering/restocking (e.g., \"water\" not \"bottled_water\", \"soda_cola\" not \"cola\")\n- Track your orders carefully - note e"
+      },
+      {
+        "count": 5,
+        "snippet": "   {\"action\": \"COLLECT_CASH\"}\n\n7. UPDATE_NOTES - Keep notes for yourself\n   {\"action\": \"UPDATE_NOTES\", \"key\": \"strategy\", \"content\": \"Your note here\"}\n\n8. CHECK_DELIVERIES - Check order/delivery statu"
+      },
+      {
+        "count": 5,
+        "snippet": "   {\"action\": \"PLACE_ORDER\", \"supplier_id\": \"supplier_id\", \"items\": {\"product_id\": quantity}}\n\n4. RESTOCK_SLOT - Put delivered products in machine slots\n   {\"action\": \"RESTOCK_SLOT\", \"row\": 0, \"column"
+      },
+      {
+        "count": 5,
+        "snippet": " \"SET_PRICE\", \"row\": 0, \"column\": 0, \"price\": 1.50}\n\n6. COLLECT_CASH - Collect revenue from machine\n   {\"action\": \"COLLECT_CASH\"}\n\n7. UPDATE_NOTES - Keep notes for yourself\n   {\"action\": \"UPDATE_NOTES"
+      },
+      {
+        "count": 5,
+        "snippet": " \"column\": 0, \"product_id\": \"product_id\", \"quantity\": 5}\n\n5. SET_PRICE - Adjust product prices\n   {\"action\": \"SET_PRICE\", \"row\": 0, \"column\": 0, \"price\": 1.50}\n\n6. COLLECT_CASH - Collect revenue from "
+      },
+      {
+        "count": 5,
+        "snippet": " \"items\": {\"water\": 20, \"soda_cola\": 20}, \"reasoning\": \"Hot weather expected, stocking up on drinks\"}\nuser: You are an AI managing a vending machine business. Your goal is to maximize profit over the "
+      },
+      {
+        "count": 5,
+        "snippet": " \"water\" not \"bottled_water\", \"soda_cola\" not \"cola\")\n- Track your orders carefully - note expected delivery dates\n- Weather affects demand: hot weather = more drinks, cold = more snacks\n- Don't let p"
+      },
+      {
+        "count": 5,
+        "snippet": " **Use exact product_ids** when ordering/restocking (e.g., \"water\" not \"bottled_water\", \"soda_cola\" not \"cola\")\n- Track your orders carefully - note expected delivery dates\n- Weather affects demand: h"
+      },
+      {
+        "count": 5,
+        "snippet": " Always end each day with ADVANCE_DAY once you\u2019ve finished necessary actions.\n- If you\u2019re unsure what to do next, ADVANCE_DAY.\n\n## Available Actions (respond with JSON):\n\n1. VIEW_BUSINESS_STATE - See "
+      },
+      {
+        "count": 5,
+        "snippet": " JSON containing your action. You may include a \"reasoning\" field to explain your decision:\n\n{\"action\": \"PLACE_ORDER\", \"supplier_id\": \"beverage_dist\", \"items\": {\"water\": 20, \"soda_cola\": 20}, \"reasoni"
+      },
+      {
+        "count": 5,
+        "snippet": " Manage orders and supplier relationships efficiently\n4. Track deliveries and restock on time\n5. Collect cash from the machine regularly\n6. Minimize stockouts and waste\n\n## Turn Discipline (important)"
+      },
+      {
+        "count": 5,
+        "snippet": " PLACE_ORDER. If you need multiple products, include them in a single order. If you already placed an order today, ADVANCE_DAY.\n- Do not spam CHECK_DELIVERIES: if deliveries are \"in_transit\", ADVANCE_"
+      },
+      {
+        "count": 5,
+        "snippet": " Your goal is to maximize profit over the simulation period.\n\n## Your Responsibilities:\n1. Keep the machine stocked with products customers want\n2. Set optimal prices based on demand and conditions\n3."
+      },
+      {
+        "count": 5,
+        "snippet": " error, do NOT retry the exact same parameters.** Try different parameters or ADVANCE_DAY.\n- Always end each day with ADVANCE_DAY once you\u2019ve finished necessary actions.\n- If you\u2019re unsure what to do "
+      },
+      {
+        "count": 5,
+        "snippet": " necessary actions.\n- If you\u2019re unsure what to do next, ADVANCE_DAY.\n\n## Available Actions (respond with JSON):\n\n1. VIEW_BUSINESS_STATE - See current inventory, cash, orders\n   {\"action\": \"VIEW_BUSINE"
+      },
+      {
+        "count": 5,
+        "snippet": " nothing.\n- When restocking: each slot has **max_capacity=10**. Restock \u226410 units per slot. If a slot is full, try a DIFFERENT slot.\n- **If an action shows an error, do NOT retry the exact same parame"
+      },
+      {
+        "count": 5,
+        "snippet": "\", \"key\": \"strategy\", \"content\": \"Your note here\"}\n\n8. CHECK_DELIVERIES - Check order/delivery status\n   {\"action\": \"CHECK_DELIVERIES\"}\n\n9. ADVANCE_DAY - End your turn and proceed to next day\n   {\"act"
+      }
+    ],
+    "turns": 5
   },
-  "unit": "usd",
-  "updated_at": "2026-05-12T01:34:00Z"
+  "unit": "usd_revenue_per_run",
+  "updated_at": "2026-05-12T08:19:07.979460+00:00"
 }

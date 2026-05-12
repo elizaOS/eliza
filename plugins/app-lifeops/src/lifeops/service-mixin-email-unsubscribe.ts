@@ -1,4 +1,3 @@
-// @ts-nocheck — Mixin pattern: see service.ts for the composed public type.
 import crypto from "node:crypto";
 import type {
   EmailSubscriptionScanResult,
@@ -10,11 +9,22 @@ import type {
   EmailUnsubscribeResult,
   EmailUnsubscribeScanRequest,
 } from "./email-unsubscribe-types.js";
+import type {
+  GetLifeOpsGmailSearchRequest,
+  LifeOpsConnectorGrant,
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+  LifeOpsGmailSearchFeed,
+} from "../contracts/index.js";
 import {
   accountIdForGrant,
   requireGoogleServiceMethod,
 } from "./google-plugin-delegates.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
 import {
   fail,
   normalizeOptionalString,
@@ -23,6 +33,33 @@ import {
 
 const DEFAULT_SCAN_MAX_MESSAGES = 200;
 const MAX_SENDERS_RETURNED = 200;
+
+export interface LifeOpsEmailUnsubscribeService {
+  scanEmailSubscriptions(
+    requestUrl: URL,
+    request?: EmailUnsubscribeScanRequest,
+  ): Promise<EmailSubscriptionScanResult>;
+  unsubscribeEmailSender(
+    requestUrl: URL,
+    request: EmailUnsubscribeRequest,
+  ): Promise<EmailUnsubscribeResult>;
+  listEmailUnsubscribes(limit?: number): Promise<EmailUnsubscribeRecord[]>;
+  summarizeEmailUnsubscribeScan(result: EmailSubscriptionScanResult): string;
+}
+
+type EmailUnsubscribeMixinDependencies = LifeOpsServiceBase & {
+  getGmailSearch(
+    requestUrl: URL,
+    request: GetLifeOpsGmailSearchRequest,
+    now?: Date,
+  ): Promise<LifeOpsGmailSearchFeed>;
+  requireGoogleGmailGrant(
+    requestUrl: URL,
+    requestedMode?: LifeOpsConnectorMode,
+    requestedSide?: LifeOpsConnectorSide,
+    grantId?: string,
+  ): Promise<LifeOpsConnectorGrant>;
+};
 
 function headerValue(
   headers: Record<string, unknown> | undefined,
@@ -147,8 +184,11 @@ async function performHttpUnsubscribe(args: {
 /** @internal */
 export function withEmailUnsubscribe<
   TBase extends Constructor<LifeOpsServiceBase>,
->(Base: TBase) {
-  class LifeOpsEmailUnsubscribeMixin extends Base {
+>(Base: TBase): MixinClass<TBase, LifeOpsEmailUnsubscribeService> {
+  const EmailUnsubscribeBase =
+    Base as unknown as Constructor<EmailUnsubscribeMixinDependencies>;
+
+  class LifeOpsEmailUnsubscribeMixin extends EmailUnsubscribeBase {
     async scanEmailSubscriptions(
       requestUrl: URL,
       request: EmailUnsubscribeScanRequest = {},
@@ -432,5 +472,8 @@ export function withEmailUnsubscribe<
     }
   }
 
-  return LifeOpsEmailUnsubscribeMixin;
+  return LifeOpsEmailUnsubscribeMixin as unknown as MixinClass<
+    TBase,
+    LifeOpsEmailUnsubscribeService
+  >;
 }

@@ -1,78 +1,79 @@
 {
   "agent": "openclaw",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132113Z_1a836212/woobench__woobench/run_woobench_20260511T132113Z_1_94cbf416/output"
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T081747Z_90a5b8f6/woobench__woobench/run_woobench_20260512T081908Z_1_ea3ec6d9/output"
   ],
   "benchmark_directory": "woobench",
   "benchmark_id": "woobench",
   "cache_metrics": {
     "cache_creation_input_tokens": 0,
-    "cache_hit_ratio": 0.0,
-    "cache_read_input_tokens": 0,
-    "turns_with_cached_field": 0
+    "cache_hit_ratio": 0.8566512054398113,
+    "cache_read_input_tokens": 143872,
+    "turns_with_cached_field": 9
   },
   "error": null,
   "higher_is_better": true,
   "metrics": {
     "cache_metrics": {
       "cache_creation_input_tokens": 0,
-      "cache_hit_ratio": 0.0,
-      "cache_read_input_tokens": 0,
-      "turns_with_cached_field": 0
+      "cache_hit_ratio": 0.8566512054398113,
+      "cache_read_input_tokens": 143872,
+      "turns_with_cached_field": 9
     },
+    "canonical_entries": 0,
     "failed_scenarios": 0,
-    "overall_score": 99.99999999999999,
+    "overall_score": 23.076923076923077,
     "performance_metrics": {
-      "duration_seconds": 5.446642499999143,
-      "mean_latency_ms": null,
-      "p95_latency_ms": null,
-      "throughput_per_second": 1.652394112520037
+      "duration_seconds": 114.17416158301057,
+      "mean_latency_ms": 12622.895587895377,
+      "p95_latency_ms": 15119.6632499923,
+      "throughput_per_second": 0.15765388377223213
     },
     "resilience_score": 0.0,
     "return_code": 0,
     "revenue_efficiency": 0.0,
     "token_metrics": {
-      "avg_completion_tokens": 0.0,
-      "avg_prompt_tokens": 0.0,
-      "completion_tokens": 0,
-      "llm_call_count": 9,
-      "prompt_tokens": 0,
-      "total_tokens": 0
+      "avg_completion_tokens": 317.8333333333333,
+      "avg_prompt_tokens": 1337.5,
+      "completion_tokens": 5721,
+      "llm_call_count": 18,
+      "prompt_tokens": 24075,
+      "total_tokens": 173668
     },
     "trajectory_summary": {
-      "files": 1,
-      "prompt_chars": 10183,
+      "files": 2,
+      "prompt_chars": 20564,
       "repeated_prefixes": [],
-      "turns": 9
+      "turns": 18
     }
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
-    "duration_seconds": 5.446642499999143,
-    "mean_latency_ms": null,
-    "p95_latency_ms": null,
-    "throughput_per_second": 1.652394112520037
+    "duration_seconds": 114.17416158301057,
+    "mean_latency_ms": 12622.895587895377,
+    "p95_latency_ms": 15119.6632499923,
+    "throughput_per_second": 0.15765388377223213
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132113Z_1a836212/woobench__woobench/run_woobench_20260511T132113Z_1_94cbf416/output/woobench_gpt-oss-120b_20260511_062119.json",
-  "run_group_id": "rg_20260511T132113Z_1a836212",
-  "run_id": "run_woobench_20260511T132113Z_1_94cbf416",
-  "score": 0.9999999999999999,
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T081747Z_90a5b8f6/woobench__woobench/run_woobench_20260512T081908Z_1_ea3ec6d9/output/woobench_gpt-oss-120b_20260512_012102.json",
+  "run_group_id": "rg_20260512T081747Z_90a5b8f6",
+  "run_id": "run_woobench_20260512T081908Z_1_ea3ec6d9",
+  "score": 0.23076923076923075,
   "status": "succeeded",
   "token_metrics": {
-    "avg_completion_tokens": 0.0,
-    "avg_prompt_tokens": 0.0,
-    "completion_tokens": 0,
-    "llm_call_count": 9,
-    "prompt_tokens": 0,
-    "total_tokens": 0
+    "avg_completion_tokens": 317.8333333333333,
+    "avg_prompt_tokens": 1337.5,
+    "completion_tokens": 5721,
+    "llm_call_count": 18,
+    "prompt_tokens": 24075,
+    "total_tokens": 173668
   },
   "trajectory_summary": {
-    "files": 1,
-    "prompt_chars": 10183,
+    "files": 2,
+    "prompt_chars": 20564,
     "repeated_prefixes": [],
-    "turns": 9
+    "turns": 18
   },
   "unit": "ratio",
-  "updated_at": "2026-05-12T01:34:00Z"
+  "updated_at": "2026-05-12T08:21:02.329978+00:00"
 }

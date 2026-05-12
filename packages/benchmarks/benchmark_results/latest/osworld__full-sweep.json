@@ -1,0 +1,33 @@
+{
+  "agent": "full-sweep",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T154723Z_cef7b22f/osworld__osworld/run_osworld_20260505T154723Z_1_c96fff89/output"
+  ],
+  "benchmark_directory": "OSWorld",
+  "benchmark_id": "osworld",
+  "cache_metrics": {},
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "action_space": "pyautogui",
+    "agent": "eliza",
+    "model": "openai/gpt-oss-120b",
+    "observation_type": "screenshot_a11y_tree",
+    "overall_success_rate": 1.0,
+    "passed_tasks": 1,
+    "return_code": 0,
+    "total_tasks": 1
+  },
+  "model": "openai/gpt-oss-120b",
+  "performance_metrics": {},
+  "provider": "mock",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T154723Z_cef7b22f/osworld__osworld/run_osworld_20260505T154723Z_1_c96fff89/output/osworld-eliza-results-20260505_084740.json",
+  "run_group_id": "rg_20260505T154723Z_cef7b22f",
+  "run_id": "run_osworld_20260505T154723Z_1_c96fff89",
+  "score": 1.0,
+  "status": "succeeded",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": "ratio",
+  "updated_at": "2026-05-05T15:47:45.010790+00:00"
+}

@@ -48,8 +48,10 @@ import { localInferenceRoot } from "./paths";
 import { ramHeadroomReserveMb, resolveRamBudget } from "./ram-budget";
 import {
   grammarRequestFields,
+  repairStructuredOutput,
   resolveGrammarForParams,
   type StructuredGenerateParams,
+  StructuredOutputRepairStream,
 } from "./structured-output";
 import type {
   CatalogModel,
@@ -564,17 +566,6 @@ export function readDflashBinaryCapabilities(): DflashBinaryCapabilities | null 
   return null;
 }
 
-function isMetalDflashRuntime(): boolean {
-  return platformKey().endsWith("-metal");
-}
-
-function dflashMetalAutoEnabled(): boolean {
-  return (
-    readBool("ELIZA_DFLASH_METAL_AUTO") ||
-    readBool("ELIZA_DFLASH_METAL_ENABLED")
-  );
-}
-
 /**
  * Refuse a `--cache-type-k/v` value when the installed llama-server binary
  * doesn't advertise the required kernel in `CAPABILITIES.json`. The blocklist
@@ -611,7 +602,6 @@ export function dflashEnabled(): boolean {
   ) {
     return false;
   }
-  if (isMetalDflashRuntime()) return dflashMetalAutoEnabled();
   return true;
 }
 
@@ -658,12 +648,9 @@ export function getDflashRuntimeStatus(): DflashRuntimeStatus {
   const binary = resolveDflashBinary();
   const capabilities = readDflashBinaryCapabilities();
   if (!dflashEnabled()) {
-    const managedBinaryExists = fs.existsSync(managedDflashBinaryPath());
     const reason = dflashDevDisabled()
       ? "DFlash is disabled by the developer-only MILADY_DFLASH_DISABLE flag. This is NOT a product setting — unset it to restore the always-on speculative-decoding contract."
-      : managedBinaryExists && isMetalDflashRuntime()
-        ? "DFlash Metal binary found but auto-disabled because the current Eliza-1 Metal path is faster target-only; set ELIZA_DFLASH_ENABLED=1 or ELIZA_DFLASH_METAL_AUTO=1 to force it."
-        : "DFlash auto-enables when the managed llama-server binary is installed; set ELIZA_DFLASH_ENABLED=1 to force a PATH/explicit binary, or run packages/app-core/scripts/build-llama-cpp-dflash.mjs.";
+      : "DFlash auto-enables when the managed llama-server binary is installed; set ELIZA_DFLASH_ENABLED=1 to force a PATH/explicit binary, or run packages/app-core/scripts/build-llama-cpp-dflash.mjs.";
     return {
       enabled: false,
       required: dflashRequired(),
@@ -1098,6 +1085,7 @@ async function fetchStreamingChatCompletion(
     onTextChunk?: (chunk: string) => void | Promise<void>;
     onVerifierEvent?: (event: VerifierStreamEvent) => void | Promise<void>;
   },
+  repairStream?: StructuredOutputRepairStream | null,
   externalSignal?: AbortSignal,
   startIndex = 0,
 ): Promise<string> {
@@ -1151,7 +1139,9 @@ async function fetchStreamingChatCompletion(
         return;
       }
 
-      const chunk = extractStreamingChatDelta(parsed);
+      let chunk = extractStreamingChatDelta(parsed);
+      if (!chunk) return;
+      if (repairStream) chunk = repairStream.push(chunk);
       if (!chunk) return;
       text += chunk;
       if (callbacks.onVerifierEvent) {
@@ -1177,6 +1167,17 @@ async function fetchStreamingChatCompletion(
     }
     buffer += decoder.decode();
     if (buffer.trim()) await consumeEvent(buffer);
+    const finalRepair = repairStream?.flush() ?? "";
+    if (finalRepair) {
+      text += finalRepair;
+      if (callbacks.onVerifierEvent) {
+        await callbacks.onVerifierEvent({
+          kind: "accept",
+          tokens: [{ index: nextIndex++, text: finalRepair }],
+        });
+      }
+      await callbacks.onTextChunk?.(finalRepair);
+    }
     return text;
   } finally {
     clearTimeout(timer);
@@ -2424,17 +2425,26 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     let json: Record<string, unknown> | null = null;
     let text: string;
     if (streaming) {
+      const repairStream =
+        dflashArgs.responseSkeleton || dflashArgs.responseSchema
+          ? new StructuredOutputRepairStream({
+              skeleton: dflashArgs.responseSkeleton,
+              jsonSchema: dflashArgs.responseSchema,
+            })
+          : null;
       // When the assistant turn is prefilled, the model only streams the
       // continuation — surface the full assistant message (prefill + tail)
       // and fire the prefill chunk through the callbacks first so the voice
       // bridge / structured-field tracker sees a complete envelope.
       let idx = 0;
+      let streamedPrefix = prefill;
       if (prefill.length > 0) {
+        streamedPrefix = repairStream?.push(prefill) ?? prefill;
         await dflashArgs.onVerifierEvent?.({
           kind: "accept",
-          tokens: [{ index: idx++, text: prefill }],
+          tokens: [{ index: idx++, text: streamedPrefix }],
         });
-        await args.onTextChunk?.(prefill);
+        await args.onTextChunk?.(streamedPrefix);
       }
       const tail = await fetchStreamingChatCompletion(
         `${baseUrl}/v1/chat/completions`,
@@ -2448,10 +2458,11 @@ export class DflashLlamaServer implements LocalInferenceBackend {
           onTextChunk: args.onTextChunk,
           onVerifierEvent: dflashArgs.onVerifierEvent,
         },
+        repairStream,
         args.signal,
         idx,
       );
-      text = prefill + tail;
+      text = streamedPrefix + tail;
     } else {
       json = (await fetchJson(
         `${baseUrl}/v1/chat/completions`,
@@ -2464,6 +2475,16 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         args.signal,
       )) as Record<string, unknown>;
       text = prefill + extractCompletionText(json);
+      if (dflashArgs.responseSkeleton) {
+        text = repairStructuredOutput(text, {
+          skeleton: dflashArgs.responseSkeleton,
+          jsonSchema: dflashArgs.responseSchema,
+        }).text;
+      } else if (dflashArgs.responseSchema) {
+        text = repairStructuredOutput(text, {
+          jsonSchema: dflashArgs.responseSchema,
+        }).text;
+      }
     }
     const after = await fetchMetricsSnapshot(baseUrl);
     const responseUsage = json ? extractResponseUsage(json) : undefined;

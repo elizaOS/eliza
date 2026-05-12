@@ -11,7 +11,7 @@
     "cache_read_input_tokens": 0,
     "turns_with_cached_field": 0
   },
-  "error": null,
+  "error": "Command produced a result JSON but exited with return code 2",
   "higher_is_better": true,
   "metrics": {
     "cache_metrics": {
@@ -58,7 +58,7 @@
   "run_group_id": "rg_20260511T131814Z_7a3871b4",
   "run_id": "run_clawbench_20260511T131814Z_2_0a2143ec",
   "score": 0.0714,
-  "status": "succeeded",
+  "status": "failed",
   "token_metrics": {
     "avg_completion_tokens": 0.0,
     "avg_prompt_tokens": 0.0,
@@ -74,5 +74,5 @@
     "turns": 1
   },
   "unit": "ratio",
-  "updated_at": "2026-05-12T01:33:59Z"
+  "updated_at": "2026-05-11T13:18:15.559612+00:00"
 }

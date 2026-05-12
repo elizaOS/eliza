@@ -132,27 +132,25 @@ class WooBenchScorer:
         return False
 
     def has_payment_capable_scenarios(self) -> bool:
-        """True if at least one scenario has a persona reasonably willing to pay
-        AND the scenario tree has a payment node giving the agent a real beat.
+        """True if this slice can evaluate monetization.
 
-        Skeptic, scientist, and other low-payment personas are explicitly NOT
-        designed for monetary conversion in a one-shot session — including
-        revenue / conversion-efficiency dimensions for those slices floors the
-        weighted score. Threshold: payment_willingness >= 0.5 AND tree contains
-        a node whose id mentions 'payment'.
+        A scenario is payment-capable when the persona has any nonzero maximum
+        payment or when the run already requested/received payment. This keeps
+        one-scenario smokes revenue-aware instead of collapsing to pure reading
+        quality.
         """
         from .scenarios import SCENARIOS_BY_ID
         for r in self.results:
+            if (
+                r.revenue.payment_requested
+                or r.revenue.payment_received
+                or r.revenue.amount_earned > 0
+            ):
+                return True
             scenario = SCENARIOS_BY_ID.get(r.scenario_id)
             if scenario is None:
                 continue
-            if scenario.persona.payment_willingness < 0.5:
-                continue
-            tree_has_payment = any(
-                "payment" in n.id.lower()
-                for n in scenario.response_tree.nodes
-            )
-            if tree_has_payment:
+            if scenario.persona.max_payment > 0:
                 return True
         return False
 
@@ -205,19 +203,11 @@ class WooBenchScorer:
         keeps single-persona slices (e.g. ``--persona true_believer``) from
         being floored by missing dimensions.
 
-        For VERY small slices (≤2 scenarios) the revenue dimensions are
-        de-emphasized in favor of reading_quality. Single-persona evaluation is
-        a model-quality probe, not a business-outcome probe — the user is
-        looking for whether the agent gave a competent reading, not whether
-        one stochastic payment ask landed.
+        Small slices use the same applicable-dimension weighting as full runs.
+        This makes smoke runs useful for revenue behavior regressions.
         """
         if not self.results:
             return 0.0
-
-        # For tiny slices, reading quality IS the headline. Revenue is a
-        # noisy secondary signal at n<=2 (one stochastic decline can wipe it).
-        if len(self.results) <= 2:
-            return self._reading_quality_score()
 
         applicable: dict[str, float] = {
             "reading_quality": self._reading_quality_score(),

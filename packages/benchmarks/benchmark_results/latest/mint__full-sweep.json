@@ -1,0 +1,29 @@
+{
+  "agent": "full-sweep",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T150629Z_65f5b86d/mint__mint/run_mint_20260505T150636Z_1_380b0b21/output"
+  ],
+  "benchmark_directory": "mint",
+  "benchmark_id": "mint",
+  "cache_metrics": {},
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "baseline_success_rate": 1.0,
+    "full_results_present": true,
+    "overall_success_rate": 1.0,
+    "return_code": 0
+  },
+  "model": "openai/gpt-oss-120b",
+  "performance_metrics": {},
+  "provider": "mock",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T150629Z_65f5b86d/mint__mint/run_mint_20260505T150636Z_1_380b0b21/output/mint-benchmark-results.json",
+  "run_group_id": "rg_20260505T150629Z_65f5b86d",
+  "run_id": "run_mint_20260505T150636Z_1_380b0b21",
+  "score": 1.0,
+  "status": "succeeded",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": "ratio",
+  "updated_at": "2026-05-05T15:06:37.626446+00:00"
+}

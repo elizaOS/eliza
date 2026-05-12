@@ -147,6 +147,16 @@ test("companion app controls are interactive and error-free", async ({
   await openAppWindow(page, companion as RouteCase);
 
   await expect(page.getByTestId("companion-vrm-canvas")).toBeVisible();
+  await expect(page.getByTestId("companion-vrm-stage")).toHaveAttribute(
+    "data-vrm-loaded",
+    "true",
+    { timeout: 90_000 },
+  );
+  await expect(page.getByTestId("companion-root")).toHaveAttribute(
+    "data-avatar-ready",
+    "true",
+    { timeout: 90_000 },
+  );
   await expect(page.getByTestId("companion-chat-dock")).toBeVisible();
 
   const voiceToggle = page.getByTestId("companion-voice-toggle");
@@ -190,7 +200,7 @@ test("companion app controls are interactive and error-free", async ({
   await page.getByTestId("companion-shell-toggle-companion").click();
   await expect(page.getByTestId("companion-chat-dock")).toBeVisible();
 
-  await page.keyboard.press("Control+E");
+  await page.getByTestId("companion-emote-toggle").click();
   await expect(page.getByTestId("emote-picker")).toBeVisible();
   await page.getByTestId("emote-picker-search").fill("wave");
   await page.getByTestId("emote-picker-item-wave").click();
@@ -200,10 +210,16 @@ test("companion app controls are interactive and error-free", async ({
   await expect(page.getByTestId("emote-picker")).toBeHidden();
 
   const canvas = page.getByTestId("companion-vrm-canvas");
-  await canvas.dragTo(canvas, {
-    sourcePosition: { x: 200, y: 240 },
-    targetPosition: { x: 260, y: 220 },
-  });
+  const canvasBox = await canvas.boundingBox();
+  expect(canvasBox).not.toBeNull();
+  const dragStart = {
+    x: canvasBox!.x + canvasBox!.width * 0.5,
+    y: canvasBox!.y + canvasBox!.height * 0.35,
+  };
+  await page.mouse.move(dragStart.x, dragStart.y);
+  await page.mouse.down();
+  await page.mouse.move(dragStart.x + 60, dragStart.y - 20, { steps: 5 });
+  await page.mouse.up();
 
   await expectNoIssues(page, issues, "companion interactions");
 });

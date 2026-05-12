@@ -1,0 +1,30 @@
+{
+  "agent": "dummy",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T063622Z_95bd5268/woobench__woobench/run_woobench_20260505T063623Z_2_166d6b56/output"
+  ],
+  "benchmark_directory": "woobench",
+  "benchmark_id": "woobench",
+  "cache_metrics": {},
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "failed_scenarios": 0,
+    "overall_score": 20.0,
+    "resilience_score": 0.0,
+    "return_code": 0,
+    "revenue_efficiency": 0.0
+  },
+  "model": "smoke",
+  "performance_metrics": {},
+  "provider": "mock",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T063622Z_95bd5268/woobench__woobench/run_woobench_20260505T063623Z_2_166d6b56/output/woobench_smoke_20260504_233626.json",
+  "run_group_id": "rg_20260505T063622Z_95bd5268",
+  "run_id": "run_woobench_20260505T063623Z_2_166d6b56",
+  "score": 0.2,
+  "status": "succeeded",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": "ratio",
+  "updated_at": "2026-05-05T06:36:26.786455+00:00"
+}

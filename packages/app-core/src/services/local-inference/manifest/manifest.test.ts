@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ELIZA_1_TIERS,
   canSetAsDefault,
   ELIZA_1_MANIFEST_SCHEMA_VERSION,
   REQUIRED_KERNELS_BY_TIER,
@@ -68,6 +69,7 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
         falseBargeInRate: 0.01,
         passed: true,
       },
+      dflash: { acceptanceRate: 0.72, speedup: 1.8, passed: true },
       e2eLoopOk: true,
       thirtyTurnOk: true,
     },
@@ -128,7 +130,7 @@ describe("validateManifest — valid input", () => {
   });
 
   it("accepts every tier with that tier's required kernel set", () => {
-    for (const tier of ["0_6b", "1_7b", "9b", "27b", "27b-256k"] as const) {
+    for (const tier of ELIZA_1_TIERS) {
       const m = baseManifest(tier);
       const result = validateManifest(m);
       const detail = result.ok ? "" : ` errors=${result.errors.join(", ")}`;
@@ -290,8 +292,8 @@ describe("validateManifest — contract rejections", () => {
   });
 
   it("does not require cuda or rocm for tiers that don't ship on cuda/rocm", () => {
-    const m = baseManifest("0_6b");
-    // 0.6B tier doesn't ship on cuda/rocm; failures there should not block.
+    const m = baseManifest("0_8b");
+    // 0.8B tier doesn't ship on cuda/rocm; failures there should not block.
     m.kernels.verifiedBackends.cuda = {
       status: "fail",
       atCommit: "abc1234",

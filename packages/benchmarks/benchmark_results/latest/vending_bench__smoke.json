@@ -1,0 +1,30 @@
+{
+  "agent": "smoke",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T081509Z_99b1f0d0/vending-bench__vending_bench/run_vending_bench_20260505T081509Z_2_a82a5c12/output"
+  ],
+  "benchmark_directory": "vending-bench",
+  "benchmark_id": "vending_bench",
+  "cache_metrics": {},
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "avg_net_worth": "429.4",
+    "coherence_score": 1.0,
+    "max_net_worth": "429.4",
+    "profitability_rate": 0,
+    "return_code": 0
+  },
+  "model": "heuristic",
+  "performance_metrics": {},
+  "provider": "heuristic",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T081509Z_99b1f0d0/vending-bench__vending_bench/run_vending_bench_20260505T081509Z_2_a82a5c12/output/vending-bench-results-20260505_011510.json",
+  "run_group_id": "rg_20260505T081509Z_99b1f0d0",
+  "run_id": "run_vending_bench_20260505T081509Z_2_a82a5c12",
+  "score": 429.4,
+  "status": "succeeded",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": "usd",
+  "updated_at": "2026-05-05T08:15:10.136088+00:00"
+}

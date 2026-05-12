@@ -38,7 +38,7 @@ describe("resolveLocalInferenceLoadArgs", () => {
   });
 
   it("per-load gpuLayers/flashAttention/mmap/mlock overrides flow into args", async () => {
-    const target = makeInstalledModel("eliza-1-1_7b", "/tmp/eliza-1-1_7b.gguf");
+    const target = makeInstalledModel("eliza-1-2b", "/tmp/eliza-1-2b.gguf");
     const args = await resolveLocalInferenceLoadArgs(target, {
       gpuLayers: 16,
       flashAttention: true,
@@ -157,7 +157,7 @@ const noopManifestLoader = () => null;
 
 describe("assertModelFitsHost (RAM-budget admission control)", () => {
   it("returns fits when the host comfortably clears the recommended budget", () => {
-    const m = makeInstalledModel("eliza-1-1_7b", "/tmp/eliza-1-1_7b.gguf");
+    const m = makeInstalledModel("eliza-1-2b", "/tmp/eliza-1-2b.gguf");
     const r = assertModelFitsHost(m, 32 * 1024, {
       manifestLoader: noopManifestLoader,
     });
@@ -229,17 +229,17 @@ describe("assertModelFitsHost (RAM-budget admission control)", () => {
 
   it("a manifest-declared budget makes the gate stricter than the catalog scalar", () => {
     const m = makeInstalledModel(
-      "eliza-1-1_7b",
-      "/tmp/x/text/eliza-1-1_7b.gguf",
+      "eliza-1-2b",
+      "/tmp/x/text/eliza-1-2b.gguf",
     );
     const bigManifestLoader = () =>
       ({
-        id: "eliza-1-1_7b",
-        tier: "1_7b",
+        id: "eliza-1-2b",
+        tier: "2b",
         version: "1.0.0",
         publishedAt: "2025-01-01T00:00:00.000Z",
         lineage: {
-          text: { base: "eliza-1-1_7b", license: "apache-2.0" },
+          text: { base: "eliza-1-2b", license: "apache-2.0" },
           voice: { base: "omnivoice", license: "apache-2.0" },
           drafter: { base: "dflash", license: "apache-2.0" },
         },

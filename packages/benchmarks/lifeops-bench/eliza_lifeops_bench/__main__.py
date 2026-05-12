@@ -418,6 +418,21 @@ def _build_world_factory():
     return factory
 
 
+def _needs_live_evaluator(
+    scenarios,
+    *,
+    domain: Domain | None,
+    mode: ScenarioMode | None,
+) -> bool:
+    """Whether the post-filter scenario set contains LIVE cases."""
+    return any(
+        s.mode is ScenarioMode.LIVE
+        for s in scenarios
+        if (domain is None or s.domain == domain)
+        and (mode is None or s.mode == mode)
+    )
+
+
 async def _run(args: argparse.Namespace) -> None:
     if args.scenario and args.suite:
         print(
@@ -512,6 +527,27 @@ async def _run(args: argparse.Namespace) -> None:
         print(f"[dry-run] resolved {len(scenarios)} scenarios; skipping execution.")
         return
 
+    simulated_user_client = None
+    judge_client = None
+    if _needs_live_evaluator(scenarios, domain=domain, mode=mode):
+        try:
+            from .clients.base import ProviderError
+            from .clients.factory import make_client
+        except ImportError as exc:
+            raise SystemExit(
+                "LIVE mode requires LifeOpsBench client providers; failed to "
+                f"import client factory: {exc}"
+            ) from exc
+        try:
+            simulated_user_client = make_client("cerebras", model=evaluator_model)
+            judge_client = make_client("anthropic", model=args.judge_model)
+        except ProviderError as exc:
+            raise SystemExit(
+                "LIVE mode requires CEREBRAS_API_KEY for the simulated user "
+                "and ANTHROPIC_API_KEY for the judge. "
+                f"Client setup failed: {exc}"
+            ) from exc
+
     runner = LifeOpsBenchRunner(
         agent_fn=agent_fn,
         agent_factory=agent_factory,
@@ -524,6 +560,8 @@ async def _run(args: argparse.Namespace) -> None:
         max_cost_usd=args.max_cost_usd,
         per_scenario_timeout_s=args.per_scenario_timeout_s,
         abort_on_budget_exceeded=args.abort_on_budget_exceeded,
+        simulated_user_client=simulated_user_client,
+        judge_client=judge_client,
     )
 
     result = await runner.run_filtered(domain=domain, mode=mode)

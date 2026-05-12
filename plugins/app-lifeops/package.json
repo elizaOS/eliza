@@ -58,7 +58,7 @@
     "@elizaos/native-activity-tracker": "2.0.0-beta.1",
     "@elizaos/plugin-browser": "2.0.0-beta.1",
     "@elizaos/plugin-calendly": "2.0.0-beta.1",
-    "@elizaos/plugin-discord": "2.0.0-beta.1",
+    "@elizaos/plugin-discord": "2.0.0-beta.2",
     "@elizaos/plugin-elizacloud": "2.0.0-beta.1",
     "@elizaos/plugin-google": "2.0.0-beta.1",
     "@elizaos/plugin-health": "2.0.0-beta.1",

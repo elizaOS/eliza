@@ -94,6 +94,43 @@
             "durationMinutes": {
               "type": "number",
               "description": "How long to block, in minutes. Omit/null for an indefinite block that stays active until manually removed."
+            },
+            "confirmationRequired": {
+              "type": "boolean",
+              "description": "Whether explicit confirmation is required before applying the block."
+            },
+            "mode": {
+              "type": "string",
+              "description": "Optional block mode such as harsh."
+            },
+            "noBypass": {
+              "type": "boolean",
+              "description": "Whether bypasses are disabled for the request."
+            },
+            "schedule": {
+              "type": "object",
+              "description": "Optional recurring schedule for the block.",
+              "additionalProperties": true
+            },
+            "exceptions": {
+              "type": "array",
+              "description": "Optional exception windows for the block schedule.",
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "scope": {
+              "type": "string",
+              "description": "Optional status scope for block inspection."
+            },
+            "includeScheduled": {
+              "type": "boolean",
+              "description": "Whether scheduled block entries should be included in the response."
+            },
+            "policy": {
+              "type": "string",
+              "description": "Optional policy label for the block."
             }
           },
           "required": [
@@ -213,6 +250,43 @@
             "durationMinutes": {
               "type": "number",
               "description": "How long to block, in minutes. Omit/null for an indefinite block that stays active until manually removed."
+            },
+            "confirmationRequired": {
+              "type": "boolean",
+              "description": "Whether explicit confirmation is required before applying the block."
+            },
+            "mode": {
+              "type": "string",
+              "description": "Optional block mode such as harsh."
+            },
+            "noBypass": {
+              "type": "boolean",
+              "description": "Whether bypasses are disabled for the request."
+            },
+            "schedule": {
+              "type": "object",
+              "description": "Optional recurring schedule for the block.",
+              "additionalProperties": true
+            },
+            "exceptions": {
+              "type": "array",
+              "description": "Optional exception windows for the block schedule.",
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "scope": {
+              "type": "string",
+              "description": "Optional status scope for block inspection."
+            },
+            "includeScheduled": {
+              "type": "boolean",
+              "description": "Whether scheduled block entries should be included in the response."
+            },
+            "policy": {
+              "type": "string",
+              "description": "Optional policy label for the block."
             }
           },
           "required": [
@@ -332,6 +406,43 @@
             "durationMinutes": {
               "type": "number",
               "description": "How long to block, in minutes. Omit/null for an indefinite block that stays active until manually removed."
+            },
+            "confirmationRequired": {
+              "type": "boolean",
+              "description": "Whether explicit confirmation is required before applying the block."
+            },
+            "mode": {
+              "type": "string",
+              "description": "Optional block mode such as harsh."
+            },
+            "noBypass": {
+              "type": "boolean",
+              "description": "Whether bypasses are disabled for the request."
+            },
+            "schedule": {
+              "type": "object",
+              "description": "Optional recurring schedule for the block.",
+              "additionalProperties": true
+            },
+            "exceptions": {
+              "type": "array",
+              "description": "Optional exception windows for the block schedule.",
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "scope": {
+              "type": "string",
+              "description": "Optional status scope for block inspection."
+            },
+            "includeScheduled": {
+              "type": "boolean",
+              "description": "Whether scheduled block entries should be included in the response."
+            },
+            "policy": {
+              "type": "string",
+              "description": "Optional policy label for the block."
             }
           },
           "required": [
@@ -570,6 +681,43 @@
             "durationMinutes": {
               "type": "number",
               "description": "How long to block, in minutes. Omit/null for an indefinite block that stays active until manually removed."
+            },
+            "confirmationRequired": {
+              "type": "boolean",
+              "description": "Whether explicit confirmation is required before applying the block."
+            },
+            "mode": {
+              "type": "string",
+              "description": "Optional block mode such as harsh."
+            },
+            "noBypass": {
+              "type": "boolean",
+              "description": "Whether bypasses are disabled for the request."
+            },
+            "schedule": {
+              "type": "object",
+              "description": "Optional recurring schedule for the block.",
+              "additionalProperties": true
+            },
+            "exceptions": {
+              "type": "array",
+              "description": "Optional exception windows for the block schedule.",
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "scope": {
+              "type": "string",
+              "description": "Optional status scope for block inspection."
+            },
+            "includeScheduled": {
+              "type": "boolean",
+              "description": "Whether scheduled block entries should be included in the response."
+            },
+            "policy": {
+              "type": "string",
+              "description": "Optional policy label for the block."
             }
           },
           "required": [
@@ -689,6 +837,43 @@
             "durationMinutes": {
               "type": "number",
               "description": "How long to block, in minutes. Omit/null for an indefinite block that stays active until manually removed."
+            },
+            "confirmationRequired": {
+              "type": "boolean",
+              "description": "Whether explicit confirmation is required before applying the block."
+            },
+            "mode": {
+              "type": "string",
+              "description": "Optional block mode such as harsh."
+            },
+            "noBypass": {
+              "type": "boolean",
+              "description": "Whether bypasses are disabled for the request."
+            },
+            "schedule": {
+              "type": "object",
+              "description": "Optional recurring schedule for the block.",
+              "additionalProperties": true
+            },
+            "exceptions": {
+              "type": "array",
+              "description": "Optional exception windows for the block schedule.",
+              "items": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "scope": {
+              "type": "string",
+              "description": "Optional status scope for block inspection."
+            },
+            "includeScheduled": {
+              "type": "boolean",
+              "description": "Whether scheduled block entries should be included in the response."
+            },
+            "policy": {
+              "type": "string",
+              "description": "Optional policy label for the block."
             }
           },
           "required": [
@@ -876,6 +1061,23 @@
             },
             "passengers": {
               "type": "number"
+            },
+            "calendarSync": {
+              "type": "boolean",
+              "description": "Whether booking should sync a calendar hold."
+            },
+            "approval": {
+              "type": "object",
+              "description": "Optional approval metadata for the booking flow.",
+              "additionalProperties": true
+            },
+            "rebookReason": {
+              "type": "string",
+              "description": "Reason for a rebooking or alternate itinerary."
+            },
+            "hotelCheckIn": {
+              "type": "string",
+              "description": "Optional hotel check-in date for a travel plan."
             }
           },
           "required": [],
@@ -6596,6 +6798,10 @@
             "evidence": {
               "type": "string",
               "description": "Free-form evidence string captured alongside set_identity / set_relationship observations."
+            },
+            "storeAllowed": {
+              "type": "boolean",
+              "description": "Whether the benchmark may persist the identity or interaction update."
             }
           },
           "required": [],
@@ -7265,6 +7471,14 @@
             "details": {
               "type": "object",
               "additionalProperties": true
+            },
+            "target": {
+              "type": "string",
+              "description": "Optional target record or entity being skipped."
+            },
+            "reason": {
+              "type": "string",
+              "description": "Reason recorded for the skip."
             }
           },
           "required": [
@@ -7377,6 +7591,15 @@
             },
             "details": {
               "type": "object",
+              "additionalProperties": true
+            },
+            "target": {
+              "type": "string",
+              "description": "Optional target record or entity being updated."
+            },
+            "updates": {
+              "type": "object",
+              "description": "Partial updates to the benchmark record.",
               "additionalProperties": true
             }
           },
@@ -7935,6 +8158,10 @@
             },
             "windowDays": {
               "type": "number"
+            },
+            "groupBy": {
+              "type": "string",
+              "description": "Optional grouping key for the spending summary."
             }
           },
           "required": [
@@ -7985,6 +8212,10 @@
             },
             "queryWindowDays": {
               "type": "number"
+            },
+            "category": {
+              "type": "string",
+              "description": "Optional category filter for the subscription audit."
             }
           },
           "required": [
@@ -8041,6 +8272,10 @@
             },
             "confirmed": {
               "type": "boolean"
+            },
+            "candidateId": {
+              "type": "string",
+              "description": "Optional benchmark-only candidate identifier for the cancellation flow."
             }
           },
           "required": [
@@ -17956,6 +18191,35 @@
             },
             "ownerVisible": {
               "type": "boolean"
+            },
+            "output": {
+              "type": "object",
+              "description": "Optional task output routing or payload descriptor.",
+              "additionalProperties": true
+            },
+            "subject": {
+              "type": "object",
+              "description": "Optional subject entity or thread anchor for the scheduled task.",
+              "additionalProperties": true
+            },
+            "pipeline": {
+              "type": "object",
+              "description": "Optional pipeline metadata for the benchmark task record.",
+              "additionalProperties": true
+            },
+            "respectsGlobalPause": {
+              "type": "boolean",
+              "description": "Whether the task should respect a global pause flag."
+            },
+            "metadata": {
+              "type": "object",
+              "description": "Benchmark-only metadata for scenario provenance and variant tracking.",
+              "additionalProperties": true
+            },
+            "escalation": {
+              "type": "object",
+              "description": "Optional escalation ladder for multi-channel follow-up.",
+              "additionalProperties": true
             }
           },
           "required": [
@@ -18073,6 +18337,11 @@
             },
             "reason": {
               "type": "string"
+            },
+            "updates": {
+              "type": "object",
+              "description": "Partial task field updates to apply.",
+              "additionalProperties": true
             }
           },
           "required": [
@@ -18773,6 +19042,15 @@
               "type": "object",
               "description": "Structured action-specific details.",
               "additionalProperties": true
+            },
+            "target": {
+              "type": "string",
+              "description": "Optional target record or entity being updated."
+            },
+            "updates": {
+              "type": "object",
+              "description": "Partial updates to the benchmark record.",
+              "additionalProperties": true
             }
           },
           "required": [],
@@ -18830,6 +19108,14 @@
               "type": "object",
               "description": "Structured action-specific details.",
               "additionalProperties": true
+            },
+            "target": {
+              "type": "string",
+              "description": "Optional target record or entity being skipped."
+            },
+            "reason": {
+              "type": "string",
+              "description": "Reason recorded for the skip."
             }
           },
           "required": [],
@@ -19070,6 +19356,10 @@
             "windowDays": {
               "type": "number",
               "description": "Lookback window in days."
+            },
+            "groupBy": {
+              "type": "string",
+              "description": "Optional grouping key for the spending summary."
             }
           },
           "required": [],
@@ -19162,6 +19452,10 @@
             "queryWindowDays": {
               "type": "number",
               "description": "Subscription audit query window in days."
+            },
+            "category": {
+              "type": "string",
+              "description": "Optional category filter for the subscription audit."
             }
           },
           "required": [],
@@ -19214,6 +19508,10 @@
             "confirmed": {
               "type": "boolean",
               "description": "True only when the user has confirmed a mutating action."
+            },
+            "candidateId": {
+              "type": "string",
+              "description": "Optional benchmark-only candidate identifier for the cancellation flow."
             }
           },
           "required": [],
@@ -19272,6 +19570,23 @@
             "passengers": {
               "type": "number",
               "description": "Passenger count."
+            },
+            "calendarSync": {
+              "type": "boolean",
+              "description": "Whether booking should sync a calendar hold."
+            },
+            "approval": {
+              "type": "object",
+              "description": "Optional approval metadata for the booking flow.",
+              "additionalProperties": true
+            },
+            "rebookReason": {
+              "type": "string",
+              "description": "Reason for a rebooking or alternate itinerary."
+            },
+            "hotelCheckIn": {
+              "type": "string",
+              "description": "Optional hotel check-in date for a travel plan."
             }
           },
           "required": [],
@@ -19337,6 +19652,35 @@
             "priority": {
               "type": "string",
               "description": "ScheduledTask priority."
+            },
+            "output": {
+              "type": "object",
+              "description": "Optional task output routing or payload descriptor.",
+              "additionalProperties": true
+            },
+            "subject": {
+              "type": "object",
+              "description": "Optional subject entity or thread anchor for the scheduled task.",
+              "additionalProperties": true
+            },
+            "pipeline": {
+              "type": "object",
+              "description": "Optional pipeline metadata for the benchmark task record.",
+              "additionalProperties": true
+            },
+            "respectsGlobalPause": {
+              "type": "boolean",
+              "description": "Whether the task should respect a global pause flag."
+            },
+            "metadata": {
+              "type": "object",
+              "description": "Benchmark-only metadata for scenario provenance and variant tracking.",
+              "additionalProperties": true
+            },
+            "escalation": {
+              "type": "object",
+              "description": "Optional escalation ladder for multi-channel follow-up.",
+              "additionalProperties": true
             }
           },
           "required": [],
@@ -19450,6 +19794,11 @@
             "reason": {
               "type": "string",
               "description": "Reason for a scheduled-task mutation."
+            },
+            "updates": {
+              "type": "object",
+              "description": "Partial task field updates to apply.",
+              "additionalProperties": true
             }
           },
           "required": [],

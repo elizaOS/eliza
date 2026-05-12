@@ -1,10 +1,3 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
 import crypto from "node:crypto";
 import {
   BROWSER_BRIDGE_KINDS,
@@ -14,6 +7,7 @@ import {
   type BrowserBridgeCompanionRevokeResponse,
   type BrowserBridgeCompanionStatus,
   type BrowserBridgeCompanionSyncResponse,
+  type BrowserBridgeKind,
   type BrowserBridgePageContext,
   type BrowserBridgeSettings,
   type BrowserBridgeTabSummary,
@@ -27,6 +21,7 @@ import type {
   ConfirmLifeOpsBrowserSessionRequest,
   CreateLifeOpsBrowserSessionRequest,
   LifeOpsBrowserSession,
+  LifeOpsScreenTimeSession,
   UpdateLifeOpsBrowserSessionProgressRequest,
 } from "../contracts/index.js";
 import { recordBrowserFocusWindow } from "./browser-extension-store.js";
@@ -129,6 +124,22 @@ export interface BrowserBridgeService {
   ): Promise<LifeOpsBrowserSession>;
 }
 
+type BrowserScreenTimeEvent = {
+  source: "app" | "website";
+  identifier: string;
+  displayName: string;
+  startAt: string;
+  endAt?: string | null;
+  durationSeconds?: number;
+  metadata?: Record<string, unknown>;
+};
+
+type BrowserMixinDependencies = LifeOpsServiceBase & {
+  recordScreenTimeEvent(
+    event: BrowserScreenTimeEvent,
+  ): Promise<LifeOpsScreenTimeSession>;
+};
+
 function mergeMetadata(
   current: Record<string, unknown>,
   updates?: Record<string, unknown>,
@@ -226,7 +237,7 @@ function normalizeBrowserSettingsUpdate(
 function normalizeOptionalBrowserKind(
   value: unknown,
   field: string,
-): string | null {
+): BrowserBridgeKind | null {
   if (value === undefined || value === null) return null;
   return normalizeEnumValue(value, field, BROWSER_BRIDGE_KINDS);
 }
@@ -251,7 +262,9 @@ import { DEFAULT_BROWSER_PERMISSION_STATE } from "./service-constants.js";
 export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, BrowserBridgeService> {
-  return class extends Base {
+  const BrowserBase = Base as unknown as Constructor<BrowserMixinDependencies>;
+
+  class LifeOpsBrowserServiceMixin extends BrowserBase {
     protected async createBrowserSessionInternal(
       request: CreateLifeOpsBrowserSessionRequest,
     ): Promise<LifeOpsBrowserSession> {
@@ -332,7 +345,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
         pairingTokenHash,
         nowMs,
       });
-      if (!auth.ok) {
+      if (auth.ok === false) {
         fail(401, auth.message, auth.code);
       }
       if (auth.source === "active") {
@@ -1370,5 +1383,10 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       await this.requireBrowserSessionForCompanion(companion, sessionId);
       return this.completeBrowserSession(sessionId, request);
     }
-  } as MixinClass<TBase, BrowserBridgeService>;
+  }
+
+  return LifeOpsBrowserServiceMixin as unknown as MixinClass<
+    TBase,
+    BrowserBridgeService
+  >;
 }

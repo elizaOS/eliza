@@ -20,7 +20,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 from ._retry import (
     MAX_ATTEMPTS,
@@ -58,6 +58,87 @@ class MessageResponse:
     thought: str | None
     actions: list[str]
     params: dict[str, object]
+
+
+def _prompt_text(text: str, context: Mapping[str, object] | None) -> str:
+    if not context:
+        return text
+    parts: list[str] = []
+    system_prompt = context.get("system_prompt")
+    if isinstance(system_prompt, str) and system_prompt.strip():
+        parts.append(system_prompt.strip())
+    messages = context.get("messages")
+    if isinstance(messages, Sequence) and not isinstance(messages, (str, bytes)):
+        for item in messages:
+            if not isinstance(item, Mapping):
+                continue
+            role = item.get("role")
+            content = item.get("content")
+            if isinstance(role, str) and content is not None:
+                parts.append(f"{role}: {content}")
+    if text:
+        parts.append(f"user: {text}")
+    return "\n".join(parts) if parts else text
+
+
+def _jsonable(value: object) -> object:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Mapping):
+        return {str(k): _jsonable(v) for k, v in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_jsonable(v) for v in value]
+    return str(value)
+
+
+def _write_telemetry(
+    *,
+    harness: str,
+    provider: str,
+    model: str,
+    text: str,
+    context: Mapping[str, object] | None,
+    latency_ms: float,
+    task_id: str | None,
+    benchmark: str | None,
+    response: MessageResponse | None = None,
+    error: str | None = None,
+) -> None:
+    telemetry_path = os.environ.get("BENCHMARK_TELEMETRY_JSONL", "").strip()
+    if not telemetry_path:
+        return
+    usage: object = {}
+    if response is not None:
+        usage_raw = response.params.get("usage")
+        if isinstance(usage_raw, Mapping):
+            usage = dict(usage_raw)
+        else:
+            meta_raw = response.params.get("_meta")
+            if isinstance(meta_raw, Mapping) and isinstance(meta_raw.get("usage"), Mapping):
+                usage = dict(meta_raw["usage"])  # type: ignore[index]
+    prompt = _prompt_text(text, context)
+    record: dict[str, Any] = {
+        "harness": harness,
+        "provider": provider,
+        "model": model,
+        "benchmark": benchmark,
+        "task_id": task_id,
+        "prompt_text": prompt,
+        "prompt_chars": len(prompt),
+        "latency_ms": latency_ms,
+        "usage": _jsonable(usage),
+        "actions": list(response.actions) if response is not None else [],
+        "response_text": response.text if response is not None else "",
+    }
+    if error:
+        record["error"] = error
+    try:
+        path = Path(telemetry_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=True, sort_keys=True) + "\n")
+    except OSError as exc:
+        logger.debug("failed to write hermes telemetry: %s", exc)
 
 
 class HermesClient:
@@ -196,9 +277,37 @@ class HermesClient:
           4. Emits a single JSON line on stdout in the shape
              ``{"text", "thought", "actions", "params"}``.
         """
-        if self.mode == "in_process":
-            return self._send_in_process(text, context)
-        return self._send_subprocess(text, context)
+        started = time.monotonic()
+        try:
+            if self.mode == "in_process":
+                response = self._send_in_process(text, context)
+            else:
+                response = self._send_subprocess(text, context)
+        except Exception as exc:
+            _write_telemetry(
+                harness="hermes",
+                provider=self.provider,
+                model=self.model,
+                text=text,
+                context=context,
+                latency_ms=(time.monotonic() - started) * 1000.0,
+                task_id=self._task_id,
+                benchmark=self._benchmark,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            raise
+        _write_telemetry(
+            harness="hermes",
+            provider=self.provider,
+            model=self.model,
+            text=text,
+            context=context,
+            latency_ms=(time.monotonic() - started) * 1000.0,
+            task_id=self._task_id,
+            benchmark=self._benchmark,
+            response=response,
+        )
+        return response
 
     # ------------------------------------------------------------------
     # Command construction (separated for unit-test inspection)

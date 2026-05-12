@@ -1,4 +1,3 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import {
   type IAgentRuntime,
   logger,
@@ -11,12 +10,20 @@ import {
 import { Connection, type PublicKey } from "@solana/web3.js";
 
 const POSITION_LIMIT = 20;
+const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 
 type RaydiumClmmPoolInfo = {
   currentPrice: number;
   currentTickIndex: number;
   tickArrayLower: number;
   tickArrayUpper: number;
+};
+
+type RaydiumPositionRecord = {
+  poolId: PublicKey;
+  nftMint: PublicKey;
+  tickLower: number;
+  tickUpper: number;
 };
 
 async function loadRaydiumPositionApi(): Promise<{
@@ -110,7 +117,9 @@ export const raydiumPositionProvider: Provider = {
       "room",
     ];
     const __providerRegex = new RegExp(`\\b(${__providerKeywords.join("|")})\\b`, "i");
-    const __recentMessages = state?.recentMessagesData || [];
+    const __recentMessages = Array.isArray(state?.recentMessagesData)
+      ? (state.recentMessagesData as Memory[])
+      : [];
     const __isRelevant =
       validateActionKeywords(message, __recentMessages, __providerKeywords) ||
       validateActionRegex(message, __recentMessages, __providerRegex);
@@ -120,8 +129,6 @@ export const raydiumPositionProvider: Provider = {
 
     if (!state) {
       state = (await runtime.composeState(message)) as State;
-    } else {
-      state = await runtime.updateRecentMessageState(state);
     }
     try {
       const privateKey = runtime.getSetting("SOLANA_PRIVATE_KEY");
@@ -141,15 +148,15 @@ export const raydiumPositionProvider: Provider = {
       const keypair = Keypair.fromSecretKey(secretKey);
       const ownerAddress = keypair.publicKey;
 
-      const rpcUrl = runtime.getSetting("SOLANA_RPC_URL") || "https://api.mainnet-beta.solana.com";
-      const connection = new Connection(rpcUrl as string);
+      const rpcUrl = getRuntimeStringSetting(runtime, "SOLANA_RPC_URL") ?? DEFAULT_SOLANA_RPC_URL;
+      const connection = new Connection(rpcUrl);
       const positions = await fetchPositions(connection, ownerAddress);
       return {
         text: formatPositionsForPrompt(positions.slice(0, POSITION_LIMIT)),
         data: { positions: positions.slice(0, POSITION_LIMIT) },
       };
     } catch (error) {
-      logger.error("Error in Raydium position provider:", error);
+      logger.error(`Error in Raydium position provider: ${formatUnknownError(error)}`);
       return {
         text: "Raydium LP positions unavailable.",
         data: {
@@ -185,7 +192,9 @@ const fetchPositions = async (
     const { clmm, position: positionApi } = api;
 
     // Get all positions for the owner
-    const positions = await positionApi.getPositionsByOwner(connection, ownerAddress);
+    const positions = (await positionApi.getPositionsByOwner(connection, ownerAddress))
+      .map(toRaydiumPositionRecord)
+      .filter((position): position is RaydiumPositionRecord => position !== null);
 
     // Fetch all unique pools
     const poolsMap = new Map<string, RaydiumClmmPoolInfo>();
@@ -234,7 +243,47 @@ const fetchPositions = async (
 
     return fetchedPositionsStatistics;
   } catch (error) {
-    logger.error("Error during fetching Raydium positions:", error);
+    logger.error(`Error during fetching Raydium positions: ${formatUnknownError(error)}`);
     throw new Error("Error during fetching positions");
   }
 };
+
+function toRaydiumPositionRecord(position: Record<string, unknown>): RaydiumPositionRecord | null {
+  const poolId = asPublicKey(position.poolId);
+  const nftMint = asPublicKey(position.nftMint);
+  const tickLower = position.tickLower;
+  const tickUpper = position.tickUpper;
+
+  if (
+    !poolId ||
+    !nftMint ||
+    typeof tickLower !== "number" ||
+    typeof tickUpper !== "number"
+  ) {
+    logger.warn("Skipping Raydium LP position with unsupported SDK shape.");
+    return null;
+  }
+
+  return {
+    poolId,
+    nftMint,
+    tickLower,
+    tickUpper,
+  };
+}
+
+function asPublicKey(value: unknown): PublicKey | null {
+  if (typeof value === "object" && value !== null && "toBase58" in value) {
+    return value as PublicKey;
+  }
+  return null;
+}
+
+function getRuntimeStringSetting(runtime: IAgentRuntime, key: string): string | undefined {
+  const value = runtime.getSetting(key);
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function formatUnknownError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

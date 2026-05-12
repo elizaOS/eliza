@@ -1,10 +1,10 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import {
   type IAgentRuntime,
   ILpService,
   type LpPositionDetails,
   logger,
   type PoolInfo,
+  Service,
   type TokenBalance,
   type TransactionResult,
 } from "@elizaos/core";
@@ -14,7 +14,6 @@ import type {
   EvmAddLiquidityParams,
   EvmPoolInfo,
   EvmRemoveLiquidityParams,
-  EvmTransactionResult,
   IEvmLpService,
   RemoveLiquidityConfig,
 } from "../types.ts";
@@ -93,6 +92,12 @@ export interface LpProtocolProvider {
   getMarketData?(poolIds: string[]): Promise<Record<string, Partial<PoolInfo>>>;
 }
 
+type SolanaLpServiceAdapter = Partial<ILpService> & {
+  repositionPosition?(
+    params: LpPositionOperationParams,
+  ): Promise<TransactionResult>;
+};
+
 export class NoMatchingLpProtocolError extends Error {
   public readonly code = "NO_MATCHING_LP_PROTOCOL";
 
@@ -111,6 +116,10 @@ export class NoMatchingLpProtocolError extends Error {
 
 function normalizeDex(dex?: string): string | undefined {
   return dex?.trim().toLowerCase();
+}
+
+function normalizeRequiredDex(dex: string): string {
+  return dex.trim().toLowerCase();
 }
 
 function normalizeChain(chain?: string): string | undefined {
@@ -134,8 +143,29 @@ function poolId(pool?: string | PoolInfo | EvmPoolInfo): string | undefined {
 function amountValue(
   params: LpPositionOperationParams,
   key: "tokenA" | "tokenB" | "lpToken" | "value",
-  fallback = "0",
+  fallback: string,
 ): string {
+  const amount = params.amount;
+  if (
+    key === "value" &&
+    ["string", "number", "bigint"].includes(typeof amount)
+  ) {
+    return String(amount);
+  }
+  if (amount && typeof amount === "object" && key in amount) {
+    const value = amount[key];
+    if (value !== undefined && value !== null) return String(value);
+  }
+  const nested = params.amounts?.[key as keyof typeof params.amounts];
+  if (nested !== undefined && nested !== null) return String(nested);
+  return fallback;
+}
+
+function optionalAmountValue(
+  params: LpPositionOperationParams,
+  key: "tokenA" | "tokenB" | "lpToken" | "value",
+  fallback?: string,
+): string | undefined {
   const amount = params.amount;
   if (
     key === "value" &&
@@ -163,6 +193,11 @@ function bigintAmount(value: unknown, fallback = 0n): bigint {
   return fallback;
 }
 
+function optionalBigintAmount(value: unknown): bigint | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  return bigintAmount(value);
+}
+
 function unsupported(
   protocol: LpProtocolProvider,
   operation: string,
@@ -173,10 +208,10 @@ function unsupported(
   };
 }
 
-export class LpManagementService extends ILpService {
+export class LpManagementService extends Service implements ILpService {
   public static override readonly serviceType = LP_MANAGEMENT_SERVICE_TYPE;
   public readonly capabilityDescription =
-    "Aggregates registered DEX liquidity pool protocol providers across chains.";
+    "Provides standardized access to DEX liquidity pools.";
 
   private protocols = new Map<string, LpProtocolProvider>();
 
@@ -197,11 +232,11 @@ export class LpManagementService extends ILpService {
 
   registerProtocol(provider: LpProtocolProvider): void {
     const key = protocolKey(provider.chain, provider.dex);
-    const normalizedProvider = {
+    const normalizedProvider: LpProtocolProvider = {
       ...provider,
       id: provider.id || key,
       chain: normalizeChain(provider.chain) as LpProtocolChain,
-      dex: normalizeDex(provider.dex),
+      dex: normalizeRequiredDex(provider.dex),
     };
     if (this.protocols.has(key)) {
       logger.warn(
@@ -425,17 +460,18 @@ export function createSolanaLpProtocolProvider({
 }: {
   dex: string;
   label?: string;
-  service: Partial<ILpService> & Record<string, unknown>;
+  service: SolanaLpServiceAdapter;
 }): LpProtocolProvider {
+  const normalizedDex = normalizeRequiredDex(dex);
   const provider: LpProtocolProvider = {
-    id: `solana:${normalizeDex(dex)}`,
+    id: `solana:${normalizedDex}`,
     chain: "solana",
-    dex: normalizeDex(dex),
+    dex: normalizedDex,
     label,
     service,
     supportsRequest: (request) =>
       (!request.chain || normalizeChain(request.chain) === "solana") &&
-      (!request.dex || normalizeDex(request.dex) === normalizeDex(dex)),
+      (!request.dex || normalizeDex(request.dex) === normalizedDex),
     listPools: async (params) => {
       if (typeof service.getPools !== "function") return [];
       return service.getPools(params.tokenA, params.tokenB);
@@ -443,6 +479,9 @@ export function createSolanaLpProtocolProvider({
     openPosition: async (params) => {
       if (typeof service.addLiquidity !== "function") {
         return unsupported(provider, "open");
+      }
+      if (!params.userVault) {
+        return { success: false, error: "User vault is required" };
       }
       const id = poolId(params.pool);
       if (!id) return { success: false, error: "Pool is required" };
@@ -452,9 +491,9 @@ export function createSolanaLpProtocolProvider({
         tokenAAmountLamports: amountValue(
           params,
           "tokenA",
-          amountValue(params, "value"),
+          amountValue(params, "value", "0"),
         ),
-        tokenBAmountLamports: amountValue(params, "tokenB", undefined),
+        tokenBAmountLamports: optionalAmountValue(params, "tokenB"),
         slippageBps: params.slippageBps ?? 50,
         tickLowerIndex: params.range?.tickLowerIndex ?? params.range?.tickLower,
         tickUpperIndex: params.range?.tickUpperIndex ?? params.range?.tickUpper,
@@ -464,6 +503,9 @@ export function createSolanaLpProtocolProvider({
       if (typeof service.removeLiquidity !== "function") {
         return unsupported(provider, "close");
       }
+      if (!params.userVault) {
+        return { success: false, error: "User vault is required" };
+      }
       const id = poolId(params.pool) || params.position;
       if (!id) return { success: false, error: "Pool or position is required" };
       return service.removeLiquidity({
@@ -472,7 +514,7 @@ export function createSolanaLpProtocolProvider({
         lpTokenAmountLamports: amountValue(
           params,
           "lpToken",
-          amountValue(params, "value"),
+          amountValue(params, "value", "0"),
         ),
         slippageBps: params.slippageBps ?? 50,
       });
@@ -489,9 +531,9 @@ export function createSolanaLpProtocolProvider({
     },
   };
 
-  if (typeof service.repositionPosition === "function") {
-    provider.repositionPosition = (params) =>
-      service.repositionPosition(params);
+  const repositionPosition = service.repositionPosition;
+  if (typeof repositionPosition === "function") {
+    provider.repositionPosition = (params) => repositionPosition(params);
   }
 
   return provider;
@@ -510,10 +552,11 @@ export function createEvmLpProtocolProvider({
     typeof service.getSupportedChainIds === "function"
       ? service.getSupportedChainIds()
       : [];
+  const normalizedDex = normalizeRequiredDex(dex);
   const provider: LpProtocolProvider = {
-    id: `evm:${normalizeDex(dex)}`,
+    id: `evm:${normalizedDex}`,
     chain: "evm",
-    dex: normalizeDex(dex),
+    dex: normalizedDex,
     label,
     service,
     supportedChainIds,
@@ -521,7 +564,7 @@ export function createEvmLpProtocolProvider({
       if (request.chain && normalizeChain(request.chain) !== "evm") {
         return false;
       }
-      if (request.dex && normalizeDex(request.dex) !== normalizeDex(dex)) {
+      if (request.dex && normalizeDex(request.dex) !== normalizedDex) {
         return false;
       }
       if (request.chainId !== undefined && supportedChainIds.length > 0) {
@@ -555,11 +598,10 @@ export function createEvmLpProtocolProvider({
         chainId: params.chainId,
         poolAddress: id as Address,
         tokenAAmount: bigintAmount(
-          amountValue(params, "tokenA", amountValue(params, "value")),
+          amountValue(params, "tokenA", amountValue(params, "value", "0")),
         ),
-        tokenBAmount: bigintAmount(
-          amountValue(params, "tokenB", undefined),
-          undefined,
+        tokenBAmount: optionalBigintAmount(
+          optionalAmountValue(params, "tokenB"),
         ),
         slippageBps: params.slippageBps ?? 50,
         tickLower: params.range?.tickLower ?? params.range?.tickLowerIndex,
@@ -585,9 +627,12 @@ export function createEvmLpProtocolProvider({
             : params.position
               ? bigintAmount(params.position)
               : undefined,
-        lpTokenAmount: bigintAmount(
-          amountValue(params, "lpToken", amountValue(params, "value")),
-          undefined,
+        lpTokenAmount: optionalBigintAmount(
+          optionalAmountValue(
+            params,
+            "lpToken",
+            optionalAmountValue(params, "value"),
+          ),
         ),
         percentageToRemove:
           typeof params.amount === "object"
@@ -622,11 +667,6 @@ export function createEvmLpProtocolProvider({
       return service.getMarketData(poolIds as Address[]);
     },
   };
-
-  if (typeof service.repositionPosition === "function") {
-    provider.repositionPosition = (params) =>
-      service.repositionPosition(params) as Promise<EvmTransactionResult>;
-  }
 
   return provider;
 }

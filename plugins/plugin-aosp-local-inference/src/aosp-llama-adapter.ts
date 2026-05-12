@@ -642,12 +642,6 @@ async function loadBunFfi(): Promise<BunFfiLoadResult> {
   // We surface the real error so AOSP-only debugging on Android can see the
   // root cause instead of the generic "bun:ffi unavailable" message.
   try {
-    /* Deliberate boundary cast: the real bun:ffi typings define dlopen
-     * with a generic `Fns extends Record<string, FFIFunction>` constraint
-     * we don't want leaking into adapter types; we only consume the
-     * weakly-typed runtime shape. */
-    // biome-ignore lint/suspicious/noTsIgnore: bun:ffi is a Bun runtime builtin loaded only on AOSP.
-    // @ts-ignore
     const mod = await import("bun:ffi");
     if (!isBunFFIModule(mod)) {
       throw new Error("bun:ffi module did not expose the expected FFI API");

@@ -246,7 +246,11 @@ export interface LocalRuntimeAcceleration {
  * tokenizers cannot be bridged by metadata repair. Add new families here
  * as the catalog grows.
  */
-export type TokenizerFamily = "eliza1" | "sentencepiece" | (string & {});
+export type TokenizerFamily =
+  | "eliza1"
+  | "eliza1"
+  | "sentencepiece"
+  | (string & {});
 
 export interface CatalogModel {
   /** Stable Eliza id — used as the primary key. */
@@ -262,12 +266,20 @@ export interface CatalogModel {
    * `ggufFile` as the primary text GGUF inside that bundle.
    */
   bundleManifestFile?: string;
+  /**
+   * Optional SHA-256 for `bundleManifestFile`. Publish tooling should fill
+   * this once the manifest is finalized so desktop downloads get the same
+   * manifest authenticity check as mobile. Omitted only for local/dev
+   * catalogs whose manifests are still being staged.
+   */
+  bundleManifestSha256?: string;
   params:
     | "360M"
     | "0.6B"
+    | "0.6B"
     | "1B"
     | "1.7B"
-    | "2B"
+    | "1.7B"
     | "3B"
     | "4B"
     | "7B"
@@ -275,10 +287,10 @@ export interface CatalogModel {
     | "9B"
     | "14B"
     | "16B"
-    | "22B"
+    | "21.7B"
     | "24B"
     | "27B"
-    | "32B";
+    | "31.7B";
   quant: string;
   sizeGb: number;
   /** Minimum system RAM (GB) we recommend before offering this model. */

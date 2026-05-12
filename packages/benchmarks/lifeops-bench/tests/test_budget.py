@@ -427,3 +427,76 @@ async def test_eval_cost_counted_toward_budget() -> None:
     assert result.agent_cost_usd == pytest.approx(0.0)
     # Combined wall-spend exceeded the cap.
     assert result.total_cost_usd > runner.max_cost_usd
+
+
+async def test_judge_eval_cost_trips_budget_before_user_turn() -> None:
+    """Judge spend must be enforced before the live loop asks for the next user turn."""
+
+    call_counts = {"sim": 0, "judge": 0}
+
+    async def free_agent_fn(
+        history: list[MessageTurn], tools: list[dict[str, Any]]
+    ) -> MessageTurn:
+        return MessageTurn(role="assistant", content="working on it")
+
+    class _CountingClient(_FixedCostClient):
+        async def complete(self, call: ClientCall) -> ClientResponse:  # type: ignore[override]
+            if self.model_name == "fake-sim-user-v2":
+                call_counts["sim"] += 1
+            elif self.model_name == "fake-judge-v2":
+                call_counts["judge"] += 1
+            return await super().complete(call)
+
+    live_scenario = Scenario(
+        id="budget.live_eval_judge",
+        name="live eval judge cost",
+        domain=Domain.REMINDERS,
+        mode=ScenarioMode.LIVE,
+        persona=_PERSONA,
+        instruction="remind me",
+        ground_truth_actions=[],
+        required_outputs=[],
+        first_question_fallback=None,
+        world_seed=999,
+        max_turns=4,
+    )
+
+    sim_user = _CountingClient(
+        model_name="fake-sim-user-v2",
+        cost_usd=3.0,
+        content="hi, please help",
+    )
+    judge = _CountingClient(
+        model_name="fake-judge-v2",
+        cost_usd=6.0,
+        content='{"satisfied": true, "reason": "done"}',
+    )
+    evaluator = LifeOpsEvaluator(
+        simulated_user_client=sim_user,
+        judge_client=judge,
+    )
+
+    runner = LifeOpsBenchRunner(
+        agent_fn=free_agent_fn,
+        world_factory=_budget_world_factory,
+        scenarios=[live_scenario],
+        concurrency=1,
+        seeds=1,
+        max_cost_usd=5.0,
+        per_scenario_timeout_s=30,
+        evaluator=evaluator,
+        live_judge_min_turn=1,
+    )
+
+    result = await runner.run_filtered()
+
+    sr = result.scenarios[0]
+    assert sr.terminated_reason == "cost_exceeded", (
+        f"expected judge spend to trip cap; got {sr.terminated_reason!r} "
+        f"error={sr.error!r}"
+    )
+    assert call_counts["sim"] == 0
+    assert call_counts["judge"] == 1
+    assert result.eval_cost_usd == pytest.approx(6.0)
+    assert result.agent_cost_usd == pytest.approx(0.0)
+    assert result.total_cost_usd > runner.max_cost_usd

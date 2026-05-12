@@ -25,6 +25,15 @@ import {
 } from "../helpers/trajectory-harness.ts";
 import type { ActionBenchmarkCase } from "./action-selection-cases.ts";
 
+const seedGrantsModuleUrl = new URL(
+  "../../../../test/mocks/helpers/seed-grants.ts",
+  import.meta.url,
+).href;
+const lifeopsApprovalQueueModuleUrl = new URL(
+  "../../../../plugins/app-lifeops/src/lifeops/approval-queue.ts",
+  import.meta.url,
+).href;
+
 export type ActionFailureMode =
   | "passed"
   | "validate_filtered"
@@ -1227,10 +1236,7 @@ async function seedBenchmarkCaseFixtures(
   //    `readStoredGoogleTokenFile`, which transparently supports legacy
   //    plaintext tokens, so a single plain-JSON write satisfies both sides.
   try {
-    const seedModule = (await import(
-      // @ts-expect-error — path resolved at runtime relative to repo root
-      "../../../../test/mocks/helpers/seed-grants.ts"
-    )) as {
+    const seedModule = (await import(seedGrantsModuleUrl)) as {
       seedGoogleConnectorGrant: (
         runtime: AgentRuntime,
         opts?: {
@@ -1281,10 +1287,7 @@ async function seedBenchmarkCaseFixtures(
     process.env.TWITTER_USER_ID =
       process.env.TWITTER_USER_ID ?? "bench-x-user-id";
 
-    const seedModule = (await import(
-      // @ts-expect-error — path resolved at runtime relative to repo root
-      "../../../../test/mocks/helpers/seed-grants.ts"
-    )) as {
+    const seedModule = (await import(seedGrantsModuleUrl)) as {
       seedXConnectorGrant: (
         runtime: AgentRuntime,
         opts?: { side?: "owner" | "agent"; handle?: string },
@@ -1329,10 +1332,7 @@ async function seedBenchmarkCaseFixtures(
             : null;
         const fallbackModule =
           createQueue === null
-            ? await import(
-                // @ts-expect-error — path resolved at runtime relative to this file
-                "../../../../plugins/app-lifeops/src/lifeops/approval-queue.ts"
-              )
+            ? await import(lifeopsApprovalQueueModuleUrl)
             : null;
         const createApprovalQueueFinal =
           createQueue ??

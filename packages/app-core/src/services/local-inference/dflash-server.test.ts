@@ -108,18 +108,10 @@ describe("DFlash runtime discovery", () => {
     delete process.env.ROCR_VISIBLE_DEVICES;
     delete process.env.CUDA_VISIBLE_DEVICES;
     const binary = makeManagedBinary(root);
-    const isMetalRuntime = process.platform === "darwin";
 
     expect(resolveDflashBinary()).toBe(binary);
-    expect(dflashEnabled()).toBe(!isMetalRuntime);
-    expect(getDflashRuntimeStatus().enabled).toBe(!isMetalRuntime);
-
-    if (isMetalRuntime) {
-      expect(getDflashRuntimeStatus().reason).toContain("auto-disabled");
-      process.env.ELIZA_DFLASH_METAL_AUTO = "1";
-      expect(dflashEnabled()).toBe(true);
-      expect(getDflashRuntimeStatus().enabled).toBe(true);
-    }
+    expect(dflashEnabled()).toBe(true);
+    expect(getDflashRuntimeStatus().enabled).toBe(true);
   });
 
   it("does not use PATH llama-server unless explicitly enabled", () => {
@@ -262,17 +254,17 @@ describe("fused-vs-two-process spawn selection", () => {
 
   it("findBundleOmnivoiceAssets resolves tts/ GGUFs from the text model path", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-bundle-test-"));
-    const bundle = path.join(root, "eliza-1-1_7b.bundle");
+    const bundle = path.join(root, "eliza-1-2b.bundle");
     fs.mkdirSync(path.join(bundle, "text"), { recursive: true });
     fs.mkdirSync(path.join(bundle, "tts"), { recursive: true });
-    fs.writeFileSync(path.join(bundle, "text", "eliza-1-1_7b-32k.gguf"), "x");
+    fs.writeFileSync(path.join(bundle, "text", "eliza-1-2b-32k.gguf"), "x");
     fs.writeFileSync(path.join(bundle, "tts", "omnivoice-0.6b.gguf"), "x");
     fs.writeFileSync(
       path.join(bundle, "tts", "omnivoice-tokenizer-0.6b.gguf"),
       "x",
     );
     const assets = findBundleOmnivoiceAssets(
-      path.join(bundle, "text", "eliza-1-1_7b-32k.gguf"),
+      path.join(bundle, "text", "eliza-1-2b-32k.gguf"),
     );
     expect(assets).not.toBeNull();
     expect(assets?.modelPath).toBe(
@@ -529,6 +521,79 @@ describe("DFlash streaming callbacks", () => {
       target.baseUrl = previous.baseUrl;
       target.cacheParallel = previous.cacheParallel;
       await mock.close();
+    }
+  });
+
+  it("repairs deterministic structured-output spans while suppressing duplicate server bytes", async () => {
+    const server = http.createServer(async (req, res) => {
+      if (req.method === "GET" && req.url === "/metrics") {
+        res.statusCode = 200;
+        res.end(
+          [
+            "llamacpp:prompt_tokens_total 0",
+            "llamacpp:n_tokens_predicted_total 0",
+            "llamacpp:n_drafted_total 2",
+            "llamacpp:n_accepted_total 2",
+          ].join("\n"),
+        );
+        return;
+      }
+      if (req.method === "POST" && req.url === "/v1/chat/completions") {
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [{ delta: { content: '{"action":"BLO' } }],
+          })}\n\n`,
+        );
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [{ delta: { content: 'CK","parameters":{}' } }],
+          })}\n\n`,
+        );
+        res.end("data: [DONE]\n\n");
+        return;
+      }
+      res.statusCode = 404;
+      res.end();
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const target = dflashLlamaServer as unknown as {
+      baseUrl: string | null;
+      cacheParallel: number;
+    };
+    const previous = {
+      baseUrl: target.baseUrl,
+      cacheParallel: target.cacheParallel,
+    };
+    target.baseUrl = baseUrl;
+    target.cacheParallel = 4;
+    const textChunks: string[] = [];
+    try {
+      const result = await dflashLlamaServer.generateWithUsage({
+        prompt: "choose action",
+        responseSkeleton: {
+          spans: [
+            { kind: "literal", value: '{"action":' },
+            { kind: "enum", key: "action", enumValues: ["BLOCK", "BRIEF"] },
+            { kind: "literal", value: ',"parameters":' },
+            { kind: "free-json", key: "parameters" },
+            { kind: "literal", value: "}" },
+          ],
+        },
+        onTextChunk: (chunk) => {
+          textChunks.push(chunk);
+        },
+      });
+
+      expect(result.text).toBe('{"action":"BLOCK","parameters":{}}');
+      expect(textChunks).toEqual(['{"action":"BLOCK","parameters":', "{}}"]);
+    } finally {
+      target.baseUrl = previous.baseUrl;
+      target.cacheParallel = previous.cacheParallel;
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 });

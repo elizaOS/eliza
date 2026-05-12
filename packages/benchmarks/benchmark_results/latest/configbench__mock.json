@@ -1,0 +1,29 @@
+{
+  "agent": "mock",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T053818Z_5685592c/configbench__configbench/run_configbench_20260505T053818Z_1_6b36e6e4/output"
+  ],
+  "benchmark_directory": "configbench",
+  "benchmark_id": "configbench",
+  "cache_metrics": {},
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "capabilityScore": 100,
+    "overallScore": 100,
+    "return_code": 0,
+    "securityScore": 100
+  },
+  "model": "smoke",
+  "performance_metrics": {},
+  "provider": "mock",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T053818Z_5685592c/configbench__configbench/run_configbench_20260505T053818Z_1_6b36e6e4/output/configbench-results-2026-05-05T05-38-18-785Z.json",
+  "run_group_id": "rg_20260505T053818Z_5685592c",
+  "run_id": "run_configbench_20260505T053818Z_1_6b36e6e4",
+  "score": 1.0,
+  "status": "succeeded",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": "ratio",
+  "updated_at": "2026-05-05T05:38:18.824832+00:00"
+}

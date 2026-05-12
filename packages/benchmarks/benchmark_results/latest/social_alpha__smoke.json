@@ -1,0 +1,30 @@
+{
+  "agent": "smoke",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T115841Z_324ab429/social-alpha__social_alpha/run_social_alpha_20260505T115842Z_3_3b52cddd/output"
+  ],
+  "benchmark_directory": "social-alpha",
+  "benchmark_id": "social_alpha",
+  "cache_metrics": {},
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "composite": null,
+    "return_code": 0,
+    "suite_scores": {
+      "DETECT": 2.0
+    }
+  },
+  "model": "openai/gpt-oss-120b",
+  "performance_metrics": {},
+  "provider": "mock",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T115841Z_324ab429/social-alpha__social_alpha/run_social_alpha_20260505T115842Z_3_3b52cddd/output/benchmark_results_baseline.json",
+  "run_group_id": "rg_20260505T115841Z_324ab429",
+  "run_id": "run_social_alpha_20260505T115842Z_3_3b52cddd",
+  "score": 0.02,
+  "status": "succeeded",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": "ratio",
+  "updated_at": "2026-05-05T11:58:48.488916+00:00"
+}

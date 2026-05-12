@@ -234,6 +234,8 @@ static void hadamard128_inplace(std::vector<float> & x) {
 
 struct FusedCase {
     int n_heads = 0, n_kv_heads = 0, n_kv = 0;
+    int causal = 0;
+    int q_pos_base = 0;
     std::vector<float>   q_sketch;       // n_heads * 256
     std::vector<uint8_t> k_blocks;       // n_kv_heads * n_kv * 34
     std::vector<uint8_t> v_blocks;       // tbq: *4*14 ; polar: *82
@@ -269,6 +271,8 @@ static int run_fused_attn(id<MTLDevice> device, NSString * src,
         c.n_heads      = obj_int(obj, "n_heads");
         c.n_kv_heads   = obj_int(obj, "n_kv_heads");
         c.n_kv         = obj_int(obj, "n_kv");
+        c.causal       = obj_int(obj, "causal", 0);
+        c.q_pos_base   = obj_int(obj, "q_pos_base", 0);
         c.q_sketch     = obj_floats(obj, "q_sketch");
         c.k_blocks     = obj_bytes(obj, "k_blocks");
         c.v_blocks     = obj_bytes(obj, "v_blocks");
@@ -316,8 +320,8 @@ static int run_fused_attn(id<MTLDevice> device, NSString * src,
         args.kv_tile     = 0;
         args.v_use_qjl   = use_qjl;
         args.scale       = sm_scale_v;
-        args.causal      = 0;
-        args.q_pos_base  = 0;
+        args.causal      = (uint32_t)c.causal;
+        args.q_pos_base  = (uint32_t)c.q_pos_base;
 
         id<MTLCommandBuffer> cmd = [queue commandBuffer];
         id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
@@ -340,8 +344,9 @@ static int run_fused_attn(id<MTLDevice> device, NSString * src,
             if (diff > max_diff) max_diff = diff;
             if (diff >= tol) { fail++; if (fail <= 8) std::printf("    case %zu i=%d expected=%+.6f got=%+.6f diff=%.3e FAIL\n", ci, i, (double)c.expected_out[i], (double)out[i], (double)diff); }
         }
-        std::printf("  case %zu (n_heads=%d n_kv_heads=%d n_kv=%d): %s — %d/%d passed (max_diff=%.3e)\n",
-                    ci, c.n_heads, c.n_kv_heads, c.n_kv, fail == 0 ? "PASS" : "FAIL", n - fail, n, (double)max_diff);
+        std::printf("  case %zu (n_heads=%d n_kv_heads=%d n_kv=%d causal=%d q_pos_base=%d): %s — %d/%d passed (max_diff=%.3e)\n",
+                    ci, c.n_heads, c.n_kv_heads, c.n_kv, c.causal, c.q_pos_base,
+                    fail == 0 ? "PASS" : "FAIL", n - fail, n, (double)max_diff);
         if (max_diff > global_max) global_max = max_diff;
         total_fail += fail; total_n += n;
     }

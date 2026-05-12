@@ -149,6 +149,16 @@ def test_stage_dry_run_uses_larger_asr_for_pro_tier(
     assert report["asrRemotePath"] == "Qwen3-ASR-1.7B-Q8_0.gguf"
 
 
+def test_stage_dry_run_uses_larger_asr_for_27b_1m_tier(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(stage, "HfApi", FakeHfApi)
+    report = stage.stage_assets(_args(tmp_path, "27b-1m"))
+    assert report["asrRepo"] == "ggml-org/Qwen3-ASR-1.7B-GGUF"
+    assert report["asrRemotePath"] == "Qwen3-ASR-1.7B-Q8_0.gguf"
+
+
 def test_non_dry_run_writes_asr_vad_and_wakeword_license_notes(
     tmp_path: Path,
 ) -> None:

@@ -7,7 +7,7 @@ import {
   readdirSync,
   statSync,
 } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { delimiter, join, relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const KNIP_CONFIG_FILES = [
@@ -229,12 +229,54 @@ function getKnipCommand() {
     ".bin",
     process.platform === "win32" ? "knip.cmd" : "knip",
   );
+  const bunCommand = getBunCommand();
 
   if (existsSync(localBin)) {
+    if (bunCommand) {
+      return { command: bunCommand, prefixArgs: [localBin] };
+    }
+
     return { command: localBin, prefixArgs: [] };
   }
 
   return { command: "bunx", prefixArgs: ["knip"] };
+}
+
+function getBunCommand() {
+  const candidates = [
+    process.env.npm_execpath,
+    process.env.BUN_INSTALL ? join(process.env.BUN_INSTALL, "bin", "bun") : null,
+    ...getPathCandidates("bun"),
+  ];
+
+  for (const candidate of candidates) {
+    if (isBunExecutable(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function getPathCandidates(command) {
+  const path = process.env.PATH;
+  if (!path) return [];
+
+  const names =
+    process.platform === "win32"
+      ? [`${command}.exe`, `${command}.cmd`]
+      : [command];
+  return path
+    .split(delimiter)
+    .flatMap((dir) => names.map((name) => join(dir, name)));
+}
+
+function isBunExecutable(candidate) {
+  if (!candidate) return false;
+
+  const normalized = candidate.replace(/\\/g, "/");
+  const fileName = normalized.slice(normalized.lastIndexOf("/") + 1);
+  return /^bun(?:\.exe)?$/.test(fileName) && existsSync(candidate);
 }
 
 const options = parseArgs(process.argv.slice(2));

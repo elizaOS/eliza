@@ -25,6 +25,7 @@ import type {
 } from "../../../types/memory.ts";
 import { MemoryType } from "../../../types/memory.ts";
 import type { JsonValue } from "../../../types/primitives.ts";
+import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
 import {
 	buildFactKeywordsForStorage,
 	buildFactSearchText,
@@ -309,6 +310,7 @@ function formatKnownLines(memories: Memory[], kind: FactKind): string {
 function formatRecentMessages(memories: Memory[]): string {
 	const lines: string[] = [];
 	for (const memory of memories) {
+		if (isSyntheticConversationArtifactMemory(memory)) continue;
 		const text = memory.content?.text;
 		if (typeof text !== "string" || !text.trim()) continue;
 		const senderName =
@@ -360,18 +362,22 @@ async function prepareReflectionContext(
 	message: Memory,
 ): Promise<ReflectionPrepared> {
 	const agentId = message.agentId ?? runtime.agentId;
-	const [recentMessages, existingRelationships, entities] = await Promise.all([
-		runtime.getMemories({
-			tableName: "messages",
-			roomId: message.roomId,
-			limit: RECENT_MESSAGES_LIMIT,
-			unique: false,
-		}),
-		runtime.getRelationships({
-			entityIds: message.entityId ? [message.entityId, agentId] : [agentId],
-		}),
-		getEntityDetails({ runtime, roomId: message.roomId }),
-	]);
+	const [recentMessagesRaw, existingRelationships, entities] =
+		await Promise.all([
+			runtime.getMemories({
+				tableName: "messages",
+				roomId: message.roomId,
+				limit: RECENT_MESSAGES_LIMIT,
+				unique: false,
+			}),
+			runtime.getRelationships({
+				entityIds: message.entityId ? [message.entityId, agentId] : [agentId],
+			}),
+			getEntityDetails({ runtime, roomId: message.roomId }),
+		]);
+	const recentMessages = recentMessagesRaw.filter(
+		(memory) => !isSyntheticConversationArtifactMemory(memory),
+	);
 	return { recentMessages, existingRelationships, entities };
 }
 
@@ -824,7 +830,10 @@ async function storeTaskCompletionReflection(
 
 function canEvaluateMessage(message: Memory): boolean {
 	return Boolean(
-		message.content?.text?.trim() && message.entityId && message.roomId,
+		message.content?.text?.trim() &&
+			message.entityId &&
+			message.roomId &&
+			!isSyntheticConversationArtifactMemory(message),
 	);
 }
 

@@ -50,12 +50,47 @@ interface FullBunRuntimeModule {
   ElizaBunRuntime: FullBunRuntimePlugin;
 }
 
+type ImportMetaEnvRecord = Record<string, string | boolean | undefined>;
+
 declare global {
   interface Window {
     __ELIZA_IOS_LOCAL_AGENT_REQUEST__?: (
       options: IosLocalAgentNativeRequestOptions,
     ) => Promise<IosLocalAgentNativeRequestResult>;
   }
+}
+
+function viteEnv(): ImportMetaEnvRecord {
+  return (
+    (import.meta as ImportMeta & { env?: ImportMetaEnvRecord }).env ?? {}
+  );
+}
+
+function isTruthyBuildFlag(value: string | boolean | undefined): boolean {
+  return value === true || /^(1|true|yes|on)$/i.test(String(value ?? ""));
+}
+
+function shouldRequireFullBunRuntime(): boolean {
+  const env = viteEnv();
+  const iosRuntimeMode =
+    env.VITE_ELIZA_IOS_RUNTIME_MODE ?? env.VITE_MILADY_IOS_RUNTIME_MODE;
+  return (
+    isTruthyBuildFlag(env.VITE_ELIZA_IOS_FULL_BUN_STRICT) ||
+    isTruthyBuildFlag(env.VITE_MILADY_IOS_FULL_BUN_STRICT) ||
+    isTruthyBuildFlag(env.VITE_ELIZA_IOS_FULL_BUN_SMOKE) ||
+    isTruthyBuildFlag(env.VITE_MILADY_IOS_FULL_BUN_SMOKE) ||
+    (isTruthyBuildFlag(env.PROD) && iosRuntimeMode === "local")
+  );
+}
+
+function fullBunStartupError(message: string, cause?: unknown): Error {
+  const causeMessage =
+    cause instanceof Error ? cause.message : cause ? String(cause) : "";
+  return new Error(
+    `[ios-local-agent] Full Bun iOS runtime required but ${message}${
+      causeMessage ? `: ${causeMessage}` : ""
+    }`,
+  );
 }
 
 function isNativeIos(): boolean {
@@ -140,7 +175,13 @@ function normalizeNativeResult(
 
 async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
   if (!isNativeIos()) return null;
-  if (!isFullBunRuntimePluginAvailable()) return null;
+  const strict = shouldRequireFullBunRuntime();
+  if (!isFullBunRuntimePluginAvailable()) {
+    if (strict) {
+      throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
+    }
+    return null;
+  }
   fullBunRuntime ??= (async () => {
     try {
       const mod = (await import(
@@ -159,15 +200,33 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
           LOG_LEVEL: "error",
         },
       });
-      if (!started.ok) return null;
+      if (!started.ok) {
+        throw new Error(started.error ?? "runtime start returned ok=false");
+      }
       const status = await runtime.getStatus();
-      if (!status.ready || status.engine !== "bun") return null;
+      if (!status.ready || status.engine !== "bun") {
+        throw new Error(
+          `runtime status was ready=${String(status.ready)} engine=${
+            status.engine ?? "unknown"
+          }`,
+        );
+      }
       return runtime;
-    } catch {
+    } catch (error) {
+      if (strict) {
+        throw fullBunStartupError("startup failed", error);
+      }
       return null;
     }
   })();
-  return fullBunRuntime;
+  try {
+    const runtime = await fullBunRuntime;
+    if (!runtime) fullBunRuntime = null;
+    return runtime;
+  } catch (error) {
+    fullBunRuntime = null;
+    throw error;
+  }
 }
 
 async function tryFullBunNativeRequest(

@@ -78,18 +78,13 @@ export default defineConfig({
   test: {
     testTimeout: 120_000,
     hookTimeout: 120_000,
-    maxWorkers: 2,
+    maxWorkers: 1,
     // Bootstrap-token tests spin up a real PGlite database + jose-signed
     // RS256 key material per test, and have intermittently exited the
     // vitest worker fork unexpectedly on CI (Worker exited unexpectedly /
-    // Worker forks emitted error). Forcing a single fork serializes the
-    // heavy native + WASM init across the file boundary and removes the
-    // class of crash.
-    poolOptions: {
-      forks: {
-        singleFork: true,
-      },
-    },
+    // Worker forks emitted error). In Vitest 4 the former forks.singleFork
+    // setting is represented by maxWorkers: 1 plus isolate: false.
+    isolate: false,
     server: { deps: { inline: [/@elizaos\//] } },
     // Heavy browser e2e — install `puppeteer-core` / `playwright-core` in this package to run
     exclude: [
@@ -103,11 +98,13 @@ export default defineConfig({
       "**/*.real.test.{ts,tsx}",
       "**/*.real.e2e.test.{ts,tsx}",
       "**/*.spec.{ts,tsx}",
+      "platforms/electrobun/**",
       "scripts/run-mobile-build-policy.test.mjs",
       ".claude/**",
       "test/app/memory-relationships.real.e2e.test.ts",
       "test/app/qa-checklist.real.e2e.test.ts",
       "test/app/onboarding-companion.live.e2e.test.ts",
+      "test/helpers/__tests__/live-agent-test.smoke.test.ts",
       ...(includeLiveE2e
         ? []
         : [

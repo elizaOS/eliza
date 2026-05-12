@@ -221,18 +221,55 @@ def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_vendingbench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="vending_bench:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="vending_bench:root"), ctx="vending_bench:metrics")
-    max_net_worth_raw = get_required(metrics, "max_net_worth", ctx="vending_bench:metrics")
-    max_net_worth_str = expect_str(max_net_worth_raw, ctx="vending_bench:max_net_worth")
-    max_net_worth = float(max_net_worth_str)
+    results_raw = root.get("results")
+
+    def to_float(value: object) -> float:
+        if isinstance(value, bool):
+            return 0.0
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            cleaned = value.strip().replace("$", "").replace(",", "")
+            if cleaned.endswith("%"):
+                cleaned = cleaned[:-1]
+            try:
+                return float(cleaned)
+            except ValueError:
+                return 0.0
+        return 0.0
+
+    results = expect_list(results_raw, ctx="vending_bench:results") if isinstance(results_raw, list) else []
+    total_revenue = 0.0
+    total_profit = 0.0
+    total_items_sold = 0.0
+    total_orders = 0.0
+    for item in results:
+        if not isinstance(item, dict):
+            continue
+        total_revenue += to_float(item.get("total_revenue"))
+        total_profit += to_float(item.get("profit"))
+        total_items_sold += to_float(item.get("items_sold"))
+        total_orders += to_float(item.get("orders_placed"))
+
+    run_count = len([item for item in results if isinstance(item, dict)])
+    avg_revenue = (total_revenue / run_count) if run_count else to_float(metrics.get("avg_revenue"))
+    avg_profit = (total_profit / run_count) if run_count else to_float(metrics.get("avg_profit"))
+    max_net_worth = to_float(metrics.get("max_net_worth"))
     return ScoreExtraction(
-        score=max_net_worth,
-        unit="usd",
+        score=avg_revenue,
+        unit="usd_revenue_per_run",
         higher_is_better=True,
         metrics={
-            "max_net_worth": max_net_worth_str,
+            "primary_score_note": "Average revenue per run; net worth is tracked as a secondary metric so no-op/no-spend policies do not win smoke runs.",
+            "avg_revenue": avg_revenue,
+            "total_revenue": total_revenue,
+            "avg_profit": avg_profit,
+            "max_net_worth": max_net_worth,
             "avg_net_worth": metrics.get("avg_net_worth") or "0",
             "profitability_rate": metrics.get("profitability_rate") or 0,
             "coherence_score": metrics.get("coherence_score") or 0,
+            "avg_items_sold": (total_items_sold / run_count) if run_count else (metrics.get("avg_items_sold") or 0),
+            "avg_orders_placed": (total_orders / run_count) if run_count else (metrics.get("avg_orders_placed") or 0),
         },
     )
 
@@ -454,9 +491,9 @@ def _score_from_osworld_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_configbench_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from ConfigBench results.
 
-    Prefers the Eliza handler when present; otherwise falls back to the first
-    handler emitted (Perfect oracle in mock-only runs). Scores are reported
-    in 0..100; we normalize to 0..1 for parity with other benchmarks.
+    ConfigBench benchmark-matrix rows are only valid for the real Eliza
+    handler. Do not fall back to the Perfect oracle row; that makes unsupported
+    Hermes/OpenClaw runs look like successful agent comparisons.
     """
     root = expect_dict(data, ctx="configbench:root")
     handlers = expect_list(get_required(root, "handlers", ctx="configbench:root"), ctx="configbench:handlers")
@@ -468,12 +505,8 @@ def _score_from_configbench_json(data: JSONValue) -> ScoreExtraction:
         if isinstance(name_raw, str) and "eliza" in name_raw.lower():
             target = entry
             break
-    if target is None and handlers:
-        first = handlers[0]
-        if isinstance(first, dict):
-            target = first
     if target is None:
-        raise ValueError("configbench: no handler entries found")
+        raise ValueError("configbench: no Eliza handler entry found")
     overall_raw = target.get("overallScore")
     overall = expect_float(overall_raw if overall_raw is not None else 0.0, ctx="configbench:overallScore")
     security_raw = target.get("securityScore")
@@ -837,6 +870,13 @@ def _score_from_action_calling_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="action_calling:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="action_calling:root"), ctx="action_calling:metrics")
     score = expect_float(get_required(metrics, "score", ctx="action_calling:metrics"), ctx="action_calling:metrics.score")
+    provider = root.get("provider")
+    generation_source = root.get("generation_source")
+    if provider == "eliza" and generation_source != "model_text":
+        raise ValueError("action_calling:eliza result must score actual model_text, not synthesized action params")
+    n = root.get("n") or 0
+    if not isinstance(n, int) or n <= 0:
+        raise ValueError("action_calling:n must be positive")
     return ScoreExtraction(
         score=score,
         unit="ratio",
@@ -847,7 +887,8 @@ def _score_from_action_calling_json(data: JSONValue) -> ScoreExtraction:
             "action_name_match": metrics.get("action_name_match") or 0,
             "args_parse_ok": metrics.get("args_parse_ok") or 0,
             "required_keys_ok": metrics.get("required_keys_ok") or 0,
-            "n": root.get("n") or 0,
+            "n": n,
+            "generation_source": generation_source or "",
         },
     )
 
@@ -1986,6 +2027,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         agent = extra.get("agent")
+        if isinstance(agent, str) and agent.strip().lower() in {"hermes", "openclaw"}:
+            raise ValueError("ConfigBench only supports the Eliza handler today")
         if agent == "eliza" or (model.provider or "").strip().lower() == "eliza":
             args.append("--eliza")
         elif extra.get("eliza") is True:
@@ -2010,6 +2053,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         directory (``cwd_rel`` resolves there).
         """
         args = ["bash", "./run.sh", f"--output-dir={output_dir}"]
+        agent = extra.get("agent")
+        if isinstance(agent, str) and agent.strip().lower() in {"hermes", "openclaw"}:
+            raise ValueError("VoiceBench only supports the Eliza TypeScript runtime today")
         profile_raw = extra.get("profile")
         provider_name = (model.provider or "").strip().lower()
         if isinstance(profile_raw, str) and profile_raw.strip():

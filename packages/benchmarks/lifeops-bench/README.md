@@ -19,8 +19,8 @@ clarification, and verifiable end-state correctness.
 ```
 +------------------+     +-------------------+     +----------------------+
 |  Scenario Corpus |---->|  LifeOpsBench     |<----|  Agent Adapter        |
-|  (53 static +    |     |  Runner           |     |  (Eliza | Hermes |    |
-|   15 live)       |     |  (orchestrator)   |     |   Cerebras-direct |   |
+|  (492 static +   |     |  Runner           |     |  (Eliza | Hermes |    |
+|   528 live)      |     |  (orchestrator)   |     |   OpenClaw |       |
 +------------------+     +-------------------+     |   PerfectAgent | …)   |
         |                        |                 +----------------------+
         v                        v                          |
@@ -43,16 +43,13 @@ clarification, and verifiable end-state correctness.
 
 1. **elizaOS adapter** (`agents/__init__.py::build_eliza_agent`) — drives the elizaOS runtime via the existing TS bench server.
 2. **Hermes adapter** (`agents/hermes.py`) — drives any model that speaks the Hermes XML `<tool_call>` template (local Hermes, llama-cpp servers, hosted endpoints).
-3. **cerebras-direct adapter** (`agents/cerebras_direct.py`) — calls the eval/teacher model (gpt-oss-120b on Cerebras) directly with the OpenAI tool-call format. Used as the upper-bound reference.
+3. **OpenClaw adapter** (`agents/openclaw.py`) — translates LifeOpsBench history/tools into OpenClaw's text-embedded `<tool_call>{"tool": ..., "args": ...}</tool_call>` protocol.
+4. **cerebras-direct adapter** (`agents/cerebras_direct.py`) — calls the eval/teacher model (gpt-oss-120b on Cerebras) directly with the OpenAI tool-call format. Used as the upper-bound reference.
 
 Plus reference oracles for sanity:
 
 - **PerfectAgent** — emits the scenario's ground-truth actions; should score ~1.0.
 - **WrongAgent** — emits unrelated actions or refuses; should score ~0.0.
-
-The OpenClaw adapter (`agents/openclaw.py`, Wave 2D) is still pending —
-the upstream `openclaw-adapter` package is currently 404 in the
-workspace and the wiring is blocked on its first published release.
 
 ## Quick start
 
@@ -62,7 +59,7 @@ uv sync
 # or
 pip install -e .[anthropic,test]
 
-# List all registered scenarios (68 total at time of writing)
+# List all registered scenarios (1020 total at time of writing)
 python3 -m eliza_lifeops_bench --list-scenarios
 
 # Run the calendar smoke scenario against the perfect oracle
@@ -88,12 +85,11 @@ Expected output (truncated) for an adapter-conformance run:
 ============================================================
 ```
 
-Note: the `--agent perfect` CLI path currently requires the runner to
-inject a scenario into the agent constructor, so the typical entry
-point for hermetic verification is the test suite
-(`tests/test_adapter_conformance.py`) rather than the CLI directly.
-Live-LLM runs through `--agent hermes` / `--agent cerebras-direct`
-work as documented below.
+Note: `--agent perfect` and `--agent wrong` use per-scenario agent
+factories, so they are valid CLI verification paths. LIVE-mode runs
+require both `CEREBRAS_API_KEY` for the simulated user and
+`ANTHROPIC_API_KEY` for the judge; without both keys, the CLI defaults
+to STATIC scenarios unless `--mode live` is specified explicitly.
 
 ## Running with each backend
 
@@ -146,7 +142,7 @@ packages/benchmarks/lifeops-bench/
     evaluator.py             LIVE-mode simulated-user + judge wiring
     scorer.py                state_hash, output_substring, pass@k aggregation
     lifeworld/               In-memory hashable world (entities + snapshots)
-    scenarios/               53 static + 15 live scenarios, organized by domain
+    scenarios/               492 static + 528 live scenarios, organized by domain
       _personas.py           10 reusable personas
       _smoke_scenarios.py    Two original smoke scenarios (kept at front of list)
       _authoring/            Candidate-generator pipeline + spec
@@ -157,6 +153,7 @@ packages/benchmarks/lifeops-bench/
       calendar.py mail.py messages.py contacts.py reminders.py
       finance.py travel.py health.py sleep.py focus.py
       live/                  LIVE-mode dual-agent scenarios
+      expanded/              300 harder scenarios across 10 LifeOps capability areas
     agents/                  Adapters + reference agents
       perfect.py wrong.py
       hermes.py cerebras_direct.py
@@ -183,11 +180,10 @@ packages/benchmarks/lifeops-bench/
 python3 -m pytest tests/ -v
 ```
 
-Current state: **574 tests passing, 3 skipped** (live-gated — they
-require `CEREBRAS_API_KEY` + `ANTHROPIC_API_KEY` and run real LLM
-calls). One pre-existing failure
-(`test_every_action_name_exists_in_manifest`) is in scope for Wave 4C
-and is intentionally left red.
+The hermetic test suite uses fake providers for normal CI coverage.
+Live network tests remain env-gated because they require
+`CEREBRAS_API_KEY` + `ANTHROPIC_API_KEY` and spend real inference
+budget.
 
 ## Known gaps
 

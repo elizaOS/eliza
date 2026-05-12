@@ -4,7 +4,7 @@
  *
  * Picks one published eliza-1 model (via its catalog id), points the
  * local-inference `Downloader` at a temp state dir, and verifies the
- * resulting file's sha256 matches the manifest the publisher wrote.
+ * resulting bundle/text GGUF sha256 matches the manifest the publisher wrote.
  *
  * This is the gate W5-Catalog uses before merging a catalog update: if
  * `verify-phone-download.mjs --model-id <id>` fails, the diff stays
@@ -69,22 +69,27 @@ function parseArgs(argv) {
 }
 
 async function findLatestDiff() {
-  const portingRoot = path.join(REPO_ROOT, "reports", "porting");
-  let dirs;
-  try {
-    dirs = await fsp.readdir(portingRoot);
-  } catch {
-    return null;
-  }
-  // Date-sortable directory names (YYYY-MM-DD-...).
-  dirs.sort();
-  for (let i = dirs.length - 1; i >= 0; i--) {
-    const candidate = path.join(portingRoot, dirs[i], "catalog-diff.json");
+  const portingRoots = [
+    path.join(REPO_ROOT, "packages", "inference", "reports", "porting"),
+    path.join(REPO_ROOT, "reports", "porting"),
+  ];
+  for (const portingRoot of portingRoots) {
+    let dirs;
     try {
-      await fsp.access(candidate);
-      return candidate;
+      dirs = await fsp.readdir(portingRoot);
     } catch {
-      // continue
+      continue;
+    }
+    // Date-sortable directory names (YYYY-MM-DD-...).
+    dirs.sort();
+    for (let i = dirs.length - 1; i >= 0; i--) {
+      const candidate = path.join(portingRoot, dirs[i], "catalog-diff.json");
+      try {
+        await fsp.access(candidate);
+        return candidate;
+      } catch {
+        // continue
+      }
     }
   }
   return null;
@@ -132,6 +137,8 @@ async function loadCatalogEntry(modelId) {
     id: entry.id,
     hfRepo: entry.hfRepo,
     ggufFile: entry.ggufFile,
+    bundleManifestFile: entry.bundleManifestFile ?? null,
+    bundleManifestSha256: entry.bundleManifestSha256 ?? null,
     sha256: null,
     sizeBytes: null,
   };
@@ -186,6 +193,12 @@ async function runDownload(Downloader, entry, stagingRoot) {
     displayName: entry.id,
     hfRepo: entry.hfRepo,
     ggufFile: entry.ggufFile,
+    ...(entry.bundleManifestFile
+      ? { bundleManifestFile: entry.bundleManifestFile }
+      : {}),
+    ...(entry.bundleManifestSha256
+      ? { bundleManifestSha256: entry.bundleManifestSha256 }
+      : {}),
     params: "8B",
     quant: "eliza-1-optimized",
     sizeGb: entry.sizeBytes ? entry.sizeBytes / 1024 ** 3 : 1,
@@ -225,18 +238,29 @@ async function runDownload(Downloader, entry, stagingRoot) {
 
   const elapsedMs = performance.now() - start;
 
-  // Locate the downloaded file. The downloader places it at
-  // `<state>/local-inference/models/<sanitized id>.gguf`.
+  // Locate the downloaded primary text file. Single-GGUF entries land at
+  // `<state>/local-inference/models/<sanitized id>.gguf`; manifest bundles
+  // land at `<state>/local-inference/models/<sanitized id>.bundle/<ggufFile>`.
   const sanitized = entry.id.replace(/[^a-zA-Z0-9._-]/g, "_");
-  const finalPath = path.join(
-    stagingRoot,
-    "local-inference",
-    "models",
-    `${sanitized}.gguf`,
-  );
+  const modelRoot = path.join(stagingRoot, "local-inference", "models");
+  const finalPath = entry.bundleManifestFile
+    ? path.join(modelRoot, `${sanitized}.bundle`, entry.ggufFile)
+    : path.join(modelRoot, `${sanitized}.gguf`);
 
   const stat = await fsp.stat(finalPath);
-  return { finalPath, sizeBytes: stat.size, elapsedMs };
+  const manifestPath = entry.bundleManifestFile
+    ? path.join(modelRoot, `${sanitized}.bundle`, entry.bundleManifestFile)
+    : null;
+  return { finalPath, manifestPath, sizeBytes: stat.size, elapsedMs };
+}
+
+async function expectedShaFromBundleManifest(manifestPath, ggufFile) {
+  if (!manifestPath) return null;
+  const manifest = JSON.parse(await fsp.readFile(manifestPath, "utf8"));
+  const textFiles = manifest?.files?.text;
+  if (!Array.isArray(textFiles)) return null;
+  const match = textFiles.find((entry) => entry?.path === ggufFile);
+  return typeof match?.sha256 === "string" ? match.sha256 : null;
 }
 
 async function main() {
@@ -278,11 +302,17 @@ async function main() {
   }
 
   const actualSha = await sha256OfFile(result.finalPath);
+  const expectedSha =
+    expected.sha256 ??
+    (await expectedShaFromBundleManifest(
+      result.manifestPath,
+      expected.ggufFile,
+    ));
   const elapsedSec = result.elapsedMs / 1000;
   const bytesPerSec = result.sizeBytes / Math.max(elapsedSec, 0.001);
 
   let shaOk = true;
-  if (expected.sha256 && expected.sha256 !== actualSha) {
+  if (expectedSha && expectedSha !== actualSha) {
     shaOk = false;
   }
 
@@ -290,7 +320,8 @@ async function main() {
     modelId: args.modelId,
     hfRepo: expected.hfRepo,
     ggufFile: expected.ggufFile,
-    expectedSha256: expected.sha256 ?? null,
+    bundleManifestFile: expected.bundleManifestFile ?? null,
+    expectedSha256: expectedSha ?? null,
     actualSha256: actualSha,
     shaMatch: shaOk,
     expectedSizeBytes: expected.sizeBytes ?? null,
@@ -307,7 +338,7 @@ async function main() {
 
   if (!shaOk) {
     process.stderr.write(
-      `[verify] FAIL: sha mismatch — expected ${expected.sha256}, got ${actualSha}\n`,
+      `[verify] FAIL: sha mismatch — expected ${expectedSha}, got ${actualSha}\n`,
     );
     process.exit(2);
   }

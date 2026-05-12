@@ -224,15 +224,13 @@ async def run_eliza_benchmark_mode(
     print()
 
     server_mgr = None
-    if not os.environ.get("ELIZA_BENCH_URL"):
+    if not os.environ.get("ELIZA_BENCH_URL") or not os.environ.get("ELIZA_BENCH_TOKEN"):
         from eliza_adapter.server_manager import ElizaServerManager
 
         server_mgr = ElizaServerManager()
         server_mgr.start()
         os.environ["ELIZA_BENCH_TOKEN"] = server_mgr.token
-        os.environ.setdefault(
-            "ELIZA_BENCH_URL", f"http://localhost:{server_mgr.port}"
-        )
+        os.environ["ELIZA_BENCH_URL"] = server_mgr.client.base_url
 
     try:
         results = await run_eliza_bridge_benchmark(

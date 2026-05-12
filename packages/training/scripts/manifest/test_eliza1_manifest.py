@@ -71,6 +71,10 @@ def base_kwargs(tier: str = "9b") -> dict:
         vad_false_barge_in_rate=0.01,
         e2e_loop_ok=True,
         thirty_turn_ok=True,
+        dflash_eval=True,
+        dflash_acceptance_rate=0.71,
+        dflash_speedup=1.8,
+        dflash_passed=True,
         ram_budget_min_mb=7000,
         ram_budget_recommended_mb=9500,
         default_eligible=True,
@@ -93,6 +97,11 @@ def test_build_manifest_happy_path():
         "boundaryMs": 24.0,
         "endpointMs": 80.0,
         "falseBargeInRate": 0.01,
+    }
+    assert manifest["evals"]["dflash"] == {
+        "acceptanceRate": 0.71,
+        "speedup": 1.8,
+        "passed": True,
     }
     # Validates against itself.
     assert validate_manifest(manifest) == ()
@@ -160,6 +169,16 @@ def test_default_eligible_with_failing_eval_rejected():
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)
     assert any("textEval" in e for e in exc.value.errors)
+    assert any("defaultEligible" in e for e in exc.value.errors)
+
+
+def test_default_eligible_requires_measured_dflash_eval():
+    kwargs = base_kwargs("9b")
+    kwargs["dflash_speedup"] = None
+    kwargs["dflash_passed"] = False
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+    assert any("evals.dflash" in e for e in exc.value.errors)
     assert any("defaultEligible" in e for e in exc.value.errors)
 
 

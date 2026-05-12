@@ -112,6 +112,7 @@ function writeMiladyFfiAdapter({ graftRoot, commit }) {
 #include "mtmd-helper.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <cctype>
 #include <cmath>
@@ -140,6 +141,7 @@ struct EliInferenceContext {
     llama_sampler * asr_sampler = nullptr;
     int asr_sample_rate = 0;
     int asr_n_batch = 512;
+    std::atomic<bool> tts_cancel{false};
     std::mutex tts_mutex;
     std::mutex asr_mutex;
 };
@@ -254,6 +256,30 @@ static int eliza_thread_count(bool batch) {
     return (int) std::max(1u, std::min(hw, cap));
 }
 
+static void eliza_apply_tts_env_overrides(ov_tts_params * params) {
+    if (!params) return;
+    if (const char * env = std::getenv("ELIZA_TTS_MASKGIT_STEPS")) {
+        int n = std::atoi(env);
+        if (n >= 1 && n <= 64) {
+            params->mg_num_step = n;
+        }
+    }
+    if (const char * env = std::getenv("ELIZA_TTS_CHUNK_DURATION_SEC")) {
+        char * end = nullptr;
+        float v = std::strtof(env, &end);
+        if (end != env && v > 0.0f && v <= 120.0f) {
+            params->chunk_duration_sec = v;
+        }
+    }
+    if (const char * env = std::getenv("ELIZA_TTS_CHUNK_THRESHOLD_SEC")) {
+        char * end = nullptr;
+        float v = std::strtof(env, &end);
+        if (end != env && v > 0.0f && v <= 120.0f) {
+            params->chunk_threshold_sec = v;
+        }
+    }
+}
+
 /* ASR thread budget. The voice-realtime caps in eliza_thread_count() exist
  * so TTS + the DFlash drafter keep cores free during a streaming turn; the
  * ASR Whisper-style audio encoder (the mmproj prefill via
@@ -305,15 +331,36 @@ static std::string eliza_llama_token_piece(const llama_vocab * vocab, llama_toke
     return "";
 }
 
+static std::string eliza_trim_ascii(std::string value);
+
+static std::string eliza_asr_force_language() {
+    const char * env = std::getenv("ELIZA_ASR_FORCE_LANGUAGE");
+    if (!env) return "English";
+    std::string value = eliza_trim_ascii(env);
+    std::string lower = value;
+    std::transform(lower.begin(), lower.end(), lower.begin(), [](unsigned char c) {
+        return (char) std::tolower(c);
+    });
+    if (lower.empty() || lower == "0" || lower == "false" || lower == "none" || lower == "auto") {
+        return "";
+    }
+    return value;
+}
+
 static std::string eliza_format_asr_prompt(llama_model * model) {
     (void) model;
-    // Qwen3-ASR's generation prompt is intentionally minimal: the audio
-    // placeholder is the entire user turn and decoding starts immediately
-    // at the assistant turn. Extra natural-language instructions cause
-    // role-token chatter instead of a clean transcript.
-    return std::string("<|im_start|>user\\n") +
+    // Mirrors Qwen3-ASR's chat-template structure: empty system context,
+    // one user audio turn, and a generation prompt. Appending
+    // "language X<asr_text>" follows the upstream text-only forcing path
+    // and avoids returning language metadata or role-token chatter.
+    std::string prompt = std::string("<|im_start|>system\\n<|im_end|>\\n<|im_start|>user\\n") +
         mtmd_default_marker() +
         "<|im_end|>\\n<|im_start|>assistant\\n";
+    std::string language = eliza_asr_force_language();
+    if (!language.empty()) {
+        prompt += "language " + language + "<asr_text>";
+    }
+    return prompt;
 }
 
 static std::string eliza_trim_ascii(std::string value) {
@@ -336,8 +383,13 @@ static std::string eliza_clean_asr_transcript(std::string transcript) {
         transcript = transcript.substr(marker + asr_marker.size());
     }
     const char * sentinels[] = {
+        "<|im_start|>",
         "<|im_end|>",
         "<|endoftext|>",
+        "<|audio_start|>",
+        "<|audio_end|>",
+        "<|vision_start|>",
+        "<|vision_end|>",
         "</s>",
     };
     for (const char * sentinel : sentinels) {
@@ -346,7 +398,66 @@ static std::string eliza_clean_asr_transcript(std::string transcript) {
             transcript = transcript.substr(0, pos);
         }
     }
-    return eliza_trim_ascii(transcript);
+    transcript = eliza_trim_ascii(transcript);
+    for (const char * sentinel : sentinels) {
+        std::string full(sentinel);
+        if (full.rfind(transcript, 0) == 0) {
+            return "";
+        }
+    }
+    return transcript;
+}
+
+static bool eliza_asr_has_text_payload(const std::string & transcript) {
+    for (unsigned char c : transcript) {
+        if (std::isalnum(c)) return true;
+    }
+    return false;
+}
+
+static int eliza_map_ov_status(ov_status rc) {
+    if (rc == OV_STATUS_OK) return ELIZA_OK;
+    if (rc == OV_STATUS_OOM) return ELIZA_ERR_OOM;
+    if (rc == OV_STATUS_CANCELLED) return ELIZA_ERR_CANCELLED;
+    if (rc == OV_STATUS_INVALID_PARAMS || rc == OV_STATUS_INSTRUCT_INVALID) return ELIZA_ERR_INVALID_ARG;
+    return ELIZA_ERR_FFI_FAULT;
+}
+
+static bool eliza_tts_cancel_requested(void * user_data) {
+    EliInferenceContext * ctx = (EliInferenceContext *) user_data;
+    return ctx && ctx->tts_cancel.load(std::memory_order_acquire);
+}
+
+struct ElizaScopedTtsForward {
+    EliInferenceContext * ctx;
+
+    explicit ElizaScopedTtsForward(EliInferenceContext * c) : ctx(c) {
+        if (ctx) ctx->tts_cancel.store(false, std::memory_order_release);
+    }
+
+    ~ElizaScopedTtsForward() {
+        if (ctx) ctx->tts_cancel.store(false, std::memory_order_release);
+    }
+};
+
+struct ElizaTtsStreamState {
+    EliInferenceContext * ctx;
+    eliza_tts_chunk_cb on_chunk;
+    void * user_data;
+    bool callback_cancelled;
+};
+
+static bool eliza_tts_stream_chunk(const float * samples, int n_samples, void * user_data) {
+    ElizaTtsStreamState * state = (ElizaTtsStreamState *) user_data;
+    if (!state || !state->on_chunk) return false;
+    if (state->ctx && state->ctx->tts_cancel.load(std::memory_order_acquire)) return false;
+    const int rc = state->on_chunk(samples, n_samples < 0 ? 0 : (size_t) n_samples, 0, state->user_data);
+    if (rc != 0) {
+        state->callback_cancelled = true;
+        if (state->ctx) state->ctx->tts_cancel.store(true, std::memory_order_release);
+        return false;
+    }
+    return !(state->ctx && state->ctx->tts_cancel.load(std::memory_order_acquire));
 }
 
 static void eliza_free_asr(EliInferenceContext * ctx) {
@@ -598,12 +709,16 @@ int eliza_inference_tts_synthesize(
         eliza_set_error(out_error, "[libelizainference] tts_synthesize: TTS region is not acquired; call mmap_acquire(\\\"tts\\\") after arming voice");
         return ELIZA_ERR_INVALID_ARG;
     }
+    ElizaScopedTtsForward forward(ctx);
 
     std::string text_owned(text, text_len);
     ov_tts_params params;
     ov_tts_default_params(&params);
+    eliza_apply_tts_env_overrides(&params);
     params.text = text_owned.c_str();
     params.instruct = speaker_preset_id ? speaker_preset_id : "";
+    params.cancel = eliza_tts_cancel_requested;
+    params.cancel_user_data = ctx;
 
     ov_audio audio = {};
     ov_status rc = ov_synthesize(ctx->ov, &params, &audio);
@@ -612,7 +727,7 @@ int eliza_inference_tts_synthesize(
         msg += ov_last_error();
         ov_audio_free(&audio);
         eliza_set_error(out_error, msg);
-        return rc == OV_STATUS_OOM ? ELIZA_ERR_OOM : ELIZA_ERR_FFI_FAULT;
+        return eliza_map_ov_status(rc);
     }
     if (audio.n_samples < 0 || (size_t) audio.n_samples > max_samples) {
         std::string msg = "[libelizainference] output buffer too small; required samples=" +
@@ -717,12 +832,13 @@ int eliza_inference_asr_transcribe(
             }
             transcript += piece;
             std::string cleaned_partial = eliza_clean_asr_transcript(transcript);
-            if (!cleaned_partial.empty()) {
+            if (eliza_asr_has_text_payload(cleaned_partial)) {
                 const char last = cleaned_partial.back();
                 const bool sentence_complete = last == '.' || last == '?' || last == '!';
                 if (piece.find('\\n') != std::string::npos ||
-                    transcript.find("<|im_start|>") != std::string::npos ||
                     transcript.find("<|im_end|>") != std::string::npos ||
+                    transcript.find("<|endoftext|>") != std::string::npos ||
+                    transcript.find("</s>") != std::string::npos ||
                     sentence_complete) {
                     completed = true;
                     break;
@@ -760,9 +876,9 @@ int eliza_inference_asr_transcribe(
  * The fused build ships the v1 batch \`eliza_inference_asr_transcribe\`
  * decoder above; the windowed streaming-session decoder is not yet wired
  * (W7). Per packages/inference/AGENTS.md §3 we do NOT fake it — the
-     * capability probe returns 0 so EngineVoiceBridge / StreamingTranscriber
-     * pick the fused batch ASR adapter instead of opening a session that would
-     * only return ELIZA_ERR_NOT_IMPLEMENTED.
+ * capability probe returns 0 so EngineVoiceBridge / StreamingTranscriber
+ * pick the fused batch ASR adapter instead of opening a session that would
+ * only return ELIZA_ERR_NOT_IMPLEMENTED.
  * These symbols exist so the ABI surface is complete and the loader's
  * version check (ffi-bindings.ts expects v3) succeeds.
  */
@@ -833,17 +949,15 @@ void eliza_inference_asr_stream_close(EliAsrStream * stream) {
 
 /* ---- Streaming TTS + DFlash verifier callback (ABI v2) ------------- *
  *
- * The batch \`eliza_inference_tts_synthesize\` above is the implemented TTS
- * path. The chunk-streaming entry, hard-cancel, and the native DFlash
- * verifier-event callback are W7 fused-runtime work — until then
- * \`eliza_inference_tts_stream_supported()\` returns 0 so EngineVoiceBridge
- * uses the batch path / synthesizes verifier events from llama-server SSE
- * deltas, exactly as it does today. We do NOT fake these (AGENTS.md §3);
- * they exist so the ABI surface ffi-bindings.ts expects is complete.
+ * TTS streaming is backed by OmniVoice's real \`ov_tts_params.on_chunk\`
+ * path and cooperative cancel hook. The native DFlash verifier-event
+ * callback is still not wired in this generated adapter, so the JS
+ * scheduler continues to synthesize verifier events from llama-server SSE
+ * deltas until that text-generation path moves in-process.
  */
 
 int eliza_inference_tts_stream_supported(void) {
-    return 0;
+    return OV_ABI_VERSION >= 2 ? 1 : 0;
 }
 
 int eliza_inference_tts_synthesize_stream(
@@ -854,25 +968,66 @@ int eliza_inference_tts_synthesize_stream(
     eliza_tts_chunk_cb on_chunk,
     void * user_data,
     char ** out_error) {
-    (void) ctx;
-    (void) text;
-    (void) text_len;
-    (void) speaker_preset_id;
-    (void) on_chunk;
-    (void) user_data;
-    eliza_set_error(out_error,
-        "[libelizainference] streaming TTS is not implemented in this build "
-        "(eliza_inference_tts_stream_supported() == 0); use the batch synthesize path");
-    return ELIZA_ERR_NOT_IMPLEMENTED;
+    if (!ctx || !on_chunk) {
+        eliza_set_error(out_error, "[libelizainference] tts_synthesize_stream: invalid arguments");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    if (!text || text_len == 0) {
+        eliza_set_error(out_error, "[libelizainference] tts_synthesize_stream: text is required");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+
+    std::lock_guard<std::mutex> lock(ctx->tts_mutex);
+    if (!ctx->ov) {
+        eliza_set_error(out_error, "[libelizainference] tts_synthesize_stream: TTS region is not acquired; call mmap_acquire(\\\"tts\\\") after arming voice");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    ElizaScopedTtsForward forward(ctx);
+
+    std::string text_owned(text, text_len);
+    ov_tts_params params;
+    ov_tts_default_params(&params);
+    eliza_apply_tts_env_overrides(&params);
+    params.text = text_owned.c_str();
+    params.instruct = speaker_preset_id ? speaker_preset_id : "";
+    params.cancel = eliza_tts_cancel_requested;
+    params.cancel_user_data = ctx;
+
+    ElizaTtsStreamState state = {
+        ctx,
+        on_chunk,
+        user_data,
+        false,
+    };
+    params.on_chunk = eliza_tts_stream_chunk;
+    params.on_chunk_user_data = &state;
+
+    ov_status rc = ov_synthesize(ctx->ov, &params, nullptr);
+    const bool cancelled =
+        rc == OV_STATUS_CANCELLED ||
+        state.callback_cancelled ||
+        ctx->tts_cancel.load(std::memory_order_acquire);
+    (void) on_chunk(nullptr, 0, 1, user_data);
+    if (cancelled) {
+        return ELIZA_ERR_CANCELLED;
+    }
+    if (rc != OV_STATUS_OK) {
+        std::string msg = "[libelizainference] ov_synthesize(stream) failed: ";
+        msg += ov_last_error();
+        eliza_set_error(out_error, msg);
+        return eliza_map_ov_status(rc);
+    }
+    return ELIZA_OK;
 }
 
 int eliza_inference_cancel_tts(
     EliInferenceContext * ctx,
     char ** out_error) {
-    (void) ctx;
     (void) out_error;
-    // Cancelling nothing is not an error; there is no in-flight streaming
-    // forward pass in this build (streaming TTS is not implemented).
+    if (ctx) {
+        ctx->tts_cancel.store(true, std::memory_order_release);
+    }
+    // Cancelling nothing is not an error.
     return ELIZA_OK;
 }
 

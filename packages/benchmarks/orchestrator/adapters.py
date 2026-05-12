@@ -63,6 +63,21 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     # implementations through a Python bridge. Hermes/OpenClaw rows would be
     # misleading labels unless explicit per-agent compactor methods are added.
     "compactbench": ("eliza",),
+    # Eliza/Hermes preserve full OpenAI chat/tool payloads through the LOCA
+    # proxy. The current OpenClaw CLI adapter only receives the last user text
+    # plus a session id, so its LOCA rows are not comparable yet.
+    "loca_bench": ("eliza", "hermes"),
+    # ConfigBench currently has an in-process Eliza handler plus oracle/mock
+    # handlers. Hermes/OpenClaw rows were previously scored against the
+    # Perfect oracle fallback, which is not a real harness comparison.
+    "configbench": ("eliza",),
+    # FrameworkBench measures the local elizaOS TypeScript runtime with a mock
+    # LLM. It does not invoke Hermes/OpenClaw, so tri-harness labels are
+    # misleading until real per-harness framework drivers exist.
+    "framework": ("eliza",),
+    # VoiceBench currently instantiates the local TypeScript runtime directly;
+    # Hermes/OpenClaw labels run the same mock voice path with zero LLM calls.
+    "voicebench": ("eliza",),
 }
 
 
@@ -868,10 +883,6 @@ def _score_from_configbench(path: Path) -> ScoreSummary:
         if "eliza" in name:
             target = item
             break
-    if target is None and handlers:
-        first = handlers[0]
-        if isinstance(first, dict):
-            target = first
     if target is None:
         return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
     overall = target.get("overallScore")
@@ -1144,69 +1155,49 @@ def _score_from_compactbench(path: Path) -> ScoreSummary:
     import json
 
     valid_path = path.with_name(f"{path.stem}.valid-hits.jsonl")
-    if valid_path.exists():
-        analysis_end: dict[str, Any] | None = None
-        for line in valid_path.read_text(encoding="utf-8", errors="replace").splitlines():
-            if not line.strip():
-                continue
-            try:
-                item = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(item, dict) and item.get("event") == "analysis_end":
-                analysis_end = item
-        if analysis_end is not None:
-            raw = analysis_end.get("overall_score")
-            score = float(raw) if isinstance(raw, (int, float)) else None
-            return ScoreSummary(
-                score=score,
-                unit="ratio",
-                higher_is_better=True,
-                metrics={
-                    "overall_score": raw,
-                    "benchmark_quality_score": analysis_end.get(
-                        "benchmark_quality_score"
-                    ),
-                    "raw_lexical_overall_score": analysis_end.get(
-                        "raw_lexical_overall_score"
-                    ),
-                    "valid_false_negatives": analysis_end.get("valid_false_negatives"),
-                    "semantic_false_positives": analysis_end.get(
-                        "semantic_false_positives"
-                    ),
-                    "failures_remaining": analysis_end.get("failures_remaining"),
-                    "repaired_expected_conflicts": analysis_end.get(
-                        "repaired_expected_conflicts"
-                    ),
-                    "removed_invalid_items": analysis_end.get("removed_invalid_items"),
-                    "judge_refusals": analysis_end.get("judge_refusals"),
-                },
-            )
-
-    run_end: dict[str, Any] | None = None
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    if not valid_path.exists():
+        raise ValueError(
+            "compactbench repaired valid-hit analysis is required; "
+            "set analyze_valid_hits=true or run run_cerebras.py with "
+            "--analyze-valid-hits"
+        )
+    analysis_end: dict[str, Any] | None = None
+    for line in valid_path.read_text(encoding="utf-8", errors="replace").splitlines():
         if not line.strip():
             continue
         try:
             item = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(item, dict) and item.get("event") == "run_end":
-            run_end = item
-    if run_end is None:
-        raise ValueError("compactbench result missing run_end event")
-    raw = run_end.get("overall_score")
+        if isinstance(item, dict) and item.get("event") == "analysis_end":
+            analysis_end = item
+    if analysis_end is None:
+        raise ValueError("compactbench valid-hit analysis missing analysis_end event")
+    raw = analysis_end.get("overall_score")
     score = float(raw) if isinstance(raw, (int, float)) else None
     return ScoreSummary(
         score=score,
         unit="ratio",
         higher_is_better=True,
         metrics={
+            "scorer_name": "repaired_valid_hits",
             "overall_score": raw,
-            "drift_resistance": run_end.get("drift_resistance"),
-            "constraint_retention": run_end.get("constraint_retention"),
-            "contradiction_rate": run_end.get("contradiction_rate"),
-            "compression_ratio": run_end.get("compression_ratio"),
+            "benchmark_quality_score": analysis_end.get(
+                "benchmark_quality_score"
+            ),
+            "raw_lexical_overall_score": analysis_end.get(
+                "raw_lexical_overall_score"
+            ),
+            "valid_false_negatives": analysis_end.get("valid_false_negatives"),
+            "semantic_false_positives": analysis_end.get(
+                "semantic_false_positives"
+            ),
+            "failures_remaining": analysis_end.get("failures_remaining"),
+            "repaired_expected_conflicts": analysis_end.get(
+                "repaired_expected_conflicts"
+            ),
+            "removed_invalid_items": analysis_end.get("removed_invalid_items"),
+            "judge_refusals": analysis_end.get("judge_refusals"),
         },
     )
 
@@ -1230,7 +1221,6 @@ def _command_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> lis
         str(int(ctx.request.extra_config.get("timeout", 300))),
         "--max-retries",
         str(int(ctx.request.extra_config.get("max_retries", 1))),
-        "--allow-empty",
     ]
     config = ctx.request.extra_config.get("config")
     if isinstance(config, str) and config.strip():
@@ -1243,13 +1233,26 @@ def _command_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> lis
     max_steps = ctx.request.extra_config.get("max_steps", ctx.request.extra_config.get("max_tasks"))
     if isinstance(max_steps, int) and max_steps > 0:
         args.extend(["--max-steps", str(max_steps)])
+    for key, flag, caster in [
+        ("max_context_size", "--max-context-size", int),
+        ("reset_size", "--reset-size", int),
+        ("reset_ratio", "--reset-ratio", float),
+        ("memory_warning_threshold", "--memory-warning-threshold", float),
+        ("keep_thinking", "--keep-thinking", int),
+    ]:
+        if key in ctx.request.extra_config:
+            args.extend([flag, str(caster(ctx.request.extra_config[key]))])
     context_summary = ctx.request.extra_config.get("context_summary")
     if context_summary is not False:
         args.append("--context-summary")
     if ctx.request.extra_config.get("context_awareness") is True:
         args.append("--context-awareness")
+    reasoning_effort = ctx.request.extra_config.get("reasoning_effort")
+    if isinstance(reasoning_effort, str) and reasoning_effort.strip():
+        args.extend(["--reasoning-effort", reasoning_effort.strip()])
     if ctx.request.extra_config.get("dry_run") is True:
         args.append("--dry-run")
+        args.append("--allow-empty")
     return args
 
 
@@ -1266,17 +1269,22 @@ def _score_from_loca_bench(path: Path) -> ScoreSummary:
     metadata_total_tasks = summary.get("metadata_total_tasks")
     score = float(raw) if isinstance(raw, (int, float)) else None
     if score is None:
-        observed_trajectories = (
-            trajectory_count
-            if isinstance(trajectory_count, int)
-            else aggregate_trajectory_count
-            if isinstance(aggregate_trajectory_count, int)
-            else 0
+        raise ValueError("loca-bench audit missing summary.avg_accuracy")
+    if summary.get("issue_count"):
+        raise ValueError(f"loca-bench audit has {summary.get('issue_count')} issue(s)")
+    has_trajectories = (
+        (isinstance(trajectory_count, int) and trajectory_count > 0)
+        or (
+            isinstance(aggregate_trajectory_count, int)
+            and aggregate_trajectory_count > 0
         )
-        if observed_trajectories > 0 or (
-            isinstance(metadata_total_tasks, int) and metadata_total_tasks > 0
-        ):
-            score = 0.0
+    )
+    if not has_trajectories:
+        raise ValueError("loca-bench run has no captured trajectories")
+    if summary.get("total_api_tokens") in (None, 0) and (
+        isinstance(metadata_total_tasks, int) and metadata_total_tasks > 0
+    ):
+        raise ValueError("loca-bench run has tasks but no API token usage")
     return ScoreSummary(
         score=score,
         unit="ratio",
@@ -1292,6 +1300,15 @@ def _score_from_loca_bench(path: Path) -> ScoreSummary:
             "trajectory_count": trajectory_count,
         },
     )
+
+
+def _env_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    del adapter
+    env: dict[str, str] = {}
+    max_context_size = ctx.request.extra_config.get("max_context_size")
+    if isinstance(max_context_size, int) and max_context_size > 0:
+        env["MAX_CONVERSATION_TOKENS"] = str(max_context_size)
+    return env
 
 
 def _command_interrupt_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
@@ -1680,12 +1697,15 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             command_builder=_command_loca_bench,
             result_patterns=["loca-output/eliza_loca_audit.json", "**/eliza_loca_audit.json"],
             score_extractor=_score_from_loca_bench,
+            env_builder=_env_loca_bench,
             default_extra_config={
                 "max_steps": 1,
                 "max_tool_uses": 5,
                 "max_retries": 1,
                 "timeout": 120,
                 "context_summary": True,
+                "max_context_size": 131072,
+                "reset_size": 65536,
             },
             default_timeout_seconds=7200,
         ),

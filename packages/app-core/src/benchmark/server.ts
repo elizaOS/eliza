@@ -23,6 +23,7 @@ import {
   clearCapturedAction,
   createBenchmarkPlugin,
   getCapturedAction,
+  getCapturedActions,
   setBenchmarkContext,
 } from "./plugin";
 import {
@@ -385,7 +386,7 @@ export async function startBenchmarkServer() {
   ]);
 
   // Skip `@elizaos/plugin-local-embedding` by default in benchmark mode:
-  // - It downloads a ~500MB GGUF from `huggingface.co/elizaos/eliza-1-lite-0_6b`
+  // - It downloads a ~500MB GGUF from `huggingface.co/elizaos/eliza-1-0_8b`
   //   on first `TEXT_EMBEDDING` call. The repo is gated/private, so every turn
   //   spams a 401 from HuggingFace.
   // - Benchmarks don't score on semantic retrieval, so a deterministic
@@ -494,7 +495,7 @@ export async function startBenchmarkServer() {
   // persisted memory; without ANY handler, those calls throw and abort the
   // turn. The benchmarks don't score retrieval, so a deterministic
   // 1024-dim zero vector is the right stub. Dimensions match the local-
-  // embedding default (eliza-1-lite-0_6b → 1024) so downstream code that
+  // embedding default (eliza-1-0_8b → 1024) so downstream code that
   // assumes that shape (vector columns sized at boot) still works.
   if (skipEmbeddingPlugin) {
     const EMBEDDING_DIMENSIONS = 1024;
@@ -1605,6 +1606,7 @@ export async function startBenchmarkServer() {
           const turnUsage = summarizeUsage(turnUsageBuffer);
 
           const capturedAction = getCapturedAction();
+          const capturedActions = getCapturedActions();
 
           const responseText =
             typeof result.responseContent?.text === "string"
@@ -1626,6 +1628,11 @@ export async function startBenchmarkServer() {
             Object.keys(parsedParams).length > 0
               ? parsedParams
               : capturedActionToParams(capturedAction);
+          if (capturedActions.length > 1) {
+            params.BENCHMARK_ACTIONS = capturedActions
+              .map((action) => capturedActionToParams(action).BENCHMARK_ACTION)
+              .filter(Boolean);
+          }
           const finishedAt = Date.now();
 
           trajectory.push({
@@ -1650,6 +1657,7 @@ export async function startBenchmarkServer() {
               thought,
               actions,
               params,
+              captured_actions: capturedActions,
               benchmark: session.benchmark,
               task_id: session.taskId,
               room_id: session.roomId,

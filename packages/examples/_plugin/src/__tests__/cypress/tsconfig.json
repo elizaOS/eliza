@@ -4,10 +4,12 @@
 		"target": "es2015",
 		"lib": ["es2015", "dom"],
 		"types": ["cypress", "@testing-library/cypress"],
+		"composite": false,
+		"rootDir": "../..",
 		"isolatedModules": false,
 		"jsx": "react-jsx",
 		"jsxImportSource": "react"
 	},
-	"include": ["**/*.ts", "**/*.tsx"],
+	"include": ["**/*.ts", "**/*.tsx", "../../frontend/**/*.ts", "../../frontend/**/*.tsx", "../../vite-env.d.ts"],
 	"exclude": []
 }
