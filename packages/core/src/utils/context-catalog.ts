@@ -11,19 +11,12 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
 	CONFIGURE: ["general", "settings"],
 	APP: ["connectors"],
 	PLUGIN: ["connectors", "admin"],
-	AUTOMATION_ACTIONS: ["general", "automation"],
-	BROWSER_ACTIONS: ["general", "browser"],
-	CHARACTER_ACTIONS: ["general", "settings"],
-	CONNECTOR_ACTION: ["connectors"],
-	CONNECTOR_ACTIONS: ["general", "connectors"],
-	OWNER_ACTIONS: ["general", "tasks", "automation"],
-	PHONE_ACTIONS: ["general", "messaging"],
-	SETTINGS_ACTIONS: ["general", "settings"],
+	// PAGE_DELEGATE replaces the eight retired per-page <NAME>_ACTIONS parents.
+	// Its contexts array is declared on the action itself; this fallback entry
+	// covers any code paths that still resolve via this catalog.
+	PAGE_DELEGATE: ["general"],
 	WALLET: ["wallet"],
-	TOKEN_INFO: ["wallet"],
 	PREDICTION_MARKET: ["wallet"],
-	WALLET_ACTION: ["wallet"],
-	WALLET_ACTIONS: ["general", "wallet"],
 	MODIFY_CHARACTER: ["settings", "admin"],
 	UPDATE_OWNER_NAME: ["settings"],
 	SET_USER_NAME: ["settings"],
