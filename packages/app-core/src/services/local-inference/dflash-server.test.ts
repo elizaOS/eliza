@@ -301,9 +301,7 @@ describe("ELIZA_DFLASH_DISABLE developer kill-switch", () => {
       process.env.ELIZA_DFLASH_DISABLE = "1";
       logDflashDevDisabledWarning();
       expect(warn).toHaveBeenCalledTimes(1);
-      expect(String(warn.mock.calls[0][0])).toContain(
-        "ELIZA_DFLASH_DISABLE=1",
-      );
+      expect(String(warn.mock.calls[0][0])).toContain("ELIZA_DFLASH_DISABLE=1");
     } finally {
       warn.mockRestore();
     }

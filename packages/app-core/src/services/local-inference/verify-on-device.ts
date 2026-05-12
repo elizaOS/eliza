@@ -59,7 +59,10 @@ async function manifestDeclaresVoice(
   return (manifest.files.voice ?? []).length > 0;
 }
 
-async function verifyText(engine: VerifyEngine, textGgufPath: string): Promise<void> {
+async function verifyText(
+  engine: VerifyEngine,
+  textGgufPath: string,
+): Promise<void> {
   await engine.load(textGgufPath);
   const out = await engine.generate({
     prompt: VERIFY_PROMPT,
@@ -73,7 +76,10 @@ async function verifyText(engine: VerifyEngine, textGgufPath: string): Promise<v
   }
 }
 
-async function verifyVoice(engine: VerifyEngine, bundleRoot: string): Promise<void> {
+async function verifyVoice(
+  engine: VerifyEngine,
+  bundleRoot: string,
+): Promise<void> {
   // `useFfiBackend: true` is the production path — it loads the fused
   // `libelizainference` and hard-fails (`VoiceStartupError`) when the fused
   // build is absent. That is the intended behaviour: a voice bundle that
