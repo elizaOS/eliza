@@ -47,9 +47,9 @@ import {
   normalizeBenchmarkContext,
   normalizeBenchRoleName,
   parseRoleSeedPayload,
+  type RoleSeedPayload,
   resolveHost,
   resolvePort,
-  type RoleSeedPayload,
   seedBenchUserRole,
   sessionKey,
   toPlugin,
@@ -1119,7 +1119,26 @@ export async function startBenchmarkServer() {
       // the TS bridge waiting on a huge outbound model call. Keep the message
       // itself to the user's benchmark instruction and let the provider carry
       // the structured context.
-      const composedPrompt = userText.trim();
+      //
+      // P1-2: when the most recent turn had a failed tool call, prepend a
+      // compact `last_tool_result` block so the planner sees the error
+      // immediately and can retry with corrected parameters. This is appended
+      // to the existing prompt — not replacing it — so the provider context
+      // is still the authoritative structured payload.
+      let composedPrompt = userText.trim();
+      const lastTurn =
+        previousTurns.length > 0
+          ? previousTurns[previousTurns.length - 1]
+          : null;
+      const lastFailedCalls = lastTurn
+        ? lastTurn.toolCalls.filter((c) => !c.ok)
+        : [];
+      if (lastFailedCalls.length > 0) {
+        const errorSummary = lastFailedCalls
+          .map((c) => `${c.name}: ${c.error ?? "unknown error"}`)
+          .join("; ");
+        composedPrompt = `${composedPrompt}\n\nlast_tool_result: FAILED — ${errorSummary}\nThe previous tool call failed. Review the error above and retry with corrected parameters.`;
+      }
 
       const incomingMessage: Memory = {
         id: stringToUuid(`lifeops-msg:${Date.now()}:${Math.random()}`),
@@ -1394,8 +1413,7 @@ export async function startBenchmarkServer() {
                     roles: {
                       applied_global_directive:
                         rolesApplied.appliedGlobalDirective,
-                      applied_user_directive:
-                        rolesApplied.appliedUserDirective,
+                      applied_user_directive: rolesApplied.appliedUserDirective,
                       scope_mode: rolesApplied.scopeMode,
                     },
                   }
@@ -1696,12 +1714,26 @@ export async function startBenchmarkServer() {
               ? result.responseContent.thought
               : null;
           const actionList = coerceActions(result.responseContent?.actions);
-          const actions =
+          // P1-1: auto-drop BENCHMARK_ACTION wrapper in trajectory recording.
+          // When the agent emitted BENCHMARK_ACTION, unwrap to the real
+          // underlying action name (capturedAction.toolName or
+          // capturedAction.command) so the scorer sees the actual action, not
+          // the sentinel.  The runtime still executed BENCHMARK_ACTION — we
+          // only change what lands in the trajectory step.
+          const rawActions =
             actionList.length > 0
               ? actionList
               : capturedAction
                 ? ["BENCHMARK_ACTION"]
                 : [];
+          const actions = rawActions.map((name) => {
+            if (name !== "BENCHMARK_ACTION" || !capturedAction) return name;
+            const real =
+              capturedAction.toolName?.trim() ||
+              capturedAction.command?.trim() ||
+              capturedAction.operation?.trim();
+            return real ?? name;
+          });
           const parsedParams = coerceParams(result.responseContent?.params);
           const params =
             Object.keys(parsedParams).length > 0
