@@ -111,10 +111,15 @@ function patchArchCpp(source, rel) {
     '    { LLM_TENSOR_DFLASH_FC,                              "dflash_fc" },\n    { LLM_TENSOR_DFLASH_HIDDEN_NORM,                     "dflash_hidden_norm" },\n',
     rel,
   );
-  out = insertBefore(
-    out,
-    "        case LLM_ARCH_QWEN35:\n            return {\n",
-    `        case LLM_ARCH_DFLASH_DRAFT:
+  // Older llama.cpp pins kept the per-architecture tensor set in
+  // llama-arch.cpp as a switch returning `{ LLM_TENSOR_* }`. Newer pins moved
+  // tensor construction into src/models/*.cpp; when the DFlash draft model is
+  // already registered there, there is no Qwen35 tensor-set anchor to patch.
+  if (!out.includes("LLM_ARCH_DFLASH_DRAFT")) {
+    out = insertBefore(
+      out,
+      "        case LLM_ARCH_QWEN35:\n            return {\n",
+      `        case LLM_ARCH_DFLASH_DRAFT:
             return {
                 LLM_TENSOR_TOKEN_EMBD,
                 LLM_TENSOR_OUTPUT_NORM,
@@ -134,14 +139,27 @@ function patchArchCpp(source, rel) {
                 LLM_TENSOR_FFN_UP,
             };
 `,
-    rel,
-  );
-  out = insertAfter(
-    out,
-    "    {LLM_TENSOR_OUTPUT_NORM_LFM2,           {LLM_TENSOR_LAYER_OUTPUT, GGML_OP_MUL}},\n",
-    "    {LLM_TENSOR_DFLASH_FC,                  {LLM_TENSOR_LAYER_INPUT,  GGML_OP_MUL_MAT}},\n    {LLM_TENSOR_DFLASH_HIDDEN_NORM,         {LLM_TENSOR_LAYER_INPUT,  GGML_OP_MUL}},\n",
-    rel,
-  );
+      rel,
+    );
+  }
+  if (!out.includes("{LLM_TENSOR_DFLASH_FC,")) {
+    const dflashTensorInfo =
+      "    {LLM_TENSOR_DFLASH_FC,                  {LLM_TENSOR_LAYER_INPUT,  GGML_OP_MUL_MAT}},\n" +
+      "    {LLM_TENSOR_DFLASH_HIDDEN_NORM,         {LLM_TENSOR_LAYER_INPUT,  GGML_OP_MUL}},\n";
+    const lfm2TensorInfoAnchors = [
+      "    {LLM_TENSOR_OUTPUT_NORM_LFM2,           {LLM_TENSOR_LAYER_OUTPUT,    GGML_OP_MUL}},\n",
+      "    {LLM_TENSOR_OUTPUT_NORM_LFM2,           {LLM_TENSOR_LAYER_OUTPUT, GGML_OP_MUL}},\n",
+    ];
+    const anchor = lfm2TensorInfoAnchors.find((candidate) =>
+      out.includes(candidate),
+    );
+    if (!anchor) {
+      throw new Error(
+        `[dflash-build] dflash-drafter-arch: anchor not found in ${rel}: LLM_TENSOR_OUTPUT_NORM_LFM2 tensor info row`,
+      );
+    }
+    out = out.replace(anchor, `${anchor}${dflashTensorInfo}`);
+  }
   return out;
 }
 
@@ -175,7 +193,7 @@ function patchModelHeader(source, rel) {
 }
 
 function patchModelsHeader(source, rel) {
-  return insertAfter(
+  let out = insertAfter(
     source,
     "struct llm_build_qwen3moe : public llm_graph_context {\n    llm_build_qwen3moe(const llama_model & model, const llm_graph_params & params);\n};\n",
     `
@@ -185,10 +203,44 @@ struct llm_build_dflash_draft : public llm_graph_context {
 `,
     rel,
   );
+  out = insertBefore(
+    out,
+    "struct llama_model_mistral3 : public llama_model_base {\n",
+    `
+struct llama_model_dflash_draft : public llama_model_base {
+    llama_model_dflash_draft(const struct llama_model_params & params) : llama_model_base(params) {}
+    void load_arch_hparams(llama_model_loader & ml) override;
+    void load_arch_tensors(llama_model_loader & ml) override;
+    std::unique_ptr<llm_graph_context> build_arch_graph(const llm_graph_params & params) const override;
+};
+
+`,
+    rel,
+  );
+  return out;
 }
 
 function patchModelCpp(source, rel) {
   let out = source;
+  if (out.includes("return new llama_model_qwen35(params);")) {
+    out = insertBefore(
+      out,
+      "        case LLM_ARCH_MISTRAL3:\n",
+      `        case LLM_ARCH_DFLASH_DRAFT:
+            return new llama_model_dflash_draft(params);
+`,
+      rel,
+      "new llama_model_dflash_draft",
+    );
+    out = insertAfter(
+      out,
+      "        case LLM_ARCH_QWEN3NEXT:\n        case LLM_ARCH_MIMO2:\n",
+      "        case LLM_ARCH_DFLASH_DRAFT:\n",
+      rel,
+      "        case LLM_ARCH_DFLASH_DRAFT:\n        case LLM_ARCH_STEP35:\n",
+    );
+    return out;
+  }
   out = insertBefore(
     out,
     "        case LLM_ARCH_MAINCODER:\n",
