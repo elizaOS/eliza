@@ -7,7 +7,6 @@ import {
   type AiQaRoute,
   type ReadyCheck,
   SETTINGS_SECTIONS,
-  THEMES,
   type Theme,
   VIEWPORT_SIZES,
   type ViewportName,
