@@ -9,7 +9,7 @@
  * agent only ever sees one decision per prompt.
  */
 
-import { Button } from "@elizaos/ui";
+import { Button } from "../../ui/button";
 import { Check } from "lucide-react";
 import { useCallback, useState } from "react";
 

@@ -1,4 +1,4 @@
-import { Button } from "@elizaos/ui";
+import { Button } from "../ui/button";
 import { ExternalLink } from "lucide-react";
 import { type CSSProperties, useEffect, useRef } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";

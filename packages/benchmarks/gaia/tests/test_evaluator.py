@@ -115,6 +115,16 @@ class TestNumericMatch(TestGAIAEvaluator):
         is_correct, _, _ = evaluator.evaluate("3.14159", "3.14159")
         assert is_correct
 
+    def test_single_numeric_answer_uses_final_number(self, evaluator):
+        """Scratch arithmetic before a final answer should not cause a miss."""
+        is_correct, _, _ = evaluator.evaluate("2 + 2 = 4", "4")
+        assert is_correct
+
+    def test_multiple_numeric_answers_must_all_match(self, evaluator):
+        """Multi-value answers should not pass on the first shared number."""
+        is_correct, _, _ = evaluator.evaluate("3 and 5", "3 and 4")
+        assert not is_correct
+
 
 class TestFuzzyMatch(TestGAIAEvaluator):
     """Tests for fuzzy matching."""

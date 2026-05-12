@@ -1,13 +1,11 @@
 import { asRecord as asSharedRecord } from "@elizaos/shared";
-import {
-  Button,
-  ConfirmDialog,
-  Input,
-  Label,
-  Slider,
-  Spinner,
-  Switch,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { ConfirmDialog } from "../ui/confirm-dialog";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { Slider } from "../ui/slider";
+import { Spinner } from "../ui/spinner";
+import { Switch } from "../ui/switch";
 import { AlertTriangle } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";

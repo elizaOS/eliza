@@ -1,4 +1,4 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@elizaos/ui";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { useEffect, useState } from "react";
 import { COMMON_SHORTCUTS } from "../../hooks";
 import { useApp } from "../../state";

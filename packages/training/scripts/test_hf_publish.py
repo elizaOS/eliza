@@ -126,6 +126,22 @@ def test_hf_load_preflight_rejects_split_feature_drift(publish_dataset, tmp_path
     )
 
 
+def test_hf_load_preflight_rejects_empty_test_split(publish_dataset, tmp_path):
+    pytest.importorskip("datasets")
+    candidate = tmp_path / "lifeops-candidate"
+    data = candidate / "data"
+    data.mkdir(parents=True)
+    row = '{"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"ok"}]}\n'
+    (data / "train.jsonl").write_text(row)
+    (data / "validation.jsonl").write_text(row)
+    (data / "test.jsonl").write_text("")
+    (candidate / "manifest.json").write_text("{}")
+
+    assert not publish_dataset.validate_hf_loadable(
+        publish_dataset._spec_training_from_dir(candidate)
+    )
+
+
 def test_scambench_spec_only_includes_scambench(publish_dataset):
     spec = publish_dataset._spec_scambench()
     # All files must live under data/normalized/ or data/synthesized/scambench/
@@ -341,6 +357,13 @@ def test_dataset_card_includes_license(publish_dataset):
     spec = publish_dataset._spec_training()
     assert "license: cc-by-4.0" in spec.card.lower()
     assert "manifest.json" in spec.card
+    assert "eliza-1-0_8b" in spec.card
+    assert "eliza-1-2b" in spec.card
+    assert "0.8B-27B" in spec.card
+    stale_small_tier = "eliza-1-0_" + "6b"
+    stale_mobile_tier = "eliza-1-1_" + "7b"
+    assert stale_small_tier not in spec.card
+    assert stale_mobile_tier not in spec.card
 
     sb = publish_dataset._spec_scambench()
     assert "cc-by-sa-4.0" in sb.card.lower()

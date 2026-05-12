@@ -31,7 +31,6 @@ export * from "./config/plugin-auto-enable.js";
 export * from "./config/plugin-manifest.js";
 export * from "./config/plugin-ui-spec.js";
 export * from "./config/runtime-mode.js";
-export * from "./config/runtime-mode.js";
 export * from "./config/runtime-overrides.js";
 export * from "./config/schema.js";
 export * from "./config/types.eliza.js";
@@ -202,6 +201,12 @@ export {
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 } from "./contracts/service-routing.js";
 export * from "./dev-settings-banner-style.js";
+// elizacloud helpers — pure utilities + config-driven server helpers used by
+// app-core and the agent so they don't reverse-import from plugin-elizacloud.
+export * from "./elizacloud/index.js";
+// db types — canonical handles for the runtime Drizzle database so consumers
+// don't reverse-import the plugin-sql package for type-only uses.
+export type { DrizzleDatabase } from "./db/drizzle-database.js";
 export * from "./dev-settings-figlet-heading.js";
 export * from "./dev-settings-table.js";
 export * from "./env-utils.js";

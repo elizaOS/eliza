@@ -203,6 +203,38 @@ def test_contains_normalized_does_not_credit_negated_answer() -> None:
     assert result.valid_false_negative is False
 
 
+def test_contains_normalized_removes_exact_negated_false_positive() -> None:
+    result = evaluate_valid_hit(
+        {"check": "contains_normalized", "value": "use regex to parse HTML"},
+        "Farid is not responsible to use regex to parse HTML.",
+    )
+
+    assert result.official_score == 1.0
+    assert result.adjusted_score == 0.0
+    assert result.semantic_false_positive is True
+    assert result.reason == "negated_expected_present"
+
+
+def test_set_match_removes_exact_negated_false_positive() -> None:
+    result = evaluate_valid_hit(
+        {
+            "check": "set_match",
+            "values": [
+                "use regex to parse HTML",
+                "cache forever without an invalidation strategy",
+            ],
+        },
+        (
+            "Farid is not responsible to use regex to parse HTML. "
+            "Bob caches forever without an invalidation strategy."
+        ),
+    )
+
+    assert result.official_score == 0.5
+    assert result.adjusted_score == 0.5
+    assert result.semantic_false_positive is True
+
+
 def test_forbidden_absent_credits_explicit_rejection_of_forbidden_phrase() -> None:
     result = evaluate_valid_hit(
         {"check": "forbidden_absent", "value": "trust user input without validation"},

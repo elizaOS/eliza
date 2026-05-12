@@ -7,7 +7,8 @@ import {
   normalizeOnboardingProviderId,
   WALLET_RPC_PROVIDER_OPTIONS,
 } from "@elizaos/shared";
-import { Button, Switch } from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Switch } from "../ui/switch";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
 import {

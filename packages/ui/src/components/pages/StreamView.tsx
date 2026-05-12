@@ -1,4 +1,4 @@
-import { useDocumentVisibility } from "@elizaos/ui";
+import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";

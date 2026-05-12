@@ -11,6 +11,7 @@ def test_runner_smoke(tmp_path: Path) -> None:
         output_dir=str(tmp_path),
         scenario_dir="benchmarks/orchestrator_lifecycle/scenarios",
         max_scenarios=2,
+        mode="simulate",
     )
     runner = LifecycleRunner(config)
     results, metrics, report_path = runner.run()

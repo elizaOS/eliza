@@ -51,6 +51,11 @@ def test_rescore_repairs_impossible_conflicts_before_scoring() -> None:
     assert rescored["failures_remaining_excluding_invalid"] == 0
     assert rescored["case_score"] == 1.0
     assert rescored["benchmark_quality_case_score"] == 1.0
+    assert rescored["manual_review_items"][0]["model_input"] is None
+    assert rescored["manual_review_items"][0]["expected_answer"]["value"] == (
+        "assume the server timezone is UTC"
+    )
+    assert rescored["manual_review_items"][0]["compaction_event"]["cycle_number"] == 0
 
 
 def test_rescore_quality_score_keeps_real_items() -> None:
@@ -169,8 +174,9 @@ def test_rescore_quality_score_handles_partial_set_match_conflict() -> None:
     assert rescored["case_repair"] == {"repaired_conflicts": 1, "removed_invalid_items": 0}
     item = rescored["cycles"][0]["items"][0]
     assert item["invalid_expected_conflict"] is False
-    assert item["score"] == 0.5
-    assert rescored["benchmark_quality_case_score"] == 0.5
+    assert item["expected"]["values"] == ["keep the audit log for 30 days"]
+    assert item["score"] == 1.0
+    assert rescored["benchmark_quality_case_score"] == 1.0
 
 
 def test_rescore_summary_reports_repaired_primary_score(tmp_path) -> None:

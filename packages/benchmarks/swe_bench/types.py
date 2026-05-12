@@ -99,7 +99,12 @@ class AgentTrajectory:
 
 @dataclass
 class SWEBenchResult:
-    """Result of attempting to solve a SWE-bench instance."""
+    """Result of attempting to solve a SWE-bench instance.
+
+    ``tokens_used`` is ``None`` when the evaluator had no observable signal
+    (e.g. Docker-unavailable / incompatible path). Use ``0`` only when the
+    evaluator genuinely observed zero tokens.
+    """
 
     instance_id: str
     generated_patch: str
@@ -108,16 +113,17 @@ class SWEBenchResult:
     tests_failed: list[str]
     success: bool
     duration_seconds: float
-    tokens_used: int
+    tokens_used: int | None
     error: str | None = None
     trajectory: AgentTrajectory | None = None
+    status: str = "evaluated"
 
     def __post_init__(self) -> None:
         """Validate result fields."""
         if self.duration_seconds < 0:
             raise ValueError("duration_seconds must be >= 0")
-        if self.tokens_used < 0:
-            raise ValueError("tokens_used must be >= 0")
+        if self.tokens_used is not None and self.tokens_used < 0:
+            raise ValueError("tokens_used must be >= 0 when not None")
 
 
 @dataclass

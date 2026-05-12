@@ -247,6 +247,60 @@ def _default_base_url(provider: str) -> str:
     )
 
 
+_TELEMETRY_TURN_COUNTER = 0
+_TELEMETRY_FALLBACK_PATH: str | None = None
+
+
+def _resolve_telemetry_path() -> str | None:
+    """Resolve the per-turn telemetry JSONL path.
+
+    Precedence: ``BENCHMARK_TELEMETRY_JSONL`` -> ``BENCHMARK_RUN_DIR/telemetry.jsonl``
+    -> a process-local ``tempfile.mkdtemp`` fallback (logged once). Always returns a
+    path so per-turn usage records are never silently dropped.
+    """
+    explicit = os.environ.get("BENCHMARK_TELEMETRY_JSONL", "").strip()
+    if explicit:
+        return explicit
+    run_dir = os.environ.get("BENCHMARK_RUN_DIR", "").strip()
+    if run_dir:
+        return str(Path(run_dir) / "telemetry.jsonl")
+    global _TELEMETRY_FALLBACK_PATH
+    if _TELEMETRY_FALLBACK_PATH is None:
+        import tempfile
+
+        _TELEMETRY_FALLBACK_PATH = str(
+            Path(tempfile.mkdtemp(prefix="hermes-adapter-telemetry-")) / "telemetry.jsonl"
+        )
+        logger.info(
+            "BENCHMARK_RUN_DIR not set; writing per-turn telemetry to %s",
+            _TELEMETRY_FALLBACK_PATH,
+        )
+    return _TELEMETRY_FALLBACK_PATH
+
+
+def _extract_usage_tokens(usage: Mapping[str, object]) -> dict[str, int | None]:
+    def pick(*keys: str) -> int | None:
+        for key in keys:
+            value = usage.get(key)
+            if isinstance(value, (int, float)) and value:
+                return int(value)
+        return None
+
+    return {
+        "prompt_tokens": pick("prompt_tokens", "promptTokens", "input_tokens"),
+        "completion_tokens": pick(
+            "completion_tokens", "completionTokens", "output_tokens"
+        ),
+        "total_tokens": pick("total_tokens", "totalTokens"),
+        "cache_read_input_tokens": pick(
+            "cache_read_input_tokens", "cachedTokens", "cached_tokens"
+        ),
+        "cache_creation_input_tokens": pick(
+            "cache_creation_input_tokens", "cacheCreationInputTokens"
+        ),
+    }
+
+
 def _write_telemetry(
     *,
     harness: str,
@@ -260,10 +314,10 @@ def _write_telemetry(
     response: MessageResponse | None = None,
     error: str | None = None,
 ) -> None:
-    telemetry_path = os.environ.get("BENCHMARK_TELEMETRY_JSONL", "").strip()
+    telemetry_path = _resolve_telemetry_path()
     if not telemetry_path:
         return
-    usage: object = {}
+    usage: dict[str, object] = {}
     if response is not None:
         usage_raw = response.params.get("usage")
         if isinstance(usage_raw, Mapping):
@@ -273,21 +327,36 @@ def _write_telemetry(
             if isinstance(meta_raw, Mapping) and isinstance(meta_raw.get("usage"), Mapping):
                 usage = dict(meta_raw["usage"])  # type: ignore[index]
     prompt = _prompt_text(text, context)
+    global _TELEMETRY_TURN_COUNTER
+    turn_index = _TELEMETRY_TURN_COUNTER
+    _TELEMETRY_TURN_COUNTER += 1
+    tokens = _extract_usage_tokens(usage) if usage else {
+        "prompt_tokens": None,
+        "completion_tokens": None,
+        "total_tokens": None,
+        "cache_read_input_tokens": None,
+        "cache_creation_input_tokens": None,
+    }
     record: dict[str, Any] = {
         "harness": harness,
         "provider": provider,
         "model": model,
         "benchmark": benchmark,
         "task_id": task_id,
+        "turn_index": turn_index,
         "prompt_text": prompt,
         "prompt_chars": len(prompt),
         "latency_ms": latency_ms,
         "usage": _jsonable(usage),
+        "prompt_tokens": tokens["prompt_tokens"],
+        "completion_tokens": tokens["completion_tokens"],
+        "total_tokens": tokens["total_tokens"],
+        "cache_read_input_tokens": tokens["cache_read_input_tokens"],
+        "cache_creation_input_tokens": tokens["cache_creation_input_tokens"],
         "actions": list(response.actions) if response is not None else [],
         "response_text": response.text if response is not None else "",
+        "error_if_any": error,
     }
-    if error:
-        record["error"] = error
     try:
         path = Path(telemetry_path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -719,6 +788,8 @@ class HermesClient:
             actions = []
         params_raw = raw.get("params")
         params = dict(params_raw) if isinstance(params_raw, Mapping) else {}
+        if "tool_calls" in params:
+            params["tool_calls"] = _normalize_tool_calls(params.get("tool_calls"))
         thought_raw = raw.get("thought")
         thought = str(thought_raw) if isinstance(thought_raw, str) and thought_raw else None
         return MessageResponse(
@@ -860,6 +931,36 @@ def _openai_compatible_tools(raw_tools: object) -> list[object] | None:
         if not isinstance(function.get("name"), str):
             return None
     return list(raw_tools)
+
+
+def _normalize_tool_calls(raw_tool_calls: object) -> list[dict[str, object]]:
+    """Normalize OpenAI-compatible tool calls to the adapter's flat shape."""
+
+    if not isinstance(raw_tool_calls, Sequence) or isinstance(
+        raw_tool_calls, (str, bytes)
+    ):
+        return []
+    normalized: list[dict[str, object]] = []
+    for item in raw_tool_calls:
+        if not isinstance(item, Mapping):
+            continue
+        function = item.get("function")
+        if isinstance(function, Mapping):
+            name = function.get("name")
+            arguments = function.get("arguments", "{}")
+        else:
+            name = item.get("name") or item.get("tool")
+            arguments = item.get("arguments", item.get("args", "{}"))
+        if not isinstance(name, str) or not name:
+            continue
+        normalized.append(
+            {
+                "id": str(item.get("id") or f"call_{len(normalized)}"),
+                "name": name,
+                "arguments": arguments if arguments is not None else "{}",
+            }
+        )
+    return normalized
 
 
 # ----------------------------------------------------------------------

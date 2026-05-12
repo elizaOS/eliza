@@ -1,4 +1,4 @@
-import { Switch } from "@elizaos/ui";
+import { Switch } from "../ui/switch";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { client } from "../../api/client";

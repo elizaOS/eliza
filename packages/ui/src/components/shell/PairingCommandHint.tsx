@@ -1,4 +1,4 @@
-import { Button } from "@elizaos/ui";
+import { Button } from "../ui/button";
 import { Copy, RefreshCw, Server } from "lucide-react";
 import { useMemo } from "react";
 import { useApp } from "../../state";

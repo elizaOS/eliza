@@ -289,7 +289,7 @@ def _build_fixture_bundle(
         json.dumps(
             {
                 "text": {"base": "eliza-1-9b", "license": "apache-2.0"},
-                "voice": {"base": "omnivoice-1.7b", "license": "apache-2.0"},
+                "voice": {"base": "omnivoice-2b", "license": "apache-2.0"},
                 "drafter": {
                     "base": "dflash-9b-drafter",
                     "license": "apache-2.0",
@@ -313,7 +313,7 @@ def _source_models() -> dict[str, dict[str, str]]:
         "text": {"repo": "unsloth/Qwen3.5-9B-GGUF", "file": "text.gguf"},
         "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
         "drafter": {"repo": "elizaos/eliza-1-9b-drafter"},
-        "asr": {"repo": "ggml-org/Qwen3-ASR-0.8B-GGUF"},
+        "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
         "vad": {"repo": "ggml-org/whisper-vad"},
         "vision": {"repo": "unsloth/Qwen3.5-9B-GGUF", "file": "mmproj.gguf"},
     }

@@ -11,9 +11,19 @@
 
 import { spawn } from "node:child_process";
 import type { Writable } from "node:stream";
-import { logger, sanitizeSpeechText } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  ModelType,
+  sanitizeSpeechText,
+} from "@elizaos/core";
 
-export type TtsProvider = "elevenlabs" | "openai" | "edge" | (string & {});
+export type TtsProvider =
+  | "local-inference"
+  | "elevenlabs"
+  | "openai"
+  | "edge"
+  | (string & {});
 
 export type TtsConfig = {
   enabled?: boolean;
@@ -51,6 +61,7 @@ const OPENAI_TIMEOUT_MS = 20_000;
 /** Resolved TTS configuration for a speak() call. */
 export interface ResolvedTtsConfig {
   provider: TtsProvider;
+  runtime?: IAgentRuntime;
   elevenlabs?: {
     apiKey: string;
     voiceId: string;
@@ -206,9 +217,33 @@ class TtsStreamBridge implements ITtsStreamBridge {
         return this.generateOpenai(text, config);
       case "edge":
         return this.generateEdge(text, config);
+      case "local-inference":
+        return this.generateLocalInference(text, config);
       default:
         throw new Error(`Unknown TTS provider: ${config.provider}`);
     }
+  }
+
+  private async generateLocalInference(
+    text: string,
+    config: ResolvedTtsConfig,
+  ): Promise<Buffer> {
+    const runtime = config.runtime;
+    if (!runtime?.getModel?.(ModelType.TEXT_TO_SPEECH)) {
+      throw new Error(
+        "Local inference TEXT_TO_SPEECH handler is not available",
+      );
+    }
+    const audio = await runtime.useModel(ModelType.TEXT_TO_SPEECH, { text });
+    if (audio instanceof Uint8Array) {
+      return Buffer.from(audio.buffer, audio.byteOffset, audio.byteLength);
+    }
+    if (audio instanceof ArrayBuffer) {
+      return Buffer.from(audio);
+    }
+    throw new Error(
+      "Local inference TEXT_TO_SPEECH returned invalid audio bytes",
+    );
   }
 
   private async generateElevenlabs(
@@ -379,19 +414,32 @@ function isRedactedSecret(val: string): boolean {
  */
 export function resolveTtsConfig(
   ttsConfig: TtsConfig | undefined,
+  runtime?: IAgentRuntime,
 ): ResolvedTtsConfig | null {
   if (!ttsConfig) return null;
 
   const preferredProvider = ttsConfig.provider || "elevenlabs";
 
-  // Try providers in preference order: configured → elevenlabs → openai → edge
+  // Try configured/cloud providers in preference order. Edge TTS is only
+  // selected when explicitly configured; it is not an implicit local default.
   const providers: TtsProvider[] = [preferredProvider];
+  if (!providers.includes("local-inference")) providers.push("local-inference");
   if (!providers.includes("elevenlabs")) providers.push("elevenlabs");
   if (!providers.includes("openai")) providers.push("openai");
-  if (!providers.includes("edge")) providers.push("edge");
 
   for (const provider of providers) {
     switch (provider) {
+      case "local-inference": {
+        if (
+          preferredProvider === "local-inference" ||
+          ttsConfig.provider === "local-inference"
+        ) {
+          return runtime?.getModel?.(ModelType.TEXT_TO_SPEECH)
+            ? { provider: "local-inference", runtime }
+            : null;
+        }
+        break;
+      }
       case "elevenlabs": {
         const el = ttsConfig.elevenlabs;
         const apiKey = resolveKey(el?.apiKey, "ELEVENLABS_API_KEY");
@@ -426,13 +474,15 @@ export function resolveTtsConfig(
         break;
       }
       case "edge": {
-        // Edge TTS always works (no API key needed)
-        return {
-          provider: "edge",
-          edge: {
-            voice: ttsConfig.edge?.voice || "en-US-AriaNeural",
-          },
-        };
+        if (preferredProvider === "edge") {
+          return {
+            provider: "edge",
+            edge: {
+              voice: ttsConfig.edge?.voice || "en-US-AriaNeural",
+            },
+          };
+        }
+        break;
       }
     }
   }
@@ -467,15 +517,20 @@ function resolveKey(
 /**
  * Get a summary of available TTS providers and their status.
  */
-export function getTtsProviderStatus(ttsConfig: TtsConfig | undefined): {
+export function getTtsProviderStatus(
+  ttsConfig: TtsConfig | undefined,
+  runtime?: IAgentRuntime,
+): {
   configuredProvider: string | null;
   hasApiKey: boolean;
   resolvedProvider: string | null;
 } {
-  const resolved = resolveTtsConfig(ttsConfig);
+  const resolved = resolveTtsConfig(ttsConfig, runtime);
   return {
     configuredProvider: ttsConfig?.provider || null,
-    hasApiKey: resolved ? resolved.provider !== "edge" : false,
+    hasApiKey: resolved
+      ? resolved.provider !== "edge" && resolved.provider !== "local-inference"
+      : false,
     resolvedProvider: resolved?.provider || null,
   };
 }

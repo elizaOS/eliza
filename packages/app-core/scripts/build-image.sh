@@ -266,7 +266,7 @@ else
   warn "Skipping bun install (--no-install)"
 fi
 
-hdr "Step 2b: Run postinstall patches"
+hdr "Step 1_7b: Run postinstall patches"
 run "SKIP_AVATAR_CLONE=1 ELIZA_NO_VISION_DEPS=1 bun run postinstall 2>&1 | tail -10"
 ok "Postinstall patches complete"
 

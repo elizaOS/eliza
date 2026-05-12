@@ -57,9 +57,14 @@ class REALMRunner:
 
         # Initialize components
         self.dataset = REALMDataset(config.data_path)
-        self.agent = agent if agent is not None else _MockREALMAgent(config)
-        if agent is None and not use_mock:
-            logger.info("[REALMRunner] No agent supplied; using deterministic mock agent")
+        if agent is None:
+            if not use_mock:
+                raise ValueError(
+                    "REALMRunner requires an agent unless use_mock=True"
+                )
+            self.agent = _MockREALMAgent(config)
+        else:
+            self.agent = agent
 
         self.evaluator = REALMEvaluator()
         self.metrics_calculator = MetricsCalculator()

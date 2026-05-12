@@ -1,7 +1,7 @@
 {
 	"name": "@elizaos/plugin-local-inference",
 	"version": "2.0.0-beta.1",
-	"description": "Local inference HTTP routes for the Eliza agent: model catalog, downloads, hardware detection, and chat-command surface.",
+	"description": "Unified Eliza-1 local provider plus HTTP routes for local model catalog, downloads, hardware detection, and chat commands.",
 	"type": "module",
 	"main": "dist/index.js",
 	"types": "dist/index.d.ts",
@@ -24,6 +24,7 @@
 	"scripts": {
 		"build": "tsup src/index.ts --format esm --dts --clean",
 		"dev": "tsup src/index.ts --format esm --dts --watch",
+		"test": "vitest run",
 		"clean": "rm -rf dist .turbo node_modules",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
 		"lint:check": "bunx @biomejs/biome check .",
@@ -43,7 +44,8 @@
 		"@biomejs/biome": "^2.4.14",
 		"@types/node": "24.12.2",
 		"tsup": "8.5.1",
-		"typescript": "^6.0.3"
+		"typescript": "^6.0.3",
+		"vitest": "^4.1.4"
 	},
 	"publishConfig": {
 		"access": "public"

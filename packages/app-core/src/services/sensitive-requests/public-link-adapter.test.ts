@@ -10,7 +10,6 @@ function buildRequest(
 ): SensitiveRequestWithPaymentContext {
   // The local SensitiveRequest construction below uses the policy shape;
   // the cast at return time satisfies the dispatch contract.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const now = new Date("2026-05-10T00:00:00.000Z").toISOString();
   const expires = new Date("2026-05-10T00:15:00.000Z").toISOString();
   const base: SensitiveRequest = {

@@ -6,9 +6,17 @@
  * internal layout may change; this surface is stable.
  */
 
-export { KokoroTtsBackend } from "./kokoro-backend";
 export type { KokoroTtsBackendDeps } from "./kokoro-backend";
-
+export { KokoroTtsBackend } from "./kokoro-backend";
+export type {
+  KokoroGgufRuntimeOptions,
+  KokoroMockRuntimeOptions,
+  KokoroOnnxRuntimeOptions,
+  KokoroPythonRuntimeOptions,
+  KokoroRuntime,
+  KokoroRuntimeChunk,
+  KokoroRuntimeInputs,
+} from "./kokoro-runtime";
 export {
   KOKORO_GGUF_REL_PATH,
   KOKORO_ONNX_MODEL_URL,
@@ -19,35 +27,30 @@ export {
   KokoroPythonRuntime,
 } from "./kokoro-runtime";
 export type {
-  KokoroGgufRuntimeOptions,
-  KokoroMockRuntimeOptions,
-  KokoroOnnxRuntimeOptions,
-  KokoroPythonRuntimeOptions,
-  KokoroRuntime,
-  KokoroRuntimeChunk,
-  KokoroRuntimeInputs,
-} from "./kokoro-runtime";
+  PhonemeStreamWindow,
+  StreamPhonemesOptions,
+} from "./phoneme-stream";
 
+export {
+  phonemizePhrase,
+  streamPhonemes,
+} from "./phoneme-stream";
 export {
   FallbackG2PPhonemizer,
   KOKORO_PAD_ID,
   NpmPhonemizePhonemizer,
   resolvePhonemizer,
 } from "./phonemizer";
-
-export {
-  phonemizePhrase,
-  streamPhonemes,
-} from "./phoneme-stream";
 export type {
-  PhonemeStreamWindow,
-  StreamPhonemesOptions,
-} from "./phoneme-stream";
-
+  VoiceBackendChoice,
+  VoiceBackendDecision,
+  VoiceBackendInputs,
+  VoiceBackendMode,
+} from "./runtime-selection";
 export {
-  KokoroModelMissingError,
-  KokoroPhonemizerError,
-} from "./types";
+  readVoiceBackendModeFromEnv,
+  selectVoiceBackend,
+} from "./runtime-selection";
 export type {
   KokoroBackendOptions,
   KokoroModelLayout,
@@ -56,7 +59,10 @@ export type {
   KokoroVoiceId,
   KokoroVoicePack,
 } from "./types";
-
+export {
+  KokoroModelMissingError,
+  KokoroPhonemizerError,
+} from "./types";
 export {
   findKokoroVoice,
   KOKORO_DEFAULT_VOICE_ID,
@@ -66,14 +72,3 @@ export {
   listKokoroVoicesByTag,
   resolveKokoroVoiceOrDefault,
 } from "./voices";
-
-export {
-  readVoiceBackendModeFromEnv,
-  selectVoiceBackend,
-} from "./runtime-selection";
-export type {
-  VoiceBackendChoice,
-  VoiceBackendDecision,
-  VoiceBackendInputs,
-  VoiceBackendMode,
-} from "./runtime-selection";

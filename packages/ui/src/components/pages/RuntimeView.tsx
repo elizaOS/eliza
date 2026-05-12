@@ -1,14 +1,12 @@
-import {
-  Button,
-  Input,
-  MetaPill,
-  PageLayout,
-  PagePanel,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { MetaPill } from "../composites/page-panel/page-panel-header";
+import { PageLayout } from "../../layouts/page-layout/page-layout";
+import { PagePanel } from "../composites/page-panel";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarHeader } from "../composites/sidebar/sidebar-header";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import {
   client,

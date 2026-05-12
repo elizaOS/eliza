@@ -109,6 +109,12 @@ const LOCAL_INFERENCE_PROVIDER = "eliza-local-inference";
 const DEVICE_BRIDGE_PROVIDER = "eliza-device-bridge";
 const CAPACITOR_LLAMA_PROVIDER = "capacitor-llama";
 const AOSP_LLAMA_PROVIDER = "eliza-aosp-llama";
+const LOCAL_INFERENCE_HANDLER_INSTALLED = Symbol.for(
+  "elizaos.local-inference.handlers-installed",
+);
+type RuntimeWithLocalInferenceFlag = RuntimeWithModelRegistration & {
+  [LOCAL_INFERENCE_HANDLER_INSTALLED]?: boolean;
+};
 /**
  * Same band as cloud / direct provider plugins. Tie-breaks between
  * candidates live in `routing-policy.ts`, not in this number — the
@@ -646,11 +652,17 @@ export async function ensureLocalInferenceHandler(
     return;
   }
 
-  const runtimeWithRegistration = runtime as RuntimeWithModelRegistration;
+  const runtimeWithRegistration = runtime as RuntimeWithLocalInferenceFlag;
   if (
     typeof runtimeWithRegistration.getModel !== "function" ||
     typeof runtimeWithRegistration.registerModel !== "function"
   ) {
+    return;
+  }
+  if (runtimeWithRegistration[LOCAL_INFERENCE_HANDLER_INSTALLED]) {
+    logger.debug(
+      "[local-inference] Local model handlers already registered on this runtime; skipping duplicate registration",
+    );
     return;
   }
 
@@ -843,6 +855,7 @@ export async function ensureLocalInferenceHandler(
   logger.info(
     "[local-inference] Installed top-priority router for cross-provider routing",
   );
+  runtimeWithRegistration[LOCAL_INFERENCE_HANDLER_INSTALLED] = true;
 
   // Warm-on-load (item I3): if a local model is already resident, KV-prefill
   // the Stage-1 stable prefix onto the deterministic system-prefix slot so

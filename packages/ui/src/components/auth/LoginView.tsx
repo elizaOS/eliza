@@ -1,13 +1,8 @@
-import {
-  Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  cn,
-  Input,
-  Label,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
+import { cn } from "../../lib/utils";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import { type FormEvent, useCallback, useId, useState } from "react";
 import { type AuthLoginResult, authLoginPassword } from "../../api/auth-client";
 import {

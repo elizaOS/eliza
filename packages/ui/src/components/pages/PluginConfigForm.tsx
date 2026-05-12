@@ -1,4 +1,4 @@
-import { Switch } from "@elizaos/ui";
+import { Switch } from "../ui/switch";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { PluginInfo, PluginParamDef } from "../../api";
 import {

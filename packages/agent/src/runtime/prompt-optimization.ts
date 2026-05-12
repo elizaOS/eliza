@@ -33,6 +33,7 @@ import {
   applyConversationCompaction,
   applyConversationMessageCompaction,
   getConversationCompactionLedger,
+  installMessageHistoryCompactionHook,
   type StrategyName,
   selectStrategyFromEnv,
   setConversationCompactionLedger,
@@ -1337,6 +1338,7 @@ export function installPromptOptimizations(
   }
 
   const originalUseModel = runtime.useModel.bind(runtime);
+  installMessageHistoryCompactionHook(runtime, { originalUseModel });
 
   runtime.useModel = (async (...args: Parameters<typeof originalUseModel>) => {
     const modelType = String(args[0] ?? "").toUpperCase();

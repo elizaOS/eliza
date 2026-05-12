@@ -1,4 +1,4 @@
-import { Button } from "@elizaos/ui";
+import { Button } from "../ui/button";
 import { type ReactNode, useState } from "react";
 import { useApp } from "../../state";
 

@@ -7,6 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type LoadedRegistry, loadRegistryFromRawEntries } from "./loader";
 
+export * from "./app-registry";
 export {
   getApps,
   getConnectors,

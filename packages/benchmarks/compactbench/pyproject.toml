@@ -47,7 +47,7 @@ Repository = "https://github.com/elizaos/eliza"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["eliza_compactbench*"]
+include = ["eliza_compactbench*", "hermes_compactbench*"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

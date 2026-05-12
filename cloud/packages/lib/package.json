@@ -16,7 +16,9 @@
   "dependencies": {
     "@elizaos/billing": "workspace:*",
     "@elizaos/cloud-db": "workspace:*",
-    "@elizaos/cloud-types": "workspace:*"
+    "@elizaos/cloud-types": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "hono": "4.12.16"
   },
   "devDependencies": {
     "@types/node": "22.19.17",

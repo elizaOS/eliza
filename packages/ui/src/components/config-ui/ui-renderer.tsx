@@ -1,12 +1,6 @@
-import {
-  Button,
-  Checkbox,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import React, {
   createContext,
   useCallback,

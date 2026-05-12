@@ -1,4 +1,4 @@
-import { Button } from "@elizaos/ui";
+import { Button } from "../../ui/button";
 import { Fingerprint, Link2, Tags } from "lucide-react";
 import { type ComponentType, useEffect, useState } from "react";
 import { client } from "../../../api/client";

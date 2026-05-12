@@ -32,17 +32,32 @@ import {
 
 const DEFAULT_PRESERVE_TAIL = 6;
 
+function isProtectedPrefixRole(role: CompactorMessage["role"]): boolean {
+  return role === "system" || role === "developer";
+}
+
+function protectedPrefixLength(messages: readonly CompactorMessage[]): number {
+  let index = 0;
+  while (
+    index < messages.length &&
+    isProtectedPrefixRole(messages[index].role)
+  ) {
+    index++;
+  }
+  return index;
+}
+
 /**
  * Identify the index that splits compacted-region (indices < boundary) from
  * preserved-tail (indices >= boundary), shifting the boundary outward (toward
  * older messages, i.e. lower indices) until no tool_call / tool_result pair
  * is split across it.
  *
- * Index 0 is reserved when present as a system prompt and is always retained
- * outside the compactable region — callers should treat indices [1, boundary)
+ * Leading system/developer prompts are always retained outside the compactable
+ * region — callers should treat indices [protectedPrefixLength, boundary)
  * as the region to summarize.
  *
- * Returns an integer in [systemOffset, messages.length].
+ * Returns an integer in [protectedPrefixLength, messages.length].
  *
  *   - boundary === messages.length  ⇒ nothing to compact (tail covers all).
  *   - boundary <= systemOffset      ⇒ nothing to compact (everything preserved).
@@ -54,7 +69,7 @@ export function findSafeCompactionBoundary(
   const total = messages.length;
   if (total === 0) return 0;
 
-  const systemOffset = messages[0].role === "system" ? 1 : 0;
+  const systemOffset = protectedPrefixLength(messages);
   const tail = Math.max(0, preserveTailMessages);
 
   let boundary = total - tail;
@@ -759,8 +774,8 @@ function splitTranscript(
   preserveTailMessages: number,
 ): SplitTranscript {
   const messages = transcript.messages;
-  const systemOffset = messages[0]?.role === "system" ? 1 : 0;
-  const systemPrefix = systemOffset === 1 ? [messages[0]] : [];
+  const systemOffset = protectedPrefixLength(messages);
+  const systemPrefix = messages.slice(0, systemOffset);
   const boundary = findSafeCompactionBoundary(messages, preserveTailMessages);
   const region = messages.slice(systemOffset, boundary);
   const preservedTail = messages.slice(boundary);

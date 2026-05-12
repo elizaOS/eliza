@@ -1,4 +1,6 @@
-import { Button, ContentLayout, PagePanel } from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { ContentLayout } from "../../layouts/content-layout/content-layout";
+import { PagePanel } from "../composites/page-panel";
 import type { ReactNode } from "react";
 import { useApp } from "../../state";
 

@@ -44,6 +44,10 @@ import {
 	segmentBlock,
 } from "../runtime/context-renderer";
 import {
+	getMessageHistoryCompactionHook,
+	type MessageHistoryCompactionTelemetry,
+} from "../runtime/conversation-compaction-hook";
+import {
 	type EvaluatorEffects,
 	type EvaluatorOutput,
 	runEvaluator,
@@ -984,7 +988,84 @@ function hasPageScopedRoutingMetadata(message: Memory): boolean {
 	return false;
 }
 
-function composeResponseState(
+function latestMessageHistoryCompactionTelemetry(
+	state: State,
+): MessageHistoryCompactionTelemetry | undefined {
+	const value = state.data?.messageHistoryCompaction;
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return undefined;
+	}
+	return value as unknown as MessageHistoryCompactionTelemetry;
+}
+
+function appendMessageHistoryCompactionTelemetry(
+	state: State,
+	telemetry: MessageHistoryCompactionTelemetry,
+): State {
+	const history = Array.isArray(state.data?.messageHistoryCompactionHistory)
+		? state.data.messageHistoryCompactionHistory
+		: [];
+	return {
+		...state,
+		data: {
+			...state.data,
+			messageHistoryCompaction: telemetry as unknown as State["data"][string],
+			messageHistoryCompactionHistory: [
+				...history,
+				telemetry as unknown as State["data"][string],
+			].slice(-10) as unknown as State["data"][string],
+		},
+	};
+}
+
+async function applyMessageHistoryCompactionHook(
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State,
+	source:
+		| "compose-response-state"
+		| "provider-grounded-state"
+		| "continuation-state",
+): Promise<State> {
+	const hook = getMessageHistoryCompactionHook(runtime);
+	if (!hook) return state;
+	try {
+		const result = await hook({ runtime, message, state, source });
+		if (!result?.state) return state;
+		return result.telemetry
+			? appendMessageHistoryCompactionTelemetry(result.state, result.telemetry)
+			: result.state;
+	} catch (error) {
+		runtime.logger.warn(
+			{
+				src: "service:message",
+				error: error instanceof Error ? error.message : String(error),
+			},
+			"Message-history compaction hook failed",
+		);
+		return state;
+	}
+}
+
+function withMessageHistoryCompactionProviderOptions<
+	T extends Record<string, unknown>,
+>(providerOptions: T, state: State): T {
+	const telemetry = latestMessageHistoryCompactionTelemetry(state);
+	if (!telemetry) return providerOptions;
+	const eliza =
+		typeof providerOptions.eliza === "object" && providerOptions.eliza !== null
+			? (providerOptions.eliza as Record<string, unknown>)
+			: {};
+	return {
+		...providerOptions,
+		eliza: {
+			...eliza,
+			messageHistoryCompaction: telemetry,
+		},
+	} as T;
+}
+
+async function composeResponseState(
 	runtime: IAgentRuntime,
 	message: Memory,
 	skipCache = false,
@@ -993,14 +1074,26 @@ function composeResponseState(
 		? [...CORE_RESPONSE_STATE_PROVIDERS, "CONTEXT_BENCH"]
 		: CORE_RESPONSE_STATE_PROVIDERS;
 	if (hasPageScopedRoutingMetadata(message)) {
-		return runtime.composeState(
+		const state = await runtime.composeState(
 			message,
 			[...providers, "page-scoped-context"],
 			true,
 			skipCache,
 		);
+		return applyMessageHistoryCompactionHook(
+			runtime,
+			message,
+			state,
+			"compose-response-state",
+		);
 	}
-	return runtime.composeState(message, providers, true, skipCache);
+	const state = await runtime.composeState(message, providers, true, skipCache);
+	return applyMessageHistoryCompactionHook(
+		runtime,
+		message,
+		state,
+		"compose-response-state",
+	);
 }
 
 function _composeStructuredResponseState(
@@ -1016,17 +1109,23 @@ function _composeStructuredResponseState(
 	);
 }
 
-function composeProviderGroundedResponseState(
+async function composeProviderGroundedResponseState(
 	runtime: IAgentRuntime,
 	message: Memory,
 	providers: string[],
 	skipCache = false,
 ): Promise<State> {
-	return runtime.composeState(
+	const state = await runtime.composeState(
 		message,
 		[...CORE_RESPONSE_STATE_PROVIDERS, ...providers],
 		false,
 		skipCache,
+	);
+	return applyMessageHistoryCompactionHook(
+		runtime,
+		message,
+		state,
+		"provider-grounded-state",
 	);
 }
 
@@ -4551,25 +4650,29 @@ export async function runV5MessageRuntimeStage1(args: {
 					"Stage 1 — populate the registered response-handler fields exactly once before any PLAN_ACTIONS calls. Use empty values for non-applicable fields.",
 			}),
 		];
-		const messageHandlerProviderOptions = withModelInputBudgetProviderOptions(
-			cacheProviderOptions({
-				prefixHash: stage1PrefixHash,
-				segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
-				promptSegments: messageHandlerInput.promptSegments,
-				// Use `roomId` as the conversation id for local-inference slot
-				// pinning. Cloud providers ignore it; local backends route
-				// every turn of the same room to the same KV slot, which is
-				// the dominant cache reuse signal for chat.
-				conversationId: args.message.roomId
-					? String(args.message.roomId)
-					: undefined,
-			}),
-			buildModelInputBudget({
-				messages: messageHandlerInput.messages,
-				promptSegments: messageHandlerInput.promptSegments,
-				tools: messageHandlerTools,
-			}),
-		);
+		const messageHandlerProviderOptions =
+			withMessageHistoryCompactionProviderOptions(
+				withModelInputBudgetProviderOptions(
+					cacheProviderOptions({
+						prefixHash: stage1PrefixHash,
+						segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
+						promptSegments: messageHandlerInput.promptSegments,
+						// Use `roomId` as the conversation id for local-inference slot
+						// pinning. Cloud providers ignore it; local backends route
+						// every turn of the same room to the same KV slot, which is
+						// the dominant cache reuse signal for chat.
+						conversationId: args.message.roomId
+							? String(args.message.roomId)
+							: undefined,
+					}),
+					buildModelInputBudget({
+						messages: messageHandlerInput.messages,
+						promptSegments: messageHandlerInput.promptSegments,
+						tools: messageHandlerTools,
+					}),
+				),
+				args.state,
+			);
 
 		// RESPONSE_HANDLER_BEFORE (blocking): hooks fire right before the Stage 1 model
 		// call. Used to inject providers / facts / relationships into the
@@ -7878,15 +7981,19 @@ async function _composeContinuationDecisionState(
 	// assistant reply and/or action_result memories. Refresh RECENT_MESSAGES so
 	// the follow-up planner does not reuse stale conversation history cached on
 	// the original user turn.
-	return withContextRoutingValues(
-		await runtime.composeState(
-			message,
-			["RECENT_MESSAGES", "ACTIONS"],
-			false,
-			false,
-		),
-		contextRoutingStateValues,
+	const state = await runtime.composeState(
+		message,
+		["RECENT_MESSAGES", "ACTIONS"],
+		false,
+		false,
 	);
+	const compactedState = await applyMessageHistoryCompactionHook(
+		runtime,
+		message,
+		state,
+		"continuation-state",
+	);
+	return withContextRoutingValues(compactedState, contextRoutingStateValues);
 }
 
 /**

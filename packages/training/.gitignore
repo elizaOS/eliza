@@ -24,3 +24,5 @@ wandb/
 .cloud_instance.json
 .DS_Store
 scripts/synth/scenarios/*.jsonl
+# DFlash drafter distillation job outputs (see scripts/dflash/jobs/).
+runs/

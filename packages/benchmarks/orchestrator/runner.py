@@ -269,6 +269,78 @@ def _repo_meta(workspace_root: Path) -> dict[str, str | None]:
     }
 
 
+def _adapter_version_from_pyproject(adapter_root: Path) -> str | None:
+    try:
+        pyproject = (adapter_root / "pyproject.toml").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    for line in pyproject.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("version") and "=" in stripped:
+            _, _, raw = stripped.partition("=")
+            return raw.strip().strip('"').strip("'")
+    return None
+
+
+def _build_reproducibility_metadata(
+    *,
+    workspace_root: Path,
+    request: RunRequest,
+    repo_meta: dict[str, str | None],
+) -> dict[str, Any]:
+    """Persist enough metadata that an old result can be re-run.
+
+    Fields:
+        ``cli_argv``           — process argv at orchestrator start.
+        ``extra_config``       — request.extra_config dict (preserved verbatim).
+        ``harness_commit_sha`` — ``git rev-parse HEAD`` of the workspace.
+        ``dataset_revision``   — adapter-specific (TODO; ``None`` for now).
+        ``adapter_versions``   — version strings of each in-repo adapter.
+        ``seed`` / ``temperature`` — from extra_config or env.
+        ``provider`` / ``model`` — already required.
+    """
+    benchmarks_root = workspace_root / "benchmarks"
+    try:
+        harness_commit = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(workspace_root),
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        ).stdout.strip() or None
+    except (OSError, subprocess.SubprocessError):
+        harness_commit = None
+    extra_config = dict(request.extra_config) if request.extra_config else {}
+    seed = extra_config.get("seed")
+    temperature = extra_config.get("temperature")
+    if temperature is None:
+        try:
+            temperature = float(os.environ.get("BENCHMARK_TEMPERATURE", "")) if os.environ.get("BENCHMARK_TEMPERATURE") else None
+        except ValueError:
+            temperature = None
+    return {
+        "cli_argv": list(sys.argv),
+        "extra_config": extra_config,
+        "harness_commit_sha": harness_commit,
+        "benchmarks_commit_sha": repo_meta.get("benchmarks_commit"),
+        "eliza_commit_sha": repo_meta.get("eliza_commit"),
+        # TODO: each adapter should expose its own dataset revision (e.g.
+        # SWE-bench dataset version, hermes-tblite checkpoint). For now we
+        # record ``None`` rather than fabricate.
+        "dataset_revision": None,
+        "adapter_versions": {
+            "eliza": _adapter_version_from_pyproject(benchmarks_root / "eliza-adapter"),
+            "hermes": _adapter_version_from_pyproject(benchmarks_root / "hermes-adapter"),
+            "openclaw": _adapter_version_from_pyproject(benchmarks_root / "openclaw-adapter"),
+        },
+        "seed": seed,
+        "temperature": temperature,
+        "provider": request.provider,
+        "model": request.model,
+    }
+
+
 def _status_after_returncode(returncode: int) -> str:
     return "succeeded" if returncode == 0 else "failed"
 
@@ -324,15 +396,22 @@ def _ensure_viewer_snapshot(
 
 def _collect_run_trajectory_metrics(run_root: Path, *, duration_seconds: float) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
     summary, records = summarize_trajectory(run_root)
-    estimated_prompt_tokens = 0
-    estimated_completion_tokens = 0
-    token_estimate_source: str | None = None
-    if summary.turns and summary.prompt_tokens == 0 and summary.prompt_chars > 0:
-        estimated_prompt_tokens = max(1, (summary.prompt_chars + 3) // 4)
-        token_estimate_source = "prompt_chars_div_4"
-    prompt_tokens = summary.prompt_tokens or estimated_prompt_tokens
-    completion_tokens = summary.completion_tokens or estimated_completion_tokens
-    total_tokens = summary.total_tokens or (prompt_tokens + completion_tokens)
+    # P0b: Never silently substitute prompt_chars/4 for real tokens. If the
+    # adapter didn't emit usage we surface ``None`` here and let the
+    # publication gate quarantine the result downstream.
+    has_real_prompt = summary.prompt_tokens > 0
+    has_real_completion = summary.completion_tokens > 0
+    has_real_total = summary.total_tokens > 0
+    prompt_tokens: int | None = summary.prompt_tokens if has_real_prompt else None
+    completion_tokens: int | None = summary.completion_tokens if has_real_completion else None
+    if has_real_total:
+        total_tokens: int | None = summary.total_tokens
+    elif has_real_prompt or has_real_completion:
+        total_tokens = (prompt_tokens or 0) + (completion_tokens or 0)
+    else:
+        total_tokens = None
+    llm_call_count: int | None = summary.turns if summary.turns else None
+    telemetry_missing = total_tokens in (None, 0) or llm_call_count in (None, 0)
     trajectory_summary = {
         "files": summary.files,
         "turns": summary.turns,
@@ -342,17 +421,15 @@ def _collect_run_trajectory_metrics(run_root: Path, *, duration_seconds: float) 
             for snippet, count in summary.repeated_prefixes
         ],
     }
-    token_metrics = {
-        "llm_call_count": summary.turns,
+    token_metrics: dict[str, Any] = {
+        "llm_call_count": llm_call_count,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "total_tokens": total_tokens,
-        "avg_prompt_tokens": (prompt_tokens / summary.turns) if summary.turns else 0.0,
-        "avg_completion_tokens": (completion_tokens / summary.turns) if summary.turns else 0.0,
+        "avg_prompt_tokens": (prompt_tokens / summary.turns) if (prompt_tokens and summary.turns) else None,
+        "avg_completion_tokens": (completion_tokens / summary.turns) if (completion_tokens and summary.turns) else None,
+        "telemetry_missing": telemetry_missing,
     }
-    if token_estimate_source:
-        token_metrics["estimated_prompt_tokens"] = estimated_prompt_tokens
-        token_metrics["token_estimate_source"] = token_estimate_source
     cache_metrics = {
         "cache_read_input_tokens": summary.cached_tokens,
         "cache_creation_input_tokens": summary.cache_creation_tokens,
@@ -383,6 +460,67 @@ def _collect_run_trajectory_metrics(run_root: Path, *, duration_seconds: float) 
     return trajectory_summary, token_metrics, cache_metrics, performance_metrics, trajectory_rows
 
 
+SYNTHETIC_AGENT_SUFFIX = "_v1"
+SYNTHETIC_AGENT_SET: set[str] = set(SYNTHETIC_HARNESSES)
+
+
+def _is_synthetic_agent(agent: str) -> bool:
+    agent_lc = agent.strip().lower()
+    if agent_lc in SYNTHETIC_AGENT_SET:
+        return True
+    return agent_lc.endswith(SYNTHETIC_AGENT_SUFFIX)
+
+
+def _publication_quarantine_reason(
+    *,
+    status: str,
+    agent: str,
+    token_metrics: dict[str, Any] | None,
+    metrics: dict[str, Any],
+) -> str | None:
+    """Return ``None`` if the result is publishable; otherwise a reason string.
+
+    Synthetic / calibration harnesses bypass the gate (they're routed to a
+    separate ``baselines/`` dir). Failed/incompatible runs are always
+    publishable so consumers can see them in ``latest/``.
+    """
+    if _is_synthetic_agent(agent):
+        return None
+    if status != "succeeded":
+        return None
+    if metrics.get("interrupted") is True:
+        return "interrupted_run"
+    tokens = token_metrics or {}
+    estimate_source = tokens.get("token_estimate_source")
+    if estimate_source is not None or any(str(key).startswith("estimated_") for key in tokens):
+        source = str(estimate_source or "unknown")
+        return f"estimated_token_metrics:{source}"
+    total_tokens = tokens.get("total_tokens")
+    llm_calls = tokens.get("llm_call_count")
+    if total_tokens in (None, 0):
+        return "telemetry_missing_total_tokens"
+    if llm_calls in (None, 0, 1):
+        return f"insufficient_llm_calls:{llm_calls!r}"
+    total_instances = metrics.get("total_instances")
+    if isinstance(total_instances, (int, float)) and total_instances <= 1:
+        return f"insufficient_total_instances:{total_instances!r}"
+    n_value = metrics.get("n")
+    if isinstance(n_value, (int, float)) and n_value <= 1:
+        return f"insufficient_n:{n_value!r}"
+    return None
+
+
+_QUARANTINE_TRACKER: dict[Path, list[tuple[str, str, str]]] = {}
+
+
+def _record_quarantine(output_root: Path, agent: str, benchmark_id: str, reason: str) -> None:
+    _QUARANTINE_TRACKER.setdefault(output_root, []).append((benchmark_id, agent, reason))
+
+
+def _pop_quarantine_records(output_root: Path) -> list[tuple[str, str, str]]:
+    return _QUARANTINE_TRACKER.pop(output_root, [])
+
+
 def _write_latest_result_snapshot(
     output_root: Path,
     *,
@@ -402,18 +540,39 @@ def _write_latest_result_snapshot(
     result_json_path: str | None = None,
     artifacts: list[str] | None = None,
     error: str | None = None,
+    reproducibility: dict[str, Any] | None = None,
 ) -> Path:
-    latest_dir = output_root / "latest"
-    latest_dir.mkdir(parents=True, exist_ok=True)
-    snapshot_path = latest_dir / f"{_sanitize_name(adapter.id)}__{_sanitize_name(request.agent)}.json"
-    payload = {
+    """Route a snapshot to ``latest/``, ``quarantine/``, or ``baselines/``.
+
+    Publication gate (real-agent runs only): ``total_tokens`` must be non-zero,
+    ``llm_call_count`` must be > 1, and ``total_instances``/``n`` must be > 1.
+    Synthetic baselines (``perfect_v1`` etc.) are always written to
+    ``baselines/`` and never intermingle with ``latest/``.
+    """
+    agent = request.agent
+    is_synthetic = _is_synthetic_agent(agent)
+    quarantine_reason = (
+        None if is_synthetic
+        else _publication_quarantine_reason(
+            status=status, agent=agent, token_metrics=token_metrics, metrics=metrics,
+        )
+    )
+    if is_synthetic:
+        target_dir = output_root / "baselines"
+    elif quarantine_reason is not None:
+        target_dir = output_root / "quarantine"
+    else:
+        target_dir = output_root / "latest"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    snapshot_path = target_dir / f"{_sanitize_name(adapter.id)}__{_sanitize_name(agent)}.json"
+    payload: dict[str, Any] = {
         "updated_at": _utc_now(),
         "benchmark_id": adapter.id,
         "benchmark_directory": adapter.directory,
         "run_group_id": run_group_id,
         "run_id": run_id,
         "status": status,
-        "agent": request.agent,
+        "agent": agent,
         "provider": request.provider,
         "model": request.model,
         "score": score,
@@ -427,9 +586,35 @@ def _write_latest_result_snapshot(
         "result_json_path": result_json_path,
         "artifacts": artifacts or [],
         "error": error,
+        "reproducibility": reproducibility or {},
     }
+    if quarantine_reason is not None:
+        payload["quarantine_reason"] = quarantine_reason
+        _record_quarantine(output_root, agent, adapter.id, quarantine_reason)
+    if is_synthetic:
+        payload["synthetic"] = True
     snapshot_path.write_text(json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True), encoding="utf-8")
 
+    # Also prune any stale entry for the same (benchmark, agent) from the
+    # other directories. A run that previously published to ``latest/`` and
+    # this time fails the gate must not leave its stale snapshot behind.
+    other_dirs = [
+        output_root / "latest",
+        output_root / "quarantine",
+        output_root / "baselines",
+    ]
+    for other in other_dirs:
+        if other == target_dir:
+            continue
+        if not other.exists():
+            continue
+        stale = other / snapshot_path.name
+        if stale.exists():
+            stale.unlink()
+
+    # Rebuild the index.json for the published-only set (``latest/``).
+    latest_dir = output_root / "latest"
+    latest_dir.mkdir(parents=True, exist_ok=True)
     index: dict[str, Any] = {"updated_at": _utc_now(), "latest": {}}
     for path in sorted(latest_dir.glob("*.json")):
         if path.name == "index.json":
@@ -463,14 +648,40 @@ def _rebuild_latest_result_snapshots(
     """
 
     latest_dir = output_root / "latest"
-    latest_dir.mkdir(parents=True, exist_ok=True)
+    quarantine_dir = output_root / "quarantine"
+    baselines_dir = output_root / "baselines"
+
+    row = conn.execute("SELECT COUNT(*) AS count FROM benchmark_runs").fetchone()
+    total_runs = int(row["count"] if row is not None else 0)
+    if total_runs == 0:
+        existing_snapshots = sum(
+            1
+            for d in (latest_dir, quarantine_dir, baselines_dir)
+            if d.exists()
+            for _path in d.glob("*.json")
+        )
+        suffix = (
+            f"; preserved {existing_snapshots} existing snapshot file(s)"
+            if existing_snapshots
+            else ""
+        )
+        print(
+            "WARNING: orchestrator database has no benchmark_runs rows; "
+            "leaving latest/quarantine/baselines snapshots untouched"
+            f"{suffix}.",
+            file=sys.stderr,
+        )
+        return
+
+    for d in (latest_dir, quarantine_dir, baselines_dir):
+        d.mkdir(parents=True, exist_ok=True)
 
     latest_by_key: dict[tuple[str, str], dict[str, Any]] = {}
     valid_benchmark_ids = set(adapters) if adapters is not None else None
     for row in list_runs(conn, limit=100000):
         benchmark_id = str(row.get("benchmark_id") or "")
         agent = str(row.get("agent") or "")
-        if row.get("status") == "skipped":
+        if row.get("status") in {"queued", "running", "skipped"}:
             continue
         if valid_benchmark_ids is not None and benchmark_id not in valid_benchmark_ids:
             continue
@@ -478,16 +689,36 @@ def _rebuild_latest_result_snapshots(
             continue
         if not benchmark_id or not agent:
             continue
+        if _is_stale_compatibility_incompatible_row(row, adapters):
+            continue
         key = (benchmark_id, agent)
         if key not in latest_by_key:
             latest_by_key[key] = row
 
-    expected_paths: set[Path] = set()
+    expected_by_dir: dict[Path, set[Path]] = {
+        latest_dir: set(),
+        quarantine_dir: set(),
+        baselines_dir: set(),
+    }
     index: dict[str, Any] = {"updated_at": _utc_now(), "latest": {}}
     for (benchmark_id, agent), row in sorted(latest_by_key.items()):
-        snapshot_path = latest_dir / f"{_sanitize_name(benchmark_id)}__{_sanitize_name(agent)}.json"
-        expected_paths.add(snapshot_path)
-        payload = {
+        metrics = row.get("metrics") or {}
+        token_metrics = row.get("token_metrics") or {}
+        is_synthetic = _is_synthetic_agent(agent)
+        if is_synthetic:
+            target_dir = baselines_dir
+            quarantine_reason = None
+        else:
+            quarantine_reason = _publication_quarantine_reason(
+                status=str(row.get("status") or ""),
+                agent=agent,
+                token_metrics=token_metrics,
+                metrics=metrics,
+            )
+            target_dir = quarantine_dir if quarantine_reason is not None else latest_dir
+        snapshot_path = target_dir / f"{_sanitize_name(benchmark_id)}__{_sanitize_name(agent)}.json"
+        expected_by_dir[target_dir].add(snapshot_path)
+        payload: dict[str, Any] = {
             "updated_at": row.get("ended_at") or row.get("started_at") or _utc_now(),
             "benchmark_id": benchmark_id,
             "benchmark_directory": row.get("benchmark_directory"),
@@ -500,35 +731,64 @@ def _rebuild_latest_result_snapshots(
             "score": row.get("score"),
             "unit": row.get("unit"),
             "higher_is_better": row.get("higher_is_better"),
-            "metrics": row.get("metrics") or {},
+            "metrics": metrics,
             "trajectory_summary": row.get("trajectory_summary") or {},
-            "token_metrics": row.get("token_metrics") or {},
+            "token_metrics": token_metrics,
             "cache_metrics": row.get("cache_metrics") or {},
             "performance_metrics": row.get("performance_metrics") or {},
             "result_json_path": row.get("result_json_path"),
             "artifacts": row.get("artifacts") or [],
             "error": row.get("error"),
         }
+        if quarantine_reason is not None:
+            payload["quarantine_reason"] = quarantine_reason
+        if is_synthetic:
+            payload["synthetic"] = True
         snapshot_path.write_text(
             json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True),
             encoding="utf-8",
         )
-        index["latest"][f"{benchmark_id}::{agent}"] = {
-            "path": str(snapshot_path),
-            "run_id": row.get("run_id"),
-            "status": row.get("status"),
-            "updated_at": payload["updated_at"],
-        }
+        if target_dir is latest_dir:
+            index["latest"][f"{benchmark_id}::{agent}"] = {
+                "path": str(snapshot_path),
+                "run_id": row.get("run_id"),
+                "status": row.get("status"),
+                "updated_at": payload["updated_at"],
+            }
 
+    # Prune stale files from each managed dir (only files we own).
+    for d, expected in expected_by_dir.items():
+        index_path_in_d = d / "index.json"
+        expected_with_index = expected | {index_path_in_d}
+        for path in d.glob("*.json"):
+            if path not in expected_with_index:
+                path.unlink()
     index_path = latest_dir / "index.json"
-    expected_paths.add(index_path)
-    for path in latest_dir.glob("*.json"):
-        if path not in expected_paths:
-            path.unlink()
     index_path.write_text(
         json.dumps(index, indent=2, sort_keys=True, ensure_ascii=True),
         encoding="utf-8",
     )
+
+
+def _is_stale_compatibility_incompatible_row(
+    row: dict[str, Any],
+    adapters: dict[str, BenchmarkAdapter] | None,
+) -> bool:
+    """Ignore old incompatibility rows when current rules now allow the pair."""
+
+    if adapters is None or row.get("status") != "incompatible":
+        return False
+    benchmark_id = str(row.get("benchmark_id") or "")
+    agent = str(row.get("agent") or "").strip().lower()
+    adapter = adapters.get(benchmark_id)
+    if adapter is None or agent not in adapter.agent_compatibility:
+        return False
+    metrics = row.get("metrics") or {}
+    reason = metrics.get("reason") if isinstance(metrics, dict) else None
+    return reason in {
+        "harness_not_in_compatibility",
+        "latest_row_violates_current_compatibility",
+    }
 
 
 def _repair_current_compatibility_statuses(
@@ -1193,7 +1453,12 @@ def run_benchmarks(
         run_env["BENCHMARK_RUN_ID"] = run_id
         run_env["BENCHMARK_RUN_ROOT"] = str(bench_run_root)
         run_env["BENCHMARK_OUTPUT_ROOT"] = str(bench_output_root)
-        run_env["BENCHMARK_TELEMETRY_JSONL"] = str(bench_output_root / "harness-telemetry.jsonl")
+        # Canonical run dir for adapter clients to write per-turn telemetry to
+        # ``<run_dir>/telemetry.jsonl``. Kept alongside the legacy
+        # ``BENCHMARK_TELEMETRY_JSONL`` for explicit-override use, and so
+        # discover_trajectories() picks it up via the ``**/*.jsonl`` glob.
+        run_env["BENCHMARK_RUN_DIR"] = str(bench_output_root)
+        run_env["BENCHMARK_TELEMETRY_JSONL"] = str(bench_output_root / "telemetry.jsonl")
 
         insert_run_start(
             conn,
@@ -1382,6 +1647,11 @@ def run_benchmarks(
             cwd=adapter.cwd,
         )
         outcomes.append(outcome)
+        reproducibility = _build_reproducibility_metadata(
+            workspace_root=workspace_root,
+            request=effective_request,
+            repo_meta=repo_meta,
+        )
         _write_latest_result_snapshot(
             output_root,
             adapter=adapter,
@@ -1400,6 +1670,7 @@ def run_benchmarks(
             result_json_path=str(result_path) if result_path else None,
             artifacts=artifacts,
             error=error,
+            reproducibility=reproducibility,
         )
 
     finish_run_group(conn, run_group_id=run_group_id, finished_at=_utc_now())
@@ -1408,4 +1679,19 @@ def run_benchmarks(
     _rebuild_latest_result_snapshots(conn, output_root, discovery.adapters)
     viewer_snapshot = _ensure_viewer_snapshot(conn, workspace_root=workspace_root)
     conn.close()
+
+    # End-of-run quarantine summary. The publication gate diverts real-agent
+    # snapshots with missing telemetry or insufficient sample size to
+    # ``benchmark_results/quarantine/`` rather than ``latest/``.
+    quarantine_records = _pop_quarantine_records(output_root)
+    if quarantine_records:
+        print(
+            f"\nWARNING: {len(quarantine_records)} benchmark result(s) "
+            f"failed the publication gate and were quarantined under "
+            f"{output_root / 'quarantine'}/. They will NOT appear in "
+            f"benchmark_results/latest/:",
+            file=sys.stderr,
+        )
+        for bench, agent, reason in quarantine_records:
+            print(f"  - {bench} :: {agent}  reason={reason}", file=sys.stderr)
     return run_group_id, outcomes, viewer_snapshot

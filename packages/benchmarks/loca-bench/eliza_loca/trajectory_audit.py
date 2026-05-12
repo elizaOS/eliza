@@ -30,12 +30,22 @@ def main() -> int:
         action="store_true",
         help="Allow an audit of an intentionally empty output directory.",
     )
+    parser.add_argument(
+        "--review-limit",
+        type=int,
+        default=20,
+        help=(
+            "Maximum per-trajectory manual review records to include. "
+            "Use 0 to omit them."
+        ),
+    )
     args = parser.parse_args()
 
     audit = audit_output_dir(
         args.output_dir,
         include_previews=args.include_previews,
         allow_empty=args.allow_empty,
+        review_limit=args.review_limit,
     )
     text = json.dumps(audit, indent=2, ensure_ascii=False, sort_keys=True)
     if args.write:
@@ -50,6 +60,7 @@ def audit_output_dir(
     *,
     include_previews: bool = False,
     allow_empty: bool = False,
+    review_limit: int = 20,
 ) -> dict[str, Any]:
     root = Path(output_dir)
     issues: list[dict[str, Any]] = []
@@ -80,6 +91,8 @@ def audit_output_dir(
     message_counts = []
     full_history_counts = []
     sample_records = []
+    review_records = []
+    failed_trajectory_count = 0
 
     for path, trajectory in per_task_records:
         label = str(path.relative_to(root))
@@ -100,10 +113,21 @@ def audit_output_dir(
         _audit_secret_leaks(label, trajectory, issues)
 
         task_dir = path.parent
+        eval_data = _read_json(task_dir / "eval.json")
         if not (task_dir / "eval.json").exists():
             issues.append({"path": label, "issue": "missing_eval_json"})
         if not (task_dir / "token_stats.json").exists():
             issues.append({"path": label, "issue": "missing_token_stats_json"})
+        if _is_failed_eval(eval_data, trajectory):
+            failed_trajectory_count += 1
+        if review_limit > 0 and len(review_records) < review_limit:
+            review_records.append(
+                _build_review_record(
+                    label=label,
+                    trajectory=trajectory,
+                    eval_data=eval_data,
+                )
+            )
 
     aggregate_count = len(trajectory_records)
     per_task_count = len(per_task_records)
@@ -164,6 +188,7 @@ def audit_output_dir(
             "max_total_tokens": max_total_tokens,
             "avg_message_count": _mean(message_counts),
             "avg_full_history_count": _mean(full_history_counts),
+            "failed_trajectory_count": failed_trajectory_count,
         },
         "context_events": dict(context_events),
         "token_totals": dict(token_totals),
@@ -171,6 +196,8 @@ def audit_output_dir(
     }
     if include_previews:
         audit["previews"] = sample_records[:10]
+    if review_limit > 0:
+        audit["review_records"] = review_records
     return audit
 
 
@@ -222,6 +249,10 @@ def _audit_trajectory(
             }
         )
 
+    eliza_metadata = _collect_eliza_metadata(full_history if isinstance(full_history, list) else [])
+    context_events["eliza_metadata"] += len(eliza_metadata)
+    _audit_eliza_metadata(label, eliza_metadata, issues)
+
     provider_payload = trajectory.get("provider_payload", {})
     usage_tracking = provider_payload.get("usage_tracking", [])
     if not usage_tracking and not provider_payload.get("error"):
@@ -249,8 +280,12 @@ def _audit_trajectory(
 
 
 def _flatten_aggregate(data: Any) -> list[dict[str, Any]]:
+    if isinstance(data, list):
+        return [item for item in data if isinstance(item, dict)]
     if not isinstance(data, dict):
         return []
+    if isinstance(data.get("trajectories"), list):
+        return [item for item in data["trajectories"] if isinstance(item, dict)]
     records = []
     for states in data.values():
         if isinstance(states, dict):
@@ -258,6 +293,155 @@ def _flatten_aggregate(data: Any) -> list[dict[str, Any]]:
                 if isinstance(trajectory, dict):
                     records.append(trajectory)
     return records
+
+
+def _is_failed_eval(eval_data: Any, trajectory: dict[str, Any]) -> bool:
+    if isinstance(eval_data, dict):
+        status = str(eval_data.get("status", "")).strip().lower()
+        if status in {"error", "failed", "failure", "truncated"}:
+            return True
+        accuracy = eval_data.get("accuracy")
+        if isinstance(accuracy, (int, float)) and float(accuracy) < 1.0:
+            return True
+    metrics = trajectory.get("metrics", {})
+    if isinstance(metrics, dict):
+        status = str(metrics.get("status", "")).strip().lower()
+        if status in {"error", "failed", "failure", "truncated"}:
+            return True
+        accuracy = metrics.get("accuracy")
+        if isinstance(accuracy, (int, float)) and float(accuracy) < 1.0:
+            return True
+    return False
+
+
+def _build_review_record(
+    *,
+    label: str,
+    trajectory: dict[str, Any],
+    eval_data: Any,
+) -> dict[str, Any]:
+    conversation = trajectory.get("conversation", {})
+    messages = conversation.get("messages", trajectory.get("messages", []))
+    full_history = conversation.get("full_messages_history", [])
+    events = trajectory.get("events", {})
+    metrics = (
+        trajectory.get("metrics", {})
+        if isinstance(trajectory.get("metrics"), dict)
+        else {}
+    )
+    eval_obj = eval_data if isinstance(eval_data, dict) else {}
+    return {
+        "path": label,
+        "task": trajectory.get("task", {}),
+        "status": eval_obj.get("status") or metrics.get("status"),
+        "accuracy": eval_obj.get("accuracy", metrics.get("accuracy")),
+        "scoring_reason": _scoring_reason(eval_obj, metrics),
+        "expected_answer": _expected_answer(eval_obj, trajectory),
+        "model_input": _last_message_preview(messages, "user")
+        or _last_message_preview(full_history, "user"),
+        "model_output": _last_message_preview(messages, "assistant")
+        or _last_message_preview(full_history, "assistant"),
+        "last_full_history_message": _message_preview(full_history, -1),
+        "compaction_events": _compaction_event_summary(events),
+        "provider_usage": _usage_summary(trajectory),
+    }
+
+
+def _scoring_reason(eval_data: dict[str, Any], metrics: dict[str, Any]) -> str | None:
+    for key in ("feedback", "reason", "scoring_reason", "error", "stop_reason"):
+        value = eval_data.get(key)
+        if value:
+            return _short_string(value)
+    for key in ("status", "stop_reason", "error"):
+        value = metrics.get(key)
+        if value:
+            return _short_string(value)
+    return None
+
+
+def _expected_answer(eval_data: dict[str, Any], trajectory: dict[str, Any]) -> Any:
+    for key in (
+        "expected_answer",
+        "expected",
+        "ground_truth",
+        "correct_answer",
+        "answer_key",
+    ):
+        value = eval_data.get(key)
+        if value not in (None, "", []):
+            return _redact_json(value)
+    long_context = trajectory.get("metadata", {}).get("long_context", {})
+    if isinstance(long_context, dict):
+        needles = long_context.get("needles", [])
+        records = long_context.get("records", [])
+        preserved_records = [
+            record
+            for record in records
+            if isinstance(record, dict) and record.get("should_preserve") is True
+        ] if isinstance(records, list) else []
+        if needles or preserved_records:
+            return {
+                "kind": "long_context_exact_values",
+                "needle_count": len(needles) if isinstance(needles, list) else 0,
+                "preserved_record_count": len(preserved_records),
+                "sample_needles": _redact_json(needles[:3] if isinstance(needles, list) else []),
+                "sample_preserved_records": _redact_json(preserved_records[:3]),
+            }
+    return None
+
+
+def _compaction_event_summary(events: Any) -> dict[str, Any]:
+    if not isinstance(events, dict):
+        return {}
+    summary: dict[str, Any] = {}
+    for key in ("summary", "summary_skip", "trim", "reset", "thinking_reset"):
+        value = events.get(key, [])
+        count = len(value) if isinstance(value, list) else 0
+        summary[f"{key}_count"] = count
+        if isinstance(value, list) and value:
+            summary[f"last_{key}"] = _compact_event_preview(value[-1])
+    return summary
+
+
+def _compact_event_preview(event: Any) -> Any:
+    if not isinstance(event, dict):
+        return _redact_json(event)
+    preview: dict[str, Any] = {}
+    for key, value in event.items():
+        if key in {"summary_tail", "summary_user_message", "summary_response_original"}:
+            if isinstance(value, list):
+                preview[key] = {
+                    "count": len(value),
+                    "first": _message_preview(value, 0),
+                    "last": _message_preview(value, -1),
+                }
+            elif isinstance(value, dict):
+                preview[key] = _message_preview([value], 0)
+            else:
+                preview[key] = _redact_json(value)
+            continue
+        preview[key] = _redact_json(value)
+    return preview
+
+
+def _usage_summary(trajectory: dict[str, Any]) -> dict[str, int]:
+    usage = trajectory.get("provider_payload", {}).get("usage_tracking", [])
+    if not isinstance(usage, list):
+        return {}
+    return {
+        "call_count": len([item for item in usage if isinstance(item, dict)]),
+        "max_prompt_tokens": max(
+            [int(item.get("prompt_tokens", 0) or 0) for item in usage if isinstance(item, dict)]
+            or [0]
+        ),
+        "max_total_tokens": max(
+            [int(item.get("total_tokens", 0) or 0) for item in usage if isinstance(item, dict)]
+            or [0]
+        ),
+        "total_tokens": sum(
+            int(item.get("total_tokens", 0) or 0) for item in usage if isinstance(item, dict)
+        ),
+    }
 
 
 def _usage_maxima(trajectory: dict[str, Any]) -> tuple[int, int]:
@@ -399,6 +583,53 @@ def _has_unpaired_tool_result(messages: list[Any]) -> bool:
     return bool((pending - seen_results) or (seen_results - pending))
 
 
+def _collect_eliza_metadata(messages: list[Any]) -> list[dict[str, Any]]:
+    metadata: list[dict[str, Any]] = []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        raw = message.get("metadata")
+        if isinstance(raw, dict) and raw.get("agent_label") == "eliza":
+            metadata.append(raw)
+    return metadata
+
+
+def _audit_eliza_metadata(
+    label: str,
+    metadata_records: list[dict[str, Any]],
+    issues: list[dict[str, Any]],
+) -> None:
+    required = {
+        "benchmark",
+        "task_id",
+        "trajectory_step",
+        "trajectory_endpoint",
+        "diagnostics_endpoint",
+        "tool_schema_count",
+        "tool_names",
+    }
+    for index, metadata in enumerate(metadata_records):
+        missing = sorted(key for key in required if key not in metadata)
+        if missing:
+            issues.append(
+                {
+                    "path": label,
+                    "issue": "eliza_metadata_missing_fields",
+                    "metadata_index": index,
+                    "missing": missing,
+                }
+            )
+        if metadata.get("agent_label") != "eliza":
+            issues.append(
+                {
+                    "path": label,
+                    "issue": "eliza_metadata_wrong_agent_label",
+                    "metadata_index": index,
+                    "agent_label": metadata.get("agent_label"),
+                }
+            )
+
+
 def _message_preview(messages: Any, index: int) -> dict[str, Any] | None:
     if not isinstance(messages, list) or not messages:
         return None
@@ -419,8 +650,35 @@ def _message_preview(messages: Any, index: int) -> dict[str, Any] | None:
     }
 
 
+def _last_message_preview(messages: Any, role: str) -> dict[str, Any] | None:
+    if not isinstance(messages, list):
+        return None
+    for message in reversed(messages):
+        if isinstance(message, dict) and message.get("role") == role:
+            return _message_preview([message], 0)
+    return None
+
+
 def _redact(text: str) -> str:
     return _SECRET_RE.sub("[REDACTED]", text)
+
+
+def _redact_json(value: Any) -> Any:
+    if isinstance(value, str):
+        return _redact(value)
+    if isinstance(value, list):
+        return [_redact_json(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _redact_json(item) for key, item in value.items()}
+    return value
+
+
+def _short_string(value: Any) -> str:
+    if isinstance(value, str):
+        text = value
+    else:
+        text = json.dumps(value, ensure_ascii=False, sort_keys=True)
+    return _redact(text[:1000])
 
 
 def _read_json(path: Path) -> Any:

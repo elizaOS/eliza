@@ -113,7 +113,9 @@ _CC_BY_NC_SA = "CC-BY-NC-SA-4.0.txt"
 
 # Each entry's upstream is the *v1 source repo* recorded in
 # ELIZA_1_RELEASE_ASSET_STATUS.md ("v1 source repos per tier /
-# component"). Small tiers now use the public Qwen3.5 0.8B / 2B / 4B line.
+# component"). Small text tiers use the public Qwen3.5 0.8B / 2B / 4B line.
+# ASR and embedding are deliberate upstream exceptions: they remain Qwen3-ASR
+# and Qwen3-Embedding artifacts rather than being rewritten as Qwen3.5.
 ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
     LicenseAttestation(
         bundle_file="LICENSE.text",
@@ -159,9 +161,10 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         upstream_url="https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF",
         copyright_holder="Alibaba Cloud (Qwen team) and contributors",
         note=(
-            "ASR weights are Qwen3-ASR, GGUF-converted upstream. Tokenizer is "
-            "fused with the Qwen3 text backbone (zero re-tokenization). "
-            "Declared upstream license: Apache-2.0."
+            "ASR weights are Qwen3-ASR, GGUF-converted upstream. This is a "
+            "deliberate Qwen3 upstream exception to the Qwen3.5 text-tier "
+            "lineage; do not rewrite it as Qwen3.5. Declared upstream "
+            "license: Apache-2.0."
         ),
     ),
     LicenseAttestation(

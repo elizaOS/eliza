@@ -9,7 +9,9 @@
  *   POST /api/apps/load-from-directory  — { directory }
  */
 
-import { Button, Checkbox, Input } from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
+import { Input } from "../ui/input";
 import { Loader2, Play, RotateCw, Square } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api/client";

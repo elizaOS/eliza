@@ -668,12 +668,17 @@ def validate_hf_loadable(spec: DatasetSpec) -> bool:
         split: repr(dataset.features)
         for split, dataset in ds.items()
     }
+    row_counts = {split: int(ds[split].num_rows) for split in ds}
+    empty = {split: count for split, count in row_counts.items() if count <= 0}
+    if empty:
+        log.error("HF load preflight found empty split(s): %s", empty)
+        return False
     if len(set(feature_fingerprints.values())) != 1:
         log.error("HF load preflight found split feature drift: %s", feature_fingerprints)
         return False
     log.info(
         "HF load preflight ok: %s",
-        {split: int(ds[split].num_rows) for split in ds},
+        row_counts,
     )
     return True
 

@@ -21,13 +21,13 @@ const MODELS_ROOT = path.join(
   "local-inference",
   "models",
 );
-const DEFAULT_BUNDLE = path.join(MODELS_ROOT, "eliza-1-1_7b.bundle");
+const DEFAULT_BUNDLE = path.join(MODELS_ROOT, "eliza-1-2b.bundle");
 const DEFAULT_TARGET = firstExisting(
-  path.join(DEFAULT_BUNDLE, "text", "eliza-1-1_7b-64k.gguf"),
+  path.join(DEFAULT_BUNDLE, "text", "eliza-1-2b-64k.gguf"),
   path.join(MODELS_ROOT, "qwen3.5-4b-dflash.gguf"),
 );
 const DEFAULT_DRAFTER = firstExisting(
-  path.join(DEFAULT_BUNDLE, "dflash", "drafter-1_7b.gguf"),
+  path.join(DEFAULT_BUNDLE, "dflash", "drafter-2b.gguf"),
   path.join(MODELS_ROOT, "qwen3.5-4b-dflash-drafter-q4.repaired.gguf"),
   path.join(MODELS_ROOT, "qwen3.5-4b-dflash-drafter-q4.gguf"),
 );

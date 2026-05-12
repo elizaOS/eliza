@@ -28,6 +28,13 @@ supports a direct OpenAI-compatible path when constructed with
 set. `base_url=...` by itself only configures the CLI environment. Set
 `OPENCLAW_USE_CLI=1` to force the production CLI path.
 
+Native function-call comparisons must use the direct OpenAI-compatible path.
+The CLI path accepts a flattened `--message` string; benchmark `messages` and
+`tools` are not preserved as OpenAI chat/tool payloads and any text-embedded
+tool-call protocol is ignored unless `allow_text_tool_calls=True` (legacy
+debug only). Cross-agent CompactBench/LOCA rows should treat the CLI path as
+partial, not as native parity.
+
 ## Layout
 
 ```
@@ -83,6 +90,7 @@ regardless of which env var the operator set.
 | `thinking_level` | `"medium"` | one of `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `adaptive`, `max` |
 | `timeout_s` | `600.0` | seconds before the CLI subprocess is killed |
 | `direct_openai_compatible` | `False` | bypass the CLI for hermetic retry/parser tests |
+| `allow_text_tool_calls` | `False` | legacy debug only; when false, `<tool_call>...` text is not counted as native `tool_calls` |
 
 `context={"session_id": "..."}` passes `--session-id` to the CLI;
 `context={"agent_id": "..."}` passes `--agent`.

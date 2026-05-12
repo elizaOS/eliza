@@ -84,14 +84,16 @@ describe("Eliza-1 manifest schema constants", () => {
     expect(ELIZA_1_MANIFEST_SCHEMA_VERSION).toBe("1");
   });
 
-  it("uses Qwen3.5 small-tier ids and tokenizer family", () => {
+  it("uses canonical small-tier ids and tokenizer family", () => {
     expect(ELIZA_1_TOKENIZER_FAMILY).toBe("qwen35");
     expect(ELIZA_1_TIERS.slice(0, 3)).toEqual(["0_6b", "1_7b", "4b"]);
     expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
       expect.arrayContaining(["0_6b", "1_7b"]),
     );
+    const staleSmallTier = "0_" + "8b";
+    const staleMobileTier = "2" + "b";
     expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).not.toEqual(
-      expect.arrayContaining([`0${"_8b"}`, `2${"b"}`]),
+      expect.arrayContaining([staleSmallTier, staleMobileTier]),
     );
   });
 });

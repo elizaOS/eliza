@@ -55,6 +55,8 @@ export function coerceEmotion(input: unknown): Emotion {
   return SYNONYMS[lower] ?? DEFAULT_EMOTION;
 }
 
-export function emotionToOmnivoiceKeyword(emotion: Emotion): string | undefined {
+export function emotionToOmnivoiceKeyword(
+  emotion: Emotion,
+): string | undefined {
   return emotion === "neutral" ? undefined : emotion;
 }

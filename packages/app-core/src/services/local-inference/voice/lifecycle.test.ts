@@ -68,7 +68,7 @@ function loadersOk(): VoiceLifecycleLoaders & {
   caches: ReturnType<typeof fakeResource>;
   nodes: ReturnType<typeof fakeResource>;
 } {
-  const tts = fakeMmap("tts:omnivoice-1_7b");
+  const tts = fakeMmap("tts:omnivoice-default");
   const asr = fakeMmap("asr:default");
   const caches = fakeResource("voice-caches");
   const nodes = fakeResource("voice-scheduler-nodes");

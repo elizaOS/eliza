@@ -1,4 +1,5 @@
-import { Button, PagePanel } from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { PagePanel } from "../composites/page-panel";
 import {
   BadgeCheck,
   Bot,

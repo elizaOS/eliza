@@ -1,4 +1,5 @@
-import { Label, Slider } from "@elizaos/ui";
+import { Label } from "../ui/label";
+import { Slider } from "../ui/slider";
 import type { RateLimitConfig } from "./types";
 
 function LabeledSlider({

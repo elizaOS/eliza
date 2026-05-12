@@ -4,17 +4,10 @@
  * Extracted from SkillsView.tsx to keep individual files under ~500 LOC.
  */
 
-import {
-  AdminCodeEditor,
-  AdminDialogContent,
-  AdminDialogHeader,
-  AdminMonoMeta,
-  Button,
-  Dialog,
-  DialogDescription,
-  DialogTitle,
-  Input,
-} from "@elizaos/ui";
+import { AdminCodeEditor, AdminDialogContent, AdminDialogHeader, AdminMonoMeta } from "../ui/admin-dialog";
+import { Button } from "../ui/button";
+import { Dialog, DialogDescription, DialogTitle } from "../ui/dialog";
+import { Input } from "../ui/input";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SkillInfo } from "../../api";
 import { client } from "../../api";

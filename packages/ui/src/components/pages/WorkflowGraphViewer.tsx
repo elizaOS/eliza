@@ -1,11 +1,6 @@
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  Spinner,
-  StatusBadge,
-} from "@elizaos/ui";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Spinner } from "../ui/spinner";
+import { StatusBadge } from "../ui/status-badge";
 import {
   Background,
   Controls,

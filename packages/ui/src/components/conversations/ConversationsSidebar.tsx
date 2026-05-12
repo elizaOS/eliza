@@ -1,18 +1,12 @@
-import {
-  ChatConversationItem,
-  ChatSourceIcon,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  getChatSourceMeta,
-  SidebarCollapsedActionButton,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-  TooltipProvider,
-  useIntervalWhenDocumentVisible,
-} from "@elizaos/ui";
+import { ChatConversationItem } from "../composites/chat/chat-conversation-item";
+import { ChatSourceIcon, getChatSourceMeta } from "../composites/chat/chat-source";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../ui/dropdown-menu";
+import { SidebarCollapsedActionButton } from "../composites/sidebar/sidebar-collapsed-rail";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
+import { TooltipProvider } from "../ui/tooltip";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { MessagesSquare, Plus, Terminal as TerminalIcon } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";

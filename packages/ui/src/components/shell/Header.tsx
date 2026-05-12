@@ -1,5 +1,5 @@
 import { Capacitor } from "@capacitor/core";
-import { Button } from "@elizaos/ui";
+import { Button } from "../ui/button";
 import { ChevronRight, ListTodo, Settings } from "lucide-react";
 import type {
   CSSProperties,

@@ -1,14 +1,8 @@
-import {
-  Button,
-  ContentLayout,
-  Input,
-  PagePanel,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { ContentLayout } from "../../layouts/content-layout/content-layout";
+import { Input } from "../ui/input";
+import { PagePanel } from "../composites/page-panel";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { LogEntry } from "../../api";
 import { useApp } from "../../state";
@@ -95,13 +89,13 @@ function LogsViewBody() {
     <div className="flex h-full flex-col gap-3" data-testid="logs-view">
       {/* Filters row — filters left, refresh right */}
       <PagePanel variant="surface" className="space-y-3 p-3 sm:p-4">
-        <div className="space-y-1">
+        <div className="flex items-center justify-between gap-3">
           <div className="text-sm font-semibold text-txt">
             {t("logsview.FilterLogs")}
           </div>
-          <p className="max-w-3xl text-xs leading-5 text-muted">
-            {t("logsview.FilterLogsDescription")}
-          </p>
+          <div className="rounded-full border border-border/40 bg-bg-hover/60 px-2.5 py-1 text-xs text-muted tabular-nums">
+            {filteredLogs.length}
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Input

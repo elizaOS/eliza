@@ -1,4 +1,7 @@
-import { Button, Input, Label, useTimeout } from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { useTimeout } from "../../hooks/useTimeout";
 import { AlertTriangle, CheckCircle2, Loader2, LogOut } from "lucide-react";
 import {
   type ReactNode,

@@ -36,6 +36,7 @@
  * dependency.
  */
 
+import { PartialStabilizer } from "./partial-stabilizer";
 import type { VoiceScheduler } from "./scheduler";
 import type {
   PcmFrame,
@@ -149,6 +150,20 @@ export interface VoicePipelineConfig {
    * `done` flag is the normal stop; this bounds a runaway model.
    */
   maxGeneratedTokens?: number;
+  /**
+   * A2 — when true, run streaming-ASR partials through a LocalAgreement-n
+   * stabilizer (`PartialStabilizer`) before splitting them into tokens
+   * and feeding the drafter. Off by default until the streaming-ASR
+   * fast path lands and validates the latency/quality trade. The
+   * `StreamingTranscriber.flush()`-driven batch path is unaffected (the
+   * stabilizer is a no-op on a single final partial).
+   */
+  usePartialStabilizer?: boolean;
+  /**
+   * A2 — agreement count `n` for `PartialStabilizer` when enabled.
+   * Ignored when `usePartialStabilizer` is false. Default 2.
+   */
+  partialStabilizerAgreementCount?: number;
 }
 
 export interface VoicePipelineEvents {
@@ -183,6 +198,15 @@ export class VoicePipeline {
   private readonly maxDraftTokens: number;
   private readonly maxGeneratedTokens: number;
   private readonly events: VoicePipelineEvents;
+  /**
+   * A2 — when `config.usePartialStabilizer === true`, this is the active
+   * `PartialStabilizer` instance. Streaming-ASR consumers feed partials
+   * through it; the batch path in `transcribeAll()` collapses on a single
+   * final partial so the stabilizer is a no-op there. Exposed via
+   * `getPartialStabilizer()` so the streaming-ASR adapter (separate agent)
+   * can plug straight in once it ships.
+   */
+  private readonly partialStabilizer: PartialStabilizer | null;
   private active: PipelineRun | null = null;
 
   constructor(
@@ -200,6 +224,11 @@ export class VoicePipeline {
       Math.floor(config.maxGeneratedTokens ?? DEFAULT_MAX_GENERATED_TOKENS),
     );
     this.events = events;
+    this.partialStabilizer = config.usePartialStabilizer
+      ? new PartialStabilizer({
+          agreementCount: config.partialStabilizerAgreementCount,
+        })
+      : null;
     // A mic VAD barge-in cancels the audio side via the scheduler's
     // barge-in controller; mirror it onto the text side so we stop
     // drafting/verifying at the next kernel boundary too.
@@ -213,6 +242,17 @@ export class VoicePipeline {
   /** True while a turn is in flight. */
   isRunning(): boolean {
     return this.active !== null;
+  }
+
+  /**
+   * A2 — the active `PartialStabilizer` when the pipeline was built with
+   * `usePartialStabilizer: true`, otherwise null. The streaming-ASR
+   * adapter (separate agent) feeds partials into this instance and
+   * forwards the `stable` portion downstream. Returning null when the
+   * feature flag is off lets the adapter skip the work entirely.
+   */
+  getPartialStabilizer(): PartialStabilizer | null {
+    return this.partialStabilizer;
   }
 
   /**

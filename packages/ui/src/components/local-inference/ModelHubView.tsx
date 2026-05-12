@@ -1,4 +1,4 @@
-import { Button } from "@elizaos/ui";
+import { Button } from "../ui/button";
 import { CheckCircle2 } from "lucide-react";
 import { useMemo } from "react";
 import type {

@@ -9,13 +9,10 @@
 export * from "./actions";
 export * from "./api/http-helpers";
 export * from "./api/route-helpers";
-export * from "./app-core-runtime-hooks";
-export * from "./app-registry";
 // Export all core modules
+export * from "./app-registry";
 export * from "./app-route-plugin-registry";
 export * from "./boot-env";
-export * from "./browser-capture-hooks";
-export * from "./browser-workspace-hooks";
 export * from "./build-variant";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
@@ -172,6 +169,7 @@ export {
 } from "./runtime/action-catalog";
 export * from "./runtime/builtin-field-evaluators";
 export * from "./runtime/cleanup-scope";
+export * from "./runtime/conversation-compaction-hook";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/cost-table";

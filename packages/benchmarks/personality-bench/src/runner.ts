@@ -61,7 +61,9 @@ function parseArgs(argv: string[]): CliArgs {
   return { runDir, outputMd, outputJson, agent, calibration, calibrationDir };
 }
 
-async function loadScenarios(runDir: string): Promise<PersonalityScenario[]> {
+export async function loadScenarios(
+  runDir: string,
+): Promise<PersonalityScenario[]> {
   const entries = await fs.readdir(runDir, { withFileTypes: true });
   const scenarios: PersonalityScenario[] = [];
   for (const entry of entries) {
@@ -70,13 +72,32 @@ async function loadScenarios(runDir: string): Promise<PersonalityScenario[]> {
     const raw = await fs.readFile(filePath, "utf8");
     const parsed = JSON.parse(raw) as
       | PersonalityScenario
-      | { scenarios: PersonalityScenario[] };
+      | { scenarios: PersonalityScenario[] }
+      | {
+          scenario?: PersonalityScenario;
+          trajectory?: PersonalityScenario["trajectory"];
+          agent?: string;
+        };
     if (
       Array.isArray((parsed as { scenarios?: PersonalityScenario[] }).scenarios)
     ) {
       scenarios.push(
         ...(parsed as { scenarios: PersonalityScenario[] }).scenarios,
       );
+    } else if (
+      (parsed as { scenario?: PersonalityScenario }).scenario?.id &&
+      (parsed as { scenario?: PersonalityScenario }).scenario?.bucket
+    ) {
+      const wrapped = parsed as {
+        scenario: PersonalityScenario;
+        trajectory?: PersonalityScenario["trajectory"];
+        agent?: string;
+      };
+      scenarios.push({
+        ...wrapped.scenario,
+        trajectory: wrapped.trajectory ?? wrapped.scenario.trajectory ?? [],
+        agent: wrapped.agent ?? wrapped.scenario.agent,
+      });
     } else if (
       (parsed as PersonalityScenario).id &&
       (parsed as PersonalityScenario).bucket
@@ -327,7 +348,9 @@ async function main(): Promise<void> {
   );
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

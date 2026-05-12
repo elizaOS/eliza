@@ -825,13 +825,18 @@ async def run_agentbench(
 
     Args:
         config: Benchmark configuration. If None, uses default config.
-        runtime: ElizaOS runtime instance. If None, uses mock responses.
+        runtime: ElizaOS runtime instance. If None, uses the deterministic
+            mock runtime for harness validation.
 
     Returns:
         AgentBenchReport with full benchmark results.
     """
     if config is None:
         config = AgentBenchConfig()
+    if runtime is None:
+        from elizaos_agentbench.mock_runtime import SmartMockRuntime
+
+        runtime = SmartMockRuntime()
 
     runner = AgentBenchRunner(config=config, runtime=runtime)
     return await runner.run_benchmarks()

@@ -19,6 +19,11 @@ import {
 	loadMobileDeviceBridgeModel,
 	unloadMobileDeviceBridgeModel,
 } from "@elizaos/plugin-capacitor-bridge";
+import {
+	LOCAL_INFERENCE_MODEL_TYPES,
+	LOCAL_INFERENCE_PROVIDER_ID,
+	LOCAL_INFERENCE_TEXT_MODEL_TYPES,
+} from "./provider.js";
 
 type ModelRole = "chat" | "embedding" | "drafter";
 type DownloadState =
@@ -114,7 +119,7 @@ export interface LocalInferenceChatResult {
 }
 
 type Assignments = Partial<
-	Record<"TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING", string>
+	Record<(typeof LOCAL_INFERENCE_MODEL_TYPES)[number], string>
 >;
 
 interface RoutingPreferences {
@@ -468,6 +473,15 @@ async function assignModel(
 	} else if (model.role === "chat") {
 		if (overwrite || !assignments.TEXT_SMALL) assignments.TEXT_SMALL = model.id;
 		if (overwrite || !assignments.TEXT_LARGE) assignments.TEXT_LARGE = model.id;
+		if (overwrite || !assignments.TEXT_EMBEDDING) {
+			assignments.TEXT_EMBEDDING = model.id;
+		}
+		if (overwrite || !assignments.TEXT_TO_SPEECH) {
+			assignments.TEXT_TO_SPEECH = model.id;
+		}
+		if (overwrite || !assignments.TRANSCRIPTION) {
+			assignments.TRANSCRIPTION = model.id;
+		}
 	}
 	await writeAssignments(assignments);
 }
@@ -866,7 +880,7 @@ async function setRoutingForChat(provider: string): Promise<void> {
 	);
 	const preferences =
 		current.preferences ?? defaultRoutingPreferences().preferences;
-	for (const slot of ["TEXT_SMALL", "TEXT_LARGE"] as const) {
+	for (const slot of LOCAL_INFERENCE_TEXT_MODEL_TYPES) {
 		preferences.preferredProvider[slot] = provider;
 		preferences.policy[slot] = "manual";
 	}
@@ -1188,21 +1202,22 @@ export async function handleLocalInferenceRoutes(
 					registeredSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
 				},
 				{
-					id: "eliza-local-inference",
-					label: "Local models",
+					id: LOCAL_INFERENCE_PROVIDER_ID,
+					label: "Eliza-1 local inference",
 					kind: "local",
 					description:
-						"GGUF models installed in this mobile agent state directory.",
-					supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
+						"Eliza-1 bundles installed in this agent state directory.",
+					supportedSlots: LOCAL_INFERENCE_MODEL_TYPES,
 					configureHref: "#local-inference-panel",
 					enableState: {
 						enabled: installed.length > 0,
 						reason:
 							installed.length > 0
-								? "GGUF model installed"
-								: "No local model installed",
+								? "Eliza-1 bundle installed"
+								: "No Eliza-1 bundle installed",
 					},
-					registeredSlots: [],
+					registeredSlots:
+						installed.length > 0 ? LOCAL_INFERENCE_MODEL_TYPES : [],
 				},
 			],
 		});
@@ -1235,14 +1250,12 @@ export async function handleLocalInferenceRoutes(
 			defaultRoutingPreferences(),
 		);
 		sendJson(res, {
-			registrations: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"].map(
-				(modelType) => ({
-					modelType,
-					provider: "capacitor-llama",
-					priority: 0,
-					registeredAt: new Date().toISOString(),
-				}),
-			),
+			registrations: LOCAL_INFERENCE_MODEL_TYPES.map((modelType) => ({
+				modelType,
+				provider: LOCAL_INFERENCE_PROVIDER_ID,
+				priority: 0,
+				registeredAt: new Date().toISOString(),
+			})),
 			preferences:
 				preferences.preferences ?? defaultRoutingPreferences().preferences,
 		});

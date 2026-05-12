@@ -1,4 +1,5 @@
-import { Button, Card, CardContent } from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Card, CardContent } from "../ui/card";
 import type { GatewayDiscoveryEndpoint } from "../../bridge/gateway-discovery";
 
 const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";

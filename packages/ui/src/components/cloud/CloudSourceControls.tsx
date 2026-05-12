@@ -1,4 +1,5 @@
-import { Button, ConnectionStatus } from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { ConnectionStatus } from "../ui/connection-status";
 import { CheckCircle2, WifiOff } from "lucide-react";
 import { useApp } from "../../state";
 

@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Capture the deferred persistence promise the handler kicks off so the test
 // can resolve it on demand and assert ordering against the SSE writes.
-let persistResolve: ((value?: unknown) => void) | null = null;
+let persistResolve: (() => void) | null = null;
 let persistReject: ((err: unknown) => void) | null = null;
 let persistCalledAt: number | null = null;
 let persistResolvedAt: number | null = null;
@@ -52,10 +52,10 @@ vi.mock("../chat-routes.ts", async () => {
     persistConversationMemory: vi.fn(async () => undefined),
     persistAssistantConversationMemory: vi.fn(async () => {
       persistCalledAt = Date.now();
-      return new Promise((resolve, reject) => {
-        persistResolve = (value) => {
+      return new Promise<void>((resolve, reject) => {
+        persistResolve = () => {
           persistResolvedAt = Date.now();
-          resolve(value as void);
+          resolve();
         };
         persistReject = (err) => {
           persistResolvedAt = Date.now();
@@ -83,10 +83,9 @@ vi.mock("../chat-routes.ts", async () => {
 // `buildUserMessages` and other helpers in server-helpers.ts dive into runtime
 // internals; stub the surface the handler actually needs.
 vi.mock("../server-helpers.ts", async () => {
-  const actual =
-    await vi.importActual<typeof import("../server-helpers.ts")>(
-      "../server-helpers.ts",
-    );
+  const actual = await vi.importActual<typeof import("../server-helpers.ts")>(
+    "../server-helpers.ts",
+  );
   return {
     ...actual,
     buildUserMessages: vi.fn(({ prompt, userId, agentId, roomId }) => ({
@@ -118,11 +117,11 @@ vi.mock("../character-routes.ts", async () => {
   return actual;
 });
 
-import { handleConversationRoutes } from "../conversation-routes.ts";
 import type {
   ConversationRouteContext,
   ConversationRouteState,
 } from "../conversation-routes.ts";
+import { handleConversationRoutes } from "../conversation-routes.ts";
 
 interface MockResponseRecord {
   writes: string[];
@@ -259,7 +258,12 @@ describe("conversation-routes streaming persistence ordering", () => {
     expect(persistResolvedAt).not.toBeNull();
     // res.end() ran before persistence finished.
     expect(record.endedAt).not.toBeNull();
-    expect(record.endedAt!).toBeLessThanOrEqual(persistResolvedAt!);
+    const endedAt = record.endedAt;
+    const resolvedAt = persistResolvedAt;
+    if (endedAt === null || resolvedAt === null) {
+      throw new Error("expected response end and persistence timestamps");
+    }
+    expect(endedAt).toBeLessThanOrEqual(resolvedAt);
   });
 
   it("logs persistence failures via Logger.error and still ends the response cleanly", async () => {

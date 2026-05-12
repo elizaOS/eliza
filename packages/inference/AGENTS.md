@@ -65,18 +65,21 @@ Backbones (do not change without explicit human approval):
   commercially-licensed corpora — until then, ship it.
 - **ASR:** Qwen3-ASR (`ggml-org/Qwen3-ASR-0.6B-GGUF` for
   lite/mobile/desktop tiers, `ggml-org/Qwen3-ASR-1.7B-GGUF` for
-  pro/server). Tokenizer fused with the Qwen3.5/3.6 text backbone
-  (zero re-tokenization between ASR output and text input). whisper.cpp
-  is **not** the default — it vendors its own ggml, violating the
-  one-llama.cpp-build / one-GGML-pin contract in §4.
+  pro/server). These are the only public GGUF ASR artifacts currently
+  available; do not invent ASR source repos with a Qwen3.5 prefix. The released
+  Eliza bundle may wrap them under `elizaos/eliza-1-*`, but provenance
+  must record the real upstream. whisper.cpp is **not** the default — it
+  vendors its own ggml, violating the one-llama.cpp-build / one-GGML-pin
+  contract in §4.
 - **VAD:** Silero VAD (MIT, ~2 MB ONNX). Ships in every voice-enabled
   bundle. Drives barge-in cancellation; gates ASR to skip silent frames.
 - **Wake word:** openWakeWord (Apache-2.0, ~3 MB). Opt-in, local-mode
   only. Hidden in cloud mode per three-mode hide-not-disable.
 - **Embedding:** Qwen3-Embedding-0.6B (Apache-2.0, 1024-dim with
   Matryoshka, 32k ctx) for non-lite tiers as a separate `embedding/`
-  artifact. On `0_6b` the embedding model IS the text backbone
-  with `--pooling last` — no duplicate weights.
+  artifact. This is a deliberate public-upstream exception; do not
+  fabricate embedding source repos with a Qwen3.5 prefix. On `0_6b` the embedding
+  model IS the text backbone with `--pooling last` — no duplicate weights.
 - **Drafter:** DFlash. Always present in the bundle. Always wired in.
   Speculative decoding is mandatory, not optional (see §3).
 
@@ -117,12 +120,13 @@ hosted under the `elizaos` HuggingFace org under `eliza-1-<tier>`.
 
 | Tier            | Tagline                       | Text  | Voice          | Vision | Context  | DFlash | Quant default                   |
 | --------------- | ----------------------------- | ----- | -------------- | ------ | -------- | ------ | ------------------------------- |
-| `0_6b`       | low-RAM phones, CPU fallback   | 0.6B  | OmniVoice 0.6B | no     | 32k      | yes    | TurboQuant Q3 + Polar Q4 KV     |
-| `1_7b`         | modern phones                  | 1.7B    | OmniVoice 0.6B | no     | 32k–64k  | yes    | TurboQuant Q3/Q4 + QJL K-cache  |
-| `4b`         | flagship phones, small desktops| 4B    | OmniVoice 0.6B | mmproj | 64k      | yes    | TurboQuant Q4 + QJL + Polar     |
-| `9b`         | laptops, 24GB phones, 48GB Mac | ~9B   | OmniVoice 1.7B | mmproj | 64k–128k | yes    | TurboQuant Q4 + QJL + Polar     |
-| `27b`        | 96GB+ Mac, high-VRAM desktop   | 27B   | OmniVoice 1.7B | mmproj | 128k–256k| yes    | TurboQuant Q4 + QJL + Polar     |
-| `27b-256k`  | server / workstation           | 27B   | OmniVoice 1.7B | mmproj | up to max| yes    | CUDA TurboQuant + QJL + Polar   |
+| `0_6b`       | low-RAM phones, CPU fallback   | 0.6B  | OmniVoice small | no     | 32k      | yes    | TurboQuant Q3 + Polar Q4 KV     |
+| `1_7b`         | modern phones                  | 1.7B    | OmniVoice small | no     | 32k–64k  | yes    | TurboQuant Q3/Q4 + QJL K-cache  |
+| `4b`         | flagship phones, small desktops| 4B    | OmniVoice small | mmproj | 64k      | yes    | TurboQuant Q4 + QJL + Polar     |
+| `9b`         | laptops, 24GB phones, 48GB Mac | ~9B   | OmniVoice large | mmproj | 64k–128k | yes    | TurboQuant Q4 + QJL + Polar     |
+| `27b`        | 96GB+ Mac, high-VRAM desktop   | 27B   | OmniVoice large | mmproj | 128k–256k| yes    | TurboQuant Q4 + QJL + Polar     |
+| `27b-256k`  | server / workstation           | 27B   | OmniVoice large | mmproj | up to max| yes    | CUDA TurboQuant + QJL + Polar   |
+| `27b-1m`    | GH200 / H200-class server      | 27B   | OmniVoice large | mmproj | 1M       | yes    | CUDA TurboQuant + QJL + Polar   |
 
 Context-length variants (32k / 64k / 128k / 256k) are *not* separate
 tiers — they are dimensions inside a tier. A tier's manifest lists which

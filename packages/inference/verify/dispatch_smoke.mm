@@ -136,6 +136,13 @@ static bool compute_graph(
         std::fprintf(stderr, "[dispatch_smoke] ggml_backend_metal_init failed\n");
         return false;
     }
+    if (!ggml_backend_supports_op(backend, scores)) {
+        std::fprintf(stderr,
+            "[dispatch_smoke] ggml-metal does not advertise support for graph op %d\n",
+            (int) scores->op);
+        ggml_backend_free(backend);
+        return false;
+    }
 
     ggml_backend_buffer_t buf = ggml_backend_alloc_ctx_tensors(ctx, backend);
     if (!buf) {
@@ -182,6 +189,13 @@ static bool compute_graph3(
     ggml_backend_t backend = ggml_backend_metal_init();
     if (!backend) {
         std::fprintf(stderr, "[dispatch_smoke] ggml_backend_metal_init failed\n");
+        return false;
+    }
+    if (!ggml_backend_supports_op(backend, dst)) {
+        std::fprintf(stderr,
+            "[dispatch_smoke] ggml-metal does not advertise support for graph op %d\n",
+            (int) dst->op);
+        ggml_backend_free(backend);
         return false;
     }
 

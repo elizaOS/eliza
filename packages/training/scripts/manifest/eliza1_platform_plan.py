@@ -446,8 +446,8 @@ def render_readiness(
         "Legacy bundles may additionally carry the ONNX fallback "
         "`vad/silero-vad-int8.onnx`, but the fallback is not the release "
         "readiness path.",
-        "- Canonical small text tiers are Qwen3.5 0.6B (`0_8b`) and "
-        "Qwen3.5 1.7B (`2b`). ASR and embedding are real Qwen3 upstream "
+        "- Canonical small text tiers are Qwen3.5 0.8B (`0_8b`) and "
+        "Qwen3.5 2B (`2b`). ASR and embedding are real Qwen3 upstream "
         "exceptions: Qwen3-ASR and Qwen3-Embedding artifacts must stay "
         "Qwen3, not be renamed to Qwen3.5.",
         "- v1 release shape (`releaseState=base-v1`): the upstream BASE models "

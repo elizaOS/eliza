@@ -1,5 +1,7 @@
 import type { MessageExampleGroup } from "@elizaos/core";
-import { Button, Input, Textarea } from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
 import {
   type ChangeEvent,
   type DragEvent,

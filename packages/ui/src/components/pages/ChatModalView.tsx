@@ -1,10 +1,5 @@
-import {
-  ChatPanelLayout,
-  DrawerSheet,
-  DrawerSheetContent,
-  DrawerSheetHeader,
-  DrawerSheetTitle,
-} from "@elizaos/ui";
+import { ChatPanelLayout } from "../../layouts/chat-panel-layout/chat-panel-layout";
+import { DrawerSheet, DrawerSheetContent, DrawerSheetHeader, DrawerSheetTitle } from "../ui/drawer-sheet";
 
 import "../chat/chat-source-registration.js";
 

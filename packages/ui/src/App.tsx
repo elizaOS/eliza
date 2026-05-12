@@ -15,7 +15,8 @@ import {
 } from "lucide-react";
 
 import "./components/chat/chat-source-registration";
-import { Button, ErrorBoundary } from "@elizaos/ui";
+import { Button } from "./components/ui/button";
+import { ErrorBoundary } from "./components/ui/error-boundary";
 import {
   type ComponentType,
   type LazyExoticComponent,

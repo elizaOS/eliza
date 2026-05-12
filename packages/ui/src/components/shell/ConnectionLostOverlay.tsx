@@ -1,4 +1,5 @@
-import { Button, Card, CardContent, CardHeader } from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Card, CardContent, CardHeader } from "../ui/card";
 import { useState } from "react";
 import { isElectrobunRuntime } from "../../bridge";
 import { useApp } from "../../state";

@@ -70,10 +70,13 @@ function isTruthyBuildFlag(value: string | boolean | undefined): boolean {
 
 function shouldRequireFullBunRuntime(): boolean {
   const env = viteEnv();
-  const iosRuntimeMode = env.VITE_ELIZA_IOS_RUNTIME_MODE;
+  const iosRuntimeMode =
+    env.VITE_ELIZA_IOS_RUNTIME_MODE ?? env.VITE_MILADY_IOS_RUNTIME_MODE;
   return (
     isTruthyBuildFlag(env.VITE_ELIZA_IOS_FULL_BUN_STRICT) ||
     isTruthyBuildFlag(env.VITE_ELIZA_IOS_FULL_BUN_SMOKE) ||
+    isTruthyBuildFlag(env.VITE_MILADY_IOS_FULL_BUN_STRICT) ||
+    isTruthyBuildFlag(env.VITE_MILADY_IOS_FULL_BUN_SMOKE) ||
     (isTruthyBuildFlag(env.PROD) && iosRuntimeMode === "local")
   );
 }
@@ -185,7 +188,13 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
       const runtime = mod.ElizaBunRuntime;
       const started = await runtime.start({
         engine: "bun",
-        argv: ["bun", "public/agent/agent-bundle.js", "ios-bridge", "--stdio"],
+        argv: [
+          "bun",
+          "--no-install",
+          "public/agent/agent-bundle.js",
+          "ios-bridge",
+          "--stdio",
+        ],
         env: {
           ELIZA_PLATFORM: "ios",
           ELIZA_MOBILE_PLATFORM: "ios",

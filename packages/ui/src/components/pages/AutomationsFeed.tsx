@@ -19,7 +19,10 @@
  * No backend changes are required.
  */
 
-import { Button, PagePanel, Spinner, StatusBadge } from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { PagePanel } from "../composites/page-panel";
+import { Spinner } from "../ui/spinner";
+import { StatusBadge } from "../ui/status-badge";
 import {
   Calendar,
   CheckCircle2,

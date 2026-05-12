@@ -5,6 +5,12 @@ import { describe, expect, it, vi } from "vitest";
 import { useFetchData } from "./useFetchData";
 
 describe("useFetchData", () => {
+  it("starts in loading state on first render (never surfaces idle)", () => {
+    const fetcher = vi.fn(async (_signal: AbortSignal) => "hello");
+    const { result } = renderHook(() => useFetchData(fetcher, []));
+    expect(result.current.status).toBe("loading");
+  });
+
   it("transitions loading → success and returns data", async () => {
     const fetcher = vi.fn(async (_signal: AbortSignal) => "hello");
     const { result } = renderHook(() => useFetchData(fetcher, []));
@@ -130,5 +136,104 @@ describe("useFetchData", () => {
     if (result.current.status === "success") {
       expect(result.current.data).toBe(2);
     }
+  });
+
+  it("mutate(value) after success replaces data", async () => {
+    const fetcher = vi.fn(async (_signal: AbortSignal) => "initial");
+    const { result } = renderHook(() => useFetchData(fetcher, []));
+
+    await waitFor(() => {
+      expect(result.current.status).toBe("success");
+    });
+
+    act(() => {
+      result.current.mutate("replaced");
+    });
+
+    expect(result.current.status).toBe("success");
+    if (result.current.status === "success") {
+      expect(result.current.data).toBe("replaced");
+    }
+    // mutate does not trigger a refetch
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("mutate(fn) with updater fn applies to current data", async () => {
+    const fetcher = vi.fn(async (_signal: AbortSignal) => [1, 2, 3]);
+    const { result } = renderHook(() =>
+      useFetchData<number[]>(fetcher, []),
+    );
+
+    await waitFor(() => {
+      expect(result.current.status).toBe("success");
+    });
+
+    act(() => {
+      result.current.mutate((prev) => [...prev, 4]);
+    });
+
+    expect(result.current.status).toBe("success");
+    if (result.current.status === "success") {
+      expect(result.current.data).toEqual([1, 2, 3, 4]);
+    }
+  });
+
+  it("mutate(value) during loading sets data and transitions to success", () => {
+    const fetcher = vi.fn(
+      (_signal: AbortSignal) =>
+        new Promise<string>(() => {
+          // never resolves
+        }),
+    );
+    const { result } = renderHook(() => useFetchData<string>(fetcher, []));
+
+    expect(result.current.status).toBe("loading");
+
+    act(() => {
+      result.current.mutate("optimistic");
+    });
+
+    expect(result.current.status).toBe("success");
+    if (result.current.status === "success") {
+      expect(result.current.data).toBe("optimistic");
+    }
+  });
+
+  it("mutate(value) during error transitions to success", async () => {
+    const fetcher = vi.fn(async (_signal: AbortSignal) => {
+      throw new Error("boom");
+    });
+    const { result } = renderHook(() => useFetchData<string>(fetcher, []));
+
+    await waitFor(() => {
+      expect(result.current.status).toBe("error");
+    });
+
+    act(() => {
+      result.current.mutate("recovered");
+    });
+
+    expect(result.current.status).toBe("success");
+    if (result.current.status === "success") {
+      expect(result.current.data).toBe("recovered");
+    }
+  });
+
+  it("mutate(updaterFn) without prior data throws a clear error", () => {
+    const fetcher = vi.fn(
+      (_signal: AbortSignal) =>
+        new Promise<number>(() => {
+          // never resolves — keeps state in `loading`
+        }),
+    );
+    const { result } = renderHook(() => useFetchData<number>(fetcher, []));
+
+    expect(result.current.status).toBe("loading");
+
+    expect(() => {
+      act(() => {
+        result.current.mutate((prev) => prev + 1);
+      });
+    }).toThrow(/mutate\(updaterFn\) called without prior data/);
   });
 });

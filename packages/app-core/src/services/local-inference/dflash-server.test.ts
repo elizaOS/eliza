@@ -594,6 +594,217 @@ describe("DFlash streaming callbacks", () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
+
+  it("consumes native DFlash events when the bundle opts in and /health advertises the capability", async () => {
+    const server = http.createServer(async (req, res) => {
+      if (req.method === "GET" && req.url === "/health") {
+        res.statusCode = 200;
+        res.setHeader("content-type", "application/json");
+        res.end(
+          JSON.stringify({
+            status: "ok",
+            capabilities: { dflashNativeEvents: true },
+          }),
+        );
+        return;
+      }
+      if (req.method === "GET" && req.url === "/metrics") {
+        res.statusCode = 200;
+        res.end(
+          [
+            "llamacpp:prompt_tokens_total 0",
+            "llamacpp:n_tokens_predicted_total 0",
+            "llamacpp:n_drafted_total 4",
+            "llamacpp:n_accepted_total 3",
+          ].join("\n"),
+        );
+        return;
+      }
+      if (req.method === "POST" && req.url === "/v1/chat/completions") {
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [{ delta: { content: "Hel" } }],
+            dflash: [
+              { kind: "speculate-start", round: 0, ts: 0 },
+              {
+                kind: "accept",
+                drafted: [10, 11],
+                accepted: [10, 11],
+                ts: 1,
+              },
+            ],
+          })}\n\n`,
+        );
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [{ delta: { content: "lo" } }],
+            dflash: {
+              kind: "accept",
+              drafted: [12, 13],
+              accepted: [12],
+              ts: 2,
+            },
+          })}\n\n`,
+        );
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [{ delta: { content: "" } }],
+            dflash: {
+              kind: "speculate-end",
+              round: 0,
+              totalDrafted: 4,
+              totalAccepted: 3,
+              ts: 3,
+            },
+          })}\n\n`,
+        );
+        res.end("data: [DONE]\n\n");
+        return;
+      }
+      res.statusCode = 404;
+      res.end();
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const target = dflashLlamaServer as unknown as {
+      baseUrl: string | null;
+      cacheParallel: number;
+      lastOptimizations: { nativeDflashEvents?: boolean } | null;
+      nativeDflashEventsCapability: boolean | null;
+    };
+    const previous = {
+      baseUrl: target.baseUrl,
+      cacheParallel: target.cacheParallel,
+      lastOptimizations: target.lastOptimizations,
+      nativeDflashEventsCapability: target.nativeDflashEventsCapability,
+    };
+    target.baseUrl = baseUrl;
+    target.cacheParallel = 4;
+    target.lastOptimizations = { nativeDflashEvents: true };
+    target.nativeDflashEventsCapability = null;
+    const verifierEvents: string[] = [];
+    const nativeKinds: string[] = [];
+    try {
+      const result = await dflashLlamaServer.generateWithUsage({
+        prompt: "hi",
+        onTextChunk: () => {},
+        onVerifierEvent: (event) => {
+          verifierEvents.push(event.kind);
+        },
+        onDflashEvent: (event) => {
+          nativeKinds.push(event.kind);
+        },
+      });
+
+      // Legacy synthesized accept events MUST be suppressed when native
+      // events are flowing — only the optional `reject` callbacks pass through.
+      expect(verifierEvents).toEqual([]);
+      expect(nativeKinds).toEqual([
+        "speculate-start",
+        "accept",
+        "accept",
+        "speculate-end",
+      ]);
+      expect(result.text).toBe("Hello");
+      expect(result.dflashStats).toEqual({
+        drafted: 4,
+        accepted: 3,
+        rounds: 1,
+        acceptanceRate: 3 / 4,
+      });
+    } finally {
+      target.baseUrl = previous.baseUrl;
+      target.cacheParallel = previous.cacheParallel;
+      target.lastOptimizations = previous.lastOptimizations;
+      target.nativeDflashEventsCapability =
+        previous.nativeDflashEventsCapability;
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("falls back to JS synthesis when /health does not advertise dflashNativeEvents", async () => {
+    const server = http.createServer(async (req, res) => {
+      if (req.method === "GET" && req.url === "/health") {
+        res.statusCode = 200;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ status: "ok", capabilities: {} }));
+        return;
+      }
+      if (req.method === "GET" && req.url === "/metrics") {
+        res.statusCode = 200;
+        res.end(
+          [
+            "llamacpp:prompt_tokens_total 0",
+            "llamacpp:n_tokens_predicted_total 0",
+            "llamacpp:n_drafted_total 0",
+            "llamacpp:n_accepted_total 0",
+          ].join("\n"),
+        );
+        return;
+      }
+      if (req.method === "POST" && req.url === "/v1/chat/completions") {
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [{ delta: { content: "Hi" } }],
+            dflash: { kind: "accept", drafted: [1], accepted: [1], ts: 0 },
+          })}\n\n`,
+        );
+        res.end("data: [DONE]\n\n");
+        return;
+      }
+      res.statusCode = 404;
+      res.end();
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const target = dflashLlamaServer as unknown as {
+      baseUrl: string | null;
+      cacheParallel: number;
+      lastOptimizations: { nativeDflashEvents?: boolean } | null;
+      nativeDflashEventsCapability: boolean | null;
+    };
+    const previous = {
+      baseUrl: target.baseUrl,
+      cacheParallel: target.cacheParallel,
+      lastOptimizations: target.lastOptimizations,
+      nativeDflashEventsCapability: target.nativeDflashEventsCapability,
+    };
+    target.baseUrl = baseUrl;
+    target.cacheParallel = 4;
+    target.lastOptimizations = { nativeDflashEvents: true };
+    target.nativeDflashEventsCapability = null;
+    const verifierKinds: string[] = [];
+    const nativeKinds: string[] = [];
+    try {
+      const result = await dflashLlamaServer.generateWithUsage({
+        prompt: "hi",
+        onTextChunk: () => {},
+        onVerifierEvent: (event) => {
+          verifierKinds.push(event.kind);
+        },
+        onDflashEvent: (event) => {
+          nativeKinds.push(event.kind);
+        },
+      });
+      // Capability missing → legacy synthesis remains active.
+      expect(verifierKinds).toEqual(["accept"]);
+      expect(nativeKinds).toEqual([]);
+      expect(result.dflashStats).toBeUndefined();
+    } finally {
+      target.baseUrl = previous.baseUrl;
+      target.cacheParallel = previous.cacheParallel;
+      target.lastOptimizations = previous.lastOptimizations;
+      target.nativeDflashEventsCapability =
+        previous.nativeDflashEventsCapability;
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
 });
 
 describe("DflashLlamaServer.prewarmConversation", () => {

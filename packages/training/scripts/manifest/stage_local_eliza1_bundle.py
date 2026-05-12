@@ -308,14 +308,14 @@ def _write_licenses(bundle_dir: Path, *, tier: str, force: bool) -> list[str]:
         "LICENSE.text": (
             "Eliza-1 local text stand-in provenance note.\n\n"
             "This bundle uses a local stand-in text GGUF for runtime layout "
-            "testing. It is not a final Eliza-1 2B text checkpoint and "
+            f"testing. It is not a final Eliza-1 {tier} text checkpoint and "
             "is not release-reviewed for publishing.\n"
         ),
         "LICENSE.dflash": (
             "Eliza-1 local DFlash stand-in provenance note.\n\n"
             "This bundle uses a local stand-in drafter GGUF for runtime "
             "layout testing. It is not trained or verified against final "
-            "Eliza-1 2B text weights and is not publishable.\n"
+            f"Eliza-1 {tier} text weights and is not publishable.\n"
         ),
         "LICENSE.eliza-1": (
             "Eliza-1 local bundle license notice.\n\n"

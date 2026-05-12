@@ -1,13 +1,7 @@
-import {
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Input,
-  Label,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import { client } from "../../api";
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { useApp } from "../../state";

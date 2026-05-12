@@ -322,7 +322,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
                 <p className="mt-1 text-xs text-muted">
                   {t("messages.emptyBody", {
                     defaultValue:
-                      "Start a message, or grant SMS permissions on Android to load existing conversations.",
+                      "Start a message or grant Android SMS access.",
                   })}
                 </p>
               </div>
@@ -432,7 +432,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
                       <p className="mt-1 text-xs text-muted">
                         {t("messages.composeBody", {
                           defaultValue:
-                            "Enter a phone number and message body. Android handles carrier delivery through the SMS bridge.",
+                            "Android handles carrier delivery through SMS.",
                         })}
                       </p>
                     </div>

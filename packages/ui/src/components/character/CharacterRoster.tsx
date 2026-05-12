@@ -1,5 +1,5 @@
 import type { StylePreset } from "@elizaos/shared";
-import { Button } from "@elizaos/ui";
+import { Button } from "../ui/button";
 
 import { useEffect, useState } from "react";
 import { useApp } from "../../state";

@@ -8,8 +8,8 @@ SWE-bench's canonical model contract is a single ``TEXT_LARGE`` handler::
 
     async def handler(runtime: object, params: dict[str, object]) -> str: ...
 
-The handler must return the raw model text — SWE-bench's own XML parser
-handles ``<actions>`` / ``<params>`` extraction downstream. hermes-agent
+The handler must return the raw model text — SWE-bench performs
+benchmark-specific extraction downstream. hermes-agent
 normally emits structured tool calls, so we force ``tool_choice='none'``
 and surface no ``tools=`` array; that keeps the response in the same shape
 the eliza handler returns.
@@ -63,10 +63,9 @@ def build_swe_bench_agent_fn(
             except Exception as exc:  # noqa: BLE001 — reset is best-effort
                 logger.debug("hermes reset(task_id=%s) failed: %s", task_id, exc)
 
-        # SWE-bench expects raw XML text — explicitly suppress tool calling so
-        # hermes doesn't emit OpenAI-shape ``tool_calls`` instead of inline
-        # ``<actions>`` XML. Stateless flag tells downstream tooling this turn
-        # carries no server-side session.
+        # SWE-bench expects raw text patches — explicitly suppress tool
+        # calling. Stateless flag tells downstream tooling this turn carries
+        # no server-side session.
         context: dict[str, object] = {
             "benchmark": "swe_bench",
             "tool_choice": "none",

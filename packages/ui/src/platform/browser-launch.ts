@@ -29,7 +29,14 @@ function isAllowedHttpHost(host: string): boolean {
   );
 }
 
-function normalizeLaunchApiBase(apiBase: string): string {
+function isCurrentHost(host: string): boolean {
+  return typeof window !== "undefined" && host === window.location.hostname;
+}
+
+function normalizeLaunchApiBase(
+  apiBase: string,
+  options: { allowPublicHttps?: boolean } = {},
+): string {
   const trimmed = apiBase.trim();
   if (!trimmed) {
     throw new Error("Missing launch API base");
@@ -43,7 +50,10 @@ function normalizeLaunchApiBase(apiBase: string): string {
   try {
     const parsed = new URL(trimmed);
     if (
-      parsed.protocol === "https:" ||
+      (parsed.protocol === "https:" &&
+        (options.allowPublicHttps ||
+          isAllowedHttpHost(parsed.hostname) ||
+          isCurrentHost(parsed.hostname))) ||
       (parsed.protocol === "http:" && isAllowedHttpHost(parsed.hostname))
     ) {
       return stripTrailingSlashes(parsed.toString());
@@ -134,7 +144,9 @@ async function exchangeCloudLaunchSession(
     }
 
     return {
-      apiBase: normalizeLaunchApiBase(payload.data.connection.apiBase),
+      apiBase: normalizeLaunchApiBase(payload.data.connection.apiBase, {
+        allowPublicHttps: true,
+      }),
       token,
     };
   }
@@ -146,8 +158,11 @@ export function applyLaunchConnection(args: {
   apiBase: string;
   token?: string | null;
   kind?: "cloud" | "remote";
+  allowPublicHttps?: boolean;
 }): { apiBase: string; token: string | null } {
-  const normalizedApiBase = normalizeLaunchApiBase(args.apiBase);
+  const normalizedApiBase = normalizeLaunchApiBase(args.apiBase, {
+    allowPublicHttps: args.allowPublicHttps === true,
+  });
   const token = args.token?.trim() || null;
 
   client.setBaseUrl(normalizedApiBase);
@@ -179,6 +194,7 @@ export async function applyLaunchConnectionFromUrl(): Promise<boolean> {
       kind: "cloud",
       apiBase: connection.apiBase,
       token: connection.token,
+      allowPublicHttps: true,
     });
     stripLaunchParams();
     return true;
@@ -188,11 +204,18 @@ export async function applyLaunchConnectionFromUrl(): Promise<boolean> {
   if (!apiBase) {
     return false;
   }
+  if (params.get("token")?.trim()) {
+    console.warn(
+      "[launch] Ignoring raw token URL parameter; use cloudLaunchSession instead.",
+    );
+    stripLaunchParams();
+    return false;
+  }
 
   applyLaunchConnection({
     kind: "remote",
-    apiBase,
-    token: params.get("token")?.trim() || null,
+    apiBase: normalizeLaunchApiBase(apiBase),
+    token: null,
   });
   stripLaunchParams();
   return true;

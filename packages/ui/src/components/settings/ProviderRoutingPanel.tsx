@@ -1,13 +1,7 @@
 import type { ModelOption } from "@elizaos/shared";
-import {
-  Checkbox,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  TooltipHint,
-} from "@elizaos/ui";
+import { Checkbox } from "../ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { TooltipHint } from "../ui/tooltip";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import {
   ConfigRenderer,

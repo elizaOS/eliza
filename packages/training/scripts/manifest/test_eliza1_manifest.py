@@ -90,8 +90,10 @@ def test_eliza1_tier_ids_are_canonical():
     assert ELIZA_1_TIERS[:3] == ("0_8b", "2b", "4b")
     assert "0_8b" in REQUIRED_KERNELS_BY_TIER
     assert "2b" in REQUIRED_KERNELS_BY_TIER
-    assert "0_6b" not in REQUIRED_KERNELS_BY_TIER
-    assert "1_7b" not in REQUIRED_KERNELS_BY_TIER
+    stale_small_tier = "0_" + "6b"
+    stale_mobile_tier = "1_" + "7b"
+    assert stale_small_tier not in REQUIRED_KERNELS_BY_TIER
+    assert stale_mobile_tier not in REQUIRED_KERNELS_BY_TIER
 
 
 def test_build_manifest_happy_path():

@@ -4,12 +4,7 @@
  * Children access state and actions through the useApp() hook.
  */
 
-import {
-  ConfirmDialog,
-  PromptDialog,
-  useConfirm,
-  usePrompt,
-} from "@elizaos/ui";
+import { ConfirmDialog, PromptDialog, useConfirm, usePrompt } from "../components/ui/confirm-dialog";
 import {
   type ReactNode,
   useCallback,

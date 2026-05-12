@@ -147,6 +147,35 @@ def test_client_send_message_parses_stdout_json(
     assert result.params["tool_calls"][0]["name"] == "TOOL_FOO"
 
 
+def test_client_parse_response_normalizes_openai_tool_calls(
+    client_with_fake_venv: HermesClient,
+) -> None:
+    payload = {
+        "text": "",
+        "thought": None,
+        "actions": [],
+        "params": {
+            "tool_calls": [
+                {
+                    "id": "call_native",
+                    "type": "function",
+                    "function": {
+                        "name": "LOOKUP",
+                        "arguments": '{"query":"orchid"}',
+                    },
+                }
+            ]
+        },
+    }
+    with patch("hermes_adapter.client.subprocess.run") as mock_run:
+        mock_run.return_value = _fake_completed(stdout=json.dumps(payload) + "\n", rc=0)
+        result = client_with_fake_venv.send_message("hello")
+
+    assert result.params["tool_calls"] == [
+        {"id": "call_native", "name": "LOOKUP", "arguments": '{"query":"orchid"}'}
+    ]
+
+
 def test_client_send_message_handles_multiline_stdout(
     client_with_fake_venv: HermesClient,
 ) -> None:

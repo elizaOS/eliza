@@ -7,7 +7,8 @@
  * entirely so future default changes still propagate.
  */
 
-import { Button, Switch } from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Switch } from "../ui/switch";
 import { LayoutGrid } from "lucide-react";
 import type { ReactNode } from "react";
 import type { ChatSidebarVisibilityHook } from "../../widgets/useChatSidebarVisibility";

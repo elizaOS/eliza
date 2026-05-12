@@ -1,4 +1,4 @@
-import { Switch } from "@elizaos/ui";
+import { Switch } from "../ui/switch";
 import type React from "react";
 import { useState } from "react";
 

@@ -1,4 +1,4 @@
-import { PagePanel } from "@elizaos/ui";
+import { PagePanel } from "../composites/page-panel";
 import { useApp } from "../../state";
 import type { MemoryRecord } from "./vector-browser-utils";
 

@@ -11,13 +11,8 @@ import {
   resolveInitialWalletRpcSelections,
   type WalletRpcSelections,
 } from "@elizaos/shared";
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApp } from "../../state";
 import { preOpenWindow } from "../../utils";

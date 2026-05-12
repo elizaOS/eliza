@@ -5,13 +5,7 @@
  */
 
 import type { LinkedAccountProviderId } from "@elizaos/shared";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@elizaos/ui";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import type { AccountStrategy } from "../../api/client-agent";
 import { useApp } from "../../state";
 

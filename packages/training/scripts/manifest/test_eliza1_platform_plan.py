@@ -74,11 +74,23 @@ def test_readiness_mentions_vad_native_ggml_caveat() -> None:
     assert "VAD is a native GGML artifact" in text
     assert "It is not GGUF" in text
     assert "vad/silero-vad-int8.onnx" in text
+    assert "Qwen3.5 0.8B (`0_8b`)" in text
+    assert "Qwen3.5 2B (`2b`)" in text
+    assert "Qwen3-ASR and Qwen3-Embedding artifacts must stay Qwen3" in text
     assert "VAD latency/boundary/endpoint/false-barge-in" in text
     assert "Release evidence must use real final hashes" in text
+    assert "No-larp release readiness" in text
     # v1 release shape is documented in the readiness ledger.
     assert "releaseState=base-v1" in text
     assert "NOT fine-tuned" in text
+
+
+def test_release_status_blockers_detect_missing_canonical_bundle(
+    tmp_path: Path,
+) -> None:
+    blockers = release_status_blockers(tmp_path / "bundles", build_plan())
+    assert any("missing canonical local bundle" in item for item in blockers["0_8b"])
+    assert any("release.json" in item and "missing" in item for item in blockers["0_8b"])
 
 
 def test_release_status_blockers_detect_local_standin_evidence(tmp_path: Path) -> None:
@@ -106,12 +118,16 @@ def test_release_status_blockers_detect_local_standin_evidence(tmp_path: Path) -
     blockers = release_status_blockers(tmp_path / "bundles", plan)
     assert any("releaseState" in item for item in blockers["2b"])
     assert any("final.weights" in item for item in blockers["2b"])
+    assert any("hf.status" in item for item in blockers["2b"])
+    assert any("hf.uploadEvidence missing" in item for item in blockers["2b"])
 
     text = render_readiness(plan, missing={}, blockers=blockers)
     assert "Publish-blocking status:" in text
 
 
-def test_release_status_blockers_accept_base_v1_evidence(tmp_path: Path) -> None:
+def test_release_status_blockers_accept_base_v1_uploaded_evidence(
+    tmp_path: Path,
+) -> None:
     """A `base-v1` bundle (upstream base models, GGUF + fully optimized,
     NOT fine-tuned) with all the runnable-on-base evidence present is
     treated as a satisfiable release shape — `final.weights` is NOT a
@@ -120,6 +136,12 @@ def test_release_status_blockers_accept_base_v1_evidence(tmp_path: Path) -> None
     plan = build_plan()
     bundle = tmp_path / "bundles" / "eliza-1-2b.bundle"
     (bundle / "evidence").mkdir(parents=True)
+    required_weights = sorted(
+        rel
+        for rel in plan["2b"].required_files
+        if rel.split("/", 1)[0]
+        in {"text", "tts", "asr", "vad", "vision", "dflash"}
+    )
     (bundle / "evidence" / "release.json").write_text(
         json.dumps(
             {
@@ -145,12 +167,66 @@ def test_release_status_blockers_accept_base_v1_evidence(tmp_path: Path) -> None
                     "platformEvidence": True,
                     "sizeFirstRepoIds": True,
                 },
-                "hf": {"status": "pending-upload"},
+                "weights": required_weights,
+                "checksumManifest": "checksums/SHA256SUMS",
+                "hf": {
+                    "repoId": "elizaos/eliza-1-2b",
+                    "status": "uploaded",
+                    "uploadEvidence": {
+                        "repoId": "elizaos/eliza-1-2b",
+                        "status": "uploaded",
+                        "commit": "abc123",
+                        "url": "https://huggingface.co/elizaos/eliza-1-2b/commit/abc123",
+                        "uploadedPaths": required_weights,
+                    },
+                },
             }
         )
     )
     blockers = release_status_blockers(tmp_path / "bundles", plan)
     assert blockers["2b"] == []
+
+
+def test_release_status_blockers_base_v1_blocks_pending_upload(
+    tmp_path: Path,
+) -> None:
+    plan = build_plan()
+    bundle = tmp_path / "bundles" / "eliza-1-2b.bundle"
+    (bundle / "evidence").mkdir(parents=True)
+    required_weights = sorted(
+        rel
+        for rel in plan["2b"].required_files
+        if rel.split("/", 1)[0]
+        in {"text", "tts", "asr", "vad", "vision", "dflash"}
+    )
+    (bundle / "evidence" / "release.json").write_text(
+        json.dumps(
+            {
+                "releaseState": "base-v1",
+                "publishEligible": True,
+                "finetuned": False,
+                "sourceModels": {"text": {"repo": "Qwen/Qwen3.5-2B-GGUF"}},
+                "final": {
+                    "weights": False,
+                    "hashes": True,
+                    "evals": True,
+                    "licenses": True,
+                    "kernelDispatchReports": True,
+                    "platformEvidence": True,
+                    "sizeFirstRepoIds": True,
+                },
+                "weights": required_weights,
+                "checksumManifest": "checksums/SHA256SUMS",
+                "hf": {
+                    "repoId": "elizaos/eliza-1-2b",
+                    "status": "pending-upload",
+                },
+            }
+        )
+    )
+    blockers = release_status_blockers(tmp_path / "bundles", plan)
+    assert any("hf.status" in item for item in blockers["2b"])
+    assert any("hf.uploadEvidence missing" in item for item in blockers["2b"])
 
 
 def test_release_status_blockers_base_v1_requires_finetuned_false(

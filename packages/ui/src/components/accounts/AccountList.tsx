@@ -8,7 +8,8 @@
  */
 
 import type { LinkedAccountProviderId } from "@elizaos/shared";
-import { Button, Spinner } from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Spinner } from "../ui/spinner";
 import { Plus } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";

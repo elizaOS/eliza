@@ -1,4 +1,7 @@
-import { Button, Checkbox, Input, Textarea } from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
+import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
 import {
   Bot,
   FileUp,

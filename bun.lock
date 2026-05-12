@@ -345,9 +345,11 @@
         "react-test-renderer": "^19.2.4",
         "sharp": "^0.34.5",
         "tailwindcss": "^4.1.18",
+        "tsx": "^4.21.0",
         "typescript": "^6.0.3",
         "vite": "^8.0.8",
         "vitest": "^4.0.18",
+        "yaml": "^2.8.2",
       },
       "optionalDependencies": {
         "@elizaos/capacitor-appblocker": "2.0.0-beta.1",
@@ -1935,7 +1937,10 @@
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
+        "@biomejs/biome": "^2.4.14",
         "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.17",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -1968,6 +1973,8 @@
       },
       "devDependencies": {
         "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.17",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -2085,6 +2092,8 @@
       },
       "devDependencies": {
         "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.17",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -2110,6 +2119,8 @@
       },
       "devDependencies": {
         "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.17",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -2222,7 +2233,10 @@
         "@elizaos/ui": "2.0.0-beta.1",
       },
       "devDependencies": {
+        "dotenv": "^17.2.3",
         "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.17",
       },
       "peerDependencies": {
         "react": "*",
@@ -2292,6 +2306,8 @@
       },
       "devDependencies": {
         "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.17",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -2697,6 +2713,7 @@
         "@ai-sdk/openai": "^3.0.9",
         "@elizaos/cloud-sdk": "2.0.0-beta.1",
         "@elizaos/core": "2.0.0-beta.1",
+        "@elizaos/shared": "2.0.0-beta.1",
         "ai": "^6.0.30",
         "jose": "^6.2.2",
         "js-tiktoken": "^1.0.21",
@@ -2848,6 +2865,7 @@
       "version": "2.0.0-beta.1",
       "dependencies": {
         "@elizaos/core": "2.0.0-beta.1",
+        "@elizaos/shared": "2.0.0-beta.1",
       },
       "devDependencies": {
         "@types/node": "^25.6.0",

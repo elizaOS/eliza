@@ -1,5 +1,7 @@
-import { Button, PageLayout, PagePanel } from "@elizaos/ui";
-import { Filter, RefreshCw, Search, X } from "lucide-react";
+import { Button } from "../../ui/button";
+import { PageLayout } from "../../../layouts/page-layout/page-layout";
+import { PagePanel } from "../../composites/page-panel";
+import { Filter, Network, RefreshCw, Search, Sparkles, UserRound, X } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -268,20 +270,41 @@ export function RelationshipsWorkspaceView({
           heading={t("common.loading", { defaultValue: "Loading..." })}
         />
       ) : !graph || graph.people.length === 0 ? (
-        <PagePanel.Empty
-          variant="panel"
-          className={embedded ? "min-h-[18rem]" : "min-h-[24rem]"}
-          description={
-            search || platform !== "all"
-              ? "No people match these filters."
-              : "No relationship data yet."
-          }
-          title={
-            search || platform !== "all"
-              ? "No matching relationships"
-              : "No relationships data available"
-          }
-        />
+        <PagePanel
+          variant="surface"
+          className={`grid place-items-center ${embedded ? "min-h-[18rem]" : "min-h-[24rem]"}`}
+        >
+          <div className="w-full max-w-xl px-4 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-accent/25 bg-accent/12 text-accent">
+              <Network className="h-7 w-7" />
+            </div>
+            <h2 className="mt-4 text-base font-semibold text-txt">
+              {search || platform !== "all"
+                ? "No matching relationships"
+                : "No relationships yet"}
+            </h2>
+            <div className="mt-5 grid gap-2 sm:grid-cols-3">
+              {[
+                { label: "People", icon: UserRound, tone: "text-info" },
+                { label: "Facts", icon: Sparkles, tone: "text-warning" },
+                { label: "Graph", icon: Network, tone: "text-accent" },
+              ].map((item) => {
+                const Icon = item.icon;
+                return (
+                  <div
+                    key={item.label}
+                    className="rounded-xl border border-border/24 bg-bg/45 px-3 py-3"
+                  >
+                    <Icon className={`mx-auto h-4 w-4 ${item.tone}`} />
+                    <div className="mt-2 text-xs font-semibold text-muted">
+                      {item.label}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </PagePanel>
       ) : (
         <>
           {graphError ? (

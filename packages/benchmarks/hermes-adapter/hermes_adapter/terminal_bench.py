@@ -7,10 +7,9 @@ the elizaOS TypeScript benchmark HTTP server.
 Key difference vs the eliza version: hermes-agent's client is stateless
 across `send_message` calls (each spawn is a fresh subprocess), so the
 adapter threads the full conversation history into ``context['messages']``
-on every turn. hermes typically emits shell commands as `bash` /
-`run_shell_command` *tool calls* rather than `<command>` XML, so the
-parser inspects ``response.params['tool_calls']`` first and falls back to
-the canonical `<command>...</command>` regex / fenced bash block.
+on every turn. Hermes is evaluated through native OpenAI-compatible
+``tool_calls``; command-looking assistant text is treated as a failure
+rather than a benchmark success.
 
 The docker ``TerminalEnvironment`` + ``run_test`` checks remain owned by
 the upstream ``elizaos_terminal_bench`` runner — this adapter only owns
@@ -21,7 +20,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
@@ -49,8 +47,6 @@ def _terminal_types():
 logger = logging.getLogger(__name__)
 
 
-_COMMAND_RE = re.compile(r"<command>(.*?)</command>", re.DOTALL | re.IGNORECASE)
-_BASH_FENCE_RE = re.compile(r"```(?:bash|sh)?\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
 # Hermes tool names that carry shell commands.
 _SHELL_TOOL_NAMES = {
     "bash",
@@ -60,18 +56,6 @@ _SHELL_TOOL_NAMES = {
     "execute_shell",
     "exec",
 }
-
-
-def _extract_command_from_text(text: str) -> Optional[str]:
-    if not text:
-        return None
-    m = _COMMAND_RE.search(text)
-    if m:
-        return m.group(1).strip()
-    m = _BASH_FENCE_RE.search(text)
-    if m:
-        return m.group(1).strip()
-    return None
 
 
 def _extract_command_from_tool_calls(params: dict) -> Optional[str]:
@@ -170,9 +154,8 @@ class HermesTerminalAgent:
     def _reset_history(self, instruction: str) -> None:
         system = (
             "You are an AI agent solving a Terminal-Bench task in a Docker "
-            "container. Use the `bash` tool to execute shell commands, OR "
-            "respond with the next command wrapped in <command>...</command> "
-            "tags. When you believe the task is complete, respond with "
+            "container. Use the `bash` tool to execute shell commands. "
+            "When you believe the task is complete, respond with "
             "TASK_COMPLETE."
         )
         self._history = [
@@ -289,16 +272,13 @@ class HermesTerminalAgent:
                     )
                     continue
 
-                # Prefer tool_calls (hermes' native shape), fall back to XML.
                 command = _extract_command_from_tool_calls(response.params)
-                if not command:
-                    command = _extract_command_from_text(text)
 
                 if not command:
                     self._record_assistant(text, None)
                     self._record_user_followup(
-                        "No command was provided. Use the `bash` tool or wrap "
-                        "the next shell command in <command>...</command>."
+                        "No native tool call was provided. Use the `bash` tool "
+                        "with a JSON `command` argument for the next shell command."
                     )
                     continue
 

@@ -101,7 +101,8 @@
         "test/contracts/**",
         "platforms/**/build/**",
         "platforms/**/artifacts/**"
-      ]
+      ],
+      "ignoreDependencies": ["node:sqlite"]
     },
     "packages/core": {
       "entry": ["src/**/*.ts", "!src/**/*.d.ts", "build.ts"],
@@ -152,6 +153,7 @@
         "@elizaos/core",
         "@elizaos/plugin-browser",
         "@elizaos/shared",
+        "@capacitor/app",
         "jsdom",
         "node-llama-cpp",
         "three",

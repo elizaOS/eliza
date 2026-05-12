@@ -34,6 +34,15 @@ from typing import Any
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("abliteration-robustness")
 
+PACKAGES_ROOT = Path(__file__).resolve().parents[2]
+HARNESS_NAMES = {"eliza", "hermes", "openclaw"}
+OPENAI_COMPAT_DEFAULT_BASE_URLS: dict[str, str] = {
+    "openai": "https://api.openai.com/v1",
+    "groq": "https://api.groq.com/openai/v1",
+    "openrouter": "https://openrouter.ai/api/v1",
+    "cerebras": "https://api.cerebras.ai/v1",
+}
+
 # Mirrors the refusal detector in scambench but biased toward over-refusal
 # patterns (we want to catch any "I cannot help with that" on a benign prompt).
 REFUSAL_PATTERNS: tuple[re.Pattern[str], ...] = (
@@ -99,7 +108,21 @@ def _fallback_prompts(limit: int) -> list[str]:
 
 def _build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="abliteration-robustness")
-    p.add_argument("--provider", default="vllm", choices=("vllm", "openai", "groq", "openrouter", "cerebras", "mock"))
+    p.add_argument(
+        "--provider",
+        default="vllm",
+        choices=(
+            "vllm",
+            "openai",
+            "groq",
+            "openrouter",
+            "cerebras",
+            "eliza",
+            "hermes",
+            "openclaw",
+            "mock",
+        ),
+    )
     p.add_argument("--model", required=True)
     p.add_argument("--base-url", default=None)
     p.add_argument("--api-key-env", default="OPENAI_API_KEY")
@@ -110,36 +133,117 @@ def _build_argparser() -> argparse.ArgumentParser:
     p.add_argument("--max-examples", type=int, default=100)
     p.add_argument("--max-new-tokens", type=int, default=384)
     p.add_argument("--temperature", type=float, default=0.0)
+    p.add_argument(
+        "--tool-choice",
+        choices=("auto", "required", "none"),
+        default="none",
+        help="Accepted for orchestrator parity; this text-only benchmark sends no tools.",
+    )
     p.add_argument("--out", required=True)
     return p
 
 
+def _selected_harness(provider: str) -> str:
+    if provider.strip().lower() == "mock":
+        return ""
+    env_harness = (
+        os.environ.get("ELIZA_BENCH_HARNESS")
+        or os.environ.get("BENCHMARK_HARNESS")
+        or ""
+    ).strip().lower()
+    if env_harness in HARNESS_NAMES:
+        return env_harness
+    provider = provider.strip().lower()
+    return provider if provider in HARNESS_NAMES else ""
+
+
+def _ensure_adapter_path(dirname: str) -> None:
+    path = str(PACKAGES_ROOT / "benchmarks" / dirname)
+    if path not in sys.path:
+        sys.path.insert(0, path)
+
+
+def _harness_model_provider(args: argparse.Namespace) -> str:
+    provider = (
+        os.environ.get("BENCHMARK_MODEL_PROVIDER")
+        or os.environ.get("ELIZA_PROVIDER")
+        or args.provider
+    ).strip().lower()
+    return "cerebras" if provider in HARNESS_NAMES else provider
+
+
+def _make_harness_client(harness: str, args: argparse.Namespace):
+    provider = _harness_model_provider(args)
+    model = (os.environ.get("BENCHMARK_MODEL_NAME") or args.model).strip()
+    if harness == "eliza":
+        _ensure_adapter_path("eliza-adapter")
+        from eliza_adapter import ElizaClient, ElizaServerManager  # noqa: WPS433
+
+        manager = ElizaServerManager()
+        manager.start()
+        client = (
+            manager.client
+            if getattr(manager.client, "_delegate", None) is not None
+            else ElizaClient(manager.client.base_url, token=manager.token)
+        )
+        setattr(client, "_benchmark_server_manager", manager)
+        return client
+    if harness == "hermes":
+        _ensure_adapter_path("hermes-adapter")
+        from hermes_adapter.client import HermesClient  # noqa: WPS433
+
+        client = HermesClient(provider=provider, model=model, base_url=args.base_url)
+        client.wait_until_ready(timeout=120)
+        return client
+    if harness == "openclaw":
+        _ensure_adapter_path("openclaw-adapter")
+        from openclaw_adapter.client import OpenClawClient  # noqa: WPS433
+
+        client = OpenClawClient(provider=provider, model=model, base_url=args.base_url)
+        client.wait_until_ready(timeout=120)
+        return client
+    raise SystemExit(f"unknown harness {harness!r}")
+
+
 def _make_client(args: argparse.Namespace):
+    harness = _selected_harness(str(args.provider))
+    if harness:
+        return _make_harness_client(harness, args)
+
     from openai import OpenAI  # noqa: WPS433
 
-    base_url = args.base_url
-    if not base_url and args.provider == "openai":
-        base_url = "https://api.openai.com/v1"
-    if not base_url and args.provider == "groq":
-        base_url = "https://api.groq.com/openai/v1"
-    if not base_url and args.provider == "openrouter":
-        base_url = "https://openrouter.ai/api/v1"
-    if not base_url and args.provider == "cerebras":
-        base_url = "https://api.cerebras.ai/v1"
+    provider = str(args.provider).strip().lower()
+    base_url = args.base_url or os.environ.get("OPENAI_BASE_URL")
+    if not base_url and provider == "vllm":
+        base_url = os.environ.get("VLLM_BASE_URL")
+    if not base_url:
+        base_url = OPENAI_COMPAT_DEFAULT_BASE_URLS.get(provider)
     if not base_url:
         raise SystemExit("--base-url required for vllm provider")
     api_key_env = args.api_key_env
-    if api_key_env == "OPENAI_API_KEY" and args.provider in {"groq", "openrouter", "cerebras"}:
+    if api_key_env == "OPENAI_API_KEY" and provider in {"groq", "openrouter", "cerebras"}:
         api_key_env = {
             "groq": "GROQ_API_KEY",
             "openrouter": "OPENROUTER_API_KEY",
             "cerebras": "CEREBRAS_API_KEY",
-        }[args.provider]
+        }[provider]
     api_key = os.environ.get(api_key_env) or os.environ.get(args.api_key_env, "EMPTY")
     return OpenAI(base_url=base_url, api_key=api_key)
 
 
 def _generate(client, model: str, prompt: str, max_tokens: int, temperature: float) -> str:
+    if hasattr(client, "send_message"):
+        response = client.send_message(
+            prompt,
+            context={
+                "benchmark": "abliteration-robustness",
+                "messages": [{"role": "user", "content": prompt}],
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "tool_choice": "none",
+            },
+        )
+        return str(getattr(response, "text", "") or "")
     resp = client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}],
@@ -183,6 +287,11 @@ def main() -> int:
             reply = "Here is a concise, helpful response for the harmless request."
         else:
             try:
+                if _selected_harness(args.provider) and hasattr(client, "reset"):
+                    client.reset(
+                        task_id=f"abliteration-robustness-{os.getpid()}-{i}",
+                        benchmark="abliteration-robustness",
+                    )
                 reply = _generate(client, args.model, prompt, args.max_new_tokens, args.temperature)
             except Exception as exc:  # noqa: BLE001
                 log.warning("generation failed: %s", exc)
@@ -215,6 +324,9 @@ def main() -> int:
     out_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     log.info("wrote %s  score=%.3f  refusal_rate=%.3f", out_path, score, refusal_rate)
     print(json.dumps(summary["metrics"], indent=2))
+    manager = getattr(client, "_benchmark_server_manager", None)
+    if manager is not None:
+        manager.stop()
     return 0
 
 

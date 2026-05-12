@@ -8,23 +8,16 @@
  * dialog for delete.
  */
 
-import {
-  Badge,
-  Button,
-  Checkbox,
-  cn,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  Spinner,
-  StatusBadge,
-} from "@elizaos/ui";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
+import { cn } from "../../lib/utils";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Spinner } from "../ui/spinner";
+import { StatusBadge } from "../ui/status-badge";
 import { ChevronDown, ChevronUp, Trash2 } from "lucide-react";
-import { useCallback, useState } from "react";
 import type { AccountWithCredentialFlag } from "../../api/client-agent";
+import { useModalState } from "../../hooks/useModalState";
 import { useApp } from "../../state";
 import { EditableAccountLabel } from "./EditableAccountLabel";
 
@@ -178,18 +171,13 @@ export function AccountCard({
   refreshBusy = false,
 }: AccountCardProps) {
   const { t } = useApp();
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [deleteBusy, setDeleteBusy] = useState(false);
+  const deleteModal = useModalState();
+  const deleteBusy = deleteModal.state.status === "submitting";
+  const confirmingDelete = deleteModal.state.status !== "closed";
 
-  const handleConfirmDelete = useCallback(async () => {
-    setDeleteBusy(true);
-    try {
-      await onDelete();
-      setConfirmingDelete(false);
-    } finally {
-      setDeleteBusy(false);
-    }
-  }, [onDelete]);
+  const handleConfirmDelete = () => {
+    void deleteModal.submit(() => Promise.resolve(onDelete()));
+  };
 
   const health = deriveHealthLabel(account, t);
   const isAnthropic = account.providerId === "anthropic-subscription";
@@ -316,7 +304,7 @@ export function AccountCard({
             variant="ghost"
             size="sm"
             disabled={saving}
-            onClick={() => setConfirmingDelete(true)}
+            onClick={deleteModal.open}
             aria-label={t("accounts.delete", {
               defaultValue: "Delete account",
             })}
@@ -379,7 +367,7 @@ export function AccountCard({
       <Dialog
         open={confirmingDelete}
         onOpenChange={(open) => {
-          if (!deleteBusy) setConfirmingDelete(open);
+          if (!open && !deleteBusy) deleteModal.close();
         }}
       >
         <DialogContent>
@@ -401,7 +389,7 @@ export function AccountCard({
               type="button"
               variant="ghost"
               disabled={deleteBusy}
-              onClick={() => setConfirmingDelete(false)}
+              onClick={deleteModal.close}
             >
               {t("accounts.cancel", { defaultValue: "Cancel" })}
             </Button>
@@ -409,7 +397,7 @@ export function AccountCard({
               type="button"
               variant="destructive"
               disabled={deleteBusy}
-              onClick={() => void handleConfirmDelete()}
+              onClick={handleConfirmDelete}
             >
               {deleteBusy ? (
                 <Spinner className="h-3 w-3" />

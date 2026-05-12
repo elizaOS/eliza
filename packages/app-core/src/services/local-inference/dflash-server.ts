@@ -30,6 +30,15 @@ import {
   slotSavePath,
 } from "./cache-bridge";
 import { ELIZA_1_PLACEHOLDER_IDS, findCatalogModel } from "./catalog";
+import {
+  type DflashStreamEvent,
+  type DflashTurnStats,
+  parseDflashFieldFromSseChunk,
+} from "./dflash-event-schema";
+import {
+  DflashMetricsCollector,
+  dflashTurnHistory,
+} from "./dflash-metrics-collector";
 import { probeHardware } from "./hardware";
 import {
   estimateQuantizedKvBytesPerToken,
@@ -55,6 +64,7 @@ import {
 } from "./structured-output";
 import type {
   CatalogModel,
+  GpuProfile,
   InstalledModel,
   LocalRuntimeOptimizations,
 } from "./types";
@@ -161,6 +171,15 @@ export interface DflashGenerateArgs extends StructuredGenerateParams {
    * callers.
    */
   onVerifierEvent?: (event: VerifierStreamEvent) => void | Promise<void>;
+  /**
+   * Optional listener for native DFlash speculative-decoding events
+   * (`docs/dflash-native-events-protocol.md`). Fired only when the C-side
+   * llama-server advertises `capabilities.dflashNativeEvents` AND the
+   * bundle opts in via `optimizations.nativeDflashEvents`. When neither
+   * is true the legacy synthesized accept-only stream is what runs and
+   * this callback is never invoked.
+   */
+  onDflashEvent?: (event: DflashStreamEvent) => void | Promise<void>;
 }
 
 /**
@@ -181,6 +200,14 @@ export interface DflashGenerateResult {
    * stream ended before any chunk landed.
    */
   firstTokenMs: number | null;
+  /**
+   * Per-turn DFlash speculative-decoding stats computed from native
+   * accept/reject events on the SSE stream. Populated only when the
+   * C-side llama-server advertises `capabilities.dflashNativeEvents`
+   * AND the bundle opts in. When undefined, callers should fall back
+   * to scraping `/metrics` via `usage.dflash_drafted_tokens` etc.
+   */
+  dflashStats?: DflashTurnStats;
 }
 
 export interface DflashMetricsSnapshot {
@@ -593,6 +620,87 @@ function assertCacheTypeSupportedOnBackend(name: string, value: string): void {
   throw new Error(
     `${name}=${value} requires the '${requiredKernel}' kernel, but the installed llama-server binary's CAPABILITIES.json reports it absent. Rebuild the fork with the matching kernel patches (node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>) or use a stock KV cache type (f16/q8_0).`,
   );
+}
+
+/**
+ * Cache for `probeCtxCheckpointsSupported`. Keyed by absolute binary path —
+ * `start()` may resolve different binaries across the process lifetime so
+ * the cache key isn't process-global.
+ *
+ * Upstream llama.cpp exposes `--ctx-checkpoints N` / `--ctx-checkpoint-interval M`
+ * for mid-prefill KV snapshots (used by the voice optimistic-rollback path).
+ * Our fork hasn't merged the feature yet — the runtime probe lets the JS
+ * side ship now and start passing the flags automatically once the binary
+ * advertises them via `--help`.
+ */
+const ctxCheckpointsProbeCache = new Map<string, boolean>();
+
+/**
+ * Probe whether the installed `llama-server` binary supports the
+ * `--ctx-checkpoints` family of flags. Runs `<binary> --help` and greps for
+ * the option name. Cached per binary path so repeated server starts amortize
+ * the spawn cost. Returns `false` when the binary errors, the probe times
+ * out, or the help text doesn't mention the flag — in any of those cases the
+ * caller MUST proceed without the flags rather than fail startup.
+ */
+export function probeCtxCheckpointsSupported(binaryPath: string): boolean {
+  const cached = ctxCheckpointsProbeCache.get(binaryPath);
+  if (cached !== undefined) return cached;
+  let supported = false;
+  try {
+    const result = spawnSync(binaryPath, ["--help"], {
+      encoding: "utf8",
+      timeout: 5_000,
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    const text = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    supported = /--ctx-checkpoints\b/.test(text);
+  } catch {
+    supported = false;
+  }
+  if (!supported) {
+    console.warn(
+      `[local-inference] llama-server at ${binaryPath} does not advertise --ctx-checkpoints; optimistic-rollback voice path will run without mid-prefill snapshots until the upstream merge lands.`,
+    );
+  }
+  ctxCheckpointsProbeCache.set(binaryPath, supported);
+  return supported;
+}
+
+/**
+ * Test-only — reset the probe cache between mocked binaries.
+ */
+export function __resetCtxCheckpointsProbeCacheForTests(): void {
+  ctxCheckpointsProbeCache.clear();
+}
+
+/**
+ * Append `--ctx-checkpoints N --ctx-checkpoint-interval M` to `args` when:
+ *   - the catalog declares one or both values, AND
+ *   - the runtime probe says the binary supports the flags.
+ *
+ * No-op when either condition fails so server startup never breaks because
+ * of an old binary.
+ */
+export function appendCtxCheckpointFlags(
+  args: string[],
+  optimizations: LocalRuntimeOptimizations | null,
+  binaryPath: string,
+): void {
+  const ckpt = optimizations?.ctxCheckpoints;
+  const interval = optimizations?.ctxCheckpointInterval;
+  const hasCkpt =
+    typeof ckpt === "number" && Number.isInteger(ckpt) && ckpt > 0;
+  const hasInterval =
+    typeof interval === "number" && Number.isInteger(interval) && interval > 0;
+  if (!hasCkpt && !hasInterval) return;
+  if (!probeCtxCheckpointsSupported(binaryPath)) return;
+  if (hasCkpt) {
+    args.push("--ctx-checkpoints", String(ckpt));
+  }
+  if (hasInterval) {
+    args.push("--ctx-checkpoint-interval", String(interval));
+  }
 }
 
 export function dflashEnabled(): boolean {
@@ -1091,6 +1199,20 @@ async function fetchStreamingChatCompletion(
   callbacks: {
     onTextChunk?: (chunk: string) => void | Promise<void>;
     onVerifierEvent?: (event: VerifierStreamEvent) => void | Promise<void>;
+    /**
+     * Native DFlash event listener. When provided AND the parsed SSE
+     * chunk carries a well-formed `dflash` field, the parsed event(s) are
+     * forwarded here in addition to the legacy `onVerifierEvent` synthesis
+     * path. The caller decides whether native events should suppress the
+     * synthesized accept event (see `suppressSynthesizedVerifierEvent`).
+     */
+    onDflashEvent?: (event: DflashStreamEvent) => void | Promise<void>;
+    /**
+     * When true, do NOT fire the legacy synthesized `accept` event for
+     * each text chunk — the native event stream is authoritative. Set
+     * by the caller when `nativeDflashEventsEnabled()` resolved true.
+     */
+    suppressSynthesizedVerifierEvent?: boolean;
   },
   repairStream?: StructuredOutputRepairStream | null,
   externalSignal?: AbortSignal,
@@ -1134,10 +1256,21 @@ async function fetchStreamingChatCompletion(
       if (!data || data === "[DONE]") return;
       const parsed = JSON.parse(data);
 
-      // Native DFlash reject-range, if the fork attached one: retract the
-      // already-streamed drafted tokens in [a, b] and rewind the index
-      // cursor so re-decoded tokens get the correct indices. The phrase
-      // chunker drops the not-yet-spoken audio for the overlapping phrases.
+      // Native DFlash protocol — parse the `dflash` field first. When the
+      // C-side fork advertises `capabilities.dflashNativeEvents` and the
+      // bundle opts in, the SSE chunk carries one or more
+      // `DflashStreamEvent` payloads. They are additive: the chunk still
+      // has the standard OpenAI `choices[].delta.content` for text.
+      if (callbacks.onDflashEvent) {
+        const nativeEvents = parseDflashFieldFromSseChunk(parsed);
+        for (const ev of nativeEvents) {
+          await callbacks.onDflashEvent(ev);
+        }
+      }
+
+      // Legacy native reject-range — single-event shape predating the
+      // discriminated-union protocol. Kept for compatibility with builds
+      // that emit `verifier.rejected` without the richer `dflash` field.
       const rejectRange = extractVerifierRejectRange(parsed);
       if (rejectRange) {
         const [from, to] = rejectRange;
@@ -1161,7 +1294,10 @@ async function fetchStreamingChatCompletion(
         firstTokenMs = performance.now() - t0;
       }
       text += chunk;
-      if (callbacks.onVerifierEvent) {
+      if (
+        callbacks.onVerifierEvent &&
+        !callbacks.suppressSynthesizedVerifierEvent
+      ) {
         const event: VerifierStreamEvent = {
           kind: "accept",
           tokens: [{ index: nextIndex++, text: chunk }],
@@ -1170,6 +1306,10 @@ async function fetchStreamingChatCompletion(
           event.meta = { firstTokenMs };
         }
         await callbacks.onVerifierEvent(event);
+      } else if (callbacks.suppressSynthesizedVerifierEvent) {
+        // Still advance nextIndex so the structured-output repair path
+        // and the final flush continue to use a consistent counter.
+        nextIndex += 1;
       }
       await callbacks.onTextChunk?.(chunk);
     };
@@ -1191,11 +1331,16 @@ async function fetchStreamingChatCompletion(
     const finalRepair = repairStream?.flush() ?? "";
     if (finalRepair) {
       text += finalRepair;
-      if (callbacks.onVerifierEvent) {
+      if (
+        callbacks.onVerifierEvent &&
+        !callbacks.suppressSynthesizedVerifierEvent
+      ) {
         await callbacks.onVerifierEvent({
           kind: "accept",
           tokens: [{ index: nextIndex++, text: finalRepair }],
         });
+      } else if (callbacks.suppressSynthesizedVerifierEvent) {
+        nextIndex += 1;
       }
       await callbacks.onTextChunk?.(finalRepair);
     }
@@ -1466,6 +1611,62 @@ export function appendOptimizationFlags(
 }
 
 /**
+ * Inject a `GpuProfile`'s tuned flags into an in-progress llama-server
+ * command line. Pure addition — call this *after* `appendOptimizationFlags`
+ * so env-var overrides still win, but the profile wins over a catalog
+ * default that left the flag unset.
+ *
+ * The helper is intentionally conservative:
+ *  - It does NOT push `--n-gpu-layers` (the spawn site already handles
+ *    `gpuLayers` from the DFlash plan; overriding it from a profile would
+ *    fight with the explicit catalog value).
+ *  - It does NOT push `--ctx-size` (sized per-bundle by the caller).
+ *  - It DOES push `--cache-type-k/-v`, `--parallel`, `--batch-size`,
+ *    `--ubatch-size`, `--mlock`, `--no-mmap`, `-fa on`,
+ *    `--no-kv-offload` (when `kvSpillToCpu` is set), and DFlash
+ *    `--draft-min` / `--draft-max`.
+ *
+ * Idempotent on flags already present: if `args` already contains a
+ * `--batch-size` token, we don't push a second copy.
+ */
+export function applyGpuProfile(args: string[], profile: GpuProfile): string[] {
+  if (!args.includes("--cache-type-k")) {
+    args.push("--cache-type-k", profile.kvCacheTypeK);
+  }
+  if (!args.includes("--cache-type-v")) {
+    args.push("--cache-type-v", profile.kvCacheTypeV);
+  }
+  if (!args.includes("--parallel")) {
+    args.push("--parallel", String(profile.parallel));
+  }
+  if (!args.includes("--batch-size")) {
+    args.push("--batch-size", String(profile.batchSize));
+  }
+  if (!args.includes("--ubatch-size")) {
+    args.push("--ubatch-size", String(profile.ubatchSize));
+  }
+  if (profile.flashAttn && !args.includes("-fa")) {
+    args.push("-fa", "on");
+  }
+  if (profile.mlock && !args.includes("--mlock")) {
+    args.push("--mlock");
+  }
+  if (profile.noMmap && !args.includes("--no-mmap")) {
+    args.push("--no-mmap");
+  }
+  if (profile.kvSpillToCpu && !args.includes("--no-kv-offload")) {
+    args.push("--no-kv-offload");
+  }
+  if (!args.includes("--draft-min")) {
+    args.push("--draft-min", String(profile.dflashDraftMin));
+  }
+  if (!args.includes("--draft-max")) {
+    args.push("--draft-max", String(profile.dflashDraftMax));
+  }
+  return args;
+}
+
+/**
  * Default eviction sweep interval. Set to 5 minutes to match the short
  * TTL — a slot file at most one short-TTL window stale before it's
  * deleted. Override via `ELIZA_LOCAL_EVICTION_INTERVAL_MS`.
@@ -1570,6 +1771,14 @@ export class DflashLlamaServer implements LocalInferenceBackend {
    * serializing on it would block unrelated work.
    */
   private readonly slotInFlight = new Map<number, Promise<void>>();
+
+  /**
+   * Cached result of the `/health` capability probe — does the running
+   * llama-server advertise `capabilities.dflashNativeEvents: true`? The
+   * probe runs at most once per server lifetime; `null` means "not yet
+   * probed", `false` means "probed and missing or absent".
+   */
+  private nativeDflashEventsCapability: boolean | null = null;
 
   hasLoadedModel(): boolean {
     return this.child !== null && this.loadedPlan !== null;
@@ -2055,6 +2264,13 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     // budget wins over any catalog `cacheRamMb`. `resident`/`null` plans
     // are no-ops.
     appendKvSpillFlags(args, plan.kvSpillPlan);
+    // Mid-prefill KV checkpoints (upstream llama.cpp `--ctx-checkpoints` +
+    // `--ctx-checkpoint-interval`). Gated by a `--help` probe so older fork
+    // builds without the feature merged in still start cleanly — see
+    // `appendCtxCheckpointFlags` + `probeCtxCheckpointsSupported`. The voice
+    // optimistic-rollback path (`OptimisticRollbackController`) reads these
+    // snapshots over `/slots/<id>/save` + `/restore`.
+    appendCtxCheckpointFlags(args, optimizations ?? null, status.binaryPath);
 
     // Fused omnivoice TTS: when the resolved binary is the omnivoice-fused
     // `llama-server` and the bundle ships its TTS GGUFs, hand them to the
@@ -2232,6 +2448,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     this.conversationKvDir = null;
     this.cacheParallel = DEFAULT_CACHE_PARALLEL;
     this.lastOptimizations = null;
+    this.nativeDflashEventsCapability = null;
     if (!child) return;
     // Best-effort: tell llama-server to flush per-conversation KV state
     // to disk before we kill it. If the dispatcher restarts the server
@@ -2427,6 +2644,56 @@ export class DflashLlamaServer implements LocalInferenceBackend {
   }
 
   /**
+   * Probe the running llama-server for native DFlash event support. Result
+   * is cached for the lifetime of the spawned process. Returns false on
+   * any error or when the field is absent — the legacy synthesis path is
+   * always the safe fallback. Visible for tests via `probeNativeDflashEvents`.
+   */
+  private async probeNativeDflashEventsCapability(): Promise<boolean> {
+    if (this.nativeDflashEventsCapability !== null) {
+      return this.nativeDflashEventsCapability;
+    }
+    const baseUrl = this.baseUrl;
+    if (!baseUrl) {
+      this.nativeDflashEventsCapability = false;
+      return false;
+    }
+    let detected = false;
+    try {
+      const res = await fetch(`${baseUrl}/health`, {
+        signal: AbortSignal.timeout(2_000),
+      });
+      if (res.ok) {
+        const body = (await res.json()) as unknown;
+        if (body && typeof body === "object") {
+          const caps = (body as Record<string, unknown>).capabilities;
+          if (caps && typeof caps === "object") {
+            detected =
+              (caps as Record<string, unknown>).dflashNativeEvents === true;
+          }
+        }
+      }
+    } catch {
+      detected = false;
+    }
+    this.nativeDflashEventsCapability = detected;
+    return detected;
+  }
+
+  /**
+   * Decide whether native DFlash events should drive this turn's verifier
+   * callback. Native mode is enabled when ALL of:
+   *  1. The loaded bundle opts in (`optimizations.nativeDflashEvents`).
+   *  2. The running server advertises `capabilities.dflashNativeEvents`.
+   * Otherwise the legacy synthesized accept-only stream runs unchanged.
+   */
+  private async nativeDflashEventsEnabled(): Promise<boolean> {
+    const bundleOptIn = Boolean(this.lastOptimizations?.nativeDflashEvents);
+    if (!bundleOptIn) return false;
+    return this.probeNativeDflashEventsCapability();
+  }
+
+  /**
    * Run one generation and return both the text AND the Anthropic-shape
    * usage block. The usage block is built by differencing two `/metrics`
    * snapshots taken before/after the request, plus the per-call
@@ -2483,7 +2750,11 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     args: DflashGenerateArgs | BackendGenerateArgs,
     slotId: number,
   ): Promise<DflashGenerateResult> {
-    const streaming = Boolean(args.onTextChunk || dflashArgs.onVerifierEvent);
+    const streaming = Boolean(
+      args.onTextChunk ||
+        dflashArgs.onVerifierEvent ||
+        dflashArgs.onDflashEvent,
+    );
     const prefill =
       typeof dflashArgs.prefill === "string" && dflashArgs.prefill.length > 0
         ? dflashArgs.prefill
@@ -2493,6 +2764,14 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     let json: Record<string, unknown> | null = null;
     let text: string;
     let firstTokenMs: number | null = null;
+    // Native DFlash event collector. Active only when the bundle opts in
+    // AND the running server advertises the capability. When inactive,
+    // `nativeEventsActive` is false and the existing JS synthesis path
+    // runs unchanged — `dflashStats` is omitted from the result.
+    const nativeEventsActive = streaming
+      ? await this.nativeDflashEventsEnabled()
+      : false;
+    const collector = nativeEventsActive ? new DflashMetricsCollector() : null;
     if (streaming) {
       const repairStream =
         dflashArgs.responseSkeleton || dflashArgs.responseSchema
@@ -2515,6 +2794,12 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         });
         await args.onTextChunk?.(streamedPrefix);
       }
+      const onDflashEvent = nativeEventsActive
+        ? async (event: DflashStreamEvent) => {
+            collector?.record(event);
+            await dflashArgs.onDflashEvent?.(event);
+          }
+        : undefined;
       const tail = await fetchStreamingChatCompletion(
         `${baseUrl}/v1/chat/completions`,
         {
@@ -2526,6 +2811,8 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         {
           onTextChunk: args.onTextChunk,
           onVerifierEvent: dflashArgs.onVerifierEvent,
+          onDflashEvent,
+          suppressSynthesizedVerifierEvent: nativeEventsActive,
         },
         repairStream,
         args.signal,
@@ -2581,7 +2868,21 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       );
     }
     this.touchSlot(slotId);
-    return { text, usage, slotId, firstTokenMs };
+    let dflashStats: DflashTurnStats | undefined;
+    if (collector) {
+      const summary = collector.finalize();
+      dflashStats = {
+        drafted: summary.drafted,
+        accepted: summary.accepted,
+        rounds: summary.rounds,
+        acceptanceRate: summary.acceptanceRate,
+      };
+      // Fire-and-forget: history push logs + notifies listeners. Errors
+      // from listeners must not affect the caller's completion result,
+      // so we don't await it here.
+      void dflashTurnHistory.push(summary);
+    }
+    return { text, usage, slotId, firstTokenMs, dflashStats };
   }
 
   /**

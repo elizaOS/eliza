@@ -19,17 +19,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OmnivoiceNotInstalled } from "../src/errors";
 import { OmnivoiceContext } from "../src/ffi";
 import {
-  _hasCachedSingingContext,
-  _resetSingingCache,
-  getSingingContext,
-} from "../src/singing";
-import {
   _clearOmnivoiceClosers,
   _resetShutdownRegistration,
   closeOmnivoiceShutdown,
   registerOmnivoiceCloser,
   registerOmnivoiceShutdownHooks,
 } from "../src/shutdown";
+import {
+  _hasCachedSingingContext,
+  _resetSingingCache,
+  getSingingContext,
+} from "../src/singing";
 
 function fakeOmnivoiceContext(): OmnivoiceContext {
   // The FFI class has private fields, but we only need it to behave
@@ -62,9 +62,7 @@ describe("plugin-omnivoice shutdown", () => {
     const fake = fakeOmnivoiceContext();
     const closeSpy = fake.close as ReturnType<typeof vi.fn>;
 
-    const openSpy = vi
-      .spyOn(OmnivoiceContext, "open")
-      .mockResolvedValue(fake);
+    const openSpy = vi.spyOn(OmnivoiceContext, "open").mockResolvedValue(fake);
 
     try {
       await getSingingContext({

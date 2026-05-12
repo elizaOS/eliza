@@ -33,7 +33,10 @@ export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
     ?.tts;
   if (tts && typeof tts === "object" && tts !== null) {
     const provider = (tts as Record<string, unknown>).provider;
-    if (typeof provider === "string" && provider.toLowerCase() === "omnivoice") {
+    if (
+      typeof provider === "string" &&
+      provider.toLowerCase() === "omnivoice"
+    ) {
       return true;
     }
   }

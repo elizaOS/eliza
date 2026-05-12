@@ -3,18 +3,15 @@ import type {
   BrowserBridgeCompanionPackageStatus,
   BrowserBridgeCompanionStatus,
 } from "@elizaos/plugin-browser";
-import {
-  Button,
-  ConfirmDialog,
-  Input,
-  SidebarCollapsedActionButton,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-  useConfirm,
-  useIntervalWhenDocumentVisible,
-  WorkspaceLayout,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { ConfirmDialog, useConfirm } from "../ui/confirm-dialog";
+import { Input } from "../ui/input";
+import { SidebarCollapsedActionButton } from "../composites/sidebar/sidebar-collapsed-rail";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
+import { WorkspaceLayout } from "../../layouts/workspace-layout/workspace-layout";
 import {
   ExternalLink,
   FolderOpen,

@@ -24,7 +24,7 @@
  *
  * Usage:
  *   node packages/inference/verify/eliza1_gates_collect.mjs \
- *     [--tier 0_6b|1_7b|9b|27b|27b-256k|27b-1m] [--gates PATH] [--report PATH] [--json]
+ *     [--tier 0_8b|2b|9b|27b|27b-256k|27b-1m] [--gates PATH] [--report PATH] [--json]
  */
 
 import fs from "node:fs";
@@ -57,7 +57,7 @@ function timestamp() {
 
 function parseArgs(argv) {
   const args = {
-    tier: "1_7b",
+    tier: "2b",
     gates: DEFAULT_GATES,
     report: null,
     json: false,
@@ -412,10 +412,24 @@ async function main() {
       String(data?.labelledSet?.source ?? "").includes("tts") &&
       matchesTier(data, args.tier),
   );
+  const asrTtsLoopbackSmoke = newestJsonReportWhere(
+    [path.join(REPORTS_ROOT, "local-e2e")],
+    ({ name, data }) =>
+      name.startsWith("asr-tts-loopback") &&
+      data?.ok === true &&
+      matchesTier(data, args.tier),
+  );
   const voiceProfile = newestJsonReportWhere(
     [path.join(REPORTS_ROOT, "local-e2e")],
     ({ name, data }) =>
       name.startsWith("voice-profile-emotion-readiness") &&
+      matchesTier(data, args.tier),
+  );
+  const ttsStreamSmoke = newestJsonReportWhere(
+    [path.join(REPORTS_ROOT, "local-e2e")],
+    ({ name, data }) =>
+      name.startsWith("tts-stream-smoke") &&
+      data?.ok === true &&
       matchesTier(data, args.tier),
   );
   const ttsSweep = newestJsonReportWhere(
@@ -535,6 +549,7 @@ async function main() {
     null;
   const voiceRtf =
     averageStepRtf(ttsSweep?.data) ??
+    ttsStreamSmoke?.data?.rtf ??
     e2eLoop?.data?.summary?.ttsRtfMedian ??
     e2eLoop?.data?.summary?.ttsRtfMean ??
     evalAggregate?.data?.results?.voice_rtf ??
@@ -753,16 +768,18 @@ async function main() {
   const iosStatus = iosSmoke?.data?.status === "passed" ? "pass" : iosSmoke ? "fail" : "needs-data";
   const iosBlocker = iosSmoke?.data?.blocker;
   const localVoiceLoopbackPass =
+    asrTtsLoopbackSmoke?.data?.ok === true ||
     voiceProfile?.data?.defaultStreamingTtsRoundTrip?.status === "pass";
   const localVoiceLoopbackRtf = firstFinite(
+    ttsStreamSmoke?.data?.rtf,
     voiceProfile?.data?.defaultStreamingTtsRoundTrip?.tts?.rtf,
     averageStepRtf(ttsSweep?.data),
   );
   const localVoiceLoopbackWer = localVoiceLoopbackPass
-    ? 0
-    : firstFinite(
-        ttsSweep?.data?.summary?.stepSweep?.[0]?.meanAsrWer,
-        asrBench?.data?.aggregate?.wer,
+      ? 0
+      : firstFinite(
+          ttsSweep?.data?.summary?.stepSweep?.[0]?.meanAsrWer,
+          asrBench?.data?.aggregate?.wer,
       );
   const localVoiceLoopbackStatus =
     localVoiceLoopbackPass || (localVoiceLoopbackWer !== null && localVoiceLoopbackWer <= 0.1)
@@ -772,7 +789,7 @@ async function main() {
         : "needs-data";
   const releaseGateMatrix = [
     gateRow("text_eval", "quality", sourcePath(textEval ?? evalAggregate)),
-    gateRow("voice_rtf", "voice", sourcePath(ttsSweep ?? e2eLoop)),
+    gateRow("voice_rtf", "voice", sourcePath(ttsSweep ?? ttsStreamSmoke ?? e2eLoop)),
     gateRow(
       "asr_wer",
       "voice",
@@ -795,7 +812,9 @@ async function main() {
         localVoiceLoopbackStatus === "pass"
           ? "default generated TTS audio round-tripped through local ASR"
           : "generated TTS->ASR smoke did not pass lexical validation",
-      source: sourcePath(voiceProfile ?? ttsSweep ?? asrBench),
+      source: sourcePath(
+        asrTtsLoopbackSmoke ?? voiceProfile ?? ttsSweep ?? asrBench,
+      ),
     },
     gateRow("vad_latency_ms", "voice", sourcePath(vadQuality)),
     gateRow("vad_boundary_mae_ms", "voice", sourcePath(vadQuality)),
@@ -915,7 +934,7 @@ async function main() {
       status: visionStatus,
       blocking: visionStatus === "fail",
       measured: visionSmoke?.data?.status ?? null,
-      threshold: args.tier === "0_6b" || args.tier === "1_7b" ? "not-applicable" : "pass",
+      threshold: args.tier === "0_8b" || args.tier === "2b" ? "not-applicable" : "pass",
       reason:
         visionSmoke?.data?.reason ??
         (visionStatus === "needs-data" ? "no vision smoke evidence for this tier" : "vision smoke passed"),
@@ -975,7 +994,9 @@ async function main() {
       dflashBench: sourcePath(dflashBench),
       asrExternal: sourcePath(asrExternal),
       asrBench: sourcePath(asrBench),
+      asrTtsLoopbackSmoke: sourcePath(asrTtsLoopbackSmoke),
       voiceProfile: sourcePath(voiceProfile),
+      ttsStreamSmoke: sourcePath(ttsStreamSmoke),
       ttsSweep: sourcePath(ttsSweep),
       vadQuality: sourcePath(vadQuality),
       bargein: sourcePath(bargein),

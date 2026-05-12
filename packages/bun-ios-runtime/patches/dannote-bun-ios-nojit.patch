@@ -27,6 +27,37 @@ index 7fd4a2d57..46143106a 100644
      )
  
      if(ENABLE_ASAN)
+diff --git a/cmake/tools/SetupZig.cmake b/cmake/tools/SetupZig.cmake
+index cd5e67770..423b8ae7c 100644
+--- a/cmake/tools/SetupZig.cmake
++++ b/cmake/tools/SetupZig.cmake
+@@ -68,7 +68,9 @@ setenv(ZIG_GLOBAL_CACHE_DIR ${ZIG_GLOBAL_CACHE_DIR})
+ 
+ setx(ZIG_PATH ${VENDOR_PATH}/zig)
+ 
+-if(WIN32)
++if(DEFINED ENV{ELIZA_BUN_IOS_ZIG_EXECUTABLE})
++  setx(ZIG_EXECUTABLE $ENV{ELIZA_BUN_IOS_ZIG_EXECUTABLE})
++elseif(WIN32)
+   setx(ZIG_EXECUTABLE ${ZIG_PATH}/zig.exe)
+ else()
+   setx(ZIG_EXECUTABLE ${ZIG_PATH}/zig)
+diff --git a/src/Global.zig b/src/Global.zig
+index 91fb6994a..ddb0ebffa 100644
+--- a/src/Global.zig
++++ b/src/Global.zig
+@@ -127,10 +127,7 @@ pub fn exit(code: u32) noreturn {
+             // The host app continues running.
+             if (bun_ios_exit_callback) |cb| {
+                 cb(code);
+-                // Don't exit - just sleep this thread forever so host app keeps running
+-                while (true) {
+-                    std.Thread.sleep(std.time.ns_per_s * 60 * 60 * 24); // Sleep 1 day
+-                }
++                bun.exitThread();
+             }
+             // Only call _exit if no callback is set (command-line mode)
+             std.c._exit(@bitCast(code));
 diff --git a/src/bun.js/bindings/BunCPUProfiler.cpp b/src/bun.js/bindings/BunCPUProfiler.cpp
 index 5cbafb227..e1b79f21e 100644
 --- a/src/bun.js/bindings/BunCPUProfiler.cpp
@@ -456,6 +487,104 @@ index 15703aa7b..871f3aec2 100644
  #else
  #define BUN_VERBOSE_ABORT_NOEXCEPT
  #endif
+diff --git a/src/bun.js/modules/BunJSCModule.h b/src/bun.js/modules/BunJSCModule.h
+index ef8670ff1..f4e708aec 100644
+--- a/src/bun.js/modules/BunJSCModule.h
++++ b/src/bun.js/modules/BunJSCModule.h
+@@ -79,11 +79,14 @@ JSC_DEFINE_HOST_FUNCTION(functionStartRemoteDebugger,
+     JSC::JSValue hostValue = callFrame->argument(0);
+     JSC::JSValue portValue = callFrame->argument(1);
+     const char* host = defaultHost;
++    CString hostCString;
+     if (hostValue.isString()) {
+ 
+         auto str = hostValue.toWTFString(globalObject);
+-        if (!str.isEmpty())
+-            host = toCString(str).span().data();
++        if (!str.isEmpty()) {
++            hostCString = toCString(str);
++            host = hostCString.span().data();
++        }
+     } else if (!hostValue.isUndefined()) {
+         throwVMError(globalObject, scope,
+             createTypeError(globalObject, "host must be a string"_s));
+@@ -405,6 +408,7 @@ JSC_DEFINE_HOST_FUNCTION(functionStartSamplingProfiler,
+     (JSC::JSGlobalObject * globalObject,
+         JSC::CallFrame* callFrame))
+ {
++#if ENABLE(SAMPLING_PROFILER)
+     auto& vm = JSC::getVM(globalObject);
+     JSC::SamplingProfiler& samplingProfiler = vm.ensureSamplingProfiler(WTF::Stopwatch::create());
+ 
+@@ -436,6 +440,10 @@ JSC_DEFINE_HOST_FUNCTION(functionStartSamplingProfiler,
+ 
+     samplingProfiler.noticeCurrentThreadAsJSCExecutionThread();
+     samplingProfiler.start();
++#else
++    UNUSED_PARAM(globalObject);
++    UNUSED_PARAM(callFrame);
++#endif
+     return JSC::JSValue::encode(jsUndefined());
+ }
+ 
+@@ -444,6 +452,7 @@ JSC_DEFINE_HOST_FUNCTION(functionSamplingProfilerStackTraces,
+     (JSC::JSGlobalObject * globalObject,
+         JSC::CallFrame*))
+ {
++#if ENABLE(SAMPLING_PROFILER)
+     auto& vm = JSC::getVM(globalObject);
+     JSC::DeferTermination deferScope(vm);
+     auto scope = DECLARE_THROW_SCOPE(vm);
+@@ -457,6 +466,9 @@ JSC_DEFINE_HOST_FUNCTION(functionSamplingProfilerStackTraces,
+     JSC::EncodedJSValue result = JSC::JSValue::encode(JSONParse(globalObject, jsonString));
+     scope.releaseAssertNoException();
+     return result;
++#else
++    return JSC::JSValue::encode(JSC::constructEmptyArray(globalObject, nullptr, 0));
++#endif
+ }
+ 
+ JSC_DECLARE_HOST_FUNCTION(functionGetRandomSeed);
+@@ -632,6 +644,7 @@ JSC_DEFINE_HOST_FUNCTION(functionSetTimeZone, (JSGlobalObject * globalObject, Ca
+ 
+ JSC_DEFINE_HOST_FUNCTION(functionRunProfiler, (JSGlobalObject * globalObject, CallFrame* callFrame))
+ {
++#if ENABLE(SAMPLING_PROFILER)
+     auto& vm = JSC::getVM(globalObject);
+     JSC::SamplingProfiler& samplingProfiler = vm.ensureSamplingProfiler(WTF::Stopwatch::create());
+ 
+@@ -744,6 +757,15 @@ JSC_DEFINE_HOST_FUNCTION(functionRunProfiler, (JSGlobalObject * globalObject, Ca
+ 
+     JSValue result = report(vm, globalObject);
+     RELEASE_AND_RETURN(throwScope, JSValue::encode(result));
++#else
++    UNUSED_PARAM(callFrame);
++    auto& vm = JSC::getVM(globalObject);
++    JSObject* result = constructEmptyObject(globalObject, globalObject->objectPrototype(), 3);
++    result->putDirect(vm, Identifier::fromString(vm, "functions"_s), jsEmptyString(vm));
++    result->putDirect(vm, Identifier::fromString(vm, "bytecodes"_s), jsEmptyString(vm));
++    result->putDirect(vm, Identifier::fromString(vm, "stackTraces"_s), constructEmptyArray(globalObject, nullptr, 0));
++    return JSValue::encode(result);
++#endif
+ }
+ 
+ JSC_DECLARE_HOST_FUNCTION(functionGenerateHeapSnapshotForDebugging);
+diff --git a/src/crash_handler.zig b/src/crash_handler.zig
+index 9dfb83f06..a62b0c4f0 100644
+--- a/src/crash_handler.zig
++++ b/src/crash_handler.zig
+@@ -892,9 +892,10 @@ pub fn init() void {
+         .windows => {
+             windows_segfault_handle = windows.kernel32.AddVectoredExceptionHandler(0, handleSegfaultWindows);
+         },
+-        .mac, .ios, .linux => {
++        .mac, .linux => {
+             resetOnPosix();
+         },
++        .ios => {},
+         .wasm => @compileError("TODO"),
+     }
+ }
 diff --git a/src/ios/embedding.c b/src/ios/embedding.c
 index bdcb508df..384aa7be4 100644
 --- a/src/ios/embedding.c

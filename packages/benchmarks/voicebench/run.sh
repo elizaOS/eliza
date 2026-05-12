@@ -17,7 +17,7 @@ if [[ -z "${BUN_BIN}" ]]; then
   fi
 fi
 
-PROFILE="${VOICEBENCH_PROFILE:-mock}"
+PROFILE="${VOICEBENCH_PROFILE:-groq}"
 ITERATIONS=""
 RUN_TS=true
 OUT_DIR="${RESULTS_DIR}"
@@ -38,6 +38,16 @@ done
 
 mkdir -p "${OUT_DIR}"
 
+if [[ "${PROFILE}" == "mock" ]]; then
+  echo "[voicebench] mock profile has been removed from the real benchmark runner." >&2
+  echo "[voicebench] Use --profile=groq or --profile=elevenlabs with real credentials and real audio fixtures." >&2
+  exit 1
+fi
+if [[ "${PROFILE}" != "groq" && "${PROFILE}" != "elevenlabs" ]]; then
+  echo "[voicebench] Unsupported real profile: ${PROFILE}. Expected groq or elevenlabs." >&2
+  exit 1
+fi
+
 # Default Groq model and TTS settings for benchmark consistency.
 export GROQ_SMALL_MODEL="${GROQ_SMALL_MODEL:-openai/gpt-oss-120b}"
 export GROQ_LARGE_MODEL="${GROQ_LARGE_MODEL:-openai/gpt-oss-120b}"
@@ -57,10 +67,6 @@ if [[ -z "${VOICEBENCH_AUDIO_PATH:-}" ]]; then
     "${SCRIPT_DIR}/shared/audio/default.wav"
     "${ROOT_DIR}/agent-town/public/assets/background.mp3"
   )
-  if [[ "${PROFILE}" == "mock" ]]; then
-    CANDIDATE_AUDIO_PATHS=("${SCRIPT_DIR}/shared/mock-audio.txt" "${CANDIDATE_AUDIO_PATHS[@]}")
-  fi
-
   for candidate in "${CANDIDATE_AUDIO_PATHS[@]}"; do
     if [[ -f "${candidate}" ]]; then
       VOICEBENCH_AUDIO_PATH="${candidate}"
@@ -71,7 +77,7 @@ fi
 
 if [[ -z "${VOICEBENCH_AUDIO_PATH:-}" ]]; then
   echo "No audio file found. Set VOICEBENCH_AUDIO_PATH to a short audio clip."
-  echo "For credential-free smoke tests, use --profile=mock."
+  echo "Mock audio is not accepted by the real benchmark runner."
   exit 1
 fi
 VOICEBENCH_AUDIO_PATH="$(python3 -c 'import os,sys; print(os.path.abspath(sys.argv[1]))' "${VOICEBENCH_AUDIO_PATH}")"
@@ -91,6 +97,15 @@ if [[ -n "${DATASET}" ]]; then
     exit 1
   fi
   COMMON_ARGS+=("--dataset=${DATASET}")
+fi
+
+if [[ -z "${GROQ_API_KEY:-}" ]]; then
+  echo "[voicebench] GROQ_API_KEY is required for real response/STT profile ${PROFILE}." >&2
+  exit 1
+fi
+if [[ "${PROFILE}" == "elevenlabs" && -z "${ELEVENLABS_API_KEY:-}" ]]; then
+  echo "[voicebench] ELEVENLABS_API_KEY is required for --profile=elevenlabs." >&2
+  exit 1
 fi
 
 echo "[voicebench] profile=${PROFILE}"

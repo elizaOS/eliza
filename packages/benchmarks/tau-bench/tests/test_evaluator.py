@@ -234,6 +234,28 @@ class TestPassKCalculation:
         # Pass^4: only t1 passes all 4 = 1/3
         assert metrics[4].pass_rate == pytest.approx(1/3, rel=0.01)
 
+    def test_pass_k_uses_trial_numbers_not_input_order(self, evaluator):
+        """Shuffled results should still use the first numbered trials."""
+        results = [
+            TauBenchResult(
+                task_id="t1",
+                domain=TauDomain.RETAIL,
+                trial_number=2,
+                success=True,
+            ),
+            TauBenchResult(
+                task_id="t1",
+                domain=TauDomain.RETAIL,
+                trial_number=1,
+                success=False,
+            ),
+        ]
+
+        metrics = evaluator.calculate_pass_k(results, [1, 2])
+
+        assert metrics[1].pass_rate == 0.0
+        assert metrics[2].pass_rate == 0.0
+
     def test_compare_to_leaderboard(self, evaluator):
         """Test leaderboard comparison."""
         results = [

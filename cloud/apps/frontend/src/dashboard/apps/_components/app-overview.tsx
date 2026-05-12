@@ -83,10 +83,8 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
 
   useEffect(() => {
     if (showApiKey) {
-      setTimeout(() => {
-        setDisplayApiKey(showApiKey);
-        setShowKey(true);
-      }, 0);
+      setDisplayApiKey(showApiKey);
+      setShowKey(true);
       const timer = setTimeout(() => {
         setDisplayApiKey("");
         setShowKey(false);
@@ -126,10 +124,12 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
       }
 
       const data = await response.json();
+      if (typeof data.apiKey !== "string" || data.apiKey.length === 0) {
+        throw new Error("Regeneration response did not include an API key");
+      }
       setDisplayApiKey(data.apiKey);
       setShowKey(true);
       toast.success("API key regenerated");
-      window.location.reload();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to regenerate");
     } finally {
@@ -150,7 +150,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
   return (
     <div className="space-y-4">
       {/* New API Key Alert */}
-      {showApiKey && displayApiKey && (
+      {showKey && displayApiKey && (
         <div className="p-4 rounded-xl bg-[#FF5800]/10 border border-[#FF5800]/20">
           <div className="flex items-start gap-3">
             <Key className="h-5 w-5 text-[#FF5800] mt-0.5 shrink-0" />

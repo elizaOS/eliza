@@ -1,16 +1,14 @@
-import {
-  Button,
-  FieldLabel,
-  NewActionButton,
-  PageLayout,
-  PagePanel,
-  SidebarCollapsedActionButton,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-  StatusBadge,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { FieldLabel } from "../ui/field";
+import { NewActionButton } from "../ui/new-action-button";
+import { PageLayout } from "../../layouts/page-layout/page-layout";
+import { PagePanel } from "../composites/page-panel";
+import { SidebarCollapsedActionButton } from "../composites/sidebar/sidebar-collapsed-rail";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarHeader } from "../composites/sidebar/sidebar-header";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
+import { StatusBadge } from "../ui/status-badge";
 import { Plus } from "lucide-react";
 import {
   createContext,
