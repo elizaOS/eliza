@@ -854,6 +854,59 @@
     {
       "type": "function",
       "function": {
+        "name": "BOOK_TRAVEL",
+        "description": "Search or prepare travel options without booking.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "intent": {
+              "type": "string"
+            },
+            "origin": {
+              "type": "string"
+            },
+            "destination": {
+              "type": "string"
+            },
+            "departureDate": {
+              "type": "string"
+            },
+            "returnDate": {
+              "type": "string"
+            },
+            "passengers": {
+              "type": "number"
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:travel",
+        "capability:read",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:travel",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
         "name": "BRIEF",
         "description": "briefing: compose_morning|compose_evening|compose_weekly; LifeOpsBriefing shape; LLM narrative pass",
         "parameters": {
@@ -6584,6 +6637,64 @@
     {
       "type": "function",
       "function": {
+        "name": "HEALTH",
+        "description": "Read health data without mutating state.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps HEALTH discriminator.",
+              "enum": [
+                "by_metric",
+                "summary",
+                "trends"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "metric": {
+              "type": "string"
+            },
+            "date": {
+              "type": "string"
+            },
+            "days": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:health",
+        "capability:read",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:health",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
         "name": "INBOX_UNIFIED",
         "description": "unified inbox: list|search|summarize across gmail|slack|discord|telegram|signal|imessage|whatsapp; dedupe by id+thread topic",
         "parameters": {
@@ -6842,6 +6953,454 @@
       "_domain": null,
       "_capabilities": [
         "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LIFE",
+        "description": "Bench umbrella verb for LIFE.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps LIFE discriminator.",
+              "enum": [
+                "create",
+                "complete",
+                "snooze",
+                "review",
+                "delete",
+                "update",
+                "skip"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LIFE_COMPLETE",
+        "description": "Complete a target, usually a reminder. Include target.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps LIFE_COMPLETE discriminator.",
+              "enum": [
+                "complete"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:reminders",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:update"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LIFE_CREATE",
+        "description": "Create personal life records such as reminders, alarms, workouts, or health metrics. Use subaction=create and put typed fields in details.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps LIFE_CREATE discriminator.",
+              "enum": [
+                "create"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "details": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:reminders",
+        "capability:write",
+        "capability:schedule",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:write",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LIFE_DELETE",
+        "description": "Bench umbrella verb for LIFE_DELETE.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps LIFE_DELETE discriminator.",
+              "enum": [
+                "delete"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            },
+            "details": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:reminders",
+        "capability:delete",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LIFE_REVIEW",
+        "description": "Review life records without mutating state.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps LIFE_REVIEW discriminator.",
+              "enum": [
+                "review"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LIFE_SKIP",
+        "description": "Bench umbrella verb for LIFE_SKIP.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps LIFE_SKIP discriminator.",
+              "enum": [
+                "skip"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "details": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:reminders",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:update"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LIFE_SNOOZE",
+        "description": "Snooze a reminder-like target. Include target and minutes.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps LIFE_SNOOZE discriminator.",
+              "enum": [
+                "snooze"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "minutes": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:reminders",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:update"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LIFE_UPDATE",
+        "description": "Bench umbrella verb for LIFE_UPDATE.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps LIFE_UPDATE discriminator.",
+              "enum": [
+                "update"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "details": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:reminders",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:update"
       ],
       "_surfaces": [
         "surface:internal"
@@ -7198,6 +7757,371 @@
         "surface:remote-api"
       ],
       "_risk": "risk:irreversible",
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_DASHBOARD",
+        "description": "Read the financial dashboard.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps MONEY_DASHBOARD discriminator.",
+              "enum": [
+                "dashboard"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "windowDays": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_LIST_TRANSACTIONS",
+        "description": "List financial transactions.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps MONEY_LIST_TRANSACTIONS discriminator.",
+              "enum": [
+                "list_transactions"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "windowDays": {
+              "type": "number"
+            },
+            "merchantContains": {
+              "type": "string"
+            },
+            "onlyDebits": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_RECURRING_CHARGES",
+        "description": "List recurring charges.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps MONEY_RECURRING_CHARGES discriminator.",
+              "enum": [
+                "recurring_charges"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "windowDays": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_SPENDING_SUMMARY",
+        "description": "Summarize spending.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps MONEY_SPENDING_SUMMARY discriminator.",
+              "enum": [
+                "spending_summary"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "windowDays": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_SUBSCRIPTION_AUDIT",
+        "description": "Audit subscriptions.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps MONEY_SUBSCRIPTION_AUDIT discriminator.",
+              "enum": [
+                "subscription_audit"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "queryWindowDays": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_SUBSCRIPTION_CANCEL",
+        "description": "Cancel a subscription. Include confirmed=true only when the user has authorized cancellation.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps MONEY_SUBSCRIPTION_CANCEL discriminator.",
+              "enum": [
+                "subscription_cancel"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "serviceName": {
+              "type": "string"
+            },
+            "serviceSlug": {
+              "type": "string"
+            },
+            "confirmed": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:finance",
+        "capability:delete",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_SUBSCRIPTION_STATUS",
+        "description": "Read subscription status.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps MONEY_SUBSCRIPTION_STATUS discriminator.",
+              "enum": [
+                "subscription_status"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "serviceName": {
+              "type": "string"
+            },
+            "serviceSlug": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
       "_cost": null
     },
     {
@@ -16989,6 +17913,191 @@
         "capability:update",
         "capability:delete",
         "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "SCHEDULED_TASK_CREATE",
+        "description": "Create a scheduled task. Include kind, trigger, promptInstructions, and other structured task fields when known.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps SCHEDULED_TASK_CREATE discriminator.",
+              "enum": [
+                "create"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "trigger": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "promptInstructions": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "priority": {
+              "type": "string"
+            },
+            "ownerVisible": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:meta",
+        "capability:schedule",
+        "capability:write",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:schedule",
+        "capability:write"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "SCHEDULED_TASK_SNOOZE",
+        "description": "Bench umbrella verb for SCHEDULED_TASK_SNOOZE.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps SCHEDULED_TASK_SNOOZE discriminator.",
+              "enum": [
+                "snooze"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "taskId": {
+              "type": "string"
+            },
+            "minutes": {
+              "type": "number"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:meta",
+        "capability:schedule",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:schedule",
+        "capability:update"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "SCHEDULED_TASK_UPDATE",
+        "description": "Bench umbrella verb for SCHEDULED_TASK_UPDATE.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps SCHEDULED_TASK_UPDATE discriminator.",
+              "enum": [
+                "update"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "taskId": {
+              "type": "string"
+            },
+            "trigger": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:meta",
+        "capability:schedule",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:schedule",
+        "capability:update"
       ],
       "_surfaces": [
         "surface:internal"

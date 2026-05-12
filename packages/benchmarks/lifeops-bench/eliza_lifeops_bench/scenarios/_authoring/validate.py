@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ...scorer import _UMBRELLA_SUBACTIONS
 from ...types import Domain
 from .._personas import ALL_PERSONAS
 from .taxonomy import (
@@ -252,8 +253,26 @@ def _check_actions(
         schema = valid_actions[name]
         properties = schema.get("properties") or {}
         required = schema.get("required") or []
+        # Umbrella actions (CALENDAR, MESSAGE) carry their discriminator under
+        # `subaction` / `operation` in the bench's ground-truth corpus and the
+        # scorer canonicalizes both forms. The manifest schema for those
+        # umbrellas declares the discriminator under a different field name
+        # (`action` for CALENDAR), so honor the same authoritative table the
+        # scorer uses to keep the validator's parameter-declaration check
+        # aligned with how `compare_actions` reads the kwargs.
+        umbrella = _UMBRELLA_SUBACTIONS.get(name)
+        umbrella_discriminator = umbrella[0] if umbrella is not None else None
+
         for required_field in required:
             if required_field not in kwargs:
+                # Treat the umbrella discriminator alias as satisfying the
+                # required field — `subaction='create_event'` covers a schema
+                # that requires `action`, and vice versa.
+                if (
+                    umbrella_discriminator is not None
+                    and umbrella_discriminator in kwargs
+                ):
+                    continue
                 issues.append(
                     ValidationIssue(
                         path=f"{prefix}.kwargs.{required_field}",
@@ -265,6 +284,17 @@ def _check_actions(
 
         for kw_name, kw_value in kwargs.items():
             if kw_name not in properties:
+                # Accept the umbrella discriminator field (e.g. `subaction` on
+                # CALENDAR) even when the manifest schema names the field
+                # differently — the scorer treats them as equivalent.
+                if kw_name == umbrella_discriminator:
+                    _check_id_references(
+                        f"{prefix}.kwargs.{kw_name}",
+                        kw_value,
+                        valid_world_ids,
+                        issues,
+                    )
+                    continue
                 issues.append(
                     ValidationIssue(
                         path=f"{prefix}.kwargs.{kw_name}",
