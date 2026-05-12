@@ -156,10 +156,7 @@ function isDuplicateKeyError(error: unknown): boolean {
       cause?: unknown;
     };
     if (layer.code === "23505") return true;
-    if (
-      typeof layer.message === "string" &&
-      /duplicate key|already exists/i.test(layer.message)
-    ) {
+    if (typeof layer.message === "string" && /duplicate key|already exists/i.test(layer.message)) {
       return true;
     }
     current = layer.cause;
