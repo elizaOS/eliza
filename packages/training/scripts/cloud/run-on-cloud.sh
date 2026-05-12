@@ -6,8 +6,13 @@
 #
 # This wraps the existing primitives instead of duplicating them:
 #   * vast.ai      → the `vastai` CLI (VAST_API_KEY)  [implemented here]
-#   * nebius       → `train_nebius.sh` (NEBIUS_*)     [delegated for --task train;
-#                                                      kernel-verify/bench TODO]
+#   * nebius       → `train_nebius.sh` (NEBIUS_*)     [only --task train is
+#                                                      delegated; kernel-verify
+#                                                      and bench on nebius are
+#                                                      not implemented — use the
+#                                                      vast provider for those.
+#                                                      nebius is deprecated; see
+#                                                      train_nebius.sh header.]
 #   * --task train → delegates to ../train_vast.sh provision-and-train
 #
 # Usage:
