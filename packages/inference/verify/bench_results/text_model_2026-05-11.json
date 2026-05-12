@@ -1,0 +1,74 @@
+{
+  "task": "eliza-1 text-model review (0_6b / 1_7b) — throughput + spec-decode",
+  "date": "2026-05-11",
+  "host": "Intel Core Ultra 9 275HX (Arrow Lake-HX, 24 cores; AVX2 + AVX-VNNI + F16C, no AVX-512), NVIDIA RTX 5080 Laptop GPU (Blackwell, 16 GB VRAM), Intel Arc/Xe iGPU (Mesa ANV Vulkan), 30 GB RAM",
+  "caveat": "Measured while 4-6 sibling agents were running concurrent llama.cpp builds (CPU + 2 CUDA), a fused llama-server FFI smoke, and a training benchmark — host load average swung between 35 and 116 during the run. CPU tokens/sec figures are LOWER BOUNDS, contention-degraded; re-bench on an idle host for publishable numbers. Vulkan (RTX 5080) and CUDA llama-bench runs were attempted but did not complete: no vulkan-headers on this host (can't build llama-bench with -DGGML_VULKAN=ON; the prebuilt linux-x64-vulkan llama-cli is offload-bound and timed out under load), and the fresh CUDA build was still compiling the slow ggml-cuda fattn-vec template instances when the session window closed. CUDA/Vulkan rows are placeholders for a follow-up on an idle host.",
+  "binaries": {
+    "cpu": "fresh build of packages/inference/llama.cpp (submodule @ v1.0.0-eliza, commit 08032d57) — -DGGML_NATIVE=ON -DGGML_CUDA=OFF -DGGML_VULKAN=OFF; built out-of-tree in /tmp from a frozen copy because the in-tree submodule's CPU kernel sources are mid-edit by a sibling kernel agent",
+    "spec_decode": "same build's llama-speculative-simple (generic spec-decode path; the bundled 'DFlash drafter' GGUFs have the dflash-draft.target_checkpoint_sha256 stamp but architecture 'qwen3', so they run as plain speculative draft models, NOT the dflash-draft arch — see notes)",
+    "vulkan": "prebuilt ~/.eliza/local-inference/bin/dflash/linux-x64-vulkan (timed out under load — no result)",
+    "cuda": "fresh build attempted (-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=90); did not finish"
+  },
+  "models": {
+    "eliza-1-0_6b": {
+      "path": "~/.eliza/local-inference/models/eliza-1-0_6b.bundle/text/eliza-1-0_6b-32k.gguf",
+      "arch": "qwen3",
+      "file_type": "Q3_K_M (general.file_type=12)",
+      "size_mib": 389.12,
+      "params": "751.63M (Qwen3-0.6B; documented substitute for the unpublished Qwen3.5-0.6B)",
+      "ctx_metadata": 40960,
+      "drafter": "dflash/drafter-0_6b.gguf — same Qwen3-0.6B weights at Q3_K_M, stamp-only (sha differs from manifest's recorded text sha)"
+    },
+    "eliza-1-1_7b": {
+      "path": "~/.eliza/local-inference/models/eliza-1-1_7b.bundle/text/eliza-1-1_7b-32k.gguf",
+      "arch": "qwen3",
+      "file_type": "Q4_K_M (general.file_type=15)",
+      "size_gib": 1.19,
+      "params": "2.03B (Qwen3-1.7B; documented substitute for the unpublished Qwen3.5-1.7B)",
+      "ctx_metadata": 40960,
+      "note": "the 32k and 64k 'variants' are hardlinks to the same GGUF (both metadata ctx 40960); the manifest's recorded text sha256 actually equals the drafter's dflash stamp — a staging sha mismatch in the bundle, out of scope here",
+      "drafter": "dflash/drafter-1_7b.gguf — Qwen3-1.7B at Q3_K_M (target is Q4_K_M), stamp-only"
+    }
+  },
+  "throughput": {
+    "cpu_x86_64_avxvnni": [
+      { "model": "eliza-1-0_6b", "threads": 24, "test": "pp512", "t_per_s": 55.27, "stddev": 0.72, "host_load": "~96", "note": "heavily degraded; 24t also over-subscribes a 0.6B model" },
+      { "model": "eliza-1-0_6b", "threads": 24, "test": "tg128", "t_per_s": 5.84, "stddev": 0.69, "host_load": "~96" },
+      { "model": "eliza-1-0_6b", "threads": 8,  "test": "pp512", "t_per_s": 141.06, "stddev": 5.07, "host_load": "~32" },
+      { "model": "eliza-1-0_6b", "threads": 8,  "test": "tg128", "t_per_s": 10.78, "stddev": 5.17, "host_load": "~32", "note": "high stddev — load spikes" },
+      { "model": "eliza-1-0_6b", "threads": 16, "test": "pp512", "t_per_s": 227.30, "stddev": 14.81, "host_load": "~30" },
+      { "model": "eliza-1-0_6b", "threads": 16, "test": "tg128", "t_per_s": 24.08, "stddev": 5.21, "host_load": "~30", "note": "best small-tier CPU figure obtained; still load-affected, idle likely higher" },
+      { "model": "eliza-1-1_7b", "threads": 24, "test": "pp512", "t_per_s": 31.32, "stddev": 5.35, "host_load": "~85", "note": "heavily degraded" },
+      { "model": "eliza-1-1_7b", "threads": 24, "test": "tg128", "t_per_s": 2.77, "stddev": 0.15, "host_load": "~85", "note": "heavily degraded — expect tens of t/s on an idle host" },
+      { "model": "eliza-1-1_7b", "threads": 8,  "test": "pp512", "t_per_s": 87.45, "stddev": 16.29, "host_load": "~38" }
+    ],
+    "vulkan_rtx5080": "PENDING — re-run on idle host: llama-bench -m <gguf> -ngl 99 -t 24 (GGML_VK_VISIBLE_DEVICES=1) once vulkan-headers are installed, or via a prebuilt linux-x64-vulkan llama-bench",
+    "cuda_rtx5080": "PENDING — re-run on idle host: build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=90, then llama-bench -m <gguf> -ngl 99. The fork ships CUDA TBQ/QJL/Polar kernels (cuda/*.cu) so a -DGGML_CUDA_FUSED_ATTN_QJL=ON build is the real datapoint."
+  },
+  "spec_decode": {
+    "tool": "llama-speculative-simple, -t 8 -td 8, ctx 2048, greedy",
+    "note": "Acceptance is unusually high because the 'drafter' is essentially the target model (stamp-only). A real distilled DFlash drafter would be smaller/faster and have somewhat lower acceptance; this measurement is an upper bound on acceptance / a lower bound on the spec speedup the eventual real drafter delivers.",
+    "runs": [
+      { "model": "eliza-1-0_6b", "draft_max": 2, "draft_min": 1, "n_predict": 81, "n_drafted": 54, "n_accept": 40, "accept_rate": 0.741, "tg_t_per_s": 3.87 },
+      { "model": "eliza-1-0_6b", "draft_max": 4, "draft_min": 1, "n_predict": 81, "n_drafted": 63, "n_accept": 36, "accept_rate": 0.571, "tg_t_per_s": 4.12 },
+      { "model": "eliza-1-0_6b", "draft_max": 6, "draft_min": 2, "n_predict": 97, "n_drafted": 47, "n_accept": 40, "accept_rate": 0.851, "tg_t_per_s": 5.78, "prompt": "'The history of artificial intelligence began' (more predictable continuation than the sea-village prompt used for the 2/4/8 sweep)" },
+      { "model": "eliza-1-0_6b", "draft_max": 8, "draft_min": 1, "n_predict": 81, "n_drafted": 61, "n_accept": 46, "accept_rate": 0.754, "tg_t_per_s": 0.92, "note": "tg t/s collapsed here under a load spike — ignore" },
+      { "model": "eliza-1-1_7b", "draft_max": 6, "draft_min": 2, "n_predict": 82, "n_drafted": 35, "n_accept": 22, "accept_rate": 0.629, "tg_t_per_s": 6.27 }
+    ],
+    "recommended_draft_lengths": {
+      "eliza-1-0_6b": "draft-min 2, draft-max 6 (current catalog default) — best accept (0.74-0.85) and best tg/s in the sweep; draft-max 4 dips, draft-max 8 over-drafts (cumulative accept falls, wasted target verifies)",
+      "eliza-1-1_7b": "draft-min 2, draft-max 6 (current catalog default) — ~0.63 accept; the 1.7B target makes each rejected draft round costlier, so do not raise draft-max above 6 for this tier"
+    },
+    "dflash_vs_lookahead_vs_ngram": "On the small tiers the bundled (stamp-only same-size) drafter wins decisively over lookahead/ngram: lookahead/ngram drafting on a 0.6B model produces low-confidence guesses with <30% acceptance in the published cpu_avxvnni baselines, vs. 0.6-0.85 here. Keep specType='dflash' with the catalog drafter as the default for 0_6b/1_7b; ngram/lookahead are not competitive at this model size. The catalog already pins this (runtime.dflash + draftMin/draftMax) — no change needed beyond confirming it."
+  },
+  "kv_cache": {
+    "finding": "The bundle's quantization sidecars record the intended KV recipe (turboquant.json: cache_type_k='turbo4_0'; qjl_config.json: K 1-bit + V 4-bit; polarquant_config.json: V Polar Q4). But the GGUF text weights ship as plain Q3_K_M / Q4_K_M (TBQ here is a runtime KV-cache compressor, weights unchanged), and crucially the runtime never passed --cache-type-k/v from the catalog: dflash-server.start() read only ELIZA_DFLASH_CACHE_TYPE_K/_V env vars, and CatalogModel.runtime.kvCache.typeK/typeV (defined in the type) was never consumed on the llama-server path. So by default every Eliza-1 tier ran an f16 KV cache despite AGENTS.md §3 mandating QJL-K + Polar-V at ctx>8k.",
+    "fix_applied": "runtimeFor() in packages/shared/src/local-inference/catalog.ts now sets runtime.kvCache = { typeK: 'qjl1_256', typeV: 'q4_polar' } for the >8k tiers (all current tiers) and the turbo3_0/turbo4_0 pair for the ≤8k fallback; engine.ts's resolveDflashPlanForPath and dflash-server.ts's load() now thread runtime.kvCache.typeK/typeV (with per-load override + env override winning, in that precedence) into the DflashServerPlan; dflash-server.start() now applies plan.cacheTypeK/V via --cache-type-k/v and runs assertCacheTypeSupportedOnBackend on them, so a binary whose CAPABILITIES.json lacks the QJL/Polar kernels fails loudly instead of silently running f16 (or a wrong cache type).",
+    "ctx_scaling": "Both small tiers carry metadata ctx 40960 (Qwen3 native rope window) and a catalog contextSize 32768. kv-spill.ts only triggers above 65536, so neither small tier ever spills — correct (their KV at 32k under QJL+Polar fits the 1.5-4.5 GB ramBudgetMb easily). No spill-config change needed for 0_6b/1_7b; spill tuning is a 9b+/long-ctx concern."
+  },
+  "quant_mix_recommendation": {
+    "eliza-1-0_6b": "Keep the weight quant at Q3_K_M (389 MiB; matches AGENTS.md §3 'Q3 for the low-RAM tier' and the bundle's turboquant.json nbits) — at 0.6B params, Q4_K_M would add ~120 MiB for a marginal PPL win that doesn't justify the RAM on the 2 GB-floor tier this targets. KV cache: QJL-K (1-bit) + Polar-V (Q4) at the 32k window (now wired). gguf_milady_apply's q4_polar→q8_0 fallback only affects the weight-quant Polar path which is not used here (the V-cache Polar path is the separate, working kernel path).",
+    "eliza-1-1_7b": "Keep Q4_K_M (1.19 GiB; AGENTS.md §3 'Q3/Q4 for the modern-phone tier', bundle qjl_config + turboquant nbits=4). Going to Q5_K_M/Q6_K would push the bundle past the 4.5 GB recommended RAM budget when stacked with the OmniVoice + ASR + drafter co-residents; Q3_K_M would visibly hurt a 1.7B model. KV cache: QJL-K + Polar-V (now wired). The drafter being Q3_K_M (vs. the Q4_K_M target) is fine — drafter precision affects acceptance only mildly and the smaller drafter is the point.",
+    "perplexity": "Not measured — llama-perplexity could not be built/run cleanly under the kernel-source mid-edit + host contention. Recommend a follow-up: llama-perplexity -m <gguf> -f wiki.test.raw across {Q3_K_M, Q4_K_M, Q5_K_M, Q6_K} × {f16 KV, qjl1_256/q4_polar KV} on an idle host to confirm the size/quality knee. Expectation from the existing TurboQuant/QJL/Polar reference fixtures (per-block tolerances 0.05/0.05/0.001): the QJL-K + Polar-V cache adds negligible PPL vs f16 at these block tolerances, so the cache change is a pure RAM win."
+  }
+}

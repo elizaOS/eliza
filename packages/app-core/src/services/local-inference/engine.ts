@@ -1905,6 +1905,7 @@ export class LocalInferenceEngine {
       return null;
     }
 
+    const kvCache = catalog?.runtime?.kvCache;
     return {
       targetModelPath: target.path,
       drafterModelPath: drafter.path,
@@ -1914,6 +1915,8 @@ export class LocalInferenceEngine {
       draftMax: dflash.draftMax,
       gpuLayers: dflash.gpuLayers,
       draftGpuLayers: dflash.draftGpuLayers,
+      cacheTypeK: kvCache?.typeK,
+      cacheTypeV: kvCache?.typeV,
       disableThinking: dflash.disableThinking,
     };
   }
