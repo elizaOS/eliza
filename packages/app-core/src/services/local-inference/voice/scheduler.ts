@@ -18,6 +18,7 @@ import type {
   VoiceAudioSource,
   VoiceSchedulerPhraseTelemetry,
   VoiceSchedulerTelemetryEvent,
+  VoiceSchedulerTelemetryListener,
   VoiceTtsCancelReason,
 } from "./types";
 
@@ -37,7 +38,7 @@ export interface SchedulerEvents {
   /** Blip resolved the provisional barge-in — TTS playback resumed. */
   onTtsResume?(): void;
   /** Structured scheduler telemetry for latency, cache, rollback, and barge-in metrics. */
-  onTelemetry?(event: VoiceSchedulerTelemetryEvent): void;
+  onTelemetry?: VoiceSchedulerTelemetryListener;
 }
 
 export interface SchedulerDeps {

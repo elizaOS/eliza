@@ -794,19 +794,6 @@ def run_benchmarks(
                     cwd=adapter.cwd,
                 )
                 outcomes.append(outcome)
-                _write_latest_result_snapshot(
-                    output_root,
-                    adapter=adapter,
-                    request=effective_request,
-                    run_group_id=run_group_id,
-                    run_id=run_id,
-                    status="skipped",
-                    score=None,
-                    unit=None,
-                    higher_is_better=None,
-                    metrics=outcome.metrics,
-                    error=None,
-                )
                 continue
 
         if request.rerun_failed and not request.force:
@@ -890,19 +877,6 @@ def run_benchmarks(
                     cwd=adapter.cwd,
                 )
                 outcomes.append(outcome)
-                _write_latest_result_snapshot(
-                    output_root,
-                    adapter=adapter,
-                    request=effective_request,
-                    run_group_id=run_group_id,
-                    run_id=run_id,
-                    status="skipped",
-                    score=None,
-                    unit=None,
-                    higher_is_better=None,
-                    metrics=outcome.metrics,
-                    error=None,
-                )
                 continue
 
         required_env = _required_env_for_request(adapter, effective_request)

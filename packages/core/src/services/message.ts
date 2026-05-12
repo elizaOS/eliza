@@ -4886,11 +4886,11 @@ export async function runV5MessageRuntimeStage1(args: {
 		const earlyReplyText =
 			routedResponseHandlerReply || parsedResponseHandlerReply;
 		const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
-		if (
+		const earlyReplySent =
 			messageHandler.processMessage === "RESPOND" &&
 			earlyReplyText.length > 0 &&
-			typeof onResponseHandlerEarlyReply === "function"
-		) {
+			typeof onResponseHandlerEarlyReply === "function";
+		if (earlyReplySent && typeof onResponseHandlerEarlyReply === "function") {
 			await onResponseHandlerEarlyReply({
 				text: earlyReplyText,
 				messageHandler,

@@ -562,3 +562,7 @@ export type VoiceSchedulerTelemetryEvent =
       inFlightPhrasesCancelled: number;
       wasPaused: boolean;
     };
+
+export type VoiceSchedulerTelemetryListener = (
+  event: VoiceSchedulerTelemetryEvent,
+) => void;
