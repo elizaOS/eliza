@@ -13,9 +13,7 @@ describe('plugin-tunnel exports', () => {
     const opParam = tunnelAction.parameters?.find((p) => p.name === 'action');
     expect(opParam).toBeDefined();
     expect((opParam?.schema as { enum?: string[] }).enum).toEqual(['start', 'stop', 'status']);
-    expect(tunnelAction.similes).toEqual(
-      expect.arrayContaining(['OPEN_TUNNEL', 'CHECK_TUNNEL'])
-    );
+    expect(tunnelAction.similes).toEqual(expect.arrayContaining(['OPEN_TUNNEL', 'CHECK_TUNNEL']));
     expect(tunnelAction.similes).not.toContain('TAILSCALE');
     expect(tunnelAction.similes).not.toContain('START_TUNNEL');
   });

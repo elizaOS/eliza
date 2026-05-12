@@ -481,7 +481,9 @@ function parseCapturedArguments(
     : undefined;
 }
 
-function captureBenchmarkAction(params: Record<string, unknown>): CapturedAction {
+function captureBenchmarkAction(
+  params: Record<string, unknown>,
+): CapturedAction {
   return {
     params,
     command: typeof params.command === "string" ? params.command : undefined,

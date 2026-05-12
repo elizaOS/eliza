@@ -22,10 +22,7 @@ import type {
 
 const DEFAULT_TIMEOUT_MS = 4_000;
 
-async function fetchJson<T>(
-	port: number,
-	pathname: string,
-): Promise<T | null> {
+async function fetchJson<T>(port: number, pathname: string): Promise<T | null> {
 	try {
 		const response = await fetch(`http://127.0.0.1:${port}${pathname}`, {
 			method: "GET",

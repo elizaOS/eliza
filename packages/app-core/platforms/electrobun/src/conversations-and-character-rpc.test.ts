@@ -12,9 +12,9 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import {
 	type CharacterReader,
+	type ConversationsListReader,
 	composeCharacterSnapshot,
 	composeConversationsListSnapshot,
-	type ConversationsListReader,
 	readCharacterViaHttp,
 	readConversationsListViaHttp,
 } from "./conversations-and-character-rpc";

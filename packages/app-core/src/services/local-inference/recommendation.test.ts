@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ELIGIBLE_MODEL_IDS, findCatalogModel } from "./catalog";
-import { REQUIRED_KERNELS_BY_TIER } from "./manifest";
 import type { Eliza1Manifest, Eliza1Tier } from "./manifest";
+import { REQUIRED_KERNELS_BY_TIER } from "./manifest";
 import {
   assessCatalogModelFit,
   canBundleBeDefaultOnDevice,
@@ -273,7 +273,11 @@ describe("local inference recommendations", () => {
 const SHA = "0".repeat(64);
 
 function fixtureManifest(tier: Eliza1Tier = "1_7b"): Eliza1Manifest {
-  const pass = { status: "pass" as const, atCommit: "abc1234", report: "x.txt" };
+  const pass = {
+    status: "pass" as const,
+    atCommit: "abc1234",
+    report: "x.txt",
+  };
   return {
     id: `eliza-1-${tier}`,
     tier,
@@ -287,7 +291,9 @@ function fixtureManifest(tier: Eliza1Tier = "1_7b"): Eliza1Manifest {
       vad: { base: "eliza-1-vad", license: "apache-2.0" },
     },
     files: {
-      text: [{ path: `text/eliza-1-${tier}-32k.gguf`, ctx: 32768, sha256: SHA }],
+      text: [
+        { path: `text/eliza-1-${tier}-32k.gguf`, ctx: 32768, sha256: SHA },
+      ],
       voice: [{ path: "tts/omnivoice-0.6b.gguf", sha256: SHA }],
       asr: [{ path: "asr/asr.gguf", sha256: SHA }],
       vision: [],
@@ -298,7 +304,13 @@ function fixtureManifest(tier: Eliza1Tier = "1_7b"): Eliza1Manifest {
     kernels: {
       required: [...REQUIRED_KERNELS_BY_TIER[tier]],
       optional: [],
-      verifiedBackends: { metal: pass, vulkan: pass, cuda: pass, rocm: pass, cpu: pass },
+      verifiedBackends: {
+        metal: pass,
+        vulkan: pass,
+        cuda: pass,
+        rocm: pass,
+        cpu: pass,
+      },
     },
     evals: {
       textEval: { score: 0.71, passed: true },
@@ -319,7 +331,9 @@ function fixtureManifest(tier: Eliza1Tier = "1_7b"): Eliza1Manifest {
   };
 }
 
-function installedFixture(overrides: Partial<InstalledModel> = {}): InstalledModel {
+function installedFixture(
+  overrides: Partial<InstalledModel> = {},
+): InstalledModel {
   return {
     id: "eliza-1-1_7b",
     displayName: "Eliza-1 1.7B",
@@ -347,10 +361,12 @@ describe("canBundleBeDefaultOnDevice", () => {
       availableBackends: ["cpu", "vulkan"],
       ramMb: 16 * 1024,
     });
-    expect(deviceCapsFromProbe(hardware({ totalRamGb: 8, gpu: null }))).toEqual({
-      availableBackends: ["cpu"],
-      ramMb: 8 * 1024,
-    });
+    expect(deviceCapsFromProbe(hardware({ totalRamGb: 8, gpu: null }))).toEqual(
+      {
+        availableBackends: ["cpu"],
+        ramMb: 8 * 1024,
+      },
+    );
   });
 
   it("allows a verified, default-eligible bundle on a device with a matching backend", () => {
@@ -366,7 +382,10 @@ describe("canBundleBeDefaultOnDevice", () => {
       probe,
       { manifestLoader: () => fixtureManifest() },
     );
-    expect(r).toMatchObject({ canBeDefault: false, reason: "not-verified-on-device" });
+    expect(r).toMatchObject({
+      canBeDefault: false,
+      reason: "not-verified-on-device",
+    });
   });
 
   it("refuses when no eliza-1.manifest.json is present", () => {
@@ -382,7 +401,10 @@ describe("canBundleBeDefaultOnDevice", () => {
     const r = canBundleBeDefaultOnDevice(installedFixture(), probe, {
       manifestLoader: () => m,
     });
-    expect(r).toMatchObject({ canBeDefault: false, reason: "not-default-eligible" });
+    expect(r).toMatchObject({
+      canBeDefault: false,
+      reason: "not-default-eligible",
+    });
   });
 
   it("refuses when device RAM is below the manifest floor", () => {
@@ -421,6 +443,9 @@ describe("canBundleBeDefaultOnDevice", () => {
     const r = canBundleBeDefaultOnDevice(installedFixture(), probe, {
       manifestLoader: () => m,
     });
-    expect(r).toMatchObject({ canBeDefault: false, reason: "not-default-eligible" });
+    expect(r).toMatchObject({
+      canBeDefault: false,
+      reason: "not-default-eligible",
+    });
   });
 });

@@ -17,8 +17,8 @@
  */
 
 import {
-  ResponseSkeletonStreamExtractor,
   type ResponseSkeleton,
+  ResponseSkeletonStreamExtractor,
 } from "@elizaos/core";
 import type { LocalInferenceLoadArgs } from "./active-model";
 import type {
@@ -32,7 +32,6 @@ import {
   type Eliza1TierId,
   findCatalogModel,
 } from "./catalog";
-import type { InstalledModel } from "./types";
 import {
   type ConversationHandle,
   conversationRegistry,
@@ -54,6 +53,7 @@ import {
   SessionPool,
 } from "./session-pool";
 import { resolveGrammarForParams } from "./structured-output";
+import type { InstalledModel } from "./types";
 import {
   buildLocalEmbeddingRoute,
   EMBEDDING_FULL_DIM,
@@ -61,7 +61,7 @@ import {
   type LocalEmbeddingRoute,
 } from "./voice/embedding";
 import {
-  EmbeddingServer,
+  type EmbeddingServer,
   embeddingServerForRoute,
 } from "./voice/embedding-server";
 import {
@@ -1448,8 +1448,7 @@ export class LocalInferenceEngine {
         OPENWAKEWORD_DEFAULT_HEAD,
         OpenWakeWordDetector,
       } = await import("./voice/wake-word");
-      const headName =
-        opts.wakeWord.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
+      const headName = opts.wakeWord.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
       if (isPlaceholderWakeWordHead(headName)) {
         console.warn(
           `[voice] wake word head '${headName}' is a PLACEHOLDER (the upstream openWakeWord "hey jarvis" head, renamed) — it fires on "hey jarvis", not the Eliza-1 wake phrase. Experimental, opt-in only; see packages/inference/reports/porting/2026-05-11/wakeword-head-plan.md.`,

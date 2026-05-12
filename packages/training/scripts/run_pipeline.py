@@ -85,7 +85,7 @@ def _read_json(path: Path) -> dict | None:
 def _resolve_eliza1_llama_cpp() -> Path | None:
     """Locate the elizaOS/llama.cpp fork (Q4_POLAR / QJL1_256 / dflash GGML
     types). Order: $LLAMA_CPP_DIR → in-repo fork submodule
-    (packages/inference/llama.cpp) → ~/.cache/eliza-dflash/milady-llama-cpp →
+    (packages/inference/llama.cpp) → ~/.cache/eliza-dflash/eliza-llama-cpp →
     ~/src/milady-llama.cpp. Returns None if none has a convert_hf_to_gguf.py."""
     import os
     cands: list[Path] = []
@@ -98,7 +98,7 @@ def _resolve_eliza1_llama_cpp() -> Path | None:
             cands.append(cand)
             break
     cands += [
-        Path.home() / ".cache" / "eliza-dflash" / "milady-llama-cpp",
+        Path.home() / ".cache" / "eliza-dflash" / "eliza-llama-cpp",
         Path.home() / "src" / "milady-llama.cpp",
     ]
     for c in cands:
@@ -577,7 +577,7 @@ def main() -> int:
     if want_bundle and not args.skip_quantize:
         if fork_dir is None:
             log.error("--eliza1-bundle requested but no elizaOS/llama.cpp fork "
-                      "found (set $LLAMA_CPP_DIR or clone milady-llama-cpp); "
+                      "found (set $LLAMA_CPP_DIR or clone eliza-llama-cpp); "
                       "skipping the Eliza-1 GGUF bundle")
             summary["stages"]["eliza1_bundle"] = {"skipped": "fork not found"}
         elif not finetuned_model.exists():

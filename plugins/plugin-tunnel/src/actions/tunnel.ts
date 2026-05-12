@@ -54,11 +54,7 @@ function resolveDispatch(options: Record<string, unknown> | undefined): {
     if (innerParams) {
       subOptions = { ...innerParams };
     } else {
-      const {
-        action: _omitAction,
-        parameters: _omitParams,
-        ...rest
-      } = nested;
+      const { action: _omitAction, parameters: _omitParams, ...rest } = nested;
       subOptions = rest;
     }
   } else {
@@ -71,13 +67,7 @@ function resolveDispatch(options: Record<string, unknown> | undefined): {
 
 export const tunnelAction: Action = {
   name: 'TUNNEL',
-  similes: [
-    'OPEN_TUNNEL',
-    'CREATE_TUNNEL',
-    'CLOSE_TUNNEL',
-    'CHECK_TUNNEL',
-    'TUNNEL_INFO',
-  ],
+  similes: ['OPEN_TUNNEL', 'CREATE_TUNNEL', 'CLOSE_TUNNEL', 'CHECK_TUNNEL', 'TUNNEL_INFO'],
   description:
     'Tunnel operations dispatched by `action`: start, stop, status. The `start` action accepts an optional `port` (defaults to 3000); `stop` and `status` take no parameters. Backed by whichever tunnel plugin is active (local Tailscale CLI, Eliza Cloud headscale, or ngrok).',
 

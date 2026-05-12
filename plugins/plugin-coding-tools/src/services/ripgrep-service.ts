@@ -115,6 +115,15 @@ function runRipgrep(
         timeout: 30_000,
       },
       (error, stdout, stderr) => {
+        if (process.env.CODING_TOOLS_RG_DEBUG === "1") {
+          console.error("rg-debug-execfile", {
+            mode,
+            args,
+            errorCode: (error as NodeJS.ErrnoException | null)?.code,
+            stdout,
+            stderr,
+          });
+        }
         const output = stdout || stderr;
         if (!error) {
           resolve({ mode, output, exitCode: 0, truncated: false });

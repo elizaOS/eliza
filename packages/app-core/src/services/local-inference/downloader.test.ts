@@ -3,11 +3,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readAssignments } from "./assignments";
 import { findCatalogModel } from "./catalog";
 import { Downloader } from "./downloader";
 import type { Eliza1DeviceCaps } from "./manifest";
 import { listInstalledModels } from "./registry";
-import { readAssignments } from "./assignments";
 import type { DownloadJob } from "./types";
 
 function eliza1Manifest(overrides: {

@@ -12,6 +12,7 @@ export {
   ELIZA_1_TIERS,
   ELIZA_1_VOICE_CAPABILITIES,
   ELIZA_1_VOICE_MANIFEST_VERSION,
+  ELIZA1_TO_RUNTIME_KERNEL,
   Eliza1BackendEnumSchema,
   Eliza1EvalsSchema,
   Eliza1FileEntrySchema,
@@ -26,6 +27,7 @@ export {
   Eliza1VerifiedBackendStatusSchema,
   Eliza1VoiceSchema,
   REQUIRED_KERNELS_BY_TIER,
+  RUNTIME_TO_ELIZA1_KERNEL,
   SUPPORTED_BACKENDS_BY_TIER,
   VOICE_PRESET_CACHE_PATH,
 } from "./schema";

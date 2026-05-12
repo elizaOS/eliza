@@ -238,7 +238,7 @@ if [[ $HAS_LLAMA_CPP -eq 1 ]]; then
         --output "$GGUF_DIR" \
         2>&1 | tee "$LOG_DIR/05-gguf.log"
 else
-    echo "[smoke]   SKIP: llama.cpp not on PATH (need llama-quantize + convert_hf_to_gguf.py; set LLAMA_CPP_DIR or build vendor/llama.cpp)"
+    echo "[smoke]   SKIP: llama.cpp not on PATH (need llama-quantize + convert_hf_to_gguf.py; set LLAMA_CPP_DIR or build the packages/inference/llama.cpp submodule — see gguf-q4_k_m_apply.py _VENDOR_HINT)"
 fi
 
 # ---------- STEP 8/9: vLLM serve + 5 tool-call requests ----------

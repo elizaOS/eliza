@@ -11,6 +11,7 @@ import {
   Monitor,
   PencilLine,
   Settings,
+  Sparkles,
   Smartphone,
   UserRound,
   Volume2,
@@ -42,6 +43,7 @@ export interface CompanionHeaderProps {
   chatAgentVoiceMuted?: boolean;
   onToggleVoiceMute?: () => void;
   onNewChat?: () => void;
+  onToggleEmotePicker?: () => void;
   /** Shown in the shell header right cluster (e.g. inference / cloud alert). */
   rightExtras?: ReactNode;
 }
@@ -63,6 +65,7 @@ export const CompanionHeader = memo(function CompanionHeader(
     chatAgentVoiceMuted = false,
     onToggleVoiceMute,
     onNewChat,
+    onToggleEmotePicker,
     rightExtras,
   } = props;
 
@@ -201,6 +204,28 @@ export const CompanionHeader = memo(function CompanionHeader(
                       ) : (
                         <Volume2 className="pointer-events-none h-4 w-4 shrink-0" />
                       )}
+                    </Button>
+                  ) : null}
+                  {onToggleEmotePicker ? (
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      aria-label="Open emotes"
+                      title="Open emotes"
+                      className="inline-flex h-11 w-11 min-h-touch min-w-touch items-center justify-center rounded-xl border border-border/42 bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] text-txt shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_14px_32px_rgba(3,5,10,0.14)] ring-1 ring-inset ring-white/6 backdrop-blur-xl supports-[backdrop-filter]:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_62%,transparent),color-mix(in_srgb,var(--bg)_34%,transparent))] transition-[border-color,background-color,color,transform,box-shadow] duration-200 hover:border-accent/55 hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_78%,transparent),color-mix(in_srgb,var(--bg-hover)_52%,transparent))] hover:text-txt hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.22),0_18px_36px_rgba(3,5,10,0.18)] active:scale-[0.98] disabled:active:scale-100 disabled:hover:border-border/42 disabled:hover:bg-[linear-gradient(180deg,color-mix(in_srgb,var(--card)_72%,transparent),color-mix(in_srgb,var(--bg)_44%,transparent))] disabled:hover:text-txt pointer-events-auto text-sm leading-none"
+                      onClick={onToggleEmotePicker}
+                      onPointerDown={(event: React.PointerEvent) =>
+                        event.stopPropagation()
+                      }
+                      style={{
+                        clipPath: "none",
+                        WebkitClipPath: "none",
+                        touchAction: "manipulation",
+                      }}
+                      data-testid="companion-emote-toggle"
+                      data-no-camera-drag="true"
+                    >
+                      <Sparkles className="pointer-events-none h-4 w-4 shrink-0" />
                     </Button>
                   ) : null}
                   {onNewChat ? (

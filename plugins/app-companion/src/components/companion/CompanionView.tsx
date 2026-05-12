@@ -73,6 +73,9 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
     elizaCloudConnected,
     elizaCloudCreditsError,
     elizaCloudEnabled,
+    emotePickerOpen,
+    openEmotePicker,
+    closeEmotePicker,
     handleNewConversation,
     navigation,
     setState,
@@ -133,6 +136,14 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
   const handleSwitchToCompanion = useCallback(() => {
     setCompanionView("companion");
   }, []);
+
+  const handleToggleEmotePicker = useCallback(() => {
+    if (emotePickerOpen) {
+      closeEmotePicker();
+      return;
+    }
+    openEmotePicker();
+  }, [closeEmotePicker, emotePickerOpen, openEmotePicker]);
 
   useEffect(() => {
     setState(
@@ -217,6 +228,7 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
             setState("chatAgentVoiceMuted", !chatAgentVoiceMuted)
           }
           onNewChat={() => void handleNewConversation()}
+          onToggleEmotePicker={handleToggleEmotePicker}
           rightExtras={companionHeaderRightExtras}
         />
       </div>

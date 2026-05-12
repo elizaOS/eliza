@@ -73,23 +73,24 @@ those backends on this host. CPU rows are real runs against the
 | barge-in cancel latency | 5.2 ms (client-side HTTP abort surrogate — `cancel_tts` is a no-op on the batch-only build; native streaming-cancel symbols are stubbed) |
 | server peak RSS | 3070 MB — **over** manifest `ramBudgetMb.recommended` (1800 MB): the fused process holds text + drafter + omnivoice (base + tokenizer + DAC + HuBERT + sem-enc) all resident |
 
-### 1.7B — CPU (`linux-x64-cpu-fused`, 1 turn, 16-token response, ≤3 TTS phrases)
+### 1.7B — CPU (`linux-x64-cpu-fused`, 1 turn)
 
-Run under heavy CPU contention from a concurrent fork CUDA build (`-j5..-j24`)
-— TTS RTF in particular is inflated by that, not a true idle figure.
+Two 1-turn runs (16-token response, ≤3 TTS phrases) under varying CPU
+contention from concurrent CUDA builds — TTS RTF is inflated by that, not a
+true idle figure.
 
-| metric | value |
-|---|---|
-| ASR latency (FFI transcribe) | 4430 ms |
-| ASR WER (round-trip) | 1.00 (transcript: `"[0."`) — ASR GGUF is stand-in quality |
-| first-token latency | 87 ms |
-| decode tokens/sec | 12.0 tok/s |
-| DFlash acceptance | 0.333 (2/6 — drafter ≈ copy of target; lower draft-window hit ratio on 1.7B) |
-| first-audio (mic-in → first PCM of phrase 1) | ~25.3 s (3-phrase TTS at >1×-RTF dominates) |
-| TTS RTF (median over phrases) | 10.5 (CPU MaskGIT under build contention) |
-| total turn latency | 58.9 s |
-| barge-in cancel latency | 0.7 ms (client-side HTTP abort surrogate; `cancel_tts` no-op on batch-only build) |
-| server peak RSS | 4485 MB — **within** manifest `ramBudgetMb.recommended` (4500 MB) ✓ |
+| metric | run A (heavy contention) | run B (eval-suite, lighter) |
+|---|---|---|
+| ASR latency (FFI transcribe) | 4430 ms | 5510 ms |
+| ASR WER (round-trip) | 1.00 (`"[0."`) | 1.00 — ASR GGUF is stand-in quality |
+| first-token latency | 87 ms | 61 ms |
+| decode tokens/sec | 12.0 | 27.1 tok/s |
+| DFlash acceptance | 0.333 (2/6) | 0.889 (8/9) — drafter ≈ copy of target; high variance at small token counts |
+| first-audio (mic-in → first PCM) | ~25.3 s | ~29.5 s |
+| TTS RTF (median over phrases) | 10.5 | 6.53 |
+| total turn latency | 58.9 s | 58.0 s |
+| barge-in cancel latency | 0.7 ms | 1.6 ms — client-side HTTP-abort surrogate; `cancel_tts` no-op on batch-only build |
+| server peak RSS | 4485 MB (≤ budget) | 4502 MB — **just over** manifest `ramBudgetMb.recommended` (4500 MB) |
 
 ### Vulkan / CUDA — both tiers
 
@@ -100,12 +101,120 @@ fused, so the e2e voice loop cannot run on those backends here. Re-run once a
 `linux-x64-{vulkan,cuda}-fused` build is staged (`--bin-dir` overrides
 discovery).
 
-### 30-turn endurance — 0.6B CPU
+### 30-turn endurance — 0.6B CPU (`e2e_loop_bench.mjs --turns 30`)
 
-_PENDING_ — `e2e_loop_bench.mjs --turns 30` (turn 1 full, turns 2–30 lighter:
-single phrase, 12-token response). Asserts no crash, no monotone RSS leak, peak
-RSS within `ramBudgetMb.recommended`. (Slow on this host under concurrent CUDA
-build contention — runs ~min/turn.)
+Completed: 30 turns ran with **no crash, no RSS leak** (`leakSuspected: false`),
+but `thirtyTurnOk: false` because peak server RSS (3132 MB) exceeds the
+manifest `ramBudgetMb.recommended` (1800 MB) — the same single-process voice-
+region footprint flagged for the 1-turn run. `e2eLoopOk: true`. Medians over
+the 30 turns (turn 1 full, turns 2–30 lighter — 12-token response, 1 TTS
+phrase): ASR 3498 ms, first-token 30 ms, decode 38.4 tok/s, DFlash acceptance
+0.993, TTS RTF 6.33, total turn 15.8 s, barge-in cancel 1.1 ms,
+peak RSS 3132 MB (over budget).
+
+Report: `eliza-1-0_6b.bundle/evals/e2e-loop-bench-30turn.json`. A 1.7B 30-turn
+run on this host takes ~45–90 min under concurrent CUDA-build CPU contention —
+status of that run is in the eval-suite output below.
+
+## Eval-suite gate results (`eliza1_eval_suite.py` against the real bundles)
+
+The TTS-RTF / ASR-WER / e2e-loop / 30-turn / DFlash-accept eval-suite runners
+(previously `not-run` placeholders) now drive the real fused runtime via this
+bench. 0.6B aggregate (`eliza-1-0_6b.bundle/evals/aggregate.json`):
+
+| gate | measured | threshold | pass? |
+|---|---|---|---|
+| `text_eval` | 0.2779 | ≥ 0.55 | ✗ (base-v1, not fine-tuned) |
+| `voice_rtf` | 8.62 | ≤ 0.5 | ✗ (CPU MaskGIT TTS) |
+| `asr_wer` | 1.00 | ≤ 0.10 | ✗ (stand-in ASR GGUF) |
+| `e2e_loop_ok` | **true** | true | **✓** |
+| `thirty_turn_ok` | false | true | ✗ (peak RSS over budget) |
+| `dflash_acceptance` | **0.8696** (20/23) | ≥ 0.60 | **✓** (`llama-speculative-simple` on `linux-x64-cpu`) |
+| `dispatch` (`make kernel-contract reference-test`) | pass | — | ✓ |
+| `vad_latency_ms`, `vad_boundary_mae_ms`, `vad_endpoint_p95_ms`, `vad_false_bargein_per_hour` | null | — | ✗ (no labelled speech corpus on host — separate VAD workstream) |
+| `barge_in_cancel_ms` | null in aggregate | ≤ 80 | ✗ (the bench measures ~1 ms client-side abort; the gate consumer is `bargein_latency_harness.mjs`, a separate harness — feed it the bench's `bargeInCancelMs` to close this) |
+| `peak_rss_mb`, `thermal_throttle_pct` | null | — | needs-hardware (mobile device) |
+
+Manifest `evals` block (patched on disk in the bundle from the aggregate — the
+publish orchestrator's `build_manifest` would regenerate it once it gets past
+the release-evidence stage):
+
+```json
+{
+  "textEval": { "score": 0.2779, "passed": false },
+  "voiceRtf": { "rtf": 8.6212, "passed": false },
+  "e2eLoopOk": true,
+  "thirtyTurnOk": false,
+  "asrWer": { "wer": 1.0, "passed": false },
+  "dflash": { "acceptanceRate": 0.8696, "speedup": null, "passed": true }
+}
+```
+
+1.7B aggregate (`eliza-1-1_7b.bundle/evals/aggregate.json`):
+
+| gate | measured | threshold | pass? |
+|---|---|---|---|
+| `text_eval` | 0.328 (ppl 41.1) | ≥ 0.60 | ✗ (base-v1) |
+| `voice_rtf` | 5.91 | ≤ 0.45 | ✗ (CPU MaskGIT TTS) |
+| `asr_wer` | 1.00 | ≤ 0.08 | ✗ (stand-in ASR GGUF) |
+| `e2e_loop_ok` | **true** | true | **✓** |
+| `thirty_turn_ok` | null (the 10-turn endurance bench crashed mid-run, `rc=1`; the full 30-turn on this host needs ~45–90 min of uncontended CPU — not run to completion here) | true | ✗ (not measured) |
+| `dflash_acceptance` | **0.55** (11/20) | ≥ 0.65 | ✗ (real spec run; drafter is a near-copy of target so this is high-variance, not a trained-drafter number) |
+| `dispatch` | pass | — | ✓ |
+| `vad_*` | null | — | ✗ (no labelled corpus) |
+| `barge_in_cancel_ms` | null in aggregate | ≤ 70 | ✗ (separate harness) |
+
+1.7B manifest `evals` block (patched on disk from the aggregate):
+
+```json
+{
+  "textEval": { "score": 0.328, "passed": false },
+  "voiceRtf": { "rtf": 5.9121, "passed": false },
+  "e2eLoopOk": true,
+  "thirtyTurnOk": false,
+  "asrWer": { "wer": 1.0, "passed": false },
+  "dflash": { "acceptanceRate": 0.55, "speedup": null, "passed": false }
+}
+```
+
+(`thirtyTurnOk` is left at `false` rather than the aggregate's `null` so the
+manifest's `evals.thirtyTurnOk` is a valid boolean — the real 30-turn run is
+the publish-finish follow-up.)
+
+## Publish dry-run verdict (0.6B and 1.7B)
+
+`python -m scripts.publish.orchestrator --tier {0_6b,1_7b} --bundle-dir …
+--dry-run --metal-verification …/metal_verify.json` — **both fail at stage 2
+(validate release evidence)**, before they reach the eval gates / manifest
+build:
+
+```
+- releaseState must be 'upload-candidate' or 'final'
+- final.evals must be true
+- final.kernelDispatchReports must be true
+- final.platformEvidence must be true
+- final.sizeFirstRepoIds must be true
+```
+
+So the dry-run never re-builds the manifest (the publish-finish sibling owns
+the release-evidence finalization step). The independent eval-gate verdict
+(from each bundle's `evals/aggregate.json`): `passed = false` for both tiers, 9
+required gate failures each. **Still blocking publish**, even ignoring the
+release-evidence stage:
+- `text_eval` (needs the v2 fine-tune — base-v1 lands 0.28),
+- `voice_rtf` (8.6× — CPU MaskGIT TTS; needs a GPU-fused build to land ≤0.5),
+- `asr_wer` (1.0 — the bundle's ASR GGUF is stand-in quality),
+- `thirty_turn_ok` (peak RSS over `ramBudgetMb.recommended` — the fused process
+  holds every voice region resident; either trim the budget or page regions),
+- `vad_*` (no labelled speech corpus staged — VAD workstream),
+- `barge_in_cancel_ms` (not in the aggregate — wire `bargeInCancelMs` from this
+  bench into `bargein_latency_harness.mjs`),
+- plus the kernel set itself is incomplete (`missingRequiredKernels:
+  ["turbo3_tcq", "qjl_full", "polarquant"]` on `linux-x64-cpu-fused`).
+
+What *now passes* that was previously `not-run`: `e2e_loop_ok`,
+`dflash_acceptance`, and the bundle's `dispatch.json` (the `make` verify
+targets).
 
 ## Notes / honesty caveats
 
@@ -113,9 +222,11 @@ build contention — runs ~min/turn.)
   the generated text is off-topic (e.g. LaTeX) — the loop still exercises the
   full decode + DFlash + TTS path correctly; quality is a v2 (fine-tune)
   concern.
-- The DFlash drafter is a real GGUF but ≈ a copy of the target, so acceptance
-  ≈ 1.0; this is the right *shape* but not a meaningful acceptance number until
-  a trained drafter ships.
+- The DFlash drafter is a real GGUF but ≈ a copy of the target. In the e2e
+  bench (short n_predict, in-server DFlash loop) acceptance lands ~0.89–1.0; in
+  the standalone `llama-speculative-simple` eval (`-n 48`, `--draft-min/max
+  2/6`) it lands 0.87 (0.6B) / 0.55 (1.7B) — high-variance numbers off a
+  near-copy drafter, the right *shape* but not a trained-drafter figure.
 - The ASR GGUF is stand-in quality → round-trip WER ≈ 1.0. Recorded honestly.
 - Server peak RSS exceeds the manifest budget on both tiers because the fused
   process keeps every voice region resident — this is a real publish blocker

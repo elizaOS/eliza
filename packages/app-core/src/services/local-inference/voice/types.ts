@@ -213,18 +213,16 @@ export interface VoiceTurnMetadata {
  *
  * Owned jointly by the transcriber adapters (`voice/transcriber.ts`), the
  * VAD gating + barge-in word-confirm (`voice/vad.ts`, `voice/barge-in.ts`),
- * and the turn controller / speculative-on-pause path. The
- * `StreamingTranscriber` below is the meeting-point contract; the two
- * adapters (fused Qwen3-ASR via libelizainference, interim whisper.cpp)
- * implement it in `voice/transcriber.ts`. It consumes the canonical
- * `PcmFrame` (defined below in the audio front-end section) off a
- * `MicSource` and is gated by the `VadEvent` stream.
- *
- * NOTE on the older `pipeline.ts::AsrTokenStreamer`: that one models a
- * *batch-buffer → token iterator* (the overlapped `VoicePipeline` scaffold).
- * This one models a *live PCM-frame feed → partial-transcript events*. They
- * are different layers; `pipeline-impls.ts` adapts a `StreamingTranscriber`
- * onto `AsrTokenStreamer` for the pipeline.
+ * the turn controller / speculative-on-pause path, and the overlapped
+ * `VoicePipeline` (`voice/pipeline.ts`). The `StreamingTranscriber` below
+ * is the single ASR contract; the two adapters (fused Qwen3-ASR via
+ * libelizainference, interim whisper.cpp) implement it in
+ * `voice/transcriber.ts`. It consumes the canonical `PcmFrame` (defined
+ * below in the audio front-end section) off a `MicSource` and is gated by
+ * the `VadEvent` stream. The `VoicePipeline` drives the same contract as a
+ * batch (feed the whole utterance buffer, `flush()`, split the final
+ * transcript into contiguous text tokens) — there is no separate batch ASR
+ * interface.
  * -------------------------------------------------------------------- */
 
 /** A running or final transcript snapshot from a `StreamingTranscriber`. */

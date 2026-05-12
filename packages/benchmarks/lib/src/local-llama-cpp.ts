@@ -2,7 +2,7 @@
  * Thin OpenAI-compatible client adapter for the dflash llama-cpp fork.
  *
  * The dflash fork (built locally under
- * `~/.cache/eliza-dflash/milady-llama-cpp`) exposes the standard
+ * `~/.cache/eliza-dflash/eliza-llama-cpp`) exposes the standard
  * `llama-server` OpenAI-compatible HTTP endpoint at `/v1`. This module
  * provides:
  *
@@ -24,7 +24,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
-const DFLASH_FORK_ROOT = path.join(homedir(), ".cache", "eliza-dflash", "milady-llama-cpp");
+const DFLASH_FORK_ROOT = path.join(homedir(), ".cache", "eliza-dflash", "eliza-llama-cpp");
 const DFLASH_BINARY_RELATIVE = path.join("build", "bin", "llama-server");
 
 /** Absolute filesystem path to where the dflash fork is expected to live. */
@@ -88,7 +88,7 @@ export async function startLocalServer(
   if (!binary) {
     throw new Error(
       `dflash llama-server binary not found at ${DFLASH_BINARY_PATH}. ` +
-        "Build the fork at ~/.cache/eliza-dflash/milady-llama-cpp or set " +
+        "Build the fork at ~/.cache/eliza-dflash/eliza-llama-cpp or set " +
         "PARALLAX_OPENCODE_BASE_URL to point at a local OpenAI-compatible endpoint.",
     );
   }

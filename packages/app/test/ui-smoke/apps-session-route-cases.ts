@@ -11,7 +11,7 @@ export const DIRECT_ROUTE_CASES = [
   {
     name: "tasks",
     path: "/apps/tasks",
-    selector: '[data-testid="automations-shell"]',
+    selector: '[data-testid="tasks-view"]',
   },
   {
     name: "plugins",

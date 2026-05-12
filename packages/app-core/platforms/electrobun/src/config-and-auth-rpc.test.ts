@@ -12,10 +12,10 @@ import {
 	AgentNotReadyError,
 	type AuthMeReader,
 	type AuthStatusReader,
+	type ConfigReader,
 	composeAuthMeSnapshot,
 	composeAuthStatusSnapshot,
 	composeConfigSnapshot,
-	type ConfigReader,
 	readAuthMeViaHttp,
 	readAuthStatusViaHttp,
 	readConfigViaHttp,
@@ -150,9 +150,7 @@ describe("getAuthMe typed RPC", () => {
 		if (!result) return;
 		const _typed: AuthMeSnapshot = result;
 		void _typed;
-		expect(result.unauthorized?.reason).toBe(
-			"remote_password_not_configured",
-		);
+		expect(result.unauthorized?.reason).toBe("remote_password_not_configured");
 		expect(result.unauthorized?.access.mode).toBe("remote");
 		expect(result.identity).toBeUndefined();
 	});
@@ -185,9 +183,9 @@ describe("getAuthMe typed RPC", () => {
 	it("returns null on non-401 non-2xx — composer then throws AgentNotReadyError", async () => {
 		installFetch(() => new Response("server error", { status: 500 }));
 		const reader: AuthMeReader = async (port) => readAuthMeViaHttp(port);
-		await expect(
-			composeAuthMeSnapshot(31337, reader),
-		).rejects.toBeInstanceOf(AgentNotReadyError);
+		await expect(composeAuthMeSnapshot(31337, reader)).rejects.toBeInstanceOf(
+			AgentNotReadyError,
+		);
 	});
 
 	it("AgentNotReadyError carries the method name", async () => {

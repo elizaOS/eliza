@@ -1,4 +1,4 @@
-// CPU SIMD kernel staging for the v0.4.0-milady fork (Wave A1 wiring).
+// CPU SIMD kernel staging for the elizaOS/llama.cpp fork (v1.0.0-eliza) (Wave A1 wiring).
 //
 // What this module does:
 //

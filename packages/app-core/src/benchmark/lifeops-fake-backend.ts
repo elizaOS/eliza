@@ -457,13 +457,22 @@ export class LifeOpsFakeBackend {
   private applyCalendarUmbrella(kw: Record<string, unknown>): ActionResult {
     const subaction = pickString(kw, ["subaction", "action", "operation"], "");
     if (subaction === "create_event") {
-      const start = pickString(kw, ["start", "start_time", "startAt"], this.nowIso);
+      const start = pickString(
+        kw,
+        ["start", "start_time", "startAt"],
+        this.nowIso,
+      );
       const end =
         pickStringOrNull(kw, ["end", "end_time", "endAt"]) ??
         shiftIso(start, durationMinutes(kw, 30));
-      const title = pickString(kw, ["title", "summary", "event_name"], "Untitled");
+      const title = pickString(
+        kw,
+        ["title", "summary", "event_name"],
+        "Untitled",
+      );
       const existing = this.findCalendarEvent({ title, start });
-      if (existing) return { ok: true, result: { ...existing, idempotent: true } };
+      if (existing)
+        return { ok: true, result: { ...existing, idempotent: true } };
       return {
         ok: true,
         result: this.createEvent({
@@ -471,7 +480,11 @@ export class LifeOpsFakeBackend {
           title,
           start,
           end,
-          calendarId: pickString(kw, ["calendarId", "calendar_id"], "cal_primary"),
+          calendarId: pickString(
+            kw,
+            ["calendarId", "calendar_id"],
+            "cal_primary",
+          ),
         }),
       };
     }
@@ -479,7 +492,11 @@ export class LifeOpsFakeBackend {
     if (subaction === "update_event") {
       const updates = isRecord(kw.updates) ? kw.updates : {};
       const merged = { ...kw, ...updates };
-      const requestedId = pickStringOrNull(merged, ["eventId", "event_id", "id"]);
+      const requestedId = pickStringOrNull(merged, [
+        "eventId",
+        "event_id",
+        "id",
+      ]);
       const event = this.findCalendarEvent({
         id: requestedId,
         title:
@@ -488,8 +505,12 @@ export class LifeOpsFakeBackend {
             ? requestedId
             : null),
         dateHint:
-          pickStringOrNull(merged, ["new_start", "newStart", "start", "date"]) ??
-          this.nowIso,
+          pickStringOrNull(merged, [
+            "new_start",
+            "newStart",
+            "start",
+            "date",
+          ]) ?? this.nowIso,
       });
       if (!event) {
         return { ok: false, result: { missing: "calendar_event", kwargs: kw } };
@@ -501,7 +522,13 @@ export class LifeOpsFakeBackend {
       );
       const end =
         pickStringOrNull(merged, ["new_end", "newEnd", "end", "end_time"]) ??
-        shiftIso(start, durationMinutes(merged, durationBetweenMinutes(event.start, event.end)));
+        shiftIso(
+          start,
+          durationMinutes(
+            merged,
+            durationBetweenMinutes(event.start, event.end),
+          ),
+        );
       return { ok: true, result: this.moveEvent({ id: event.id, start, end }) };
     }
 
@@ -595,7 +622,8 @@ export class LifeOpsFakeBackend {
       if (exact) return exact;
     }
     if (matches.length === 0) return null;
-    const hint = parseIso(args.dateHint ?? this.nowIso) ?? parseIso(this.nowIso);
+    const hint =
+      parseIso(args.dateHint ?? this.nowIso) ?? parseIso(this.nowIso);
     const hintDate = hint?.toISOString().slice(0, 10);
     return matches.sort((a, b) => {
       const aDate = a.start.slice(0, 10);
@@ -989,14 +1017,19 @@ function pickStringArray(
   return [];
 }
 
-function durationMinutes(kw: Record<string, unknown>, fallback: number): number {
+function durationMinutes(
+  kw: Record<string, unknown>,
+  fallback: number,
+): number {
   for (const key of ["duration_minutes", "durationMinutes", "duration"]) {
     const value = kw[key];
     if (typeof value === "number" && Number.isFinite(value)) {
       return Math.max(1, Math.round(value));
     }
     if (typeof value === "string") {
-      const match = value.trim().match(/^(\d+)\s*(m|min|minute|minutes|h|hr|hour|hours)?$/i);
+      const match = value
+        .trim()
+        .match(/^(\d+)\s*(m|min|minute|minutes|h|hr|hour|hours)?$/i);
       if (match) {
         const amount = Number(match[1]);
         const unit = match[2]?.toLowerCase() ?? "minutes";
@@ -1015,7 +1048,10 @@ function durationBetweenMinutes(start: string, end: string): number {
   const startDate = parseIso(start);
   const endDate = parseIso(end);
   if (!startDate || !endDate) return 60;
-  return Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / 60_000));
+  return Math.max(
+    1,
+    Math.round((endDate.getTime() - startDate.getTime()) / 60_000),
+  );
 }
 
 function shiftIso(start: string, minutes: number): string {

@@ -42,8 +42,7 @@ type RuntimeActionLike = Pick<
 
 const LIFEOPS_PUBLIC_MODULE: string = "@elizaos/app-lifeops";
 
-let ownerBlockFallbackPromise: Promise<RuntimeActionLike | null> | null =
-  null;
+let ownerBlockFallbackPromise: Promise<RuntimeActionLike | null> | null = null;
 
 async function resolveBuiltInFallbackAction(
   actionName: string,
@@ -53,9 +52,7 @@ async function resolveBuiltInFallbackAction(
   }
 
   if (!ownerBlockFallbackPromise) {
-    ownerBlockFallbackPromise = import(
-      /* @vite-ignore */ LIFEOPS_PUBLIC_MODULE
-    )
+    ownerBlockFallbackPromise = import(/* @vite-ignore */ LIFEOPS_PUBLIC_MODULE)
       .then((mod) => mod as Record<string, RuntimeActionLike | undefined>)
       .then((mod) => mod.websiteBlockAction ?? null)
       .catch(() => null);

@@ -111,8 +111,7 @@ function autoWireCerebras(): void {
   // exposes. The `/v1/responses` Responses API does not exist on Cerebras,
   // so pinning a chat-completions-friendly model id and letting the plugin
   // route through `openai.chat()` is the right behavior.
-  const cerebrasModel =
-    process.env.CEREBRAS_MODEL?.trim() || "gpt-oss-120b";
+  const cerebrasModel = process.env.CEREBRAS_MODEL?.trim() || "gpt-oss-120b";
   if (!process.env.OPENAI_LARGE_MODEL?.trim()) {
     process.env.OPENAI_LARGE_MODEL = cerebrasModel;
   }
@@ -1254,7 +1253,11 @@ export async function startBenchmarkServer() {
       // LifeOps backend tools; forwarding them as tool calls makes the Python
       // runner keep looping after a finished response.
       for (const name of actions) {
-        if (name === "BENCHMARK_ACTION" || name === "REPLY" || name === "RESPOND")
+        if (
+          name === "BENCHMARK_ACTION" ||
+          name === "REPLY" ||
+          name === "RESPOND"
+        )
           continue;
         if (
           capturedAction &&

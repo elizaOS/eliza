@@ -1,5 +1,5 @@
 // PolarQuant pre-Hadamard-transposed (`_preht`) CPU dot wiring for the
-// v0.4.0-milady fork.
+// elizaOS/llama.cpp fork (v1.0.0-eliza).
 //
 // What this module does (applied after `git reset --hard` on the cached
 // fork checkout, every build):

@@ -169,11 +169,7 @@ export const replyAction = {
 	name: spec.name,
 	contexts: ["general", "messaging"],
 	roleGate: { minRole: "USER" },
-	similes: [
-		...((spec.similes ?? []) as string[]),
-		"ASK",
-		"CLARIFY",
-	],
+	similes: [...((spec.similes ?? []) as string[]), "ASK", "CLARIFY"],
 	description: extendedDescription,
 	descriptionCompressed: extendedDescriptionCompressed,
 	suppressPostActionContinuation: true,

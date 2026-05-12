@@ -1,6 +1,6 @@
 """Emit a Milady-typed GGUF using the elizaOS/llama.cpp fork's converter.
 
-The elizaOS/llama.cpp v0.4.0-milady fork registers the following
+The elizaOS/llama.cpp v1.0.0-eliza fork registers the following
 non-upstream GGML types:
 
     - ``Q4_POLAR=47``  PolarQuant 4-bit weight blocks
@@ -31,7 +31,7 @@ This script is a thin wrapper around the fork's
 Where the fork's converter natively handles a step, we delegate. Where
 it doesn't, this script writes a minimal extension JSON next to the
 GGUF describing the unwritten metadata and warns the user. The runtime
-loader (``elizaOS/llama.cpp`` ≥ v0.4.0-milady) reads the extension
+loader (``elizaOS/llama.cpp`` ≥ v1.0.0-eliza) reads the extension
 JSON if the GGUF metadata block is missing — this is the migration shim
 described in ``docs/porting/unified-fork-strategy.md`` §H step 8.
 
@@ -81,11 +81,13 @@ def _load_sidecar(path: Path) -> dict[str, object] | None:
 
 
 def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
-    """Locate ``convert_hf_to_gguf.py`` in the milady fork checkout.
+    """Locate ``convert_hf_to_gguf.py`` in the elizaOS/llama.cpp fork checkout.
 
     Resolution order: --llama-cpp-dir → $LLAMA_CPP_DIR → the in-repo fork
-    submodule (packages/inference/llama.cpp) → ~/.cache/eliza-dflash/
-    milady-llama-cpp → ~/src/milady-llama.cpp → $PATH.
+    submodule (``packages/inference/llama.cpp``, the single canonical
+    llama.cpp checkout) → the standalone clone at
+    ``~/.cache/eliza-dflash/eliza-llama-cpp`` (used when the build scripts'
+    ELIZA_DFLASH_LLAMA_CPP_REMOTE/_REF override forces one) → $PATH.
     """
     cands: list[Path] = []
     if llama_cpp_dir is not None:
@@ -101,10 +103,7 @@ def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
         if cand.is_dir():
             cands.append(cand)
             break
-    cands += [
-        Path.home() / ".cache" / "eliza-dflash" / "milady-llama-cpp",
-        Path.home() / "src" / "milady-llama.cpp",
-    ]
+    cands.append(Path.home() / ".cache" / "eliza-dflash" / "eliza-llama-cpp")
     for c in cands:
         cand = c / "convert_hf_to_gguf.py"
         if cand.exists():
@@ -219,7 +218,7 @@ def main(argv: list[str] | None = None) -> int:
         "--llama-cpp-dir",
         type=Path,
         default=None,
-        help="Path to the elizaOS/llama.cpp v0.4.0-milady checkout.",
+        help="Path to the elizaOS/llama.cpp v1.0.0-eliza checkout (defaults to the in-repo submodule packages/inference/llama.cpp).",
     )
     ap.add_argument(
         "--polarquant-sidecar",

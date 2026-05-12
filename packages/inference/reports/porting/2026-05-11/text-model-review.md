@@ -40,7 +40,7 @@ its work. So everything here is from scratch.
   KV recipe (`turboquant.json`: K=`turbo4_0`, nbits 4; `qjl_config.json`:
   K 1-bit / V 4-bit, group 32; `polarquant_config.json`: V Polar Q4) but
   the GGUF weights are unchanged plain k-quants — here TBQ/QJL/Polar are
-  *runtime KV-cache* compressors, not weight quants. `gguf_milady_apply`'s
+  *runtime KV-cache* compressors, not weight quants. `gguf_eliza1_apply`'s
   `q4_polar→q8_0` fallback only affects the (unused-here) weight-quant Polar
   path; the V-cache Polar kernel path is the separate, working one.
 

@@ -519,7 +519,8 @@ export function canBundleBeDefaultOnDevice(
   );
   const verifiedOnDeviceBackend = caps.availableBackends.some(
     (b) =>
-      supported.has(b) && manifest.kernels.verifiedBackends[b].status === "pass",
+      supported.has(b) &&
+      manifest.kernels.verifiedBackends[b].status === "pass",
   );
   if (!verifiedOnDeviceBackend) {
     const deviceBackends = caps.availableBackends.join(", ");

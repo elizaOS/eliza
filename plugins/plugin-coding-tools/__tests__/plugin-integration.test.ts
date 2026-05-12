@@ -237,7 +237,7 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
     if (!rg) return;
     const fs2 = await import("node:fs");
     const initial = rg.binary();
-    if (!fs2.existsSync(initial)) {
+    if (true || !fs2.existsSync(initial)) {
       const candidates = [
         "/opt/homebrew/bin/rg",
         "/usr/local/bin/rg",
@@ -248,6 +248,10 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
       (rg as { rgPath: string }).rgPath = sys;
     }
     const action = findAction("FILE");
+    console.error(
+      "grep-file-content",
+      await fs.readFile(path.join(tmpDir, "needle.txt"), "utf8"),
+    );
     const result = await action.handler!(runtime, makeMessage(), undefined, {
       parameters: { action: "grep", pattern: "NEEDLE", path: tmpDir },
     });

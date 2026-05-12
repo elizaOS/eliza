@@ -25,9 +25,12 @@ upstream b8198. Both build paths consume it: `build-llama-cpp-dflash.mjs`
 the submodule checkout. `ELIZA_DFLASH_LLAMA_CPP_REMOTE` / `_REF` (or `--cache-dir`
 / `--src-dir`) still force a standalone clone for fork bisects. (`v1.0.0-eliza` is
 the same tree as the prior `v0.4.0-milady` tag, re-tagged on the elizaOS rename. A
-full rebase onto a recent upstream llama.cpp remains a follow-up — the
-conflict-prone files are the quant-slot enums in `ggml-common.h` / `ggml.h` and the
-`Q1_0` block layout, which upstream redefined incompatibly with the fork's.)
+full rebase onto a recent upstream llama.cpp remains a **deferred** follow-up — not
+a blocker for structured output (the b8198 base already has `grammar_lazy` /
+`json_schema` / `response_format` / `prefill_assistant`); the conflict-prone files
+are the quant-slot enums in `ggml-common.h` / `ggml.h` and the `Q1_0` block layout,
+which upstream redefined incompatibly with the fork's. Full cost / conflict surface
+/ trigger conditions: [`docs/porting/upstream-rebase-plan.md`](../../docs/porting/upstream-rebase-plan.md).)
 
 ---
 
@@ -463,7 +466,7 @@ backend nightly.
   produce numerically identical output (within published tolerance) to
   the C reference in `packages/inference/reference/` and to the
   upstream CUDA implementation in
-  `packages/native-plugins/{qjl-cpu,polarquant-cpu}` and the buun-llama-cpp
+  `packages/native-plugins/{qjl-cpu,polarquant-cpu}` and the `elizaOS/llama.cpp`
   fork. New kernels follow the same pattern: ship the C reference and
   a JSON fixture before shipping the Vulkan/Metal port.
 - **Hardware verification is non-optional.** A "compiles cleanly"
@@ -496,10 +499,8 @@ backend nightly.
   from the in-repo `packages/inference/llama.cpp` submodule.
 - `packages/training/AGENTS.md` — the training-side contract, including
   what the bundle/publish flow expects.
-- `/Users/shawwalters/eliza-workspace/milady/CLAUDE.md` — repo-wide
-  conventions (port handling, scope discipline, elizaOS naming).
-- `/Users/shawwalters/eliza-workspace/milady/AGENTS.md` — repo-wide
-  cleanup mandate. The non-negotiable architecture rules apply here
-  too: dependencies point inward, no polymorphism for runtime branching
-  in code (kernels are a registry, not an `if`), no `try/catch` that
-  swallows.
+- the repo-root `AGENTS.md` — repo-wide cleanup mandate and conventions
+  (port handling, scope discipline, elizaOS naming). The non-negotiable
+  architecture rules apply here too: dependencies point inward, no
+  polymorphism for runtime branching in code (kernels are a registry,
+  not an `if`), no `try/catch` that swallows.

@@ -239,7 +239,10 @@ const DFLASH_METRIC_ALIASES = {
 } as const;
 
 export function parseDflashMetrics(body: string): DflashMetricsSnapshot | null {
-  const samples = new Map<string, { unlabeled: number | null; labeledSum: number }>();
+  const samples = new Map<
+    string,
+    { unlabeled: number | null; labeledSum: number }
+  >();
   for (const rawLine of body.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) continue;
@@ -288,7 +291,10 @@ function allowZeroDraftForDiagnostics(): boolean {
 }
 
 export function shouldRequireActiveDflashForRequest(
-  plan: Pick<DflashServerPlan, "disableDrafter" | "draftMin"> | null | undefined,
+  plan:
+    | Pick<DflashServerPlan, "disableDrafter" | "draftMin">
+    | null
+    | undefined,
   maxTokens: number | null | undefined,
 ): boolean {
   if (!plan || plan.disableDrafter || allowZeroDraftForDiagnostics()) {

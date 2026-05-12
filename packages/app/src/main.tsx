@@ -1037,9 +1037,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (isNative) {
-    await initializeStorageBridge();
-  }
+  await initializeStorageBridge();
   mountReactApp();
   await initializePlatform();
 }
