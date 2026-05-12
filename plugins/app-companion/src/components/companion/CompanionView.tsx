@@ -229,6 +229,7 @@ const CompanionViewOverlay = memo(function CompanionViewOverlay() {
           }}
         >
           <div
+            data-testid="companion-chat-dock"
             className="relative w-full max-w-5xl min-w-0"
             style={{ height: COMPANION_DOCK_HEIGHT, minHeight: "17rem" }}
           >

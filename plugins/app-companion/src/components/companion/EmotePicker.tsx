@@ -382,6 +382,7 @@ export function EmotePicker() {
   return (
     <div
       ref={panelRef}
+      data-testid="emote-picker"
       className={`fixed bottom-4 left-4 z-[${Z_SYSTEM_CRITICAL}] w-[320px] rounded-xl shadow-2xl`}
       style={{
         background: "rgba(18, 22, 32, 0.96)",
@@ -416,6 +417,7 @@ export function EmotePicker() {
             size="sm"
             onClick={stopEmote}
             className="rounded px-2 py-1 text-xs font-medium h-auto"
+            data-testid="emote-picker-stop"
           >
             {t("game.stop")}
           </Button>
@@ -431,6 +433,8 @@ export function EmotePicker() {
             size="icon"
             onClick={closeEmotePicker}
             className="h-auto w-auto p-0"
+            aria-label={t("common.close", { defaultValue: "Close" })}
+            data-testid="emote-picker-close"
             style={{ color: "rgba(255,255,255,0.45)" }}
             onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
               e.currentTarget.style.color = "rgba(240,238,250,0.92)";
@@ -458,6 +462,7 @@ export function EmotePicker() {
           }
           placeholder={t("emotepicker.SearchEmotes")}
           className="w-full rounded px-2 py-1 text-sm focus:outline-none focus:ring-1"
+          data-testid="emote-picker-search"
           style={{
             background: "rgba(255,255,255,0.06)",
             color: "rgba(240,238,250,0.92)",
@@ -476,6 +481,7 @@ export function EmotePicker() {
           size="sm"
           onClick={() => setActiveCategory(null)}
           className="shrink-0 rounded px-2 py-1 text-xs font-medium h-auto"
+          data-testid="emote-picker-category-all"
           style={{
             background:
               activeCategory === null
@@ -496,6 +502,7 @@ export function EmotePicker() {
             key={cat}
             onClick={() => setActiveCategory(cat)}
             className="shrink-0 rounded px-2 py-1 text-xs font-medium h-auto"
+            data-testid={`emote-picker-category-${cat}`}
             style={{
               background:
                 activeCategory === cat
@@ -523,6 +530,8 @@ export function EmotePicker() {
               key={emote.id}
               onClick={() => playEmote(emote.id)}
               disabled={playing === emote.id}
+              aria-label={`Play ${emote.name}`}
+              data-testid={`emote-picker-item-${emote.id}`}
               title={emote.name}
               className="flex aspect-square items-center justify-center rounded text-2xl h-auto w-auto"
               style={{

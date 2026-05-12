@@ -193,6 +193,7 @@ export const CompanionHeader = memo(function CompanionHeader(
                         WebkitClipPath: "none",
                         touchAction: "manipulation",
                       }}
+                      data-testid="companion-voice-toggle"
                       data-no-camera-drag="true"
                     >
                       {chatAgentVoiceMuted ? (
@@ -218,6 +219,7 @@ export const CompanionHeader = memo(function CompanionHeader(
                         WebkitClipPath: "none",
                         touchAction: "manipulation",
                       }}
+                      data-testid="companion-new-chat"
                       data-no-camera-drag="true"
                     >
                       <MessageCirclePlus className="pointer-events-none h-4 w-4 shrink-0" />

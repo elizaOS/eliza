@@ -139,6 +139,13 @@ async function proxyUiRequest(args: {
   let filePath = resolveDistAssetPath(requestedPath);
   const isAssetRequest = path.extname(requestedPath).length > 0;
   const indexHtmlPath = path.join(APP_DIST_DIR, "index.html");
+  if (!filePath && isAssetRequest) {
+    args.response.writeHead(404, {
+      "Content-Type": "application/json",
+    });
+    args.response.end(JSON.stringify({ error: "Static asset not found" }));
+    return;
+  }
   if (!filePath && !isAssetRequest) {
     filePath = indexHtmlPath;
   }

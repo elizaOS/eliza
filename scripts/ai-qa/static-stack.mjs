@@ -102,6 +102,7 @@ function contentTypeFor(filePath) {
 function resolveDistAsset(pathname) {
   // Strip leading slash + try the path verbatim, then index.html fallback for SPA.
   const segments = pathname.replace(/^\/+/, "").split("/").filter(Boolean);
+  const isAssetRequest = extname(pathname).length > 0;
   for (let index = 0; index < segments.length; index += 1) {
     const candidate = resolve(APP_DIST, segments.slice(index).join("/"));
     if (
@@ -112,6 +113,9 @@ function resolveDistAsset(pathname) {
     ) {
       return candidate;
     }
+  }
+  if (isAssetRequest) {
+    return null;
   }
   return join(APP_DIST, "index.html");
 }
@@ -292,6 +296,14 @@ async function main() {
           return;
         }
         const filePath = resolveDistAsset(url.pathname);
+        if (!filePath) {
+          response.writeHead(404, {
+            "content-type": "application/json",
+            "cache-control": "no-store",
+          });
+          response.end(JSON.stringify({ error: "Static asset not found" }));
+          return;
+        }
         const body = readFileSync(filePath);
         if (!response.headersSent) {
           response.writeHead(200, {
