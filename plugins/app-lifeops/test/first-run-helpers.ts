@@ -80,8 +80,7 @@ export function createMinimalRuntimeStub(
     },
     async createTask(task: Task): Promise<UUID> {
       const id =
-        task.id ??
-        (("task-" + Math.random().toString(36).slice(2, 10)) as UUID);
+        task.id ?? (`task-${Math.random().toString(36).slice(2, 10)}` as UUID);
       tasks.push({
         id,
         name: task.name,

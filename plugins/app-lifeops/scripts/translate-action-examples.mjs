@@ -49,7 +49,7 @@ const DEFAULT_BASE_URL = "https://api.cerebras.ai/v1";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(here, "..");
-const elizaRoot = path.resolve(packageRoot, "..", "..");
+const _elizaRoot = path.resolve(packageRoot, "..", "..");
 const elizaRoot = path.resolve(elizaRoot, "..");
 for (const candidate of [
   path.join(packageRoot, ".env"),
@@ -560,7 +560,7 @@ function resolveExpressionToInitializer(expression, project) {
  * cross-file source files to the project so symbol resolution can follow
  * imports.
  */
-function unwrapToVariableInitializer(node, project) {
+function unwrapToVariableInitializer(node, _project) {
   let current = node;
   for (let hops = 0; hops < 5 && current; hops++) {
     const kind = current.getKind?.();

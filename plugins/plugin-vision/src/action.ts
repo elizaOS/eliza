@@ -371,7 +371,7 @@ async function runDescribe(
 ): Promise<ActionResult> {
   const visionService = runtime.getService<VisionService>("VISION");
 
-  if (!visionService || !visionService.isActive()) {
+  if (!visionService?.isActive()) {
     const thought =
       "Vision service is not available or no camera is connected.";
     const text = "I cannot see anything right now. No camera is available.";
@@ -571,7 +571,7 @@ async function runCapture(
 ): Promise<ActionResult> {
   const visionService = runtime.getService<VisionService>("VISION");
 
-  if (!visionService || !visionService.isActive()) {
+  if (!visionService?.isActive()) {
     const thought =
       "Vision service is not available or no camera is connected.";
     const text = "I cannot capture an image right now. No camera is available.";

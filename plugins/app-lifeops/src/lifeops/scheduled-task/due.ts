@@ -9,7 +9,7 @@ import type {
 } from "./types.js";
 
 const MINUTE_MS = 60_000;
-const DAY_MS = 24 * 60 * MINUTE_MS;
+const _DAY_MS = 24 * 60 * MINUTE_MS;
 const CRON_CATCHUP_WINDOW_MS = 36 * 60 * MINUTE_MS;
 
 export interface ScheduledTaskDueContext {

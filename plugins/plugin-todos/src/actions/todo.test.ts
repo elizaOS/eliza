@@ -212,7 +212,7 @@ async function invoke(
   message: Memory = makeMessage(),
 ): Promise<ActionResult> {
   const opts = { parameters } as HandlerOptions;
-  const result = await todoAction.handler!(runtime, message, undefined, opts);
+  const result = await todoAction.handler?.(runtime, message, undefined, opts);
   if (result === undefined) {
     throw new Error("todoAction.handler returned undefined");
   }
@@ -255,7 +255,7 @@ describe("TODO action", () => {
         op: "write",
         todos: [{ content: "original", status: "pending" }],
       });
-      const originalId = service.rows[0]!.id;
+      const originalId = service.rows[0]?.id;
       const result = await invoke(runtime, {
         op: "write",
         todos: [
@@ -286,7 +286,7 @@ describe("TODO action", () => {
         op: "write",
         todos: [{ content: "child task", status: "pending" }],
       });
-      expect(service.rows[0]!.parentTrajectoryStepId).toBe("parent-step-99");
+      expect(service.rows[0]?.parentTrajectoryStepId).toBe("parent-step-99");
     });
   });
 
@@ -322,7 +322,7 @@ describe("TODO action", () => {
         op: "create",
         content: "draft",
       });
-      const id = service.rows[0]!.id;
+      const id = service.rows[0]?.id;
       const result = await invoke(runtime, {
         op: "update",
         id,
@@ -330,8 +330,8 @@ describe("TODO action", () => {
         status: "in_progress",
       });
       expect(result.success).toBe(true);
-      expect(service.rows[0]!.content).toBe("final");
-      expect(service.rows[0]!.status).toBe("in_progress");
+      expect(service.rows[0]?.content).toBe("final");
+      expect(service.rows[0]?.status).toBe("in_progress");
     });
 
     it("rejects updates for another user's todo", async () => {
@@ -364,26 +364,26 @@ describe("TODO action", () => {
   describe("op=complete / cancel", () => {
     it("complete sets status=completed and completedAt", async () => {
       await invoke(runtime, { op: "create", content: "ship it" });
-      const id = service.rows[0]!.id;
+      const id = service.rows[0]?.id;
       const result = await invoke(runtime, { op: "complete", id });
       expect(result.success).toBe(true);
-      expect(service.rows[0]!.status).toBe("completed");
-      expect(service.rows[0]!.completedAt).toBeInstanceOf(Date);
+      expect(service.rows[0]?.status).toBe("completed");
+      expect(service.rows[0]?.completedAt).toBeInstanceOf(Date);
     });
 
     it("cancel sets status=cancelled", async () => {
       await invoke(runtime, { op: "create", content: "drop" });
-      const id = service.rows[0]!.id;
+      const id = service.rows[0]?.id;
       const result = await invoke(runtime, { op: "cancel", id });
       expect(result.success).toBe(true);
-      expect(service.rows[0]!.status).toBe("cancelled");
+      expect(service.rows[0]?.status).toBe("cancelled");
     });
   });
 
   describe("op=delete", () => {
     it("hard-deletes by id", async () => {
       await invoke(runtime, { op: "create", content: "gone" });
-      const id = service.rows[0]!.id;
+      const id = service.rows[0]?.id;
       const result = await invoke(runtime, { op: "delete", id });
       expect(result.success).toBe(true);
       expect(service.rows.length).toBe(0);
@@ -394,7 +394,7 @@ describe("TODO action", () => {
     it("returns user's pending+in_progress by default", async () => {
       await invoke(runtime, { op: "create", content: "a" });
       await invoke(runtime, { op: "create", content: "b" });
-      const id = service.rows[1]!.id;
+      const id = service.rows[1]?.id;
       await invoke(runtime, { op: "complete", id });
       const result = await invoke(runtime, { op: "list" });
       expect(result.success).toBe(true);
@@ -404,7 +404,7 @@ describe("TODO action", () => {
 
     it("includeCompleted=true returns everything", async () => {
       await invoke(runtime, { op: "create", content: "a" });
-      const id = service.rows[0]!.id;
+      const id = service.rows[0]?.id;
       await invoke(runtime, { op: "complete", id });
       const result = await invoke(runtime, {
         op: "list",

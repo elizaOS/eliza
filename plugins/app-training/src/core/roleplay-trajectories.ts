@@ -1,6 +1,6 @@
-import { randomUUID } from "crypto";
-import { mkdir, writeFile } from "fs/promises";
-import { join } from "path";
+import { randomUUID } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { AgentContext } from "./context-types.js";
 import type {
   ElizaNativeTrainingExample,

@@ -525,7 +525,7 @@ export function lifeOpsGmailMessageFromGoogle(args: {
 }
 
 function dateTimeValue(value: string | undefined, fallback: string): string {
-  return value && value.trim() ? value : fallback;
+  return value?.trim() ? value : fallback;
 }
 
 export function lifeOpsCalendarEventFromGoogle(args: {

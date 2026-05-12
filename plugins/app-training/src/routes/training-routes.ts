@@ -7,7 +7,6 @@ import type {
 import { parsePositiveInteger } from "@elizaos/shared";
 import { AGENT_CONTEXTS, type AgentContext } from "../core/context-types.js";
 import { createHashAnonymizer } from "../core/privacy-filter.js";
-import type { RoleplayExecutionReport } from "../core/roleplay-executor.js";
 import {
   ALL_TRAINING_BACKENDS,
   ALL_TRAINING_TASKS,

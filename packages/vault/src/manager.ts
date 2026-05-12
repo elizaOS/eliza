@@ -16,7 +16,6 @@ import {
   revealOnePasswordLogin,
 } from "./external-credentials.js";
 import { type ResolutionContext, resolveActiveValue } from "./profiles.js";
-import type { PasswordManagerReference } from "./types.js";
 import { createVault, type Vault, VaultMissError } from "./vault.js";
 
 const exec = promisify(execFile);

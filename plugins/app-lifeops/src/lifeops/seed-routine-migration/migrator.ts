@@ -151,7 +151,7 @@ export async function buildSeedRoutineMigrationDiff(args: {
 
   for (const definition of definitions) {
     const seedKey = readSeedKey(definition.metadata);
-    if (!seedKey || !seedKey.startsWith(`${LEGACY_SEED_KEY_PREFIX}:`)) {
+    if (!seedKey?.startsWith(`${LEGACY_SEED_KEY_PREFIX}:`)) {
       continue;
     }
     const habitKey = legacySeedKeyToHabitStarterKey(seedKey);

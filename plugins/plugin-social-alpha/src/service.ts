@@ -922,11 +922,7 @@ export class CommunityInvestorService
 			// Get the key metrics
 			const { tradeData, security, dexScreenerData } = tokenData;
 
-			if (
-				!dexScreenerData ||
-				!dexScreenerData.pairs ||
-				dexScreenerData.pairs.length === 0
-			) {
+			if (!dexScreenerData?.pairs || dexScreenerData.pairs.length === 0) {
 				return false;
 			}
 
@@ -3220,8 +3216,7 @@ ${report.tokenReports.join("\n")}
 
 			// Check if metrics need re-evaluation
 			const needsReEval =
-				!rec.metrics ||
-				!rec.metrics.evaluationTimestamp ||
+				!rec.metrics?.evaluationTimestamp ||
 				Date.now() - rec.metrics.evaluationTimestamp >
 					this.METRIC_REFRESH_INTERVAL;
 

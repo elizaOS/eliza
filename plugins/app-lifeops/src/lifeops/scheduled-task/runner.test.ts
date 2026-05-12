@@ -404,7 +404,7 @@ describe("ScheduledTaskRunner — fire path + gates", () => {
   });
 
   it("multi-gate composition: first_deny stops at the first deny", async () => {
-    const h = makeHarness();
+    const _h = makeHarness();
     const denyTrace: string[] = [];
     const deny: TaskGateContribution = {
       kind: "test.deny",

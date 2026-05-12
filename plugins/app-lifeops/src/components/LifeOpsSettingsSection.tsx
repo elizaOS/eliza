@@ -558,7 +558,7 @@ function GoogleConnectorSideCard({
     return () => {
       cancelled = true;
     };
-  }, [side, status?.connected, status?.mode]);
+  }, [side, status?.connected, status?.mode, preferredGrantId]);
 
   const toggleCalendar = useCallback(
     async (calendar: LifeOpsCalendarSummary) => {

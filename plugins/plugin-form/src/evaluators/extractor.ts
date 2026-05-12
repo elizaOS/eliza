@@ -287,7 +287,7 @@ export const formEvaluator: Evaluator<
     if (!entityId || !roomId) return false;
 
     const text = message.content?.text;
-    if (!text || !text.trim()) return false;
+    if (!text?.trim()) return false;
 
     const session = await formService.getActiveSession(entityId, roomId);
     if (session) return true;

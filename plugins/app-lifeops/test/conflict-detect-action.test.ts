@@ -145,7 +145,7 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
       expect(data.conflicts).toHaveLength(1);
       expect(data.conflicts[0]).toMatchObject({ severity: "hard" });
       expect(
-        new Set([data.conflicts[0]!.eventA.id, data.conflicts[0]!.eventB.id]),
+        new Set([data.conflicts[0]?.eventA.id, data.conflicts[0]?.eventB.id]),
       ).toEqual(new Set(["evt-a", "evt-b"]));
       expect(data.checkedEvents).toBe(3);
     });
@@ -209,7 +209,7 @@ describe("CONFLICT_DETECT umbrella action — proactive calendar scans", () => {
       });
       const data = result.data as { conflicts: { severity: string }[] };
       expect(data.conflicts).toHaveLength(1);
-      expect(data.conflicts[0]!.severity).toBe("warning");
+      expect(data.conflicts[0]?.severity).toBe("warning");
     });
   });
 

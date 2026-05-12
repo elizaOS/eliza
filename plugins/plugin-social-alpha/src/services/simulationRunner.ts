@@ -133,8 +133,6 @@ export interface SimulationResult {
 
 export class SimulationRunner {
 	private tokenService: TokenSimulationService;
-	private actorsService: SimulationActorsServiceV2;
-	private actorsService: SimulationActorsServiceV2;
 
 	constructor() {
 		this.tokenService = new TokenSimulationService();

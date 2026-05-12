@@ -206,7 +206,7 @@ describe.skipIf(!LIVE_BASE_URL)("sendPush — live Ntfy", () => {
     };
 
     const result = await sendPush(request, {
-      baseUrl: LIVE_BASE_URL!.replace(/\/$/, ""),
+      baseUrl: LIVE_BASE_URL?.replace(/\/$/, ""),
       defaultTopic: ORIGINAL_ENV.NTFY_DEFAULT_TOPIC ?? "eliza-test",
     });
 

@@ -36,7 +36,7 @@ let priorLocalMode: string | undefined;
 
 function ownerMessage(agentId: UUID, text: string): Memory {
   return {
-    id: ("msg-" + Math.random().toString(36).slice(2, 8)) as UUID,
+    id: `msg-${Math.random().toString(36).slice(2, 8)}` as UUID,
     entityId: agentId,
     roomId: agentId,
     agentId,

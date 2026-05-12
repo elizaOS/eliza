@@ -432,7 +432,6 @@ function connectionLabel(status: string | undefined): string {
       return "Connection closed";
     case "failed":
       return "Connection failed";
-    case "idle":
     default:
       return "Idle (bot-SDK not configured)";
   }

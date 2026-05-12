@@ -19,7 +19,7 @@ import dotenv from "dotenv";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(here, "..");
-const elizaRoot = path.resolve(packageRoot, "..", "..");
+const _elizaRoot = path.resolve(packageRoot, "..", "..");
 const elizaRoot = path.resolve(elizaRoot, "..");
 
 const envCandidates = [

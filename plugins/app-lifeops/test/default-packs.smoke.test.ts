@@ -220,14 +220,14 @@ describe("W1-D default-pack smoke — 24h simulated nudge budget", () => {
     );
     expect(wakeBatches.length).toBe(2); // offset-0 batch + offset-30 batch
     const offsetZeroBatch = wakeBatches.find(
-      (batch) => batch[0]!.fireMinuteOfDay === 7 * 60,
+      (batch) => batch[0]?.fireMinuteOfDay === 7 * 60,
     );
     expect(offsetZeroBatch).toBeDefined();
     // offset-0 visible: gm (low) + morning-brief (medium). Sorted priority_desc.
-    expect(offsetZeroBatch!.map((f) => f.recordKey).sort()).toEqual(
+    expect(offsetZeroBatch?.map((f) => f.recordKey).sort()).toEqual(
       ["gm", "morning-brief"].sort(),
     );
-    expect(offsetZeroBatch![0]!.priority).toBe("medium");
+    expect(offsetZeroBatch?.[0]?.priority).toBe("medium");
   });
 
   it("watcher tasks (ownerVisible=false) do not count toward the nudge budget", () => {

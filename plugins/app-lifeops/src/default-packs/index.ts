@@ -128,7 +128,7 @@ export function getDefaultEnabledPacks(
     if (!options.connectorRegistry) return false;
     return pack.requiredCapabilities.every(
       (capability) =>
-        options.connectorRegistry!.byCapability(capability).length > 0,
+        options.connectorRegistry?.byCapability(capability).length > 0,
     );
   });
 }

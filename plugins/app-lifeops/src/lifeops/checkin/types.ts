@@ -5,8 +5,6 @@
  * pause/resume/snooze, and cron wiring are intentionally deferred to follow-up PRs.
  */
 
-import type { LifeOpsRegularityClass } from "@elizaos/shared";
-
 export type CheckinKind = "morning" | "night";
 
 /** 0 = new, 1 = one missed, 2 = two missed, 3 = three+ missed (escalate tone). */
