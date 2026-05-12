@@ -903,6 +903,36 @@ def _score_from_lifeops_bench_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
+def _score_from_voiceagentbench_json(data: JSONValue) -> ScoreExtraction:
+    """Extract VoiceAgentBench score from its aggregate report JSON.
+
+    The runner writes ``pass_at_1`` (headline), ``pass_at_k`` dict,
+    per-suite pass@1, plus the four mean axis scores (tool selection,
+    parameter match, coherence, safety). Higher is better; unit is ratio.
+    """
+    root = expect_dict(data, ctx="voiceagentbench:root")
+    pass_at_1 = expect_float(
+        get_required(root, "pass_at_1", ctx="voiceagentbench:root"),
+        ctx="voiceagentbench:pass_at_1",
+    )
+    return ScoreExtraction(
+        score=pass_at_1,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "pass_at_1": pass_at_1,
+            "mean_tool_selection": get_optional(root, "mean_tool_selection") or 0,
+            "mean_parameter_match": get_optional(root, "mean_parameter_match") or 0,
+            "mean_coherence": get_optional(root, "mean_coherence") or 0,
+            "mean_safety": get_optional(root, "mean_safety") or 0,
+            "seeds": get_optional(root, "seeds") or 0,
+            "total_latency_ms": get_optional(root, "total_latency_ms") or 0,
+            "model_name": get_optional(root, "model_name") or "",
+            "judge_model_name": get_optional(root, "judge_model_name") or "",
+        },
+    )
+
+
 def _score_from_action_calling_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="action_calling:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="action_calling:root"), ctx="action_calling:metrics")
@@ -2798,6 +2828,58 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _lifeops_bench_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="lifeops_*.json")
 
+    # voiceagentbench
+    def _voiceagentbench_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        """Build the VoiceAgentBench CLI invocation.
+
+        ``model.model`` selects the agent backend: ``mock`` for hermetic
+        smoke runs (no env vars needed); ``eliza`` / ``hermes`` /
+        ``openclaw`` for cascaded-STT adapter runs. Default is ``mock``.
+        """
+        agent_raw = extra.get("agent") or extra.get("harness")
+        if isinstance(agent_raw, str) and agent_raw.strip():
+            agent = agent_raw.strip()
+        elif model.model in {"mock", "eliza", "hermes", "openclaw"}:
+            agent = str(model.model)
+        else:
+            agent = "mock"
+        args = [
+            python,
+            "-m",
+            "elizaos_voiceagentbench",
+            "--agent",
+            agent,
+            "--output",
+            str(output_dir),
+        ]
+        suite = extra.get("suite")
+        if isinstance(suite, str) and suite.strip():
+            args.extend(["--suite", suite.strip()])
+        limit = extra.get("limit")
+        if isinstance(limit, int) and limit > 0:
+            args.extend(["--limit", str(limit)])
+        seeds = extra.get("seeds")
+        if isinstance(seeds, int) and seeds > 0:
+            args.extend(["--seeds", str(seeds)])
+        mock = extra.get("mock")
+        if mock is True or (isinstance(mock, str) and mock.lower() == "true"):
+            args.append("--mock")
+        no_judge = extra.get("no_judge")
+        if no_judge is True or (isinstance(no_judge, str) and no_judge.lower() == "true"):
+            args.append("--no-judge")
+        data_path = extra.get("data_path")
+        if isinstance(data_path, str) and data_path.strip():
+            args.extend(["--data-path", data_path.strip()])
+        judge_model = extra.get("judge_model")
+        if isinstance(judge_model, str) and judge_model.strip():
+            args.extend(["--judge-model", judge_model.strip()])
+        return args
+
+    def _voiceagentbench_result(output_dir: Path) -> Path:
+        return find_latest_file(output_dir, glob_pattern="voiceagentbench_*.json")
+
     # --- Hermes-native envs (tblite / terminalbench_2 / yc_bench / hermes_swe_env) ---
     # The four envs share one subprocess shim and one score extractor; only the
     # short env-id arg and the result-glob differ between them.
@@ -3492,6 +3574,30 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_lifeops_bench_cmd,
             locate_result=_lifeops_bench_result,
             extract_score=_score_from_lifeops_bench_json,
+        ),
+        BenchmarkDefinition(
+            id="voiceagentbench",
+            display_name="VoiceAgentBench",
+            description="Voice-in + tool-call-out + multi-turn benchmark (single/parallel/sequential/multi-turn/safety/multilingual)",
+            cwd_rel="packages/benchmarks/voiceagentbench",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=(
+                    "packages/benchmarks/voiceagentbench/elizaos_voiceagentbench",
+                    "packages/benchmarks/voiceagentbench/fixtures",
+                ),
+                notes=(
+                    "model.model selects the agent backend: 'mock' for hermetic fixture runs (no env vars needed); "
+                    "'eliza'/'hermes'/'openclaw' for cascaded-STT adapter runs. "
+                    "GROQ_API_KEY is required for real Whisper transcription when audio bytes are present; "
+                    "CEREBRAS_API_KEY is required for the multi-turn coherence judge (gpt-oss-120b). "
+                    "Set extra.mock=true and extra.suite=single|parallel|sequential|multi-turn|safety|multilingual|all. "
+                    "Score: pass@1 across all (task, seed) pairs. Higher is better."
+                ),
+            ),
+            build_command=_voiceagentbench_cmd,
+            locate_result=_voiceagentbench_result,
+            extract_score=_score_from_voiceagentbench_json,
         ),
         # ----- standard public LLM benchmarks (W1-B1, gap C6) -----
         BenchmarkDefinition(

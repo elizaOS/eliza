@@ -168,12 +168,38 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
         "log_interaction, or list."
     ),
     "LIFE_CREATE": (
-        "Create personal life records such as reminders, alarms, workouts, or health "
-        "metrics. Use subaction=create and put typed fields in details."
+        "Create a life record. Required: subaction='create', title:str, kind='definition', "
+        "and details:{kind ∈ {reminder, alarm, workout, health_metric}, ...typed fields}. "
+        "For reminder/alarm: details.due (ISO8601) and details.listId (default 'list_personal'); "
+        "alarms also take cadence ∈ {daily, weekly}, timeOfDay 'HH:MM', dayOfWeek:[str] (weekly). "
+        "Workout: details.distanceKm, durationMinutes, effort, occurredAtIso. "
+        "Health metric: details.metric (e.g. weight_kg), value:float, occurredAtIso."
     ),
-    "LIFE_COMPLETE": "Complete a target, usually a reminder. Include target.",
-    "LIFE_SNOOZE": "Snooze a reminder-like target. Include target and minutes.",
-    "LIFE_REVIEW": "Review life records without mutating state.",
+    "LIFE_COMPLETE": (
+        "Mark a reminder complete. Required: subaction='complete', target='reminder_*' id. "
+        "Only reminder_* targets are supported; other ids raise UnsupportedAction."
+    ),
+    "LIFE_SNOOZE": (
+        "Push a reminder's due time forward. Required: subaction='snooze', "
+        "target='reminder_*' id, minutes:int. The new due_at is the existing due_at "
+        "(or world.now_iso) plus minutes."
+    ),
+    "LIFE_REVIEW": (
+        "Read-only listing of life records. Required: subaction='review'. No state mutation."
+    ),
+    "LIFE_DELETE": (
+        "Delete a reminder by id. Required: subaction='delete', target='reminder_*' id. "
+        "Alarm definitions (no concrete id) are a structured no-op for parity with the executor."
+    ),
+    "LIFE_UPDATE": (
+        "Update an alarm/reminder definition. Required: subaction='update', kind='definition', "
+        "title:str, details:{...fields to patch} (e.g. timeOfDay, cadence). Modeled as a no-op "
+        "because definitions aren't a separate LifeWorld entity."
+    ),
+    "LIFE_SKIP": (
+        "Skip one occurrence of an alarm/reminder. Required: subaction='skip', kind='definition', "
+        "title:str, details:{skipDate:'YYYY-MM-DD' or skipDates:[...]}. No-op (no skip-log entity)."
+    ),
     "HEALTH": "Read health data without mutating state.",
     "MONEY": "Read financial state or route a money subaction.",
     "MONEY_DASHBOARD": "Read the financial dashboard.",
@@ -201,8 +227,24 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
     "BLOCK_STATUS": "Read app/website block status.",
     "BLOCK_REQUEST_PERMISSION": "Request permission to create or change an app/website block.",
     "SCHEDULED_TASK_CREATE": (
-        "Create a scheduled task. Include kind, trigger, promptInstructions, and "
-        "other structured task fields when known."
+        "Create a scheduled task. Wire shape: kind, promptInstructions, and trigger "
+        "are TOP-LEVEL flat fields. trigger is an OBJECT, not a string — use "
+        '{"kind":"once","atIso":"2026-05-12T09:00:00Z"} for one-shot tasks or '
+        '{"kind":"recurring","rrule":"FREQ=DAILY"} for recurring. Example: '
+        '{"kind":"reminder","promptInstructions":"Stand up and stretch",'
+        '"trigger":{"kind":"once","atIso":"2026-05-12T09:00:00Z"}}.'
+    ),
+    "SCHEDULED_TASK_UPDATE": (
+        "Update an existing scheduled task. Wire shape: taskId is a TOP-LEVEL flat "
+        "field; trigger (when present) is an OBJECT with kind+atIso/rrule, never a "
+        "string. Example: "
+        '{"subaction":"update","taskId":"task_abc",'
+        '"trigger":{"kind":"once","atIso":"2026-05-13T10:00:00Z"}}.'
+    ),
+    "SCHEDULED_TASK_SNOOZE": (
+        "Snooze a scheduled task. Wire shape: taskId and minutes are TOP-LEVEL flat "
+        "fields. Example: "
+        '{"subaction":"snooze","taskId":"task_abc","minutes":30}.'
     ),
 }
 
@@ -235,20 +277,102 @@ _DISCRIMINATORS: dict[str, tuple[str, list[str]]] = {
     ),
     "ENTITY": ("subaction", ["add", "set_identity", "log_interaction", "list"]),
     "LIFE_CREATE": ("subaction", ["create"]),
+    "LIFE_UPDATE": ("subaction", ["update"]),
+    "LIFE_DELETE": ("subaction", ["delete"]),
     "LIFE_COMPLETE": ("subaction", ["complete"]),
+    "LIFE_SKIP": ("subaction", ["skip"]),
     "LIFE_SNOOZE": ("subaction", ["snooze"]),
     "LIFE_REVIEW": ("subaction", ["review"]),
+    "LIFE_UPDATE": ("subaction", ["update"]),
+    "SCHEDULED_TASK_UPDATE": ("subaction", ["update"]),
+    "SCHEDULED_TASK_SNOOZE": ("subaction", ["snooze"]),
     "HEALTH": ("subaction", ["by_metric", "summary", "trends"]),
+}
+
+
+# JSON-schema fragment for SCHEDULED_TASK_* trigger objects. Documented inline so
+# the LLM sees the {kind, atIso}/{kind, rrule} shape rather than guessing.
+_TRIGGER_OBJECT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "description": (
+        "Trigger is an OBJECT, never a string. Use kind=once with atIso (ISO8601) "
+        "for one-shot triggers, or kind=recurring with rrule for recurring."
+    ),
+    "properties": {
+        "kind": {"type": "string", "enum": ["once", "recurring"]},
+        "atIso": {
+            "type": "string",
+            "description": "ISO8601 datetime (e.g. 2026-05-12T09:00:00Z) for kind=once.",
+        },
+        "rrule": {
+            "type": "string",
+            "description": "RFC 5545 RRULE string for kind=recurring.",
+        },
+    },
+    "required": ["kind"],
+    "additionalProperties": True,
+}
+
+
+# JSON-schema fragment for LIFE_CREATE details. Top-level fields are forbidden
+# (title belongs at the top level of kwargs, not here).
+_LIFE_CREATE_DETAILS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "description": (
+        "Typed fields for the record being created. Do NOT put title here — title "
+        "is a TOP-LEVEL flat field on the action kwargs."
+    ),
+    "properties": {
+        "kind": {
+            "type": "string",
+            "enum": ["reminder", "alarm", "workout", "health_metric"],
+            "description": "Discriminates the kind of life record to create.",
+        },
+        "listId": {
+            "type": "string",
+            "description": "Reminder list id (e.g. list_personal). Reminder/alarm only.",
+        },
+        "due": {
+            "type": "string",
+            "description": "ISO8601 due datetime. Reminder/alarm only.",
+        },
+        "cadence": {
+            "type": "string",
+            "description": "Cadence label (daily/weekly/etc). Reminder/alarm only.",
+        },
+        "timeOfDay": {
+            "type": "string",
+            "description": "HH:MM local time. Alarm only.",
+        },
+        "distanceKm": {"type": "number", "description": "Workout only."},
+        "durationMinutes": {"type": "number", "description": "Workout only."},
+        "occurredAtIso": {
+            "type": "string",
+            "description": "ISO8601 timestamp for workouts / health metrics.",
+        },
+        "metric": {
+            "type": "string",
+            "description": "Health metric type (e.g. weight_kg). health_metric only.",
+        },
+        "value": {
+            "type": "number",
+            "description": "Health metric numeric value. health_metric only.",
+        },
+    },
+    "additionalProperties": True,
 }
 
 
 def _tool_parameters_for_action(action_name: str) -> dict[str, Any]:
     """Return a permissive JSON Schema for a LifeOps action.
 
-    The schema intentionally requires only the action discriminator where one
-    exists. LifeOps scenarios use a broad, evolving action vocabulary, and a
+    The schema requires only the action discriminator where one exists, but
+    surfaces explicit top-level shape hints for LIFE_* / SCHEDULED_TASK_*
+    verbs so the planner sees title/target as flat fields and trigger as an
+    object. LifeOps scenarios use a broad, evolving action vocabulary, and a
     too-strict schema would reject valid benchmark kwargs before the executor
-    can apply its own deterministic checks.
+    can apply its own deterministic checks, so additionalProperties stays
+    open.
     """
     schema: dict[str, Any] = {
         "type": "object",
@@ -256,17 +380,99 @@ def _tool_parameters_for_action(action_name: str) -> dict[str, Any]:
         "additionalProperties": True,
     }
     discriminator = _DISCRIMINATORS.get(action_name)
-    if discriminator is None:
-        return schema
-    field, values = discriminator
-    schema["properties"] = {
-        field: {
+    if discriminator is not None:
+        field, values = discriminator
+        schema["properties"][field] = {
             "type": "string",
             "enum": values,
             "description": f"LifeOps {action_name} discriminator.",
         }
-    }
-    schema["required"] = [field]
+        schema["required"] = [field]
+
+    if action_name == "LIFE_CREATE":
+        schema["properties"]["title"] = {
+            "type": "string",
+            "description": (
+                "TOP-LEVEL flat field — the human-readable record title. "
+                "Do NOT nest title inside details."
+            ),
+        }
+        schema["properties"]["details"] = _LIFE_CREATE_DETAILS_SCHEMA
+        schema["required"] = sorted({*schema.get("required", []), "title"})
+    elif action_name == "LIFE_UPDATE":
+        schema["properties"]["target"] = {
+            "type": "string",
+            "description": (
+                "TOP-LEVEL flat field — the id of the record being updated "
+                "(e.g. reminder_*). Do NOT nest target inside details."
+            ),
+        }
+        schema["properties"]["details"] = {
+            "type": "object",
+            "description": "Changed fields. title/due/listId go here, not at top level.",
+            "additionalProperties": True,
+        }
+    elif action_name in {"LIFE_DELETE", "LIFE_COMPLETE", "LIFE_SKIP"}:
+        schema["properties"]["target"] = {
+            "type": "string",
+            "description": (
+                "TOP-LEVEL flat field — the id of the target record "
+                "(e.g. reminder_*). Do NOT nest target inside details."
+            ),
+        }
+        schema["required"] = sorted({*schema.get("required", []), "target"})
+    elif action_name == "LIFE_SNOOZE":
+        schema["properties"]["target"] = {
+            "type": "string",
+            "description": (
+                "TOP-LEVEL flat field — the id of the reminder to snooze "
+                "(e.g. reminder_*)."
+            ),
+        }
+        schema["properties"]["minutes"] = {
+            "type": "integer",
+            "description": "TOP-LEVEL flat field — snooze duration in minutes.",
+            "minimum": 1,
+        }
+        schema["required"] = sorted({*schema.get("required", []), "target", "minutes"})
+    elif action_name == "LIFE_REVIEW":
+        schema["properties"]["details"] = {
+            "type": "object",
+            "description": "Optional filters (kind, listId, from, to).",
+            "additionalProperties": True,
+        }
+    elif action_name == "SCHEDULED_TASK_CREATE":
+        schema["properties"]["kind"] = {
+            "type": "string",
+            "description": "TOP-LEVEL flat field — scheduled task kind (e.g. reminder).",
+        }
+        schema["properties"]["promptInstructions"] = {
+            "type": "string",
+            "description": "TOP-LEVEL flat field — instructions used as the task title.",
+        }
+        schema["properties"]["trigger"] = _TRIGGER_OBJECT_SCHEMA
+        schema["required"] = sorted(
+            {*schema.get("required", []), "promptInstructions", "trigger"}
+        )
+    elif action_name == "SCHEDULED_TASK_UPDATE":
+        schema["properties"]["taskId"] = {
+            "type": "string",
+            "description": "TOP-LEVEL flat field — id of the scheduled task to update.",
+        }
+        schema["properties"]["trigger"] = _TRIGGER_OBJECT_SCHEMA
+        schema["required"] = sorted({*schema.get("required", []), "taskId"})
+    elif action_name == "SCHEDULED_TASK_SNOOZE":
+        schema["properties"]["taskId"] = {
+            "type": "string",
+            "description": "TOP-LEVEL flat field — id of the scheduled task to snooze.",
+        }
+        schema["properties"]["minutes"] = {
+            "type": "integer",
+            "description": "TOP-LEVEL flat field — snooze duration in minutes.",
+            "minimum": 1,
+        }
+        schema["required"] = sorted({*schema.get("required", []), "taskId", "minutes"})
+
     return schema
 
 
