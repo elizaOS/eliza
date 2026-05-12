@@ -549,7 +549,6 @@ def test_score_scenario_triviality_guard_still_zeros_no_action() -> None:
     assert score == 0.0
 
 
-<<<<<<< HEAD
 # ---------------------------------------------------------------------------
 # P0-1: extended _UMBRELLA_SUBACTIONS + OWNER_* aliases
 #
@@ -1133,135 +1132,20 @@ def test_p0_8_read_scenario_partial_action_no_longer_promoted() -> None:
                 },
             )
         ]
-=======
-def test_score_scenario_readonly_same_action_wrong_kwargs_scores_zero() -> None:
-    """State hash cannot validate read-only lookups, so wrong params get no credit."""
-    scenario = _scenario(
-        ground_truth_actions=[
-            Action(
-                name="CALENDAR",
-                kwargs={
-                    "subaction": "check_availability",
-                    "startAt": "2026-05-14T09:00:00Z",
-                    "endAt": "2026-05-14T10:00:00Z",
-                },
-            )
-        ],
-        required_outputs=["free"],
     )
     result = _result(
         state_hash_match=True,
         agent_actions=[
             Action(
-                name="CALENDAR",
-                kwargs={
-                    "subaction": "check_availability",
-                    "start": "2026-05-14T11:00:00Z",
-                    "end": "2026-05-14T12:00:00Z",
-                },
-            )
-        ],
-        required_outputs=["free"],
-        output_substring_matches=[True],
-    )
-
-    assert score_scenario(result, scenario) == 0.0
-
-
-def test_score_scheduled_task_create_structural_fields_affect_state_hash() -> None:
-    """ScheduledTask fields are now modeled, so missing structure changes state."""
-    from eliza_lifeops_bench.__main__ import _build_world_factory
-    from eliza_lifeops_bench.runner import _execute_action
-    from eliza_lifeops_bench.scorer import state_hash
-
-    scenario = _scenario(
-        domain=Domain.SLEEP,
-        ground_truth_actions=[
-            Action(
-                name="SCHEDULED_TASK_CREATE",
-                kwargs={
-                    "subaction": "create",
-                    "kind": "reminder",
-                    "promptInstructions": "Wind down",
-                    "trigger": {"atIso": "2026-05-10T22:00:00Z"},
-                    "subject": {"kind": "self", "id": "me"},
-                    "pipeline": {"onComplete": ["task_followup"]},
-                },
-            )
-        ],
-    )
-    expected_world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
-    actual_world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
-    _execute_action(scenario.ground_truth_actions[0], expected_world)
-    _execute_action(
-        Action(
-            name="SCHEDULED_TASK_CREATE",
-            kwargs={
-                "subaction": "create",
-                "kind": "reminder",
-                "promptInstructions": "Wind down",
-                "trigger": {"atIso": "2026-05-10T22:00:00Z"},
-            },
-        ),
-        actual_world,
-    )
-    assert state_hash(actual_world) != state_hash(expected_world)
-
-    result = _result(
-        state_hash_match=False,
-        agent_actions=[
-            Action(
-                name="SCHEDULED_TASK_CREATE",
-                kwargs={
-                    "subaction": "create",
-                    "kind": "reminder",
-                    "promptInstructions": "Wind down",
-                    "trigger": {"atIso": "2026-05-10T22:00:00Z"},
-                },
-            )
-        ],
-    )
-
-    assert score_scenario(result, scenario) < 1.0
-
-
-def test_score_scheduled_task_plural_alias_matches_singular_ground_truth() -> None:
-    scenario = _scenario(
-        domain=Domain.SLEEP,
-        ground_truth_actions=[
-            Action(
-                name="SCHEDULED_TASK_CREATE",
-                kwargs={
-                    "kind": "reminder",
-                    "promptInstructions": "Wind down",
-                    "trigger": {"atIso": "2026-05-10T22:00:00Z"},
-                },
-            )
-        ],
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
-    )
-    result = _result(
-        state_hash_match=True,
-        agent_actions=[
-            Action(
-<<<<<<< HEAD
                 name="BLOCK_BLOCK",
                 kwargs={
                     "apps": ["distract"],
                     "duration_minutes": 120,
                     "duration": "2h",
-=======
-                name="SCHEDULED_TASKS_CREATE",
-                kwargs={
-                    "kind": "reminder",
-                    "prompt_instructions": "Wind down",
-                    "trigger": {"at_iso": "2026-05-10T22:00:00Z"},
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
                 },
             )
         ],
     )
-<<<<<<< HEAD
     score = score_scenario(result, scenario)
     # READ weights: 0.1*1 (state) + 0.7*0.5 (partial action) + 0.2*1 (empty subs) = 0.65
     assert score == pytest.approx(0.65)
@@ -1454,65 +1338,3 @@ def test_p0_8_mixed_scenario_split_weights() -> None:
     )
     # Mixed weights: 0.35 + 0.5 + 0.15 = 1.0 on perfect run.
     assert score_scenario(result, scenario) == pytest.approx(1.0)
-=======
-
-    assert score_scenario(result, scenario) == 1.0
-
-
-def test_compile_benchmark_result_counts_missing_expected_runs_as_failures() -> None:
-    """pass@1 is over expected scenario/seed pairs, not only returned rows."""
-    scenario_a = _scenario(ground_truth_actions=[])
-    scenario_b = Scenario(
-        id="missing_scenario",
-        name="missing",
-        domain=Domain.CALENDAR,
-        mode=ScenarioMode.STATIC,
-        persona=_PERSONA,
-        instruction="",
-        ground_truth_actions=[],
-        required_outputs=[],
-        first_question_fallback=None,
-        world_seed=1,
-    )
-    result_a = _result(state_hash_match=True, agent_actions=[])
-    aggregate = compile_benchmark_result(
-        [result_a],
-        {scenario_a.id: scenario_a, scenario_b.id: scenario_b},
-        seeds=1,
-        model_name="m",
-        judge_model_name="j",
-        timestamp="2026-05-12T00:00:00Z",
-    )
-
-    assert aggregate.pass_at_1 == pytest.approx(0.5)
-    assert aggregate.mean_score_per_domain["calendar"] == pytest.approx(0.5)
-
-
-def test_live_score_requires_judge_satisfaction() -> None:
-    """LIVE mode must not pass just because no scripted state changed."""
-    scenario = Scenario(
-        id="live.test",
-        name="live",
-        domain=Domain.MAIL,
-        mode=ScenarioMode.LIVE,
-        persona=_PERSONA,
-        instruction="draft the reply",
-        ground_truth_actions=[],
-        required_outputs=[],
-        first_question_fallback=None,
-        world_seed=0,
-    )
-    unsatisfied = _result(
-        state_hash_match=True,
-        agent_actions=[],
-        terminated_reason="max_turns",
-    )
-    satisfied = _result(
-        state_hash_match=True,
-        agent_actions=[],
-        terminated_reason="satisfied",
-    )
-
-    assert score_scenario(unsatisfied, scenario) == 0.0
-    assert score_scenario(satisfied, scenario) == pytest.approx(1.0)
->>>>>>> origin/shaw/fine-tune-apollo-pipeline

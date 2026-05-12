@@ -23,6 +23,9 @@ import {
   checkForbiddenPhrases,
   checkMetricUnits,
   checkNoEmojis,
+  checkNoExclamation,
+  checkNoLists,
+  checkNoQuestionsBack,
   checkPrefersShort,
   checkRequiredCodeBlock,
 } from "../checks/phrase.ts";

@@ -687,11 +687,6 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
  * so we do not re-download multi‑GB models. Opt out:
  * `ELIZA_EMBEDDING_WARMUP_NO_REUSE=1`.
  */
-<<<<<<< HEAD
-// Deduplicate concurrent callers: two concurrent createWriteStream(dest)
-// would race; the loser's safeUnlink deletes the file mid-write, causing
-// llama.loadModel to throw ENOENT as an uncaughtException.
-=======
 // In-flight promise cache so concurrent callers (bootElizaRuntime +
 // startEliza both run on agent boot) share a single download. Without this,
 // two `fs.createWriteStream(dest)` open the same GGUF target concurrently,
@@ -699,7 +694,6 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
 // out from under the second's pending write. Downstream `llama.loadModel`
 // then opens the now-missing file and throws ENOENT, which surfaces as an
 // uncaughtException and kills the agent.
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 let warmupInFlight: Promise<void> | null = null;
 
 async function warmupEmbeddingModel(
