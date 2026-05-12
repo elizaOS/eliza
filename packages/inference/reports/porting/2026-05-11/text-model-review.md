@@ -63,22 +63,28 @@ its work. So everything here is from scratch.
    rejected round costly). When the real distilled drafter ships, acceptance
    will drop somewhat but the drafter gets much smaller/faster — net spec
    speedup should improve. No catalog change needed for spec-decode.
-3. **Throughput (CPU, x86_64 AVX-VNNI, contention-degraded).** Measured
-   under host load 25–116 (4–6 sibling builds + a fused-server smoke + a
-   training bench running concurrently), so these are **lower bounds**:
-   `0_6b` Q3_K_M — ~227 t/s pp512 / ~24 t/s tg128 at `-t 16` (and a
-   thrash-degraded ~55/~6 at `-t 24`, which over-subscribes a 0.6B model);
-   `1_7b` Q4_K_M — ~31 t/s pp512 / ~2.8 t/s tg128 at `-t 24` (badly
-   load-hit; expect tens of t/s tg on an idle host at `-t 8..16`).
-   **Vulkan (RTX 5080) and CUDA were not benched**: no `vulkan-headers` on
-   this host (can't build `llama-bench -DGGML_VULKAN=ON`; the prebuilt
-   `linux-x64-vulkan` `llama-cli` is offload-bound and timed out under
-   load), and a fresh `-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=90` build
-   was still grinding through the slow `ggml-cuda` `fattn-vec-instance-tbq*`
-   template TUs when the session window closed. The fork *does* ship CUDA
-   TBQ/QJL/Polar kernels, so a `-DGGML_CUDA_FUSED_ATTN_QJL=ON` build is the
-   datapoint to capture on an idle NVIDIA host — that is the genuinely-new
-   "CUDA now live" number this review owes and could not land.
+3. **Throughput.** All `llama-bench`, `-p 512 -n 128`.
+   - **CPU (x86_64 AVX-VNNI), contention-degraded (lower bounds — host load
+     25–116 from 4–6 sibling builds + a fused-server smoke + a training
+     bench):** `0_6b` Q3_K_M — ~227 t/s pp512 / ~24 t/s tg128 at `-t 16`
+     (the cleanest CPU row; ~141/~11 at `-t 8`; a thrash-degraded ~55/~6 at
+     `-t 24`, which over-subscribes a 0.6B model). `1_7b` Q4_K_M — ~114 t/s
+     pp512 at `-t 16`, ~87/~5.7 at `-t 8` (the `-t 24` row was badly
+     load-hit at ~31/~2.8). Idle figures are higher; the small-tier CPU
+     default of `parallel: 4` slots is fine for these.
+   - **Vulkan (GPU-bound, ~unaffected by CPU load — sibling's prebuilt
+     `linux-x64-vulkan` `llama-bench`, fork 08032d5):** RTX 5080 Laptop
+     (Blackwell, 16 GB) — `0_6b` **3421 t/s pp512 / 194 t/s tg128**, `1_7b`
+     **1317 t/s pp512 / 112 t/s tg128**. Intel Arc/Xe iGPU (Arrow Lake,
+     Mesa ANV) — `0_6b` 296 t/s pp512 / 22 t/s tg128 (iGPU `tg` is ~CPU
+     class; Arc is a prompt-eval-only win at this size — the small-tier
+     default backend on that class of host stays CPU).
+   - **CUDA — not obtained.** A fresh `-DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=90` build OOM-killed (exit 137 on `ggml-cuda/fattn.cu.o`):
+     30 GB host RAM was exhausted by two concurrent CUDA builds + everything
+     else. This is the one remaining datapoint — re-run `llama-bench -ngl 99`
+     on the RTX 5080 from an idle host with `-DGGML_CUDA_FUSED_ATTN_QJL=ON`
+     (the fork ships CUDA TBQ/QJL/Polar kernels Vulkan doesn't yet
+     graph-dispatch). Expect CUDA tg128 ≥ the Vulkan numbers above.
 
 ## Changes implemented (catalog + runtime KV-cache wiring)
 

@@ -2,7 +2,7 @@
   "task": "eliza-1 text-model review (0_6b / 1_7b) — throughput + spec-decode",
   "date": "2026-05-11",
   "host": "Intel Core Ultra 9 275HX (Arrow Lake-HX, 24 cores; AVX2 + AVX-VNNI + F16C, no AVX-512), NVIDIA RTX 5080 Laptop GPU (Blackwell, 16 GB VRAM), Intel Arc/Xe iGPU (Mesa ANV Vulkan), 30 GB RAM",
-  "caveat": "Measured while 4-6 sibling agents were running concurrent llama.cpp builds (CPU + 2 CUDA), a fused llama-server FFI smoke, and a training benchmark — host load average swung between 35 and 116 during the run. CPU tokens/sec figures are LOWER BOUNDS, contention-degraded; re-bench on an idle host for publishable numbers. Vulkan (RTX 5080) and CUDA llama-bench runs were attempted but did not complete: no vulkan-headers on this host (can't build llama-bench with -DGGML_VULKAN=ON; the prebuilt linux-x64-vulkan llama-cli is offload-bound and timed out under load), and the fresh CUDA build was still compiling the slow ggml-cuda fattn-vec template instances when the session window closed. CUDA/Vulkan rows are placeholders for a follow-up on an idle host.",
+  "caveat": "Measured while 4-6 sibling agents were running concurrent llama.cpp builds (CPU + 2 CUDA), a fused llama-server FFI smoke, and a training benchmark — host load average swung between 25 and 116 during the run. CPU tokens/sec figures are LOWER BOUNDS, contention-degraded (the -t 16 0.6B row is the cleanest). Vulkan (RTX 5080 + Intel Arc/Xe) numbers are GPU-bound and largely unaffected by the CPU contention — they used a sibling agent's prebuilt linux-x64-vulkan llama-bench (~/.cache/eliza-dflash/milady-llama-cpp/build/linux-x64-vulkan/bin/llama-bench, fork commit 08032d5). CUDA llama-bench could NOT be obtained: a fresh -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=90 build OOM-killed (exit 137) on ggml-cuda/fattn.cu.o — the 30 GB host RAM was exhausted by two concurrent CUDA builds + everything else. CUDA is the one remaining datapoint; re-run llama-bench -m <gguf> -ngl 99 on the RTX 5080 from an idle host (the fork ships CUDA TBQ/QJL/Polar kernels, so a -DGGML_CUDA_FUSED_ATTN_QJL=ON build is the real number).",
   "binaries": {
     "cpu": "fresh build of packages/inference/llama.cpp (submodule @ v1.0.0-eliza, commit 08032d57) — -DGGML_NATIVE=ON -DGGML_CUDA=OFF -DGGML_VULKAN=OFF; built out-of-tree in /tmp from a frozen copy because the in-tree submodule's CPU kernel sources are mid-edit by a sibling kernel agent",
     "spec_decode": "same build's llama-speculative-simple (generic spec-decode path; the bundled 'DFlash drafter' GGUFs have the dflash-draft.target_checkpoint_sha256 stamp but architecture 'qwen3', so they run as plain speculative draft models, NOT the dflash-draft arch — see notes)",
@@ -39,11 +39,22 @@
       { "model": "eliza-1-0_6b", "threads": 16, "test": "pp512", "t_per_s": 227.30, "stddev": 14.81, "host_load": "~30" },
       { "model": "eliza-1-0_6b", "threads": 16, "test": "tg128", "t_per_s": 24.08, "stddev": 5.21, "host_load": "~30", "note": "best small-tier CPU figure obtained; still load-affected, idle likely higher" },
       { "model": "eliza-1-1_7b", "threads": 24, "test": "pp512", "t_per_s": 31.32, "stddev": 5.35, "host_load": "~85", "note": "heavily degraded" },
-      { "model": "eliza-1-1_7b", "threads": 24, "test": "tg128", "t_per_s": 2.77, "stddev": 0.15, "host_load": "~85", "note": "heavily degraded — expect tens of t/s on an idle host" },
-      { "model": "eliza-1-1_7b", "threads": 8,  "test": "pp512", "t_per_s": 87.45, "stddev": 16.29, "host_load": "~38" }
+      { "model": "eliza-1-1_7b", "threads": 24, "test": "tg128", "t_per_s": 2.77, "stddev": 0.15, "host_load": "~85", "note": "heavily degraded" },
+      { "model": "eliza-1-1_7b", "threads": 8,  "test": "pp512", "t_per_s": 87.45, "stddev": 16.29, "host_load": "~38" },
+      { "model": "eliza-1-1_7b", "threads": 8,  "test": "tg128", "t_per_s": 5.74, "stddev": 0.32, "host_load": "~35" },
+      { "model": "eliza-1-1_7b", "threads": 16, "test": "pp512", "t_per_s": 114.00, "stddev": 22.10, "host_load": "~35" }
     ],
-    "vulkan_rtx5080": "PENDING — re-run on idle host: llama-bench -m <gguf> -ngl 99 -t 24 (GGML_VK_VISIBLE_DEVICES=1) once vulkan-headers are installed, or via a prebuilt linux-x64-vulkan llama-bench",
-    "cuda_rtx5080": "PENDING — re-run on idle host: build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=90, then llama-bench -m <gguf> -ngl 99. The fork ships CUDA TBQ/QJL/Polar kernels (cuda/*.cu) so a -DGGML_CUDA_FUSED_ATTN_QJL=ON build is the real datapoint."
+    "vulkan_rtx5080": [
+      { "model": "eliza-1-0_6b", "ngl": 99, "device": "NVIDIA GeForce RTX 5080 Laptop GPU (Blackwell, 16 GB)", "test": "pp512", "t_per_s": 3421.15, "stddev": 72.52 },
+      { "model": "eliza-1-0_6b", "ngl": 99, "device": "NVIDIA GeForce RTX 5080 Laptop GPU (Blackwell, 16 GB)", "test": "tg128", "t_per_s": 193.85, "stddev": 4.16 },
+      { "model": "eliza-1-1_7b", "ngl": 99, "device": "NVIDIA GeForce RTX 5080 Laptop GPU (Blackwell, 16 GB)", "test": "pp512", "t_per_s": 1317.02, "stddev": 41.67 },
+      { "model": "eliza-1-1_7b", "ngl": 99, "device": "NVIDIA GeForce RTX 5080 Laptop GPU (Blackwell, 16 GB)", "test": "tg128", "t_per_s": 111.80, "stddev": 1.90 }
+    ],
+    "vulkan_intel_arc": [
+      { "model": "eliza-1-0_6b", "ngl": 99, "device": "Intel Arc/Xe iGPU (Arrow Lake, Mesa ANV; UMA, 48 KiB shared mem)", "test": "pp512", "t_per_s": 295.87, "stddev": 21.45 },
+      { "model": "eliza-1-0_6b", "ngl": 99, "device": "Intel Arc/Xe iGPU (Arrow Lake, Mesa ANV; UMA, 48 KiB shared mem)", "test": "tg128", "t_per_s": 22.08, "stddev": 0.26, "note": "iGPU tg128 is ~CPU-class — Arc is a prompt-eval-only win at this model size; the small-tier default backend on this class of host stays CPU" }
+    ],
+    "cuda_rtx5080": "NOT OBTAINED — fresh -DGGML_CUDA=ON build OOM-killed (exit 137 on ggml-cuda/fattn.cu.o) under host RAM exhaustion from concurrent builds. Re-run on idle host: build -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=90 -DGGML_CUDA_FUSED_ATTN_QJL=ON, then llama-bench -m <gguf> -ngl 99. Expect CUDA tg128 on the RTX 5080 to land in the same ballpark as the Vulkan numbers above or somewhat higher (the fork's CUDA TBQ/QJL/Polar fused-attn path is the optimization Vulkan doesn't run yet for graph dispatch)."
   },
   "spec_decode": {
     "tool": "llama-speculative-simple, -t 8 -td 8, ctx 2048, greedy",
