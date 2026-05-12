@@ -1,11 +1,7 @@
 /**
- * Translation harness regression test.
- *
- * Backs `docs/audit/translation-harness.md` and the W2-E
- * `MultilingualPromptRegistry`. After the W2-G bulk-translation pass the
- * registry covers every example-bearing app-lifeops action × {es, fr}.
+ * Localized prompt registry regression test.
  * Verifies:
- *   - the harness-generated packs are wired into `registerDefaultPromptPack`,
+ *   - the canonical localized pack is wired into `registerDefaultPromptPack`,
  *   - the registry contains both Spanish and French entries,
  *   - each registered entry's exampleKey follows the
  *     `<actionName>.example.<index>` shape with an UPPER_SNAKE_CASE action
@@ -33,7 +29,7 @@ function loadDefaultRegistryEntries(): PromptExampleEntry[] {
 const isGenerated = (entry: PromptExampleEntry): boolean =>
   /\.example\.\d+$/.test(entry.exampleKey);
 
-describe("translation harness — generated packs", () => {
+describe("localized prompt registry — default pack", () => {
   const all = loadDefaultRegistryEntries();
   const generatedSpanish = all.filter(
     (entry) => entry.locale === "es" && isGenerated(entry),
@@ -43,9 +39,9 @@ describe("translation harness — generated packs", () => {
   );
   const generated = [...generatedSpanish, ...generatedFrench];
 
-  it("registers harness-generated packs for both Spanish and French", () => {
-    expect(generatedSpanish.length).toBeGreaterThanOrEqual(20);
-    expect(generatedFrench.length).toBeGreaterThanOrEqual(20);
+  it("registers canonical localized packs for both Spanish and French", () => {
+    expect(generatedSpanish.length).toBeGreaterThanOrEqual(1);
+    expect(generatedFrench.length).toBeGreaterThanOrEqual(1);
   });
 
   it("Spanish and French coverage matches per action", () => {

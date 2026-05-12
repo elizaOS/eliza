@@ -58,13 +58,27 @@ function parseArgs(argv) {
 }
 
 function typescriptRunner() {
-  const direct = spawnSync("bun", ["--version"], { encoding: "utf8" });
-  if (direct.status === 0) return { cmd: "bun", args: [] };
-  const which = spawnSync("bash", ["-lc", "command -v bun"], {
-    encoding: "utf8",
-  });
-  const p = which.stdout?.trim();
-  if (which.status === 0 && p) return { cmd: p, args: [] };
+  if (fs.existsSync(path.join(REPO_ROOT, "node_modules", ".bin", "tsx"))) {
+    for (const cmd of [
+      "/opt/homebrew/bin/node",
+      "/usr/local/bin/node",
+      process.execPath,
+    ]) {
+      if (cmd && fs.existsSync(cmd)) {
+        return { cmd, args: ["--import", "tsx"] };
+      }
+    }
+  }
+  const bunCandidates = [
+    "bun",
+    path.join(os.homedir(), ".bun", "bin", "bun"),
+    "/opt/homebrew/bin/bun",
+    "/usr/local/bin/bun",
+  ];
+  for (const cmd of bunCandidates) {
+    const direct = spawnSync(cmd, ["--version"], { encoding: "utf8" });
+    if (direct.status === 0) return { cmd, args: [] };
+  }
   if (fs.existsSync(path.join(REPO_ROOT, "node_modules", ".bin", "tsx"))) {
     return { cmd: process.execPath, args: ["--import", "tsx"] };
   }

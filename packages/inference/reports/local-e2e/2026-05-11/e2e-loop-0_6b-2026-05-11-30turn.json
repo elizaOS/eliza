@@ -1,0 +1,1248 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-12T01:34:21.214Z",
+  "harness": "packages/inference/verify/e2e_loop_bench.mjs",
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 16,
+    "cpuModel": "Apple M4 Max",
+    "totalMemMb": 131072
+  },
+  "request": {
+    "tier": "0_6b",
+    "backend": "metal",
+    "turns": 30,
+    "nPredict": 4
+  },
+  "bundle": {
+    "dir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle",
+    "tier": "0_6b",
+    "ramBudgetMb": {
+      "min": 1500,
+      "recommended": 1800
+    }
+  },
+  "engine": {
+    "dir": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused",
+    "backend": "metal",
+    "fused": true,
+    "caps": {
+      "dflash": true,
+      "turbo3": true,
+      "turbo4": true,
+      "turbo3_tcq": true,
+      "qjl_full": true,
+      "polarquant": true,
+      "lookahead": true,
+      "ngramDraft": true
+    }
+  },
+  "status": "ok",
+  "e2eLoopOk": true,
+  "thirtyTurnOk": true,
+  "summary": {
+    "turns": 30,
+    "asrLatencyMsMedian": 245.7,
+    "asrWerMean": 0.1333,
+    "asrWerByTurn": [
+      0,
+      0.4,
+      0,
+      0,
+      0.4,
+      0,
+      0,
+      0.4,
+      0,
+      0,
+      0.4,
+      0,
+      0,
+      0.4,
+      0,
+      0,
+      0.4,
+      0,
+      0,
+      0.4,
+      0,
+      0,
+      0.4,
+      0,
+      0,
+      0.4,
+      0,
+      0,
+      0.4,
+      0
+    ],
+    "firstTokenMsMedian": 19.1,
+    "firstTokenMsP50": 19.1,
+    "decodeTokPerSecMedian": 6.84,
+    "dflashAcceptanceRateMean": null,
+    "dflashDraftedTotal": 0,
+    "dflashAcceptedTotal": 0,
+    "firstAudioFromMicMsMedian": 6698,
+    "firstAudioFromTokenMsMedian": 6322.6,
+    "ttsRtfMedian": 2.165,
+    "ttsRtfMean": 3.0145,
+    "totalTurnMsMedian": 6698,
+    "bargeInCancelMs": 0.28,
+    "serverPeakRssMb": null,
+    "ramBudgetRecommendedMb": 1800,
+    "ramWithinBudget": null,
+    "leakSuspected": false,
+    "dflashAcceptanceRateOverall": null
+  },
+  "bargeIn": {
+    "httpAbortMs": 0.28,
+    "nativeCancelMs": 0.03,
+    "nativeCancelRc": 0,
+    "ttsStreamSupported": false,
+    "note": "batch-only TTS build (eliza_inference_tts_stream_supported()==0); barge-in measured as the client/sink-side HTTP abort latency (the PCM-ring-drain surrogate). cancel_tts is a no-op here."
+  },
+  "turns": [
+    {
+      "turn": 1,
+      "asr": {
+        "latencyMs": 227.9,
+        "transcript": "What is the capital of France?",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 15.4,
+        "decodeTokPerSec": 66.3,
+        "predictedN": 4,
+        "promptTokPerSec": 553.8,
+        "content": "The capital of France"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 1,
+        "audioSec": 1.92,
+        "wallMs": 1926.5,
+        "rtf": 1.0034,
+        "perPhrase": [
+          {
+            "phrase": "The capital of France",
+            "audioSec": 1.92,
+            "wallMs": 1926.5,
+            "rtf": 1.0034
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 2232,
+      "firstAudioFromTokenMs": 1988.7,
+      "totalTurnMs": 2232.3
+    },
+    {
+      "turn": 2,
+      "asr": {
+        "latencyMs": 892.3,
+        "transcript": "Schedule a meeting for tomorrow afternoon.",
+        "wer": 0.4
+      },
+      "gen": {
+        "firstTokenMs": 23.6,
+        "decodeTokPerSec": 5.26,
+        "predictedN": 12,
+        "promptTokPerSec": 314,
+        "content": "The meeting is to be held in the library. The meeting"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 3,
+        "audioSec": 2.12,
+        "wallMs": 10347.5,
+        "rtf": 4.8809,
+        "perPhrase": [
+          {
+            "phrase": "The meeting is to be held in the",
+            "audioSec": 2.12,
+            "wallMs": 10347.5,
+            "rtf": 4.8809
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 13546.8,
+      "firstAudioFromTokenMs": 12630.8,
+      "totalTurnMs": 13546.8
+    },
+    {
+      "turn": 3,
+      "asr": {
+        "latencyMs": 256,
+        "transcript": "Tell me a short fact about the ocean.",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 17.6,
+        "decodeTokPerSec": 4.77,
+        "predictedN": 12,
+        "promptTokPerSec": 542.36,
+        "content": "The ocean is a vast body of water that covers the entire"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 2,
+        "audioSec": 2.16,
+        "wallMs": 5842.6,
+        "rtf": 2.7049,
+        "perPhrase": [
+          {
+            "phrase": "The ocean is a vast body of water",
+            "audioSec": 2.16,
+            "wallMs": 5842.6,
+            "rtf": 2.7049
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 8634.4,
+      "firstAudioFromTokenMs": 8360.8,
+      "totalTurnMs": 8634.4
+    },
+    {
+      "turn": 4,
+      "asr": {
+        "latencyMs": 233.7,
+        "transcript": "What is the capital of France?",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 14,
+        "decodeTokPerSec": 7.85,
+        "predictedN": 12,
+        "promptTokPerSec": 532.85,
+        "content": "The capital of France is Paris. The answer is in the"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 2,
+        "audioSec": 2.12,
+        "wallMs": 3571.1,
+        "rtf": 1.6845,
+        "perPhrase": [
+          {
+            "phrase": "The capital of France is Paris.",
+            "audioSec": 2.12,
+            "wallMs": 3571.1,
+            "rtf": 1.6845
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 5350.1,
+      "firstAudioFromTokenMs": 5102.5,
+      "totalTurnMs": 5350.1
+    },
+    {
+      "turn": 5,
+      "asr": {
+        "latencyMs": 232.1,
+        "transcript": "Schedule a meeting for tomorrow afternoon.",
+        "wer": 0.4
+      },
+      "gen": {
+        "firstTokenMs": 14.4,
+        "decodeTokPerSec": 11.35,
+        "predictedN": 12,
+        "promptTokPerSec": 525.21,
+        "content": "The meeting is to be held in the library. The meeting"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 3,
+        "audioSec": 2.12,
+        "wallMs": 4120.6,
+        "rtf": 1.9437,
+        "perPhrase": [
+          {
+            "phrase": "The meeting is to be held in the",
+            "audioSec": 2.12,
+            "wallMs": 4120.6,
+            "rtf": 1.9437
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 5426,
+      "firstAudioFromTokenMs": 5179.5,
+      "totalTurnMs": 5426
+    },
+    {
+      "turn": 6,
+      "asr": {
+        "latencyMs": 378,
+        "transcript": "Tell me a short fact about the ocean.",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 92.8,
+        "decodeTokPerSec": 5.42,
+        "predictedN": 12,
+        "promptTokPerSec": 389.95,
+        "content": "The ocean is a vast body of water that covers the entire"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 2,
+        "audioSec": 2.16,
+        "wallMs": 3941.8,
+        "rtf": 1.8249,
+        "perPhrase": [
+          {
+            "phrase": "The ocean is a vast body of water",
+            "audioSec": 2.16,
+            "wallMs": 3941.8,
+            "rtf": 1.8249
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 6645.9,
+      "firstAudioFromTokenMs": 6175.2,
+      "totalTurnMs": 6645.9
+    },
+    {
+      "turn": 7,
+      "asr": {
+        "latencyMs": 253.3,
+        "transcript": "What is the capital of France?",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 16,
+        "decodeTokPerSec": 4.09,
+        "predictedN": 12,
+        "promptTokPerSec": 518.44,
+        "content": "The capital of France is Paris. The answer is in the"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 2,
+        "audioSec": 2.12,
+        "wallMs": 3164.5,
+        "rtf": 1.4927,
+        "perPhrase": [
+          {
+            "phrase": "The capital of France is Paris.",
+            "audioSec": 2.12,
+            "wallMs": 3164.4,
+            "rtf": 1.4927
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 6372,
+      "firstAudioFromTokenMs": 6102.7,
+      "totalTurnMs": 6372
+    },
+    {
+      "turn": 8,
+      "asr": {
+        "latencyMs": 266.8,
+        "transcript": "Schedule a meeting for tomorrow afternoon.",
+        "wer": 0.4
+      },
+      "gen": {
+        "firstTokenMs": 14.4,
+        "decodeTokPerSec": 5.03,
+        "predictedN": 12,
+        "promptTokPerSec": 519.4,
+        "content": "The meeting is to be held in the library. The meeting"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 3,
+        "audioSec": 2.12,
+        "wallMs": 4663.4,
+        "rtf": 2.1997,
+        "perPhrase": [
+          {
+            "phrase": "The meeting is to be held in the",
+            "audioSec": 2.12,
+            "wallMs": 4663.3,
+            "rtf": 2.1997
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 7330.7,
+      "firstAudioFromTokenMs": 7049.5,
+      "totalTurnMs": 7330.7
+    },
+    {
+      "turn": 9,
+      "asr": {
+        "latencyMs": 237.4,
+        "transcript": "Tell me a short fact about the ocean.",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 19.6,
+        "decodeTokPerSec": 9.87,
+        "predictedN": 12,
+        "promptTokPerSec": 489.8,
+        "content": "The ocean is a vast body of water that covers the entire"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 2,
+        "audioSec": 2.16,
+        "wallMs": 3257.2,
+        "rtf": 1.508,
+        "perPhrase": [
+          {
+            "phrase": "The ocean is a vast body of water",
+            "audioSec": 2.16,
+            "wallMs": 3257.1,
+            "rtf": 1.5079
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 4732,
+      "firstAudioFromTokenMs": 4474.9,
+      "totalTurnMs": 4732
+    },
+    {
+      "turn": 10,
+      "asr": {
+        "latencyMs": 295.5,
+        "transcript": "What is the capital of France?",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 13.1,
+        "decodeTokPerSec": 12.21,
+        "predictedN": 12,
+        "promptTokPerSec": 572.41,
+        "content": "The capital of France is Paris. The answer is in the"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 2,
+        "audioSec": 2.12,
+        "wallMs": 2910.1,
+        "rtf": 1.3727,
+        "perPhrase": [
+          {
+            "phrase": "The capital of France is Paris.",
+            "audioSec": 2.12,
+            "wallMs": 2910.1,
+            "rtf": 1.3727
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 4203.9,
+      "firstAudioFromTokenMs": 3895.3,
+      "totalTurnMs": 4204
+    },
+    {
+      "turn": 11,
+      "asr": {
+        "latencyMs": 236.6,
+        "transcript": "Schedule a meeting for tomorrow afternoon.",
+        "wer": 0.4
+      },
+      "gen": {
+        "firstTokenMs": 115.9,
+        "decodeTokPerSec": 5.21,
+        "predictedN": 12,
+        "promptTokPerSec": 244.36,
+        "content": "The meeting is to be held in the library. The meeting"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 3,
+        "audioSec": 2.12,
+        "wallMs": 4619.7,
+        "rtf": 2.1791,
+        "perPhrase": [
+          {
+            "phrase": "The meeting is to be held in the",
+            "audioSec": 2.12,
+            "wallMs": 4619.7,
+            "rtf": 2.1791
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 7211.4,
+      "firstAudioFromTokenMs": 6858.8,
+      "totalTurnMs": 7211.4
+    },
+    {
+      "turn": 12,
+      "asr": {
+        "latencyMs": 237.9,
+        "transcript": "Tell me a short fact about the ocean.",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 18.5,
+        "decodeTokPerSec": 10.3,
+        "predictedN": 12,
+        "promptTokPerSec": 528.42,
+        "content": "The ocean is a vast body of water that covers the entire"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 2,
+        "audioSec": 2.16,
+        "wallMs": 4323.8,
+        "rtf": 2.0018,
+        "perPhrase": [
+          {
+            "phrase": "The ocean is a vast body of water",
+            "audioSec": 2.16,
+            "wallMs": 4323.7,
+            "rtf": 2.0017
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 5747.4,
+      "firstAudioFromTokenMs": 5491,
+      "totalTurnMs": 5747.5
+    },
+    {
+      "turn": 13,
+      "asr": {
+        "latencyMs": 240.7,
+        "transcript": "What is the capital of France?",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 13.9,
+        "decodeTokPerSec": 5.37,
+        "predictedN": 12,
+        "promptTokPerSec": 551.35,
+        "content": "The capital of France is Paris. The answer is in the"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 2,
+        "audioSec": 2.12,
+        "wallMs": 5817.6,
+        "rtf": 2.7442,
+        "perPhrase": [
+          {
+            "phrase": "The capital of France is Paris.",
+            "audioSec": 2.12,
+            "wallMs": 5817.6,
+            "rtf": 2.7442
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 8309.7,
+      "firstAudioFromTokenMs": 8055,
+      "totalTurnMs": 8309.7
+    },
+    {
+      "turn": 14,
+      "asr": {
+        "latencyMs": 229.7,
+        "transcript": "Schedule a meeting for tomorrow afternoon.",
+        "wer": 0.4
+      },
+      "gen": {
+        "firstTokenMs": 75.4,
+        "decodeTokPerSec": 9.12,
+        "predictedN": 12,
+        "promptTokPerSec": 570.45,
+        "content": "The meeting is to be held in the library. The meeting"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 3,
+        "audioSec": 2.12,
+        "wallMs": 3682.8,
+        "rtf": 1.7372,
+        "perPhrase": [
+          {
+            "phrase": "The meeting is to be held in the",
+            "audioSec": 2.12,
+            "wallMs": 3682.7,
+            "rtf": 1.7371
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 5243.3,
+      "firstAudioFromTokenMs": 4938.2,
+      "totalTurnMs": 5243.4
+    },
+    {
+      "turn": 15,
+      "asr": {
+        "latencyMs": 240.3,
+        "transcript": "Tell me a short fact about the ocean.",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 18.6,
+        "decodeTokPerSec": 6.7,
+        "predictedN": 12,
+        "promptTokPerSec": 510.75,
+        "content": "The ocean is a vast body of water that covers the entire"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 2,
+        "audioSec": 2.16,
+        "wallMs": 10307.8,
+        "rtf": 4.7721,
+        "perPhrase": [
+          {
+            "phrase": "The ocean is a vast body of water",
+            "audioSec": 2.16,
+            "wallMs": 10307.8,
+            "rtf": 4.7721
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 12362.4,
+      "firstAudioFromTokenMs": 12103.4,
+      "totalTurnMs": 12362.4
+    },
+    {
+      "turn": 16,
+      "asr": {
+        "latencyMs": 254.7,
+        "transcript": "What is the capital of France?",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 15.5,
+        "decodeTokPerSec": 7.36,
+        "predictedN": 12,
+        "promptTokPerSec": 561.53,
+        "content": "The capital of France is Paris. The answer is in the"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 2,
+        "audioSec": 2.12,
+        "wallMs": 4559.6,
+        "rtf": 2.1508,
+        "perPhrase": [
+          {
+            "phrase": "The capital of France is Paris.",
+            "audioSec": 2.12,
+            "wallMs": 4559.6,
+            "rtf": 2.1507
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 6460.9,
+      "firstAudioFromTokenMs": 6190.8,
+      "totalTurnMs": 6461
+    },
+    {
+      "turn": 17,
+      "asr": {
+        "latencyMs": 245.7,
+        "transcript": "Schedule a meeting for tomorrow afternoon.",
+        "wer": 0.4
+      },
+      "gen": {
+        "firstTokenMs": 16.9,
+        "decodeTokPerSec": 4.88,
+        "predictedN": 12,
+        "promptTokPerSec": 483.99,
+        "content": "The meeting is to be held in the library. The meeting"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 3,
+        "audioSec": 2.12,
+        "wallMs": 12237.6,
+        "rtf": 5.7725,
+        "perPhrase": [
+          {
+            "phrase": "The meeting is to be held in the",
+            "audioSec": 2.12,
+            "wallMs": 12237.5,
+            "rtf": 5.7724
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 14963.9,
+      "firstAudioFromTokenMs": 14701.2,
+      "totalTurnMs": 14964
+    },
+    {
+      "turn": 18,
+      "asr": {
+        "latencyMs": 238.7,
+        "transcript": "Tell me a short fact about the ocean.",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 20.2,
+        "decodeTokPerSec": 11.18,
+        "predictedN": 12,
+        "promptTokPerSec": 478.37,
+        "content": "The ocean is a vast body of water that covers the entire"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 2,
+        "audioSec": 2.16,
+        "wallMs": 3431.5,
+        "rtf": 1.5887,
+        "perPhrase": [
+          {
+            "phrase": "The ocean is a vast body of water",
+            "audioSec": 2.16,
+            "wallMs": 3431.4,
+            "rtf": 1.5886
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 4766.8,
+      "firstAudioFromTokenMs": 4507.9,
+      "totalTurnMs": 4766.8
+    },
+    {
+      "turn": 19,
+      "asr": {
+        "latencyMs": 297.1,
+        "transcript": "What is the capital of France?",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 16,
+        "decodeTokPerSec": 16.26,
+        "predictedN": 12,
+        "promptTokPerSec": 476.81,
+        "content": "The capital of France is Paris. The answer is in the"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 2,
+        "audioSec": 2.12,
+        "wallMs": 3014.9,
+        "rtf": 1.4221,
+        "perPhrase": [
+          {
+            "phrase": "The capital of France is Paris.",
+            "audioSec": 2.12,
+            "wallMs": 3014.9,
+            "rtf": 1.4221
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 4067.8,
+      "firstAudioFromTokenMs": 3754.7,
+      "totalTurnMs": 4067.8
+    },
+    {
+      "turn": 20,
+      "asr": {
+        "latencyMs": 256.2,
+        "transcript": "Schedule a meeting for tomorrow afternoon.",
+        "wer": 0.4
+      },
+      "gen": {
+        "firstTokenMs": 15.5,
+        "decodeTokPerSec": 4.78,
+        "predictedN": 12,
+        "promptTokPerSec": 499.39,
+        "content": "The meeting is to be held in the library. The meeting"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 3,
+        "audioSec": 2.12,
+        "wallMs": 18833.8,
+        "rtf": 8.8839,
+        "perPhrase": [
+          {
+            "phrase": "The meeting is to be held in the",
+            "audioSec": 2.12,
+            "wallMs": 18833.7,
+            "rtf": 8.8838
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 21617.7,
+      "firstAudioFromTokenMs": 21346,
+      "totalTurnMs": 21617.8
+    },
+    {
+      "turn": 21,
+      "asr": {
+        "latencyMs": 265.9,
+        "transcript": "Tell me a short fact about the ocean.",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 23.3,
+        "decodeTokPerSec": 4.42,
+        "predictedN": 12,
+        "promptTokPerSec": 406.58,
+        "content": "The ocean is a vast body of water that covers the entire"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 2,
+        "audioSec": 2.16,
+        "wallMs": 11351.3,
+        "rtf": 5.2552,
+        "perPhrase": [
+          {
+            "phrase": "The ocean is a vast body of water",
+            "audioSec": 2.16,
+            "wallMs": 11351.2,
+            "rtf": 5.2552
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 14355.8,
+      "firstAudioFromTokenMs": 14066.6,
+      "totalTurnMs": 14355.9
+    },
+    {
+      "turn": 22,
+      "asr": {
+        "latencyMs": 255,
+        "transcript": "What is the capital of France?",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 35.4,
+        "decodeTokPerSec": 5.07,
+        "predictedN": 12,
+        "promptTokPerSec": 474.58,
+        "content": "The capital of France is Paris. The answer is in the"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 2,
+        "audioSec": 2.12,
+        "wallMs": 16634.1,
+        "rtf": 7.8463,
+        "perPhrase": [
+          {
+            "phrase": "The capital of France is Paris.",
+            "audioSec": 2.12,
+            "wallMs": 16634,
+            "rtf": 7.8462
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 19272.6,
+      "firstAudioFromTokenMs": 18982.3,
+      "totalTurnMs": 19272.7
+    },
+    {
+      "turn": 23,
+      "asr": {
+        "latencyMs": 235.5,
+        "transcript": "Schedule a meeting for tomorrow afternoon.",
+        "wer": 0.4
+      },
+      "gen": {
+        "firstTokenMs": 61.7,
+        "decodeTokPerSec": 4.54,
+        "predictedN": 12,
+        "promptTokPerSec": 431.11,
+        "content": "The meeting is to be held in the library. The meeting"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 3,
+        "audioSec": 2.12,
+        "wallMs": 12207.2,
+        "rtf": 5.7581,
+        "perPhrase": [
+          {
+            "phrase": "The meeting is to be held in the",
+            "audioSec": 2.12,
+            "wallMs": 12207.2,
+            "rtf": 5.7581
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 15108.2,
+      "firstAudioFromTokenMs": 14811,
+      "totalTurnMs": 15108.2
+    },
+    {
+      "turn": 24,
+      "asr": {
+        "latencyMs": 250.5,
+        "transcript": "Tell me a short fact about the ocean.",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 39.9,
+        "decodeTokPerSec": 5.15,
+        "predictedN": 12,
+        "promptTokPerSec": 452.83,
+        "content": "The ocean is a vast body of water that covers the entire"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 2,
+        "audioSec": 2.16,
+        "wallMs": 8681.2,
+        "rtf": 4.0191,
+        "perPhrase": [
+          {
+            "phrase": "The ocean is a vast body of water",
+            "audioSec": 2.16,
+            "wallMs": 8681.1,
+            "rtf": 4.019
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 11284.5,
+      "firstAudioFromTokenMs": 10994.1,
+      "totalTurnMs": 11284.7
+    },
+    {
+      "turn": 25,
+      "asr": {
+        "latencyMs": 245.6,
+        "transcript": "What is the capital of France?",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 40.5,
+        "decodeTokPerSec": 7.79,
+        "predictedN": 12,
+        "promptTokPerSec": 429.95,
+        "content": "The capital of France is Paris. The answer is in the"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 2,
+        "audioSec": 2.12,
+        "wallMs": 5890.9,
+        "rtf": 2.7787,
+        "perPhrase": [
+          {
+            "phrase": "The capital of France is Paris.",
+            "audioSec": 2.12,
+            "wallMs": 5890.9,
+            "rtf": 2.7787
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 7704.1,
+      "firstAudioFromTokenMs": 7418,
+      "totalTurnMs": 7704.1
+    },
+    {
+      "turn": 26,
+      "asr": {
+        "latencyMs": 252.3,
+        "transcript": "Schedule a meeting for tomorrow afternoon.",
+        "wer": 0.4
+      },
+      "gen": {
+        "firstTokenMs": 15.9,
+        "decodeTokPerSec": 6.98,
+        "predictedN": 12,
+        "promptTokPerSec": 475.58,
+        "content": "The meeting is to be held in the library. The meeting"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 3,
+        "audioSec": 2.12,
+        "wallMs": 5835.2,
+        "rtf": 2.7524,
+        "perPhrase": [
+          {
+            "phrase": "The meeting is to be held in the",
+            "audioSec": 2.12,
+            "wallMs": 5835.1,
+            "rtf": 2.7524
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 7826.1,
+      "firstAudioFromTokenMs": 7558,
+      "totalTurnMs": 7826.2
+    },
+    {
+      "turn": 27,
+      "asr": {
+        "latencyMs": 238.5,
+        "transcript": "Tell me a short fact about the ocean.",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 57.2,
+        "decodeTokPerSec": 6.53,
+        "predictedN": 12,
+        "promptTokPerSec": 366.94,
+        "content": "The ocean is a vast body of water that covers the entire"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 2,
+        "audioSec": 2.16,
+        "wallMs": 4645.1,
+        "rtf": 2.1505,
+        "perPhrase": [
+          {
+            "phrase": "The ocean is a vast body of water",
+            "audioSec": 2.16,
+            "wallMs": 4645.1,
+            "rtf": 2.1505
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 6750,
+      "firstAudioFromTokenMs": 6454.3,
+      "totalTurnMs": 6750.1
+    },
+    {
+      "turn": 28,
+      "asr": {
+        "latencyMs": 261.2,
+        "transcript": "What is the capital of France?",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 56.4,
+        "decodeTokPerSec": 10.94,
+        "predictedN": 12,
+        "promptTokPerSec": 527.39,
+        "content": "The capital of France is Paris. The answer is in the"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 2,
+        "audioSec": 2.12,
+        "wallMs": 4771,
+        "rtf": 2.2505,
+        "perPhrase": [
+          {
+            "phrase": "The capital of France is Paris.",
+            "audioSec": 2.12,
+            "wallMs": 4770.7,
+            "rtf": 2.2503
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 6148.8,
+      "firstAudioFromTokenMs": 5831.3,
+      "totalTurnMs": 6149.1
+    },
+    {
+      "turn": 29,
+      "asr": {
+        "latencyMs": 239.1,
+        "transcript": "Schedule a meeting for tomorrow afternoon.",
+        "wer": 0.4
+      },
+      "gen": {
+        "firstTokenMs": 43.4,
+        "decodeTokPerSec": 10.45,
+        "predictedN": 12,
+        "promptTokPerSec": 368.87,
+        "content": "The meeting is to be held in the library. The meeting"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 3,
+        "audioSec": 2.12,
+        "wallMs": 4184.5,
+        "rtf": 1.9738,
+        "perPhrase": [
+          {
+            "phrase": "The meeting is to be held in the",
+            "audioSec": 2.12,
+            "wallMs": 4184.5,
+            "rtf": 1.9738
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 5597.2,
+      "firstAudioFromTokenMs": 5314.8,
+      "totalTurnMs": 5597.3
+    },
+    {
+      "turn": 30,
+      "asr": {
+        "latencyMs": 236.2,
+        "transcript": "Tell me a short fact about the ocean.",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 85.2,
+        "decodeTokPerSec": 7.38,
+        "predictedN": 12,
+        "promptTokPerSec": 505.62,
+        "content": "The ocean is a vast body of water that covers the entire"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 2,
+        "audioSec": 2.16,
+        "wallMs": 3851.2,
+        "rtf": 1.783,
+        "perPhrase": [
+          {
+            "phrase": "The ocean is a vast body of water",
+            "audioSec": 2.16,
+            "wallMs": 3851.2,
+            "rtf": 1.7829
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 5736.2,
+      "firstAudioFromTokenMs": 5414.8,
+      "totalTurnMs": 5736.2
+    }
+  ],
+  "serverLog": "[MaskGIT-Step] 8/32 demask=2 remaining=376\n[MaskGIT-Step] 9/32 demask=3 remaining=373\n[MaskGIT-Step] 10/32 demask=3 remaining=370\n[MaskGIT-Step] 11/32 demask=3 remaining=367\n[MaskGIT-Step] 12/32 demask=3 remaining=364\n[MaskGIT-Step] 13/32 demask=3 remaining=361\n[MaskGIT-Step] 14/32 demask=4 remaining=357\n[MaskGIT-Step] 15/32 demask=4 remaining=353\n[MaskGIT-Step] 16/32 demask=4 remaining=349\n[MaskGIT-Step] 17/32 demask=5 remaining=344\n[MaskGIT-Step] 18/32 demask=5 remaining=339\n[MaskGIT-Step] 19/32 demask=6 remaining=333\n[MaskGIT-Step] 20/32 demask=7 remaining=326\n[MaskGIT-Step] 21/32 demask=7 remaining=319\n[MaskGIT-Step] 22/32 demask=8 remaining=311\n[MaskGIT-Step] 23/32 demask=10 remaining=301\n[MaskGIT-Step] 24/32 demask=11 remaining=290\n[MaskGIT-Step] 25/32 demask=13 remaining=277\n[MaskGIT-Step] 26/32 demask=16 remaining=261\n[MaskGIT-Step] 27/32 demask=19 remaining=242\n[MaskGIT-Step] 28/32 demask=24 remaining=218\n[MaskGIT-Step] 29/32 demask=32 remaining=186\n[MaskGIT-Step] 30/32 demask=43 remaining=143\n[MaskGIT-Step] 31/32 demask=62 remaining=81\n[MaskGIT-Step] 32/32 demask=81 remaining=0\n[MaskGIT] Total LM forward: 2197.92 ms across 32 steps (avg 68.68 ms/step)\n[TTS] Decode: K=8 T=49 expected_samples=47040\n[TTS-Long] Post-proc: 47040 -> 51840 samples (2.16s at 24000 Hz, ref_rms=-1.0000)\nsrv  log_server_r: done request: POST /v1/audio/speech 127.0.0.1 200\n"
+}

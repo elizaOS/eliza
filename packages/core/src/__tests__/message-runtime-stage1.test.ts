@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
+import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import { runV5MessageRuntimeStage1 } from "../services/message";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
@@ -70,7 +70,9 @@ function makeRuntime(responses: unknown[]): IAgentRuntime {
 			trace: vi.fn(),
 		},
 		responseHandlerFieldRegistry,
-		responseHandlerFieldEvaluators: [...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS],
+		responseHandlerFieldEvaluators: [
+			...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+		],
 		responseHandlerEvaluators: [],
 	} as IAgentRuntime;
 }
@@ -333,6 +335,102 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(providerNames).toContain("RECENT_MESSAGES");
 		expect(providerNames).not.toContain("PROVIDERS");
 		expect(providerNames).not.toContain("CHARACTER");
+	});
+
+	it("emits a response-handler reply before planner recomposition when provided", async () => {
+		const order: string[] = [];
+		const runtime = makeRuntime([
+			JSON.stringify({
+				processMessage: "RESPOND",
+				thought: "Acknowledge first, then inspect.",
+				plan: {
+					contexts: ["general"],
+					requiresTool: true,
+					simple: false,
+					reply: "I'll check that now.",
+				},
+			}),
+			JSON.stringify({
+				thought: "Finished the follow-up.",
+				toolCalls: [],
+				messageToUser: "The follow-up is complete.",
+			}),
+		]);
+		runtime.composeState = vi.fn(async () => {
+			order.push("compose-planner-state");
+			return makeState();
+		});
+
+		const earlyReply = vi.fn(async () => {
+			order.push("early-reply");
+		});
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).toHaveBeenCalledWith(
+			expect.objectContaining({
+				text: "I'll check that now.",
+			}),
+		);
+		expect(order).toEqual(["early-reply", "compose-planner-state"]);
+		expect(result.kind).toBe("planned_reply");
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"The follow-up is complete.",
+			);
+		}
+	});
+
+	it("preserves the parsed response-handler reply for early delivery even when a repair clears plan.reply", async () => {
+		const runtime = makeRuntime([
+			JSON.stringify({
+				processMessage: "RESPOND",
+				thought: "Acknowledge first.",
+				plan: {
+					contexts: ["simple"],
+					requiresTool: false,
+					reply: "I'll start on that.",
+				},
+			}),
+			JSON.stringify({
+				thought: "Planner should not repeat the acknowledgement.",
+				toolCalls: [],
+				messageToUser: "I found the extra detail.",
+			}),
+		]);
+		runtime.responseHandlerEvaluators = [
+			{
+				name: "test.clear_reply_but_plan",
+				priority: 5,
+				shouldRun: () => true,
+				evaluate: () => ({
+					requiresTool: true,
+					simple: false,
+					clearReply: true,
+					addContexts: ["general"],
+				}),
+			} satisfies ResponseHandlerEvaluator,
+		];
+		const earlyReply = vi.fn(async () => undefined);
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(earlyReply).toHaveBeenCalledWith(
+			expect.objectContaining({
+				text: "I'll start on that.",
+			}),
+		);
 	});
 
 	it("exposes only validated actions and enforces tool-required routing through PLAN_ACTIONS", async () => {

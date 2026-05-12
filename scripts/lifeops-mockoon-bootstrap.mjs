@@ -76,6 +76,16 @@ function resolveMockoonBin() {
   if (existsSync(MOCKOON_NPX_CACHE_BIN)) {
     return { kind: "bin", cmd: MOCKOON_NPX_CACHE_BIN };
   }
+  // Codex desktop shells may not include Homebrew's bin directory even when
+  // Node/npm are installed there.
+  const homebrewNpx = "/opt/homebrew/bin/npx";
+  if (existsSync(homebrewNpx)) {
+    return { kind: "npx", cmd: homebrewNpx };
+  }
+  const localBunx = join(REPO_ROOT, "node_modules", ".bin", "bunx");
+  if (existsSync(localBunx)) {
+    return { kind: "bunx", cmd: localBunx };
+  }
   // Last resort: npx itself. Slow cold start (~30s per env) but correct.
   return { kind: "npx", cmd: "npx" };
 }
@@ -142,8 +152,11 @@ function spawnMockoonProcess(bin, envPath, port) {
   let cmd;
   let args;
   if (bin.kind === "npx") {
-    cmd = "npx";
+    cmd = bin.cmd;
     args = ["--yes", "@mockoon/cli@latest", ...baseArgs];
+  } else if (bin.kind === "bunx") {
+    cmd = bin.cmd;
+    args = ["--bun", "@mockoon/cli@latest", ...baseArgs];
   } else {
     cmd = bin.cmd;
     args = baseArgs;

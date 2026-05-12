@@ -411,10 +411,9 @@ function toError(err: unknown): Error {
   return err instanceof Error ? err : new Error(String(err));
 }
 
-function voiceRequestMetadata(update: TranscriptUpdate | null): Pick<
-  VoiceGenerateRequest,
-  "source" | "speaker" | "segments" | "turn"
-> {
+function voiceRequestMetadata(
+  update: TranscriptUpdate | null,
+): Pick<VoiceGenerateRequest, "source" | "speaker" | "segments" | "turn"> {
   if (!update) return {};
   return {
     ...(update.source ? { source: update.source } : {}),

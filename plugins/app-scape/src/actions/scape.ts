@@ -22,13 +22,13 @@
  */
 
 import {
-  parseJSONObjectFromText,
   type Action,
   type ActionResult,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
   type Memory,
+  parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
 import type { ScapeGameService } from "../services/game-service.js";
@@ -218,7 +218,10 @@ async function dispatchOp(
       if (!journal) return { success: false, message: "journal unavailable" };
       const statusRaw = str(params, "status").toLowerCase() || "completed";
       if (statusRaw !== "completed" && statusRaw !== "abandoned") {
-        return { success: false, message: "status must be completed|abandoned" };
+        return {
+          success: false,
+          message: "status must be completed|abandoned",
+        };
       }
       const explicitId =
         params.goalId != null
@@ -234,7 +237,8 @@ async function dispatchOp(
         statusRaw as "completed" | "abandoned",
         notes,
       );
-      if (!updated) return { success: false, message: `goal ${goalId} not found` };
+      if (!updated)
+        return { success: false, message: `goal ${goalId} not found` };
       return { success: true, message: `goal -> ${statusRaw}` };
     }
     case "remember": {
@@ -303,13 +307,6 @@ export const scapeAction: Action = {
       schema: { type: "string", enum: SCAPE_OPS as string[] },
     },
     {
-      name: "subaction",
-      description: "Legacy alias for action.",
-      descriptionCompressed: "Legacy op alias.",
-      required: false,
-      schema: { type: "string" },
-    },
-    {
       name: "params",
       description:
         "Optional JSON object containing the fields required by the chosen action.",
@@ -328,9 +325,7 @@ export const scapeAction: Action = {
     options: HandlerOptions | ParamsRecord | undefined,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const service = runtime.getService(
-      "scape_game",
-    ) as ScapeGameService | null;
+    const service = runtime.getService("scape_game") as ScapeGameService | null;
     if (!service) {
       const text = "'scape game service not available.";
       callback?.({ text, action: "SCAPE" });
@@ -361,13 +356,15 @@ export const scapeAction: Action = {
           setTimeout(() => reject(new Error("scape op timed out")), TIMEOUT_MS),
         ),
       ]);
-      const text = (
-        result.message ?? (result.success ? "ok" : "failed")
-      ).slice(0, 2000);
+      const text = (result.message ?? (result.success ? "ok" : "failed")).slice(
+        0,
+        2000,
+      );
       callback?.({ text, action: "SCAPE" });
       return { success: result.success, text };
     } catch (error) {
-      const errText = error instanceof Error ? error.message : "unknown failure";
+      const errText =
+        error instanceof Error ? error.message : "unknown failure";
       const text = `${op} failed: ${errText}`;
       callback?.({ text, action: "SCAPE" });
       return { success: false, text, error: errText, data: { op } };

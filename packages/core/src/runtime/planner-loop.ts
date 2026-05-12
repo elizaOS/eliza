@@ -36,6 +36,7 @@ import {
 	type ChainingLoopConfig,
 	type FailureLike,
 	mergeChainingLoopConfig,
+	TrajectoryLimitExceeded,
 } from "./limits";
 import {
 	buildModelInputBudget,
@@ -133,6 +134,30 @@ export async function runPlannerLoop(
 	const requireNonTerminalToolCall =
 		params.requireNonTerminalToolCall === true &&
 		hasExposedNonTerminalTool(params.tools);
+
+	// Cumulative gross prompt-token counter, summed across every planner
+	// stage in this user turn. Tracked alongside the existing per-iter
+	// counters (terminalOnlyContinuations, requiredToolMisses) so the
+	// `maxTrajectoryPromptTokens` guard fires on the very call that crosses
+	// the threshold rather than at the next-iteration check-in.
+	let cumulativePromptTokens = 0;
+	const observePlannerUsage = (usage: {
+		promptTokens: number;
+		completionTokens: number;
+	}): void => {
+		cumulativePromptTokens += usage.promptTokens;
+		if (cumulativePromptTokens > config.maxTrajectoryPromptTokens) {
+			throw new TrajectoryLimitExceeded({
+				kind: "trajectory_token_budget",
+				max: config.maxTrajectoryPromptTokens,
+				observed: cumulativePromptTokens,
+				message:
+					`Trajectory prompt-token budget exceeded ` +
+					`(${cumulativePromptTokens}/${config.maxTrajectoryPromptTokens}) — ` +
+					`this turn is most likely stuck in a replan loop; aborting to bound cost.`,
+			});
+		}
+	};
 	// Tracks the most recent planner output's *explicit* `messageToUser` so the
 	// post-tool evaluator gate can use it as the final response when the
 	// trajectory ends cleanly. EXPLICIT means the planner's structured output
@@ -157,6 +182,7 @@ export async function runPlannerLoop(
 				trajectoryId: params.trajectoryId,
 				parentStageId: params.parentStageId,
 				iteration,
+				onUsage: observePlannerUsage,
 			});
 			// Treat `messageToUser` as authoritative ONLY when the planner's structured
 			// output carried it as an explicit field. The native-tool-call code path
@@ -472,6 +498,13 @@ function renderPlannerModelInput(params: {
 	trajectory: PlannerTrajectory;
 	template?: string;
 	runtime?: PlannerRuntime;
+	/**
+	 * Optional per-tool-result character cap. Forwarded directly to
+	 * `trajectoryStepsToMessages` — caps the rendered tool-result
+	 * string for each kept-verbatim step without mutating the
+	 * trajectory itself.
+	 */
+	maxToolResultChars?: number;
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
@@ -481,7 +514,9 @@ function renderPlannerModelInput(params: {
 	const instructions = (
 		template.split("context_object:")[0] ?? template
 	).trim();
-	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps);
+	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps, {
+		maxToolResultChars: params.maxToolResultChars,
+	});
 	const liveActionsBlock = renderAvailableActionsBlock(params.context);
 	const availableActionsBlock = params.runtime
 		? resolveOptimizedActionDescriptions(params.runtime, liveActionsBlock)
@@ -522,6 +557,18 @@ function renderPlannerModelInput(params: {
 		stepMessages,
 	});
 	return { messages, promptSegments };
+}
+
+function compactionReserveForBudget(
+	config: ChainingLoopConfig,
+): number | undefined {
+	if (
+		config.contextWindowModelName &&
+		config.compactionReserveTokensExplicit !== true
+	) {
+		return undefined;
+	}
+	return config.compactionReserveTokens;
 }
 
 function normalizePlannerToolName(name: string): string {
@@ -576,7 +623,7 @@ function compactToolParameters(parameters: unknown): unknown {
 const RENDERED_TOOL_MEMO = new WeakMap<ContextObjectTool, string>();
 
 /**
- * When `MILADY_SHORT_FORM_ENUMS=1` is set, expose a short-form hint line on
+ * When `ELIZA_SHORT_FORM_ENUMS=1` is set, expose a short-form hint line on
  * tools whose single parameter is a closed enum. The hint lives on a NEW line
  * after the existing `parameters: { ... }` JSON so the byte-stable JSON shape
  * is preserved exactly when the flag is off. The dispatch side (see
@@ -584,7 +631,7 @@ const RENDERED_TOOL_MEMO = new WeakMap<ContextObjectTool, string>();
  * string emission back into the full JSON shape before validation.
  */
 function shortFormEnumHint(tool: ContextObjectTool): string | undefined {
-	if (process.env.MILADY_SHORT_FORM_ENUMS !== "1") return undefined;
+	if (process.env.ELIZA_SHORT_FORM_ENUMS !== "1") return undefined;
 	const action = tool.action;
 	if (!action) return undefined;
 	const parameters = action.parameters ?? [];
@@ -608,7 +655,7 @@ function shortFormEnumHint(tool: ContextObjectTool): string | undefined {
 }
 
 function renderToolForAvailableActions(tool: ContextObjectTool): string {
-	const memoKey = process.env.MILADY_SHORT_FORM_ENUMS === "1" ? null : tool;
+	const memoKey = process.env.ELIZA_SHORT_FORM_ENUMS === "1" ? null : tool;
 	if (memoKey !== null) {
 		const cached = RENDERED_TOOL_MEMO.get(memoKey);
 		if (cached !== undefined) return cached;
@@ -640,7 +687,7 @@ function renderToolForAvailableActions(tool: ContextObjectTool): string {
  * Returns `null` when no exposed action has a `routingHint` set, so the
  * planner prompt simply omits the section.
  *
- * When `MILADY_PROMPT_COMPRESS=1` is set, skip routing-hint rendering
+ * When `ELIZA_PROMPT_COMPRESS=1` is set, skip routing-hint rendering
  * entirely — the Cerebras compress-mode escape hatch trades these hints for a
  * tighter token budget. Memoized on `context.events` identity; the events
  * array is immutable per planner iteration (`appendContextEvent` returns a
@@ -651,7 +698,7 @@ const ROUTING_HINTS_MEMO = new WeakMap<
 	string | null
 >();
 function renderRoutingHintsBlock(context: ContextObject): string | null {
-	if (process.env.MILADY_PROMPT_COMPRESS === "1") return null;
+	if (process.env.ELIZA_PROMPT_COMPRESS === "1") return null;
 	const events = context.events;
 	if (events && ROUTING_HINTS_MEMO.has(events)) {
 		return ROUTING_HINTS_MEMO.get(events) ?? null;
@@ -736,7 +783,7 @@ const AVAILABLE_ACTIONS_BLOCK_MEMO = new WeakMap<
 function renderAvailableActionsBlock(context: ContextObject): string | null {
 	const events = context.events;
 	const useMemo =
-		events !== undefined && process.env.MILADY_SHORT_FORM_ENUMS !== "1";
+		events !== undefined && process.env.ELIZA_SHORT_FORM_ENUMS !== "1";
 	if (useMemo && AVAILABLE_ACTIONS_BLOCK_MEMO.has(events)) {
 		return AVAILABLE_ACTIONS_BLOCK_MEMO.get(events) ?? null;
 	}
@@ -964,19 +1011,36 @@ async function callPlanner(params: {
 	trajectoryId?: string;
 	parentStageId?: string;
 	iteration?: number;
+	/**
+	 * Side-channel observer called once per model call with the gross
+	 * `promptTokens` reported by the provider. Used by `runPlannerLoop`
+	 * to enforce `ChainingLoopConfig.maxTrajectoryPromptTokens` without
+	 * changing this function's return type. Errors thrown from the
+	 * callback (e.g. `TrajectoryLimitExceeded`) propagate to the loop.
+	 */
+	onUsage?: (usage: { promptTokens: number; completionTokens: number }) => void;
 }): Promise<ReturnType<typeof parsePlannerOutput>> {
 	let renderedInput = renderPlannerModelInput({
 		context: params.context,
 		trajectory: params.trajectory,
 		template: resolveOptimizedPlannerTemplate(params.runtime),
 		runtime: params.runtime,
+		maxToolResultChars: params.config.compactionMaxKeptStepChars,
 	});
 	let modelInputBudget = buildModelInputBudget({
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
 		tools: params.tools,
-		contextWindowTokens: params.config.contextWindowTokens,
-		reserveTokens: params.config.compactionReserveTokens,
+		// `modelName` lets the per-model context-window lookup fire.
+		// The lookup result wins over contextWindowTokens (see buildModelInputBudget
+		// resolution order). Note: contextWindowTokens defaults to 128_000 so the
+		// spread is always non-empty; the lookup will still override it when
+		// contextWindowModelName resolves.
+		modelName: params.config.contextWindowModelName,
+		...(params.config.contextWindowTokens
+			? { contextWindowTokens: params.config.contextWindowTokens }
+			: {}),
+		reserveTokens: compactionReserveForBudget(params.config),
 	});
 	if (modelInputBudget.shouldCompact && params.config.compactionEnabled) {
 		const compacted = await maybeCompactPlannerTrajectory({
@@ -995,13 +1059,17 @@ async function callPlanner(params: {
 				trajectory: params.trajectory,
 				template: resolveOptimizedPlannerTemplate(params.runtime),
 				runtime: params.runtime,
+				maxToolResultChars: params.config.compactionMaxKeptStepChars,
 			});
 			modelInputBudget = buildModelInputBudget({
 				messages: renderedInput.messages,
 				promptSegments: renderedInput.promptSegments,
 				tools: params.tools,
-				contextWindowTokens: params.config.contextWindowTokens,
-				reserveTokens: params.config.compactionReserveTokens,
+				modelName: params.config.contextWindowModelName,
+				...(params.config.contextWindowTokens
+					? { contextWindowTokens: params.config.contextWindowTokens }
+					: {}),
+				reserveTokens: compactionReserveForBudget(params.config),
 			});
 		}
 	}
@@ -1083,6 +1151,31 @@ async function callPlanner(params: {
 	const endedAt = Date.now();
 
 	const parsed = parsePlannerOutput(raw);
+
+	// Notify the cumulative-token observer first, BEFORE recording, so the
+	// loop's `maxTrajectoryPromptTokens` guard fires immediately on the call
+	// that crossed the line — not after we've already done another iteration
+	// of bookkeeping. The recorder is observability and can tolerate the
+	// minor reordering; the budget guard is load-bearing.
+	//
+	// CONSEQUENCE for trajectory consumers: when `observePlannerUsage` throws
+	// `TrajectoryLimitExceeded(kind: "trajectory_token_budget")` the call
+	// that crossed the line is intentionally **not** recorded as a planner
+	// stage. The trajectory then ends one stage short of the actual model
+	// activity. Downstream consumers that reconstruct totals from recorded
+	// stages (the trajectory CLI cost report, cost-regression dashboards)
+	// should treat the loop-level `metrics.totalPromptTokens` (populated by
+	// the recorder on `endTrajectory`) as authoritative rather than summing
+	// stage-level usages.
+	if (params.onUsage) {
+		const usage = extractUsage(raw);
+		if (usage) {
+			params.onUsage({
+				promptTokens: usage.promptTokens ?? 0,
+				completionTokens: usage.completionTokens ?? 0,
+			});
+		}
+	}
 
 	await recordPlannerStage({
 		recorder: params.recorder,
@@ -1203,13 +1296,17 @@ async function maybeCompactBeforeNextModelCall(args: {
 	const renderedInput = renderPlannerModelInput({
 		context: args.trajectory.context,
 		trajectory: args.trajectory,
+		maxToolResultChars: args.config.compactionMaxKeptStepChars,
 	});
 	const budget = buildModelInputBudget({
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
 		tools: args.tools,
-		contextWindowTokens: args.config.contextWindowTokens,
-		reserveTokens: args.config.compactionReserveTokens,
+		modelName: args.config.contextWindowModelName,
+		...(args.config.contextWindowTokens
+			? { contextWindowTokens: args.config.contextWindowTokens }
+			: {}),
+		reserveTokens: compactionReserveForBudget(args.config),
 	});
 	if (!budget.shouldCompact) {
 		return false;
@@ -2045,11 +2142,30 @@ function terminalMessageFromToolCalls(
 	);
 }
 
+/**
+ * Latest user-safe projection of a tool's result, walking the trajectory
+ * back-to-front. Returns ONLY the tool's `userFacingText` field — never
+ * the diagnostic `text` field, because `text` is log-shaped (shell
+ * prompts, exit codes, cwd, byte counts) and leaks the tool's wrapper
+ * format into the user channel.
+ *
+ * Tools that produce real user-facing answers (Q&A, content generation,
+ * REPLY) must opt in by setting `userFacingText`. Tools that emit logs
+ * (BASH, SHELL, fetchers, file readers) leave it unset; this function
+ * then returns undefined and the caller falls through to the evaluator's
+ * synthesized reply instead of dumping the log into the channel.
+ *
+ * Pre-PR, this function returned `step.result.text` directly — that's
+ * how `$ find … [exit 0] (cwd=…) --- stdout --- 443` ever ended up as
+ * a literal Discord reply. The fix is structural: tools tell the
+ * framework what's safe, the framework doesn't guess by parsing
+ * wrapper text.
+ */
 function latestToolResultText(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
 	for (const step of [...trajectory.steps].reverse()) {
-		const text = step.result?.text?.trim();
+		const text = step.result?.userFacingText?.trim();
 		if (text) {
 			return text;
 		}
@@ -2224,6 +2340,7 @@ export function actionResultToPlannerToolResult(
 	return {
 		success: result.success,
 		text: result.text,
+		userFacingText: result.userFacingText,
 		data: Object.keys(data).length > 0 ? data : undefined,
 		error: result.error,
 		continueChain: result.continueChain,

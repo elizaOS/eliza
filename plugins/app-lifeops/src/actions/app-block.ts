@@ -27,7 +27,7 @@ import {
   type SubactionsMap,
 } from "./lib/resolve-action-args.js";
 
-const ACTION_NAME = "APP_BLOCK";
+const ACTION_NAME = "BLOCK";
 
 type AppBlockSubaction = "block" | "unblock" | "status";
 
@@ -470,9 +470,8 @@ export async function appBlockValidate(
 /**
  * Handler function backing the BLOCK umbrella when `target=app`.
  *
- * Folded out of the legacy `APP_BLOCK` action surface — Audit B Defer #1.
  * The umbrella in `./block.ts` is the only caller; no Action object is
- * registered for this handler anymore.
+ * registered for this handler.
  */
 export async function runAppBlockHandler(
   runtime: IAgentRuntime,

@@ -39,7 +39,7 @@ type SubscriptionActionPlan = {
   response?: string;
 };
 
-const ACTION_NAME = "SUBSCRIPTIONS";
+const ACTION_NAME = "OWNER_FINANCES";
 
 function mergeParams(
   message: Memory,
@@ -137,7 +137,7 @@ async function resolveSubscriptionsPlanWithLlm(args: {
   ).join("\n");
   const currentMessage = messageText(args.message).trim();
   const prompt = [
-    "Plan the SUBSCRIPTIONS action for this request.",
+    "Plan OWNER_FINANCES subscription handling for this request.",
     "Use the current request, recent conversation, and any already-extracted parameters.",
     "Return JSON only as a single object with exactly these fields:",
     "  subaction: one of audit, cancel, status, or null",
@@ -269,12 +269,12 @@ async function runSubscriptionsActionInner(
         "Tell me whether you want a subscription audit, a cancellation, or a status check.",
       values: {
         success: false,
-        error: "AMBIGUOUS_SUBSCRIPTIONS_REQUEST",
+        error: "AMBIGUOUS_SUBSCRIPTION_REQUEST",
         requiresConfirmation: true,
       },
       data: {
         actionName: ACTION_NAME,
-        error: "AMBIGUOUS_SUBSCRIPTIONS_REQUEST",
+        error: "AMBIGUOUS_SUBSCRIPTION_REQUEST",
         requiresConfirmation: true,
       },
     };
@@ -389,11 +389,9 @@ async function runSubscriptionsActionInner(
 }
 
 /**
- * Handler function backing the MONEY umbrella's subscription_* subactions.
- *
- * Folded out of the legacy `SUBSCRIPTIONS` action surface — Audit B Defer #4.
- * The umbrella in `./money.ts` is the only caller; no Action object is
- * registered for this handler anymore.
+ * Handler function backing OWNER_FINANCES subscription_* subactions. The
+ * umbrella in `./money.ts` is the only caller; no Action object is registered
+ * for this handler.
  */
 export async function runSubscriptionsHandler(
   runtime: IAgentRuntime,

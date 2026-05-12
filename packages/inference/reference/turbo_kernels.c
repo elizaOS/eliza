@@ -457,7 +457,7 @@ void eliza_dequantize_turbo3_tcq_block(const eliza_block_turbo3_tcq * src, float
 }
 
 /* ---------- Fork-exact TBQ V-cache blocks (block_tbq3_0 / block_tbq4_0) ----------
- * Mirrors ggml/src/ggml-quants.c in the milady-llama-cpp fork: the V-cache
+ * Mirrors ggml/src/ggml-quants.c in the eliza-llama-cpp fork: the V-cache
  * TurboQuant blocks consumed by GGML_OP_FUSED_ATTN_QJL_TBQ. */
 
 const float ELIZA_TBQ3_CODEBOOK[8] = {

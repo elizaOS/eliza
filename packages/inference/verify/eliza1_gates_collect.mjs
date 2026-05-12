@@ -4,14 +4,16 @@
  * `packages/training/benchmarks/eliza1_gates.yaml`, and emit:
  *   - an aggregate report under `packages/inference/reports/gates/`,
  *   - a manifest `evals`-block fragment (the subset W11 owns:
- *     `dflash` + `thirtyTurnOk`/`e2eLoopOk` + `vadLatencyMs`-shaped
- *     entries) the publish orchestrator / manifest writer can merge.
+ *     `voiceRtf`/`asrWer` + `dflash` + `thirtyTurnOk`/`e2eLoopOk` +
+ *     `vadLatencyMs`-shaped entries) the publish orchestrator / manifest
+ *     writer can merge.
  *
  * Sources scanned (newest file wins, by mtime):
  *   - dflash bench           — packages/inference/reports/dflash-bench/dflash-bench-*.json
  *   - VAD quality            — packages/inference/reports/vad/vad-quality-*.json
  *   - barge-in latency       — packages/inference/reports/bargein/bargein-latency-*.json
  *   - 30-turn endurance      — packages/inference/reports/endurance/thirty-turn-endurance-*.json
+ *   - fused local E2E loop   — packages/inference/reports/local-e2e/<date>/e2e-loop-*.json
  *   - mobile peak RSS        — packages/inference/reports/mobile-rss/mobile-peak-rss-*.json
  *
  * Missing source → that metric is recorded as `null` ("not measured") and
@@ -114,6 +116,41 @@ function newestReport(dir, prefix) {
   }
 }
 
+/** Newest (by mtime) recursive file matching `prefix*.json`, or null. */
+function newestReportRecursive(dir, prefix) {
+  return newestReportRecursiveWhere(dir, prefix, () => true);
+}
+
+/** Newest (by mtime) recursive file matching `prefix*.json` and predicate. */
+function newestReportRecursiveWhere(dir, prefix, predicate) {
+  if (!fs.existsSync(dir)) return null;
+  const matches = [];
+  const stack = [dir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
+        continue;
+      }
+      if (entry.isFile() && entry.name.startsWith(prefix) && entry.name.endsWith(".json")) {
+        matches.push({ full, mtime: fs.statSync(full).mtimeMs });
+      }
+    }
+  }
+  matches.sort((a, b) => b.mtime - a.mtime);
+  for (const match of matches) {
+    try {
+      const data = JSON.parse(fs.readFileSync(match.full, "utf8"));
+      if (predicate(data)) return { path: match.full, data };
+    } catch {
+      // Try the next newest report if this one was partially written.
+    }
+  }
+  return null;
+}
+
 /** Apply one gate. `measured` may be null (not measured). */
 function applyGate(name, op, threshold, measured) {
   if (measured === null || measured === undefined) {
@@ -166,41 +203,79 @@ async function main() {
     path.join(REPORTS_ROOT, "mobile-rss"),
     "mobile-peak-rss-",
   );
+  const e2eLoop = newestReportRecursive(
+    path.join(REPORTS_ROOT, "local-e2e"),
+    "e2e-loop-",
+  );
+  const e2eEnduranceLoop = newestReportRecursiveWhere(
+    path.join(REPORTS_ROOT, "local-e2e"),
+    "e2e-loop-",
+    (data) => (data?.summary?.turns ?? data?.request?.turns ?? 0) >= 30,
+  );
 
+  const e2eDflashDrafted = e2eLoop?.data?.summary?.dflashDraftedTotal;
+  const e2eDflashAccepted = e2eLoop?.data?.summary?.dflashAcceptedTotal;
+  const e2eDflashAcceptance =
+    Number.isFinite(e2eDflashDrafted) && Number.isFinite(e2eDflashAccepted)
+      ? e2eDflashDrafted > 0
+        ? e2eDflashAccepted / e2eDflashDrafted
+        : 0
+      : null;
   const dflashAcceptance =
-    dflashBench?.data?.summary?.dflashAcceptanceRate ?? null;
+    dflashBench?.data?.summary?.dflashAcceptanceRate ??
+    e2eLoop?.data?.summary?.dflashAcceptanceRateOverall ??
+    e2eLoop?.data?.summary?.dflashAcceptanceRateMean ??
+    e2eDflashAcceptance ??
+    null;
   const dflashSpeedup = dflashBench?.data?.summary?.dflashSpeedup ?? null;
   const vadLatencyMs = vadQuality?.data?.summary?.vadLatencyMs ?? null;
-  const vadBoundaryMaeMs =
-    vadQuality?.data?.summary?.vadBoundaryMaeMs ?? null;
-  const vadEndpointP95Ms =
-    vadQuality?.data?.summary?.vadEndpointP95Ms ?? null;
+  const vadBoundaryMaeMs = vadQuality?.data?.summary?.vadBoundaryMaeMs ?? null;
+  const vadEndpointP95Ms = vadQuality?.data?.summary?.vadEndpointP95Ms ?? null;
   const vadFalseBargeInPerHour =
     vadQuality?.data?.summary?.vadFalseBargeInPerHour ?? null;
-  const bargeInCancelMs = bargein?.data?.summary?.bargeInCancelMs ?? null;
-  const thirtyTurnOk = endurance?.data?.summary?.thirtyTurnOk ?? null;
-  const e2eLoopOk = endurance?.data?.summary?.e2eLoopOk ?? null;
+  const bargeInCancelMs =
+    bargein?.data?.summary?.bargeInCancelMs ??
+    e2eLoop?.data?.summary?.bargeInCancelMs ??
+    null;
+  const thirtyTurnOk =
+    endurance?.data?.summary?.thirtyTurnOk ??
+    e2eEnduranceLoop?.data?.thirtyTurnOk ??
+    null;
+  const e2eLoopOk =
+    endurance?.data?.summary?.e2eLoopOk ??
+    e2eLoop?.data?.e2eLoopOk ??
+    null;
+  const voiceRtf =
+    e2eLoop?.data?.summary?.ttsRtfMedian ??
+    e2eLoop?.data?.summary?.ttsRtfMean ??
+    null;
+  const asrWer = e2eLoop?.data?.summary?.asrWerMean ?? null;
+  const firstTokenLatencyMs =
+    e2eLoop?.data?.summary?.firstTokenMsMedian ??
+    e2eLoop?.data?.summary?.firstTokenMsP50 ??
+    null;
+  const firstAudioLatencyMs =
+    e2eLoop?.data?.summary?.firstAudioFromMicMsMedian ?? null;
   const peakRssMb =
     endurance?.data?.summary?.peakRssMb ??
+    e2eLoop?.data?.summary?.serverPeakRssMb ??
     mobileRss?.data?.summary?.peakRssMb ??
     null;
   const thermalThrottlePct =
     mobileRss?.data?.summary?.thermalThrottlePct ?? null;
 
-  // Map metric name → measured value. Names that have no W11-owned source
-  // (text_eval, voice_rtf, asr_wer, first_token_latency_ms,
-  // first_audio_latency_ms, expressive_*) stay null here — they come from
-  // the training-side eval blob, not from these harnesses.
+  // Map metric name → measured value. Text and expressive quality stay null
+  // here — they come from the training-side eval blob, not runtime harnesses.
   const measured = {
     text_eval: null,
-    voice_rtf: null,
-    asr_wer: null,
+    voice_rtf: voiceRtf,
+    asr_wer: asrWer,
     vad_latency_ms: vadLatencyMs,
     vad_boundary_mae_ms: vadBoundaryMaeMs,
     vad_endpoint_p95_ms: vadEndpointP95Ms,
     vad_false_bargein_per_hour: vadFalseBargeInPerHour,
-    first_token_latency_ms: null,
-    first_audio_latency_ms: null,
+    first_token_latency_ms: firstTokenLatencyMs,
+    first_audio_latency_ms: firstAudioLatencyMs,
     barge_in_cancel_ms: bargeInCancelMs,
     thirty_turn_ok: thirtyTurnOk,
     e2e_loop_ok: e2eLoopOk,
@@ -245,42 +320,48 @@ async function main() {
       dflashAcceptance >= (gatesDoc?.dflash?.minAcceptanceRate ?? 0.65) &&
       dflashSpeedup >= (gatesDoc?.dflash?.minSpeedup ?? 1.5),
   };
+  const vadGateNames = [
+    "vad_latency_ms",
+    "vad_boundary_mae_ms",
+    "vad_endpoint_p95_ms",
+    "vad_false_bargein_per_hour",
+  ];
+  const vadQualityMeasured = [
+    vadLatencyMs,
+    vadBoundaryMaeMs,
+    vadEndpointP95Ms,
+    vadFalseBargeInPerHour,
+  ].some((v) => v !== null);
+  const vadLatencyEval = vadQualityMeasured && {
+    median: vadLatencyMs ?? -1,
+    ...(vadBoundaryMaeMs !== null ? { boundaryMs: vadBoundaryMaeMs } : {}),
+    ...(vadEndpointP95Ms !== null ? { endpointMs: vadEndpointP95Ms } : {}),
+    ...(vadFalseBargeInPerHour !== null
+      ? { falseBargeInRate: Math.min(1, vadFalseBargeInPerHour) }
+      : {}),
+    passed: results
+      .filter((r) => vadGateNames.includes(r.name))
+      .filter((r) => r.measured !== null)
+      .every((r) => r.status === "pass"),
+  };
+  const gateByName = new Map(results.map((r) => [r.name, r]));
+  const voiceRtfEval = voiceRtf !== null && {
+    rtf: voiceRtf,
+    passed: gateByName.get("voice_rtf")?.status === "pass",
+  };
+  const asrWerEval = asrWer !== null && {
+    wer: asrWer,
+    passed: gateByName.get("asr_wer")?.status === "pass",
+  };
   const manifestEvalsFragment = {
     // Only emit `thirtyTurnOk`/`e2eLoopOk` when actually measured (true or
     // false from a real run). `null` means "not measured" — the publish
     // side keeps whatever it had / treats it as not-ready.
+    ...(voiceRtfEval ? { voiceRtf: voiceRtfEval } : {}),
+    ...(asrWerEval ? { asrWer: asrWerEval } : {}),
     ...(thirtyTurnOk !== null ? { thirtyTurnOk } : {}),
     ...(e2eLoopOk !== null ? { e2eLoopOk } : {}),
-    ...(vadLatencyMs !== null
-      ? {
-          vadLatencyMs: {
-            median: vadLatencyMs,
-            passed: results.some(
-              (r) => r.name === "vad_latency_ms" && r.status === "pass",
-            ),
-          },
-        }
-      : {}),
-    ...(vadBoundaryMaeMs !== null ||
-    vadEndpointP95Ms !== null ||
-    vadFalseBargeInPerHour !== null
-      ? {
-          vadQuality: {
-            boundaryMaeMs: vadBoundaryMaeMs,
-            endpointP95Ms: vadEndpointP95Ms,
-            falseBargeInPerHour: vadFalseBargeInPerHour,
-            passed: results
-              .filter((r) =>
-                [
-                  "vad_boundary_mae_ms",
-                  "vad_endpoint_p95_ms",
-                  "vad_false_bargein_per_hour",
-                ].includes(r.name),
-              )
-              .every((r) => r.status === "pass"),
-          },
-        }
-      : {}),
+    ...(vadLatencyEval ? { vadLatencyMs: vadLatencyEval } : {}),
     dflash: dflashEval,
   };
 
@@ -300,6 +381,10 @@ async function main() {
       bargein: bargein ? path.relative(process.cwd(), bargein.path) : null,
       endurance: endurance
         ? path.relative(process.cwd(), endurance.path)
+        : null,
+      e2eLoop: e2eLoop ? path.relative(process.cwd(), e2eLoop.path) : null,
+      e2eEnduranceLoop: e2eEnduranceLoop
+        ? path.relative(process.cwd(), e2eEnduranceLoop.path)
         : null,
       mobileRss: mobileRss
         ? path.relative(process.cwd(), mobileRss.path)

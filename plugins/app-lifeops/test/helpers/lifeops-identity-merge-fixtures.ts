@@ -48,6 +48,7 @@ export const CANONICAL_IDENTITY_PLATFORMS = [
   "signal",
   "telegram",
   "whatsapp",
+  "discord",
 ] as const;
 
 export type CanonicalIdentityPlatform =
@@ -69,6 +70,7 @@ export type SeededCanonicalIdentityFixture = {
   ownerId: UUID;
   ownerName: string;
   personName: string;
+  priorNames: string[];
   primaryPlatform: CanonicalIdentityPlatform;
   primaryEntityId: UUID;
   contacts: Record<CanonicalIdentityPlatform, SeededCanonicalIdentityContact>;
@@ -105,6 +107,12 @@ const PLATFORM_FIXTURES: Record<
     outboundText:
       "Perfect. Please send the driver contact when it is available.",
   },
+  discord: {
+    handle: "priyarao#4242",
+    inboundText:
+      "Discord: Priya Rao shared the design review thread for the new homepage.",
+    outboundText: "Got it. I will leave comments on the design thread tonight.",
+  },
 };
 
 function makeScopedUuid(seedKey: string, label: string): UUID {
@@ -115,14 +123,16 @@ async function ensureEntity(
   runtime: AgentRuntime,
   entityId: UUID,
   name: string,
+  priorNames: readonly string[] = [],
 ): Promise<void> {
+  const names = [name, ...priorNames.filter((n) => n && n !== name)];
   const existing = await runtime.getEntityById(entityId);
   if (existing) {
     return;
   }
   await runtime.createEntity({
     id: entityId,
-    names: [name],
+    names,
     agentId: runtime.agentId,
   });
 }
@@ -188,6 +198,7 @@ export async function seedCanonicalIdentityFixture(args: {
   ownerId?: UUID;
   ownerName?: string;
   personName?: string;
+  priorNames?: readonly string[];
   primaryPlatform?: CanonicalIdentityPlatform;
 }): Promise<SeededCanonicalIdentityFixture> {
   const runtime = args.runtime;
@@ -196,6 +207,7 @@ export async function seedCanonicalIdentityFixture(args: {
   const ownerId = args.ownerId ?? makeScopedUuid(seedKey, "owner");
   const ownerName = args.ownerName ?? "Shaw";
   const personName = args.personName ?? "Priya Rao";
+  const priorNames = args.priorNames ?? [];
   const primaryPlatform = args.primaryPlatform ?? "gmail";
 
   await ensureEntity(runtime, ownerId, ownerName);
@@ -213,7 +225,7 @@ export async function seedCanonicalIdentityFixture(args: {
     const outboundMessageId = makeScopedUuid(seedKey, `${platform}:outbound`);
     const fixture = PLATFORM_FIXTURES[platform];
 
-    await ensureEntity(runtime, entityId, personName);
+    await ensureEntity(runtime, entityId, personName, priorNames);
     await relationships.addContact(
       entityId,
       ["contact"],
@@ -298,6 +310,7 @@ export async function seedCanonicalIdentityFixture(args: {
     ownerId,
     ownerName,
     personName,
+    priorNames: [...priorNames],
     primaryPlatform,
     primaryEntityId: contacts[primaryPlatform].entityId,
     contacts,

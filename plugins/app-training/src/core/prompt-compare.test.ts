@@ -214,13 +214,30 @@ describe("comparePrompts", () => {
   });
 
   it("requires runtime or adapter when neither is provided", async () => {
-    await expect(() =>
-      comparePrompts({
-        baselinePrompt: "p1",
-        variantPrompt: "p2",
-        dataset: [exampleA],
-      }),
-    ).rejects.toThrow(/runtime.*or.*adapter/i);
+    // resolveAdapter() short-circuits to the Cerebras training adapter
+    // when TRAIN_MODEL_PROVIDER / TRAINING_PROVIDER is "cerebras" (the
+    // default in repo-local .env). Clear those for the duration of this
+    // test so the "neither runtime nor adapter" branch can fire.
+    const originalTrainProvider = process.env.TRAIN_MODEL_PROVIDER;
+    const originalTrainingProvider = process.env.TRAINING_PROVIDER;
+    delete process.env.TRAIN_MODEL_PROVIDER;
+    delete process.env.TRAINING_PROVIDER;
+    try {
+      await expect(
+        comparePrompts({
+          baselinePrompt: "p1",
+          variantPrompt: "p2",
+          dataset: [exampleA],
+        }),
+      ).rejects.toThrow(/runtime.*or.*adapter/i);
+    } finally {
+      if (originalTrainProvider !== undefined) {
+        process.env.TRAIN_MODEL_PROVIDER = originalTrainProvider;
+      }
+      if (originalTrainingProvider !== undefined) {
+        process.env.TRAINING_PROVIDER = originalTrainingProvider;
+      }
+    }
   });
 
   afterEach(() => {});

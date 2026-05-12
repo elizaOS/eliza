@@ -118,6 +118,14 @@ export type LocalRuntimeBackend = "node-llama-cpp" | "llama-server";
  * optimizations and with `DflashBinaryCapabilities.kernels` below — the
  * capability probe is the runtime gate that refuses to start if a required
  * kernel is missing.
+ *
+ * This (the llama.cpp-handle layer) is *not* the same enum as the
+ * bundle-manifest layer's `Eliza1Kernel`
+ * (`@elizaos/app-core/src/services/local-inference/manifest/schema`):
+ * `turboquant_q3↔turbo3`, `turboquant_q4↔turbo4`, `qjl↔qjl_full`, with
+ * `polarquant` / `dflash` / `turbo3_tcq` shared by name. The translation is
+ * codified there by `ELIZA1_TO_RUNTIME_KERNEL` / `RUNTIME_TO_ELIZA1_KERNEL` —
+ * route any manifest↔runtime kernel conversion through those.
  */
 export type LocalRuntimeKernel =
   | "dflash"
@@ -301,7 +309,7 @@ export interface CatalogModel {
   /**
    * Provenance for the Eliza-1 v1 release shape (`releaseState=base-v1`):
    * Eliza-1 v1 is the upstream BASE models — GGUF-converted via the
-   * elizaOS/llama.cpp fork and fully Milady-optimized (every quant/kernel
+   * elizaOS/llama.cpp fork and fully Eliza-optimized (every quant/kernel
    * trick in `packages/inference/AGENTS.md` §3) — but NOT fine-tuned.
    * Each entry records which upstream HF repo every shipped bundle
    * component comes from. The keys are the bundle's component slots; the

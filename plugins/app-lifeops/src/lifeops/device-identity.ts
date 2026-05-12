@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/agent";
 
-const ENV_KEYS = ["MILADY_DEVICE_ID", "ELIZA_DEVICE_ID"] as const;
+const ENV_KEYS = ["ELIZA_DEVICE_ID", "MILADY_DEVICE_ID"] as const;
 const CACHE_FILE_NAME = "device-id";
 const RANDOM_SUFFIX_BYTES = 3; // 3 bytes -> 6 hex chars
 
@@ -60,7 +60,7 @@ function deviceIdCachePath(env: NodeJS.ProcessEnv): string {
  * Returns a stable, process-lifetime device identifier.
  *
  * Resolution order:
- *   1. `MILADY_DEVICE_ID` env var
+ *   1. `ELIZA_DEVICE_ID` env var
  *   2. `ELIZA_DEVICE_ID` env var
  *   3. Cached value at `<state-dir>/device-id`
  *   4. Newly generated `<hostname>-<6-char-hex>`, persisted to that file

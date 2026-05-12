@@ -14,7 +14,7 @@
  * AOSP plugin re-imports it through `@elizaos/app-core`, and the
  * Electrobun shell uses it directly. Pointing `ELIZA_STATE_DIR` at a
  * temp dir is sufficient to isolate this run from a developer's real
- * `~/.milady` state.
+ * `~/.eliza` state.
  *
  * Usage:
  *
@@ -187,7 +187,7 @@ async function runDownload(Downloader, entry, stagingRoot) {
     hfRepo: entry.hfRepo,
     ggufFile: entry.ggufFile,
     params: "8B",
-    quant: "milady-optimized",
+    quant: "eliza-1-optimized",
     sizeGb: entry.sizeBytes ? entry.sizeBytes / 1024 ** 3 : 1,
     minRamGb: 4,
     category: "chat",

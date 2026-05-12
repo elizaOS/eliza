@@ -126,7 +126,7 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         copyright_holder="Alibaba Cloud (Qwen team) and contributors",
         note=(
             "The text weights in this bundle are derived from the Qwen3 family "
-            "(GGUF-converted via the elizaOS/llama.cpp fork and Milady-quantized), "
+            "(GGUF-converted via the elizaOS/llama.cpp fork and Eliza-quantized), "
             "rebranded \"Eliza-1\" in user-facing strings per the project's "
             "branding policy. The upstream lineage and Apache-2.0 terms are "
             "recorded in eliza-1.manifest.json's lineage.text / provenance.sourceModels "

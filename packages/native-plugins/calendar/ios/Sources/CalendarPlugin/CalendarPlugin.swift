@@ -339,7 +339,13 @@ public class AppleCalendarPlugin: CAPPlugin, CAPBridgedPlugin {
         guard participant.url.scheme?.lowercased() == "mailto" else {
             return nil
         }
-        return participant.url.resourceSpecifier.removingPercentEncoding
+        let raw = participant.url.absoluteString
+        let prefix = "mailto:"
+        guard raw.lowercased().hasPrefix(prefix) else {
+            return nil
+        }
+        let address = String(raw.dropFirst(prefix.count))
+        return address.removingPercentEncoding ?? address
     }
 
     private func participantStatus(_ status: EKParticipantStatus) -> String {

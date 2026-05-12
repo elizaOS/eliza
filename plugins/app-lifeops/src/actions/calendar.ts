@@ -11,10 +11,9 @@
  *     `src/lifeops/connectors/calendly.ts`). The standalone `calendlyAction`
  *     in `./lib/calendly-handler.ts` is now a top-level Action — Calendly is a
  *     provider, not a CALENDAR subaction.
- *   - `negotiate_*` verbs moved out into the new
- *     `SCHEDULING_NEGOTIATION` action defined in
- *     `./lib/scheduling-handler.ts`. Multi-turn negotiation is a long-running
- *     stateful actor, not a calendar verb (§7, §8.3).
+ *   - multi-turn scheduling negotiation is delegated through
+ *     PERSONAL_ASSISTANT action=scheduling. It is a long-running stateful
+ *     actor, not a calendar verb (§7, §8.3).
  *
  * What stays compound here is exactly the irreducible calendar-provider
  * surface plus `bulk_reschedule`, which `HARDCODING_AUDIT.md` §7 explicitly
@@ -570,6 +569,8 @@ export const calendarAction: Action & {
     "TIME_BLOCK",
     "DEEP_WORK_BLOCK",
     "FOCUS_BLOCK",
+    "BLOCK_OUT",
+    "BLOCK_OUT_TIME",
     "CARVE_OUT_TIME",
     "RESERVE_TIME",
     // PRD action-catalog aliases. These resolve to CALENDAR subactions via
@@ -599,10 +600,10 @@ export const calendarAction: Action & {
     "Manage live calendar events plus availability and meeting preferences. Subactions: " +
     "feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, " +
     "check_availability, propose_times, update_preferences. " +
-    "Use CALENDLY for calendly.com URLs and SCHEDULING_NEGOTIATION for multi-turn proposal/response flows.",
+    "Use CALENDLY for calendly.com URLs and PERSONAL_ASSISTANT action=scheduling for multi-turn proposal/response flows.",
   descriptionCompressed:
     "calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
-  // "general" included for the same reason as LIFE: messageHandler routes
+  // "general" included so messageHandler can route direct owner calendar
   // most user-facing event/scheduling requests to "general" rather than
   // "calendar", so retrieval would otherwise filter CALENDAR out before
   // the planner sees it. See `12-real-root-cause.md`.
@@ -702,7 +703,12 @@ export const calendarAction: Action & {
     },
     {
       name: "title",
-      description: "Event title when creating a calendar event.",
+      description:
+        "Event title when creating a calendar event. TOP-LEVEL (flat) field — " +
+        "NEVER place `title` inside `details`. " +
+        "Example: `{ subaction: 'create_event', title: 'Dentist', details: { start: '...', end: '...' } }`.",
+      descriptionCompressed:
+        "Event title, TOP-LEVEL flat field (NOT inside details). Example: { subaction: 'create_event', title: 'Dentist', details: { start, end } }",
       required: false,
       schema: { type: "string" as const },
     },
@@ -730,7 +736,12 @@ export const calendarAction: Action & {
         "Use `start`/`end` (aliases `startAt`/`endAt` are also accepted). " +
         "For check_availability and propose_times, put time-window fields at the TOP LEVEL — not inside `details`.",
       descriptionCompressed:
-        "details: calendarId start end (ISO-8601) eventId newTitle description location attendees timeMin timeMax timeZone — for create/update/delete_event only",
+        "details (for create/update/delete_event ONLY): { calendarId, start (ISO-8601), end (ISO-8601), eventId, newTitle, location, attendees, description }. " +
+        "`title` is FLAT/TOP-LEVEL — never put it inside details. " +
+        "Time fields use `start`/`end` (aliases startAt/endAt). " +
+        "Example create_event: { subaction:'create_event', title:'Dentist', details:{ calendarId:'cal_primary', start:'2026-05-15T14:00:00Z', end:'2026-05-15T15:00:00Z', location:'Bright Smile Dental' } }. " +
+        "Example update_event: { subaction:'update_event', details:{ eventId:'event_00040', start:'...', end:'...' } }. " +
+        "For check_availability / propose_times / update_preferences, use TOP-LEVEL fields (startAt/endAt/durationMinutes/...), NOT details.",
       required: false,
       schema: {
         type: "object" as const,

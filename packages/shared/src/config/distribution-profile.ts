@@ -14,7 +14,7 @@ export const DISTRIBUTION_PROFILES = ["store", "unrestricted"] as const;
 
 export type DistributionProfile = (typeof DISTRIBUTION_PROFILES)[number];
 
-const DISTRIBUTION_PROFILE_ENV_KEY = "MILADY_DISTRIBUTION_PROFILE";
+const DISTRIBUTION_PROFILE_ENV_KEY = "ELIZA_DISTRIBUTION_PROFILE";
 
 export function isDistributionProfile(
   value: unknown,

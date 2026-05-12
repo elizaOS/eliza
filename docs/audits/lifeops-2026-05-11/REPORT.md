@@ -96,7 +96,7 @@ Full per-wave detail in [`INDEX.md`](./INDEX.md). Headline commits:
 │  Harnesses (hermes / openclaw / eliza)                              │
 │     │   uses                                                        │
 │     ▼                                                               │
-│  Telemetry  → trajectories  → ~/.milady/trajectories/*.jsonl        │
+│  Telemetry  → trajectories  → ~/.eliza/trajectories/*.jsonl        │
 │     │                                                               │
 │     ▼                                                               │
 │  scripts/aggregate-lifeops-run.mjs                                  │
@@ -142,23 +142,32 @@ Full per-wave detail in [`INDEX.md`](./INDEX.md). Headline commits:
 
 ## Test grid
 
-| Suite                                  | Count | Result |
-|----------------------------------------|------:|:-------|
-| Cache stability                        |    10 | pass   |
-| Benchmarks lib (TS)                    |    44 | pass   |
-| DSPy primitives (TS)                   |    11 | pass   |
-| Action-retrieval measurement (TS)      |     7 | pass   |
-| Retrieval defaults (TS)                |    10 | pass   |
-| Retrieval funnel script (TS)           |     3 | pass   |
-| Aggregator round-trip (TS + Python)    |     8 | pass   |
-| Eliza-1 bundle gating (TS + Python)    |     6 | pass   |
-| Metrics schema round-trip              |     4 | pass   |
-| Aggregator pre-release banner          |     2 | pass   |
-| Serialization-audit memo regression    |     8 | pass   |
+| Suite                                  | Count | Result | Notes |
+|----------------------------------------|------:|:-------|:------|
+| Cache stability                        |    10 | pass   | 10/10 unchanged hashes |
+| Benchmarks lib (TS)                    |    44 | pass   |  |
+| DSPy primitives (TS)                   |     9 | pass   |  |
+| Action-retrieval measurement (TS)      |     7 | pass   |  |
+| Retrieval defaults (TS)                |    10 | pass   |  |
+| Retrieval funnel script (TS)           |     3 | pass   |  |
+| Aggregator round-trip (TS + Python)    |     8 | pass   |  |
+| Eliza-1 bundle gating (TS + Python)    |     6 | pass   |  |
+| Metrics schema round-trip              |     4 | pass   |  |
+| Aggregator pre-release banner          |     2 | pass   |  |
+| Serialization-audit memo regression    |     8 | pass   |  |
+| Aggregator + delta smoke               |     1 | pass   | `bun scripts/__tests__/aggregate-lifeops-run.test.mjs` |
+| Multi-tier bench dry-run gate          |     1 | pass   | `bun scripts/__tests__/lifeops-multi-tier-bench.test.mjs` |
+| hermes-adapter (Python)                |    69 | pass   | F4 fix — `attach_usage_cache_fields` stub exposure |
+| openclaw-adapter (Python)              |    61 | pass   | 6 dead HTTP retry-loop tests trimmed alongside dead helper deletion |
+| eliza-adapter (Python)                 |     9 | pass   | New `conftest.py` puts `packages/` on `sys.path` |
+| lifeops-bench (Python)                 |  1500+ | pass | exit 0 from `python -m pytest tests/` |
+| plugin-app-training (TS, full)         |    65 | pass   | All 4 prior failures resolved (prompt-compare env fix, training-api defer, plugin-imessage/x402 `dist` rebuild) |
+| packages/core (TS, full)               |  ~700 of ~701 | pass | 1 pre-existing failure documented (tiered-action-surface "night check-in" — design gap, not a regression) |
 
 Per-wave run-logs and failure detail in the individual wave docs
 linked above. The full re-baseline run (W2-9) corpus is preserved at
-`~/.milady/runs/lifeops/lifeops-multiagent-best`.
+`~/.eliza/runs/lifeops/lifeops-multiagent-best`. Wave 6-G6 sweep
+details in [`known-typecheck-failures.md`](./known-typecheck-failures.md).
 
 ## Verification commands run + outcomes
 
@@ -167,10 +176,10 @@ bun run verify                          # typecheck + lint
 bun run test                            # parallel TS test suite
 bun run test:cache-stability            # 10/10 unchanged hashes
 bun run lifeops:verify-cerebras         # both eval + train reachable
-MILADY_BENCH_LIMIT=25 MILADY_BENCH_SKIP_JS=1 \
+ELIZA_BENCH_LIMIT=25 ELIZA_BENCH_SKIP_JS=1 \
   LIFEOPS_USE_MOCKOON=1 \
   OPENAI_BASE_URL=https://api.cerebras.ai/v1 \
-  MILADY_PROVIDER=cerebras \
+  ELIZA_PROVIDER=cerebras \
   BENCHMARK_MODEL_PROVIDER=cerebras BENCHMARK_MODEL_NAME=gpt-oss-120b \
   bun run lifeops:full                  # full run, status=0
 ```
@@ -211,9 +220,13 @@ From [`rebaseline-report.md`](./rebaseline-report.md) Wave-3 follow-ups:
 - **[P2] Plumb hermes per-turn `cost_usd` and `latency_ms`** into
   `MessageTurn` for granular debugging.
 
-`docs/audits/lifeops-2026-05-11/wave-5a-gap-list.md` lands separately
-as W5-A completes — it will be linked from [`INDEX.md`](./INDEX.md)
-under "Wave 5 follow-ups" once the multi-tier validation run finishes.
+[`wave-5a-gap-list.md`](./wave-5a-gap-list.md) is the post-rebuild gap
+inventory (committed 2026-05-11 after the rate-limit-delayed W5-A run
+resumed). Headline: P0=0, P1=3 real fixes + 4 no-op confirmations,
+P2=5 document-only, P3=6 follow-up tracked. The four items W5-B was
+pre-assigned (`browser.ts`, `plugin-music` test, `test_hermes_agent`,
+`action-retrieval` regex namespace) all confirmed green on `develop`
+under `6ef80720a9`.
 
 Wave 4-B residuals (full text in
 [`known-typecheck-failures.md`](./known-typecheck-failures.md)):
@@ -236,7 +249,7 @@ Wave 4-B residuals (full text in
    bake-in (small=5, mid=8, large=12, frontier=20) to measured Pareto
    values. Today's `retrieval-funnel.{md,json}` is structurally
    correct but `counted samples: 0` because no full run yet emits
-   `MILADY_RETRIEVAL_MEASUREMENT=1` trajectories. First measured run
+   `ELIZA_RETRIEVAL_MEASUREMENT=1` trajectories. First measured run
    should rerun `bun run lifeops:retrieval:funnel` +
    `lifeops:retrieval:pareto` and either update
    `retrieval-defaults.ts` constants or document the deltas.
@@ -244,7 +257,7 @@ Wave 4-B residuals (full text in
    the next published benchmark — without it, the granular
    elizaOS-style agent path is structurally penalized vs. the
    umbrella-form Hermes path.
-4. Whether to flip `MILADY_BENCH_PRE_RELEASE` rules for the local
+4. Whether to flip `ELIZA_BENCH_PRE_RELEASE` rules for the local
    Qwen tiers once a real (non-standin) training run lands. The
    current rule is correct (every bundle is `preRelease=true`) but
    conservative; once weights land, the aggregator should emit

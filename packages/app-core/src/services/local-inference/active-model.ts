@@ -61,9 +61,9 @@ export type KvOffloadMode = "cpu" | "gpu" | "split" | { gpuLayers: number };
  *
  *   - `contextSize`        → node-llama-cpp `LlamaContextOptions.contextSize`
  *   - `cacheTypeK/V`       → node-llama-cpp `experimentalKvCacheKeyType` /
- *                            `experimentalKvCacheValueType`. The milady
+ *                            `experimentalKvCacheValueType`. The eliza
  *                            fork binding (elizaOS/node-llama-cpp@
- *                            v3.18.1-milady.3+) extends `GgmlType` to
+ *                            v3.18.1-eliza.3+) extends `GgmlType` to
  *                            accept the lowercase aliases `tbq3_0`,
  *                            `tbq4_0`, `qjl1_256`, `q4_polar` (mapped to
  *                            enum slots 43/44/46/47). Whether the C++
@@ -121,8 +121,8 @@ export interface LocalInferenceLoadArgs {
 }
 
 /**
- * Allow-list for KV cache type strings. The milady fork of node-llama-cpp
- * (v3.18.1-milady.3+) extends `GgmlType` with TBQ3_0 (43), TBQ4_0 (44),
+ * Allow-list for KV cache type strings. The eliza fork of node-llama-cpp
+ * (v3.18.1-eliza.3+) extends `GgmlType` with TBQ3_0 (43), TBQ4_0 (44),
  * QJL1_256 (46), Q4_POLAR (47) so the binding accepts the lowercase
  * aliases below. Whether the C++ kernel actually runs depends on the
  * loaded `@node-llama-cpp/<platform>` binary — the elizaOS/llama.cpp

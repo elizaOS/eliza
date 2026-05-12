@@ -51,7 +51,7 @@ datasets:
       minimal CLAUDE_DISTILL_SYSTEM prompt so the model learns the
       thinking-mode shape from data, not a long header.
 
-  # =================== LOCAL MILADY CORPORA =====================
+  # =================== LOCAL ELIZA CORPORA =====================
   # Self-hosted nubilio bot — cron-snapshot trajectories already in
   # OpenAI {messages:[…]} shape. Adapter passes the assistant content
   # through verbatim because the action-planner output is already
@@ -64,10 +64,93 @@ datasets:
     priority: core
     license: proprietary
     notes: |
-      Cron snapshots from the self-hosted milady bot at milady.nubs.site
+      Cron snapshots from the self-hosted eliza bot at eliza.nubs.site
       (date range 2026-04-19 → 2026-05-02, ~6.3k examples spanning
       action_planner + response tasks). Drop in nubilio-trajectories/
       under training/ to ingest.
+
+  # =================== NIGHTLY TRAJECTORY EXPORT (TS → Python bridge) =========
+  # The TS app-training plugin's nightly cron writes per-task JSONL files
+  # to ${ELIZA_STATE_DIR}/training/datasets/<YYYY-MM-DD>/ in canonical
+  # eliza_native_v1 shape, already sanitized by the runtime privacy filter.
+  # The `eliza_native_passthrough` adapter reads them directly — Python
+  # does NOT re-filter, the TS export already did. A missing or empty
+  # export dir is a no-op (warning + skip), not an error.
+  - slug: eliza-nightly-action-planner
+    source:
+      type: local_path
+      root: "${ELIZA_STATE_DIR:-~/.eliza}/training/datasets"
+      glob: "*/action_planner_trajectories.jsonl"
+      task: action_planner
+    normalizer: eliza_native_passthrough
+    weight: 1.0
+    est_size_gb: 0.1
+    priority: core
+    license: proprietary
+    notes: |
+      Nightly action_planner_trajectories.jsonl exports from the TS
+      trajectory-export cron. One file per UTC date under
+      ~/.eliza/training/datasets/<YYYY-MM-DD>/.
+
+  - slug: eliza-nightly-should-respond
+    source:
+      type: local_path
+      root: "${ELIZA_STATE_DIR:-~/.eliza}/training/datasets"
+      glob: "*/should_respond_trajectories.jsonl"
+      task: should_respond
+    normalizer: eliza_native_passthrough
+    weight: 1.0
+    est_size_gb: 0.05
+    priority: core
+    license: proprietary
+    notes: |
+      Nightly should_respond_trajectories.jsonl exports from the TS
+      trajectory-export cron.
+
+  - slug: eliza-nightly-context-routing
+    source:
+      type: local_path
+      root: "${ELIZA_STATE_DIR:-~/.eliza}/training/datasets"
+      glob: "*/context_routing_trajectories.jsonl"
+      task: context_routing
+    normalizer: eliza_native_passthrough
+    weight: 1.0
+    est_size_gb: 0.05
+    priority: core
+    license: proprietary
+    notes: |
+      Nightly context_routing_trajectories.jsonl exports from the TS
+      trajectory-export cron.
+
+  - slug: eliza-nightly-response
+    source:
+      type: local_path
+      root: "${ELIZA_STATE_DIR:-~/.eliza}/training/datasets"
+      glob: "*/response_trajectories.jsonl"
+      task: response
+    normalizer: eliza_native_passthrough
+    weight: 1.0
+    est_size_gb: 0.1
+    priority: core
+    license: proprietary
+    notes: |
+      Nightly response_trajectories.jsonl exports from the TS
+      trajectory-export cron.
+
+  - slug: eliza-nightly-media-description
+    source:
+      type: local_path
+      root: "${ELIZA_STATE_DIR:-~/.eliza}/training/datasets"
+      glob: "*/media_description_trajectories.jsonl"
+      task: media_description
+    normalizer: eliza_native_passthrough
+    weight: 1.0
+    est_size_gb: 0.05
+    priority: core
+    license: proprietary
+    notes: |
+      Nightly media_description_trajectories.jsonl exports from the TS
+      trajectory-export cron.
 
   # Scam defense corpus alias. The former proprietary
   # local-corpora/full-corpus-unweighted source is replaced by the public

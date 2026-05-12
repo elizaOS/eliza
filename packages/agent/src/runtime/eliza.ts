@@ -97,6 +97,7 @@ import {
   isMobilePlatform,
   migrateLegacyRuntimeConfig,
   resolveDeploymentTargetInConfig,
+  resolveDesktopApiPort,
   resolveElizaCloudTopology,
   resolveServerOnlyPort,
   resolveServiceRoutingInConfig,
@@ -184,7 +185,11 @@ import {
   collectConfigEnvVars,
   collectConnectorEnvVars,
 } from "../config/env-vars.ts";
-import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
+import {
+  migrateLegacyStateDir,
+  resolveStateDir,
+  resolveUserPath,
+} from "../config/paths.ts";
 import {
   createHookEvent,
   type LoadHooksOptions,
@@ -2753,7 +2758,13 @@ export async function startEliza(
   // Register log listener for chat mirroring
   addLogListener(logToChatListener);
 
-  // 1. Load Eliza config from ~/.eliza/eliza.json
+  // 0. Back-compat: migrate a legacy `~/.milady` state dir to `~/.eliza`
+  //    on first run (no-op when an explicit state dir is set or `~/.eliza`
+  //    already exists). Done before any state-dir read so config/skills/etc.
+  //    land in the migrated directory.
+  migrateLegacyStateDir();
+
+  // 1. Load Eliza config from ~/.eliza/eliza.json (legacy `milady.json` honored)
   let config: ElizaConfig;
   try {
     config = loadElizaConfig();
@@ -3933,7 +3944,16 @@ export async function startEliza(
   // surface.
   try {
     const { startApiServer } = await import("../api/server.ts");
-    const apiPort = resolveServerOnlyPort(process.env);
+    // When the desktop launcher embeds this agent it sets ELIZA_API_PORT
+    // (default 31337) to match the renderer's hardcoded API base. The old
+    // `resolveServerOnlyPort` call only reads ELIZA_PORT/ELIZA_UI_PORT,
+    // ignoring ELIZA_API_PORT, so the desktop API ended up on 2138 and
+    // the renderer hit "Failed to fetch". Prefer the desktop API port
+    // resolver when ELIZA_API_PORT is set; otherwise fall back to the
+    // server-only resolver so CLI-mode defaults (2138) stay untouched.
+    const apiPort = process.env.ELIZA_API_PORT
+      ? resolveDesktopApiPort(process.env)
+      : resolveServerOnlyPort(process.env);
     const { port: actualApiPort } = await startApiServer({
       port: apiPort,
       runtime,

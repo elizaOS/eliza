@@ -1,25 +1,25 @@
 {
   "agent": "eliza",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132606Z_7a643a5e/app-eval__app-eval/run_app-eval_20260511T132606Z_3_f79b0d04/output"
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132606Z_7a643a5e/app-eval__app-eval/run_app-eval_20260511T132606Z_3_f79b0d04/output"
   ],
   "benchmark_directory": "app-eval",
   "benchmark_id": "app-eval",
   "cache_metrics": {
-    "cache_read_input_tokens": 0,
     "cache_creation_input_tokens": 0,
-    "turns_with_cached_field": 0,
-    "cache_hit_ratio": 0.0
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
   },
   "error": null,
   "higher_is_better": true,
   "metrics": {
     "avg_duration_ms": 2327.0,
     "cache_metrics": {
-      "cache_read_input_tokens": 0,
       "cache_creation_input_tokens": 0,
-      "turns_with_cached_field": 0,
-      "cache_hit_ratio": 0.0
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
     },
     "completed": 1,
     "failed": 0,
@@ -33,19 +33,19 @@
     "return_code": 0,
     "timed_out": 0,
     "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
       "llm_call_count": 1,
       "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "avg_prompt_tokens": 0.0,
-      "avg_completion_tokens": 0.0
+      "total_tokens": 0
     },
     "total_tasks": 1,
     "trajectory_summary": {
       "files": 1,
-      "turns": 1,
       "prompt_chars": 2747,
-      "repeated_prefixes": []
+      "repeated_prefixes": [],
+      "turns": 1
     }
   },
   "model": "gpt-oss-120b",
@@ -56,25 +56,25 @@
     "throughput_per_second": 0.03259766417709276
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132606Z_7a643a5e/app-eval__app-eval/run_app-eval_20260511T132606Z_3_f79b0d04/output/summary.json",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132606Z_7a643a5e/app-eval__app-eval/run_app-eval_20260511T132606Z_3_f79b0d04/output/summary.json",
   "run_group_id": "rg_20260511T132606Z_7a643a5e",
   "run_id": "run_app-eval_20260511T132606Z_3_f79b0d04",
   "score": 1.0,
   "status": "succeeded",
   "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
     "llm_call_count": 1,
     "prompt_tokens": 0,
-    "completion_tokens": 0,
-    "total_tokens": 0,
-    "avg_prompt_tokens": 0.0,
-    "avg_completion_tokens": 0.0
+    "total_tokens": 0
   },
   "trajectory_summary": {
     "files": 1,
-    "turns": 1,
     "prompt_chars": 2747,
-    "repeated_prefixes": []
+    "repeated_prefixes": [],
+    "turns": 1
   },
   "unit": "ratio",
-  "updated_at": "2026-05-11T14:02:59.426481+00:00"
+  "updated_at": "2026-05-12T01:33:59Z"
 }

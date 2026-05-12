@@ -29,7 +29,7 @@ import type {
 } from "./types.ts";
 
 export interface ToolCallCacheOptions {
-  /** Root directory for the on-disk tier. Defaults to ~/.milady/tool-cache. */
+  /** Root directory for the on-disk tier. Defaults to ~/.eliza/tool-cache. */
   diskRoot?: string;
   /** Maximum entries in the in-memory tier. Default 1000. */
   memoryCapacity?: number;
@@ -49,7 +49,7 @@ export class ToolCallCache {
       options.diskRoot ??
       path.join(
         process.env.HOME ?? process.env.USERPROFILE ?? "/tmp",
-        ".milady",
+        ".eliza",
         "tool-cache",
       );
     this.memory = new Lru(options.memoryCapacity ?? 1000);

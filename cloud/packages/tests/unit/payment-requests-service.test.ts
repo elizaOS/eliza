@@ -292,15 +292,37 @@ describe("paymentRequestsService", () => {
     expect(JSON.stringify(payload)).not.toContain("fingerprint");
   });
 
-  test("markSettled is idempotent against terminal states", async () => {
-    const seed = makeRow({ id: "pr_seed", status: "settled" });
+  test("markSettled is idempotent for the same settlement tx", async () => {
+    const seed = makeRow({
+      id: "pr_seed",
+      status: "settled",
+      settlementTxRef: "tx_abc",
+    });
     const fakeSeeded = makeFakeRepository(seed);
     const service = createPaymentRequestsService({
       repository: fakeSeeded.repo,
       adapters: [makeStubAdapter()],
     });
 
-    await expect(service.markSettled("pr_seed", "tx_abc", {})).rejects.toThrow(
+    const settled = await service.markSettled("pr_seed", "tx_abc", {});
+    expect(settled.status).toBe("settled");
+    expect(settled.settlementTxRef).toBe("tx_abc");
+    expect(fakeSeeded.events).toHaveLength(0);
+  });
+
+  test("markSettled rejects conflicting terminal states", async () => {
+    const seed = makeRow({
+      id: "pr_seed",
+      status: "settled",
+      settlementTxRef: "tx_original",
+    });
+    const fakeSeeded = makeFakeRepository(seed);
+    const service = createPaymentRequestsService({
+      repository: fakeSeeded.repo,
+      adapters: [makeStubAdapter()],
+    });
+
+    await expect(service.markSettled("pr_seed", "tx_other", {})).rejects.toThrow(
       /already in terminal status/,
     );
   });
@@ -341,7 +363,7 @@ describe("paymentRequestsService", () => {
     expect((event?.redactedPayload as Record<string, unknown>).error).toBe("card_declined");
   });
 
-  test("markFailed rejects already-terminal requests (idempotent)", async () => {
+  test("markFailed is idempotent for already failed requests", async () => {
     const seed = makeRow({ id: "pr_seed", status: "failed" });
     const fakeSeeded = makeFakeRepository(seed);
     const service = createPaymentRequestsService({
@@ -349,7 +371,9 @@ describe("paymentRequestsService", () => {
       adapters: [makeStubAdapter()],
     });
 
-    await expect(service.markFailed("pr_seed", "x")).rejects.toThrow(/already in terminal status/);
+    const failed = await service.markFailed("pr_seed", "x");
+    expect(failed.status).toBe("failed");
+    expect(fakeSeeded.events).toHaveLength(0);
   });
 
   test("expirePast records payment.expired for each expired id", async () => {

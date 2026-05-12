@@ -5,7 +5,7 @@ real but isn't", "promised but not plumbed", or "stub left behind by an earlier
 sweep" by the Wave-0 audit subagents. After Wave-1/Wave-2 land, each item must
 either be (a) genuinely implemented end-to-end or (b) explicitly removed.
 
-Source audits (extracted from `/tmp/claude-1000/-home-shaw-milady-eliza/4b3bac68-b53d-4cf6-9d19-164ea09586c1/tasks/`):
+Source audits (extracted from `/tmp/claude-1000/-home-shaw-eliza-eliza/4b3bac68-b53d-4cf6-9d19-164ea09586c1/tasks/`):
 - `audit-android-aosp` (a49591e328d1d7822)
 - `audit-ios-macos-metal` (a13e70a33e16d3d95)
 - `audit-gpu-kernels` (a56f0317a7de986f4)

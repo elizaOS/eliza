@@ -15,7 +15,17 @@ import {
   useIntervalWhenDocumentVisible,
   WorkspaceLayout,
 } from "@elizaos/ui";
-import { ExternalLink, FolderOpen, Plus, RefreshCw, X } from "lucide-react";
+import {
+  ExternalLink,
+  FolderOpen,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  Plus,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import {
   type JSX,
   useCallback,
@@ -42,6 +52,7 @@ import { CollapsibleSidebarSection } from "../shared/CollapsibleSidebarSection";
 import {
   AppWorkspaceChrome,
   type AppWorkspaceChromeProps,
+  useAppWorkspaceChatChrome,
 } from "../workspace/AppWorkspaceChrome.js";
 import {
   decodeBase64ForPreview,
@@ -444,6 +455,14 @@ export function BrowserWorkspaceView(): JSX.Element {
   const [collapsedSections, setCollapsedSections] = useState<
     Set<BrowserWorkspaceTabSectionKey>
   >(() => readStoredBrowserWorkspaceCollapsedSections());
+  // Controlled collapsed state for the tabs sidebar so the URL bar can
+  // expose a toggle that's always reachable — when the sidebar is
+  // collapsed past its rail, the rail's expand button can sit behind
+  // the OOPIF and become unclickable.
+  const [tabsSidebarCollapsed, setTabsSidebarCollapsed] = useState(false);
+  // Right-side chat pane chrome (from AppWorkspaceChrome). Null when this
+  // view is rendered outside the workspace chrome (e.g. in tests).
+  const chatChrome = useAppWorkspaceChatChrome();
   const [browserBridgeAvailable, setBrowserBridgeAvailable] = useState(false);
   const [browserBridgeLoading, setBrowserBridgeLoading] = useState(true);
   const [browserBridgeCompanions, setBrowserBridgeCompanions] = useState<
@@ -2123,6 +2142,8 @@ export function BrowserWorkspaceView(): JSX.Element {
     <AppPageSidebar
       testId="browser-workspace-sidebar"
       collapsible
+      collapsed={tabsSidebarCollapsed}
+      onCollapsedChange={setTabsSidebarCollapsed}
       contentIdentity="browser-workspace-tabs"
       collapseButtonTestId="browser-workspace-sidebar-collapse-toggle"
       expandButtonTestId="browser-workspace-sidebar-expand-toggle"
@@ -2271,6 +2292,50 @@ export function BrowserWorkspaceView(): JSX.Element {
 
   const navNode = (
     <div className="flex items-center gap-2 border-b border-border/30 bg-card/20 px-3 py-2">
+      {/* Toggle tabs sidebar. Lives in the URL bar so it's accessible
+          even when the sidebar is fully collapsed — the rail's own
+          expand button can sit behind the native OOPIF and become
+          unclickable. */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 shrink-0"
+        aria-label={
+          tabsSidebarCollapsed
+            ? t("browserworkspace.ExpandTabs", {
+                defaultValue: "Expand browser tabs",
+              })
+            : t("browserworkspace.CollapseTabs", {
+                defaultValue: "Collapse browser tabs",
+              })
+        }
+        onClick={() => setTabsSidebarCollapsed((current) => !current)}
+        data-testid="browser-workspace-nav-tabs-toggle"
+      >
+        {tabsSidebarCollapsed ? (
+          <PanelLeftOpen className="h-4 w-4" />
+        ) : (
+          <PanelLeftClose className="h-4 w-4" />
+        )}
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 shrink-0"
+        aria-label={newTabLabel}
+        disabled={busyAction !== null}
+        onClick={() =>
+          void runBrowserWorkspaceAction("open:new", async () => {
+            await openNewBrowserWorkspaceTab(
+              newBrowserWorkspaceTabSeedUrl,
+              "user",
+            );
+          })
+        }
+        data-testid="browser-workspace-nav-new-tab"
+      >
+        <Plus className="h-4 w-4" />
+      </Button>
       <Button
         variant="ghost"
         size="icon"
@@ -2343,6 +2408,39 @@ export function BrowserWorkspaceView(): JSX.Element {
       >
         <ExternalLink className="h-4 w-4" />
       </Button>
+      {/* Toggle the right-side page-scoped chat pane. Same reasoning as
+          the left sidebar toggle: the floating bottom-right dock button
+          (AppWorkspaceChatDockToggleButton) sits at `fixed bottom-2
+          right-2`, which the native OOPIF can paint over once it
+          renders, leaving no way to reopen the chat. */}
+      {chatChrome ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0"
+          aria-label={
+            chatChrome.isChatOpen
+              ? t("browserworkspace.CollapseChat", {
+                  defaultValue: "Collapse page chat",
+                })
+              : t("browserworkspace.OpenChat", {
+                  defaultValue: "Open page chat",
+                })
+          }
+          onClick={() =>
+            chatChrome.isChatOpen
+              ? chatChrome.collapseChat()
+              : chatChrome.openChat()
+          }
+          data-testid="browser-workspace-nav-chat-toggle"
+        >
+          {chatChrome.isChatOpen ? (
+            <PanelRightClose className="h-4 w-4" />
+          ) : (
+            <PanelRightOpen className="h-4 w-4" />
+          )}
+        </Button>
+      ) : null}
     </div>
   );
 

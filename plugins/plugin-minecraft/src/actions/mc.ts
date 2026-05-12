@@ -280,13 +280,6 @@ export const minecraftAction: Action = {
       schema: { type: "string", enum: MC_OPS as string[] },
     },
     {
-      name: "subaction",
-      description: "Legacy alias for action.",
-      descriptionCompressed: "Legacy action alias.",
-      required: false,
-      schema: { type: "string", enum: MC_OPS as string[] },
-    },
-    {
       name: "params",
       description: "Optional JSON object containing the fields required by the chosen op.",
       descriptionCompressed: "Op fields.",

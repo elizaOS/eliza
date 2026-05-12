@@ -10,19 +10,19 @@ function createCorsTestApp() {
 }
 
 describe("Cloud API Hono CORS", () => {
-  it("allows the Milady homepage to call Cloud APIs", async () => {
+  it("allows the Eliza homepage to call Cloud APIs", async () => {
     const app = createCorsTestApp();
     const response = await app.request("https://www.elizacloud.ai/api/v1/eliza/agents", {
       method: "OPTIONS",
       headers: {
-        Origin: "https://milady.ai",
+        Origin: "https://eliza.ai",
         "Access-Control-Request-Method": "GET",
         "Access-Control-Request-Headers": "authorization,content-type",
       },
     });
 
     expect(response.status).toBe(204);
-    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://milady.ai");
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://eliza.ai");
     expect(response.headers.get("Access-Control-Allow-Credentials")).toBe("true");
   });
 

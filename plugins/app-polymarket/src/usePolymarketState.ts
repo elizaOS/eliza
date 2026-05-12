@@ -1,5 +1,6 @@
 import { client } from "@elizaos/app-core";
 import { useCallback, useEffect, useState } from "react";
+import "./client";
 import type {
   PolymarketMarket,
   PolymarketStatusResponse,

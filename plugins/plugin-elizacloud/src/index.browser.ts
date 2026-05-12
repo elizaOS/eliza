@@ -9,7 +9,7 @@ export const elizaOSCloudPlugin: Plugin = {
 // Browser-side no-op stubs for the named exports that ship from the Node
 // entry. The renderer needs the names to statically resolve so the bundler
 // doesn't fail with MISSING_EXPORT. These functions are never executed in
-// the browser since the consumers are server-side routes; in milady local-mode
+// the browser since the consumers are server-side routes; in eliza local-mode
 // the bundled `app-core/dist/api/server.js` imports them at module-load time.
 const _noop = (): undefined => undefined;
 

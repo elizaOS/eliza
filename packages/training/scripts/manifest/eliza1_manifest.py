@@ -69,12 +69,17 @@ VOICE_PRESET_CACHE_PATH: Final[str] = "cache/voice-preset-default.bin"
 # Release-state vocabulary recorded in `manifest.provenance.releaseState` and
 # `evidence/release.json.releaseState`. `base-v1` is the v1 product: the
 # upstream BASE models — GGUF-converted via the elizaOS/llama.cpp fork and
-# fully Milady-optimized (every quant/kernel trick in §3) — but NOT
-# fine-tuned. Fine-tuning lands in v2 (`finetuned-v2`). `local-standin` is a
-# non-publishable staging shape; `upload-candidate`/`final` are the
-# fine-tuned-v1 publish states retained for forward-compat.
+# fully Eliza-optimized (every quant/kernel trick in §3) — but NOT
+# fine-tuned. `base-v1-candidate` is the in-progress state of a base-v1
+# bundle before every release-blocking gate is green (real fork-built bytes,
+# every supported-backend kernel verify, every required platform-dispatch
+# report, the runnable-on-base evals) — NOT publishable. Fine-tuning lands in
+# v2 (`finetuned-v2`). `local-standin` is a non-publishable staging shape;
+# `upload-candidate`/`final` are the fine-tuned-v1 publish states retained
+# for forward-compat.
 ELIZA_1_RELEASE_STATES: Final[tuple[str, ...]] = (
     "local-standin",
+    "base-v1-candidate",
     "base-v1",
     "finetuned-v2",
     "upload-candidate",
@@ -82,11 +87,22 @@ ELIZA_1_RELEASE_STATES: Final[tuple[str, ...]] = (
 )
 # Release states the publish orchestrator + platform-plan blocker check
 # treat as a satisfiable release shape (not a hard publish-blocker).
+# `base-v1-candidate` is NOT here: it is the explicit "base-v1 plan, gates
+# not yet green" state.
 ELIZA_1_PUBLISHABLE_RELEASE_STATES: Final[tuple[str, ...]] = (
     "base-v1",
     "upload-candidate",
     "final",
 )
+# Release-channel vocabulary recorded on a published manifest (`manifest.
+# releaseChannel`). `recommended` is the fine-tuned Eliza-1 (ships in v2) —
+# the device default. `base-v1` is the upstream-base + kernel-optimized
+# release: every quant/kernel trick applied, but the text weights are the
+# upstream base GGUFs (not the fine-tuned Eliza-1). A `base-v1`-channel
+# manifest MUST be `defaultEligible: False`. Mirrors `ELIZA_1_RELEASE_CHANNELS`
+# (`packages/app-core/.../manifest/schema.ts`).
+ELIZA_1_RELEASE_CHANNELS: Final[tuple[str, ...]] = ("recommended", "base-v1")
+ELIZA_1_DEFAULT_RELEASE_CHANNEL: Final[str] = "recommended"
 # Provenance slots that must each carry a `sourceModel` (upstream HF repo)
 # when `manifest.provenance` is present. Mirrors the bundle components: the
 # `base-v1` release is "this exact upstream repo, converted + optimized".
@@ -140,7 +156,7 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     # 1M context is only practical on very large unified/HBM memory
-    # (GH200-class). CUDA is the only backend whose v0.4.0-milady binary
+    # (GH200-class). CUDA is the only backend whose v1.0.0-eliza binary
     # covers the full runtime path at that window today; the others stay
     # off the supported list for this variant until verified.
     "27b-1m": ("cuda",),
@@ -741,6 +757,17 @@ def validate_manifest(
     if not isinstance(manifest["defaultEligible"], bool):
         errors.append("defaultEligible: must be a boolean")
 
+    release_channel = manifest.get("releaseChannel")
+    if release_channel is not None:
+        if release_channel not in ELIZA_1_RELEASE_CHANNELS:
+            errors.append(
+                "releaseChannel: must be one of "
+                + ", ".join(ELIZA_1_RELEASE_CHANNELS)
+            )
+        elif release_channel == "base-v1" and manifest.get("defaultEligible") is not False:
+            # The upstream-base release is never a device default.
+            errors.append("releaseChannel=base-v1 requires defaultEligible: false")
+
     voice = manifest.get("voice")
     if voice is not None:
         if not _is_object(voice):
@@ -872,7 +899,12 @@ def validate_manifest(
             )
 
     # ── §3/§6 contract: evals all pass ──────────────────────────────────
-    if not evals["textEval"]["passed"]:
+    # The `base-v1` channel ships the upstream BASE text weights, so the
+    # held-out *text-quality* eval is N/A for that channel — it is recorded
+    # but not publish-blocking. Every OTHER eval (voice RTF, ASR WER, VAD,
+    # e2e loop, 30-turn, expressive) stays exactly as required.
+    is_base_v1_channel = release_channel == "base-v1"
+    if not evals["textEval"]["passed"] and not is_base_v1_channel:
         readiness_errors.append("evals.textEval.passed: false")
     if not evals["voiceRtf"]["passed"]:
         readiness_errors.append("evals.voiceRtf.passed: false")
@@ -1039,6 +1071,11 @@ def build_manifest(
     #    "sourceModels": {"text": {"repo": "Qwen/Qwen3.5-9B", "file": "..."},
     #                     "voice": {"repo": "Serveurperso/OmniVoice-GGUF"}, ...}}
     provenance: Mapping[str, Any] | None = None,
+    # Release channel recorded on the manifest. Defaults to `"recommended"`
+    # (the fine-tuned Eliza-1 — the device default). Pass `"base-v1"` for the
+    # upstream-base + kernel-optimized release; that channel REQUIRES
+    # `default_eligible=False`.
+    release_channel: str | None = None,
     bundle_id: str | None = None,
     require_publish_ready: bool = True,
 ) -> dict[str, Any]:
@@ -1078,16 +1115,7 @@ def build_manifest(
             "score": embed_mteb_score if embed_mteb_score is not None else -1,
             "passed": bool(embed_mteb_passed),
         }
-    if any(
-        value is not None
-        for value in (
-            vad_latency_ms_median,
-            vad_latency_ms_passed,
-            vad_boundary_ms,
-            vad_endpoint_ms,
-            vad_false_barge_in_rate,
-        )
-    ):
+    if vad_latency_ms_median is not None or vad_latency_ms_passed is not None:
         evals["vadLatencyMs"] = {
             "median": vad_latency_ms_median if vad_latency_ms_median is not None else -1,
             "passed": bool(vad_latency_ms_passed),
@@ -1169,6 +1197,8 @@ def build_manifest(
         "min": ram_budget_min_mb,
         "recommended": ram_budget_recommended_mb,
     }
+    if release_channel is not None and release_channel != ELIZA_1_DEFAULT_RELEASE_CHANNEL:
+        manifest["releaseChannel"] = release_channel
     manifest["defaultEligible"] = default_eligible
     if voice_capabilities is not None:
         manifest["voice"] = {

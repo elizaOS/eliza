@@ -67,12 +67,12 @@ and the AOSP-aimed permission set.
 bun run build:android:system
 ```
 
-Release APK signed by Soong's platform key for Milady OS / ElizaOS
+Release APK signed by Soong's platform key for Eliza OS / ElizaOS
 device builds. The privileged `MANAGE_APP_OPS_MODES` /
 `PACKAGE_USAGE_STATS` permissions are granted via the
 `privapp-permissions-com.elizaai.eliza.xml` whitelist baked into the
 vendor tree, so this APK is intended for `priv-app/` placement on
-Milady-flavored AOSP devices, **not** for Play Store distribution.
+Eliza-flavored AOSP devices, **not** for Play Store distribution.
 
 The release APK is staged at
 `<repoRoot>/packages/os/android/vendor/eliza/apps/Eliza/Eliza.apk` (or

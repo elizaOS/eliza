@@ -25,9 +25,9 @@ export type SetupState = "idle" | "configuring" | "paired" | "error";
  * then read the typed detail.
  */
 export interface SetupStatusResponse<TDetail = unknown> {
-	connector: string;
-	state: SetupState;
-	detail?: TDetail;
+  connector: string;
+  state: SetupState;
+  detail?: TDetail;
 }
 
 /**
@@ -37,22 +37,22 @@ export interface SetupStatusResponse<TDetail = unknown> {
  * `service_unavailable`, `internal_error`); `message` is human-readable.
  */
 export interface SetupErrorResponse {
-	error: {
-		code: string;
-		message: string;
-	};
+  error: {
+    code: string;
+    message: string;
+  };
 }
 
 /** Common error codes used across connector setup routes. */
 export const SETUP_ERROR_CODES = {
-	BAD_REQUEST: "bad_request",
-	SERVICE_UNAVAILABLE: "service_unavailable",
-	INTERNAL_ERROR: "internal_error",
-	TOO_MANY_SESSIONS: "too_many_sessions",
+  BAD_REQUEST: "bad_request",
+  SERVICE_UNAVAILABLE: "service_unavailable",
+  INTERNAL_ERROR: "internal_error",
+  TOO_MANY_SESSIONS: "too_many_sessions",
 } as const;
 
 export type SetupErrorCode =
-	(typeof SETUP_ERROR_CODES)[keyof typeof SETUP_ERROR_CODES];
+  (typeof SETUP_ERROR_CODES)[keyof typeof SETUP_ERROR_CODES];
 
 /**
  * Build a structured error envelope.
@@ -62,10 +62,10 @@ export type SetupErrorCode =
  * `error.message`.
  */
 export function buildSetupError(
-	code: SetupErrorCode | string,
-	message: string,
+  code: SetupErrorCode | string,
+  message: string,
 ): SetupErrorResponse {
-	return { error: { code, message } };
+  return { error: { code, message } };
 }
 
 /**
@@ -74,8 +74,8 @@ export function buildSetupError(
  * `setupPath("signal", "start")` → `/api/setup/signal/start`.
  */
 export function setupPath(
-	connector: string,
-	action: "status" | "start" | "cancel",
+  connector: string,
+  action: "status" | "start" | "cancel",
 ): string {
-	return `/api/setup/${connector}/${action}`;
+  return `/api/setup/${connector}/${action}`;
 }

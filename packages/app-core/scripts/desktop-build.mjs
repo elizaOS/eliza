@@ -51,7 +51,7 @@ const buildProfile =
 const variant =
   getArgValue(args, "variant") ?? process.env.VITE_APP_VARIANT ?? "base";
 const buildVariant = resolveBuildVariant(
-  getArgValue(args, "build-variant") ?? process.env.MILADY_BUILD_VARIANT,
+  getArgValue(args, "build-variant") ?? process.env.ELIZA_BUILD_VARIANT,
 );
 const buildEnv = getArgValue(args, "env") ?? process.env.BUILD_ENV ?? "";
 const buildWhisper = getBooleanArg(args, "build-whisper");
@@ -60,9 +60,7 @@ const stageMacosReleaseApp = getBooleanArg(args, "stage-macos-release-app");
 function resolveBuildVariant(raw) {
   if (raw === "store" || raw === "direct") return raw;
   if (raw === undefined || raw === null || raw === "") return "direct";
-  fail(
-    `Unknown --build-variant value: ${raw}. Expected "store" or "direct".`,
-  );
+  fail(`Unknown --build-variant value: ${raw}. Expected "store" or "direct".`);
 }
 const excludedOptionalPacks = [
   ...new Set([
@@ -170,7 +168,7 @@ function buildInvocation(binary, binaryArgs = []) {
 }
 
 function run(commandName, commandArgs, options = {}) {
-  const { cwd = ROOT, env = process.env, label } = options;
+  const { cwd = ROOT, env = process.env, label, allowFailure = false } = options;
   const invocation = buildInvocation(commandName, commandArgs);
   const rendered = [invocation.command, ...invocation.args].join(" ");
   console.log(`[desktop-build] ${label ?? rendered}`);
@@ -182,6 +180,12 @@ function run(commandName, commandArgs, options = {}) {
   });
 
   if (result.status !== 0) {
+    if (allowFailure) {
+      console.warn(
+        `[desktop-build] ${rendered} exited ${result.status ?? 1} (tolerated)`,
+      );
+      return;
+    }
     fail(
       `${rendered} failed with exit code ${result.status ?? 1}`,
       result.status ?? 1,
@@ -497,14 +501,20 @@ function stageDesktopBuild() {
     },
   );
 
+  // `bun install` for these workspaces can emit benign EEXIST errors when
+  // file: deps overlap with manually-linked @elizaos/* symlinks. The links
+  // get created successfully; bun exits non-zero only because of the dup
+  // attempt. Tolerate so the build can proceed.
   runBun(["install", "--ignore-scripts"], {
     cwd: APP_DIR,
     label: "Ensuring app workspace dependencies are installed",
+    allowFailure: true,
   });
 
   runBun(["install", "--ignore-scripts"], {
     cwd: ELECTROBUN_DIR,
     label: "Ensuring Electrobun workspace dependencies are installed",
+    allowFailure: true,
   });
 
   runPackageBinary("vite", ["build"], {
@@ -512,9 +522,9 @@ function stageDesktopBuild() {
     env: {
       ...process.env,
       VITE_APP_VARIANT: variant,
-      MILADY_BUILD_VARIANT: buildVariant,
+      ELIZA_BUILD_VARIANT: buildVariant,
     },
-    label: `Building renderer bundle (VITE_APP_VARIANT=${variant}, MILADY_BUILD_VARIANT=${buildVariant})`,
+    label: `Building renderer bundle (VITE_APP_VARIANT=${variant}, ELIZA_BUILD_VARIANT=${buildVariant})`,
   });
 
   runDesktopPreflight();
@@ -721,7 +731,7 @@ function packageDesktopBuild() {
   const packageEnv = {
     ...process.env,
     ELIZA_ELECTROBUN_REPO_ROOT: process.env.ELIZA_ELECTROBUN_REPO_ROOT ?? ROOT,
-    MILADY_BUILD_VARIANT: buildVariant,
+    ELIZA_BUILD_VARIANT: buildVariant,
     ...appIdentityEnv(APP_DIR),
     ...(stageMacosReleaseApp && process.platform === "darwin"
       ? { ELIZA_ELECTROBUN_NOTARIZE: "0" }
@@ -773,9 +783,9 @@ function packageDesktopBuild() {
       path.join(SCRIPT_DIR, "codesign-mas.mjs"),
       `--app=${appBundlePath}`,
     ];
-    if (process.env.MILADY_MAS_INSTALLER_IDENTITY) {
+    if (process.env.ELIZA_MAS_INSTALLER_IDENTITY) {
       codesignArgs.push(
-        `--installer-identity=${process.env.MILADY_MAS_INSTALLER_IDENTITY}`,
+        `--installer-identity=${process.env.ELIZA_MAS_INSTALLER_IDENTITY}`,
       );
     }
     run("node", codesignArgs, {

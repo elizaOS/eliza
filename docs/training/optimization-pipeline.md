@@ -1,7 +1,7 @@
-# Milady optimization pipeline
+# Eliza optimization pipeline
 
 End-to-end recipe for taking a base HuggingFace causal-LM, applying every
-Milady inference optimization (PolarQuant Q4 weights, QJL K-cache
+Eliza inference optimization (PolarQuant Q4 weights, QJL K-cache
 projection, TurboQuant V-cache, DFlash speculative decoding) on top of
 the `elizaOS/llama.cpp` fork — which ships in-tree as the git submodule at
 `packages/inference/llama.cpp` (`elizaOS/llama.cpp @ v1.0.0-eliza`, commit
@@ -12,7 +12,7 @@ downloader.
 
 ## Why this exists
 
-The Milady fork composes four non-upstream GGML types and a DFlash
+The Eliza fork composes four non-upstream GGML types and a DFlash
 spec-decode CLI surface:
 
 | Slot | Type        | What it stores                                  | Source |
@@ -24,7 +24,7 @@ spec-decode CLI surface:
 
 Each technique has a research-grade Python apply script under
 `packages/training/scripts/quantization/`. The orchestrator at
-`packages/training/scripts/optimize_for_milady.py` is the single entry
+`packages/training/scripts/optimize_for_eliza1.py` is the single entry
 point that runs them in dependency order, drives the GGUF conversion
 with the fork's `convert_hf_to_gguf.py`, and emits a runtime manifest
 that the on-device downloader consumes.
@@ -49,15 +49,15 @@ Source: `packages/training/scripts/quantization/README.md` and
 
 ```
 packages/training/scripts/
-  optimize_for_milady.py            ← master orchestrator (this doc)
-  emit_milady_catalog.py            ← catalog.ts diff generator
-  push_model_to_hf.py               ← HF publisher (extended with --milady-manifest)
+  optimize_for_eliza1.py            ← master orchestrator (this doc)
+  emit_eliza1_catalog.py            ← catalog.ts diff generator
+  push_model_to_hf.py               ← HF publisher (extended with --eliza-manifest)
   quantization/
     polarquant_apply.py             ← PolarQuant 4-bit weights
     qjl_apply.py                    ← QJL 1-bit K cache
     turboquant_apply.py             ← TurboQuant V cache (PyTorch reference)
     fused_turboquant_apply.py       ← TurboQuant V cache (Triton kernel; needs GPU)
-    gguf_milady_apply.py            ← GGUF emit shim for Milady GGML types
+    gguf_eliza1_apply.py            ← GGUF emit shim for Eliza GGML types
 ```
 
 ### Apply order
@@ -77,8 +77,8 @@ stage-qjl/         (HF ckpt + qjl_config.json)
     ↓  turboquant_apply.py
 stage-turboquant/  (HF ckpt + turboquant.json)
     ↓  convert_hf_to_gguf.py (elizaOS/llama.cpp v1.0.0-eliza)
-gguf/<name>-milady-Q4_POLAR.gguf + milady_manifest.json + README.md
-    ↓  push_model_to_hf.py --milady-manifest
+gguf/<name>-eliza-Q4_POLAR.gguf + eliza_manifest.json + README.md
+    ↓  push_model_to_hf.py --eliza-manifest
 HuggingFace: elizaos/eliza-1-<tier>
 ```
 
@@ -88,7 +88,7 @@ HuggingFace: elizaos/eliza-1-<tier>
 
 ```bash
 cd packages/training
-uv run python scripts/optimize_for_milady.py \
+uv run python scripts/optimize_for_eliza1.py \
     --base-model elizaos/eliza-1-lite-0_6b \
     --output-dir checkpoints/eliza-1-lite \
     --apply polarquant qjl turboquant \
@@ -106,8 +106,7 @@ consumers know the V-cache config falls back to the framework default.
 
 ```bash
 HF_TOKEN=hf_xxx \
-LLAMA_CPP_DIR=$HOME/src/milady-llama.cpp \
-uv run python scripts/optimize_for_milady.py \
+uv run python scripts/optimize_for_eliza1.py \
     --base-model elizaos/eliza-1-lite-0_6b \
     --output-dir checkpoints/eliza-1-lite \
     --apply polarquant qjl turboquant \
@@ -120,10 +119,14 @@ Production runs need:
 
 - A GPU with CUDA for the TurboQuant calibration pass and (optionally)
   the QJL CUDA kernel build under `scripts/quantization/qjl/csrc/`.
-- A local checkout of `elizaOS/llama.cpp` at tag `v1.0.0-eliza` (the in-repo submodule `packages/inference/llama.cpp` already provides this)
-  (commit `08032d57e15574f2a7ca19fc3f29510c8673d590`) at
-  `$LLAMA_CPP_DIR`. The fork is the only place `convert_hf_to_gguf.py`
-  understands `--outtype q4_polar`.
+- A checkout of `elizaOS/llama.cpp` at tag `v1.0.0-eliza` (commit
+  `08032d57e15574f2a7ca19fc3f29510c8673d590`). The `packages/inference/llama.cpp`
+  submodule already provides this (`bun install` inits it via
+  `scripts/ensure-llama-cpp-submodule.mjs`), or a standalone clone at
+  `~/.cache/eliza-dflash/eliza-llama-cpp` when the build scripts' override
+  forces one; set `$LLAMA_CPP_DIR` to point at a different checkout. The
+  fork is the only place `convert_hf_to_gguf.py` understands
+  `--outtype q4_polar`.
 - An `HF_TOKEN` (or `HUGGINGFACE_HUB_TOKEN`) with write access to the
   `elizaos` HF org.
 
@@ -132,8 +135,8 @@ Production runs need:
 After publish, run:
 
 ```bash
-uv run python scripts/emit_milady_catalog.py \
-    --manifest checkpoints/eliza-1-lite/gguf/milady_manifest.json \
+uv run python scripts/emit_eliza1_catalog.py \
+    --manifest checkpoints/eliza-1-lite/gguf/eliza_manifest.json \
     --catalog ../app-core/src/services/local-inference/catalog.ts \
     --output reports/training/catalog-eliza-1-lite.diff
 ```
@@ -182,7 +185,7 @@ inference call.
 ## Verified outputs (dry-run on Eliza-1 lite)
 
 ```
-$ uv run python scripts/optimize_for_milady.py \
+$ uv run python scripts/optimize_for_eliza1.py \
       --base-model elizaos/eliza-1-lite-0_6b \
       --output-dir /tmp/eliza-1-lite-test \
       --apply polarquant qjl turboquant \
@@ -207,8 +210,8 @@ The dry-run on this CPU-only Linux x86_64 box validates:
 - The manifest serializes with the right GGML type slot numbers
   (`Q4_POLAR=47`, `QJL1_256=46`, `TBQ3_0=43`).
 - The runtime block declares the exact `llama-server` flag set the
-  Milady fork understands.
-- `push_model_to_hf.py --milady-manifest` accepts the manifest and
+  Eliza fork understands.
+- `push_model_to_hf.py --eliza-manifest` accepts the manifest and
   renders a README.md using the manifest's runtime block (no template
   fallback).
 
@@ -249,7 +252,7 @@ TurboQuant calibration produces a real `skip_layers` profile.
 
 ## Out of scope for this pipeline
 
-- Catalog purge (W5-Catalog) — emit_milady_catalog.py only emits the
+- Catalog purge (W5-Catalog) — emit_eliza1_catalog.py only emits the
   append diff; it does not delete other catalog entries.
 - HF org provisioning (W5-HF-Org) — this script assumes the
   `elizaos` org exists and the operator's `HF_TOKEN` has write

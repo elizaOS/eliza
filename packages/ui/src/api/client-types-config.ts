@@ -373,6 +373,21 @@ export interface UpdateStatus {
   currentVersion: string;
   channel: ReleaseChannel;
   installMethod: string;
+  updateAuthority?:
+    | "package-manager"
+    | "os-package-manager"
+    | "developer"
+    | "operator";
+  nextAction?:
+    | "run-package-manager-command"
+    | "run-git-pull"
+    | "review-installation"
+    | "none";
+  canAutoUpdate?: boolean;
+  canExecuteUpdate?: boolean;
+  remoteDisplay?: boolean;
+  updateCommand?: string | null;
+  updateInstructions?: string;
   updateAvailable: boolean;
   latestVersion: string | null;
   channels: Record<ReleaseChannel, string | null>;

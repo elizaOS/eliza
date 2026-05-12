@@ -34,21 +34,23 @@
 //
 // llama.cpp pin (matches plugins/plugin-aosp-local-inference/src/aosp-llama-adapter.ts):
 //   fork:   https://github.com/elizaOS/llama.cpp
-//   tag:    v0.4.0-milady          (milady/integration HEAD)
+//   tag:    v1.0.0-eliza           (the kernel-complete v0.4.0-eliza tree,
+//                                   re-tagged on the elizaOS org rename)
 //   commit: 08032d57e15574f2a7ca19fc3f29510c8673d590
 //
-//   v0.4.0-milady adds W4-B CUDA QJL + PolarQuant Q4 + TBQ3_TCQ kernels
-//   on top of v0.3.0-milady. The CUDA paths only matter for the
-//   linux-x64-cuda host target (the AOSP arm64 path stays CPU-only),
-//   but the pin is shared so both AOSP and host build paths land on
-//   identical kernel sources.
+//   This tree adds the W4-B CUDA QJL + PolarQuant Q4 + TBQ3_TCQ kernels
+//   on top of the earlier eliza-lineage tags. The CUDA paths only matter
+//   for the linux-x64-cuda host target (the AOSP arm64 path stays
+//   CPU-only), but the pin is shared so both AOSP and host build paths
+//   land on identical kernel sources. A rebase onto a newer upstream is a
+//   deferred effort — see docs/porting/upstream-rebase-plan.md.
 //
-//   v0.2.0-milady (subset of this pin) added DFlash speculative decoding
+//   v0.2.0-eliza (subset of this pin) added DFlash speculative decoding
 //   CLI surface (--spec-type dflash, --draft-min-prob alias, n_drafted_total
-//   / n_drafted_accepted_total Prometheus counters) on top of v0.1.0-milady.
+//   / n_drafted_accepted_total Prometheus counters) on top of v0.1.0-eliza.
 //
 // Why this fork (not stock ggml-org/llama.cpp b8198):
-//   The Milady fork composes four techniques onto upstream b8198:
+//   The Eliza fork composes four techniques onto upstream b8198:
 //
 //     - TBQ3_0 (slot 43) + TBQ4_0 (slot 44) — 3-bit / 4-bit TurboQuant V-cache.
 //       Cherry-picked from apothic/llama.cpp-1bit-turboquant @ b2b5273.
@@ -62,7 +64,7 @@
 //       W1-B's Polar series. Bumped from upstream slot 45 to 47 because
 //       slot 46 is now QJL.
 //     - Metal kernel sources (.metal) for TBQ3_0/TBQ4_0/TBQ3_TCQ/QJL/Polar
-//       under ggml/src/ggml-metal/milady-kernels/. Source-only landing —
+//       under ggml/src/ggml-metal/eliza-kernels/. Source-only landing —
 //       dispatcher wiring is the next agent's job.
 //
 //   The CPU implementations of all four techniques (NEON for arm64, AVX2
@@ -177,7 +179,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // inside the elizaOS source checkout it's the elizaOS repo root.
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 
-// elizaOS/llama.cpp @ v1.0.0-eliza (same tree as the prior v0.4.0-milady tag,
+// elizaOS/llama.cpp @ v1.0.0-eliza (same tree as the prior v0.4.0-eliza tag,
 // commit 08032d57 — re-tagged on the elizaOS rename). Composes TBQ (apothic) +
 // QJL (W1-A) + Q4_POLAR (W1-B) + Metal sources (W1-D) + DFlash spec-decode
 // (W2) + W3-B fused CPU kernels + W4-B CUDA QJL/Polar/TBQ3_TCQ kernels onto
@@ -199,8 +201,7 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 // rollback path; see scripts/aosp/llama-cpp-patches/README.md.
 export const LLAMA_CPP_TAG = "v1.0.0-eliza";
 export const LLAMA_CPP_COMMIT = "08032d57e15574f2a7ca19fc3f29510c8673d590";
-export const LLAMA_CPP_REMOTE =
-  "https://github.com/elizaOS/llama.cpp.git";
+export const LLAMA_CPP_REMOTE = "https://github.com/elizaOS/llama.cpp.git";
 export const MIN_ZIG_VERSION = "0.13.0";
 
 // The in-repo submodule checkout of the fork (packages/inference/llama.cpp).

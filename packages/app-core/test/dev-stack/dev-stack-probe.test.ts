@@ -1,12 +1,12 @@
 /**
  * Live desktop dev stack probe.
  *
- * Opt in with `MILADY_DESKTOP_QA=1 bun run --cwd packages/app-core test -- dev-stack`.
+ * Opt in with `ELIZA_DESKTOP_QA=1 bun run --cwd packages/app-core test -- dev-stack`.
  * Requires `bun run dev:desktop` to be running concurrently (so the API on
- * 127.0.0.1:<MILADY_API_PORT> and the Vite UI are up).
+ * 127.0.0.1:<ELIZA_API_PORT> and the Vite UI are up).
  *
  * Without the env var, every test in this file skips cleanly. This file is
- * not part of CI — CI does not set `MILADY_DESKTOP_QA`.
+ * not part of CI — CI does not set `ELIZA_DESKTOP_QA`.
  */
 
 import { exec } from "node:child_process";
@@ -21,7 +21,7 @@ import {
 
 const execFile = promisify(exec);
 
-const QA_ENABLED = process.env.MILADY_DESKTOP_QA === "1";
+const QA_ENABLED = process.env.ELIZA_DESKTOP_QA === "1";
 const HTTP_TIMEOUT_MS = 10_000;
 
 const fileDir = path.dirname(fileURLToPath(import.meta.url));
@@ -55,9 +55,7 @@ function isStackStatusReport(value: unknown): value is StackStatusReport {
   );
 }
 
-function assertDevStackShape(
-  value: unknown,
-): asserts value is DevStackPayload {
+function assertDevStackShape(value: unknown): asserts value is DevStackPayload {
   expect(value).toBeTypeOf("object");
   expect(value).not.toBeNull();
   const v = value as Record<string, unknown>;
@@ -74,9 +72,9 @@ function assertDevStackShape(
   expect(
     desktop.rendererUrl === null || typeof desktop.rendererUrl === "string",
   ).toBe(true);
-  expect(
-    desktop.uiPort === null || typeof desktop.uiPort === "number",
-  ).toBe(true);
+  expect(desktop.uiPort === null || typeof desktop.uiPort === "number").toBe(
+    true,
+  );
   expect(
     desktop.desktopApiBase === null ||
       typeof desktop.desktopApiBase === "string",
@@ -89,12 +87,10 @@ function assertDevStackShape(
 
   expect(v.desktopDevLog).toBeTypeOf("object");
   const log = v.desktopDevLog as Record<string, unknown>;
-  expect(
-    log.filePath === null || typeof log.filePath === "string",
-  ).toBe(true);
-  expect(
-    log.apiTailPath === null || typeof log.apiTailPath === "string",
-  ).toBe(true);
+  expect(log.filePath === null || typeof log.filePath === "string").toBe(true);
+  expect(log.apiTailPath === null || typeof log.apiTailPath === "string").toBe(
+    true,
+  );
 
   expect(Array.isArray(v.hints)).toBe(true);
 }
@@ -114,9 +110,9 @@ async function fetchWithTimeout(
 
 describe("live desktop dev stack probe", () => {
   test.skipIf(!QA_ENABLED)(
-    "desktop dev stack not opted in via MILADY_DESKTOP_QA=1",
+    "desktop dev stack not opted in via ELIZA_DESKTOP_QA=1",
     () => {
-      // This test only runs when MILADY_DESKTOP_QA=1, where it acts as a
+      // This test only runs when ELIZA_DESKTOP_QA=1, where it acts as a
       // self-check that the env was read correctly. When the env is unset,
       // vitest reports this test as skipped with the message above — that's
       // the explicit "not opted in" signal the runner asked for.
@@ -124,7 +120,7 @@ describe("live desktop dev stack probe", () => {
     },
   );
 
-  describe.skipIf(!QA_ENABLED)("with MILADY_DESKTOP_QA=1", () => {
+  describe.skipIf(!QA_ENABLED)("with ELIZA_DESKTOP_QA=1", () => {
     let report: StackStatusReport;
     let baseUrl: string;
 
@@ -161,7 +157,9 @@ describe("live desktop dev stack probe", () => {
 
     test("GET /api/dev/cursor-screenshot returns PNG or documented 503/404", async () => {
       expect(baseUrl, "previous test populated baseUrl").toBeTruthy();
-      const res = await fetchWithTimeout(`${baseUrl}/api/dev/cursor-screenshot`);
+      const res = await fetchWithTimeout(
+        `${baseUrl}/api/dev/cursor-screenshot`,
+      );
 
       if (res.status === 200) {
         const contentType = res.headers.get("content-type") ?? "";

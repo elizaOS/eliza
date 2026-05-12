@@ -189,6 +189,12 @@ def test_clawbench_agent_fn_includes_model_name(fake_client: HermesClient) -> No
 
 def _install_lifeops_stub() -> None:
     if "eliza_lifeops_bench" in sys.modules:
+        # If something else stubbed the module without
+        # ``attach_usage_cache_fields``, top it up so the lazy import in
+        # ``hermes_adapter.lifeops_bench`` resolves cleanly.
+        existing = sys.modules.get("eliza_lifeops_bench.types")
+        if existing is not None and not hasattr(existing, "attach_usage_cache_fields"):
+            existing.attach_usage_cache_fields = _stub_attach_usage_cache_fields  # type: ignore[attr-defined]
         return
     pkg = types.ModuleType("eliza_lifeops_bench")
     types_mod = types.ModuleType("eliza_lifeops_bench.types")
@@ -200,8 +206,24 @@ def _install_lifeops_stub() -> None:
             self.tool_calls = tool_calls
 
     types_mod.MessageTurn = MessageTurn
+    types_mod.attach_usage_cache_fields = _stub_attach_usage_cache_fields
     sys.modules["eliza_lifeops_bench"] = pkg
     sys.modules["eliza_lifeops_bench.types"] = types_mod
+
+
+def _stub_attach_usage_cache_fields(turn: Any, usage: dict[str, Any]) -> None:
+    """Minimal mirror of ``eliza_lifeops_bench.types.attach_usage_cache_fields``.
+
+    The factory tests don't exercise cache accounting, but the lazy import in
+    ``hermes_adapter.lifeops_bench`` references the symbol unconditionally, so
+    the stub must surface a callable to import successfully.
+    """
+    prompt = usage.get("prompt_tokens", usage.get("input_tokens"))
+    completion = usage.get("completion_tokens", usage.get("output_tokens"))
+    if isinstance(prompt, (int, float)):
+        setattr(turn, "input_tokens", int(prompt))
+    if isinstance(completion, (int, float)):
+        setattr(turn, "output_tokens", int(completion))
 
 
 def test_build_lifeops_bench_agent_fn_returns_async_callable(fake_client: HermesClient) -> None:

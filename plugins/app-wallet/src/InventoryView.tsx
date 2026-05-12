@@ -895,11 +895,9 @@ function MarketDataUnavailable({
   source: WalletMarketOverviewSource;
 }) {
   return (
-    <div className="rounded-2xl border border-danger/20 bg-danger/10 px-4 py-3">
-      <div className="text-sm font-semibold text-danger">
-        {title} unavailable
-      </div>
-      <div className="mt-1 text-xs text-danger/80">
+    <div className="rounded-2xl border border-warn/20 bg-warn/10 px-4 py-3">
+      <div className="text-sm font-semibold text-warn">{title} unavailable</div>
+      <div className="mt-1 text-xs text-muted">
         {source.error ?? `${source.providerName} did not return live data.`}
       </div>
     </div>

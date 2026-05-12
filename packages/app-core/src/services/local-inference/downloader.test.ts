@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readAssignments } from "./assignments";
 import { findCatalogModel } from "./catalog";
 import { Downloader } from "./downloader";
 import type { Eliza1DeviceCaps } from "./manifest";
@@ -347,6 +348,8 @@ describe("local inference downloader status", () => {
     expect(companion.companionFor).toBe(model.id);
     expect(companion.path.endsWith("dflash/drafter-0_6b.gguf")).toBe(true);
     expect(companion.bundleRoot).toBe(bundleRoot);
+    expect(main.bundleVerifiedAt).toBeUndefined();
+    expect(await readAssignments()).toEqual({});
   });
 
   it("restarts single-file partial downloads when a server ignores Range", async () => {

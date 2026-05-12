@@ -33,7 +33,7 @@ PERSONAS: tuple[Persona, ...] = (
         language="en",
         memory_entries=(
             {"role": "user", "speaker": "sam", "content": "yo", "channel": "chat"},
-            {"role": "assistant", "speaker": "milady", "content": "Hey, what's up?", "channel": "chat"},
+            {"role": "assistant", "speaker": "eliza", "content": "Hey, what's up?", "channel": "chat"},
         ),
     ),
     Persona(
@@ -42,7 +42,7 @@ PERSONAS: tuple[Persona, ...] = (
         language="en",
         memory_entries=(
             {"role": "user", "speaker": "dr_chen", "content": "Good morning. I have a small task for you.", "channel": "dm"},
-            {"role": "assistant", "speaker": "milady", "content": "Good morning. I'm ready to help.", "channel": "dm"},
+            {"role": "assistant", "speaker": "eliza", "content": "Good morning. I'm ready to help.", "channel": "dm"},
         ),
     ),
     Persona(
@@ -51,7 +51,7 @@ PERSONAS: tuple[Persona, ...] = (
         language="es",
         memory_entries=(
             {"role": "user", "speaker": "priya", "content": "hola, cómo va", "channel": "chat"},
-            {"role": "assistant", "speaker": "milady", "content": "¡Hola! Todo bien por aquí.", "channel": "chat"},
+            {"role": "assistant", "speaker": "eliza", "content": "¡Hola! Todo bien por aquí.", "channel": "chat"},
         ),
     ),
     Persona(
@@ -60,7 +60,7 @@ PERSONAS: tuple[Persona, ...] = (
         language="ja",
         memory_entries=(
             {"role": "user", "speaker": "kenji", "content": "おはよう", "channel": "chat"},
-            {"role": "assistant", "speaker": "milady", "content": "おはようございます。", "channel": "chat"},
+            {"role": "assistant", "speaker": "eliza", "content": "おはようございます。", "channel": "chat"},
         ),
     ),
     Persona(
@@ -75,7 +75,7 @@ PERSONAS: tuple[Persona, ...] = (
         language="zh",
         memory_entries=(
             {"role": "user", "speaker": "wei", "content": "你好,有时间吗?", "channel": "dm"},
-            {"role": "assistant", "speaker": "milady", "content": "你好,我在。", "channel": "dm"},
+            {"role": "assistant", "speaker": "eliza", "content": "你好,我在。", "channel": "dm"},
             {"role": "user", "speaker": "wei", "content": "好的,稍等一下。", "channel": "dm"},
         ),
     ),
@@ -85,7 +85,7 @@ PERSONAS: tuple[Persona, ...] = (
         language="en",
         memory_entries=(
             {"role": "user", "speaker": "taylor", "content": "ok this is the third time I'm asking", "channel": "chat"},
-            {"role": "assistant", "speaker": "milady", "content": "Sorry — let's get this sorted.", "channel": "chat"},
+            {"role": "assistant", "speaker": "eliza", "content": "Sorry — let's get this sorted.", "channel": "chat"},
         ),
     ),
 )

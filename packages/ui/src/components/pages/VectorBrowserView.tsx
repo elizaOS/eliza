@@ -863,7 +863,8 @@ export function VectorBrowserView({
   // Discover vector/memory tables
   const loadTables = useCallback(async () => {
     try {
-      const { tables: allTables } = await client.getDatabaseTables();
+      const { tables: rawTables } = await client.getDatabaseTables();
+      const allTables = Array.isArray(rawTables) ? rawTables : [];
       const vectorTables = allTables.filter((t) => {
         const n = t.name.toLowerCase();
         return (
@@ -913,7 +914,8 @@ export function VectorBrowserView({
       const colResult: QueryResult = await client.executeDatabaseQuery(
         `SELECT column_name, data_type FROM information_schema.columns WHERE table_name = '${table.replace(/'/g, "''")}' AND table_schema NOT IN ('pg_catalog','information_schema') ORDER BY ordinal_position`,
       );
-      const cols = colResult.rows.map((r) => {
+      const rows = Array.isArray(colResult.rows) ? colResult.rows : [];
+      const cols = rows.map((r) => {
         const name = String(r.column_name);
         const dtype = String(r.data_type).toLowerCase();
         // Cast USER-DEFINED types (pgvector) and bytea to text
@@ -985,7 +987,8 @@ export function VectorBrowserView({
       const countResult: QueryResult = await client.executeDatabaseQuery(
         `SELECT COUNT(*) as cnt FROM "${selectedTable}"${countWhere}`,
       );
-      const total = Number(countResult.rows[0]?.cnt ?? 0);
+      const countRows = Array.isArray(countResult.rows) ? countResult.rows : [];
+      const total = Number(countRows[0]?.cnt ?? 0);
       setTotalCount(total);
 
       // Try JOIN path for memories + embeddings
@@ -1007,15 +1010,16 @@ export function VectorBrowserView({
           `SELECT ${selectCols} FROM "${selectedTable}"${plainWhere} LIMIT ${PAGE_SIZE} OFFSET ${offset}`,
         );
       }
-      setMemories(result.rows.map(rowToMemory));
+      const rows = Array.isArray(result.rows) ? result.rows : [];
+      setMemories(rows.map(rowToMemory));
 
       // Stats on first load
       if (page === 0 && !search) {
         let dims = 0;
         let uniqueCount = 0;
 
-        if (result.rows.length > 0) {
-          const sample = rowToMemory(result.rows[0]);
+        if (rows.length > 0) {
+          const sample = rowToMemory(rows[0]);
           if (sample.embedding) dims = sample.embedding.length;
         }
 
@@ -1023,7 +1027,10 @@ export function VectorBrowserView({
           const uniqueResult: QueryResult = await client.executeDatabaseQuery(
             `SELECT COUNT(*) as cnt FROM "${selectedTable}" WHERE "unique" = true OR "unique" = 1`,
           );
-          uniqueCount = Number(uniqueResult.rows[0]?.cnt ?? 0);
+          const uniqueRows = Array.isArray(uniqueResult.rows)
+            ? uniqueResult.rows
+            : [];
+          uniqueCount = Number(uniqueRows[0]?.cnt ?? 0);
         } catch {
           // column might not exist
         }
@@ -1064,7 +1071,8 @@ export function VectorBrowserView({
           `SELECT ${selectCols} FROM "${selectedTable}" LIMIT 500`,
         );
       }
-      setGraphMemories(result.rows.map(rowToMemory));
+      const rows = Array.isArray(result.rows) ? result.rows : [];
+      setGraphMemories(rows.map(rowToMemory));
     } catch (err) {
       setError(
         t("vectorbrowserview.GraphLoadFailed", {

@@ -16,7 +16,7 @@ manifest, kernel ABI, GGML pin).
 (commit `08032d57`; `git submodule update --init --recursive`, which `bun install`
 runs). This is the unified fork: TurboQuant (turbo3/turbo4/turbo3_tcq) + QJL
 (`block_qjl1_256`, `GGML_OP_ATTN_SCORE_QJL`, `GGML_OP_FUSED_ATTN_QJL_TBQ`) +
-PolarQuant (`block_q4_polar`, `Q4_POLAR=47`) + the milady Metal/Vulkan/CUDA
+PolarQuant (`block_q4_polar`, `Q4_POLAR=47`) + the eliza Metal/Vulkan/CUDA
 kernels + DFlash spec-decode (`--spec-type dflash`, the `dflash-draft` GGUF arch)
 + the post-refactor `llama-server` (`server-task.cpp` / `server-common.cpp` with
 `grammar_lazy` / `json_schema` / `response_format` / `prefill_assistant`), on
@@ -24,10 +24,13 @@ upstream b8198. Both build paths consume it: `build-llama-cpp-dflash.mjs`
 (desktop/server/Windows/iOS) and `aosp/compile-libllama.mjs` (Android) default to
 the submodule checkout. `ELIZA_DFLASH_LLAMA_CPP_REMOTE` / `_REF` (or `--cache-dir`
 / `--src-dir`) still force a standalone clone for fork bisects. (`v1.0.0-eliza` is
-the same tree as the prior `v0.4.0-milady` tag, re-tagged on the elizaOS rename. A
-full rebase onto a recent upstream llama.cpp remains a follow-up — the
-conflict-prone files are the quant-slot enums in `ggml-common.h` / `ggml.h` and the
-`Q1_0` block layout, which upstream redefined incompatibly with the fork's.)
+the same tree as the prior `v0.4.0-eliza` tag, re-tagged on the elizaOS rename. A
+full rebase onto a recent upstream llama.cpp remains a **deferred** follow-up — not
+a blocker for structured output (the b8198 base already has `grammar_lazy` /
+`json_schema` / `response_format` / `prefill_assistant`); the conflict-prone files
+are the quant-slot enums in `ggml-common.h` / `ggml.h` and the `Q1_0` block layout,
+which upstream redefined incompatibly with the fork's. Full cost / conflict surface
+/ trigger conditions: [`docs/porting/upstream-rebase-plan.md`](../../docs/porting/upstream-rebase-plan.md).)
 
 ---
 
@@ -46,9 +49,10 @@ Backbones (do not change without explicit human approval):
   do not name these as "Qwen" in any user-facing string. Internally,
   manifests record the upstream lineage and license; the UI shows
   "Eliza-1 <tier>".
-- **Voice (TTS):** OmniVoice (Qwen3-TTS lineage). The repo at
-  `https://github.com/ServeurpersoCom/omnivoice.cpp` is the C++ source
-  we fuse with llama.cpp. The omnivoice-singing variant adds an
+- **Voice (TTS):** OmniVoice (Qwen3-TTS lineage). The upstream repo at
+  `https://github.com/ServeurpersoCom/omnivoice.cpp`, mirrored for builds at
+  `https://github.com/elizaOS/omnivoice.cpp`, is the C++ source we fuse with
+  llama.cpp. The omnivoice-singing variant adds an
   emotion + singing tag vocabulary (`[singing]`, `[happy]`, `[sad]`,
   `[whisper]`, `[angry]`, `[nervous]`, `[calm]`, `[excited]`, and
   preserved non-verbals `[laughter]`, `[sigh]`). Per Wave-6 user
@@ -86,7 +90,7 @@ Three runtime modes — every code path must work in all three:
 
 Settings rules (enforce in UI + API layer, not just docs):
 - `cloud` mode hides every local-model UI surface, every
-  `MILADY_LOCAL_*` setting, and the local-inference settings panel
+  `ELIZA_LOCAL_*` setting, and the local-inference settings panel
   entirely. The cloud setting page is the only model-related surface.
 - `local-only` mode (a sub-state of `local`) hides every cloud setting
   and every cloud-routed provider. The user must not be able to
@@ -294,11 +298,126 @@ mic / file → ASR → text tokens
 - We do not run text and voice in two processes communicating over IPC.
   That regresses memory and adds a 1–10ms scheduling tax per turn.
 - We do not run a "TTS-only mode" that skips DFlash. DFlash is always
-  on. If the user disables speculative decoding for debugging, that is
-  a developer-only flag (`MILADY_DFLASH_DISABLE=1`), it is not a user
-  setting, and it MUST log a loud warning every turn.
+  on (auto-detected from the managed `llama-server` binary — there is no
+  "enable DFlash" setting). If the user disables speculative decoding for
+  debugging, that is the single developer-only kill-switch
+  `ELIZA_DFLASH_DISABLE=1` (`MILADY_DFLASH_DISABLE=1` is a back-compat
+  alias); it is not a user setting, and it MUST log a loud warning every
+  turn.
 - We do not split voice into "fast TTS" and "high-quality TTS" tiers.
   One voice model per tier, fused, optimized.
+
+### Cross-platform runtime paths (the voice pipeline must run everywhere)
+
+The §4 graph is the same on every platform; the *runtime path* differs:
+
+- **Desktop / server (Linux, Windows, macOS — any GPU: CUDA / ROCm /
+  Vulkan / Metal / CPU):** the spawned fork `llama-server`. The `*-fused`
+  build serves `/v1/audio/speech` in the same process as `/completion` +
+  the DFlash loop (`dflash-server.ts` prefers it over the stock +
+  `llama-omnivoice-server` two-process path). The fused
+  `libelizainference` also exposes the streaming voice ABI:
+  `eliza_inference_tts_synthesize_stream` (OmniVoice's chunked pipeline —
+  PCM chunks emit as they decode) + `eliza_inference_cancel_tts`
+  (hard-cancel an in-flight forward pass at the next chunk boundary, the
+  barge-in path). Streaming ASR (`eliza_inference_asr_stream_*`) and the
+  native DFlash verifier callback are not yet implemented — the runtime
+  uses the windowed-batch ASR adapter (`FfiBatchTranscriber`) and
+  SSE-delta-derived verifier events; both are contract-clean fallbacks,
+  not blockers. (See `packages/inference/reports/porting/2026-05-11/remaining-work-ledger.md` §W7.)
+- **iOS / Android:** the **in-process FFI path** —
+  `@elizaos/llama-cpp-capacitor`'s `LlamaCpp.xcframework` (iOS) /
+  `@elizaos/plugin-aosp-local-inference`'s `compile-libllama.mjs` →
+  `libllama.so` (Android), driven by `aosp-llama-adapter.ts` /
+  `aosp-dflash-adapter.ts`. The voice bridge takes the in-process text
+  runner via `LocalInferenceEngine.runVoiceTurn({ textRunner })` (the
+  adapter's `voiceTextRunner()` adapts its libllama-backed `--spec-type
+  dflash` server onto the `DflashTextRunner` contract). The mic + audio
+  sink go through the Capacitor `Microphone` plugin + a native
+  `AudioTrack` / `AVAudioEngine` sink (both feed a `PushMicSource` /
+  `PcmRingBuffer`); the Silero VAD runs on `onnxruntime-mobile` / the
+  Capacitor ONNX bridge instead of `onnxruntime-node`. Building the iOS
+  fused lib needs a `ios-arm64-metal-fused` target (the Capacitor
+  framework otherwise carries the `omnivoice_*` symbols); building the
+  Android fused libs needs `android-arm64-{cpu,vulkan}-fused`. These
+  builds require an Xcode / Android-Studio (NDK) host respectively.
+
+### Reduced-optimization local mode — "works everywhere regardless of GPU"
+
+§3 requires the TurboQuant/QJL/PolarQuant/DFlash kernels on every bundle
+and forbids a "kernels-missing fallback build". When a backend genuinely
+can't dispatch a required kernel yet (ROCm/HIP — the custom kernels
+aren't HIP-ported; or `turbo3_tcq` as a generic K/V cache type — it has a
+block layout in `ggml-common.h` but no ggml type-traits entry in
+`ggml.c`), there is an **opt-in, loudly-warned, non-publishable** escape
+hatch so the voice pipeline still *runs* on that backend:
+
+- **Runtime:** `MILADY_LOCAL_ALLOW_STOCK_KV=1` — `backend.ts`'s
+  `BackendDispatcher.load()` and `dflash-server.ts`'s
+  `resolveCacheTypeForBackend()` load the model with stock `f16` KV
+  instead of hard-refusing on a missing kernel, with a loud one-time
+  warning (`warnReducedOptimizationLocalMode`). The default (no env var)
+  still hard-refuses.
+- **Build:** `ELIZA_DFLASH_ALLOW_REDUCED_KERNELS=1` (or
+  `MILADY_LOCAL_ALLOW_STOCK_KV=1`) — `build-llama-cpp-dflash.mjs`'s
+  `writeCapabilities()` writes `publishable: false` +
+  `reducedOptimizationLocalMode: true` and `return`s instead of throwing.
+  The default still throws (the §3 contract).
+
+This is NOT a default and NOT publishable: `defaultEligible` bundles
+still require the verified kernels per backend
+(`eliza-1.manifest.json` `kernels.verifiedBackends`), and the
+recommendation engine still refuses a `defaultEligible: false` bundle as
+a default. The reconciliation with the "works everywhere regardless of
+GPU" directive: the build dispatches the kernels on every backend where
+it can (Metal: all 5; CUDA: fork binary; Vulkan: source-patched + a
+runtime-dispatch-evidence file; CPU: turbo3/turbo4 via `tbq3_0`/`tbq4_0`
+plus the `--cache-type-k/v` whitelist extended with `qjl1_256`/`q4_polar`
+by `patchServerKvCacheTypeNames`), and the reduced mode is the
+loudly-flagged hatch for the rest. Cross-platform support matrix:
+[`docs/voice-interactive.md`](../../docs/voice-interactive.md#cross-platform-voice-support-matrix).
+
+### Guided structured decoding (HTTP surface — not a mandatory kernel)
+
+When the model's job is a *structured* response (action selection / tool
+call / typed object), the runtime forces the JSON shape in the decode
+loop instead of letting the model spell out scaffolding it already
+knows:
+
+- `@elizaos/core` `buildResponseGrammar` / `buildPlannerActionGrammar`
+  walk the registered actions (the `normalizeActionName` ids are the
+  canonical short on-wire form) + Stage-1 field evaluators + context ids
+  and emit a `ResponseSkeleton` + a precise GBNF string. `message.ts`
+  (Stage 1) and `planner-loop.ts` (Stage 2) attach them to the model
+  call as `responseSkeleton` / `grammar`.
+- The local engine compiles the skeleton to a **lazy GBNF**
+  (`compileSkeletonToGbnf` in
+  `packages/app-core/src/services/local-inference/structured-output.ts`)
+  — single-value enums collapse to literals, so the model samples
+  nothing for a one-action turn.
+- On top of that, `compilePrefillPlan` derives an `ElizaPrefillPlan` —
+  the runs of bytes the schema *fully determines* (the JSON scaffold,
+  fixed key names, the rest of an enum after enough prefix), shipped on
+  the request as `eliza_prefill_plan`. A fork build that consumes it
+  splices those token ids without a forward pass and advances the
+  decoder to the next free param; the runtime sends it whenever guided
+  decode is on and degrades to the grammar-only path otherwise (the
+  lazy GBNF still forces the same bytes — correctness is unaffected).
+  `eliza_prefill_plan` is an elizaOS-fork extension reported (present /
+  absent) by `kernel-patches/server-structured-output.mjs`; absent in
+  the current pin. **Off by default** — `ensure-local-inference-handler.ts`
+  only builds the `ElizaHarnessSchema` (skeleton + grammar + prefill plan +
+  short/long name maps) when `providerOptions.eliza.guidedDecode === true`
+  or `MILADY_LOCAL_GUIDED_DECODE=1`; unguided generation is untouched.
+- Token-savings bench: `verify/guided_decode_token_bench.mjs` (static
+  mode always runs; `--bin … --model …` for a live wall-time delta).
+- Design + the prefill-plan format + measured savings:
+  [`reports/porting/2026-05-11/guided-structured-decoding.md`](reports/porting/2026-05-11/guided-structured-decoding.md).
+
+Structured output is an HTTP surface, NOT on the §3 mandatory-kernel
+path — text, voice, embedding, and the DFlash spec loop don't need it,
+so `server-structured-output.mjs` is *tolerant* (warns, never fails) and
+the §3 fail-closed rule does not apply to it.
 
 ---
 
@@ -462,7 +581,7 @@ backend nightly.
   produce numerically identical output (within published tolerance) to
   the C reference in `packages/inference/reference/` and to the
   upstream CUDA implementation in
-  `packages/native-plugins/{qjl-cpu,polarquant-cpu}` and the buun-llama-cpp
+  `packages/native-plugins/{qjl-cpu,polarquant-cpu}` and the `elizaOS/llama.cpp`
   fork. New kernels follow the same pattern: ship the C reference and
   a JSON fixture before shipping the Vulkan/Metal port.
 - **Hardware verification is non-optional.** A "compiles cleanly"
@@ -495,10 +614,8 @@ backend nightly.
   from the in-repo `packages/inference/llama.cpp` submodule.
 - `packages/training/AGENTS.md` — the training-side contract, including
   what the bundle/publish flow expects.
-- `/Users/shawwalters/eliza-workspace/milady/CLAUDE.md` — repo-wide
-  conventions (port handling, scope discipline, elizaOS naming).
-- `/Users/shawwalters/eliza-workspace/milady/AGENTS.md` — repo-wide
-  cleanup mandate. The non-negotiable architecture rules apply here
-  too: dependencies point inward, no polymorphism for runtime branching
-  in code (kernels are a registry, not an `if`), no `try/catch` that
-  swallows.
+- the repo-root `AGENTS.md` — repo-wide cleanup mandate and conventions
+  (port handling, scope discipline, elizaOS naming). The non-negotiable
+  architecture rules apply here too: dependencies point inward, no
+  polymorphism for runtime branching in code (kernels are a registry,
+  not an `if`), no `try/catch` that swallows.

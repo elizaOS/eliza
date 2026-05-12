@@ -156,12 +156,8 @@ export const voiceImprintObservations = pgTable(
   (table) => ({
     clusterIdx: index("voice_imprint_observations_cluster_idx").on(table.clusterId),
     organizationIdx: index("voice_imprint_observations_org_idx").on(table.organizationId),
-    conversationIdx: index("voice_imprint_observations_conversation_idx").on(
-      table.conversationId,
-    ),
-    messageIdx: index("voice_imprint_observations_message_idx").on(
-      table.conversationMessageId,
-    ),
+    conversationIdx: index("voice_imprint_observations_conversation_idx").on(table.conversationId),
+    messageIdx: index("voice_imprint_observations_message_idx").on(table.conversationMessageId),
     sourceIdx: index("voice_imprint_observations_source_idx").on(
       table.organizationId,
       table.sourceKind,
@@ -218,24 +214,16 @@ export const conversationSpeakerAttributions = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    conversationIdx: index("conversation_speaker_attr_conversation_idx").on(
-      table.conversationId,
-    ),
-    messageIdx: index("conversation_speaker_attr_message_idx").on(
-      table.conversationMessageId,
-    ),
+    conversationIdx: index("conversation_speaker_attr_conversation_idx").on(table.conversationId),
+    messageIdx: index("conversation_speaker_attr_message_idx").on(table.conversationMessageId),
     clusterIdx: index("conversation_speaker_attr_cluster_idx").on(table.clusterId),
-    observationIdx: index("conversation_speaker_attr_observation_idx").on(
-      table.observationId,
-    ),
+    observationIdx: index("conversation_speaker_attr_observation_idx").on(table.observationId),
     entityIdx: index("conversation_speaker_attr_entity_idx").on(table.entityId),
     sourceIdx: index("conversation_speaker_attr_source_idx").on(
       table.organizationId,
       table.sourceKind,
     ),
-    attributedAtIdx: index("conversation_speaker_attr_attributed_at_idx").on(
-      table.attributedAt,
-    ),
+    attributedAtIdx: index("conversation_speaker_attr_attributed_at_idx").on(table.attributedAt),
     synthesisDisabledCheck: check(
       "conversation_speaker_attr_synthesis_disabled_check",
       sql`${table.synthesisAllowed} = false`,

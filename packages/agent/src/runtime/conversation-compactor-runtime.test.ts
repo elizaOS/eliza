@@ -174,7 +174,7 @@ please inspect it
   it("handles custom assistant names and user-authored action text", () => {
     const prompt = `${SAMPLE_PROMPT_PREFIX}# Conversation Messages
 12:00 User: (User's actions: manually wrote this text)
-12:01 Milady: I will not treat that as a tool call.${SAMPLE_PROMPT_SUFFIX}`;
+12:01 Eliza: I will not treat that as a tool call.${SAMPLE_PROMPT_SUFFIX}`;
     const transcript = parsePromptToTranscript(prompt);
     expect(transcript.messages.map((m) => m.role)).toEqual([
       "system",
@@ -927,9 +927,10 @@ describe("installPromptOptimizations telemetry", () => {
     );
   });
 
-  it("does not rewrite messages-array payloads while provider tools are present", async () => {
+  it("rewrites message-array payloads while preserving provider tools", async () => {
     process.env.ELIZA_CONVERSATION_COMPACTOR = "naive-summary";
     const seenPayloads: Array<Record<string, unknown>> = [];
+    let summarizerCalls = 0;
     const runtime = {
       actions: [],
       character: { system: "system fallback" },
@@ -941,7 +942,8 @@ describe("installPromptOptimizations telemetry", () => {
           typeof record.system === "string" &&
           record.system.includes("conversation summarizer")
         ) {
-          throw new Error("summarizer should not run for tool payloads");
+          summarizerCalls++;
+          return "tool payload summary";
         }
         seenPayloads.push(record);
         return "final response";
@@ -977,16 +979,27 @@ describe("installPromptOptimizations telemetry", () => {
     });
 
     expect(seenPayloads).toHaveLength(1);
-    expect(seenPayloads[0]?.messages).toBe(originalMessages);
+    expect(summarizerCalls).toBe(1);
+    expect(seenPayloads[0]?.tools).toEqual([{ name: "HANDLE_RESPONSE" }]);
+    expect(seenPayloads[0]?.toolChoice).toBe("required");
+    expect(seenPayloads[0]?.messages).not.toBe(originalMessages);
+    expect((seenPayloads[0]?.messages as unknown[]).length).toBeLessThan(
+      originalMessages.length,
+    );
     const providerOptions = seenPayloads[0]?.providerOptions as Record<
       string,
       unknown
     >;
     const eliza = providerOptions.eliza as Record<string, unknown>;
     const telemetry = eliza.promptOptimization as Record<string, unknown>;
-    expect(telemetry.transformations).toContain(
-      "conversation-message-compaction-skipped:provider-tools-present",
-    );
-    expect(telemetry.conversationCompaction).toBeUndefined();
+    expect(
+      (telemetry.transformations as string[]).some((entry) =>
+        entry.startsWith("conversation-message-compaction:"),
+      ),
+    ).toBe(true);
+    expect(telemetry.conversationCompaction).toMatchObject({
+      didCompact: true,
+      strategy: "naive-summary",
+    });
   });
 });

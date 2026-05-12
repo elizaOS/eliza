@@ -203,6 +203,10 @@ Version Status
   Installed:  1.2.0
   Channel:    stable
   Install:    npm-global
+  Authority:  package-manager
+  Next:       run-package-manager-command
+  Command:    npm install -g elizaos@latest
+  Can run:    yes
 
 Available Versions
 
@@ -214,6 +218,15 @@ Available Versions
 ```
 
 The status command fetches live data from the npm registry (not cached) to show the most current versions across all channels.
+
+The `Authority` and `Next` fields make the update owner explicit:
+
+| Install Method | Authority | Next Action |
+|----------------|-----------|-------------|
+| `npm-global`, `bun-global`, `homebrew` | `package-manager` | Run the displayed package-manager command locally |
+| `apt`, `snap`, `flatpak` | `os-package-manager` | Run the displayed OS package-manager command on the host |
+| `local-dev` | `developer` | Run `git pull` in the checkout |
+| `unknown` | `operator` | Review the installation; the CLI can fall back to npm locally |
 
 ### `eliza update channel [name]`
 
@@ -290,6 +303,19 @@ elizaos@nightly    (nightly channel)
 For Homebrew, the command is simply `brew upgrade eliza` (Homebrew manages version resolution internally). The `apt` case wraps the update in `sh -c` since it requires two sequential commands.
 
 For `local-dev` installs, `buildUpdateCommand()` returns `null` and the CLI prints a message directing the user to use `git pull` instead.
+
+`getUpdateActionPlan()` wraps the detected method and command in status metadata used by both the CLI and REST API:
+
+| Field | Meaning |
+|-------|---------|
+| `authority` | The update owner: package manager, OS package manager, developer checkout, or operator review |
+| `nextAction` | The local action to take next |
+| `canAutoUpdate` | Whether the local CLI updater has a command path for the method |
+| `canExecuteFromContext` | Whether the current caller context can execute it |
+| `remoteDisplay` | Whether the information is being shown over a remote API request |
+| `command` | Human-readable host command, or `git pull` for local development |
+
+Remote REST status responses are display-only. They can show the command that should be run on the host, but Eliza intentionally does not provide a remote update execution endpoint.
 
 ## Update Process
 

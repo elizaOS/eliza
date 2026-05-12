@@ -306,7 +306,7 @@ When a long-running sub-agent (Claude Code, Codex) is mid-execution and the user
 Mechanism:
 - Sub-agent spawn creates `~/.eliza/workspaces/<sessionId>/steering.jsonl`.
 - Parent appends `{type: "steer", message: "<text>", from: "user", at: "<iso>"}` lines.
-- Sub-agent's PreToolUse hook (already present per the milady-runtime skill) reads new lines since last check, prepends them to the next LLM prompt.
+- Sub-agent's PreToolUse hook (already present per the eliza-runtime skill) reads new lines since last check, prepends them to the next LLM prompt.
 - Bridge HTTP endpoint at `coding-agents/<sessionId>/steer` accepts POSTs from the parent and writes to the file (atomic append).
 
 InterruptBench task **C1** ("use typescript not python" mid-coding) is the canonical test of this surface. Until Wave 4 lands, C1 scores partial credit only.
@@ -456,7 +456,7 @@ packages/benchmarks/interrupt-bench/
 
 - All `Date.now()` and `setTimeout` in code paths under test must use the runtime's injected `clock`. The runtime already has a clock seam (see `runtime.ts:6248` `abortableSleep`); we extend it to be the only time source. Direct `Date.now()` calls in the hot path become a Wave 1 cleanup target.
 - The scripted LLM fixture keys responses by `(role, sha1(canonicalize(messages)), call_index)`. `canonicalize` lowercases action names, strips whitespace, and strips ISO timestamps to make fixtures stable across cosmetic prompt edits. When a key misses, the harness fails the task with `FIXTURE_MISS` and prints the missing key so the operator can re-record.
-- Seed for any randomness: `MILADY_BENCH_SEED=0xCAFEBABE`. The runtime's `randomUUID` reads from a seeded PRNG in bench mode.
+- Seed for any randomness: `ELIZA_BENCH_SEED=0xCAFEBABE`. The runtime's `randomUUID` reads from a seeded PRNG in bench mode.
 
 ### 6.6 Gameability defenses (no private holdout)
 

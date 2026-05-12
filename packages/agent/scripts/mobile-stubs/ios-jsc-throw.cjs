@@ -1,5 +1,5 @@
 // Generic throw-on-use stub for Node built-ins not supported by the iOS
-// JSContext runtime via __MILADY_BRIDGE__ v1.
+// JSContext runtime via __ELIZA_BRIDGE__ v1.
 //
 // Currently used for: node:net, node:tls, node:dgram, node:cluster,
 // worker_threads. The Swift Capacitor plugin in
@@ -12,7 +12,7 @@
 
 const NOT_SUPPORTED =
   "This Node module is not available in the iOS JSContext runtime (ios-jsc). " +
-  "Use fetch() / WebSocket via __MILADY_BRIDGE__ instead, or gate the call " +
+  "Use fetch() / WebSocket via __ELIZA_BRIDGE__ instead, or gate the call " +
   "behind a process.env.ELIZA_RUNTIME !== 'ios-jsc' check.";
 
 function throwUnsupported() {

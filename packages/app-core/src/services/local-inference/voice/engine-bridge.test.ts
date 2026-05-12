@@ -22,6 +22,7 @@ import { fakeFfi } from "./__test-helpers__/fake-ffi";
 import {
   FfiOmniVoiceBackend,
   isStreamingTtsBackend,
+  nativeRejectedRangeToRollbackRange,
   StubOmniVoiceBackend,
   type TtsPcmChunk,
 } from "./engine-bridge";
@@ -135,6 +136,23 @@ describe("FfiOmniVoiceBackend — streaming TTS routing", () => {
       ctx: 1n,
     });
     expect(() => backend.cancelTts()).not.toThrow();
+  });
+});
+
+describe("nativeRejectedRangeToRollbackRange", () => {
+  it("converts native half-open verifier ranges to inclusive rollback ranges", () => {
+    expect(
+      nativeRejectedRangeToRollbackRange({ rejectedFrom: 3, rejectedTo: 7 }),
+    ).toEqual({ fromIndex: 3, toIndex: 6 });
+  });
+
+  it("ignores empty and absent native verifier ranges", () => {
+    expect(
+      nativeRejectedRangeToRollbackRange({ rejectedFrom: -1, rejectedTo: -1 }),
+    ).toBeNull();
+    expect(
+      nativeRejectedRangeToRollbackRange({ rejectedFrom: 5, rejectedTo: 5 }),
+    ).toBeNull();
   });
 });
 

@@ -1,34 +1,32 @@
 /**
- * Tests for the `VoicePipeline` seam implementations (`pipeline-impls.ts`):
+ * Tests for the `VoicePipeline` seam implementations (`pipeline-impls.ts`)
+ * plus the shared `splitTranscriptToTokens` helper (`pipeline.ts`):
  *   - `splitTranscriptToTokens` round-trips to the original text on join()
- *   - `FfiAsrTokenStreamer` streams the FFI ASR transcript token-by-token
- *     and stops on cancel
  *   - `MissingAsrTranscriber` hard-fails (AGENTS.md §3 — no silent fallback)
  *   - `LlamaServerDraftProposer` honours `maxDraft`, returns [] with no drafter,
  *     and returns [] on cancel
  *   - `LlamaServerTargetVerifier` derives accept tokens + `done` from the
  *     server's streamed deltas (and falls back to splitting plain text)
- *   - the three impls drive a real `VoicePipeline` end-to-end through a
- *     `VoiceScheduler` (wired-through path)
+ *   - the impls drive a real `VoicePipeline` end-to-end through a
+ *     `VoiceScheduler` (wired-through path) with a stub `StreamingTranscriber`
  */
 
 import { describe, expect, it } from "vitest";
 import { VoiceStartupError } from "./errors";
-import type { ElizaInferenceFfi } from "./ffi-bindings";
-import { VoicePipeline } from "./pipeline";
+import { splitTranscriptToTokens, VoicePipeline } from "./pipeline";
 import {
   type DflashTextRunner,
-  FfiAsrTokenStreamer,
   LlamaServerDraftProposer,
   LlamaServerTargetVerifier,
   MissingAsrTranscriber,
-  splitTranscriptToTokens,
 } from "./pipeline-impls";
 import { InMemoryAudioSink } from "./ring-buffer";
 import { VoiceScheduler } from "./scheduler";
 import type {
   SpeakerPreset,
+  StreamingTranscriber,
   TranscriptionAudio,
+  TranscriptUpdate,
   VerifierStreamEvent,
 } from "./types";
 
@@ -46,28 +44,18 @@ const audio: TranscriptionAudio = {
   sampleRate: 16_000,
 };
 
-/** Minimal `ElizaInferenceFfi` stand-in: only `asrTranscribe` is exercised. */
-function fakeFfi(transcript: string): ElizaInferenceFfi {
+/**
+ * Minimal `StreamingTranscriber` stub for the wired-through test: `feed`
+ * accumulates nothing, `flush()` returns the supplied transcript.
+ */
+function stubTranscriber(transcript: string): StreamingTranscriber {
   return {
-    libraryPath: "/fake/libelizainference.so",
-    libraryAbiVersion: "2",
-    create: () => 1n,
-    destroy: () => {},
-    mmapAcquire: () => {},
-    mmapEvict: () => {},
-    ttsSynthesize: () => 0,
-    asrTranscribe: () => transcript,
-    ttsStreamSupported: () => false,
-    ttsSynthesizeStream: () => ({ cancelled: false }),
-    cancelTts: () => {},
-    setVerifierCallback: () => ({ close: () => {} }),
-    asrStreamSupported: () => false,
-    asrStreamOpen: () => 0n,
-    asrStreamFeed: () => {},
-    asrStreamPartial: () => ({ partial: "" }),
-    asrStreamFinish: () => ({ partial: "" }),
-    asrStreamClose: () => {},
-    close: () => {},
+    feed: () => {},
+    async flush(): Promise<TranscriptUpdate> {
+      return { partial: transcript, isFinal: true };
+    },
+    on: () => () => {},
+    dispose: () => {},
   };
 }
 
@@ -113,45 +101,49 @@ describe("splitTranscriptToTokens", () => {
     expect(tokens[0].index).toBe(5);
     expect(tokens.at(-1)?.index).toBe(5 + tokens.length - 1);
   });
-});
 
-describe("FfiAsrTokenStreamer", () => {
-  it("streams the FFI ASR transcript token by token", async () => {
-    const t = new FfiAsrTokenStreamer({
-      ffi: fakeFfi("the quick brown fox"),
-      getContext: () => 1n,
-    });
-    const out: string[] = [];
-    for await (const tok of t.transcribeStream(audio, { cancelled: false })) {
-      out.push(tok.text);
-    }
-    expect(out.join("")).toBe("the quick brown fox");
-  });
-
-  it("stops when cancelled", async () => {
-    const t = new FfiAsrTokenStreamer({
-      ffi: fakeFfi("a b c d e"),
-      getContext: () => 1n,
-    });
-    const cancel = { cancelled: false };
-    const out: string[] = [];
-    for await (const tok of t.transcribeStream(audio, cancel)) {
-      out.push(tok.text);
-      cancel.cancelled = true; // cancel after the first token
-    }
-    expect(out).toEqual(["a"]);
+  it("attaches token ids only when their count matches the chunk count", () => {
+    const matched = splitTranscriptToTokens("a b c", 0, [10, 11, 12]);
+    expect(matched.map((t) => t.id)).toEqual([10, 11, 12]);
+    const mismatched = splitTranscriptToTokens("a b c", 0, [10, 11]);
+    expect(mismatched.every((t) => t.id === undefined)).toBe(true);
   });
 });
 
 describe("MissingAsrTranscriber", () => {
   it("throws VoiceStartupError instead of falling back (AGENTS.md §3)", async () => {
     const t = new MissingAsrTranscriber("no asr region");
-    const drain = async () => {
-      for await (const _ of t.transcribeStream()) {
-        // unreachable
-      }
-    };
-    await expect(drain()).rejects.toThrow(VoiceStartupError);
+    expect(() =>
+      t.feed({ pcm: new Float32Array(0), sampleRate: 16_000, timestampMs: 0 }),
+    ).toThrow(VoiceStartupError);
+    await expect(t.flush()).rejects.toThrow(VoiceStartupError);
+  });
+
+  it("surfaces the hard failure through a VoicePipeline turn", async () => {
+    const sink = new InMemoryAudioSink();
+    const scheduler = new VoiceScheduler(
+      {
+        chunkerConfig: { maxTokensPerPhrase: 4 },
+        preset: makePreset(),
+        ringBufferCapacity: 4096,
+        sampleRate: 24000,
+      },
+      { backend: new StubBackend(), sink },
+    );
+    const pipeline = new VoicePipeline(
+      {
+        scheduler,
+        transcriber: new MissingAsrTranscriber("no asr region"),
+        drafter: new LlamaServerDraftProposer(
+          fakeRunner({ hasDrafter: false, responses: [] }),
+        ),
+        verifier: new LlamaServerTargetVerifier(
+          fakeRunner({ hasDrafter: false, responses: [] }),
+        ),
+      },
+      { maxDraftTokens: 4 },
+    );
+    await expect(pipeline.run(audio)).rejects.toThrow(VoiceStartupError);
   });
 });
 
@@ -241,12 +233,9 @@ describe("LlamaServerTargetVerifier", () => {
   });
 });
 
-describe("wired-through VoicePipeline (FFI ASR + llama-server draft/verify)", () => {
+describe("wired-through VoicePipeline (StreamingTranscriber + llama-server draft/verify)", () => {
   it("runs ASR → draft∥verify → chunker → TTS end to end", async () => {
-    const transcriber = new FfiAsrTokenStreamer({
-      ffi: fakeFfi("hi"),
-      getContext: () => 1n,
-    });
+    const transcriber = stubTranscriber("hi");
     // Round 1: drafter proposes ["foo."], verifier accepts ["foo.", " bar."]
     //   (budget for a 1-token draft = 2; produced == 2 → not done).
     // Round 2: drafter proposes nothing (empty), verifier accepts ["end."]

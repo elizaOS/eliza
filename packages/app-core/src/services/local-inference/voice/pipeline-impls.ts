@@ -1,24 +1,16 @@
 /**
  * Concrete implementations of the `VoicePipeline` seams (`pipeline.ts`).
  *
- * `pipeline.ts` defines three interfaces — `AsrTokenStreamer`,
- * `DraftProposer`, `TargetVerifier` — and an overlapped scheduler that
- * drives the fused mic→speech graph from `packages/inference/AGENTS.md`
- * §4. This module fills those interfaces against the live runtime:
+ * `pipeline.ts` defines two interfaces — `DraftProposer`, `TargetVerifier`
+ * — plus the ASR contract (it consumes the live `StreamingTranscriber`
+ * from `voice/types.ts` directly) and an overlapped scheduler that drives
+ * the fused mic→speech graph from `packages/inference/AGENTS.md` §4. This
+ * module fills those interfaces against the live runtime:
  *
- *   - `StreamingTranscriberTokenStreamer` — the real ASR backend. Adapts a
- *     live frame-fed `StreamingTranscriber` (`voice/transcriber.ts`: fused
- *     `eliza_inference_asr_stream_*` → whisper.cpp interim) onto the
- *     pipeline's batch `transcribeStream` token-iterator: it feeds the
- *     whole utterance buffer, `flush()`es, and yields the final transcript
- *     split into contiguous text tokens. An optional `VadEventSource`
- *     (W1's `VadDetector`) gates decoding to active speech windows.
- *   - `FfiAsrTokenStreamer` — wraps the v1 batch ABI's ASR
- *     (`eliza_inference_asr_transcribe` via `ElizaInferenceFfi`) directly.
- *     Kept for callers/tests that drive the v1 symbol; the streaming
- *     adapter above is the preferred path.
- *   - `MissingAsrTranscriber` — hard-fails when no ASR backend is
- *     available (AGENTS.md §3 — no silent cloud fallback).
+ *   - `MissingAsrTranscriber` — a `StreamingTranscriber` that hard-fails
+ *     when no ASR backend is available (AGENTS.md §3 — no silent cloud
+ *     fallback). The bridge's `resolveTranscriber()` returns this instead
+ *     of throwing eagerly so the failure surfaces at turn time.
  *   - `LlamaServerDraftProposer` — the DFlash drafter, reached through
  *     the running `llama-server`'s `-md` drafter. GPU dispatch N=1 (no
  *     command-buffer batching for voice — ledger "Keep voice dispatch
@@ -36,192 +28,51 @@
  * fallback, never log-and-continue.
  *
  * Why a separate file from `pipeline.ts`: `pipeline.ts` stays
- * dependency-free (it is the streaming contract, importable by text-only
- * callers). The runtime wiring — FFI handles, the llama-server backend —
- * lives here so the contract module does not drag those in.
+ * dependency-light (it is the streaming contract, importable by text-only
+ * callers). The runtime wiring — the llama-server backend — lives here so
+ * the contract module does not drag it in.
  */
 
 import type { DflashGenerateArgs, DflashLlamaServer } from "../dflash-server";
 import { VoiceStartupError } from "./errors";
-import type {
-  ElizaInferenceContextHandle,
-  ElizaInferenceFfi,
-} from "./ffi-bindings";
-import type {
-  AsrTokenStreamer,
-  DraftProposer,
-  TargetVerifier,
+import {
+  type DraftProposer,
+  splitTranscriptToTokens,
+  type TargetVerifier,
 } from "./pipeline";
 import type {
   PcmFrame,
   StreamingTranscriber,
   TextToken,
-  TranscriptionAudio,
+  TranscriptUpdate,
   VerifierStreamEvent,
 } from "./types";
 
 /* ------------------------------------------------------------------ */
-/* AsrTokenStreamer                                                    */
+/* ASR — missing-backend deferral                                      */
 /* ------------------------------------------------------------------ */
 
 /**
- * Split a transcript string into contiguous text tokens. The fused ASR
- * tokenizer is shared with the text backbone (AGENTS.md §1 — zero
- * re-tokenization), so the pipeline only needs *contiguous* token
- * indices, not the model's exact subword boundaries; whitespace-aware
- * word chunking is the closest stable approximation when only surface
- * text is available. Empty input yields no tokens.
- *
- * `tokenIds`, when supplied, are the text-model vocabulary ids the fused
- * ASR decoder emitted for `transcript`. When the lengths line up they are
- * attached as `TextToken.id` so a downstream in-process handoff can skip
- * re-tokenization; otherwise (mismatch — the surface split disagrees with
- * the decoder's subword boundaries) the ids are dropped and only the
- * word-chunk approximation is returned.
- */
-export function splitTranscriptToTokens(
-  transcript: string,
-  startIndex = 0,
-  tokenIds?: ReadonlyArray<number>,
-): TextToken[] {
-  const trimmed = transcript.trim();
-  if (trimmed.length === 0) return [];
-  // Keep leading whitespace attached to each chunk after the first so a
-  // join() round-trips to the original spacing (matches how the chunker
-  // reconstructs phrase text from token.text concatenation).
-  const parts = trimmed.split(/(?<=\S)(?=\s)/).filter((p) => p.length > 0);
-  const tokens: TextToken[] = [];
-  // Pass through real token ids only when the producer's id count matches
-  // the surface-chunk count — anything else means the two disagree on
-  // boundaries and a positional join would mislabel ids.
-  const ids =
-    tokenIds && tokenIds.length === parts.length ? tokenIds : undefined;
-  let i = startIndex;
-  for (let p = 0; p < parts.length; p++) {
-    const token: TextToken = { index: i++, text: parts[p] };
-    if (ids) token.id = ids[p];
-    tokens.push(token);
-  }
-  return tokens;
-}
-
-/**
- * Real ASR backend for the overlapped `VoicePipeline`: adapts a live
- * frame-fed `StreamingTranscriber` (`voice/transcriber.ts` — the fused
- * `eliza_inference_asr_stream_*` decoder, or the whisper.cpp interim
- * adapter, or whatever `EngineVoiceBridge.createStreamingTranscriber`
- * resolved) onto the pipeline's batch `transcribeStream` token-iterator.
- *
- * The pipeline scaffold hands a whole utterance buffer; this adapter
- * feeds it as one frame, `flush()`es to finalize, and yields the final
- * transcript split into contiguous text tokens (one `await` between
- * tokens so a barge-in cancel lands before the next one). The transcriber
- * is disposed when the iterator ends or `cancel` trips. When `VadDetector`
- * (W1) is wired into the underlying `StreamingTranscriber`, decoding is
- * gated to active speech windows there — this layer is unchanged.
- */
-export class StreamingTranscriberTokenStreamer implements AsrTokenStreamer {
-  private readonly transcriber: StreamingTranscriber;
-
-  constructor(transcriber: StreamingTranscriber) {
-    this.transcriber = transcriber;
-  }
-
-  async *transcribeStream(
-    audio: TranscriptionAudio,
-    cancel: { cancelled: boolean },
-  ): AsyncIterable<TextToken> {
-    try {
-      if (cancel.cancelled) return;
-      const frame: PcmFrame = {
-        pcm: audio.pcm,
-        sampleRate: audio.sampleRate,
-        timestampMs: 0,
-      };
-      this.transcriber.feed(frame);
-      const final = await this.transcriber.flush();
-      if (cancel.cancelled) return;
-      // The fused Qwen3-ASR decoder shares the text vocab (AGENTS.md §1),
-      // so when it reports token ids alongside the transcript they are
-      // forwarded as `TextToken.id` — the whisper.cpp interim adapter
-      // omits them (different tokenizer) and the word-chunk fallback is
-      // used.
-      for (const token of splitTranscriptToTokens(
-        final.partial,
-        0,
-        final.tokens,
-      )) {
-        if (cancel.cancelled) return;
-        yield token;
-        await Promise.resolve();
-      }
-    } finally {
-      this.transcriber.dispose();
-    }
-  }
-}
-
-/**
- * `AsrTokenStreamer` over the v1 batch ABI's ASR. Construction is cheap;
- * `transcribeStream` calls the synchronous FFI `asrTranscribe` once and
- * then yields the resulting tokens one at a time so downstream nodes (the
- * drafter/verifier kick-off) see the same finite token-stream shape they
- * would from a true streaming decoder.
- *
- * `getContext` is the lazily-created `ElizaInferenceContextHandle` the
- * bridge owns — passing it as a thunk keeps this adapter from forcing the
- * context allocation before voice is actually used.
- */
-export class FfiAsrTokenStreamer implements AsrTokenStreamer {
-  private readonly ffi: ElizaInferenceFfi;
-  private readonly getContext: () => ElizaInferenceContextHandle;
-  private readonly maxTextBytes: number;
-
-  constructor(args: {
-    ffi: ElizaInferenceFfi;
-    getContext: () => ElizaInferenceContextHandle;
-    maxTextBytes?: number;
-  }) {
-    this.ffi = args.ffi;
-    this.getContext = args.getContext;
-    this.maxTextBytes = args.maxTextBytes ?? 8192;
-  }
-
-  async *transcribeStream(
-    audio: TranscriptionAudio,
-    cancel: { cancelled: boolean },
-  ): AsyncIterable<TextToken> {
-    if (cancel.cancelled) return;
-    const transcript = this.ffi.asrTranscribe({
-      ctx: this.getContext(),
-      pcm: audio.pcm,
-      sampleRateHz: audio.sampleRate,
-      maxTextBytes: this.maxTextBytes,
-    });
-    if (cancel.cancelled) return;
-    for (const token of splitTranscriptToTokens(transcript)) {
-      if (cancel.cancelled) return;
-      yield token;
-      // Yield to the event loop between tokens so a barge-in cancel that
-      // arrives mid-stream lands before the next token is emitted.
-      await Promise.resolve();
-    }
-  }
-}
-
-/**
- * `AsrTokenStreamer` that hard-fails: used when no ASR backend is
+ * A `StreamingTranscriber` that hard-fails: used when no ASR backend is
  * available (no fused streaming decoder, no whisper.cpp binary/model, no
  * bundled ASR region) but a voice turn was requested. AGENTS.md §3 —
  * missing required voice backend in voice mode is a thrown
- * `VoiceStartupError`, never a silent fallback.
+ * `VoiceStartupError`, never a silent fallback. The bridge returns this
+ * from `resolveTranscriber()` so the failure surfaces when the pipeline
+ * actually feeds audio rather than at bridge construction.
  */
-export class MissingAsrTranscriber implements AsrTokenStreamer {
+export class MissingAsrTranscriber implements StreamingTranscriber {
   constructor(private readonly reason: string) {}
-  // biome-ignore lint/correctness/useYield: intentionally throws before yielding
-  async *transcribeStream(): AsyncIterable<TextToken> {
+  feed(_frame: PcmFrame): void {
     throw new VoiceStartupError("missing-fused-build", this.reason);
   }
+  async flush(): Promise<TranscriptUpdate> {
+    throw new VoiceStartupError("missing-fused-build", this.reason);
+  }
+  on(): () => void {
+    return () => {};
+  }
+  dispose(): void {}
 }
 
 /* ------------------------------------------------------------------ */

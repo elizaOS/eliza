@@ -2,7 +2,7 @@
 
 **Agent:** Wave-2 verification F
 **Branch under test:** `worktree-agent-a3c71657bc262dcc9` (W1-F merged in via `7917063070`)
-**Worktree:** `/home/shaw/milady/eliza/.claude/worktrees/agent-a3c71657bc262dcc9`
+**Worktree:** `/home/shaw/eliza/eliza/.claude/worktrees/agent-a3c71657bc262dcc9`
 **Date:** 2026-05-09
 
 ## Summary

@@ -1,7 +1,7 @@
-# Milady Mobile (iOS + Android) — Scathing Audit & Build-Tier Implementation Plan
+# Eliza Mobile (iOS + Android) — Scathing Audit & Build-Tier Implementation Plan
 
 **Date:** 2026-05-11
-**Scope:** Run the entire Milady (elizaOS) application on mobile, local-first, across three distribution tiers — App Store, Xcode developer install, sideload.
+**Scope:** Run the entire Eliza (elizaOS) application on mobile, local-first, across three distribution tiers — App Store, Xcode developer install, sideload.
 **Verdict (tl;dr):** The plumbing is much further along than I expected. The strategy is wrong. The iOS team capitulated to a "cloud agent" architecture under a misreading of Apple's JIT rules. The on-device agent is buildable today on iOS, in the WebView's JIT-enabled JavaScriptCore, with the existing PGlite + LlamaCppCapacitor stack — and the work to get there is mostly deletion and rewiring, not new code.
 
 ---
@@ -30,7 +30,7 @@ The Android architecture was built around a Bun subprocess because Android *allo
 
 - `eliza/packages/app-core/platforms/ios/` — full Capacitor template directory. Regenerated into `apps/app/ios/` on every build via `run-mobile-build.mjs ios-overlay`. Gitignored output.
 - `App.xcodeproj` + `App.xcworkspace`, `AppDelegate.swift` (UIKit lifecycle, APNs gated on `ELIZA_APNS_ENABLED`), `SceneDelegate.swift`, `ElizaIntentPlugin.swift` (App Intents bridge).
-- `WebsiteBlockerContentExtension/ActionRequestHandler.swift` — Safari Content Blocker extension; reads rules from App Group `group.com.miladyai.milady`.
+- `WebsiteBlockerContentExtension/ActionRequestHandler.swift` — Safari Content Blocker extension; reads rules from App Group `group.com.elizaai.eliza`.
 - `Podfile` (verified): pulls `Capacitor`, `CapacitorApp`, `CapacitorBarcodeScanner`, `CapacitorBrowser`, `CapacitorHaptics`, `CapacitorKeyboard`, `CapacitorPreferences`, `CapacitorPushNotifications`, `LlamaCppCapacitor` 0.1.5, plus 12 `@elizaos/capacitor-*` plugins (Agent, Camera, Calendar, Canvas, Gateway, Location, MobileSignals, Screencapture, Swabble, Talkmode, Websiteblocker).
 - `fastlane/` — `certs`, `build`, `beta` (TestFlight), `release` (App Store), `metadata` lanes wired against `MATCH_GIT_URL`, App Store Connect API key envs. App Store export marked encryption-exempt, no IDFA.
 - `Info.plist` and `App.entitlements` are merged at build time by `overlayIos()` in `run-mobile-build.mjs`; Universal Link entitlement slot and `CFBundleURLTypes` slot both exist but **OAuth callback is not wired** (SETUP_IOS.md open item).
@@ -41,11 +41,11 @@ The Android architecture was built around a Bun subprocess because Android *allo
 ### 2.2 iOS — what is broken or missing today
 
 - **No on-device agent runtime.** Despite all of the above, no Swift code boots the agent, and no JS path on the WebView side initializes it either. The flow is: WebView loads UI → UI calls Eliza Cloud HTTP endpoint. The local agent that runs on Android in `ElizaAgentService` has no iOS analog.
-- **No model file ships in the app bundle.** Per SETUP_IOS.md: ODR (On-Demand Resources) for GGUF assets is a TODO. There is a documented script `scripts/miladyos/stage-models-odr.mjs` that does not exist.
+- **No model file ships in the app bundle.** Per SETUP_IOS.md: ODR (On-Demand Resources) for GGUF assets is a TODO. There is a documented script `scripts/elizaos/stage-models-odr.mjs` that does not exist.
 - **`LlamaCppCapacitor.swift` does not call `NSBundleResourceRequest`** — so even if you ODR-staged a model, the Swift side can't find it.
 - **OAuth callback not wired.** Universal Link + `CFBundleURLTypes` slots exist; the actual dispatch in `AppDelegate.application(_:open:options:)` only forwards to `ApplicationDelegateProxy.shared` — no Anthropic/Codex/Cloud handler.
 - **App Intents (`ElizaIntentPlugin.swift`, 11 KB)** were "newly added, framework scope TBD" per the audit. Effectively dead.
-- **Bundle ID + app group strings are rewritten at build time** to `com.miladyai.milady`/`group.com.miladyai.milady`. Fine, but it means git diffing the generated project is meaningless and every developer needs the same overlay step to reproduce.
+- **Bundle ID + app group strings are rewritten at build time** to `com.elizaai.eliza`/`group.com.elizaai.eliza`. Fine, but it means git diffing the generated project is meaningless and every developer needs the same overlay step to reproduce.
 - **`pod install` has never been verified on Mac** per the open-items list in SETUP_IOS.md. The Linux side of the build is exercised by CI; the macOS-side actually-build-an-IPA path is unverified.
 - **Foreground audio (Talk Mode)** — `TalkModePlugin` exists but `AVAudioSession` background mode entitlement and `UIBackgroundModes` (`audio`) are not enabled in the template's `Info.plist`. Without that, the talk-mode pipeline dies the moment the app backgrounds.
 - **No `BGTaskScheduler` integration.** The agent's autonomy/training/trajectory rotation has no iOS background path. Android uses WorkManager (15-min floor, Doze-deferred). iOS gives you `BGAppRefreshTask` (~30s of execution, opportunistic, no guaranteed cadence) and `BGProcessingTask` (longer, but only when charging + Wi-Fi). Neither is wired.
@@ -85,7 +85,7 @@ This is the more honest one. The Android stack is much further along.
 
 ### 2.5 Frontend (`apps/app`)
 
-- Vite + React 19. Capacitor 8 plugins imported, runtime-detects WebView vs Electrobun via `isElectrobunRuntime()` and `normalizeMobileRuntimeMode()`. Bundle ID `com.miladyai.milady` / app name `Milady`.
+- Vite + React 19. Capacitor 8 plugins imported, runtime-detects WebView vs Electrobun via `isElectrobunRuntime()` and `normalizeMobileRuntimeMode()`. Bundle ID `com.elizaai.eliza` / app name `Eliza`.
 - Desktop-isms (`-webkit-app-region`, native tray, drag region) are isolated behind Electrobun runtime checks. Mobile build does not pull them.
 - `@elizaos/capacitor-*` packages give the React side typed access to camera, location, contacts, calendar, talk-mode, screen capture, etc.
 - `Three.js` avatar pipeline — flagged in `CLAUDE.md` as bundle-sensitive. No mobile fallback for low-end GPU.
@@ -155,7 +155,7 @@ What you can and cannot do on iOS, ordered by how badly it'll come back to bite 
 - **Running LLM inference inside the app process** — fine. `LlamaCppCapacitor` does this. Metal acceleration is fine. CoreML is fine.
 - **Streaming JS over WebView postMessage** — fine. The WebView is a sanctioned surface.
 - **On-device storage of unlimited size** in `Documents/` (subject to user storage warnings). Subject to iCloud backup (set `URLResourceKey.isExcludedFromBackupKey` for models you don't want backed up).
-- **Sharing data across app + extension via App Group** — already wired (`group.com.miladyai.milady`).
+- **Sharing data across app + extension via App Group** — already wired (`group.com.elizaai.eliza`).
 - **`AVSpeechSynthesizer`** for TTS — free, no entitlements, no review concerns.
 - **`SFSpeechRecognizer`** for STT — works on-device with `requiresOnDeviceRecognition`, but has a per-utterance time limit (~1 min) and requires `NSSpeechRecognitionUsageDescription`.
 
@@ -224,7 +224,7 @@ What you can ship at each tier, ordered most-restrictive to least-restrictive.
 | Background processing (BGProcessingTask)| ✓         | Charging+Wi-Fi; good for trajectory/training |
 | Significant Location wake-ups           | ✓         | For location-triggered automations |
 | App Intents + Siri                      | ✓         | Need `AppShortcutsProvider`; ship phrases |
-| Universal Links / OAuth callback        | ✓         | Need `applinks:milady.app` + AASA file |
+| Universal Links / OAuth callback        | ✓         | Need `applinks:eliza.app` + AASA file |
 | In-app purchase / subscription          | ✓         | Required for monetization; cannot bypass IAP |
 | ScreenTime read-only (Mobile Signals)   | ⚠         | DeviceActivity is read-only; requires entitlement |
 | Continuous background agent             | ✗         | Apple prohibits |
@@ -249,7 +249,7 @@ Everything Tier 1 has, **plus**:
 | Verbose logging / metrics dashboards    | ✓         | Internal-only |
 | Family Controls without entitlement     | ⚠         | Dev provisioning can use; production cannot ship |
 | Experimental plugins                    | ✓         | Bake into bundle; not gated by App Review |
-| Direct Anthropic / Codex / GitHub OAuth | ✓         | Use `applinks:dev.milady.app` |
+| Direct Anthropic / Codex / GitHub OAuth | ✓         | Use `applinks:dev.eliza.app` |
 | HealthKit broader scopes                | ✓         | Dev entitlement is permissive |
 | Custom URL schemes / inter-app coms     | ✓         | |
 | Live source-map debugging               | ✓         | Vite dev server over `localhost` |
@@ -324,7 +324,7 @@ These are the things actually blocking an end-to-end on-device iOS agent.
 11. **Privacy manifest (`PrivacyInfo.xcprivacy`) might be incomplete.** Required since iOS 17 and review will reject if the listed reasons don't match actual API usage. (~2 hours audit.)
 12. **`Info.plist` doesn't enable `UIBackgroundModes: audio`.** Talk Mode dies on backgrounding. (~10 minutes.)
 13. **App Intents + Siri (`ElizaIntentPlugin.swift`) is theoretical.** No `AppShortcutsProvider`. (~2 days for a small but real set of intents.)
-14. **No "developer mode" vs "App Store" build flag.** All builds get the same entitlements and asset set. Need a `MILADY_DISTRIBUTION_TIER` env (`appstore` / `developer` / `sideload`) that gates which plugins, models, and entitlements are included. (~1 day plus the actual gating logic.)
+14. **No "developer mode" vs "App Store" build flag.** All builds get the same entitlements and asset set. Need a `ELIZA_DISTRIBUTION_TIER` env (`appstore` / `developer` / `sideload`) that gates which plugins, models, and entitlements are included. (~1 day plus the actual gating logic.)
 
 Items 1, 2, 3, 4, 5 are the **end-to-end local agent path**. Everything else is hardening or differentiating tiers.
 
@@ -337,9 +337,9 @@ Items 1, 2, 3, 4, 5 are the **end-to-end local agent path**. Everything else is 
 - **iOS agent runs in WKWebView.** Same JSC instance as the React UI. No separate JS engine, no Bun.
 - **Cloud-hybrid stays.** Tier 1 (App Store) defaults to local with cloud fallback for heavy queries. Tier 2/3 default to local-only.
 - **First-light model:** Qwen2.5-0.5B-Instruct Q4_K_M (~400 MB) or Llama-3.2-1B-Q4_K_M (~770 MB). 0.5B fits in Tier 1 cleanly. Bundle it as `app/agent/models/first-light.gguf`.
-- **Storage:** PGlite over Capacitor Filesystem in `Documents/.milady/`. Mark `isExcludedFromBackupKey` on the models subdirectory.
+- **Storage:** PGlite over Capacitor Filesystem in `Documents/.eliza/`. Mark `isExcludedFromBackupKey` on the models subdirectory.
 - **Secrets:** new `@elizaos/capacitor-secure-storage` plugin wrapping iOS KeyChain / Android Keystore.
-- **Distribution tiers:** new build-time env `MILADY_DISTRIBUTION_TIER` (`appstore` | `developer` | `sideload`). Used by `run-mobile-build.mjs` to:
+- **Distribution tiers:** new build-time env `ELIZA_DISTRIBUTION_TIER` (`appstore` | `developer` | `sideload`). Used by `run-mobile-build.mjs` to:
   - Pick a different `Info.plist` overlay (different `UIBackgroundModes`, different `UIRequiredDeviceCapabilities`)
   - Pick a different set of plugins (developer tier includes additional dev/test plugins)
   - Pick a different model set (developer tier includes larger models, no ODR)
@@ -352,7 +352,7 @@ Smallest possible "iPhone simulator loads a model, user types, agent responds." 
 1. Add `build-mobile-bundle.mjs` a second emission mode: `--target=webview`, emitting ESM that imports cleanly into the React app.
 2. Add `apps/app/src/runtime/ios-agent-boot.ts` that, when the Capacitor platform is iOS, dynamically imports the WebView ESM agent bundle and starts it.
 3. Wire `ensureMobileDeviceBridgeInferenceHandlers` into the iOS boot path.
-4. Wire `@electric-sql/pglite` to a Capacitor Filesystem-backed file under `Documents/.milady/db.pglite`.
+4. Wire `@electric-sql/pglite` to a Capacitor Filesystem-backed file under `Documents/.eliza/db.pglite`.
 5. Ship a tiny GGUF (Qwen2.5-0.5B-Q4_K_M) under `apps/app/ios/App/App/agent/models/first-light.gguf`. Bundle it as an Xcode resource.
 6. Add the simulator-build target and a `bun run ios:simulator` script that overlays, pod-installs, and launches.
 7. Wire the chat UI to call the in-process agent rather than the cloud endpoint when iOS local mode is detected.
@@ -365,17 +365,17 @@ This is the minimum end-to-end. Voice, tools, planning beyond a single response 
 - KeyChain-backed secure storage plugin.
 - BGTaskScheduler + BGAppRefreshTask for trajectory rotation.
 - `UIBackgroundModes: audio` + Talk Mode pipeline tested with real backgrounding.
-- App Intents + Siri shortcuts for "Ask Milady …".
+- App Intents + Siri shortcuts for "Ask Eliza …".
 - Universal Link OAuth callback for Anthropic / Codex / Cloud onboarding.
 - Privacy manifest audit + complete reasons list.
 - ODR migration so larger models can be downloaded post-install.
 
 ### 8.4 Phase 3 — Distribution tier differentiation
 
-- `MILADY_DISTRIBUTION_TIER` env switches.
+- `ELIZA_DISTRIBUTION_TIER` env switches.
 - Three different `Info.plist`/`App.entitlements` overlay paths.
 - CI lanes for each tier: TestFlight (appstore), Xcode archive (developer), AltStore IPA (sideload).
-- EU DMA alt-marketplace lane gated on `MILADY_DMA_REGION=eu`.
+- EU DMA alt-marketplace lane gated on `ELIZA_DMA_REGION=eu`.
 
 ### 8.5 Phase 4 — Android parity-or-better
 
@@ -389,7 +389,7 @@ This is the minimum end-to-end. Voice, tools, planning beyond a single response 
 
 1. **Delete the "iOS cannot run an agent" narrative.** It cost you months and is wrong. The agent runs in WKWebView. WKWebView gets JIT. There is no Apple rule against it.
 2. **Stop building a Bun-shaped mobile bundle when iOS exists.** The fact that the same `agent-bundle.js` would have to be a Bun executable on Android-AOSP and a WebView ESM on iOS is awkward; either build two emissions or commit to the WebView-shaped bundle and have AOSP load it through Bun's CommonJS interop. Today's design is "Android-shaped, iOS-bolted-on" and the bolt is missing.
-3. **`@elizaos/capacitor-phone`, `@elizaos/capacitor-messages`, `@elizaos/capacitor-screencapture` will not pass App Review.** Audit each one. If they can be reframed (`MFMessageComposeViewController`, `tel:` launch, `ReplayKit` user-initiated recording), do so. Otherwise gate them behind `MILADY_DISTRIBUTION_TIER != appstore`.
+3. **`@elizaos/capacitor-phone`, `@elizaos/capacitor-messages`, `@elizaos/capacitor-screencapture` will not pass App Review.** Audit each one. If they can be reframed (`MFMessageComposeViewController`, `tel:` launch, `ReplayKit` user-initiated recording), do so. Otherwise gate them behind `ELIZA_DISTRIBUTION_TIER != appstore`.
 4. **Stop using `localStorage` for tokens.** It's not encrypted on iOS. The KeyChain wrapper is a one-day fix.
 5. **The "continuous background agent" mental model dies on iOS.** Plan accordingly. The product is a foreground agent + push-wake + opportunistic background fetch. Anything else is fighting the OS.
 6. **You're not ready for App Review.** The Privacy manifest is half-done. The OAuth callback is missing. App Intents are empty. `Info.plist` overlay is incomplete. Submit too early and you eat 1-2 weeks of rejection cycles. Fix the gaps first.
@@ -404,7 +404,7 @@ This is the minimum end-to-end. Voice, tools, planning beyond a single response 
 
 - iPhone Simulator on Apple Silicon Mac.
 - App boots, agent JS initializes inside WKWebView.
-- PGlite database opens in `Documents/.milady/`.
+- PGlite database opens in `Documents/.eliza/`.
 - LlamaCppCapacitor loads `first-light.gguf` (Qwen2.5-0.5B Q4) from app bundle.
 - User types "hello" in the chat UI.
 - Agent runtime receives the message, plans (single-step), calls TEXT_LARGE handler, the handler routes through `capacitor-bridge` to the loaded model, generates tokens, returns to UI.
@@ -471,7 +471,7 @@ Across all four paths above, the strategy is the same: **stub the unportable Nod
 - `child_process.spawn` / `Bun.spawn` → throws `Error("spawn is not available on iOS — agent runs in-process")`.
 - `fs.watch` → throws (rarely used).
 - `bun:ffi.dlopen("/path/to.dylib")` → throws unless the path is a known statically-linked symbol allow-list.
-- `os.homedir()` → returns iOS app sandbox `~/Library/Application Support/Milady`.
+- `os.homedir()` → returns iOS app sandbox `~/Library/Application Support/Eliza`.
 - `os.tmpdir()` → returns `NSTemporaryDirectory()`.
 - `fs.readFile / writeFile / mkdir / readdir / stat` → routes through `@capacitor/filesystem` (already a dep) or directly to system calls in the embedded runtime case.
 

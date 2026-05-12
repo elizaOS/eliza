@@ -7,43 +7,11 @@ import LlamaCppCapacitor
 
 /// Implements `llama_*` from `BRIDGE_CONTRACT.md`.
 ///
-/// ## Real backend integration
-///
-/// The real backend lives in `LlamaBridgeImpl.swift` — it links directly
-/// against the `LlamaCpp.xcframework` built by
-/// `native/ios-bun-port/vendor-deps/llama.cpp/build-ios.sh` via
-/// `@_silgen_name` C-API bindings. Wire it in by replacing the
-/// `cannedReply` / `splitToTokens` calls below with:
-///
-///     let impl = LlamaBridgeImpl.shared
-///     // loadModel:
-///     let r = impl.loadModel(path: path, contextSize: UInt32(contextSize),
-///                            useGPU: useGpu, threads: Int32(threads))
-///     // → r.contextId / r.error
-///
-///     // generate:
-///     let r = impl.generate(
-///       contextId: Int64(state.id),
-///       prompt: prompt,
-///       maxTokens: Int32(maxTokens),
-///       temperature: Float(temperature),
-///       topP: Float(topP),
-///       stopSequences: stop,
-///       onToken: { tok, last in
-///         RuntimeQueue.dispatchOnJS { streamCallback?.callSync(args: [tok, last]) }
-///       })
-///
-///     // hardwareInfo:
-///     return impl.hardwareInfo().asDict()
-///
-/// `LlamaBridgeImpl` is JSContext-agnostic by design — this file owns the
-/// JS marshalling (JSValue parsing, ManagedCallback wiring, promise build)
-/// and `LlamaBridgeImpl` owns the C-API. Tracked in M09 of the iOS Bun port
-/// roadmap.
-///
-/// Until M09 cuts the stub over, the bridge returns realistic-shaped canned
-/// responses so the end-to-end JS → bridge → response path can be exercised.
-/// Each method documents where the real call would land.
+/// `LlamaBridgeImpl` is JSContext-agnostic by design: this file owns JSValue
+/// parsing, promise wiring, and ManagedCallback streaming; the impl owns the
+/// llama.cpp C API calls. Bridge failures resolve as `{ error }` values
+/// because the JS polyfill layer treats bridge results as native response
+/// payloads rather than exception channels.
 public final class LlamaBridge {
     private weak var context: JSContext?
     private var nextContextId: Int = 1
@@ -82,12 +50,14 @@ public final class LlamaBridge {
                 state.cancelled = true
                 self.contexts[id] = state
             }
+            LlamaBridgeImpl.shared.cancel(contextId: Int64(id))
             return NSNull()
         }
 
         ctx.installBridgeFunction(name: "llama_free") { args in
             guard let id = args.first?.toNumber()?.intValue else { return NSNull() }
             self.contexts.removeValue(forKey: id)
+            LlamaBridgeImpl.shared.free(contextId: Int64(id))
             return NSNull()
         }
 
@@ -129,17 +99,6 @@ public final class LlamaBridge {
         inferenceQueue.async { [weak self] in
             guard let self = self else { return }
 
-            // --- Real backend integration point ----------------------------------
-            // When LlamaCppCapacitor's Swift API stabilizes, do something like:
-            //
-            //   let bridge = LlamaCppPlugin.shared
-            //   bridge.initContext(
-            //     contextId: self.nextContextId,
-            //     params: NativeContextParams(model: path, n_ctx: contextSize, ...))
-            //
-            // The result of `initContext` becomes the contextId returned here.
-            // --------------------------------------------------------------------
-
             if !FileManager.default.fileExists(atPath: path) {
                 RuntimeQueue.dispatchOnJS {
                     managedResolve?.callSync(args: [["error": "model file not found: \(path)"]])
@@ -147,9 +106,28 @@ public final class LlamaBridge {
                 return
             }
 
-            let id = self.nextContextId
-            self.nextContextId += 1
-            let state = LlamaContextState(
+            let result = LlamaBridgeImpl.shared.loadModel(
+                path: path,
+                contextSize: UInt32(max(1, contextSize)),
+                useGPU: useGpu,
+                threads: Int32(max(1, threads))
+            )
+            if let error = result.error {
+                RuntimeQueue.dispatchOnJS {
+                    managedResolve?.callSync(args: [["error": error]])
+                }
+                return
+            }
+            guard let contextId = result.contextId else {
+                RuntimeQueue.dispatchOnJS {
+                    managedResolve?.callSync(args: [["error": "llama_load_model: backend returned no context_id"]])
+                }
+                return
+            }
+
+            let id = Int(contextId)
+            self.nextContextId = max(self.nextContextId, id + 1)
+            self.contexts[id] = LlamaContextState(
                 id: id,
                 modelPath: path,
                 contextSize: contextSize,
@@ -157,7 +135,6 @@ public final class LlamaBridge {
                 threads: threads,
                 cancelled: false
             )
-            self.contexts[id] = state
 
             RuntimeQueue.dispatchOnJS {
                 managedResolve?.callSync(args: [["context_id": id]])
@@ -174,9 +151,9 @@ public final class LlamaBridge {
         let contextId = opts.objectForKeyedSubscript("context_id")?.toNumber()?.intValue ?? -1
         let prompt = opts.objectForKeyedSubscript("prompt")?.toString() ?? ""
         let maxTokens = opts.objectForKeyedSubscript("max_tokens")?.toNumber()?.intValue ?? 256
-        _ = opts.objectForKeyedSubscript("temperature")?.toNumber()?.doubleValue ?? 0.7
-        _ = opts.objectForKeyedSubscript("top_p")?.toNumber()?.doubleValue ?? 0.95
-        _ = opts.objectForKeyedSubscript("stop")?.toStringArray() ?? []
+        let temperature = opts.objectForKeyedSubscript("temperature")?.toNumber()?.doubleValue ?? 0.7
+        let topP = opts.objectForKeyedSubscript("top_p")?.toNumber()?.doubleValue ?? 0.95
+        let stop = opts.objectForKeyedSubscript("stop")?.toStringArray() ?? []
         let streamToken = opts.objectForKeyedSubscript("stream_callback_token")?.toString()
 
         guard let state = contexts[contextId] else {
@@ -187,49 +164,38 @@ public final class LlamaBridge {
         let managedResolve = resolver.flatMap { ManagedCallback(value: $0) }
         let streamCallback = streamToken.flatMap { self.streamCallbacks[$0] }
 
-        inferenceQueue.async { [weak self] in
-            guard let self = self else { return }
-
-            // --- Real backend integration point ----------------------------------
-            // When the LlamaCppCapacitor Swift API is wired, replace this with:
-            //
-            //   bridge.completion(contextId: state.id, params: NativeCompletionParams(
-            //     prompt: prompt, n_predict: maxTokens, temperature: temperature,
-            //     top_p: topP, stop: stop, ...))
-            //
-            // Stream callbacks land via the plugin's `addListener("token", ...)`
-            // event; bridge each emitted token into `streamCallback.call(...)`.
-            // --------------------------------------------------------------------
-
+        let queue = LlamaBridgeImpl.shared.workQueue(for: Int64(contextId)) ?? inferenceQueue
+        queue.async {
             let started = Date()
-            let cannedReply = Self.cannedReply(for: prompt, modelPath: state.modelPath)
-
-            // Stream tokens one at a time when a callback is registered.
-            if let cb = streamCallback {
-                let tokens = Self.splitToTokens(cannedReply, max: maxTokens)
-                for (idx, tok) in tokens.enumerated() {
-                    // Check cancellation.
-                    if let live = self.contexts[contextId], live.cancelled {
-                        break
-                    }
-                    let isLast = (idx == tokens.count - 1)
+            let result = LlamaBridgeImpl.shared.generate(
+                contextId: Int64(state.id),
+                prompt: prompt,
+                maxTokens: Int32(max(1, maxTokens)),
+                temperature: Float(temperature),
+                topP: Float(topP),
+                stopSequences: stop,
+                onToken: { token, isLast in
+                    guard let cb = streamCallback else { return }
                     RuntimeQueue.dispatchOnJS {
-                        cb.callSync(args: [tok, isLast])
+                        cb.callSync(args: [token, isLast])
                     }
-                    Thread.sleep(forTimeInterval: 0.01)
                 }
-            }
+            )
 
             let durationMs = Int(Date().timeIntervalSince(started) * 1000)
-            let promptTokens = max(1, prompt.count / 4)
-            let outputTokens = max(1, cannedReply.count / 4)
+            let promptTokens = max(1, result.promptTokens)
+            let outputTokens = max(1, result.outputTokens)
 
             RuntimeQueue.dispatchOnJS {
+                if let error = result.error {
+                    managedResolve?.callSync(args: [["error": error]])
+                    return
+                }
                 managedResolve?.callSync(args: [[
-                    "text": cannedReply,
+                    "text": result.text,
                     "prompt_tokens": promptTokens,
                     "output_tokens": outputTokens,
-                    "duration_ms": durationMs,
+                    "duration_ms": Int(result.durationMs > 0 ? result.durationMs : Double(durationMs)),
                 ]])
             }
         }
@@ -238,52 +204,7 @@ public final class LlamaBridge {
     }
 
     private func hardwareInfo() -> [String: Any] {
-        let pi = ProcessInfo.processInfo
-        let total = Double(pi.physicalMemory) / 1_073_741_824.0
-        let available: Double
-        if #available(iOS 13.0, *) {
-            available = max(0, Double(os_proc_available_memory()) / 1_073_741_824.0)
-        } else {
-            available = total
-        }
-        let isSimulator: Bool = {
-            #if targetEnvironment(simulator)
-            return true
-            #else
-            return false
-            #endif
-        }()
-        // Metal is supported on every iOS device we ship to, but disabled in
-        // the simulator (no Metal). Use a conservative detection.
-        let metalSupported = !isSimulator
-
-        return [
-            "backend": metalSupported ? "metal" : "cpu",
-            "total_ram_gb": total,
-            "available_ram_gb": available,
-            "cpu_cores": pi.activeProcessorCount,
-            "is_simulator": isSimulator,
-            "metal_supported": metalSupported,
-        ]
-    }
-
-    // MARK: - Stub helpers (will go away when M09 wires the real backend)
-
-    private static func cannedReply(for prompt: String, modelPath: String) -> String {
-        let p = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        if p.isEmpty {
-            return "[bun-runtime llama stub] empty prompt"
-        }
-        let modelName = (modelPath as NSString).lastPathComponent
-        return "[bun-runtime llama stub | model=\(modelName)] \(p)"
-    }
-
-    private static func splitToTokens(_ text: String, max: Int) -> [String] {
-        // Simple whitespace tokenization for the stub. Real backend will
-        // call the model tokenizer.
-        let parts = text.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
-        let limited = parts.prefix(max).map { $0 + " " }
-        return Array(limited)
+        return LlamaBridgeImpl.shared.hardwareInfo().asDict()
     }
 
     // MARK: - Promise builders
@@ -294,14 +215,14 @@ public final class LlamaBridge {
         (function(){
           let resolveFn;
           const p = new Promise(function(res){ resolveFn = res; });
-          p.__milady_resolve = resolveFn;
+          p.__eliza_resolve = resolveFn;
           return p;
         })
         """
         guard let promise = ctx.evaluateScript(script)?.call(withArguments: []) else {
             return (NSNull(), nil)
         }
-        let resolver = promise.forProperty("__milady_resolve")
+        let resolver = promise.forProperty("__eliza_resolve")
         return (promise, resolver)
     }
 

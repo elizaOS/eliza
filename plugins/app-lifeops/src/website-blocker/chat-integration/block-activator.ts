@@ -1,8 +1,8 @@
 /**
  * Shared block-activation seam.
  *
- * Both the chat action `WEBSITE_BLOCK` (presentation) and the
- * `BlockRuleWriter` (chat-integration / application) need to flip the
+ * Both the BLOCK action's website target and the `BlockRuleWriter`
+ * (chat-integration / application) need to flip the
  * OS-level hosts-file block on for a given hostname set + duration.
  *
  * Owning this here breaks the cycle that existed when the writer reached

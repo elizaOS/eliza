@@ -200,11 +200,11 @@ function createCerebrasProviderConfigFromEnv(): LiveProviderConfig | null {
   // Cerebras. Lifeops uses Cerebras for *evaluation/training* by default
   // (see `lifeops-eval-model.ts`); the agent under test stays on Anthropic
   // Opus 4.7 unless the operator explicitly opts in with one of:
-  //   - MILADY_PROVIDER=cerebras
+  //   - ELIZA_PROVIDER=cerebras
   //   - OPENAI_BASE_URL set to a *.cerebras.ai endpoint
   // Otherwise the eval key would leak into the agent runtime and the
   // benchmark would grade Cerebras-vs-Cerebras instead of Anthropic-vs-Cerebras.
-  const explicitProvider = process.env.MILADY_PROVIDER?.trim().toLowerCase();
+  const explicitProvider = process.env.ELIZA_PROVIDER?.trim().toLowerCase();
   const explicitBaseUrl = process.env.OPENAI_BASE_URL?.trim();
   const baseUrlIsCerebras =
     !!explicitBaseUrl && /cerebras\.ai(?:\/|$)/i.test(explicitBaseUrl);
@@ -235,7 +235,7 @@ function createCerebrasProviderConfigFromEnv(): LiveProviderConfig | null {
     CEREBRAS_API_KEY: apiKey,
     OPENAI_API_KEY: apiKey,
     OPENAI_BASE_URL: baseUrl,
-    MILADY_PROVIDER: "cerebras",
+    ELIZA_PROVIDER: "cerebras",
     OPENAI_SMALL_MODEL: smallModel,
     OPENAI_MEDIUM_MODEL: mediumModel,
     OPENAI_LARGE_MODEL: largeModel,
@@ -331,14 +331,51 @@ export async function createRealTestRuntime(
       if (providerConfig) {
         providerName = providerConfig.name;
         const COMPETING_KEYS_BY_PROVIDER: Record<string, readonly string[]> = {
-          cerebras: ["ANTHROPIC_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY"],
-          openai: ["ANTHROPIC_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "CEREBRAS_API_KEY"],
-          anthropic: ["GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "CEREBRAS_API_KEY"],
-          google: ["ANTHROPIC_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "CEREBRAS_API_KEY"],
-          groq: ["ANTHROPIC_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY", "OPENROUTER_API_KEY", "CEREBRAS_API_KEY"],
-          openrouter: ["ANTHROPIC_API_KEY", "GOOGLE_GENERATIVE_AI_API_KEY", "GOOGLE_API_KEY", "GROQ_API_KEY", "CEREBRAS_API_KEY"],
+          cerebras: [
+            "ANTHROPIC_API_KEY",
+            "GOOGLE_GENERATIVE_AI_API_KEY",
+            "GOOGLE_API_KEY",
+            "GROQ_API_KEY",
+            "OPENROUTER_API_KEY",
+          ],
+          openai: [
+            "ANTHROPIC_API_KEY",
+            "GOOGLE_GENERATIVE_AI_API_KEY",
+            "GOOGLE_API_KEY",
+            "GROQ_API_KEY",
+            "OPENROUTER_API_KEY",
+            "CEREBRAS_API_KEY",
+          ],
+          anthropic: [
+            "GOOGLE_GENERATIVE_AI_API_KEY",
+            "GOOGLE_API_KEY",
+            "GROQ_API_KEY",
+            "OPENROUTER_API_KEY",
+            "CEREBRAS_API_KEY",
+          ],
+          google: [
+            "ANTHROPIC_API_KEY",
+            "GROQ_API_KEY",
+            "OPENROUTER_API_KEY",
+            "CEREBRAS_API_KEY",
+          ],
+          groq: [
+            "ANTHROPIC_API_KEY",
+            "GOOGLE_GENERATIVE_AI_API_KEY",
+            "GOOGLE_API_KEY",
+            "OPENROUTER_API_KEY",
+            "CEREBRAS_API_KEY",
+          ],
+          openrouter: [
+            "ANTHROPIC_API_KEY",
+            "GOOGLE_GENERATIVE_AI_API_KEY",
+            "GOOGLE_API_KEY",
+            "GROQ_API_KEY",
+            "CEREBRAS_API_KEY",
+          ],
         };
-        for (const competingKey of COMPETING_KEYS_BY_PROVIDER[providerName] ?? []) {
+        for (const competingKey of COMPETING_KEYS_BY_PROVIDER[providerName] ??
+          []) {
           delete process.env[competingKey];
         }
         for (const [key, value] of Object.entries(providerConfig.env)) {
@@ -439,9 +476,11 @@ export async function createRealTestRuntime(
       const existing = runtime.getService(OPTIMIZED_PROMPT_SERVICE);
       if (!existing) {
         const optimized = await OptimizedPromptService.start(runtime);
-        const services = (runtime as unknown as {
-          services: Map<string, unknown[]>;
-        }).services;
+        const services = (
+          runtime as unknown as {
+            services: Map<string, unknown[]>;
+          }
+        ).services;
         const list = services.get(OPTIMIZED_PROMPT_SERVICE) ?? [];
         list.push(optimized);
         services.set(OPTIMIZED_PROMPT_SERVICE, list);

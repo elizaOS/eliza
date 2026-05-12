@@ -17,7 +17,7 @@ Generated from the launch-readiness QA reports in `launchdocs/`.
 - `05-settings-qa.md`
 - `06-ios-qa.md`
 - `07-android-qa.md`
-- `08-cloud-milady-ai-qa.md`
+- `08-cloud-eliza-qa.md`
 - `09-desktop-qa.md`
 - `10-remote-interfaces.md`
 - `11-browser-wallet-qa.md`
@@ -62,7 +62,7 @@ Note: a direct `bun test` run against the launchpad tests failed because those t
 
 - Browser/wallet live purchase flows still need human QA with test wallets and controlled funds. Dry-run safety is improved, but pump.fun, flap.sh, four.meme, wallet login, signing, and real site selector drift cannot be validated safely from unit tests.
 - iOS and Android still need physical-device QA for cloud models, local models, remote-to-cloud agent, remote-to-desktop agent, permissions, backgrounding, app-store/play-store packaging, and hardware-specific local model performance.
-- Cloud and milady.ai need live credential QA for login, create agent, use agent, migrate to desktop/phone, and pairing error states.
+- Cloud and eliza.ai need live credential QA for login, create agent, use agent, migrate to desktop/phone, and pairing error states.
 - Remote interfaces need second-device testing across multiple simultaneous interfaces. Reports found incomplete cloud pairing/data-plane paths and companion placeholders.
 - Computer Use still needs a launch-safety decision: granting OS permissions can auto-enable the plugin and the plugin default is full-control. The status detection issue is fixed, but approval-mode UX/defaults need product/security sign-off and more code.
 - LifeOps needs real connected-account QA for Google, Gmail, Calendar, X, iMessage, Telegram, Signal, Discord, WhatsApp, Twilio, Ntfy, reminders, follow-ups, browser bridge, and remote desktop. Follow-up task seeding and OAuth refresh fallback were fixed, but live side effects are unvalidated.
@@ -94,6 +94,6 @@ Note: a direct `bun test` run against the launchpad tests failed because those t
 - Real OAuth/login/payment/wallet side effects.
 - Physical iOS or Android builds installed on devices.
 - Packaged desktop app permissions and macOS TCC prompts.
-- Live cloud agent creation or milady.ai authenticated flows.
+- Live cloud agent creation or eliza.ai authenticated flows.
 - Live model downloads, training jobs, Hugging Face publishing, or GPU/local hardware benchmarks.
 - Full button-by-button browser QA across every page on web, mobile, and desktop.

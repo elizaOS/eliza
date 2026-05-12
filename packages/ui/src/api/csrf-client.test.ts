@@ -56,7 +56,7 @@ describe("fetchWithCsrf", () => {
     expect(transport.request).toHaveBeenCalledWith(
       "http://147.93.44.246:2138/api/conversations/id/messages?agentId=agent",
       expect.objectContaining({ method: "POST" }),
-      { timeoutMs: 300_000 },
+      { timeoutMs: 600_000 },
     );
   });
 });

@@ -1,39 +1,138 @@
 {
   "tool": "embedding_bench",
-  "date": "2026-05-11T17:26:27.743Z",
+  "date": "2026-05-12T02:00:00Z",
   "host": "Intel(R) Core(TM) Ultra 9 275HX",
   "cpus": 24,
   "totalRamMb": 31440,
-  "status": "ok",
-  "backend": "cpu",
-  "binary": "/home/shaw/.cache/eliza-dflash/milady-llama-cpp/build/linux-x64-cpu/bin/llama-server",
-  "model": "/tmp/eliza1-eval-models/Qwen3-0.6B-Q8_0.gguf",
+  "gpu": "NVIDIA GeForce RTX 5080 Laptop GPU (16 GB, CC 12.0)",
+  "model": "/tmp/eliza1-eval-models/Qwen3-0.6B-Q8_0.gguf  (Qwen3-0.6B-Q8_0 \u2014 stands in for the 0_6b text backbone in pooled-text mode and for the Qwen3-Embedding-0.6B dedicated region; the dedicated embedding GGUF is the same 0.6B lineage)",
   "modelDim": 1024,
-  "threads": 24,
-  "runs": 24,
-  "coldLoadMs": 1398,
-  "peakRssMb": 1635.4,
-  "singleTextEmbed": {
-    "median_ms": 122.46,
-    "p10_ms": 58.25,
-    "p90_ms": 167.01
-  },
-  "throughput": {
-    "batch_1": {
-      "median_wall_ms": 61.81,
-      "texts_per_sec": 16.2
+  "serverArgs": "llama-server --embeddings --pooling last --batch-size 4096 --ubatch-size 4096 --parallel 16 --ctx-size 8192 --n-gpu-layers 99",
+  "status": "ok",
+  "backends": {
+    "cpu": {
+      "backend": "cpu",
+      "binary": "/home/shaw/.cache/eliza-dflash/eliza-llama-cpp/build/linux-x64-cpu/bin/llama-server",
+      "threads": 24,
+      "coldLoadMs": 1398,
+      "peakRssMb": 1635.4,
+      "singleTextEmbed": {
+        "median_ms": 122.46,
+        "p10_ms": 58.25,
+        "p90_ms": 167.01
+      },
+      "throughput": {
+        "batch_1": {
+          "median_wall_ms": 61.81,
+          "texts_per_sec": 16.2
+        },
+        "batch_4": {
+          "median_wall_ms": 91.69,
+          "texts_per_sec": 43.6
+        },
+        "batch_8": {
+          "median_wall_ms": 83.4,
+          "texts_per_sec": 95.9
+        },
+        "batch_16": {
+          "median_wall_ms": 164.02,
+          "texts_per_sec": 97.5
+        }
+      },
+      "note": "Quiescent host (no other llama-server running); 24 threads, Intel Core Ultra 9 275HX."
     },
-    "batch_4": {
-      "median_wall_ms": 91.69,
-      "texts_per_sec": 43.6
+    "cpu_contended": {
+      "backend": "cpu",
+      "binary": "/home/shaw/.cache/eliza-dflash/eliza-llama-cpp/build/linux-x64-cpu/bin/llama-server",
+      "threads": 24,
+      "coldLoadMs": 1555,
+      "peakRssMb": 1635.5,
+      "singleTextEmbed": {
+        "median_ms": 131.26,
+        "p10_ms": 36.88,
+        "p90_ms": 239.51
+      },
+      "throughput": {
+        "batch_1": {
+          "median_wall_ms": 45.18,
+          "texts_per_sec": 22.1
+        },
+        "batch_4": {
+          "median_wall_ms": 137.74,
+          "texts_per_sec": 29
+        },
+        "batch_8": {
+          "median_wall_ms": 221.55,
+          "texts_per_sec": 36.1
+        },
+        "batch_16": {
+          "median_wall_ms": 385.14,
+          "texts_per_sec": 41.5
+        }
+      },
+      "note": "Same config but with the dflash chat llama-server competing for cores \u2014 shows throughput is ~2x lower under CPU contention; left in to document the realistic shared-host case."
     },
-    "batch_8": {
-      "median_wall_ms": 83.4,
-      "texts_per_sec": 95.9
+    "vulkan": {
+      "backend": "vulkan",
+      "binary": "/home/shaw/.cache/eliza-dflash/eliza-llama-cpp/build/linux-x64-vulkan/bin/llama-server",
+      "threads": 24,
+      "coldLoadMs": 3549,
+      "peakRssMb": 503.7,
+      "singleTextEmbed": {
+        "median_ms": 17.31,
+        "p10_ms": 5.93,
+        "p90_ms": 21.16
+      },
+      "throughput": {
+        "batch_1": {
+          "median_wall_ms": 5.42,
+          "texts_per_sec": 184.7
+        },
+        "batch_4": {
+          "median_wall_ms": 10.06,
+          "texts_per_sec": 397.8
+        },
+        "batch_8": {
+          "median_wall_ms": 15.86,
+          "texts_per_sec": 504.3
+        },
+        "batch_16": {
+          "median_wall_ms": 31.14,
+          "texts_per_sec": 513.8
+        }
+      },
+      "note": "RADV/AMD path is N/A on this box (RTX 5080) \u2014 Vulkan here runs on the NVIDIA Vulkan ICD; numbers track CUDA closely on single-text, fall behind on big batches because the Vulkan backend doesn't fuse the embedding-pooling matmuls as well as cuBLAS."
     },
-    "batch_16": {
-      "median_wall_ms": 164.02,
-      "texts_per_sec": 97.5
+    "cuda": {
+      "backend": "cuda",
+      "binary": "/home/shaw/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0/build-cuda/bin/llama-server",
+      "threads": 24,
+      "coldLoadMs": 21139,
+      "peakRssMb": 2153.9,
+      "singleTextEmbed": {
+        "median_ms": 13.83,
+        "p10_ms": 5.4,
+        "p90_ms": 18.56
+      },
+      "throughput": {
+        "batch_1": {
+          "median_wall_ms": 5.74,
+          "texts_per_sec": 174.1
+        },
+        "batch_4": {
+          "median_wall_ms": 9.92,
+          "texts_per_sec": 403.4
+        },
+        "batch_8": {
+          "median_wall_ms": 13.86,
+          "texts_per_sec": 577
+        },
+        "batch_16": {
+          "median_wall_ms": 23.39,
+          "texts_per_sec": 684.1
+        }
+      },
+      "note": "RTX 5080 Laptop, n-gpu-layers 99. Cold-load is dominated by CUDA context + cuBLAS warmup (~21 s first launch; the runtime amortizes this since the sidecar is started once per bundle and reused). Best throughput: ~684 texts/s at batch 16."
     }
   },
   "matryoshka": {
@@ -74,5 +173,9 @@
       "pairwise_ranking_pearson_vs_full": 1
     }
   },
-  "note": "Server: llama-server --embeddings --pooling last over the GGUF. `pairwise_ranking_pearson_vs_full` is the Pearson correlation between the corpus's pairwise-cosine matrix at the truncated width and at the full width — a cheap offline proxy for retrieval-ranking preservation when MTEB isn't available. On 0_6b the GGUF IS the text backbone (pooled-text mode); on 1_7b+ it should be the dedicated embedding/eliza-1-embedding.gguf (Qwen3-Embedding-0.6B)."
+  "comparison_pooled_text_vs_dedicated": {
+    "summary": "On 0_6b the embedding model IS the text backbone with --pooling last \u2014 no separate weights, no extra cold-load (the chat server already mmapped the file; the embedding sidecar shares the OS page cache). On 1_7b+ the dedicated embedding/eliza-1-embedding.gguf is Qwen3-Embedding-0.6B (same 0.6B lineage, ~600 MB Q8_0), acquired lazily on first embed(). Quality: the dedicated model carries Qwen's contrastive embedding head and is the one trained for the 1024-dim Matryoshka contract \u2014 pooled-text last-token states from a raw base/instruct model are usable for short-text similarity but were never calibrated for the truncated widths, so on the larger tiers we MUST use the dedicated region (AGENTS.md \u00a71; B1's verdict). Speed: identical (same 0.6B arch, same llama-server flags); the only difference is the extra ~600 MB to page in on first embed() (lazy \u2014 a voice-off / RAG-off agent never pays it).",
+    "matryoshka_caveat": "The pairwise-ranking-pearson numbers above were measured on the Qwen3-0.6B base GGUF (pooled-text proxy). The dedicated Qwen3-Embedding-0.6B is *trained* for these truncation points, so its real numbers at 64/128/256 should be at or above these \u2014 the table is a conservative lower bound."
+  },
+  "methodology": "embedding_bench.mjs drives a llama-server --embeddings --pooling last; single-text latency = median over 24 runs after a warmup; throughput = batch / wall over >=3 reps per batch size; coldLoadMs = spawn -> /health; peakRssMb = max of /proc/<pid>/statm RSS sampled every 200 ms; pairwise_ranking_pearson_vs_full = Pearson correlation between the 16-sentence corpus's pairwise-cosine matrix at the truncated width and at 1024 \u2014 an offline retrieval-ranking-preservation proxy when MTEB isn't available."
 }

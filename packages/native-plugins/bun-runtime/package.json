@@ -7,7 +7,7 @@
     "bun",
     "javascriptcore",
     "embedded-runtime",
-    "milady",
+    "eliza",
     "eliza"
   ],
   "main": "./dist/plugin.cjs.js",

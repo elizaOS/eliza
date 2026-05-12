@@ -108,11 +108,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             object: userInfo,
             userInfo: nil
         )
-        // `@capacitor/push-notifications` also observes its own
-        // `capacitorDidReceiveRemoteNotification` notification — forward it
-        // so apps that depend on the JS push plugin still see the payload.
+        // Keep a raw notification hook for any Capacitor push integration
+        // that observes remote-push payloads. Capacitor 8 exposes typed
+        // constants for registration success/failure only.
         NotificationCenter.default.post(
-            name: Notification.Name.capacitorDidReceiveRemoteNotification,
+            name: Notification.Name("CapacitorDidReceiveRemoteNotificationNotification"),
             object: userInfo
         )
 

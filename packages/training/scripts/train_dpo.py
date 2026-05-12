@@ -293,9 +293,9 @@ def main() -> int:
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    if os.environ.get("MILADY_TRAINER_OPTIM"):
+    if os.environ.get("ELIZA_TRAINER_OPTIM"):
         raise SystemExit(
-            "MILADY_TRAINER_OPTIM is disabled. DPO always builds "
+            "ELIZA_TRAINER_OPTIM is disabled. DPO always builds "
             "APOLLO/APOLLO-Mini through the trainer create_optimizer hook."
         )
     trainer_optim = "adafactor"
@@ -364,7 +364,7 @@ def main() -> int:
                 weight_decay=dpo_cfg.weight_decay,
             )
 
-    class _MiladyDPOTrainer(DPOTrainer):
+    class _ElizaDPOTrainer(DPOTrainer):
         def create_optimizer(self, model=None):
             if self.optimizer is None:
                 target = model or self.model
@@ -372,7 +372,7 @@ def main() -> int:
                 return self.optimizer
             return self.optimizer
 
-    trainer = _MiladyDPOTrainer(
+    trainer = _ElizaDPOTrainer(
         model=policy,
         ref_model=ref_model,
         args=dpo_cfg,

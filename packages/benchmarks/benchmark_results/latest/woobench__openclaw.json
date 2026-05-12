@@ -1,24 +1,24 @@
 {
   "agent": "openclaw",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132113Z_1a836212/woobench__woobench/run_woobench_20260511T132113Z_1_94cbf416/output"
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132113Z_1a836212/woobench__woobench/run_woobench_20260511T132113Z_1_94cbf416/output"
   ],
   "benchmark_directory": "woobench",
   "benchmark_id": "woobench",
   "cache_metrics": {
-    "cache_read_input_tokens": 0,
     "cache_creation_input_tokens": 0,
-    "turns_with_cached_field": 0,
-    "cache_hit_ratio": 0.0
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
   },
   "error": null,
   "higher_is_better": true,
   "metrics": {
     "cache_metrics": {
-      "cache_read_input_tokens": 0,
       "cache_creation_input_tokens": 0,
-      "turns_with_cached_field": 0,
-      "cache_hit_ratio": 0.0
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
     },
     "failed_scenarios": 0,
     "overall_score": 99.99999999999999,
@@ -32,18 +32,18 @@
     "return_code": 0,
     "revenue_efficiency": 0.0,
     "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
       "llm_call_count": 9,
       "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "avg_prompt_tokens": 0.0,
-      "avg_completion_tokens": 0.0
+      "total_tokens": 0
     },
     "trajectory_summary": {
       "files": 1,
-      "turns": 9,
       "prompt_chars": 10183,
-      "repeated_prefixes": []
+      "repeated_prefixes": [],
+      "turns": 9
     }
   },
   "model": "gpt-oss-120b",
@@ -54,25 +54,25 @@
     "throughput_per_second": 1.652394112520037
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132113Z_1a836212/woobench__woobench/run_woobench_20260511T132113Z_1_94cbf416/output/woobench_gpt-oss-120b_20260511_062119.json",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132113Z_1a836212/woobench__woobench/run_woobench_20260511T132113Z_1_94cbf416/output/woobench_gpt-oss-120b_20260511_062119.json",
   "run_group_id": "rg_20260511T132113Z_1a836212",
   "run_id": "run_woobench_20260511T132113Z_1_94cbf416",
   "score": 0.9999999999999999,
   "status": "succeeded",
   "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
     "llm_call_count": 9,
     "prompt_tokens": 0,
-    "completion_tokens": 0,
-    "total_tokens": 0,
-    "avg_prompt_tokens": 0.0,
-    "avg_completion_tokens": 0.0
+    "total_tokens": 0
   },
   "trajectory_summary": {
     "files": 1,
-    "turns": 9,
     "prompt_chars": 10183,
-    "repeated_prefixes": []
+    "repeated_prefixes": [],
+    "turns": 9
   },
   "unit": "ratio",
-  "updated_at": "2026-05-11T14:03:03.504082+00:00"
+  "updated_at": "2026-05-12T01:34:00Z"
 }

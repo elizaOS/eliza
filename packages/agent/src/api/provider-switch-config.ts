@@ -437,13 +437,65 @@ const PROVIDER_DEFAULT_MODELS: Record<
   },
 };
 
+/**
+ * @internal Exported for testing only.
+ *
+ * True when the active `OPENAI_BASE_URL` points at a non-openai.com host
+ * (Cerebras, Groq, OpenRouter, Together, vLLM, LM Studio, an in-house
+ * gateway, etc.). The "openai" provider id then represents an OpenAI-API
+ * shape served by a *different* upstream — `gpt-5.5` and `gpt-5-mini`
+ * are not portable to those upstreams, so stamping them as the default
+ * model ids actively breaks the runtime.
+ *
+ * Returns false when:
+ *  - `OPENAI_BASE_URL` is unset (the caller is using openai.com directly,
+ *    so the default model ids are correct), OR
+ *  - the base URL parses to an `api.openai.com` host (still openai.com).
+ *
+ * Returns true when the URL is set to any other host — including
+ * subdomains of openai.com that aren't `api.openai.com`. We err on the
+ * conservative side here: an operator pointing at a custom OpenAI
+ * endpoint can pass explicit model ids; the failure mode of NOT stamping
+ * is "user has to type their model name", which is strictly better than
+ * stamping a model the upstream rejects with 404.
+ */
+export function openAiBaseUrlIsThirdParty(): boolean {
+  const raw = process.env.OPENAI_BASE_URL?.trim();
+  if (!raw) return false;
+  try {
+    const hostname = new URL(raw).hostname.trim().toLowerCase();
+    if (!hostname) return false;
+    return hostname !== "api.openai.com";
+  } catch {
+    // Unparseable URL: assume third-party. Stamping defaults under a
+    // broken base URL is never the right move.
+    return true;
+  }
+}
+
 function applyDefaultModelNames(
   config: MutableElizaConfig,
   provider: string,
 ): void {
   const defaults = PROVIDER_DEFAULT_MODELS[provider];
   if (!defaults) return;
-  // Only set if not already configured — don't clobber user overrides
+
+  // Guard: when the active `OPENAI_BASE_URL` points at a non-openai.com
+  // upstream (Cerebras, Groq, OpenRouter, vLLM, an in-house gateway, …),
+  // skip stamping the `OPENAI_*_MODEL` defaults — those gpt-5.5 /
+  // gpt-5-mini ids are openai.com inventory and will 404 on every other
+  // upstream. The caller can still pin specific models via the
+  // `primaryModel` field on the connection object; that path is unaffected.
+  //
+  // We only guard the `openai` provider id because (a) it's the only
+  // provider with this base-URL-override pattern in practice and (b) the
+  // `anthropic` / `google` / `groq` / `mlx` provider ids each point at
+  // their own SDK + endpoint, with no equivalent "base URL swap" footgun.
+  if (provider === "openai" && openAiBaseUrlIsThirdParty()) {
+    return;
+  }
+
+  // Only set if not already configured — don't clobber user overrides.
   if (!process.env[defaults.smallKey]) {
     setEnvValue(config, defaults.smallKey, defaults.smallVal);
   }

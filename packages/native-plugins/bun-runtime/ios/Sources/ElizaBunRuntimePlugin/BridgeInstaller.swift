@@ -2,7 +2,7 @@ import Foundation
 import JavaScriptCore
 import Capacitor
 
-/// Installs every `__MILADY_BRIDGE__` host function on the given JSContext.
+/// Installs every `__ELIZA_BRIDGE__` host function on the given JSContext.
 ///
 /// Call once at runtime startup, before evaluating the polyfill prefix or
 /// the agent bundle. All host functions execute on the JSContext's queue
@@ -35,11 +35,11 @@ public enum BridgeInstaller {
         env: [String: String],
         runtime: ElizaBunRuntime
     ) -> BridgeKit {
-        // Seed the __MILADY_BRIDGE__ object and version BEFORE installing
+        // Seed the __ELIZA_BRIDGE__ object and version BEFORE installing
         // host functions so the polyfill can detect them at module top-level.
-        ctx.evaluateScript("globalThis.__MILADY_BRIDGE__ = globalThis.__MILADY_BRIDGE__ || {};")
-        ctx.evaluateScript("globalThis.__MILADY_BRIDGE_VERSION__ = \"\(version)\";")
-        if let bridge = ctx.objectForKeyedSubscript("__MILADY_BRIDGE__") {
+        ctx.evaluateScript("globalThis.__ELIZA_BRIDGE__ = globalThis.__ELIZA_BRIDGE__ || {};")
+        ctx.evaluateScript("globalThis.__ELIZA_BRIDGE_VERSION__ = \"\(version)\";")
+        if let bridge = ctx.objectForKeyedSubscript("__ELIZA_BRIDGE__") {
             bridge.setObject(version, forKeyedSubscript: "version" as NSString)
         }
 

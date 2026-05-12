@@ -82,7 +82,10 @@ describe("action-retrieval measurement mode", () => {
 		});
 
 		expect(response.measurement).toBeDefined();
-		const measurement = response.measurement!;
+		const measurement = response.measurement;
+		if (!measurement) {
+			throw new Error("Expected measurement data to be present");
+		}
 
 		for (const stage of [
 			"exact",
@@ -124,7 +127,11 @@ describe("action-retrieval measurement mode", () => {
 		});
 
 		expect(response.measurement?.fusedTopK).toBeDefined();
-		const fused = response.measurement!.fusedTopK;
+		const measurement = response.measurement;
+		if (!measurement) {
+			throw new Error("Expected measurement data to be present");
+		}
+		const fused = measurement.fusedTopK;
 		expect(fused.length).toBeGreaterThan(0);
 		// rrfScore must be non-increasing
 		for (let i = 1; i < fused.length; i += 1) {
@@ -145,7 +152,12 @@ describe("action-retrieval measurement mode", () => {
 			measurementMode: true,
 		});
 
-		const ctx = response.measurement!.perStageScores.contextMatch;
+		expect(response.measurement).toBeDefined();
+		const measurement = response.measurement;
+		if (!measurement) {
+			throw new Error("Expected measurement data to be present");
+		}
+		const ctx = measurement.perStageScores.contextMatch;
 		const calendarEntry = ctx.find((e) => e.actionName === "CALENDAR");
 		expect(calendarEntry).toBeDefined();
 	});

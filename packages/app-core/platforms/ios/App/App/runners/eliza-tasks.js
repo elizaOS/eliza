@@ -34,10 +34,10 @@ addEventListener("wake", (resolve, reject, args) => {
  * @returns {Promise<{delivered: boolean, ranTasks?: number, durationMs?: number, lastWakeFiredAt?: number}>}
  */
 function handleWake(args) {
-  const kind = args && args.kind;
+  const kind = args?.kind;
   const deadlineSec = args && Number(args.deadlineSec);
-  const deviceSecret = args && args.deviceSecret;
-  const agentBase = args && args.agentBase;
+  const deviceSecret = args?.deviceSecret;
+  const agentBase = args?.agentBase;
 
   if (kind !== "refresh" && kind !== "processing") {
     return Promise.reject({
@@ -45,10 +45,7 @@ function handleWake(args) {
       error: 'invalid args: kind must be "refresh" or "processing"',
     });
   }
-  if (
-    !Number.isFinite(deadlineSec) ||
-    deadlineSec <= 0
-  ) {
+  if (!Number.isFinite(deadlineSec) || deadlineSec <= 0) {
     return Promise.reject({
       delivered: false,
       error: "invalid args: deadlineSec must be a positive number",
@@ -74,46 +71,45 @@ function handleWake(args) {
   var startedAt = Date.now();
   var wakeDeadlineAt = startedAt + hardDeadlineMs;
 
-  var url = trimTrailingSlash(agentBase) + "/api/internal/wake";
+  var url = `${trimTrailingSlash(agentBase)}/api/internal/wake`;
   // Wrap in Promise.resolve().then so that a synchronous throw inside the
   // sandboxed fetch() (rare, but observed under hostile mocks and the iOS
   // QuickJS network stack when no route is registered) becomes a rejection
   // we can race against the deadline.
   var workPromise = Promise.resolve()
-    .then(function () {
-      return fetch(url, {
+    .then(() =>
+      fetch(url, {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          authorization: "Bearer " + deviceSecret,
+          authorization: `Bearer ${deviceSecret}`,
         },
         body: JSON.stringify({
           kind: kind,
           deadlineMs: wakeDeadlineAt,
         }),
-      });
-    })
-    .then(function (response) {
-      if (!response || !response.ok) {
+      }),
+    )
+    .then((response) => {
+      if (!response?.ok) {
         var status = response ? response.status : "no-response";
-        throw new Error("wake POST failed: status=" + status);
+        throw new Error(`wake POST failed: status=${status}`);
       }
       return response.json();
     });
 
-  var deadlinePromise = new Promise(function (_resolve, reject) {
-    setTimeout(function () {
-      reject(new Error("wake deadline reached after " + hardDeadlineMs + "ms"));
+  var deadlinePromise = new Promise((_resolve, reject) => {
+    setTimeout(() => {
+      reject(new Error(`wake deadline reached after ${hardDeadlineMs}ms`));
     }, hardDeadlineMs);
   });
 
   return Promise.race([workPromise, deadlinePromise])
-    .then(function (result) {
+    .then((result) => {
       var safe = result && typeof result === "object" ? result : {};
       return {
         delivered: true,
-        ranTasks:
-          typeof safe.ranTasks === "number" ? safe.ranTasks : 0,
+        ranTasks: typeof safe.ranTasks === "number" ? safe.ranTasks : 0,
         durationMs:
           typeof safe.durationMs === "number"
             ? safe.durationMs
@@ -124,14 +120,13 @@ function handleWake(args) {
             : Date.now(),
       };
     })
-    .catch(function (error) {
-      var msg =
-        error && error.message
-          ? error.message
-          : typeof error === "string"
-            ? error
-            : "unknown error";
-      console.error("[eliza-tasks] wake failed: " + msg);
+    .catch((error) => {
+      var msg = error?.message
+        ? error.message
+        : typeof error === "string"
+          ? error
+          : "unknown error";
+      console.error(`[eliza-tasks] wake failed: ${msg}`);
       return Promise.reject({ delivered: false, error: msg });
     });
 }

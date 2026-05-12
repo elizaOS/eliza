@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PhraseCache } from "./phrase-cache";
 import {
-  type AsrTokenStreamer,
   type DraftProposer,
   type TargetVerifier,
   VoicePipeline,
@@ -13,8 +12,10 @@ import type {
   OmniVoiceBackend,
   Phrase,
   SpeakerPreset,
+  StreamingTranscriber,
   TextToken,
   TranscriptionAudio,
+  TranscriptUpdate,
 } from "./types";
 
 function makePreset(): SpeakerPreset {
@@ -75,25 +76,34 @@ const audio: TranscriptionAudio = {
   sampleRate: 24000,
 };
 
-/** ASR that emits a fixed token list, recording when it finished. */
-class StubTranscriber implements AsrTokenStreamer {
+/**
+ * `StreamingTranscriber` stub: `flush()` returns a transcript whose
+ * whitespace-aware split (`splitTranscriptToTokens`) reproduces `tokens`.
+ * `delayMs` delays the final decode so a test can barge in mid-`flush()`.
+ */
+class StubTranscriber implements StreamingTranscriber {
   finishedAt = -1;
+  fed = false;
+  disposed = false;
   constructor(
     private readonly tokens: TextToken[],
-    private readonly perTokenDelayMs = 0,
+    private readonly delayMs = 0,
   ) {}
-  async *transcribeStream(
-    _audio: TranscriptionAudio,
-    cancel: { cancelled: boolean },
-  ): AsyncIterable<TextToken> {
-    for (const t of this.tokens) {
-      if (cancel.cancelled) return;
-      if (this.perTokenDelayMs > 0) {
-        await new Promise((r) => setTimeout(r, this.perTokenDelayMs));
-      }
-      yield t;
+  feed(): void {
+    this.fed = true;
+  }
+  async flush(): Promise<TranscriptUpdate> {
+    if (this.delayMs > 0) {
+      await new Promise((r) => setTimeout(r, this.delayMs));
     }
     this.finishedAt = Date.now();
+    return { partial: this.tokens.map((t) => t.text).join(""), isFinal: true };
+  }
+  on(): () => void {
+    return () => {};
+  }
+  dispose(): void {
+    this.disposed = true;
   }
 }
 

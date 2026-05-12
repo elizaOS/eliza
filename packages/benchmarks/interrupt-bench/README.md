@@ -1,6 +1,6 @@
 # InterruptBench
 
-A TypeScript benchmark for **interruption handling** in the Milady / elizaOS agent runtime. Measures whether the Stage-1 response handler does the right thing when the user fragments, retracts, refines, steers, pivots, merges, or otherwise interrupts an in-flight conversation.
+A TypeScript benchmark for **interruption handling** in the Eliza / elizaOS agent runtime. Measures whether the Stage-1 response handler does the right thing when the user fragments, retracts, refines, steers, pivots, merges, or otherwise interrupts an in-flight conversation.
 
 InterruptBench is **in-process** — it does not boot a full agent runtime or hit a real database. Instead it directly wires the Wave 0 primitives shipped from `@elizaos/core`:
 

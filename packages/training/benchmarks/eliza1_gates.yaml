@@ -36,6 +36,28 @@ version: 2
 # better". `bool` gates take a boolean measurement and pass when true.
 # ---------------------------------------------------------------------------
 gates:
+  format_ok:
+    op: ">="
+    unit: "parsable-output rate 0..1"
+    manifest_field: null
+    description: >-
+      Fraction of held-out bench rows whose generated output parses into the
+      structurally-required shape for its task type — aggregated across
+      eliza_bench.py (buckets[*].format_ok / n) and native_tool_call_bench.py
+      (buckets[*].structure_ok / n). This is a structural gate, not a quality
+      gate: it measures "did the model emit a well-formed TOON/tool-call
+      document at all", which a published tier should reliably do. Not
+      provisional — it is a real measurement the bench self-reports — but it is
+      ONLY evaluated in `mode: full`; smoke-corpus pipeline runs use the
+      separate `format_ok_floor` (0.5) / `format_ok_not_regressed` structural
+      checks in eliza1_gates.py and a few-hundred-record smoke corpus is not
+      expected to clear the full-mode 0.7 floor.
+    calibration: >-
+      0.70 is a defensible publish floor for a real fine-tune run on the full
+      corpus (the SFT target is parsable-format ≈ 0.95+; a tier that falls below
+      0.7 is broken, not merely under-tuned). Tighten per-tier as real run data
+      lands; leave provisional:false but treat 0.70 as the conservative floor,
+      not the target.
   text_eval:
     op: ">="
     unit: "score 0..1"
@@ -60,17 +82,17 @@ gates:
   vad_boundary_mae_ms:
     op: "<="
     unit: "ms"
-    manifest_field: "evals.vadQuality.boundaryMaeMs"
+    manifest_field: "evals.vadLatencyMs.boundaryMs"
     description: "Median absolute error of detected speech onset against labeled speech start."
   vad_endpoint_p95_ms:
     op: "<="
     unit: "ms"
-    manifest_field: "evals.vadQuality.endpointP95Ms"
+    manifest_field: "evals.vadLatencyMs.endpointMs"
     description: "P95 endpoint overhang after labeled speech end."
   vad_false_bargein_per_hour:
     op: "<="
     unit: "events/hour"
-    manifest_field: "evals.vadQuality.falseBargeInPerHour"
+    manifest_field: "evals.vadLatencyMs.falseBargeInRate"
     description: "Extrapolated false speech-start events per hour over silence/noise fixtures."
   first_token_latency_ms:
     op: "<="
@@ -160,6 +182,7 @@ dflash:
 # ---------------------------------------------------------------------------
 tiers:
   0_6b:
+    format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
     text_eval: { threshold: 0.55, required: true, provisional: true }
     voice_rtf: { threshold: 0.5, required: true, provisional: true }
     asr_wer: { threshold: 0.10, required: true, provisional: true }
@@ -180,6 +203,7 @@ tiers:
     peak_rss_mb: { threshold: 1800, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 20, required: false, provisional: true, needs_hardware: true }
   1_7b:
+    format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
     text_eval: { threshold: 0.60, required: true, provisional: true }
     voice_rtf: { threshold: 0.45, required: true, provisional: true }
     asr_wer: { threshold: 0.08, required: true, provisional: true }
@@ -200,6 +224,7 @@ tiers:
     peak_rss_mb: { threshold: 4500, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 20, required: false, provisional: true, needs_hardware: true }
   9b:
+    format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
     text_eval: { threshold: 0.65, required: true, provisional: true }
     voice_rtf: { threshold: 0.4, required: true, provisional: true }
     asr_wer: { threshold: 0.06, required: true, provisional: true }
@@ -220,6 +245,7 @@ tiers:
     peak_rss_mb: { threshold: 9500, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 15, required: false, provisional: true, needs_hardware: true }
   27b:
+    format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
     text_eval: { threshold: 0.70, required: true, provisional: true }
     voice_rtf: { threshold: 0.4, required: true, provisional: true }
     asr_wer: { threshold: 0.05, required: true, provisional: true }
@@ -238,6 +264,7 @@ tiers:
     expressive_mos: { threshold: 4.1, required: false, provisional: true }
     expressive_tag_leakage: { threshold: 0.02, required: false, provisional: true }
   27b-256k:
+    format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
     text_eval: { threshold: 0.70, required: true, provisional: true }
     voice_rtf: { threshold: 0.4, required: true, provisional: true }
     asr_wer: { threshold: 0.05, required: true, provisional: true }
@@ -256,6 +283,7 @@ tiers:
     expressive_mos: { threshold: 4.1, required: false, provisional: true }
     expressive_tag_leakage: { threshold: 0.02, required: false, provisional: true }
   27b-1m:
+    format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
     text_eval: { threshold: 0.70, required: true, provisional: true }
     voice_rtf: { threshold: 0.4, required: true, provisional: true }
     asr_wer: { threshold: 0.05, required: true, provisional: true }

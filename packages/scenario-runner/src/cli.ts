@@ -207,7 +207,7 @@ async function main(): Promise<number> {
   // Run-level results dir. When set, every scenario in this run drops its
   // trajectories under <runDir>/trajectories/ and the aggregator post-step
   // can produce per-scenario JSONL + report.md + steps.csv. Also exports
-  // MILADY_LIFEOPS_RUN_ID so the recorder picks it up.
+  // ELIZA_LIFEOPS_RUN_ID so the recorder picks it up.
   //
   // `--export-native` needs those trajectory files too; if it was given
   // without an explicit `--run-dir`, default one next to the export target so
@@ -223,9 +223,9 @@ async function main(): Promise<number> {
       : undefined);
   if (effectiveRunDir) {
     const trajectoryDir = path.join(effectiveRunDir, "trajectories");
-    process.env.MILADY_TRAJECTORY_DIR = trajectoryDir;
-    process.env.MILADY_LIFEOPS_RUN_ID = effectiveRunId;
-    process.env.MILADY_LIFEOPS_RUN_DIR = effectiveRunDir;
+    process.env.ELIZA_TRAJECTORY_DIR = trajectoryDir;
+    process.env.ELIZA_LIFEOPS_RUN_ID = effectiveRunId;
+    process.env.ELIZA_LIFEOPS_RUN_DIR = effectiveRunDir;
     logger.info(
       `[eliza-scenarios] run-dir: ${effectiveRunDir} (trajectories → ${trajectoryDir}, runId=${effectiveRunId})`,
     );
@@ -245,7 +245,7 @@ async function main(): Promise<number> {
       logger.info(`[eliza-scenarios] ▶ ${scenario.id}`);
       // Surface scenario id to the recorder via env so trajectories are
       // tagged with the right scenarioId without changing internal APIs.
-      process.env.MILADY_LIFEOPS_SCENARIO_ID = scenario.id;
+      process.env.ELIZA_LIFEOPS_SCENARIO_ID = scenario.id;
       const report = await runScenario(scenario, runtime, {
         providerName,
         minJudgeScore,

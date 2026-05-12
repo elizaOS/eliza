@@ -105,7 +105,7 @@ let nativeBridgeOverride: NativeCalendarBridge | null | undefined;
 
 const NATIVE_DYLIB_ENV =
   typeof process !== "undefined"
-    ? (process.env.MILADY_NATIVE_PERMISSIONS_DYLIB ?? "")
+    ? (process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "")
     : "";
 
 const NATIVE_DYLIB_CANDIDATES = [

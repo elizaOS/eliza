@@ -19,10 +19,9 @@ import {
   useRef,
   useState,
 } from "react";
-
+import type { VoiceSessionMode } from "../../../voice/voice-chat-types";
 import { Button } from "../../ui/button";
 import { Textarea } from "../../ui/textarea";
-import type { VoiceSessionMode } from "../../../voice/voice-chat-types";
 import type { ChatVariant } from "./chat-types";
 import { CreateTaskPopover } from "./create-task-popover";
 

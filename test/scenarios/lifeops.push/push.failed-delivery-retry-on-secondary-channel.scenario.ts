@@ -32,7 +32,7 @@ export default scenario({
       content: {
         kind: "push-delivery-attempt",
         channel: "ntfy",
-        topic: "milady-shaw-mobile",
+        topic: "eliza-shaw-mobile",
         result: "failed",
         statusCode: 503,
         attemptedAt: new Date(Date.now() - 2 * 60_000).toISOString(),

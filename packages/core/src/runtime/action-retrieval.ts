@@ -26,7 +26,7 @@ export type RetrieveActionsInput = {
 	/**
 	 * The messageHandler-selected contexts for this turn. Used as a *weight*
 	 * (boost actions whose declared `contexts` intersect this set) — never
-	 * as a filter. Filtering by context masked LIFE/CALENDAR/etc. when the
+	 * as a filter. Filtering by context masked OWNER_TODOS/CALENDAR/etc. when the
 	 * messageHandler routed to "general"; weighting keeps them retrievable
 	 * while still preferring on-context candidates when scores are close.
 	 */
@@ -34,7 +34,7 @@ export type RetrieveActionsInput = {
 	/**
 	 * When `true`, capture each stage's full pre-fusion output and emit it
 	 * in `response.measurement`. Default `false` — no allocation cost in
-	 * production. Toggle via the `MILADY_RETRIEVAL_MEASUREMENT=1` env var
+	 * production. Toggle via the `ELIZA_RETRIEVAL_MEASUREMENT=1` env var
 	 * on the caller side.
 	 */
 	measurementMode?: boolean;
@@ -115,6 +115,7 @@ const RETRIEVAL_TIER_DEFAULTS: Record<
 	{ topK: number; stageWeights: Partial<Record<RetrievalStageName, number>> }
 > = {
 	small: {
+		// measured: K=5 saturates (W6-G2 Pareto 2026-05-11; heuristic was 5)
 		topK: 5,
 		stageWeights: {
 			exact: 1.5,
@@ -126,7 +127,8 @@ const RETRIEVAL_TIER_DEFAULTS: Record<
 		},
 	},
 	mid: {
-		topK: 8,
+		// measured: K=5 saturates at 0.98 recall (heuristic was 8)
+		topK: 6,
 		stageWeights: {
 			exact: 1.4,
 			regex: 1.2,
@@ -137,7 +139,8 @@ const RETRIEVAL_TIER_DEFAULTS: Record<
 		},
 	},
 	large: {
-		topK: 12,
+		// measured: K=5 saturates at 0.98 recall (heuristic was 12)
+		topK: 8,
 		stageWeights: {
 			exact: 1.2,
 			regex: 1.1,
@@ -148,7 +151,8 @@ const RETRIEVAL_TIER_DEFAULTS: Record<
 		},
 	},
 	frontier: {
-		topK: 20,
+		// measured: K=5 saturates at 0.98 recall (heuristic was 20)
+		topK: 12,
 		stageWeights: {
 			exact: 1,
 			regex: 1,
@@ -161,7 +165,7 @@ const RETRIEVAL_TIER_DEFAULTS: Record<
 };
 
 // Cerebras "compress" mode caps top-K at 8 regardless of tier default.
-// When `MILADY_PROMPT_COMPRESS=1` is set we trade retrieval breadth for a
+// When `ELIZA_PROMPT_COMPRESS=1` is set we trade retrieval breadth for a
 // tighter token budget on the available-actions block.
 const COMPRESS_MODE_TOP_K_CAP = 8;
 
@@ -174,7 +178,7 @@ function resolveTierOverridesFromEnv():
 			: undefined;
 	const compress =
 		typeof process !== "undefined" &&
-		process.env?.MILADY_PROMPT_COMPRESS === "1";
+		process.env?.ELIZA_PROMPT_COMPRESS === "1";
 	if (
 		raw !== "small" &&
 		raw !== "mid" &&
@@ -294,8 +298,8 @@ export function retrieveActions(
 		// intersect this parent's declared `contexts`, give it a meaningful
 		// additive bump. The boost is large enough to reorder tier-A when a
 		// context-aligned candidate has a comparable raw retrieval score
-		// (e.g. LIFE vs BLOCK both keyword-match "every day" — context says
-		// the user is in tasks/general, so LIFE wins). Context alone is not a
+		// (e.g. OWNER_ROUTINES vs BLOCK both keyword-match "every day" — context
+		// says the user is in tasks/general, so OWNER_ROUTINES wins). Context alone is not a
 		// retrieval signal; otherwise every action sharing a broad context can
 		// leak into Tier B without matching the turn.
 		const parentContexts: readonly unknown[] = Array.isArray(parent.contexts)

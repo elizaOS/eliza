@@ -107,11 +107,19 @@ def _resolve_finish_reason(raw: str | None) -> FinishReason:
     return "error"
 
 
-def _compute_cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -> float:
-    """Compute USD cost for a Cerebras call. Returns 0.0 for unknown models."""
+def _compute_cost_usd(
+    model: str, prompt_tokens: int, completion_tokens: int
+) -> float | None:
+    """Compute USD cost for a Cerebras call.
+
+    Returns :data:`None` when ``model`` is not in :data:`CEREBRAS_PRICING` —
+    per AGENTS.md Cmd #8 an unpriced model is nullable, not a silent free
+    ``0.0``. Downstream aggregators sum only non-None per-turn costs into
+    the run-level ``total_cost_usd``.
+    """
     pricing = CEREBRAS_PRICING.get(model)
     if pricing is None:
-        return 0.0
+        return None
     input_cost = (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"]
     output_cost = (completion_tokens / 1_000_000.0) * pricing["output_per_million_usd"]
     return input_cost + output_cost

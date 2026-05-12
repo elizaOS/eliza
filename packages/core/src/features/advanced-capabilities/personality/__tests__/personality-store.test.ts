@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vitest";
 import { defaultProfiles } from "../profiles/index.ts";
-import { PersonalityStore } from "../services/personality-store.ts";
 import {
 	GLOBAL_PERSONALITY_SCOPE,
 	MAX_CUSTOM_DIRECTIVES,

@@ -63,7 +63,7 @@ log = logging.getLogger("synth-routing")
 AGENT_NAMES = [
     "eliza", "Eliza", "Iris", "Kai", "Ava", "Nova", "Echo",
     "Sage", "Atlas", "Lyra", "Pico", "Lumi", "Rune", "Vega",
-    "Sol", "Orion", "Mira", "Tess", "milady",
+    "Sol", "Orion", "Mira", "Tess", "eliza",
 ]
 
 

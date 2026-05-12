@@ -14,7 +14,7 @@
  *  - every action parameter `description` + `descriptionCompressed`
  *
  * Plus, for each entry, the latest optimizer artifact metadata under
- * `~/.milady/optimized-prompts/<task>/current` (or `~/.eliza/...` as a
+ * `~/.eliza/optimized-prompts/<task>/current` (or `~/.eliza/...` as a
  * fallback) when one exists.
  *
  * Action coverage strategy: we walk the source tree under `plugins/*` and
@@ -61,7 +61,7 @@ function estimateTokens(text) {
 
 // ---- Optimizer artifact lookup -------------------------------------------
 // OptimizedPromptService writes per-task artifacts under one of:
-//   ~/.milady/optimized-prompts/<task>/current   (symlink to vN.json)
+//   ~/.eliza/optimized-prompts/<task>/current   (symlink to vN.json)
 //   ~/.eliza/optimized-prompts/<task>/current
 // If neither exists fall back to scanning the directory for the
 // `generatedAt`-newest `vN.json`. Returns null when nothing is on disk.
@@ -69,7 +69,7 @@ function findOptimizerArtifact(task) {
   const homedir =
     process.env.HOME ?? process.env.USERPROFILE ?? "/Users/shawwalters";
   const candidates = [
-    join(homedir, ".milady", "optimized-prompts", task),
+    join(homedir, ".eliza", "optimized-prompts", task),
     join(homedir, ".eliza", "optimized-prompts", task),
   ];
   for (const dir of candidates) {

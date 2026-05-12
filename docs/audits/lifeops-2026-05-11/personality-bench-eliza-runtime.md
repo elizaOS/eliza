@@ -25,7 +25,7 @@ politely.
 ## Spec
 
 - **Profile name:** `eliza-runtime`.
-- **Activation:** `MILADY_PERSONALITY_AGENT=eliza-runtime` or
+- **Activation:** `ELIZA_PERSONALITY_AGENT=eliza-runtime` or
   `bun run personality:bench:eliza-runtime`.
 - **Server entrypoint:** `node --import tsx
   packages/app-core/src/benchmark/server.ts`.
@@ -38,20 +38,20 @@ politely.
   - `CEREBRAS_API_KEY`, `OPENAI_BASE_URL=https://api.cerebras.ai/v1`,
     `OPENAI_API_KEY=<cerebras key>` — wires the openai-compatible
     plugin to Cerebras `gpt-oss-120b`.
-  - `MILADY_PROVIDER=cerebras`, `BENCHMARK_MODEL_PROVIDER=cerebras` —
+  - `ELIZA_PROVIDER=cerebras`, `BENCHMARK_MODEL_PROVIDER=cerebras` —
     suppresses Groq plugin loading per the existing guard in
     `server.ts`.
   - `OPENAI_LARGE_MODEL / OPENAI_SMALL_MODEL / OPENAI_MEDIUM_MODEL` and
     `LARGE_MODEL / SMALL_MODEL / MEDIUM_MODEL` all pinned to
-    `gpt-oss-120b` (override via `MILADY_PERSONALITY_MODEL`).
+    `gpt-oss-120b` (override via `ELIZA_PERSONALITY_MODEL`).
   - `ADVANCED_CAPABILITIES=true` — this is the load-bearing flag. It
     flips `personalityStore` / reply-gate / verbosity enforcer / the
     `PERSONALITY` action on inside the AgentRuntime.
-  - `MILADY_BENCH_FORCE_TOOL_CALL=1` — W1-9 fix, keeps the planner
+  - `ELIZA_BENCH_FORCE_TOOL_CALL=1` — W1-9 fix, keeps the planner
     deterministic for benchmark turns.
 - **Health-check loop:** polls `GET /api/benchmark/health` every 1 s
   until the response is `{"status":"ready",...}` or 120 s elapse. The
-  ceiling is configurable via `MILADY_PERSONALITY_RUNTIME_HEALTH_MS`.
+  ceiling is configurable via `ELIZA_PERSONALITY_RUNTIME_HEALTH_MS`.
 - **Per-turn HTTP:** `POST /api/benchmark/message` with
   `{text, context: {benchmark: "personality_bench", task_id, user_id}}`.
   Each `room` in a scope-isolation scenario gets a distinct `task_id` so
@@ -92,7 +92,7 @@ agent driver continues with more profiles.
 ## Smoke results (3 scenarios)
 
 ```
-$ MILADY_PERSONALITY_LIMIT=3 MILADY_PERSONALITY_AGENT=eliza-runtime \
+$ ELIZA_PERSONALITY_LIMIT=3 ELIZA_PERSONALITY_AGENT=eliza-runtime \
   bun run personality:bench
 [personality-bench-run] agents=[eliza-runtime]
 [personality-bench-run]   spawning bench server: node --import tsx \
@@ -182,7 +182,7 @@ system-prompt approximation.
   shape. Other three profiles untouched.
 - `package.json` — added `personality:bench:eliza-runtime` shortcut.
 - `packages/docs/benchmarking.md` — documents the 4th profile, the
-  spawn/cleanup contract, and the new `MILADY_PERSONALITY_RUNTIME_HEALTH_MS`
+  spawn/cleanup contract, and the new `ELIZA_PERSONALITY_RUNTIME_HEALTH_MS`
   env knob.
 
 No changes under `packages/core`, `packages/app-core`, judges, rubrics,

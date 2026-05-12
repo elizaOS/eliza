@@ -47,7 +47,7 @@ function ShopifySetupCard() {
                 <div className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
                   Store domain
                 </div>
-                <div className="mt-1 font-mono text-xs text-txt">
+                <div className="mt-1 break-all font-mono text-xs text-txt">
                   SHOPIFY_STORE_DOMAIN=your-store.myshopify.com
                 </div>
               </div>
@@ -56,32 +56,31 @@ function ShopifySetupCard() {
                 <div className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
                   Access token
                 </div>
-                <div className="mt-1 font-mono text-xs text-txt">
+                <div className="mt-1 break-all font-mono text-xs text-txt">
                   SHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx
                 </div>
               </div>
             </div>
           </div>
 
-          <p className="text-xs text-muted">
-            Restart after setting these env vars. Required scopes:{" "}
-            <code className="rounded bg-bg-accent px-1 py-0.5 font-mono text-2xs">
-              read_products
-            </code>
-            ,{" "}
-            <code className="rounded bg-bg-accent px-1 py-0.5 font-mono text-2xs">
-              read_orders
-            </code>
-            ,{" "}
-            <code className="rounded bg-bg-accent px-1 py-0.5 font-mono text-2xs">
-              read_inventory
-            </code>
-            , and{" "}
-            <code className="rounded bg-bg-accent px-1 py-0.5 font-mono text-2xs">
-              read_customers
-            </code>{" "}
-            scopes.
-          </p>
+          <div className="text-center text-xs text-muted">
+            <p>Restart after setting these env vars.</p>
+            <div className="mt-2 flex flex-wrap justify-center gap-1">
+              {[
+                "read_products",
+                "read_orders",
+                "read_inventory",
+                "read_customers",
+              ].map((scope) => (
+                <code
+                  key={scope}
+                  className="rounded bg-bg-accent px-1.5 py-0.5 font-mono text-2xs"
+                >
+                  {scope}
+                </code>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -171,7 +170,7 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
   return (
     <div
       data-testid="shopify-shell"
-      className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-bg supports-[height:100dvh]:h-[100dvh]"
+      className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-bg pb-[var(--safe-area-bottom,0px)] pl-[var(--safe-area-left,0px)] pr-[var(--safe-area-right,0px)] pt-[var(--safe-area-top,0px)] supports-[height:100dvh]:h-[100dvh]"
     >
       <div className="flex shrink-0 items-center gap-3 border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-md">
         <Button

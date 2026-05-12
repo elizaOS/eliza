@@ -524,6 +524,7 @@ export function VrmViewer(props: VrmViewerProps) {
   return (
     <canvas
       ref={canvasRef}
+      data-testid="companion-vrm-canvas"
       onPointerDown={(event) => {
         if (!pointerParallaxRef.current) return;
         pointerStateRef.current = {

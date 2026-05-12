@@ -64,6 +64,7 @@ import {
   normalizeMobileRuntimeMode,
   preSeedAndroidLocalRuntimeIfFresh,
   resolveWindowShellRoute,
+  routeOnboardingDeepLink,
   SHARE_TARGET_EVENT,
   type ShareTargetPayload,
   setBootConfig,
@@ -111,7 +112,8 @@ import "@elizaos/app-trajectory-logger";
 import "@elizaos/app-shopify";
 import "@elizaos/app-vincent";
 import { useVincentState } from "@elizaos/app-vincent";
-import "@elizaos/app-vincent";
+import "@elizaos/app-hyperliquid";
+import "@elizaos/app-polymarket";
 // Side-effect: register the wallet UI plugin (route loader, /inventory shell
 // page, and chat sidebar wallet-status widget) with the app shell registries.
 // Must precede the first shell render.
@@ -119,7 +121,7 @@ import "@elizaos/app-wallet";
 // Side-effect: register the AOSP-only Phone / Contacts / WiFi overlay apps.
 // Each `register` module gates itself on `isElizaOS()` so stock Android, iOS,
 // desktop, and web bundles bring the modules in without registering anything.
-// On Eliza-derived AOSP images (ElizaOS, MiladyOS, …) the corresponding
+// On Eliza-derived AOSP images (ElizaOS, ElizaOS, …) the corresponding
 // overlay app shows up in the apps catalog and is launchable as a system
 // surface. `@elizaos/app-phone` already side-effect-registers via the
 // `PhoneCompanionApp` named import above, but the explicit imports here keep
@@ -271,7 +273,9 @@ const APP_STYLE_PRESETS = getStylePresets();
 
 const APP_VRM_ASSETS = APP_STYLE_PRESETS.slice()
   .sort((a, b) => a.avatarIndex - b.avatarIndex)
-  .map((p) => ({ title: p.name, slug: `${APP_NAMESPACE}-${p.avatarIndex}` }));
+  // Companion public assets are shipped as eliza-*.vrm.gz even in the Eliza
+  // branded shell; keep the boot roster aligned with files in dist/vrms.
+  .map((p) => ({ title: p.name, slug: `eliza-${p.avatarIndex}` }));
 
 const appBootConfig: AppBootConfig = {
   branding: APP_BRANDING,
@@ -500,6 +504,10 @@ async function initializeNetworkListener(): Promise<void> {
 }
 
 function handleDeepLink(url: string): void {
+  if (routeOnboardingDeepLink(url, APP_URL_SCHEME)) {
+    return;
+  }
+
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -1029,6 +1037,7 @@ async function main(): Promise<void> {
     return;
   }
 
+  await initializeStorageBridge();
   mountReactApp();
   await initializePlatform();
 }

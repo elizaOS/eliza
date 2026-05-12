@@ -17,9 +17,8 @@ import {
   toneForHealthState,
   toneForStatusText,
   toneForViewerAttachment,
-  useApp,
 } from "@elizaos/app-core";
-import { Button, Input } from "@elizaos/ui";
+import { Button, Input, useApp } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type BabylonAgentSummaryEnvelope,

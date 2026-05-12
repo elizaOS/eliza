@@ -72,12 +72,12 @@ describe("PermissionRegistry", () => {
 
   beforeEach(() => {
     stateDir = mkdtempSync(path.join(os.tmpdir(), "perm-registry-"));
-    process.env.MILADY_STATE_DIR = stateDir;
+    process.env.ELIZA_STATE_DIR = stateDir;
   });
 
   afterEach(() => {
     rmSync(stateDir, { recursive: true, force: true });
-    delete process.env.MILADY_STATE_DIR;
+    delete process.env.ELIZA_STATE_DIR;
   });
 
   it("starts empty and returns a default state for unknown ids", () => {

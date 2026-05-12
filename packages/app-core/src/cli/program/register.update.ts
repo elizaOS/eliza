@@ -50,7 +50,8 @@ async function updateAction(opts: {
 }): Promise<void> {
   const { loadElizaConfig, saveElizaConfig } = await import("@elizaos/agent");
   const { checkForUpdate, resolveChannel } = await import("@elizaos/agent");
-  const { detectInstallMethod, performUpdate } = await import("@elizaos/agent");
+  const { detectInstallMethod, getUpdateActionPlan, performUpdate } =
+    await import("@elizaos/agent");
   const config = loadElizaConfig();
   let newChannel: ReleaseChannel | undefined;
 
@@ -115,16 +116,17 @@ async function updateAction(opts: {
   }
 
   const method = detectInstallMethod();
-  if (method === "local-dev") {
-    console.log(
-      theme.warn(
-        "  Local development install detected. Use `git pull` to update.\n",
-      ),
-    );
+  const updatePlan = getUpdateActionPlan(method, effectiveChannel);
+  if (!updatePlan.canExecuteFromContext) {
+    console.log(theme.warn(`  ${updatePlan.message}\n`));
     return;
   }
 
   console.log(theme.muted(`  Install method: ${method}`));
+  console.log(theme.muted(`  Authority: ${updatePlan.authority}`));
+  if (updatePlan.command) {
+    console.log(theme.muted(`  Command: ${updatePlan.command}`));
+  }
   console.log("  Installing update...\n");
 
   const updateResult = await performUpdate(
@@ -167,7 +169,9 @@ async function statusAction(): Promise<void> {
   const { resolveChannel, fetchAllChannelVersions } = await import(
     "@elizaos/agent"
   );
-  const { detectInstallMethod } = await import("@elizaos/agent");
+  const { detectInstallMethod, getUpdateActionPlan } = await import(
+    "@elizaos/agent"
+  );
   console.log(`\n${theme.heading("Version Status")}\n`);
 
   const config = loadElizaConfig();
@@ -175,7 +179,18 @@ async function statusAction(): Promise<void> {
 
   console.log(`  Installed:  ${theme.accent(CLI_VERSION)}`);
   console.log(`  Channel:    ${channelLabel(channel)}`);
-  console.log(`  Install:    ${theme.muted(detectInstallMethod())}`);
+  const method = detectInstallMethod();
+  const updatePlan = getUpdateActionPlan(method, channel);
+
+  console.log(`  Install:    ${theme.muted(method)}`);
+  console.log(`  Authority:  ${theme.muted(updatePlan.authority)}`);
+  console.log(`  Next:       ${theme.muted(updatePlan.nextAction)}`);
+  if (updatePlan.command) {
+    console.log(`  Command:    ${theme.muted(updatePlan.command)}`);
+  }
+  console.log(
+    `  Can run:    ${updatePlan.canExecuteFromContext ? "yes" : "no"}`,
+  );
 
   console.log(`\n${theme.heading("Available Versions")}\n`);
   console.log("  Fetching from npm registry...\n");

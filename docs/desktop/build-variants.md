@@ -7,14 +7,14 @@ distribution channel decides which local capabilities are available.
 
 Use this for Mac App Store, Microsoft Store, and Flathub builds.
 
-- `MILADY_BUILD_VARIANT=store`
+- `ELIZA_BUILD_VARIANT=store`
 - Runs inside the platform app sandbox.
 - Forces local code-execution surfaces off: terminal commands, shell plugins,
   coding tools, and coding-agent orchestration are not loaded.
 - Routes local agent work through Eliza Cloud instead of starting an embedded
   host agent.
 - Stores app state under the app-container data directory via
-  `MILADY_STATE_DIR`.
+  `ELIZA_STATE_DIR`.
 - Allows users to import a direct-build state directory through the desktop
   settings panel. On macOS, the folder picker returns a security-scoped
   bookmark so access can be restored without broad filesystem entitlement.
@@ -37,26 +37,42 @@ For application update authority and OTA boundaries, see
 Use this for the downloadable DMG, Homebrew cask, Windows installer, AppImage,
 deb/rpm, and other side-loaded desktop builds.
 
-- `MILADY_BUILD_VARIANT=direct` or unset.
+- `ELIZA_BUILD_VARIANT=direct` or unset.
 - Runs with normal host filesystem/process access.
 - Enables local terminal, coding tools, coding-agent CLIs, local Ollama, and
   other power-user workflows.
 - Uses the normal namespace state directory, such as `~/.eliza`, unless
-  `MILADY_STATE_DIR` or `ELIZA_STATE_DIR` is explicitly set.
+  `ELIZA_STATE_DIR` or `MILADY_STATE_DIR` is explicitly set.
 
 ## Mobile
 
-Vanilla iOS and Google Play Android are thin clients. They do not run Bun or a
-local agent backend in-app; Cloud hosting provides the sandboxed agent runtime.
+Vanilla App Store iOS and Google Play Android are thin clients. They do not run
+Bun or a local agent backend in-app; Cloud hosting provides the sandboxed agent
+runtime. The release authority is the store, so the app can show version,
+release notes, and store links but must not replace itself.
 
 The AOSP native Android build is a privileged system build and runs on-device.
 It does not expose a sandbox choice because the system image is already the
-target environment for local shell and terminal access.
+target environment for local shell and terminal access. Its release authority is
+the signed AOSP OTA/system-image channel, not the normal app UI.
 
 Google Play Android uses the `android-cloud` build target. That target strips
 the on-device agent service, privileged default-role activities, system-only
 permissions, staged `assets/agent` runtime, disguised native runtime libraries,
 and `MANAGE_VIRTUAL_MACHINE` before building the APK.
+
+Direct mobile targets are still externally installed:
+
+| Target | Variant | Authority |
+| --- | --- | --- |
+| `android-cloud` | `store` | Google Play |
+| `android` | `direct` | GitHub Release plus Android package-installer consent |
+| `android-system` | `direct` | Signed AOSP OTA or platform-signed privileged package channel |
+| `ios` | `store` | App Store/TestFlight or another Apple-controlled channel |
+| `ios-local` | `direct` | Xcode, Apple Configurator, Homebrew-assisted local tooling, or developer sideload tooling |
+
+`direct` means the build keeps local/runtime capabilities appropriate for that
+target. It does not grant silent self-update authority on mobile OSes.
 
 ## Verification
 

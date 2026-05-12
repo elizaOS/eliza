@@ -1,7 +1,7 @@
 {
 	"name": "@elizaos/plugin-device-filesystem",
 	"version": "2.0.0-beta.1",
-	"description": "Mobile-safe filesystem actions (DEVICE_FILE_READ, DEVICE_FILE_WRITE, DEVICE_LIST_DIR) that route through @capacitor/filesystem on iOS/Android and a Node fs/promises workspace on desktop/AOSP.",
+	"description": "Mobile-safe filesystem bridge for canonical FILE target=device operations on iOS/Android and desktop/AOSP.",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",

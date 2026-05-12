@@ -10,8 +10,8 @@
  * typed in first-run customize from one the agent inferred from a connector
  * — and so audits can trace the origin.
  *
- * Reminder intensity and escalation policy (`LIFE.policy_set_reminder` /
- * `LIFE.policy_configure_escalation`) write into the store's policy entries.
+ * Reminder intensity and escalation policy flows write into the store's policy
+ * entries.
  *
  * Persistence: cache-backed, single record per agent. The cache key is
  * `eliza:lifeops:owner-fact-store:v1`. The legacy `LifeOpsOwnerProfile`
@@ -49,7 +49,7 @@ export interface OwnerQuietHours {
 /**
  * Source of truth for a stored fact. `first_run` distinguishes answers
  * captured by the first-run capability from answers captured by the
- * planner via `PROFILE.save`. `connector_inferred` covers values an
+ * owner-profile extraction evaluator. `connector_inferred` covers values an
  * adapter wrote (e.g. timezone from Google Calendar). `agent_inferred`
  * covers LLM-derived values (e.g. relationshipStatus extracted from a
  * conversation).

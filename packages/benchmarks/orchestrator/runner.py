@@ -121,6 +121,18 @@ def _effective_request(adapter: BenchmarkAdapter, request: RunRequest) -> RunReq
     )
 
 
+def _is_harness_compatible(adapter: BenchmarkAdapter, harness_label: str) -> bool:
+    if not harness_label or harness_label == "random_v1":
+        return True
+    if harness_label == "compare":
+        # Model/provider compare is valid for normal multi-harness adapters,
+        # but not for adapters that run a single concrete implementation under
+        # the hood. CompactBench is currently Eliza-only; compare-mode rows
+        # would still exercise Eliza's TypeScript compactor.
+        return len(adapter.agent_compatibility) > 1
+    return harness_label in adapter.agent_compatibility
+
+
 def _result_subdir(run_root: Path, adapter: BenchmarkAdapter, run_id: str) -> Path:
     return run_root / f"{_sanitize_name(adapter.directory)}__{_sanitize_name(adapter.id)}" / run_id
 
@@ -187,7 +199,7 @@ def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
     env["BENCHMARK_HARNESS"] = harness
     env["ELIZA_BENCH_HARNESS"] = harness
     env["BENCHMARK_AGENT"] = harness
-    env["MILADY_PROVIDER"] = provider or request.provider
+    env["ELIZA_PROVIDER"] = provider or request.provider
     env["MODEL_NAME"] = model_name
     env["OPENAI_MODEL"] = model_name
     env["ANTHROPIC_MODEL"] = model_name
@@ -290,7 +302,7 @@ def _collect_run_trajectory_metrics(run_root: Path, *, duration_seconds: float) 
         "llm_call_count": summary.turns,
         "prompt_tokens": summary.prompt_tokens,
         "completion_tokens": summary.completion_tokens,
-        "total_tokens": summary.prompt_tokens + summary.completion_tokens,
+        "total_tokens": summary.total_tokens,
         "avg_prompt_tokens": (summary.prompt_tokens / summary.turns) if summary.turns else 0.0,
         "avg_completion_tokens": (summary.completion_tokens / summary.turns) if summary.turns else 0.0,
     }
@@ -313,6 +325,7 @@ def _collect_run_trajectory_metrics(run_root: Path, *, duration_seconds: float) 
             "turn_index": record.index,
             "prompt_tokens": record.tokens.prompt,
             "completion_tokens": record.tokens.completion,
+            "total_tokens": record.tokens.total or (record.tokens.prompt + record.tokens.completion),
             "cached_tokens": record.tokens.cached,
             "cache_creation_tokens": record.tokens.cache_creation,
             "latency_ms": record.latency_ms,
@@ -610,14 +623,10 @@ def run_benchmarks(
 
         # Harness/agent compatibility — if the harness is not in the adapter's
         # supported list, record an ``incompatible`` outcome and skip without
-        # spawning the subprocess. ``random_v1`` and ``compare`` are
-        # control labels that always run; only real harnesses are gated.
+        # spawning the subprocess. ``random_v1`` is a synthetic baseline and is
+        # handled above. ``compare`` is allowed only for multi-harness adapters.
         harness_label = request.agent.strip().lower()
-        if (
-            harness_label
-            and harness_label not in {"random_v1", "compare"}
-            and harness_label not in adapter.agent_compatibility
-        ):
+        if not _is_harness_compatible(adapter, harness_label):
             attempt = next_attempt_for_signature(conn, signature)
             run_id = (
                 f"incompat_{adapter.id}_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
@@ -793,19 +802,6 @@ def run_benchmarks(
                     cwd=adapter.cwd,
                 )
                 outcomes.append(outcome)
-                _write_latest_result_snapshot(
-                    output_root,
-                    adapter=adapter,
-                    request=effective_request,
-                    run_group_id=run_group_id,
-                    run_id=run_id,
-                    status="skipped",
-                    score=None,
-                    unit=None,
-                    higher_is_better=None,
-                    metrics=outcome.metrics,
-                    error=None,
-                )
                 continue
 
         if request.rerun_failed and not request.force:
@@ -889,19 +885,6 @@ def run_benchmarks(
                     cwd=adapter.cwd,
                 )
                 outcomes.append(outcome)
-                _write_latest_result_snapshot(
-                    output_root,
-                    adapter=adapter,
-                    request=effective_request,
-                    run_group_id=run_group_id,
-                    run_id=run_id,
-                    status="skipped",
-                    score=None,
-                    unit=None,
-                    higher_is_better=None,
-                    metrics=outcome.metrics,
-                    error=None,
-                )
                 continue
 
         required_env = _required_env_for_request(adapter, effective_request)

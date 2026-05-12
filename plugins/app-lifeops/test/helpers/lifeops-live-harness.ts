@@ -74,7 +74,7 @@ const LIVE_PROVIDER_CANDIDATES = [
 ] as const;
 
 export const LIVE_PROVIDER_ENV_KEYS = [
-  "MILADY_PROVIDER",
+  "ELIZA_PROVIDER",
   "CEREBRAS_API_KEY",
   "ELIZA_E2E_CEREBRAS_API_KEY",
   "CEREBRAS_SMALL_MODEL",
@@ -276,7 +276,7 @@ export async function selectLifeOpsLiveProvider(): Promise<SelectedLiveProvider 
         CEREBRAS_API_KEY: cerebrasApiKey,
         OPENAI_API_KEY: cerebrasApiKey,
         OPENAI_BASE_URL: "https://api.cerebras.ai/v1",
-        MILADY_PROVIDER: "cerebras",
+        ELIZA_PROVIDER: "cerebras",
         ...resolveCerebrasModelEnv(),
       },
       plugin: "@elizaos/plugin-openai",
@@ -343,7 +343,7 @@ export async function selectLifeOpsLiveProvider(): Promise<SelectedLiveProvider 
       env.CEREBRAS_API_KEY = apiKey;
       env.OPENAI_API_KEY = apiKey;
       env.OPENAI_BASE_URL = "https://api.cerebras.ai/v1";
-      env.MILADY_PROVIDER = "cerebras";
+      env.ELIZA_PROVIDER = "cerebras";
       Object.assign(env, resolveCerebrasModelEnv());
     }
     if (candidate.name === "openai" && process.env.OPENAI_BASE_URL?.trim()) {

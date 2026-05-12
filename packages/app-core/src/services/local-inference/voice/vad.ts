@@ -80,19 +80,23 @@ export const SILERO_VAD_BUNDLE_REL_PATH = path.join(
 );
 
 /**
- * Resolve the Silero model on disk. Search order:
- *   1. explicit `modelPath`
- *   2. `<bundleRoot>/vad/silero-vad-int8.onnx`
- *   3. `<state-dir>/local-inference/vad/silero-vad-int8.onnx` (shared cache)
- *   4. `$ELIZA_VAD_MODEL_PATH`
+ * Resolve the Silero model on disk. An explicit `modelPath` is honored
+ * exactly — if it is set but missing, the result is `null` (no silent
+ * substitution of a different model). When `modelPath` is not given the
+ * search order is:
+ *   1. `<bundleRoot>/vad/silero-vad-int8.onnx`
+ *   2. `<state-dir>/local-inference/vad/silero-vad-int8.onnx` (shared cache)
+ *   3. `$ELIZA_VAD_MODEL_PATH`
  * Returns `null` when none exist.
  */
 export function resolveSileroVadPath(opts: {
   modelPath?: string;
   bundleRoot?: string;
 }): string | null {
+  if (opts.modelPath) {
+    return existsSync(opts.modelPath) ? path.resolve(opts.modelPath) : null;
+  }
   const candidates: Array<string | undefined> = [
-    opts.modelPath,
     opts.bundleRoot
       ? path.join(opts.bundleRoot, SILERO_VAD_BUNDLE_REL_PATH)
       : undefined,
@@ -235,6 +239,17 @@ export class NativeSileroVad {
         "[voice] Native Silero VAD is not supported by this libelizainference build.",
       );
     }
+    if (
+      !opts.ffi.vadOpen ||
+      !opts.ffi.vadProcess ||
+      !opts.ffi.vadReset ||
+      !opts.ffi.vadClose
+    ) {
+      throw new VadUnavailableError(
+        "model-load-failed",
+        "[voice] Native Silero VAD support probe succeeded, but the required VAD FFI methods are missing.",
+      );
+    }
     const ctx = typeof opts.ctx === "function" ? opts.ctx() : opts.ctx;
     const handle = opts.ffi.vadOpen({ ctx, sampleRateHz: sampleRate });
     return new NativeSileroVad(opts.ffi, handle, sampleRate);
@@ -249,17 +264,31 @@ export class NativeSileroVad {
         `[voice] NativeSileroVad.process expects a ${SILERO_WINDOW_16K}-sample window; got ${window.length}`,
       );
     }
-    return this.ffi.vadProcess({ vad: this.handle, pcm: window });
+    const vadProcess = this.ffi.vadProcess;
+    if (!vadProcess) {
+      throw new Error("[voice] NativeSileroVad.process missing FFI method");
+    }
+    return vadProcess({ vad: this.handle, pcm: window });
   }
 
   reset(): void {
-    if (!this.closed) this.ffi.vadReset(this.handle);
+    if (!this.closed) {
+      const vadReset = this.ffi.vadReset;
+      if (!vadReset) {
+        throw new Error("[voice] NativeSileroVad.reset missing FFI method");
+      }
+      vadReset(this.handle);
+    }
   }
 
   close(): void {
     if (this.closed) return;
     this.closed = true;
-    this.ffi.vadClose(this.handle);
+    const vadClose = this.ffi.vadClose;
+    if (!vadClose) {
+      throw new Error("[voice] NativeSileroVad.close missing FFI method");
+    }
+    vadClose(this.handle);
   }
 }
 

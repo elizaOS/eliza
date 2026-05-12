@@ -910,8 +910,8 @@ export default defineConfig({
     global: "globalThis",
     // Build variant — set at signing time by desktop-build.mjs and embedded
     // here so the renderer can branch on store vs direct without an API call.
-    __MILADY_BUILD_VARIANT__: JSON.stringify(
-      process.env.MILADY_BUILD_VARIANT === "store" ? "store" : "direct",
+    __ELIZA_BUILD_VARIANT__: JSON.stringify(
+      process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct",
     ),
     // Mirror the branded TTS debug env into the client bundle so one env
     // enables UI + server TTS logs in dev.
@@ -1022,6 +1022,10 @@ export default defineConfig({
         find: /^@elizaos\/ui\/styles$/,
         replacement: path.join(uiPkgRoot, "src/styles.ts"),
       },
+      {
+        find: /^@elizaos\/ui\/(.+)$/,
+        replacement: path.join(uiPkgRoot, "src/$1"),
+      },
       // Browser-safe aliases for local app plugin package roots.
       ...createAppPluginBrowserAliases(),
       // Dynamic aliases for local app plugin package subpaths.
@@ -1087,6 +1091,10 @@ export default defineConfig({
           {
             find: /^@elizaos\/ui$/,
             replacement: path.join(uiSource, "index.ts"),
+          },
+          {
+            find: /^@elizaos\/ui\/(.+)$/,
+            replacement: path.join(uiSource, "$1"),
           },
           {
             find: /^@elizaos\/agent$/,

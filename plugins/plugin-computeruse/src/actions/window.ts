@@ -7,19 +7,19 @@
  * this plugin no longer exposes them.
  */
 
-import {
-  type Action,
-  type ActionResult,
-  type HandlerCallback,
-  type HandlerOptions,
-  type IAgentRuntime,
-  type Memory,
-  type State,
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
 import type { ComputerUseService } from "../services/computer-use-service.js";
 import type { WindowActionParams, WindowActionType } from "../types.js";
-import { handleWindowOp } from "./window-handlers.js";
 import { resolveActionParams } from "./helpers.js";
+import { handleWindowOp } from "./window-handlers.js";
 
 const WINDOW_ACTIONS = [
   "list",
@@ -45,7 +45,10 @@ type WindowParameters = Omit<Partial<WindowActionParams>, "action"> & {
 
 function normalizeWindowToken(value: unknown): WindowActionType | undefined {
   if (typeof value !== "string") return undefined;
-  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   if ((WINDOW_ACTIONS as readonly string[]).includes(normalized)) {
     return normalized as WindowActionType;
   }
@@ -89,15 +92,6 @@ export const windowAction: Action = {
       name: "action",
       description: "Window operation verb.",
       required: true,
-      schema: {
-        type: "string",
-        enum: [...WINDOW_ACTIONS],
-      },
-    },
-    {
-      name: "subaction",
-      description: "Legacy alias for action.",
-      required: false,
       schema: {
         type: "string",
         enum: [...WINDOW_ACTIONS],
@@ -182,8 +176,7 @@ export const windowAction: Action = {
         content: {
           text: "Listing windows.",
           actions: ["WINDOW"],
-          thought:
-            "Window inventory routes to WINDOW action=list.",
+          thought: "Window inventory routes to WINDOW action=list.",
         },
       },
     ],

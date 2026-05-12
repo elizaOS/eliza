@@ -54,7 +54,7 @@ function BudgetGauge({ budget }: { budget: TrainingBudget }) {
  * Running-cost panel for a Vast.ai training job (M9).
  *
  * Renders the live `dph_total × uptime` snapshot plus the soft / hard
- * budget caps from `MILADY_VAST_MAX_USD`. The hard cap is enforced by
+ * budget caps from `ELIZA_VAST_MAX_USD`. The hard cap is enforced by
  * the watcher (auto-teardown) — this panel only displays state, it
  * does not call any destructive endpoint.
  */
@@ -146,7 +146,7 @@ export function BudgetPanel({ jobId }: BudgetPanelProps) {
             ? "OVER SOFT CAP — warning"
             : budget.soft_cap_usd !== null
               ? "Within budget"
-              : "Enforcement disabled (set MILADY_VAST_MAX_USD)"}
+              : "Enforcement disabled (set ELIZA_VAST_MAX_USD)"}
       </div>
     </div>
   );

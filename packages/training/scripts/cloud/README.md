@@ -11,8 +11,9 @@ This wraps existing primitives — it does not duplicate them:
 | Provider | What it uses |
 |---|---|
 | `vast` | the `vastai` CLI (`pip install --user vastai`), `VAST_API_KEY` — implemented here for `kernel-verify` / `bench` |
-| `--task train` | delegates to [`../train_vast.sh provision-and-train`](../CLOUD_VAST.md) (its GPU mapping, checkpoint pull, teardown) |
-| `nebius` | emergency fallback only — use [`../train_nebius.sh`](../train_nebius.sh) directly for `--task train`; `kernel-verify`/`bench` on Nebius is not wired yet (extend `../lib/backends/nebius.py` + the `kernel-verify`/`bench` branch in `run-on-cloud.sh`) |
+| `--task train --provider vast` | delegates to [`../train_vast.sh provision-and-train`](../CLOUD_VAST.md) (its GPU mapping, checkpoint pull, teardown) |
+| `--task train --provider nebius` | delegates to [`../train_nebius.sh full`](../train_nebius.sh) — H200 (`gpu-h200x1` for 0.6b/1.7b/9b, `gpu-h200x2` + FSDP for 27b); requires `NEBIUS_PROJECT_ID`. Emergency fallback; Vast is canonical. |
+| `nebius` + `kernel-verify`/`bench` | not wired yet (extend `../lib/backends/nebius.py` + the `kernel-verify`/`bench` branch in `run-on-cloud.sh`) |
 
 The existing cloud backend abstraction (`../lib/backends/base.py`,
 `../cloud_run.py`) is the place to add Nebius/RunPod/Lambda for the
@@ -50,6 +51,14 @@ bash packages/training/scripts/cloud/run-on-cloud.sh \
 # Train the 27B tier on 2x B200 (delegates to train_vast.sh provision-and-train):
 bash packages/training/scripts/cloud/run-on-cloud.sh \
   --provider vast --task train --gpu b200 --tier 27b --yes-i-will-pay
+
+# Train the 0.6B tier on a Nebius H200 (delegates to train_nebius.sh full):
+NEBIUS_PROJECT_ID=project-… HUGGING_FACE_HUB_TOKEN=… \
+bash packages/training/scripts/cloud/run-on-cloud.sh \
+  --provider nebius --task train --gpu h200 --tier 0_6b --yes-i-will-pay
+# Plan only (no spend):
+bash packages/training/scripts/cloud/run-on-cloud.sh \
+  --provider nebius --task train --gpu h200 --tier 0_6b --dry-run
 
 # Plan only — prints what it WOULD provision, spends nothing:
 bash packages/training/scripts/cloud/run-on-cloud.sh \

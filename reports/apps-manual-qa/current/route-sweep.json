@@ -1,0 +1,722 @@
+[
+  {
+    "id": "apps-catalog",
+    "route": "/apps",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3142/apps",
+    "ms": 4892,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\n🇺🇸\nEN\nFEATURED\nLifeOps\nCompanion\nFINANCE\nVincent\nDEVELOPER UTILITIES\nDatabase Viewer\nFine Tuning\nLog Viewer\nMemory Viewer\nPlugin Viewer\nRelationship Viewer\nRuntime Debugger\nSkills Viewer\nTrajectory Viewer\nFeatured\nLifeOps\nCompanion\nFinance\nVincent\nDeveloper Utilities\nPlugin Viewer\nSkills Viewer\nFine Tuning\nTrajectory Viewer\nRelationship Viewer\nMemory Viewer\nRuntime Debugger\nDatabase Viewer\nLog Viewer\nAPPS CHAT\nAsk me to launch, compare, or troubleshoot any of your apps. Describe the outcome you want and I'll pick the right one.\nClear",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/apps-catalog__desktop.png"
+  },
+  {
+    "id": "lifeops",
+    "route": "/apps/lifeops",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3142/apps/lifeops",
+    "ms": 4812,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nApps\nLifeOps\n🇺🇸\nEN\nOverview\nSleep\nScreen Time\nMessages\nMail\nCalendar\nReminders\nMoney\nDocuments\nSettings\nMORNING / MONDAY, MAY 11\nThe day is open.\nSLEEP\nNo sleep signal\nREMINDERS\nClear\nSCREEN\nNo data\nPartial overview\nMissing: Sleep, Messages, Mail, and Calendar\nOpen setup\nSleep\nConnect Health\nScreen Time\nNo data\nNo screen-time sessions yet.\nSocial\nNo data\nNo social time\n0 opened / 0 sent\nCalendar\nConnect Google\nMessages\nConnect platform\nMail\nConnect Google\nLIFEOPS CHAT\nAsk me about the visible LifeOps item or the next action you want handled.\nClear",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/lifeops__desktop.png"
+  },
+  {
+    "id": "tasks",
+    "route": "/apps/tasks",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3142/apps/tasks",
+    "ms": 4806,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\n🇺🇸\nEN\nAutomations\n\n0 tasks · 0 workflows\n\nNew\nAll\nTasks\nWorkflows\nActive\nInactive\nNo automations yet.\nCreate your first automation",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/tasks__desktop.png"
+  },
+  {
+    "id": "plugins",
+    "route": "/apps/plugins",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3142/apps/plugins",
+    "ms": 4830,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nApps\nPlugins\n🇺🇸\nEN\nOTHER FEATURES\n🧩\nBrowser Workspace\nNo configuration needed.\n\nAgent-controlled browser workspace.\n\nAI PROVIDERS\n🧩\nAnthropic\nNo configuration needed.\n\nAnthropic model provider for Claude chat and reasoning models.\n\n🧩\nOpenAI\nNo configuration needed.\n\nIntegrates OpenAI's GPT models for automated text generation with customizable prompts.\n\nNo messages yet.",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/plugins__desktop.png"
+  },
+  {
+    "id": "skills",
+    "route": "/apps/skills",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3142/apps/skills",
+    "ms": 4820,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nApps\nSkills\n🇺🇸\nEN\n+ New Skill\nInstall\nAll (0)\nON (0)\nOFF (0)\nNo Skills Installed\nADVANCED\nSkills\nCustom agent skills\n0 visible\nNo Skills Installed\nInstall skills from the marketplace or create your own.\nBrowse Marketplace\nCreate Skill\nNo messages yet.",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/skills__desktop.png"
+  },
+  {
+    "id": "fine-tuning",
+    "route": "/apps/fine-tuning",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3142/apps/fine-tuning",
+    "ms": 4797,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nApps\nFine-Tuning\n🇺🇸\nEN\nFINE-TUNING\nFine-Tuning\n\nBuild datasets from real trajectories, run training jobs, then import and activate models.\n\nRefresh All\nOVERVIEW\nfinetuningview.Status\nRUNTIME:\nfinetuningview.Offline\nRUNNING JOBS:\n0\nQUEUED JOBS:\n0\nDATASETS:\n0\nMODELS:\n0\nFAILED JOBS:\n0\nDATA REVIEW\nfinetuningview.Trajectories\nfinetuningview.PublishToHuggingFace\nRefresh\nfinetuningview.Unavailable\nDATASET BUILD\nDatasets\nBuild Dataset\nRefresh Datasets\nNo datasets yet.\nTRAINING\nTraining Jobs\nfinetuningview.GpuFineTunesViaVast\nAuto-build dataset from trajectories\ncpu\nStart Training Job\nRefresh Jobs\nNo jobs yet.\nSELECTED JOB LOGS\nSelect a job to inspect logs.\nMODEL OPS\nTrained Models\nfinetuningview.ModelOpsNotWiredHere\nNo trained models yet.\nMODEL ACTIONS\nSelect a model to import or activate.\nSTREAMING\nLive Training Events\nNo live events yet. Start a job to stream progress here.\nNo messages yet.",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/fine-tuning__desktop.png"
+  },
+  {
+    "id": "trajectories",
+    "route": "/apps/trajectories",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3142/apps/trajectories",
+    "ms": 4764,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nApps\nTrajectories\n🇺🇸\nEN\nENTRIES\nNo trajectories yet.\nNo trajectories yet.\nNo messages yet.",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/trajectories__desktop.png"
+  },
+  {
+    "id": "relationships",
+    "route": "/apps/relationships",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3142/apps/relationships",
+    "ms": 10803,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nApps\nRelationships\n🇺🇸\nEN\nPlatform filter\nAll\nNo relationships data available\n\nNo relationship data yet.\n\nNo messages yet.",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/relationships__desktop.png"
+  },
+  {
+    "id": "memories",
+    "route": "/apps/memories",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3142/apps/memories",
+    "ms": 4858,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nApps\nMemories\n🇺🇸\nEN\nTOTAL\n0\nFILTER BY TYPE\nAll\nPEOPLE\nNo people yet.\nFeed\nBrowse\nNo memories yet\n\nMemories will appear here as the agent processes conversations, extracts facts, and builds relationships.\n\nNo messages yet.",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/memories__desktop.png"
+  },
+  {
+    "id": "runtime",
+    "route": "/apps/runtime",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3142/apps/runtime",
+    "ms": 5336,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nApps\nRuntime\n🇺🇸\nEN\ndepth\narray cap\nobject cap\nRefresh\nExpand Top\nSECTIONS\nΣ\nSummary\n3 signals\nR\nRuntime\n3 roots\nlive\nA\nActions\nregistered handlers\n1\nP\nProviders\nloaded contexts\n1\nP\nPlugins\nactive modules\n1\nS\nServices\ninstantiated services\n1\nE\nEvaluators\ndecision hooks\n1\nPlugins\n1\n[0] plugin-browser :: BrowserWorkspacePlugin (plugin-browser)\nActions\n1\n[0] open_browser_workspace :: BrowserWorkspaceAction (browser-workspace-action)\nProviders\n1\n[0] browser_workspace_provider :: BrowserWorkspaceProvider (browser-workspace-provider)\nEvaluators\n1\n[0] browser_workspace_health :: BrowserWorkspaceHealthEvaluator (browser-workspace-health)\nServices (\n1 types)\n[0] browser-workspace\n1\n[0] browser-workspace-service :: BrowserWorkspaceService (browser-workspace-service)\nSummary\navailable\nruntime:\navailable\nagent:\nUI Smoke Runtime\nstate:\nrunning\nmodel:\nstubbed\nplugins:\n1\nactions:\n1\nproviders:\n1\nevaluators:\n1\nservices:\n1\nNo messages yet.",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/runtime__desktop.png"
+  },
+  {
+    "id": "database",
+    "route": "/apps/database",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3142/apps/database",
+    "ms": 4803,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nApps\nDatabases\n🇺🇸\nEN\nTables\nMedia\nVectors\nTable Editor\nSQL Editor\nConnecting...\n0 TABLES\nTABLE EDITOR\nRefresh\nTABLES (0)\nDATABASE\nTable Browser\nDatabase not available\nThe database viewer is only available when the local agent runtime is running.\nNo messages yet.",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/database__desktop.png"
+  },
+  {
+    "id": "logs",
+    "route": "/apps/logs",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3142/apps/logs",
+    "ms": 4750,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nApps\nLogs\n🇺🇸\nEN\nFilter logs\n\nNarrow the runtime stream by text, severity, source, or tag so the current incident stands out without losing the surrounding context.\n\nAll levels\nAll sources\nAll tags\nRefresh\nShowing 1 entry\n0 active filters\nTIME\nLEVEL\nSOURCE\nTAGS\nMESSAGE\n11:50:47 AM\nINFO\n[smoke]\nsmoke\nsmoke API ready\nNo messages yet.",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/logs__desktop.png"
+  },
+  {
+    "id": "steward-inventory",
+    "route": "/apps/inventory",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3142/apps/inventory",
+    "ms": 4765,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\n🇺🇸\nEN\n$0.00\nRPC\nNo EVM address\nNo Solana address\nSwap\nSend\nReceive\nTokens\nDeFi\nNFTs\nNo assets\nNo balances or trade history yet.\n\nHere's what the market looks like right now.\n\nSpot prices\nCoinGecko\nSpot prices unavailable\nCoinGecko did not return live data.\nTop movers\nCoinGecko\nTop movers unavailable\nCoinGecko did not return live data.\nPopular predictions\nPolymarket\nPopular predictions unavailable\nPolymarket did not return live data.\nWALLET AGENT\nSwap, bridge, send, or receive\nInspect tokens, NFTs, LPs, and activity\nAsk how the agent can use this wallet\nSwap\nBridge\nReceive\nClear",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/steward-inventory__desktop.png"
+  },
+  {
+    "id": "elizamaker",
+    "route": "/apps/elizamaker",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3142/apps/elizamaker",
+    "ms": 4759,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\n🇺🇸\nEN\nCONVERSATIONS\nNew chat\nTERMINAL\nEliza\nWhat would you like to check?\nMUSIC\n\nCould not reach the music player.\n\nAsk the agent to play music in chat.\n\nWIDGETS",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/elizamaker__desktop.png"
+  },
+  {
+    "id": "shopify",
+    "route": "/apps/shopify",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3142/apps/shopify",
+    "ms": 4798,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nApps\nShopify\n🇺🇸\nEN\nFEATURED\nLifeOps\nCompanion\nFINANCE\nVincent\nDEVELOPER UTILITIES\nDatabase Viewer\nFine Tuning\nLog Viewer\nMemory Viewer\nPlugin Viewer\nRelationship Viewer\nRuntime Debugger\nSkills Viewer\nTrajectory Viewer\nFeatured\nLifeOps\nCompanion\nFinance\nVincent\nDeveloper Utilities\nPlugin Viewer\nSkills Viewer\nFine Tuning\nTrajectory Viewer\nRelationship Viewer\nMemory Viewer\nRuntime Debugger\nDatabase Viewer\nLog Viewer\nAPPS CHAT\nAsk me to launch, compare, or troubleshoot any of your apps. Describe the outcome you want and I'll pick the right one.\nClear\nShopify\nNot connected\nConnect your Shopify store\nSTORE DOMAIN\nSHOPIFY_STORE_DOMAIN=your-store.myshopify.com\nACCESS TOKEN\nSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx\n\nRestart after setting these env vars. Required scopes: read_products, read_orders, read_inventory, and read_customers scopes.",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/shopify__desktop.png"
+  },
+  {
+    "id": "vincent",
+    "route": "/apps/vincent",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3142/apps/vincent",
+    "ms": 5951,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nApps\nVincent\n🇺🇸\nEN\nFEATURED\nLifeOps\nCompanion\nFINANCE\nVincent\nDEVELOPER UTILITIES\nDatabase Viewer\nFine Tuning\nLog Viewer\nMemory Viewer\nPlugin Viewer\nRelationship Viewer\nRuntime Debugger\nSkills Viewer\nTrajectory Viewer\nFeatured\nLifeOps\nCompanion\nFinance\nVincent\nDeveloper Utilities\nPlugin Viewer\nSkills Viewer\nFine Tuning\nTrajectory Viewer\nRelationship Viewer\nMemory Viewer\nRuntime Debugger\nDatabase Viewer\nLog Viewer\nAPPS CHAT\nAsk me to launch, compare, or troubleshoot any of your apps. Describe the outcome you want and I'll pick the right one.\nClear\nVincent\n\nHyperliquid and Polymarket trading access\n\nVincent disconnected\nVincent disconnected\nConnect your Vincent account to enable DeFi vault management.\nConnect Vincent\n\nConnect your Vincent account to get started\n\nOnce connected, you'll see your vault health, trading strategy, P&L analytics, and transaction history here.",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/vincent__desktop.png"
+  },
+  {
+    "id": "hyperliquid",
+    "route": "/apps/hyperliquid",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3142/apps/hyperliquid",
+    "ms": 5170,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\n🇺🇸\nEN\nFEATURED\nLifeOps\nCompanion\nFINANCE\nVincent\nDEVELOPER UTILITIES\nDatabase Viewer\nFine Tuning\nLog Viewer\nMemory Viewer\nPlugin Viewer\nRelationship Viewer\nRuntime Debugger\nSkills Viewer\nTrajectory Viewer\nFeatured\nLifeOps\nCompanion\nFinance\nVincent\nDeveloper Utilities\nPlugin Viewer\nSkills Viewer\nFine Tuning\nTrajectory Viewer\nRelationship Viewer\nMemory Viewer\nRuntime Debugger\nDatabase Viewer\nLog Viewer\nAPPS CHAT\nAsk me to launch, compare, or troubleshoot any of your apps. Describe the outcome you want and I'll pick the right one.\nClear",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/hyperliquid__desktop.png"
+  },
+  {
+    "id": "polymarket",
+    "route": "/apps/polymarket",
+    "viewport": "desktop",
+    "url": "http://127.0.0.1:3142/apps/polymarket",
+    "ms": 5846,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\n🇺🇸\nEN\nFEATURED\nLifeOps\nCompanion\nFINANCE\nVincent\nDEVELOPER UTILITIES\nDatabase Viewer\nFine Tuning\nLog Viewer\nMemory Viewer\nPlugin Viewer\nRelationship Viewer\nRuntime Debugger\nSkills Viewer\nTrajectory Viewer\nFeatured\nLifeOps\nCompanion\nFinance\nVincent\nDeveloper Utilities\nPlugin Viewer\nSkills Viewer\nFine Tuning\nTrajectory Viewer\nRelationship Viewer\nMemory Viewer\nRuntime Debugger\nDatabase Viewer\nLog Viewer\nAPPS CHAT\nAsk me to launch, compare, or troubleshoot any of your apps. Describe the outcome you want and I'll pick the right one.\nClear",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/polymarket__desktop.png"
+  },
+  {
+    "id": "apps-catalog",
+    "route": "/apps",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3142/apps",
+    "ms": 4835,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nSettings\nFeatured\nLifeOps\nCompanion\nFinance\nVincent\nDeveloper Utilities\nPlugin Viewer\nSkills Viewer\nFine Tuning\nTrajectory Viewer\nRelationship Viewer\nMemory Viewer\nRuntime Debugger\nDatabase Viewer\nLog Viewer",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/apps-catalog__mobile.png"
+  },
+  {
+    "id": "lifeops",
+    "route": "/apps/lifeops",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3142/apps/lifeops",
+    "ms": 4892,
+    "textSnippet": "Apps\nLifeOps\nChat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nSettings\nMORNING / MONDAY, MAY 11\nThe day is open.\nSLEEP\nNo sleep signal\nREMINDERS\nClear\nSCREEN\nNo data\nPartial overview\nMissing: Sleep, Messages, Mail, and Calendar\nOpen setup\nSleep\nConnect Health\nScreen Time\nNo data\nNo screen-time sessions yet.\nSocial\nNo data\nNo social time\n0 opened / 0 sent\nCalendar\nConnect Google\nMessages\nConnect platform\nMail\nConnect Google",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/lifeops__mobile.png"
+  },
+  {
+    "id": "tasks",
+    "route": "/apps/tasks",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3142/apps/tasks",
+    "ms": 4789,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nSettings\nAutomations\n\n0 tasks · 0 workflows\n\nNew\nAll\nTasks\nWorkflows\nActive\nInactive\nNo automations yet.\nCreate your first automation",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/tasks__mobile.png"
+  },
+  {
+    "id": "plugins",
+    "route": "/apps/plugins",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3142/apps/plugins",
+    "ms": 4826,
+    "textSnippet": "Apps\nPlugins\nChat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nSettings\nOTHER FEATURES\n🧩\nBrowser Workspace\nNo configuration needed.\n\nAgent-controlled browser workspace.\n\nAI PROVIDERS\n🧩\nAnthropic\nNo configuration needed.\n\nAnthropic model provider for Claude chat and reasoning models.\n\n🧩\nOpenAI\nNo configuration needed.\n\nIntegrates OpenAI's GPT models for automated text generation with customizable prompts.",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/plugins__mobile.png"
+  },
+  {
+    "id": "skills",
+    "route": "/apps/skills",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3142/apps/skills",
+    "ms": 4833,
+    "textSnippet": "Apps\nSkills\nChat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nSettings\nADVANCED\nSkills\nCustom agent skills\n0 visible\nNo Skills Installed\nInstall skills from the marketplace or create your own.\nBrowse Marketplace\nCreate Skill",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/skills__mobile.png"
+  },
+  {
+    "id": "fine-tuning",
+    "route": "/apps/fine-tuning",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3142/apps/fine-tuning",
+    "ms": 4836,
+    "textSnippet": "Apps\nFine-Tuning\nChat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nSettings\nFINE-TUNING\nFine-Tuning\n\nBuild datasets from real trajectories, run training jobs, then import and activate models.\n\nRefresh All\nOVERVIEW\nfinetuningview.Status\nRUNTIME:\nfinetuningview.Offline\nRUNNING JOBS:\n0\nQUEUED JOBS:\n0\nDATASETS:\n0\nMODELS:\n0\nFAILED JOBS:\n0\nDATA REVIEW\nfinetuningview.Trajectories\nfinetuningview.PublishToHuggingFace\nRefresh\nfinetuningview.Unavailable\nDATASET BUILD\nDatasets\nBuild Dataset\nRefresh Datasets\nNo datasets yet.\nTRAINING\nTraining Jobs\nfinetuningview.GpuFineTunesViaVast\nAuto-build dataset from trajectories\ncpu\nStart Training Job\nRefresh Jobs\nNo jobs yet.\nSELECTED JOB LOGS\nSelect a job to inspect logs.\nMODEL OPS\nTrained Models\nfinetuningview.ModelOpsNotWiredHere\nNo trained models yet.\nMODEL ACTIONS\nSelect a model to import or activate.\nSTREAMING\nLive Training Events\nNo live events yet. Start a job to stream progress here.",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/fine-tuning__mobile.png"
+  },
+  {
+    "id": "trajectories",
+    "route": "/apps/trajectories",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3142/apps/trajectories",
+    "ms": 4815,
+    "textSnippet": "Apps\nTrajectories\nChat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nSettings\nNo trajectories yet.",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/trajectories__mobile.png"
+  },
+  {
+    "id": "relationships",
+    "route": "/apps/relationships",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3142/apps/relationships",
+    "ms": 4801,
+    "textSnippet": "Apps\nRelationships\nChat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nSettings\nPlatform filter\nAll\nNo relationships data available\n\nNo relationship data yet.",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/relationships__mobile.png"
+  },
+  {
+    "id": "memories",
+    "route": "/apps/memories",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3142/apps/memories",
+    "ms": 5418,
+    "textSnippet": "Apps\nMemories\nChat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nSettings\nFeed\nBrowse\nNo memories yet\n\nMemories will appear here as the agent processes conversations, extracts facts, and builds relationships.",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/memories__mobile.png"
+  },
+  {
+    "id": "runtime",
+    "route": "/apps/runtime",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3142/apps/runtime",
+    "ms": 7801,
+    "textSnippet": "Apps\nRuntime\nChat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nSettings\nPlugins\n1\n[0] plugin-browser :: BrowserWorkspacePlugin (plugin-browser)\nActions\n1\n[0] open_browser_workspace :: BrowserWorkspaceAction (browser-workspace-action)\nProviders\n1\n[0] browser_workspace_provider :: BrowserWorkspaceProvider (browser-workspace-provider)\nEvaluators\n1\n[0] browser_workspace_health :: BrowserWorkspaceHealthEvaluator (browser-workspace-health)\nServices (\n1 types)\n[0] browser-workspace\n1\n[0] browser-workspace-service :: BrowserWorkspaceService (browser-workspace-service)\nSummary\navailable\nruntime:\navailable\nagent:\nUI Smoke Runtime\nstate:\nrunning\nmodel:\nstubbed\nplugins:\n1\nactions:\n1\nproviders:\n1\nevaluators:\n1\nservices:\n1",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/runtime__mobile.png"
+  },
+  {
+    "id": "database",
+    "route": "/apps/database",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3142/apps/database",
+    "ms": 4746,
+    "textSnippet": "Apps\nDatabases\nChat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nSettings\nDATABASE\nTable Browser\nDatabase not available\nThe database viewer is only available when the local agent runtime is running.",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/database__mobile.png"
+  },
+  {
+    "id": "logs",
+    "route": "/apps/logs",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3142/apps/logs",
+    "ms": 4803,
+    "textSnippet": "Apps\nLogs\nChat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nSettings\nFilter logs\n\nNarrow the runtime stream by text, severity, source, or tag so the current incident stands out without losing the surrounding context.\n\nAll levels\nAll sources\nAll tags\nRefresh\nShowing 1 entry\n0 active filters\n11:50:47 AM\nINFO\n[smoke]\nsmoke\nsmoke API ready",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/logs__mobile.png"
+  },
+  {
+    "id": "steward-inventory",
+    "route": "/apps/inventory",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3142/apps/inventory",
+    "ms": 4776,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nSettings\nNo balances or trade history yet.\n\nHere's what the market looks like right now.\n\nSpot prices\nCoinGecko\nSpot prices unavailable\nCoinGecko did not return live data.\nTop movers\nCoinGecko\nTop movers unavailable\nCoinGecko did not return live data.\nPopular predictions\nPolymarket\nPopular predictions unavailable\nPolymarket did not return live data.",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/steward-inventory__mobile.png"
+  },
+  {
+    "id": "elizamaker",
+    "route": "/apps/elizamaker",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3142/apps/elizamaker",
+    "ms": 4814,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nSettings\nEliza\nWhat would you like to check?",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/elizamaker__mobile.png"
+  },
+  {
+    "id": "shopify",
+    "route": "/apps/shopify",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3142/apps/shopify",
+    "ms": 4816,
+    "textSnippet": "Apps\nShopify\nChat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nSettings\nFeatured\nLifeOps\nCompanion\nFinance\nVincent\nDeveloper Utilities\nPlugin Viewer\nSkills Viewer\nFine Tuning\nTrajectory Viewer\nRelationship Viewer\nMemory Viewer\nRuntime Debugger\nDatabase Viewer\nLog Viewer\nShopify\nNot connected\nConnect your Shopify store\nSTORE DOMAIN\nSHOPIFY_STORE_DOMAIN=your-store.myshopify.com\nACCESS TOKEN\nSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx\n\nRestart after setting these env vars. Required scopes: read_products, read_orders, read_inventory, and read_customers scopes.",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/shopify__mobile.png"
+  },
+  {
+    "id": "vincent",
+    "route": "/apps/vincent",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3142/apps/vincent",
+    "ms": 4840,
+    "textSnippet": "Apps\nVincent\nChat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nSettings\nFeatured\nLifeOps\nCompanion\nFinance\nVincent\nDeveloper Utilities\nPlugin Viewer\nSkills Viewer\nFine Tuning\nTrajectory Viewer\nRelationship Viewer\nMemory Viewer\nRuntime Debugger\nDatabase Viewer\nLog Viewer\nVincent\n\nHyperliquid and Polymarket trading access\n\nVincent disconnected\nVincent disconnected\nConnect your Vincent account to enable DeFi vault management.\nConnect Vincent\n\nConnect your Vincent account to get started\n\nOnce connected, you'll see your vault health, trading strategy, P&L analytics, and transaction history here.",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/vincent__mobile.png"
+  },
+  {
+    "id": "hyperliquid",
+    "route": "/apps/hyperliquid",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3142/apps/hyperliquid",
+    "ms": 4909,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nSettings\nFeatured\nLifeOps\nCompanion\nFinance\nVincent\nDeveloper Utilities\nPlugin Viewer\nSkills Viewer\nFine Tuning\nTrajectory Viewer\nRelationship Viewer\nMemory Viewer\nRuntime Debugger\nDatabase Viewer\nLog Viewer",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/hyperliquid__mobile.png"
+  },
+  {
+    "id": "polymarket",
+    "route": "/apps/polymarket",
+    "viewport": "mobile",
+    "url": "http://127.0.0.1:3142/apps/polymarket",
+    "ms": 4942,
+    "textSnippet": "Chat\nApps\nCharacter\nWallet\nBrowser\nAutomations\nSettings\nFeatured\nLifeOps\nCompanion\nFinance\nVincent\nDeveloper Utilities\nPlugin Viewer\nSkills Viewer\nFine Tuning\nTrajectory Viewer\nRelationship Viewer\nMemory Viewer\nRuntime Debugger\nDatabase Viewer\nLog Viewer",
+    "issueCount": 2,
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3142/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "screenshot": "reports/apps-manual-qa/current/polymarket__mobile.png"
+  }
+]

@@ -84,9 +84,9 @@ export const CORE_PLUGINS: readonly string[] = [
   // @elizaos/plugin-agent-orchestrator — opt-in via ELIZA_AGENT_ORCHESTRATOR (Eliza app enables by default)
   // Recurring work uses runtime TaskService + triggers (no @elizaos/plugin-cron).
   "@elizaos/plugin-app-control", // launch, close, and list running Eliza apps from agent chat
-  "@elizaos/plugin-device-filesystem", // mobile-safe DEVICE_FILE_READ/WRITE/LIST_DIR via Capacitor on iOS/Android, Node fs/promises rooted under resolveStateDir()/workspace on desktop/AOSP
-  "@elizaos/plugin-shell", // shell command execution
-  "@elizaos/plugin-coding-tools", // native Read/Write/Edit/Bash/Grep/Glob/etc. (desktop-only
+  "@elizaos/plugin-device-filesystem", // mobile-safe FILE target=device via Capacitor on iOS/Android, Node fs/promises rooted under resolveStateDir()/workspace on desktop/AOSP
+  "@elizaos/plugin-shell", // shell service, approvals, and history provider
+  "@elizaos/plugin-coding-tools", // native FILE/SHELL/WORKTREE coding tools (desktop-only
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
   "@elizaos/plugin-commands", // slash command handling (skills auto-register as /commands)
   "@elizaos/app-lifeops", // LifeOps: personal ops — tasks, goals, calendar, inbox, website blocking

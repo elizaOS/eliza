@@ -169,10 +169,10 @@ export async function startMockServer(
       state.promptTokensProcessedTotal += freshTokens;
       const completionTokens = 10;
       state.predictedTokensTotal += completionTokens;
-      if (cacheHitTokens > 0) {
-        state.draftedTotal += 16;
-        state.acceptedTotal += 12;
-      }
+      // DFlash drafts on every generation step regardless of prefix-cache
+      // state; the extra acceptance on a warm cache is a separate bonus.
+      state.draftedTotal += 16;
+      state.acceptedTotal += cacheHitTokens > 0 ? 12 : 8;
       res.statusCode = 200;
       res.end(
         JSON.stringify({

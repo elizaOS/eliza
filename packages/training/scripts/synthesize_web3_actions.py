@@ -51,7 +51,7 @@ log = logging.getLogger("synth-web3")
 AGENT_NAMES = [
     "Iris", "Kai", "Ava", "Nova", "Echo", "Sage", "Atlas", "Lyra",
     "Pico", "Lumi", "Rune", "Vega", "Sol", "Orion", "Mira", "Tess",
-    "milady", "Eliza", "Hex", "Cipher", "Onchain", "Forge",
+    "eliza", "Eliza", "Hex", "Cipher", "Onchain", "Forge",
 ]
 
 # 22 personas — varied crypto-user archetypes

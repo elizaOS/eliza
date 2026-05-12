@@ -212,9 +212,9 @@ let originalEnv: NodeJS.ProcessEnv;
 beforeEach(() => {
 	tempDir = mkdtempSync(join(tmpdir(), "v5-stress-compaction-"));
 	originalEnv = { ...process.env };
-	process.env.MILADY_TRAJECTORY_DIR = tempDir;
-	process.env.MILADY_TRAJECTORY_RECORDING = "1";
-	process.env.MILADY_TRAJECTORY_REVIEW_MODE = "1";
+	process.env.ELIZA_TRAJECTORY_DIR = tempDir;
+	process.env.ELIZA_TRAJECTORY_RECORDING = "1";
+	process.env.ELIZA_TRAJECTORY_REVIEW_MODE = "1";
 });
 
 afterEach(() => {
@@ -583,7 +583,7 @@ describe("v5 stress path — long build, compaction, gates, trajectory export", 
 		writeFileSync(exportPath, jsonl, "utf8");
 		const exported = readFileSync(exportPath, "utf8");
 		expect(exported).toContain('"trajectoryId"');
-		const reviewExportDir = process.env.MILADY_V5_STRESS_EXPORT_DIR;
+		const reviewExportDir = process.env.ELIZA_V5_STRESS_EXPORT_DIR;
 		if (reviewExportDir) {
 			mkdirSync(reviewExportDir, { recursive: true });
 			writeFileSync(

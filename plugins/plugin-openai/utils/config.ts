@@ -73,12 +73,12 @@ export function isProxyMode(runtime: IAgentRuntime): boolean {
 }
 
 /**
- * True when the resolved base URL or `MILADY_PROVIDER` setting marks the
+ * True when the resolved base URL or `ELIZA_PROVIDER` setting marks the
  * runtime as using Cerebras's OpenAI-compatible endpoint. Used to scope
  * the `CEREBRAS_API_KEY` alias so OpenAI users are not affected.
  */
 export function isCerebrasMode(runtime: IAgentRuntime): boolean {
-  const explicitProvider = getSetting(runtime, "MILADY_PROVIDER");
+  const explicitProvider = getSetting(runtime, "ELIZA_PROVIDER");
   if (explicitProvider && explicitProvider.toLowerCase() === "cerebras") {
     return true;
   }
@@ -91,7 +91,7 @@ export function isCerebrasMode(runtime: IAgentRuntime): boolean {
 
 export function getApiKey(runtime: IAgentRuntime): string | undefined {
   // Cerebras serves an OpenAI-compatible API. When the runtime is pointed at
-  // Cerebras (either via `MILADY_PROVIDER=cerebras` or an `OPENAI_BASE_URL`
+  // Cerebras (either via `ELIZA_PROVIDER=cerebras` or an `OPENAI_BASE_URL`
   // matching `*.cerebras.ai`), accept `CEREBRAS_API_KEY` as a synonym for
   // `OPENAI_API_KEY`. Cerebras key is checked first so an explicit Cerebras
   // key wins over a stale OpenAI key in the same env.

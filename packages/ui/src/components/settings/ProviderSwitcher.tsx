@@ -1,33 +1,14 @@
-import {
-  resolveServiceRoutingInConfig,
-  type SubscriptionProviderStatus,
-} from "@elizaos/shared";
-import { Cloud, Cpu, KeyRound } from "lucide-react";
-import {
-  type ComponentType,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-import { client, type PluginParamDef } from "../../api";
+import { useCallback, useMemo } from "react";
 import {
   getDirectAccountProviderForOnboardingProvider,
-  getOnboardingProviderOption,
   isSubscriptionProviderSelectionId,
-  ONBOARDING_PROVIDER_CATALOG,
   SUBSCRIPTION_PROVIDER_SELECTIONS,
   type SubscriptionProviderSelectionId,
 } from "../../providers";
 import { useApp } from "../../state";
-import type { ConfigUiHint } from "../../types";
 import { ProvidersList } from "../local-inference/ProvidersList";
 import { RoutingMatrix } from "../local-inference/RoutingMatrix";
-import {
-  ProviderCard,
-  type ProviderCategory,
-  type ProviderStatus,
-} from "./ProviderCard";
+import { ProviderCard } from "./ProviderCard";
 import {
   ApiKeyPanel,
   CloudPanel,
@@ -36,28 +17,17 @@ import {
 } from "./ProviderPanels";
 import { AdvancedSettingsDisclosure } from "./settings-control-primitives";
 import { useCloudModelConfig } from "./useCloudModelConfig";
+import { useProviderBootstrap } from "./useProviderBootstrap";
 import {
-  type ProviderPanelId,
+  computeAvailableProviderIds,
+  type PluginInfo,
+  sortAiProviders,
+  useProviderEntries,
+} from "./useProviderEntries";
+import {
   resolveProviderIdForSwitch,
   useProviderSelection,
 } from "./useProviderSelection";
-
-interface PluginInfo {
-  id: string;
-  name: string;
-  category: string;
-  enabled: boolean;
-  configured: boolean;
-  parameters: PluginParamDef[];
-  configUiHints?: Record<string, ConfigUiHint>;
-}
-
-function normalizeAiProviderPluginId(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/^@[^/]+\//, "")
-    .replace(/^plugin-/, "");
-}
 
 interface ProviderSwitcherProps {
   elizaCloudConnected?: boolean;
@@ -90,15 +60,6 @@ function getSubscriptionProviderDescription(
   }
 }
 
-interface ProviderListEntry {
-  id: ProviderPanelId;
-  icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
-  label: string;
-  category: ProviderCategory;
-  status: ProviderStatus;
-  current: boolean;
-}
-
 export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const app = useApp();
   const t = app.t;
@@ -122,13 +83,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     props.handlePluginConfigSave ?? app.handlePluginConfigSave;
   const setActionNotice = app.setActionNotice;
 
-  const [subscriptionStatus, setSubscriptionStatus] = useState<
-    SubscriptionProviderStatus[]
-  >([]);
-  const [anthropicConnected, setAnthropicConnected] = useState(false);
-  const [anthropicCliDetected, setAnthropicCliDetected] = useState(false);
-  const [openaiConnected, setOpenaiConnected] = useState(false);
-
   const notifySelectionFailure = useCallback(
     (prefix: string, err: unknown) => {
       const message =
@@ -140,44 +94,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     [setActionNotice],
   );
 
-  const allAiProviders = useMemo(
-    () =>
-      [...plugins.filter((p) => p.category === "ai-provider")].sort(
-        (left, right) => {
-          const leftCatalog = getOnboardingProviderOption(
-            normalizeAiProviderPluginId(left.id),
-          );
-          const rightCatalog = getOnboardingProviderOption(
-            normalizeAiProviderPluginId(right.id),
-          );
-          if (leftCatalog && rightCatalog) {
-            return leftCatalog.order - rightCatalog.order;
-          }
-          if (leftCatalog) return -1;
-          if (rightCatalog) return 1;
-          return left.name.localeCompare(right.name);
-        },
-      ),
-    [plugins],
-  );
-
+  const allAiProviders = useMemo(() => sortAiProviders(plugins), [plugins]);
   const availableProviderIds = useMemo(
-    () =>
-      new Set(
-        [
-          ...allAiProviders.map(
-            (provider) =>
-              getOnboardingProviderOption(
-                normalizeAiProviderPluginId(provider.id),
-              )?.id,
-          ),
-          ...ONBOARDING_PROVIDER_CATALOG.filter(
-            (option) =>
-              option.authMode === "api-key" &&
-              getDirectAccountProviderForOnboardingProvider(option.id),
-          ).map((option) => option.id),
-        ].filter((id): id is NonNullable<typeof id> => id != null),
-      ),
+    () => computeAvailableProviderIds(allAiProviders),
     [allAiProviders],
   );
 
@@ -186,117 +105,20 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     notifySelectionFailure,
   );
   const cloudModel = useCloudModelConfig(notifySelectionFailure);
+  const bootstrap = useProviderBootstrap(selection, cloudModel);
 
-  const loadSubscriptionStatus = useCallback(async () => {
-    try {
-      const res = await client.getSubscriptionStatus();
-      setSubscriptionStatus(res.providers ?? []);
-    } catch (err) {
-      console.warn("[eliza] Failed to load subscription status", err);
-    }
-  }, []);
+  const { apiProviderChoices, providerEntries } = useProviderEntries({
+    allAiProviders,
+    elizaCloudConnected,
+    cloudCallsDisabled: selection.cloudCallsDisabled,
+    isCloudSelected: selection.isCloudSelected,
+    resolvedSelectedId: selection.resolvedSelectedId,
+    subscriptionStatus: bootstrap.subscriptionStatus,
+    anthropicCliDetected: bootstrap.anthropicCliDetected,
+    t,
+  });
 
-  // Boot effect. Hooks own their internal state; calling their stable
-  // setters in this once-on-mount effect is intentional. Biome wants the
-  // setter identities in the dep list but we know they're stable.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: stable hook setters
-  useEffect(() => {
-    void loadSubscriptionStatus();
-    void (async () => {
-      try {
-        const opts = await client.getOnboardingOptions();
-        cloudModel.setModelOptions({
-          nano: opts.models?.nano ?? [],
-          small: opts.models?.small ?? [],
-          medium: opts.models?.medium ?? [],
-          large: opts.models?.large ?? [],
-          mega: opts.models?.mega ?? [],
-        });
-      } catch (err) {
-        console.warn("[eliza] Failed to load onboarding options", err);
-      }
-      try {
-        const cfg = await client.getConfig();
-        const llmText = resolveServiceRoutingInConfig(cfg)?.llmText;
-        const providerId = getOnboardingProviderOption(llmText?.backend)?.id;
-        const elizaCloudEnabledCfg =
-          llmText?.transport === "cloud-proxy" && providerId === "elizacloud";
-        cloudModel.initializeFromConfig(cfg, elizaCloudEnabledCfg);
-        selection.initializeFromConfig(cfg);
-      } catch (err) {
-        console.warn("[eliza] Failed to load config", err);
-      }
-    })();
-  }, [loadSubscriptionStatus]);
-
-  useEffect(() => {
-    const anthStatuses = subscriptionStatus.filter(
-      (s) => s.provider === "anthropic-subscription",
-    );
-    const oaiStatuses = subscriptionStatus.filter(
-      (s) =>
-        s.provider === "openai-subscription" || s.provider === "openai-codex",
-    );
-    // Only treat as "connected" when credentials were linked via the in-app
-    // OAuth flow (source === "app"). Claude Code CLI credentials detected on
-    // the machine are surfaced separately — the app can't disconnect them.
-    const anthAppConnected = anthStatuses.some(
-      (status) => status.configured && status.valid && status.source === "app",
-    );
-    setAnthropicConnected(anthAppConnected);
-    setAnthropicCliDetected(
-      anthStatuses.some(
-        (status) =>
-          status.configured &&
-          status.valid &&
-          status.source === "claude-code-cli",
-      ),
-    );
-    setOpenaiConnected(
-      oaiStatuses.some((status) => status.configured && status.valid),
-    );
-  }, [subscriptionStatus]);
-
-  const apiProviderChoices = useMemo(() => {
-    const pluginChoices = allAiProviders
-      .map((provider) => {
-        const option = getOnboardingProviderOption(
-          normalizeAiProviderPluginId(provider.id),
-        );
-        return option ? { id: option.id, label: option.name, provider } : null;
-      })
-      .filter(
-        (choice): choice is NonNullable<typeof choice> => choice !== null,
-      );
-    const seen = new Set(pluginChoices.map((choice) => choice.id));
-    const accountManagedChoices = ONBOARDING_PROVIDER_CATALOG.filter(
-      (option) =>
-        option.authMode === "api-key" &&
-        getDirectAccountProviderForOnboardingProvider(option.id) &&
-        !seen.has(option.id),
-    ).map((option) => ({
-      id: option.id,
-      label: option.name,
-      provider: {
-        id: option.id,
-        name: option.name,
-        category: "ai-provider",
-        enabled: false,
-        configured: false,
-        parameters: [],
-      } satisfies PluginInfo,
-    }));
-    return [...pluginChoices, ...accountManagedChoices].sort((left, right) => {
-      const leftOrder =
-        getOnboardingProviderOption(left.id)?.order ?? Number.MAX_SAFE_INTEGER;
-      const rightOrder =
-        getOnboardingProviderOption(right.id)?.order ?? Number.MAX_SAFE_INTEGER;
-      return leftOrder - rightOrder;
-    });
-  }, [allAiProviders]);
-
-  const visibleProviderPanelId = selection.visibleProviderPanelId;
-  const resolvedSelectedId = selection.resolvedSelectedId;
+  const { visibleProviderPanelId, resolvedSelectedId } = selection;
 
   const selectedPanelProvider = useMemo(() => {
     if (
@@ -311,131 +133,11 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         ?.provider ?? null
     );
   }, [apiProviderChoices, visibleProviderPanelId]);
+
   const selectedPanelAccountProvider = useMemo(
     () => getDirectAccountProviderForOnboardingProvider(visibleProviderPanelId),
     [visibleProviderPanelId],
   );
-
-  /**
-   * Single source of truth for sidebar entry status.
-   * Replaces three diverging functions (Cloud/Local hardcoded rows,
-   * getSubscriptionPanelStatus, inline apiProviderChoices status).
-   */
-  const getProviderStatus = useCallback(
-    (entryId: ProviderPanelId): ProviderStatus => {
-      if (entryId === "__cloud__") {
-        return elizaCloudConnected
-          ? { tone: "ok", label: "Connected" }
-          : { tone: "muted", label: "Available" };
-      }
-      if (entryId === "__local__") {
-        return selection.cloudCallsDisabled
-          ? { tone: "ok", label: "Active" }
-          : { tone: "muted", label: "Available" };
-      }
-      if (isSubscriptionProviderSelectionId(entryId)) {
-        const subSelection = SUBSCRIPTION_PROVIDER_SELECTIONS.find(
-          (provider) => provider.id === entryId,
-        );
-        const statuses = subscriptionStatus.filter(
-          (entry) =>
-            entry.provider === entryId ||
-            (subSelection
-              ? entry.provider === subSelection.storedProvider
-              : false),
-        );
-        if (
-          statuses.length > 0 &&
-          statuses.every((status) => status.available === false)
-        ) {
-          return { tone: "warn", label: "Unavailable" };
-        }
-        if (entryId === "anthropic-subscription" && anthropicCliDetected) {
-          return { tone: "ok", label: "CLI detected" };
-        }
-        if (
-          entryId === "gemini-subscription" &&
-          statuses.some(
-            (status) =>
-              status.source === "gemini-cli" &&
-              status.configured &&
-              status.valid,
-          )
-        ) {
-          return { tone: "ok", label: "CLI detected" };
-        }
-        if (statuses.some((status) => status.configured && status.valid)) {
-          return { tone: "ok", label: "Connected" };
-        }
-        if (statuses.some((status) => status.configured && !status.valid)) {
-          return { tone: "warn", label: "Needs repair" };
-        }
-        return { tone: "muted", label: "Not connected" };
-      }
-      const choice = apiProviderChoices.find((c) => c.id === entryId);
-      if (!choice) return { tone: "muted", label: "Available" };
-      return choice.provider.configured
-        ? { tone: "ok", label: "API key set" }
-        : { tone: "warn", label: "Needs key" };
-    },
-    [
-      anthropicCliDetected,
-      apiProviderChoices,
-      elizaCloudConnected,
-      selection.cloudCallsDisabled,
-      subscriptionStatus,
-    ],
-  );
-
-  const providerEntries = useMemo<ProviderListEntry[]>(() => {
-    const entries: ProviderListEntry[] = [];
-    entries.push({
-      id: "__cloud__",
-      icon: Cloud,
-      label: "Eliza Cloud",
-      category: "cloud",
-      status: getProviderStatus("__cloud__"),
-      current: !selection.cloudCallsDisabled && selection.isCloudSelected,
-    });
-    for (const provider of SUBSCRIPTION_PROVIDER_SELECTIONS) {
-      entries.push({
-        id: provider.id,
-        icon: KeyRound,
-        label: t(provider.labelKey, { defaultValue: provider.id }),
-        category: "subscription",
-        status: getProviderStatus(provider.id),
-        current:
-          !selection.cloudCallsDisabled && resolvedSelectedId === provider.id,
-      });
-    }
-    entries.push({
-      id: "__local__",
-      icon: Cpu,
-      label: "Local provider",
-      category: "local",
-      status: getProviderStatus("__local__"),
-      current: selection.cloudCallsDisabled,
-    });
-    for (const choice of apiProviderChoices) {
-      entries.push({
-        id: choice.id,
-        icon: KeyRound,
-        label: choice.label,
-        category: "key",
-        status: getProviderStatus(choice.id),
-        current:
-          !selection.cloudCallsDisabled && resolvedSelectedId === choice.id,
-      });
-    }
-    return entries;
-  }, [
-    apiProviderChoices,
-    getProviderStatus,
-    resolvedSelectedId,
-    selection.cloudCallsDisabled,
-    selection.isCloudSelected,
-    t,
-  ]);
 
   const activeSubscriptionSelection = useMemo(
     () =>
@@ -521,14 +223,14 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
               visibleProviderPanelId={visibleProviderPanelId}
               resolvedSelectedId={resolvedSelectedId}
               cloudCallsDisabled={selection.cloudCallsDisabled}
-              subscriptionStatus={subscriptionStatus}
-              anthropicConnected={anthropicConnected}
-              setAnthropicConnected={setAnthropicConnected}
-              anthropicCliDetected={anthropicCliDetected}
-              openaiConnected={openaiConnected}
-              setOpenaiConnected={setOpenaiConnected}
+              subscriptionStatus={bootstrap.subscriptionStatus}
+              anthropicConnected={bootstrap.anthropicConnected}
+              setAnthropicConnected={bootstrap.setAnthropicConnected}
+              anthropicCliDetected={bootstrap.anthropicCliDetected}
+              openaiConnected={bootstrap.openaiConnected}
+              setOpenaiConnected={bootstrap.setOpenaiConnected}
               onSelectSubscription={selection.handleSelectSubscription}
-              loadSubscriptionStatus={loadSubscriptionStatus}
+              loadSubscriptionStatus={bootstrap.loadSubscriptionStatus}
             />
           ) : null}
 

@@ -126,4 +126,69 @@ describe("cost-table", () => {
 			expect(cost).toBeCloseTo(0.5, 6);
 		});
 	});
+
+	describe("MODEL_CONTEXT_WINDOW_TOKENS + lookupModelContextWindow", () => {
+		it("publishes Cerebras gpt-oss-120b ceiling as 131k (matches API 400 body)", async () => {
+			// Imported lazily so the test stays adjacent to the assertion.
+			const { MODEL_CONTEXT_WINDOW_TOKENS } = await import(
+				"../../features/trajectories/pricing"
+			);
+			expect(MODEL_CONTEXT_WINDOW_TOKENS["gpt-oss-120b"]).toBe(131_000);
+		});
+
+		it("publishes the documented Claude 4 family at 200k", async () => {
+			const { MODEL_CONTEXT_WINDOW_TOKENS } = await import(
+				"../../features/trajectories/pricing"
+			);
+			expect(MODEL_CONTEXT_WINDOW_TOKENS["claude-opus-4-7"]).toBe(200_000);
+			expect(MODEL_CONTEXT_WINDOW_TOKENS["claude-sonnet-4-6"]).toBe(200_000);
+			expect(MODEL_CONTEXT_WINDOW_TOKENS["claude-haiku-4-5"]).toBe(200_000);
+		});
+
+		it("publishes the tight Cerebras tier (qwen 64k, llama 32k)", async () => {
+			const { MODEL_CONTEXT_WINDOW_TOKENS } = await import(
+				"../../features/trajectories/pricing"
+			);
+			expect(
+				MODEL_CONTEXT_WINDOW_TOKENS["qwen-3-235b-a22b-instruct-2507"],
+			).toBe(64_000);
+			expect(MODEL_CONTEXT_WINDOW_TOKENS["llama3.1-8b"]).toBe(32_000);
+		});
+
+		it("lookupModelContextWindow returns null for undefined / unknown", async () => {
+			const { lookupModelContextWindow } = await import(
+				"../../features/trajectories/pricing"
+			);
+			expect(lookupModelContextWindow(undefined)).toBeNull();
+			expect(lookupModelContextWindow("not-a-real-model-99")).toBeNull();
+		});
+
+		it("lookupModelContextWindow returns exact match with key", async () => {
+			const { lookupModelContextWindow } = await import(
+				"../../features/trajectories/pricing"
+			);
+			const result = lookupModelContextWindow("gpt-oss-120b");
+			expect(result?.matchedKey).toBe("gpt-oss-120b");
+			expect(result?.contextWindowTokens).toBe(131_000);
+		});
+
+		it("lookupModelContextWindow does longest-prefix family match (versioned id)", async () => {
+			const { lookupModelContextWindow } = await import(
+				"../../features/trajectories/pricing"
+			);
+			const result = lookupModelContextWindow("claude-haiku-4-5-20251001");
+			expect(result?.matchedKey).toBe("claude-haiku-4-5");
+			expect(result?.contextWindowTokens).toBe(200_000);
+		});
+
+		it("lookupModelContextWindow prefers the longest family key when prefixes overlap", async () => {
+			const { lookupModelContextWindow } = await import(
+				"../../features/trajectories/pricing"
+			);
+			// gpt-5.5 (200k) vs gpt-5.5-mini (128k). The longer family key wins.
+			const result = lookupModelContextWindow("gpt-5.5-mini-2026");
+			expect(result?.matchedKey).toBe("gpt-5.5-mini");
+			expect(result?.contextWindowTokens).toBe(128_000);
+		});
+	});
 });

@@ -1,11 +1,11 @@
 # Eliza-1 precache strategy (text-side KV)
 
 > **Scope:** the local-inference text path (`packages/app-core/src/services/
-> local-inference/`). This is the I1–I5 / C1 mechanism slice of the
-> Eliza-1 voice swarm — what gets KV-prefilled before the user's tokens
-> land, when, how it's keyed, and how it's invalidated. The drafter
-> co-residency and first-audio filler are cross-referenced (W13 owns the
-> audio side); only the text-KV pieces are owned here.
+> local-inference/`). What gets KV-prefilled before the user's tokens land,
+> when, how it's keyed, and how it's invalidated. The drafter co-residency and
+> first-audio filler are cross-referenced (the audio side lives in
+> `voice/phrase-cache.ts` + the turn controller); only the text-KV pieces are
+> covered here.
 
 The goal is to make "user stops speaking → agent's first token" as close
 to "decode the user's tokens + sample" as possible — the system prompt,
@@ -45,19 +45,18 @@ stable, so this always warms the same slot before any user message — and
 because llama-server's radix KV is shared across slots, every per-room
 conversation that opens later inherits the common prefix tokens.
 
-### 3. Drafter co-residency (cross-ref W4 / `packages/inference/AGENTS.md` §3)
+### 3. Drafter co-residency (cross-ref `packages/inference/AGENTS.md` §3)
 The DFlash drafter is mmapped alongside the target by `llama-server`
 itself (`-md <drafter> --spec-type dflash …`) — there is no separate
 "load drafter" step, so it is "precached" by construction the moment the
-server starts. Owned by W4 (`dflash-server.ts` startup + the
-`DflashDrafterHandle` in `voice/shared-resources.ts`).
+server starts. Owned by `dflash-server.ts` startup + the
+`DflashDrafterHandle` in `voice/shared-resources.ts`.
 
-### 4. First-audio filler (cross-ref W13 / W9)
+### 4. First-audio filler (cross-ref the voice phrase cache)
 Pre-generating a short acknowledgement audio chunk ("one sec", "got it",
 …) on VAD fire is the audio-side counterpart to the text-KV pre-warm.
-Owned by W13's phrase cache (`voice/phrase-cache.ts`,
-`cache/voice-preset-default.bin`) and W9's turn controller; not part of
-this module.
+Owned by `voice/phrase-cache.ts` (+ `cache/voice-preset-default.bin`)
+and the turn controller; not part of this module.
 
 ---
 
@@ -66,7 +65,7 @@ this module.
 | Trigger                              | What's warmed                                  | Call site |
 | ------------------------------------ | ---------------------------------------------- | --------- |
 | **Model load / runtime boot**        | system prefix on `conv:__system_prefix__`      | `ensureLocalInferenceHandler` → `prewarmSystemPrefix` (fire-and-forget) |
-| **Voice session open / `speech-start`** | Stage-1 stable prefix on `conv:<roomId>`     | W9 turn controller → `prewarmResponseHandler(runtime, roomId)` |
+| **Voice session open / `speech-start`** | Stage-1 stable prefix on `conv:<roomId>`     | the voice turn controller → `prewarmResponseHandler(runtime, roomId)` |
 | **Keep-alive sweep** (~4 min, < short TTL) | re-issues the last pre-warm prefix for slots untouched ≥ 80% of the short TTL | `DflashLlamaServer` keep-alive timer (`startKeepAliveTimer`) |
 | **First real Stage-1 request**       | (no extra work) appends the user turn to the warm prefix | `runV5MessageRuntimeStage1` → `useModel(RESPONSE_HANDLER)` with `conversationId: roomId` |
 

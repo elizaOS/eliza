@@ -100,6 +100,8 @@ kernel void kernel_turbo3_tcq_dot_multi(
     uint bit_pos0  = tid * 12;
     uint byte_idx0 = bit_pos0 >> 3;
     uint bit_off0  = bit_pos0 & 7;
+    device const float4 * q4 = (device const float4 *)(q + q_base);
+    float4 qv = q4[0];
 
     uint kv_base = tg_idx * args.blocks_per_threadgroup;
     for (uint b = 0; b < args.blocks_per_threadgroup; ++b) {
@@ -115,8 +117,6 @@ kernel void kernel_turbo3_tcq_dot_multi(
             | (uint(blk->qs[byte_idx0 + 1]) << 8)
             | (uint(blk->qs[byte_idx0 + 2]) << 16);
 
-        device const float4 * q4 = (device const float4 *)(q + q_base);
-        float4 qv = q4[0];
         uint state0 = (raw24 >> (bit_off0 + 0u)) & 0x1FFu;
         uint state1 = (raw24 >> (bit_off0 + 3u)) & 0x1FFu;
         uint state2 = (raw24 >> (bit_off0 + 6u)) & 0x1FFu;

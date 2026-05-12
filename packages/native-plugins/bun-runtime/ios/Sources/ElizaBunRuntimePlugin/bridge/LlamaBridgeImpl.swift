@@ -34,21 +34,22 @@ import Darwin.Mach
 // We call llama.cpp's C symbols directly through @_silgen_name rather than
 // importing a generated module. This keeps us provider-agnostic: the same
 // Swift code works whether the binary slice came from `LlamaCpp.xcframework`
-// (built by `native/ios-bun-port/vendor-deps/llama.cpp/build-ios.sh`) or
-// from a different distribution. The contract is the linker — at link time
+// (built by the app-core iOS local-inference pipeline) or from a different
+// distribution. The contract is the linker — at link time
 // the symbols must resolve, otherwise we get a clear "Undefined symbol"
 // error.
 //
 // Symbol names track upstream llama.cpp >= b4404 (Jan 2025 sampler-chain
 // API). If you bump the pinned version in
-// `native/ios-bun-port/vendor-deps/VERSIONS` to one that renamed any of
-// these symbols, this file is where you update them.
+// the pinned llama.cpp version to one that renamed any of these symbols, this
+// file is where you update them.
 
 private let LLAMA_DEFAULT_SEED: UInt32 = 0xFFFFFFFF
 private let LLAMA_TOKEN_NULL: Int32 = -1
 
 typealias LlamaModelPtr = OpaquePointer
 typealias LlamaContextPtr = OpaquePointer
+typealias LlamaMemoryPtr = OpaquePointer
 typealias LlamaVocabPtr = OpaquePointer
 typealias LlamaSamplerPtr = OpaquePointer
 
@@ -87,6 +88,12 @@ private func c_llama_model_get_vocab(_ model: LlamaModelPtr) -> LlamaVocabPtr
 
 @_silgen_name("llama_n_ctx")
 private func c_llama_n_ctx(_ ctx: LlamaContextPtr) -> UInt32
+
+@_silgen_name("llama_get_memory")
+private func c_llama_get_memory(_ ctx: LlamaContextPtr) -> LlamaMemoryPtr?
+
+@_silgen_name("llama_memory_clear")
+private func c_llama_memory_clear(_ memory: LlamaMemoryPtr, _ data: Bool)
 
 @_silgen_name("llama_tokenize")
 private func c_llama_tokenize(
@@ -151,9 +158,6 @@ private func c_llama_sampler_accept(_ smpl: LlamaSamplerPtr, _ token: Int32)
 @_silgen_name("llama_sampler_free")
 private func c_llama_sampler_free(_ smpl: LlamaSamplerPtr)
 
-@_silgen_name("llama_kv_self_clear")
-private func c_llama_kv_self_clear(_ ctx: LlamaContextPtr)
-
 // MARK: - Opaque parameter bags
 //
 // llama.cpp's `llama_model_params`, `llama_context_params`, and `llama_batch`
@@ -205,28 +209,28 @@ struct LlamaBatch {
 // Shim symbols — implemented in LlamaShim.c. The shim folds into libllama.a
 // by `vendor-deps/llama.cpp/build-ios.sh`.
 
-@_silgen_name("milady_llama_model_params_set_n_gpu_layers")
+@_silgen_name("eliza_llama_model_params_set_n_gpu_layers")
 private func shim_model_params_set_n_gpu_layers(_ params: UnsafeMutablePointer<LlamaModelParamsBag>, _ n: Int32)
 
-@_silgen_name("milady_llama_context_params_set_n_ctx")
+@_silgen_name("eliza_llama_context_params_set_n_ctx")
 private func shim_context_params_set_n_ctx(_ params: UnsafeMutablePointer<LlamaContextParamsBag>, _ n: UInt32)
 
-@_silgen_name("milady_llama_context_params_set_n_threads")
+@_silgen_name("eliza_llama_context_params_set_n_threads")
 private func shim_context_params_set_n_threads(_ params: UnsafeMutablePointer<LlamaContextParamsBag>, _ n: Int32, _ n_batch: Int32)
 
-@_silgen_name("milady_llama_batch_set_single")
+@_silgen_name("eliza_llama_batch_set_single")
 private func shim_batch_set_single(_ batch: UnsafeMutablePointer<LlamaBatch>, _ token: Int32, _ pos: Int32, _ logits_out: Bool)
 
-@_silgen_name("milady_llama_batch_append")
+@_silgen_name("eliza_llama_batch_append")
 private func shim_batch_append(_ batch: UnsafeMutablePointer<LlamaBatch>, _ token: Int32, _ pos: Int32, _ logits_out: Bool)
 
-@_silgen_name("milady_llama_batch_reset")
+@_silgen_name("eliza_llama_batch_reset")
 private func shim_batch_reset(_ batch: UnsafeMutablePointer<LlamaBatch>)
 
-@_silgen_name("milady_llama_log_silence")
+@_silgen_name("eliza_llama_log_silence")
 private func shim_log_silence()
 
-@_silgen_name("milady_llama_has_metal")
+@_silgen_name("eliza_llama_has_metal")
 private func shim_has_metal() -> Bool
 
 // MARK: - Result types
@@ -435,7 +439,9 @@ public final class LlamaBridgeImpl {
         }
 
         // Reset KV cache for a clean generation.
-        c_llama_kv_self_clear(session.ctx)
+        if let memory = c_llama_get_memory(session.ctx) {
+            c_llama_memory_clear(memory, true)
+        }
 
         // 2. Prefill: enqueue all prompt tokens, then decode once.
         let batch = c_llama_batch_init(max(Int32(promptTokens.count), 512), 0, 1)

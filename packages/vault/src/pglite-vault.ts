@@ -463,8 +463,8 @@ async function insertLegacyEntry(
 
 export function defaultPgliteVaultDataDir(): string {
   const root =
-    process.env.MILADY_STATE_DIR?.trim() ??
     process.env.ELIZA_STATE_DIR?.trim() ??
+    process.env.MILADY_STATE_DIR?.trim() ??
     join(homedir(), `.${process.env.ELIZA_NAMESPACE?.trim() || "eliza"}`);
   return join(root, ".vault-pglite");
 }

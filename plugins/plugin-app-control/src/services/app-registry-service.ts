@@ -49,7 +49,7 @@ export interface AppRegistryEntry extends ElizaCuratedAppDefinition {
 	 * Raw `elizaos.app.permissions` block as declared in the app's
 	 * `package.json`, or absent when the app declared no permissions
 	 * block. Persisted as the open shape (Record<string, unknown>) so
-	 * future Milady versions can read namespaces this version did not
+	 * future Eliza versions can read namespaces this version did not
 	 * validate. See parser at `../permissions.ts`.
 	 */
 	requestedPermissions?: Record<string, unknown>;

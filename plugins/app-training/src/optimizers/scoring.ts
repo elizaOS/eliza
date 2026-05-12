@@ -121,9 +121,9 @@ function parsePlannerObject(text: string): Record<string, unknown> {
  * small line-based reader keeps older key/value rows comparable.
  *
  * Schemas understood (in priority order):
- *   1. v5 planner: `{toolCalls:[{name:"LIFE","args":{...}}]}` — handled directly.
+ *   1. v5 planner: `{toolCalls:[{name:"OWNER_TODOS","args":{...}}]}` — handled directly.
  *   2. Legacy structured: top-level `action`/`actionName`/`name`/`type`/`actions` field.
- *   3. Legacy line-based: `action: LIFE` or similar key:value rows.
+ *   3. Legacy line-based: `action: OWNER_TODOS` or similar key:value rows.
  *   4. Last-resort: any uppercase identifier in the text.
  *
  * The regex fallback is intentionally last — it matches identifiers like

@@ -207,7 +207,7 @@ python3 -m pytest tests/test_conformance.py -q           # 1064 passed (PerfectA
 
 Re-score script (not committed; for reproducibility):
 `/tmp/rescore_w4a.py` loads each saved JSON from
-`~/.milady/runs/lifeops/lifeops-multiagent-best/{eliza,hermes,openclaw}/`,
+`~/.eliza/runs/lifeops/lifeops-multiagent-best/{eliza,hermes,openclaw}/`,
 rebuilds `ScenarioResult`s, and runs `score_scenario` against the live
 scenarios registry.
 

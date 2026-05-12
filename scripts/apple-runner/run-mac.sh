@@ -13,7 +13,7 @@
 #
 # Env knobs (all optional):
 #   APPLE_RUNNER_REPO         git URL to clone (default: elizaOS/llama.cpp)
-#   APPLE_RUNNER_REF          tag/branch/SHA (default: v0.1.0-milady)
+#   APPLE_RUNNER_REF          tag/branch/SHA (default: v0.1.0-eliza)
 #   APPLE_RUNNER_FALLBACK_REF if APPLE_RUNNER_REF is missing, fall back to
 #                             this ref (default: master)
 #   APPLE_RUNNER_SMOKE_MODEL  absolute path to a Q4_K_M GGUF for the smoke
@@ -31,7 +31,7 @@ cd "${REPO_ROOT}"
 
 # -- Constants -----------------------------------------------------------------
 APPLE_RUNNER_REPO="${APPLE_RUNNER_REPO:-https://github.com/elizaOS/llama.cpp.git}"
-APPLE_RUNNER_REF="${APPLE_RUNNER_REF:-v0.1.0-milady}"
+APPLE_RUNNER_REF="${APPLE_RUNNER_REF:-v0.1.0-eliza}"
 APPLE_RUNNER_FALLBACK_REF="${APPLE_RUNNER_FALLBACK_REF:-master}"
 
 DATE_STAMP="$(date -u +%Y-%m-%d)"

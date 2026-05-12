@@ -1,10 +1,4 @@
-import type {
-    ActionResult,
-    HandlerCallback,
-    IAgentRuntime,
-    Memory,
-    State,
-} from '@elizaos/core';
+import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from '@elizaos/core';
 import { SunoProvider } from '../providers/suno';
 
 export type SunoMusicSubaction = 'generate' | 'custom_generate' | 'extend';

@@ -19,7 +19,7 @@ import { calendarAction } from "./actions/calendar.js";
 import { conflictDetectAction } from "./actions/conflict-detect.js";
 import { connectorAction } from "./actions/connector.js";
 import { credentialsAction } from "./actions/credentials.js";
-import { docAction } from "./actions/document.js";
+import { ownerDocumentsAction } from "./actions/document.js";
 import { entityAction } from "./actions/entity.js";
 import { inboxUnifiedAction } from "./actions/inbox-unified.js";
 import { prioritizeAction } from "./actions/prioritize.js";
@@ -642,7 +642,7 @@ const rawAppLifeOpsPlugin: Plugin = {
     ...promoteSubactionsToActions(ownerScreenTimeAction),
     ...promoteSubactionsToActions(personalAssistantAction),
     entityAction,
-    ...promoteSubactionsToActions(docAction),
+    ...promoteSubactionsToActions(ownerDocumentsAction),
     ...promoteSubactionsToActions(briefAction),
     ...promoteSubactionsToActions(prioritizeAction),
     ...promoteSubactionsToActions(conflictDetectAction),

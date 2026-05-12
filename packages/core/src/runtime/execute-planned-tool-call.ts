@@ -397,7 +397,7 @@ function getGateFailure(
 }
 
 /**
- * Wave 2-D: short-form enum completion. When `MILADY_SHORT_FORM_ENUMS=1` is
+ * Wave 2-D: short-form enum completion. When `ELIZA_SHORT_FORM_ENUMS=1` is
  * set AND the action has a single closed-enum parameter, accept three input
  * shapes from the planner:
  *
@@ -419,7 +419,7 @@ export function expandEnumShortForm(
 	action: Action,
 	args: Record<string, unknown>,
 ): Record<string, unknown> {
-	if (process.env.MILADY_SHORT_FORM_ENUMS !== "1") return args;
+	if (process.env.ELIZA_SHORT_FORM_ENUMS !== "1") return args;
 	const parameters = action.parameters ?? [];
 	if (parameters.length !== 1) return args;
 	const param = parameters[0];

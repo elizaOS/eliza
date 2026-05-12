@@ -117,6 +117,12 @@ def test_stage_local_bundle_writes_non_publishable_layout(
     assert manifest["evals"]["vadLatencyMs"]["boundaryMs"] == 0.0
     assert manifest["evals"]["vadLatencyMs"]["endpointMs"] == 0.0
     assert manifest["evals"]["vadLatencyMs"]["falseBargeInRate"] == 1.0
+    # RAM budget is calibrated from the 2026-05-11 e2e voice-loop bench:
+    # the fused llama-server holds every voice region resident, so 1_7b's
+    # server peak RSS is ~4.8 GB → recommended must clear that with headroom
+    # and the previous 4500 MB figure (which `thirty_turn_ok` failed on) is
+    # no longer in effect.
+    assert manifest["ramBudgetMb"] == {"min": 4000, "recommended": 5500}
     assert stage.validate_manifest(manifest, require_publish_ready=False) == ()
     publish_errors = stage.validate_manifest(manifest)
     assert any("textEval" in err for err in publish_errors)

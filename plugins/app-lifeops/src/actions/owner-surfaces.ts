@@ -17,16 +17,16 @@ import {
 } from "./health.js";
 import { runSchedulingNegotiationHandler } from "./lib/scheduling-handler.js";
 import {
-  LIFE_CONTEXTS,
-  LIFE_ROLE_GATE,
-  LIFE_SUPPRESS_POST_ACTION_CONTINUATION,
-  LIFE_TAGS,
-  LIFE_VALIDATE,
+  OWNER_OPERATION_CONTEXTS,
+  OWNER_OPERATION_ROLE_GATE,
+  OWNER_OPERATION_SUPPRESS_POST_ACTION_CONTINUATION,
+  OWNER_OPERATION_TAGS,
+  OWNER_OPERATION_VALIDATE,
   runLifeOperationHandler,
 } from "./life.js";
 import {
-  MONEY_LEGACY_SIMILES,
   MONEY_PARAMETERS,
+  OWNER_FINANCE_SIMILES,
   runMoneyHandler,
 } from "./money.js";
 import { runScheduleHandler } from "./schedule.js";
@@ -158,11 +158,12 @@ function makeOwnerLifeAction(args: {
     description: args.description,
     descriptionCompressed: args.descriptionCompressed,
     routingHint: `${args.descriptionCompressed} -> ${args.name}; owner-only LifeOps surface`,
-    tags: LIFE_TAGS,
-    contexts: LIFE_CONTEXTS,
-    roleGate: LIFE_ROLE_GATE,
-    suppressPostActionContinuation: LIFE_SUPPRESS_POST_ACTION_CONTINUATION,
-    validate: LIFE_VALIDATE,
+    tags: OWNER_OPERATION_TAGS,
+    contexts: OWNER_OPERATION_CONTEXTS,
+    roleGate: OWNER_OPERATION_ROLE_GATE,
+    suppressPostActionContinuation:
+      OWNER_OPERATION_SUPPRESS_POST_ACTION_CONTINUATION,
+    validate: OWNER_OPERATION_VALIDATE,
     parameters: [
       {
         name: "action",
@@ -230,7 +231,22 @@ function makeOwnerLifeAction(args: {
   };
 }
 
-export const ownerRemindersAction = makeOwnerLifeAction({
+export const ownerRemindersAction: Action = {
+  ...makeOwnerLifeAction({
+    name: "OWNER_REMINDERS",
+    similes: [
+      "REMINDER",
+      "REMINDERS",
+      "SET_REMINDER",
+      "REMIND_ME",
+      "REMIND_ME_TO",
+    ],
+    description:
+      "Owner reminders: create, update, delete, complete, skip, snooze, or review one-off and recurring reminders.",
+    descriptionCompressed:
+      "owner reminders: action=create|update|delete|complete|skip|snooze|review",
+    defaultKind: "definition",
+  }),
   name: "OWNER_REMINDERS",
   similes: [
     "REMINDER",
@@ -243,44 +259,67 @@ export const ownerRemindersAction = makeOwnerLifeAction({
     "Owner reminders: create, update, delete, complete, skip, snooze, or review one-off and recurring reminders.",
   descriptionCompressed:
     "owner reminders: action=create|update|delete|complete|skip|snooze|review",
-  defaultKind: "definition",
-});
+};
 
-export const ownerAlarmsAction = makeOwnerLifeAction({
+export const ownerAlarmsAction: Action = {
+  ...makeOwnerLifeAction({
+    name: "OWNER_ALARMS",
+    similes: ["ALARM", "ALARMS", "WAKE_ME", "WAKE_UP"],
+    description:
+      "Owner alarms: create, update, delete, complete, skip, snooze, or review alarm-like reminders.",
+    descriptionCompressed:
+      "owner alarms: action=create|update|delete|complete|skip|snooze|review",
+    defaultKind: "definition",
+  }),
   name: "OWNER_ALARMS",
   similes: ["ALARM", "ALARMS", "WAKE_ME", "WAKE_UP"],
   description:
     "Owner alarms: create, update, delete, complete, skip, snooze, or review alarm-like reminders.",
   descriptionCompressed:
     "owner alarms: action=create|update|delete|complete|skip|snooze|review",
-  defaultKind: "definition",
-});
+};
 
-export const ownerGoalsAction = makeOwnerLifeAction({
+export const ownerGoalsAction: Action = {
+  ...makeOwnerLifeAction({
+    name: "OWNER_GOALS",
+    similes: ["GOAL", "GOALS", "LONG_TERM_GOAL"],
+    description:
+      "Owner goals: create, update, delete, or review long-term goals and progress.",
+    descriptionCompressed:
+      "owner goals: action=create|update|delete|review; backing kind=goal",
+    defaultKind: "goal",
+    actions: [...OWNER_GOAL_ACTIONS],
+  }),
   name: "OWNER_GOALS",
   similes: ["GOAL", "GOALS", "LONG_TERM_GOAL"],
   description:
     "Owner goals: create, update, delete, or review long-term goals and progress.",
   descriptionCompressed:
     "owner goals: action=create|update|delete|review; backing kind=goal",
-  defaultKind: "goal",
-  actions: [...OWNER_GOAL_ACTIONS],
-});
+};
 
 // Owner-store todos surface. Backed by the app-lifeops owner definitions store
 // (with kind=definition occurrence tracking). The general-purpose planner
 // surface — backed by @elizaos/core TodosService — is TODO in
 // plugins/plugin-todos/src/actions/todo.ts. The two surfaces target different
 // stores and must not be merged.
-export const ownerTodosAction = makeOwnerLifeAction({
+export const ownerTodosAction: Action = {
+  ...makeOwnerLifeAction({
+    name: "OWNER_TODOS",
+    similes: ["OWNER_TODO", "PERSONAL_TODO", "PERSONAL_TODOS", "PERSONAL_TASK"],
+    description:
+      "Owner todos: create, update, delete, complete, skip, snooze, or review personal todos.",
+    descriptionCompressed:
+      "owner todos: action=create|update|delete|complete|skip|snooze|review",
+    defaultKind: "definition",
+  }),
   name: "OWNER_TODOS",
-  similes: ["TODO", "TODOS", "TASK", "PERSONAL_TASK"],
+  similes: ["OWNER_TODO", "PERSONAL_TODO", "PERSONAL_TODOS", "PERSONAL_TASK"],
   description:
     "Owner todos: create, update, delete, complete, skip, snooze, or review personal todos.",
   descriptionCompressed:
     "owner todos: action=create|update|delete|complete|skip|snooze|review",
-  defaultKind: "definition",
-});
+};
 
 const OWNER_ROUTINE_ACTIONS = [
   ...OWNER_LIFE_ACTIONS,
@@ -325,6 +364,19 @@ export const ownerRoutinesAction: Action = {
       "owner routines: action=create|update|delete|complete|skip|snooze|review|schedule_summary|schedule_inspect",
     defaultKind: "definition",
   }),
+  name: "OWNER_ROUTINES",
+  similes: [
+    "HABIT",
+    "HABITS",
+    "ROUTINE",
+    "ROUTINES",
+    "DAILY_TASK",
+    "WEEKLY_TASK",
+  ],
+  description:
+    "Owner routines and habits: create or manage recurring routines, and inspect passive schedule inference.",
+  descriptionCompressed:
+    "owner routines: action=create|update|delete|complete|skip|snooze|review|schedule_summary|schedule_inspect",
   parameters: [
     {
       name: "action",
@@ -394,7 +446,7 @@ export const ownerHealthAction: Action = {
     },
     ...HEALTH_PARAMETERS.filter((parameter) => parameter.name !== "subaction"),
   ],
-  validate: LIFE_VALIDATE,
+  validate: OWNER_OPERATION_VALIDATE,
   handler: (runtime, message, state, options, callback) =>
     runHealthHandler(
       runtime,
@@ -428,7 +480,7 @@ export const ownerScreenTimeAction: Action = {
       (parameter) => parameter.name !== "subaction",
     ),
   ],
-  validate: LIFE_VALIDATE,
+  validate: OWNER_OPERATION_VALIDATE,
   handler: (runtime, message, state, options, callback) =>
     runScreenTimeHandler(
       runtime,
@@ -441,7 +493,7 @@ export const ownerScreenTimeAction: Action = {
 
 export const ownerFinancesAction: Action = {
   name: "OWNER_FINANCES",
-  similes: ["MONEY", "FINANCES", "SUBSCRIPTIONS", ...MONEY_LEGACY_SIMILES],
+  similes: ["FINANCES", ...OWNER_FINANCE_SIMILES],
   description:
     "Owner finances: payment sources, transaction imports, spending summaries, recurring charges, and subscription audits.",
   descriptionCompressed:
@@ -455,7 +507,7 @@ export const ownerFinancesAction: Action = {
     },
     ...MONEY_PARAMETERS.filter((parameter) => parameter.name !== "subaction"),
   ],
-  validate: LIFE_VALIDATE,
+  validate: OWNER_OPERATION_VALIDATE,
   handler: (runtime, message, state, options, _callback) =>
     runMoneyHandler(runtime, message, state, mirrorActionToSubaction(options)),
 };
@@ -555,13 +607,11 @@ export const personalAssistantAction: Action = {
   name: "PERSONAL_ASSISTANT",
   similes: [
     "ASSISTANT",
-    "BOOK_TRAVEL",
     "SCHEDULING",
-    "SCHEDULING_NEGOTIATION",
     "SIGN_DOCUMENT",
     "DOCUSIGN",
     // PRD action-catalog aliases. Travel workflows resolve to action=book_travel
-    // (via the BOOK_TRAVEL handler) on PERSONAL_ASSISTANT.
+    // on PERSONAL_ASSISTANT.
     // See packages/docs/action-prd-map.md.
     "TRAVEL_CAPTURE_PREFERENCES",
     "TRAVEL_BOOK_FLIGHT",
@@ -591,13 +641,7 @@ export const personalAssistantAction: Action = {
   handler: async (runtime, message, state, options, callback) => {
     const action = readStringParam(options, "action")?.trim().toLowerCase();
     if (action === "book_travel") {
-      return runBookTravelHandler(
-        runtime,
-        message,
-        state,
-        options,
-        callback,
-      );
+      return runBookTravelHandler(runtime, message, state, options, callback);
     }
     if (action === "scheduling") {
       return runSchedulingNegotiationHandler(

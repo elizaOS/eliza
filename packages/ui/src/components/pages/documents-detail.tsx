@@ -22,7 +22,7 @@ import { useApp } from "../../state/useApp";
 import { formatByteSize } from "../../utils/format";
 
 export function getDocumentTypeLabel(contentType?: string): string {
-  return contentType?.split("/").pop()?.toUpperCase() || "DOC";
+  return contentType?.split("/").pop()?.toUpperCase() || "DOCUMENT";
 }
 
 export function getDocumentSourceLabel(

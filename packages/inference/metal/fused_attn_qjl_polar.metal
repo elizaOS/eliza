@@ -1,4 +1,4 @@
-// AUTHORED — hardware-verify pending (no Apple HW on the authoring machine).
+// Hardware-verified on Apple M4 Max via `make metal-verify-fused`.
 //
 // Fused attention: QJL-K score + Q4_POLAR-V mix, online softmax that never
 // materializes the per-token score vector. Metal Shading Language. The Polar
@@ -6,12 +6,12 @@
 // reports/porting/2026-05-11/fused-attn-op-contract.md (§1, §2: block_q4_polar
 // V; §3: op_params[2] = v_use_qjl) and the C reference eliza_fused_attn_qjl_polar()
 // in packages/inference/verify/qjl_polar_ref.c. Mirrors the hardware-verified
-// Vulkan port fused_attn_qjl_polar.comp (Intel ARL Mesa ANV); this is the Metal
-// version.
+// Vulkan port fused_attn_qjl_polar.comp (Intel ARL Mesa ANV); this Metal version
+// is also hardware-verified on Apple M4 Max runtime JIT.
 //
-// Same K side and same online-softmax structure as fused_attn_qjl_tbq.metal;
-// the only difference is the V decode — one block_q4_polar (82 B) per token
-// instead of four block_tbq3_0:
+// Same K side and same one-pass online-softmax structure as
+// fused_attn_qjl_tbq.metal; the only difference is the V decode — one
+// block_q4_polar (82 B) per token instead of four block_tbq3_0:
 //     half  d                          per-block L2 norm
 //     uchar qs[64]                     128 4-bit centroid codes, low nibble first
 //     uchar qjl[16]                    optional 1-bit QJL residual (use_qjl)
@@ -123,16 +123,10 @@ static inline void polar_hadamard_inplace_tg32(threadgroup float * x, uint tid) 
 }
 
 static inline float qjl_score_one_token(
-        device const float * q_sketch,
         device const block_qjl1_256 * pk_head,
-        uint h_q, uint q_pos, uint n_heads, uint t, float sm_scale, uint tid) {
+        float4 q0, float4 q1, uint t, float sm_scale, uint tid) {
     device const block_qjl1_256 & blk = pk_head[t];
     uint bits  = blk.qs[tid];
-    uint base  = tid * 8u;
-    uint q_off = (q_pos * n_heads + h_q) * QJL_PROJECTION_DIM + base;
-    device const float4 * qs4 = (device const float4 *)(q_sketch + q_off);
-    float4 q0 = qs4[0];
-    float4 q1 = qs4[1];
     float4 s0 = float4(
         float(int(((bits >> 0) & 1u) << 1) - 1),
         float(int(((bits >> 1) & 1u) << 1) - 1),
@@ -204,6 +198,10 @@ kernel void kernel_fused_attn_qjl_polar_f32(
     device const block_qjl1_256 * pk_head = k_packed + (size_t)h_k * args.n_kv;
     device const block_q4_polar * pv_head = v_packed + (size_t)h_k * args.n_kv;
     float sm_scale = args.scale;
+    uint q_off = (q_pos * args.n_heads + h_q) * QJL_PROJECTION_DIM + tid * 8u;
+    device const float4 * qs4 = (device const float4 *)(q_sketch + q_off);
+    float4 q0 = qs4[0];
+    float4 q1 = qs4[1];
 
     if (args.n_kv == 0u) {
         for (uint i = tid; i < HEAD_DIM; i += 32u) out_attn[out_base + i] = 0.0f;
@@ -211,34 +209,30 @@ kernel void kernel_fused_attn_qjl_polar_f32(
     }
     uint q_abs = args.q_pos_base + q_pos;
 
-    // --- Pass 1: global (m, l). ---
-    float m = -INFINITY;
+    // --- Single online-softmax pass over the KV tokens. The running (m, l)
+    //     are thread-uniform: qjl_score_one_token returns the same raw score
+    //     to every lane after the cooperative simd_sum. ---
+    float m = -1.0e30f;
     float l = 0.0f;
-    for (uint t = 0u; t < args.n_kv; t++) {
-        if (args.causal != 0u && t > q_abs) break;
-        float raw = qjl_score_one_token(q_sketch, pk_head, h_q, q_pos, args.n_heads, t, sm_scale, tid);
-        float new_m = max(m, raw);
-        l = l * exp(m - new_m) + exp(raw - new_m);
-        m = new_m;
-    }
-    float inv_l = (l > 0.0f) ? (1.0f / l) : 0.0f;
-    if (!isfinite(m) || !(l > 0.0f)) {
-        for (uint i = tid; i < HEAD_DIM; i += 32u) out_attn[out_base + i] = 0.0f;
-        return;
-    }
-
-    // --- Pass 2: V-mix. ---
     for (uint i = tid; i < HEAD_DIM; i += 32u) acc_o[i] = 0.0f;
     threadgroup_barrier(mem_flags::mem_threadgroup);
     for (uint t = 0u; t < args.n_kv; t++) {
         if (args.causal != 0u && t > q_abs) break;
-        float raw = qjl_score_one_token(q_sketch, pk_head, h_q, q_pos, args.n_heads, t, sm_scale, tid);
-        float w = exp(raw - m) * inv_l;
-        threadgroup_barrier(mem_flags::mem_threadgroup);
-        polar_decode_token_into_acc(pv_head + t, v_buf, acc_o, w, 1.0f, args.v_use_qjl, tid);
+        float raw = qjl_score_one_token(pk_head, q0, q1, t, sm_scale, tid);
+        float new_m = max(m, raw);
+        float corr = exp(m - new_m);
+        float w = exp(raw - new_m);
+        l = l * corr + w;
+        m = new_m;
+        polar_decode_token_into_acc(pv_head + t, v_buf, acc_o, w, corr, args.v_use_qjl, tid);
     }
+    if (!isfinite(m) || m <= -1.0e29f || !(l > 0.0f)) {
+        for (uint i = tid; i < HEAD_DIM; i += 32u) out_attn[out_base + i] = 0.0f;
+        return;
+    }
+    float inv_l = 1.0f / l;
+    for (uint i = tid; i < HEAD_DIM; i += 32u) acc_o[i] *= inv_l;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    if (tid == 0u) {
-        for (uint i = 0u; i < HEAD_DIM; i++) out_attn[out_base + i] = acc_o[i];
-    }
+    for (uint i = tid; i < HEAD_DIM; i += 32u) out_attn[out_base + i] = acc_o[i];
 }

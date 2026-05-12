@@ -11,7 +11,7 @@ function buildRuntime(settings: Record<string, string | undefined>): IAgentRunti
 }
 
 const ENV_KEYS = [
-  "MILADY_PROVIDER",
+  "ELIZA_PROVIDER",
   "OPENAI_BASE_URL",
   "CEREBRAS_API_KEY",
   "OPENAI_API_KEY",
@@ -80,9 +80,9 @@ describe("plugin-openai Cerebras config (pure)", () => {
     expect(getApiKey(runtime)).toBe("sk-openai-fake");
   });
 
-  it("treats MILADY_PROVIDER=cerebras as a Cerebras hint independent of base URL", () => {
+  it("treats ELIZA_PROVIDER=cerebras as a Cerebras hint independent of base URL", () => {
     const runtime = buildRuntime({
-      MILADY_PROVIDER: "cerebras",
+      ELIZA_PROVIDER: "cerebras",
       OPENAI_BASE_URL: undefined,
       CEREBRAS_API_KEY: "csk-cerebras-fake",
       OPENAI_API_KEY: "sk-openai-fake",

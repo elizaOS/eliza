@@ -207,7 +207,7 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
   return (
     <div
       data-testid="contacts-shell"
-      className="fixed inset-0 z-50 flex flex-col bg-bg h-[100vh] overflow-hidden supports-[height:100dvh]:h-[100dvh]"
+      className="fixed inset-0 z-50 flex h-[100vh] flex-col overflow-hidden bg-bg pb-[var(--safe-area-bottom,0px)] pl-[var(--safe-area-left,0px)] pr-[var(--safe-area-right,0px)] pt-[var(--safe-area-top,0px)] supports-[height:100dvh]:h-[100dvh]"
     >
       <input
         ref={fileInputRef}

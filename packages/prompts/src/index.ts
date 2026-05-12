@@ -696,15 +696,15 @@ Domain routing (when context is available):
 - relationship cadence ("follow up with David", "last talked to Alice", "how long since I spoke with Sam") -> contacts; one-off dated todos to call/text -> tasks
 - explicit phone/call/dial a third party -> phone + contacts; do NOT include calendar just because the call is about an appointment
 - device-targeted or broadcast reminders ("to my phone", "all devices", "broadcast") -> automation + connectors (not simple chat); tasks may be secondary
-- owner password/saved-login lookup ("look up my GitHub password") -> settings + secrets so PASSWORD_MANAGER handles it; never answer with the raw secret in Stage 1
+- owner password/saved-login lookup ("look up my GitHub password") -> settings + secrets so CREDENTIALS handles it; never answer with the raw secret in Stage 1
 - website/social-site focus blocking -> automation + settings; app blocking -> automation + settings (not screen_time unless reporting)
-- real flight/hotel/trip booking -> browser + calendar + payments + tasks so BOOK_TRAVEL owns the workflow
+- real flight/hotel/trip booking -> browser + calendar + payments + tasks so PERSONAL_ASSISTANT action=book_travel owns the workflow
 - Calendly availability + single-use booking links -> calendar + connectors, even when the message contains a Calendly API URL
 - health/wearable reads (steps/sleep/heart rate/workouts) -> health
 - X/Twitter DMs -> messaging + connectors; X/Twitter timeline/feed/mentions/post search -> social_posting + connectors (not generic web browsing)
 - desktop/native-app/browser/Finder/window screenshots or control -> browser or automation (not media alone)
 - LifeOps browser bridge/companion/extension/tab/settings -> browser; settings/connectors as secondary when configuration/connection state is asked
-- durable owner facts and stable personal preferences, especially travel/booking preferences ("remember that I prefer aisle seats", "save my hotel preferences") -> memory; add PROFILE as a parent action hint when possible; do not route these to documents unless the user explicitly asks to create/search/edit a document or file
+- durable owner facts and stable personal preferences, especially travel/booking preferences ("remember that I prefer aisle seats", "save my hotel preferences") -> memory + settings; do not route these to documents unless the user explicitly asks to create/search/edit a document or file
 
 Otherwise: list every relevant context id; planning will run and tools will be selected from those contexts. If only general is available and a tool is still needed, use contexts=["general"].
 

@@ -48,10 +48,10 @@ function makeRuntime(actions: Action[]): IAgentRuntime {
 
 describe("Wave 2-D enum short-form completion", () => {
 	beforeEach(() => {
-		process.env.MILADY_SHORT_FORM_ENUMS = "1";
+		process.env.ELIZA_SHORT_FORM_ENUMS = "1";
 	});
 	afterEach(() => {
-		delete process.env.MILADY_SHORT_FORM_ENUMS;
+		delete process.env.ELIZA_SHORT_FORM_ENUMS;
 	});
 
 	it("expands { parameters: '<enum>' } into the canonical shape", () => {
@@ -71,7 +71,7 @@ describe("Wave 2-D enum short-form completion", () => {
 	});
 
 	it("does nothing when the flag is unset", () => {
-		delete process.env.MILADY_SHORT_FORM_ENUMS;
+		delete process.env.ELIZA_SHORT_FORM_ENUMS;
 		const action = makeAction({});
 		const expanded = expandEnumShortForm(action, {
 			parameters: "accept",
