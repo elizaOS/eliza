@@ -9,9 +9,18 @@ export const DIRECT_ROUTE_CASES = [
     selector: '[data-testid="lifeops-shell"]',
   },
   {
+    // `/apps/tasks` renders differently per shell: the web shell maps it to
+    // the "Automations" tab (`APPS_SUB_TABS.tasks === "automations"`, since the
+    // app-task-coordinator surface is branded "Automations") → `AutomationsFeed`
+    // (`automations-shell`); the desktop app-window renderer (`?appWindow=1`)
+    // mounts the standalone `TasksPageView` (`tasks-view`). Accept either.
     name: "tasks",
     path: "/apps/tasks",
-    selector: '[data-testid="tasks-view"]',
+    readyChecks: [
+      { selector: '[data-testid="automations-shell"]' },
+      { selector: '[data-testid="tasks-view"]' },
+    ],
+    timeoutMs: 8_000,
   },
   {
     name: "plugins",
