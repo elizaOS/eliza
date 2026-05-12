@@ -89,11 +89,13 @@ def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
 
 
 def test_dflash_drafter_base_is_qwen3_5_for_qwen3_5_targets() -> None:
-    # The Qwen3.5/3.6 target tiers must draft from the Qwen3.5-0.8B base —
-    # it shares their 248320-token tokenizer (a Qwen3-0.6B drafter has the
-    # wrong vocab). The shipped drafter GGUF is that base distilled to ~0.6B.
+    # The Qwen3.5/3.6 target tiers must draft from the Qwen3.5-0.8B-Base
+    # checkpoint — it shares their 248320-token tokenizer (a Qwen3-0.6B
+    # drafter has the wrong vocab). The shipped drafter GGUF is that base
+    # distilled to ~0.6B. Mirrors DEFAULT_STUDENT_BASE in
+    # scripts/distill_dflash_drafter.py.
     for tier in ("eliza-1-2b", "eliza-1-9b", "eliza-1-27b"):
-        assert DFLASH_DRAFTER_BASE[tier] == "Qwen/Qwen3.5-0.8B"
+        assert DFLASH_DRAFTER_BASE[tier] == "Qwen/Qwen3.5-0.8B-Base"
     # Legacy Qwen3 targets keep a Qwen3-vocab drafter base.
     for tier in ("eliza-1-1_7b", "eliza-1-4b"):
         assert DFLASH_DRAFTER_BASE[tier] == "Qwen/Qwen3-0.6B"
