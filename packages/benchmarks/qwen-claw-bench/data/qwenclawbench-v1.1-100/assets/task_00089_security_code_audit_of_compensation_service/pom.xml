@@ -27,7 +27,7 @@
         <pagehelper.version>1.2.10</pagehelper.version>
         <mysql.version>8.0.16</mysql.version>
         <lombok.version>1.18.12</lombok.version>
-        <commons-io.version>2.6</commons-io.version>
+        <commons-io.version>2.14.0</commons-io.version>
     </properties>
 
     <dependencies>
