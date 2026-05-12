@@ -41,13 +41,14 @@ export const ELIZA_1_TOKENIZER_FAMILY = "qwen35" as const;
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
 
 // Tiers — see packages/inference/AGENTS.md §2 (Tier matrix). `27b-1m` is the
-// GH200-class 1M-context variant of the 27B tier. The manifest-validation
-// tier set is `0_6b / 1_7b / 4b / 9b / 27b / 27b-256k / 27b-1m`; the catalog
-// additionally lists `eliza-1-0_8b` and `eliza-1-2b` as downloadable entries
-// but those tiers do not carry manifest validation contracts.
+// GH200-class 1M-context variant of the 27B tier. `0_8b` and `2b` are the
+// active Qwen3.5 small/mid local tiers; `0_6b` / `1_7b` / `4b` remain
+// enumerated for existing bundle ids. Enum stays size-ordered.
 export const ELIZA_1_TIERS = [
+  "0_8b",
   "0_6b",
   "1_7b",
+  "2b",
   "4b",
   "9b",
   "27b",
@@ -133,13 +134,15 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 //   same requirement dynamically for any bundle that declares a >64k text file,
 //   so a future tier cannot publish long-context text without TCQ.
 //
-// The `q3` vs `q4` choice is tier-driven: 0_6b ships Q3; 1_7b and larger
-// ship Q4.
+// The `q3` vs `q4` choice is tier-driven: 0_6b and 0_8b ship Q3; 1_7b and larger
+// ship Q4. TCQ required for 4b and above (long-context text).
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
+  "0_8b": ["turboquant_q3", "qjl", "polarquant", "dflash"],
   "0_6b": ["turboquant_q3", "qjl", "polarquant", "dflash"],
   "1_7b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
+  "2b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
   "4b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
   "9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
   "27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
@@ -148,12 +151,14 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
 };
 
 // Backends each tier is expected to support on shipped hardware. The small
-// tiers (0.6B / 1.7B / 4B) do not need cuda/rocm.
+// tiers (0.8B / 0.6B / 1.7B / 2B / 4B) do not need cuda/rocm.
 export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Backend>>
 > = {
+  "0_8b": ["metal", "vulkan", "cpu"],
   "0_6b": ["metal", "vulkan", "cpu"],
   "1_7b": ["metal", "vulkan", "cpu"],
+  "2b": ["metal", "vulkan", "cpu"],
   "4b": ["metal", "vulkan", "cpu"],
   "9b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
   "27b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
