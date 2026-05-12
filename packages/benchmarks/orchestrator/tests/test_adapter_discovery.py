@@ -762,6 +762,22 @@ def test_vending_registry_clamps_smoke_to_revenue_observable_days(tmp_path: Path
     assert command[command.index("--max-actions-per-day") + 1] == "6"
 
 
+def test_woobench_registry_forwards_scenario_list(tmp_path: Path) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "woobench"
+    ]
+
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"scenarios": ["friend_supporter_tarot_01", "repeat_customer_tarot_01"]},
+    )
+
+    assert command[command.index("--scenarios") + 1] == (
+        "friend_supporter_tarot_01,repeat_customer_tarot_01"
+    )
+
+
 def test_abliteration_registry_command_defaults_to_no_tool_choice(tmp_path: Path) -> None:
     entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
         "abliteration-robustness"

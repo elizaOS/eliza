@@ -31,18 +31,6 @@
     "draft_p_min": 0.5
   },
   "bundle_recommendations": {
-    "text-1.7b": {
-      "ctx_size": 131072,
-      "max_parallel": 24
-    },
-    "text-7b": {
-      "ctx_size": 131072,
-      "max_parallel": 12
-    },
-    "text-27b": {
-      "ctx_size": 65536,
-      "max_parallel": 4
-    },
     "voice": {
       "ctx_size": 8192,
       "max_parallel": 8,
