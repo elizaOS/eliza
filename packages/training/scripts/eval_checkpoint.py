@@ -52,6 +52,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import logging
 import os
 import re
 import subprocess
@@ -61,6 +62,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 BENCH_SCRIPT = ROOT / "scripts" / "benchmark" / "eliza_bench.py"
+
+# The shared W0-X5 benchmark results store lives at
+# ``packages/benchmarks/lib/results_store.py``. We load it by absolute
+# file path inside ``record_to_results_store`` so the training package's
+# local ``lib`` namespace does not collide with the benchmarks one.
+
+CHECKPOINT_EVAL_BENCHMARK_ID = "eliza_checkpoint_eval"
+"""Benchmark identifier used when writing eval_checkpoint rows to the
+shared W0-X5 results store. Pairs with the prompt-optimization rows the
+JS orchestrator writes so finetune progress and prompt-optimization
+progress surface in one viewer."""
+
+log = logging.getLogger("eval_checkpoint")
 
 
 def parse_step(checkpoint_dir: Path, sibling_max_step: int | None) -> int:
@@ -125,6 +139,68 @@ def aggregate_bucket_summary(summary: dict) -> tuple[float, float]:
     )
 
 
+def _load_results_store_class():
+    """Import the W0-X5 ResultsStore by absolute file path.
+
+    The training package has its own ``scripts/lib/`` package which
+    shadows the benchmarks package's ``lib`` namespace when both are on
+    ``sys.path``. Loading the module by file path keeps the two isolated.
+    """
+    import importlib.util
+
+    module_name = "_milady_eval_results_store"
+    if module_name in sys.modules:
+        return sys.modules[module_name].ResultsStore
+    rs_path = ROOT.parent / "benchmarks" / "lib" / "results_store.py"
+    spec = importlib.util.spec_from_file_location(module_name, rs_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"could not load ResultsStore from {rs_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module.ResultsStore
+
+
+def record_to_results_store(
+    result: dict,
+    *,
+    db_path: Path | None,
+    dataset_version: str,
+    code_commit: str,
+) -> int:
+    """Append a row to the shared W0-X5 SQLite results store.
+
+    The score is the macro-average of format_ok and content_ok — same
+    weighting used in the progress chart for the single "quality" axis.
+    Returns the inserted row id.
+    """
+    ResultsStore = _load_results_store_class()
+
+    primary_score = 0.5 * float(result["format_ok"]) + 0.5 * float(result["content_ok"])
+    store = ResultsStore(db_path=db_path)
+    try:
+        run_id = store.record_run(
+            model_id=str(result["registry_key"]),
+            benchmark=CHECKPOINT_EVAL_BENCHMARK_ID,
+            score=primary_score,
+            dataset_version=dataset_version,
+            code_commit=code_commit,
+            raw_json={
+                "step": int(result["step"]),
+                "checkpoint_dir": str(result["checkpoint_dir"]),
+                "format_ok": float(result["format_ok"]),
+                "content_ok": float(result["content_ok"]),
+                "tokens_per_sec": float(result["tokens_per_sec"]),
+                "peak_vram_mb": int(result["peak_vram_mb"]),
+                "evaluated_at": str(result["evaluated_at"]),
+                "registry_key": str(result["registry_key"]),
+            },
+        )
+    finally:
+        store.close()
+    return run_id
+
+
 def read_peak_vram_mb() -> int:
     """Best-effort current peak GPU memory across visible devices, in MB.
 
@@ -164,6 +240,27 @@ def main() -> int:
     ap.add_argument("--max-examples", type=int, default=50,
                     help="Per-bucket cap passed to eliza_bench. Default 50.")
     ap.add_argument("--out", required=True, help="Where to write the result JSON.")
+    ap.add_argument(
+        "--results-db",
+        default=None,
+        help=(
+            "Path to the shared W0-X5 SQLite results store. When set (or when "
+            "ELIZA_BENCHMARK_RESULTS_DB is in the environment) the per-checkpoint "
+            "result is also recorded there with benchmark="
+            f"{CHECKPOINT_EVAL_BENCHMARK_ID}. The local _progress.jsonl row is "
+            "still written unconditionally."
+        ),
+    )
+    ap.add_argument(
+        "--dataset-version",
+        default="unknown",
+        help="Dataset version tag stored alongside the results-store row.",
+    )
+    ap.add_argument(
+        "--code-commit",
+        default="unknown",
+        help="Code commit hash stored alongside the results-store row.",
+    )
     args = ap.parse_args()
 
     checkpoint_dir = Path(args.checkpoint).resolve()
@@ -233,6 +330,29 @@ def main() -> int:
     }
     out_path.write_text(json.dumps(result, indent=2))
     print(json.dumps(result, indent=2))
+
+    # Mirror the row into the shared W0-X5 results store when configured.
+    # Either --results-db or ELIZA_BENCHMARK_RESULTS_DB enables this; with
+    # neither set we leave the store untouched (operators using only the
+    # legacy progress chart see no change).
+    db_path = (
+        Path(args.results_db).expanduser().resolve()
+        if args.results_db
+        else None
+    )
+    if db_path is not None or os.environ.get("ELIZA_BENCHMARK_RESULTS_DB"):
+        run_id = record_to_results_store(
+            result,
+            db_path=db_path,
+            dataset_version=args.dataset_version,
+            code_commit=args.code_commit,
+        )
+        log.info(
+            "recorded checkpoint eval as %s run id=%d in results store",
+            CHECKPOINT_EVAL_BENCHMARK_ID,
+            run_id,
+        )
+
     return 0
 
 
