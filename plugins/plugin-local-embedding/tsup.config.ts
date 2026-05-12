@@ -7,7 +7,6 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   format: ["esm"],
-  dts: true,
   noExternal: ["eventemitter3", "ipull"], // Only bundle pure JS packages
   external: [
     "dotenv",

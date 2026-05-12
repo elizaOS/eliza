@@ -53,7 +53,7 @@
     "vitest": "^4.0.0"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && tsc --declaration --emitDeclarationOnly --noEmit false",
     "dev": "tsup --watch",
     "clean": "rm -rf dist",
     "lint": "bunx @biomejs/biome check --write --unsafe --config-path ./biome.json .",

@@ -22,7 +22,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && tsc --project tsconfig.build.json",
     "dev": "tsup --watch",
     "test": "vitest run",
     "clean": "rm -rf dist .turbo",
