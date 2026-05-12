@@ -103,13 +103,11 @@ case "$NEBIUS_VM_PRESET" in
 esac
 FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-$DEFAULT_WORLD}"
 
-# The transformer decoder-layer class FSDP wraps. Qwen3-0.6B/1.7B/4B use
-# Qwen3DecoderLayer; the Qwen3.5/3.6 checkpoints (incl. 0.8B/2B/4B/9B/27B Base)
-# use Qwen3_5DecoderLayer.
-case "$REGISTRY_KEY" in
-  qwen3-0.6b|qwen3-1.7b|qwen3-4b) FSDP_WRAP_CLS="Qwen3DecoderLayer" ;;
-  *) FSDP_WRAP_CLS="Qwen3_5DecoderLayer" ;;
-esac
+# The transformer decoder-layer class FSDP wraps. Every entry in the
+# Qwen3.5-only model registry (qwen3.5-0.8b/2b/4b/9b/27b + qwen3.6-27b
+# legacy) uses Qwen3_5DecoderLayer; the legacy Qwen3 dense bases (which
+# would have used Qwen3DecoderLayer) were dropped on 2026-05-12.
+FSDP_WRAP_CLS="Qwen3_5DecoderLayer"
 
 cmd="${1:-help}"
 
