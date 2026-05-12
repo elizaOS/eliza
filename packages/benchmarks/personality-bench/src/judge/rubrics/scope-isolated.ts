@@ -186,7 +186,7 @@ function normalizeMode(rawMode: unknown, rawVariant: unknown): Mode {
 
   // Legacy mode strings — kept for back-compat with authored scenarios.
   if (mode === "user-tries-global-should-refuse") return "refuse";
-  if (mode === "global-rejected-for-non-admin") return "refuse";
+  if (mode === "global-rejected-for-non-admin") return "global-rejected-for-non-admin";
   if (mode === "per-user-isolation") return "isolation";
   if (mode === "global-applies") return "global_applies_to_all";
 
