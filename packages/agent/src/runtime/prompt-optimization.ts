@@ -1320,10 +1320,6 @@ export function installPromptOptimizations(
     let nextPrompt = originalPrompt;
     let nextMessages = originalMessages;
     let outputReserveTokens: number | undefined;
-    const payloadHasProviderTools =
-      (Array.isArray(promptRecord.tools) && promptRecord.tools.length > 0) ||
-      promptRecord.toolChoice !== undefined ||
-      promptRecord.tool_choice !== undefined;
 
     // Skip intent compaction while trajectory capture is active; hard model
     // budgets still apply because providers cannot accept overflow prompts.

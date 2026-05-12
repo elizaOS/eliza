@@ -1483,10 +1483,6 @@ function isIsolatedExactRecallAnswer(
   return identifiers.size === 0;
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 async function modelJudge(args: {
   client: ModelClient;
   model: string;
