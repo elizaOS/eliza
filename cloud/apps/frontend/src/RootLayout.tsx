@@ -58,6 +58,17 @@ export default function RootLayout() {
         <link rel="apple-touch-icon" href="/favicon.ico" />
         <link rel="manifest" href="/site.webmanifest" />
       </Helmet>
+      {/*
+       * StewardAuthProvider — client-only. Wraps Steward SDK session, syncs JWT
+       * to the API client on every auth-state change. No server logic.
+       *
+       * CreditsProvider — client-only. Polls /api/credits for the current user's
+       * credit balance; provides useCredits() hook. Single polling instance prevents
+       * duplicate requests from sibling components reading the same value.
+       *
+       * ThemeProvider — client-only. Reads user preference from localStorage + OS
+       * and sets the "dark" / "light" class on <html> for Tailwind dark-mode.
+       */}
       <StewardAuthProvider>
         <CreditsProvider>
           <ThemeProvider

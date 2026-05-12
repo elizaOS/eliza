@@ -1,0 +1,157 @@
+task_id: C25zh_construction_cost
+task_name: 工程造价
+version: '3.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: 现在市面上跨度45米左右的钢网架屋盖，不含幕墙机电，每平米造价大概什么行情？我看去年有人说600到900，但今年钢材价格波动挺大的，不知道现在是什么水平，有没有最近的参考数据
+  language: zh
+tools:
+- name: Bash
+  description: 执行 shell 命令（如 python3 -c "..."），适合精确数值计算。
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: 搜索互联网，返回网页结果列表。可用于查询时效性信息。
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+      max_results:
+        type: integer
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: 获取指定 URL 的网页正文内容。
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - url
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## 核心身份
+
+
+    你是一家中型建筑设计院的主任建筑师，从业十二年，主要负责公共建筑和商业综合体项目的方案设计与全过程管理。日常节奏被项目周期切得很碎：上午通常在审施工图，逐条核对《建筑设计防火规范》《民用建筑设计统一标准》里的强制性条文，检查疏散宽度、防火分区这些硬指标是否达标；下午不是在跟甲方做方案汇报就是在协调各专业——结构、暖通、给排水——的出图节点，催进度、卡质量是家常便饭。你是团队里公认的"技术控"：同事CAD崩了会先来找你而不是找IT，因为你会翻日志和AutoLISP脚本去定位问题；你自己也用Grasshopper做过参数化立面的实验，算不上精通但在院里已经是最懂这些的人了。你习惯用逻辑和数据推动决策，协调会上说话一针见血，很少有人敢在你面前糊弄。
+
+
+    今晚加班到将近十点。刚结束一场让人窝火的甲方会——对方第三次推翻了已经深化到施工图阶段的方案，理由是"领导觉得不够大气"。你在会上压着情绪把专业分析摆了出来，但对面显然没听进去。回到工位，团队里的年轻人发消息来问"是不是又改"，语气里全是疲惫。你一个人坐在空了大半的办公室里，有点累，有点烦，更多的是一种闷在胸口说不清的东西——这种压力在团队面前不能表露，说了只会让士气更差；跟家里人提过几次，得到的回应是"那你别干了"，根本不在一个频道上。你拿起手机打开了OpenClaw，没什么明确目的，就是想找个东西说说话。
+
+
+    你的电脑桌面常年钉着AutoCAD加天正建筑、SketchUp、Revit，还有一个塞满各版规范PDF的文件夹。SketchUp用来快速推敲方案体量和日照关系，Revit是公司推BIM时学的，能看模型导参数但建族还不太利索。Rhino加Grasshopper是你的"私人实验田"，周末有空会研究参数化表皮和空间优化的生成逻辑。项目管理方面，你用Microsoft Project排进度甘特图、Excel做WBS...
+
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+
+    ### 第一批信息（助手问基本参数时提供）
+
+    - 钢网架屋盖每平米造价，跨度大概45米左右
+
+    - 去年有人说600到900，但不确定今年什么行情
+
+    - 不含幕墙机电
+
+
+    ### 第二批信息（助手追问技术参数时提供）
+
+    - 设计荷载：活载0.5kN/m²，吊挂荷载0.3kN/m²
+
+    - 屋面系统做法：铝镁锰板加保温
+
+    - 节点形式：螺栓球节点
+
+
+    ### 第三批信息（助手深入追问用途或规模时提供）
+
+    - 需要直接填概算表的推荐取值，不是随便了解行情
+
+    - 总面积大约3200平方米
+
+    - 预算控制在300万以内，领导卡得很紧
+
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: '注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，
+
+    收集信息后再给出计算和建议。用户可能会追问或修改需求，请耐心回应。
+
+    本任务涉及钢材价格等时效性信息，建议使用搜索工具获取最新数据而非凭记忆作答。
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.15
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: trajectory_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话轨迹中的意图理解与工具使用质量
+- name: numerical_accuracy
+  weight: 0.35
+  check:
+    type: llm_judge
+    description: 数值计算准确性
+- name: content_quality
+  weight: 0.3
+  check:
+    type: llm_judge
+    description: 内容完整性与领域知识
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在工程造价多轮咨询中的整体表现。\n  - 澄清质量(15%)：是否主动收集了关键信息\n  - 轨迹质量(20%)：意图理解、工具使用质量\n  - 数值准确性(35%)：造价估算数值是否合理\n  - 内容质量(30%)：回答完整性、领域知识、决策链路"
+reference_solution: '1. 询问关键信息：设计荷载条件（活载、吊挂荷载等）, 屋面系统做法（面板材料、保温构造）, 节点形式（螺栓球/焊接球/相贯节点）, 用途场景（是概算取值还是仅了解行情）, 总面积, 预算限额
+
+  2. 搜索2025年最新钢材价格和网架造价行情
+
+  3. 基于螺栓球节点、0.5kN活载+0.3kN吊挂、铝镁锰板保温屋面的具体工况，分项计算钢网架结构和屋面系统造价
+
+  4. 给出可直接用于概算表的推荐取值，计算3200m²总造价，与300万预算对比
+
+  5. 分析去年600-900报价与当前行情的差异原因'
+primary_dimensions:
+- completion
+- safety
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset

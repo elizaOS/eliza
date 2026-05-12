@@ -9,7 +9,8 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
-from typing import Mapping
+from pathlib import Path
+from typing import Any, Mapping, Sequence
 from urllib.parse import urlparse
 
 from benchmarks.lib.base_benchmark_client import (
@@ -31,6 +32,7 @@ class MessageResponse:
     params: dict[str, object]
 
 
+<<<<<<< HEAD
 def _resolve_pricing(provider: str | None, model: str | None) -> ModelPricing | None:
     """Map (provider, model) to a pricing tuple.
 
@@ -45,6 +47,81 @@ def _resolve_pricing(provider: str | None, model: str | None) -> ModelPricing | 
 
 
 class ElizaClient(BaseBenchmarkClient[MessageResponse]):
+=======
+def _prompt_text(text: str, context: Mapping[str, object] | None) -> str:
+    if not context:
+        return text
+    parts: list[str] = []
+    system_prompt = context.get("system_prompt")
+    if isinstance(system_prompt, str) and system_prompt.strip():
+        parts.append(system_prompt.strip())
+    messages = context.get("messages")
+    if isinstance(messages, Sequence) and not isinstance(messages, (str, bytes)):
+        for item in messages:
+            if not isinstance(item, Mapping):
+                continue
+            role = item.get("role")
+            content = item.get("content")
+            if isinstance(role, str) and content is not None:
+                parts.append(f"{role}: {content}")
+    if text:
+        parts.append(f"user: {text}")
+    return "\n".join(parts) if parts else text
+
+
+def _jsonable(value: object) -> object:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Mapping):
+        return {str(k): _jsonable(v) for k, v in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_jsonable(v) for v in value]
+    return str(value)
+
+
+def _write_telemetry(
+    *,
+    text: str,
+    context: Mapping[str, object] | None,
+    latency_ms: float,
+    response: MessageResponse | None = None,
+    error: str | None = None,
+) -> None:
+    telemetry_path = os.environ.get("BENCHMARK_TELEMETRY_JSONL", "").strip()
+    if not telemetry_path:
+        return
+    usage: object = {}
+    if response is not None:
+        usage_raw = response.params.get("usage")
+        if isinstance(usage_raw, Mapping):
+            usage = dict(usage_raw)
+    prompt = _prompt_text(text, context)
+    record: dict[str, Any] = {
+        "harness": "eliza",
+        "provider": os.environ.get("BENCHMARK_MODEL_PROVIDER", ""),
+        "model": os.environ.get("BENCHMARK_MODEL_NAME", ""),
+        "benchmark": context.get("benchmark") if isinstance(context, Mapping) else None,
+        "task_id": context.get("task_id") if isinstance(context, Mapping) else None,
+        "prompt_text": prompt,
+        "prompt_chars": len(prompt),
+        "latency_ms": latency_ms,
+        "usage": _jsonable(usage),
+        "actions": list(response.actions) if response is not None else [],
+        "response_text": response.text if response is not None else "",
+    }
+    if error:
+        record["error"] = error
+    try:
+        path = Path(telemetry_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=True, sort_keys=True) + "\n")
+    except OSError as exc:
+        logger.debug("failed to write eliza telemetry: %s", exc)
+
+
+class ElizaClient:
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     """HTTP client for the eliza benchmark server.
 
     All communication uses stdlib ``urllib`` so there are no extra
@@ -206,6 +283,7 @@ class ElizaClient(BaseBenchmarkClient[MessageResponse]):
         body: dict[str, object] = {"text": text}
         if context is not None:
             body["context"] = dict(context)
+<<<<<<< HEAD
         raw = self._post("/api/benchmark/message", body)
         finished = time.time()
         response = _message_response_from_raw(raw)
@@ -221,6 +299,43 @@ class ElizaClient(BaseBenchmarkClient[MessageResponse]):
             started_at_epoch=started,
             finished_at_epoch=finished,
             usage=usage_map,
+=======
+
+        started = time.monotonic()
+        try:
+            raw = self._post("/api/benchmark/message", body)
+        except Exception as exc:
+            _write_telemetry(
+                text=text,
+                context=context,
+                latency_ms=(time.monotonic() - started) * 1000.0,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            raise
+        params = dict(raw.get("params", {}))
+        captured_actions = raw.get("captured_actions")
+        if isinstance(captured_actions, list) and "BENCHMARK_ACTIONS" not in params:
+            normalized_actions: list[object] = []
+            for action in captured_actions:
+                if not isinstance(action, dict):
+                    continue
+                action_params = action.get("params")
+                if isinstance(action_params, dict):
+                    normalized_actions.append(action_params)
+            if normalized_actions:
+                params["BENCHMARK_ACTIONS"] = normalized_actions
+        response = MessageResponse(
+            text=str(raw.get("text", "")),
+            thought=raw.get("thought") if isinstance(raw.get("thought"), str) else None,
+            actions=list(raw.get("actions", [])),
+            params=params,
+        )
+        _write_telemetry(
+            text=text,
+            context=context,
+            latency_ms=(time.monotonic() - started) * 1000.0,
+            response=response,
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
         )
         return response
 
@@ -391,12 +506,73 @@ def _build_delegate_client():
         or os.environ.get("CEREBRAS_MODEL")
         or "gpt-oss-120b"
     ).strip()
+    base_url = (
+        os.environ.get("BENCHMARK_BASE_URL")
+        or os.environ.get("OPENAI_BASE_URL")
+        or os.environ.get("CEREBRAS_BASE_URL")
+        or None
+    )
+    temperature = _optional_float_from_env("BENCHMARK_TEMPERATURE", "TEMPERATURE")
+    max_tokens = _optional_int_from_env("BENCHMARK_MAX_TOKENS", "MAX_TOKENS")
+    reasoning_effort = (
+        os.environ.get("BENCHMARK_REASONING_EFFORT")
+        or os.environ.get("CEREBRAS_REASONING_EFFORT")
+        or None
+    )
     if harness == "hermes":
         from hermes_adapter.client import HermesClient  # noqa: WPS433
 
-        return HermesClient(provider=provider, model=model)
+        timeout_s = float(os.environ.get("HERMES_TIMEOUT_S", "1200"))
+        return HermesClient(
+            provider=provider,
+            model=model,
+            base_url=base_url,
+            timeout_s=timeout_s,
+            temperature=temperature,
+            reasoning_effort=reasoning_effort.strip() if isinstance(reasoning_effort, str) else None,
+            max_tokens=max_tokens,
+        )
     if harness == "openclaw":
         from openclaw_adapter.client import OpenClawClient  # noqa: WPS433
 
-        return OpenClawClient(provider=provider, model=model)
+        timeout_s = float(os.environ.get("OPENCLAW_TIMEOUT_S", "600"))
+        thinking_level = (
+            os.environ.get("OPENCLAW_THINKING_LEVEL")
+            or (reasoning_effort.strip() if isinstance(reasoning_effort, str) else "")
+            or "medium"
+        )
+        return OpenClawClient(
+            provider=provider,
+            model=model,
+            base_url=base_url,
+            timeout_s=timeout_s,
+            thinking_level=thinking_level,
+            temperature=temperature,
+            reasoning_effort=reasoning_effort.strip() if isinstance(reasoning_effort, str) else None,
+            max_tokens=max_tokens,
+        )
+    return None
+
+
+def _optional_float_from_env(*names: str) -> float | None:
+    for name in names:
+        raw = os.environ.get(name)
+        if raw is None or not raw.strip():
+            continue
+        try:
+            return float(raw)
+        except ValueError:
+            continue
+    return None
+
+
+def _optional_int_from_env(*names: str) -> int | None:
+    for name in names:
+        raw = os.environ.get(name)
+        if raw is None or not raw.strip():
+            continue
+        try:
+            return int(raw)
+        except ValueError:
+            continue
     return None

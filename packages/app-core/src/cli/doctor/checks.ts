@@ -314,8 +314,12 @@ const MIN_FREE_BYTES = 1 * 1024 * 1024 * 1024; // 1 GiB
 export function checkDiskSpace(
   env: Record<string, string | undefined> = process.env,
 ): CheckResult {
+<<<<<<< HEAD
   const dir =
     env.ELIZA_STATE_DIR?.trim() || env.MILADY_STATE_DIR?.trim() || os.homedir();
+=======
+  const dir = env.ELIZA_STATE_DIR?.trim() || os.homedir();
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
   try {
     const stats = statfsSync(dir);

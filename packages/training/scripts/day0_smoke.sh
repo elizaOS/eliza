@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Day-0 verification: APOLLO+FSDP works, all 3 quant scripts work, eliza_bench
+# Day-0 verification: APOLLO+FSDP works, all 3 quant scripts work, native_tool_call_bench
 # scores ≥ acceptance gate. Exit non-zero on any verification failure.
 #
 # Run on the local box (orchestrator), not on the Vast instance.
@@ -159,22 +159,22 @@ for q in polarquant fused_turboquant qjl; do
     echo "[day0] ✅ $q done"
 done
 
-# ---------- 5. eliza_bench on base + finetuned + each quant variant ----------
-echo "[day0] step 5/6: eliza_bench (base + 4 variants, max_per_bucket=$SMOKE_BENCH_PER_BUCKET)"
+# ---------- 5. native benchmark on base + finetuned + each quant variant ----------
+echo "[day0] step 5/6: native_tool_call_bench (base + 4 variants, max_per_bucket=$SMOKE_BENCH_PER_BUCKET)"
 BENCH_CMD="set -e; cd /workspace/training && export PATH=\$HOME/.local/bin:\$PATH && \
     export HF_HOME=/workspace/hf-cache && \
     for variant in base finetuned final-polarquant final-fused_turboquant final-qjl; do \
         if [ \"\$variant\" = base ]; then \
             model_arg='--model $BASE_HF_ID'; out=base; \
         elif [ \"\$variant\" = finetuned ]; then \
-            model_arg='--model checkpoints/$RUN_NAME/final --base-model $BASE_HF_ID'; out=finetuned; \
+            model_arg='--model checkpoints/$RUN_NAME/final'; out=finetuned; \
         else \
             ckpt_dir=checkpoints/$RUN_NAME/\$variant; \
             if [ ! -d \"\$ckpt_dir\" ]; then echo \"skip \$variant — not produced\"; continue; fi; \
-            model_arg=\"--model \$ckpt_dir --base-model $BASE_HF_ID\"; out=\$variant; \
+            model_arg=\"--model \$ckpt_dir\"; out=\$variant; \
         fi; \
         echo \"=== bench \$variant ===\"; \
-        uv run --extra train python scripts/benchmark/eliza_bench.py \\
+        uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
             \$model_arg \\
             --test-file data/smoke/val.jsonl \\
             --max-per-bucket $SMOKE_BENCH_PER_BUCKET \\

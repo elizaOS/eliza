@@ -1242,6 +1242,232 @@ export const coreActionsSpec = {
 			],
 			descriptionCompressed: "Generate image, video, or audio from prompt.",
 		},
+		{
+			name: "TRUST",
+			description:
+				"Unified trust system control. action=evaluate reads a trust profile for an entity; record_interaction logs a trust-affecting event; request_elevation requests temporary permissions; update_role assigns OWNER / ADMIN / NONE roles within a world.",
+			similes: [
+				"TRUST_MANAGEMENT",
+				"TRUST_OPERATION",
+				"TRUST_PROFILE",
+				"TRUST_INTERACTION",
+				"ELEVATE_PERMISSIONS",
+				"ASSIGN_ROLE",
+				"CHANGE_ROLE",
+				"MAKE_ADMIN",
+				"SET_PERMISSIONS",
+			],
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Action: evaluate | record_interaction | request_elevation | update_role.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"evaluate",
+							"record_interaction",
+							"request_elevation",
+							"update_role",
+						],
+					},
+					descriptionCompressed:
+						"Action: evaluate | record_interaction | request_elevation | update_role.",
+				},
+				{
+					name: "entityId",
+					description:
+						"Target entity ID. evaluate: defaults to sender. record_interaction: target of the interaction (defaults to agent).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Target entity ID. evaluate: defaults to sender. record_interaction: target of the interaction (defaults to agent).",
+				},
+				{
+					name: "entityName",
+					description:
+						"Optional target entity name (evaluate). Name-only lookups return a bounded failure; provide entityId where possible.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional target entity name (evaluate). Name-only lookups return a bounded failure. provide entityId where possible.",
+				},
+				{
+					name: "detailed",
+					description:
+						"Whether evaluate should return detailed dimensions (default false).",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Whether evaluate should return detailed dimensions (default false).",
+				},
+				{
+					name: "type",
+					description: "Trust evidence type (record_interaction).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Trust evidence type (record_interaction).",
+				},
+				{
+					name: "impact",
+					description:
+						"Numerical trust impact (record_interaction). Default 10.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Numerical trust impact (record_interaction). Default 10.",
+				},
+				{
+					name: "description",
+					description: "Optional interaction description (record_interaction).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional interaction description (record_interaction).",
+				},
+				{
+					name: "permissionAction",
+					description: "Permission action being requested (request_elevation).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Permission action being requested (request_elevation).",
+				},
+				{
+					name: "resource",
+					description: "Resource scope for elevation (request_elevation).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Resource scope for elevation (request_elevation).",
+				},
+				{
+					name: "justification",
+					description: "Reason elevation is needed (request_elevation).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Reason elevation is needed (request_elevation).",
+				},
+				{
+					name: "duration",
+					description:
+						"Requested duration in hours (request_elevation). Defaults to 60.",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+						maximum: 168,
+					},
+					descriptionCompressed:
+						"Requested duration in hours (request_elevation). Defaults to 60.",
+				},
+				{
+					name: "roleAssignments",
+					description: "Role assignments (update_role).",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "object",
+							properties: {
+								entityId: {
+									type: "string",
+								},
+								newRole: {
+									type: "string",
+									enum: ["OWNER", "ADMIN", "NONE"],
+								},
+							},
+						},
+					},
+					descriptionCompressed: "Role assignments (update_role).",
+				},
+			],
+			examples: [
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "What is my trust score?",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Trust Level: Good (65/100) based on 42 interactions",
+							actions: ["TRUST"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Record that Alice kept their promise to help with the project",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Trust interaction recorded: PROMISE_KEPT with impact +15",
+							actions: ["TRUST"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "I need permission to manage roles to help moderate spam",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Elevation approved! You have been granted temporary manage_roles permissions.",
+							actions: ["TRUST"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Make {{name2}} an ADMIN",
+						},
+					},
+					{
+						name: "{{name3}}",
+						content: {
+							text: "Updated {{name2}}'s role to ADMIN.",
+							actions: ["TRUST"],
+						},
+					},
+				],
+			],
+			descriptionCompressed:
+				"Trust system: action=evaluate|record_interaction|request_elevation|update_role.",
+		},
 	],
 } as const satisfies { version: string; actions: readonly ActionDoc[] };
 export const allActionsSpec = {
@@ -2411,6 +2637,232 @@ export const allActionsSpec = {
 				],
 			],
 			descriptionCompressed: "Generate image, video, or audio from prompt.",
+		},
+		{
+			name: "TRUST",
+			description:
+				"Unified trust system control. action=evaluate reads a trust profile for an entity; record_interaction logs a trust-affecting event; request_elevation requests temporary permissions; update_role assigns OWNER / ADMIN / NONE roles within a world.",
+			similes: [
+				"TRUST_MANAGEMENT",
+				"TRUST_OPERATION",
+				"TRUST_PROFILE",
+				"TRUST_INTERACTION",
+				"ELEVATE_PERMISSIONS",
+				"ASSIGN_ROLE",
+				"CHANGE_ROLE",
+				"MAKE_ADMIN",
+				"SET_PERMISSIONS",
+			],
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Action: evaluate | record_interaction | request_elevation | update_role.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: [
+							"evaluate",
+							"record_interaction",
+							"request_elevation",
+							"update_role",
+						],
+					},
+					descriptionCompressed:
+						"Action: evaluate | record_interaction | request_elevation | update_role.",
+				},
+				{
+					name: "entityId",
+					description:
+						"Target entity ID. evaluate: defaults to sender. record_interaction: target of the interaction (defaults to agent).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Target entity ID. evaluate: defaults to sender. record_interaction: target of the interaction (defaults to agent).",
+				},
+				{
+					name: "entityName",
+					description:
+						"Optional target entity name (evaluate). Name-only lookups return a bounded failure; provide entityId where possible.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional target entity name (evaluate). Name-only lookups return a bounded failure. provide entityId where possible.",
+				},
+				{
+					name: "detailed",
+					description:
+						"Whether evaluate should return detailed dimensions (default false).",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Whether evaluate should return detailed dimensions (default false).",
+				},
+				{
+					name: "type",
+					description: "Trust evidence type (record_interaction).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Trust evidence type (record_interaction).",
+				},
+				{
+					name: "impact",
+					description:
+						"Numerical trust impact (record_interaction). Default 10.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Numerical trust impact (record_interaction). Default 10.",
+				},
+				{
+					name: "description",
+					description: "Optional interaction description (record_interaction).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional interaction description (record_interaction).",
+				},
+				{
+					name: "permissionAction",
+					description: "Permission action being requested (request_elevation).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Permission action being requested (request_elevation).",
+				},
+				{
+					name: "resource",
+					description: "Resource scope for elevation (request_elevation).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Resource scope for elevation (request_elevation).",
+				},
+				{
+					name: "justification",
+					description: "Reason elevation is needed (request_elevation).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Reason elevation is needed (request_elevation).",
+				},
+				{
+					name: "duration",
+					description:
+						"Requested duration in hours (request_elevation). Defaults to 60.",
+					required: false,
+					schema: {
+						type: "number",
+						minimum: 1,
+						maximum: 168,
+					},
+					descriptionCompressed:
+						"Requested duration in hours (request_elevation). Defaults to 60.",
+				},
+				{
+					name: "roleAssignments",
+					description: "Role assignments (update_role).",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "object",
+							properties: {
+								entityId: {
+									type: "string",
+								},
+								newRole: {
+									type: "string",
+									enum: ["OWNER", "ADMIN", "NONE"],
+								},
+							},
+						},
+					},
+					descriptionCompressed: "Role assignments (update_role).",
+				},
+			],
+			examples: [
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "What is my trust score?",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Trust Level: Good (65/100) based on 42 interactions",
+							actions: ["TRUST"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Record that Alice kept their promise to help with the project",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Trust interaction recorded: PROMISE_KEPT with impact +15",
+							actions: ["TRUST"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "I need permission to manage roles to help moderate spam",
+						},
+					},
+					{
+						name: "{{name2}}",
+						content: {
+							text: "Elevation approved! You have been granted temporary manage_roles permissions.",
+							actions: ["TRUST"],
+						},
+					},
+				],
+				[
+					{
+						name: "{{name1}}",
+						content: {
+							text: "Make {{name2}} an ADMIN",
+						},
+					},
+					{
+						name: "{{name3}}",
+						content: {
+							text: "Updated {{name2}}'s role to ADMIN.",
+							actions: ["TRUST"],
+						},
+					},
+				],
+			],
+			descriptionCompressed:
+				"Trust system: action=evaluate|record_interaction|request_elevation|update_role.",
 		},
 		{
 			name: "BLOCK",

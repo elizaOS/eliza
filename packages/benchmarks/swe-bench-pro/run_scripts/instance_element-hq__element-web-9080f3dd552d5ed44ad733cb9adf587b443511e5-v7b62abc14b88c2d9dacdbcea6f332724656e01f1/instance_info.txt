@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-9080f3dd552d5ed44ad733cb9adf587b443511e5-v7b62abc14b88c2d9dacdbcea6f332724656e01f1
+Repository: element-hq/element-web
+Base Commit: 3bba816b105b00c11cffbbd76fe0e41af97da34d
+Test Files: ["test/components/views/settings/tabs/user/VoiceUserSettingsTab-test.tsx", "test/components/views/settings/tabs/user/VoiceUserSettingsTab-test.ts"]
+FAIL_TO_PASS: ["test/components/views/settings/tabs/user/VoiceUserSettingsTab-test.tsx | <VoiceUserSettingsTab /> | devices | logs and resets device when update fails", "test/components/views/settings/tabs/user/VoiceUserSettingsTab-test.tsx | <VoiceUserSettingsTab /> | devices | does not render dropdown when no devices exist for type"]
+PASS_TO_PASS: ["test/components/views/settings/tabs/user/VoiceUserSettingsTab-test.tsx | <VoiceUserSettingsTab /> | renders audio processing settings", "test/components/views/settings/tabs/user/VoiceUserSettingsTab-test.tsx | <VoiceUserSettingsTab /> | sets and displays audio processing settings", "test/components/views/settings/tabs/user/VoiceUserSettingsTab-test.tsx | <VoiceUserSettingsTab /> | devices | renders dropdowns for input devices", "test/components/views/settings/tabs/user/VoiceUserSettingsTab-test.tsx | <VoiceUserSettingsTab /> | devices | updates device"]

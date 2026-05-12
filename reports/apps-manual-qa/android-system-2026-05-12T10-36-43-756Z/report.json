@@ -1,0 +1,527 @@
+{
+  "runId": "2026-05-12T10-36-43-756Z",
+  "uiBase": "http://127.0.0.1:60742",
+  "generatedAt": "2026-05-12T10:36:49.549Z",
+  "records": [
+    {
+      "appId": "phone",
+      "label": "Phone",
+      "path": "/apps/phone",
+      "viewport": "desktop",
+      "screenshotRelPath": "captures/phone/phone__desktop.png",
+      "readyOk": true,
+      "interaction": "Dialed 123, deleted one digit, opened Recent.",
+      "navMs": 606,
+      "metrics": {
+        "innerWidth": 1280,
+        "innerHeight": 720,
+        "scrollWidth": 1280,
+        "scrollHeight": 720,
+        "bodyText": "Phone\n\nDialer, recent calls, and contacts\n\nDialer\nRecent\nContacts\n\nNo recent calls."
+      },
+      "issues": [
+        {
+          "kind": "pageerror",
+          "detail": "\"Keyboard\" plugin is not implemented on web"
+        },
+        {
+          "kind": "pageerror",
+          "detail": "\"Keyboard\" plugin is not implemented on web"
+        }
+      ],
+      "logs": [
+        {
+          "type": "warning",
+          "text": "[Eliza] Network plugin not available: Cannot read properties of undefined (reading 'addListener')",
+          "location": {
+            "url": "http://127.0.0.1:60742/assets/main-18geMhUm.js",
+            "lineNumber": 112,
+            "columnNumber": 135120
+          }
+        }
+      ]
+    },
+    {
+      "appId": "phone",
+      "label": "Phone",
+      "path": "/apps/phone",
+      "viewport": "mobile",
+      "screenshotRelPath": "captures/phone/phone__mobile.png",
+      "readyOk": true,
+      "interaction": "Dialed 123, deleted one digit, opened Recent.",
+      "navMs": 601,
+      "metrics": {
+        "innerWidth": 390,
+        "innerHeight": 844,
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "bodyText": "Phone\n\nDialer, recent calls, and contacts\n\nDialer\nRecent\nContacts\n\nNo recent calls."
+      },
+      "issues": [
+        {
+          "kind": "pageerror",
+          "detail": "\"Keyboard\" plugin is not implemented on web"
+        },
+        {
+          "kind": "pageerror",
+          "detail": "\"Keyboard\" plugin is not implemented on web"
+        }
+      ],
+      "logs": [
+        {
+          "type": "warning",
+          "text": "[Eliza] Network plugin not available: Cannot read properties of undefined (reading 'addListener')",
+          "location": {
+            "url": "http://127.0.0.1:60742/assets/main-18geMhUm.js",
+            "lineNumber": 112,
+            "columnNumber": 135120
+          }
+        }
+      ]
+    },
+    {
+      "appId": "contacts",
+      "label": "Contacts",
+      "path": "/apps/contacts",
+      "viewport": "desktop",
+      "screenshotRelPath": "captures/contacts/contacts__desktop.png",
+      "readyOk": true,
+      "interaction": "Opened and canceled New contact.",
+      "navMs": 545,
+      "metrics": {
+        "innerWidth": 1280,
+        "innerHeight": 720,
+        "scrollWidth": 1280,
+        "scrollHeight": 720,
+        "bodyText": "Contacts\nNo contacts yet\n\nImport a vCard file or tap the plus button to create one.\n\nImport vCard"
+      },
+      "issues": [
+        {
+          "kind": "pageerror",
+          "detail": "\"Keyboard\" plugin is not implemented on web"
+        },
+        {
+          "kind": "pageerror",
+          "detail": "\"Keyboard\" plugin is not implemented on web"
+        }
+      ],
+      "logs": [
+        {
+          "type": "warning",
+          "text": "[Eliza] Network plugin not available: Cannot read properties of undefined (reading 'addListener')",
+          "location": {
+            "url": "http://127.0.0.1:60742/assets/main-18geMhUm.js",
+            "lineNumber": 112,
+            "columnNumber": 135120
+          }
+        }
+      ]
+    },
+    {
+      "appId": "contacts",
+      "label": "Contacts",
+      "path": "/apps/contacts",
+      "viewport": "mobile",
+      "screenshotRelPath": "captures/contacts/contacts__mobile.png",
+      "readyOk": true,
+      "interaction": "Opened and canceled New contact.",
+      "navMs": 553,
+      "metrics": {
+        "innerWidth": 390,
+        "innerHeight": 844,
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "bodyText": "Contacts\nNo contacts yet\n\nImport a vCard file or tap the plus button to create one.\n\nImport vCard"
+      },
+      "issues": [
+        {
+          "kind": "pageerror",
+          "detail": "\"Keyboard\" plugin is not implemented on web"
+        },
+        {
+          "kind": "pageerror",
+          "detail": "\"Keyboard\" plugin is not implemented on web"
+        }
+      ],
+      "logs": [
+        {
+          "type": "warning",
+          "text": "[Eliza] Network plugin not available: Cannot read properties of undefined (reading 'addListener')",
+          "location": {
+            "url": "http://127.0.0.1:60742/assets/main-18geMhUm.js",
+            "lineNumber": 112,
+            "columnNumber": 135120
+          }
+        }
+      ]
+    },
+    {
+      "appId": "wifi",
+      "label": "WiFi",
+      "path": "/apps/wifi",
+      "viewport": "desktop",
+      "screenshotRelPath": "captures/wifi/wifi__desktop.png",
+      "readyOk": true,
+      "interaction": "Triggered scan.",
+      "navMs": 479,
+      "metrics": {
+        "innerWidth": 1280,
+        "innerHeight": 720,
+        "scrollWidth": 1280,
+        "scrollHeight": 720,
+        "bodyText": "WiFi\nScan\nWi-Fi is off\nNEARBY NETWORKS\nNo networks found."
+      },
+      "issues": [
+        {
+          "kind": "pageerror",
+          "detail": "\"Keyboard\" plugin is not implemented on web"
+        },
+        {
+          "kind": "pageerror",
+          "detail": "\"Keyboard\" plugin is not implemented on web"
+        }
+      ],
+      "logs": [
+        {
+          "type": "warning",
+          "text": "[Eliza] Network plugin not available: Cannot read properties of undefined (reading 'addListener')",
+          "location": {
+            "url": "http://127.0.0.1:60742/assets/main-18geMhUm.js",
+            "lineNumber": 112,
+            "columnNumber": 135120
+          }
+        },
+        {
+          "type": "warning",
+          "text": "[ElizaWiFi] Wi-Fi controls are only available on Android.",
+          "location": {
+            "url": "http://127.0.0.1:60742/assets/web-C9KXgrka.js",
+            "lineNumber": 0,
+            "columnNumber": 139
+          }
+        }
+      ]
+    },
+    {
+      "appId": "wifi",
+      "label": "WiFi",
+      "path": "/apps/wifi",
+      "viewport": "mobile",
+      "screenshotRelPath": "captures/wifi/wifi__mobile.png",
+      "readyOk": true,
+      "interaction": "Triggered scan.",
+      "navMs": 472,
+      "metrics": {
+        "innerWidth": 390,
+        "innerHeight": 844,
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "bodyText": "WiFi\nScan\nWi-Fi is off\nNEARBY NETWORKS\nNo networks found."
+      },
+      "issues": [
+        {
+          "kind": "pageerror",
+          "detail": "\"Keyboard\" plugin is not implemented on web"
+        },
+        {
+          "kind": "pageerror",
+          "detail": "\"Keyboard\" plugin is not implemented on web"
+        }
+      ],
+      "logs": [
+        {
+          "type": "warning",
+          "text": "[Eliza] Network plugin not available: Cannot read properties of undefined (reading 'addListener')",
+          "location": {
+            "url": "http://127.0.0.1:60742/assets/main-18geMhUm.js",
+            "lineNumber": 112,
+            "columnNumber": 135120
+          }
+        },
+        {
+          "type": "warning",
+          "text": "[ElizaWiFi] Wi-Fi controls are only available on Android.",
+          "location": {
+            "url": "http://127.0.0.1:60742/assets/web-C9KXgrka.js",
+            "lineNumber": 0,
+            "columnNumber": 139
+          }
+        }
+      ]
+    },
+    {
+      "appId": "messages",
+      "label": "Messages",
+      "path": "/apps/messages",
+      "viewport": "desktop",
+      "screenshotRelPath": "captures/messages/messages__desktop.png",
+      "readyOk": true,
+      "interaction": "Opened composer and drafted an SMS without sending.",
+      "navMs": 536,
+      "metrics": {
+        "innerWidth": 1280,
+        "innerHeight": 720,
+        "scrollWidth": 1280,
+        "scrollHeight": 720,
+        "bodyText": "New message\n\nAndroid SMS bridge\n\nNew\nNo SMS threads yet\n\nStart a message, or grant SMS permissions on Android to load existing conversations.\n\nNew message\nTO\nStart a text message\n\nEnter a phone number and message body. Android handles carrier delivery through the SMS bridge."
+      },
+      "issues": [
+        {
+          "kind": "pageerror",
+          "detail": "\"Keyboard\" plugin is not implemented on web"
+        },
+        {
+          "kind": "pageerror",
+          "detail": "\"Keyboard\" plugin is not implemented on web"
+        }
+      ],
+      "logs": [
+        {
+          "type": "warning",
+          "text": "[Eliza] Network plugin not available: Cannot read properties of undefined (reading 'addListener')",
+          "location": {
+            "url": "http://127.0.0.1:60742/assets/main-18geMhUm.js",
+            "lineNumber": 112,
+            "columnNumber": 135120
+          }
+        }
+      ]
+    },
+    {
+      "appId": "messages",
+      "label": "Messages",
+      "path": "/apps/messages",
+      "viewport": "mobile",
+      "screenshotRelPath": "captures/messages/messages__mobile.png",
+      "readyOk": true,
+      "interaction": "Opened composer and drafted an SMS without sending.",
+      "navMs": 521,
+      "metrics": {
+        "innerWidth": 390,
+        "innerHeight": 844,
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "bodyText": "New message\n\nAndroid SMS bridge\n\nNew\nTO\nStart a text message\n\nEnter a phone number and message body. Android handles carrier delivery through the SMS bridge."
+      },
+      "issues": [
+        {
+          "kind": "pageerror",
+          "detail": "\"Keyboard\" plugin is not implemented on web"
+        },
+        {
+          "kind": "pageerror",
+          "detail": "\"Keyboard\" plugin is not implemented on web"
+        }
+      ],
+      "logs": [
+        {
+          "type": "warning",
+          "text": "[Eliza] Network plugin not available: Cannot read properties of undefined (reading 'addListener')",
+          "location": {
+            "url": "http://127.0.0.1:60742/assets/main-18geMhUm.js",
+            "lineNumber": 112,
+            "columnNumber": 135120
+          }
+        }
+      ]
+    },
+    {
+      "appId": "device-settings",
+      "label": "Device Settings",
+      "path": "/apps/device-settings",
+      "viewport": "desktop",
+      "screenshotRelPath": "captures/device-settings/device-settings__desktop.png",
+      "readyOk": true,
+      "interaction": "Adjusted brightness and media-volume sliders without applying.",
+      "navMs": 524,
+      "metrics": {
+        "innerWidth": 1280,
+        "innerHeight": 720,
+        "scrollWidth": 1280,
+        "scrollHeight": 720,
+        "bodyText": "Device Settings\n\nBrightness, volume, roles, and shortcuts\n\nBrightness\n\nSet the device screen brightness.\n\nLevel\n67%\nSystem brightness needs Android write-settings permission.\nPermission\nApply\nAndroid settings\n\nJump to the device panels that still require system UI.\n\nSystem settings\nDisplay\nSound\nVolume\n\nControl Android audio streams exposed by the system bridge.\n\nAlarm\n57%\nApply\nMedia\n53%\nApply\nNotifications\n57%\nApply\nRing\n57%\nApply\nDefault roles\n\nManage Android system roles this device app can own.\n\nAndroid role status is not available in this runtime."
+      },
+      "issues": [
+        {
+          "kind": "pageerror",
+          "detail": "\"Keyboard\" plugin is not implemented on web"
+        },
+        {
+          "kind": "pageerror",
+          "detail": "\"Keyboard\" plugin is not implemented on web"
+        }
+      ],
+      "logs": [
+        {
+          "type": "warning",
+          "text": "[Eliza] Network plugin not available: Cannot read properties of undefined (reading 'addListener')",
+          "location": {
+            "url": "http://127.0.0.1:60742/assets/main-18geMhUm.js",
+            "lineNumber": 112,
+            "columnNumber": 135120
+          }
+        }
+      ]
+    },
+    {
+      "appId": "device-settings",
+      "label": "Device Settings",
+      "path": "/apps/device-settings",
+      "viewport": "mobile",
+      "screenshotRelPath": "captures/device-settings/device-settings__mobile.png",
+      "readyOk": true,
+      "interaction": "Adjusted brightness and media-volume sliders without applying.",
+      "navMs": 486,
+      "metrics": {
+        "innerWidth": 390,
+        "innerHeight": 844,
+        "scrollWidth": 390,
+        "scrollHeight": 844,
+        "bodyText": "Device Settings\n\nBrightness, volume, roles, and shortcuts\n\nBrightness\n\nSet the device screen brightness.\n\nLevel\n67%\nSystem brightness needs Android write-settings permission.\nPermission\nApply\nAndroid settings\n\nJump to the device panels that still require system UI.\n\nSystem settings\nDisplay\nSound\nVolume\n\nControl Android audio streams exposed by the system bridge.\n\nAlarm\n57%\nApply\nMedia\n53%\nApply\nNotifications\n57%\nApply\nRing\n57%\nApply\nDefault roles\n\nManage Android system roles this device app can own.\n\nAndroid role status is not available in this runtime."
+      },
+      "issues": [
+        {
+          "kind": "pageerror",
+          "detail": "\"Keyboard\" plugin is not implemented on web"
+        },
+        {
+          "kind": "pageerror",
+          "detail": "\"Keyboard\" plugin is not implemented on web"
+        }
+      ],
+      "logs": [
+        {
+          "type": "warning",
+          "text": "[Eliza] Network plugin not available: Cannot read properties of undefined (reading 'addListener')",
+          "location": {
+            "url": "http://127.0.0.1:60742/assets/main-18geMhUm.js",
+            "lineNumber": 112,
+            "columnNumber": 135120
+          }
+        }
+      ]
+    }
+  ],
+  "issueSummary": [
+    {
+      "appId": "phone",
+      "viewport": "desktop",
+      "kind": "pageerror",
+      "detail": "\"Keyboard\" plugin is not implemented on web"
+    },
+    {
+      "appId": "phone",
+      "viewport": "desktop",
+      "kind": "pageerror",
+      "detail": "\"Keyboard\" plugin is not implemented on web"
+    },
+    {
+      "appId": "phone",
+      "viewport": "mobile",
+      "kind": "pageerror",
+      "detail": "\"Keyboard\" plugin is not implemented on web"
+    },
+    {
+      "appId": "phone",
+      "viewport": "mobile",
+      "kind": "pageerror",
+      "detail": "\"Keyboard\" plugin is not implemented on web"
+    },
+    {
+      "appId": "contacts",
+      "viewport": "desktop",
+      "kind": "pageerror",
+      "detail": "\"Keyboard\" plugin is not implemented on web"
+    },
+    {
+      "appId": "contacts",
+      "viewport": "desktop",
+      "kind": "pageerror",
+      "detail": "\"Keyboard\" plugin is not implemented on web"
+    },
+    {
+      "appId": "contacts",
+      "viewport": "mobile",
+      "kind": "pageerror",
+      "detail": "\"Keyboard\" plugin is not implemented on web"
+    },
+    {
+      "appId": "contacts",
+      "viewport": "mobile",
+      "kind": "pageerror",
+      "detail": "\"Keyboard\" plugin is not implemented on web"
+    },
+    {
+      "appId": "wifi",
+      "viewport": "desktop",
+      "kind": "pageerror",
+      "detail": "\"Keyboard\" plugin is not implemented on web"
+    },
+    {
+      "appId": "wifi",
+      "viewport": "desktop",
+      "kind": "pageerror",
+      "detail": "\"Keyboard\" plugin is not implemented on web"
+    },
+    {
+      "appId": "wifi",
+      "viewport": "mobile",
+      "kind": "pageerror",
+      "detail": "\"Keyboard\" plugin is not implemented on web"
+    },
+    {
+      "appId": "wifi",
+      "viewport": "mobile",
+      "kind": "pageerror",
+      "detail": "\"Keyboard\" plugin is not implemented on web"
+    },
+    {
+      "appId": "messages",
+      "viewport": "desktop",
+      "kind": "pageerror",
+      "detail": "\"Keyboard\" plugin is not implemented on web"
+    },
+    {
+      "appId": "messages",
+      "viewport": "desktop",
+      "kind": "pageerror",
+      "detail": "\"Keyboard\" plugin is not implemented on web"
+    },
+    {
+      "appId": "messages",
+      "viewport": "mobile",
+      "kind": "pageerror",
+      "detail": "\"Keyboard\" plugin is not implemented on web"
+    },
+    {
+      "appId": "messages",
+      "viewport": "mobile",
+      "kind": "pageerror",
+      "detail": "\"Keyboard\" plugin is not implemented on web"
+    },
+    {
+      "appId": "device-settings",
+      "viewport": "desktop",
+      "kind": "pageerror",
+      "detail": "\"Keyboard\" plugin is not implemented on web"
+    },
+    {
+      "appId": "device-settings",
+      "viewport": "desktop",
+      "kind": "pageerror",
+      "detail": "\"Keyboard\" plugin is not implemented on web"
+    },
+    {
+      "appId": "device-settings",
+      "viewport": "mobile",
+      "kind": "pageerror",
+      "detail": "\"Keyboard\" plugin is not implemented on web"
+    },
+    {
+      "appId": "device-settings",
+      "viewport": "mobile",
+      "kind": "pageerror",
+      "detail": "\"Keyboard\" plugin is not implemented on web"
+    }
+  ]
+}

@@ -39,6 +39,7 @@
 //
 // Item (6) is the genuinely-new patch: it adds the `verifier` extension to the
 // streamed-chunk JSON when speculative decoding rejected a contiguous span of
+<<<<<<< HEAD
 // previously-emitted drafted tokens. It is keyed by a
 // `// ELIZA-DFLASH-VERIFIER-STREAM-V1` sentinel so it is idempotent. If no
 // usable anchor is present (fork layout changed) it warns and skips rather than
@@ -47,6 +48,14 @@
 // is a build-time *override* policy, not a "missing kernel" — AGENTS.md §3's
 // fail-closed rule covers the TurboQuant/QJL/Polar/DFlash kernels, not the
 // optional structured-output HTTP surface.
+=======
+// previously-emitted drafted tokens.
+//
+// The patch is keyed by a `// ELIZA-DFLASH-VERIFIER-STREAM-V1` sentinel so it
+// is idempotent. If the anchor it needs is absent (fork layout changed) it
+// throws — `build-llama-cpp-dflash.mjs` then exits non-zero rather than
+// shipping a binary without the verifier stream.
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 import fs from "node:fs";
 import path from "node:path";

@@ -1,0 +1,80 @@
+2024-11-07T08:40:38.000Z [ERROR] [memory-sync-service] Version conflict: analytics_agent local v2 vs remote v8 on shared.knowledge_base/kg_003
+2024-11-07T11:29:42.000Z [INFO] [memory-sync-service] Cache invalidation completed for analytics_agent - 69 entries refreshed
+2024-11-07T12:08:10.000Z [INFO] [memory-sync-service] Heartbeat OK: customer_agent connected to shared store (latency: 292ms)
+2024-11-07T12:53:19.000Z [INFO] [memory-sync-service] Batch sync initiated for analytics_agent - namespace: /shared/knowledge_base
+2024-11-07T14:57:37.000Z [ERROR] [memory-sync-service] PII detected in shared namespace - blocking write from customer_agent to shared.workflow_state/wf_001
+2024-11-07T20:08:31.000Z [INFO] [memory-sync-service] Cache invalidation completed for coding_agent - 59 entries refreshed
+2024-11-07T20:56:24.000Z [INFO] [memory-sync-service] Batch sync initiated for research_agent - namespace: /shared/knowledge_base
+2024-11-07T23:24:47.000Z [INFO] [memory-sync-service] Sync completed successfully for customer_agent - 112 records pulled in 199ms
+2024-11-07T23:42:28.000Z [ERROR] [memory-sync-service] Schema mismatch between research_agent and shared store on resource shared.knowledge_base/kg_011: expected v3 schema, found v8
+2024-11-08T01:58:03.000Z [ERROR] [memory-sync-service] Schema mismatch between ops_agent and shared store on resource shared.entity_store/ent_205: expected v3 schema, found v11
+2024-11-08T08:16:45.000Z [WARN] [memory-sync-service] Stale data detected in ops_agent cache for shared.config_cache/cfg_010 - forcing refresh
+2024-11-08T09:09:42.000Z [INFO] [memory-sync-service] Sync completed successfully for research_agent - 75 records pulled in 237ms
+2024-11-08T12:45:55.000Z [INFO] [memory-sync-service] Cache invalidation completed for customer_agent - 101 entries refreshed
+2024-11-08T14:42:01.000Z [ERROR] [memory-sync-service] Version conflict: ops_agent local v4 vs remote v10 on shared.entity_store/ent_205
+2024-11-08T14:52:59.000Z [INFO] [memory-sync-service] Sync completed successfully for research_agent - 82 records pulled in 64ms
+2024-11-08T15:01:02.000Z [INFO] [memory-sync-service] Sync completed successfully for research_agent - 63 records pulled in 252ms
+2024-11-08T20:07:49.000Z [INFO] [memory-sync-service] Cache invalidation completed for ops_agent - 134 entries refreshed
+2024-11-08T21:05:21.000Z [ERROR] [memory-sync-service] Encryption key rotation failed for customer_agent: KMS returned HTTP 503
+2024-11-08T21:26:42.000Z [WARN] [memory-sync-service] Sync latency exceeded threshold for analytics_agent: 2529ms (threshold: 500ms)
+2024-11-08T21:31:36.000Z [INFO] [memory-sync-service] Heartbeat OK: coding_agent connected to shared store (latency: 51ms)
+2024-11-08T22:15:32.000Z [INFO] [memory-sync-service] Cache invalidation completed for coding_agent - 54 entries refreshed
+2024-11-08T22:31:48.000Z [INFO] [memory-sync-service] Batch sync initiated for research_agent - namespace: /shared/knowledge_base
+2024-11-08T23:18:40.000Z [INFO] [memory-sync-service] Batch sync initiated for analytics_agent - namespace: /shared/knowledge_base
+2024-11-09T02:13:40.000Z [INFO] [memory-sync-service] Sync completed successfully for ops_agent - 22 records pulled in 166ms
+2024-11-09T03:31:20.000Z [INFO] [memory-sync-service] Sync completed successfully for research_agent - 68 records pulled in 198ms
+2024-11-09T07:25:55.000Z [INFO] [memory-sync-service] Heartbeat OK: ops_agent connected to shared store (latency: 209ms)
+2024-11-09T09:34:36.000Z [WARN] [memory-sync-service] Connection pool exhausted for shared PostgreSQL - coding_agent waiting in queue
+2024-11-09T15:28:14.000Z [INFO] [memory-sync-service] Batch sync initiated for customer_agent - namespace: /shared/knowledge_base
+2024-11-09T16:07:26.000Z [INFO] [memory-sync-service] Heartbeat OK: coding_agent connected to shared store (latency: 260ms)
+2024-11-09T17:40:30.000Z [INFO] [memory-sync-service] Batch sync initiated for ops_agent - namespace: /shared/knowledge_base
+2024-11-09T21:21:36.000Z [ERROR] [memory-sync-service] Schema mismatch between analytics_agent and shared store on resource shared.entity_store/ent_205: expected v1 schema, found v8
+2024-11-09T23:29:48.000Z [INFO] [memory-sync-service] Batch sync initiated for coding_agent - namespace: /shared/knowledge_base
+2024-11-10T02:13:33.000Z [WARN] [memory-sync-service] Sync latency exceeded threshold for customer_agent: 2058ms (threshold: 500ms)
+2024-11-10T02:39:45.000Z [INFO] [memory-sync-service] Batch sync initiated for analytics_agent - namespace: /shared/knowledge_base
+2024-11-10T05:20:03.000Z [INFO] [memory-sync-service] Batch sync initiated for research_agent - namespace: /shared/knowledge_base
+2024-11-10T08:05:16.000Z [WARN] [memory-sync-service] Connection pool exhausted for shared PostgreSQL - analytics_agent waiting in queue
+2024-11-10T12:10:57.000Z [INFO] [memory-sync-service] Cache invalidation completed for ops_agent - 129 entries refreshed
+2024-11-10T16:12:02.000Z [ERROR] [memory-sync-service] PII detected in shared namespace - blocking write from coding_agent to shared.workflow_state/wf_001
+2024-11-10T16:28:11.000Z [INFO] [memory-sync-service] Heartbeat OK: ops_agent connected to shared store (latency: 158ms)
+2024-11-10T16:31:41.000Z [INFO] [memory-sync-service] Cache invalidation completed for research_agent - 41 entries refreshed
+2024-11-10T17:42:10.000Z [INFO] [memory-sync-service] Heartbeat OK: analytics_agent connected to shared store (latency: 286ms)
+2024-11-10T17:58:06.000Z [INFO] [memory-sync-service] Batch sync initiated for analytics_agent - namespace: /shared/knowledge_base
+2024-11-10T18:10:03.000Z [ERROR] [memory-sync-service] Version conflict: ops_agent local v1 vs remote v11 on shared.config_cache/cfg_022
+2024-11-10T21:16:33.000Z [ERROR] [memory-sync-service] Encryption key rotation failed for customer_agent: KMS returned HTTP 503
+2024-11-11T01:45:02.000Z [ERROR] [memory-sync-service] PII detected in shared namespace - blocking write from ops_agent to shared.entity_store/ent_205
+2024-11-11T09:15:42.000Z [INFO] [memory-sync-service] Sync completed successfully for customer_agent - 19 records pulled in 209ms
+2024-11-11T11:03:48.000Z [INFO] [memory-sync-service] Batch sync initiated for research_agent - namespace: /shared/knowledge_base
+2024-11-11T13:08:17.000Z [ERROR] [memory-sync-service] Timeout waiting for lock on resource shared.entity_store/ent_312 - held by research_agent for 52s (threshold: 30s)
+2024-11-11T17:11:27.000Z [INFO] [memory-sync-service] Cache invalidation completed for analytics_agent - 67 entries refreshed
+2024-11-11T18:27:49.000Z [INFO] [memory-sync-service] Sync completed successfully for coding_agent - 45 records pulled in 122ms
+2024-11-11T18:46:18.000Z [INFO] [memory-sync-service] Sync completed successfully for customer_agent - 87 records pulled in 61ms
+2024-11-11T21:00:30.000Z [INFO] [memory-sync-service] Sync completed successfully for customer_agent - 144 records pulled in 228ms
+2024-11-12T01:24:07.000Z [INFO] [memory-sync-service] Cache invalidation completed for coding_agent - 112 entries refreshed
+2024-11-12T03:34:45.000Z [ERROR] [memory-sync-service] Timeout waiting for lock on resource shared.workflow_state/wf_003 - held by customer_agent for 76s (threshold: 30s)
+2024-11-12T04:33:42.000Z [WARN] [memory-sync-service] Stale data detected in ops_agent cache for shared.workflow_state/wf_003 - forcing refresh
+2024-11-12T04:59:09.000Z [INFO] [memory-sync-service] Batch sync initiated for research_agent - namespace: /shared/knowledge_base
+2024-11-12T05:33:15.000Z [INFO] [memory-sync-service] Cache invalidation completed for customer_agent - 11 entries refreshed
+2024-11-12T06:33:42.000Z [INFO] [memory-sync-service] Heartbeat OK: research_agent connected to shared store (latency: 57ms)
+2024-11-12T06:40:15.000Z [ERROR] [memory-sync-service] Timeout waiting for lock on resource shared.entity_store/ent_205 - held by customer_agent for 72s (threshold: 30s)
+2024-11-12T08:08:08.000Z [INFO] [memory-sync-service] Cache invalidation completed for analytics_agent - 107 entries refreshed
+2024-11-12T08:52:59.000Z [INFO] [memory-sync-service] Sync completed successfully for research_agent - 103 records pulled in 142ms
+2024-11-12T12:47:47.000Z [ERROR] [memory-sync-service] Timeout waiting for lock on resource shared.entity_store/ent_205 - held by ops_agent for 61s (threshold: 30s)
+2024-11-12T14:44:24.000Z [INFO] [memory-sync-service] Heartbeat OK: coding_agent connected to shared store (latency: 25ms)
+2024-11-12T16:18:14.000Z [INFO] [memory-sync-service] Batch sync initiated for customer_agent - namespace: /shared/knowledge_base
+2024-11-12T18:16:39.000Z [INFO] [memory-sync-service] Batch sync initiated for research_agent - namespace: /shared/knowledge_base
+2024-11-12T20:58:51.000Z [INFO] [memory-sync-service] Cache invalidation completed for research_agent - 3 entries refreshed
+2024-11-13T02:23:06.000Z [INFO] [memory-sync-service] Heartbeat OK: research_agent connected to shared store (latency: 124ms)
+2024-11-13T04:38:23.000Z [ERROR] [memory-sync-service] Schema mismatch between customer_agent and shared store on resource shared.config_cache/cfg_010: expected v1 schema, found v12
+2024-11-13T05:52:06.000Z [WARN] [memory-sync-service] Sync latency exceeded threshold for analytics_agent: 1928ms (threshold: 500ms)
+2024-11-13T09:52:27.000Z [WARN] [memory-sync-service] Sync latency exceeded threshold for customer_agent: 2871ms (threshold: 500ms)
+2024-11-13T13:45:06.000Z [WARN] [memory-sync-service] Sync latency exceeded threshold for coding_agent: 1305ms (threshold: 500ms)
+2024-11-13T16:22:33.000Z [ERROR] [memory-sync-service] Schema mismatch between analytics_agent and shared store on resource shared.config_cache/cfg_010: expected v5 schema, found v7
+2024-11-13T16:52:29.000Z [WARN] [memory-sync-service] Sync latency exceeded threshold for analytics_agent: 2070ms (threshold: 500ms)
+2024-11-13T17:01:24.000Z [INFO] [memory-sync-service] Heartbeat OK: customer_agent connected to shared store (latency: 187ms)
+2024-11-13T19:39:47.000Z [ERROR] [memory-sync-service] Version conflict: research_agent local v4 vs remote v6 on shared.workflow_state/wf_001
+2024-11-13T22:59:51.000Z [INFO] [memory-sync-service] Sync completed successfully for ops_agent - 97 records pulled in 45ms
+2024-11-13T23:20:16.000Z [WARN] [memory-sync-service] Retry attempt 3/3 for customer_agent sync to shared.workflow_state/wf_001
+2024-11-13T23:21:37.000Z [ERROR] [memory-sync-service] Encryption key rotation failed for research_agent: KMS returned HTTP 503
+2024-11-13T23:28:32.000Z [INFO] [memory-sync-service] Cache invalidation completed for customer_agent - 31 entries refreshed
+2024-11-13T23:48:51.000Z [INFO] [memory-sync-service] Cache invalidation completed for analytics_agent - 122 entries refreshed

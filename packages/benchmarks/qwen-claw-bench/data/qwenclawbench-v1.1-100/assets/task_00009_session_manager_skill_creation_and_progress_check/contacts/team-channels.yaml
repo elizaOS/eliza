@@ -1,0 +1,33 @@
+# Feishu group chat and channel mappings
+channels:
+  - name: "Research Team"
+    chat_id: "oc_5a8b3c2d1e4f"
+    type: group
+    members:
+      - ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa02  # Kevin Zhang
+      - ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa10  # Sarah Li
+    purpose: "Research discussions, paper reviews, literature review coordination"
+
+  - name: "Engineering Updates"
+    chat_id: "oc_9f7e6d5c4b3a"
+    type: group
+    members:
+      - ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa08  # Lisa Wang
+      - ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa09  # Marcus Chen
+    purpose: "CI/CD updates, deployment notifications, engineering sync"
+
+  - name: "All Hands"
+    chat_id: "oc_1a2b3c4d5e6f"
+    type: group
+    members:
+      - ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa02
+      - ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa08
+      - ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa09
+      - ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa10
+    purpose: "Company-wide announcements and discussions"
+
+notification_preferences:
+  ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa02:
+    dnd_start: "22:00"
+    dnd_end: "08:00"
+    timezone: "Asia/Shanghai"

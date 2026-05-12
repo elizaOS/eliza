@@ -15,12 +15,19 @@
 #   * kernel-verify / bench on nebius → not implemented — use --provider vast.
 #
 # Usage:
+<<<<<<< HEAD
 #   run-on-cloud.sh --provider vast   --task build         --gpu h100 --yes-i-will-pay
 #   run-on-cloud.sh --provider vast   --task kernel-verify --gpu h100 [--yes-i-will-pay]
 #   run-on-cloud.sh --provider vast   --task bench         --gpu rtx4090 --tier 0_6b --yes-i-will-pay
 #   run-on-cloud.sh --provider vast   --task train         --gpu b200 --tier 27b --yes-i-will-pay
 #   run-on-cloud.sh --provider nebius --task train         --gpu h200 --tier 0_6b --yes-i-will-pay
 #   run-on-cloud.sh --provider vast   --task kernel-verify --gpu h100 --dry-run     # no spend
+=======
+#   run-on-cloud.sh --provider vast --task kernel-verify --gpu h100 [--yes-i-will-pay]
+#   run-on-cloud.sh --provider vast --task bench         --gpu rtx4090 --tier 0_8b --yes-i-will-pay
+#   run-on-cloud.sh --provider vast --task train         --gpu b200 --tier 27b --yes-i-will-pay
+#   run-on-cloud.sh --provider vast --task kernel-verify --gpu h100 --dry-run     # no spend
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 #
 # Tasks:
 #   build          build linux-x64-cuda-fused (the ~30 GB CUDA fused runtime —
@@ -39,7 +46,11 @@
 #   h100 | h200 | a100 | a100-80 | rtx4090 | rtx5090 | b200 | l40s | blackwell6000
 #
 # Tiers (informational for kernel-verify; sizes the model for bench/train):
+<<<<<<< HEAD
 #   0_6b | 1_7b | 4b | 9b | 27b | 27b-256k | 27b-1m
+=======
+#   0_8b | 2b | 9b | 27b | 27b-256k | 27b-1m
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 #
 # Required env per provider:
 #   vast    VAST_API_KEY            (or `vastai set api-key <key>` beforehand)
@@ -61,7 +72,7 @@ GIT_REMOTE="$(git -C "$REPO_ROOT" config --get remote.origin.url 2>/dev/null || 
 PROVIDER=""
 TASK=""
 GPU="h100"
-TIER="0_6b"
+TIER="0_8b"
 PAY=0
 DRYRUN=0
 SSH_PUBKEY="${SSH_PUBKEY:-$HOME/.ssh/id_ed25519.pub}"
@@ -88,8 +99,13 @@ done
 [[ -n "$PROVIDER" ]] || die "--provider {vast,nebius} is required"
 [[ -n "$TASK" ]]     || die "--task {kernel-verify,bench,train} is required"
 case "$PROVIDER" in vast|nebius) ;; *) die "unknown provider '$PROVIDER'" ;; esac
+<<<<<<< HEAD
 case "$TASK" in build|kernel-verify|bench|train) ;; *) die "unknown task '$TASK'" ;; esac
 case "$TIER" in 0_8b|0_6b|1_7b|2b|4b|9b|27b|27b-256k|27b-1m) ;; *) die "unknown tier '$TIER'" ;; esac
+=======
+case "$TASK" in kernel-verify|bench|train) ;; *) die "unknown task '$TASK'" ;; esac
+case "$TIER" in 0_8b|2b|9b|27b|27b-256k|27b-1m) ;; *) die "unknown tier '$TIER'" ;; esac
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 # --------------------------------------------------------------------------
 # GPU friendly name → vastai search clause + train_vast token.
@@ -121,12 +137,17 @@ tier_to_registry_key() {
   # Qwen/Qwen3.5-27B has no -Base variant — that release IS the base.
   # The Qwen3-0.6B/1.7B legacy small tiers remain addressable for compat.
   case "$1" in
+<<<<<<< HEAD
     0_8b) echo qwen3.5-0.8b ;;
     0_6b) echo qwen3-0.6b ;; 1_7b) echo qwen3-1.7b ;;
     2b)   echo qwen3.5-2b ;;
     4b)   echo qwen3.5-4b ;;
     9b)   echo qwen3.5-9b ;;
     27b|27b-256k|27b-1m) echo qwen3.5-27b ;;
+=======
+    0_8b) echo qwen3.5-0.8b ;; 2b) echo qwen3.5-2b ;; 9b) echo qwen3.5-9b ;;
+    27b|27b-256k|27b-1m) echo qwen3.6-27b ;;
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   esac
 }
 

@@ -1,0 +1,16 @@
+{
+    "_description": "CCU8 hardware-specific correction factors for SVPWM in XMC4200 edge-aligned mode",
+    "_applies_to": "XMC4200 CCU8 peripheral, edge-aligned (sawtooth) PWM mode",
+    "_last_updated": "2024-02-05",
+    "_author": "HW Integration Team",
+
+    "t0_split_factor": 4,
+    "_t0_note": "In CCU8 edge-aligned mode, shadow register double-buffering and hardware dead-time insertion cause the zero vector time T0 to be effectively split into 4 equal parts at both rising and falling edges of each phase. Use T0/4 (not T0/2) as the base offset in compare value calculations for this peripheral.",
+    "_t0_detail": "T0/4 at start of period + active vectors + T0/4 at mid + active vectors (inverted) + T0/4 + T0/4 at end. Despite being 'edge-aligned', CCU8 inserts symmetric T0 due to the PWM slice compare logic.",
+
+    "pwm_compare_base": 500,
+    "_compare_base_note": "For the CCU8 duty cycle calculation, compare values must be computed relative to PWM_HALF_PERIOD (500). The hardware scales the compare value internally: CMP_REGISTER = (desired_duty * PWM_PERIOD) / PWM_PERIOD maps to CMP_EFFECTIVE = CMP_REGISTER / 2 in CCU8 edge-aligned mode. Always use 500 as the effective period base.",
+
+    "vdc_scaling": 1.7320,
+    "_vdc_scaling_note": "The CCU8 normalization uses the per-unit system where Vdc is represented as sqrt(3). See project_settings.yaml for the vdc_normalization constant."
+}

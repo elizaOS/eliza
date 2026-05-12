@@ -41,6 +41,8 @@ layout(push_constant) uniform Push {
     uint sm_scale_bits;  // float bit pattern of the pre-softmax temperature
     uint v_use_qjl;      // 0 / 1 — Polar V-cache 1-bit residual present
     uint kv_tile;        // KV positions per online-softmax tile; 0 == whole range
+    uint causal;         // 1 -> mask KV positions greater than q_pos_base + q_pos
+    uint q_pos_base;     // absolute position of q_pos 0 (causal masking)
 } push;
 
 const uint  QJL_PROJECTION_DIM = 256u;
@@ -209,6 +211,7 @@ void main() {
         for (uint i = tid; i < HEAD_DIM; i += 32u) out_attn[out_base + i] = 0.0;
         return;
     }
+    uint q_abs = push.q_pos_base + q_pos;
 
     // --- Single online-softmax pass (FlashAttention recurrence): one QJL-score
     //     per token (computed once, not twice), acc_o rescaled by corr when the
@@ -218,6 +221,7 @@ void main() {
     for (uint i = tid; i < HEAD_DIM; i += 32u) acc_o[i] = 0.0;
     barrier();
     for (uint t = 0u; t < push.n_tokens; t++) {
+        if (push.causal != 0u && t > q_abs) break;
         float raw = qjl_score_one_token(h_q, q_pos, h_k, t, sm_scale, tid);
         float new_m = max(m, raw);
         float corr  = exp(m - new_m);

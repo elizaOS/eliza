@@ -1,0 +1,39 @@
+# AI Assistant Configuration
+# Last updated: 2024-09-15
+# Version: 2.3.1
+
+assistant_name: "MemoryAssistant"
+version: "2.3.1"
+
+# Memory Backend Settings
+memory:
+  backend: "local_json"
+  max_memory_items: 500
+  retention_days: 90
+  cleanup_schedule: "weekly"
+  storage_path: "./data/memories.json"
+
+# Item Type Settings
+item_types:
+  recurring_items_enabled: true
+  ad_hoc_enabled: true
+
+# Context and Embedding Settings
+context:
+  context_window_tokens: 8192
+  max_prompt_tokens: 4096
+  reserved_for_response: 2048
+
+embedding:
+  model: "text-embedding-ada-002"
+  vector_db_enabled: false
+  similarity_threshold: 0.85
+
+# Logging
+logging:
+  level: "INFO"
+  log_path: "./logs/memory_operations.log"
+  rotate_size_mb: 50
+
+# Categories
+categories_path: "./data/memory_categories.json"

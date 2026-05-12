@@ -19,17 +19,40 @@ import {
 } from "lucide-react";
 import { resolveDefaultLandingTab } from "./main-tab";
 
+type RuntimeImportMeta = ImportMeta & {
+  env?: Record<string, unknown>;
+};
+
+const viteEnv = (import.meta as RuntimeImportMeta).env;
+
+function viteEnvFlagEnabled(name: string, defaultValue: boolean): boolean {
+  const value = viteEnv?.[name];
+  if (value == null) return defaultValue;
+  return String(value).toLowerCase() !== "false";
+}
+
 /** Apps are enabled by default; opt-out via VITE_ENABLE_APPS=false. */
+<<<<<<< HEAD
 export const APPS_ENABLED =
   String(import.meta.env?.VITE_ENABLE_APPS ?? "true").toLowerCase() !== "false";
+=======
+export const APPS_ENABLED = viteEnvFlagEnabled("VITE_ENABLE_APPS", true);
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 /** Stream routes stay addressable; the nav hides the tab unless streaming is enabled. */
 export const STREAM_ENABLED = true;
 /** Companion tab — enabled by default; opt-out via VITE_ENABLE_COMPANION_MODE=false. */
+<<<<<<< HEAD
 export const COMPANION_ENABLED =
   String(
     import.meta.env?.VITE_ENABLE_COMPANION_MODE ?? "true",
   ).toLowerCase() !== "false";
+=======
+export const COMPANION_ENABLED = viteEnvFlagEnabled(
+  "VITE_ENABLE_COMPANION_MODE",
+  true,
+);
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 /** Built-in tab identifiers. */
 export type BuiltinTab =
@@ -373,7 +396,7 @@ export function resolveInitialTabForPath(
 /** Known apps-tool sub-paths under /apps/ (not actual app slugs). */
 const APPS_SUB_TABS: Record<string, Tab> = {
   lifeops: "lifeops",
-  tasks: "automations",
+  tasks: "tasks",
   plugins: "plugins",
   skills: "skills",
   "fine-tuning": "fine-tuning",

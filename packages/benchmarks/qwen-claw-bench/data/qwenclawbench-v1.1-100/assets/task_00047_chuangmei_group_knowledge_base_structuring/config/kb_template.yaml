@@ -1,0 +1,91 @@
+# Knowledge Base Template Configuration
+# ChuangMei Group — Structured Knowledge Base Output Specification
+
+knowledge_base:
+  title: "ChuangMei Group (创美集团) — Company Knowledge Base"
+  format: markdown
+  output_file: "knowledge_base/company_knowledge_base.md"
+
+  language:
+    primary: english
+    bilingual: true
+    bilingual_note: "Chinese terms should be included in parentheses alongside English translations where applicable"
+
+  metadata_required: true
+  metadata_note: "Each section should begin with a brief summary (2-3 sentences) that captures the key points of that section"
+
+  cross_reference: true
+  cross_reference_note: "Sections should reference related sections where applicable, using markdown links or explicit callouts"
+
+  sections:
+    - section_id: 1
+      title: "Company Introduction"
+      description: "Overview of ChuangMei Group including company name, background, and positioning"
+      source_files:
+        - "raw_data/company_overview.txt"
+
+    - section_id: 2
+      title: "Mission"
+      description: "The company's mission statement with both Chinese and English versions"
+      source_files:
+        - "raw_data/company_overview.txt"
+
+    - section_id: 3
+      title: "Vision"
+      description: "The company's vision statement, including both inward-facing cultural direction and outward-facing brand and customer aspirations; reconcile wording if sources disagree"
+      source_files:
+        - "raw_data/company_overview.txt"
+
+    - section_id: 4
+      title: "Values"
+      description: "Three-tier value system: Mindset, Execution Standards, and Self-Transcendence"
+      source_files:
+        - "raw_data/company_overview.txt"
+
+    - section_id: 5
+      title: "Slogan"
+      description: "Company slogan with explanation of its significance"
+      source_files:
+        - "raw_data/company_overview.txt"
+
+    - section_id: 6
+      title: "Creator Philosophy"
+      description: "Detailed explanation of creator spirit, emotional power, and styling power"
+      source_files:
+        - "raw_data/company_overview.txt"
+        - "raw_data/creator_philosophy.json"
+
+    - section_id: 7
+      title: "Non-Standard Customer Value & Creator-First Logic"
+      description: "Explanation of non-standard customer value and why creator-first equals customer-first"
+      source_files:
+        - "raw_data/creator_philosophy.json"
+
+    - section_id: 8
+      title: "Team Collaboration Philosophy"
+      description: "Team collaboration principles including synergy, empowerment, and flat structure"
+      source_files:
+        - "raw_data/team_collaboration.md"
+
+    - section_id: 9
+      title: "Systems Thinking & Closed-Loop Iteration"
+      description: "The Observe-Hypothesize-Test-Measure-Iterate methodology and closed-loop principles"
+      source_files:
+        - "raw_data/team_collaboration.md"
+
+    - section_id: 10
+      title: "Seven Measures One Cut Project"
+      description: "Detailed documentation of the 柒量一裁 product development methodology"
+      source_files:
+        - "raw_data/qi_liang_yi_cai_project.yaml"
+        - "raw_data/team_collaboration.md"
+
+  formatting_guidelines:
+    - "Use H1 (#) for the knowledge base title"
+    - "Use H2 (##) for each section title"
+    - "Use H3 (###) for subsections within a section"
+    - "Include Chinese terms in parentheses: e.g., Mission (使命)"
+    - "Use bullet points for lists"
+    - "Use bold for key terms and concepts"
+    - "Include a table of contents at the beginning"
+    - "Add cross-references between related sections using [See Section X] format"

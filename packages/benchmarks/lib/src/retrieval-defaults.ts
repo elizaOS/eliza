@@ -49,6 +49,7 @@ export interface RetrievalTierDefaults {
  * Pareto-derived defaults. Rationale (per
  * `docs/audits/lifeops-2026-05-11/retrieval-pareto.md`):
  *
+<<<<<<< HEAD
  * The 2026-05-11 measured Pareto sweep (n=479 LifeOpsBench
  * trajectories replayed through `retrieveActions` with
  * `measurementMode: true`) showed fused recall saturating at
@@ -63,6 +64,13 @@ export interface RetrievalTierDefaults {
  * - `mid` — Qwen 1.7B: tolerates more candidates but still benefits
  *   from precision-heavy weighting. topK=6 (was 8 heuristic; measured
  *   K=5 saturates).
+=======
+ * - `small` — Qwen 0.8B: short context, brittle at long action blocks.
+ *   Prefer exact+BM25 (high precision, deterministic). topK=5 keeps the
+ *   action block under ~1.5KB.
+ * - `mid` — Qwen 2B: tolerates more candidates but still benefits
+ *   from precision-heavy weighting. topK=8.
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
  * - `large` — Cerebras gpt-oss-120b: long context, embedding ranking
  *   pays off here. Balanced weights, topK=8 (was 12 heuristic;
  *   measured K=5 saturates, +3 margin for embedding/contextMatch).

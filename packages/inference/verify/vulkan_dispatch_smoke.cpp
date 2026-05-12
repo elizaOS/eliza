@@ -7,12 +7,16 @@
 //   - GGML_OP_FUSED_ATTN_QJL_TBQ   (ggml_fused_attn_qjl_tbq)
 //
 // PASS means ggml-vulkan advertises support for the graph op, selected the
+<<<<<<< HEAD
 // shipped eliza Vulkan pipeline, and the numeric output matches the C
 // reference. The standalone TurboQuant / PolarQuant score+softmax+V-mix
 // kernels are exercised by `make vulkan-verify` against the JSON fixtures and
 // by the actual fork llama-server --cache-type-{k,v} whitelist; they are not
 // public ggml graph builders in the fork pin, so they are not part of this
 // graph-dispatch gate.
+=======
+// shipped eliza Vulkan pipeline, and the numeric output matches the reference.
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 #include <cmath>
 #include <cstdio>

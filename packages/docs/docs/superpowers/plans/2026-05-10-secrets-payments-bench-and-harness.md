@@ -198,7 +198,7 @@ Add a `payments` and `secrets` domain to lifeops-bench's existing `LifeWorld`. S
 
 ### 4.5 action-calling
 
-Add a `secrets_payments_atoms.toon.json` fixture validating the planner emits the new atomic primitives in the correct TOON shape.
+Add a `secrets_payments_atoms.tools.json` fixture validating the planner emits the new atomic primitives as native function calls with correct JSON arguments.
 
 ---
 

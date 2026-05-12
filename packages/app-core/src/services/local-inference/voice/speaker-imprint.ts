@@ -1,4 +1,4 @@
-import type { VoiceInputSource, VoiceSpeaker } from "./types";
+import type { VoiceInputSource, VoiceSegment, VoiceSpeaker } from "./types";
 
 export const DEFAULT_VOICE_IMPRINT_MATCH_THRESHOLD = 0.78;
 
@@ -26,6 +26,39 @@ export interface VoiceImprintCentroidUpdate {
   centroidEmbedding: number[];
   sampleCount: number;
   confidence: number;
+}
+
+export interface VoiceImprintObservationInput {
+  id: string;
+  segmentId?: string;
+  text: string;
+  startMs: number;
+  endMs: number;
+  embedding: ArrayLike<number>;
+  embeddingModel?: string | null;
+  confidence?: number | null;
+  source?: VoiceInputSource;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface AttributedVoiceObservation {
+  observation: VoiceImprintObservationInput;
+  match: VoiceImprintMatch | null;
+  speaker: VoiceSpeaker | null;
+  segment: VoiceSegment;
+}
+
+export interface SpeakerAttributionResult {
+  observations: AttributedVoiceObservation[];
+  segments: VoiceSegment[];
+  primarySpeaker?: VoiceSpeaker;
+  summary: {
+    totalObservations: number;
+    matchedObservations: number;
+    unmatchedObservations: number;
+    meanConfidence: number;
+    meanSimilarity: number | null;
+  };
 }
 
 function clamp01(value: number): number {
@@ -169,4 +202,103 @@ export function voiceSpeakerFromImprintMatch(args: {
       embeddingModel: profile.embeddingModel ?? undefined,
     },
   };
+}
+
+export function attributeVoiceImprintObservations(args: {
+  observations: readonly VoiceImprintObservationInput[];
+  profiles: readonly VoiceImprintProfile[];
+  threshold?: number;
+  defaultSource?: VoiceInputSource;
+}): SpeakerAttributionResult {
+  const attributed: AttributedVoiceObservation[] = [];
+  let confidenceSum = 0;
+  let confidenceCount = 0;
+  let similaritySum = 0;
+  let similarityCount = 0;
+
+  for (const observation of args.observations) {
+    const source = observation.source ?? args.defaultSource;
+    const match = matchVoiceImprint({
+      embedding: observation.embedding,
+      embeddingModel: observation.embeddingModel,
+      profiles: args.profiles,
+      threshold: args.threshold,
+    });
+    const speaker = match
+      ? voiceSpeakerFromImprintMatch({
+          match,
+          source,
+          observationId: observation.id,
+        })
+      : null;
+    if (speaker?.confidence !== undefined) {
+      confidenceSum += speaker.confidence;
+      confidenceCount += 1;
+    }
+    if (match) {
+      similaritySum += match.similarity;
+      similarityCount += 1;
+    }
+    attributed.push({
+      observation,
+      match,
+      speaker,
+      segment: {
+        id: observation.segmentId ?? observation.id,
+        text: observation.text,
+        startMs: observation.startMs,
+        endMs: observation.endMs,
+        ...(speaker ? { speaker, speakerId: speaker.id } : {}),
+        ...(source ? { source } : {}),
+        confidence: speaker?.confidence ?? observation.confidence ?? undefined,
+        metadata: {
+          ...(observation.metadata ?? {}),
+          attributionOnly: true,
+          embeddingModel: observation.embeddingModel ?? undefined,
+          imprintObservationId: observation.id,
+          imprintClusterId: speaker?.imprintClusterId,
+          entityId: speaker?.entityId,
+          matchSimilarity: match?.similarity,
+        },
+      },
+    });
+  }
+
+  const segments = attributed.map((row) => row.segment);
+  const primarySpeaker = selectPrimarySpeaker(segments);
+  return {
+    observations: attributed,
+    segments,
+    ...(primarySpeaker ? { primarySpeaker } : {}),
+    summary: {
+      totalObservations: attributed.length,
+      matchedObservations: attributed.filter((row) => row.match).length,
+      unmatchedObservations: attributed.filter((row) => !row.match).length,
+      meanConfidence:
+        confidenceCount === 0 ? 0 : clamp01(confidenceSum / confidenceCount),
+      meanSimilarity:
+        similarityCount === 0 ? null : similaritySum / similarityCount,
+    },
+  };
+}
+
+function selectPrimarySpeaker(
+  segments: readonly VoiceSegment[],
+): VoiceSpeaker | undefined {
+  const durations = new Map<string, { speaker: VoiceSpeaker; ms: number }>();
+  for (const segment of segments) {
+    if (!segment.speaker) continue;
+    const key = segment.speaker.id;
+    const prev = durations.get(key);
+    const ms = Math.max(0, segment.endMs - segment.startMs);
+    durations.set(key, {
+      speaker: segment.speaker,
+      ms: (prev?.ms ?? 0) + ms,
+    });
+  }
+  let best: { speaker: VoiceSpeaker; ms: number } | undefined;
+  for (const row of durations.values()) {
+    if (!best || row.ms > best.ms) best = row;
+  }
+  return best?.speaker;
 }

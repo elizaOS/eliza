@@ -12,6 +12,7 @@ export type * from "./types";
 // ── Platform init ───────────────────────────────────────────────────────
 
 export * from "./android-runtime";
+export * from "./aosp-user-agent";
 export {
   applyLaunchConnection,
   applyLaunchConnectionFromUrl,

@@ -38,8 +38,13 @@ ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
 # Qwen3 line — see packages/shared/src/local-inference/catalog.ts.
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
     "0_8b",
+<<<<<<< HEAD
     "0_6b",
     "1_7b",
+=======
+    "2b",
+    "4b",
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     "9b",
     "27b",
     "27b-256k",
@@ -74,6 +79,7 @@ VOICE_PRESET_CACHE_PATH: Final[str] = "cache/voice-preset-default.bin"
 # `evidence/release.json.releaseState`. `base-v1` is the v1 product: the
 # upstream BASE models — GGUF-converted via the elizaOS/llama.cpp fork and
 # fully Eliza-optimized (every quant/kernel trick in §3) — but NOT
+<<<<<<< HEAD
 # fine-tuned. `base-v1-candidate` is the in-progress state of a base-v1
 # bundle before every release-blocking gate is green (real fork-built bytes,
 # every supported-backend kernel verify, every required platform-dispatch
@@ -81,6 +87,11 @@ VOICE_PRESET_CACHE_PATH: Final[str] = "cache/voice-preset-default.bin"
 # v2 (`finetuned-v2`). `local-standin` is a non-publishable staging shape;
 # `upload-candidate`/`final` are the fine-tuned-v1 publish states retained
 # for forward-compat.
+=======
+# fine-tuned. Fine-tuning lands in v2 (`finetuned-v2`). `local-standin` is a
+# non-publishable staging shape; `upload-candidate`/`final` are the
+# fine-tuned-v1 publish states retained for forward-compat.
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 ELIZA_1_RELEASE_STATES: Final[tuple[str, ...]] = (
     "local-standin",
     "base-v1-candidate",
@@ -121,9 +132,21 @@ ELIZA_1_PROVENANCE_SLOTS: Final[tuple[str, ...]] = (
 )
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
+<<<<<<< HEAD
     "0_8b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
     "0_6b": ("turboquant_q3", "qjl", "polarquant", "dflash"),
     "1_7b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
+=======
+    "0_8b": ("turboquant_q3", "qjl", "polarquant", "dflash"),
+    "2b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
+    "4b": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     "9b": (
         "turboquant_q4",
         "qjl",
@@ -156,8 +179,13 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 
 SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_8b": ("metal", "vulkan", "cpu"),
+<<<<<<< HEAD
     "0_6b": ("metal", "vulkan", "cpu"),
     "1_7b": ("metal", "vulkan", "cpu"),
+=======
+    "2b": ("metal", "vulkan", "cpu"),
+    "4b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
@@ -170,8 +198,13 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "0_8b": "Q4_K_M",
+<<<<<<< HEAD
     "0_6b": "Q4_K_M",
     "1_7b": "Q4_K_M",
+=======
+    "2b": "Q4_K_M",
+    "4b": "Q4_K_M",
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     "9b": "Q8_0",
     "27b": "Q8_0",
     "27b-256k": "Q8_0",
@@ -969,6 +1002,35 @@ def validate_manifest(
             )
         elif not gate["passed"]:
             readiness_errors.append("evals.expressive.passed: false")
+
+    # ── DFlash bench ────────────────────────────────────────────────────
+    # Staging manifests may record a missing/failing DFlash measurement, but
+    # a default-eligible bundle must prove speculative decoding was measured
+    # and passed. Keep this in lockstep with the TS runtime validator.
+    dflash_gate = evals.get("dflash")
+    if not _is_object(dflash_gate):
+        if manifest["defaultEligible"]:
+            errors.append("evals.dflash: required when defaultEligible=true")
+    else:
+        if dflash_gate["passed"] and (
+            dflash_gate["acceptanceRate"] is None
+            or dflash_gate["speedup"] is None
+        ):
+            errors.append(
+                "evals.dflash: passed=true but acceptanceRate/speedup is null"
+            )
+        if manifest["defaultEligible"]:
+            if not dflash_gate["passed"]:
+                readiness_errors.append(
+                    "evals.dflash.passed: false for defaultEligible manifest"
+                )
+            if (
+                dflash_gate["acceptanceRate"] is None
+                or dflash_gate["speedup"] is None
+            ):
+                errors.append(
+                    "evals.dflash: defaultEligible requires measured acceptanceRate and speedup"
+                )
 
     # ── base-v1 provenance coverage ─────────────────────────────────────
     # A `base-v1` manifest must record where every shipped component comes

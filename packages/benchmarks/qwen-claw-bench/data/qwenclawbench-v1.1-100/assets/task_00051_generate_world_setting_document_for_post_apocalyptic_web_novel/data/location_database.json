@@ -1,0 +1,191 @@
+[
+  {
+    "name": "钢城废墟",
+    "type": "city_ruin",
+    "danger_level": 6,
+    "resources_available": [
+      "钢铁",
+      "电子元件",
+      "工具",
+      "罐头食品"
+    ],
+    "controlling_faction": "荒原狼群",
+    "description": "原为重工业城市，末世后沦为废墟。大量工业材料散落其中，但掠夺者团伙盘踞于此，变异生物也频繁出没。"
+  },
+  {
+    "name": "青山避难所",
+    "type": "mountain_fortress",
+    "danger_level": 2,
+    "resources_available": [
+      "清洁水源",
+      "木材",
+      "草药",
+      "野生猎物"
+    ],
+    "controlling_faction": "天罚圣殿",
+    "description": "位于山区的天然避难所，依托寺庙群建立。地势险要，易守难攻，周边有可耕种的梯田和清洁山泉。"
+  },
+  {
+    "name": "滨海废港",
+    "type": "coastal_zone",
+    "danger_level": 8,
+    "resources_available": [
+      "船只残骸",
+      "燃料",
+      "渔获（变异鱼类）",
+      "盐"
+    ],
+    "controlling_faction": null,
+    "description": "原为大型港口城市，被超级海啸摧毁后沦为危险的沿海废墟。海水中变异生物极多，但港口仓库中仍有大量未被搜刮的物资。"
+  },
+  {
+    "name": "地下实验室Alpha",
+    "type": "underground_base",
+    "danger_level": 4,
+    "resources_available": [
+      "医药物资",
+      "科研设备",
+      "电子元件",
+      "应急食品"
+    ],
+    "controlling_faction": "曙光研究所",
+    "description": "原为政府秘密研究设施，末世后被科研人员发现并改造为研究基地。设施完善但空间有限，依赖外部物资补给。"
+  },
+  {
+    "name": "荒原集市",
+    "type": "city_ruin",
+    "danger_level": 3,
+    "resources_available": [
+      "各类交易物资",
+      "情报",
+      "雇佣兵服务"
+    ],
+    "controlling_faction": "通商会",
+    "description": "建立在高速公路交汇处的露天集市，是各势力之间的中立贸易区。通商会在此维持基本秩序，禁止武力冲突。"
+  },
+  {
+    "name": "铁壁要塞",
+    "type": "mountain_fortress",
+    "danger_level": 1,
+    "resources_available": [
+      "军事装备",
+      "燃料",
+      "通信设备",
+      "训练设施"
+    ],
+    "controlling_faction": "铁壁军团",
+    "description": "原为军事基地，经过加固改造后成为铁壁军团的总部。防御工事完善，拥有末世中罕见的稳定电力供应。"
+  },
+  {
+    "name": "毒雾谷",
+    "type": "wilderness",
+    "danger_level": 9,
+    "resources_available": [
+      "稀有变异植物",
+      "气元浓缩矿石"
+    ],
+    "controlling_faction": null,
+    "description": "气候异变后形成的异常区域，常年笼罩在有毒雾气中。雾气中含有高浓度的气元物质，是觉醒者突破的圣地，也是死亡陷阱。"
+  },
+  {
+    "name": "大学城遗址",
+    "type": "city_ruin",
+    "danger_level": 5,
+    "resources_available": [
+      "书籍资料",
+      "实验器材",
+      "化学药品",
+      "建筑材料"
+    ],
+    "controlling_faction": "曙光研究所",
+    "description": "原为知名大学城，图书馆和实验室中保存着大量珍贵的知识资料。曙光研究所在此建立了前哨站，但区域较大，无法完全控制。"
+  },
+  {
+    "name": "冰封平原",
+    "type": "wilderness",
+    "danger_level": 7,
+    "resources_available": [
+      "冰系气元",
+      "冻结保存的物资",
+      "变异冰兽材料"
+    ],
+    "controlling_faction": null,
+    "description": "极地涡旋瓦解后形成的永久冻土区域，温度常年在-40°C以下。冰系觉醒者在此能力大幅增强，但普通人难以生存超过数小时。"
+  },
+  {
+    "name": "地热温泉基地",
+    "type": "underground_base",
+    "danger_level": 3,
+    "resources_available": [
+      "地热能源",
+      "温泉水",
+      "地下蘑菇农场",
+      "矿石"
+    ],
+    "controlling_faction": null,
+    "description": "利用天然地热资源建立的地下基地，温度稳定，适合居住和种植。是主角王艾卷前世记忆中的重要战略位置。"
+  },
+  {
+    "name": "高速公路废墟带",
+    "type": "wilderness",
+    "danger_level": 5,
+    "resources_available": [
+      "车辆零件",
+      "燃料残余",
+      "金属材料"
+    ],
+    "controlling_faction": "荒原狼群",
+    "description": "连接多个城市的高速公路废墟，车辆残骸绵延数十公里。荒原狼群在此设置路障收取过路费，是重要的交通要道。"
+  },
+  {
+    "name": "农业试验田",
+    "type": "wilderness",
+    "danger_level": 4,
+    "resources_available": [
+      "种子库",
+      "农业工具",
+      "灌溉设备",
+      "肥料"
+    ],
+    "controlling_faction": "铁壁军团",
+    "description": "原为农业科学院的试验田，保存着大量珍贵的种子资源。铁壁军团派驻了一个连的兵力守护此地，是其粮食生产的核心。"
+  },
+  {
+    "name": "废弃医院",
+    "type": "city_ruin",
+    "danger_level": 6,
+    "resources_available": [
+      "医药物资",
+      "手术器械",
+      "医学资料",
+      "化学药品"
+    ],
+    "controlling_faction": null,
+    "description": "原为三甲医院，地下药房中仍有大量未被搜刮的药品。但医院内部结构复杂，变异生物在此筑巢，搜索风险极高。"
+  },
+  {
+    "name": "信号塔山顶",
+    "type": "mountain_fortress",
+    "danger_level": 5,
+    "resources_available": [
+      "通信设备",
+      "太阳能板",
+      "气象观测设备"
+    ],
+    "controlling_faction": null,
+    "description": "山顶的通信信号塔，是末世中罕见的仍可能恢复远程通信的设施。多个势力都觊觎此地，但山路险峻且有变异飞行生物盘踞。"
+  },
+  {
+    "name": "地下商城",
+    "type": "underground_base",
+    "danger_level": 4,
+    "resources_available": [
+      "服装布料",
+      "日用品",
+      "食品（部分过期）",
+      "电子产品"
+    ],
+    "controlling_faction": "通商会",
+    "description": "原为大型地下商业综合体，通商会将其改造为物资仓库和交易中心。地下结构提供了天然的防护，但通风和照明依赖人工维护。"
+  }
+]

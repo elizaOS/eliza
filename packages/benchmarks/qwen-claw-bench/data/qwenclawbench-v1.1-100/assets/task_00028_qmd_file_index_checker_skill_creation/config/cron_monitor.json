@@ -1,0 +1,30 @@
+{
+  "jobs": [
+    {
+      "name": "check_power_status",
+      "script": "/Users/laixiang/openclaw/check_power_status.sh",
+      "intervalMinutes": 5,
+      "lastRunTimestamp": 1770684960000
+    },
+    {
+      "name": "monitor_cron_jobs",
+      "script": "/Users/laixiang/openclaw/monitor_cron_jobs.js",
+      "intervalMinutes": 10,
+      "lastRunTimestamp": 1770684660000
+    },
+    {
+      "name": "self_check",
+      "script": "internal",
+      "intervalMinutes": 5,
+      "lastRunTimestamp": 1770685080000
+    },
+    {
+      "name": "qmd_index_incremental",
+      "script": "/Users/laixiang/openclaw/index_qmd_files.js",
+      "intervalMinutes": 30,
+      "lastRunTimestamp": 1770678000000
+    }
+  ],
+  "alertThresholdMinutes": 30,
+  "notifyChannel": "bluebubbles"
+}

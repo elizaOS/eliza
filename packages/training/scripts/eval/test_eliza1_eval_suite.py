@@ -28,16 +28,16 @@ from scripts.eval import eliza1_eval_suite as suite
 
 
 def _make_standin_bundle(root: Path) -> Path:
-    bundle = root / "eliza-1-0_6b.bundle"
+    bundle = root / "eliza-1-0_8b.bundle"
     for sub in ("text", "tts", "asr", "vad", "dflash", "cache", "evals"):
         (bundle / sub).mkdir(parents=True, exist_ok=True)
     # Tiny stand-in artifacts (NOT real GGUFs).
-    (bundle / "text" / "eliza-1-0_6b-32k.gguf").write_text("standin")
+    (bundle / "text" / "eliza-1-0_8b-32k.gguf").write_text("standin")
     (bundle / "tts" / "omnivoice-base.gguf").write_text("standin")
     (bundle / "tts" / "omnivoice-tokenizer.gguf").write_text("standin")
     (bundle / "asr" / "asr.gguf").write_text("standin")
     (bundle / "vad" / "silero-vad.onnx").write_text("standin")
-    (bundle / "dflash" / "drafter-0_6b.gguf").write_text("standin")
+    (bundle / "dflash" / "drafter-0_8b.gguf").write_text("standin")
     (bundle / "cache" / "voice-preset-default.bin").write_text("standin")
     return bundle
 
@@ -59,7 +59,7 @@ def _run(bundle: Path, monkeypatch, *, text_eval_model: Path | None = None):
     )
     args = suite.argparse.Namespace(
         bundle_dir=bundle,
-        tier="0_6b",
+        tier="0_8b",
         backend=None,
         text_eval_model=text_eval_model,
         text_corpus=None,
@@ -87,7 +87,7 @@ def test_writes_all_eval_blobs(tmp_path: Path, monkeypatch) -> None:
         "aggregate.json",
     ):
         assert (evals / name).is_file(), f"missing {name}"
-    assert agg["tier"] == "0_6b"
+    assert agg["tier"] == "0_8b"
     assert agg["mode"] == "full"
     assert "results" in agg
     assert agg["bundleIsLocalStandin"] is True
@@ -138,8 +138,8 @@ def test_aggregate_is_consumable_by_gate_engine(tmp_path: Path, monkeypatch) -> 
     agg = _run(bundle, monkeypatch)
     from benchmarks.eliza1_gates import apply_gates
 
-    rep = apply_gates(agg, "0_6b", mode="full")
-    assert rep.tier == "0_6b"
+    rep = apply_gates(agg, "0_8b", mode="full")
+    assert rep.tier == "0_8b"
     assert rep.passed is False  # stand-in bundle never passes
 
 
@@ -150,17 +150,17 @@ def _make_real_bundle(root: Path) -> Path:
     discovery + the e2e bench bridge, so no real runtime is invoked. They only
     exercise the not-run-vs-ok branching of the bench-bridge runners.
     """
-    bundle = root / "eliza-1-0_6b.bundle"
+    bundle = root / "eliza-1-0_8b.bundle"
     for sub in ("text", "tts", "asr", "vad", "dflash", "cache", "evals"):
         (bundle / sub).mkdir(parents=True, exist_ok=True)
     big = b"GGUF" + b"\0" * (2 * 1024 * 1024)
     drafter_big = b"GGUF" + b"\0" * (12 * 1024 * 1024)
-    (bundle / "text" / "eliza-1-0_6b-32k.gguf").write_bytes(big)
+    (bundle / "text" / "eliza-1-0_8b-32k.gguf").write_bytes(big)
     (bundle / "tts" / "omnivoice-base-Q4_K_M.gguf").write_bytes(big)
     (bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf").write_bytes(big)
     (bundle / "asr" / "eliza-1-asr.gguf").write_bytes(big)
     (bundle / "vad" / "silero-vad-int8.onnx").write_bytes(b"\0" * (200 * 1024))
-    (bundle / "dflash" / "drafter-0_6b.gguf").write_bytes(drafter_big)
+    (bundle / "dflash" / "drafter-0_8b.gguf").write_bytes(drafter_big)
     (bundle / "cache" / "voice-preset-default.bin").write_text("standin")
     return bundle
 
@@ -198,7 +198,11 @@ def _run_real(bundle: Path, monkeypatch, *, bench_report: dict | None, bench_rep
         return (bench_report_30 if (turns >= 8 and bench_report_30 is not None) else bench_report)
 
     monkeypatch.setattr(suite, "_run_e2e_loop_bench", _fake_bench)
+<<<<<<< HEAD
     args = suite.argparse.Namespace(bundle_dir=bundle, tier="0_6b", backend=None, text_eval_model=None, text_corpus=None, asr_corpus=None, threads=2, timeout=30)
+=======
+    args = suite.argparse.Namespace(bundle_dir=bundle, tier="0_8b", backend=None, text_eval_model=None, text_corpus=None, threads=2, timeout=30)
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     ctx = suite.build_context(args)
     return suite.run_suite(ctx)
 
@@ -259,8 +263,8 @@ def test_bench_bridge_runners_record_not_run_when_bench_fails(tmp_path: Path, mo
 def test_real_text_model_override_produces_real_score(tmp_path: Path, monkeypatch) -> None:
     """If a real Qwen3 GGUF is on disk, the text eval produces a real 0..1 score."""
     candidates = [
-        Path("/tmp/eliza1-eval-models/Qwen3-0.6B-Q8_0.gguf"),
-        Path("/tmp/eliza1-eval-models/Qwen3-1.7B-Q8_0.gguf"),
+        Path("/tmp/eliza1-eval-models/Qwen3-0.8B-Q8_0.gguf"),
+        Path("/tmp/eliza1-eval-models/Qwen3-2B-Q8_0.gguf"),
     ]
     model = next((p for p in candidates if suite._is_real_gguf(p)), None)
     if model is None:

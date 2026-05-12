@@ -2085,7 +2085,7 @@
       "dependencies": {
         "@elizaos/core": "workspace:*",
         "@huggingface/transformers": "^4.0.0",
-        "node-llama-cpp": "github:elizaOS/node-llama-cpp#v3.18.1-milady.3",
+        "node-llama-cpp": "github:elizaOS/node-llama-cpp#v3.18.1-eliza.3",
         "uuid": "^14.0.0",
         "zod": "^4.4.3",
       },

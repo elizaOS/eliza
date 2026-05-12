@@ -1,4 +1,5 @@
 import http from "node:http";
+import { readFileSync } from "node:fs";
 import { WebSocketServer } from "ws";
 
 const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
@@ -12,6 +13,12 @@ const stubConversationMessages = new Map();
 const ONE_PIXEL_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
   "base64",
+);
+const SMOKE_VRM = readFileSync(
+  new URL(
+    "../../../plugins/app-companion/public_src/vrms/eliza-1.vrm",
+    import.meta.url,
+  ),
 );
 
 const stubPlugins = [
@@ -848,6 +855,21 @@ function appendStubMessage(conversationId, message) {
   return message;
 }
 
+function cleanupEmptyStubConversations({ keepId } = {}) {
+  const deleted = [];
+  for (let index = stubConversations.length - 1; index >= 0; index -= 1) {
+    const conversation = stubConversations[index];
+    if (typeof keepId === "string" && conversation.id === keepId) continue;
+    const messages = stubConversationMessages.get(conversation.id) ?? [];
+    const hasUserMessage = messages.some((message) => message.role === "user");
+    if (hasUserMessage) continue;
+    stubConversations.splice(index, 1);
+    stubConversationMessages.delete(conversation.id);
+    deleted.push(conversation.id);
+  }
+  return deleted;
+}
+
 function buildRuntimeSnapshot(url) {
   const maxDepth = parsePositiveInt(url.searchParams.get("depth"), 10);
   const maxArrayLength = parsePositiveInt(
@@ -1143,7 +1165,7 @@ const server = http.createServer(async (req, res) => {
     (req.method === "GET" || req.method === "HEAD") &&
     url.pathname === "/api/avatar/vrm"
   ) {
-    sendBinary(req, res, 200, "application/octet-stream", Buffer.alloc(0));
+    sendBinary(req, res, 200, "application/octet-stream", SMOKE_VRM);
     return;
   }
 
@@ -1416,6 +1438,18 @@ const server = http.createServer(async (req, res) => {
       sendJson(req, res, 200, { conversation });
       return;
     }
+  }
+
+  if (
+    req.method === "POST" &&
+    url.pathname === "/api/conversations/cleanup-empty"
+  ) {
+    const body = (await readJsonBody(req)) || {};
+    const deleted = cleanupEmptyStubConversations({
+      keepId: body.keepId,
+    });
+    sendJson(req, res, 200, { deleted });
+    return;
   }
 
   const conversationMessagesMatch = url.pathname.match(

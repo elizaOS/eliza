@@ -20,7 +20,7 @@ def build_cerebras_direct_agent(
     *,
     temperature: float = 0.0,
     reasoning_effort: str = "low",
-    max_tokens: int | None = None,
+    max_tokens: int | None = 4096,
 ) -> OpenAICompatAgent:
     """Build a Cerebras-direct agent callable for the bench runner.
 

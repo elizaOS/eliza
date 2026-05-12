@@ -1,0 +1,57 @@
+[
+  {
+    "event_id": "evt_301",
+    "title": "全天培训：项目管理方法论",
+    "start_time": "2026-03-27T09:00:00+08:00",
+    "end_time": "2026-03-27T17:00:00+08:00",
+    "location": "培训中心",
+    "organizer": "HR部门",
+    "attendees": ["我", "团队全员"],
+    "description": "必修培训，全天占用，不可缺席",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_302",
+    "title": "全员大会",
+    "start_time": "2026-03-28T14:00:00+08:00",
+    "end_time": "2026-03-28T17:00:00+08:00",
+    "location": "大报告厅",
+    "organizer": "CEO办公室",
+    "attendees": ["全部员工"],
+    "description": "Q1总结大会+Q2规划，必须参加",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_303",
+    "title": "客户拜访：万通物流",
+    "start_time": "2026-03-30T08:00:00+08:00",
+    "end_time": "2026-03-30T18:00:00+08:00",
+    "location": "万通物流总部（外出）",
+    "organizer": "赵蕾",
+    "attendees": ["我", "赵蕾"],
+    "description": "重要VIP客户现场拜访，全天出差",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_304",
+    "title": "技术分享会",
+    "start_time": "2026-03-29T14:00:00+08:00",
+    "end_time": "2026-03-29T15:30:00+08:00",
+    "location": "会议室A",
+    "organizer": "李华",
+    "attendees": ["研发团队"],
+    "description": "团队内部技术分享",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_305",
+    "title": "午餐会：新员工介绍",
+    "start_time": "2026-03-31T12:00:00+08:00",
+    "end_time": "2026-03-31T13:00:00+08:00",
+    "location": "食堂包间",
+    "organizer": "HR",
+    "attendees": ["管理层"],
+    "description": "新入职同事午餐交流",
+    "status": "confirmed"
+  }
+]

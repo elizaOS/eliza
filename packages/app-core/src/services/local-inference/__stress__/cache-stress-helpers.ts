@@ -169,10 +169,17 @@ export async function startMockServer(
       state.promptTokensProcessedTotal += freshTokens;
       const completionTokens = 10;
       state.predictedTokensTotal += completionTokens;
+<<<<<<< HEAD
       // DFlash drafts on every generation step regardless of prefix-cache
       // state; the extra acceptance on a warm cache is a separate bonus.
       state.draftedTotal += 16;
       state.acceptedTotal += cacheHitTokens > 0 ? 12 : 8;
+=======
+      // The patched plan has a drafter model, so production now requires
+      // positive speculative-decoding counters for every generation.
+      state.draftedTotal += 16;
+      state.acceptedTotal += 12;
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
       res.statusCode = 200;
       res.end(
         JSON.stringify({

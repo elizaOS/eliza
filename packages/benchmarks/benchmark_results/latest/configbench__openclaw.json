@@ -1,58 +1,28 @@
 {
   "agent": "openclaw",
+<<<<<<< HEAD
   "artifacts": [
     "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T131529Z_4a46189a/configbench__configbench/run_configbench_20260511T131529Z_2_65bc0156/output"
   ],
+=======
+  "artifacts": [],
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   "benchmark_directory": "configbench",
   "benchmark_id": "configbench",
-  "cache_metrics": {
-    "cache_creation_input_tokens": 0,
-    "cache_hit_ratio": 0.0,
-    "cache_read_input_tokens": 0,
-    "turns_with_cached_field": 0
-  },
-  "error": null,
-  "higher_is_better": true,
+  "cache_metrics": {},
+  "error": "Benchmark 'configbench' is no longer compatible with harness 'openclaw' (supported: eliza)",
+  "higher_is_better": null,
   "metrics": {
-    "cache_metrics": {
-      "cache_creation_input_tokens": 0,
-      "cache_hit_ratio": 0.0,
-      "cache_read_input_tokens": 0,
-      "turns_with_cached_field": 0
-    },
-    "capabilityScore": 100,
-    "overallScore": 100,
-    "performance_metrics": {
-      "duration_seconds": 0.039280875003896654,
-      "mean_latency_ms": 0.3333333333333333,
-      "p95_latency_ms": 1.0,
-      "throughput_per_second": 76.3730441264967
-    },
-    "return_code": 0,
-    "securityScore": 100,
-    "token_metrics": {
-      "avg_completion_tokens": 0.0,
-      "avg_prompt_tokens": 0.0,
-      "completion_tokens": 0,
-      "llm_call_count": 3,
-      "prompt_tokens": 0,
-      "total_tokens": 0
-    },
-    "trajectory_summary": {
-      "files": 1,
-      "prompt_chars": 0,
-      "repeated_prefixes": [],
-      "turns": 3
-    }
+    "harness": "openclaw",
+    "reason": "latest_row_violates_current_compatibility",
+    "supported_harnesses": [
+      "eliza"
+    ]
   },
   "model": "gpt-oss-120b",
-  "performance_metrics": {
-    "duration_seconds": 0.039280875003896654,
-    "mean_latency_ms": 0.3333333333333333,
-    "p95_latency_ms": 1.0,
-    "throughput_per_second": 76.3730441264967
-  },
+  "performance_metrics": {},
   "provider": "cerebras",
+<<<<<<< HEAD
   "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T131529Z_4a46189a/configbench__configbench/run_configbench_20260511T131529Z_2_65bc0156/output/configbench-results-2026-05-11T13-15-29-289Z.json",
   "run_group_id": "rg_20260511T131529Z_4a46189a",
   "run_id": "run_configbench_20260511T131529Z_2_65bc0156",
@@ -74,4 +44,15 @@
   },
   "unit": "ratio",
   "updated_at": "2026-05-12T01:33:59Z"
+=======
+  "result_json_path": null,
+  "run_group_id": "rg_20260512T060801Z_c4aecec3",
+  "run_id": "incompat_configbench_20260512T060801Z_3_dfe93a2e",
+  "score": null,
+  "status": "incompatible",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": null,
+  "updated_at": "2026-05-12T06:08:01.355589+00:00"
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 }

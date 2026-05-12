@@ -18,20 +18,20 @@
 [  6%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/qjl/qjl_quantize_ref.c.o
 [  7%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/qjl/qjl_quantize_avx2.c.o
 [  7%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/qjl/qjl_quantize_neon.c.o
-/home/shaw/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0/ggml/src/ggml-cpu/qjl/qjl_quantize_neon.c:108: warning: ISO C forbids an empty translation unit [-Wpedantic]
+/home/shaw/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0/ggml/src/ggml-cpu/qjl/qjl_quantize_neon.c:108: warning: ISO C forbids an empty translation unit [-Wpedantic]
 [  7%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/qjl/qjl_score_ref.c.o
 [  7%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/qjl/qjl_score_avx2.c.o
 [  7%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/qjl/qjl_score_neon.c.o
 [ 57%] Built target ggml-cuda
-/home/shaw/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0/ggml/src/ggml-cpu/qjl/qjl_score_neon.c:67: warning: ISO C forbids an empty translation unit [-Wpedantic]
+/home/shaw/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0/ggml/src/ggml-cpu/qjl/qjl_score_neon.c:67: warning: ISO C forbids an empty translation unit [-Wpedantic]
 [ 58%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/llamafile/sgemm.cpp.o
 [ 58%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/arch/x86/quants.c.o
 [ 58%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/arch/x86/repack.cpp.o
-/home/shaw/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0/ggml/src/ggml-cpu/ops.cpp: In function ‘void ggml_compute_forward_clamp(const ggml_compute_params*, ggml_tensor*)’:
-/home/shaw/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0/ggml/src/ggml-cpu/ops.cpp:5555:12: warning: enumeration value ‘GGML_TYPE_QJL1_256’ not handled in switch [-Wswitch]
+/home/shaw/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0/ggml/src/ggml-cpu/ops.cpp: In function ‘void ggml_compute_forward_clamp(const ggml_compute_params*, ggml_tensor*)’:
+/home/shaw/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0/ggml/src/ggml-cpu/ops.cpp:5555:12: warning: enumeration value ‘GGML_TYPE_QJL1_256’ not handled in switch [-Wswitch]
  5555 |     switch (src0->type) {
       |            ^
-/home/shaw/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0/ggml/src/ggml-cpu/ops.cpp:5555:12: warning: enumeration value ‘GGML_TYPE_Q4_POLAR’ not handled in switch [-Wswitch]
+/home/shaw/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0/ggml/src/ggml-cpu/ops.cpp:5555:12: warning: enumeration value ‘GGML_TYPE_Q4_POLAR’ not handled in switch [-Wswitch]
 [ 58%] Linking CXX shared library ../../bin/libggml-cpu.so
 [ 58%] Built target ggml-cpu
 [ 58%] Building CXX object ggml/src/CMakeFiles/ggml.dir/ggml-backend-dl.cpp.o

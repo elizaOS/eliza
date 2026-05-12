@@ -1,5 +1,5 @@
 """Translate a stratified sample of the training corpus to multiple languages,
-preserving structural identifiers (action names, TOON keys, code, paths, IDs).
+preserving structural identifiers (action names, native JSON keys, code, paths, IDs).
 
 Strategy
 ========
@@ -9,7 +9,7 @@ Strategy
    - metadata.system_prompt (natural language) — full translation
    - currentMessage.content — full translation
    - expectedResponse — format-aware translation:
-       * TOON: translate only sentence-like values for prose-bearing keys
+       * native JSON: translate only sentence-like values for prose-bearing keys
        * Fenced JSON / raw JSON: leave keys, translate select string values
        * XML: translate only contents of <thought>/<text>/<reasoning>/<description>
 3. Identifier protection: ALL_CAPS_TOKENS, URLs, paths, JSON-shaped substrings,
@@ -62,8 +62,8 @@ TASK_TYPE_FRACTIONS = {
     "n8n_workflow_generation": 3392 / 1137077,
 }
 
-# TOON keys whose values are natural-language prose worth translating.
-PROSE_TOON_KEYS = {
+# native JSON keys whose values are natural-language prose worth translating.
+PROSE_NATIVE_JSON_KEYS = {
     "thought",
     "text",
     "reasoning",
@@ -208,17 +208,17 @@ class Translator:
 # --------------------------------------------------------------------------- #
 
 
-# TOON line: leading indent, key, colon, optional space, value.
-TOON_LINE_RE = re.compile(r"^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*:\s*)(.*)$")
-# Bullet list inside TOON.
-TOON_BULLET_RE = re.compile(r"^(\s*-\s+)(.*)$")
+# native JSON line: leading indent, key, colon, optional space, value.
+NATIVE_JSON_LINE_RE = re.compile(r"^(\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*:\s*)(.*)$")
+# Bullet list inside native JSON.
+NATIVE_JSON_BULLET_RE = re.compile(r"^(\s*-\s+)(.*)$")
 
 
-def looks_like_toon(text: str) -> bool:
+def looks_like_payload(text: str) -> bool:
     head = text.lstrip().splitlines()[:3]
     if not head:
         return False
-    return any(TOON_LINE_RE.match(line) for line in head)
+    return any(NATIVE_JSON_LINE_RE.match(line) for line in head)
 
 
 def looks_like_xml(text: str) -> bool:
@@ -239,7 +239,7 @@ def _is_prose_value(value: str) -> bool:
     if v.startswith(("{", "[", "<")):
         return False
     if v.startswith('"') and v.endswith('"') and ("{" in v or "\\n" in v):
-        # JSON-encoded blob inside a TOON string — handled separately.
+        # JSON-encoded blob inside a native JSON string — handled separately.
         return False
     if "://" in v:
         return False
@@ -288,10 +288,10 @@ def _regex_translate_json_blob(blob: str, tr: Translator) -> str:
     return pattern.sub(_sub, blob)
 
 
-def translate_toon_value(raw: str, tr: Translator) -> str:
-    """Translate the value part of a TOON line, preserving surrounding quotes.
+def translate_payload_value(raw: str, tr: Translator) -> str:
+    """Translate the value part of a native JSON line, preserving surrounding quotes.
 
-    A common TOON shape is `text: "{\\n  \\"analysis\\": ...}"` — i.e. a JSON
+    A common native JSON shape is `text: "{\\n  \\"analysis\\": ...}"` — i.e. a JSON
     string whose decoded form is itself JSON. We unwrap both layers, translate
     the prose-bearing values inside the inner JSON tree, then re-serialize.
     When the inner JSON is malformed, fall back to regex-level translation of
@@ -324,30 +324,30 @@ def translate_toon_value(raw: str, tr: Translator) -> str:
     return v
 
 
-def translate_toon(text: str, tr: Translator) -> str:
+def translate_payload(text: str, tr: Translator) -> str:
     out_lines: list[str] = []
     for line in text.split("\n"):
-        m = TOON_LINE_RE.match(line)
+        m = NATIVE_JSON_LINE_RE.match(line)
         if m:
             indent, key, sep, value = m.groups()
-            if key.lower() in PROSE_TOON_KEYS and value:
-                value = translate_toon_value(value, tr)
+            if key.lower() in PROSE_NATIVE_JSON_KEYS and value:
+                value = translate_payload_value(value, tr)
             out_lines.append(f"{indent}{key}{sep}{value}")
             continue
-        b = TOON_BULLET_RE.match(line)
+        b = NATIVE_JSON_BULLET_RE.match(line)
         if b:
             bullet_prefix, body = b.group(1), b.group(2)
-            # Bullet bodies often carry their own `key: value` (TOON sub-key)
+            # Bullet bodies often carry their own `key: value` (native JSON sub-key)
             # or `Key: value` form. Translating the entire body rewrites the
-            # key into the target language and breaks downstream TOON parsing
+            # key into the target language and breaks downstream native JSON parsing
             # contracts ("Name" -> "nombre", "arguments" -> "argumentos", etc).
             # Detect that shape and translate only the value when the key is
-            # in PROSE_TOON_KEYS; otherwise translate the whole prose body.
-            sub = TOON_LINE_RE.match(body)
+            # in PROSE_NATIVE_JSON_KEYS; otherwise translate the whole prose body.
+            sub = NATIVE_JSON_LINE_RE.match(body)
             if sub:
                 _, sub_key, sub_sep, sub_value = sub.groups()
-                if sub_key.lower() in PROSE_TOON_KEYS and sub_value:
-                    sub_value = translate_toon_value(sub_value, tr)
+                if sub_key.lower() in PROSE_NATIVE_JSON_KEYS and sub_value:
+                    sub_value = translate_payload_value(sub_value, tr)
                 out_lines.append(f"{bullet_prefix}{sub_key}{sub_sep}{sub_value}")
                 continue
             if _is_prose_value(body):
@@ -418,8 +418,8 @@ def translate_expected_response(text: str, tr: Translator) -> str:
         except json.JSONDecodeError:
             pass
 
-    if looks_like_toon(text):
-        return translate_toon(text, tr)
+    if looks_like_payload(text):
+        return translate_payload(text, tr)
 
     # Otherwise: plain prose.
     if _is_prose_value(text):

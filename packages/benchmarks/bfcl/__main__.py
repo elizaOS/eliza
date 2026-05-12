@@ -255,11 +255,10 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         # Print results
         print_results(results)
 
-        # Return exit code based on results
-        if results.metrics.overall_score >= 0.5:
-            return 0
-        else:
-            return 1
+        # Completed benchmark runs should exit cleanly even when the model
+        # score is low. The orchestrator records score/status separately and
+        # reserves nonzero process exits for execution failures.
+        return 0
 
     except KeyboardInterrupt:
         print("\n\n⚠️ Benchmark interrupted by user")

@@ -62,9 +62,9 @@ const STANDALONE_METAL_DIR = path.resolve(
 //   * metal-verify-fused: fused_attn_qjl_tbq and fused_attn_qjl_polar PASS.
 //
 // Runtime dispatch is flipped only for the graph ops listed in
-// METAL_RUNTIME_DISPATCH_GATES. The fused-attention kernels are shipped and
-// verified, but remain an explicit runtime promotion step because they replace
-// a larger score/softmax/V subgraph rather than one standalone score op.
+// METAL_RUNTIME_DISPATCH_GATES. The QJL+TBQ fused-attention kernel is wired
+// through a dedicated graph op; the QJL+Polar fused variant remains shipped
+// and standalone-verified only until it gets a separate graph contract.
 export const METAL_KERNEL_FILES = [
   "turbo3.metal",
   "turbo4.metal",
@@ -105,6 +105,12 @@ export const METAL_RUNTIME_DISPATCH_GATES = {
     status: "runtime-ready",
     runtimeReady: true,
     graphOp: "GGML_OP_ATTN_SCORE_POLAR",
+    smokeTarget: "dispatch-smoke",
+  },
+  fused_attn_qjl_tbq: {
+    status: "runtime-ready",
+    runtimeReady: true,
+    graphOp: "GGML_OP_FUSED_ATTN_QJL_TBQ",
     smokeTarget: "dispatch-smoke",
   },
 };
@@ -587,7 +593,11 @@ static inline uint32_t eliza_env_u32(const char * name, uint32_t fallback, uint3
         // M4 Max 2026-05-11 sweeps show N=4/8/16/32 trade median vs p99.
         // Keep N=32 as the tail-latency-biased default until per-device
         // autotuning can persist a device-specific table.
+<<<<<<< HEAD
         /* tokens_per_threadgroup = */ eliza_env_u32("ELIZA_METAL_QJL_TOKENS_PER_TG", 32u, 1u, 64u),
+=======
+        /* tokens_per_threadgroup = */ eliza_env_u32("ELIZA_METAL_QJL_TOKENS_PER_TG", 64u, 1u, 64u),
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     };`,
     );
     upgraded = upgraded.replace(
@@ -689,7 +699,11 @@ int ggml_metal_op_attn_score_qjl(ggml_metal_op_t ctx, int idx) {
         // M4 Max 2026-05-11 sweeps show N=4/8/16/32 trade median vs p99.
         // Keep N=32 as the tail-latency-biased default until per-device
         // autotuning can persist a device-specific table.
+<<<<<<< HEAD
         /* tokens_per_threadgroup = */ eliza_env_u32("ELIZA_METAL_QJL_TOKENS_PER_TG", 32u, 1u, 64u),
+=======
+        /* tokens_per_threadgroup = */ eliza_env_u32("ELIZA_METAL_QJL_TOKENS_PER_TG", 64u, 1u, 64u),
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     };
 
     auto pipeline = ggml_metal_library_get_pipeline_attn_score_qjl(lib);
@@ -712,6 +726,110 @@ int ggml_metal_op_attn_score_qjl(ggml_metal_op_t ctx, int idx) {
             const int token_groups = (int) ((n_tokens + args.tokens_per_threadgroup - 1u) / args.tokens_per_threadgroup);
             ggml_metal_encoder_dispatch_threadgroups(enc, (int) n_heads, token_groups, 1, 32, 1, 1);
         }
+    }
+
+    return 1;
+}
+
+struct eliza_fused_attn_qjl_tbq_args {
+    uint32_t head_dim;
+    uint32_t proj_dim;
+    uint32_t n_heads;
+    uint32_t n_kv_heads;
+    uint32_t n_q_pos;
+    uint32_t n_kv;
+    uint32_t kv_tile;
+    uint32_t v_use_qjl;
+    float    scale;
+    uint32_t causal;
+    uint32_t q_pos_base;
+};
+
+int ggml_metal_op_fused_attn_qjl_tbq(ggml_metal_op_t ctx, int idx) {
+    ggml_tensor * op = ctx->node(idx);
+
+    ggml_metal_library_t lib = ctx->lib;
+    ggml_metal_encoder_t enc = ctx->enc;
+
+    const ggml_tensor * q  = op->src[0];
+    const ggml_tensor * pk = op->src[1];
+    const ggml_tensor * pv = op->src[2];
+
+    GGML_ASSERT(q  != nullptr);
+    GGML_ASSERT(pk != nullptr);
+    GGML_ASSERT(pv != nullptr);
+    GGML_ASSERT(q->type  == GGML_TYPE_F32);
+    GGML_ASSERT(pk->type == GGML_TYPE_QJL1_256);
+    GGML_ASSERT(pv->type == GGML_TYPE_TBQ3_0);
+    GGML_ASSERT(op->type == GGML_TYPE_F32);
+    GGML_ASSERT(q->ne[0]  == 256);
+    GGML_ASSERT(pk->ne[0] == 128);
+    GGML_ASSERT(pv->ne[0] == 128);
+    GGML_ASSERT(op->ne[0] == 128);
+    GGML_ASSERT(ggml_is_contiguous_rows(q));
+    GGML_ASSERT(ggml_is_contiguous_rows(pk));
+    GGML_ASSERT(ggml_is_contiguous_rows(pv));
+    GGML_ASSERT(ggml_is_contiguous_rows(op));
+
+    const int32_t * params = (const int32_t *) op->op_params;
+    const uint32_t n_kv_heads = (uint32_t) params[0];
+    union { int32_t i; float f; } scale_bits;
+    scale_bits.i = params[1];
+
+    const uint32_t n_heads = (uint32_t) q->ne[1];
+    const uint32_t n_q_pos = (uint32_t) q->ne[2];
+    const uint32_t n_kv    = (uint32_t) pk->ne[1];
+    const int64_t  ne3     = q->ne[3];
+
+    GGML_ASSERT(n_kv_heads > 0);
+    GGML_ASSERT((n_heads % n_kv_heads) == 0);
+    GGML_ASSERT(pk->ne[2] == (int64_t) n_kv_heads);
+    GGML_ASSERT(pv->ne[1] == (int64_t) n_kv);
+    GGML_ASSERT(pv->ne[2] == (int64_t) n_kv_heads);
+    GGML_ASSERT(pk->ne[3] == ne3);
+    GGML_ASSERT(pv->ne[3] == ne3);
+    GGML_ASSERT(op->ne[1] == (int64_t) n_heads);
+    GGML_ASSERT(op->ne[2] == (int64_t) n_q_pos);
+    GGML_ASSERT(op->ne[3] == ne3);
+    GGML_ASSERT(q->nb[1] == (size_t) q->ne[0] * ggml_type_size(q->type));
+    GGML_ASSERT(q->nb[2] == (size_t) n_heads * q->nb[1]);
+    GGML_ASSERT(pk->nb[1] == ggml_row_size(GGML_TYPE_QJL1_256, 128));
+    GGML_ASSERT(pk->nb[2] == (size_t) n_kv * pk->nb[1]);
+    GGML_ASSERT(pv->nb[1] == ggml_row_size(GGML_TYPE_TBQ3_0, 128));
+    GGML_ASSERT(pv->nb[2] == (size_t) n_kv * pv->nb[1]);
+    GGML_ASSERT(op->nb[1] == (size_t) op->ne[0] * ggml_type_size(op->type));
+    GGML_ASSERT(op->nb[2] == (size_t) n_heads * op->nb[1]);
+
+    eliza_fused_attn_qjl_tbq_args args = {
+        /* head_dim   = */ 128u,
+        /* proj_dim   = */ 256u,
+        /* n_heads    = */ n_heads,
+        /* n_kv_heads = */ n_kv_heads,
+        /* n_q_pos    = */ n_q_pos,
+        /* n_kv       = */ n_kv,
+        /* kv_tile    = */ (uint32_t) params[3],
+        /* v_use_qjl  = */ (uint32_t) params[2],
+        /* scale      = */ scale_bits.f,
+        /* causal     = */ (uint32_t) params[4],
+        /* q_pos_base = */ (uint32_t) params[5],
+    };
+
+    auto pipeline = ggml_metal_library_get_pipeline_fused_attn_qjl_tbq(lib);
+
+    const ggml_metal_buffer_id q_base   = ggml_metal_get_buffer_id(q);
+    const ggml_metal_buffer_id pk_base  = ggml_metal_get_buffer_id(pk);
+    const ggml_metal_buffer_id pv_base  = ggml_metal_get_buffer_id(pv);
+    const ggml_metal_buffer_id dst_base = ggml_metal_get_buffer_id(op);
+
+    ggml_metal_encoder_set_pipeline(enc, pipeline);
+    ggml_metal_encoder_set_bytes(enc, &args, sizeof(args), 4);
+
+    for (int64_t i3 = 0; i3 < ne3; ++i3) {
+        ggml_metal_encoder_set_buffer(enc, eliza_metal_buffer_offset(q_base,   (size_t) i3 * q->nb[3]),  0);
+        ggml_metal_encoder_set_buffer(enc, eliza_metal_buffer_offset(pk_base,  (size_t) i3 * pk->nb[3]), 1);
+        ggml_metal_encoder_set_buffer(enc, eliza_metal_buffer_offset(pv_base,  (size_t) i3 * pv->nb[3]), 2);
+        ggml_metal_encoder_set_buffer(enc, eliza_metal_buffer_offset(dst_base, (size_t) i3 * op->nb[3]), 3);
+        ggml_metal_encoder_dispatch_threadgroups(enc, (int) n_heads, (int) n_q_pos, 1, 32, 1, 1);
     }
 
     return 1;
@@ -907,6 +1025,24 @@ export function patchGgmlTbqPolarAttnOps(cacheDir, { dryRun }) {
 
   const cOriginal = fs.readFileSync(cPath, "utf8");
   let c = cOriginal;
+  c = c.replace(
+    `    int32_t params[2];
+    params[0] = n_kv_heads;
+    union { float f; int32_t i; } scale_bits;
+    scale_bits.f = sm_scale;
+    params[1] = scale_bits.i;
+    ggml_set_op_params(result, params, sizeof(params));`,
+    `    int32_t params[6] = { 0 };
+    params[0] = n_kv_heads;
+    union { float f; int32_t i; } scale_bits;
+    scale_bits.f = sm_scale;
+    params[1] = scale_bits.i;
+    // Reserved for backend fused dispatch ABI: [2] v_use_qjl, [3] kv_tile,
+    // [4] causal, [5] q_pos_base. The public constructor preserves the
+    // existing non-causal CPU semantics by default.
+    params[5] = n_kv_tokens >= q->ne[2] ? (int32_t) (n_kv_tokens - q->ne[2]) : 0;
+    ggml_set_op_params(result, params, sizeof(params));`,
+  );
   if (!c.includes(SENTINEL_TBQ_POLAR_ATTN)) {
     c = c.replace(
       `    "ATTN_SCORE_QJL",
@@ -1066,7 +1202,19 @@ function patchMetalTbqPolarDeviceHeader(cacheDir, { dryRun }) {
   );
   const original = fs.readFileSync(headerPath, "utf8");
   if (original.includes(SENTINEL_TBQ_POLAR_ATTN)) {
-    return { changed: false, path: headerPath };
+    const anchor = `struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_score_polar_preht(
+        ggml_metal_library_t lib);`;
+    const addition = `${anchor}
+
+struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_fused_attn_qjl_tbq(
+        ggml_metal_library_t lib);`;
+    const patched =
+      original.includes("ggml_metal_library_get_pipeline_fused_attn_qjl_tbq")
+        ? original
+        : original.replace(anchor, addition);
+    if (patched !== original && !dryRun)
+      fs.writeFileSync(headerPath, patched, "utf8");
+    return { changed: patched !== original && !dryRun, path: headerPath };
   }
   const anchor = `${SENTINEL_QJL_ATTN}
 struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_score_qjl(
@@ -1089,6 +1237,9 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_scor
         ggml_metal_library_t lib);
 
 struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_score_polar_preht(
+        ggml_metal_library_t lib);
+
+struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_fused_attn_qjl_tbq(
         ggml_metal_library_t lib);`,
   );
   if (!dryRun) fs.writeFileSync(headerPath, patched, "utf8");
@@ -1105,7 +1256,32 @@ function patchMetalTbqPolarDeviceCpp(cacheDir, { dryRun }) {
   );
   const original = fs.readFileSync(cppPath, "utf8");
   if (original.includes(SENTINEL_TBQ_POLAR_ATTN)) {
-    return { changed: false, path: cppPath };
+    const anchor = `ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_bin(ggml_metal_library_t lib, const ggml_tensor * op, int32_t n_fuse) {`;
+    const helper = `ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_fused_attn_qjl_tbq(ggml_metal_library_t lib) {
+    const char * name = "kernel_fused_attn_qjl_tbq3_f32";
+    ggml_metal_pipeline_with_params res = ggml_metal_library_get_pipeline(lib, name);
+    if (!res.pipeline) {
+        res = ggml_metal_library_compile_pipeline(lib, name, name, nullptr);
+    }
+    if (!res.pipeline) {
+        GGML_LOG_ERROR("fused_attn_qjl_tbq: kernel '%s' missing from default.metallib\\n", name);
+        GGML_ABORT("fused_attn_qjl_tbq: pipeline compile failed");
+    }
+    res.nr0 = 1;
+    res.nr1 = 1;
+    res.nsg = 1;
+    res.smem = 0;
+    return res;
+}
+
+`;
+    const patched =
+      original.includes("ggml_metal_library_get_pipeline_fused_attn_qjl_tbq")
+        ? original
+        : original.replace(anchor, helper + anchor);
+    if (patched !== original && !dryRun)
+      fs.writeFileSync(cppPath, patched, "utf8");
+    return { changed: patched !== original && !dryRun, path: cppPath };
   }
   const anchor = `ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_bin(ggml_metal_library_t lib, const ggml_tensor * op, int32_t n_fuse) {`;
   if (!original.includes(anchor)) {
@@ -1174,6 +1350,23 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_score_polar
     return res;
 }
 
+ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_fused_attn_qjl_tbq(ggml_metal_library_t lib) {
+    const char * name = "kernel_fused_attn_qjl_tbq3_f32";
+    ggml_metal_pipeline_with_params res = ggml_metal_library_get_pipeline(lib, name);
+    if (!res.pipeline) {
+        res = ggml_metal_library_compile_pipeline(lib, name, name, nullptr);
+    }
+    if (!res.pipeline) {
+        GGML_LOG_ERROR("fused_attn_qjl_tbq: kernel '%s' missing from default.metallib\\n", name);
+        GGML_ABORT("fused_attn_qjl_tbq: pipeline compile failed");
+    }
+    res.nr0 = 1;
+    res.nr1 = 1;
+    res.nsg = 1;
+    res.smem = 0;
+    return res;
+}
+
 `;
   const patched = original.replace(anchor, helper + anchor);
   if (!dryRun) fs.writeFileSync(cppPath, patched, "utf8");
@@ -1190,7 +1383,15 @@ function patchMetalTbqPolarOpsHeader(cacheDir, { dryRun }) {
   );
   const original = fs.readFileSync(headerPath, "utf8");
   if (original.includes(SENTINEL_TBQ_POLAR_ATTN)) {
-    return { changed: false, path: headerPath };
+    const anchor = `int ggml_metal_op_attn_score_polar(ggml_metal_op_t ctx, int idx);`;
+    const addition = `${anchor}
+int ggml_metal_op_fused_attn_qjl_tbq(ggml_metal_op_t ctx, int idx);`;
+    const patched = original.includes("ggml_metal_op_fused_attn_qjl_tbq")
+      ? original
+      : original.replace(anchor, addition);
+    if (patched !== original && !dryRun)
+      fs.writeFileSync(headerPath, patched, "utf8");
+    return { changed: patched !== original && !dryRun, path: headerPath };
   }
   const anchor = `${SENTINEL_QJL_ATTN}
 int ggml_metal_op_attn_score_qjl  (ggml_metal_op_t ctx, int idx);`;
@@ -1204,7 +1405,8 @@ int ggml_metal_op_attn_score_qjl  (ggml_metal_op_t ctx, int idx);`;
     `${anchor}
 ${SENTINEL_TBQ_POLAR_ATTN}
 int ggml_metal_op_attn_score_tbq  (ggml_metal_op_t ctx, int idx);
-int ggml_metal_op_attn_score_polar(ggml_metal_op_t ctx, int idx);`,
+int ggml_metal_op_attn_score_polar(ggml_metal_op_t ctx, int idx);
+int ggml_metal_op_fused_attn_qjl_tbq(ggml_metal_op_t ctx, int idx);`,
   );
   if (!dryRun) fs.writeFileSync(headerPath, patched, "utf8");
   return { changed: !dryRun, path: headerPath };
@@ -1246,12 +1448,18 @@ function patchMetalTbqPolarOpsCpp(cacheDir, { dryRun }) {
 
 static inline uint32_t eliza_tbq_blocks_per_threadgroup(ggml_type type) {
     // M4 Max multiblock/autotune bench best medians (2026-05-12):
-    //   TBQ3=8, TBQ4=32, TBQ3_TCQ=16. Voice-mode policy can still force N=1
+    //   TBQ3=16, TBQ4=8, TBQ3_TCQ=32. Voice-mode policy can still force N=1
     //   at a higher scheduler layer when barge-in latency dominates.
     switch (type) {
+<<<<<<< HEAD
         case GGML_TYPE_TBQ3_0:   return eliza_env_u32("ELIZA_METAL_TBQ3_BLOCKS_PER_TG", 8u, 1u, 64u);
         case GGML_TYPE_TBQ4_0:   return eliza_env_u32("ELIZA_METAL_TBQ4_BLOCKS_PER_TG", 32u, 1u, 64u);
         case GGML_TYPE_TBQ3_TCQ: return eliza_env_u32("ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG", 16u, 1u, 64u);
+=======
+        case GGML_TYPE_TBQ3_0:   return eliza_env_u32("ELIZA_METAL_TBQ3_BLOCKS_PER_TG", 16u, 1u, 64u);
+        case GGML_TYPE_TBQ4_0:   return eliza_env_u32("ELIZA_METAL_TBQ4_BLOCKS_PER_TG", 8u, 1u, 64u);
+        case GGML_TYPE_TBQ3_TCQ: return eliza_env_u32("ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG", 32u, 1u, 64u);
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
         default: GGML_ABORT("unsupported TurboQuant attention score type");
     }
 }
@@ -1262,6 +1470,119 @@ static inline uint32_t eliza_tbq_blocks_per_threadgroup(ggml_type type) {
       "/* blocks_per_threadgroup = */ 8u,",
       "/* blocks_per_threadgroup = */ eliza_tbq_blocks_per_threadgroup(ktype),",
     );
+    if (!patched.includes("ggml_metal_op_fused_attn_qjl_tbq")) {
+      const funcAnchor = `static int ggml_metal_op_encode_impl(ggml_metal_op_t ctx, int idx) {`;
+      patched = patched.replace(
+        funcAnchor,
+        `int ggml_metal_op_fused_attn_qjl_tbq(ggml_metal_op_t ctx, int idx) {
+    ggml_tensor * op = ctx->node(idx);
+
+    ggml_metal_library_t lib = ctx->lib;
+    ggml_metal_encoder_t enc = ctx->enc;
+
+    const ggml_tensor * q  = op->src[0];
+    const ggml_tensor * pk = op->src[1];
+    const ggml_tensor * pv = op->src[2];
+
+    GGML_ASSERT(q  != nullptr);
+    GGML_ASSERT(pk != nullptr);
+    GGML_ASSERT(pv != nullptr);
+    GGML_ASSERT(q->type  == GGML_TYPE_F32);
+    GGML_ASSERT(pk->type == GGML_TYPE_QJL1_256);
+    GGML_ASSERT(pv->type == GGML_TYPE_TBQ3_0);
+    GGML_ASSERT(op->type == GGML_TYPE_F32);
+    GGML_ASSERT(q->ne[0]  == 256);
+    GGML_ASSERT(pk->ne[0] == 128);
+    GGML_ASSERT(pv->ne[0] == 128);
+    GGML_ASSERT(op->ne[0] == 128);
+    GGML_ASSERT(ggml_is_contiguous_rows(q));
+    GGML_ASSERT(ggml_is_contiguous_rows(pk));
+    GGML_ASSERT(ggml_is_contiguous_rows(pv));
+    GGML_ASSERT(ggml_is_contiguous_rows(op));
+
+    const int32_t * params = (const int32_t *) op->op_params;
+    const uint32_t n_kv_heads = (uint32_t) params[0];
+    union { int32_t i; float f; } scale_bits;
+    scale_bits.i = params[1];
+
+    const uint32_t n_heads = (uint32_t) q->ne[1];
+    const uint32_t n_q_pos = (uint32_t) q->ne[2];
+    const uint32_t n_kv    = (uint32_t) pk->ne[1];
+    const int64_t  ne3     = q->ne[3];
+
+    GGML_ASSERT(n_kv_heads > 0);
+    GGML_ASSERT((n_heads % n_kv_heads) == 0);
+    GGML_ASSERT(pk->ne[2] == (int64_t) n_kv_heads);
+    GGML_ASSERT(pv->ne[1] == (int64_t) n_kv);
+    GGML_ASSERT(pv->ne[2] == (int64_t) n_kv_heads);
+    GGML_ASSERT(pk->ne[3] == ne3);
+    GGML_ASSERT(pv->ne[3] == ne3);
+    GGML_ASSERT(op->ne[1] == (int64_t) n_heads);
+    GGML_ASSERT(op->ne[2] == (int64_t) n_q_pos);
+    GGML_ASSERT(op->ne[3] == ne3);
+    GGML_ASSERT(q->nb[1] == (size_t) q->ne[0] * ggml_type_size(q->type));
+    GGML_ASSERT(q->nb[2] == (size_t) n_heads * q->nb[1]);
+    GGML_ASSERT(pk->nb[1] == ggml_row_size(GGML_TYPE_QJL1_256, 128));
+    GGML_ASSERT(pk->nb[2] == (size_t) n_kv * pk->nb[1]);
+    GGML_ASSERT(pv->nb[1] == ggml_row_size(GGML_TYPE_TBQ3_0, 128));
+    GGML_ASSERT(pv->nb[2] == (size_t) n_kv * pv->nb[1]);
+    GGML_ASSERT(op->nb[1] == (size_t) op->ne[0] * ggml_type_size(op->type));
+    GGML_ASSERT(op->nb[2] == (size_t) n_heads * op->nb[1]);
+
+    eliza_fused_attn_qjl_tbq_args args = {
+        /* head_dim   = */ 128u,
+        /* proj_dim   = */ 256u,
+        /* n_heads    = */ n_heads,
+        /* n_kv_heads = */ n_kv_heads,
+        /* n_q_pos    = */ n_q_pos,
+        /* n_kv       = */ n_kv,
+        /* kv_tile    = */ (uint32_t) params[3],
+        /* v_use_qjl  = */ (uint32_t) params[2],
+        /* scale      = */ scale_bits.f,
+        /* causal     = */ (uint32_t) params[4],
+        /* q_pos_base = */ (uint32_t) params[5],
+    };
+
+    auto pipeline = ggml_metal_library_get_pipeline_fused_attn_qjl_tbq(lib);
+
+    const ggml_metal_buffer_id q_base   = ggml_metal_get_buffer_id(q);
+    const ggml_metal_buffer_id pk_base  = ggml_metal_get_buffer_id(pk);
+    const ggml_metal_buffer_id pv_base  = ggml_metal_get_buffer_id(pv);
+    const ggml_metal_buffer_id dst_base = ggml_metal_get_buffer_id(op);
+
+    ggml_metal_encoder_set_pipeline(enc, pipeline);
+    ggml_metal_encoder_set_bytes(enc, &args, sizeof(args), 4);
+
+    for (int64_t i3 = 0; i3 < ne3; ++i3) {
+        ggml_metal_encoder_set_buffer(enc, eliza_metal_buffer_offset(q_base,   (size_t) i3 * q->nb[3]),  0);
+        ggml_metal_encoder_set_buffer(enc, eliza_metal_buffer_offset(pk_base,  (size_t) i3 * pk->nb[3]), 1);
+        ggml_metal_encoder_set_buffer(enc, eliza_metal_buffer_offset(pv_base,  (size_t) i3 * pv->nb[3]), 2);
+        ggml_metal_encoder_set_buffer(enc, eliza_metal_buffer_offset(dst_base, (size_t) i3 * op->nb[3]), 3);
+        ggml_metal_encoder_dispatch_threadgroups(enc, (int) n_heads, (int) n_q_pos, 1, 32, 1, 1);
+    }
+
+    return 1;
+}
+
+${funcAnchor}`,
+      );
+    }
+    if (!patched.includes("case GGML_OP_FUSED_ATTN_QJL_TBQ:")) {
+      patched = patched.replace(
+        `        case GGML_OP_ATTN_SCORE_POLAR:
+            {
+                n_fuse = ggml_metal_op_attn_score_polar(ctx, idx);
+            } break;`,
+        `        case GGML_OP_ATTN_SCORE_POLAR:
+            {
+                n_fuse = ggml_metal_op_attn_score_polar(ctx, idx);
+            } break;
+        case GGML_OP_FUSED_ATTN_QJL_TBQ:
+            {
+                n_fuse = ggml_metal_op_fused_attn_qjl_tbq(ctx, idx);
+            } break;`,
+      );
+    }
     if (patched !== original && !dryRun)
       fs.writeFileSync(opsPath, patched, "utf8");
     return { changed: patched !== original && !dryRun, path: opsPath };
@@ -1313,12 +1634,18 @@ static inline uint32_t eliza_tbq_blocks_per_row(ggml_type type) {
 
 static inline uint32_t eliza_tbq_blocks_per_threadgroup(ggml_type type) {
     // M4 Max multiblock/autotune bench best medians (2026-05-12):
-    //   TBQ3=8, TBQ4=32, TBQ3_TCQ=16. Voice-mode policy can still force N=1
+    //   TBQ3=16, TBQ4=8, TBQ3_TCQ=32. Voice-mode policy can still force N=1
     //   at a higher scheduler layer when barge-in latency dominates.
     switch (type) {
+<<<<<<< HEAD
         case GGML_TYPE_TBQ3_0:   return eliza_env_u32("ELIZA_METAL_TBQ3_BLOCKS_PER_TG", 8u, 1u, 64u);
         case GGML_TYPE_TBQ4_0:   return eliza_env_u32("ELIZA_METAL_TBQ4_BLOCKS_PER_TG", 32u, 1u, 64u);
         case GGML_TYPE_TBQ3_TCQ: return eliza_env_u32("ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG", 16u, 1u, 64u);
+=======
+        case GGML_TYPE_TBQ3_0:   return eliza_env_u32("ELIZA_METAL_TBQ3_BLOCKS_PER_TG", 16u, 1u, 64u);
+        case GGML_TYPE_TBQ4_0:   return eliza_env_u32("ELIZA_METAL_TBQ4_BLOCKS_PER_TG", 8u, 1u, 64u);
+        case GGML_TYPE_TBQ3_TCQ: return eliza_env_u32("ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG", 32u, 1u, 64u);
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
         default: GGML_ABORT("unsupported TurboQuant attention score type");
     }
 }
@@ -1528,6 +1855,10 @@ int ggml_metal_op_attn_score_polar(ggml_metal_op_t ctx, int idx) {
         case GGML_OP_ATTN_SCORE_POLAR:
             {
                 n_fuse = ggml_metal_op_attn_score_polar(ctx, idx);
+            } break;
+        case GGML_OP_FUSED_ATTN_QJL_TBQ:
+            {
+                n_fuse = ggml_metal_op_fused_attn_qjl_tbq(ctx, idx);
             } break;`,
   );
   if (!dryRun) fs.writeFileSync(opsPath, patched, "utf8");
@@ -1544,13 +1875,50 @@ function patchMetalTbqPolarSupportsOp(cacheDir, { dryRun }) {
   );
   const original = fs.readFileSync(deviceMPath, "utf8");
   if (original.includes(SENTINEL_TBQ_POLAR_ATTN)) {
-    const patched = original.replace(
+    let patched = original.replace(
       `(op->src[1]->type == GGML_TYPE_TBQ3_0 ||
                  op->src[1]->type == GGML_TYPE_TBQ3_TCQ) &&`,
       `(op->src[1]->type == GGML_TYPE_TBQ3_0 ||
                  op->src[1]->type == GGML_TYPE_TBQ4_0 ||
                  op->src[1]->type == GGML_TYPE_TBQ3_TCQ) &&`,
     );
+    if (!patched.includes("case GGML_OP_FUSED_ATTN_QJL_TBQ:")) {
+      patched = patched.replace(
+        `        case GGML_OP_ATTN_SCORE_QJL:`,
+        `        case GGML_OP_FUSED_ATTN_QJL_TBQ:
+            {
+                const int32_t * params = (const int32_t *) op->op_params;
+                const int64_t n_kv_heads = params[0];
+                return has_simdgroup_reduction &&
+                    op->type == GGML_TYPE_F32 &&
+                    op->src[0] != NULL &&
+                    op->src[1] != NULL &&
+                    op->src[2] != NULL &&
+                    op->src[0]->type == GGML_TYPE_F32 &&
+                    op->src[1]->type == GGML_TYPE_QJL1_256 &&
+                    op->src[2]->type == GGML_TYPE_TBQ3_0 &&
+                    op->src[0]->ne[0] == 256 &&
+                    op->src[1]->ne[0] == 128 &&
+                    op->src[2]->ne[0] == 128 &&
+                    op->ne[0] == 128 &&
+                    n_kv_heads > 0 &&
+                    (op->src[0]->ne[1] % n_kv_heads) == 0 &&
+                    op->src[1]->ne[1] == op->src[2]->ne[1] &&
+                    op->src[1]->ne[2] == n_kv_heads &&
+                    op->src[2]->ne[2] == n_kv_heads &&
+                    op->src[1]->ne[3] == op->src[0]->ne[3] &&
+                    op->src[2]->ne[3] == op->src[0]->ne[3] &&
+                    op->ne[1] == op->src[0]->ne[1] &&
+                    op->ne[2] == op->src[0]->ne[2] &&
+                    op->ne[3] == op->src[0]->ne[3] &&
+                    ggml_is_contiguous_rows(op) &&
+                    ggml_is_contiguous_rows(op->src[0]) &&
+                    ggml_is_contiguous_rows(op->src[1]) &&
+                    ggml_is_contiguous_rows(op->src[2]);
+            }
+        case GGML_OP_ATTN_SCORE_QJL:`,
+      );
+    }
     if (patched !== original && !dryRun)
       fs.writeFileSync(deviceMPath, patched, "utf8");
     return { changed: patched !== original && !dryRun, path: deviceMPath };
@@ -1589,6 +1957,37 @@ function patchMetalTbqPolarSupportsOp(cacheDir, { dryRun }) {
                 ggml_is_contiguous_rows(op) &&
                 ggml_is_contiguous_rows(op->src[0]) &&
                 ggml_is_contiguous_rows(op->src[1]);
+        case GGML_OP_FUSED_ATTN_QJL_TBQ:
+            {
+                const int32_t * params = (const int32_t *) op->op_params;
+                const int64_t n_kv_heads = params[0];
+                return has_simdgroup_reduction &&
+                    op->type == GGML_TYPE_F32 &&
+                    op->src[0] != NULL &&
+                    op->src[1] != NULL &&
+                    op->src[2] != NULL &&
+                    op->src[0]->type == GGML_TYPE_F32 &&
+                    op->src[1]->type == GGML_TYPE_QJL1_256 &&
+                    op->src[2]->type == GGML_TYPE_TBQ3_0 &&
+                    op->src[0]->ne[0] == 256 &&
+                    op->src[1]->ne[0] == 128 &&
+                    op->src[2]->ne[0] == 128 &&
+                    op->ne[0] == 128 &&
+                    n_kv_heads > 0 &&
+                    (op->src[0]->ne[1] % n_kv_heads) == 0 &&
+                    op->src[1]->ne[1] == op->src[2]->ne[1] &&
+                    op->src[1]->ne[2] == n_kv_heads &&
+                    op->src[2]->ne[2] == n_kv_heads &&
+                    op->src[1]->ne[3] == op->src[0]->ne[3] &&
+                    op->src[2]->ne[3] == op->src[0]->ne[3] &&
+                    op->ne[1] == op->src[0]->ne[1] &&
+                    op->ne[2] == op->src[0]->ne[2] &&
+                    op->ne[3] == op->src[0]->ne[3] &&
+                    ggml_is_contiguous_rows(op) &&
+                    ggml_is_contiguous_rows(op->src[0]) &&
+                    ggml_is_contiguous_rows(op->src[1]) &&
+                    ggml_is_contiguous_rows(op->src[2]);
+            }
 ${anchor}`;
   const patched = original.replace(anchor, insert);
   if (!dryRun) fs.writeFileSync(deviceMPath, patched, "utf8");
@@ -1622,7 +2021,7 @@ export function patchMetalDispatch(cacheDir, { dryRun = false } = {}) {
     "[metal-dispatch] NOT wiring generic Metal GGML dispatch for eliza " +
     "QJL/Polar/TBQ kernels. The standalone kernels use bespoke attention/" +
     "projection contracts that do not match generic MUL_MAT/GET_ROWS. " +
-    "Dedicated ATTN_SCORE graph ops are required for runtime-ready bits.";
+    "Dedicated graph ops are required for runtime-ready bits.";
   if (patchedFiles.length > 0) {
     const detail =
       `${message} Found an older unsafe ELIZA-DISPATCH-V1 patch in:\n` +

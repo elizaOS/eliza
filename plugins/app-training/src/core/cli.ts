@@ -114,9 +114,19 @@ async function cmdGenerate(args: string[]) {
     },
   });
 
-  const variantsPerBlueprint = parseInt(values.variants!, 10);
-  const outputDir = values.output!;
-  const concurrency = parseInt(values.concurrency!, 10);
+  const variantsRaw = values.variants;
+  const outputDir = values.output;
+  const concurrencyRaw = values.concurrency;
+  if (
+    typeof variantsRaw !== "string" ||
+    typeof outputDir !== "string" ||
+    typeof concurrencyRaw !== "string"
+  ) {
+    throw new Error("Missing required generate options");
+  }
+
+  const variantsPerBlueprint = parseInt(variantsRaw, 10);
+  const concurrency = parseInt(concurrencyRaw, 10);
 
   const filterContexts = parseAgentContexts(values.contexts);
   const filterDecisions = parseAgentDecisions(values.decisions);
@@ -400,9 +410,13 @@ async function cmdExportTrajectories(args: string[]) {
     values.input ??
     process.env.ELIZA_TRAJECTORY_DIR ??
     join(
+<<<<<<< HEAD
       process.env.ELIZA_STATE_DIR ??
         process.env.MILADY_STATE_DIR ??
         join(homedir(), ".eliza"),
+=======
+      process.env.ELIZA_STATE_DIR ?? join(homedir(), ".eliza"),
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
       "trajectories",
     );
   const outputDir = values.output ?? "./training-data";
@@ -558,6 +572,10 @@ async function cmdRollbackPrompt(args: string[]) {
     // then ELIZA_STATE_DIR then ~/.eliza. Stay aligned so `rollback-prompt`
     // operates on the same store the runtime + train CLI write to.
     const stateDir =
+<<<<<<< HEAD
+=======
+      process.env.ELIZA_STATE_DIR?.trim() ||
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
       process.env.ELIZA_STATE_DIR?.trim() ||
       process.env.MILADY_STATE_DIR?.trim() ||
       join(homedir(), ".eliza");
@@ -634,11 +652,15 @@ Commands:
     -o, --output PATH  Write JSON result to file
     Exits with code 2 if variant regresses beyond --tolerance.
 
-  rollback-prompt   Flip the optimized-prompt 'current' and 'previous' symlinks
-    <task>            Required positional: should_respond | context_routing |
+    rollback-prompt   Flip the optimized-prompt 'current' and 'previous' symlinks
+      <task>            Required positional: should_respond | context_routing |
                       action_planner | response | media_description
     --store-root DIR  Override the optimized-prompts store root (default:
+<<<<<<< HEAD
                       $ELIZA_STATE_DIR / $MILADY_STATE_DIR / ~/.eliza/optimized-prompts)
+=======
+                      $ELIZA_STATE_DIR / ~/.eliza/optimized-prompts)
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 Environment:
   ANTHROPIC_API_KEY   Use Claude as teacher model

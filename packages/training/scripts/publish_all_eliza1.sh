@@ -21,7 +21,7 @@
 # tts/, asr/, vision/, dflash/, cache/, evals/, licenses/).
 #
 # Metal verification is hardware-only. To publish a tier that includes
-# the Metal backend (0_6b, 1_7b, 9b, 27b) you
+# the Metal backend (0_8b, 2b, 9b, 27b, 27b-256k) you
 # must record a metal_verify.json on a verified host (run
 # packages/inference/verify/metal_verify there) and pass it via
 # --metal-verification-<tier> PATH OR by placing it at
@@ -51,11 +51,12 @@
 set -euo pipefail
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+readonly SCRIPT_PATH="${SCRIPT_DIR}/$(basename "${BASH_SOURCE[0]}")"
 readonly TRAINING_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 cd "${TRAINING_ROOT}"
 
-readonly TIERS=("0_6b" "1_7b" "9b" "27b" "27b-256k")
+readonly TIERS=("0_8b" "2b" "9b" "27b" "27b-256k" "27b-1m")
 
 DRY_RUN=0
 PUBLIC=0
@@ -67,9 +68,14 @@ METAL_PATH_1_7B=""
 METAL_PATH_9B=""
 METAL_PATH_27B=""
 METAL_PATH_27B_256K=""
+METAL_PATH_27B_1M=""
 
 usage() {
+<<<<<<< HEAD
   sed -n '2,49p' "$0" | sed 's/^# \?//'
+=======
+  sed -n '2,40{s/^# //;s/^#//;p;}' "${SCRIPT_PATH}"
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 }
 
 while [[ $# -gt 0 ]]; do
@@ -80,11 +86,12 @@ while [[ $# -gt 0 ]]; do
     --release-channel)    RELEASE_CHANNEL="$2"; shift 2 ;;
     --filter-tier)        FILTER_TIER="$2"; shift 2 ;;
     --bundles-root)       BUNDLES_ROOT="$2"; shift 2 ;;
-    --metal-verification-0_6b)    METAL_PATH_0_6B="$2"; shift 2 ;;
-    --metal-verification-1_7b)    METAL_PATH_1_7B="$2"; shift 2 ;;
+    --metal-verification-0_8b)    METAL_PATH_0_6B="$2"; shift 2 ;;
+    --metal-verification-2b)    METAL_PATH_1_7B="$2"; shift 2 ;;
     --metal-verification-9b)      METAL_PATH_9B="$2"; shift 2 ;;
     --metal-verification-27b)     METAL_PATH_27B="$2"; shift 2 ;;
     --metal-verification-27b-256k) METAL_PATH_27B_256K="$2"; shift 2 ;;
+    --metal-verification-27b-1m)  METAL_PATH_27B_1M="$2"; shift 2 ;;
     -h|--help)            usage; exit 0 ;;
     *)
       echo "unknown arg: $1" >&2
@@ -125,11 +132,12 @@ RESULTS=()
 
 metal_path_for_tier() {
   case "$1" in
-    0_6b)      printf '%s' "${METAL_PATH_0_6B}" ;;
-    1_7b)      printf '%s' "${METAL_PATH_1_7B}" ;;
+    0_8b)      printf '%s' "${METAL_PATH_0_6B}" ;;
+    2b)      printf '%s' "${METAL_PATH_1_7B}" ;;
     9b)        printf '%s' "${METAL_PATH_9B}" ;;
     27b)       printf '%s' "${METAL_PATH_27B}" ;;
     27b-256k)  printf '%s' "${METAL_PATH_27B_256K}" ;;
+    27b-1m)    printf '%s' "${METAL_PATH_27B_1M}" ;;
     *)         printf '%s' "" ;;
   esac
 }

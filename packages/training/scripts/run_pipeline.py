@@ -22,13 +22,13 @@ Stages (skippable individually; see flags):
 Usage:
     # Validation smoke on the smallest Eliza-1 size, tiny 1k-per-source mix.
     uv run --extra train python scripts/run_pipeline.py \
-        --registry-key qwen3-0.6b \
+        --registry-key qwen3.5-0.8b \
         --from-scratch --sample-per-source 1000 \
         --epochs 1 --eval-mode smoke
 
     # Only build the validation dataset (skip everything else).
     uv run python scripts/run_pipeline.py \
-        --registry-key qwen3-0.6b --from-scratch --sample-per-source 1000 \
+        --registry-key qwen3.5-0.8b --from-scratch --sample-per-source 1000 \
         --skip-base-bench --skip-finetune --skip-quantize --skip-bench
 
     # Production run on eliza-1-2b.
@@ -40,8 +40,8 @@ Usage:
         --registry-key eliza-1-2b \
         --trajectory-export ../trajectories/export.jsonl --epochs 1
 
-    # Cloud-tier run on eliza-1-27b — needs 2× H200 SXM,
-    # use scripts/train_nebius.sh which wraps run_pipeline.py with FSDP.
+    # Cloud-tier run on eliza-1-27b — needs 2× H200 SXM;
+    # use scripts/train_vast.sh which wraps run_pipeline.py with FSDP.
 """
 
 from __future__ import annotations
@@ -187,9 +187,8 @@ def _throughput_bench(gguf: Path, bench_bin: Path, *, gpu: bool) -> dict | None:
 def _format_ok_rate(summary: dict | None) -> float | None:
     """Extract a 0..1 parsable-output rate from a benchmark summary.json.
 
-    Handles both benchmark scripts:
+    Handles the native tool-call benchmark:
       - native_tool_call_bench.py: buckets[*].{structure_ok,n}
-      - eliza_bench.py:            buckets[*].{format_ok,n}
     Returns the micro-averaged rate over all buckets, or None when there
     are no scored records.
     """
@@ -206,8 +205,6 @@ def _format_ok_rate(summary: dict | None) -> float | None:
             continue
         ok = b.get("structure_ok")
         if ok is None:
-            ok = b.get("format_ok")
-        if ok is None:
             continue
         num += int(ok)
         den += n
@@ -219,7 +216,7 @@ def _format_ok_rate(summary: dict | None) -> float | None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--registry-key", required=True,
-                    help="One of: qwen3-0.6b, eliza-1-2b, eliza-1-9b, "
+                    help="One of: qwen3.5-0.8b, eliza-1-2b, eliza-1-9b, "
                          "eliza-1-27b. Internal upstream keys are aliases.")
     ap.add_argument("--run-name", default=None,
                     help="Default: <registry-key>-apollo-<unix-ts>.")
@@ -228,7 +225,7 @@ def main() -> int:
         "--lr", type=float, default=1e-5,
         help="Learning rate for full-parameter SFT with APOLLO. Default "
              "1e-5 follows the APOLLO paper §5 SFT recipe — train_local.py's "
-             "own default of 2e-4 is the LoRA rate and would diverge here.",
+             "own default of 2e-4 is for short local smoke runs and would diverge here.",
     )
     ap.add_argument(
         "--use-liger", choices=("auto", "on", "off"), default="auto",
@@ -378,7 +375,7 @@ def main() -> int:
     if not entry.can_train_locally and not args.skip_finetune:
         raise SystemExit(
             f"{entry.public_name} (tier={entry.tier.value}) cannot train locally. "
-            f"Use train_nebius.sh or pass --skip-finetune."
+            f"Use train_vast.sh or pass --skip-finetune."
         )
 
     tier_id = normalize_tier(entry.public_name)
@@ -515,7 +512,7 @@ def main() -> int:
     finetuned_model = ckpt_dir / "final"
 
     def _bench(model: str, out_sub: str) -> dict[str, int]:
-        """Run both benchmark scripts against `model` into benchmarks/<run>/<out_sub>/."""
+        """Run the native tool-call benchmark into benchmarks/<run>/<out_sub>/."""
         out_base = bench_dir / out_sub
         rc_native = run([
             "uv", "run", "--extra", "train", "python",
@@ -525,22 +522,11 @@ def main() -> int:
             "--out-dir", str(out_base / "native_tool_call"),
             "--max-per-bucket", str(args.bench_per_bucket),
         ], cwd=ROOT)
-        rc_eliza = run([
-            "uv", "run", "--extra", "train", "python",
-            "scripts/benchmark/eliza_bench.py",
-            "--model", model,
-            "--test-file", str(test_file),
-            "--out-dir", str(out_base / "eliza_bench"),
-            "--max-per-bucket", str(args.bench_per_bucket),
-        ], cwd=ROOT)
-        return {"native_tool_call": rc_native, "eliza_bench": rc_eliza}
+        return {"native_tool_call": rc_native}
 
     def _bench_format_ok(out_sub: str) -> float | None:
         out_base = bench_dir / out_sub
-        rate = _format_ok_rate(_read_json(out_base / "native_tool_call" / "summary.json"))
-        if rate is None:
-            rate = _format_ok_rate(_read_json(out_base / "eliza_bench" / "summary.json"))
-        return rate
+        return _format_ok_rate(_read_json(out_base / "native_tool_call" / "summary.json"))
 
     # ───────────── stage 1: base benchmark ─────────────────────────────
     if not args.skip_base_bench and not args.skip_bench:
@@ -601,10 +587,8 @@ def main() -> int:
         "mode": args.eval_mode,
         "results": results,
         "benchmarks": {
-            "base": _read_json(bench_dir / "base" / "native_tool_call" / "summary.json")
-                    or _read_json(bench_dir / "base" / "eliza_bench" / "summary.json"),
-            "finetuned": _read_json(bench_dir / "finetuned" / "native_tool_call" / "summary.json")
-                         or _read_json(bench_dir / "finetuned" / "eliza_bench" / "summary.json"),
+            "base": _read_json(bench_dir / "base" / "native_tool_call" / "summary.json"),
+            "finetuned": _read_json(bench_dir / "finetuned" / "native_tool_call" / "summary.json"),
         },
         "run_name": run_name,
         "model": entry.hf_id,

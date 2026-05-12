@@ -1,0 +1,20 @@
+[
+  {
+    "article_id": "KB-701",
+    "title": "New Employee Onboarding Checklist",
+    "category": "HR",
+    "tags": ["onboarding", "new employee", "process"],
+    "content": "# New Employee Onboarding Checklist\n\n## Pre-Arrival Preparation\n1. IT equipment request (3 days before start date)\n2. Workstation assignment\n3. System account creation\n4. Department manager notification\n\n## Day of Arrival\n1. HR reception (9:00)\n2. Onboarding training (10:00-12:00)\n3. Department introduction (14:00)\n4. IT equipment pickup\n\n## Security Requirements\n- Positions requiring database access must pass a security clearance review\n- Security clearance is handled by the Security department, typically takes 1-2 business days\n\n## Special Cases\n- Equipment out of stock: Register the request, prioritize allocation upon arrival\n- No department manager: Save the onboarding notification as a draft, HR will coordinate directly",
+    "last_updated": "2026-02-20",
+    "views": 2345
+  },
+  {
+    "article_id": "KB-702",
+    "title": "IT Equipment Request Process",
+    "category": "IT",
+    "tags": ["equipment", "request", "IT"],
+    "content": "# IT Equipment Request Process\n\n## Request Steps\n1. Log in to OA system → Asset Management → Equipment Request\n2. Fill out the request form (requires department manager approval)\n3. IT department reviews and processes within 2 business days\n4. Notification sent when equipment is ready for pickup\n\n## Standard Configurations\n- Development roles: MacBook Pro 14-inch + external monitor\n- Non-development roles: MacBook Air or ThinkPad\n- Data/AI roles: High-performance workstation (requires additional approval)\n\n## Out-of-Stock Handling\n- Out-of-stock equipment is added to the waitlist\n- Allocated in order of request date upon arrival\n- Temporary loaner equipment may be requested during the shortage\n\n## Important Notes\n- New employee equipment must be requested 3 days before the start date\n- Special configurations require additional approval from department director\n- All IT equipment must be returned upon departure",
+    "last_updated": "2026-02-15",
+    "views": 1876
+  }
+]

@@ -1,17 +1,9 @@
 import { EventEmitter } from "node:events";
 import { pipeline, Readable, type Transform } from "node:stream";
-import {
-	type AudioPlayer,
-	type AudioReceiveStream,
-	createAudioPlayer,
-	createAudioResource,
-	entersState,
-	getVoiceConnections,
-	joinVoiceChannel,
-	NoSubscriberBehavior,
-	StreamType,
-	type VoiceConnection,
-	VoiceConnectionStatus,
+import type {
+	AudioPlayer,
+	AudioReceiveStream,
+	VoiceConnection,
 } from "@discordjs/voice";
 import {
 	ChannelType,
@@ -48,6 +40,33 @@ import { getMessageService, normalizeDiscordMessageText } from "./utils";
 const DECODE_FRAME_SIZE = 1024;
 const DECODE_SAMPLE_RATE = 16000;
 
+type DiscordVoiceModule = typeof import("@discordjs/voice");
+
+let discordVoiceModulePromise: Promise<DiscordVoiceModule> | null = null;
+
+class DiscordVoiceUnavailableError extends Error {
+	override cause: unknown;
+
+	constructor(cause: unknown) {
+		const causeMessage =
+			cause instanceof Error ? cause.message : String(cause ?? "unknown error");
+		super(`Discord voice support is unavailable: ${causeMessage}`);
+		this.name = "DiscordVoiceUnavailableError";
+		this.cause = cause;
+	}
+}
+
+export async function loadDiscordVoiceModule(): Promise<DiscordVoiceModule> {
+	if (!discordVoiceModulePromise) {
+		discordVoiceModulePromise = import("@discordjs/voice").catch((error) => {
+			discordVoiceModulePromise = null;
+			throw new DiscordVoiceUnavailableError(error);
+		});
+	}
+
+	return discordVoiceModulePromise;
+}
+
 /**
  * Creates an opus decoder with fallback handling for different opus libraries
  * @param options - Decoder options including channels, rate, and frameSize
@@ -72,25 +91,26 @@ function createOpusDecoder(options: {
 		);
 
 		// Log available opus libraries for debugging
-		try {
-			const { generateDependencyReport } = require("@discordjs/voice");
-			const report = generateDependencyReport();
-			logger.debug(
-				{ src: "plugin:discord:service:voice", report },
-				"Voice dependency report",
-			);
-		} catch (reportError) {
-			logger.warn(
-				{
-					src: "plugin:discord:service:voice",
-					error:
-						reportError instanceof Error
-							? reportError.message
-							: String(reportError),
-				},
-				"Could not generate dependency report",
-			);
-		}
+		void loadDiscordVoiceModule()
+			.then(({ generateDependencyReport }) => {
+				const report = generateDependencyReport();
+				logger.debug(
+					{ src: "plugin:discord:service:voice", report },
+					"Voice dependency report",
+				);
+			})
+			.catch((reportError) => {
+				logger.warn(
+					{
+						src: "plugin:discord:service:voice",
+						error:
+							reportError instanceof Error
+								? reportError.message
+								: String(reportError),
+					},
+					"Could not generate dependency report",
+				);
+			});
 
 		throw error;
 	}
@@ -475,6 +495,8 @@ export class VoiceManager extends EventEmitter {
 			}
 		}
 
+		const { entersState, joinVoiceChannel, VoiceConnectionStatus } =
+			await loadDiscordVoiceModule();
 		const connection = joinVoiceChannel({
 			channelId: channel.id,
 			guildId: channel.guild.id,
@@ -662,23 +684,9 @@ export class VoiceManager extends EventEmitter {
 	 * @returns {VoiceConnection | undefined} The voice connection for the specified guild ID, or undefined if not found.
 	 */
 	getVoiceConnection(guildId: string) {
-		const clientUser = this.client?.user;
-		const userId = clientUser?.id;
-		if (!userId) {
-			this.runtime.logger.error(
-				{ src: "plugin:discord:service:voice", agentId: this.runtime.agentId },
-				"Client user ID not available",
-			);
-			return undefined;
-		}
-		const connections = getVoiceConnections(userId);
-		if (!connections) {
-			return;
-		}
-		const connection = [...connections.values()].find(
+		return [...new Set(this.connections.values())].find(
 			(connection) => connection.joinConfig.guildId === guildId,
 		);
-		return connection;
 	}
 
 	/**
@@ -1444,6 +1452,12 @@ export class VoiceManager extends EventEmitter {
 			return;
 		}
 		this.cleanupAudioPlayer(this.activeAudioPlayer);
+		const {
+			createAudioPlayer,
+			createAudioResource,
+			NoSubscriberBehavior,
+			StreamType,
+		} = await loadDiscordVoiceModule();
 		const audioPlayer = createAudioPlayer({
 			behaviors: {
 				noSubscriber: NoSubscriberBehavior.Pause,

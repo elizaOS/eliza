@@ -1,4 +1,5 @@
 /**
+<<<<<<< HEAD
  * Mirror legacy MILADY_* env vars into ELIZA_* so `eliza/packages` only reads ELIZA_*.
  * Call once after loading `.env.worktree` / dotenv and before resolving ports or spawning children.
  */
@@ -26,6 +27,13 @@ export function syncElizaEnvAliases() {
     ["MILADY_TASK_AGENT_AUTH_API_BASE_URL"],
     ["MILADY_PORT", "ELIZA_UI_PORT"],
   ];
+=======
+ * Normalize local app env aliases before resolving ports or spawning children.
+ * Call once after loading `.env.worktree` / dotenv.
+ */
+export function syncElizaEnvAliases() {
+  const pairs = [["ELIZA_PORT", "ELIZA_UI_PORT"]];
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   for (const [from, to] of pairs) {
     if (!to) continue;
     if (!process.env[to] && process.env[from]) {

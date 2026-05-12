@@ -32,8 +32,10 @@ import {
   type ApplyConversationMessageCompactionResult,
   applyConversationCompaction,
   applyConversationMessageCompaction,
+  getConversationCompactionLedger,
   type StrategyName,
   selectStrategyFromEnv,
+  setConversationCompactionLedger,
 } from "./conversation-compactor-runtime.ts";
 import {
   compactActionsForIntent,
@@ -712,6 +714,48 @@ function providerOptionsWithPromptOptimization(
   return providerOptions;
 }
 
+function getNestedString(
+  record: Record<string, unknown>,
+  pathParts: readonly string[],
+): string | null {
+  let cursor: unknown = record;
+  for (const part of pathParts) {
+    if (!cursor || typeof cursor !== "object" || Array.isArray(cursor)) {
+      return null;
+    }
+    cursor = (cursor as Record<string, unknown>)[part];
+  }
+  return typeof cursor === "string" && cursor.trim().length > 0
+    ? cursor.trim()
+    : null;
+}
+
+function resolveConversationCompactionKey(
+  payloadRecord: Record<string, unknown>,
+  renderedPrompt: string,
+): string | undefined {
+  const candidates = [
+    getNestedString(payloadRecord, ["roomId"]),
+    getNestedString(payloadRecord, ["providerOptions", "eliza", "roomId"]),
+    getNestedString(payloadRecord, ["providerOptions", "roomId"]),
+    getNestedString(payloadRecord, ["metadata", "roomId"]),
+    getNestedString(payloadRecord, [
+      "providerOptions",
+      "eliza",
+      "conversationId",
+    ]),
+    getNestedString(payloadRecord, ["providerOptions", "conversationId"]),
+    getNestedString(payloadRecord, ["conversationId"]),
+    getNestedString(payloadRecord, ["metadata", "conversationId"]),
+  ];
+  for (const candidate of candidates) {
+    if (candidate) return candidate;
+  }
+  const sessionMatch = renderedPrompt.match(/^Session:\s*([^\n]+)/im);
+  const sessionKey = sessionMatch?.[1]?.trim();
+  return sessionKey && sessionKey.length > 0 ? sessionKey : undefined;
+}
+
 function isModelUsedEvent(event: unknown): boolean {
   if (event === EventType.MODEL_USED || event === "MODEL_USED") {
     return true;
@@ -1063,8 +1107,19 @@ export async function maybeApplyConversationCompaction(
   prompt: string,
   budgetTokens: number,
   callModel: CompactorModelCall,
-  onResult?: (result: ApplyConversationCompactionResult) => void,
+  conversationKeyOrOnResult?:
+    | string
+    | ((result: ApplyConversationCompactionResult) => void),
+  maybeOnResult?: (result: ApplyConversationCompactionResult) => void,
 ): Promise<string> {
+  const conversationKey =
+    typeof conversationKeyOrOnResult === "string"
+      ? conversationKeyOrOnResult
+      : undefined;
+  const onResult =
+    typeof conversationKeyOrOnResult === "function"
+      ? conversationKeyOrOnResult
+      : maybeOnResult;
   let strategy: StrategyName | null;
   try {
     strategy = resolveConversationCompactionStrategy();
@@ -1076,6 +1131,10 @@ export async function maybeApplyConversationCompaction(
 
   const currentTokens = estimateTokenCount(prompt);
   if (currentTokens <= budgetTokens) return prompt;
+  const priorLedger = await getConversationCompactionLedger(
+    runtime,
+    conversationKey,
+  );
 
   const result = await applyConversationCompaction({
     prompt,
@@ -1084,9 +1143,23 @@ export async function maybeApplyConversationCompaction(
     targetTokens: budgetTokens,
     callModel,
     runtime,
+    metadata: {
+      ...(conversationKey ? { conversationKey } : {}),
+      ...(priorLedger ? { priorLedger } : {}),
+    },
   });
   onResult?.(result);
   if (!result.didCompact) return prompt;
+
+  const renderedLedger = result.artifact?.stats.extra?.renderedLedger;
+  if (typeof renderedLedger === "string" && renderedLedger.trim().length > 0) {
+    await setConversationCompactionLedger(
+      runtime,
+      conversationKey,
+      renderedLedger,
+      { strategy, source: "runtime-prompt" },
+    );
+  }
 
   runtime.logger?.info?.(
     `[eliza] conversation-compaction strategy=${strategy} originalTokens=${result.originalTokens} compactedTokens=${result.compactedTokens} latencyMs=${result.latencyMs}`,
@@ -1099,8 +1172,19 @@ export async function maybeApplyConversationMessageCompaction(
   messages: CompactorMessage[],
   budgetTokens: number,
   callModel: CompactorModelCall,
-  onResult?: (result: ApplyConversationMessageCompactionResult) => void,
+  conversationKeyOrOnResult?:
+    | string
+    | ((result: ApplyConversationMessageCompactionResult) => void),
+  maybeOnResult?: (result: ApplyConversationMessageCompactionResult) => void,
 ): Promise<CompactorMessage[]> {
+  const conversationKey =
+    typeof conversationKeyOrOnResult === "string"
+      ? conversationKeyOrOnResult
+      : undefined;
+  const onResult =
+    typeof conversationKeyOrOnResult === "function"
+      ? conversationKeyOrOnResult
+      : maybeOnResult;
   let strategy: StrategyName | null;
   try {
     strategy = resolveConversationCompactionStrategy();
@@ -1113,6 +1197,10 @@ export async function maybeApplyConversationMessageCompaction(
   const rendered = renderMessagesForTelemetry(messages);
   const currentTokens = estimateTokenCount(rendered);
   if (currentTokens <= budgetTokens) return messages;
+  const priorLedger = await getConversationCompactionLedger(
+    runtime,
+    conversationKey,
+  );
 
   const result = await applyConversationMessageCompaction({
     messages,
@@ -1120,9 +1208,23 @@ export async function maybeApplyConversationMessageCompaction(
     currentTokens,
     targetTokens: budgetTokens,
     callModel,
+    metadata: {
+      ...(conversationKey ? { conversationKey } : {}),
+      ...(priorLedger ? { priorLedger } : {}),
+    },
   });
   onResult?.(result);
   if (!result.didCompact) return messages;
+
+  const renderedLedger = result.artifact?.stats.extra?.renderedLedger;
+  if (typeof renderedLedger === "string" && renderedLedger.trim().length > 0) {
+    await setConversationCompactionLedger(
+      runtime,
+      conversationKey,
+      renderedLedger,
+      { strategy, source: "runtime-messages" },
+    );
+  }
 
   runtime.logger?.info?.(
     `[eliza] conversation-message-compaction strategy=${strategy} originalTokens=${result.originalTokens} compactedTokens=${result.compactedTokens} latencyMs=${result.latencyMs}`,
@@ -1393,6 +1495,10 @@ export function installPromptOptimizations(
       promptOptimizationTelemetry.budgetTokens = budget.promptBudgetTokens;
       promptOptimizationTelemetry.outputReserveTokens =
         budget.outputReserveTokens;
+      const conversationCompactionKey = resolveConversationCompactionKey(
+        promptRecord,
+        promptKey ? nextPrompt : renderMessagesForTelemetry(nextMessages ?? []),
+      );
 
       if (promptKey) {
         // Conversation-level compaction (opt-in via env). Runs before the
@@ -1407,6 +1513,7 @@ export function installPromptOptimizations(
             nextPrompt,
             budget.promptBudgetTokens,
             buildRuntimeCompactorModelCall(runtime, originalUseModel),
+            conversationCompactionKey,
             (result) => {
               const { prompt: _prompt, ...rest } = result;
               promptOptimizationTelemetry.conversationCompaction = rest;
@@ -1454,6 +1561,7 @@ export function installPromptOptimizations(
             nextMessages,
             budget.promptBudgetTokens,
             buildRuntimeCompactorModelCall(runtime, originalUseModel),
+            conversationCompactionKey,
             (result) => {
               const { messages: _messages, ...rest } = result;
               promptOptimizationTelemetry.conversationCompaction = rest;

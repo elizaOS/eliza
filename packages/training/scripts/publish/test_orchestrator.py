@@ -27,6 +27,7 @@ if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
 
 from scripts.publish.orchestrator import (  # noqa: E402
+    EXIT_BUNDLE_LAYOUT_FAIL,
     EXIT_EVAL_GATE_FAIL,
     EXIT_KERNEL_VERIFY_FAIL,
     EXIT_MISSING_FILE,
@@ -73,8 +74,13 @@ def _passing_eval_blob(tier: str = "9b") -> dict[str, Any]:
             "voice_rtf": 0.32,
             "asr_wer": 0.05,
             "vad_latency_ms": 14.0,
+<<<<<<< HEAD
             "vad_boundary_mae_ms": 22.0,
             "vad_endpoint_p95_ms": 480.0,
+=======
+            "vad_boundary_mae_ms": 30.0,
+            "vad_endpoint_p95_ms": 500.0,
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
             "vad_false_bargein_per_hour": 0.05,
             "first_token_latency_ms": 145,
             "first_audio_latency_ms": 280,
@@ -82,6 +88,7 @@ def _passing_eval_blob(tier: str = "9b") -> dict[str, Any]:
             "thirty_turn_ok": True,
             "e2e_loop_ok": True,
             "dflash_acceptance": 0.71,
+            "dflash_speedup": 1.8,
             "expressive_tag_faithfulness": 0.90,
             "expressive_mos": 4.10,
             "expressive_tag_leakage": 0.01,
@@ -95,6 +102,7 @@ def _build_fixture_bundle(
     *,
     eval_blob: dict[str, Any] | None = None,
     skip_license: str | None = None,
+    release_state: str = "upload-candidate",
 ) -> Path:
     bundle = tmp_path / f"bundle-{tier}"
 
@@ -114,23 +122,39 @@ def _build_fixture_bundle(
     )
     _write(bundle / "cache" / "voice-preset-default.bin", b"\x00cache\x00")
 
-    kernel_manifest = {
-        "kernel_target": ["stub"],
-        "block_layout_version": {"stub": "v1"},
-        "codebook_hash": {"stub": "hash"},
-        "per_block_tolerance": {"stub": 0.01},
-    }
+    def kernel_manifest(*targets: str) -> dict[str, Any]:
+        return {
+            "kernel_target": list(targets),
+            "block_layout_version": {target: "v1" for target in targets},
+            "codebook_hash": {target: f"{target}-hash" for target in targets},
+            "per_block_tolerance": {target: 0.01 for target in targets},
+        }
+
     _write(
         bundle / "quantization" / "turboquant.json",
-        json.dumps({"method": "turboquant", "kernel_manifest": kernel_manifest}),
+        json.dumps(
+            {
+                "method": "turboquant",
+                "kernel_manifest": kernel_manifest("turbo3", "turbo4", "turbo3_tcq"),
+            }
+        ),
+    )
+    _write(
+        bundle / "quantization" / "fused_turboquant.json",
+        json.dumps(
+            {
+                "method": "fused-turboquant",
+                "kernel_manifest": kernel_manifest("turbo3", "turbo4", "turbo3_tcq"),
+            }
+        ),
     )
     _write(
         bundle / "quantization" / "qjl_config.json",
-        json.dumps({"method": "qjl", "kernel_manifest": kernel_manifest}),
+        json.dumps({"method": "qjl", "kernel_manifest": kernel_manifest("qjl1_256")}),
     )
     _write(
         bundle / "quantization" / "polarquant_config.json",
-        json.dumps({"method": "polarquant", "kernel_manifest": kernel_manifest}),
+        json.dumps({"method": "polarquant", "kernel_manifest": kernel_manifest("polar_q4")}),
     )
 
     # Licenses — written with the real attestation generator so the
@@ -150,6 +174,20 @@ def _build_fixture_bundle(
     _write(
         bundle / "evals" / "aggregate.json",
         json.dumps(blob, indent=2),
+    )
+    _write(
+        bundle / "evals" / "dflash-accept.json",
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "metric": "dflash_acceptance",
+                "status": "ok",
+                "acceptanceRate": 0.71,
+                "speedup": 1.8,
+                "passed": True,
+            },
+            indent=2,
+        ),
     )
     _write(
         bundle / "evals" / "vulkan_verify.json",
@@ -225,6 +263,7 @@ def _build_fixture_bundle(
         "linux-x64-vulkan",
         "android-adreno-vulkan",
         "android-mali-vulkan",
+        "linux-aarch64-cuda",
         "linux-x64-cuda",
         "linux-x64-rocm",
         "windows-x64-cuda",
@@ -269,82 +308,101 @@ def _build_fixture_bundle(
         json.dumps({"min": 7000, "recommended": 9500}),
     )
     _write(bundle / "VERSION", "1.0.0\n")
-    _write_release_evidence(bundle, tier)
+    _write_release_evidence(bundle, tier, release_state=release_state)
     _write_checksums(bundle)
 
     return bundle
 
 
-def _write_release_evidence(bundle: Path, tier: str = "9b") -> None:
+def _source_models() -> dict[str, dict[str, str]]:
+    return {
+        "text": {"repo": "unsloth/Qwen3.5-9B-GGUF", "file": "text.gguf"},
+        "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
+        "drafter": {"repo": "elizaos/eliza-1-9b-drafter"},
+        "asr": {"repo": "ggml-org/Qwen3-ASR-0.8B-GGUF"},
+        "vad": {"repo": "ggml-org/whisper-vad"},
+        "vision": {"repo": "unsloth/Qwen3.5-9B-GGUF", "file": "mmproj.gguf"},
+    }
+
+
+def _write_release_evidence(
+    bundle: Path,
+    tier: str = "9b",
+    *,
+    release_state: str = "upload-candidate",
+) -> None:
     def rels(subdir: str) -> list[str]:
         base = bundle / subdir
         return sorted(str(p.relative_to(bundle)) for p in base.iterdir() if p.is_file())
 
+    evidence: dict[str, Any] = {
+        "schemaVersion": 1,
+        "tier": tier,
+        "repoId": f"elizaos/eliza-1-{tier}",
+        "releaseState": release_state,
+        "final": {
+            "weights": True,
+            "hashes": True,
+            "evals": True,
+            "licenses": True,
+            "kernelDispatchReports": True,
+            "platformEvidence": True,
+            "sizeFirstRepoIds": True,
+        },
+        "weights": [
+            *rels("text"),
+            *rels("tts"),
+            *rels("asr"),
+            *rels("vad"),
+            *rels("vision"),
+            *rels("dflash"),
+        ],
+        "checksumManifest": "checksums/SHA256SUMS",
+        "evalReports": rels("evals"),
+        "licenseFiles": [
+            "licenses/LICENSE.text",
+            "licenses/LICENSE.voice",
+            "licenses/LICENSE.dflash",
+            "licenses/LICENSE.eliza-1",
+            "licenses/LICENSE.asr",
+            "licenses/LICENSE.vision",
+            "licenses/LICENSE.vad",
+        ],
+        "kernelDispatchReports": {
+            "metal": "evals/metal_dispatch.json",
+            "vulkan": "evals/vulkan_dispatch.json",
+            "cuda": "evals/cuda_dispatch.json",
+            "rocm": "evals/rocm_dispatch.json",
+            "cpu": "evals/cpu_dispatch.json",
+        },
+        "platformEvidence": {
+            "darwin-arm64-metal": "evidence/platform/darwin-arm64-metal.json",
+            "ios-arm64-metal": "evidence/platform/ios-arm64-metal.json",
+            "linux-x64-vulkan": "evidence/platform/linux-x64-vulkan.json",
+            "android-adreno-vulkan": "evidence/platform/android-adreno-vulkan.json",
+            "android-mali-vulkan": "evidence/platform/android-mali-vulkan.json",
+            "linux-aarch64-cuda": "evidence/platform/linux-aarch64-cuda.json",
+            "linux-x64-cuda": "evidence/platform/linux-x64-cuda.json",
+            "linux-x64-rocm": "evidence/platform/linux-x64-rocm.json",
+            "windows-x64-cuda": "evidence/platform/windows-x64-cuda.json",
+            "windows-x64-vulkan": "evidence/platform/windows-x64-vulkan.json",
+            "linux-x64-cpu": "evidence/platform/linux-x64-cpu.json",
+            "windows-x64-cpu": "evidence/platform/windows-x64-cpu.json",
+            "windows-arm64-cpu": "evidence/platform/windows-arm64-cpu.json",
+            "windows-arm64-vulkan": "evidence/platform/windows-arm64-vulkan.json",
+        },
+        "hf": {
+            "repoId": f"elizaos/eliza-1-{tier}",
+            "status": "pending-upload",
+        },
+    }
+    if release_state == "base-v1":
+        evidence["finetuned"] = False
+        evidence["sourceModels"] = _source_models()
+
     _write(
         bundle / "evidence" / "release.json",
-        json.dumps(
-            {
-                "schemaVersion": 1,
-                "tier": tier,
-                "repoId": f"elizaos/eliza-1-{tier}",
-                "releaseState": "upload-candidate",
-                "final": {
-                    "weights": True,
-                    "hashes": True,
-                    "evals": True,
-                    "licenses": True,
-                    "kernelDispatchReports": True,
-                    "platformEvidence": True,
-                    "sizeFirstRepoIds": True,
-                },
-                "weights": [
-                    *rels("text"),
-                    *rels("tts"),
-                    *rels("asr"),
-                    *rels("vad"),
-                    *rels("vision"),
-                    *rels("dflash"),
-                ],
-                "checksumManifest": "checksums/SHA256SUMS",
-                "evalReports": ["evals/aggregate.json"],
-                "licenseFiles": [
-                    "licenses/LICENSE.text",
-                    "licenses/LICENSE.voice",
-                    "licenses/LICENSE.dflash",
-                    "licenses/LICENSE.eliza-1",
-                    "licenses/LICENSE.asr",
-                    "licenses/LICENSE.vision",
-                    "licenses/LICENSE.vad",
-                ],
-                "kernelDispatchReports": {
-                    "metal": "evals/metal_dispatch.json",
-                    "vulkan": "evals/vulkan_dispatch.json",
-                    "cuda": "evals/cuda_dispatch.json",
-                    "rocm": "evals/rocm_dispatch.json",
-                    "cpu": "evals/cpu_dispatch.json",
-                },
-                "platformEvidence": {
-                    "darwin-arm64-metal": "evidence/platform/darwin-arm64-metal.json",
-                    "ios-arm64-metal": "evidence/platform/ios-arm64-metal.json",
-                    "linux-x64-vulkan": "evidence/platform/linux-x64-vulkan.json",
-                    "android-adreno-vulkan": "evidence/platform/android-adreno-vulkan.json",
-                    "android-mali-vulkan": "evidence/platform/android-mali-vulkan.json",
-                    "linux-x64-cuda": "evidence/platform/linux-x64-cuda.json",
-                    "linux-x64-rocm": "evidence/platform/linux-x64-rocm.json",
-                    "windows-x64-cuda": "evidence/platform/windows-x64-cuda.json",
-                    "windows-x64-vulkan": "evidence/platform/windows-x64-vulkan.json",
-                    "linux-x64-cpu": "evidence/platform/linux-x64-cpu.json",
-                    "windows-x64-cpu": "evidence/platform/windows-x64-cpu.json",
-                    "windows-arm64-cpu": "evidence/platform/windows-arm64-cpu.json",
-                    "windows-arm64-vulkan": "evidence/platform/windows-arm64-vulkan.json",
-                },
-                "hf": {
-                    "repoId": f"elizaos/eliza-1-{tier}",
-                    "status": "pending-upload",
-                },
-            },
-            indent=2,
-        ),
+        json.dumps(evidence, indent=2),
     )
 
 
@@ -444,6 +502,11 @@ def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
     manifest = json.loads(manifest_path.read_text())
     assert manifest["tier"] == "9b"
     assert manifest["defaultEligible"] is True
+    assert manifest["evals"]["dflash"] == {
+        "acceptanceRate": 0.71,
+        "speedup": 1.8,
+        "passed": True,
+    }
     assert manifest["voice"]["frozen"] is True
     assert manifest["voice"]["capabilities"] == ["tts", "emotion-tags", "singing"]
     assert manifest["voice"]["cache"]["speakerPreset"] == "cache/voice-preset-default.bin"
@@ -460,6 +523,36 @@ def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
     # Manifest preview was printed in dry-run.
     log_text = caplog.text
     assert "manifest preview" in log_text
+
+
+def test_dry_run_succeeds_for_27b_1m_without_metal_report(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path, tier="27b-1m")
+
+    rc = run(_ctx("27b-1m", bundle, metal=None, dry_run=True))
+
+    assert rc == EXIT_OK
+    manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
+    assert manifest["tier"] == "27b-1m"
+    assert manifest["kernels"]["verifiedBackends"]["cuda"]["status"] == "pass"
+    assert manifest["kernels"]["verifiedBackends"]["metal"]["status"] == "skipped"
+
+
+def test_dflash_eval_can_read_speedup_from_bench_report(tmp_path: Path) -> None:
+    blob = _passing_eval_blob()
+    blob["results"].pop("dflash_speedup")
+    bundle = _build_fixture_bundle(tmp_path, eval_blob=blob)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_OK
+    manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
+    assert manifest["defaultEligible"] is True
+    assert manifest["evals"]["dflash"] == {
+        "acceptanceRate": 0.71,
+        "speedup": 1.8,
+        "passed": True,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -500,6 +593,30 @@ def test_missing_quantization_sidecar_fails(tmp_path: Path) -> None:
     assert rc == EXIT_MISSING_FILE
 
 
+def test_missing_fused_turboquant_sidecar_fails(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "quantization" / "fused_turboquant.json").unlink()
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_MISSING_FILE
+
+
+def test_quantization_sidecar_must_target_expected_kernel_family(
+    tmp_path: Path,
+) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    sidecar = bundle / "quantization" / "polarquant_config.json"
+    data = json.loads(sidecar.read_text())
+    data["kernel_manifest"]["kernel_target"] = ["turbo3"]
+    sidecar.write_text(json.dumps(data))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_BUNDLE_LAYOUT_FAIL
+
+
 def test_missing_voice_cache_fails(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     (bundle / "cache" / "voice-preset-default.bin").unlink()
@@ -538,6 +655,45 @@ def test_final_release_state_requires_hf_upload_evidence(tmp_path: Path) -> None
     release = json.loads(release_path.read_text())
     release["releaseState"] = "final"
     release["hf"]["status"] = "uploaded"
+    release_path.write_text(json.dumps(release, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_base_v1_release_evidence_is_allowed_and_writes_manifest_provenance(
+    tmp_path: Path,
+) -> None:
+    bundle = _build_fixture_bundle(tmp_path, release_state="base-v1")
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["final"]["weights"] = False
+    release_path.write_text(json.dumps(release, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_OK
+    manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
+    assert manifest["provenance"]["releaseState"] == "base-v1"
+    assert manifest["provenance"]["finetuned"] is False
+    assert manifest["provenance"]["sourceModels"]["text"]["repo"] == (
+        "unsloth/Qwen3.5-9B-GGUF"
+    )
+    assert manifest["provenance"]["sourceModels"]["vision"]["repo"] == (
+        "unsloth/Qwen3.5-9B-GGUF"
+    )
+
+
+def test_base_v1_release_evidence_requires_source_models(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path, release_state="base-v1")
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    del release["sourceModels"]["vision"]
     release_path.write_text(json.dumps(release, indent=2))
     _write_checksums(bundle)
     metal = _metal_report(tmp_path)
@@ -642,6 +798,42 @@ def test_evidence_sidecars_must_be_checksummed(tmp_path: Path) -> None:
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
+def test_eval_reports_must_cover_all_shipped_eval_files(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["evalReports"] = ["evals/aggregate.json"]
+    release_path.write_text(json.dumps(release, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_upload_evidence_paths_must_cover_payload_commit(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["releaseState"] = "final"
+    release["hf"]["status"] = "uploaded"
+    release["hf"]["uploadEvidence"] = {
+        "repoId": "elizaos/eliza-1-9b",
+        "status": "uploaded",
+        "commit": "abc123",
+        "url": "https://huggingface.co/elizaos/eliza-1-9b/commit/abc123",
+        "uploadedPaths": ["eliza-1.manifest.json", "README.md"],
+    }
+    release_path.write_text(json.dumps(release, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
 def test_upload_list_includes_nested_evidence(tmp_path: Path) -> None:
     from scripts.publish.orchestrator import (  # noqa: PLC0415
         _build_upload_list,
@@ -716,6 +908,49 @@ def test_real_publish_finalizes_and_uploads_hf_evidence(
         line for line in checksum_lines if "  evidence/release.json" in line
     )
     assert release_line.startswith(_sha256(bundle / "evidence" / "release.json"))
+
+
+def test_real_base_v1_publish_preserves_release_state(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import scripts.publish.orchestrator as orchestrator  # noqa: PLC0415
+
+    bundle = _build_fixture_bundle(tmp_path, release_state="base-v1")
+    metal = _metal_report(tmp_path)
+
+    def fake_push_to_hf(
+        ctx: PublishContext,
+        manifest_path: Path,
+        readme_path: Path,
+        upload_pairs: list[tuple[Path, str]],
+    ) -> dict[str, Any]:
+        return {
+            "repoId": ctx.repo_id,
+            "status": "uploaded",
+            "commit": "basev1",
+            "url": "https://huggingface.co/elizaos/eliza-1-9b/commit/basev1",
+            "uploadedPaths": [
+                "eliza-1.manifest.json",
+                "README.md",
+                *(target for _, target in upload_pairs),
+            ],
+        }
+
+    monkeypatch.setattr(orchestrator, "push_to_hf", fake_push_to_hf)
+    monkeypatch.setattr(
+        orchestrator,
+        "push_final_release_evidence",
+        lambda *args: None,
+    )
+    monkeypatch.setattr(orchestrator, "tag_training_repo", lambda *args: "tagged")
+
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=False))
+
+    assert rc == EXIT_OK
+    release = json.loads((bundle / "evidence" / "release.json").read_text())
+    assert release["releaseState"] == "base-v1"
+    assert release["hf"]["status"] == "uploaded"
+    assert release["hf"]["uploadEvidence"]["commit"] == "basev1"
 
 
 # ---------------------------------------------------------------------------

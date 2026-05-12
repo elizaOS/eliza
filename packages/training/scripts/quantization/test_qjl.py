@@ -13,7 +13,7 @@ This test measures:
      the C++ extension are skipped with that note. The pure-PyTorch
      reference path (upstream ``QJLSketch.qjl_qunatize``) still runs.
 
-  2. Baseline generation on ``Qwen/Qwen3-0.6B`` with bf16 ``DynamicCache``:
+  2. Baseline generation on ``Qwen/Qwen3-0.8B`` with bf16 ``DynamicCache``:
      peak VRAM, tok/sec, decoded sample.
 
   3. **Pure-PyTorch QJL simulation** on real K activations from a forward
@@ -33,7 +33,7 @@ This test measures:
        The paper's headline ~16x figure is the *inlier-only* ratio; the
        norm-per-token overhead drags the realized ratio to
        ``head_dim * 2 / (projection_dim/8 + 2)`` -- e.g.
-       ``128*2 / (256/8 + 2) = 7.53x`` for Qwen3-0.6B at projection_dim=256.
+       ``128*2 / (256/8 + 2) = 7.53x`` for Qwen3-0.8B at projection_dim=256.
        At projection_dim=128 the same formula gives 14.2x; the smaller
        projection trades quality for ratio. The ratio asserted here
        (≥7x) is the honest end-to-end number for the canonical
@@ -207,7 +207,7 @@ def qjl_pure_pytorch_quantize(
 # ---------------------------------------------------------------------------
 
 
-def load_toon_prompts(n: int) -> list[dict]:
+def load_payload_prompts(n: int) -> list[dict]:
     out: list[dict] = []
     if not VAL_JSONL.exists():
         # Fall back to synthetic prompts if val.jsonl is unavailable.
@@ -246,8 +246,8 @@ def load_toon_prompts(n: int) -> list[dict]:
 def render_chat(tokenizer, record: dict) -> str:
     sys_prompt = (
         "You are an autonomous elizaOS agent. Decide which action to take "
-        "from `availableActions` and respond with ONE TOON document. "
-        "Always TOON. No fences, no <think>, no prose before or after."
+        "from `availableActions` and respond with ONE native JSON document. "
+        "Always native JSON. No fences, no <think>, no prose before or after."
     )
     msgs = [{"role": "system", "content": sys_prompt}]
     for m in record.get("memoryEntries") or []:
@@ -371,7 +371,7 @@ def capture_real_k_activations(
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
-    ap.add_argument("--model", default="Qwen/Qwen3-0.6B")
+    ap.add_argument("--model", default="Qwen/Qwen3-0.8B")
     ap.add_argument("--num-prompts", type=int, default=5)
     ap.add_argument("--max-new-tokens", type=int, default=128)
     ap.add_argument("--projection-dim-per-head", type=int, default=256)
@@ -411,7 +411,7 @@ def main() -> int:
     model.eval()
 
     # Baseline generation (bf16 DynamicCache).
-    records = load_toon_prompts(args.num_prompts)
+    records = load_payload_prompts(args.num_prompts)
     rendered = [render_chat(tok, r) for r in records]
     log.info("running baseline bf16 generation on %d prompts", len(rendered))
     base_res = measure_generation(

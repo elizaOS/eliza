@@ -1,0 +1,46 @@
+[
+  {
+    "article_id": "KB-601",
+    "title": "Production Incident Response Process",
+    "category": "Operations",
+    "tags": [
+      "incident",
+      "process",
+      "runbook"
+    ],
+    "created_at": "2025-06-15T10:00:00+08:00",
+    "content": "# Production Incident Response Process\n\n## 1. Incident Severity Classification\n- **P0 (Critical)**: Core business completely disrupted, e.g. payment or order systems unavailable\n- **P1 (High)**: Core business severely impacted, e.g. response times exceeding SLA, partial feature outage\n- **P2 (Medium)**: Non-core functionality issues, limited impact\n- **P3 (Low)**: Minor issues, no business impact\n\n## 2. Response Process\n1. Monitoring system triggers automatic alert\n2. On-call personnel acknowledge and escalate\n3. Assemble incident response team\n4. Identify root cause and develop remediation plan\n5. Execute fix and verify recovery\n6. Conduct postmortem and produce improvement measures\n\n## 3. Postmortem Requirements\n- Complete postmortem within 72 hours of incident\n- Postmortem report must include: timeline, root cause analysis, impact scope, improvement measures\n- Improvement measures must have assigned owners and deadlines\n- Postmortem report to be archived in knowledge base",
+    "last_updated": "2025-11-20T14:30:00+08:00",
+    "views": 0
+  },
+  {
+    "article_id": "KB-602",
+    "title": "Database Connection Pool Management Best Practices",
+    "category": "Engineering",
+    "tags": [
+      "database",
+      "connection-pool",
+      "postgresql",
+      "best-practice"
+    ],
+    "created_at": "2025-08-10T14:00:00+08:00",
+    "content": "# Database Connection Pool Management Best Practices\n\n## Connection Pool Configuration\n- Default maximum connections: 200\n- Per-service maximum connections: 50\n- Connection timeout: 30 seconds\n- Idle connection reclaim time: 300 seconds\n\n## Important Notes\n1. **Heavy queries should use a read replica**: Batch data sync, report queries, and other heavy operations should not run on the primary database; they should be routed to a read replica\n2. **Connection leak detection**: Enable connection leak detection; connections not returned after 60 seconds are automatically reclaimed\n3. **Alert threshold**: Trigger alert when connection pool utilization exceeds 80%\n4. **Per-process connection limit**: A single process/task should not consume more than 25% of the total connection pool\n\n## Common Issues\n- Connection pool exhaustion is typically caused by:\n  1. Slow queries holding connections for extended periods\n  2. Connection leaks (connections not properly closed)\n  3. Traffic spikes\n  4. A single process consuming too many connections\n\n## Historical Lessons\n- In the December 2025 incident, report queries were not routed to the read replica, causing excessive load on the primary database connection pool\n- CRM sync tasks were planned to be migrated to the read replica but this has not yet been completed",
+    "last_updated": "2025-12-20T09:00:00+08:00",
+    "views": 0
+  },
+  {
+    "article_id": "KB-603",
+    "title": "December 2025 Production Incident Report",
+    "category": "Incidents",
+    "tags": [
+      "incident",
+      "postmortem",
+      "database",
+      "2025-12"
+    ],
+    "created_at": "2025-12-20T16:00:00+08:00",
+    "content": "# December Incident Report\n\n## Incident Summary\nThe API timeout incident on December 15th was caused by report queries not being routed to the read replica. They were executed directly on the primary database as large aggregate queries, causing excessive pressure on the database connection pool.\n\n## Timeline\n- 14:00 Report task started, executing large aggregate queries\n- 14:15 Database connection pool utilization exceeded 90%\n- 14:30 API response timeout alerts triggered\n- 15:00 Report task manually terminated\n- 15:10 Services recovered\n\n## Root Cause\nReport aggregate queries were not configured with read replica routing and executed directly on the primary database, consuming a large number of connections.\n\n## Improvement Measures\n1. Heavy queries should use the read replica -- Status: Marked as TODO, not yet implemented\n2. Add query duration monitoring -- Status: Completed\n3. Set connection pool alert thresholds -- Status: Completed\n\n## Outstanding Issues\nCRM sync tasks were originally planned to be migrated to the read replica, but the migration work was marked as TODO and has not been completed to date. If this issue is not resolved, similar incidents may recur.",
+    "last_updated": "2026-01-10T11:00:00+08:00",
+    "views": 0
+  }
+]

@@ -1,0 +1,51 @@
+{
+  "version": "1.0",
+  "deprecated": false,
+  "extraction_log": [
+    {
+      "query_id": "log_001",
+      "timestamp": "2026-02-10T09:15:00Z",
+      "input_query": "我想看看之前讨论的视频项目分析结果和技能方案迭代记录",
+      "extracted_keywords": ["之前", "讨论", "视频项目", "分析结果", "技能方案", "迭代", "记录", "查看"],
+      "intent": "memory_lookup",
+      "keyword_count": 8,
+      "processing_time_ms": 45
+    },
+    {
+      "query_id": "log_002",
+      "timestamp": "2026-02-12T14:30:00Z",
+      "input_query": "帮我找到skill_matrix_v2.xlsx文件里面的Adobe Premiere Pro技能评分数据",
+      "extracted_keywords": ["skill_matrix_v2.xlsx", "文件", "Adobe Premiere Pro", "技能", "评分", "数据", "查找", "表格", "矩阵"],
+      "intent": "file_search",
+      "keyword_count": 9,
+      "processing_time_ms": 52
+    },
+    {
+      "query_id": "log_003",
+      "timestamp": "2026-02-15T11:00:00Z",
+      "input_query": "上次我们讨论过的motion graphics优化方案和关键帧动画技巧还有After Effects合成流程",
+      "extracted_keywords": ["上次", "讨论", "motion graphics", "优化方案", "关键帧", "动画技巧", "After Effects", "合成", "流程", "回顾"],
+      "intent": "memory_lookup",
+      "keyword_count": 10,
+      "processing_time_ms": 68
+    },
+    {
+      "query_id": "log_004",
+      "timestamp": "2026-02-18T16:45:00Z",
+      "input_query": "打开project_v3.prproj项目文件查看时间线和渲染设置以及导出配置",
+      "extracted_keywords": ["project_v3.prproj", "项目文件", "打开", "时间线", "渲染设置", "导出", "配置", "查看"],
+      "intent": "file_search",
+      "keyword_count": 8,
+      "processing_time_ms": 41
+    },
+    {
+      "query_id": "log_005",
+      "timestamp": "2026-02-20T10:20:00Z",
+      "input_query": "记得之前对话中提到的色彩校正方案和视频编辑工作流程优化建议以及技能提升路径",
+      "extracted_keywords": ["记得", "之前", "对话", "色彩校正", "方案", "视频编辑", "工作流程", "优化建议", "技能提升", "路径"],
+      "intent": "memory_lookup",
+      "keyword_count": 10,
+      "processing_time_ms": 73
+    }
+  ]
+}

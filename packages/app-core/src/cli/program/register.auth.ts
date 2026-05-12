@@ -31,13 +31,21 @@ const RESET_PROOF_FILENAME = "RESET_PROOF.txt";
 
 /**
  * Resolve the eliza state dir without importing service modules.
+<<<<<<< HEAD
  * Mirrors the canonical `ELIZA_STATE_DIR` > `ELIZA_STATE_DIR` >
+=======
+ * Mirrors the canonical `ELIZA_STATE_DIR` >
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
  * `~/.${ELIZA_NAMESPACE ?? "eliza"}` precedence in @elizaos/core's
  * `resolveStateDir`.
  */
 function resolveElizaStateDir(): string {
+<<<<<<< HEAD
   const explicit =
     process.env.ELIZA_STATE_DIR?.trim() || process.env.MILADY_STATE_DIR?.trim();
+=======
+  const explicit = process.env.ELIZA_STATE_DIR?.trim();
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   if (explicit) return path.resolve(explicit);
   const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
   const home =

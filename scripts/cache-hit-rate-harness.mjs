@@ -74,6 +74,7 @@ function openAICompatiblePayload({
   forceTool = false,
   scenario = "tool-call",
 }) {
+<<<<<<< HEAD
   const cacheKey = process.env.ELIZA_CACHE_PROMPT_KEY ?? "eliza-cache-harness";
   const explicitCacheControl = openRouterExplicitCacheControl(provider, model);
   const stableSystemContent = explicitCacheControl
@@ -87,6 +88,21 @@ function openAICompatiblePayload({
     : stablePrefix();
   const providerOptions = {
     gateway: { caching: "auto" },
+=======
+	const cacheKey = process.env.ELIZA_CACHE_PROMPT_KEY ?? "eliza-cache-harness";
+	const explicitCacheControl = openRouterExplicitCacheControl(provider, model);
+	const stableSystemContent = explicitCacheControl
+		? [
+				{
+					type: "text",
+					text: stablePrefix(),
+					cache_control: explicitCacheControl,
+				},
+			]
+		: stablePrefix();
+	const providerOptions = {
+		gateway: { caching: "auto" },
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     openrouter: {
       promptCacheKey: cacheKey,
       prompt_cache_key: cacheKey,
@@ -517,8 +533,13 @@ function extractToolArgumentActionNames(args) {
 }
 
 function maxTokens() {
+<<<<<<< HEAD
   const value = Number(process.env.ELIZA_CACHE_MAX_TOKENS ?? 256);
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : 256;
+=======
+	const value = Number(process.env.ELIZA_CACHE_MAX_TOKENS ?? 256);
+	return Number.isFinite(value) && value > 0 ? Math.floor(value) : 256;
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 }
 
 async function callProvider(config, payload) {
@@ -613,12 +634,17 @@ function dryRun(args) {
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+<<<<<<< HEAD
   const provider =
     args.provider ?? process.env.ELIZA_CACHE_PROVIDER ?? "elizacloud";
   const calls = Math.max(
     1,
     Number(args.calls ?? process.env.ELIZA_CACHE_CALLS ?? 3),
   );
+=======
+  const provider = args.provider ?? process.env.ELIZA_CACHE_PROVIDER ?? "elizacloud";
+  const calls = Math.max(1, Number(args.calls ?? process.env.ELIZA_CACHE_CALLS ?? 3));
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
   if (process.env.ELIZA_CACHE_LIVE !== "1") {
     dryRun({ ...args, provider });

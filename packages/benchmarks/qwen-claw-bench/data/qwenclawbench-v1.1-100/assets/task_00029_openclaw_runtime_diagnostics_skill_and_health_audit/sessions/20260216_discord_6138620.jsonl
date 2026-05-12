@@ -1,0 +1,26 @@
+{"type": "session_start", "session_id": "discord_6138620", "model": "claude-opus-4-0-20250115", "created_at": "2026-02-16T09:26:20.093767", "user_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa06", "channel": "discord"}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-16T09:27:13.954243", "session_id": "discord_6138620", "seq": 1}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-02-16T09:30:42.424968", "session_id": "discord_6138620", "seq": 2}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-16T09:35:19.408908", "session_id": "discord_6138620", "seq": 3, "usage": {"prompt_tokens": 2226, "completion_tokens": 1192, "total_tokens": 2921}}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-02-16T09:38:47.295608", "session_id": "discord_6138620", "seq": 4}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-02-16T09:41:17.107937", "session_id": "discord_6138620", "seq": 5}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-02-16T09:42:12.667016", "session_id": "discord_6138620", "seq": 6}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-02-16T09:44:31.094124", "session_id": "discord_6138620", "seq": 7}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-02-16T09:48:35.103428", "session_id": "discord_6138620", "seq": 8}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-16T09:50:01.973073", "session_id": "discord_6138620", "seq": 9, "usage": {"prompt_tokens": 2177, "completion_tokens": 3400, "total_tokens": 4612}}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-02-16T09:52:49.727793", "session_id": "discord_6138620", "seq": 10}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-16T09:56:55.652960", "session_id": "discord_6138620", "seq": 11, "usage": {"prompt_tokens": 6220, "completion_tokens": 1353, "total_tokens": 11726}}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-16T09:58:37.661257", "session_id": "discord_6138620", "seq": 12, "usage": {"prompt_tokens": 4573, "completion_tokens": 1735, "total_tokens": 9230}}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-16T10:00:13.832308", "session_id": "discord_6138620", "seq": 13}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-16T10:00:45.821520", "session_id": "discord_6138620", "seq": 14, "usage": {"prompt_tokens": 3102, "completion_tokens": 1729, "total_tokens": 10269}}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-16T10:04:53.968364", "session_id": "discord_6138620", "seq": 15, "usage": {"prompt_tokens": 3172, "completion_tokens": 2127, "total_tokens": 11881}}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-16T10:08:24.932417", "session_id": "discord_6138620", "seq": 16}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-16T10:13:03.731947", "session_id": "discord_6138620", "seq": 17, "usage": {"prompt_tokens": 1825, "completion_tokens": 3294, "total_tokens": 1109}}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-16T10:13:07.952346", "session_id": "discord_6138620", "seq": 18}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-16T10:14:03.086200", "session_id": "discord_6138620", "seq": 19}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-16T10:16:26.729910", "session_id": "discord_6138620", "seq": 20}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-16T10:20:45.143712", "session_id": "discord_6138620", "seq": 21}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-02-16T10:23:47.856549", "session_id": "discord_6138620", "seq": 22, "usage": {"prompt_tokens": 3405, "completion_tokens": 2172, "total_tokens": 4344}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-16T10:24:48.000672", "session_id": "discord_6138620", "seq": 23, "usage": {"prompt_tokens": 1082, "completion_tokens": 2876, "total_tokens": 3488}}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-16T10:28:43.053402", "session_id": "discord_6138620", "seq": 24}
+{"type": "session_end", "session_id": "discord_6138620", "ended_at": "2026-02-16T10:28:53.053402", "total_messages": 24, "status": "error"}

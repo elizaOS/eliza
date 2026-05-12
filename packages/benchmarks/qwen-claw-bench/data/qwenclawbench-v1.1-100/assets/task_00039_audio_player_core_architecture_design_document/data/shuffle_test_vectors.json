@@ -1,0 +1,132 @@
+{
+  "description": "Test vectors for Fisher-Yates shuffle implementation verification",
+  "algorithm": "Fisher-Yates (Knuth) shuffle",
+  "rng": "Standard library PRNG seeded with u64",
+  "test_vectors": [
+    {
+      "seed": 42,
+      "input_length": 5,
+      "expected_first_5_indices": [
+        3,
+        1,
+        2,
+        4,
+        0
+      ],
+      "expected_last_index": 0,
+      "description": "Fisher-Yates shuffle of 5 elements with seed 42"
+    },
+    {
+      "seed": 12345,
+      "input_length": 10,
+      "expected_first_5_indices": [
+        8,
+        7,
+        3,
+        5,
+        1
+      ],
+      "expected_last_index": 6,
+      "description": "Fisher-Yates shuffle of 10 elements with seed 12345"
+    },
+    {
+      "seed": 99999,
+      "input_length": 10,
+      "expected_first_5_indices": [
+        5,
+        0,
+        8,
+        6,
+        9
+      ],
+      "expected_last_index": 1,
+      "description": "Fisher-Yates shuffle of 10 elements with seed 99999"
+    },
+    {
+      "seed": 7308,
+      "input_length": 20,
+      "expected_first_5_indices": [
+        13,
+        11,
+        16,
+        1,
+        10
+      ],
+      "expected_last_index": 6,
+      "description": "Fisher-Yates shuffle of 20 elements with seed 7308"
+    },
+    {
+      "seed": 2024,
+      "input_length": 20,
+      "expected_first_5_indices": [
+        0,
+        2,
+        16,
+        1,
+        10
+      ],
+      "expected_last_index": 15,
+      "description": "Fisher-Yates shuffle of 20 elements with seed 2024"
+    },
+    {
+      "seed": 314159,
+      "input_length": 100,
+      "expected_first_5_indices": [
+        16,
+        85,
+        37,
+        88,
+        96
+      ],
+      "expected_last_index": 24,
+      "description": "Fisher-Yates shuffle of 100 elements with seed 314159"
+    },
+    {
+      "seed": 271828,
+      "input_length": 100,
+      "expected_first_5_indices": [
+        91,
+        14,
+        40,
+        41,
+        7
+      ],
+      "expected_last_index": 87,
+      "description": "Fisher-Yates shuffle of 100 elements with seed 271828"
+    },
+    {
+      "seed": 0,
+      "input_length": 5,
+      "expected_first_5_indices": [
+        2,
+        1,
+        0,
+        4,
+        3
+      ],
+      "expected_last_index": 3,
+      "description": "Fisher-Yates shuffle of 5 elements with seed 0"
+    }
+  ],
+  "statistical_validation": {
+    "description": "For 10000 shuffles of 10 elements with sequential seeds starting from 0, each position should contain each element approximately 1000 times",
+    "num_shuffles": 10000,
+    "num_elements": 10,
+    "seed_range": {
+      "start": 0,
+      "end": 9999
+    },
+    "expected_frequency_per_position": 1000,
+    "tolerance_percent": 5.0,
+    "max_deviation": 50,
+    "notes": "Shuffle must be reproducible given the same seed for state restoration. This is critical for resuming shuffle playback after app restart.",
+    "observed_max_deviation": 73,
+    "validation_passed": false
+  },
+  "notes": [
+    "The shuffle implementation must produce identical results given the same seed",
+    "Seeds are stored in player state for shuffle mode restoration",
+    "The Fisher-Yates algorithm iterates from the last element to the first, swapping each with a random earlier element (inclusive of self)",
+    "Implementation must use the same PRNG as the test vectors (Rust rand crate with StdRng)"
+  ]
+}

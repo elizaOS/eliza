@@ -1,65 +1,28 @@
 {
   "agent": "hermes",
+<<<<<<< HEAD
   "artifacts": [
     "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T131605Z_349fa636/voicebench__voicebench/run_voicebench_20260511T131605Z_1_1868b35e/output"
   ],
+=======
+  "artifacts": [],
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   "benchmark_directory": "voicebench",
   "benchmark_id": "voicebench",
-  "cache_metrics": {
-    "cache_creation_input_tokens": 0,
-    "cache_hit_ratio": 0.0,
-    "cache_read_input_tokens": 0,
-    "turns_with_cached_field": 0
-  },
-  "error": null,
-  "higher_is_better": false,
+  "cache_metrics": {},
+  "error": "Benchmark 'voicebench' is no longer compatible with harness 'hermes' (supported: eliza)",
+  "higher_is_better": null,
   "metrics": {
-    "avgEndToEndMs": 148.625,
-    "avgResponseTtftMs": 147.541,
-    "avgTranscriptionMs": 0.158,
-    "avgVoiceFirstTokenCachedMs": 0.155,
-    "cache_metrics": {
-      "cache_creation_input_tokens": 0,
-      "cache_hit_ratio": 0.0,
-      "cache_read_input_tokens": 0,
-      "turns_with_cached_field": 0
-    },
-    "mode": "simple",
-    "p95EndToEndMs": 148.625,
-    "p99EndToEndMs": 148.625,
-    "performance_metrics": {
-      "duration_seconds": 1.0310710000048857,
-      "mean_latency_ms": 83.60600000000001,
-      "p95_latency_ms": 147.817,
-      "throughput_per_second": 1.939730629598275
-    },
-    "profile": "mock",
-    "return_code": 0,
-    "runs": 1,
-    "token_metrics": {
-      "avg_completion_tokens": 0.0,
-      "avg_prompt_tokens": 0.0,
-      "completion_tokens": 0,
-      "llm_call_count": 2,
-      "prompt_tokens": 0,
-      "total_tokens": 0
-    },
-    "trajectory_summary": {
-      "files": 1,
-      "prompt_chars": 38,
-      "repeated_prefixes": [],
-      "turns": 2
-    },
-    "transcriptionNormalizedAccuracy": 1
+    "harness": "hermes",
+    "reason": "latest_row_violates_current_compatibility",
+    "supported_harnesses": [
+      "eliza"
+    ]
   },
   "model": "gpt-oss-120b",
-  "performance_metrics": {
-    "duration_seconds": 1.0310710000048857,
-    "mean_latency_ms": 83.60600000000001,
-    "p95_latency_ms": 147.817,
-    "throughput_per_second": 1.939730629598275
-  },
+  "performance_metrics": {},
   "provider": "cerebras",
+<<<<<<< HEAD
   "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T131605Z_349fa636/voicebench__voicebench/run_voicebench_20260511T131605Z_1_1868b35e/output/voicebench-typescript-mock-1778505365770.json",
   "run_group_id": "rg_20260511T131605Z_349fa636",
   "run_id": "run_voicebench_20260511T131605Z_1_1868b35e",
@@ -81,4 +44,15 @@
   },
   "unit": "ms",
   "updated_at": "2026-05-12T01:34:00Z"
+=======
+  "result_json_path": null,
+  "run_group_id": "rg_20260512T060800Z_501a69b3",
+  "run_id": "incompat_voicebench_20260512T060800Z_1_22007ab4",
+  "score": null,
+  "status": "incompatible",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": null,
+  "updated_at": "2026-05-12T06:08:00.730142+00:00"
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 }

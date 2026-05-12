@@ -48,6 +48,12 @@ describe("resolveStateDir", () => {
 		warn.mockRestore();
 	});
 
+	it("uses the namespace default when ELIZA_STATE_DIR is unset", () => {
+		expect(resolveStateDir({ ELIZA_NAMESPACE: "eliza" }, fakeHomedir)).toBe(
+			join(FAKE_HOME, ".eliza"),
+		);
+	});
+
 	it("derives ~/.<namespace> from ELIZA_NAMESPACE when no override is set", () => {
 		expect(resolveStateDir({ ELIZA_NAMESPACE: "custom" }, fakeHomedir)).toBe(
 			join(FAKE_HOME, ".custom"),
@@ -64,7 +70,7 @@ describe("resolveStateDir", () => {
 				{ ELIZA_STATE_DIR: "   ", MILADY_STATE_DIR: "/tmp/bar" },
 				fakeHomedir,
 			),
-		).toBe("/tmp/bar");
+		).toBe(join(FAKE_HOME, ".eliza"));
 	});
 
 	it("expands a leading ~ in env overrides via the real homedir", () => {

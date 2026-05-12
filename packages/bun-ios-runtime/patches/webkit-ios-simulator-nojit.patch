@@ -1,0 +1,119 @@
+diff --git a/Source/JavaScriptCore/assembler/FastJITPermissions.h b/Source/JavaScriptCore/assembler/FastJITPermissions.h
+index 4e4067d009e..10b1f322f3b 100644
+--- a/Source/JavaScriptCore/assembler/FastJITPermissions.h
++++ b/Source/JavaScriptCore/assembler/FastJITPermissions.h
+@@ -94,7 +94,7 @@ static ALWAYS_INLINE void threadSelfRestrict()
+         RELEASE_ASSERT_NOT_REACHED();
+ }
+ 
+-#elif CPU(ARM64)
++#elif CPU(ARM64) && (!defined(TARGET_OS_IPHONE) || !TARGET_OS_IPHONE)
+ #include <pthread.h>
+ 
+ template <MemoryRestriction restriction>
+diff --git a/Source/JavaScriptCore/domjit/DOMJITEffect.h b/Source/JavaScriptCore/domjit/DOMJITEffect.h
+index 6ba85116d1b..b0fab9b4422 100644
+--- a/Source/JavaScriptCore/domjit/DOMJITEffect.h
++++ b/Source/JavaScriptCore/domjit/DOMJITEffect.h
+@@ -31,6 +31,16 @@
+ WTF_ALLOW_UNSAFE_BUFFER_USAGE_BEGIN
+ 
+ namespace JSC {
++
++#if !ENABLE(DFG_JIT)
++namespace DFG {
++enum AbstractHeapKind : uint8_t {
++    InvalidAbstractHeap,
++    Heap,
++};
++}
++#endif
++
+ namespace DOMJIT {
+ 
+ struct Effect {
+diff --git a/Source/JavaScriptCore/runtime/StackFrame.h b/Source/JavaScriptCore/runtime/StackFrame.h
+index b689e68d58d..5578051a6b2 100644
+--- a/Source/JavaScriptCore/runtime/StackFrame.h
++++ b/Source/JavaScriptCore/runtime/StackFrame.h
+@@ -100,7 +100,11 @@ public:
+ 
+     bool isAsyncFrameWithoutCodeBlock() const
+     {
++#if USE(BUN_JSC_ADDITIONS)
+         return isAsyncFrame() && !codeBlock();
++#else
++        return false;
++#endif
+     }
+ 
+ #if USE(BUN_JSC_ADDITIONS)
+diff --git a/Source/WTF/wtf/generic/RunLoopGeneric.cpp b/Source/WTF/wtf/generic/RunLoopGeneric.cpp
+index 9e683db7df6..b9aa3a8798c 100644
+--- a/Source/WTF/wtf/generic/RunLoopGeneric.cpp
++++ b/Source/WTF/wtf/generic/RunLoopGeneric.cpp
+@@ -36,7 +36,7 @@ namespace WTF {
+ static constexpr bool report = false;
+ 
+ class RunLoop::TimerBase::ScheduledTask final : public ThreadSafeRefCounted<ScheduledTask>, public RedBlackTree<ScheduledTask, MonotonicTime>::ThreadSafeNode {
+-    WTF_DEPRECATED_MAKE_FAST_ALLOCATED(ScheduledTask);
++    WTF_MAKE_TZONE_ALLOCATED_INLINE(ScheduledTask);
+     WTF_MAKE_NONCOPYABLE(ScheduledTask);
+     WTF_OVERRIDE_DELETE_FOR_CHECKED_PTR(ScheduledTask);
+ public:
+diff --git a/Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp b/Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp
+index c21cd8eaa76..4a7ad0464c7 100644
+--- a/Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp
++++ b/Source/WTF/wtf/posix/OSAllocatorPOSIX.cpp
+@@ -49,17 +49,17 @@
+ #endif // OS(DARWIN)
+ #endif // ENABLE(JIT_CAGE)
+ 
+-#if PLATFORM(COCOA)
++#if PLATFORM(COCOA) && !TARGET_OS_SIMULATOR
+ #include <wtf/spi/cocoa/MachVMSPI.h>
+ #endif
+ 
+-#if OS(DARWIN)
++#if OS(DARWIN) && !TARGET_OS_SIMULATOR
+ 
+ #include <mach/mach.h>
+ #include <mach/mach_vm.h>
+ #include <mach/task.h>
+ 
+-#define BUN_MACOSX 1
++#define BUN_USE_MACH_VM_ALLOCATOR 1
+ 
+ #endif
+ 
+@@ -69,7 +69,7 @@
+ #define BUN_MADV_DONTFORK 0
+ #endif
+ 
+-#ifdef BUN_MACOSX
++#ifdef BUN_USE_MACH_VM_ALLOCATOR
+ #define BUN_VM_CHILD_PROCESS_INHERIT VM_INHERIT_NONE
+ #else
+ #ifdef VM_INHERIT_DEFAULT
+@@ -173,7 +173,7 @@ void* OSAllocator::tryReserveUncommittedAligned(size_t bytes, size_t alignment,
+ {
+     ASSERT(hasOneBitSet(alignment) && alignment >= pageSize());
+ 
+-#if PLATFORM(MAC) || USE(APPLE_INTERNAL_SDK) || BUN_MACOSX
++#if defined(BUN_USE_MACH_VM_ALLOCATOR) && BUN_USE_MACH_VM_ALLOCATOR
+     ASSERT_UNUSED(numGuardPagesToAddOnEachEnd, !numGuardPagesToAddOnEachEnd);
+     ASSERT_UNUSED(jitCageEnabled, !jitCageEnabled); // Not supported for mach API.
+     vm_prot_t protections = VM_PROT_READ;
+diff --git a/Source/bmalloc/bmalloc/BPlatform.h b/Source/bmalloc/bmalloc/BPlatform.h
+index abf75cb0ed3..74540ad4ac1 100644
+--- a/Source/bmalloc/bmalloc/BPlatform.h
++++ b/Source/bmalloc/bmalloc/BPlatform.h
+@@ -328,7 +328,7 @@
+ #if BHAVE(36BIT_ADDRESS)
+ #define BOS_EFFECTIVE_ADDRESS_WIDTH 36
+ /* iOS simulators lie about the size of the address space */
+-#elif BOS(DARWIN) && !BPLATFORM(IOS_FAMILY_SIMULATOR)
++#elif BOS(DARWIN) && !TARGET_OS_SIMULATOR && !BPLATFORM(IOS_FAMILY_SIMULATOR)
+ #define BOS_EFFECTIVE_ADDRESS_WIDTH (bmalloc::getMSBSetConstexpr(MACH_VM_MAX_ADDRESS) + 1)
+ #else
+ /* We strongly assume that effective address width is <= 48 in 64bit architectures (e.g. NaN boxing). */

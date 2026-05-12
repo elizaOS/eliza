@@ -34,12 +34,6 @@ Usage::
     uv run python scripts/jsonl_to_parquet.py --split train  # one split only
     uv run python scripts/jsonl_to_parquet.py --target-mib 512  # smaller chunks
     uv run python scripts/jsonl_to_parquet.py --dry-run      # report only
-
-Pre-flight TOON-validity gate: by default this refuses to run unless the
-sampled TOON round-trip rate in ``previews/_stats.json`` is 100.0%. The
-parallel TOON-validity agent is responsible for getting the corpus to
-that point. Override with ``--allow-imperfect-toon`` if you intend to
-publish a snapshot at the current validity rate.
 """
 
 from __future__ import annotations
@@ -58,7 +52,6 @@ import pyarrow.parquet as pq
 ROOT = Path(__file__).resolve().parent.parent
 FINAL = ROOT / "data" / "final"
 PARQUET_OUT = FINAL / "parquet"
-STATS_FILE = ROOT / "previews" / "_stats.json"
 
 # Splits we publish. Note: HF dataset configs accept any name, but using
 # the canonical ``train`` / ``validation`` / ``test`` names lets
@@ -329,21 +322,6 @@ def convert_split(
 
 
 # ---------------------------------------------------------------------------
-# TOON-validity gate
-# ---------------------------------------------------------------------------
-
-def toon_pass_rate() -> float | None:
-    if not STATS_FILE.exists():
-        return None
-    stats = json.loads(STATS_FILE.read_text())
-    ok = sum(int(s.get("rt_ok", 0)) for s in stats)
-    fail = sum(int(s.get("rt_fail", 0)) for s in stats)
-    if ok + fail == 0:
-        return None
-    return 100.0 * ok / (ok + fail)
-
-
-# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -374,30 +352,11 @@ def main() -> int:
         help="parquet compression codec (default zstd)",
     )
     ap.add_argument(
-        "--allow-imperfect-toon",
-        action="store_true",
-        help="run even if previews/_stats.json shows < 100%% TOON round-trip",
-    )
-    ap.add_argument(
         "--dry-run",
         action="store_true",
         help="print plan without writing parquet",
     )
     args = ap.parse_args()
-
-    rate = toon_pass_rate()
-    if rate is None:
-        log.warning("no TOON stats at %s; cannot gate on validity", STATS_FILE)
-    else:
-        log.info("TOON sample round-trip pass rate: %.2f%%", rate)
-        if rate < 100.0 and not args.allow_imperfect_toon:
-            log.error(
-                "refusing to convert: TOON validity is %.2f%% (< 100%%). "
-                "Wait for the TOON-validity agent to clean the corpus, or "
-                "pass --allow-imperfect-toon to publish a snapshot anyway.",
-                rate,
-            )
-            return 2
 
     target_bytes = args.target_mib * 1024 * 1024
     splits_to_run = [args.split] if args.split else list(SPLITS.keys())

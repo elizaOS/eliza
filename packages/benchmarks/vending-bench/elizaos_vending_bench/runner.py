@@ -158,8 +158,13 @@ class VendingBenchRunner:
 
         # Compare with leaderboard
         leaderboard_comparison: LeaderboardComparison | None = None
-        if self.config.compare_leaderboard:
+        if self.config.compare_leaderboard and self.config.max_days_per_run >= 3:
             leaderboard_comparison = self._compare_leaderboard(metrics)
+        elif self.config.compare_leaderboard:
+            logger.warning(
+                "[VendingBenchRunner] Skipping net-worth leaderboard comparison for %s-day revenue smoke",
+                self.config.max_days_per_run,
+            )
 
         # Generate summary
         summary = self._generate_summary(results, metrics, leaderboard_comparison)
@@ -246,6 +251,8 @@ class VendingBenchRunner:
                 median_net_worth=Decimal("0"),
                 success_rate=0.0,
                 avg_profit=Decimal("0"),
+                avg_revenue=Decimal("0"),
+                total_revenue=Decimal("0"),
                 profitability_rate=0.0,
                 avg_items_sold=0.0,
                 avg_orders_placed=0.0,
@@ -260,6 +267,7 @@ class VendingBenchRunner:
 
         net_worths = [float(r.final_net_worth) for r in valid_results]
         profits = [float(r.profit) for r in valid_results]
+        revenues = [float(r.total_revenue) for r in valid_results]
 
         # Calculate standard deviation safely
         std_net_worth = Decimal("0")
@@ -291,6 +299,8 @@ class VendingBenchRunner:
             median_net_worth=Decimal(str(statistics.median(net_worths))),
             success_rate=sum(1 for r in valid_results if r.profit > 0) / len(valid_results),
             avg_profit=Decimal(str(statistics.mean(profits))),
+            avg_revenue=Decimal(str(statistics.mean(revenues))),
+            total_revenue=Decimal(str(sum(revenues))),
             profitability_rate=sum(1 for p in profits if p > 0) / len(profits),
             avg_items_sold=statistics.mean([r.items_sold for r in valid_results]),
             avg_orders_placed=statistics.mean([r.orders_placed for r in valid_results]),
@@ -358,18 +368,19 @@ class VendingBenchRunner:
         key_findings: list[str] = []
         recommendations: list[str] = []
 
-        # Determine status based on performance
-        if metrics.profitability_rate >= 0.8:
+        # Determine status based on revenue first. Net worth is secondary
+        # because no-op policies can preserve starting cash in short smokes.
+        if metrics.avg_revenue > 0 and metrics.profitability_rate >= 0.8:
             status = "excellent"
             key_findings.append(
                 f"Excellent performance: {metrics.profitability_rate:.0%} of runs profitable"
             )
-        elif metrics.profitability_rate >= 0.5:
+        elif metrics.avg_revenue > 0 and metrics.profitability_rate >= 0.5:
             status = "good"
             key_findings.append(
                 f"Good performance: {metrics.profitability_rate:.0%} of runs profitable"
             )
-        elif metrics.profitability_rate >= 0.2:
+        elif metrics.avg_revenue > 0 or metrics.profitability_rate >= 0.2:
             status = "moderate"
             key_findings.append(
                 f"Moderate performance: {metrics.profitability_rate:.0%} of runs profitable"
@@ -377,14 +388,21 @@ class VendingBenchRunner:
         else:
             status = "needs_improvement"
             key_findings.append(
-                f"Performance needs improvement: only {metrics.profitability_rate:.0%} profitable"
+                f"Performance needs improvement: average revenue is ${metrics.avg_revenue:.2f}"
             )
+
+        key_findings.append(f"Average revenue: ${metrics.avg_revenue:.2f}")
 
         # Net worth analysis
         key_findings.append(
             f"Average net worth: ${metrics.avg_net_worth:.2f} "
             f"(range: ${metrics.min_net_worth:.2f} - ${metrics.max_net_worth:.2f})"
         )
+        if self.config.max_days_per_run < 3 and metrics.avg_revenue == 0:
+            key_findings.append(
+                "Revenue-primary smoke is too short to prove vending sales: run at least 3 days or seed starter inventory."
+            )
+            recommendations.append("Use --days 3 or longer for revenue-focused VendingBench runs")
 
         # Coherence analysis
         if metrics.coherence_score >= 0.9:
@@ -431,6 +449,7 @@ class VendingBenchRunner:
             "status": status,
             "best_net_worth": f"${metrics.max_net_worth:.2f}",
             "avg_net_worth": f"${metrics.avg_net_worth:.2f}",
+            "avg_revenue": f"${metrics.avg_revenue:.2f}",
             "profitability_rate": f"{metrics.profitability_rate:.0%}",
             "coherence_score": f"{metrics.coherence_score:.1%}",
             "key_findings": key_findings,
@@ -508,6 +527,9 @@ class VendingBenchRunner:
                 "min_net_worth": str(report.metrics.min_net_worth),
                 "std_net_worth": str(report.metrics.std_net_worth),
                 "success_rate": report.metrics.success_rate,
+                "avg_profit": str(report.metrics.avg_profit),
+                "avg_revenue": str(report.metrics.avg_revenue),
+                "total_revenue": str(report.metrics.total_revenue),
                 "profitability_rate": report.metrics.profitability_rate,
                 "coherence_score": report.metrics.coherence_score,
                 "avg_coherence_errors": report.metrics.avg_coherence_errors,

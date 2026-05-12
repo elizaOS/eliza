@@ -1,0 +1,473 @@
+diff --git a/cmake/targets/BuildBun.cmake b/cmake/targets/BuildBun.cmake
+index 7fd4a2d57..46143106a 100644
+--- a/cmake/targets/BuildBun.cmake
++++ b/cmake/targets/BuildBun.cmake
+@@ -702,7 +702,7 @@ if(NOT "${REVISION}" STREQUAL "")
+ endif()
+ 
+ set(ZIG_ENVIRONMENT)
+-if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
++if(CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_OSX_SYSROOT MATCHES "iphone")
+   execute_process(
+     COMMAND xcrun --sdk iphonesimulator --show-sdk-path
+     OUTPUT_VARIABLE IOS_SDK_PATH
+@@ -1042,6 +1042,7 @@ if(NOT WIN32)
+       -Wno-c++23-lambda-attributes
+       -Wno-nullability-completeness
+       -Werror
++      -Wno-error=character-conversion
+     )
+   else()
+     # Leave -Werror=unused off in release builds so we avoid errors from being used in ASSERT
+@@ -1059,6 +1060,7 @@ if(NOT WIN32)
+       -Wno-c++23-lambda-attributes
+       -Wno-nullability-completeness
+       -Werror
++      -Wno-error=character-conversion
+     )
+ 
+     if(ENABLE_ASAN)
+diff --git a/src/bun.js/bindings/BunCPUProfiler.cpp b/src/bun.js/bindings/BunCPUProfiler.cpp
+index 5cbafb227..e1b79f21e 100644
+--- a/src/bun.js/bindings/BunCPUProfiler.cpp
++++ b/src/bun.js/bindings/BunCPUProfiler.cpp
+@@ -21,6 +21,54 @@ extern "C" void Bun__startCPUProfiler(JSC::VM* vm);
+ extern "C" void Bun__stopCPUProfiler(JSC::VM* vm, BunString* outJSON, BunString* outText);
+ extern "C" void Bun__setSamplingInterval(int intervalMicroseconds);
+ 
++#if !ENABLE(SAMPLING_PROFILER)
++
++void Bun__setSamplingInterval(int)
++{
++}
++
++namespace Bun {
++
++void setSamplingInterval(int)
++{
++}
++
++bool isCPUProfilerRunning()
++{
++    return false;
++}
++
++void startCPUProfiler(JSC::VM&)
++{
++}
++
++void stopCPUProfiler(JSC::VM&, WTF::String* outJSON, WTF::String* outText)
++{
++    if (outJSON)
++        *outJSON = "{\"nodes\":[],\"startTime\":0,\"endTime\":0,\"samples\":[],\"timeDeltas\":[]}"_s;
++    if (outText)
++        *outText = "CPU profiler unavailable in this JavaScriptCore build"_s;
++}
++
++} // namespace Bun
++
++extern "C" void Bun__startCPUProfiler(JSC::VM*)
++{
++}
++
++extern "C" void Bun__stopCPUProfiler(JSC::VM* vm, BunString* outJSON, BunString* outText)
++{
++    WTF::String jsonResult;
++    WTF::String textResult;
++    Bun::stopCPUProfiler(*vm, outJSON ? &jsonResult : nullptr, outText ? &textResult : nullptr);
++    if (outJSON)
++        *outJSON = Bun::toStringRef(jsonResult);
++    if (outText)
++        *outText = Bun::toStringRef(textResult);
++}
++
++#else
++
+ void Bun__setSamplingInterval(int intervalMicroseconds)
+ {
+     Bun::setSamplingInterval(intervalMicroseconds);
+@@ -34,6 +82,28 @@ static double s_profilingStartTime = 0.0;
+ static int s_samplingInterval = 1000;
+ static bool s_isProfilerRunning = false;
+ 
++template<typename StackTraces>
++static void sortStackTraceIndicesByTimestamp(const StackTraces& stackTraces, WTF::Vector<size_t>& sortedIndices)
++{
++    for (size_t i = 1; i < sortedIndices.size(); ++i) {
++        size_t key = sortedIndices[i];
++        double keyTimestamp = stackTraces[key].timestamp.secondsSinceEpoch().value();
++        size_t j = i;
++
++        while (j > 0) {
++            size_t previous = sortedIndices[j - 1];
++            double previousTimestamp = stackTraces[previous].timestamp.secondsSinceEpoch().value();
++            if (previousTimestamp <= keyTimestamp)
++                break;
++
++            sortedIndices[j] = previous;
++            --j;
++        }
++
++        sortedIndices[j] = key;
++    }
++}
++
+ void setSamplingInterval(int intervalMicroseconds)
+ {
+     s_samplingInterval = intervalMicroseconds;
+@@ -129,9 +199,7 @@ WTF::String stopCPUProfilerAndGetJSON(JSC::VM& vm)
+     // Sort indices by monotonic timestamp to ensure chronological order
+     // Use timestamp instead of stopwatchTimestamp for better resolution
+     // This is critical for calculating correct timeDeltas between samples
+-    std::sort(sortedIndices.begin(), sortedIndices.end(), [&stackTraces](size_t a, size_t b) {
+-        return stackTraces[a].timestamp < stackTraces[b].timestamp;
+-    });
++    sortStackTraceIndicesByTimestamp(stackTraces, sortedIndices);
+ 
+     // Use the profiling start time that was captured when profiling began
+     // This ensures the first timeDelta represents the time from profiling start to first sample
+@@ -591,9 +659,7 @@ void stopCPUProfiler(JSC::VM& vm, WTF::String* outJSON, WTF::String* outText)
+     for (size_t i = 0; i < stackTraces.size(); i++) {
+         sortedIndices.append(i);
+     }
+-    std::sort(sortedIndices.begin(), sortedIndices.end(), [&stackTraces](size_t a, size_t b) {
+-        return stackTraces[a].timestamp < stackTraces[b].timestamp;
+-    });
++    sortStackTraceIndicesByTimestamp(stackTraces, sortedIndices);
+ 
+     // Generate JSON format if requested
+     if (outJSON) {
+@@ -1111,3 +1177,5 @@ extern "C" void Bun__stopCPUProfiler(JSC::VM* vm, BunString* outJSON, BunString*
+     if (outText)
+         *outText = Bun::toStringRef(textResult);
+ }
++
++#endif
+diff --git a/src/bun.js/bindings/BunDebugger.cpp b/src/bun.js/bindings/BunDebugger.cpp
+index c0db82afc..d62a7bd34 100644
+--- a/src/bun.js/bindings/BunDebugger.cpp
++++ b/src/bun.js/bindings/BunDebugger.cpp
+@@ -19,6 +19,43 @@
+ extern "C" void Bun__tickWhilePaused(bool*);
+ extern "C" void Bun__eventLoop__incrementRefConcurrently(void* bunVM, int delta);
+ 
++#if !ENABLE(REMOTE_INSPECTOR)
++
++extern "C" unsigned int Bun__createJSDebugger(Zig::GlobalObject*)
++{
++    return 0;
++}
++
++extern "C" void Bun__ensureDebugger(unsigned int, bool)
++{
++}
++
++extern "C" void BunDebugger__willHotReload()
++{
++}
++
++extern "C" void Bun__startJSDebuggerThread(Zig::GlobalObject*, unsigned int, BunString*, int, bool)
++{
++}
++
++extern "C" void Debugger__didScheduleAsyncCall(JSC::JSGlobalObject*, uint8_t, uint64_t, bool)
++{
++}
++
++extern "C" void Debugger__didCancelAsyncCall(JSC::JSGlobalObject*, uint8_t, uint64_t)
++{
++}
++
++extern "C" void Debugger__didDispatchAsyncCall(JSC::JSGlobalObject*, uint8_t, uint64_t)
++{
++}
++
++extern "C" void Debugger__willDispatchAsyncCall(JSC::JSGlobalObject*, uint8_t, uint64_t)
++{
++}
++
++#else
++
+ namespace Bun {
+ using namespace JSC;
+ using namespace WebCore;
+@@ -663,3 +700,5 @@ extern "C" void Debugger__willDispatchAsyncCall(JSGlobalObject* globalObject, As
+     agent->willDispatchAsyncCall(getCallType(callType), callbackId);
+ }
+ }
++
++#endif
+diff --git a/src/bun.js/bindings/BunInspector.cpp b/src/bun.js/bindings/BunInspector.cpp
+index cbabe4f91..722da9ffb 100644
+--- a/src/bun.js/bindings/BunInspector.cpp
++++ b/src/bun.js/bindings/BunInspector.cpp
+@@ -8,6 +8,14 @@
+ 
+ extern "C" void Bun__tickWhilePaused(bool*);
+ 
++#if !ENABLE(REMOTE_INSPECTOR)
++
++extern "C" void Bun__addInspector(bool, void*, JSC::JSGlobalObject*)
++{
++}
++
++#else
++
+ namespace Bun {
+ using namespace JSC;
+ template<bool isSSL>
+@@ -188,3 +196,5 @@ Bun__addInspector(bool isSSL, void* app, JSC::JSGlobalObject* globalObject)
+     }
+ };
+ }
++
++#endif
+diff --git a/src/bun.js/bindings/ConsoleObject.cpp b/src/bun.js/bindings/ConsoleObject.cpp
+index 6d8fddae5..be134fdeb 100644
+--- a/src/bun.js/bindings/ConsoleObject.cpp
++++ b/src/bun.js/bindings/ConsoleObject.cpp
+@@ -34,11 +34,13 @@ void ConsoleObject::messageWithTypeAndLevel(MessageType type, MessageLevel level
+     JSC::JSGlobalObject* globalObject,
+     Ref<ScriptArguments>&& arguments)
+ {
++#if ENABLE(REMOTE_INSPECTOR)
+     if (globalObject->inspectable()) {
+         if (auto client = globalObject->inspectorController().consoleClient()) {
+             client->messageWithTypeAndLevel(type, level, globalObject, arguments.copyRef());
+         }
+     }
++#endif
+     auto& vm = JSC::getVM(globalObject);
+     auto args = arguments.ptr();
+     JSC::EncodedJSValue jsArgs[255];
+@@ -112,20 +114,30 @@ void ConsoleObject::warnUnimplemented(const String& method) {}
+ 
+ void ConsoleObject::profile(JSC::JSGlobalObject* globalObject, const String& title)
+ {
++#if ENABLE(REMOTE_INSPECTOR)
+     if (globalObject->inspectable()) {
+         if (auto client = globalObject->inspectorController().consoleClient()) {
+             client->profile(globalObject, title);
+         }
+     }
++#else
++    UNUSED_PARAM(globalObject);
++    UNUSED_PARAM(title);
++#endif
+ }
+ 
+ void ConsoleObject::profileEnd(JSC::JSGlobalObject* globalObject, const String& title)
+ {
++#if ENABLE(REMOTE_INSPECTOR)
+     if (globalObject->inspectable()) {
+         if (auto client = globalObject->inspectorController().consoleClient()) {
+             client->profileEnd(globalObject, title);
+         }
+     }
++#else
++    UNUSED_PARAM(globalObject);
++    UNUSED_PARAM(title);
++#endif
+ }
+ 
+ }
+diff --git a/src/bun.js/bindings/InspectorBunFrontendDevServerAgent.cpp b/src/bun.js/bindings/InspectorBunFrontendDevServerAgent.cpp
+index 4cc5e4c65..bfa6ea10b 100644
+--- a/src/bun.js/bindings/InspectorBunFrontendDevServerAgent.cpp
++++ b/src/bun.js/bindings/InspectorBunFrontendDevServerAgent.cpp
+@@ -13,6 +13,24 @@
+ #include <wtf/TZoneMallocInlines.h>
+ #include "ZigGlobalObject.h"
+ 
++#if !ENABLE(REMOTE_INSPECTOR)
++
++extern "C" {
++
++void InspectorBunFrontendDevServerAgent__notifyClientConnected(Inspector::InspectorBunFrontendDevServerAgent*, int, int) {}
++void InspectorBunFrontendDevServerAgent__notifyClientDisconnected(Inspector::InspectorBunFrontendDevServerAgent*, int, int) {}
++void InspectorBunFrontendDevServerAgent__notifyBundleStart(Inspector::InspectorBunFrontendDevServerAgent*, int, BunString*, size_t) {}
++void InspectorBunFrontendDevServerAgent__notifyBundleComplete(Inspector::InspectorBunFrontendDevServerAgent*, int, double) {}
++void InspectorBunFrontendDevServerAgent__notifyBundleFailed(Inspector::InspectorBunFrontendDevServerAgent*, int, BunString*) {}
++void InspectorBunFrontendDevServerAgent__notifyClientNavigated(Inspector::InspectorBunFrontendDevServerAgent*, int, int, BunString*, int) {}
++void InspectorBunFrontendDevServerAgent__notifyClientErrorReported(Inspector::InspectorBunFrontendDevServerAgent*, int, BunString*) {}
++void InspectorBunFrontendDevServerAgent__notifyGraphUpdate(Inspector::InspectorBunFrontendDevServerAgent*, int, BunString*) {}
++void InspectorBunFrontendDevServerAgent__notifyConsoleLog(Inspector::InspectorBunFrontendDevServerAgent*, int, char, BunString*) {}
++
++}
++
++#else
++
+ namespace Inspector {
+ 
+ extern "C" void Bun__InspectorBunFrontendDevServerAgent__setEnabled(Inspector::InspectorBunFrontendDevServerAgent*);
+@@ -194,3 +212,5 @@ void InspectorBunFrontendDevServerAgent__notifyConsoleLog(InspectorBunFrontendDe
+ }
+ 
+ } // namespace Inspector
++
++#endif
+diff --git a/src/bun.js/bindings/InspectorHTTPServerAgent.cpp b/src/bun.js/bindings/InspectorHTTPServerAgent.cpp
+index e1e127849..c7b031c35 100644
+--- a/src/bun.js/bindings/InspectorHTTPServerAgent.cpp
++++ b/src/bun.js/bindings/InspectorHTTPServerAgent.cpp
+@@ -9,6 +9,18 @@
+ #include <wtf/TZoneMallocInlines.h>
+ #include "ZigGlobalObject.h"
+ 
++#if !ENABLE(REMOTE_INSPECTOR)
++
++extern "C" {
++
++void Bun__HTTPServerAgent__notifyServerStarted(Inspector::InspectorHTTPServerAgent*, int, int, const BunString*, double, void*) {}
++void Bun__HTTPServerAgent__notifyServerStopped(Inspector::InspectorHTTPServerAgent*, int, double) {}
++void Bun__HTTPServerAgent__notifyServerRoutesUpdated(Inspector::InspectorHTTPServerAgent*, int, int, void*, size_t) {}
++
++}
++
++#else
++
+ namespace Inspector {
+ 
+ WTF_MAKE_TZONE_ALLOCATED_IMPL(InspectorHTTPServerAgent);
+@@ -264,3 +276,5 @@ struct Route {
+     agent->serverRoutesUpdated(serverId, hotReloadId, WTF::move(routes));
+ }
+ }
++
++#endif
+diff --git a/src/bun.js/bindings/InspectorLifecycleAgent.cpp b/src/bun.js/bindings/InspectorLifecycleAgent.cpp
+index e3c24a1f9..582036c5b 100644
+--- a/src/bun.js/bindings/InspectorLifecycleAgent.cpp
++++ b/src/bun.js/bindings/InspectorLifecycleAgent.cpp
+@@ -19,6 +19,17 @@
+ #include "BunProcess.h"
+ #include "headers.h"
+ 
++#if !ENABLE(REMOTE_INSPECTOR)
++
++extern "C" {
++
++void Bun__LifecycleAgentReportReload(Inspector::InspectorLifecycleAgent*) {}
++void Bun__LifecycleAgentReportError(Inspector::InspectorLifecycleAgent*, ZigException*) {}
++
++}
++
++#else
++
+ namespace Inspector {
+ 
+ WTF_MAKE_TZONE_ALLOCATED_IMPL(InspectorLifecycleAgent);
+@@ -210,3 +221,5 @@ Protocol::ErrorStringOr<ModuleGraph> InspectorLifecycleAgent::getModuleGraph()
+ }
+ 
+ }
++
++#endif
+diff --git a/src/bun.js/bindings/InspectorTestReporterAgent.cpp b/src/bun.js/bindings/InspectorTestReporterAgent.cpp
+index 968e5faf6..20c7beeb8 100644
+--- a/src/bun.js/bindings/InspectorTestReporterAgent.cpp
++++ b/src/bun.js/bindings/InspectorTestReporterAgent.cpp
+@@ -13,6 +13,19 @@
+ #include "ModuleLoader.h"
+ #include <wtf/TZoneMallocInlines.h>
+ 
++#if !ENABLE(REMOTE_INSPECTOR)
++
++extern "C" {
++
++void Bun__TestReporterAgentReportTestFound(Inspector::InspectorTestReporterAgent*, JSC::CallFrame*, int, BunString*, uint8_t, int) {}
++void Bun__TestReporterAgentReportTestFoundWithLocation(Inspector::InspectorTestReporterAgent*, int, BunString*, uint8_t, int, BunString*, int) {}
++void Bun__TestReporterAgentReportTestStart(Inspector::InspectorTestReporterAgent*, int) {}
++void Bun__TestReporterAgentReportTestEnd(Inspector::InspectorTestReporterAgent*, int, uint8_t, double) {}
++
++}
++
++#else
++
+ using namespace JSC;
+ using namespace Inspector;
+ 
+@@ -263,3 +276,5 @@ void InspectorTestReporterAgent::reportTestEnd(int testId, Protocol::TestReporte
+ }
+ 
+ } // namespace Inspector
++
++#endif
+diff --git a/src/bun.js/bindings/ZigGlobalObject.cpp b/src/bun.js/bindings/ZigGlobalObject.cpp
+index 996b007e5..8bfe3e876 100644
+--- a/src/bun.js/bindings/ZigGlobalObject.cpp
++++ b/src/bun.js/bindings/ZigGlobalObject.cpp
+@@ -302,7 +302,6 @@ extern "C" void JSCInitialize(const char* envp[], size_t envc, void (*onCrash)(c
+             JSC::Options::useJITCage() = false;
+             JSC::Options::useShadowRealm() = true;
+             JSC::Options::useV8DateParser() = true;
+-            JSC::Options::useMathSumPreciseMethod() = true;
+             JSC::Options::evalMode() = evalMode;
+             JSC::Options::heapGrowthSteepnessFactor() = 1.0;
+             JSC::Options::heapGrowthMaxIncrease() = 2.0;
+diff --git a/src/bun.js/bindings/webcore/WebCoreTypedArrayController.cpp b/src/bun.js/bindings/webcore/WebCoreTypedArrayController.cpp
+index 1217b37ee..fa050a59c 100644
+--- a/src/bun.js/bindings/webcore/WebCoreTypedArrayController.cpp
++++ b/src/bun.js/bindings/webcore/WebCoreTypedArrayController.cpp
+@@ -49,14 +49,14 @@ WebCoreTypedArrayController::WebCoreTypedArrayController(bool allowAtomicsWait)
+ 
+ WebCoreTypedArrayController::~WebCoreTypedArrayController() = default;
+ 
+-JSC::JSArrayBuffer* WebCoreTypedArrayController::toJS(JSC::JSGlobalObject* lexicalGlobalObject, JSC::JSGlobalObject* globalObject, JSC::ArrayBuffer* buffer)
++JSC::JSArrayBuffer* WebCoreTypedArrayController::toJS(JSC::JSGlobalObject* lexicalGlobalObject, JSC::JSGlobalObject* globalObject, JSC::ArrayBuffer& buffer)
+ {
+-    return JSC::jsCast<JSC::JSArrayBuffer*>(WebCore::toJS(lexicalGlobalObject, getDefaultGlobal(globalObject), buffer));
++    return JSC::jsCast<JSC::JSArrayBuffer*>(WebCore::toJS(lexicalGlobalObject, getDefaultGlobal(globalObject), &buffer));
+ }
+ 
+-void WebCoreTypedArrayController::registerWrapper(JSC::JSGlobalObject* globalObject, JSC::ArrayBuffer* native, JSC::JSArrayBuffer* wrapper)
++void WebCoreTypedArrayController::registerWrapper(JSC::JSGlobalObject* globalObject, JSC::ArrayBuffer& native, JSC::JSArrayBuffer& wrapper)
+ {
+-    cacheWrapper(static_cast<JSVMClientData*>(JSC::getVM(globalObject).clientData)->normalWorld(), native, wrapper);
++    cacheWrapper(static_cast<JSVMClientData*>(JSC::getVM(globalObject).clientData)->normalWorld(), &native, &wrapper);
+ }
+ 
+ bool WebCoreTypedArrayController::isAtomicsWaitAllowedOnCurrentThread()
+diff --git a/src/bun.js/bindings/webcore/WebCoreTypedArrayController.h b/src/bun.js/bindings/webcore/WebCoreTypedArrayController.h
+index d283a946d..ae94125a9 100644
+--- a/src/bun.js/bindings/webcore/WebCoreTypedArrayController.h
++++ b/src/bun.js/bindings/webcore/WebCoreTypedArrayController.h
+@@ -35,8 +35,8 @@ public:
+     WebCoreTypedArrayController(bool allowAtomicsWait);
+     virtual ~WebCoreTypedArrayController();
+ 
+-    JSC::JSArrayBuffer* toJS(JSC::JSGlobalObject*, JSC::JSGlobalObject*, JSC::ArrayBuffer*) override;
+-    void registerWrapper(JSC::JSGlobalObject*, ArrayBuffer*, JSC::JSArrayBuffer*) override;
++    JSC::JSArrayBuffer* toJS(JSC::JSGlobalObject*, JSC::JSGlobalObject*, JSC::ArrayBuffer&) override;
++    void registerWrapper(JSC::JSGlobalObject*, ArrayBuffer&, JSC::JSArrayBuffer&) override;
+     bool isAtomicsWaitAllowedOnCurrentThread() override;
+ 
+     JSC::WeakHandleOwner* wrapperOwner() { return &m_owner; }
+diff --git a/src/bun.js/bindings/workaround-missing-symbols.cpp b/src/bun.js/bindings/workaround-missing-symbols.cpp
+index 15703aa7b..871f3aec2 100644
+--- a/src/bun.js/bindings/workaround-missing-symbols.cpp
++++ b/src/bun.js/bindings/workaround-missing-symbols.cpp
+@@ -269,6 +269,8 @@ extern "C" __attribute__((used)) char __libc_single_threaded = 0;
+ // 2025-07-10 15:59:47 PDT
+ // [515/540] Building CXX
+ #define BUN_VERBOSE_ABORT_NOEXCEPT _LIBCPP_VERBOSE_ABORT_NOEXCEPT
++#elif defined(_NOEXCEPT)
++#define BUN_VERBOSE_ABORT_NOEXCEPT _NOEXCEPT
+ #else
+ #define BUN_VERBOSE_ABORT_NOEXCEPT
+ #endif
+diff --git a/src/ios/embedding.c b/src/ios/embedding.c
+index bdcb508df..384aa7be4 100644
+--- a/src/ios/embedding.c
++++ b/src/ios/embedding.c
+@@ -19,8 +19,8 @@ extern void bun_main(void);
+ extern void (*bun_ios_exit_callback)(uint32_t code);
+ 
+ /* Argument storage (read by bun.zig) */
+-extern int bun_ios_argc;
+-extern char** bun_ios_argv;
++int bun_ios_argc = 0;
++char** bun_ios_argv = NULL;
+ 
+ /* Thread arguments structure */
+ struct bun_thread_args {

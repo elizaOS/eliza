@@ -28,6 +28,7 @@ import {
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import { useBranding } from "../../config/branding";
 import { useMediaQuery } from "../../hooks";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useApp } from "../../state";
 import {
   navigatePreOpenedWindow,
@@ -612,6 +613,7 @@ export function DesktopGameWindowControls({
 }
 
 export function GameView() {
+  useRenderGuard("GameView");
   const { setTimeout } = useTimeout();
   const {
     appRuns,

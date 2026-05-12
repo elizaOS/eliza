@@ -1,0 +1,7 @@
+sector,vector_1,vector_2,switch_seq_u,switch_seq_v,switch_seq_w,angle_start_deg,angle_end_deg,duty_high_phase,duty_mid_phase,duty_low_phase,duty_high_formula,duty_mid_formula,duty_low_formula
+1,V1,V2,1-1-0,0-1-1,0-0-0,0,60,U,V,W,(T1+T2+T0/4)/Ts,(T1+T0/4)/Ts,T0/4/Ts
+2,V3,V2,0-1-1,1-1-0,0-0-0,60,120,U,V,W,(T1+T2+T0/4)/Ts,(T2+T0/4)/Ts,T0/4/Ts
+3,V3,V4,0-0-0,1-1-0,0-1-1,120,180,V,W,U,(T1+T2+T0/4)/Ts,(T1+T0/4)/Ts,T0/4/Ts
+4,V5,V4,0-0-0,0-1-1,1-1-0,180,240,W,V,U,(T1+T2+T0/4)/Ts,(T2+T0/4)/Ts,T0/4/Ts
+5,V5,V6,0-1-1,0-0-0,1-1-0,240,300,W,U,V,(T1+T2+T0/4)/Ts,(T1+T0/4)/Ts,T0/4/Ts
+6,V1,V6,1-1-0,0-0-0,0-1-1,300,360,U,W,V,(T1+T2+T0/4)/Ts,(T2+T0/4)/Ts,T0/4/Ts

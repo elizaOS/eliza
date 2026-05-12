@@ -1,0 +1,152 @@
+import { describe, it, expect } from "bun:test";
+import { buildScenarios, SCENARIO_IDS } from "../scenarios.ts";
+import { MockPipelineDriver } from "../mock-driver.ts";
+import { MetricsCollector } from "../metrics.ts";
+import { runBench } from "../runner.ts";
+import { evaluateGates, aggregate, DEFAULT_GATES } from "../gates.ts";
+
+describe("scenarios", () => {
+  it("emits the canonical 6 scenarios", () => {
+    const built = buildScenarios();
+    expect(built.map((b) => b.scenario.id)).toEqual([...SCENARIO_IDS]);
+  });
+
+  for (const id of SCENARIO_IDS) {
+    it(`smoke-tests scenario "${id}" end-to-end against the mock driver`, async () => {
+      const built = buildScenarios().find((b) => b.scenario.id === id)!;
+      const driver = new MockPipelineDriver();
+      const collector = new MetricsCollector({ fixtureId: id });
+      const result = await driver.run({
+        audio: built.audio,
+        injection: built.scenario.injection,
+        probe: collector.record,
+      });
+      expect(result.exitReason).toBe("done");
+      const m = collector.finalize(result);
+      expect(m.ttfaMs).toBeGreaterThan(0);
+      expect(m.speechEndToFirstAudioMs).toBeGreaterThan(0);
+      if (id === "barge-in") {
+        expect(m.bargeInResponseMs).toBeDefined();
+        expect(m.bargeInResponseMs!).toBeGreaterThan(0);
+        expect(m.bargeInResponseMs!).toBeLessThan(250);
+      }
+    });
+  }
+});
+
+describe("runBench (mock driver)", () => {
+  it("produces a BenchRun for every scenario with finite aggregates", async () => {
+    const run = await runBench({
+      driver: new MockPipelineDriver(),
+      bundleId: "test-bundle",
+    });
+    expect(run.fixtures.length).toBe(SCENARIO_IDS.length);
+    expect(run.aggregates.ttfaP50).toBeGreaterThan(0);
+    expect(run.aggregates.ttfaP95).toBeGreaterThanOrEqual(run.aggregates.ttfaP50);
+    expect(run.aggregates.rollbackWastePct).toBeGreaterThan(0);
+    expect(run.aggregates.rollbackWastePct).toBeLessThan(1);
+    expect(run.bundleId).toBe("test-bundle");
+    expect(run.backend).toBe("mock");
+  });
+
+  it("accepts a scenario filter", async () => {
+    const run = await runBench({
+      driver: new MockPipelineDriver(),
+      bundleId: "test-bundle",
+      scenarios: ["short-turn", "barge-in"],
+    });
+    expect(run.fixtures.map((f) => f.fixtureId).sort()).toEqual(
+      ["barge-in", "short-turn"],
+    );
+  });
+
+  it("rejects unknown scenario ids", async () => {
+    await expect(
+      runBench({
+        driver: new MockPipelineDriver(),
+        bundleId: "test-bundle",
+        scenarios: ["does-not-exist"],
+      }),
+    ).rejects.toThrow(/unknown scenario id/);
+  });
+});
+
+describe("gates", () => {
+  it("aggregates p50/p95 across fixtures", () => {
+    const agg = aggregate([
+      {
+        fixtureId: "a",
+        ttfaMs: 100,
+        e2eLatencyMs: 1000,
+        speechEndToFirstAudioMs: 50,
+        falseBargeInCount: 0,
+        draftTokensTotal: 10,
+        draftTokensWasted: 1,
+        peakRssMb: 100,
+        peakCpuPct: 50,
+      },
+      {
+        fixtureId: "b",
+        ttfaMs: 200,
+        e2eLatencyMs: 1500,
+        speechEndToFirstAudioMs: 60,
+        falseBargeInCount: 0,
+        draftTokensTotal: 10,
+        draftTokensWasted: 2,
+        peakRssMb: 100,
+        peakCpuPct: 50,
+      },
+    ]);
+    expect(agg.ttfaP50).toBe(100);
+    expect(agg.ttfaP95).toBe(200);
+    expect(agg.rollbackWastePct).toBeCloseTo(0.15, 5);
+  });
+
+  it("passes against a permissive baseline", async () => {
+    const run = await runBench({
+      driver: new MockPipelineDriver(),
+      bundleId: "current",
+    });
+    const baseline = await runBench({
+      driver: new MockPipelineDriver(),
+      bundleId: "baseline",
+    });
+    const report = evaluateGates({ current: run, baseline });
+    expect(report.passed).toBe(true);
+    expect(report.markdown).toContain("Voice-bench gate report");
+    expect(report.rows.some((r) => r.metric.startsWith("TTFA"))).toBe(true);
+  });
+
+  it("fails when current TTFA exceeds the fail threshold", async () => {
+    const baseline = await runBench({
+      driver: new MockPipelineDriver(),
+      bundleId: "baseline",
+    });
+    // Simulate a 100% regression — ttfa doubled.
+    const slow = await runBench({
+      driver: new MockPipelineDriver({ firstAcceptMs: 1500, ttsFirstPcmMs: 800 }),
+      bundleId: "slow",
+    });
+    const report = evaluateGates({
+      current: slow,
+      baseline,
+      gates: DEFAULT_GATES,
+    });
+    expect(report.passed).toBe(false);
+    expect(report.rows.some((r) => r.severity === "fail")).toBe(true);
+  });
+
+  it("flags rollback waste above the absolute ceiling", async () => {
+    const run = await runBench({
+      driver: new MockPipelineDriver({
+        draftTokensTotal: 100,
+        draftTokensWasted: 50,
+      }),
+      bundleId: "wasteful",
+    });
+    const report = evaluateGates({ current: run });
+    const waste = report.rows.find((r) => r.metric.startsWith("Rollback waste"));
+    expect(waste).toBeDefined();
+    expect(waste!.severity).toBe("fail");
+  });
+});

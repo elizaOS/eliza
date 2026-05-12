@@ -207,7 +207,7 @@ describe("runV5MessageRuntimeStage1", () => {
 						providerName: "RECENT_MESSAGES",
 					},
 					PROVIDERS: {
-						text: "# Providers\nproviders[99]: giant catalog",
+						text: "# Providers\nproviders: giant catalog",
 						providerName: "PROVIDERS",
 					},
 					CHARACTER: {

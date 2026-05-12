@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 // @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
 // methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
 // Type checking each mixin in isolation surfaces 700+ phantom errors because
@@ -11,6 +12,8 @@ import {
   computeSleepRegularity,
   type SleepRegularityEpisodeLike,
 } from "@elizaos/plugin-health";
+=======
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 import type {
   LifeOpsPersonalBaselineResponse,
   LifeOpsSleepHistoryEpisode,

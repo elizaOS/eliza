@@ -28,7 +28,7 @@ import { afterAll, describe, expect, it } from "vitest";
 function elizaStateDir(): string {
   return (
     process.env.ELIZA_STATE_DIR?.trim() ||
-    process.env.MILADY_STATE_DIR?.trim() ||
+    process.env.ELIZA_STATE_DIR?.trim() ||
     path.join(os.homedir(), ".eliza")
   );
 }

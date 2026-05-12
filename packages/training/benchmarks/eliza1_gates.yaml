@@ -245,12 +245,16 @@ dflash:
 # RSS gate is not required for the GH200-class `27b-1m` tier).
 # ---------------------------------------------------------------------------
 tiers:
+<<<<<<< HEAD
   # 0_8b — Qwen3.5-0.8B backbone, the new smallest local default tier. Same
   # gate shape as 0_6b (it is only ~30 % larger and shares the consumer-GPU
   # latency budget); thresholds inherit the 0_6b numbers until a real e2e run
   # on the 0.8B lands and tightens them.
   0_8b:
     format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
+=======
+  0_8b:
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     text_eval: { threshold: 0.55, required: true, provisional: true }
     voice_rtf: { threshold: 0.5, required: true, provisional: true }
     asr_wer: { threshold: 0.10, required: true, provisional: true }
@@ -295,8 +299,12 @@ tiers:
     expressive_tag_leakage: { threshold: 0.05, required: false, provisional: true }
     peak_rss_mb: { threshold: 1800, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 20, required: false, provisional: true, needs_hardware: true }
+<<<<<<< HEAD
   1_7b:
     format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
+=======
+  2b:
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     text_eval: { threshold: 0.60, required: true, provisional: true }
     voice_rtf: { threshold: 0.45, required: true, provisional: true }
     asr_wer: { threshold: 0.08, required: true, provisional: true }
@@ -318,6 +326,7 @@ tiers:
     expressive_tag_leakage: { threshold: 0.03, required: false, provisional: true }
     peak_rss_mb: { threshold: 4500, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 20, required: false, provisional: true, needs_hardware: true }
+<<<<<<< HEAD
   # 2b — Qwen3.5-2B-Base backbone. Inherits the 1_7b gate shape (mid local
   # tier on the Qwen3.5 fused-model line); thresholds will be tightened after
   # a real e2e run lands.
@@ -349,6 +358,11 @@ tiers:
     format_ok: { threshold: 0.70, required: true, provisional: false }
     text_eval: { threshold: 0.62, required: true, provisional: true }
     voice_rtf: { threshold: 0.45, required: true, provisional: true }
+=======
+  4b:
+    text_eval: { threshold: 0.62, required: true, provisional: true }
+    voice_rtf: { threshold: 0.42, required: true, provisional: true }
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     asr_wer: { threshold: 0.07, required: true, provisional: true }
     vad_latency_ms: { threshold: 18, required: true, provisional: false }
     vad_boundary_mae_ms: { threshold: 40, required: true, provisional: false }
@@ -356,8 +370,11 @@ tiers:
     vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
     first_token_latency_ms: { threshold: 200, required: false, provisional: true }
     first_audio_latency_ms: { threshold: 400, required: false, provisional: true }
+<<<<<<< HEAD
     duet_round_trip_ms: { threshold: 400, required: false, provisional: true }
     structured_decode_token_savings_pct: { threshold: 20, required: false, provisional: true }
+=======
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     barge_in_cancel_ms: { threshold: 65, required: true, provisional: false }
     thirty_turn_ok: { threshold: true, required: true, provisional: false }
     e2e_loop_ok: { threshold: true, required: true, provisional: false }
@@ -366,8 +383,13 @@ tiers:
     expressive_tag_faithfulness: { threshold: 0.88, required: false, provisional: true }
     expressive_mos: { threshold: 3.9, required: false, provisional: true }
     expressive_tag_leakage: { threshold: 0.03, required: false, provisional: true }
+<<<<<<< HEAD
     peak_rss_mb: { threshold: 7500, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 20, required: false, provisional: true, needs_hardware: true }
+=======
+    peak_rss_mb: { threshold: 8000, required: false, provisional: true, needs_hardware: true }
+    thermal_throttle_pct: { threshold: 18, required: false, provisional: true, needs_hardware: true }
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   9b:
     format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
     text_eval: { threshold: 0.65, required: true, provisional: true }

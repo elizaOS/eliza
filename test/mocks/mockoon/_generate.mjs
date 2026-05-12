@@ -328,6 +328,7 @@ const calendar = envelope({
   name: "lifeops-calendar-mock",
   port: 18802,
   routes: [
+<<<<<<< HEAD
     route(
       "get",
       "calendar/v3/users/me/calendarList",
@@ -448,6 +449,78 @@ const calendar = envelope({
       },
       "google",
     ),
+=======
+    route("get", "calendar/v3/users/me/calendarList", {
+      kind: "calendar#calendarList",
+      etag: '"3829471"',
+      nextPageToken: null,
+      items: [
+        { kind: "calendar#calendarListEntry", id: "primary", summary: "shaw@eliza.dev", primary: true, accessRole: "owner", timeZone: "America/Los_Angeles" },
+        { kind: "calendar#calendarListEntry", id: "team-eliza@group.calendar.google.com", summary: "Eliza team", accessRole: "writer", timeZone: "America/Los_Angeles" },
+      ],
+    }, "google"),
+    route("get", "calendar/v3/calendars/:calendarId/events", {
+      kind: "calendar#events",
+      etag: '"3829499"',
+      timeZone: "America/Los_Angeles",
+      nextPageToken: null,
+      items: [
+        {
+          id: "ev_193a200a44b0bb02",
+          status: "confirmed",
+          summary: "Standup",
+          description: "Daily standup — what blocked you yesterday?",
+          start: { dateTime: "2026-05-09T16:30:00-07:00", timeZone: "America/Los_Angeles" },
+          end: { dateTime: "2026-05-09T17:00:00-07:00", timeZone: "America/Los_Angeles" },
+          attendees: [
+            { email: "shaw@eliza.dev", responseStatus: "accepted" },
+            { email: PEOPLE[0].email, responseStatus: "accepted" },
+            { email: PEOPLE[1].email, responseStatus: "tentative" },
+          ],
+          conferenceData: {
+            conferenceId: "abc-defg-hij",
+            entryPoints: [{ entryPointType: "video", uri: "https://meet.google.com/abc-defg-hij" }],
+          },
+          organizer: { email: PEOPLE[0].email, displayName: PEOPLE[0].name },
+        },
+        {
+          id: "ev_193a1ed8c0aa1f01",
+          status: "confirmed",
+          summary: "Q3 OKR review",
+          start: { dateTime: "2026-05-12T11:00:00-07:00" },
+          end: { dateTime: "2026-05-12T12:00:00-07:00" },
+          attendees: [
+            { email: "shaw@eliza.dev", responseStatus: "needsAction" },
+            { email: PEOPLE[2].email, responseStatus: "accepted" },
+          ],
+        },
+      ],
+    }, "google"),
+    route("get", "calendar/v3/calendars/:calendarId/events/:eventId", {
+      id: "ev_193a200a44b0bb02",
+      status: "confirmed",
+      summary: "Standup",
+      start: { dateTime: "2026-05-09T16:30:00-07:00" },
+      end: { dateTime: "2026-05-09T17:00:00-07:00" },
+      attendees: [{ email: "shaw@eliza.dev", responseStatus: "accepted" }],
+    }, "google"),
+    route("post", "calendar/v3/calendars/:calendarId/events", {
+      id: "ev_new_193b000000000001",
+      status: "confirmed",
+      htmlLink: "https://calendar.google.com/event?eid=ev_new_193b000000000001",
+      created: "2026-05-09T18:00:00.000Z",
+      updated: "2026-05-09T18:00:00.000Z",
+      summary: "Lifeops scheduled call",
+      start: { dateTime: "2026-05-10T15:00:00-07:00" },
+      end: { dateTime: "2026-05-10T15:30:00-07:00" },
+    }, "google"),
+    route("patch", "calendar/v3/calendars/:calendarId/events/:eventId", {
+      id: "{{urlParam 'eventId'}}",
+      status: "confirmed",
+      updated: "2026-05-09T18:05:12.000Z",
+      summary: "Standup (rescheduled)",
+    }, "google"),
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     {
       uuid: u(),
       type: "http",
@@ -469,12 +542,24 @@ const slack = envelope({
   name: "lifeops-slack-mock",
   port: 18803,
   routes: [
+<<<<<<< HEAD
     route(
       "post",
       "chat.postMessage",
       {
         ok: true,
         channel: "C09ABCD1234",
+=======
+    route("post", "chat.postMessage", {
+      ok: true,
+      channel: "C09ABCD1234",
+      ts: "1746810420.000300",
+      message: {
+        bot_id: "B09SLACKBOT",
+        type: "message",
+        text: "Mock slack message body",
+        user: "U09ELIZA01",
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
         ts: "1746810420.000300",
         message: {
           bot_id: "B09SLACKBOT",
@@ -485,6 +570,7 @@ const slack = envelope({
           team: "T09BLUEPINE",
         },
       },
+<<<<<<< HEAD
       "slack",
     ),
     route(
@@ -589,6 +675,43 @@ const slack = envelope({
       },
       "slack",
     ),
+=======
+    }, "slack"),
+    route("get", "conversations.list", {
+      ok: true,
+      channels: [
+        { id: "C09ABCD1234", name: "general", is_channel: true, is_member: true, num_members: 12 },
+        { id: "C09STANDUP01", name: "team-standup", is_channel: true, is_member: true, num_members: 4 },
+        { id: "C09LIFEOPS01", name: "lifeops-alerts", is_channel: true, is_member: true, num_members: 2 },
+      ],
+      response_metadata: { next_cursor: "" },
+    }, "slack"),
+    route("get", "conversations.history", {
+      ok: true,
+      messages: [
+        { type: "message", user: "U09PRIYA001", text: "Pushing the patch in 10 — anyone want to review?", ts: "1746810360.001100" },
+        { type: "message", user: "U09MARCUS01", text: "I'll grab it. Lifeops link?", ts: "1746810400.001200" },
+        { type: "message", user: "U09ELIZA01", text: "Here: https://github.com/eliza/lifeops/pull/482", ts: "1746810410.001300" },
+      ],
+      has_more: false,
+      response_metadata: { next_cursor: "" },
+    }, "slack"),
+    route("get", "users.list", {
+      ok: true,
+      members: [
+        { id: "U09ELIZA01", name: "shaw", real_name: "Shaw Walters", profile: { email: "shaw@eliza.dev" } },
+        { id: "U09PRIYA001", name: "priya", real_name: PEOPLE[0].name, profile: { email: PEOPLE[0].email } },
+        { id: "U09MARCUS01", name: "marcus", real_name: PEOPLE[1].name, profile: { email: PEOPLE[1].email } },
+      ],
+      response_metadata: { next_cursor: "" },
+    }, "slack"),
+    route("post", "chat.update", {
+      ok: true,
+      channel: "C09ABCD1234",
+      ts: "1746810420.000300",
+      text: "Mock slack message body (updated)",
+    }, "slack"),
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     route("post", "reactions.add", { ok: true }, "slack"),
   ],
 });
@@ -599,6 +722,7 @@ const discord = envelope({
   name: "lifeops-discord-mock",
   port: 18804,
   routes: [
+<<<<<<< HEAD
     route(
       "get",
       "users/@me/guilds",
@@ -690,6 +814,18 @@ const discord = envelope({
     route(
       "post",
       "channels/:channelId/messages",
+=======
+    route("get", "users/@me/guilds", [
+      { id: "1234567890123456789", name: "Eliza", icon: null, owner: true, permissions: "2147483647", features: [] },
+      { id: "9876543210987654321", name: "BluePine Dev", icon: null, owner: false, permissions: "1073741824", features: [] },
+    ], "discord"),
+    route("get", "guilds/:guildId/channels", [
+      { id: "1111111111111111", type: 0, guild_id: "{{urlParam 'guildId'}}", name: "general", position: 0 },
+      { id: "2222222222222222", type: 0, guild_id: "{{urlParam 'guildId'}}", name: "lifeops", position: 1 },
+      { id: "3333333333333333", type: 2, guild_id: "{{urlParam 'guildId'}}", name: "Voice", position: 2 },
+    ], "discord"),
+    route("get", "channels/:channelId/messages", [
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
       {
         id: "8889999999999999",
         channel_id: "{{urlParam 'channelId'}}",
@@ -700,8 +836,32 @@ const discord = envelope({
         attachments: [],
         embeds: [],
       },
+<<<<<<< HEAD
       "discord",
     ),
+=======
+      {
+        id: "8881111111111112",
+        channel_id: "{{urlParam 'channelId'}}",
+        author: { id: "5550000000000002", username: "marcus", discriminator: "0", global_name: PEOPLE[1].name },
+        content: "Reviewing now.",
+        timestamp: "2026-05-09T17:01:30.000Z",
+        edited_timestamp: null,
+        attachments: [],
+        embeds: [],
+      },
+    ], "discord"),
+    route("post", "channels/:channelId/messages", {
+      id: "8889999999999999",
+      channel_id: "{{urlParam 'channelId'}}",
+      author: { id: "5559999000000001", username: "elizabot", bot: true },
+      content: "Mock outbound message",
+      timestamp: "2026-05-09T18:00:00.000Z",
+      edited_timestamp: null,
+      attachments: [],
+      embeds: [],
+    }, "discord"),
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   ],
 });
 
@@ -715,6 +875,7 @@ const telegram = envelope({
   name: "lifeops-telegram-mock",
   port: 18805,
   routes: [
+<<<<<<< HEAD
     route(
       "post",
       "bot:token/sendMessage",
@@ -732,10 +893,58 @@ const telegram = envelope({
             id: -1009876543210,
             title: "Eliza Standup",
             type: "supergroup",
+=======
+    route("post", "bot:token/sendMessage", {
+      ok: true,
+      result: {
+        message_id: 4821,
+        from: { id: 7000000001, is_bot: true, first_name: "ElizaBot", username: "elizabot" },
+        chat: { id: -1009876543210, title: "Eliza Standup", type: "supergroup" },
+        date: 1746810420,
+        text: "Mock outbound message",
+      },
+    }, "telegram"),
+    route("get", "bot:token/getUpdates", {
+      ok: true,
+      result: [
+        {
+          update_id: 982344571,
+          message: {
+            message_id: 4810,
+            from: { id: 11122233, is_bot: false, first_name: "Priya", last_name: "Raman", username: "priyar" },
+            chat: { id: -1009876543210, title: "Eliza Standup", type: "supergroup" },
+            date: 1746810360,
+            text: "Pushing the patch in 10",
+          },
+        },
+        {
+          update_id: 982344572,
+          message: {
+            message_id: 4811,
+            from: { id: 22233344, is_bot: false, first_name: "Marcus", username: "marcuso" },
+            chat: { id: -1009876543210, title: "Eliza Standup", type: "supergroup" },
+            date: 1746810400,
+            text: "I'll grab it.",
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
           },
           date: 1746810420,
           text: "Mock outbound message",
         },
+<<<<<<< HEAD
+=======
+      ],
+    }, "telegram"),
+    route("get", "bot:token/getMe", {
+      ok: true,
+      result: {
+        id: 7000000001,
+        is_bot: true,
+        first_name: "ElizaBot",
+        username: "elizabot",
+        can_join_groups: true,
+        can_read_all_group_messages: false,
+        supports_inline_queries: false,
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
       },
       "telegram",
     ),
@@ -862,9 +1071,28 @@ const github = envelope({
           number: 482,
           state: "open",
           title: "lifeops: planner drops candidate when all signals stale",
+<<<<<<< HEAD
           user: { login: "priyar" },
           labels: [{ name: "bug" }],
           created_at: "2026-05-08T19:14:11Z",
+=======
+          html_url: "https://github.com/eliza/lifeops/issues/482",
+          user: { login: "priyar", id: 11122233 },
+          created_at: "2026-05-08T19:14:11Z",
+          updated_at: "2026-05-09T16:55:02Z",
+          labels: [{ name: "bug" }, { name: "lifeops" }],
+        },
+        {
+          id: 2010101011,
+          number: 483,
+          state: "open",
+          title: "lifeops: surface telemetry span ids in approval queue",
+          html_url: "https://github.com/eliza/lifeops/issues/483",
+          user: { login: "marcuso", id: 22233344 },
+          created_at: "2026-05-09T08:02:17Z",
+          updated_at: "2026-05-09T17:30:00Z",
+          labels: [{ name: "enhancement" }],
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
         },
       ],
       "github",
@@ -917,9 +1145,21 @@ const github = envelope({
         html_url: "https://github.com/eliza/lifeops/issues/484",
         created_at: "2026-05-09T18:30:00Z",
       },
+<<<<<<< HEAD
       "github",
       201,
     ),
+=======
+    ], "github"),
+    route("post", "repos/:owner/:repo/issues", {
+      id: 2010101099,
+      number: 484,
+      state: "open",
+      title: "Mock created issue",
+      html_url: "https://github.com/eliza/lifeops/issues/484",
+      created_at: "2026-05-09T18:30:00Z",
+    }, "github", 201),
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   ],
 });
 
@@ -1603,6 +1843,7 @@ const spotify = envelope({
   name: "lifeops-spotify-mock",
   port: 18817,
   routes: [
+<<<<<<< HEAD
     route(
       "get",
       "v1/me",
@@ -1613,6 +1854,27 @@ const spotify = envelope({
         country: "US",
         product: "premium",
         images: [],
+=======
+    route("get", "v1/me", {
+      id: "shaweliza",
+      display_name: "Shaw",
+      email: "shaw@eliza.dev",
+      country: "US",
+      product: "premium",
+      images: [],
+    }, "spotify"),
+    route("get", "v1/me/player/currently-playing", {
+      timestamp: 1746810600000,
+      progress_ms: 84210,
+      is_playing: true,
+      currently_playing_type: "track",
+      item: {
+        id: "0V8AZRO3vcmoCJVfXSjynj",
+        name: "Sandstorm",
+        artists: [{ id: "27dt7vDlxdLuF1FycZ51RQ", name: "Darude" }],
+        album: { id: "1QqLvzS1d1xqklrTHWWgUe", name: "Before the Storm" },
+        duration_ms: 233000,
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
       },
       "spotify",
     ),

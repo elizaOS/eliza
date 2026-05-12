@@ -1,8 +1,13 @@
 # Final cumulative re-baseline 2026-05-11
 
+<<<<<<< HEAD
 Closing-the-loop document for the Wave-1 → Wave-4 cleanup. All runs against
 Cerebras gpt-oss-120b. 25 scenarios per agent in lifeops; 25 of 200 scenarios
 per profile in personality.
+=======
+Run dir: `/Users/shawwalters/.eliza/runs/lifeops/lifeops-multiagent-1778550918415`
+Limit: 10 scenarios per agent on Cerebras gpt-oss-120b with Mockoon substrate.
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 - lifeops run dir: `/Users/shawwalters/.eliza/runs/lifeops/lifeops-multiagent-1778550766550`
 - lifeops saved-best symlink: `/Users/shawwalters/.eliza/runs/lifeops/lifeops-multiagent-best` → above
@@ -91,7 +96,11 @@ Notes:
   `CALENDAR { subaction: ... }` shape — it benefits less from name aliasing.
   Still, the W4-A intent kwarg becoming soft lifted its mean by ~0.09.
 
+<<<<<<< HEAD
 ### personality pass-rate Δ from W2-9 → W4-Z
+=======
+## Delta from W2-9 baseline (`~/.eliza/runs/lifeops/lifeops-multiagent-best`)
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 W2-9 personality bench was the first full 4-profile run.
 
@@ -123,9 +132,13 @@ single-sample noise margin (one verdict flip).
   0.30 (was 0.000 — every turn returned "Something went wrong on my end.
   Please try again.").
 
+<<<<<<< HEAD
 - **W4-C Cerebras 429 retry policy + concurrency 4→2**
   No 429 errors in this run. No scenarios errored out — every scenario
   recorded a real verdict.
+=======
+`~/.eliza/runs/lifeops/lifeops-multiagent-w4-final → /Users/shawwalters/.eliza/runs/lifeops/lifeops-multiagent-1778550918415`
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 - **W4-D planner disambiguation (BLOCK descript + CALENDAR similes + manifest arg shapes)**
   Eliza no longer mis-routes calendar requests to BLOCK; calendar planner

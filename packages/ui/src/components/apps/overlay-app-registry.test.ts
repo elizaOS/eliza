@@ -10,6 +10,10 @@ const OVERLAY_REGISTRY_KEY = "__elizaosOverlayAppRegistry__";
 
 const ELIZAOS_AOSP_UA =
   "Mozilla/5.0 (Linux; Android 15; sdk_gphone64_x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/124.0.6367.243 Mobile Safari/537.36 ElizaOS/dev-2026-01";
+<<<<<<< HEAD
+=======
+const WHITE_LABEL_AOSP_UA = `${ELIZAOS_AOSP_UA} AcmeOS/dev-2026-01`;
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 const STOCK_ANDROID_UA =
   "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.243 Mobile Safari/537.36";
 const DESKTOP_LINUX_UA =
@@ -82,10 +86,17 @@ describe("overlay-app-registry AOSP gating", () => {
     ]);
   });
 
+<<<<<<< HEAD
   it("shows androidOnly apps on ElizaOS (carries both ElizaOS and ElizaOS markers)", () => {
     const apps = getAvailableOverlayApps({
       platform: "android",
       userAgent: ELIZAOS_AOSP_UA,
+=======
+  it("shows androidOnly apps on a white-label AOSP build carrying the base marker", () => {
+    const apps = getAvailableOverlayApps({
+      platform: "android",
+      userAgent: WHITE_LABEL_AOSP_UA,
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     });
     expect(apps.map((a) => a.name).sort()).toEqual([
       "@elizaos/app-companion",
@@ -102,7 +113,7 @@ describe("overlay-app-registry AOSP gating", () => {
 
   it("isAospAndroid agrees with the gate semantics", () => {
     expect(
-      isAospAndroid({ platform: "android", userAgent: ELIZAOS_AOSP_UA }),
+      isAospAndroid({ platform: "android", userAgent: WHITE_LABEL_AOSP_UA }),
     ).toBe(true);
     expect(
       isAospAndroid({ platform: "android", userAgent: ELIZAOS_AOSP_UA }),

@@ -42,7 +42,7 @@ describe("local inference recommendations", () => {
     expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-1_7b");
     // assessFit on linux-gpu uses max(VRAM, RAM*0.5) = max(24, 32) = 32.
     // 27b (minRam 32, size 16.8) fits; 27b-256k (minRam 96) does
-    // not. Ladder is 27b-256k -> 27b -> 9b -> 1_7b, picks 27b.
+    // not. Ladder is 27b-256k -> 27b -> 9b -> 4b -> 1_7b, picks 27b.
     expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b");
   });
 
@@ -63,7 +63,7 @@ describe("local inference recommendations", () => {
     expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b-256k");
   });
 
-  it("uses the mobile platform ladder and prefers the 1.7B tier when it fits", () => {
+  it("uses the mobile platform ladder and prefers the 4B tier when it fits", () => {
     const probe = hardware({
       totalRamGb: 8,
       freeRamGb: 5,
@@ -76,13 +76,20 @@ describe("local inference recommendations", () => {
 
     expect(classifyRecommendationPlatform(probe)).toBe("mobile");
     expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_6b");
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-1_7b");
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-4b");
   });
 
+<<<<<<< HEAD
   it("falls back to the small Qwen3.5 tier on minimal mobile", () => {
     // 1_7b needs 4 GB minRam; below that the ladder collapses to the next
     // tier that fits — eliza-1-0_8b (2 GB minRam, the new small default),
     // then eliza-1-0_6b. Below 2 GB nothing fits.
+=======
+  it("falls back to the 0.6B tier on minimal mobile", () => {
+    // 4b needs 8 GB minRam; below that the ladder steps down
+    // through 1_7b (4 GB minRam) to 0_6b (2 GB minRam). Below 2 GB
+    // nothing fits.
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     const cases: Array<[number, string | null]> = [
       [3.5, "eliza-1-0_8b"],
       [1.5, null],

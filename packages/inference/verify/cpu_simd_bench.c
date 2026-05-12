@@ -131,6 +131,16 @@ static double run_polar_preht(int nthreads) {
 
 typedef struct { const char *name; double (*fn)(int); int n_out; } Bench;
 
+static const char *bench_backend_name(void) {
+#if defined(__aarch64__) || defined(__arm64__) || defined(__ARM_NEON) || defined(__ARM_NEON__)
+    return "cpu_arm64_simd_plugins";
+#elif defined(__x86_64__) || defined(_M_X64)
+    return "cpu_x86_64_simd_plugins";
+#else
+    return "cpu_generic_simd_plugins";
+#endif
+}
+
 int main(int argc, char **argv) {
     int ntok = DEFAULT_NTOK, runs = 5, warmup = 1;
     const char *out_path = NULL;
@@ -228,7 +238,7 @@ int main(int argc, char **argv) {
         FILE *fp = fopen(out_path, "w");
         if (fp) {
             fprintf(fp, "{\n");
-            fprintf(fp, "  \"backend\": \"cpu_x86_64_simd_plugins\",\n");
+            fprintf(fp, "  \"backend\": \"%s\",\n", bench_backend_name());
             fprintf(fp, "  \"qjl_active_simd\": \"%s\",\n", qjl_active_simd());
             fprintf(fp, "  \"polarquant_active_simd\": \"%s\",\n", polarquant_active_simd());
             fprintf(fp, "  \"workload\": { \"n_heads\": %d, \"n_kv_heads\": %d, \"n_tokens\": %d, \"polar_rows\": %ld },\n",

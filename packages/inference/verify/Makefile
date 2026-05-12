@@ -13,7 +13,11 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
+<<<<<<< HEAD
 .PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock metal-bench-fused cpu-bench cpu-dispatch-smoke bench cuda cuda-verify cuda-verify-fused hip-verify cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
+=======
+.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock metal-bench-fused metal-upscale-probe metal-upscale-probe-require cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -217,8 +221,12 @@ vulkan-verify-fallbacks: vulkan_verify vulkan-spirv reference-test
 vulkan-verify-fused: vulkan_verify vulkan-spirv reference-test
 	@echo "[kernels/verify] vulkan fused-attn QJL-K + TBQ3-V..."
 	./vulkan_verify ../vulkan/fused_attn_qjl_tbq.spv   fixtures/fused_attn_qjl_tbq.json
+	@echo "[kernels/verify] vulkan fused-attn QJL-K + TBQ3-V causal prefix..."
+	./vulkan_verify ../vulkan/fused_attn_qjl_tbq.spv   fixtures/fused_attn_qjl_tbq_causal.json
 	@echo "[kernels/verify] vulkan fused-attn QJL-K + Q4_POLAR-V (use_qjl=1)..."
 	./vulkan_verify ../vulkan/fused_attn_qjl_polar.spv fixtures/fused_attn_qjl_polar.json
+	@echo "[kernels/verify] vulkan fused-attn QJL-K + Q4_POLAR-V causal prefix (use_qjl=1)..."
+	./vulkan_verify ../vulkan/fused_attn_qjl_polar.spv fixtures/fused_attn_qjl_polar_causal.json
 
 # Native Linux end-to-end smoke for the Vulkan backend. This first runs the
 # standalone fixture verifier, then builds the patched fork target and runs the
@@ -313,8 +321,12 @@ metal-verify-multiblock: metal_verify reference-test
 metal-verify-fused: metal_verify reference-test
 	@echo "[kernels/verify] metal fused-attn QJL-K + TBQ3-V..."
 	./metal_verify ../metal/fused_attn_qjl_tbq.metal   kernel_fused_attn_qjl_tbq3_f32 fixtures/fused_attn_qjl_tbq.json
+	@echo "[kernels/verify] metal fused-attn QJL-K + TBQ3-V causal prefix..."
+	./metal_verify ../metal/fused_attn_qjl_tbq.metal   kernel_fused_attn_qjl_tbq3_f32 fixtures/fused_attn_qjl_tbq_causal.json
 	@echo "[kernels/verify] metal fused-attn QJL-K + Q4_POLAR-V (use_qjl=1)..."
 	./metal_verify ../metal/fused_attn_qjl_polar.metal kernel_fused_attn_qjl_polar_f32 fixtures/fused_attn_qjl_polar.json
+	@echo "[kernels/verify] metal fused-attn QJL-K + Q4_POLAR-V causal prefix (use_qjl=1)..."
+	./metal_verify ../metal/fused_attn_qjl_polar.metal kernel_fused_attn_qjl_polar_f32 fixtures/fused_attn_qjl_polar_causal.json
 	@echo "[kernels/verify] metal Polar pre-Hadamard query score (use_qjl 0/1)..."
 	./metal_verify ../metal/polar_preht.metal kernel_attn_score_q4_polar_preht_f32 fixtures/polar_preht.json
 	@for n in 2 3 4 8; do \
@@ -475,6 +487,7 @@ HIPCC ?= $(shell command -v hipcc 2>/dev/null)
 # Distro CUDA toolkits (Debian/Ubuntu `nvidia-cuda-toolkit`) put the runtime
 # headers in /usr/include, not /usr/local/cuda/include. Probe both.
 CUDA_HOME ?= $(if $(wildcard /usr/local/cuda/include/cuda_runtime.h),/usr/local/cuda,$(if $(wildcard /usr/include/cuda_runtime.h),/usr,/usr/local/cuda))
+<<<<<<< HEAD
 # ELIZA_DFLASH_LLAMA_DIR points at a checkout of the patched llama.cpp fork
 # (ggml headers + a build/ tree). Resolution order:
 #   1. explicit override (env / make var) — wins.
@@ -486,6 +499,14 @@ CUDA_HOME ?= $(if $(wildcard /usr/local/cuda/include/cuda_runtime.h),/usr/local/
 #      that `build-llama-cpp-dflash.mjs --src-dir`/`--cache-dir` produces.
 ELIZA_DFLASH_IN_REPO_LLAMA_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../llama.cpp)
 ELIZA_DFLASH_LLAMA_DIR ?= $(if $(wildcard $(ELIZA_DFLASH_IN_REPO_LLAMA_DIR)/ggml/include/ggml.h),$(ELIZA_DFLASH_IN_REPO_LLAMA_DIR),$(HOME)/.cache/eliza-dflash/eliza-llama-cpp)
+=======
+ELIZA_DFLASH_IN_TREE_LLAMA_DIR := $(abspath ../llama.cpp)
+# Prefer the checked-out submodule when running from this repository. The
+# ~/.cache build clone can be stale relative to the active worktree, and graph
+# dispatch smokes must link against the headers/libs matching the source under
+# review. CI/external runners can still override ELIZA_DFLASH_LLAMA_DIR.
+ELIZA_DFLASH_LLAMA_DIR ?= $(if $(wildcard $(ELIZA_DFLASH_IN_TREE_LLAMA_DIR)/ggml/include/ggml.h),$(ELIZA_DFLASH_IN_TREE_LLAMA_DIR),$(HOME)/.cache/eliza-dflash/eliza-llama-cpp)
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 ELIZA_DFLASH_LIBGGML_CUDA ?= $(ELIZA_DFLASH_LLAMA_DIR)/build-cuda/ggml/src/ggml-cuda/libggml-cuda.so
 
 # CMAKE_CUDA_ARCHITECTURES the fork build hook should pin (platform-targets
@@ -716,9 +737,11 @@ else
 	  echo "[verify-fork] metal/polar   (patched shipped: polar.metal)"       && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar.json      && \
 		  echo "[verify-fork] metal/polar_preht (patched shipped: polar.metal)"   && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_preht_f32 fixtures/polar.json && \
 		  echo "[verify-fork] metal/polar_preht + QJL residual (patched shipped: polar.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal kernel_mul_mv_q4_polar_preht_f32 fixtures/polar_qjl.json && \
-		  echo "[verify-fork] metal/fused_attn_qjl_tbq (patched shipped: fused_attn_qjl_tbq.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/fused_attn_qjl_tbq.metal kernel_fused_attn_qjl_tbq3_f32 fixtures/fused_attn_qjl_tbq.json && \
-		  echo "[verify-fork] metal/fused_attn_qjl_polar (patched shipped: fused_attn_qjl_polar.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/fused_attn_qjl_polar.metal kernel_fused_attn_qjl_polar_f32 fixtures/fused_attn_qjl_polar.json && \
-		  echo "[verify-fork] metal: 7/7 patched shipped shader files plus Polar preht/fused-attn variants verified against the same fixtures as the standalones"; \
+			  echo "[verify-fork] metal/fused_attn_qjl_tbq (patched shipped: fused_attn_qjl_tbq.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/fused_attn_qjl_tbq.metal kernel_fused_attn_qjl_tbq3_f32 fixtures/fused_attn_qjl_tbq.json && \
+			  echo "[verify-fork] metal/fused_attn_qjl_tbq causal prefix (patched shipped: fused_attn_qjl_tbq.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/fused_attn_qjl_tbq.metal kernel_fused_attn_qjl_tbq3_f32 fixtures/fused_attn_qjl_tbq_causal.json && \
+			  echo "[verify-fork] metal/fused_attn_qjl_polar (patched shipped: fused_attn_qjl_polar.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/fused_attn_qjl_polar.metal kernel_fused_attn_qjl_polar_f32 fixtures/fused_attn_qjl_polar.json && \
+			  echo "[verify-fork] metal/fused_attn_qjl_polar causal prefix (patched shipped: fused_attn_qjl_polar.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/fused_attn_qjl_polar.metal kernel_fused_attn_qjl_polar_f32 fixtures/fused_attn_qjl_polar_causal.json && \
+			  echo "[verify-fork] metal: 7/7 patched shipped shader files plus Polar preht/fused-attn variants verified against the same fixtures as the standalones"; \
 	else \
 	  echo "[verify-fork] xcrun not found — skipping Metal fork verification (macOS only)"; \
 	fi
@@ -748,6 +771,10 @@ else
 		      echo "[verify-fork] vulkan/$$f (fork: vulkan-shaders/$$f.comp)"; \
 		      ./vulkan_verify bench_results/fork-spv/$$f.spv fixtures/$$f.json || exit 1; \
 		    done; \
+		    echo "[verify-fork] vulkan/fused_attn_qjl_tbq causal prefix (fork: vulkan-shaders/fused_attn_qjl_tbq.comp)"; \
+		    ./vulkan_verify bench_results/fork-spv/fused_attn_qjl_tbq.spv fixtures/fused_attn_qjl_tbq_causal.json || exit 1; \
+		    echo "[verify-fork] vulkan/fused_attn_qjl_polar causal prefix (fork: vulkan-shaders/fused_attn_qjl_polar.comp)"; \
+		    ./vulkan_verify bench_results/fork-spv/fused_attn_qjl_polar.spv fixtures/fused_attn_qjl_polar_causal.json || exit 1; \
 		    echo "[verify-fork] vulkan: 8/8 fork score/fused shaders + polar residual/preht variants verified against standalone fixtures"; \
 	  else \
 	    echo "[verify-fork] vulkan_verify not buildable on this host — skipping Vulkan fork verification"; \
@@ -765,7 +792,13 @@ endif
 # `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target
 # darwin-arm64-metal` has succeeded and produced libggml-*.dylib + the
 # eliza kernels in default.metallib.
+<<<<<<< HEAD
 ELIZA_DFLASH_METAL_BUILD_DIR ?= $(ELIZA_DFLASH_LLAMA_DIR)/build/darwin-arm64-metal
+=======
+ELIZA_DFLASH_METAL_DEFAULT_BUILD_DIR := $(ELIZA_DFLASH_LLAMA_DIR)/build/darwin-arm64-metal
+ELIZA_DFLASH_METAL_FUSED_BUILD_DIR   := $(ELIZA_DFLASH_LLAMA_DIR)/build/darwin-arm64-metal-fused
+ELIZA_DFLASH_METAL_BUILD_DIR ?= $(if $(wildcard $(ELIZA_DFLASH_METAL_DEFAULT_BUILD_DIR)/bin/libggml-metal.dylib),$(ELIZA_DFLASH_METAL_DEFAULT_BUILD_DIR),$(if $(wildcard $(ELIZA_DFLASH_METAL_FUSED_BUILD_DIR)/bin/libggml-metal.dylib),$(ELIZA_DFLASH_METAL_FUSED_BUILD_DIR),$(ELIZA_DFLASH_METAL_DEFAULT_BUILD_DIR)))
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 ELIZA_DFLASH_METAL_BIN_DIR   ?= $(ELIZA_DFLASH_METAL_BUILD_DIR)/bin
 ELIZA_STATE_DIR ?= $(HOME)/.eliza
 ELIZA_DFLASH_TARGET ?= linux-x64-vulkan
@@ -796,6 +829,19 @@ dispatch-smoke-implemented: dispatch_smoke
 	  DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_METAL_BIN_DIR):$$DYLD_LIBRARY_PATH \
 	  ./dispatch_smoke
 
+metal-upscale-probe: metal_upscale_probe
+	@echo "[metal-upscale-probe] probing CLIP UPSCALE fallback against $(ELIZA_DFLASH_METAL_BIN_DIR)"
+	GGML_METAL_PATH_RESOURCES=$(ELIZA_DFLASH_METAL_BIN_DIR) \
+	  DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_METAL_BIN_DIR):$$DYLD_LIBRARY_PATH \
+	  ./metal_upscale_probe \
+	    --out ../reports/porting/2026-05-12/vision-upscale-metal-probe.json
+
+metal-upscale-probe-require: metal_upscale_probe
+	@echo "[metal-upscale-probe] requiring Metal support for CLIP UPSCALE"
+	GGML_METAL_PATH_RESOURCES=$(ELIZA_DFLASH_METAL_BIN_DIR) \
+	  DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_METAL_BIN_DIR):$$DYLD_LIBRARY_PATH \
+	  ./metal_upscale_probe --require-metal-support
+
 dispatch_smoke: dispatch_smoke.mm $(REF_OBJ) $(QJL_POLAR_OBJ)
 	@which xcrun >/dev/null 2>&1 || { echo "xcrun not found — Metal dispatch-smoke needs macOS Xcode tools."; exit 1; }
 	@if [ ! -f "$(ELIZA_DFLASH_METAL_BIN_DIR)/libggml-metal.dylib" ]; then \
@@ -813,6 +859,22 @@ dispatch_smoke: dispatch_smoke.mm $(REF_OBJ) $(QJL_POLAR_OBJ)
 	    -framework Foundation -framework Metal -framework MetalKit -framework CoreGraphics \
 	    -Wl,-rpath,$(ELIZA_DFLASH_METAL_BIN_DIR) \
 	    -lm -o dispatch_smoke
+
+metal_upscale_probe: metal_upscale_probe.cpp
+	@which xcrun >/dev/null 2>&1 || { echo "xcrun not found — Metal upscale probe needs macOS Xcode tools."; exit 1; }
+	@if [ ! -f "$(ELIZA_DFLASH_METAL_BIN_DIR)/libggml-metal.dylib" ]; then \
+	    echo "[metal-upscale-probe] missing $(ELIZA_DFLASH_METAL_BIN_DIR)/libggml-metal.dylib"; \
+	    echo "[metal-upscale-probe] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal' first."; \
+	    exit 1; \
+	fi
+	clang++ $(CXXFLAGS) \
+	    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/include \
+	    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/src \
+	    metal_upscale_probe.cpp \
+	    -L$(ELIZA_DFLASH_METAL_BIN_DIR) -lggml-base -lggml-metal -lggml-cpu -lggml \
+	    -framework Foundation -framework Metal -framework MetalKit -framework CoreGraphics \
+	    -Wl,-rpath,$(ELIZA_DFLASH_METAL_BIN_DIR) \
+	    -lm -o metal_upscale_probe
 
 vulkan-dispatch-smoke: vulkan_dispatch_smoke
 	@if [ "$$(uname -s)" != "Linux" ] && [ "$${ELIZA_ALLOW_MOLTENVK_VULKAN_DISPATCH_SMOKE:-0}" != "1" ]; then \
@@ -865,5 +927,5 @@ vulkan_dispatch_smoke: vulkan_dispatch_smoke.cpp $(REF_OBJ) $(QJL_POLAR_OBJ)
 	    -lm -o vulkan_dispatch_smoke
 
 clean:
-	rm -f $(REF_OBJ) $(QJL_POLAR_OBJ) gen_fixture vulkan_verify metal_verify metal_bench cpu_bench cpu_simd_bench cuda_verify dispatch_smoke vulkan_dispatch_smoke
+	rm -f $(REF_OBJ) $(QJL_POLAR_OBJ) gen_fixture vulkan_verify metal_verify metal_bench metal_upscale_probe cpu_bench cpu_simd_bench cuda_verify dispatch_smoke vulkan_dispatch_smoke
 	rm -f ../vulkan/*.spv

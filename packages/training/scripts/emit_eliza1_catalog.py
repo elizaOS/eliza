@@ -29,13 +29,13 @@ Usage::
 
     # Print the entry + where to put it (recommended):
     uv run python scripts/emit_eliza1_catalog.py \\
-        --manifest checkpoints/eliza-1-0_6b/gguf/eliza1_manifest.json
+        --manifest checkpoints/eliza-1-0_8b/gguf/eliza1_manifest.json
 
     # Also produce a unified diff against the canonical shared catalog:
     uv run python scripts/emit_eliza1_catalog.py \\
-        --manifest checkpoints/eliza-1-0_6b/gguf/eliza1_manifest.json \\
+        --manifest checkpoints/eliza-1-0_8b/gguf/eliza1_manifest.json \\
         --catalog packages/shared/src/local-inference/catalog.ts \\
-        --output reports/training/catalog-eliza-1-0_6b.diff
+        --output reports/training/catalog-eliza-1-0_8b.diff
 
 Notes:
   * Eliza-1 tiers are *default-eligible* models. The tier ids and the
@@ -81,6 +81,7 @@ CANONICAL_CATALOG_PATH = "packages/shared/src/local-inference/catalog.ts"
 KNOWN_BASE_MODELS = {
     "elizaos/eliza-1-0_8b": {
         "params": "0.8B",
+<<<<<<< HEAD
         "context_length": 32768,
         "tokenizer_family": "eliza1",
         "category": "chat",
@@ -90,15 +91,17 @@ KNOWN_BASE_MODELS = {
     },
     "elizaos/eliza-1-0_6b": {
         "params": "0.6B",
+=======
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
         "context_length": 32768,
         "tokenizer_family": "eliza1",
         "category": "chat",
         "bucket": "small",
         "min_ram_gb": 2,
-        "size_gb_estimate": 0.4,  # Q4_POLAR 0.6B ≈ 380-450 MB
+        "size_gb_estimate": 0.4,  # Q4_POLAR 0.8B ≈ 380-450 MB
     },
-    "elizaos/eliza-1-1_7b": {
-        "params": "1.7B",
+    "elizaos/eliza-1-2b": {
+        "params": "2B",
         "context_length": 32768,
         "tokenizer_family": "eliza1",
         "category": "chat",
@@ -209,7 +212,7 @@ class Eliza1CatalogEntry:
 
 
 def _slug_from_repo(hf_repo: str) -> str:
-    """Convert ``elizaos/eliza-1-1_7b`` to a catalog id."""
+    """Convert ``elizaos/eliza-1-2b`` to a catalog id."""
     last = hf_repo.split("/")[-1]
     return last.lower()
 

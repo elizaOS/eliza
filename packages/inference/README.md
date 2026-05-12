@@ -618,6 +618,7 @@ report applied. The env vars below are operator knobs / debug overrides only.
 | `ELIZA_DFLASH_CMAKE_FLAGS`               | Extra cmake flags appended to the per-target list. Wins on conflict (e.g. override `-DCMAKE_CUDA_ARCHITECTURES`). | unset |
 | `MINGW_TOOLCHAIN_FILE`                   | Operator-supplied cmake toolchain file for windows-* targets. Required for `windows-arm64-*` cross builds; optional override for `windows-x64-*` (auto-detected mingw is used otherwise). | unset |
 
+<<<<<<< HEAD
 Removed flags (no env var needed; the behaviour is the default now):
 - `ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT` — the llama-server
   structured-output patch (`kernel-patches/server-structured-output.mjs`) is
@@ -635,6 +636,17 @@ Removed flags (no env var needed; the behaviour is the default now):
   applies the available staging patches). There is no opt-out, per AGENTS.md §3
   ("Required for ALL tiers"). Symbol-only kernels do not satisfy the post-build
   audit gate.
+=======
+The previous `ELIZA_DFLASH_PATCH_METAL_*` / `ELIZA_DFLASH_PATCH_VULKAN_KERNELS`
+environment knobs were decorative log toggles for the v0.4.0-eliza-era
+no-op patch hooks. They have been removed; both the Metal and Vulkan
+patch helpers now run unconditionally on every matching target — Metal
+copies the standalone shaders + patches the metallib `add_custom_command`,
+Vulkan copies the standalones into `vulkan-shaders/` + applies the
+available staging patches.
+There is no opt-out, per AGENTS.md §3 ("Required for ALL tiers").
+Symbol-only kernels do not satisfy the post-build audit gate.
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 ### Runtime env vars (debug overrides — the catalog/manifest is the production path)
 

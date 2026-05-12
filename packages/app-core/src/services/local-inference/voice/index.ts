@@ -93,13 +93,17 @@ export {
   type SharedTokenizer,
 } from "./shared-resources";
 export {
+  type AttributedVoiceObservation,
+  attributeVoiceImprintObservations,
   cosineSimilarity,
   DEFAULT_VOICE_IMPRINT_MATCH_THRESHOLD,
   matchVoiceImprint,
   normalizeVoiceEmbedding,
+  type SpeakerAttributionResult,
   updateVoiceImprintCentroid,
   type VoiceImprintCentroidUpdate,
   type VoiceImprintMatch,
+  type VoiceImprintObservationInput,
   type VoiceImprintProfile,
   voiceSpeakerFromImprintMatch,
 } from "./speaker-imprint";
@@ -150,16 +154,24 @@ export {
 export * from "./types";
 export {
   createSileroVadDetector,
+  createVadDetector,
   NativeSileroVad,
+  type QwenToolkitVadAdapter,
+  type ResolvedVadProvider,
   RmsEnergyGate,
   type RmsEnergyGateConfig,
   resolveSileroVadPath,
+  resolveVadProvider,
   rms,
   SILERO_VAD_BUNDLE_REL_PATH,
   SileroVad,
   VadDetector,
   type VadDetectorConfig,
+  type VadLike,
+  type VadProviderId,
+  type VadProviderPreference,
   VadUnavailableError,
+  vadProviderOrder,
 } from "./vad";
 export {
   readVoicePresetFile,

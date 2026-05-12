@@ -293,18 +293,18 @@ export interface StreamingTranscriber {
 export interface PhraseChunkerConfig {
   /**
    * Hard word cap before a phrase is force-flushed even without a
-   * `, . ! ?` boundary. Defaults to 30 (the brief's A6 "first 30 words").
+   * `, . ! ? ; :` boundary. Defaults to 30 (the brief's A6 "first 30 words").
    */
   maxTokensPerPhrase?: number;
   /**
-   * Characters that close a phrase. Default `, . ! ?` — a comma is a
-   * boundary so the first clause reaches TTS without waiting for a
+   * Characters that close a phrase. Default `, . ! ? ; :` — punctuation
+   * boundaries let the first clause reach TTS without waiting for a
    * sentence-final mark.
    */
   sentenceTerminators?: ReadonlySet<string>;
   /**
    * Where the chunker emits a phrase boundary.
-   *   'punctuation'    — default. Wait for `, . ! ?` or the max-token cap.
+   *   'punctuation'    — default. Wait for `, . ! ? ; :` or the max-token cap.
    *   'phoneme-stream' — additionally emit a sub-phrase chunk every
    *                      `phonemesPerChunk` phonemes. Cuts first-audio
    *                      latency by handing partial phrases to TTS at
@@ -318,6 +318,16 @@ export interface PhraseChunkerConfig {
 export interface VerifierStreamEvent {
   kind: "accept" | "reject";
   tokens: TextToken[];
+  /**
+   * Optional per-event metadata. Today only the very first `accept` of a
+   * streaming completion carries `firstTokenMs` (L5 — time from the fetch
+   * being issued to the first SSE chunk arriving). Other consumers MAY
+   * ignore this field; producers MUST omit it on non-first events.
+   */
+  meta?: {
+    /** Milliseconds from request issue (`performance.now()`) to first chunk. */
+    firstTokenMs?: number;
+  };
 }
 
 // ---------------------------------------------------------------------------

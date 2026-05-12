@@ -1,10 +1,3 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
@@ -30,7 +23,11 @@ import {
   scoreInboxMessages,
 } from "./priority-scoring.js";
 import type { LifeOpsCachedInboxMessage } from "./repository.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
 import { fail, requireNonEmptyString } from "./service-normalize.js";
 
 const DEFAULT_INBOX_LIMIT = 100;
@@ -767,11 +764,22 @@ export async function fetchInbox(
   return buildInboxWithLlm(runtime, inbound, resolved);
 }
 
+export interface LifeOpsInboxService {
+  getInbox(request?: GetLifeOpsInboxRequest): Promise<LifeOpsInbox>;
+  markInboxEntryRead(inboxEntryId: string): Promise<LifeOpsInboxMessage>;
+}
+
+type InboxMixinDependencies = LifeOpsServiceBase &
+  GmailInboxSource &
+  XDmInboxSource;
+
 /** @internal */
 export function withInbox<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
-) {
-  class LifeOpsInboxServiceMixin extends Base {
+): MixinClass<TBase, LifeOpsInboxService> {
+  const InboxBase = Base as unknown as Constructor<InboxMixinDependencies>;
+
+  class LifeOpsInboxServiceMixin extends InboxBase {
     async getInbox(
       request: GetLifeOpsInboxRequest = {},
     ): Promise<LifeOpsInbox> {
@@ -841,5 +849,8 @@ export function withInbox<TBase extends Constructor<LifeOpsServiceBase>>(
     }
   }
 
-  return LifeOpsInboxServiceMixin;
+  return LifeOpsInboxServiceMixin as unknown as MixinClass<
+    TBase,
+    LifeOpsInboxService
+  >;
 }

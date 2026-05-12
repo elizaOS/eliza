@@ -41,7 +41,7 @@ tags:
 
 - Source bf16 weights: [`{base_eliza_repo_id}`](https://huggingface.co/{base_eliza_repo_id})
 - Calibration data (where applicable): held-out validation split of
-  [`elizaos/eliza-toon-v1-sft`](https://huggingface.co/datasets/elizaos/eliza-toon-v1-sft).
+  [`elizaos/eliza-native-v1-sft`](https://huggingface.co/datasets/elizaos/eliza-native-v1-sft).
 - Training pipeline + quantization scripts:
   [`elizaos/eliza-1-pipeline`](https://huggingface.co/elizaos/eliza-1-pipeline)
   (`scripts/quantization/`).

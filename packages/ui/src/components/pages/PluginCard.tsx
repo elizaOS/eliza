@@ -1,6 +1,7 @@
 import { Button } from "@elizaos/ui";
 import type { PluginInfo, PluginParamDef } from "../../api";
 import { useApp } from "../../state";
+import { getProvenanceFlags, getProvenanceTitle } from "../apps/provenance";
 import {
   getPluginResourceLinks,
   iconImageSource,
@@ -44,26 +45,19 @@ function pluginProvenanceLabels(plugin: PluginInfo): {
   supportLabel: string | null;
   title: string | undefined;
 } {
-  const isThirdParty =
-    plugin.thirdParty === true || plugin.origin === "third-party";
-  const isBuiltIn = plugin.builtIn === true || plugin.origin === "builtin";
-  const isFirstParty =
-    plugin.firstParty === true || plugin.support === "first-party";
-  const isCommunity =
-    plugin.support === "community" || (isThirdParty && !isFirstParty);
-
+  const flags = getProvenanceFlags(plugin);
   return {
-    originLabel: isThirdParty ? "third party" : isBuiltIn ? "built in" : null,
-    supportLabel: isCommunity
+    originLabel: flags.isThirdParty
+      ? "third party"
+      : flags.isBuiltIn
+        ? "built in"
+        : null,
+    supportLabel: flags.isCommunity
       ? "community"
-      : isFirstParty
+      : flags.isFirstParty
         ? "first party"
         : null,
-    title: isThirdParty
-      ? "Community package registered through the plugin registry"
-      : isBuiltIn || isFirstParty
-        ? "First-party package generated from the elizaOS plugin registry"
-        : undefined,
+    title: getProvenanceTitle(flags, "package"),
   };
 }
 

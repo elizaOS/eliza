@@ -117,11 +117,12 @@ hosted under the `elizaos` HuggingFace org under `eliza-1-<tier>`.
 
 | Tier            | Tagline                       | Text  | Voice          | Vision | Context  | DFlash | Quant default                   |
 | --------------- | ----------------------------- | ----- | -------------- | ------ | -------- | ------ | ------------------------------- |
-| `0_6b`     | low-RAM phones, CPU fallback  | 0.6B  | OmniVoice 0.6B | no     | 32k      | yes    | TurboQuant Q3 + Polar Q4 KV     |
-| `1_7b`   | modern phones                 | 1.7B  | OmniVoice 0.6B | no     | 32k–64k  | yes    | TurboQuant Q3/Q4 + QJL K-cache  |
-| `9b`    | laptops, 24GB phones, 48GB Mac| ~9B   | OmniVoice 1.7B | mmproj | 64k–128k | yes    | TurboQuant Q4 + QJL + Polar     |
-| `27b`       | 96GB+ Mac, high-VRAM desktop  | 27B   | OmniVoice 1.7B | mmproj | 128k–256k| yes    | TurboQuant Q4 + QJL + Polar     |
-| `27b-256k`   | server / workstation          | 27B   | OmniVoice 1.7B | mmproj | up to max| yes    | CUDA TurboQuant + QJL + Polar   |
+| `0_6b`       | low-RAM phones, CPU fallback   | 0.6B  | OmniVoice 0.6B | no     | 32k      | yes    | TurboQuant Q3 + Polar Q4 KV     |
+| `1_7b`         | modern phones                  | 1.7B    | OmniVoice 0.6B | no     | 32k–64k  | yes    | TurboQuant Q3/Q4 + QJL K-cache  |
+| `4b`         | flagship phones, small desktops| 4B    | OmniVoice 0.6B | mmproj | 64k      | yes    | TurboQuant Q4 + QJL + Polar     |
+| `9b`         | laptops, 24GB phones, 48GB Mac | ~9B   | OmniVoice 1.7B | mmproj | 64k–128k | yes    | TurboQuant Q4 + QJL + Polar     |
+| `27b`        | 96GB+ Mac, high-VRAM desktop   | 27B   | OmniVoice 1.7B | mmproj | 128k–256k| yes    | TurboQuant Q4 + QJL + Polar     |
+| `27b-256k`  | server / workstation           | 27B   | OmniVoice 1.7B | mmproj | up to max| yes    | CUDA TurboQuant + QJL + Polar   |
 
 Context-length variants (32k / 64k / 128k / 256k) are *not* separate
 tiers — they are dimensions inside a tier. A tier's manifest lists which
@@ -298,12 +299,18 @@ mic / file → ASR → text tokens
 - We do not run text and voice in two processes communicating over IPC.
   That regresses memory and adds a 1–10ms scheduling tax per turn.
 - We do not run a "TTS-only mode" that skips DFlash. DFlash is always
+<<<<<<< HEAD
   on (auto-detected from the managed `llama-server` binary — there is no
   "enable DFlash" setting). If the user disables speculative decoding for
   debugging, that is the single developer-only kill-switch
   `ELIZA_DFLASH_DISABLE=1` (`MILADY_DFLASH_DISABLE=1` is a back-compat
   alias); it is not a user setting, and it MUST log a loud warning every
   turn.
+=======
+  on. If the user disables speculative decoding for debugging, that is
+  a developer-only flag (`ELIZA_DFLASH_DISABLE=1`), it is not a user
+  setting, and it MUST log a loud warning every turn.
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 - We do not split voice into "fast TTS" and "high-quality TTS" tiers.
   One voice model per tier, fused, optimized.
 

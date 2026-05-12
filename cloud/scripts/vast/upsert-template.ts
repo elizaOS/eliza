@@ -39,13 +39,16 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  type LoadedVastManifest,
+  manifestDiskGb,
+  readVastManifest,
+  VAST_PYWORKER_DIR,
+} from "./manifest";
 
 const VAST_API = "https://console.vast.ai";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const VAST_PYWORKER_DIR = join(__dirname, "..", "..", "services", "vast-pyworker");
-const MANIFEST_DIR = join(VAST_PYWORKER_DIR, "manifests");
-
 interface TemplateConfig {
   name: string;
   // Docker image with `llama-server` on PATH, CUDA runtime, python3.
@@ -58,24 +61,13 @@ interface TemplateConfig {
   env: Record<string, string>;
   // 8080 is llama-server's default; expose it for health checks.
   // Vast injects PUBLIC_IPADDR/VAST_TCP_PORT_8080 automatically.
-  search_params: Record<string, never>;
+  search_params: Record<string, unknown>;
   runtype: "args";
 }
 
 interface VastTemplate {
   id: number;
   name: string;
-}
-
-interface VastManifest {
-  image?: string;
-  min_disk_gb?: number;
-  model?: string;
-  model_repo?: string;
-  model_alias?: string;
-  served_model_name?: string;
-  port?: number;
-  vast_template_env?: Record<string, string>;
 }
 
 function readEnv(name: string, fallback?: string): string {
@@ -92,6 +84,7 @@ function optionalEnv(env: Record<string, string>, names: string[]): void {
   }
 }
 
+<<<<<<< HEAD
 function resolveManifestPath(manifest: string): string {
   if (manifest.startsWith("/")) return manifest;
   return join(MANIFEST_DIR, manifest);
@@ -102,6 +95,11 @@ function readVllmManifest(): { name: string; json: string; manifest: VastManifes
   const path = resolveManifestPath(name);
   const manifest = JSON.parse(readFileSync(path, "utf8")) as VastManifest;
   return { name, json: JSON.stringify(manifest), manifest };
+=======
+function readVllmManifest(): LoadedVastManifest {
+  const name = readEnv("ELIZA_VAST_MANIFEST", "eliza-1-2b.json");
+  return readVastManifest(name);
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 }
 
 async function vastFetch<T>(
@@ -158,6 +156,11 @@ async function main(): Promise<void> {
     PYWORKER_REPO: readEnv("PYWORKER_REPO", "https://github.com/elizaOS/cloud.git"),
     PYWORKER_REF: readEnv("PYWORKER_REF", "develop"),
   };
+  if (env.PYWORKER_REF === "develop") {
+    console.warn(
+      "[vast] PYWORKER_REF=develop is for non-production only; pin a commit for deploys",
+    );
+  }
 
   if (runtime === "vllm") {
     env.ELIZA_VAST_MANIFEST = manifest?.name ?? "eliza-1-2b.json";
@@ -233,7 +236,9 @@ async function main(): Promise<void> {
   const config: TemplateConfig = {
     name: readEnv(
       "VAST_TEMPLATE_NAME",
-      runtime === "vllm" ? "eliza-cloud-eliza-1-vllm" : "eliza-cloud-eliza-1-27b",
+      runtime === "vllm"
+        ? `eliza-cloud-${manifest?.manifest.label ?? "eliza-1-vllm"}`
+        : "eliza-cloud-eliza-1-27b",
     ),
     // Official llama.cpp CUDA server image for stock GGUF. DFlash/TurboQuant
     // deployments must set VAST_IMAGE to a compatible fork/runtime image.
@@ -243,10 +248,12 @@ async function main(): Promise<void> {
         ? (manifest?.manifest.image ?? "vllm/vllm-openai:v0.20.1")
         : "ghcr.io/ggml-org/llama.cpp:server-cuda",
     ),
-    disk: Number(readEnv("VAST_DISK_GB", String(manifest?.manifest.min_disk_gb ?? 60))),
+    disk: Number(
+      readEnv("VAST_DISK_GB", String(manifest ? manifestDiskGb(manifest.manifest) : 60)),
+    ),
     onstart,
     env,
-    search_params: {},
+    search_params: manifest?.manifest.search_params ?? {},
     runtype: "args",
   };
 

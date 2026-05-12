@@ -49,9 +49,13 @@ function arg(name, fallback) {
   return idx >= 0 && idx + 1 < args.length ? args[idx + 1] : fallback;
 }
 
+<<<<<<< HEAD
 const runDir = path.resolve(
   arg("--run-dir", process.env.ELIZA_LIFEOPS_RUN_DIR ?? ""),
 );
+=======
+const runDir = path.resolve(arg("--run-dir", process.env.ELIZA_LIFEOPS_RUN_DIR ?? ""));
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 if (!runDir) {
   console.error(
     "[aggregate-lifeops-run] --run-dir required (or set ELIZA_LIFEOPS_RUN_DIR).",
@@ -69,7 +73,14 @@ const runIdFilter = arg("--run-id", process.env.ELIZA_LIFEOPS_RUN_ID);
 const HARNESS_VALID = new Set(HARNESSES);
 const MODEL_TIER_VALID = new Set(MODEL_TIERS);
 
+<<<<<<< HEAD
 const harness = arg("--harness", process.env.ELIZA_BENCH_HARNESS ?? "eliza");
+=======
+const harness = arg(
+  "--harness",
+  process.env.ELIZA_BENCH_HARNESS ?? "eliza",
+);
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 if (!HARNESS_VALID.has(harness)) {
   console.error(
     `[aggregate-lifeops-run] --harness must be one of ${HARNESSES.join("|")} (got ${harness})`,

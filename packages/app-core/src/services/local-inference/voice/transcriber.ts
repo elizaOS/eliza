@@ -1005,6 +1005,13 @@ export interface CreateStreamingTranscriberOptions {
    *   `"auto"`      (default) → fused streaming → fused batch → whisper → throw.
    */
   prefer?: "auto" | "fused" | "ffi-batch" | "whisper";
+  /**
+   * Permit the legacy whisper.cpp adapter when fused ASR is unavailable.
+   * Standalone tooling keeps this enabled by default; Eliza-1 voice bridges
+   * pass false so a missing bundled ASR model fails closed instead of
+   * silently running a second model family.
+   */
+  allowWhisperFallback?: boolean;
 }
 
 /**
@@ -1022,6 +1029,7 @@ export function createStreamingTranscriber(
   opts: CreateStreamingTranscriberOptions = {},
 ): StreamingTranscriber {
   const prefer = opts.prefer ?? "auto";
+  const allowWhisperFallback = opts.allowWhisperFallback !== false;
 
   const tryFusedStreaming = (): StreamingTranscriber | null => {
     if (!opts.ffi || !opts.getContext) return null;
@@ -1070,6 +1078,12 @@ export function createStreamingTranscriber(
     if (fused) return fused;
     const batch = tryFusedBatch();
     if (batch) return batch;
+  }
+
+  if (!allowWhisperFallback && prefer !== "whisper") {
+    throw new AsrUnavailableError(
+      "[asr] bundled fused ASR is required for this Eliza-1 voice session, but no fused streaming or fused batch decoder is available",
+    );
   }
 
   // Whisper legacy interim. Constructing it resolves the binary + model and

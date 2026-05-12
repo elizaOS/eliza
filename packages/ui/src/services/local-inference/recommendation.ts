@@ -47,12 +47,21 @@ const SLOT_LADDERS: Record<
   Record<TextGenerationSlot, string[]>
 > = {
   mobile: {
+<<<<<<< HEAD
     TEXT_SMALL: ["eliza-1-0_6b", "eliza-1-0_8b", "eliza-1-1_7b"],
     TEXT_LARGE: ["eliza-1-1_7b", "eliza-1-0_8b", "eliza-1-0_6b"],
   },
   "apple-silicon": {
     TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_8b", "eliza-1-0_6b"],
     TEXT_LARGE: ["eliza-1-27b", "eliza-1-9b", "eliza-1-1_7b"],
+=======
+    TEXT_SMALL: ["eliza-1-0_6b", "eliza-1-1_7b"],
+    TEXT_LARGE: ["eliza-1-4b", "eliza-1-1_7b", "eliza-1-0_6b"],
+  },
+  "apple-silicon": {
+    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_LARGE: ["eliza-1-27b", "eliza-1-9b", "eliza-1-4b", "eliza-1-1_7b"],
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   },
   "linux-gpu": {
     TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_8b", "eliza-1-0_6b"],
@@ -60,12 +69,18 @@ const SLOT_LADDERS: Record<
       "eliza-1-27b-256k",
       "eliza-1-27b",
       "eliza-1-9b",
+      "eliza-1-4b",
       "eliza-1-1_7b",
     ],
   },
   "linux-cpu": {
+<<<<<<< HEAD
     TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_8b", "eliza-1-0_6b"],
     TEXT_LARGE: ["eliza-1-9b", "eliza-1-1_7b"],
+=======
+    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_LARGE: ["eliza-1-9b", "eliza-1-4b", "eliza-1-1_7b"],
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   },
   "desktop-gpu": {
     TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_8b", "eliza-1-0_6b"],
@@ -73,12 +88,18 @@ const SLOT_LADDERS: Record<
       "eliza-1-27b-256k",
       "eliza-1-27b",
       "eliza-1-9b",
+      "eliza-1-4b",
       "eliza-1-1_7b",
     ],
   },
   "desktop-cpu": {
+<<<<<<< HEAD
     TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_8b", "eliza-1-0_6b"],
     TEXT_LARGE: ["eliza-1-9b", "eliza-1-1_7b"],
+=======
+    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_LARGE: ["eliza-1-9b", "eliza-1-4b", "eliza-1-1_7b"],
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   },
 };
 

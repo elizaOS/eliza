@@ -1,0 +1,25 @@
+2024-11-01 08:12:33,441 INFO  [bot_manager] BotManager initialized with token ending ...k9mZ
+2024-11-01 08:12:34,102 INFO  [bot_manager] Notification sent successfully to chat -1001234567890
+2024-11-01 09:45:11,287 INFO  [bot_manager] Notification sent successfully to chat -1001234567890
+2024-11-01 14:22:08,519 ERROR [bot_manager] Failed to send notification: 401 Client Error: Unauthorized for url: https://api.telegram.org/bot7104583921:AAH_fake_notify_token_Xk9mZ/sendMessage - {"ok":false,"error_code":401,"description":"Unauthorized"}
+2024-11-01 18:05:33,912 ERROR [webhook_handler] Rate limit exceeded for endpoint /api/v1/signals — 429 Too Many Requests (retry after 30s)
+2024-11-02 02:30:15,773 WARN  [db_connector] Connection pool exhausted — 3 active / 3 max. Waiting 5s before retry.
+2024-11-02 06:00:01,003 INFO  [scheduler] Daily transaction summary job started
+2024-11-02 06:00:02,887 ERROR [bot_manager] Failed to fetch transactions: 401 Client Error: Unauthorized for url: https://api.telegram.org/bot7104583921:AAH_fake_notify_token_Xk9mZ/getUpdates - {"ok":false,"error_code":401,"description":"Unauthorized"}
+2024-11-02 06:00:03,114 WARN  [bot_manager] Retrying with same credentials (attempt 2/3)
+2024-11-02 06:00:04,501 ERROR [bot_manager] Failed to fetch transactions: 401 Client Error: Unauthorized for url: https://api.telegram.org/bot7104583921:AAH_fake_notify_token_Xk9mZ/getUpdates - {"ok":false,"error_code":401,"description":"Unauthorized"}
+2024-11-02 10:33:17,662 INFO  [bot_manager] Notification sent successfully to chat -1001234567890
+2024-11-02 14:17:44,329 ERROR [webhook_handler] Upstream timeout for /api/v1/market-data — 504 Gateway Timeout after 30000ms
+2024-11-02 22:45:01,118 WARN  [db_connector] Slow query detected: SELECT * FROM trades WHERE ... took 4.2s (threshold: 2s)
+2024-11-03 03:15:44,891 ERROR [bot_manager] Failed to send notification: 400 Bad Request for url: https://api.telegram.org/bot7104583921:AAH_fake_notify_token_Xk9mZ/sendMessage - {"ok":false,"error_code":400,"description":"Bad Request: chat not found"} — attempted chat_id=-1009876543210
+2024-11-03 07:20:55,330 INFO  [bot_manager] Health check passed: bot username=notify_trade_bot
+2024-11-03 11:48:02,174 ERROR [bot_manager] Failed to send notification: 401 Client Error: Unauthorized for url: https://api.telegram.org/bot6839201745:BBG_fake_txn_token_Qw3rT/sendMessage - {"ok":false,"error_code":401,"description":"Unauthorized: bot token mismatch for target chat"}
+2024-11-03 16:22:18,445 ERROR [webhook_handler] Rate limit exceeded for endpoint /api/v1/portfolio — 429 Too Many Requests (retry after 60s)
+2024-11-04 08:05:19,443 INFO  [bot_manager] BotManager initialized with token ending ...k9mZ
+2024-11-04 08:05:20,771 INFO  [bot_manager] Notification sent successfully to chat -1001234567890
+2024-11-04 12:33:09,887 WARN  [db_connector] Connection reset by peer during transaction — retrying
+2024-11-04 15:30:42,008 ERROR [bot_manager] Failed to fetch transactions: 403 Forbidden for url: https://api.telegram.org/bot7104583921:AAH_fake_notify_token_Xk9mZ/getUpdates - {"ok":false,"error_code":403,"description":"Forbidden: bot is not a member of the channel chat"}
+2024-11-05 06:00:01,115 INFO  [scheduler] Daily transaction summary job started
+2024-11-05 06:00:03,442 ERROR [bot_manager] Failed to fetch transactions: 401 Client Error: Unauthorized for url: https://api.telegram.org/bot7104583921:AAH_fake_notify_token_Xk9mZ/getUpdates - {"ok":false,"error_code":401,"description":"Unauthorized"}
+2024-11-05 09:14:28,773 INFO  [bot_manager] Notification sent successfully to chat -1001234567890
+2024-11-05 11:02:55,219 ERROR [webhook_handler] SSL certificate verification failed for upstream service analytics-api.internal — connection refused

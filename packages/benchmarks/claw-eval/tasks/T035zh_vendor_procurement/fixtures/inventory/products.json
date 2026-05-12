@@ -1,0 +1,72 @@
+[
+  {
+    "product_id": "INV-301",
+    "name": "Dell PowerEdge R750",
+    "category": "服务器",
+    "current_stock": 5,
+    "min_stock_threshold": 20,
+    "reorder_quantity": 30,
+    "status": "low_stock",
+    "unit_price": 85000,
+    "supplier": "华信达",
+    "lead_time_days": 14,
+    "last_reorder_date": "2025-10-15",
+    "notes": "高性能计算节点，主力机型"
+  },
+  {
+    "product_id": "INV-302",
+    "name": "HP ProLiant DL380",
+    "category": "服务器",
+    "current_stock": 8,
+    "min_stock_threshold": 15,
+    "reorder_quantity": 20,
+    "status": "low_stock",
+    "unit_price": 78000,
+    "supplier": "博通信息",
+    "lead_time_days": 10,
+    "last_reorder_date": "2025-11-20",
+    "notes": "通用业务服务器"
+  },
+  {
+    "product_id": "INV-303",
+    "name": "Huawei FusionServer 2288H",
+    "category": "服务器",
+    "current_stock": 3,
+    "min_stock_threshold": 10,
+    "reorder_quantity": 15,
+    "status": "critical",
+    "unit_price": 72000,
+    "supplier": "新晨科技",
+    "lead_time_days": 21,
+    "last_reorder_date": "2025-09-10",
+    "notes": "国产化替代方案，信创项目指定"
+  },
+  {
+    "product_id": "INV-304",
+    "name": "Lenovo ThinkSystem SR650",
+    "category": "服务器",
+    "current_stock": 12,
+    "min_stock_threshold": 10,
+    "reorder_quantity": 10,
+    "status": "normal",
+    "unit_price": 82000,
+    "supplier": "联想",
+    "lead_time_days": 7,
+    "last_reorder_date": "2026-01-05",
+    "notes": "备用机型，质量稳定"
+  },
+  {
+    "product_id": "INV-305",
+    "name": "网络交换机 Cisco Catalyst 9300",
+    "category": "网络设备",
+    "current_stock": 2,
+    "min_stock_threshold": 5,
+    "reorder_quantity": 10,
+    "status": "low_stock",
+    "unit_price": 45000,
+    "supplier": "思科",
+    "lead_time_days": 30,
+    "last_reorder_date": "2025-08-20",
+    "notes": "核心网络设备"
+  }
+]

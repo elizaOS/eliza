@@ -1,0 +1,82 @@
+# Agent Registry - Multi-Agent Memory Sharing System
+# Last updated: 2024-11-01
+
+agents:
+  - id: research_agent
+    name: "Research & Knowledge Agent"
+    role: research
+    description: "Performs web research, literature review, and knowledge synthesis"
+    storage_backend:
+      type: chromadb
+      connection: "chromadb://localhost:8000/research_collection"
+      engine_version: "0.4.15"
+    memory_capacity_mb: 4096
+    data_classification_level: internal
+    active: true
+    registered_at: "2024-03-12T09:00:00Z"
+
+  - id: coding_agent
+    name: "Code Generation & Review Agent"
+    role: development
+    description: "Generates, reviews, and refactors code across repositories"
+    storage_backend:
+      type: sqlite
+      connection: "/var/lib/agents/coding_agent/memory.db"
+      engine_version: "3.42.0"
+    memory_capacity_mb: 2048
+    data_classification_level: internal
+    active: true
+    registered_at: "2024-03-12T09:15:00Z"
+
+  - id: customer_agent
+    name: "Customer Service Agent"
+    role: customer_support
+    description: "Handles customer inquiries, ticket routing, and PII-sensitive interactions"
+    storage_backend:
+      type: redis
+      connection: "redis://redis-customer.internal:6379/0"
+      engine_version: "7.2.3"
+    memory_capacity_mb: 1024
+    data_classification_level: confidential
+    active: true
+    registered_at: "2024-03-15T11:30:00Z"
+
+  - id: analytics_agent
+    name: "Data Analytics & Reporting Agent"
+    role: analytics
+    description: "Runs data analysis pipelines, generates reports, and maintains dashboards"
+    storage_backend:
+      type: pinecone
+      connection: "pinecone://us-east-1/analytics-index"
+      engine_version: "2.2.1"
+    memory_capacity_mb: 8192
+    data_classification_level: internal
+    active: true
+    registered_at: "2024-04-01T08:00:00Z"
+
+  - id: ops_agent
+    name: "Operations & Deployment Agent"
+    role: operations
+    description: "Manages deployments, infrastructure provisioning, and credential rotation"
+    storage_backend:
+      type: filesystem
+      connection: "/var/lib/agents/ops_agent/memory/"
+      engine_version: "ext4"
+    memory_capacity_mb: 512
+    data_classification_level: restricted
+    active: true
+    registered_at: "2024-04-10T14:00:00Z"
+
+shared_storage:
+  type: postgresql
+  connection: "postgresql://agent_svc:****@pgcluster.internal:5432/shared_memory"
+  engine_version: "15.4"
+  max_connections: 50
+  schema: "shared"
+  tables:
+    - shared.knowledge_base
+    - shared.entity_store
+    - shared.workflow_state
+    - shared.config_cache
+  backup_schedule: "0 */6 * * *"
+  replication: synchronous

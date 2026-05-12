@@ -21,7 +21,7 @@ import type {
 } from "@elizaos/core";
 import { logger, resolveStateDir } from "@elizaos/core";
 import { secp256k1 } from "@noble/curves/secp256k1.js";
-import { ethers } from "ethers";
+import * as ethers from "ethers";
 
 type StewardAgentWalletPayload = {
   walletAddress?: string;

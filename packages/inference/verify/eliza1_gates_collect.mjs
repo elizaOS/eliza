@@ -35,6 +35,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const REPORTS_ROOT = path.join(__dirname, "..", "reports");
+const VERIFY_ROOT = __dirname;
+const BENCH_RESULTS_ROOT = path.join(VERIFY_ROOT, "bench_results");
+const HARDWARE_RESULTS_ROOT = path.join(VERIFY_ROOT, "hardware-results");
+const VERIFY_REPORTS_ROOT = path.join(VERIFY_ROOT, "reports");
 const DEFAULT_GATES = path.join(
   __dirname,
   "..",
@@ -94,71 +98,247 @@ async function loadYaml(file) {
   return parse(text);
 }
 
-/** Newest (by mtime) file matching `<dir>/<prefix>*.json`, or null. */
-function newestReport(dir, prefix) {
-  if (!fs.existsSync(dir)) return null;
-  const matches = fs
-    .readdirSync(dir)
-    .filter((f) => f.startsWith(prefix) && f.endsWith(".json"))
-    .map((f) => {
-      const full = path.join(dir, f);
-      return { full, mtime: fs.statSync(full).mtimeMs };
-    })
-    .sort((a, b) => b.mtime - a.mtime);
-  if (matches.length === 0) return null;
-  try {
-    return {
-      path: matches[0].full,
-      data: JSON.parse(fs.readFileSync(matches[0].full, "utf8")),
-    };
-  } catch {
-    return null;
-  }
+function parseTimeMs(value) {
+  if (typeof value !== "string" || value.trim() === "") return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
 }
 
-/** Newest (by mtime) recursive file matching `prefix*.json`, or null. */
-function newestReportRecursive(dir, prefix) {
-  return newestReportRecursiveWhere(dir, prefix, () => true);
+function reportTimeMs(data, mtime) {
+  return (
+    parseTimeMs(data?.generatedAt) ??
+    parseTimeMs(data?.finishedAt) ??
+    parseTimeMs(data?.startedAt) ??
+    parseTimeMs(data?.capturedAt) ??
+    parseTimeMs(data?.date) ??
+    mtime
+  );
 }
 
-/** Newest (by mtime) recursive file matching `prefix*.json` and predicate. */
-function newestReportRecursiveWhere(dir, prefix, predicate) {
-  if (!fs.existsSync(dir)) return null;
-  const matches = [];
+function collectJsonFiles(dir, recursive = true) {
+  if (!fs.existsSync(dir)) return [];
+  const files = [];
   const stack = [dir];
   while (stack.length > 0) {
     const current = stack.pop();
     for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
       const full = path.join(current, entry.name);
       if (entry.isDirectory()) {
-        stack.push(full);
+        if (recursive) stack.push(full);
         continue;
       }
+<<<<<<< HEAD
       if (
         entry.isFile() &&
         entry.name.startsWith(prefix) &&
         entry.name.endsWith(".json")
       ) {
         matches.push({ full, mtime: fs.statSync(full).mtimeMs });
+=======
+      if (entry.isFile() && entry.name.endsWith(".json")) files.push(full);
+    }
+  }
+  return files;
+}
+
+function newestJsonReportWhere(dirs, predicate, { recursive = true } = {}) {
+  const matches = [];
+  for (const dir of dirs) {
+    for (const full of collectJsonFiles(dir, recursive)) {
+      const stat = fs.statSync(full);
+      try {
+        const data = JSON.parse(fs.readFileSync(full, "utf8"));
+        const meta = {
+          full,
+          name: path.basename(full),
+          relative: path.relative(process.cwd(), full),
+          mtime: stat.mtimeMs,
+          time: reportTimeMs(data, stat.mtimeMs),
+          data,
+        };
+        if (predicate(meta)) matches.push(meta);
+      } catch {
+        // Skip partially written reports.
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
       }
     }
   }
-  matches.sort((a, b) => b.mtime - a.mtime);
-  for (const match of matches) {
-    try {
-      const data = JSON.parse(fs.readFileSync(match.full, "utf8"));
-      if (predicate(data)) return { path: match.full, data };
-    } catch {
-      // Try the next newest report if this one was partially written.
-    }
+  matches.sort((a, b) => b.time - a.time || b.mtime - a.mtime);
+  const match = matches[0];
+  return match ? { path: match.full, data: match.data } : null;
+}
+
+/** Newest file matching `<dir>/<prefix>*.json`, or null. */
+function newestReport(dir, prefix) {
+  return newestJsonReportWhere(
+    [dir],
+    ({ name }) => name.startsWith(prefix),
+    { recursive: false },
+  );
+}
+
+/** Newest recursive file matching `prefix*.json`, or null. */
+function newestReportRecursive(dir, prefix) {
+  return newestReportRecursiveWhere(dir, prefix, () => true);
+}
+
+/** Newest recursive file matching `prefix*.json` and predicate. */
+function newestReportRecursiveWhere(dir, prefix, predicate) {
+  return newestJsonReportWhere(
+    [dir],
+    ({ name, data }) => name.startsWith(prefix) && predicate(data),
+  );
+}
+
+function finiteOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function boolOrNull(value) {
+  return typeof value === "boolean" ? value : null;
+}
+
+function intEnv(name, fallback) {
+  const n = Number.parseInt(process.env[name] || "", 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
+function firstFinite(...values) {
+  for (const value of values) {
+    const n = finiteOrNull(value);
+    if (n !== null) return n;
   }
   return null;
+}
+
+function firstNonNull(...values) {
+  for (const value of values) {
+    if (value !== null && value !== undefined) return value;
+  }
+  return null;
+}
+
+function matchesTier(data, tier) {
+  if (data?.tier === tier || data?.bundle?.tier === tier || data?.request?.tier === tier) {
+    return true;
+  }
+  const needle = `eliza-1-${tier}.bundle`;
+  return JSON.stringify(data).includes(needle);
+}
+
+function sourcePath(report) {
+  return report ? path.relative(process.cwd(), report.path) : null;
+}
+
+function extractDflashAcceptance(data) {
+  const summaryRate = finiteOrNull(data?.summary?.dflashAcceptanceRate);
+  if (summaryRate !== null) return summaryRate;
+  const directRate = finiteOrNull(data?.withDrafter?.acceptanceRate);
+  if (directRate !== null) return directRate;
+
+  const drafted = firstFinite(
+    data?.withDrafter?.drafted,
+    data?.summary?.dflashDraftedTotal,
+  );
+  const accepted = firstFinite(
+    data?.withDrafter?.accepted,
+    data?.summary?.dflashAcceptedTotal,
+  );
+  if (drafted !== null && accepted !== null) {
+    return drafted > 0 ? accepted / drafted : 0;
+  }
+  return null;
+}
+
+function extractDflashSpeedup(data) {
+  const drafted = firstFinite(
+    data?.withDrafter?.drafted,
+    data?.summary?.dflashDraftedTotal,
+  );
+  const accepted = firstFinite(
+    data?.withDrafter?.accepted,
+    data?.summary?.dflashAcceptedTotal,
+  );
+  const draftingActive =
+    data?.draftingActive ??
+    data?.summary?.dflashDraftingActive ??
+    data?.withDrafter?.draftingActive ??
+    (drafted !== null && drafted > 0 && accepted !== null);
+  const tokenizerCompatible =
+    data?.summary?.tokenizerCompatible ??
+    data?.withDrafter?.tokenizerCompatible;
+  if (draftingActive === false || tokenizerCompatible === false || drafted === 0) {
+    return 0;
+  }
+
+  const summarySpeedup = finiteOrNull(data?.summary?.dflashSpeedup);
+  if (summarySpeedup !== null) return summarySpeedup;
+  const withTps = finiteOrNull(data?.withDrafter?.tokensPerSecond);
+  const withoutTps = finiteOrNull(data?.withoutDrafter?.tokensPerSecond);
+  if (withTps !== null && withoutTps !== null && withoutTps > 0) {
+    return withTps / withoutTps;
+  }
+  return null;
+}
+
+function averageStepRtf(data) {
+  const rows = data?.summary?.stepSweep;
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  return firstFinite(rows[0]?.meanRtf);
+}
+
+function statusText(row) {
+  if (row.status === "not-applicable") return "N/A";
+  return row.status.toUpperCase();
+}
+
+function escapeCell(value) {
+  return String(value ?? "")
+    .replace(/\|/g, "\\|")
+    .replace(/\n/g, " ");
+}
+
+function renderMarkdownReport(report) {
+  const lines = [
+    `# Eliza-1 ${report.tier} Release Gate Summary`,
+    "",
+    `Generated: ${report.generatedAt}`,
+    `Collector: \`${report.collector}\``,
+    `JSON report: \`${report.reportPath}\``,
+    "",
+    `Gate result counts: pass=${report.summary.pass}, fail=${report.summary.fail}, needs-data=${report.summary.needsData}, blocking=${report.summary.blocking}`,
+    `Release matrix counts: pass=${report.releaseMatrixSummary.pass}, fail=${report.releaseMatrixSummary.fail}, needs-data=${report.releaseMatrixSummary.needsData}, n/a=${report.releaseMatrixSummary.notApplicable}, blocking=${report.releaseMatrixSummary.blocking}`,
+    "",
+    "| Area | Gate | Status | Blocking | Measurement | Threshold | Reason | Source |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- |",
+  ];
+  for (const row of report.releaseGateMatrix) {
+    lines.push(
+      `| ${escapeCell(row.area)} | ${escapeCell(row.gate)} | ${escapeCell(statusText(row))} | ${row.blocking ? "yes" : "no"} | ${escapeCell(row.measured)} | ${escapeCell(row.threshold)} | ${escapeCell(row.reason)} | ${escapeCell(row.source)} |`,
+    );
+  }
+  if (report.releaseMatrixSummary.blockerReasons.length > 0) {
+    lines.push("", "## Blockers", "");
+    for (const reason of report.releaseMatrixSummary.blockerReasons) {
+      lines.push(`- ${reason}`);
+    }
+  }
+  lines.push("");
+  return `${lines.join("\n")}\n`;
 }
 
 /** Apply one gate. `measured` may be null (not measured). */
 function applyGate(name, op, threshold, measured) {
   if (measured === null || measured === undefined) {
-    return { name, op, threshold, measured: null, status: "needs-data" };
+    return {
+      name,
+      op,
+      threshold,
+      measured: null,
+      status: "needs-data",
+      reason: "not measured",
+    };
   }
   let pass;
   if (op === "bool") pass = measured === true;
@@ -171,11 +351,16 @@ function applyGate(name, op, threshold, measured) {
     threshold,
     measured,
     status: pass ? "pass" : "fail",
+    reason:
+      op === "bool"
+        ? `${name}=${measured}; expected true`
+        : `${name}=${measured} ${op} ${threshold}`,
   };
 }
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
+  const asrExternalMinUtterances = intEnv("ELIZA_ASR_MIN_EXTERNAL_UTTERANCES", 5);
   const gatesDoc = await loadYaml(args.gates);
   const tierGates = gatesDoc?.tiers?.[args.tier];
   if (!tierGates) {
@@ -187,17 +372,89 @@ async function main() {
   const gateDefs = gatesDoc?.gates ?? {};
 
   // ── Collect measured values from the latest reports ──────────────────
-  const dflashBench = newestReport(
-    path.join(REPORTS_ROOT, "dflash-bench"),
-    "dflash-bench-",
+  const evalAggregate = newestReportRecursiveWhere(
+    path.join(REPORTS_ROOT, "local-e2e"),
+    `${args.tier}-aggregate`,
+    (data) => data?.tier === args.tier,
   );
-  const vadQuality = newestReport(
-    path.join(REPORTS_ROOT, "vad"),
-    "vad-quality-",
+  const textEval = newestReportRecursiveWhere(
+    path.join(REPORTS_ROOT, "local-e2e"),
+    `${args.tier}-text-eval`,
+    (data) => data?.metric === "text_eval" || data?.score !== undefined,
   );
-  const bargein = newestReport(
-    path.join(REPORTS_ROOT, "bargein"),
-    "bargein-latency-",
+  const expressive = newestReportRecursiveWhere(
+    path.join(REPORTS_ROOT, "local-e2e"),
+    `${args.tier}-expressive`,
+    (data) => data?.metric === "expressive",
+  );
+  const dflashBench = newestJsonReportWhere(
+    [
+      path.join(REPORTS_ROOT, "dflash-bench"),
+      path.join(REPORTS_ROOT, "porting"),
+      BENCH_RESULTS_ROOT,
+      HARDWARE_RESULTS_ROOT,
+    ],
+    ({ name, data }) =>
+      name.toLowerCase().includes("dflash") &&
+      Boolean(data?.withDrafter) &&
+      Boolean(data?.withoutDrafter) &&
+      matchesTier(data, args.tier),
+  );
+  const asrExternal = newestJsonReportWhere(
+    [BENCH_RESULTS_ROOT, path.join(REPORTS_ROOT, "local-e2e")],
+    ({ name, data }) => {
+      if (!name.toLowerCase().includes("asr")) return false;
+      if (data?.aggregate?.wer === undefined || !matchesTier(data, args.tier)) return false;
+      const source = String(data?.labelledSet?.source ?? "");
+      const measurementClass = String(data?.labelledSet?.measurementClass ?? "");
+      const count = firstFinite(data?.labelledSet?.count, data?.aggregate?.utterances);
+      if (count === null || count < asrExternalMinUtterances) return false;
+      if (source.includes("tts") || measurementClass.includes("self_labelled")) return false;
+      return source.includes("external") || measurementClass.includes("external");
+    },
+  );
+  const asrBench = newestJsonReportWhere(
+    [BENCH_RESULTS_ROOT, path.join(REPORTS_ROOT, "local-e2e")],
+    ({ name, data }) =>
+      name.toLowerCase().includes("asr") &&
+      data?.aggregate?.wer !== undefined &&
+      String(data?.labelledSet?.source ?? "").includes("tts") &&
+      matchesTier(data, args.tier),
+  );
+  const voiceProfile = newestJsonReportWhere(
+    [path.join(REPORTS_ROOT, "local-e2e")],
+    ({ name, data }) =>
+      name.startsWith("voice-profile-emotion-readiness") &&
+      matchesTier(data, args.tier),
+  );
+  const ttsSweep = newestJsonReportWhere(
+    [path.join(REPORTS_ROOT, "local-e2e"), BENCH_RESULTS_ROOT],
+    ({ name, data }) =>
+      name.startsWith("tts-step-sweep") &&
+      matchesTier(data, args.tier) &&
+      averageStepRtf(data) !== null,
+  );
+  const vadQuality = newestJsonReportWhere(
+    [
+      path.join(REPORTS_ROOT, "vad"),
+      path.join(REPORTS_ROOT, "local-e2e"),
+      BENCH_RESULTS_ROOT,
+    ],
+    ({ name, data }) =>
+      name.toLowerCase().includes("vad") &&
+      data?.summary?.vadLatencyMs !== undefined &&
+      matchesTier(data, args.tier),
+  );
+  const bargein = newestJsonReportWhere(
+    [
+      path.join(REPORTS_ROOT, "bargein"),
+      path.join(REPORTS_ROOT, "local-e2e"),
+      BENCH_RESULTS_ROOT,
+    ],
+    ({ name, data }) =>
+      name.toLowerCase().includes("bargein") &&
+      data?.summary?.bargeInCancelMs !== undefined &&
+      matchesTier(data, args.tier),
   );
   const endurance = newestReport(
     path.join(REPORTS_ROOT, "endurance"),
@@ -207,14 +464,50 @@ async function main() {
     path.join(REPORTS_ROOT, "mobile-rss"),
     "mobile-peak-rss-",
   );
-  const e2eLoop = newestReportRecursive(
+  const e2eLoop = newestReportRecursiveWhere(
     path.join(REPORTS_ROOT, "local-e2e"),
     "e2e-loop-",
+    (data) => matchesTier(data, args.tier),
   );
   const e2eEnduranceLoop = newestReportRecursiveWhere(
     path.join(REPORTS_ROOT, "local-e2e"),
     "e2e-loop-",
-    (data) => (data?.summary?.turns ?? data?.request?.turns ?? 0) >= 30,
+    (data) => matchesTier(data, args.tier) && (data?.summary?.turns ?? data?.request?.turns ?? 0) >= 30,
+  );
+  const cpuSimd = newestJsonReportWhere(
+    [BENCH_RESULTS_ROOT],
+    ({ name, data }) =>
+      name.toLowerCase().includes("cpu_simd") &&
+      Array.isArray(data?.kernels) &&
+      data?.qjl_active_simd,
+  );
+  const metalDispatch = newestJsonReportWhere(
+    [VERIFY_ROOT],
+    ({ name, data }) =>
+      name === "metal-runtime-dispatch-evidence.json" && data?.backend === "metal",
+    { recursive: false },
+  );
+  const vulkanDispatch = newestJsonReportWhere(
+    [VERIFY_ROOT],
+    ({ name, data }) =>
+      name === "vulkan-runtime-dispatch-evidence.json" &&
+      data?.backend === "vulkan",
+    { recursive: false },
+  );
+  const visionSmoke = newestJsonReportWhere(
+    [VERIFY_ROOT, BENCH_RESULTS_ROOT],
+    ({ name, data }) =>
+      name.toLowerCase().includes("vision") &&
+      (data?.tier === args.tier || data?.request?.tier === args.tier),
+  );
+  const diarization = newestJsonReportWhere(
+    [VERIFY_REPORTS_ROOT],
+    ({ name, data }) =>
+      name.toLowerCase().includes("diarization") && matchesTier(data, args.tier),
+  );
+  const iosSmoke = newestJsonReportWhere(
+    [HARDWARE_RESULTS_ROOT, path.join(REPORTS_ROOT, "porting")],
+    ({ name }) => name.toLowerCase().includes("ios") && name.toLowerCase().includes("smoke"),
   );
   // The two-agents-talking duet bench (`voice-duet.mjs --report …`), written
   // under `reports/porting/<date>/voice-duet-bench-<model>.json` — match the
@@ -256,12 +549,12 @@ async function main() {
         : 0
       : null;
   const dflashAcceptance =
-    dflashBench?.data?.summary?.dflashAcceptanceRate ??
+    (dflashBench ? extractDflashAcceptance(dflashBench.data) : null) ??
     e2eLoop?.data?.summary?.dflashAcceptanceRateOverall ??
     e2eLoop?.data?.summary?.dflashAcceptanceRateMean ??
     e2eDflashAcceptance ??
     null;
-  const dflashSpeedup = dflashBench?.data?.summary?.dflashSpeedup ?? null;
+  const dflashSpeedup = dflashBench ? extractDflashSpeedup(dflashBench.data) : null;
   const vadLatencyMs = vadQuality?.data?.summary?.vadLatencyMs ?? null;
   const vadBoundaryMaeMs = vadQuality?.data?.summary?.vadBoundaryMaeMs ?? null;
   const vadEndpointP95Ms = vadQuality?.data?.summary?.vadEndpointP95Ms ?? null;
@@ -278,13 +571,21 @@ async function main() {
   const e2eLoopOk =
     endurance?.data?.summary?.e2eLoopOk ?? e2eLoop?.data?.e2eLoopOk ?? null;
   const voiceRtf =
+    averageStepRtf(ttsSweep?.data) ??
     e2eLoop?.data?.summary?.ttsRtfMedian ??
     e2eLoop?.data?.summary?.ttsRtfMean ??
+    evalAggregate?.data?.results?.voice_rtf ??
     null;
+  const asrWer =
+    asrExternal?.data?.aggregate?.wer ??
+    null;
+<<<<<<< HEAD
   const asrWer = e2eLoop?.data?.summary?.asrWerMean ?? null;
   // first_token_latency_ms is re-anchored to the duet's `peer-utterance-end`
   // (`ttftFromUtteranceEndMs.p50`); fall back to the single-agent e2e loop's
   // `firstTokenMsMedian` (vad-trigger anchor) when no duet report exists.
+=======
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   const firstTokenLatencyMs =
     duetTtftFromUtteranceEndMs ??
     e2eLoop?.data?.summary?.firstTokenMsMedian ??
@@ -302,12 +603,31 @@ async function main() {
     null;
   const thermalThrottlePct =
     mobileRss?.data?.summary?.thermalThrottlePct ?? null;
+  const textEvalScore =
+    textEval?.data?.score ?? evalAggregate?.data?.results?.text_eval ?? null;
+  const expressiveTagFaithfulness =
+    expressive?.data?.tagFaithfulness ??
+    evalAggregate?.data?.results?.expressive_tag_faithfulness ??
+    null;
+  const expressiveMos =
+    expressive?.data?.mosExpressive ??
+    evalAggregate?.data?.results?.expressive_mos ??
+    null;
+  const expressiveTagLeakage =
+    expressive?.data?.tagLeakage ??
+    evalAggregate?.data?.results?.expressive_tag_leakage ??
+    null;
 
+<<<<<<< HEAD
   // Map metric name → measured value. Text quality and `expressive_mos` /
   // `expressive_tag_leakage` stay null here — they come from the training-side
   // eval blob / a human panel, not runtime harnesses.
+=======
+  // Map metric name → measured value. Missing values stay null: that means
+  // not measured, not passed.
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   const measured = {
-    text_eval: null,
+    text_eval: textEvalScore,
     voice_rtf: voiceRtf,
     asr_wer: asrWer,
     vad_latency_ms: vadLatencyMs,
@@ -323,9 +643,15 @@ async function main() {
     e2e_loop_ok: e2eLoopOk,
     dflash_acceptance: dflashAcceptance ?? duetDflashAcceptance,
     dflash_speedup: dflashSpeedup,
+<<<<<<< HEAD
     expressive_tag_faithfulness: duetEmotionFidelity,
     expressive_mos: null,
     expressive_tag_leakage: null,
+=======
+    expressive_tag_faithfulness: expressiveTagFaithfulness,
+    expressive_mos: expressiveMos,
+    expressive_tag_leakage: expressiveTagLeakage,
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     peak_rss_mb: peakRssMb,
     thermal_throttle_pct: thermalThrottlePct,
   };
@@ -395,42 +721,336 @@ async function main() {
     wer: asrWer,
     passed: gateByName.get("asr_wer")?.status === "pass",
   };
+  const textEvalManifest = textEvalScore !== null && {
+    score: textEvalScore,
+    passed: gateByName.get("text_eval")?.status === "pass",
+  };
+  const expressiveMeasured = [
+    expressiveTagFaithfulness,
+    expressiveMos,
+    expressiveTagLeakage,
+  ].some((v) => v !== null);
+  const expressiveManifest = expressiveMeasured && {
+    tagFaithfulness: expressiveTagFaithfulness ?? -1,
+    mosExpressive: expressiveMos ?? -1,
+    tagLeakage: expressiveTagLeakage ?? -1,
+    passed:
+      gateByName.get("expressive_tag_faithfulness")?.status === "pass" &&
+      gateByName.get("expressive_mos")?.status === "pass" &&
+      gateByName.get("expressive_tag_leakage")?.status === "pass",
+  };
   const manifestEvalsFragment = {
     // Only emit `thirtyTurnOk`/`e2eLoopOk` when actually measured (true or
     // false from a real run). `null` means "not measured" — the publish
     // side keeps whatever it had / treats it as not-ready.
+    ...(textEvalManifest ? { textEval: textEvalManifest } : {}),
     ...(voiceRtfEval ? { voiceRtf: voiceRtfEval } : {}),
     ...(asrWerEval ? { asrWer: asrWerEval } : {}),
     ...(thirtyTurnOk !== null ? { thirtyTurnOk } : {}),
     ...(e2eLoopOk !== null ? { e2eLoopOk } : {}),
     ...(vadLatencyEval ? { vadLatencyMs: vadLatencyEval } : {}),
+    ...(expressiveManifest ? { expressive: expressiveManifest } : {}),
     dflash: dflashEval,
+  };
+
+  function gateRow(name, area, source, reasonOverride = null, blockingOverride = null) {
+    const gate = gateByName.get(name);
+    const blocking =
+      blockingOverride ??
+      Boolean(gate?.required && gate?.status !== "pass" && !gate?.needsHardware);
+    return {
+      area,
+      gate: name,
+      status: gate?.status ?? "needs-data",
+      blocking,
+      measured: gate?.measured ?? null,
+      threshold:
+        gate?.op === "bool" ? "true" : `${gate?.op ?? ""} ${gate?.threshold ?? ""}`.trim(),
+      reason: reasonOverride ?? gate?.reason ?? "not measured",
+      source,
+    };
+  }
+
+  function platformRow(area, gate, evidence, source, reasonPass, reasonMissing) {
+    const ok = Boolean(evidence);
+    return {
+      area,
+      gate,
+      status: ok ? "pass" : "needs-data",
+      blocking: !ok,
+      measured: ok ? "runtime-ready evidence present" : null,
+      threshold: "runtime-ready",
+      reason: ok ? reasonPass : reasonMissing,
+      source,
+    };
+  }
+
+  const requiredKernelNames = ["turbo3", "turbo4", "qjl", "polar"];
+  const metalKernelReady = requiredKernelNames.every(
+    (name) => metalDispatch?.data?.kernels?.[name]?.runtimeReady === true,
+  );
+  const vulkanKernelReady = requiredKernelNames.every(
+    (name) => vulkanDispatch?.data?.kernels?.[name]?.runtimeReady === true,
+  );
+  const cpuKernelReady = Boolean(cpuSimd?.data?.qjl_active_simd && cpuSimd?.data?.polarquant_active_simd);
+  const dflashDrafted = firstFinite(
+    dflashBench?.data?.withDrafter?.drafted,
+    e2eLoop?.data?.summary?.dflashDraftedTotal,
+  );
+  const dflashAccepted = firstFinite(
+    dflashBench?.data?.withDrafter?.accepted,
+    e2eLoop?.data?.summary?.dflashAcceptedTotal,
+  );
+  const e2eOptimizations = e2eLoop?.data?.summary?.requiredOptimizations ?? e2eLoop?.data?.requiredOptimizations;
+  const streamingTtsActive = boolOrNull(e2eOptimizations?.streamingTtsActive);
+  const dflashDraftingActive = boolOrNull(e2eOptimizations?.dflashDraftingActive);
+  const visionStatus =
+    visionSmoke?.data?.status === "not-applicable"
+      ? "not-applicable"
+      : visionSmoke?.data?.passed === true
+        ? "pass"
+        : visionSmoke
+          ? "fail"
+          : "needs-data";
+  const iosStatus = iosSmoke?.data?.status === "passed" ? "pass" : iosSmoke ? "fail" : "needs-data";
+  const iosBlocker = iosSmoke?.data?.blocker;
+  const localVoiceLoopbackPass =
+    voiceProfile?.data?.defaultStreamingTtsRoundTrip?.status === "pass";
+  const localVoiceLoopbackRtf = firstFinite(
+    voiceProfile?.data?.defaultStreamingTtsRoundTrip?.tts?.rtf,
+    averageStepRtf(ttsSweep?.data),
+  );
+  const localVoiceLoopbackWer = localVoiceLoopbackPass
+    ? 0
+    : firstFinite(
+        ttsSweep?.data?.summary?.stepSweep?.[0]?.meanAsrWer,
+        asrBench?.data?.aggregate?.wer,
+      );
+  const localVoiceLoopbackStatus =
+    localVoiceLoopbackPass || (localVoiceLoopbackWer !== null && localVoiceLoopbackWer <= 0.1)
+      ? "pass"
+      : voiceProfile || ttsSweep || asrBench
+        ? "fail"
+        : "needs-data";
+  const releaseGateMatrix = [
+    gateRow("text_eval", "quality", sourcePath(textEval ?? evalAggregate)),
+    gateRow("voice_rtf", "voice", sourcePath(ttsSweep ?? e2eLoop)),
+    gateRow(
+      "asr_wer",
+      "voice",
+      sourcePath(asrExternal),
+      asrWer === null
+        ? `no >=${asrExternalMinUtterances}-utterance real recorded/external ASR WER report found; local generated-voice loopback is tracked separately`
+        : null,
+    ),
+    {
+      area: "voice",
+      gate: "local_voice_loopback_smoke",
+      status: localVoiceLoopbackStatus,
+      blocking: localVoiceLoopbackStatus !== "pass",
+      measured:
+        localVoiceLoopbackStatus === "needs-data"
+          ? null
+          : `wer=${localVoiceLoopbackWer ?? "unknown"}, rtf=${localVoiceLoopbackRtf ?? "unknown"}`,
+      threshold: "generated TTS->ASR smoke pass",
+      reason:
+        localVoiceLoopbackStatus === "pass"
+          ? "default generated TTS audio round-tripped through local ASR"
+          : "generated TTS->ASR smoke did not pass lexical validation",
+      source: sourcePath(voiceProfile ?? ttsSweep ?? asrBench),
+    },
+    gateRow("vad_latency_ms", "voice", sourcePath(vadQuality)),
+    gateRow("vad_boundary_mae_ms", "voice", sourcePath(vadQuality)),
+    gateRow("vad_endpoint_p95_ms", "voice", sourcePath(vadQuality)),
+    gateRow("vad_false_bargein_per_hour", "voice", sourcePath(vadQuality)),
+    gateRow("first_token_latency_ms", "latency", sourcePath(e2eLoop)),
+    gateRow(
+      "first_audio_latency_ms",
+      "latency",
+      sourcePath(e2eLoop),
+      firstAudioLatencyMs !== null
+        ? `first audio is ${firstAudioLatencyMs} ms; TTS best preset passes RTF but first-audio remains slow`
+        : null,
+      false,
+    ),
+    gateRow("barge_in_cancel_ms", "latency", sourcePath(bargein ?? e2eLoop)),
+    gateRow("thirty_turn_ok", "endurance", sourcePath(endurance ?? e2eEnduranceLoop)),
+    gateRow("e2e_loop_ok", "e2e", sourcePath(e2eLoop)),
+    gateRow(
+      "dflash_acceptance",
+      "dflash",
+      sourcePath(dflashBench ?? e2eLoop),
+      dflashDrafted === 0 && dflashAccepted === 0
+        ? "DFlash generated zero drafted and accepted tokens; acceptance is an honest 0"
+        : null,
+      true,
+    ),
+    gateRow(
+      "dflash_speedup",
+      "dflash",
+      sourcePath(dflashBench),
+      dflashSpeedup !== null
+        ? `DFlash speedup ${dflashSpeedup.toFixed(3)}x is below target`
+        : null,
+      true,
+    ),
+    gateRow(
+      "expressive_tag_faithfulness",
+      "expressive",
+      sourcePath(expressive ?? evalAggregate),
+      expressive?.data?.reason ?? "expressive graders did not produce tag-faithfulness data",
+      true,
+    ),
+    gateRow(
+      "expressive_mos",
+      "expressive",
+      sourcePath(expressive ?? evalAggregate),
+      expressive?.data?.reason ?? "expressive graders did not produce MOS data",
+      true,
+    ),
+    gateRow(
+      "expressive_tag_leakage",
+      "expressive",
+      sourcePath(expressive ?? evalAggregate),
+      expressive?.data?.reason ?? "expressive graders did not produce tag-leakage data",
+      true,
+    ),
+    {
+      area: "platform",
+      gate: "cpu_simd_kernels",
+      status: cpuKernelReady ? "pass" : "needs-data",
+      blocking: !cpuKernelReady,
+      measured: cpuKernelReady
+        ? `qjl=${cpuSimd.data.qjl_active_simd}, polar=${cpuSimd.data.polarquant_active_simd}`
+        : null,
+      threshold: "QJL + Polar SIMD active",
+      reason: cpuKernelReady
+        ? "CPU SIMD plugin evidence is present; model-backed tok/s is still not claimed"
+        : "missing CPU SIMD evidence",
+      source: sourcePath(cpuSimd),
+    },
+    platformRow(
+      "platform",
+      "metal_runtime_kernels",
+      metalKernelReady,
+      sourcePath(metalDispatch),
+      "required Metal kernels are runtime-ready by graph dispatch evidence",
+      "missing required Metal runtime dispatch evidence",
+    ),
+    platformRow(
+      "platform",
+      "vulkan_runtime_kernels",
+      vulkanKernelReady,
+      sourcePath(vulkanDispatch),
+      "required Vulkan kernels are runtime-ready by native graph dispatch evidence",
+      "missing required Vulkan runtime dispatch evidence",
+    ),
+    {
+      area: "worker-output",
+      gate: "streaming_tts_active",
+      status: streamingTtsActive === true ? "pass" : streamingTtsActive === false ? "fail" : "needs-data",
+      blocking: streamingTtsActive !== true,
+      measured: streamingTtsActive,
+      threshold: "true",
+      reason:
+        streamingTtsActive === true
+          ? "e2e loop observed streaming TTS active; installed dylib rebuild is still tracked separately"
+          : "streaming TTS was not active in the selected e2e loop",
+      source: sourcePath(e2eLoop),
+    },
+    {
+      area: "worker-output",
+      gate: "dflash_drafting_active",
+      status: dflashDraftingActive === true ? "pass" : dflashDraftingActive === false ? "fail" : "needs-data",
+      blocking: dflashDraftingActive !== true,
+      measured: dflashDraftingActive,
+      threshold: "true",
+      reason:
+        dflashDraftingActive === true
+          ? "e2e loop observed DFlash drafting"
+          : "required optimization is inactive in the selected e2e loop",
+      source: sourcePath(e2eLoop),
+    },
+    {
+      area: "worker-output",
+      gate: "vision_smoke",
+      status: visionStatus,
+      blocking: visionStatus === "fail",
+      measured: visionSmoke?.data?.status ?? null,
+      threshold: args.tier === "0_6b" || args.tier === "1_7b" ? "not-applicable" : "pass",
+      reason:
+        visionSmoke?.data?.reason ??
+        (visionStatus === "needs-data" ? "no vision smoke evidence for this tier" : "vision smoke passed"),
+      source: sourcePath(visionSmoke),
+    },
+    {
+      area: "worker-output",
+      gate: "diarization_der",
+      status: diarization?.data?.diarization?.der !== null && diarization?.data?.diarization?.der !== undefined ? "pass" : "needs-data",
+      blocking: false,
+      measured: diarization?.data?.diarization?.der ?? null,
+      threshold: "measured DER",
+      reason:
+        diarization?.data?.diarization?.reason ??
+        "full DER was not measured",
+      source: sourcePath(diarization),
+    },
+    {
+      area: "worker-output",
+      gate: "ios_physical_smoke",
+      status: iosStatus,
+      blocking: iosStatus !== "pass",
+      measured: iosSmoke?.data?.status ?? null,
+      threshold: "passed",
+      reason:
+        iosBlocker?.nextAction ??
+        iosBlocker?.detail ??
+        iosSmoke?.data?.reason ??
+        (iosStatus === "pass" ? "iOS smoke passed" : "iOS smoke evidence missing"),
+      source: sourcePath(iosSmoke),
+    },
+  ];
+
+  const releaseMatrixSummary = {
+    total: releaseGateMatrix.length,
+    pass: releaseGateMatrix.filter((r) => r.status === "pass").length,
+    fail: releaseGateMatrix.filter((r) => r.status === "fail").length,
+    needsData: releaseGateMatrix.filter((r) => r.status === "needs-data").length,
+    notApplicable: releaseGateMatrix.filter((r) => r.status === "not-applicable").length,
+    blocking: releaseGateMatrix.some((r) => r.blocking && r.status !== "pass" && r.status !== "not-applicable"),
+    blockerReasons: releaseGateMatrix
+      .filter((r) => r.blocking && r.status !== "pass" && r.status !== "not-applicable")
+      .map((r) => `${r.gate}: ${r.reason}`),
   };
 
   const report = {
     generatedAt: new Date().toISOString(),
     collector: path.relative(process.cwd(), __filename),
+    reportPath: path.relative(process.cwd(), args.report),
     tier: args.tier,
     gatesFile: path.relative(process.cwd(), args.gates),
     gatesVersion: gatesDoc?.version ?? null,
     sources: {
-      dflashBench: dflashBench
-        ? path.relative(process.cwd(), dflashBench.path)
-        : null,
-      vadQuality: vadQuality
-        ? path.relative(process.cwd(), vadQuality.path)
-        : null,
-      bargein: bargein ? path.relative(process.cwd(), bargein.path) : null,
-      endurance: endurance
-        ? path.relative(process.cwd(), endurance.path)
-        : null,
-      e2eLoop: e2eLoop ? path.relative(process.cwd(), e2eLoop.path) : null,
-      e2eEnduranceLoop: e2eEnduranceLoop
-        ? path.relative(process.cwd(), e2eEnduranceLoop.path)
-        : null,
-      mobileRss: mobileRss
-        ? path.relative(process.cwd(), mobileRss.path)
-        : null,
+      evalAggregate: sourcePath(evalAggregate),
+      textEval: sourcePath(textEval),
+      expressive: sourcePath(expressive),
+      dflashBench: sourcePath(dflashBench),
+      asrExternal: sourcePath(asrExternal),
+      asrBench: sourcePath(asrBench),
+      voiceProfile: sourcePath(voiceProfile),
+      ttsSweep: sourcePath(ttsSweep),
+      vadQuality: sourcePath(vadQuality),
+      bargein: sourcePath(bargein),
+      endurance: sourcePath(endurance),
+      e2eLoop: sourcePath(e2eLoop),
+      e2eEnduranceLoop: sourcePath(e2eEnduranceLoop),
+      mobileRss: sourcePath(mobileRss),
+      cpuSimd: sourcePath(cpuSimd),
+      metalDispatch: sourcePath(metalDispatch),
+      vulkanDispatch: sourcePath(vulkanDispatch),
+      visionSmoke: sourcePath(visionSmoke),
+      diarization: sourcePath(diarization),
+      iosSmoke: sourcePath(iosSmoke),
     },
     measured,
     gateResults: results,
@@ -444,17 +1064,27 @@ async function main() {
       blocking: hardFailures.length > 0,
     },
     manifestEvalsFragment,
+    releaseGateMatrix,
+    releaseMatrixSummary,
   };
 
   fs.mkdirSync(path.dirname(args.report), { recursive: true });
   fs.writeFileSync(args.report, `${JSON.stringify(report, null, 2)}\n`);
+  const markdownReport = args.report.replace(/\.json$/i, ".md");
+  fs.writeFileSync(markdownReport, renderMarkdownReport(report));
   if (args.json) {
     console.log(JSON.stringify(report, null, 2));
   } else {
     console.log(`wrote ${args.report}`);
+    console.log(`wrote ${markdownReport}`);
     console.log(
       `eliza1-gates(${args.tier}): pass=${report.summary.pass} fail=${report.summary.fail} ` +
         `needs-data=${report.summary.needsData} blocking=${report.summary.blocking}`,
+    );
+    console.log(
+      `release-matrix(${args.tier}): pass=${report.releaseMatrixSummary.pass} fail=${report.releaseMatrixSummary.fail} ` +
+        `needs-data=${report.releaseMatrixSummary.needsData} n/a=${report.releaseMatrixSummary.notApplicable} ` +
+        `blocking=${report.releaseMatrixSummary.blocking}`,
     );
     if (hardFailures.length > 0) {
       console.error(

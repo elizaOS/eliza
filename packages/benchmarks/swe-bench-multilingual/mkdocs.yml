@@ -1,0 +1,108 @@
+site_name: SWE-bench
+site_url: https://swe-bench.com
+theme:
+  name: material
+  icon:
+    repo: fontawesome/brands/github
+    annotation: material/chevron-right-circle
+  logo: assets/swellama.svg
+  favicon: assets/swellama.svg
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - scheme: default
+      # primary: black # override in custom.css
+      accent: deep orange
+      media: "(prefers-color-scheme: light)"
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      # primary: black # override in custom.css
+      accent: deep orange
+      media: "(prefers-color-scheme: dark)"
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.indexes
+    - content.action.edit
+    - navigation.footer
+    - content.code.copy
+    - content.footnote.tooltips
+    - header.autohide
+    - announce.dismiss
+    - content.code.annotate
+markdown_extensions:
+  - sane_lists
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.magiclink
+  - footnotes
+  - attr_list
+  - md_in_html
+  - pymdownx.snippets:
+      check_paths: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+nav:
+  - "Leaderboard": https://swebench.com
+  - "SWE-bench":
+    - "Overview": index.md
+    - "Installation": installation.md
+    - "FAQ": faq.md
+  - "User Guides":
+    - "SWE-bench Quickstart": guides/quickstart.md
+    - "Evaluation": guides/evaluation.md
+    - "Docker Setup": guides/docker_setup.md
+    - "Datasets": guides/datasets.md
+    - "Create RAG Datasets": guides/create_rag_datasets.md
+    - "Reference":
+      - "The Harness": reference/harness.md
+      - "Inference": reference/inference.md
+      - "Versioning": reference/versioning.md
+    - "API":
+      - "Harness": api/harness.md
+      - "Inference": api/inference.md
+      - "Versioning": api/versioning.md
+plugins:
+   - blog
+   - glightbox
+   - search
+   - include-markdown
+   - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: ["swebench"]
+          options:
+            docstring_style: google
+            show_root_heading: true
+            show_root_full_path: true
+            show_signature: true
+            show_signature_annotations: true
+            separate_signature: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            merge_init_into_class: true
+            show_if_no_docstring: true
+            signature_crossrefs: true
+repo_url: https://github.com/SWE-bench/SWE-bench
+repo_name: SWE-bench
+edit_uri: edit/main/docs/
+extra_css:
+  - css/custom.css
+  - css/mkdocstrings.css
+extra:
+  analytics:
+    provider: google
+    property: G-T5P2NYGJYR
+  font:
+    text: Roboto
+    code: Roboto Mono

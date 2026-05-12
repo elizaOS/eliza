@@ -1,0 +1,43 @@
+# Base image via DaoCloud mirror (domestic acceleration).
+# Override at build time if needed:
+#   docker build --build-arg REGISTRY=docker.io -f Dockerfile.agent .
+ARG REGISTRY=docker.m.daocloud.io
+FROM ${REGISTRY}/python:3.11-slim
+
+# Pass host proxy into build (auto-inherited from environment via build script)
+ARG http_proxy
+ARG https_proxy
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+
+WORKDIR /workspace
+
+# Switch apt to USTC mirror (domestic acceleration)
+RUN sed -i 's|deb.debian.org|mirrors.ustc.edu.cn|g' /etc/apt/sources.list.d/* 2>/dev/null || \
+    sed -i 's|deb.debian.org|mirrors.ustc.edu.cn|g' /etc/apt/sources.list 2>/dev/null || true
+
+# System packages for media processing
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        poppler-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install sandbox server dependencies (PyPI via TUNA mirror)
+COPY requirements-sandbox-server.txt /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt \
+        -i https://pypi.tuna.tsinghua.edu.cn/simple \
+        --trusted-host pypi.tuna.tsinghua.edu.cn \
+        --no-cache-dir \
+    && rm /tmp/requirements.txt
+
+# Only copy the sandbox server (not the full claw_eval framework)
+COPY src/claw_eval/sandbox/ /opt/sandbox/
+
+# Playwright + Chromium for browser screenshot/recording support
+RUN pip install playwright --no-cache-dir \
+        -i https://pypi.tuna.tsinghua.edu.cn/simple \
+        --trusted-host pypi.tuna.tsinghua.edu.cn \
+    && playwright install --with-deps chromium
+
+EXPOSE 8080
+ENTRYPOINT ["python", "/opt/sandbox/server.py", "--port", "8080"]

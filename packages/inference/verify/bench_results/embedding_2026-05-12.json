@@ -1,5 +1,6 @@
 {
   "tool": "embedding_bench",
+<<<<<<< HEAD
   "date": "2026-05-12T12:50:22.149Z",
   "host": "Intel(R) Core(TM) Ultra 9 275HX",
   "cpus": 24,
@@ -75,4 +76,16 @@
     }
   },
   "note": "Server: llama-server --embeddings --pooling last over the GGUF. `pairwise_ranking_pearson_vs_full` is the Pearson correlation between the corpus's pairwise-cosine matrix at the truncated width and at the full width — a cheap offline proxy for retrieval-ranking preservation when MTEB isn't available. On 0_6b the GGUF IS the text backbone (pooled-text mode); on 1_7b+ it should be the dedicated embedding/eliza-1-embedding.gguf (Qwen3-Embedding-0.6B)."
+=======
+  "date": "2026-05-12T05:57:53.436Z",
+  "host": "Apple M4 Max",
+  "cpus": 16,
+  "totalRamMb": 131072,
+  "status": "skipped",
+  "reason": "no llama-server binary found (build one: node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cpu)",
+  "resolved": {
+    "bin": null,
+    "model": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle/text/eliza-1-0_6b-32k.gguf"
+  }
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 }

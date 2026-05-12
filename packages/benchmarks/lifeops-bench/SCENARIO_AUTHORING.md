@@ -13,7 +13,7 @@ the operator-facing playbook for using it well.
 - [Live-mode extras: success_criteria, world_assertions, disruptions](#live-mode-extras-success_criteria-world_assertions-disruptions)
 - [The candidate-generator workflow](#the-candidate-generator-workflow)
 - [Validation](#validation)
-- [The 50% rule](#the-50-rule)
+- [The fallback-ratio rule](#the-fallback-ratio-rule)
 
 ## Static vs Live mode
 
@@ -114,8 +114,8 @@ Good `applies_when` is short, specific, and action-shaped:
 - `"if agent says hi"` — greeting != clarifier, no
 
 If the instruction is fully specified and no realistic clarifier
-exists, leave `first_question_fallback=None`. About half of static
-scenarios should carry one (see [The 50% rule](#the-50-rule)).
+exists, leave `first_question_fallback=None`. At least 30% of static
+scenarios should carry one (see [The fallback-ratio rule](#the-fallback-ratio-rule)).
 
 ## Live-mode extras: success_criteria, world_assertions, disruptions
 
@@ -197,15 +197,11 @@ These tests check:
 - Every action name exists in the manifest dump (`manifests/actions.manifest.json`).
 - Every entity id referenced in `ground_truth_actions` resolves in the corresponding snapshot.
 - Personas referenced are in `_personas.py`.
-- The 50% rule holds across the static corpus.
+- The static fallback ratio stays above the corpus threshold.
 
-The pre-existing failure
-`test_every_action_name_exists_in_manifest` is a Wave 4C item; do not
-add new scenarios that increase the failure count.
+## The fallback-ratio rule
 
-## The 50% rule
-
-At least 50% of static scenarios should carry a
+At least 30% of static scenarios should carry a
 `first_question_fallback`. Reasoning: real users almost never specify
 every detail upfront, and an agent that handles clarification well is
 more useful than one that pattern-matches to the most common

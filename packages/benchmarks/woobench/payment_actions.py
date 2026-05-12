@@ -109,10 +109,12 @@ def detect_payment_demand(turn: AgentTurn) -> PaymentDemand | None:
 
 def detect_payment_check(turn: AgentTurn) -> str | None:
     """Return the normalized check command when the agent asks to verify payment."""
-    payload = _benchmark_payload(turn.params)
-    command = _normalized_command(payload)
-    if command in CHECK_PAYMENT_COMMANDS:
-        return command
+    payloads = _benchmark_payloads(turn.params)
+    payload = payloads[0] if payloads else {}
+    for candidate in payloads:
+        command = _normalized_command(candidate)
+        if command in CHECK_PAYMENT_COMMANDS:
+            return command
     for action in turn.actions:
         normalized = action.strip().upper()
         if normalized in CHECK_PAYMENT_COMMANDS or (
@@ -124,10 +126,12 @@ def detect_payment_check(turn: AgentTurn) -> str | None:
 
 
 def _payment_action_payload(turn: AgentTurn) -> dict[str, Any] | None:
-    payload = _benchmark_payload(turn.params)
-    command = _normalized_command(payload)
-    if command in CREATE_PAYMENT_COMMANDS:
-        return payload
+    payloads = _benchmark_payloads(turn.params)
+    payload = payloads[0] if payloads else {}
+    for candidate in payloads:
+        command = _normalized_command(candidate)
+        if command in CREATE_PAYMENT_COMMANDS:
+            return candidate
 
     for action in turn.actions:
         normalized = action.strip().upper()
@@ -139,13 +143,26 @@ def _payment_action_payload(turn: AgentTurn) -> dict[str, Any] | None:
 
 
 def _benchmark_payload(params: Mapping[str, Any]) -> dict[str, Any]:
+    payloads = _benchmark_payloads(params)
+    return payloads[0] if payloads else dict(params)
+
+
+def _benchmark_payloads(params: Mapping[str, Any]) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
+    nested_many = params.get("BENCHMARK_ACTIONS")
+    if isinstance(nested_many, list):
+        for item in nested_many:
+            if isinstance(item, Mapping):
+                payloads.append(dict(item))
     nested = params.get("BENCHMARK_ACTION")
     if isinstance(nested, Mapping):
-        return dict(nested)
+        payloads.append(dict(nested))
     nested = params.get("PAYMENT")
     if isinstance(nested, Mapping):
-        return dict(nested)
-    return dict(params)
+        payloads.append(dict(nested))
+    if not payloads:
+        payloads.append(dict(params))
+    return payloads
 
 
 def _normalized_command(payload: Mapping[str, Any]) -> str:

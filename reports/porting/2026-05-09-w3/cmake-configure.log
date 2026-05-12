@@ -46,4 +46,4 @@ CMAKE_BUILD_TYPE=Release
 -- Generating embedded license file for target: common
 -- Configuring done (3.0s)
 -- Generating done (0.1s)
--- Build files have been written to: /home/shaw/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0/build-cuda-configure-probe
+-- Build files have been written to: /home/shaw/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0/build-cuda-configure-probe

@@ -18,6 +18,7 @@ import { addHeader, formatMessages, formatPosts } from "../../../utils.ts";
 const spec = requireProviderSpec("RECENT_MESSAGES");
 const MAX_RECENT_MESSAGES_LOOKBACK = 50;
 const MAX_RECENT_INTERACTIONS = 20;
+const MAX_COMPACT_LEDGER_CHARS = 4000;
 const INTERNAL_BRIDGE_MESSAGE_SOURCES = new Set(["swarm_synthesis"]);
 
 function isInternalBridgeMessage(memory: Memory): boolean {
@@ -47,6 +48,17 @@ function dedupeConsecutiveDialogueMessages(messages: Memory[]): Memory[] {
 		deduped.push(message);
 	}
 	return deduped;
+}
+
+function getConversationCompactionLedger(room: { metadata?: unknown } | null) {
+	const metadata =
+		room?.metadata && typeof room.metadata === "object"
+			? (room.metadata as Record<string, unknown>)
+			: {};
+	const compaction = metadata.conversationCompaction;
+	if (!compaction || typeof compaction !== "object") return "";
+	const ledger = (compaction as Record<string, unknown>).priorLedger;
+	return typeof ledger === "string" ? ledger.trim() : "";
 }
 
 function buildFormattingFallbackEntity(memory: Memory): Entity | null {
@@ -206,6 +218,7 @@ export const recentMessagesProvider: Provider = {
 			const lastCompactionAt = room?.metadata?.lastCompactionAt as
 				| number
 				| undefined;
+			const compactLedger = getConversationCompactionLedger(room);
 
 			// Parallelize initial data fetching operations including recentInteractions
 			const [entitiesData, recentMessagesData, recentInteractionsData] =
@@ -278,15 +291,30 @@ export const recentMessagesProvider: Provider = {
 			// (position 150) to avoid duplication in the LLM context.
 
 			// Create formatted text with headers
-			const recentPosts =
+			const recentPostsBody =
 				formattedRecentPosts && formattedRecentPosts.length > 0
 					? addHeader("# Posts in Thread", formattedRecentPosts)
 					: "";
 
-			const recentMessages =
+			const compactedContext = compactLedger
+				? addHeader(
+						"# Conversation Compact Ledger",
+						compactLedger.length > MAX_COMPACT_LEDGER_CHARS
+							? `${compactLedger.slice(0, MAX_COMPACT_LEDGER_CHARS)}...`
+							: compactLedger,
+					)
+				: "";
+			const recentPosts = [compactedContext, recentPostsBody]
+				.filter(Boolean)
+				.join("\n\n");
+
+			const recentMessagesBody =
 				formattedRecentMessages && formattedRecentMessages.length > 0
 					? addHeader("# Conversation Messages", formattedRecentMessages)
 					: "";
+			const recentMessages = [compactedContext, recentMessagesBody]
+				.filter(Boolean)
+				.join("\n\n");
 
 			// If there are no messages at all, and no current message to process, return a specific message.
 			// The check for dialogueMessages.length === 0 ensures we only show this if there's truly nothing.

@@ -37,9 +37,7 @@ describe("local inference text readiness", () => {
     expect(readiness.slots.TEXT_LARGE.primaryDownloaded).toBe(false);
     expect(readiness.slots.TEXT_LARGE.downloaded).toBe(false);
     expect(readiness.slots.TEXT_LARGE.state).toBe("failed");
-    expect(readiness.slots.TEXT_LARGE.missingModelIds).toContain(
-      "eliza-1-1_7b",
-    );
+    expect(readiness.slots.TEXT_LARGE.missingModelIds).toContain("eliza-1-1_7b");
     expect(readiness.slots.TEXT_LARGE.download.percent).toBe(25);
     expect(readiness.slots.TEXT_LARGE.errors).toContain(
       "HTTP 503 from HuggingFace",

@@ -1,12 +1,10 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   type Address,
+  type Chain,
   createPublicClient,
   createWalletClient,
   http,
-  type PublicClient,
-  type WalletClient,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
@@ -29,14 +27,22 @@ import {
 } from "../types.ts";
 
 const SUPPORTED_CHAIN_IDS = [8453]; // Base only
+const AERODROME_CHAIN: Chain = base;
+
+type EvmPublicClient = ReturnType<typeof createPublicClient>;
+type EvmWalletClient = ReturnType<typeof createWalletClient>;
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 export class AerodromeLpService extends Service implements IEvmLpService {
   public static readonly serviceType = "aerodrome-lp";
   public readonly capabilityDescription =
     "Provides Aerodrome DEX liquidity pool management on Base chain.";
 
-  private publicClient: PublicClient | null = null;
-  private walletClients: Map<string, WalletClient> = new Map();
+  private publicClient: EvmPublicClient | null = null;
+  private walletClients: Map<string, EvmWalletClient> = new Map();
   private rpcUrl: string | null = null;
 
   constructor(runtime?: IAgentRuntime) {
@@ -57,18 +63,18 @@ export class AerodromeLpService extends Service implements IEvmLpService {
     }
   }
 
-  private getPublicClient(): PublicClient {
+  private getPublicClient(): EvmPublicClient {
     if (this.publicClient) return this.publicClient;
 
     this.publicClient = createPublicClient({
-      chain: base,
+      chain: AERODROME_CHAIN,
       transport: this.rpcUrl ? http(this.rpcUrl) : http(),
     });
 
     return this.publicClient;
   }
 
-  private getWalletClient(privateKey: `0x${string}`): WalletClient {
+  private getWalletClient(privateKey: `0x${string}`): EvmWalletClient {
     const cacheKey = privateKey.slice(0, 10);
     let client = this.walletClients.get(cacheKey);
     if (client) return client;
@@ -76,7 +82,7 @@ export class AerodromeLpService extends Service implements IEvmLpService {
     const account = privateKeyToAccount(privateKey);
 
     client = createWalletClient({
-      chain: base,
+      chain: AERODROME_CHAIN,
       transport: this.rpcUrl ? http(this.rpcUrl) : http(),
       account,
     });
@@ -220,12 +226,14 @@ export class AerodromeLpService extends Service implements IEvmLpService {
         poolAddress,
         tokenA: {
           address: token0 as Address,
+          mint: token0 as Address,
           symbol: symbol0 as string,
           decimals: Number(decimals0),
           reserve: reserves[0].toString(),
         },
         tokenB: {
           address: token1 as Address,
+          mint: token1 as Address,
           symbol: symbol1 as string,
           decimals: Number(decimals1),
           reserve: reserves[1].toString(),
@@ -240,7 +248,10 @@ export class AerodromeLpService extends Service implements IEvmLpService {
 
       return poolInfo;
     } catch (error) {
-      logger.error(`[AerodromeLpService] Error fetching pool info for ${poolAddress}:`, error);
+      logger.error(
+        `[AerodromeLpService] Error fetching pool info for ${poolAddress}:`,
+        errorMessage(error),
+      );
       return null;
     }
   }
@@ -322,7 +333,10 @@ export class AerodromeLpService extends Service implements IEvmLpService {
         },
       };
     } catch (error) {
-      logger.error("[AerodromeLpService] Error adding liquidity:", error);
+      logger.error(
+        "[AerodromeLpService] Error adding liquidity:",
+        errorMessage(error),
+      );
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error adding liquidity",
@@ -412,7 +426,10 @@ export class AerodromeLpService extends Service implements IEvmLpService {
         gasUsed: receipt.gasUsed,
       };
     } catch (error) {
-      logger.error("[AerodromeLpService] Error removing liquidity:", error);
+      logger.error(
+        "[AerodromeLpService] Error removing liquidity:",
+        errorMessage(error),
+      );
       return {
         success: false,
         error: error instanceof Error ? error.message : "Unknown error removing liquidity",
@@ -485,10 +502,15 @@ export class AerodromeLpService extends Service implements IEvmLpService {
             symbol: poolInfo.tokenB.symbol,
           },
         ],
+        accruedFees: [],
+        rewards: [],
         metadata: poolInfo.metadata,
       };
     } catch (error) {
-      logger.error(`[AerodromeLpService] Error getting position details for ${owner}:`, error);
+      logger.error(
+        `[AerodromeLpService] Error getting position details for ${owner}:`,
+        errorMessage(error),
+      );
       return null;
     }
   }
@@ -528,12 +550,16 @@ export class AerodromeLpService extends Service implements IEvmLpService {
   ): Promise<void> {
     const publicClient = this.getPublicClient();
     const walletClient = this.getWalletClient(privateKey);
+    const ownerAddress = walletClient.account?.address;
+    if (!ownerAddress) {
+      throw new Error("Wallet account is required to approve token spending.");
+    }
 
     const allowance = await publicClient.readContract({
       address: tokenAddress,
       abi: ERC20_ABI,
       functionName: "allowance",
-      args: [walletClient.account?.address, spenderAddress],
+      args: [ownerAddress, spenderAddress],
     });
 
     if ((allowance as bigint) >= amount) {

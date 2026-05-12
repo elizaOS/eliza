@@ -1,0 +1,38 @@
+[
+  {
+    "contact_id": "CON-1201",
+    "name": "Director Zhang",
+    "email": "zhangceo@company.com",
+    "phone": "13900001001",
+    "department": "Management",
+    "title": "CEO",
+    "responsibilities": ["Corporate strategy", "Major decisions", "Investor relations"]
+  },
+  {
+    "contact_id": "CON-1202",
+    "name": "Director Li",
+    "email": "licto@company.com",
+    "phone": "13900001002",
+    "department": "Management",
+    "title": "CTO",
+    "responsibilities": ["Technology strategy", "Product development", "AI capability development"]
+  },
+  {
+    "contact_id": "CON-1203",
+    "name": "Director Wang",
+    "email": "wangcmo@company.com",
+    "phone": "13900001003",
+    "department": "Management",
+    "title": "CMO",
+    "responsibilities": ["Brand strategy", "Marketing", "Industry research"]
+  },
+  {
+    "contact_id": "CON-1204",
+    "name": "Director Zhao",
+    "email": "zhaovp@company.com",
+    "phone": "13900001004",
+    "department": "Management",
+    "title": "VP Sales",
+    "responsibilities": ["Sales team management", "Key account strategy", "Channel development"]
+  }
+]

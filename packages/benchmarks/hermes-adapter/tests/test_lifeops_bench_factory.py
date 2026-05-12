@@ -206,7 +206,11 @@ def _install_lifeops_stub() -> None:
             self.tool_calls = tool_calls
 
     types_mod.MessageTurn = MessageTurn
+<<<<<<< HEAD
     types_mod.attach_usage_cache_fields = _stub_attach_usage_cache_fields
+=======
+    types_mod.attach_usage_cache_fields = lambda _turn, _usage: None
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     sys.modules["eliza_lifeops_bench"] = pkg
     sys.modules["eliza_lifeops_bench.types"] = types_mod
 

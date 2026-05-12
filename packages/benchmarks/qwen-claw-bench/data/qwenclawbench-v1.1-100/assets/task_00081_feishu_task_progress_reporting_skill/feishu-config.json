@@ -1,0 +1,23 @@
+{
+  "app_id": "cli_a5f3e8b2c7d14a09",
+  "app_secret": "****REDACTED****",
+  "encrypt_key": "",
+  "verification_token": "t-g2049kJHDcvmR7xEp1bZ",
+  "bot_name": "ProjectBot",
+  "scopes": [
+    "im:message",
+    "im:message:send_as_bot",
+    "contact:user.id:readonly",
+    "drive:drive",
+    "docx:document",
+    "wiki:wiki"
+  ],
+  "event_subscription": {
+    "enabled": true,
+    "callback_url": "https://bot.example.com/feishu/events"
+  },
+  "features": {
+    "bot": true,
+    "group_bot": true
+  }
+}

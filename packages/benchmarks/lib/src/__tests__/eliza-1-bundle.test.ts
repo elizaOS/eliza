@@ -35,6 +35,7 @@ function makeBundle(overrides: ManifestOverrides = {}): {
   weightsPath: string;
   draftersPath: string;
 } {
+<<<<<<< HEAD
   const root = mkdtempSync(path.join(tmpdir(), "eliza-1-bundle-test-"));
   const bundlePath = path.join(root, "eliza-1-0.6b.bundle");
   mkdirSync(bundlePath, { recursive: true });
@@ -106,6 +107,79 @@ describe("readElizaOneBundle", () => {
     const m = await readElizaOneBundle(bundlePath);
     expect(m.draftersPath).toBeUndefined();
   });
+=======
+	const root = mkdtempSync(path.join(tmpdir(), "eliza-1-bundle-test-"));
+	const bundlePath = path.join(root, "eliza-1-0.8b.bundle");
+	mkdirSync(bundlePath, { recursive: true });
+	const weightsName = "weights.gguf";
+	const draftersName = "drafter.gguf";
+	const weightsPath = path.join(bundlePath, weightsName);
+	const draftersPath = path.join(bundlePath, draftersName);
+	writeFileSync(weightsPath, "stub-gguf-bytes");
+	writeFileSync(draftersPath, "stub-drafter-bytes");
+	const manifest: Record<string, unknown> = {
+		bundleId: overrides.bundleId ?? "eliza-1-0.8b",
+		modelSize: overrides.modelSize ?? "0.8b",
+		releaseState: overrides.releaseState ?? "local-standin",
+		publishEligible: overrides.publishEligible ?? false,
+		final: overrides.final ?? { weights: false },
+		weightsPath: overrides.weightsPath ?? weightsName,
+		sha256:
+			overrides.sha256 ??
+			"0000000000000000000000000000000000000000000000000000000000000000",
+	};
+	if (overrides.draftersPath !== undefined) {
+		manifest.draftersPath = overrides.draftersPath;
+	} else {
+		manifest.draftersPath = draftersName;
+	}
+	for (const omit of overrides.omit ?? []) {
+		delete manifest[omit];
+	}
+	writeFileSync(
+		path.join(bundlePath, "manifest.json"),
+		JSON.stringify(manifest),
+	);
+	return { bundlePath, weightsPath, draftersPath };
+}
+
+describe("readElizaOneBundle", () => {
+	it("reads a local-standin manifest with resolved absolute weights/drafters paths", async () => {
+		const { bundlePath, weightsPath, draftersPath } = makeBundle();
+		const m = await readElizaOneBundle(bundlePath);
+		expect(m.bundleId).toBe("eliza-1-0.8b");
+		expect(m.modelSize).toBe("0.8b");
+		expect(m.releaseState).toBe("local-standin");
+		expect(m.publishEligible).toBe(false);
+		expect(m.final.weights).toBe(false);
+		expect(m.weightsPath).toBe(weightsPath);
+		expect(m.draftersPath).toBe(draftersPath);
+		expect(m.sha256).toBe(
+			"0000000000000000000000000000000000000000000000000000000000000000",
+		);
+	});
+
+	it("treats draftersPath as optional", async () => {
+		const root = mkdtempSync(path.join(tmpdir(), "eliza-1-bundle-test-"));
+		const bundlePath = path.join(root, "eliza-1-0.8b.bundle");
+		mkdirSync(bundlePath, { recursive: true });
+		writeFileSync(path.join(bundlePath, "weights.gguf"), "x");
+		writeFileSync(
+			path.join(bundlePath, "manifest.json"),
+			JSON.stringify({
+				bundleId: "eliza-1-0.8b",
+				modelSize: "0.8b",
+				releaseState: "local-standin",
+				publishEligible: false,
+				final: { weights: false },
+				weightsPath: "weights.gguf",
+				sha256: "abc",
+			}),
+		);
+		const m = await readElizaOneBundle(bundlePath);
+		expect(m.draftersPath).toBeUndefined();
+	});
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
   it("rejects an invalid modelSize", async () => {
     const { bundlePath } = makeBundle({ modelSize: "13b" });
@@ -165,6 +239,7 @@ function manifest(
     finalWeights?: boolean;
   },
 ): ElizaOneBundleManifest {
+<<<<<<< HEAD
   return {
     bundleId: overrides.bundleId ?? "eliza-1-0.6b",
     modelSize: overrides.modelSize ?? "0.6b",
@@ -175,6 +250,18 @@ function manifest(
     draftersPath: overrides.draftersPath,
     sha256: overrides.sha256 ?? "abc",
   };
+=======
+	return {
+		bundleId: overrides.bundleId ?? "eliza-1-0.8b",
+		modelSize: overrides.modelSize ?? "0.8b",
+		releaseState: overrides.releaseState ?? "local-standin",
+		publishEligible: overrides.publishEligible ?? false,
+		final: { weights: overrides.finalWeights ?? false },
+		weightsPath: overrides.weightsPath ?? "/tmp/weights.gguf",
+		draftersPath: overrides.draftersPath,
+		sha256: overrides.sha256 ?? "abc",
+	};
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 }
 
 describe("bundleIsPreRelease", () => {

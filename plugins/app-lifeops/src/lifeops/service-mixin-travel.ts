@@ -1,11 +1,9 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type { LifeOpsCalendarService } from "./service-mixin-calendar.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
 import {
   createOrder,
   createPayment,
@@ -67,6 +65,41 @@ export interface TravelConnectorStatus {
    *  travel connector is unconfigured. */
   mode: "cloud" | "direct" | null;
   lastCheckedAt: string;
+}
+
+type TravelMixinDependencies = LifeOpsServiceBase &
+  Pick<LifeOpsCalendarService, "createCalendarEvent">;
+
+export interface LifeOpsTravelServicePublic {
+  getTravelConnectorStatus(): TravelConnectorStatus;
+  searchFlights(request: SearchFlightsRequest): Promise<SearchFlightsResult>;
+  getFlightOffer(offerId: string): Promise<DuffelOffer>;
+  prepareFlightBooking(args: {
+    offerId?: string | null;
+    search?: SearchFlightsRequest | null;
+    passengers: ReadonlyArray<TravelBookingPassenger>;
+    calendarSync?: TravelCalendarSyncPlan | null;
+  }): Promise<PreparedFlightBooking>;
+  createFlightOrder(args: {
+    offer: DuffelOffer;
+    passengers: ReadonlyArray<TravelBookingPassenger>;
+    orderType?: "hold" | "instant";
+  }): Promise<DuffelOrder>;
+  getTravelOrder(orderId: string): Promise<DuffelOrder>;
+  payTravelOrder(args: {
+    orderId: string;
+    amount: string;
+    currency: string;
+  }): Promise<DuffelPayment>;
+  bookFlightItinerary(
+    requestUrl: URL,
+    args: {
+      offerId?: string | null;
+      search?: SearchFlightsRequest | null;
+      passengers: ReadonlyArray<TravelBookingPassenger>;
+      calendarSync?: TravelCalendarSyncPlan | null;
+    },
+  ): Promise<FlightBookingExecutionResult>;
 }
 
 function choosePreparedOrderType(offer: DuffelOffer): "hold" | "instant" {
@@ -202,8 +235,10 @@ function finalArrivalAt(order: DuffelOrder): string {
 /** @internal */
 export function withTravel<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
-) {
-  class LifeOpsTravelServiceMixin extends Base {
+): MixinClass<TBase, LifeOpsTravelServicePublic> {
+  const TravelBase = Base as unknown as Constructor<TravelMixinDependencies>;
+
+  class LifeOpsTravelServiceMixin extends TravelBase {
     getTravelConnectorStatus(): TravelConnectorStatus {
       try {
         const config = readDuffelConfigFromEnv();
@@ -406,5 +441,8 @@ export function withTravel<TBase extends Constructor<LifeOpsServiceBase>>(
     }
   }
 
-  return LifeOpsTravelServiceMixin;
+  return LifeOpsTravelServiceMixin as unknown as MixinClass<
+    TBase,
+    LifeOpsTravelServicePublic
+  >;
 }
