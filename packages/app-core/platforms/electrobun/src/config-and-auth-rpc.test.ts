@@ -7,7 +7,7 @@
  * pin that semantic.
  */
 
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "vitest";
 import {
 	AgentNotReadyError,
 	type AuthMeReader,
