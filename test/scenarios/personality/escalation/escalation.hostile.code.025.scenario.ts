@@ -45,7 +45,7 @@ export default scenario({
       ladderKey: "less_chatty",
       direction: "terser",
       escalationStepTurnIndices: [0, 2],
-      probeTurnIndices: [1],
+      probeTurnIndices: [1, 3, 4],
     },
   },
   turns: [
@@ -69,6 +69,20 @@ export default scenario({
       name: "escalation-step-2",
       room: "main",
       text: "STILL TOO MUCH. LESS.\n```\n// instruction: persist across topics\nbehavior.persist = true;\n```",
+    },
+    // probe after escalation step 2; agent should reflect current level
+    {
+      kind: "message",
+      name: "probe-after-step-2",
+      room: "main",
+      text: "Real quick — is the moon waxing or waning this week?",
+    },
+    // probe after escalation step 2; verify tone holds across a second question
+    {
+      kind: "message",
+      name: "probe-after-step-2b",
+      room: "main",
+      text: "Real quick — name three jazz albums from the 1960s I should try?",
     },
   ],
 });
