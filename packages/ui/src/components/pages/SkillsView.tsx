@@ -346,11 +346,11 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                       "Install skills from the marketplace or create your own.",
                   })}
                   action={
-                    <div className="flex justify-center gap-3">
+                    <div className="flex w-full flex-col justify-center gap-2 sm:w-auto sm:flex-row sm:gap-3">
                       <Button
                         variant="default"
                         size="sm"
-                        className="h-10 rounded-full px-5 font-bold tracking-[0.12em]"
+                        className="h-10 w-full justify-center rounded-full px-5 font-bold tracking-[0.12em] sm:w-auto"
                         onClick={() => setInstallModalOpen(true)}
                       >
                         {t("skillsview.BrowseMarketplace")}
@@ -358,7 +358,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-10 rounded-full px-5 font-bold tracking-[0.12em]"
+                        className="h-10 w-full justify-center rounded-full px-5 font-bold tracking-[0.12em] sm:w-auto"
                         onClick={() => setState("skillCreateFormOpen", true)}
                       >
                         {t("skillsview.createSkill", {

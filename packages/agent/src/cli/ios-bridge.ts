@@ -48,7 +48,9 @@ function isSafeLocalPath(path: string): boolean {
 }
 
 function normalizeMethod(value: unknown): string {
-  const method = (typeof value === "string" ? value : "GET").trim().toUpperCase();
+  const method = (typeof value === "string" ? value : "GET")
+    .trim()
+    .toUpperCase();
   if (!/^[A-Z]{1,16}$/.test(method)) {
     throw new Error("Unsupported HTTP method");
   }
@@ -72,7 +74,8 @@ function responseHeadersToRecord(headers: Headers): Record<string, string> {
 
 async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
   process.env.ELIZA_PLATFORM = process.env.ELIZA_PLATFORM || "ios";
-  process.env.ELIZA_MOBILE_PLATFORM = process.env.ELIZA_MOBILE_PLATFORM || "ios";
+  process.env.ELIZA_MOBILE_PLATFORM =
+    process.env.ELIZA_MOBILE_PLATFORM || "ios";
   process.env.ELIZA_IOS_LOCAL_BACKEND =
     process.env.ELIZA_IOS_LOCAL_BACKEND || "1";
   process.env.ELIZA_HEADLESS = process.env.ELIZA_HEADLESS || "1";
@@ -171,15 +174,18 @@ async function sendMessage(
     const created = await fetchBackend(backend, {
       method: "POST",
       path: "/api/conversations",
-      headers: { "content-type": "application/json", accept: "application/json" },
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+      },
       body: JSON.stringify({ title: "iOS Local Chat" }),
     });
     if (created.status < 200 || created.status >= 300) {
       throw new Error(`Failed to create conversation: HTTP ${created.status}`);
     }
-    const parsed = parseJsonBody(created.body) as
-      | { conversation?: { id?: unknown } }
-      | null;
+    const parsed = parseJsonBody(created.body) as {
+      conversation?: { id?: unknown };
+    } | null;
     const id = parsed?.conversation?.id;
     if (typeof id !== "string" || !id) {
       throw new Error("Conversation create response did not include an id");
@@ -226,7 +232,10 @@ async function dispatchBridgeRequest(
       return { ready: true, apiPort: backend.port };
     case "http_request":
     case "http_fetch":
-      return fetchBackend(backend, (request.payload ?? {}) as HttpRequestPayload);
+      return fetchBackend(
+        backend,
+        (request.payload ?? {}) as HttpRequestPayload,
+      );
     case "send_message":
       return sendMessage(backend, request.payload);
     default:

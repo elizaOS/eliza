@@ -112,7 +112,7 @@ describe("iOS local agent transport bridge", () => {
         status: 202,
         statusText: "Accepted",
         headers: { "x-engine": "bun" },
-        body: "{\"ok\":true}",
+        body: '{"ok":true}',
       },
     }));
     vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
@@ -126,7 +126,7 @@ describe("iOS local agent transport bridge", () => {
       method: "POST",
       path: "/api/full-bun-smoke",
       headers: { "content-type": "application/json" },
-      body: "{\"hello\":\"ios\"}",
+      body: '{"hello":"ios"}',
     });
 
     expect(start).toHaveBeenCalledWith(
@@ -138,13 +138,13 @@ describe("iOS local agent transport bridge", () => {
       args: expect.objectContaining({
         method: "POST",
         path: "/api/full-bun-smoke",
-        body: "{\"hello\":\"ios\"}",
+        body: '{"hello":"ios"}',
       }),
     });
     expect(response).toMatchObject({
       status: 202,
       headers: { "x-engine": "bun" },
-      body: "{\"ok\":true}",
+      body: '{"ok":true}',
     });
   });
 

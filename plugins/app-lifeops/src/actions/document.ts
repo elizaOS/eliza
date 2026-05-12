@@ -345,7 +345,7 @@ async function handleRequestSignature(
   });
 
   logger.info(
-    `[DOC] request_signature id=${saved.id} requestee=${requesteeEntityId} deadline=${deadline} approval=${approvalRequest.id}`,
+    `[OWNER_DOCUMENTS] request_signature id=${saved.id} requestee=${requesteeEntityId} deadline=${deadline} approval=${approvalRequest.id}`,
   );
 
   return {
@@ -393,7 +393,7 @@ async function handleRequestApproval(
   });
 
   logger.info(
-    `[DOC] request_approval id=${saved.id} title="${documentTitle}" reason=${params.approvalReason ?? "(none)"}`,
+    `[OWNER_DOCUMENTS] request_approval id=${saved.id} title="${documentTitle}" reason=${params.approvalReason ?? "(none)"}`,
   );
 
   return {
@@ -435,7 +435,7 @@ async function handleTrackDeadline(
   if (!next) return notFound(documentRequestId, subaction);
 
   logger.info(
-    `[DOC] track_deadline id=${next.id} deadline=${deadline} task=${scheduledTaskId ?? "(none)"}`,
+    `[OWNER_DOCUMENTS] track_deadline id=${next.id} deadline=${deadline} task=${scheduledTaskId ?? "(none)"}`,
   );
 
   return {
@@ -518,7 +518,7 @@ async function handleUploadAsset(
   // approval flips to `approved`. For now the approval queue entry is the
   // executable contract the Wave-2 scenarios assert against.
   logger.info(
-    `[DOC] upload_asset id=${saved.id} portal=${portalUrl} asset=${assetKind} approval=${approvalRequest.id}`,
+    `[OWNER_DOCUMENTS] upload_asset id=${saved.id} portal=${portalUrl} asset=${assetKind} approval=${approvalRequest.id}`,
   );
 
   return {
@@ -570,7 +570,7 @@ async function handleCollectId(
   });
 
   logger.info(
-    `[DOC] collect_id id=${saved.id} requestee=${requesteeEntityId} kind=${assetKind}`,
+    `[OWNER_DOCUMENTS] collect_id id=${saved.id} requestee=${requesteeEntityId} kind=${assetKind}`,
   );
 
   return {
@@ -620,12 +620,14 @@ async function handleCloseRequest(
       });
     } catch (error) {
       logger.warn(
-        `[DOC] close_request failed to dismiss task ${patched.scheduledTaskId}: ${error instanceof Error ? error.message : String(error)}`,
+        `[OWNER_DOCUMENTS] close_request failed to dismiss task ${patched.scheduledTaskId}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
 
-  logger.info(`[DOC] close_request id=${patched.id} resolution=${resolution}`);
+  logger.info(
+    `[OWNER_DOCUMENTS] close_request id=${patched.id} resolution=${resolution}`,
+  );
 
   return {
     success: true,
@@ -685,8 +687,9 @@ const examples: ActionExample[][] = [
   ],
 ];
 
-export const docAction: Action & { suppressPostActionContinuation?: boolean } =
-  {
+export const ownerDocumentsAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
     name: ACTION_NAME,
     similes: SIMILE_NAMES.slice(),
     tags: [
@@ -702,7 +705,7 @@ export const docAction: Action & { suppressPostActionContinuation?: boolean } =
     descriptionCompressed:
       "docs: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request; deadline-aware; owner-gated for signature+upload",
     routingHint:
-      'document signature/approval/upload/portal/ID-form intent ("get this signed", "send for approval", "upload deck to portal", "track NDA deadline", "close out the doc request") -> DOC; approval queue resolution stays on RESOLVE_REQUEST',
+      'owner document signature/approval/upload/portal/ID-form intent ("get this signed", "send for approval", "upload deck to portal", "track NDA deadline", "close out the doc request") -> OWNER_DOCUMENTS; approval queue resolution stays on RESOLVE_REQUEST',
     contexts: ["docs", "tasks", "calendar", "contacts"],
     roleGate: { minRole: "OWNER" },
     suppressPostActionContinuation: true,
@@ -842,7 +845,7 @@ export const docAction: Action & { suppressPostActionContinuation?: boolean } =
       }
       return result;
     },
-  };
+};
 
 // Test-only export: lets the unit test reset between cases. Production code
 // must not depend on this — Wave-2 swaps the in-memory map for a repository.

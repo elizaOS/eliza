@@ -40,7 +40,10 @@ interface FullBunRuntimePlugin {
     env?: Record<string, string>;
   }): Promise<{ ok: boolean; error?: string }>;
   getStatus(): Promise<{ ready: boolean; engine?: "bun" | "compat" }>;
-  call(options: { method: string; args?: unknown }): Promise<{ result: unknown }>;
+  call(options: {
+    method: string;
+    args?: unknown;
+  }): Promise<{ result: unknown }>;
 }
 
 interface FullBunRuntimeModule {
@@ -198,8 +201,7 @@ async function requestToNativeBridgeOptions(
     method,
     path: requestPathFromUrl(request.url),
     headers: headersToRecord(request.headers),
-    body:
-      method === "GET" || method === "HEAD" ? null : await request.text(),
+    body: method === "GET" || method === "HEAD" ? null : await request.text(),
     timeoutMs: context?.timeoutMs,
   };
 }

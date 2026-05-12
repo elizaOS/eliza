@@ -46,7 +46,9 @@ function run(command, args, options = {}) {
     encoding: options.encoding,
   });
   if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(" ")} failed with ${result.status}`);
+    throw new Error(
+      `${command} ${args.join(" ")} failed with ${result.status}`,
+    );
   }
   return result;
 }
@@ -108,7 +110,9 @@ const artifact = path.resolve(
 );
 
 function firstExisting(paths) {
-  return paths.find((candidate) => candidate && fs.existsSync(candidate)) ?? null;
+  return (
+    paths.find((candidate) => candidate && fs.existsSync(candidate)) ?? null
+  );
 }
 
 function generatedToolchainPath(info) {
@@ -137,7 +141,7 @@ function ensureGeneratedToolchain(info) {
     "  OUTPUT_VARIABLE IOS_SDK_PATH",
     "  OUTPUT_STRIP_TRAILING_WHITESPACE",
     ")",
-    'set(ENV{IOS_SYSROOT} "${IOS_SDK_PATH}")',
+    String.raw`set(ENV{IOS_SYSROOT} "${IOS_SDK_PATH}")`,
     "",
   ].join("\n");
   fs.writeFileSync(out, contents);
@@ -188,7 +192,9 @@ function findFrameworkBinaries(root) {
 function validateXcframework(root) {
   const binaries = findFrameworkBinaries(root);
   if (binaries.length === 0) {
-    fail(`${root} does not contain ${frameworkName}.framework/${frameworkName}`);
+    fail(
+      `${root} does not contain ${frameworkName}.framework/${frameworkName}`,
+    );
   }
   for (const binary of binaries) validateEngineBinary(binary);
 }
@@ -247,15 +253,17 @@ function selectBackend() {
 
 function parseExtraArgs(value) {
   if (!value) return [];
-  return value.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g)?.map((part) => {
-    if (
-      (part.startsWith('"') && part.endsWith('"')) ||
-      (part.startsWith("'") && part.endsWith("'"))
-    ) {
-      return part.slice(1, -1);
-    }
-    return part;
-  }) ?? [];
+  return (
+    value.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g)?.map((part) => {
+      if (
+        (part.startsWith('"') && part.endsWith('"')) ||
+        (part.startsWith("'") && part.endsWith("'"))
+      ) {
+        return part.slice(1, -1);
+      }
+      return part;
+    }) ?? []
+  );
 }
 
 function stageWebKitIfRequested(info) {
@@ -293,7 +301,10 @@ function stageWebKitIfRequested(info) {
   fs.mkdirSync(path.join(staged, "include"), { recursive: true });
   for (const entry of fs.readdirSync(srcLib)) {
     if (entry.endsWith(".a")) {
-      fs.copyFileSync(path.join(srcLib, entry), path.join(staged, "lib", entry));
+      fs.copyFileSync(
+        path.join(srcLib, entry),
+        path.join(staged, "lib", entry),
+      );
     }
   }
   fs.cpSync(srcHeaders, path.join(staged, "include"), { recursive: true });
@@ -314,7 +325,13 @@ function collectStaticInputs(buildDir, webkitPath) {
   if (fs.existsSync(cmakeArchive)) {
     inputs.push({ kind: "force", path: cmakeArchive });
   } else if (fs.existsSync(objectDir) && fs.existsSync(bunZigObject)) {
-    const objects = runCapture("find", [objectDir, "-name", "*.o", "-type", "f"]);
+    const objects = runCapture("find", [
+      objectDir,
+      "-name",
+      "*.o",
+      "-type",
+      "f",
+    ]);
     const objectPaths = objects.stdout
       .split("\n")
       .map((line) => line.trim())
@@ -332,7 +349,14 @@ function collectStaticInputs(buildDir, webkitPath) {
   }
 
   const optionalInputs = [
-    path.join(buildDir, "mimalloc", "CMakeFiles", "mimalloc-obj.dir", "src", "static.c.o"),
+    path.join(
+      buildDir,
+      "mimalloc",
+      "CMakeFiles",
+      "mimalloc-obj.dir",
+      "src",
+      "static.c.o",
+    ),
     path.join(buildDir, "boringssl", "libcrypto.a"),
     path.join(buildDir, "boringssl", "libssl.a"),
     path.join(buildDir, "boringssl", "libdecrepit.a"),
@@ -347,8 +371,20 @@ function collectStaticInputs(buildDir, webkitPath) {
     path.join(buildDir, "libarchive", "libarchive", "libarchive.a"),
     path.join(buildDir, "hdrhistogram", "src", "libhdr_histogram_static.a"),
     path.join(buildDir, "zstd", "lib", "libzstd.a"),
-    path.join(buildDir, "lolhtml", "aarch64-apple-ios", "release", "liblolhtml.a"),
-    path.join(buildDir, "lolhtml", "aarch64-apple-ios-sim", "release", "liblolhtml.a"),
+    path.join(
+      buildDir,
+      "lolhtml",
+      "aarch64-apple-ios",
+      "release",
+      "liblolhtml.a",
+    ),
+    path.join(
+      buildDir,
+      "lolhtml",
+      "aarch64-apple-ios-sim",
+      "release",
+      "liblolhtml.a",
+    ),
     path.join(webkitPath, "lib", "libJavaScriptCore.a"),
     path.join(webkitPath, "lib", "libWTF.a"),
     path.join(webkitPath, "lib", "libbmalloc.a"),
@@ -363,7 +399,12 @@ function writeFrameworkMetadata(frameworkDir) {
   fs.mkdirSync(path.join(frameworkDir, "Headers"), { recursive: true });
   fs.mkdirSync(path.join(frameworkDir, "Modules"), { recursive: true });
   fs.copyFileSync(
-    path.join(packageRoot, "Sources", "ElizaBunEngineShim", "eliza_bun_engine.h"),
+    path.join(
+      packageRoot,
+      "Sources",
+      "ElizaBunEngineShim",
+      "eliza_bun_engine.h",
+    ),
     path.join(frameworkDir, "Headers", "ElizaBunEngine.h"),
   );
   fs.writeFileSync(
@@ -404,13 +445,22 @@ function linkFramework({ buildDir, webkitPath, info }) {
   if (!fs.existsSync(shimSource)) {
     fail(`missing Eliza Bun engine shim source at ${shimSource}`);
   }
-  const stageRoot = path.join(packageRoot, "build", info.cmakeBuildDirName, "framework");
+  const stageRoot = path.join(
+    packageRoot,
+    "build",
+    info.cmakeBuildDirName,
+    "framework",
+  );
   const frameworkDir = path.join(stageRoot, `${frameworkName}.framework`);
   fs.rmSync(stageRoot, { recursive: true, force: true });
   fs.mkdirSync(frameworkDir, { recursive: true });
   writeFrameworkMetadata(frameworkDir);
 
-  const sdkPath = runCapture("xcrun", ["--sdk", info.sdk, "--show-sdk-path"]).stdout.trim();
+  const sdkPath = runCapture("xcrun", [
+    "--sdk",
+    info.sdk,
+    "--show-sdk-path",
+  ]).stdout.trim();
   const binary = path.join(frameworkDir, frameworkName);
   const staticInputs = collectStaticInputs(buildDir, webkitPath);
   const linkArgs = [
@@ -482,7 +532,9 @@ function buildWithCmake() {
   if (rebuild) fs.rmSync(buildDir, { recursive: true, force: true });
   fs.mkdirSync(buildDir, { recursive: true });
 
-  console.log(`[bun-ios-runtime] Configuring Bun CMake backend for ${info.platform}`);
+  console.log(
+    `[bun-ios-runtime] Configuring Bun CMake backend for ${info.platform}`,
+  );
   run(
     "cmake",
     [
@@ -516,7 +568,9 @@ function buildWithCmake() {
 
 function buildWithZig() {
   if (!fs.existsSync(path.join(sourceDir, "build.zig"))) {
-    fail(`${sourceDir} does not support the Zig build backend (missing build.zig)`);
+    fail(
+      `${sourceDir} does not support the Zig build backend (missing build.zig)`,
+    );
   }
   console.log(`[bun-ios-runtime] Updating Bun submodules`);
   run("git", ["submodule", "update", "--init", "--recursive"], {
@@ -525,7 +579,9 @@ function buildWithZig() {
   });
   console.log(`[bun-ios-runtime] Building JavaScriptCore/WebKit prerequisites`);
   run("make", ["jsc"], { cwd: sourceDir, env });
-  console.log(`[bun-ios-runtime] Building Bun iOS engine target ${info.zigTarget}`);
+  console.log(
+    `[bun-ios-runtime] Building Bun iOS engine target ${info.zigTarget}`,
+  );
   run(
     "zig",
     [
@@ -542,7 +598,9 @@ function buildWithZig() {
 const selectedBackend = selectBackend();
 
 if (explicitCommand) {
-  console.log(`[bun-ios-runtime] Running ELIZA_BUN_IOS_BUILD_COMMAND for ${info.platform}`);
+  console.log(
+    `[bun-ios-runtime] Running ELIZA_BUN_IOS_BUILD_COMMAND for ${info.platform}`,
+  );
   run("bash", ["-lc", explicitCommand], { cwd: sourceDir, env });
 } else if (selectedBackend === "cmake") {
   buildWithCmake();
