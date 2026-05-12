@@ -527,6 +527,41 @@ def _score_from_voicebench_quality_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
+def _score_from_mmau_json(data: JSONValue) -> ScoreExtraction:
+    """Extract scores from MMAU results.
+
+    MMAU is pure MCQ -- scoring is deterministic exact-match on the
+    parsed answer letter. We report overall accuracy as the primary
+    score and surface per-category accuracy (speech/sound/music) for
+    context. Cascaded STT runs will typically lag on the sound and
+    music splits; that is a property of the adapter, not the metric.
+    """
+    root = expect_dict(data, ctx="mmau:root")
+    overall = expect_float(
+        get_required(root, "overall_accuracy", ctx="mmau:root"),
+        ctx="mmau:overall_accuracy",
+    )
+    by_cat_raw = root.get("accuracy_by_category")
+    by_cat = by_cat_raw if isinstance(by_cat_raw, dict) else {}
+    summary_raw = root.get("summary")
+    summary = summary_raw if isinstance(summary_raw, dict) else {}
+    return ScoreExtraction(
+        score=overall,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "overall_accuracy": overall,
+            "speech_accuracy": by_cat.get("speech") or 0,
+            "sound_accuracy": by_cat.get("sound") or 0,
+            "music_accuracy": by_cat.get("music") or 0,
+            "total_samples": root.get("total_samples") or 0,
+            "error_count": root.get("error_count") or 0,
+            "split": summary.get("split") or "",
+            "agent": summary.get("agent") or "",
+        },
+    )
+
+
 def _score_from_voicebench_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from VoiceBench results.
 
@@ -2075,6 +2110,55 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _voicebench_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="voicebench-typescript-*.json")
 
+    # MMAU - audio MCQ benchmark (Sakshi et al., ICLR 2025)
+    def _mmau_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        """Build the elizaos-mmau CLI invocation.
+
+        Routes through the Python-native MMAU package. Pure MCQ -- no
+        LLM-judge dispatch. Defaults to the bundled fixture and oracle
+        agent when no provider is configured so smoke runs work offline.
+        """
+        args = [
+            python,
+            "-m",
+            "benchmarks.mmau",
+            "--output",
+            str(output_dir),
+            "--no-traces",
+            "--json",
+        ]
+        provider_name = (model.provider or "").strip().lower()
+        agent_raw = extra.get("agent")
+        if isinstance(agent_raw, str) and agent_raw.strip():
+            agent = agent_raw.strip().lower()
+        elif provider_name in {"eliza", "hermes", "openclaw", "mock"}:
+            agent = provider_name
+        else:
+            agent = "mock"
+        if agent == "mock":
+            args.append("--mock")
+        else:
+            args.extend(["--agent", agent])
+        split_raw = extra.get("split")
+        if isinstance(split_raw, str) and split_raw.strip():
+            args.extend(["--split", split_raw.strip()])
+        category_raw = extra.get("category")
+        if isinstance(category_raw, str) and category_raw.strip():
+            args.extend(["--category", category_raw.strip()])
+        limit_raw = extra.get("limit")
+        if isinstance(limit_raw, int) and limit_raw > 0:
+            args.extend(["--limit", str(limit_raw)])
+        if extra.get("hf") is True:
+            args.append("--hf")
+        if model.model:
+            args.extend(["--model", model.model])
+        if model.provider:
+            args.extend(["--provider", model.provider])
+        return args
+
+    def _mmau_result(output_dir: Path) -> Path:
+        return output_dir / "mmau-results.json"
+
     # VoiceBench-quality - vendored upstream VoiceBench (Chen et al. 2024)
     def _voicebench_quality_cmd(
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
@@ -3184,6 +3268,33 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_voicebench_cmd,
             locate_result=_voicebench_result,
             extract_score=_score_from_voicebench_json,
+        ),
+        BenchmarkDefinition(
+            id="mmau",
+            display_name="MMAU",
+            description=(
+                "Massive Multi-task Audio Understanding (Sakshi et al., ICLR 2025) — "
+                "10k audio MCQs across speech/sound/music and 27 reasoning skills"
+            ),
+            cwd_rel="packages/benchmarks/mmau",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=(
+                    "packages/benchmarks/mmau",
+                    "packages/benchmarks/mmau/fixtures/smoke.jsonl",
+                ),
+                notes=(
+                    "Pure MCQ — deterministic exact-match scoring, no LLM-judge. "
+                    "Defaults to the bundled fixture + oracle agent for smoke runs; "
+                    "pass extra={'hf': True} to stream from gamma-lab-umd/MMAU-test-mini "
+                    "(1k) or MMAU-test (9k). Cascaded STT (Groq Whisper) discards "
+                    "music/sound semantic info, so the speech category will dominate "
+                    "the score until a direct-audio-input adapter lands."
+                ),
+            ),
+            build_command=_mmau_cmd,
+            locate_result=_mmau_result,
+            extract_score=_score_from_mmau_json,
         ),
         BenchmarkDefinition(
             id="voicebench_quality",
