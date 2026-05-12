@@ -67,10 +67,25 @@ export async function runSingingSynthesis(
   return runSynthesis(ctx, merged);
 }
 
-/** Test-only — clear the cached singing context. */
-export function _resetSingingCache(): void {
+/**
+ * Free the cached singing context, if any. Idempotent — calling it
+ * with no cached context is a no-op. Used by the plugin shutdown hook
+ * (and by tests via `_resetSingingCache`) to release the underlying
+ * GGML context held by libomnivoice.
+ */
+export function closeSingingContext(): void {
   if (cached) {
     cached.ctx.close();
     cached = null;
   }
+}
+
+/** Test-only alias kept for backwards compatibility with existing call sites. */
+export function _resetSingingCache(): void {
+  closeSingingContext();
+}
+
+/** Test-only — does the module currently hold a cached singing context? */
+export function _hasCachedSingingContext(): boolean {
+  return cached !== null;
 }
