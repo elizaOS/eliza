@@ -90,7 +90,7 @@ themselves). The model registry still drives `micro_batch` / `grad_accum` /
 
 ## Measured — model geometry, run status, throughput (RTX 5080 Laptop 16 GB, sm_120, CUDA 13; 2026-05-11)
 
-### Base-model geometry (all six published on HF; the `elizaos/eliza-1-*` repos do **not** exist yet — the runtime catalog placeholders re-host upstream Qwen3-GGUF)
+### Base-model geometry (the upstream bases are all on HF; the `elizaos/eliza-1-*` bundle repos now exist — `elizaos/eliza-1-{0_6b,1_7b,9b}` are public and currently re-host the upstream Qwen3-GGUF base bytes as `releaseState: local-standin` / `publishEligible: false` / not `defaultEligible`; the fork-built `base-v1` weights are not pushed yet. The 0.6B test-SFT checkpoint is published as a **candidate** at `elizaos/eliza-1-0_6b-sft-weights` — not `defaultEligible`, not the `recommended` channel. SFT corpora: `elizaos/eliza-1-0_6b-sft` + `elizaos/eliza-1-training`. Bench tables + kernel-verify evidence: `elizaos/eliza-1-evals`.)
 
 | tier | base | arch | layers | n_heads / n_kv | head_dim | hidden | vocab | max_pos | notes |
 |---|---|---|---:|---|---:|---:|---:|---:|---|

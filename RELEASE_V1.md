@@ -399,11 +399,33 @@ plan declared, gates not yet met" state).
 
 ### Current status — a `base-v1` upload is NOT yet possible
 
+**HF repos exist (as of 2026-05-12), but only with pre-release content:** the
+[`elizaos/eliza-1-{0_6b,1_7b,9b}`](https://huggingface.co/elizaos/eliza-1-0_6b)
+bundle repos are public and hold the **upstream BASE GGUFs** (Qwen3-0.6B-Q8_0 /
+Qwen3-1.7B-Q8_0 — the 9b GGUF blob upload is pending; its `manifest.json`
+records the sha + the `unsloth/Qwen3.5-9B-GGUF` source) + `manifest.json`
+(`releaseState: local-standin`, `publishEligible: false`, **not
+`defaultEligible`**) + an honest card. The test-SFT *candidate* lives at
+[`elizaos/eliza-1-0_6b-sft-weights`](https://huggingface.co/elizaos/eliza-1-0_6b-sft-weights)
+— APOLLO, 8000-row slice, conditional-go (`format_ok=0.20 <` the publish
+floor) — published as a **candidate** only, **not `defaultEligible`, not the
+`recommended` channel**, superseded by the in-progress full-corpus SFT. SFT
+corpora are at [`elizaos/eliza-1-0_6b-sft`](https://huggingface.co/datasets/elizaos/eliza-1-0_6b-sft)
++ [`elizaos/eliza-1-training`](https://huggingface.co/datasets/elizaos/eliza-1-training);
+the bench tables + kernel-verify evidence at
+[`elizaos/eliza-1-evals`](https://huggingface.co/datasets/elizaos/eliza-1-evals);
+the frozen `1_7b` voice/ASR/VAD bytes at
+[`elizaos/eliza-1-assets`](https://huggingface.co/elizaos/eliza-1-assets). **No
+fork-built `base-v1` weights, and no fine-tuned `recommended`-channel weights,
+have been pushed to any `elizaos/eliza-1-<tier>` main revision** — the
+orchestrator refuses to do that until the gates below clear.
+
 `bash packages/training/scripts/publish_all_eliza1.sh --bundles-root <dir>
 --base-v1 --dry-run` (and the per-bundle `python -m scripts.publish.orchestrator
 --tier <t> --bundle-dir <bundle> --base-v1 --dry-run`) **fail with
-`EXIT_RELEASE_EVIDENCE_FAIL` (16)** on the staged bundles. The blockers (all
-recorded in each bundle's `evidence/release.json` `publishBlockingReasons`):
+`EXIT_RELEASE_EVIDENCE_FAIL` (16)** at stage 2 on the staged `0_6b` and `1_7b`
+bundles. The blockers (all recorded in each bundle's `evidence/release.json`
+`publishBlockingReasons`; logs under `evidence/base-v1-dry-run-*.log`):
 
 1. `releaseState` is `weights-staged` (the bundles carry placeholder/
    substitute bytes, not a real fork build of the upstream base weights).
