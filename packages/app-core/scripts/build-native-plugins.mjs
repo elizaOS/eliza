@@ -7,7 +7,7 @@
  * Designed to be invoked from any elizaOS-based fork:
  *   node eliza/packages/app-core/scripts/build-native-plugins.mjs
  *
- * Forks that previously used `pkg.milady.platforms` should rename to
+ * Forks that previously used `pkg.eliza.platforms` should rename to
  * `pkg.elizaos.platforms`, or wrap this script with a 1-line preprocessor
  * that mirrors the field before invocation.
  */
@@ -124,6 +124,12 @@ async function main() {
 
   const buildablePluginNames = pluginNames.filter((name) => {
     const pkg = readPluginPackageJson(pluginsDir, name);
+    // Type-only / source-consumed packages (e.g. shared-types) have no build
+    // script. Skip them so `bun run build` does not abort the whole batch.
+    if (!pkg?.scripts?.build) {
+      logVerbose(`[plugin:${name}] skipping — no build script declared`);
+      return false;
+    }
     if (shouldBuildPluginForHost(pkg, process.platform)) {
       return true;
     }

@@ -1,4 +1,4 @@
-"""GPU memory calculator for the Milady training + inference stack.
+"""GPU memory calculator for the Eliza training + inference stack.
 
 Models the memory optimizations we run in combination:
 

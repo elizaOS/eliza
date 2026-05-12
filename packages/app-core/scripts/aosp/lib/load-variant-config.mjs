@@ -84,10 +84,10 @@ export function loadAospVariantConfig({ appConfigPath }) {
     commonMk,
     modelSourceLabel,
     // System-property prefix used by `init.<vendorDir>.rc` (e.g.
-    // `miladyos.boot_phase`, `elizaos.boot_phase`). Defaults to the
+    // `elizaos.boot_phase`, `elizaos.boot_phase`). Defaults to the
     // vendor dir when forks haven't customized — that's the common
-    // Android convention. Forks like Milady whose property namespace
-    // differs from the vendor dir name (vendor=milady, props=miladyos)
+    // Android convention. Forks like Eliza whose property namespace
+    // differs from the vendor dir name (vendor=eliza, props=elizaos)
     // declare it explicitly.
     propertyPrefix: propertyPrefix ?? vendorDir,
     bootanimationAssetDir: bootanimationAssetDir ?? undefined,

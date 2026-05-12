@@ -413,18 +413,24 @@ class OpenClawAgent:
                 provider="openclaw",
             )
 
+        cost = (
+            float(response.cost_usd) if response.cost_usd is not None else None
+        )
         turn = MessageTurn(
             role="assistant",
             content=prose,
             tool_calls=tool_calls if tool_calls else None,
+            cost_usd=cost,
+            latency_ms=float(latency_ms),
+            input_tokens=int(response.usage.prompt_tokens),
+            output_tokens=int(response.usage.completion_tokens),
         )
-        # Telemetry the runner reads via getattr.
-        turn.cost_usd = float(response.cost_usd)  # type: ignore[attr-defined]
-        turn.latency_ms = int(latency_ms)  # type: ignore[attr-defined]
-        turn.input_tokens = int(response.usage.prompt_tokens)  # type: ignore[attr-defined]
-        turn.output_tokens = int(response.usage.completion_tokens)  # type: ignore[attr-defined]
 
-        self.total_cost_usd += float(response.cost_usd)
+        if cost is not None:
+            # Skip unpriced calls so the accumulator tracks only billable
+            # spend — per AGENTS.md Cmd #8, "unpriced" is not the same as
+            # "free".
+            self.total_cost_usd += cost
         self.total_input_tokens += int(response.usage.prompt_tokens)
         self.total_output_tokens += int(response.usage.completion_tokens)
         return turn

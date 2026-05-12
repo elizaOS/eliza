@@ -5,7 +5,7 @@ trajectories against a candidate model. This adapter generalizes that
 pattern to the standard benchmark surface so any model behind an
 OpenAI-compatible endpoint can be regression-checked against a curated
 set of ``eliza_native_v1`` trajectories captured by elizaOS runtimes
-(``~/.eliza/trajectories/`` or ``~/.milady/trajectories/``).
+(``~/.eliza/trajectories/`` or ``~/.eliza/trajectories/``).
 
 How replay works
 ----------------

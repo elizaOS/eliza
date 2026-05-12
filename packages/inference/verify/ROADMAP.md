@@ -126,7 +126,7 @@ Mali / NVIDIA / AMD / Intel.
 CUDA backend verification per AGENTS.md §8.
 
 **Current state.** No CUDA verifier exists in `verify/`. The
-v0.4.0-milady fork ships W4-B CUDA QJL/Polar/TBQ3_TCQ kernels, but no
+v0.4.0-eliza fork ships W4-B CUDA QJL/Polar/TBQ3_TCQ kernels, but no
 parity check confirms they produce the same numbers as the C reference
 or the Metal/Vulkan ports.
 

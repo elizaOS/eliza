@@ -1,14 +1,16 @@
 [submodule "packages/inference/llama.cpp"]
+	# The single canonical llama.cpp checkout for the whole repo. This is the
+	# elizaOS/llama.cpp fork (@ v1.0.0-eliza, commit 08032d57): the unified
+	# fork with the eliza kernels (Q4_POLAR / QJL1_256 / TBQ4_0 / TBQ3_0
+	# GGML types + Metal/Vulkan/CUDA kernels) and DFlash spec-decode. The
+	# host build (build-llama-cpp-dflash.mjs) + AOSP cross-compile
+	# (aosp/compile-libllama.mjs) default to this submodule; bun's postinstall
+	# (scripts/ensure-llama-cpp-submodule.mjs) initializes it. The fork is
+	# itself a llama.cpp fork, so it carries convert_hf_to_gguf.py /
+	# llama-quantize / llama-cli too — the training pipeline's plain Q4_K_M
+	# GGUF path uses the fork's tooling (there is no separate "stock upstream"
+	# submodule). build/ is gitignored by llama.cpp's own .gitignore so only
+	# the gitlink (commit SHA) is tracked.
 	path = packages/inference/llama.cpp
 	url = https://github.com/elizaOS/llama.cpp.git
 	branch = eliza/main
-[submodule "packages/training/vendor/llama.cpp"]
-	# Stock upstream llama.cpp pinned to a release tag (b6650). Used by the
-	# training pipeline's plain GGUF Q4_K_M path (convert_hf_to_gguf.py +
-	# llama-quantize + llama-cli). The Milady fork — Q4_POLAR/QJL1_256/TBQ
-	# GGML types — is the *other* submodule (packages/inference/llama.cpp).
-	# scripts/vendor_llama_cpp.sh inits + builds this; build/ is gitignored
-	# by llama.cpp's own .gitignore so only the gitlink (commit SHA) is tracked.
-	path = packages/training/vendor/llama.cpp
-	url = https://github.com/ggml-org/llama.cpp.git
-	shallow = true

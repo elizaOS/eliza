@@ -159,7 +159,7 @@ function resolveBrandConfig(): DesktopBrandConfig {
 			fileConfig.releaseUrl ||
 			DEFAULT_CONFIG.releaseUrl,
 		buildVariant:
-			envFallback("MILADY_BUILD_VARIANT", "ELIZA_BUILD_VARIANT") === "store" ||
+			envFallback("ELIZA_BUILD_VARIANT", "ELIZA_BUILD_VARIANT") === "store" ||
 			fileConfig.buildVariant === "store"
 				? "store"
 				: "direct",

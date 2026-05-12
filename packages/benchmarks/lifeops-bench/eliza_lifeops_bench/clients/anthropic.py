@@ -226,11 +226,16 @@ def _compute_cost_usd(
     input_tokens: int,
     output_tokens: int,
     cache_read_tokens: int,
-) -> float:
-    """Compute USD cost for an Anthropic call. Returns 0.0 for unknown models."""
+) -> float | None:
+    """Compute USD cost for an Anthropic call.
+
+    Returns :data:`None` when ``model`` is not in :data:`ANTHROPIC_PRICING`
+    — per AGENTS.md Cmd #8 an unpriced model stays nullable rather than
+    silently looking like a free call.
+    """
     pricing = ANTHROPIC_PRICING.get(model)
     if pricing is None:
-        return 0.0
+        return None
     billable_input = max(0, input_tokens - cache_read_tokens)
     cost = (
         billable_input / 1_000_000.0 * pricing["input_per_million_usd"]

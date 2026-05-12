@@ -353,7 +353,10 @@ function normalizeSubaction(
   raw: string | undefined,
 ): BrowserBridgeSubaction | null {
   if (!raw) return null;
-  const trimmed = raw.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const trimmed = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   return (BROWSER_BRIDGE_SUBACTIONS as readonly string[]).includes(trimmed)
     ? (trimmed as BrowserBridgeSubaction)
     : null;
@@ -472,9 +475,9 @@ async function runOpenManager(): Promise<ActionResult> {
 
 async function runRefresh(runtime: IAgentRuntime): Promise<ActionResult> {
   const status = getBrowserBridgeCompanionPackageStatus();
-  let settings:
-    | Awaited<ReturnType<BrowserBridgeRouteService["getBrowserSettings"]>>
-    | null = null;
+  let settings: Awaited<
+    ReturnType<BrowserBridgeRouteService["getBrowserSettings"]>
+  > | null = null;
   let companions: BrowserBridgeCompanionStatus[] = [];
   const service = runtime.getService<BrowserBridgeRouteService>(
     BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
@@ -599,7 +602,9 @@ export const manageBrowserBridgeAction: Action = {
           return await runRefresh(runtime);
         default: {
           const exhaustive: never = subaction;
-          throw new Error(`Unsupported MANAGE_BROWSER_BRIDGE subaction: ${exhaustive}`);
+          throw new Error(
+            `Unsupported MANAGE_BROWSER_BRIDGE subaction: ${exhaustive}`,
+          );
         }
       }
     } catch (err) {
@@ -632,15 +637,6 @@ export const manageBrowserBridgeAction: Action = {
         enum: [...BROWSER_BRIDGE_SUBACTIONS],
       },
     },
-    {
-      name: "subaction",
-      description: "Legacy alias for action.",
-      required: false,
-      schema: {
-        type: "string" as const,
-        enum: [...BROWSER_BRIDGE_SUBACTIONS],
-      },
-    },
   ],
   examples: [
     [
@@ -661,15 +657,17 @@ export const manageBrowserBridgeAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Install the agent browser bridge extension.", source: "chat" },
+        content: {
+          text: "Install the agent browser bridge extension.",
+          source: "chat",
+        },
       },
       {
         name: "{{agentName}}",
         content: {
           text: "Building and revealing the bridge extension.",
           actions: ["MANAGE_BROWSER_BRIDGE"],
-          thought:
-            "Setup intent maps to MANAGE_BROWSER_BRIDGE action=install.",
+          thought: "Setup intent maps to MANAGE_BROWSER_BRIDGE action=install.",
         },
       },
     ],

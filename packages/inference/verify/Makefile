@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
+.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock metal-bench-fused cpu-bench cpu-dispatch-smoke bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -292,12 +292,12 @@ metal-verify-multiblock: metal_verify reference-test
 # (eliza_fused_attn_qjl_tbq3 / eliza_fused_attn_qjl_polar / eliza_polar_mul_mv).
 # 1e-3 absolute tolerance.
 #
-# AUTHORED — hardware-verify pending: the kernels are byte-faithful mirrors of
-# the hardware-verified Vulkan ports (vulkan/fused_attn_*.comp, vulkan/polar_preht.comp,
-# Intel ARL Mesa ANV). They require an Apple-Silicon Mac to run this target; until
-# then the fused_attn Metal capability bit stays not-runtime-ready (fused_attn is
-# an optimization on top of the five required kernels — AGENTS.md §3 — not a
-# required kernel).
+# Hardware-verified on Apple M4 Max: the kernels are byte-faithful mirrors of the
+# hardware-verified Vulkan ports (vulkan/fused_attn_*.comp, vulkan/polar_preht.comp,
+# Intel ARL Mesa ANV). This standalone fixture gate still does not make the
+# fused_attn Metal capability runtime-ready; that requires a built-fork Metal
+# graph-dispatch smoke. fused_attn is an optimization on top of the five required
+# kernels — AGENTS.md §3 — not a required kernel.
 # Backend-neutral contract: reports/porting/2026-05-11/fused-attn-op-contract.md
 # Metal-specific design: reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md
 metal-verify-fused: metal_verify reference-test
@@ -340,11 +340,43 @@ metal-bench-multiblock: metal_bench
 	@mkdir -p bench_results
 	./metal_bench --mode multiblock --out bench_results/m4max_multiblock_2026-05-10.json
 
+# Fused-attention benchmark for the standalone Metal QJL-K + quantized-V
+# kernels. This complements metal-verify-fused: correctness stays in
+# metal_verify, while this target records the one-pass online-softmax kernel
+# cost at a 9B-class single-token decode shape.
+metal-bench-fused: metal_bench
+	@mkdir -p bench_results
+	./metal_bench --mode fused --out bench_results/m4max_fused_2026-05-12.json
+
 # CPU reference baseline. Single-threaded scalar C, no GPU. Same workload
 # constants as metal_bench so the BENCHMARK doc can join the two tables.
 cpu-bench: cpu_bench
 cpu_bench: cpu_bench.c $(REF_OBJ) $(QJL_POLAR_OBJ)
 	$(CC) $(CFLAGS) -I../reference cpu_bench.c $(REF_OBJ) $(QJL_POLAR_OBJ) -lm -o cpu_bench
+
+# CPU SIMD-path bench: links the qjl-cpu / polarquant-cpu plugin static
+# libraries and times their dispatched SIMD entrypoints (AVX-VNNI / AVX2
+# / NEON-dotprod) at the production attention workload, with a thread
+# sweep. Requires the plugin libs — built here via cmake first.
+QJL_CPU_DIR     = ../../native-plugins/qjl-cpu
+POLAR_CPU_DIR   = ../../native-plugins/polarquant-cpu
+QJL_CPU_LIB     = $(QJL_CPU_DIR)/build/libqjl.a
+POLAR_CPU_LIB   = $(POLAR_CPU_DIR)/build/libpolarquant.a
+
+$(QJL_CPU_LIB):
+	cmake -S $(QJL_CPU_DIR) -B $(QJL_CPU_DIR)/build -DCMAKE_BUILD_TYPE=Release >/dev/null
+	cmake --build $(QJL_CPU_DIR)/build --target qjl >/dev/null
+$(POLAR_CPU_LIB):
+	cmake -S $(POLAR_CPU_DIR) -B $(POLAR_CPU_DIR)/build -DCMAKE_BUILD_TYPE=Release >/dev/null
+	cmake --build $(POLAR_CPU_DIR)/build --target polarquant >/dev/null
+
+cpu-simd-bench: cpu_simd_bench
+OPENMP_FLAGS ?= $(shell printf '' | $(CC) -x c -fopenmp -E - >/dev/null 2>&1 && printf '%s' '-fopenmp')
+
+cpu_simd_bench: cpu_simd_bench.c $(QJL_CPU_LIB) $(POLAR_CPU_LIB)
+	$(CC) -O3 -march=native $(OPENMP_FLAGS) -std=c11 \
+	    -I$(QJL_CPU_DIR)/include -I$(QJL_CPU_DIR)/src -I$(POLAR_CPU_DIR)/include \
+	    cpu_simd_bench.c $(QJL_CPU_LIB) $(POLAR_CPU_LIB) -lm -o cpu_simd_bench
 
 # Umbrella: build (and run, into bench_results/) every available bench.
 # CPU bench always runs. Metal bench runs only on macOS with xcrun.
@@ -361,7 +393,9 @@ bench: cpu-bench
 	    echo "[bench] running metal_bench --mode fp16ref ..." && \
 	    ./metal_bench --mode fp16ref --out bench_results/m4max_fp16ref_2026-05-10.json && \
 	    echo "[bench] running metal_bench --mode multiblock ..." && \
-	    ./metal_bench --mode multiblock --out bench_results/m4max_multiblock_2026-05-10.json ; \
+	    ./metal_bench --mode multiblock --out bench_results/m4max_multiblock_2026-05-10.json && \
+	    echo "[bench] running metal_bench --mode fused ..." && \
+	    ./metal_bench --mode fused --out bench_results/m4max_fused_2026-05-12.json ; \
 	else \
 	    echo "[bench] skipping metal_bench (xcrun not found — macOS only)" ; \
 	fi
@@ -423,8 +457,20 @@ endif
 #   3. ELIZA_DFLASH_LLAMA_DIR / ELIZA_DFLASH_LIBGGML_CUDA — UNUSED by this
 #      harness now; retained as env so cuda_runner.sh's passthrough is inert.
 NVCC ?= $(shell command -v nvcc 2>/dev/null)
-CUDA_HOME ?= /usr/local/cuda
-ELIZA_DFLASH_LLAMA_DIR ?= $(HOME)/.cache/eliza-dflash/milady-llama-cpp
+# Distro CUDA toolkits (Debian/Ubuntu `nvidia-cuda-toolkit`) put the runtime
+# headers in /usr/include, not /usr/local/cuda/include. Probe both.
+CUDA_HOME ?= $(if $(wildcard /usr/local/cuda/include/cuda_runtime.h),/usr/local/cuda,$(if $(wildcard /usr/include/cuda_runtime.h),/usr,/usr/local/cuda))
+# ELIZA_DFLASH_LLAMA_DIR points at a checkout of the patched llama.cpp fork
+# (ggml headers + a build/ tree). Resolution order:
+#   1. explicit override (env / make var) — wins.
+#   2. the in-repo submodule checkout at packages/inference/llama.cpp — the
+#      committed pin; present after `git submodule update --init` (which
+#      `bun install` runs). This is the default so the dispatch-smoke targets
+#      build without any env var on a normal checkout.
+#   3. the legacy `~/.cache/eliza-dflash/eliza-llama-cpp` standalone clone
+#      that `build-llama-cpp-dflash.mjs --src-dir`/`--cache-dir` produces.
+ELIZA_DFLASH_IN_REPO_LLAMA_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../llama.cpp)
+ELIZA_DFLASH_LLAMA_DIR ?= $(if $(wildcard $(ELIZA_DFLASH_IN_REPO_LLAMA_DIR)/ggml/include/ggml.h),$(ELIZA_DFLASH_IN_REPO_LLAMA_DIR),$(HOME)/.cache/eliza-dflash/eliza-llama-cpp)
 ELIZA_DFLASH_LIBGGML_CUDA ?= $(ELIZA_DFLASH_LLAMA_DIR)/build-cuda/ggml/src/ggml-cuda/libggml-cuda.so
 
 # CMAKE_CUDA_ARCHITECTURES the fork build hook should pin (platform-targets
@@ -436,13 +482,18 @@ ELIZA_DFLASH_LIBGGML_CUDA ?= $(ELIZA_DFLASH_LLAMA_DIR)/build-cuda/ggml/src/ggml-
 #     node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda
 #
 # Compile-time arch list for the harness itself (cheap; one TU). Overridable
-# with CUDA_ARCH_FLAGS. Default covers Ampere..Blackwell.
+# with CUDA_ARCH_FLAGS. Always emits sm_80/86/90 SASS plus compute_90 PTX —
+# the driver JITs the compute_90 PTX for any newer arch (Blackwell sm_120 on
+# RTX 50xx), so the harness runs on every NVIDIA part since Ampere even with a
+# pre-12.8 nvcc that cannot target sm_100/sm_120 directly. nvcc >= 12.8 adds
+# native sm_120 SASS on top (faster JIT-free first launch on Blackwell consumer).
+comma := ,
+CUDA_BLACKWELL_GENCODE := $(shell echo 'int main(){return 0;}' > /tmp/.nvcc_sm120_probe.cu 2>/dev/null && $(NVCC) -arch=sm_120 -c /tmp/.nvcc_sm120_probe.cu -o /dev/null >/dev/null 2>&1 && echo "-gencode arch=compute_120@code=sm_120"; rm -f /tmp/.nvcc_sm120_probe.cu)
 CUDA_ARCH_FLAGS ?= -gencode arch=compute_80,code=sm_80 \
     -gencode arch=compute_86,code=sm_86 \
-    -gencode arch=compute_89,code=sm_89 \
     -gencode arch=compute_90,code=sm_90 \
-    -gencode arch=compute_120,code=sm_120 \
-    -gencode arch=compute_120,code=compute_120
+    -gencode arch=compute_90,code=compute_90 \
+    $(subst @,$(comma),$(CUDA_BLACKWELL_GENCODE))
 
 CUDA_INCLUDES = -I$(CUDA_HOME)/include -I.
 
@@ -552,6 +603,33 @@ windows-hardware:
 	@echo "Run on a native Windows host:"
 	@echo "  pwsh -File packages/inference/verify/windows_runner.ps1 -Backend cuda -Model C:\\\\models\\\\eliza-1-smoke.gguf"
 
+# CPU built-fork graph-dispatch smoke. Links qjl_mt_check.c against a
+# linux-x64-cpu fork build and runs a tiny ggml graph that selects
+# GGML_OP_ATTN_SCORE_QJL and GGML_OP_FUSED_ATTN_QJL_TBQ on the CPU backend,
+# executes it, and asserts the output is finite, non-zero, and bit-identical
+# between n_threads=1 and n_threads=24 (the thread split is over disjoint
+# output rows -> no reassociation -> exact equality). Proves the fork's CPU ops
+# are reachable through real llama.cpp graph execution, not just linked symbols.
+#
+# CPU_BIN_DIR resolution (ELIZA_DFLASH_CPU_BIN_DIR overrides everything):
+#   1. the in-repo fork's build/linux-x64-cpu/bin tree (committed pin).
+#   2. $ELIZA_STATE_DIR/local-inference/bin/dflash/linux-x64-cpu — the managed
+#      output `build-llama-cpp-dflash.mjs --target linux-x64-cpu` writes.
+# GGML_INC_DIR defaults to ELIZA_DFLASH_LLAMA_DIR/ggml/include (which itself
+# defaults to the in-repo submodule — see above), so this target builds on a
+# normal checkout with the submodule fetched and a prior linux-x64-cpu build,
+# with no env vars. The standalone-fixture vs C-reference parity for the CPU
+# score/decode paths is `reference-test` (the C ops ARE the references).
+ELIZA_DFLASH_IN_REPO_CPU_BIN_DIR := $(ELIZA_DFLASH_IN_REPO_LLAMA_DIR)/build/linux-x64-cpu/bin
+CPU_BIN_DIR ?= $(or $(ELIZA_DFLASH_CPU_BIN_DIR),$(if $(wildcard $(ELIZA_DFLASH_IN_REPO_CPU_BIN_DIR)/libggml-cpu.so),$(ELIZA_DFLASH_IN_REPO_CPU_BIN_DIR),$(or $(ELIZA_STATE_DIR),$(HOME)/.eliza)/local-inference/bin/dflash/linux-x64-cpu))
+GGML_INC_DIR ?= $(or $(ELIZA_DFLASH_LLAMA_DIR),$(HOME)/.cache/eliza-dflash/milady-llama-cpp)/ggml/include
+cpu-dispatch-smoke:
+	@test -f "$(CPU_BIN_DIR)/libggml-cpu.so" || { echo "[cpu-dispatch-smoke] missing $(CPU_BIN_DIR)/libggml-cpu.so — build the fork first: node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cpu (or set ELIZA_DFLASH_CPU_BIN_DIR)"; exit 1; }
+	@test -f "$(GGML_INC_DIR)/ggml.h" || { echo "[cpu-dispatch-smoke] missing $(GGML_INC_DIR)/ggml.h — set ELIZA_DFLASH_LLAMA_DIR to the fork checkout, or copy the fork's ggml/include here"; exit 1; }
+	$(CC) -O2 -I"$(GGML_INC_DIR)" qjl_mt_check.c -o qjl_mt_check \
+	  -L"$(CPU_BIN_DIR)" -lggml-cpu -lggml-base -lggml -lm -Wl,-rpath,"$(CPU_BIN_DIR)"
+	LD_LIBRARY_PATH="$(CPU_BIN_DIR)" ./qjl_mt_check
+
 # Drift check between the standalone shaders in packages/inference/{metal,vulkan}/
 # and the fork's in-tree shaders. Both ship the same kernel symbols and decode
 # math (the standalones add perf-only divergence; see PATCH_AUDIT_2026-05-10.md
@@ -561,10 +639,10 @@ windows-hardware:
 # before signing off a bundle.
 #
 # The fork is the elizaOS/llama.cpp checkout the build script clones into
-# ~/.cache/eliza-dflash/milady-llama-cpp. If the cache dir is absent, this
+# ~/.cache/eliza-dflash/eliza-llama-cpp. If the cache dir is absent, this
 # target prints a clear "fork not present, please run build first" message
 # rather than failing cryptically.
-ELIZA_DFLASH_FORK_METAL_DIR := $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-metal/milady-shipped
+ELIZA_DFLASH_FORK_METAL_DIR := $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-metal/eliza-shipped
 ELIZA_DFLASH_FORK_VULKAN_DIR := $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-vulkan/vulkan-shaders
 
 verify-fork:
@@ -586,9 +664,11 @@ else
 	  echo "[verify-fork] metal/turbo3_tcq (patched shipped: turbo3_tcq.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/turbo3_tcq.metal kernel_turbo3_tcq_dot      fixtures/turbo3_tcq.json && \
 	  echo "[verify-fork] metal/qjl     (patched shipped: qjl.metal)"         && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/qjl.metal        kernel_attn_score_qjl1_256 fixtures/qjl.json        && \
 	  echo "[verify-fork] metal/polar   (patched shipped: polar.metal)"       && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar.json      && \
-	  echo "[verify-fork] metal/polar_preht (patched shipped: polar.metal)"   && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_preht_f32 fixtures/polar.json && \
-	  echo "[verify-fork] metal/polar_preht + QJL residual (patched shipped: polar.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal kernel_mul_mv_q4_polar_preht_f32 fixtures/polar_qjl.json && \
-	  echo "[verify-fork] metal: 5/5 patched shipped shader files plus Polar preht variants verified against the same fixtures as the standalones"; \
+		  echo "[verify-fork] metal/polar_preht (patched shipped: polar.metal)"   && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_preht_f32 fixtures/polar.json && \
+		  echo "[verify-fork] metal/polar_preht + QJL residual (patched shipped: polar.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal kernel_mul_mv_q4_polar_preht_f32 fixtures/polar_qjl.json && \
+		  echo "[verify-fork] metal/fused_attn_qjl_tbq (patched shipped: fused_attn_qjl_tbq.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/fused_attn_qjl_tbq.metal kernel_fused_attn_qjl_tbq3_f32 fixtures/fused_attn_qjl_tbq.json && \
+		  echo "[verify-fork] metal/fused_attn_qjl_polar (patched shipped: fused_attn_qjl_polar.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/fused_attn_qjl_polar.metal kernel_fused_attn_qjl_polar_f32 fixtures/fused_attn_qjl_polar.json && \
+		  echo "[verify-fork] metal: 7/7 patched shipped shader files plus Polar preht/fused-attn variants verified against the same fixtures as the standalones"; \
 	else \
 	  echo "[verify-fork] xcrun not found — skipping Metal fork verification (macOS only)"; \
 	fi
@@ -610,14 +690,20 @@ else
 	      $(ELIZA_DFLASH_FORK_VULKAN_DIR)/polar_preht.comp -o bench_results/fork-spv/polar_preht.spv || exit 1; \
 	    echo "[verify-fork] vulkan/polar_preht (fork: vulkan-shaders/polar_preht.comp)"; \
 	    ./vulkan_verify bench_results/fork-spv/polar_preht.spv fixtures/polar.json || exit 1; \
-	    echo "[verify-fork] vulkan/polar_preht + QJL residual (fork: vulkan-shaders/polar_preht.comp)"; \
-	    ./vulkan_verify bench_results/fork-spv/polar_preht.spv fixtures/polar_qjl.json || exit 1; \
-	    echo "[verify-fork] vulkan: 6/6 fork score shaders + polar residual/preht variants verified against standalone fixtures"; \
+		    echo "[verify-fork] vulkan/polar_preht + QJL residual (fork: vulkan-shaders/polar_preht.comp)"; \
+		    ./vulkan_verify bench_results/fork-spv/polar_preht.spv fixtures/polar_qjl.json || exit 1; \
+		    for f in fused_attn_qjl_tbq fused_attn_qjl_polar; do \
+		      $(GLSLC) --target-env=vulkan1.1 --target-spv=spv1.3 -fshader-stage=compute \
+		        $(ELIZA_DFLASH_FORK_VULKAN_DIR)/$$f.comp -o bench_results/fork-spv/$$f.spv || exit 1; \
+		      echo "[verify-fork] vulkan/$$f (fork: vulkan-shaders/$$f.comp)"; \
+		      ./vulkan_verify bench_results/fork-spv/$$f.spv fixtures/$$f.json || exit 1; \
+		    done; \
+		    echo "[verify-fork] vulkan: 8/8 fork score/fused shaders + polar residual/preht variants verified against standalone fixtures"; \
 	  else \
 	    echo "[verify-fork] vulkan_verify not buildable on this host — skipping Vulkan fork verification"; \
 	  fi; \
 	else \
-	  echo "[verify-fork] $(ELIZA_DFLASH_FORK_VULKAN_DIR) not staged with milady shaders (run a *-vulkan build target first); skipping Vulkan fork verification"; \
+	  echo "[verify-fork] $(ELIZA_DFLASH_FORK_VULKAN_DIR) not staged with eliza shaders (run a *-vulkan build target first); skipping Vulkan fork verification"; \
 	fi
 	@echo "[verify-fork] done. Compare the per-kernel pass/fail above against the standalone reference runs to detect drift."
 endif
@@ -628,7 +714,7 @@ endif
 # pipeline (not the JIT). Prerequisite:
 # `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target
 # darwin-arm64-metal` has succeeded and produced libggml-*.dylib + the
-# milady kernels in default.metallib.
+# eliza kernels in default.metallib.
 ELIZA_DFLASH_METAL_BUILD_DIR ?= $(ELIZA_DFLASH_LLAMA_DIR)/build/darwin-arm64-metal
 ELIZA_DFLASH_METAL_BIN_DIR   ?= $(ELIZA_DFLASH_METAL_BUILD_DIR)/bin
 ELIZA_STATE_DIR ?= $(HOME)/.eliza
@@ -688,7 +774,7 @@ vulkan-dispatch-smoke: vulkan_dispatch_smoke
 	@echo "[vulkan-dispatch-smoke] running against $(ELIZA_DFLASH_VULKAN_BIN_DIR)"
 	@echo "[vulkan-dispatch-smoke] managed output candidate: $(ELIZA_DFLASH_VULKAN_OUT_DIR)"
 	@echo "[vulkan-dispatch-smoke] build-tree candidate: $(ELIZA_DFLASH_VULKAN_BUILD_BIN_DIR)"
-	@echo "[vulkan-dispatch-smoke] requires ggml-vulkan to advertise and execute QJL/TBQ/Polar attention-score graph routes; symbol-only staging cannot pass"
+	@echo "[vulkan-dispatch-smoke] requires ggml-vulkan to advertise and execute the GGML_OP_ATTN_SCORE_QJL and GGML_OP_FUSED_ATTN_QJL_TBQ graph routes (the two fused attention ops the committed fork pin exposes); symbol-only staging cannot pass"
 	@if [ ! -f "$(ELIZA_DFLASH_VULKAN_BIN_DIR)/libggml-vulkan.so" ] && [ ! -f "$(ELIZA_DFLASH_VULKAN_BIN_DIR)/libggml-vulkan.dylib" ]; then \
 	    echo "[vulkan-dispatch-smoke] missing libggml-vulkan under $(ELIZA_DFLASH_VULKAN_BIN_DIR)"; \
 	    echo "[vulkan-dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target $(ELIZA_DFLASH_TARGET)' on a Linux Vulkan host first."; \
@@ -729,5 +815,5 @@ vulkan_dispatch_smoke: vulkan_dispatch_smoke.cpp $(REF_OBJ) $(QJL_POLAR_OBJ)
 	    -lm -o vulkan_dispatch_smoke
 
 clean:
-	rm -f $(REF_OBJ) $(QJL_POLAR_OBJ) gen_fixture vulkan_verify metal_verify metal_bench cpu_bench cuda_verify dispatch_smoke vulkan_dispatch_smoke
+	rm -f $(REF_OBJ) $(QJL_POLAR_OBJ) gen_fixture vulkan_verify metal_verify metal_bench cpu_bench cpu_simd_bench cuda_verify dispatch_smoke vulkan_dispatch_smoke
 	rm -f ../vulkan/*.spv

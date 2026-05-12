@@ -345,18 +345,18 @@ describe("getDeviceSecret", () => {
     expect(a.length).toBeGreaterThanOrEqual(32);
   });
 
-  it("honours MILADY_DEVICE_SECRET when set with sufficient entropy", () => {
+  it("honours ELIZA_DEVICE_SECRET when set with sufficient entropy", () => {
     __setDeviceSecretForTests(null);
-    const previous = process.env.MILADY_DEVICE_SECRET;
-    process.env.MILADY_DEVICE_SECRET = "configured-device-secret-value-min-16";
+    const previous = process.env.ELIZA_DEVICE_SECRET;
+    process.env.ELIZA_DEVICE_SECRET = "configured-device-secret-value-min-16";
     try {
       const secret = getDeviceSecret();
       expect(secret).toBe("configured-device-secret-value-min-16");
     } finally {
       if (previous === undefined) {
-        delete process.env.MILADY_DEVICE_SECRET;
+        delete process.env.ELIZA_DEVICE_SECRET;
       } else {
-        process.env.MILADY_DEVICE_SECRET = previous;
+        process.env.ELIZA_DEVICE_SECRET = previous;
       }
       __setDeviceSecretForTests(null);
     }

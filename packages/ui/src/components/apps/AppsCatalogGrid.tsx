@@ -13,6 +13,7 @@ interface AppsCatalogGridProps {
   searchQuery: string;
   visibleApps: RegistryAppInfo[];
   onLaunch: (app: RegistryAppInfo) => void;
+  onRetry?: () => void;
   onToggleFavorite: (appName: string) => void;
 }
 
@@ -291,6 +292,7 @@ export function AppsCatalogGrid({
   searchQuery,
   visibleApps,
   onLaunch,
+  onRetry,
   onToggleFavorite,
 }: AppsCatalogGridProps) {
   const { t } = useApp();
@@ -338,8 +340,17 @@ export function AppsCatalogGrid({
   return (
     <div ref={catalogRef} data-testid="apps-catalog-grid">
       {error ? (
-        <div className="mb-4 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs-tight text-danger">
-          {error}
+        <div className="mb-4 flex flex-col gap-2 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-xs-tight text-danger sm:flex-row sm:items-center sm:justify-between">
+          <span>{error}</span>
+          {onRetry ? (
+            <button
+              type="button"
+              className="self-start rounded-full border border-danger/40 px-2.5 py-1 text-[0.68rem] font-semibold uppercase tracking-[0.14em] transition-colors hover:bg-danger/10 sm:self-auto"
+              onClick={onRetry}
+            >
+              Retry
+            </button>
+          ) : null}
         </div>
       ) : null}
 

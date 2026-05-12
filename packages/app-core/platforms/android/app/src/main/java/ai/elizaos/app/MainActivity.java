@@ -94,7 +94,7 @@ public class MainActivity extends BridgeActivity {
         }
 
         // Auto-start the local Eliza agent runtime as a foreground service.
-        // shouldAutoStart() returns true on branded devices (AOSP/MiladyOS —
+        // shouldAutoStart() returns true on branded devices (AOSP/ElizaOS —
         // the device IS the agent) and on stock Android only when the user
         // picked Local mode in onboarding. Cloud/Remote modes skip this so
         // we don't burn battery on a service they never call. The boot

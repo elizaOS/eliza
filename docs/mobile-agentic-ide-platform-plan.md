@@ -4,7 +4,7 @@ Last reviewed: 2026-05-11
 
 ## Goal
 
-Milady should expose the strongest agentic IDE capability each platform can
+Eliza should expose the strongest agentic IDE capability each platform can
 honestly support:
 
 - AOSP / ElizaOS Android: full on-device backend, terminal, file creation,
@@ -71,11 +71,26 @@ This branch now has the following foundation:
   when config or environment asks for shell, coding tools, or agent
   orchestrator.
 - iOS local dev/sideload builds have an `ios-local` build target that bakes
-  `runtimeMode=local`, starts the native Agent plugin in local mode, routes
-  foreground local-agent requests through the WebView ITTP kernel, exposes a
-  foreground native `Agent.request` / `Agent.chat` bridge into that kernel,
-  persists the kernel's local state through the native storage bridge, and reports
-  `GET /api/local-agent/capabilities`.
+  `runtimeMode=local`, builds the Bun-targeted agent payload into
+  `packages/agent/dist-mobile-ios/agent-bundle.js`, stages that payload under
+  `App/public/agent/`, includes the native llama bridge, starts the native Agent
+  plugin in local mode, and reports `GET /api/local-agent/capabilities`.
+  Compatibility builds route foreground local-agent requests through the
+  WebView ITTP kernel and expose a foreground native `Agent.request` /
+  `Agent.chat` bridge into that kernel. Full Bun builds route the same
+  local-agent requests through Capacitor `ElizaBunRuntime`, the
+  `ElizaBunEngine` C ABI, and the agent bundle's `ios-bridge --stdio`
+  command, so the WebView does not connect to a backend TCP port.
+- `@elizaos/capacitor-bun-runtime` is wired into local iOS Pod generation only
+  when native local inference is included. Its llama bridge now delegates to
+  the real Swift/C llama.cpp implementation instead of canned text. Full Bun
+  mode is a separate hard-gated path: `ELIZA_IOS_FULL_BUN_ENGINE=1` requires
+  `packages/bun-ios-runtime/artifacts/ElizaBunEngine.xcframework` and refuses
+  to fall back to the JSContext compatibility host. The repo now has the
+  CocoaPods gate, dynamic Swift loader, Eliza C ABI shim, agent-side stdio
+  bridge, and React transport selection. The remaining full-backend blocker is
+  the Bun/WebKit fork producing that signed iOS framework and passing simulator
+  then developer-signed device smoke tests.
 - The iOS ITTP kernel intentionally reports `task_service_unavailable` for
   `/api/background/run-due-tasks` and `/api/internal/wake`; Capacitor
   BackgroundRunner runs in a separate JSContext and cannot call the WebView
@@ -121,6 +136,10 @@ Allowed shape:
 - Bake `runtimeMode=local` into the Capacitor app and route the stable
   `http://127.0.0.1:31337` local-agent URL through an in-process route kernel
   or a native app-owned IPC surface such as `WKURLSchemeHandler`.
+- For full Bun sideload builds, route that stable local-agent URL through
+  Capacitor/native IPC into the signed Bun framework. Internal loopback inside
+  the Bun process is acceptable as an implementation detail while the backend
+  still exposes Node HTTP routes; the WebView must not depend on it.
 - Run the backend as signed/bundled app code, JSCore/QuickJS/WASM code shipped
   with the app, or user-authored IDE content inside the mobile-safe runtime.
 
@@ -188,7 +207,7 @@ Allowed shape:
 | Platform/build | Local VFS applets | Local shell | Coding agents | AVF / VM | Cloud containers |
 | --- | --- | --- | --- | --- | --- |
 | iOS App Store | Yes: JSCore/QuickJS/WASM | No | Cloud only | No | Yes |
-| iOS local dev / sideload | Yes: JSCore/QuickJS/WASM + bundled native inference | No host shell; iOS-safe route/runtime only | Planned on-device backend subset; cloud for shell agents | No | Yes |
+| iOS local dev / sideload | Yes: JSCore/QuickJS/WASM + bundled native inference | No host shell; iOS-safe route/runtime only | Full backend path hard-gated on signed Bun/WebKit framework; cloud for shell agents | No | Yes |
 | Android Play | Yes: isolatedProcess/WASM/QuickJS | No for store build | Cloud only | Not for third-party APKs today | Yes |
 | AOSP / ElizaOS Android | Yes | Yes | Yes, after bundled adapters are validated | Yes if build/device exposes AVF | Yes |
 | macOS direct | Yes | Yes | Yes | Optional local VM, usually not needed | Yes |

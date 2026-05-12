@@ -69,7 +69,7 @@ function firstExisting(...candidates) {
 function resolveBinary(opts) {
   if (opts.bin) return fs.existsSync(opts.bin) ? opts.bin : null;
   const cacheRoots = [
-    path.join(os.homedir(), ".cache", "eliza-dflash", "milady-llama-cpp", "build"),
+    path.join(os.homedir(), ".cache", "eliza-dflash", "eliza-llama-cpp", "build"),
     path.join(os.homedir(), ".cache", "eliza-dflash", "buun-llama-cpp", "build"),
     path.join(os.homedir(), ".eliza", "local-inference", "bin", "dflash"),
   ];
@@ -110,6 +110,7 @@ function resolveModel(opts) {
 
 function backendOfBinary(binPath) {
   const lc = (binPath || "").toLowerCase();
+  if (lc.includes("metal")) return "metal";
   if (lc.includes("vulkan")) return "vulkan";
   if (lc.includes("cuda")) return "cuda";
   if (lc.includes("rocm") || lc.includes("hip")) return "rocm";

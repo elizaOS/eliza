@@ -315,7 +315,7 @@ export function checkDiskSpace(
   env: Record<string, string | undefined> = process.env,
 ): CheckResult {
   const dir =
-    env.MILADY_STATE_DIR?.trim() || env.ELIZA_STATE_DIR?.trim() || os.homedir();
+    env.ELIZA_STATE_DIR?.trim() || env.MILADY_STATE_DIR?.trim() || os.homedir();
 
   try {
     const stats = statfsSync(dir);

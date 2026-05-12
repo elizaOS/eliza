@@ -1,10 +1,9 @@
 /**
- * Atomic payment-action types for Wave B (B-atoms).
+ * Payment-action types for the consolidated PAYMENT action.
  *
- * These types describe the runtime contract between the six atomic payment
- * actions (`CREATE_PAYMENT_REQUEST`, `DELIVER_PAYMENT_LINK`, …) and the cloud
- * services that own persistence (`PaymentRequestsClient`) and callback
- * settlement (`PaymentBusClient`).
+ * These types describe the runtime contract between the PAYMENT action
+ * subactions and the cloud services that own persistence
+ * (`PaymentRequestsClient`) and callback settlement (`PaymentBusClient`).
  *
  * The actions never import the cloud module directly — they resolve the
  * client implementations via `runtime.getService(name)`. Sibling Wave B
@@ -104,7 +103,7 @@ export interface PaymentBusClient {
 }
 
 /**
- * Optional explicit settler used by `SETTLE_PAYMENT` for non-webhook
+ * Optional explicit settler used by PAYMENT action `settle` for non-webhook
  * providers (e.g. `wallet_native`). Resolved via
  * `runtime.getService(PAYMENT_SETTLER_SERVICE)`.
  */
@@ -124,7 +123,7 @@ export const PAYMENT_BUS_CLIENT_SERVICE = "PaymentBusClient";
 export const PAYMENT_SETTLER_SERVICE = "PaymentSettler";
 
 /**
- * Computed by `CREATE_PAYMENT_REQUEST` from `paymentContext.kind`. Mirrors
+ * Computed by PAYMENT action `create_request` from `paymentContext.kind`. Mirrors
  * the contract documented in the Wave B spec: public-link delivery is only
  * eligible for `any_payer`; everything else must use an authenticated route.
  */

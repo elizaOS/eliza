@@ -22,6 +22,18 @@ export type InstallMethod =
   | "local-dev"
   | "unknown";
 
+export type UpdateAuthority =
+  | "package-manager"
+  | "os-package-manager"
+  | "developer"
+  | "operator";
+
+export type UpdateNextAction =
+  | "run-package-manager-command"
+  | "run-git-pull"
+  | "review-installation"
+  | "none";
+
 export interface UpdateResult {
   success: boolean;
   method: InstallMethod;
@@ -29,6 +41,23 @@ export interface UpdateResult {
   previousVersion: string;
   newVersion: string | null;
   error: string | null;
+}
+
+export interface UpdateCommandInfo {
+  command: string;
+  args: string[];
+  displayCommand: string;
+}
+
+export interface UpdateActionPlan {
+  method: InstallMethod;
+  authority: UpdateAuthority;
+  nextAction: UpdateNextAction;
+  canAutoUpdate: boolean;
+  canExecuteFromContext: boolean;
+  remoteDisplay: boolean;
+  command: string | null;
+  message: string;
 }
 
 function whichSync(binary: string): string | null {
@@ -89,16 +118,28 @@ export function detectInstallMethod(): InstallMethod {
 export function buildUpdateCommand(
   method: InstallMethod,
   channel: ReleaseChannel,
-): { command: string; args: string[] } | null {
+): UpdateCommandInfo | null {
   const spec = `${NPM_PACKAGE_NAME}@${CHANNEL_DIST_TAGS[channel]}`;
 
   switch (method) {
     case "npm-global":
-      return { command: "npm", args: ["install", "-g", spec] };
+      return {
+        command: "npm",
+        args: ["install", "-g", spec],
+        displayCommand: `npm install -g ${spec}`,
+      };
     case "bun-global":
-      return { command: "bun", args: ["install", "-g", spec] };
+      return {
+        command: "bun",
+        args: ["install", "-g", spec],
+        displayCommand: `bun install -g ${spec}`,
+      };
     case "homebrew":
-      return { command: "brew", args: ["upgrade", "eliza"] };
+      return {
+        command: "brew",
+        args: ["upgrade", "eliza"],
+        displayCommand: "brew upgrade eliza",
+      };
     case "snap": {
       // nightly → edge (snap doesn't have a "nightly" channel)
       const snapCh =
@@ -106,6 +147,7 @@ export function buildUpdateCommand(
       return {
         command: "sudo",
         args: ["snap", "refresh", "eliza", `--channel=${snapCh}`],
+        displayCommand: `sudo snap refresh eliza --channel=${snapCh}`,
       };
     }
     case "apt":
@@ -115,14 +157,103 @@ export function buildUpdateCommand(
           "-c",
           "sudo apt-get update && sudo apt-get install --only-upgrade -y eliza",
         ],
+        displayCommand:
+          "sudo apt-get update && sudo apt-get install --only-upgrade -y eliza",
       };
     case "flatpak":
-      return { command: "flatpak", args: ["update", "ai.eliza.Eliza"] };
+      return {
+        command: "flatpak",
+        args: ["update", "ai.eliza.Eliza"],
+        displayCommand: "flatpak update ai.eliza.Eliza",
+      };
     case "local-dev":
       return null;
     case "unknown":
-      return { command: "npm", args: ["install", "-g", spec] };
+      return {
+        command: "npm",
+        args: ["install", "-g", spec],
+        displayCommand: `npm install -g ${spec}`,
+      };
   }
+}
+
+function getUpdateAuthority(method: InstallMethod): UpdateAuthority {
+  switch (method) {
+    case "npm-global":
+    case "bun-global":
+    case "homebrew":
+      return "package-manager";
+    case "apt":
+    case "snap":
+    case "flatpak":
+      return "os-package-manager";
+    case "local-dev":
+      return "developer";
+    case "unknown":
+      return "operator";
+  }
+}
+
+function getUpdateMessage(
+  method: InstallMethod,
+  command: string | null,
+  remoteDisplay: boolean,
+): string {
+  if (remoteDisplay) {
+    if (method === "local-dev") {
+      return "This is a remote status view. Update the checkout on the host with git pull; no remote execution endpoint is exposed.";
+    }
+    if (command) {
+      return `This is a remote status view. Run "${command}" on the host; no remote execution endpoint is exposed.`;
+    }
+    return "This is a remote status view. Review the host installation; no remote execution endpoint is exposed.";
+  }
+
+  switch (method) {
+    case "local-dev":
+      return "Local development install detected. Update the checkout with git pull.";
+    case "unknown":
+      return "Install method is unknown. The CLI will fall back to npm, but reviewing the installation first is recommended.";
+    case "apt":
+    case "snap":
+    case "flatpak":
+      return "Updates are delegated to the OS package manager and must run on the host.";
+    case "npm-global":
+    case "bun-global":
+    case "homebrew":
+      return "Updates are delegated to the detected package manager.";
+  }
+}
+
+export function getUpdateActionPlan(
+  method: InstallMethod,
+  channel: ReleaseChannel,
+  options?: { remoteDisplay?: boolean },
+): UpdateActionPlan {
+  const remoteDisplay = options?.remoteDisplay ?? false;
+  const cmdInfo = buildUpdateCommand(method, channel);
+  const command =
+    cmdInfo?.displayCommand ?? (method === "local-dev" ? "git pull" : null);
+  const canAutoUpdate = method !== "local-dev" && cmdInfo !== null;
+  const nextAction: UpdateNextAction =
+    method === "local-dev"
+      ? "run-git-pull"
+      : method === "unknown"
+        ? "review-installation"
+        : cmdInfo
+          ? "run-package-manager-command"
+          : "none";
+
+  return {
+    method,
+    authority: getUpdateAuthority(method),
+    nextAction,
+    canAutoUpdate,
+    canExecuteFromContext: canAutoUpdate && !remoteDisplay,
+    remoteDisplay,
+    command,
+    message: getUpdateMessage(method, command, remoteDisplay),
+  };
 }
 
 function runCommand(
@@ -188,7 +319,7 @@ export async function performUpdate(
     };
   }
 
-  const commandString = `${cmdInfo.command} ${cmdInfo.args.join(" ")}`;
+  const commandString = cmdInfo.displayCommand;
   const { exitCode, stderr } = await runCommand(cmdInfo.command, cmdInfo.args);
 
   if (exitCode !== 0) {

@@ -2,7 +2,7 @@
 /**
  * Retrieval funnel analyzer.
  *
- * Walks `~/.milady/trajectories/` (or `--input <dir>`), reads every JSON
+ * Walks `~/.eliza/trajectories/` (or `--input <dir>`), reads every JSON
  * file, and for each `toolSearch` stage that has `perStageScores` plus a
  * `correctActions` ground-truth list, computes:
  *
@@ -56,7 +56,7 @@ function parseArgs(argv) {
 
 const args = parseArgs(process.argv.slice(2));
 const inputRoot =
-  args.input ?? path.join(os.homedir(), ".milady", "trajectories");
+  args.input ?? path.join(os.homedir(), ".eliza", "trajectories");
 const repoRoot = path.resolve(
   path.dirname(new URL(import.meta.url).pathname),
   "..",

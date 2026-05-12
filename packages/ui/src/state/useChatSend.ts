@@ -22,8 +22,8 @@ import {
   normalizeSlashCommandName,
 } from "../chat";
 import type { Tab } from "../navigation";
-import { isConversationRecord } from "./chat-conversation-guards";
 import { clearChatDraft } from "./ChatComposerContext";
+import { isConversationRecord } from "./chat-conversation-guards";
 import {
   formatSearchBullet,
   type LoadConversationMessagesResult,

@@ -16,6 +16,10 @@
  * instead of crashing the process.
  */
 
+import {
+  type ResponseSkeleton,
+  ResponseSkeletonStreamExtractor,
+} from "@elizaos/core";
 import type { LocalInferenceLoadArgs } from "./active-model";
 import type {
   GenerateArgs as BackendGenerateArgs,
@@ -28,7 +32,6 @@ import {
   type Eliza1TierId,
   findCatalogModel,
 } from "./catalog";
-import type { InstalledModel } from "./types";
 import {
   type ConversationHandle,
   conversationRegistry,
@@ -49,7 +52,8 @@ import {
   resolveDefaultPoolSize,
   SessionPool,
 } from "./session-pool";
-import { resolveGrammarForParams } from "./structured-output";
+import { resolveGuidedDecodeForParams } from "./structured-output";
+import type { InstalledModel } from "./types";
 import {
   buildLocalEmbeddingRoute,
   EMBEDDING_FULL_DIM,
@@ -57,7 +61,7 @@ import {
   type LocalEmbeddingRoute,
 } from "./voice/embedding";
 import {
-  EmbeddingServer,
+  type EmbeddingServer,
   embeddingServerForRoute,
 } from "./voice/embedding-server";
 import {
@@ -66,7 +70,10 @@ import {
   VoiceStartupError,
 } from "./voice/engine-bridge";
 import type { VoicePipelineEvents } from "./voice/pipeline";
-import { dflashTextRunner } from "./voice/pipeline-impls";
+import {
+  type DflashTextRunner,
+  dflashTextRunner,
+} from "./voice/pipeline-impls";
 import {
   createEvictableModelRole,
   SharedResourceRegistry,
@@ -84,6 +91,32 @@ import type {
  * rollback"). Overridable per call via `runVoiceTurn({ maxDraftTokens })`.
  */
 const DEFAULT_VOICE_MAX_DRAFT_TOKENS = 8;
+const DEFAULT_VOICE_SKELETON_STREAM_FIELDS = new Set([
+  "replyText",
+  "text",
+  "messageToUser",
+]);
+
+function resolveVoiceSkeletonStreamFields(
+  skeleton: ResponseSkeleton | undefined,
+): string[] {
+  if (!skeleton) return [];
+  const fields: string[] = [];
+  const seen = new Set<string>();
+  for (const span of skeleton.spans) {
+    const key = span.key;
+    if (
+      span.kind === "free-string" &&
+      key &&
+      DEFAULT_VOICE_SKELETON_STREAM_FIELDS.has(key) &&
+      !seen.has(key)
+    ) {
+      seen.add(key);
+      fields.push(key);
+    }
+  }
+  return fields;
+}
 
 /**
  * Idle-unload timeout (J3). After this long with no `useModel` activity
@@ -192,14 +225,16 @@ interface LlamaContext {
 
 /**
  * Resolve the GBNF source for a node-llama-cpp constrained-decode call.
- * Precedence: an explicit `grammar` string on the args, then a compiled
- * forced skeleton (single-value enums collapsed to literals). Returns null
- * when neither is set — generation is unconstrained as before. node-llama-cpp
- * has no `grammar_lazy`, so a lazy grammar from the skeleton is applied
- * eagerly here; that's still correct (the leading literal is the trigger).
+ * Precedence: an explicit `grammar` string, then an `elizaSchema`'s grammar,
+ * then a compiled forced skeleton (single-value enums collapsed to literals).
+ * Returns null when none is set — generation is unconstrained as before.
+ * node-llama-cpp has no `grammar_lazy` and no token-splice prefill plan, so a
+ * lazy grammar from the skeleton is applied eagerly here (still correct — the
+ * leading literal is the trigger) and the prefill plan is ignored (the leading
+ * literal still gets seeded via `args.prefill`/`elizaSchema` upstream).
  */
 function resolveBindingGrammarSource(args: GenerateArgs): string | null {
-  const grammar = resolveGrammarForParams(args);
+  const grammar = resolveGuidedDecodeForParams(args).grammar;
   return grammar ? grammar.source : null;
 }
 
@@ -560,8 +595,10 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
       // Assistant-turn prefill: node-llama-cpp has no first-class "continue
       // this assistant message" knob, so we seed the prompt text with the
       // partial assistant turn and re-prepend it to the result so callers
-      // see the full assistant message.
-      const prefill = typeof args.prefill === "string" ? args.prefill : "";
+      // see the full assistant message. The prefill is an explicit
+      // `args.prefill` or the leading literal run of an `elizaSchema`'s
+      // prefill plan (resolved by the same helper the server path uses).
+      const prefill = resolveGuidedDecodeForParams(args).prefill ?? "";
       const promptText =
         prefill.length > 0 ? `${args.prompt}\n${prefill}` : args.prompt;
       if (args.onTextChunk || args.onVerifierEvent) {
@@ -1412,9 +1449,18 @@ export class LocalInferenceEngine {
       null;
     let feedWakeFrame: ((pcm: Float32Array) => void) | null = null;
     if (opts.wakeWord?.enabled) {
-      const { loadBundledWakeWordModel, OpenWakeWordDetector } = await import(
-        "./voice/wake-word"
-      );
+      const {
+        isPlaceholderWakeWordHead,
+        loadBundledWakeWordModel,
+        OPENWAKEWORD_DEFAULT_HEAD,
+        OpenWakeWordDetector,
+      } = await import("./voice/wake-word");
+      const headName = opts.wakeWord.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
+      if (isPlaceholderWakeWordHead(headName)) {
+        console.warn(
+          `[voice] wake word head '${headName}' is a PLACEHOLDER (the upstream openWakeWord "hey jarvis" head, renamed) — it fires on "hey jarvis", not the Eliza-1 wake phrase. Experimental, opt-in only; see packages/inference/reports/porting/2026-05-11/wakeword-head-plan.md.`,
+        );
+      }
       const model = await loadBundledWakeWordModel({
         bundleRoot: bridge.bundlePath(),
         ...(opts.wakeWord.head ? { head: opts.wakeWord.head } : {}),
@@ -1565,6 +1611,13 @@ export class LocalInferenceEngine {
    * verifier are wired against the running DFlash llama-server; the ASR is
    * the fused ABI's ASR. Requires `startVoice()` + `armVoice()` first.
    *
+   * `opts.textRunner` lets a host that runs its own text engine in-process
+   * (the iOS/Android FFI path — `@elizaos/plugin-aosp-local-inference`'s
+   * `AospDflashAdapter` / the `LlamaCpp.xcframework` shim — which does NOT
+   * spawn `llama-server`) supply its own {@link DflashTextRunner}. When
+   * omitted, the desktop/server path is used: the module-level
+   * `dflashLlamaServer` singleton (the spawned fork `llama-server`).
+   *
    * Resolves with the turn's exit reason (`done` / `token-cap` /
    * `cancelled`). A missing ASR region in voice mode surfaces as a
    * `VoiceStartupError` — no silent cloud fallback (AGENTS.md §3).
@@ -1575,13 +1628,20 @@ export class LocalInferenceEngine {
       maxDraftTokens?: number;
       maxGeneratedTokens?: number;
       events?: VoicePipelineEvents;
+      /**
+       * In-process text runner for the mobile FFI path. Must implement the
+       * same `DflashTextRunner` contract (`hasDrafter()` +
+       * `generateWithVerifierEvents()`); the AOSP/Capacitor bridge wraps
+       * its libllama-context-backed speculative loop in one.
+       */
+      textRunner?: DflashTextRunner;
     } = {},
   ): Promise<"done" | "token-cap" | "cancelled"> {
     this.markActivity();
     const bridge = this.requireVoiceBridge("run a voice turn");
     return bridge.runVoiceTurn(
       audio,
-      dflashTextRunner(dflashLlamaServer),
+      opts.textRunner ?? dflashTextRunner(dflashLlamaServer),
       {
         maxDraftTokens: opts.maxDraftTokens ?? DEFAULT_VOICE_MAX_DRAFT_TOKENS,
         maxGeneratedTokens: opts.maxGeneratedTokens,
@@ -1731,10 +1791,35 @@ export class LocalInferenceEngine {
     let verifierHandled = false;
     const callerOnTextChunk = args.onTextChunk;
     const callerOnVerifierEvent = args.onVerifierEvent;
+    let structuredVoicePush = Promise.resolve();
+    const structuredVoiceFields =
+      args.streamStructured === true
+        ? resolveVoiceSkeletonStreamFields(args.responseSkeleton)
+        : [];
+    const structuredVoiceExtractor =
+      structuredVoiceFields.length > 0 && args.responseSkeleton
+        ? new ResponseSkeletonStreamExtractor({
+            skeleton: args.responseSkeleton,
+            streamFields: structuredVoiceFields,
+            abortSignal: bargeAbort.signal,
+            onChunk: (chunk: string) => {
+              if (chunk.length === 0) return;
+              streamedAny = true;
+              const token: TextToken = { index: nextIndex++, text: chunk };
+              structuredVoicePush = structuredVoicePush.then(() =>
+                bridge.pushAcceptedToken(token),
+              );
+            },
+          })
+        : null;
     const wrapped = {
       ...args,
       signal: bargeAbort.signal,
       onVerifierEvent: async (event: VerifierStreamEvent) => {
+        if (structuredVoiceExtractor) {
+          await callerOnVerifierEvent?.(event);
+          return;
+        }
         verifierHandled = true;
         if (event.kind === "accept" && event.tokens.length > 0) {
           streamedAny = true;
@@ -1745,6 +1830,11 @@ export class LocalInferenceEngine {
         await callerOnVerifierEvent?.(event);
       },
       onTextChunk: async (chunk: string) => {
+        if (structuredVoiceExtractor) {
+          structuredVoiceExtractor.push(chunk);
+          await callerOnTextChunk?.(chunk);
+          return;
+        }
         if (chunk.length > 0 && !verifierHandled) {
           streamedAny = true;
           const token: TextToken = { index: nextIndex++, text: chunk };
@@ -1758,7 +1848,15 @@ export class LocalInferenceEngine {
       args: wrapped,
       finish: async (finalText: string) => {
         try {
+          if (structuredVoiceExtractor) {
+            if (!streamedAny && finalText.length > 0) {
+              structuredVoiceExtractor.push(finalText);
+            }
+            structuredVoiceExtractor.flush();
+            await structuredVoicePush;
+          }
           if (
+            !structuredVoiceExtractor &&
             !streamedAny &&
             finalText.length > 0 &&
             !bargeAbort.signal.aborted
@@ -1895,6 +1993,7 @@ export class LocalInferenceEngine {
       return null;
     }
 
+    const kvCache = catalog?.runtime?.kvCache;
     return {
       targetModelPath: target.path,
       drafterModelPath: drafter.path,
@@ -1904,6 +2003,8 @@ export class LocalInferenceEngine {
       draftMax: dflash.draftMax,
       gpuLayers: dflash.gpuLayers,
       draftGpuLayers: dflash.draftGpuLayers,
+      cacheTypeK: kvCache?.typeK,
+      cacheTypeV: kvCache?.typeV,
       disableThinking: dflash.disableThinking,
     };
   }

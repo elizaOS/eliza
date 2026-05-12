@@ -66,7 +66,7 @@ log = logging.getLogger("synth-music")
 AGENT_NAMES = [
     "Iris", "Kai", "Ava", "Nova", "Echo", "Sage", "Atlas", "Lyra",
     "Pico", "Lumi", "Rune", "Vega", "Sol", "Orion", "Mira", "Tess",
-    "milady", "Eliza", "Cleo", "Juno",
+    "eliza", "Eliza", "Cleo", "Juno",
 ]
 
 USER_NAMES = [
@@ -453,7 +453,7 @@ EN_PREFIXES = [
     "", "hey, ", "yo ", "ok so ", "uhh ", "real quick — ",
     "please ", "could you ", "can you ", "would you mind ",
     "i need you to ", "let's ", "go ahead and ", "trigger this: ",
-    "voice command: ", "alexa, ", "siri, ", "hey milady, ",
+    "voice command: ", "alexa, ", "siri, ", "hey eliza, ",
 ]
 EN_SUFFIXES = [
     "", " thanks", " plz", " 🙏", "?", " — when you can",

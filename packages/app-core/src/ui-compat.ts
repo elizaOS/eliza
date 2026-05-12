@@ -1,54 +1,8 @@
-// Compatibility exports for app packages that still import app UI helpers from
-// @elizaos/app-core. The implementations live in @elizaos/ui.
-
-export type {
-  AppDetailExtensionComponent,
-  AppDetailExtensionProps,
-  AppOperatorSurfaceComponent,
-  AppOperatorSurfaceFocus,
-  AppOperatorSurfaceProps,
-  AppOperatorSurfaceVariant,
-  AppRunHealthState,
-  AppRunSummary,
-  AppRunViewerAttachment,
-  AppSessionJsonValue,
-  BabylonActivityItem,
-  BabylonAgentGoal,
-  BabylonAgentStatus,
-  BabylonChatMessage,
-  BabylonPredictionMarket,
-  BabylonTeamAgent,
-  BabylonWallet,
-  GameOperatorAction,
-  GameOperatorEvent,
-  GameOperatorShellProps,
-  OverlayApp,
-  OverlayAppContext,
-  SelectedAppRun,
-  SurfaceTone,
-} from "@elizaos/ui";
-export {
-  Button,
-  client,
-  ElizaClient,
-  formatDetailTimestamp,
-  GameOperatorShell,
-  getAppDetailExtension,
-  getAppOperatorSurface,
-  Input,
-  PagePanel,
-  registerDetailExtension,
-  registerOperatorSurface,
-  registerOverlayApp,
-  Spinner,
-  SurfaceBadge,
-  SurfaceCard,
-  SurfaceEmptyState,
-  SurfaceGrid,
-  SurfaceSection,
-  selectLatestRunForApp,
-  toneForHealthState,
-  toneForStatusText,
-  toneForViewerAttachment,
-  useApp,
-} from "@elizaos/ui";
+// Compatibility re-export of the full @elizaos/ui public surface for
+// app/plugin consumers that still `import { … } from "@elizaos/app-core"`.
+// The Wave A refactor (eliza commit 5a6f5f337) moved React surfaces
+// out of app-core into @elizaos/ui but didn't backfill the bridge here.
+// Re-export everything from ui — the implementations live there.
+// Server-only barrels don't include this file (see src/index.ts), so
+// it doesn't pull React/DOM types into the runtime/agent chunks.
+export * from "@elizaos/ui";

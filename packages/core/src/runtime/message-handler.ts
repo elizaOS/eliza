@@ -84,6 +84,11 @@ export function parseMessageHandlerOutput(
 	const reply = replyRaw;
 	const requiresTool =
 		typeof fields.requiresTool === "boolean" ? fields.requiresTool : undefined;
+	// back-compat: legacy trajectories emitted `plan.simple` / root `simple`
+	// before the contexts-array unification. The only *emitting* path for the
+	// simple-vs-planning signal today is `contexts: ["simple"]` (no `simple`
+	// field exists in the field-registry schema or `HANDLE_RESPONSE_SCHEMA`);
+	// this read stays solely to decode older fixtures/trajectories.
 	const simple =
 		typeof fields.simple === "boolean"
 			? (fields.simple as boolean)
@@ -94,8 +99,9 @@ export function parseMessageHandlerOutput(
 	const candidateActions = normalizeStringHints(fields.candidateActions, 12);
 	const parentActionHints = normalizeStringHints(fields.parentActionHints, 6);
 
-	// Legacy `simple === true` with empty contexts → `["simple"]`. New callers
-	// emit `contexts: ["simple"]` directly.
+	// back-compat: legacy `simple === true` with empty contexts folds to
+	// `["simple"]`. Current callers emit `contexts: ["simple"]` directly — this
+	// is the single emitting path for the simple-vs-planning signal.
 	const contexts =
 		rawContexts.length === 0 && simple === true
 			? [SIMPLE_CONTEXT_ID]

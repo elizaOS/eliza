@@ -29,7 +29,7 @@
  *   4. Normalizes assistant messages, reasoning blocks, function_calls, and
  *      function_call_outputs into trajectory step records the runtime can
  *      persist as child steps of the parent step pointed at by
- *      `MILADY_PARENT_TRAJECTORY_STEP_ID`.
+ *      `ELIZA_PARENT_TRAJECTORY_STEP_ID`.
  *
  * Privacy:
  *   The trajectory DB stores the user's own data on their own machine
@@ -795,7 +795,7 @@ function extractFinalMessageFromRollout(
 export interface ReadCodexSessionOptions {
   /** Working directory the PTY session ran in. Used purely for diagnostics. */
   workspaceDir: string;
-  /** Codex home for the spawned session (per-session temp dir Milady provisions). */
+  /** Codex home for the spawned session (per-session temp dir Eliza provisions). */
   codexHome: string;
   /** Parent trajectory step id to anchor the merged child steps to. */
   parentStepId: string;

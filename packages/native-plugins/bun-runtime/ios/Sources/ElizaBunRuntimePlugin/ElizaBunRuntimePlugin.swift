@@ -37,7 +37,8 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func start(_ call: CAPPluginCall) {
         let bundlePath = call.getString("bundlePath")
         let polyfillPath = call.getString("polyfillPath")
-        let argv = call.getArray("argv", String.self) ?? ["bun", "agent-bundle-ios.js"]
+        let engine = call.getString("engine") ?? "auto"
+        let argv = call.getArray("argv", String.self) ?? ["bun", "public/agent/agent-bundle.js"]
         let env: [String: String]
         if let raw = call.getObject("env") {
             env = raw.compactMapValues { $0 as? String }
@@ -49,6 +50,7 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
         runtime.start(
             bundlePath: bundlePath,
             polyfillPath: polyfillPath,
+            engine: engine,
             argv: argv,
             env: env
         ) { result in
@@ -98,6 +100,7 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
         }
         var payload: JSObject = [
             "ready": runtime.isRunning,
+            "engine": runtime.engineMode,
         ]
         if let v = runtime.bridgeVersion { payload["bridgeVersion"] = v }
         if let m = runtime.loadedModelPath { payload["model"] = m }

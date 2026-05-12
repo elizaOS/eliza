@@ -31,6 +31,7 @@ import type {
 } from "@elizaos/core";
 import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { hasLifeOpsAccess, INTERNAL_URL } from "../../lifeops/access.js";
 import {
   type LifeOpsMeetingPreferences,
   type LifeOpsMeetingPreferencesBlackout,
@@ -40,14 +41,13 @@ import {
   updateLifeOpsMeetingPreferences,
 } from "../../lifeops/owner-profile.js";
 import { LifeOpsService, LifeOpsServiceError } from "../../lifeops/service.js";
-import { getZonedDateParts } from "../../lifeops/time.js";
-import { parseJsonModelRecord } from "../../utils/json-model-output.js";
-import { hasLifeOpsAccess, INTERNAL_URL } from "../../lifeops/access.js";
 import { inferTimeZoneFromLocationText } from "../../lifeops/time/timezone.js";
+import { getZonedDateParts } from "../../lifeops/time.js";
 import {
   messageText as getMessageText,
   renderLifeOpsActionReply,
 } from "../../lifeops/voice/grounded-reply.js";
+import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./recent-context.js";
 
 const MS_PER_MINUTE = 60_000;
@@ -470,7 +470,7 @@ export const proposeMeetingTimesAction: Action & {
     "buffer) and returns three available slots by default over the next seven " +
     "days. Also correct for bundled scheduling while traveling or concrete " +
     "reschedule options. " +
-    "STRONG POSITIVE TRIGGERS — route HERE, not to CALENDAR or SCHEDULING_NEGOTIATION: " +
+    "STRONG POSITIVE TRIGGERS — route HERE, not to CALENDAR or PERSONAL_ASSISTANT action=scheduling: " +
     "'propose three times for a sync with a person', 'suggest a few times for " +
     "a partner', 'offer a colleague three 30-minute slots', 'find us three options " +
     "next week', 'give me slots to send to a teammate'. " +
@@ -478,8 +478,8 @@ export const proposeMeetingTimesAction: Action & {
     "DO NOT use this to check the owner's calendar, create a calendar event, " +
     "or view upcoming events — that is CALENDAR. " +
     "DO NOT use this to start a multi-turn scheduling negotiation record — " +
-    "that is SCHEDULING_NEGOTIATION (subaction: start). This action just generates " +
-    "the candidate slots; SCHEDULING_NEGOTIATION tracks the negotiation lifecycle around them.",
+    "that is PERSONAL_ASSISTANT action=scheduling. This action just generates " +
+    "the candidate slots; the scheduling workflow tracks the negotiation lifecycle around them.",
   descriptionCompressed:
     "Propose available meeting slots from the owner's calendar and meeting preferences; not calendar CRUD or negotiation tracking.",
   contexts: ["calendar", "contacts", "tasks"],
@@ -1003,19 +1003,6 @@ type SchedulingSubaction =
   | "list_active"
   | "list_proposals";
 
-const SCHEDULING_SUBACTIONS: readonly SchedulingSubaction[] = [
-  "start",
-  "propose",
-  "respond",
-  "finalize",
-  "cancel",
-  "list_active",
-  "list_proposals",
-];
-
-const SCHEDULING_RESPONSES = ["accepted", "declined", "expired"] as const;
-const SCHEDULING_PROPOSED_BY = ["agent", "owner", "counterparty"] as const;
-
 type SchedulingActionParameters = {
   subaction?: SchedulingSubaction;
   intent?: string;
@@ -1188,7 +1175,7 @@ function formatProposalSummary(p: {
   return `Proposal ${p.id}: ${p.startAt} → ${p.endAt} by ${p.proposedBy} (status=${p.status})`;
 }
 
-// Internal SCHEDULING_NEGOTIATION lifecycle handler. The surface is delegated
+// Internal scheduling-negotiation lifecycle handler. The surface is delegated
 // to from the registered PERSONAL_ASSISTANT umbrella in owner-surfaces.ts;
 // scheduling negotiations no longer publish a planner-visible Action.
 export async function runSchedulingNegotiationHandler(
@@ -1198,270 +1185,270 @@ export async function runSchedulingNegotiationHandler(
   options: unknown,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
-    const respond = makeSchedulingRespond({
-      runtime,
-      message,
-      state,
-      callback,
-      actionName: "SCHEDULING_NEGOTIATION",
-    });
+  const respond = makeSchedulingRespond({
+    runtime,
+    message,
+    state,
+    callback,
+    actionName: "PERSONAL_ASSISTANT",
+  });
 
-    const params =
-      ((options as HandlerOptions | undefined)?.parameters as
-        | SchedulingActionParameters
-        | undefined) ?? {};
-    const messageBody =
-      typeof message.content?.text === "string" ? message.content.text : "";
-    const planIntent = (params.intent ?? messageBody).trim();
-    const explicitSubaction = normalizeSchedulingSubaction(params.subaction);
-    const llmPlan = await resolveSchedulingPlanWithLlm({
-      runtime,
-      message,
-      state,
-      intent: planIntent,
-      params,
-    });
-    const subaction = explicitSubaction ?? llmPlan.subaction;
+  const params =
+    ((options as HandlerOptions | undefined)?.parameters as
+      | SchedulingActionParameters
+      | undefined) ?? {};
+  const messageBody =
+    typeof message.content?.text === "string" ? message.content.text : "";
+  const planIntent = (params.intent ?? messageBody).trim();
+  const explicitSubaction = normalizeSchedulingSubaction(params.subaction);
+  const llmPlan = await resolveSchedulingPlanWithLlm({
+    runtime,
+    message,
+    state,
+    intent: planIntent,
+    params,
+  });
+  const subaction = explicitSubaction ?? llmPlan.subaction;
 
-    if (llmPlan.shouldAct === false && !explicitSubaction) {
-      const fallback =
-        llmPlan.response ??
-        "Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?";
-      return respond({
+  if (llmPlan.shouldAct === false && !explicitSubaction) {
+    const fallback =
+      llmPlan.response ??
+      "Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?";
+    return respond({
+      success: false,
+      scenario: "scheduling_negotiation_clarification",
+      fallback,
+      values: {
         success: false,
-        scenario: "scheduling_negotiation_clarification",
-        fallback,
-        values: {
-          success: false,
-          error: "PLANNER_SHOULDACT_FALSE",
-          noop: true,
-        },
-        data: { noop: true, error: "PLANNER_SHOULDACT_FALSE" },
-      });
-    }
+        error: "PLANNER_SHOULDACT_FALSE",
+        noop: true,
+      },
+      data: { noop: true, error: "PLANNER_SHOULDACT_FALSE" },
+    });
+  }
 
-    if (!subaction) {
-      const fallback =
-        llmPlan.response ??
-        "Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?";
-      return respond({
-        success: false,
-        scenario: "scheduling_negotiation_missing_subaction",
-        fallback,
-        values: { requiresConfirmation: true },
-        data: {
-          error: "MISSING_SUBACTION",
-          requiresConfirmation: true,
-        },
-      });
-    }
+  if (!subaction) {
+    const fallback =
+      llmPlan.response ??
+      "Do you want to start, propose, respond, finalize, cancel, or list scheduling negotiations?";
+    return respond({
+      success: false,
+      scenario: "scheduling_negotiation_missing_subaction",
+      fallback,
+      values: { requiresConfirmation: true },
+      data: {
+        error: "MISSING_SUBACTION",
+        requiresConfirmation: true,
+      },
+    });
+  }
 
-    const service = new LifeOpsService(runtime);
-    try {
-      if (subaction === "start") {
-        const subject = params.subject ?? params.intent ?? messageBody.trim();
-        if (!subject) {
-          return respond({
-            success: false,
-            scenario: "scheduling_negotiation_start_missing_subject",
-            fallback:
-              "I need a subject (what the meeting is about) to start a negotiation.",
-            values: { requiresConfirmation: true },
-            data: {
-              error: "MISSING_SUBJECT",
-              requiresConfirmation: true,
-            },
-          });
-        }
-        const neg = await service.startNegotiation({
-          subject,
-          relationshipId: params.relationshipId ?? null,
-          durationMinutes: params.durationMinutes,
-          timezone: params.timezone,
-        });
-        return respond({
-          success: true,
-          scenario: "scheduling_negotiation_started",
-          fallback: `Started ${formatNegotiationSummary(neg)} and notified the counterparty.`,
-          context: {
-            negotiationId: neg.id,
-            subject: neg.subject,
-            durationMinutes: neg.durationMinutes,
-            state: neg.state,
-          },
-          data: { negotiation: neg },
-        });
-      }
-
-      if (subaction === "propose") {
-        if (!params.negotiationId || !params.startAt || !params.endAt) {
-          // Selection + execution were correct: the user wanted to propose
-          // times, the handler ran, and we now need the user to fill in the
-          // missing fields. Mark as awaiting-confirmation.
-          return respond({
-            success: false,
-            scenario: "scheduling_negotiation_propose_missing_fields",
-            fallback:
-              "Propose needs negotiationId, startAt, and endAt (ISO-8601).",
-            values: { requiresConfirmation: true },
-            data: {
-              error: "MISSING_PROPOSAL_FIELDS",
-              requiresConfirmation: true,
-            },
-          });
-        }
-        const proposedBy = params.proposedBy ?? "agent";
-        const proposal = await service.proposeTime({
-          negotiationId: params.negotiationId,
-          startAt: params.startAt,
-          endAt: params.endAt,
-          proposedBy,
-        });
-        const fallback =
-          proposedBy === "counterparty"
-            ? `Recorded ${formatProposalSummary(proposal)}.`
-            : `Recorded ${formatProposalSummary(proposal)} and sent it to the counterparty.`;
-        return respond({
-          success: true,
-          scenario: "scheduling_negotiation_proposed",
-          fallback,
-          context: {
-            proposalId: proposal.id,
-            startAt: proposal.startAt,
-            endAt: proposal.endAt,
-            proposedBy,
-            status: proposal.status,
-          },
-          data: { proposal },
-        });
-      }
-
-      if (subaction === "respond") {
-        if (!params.proposalId || !params.response) {
-          return respond({
-            success: false,
-            scenario: "scheduling_negotiation_respond_missing_fields",
-            fallback: "Respond needs proposalId and response.",
-            data: { error: "MISSING_RESPONSE_FIELDS" },
-          });
-        }
-        const proposal = await service.respondToProposal(
-          params.proposalId,
-          params.response,
-        );
-        return respond({
-          success: true,
-          scenario: "scheduling_negotiation_respond",
-          fallback: `Proposal ${proposal.id} is now ${proposal.status}.`,
-          context: { proposalId: proposal.id, status: proposal.status },
-          data: { proposal },
-        });
-      }
-
-      if (subaction === "finalize") {
-        if (!params.negotiationId || !params.proposalId) {
-          return respond({
-            success: false,
-            scenario: "scheduling_negotiation_finalize_missing_fields",
-            fallback: "Finalize needs negotiationId and proposalId.",
-            data: { error: "MISSING_FINALIZE_FIELDS" },
-          });
-        }
-        const neg = await service.finalizeNegotiation(
-          params.negotiationId,
-          params.proposalId,
-        );
-        return respond({
-          success: true,
-          scenario: "scheduling_negotiation_finalized",
-          fallback: `Confirmed ${formatNegotiationSummary(neg)} and sent confirmation to the counterparty.`,
-          context: {
-            negotiationId: neg.id,
-            subject: neg.subject,
-            durationMinutes: neg.durationMinutes,
-            state: neg.state,
-          },
-          data: { negotiation: neg },
-        });
-      }
-
-      if (subaction === "cancel") {
-        if (!params.negotiationId) {
-          return respond({
-            success: false,
-            scenario: "scheduling_negotiation_cancel_missing_id",
-            fallback: "Cancel needs negotiationId.",
-            data: { error: "MISSING_NEGOTIATION_ID" },
-          });
-        }
-        await service.cancelNegotiation(params.negotiationId, params.reason);
-        return respond({
-          success: true,
-          scenario: "scheduling_negotiation_cancelled",
-          fallback: `Cancelled negotiation ${params.negotiationId} and notified the counterparty.`,
-          context: { negotiationId: params.negotiationId },
-          data: { negotiationId: params.negotiationId },
-        });
-      }
-
-      if (subaction === "list_proposals") {
-        if (!params.negotiationId) {
-          return respond({
-            success: false,
-            scenario: "scheduling_negotiation_list_proposals_missing_id",
-            fallback: "list_proposals needs negotiationId.",
-            data: { error: "MISSING_NEGOTIATION_ID" },
-          });
-        }
-        const proposals = await service.listProposals(params.negotiationId);
-        const fallback = proposals.length
-          ? `Proposals for ${params.negotiationId}:\n${proposals.map(formatProposalSummary).join("\n")}`
-          : `No proposals for ${params.negotiationId}.`;
-        return respond({
-          success: true,
-          scenario: "scheduling_negotiation_list_proposals",
-          fallback,
-          context: {
-            negotiationId: params.negotiationId,
-            proposalCount: proposals.length,
-          },
-          data: { proposals },
-        });
-      }
-
-      // list_active
-      const active = await service.listActiveNegotiations({ limit: 20 });
-      const fallback = active.length
-        ? `Active negotiations:\n${active.map(formatNegotiationSummary).join("\n")}`
-        : "No active scheduling negotiations.";
-      return respond({
-        success: true,
-        scenario: "scheduling_negotiation_list_active",
-        fallback,
-        context: { activeCount: active.length },
-        data: { negotiations: active },
-      });
-    } catch (error) {
-      if (error instanceof LifeOpsServiceError) {
-        // Selection + execution were correct: the user asked to schedule, the
-        // action ran, and the lifeops service surfaced a needs-human signal
-        // (no counterparty contact, missing scheduling field, dispatch
-        // failed, etc.). Mark as awaiting-confirmation so the native planner
-        // stops chaining and the benchmark scorer treats this as completed.
+  const service = new LifeOpsService(runtime);
+  try {
+    if (subaction === "start") {
+      const subject = params.subject ?? params.intent ?? messageBody.trim();
+      if (!subject) {
         return respond({
           success: false,
-          scenario: "scheduling_negotiation_service_error",
-          fallback: `Scheduling error: ${error.message}`,
-          context: { status: error.status, detail: error.message },
+          scenario: "scheduling_negotiation_start_missing_subject",
+          fallback:
+            "I need a subject (what the meeting is about) to start a negotiation.",
           values: { requiresConfirmation: true },
           data: {
-            error: "SERVICE_ERROR",
-            status: error.status,
-            detail: error.message,
+            error: "MISSING_SUBJECT",
             requiresConfirmation: true,
           },
         });
       }
-      throw error;
+      const neg = await service.startNegotiation({
+        subject,
+        relationshipId: params.relationshipId ?? null,
+        durationMinutes: params.durationMinutes,
+        timezone: params.timezone,
+      });
+      return respond({
+        success: true,
+        scenario: "scheduling_negotiation_started",
+        fallback: `Started ${formatNegotiationSummary(neg)} and notified the counterparty.`,
+        context: {
+          negotiationId: neg.id,
+          subject: neg.subject,
+          durationMinutes: neg.durationMinutes,
+          state: neg.state,
+        },
+        data: { negotiation: neg },
+      });
     }
+
+    if (subaction === "propose") {
+      if (!params.negotiationId || !params.startAt || !params.endAt) {
+        // Selection + execution were correct: the user wanted to propose
+        // times, the handler ran, and we now need the user to fill in the
+        // missing fields. Mark as awaiting-confirmation.
+        return respond({
+          success: false,
+          scenario: "scheduling_negotiation_propose_missing_fields",
+          fallback:
+            "Propose needs negotiationId, startAt, and endAt (ISO-8601).",
+          values: { requiresConfirmation: true },
+          data: {
+            error: "MISSING_PROPOSAL_FIELDS",
+            requiresConfirmation: true,
+          },
+        });
+      }
+      const proposedBy = params.proposedBy ?? "agent";
+      const proposal = await service.proposeTime({
+        negotiationId: params.negotiationId,
+        startAt: params.startAt,
+        endAt: params.endAt,
+        proposedBy,
+      });
+      const fallback =
+        proposedBy === "counterparty"
+          ? `Recorded ${formatProposalSummary(proposal)}.`
+          : `Recorded ${formatProposalSummary(proposal)} and sent it to the counterparty.`;
+      return respond({
+        success: true,
+        scenario: "scheduling_negotiation_proposed",
+        fallback,
+        context: {
+          proposalId: proposal.id,
+          startAt: proposal.startAt,
+          endAt: proposal.endAt,
+          proposedBy,
+          status: proposal.status,
+        },
+        data: { proposal },
+      });
+    }
+
+    if (subaction === "respond") {
+      if (!params.proposalId || !params.response) {
+        return respond({
+          success: false,
+          scenario: "scheduling_negotiation_respond_missing_fields",
+          fallback: "Respond needs proposalId and response.",
+          data: { error: "MISSING_RESPONSE_FIELDS" },
+        });
+      }
+      const proposal = await service.respondToProposal(
+        params.proposalId,
+        params.response,
+      );
+      return respond({
+        success: true,
+        scenario: "scheduling_negotiation_respond",
+        fallback: `Proposal ${proposal.id} is now ${proposal.status}.`,
+        context: { proposalId: proposal.id, status: proposal.status },
+        data: { proposal },
+      });
+    }
+
+    if (subaction === "finalize") {
+      if (!params.negotiationId || !params.proposalId) {
+        return respond({
+          success: false,
+          scenario: "scheduling_negotiation_finalize_missing_fields",
+          fallback: "Finalize needs negotiationId and proposalId.",
+          data: { error: "MISSING_FINALIZE_FIELDS" },
+        });
+      }
+      const neg = await service.finalizeNegotiation(
+        params.negotiationId,
+        params.proposalId,
+      );
+      return respond({
+        success: true,
+        scenario: "scheduling_negotiation_finalized",
+        fallback: `Confirmed ${formatNegotiationSummary(neg)} and sent confirmation to the counterparty.`,
+        context: {
+          negotiationId: neg.id,
+          subject: neg.subject,
+          durationMinutes: neg.durationMinutes,
+          state: neg.state,
+        },
+        data: { negotiation: neg },
+      });
+    }
+
+    if (subaction === "cancel") {
+      if (!params.negotiationId) {
+        return respond({
+          success: false,
+          scenario: "scheduling_negotiation_cancel_missing_id",
+          fallback: "Cancel needs negotiationId.",
+          data: { error: "MISSING_NEGOTIATION_ID" },
+        });
+      }
+      await service.cancelNegotiation(params.negotiationId, params.reason);
+      return respond({
+        success: true,
+        scenario: "scheduling_negotiation_cancelled",
+        fallback: `Cancelled negotiation ${params.negotiationId} and notified the counterparty.`,
+        context: { negotiationId: params.negotiationId },
+        data: { negotiationId: params.negotiationId },
+      });
+    }
+
+    if (subaction === "list_proposals") {
+      if (!params.negotiationId) {
+        return respond({
+          success: false,
+          scenario: "scheduling_negotiation_list_proposals_missing_id",
+          fallback: "list_proposals needs negotiationId.",
+          data: { error: "MISSING_NEGOTIATION_ID" },
+        });
+      }
+      const proposals = await service.listProposals(params.negotiationId);
+      const fallback = proposals.length
+        ? `Proposals for ${params.negotiationId}:\n${proposals.map(formatProposalSummary).join("\n")}`
+        : `No proposals for ${params.negotiationId}.`;
+      return respond({
+        success: true,
+        scenario: "scheduling_negotiation_list_proposals",
+        fallback,
+        context: {
+          negotiationId: params.negotiationId,
+          proposalCount: proposals.length,
+        },
+        data: { proposals },
+      });
+    }
+
+    // list_active
+    const active = await service.listActiveNegotiations({ limit: 20 });
+    const fallback = active.length
+      ? `Active negotiations:\n${active.map(formatNegotiationSummary).join("\n")}`
+      : "No active scheduling negotiations.";
+    return respond({
+      success: true,
+      scenario: "scheduling_negotiation_list_active",
+      fallback,
+      context: { activeCount: active.length },
+      data: { negotiations: active },
+    });
+  } catch (error) {
+    if (error instanceof LifeOpsServiceError) {
+      // Selection + execution were correct: the user asked to schedule, the
+      // action ran, and the lifeops service surfaced a needs-human signal
+      // (no counterparty contact, missing scheduling field, dispatch
+      // failed, etc.). Mark as awaiting-confirmation so the native planner
+      // stops chaining and the benchmark scorer treats this as completed.
+      return respond({
+        success: false,
+        scenario: "scheduling_negotiation_service_error",
+        fallback: `Scheduling error: ${error.message}`,
+        context: { status: error.status, detail: error.message },
+        values: { requiresConfirmation: true },
+        data: {
+          error: "SERVICE_ERROR",
+          status: error.status,
+          detail: error.message,
+          requiresConfirmation: true,
+        },
+      });
+    }
+    throw error;
+  }
 }

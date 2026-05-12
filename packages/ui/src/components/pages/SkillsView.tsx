@@ -346,11 +346,11 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                       "Install skills from the marketplace or create your own.",
                   })}
                   action={
-                    <div className="flex justify-center gap-3">
+                    <div className="flex w-full flex-col justify-center gap-2 sm:w-auto sm:flex-row sm:gap-3">
                       <Button
                         variant="default"
                         size="sm"
-                        className="h-10 rounded-full px-5 font-bold tracking-[0.12em]"
+                        className="h-10 w-full justify-center rounded-full px-5 font-bold tracking-[0.12em] sm:w-auto"
                         onClick={() => setInstallModalOpen(true)}
                       >
                         {t("skillsview.BrowseMarketplace")}
@@ -358,7 +358,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-10 rounded-full px-5 font-bold tracking-[0.12em]"
+                        className="h-10 w-full justify-center rounded-full px-5 font-bold tracking-[0.12em] sm:w-auto"
                         onClick={() => setState("skillCreateFormOpen", true)}
                       >
                         {t("skillsview.createSkill", {
@@ -508,7 +508,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                           }
                           withDot
                         />
-                        <span className="text-xs-tight font-mono text-muted/80">
+                        <span className="min-w-0 break-all text-xs-tight font-mono text-muted/80">
                           {selectedSkill.id}
                         </span>
                       </div>
@@ -607,7 +607,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                             {skillReviewReport.findings.map((finding, _idx) => (
                               <div
                                 key={`${finding.file}:${finding.line}:${finding.message}`}
-                                className={`flex items-start gap-2 px-3 py-2 text-xs-tight`}
+                                className={`flex flex-col gap-1 px-3 py-2 text-xs-tight sm:flex-row sm:items-start sm:gap-2`}
                               >
                                 <span
                                   className={`shrink-0 rounded-full px-2 py-0.5 text-3xs font-bold uppercase tracking-[0.12em] ${
@@ -623,7 +623,7 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                                 <span className="min-w-0 flex-1 text-txt">
                                   {finding.message}
                                 </span>
-                                <span className="shrink-0 font-mono text-muted">
+                                <span className="min-w-0 break-all font-mono text-muted sm:shrink-0">
                                   {finding.file}:{finding.line}
                                 </span>
                               </div>

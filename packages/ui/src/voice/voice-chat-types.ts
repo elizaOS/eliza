@@ -120,6 +120,12 @@ export interface VoicePlaybackStartEvent {
   provider: SpeechProviderKind;
   cached: boolean;
   startedAtMs: number;
+  messageId?: string;
+  voiceTurnId?: string;
+  speechEndedAtMs?: number;
+  assistantFirstTextAtMs?: number;
+  assistantTextUpdatedAtMs?: number;
+  queuedAtMs?: number;
 }
 
 export interface VoiceTranscriptPreviewEvent {
@@ -150,6 +156,29 @@ export interface VoiceChatOptions {
   voiceConfig?: VoiceConfig | null;
 }
 
+export interface VoiceAssistantSpeechTelemetry {
+  /** Assistant message whose visible text is being spoken. */
+  messageId?: string;
+  /** User voice turn that caused this assistant output. */
+  voiceTurnId?: string;
+  /** UI monotonic timestamp for final transcript receipt / speech end. */
+  speechEndedAtMs?: number;
+  /** UI monotonic timestamp when this assistant message first had visible text. */
+  assistantFirstTextAtMs?: number;
+  /** UI monotonic timestamp for this visible text update. */
+  assistantTextUpdatedAtMs?: number;
+}
+
+export interface QueueAssistantSpeechOptions {
+  /**
+   * Replace current playback for the first clip of a new assistant message.
+   * Leave enabled for single-message stream corrections; disable when appending
+   * additional visible assistant turns from the same voice response.
+   */
+  replace?: boolean;
+  telemetry?: VoiceAssistantSpeechTelemetry;
+}
+
 export interface VoiceChatState {
   /** Whether voice input is currently active */
   isListening: boolean;
@@ -178,6 +207,7 @@ export interface VoiceChatState {
     messageId: string,
     text: string,
     isFinal: boolean,
+    options?: QueueAssistantSpeechOptions,
   ) => void;
   /** Stop any current speech */
   stopSpeaking: () => void;
@@ -200,6 +230,9 @@ export interface SpeakTask {
     messageId: string;
     fullAssistTextPreview: string;
   };
+  telemetry?: VoiceAssistantSpeechTelemetry & {
+    queuedAtMs?: number;
+  };
 }
 
 export interface AssistantSpeechState {
@@ -209,6 +242,8 @@ export interface AssistantSpeechState {
   /** Latest speakable from the stream (debounce flush reads this). */
   latestSpeakable: string;
   finalQueued: boolean;
+  replacePlaybackOnFirstClip: boolean;
+  telemetry?: VoiceAssistantSpeechTelemetry;
 }
 
 // ── Constants ─────────────────────────────────────────────────────────
@@ -223,14 +258,8 @@ export const ASSISTANT_TTS_FIRST_FLUSH_CHARS = 24;
 export const ASSISTANT_TTS_MIN_CHUNK_CHARS = 88;
 /** Merge rapid stream deltas into one request after a short pause. */
 export const ASSISTANT_TTS_DEBOUNCE_MS = 170;
-/**
- * Temporary safety switch:
- * only speak assistant replies once the final text has arrived.
- *
- * This avoids garbled overlap when cloud text streaming and speech playback
- * race each other on partial chunks.
- */
-export const ASSISTANT_TTS_FINAL_ONLY = true;
+/** Stream assistant speech progressively; queueing keeps chunks serialized. */
+export const ASSISTANT_TTS_FINAL_ONLY = false;
 export const TALKMODE_STOP_SETTLE_MS = 120;
 export const REDACTED_SECRET = "[REDACTED]";
 export const MOUTH_OPEN_STEP = 0.02;

@@ -53,7 +53,7 @@ updates behind a button that cannot work.
 | macOS direct desktop | DMG/zip/Homebrew cask | Electrobun updater, `ELIZA_RELEASE_URL`, `/Applications` eligibility guard | GitHub release feed or mirror | Yes |
 | Windows direct desktop | installer/portable | Electrobun updater | GitHub release feed or mirror | Yes |
 | Linux direct desktop | AppImage/deb/rpm/tar | Electrobun updater, future package feed | GitHub release feed or package manager | Yes for Electrobun artifacts; package manager for deb/rpm |
-| Mac App Store | MAS | `MILADY_BUILD_VARIANT=store` disables updater | Mac App Store | No |
+| Mac App Store | MAS | `ELIZA_BUILD_VARIANT=store` disables updater | Mac App Store | No |
 | Microsoft Store | MSIX/Win32 Store | store policy model needed per packaging target | Microsoft Store or publisher-owned Win32 channel | Usually store-managed unless published as direct Win32 |
 | Debian OS | apt/unattended-upgrades | CLI detects `apt` for agent package updates | Debian/Ubuntu apt repos and system administrator | No app-driven OS update |
 | Snap | Snap Store | CLI detects `snap` | `snapd` refresh | No app-driven updater |
@@ -145,7 +145,7 @@ or `~/Applications` because patching a translocated app bundle is unreliable.
 ### Store Desktop
 
 Mac App Store, Microsoft Store, Snap, and Flatpak builds should use
-`MILADY_BUILD_VARIANT=store` or a target-specific equivalent and disable the
+`ELIZA_BUILD_VARIANT=store` or a target-specific equivalent and disable the
 Electrobun feed. Settings should show "Managed by Store" and release notes.
 Win32 submitted through Microsoft Store needs a packaging decision: if Store
 owns the package, disable self-update; if Microsoft allows a publisher-managed
@@ -160,6 +160,18 @@ updates should come from a signed apt repository with Release metadata and a
 stable package name. The app can show package version and whether `apt` is the
 install method, but it should not run OS upgrades from Settings.
 
+Release authority for Debian-like targets is explicit:
+
+- OS packages: Debian/Ubuntu archive, private apt repo, or the administrator's
+  configured mirror. Settings may surface `apt` status, lock errors, held
+  packages, and the exact command/operator action.
+- Direct desktop `.deb`: if shipped as an Electrobun artifact, GitHub Releases
+  can own the app updater metadata. If installed from apt, apt owns updates and
+  the in-app updater must be disabled.
+- Server agent package: the package manager/operator owns updates. A future
+  remote update endpoint must be admin-authenticated, audited, supervised, and
+  rollback-aware before it can run privileged commands.
+
 ### Android Apps
 
 `android-cloud` is the Play-compliant thin client and must remain store-managed.
@@ -170,6 +182,21 @@ unless that store explicitly delegates updates back to the publisher. F-Droid is
 possible only if the app can meet its source/build/signing expectations; when
 F-Droid signs builds differently, cross-updates with GitHub/Play will fail due
 to Android signature rules.
+
+The mobile build script now exposes the release-authority mapping through
+`resolveMobileBuildPolicy`:
+
+| Target | Build variant | Runtime mode | Release authority | Allowed Settings action |
+| --- | --- | --- | --- | --- |
+| `android-cloud` | `store` | `cloud` | Google Play | Open Play/release notes |
+| `android` | `direct` | `local` | GitHub Release + Android package installer | Open GitHub release; user installs |
+| `android-system` | `direct` | `local` | AOSP OTA/privileged package channel | Show OTA/version status only |
+| `ios` | `store` | `cloud` | Apple App Store/TestFlight | Open App Store/TestFlight/release notes |
+| `ios-local` | `direct` | `local` | Xcode, Apple Configurator, Homebrew-assisted local tooling, or developer sideload tooling | Show build provenance/release notes |
+
+None of these mobile targets has app-controlled binary OTA. The direct mobile
+variant means "not app-store sandboxed"; it does not mean the app may silently
+replace itself.
 
 ### Android AOSP / ElizaOS
 
@@ -184,10 +211,31 @@ emit build fingerprint, OTA metadata, signed full OTA, optional incremental OTA,
 Cuttlefish boot validation, and rollback validation. GitHub can host metadata
 and artifacts, but devices must verify payload signatures before install.
 
+The first metadata guard is
+`scripts/distro-android/validate-ota-metadata.mjs`. It validates a JSON release
+index without requiring an AOSP checkout or build artifacts. The file is meant
+to sit beside signed OTA ZIPs on GitHub Releases or a static mirror and must
+record the brand, package name, channel, release version, build ID/fingerprint,
+security patch level, release notes URL, and one or more payloads. Each payload
+declares `type`, `fileName`, `url`, `sha256`, `sizeBytes`,
+`targetBuildFingerprint`, rollback index fields, and optional
+`payloadPropertiesUrl`/`metadataSha256`.
+
+Example local validation:
+
+```bash
+node scripts/distro-android/validate-ota-metadata.mjs \
+  --brand-config scripts/distro-android/brand.eliza.json \
+  path/to/ota-release.json
+```
+
+Use `--allow-file-urls` only for local dry-runs; published release metadata
+should use HTTPS URLs.
+
 ### iOS
 
-App Store/TestFlight, EU Web Distribution, alternative marketplaces, enterprise
-MDM, and local sideload all remain externally managed. Settings can show
+App Store/TestFlight, EU Web Distribution, alternative marketplaces, and local
+sideload all remain externally managed. Settings can show
 version/build and release notes. It must not download a replacement app bundle
 or executable runtime. For EU Web Distribution, the install/update path is still
 the Apple-notarized domain/marketplace path, not our app UI.

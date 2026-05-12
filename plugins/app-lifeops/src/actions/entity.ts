@@ -11,9 +11,7 @@
  *
  * Follow-up cadence (`add_follow_up`, `complete_follow_up`,
  * `follow_up_list`, `days_since`, `list_overdue_followups`,
- * `mark_followup_done`, `set_followup_threshold`) lives on `SCHEDULED_TASK`.
- * The legacy `RELATIONSHIP` umbrella name is preserved as a simile so the
- * planner does not regress on cached prompts.
+ * `mark_followup_done`, `set_followup_threshold`) lives on `SCHEDULED_TASKS`.
  */
 
 import type {
@@ -460,9 +458,6 @@ export const entityAction: Action & {
 } = {
   name: "ENTITY",
   similes: [
-    // Wave-2 W2-A: RELATIONSHIP is preserved as a one-release simile so
-    // the planner does not regress on cached prompts.
-    "RELATIONSHIP",
     "CONTACTS",
     "ROLODEX",
     "LOG_INTERACTION",
@@ -471,14 +466,13 @@ export const entityAction: Action & {
     "MERGE_ENTITIES",
     "MERGE_CONTACTS",
     "SET_IDENTITY",
-    "SET_RELATIONSHIP",
   ],
   description:
-    "Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: create, read, set_identity, set_relationship, log_interaction, merge. For rolodex/contact lifecycle (CRUD on a single contact's profile) use CONTACT; ENTITY is the owner-graph umbrella for identity, relationships, and interaction history. Use SCHEDULED_TASK for follow-up cadence; use LIFE for one-off dated reminders to call/text someone.",
+    "Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: create, read, set_identity, set_relationship, log_interaction, merge. For rolodex/contact lifecycle (CRUD on a single contact's profile) use CONTACT; ENTITY is the owner-graph umbrella for identity, relationships, and interaction history. Use SCHEDULED_TASKS for follow-up cadence; use OWNER_REMINDERS for one-off dated reminders to call/text someone.",
   descriptionCompressed:
     "people+relationships: create|read|set_identity|set_relationship|log_interaction|merge; rolodex CRUD → CONTACT; follow-up cadence → SCHEDULED_TASK",
   routingHint:
-    'people/contacts/relationships ("add Pat to my contacts", "Pat is my manager") -> ENTITY; follow-up cadence ("follow up with David", "how long since I talked to X", "who is overdue") -> SCHEDULED_TASK; one-off dated reminders to call/text someone ("remember to call mom Sunday") -> LIFE',
+    'people/contacts/relationships ("add Pat to my contacts", "Pat is my manager") -> ENTITY; follow-up cadence ("follow up with David", "how long since I talked to X", "who is overdue") -> SCHEDULED_TASKS; one-off dated reminders to call/text someone ("remember to call mom Sunday") -> OWNER_REMINDERS',
   tags: [
     "domain:contacts",
     "capability:read",
@@ -657,7 +651,7 @@ export const entityAction: Action & {
           success: false,
           scenario: "entity_log_missing_id",
           fallback: "I need a known contact to log an interaction.",
-          data: { subaction, error: "MISSING_RELATIONSHIP_ID" },
+          data: { subaction, error: "MISSING_EDGE_ID" },
         });
       }
       const rel = await service.getRelationship(relationshipId);
@@ -720,10 +714,11 @@ export const entityAction: Action & {
       });
       // Force-mark this identity as verified — the canonical surface for
       // user-asserted identities per IMPL §5.1.
-      const verifiedIdentities = observation.entity.identities.map((identity) =>
-        identity.platform === platform && identity.handle === handle
-          ? { ...identity, verified: true }
-          : identity,
+      const verifiedIdentities = observation.entity.identities.map(
+        (identity) =>
+          identity.platform === platform && identity.handle === handle
+            ? { ...identity, verified: true }
+            : identity,
       );
       const merged = await entityStore.upsert({
         ...observation.entity,
@@ -837,8 +832,7 @@ export const entityAction: Action & {
     },
     {
       name: "intent",
-      description:
-        "Free-form user intent used to infer action when not set.",
+      description: "Free-form user intent used to infer action when not set.",
       descriptionCompressed: "free-form intent infer action",
       schema: { type: "string" as const },
     },
@@ -906,7 +900,8 @@ export const entityAction: Action & {
       name: "platform",
       description:
         "Identity platform for set_identity (e.g. telegram, slack, email, twitter). Combine with handle.",
-      descriptionCompressed: "set_identity platform e.g. telegram|slack|email|twitter|phone",
+      descriptionCompressed:
+        "set_identity platform e.g. telegram|slack|email|twitter|phone",
       schema: { type: "string" as const },
       examples: ["telegram", "email", "phone", "slack"],
     },

@@ -1,9 +1,9 @@
 /**
- * Payments capability — atomic action slice (Wave B-atoms).
+ * Payments capability — consolidated action slice.
  *
- * Registers the six atomic payment actions:
- *   CREATE_PAYMENT_REQUEST, DELIVER_PAYMENT_LINK, VERIFY_PAYMENT_PAYLOAD,
- *   SETTLE_PAYMENT, AWAIT_PAYMENT_CALLBACK, CANCEL_PAYMENT_REQUEST.
+ * Registers the PAYMENT umbrella action with structural subactions:
+ *   create_request, deliver_link, verify_payload, settle, await_callback,
+ *   cancel_request.
  *
  * Composition (create + deliver + await + finalize) lives in the planner.
  * The cloud-backed client implementations (`PaymentRequestsClient`,
@@ -17,27 +17,13 @@
 
 import { logger } from "../../logger.ts";
 import type { Plugin } from "../../types/index.ts";
-import {
-	awaitPaymentCallbackAction,
-	cancelPaymentRequestAction,
-	createPaymentRequestAction,
-	deliverPaymentLinkAction,
-	settlePaymentAction,
-	verifyPaymentPayloadAction,
-} from "./actions/index.ts";
+import { paymentAction } from "./actions/index.ts";
 
 export const paymentsPlugin: Plugin = {
 	name: "payments",
 	description:
-		"Atomic payment actions: create / deliver / verify / settle / await / cancel a payment request.",
-	actions: [
-		createPaymentRequestAction,
-		deliverPaymentLinkAction,
-		verifyPaymentPayloadAction,
-		settlePaymentAction,
-		awaitPaymentCallbackAction,
-		cancelPaymentRequestAction,
-	],
+		"Payment action: create / deliver / verify / settle / await / cancel a payment request.",
+	actions: [paymentAction],
 	init: async () => {
 		logger.info("[PaymentsPlugin] Initialized");
 	},

@@ -6,7 +6,7 @@ import { buildFailureReplyPrompt } from "../message";
  *
  * BACKGROUND — live regression on Cerebras gpt-oss-120b (2026-05-12):
  * a user asked "what is the SHA of the latest commit on develop in
- * /home/milady/iqlabs/milady/eliza ? short sha only". The planner
+ * /home/eliza/iqlabs/eliza/eliza ? short sha only". The planner
  * trajectory errored (no stages recorded, finalDecision=error) and the
  * fallback failure-reply path emitted a SHA that appeared in recent
  * conversation context but did not match the actual current SHA.

@@ -1163,12 +1163,8 @@ async function runCounterAppSmoke(agentType: Framework): Promise<void> {
   const previousElizaStateDir = process.env.ELIZA_STATE_DIR;
   process.env.ELIZA_STATE_DIR = stateDir;
   const { runtime, cleanup } = await createRuntime({ SERVER_PORT: "31337" });
-  const appRegistry = await AppRegistryService.start(
-    runtime,
-  );
-  const appVerification = new AppVerificationService(
-    runtime,
-  );
+  const appRegistry = await AppRegistryService.start(runtime);
+  const appVerification = new AppVerificationService(runtime);
   runtime.services.set(APP_REGISTRY_SERVICE_TYPE, [appRegistry]);
   runtime.services.set(AppVerificationService.serviceType, [appVerification]);
 

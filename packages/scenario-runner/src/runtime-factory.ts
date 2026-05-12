@@ -99,13 +99,13 @@ export interface CreateScenarioRuntimeOptions {
 }
 
 const SAVE_TRAJECTORY_ENV_FLAGS = [
-  "MILADY_SAVE_TRAJECTORIES",
+  "ELIZA_SAVE_TRAJECTORIES",
   "ELIZA_SAVE_TRAJECTORIES",
   "SCENARIO_SAVE_TRAJECTORIES",
 ] as const;
 
 const SCENARIO_PGLITE_DIR_ENV_VARS = [
-  "MILADY_SCENARIO_PGLITE_DIR",
+  "ELIZA_SCENARIO_PGLITE_DIR",
   "ELIZA_SCENARIO_PGLITE_DIR",
   "SCENARIO_PGLITE_DIR",
 ] as const;
@@ -225,17 +225,51 @@ export async function createScenarioRuntime(
     createBasicCapabilitiesPlugin({ advancedCapabilities: true }),
   );
 
-  try {
-    const localEmbedding = (await import(
-      "@elizaos/plugin-local-embedding"
-    )) as { default: Plugin };
-    await runtime.registerPlugin(localEmbedding.default);
-  } catch (err) {
-    logger.warn(
-      `[scenario-runner] local-embedding plugin unavailable: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+  // Skip @elizaos/plugin-local-embedding by default and register a
+  // deterministic zero-vector TEXT_EMBEDDING stub instead. The bundled
+  // `eliza-1-lite-0_6b-32k.gguf` is fetched from a gated HuggingFace repo on
+  // first generation; without HF credentials each turn produces a fresh
+  // 401-spam burst (LFS URL + Standard URL × ±GGUF suffix × every retry). The
+  // scenario runner doesn't score on semantic retrieval, so a zero vector is
+  // the right stub. Match the bench server's dimension (1024 — see
+  // `packages/app-core/src/benchmark/server.ts`) so downstream code that
+  // assumes that shape (vector columns sized at boot) still works.
+  // Opt back into the real plugin with `ELIZA_BENCH_SKIP_EMBEDDING=0`.
+  const skipEmbeddingPlugin =
+    (process.env.ELIZA_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
+  if (skipEmbeddingPlugin) {
+    const EMBEDDING_DIMENSIONS = 1024;
+    const stubEmbeddingPlugin: Plugin = {
+      name: "scenario-runner-stub-embedding",
+      description:
+        "Scenario-runner zero-vector TEXT_EMBEDDING handler. Replaces " +
+        "@elizaos/plugin-local-embedding so we never download the gated " +
+        "HuggingFace GGUF on every turn during scenario runs.",
+      // Higher than local-embedding's priority: 10 so we win unconditionally.
+      priority: 100,
+      models: {
+        TEXT_EMBEDDING: async () =>
+          new Array<number>(EMBEDDING_DIMENSIONS).fill(0),
+      },
+    };
+    await runtime.registerPlugin(stubEmbeddingPlugin);
+    logger.info(
+      `[scenario-runner] Registered zero-vector TEXT_EMBEDDING stub (dim=${EMBEDDING_DIMENSIONS}); ` +
+        "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-embedding instead.",
     );
+  } else {
+    try {
+      const localEmbedding = (await import(
+        "@elizaos/plugin-local-embedding"
+      )) as { default: Plugin };
+      await runtime.registerPlugin(localEmbedding.default);
+    } catch (err) {
+      logger.warn(
+        `[scenario-runner] local-embedding plugin unavailable: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
   applyRuntimeSettings(runtime, providerConfig.env);
@@ -361,7 +395,7 @@ export async function createScenarioRuntime(
   // is broad enough that small-model classifiers pick it for any request that
   // mentions a person or fact ("remember my favorite color is blue",
   // "remind me to email Alex"), which crowds out CREATE_TASK, MESSAGE,
-  // RELATIONSHIP, LIFE, etc. For the scenario runner — which is testing
+  // CONTACT, OWNER_REMINDERS, etc. For the scenario runner — which is testing
   // user-facing action routing, not profile editing — dropping it unblocks
   // the realistic cases. Real runtimes keep UPDATE_ENTITY enabled.
   const bannedActions = new Set(["UPDATE_ENTITY"]);

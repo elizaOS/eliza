@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_ELIGIBLE_MODEL_IDS, findCatalogModel } from "./catalog";
+import type { Eliza1Manifest, Eliza1Tier } from "./manifest";
+import { REQUIRED_KERNELS_BY_TIER } from "./manifest";
 import {
   assessCatalogModelFit,
+  canBundleBeDefaultOnDevice,
   chooseSmallerFallbackModel,
   classifyRecommendationPlatform,
+  deviceCapsFromProbe,
   selectRecommendedModels,
 } from "./recommendation";
-import type { HardwareProbe } from "./types";
+import type { HardwareProbe, InstalledModel } from "./types";
 
 function hardware(overrides: Partial<HardwareProbe>): HardwareProbe {
   return {
@@ -257,5 +261,191 @@ describe("local inference recommendations", () => {
     });
     const recommended = selectRecommendedModels(probe);
     expect(recommended.TEXT_SMALL.model).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// canBundleBeDefaultOnDevice — the manifest/verifiedBackends + on-device
+// verify gate the recommendation engine consults before auto-defaulting a
+// bundle. Mirrors `manifest/validator.ts:canSetAsDefault`.
+// ---------------------------------------------------------------------------
+
+const SHA = "0".repeat(64);
+
+function fixtureManifest(tier: Eliza1Tier = "1_7b"): Eliza1Manifest {
+  const pass = {
+    status: "pass" as const,
+    atCommit: "abc1234",
+    report: "x.txt",
+  };
+  return {
+    id: `eliza-1-${tier}`,
+    tier,
+    version: "1.0.0",
+    publishedAt: "2026-05-10T00:00:00Z",
+    lineage: {
+      text: { base: "eliza-1-text", license: "apache-2.0" },
+      voice: { base: "eliza-1-voice", license: "apache-2.0" },
+      drafter: { base: "eliza-1-drafter", license: "apache-2.0" },
+      asr: { base: "eliza-1-asr", license: "apache-2.0" },
+      vad: { base: "eliza-1-vad", license: "apache-2.0" },
+    },
+    files: {
+      text: [
+        { path: `text/eliza-1-${tier}-32k.gguf`, ctx: 32768, sha256: SHA },
+      ],
+      voice: [{ path: "tts/omnivoice-0.6b.gguf", sha256: SHA }],
+      asr: [{ path: "asr/asr.gguf", sha256: SHA }],
+      vision: [],
+      dflash: [{ path: `dflash/drafter-${tier}.gguf`, sha256: SHA }],
+      cache: [{ path: "cache/voice-preset-default.bin", sha256: SHA }],
+      vad: [{ path: "vad/silero-vad-int8.onnx", sha256: SHA }],
+    },
+    kernels: {
+      required: [...REQUIRED_KERNELS_BY_TIER[tier]],
+      optional: [],
+      verifiedBackends: {
+        metal: pass,
+        vulkan: pass,
+        cuda: pass,
+        rocm: pass,
+        cpu: pass,
+      },
+    },
+    evals: {
+      textEval: { score: 0.71, passed: true },
+      voiceRtf: { rtf: 0.42, passed: true },
+      asrWer: { wer: 0.05, passed: true },
+      vadLatencyMs: {
+        median: 16,
+        boundaryMs: 24,
+        endpointMs: 80,
+        falseBargeInRate: 0.01,
+        passed: true,
+      },
+      e2eLoopOk: true,
+      thirtyTurnOk: true,
+    },
+    ramBudgetMb: { min: 4000, recommended: 6000 },
+    defaultEligible: true,
+  };
+}
+
+function installedFixture(
+  overrides: Partial<InstalledModel> = {},
+): InstalledModel {
+  return {
+    id: "eliza-1-1_7b",
+    displayName: "Eliza-1 1.7B",
+    path: "/models/eliza-1-1_7b.bundle/text/eliza-1-1_7b-32k.gguf",
+    sizeBytes: 1_000_000_000,
+    bundleRoot: "/models/eliza-1-1_7b.bundle",
+    manifestPath: "/models/eliza-1-1_7b.bundle/eliza-1.manifest.json",
+    installedAt: "2026-05-11T00:00:00Z",
+    lastUsedAt: null,
+    source: "eliza-download",
+    bundleVerifiedAt: "2026-05-11T01:00:00Z",
+    ...overrides,
+  };
+}
+
+describe("canBundleBeDefaultOnDevice", () => {
+  const probe = hardware({
+    totalRamGb: 16,
+    gpu: { backend: "vulkan", totalVramGb: 8, freeVramGb: 6 },
+    source: "node-llama-cpp",
+  });
+
+  it("maps a probe onto Eliza1DeviceCaps (cpu always present + the one GPU backend)", () => {
+    expect(deviceCapsFromProbe(probe)).toEqual({
+      availableBackends: ["cpu", "vulkan"],
+      ramMb: 16 * 1024,
+    });
+    expect(deviceCapsFromProbe(hardware({ totalRamGb: 8, gpu: null }))).toEqual(
+      {
+        availableBackends: ["cpu"],
+        ramMb: 8 * 1024,
+      },
+    );
+  });
+
+  it("allows a verified, default-eligible bundle on a device with a matching backend", () => {
+    const r = canBundleBeDefaultOnDevice(installedFixture(), probe, {
+      manifestLoader: () => fixtureManifest(),
+    });
+    expect(r.canBeDefault).toBe(true);
+  });
+
+  it("refuses when the bundle has not passed the on-device verify pass", () => {
+    const r = canBundleBeDefaultOnDevice(
+      installedFixture({ bundleVerifiedAt: undefined }),
+      probe,
+      { manifestLoader: () => fixtureManifest() },
+    );
+    expect(r).toMatchObject({
+      canBeDefault: false,
+      reason: "not-verified-on-device",
+    });
+  });
+
+  it("refuses when no eliza-1.manifest.json is present", () => {
+    const r = canBundleBeDefaultOnDevice(installedFixture(), probe, {
+      manifestLoader: () => null,
+    });
+    expect(r).toMatchObject({ canBeDefault: false, reason: "no-manifest" });
+  });
+
+  it("refuses when the manifest is not defaultEligible", () => {
+    const m = fixtureManifest();
+    m.defaultEligible = false;
+    const r = canBundleBeDefaultOnDevice(installedFixture(), probe, {
+      manifestLoader: () => m,
+    });
+    expect(r).toMatchObject({
+      canBeDefault: false,
+      reason: "not-default-eligible",
+    });
+  });
+
+  it("refuses when device RAM is below the manifest floor", () => {
+    const m = fixtureManifest();
+    m.ramBudgetMb = { min: 32_000, recommended: 40_000 };
+    const r = canBundleBeDefaultOnDevice(installedFixture(), probe, {
+      manifestLoader: () => m,
+    });
+    expect(r).toMatchObject({ canBeDefault: false, reason: "ram-below-floor" });
+  });
+
+  it("refuses when no device backend has a 'pass' kernel-verify report", () => {
+    const m = fixtureManifest();
+    m.kernels.verifiedBackends.cpu = {
+      status: "fail",
+      atCommit: "abc1234",
+      report: "cpu.txt",
+    };
+    m.kernels.verifiedBackends.vulkan = {
+      status: "skipped",
+      atCommit: "abc1234",
+      report: "vulkan.txt",
+    };
+    const r = canBundleBeDefaultOnDevice(installedFixture(), probe, {
+      manifestLoader: () => m,
+    });
+    expect(r).toMatchObject({
+      canBeDefault: false,
+      reason: "kernels-unverified-on-device",
+    });
+  });
+
+  it("refuses when a required eval gate did not pass", () => {
+    const m = fixtureManifest();
+    m.evals.textEval = { score: 0.2, passed: false };
+    const r = canBundleBeDefaultOnDevice(installedFixture(), probe, {
+      manifestLoader: () => m,
+    });
+    expect(r).toMatchObject({
+      canBeDefault: false,
+      reason: "not-default-eligible",
+    });
   });
 });

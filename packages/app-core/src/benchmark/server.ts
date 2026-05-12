@@ -13,7 +13,11 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import dotenv from "dotenv";
-import { LifeOpsBenchHandler } from "./lifeops-bench-handler.js";
+import { autoWireCerebras } from "./cerebras-autowire.js";
+import {
+  LifeOpsBenchHandler,
+  type LifeOpsBenchTurnRecord,
+} from "./lifeops-bench-handler.js";
 import type { LifeOpsFakeBackend } from "./lifeops-fake-backend.js";
 import {
   clearCapturedAction,
@@ -75,54 +79,9 @@ if (_loadedEnvPath) {
   elizaLogger.debug(`[bench] Loaded env from ${_loadedEnvPath}`);
 }
 
-// Cerebras auto-wiring. The `.env` in this repo typically defines
-// `CEREBRAS_API_KEY` / `CEREBRAS_BASE_URL` / `CEREBRAS_MODEL` but does NOT set
-// `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `MILADY_PROVIDER` — the keys the
-// @elizaos/plugin-openai code path actually reads. Without those, the openai
-// plugin is skipped at load time (see the `hasOpenAiCompatibleKey` guard
-// below), no TEXT_LARGE / TEXT_SMALL handler is registered, and every
-// benchmark turn falls back to the "no LLM provider configured" stub.
-// Auto-promote when ALL of these hold:
-//   - CEREBRAS_API_KEY is set
-//   - no competing OpenAI-compat key is present (`OPENAI_API_KEY` /
-//     `OPENAI_BASE_URL` / `MILADY_PROVIDER` are all unset)
-// We never overwrite an existing OPENAI_* or MILADY_PROVIDER value.
-function autoWireCerebras(): void {
-  const cerebrasKey = process.env.CEREBRAS_API_KEY?.trim();
-  if (!cerebrasKey) return;
-  const hasOpenAiKey = !!process.env.OPENAI_API_KEY?.trim();
-  const hasOpenAiBase = !!process.env.OPENAI_BASE_URL?.trim();
-  const hasMiladyProvider = !!process.env.MILADY_PROVIDER?.trim();
-  if (hasOpenAiKey || hasOpenAiBase || hasMiladyProvider) return;
-
-  const cerebrasBase =
-    process.env.CEREBRAS_BASE_URL?.trim() || "https://api.cerebras.ai/v1";
-  process.env.OPENAI_BASE_URL = cerebrasBase;
-  process.env.OPENAI_API_KEY = cerebrasKey;
-  process.env.MILADY_PROVIDER = "cerebras";
-
-  // Pin both model tiers to the Cerebras-published id when the operator has
-  // not already set them. The @elizaos/plugin-openai client uses Cerebras's
-  // OpenAI-compatible `/v1/chat/completions` (see `models/text.ts` which
-  // calls `openai.chat(modelName)`), which is the only endpoint Cerebras
-  // exposes. The `/v1/responses` Responses API does not exist on Cerebras,
-  // so pinning a chat-completions-friendly model id and letting the plugin
-  // route through `openai.chat()` is the right behavior.
-  const cerebrasModel =
-    process.env.CEREBRAS_MODEL?.trim() || "gpt-oss-120b";
-  if (!process.env.OPENAI_LARGE_MODEL?.trim()) {
-    process.env.OPENAI_LARGE_MODEL = cerebrasModel;
-  }
-  if (!process.env.OPENAI_SMALL_MODEL?.trim()) {
-    process.env.OPENAI_SMALL_MODEL = cerebrasModel;
-  }
-
-  elizaLogger.info(
-    `[bench] Auto-wired Cerebras: OPENAI_BASE_URL=${cerebrasBase}, ` +
-      `MILADY_PROVIDER=cerebras, OPENAI_LARGE_MODEL=${process.env.OPENAI_LARGE_MODEL}, ` +
-      `OPENAI_SMALL_MODEL=${process.env.OPENAI_SMALL_MODEL}`,
-  );
-}
+// Cerebras auto-wiring. See `./cerebras-autowire.ts` for the rationale and
+// the rules under which `CEREBRAS_API_KEY` / `CEREBRAS_BASE_URL` /
+// `CEREBRAS_MODEL` are promoted to OpenAI-compat env keys.
 autoWireCerebras();
 
 const BENCH_TOKEN = process.env.ELIZA_BENCH_TOKEN?.trim() || null;
@@ -141,6 +100,57 @@ const MAX_BODY_BYTES =
 
 /** Allowed CORS origins — only localhost variants. */
 const LOCALHOST_ORIGINS = new Set(["http://localhost", "https://localhost"]);
+
+function buildLifeOpsBenchmarkContext(
+  backend: LifeOpsFakeBackend,
+  previousTurns: LifeOpsBenchTurnRecord[],
+): Record<string, unknown> {
+  const world = backend.toDocument();
+  const nowIso = backend.getNow();
+  const nowMs = Date.parse(nowIso);
+  const calendarEvents = Object.values(world.stores.calendar_event)
+    .filter((event) => event.status !== "cancelled")
+    .sort((a, b) => {
+      const aDistance = Number.isFinite(nowMs)
+        ? Math.abs(Date.parse(a.start) - nowMs)
+        : 0;
+      const bDistance = Number.isFinite(nowMs)
+        ? Math.abs(Date.parse(b.start) - nowMs)
+        : 0;
+      if (aDistance !== bDistance) return aDistance - bDistance;
+      return a.id.localeCompare(b.id);
+    })
+    .slice(0, 80)
+    .map((event) => ({
+      id: event.id,
+      calendarId: event.calendar_id,
+      title: event.title,
+      start: event.start,
+      end: event.end,
+      status: event.status,
+      source: event.source,
+    }));
+  const previousToolResults = previousTurns
+    .flatMap((turn) =>
+      turn.toolCalls.map((call) => ({
+        userText: turn.userText,
+        assistantText: turn.assistantText,
+        tool: call.name,
+        arguments: call.arguments,
+        ok: call.ok,
+        result: call.result,
+        error: call.error,
+      })),
+    )
+    .slice(-12);
+  return {
+    nowIso,
+    today: nowIso.slice(0, 10),
+    seed: backend.getSeed(),
+    calendarEvents,
+    previousToolResults,
+  };
+}
 
 function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin) return false;
@@ -351,8 +361,8 @@ export async function startBenchmarkServer() {
   // (see `isBenchmarkForcingToolCall`) honors this env var ONLY for messages
   // whose `content.source === "benchmark"` or whose `content.metadata.benchmark`
   // is set, so a co-resident chat process is unaffected.
-  if (process.env.MILADY_BENCH_FORCE_TOOL_CALL === undefined) {
-    process.env.MILADY_BENCH_FORCE_TOOL_CALL = "1";
+  if (process.env.ELIZA_BENCH_FORCE_TOOL_CALL === undefined) {
+    process.env.ELIZA_BENCH_FORCE_TOOL_CALL = "1";
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -380,10 +390,10 @@ export async function startBenchmarkServer() {
   //   spams a 401 from HuggingFace.
   // - Benchmarks don't score on semantic retrieval, so a deterministic
   //   zero-vector handler is a fine stand-in.
-  // - Opt-out by setting `MILADY_BENCH_SKIP_EMBEDDING=0` (e.g. for a benchmark
+  // - Opt-out by setting `ELIZA_BENCH_SKIP_EMBEDDING=0` (e.g. for a benchmark
   //   that genuinely depends on real embeddings).
   const skipEmbeddingPlugin =
-    (process.env.MILADY_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
+    (process.env.ELIZA_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
   if (skipEmbeddingPlugin) {
     skipPlugins.add("@elizaos/plugin-local-embedding");
   }
@@ -505,7 +515,7 @@ export async function startBenchmarkServer() {
     plugins.push(toPlugin(benchEmbeddingPlugin, "bench-stub-embedding"));
     elizaLogger.info(
       `[bench] Registered zero-vector TEXT_EMBEDDING stub (dim=${EMBEDDING_DIMENSIONS}); ` +
-        "set MILADY_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-embedding instead.",
+        "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-embedding instead.",
     );
   }
 
@@ -527,7 +537,7 @@ export async function startBenchmarkServer() {
   const _openAiBaseUrl = process.env.OPENAI_BASE_URL?.trim();
   const _cerebrasIntent =
     !!_openAiBaseUrl && /(^|\.)cerebras\.ai(\/|$)/i.test(_openAiBaseUrl);
-  const _explicitProvider = process.env.MILADY_PROVIDER?.trim().toLowerCase();
+  const _explicitProvider = process.env.ELIZA_PROVIDER?.trim().toLowerCase();
   const _benchProvider =
     process.env.BENCHMARK_MODEL_PROVIDER?.trim().toLowerCase();
   const _suppressGroqForOtherProvider =
@@ -552,7 +562,7 @@ export async function startBenchmarkServer() {
   } else if (groqApiKey && _suppressGroqForOtherProvider) {
     elizaLogger.info(
       "[bench] Skipping @elizaos/plugin-groq: another provider is the explicit intent " +
-        `(cerebras=${_cerebrasIntent}, MILADY_PROVIDER=${_explicitProvider ?? ""}, BENCHMARK_MODEL_PROVIDER=${_benchProvider ?? ""})`,
+        `(cerebras=${_cerebrasIntent}, ELIZA_PROVIDER=${_explicitProvider ?? ""}, BENCHMARK_MODEL_PROVIDER=${_benchProvider ?? ""})`,
     );
   }
 
@@ -565,10 +575,10 @@ export async function startBenchmarkServer() {
   const openAiApiKey = process.env.OPENAI_API_KEY?.trim();
   const openAiBaseURL = process.env.OPENAI_BASE_URL?.trim();
   const cerebrasApiKey = process.env.CEREBRAS_API_KEY?.trim();
-  const miladyProvider = process.env.MILADY_PROVIDER?.trim().toLowerCase();
+  const elizaProvider = process.env.ELIZA_PROVIDER?.trim().toLowerCase();
   const baseUrlIsCerebras =
     !!openAiBaseURL && /(^|\.)cerebras\.ai(\/|$)/i.test(openAiBaseURL);
-  const providerIsCerebras = miladyProvider === "cerebras";
+  const providerIsCerebras = elizaProvider === "cerebras";
   const hasOpenAiCompatibleKey =
     (openAiApiKey && !openAiApiKey.startsWith("gsk_")) ||
     ((baseUrlIsCerebras || providerIsCerebras) && !!cerebrasApiKey);
@@ -1078,7 +1088,13 @@ export async function startBenchmarkServer() {
   // ────────────────────────────────────────────────────────────────────────
   const lifeopsBenchHandler = new LifeOpsBenchHandler({
     checkAuth: checkBenchAuth,
-    invokePlanner: async ({ taskId, userText, toolManifest, backend }) => {
+    invokePlanner: async ({
+      taskId,
+      userText,
+      toolManifest,
+      backend,
+      previousTurns,
+    }) => {
       const session = resolveSession(taskId, "lifeops_bench", true);
       if (!session) throw new Error("Failed to resolve lifeops_bench session");
       await ensureBenchmarkSessionContext(runtime, session);
@@ -1087,12 +1103,16 @@ export async function startBenchmarkServer() {
         benchmark: "lifeops_bench",
         task_id: taskId,
         ...(Array.isArray(toolManifest) ? { tools: toolManifest } : {}),
+        lifeops: buildLifeOpsBenchmarkContext(backend, previousTurns),
       });
 
-      const composedPrompt = composeBenchmarkPrompt({
-        text: userText,
-        context: benchmarkContext,
-      });
+      // The ELIZA_BENCHMARK provider already renders the full LifeOps clock,
+      // world snapshot, tool manifest, and previous tool results. Duplicating
+      // that JSON into the user message balloons Cerebras prompts and can leave
+      // the TS bridge waiting on a huge outbound model call. Keep the message
+      // itself to the user's benchmark instruction and let the provider carry
+      // the structured context.
+      const composedPrompt = userText.trim();
 
       const incomingMessage: Memory = {
         id: stringToUuid(`lifeops-msg:${Date.now()}:${Math.random()}`),
@@ -1186,9 +1206,22 @@ export async function startBenchmarkServer() {
       // Also pass through any directly-named actions (e.g. when the planner
       // emits MESSAGE/CALENDAR directly without the BENCHMARK_ACTION wrapper),
       // skipping the BENCHMARK_ACTION sentinel itself which has already been
-      // unwrapped above.
+      // unwrapped above. REPLY/RESPOND are terminal assistant messages, not
+      // LifeOps backend tools; forwarding them as tool calls makes the Python
+      // runner keep looping after a finished response.
       for (const name of actions) {
-        if (name === "BENCHMARK_ACTION") continue;
+        if (
+          name === "BENCHMARK_ACTION" ||
+          name === "REPLY" ||
+          name === "RESPOND"
+        )
+          continue;
+        if (
+          capturedAction &&
+          typeof capturedAction.toolName === "string" &&
+          capturedAction.toolName === name
+        )
+          continue;
         const paramsForAction = params[name];
         const argumentsObj: Record<string, unknown> =
           paramsForAction &&
@@ -1610,6 +1643,21 @@ export async function startBenchmarkServer() {
           });
           trajectoriesBySession.set(key, trajectory);
 
+          // Propagate Cerebras / OpenAI token-usage so the Python adapter
+          // (eliza_adapter.client.ElizaClient) can compute per-turn cost.
+          // Shape mirrors the lifeops_bench/message handler so adapter code
+          // reads either endpoint the same way (camelCase keys + nullable
+          // cacheRead/cacheCreation fields). W2-9 surfaced this as the cause
+          // of cost: $0.0000 on eliza runs — the bench server had the data
+          // (turnUsage from MODEL_USED events) but never forwarded it.
+          const usagePayload = {
+            promptTokens: turnUsage.promptTokens,
+            completionTokens: turnUsage.completionTokens,
+            totalTokens: turnUsage.totalTokens,
+            cacheReadInputTokens:
+              turnUsage.cachedTokens > 0 ? turnUsage.cachedTokens : null,
+            cacheCreationInputTokens: null,
+          };
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(
             JSON.stringify({
@@ -1617,6 +1665,7 @@ export async function startBenchmarkServer() {
               thought,
               actions,
               params,
+              usage: usagePayload,
               benchmark: session.benchmark,
               task_id: session.taskId,
               room_id: session.roomId,

@@ -3,7 +3,7 @@
  *
  * Uploads the *sanitized* JSONL produced by `buildTrajectoryExportBundle` (or
  * the nightly export cron) to a HuggingFace dataset repo. The upload is
- * opt-in: it only runs when `MILADY_TRAJECTORY_HF_REPO` is set AND an HF token
+ * opt-in: it only runs when `ELIZA_TRAJECTORY_HF_REPO` is set AND an HF token
  * is available (`HF_TOKEN` / `HUGGING_FACE_HUB_TOKEN`).
  *
  * The privacy filter MUST have run before this — callers pass the already
@@ -18,7 +18,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 
-const HF_REPO_ENV = "MILADY_TRAJECTORY_HF_REPO";
+const HF_REPO_ENV = "ELIZA_TRAJECTORY_HF_REPO";
 const HF_TOKEN_ENVS = ["HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"] as const;
 
 export interface HfUploadConfig {

@@ -4,7 +4,7 @@ Local Tailscale-CLI tunnel backend for elizaOS.
 
 Registers `serviceType = "tunnel"` and exposes:
 
-- **`TUNNEL` action** — dispatcher with `op` parameter-enum (`start | stop | status`). Legacy `TAILSCALE`-prefixed action names are kept as similes.
+- **`TUNNEL` action** — provider-neutral dispatcher with `action=start | stop | status`.
 - **`TUNNEL_STATE` provider** — reads the active service's `getStatus()` into model state.
 - **`LocalTunnelService`** — wraps `tailscale serve` / `tailscale funnel`.
 
@@ -36,4 +36,6 @@ character.plugins = [
 | `TUNNEL_FUNNEL` | `false` | When true, uses `tailscale funnel` instead of `tailscale serve` |
 | `TUNNEL_DEFAULT_PORT` | `3000` | Used when no port is extracted from the user's message |
 
-`TAILSCALE_*` aliases are accepted for one release window.
+`TUNNEL_*` env vars are canonical. `TAILSCALE_*` env vars are accepted only as
+backend configuration aliases for the local Tailscale provider, not as action
+names.

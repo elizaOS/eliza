@@ -47,36 +47,25 @@ def build_lifeops_bench_agent_fn(
     ``agent_fn(history: list[MessageTurn], tools: list[dict]) -> MessageTurn``
     so it plugs straight into ``LifeOpsBenchRunner``.
 
-    A unique ``task_id`` is generated per conversation history object so
-    concurrent scenario runs keep separate bridge state. The first call for
-    a given conversation hits ``/reset`` with the snapshot path; subsequent
-    calls post the latest user message.
+    A unique ``task_id`` is generated per returned agent function. The first
+    call with a user message hits ``/reset`` with the snapshot path; subsequent
+    calls post the latest user message to the same session. Do not key this by
+    ``id(conversation_history)``: LifeOpsBench passes a fresh ``list(history)``
+    into the agent every turn, so identity-based keys reset the fake backend
+    and erase prior tool results.
     """
     from eliza_lifeops_bench.types import MessageTurn  # noqa: WPS433 — lazy
 
     bridge = client or ElizaClient()
-    task_ids_by_conversation: dict[int, str] = {}
+    task_id: str | None = None
+    reset_done = False
     bridge.wait_until_ready(timeout=120)
 
     async def _agent_fn(
         conversation_history: list[Any],
         tools: list[dict[str, Any]],
     ) -> Any:
-        conversation_key = id(conversation_history)
-        task_id = task_ids_by_conversation.get(conversation_key)
-        if task_id is None:
-            task_id = f"lifeops-{uuid.uuid4().hex[:12]}"
-            task_ids_by_conversation[conversation_key] = task_id
-            try:
-                bridge.reset(
-                    task_id=task_id,
-                    benchmark="lifeops_bench",
-                    world_snapshot_path=world_snapshot_path,
-                    now_iso=now_iso,
-                )
-            except Exception:
-                logger.exception("[eliza-lifeops] reset failed")
-                raise
+        nonlocal reset_done, task_id
 
         # Pull the most recent user turn from the history. The LifeOpsBench
         # runner appends user/assistant turns in order, so the last user-role
@@ -90,6 +79,21 @@ def build_lifeops_bench_agent_fn(
                 break
         if not last_user_text:
             return MessageTurn(role="assistant", content="", tool_calls=None)
+
+        if task_id is None:
+            task_id = f"lifeops-{uuid.uuid4().hex[:12]}"
+        if not reset_done:
+            try:
+                bridge.reset(
+                    task_id=task_id,
+                    benchmark="lifeops_bench",
+                    world_snapshot_path=world_snapshot_path,
+                    now_iso=now_iso,
+                )
+                reset_done = True
+            except Exception:
+                logger.exception("[eliza-lifeops] reset failed")
+                raise
 
         try:
             raw = bridge.lifeops_message(

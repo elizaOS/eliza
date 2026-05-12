@@ -25,7 +25,7 @@
 #
 # Optional env:
 #   ELIZA_CLOUD_REPO_ROOT — path to the eliza/cloud checkout (default:
-#                           /home/shaw/milady/eliza/cloud)
+#                           /home/shaw/eliza/eliza/cloud)
 #   SIZES                 — space-separated subset (default: "2b 9b 27b")
 #   DRY_RUN               — set to 1 to print commands without executing
 
@@ -33,7 +33,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MANIFEST_DIR="${SCRIPT_DIR}/../vast-pyworker"
-ELIZA_CLOUD_REPO_ROOT="${ELIZA_CLOUD_REPO_ROOT:-/home/shaw/milady/eliza/cloud}"
+ELIZA_CLOUD_REPO_ROOT="${ELIZA_CLOUD_REPO_ROOT:-/home/shaw/eliza/eliza/cloud}"
 SIZES="${SIZES:-2b 9b 27b}"
 DRY_RUN="${DRY_RUN:-0}"
 

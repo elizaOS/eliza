@@ -42,7 +42,7 @@ import {
   recordLaunchAttempt,
 } from "../apps/launch-history";
 import {
-  getAllOverlayApps,
+  getAvailableOverlayApps,
   isOverlayApp,
   overlayAppToRegistryInfo,
 } from "../apps/overlay-app-registry";
@@ -100,7 +100,7 @@ function resolveAppFromSlug(
   }
 
   // Overlay app by slug
-  const overlay = getAllOverlayApps().find(
+  const overlay = getAvailableOverlayApps().find(
     (a) => getAppSlug(a.name) === slug && isOverlayApp(a.name),
   );
   if (overlay) {
@@ -271,8 +271,11 @@ export function AppDetailsView({
   const { plugins, appRuns, t, setTab, setState, setActionNotice } = useApp();
 
   // Catalog of registry apps for slug → app resolution.
-  const { catalog: registryCatalog, error: catalogError } =
-    useRegistryCatalog();
+  const {
+    catalog: registryCatalog,
+    error: catalogError,
+    loading: catalogLoading,
+  } = useRegistryCatalog();
   const catalog: RegistryAppInfo[] = registryCatalog ?? [];
 
   const resolved = useMemo(
@@ -492,10 +495,18 @@ export function AppDetailsView({
       </div>
     );
   }
-  if (!resolved) {
+  if (!resolved && catalogLoading) {
     return (
       <div className="flex h-full min-h-0 w-full items-center justify-center text-sm text-muted">
         Loading {slug}…
+      </div>
+    );
+  }
+  if (!resolved) {
+    return (
+      <div className="flex h-full min-h-0 w-full flex-col items-center justify-center gap-2 p-6 text-center text-sm text-muted">
+        <TriangleAlert className="h-5 w-5 text-accent" />
+        <span>App not found: {slug}</span>
       </div>
     );
   }
@@ -576,12 +587,13 @@ export function AppDetailsView({
             type="button"
             onClick={handleLaunch}
             disabled={launching}
-            className="inline-flex items-center justify-center gap-2 rounded-full bg-accent px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            title={`Launch ${resolved.info.displayName ?? resolved.info.name}`}
+            className="inline-flex max-w-full items-center justify-center gap-2 rounded-full bg-accent px-5 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <Rocket className="h-3.5 w-3.5" aria-hidden="true" />
-            {launching
-              ? "Launching..."
-              : `Launch ${resolved.info.displayName ?? "App"}`}
+            <Rocket className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span className="truncate">
+              {launching ? "Launching..." : "Launch"}
+            </span>
           </button>
         </div>
 

@@ -11,6 +11,7 @@ import { client, type RegistryAppInfo } from "../../api";
 interface RegistryCatalogState {
   catalog: RegistryAppInfo[] | null;
   error: string | null;
+  loading: boolean;
 }
 
 let inflight: Promise<RegistryAppInfo[]> | null = null;
@@ -18,10 +19,20 @@ let inflight: Promise<RegistryAppInfo[]> | null = null;
 function fetchRegistryCatalog(): Promise<RegistryAppInfo[]> {
   if (inflight) return inflight;
   inflight = (async () => {
-    const [serverApps, catalogApps] = await Promise.all([
-      client.listApps().catch(() => [] as RegistryAppInfo[]),
-      client.listCatalogApps().catch(() => [] as RegistryAppInfo[]),
+    const [serverAppsResult, catalogAppsResult] = await Promise.allSettled([
+      client.listApps(),
+      client.listCatalogApps(),
     ]);
+    if (
+      serverAppsResult.status === "rejected" &&
+      catalogAppsResult.status === "rejected"
+    ) {
+      throw new Error("Could not load the app catalog.");
+    }
+    const serverApps =
+      serverAppsResult.status === "fulfilled" ? serverAppsResult.value : [];
+    const catalogApps =
+      catalogAppsResult.status === "fulfilled" ? catalogAppsResult.value : [];
     return [...catalogApps, ...serverApps].filter(
       (entry, index, items) =>
         !items
@@ -40,6 +51,7 @@ export function useRegistryCatalog(): RegistryCatalogState {
   const [state, setState] = useState<RegistryCatalogState>({
     catalog: null,
     error: null,
+    loading: true,
   });
 
   useEffect(() => {
@@ -47,13 +59,14 @@ export function useRegistryCatalog(): RegistryCatalogState {
     fetchRegistryCatalog().then(
       (catalog) => {
         if (cancelled) return;
-        setState({ catalog, error: null });
+        setState({ catalog, error: null, loading: false });
       },
       (err: unknown) => {
         if (cancelled) return;
         setState({
           catalog: null,
           error: err instanceof Error ? err.message : String(err),
+          loading: false,
         });
       },
     );

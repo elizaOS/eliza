@@ -273,7 +273,6 @@ export const terminalAction: Action = {
     "RUN_COMMAND",
     "EXECUTE_COMMAND",
     "TERMINAL",
-    "SHELL_COMMAND",
     "RUN_SHELL",
     "EXEC",
     "CALL_MCP_TOOL",

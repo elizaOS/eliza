@@ -223,22 +223,22 @@ describe("v5 tiered action surface", () => {
 	let originalTrajectoryEnv: string | undefined;
 
 	beforeEach(() => {
-		originalTieredEnv = process.env.MILADY_TIERED_ACTION_SURFACE;
-		originalTrajectoryEnv = process.env.MILADY_TRAJECTORY_RECORDING;
-		process.env.MILADY_TRAJECTORY_RECORDING = "0";
-		delete process.env.MILADY_TIERED_ACTION_SURFACE;
+		originalTieredEnv = process.env.ELIZA_TIERED_ACTION_SURFACE;
+		originalTrajectoryEnv = process.env.ELIZA_TRAJECTORY_RECORDING;
+		process.env.ELIZA_TRAJECTORY_RECORDING = "0";
+		delete process.env.ELIZA_TIERED_ACTION_SURFACE;
 	});
 
 	afterEach(() => {
 		if (originalTieredEnv === undefined) {
-			delete process.env.MILADY_TIERED_ACTION_SURFACE;
+			delete process.env.ELIZA_TIERED_ACTION_SURFACE;
 		} else {
-			process.env.MILADY_TIERED_ACTION_SURFACE = originalTieredEnv;
+			process.env.ELIZA_TIERED_ACTION_SURFACE = originalTieredEnv;
 		}
 		if (originalTrajectoryEnv === undefined) {
-			delete process.env.MILADY_TRAJECTORY_RECORDING;
+			delete process.env.ELIZA_TRAJECTORY_RECORDING;
 		} else {
-			process.env.MILADY_TRAJECTORY_RECORDING = originalTrajectoryEnv;
+			process.env.ELIZA_TRAJECTORY_RECORDING = originalTrajectoryEnv;
 		}
 	});
 
@@ -577,7 +577,7 @@ describe("v5 tiered action surface", () => {
 
 		const prompt = plannerUserContent(runtime);
 		expect(prompt).toMatch(/selected_contexts:[^\n]*tasks/);
-		expect(prompt).toContain('"parentActionHints":["CHECKIN"]');
+		expect(prompt).toContain('"parentActionHints":["SCHEDULED_TASKS"]');
 		const actions = availableActionsSection(runtime);
 		expect(actions).toContain("CHECKIN");
 	});
@@ -693,7 +693,7 @@ describe("v5 tiered action surface", () => {
 	});
 
 	it("falls back to the full gated action surface when disabled", async () => {
-		process.env.MILADY_TIERED_ACTION_SURFACE = "0";
+		process.env.ELIZA_TIERED_ACTION_SURFACE = "0";
 		const calendar = makeAction({
 			name: "CALENDAR",
 			description: "Calendar scheduling.",

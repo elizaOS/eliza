@@ -4,11 +4,11 @@
 # Polls `train_vast.sh status` once per minute. After 3 consecutive failed
 # polls (instance unreachable, destroyed, or status returned non-zero) it
 # emits a loud warning and writes an incident log under
-# ~/.milady/vast-incidents/<timestamp>.log so the operator has forensic
+# ~/.eliza/vast-incidents/<timestamp>.log so the operator has forensic
 # state when they wake up.
 #
 # Also enforces the per-job budget (M9):
-#   * Reads MILADY_VAST_MAX_USD as the soft cap; hard cap is 1.5× that.
+#   * Reads ELIZA_VAST_MAX_USD as the soft cap; hard cap is 1.5× that.
 #   * On each successful poll, runs `scripts.lib.vast_budget enforce`.
 #     * exit 10 => soft cap crossed => emit warn alert (throttled).
 #     * exit 11 => hard cap crossed => run `train_vast.sh teardown --yes`.
@@ -21,15 +21,15 @@
 #
 # Usage:
 #   bash training/scripts/vast-watcher.sh &        # background after provision
-#   MILADY_VAST_WATCH_INTERVAL_S=60 bash ...       # override poll cadence
-#   MILADY_VAST_WATCH_FAIL_THRESHOLD=3 bash ...    # override consecutive failures
-#   MILADY_VAST_MAX_USD=50  bash ...               # per-job soft cap (USD)
-#   MILADY_VAST_BUDGET_DRY_RUN=1 bash ...          # skip the actual teardown
+#   ELIZA_VAST_WATCH_INTERVAL_S=60 bash ...       # override poll cadence
+#   ELIZA_VAST_WATCH_FAIL_THRESHOLD=3 bash ...    # override consecutive failures
+#   ELIZA_VAST_MAX_USD=50  bash ...               # per-job soft cap (USD)
+#   ELIZA_VAST_BUDGET_DRY_RUN=1 bash ...          # skip the actual teardown
 #                                                  # call on hard cap; only log.
 #                                                  # Used by tests and operators
 #                                                  # who want a final manual ack.
 #
-# Logs to ~/.milady/vast-watcher.log (rotated at 10 MB).
+# Logs to ~/.eliza/vast-watcher.log (rotated at 10 MB).
 
 set -uo pipefail
 
@@ -41,9 +41,9 @@ if [ ! -x "$TRAIN_VAST" ] && [ ! -f "$TRAIN_VAST" ]; then
   exit 2
 fi
 
-INTERVAL_S="${MILADY_VAST_WATCH_INTERVAL_S:-60}"
-FAIL_THRESHOLD="${MILADY_VAST_WATCH_FAIL_THRESHOLD:-3}"
-LOG_DIR="${MILADY_STATE_DIR:-$HOME/.milady}"
+INTERVAL_S="${ELIZA_VAST_WATCH_INTERVAL_S:-60}"
+FAIL_THRESHOLD="${ELIZA_VAST_WATCH_FAIL_THRESHOLD:-3}"
+LOG_DIR="${ELIZA_STATE_DIR:-$HOME/.eliza}"
 LOG_FILE="$LOG_DIR/vast-watcher.log"
 INCIDENT_DIR="$LOG_DIR/vast-incidents"
 LOG_ROTATE_BYTES=$((10 * 1024 * 1024))
@@ -93,7 +93,7 @@ write_incident() {
     echo "consecutive_failures=$FAIL_THRESHOLD"
     echo "interval_s=$INTERVAL_S"
     echo "vast_instance_id=${VAST_INSTANCE_ID:-}"
-    echo "milady_vast_instance_id=${MILADY_VAST_INSTANCE_ID:-}"
+    echo "eliza_vast_instance_id=${ELIZA_VAST_INSTANCE_ID:-}"
     echo
     echo "----- last status output -----"
     echo "$body"
@@ -104,18 +104,18 @@ write_incident() {
 }
 
 log "starting (interval=${INTERVAL_S}s, fail_threshold=$FAIL_THRESHOLD, log=$LOG_FILE)"
-if [ -n "${MILADY_VAST_MAX_USD:-}" ]; then
-  log "budget enforcement: soft_cap=\$${MILADY_VAST_MAX_USD} (hard=1.5x)"
+if [ -n "${ELIZA_VAST_MAX_USD:-}" ]; then
+  log "budget enforcement: soft_cap=\$${ELIZA_VAST_MAX_USD} (hard=1.5x)"
 else
-  log "budget enforcement: disabled (set MILADY_VAST_MAX_USD to enable)"
+  log "budget enforcement: disabled (set ELIZA_VAST_MAX_USD to enable)"
 fi
 
 # Returns the instance id the watcher should attribute budget to. Prefers
 # the script-level env (so operators can pin it explicitly), then
 # .vast_instance_id, then nothing (skip budget). Pure read — never writes.
 current_instance_id() {
-  if [ -n "${MILADY_VAST_INSTANCE_ID:-}" ]; then
-    echo "$MILADY_VAST_INSTANCE_ID"
+  if [ -n "${ELIZA_VAST_INSTANCE_ID:-}" ]; then
+    echo "$ELIZA_VAST_INSTANCE_ID"
     return 0
   fi
   if [ -n "${VAST_INSTANCE_ID:-}" ]; then
@@ -134,7 +134,7 @@ current_instance_id() {
 #   - on hard cap, calls `train_vast.sh teardown --yes` and exits the
 #     watcher so we don't loop on the now-dead handle.
 budget_pass() {
-  if [ -z "${MILADY_VAST_MAX_USD:-}" ]; then
+  if [ -z "${ELIZA_VAST_MAX_USD:-}" ]; then
     return 0
   fi
   local iid
@@ -175,8 +175,8 @@ budget_pass() {
     11)
       alert "Vast HARD budget cap exceeded — auto-teardown initiated" "$enf_out"
       write_incident "hard_cap_breach" "$enf_out"
-      if [ "${MILADY_VAST_BUDGET_DRY_RUN:-0}" = "1" ]; then
-        log "MILADY_VAST_BUDGET_DRY_RUN=1 — skipping actual teardown"
+      if [ "${ELIZA_VAST_BUDGET_DRY_RUN:-0}" = "1" ]; then
+        log "ELIZA_VAST_BUDGET_DRY_RUN=1 — skipping actual teardown"
       else
         log "destroying instance $iid via train_vast.sh teardown --yes"
         if bash "$TRAIN_VAST" teardown --yes >>"$LOG_FILE" 2>&1; then

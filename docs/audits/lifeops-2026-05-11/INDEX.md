@@ -57,9 +57,9 @@ Unified metrics, prompt optimization, multi-tier model e2e, native DSPy-style op
 - [x] W2-C retrieval funnel instrumentation + Pareto sweep + per-tier defaults (commit `e64bb8a6c4`)
   - `packages/core/src/runtime/action-retrieval.ts` — added `measurementMode`, `tierOverrides`, `RetrievalMeasurement` (per-stage scores + fused top-K). Weighted RRF + env-driven MODEL_TIER override.
   - `packages/core/src/runtime/trajectory-recorder.ts` — extended `RecordedToolSearchStage` with `perStageScores`, `fusedTopK`, `selectedActions`, `correctActions`.
-  - `packages/core/src/services/message.ts` — plumbed `MILADY_RETRIEVAL_MEASUREMENT=1` through `buildV5PlannerActionSurface`.
+  - `packages/core/src/services/message.ts` — plumbed `ELIZA_RETRIEVAL_MEASUREMENT=1` through `buildV5PlannerActionSurface`.
   - `packages/benchmarks/lib/src/retrieval-defaults.ts` — `RETRIEVAL_DEFAULTS_BY_TIER` (small/mid/large/frontier topK + stage weights). Re-exported from `@elizaos-benchmarks/lib`.
-  - `scripts/lifeops-retrieval-funnel.mjs` — emits `retrieval-funnel.{md,json}` from `~/.milady/trajectories`.
+  - `scripts/lifeops-retrieval-funnel.mjs` — emits `retrieval-funnel.{md,json}` from `~/.eliza/trajectories`.
   - `scripts/lifeops-retrieval-pareto.mjs` — top-K sweep (3/5/8/12/20) + per-tier recommended K against floors 0.70 / 0.78 / 0.85 / 0.90.
   - Tests: `action-retrieval-measurement.test.ts` (7), `retrieval-defaults.test.ts` (10), `lifeops-retrieval-funnel.test.mjs` (synthetic in → md+json out).
   - Defaults baked in (heuristic; recalibrate on first real measured run): small topK=5, mid=8, large=12, frontier=20. Small up-weights exact/regex/bm25 (precision-heavy), frontier up-weights keyword/embedding (recall-friendly).
@@ -87,15 +87,29 @@ Unified metrics, prompt optimization, multi-tier model e2e, native DSPy-style op
 
 ### Wave 5 — verify + close gaps
 - [~] W5-A full multi-tier run (small / mid / large / frontier) — concurrent
+  - [`wave-5a-gap-list.md`](./wave-5a-gap-list.md) — post-rebuild gap inventory
 - [~] W5-B delta vs. baseline, optimizer improvement >= 20pp — concurrent
 - [x] W5-C final REPORT.md + INDEX.md close-out
   - `docs/audits/lifeops-2026-05-11/REPORT.md` (this commit)
 
+### Wave 6 — post-rebuild follow-ups + catch-all sweep
+- [x] G6 catch-all bug/test/lint sweep (this commit)
+  - Hermes-adapter F4: `attach_usage_cache_fields` stub re-export (2 tests recovered)
+  - Openclaw-adapter: dead `_post_with_retry` removed, obsolete HTTP retry-loop tests trimmed
+  - Eliza-adapter: `conftest.py` to put `packages/` on `sys.path` for `benchmarks.bfcl.types` (2 tests recovered)
+  - `packages/shared/src/themes/{index,presets}.ts` — botched MILADY→ELIZA rename duplicate identifier fix (TS2300/TS2451/TS2448 cleared)
+  - `packages/core/src/features/advanced-capabilities/providers/facts.test.ts` — bun's vitest compat lacks `vi.setSystemTime`; switched to `vi.spyOn(Date, "now")` mock (1 test recovered)
+  - `packages/core/src/runtime/__tests__/turn-controller.test.ts` — bun's `AbortController.abort` propagates listener-thrown rejections; rewrote room-B's executor to poll `signal.aborted` (1 test recovered)
+  - `plugins/app-training/src/core/prompt-compare.test.ts` — env-leakage from `.env` `TRAIN_MODEL_PROVIDER=cerebras` + invalid `expect(fn()).rejects` syntax (1 test recovered)
+  - `plugins/app-training/test/training-api.live.e2e.test.ts` — deferred top-level imports of `@elizaos/app-training` + `live-runtime-server` into `beforeAll` so the LIVE gate cleanly skips
+  - Built `plugins/plugin-imessage/dist` + `plugins/plugin-x402/dist` (missing artifacts blocked agent server import chain; ~4 tests recovered indirectly)
+  - Documented residual pre-existing failures in [`known-typecheck-failures.md`](./known-typecheck-failures.md) (tiered-action-surface "night check-in" repair design gap, app-lifeops missing-module typecheck errors, cross-workspace missing-dist typecheck errors)
+- See also wave-6 prior commits: `91f2bcbcff` (F1 manifest discriminator), `45c8004155` (F4 per-turn cost), `7ca18d92a1` (F5 runbook), `d6047d27c5` (F3 bench-server pin), `2db2fc7982` (F2 dspy test count)
+
 ## Follow-ups
 
-- **W5-A gap list** — `docs/audits/lifeops-2026-05-11/wave-5a-gap-list.md`
-  lands when the W5-A multi-tier validation run completes. Link will be
-  added under "Wave 5 follow-ups" once committed.
+- **W5-A gap list** — [`wave-5a-gap-list.md`](./wave-5a-gap-list.md)
+  (committed 2026-05-11; P0=0, P1=3 real fixes + 4 no-ops, P2=5, P3=6).
 - **Wave-3 P0/P1 follow-ups** — full list in
   [`REPORT.md`](./REPORT.md) "Known issues + follow-ups" and
   [`rebaseline-report.md`](./rebaseline-report.md). Headline items:
@@ -103,7 +117,7 @@ Unified metrics, prompt optimization, multi-tier model e2e, native DSPy-style op
   `intent` kwarg in `_kwargs_match`, eliza bench-server LLM endpoint
   fix (Cerebras 404).
 - **Retrieval defaults recalibration** — first run with
-  `MILADY_RETRIEVAL_MEASUREMENT=1` should rerun
+  `ELIZA_RETRIEVAL_MEASUREMENT=1` should rerun
   `bun run lifeops:retrieval:funnel` and
   `bun run lifeops:retrieval:pareto`, then either update
   `packages/benchmarks/lib/src/retrieval-defaults.ts` constants or

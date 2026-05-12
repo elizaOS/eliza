@@ -50,26 +50,21 @@ export function PageLayoutMobileDrawer({
   return (
     <>
       {!mobileSidebarOpen && !controls ? (
-        <div
-          className="pointer-events-none fixed left-2 z-40 md:hidden"
-          style={{ top: "calc(var(--safe-area-top, 0px) + 2.75rem)" }}
-        >
-          <div className="pointer-events-auto">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={cn(
-                "h-[2.375rem] max-w-[min(11rem,calc(100vw_-_5.5rem))] rounded-full border-border/40 bg-card/92 px-3 text-sm font-semibold text-txt shadow-sm backdrop-blur-md",
-                mobileSidebarTriggerClassName,
-              )}
-              data-testid="page-layout-mobile-sidebar-trigger"
-              onClick={() => onMobileSidebarOpenChange(true)}
-            >
-              <PanelLeftOpen className="h-4 w-4 shrink-0" />
-              <span className="truncate">{drawerLabel}</span>
-            </Button>
-          </div>
+        <div className="mb-2 flex shrink-0 md:hidden">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={cn(
+              "h-[2.375rem] max-w-[min(11rem,100%)] rounded-full border-border/40 bg-card/92 px-3 text-sm font-semibold text-txt shadow-sm backdrop-blur-md",
+              mobileSidebarTriggerClassName,
+            )}
+            data-testid="page-layout-mobile-sidebar-trigger"
+            onClick={() => onMobileSidebarOpenChange(true)}
+          >
+            <PanelLeftOpen className="h-4 w-4 shrink-0" />
+            <span className="truncate">{drawerLabel}</span>
+          </Button>
         </div>
       ) : null}
       {mobileSidebarOpen ? (

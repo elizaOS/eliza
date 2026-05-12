@@ -34,7 +34,7 @@ below the gate because it was measured on a base model, not the Eliza-1 fine-tun
 ## Re-running against E4's real bundles
 
 Once the real `eliza-1-0_6b.bundle` / `eliza-1-1_7b.bundle` land under
-`~/.eliza/local-inference/models/` (or `~/.milady/...`):
+`~/.eliza/local-inference/models/` (or `~/.eliza/...`):
 
 ```bash
 cd packages/training

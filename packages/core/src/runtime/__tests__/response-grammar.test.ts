@@ -117,7 +117,7 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		expect(grammar).toContain('"\\"ONLY\\""');
 	});
 
-	it("slots registered field evaluators after `extract`, priority-ordered", () => {
+	it("uses the field-registry envelope when registered fields are present", () => {
 		clearResponseGrammarCache();
 		const { responseSkeleton } = buildResponseGrammar(
 			{
@@ -132,9 +132,12 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		const keys = responseSkeleton.spans
 			.filter((s) => s.key !== undefined && s.kind !== "literal")
 			.map((s) => s.key);
-		// extract is still last of the fixed keys; field evaluators follow it.
-		expect(keys.indexOf("extract")).toBeLessThan(keys.indexOf("early"));
-		expect(keys.indexOf("early")).toBeLessThan(keys.indexOf("late"));
+		expect(keys).toEqual(["early", "late"]);
+		expect(keys).not.toContain("extract");
+		expect(responseSkeleton.spans[0]).toEqual({
+			kind: "literal",
+			value: '{"early":',
+		});
 	});
 
 	it("is byte-stable / cached across calls for the same registry snapshot", () => {

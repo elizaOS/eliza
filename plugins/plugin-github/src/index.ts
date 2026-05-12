@@ -111,4 +111,3 @@ export const githubPlugin: Plugin = {
 };
 
 export default githubPlugin;
-export * from "./register-routes.js";

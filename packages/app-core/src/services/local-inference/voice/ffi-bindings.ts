@@ -186,18 +186,18 @@ export interface ElizaInferenceFfi {
   /* ---- Native VAD (ABI v3) -------------------------------------- */
 
   /** True when this build exports and enables the native Silero VAD backend. */
-  vadSupported(): boolean;
+  vadSupported?(): boolean;
   /** Open a native VAD session. The ABI-compatible sample rate is 16 kHz. */
-  vadOpen(args: {
+  vadOpen?(args: {
     ctx: ElizaInferenceContextHandle;
     sampleRateHz: number;
   }): NativeVadHandle;
   /** Process one 512-sample fp32 mono window and return P(speech). */
-  vadProcess(args: { vad: NativeVadHandle; pcm: Float32Array }): number;
+  vadProcess?(args: { vad: NativeVadHandle; pcm: Float32Array }): number;
   /** Clear native VAD recurrent state at utterance boundaries. */
-  vadReset(vad: NativeVadHandle): void;
+  vadReset?(vad: NativeVadHandle): void;
   /** Close + free a native VAD session. Idempotent on already-closed handles. */
-  vadClose(vad: NativeVadHandle): void;
+  vadClose?(vad: NativeVadHandle): void;
 
   /* ---- Streaming ASR (ABI v2) ----------------------------------- */
 

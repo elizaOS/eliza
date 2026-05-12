@@ -492,6 +492,76 @@ def _score_from_configbench_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
+def _score_from_voicebench_quality_json(data: JSONValue) -> ScoreExtraction:
+    """Extract scores from VoiceBench-quality results.
+
+    VoiceBench-quality reports a per-suite score in ``[0, 1]`` plus an
+    unweighted mean across the suites that ran (mirroring upstream's
+    reporting convention). Higher is better.
+    """
+    root = expect_dict(data, ctx="voicebench_quality:root")
+    score = expect_float(
+        get_required(root, "score", ctx="voicebench_quality:root"),
+        ctx="voicebench_quality:score",
+    )
+    per_suite_raw = root.get("per_suite") or {}
+    per_suite: dict[str, float] = {}
+    if isinstance(per_suite_raw, dict):
+        for key, value in per_suite_raw.items():
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                per_suite[str(key)] = float(value)
+    metrics: dict[str, JSONValue] = {
+        "agent": root.get("agent") or "",
+        "judge_model": root.get("judge_model") or "",
+        "stt_provider": root.get("stt_provider") or "",
+        "n": root.get("n") or 0,
+        "elapsed_s": root.get("elapsed_s") or 0,
+    }
+    for suite_key, suite_score in per_suite.items():
+        metrics[f"suite.{suite_key}"] = suite_score
+    return ScoreExtraction(
+        score=score,
+        unit="score",
+        higher_is_better=True,
+        metrics=metrics,
+    )
+
+
+def _score_from_mmau_json(data: JSONValue) -> ScoreExtraction:
+    """Extract scores from MMAU results.
+
+    MMAU is pure MCQ -- scoring is deterministic exact-match on the
+    parsed answer letter. We report overall accuracy as the primary
+    score and surface per-category accuracy (speech/sound/music) for
+    context. Cascaded STT runs will typically lag on the sound and
+    music splits; that is a property of the adapter, not the metric.
+    """
+    root = expect_dict(data, ctx="mmau:root")
+    overall = expect_float(
+        get_required(root, "overall_accuracy", ctx="mmau:root"),
+        ctx="mmau:overall_accuracy",
+    )
+    by_cat_raw = root.get("accuracy_by_category")
+    by_cat = by_cat_raw if isinstance(by_cat_raw, dict) else {}
+    summary_raw = root.get("summary")
+    summary = summary_raw if isinstance(summary_raw, dict) else {}
+    return ScoreExtraction(
+        score=overall,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "overall_accuracy": overall,
+            "speech_accuracy": by_cat.get("speech") or 0,
+            "sound_accuracy": by_cat.get("sound") or 0,
+            "music_accuracy": by_cat.get("music") or 0,
+            "total_samples": root.get("total_samples") or 0,
+            "error_count": root.get("error_count") or 0,
+            "split": summary.get("split") or "",
+            "agent": summary.get("agent") or "",
+        },
+    )
+
+
 def _score_from_voicebench_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from VoiceBench results.
 
@@ -826,6 +896,36 @@ def _score_from_lifeops_bench_json(data: JSONValue) -> ScoreExtraction:
             "total_cost_usd": get_optional(root, "total_cost_usd") or 0,
             "agent_cost_usd": get_optional(root, "agent_cost_usd") or 0,
             "eval_cost_usd": get_optional(root, "eval_cost_usd") or 0,
+            "total_latency_ms": get_optional(root, "total_latency_ms") or 0,
+            "model_name": get_optional(root, "model_name") or "",
+            "judge_model_name": get_optional(root, "judge_model_name") or "",
+        },
+    )
+
+
+def _score_from_voiceagentbench_json(data: JSONValue) -> ScoreExtraction:
+    """Extract VoiceAgentBench score from its aggregate report JSON.
+
+    The runner writes ``pass_at_1`` (headline), ``pass_at_k`` dict,
+    per-suite pass@1, plus the four mean axis scores (tool selection,
+    parameter match, coherence, safety). Higher is better; unit is ratio.
+    """
+    root = expect_dict(data, ctx="voiceagentbench:root")
+    pass_at_1 = expect_float(
+        get_required(root, "pass_at_1", ctx="voiceagentbench:root"),
+        ctx="voiceagentbench:pass_at_1",
+    )
+    return ScoreExtraction(
+        score=pass_at_1,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "pass_at_1": pass_at_1,
+            "mean_tool_selection": get_optional(root, "mean_tool_selection") or 0,
+            "mean_parameter_match": get_optional(root, "mean_parameter_match") or 0,
+            "mean_coherence": get_optional(root, "mean_coherence") or 0,
+            "mean_safety": get_optional(root, "mean_safety") or 0,
+            "seeds": get_optional(root, "seeds") or 0,
             "total_latency_ms": get_optional(root, "total_latency_ms") or 0,
             "model_name": get_optional(root, "model_name") or "",
             "judge_model_name": get_optional(root, "judge_model_name") or "",
@@ -1196,9 +1296,16 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         provider_name = (model.provider or "").strip().lower()
         agent = extra.get("agent")
         # LLM-backed providers route through the eliza TS bridge so the
-        # registered eliza agent + plugins are exercised.
+        # registered eliza agent + plugins are exercised. Hermes/OpenClaw also
+        # use that Python bridge surface, but their delegate clients must keep
+        # the real provider/model from the orchestrator environment.
         bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
-        if agent == "eliza" or provider_name in bridge_providers:
+        if agent in {"eliza", "hermes", "openclaw"}:
+            if model.model:
+                args.extend(["--model", model.model])
+            if agent == "eliza":
+                args.extend(["--model-provider", "eliza"])
+        elif provider_name in bridge_providers:
             if model.model:
                 args.extend(["--model", model.model])
             args.extend(["--model-provider", "eliza"])
@@ -1215,6 +1322,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         max_tasks = extra.get("max_tasks")
         if isinstance(max_tasks, int) and max_tasks > 0:
             args.extend(["--max-tasks", str(max_tasks)])
+        timeout = extra.get("timeout")
+        if isinstance(timeout, int) and timeout > 0:
+            args.extend(["--timeout", str(timeout)])
         sample = extra.get("sample")
         if sample is True:
             args.append("--sample")
@@ -2001,9 +2111,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         """
         args = ["bash", "./run.sh", f"--output-dir={output_dir}"]
         profile_raw = extra.get("profile")
+        provider_name = (model.provider or "").strip().lower()
         if isinstance(profile_raw, str) and profile_raw.strip():
             profile = profile_raw.strip().lower()
-        elif (model.provider or "").strip().lower() == "mock":
+        elif provider_name == "mock":
+            profile = "mock"
+        elif provider_name not in {"groq", "elevenlabs"}:
             profile = "mock"
         elif not os.getenv("VOICEBENCH_AUDIO_PATH") and not (
             Path("benchmarks/voicebench/shared/audio/default.wav").exists()
@@ -2026,6 +2139,104 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     def _voicebench_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="voicebench-typescript-*.json")
+
+    # MMAU - audio MCQ benchmark (Sakshi et al., ICLR 2025)
+    def _mmau_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        """Build the elizaos-mmau CLI invocation.
+
+        Routes through the Python-native MMAU package. Pure MCQ -- no
+        LLM-judge dispatch. Defaults to the bundled fixture and oracle
+        agent when no provider is configured so smoke runs work offline.
+        """
+        args = [
+            python,
+            "-m",
+            "benchmarks.mmau",
+            "--output",
+            str(output_dir),
+            "--no-traces",
+            "--json",
+        ]
+        provider_name = (model.provider or "").strip().lower()
+        agent_raw = extra.get("agent")
+        if isinstance(agent_raw, str) and agent_raw.strip():
+            agent = agent_raw.strip().lower()
+        elif provider_name in {"eliza", "hermes", "openclaw", "mock"}:
+            agent = provider_name
+        else:
+            agent = "mock"
+        if agent == "mock":
+            args.append("--mock")
+        else:
+            args.extend(["--agent", agent])
+        split_raw = extra.get("split")
+        if isinstance(split_raw, str) and split_raw.strip():
+            args.extend(["--split", split_raw.strip()])
+        category_raw = extra.get("category")
+        if isinstance(category_raw, str) and category_raw.strip():
+            args.extend(["--category", category_raw.strip()])
+        limit_raw = extra.get("limit")
+        if isinstance(limit_raw, int) and limit_raw > 0:
+            args.extend(["--limit", str(limit_raw)])
+        if extra.get("hf") is True:
+            args.append("--hf")
+        if model.model:
+            args.extend(["--model", model.model])
+        if model.provider:
+            args.extend(["--provider", model.provider])
+        return args
+
+    def _mmau_result(output_dir: Path) -> Path:
+        return output_dir / "mmau-results.json"
+
+    # VoiceBench-quality - vendored upstream VoiceBench (Chen et al. 2024)
+    def _voicebench_quality_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        """Build the elizaos-voicebench CLI invocation.
+
+        ``model.model`` selects the agent backend (``eliza``/``hermes``/
+        ``openclaw``/``echo``); defaults to ``echo`` for hermetic runs.
+        Provider ``mock`` (or no provider + no agent override) flips on
+        ``--mock`` so the run uses bundled fixtures + a stub judge and
+        does not need an API key.
+        """
+        agent_raw = extra.get("agent")
+        if isinstance(agent_raw, str) and agent_raw.strip():
+            agent = agent_raw.strip()
+        elif model.model in {"eliza", "hermes", "openclaw", "echo"}:
+            agent = str(model.model)
+        else:
+            agent = "echo"
+        provider_name = (model.provider or "").strip().lower()
+        mock_flag = bool(extra.get("mock")) or provider_name == "mock" or agent == "echo"
+        args = [
+            python,
+            "-m",
+            "elizaos_voicebench",
+            "--agent",
+            agent,
+            "--output",
+            str(output_dir),
+        ]
+        suite_raw = extra.get("suite")
+        if isinstance(suite_raw, str) and suite_raw.strip():
+            args.extend(["--suite", suite_raw.strip()])
+        limit = extra.get("limit")
+        if isinstance(limit, int) and limit > 0:
+            args.extend(["--limit", str(limit)])
+        judge_model = extra.get("judge_model")
+        if isinstance(judge_model, str) and judge_model.strip():
+            args.extend(["--judge-model", judge_model.strip()])
+        stt_provider = extra.get("stt_provider")
+        if isinstance(stt_provider, str) and stt_provider.strip():
+            args.extend(["--stt-provider", stt_provider.strip()])
+        if mock_flag:
+            args.append("--mock")
+        return args
+
+    def _voicebench_quality_result(output_dir: Path) -> Path:
+        return output_dir / "voicebench-quality-results.json"
 
     # Social-Alpha - trust-marketplace benchmark on real Discord crypto chat data
     def _social_alpha_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
@@ -2617,6 +2828,58 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _lifeops_bench_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="lifeops_*.json")
 
+    # voiceagentbench
+    def _voiceagentbench_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        """Build the VoiceAgentBench CLI invocation.
+
+        ``model.model`` selects the agent backend: ``mock`` for hermetic
+        smoke runs (no env vars needed); ``eliza`` / ``hermes`` /
+        ``openclaw`` for cascaded-STT adapter runs. Default is ``mock``.
+        """
+        agent_raw = extra.get("agent") or extra.get("harness")
+        if isinstance(agent_raw, str) and agent_raw.strip():
+            agent = agent_raw.strip()
+        elif model.model in {"mock", "eliza", "hermes", "openclaw"}:
+            agent = str(model.model)
+        else:
+            agent = "mock"
+        args = [
+            python,
+            "-m",
+            "elizaos_voiceagentbench",
+            "--agent",
+            agent,
+            "--output",
+            str(output_dir),
+        ]
+        suite = extra.get("suite")
+        if isinstance(suite, str) and suite.strip():
+            args.extend(["--suite", suite.strip()])
+        limit = extra.get("limit")
+        if isinstance(limit, int) and limit > 0:
+            args.extend(["--limit", str(limit)])
+        seeds = extra.get("seeds")
+        if isinstance(seeds, int) and seeds > 0:
+            args.extend(["--seeds", str(seeds)])
+        mock = extra.get("mock")
+        if mock is True or (isinstance(mock, str) and mock.lower() == "true"):
+            args.append("--mock")
+        no_judge = extra.get("no_judge")
+        if no_judge is True or (isinstance(no_judge, str) and no_judge.lower() == "true"):
+            args.append("--no-judge")
+        data_path = extra.get("data_path")
+        if isinstance(data_path, str) and data_path.strip():
+            args.extend(["--data-path", data_path.strip()])
+        judge_model = extra.get("judge_model")
+        if isinstance(judge_model, str) and judge_model.strip():
+            args.extend(["--judge-model", judge_model.strip()])
+        return args
+
+    def _voiceagentbench_result(output_dir: Path) -> Path:
+        return find_latest_file(output_dir, glob_pattern="voiceagentbench_*.json")
+
     # --- Hermes-native envs (tblite / terminalbench_2 / yc_bench / hermes_swe_env) ---
     # The four envs share one subprocess shim and one score extractor; only the
     # short env-id arg and the result-glob differ between them.
@@ -3089,6 +3352,56 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_voicebench_json,
         ),
         BenchmarkDefinition(
+            id="mmau",
+            display_name="MMAU",
+            description=(
+                "Massive Multi-task Audio Understanding (Sakshi et al., ICLR 2025) — "
+                "10k audio MCQs across speech/sound/music and 27 reasoning skills"
+            ),
+            cwd_rel="packages/benchmarks/mmau",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=(
+                    "packages/benchmarks/mmau",
+                    "packages/benchmarks/mmau/fixtures/smoke.jsonl",
+                ),
+                notes=(
+                    "Pure MCQ — deterministic exact-match scoring, no LLM-judge. "
+                    "Defaults to the bundled fixture + oracle agent for smoke runs; "
+                    "pass extra={'hf': True} to stream from gamma-lab-umd/MMAU-test-mini "
+                    "(1k) or MMAU-test (9k). Cascaded STT (Groq Whisper) discards "
+                    "music/sound semantic info, so the speech category will dominate "
+                    "the score until a direct-audio-input adapter lands."
+                ),
+            ),
+            build_command=_mmau_cmd,
+            locate_result=_mmau_result,
+            extract_score=_score_from_mmau_json,
+        ),
+        BenchmarkDefinition(
+            id="voicebench_quality",
+            display_name="VoiceBench (quality)",
+            description=(
+                "Vendored VoiceBench (Chen et al. 2024) — 8-suite quality "
+                "benchmark over 6783 spoken instructions"
+            ),
+            cwd_rel="packages/benchmarks/voicebench-quality",
+            requirements=BenchmarkRequirements(
+                env_vars=("CEREBRAS_API_KEY", "GROQ_API_KEY"),
+                paths=("packages/benchmarks/voicebench-quality/elizaos_voicebench",),
+                notes=(
+                    "Cascaded STT (Groq Whisper) → text adapter (eliza/hermes/openclaw). "
+                    "Judged suites scored by gpt-oss-120b on Cerebras. "
+                    "Score is the unweighted mean of per-suite scores in [0, 1]; "
+                    "higher is better. Set extra.mock=true (or provider=mock) for "
+                    "a hermetic smoke run with no API keys."
+                ),
+            ),
+            build_command=_voicebench_quality_cmd,
+            locate_result=_voicebench_quality_result,
+            extract_score=_score_from_voicebench_quality_json,
+        ),
+        BenchmarkDefinition(
             id="social_alpha",
             display_name="Social-Alpha",
             description="Trust marketplace benchmark on real Discord crypto-chat data (EXTRACT/RANK/DETECT/PROFIT)",
@@ -3261,6 +3574,30 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_lifeops_bench_cmd,
             locate_result=_lifeops_bench_result,
             extract_score=_score_from_lifeops_bench_json,
+        ),
+        BenchmarkDefinition(
+            id="voiceagentbench",
+            display_name="VoiceAgentBench",
+            description="Voice-in + tool-call-out + multi-turn benchmark (single/parallel/sequential/multi-turn/safety/multilingual)",
+            cwd_rel="packages/benchmarks/voiceagentbench",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=(
+                    "packages/benchmarks/voiceagentbench/elizaos_voiceagentbench",
+                    "packages/benchmarks/voiceagentbench/fixtures",
+                ),
+                notes=(
+                    "model.model selects the agent backend: 'mock' for hermetic fixture runs (no env vars needed); "
+                    "'eliza'/'hermes'/'openclaw' for cascaded-STT adapter runs. "
+                    "GROQ_API_KEY is required for real Whisper transcription when audio bytes are present; "
+                    "CEREBRAS_API_KEY is required for the multi-turn coherence judge (gpt-oss-120b). "
+                    "Set extra.mock=true and extra.suite=single|parallel|sequential|multi-turn|safety|multilingual|all. "
+                    "Score: pass@1 across all (task, seed) pairs. Higher is better."
+                ),
+            ),
+            build_command=_voiceagentbench_cmd,
+            locate_result=_voiceagentbench_result,
+            extract_score=_score_from_voiceagentbench_json,
         ),
         # ----- standard public LLM benchmarks (W1-B1, gap C6) -----
         BenchmarkDefinition(

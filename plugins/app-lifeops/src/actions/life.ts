@@ -115,6 +115,7 @@ type LifeParams = {
   target?: string;
   minutes?: number;
   details?: Record<string, unknown>;
+  ownerSurface?: string;
 };
 
 const SUBACTIONS = {
@@ -348,7 +349,7 @@ async function resolveLifeOperationPlan(args: {
 }
 
 /**
- * Pre-routing pick of the LIFE subaction.
+ * Pre-routing pick of the owner operation action.
  *
  * Tries the shared `resolveActionArgs` substrate first (planner-trust path
  * + single LLM pass). Falls back to the LifeOps-specific extractor when
@@ -378,7 +379,7 @@ async function routeLifeSubaction(args: {
     message,
     state,
     options,
-    actionName: "LIFE",
+    actionName: ownerSurfaceActionNameFromOptions(options),
     subactions: SUBACTIONS,
     intentHint: intent,
   });
@@ -2011,13 +2012,14 @@ function formatWeeklyGoalReview(args: {
 
 // ── Main action ───────────────────────────────────────
 
-// LIFE belongs to the LifeOps surface (home chat / page-lifeops /
-// app-lifeops direct rooms). On foreign page-* scopes the action set is
+// Owner-operation actions belong to the LifeOps surface (home chat /
+// page-lifeops / app-lifeops direct rooms). On foreign page-* scopes the action set is
 // scoped to that surface (page-automations → WORKFLOW,
-// page-browser → browser actions, etc.). When LIFE stays eligible on those
-// scopes its long description contaminates the ACTION_PLANNER candidate
-// list, driving the LLM to mimic the life-param-extractor structured schema and
-// producing envelopes the planner cannot read.
+// page-browser → browser actions, etc.). When owner-operation actions stay
+// eligible on those scopes, their long descriptions contaminate the
+// ACTION_PLANNER candidate list, driving the LLM to mimic the
+// life-param-extractor structured schema and producing envelopes the planner
+// cannot read.
 async function isForeignPageScope(
   runtime: IAgentRuntime,
   message: Memory,
@@ -2031,10 +2033,10 @@ async function isForeignPageScope(
 }
 
 // Metadata reused by the owner-* umbrella actions in owner-surfaces.ts.
-// LIFE itself is no longer planner-visible — owner-surfaces re-publishes the
+// The old umbrella is no longer planner-visible — owner-surfaces publishes the
 // individual reminder/alarm/goal/todo/routine umbrellas that delegate into
 // `runLifeOperationHandler` below.
-export const LIFE_TAGS: string[] = [
+export const OWNER_OPERATION_TAGS: string[] = [
   "domain:reminders",
   "capability:read",
   "capability:write",
@@ -2044,7 +2046,7 @@ export const LIFE_TAGS: string[] = [
   "surface:internal",
 ];
 
-export const LIFE_CONTEXTS: AgentContext[] = [
+export const OWNER_OPERATION_CONTEXTS: AgentContext[] = [
   "general",
   "tasks",
   "todos",
@@ -2052,10 +2054,10 @@ export const LIFE_CONTEXTS: AgentContext[] = [
   "health",
 ];
 
-export const LIFE_ROLE_GATE = { minRole: "OWNER" } as const;
-export const LIFE_SUPPRESS_POST_ACTION_CONTINUATION = true;
+export const OWNER_OPERATION_ROLE_GATE = { minRole: "OWNER" } as const;
+export const OWNER_OPERATION_SUPPRESS_POST_ACTION_CONTINUATION = true;
 
-export const LIFE_VALIDATE = async (
+export const OWNER_OPERATION_VALIDATE = async (
   runtime: IAgentRuntime,
   message: Memory,
 ): Promise<boolean> => {
@@ -2065,6 +2067,17 @@ export const LIFE_VALIDATE = async (
   return true;
 };
 
+function ownerSurfaceActionNameFromOptions(
+  options: HandlerOptions | undefined,
+): string {
+  const raw = (options as HandlerOptions | undefined)?.parameters as
+    | LifeParams
+    | undefined;
+  return typeof raw?.ownerSurface === "string" && raw.ownerSurface.length > 0
+    ? raw.ownerSurface
+    : "OWNER_TODOS";
+}
+
 export async function runLifeOperationHandler(
   runtime: IAgentRuntime,
   message: Memory,
@@ -2072,7 +2085,8 @@ export async function runLifeOperationHandler(
   options: HandlerOptions | undefined,
   _callback?: HandlerCallback,
 ): Promise<ActionResult> {
-    // Defense-in-depth: validate() excludes LIFE from planner candidates on
+    const ownerSurfaceActionName = ownerSurfaceActionNameFromOptions(options);
+    // Defense-in-depth: validate() excludes owner-operation candidates on
     // foreign page-* scopes, and this handler keeps direct tool execution a
     // no-op if a stale or malformed plan still reaches it.
     if (await isForeignPageScope(runtime, message)) {
@@ -2080,7 +2094,7 @@ export async function runLifeOperationHandler(
         success: false,
         text: "",
         data: {
-          actionName: "LIFE",
+          actionName: ownerSurfaceActionName,
           reason: "foreign_page_scope",
         },
       };
@@ -2150,7 +2164,7 @@ export async function runLifeOperationHandler(
           },
         }),
         data: {
-          actionName: "LIFE",
+          actionName: ownerSurfaceActionName,
           noop: true,
         },
       };
@@ -2161,7 +2175,7 @@ export async function runLifeOperationHandler(
         success: false,
         text: "I need the phone number before I can save text reminders.",
         data: {
-          actionName: "LIFE",
+          actionName: ownerSurfaceActionName,
           missingField: "phone_number",
         },
       };
@@ -2271,7 +2285,7 @@ export async function runLifeOperationHandler(
           },
         }),
         data: {
-          actionName: "LIFE",
+          actionName: ownerSurfaceActionName,
           noop: true,
           suggestedOperation: operationPlan.operation,
         },
@@ -2294,7 +2308,7 @@ export async function runLifeOperationHandler(
         text:
           "Calendar access is not available. Grant Apple Calendar access or connect Google Calendar to use calendar actions.",
         data: {
-          actionName: "LIFE",
+          actionName: ownerSurfaceActionName,
           operation: queryOperation,
         },
       };
@@ -2305,7 +2319,7 @@ export async function runLifeOperationHandler(
         text:
           "Calendar access is not available. Grant Apple Calendar access or connect Google Calendar to use calendar actions.",
         data: {
-          actionName: "LIFE",
+          actionName: ownerSurfaceActionName,
           operation: queryOperation,
         },
       };
@@ -2316,7 +2330,7 @@ export async function runLifeOperationHandler(
         text:
           "Gmail is not connected. Connect Google in LifeOps settings to use Gmail actions.",
         data: {
-          actionName: "LIFE",
+          actionName: ownerSurfaceActionName,
           operation: queryOperation,
         },
       };
@@ -2376,7 +2390,7 @@ export async function runLifeOperationHandler(
           },
         }),
         data: {
-          actionName: "LIFE",
+          actionName: ownerSurfaceActionName,
           noop: true,
         },
       };
@@ -2572,7 +2586,7 @@ export async function runLifeOperationHandler(
               requiresConfirmation: true,
             },
             data: {
-              actionName: "LIFE",
+              actionName: ownerSurfaceActionName,
               missingField: "title",
               requiresConfirmation: true,
             },
@@ -2601,7 +2615,7 @@ export async function runLifeOperationHandler(
               requiresConfirmation: true,
             },
             data: {
-              actionName: "LIFE",
+              actionName: ownerSurfaceActionName,
               missingField: "schedule",
               requiresConfirmation: true,
             },
@@ -2696,7 +2710,7 @@ export async function runLifeOperationHandler(
               },
             }),
             data: {
-              actionName: "LIFE",
+              actionName: ownerSurfaceActionName,
               deferred: true,
               lifeDraft: definitionDraft,
               preview: {
@@ -2876,7 +2890,7 @@ export async function runLifeOperationHandler(
                 suggestedOperation: "create_goal",
               },
               data: {
-                actionName: "LIFE",
+                actionName: ownerSurfaceActionName,
                 noop: true,
                 error: "NOOP_GOAL_UNGROUNDED",
                 suggestedOperation: "create_goal",
@@ -2957,7 +2971,7 @@ export async function runLifeOperationHandler(
               },
             }),
             data: {
-              actionName: "LIFE",
+              actionName: ownerSurfaceActionName,
               deferred: true,
               lifeDraft: goalDraft,
               experienceLoop,
@@ -3150,7 +3164,7 @@ export async function runLifeOperationHandler(
                 llmPlan.response ??
                 `Tell me what to change about "${target.goal.title}" and I'll update it.`,
               data: {
-                actionName: "LIFE",
+                actionName: ownerSurfaceActionName,
                 noop: true,
                 suggestedOperation: "update_goal",
               },

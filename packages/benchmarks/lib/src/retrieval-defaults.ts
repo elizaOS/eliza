@@ -46,23 +46,39 @@ export interface RetrievalTierDefaults {
 }
 
 /**
- * Initial Pareto-derived defaults. Rationale (per
+ * Pareto-derived defaults. Rationale (per
  * `docs/audits/lifeops-2026-05-11/retrieval-pareto.md`):
+ *
+ * The 2026-05-11 measured Pareto sweep (n=479 LifeOpsBench
+ * trajectories replayed through `retrieveActions` with
+ * `measurementMode: true`) showed fused recall saturating at
+ * K=5 (recall 0.98) — K=8/12/20 each add < 1pp recall. The
+ * topK values below pull the tier defaults toward that measured
+ * optimum while keeping margin for the embedding + contextMatch
+ * stages that the replay couldn't exercise.
  *
  * - `small` — Qwen 0.6B: short context, brittle at long action blocks.
  *   Prefer exact+BM25 (high precision, deterministic). topK=5 keeps the
- *   action block under ~1.5KB.
+ *   action block under ~1.5KB. *Matches measured optimum.*
  * - `mid` — Qwen 1.7B: tolerates more candidates but still benefits
- *   from precision-heavy weighting. topK=8.
+ *   from precision-heavy weighting. topK=6 (was 8 heuristic; measured
+ *   K=5 saturates).
  * - `large` — Cerebras gpt-oss-120b: long context, embedding ranking
- *   pays off here. Balanced weights, topK=12.
+ *   pays off here. Balanced weights, topK=8 (was 12 heuristic;
+ *   measured K=5 saturates, +3 margin for embedding/contextMatch).
  * - `frontier` — Opus 4.7: context-rich planner — let it see a wider
- *   slate. topK=20, embedding/keyword weighted up to surface long-tail
- *   matches.
+ *   slate. topK=12 (was 20 heuristic; reduced based on saturation,
+ *   keeps margin for long-tail catalogs the replay didn't sample).
+ *
+ * Pre-measurement heuristic values (history): small=5 / mid=8 /
+ * large=12 / frontier=20. Stage weights are unchanged from the
+ * heuristic — the measurement only informed `topK`. Re-run
+ * `scripts/lifeops-retrieval-pareto.mjs` against fresh trajectories
+ * to recalibrate.
  */
 export const RETRIEVAL_DEFAULTS_BY_TIER: Record<ModelTier, RetrievalTierDefaults> = {
   small: {
-    topK: 5,
+    topK: 5, // measured: K=5 saturates (heuristic was 5; unchanged)
     stageWeights: {
       exact: 1.5,
       regex: 1.3,
@@ -73,7 +89,7 @@ export const RETRIEVAL_DEFAULTS_BY_TIER: Record<ModelTier, RetrievalTierDefaults
     },
   },
   mid: {
-    topK: 8,
+    topK: 6, // measured: K=5 saturates (heuristic was 8)
     stageWeights: {
       exact: 1.4,
       regex: 1.2,
@@ -84,7 +100,7 @@ export const RETRIEVAL_DEFAULTS_BY_TIER: Record<ModelTier, RetrievalTierDefaults
     },
   },
   large: {
-    topK: 12,
+    topK: 8, // measured: K=5 saturates (heuristic was 12)
     stageWeights: {
       exact: 1.2,
       regex: 1.1,
@@ -95,7 +111,7 @@ export const RETRIEVAL_DEFAULTS_BY_TIER: Record<ModelTier, RetrievalTierDefaults
     },
   },
   frontier: {
-    topK: 20,
+    topK: 12, // measured: K=5 saturates (heuristic was 20)
     stageWeights: {
       exact: 1.0,
       regex: 1.0,

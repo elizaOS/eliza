@@ -36,7 +36,8 @@ describe("DFlash runtime discovery", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-dflash-test-"));
     process.env.ELIZA_STATE_DIR = root;
     delete process.env.ELIZA_DFLASH_ENABLED;
-    delete process.env.ELIZA_DFLASH_DISABLED;
+    delete process.env.MILADY_DFLASH_DISABLE;
+    delete process.env.ELIZA_DFLASH_DISABLE;
     delete process.env.ELIZA_DFLASH_METAL_AUTO;
     delete process.env.ELIZA_DFLASH_METAL_ENABLED;
     delete process.env.HIP_VISIBLE_DEVICES;

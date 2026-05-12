@@ -174,8 +174,8 @@ def test_env_modules_table_has_all_four_envs() -> None:
     assert set(ENV_MODULES) == {"tblite", "terminalbench_2", "yc_bench", "hermes_swe_env"}
 
 
-def test_env_runner_max_tasks_flag_present_when_set(fake_repo: Path, tmp_path: Path) -> None:
-    """run_hermes_env(max_tasks=N) must forward --env.max_eval_samples=N to the env CLI."""
+def test_env_runner_max_tasks_uses_supported_smoke_filter(fake_repo: Path, tmp_path: Path) -> None:
+    """run_hermes_env(max_tasks=N) must use a supported env-specific smoke cap."""
     captured_cmd: list[str] = []
 
     def _fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -198,7 +198,7 @@ def test_env_runner_max_tasks_flag_present_when_set(fake_repo: Path, tmp_path: P
             base_url="https://x",
         )
 
-    assert "--env.max_eval_samples=3" in captured_cmd
+    assert "--env.task_filter=broken-python" in captured_cmd
     assert result.score == pytest.approx(0.9)
 
 
@@ -228,8 +228,10 @@ def test_env_runner_task_filter_flag_present_when_set(fake_repo: Path, tmp_path:
 def test_env_runner_sets_terminal_env_local(fake_repo: Path, tmp_path: Path) -> None:
     """TERMINAL_ENV must always be ``local`` to prevent silent Modal/Docker fan-out."""
     captured_env: dict[str, str] = {}
+    captured_cmd: list[str] = []
 
     def _fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured_cmd.extend(cmd)
         captured_env.update(kwargs.get("env") or {})
         save_dir = tmp_path / "out" / "evals" / "tblite"
         save_dir.mkdir(parents=True)
@@ -250,6 +252,7 @@ def test_env_runner_sets_terminal_env_local(fake_repo: Path, tmp_path: Path) -> 
     assert captured_env.get("OPENAI_API_KEY") == "key"
     assert captured_env.get("OPENAI_BASE_URL") == "https://b"
     assert captured_env.get("OPENAI_MODEL") == "m"
+    assert "--env.terminal_backend=local" in captured_cmd
 
 
 def test_env_runner_sets_terminal_env_local_even_when_parent_overrides(

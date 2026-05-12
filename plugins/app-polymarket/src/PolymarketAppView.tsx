@@ -169,12 +169,12 @@ export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
                     {selectedMarket.outcomes.map((outcome) => (
                       <div
                         key={outcome.name}
-                        className="flex items-center justify-between px-4 py-3 text-sm"
+                        className="flex items-center justify-between gap-3 px-4 py-3 text-sm"
                       >
-                        <span className="font-medium text-txt">
+                        <span className="min-w-0 flex-1 truncate font-medium text-txt">
                           {outcome.name}
                         </span>
-                        <span className="text-muted">
+                        <span className="shrink-0 text-muted">
                           {outcome.price ?? "n/a"}
                         </span>
                       </div>

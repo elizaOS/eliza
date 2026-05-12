@@ -1,4 +1,4 @@
-// AUTHORED — hardware-verify pending (no Apple HW on the authoring machine).
+// Hardware-verified on Apple M4 Max via `make metal-verify-fused`.
 //
 // Fused attention: QJL-K score + TBQ3-V mix, online softmax that never
 // materializes the per-token score vector. Metal Shading Language. Ports
@@ -7,8 +7,9 @@
 // reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md (Part 2),
 // byte-faithful to the C reference eliza_fused_attn_qjl_tbq3() in
 // packages/inference/verify/qjl_polar_ref.c (bit-exact to fused_attn_qjl_tbq_ref
-// in the milady-llama-cpp fork). Hardware-verified bit-for-bit on the Vulkan
-// port (fused_attn_qjl_tbq.comp, Intel ARL Mesa ANV); this is the Metal mirror.
+// in the eliza-llama-cpp fork). Hardware-verified bit-for-bit on both the
+// Vulkan port (fused_attn_qjl_tbq.comp, Intel ARL Mesa ANV) and this Metal
+// mirror (Apple M4 Max runtime JIT).
 //
 // One threadgroup per (q_head, q_pos); threadgroup size MUST be 32 (one Apple
 // SIMD-group — every other shader in this dir relies on simd_sum covering the
@@ -28,12 +29,12 @@
 //   head-dim V, not the rotated representation, unlike the standalone
 //   kernel_turbo3_dot score path which deliberately skips the uncondition).
 //
-// Online softmax: pass 1 walks the KV tokens once maintaining a thread-uniform
-// running (m, l); pass 2 walks them again, re-deriving w_t = exp(raw_t - m)/l
-// and FMAing the decoded V block into the shared output accumulator. Because
-// (m, l) are known before pass 2 the running rescale factor is always 1.0 —
-// the same simplification the C reference uses. Algebraically identical to the
-// FlashAttention rescaling form.
+// Online softmax: one pass walks KV once, maintaining thread-uniform running
+// (m, l). When m increases, the shared output accumulator is rescaled by
+// corr = exp(m_old - m_new), then the current decoded V block is FMAed with
+// w = exp(raw - m_new). After the loop, the accumulator is divided by l.
+// This is algebraically identical to the two-pass reference but avoids
+// recomputing every QJL score on Metal.
 //
 // kv_tile (op-param): KV positions per online-softmax tile. 0 == whole range;
 // the verify path passes 0 and walks the full range — matching the C reference
@@ -113,16 +114,10 @@ static inline uint tbq3_get_code(const device uint8_t * qs, uint idx) {
 // sketch elements). Collective: ALL 32 lanes must call together for the SAME
 // token. Returns the per-token raw score (×sm_scale) to every lane.
 static inline float qjl_score_one_token(
-        device const float * q_sketch,
         device const block_qjl1_256 * pk_head,
-        uint h_q, uint q_pos, uint n_heads, uint t, float sm_scale, uint tid) {
+        float4 q0, float4 q1, uint t, float sm_scale, uint tid) {
     device const block_qjl1_256 & blk = pk_head[t];
     uint bits  = blk.qs[tid];
-    uint base  = tid * 8u;
-    uint q_off = (q_pos * n_heads + h_q) * QJL_PROJECTION_DIM + base;
-    device const float4 * qs4 = (device const float4 *)(q_sketch + q_off);
-    float4 q0 = qs4[0];
-    float4 q1 = qs4[1];
     float4 s0 = float4(
         float(int(((bits >> 0) & 1u) << 1) - 1),
         float(int(((bits >> 1) & 1u) << 1) - 1),
@@ -205,6 +200,10 @@ kernel void kernel_fused_attn_qjl_tbq3_f32(
     device const block_qjl1_256 * pk_head = k_packed + (size_t)h_k * args.n_kv;
     device const block_tbq3_0   * pv_head = v_packed + (size_t)h_k * args.n_kv * TBQ_PER_TOKEN;
     float sm_scale = args.scale;
+    uint q_off = (q_pos * args.n_heads + h_q) * QJL_PROJECTION_DIM + tid * 8u;
+    device const float4 * qs4 = (device const float4 *)(q_sketch + q_off);
+    float4 q0 = qs4[0];
+    float4 q1 = qs4[1];
 
     // Empty cache -> out = 0 (matches the reference memset on degenerate input).
     if (args.n_kv == 0u) {
@@ -216,39 +215,31 @@ kernel void kernel_fused_attn_qjl_tbq3_f32(
     // output we walk the same masked set. q's absolute position:
     uint q_abs = args.q_pos_base + q_pos;
 
-    // --- Pass 1: running (m, l) over the KV tokens (thread-uniform). ---
-    float m = -INFINITY;
+    // --- Single online-softmax pass over the KV tokens. The running (m, l)
+    //     are thread-uniform: qjl_score_one_token returns the same raw score
+    //     to every lane after the cooperative simd_sum. ---
+    float m = -1.0e30f;
     float l = 0.0f;
-    for (uint t = 0u; t < args.n_kv; t++) {
-        if (args.causal != 0u && t > q_abs) break;
-        float raw = qjl_score_one_token(q_sketch, pk_head, h_q, q_pos, args.n_heads, t, sm_scale, tid);
-        float new_m = max(m, raw);
-        l = l * exp(m - new_m) + exp(raw - new_m);
-        m = new_m;
-    }
-    float inv_l = (l > 0.0f) ? (1.0f / l) : 0.0f;
-    if (!isfinite(m) || !(l > 0.0f)) {
-        for (uint i = tid; i < HEAD_DIM; i += 32u) out_attn[out_base + i] = 0.0f;
-        return;
-    }
-
-    // --- Pass 2: V-mix. w_t = exp(raw_t - m)/l; running rescale corr == 1.0. ---
     for (uint i = tid; i < HEAD_DIM; i += 32u) acc_o[i] = 0.0f;
     threadgroup_barrier(mem_flags::mem_threadgroup);
     for (uint t = 0u; t < args.n_kv; t++) {
         if (args.causal != 0u && t > q_abs) break;
-        float raw = qjl_score_one_token(q_sketch, pk_head, h_q, q_pos, args.n_heads, t, sm_scale, tid);
-        float w = exp(raw - m) * inv_l;
-        threadgroup_barrier(mem_flags::mem_threadgroup);   // tbq_buf reused per token
-        tbq3_decode_token_into_acc(pv_head + (size_t)t * TBQ_PER_TOKEN, tbq_buf, acc_o, w, 1.0f, tid);
+        float raw = qjl_score_one_token(pk_head, q0, q1, t, sm_scale, tid);
+        float new_m = max(m, raw);
+        float corr = exp(m - new_m);
+        float w = exp(raw - new_m);
+        l = l * corr + w;
+        m = new_m;
+        tbq3_decode_token_into_acc(pv_head + (size_t)t * TBQ_PER_TOKEN, tbq_buf, acc_o, w, corr, tid);
     }
+    if (!isfinite(m) || m <= -1.0e29f || !(l > 0.0f)) {
+        for (uint i = tid; i < HEAD_DIM; i += 32u) out_attn[out_base + i] = 0.0f;
+        return;
+    }
+    float inv_l = 1.0f / l;
+    for (uint i = tid; i < HEAD_DIM; i += 32u) acc_o[i] *= inv_l;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    // Write out. Lane 0 writes all 128 elements serially — the shared
-    // accumulator is fully settled by the decode helper's trailing barrier,
-    // and a single-thread store sidesteps the strided-parallel SSBO-store
-    // codegen quirk seen on some drivers (same fingerprint the Vulkan port
-    // works around; harmless on Apple Silicon, robust everywhere).
-    if (tid == 0u) {
-        for (uint i = 0u; i < HEAD_DIM; i++) out_attn[out_base + i] = acc_o[i];
-    }
+    // Native Apple Metal does not need the Vulkan serial-store workaround.
+    for (uint i = tid; i < HEAD_DIM; i += 32u) out_attn[out_base + i] = acc_o[i];
 }

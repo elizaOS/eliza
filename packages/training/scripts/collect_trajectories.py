@@ -501,14 +501,14 @@ def _common_env(
     run_id: str,
 ) -> dict[str, str]:
     env = {
-        "MILADY_COLLECTION_PROVIDER": args.provider,
-        "MILADY_COLLECTION_RUN_ID": run_id,
-        "MILADY_LIFEOPS_RUN_ID": run_id,
-        "MILADY_LIFEOPS_RUN_DIR": str(run_dir),
-        "MILADY_TRAJECTORY_DIR": str(run_dir / "trajectories"),
+        "ELIZA_COLLECTION_PROVIDER": args.provider,
+        "ELIZA_COLLECTION_RUN_ID": run_id,
+        "ELIZA_LIFEOPS_RUN_ID": run_id,
+        "ELIZA_LIFEOPS_RUN_DIR": str(run_dir),
+        "ELIZA_TRAJECTORY_DIR": str(run_dir / "trajectories"),
     }
     if args.model:
-        env["MILADY_COLLECTION_MODEL"] = args.model
+        env["ELIZA_COLLECTION_MODEL"] = args.model
         if args.provider in {"cerebras", "cerebras-dev"}:
             env["CEREBRAS_MODEL"] = args.model
         if args.provider == "anthropic":
@@ -518,7 +518,7 @@ def _common_env(
             env["OPENAI_MODEL"] = args.model
             env["OPENAI_LARGE_MODEL"] = args.model
     if args.max_cost_usd is not None:
-        env["MILADY_COLLECTION_MAX_COST_USD"] = f"{args.max_cost_usd:g}"
+        env["ELIZA_COLLECTION_MAX_COST_USD"] = f"{args.max_cost_usd:g}"
     return env
 
 

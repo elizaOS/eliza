@@ -196,6 +196,7 @@ function makeApp(fixture: GameFixture) {
 async function installGameRoutes(page: Page, fixture: GameFixture) {
   let run = makeRun(fixture);
   let launched = false;
+  const app = makeApp(fixture);
   const messages: string[] = [];
 
   await installDefaultAppRoutes(page);
@@ -208,7 +209,19 @@ async function installGameRoutes(page: Page, fixture: GameFixture) {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify([makeApp(fixture)]),
+      body: JSON.stringify([app]),
+    });
+  });
+
+  await page.route("**/api/catalog/apps", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([app]),
     });
   });
 
@@ -330,10 +343,14 @@ for (const fixture of FIXTURES) {
     const api = await installGameRoutes(page, fixture);
 
     await openAppPath(page, `/apps/${fixture.slug}`);
-    const launchButton = page.getByRole("button", {
-      name: `Launch ${fixture.displayName}`,
-    });
+    const launchButton = page
+      .getByTestId("app-launch-panel")
+      .getByRole("button", { name: "Launch" });
     await expect(launchButton).toBeVisible({ timeout: 60_000 });
+    await expect(launchButton).toHaveAttribute(
+      "title",
+      `Launch ${fixture.displayName}`,
+    );
     await launchButton.click();
 
     await expect(page.getByTestId("game-view-iframe")).toBeVisible({

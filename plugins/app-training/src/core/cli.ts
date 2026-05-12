@@ -398,11 +398,11 @@ async function cmdExportTrajectories(args: string[]) {
   });
   const inputDir =
     values.input ??
-    process.env.MILADY_TRAJECTORY_DIR ??
+    process.env.ELIZA_TRAJECTORY_DIR ??
     join(
-      process.env.MILADY_STATE_DIR ??
-        process.env.ELIZA_STATE_DIR ??
-        join(homedir(), ".milady"),
+      process.env.ELIZA_STATE_DIR ??
+        process.env.MILADY_STATE_DIR ??
+        join(homedir(), ".eliza"),
       "trajectories",
     );
   const outputDir = values.output ?? "./training-data";
@@ -554,12 +554,12 @@ async function cmdRollbackPrompt(args: string[]) {
   if (customRoot) {
     service.setStoreRoot(customRoot);
   } else {
-    // Match the runtime precedence used by `bun run train`: MILADY_STATE_DIR
+    // Match the runtime precedence used by `bun run train`: ELIZA_STATE_DIR
     // then ELIZA_STATE_DIR then ~/.eliza. Stay aligned so `rollback-prompt`
     // operates on the same store the runtime + train CLI write to.
     const stateDir =
-      process.env.MILADY_STATE_DIR?.trim() ||
       process.env.ELIZA_STATE_DIR?.trim() ||
+      process.env.MILADY_STATE_DIR?.trim() ||
       join(homedir(), ".eliza");
     service.setStoreRoot(join(stateDir, "optimized-prompts"));
   }
@@ -616,7 +616,7 @@ Commands:
     --input PATH    Path to raw_samples.json
 
   export-trajectories  Re-export raw recorded trajectories to per-task JSONL
-    -i, --input DIR    Trajectory dir (default: $MILADY_TRAJECTORY_DIR or ~/.milady/trajectories)
+    -i, --input DIR    Trajectory dir (default: $ELIZA_TRAJECTORY_DIR or ~/.eliza/trajectories)
     -o, --output DIR   Output dir (default: ./training-data)
     --max-per-task N   Cap examples per task bucket
 
@@ -638,7 +638,7 @@ Commands:
     <task>            Required positional: should_respond | context_routing |
                       action_planner | response | media_description
     --store-root DIR  Override the optimized-prompts store root (default:
-                      $MILADY_STATE_DIR / $ELIZA_STATE_DIR / ~/.eliza/optimized-prompts)
+                      $ELIZA_STATE_DIR / $MILADY_STATE_DIR / ~/.eliza/optimized-prompts)
 
 Environment:
   ANTHROPIC_API_KEY   Use Claude as teacher model

@@ -158,6 +158,7 @@ class ElizaBridgeTerminalAgent:
                     context={
                         "benchmark": "terminal-bench",
                         "task_id": task.task_id,
+                        "session_id": session.session_id,
                         "category": task.category.value,
                         "difficulty": task.difficulty.value,
                         "instruction": task.instruction,

@@ -16,7 +16,7 @@
  *     `Capacitor.isNativePlatform()` — there is no per-platform branch.
  *     Pre-seed of the on-device agent lives in
  *     `../pre-seed-local-runtime.ts` and is not invoked from this file.
- *   - Deep-link awareness (e.g. `milady://onboard/...`): not referenced in
+ *   - Deep-link awareness (e.g. `eliza://onboard/...`): not referenced in
  *     `mobile-runtime-mode.ts`.
  */
 

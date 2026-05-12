@@ -1,4 +1,4 @@
-// CPU SIMD kernel staging for the v0.4.0-milady fork (Wave A1 wiring).
+// CPU SIMD kernel staging for the elizaOS/llama.cpp fork (v1.0.0-eliza) (Wave A1 wiring).
 //
 // What this module does:
 //
@@ -20,7 +20,7 @@
 //      the global ARCH_FLAGS (e.g. -march=native) decide which bodies
 //      survive preprocessing.
 //
-// Idempotent: each mutation carries a `# MILADY-CPU-SIMD-PATCH-V1`
+// Idempotent: each mutation carries a `# ELIZA-CPU-SIMD-PATCH-V1`
 // sentinel; re-running the build is safe.
 //
 // Out of scope (documented in the agent report):
@@ -53,7 +53,7 @@ const QJL_CPU_SRC_DIR = path.resolve(
   "qjl-cpu",
 );
 
-const SENTINEL = "# MILADY-CPU-SIMD-PATCH-V1";
+const SENTINEL = "# ELIZA-CPU-SIMD-PATCH-V1";
 
 // The QJL kernel-library files mirrored into ggml-cpu/qjl/. quants-qjl.c is
 // deliberately NOT in this list — it is fork-only ggml ABI glue, not part of
@@ -89,13 +89,7 @@ function qjlSourceListBlock() {
 function mirrorQjlSources(cacheDir, { dryRun }) {
   const srcRoot = path.join(QJL_CPU_SRC_DIR, "src");
   const incFile = path.join(QJL_CPU_SRC_DIR, "include", "qjl", "qjl.h");
-  const forkQjlDir = path.join(
-    cacheDir,
-    "ggml",
-    "src",
-    "ggml-cpu",
-    "qjl",
-  );
+  const forkQjlDir = path.join(cacheDir, "ggml", "src", "ggml-cpu", "qjl");
   const forkQjlIncDir = path.join(forkQjlDir, "include", "qjl");
   if (!fs.existsSync(forkQjlDir)) {
     throw new Error(

@@ -37,7 +37,7 @@ Usage
         with handle.autocast():                  # wrap the train step
             loss = model(**batch).loss
 
-The caller can also set the env var ``MILADY_FP8_TRAIN=1`` to opt in
+The caller can also set the env var ``ELIZA_FP8_TRAIN=1`` to opt in
 explicitly when ``maybe_enable_fp8`` would otherwise no-op (e.g., to test
 the patch on an A100).
 """
@@ -78,11 +78,11 @@ class FP8Handle:
 def _build_recipe():
     """E4M3 weights + E5M2 grads with delayed-scaling history of 16 steps —
     the standard FP8 recipe used by Llama-3 and nanochat. Override via env
-    ``MILADY_FP8_RECIPE={delayed,current}``.
+    ``ELIZA_FP8_RECIPE={delayed,current}``.
     """
     from transformer_engine.common import recipe as _r
 
-    flavor = os.environ.get("MILADY_FP8_RECIPE", "delayed")
+    flavor = os.environ.get("ELIZA_FP8_RECIPE", "delayed")
     if flavor == "current":
         return _r.DelayedScaling(
             margin=0, fp8_format=_r.Format.HYBRID,
@@ -132,20 +132,20 @@ def maybe_enable_fp8(model: nn.Module) -> FP8Handle:
     Skips silently and returns a disabled handle if:
       * No CUDA available.
       * GPU compute capability isn't (9, 0) — H100/H200 — and
-        ``MILADY_FP8_TRAIN`` is not set explicitly.
+        ``ELIZA_FP8_TRAIN`` is not set explicitly.
       * ``transformer_engine`` isn't importable.
     """
     if not torch.cuda.is_available():
         return FP8Handle(enabled=False, reason_skipped="no cuda")
 
     cap = torch.cuda.get_device_capability(0)
-    forced = os.environ.get("MILADY_FP8_TRAIN") in ("1", "true", "yes")
+    forced = os.environ.get("ELIZA_FP8_TRAIN") in ("1", "true", "yes")
     if cap != (9, 0) and not forced:
         return FP8Handle(
             enabled=False,
             reason_skipped=(
                 f"compute_capability={cap} — TE FP8 is gated to sm_90 (H100/"
-                "H200). Set MILADY_FP8_TRAIN=1 to force the swap on other "
+                "H200). Set ELIZA_FP8_TRAIN=1 to force the swap on other "
                 "silicon (will silently fall back to bf16 on sm_120/sm_80)."
             ),
         )
@@ -171,7 +171,7 @@ def maybe_enable_fp8(model: nn.Module) -> FP8Handle:
             ),
         )
     log.info("TE FP8: swapped %d Linear modules; cap=%s, recipe=%s",
-             n, cap, os.environ.get("MILADY_FP8_RECIPE", "delayed"))
+             n, cap, os.environ.get("ELIZA_FP8_RECIPE", "delayed"))
     return FP8Handle(enabled=True, n_replaced=n)
 
 

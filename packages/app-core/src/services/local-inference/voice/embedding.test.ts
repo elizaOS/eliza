@@ -137,7 +137,9 @@ describe("buildLocalEmbeddingRoute", () => {
 
 describe("truncateMatryoshka", () => {
   it("EMBEDDING_MATRYOSHKA_DIMS = {64,128,256,512,768,1024}", () => {
-    expect([...EMBEDDING_MATRYOSHKA_DIMS]).toEqual([64, 128, 256, 512, 768, 1024]);
+    expect([...EMBEDDING_MATRYOSHKA_DIMS]).toEqual([
+      64, 128, 256, 512, 768, 1024,
+    ]);
     expect(isValidEmbeddingDim(256)).toBe(true);
     expect(isValidEmbeddingDim(1000)).toBe(false);
   });
@@ -157,7 +159,9 @@ describe("truncateMatryoshka", () => {
 
   it("renormalizes even when dim == vec.length (raw last-token state may not be unit-norm)", () => {
     const v = [3, 4]; // norm 5, not a valid Matryoshka width, but exercise the equal-length path via 64
-    const v64 = new Array(64).fill(0).map((_, i) => (i === 0 ? 3 : i === 1 ? 4 : 0));
+    const v64 = new Array(64)
+      .fill(0)
+      .map((_, i) => (i === 0 ? 3 : i === 1 ? 4 : 0));
     const out = truncateMatryoshka(v64, 64);
     const norm = Math.sqrt(out.reduce((s, x) => s + x * x, 0));
     expect(norm).toBeCloseTo(1, 6);

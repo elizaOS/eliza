@@ -4,9 +4,9 @@
  * POST  /api/v1/payment-requests        Create a new payment request (authed creator).
  * GET   /api/v1/payment-requests        List payment requests for the caller's org.
  *
- * The unified surface fronts the underlying provider implementations
- * (stripe, oxapay, x402, wallet-native). Existing app-charge /
- * crypto-payments / x402 routes remain unchanged.
+ * The unified read surface fronts payment_requests rows across providers.
+ * Creation is Stripe-only until the non-Stripe unified adapters are real; use
+ * the app-charge and x402 routes for OxaPay, wallet-native, and x402 flows.
  */
 
 import { Hono } from "hono";
@@ -18,12 +18,13 @@ import { getPaymentRequestsService } from "@/lib/services/payment-requests-defau
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
+const CreateProviderSchema = z.enum(["stripe"]);
 const ProviderSchema = z.enum(["stripe", "oxapay", "x402", "wallet_native"]);
 const PaymentContextSchema = z.enum(["verified_payer", "any_payer"]);
 const StatusSchema = z.enum(["pending", "delivered", "settled", "expired", "canceled", "failed"]);
 
 const CreatePaymentRequestSchema = z.object({
-  provider: ProviderSchema,
+  provider: CreateProviderSchema,
   amountCents: z.number().int().min(1).max(100_000_000),
   currency: z.string().min(3).max(8).optional(),
   paymentContext: PaymentContextSchema,

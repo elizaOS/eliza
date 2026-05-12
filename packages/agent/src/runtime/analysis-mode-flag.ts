@@ -20,7 +20,7 @@
  *     Discord, WeChat, etc.).
  *   - `isAnalysisModeAllowed()` returns false unless the runtime is local
  *     (loopback API) AND development mode is on, OR the operator opted in
- *     via `MILADY_ENABLE_ANALYSIS_MODE=1`.
+ *     via `ELIZA_ENABLE_ANALYSIS_MODE=1`.
  *
  * Storage:
  *   - In-memory `Map<roomId, AnalysisModeState>`. Process-local.
@@ -154,7 +154,7 @@ export class AnalysisModeFlagStore {
 export function isAnalysisModeAllowed(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  if (env.MILADY_ENABLE_ANALYSIS_MODE === "1") return true;
-  if (env.MILADY_ENABLE_ANALYSIS_MODE === "0") return false;
+  if (env.ELIZA_ENABLE_ANALYSIS_MODE === "1") return true;
+  if (env.ELIZA_ENABLE_ANALYSIS_MODE === "0") return false;
   return env.NODE_ENV === "development";
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { ContextRegistry } from "../runtime/context-registry";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
+import { ContextRegistry } from "../runtime/context-registry";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import {
 	formatAvailableContextsForPrompt,

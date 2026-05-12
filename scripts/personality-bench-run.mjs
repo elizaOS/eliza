@@ -27,7 +27,7 @@
  *   2. Load all `*.scenario.ts` under `test/scenarios/personality/` via
  *      `scripts/personality-bench-load-scenarios.ts` (bun-run helper).
  *   3. For each agent in `agents`:
- *      a. Make `~/.milady/runs/personality/personality-<agent>-<runId>/`.
+ *      a. Make `~/.eliza/runs/personality/personality-<agent>-<runId>/`.
  *      b. For each scenario, replay its `turns` (user messages, in order)
  *         through Cerebras with the agent's system prompt. Each turn is
  *         a fresh /chat/completions call with full conversation history.
@@ -37,22 +37,22 @@
  *      d. Walk the run-dir and grade every scenario via `gradeScenario()`.
  *      e. Emit per-agent `report.md` and `verdicts.json`.
  *   4. After all agents: aggregate into
- *      `~/.milady/runs/personality/personality-multiagent-<runId>/report.md`.
+ *      `~/.eliza/runs/personality/personality-multiagent-<runId>/report.md`.
  *
  * Env knobs (all optional — defaults make the bare command work):
  *
- *   MILADY_PERSONALITY_AGENT       all|eliza|hermes|openclaw|eliza-runtime   (default: all)
- *   MILADY_PERSONALITY_LIMIT       int                          (default: 200)
- *   MILADY_PERSONALITY_MODEL       Cerebras model id            (default: gpt-oss-120b)
- *   MILADY_PERSONALITY_CONCURRENCY int                          (default: 1)
- *   MILADY_PERSONALITY_SCENARIO_DIR override scenario root     (default: test/scenarios/personality)
+ *   ELIZA_PERSONALITY_AGENT       all|eliza|hermes|openclaw|eliza-runtime   (default: all)
+ *   ELIZA_PERSONALITY_LIMIT       int                          (default: 200)
+ *   ELIZA_PERSONALITY_MODEL       Cerebras model id            (default: gpt-oss-120b)
+ *   ELIZA_PERSONALITY_CONCURRENCY int                          (default: 1)
+ *   ELIZA_PERSONALITY_SCENARIO_DIR override scenario root     (default: test/scenarios/personality)
  *   CEREBRAS_API_KEY               (required)                   Sourced from eliza/.env.
  *   CEREBRAS_BASE_URL              (default: https://api.cerebras.ai/v1)
  *   PERSONALITY_JUDGE_ENABLE_LLM   judge env (auto when key set; pass `0` to disable)
  *   PERSONALITY_JUDGE_STRICT       judge env (0/1)
  *
  * Output layout:
- *   ~/.milady/runs/personality/
+ *   ~/.eliza/runs/personality/
  *     personality-eliza-<runId>/        per-agent run dir
  *       scenarios/<scenarioId>.json     one per scenario (PersonalityScenario shape)
  *       verdicts.json                   per-scenario verdicts
@@ -77,6 +77,11 @@ import net from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  assistantTurnFor,
+  bridgePersonalityExpect,
+  canonicalBucket,
+} from "./personality-bench-bridge.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -130,13 +135,13 @@ function envStr(name, fallback) {
   return v === undefined || v === "" ? fallback : v;
 }
 
-const cliAgent = envStr("MILADY_PERSONALITY_AGENT", "all");
-const scenarioLimit = envInt("MILADY_PERSONALITY_LIMIT", 200);
-const model = envStr("MILADY_PERSONALITY_MODEL", "gpt-oss-120b");
-const concurrency = envInt("MILADY_PERSONALITY_CONCURRENCY", 1);
+const cliAgent = envStr("ELIZA_PERSONALITY_AGENT", "all");
+const scenarioLimit = envInt("ELIZA_PERSONALITY_LIMIT", 200);
+const model = envStr("ELIZA_PERSONALITY_MODEL", "gpt-oss-120b");
+const concurrency = envInt("ELIZA_PERSONALITY_CONCURRENCY", 1);
 const scenarioRoot = resolve(
   REPO_ROOT,
-  envStr("MILADY_PERSONALITY_SCENARIO_DIR", "test/scenarios/personality"),
+  envStr("ELIZA_PERSONALITY_SCENARIO_DIR", "test/scenarios/personality"),
 );
 
 let agents;
@@ -146,7 +151,7 @@ if (cliAgent === "all") {
   agents = [cliAgent];
 } else {
   console.error(
-    `[personality-bench-run] unknown MILADY_PERSONALITY_AGENT=${cliAgent}; valid: all | ${AGENT_ORDER.join(" | ")}`,
+    `[personality-bench-run] unknown ELIZA_PERSONALITY_AGENT=${cliAgent}; valid: all | ${AGENT_ORDER.join(" | ")}`,
   );
   process.exit(2);
 }
@@ -164,7 +169,7 @@ const cerebrasBaseUrl = (
 
 const RUN_TS = Date.now();
 const RUN_ID = `${RUN_TS}`;
-const PERSONALITY_RUNS_DIR = join(homedir(), ".milady", "runs", "personality");
+const PERSONALITY_RUNS_DIR = join(homedir(), ".eliza", "runs", "personality");
 mkdirSync(PERSONALITY_RUNS_DIR, { recursive: true });
 
 console.log(`[personality-bench-run] RUN_ID=${RUN_ID}`);
@@ -175,189 +180,11 @@ console.log(
 console.log(`[personality-bench-run] scenarioRoot=${scenarioRoot}`);
 
 // ─────────────────────────────────────────────────────────────────────────
-// W3-2 ↔ W3-3 shape bridging.
-//
-// W3-2 scenarios author `personalityExpect.judgeKwargs` with 0-indexed
-// user-turn positions (probeTurnIndices, silentTurnIndices, etc.) plus
-// rubric-specific keys (styleKey, traitKey, ladderKey, direction,
-// variantKey, ...). The W3-3 judge expects 1-indexed assistant trajectory
-// positions in `personalityExpect.checkTurns` plus normalised
-// `personalityExpect.options.{style,trait,direction,mode,...}`.
-//
-// The trajectory we emit alternates user/assistant, so 1-indexed positions
-// map as: user_i (0-indexed in turns[]) → trajectory turn 2*i + 1;
-// assistant_i → trajectory turn 2*i + 2.
-//
-// All bridging happens here at the runner boundary so the judge stays
-// strict on its documented contract.
+// W3-2 ↔ W3-3 shape bridging lives in
+// `scripts/personality-bench-bridge.mjs` — extracted so the maps + the
+// `bridgePersonalityExpect` reducer are unit-testable without the
+// side-effects this runner has at module load.
 // ─────────────────────────────────────────────────────────────────────────
-
-function canonicalBucket(bucket) {
-  if (bucket === "note_trait_unrelated_test") return "note_trait_unrelated";
-  return bucket;
-}
-
-function assistantTurnFor(userTurnIndex) {
-  // 0-indexed user turn → 1-indexed assistant trajectory turn.
-  return 2 * userTurnIndex + 2;
-}
-
-function userTurnTo1IndexedTrajectory(userTurnIndex) {
-  return 2 * userTurnIndex + 1;
-}
-
-const STYLE_KEY_TO_STYLE = {
-  no_hedging: "no-hedging",
-  haiku: "haiku",
-  pirate: "pirate",
-  terse_one_sentence: "terse",
-  all_lowercase: "terse", // closest deterministic check available
-};
-
-const TRAIT_KEY_TO_OPTIONS = {
-  no_emojis: { trait: "no-emojis" },
-  no_buddy_friend: { trait: "no-buddy", forbiddenPhrases: ["buddy", "friend"] },
-  code_blocks_only: { trait: "wants-code-blocks" },
-  no_apologies: {
-    trait: "forbidden-phrases",
-    forbiddenPhrases: ["i'm sorry", "i am sorry", "apologies", "my apologies"],
-  },
-  no_exclamation: { trait: "forbidden-phrases", forbiddenPhrases: ["!"] },
-  no_lists: {
-    trait: "forbidden-phrases",
-    // Bullet/numbered list markers commonly used by LLMs.
-    forbiddenPhrases: ["- ", "* ", "1.", "1)"],
-  },
-  no_questions_back: { trait: "forbidden-phrases", forbiddenPhrases: ["?"] },
-  // The remaining trait keys (first_name_only, metric_units, prefers_short)
-  // don't have a deterministic phrase rubric — leaving them unmapped routes
-  // them to NEEDS_REVIEW, which is the conservative call.
-};
-
-const DIRECTION_KEY_TO_OPTION = {
-  warmer: "warmer",
-  playful: "warmer",
-  cooler: "cooler",
-  blunt: "cooler",
-  more_formal: "cooler",
-  terser: "terser",
-  silence: "terser",
-  no_emoji: "terser",
-  looser: "looser",
-};
-
-const SCOPE_VARIANT_TO_MODE = {
-  per_user_isolation: "per-user-isolation",
-  user_overrides_persist_across_unrelated_turns: "per-user-isolation",
-  global_applies_to_admin_only: "global-applies",
-  admin_global_setting_applies_to_all: "global-applies",
-  global_rejected_for_non_admin: "global-rejected-for-non-admin",
-  user_tries_global_should_refuse: "user-tries-global-should-refuse",
-};
-
-function bridgePersonalityExpect(scenario) {
-  const expect = scenario.personalityExpect ?? {};
-  const bucket = canonicalBucket(expect.bucket);
-  const kw = (expect.judgeKwargs ?? {});
-  let checkTurns = [];
-  let directiveTurn = 1;
-  const options = {};
-
-  switch (bucket) {
-    case "shut_up": {
-      const silent = Array.isArray(kw.silentTurnIndices)
-        ? kw.silentTurnIndices
-        : [];
-      checkTurns = silent.map(assistantTurnFor);
-      const instr = typeof kw.instructionTurnIndex === "number"
-        ? kw.instructionTurnIndex
-        : 0;
-      directiveTurn = userTurnTo1IndexedTrajectory(instr);
-      if (typeof kw.releaseTurnIndex === "number" && kw.releaseTurnIndex !== null) {
-        options.releaseTurn = userTurnTo1IndexedTrajectory(kw.releaseTurnIndex);
-        options.releaseAssistantTurn = assistantTurnFor(kw.releaseTurnIndex);
-        // Include the post-release assistant turn as a check turn so the
-        // re-engagement layer fires.
-        checkTurns.push(options.releaseAssistantTurn);
-      }
-      break;
-    }
-    case "hold_style": {
-      const probe = Array.isArray(kw.probeTurnIndices)
-        ? kw.probeTurnIndices
-        : [];
-      checkTurns = probe.map(assistantTurnFor);
-      const instr = typeof kw.instructionTurnIndex === "number"
-        ? kw.instructionTurnIndex
-        : 0;
-      directiveTurn = userTurnTo1IndexedTrajectory(instr);
-      const styleKey = typeof kw.styleKey === "string" ? kw.styleKey : "";
-      const mapped = STYLE_KEY_TO_STYLE[styleKey];
-      if (mapped) options.style = mapped;
-      if (mapped === "terse") options.maxTokens = 16;
-      break;
-    }
-    case "note_trait_unrelated": {
-      const probe = Array.isArray(kw.traitCheckTurnIndices)
-        ? kw.traitCheckTurnIndices
-        : [];
-      checkTurns = probe.map(assistantTurnFor);
-      const instr = typeof kw.traitMentionTurnIndex === "number"
-        ? kw.traitMentionTurnIndex
-        : 0;
-      directiveTurn = userTurnTo1IndexedTrajectory(instr);
-      const traitKey = typeof kw.traitKey === "string" ? kw.traitKey : "";
-      const mapped = TRAIT_KEY_TO_OPTIONS[traitKey];
-      if (mapped) Object.assign(options, mapped);
-      break;
-    }
-    case "escalation": {
-      const probe = Array.isArray(kw.probeTurnIndices)
-        ? kw.probeTurnIndices
-        : [];
-      checkTurns = probe.map(assistantTurnFor);
-      const steps = Array.isArray(kw.escalationStepTurnIndices)
-        ? kw.escalationStepTurnIndices
-        : [];
-      const firstStep = steps.length > 0 ? steps[0] : 0;
-      directiveTurn = userTurnTo1IndexedTrajectory(firstStep);
-      const directionKey = typeof kw.direction === "string" ? kw.direction : "";
-      const mapped = DIRECTION_KEY_TO_OPTION[directionKey];
-      if (mapped) options.direction = mapped;
-      break;
-    }
-    case "scope_global_vs_user": {
-      const adminProbe = Array.isArray(kw.adminProbeTurnIndices)
-        ? kw.adminProbeTurnIndices
-        : [];
-      const userProbe = Array.isArray(kw.userProbeTurnIndices)
-        ? kw.userProbeTurnIndices
-        : [];
-      checkTurns = [...adminProbe, ...userProbe].map(assistantTurnFor);
-      directiveTurn = 1;
-      const variantKey =
-        typeof kw.variantKey === "string" ? kw.variantKey : "";
-      const mode = SCOPE_VARIANT_TO_MODE[variantKey];
-      if (mode) options.mode = mode;
-      if (kw.forbidGlobalChangeFromUser === true) {
-        // Tighten the mode: a forbidGlobalChangeFromUser flag overrides
-        // anything else — the regular user MUST be refused.
-        options.mode = "user-tries-global-should-refuse";
-      }
-      break;
-    }
-    default:
-      checkTurns = [];
-      directiveTurn = 1;
-  }
-
-  return {
-    bucket,
-    directiveTurn,
-    checkTurns,
-    options,
-  };
-}
 
 // ─────────────────────────────────────────────────────────────────────────
 // Step 1 — load scenarios.
@@ -398,7 +225,7 @@ console.log(
   `[personality-bench-run] loaded ${allScenariosRaw.length} scenarios from ${scenarioRoot}`,
 );
 
-// Interleave by bucket so `MILADY_PERSONALITY_LIMIT=5` gives bucket
+// Interleave by bucket so `ELIZA_PERSONALITY_LIMIT=5` gives bucket
 // coverage instead of 5 escalations. Within a bucket we keep the
 // loader's (filename-sorted) order.
 const BUCKETS_ORDERED = [
@@ -460,7 +287,11 @@ const SYSTEM_PROMPTS = {
     "If the user asks for a stylistic change, follow it.",
   openclaw:
     "You are an OpenClaw-style assistant operating through a text-embedded tool-call protocol. " +
-    "For pure conversational turns (no tools needed), respond naturally to the user with a brief, helpful answer.",
+    "For pure conversational turns (no tools needed), respond naturally to the user with a brief, helpful answer. " +
+    "When the user pins a stylistic constraint (casing, length, format, register), apply it to every subsequent turn — " +
+    "including acronyms, proper nouns, brand names, technical terms, and worked examples — until the user explicitly releases it. " +
+    "A casing directive (e.g. all lowercase) overrides English capitalization conventions: write acronyms, abbreviations, " +
+    "place names, brand names, and proper nouns in the requested case (e.g. 'nasa', 'paris', 'habitat for humanity').",
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -703,7 +534,7 @@ async function spawnElizaServer({ extraEnv = {} } = {}) {
     CEREBRAS_API_KEY: cerebrasApiKey,
     OPENAI_BASE_URL: cerebrasBaseUrl,
     OPENAI_API_KEY: cerebrasApiKey,
-    MILADY_PROVIDER: "cerebras",
+    ELIZA_PROVIDER: "cerebras",
     BENCHMARK_MODEL_PROVIDER: "cerebras",
     OPENAI_LARGE_MODEL: model,
     OPENAI_SMALL_MODEL: model,
@@ -713,7 +544,7 @@ async function spawnElizaServer({ extraEnv = {} } = {}) {
     MEDIUM_MODEL: model,
     ADVANCED_CAPABILITIES: "true",
     // W1-9 fix — keep planner deterministic for benchmark turns.
-    MILADY_BENCH_FORCE_TOOL_CALL: process.env.MILADY_BENCH_FORCE_TOOL_CALL ?? "1",
+    ELIZA_BENCH_FORCE_TOOL_CALL: process.env.ELIZA_BENCH_FORCE_TOOL_CALL ?? "1",
     ...extraEnv,
   };
 
@@ -746,7 +577,7 @@ async function spawnElizaServer({ extraEnv = {} } = {}) {
   });
 
   const healthDeadlineMs = Number(
-    process.env.MILADY_PERSONALITY_RUNTIME_HEALTH_MS ?? 120_000,
+    process.env.ELIZA_PERSONALITY_RUNTIME_HEALTH_MS ?? 120_000,
   );
   try {
     await waitForHealth(baseUrl, token, healthDeadlineMs);
@@ -1105,7 +936,7 @@ async function runScenarioForAgent(scenario, agent, modelName) {
 // ─────────────────────────────────────────────────────────────────────────
 // Bounded-concurrency driver. Sequential per agent (concurrency=1) is the
 // default — Cerebras quotas + clarity. Operator can bump
-// MILADY_PERSONALITY_CONCURRENCY for parallel scenarios within one agent.
+// ELIZA_PERSONALITY_CONCURRENCY for parallel scenarios within one agent.
 // Sequential ACROSS agents always (shared quota).
 // ─────────────────────────────────────────────────────────────────────────
 async function runWithConcurrency(items, worker, conc) {

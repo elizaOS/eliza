@@ -73,40 +73,12 @@ Visit http://localhost:5173 to access the dashboard.
 - **Responsive Design**: Works perfectly on desktop and mobile
 - **Auto-refresh**: Status updates every 5 seconds
 
-## Available Actions
+## Actions
 
-The plugin provides three main actions:
-
-### START_TUNNEL
-
-Starts a new ngrok tunnel on the specified port.
-
-```typescript
-// Example usage in agent
-'Can you start a tunnel on port 3000?';
-'Open ngrok on port 8080 in the EU region';
-"Create a tunnel with subdomain 'my-app' on port 3000";
-```
-
-### STOP_TUNNEL
-
-Stops the currently active tunnel.
-
-```typescript
-'Stop the tunnel';
-'Close ngrok';
-'Shutdown the tunnel';
-```
-
-### GET_TUNNEL_STATUS
-
-Gets the current status of the tunnel.
-
-```typescript
-"What's the tunnel status?";
-'Is ngrok running?';
-'Show me the tunnel URL';
-```
+This package does not expose ngrok-specific actions. It registers
+`NgrokService` under `serviceType = "tunnel"` when its credentials are present.
+User-facing tunnel operations go through the canonical `TUNNEL` action with
+`action=start | stop | status`.
 
 ## Testing
 

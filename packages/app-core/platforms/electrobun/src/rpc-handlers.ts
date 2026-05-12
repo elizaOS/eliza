@@ -14,8 +14,26 @@ import { setAgentReady } from "./agent-ready-state";
 import { postAgentResetFromMain } from "./agent-reset-from-main";
 import { resolveDesktopRuntimeMode } from "./api-base";
 import { showBackgroundNoticeOnce } from "./background-notice";
+import {
+	composeBootProgressSnapshot,
+	readAgentHealthSnapshotViaHttp,
+} from "./boot-progress";
 import { getBrandConfig } from "./brand-config";
 import { postCloudDisconnectFromMain } from "./cloud-disconnect-from-main";
+import {
+	composeAuthMeSnapshot,
+	composeAuthStatusSnapshot,
+	composeConfigSnapshot,
+	readAuthMeViaHttp,
+	readAuthStatusViaHttp,
+	readConfigViaHttp,
+} from "./config-and-auth-rpc";
+import {
+	composeCharacterSnapshot,
+	composeConversationsListSnapshot,
+	readCharacterViaHttp,
+	readConversationsListViaHttp,
+} from "./conversations-and-character-rpc";
 import { desktopHttpRequest } from "./desktop-http-request";
 import { formatRendererDiagnosticLine } from "./diagnostic-format";
 import { getFloatingChatManager } from "./floating-chat-window";
@@ -48,6 +66,13 @@ import {
 } from "./native/steward";
 import { getSwabbleManager } from "./native/swabble";
 import { getTalkModeManager } from "./native/talkmode";
+import {
+	composeOnboardingOptionsSnapshot,
+	composeOnboardingStatusSnapshot,
+	readOnboardingOptionsViaHttp,
+	readOnboardingStatusViaHttp,
+} from "./onboarding-rpc";
+import { resolveRpcAgentPort } from "./rpc-port-resolver";
 import type { ElizaDesktopRPCSchema, StewardRpcStatus } from "./rpc-schema";
 import {
 	buildRuntimePermissionUnavailableState,
@@ -243,6 +268,86 @@ export function buildBunRpcHandlers({
 			}
 		},
 		agentStatus: async () => agent.getStatus(),
+		/**
+		 * Aggregated boot snapshot — typed counterpart to renderer
+		 * `/api/health` + `/api/dev/stack` polling. Pure composition over
+		 * `agent.getStatus()` + `readAgentHealthSnapshotViaHttp` so both
+		 * sources are swappable when the agent runtime merges into this
+		 * Bun process (the typed contract stays identical through that
+		 * migration).
+		 */
+		bootProgress: async () => {
+			const status = agent.getStatus();
+			return composeBootProgressSnapshot(
+				{ ...status, port: resolveRpcAgentPort(status.port) },
+				readAgentHealthSnapshotViaHttp,
+			);
+		},
+		/**
+		 * Typed counterpart to renderer `client.getOnboardingStatus()` —
+		 * the polling-backend startup phase calls this. See
+		 * `onboarding-rpc.ts` for the pure composition layer.
+		 */
+		getOnboardingStatus: async () =>
+			composeOnboardingStatusSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readOnboardingStatusViaHttp,
+			),
+		/**
+		 * Typed counterpart to renderer `client.getOnboardingOptions()` —
+		 * provider + model catalogs for the onboarding form.
+		 */
+		getOnboardingOptions: async () =>
+			composeOnboardingOptionsSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readOnboardingOptionsViaHttp,
+			),
+		/**
+		 * Typed counterpart to `client.getConfig()` — redacted agent
+		 * config. See config-and-auth-rpc.ts for the pure composer.
+		 */
+		getConfig: async () =>
+			composeConfigSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readConfigViaHttp,
+			),
+		/**
+		 * Typed counterpart to `client.getAuthStatus()` — auth/pairing
+		 * gate state used by the polling-backend startup phase.
+		 */
+		getAuthStatus: async () =>
+			composeAuthStatusSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readAuthStatusViaHttp,
+			),
+		/**
+		 * Typed counterpart to `client.getAuthMe()` — session identity +
+		 * access mode (or structured 401 reason).
+		 */
+		getAuthMe: async () =>
+			composeAuthMeSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readAuthMeViaHttp,
+			),
+		/**
+		 * Typed counterpart to `client.listConversations()` — feeds the
+		 * conversations sidebar. Polled at the same cadence as the
+		 * existing HTTP route (useIntervalWhenDocumentVisible).
+		 */
+		listConversations: async () =>
+			composeConversationsListSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readConversationsListViaHttp,
+			),
+		/**
+		 * Typed counterpart to `client.getCharacter()` — current
+		 * character config used by chat + companion surfaces.
+		 */
+		getCharacter: async () =>
+			composeCharacterSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readCharacterViaHttp,
+			),
 		agentInspectExistingInstall: async () => agent.inspectExistingInstall(),
 		agentMigrateStateDir: async (params: { fromPath: string }) =>
 			agent.migrateStateDir(params),

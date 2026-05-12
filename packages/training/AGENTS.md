@@ -279,6 +279,6 @@ shipped bundle.
   reference.
 - `packages/inference/AGENTS.md` — the inference-side contract
   (mandates, manifest, verification gates).
-- `/Users/shawwalters/eliza-workspace/milady/CLAUDE.md` and
-  `/Users/shawwalters/eliza-workspace/milady/AGENTS.md` — repo-wide
+- `/Users/shawwalters/eliza-workspace/eliza/CLAUDE.md` and
+  `/Users/shawwalters/eliza-workspace/eliza/AGENTS.md` — repo-wide
   conventions and cleanup mandate.

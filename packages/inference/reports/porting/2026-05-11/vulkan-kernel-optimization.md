@@ -1,13 +1,23 @@
-# Vulkan kernel optimization — Intel Arc/Xe (Mesa ANV) — 2026-05-11
+# Vulkan kernel optimization — Intel Arc/Xe (Mesa ANV) + NVIDIA RTX 5080 — 2026-05-11
 
 Scope: the Vulkan compute shaders under `packages/inference/vulkan/`, the perf
 side of the verify harness (`packages/inference/verify/`), and the Vulkan
 runtime-dispatch policy in
-`packages/app-core/scripts/kernel-patches/vulkan-kernels.mjs`. Hardware: this
-machine's Intel Core Ultra 9 275HX iGPU (Arrow Lake / Xe-LPG, Mesa ANV 25.2.8,
-Vulkan 1.4.318, `subgroupSize=32`, `timestampPeriod=52.08 ns`,
-`maxComputeSharedMemorySize=65536`). No NVIDIA dGPU (D3cold; NVK can't
-enumerate it), no Apple/AMD hardware.
+`packages/app-core/scripts/kernel-patches/vulkan-kernels.mjs` +
+`packages/app-core/scripts/kernel-patches/vulkan-dispatch-patches/02-ggml-vulkan-pipelines.patch`.
+Hardware: this machine's Intel Core Ultra 9 275HX iGPU (Arrow Lake / Xe-LPG,
+Mesa ANV 25.2.8, Vulkan 1.4.318, `subgroupSize=32`, `timestampPeriod=52.08 ns`,
+`maxComputeSharedMemorySize=65536`) **and** the now-live NVIDIA GeForce RTX 5080
+Laptop GPU via the **proprietary `nvidia_icd.json`** (driver 580.142 — the kmod
+is loaded so the Vulkan ICD enumerates; `vendorID 0x10de`, `deviceID 0x2c59`,
+`subgroupSize=32`, `timestampPeriod=1.0 ns`). No Apple/AMD hardware.
+
+> **Update 2026-05-11 (this pass):** the predecessor's run profiled Intel ANV
+> only ("No NVIDIA dGPU (D3cold; NVK can't enumerate it)"). The proprietary
+> NVIDIA driver's Vulkan ICD is now reachable, so this pass adds the RTX 5080
+> Vulkan profile, a real second row in the device-policy table, and the
+> per-device spec-constant mechanism that table needs (§7 below). The fork
+> rebuild + `llama-bench` is still deferred — see §6/§7 for why.
 
 ## 1. New profiling harness — `vulkan_bench`
 
@@ -84,7 +94,7 @@ Findings:
 ### 3.1 Device-policy thresholds for the `_multi` routes — `vulkan-kernels.mjs`
 
 The runtime-dispatch patch previously used one pair of constants
-(`MILADY_VK_MULTIBLOCK_FACTOR=4`, `THRESHOLD=2048`) for *all* `_multi` routes on
+(`ELIZA_VK_MULTIBLOCK_FACTOR=4`, `THRESHOLD=2048`) for *all* `_multi` routes on
 *all* devices. Split into QJL vs TBQ, tuned from the bench:
 
 - **QJL: keep `TOKENS_PER_WG=4`, lower the engage threshold 2048 → 1024.**
@@ -141,7 +151,7 @@ The seam for divergence is `device->vendor_id` in
 `{2,4,8}` sweep and Mali for low barrier pressure in the review, both
 needs-hardware.) The pipelines are still created with `constant_id=0 == 4`; if a
 future device wants a different fold the `02-ggml-vulkan-pipelines.patch` hunk
-and the `MILADY_VK_*_MULTIBLOCK_FACTOR` dispatch divisors must move together.
+and the `ELIZA_VK_*_MULTIBLOCK_FACTOR` dispatch divisors must move together.
 
 ## 5. Parity confirmation (all on Intel ARL Mesa ANV, real hardware)
 
@@ -188,3 +198,125 @@ and the `MILADY_VK_*_MULTIBLOCK_FACTOR` dispatch divisors must move together.
    `qjl_get_rows` / `polar_get_rows` (and why the fused-attn shaders write the
    128-element output from `tid==0` serially). Pre-existing, not on the hot
    path, not addressed here.
+
+---
+
+## 7. NVIDIA RTX 5080 Vulkan path + per-device spec-constant mechanism (this pass)
+
+### 7.1 The RTX 5080 is now reachable over Vulkan
+
+`nvidia_icd.json` (driver 580.142) enumerates the RTX 5080 Laptop GPU as a
+compute-capable Vulkan device with `VK_QUERY_TYPE_TIMESTAMP` support
+(`timestampPeriod=1.0 ns` — exact ns counters). `vulkan_bench` gained an
+`ELIZA_VK_DEVICE_SUBSTR` / `ELIZA_VK_DEVICE_INDEX` selector + a
+`VULKAN_BENCH_JSON` env fallback so either device can be targeted:
+
+```
+ELIZA_VK_DEVICE_SUBSTR="NVIDIA" VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json VULKAN_BENCH_JSON=out.json ./vulkan_bench
+```
+
+Raw data for both devices is now in `bench_results/vulkan_kopt_2026-05-11.json`
+(restructured to `{devices: [intel, nvidia]}`, 84 rows each) and summarised in
+`hardware-results/vulkan-kopt-bench-thismachine-2026-05-11.json`.
+
+### 7.2 Profile — what dominates on the RTX 5080 (per-dispatch GPU µs, medians)
+
+| kernel | n_kv 512 | n_kv 4096 | n_kv 32768 |
+| --- | ---: | ---: | ---: |
+| turbo3 (single) | 83 | 386 | 1537 |
+| turbo3_multi best | **30** (f16) | **49** (f16) | **422** (f16) |
+| turbo4_multi best | **30** (f16) | **49** (f16) | 485 (f8) |
+| turbo3_tcq_multi best | **31** (f16) | **55** (f16) | **403** (f16) |
+| qjl (single) | 299 | 4742 | 26785 |
+| qjl_multi best | **82** (f16) | **374** (f8) | **3105** (f8) |
+| polar / polar_preht | 69 / 70 | 316 / 327 | 1507 / 1591 |
+| fused_attn_qjl_polar | 2238 | 16457 | 131231 |
+
+Findings, ranked:
+
+1. **The multi-block fold is a win at *every* length on a discrete GPU.** Unlike
+   Intel ANV (bandwidth-bound, fold a wash below 32k), the RTX 5080 has SMs to
+   spare — folding amortises the per-WG launch tax with no contention penalty.
+   Best fold = **16** for the turbo* score kernels (turbo3 386 µs → 48.8 µs at
+   4k = **7.9×**; 1537 → 422 µs at 32k = **3.6×**; even 83 → 30 µs at 512 =
+   **2.7×**), **8** for QJL (4742 → 374 µs at 4k = **12.7×**; 26785 → 3105 µs at
+   32k = **8.6×**; 299 → 85 µs at 512 = **3.5×**). For QJL, factor 16 is a wash
+   vs 8 at 4k/32k and 8 keeps more workgroups in flight, so 8 is the policy.
+   `qjl_multi` at factor 2 is a **regression** on NVIDIA at 512 (664 µs) — the
+   even-fold cases hit a divergent path, but the chosen factors avoid it.
+2. **QJL is still the heaviest standalone KV op** at scale on NVIDIA too
+   (26.8 ms at 32k single vs 1.5–1.6 ms for turbo*/polar), and gets the biggest
+   absolute win from the fold.
+3. **fused_attn_* is the same 8-WG-per-head shape problem** — 131 ms (Polar) /
+   127 ms (TBQ) at 32k vs ~2 ms for the unfused score on the RTX 5080. The
+   unfused score + ggml softmax + V-mat-vec stays the default everywhere; the
+   fused path is a future `(q_head, kv_tile)` 2D-grid rewrite, not a regression.
+
+### 7.3 Optimization landed — device-tuned spec constants (`02-ggml-vulkan-pipelines.patch` + `vulkan-kernels.mjs`)
+
+Previously the `_multi` pipelines were created with `constant_id=0 == 4` baked
+in for every device, and the runtime divided the grid by a static `4`. Now:
+
+- **Hunk 1** of `02-ggml-vulkan-pipelines.patch` adds
+  `uint32_t eliza_vk_tbq_multiblock_factor = 4;` and
+  `uint32_t eliza_vk_qjl_multiblock_factor = 4;` to `vk_device_struct`.
+- **Hunk 2** picks the factor by `device->vendor_id` *before* the `_multi`
+  pipeline creation (`VK_VENDOR_ID_NVIDIA` → 16 / 8; everything else → 4 / 4),
+  stores it on `device->eliza_vk_*_multiblock_factor`, and passes that as the
+  spec constant.
+- The runtime dispatch in `vulkan-kernels.mjs`
+  (`ggml_vk_eliza_attn_score_{qjl,tbq}`) reads
+  `ctx->device->eliza_vk_{qjl,tbq}_multiblock_factor` instead of the deleted
+  static `ELIZA_VK_*_MULTIBLOCK_FACTOR` constants, so the grid divisor always
+  matches whatever the pipeline was created with. The engage *thresholds*
+  (`QJL >= 1024 tokens`, `TBQ >= 8192`) are unchanged and the same on every
+  device — on NVIDIA the fold helps even below 1024, so this only forfeits a
+  little of the available speedup at the very small end (a deliberate
+  conservative choice to keep the voice/short-context decode loop on the
+  single-block path).
+
+The conservative `4`/`4` default keeps every unprofiled device (Adreno, Mali,
+AMD) exactly as before — no behaviour change off the two profiled vendors.
+
+### 7.4 Spec-constant device-policy table (updated)
+
+| device class (match on) | QJL `TOKENS_PER_WG` | QJL engage threshold | TBQ `BLOCKS_PER_WG` | TBQ engage threshold |
+| --- | --- | --- | --- | --- |
+| **NVIDIA discrete** (`vendorID 0x10de`; RTX 5080 Laptop, proprietary ICD) | **8** | 1024 tokens | **16** | 8192 tokens |
+| **Intel Arc/Xe iGPU** (`vendorID 0x8086`; ARL/Xe-LPG, Mesa ANV) | 4 | 1024 tokens | 4 | 8192 tokens |
+| **default / unprofiled** (Adreno, Mali, AMD, …) | 4 | 1024 tokens | 4 | 8192 tokens |
+
+(The Intel and default rows are still identical — bandwidth-bound, the fold is a
+wash on the iGPU below 32k, so 4 is both the measured optimum and the safe
+cross-device default. AMD wave64 + Adreno still need their own sweep; the
+`device->vendor_id` seam is now exercised, so adding a row is a one-line change
+to hunk 2.)
+
+### 7.5 Parity (re-confirmed this pass, Intel ARL Mesa ANV, real hardware)
+
+- `make vulkan-verify` — **8/8 PASS** (max_diff 6.68e-6).
+- `make vulkan-verify-multiblock` — **16/16 PASS** (4 kernels × N ∈ {2,4,8,16}
+  — factor 16 was already in the matrix, so the new NVIDIA `{16,8}` policy is
+  covered).
+- `make vulkan-verify-fused` — **1920/1920 PASS** (max_diff ≤ 7.2e-7).
+- `make vulkan-dispatch-smoke` — **7/7 PASS** against the existing
+  `linux-x64-vulkan` fork build (predates this pass's patch edits — the new
+  device-policy lands in a fresh `--target linux-x64-vulkan` build).
+- `node -e import('vulkan-kernels.mjs')` — module loads, exports intact.
+
+### 7.6 Still left after this pass
+
+1. **Fork rebuild + `llama-bench`** — still deferred. `build-llama-cpp-dflash.mjs`
+   `git reset --hard`s the fork submodule, which currently has live
+   `linux-x64-cuda` (and sibling CPU) build state; the box was at load ~30–40
+   from concurrent agents. The shader sources + device-policy patches are
+   committed, so the next `--target linux-x64-vulkan` build picks them up; then
+   `make vulkan-dispatch-smoke` for fresh-binary parity and
+   `llama-cli`/`llama-bench` on `eliza-1-0_6b.bundle` / `1_7b` with
+   `-ngl 99 --cache-type-k qjl …` at 512/4k/32k — on Intel ANV *and* the RTX
+   5080 Vulkan ICD (same shaders, very different hw — the predicted iGPU vs dGPU
+   gap is ~10–20× from this dispatch profile).
+2. **fused-attn `(q_head, kv_tile)` 2D-grid rewrite** — still the real fused
+   bottleneck on both devices; not on the runtime hot path.
+3. **AMD/Adreno/Mali rows** — table now has NVIDIA + Intel; the seam is in
+   place, needs hardware.

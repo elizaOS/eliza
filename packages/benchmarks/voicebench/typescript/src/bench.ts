@@ -41,10 +41,15 @@ type IterationResult = {
   expectedTranscript: string | null;
   transcriptionExactMatch: boolean | null;
   transcriptionNormalizedMatch: boolean | null;
+  speechEndToTextMs: number;
   transcriptionMs: number;
+  responseHandlerDecisionMs: number;
   responseTtftMs: number;
   responseTotalMs: number;
+  speechEndToResponseDecisionMs: number;
   speechToResponseStartMs: number;
+  speechEndToFirstAudioUncachedMs: number;
+  speechEndToFirstAudioCachedMs: number;
   speechToVoiceStartUncachedMs: number;
   speechToVoiceStartCachedMs: number;
   voiceGenerationMs: number;
@@ -106,24 +111,37 @@ type BenchmarkOutput = {
     string,
     {
       runs: number;
+      avgSpeechEndToTextMs: number;
       avgTranscriptionMs: number;
+      avgResponseHandlerDecisionMs: number;
       avgResponseTtftMs: number;
       avgResponseTotalMs: number;
+      avgSpeechEndToResponseDecisionMs: number;
       avgSpeechToResponseStartMs: number;
+      avgSpeechEndToFirstAudioUncachedMs: number;
+      avgSpeechEndToFirstAudioCachedMs: number;
       avgSpeechToVoiceStartUncachedMs: number;
       avgSpeechToVoiceStartCachedMs: number;
       avgVoiceGenerationMs: number;
       avgVoiceFirstTokenUncachedMs: number;
       avgVoiceFirstTokenCachedMs: number;
       avgTtsCachedPipelineMs: number;
+      p95SpeechEndToTextMs: number;
+      p99SpeechEndToTextMs: number;
       p95TranscriptionMs: number;
       p99TranscriptionMs: number;
+      p95ResponseHandlerDecisionMs: number;
+      p99ResponseHandlerDecisionMs: number;
       p95ResponseTtftMs: number;
       p99ResponseTtftMs: number;
       p95ResponseTotalMs: number;
       p99ResponseTotalMs: number;
       p95SpeechToResponseStartMs: number;
       p99SpeechToResponseStartMs: number;
+      p95SpeechEndToFirstAudioUncachedMs: number;
+      p99SpeechEndToFirstAudioUncachedMs: number;
+      p95SpeechEndToFirstAudioCachedMs: number;
+      p99SpeechEndToFirstAudioCachedMs: number;
       p95SpeechToVoiceStartUncachedMs: number;
       p99SpeechToVoiceStartUncachedMs: number;
       p95SpeechToVoiceStartCachedMs: number;
@@ -920,10 +938,17 @@ async function main(): Promise<void> {
             expectedTranscript,
             transcriptionExactMatch,
             transcriptionNormalizedMatch,
+            speechEndToTextMs: round(transcriptionMs),
             transcriptionMs: round(transcriptionMs),
+            responseHandlerDecisionMs: round(responseTtftMs),
             responseTtftMs: round(responseTtftMs),
             responseTotalMs: round(responseTotalMs),
+            speechEndToResponseDecisionMs: round(speechToResponseStartMs),
             speechToResponseStartMs: round(speechToResponseStartMs),
+            speechEndToFirstAudioUncachedMs: round(
+              speechToVoiceStartUncachedMs,
+            ),
+            speechEndToFirstAudioCachedMs: round(speechToVoiceStartCachedMs),
             speechToVoiceStartUncachedMs: round(speechToVoiceStartUncachedMs),
             speechToVoiceStartCachedMs: round(speechToVoiceStartCachedMs),
             voiceGenerationMs: round(voiceGenerationMs),
@@ -1001,8 +1026,14 @@ async function main(): Promise<void> {
     );
     summary[mode.id] = {
       runs: rows.length,
+      avgSpeechEndToTextMs: round(
+        average(rows.map((entry) => entry.speechEndToTextMs)),
+      ),
       avgTranscriptionMs: round(
         average(rows.map((entry) => entry.transcriptionMs)),
+      ),
+      avgResponseHandlerDecisionMs: round(
+        average(rows.map((entry) => entry.responseHandlerDecisionMs)),
       ),
       avgResponseTtftMs: round(
         average(rows.map((entry) => entry.responseTtftMs)),
@@ -1010,8 +1041,17 @@ async function main(): Promise<void> {
       avgResponseTotalMs: round(
         average(rows.map((entry) => entry.responseTotalMs)),
       ),
+      avgSpeechEndToResponseDecisionMs: round(
+        average(rows.map((entry) => entry.speechEndToResponseDecisionMs)),
+      ),
       avgSpeechToResponseStartMs: round(
         average(rows.map((entry) => entry.speechToResponseStartMs)),
+      ),
+      avgSpeechEndToFirstAudioUncachedMs: round(
+        average(rows.map((entry) => entry.speechEndToFirstAudioUncachedMs)),
+      ),
+      avgSpeechEndToFirstAudioCachedMs: round(
+        average(rows.map((entry) => entry.speechEndToFirstAudioCachedMs)),
       ),
       avgSpeechToVoiceStartUncachedMs: round(
         average(rows.map((entry) => entry.speechToVoiceStartUncachedMs)),
@@ -1037,9 +1077,33 @@ async function main(): Promise<void> {
           95,
         ),
       ),
+      p95SpeechEndToTextMs: round(
+        percentile(
+          rows.map((entry) => entry.speechEndToTextMs),
+          95,
+        ),
+      ),
+      p99SpeechEndToTextMs: round(
+        percentile(
+          rows.map((entry) => entry.speechEndToTextMs),
+          99,
+        ),
+      ),
       p99TranscriptionMs: round(
         percentile(
           rows.map((entry) => entry.transcriptionMs),
+          99,
+        ),
+      ),
+      p95ResponseHandlerDecisionMs: round(
+        percentile(
+          rows.map((entry) => entry.responseHandlerDecisionMs),
+          95,
+        ),
+      ),
+      p99ResponseHandlerDecisionMs: round(
+        percentile(
+          rows.map((entry) => entry.responseHandlerDecisionMs),
           99,
         ),
       ),
@@ -1076,6 +1140,30 @@ async function main(): Promise<void> {
       p99SpeechToResponseStartMs: round(
         percentile(
           rows.map((entry) => entry.speechToResponseStartMs),
+          99,
+        ),
+      ),
+      p95SpeechEndToFirstAudioUncachedMs: round(
+        percentile(
+          rows.map((entry) => entry.speechEndToFirstAudioUncachedMs),
+          95,
+        ),
+      ),
+      p99SpeechEndToFirstAudioUncachedMs: round(
+        percentile(
+          rows.map((entry) => entry.speechEndToFirstAudioUncachedMs),
+          99,
+        ),
+      ),
+      p95SpeechEndToFirstAudioCachedMs: round(
+        percentile(
+          rows.map((entry) => entry.speechEndToFirstAudioCachedMs),
+          95,
+        ),
+      ),
+      p99SpeechEndToFirstAudioCachedMs: round(
+        percentile(
+          rows.map((entry) => entry.speechEndToFirstAudioCachedMs),
           99,
         ),
       ),

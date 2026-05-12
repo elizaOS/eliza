@@ -3,7 +3,7 @@
  *
  * Mirrors the contract of `runShell` in `@elizaos/agent` but is owned by this
  * plugin so the plugin → agent dependency direction stays clean. Whoever holds
- * an `IAgentRuntime` calls this from the BASH action handler; the body
+ * an `IAgentRuntime` calls this from the SHELL action handler; the body
  * dispatches against the runtime mode.
  */
 

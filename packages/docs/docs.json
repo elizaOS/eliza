@@ -739,7 +739,6 @@
               "plugin-registry/stt",
               "plugin-registry/edge-tts",
               "plugin-registry/elevenlabs",
-              "plugin-registry/robot-voice",
               "plugin-registry/suno",
               "plugin-registry/fal",
               "plugin-registry/image-generation",

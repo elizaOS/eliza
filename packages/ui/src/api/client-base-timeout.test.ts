@@ -30,7 +30,7 @@ describe("ElizaClient request timeout policy", () => {
     expect(request).toHaveBeenCalledWith(
       "http://agent.example:2138/api/conversations/conversation-id/messages",
       expect.any(Object),
-      { timeoutMs: 300_000 },
+      { timeoutMs: 600_000 },
     );
   });
 
@@ -47,7 +47,7 @@ describe("ElizaClient request timeout policy", () => {
     expect(request).toHaveBeenCalledWith(
       "http://agent.example:2138/api/conversations/conversation-id/messages?agentId=agent",
       expect.any(Object),
-      { timeoutMs: 300_000 },
+      { timeoutMs: 600_000 },
     );
   });
 

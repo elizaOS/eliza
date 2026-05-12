@@ -258,6 +258,13 @@ kernel void kernel_mul_mv_q4_polar_preht_f32(
     device const block_q4_polar * blk = k_blocks + row;
 
     float acc = 0.0f;
+    float scaled = 0.0f;
+    if (args.use_qjl != 0u) {
+        float mag = POLAR_QJL_CORRECTION_MAGNITUDE * POLAR_QJL_INV_SQRT_QK;
+        uint  bit  = (uint)(blk->qjl[0] & 1u);
+        float sign = bit ? 1.0f : -1.0f;
+        scaled = sign * mag;
+    }
     for (uint b = tid; b < QK_POLAR / 2; b += tg_size) {
         uint8_t byte = blk->qs[b];
         uint i0 = 2u * b;
@@ -266,10 +273,6 @@ kernel void kernel_mul_mv_q4_polar_preht_f32(
         float x1 = POLAR_Q4_CENTROIDS[(byte >> 4) & 0x0Fu];
 
         if (args.use_qjl != 0u) {
-            float mag = POLAR_QJL_CORRECTION_MAGNITUDE * POLAR_QJL_INV_SQRT_QK;
-            uint  bit  = (uint)(blk->qjl[0] & 1u);
-            float sign = bit ? 1.0f : -1.0f;
-            float scaled = sign * mag;
             x0 += scaled * POLAR_QJL_SIGNS[i0];
             x1 += scaled * POLAR_QJL_SIGNS[i1];
         }

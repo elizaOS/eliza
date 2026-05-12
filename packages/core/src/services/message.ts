@@ -57,8 +57,10 @@ import {
 	type FactsAndRelationshipsRunResult,
 	runFactsAndRelationshipsStage,
 } from "../runtime/facts-and-relationships";
+import { parseJsonObject } from "../runtime/json-output";
 import { getLocalizedExamplesProvider } from "../runtime/localized-examples-provider";
 import {
+	getMessageHandlerReply,
 	parseMessageHandlerOutput,
 	routeMessageHandlerOutput,
 	SIMPLE_CONTEXT_ID,
@@ -99,8 +101,8 @@ import {
 } from "../runtime/trajectory-recorder";
 import { isExplicitSelfModificationRequest } from "../should-respond";
 import {
-	getStreamingContext,
 	getModelStreamChunkDeliveryDepth,
+	getStreamingContext,
 	runWithStreamingContext,
 	type StreamingContext,
 } from "../streaming-context";
@@ -170,7 +172,6 @@ import {
 	parseJSONObjectFromText,
 	truncateToCompleteSentence,
 } from "../utils";
-import { parseJsonObject } from "../runtime/json-output";
 import {
 	collectActionResultSizeWarnings,
 	formatActionResultsForPrompt,
@@ -935,7 +936,7 @@ function hasInboundBenchmarkContext(message: Memory): boolean {
 
 /**
  * Returns true when the current turn was issued by a benchmark harness AND the
- * `MILADY_BENCH_FORCE_TOOL_CALL` env opt-in is set. Used to bias the planner
+ * `ELIZA_BENCH_FORCE_TOOL_CALL` env opt-in is set. Used to bias the planner
  * toward emitting structured tool calls instead of routing every turn through
  * `REPLY`, which is what LifeOpsBench and similar harnesses score against.
  *
@@ -949,7 +950,7 @@ function hasInboundBenchmarkContext(message: Memory): boolean {
  * bench-server metadata get the tool-call boost.
  */
 function isBenchmarkForcingToolCall(message: Memory): boolean {
-	if (process.env.MILADY_BENCH_FORCE_TOOL_CALL !== "1") return false;
+	if (process.env.ELIZA_BENCH_FORCE_TOOL_CALL !== "1") return false;
 	const content = message.content;
 	if (!content) return false;
 	if (content.source === "benchmark") return true;
@@ -1340,11 +1341,27 @@ export type V5MessageRuntimeStage1Result =
 			result: StrategyResult;
 	  };
 
+type ResponseHandlerEarlyReplyEvent = {
+	text: string;
+	messageHandler: MessageHandlerResult;
+};
+
 function getV5ModelText(raw: string | GenerateTextResult): string {
 	if (typeof raw === "string") {
 		return raw;
 	}
 	return typeof raw.text === "string" ? raw.text : JSON.stringify(raw);
+}
+
+function isVoiceChannelMessage(message: Pick<Memory, "content">): boolean {
+	return (
+		message.content?.channelType === ChannelType.VOICE_DM ||
+		message.content?.channelType === ChannelType.VOICE_GROUP
+	);
+}
+
+function normalizeVisibleTextForDuplicateCheck(text: string): string {
+	return text.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 function createV5ReplyStrategyResult(args: {
@@ -1788,7 +1805,7 @@ function buildV5PlannerActionSurface(params: {
 
 	if (
 		params.actions.length === 0 ||
-		process.env.MILADY_TIERED_ACTION_SURFACE === "0"
+		process.env.ELIZA_TIERED_ACTION_SURFACE === "0"
 	) {
 		return buildFullV5PlannerActionSurface({
 			actions: params.actions,
@@ -1801,7 +1818,7 @@ function buildV5PlannerActionSurface(params: {
 	const catalog = buildActionCatalog([...params.actions], {
 		localizedExamples: params.localizedExamples,
 	});
-	const measurementMode = process.env.MILADY_RETRIEVAL_MEASUREMENT === "1";
+	const measurementMode = process.env.ELIZA_RETRIEVAL_MEASUREMENT === "1";
 	const retrieval = retrieveActions({
 		catalog,
 		messageText: getUserMessageText(params.message) ?? "",
@@ -2285,7 +2302,7 @@ function getStage1CheckinRepairPlan(args: {
 			: morningIntent
 				? ["morning_checkin", "run_morning_checkin", "lifeops_morning_checkin"]
 				: ["run_checkin", "daily_checkin", "lifeops_checkin"],
-		parentActionHints: ["CHECKIN"],
+		parentActionHints: ["SCHEDULED_TASKS"],
 	};
 }
 
@@ -3473,10 +3490,7 @@ function shouldTreatPlannerContactAliasAsLifeReminder(
 	message: Memory,
 ): boolean {
 	const normalizedName = normalizeActionIdentifier(toolCall.name);
-	if (
-		normalizedName !== normalizeActionIdentifier("ADD_CONTACT") &&
-		normalizedName !== normalizeActionIdentifier("RELATIONSHIP")
-	) {
+	if (normalizedName !== normalizeActionIdentifier("ADD_CONTACT")) {
 		return false;
 	}
 	const text = (getUserMessageText(message) ?? "").toLowerCase();
@@ -3711,21 +3725,6 @@ async function runDeterministicPlannerFallback(args: {
 	};
 }
 
-function shouldTreatPlannerLifeAsDeviceIntent(
-	resolvedName: string,
-	_message: Memory,
-): boolean {
-	if (
-		normalizeActionIdentifier(resolvedName) !==
-		normalizeActionIdentifier("LIFE")
-	) {
-		return false;
-	}
-	// DEVICE_INTENT is no longer a planner-visible action. Legacy LIFE plans for
-	// device-wide delivery should not be rewritten into another retired action.
-	return false;
-}
-
 function shouldTreatPlannerWebAsCalendlyCalendar(
 	resolvedName: string,
 	message: Memory,
@@ -3812,28 +3811,6 @@ function shouldTreatPlannerConnectorAsMessage(
 			/\b(?:dm|dms|direct messages?|messages?)\b/i.test(text)) ||
 		(/\b(?:discord|slack|telegram|signal|whatsapp)\b/i.test(text) &&
 			/\b(?:post|send|message|dm|channel)\b/i.test(text))
-	);
-}
-
-function shouldTreatPlannerDeviceIntentAsLifeReminder(
-	resolvedName: string,
-	message: Memory,
-): boolean {
-	if (
-		normalizeActionIdentifier(resolvedName) !==
-		normalizeActionIdentifier("DEVICE_INTENT")
-	) {
-		return false;
-	}
-	const text = getUserMessageText(message) ?? "";
-	if (
-		/\b(?:device|devices|phone|mobile|desktop|broadcast|push)\b/i.test(text)
-	) {
-		return false;
-	}
-	return (
-		/\b(?:remember|remind|reminder)\b/i.test(text) &&
-		/\b(?:call|phone|text|message|email)\b/i.test(text)
 	);
 }
 
@@ -4143,9 +4120,7 @@ function normalizeAliasedPlannerToolCall(
 	message: Memory,
 ): PlannerToolCall {
 	const normalizedResolvedName = normalizeActionIdentifier(resolvedName);
-	const isOwnerSurface =
-		normalizedResolvedName === normalizeActionIdentifier("LIFE") ||
-		OWNER_SURFACE_ACTIONS.has(normalizedResolvedName);
+	const isOwnerSurface = OWNER_SURFACE_ACTIONS.has(normalizedResolvedName);
 	if (!isOwnerSurface) {
 		if (normalizedResolvedName === normalizeActionIdentifier("BLOCK")) {
 			const originalName = normalizeActionIdentifier(toolCall.name);
@@ -4268,44 +4243,23 @@ async function executeV5PlannedToolCall(
 			unwrappedToolCall,
 			args.executorCtx.message,
 		);
-	const forceLifeToDeviceIntent =
-		!forceContactReminderToLife &&
-		shouldTreatPlannerLifeAsDeviceIntent(
-			resolvedName,
-			args.executorCtx.message,
-		);
-	const forceDeviceIntentToLife =
-		!forceContactReminderToLife &&
-		!forceLifeToDeviceIntent &&
-		shouldTreatPlannerDeviceIntentAsLifeReminder(
-			resolvedName,
-			args.executorCtx.message,
-		);
 	const forceWebToCalendlyCalendar =
 		!forceContactReminderToLife &&
-		!forceLifeToDeviceIntent &&
-		!forceDeviceIntentToLife &&
 		shouldTreatPlannerWebAsCalendlyCalendar(
 			resolvedName,
 			args.executorCtx.message,
 		);
 	const forceWebToBookTravel =
 		!forceContactReminderToLife &&
-		!forceLifeToDeviceIntent &&
-		!forceDeviceIntentToLife &&
 		!forceWebToCalendlyCalendar &&
 		shouldTreatPlannerWebAsBookTravel(resolvedName, args.executorCtx.message);
 	const forceBrowserToAutofill =
 		!forceContactReminderToLife &&
-		!forceLifeToDeviceIntent &&
-		!forceDeviceIntentToLife &&
 		!forceWebToCalendlyCalendar &&
 		!forceWebToBookTravel &&
 		shouldTreatPlannerBrowserAsAutofill(resolvedName, args.executorCtx.message);
 	const forceConnectorToPost =
 		!forceContactReminderToLife &&
-		!forceLifeToDeviceIntent &&
-		!forceDeviceIntentToLife &&
 		!forceWebToCalendlyCalendar &&
 		!forceWebToBookTravel &&
 		!forceBrowserToAutofill &&
@@ -4316,8 +4270,6 @@ async function executeV5PlannedToolCall(
 		shouldTreatPlannerConnectorAsPost(resolvedName, args.executorCtx.message);
 	const forceConnectorToMessage =
 		!forceContactReminderToLife &&
-		!forceLifeToDeviceIntent &&
-		!forceDeviceIntentToLife &&
 		!forceWebToCalendlyCalendar &&
 		!forceWebToBookTravel &&
 		!forceBrowserToAutofill &&
@@ -4327,63 +4279,58 @@ async function executeV5PlannedToolCall(
 		);
 	const effectiveResolvedName = forceContactReminderToLife
 		? "OWNER_REMINDERS"
-		: forceLifeToDeviceIntent
-			? "MESSAGE"
-			: forceDeviceIntentToLife
-				? "OWNER_REMINDERS"
-				: forceWebToCalendlyCalendar
-					? "CALENDAR"
-					: forceWebToBookTravel
-						? "PERSONAL_ASSISTANT"
-						: forceBrowserToAutofill
-							? "CREDENTIALS"
-							: forceConnectorToPost
-								? "POST"
-								: forceConnectorToMessage
-									? "MESSAGE"
-									: resolvedName;
-	const toolCallForNormalization =
-		forceContactReminderToLife || forceDeviceIntentToLife
+		: forceWebToCalendlyCalendar
+			? "CALENDAR"
+			: forceWebToBookTravel
+				? "PERSONAL_ASSISTANT"
+				: forceBrowserToAutofill
+					? "CREDENTIALS"
+					: forceConnectorToPost
+						? "POST"
+						: forceConnectorToMessage
+							? "MESSAGE"
+							: resolvedName;
+	const toolCallForNormalization = forceContactReminderToLife
+		? {
+				...unwrappedToolCall,
+				params: {
+					action: "create",
+					subaction: "create",
+					intent: getUserMessageText(args.executorCtx.message),
+					details: {
+						contactName: stringParam(unwrappedToolCall.params?.name),
+						relationship: stringParam(unwrappedToolCall.params?.relationship),
+						originalPlannerAction: unwrappedToolCall.name,
+					},
+				},
+			}
+		: forceWebToBookTravel
 			? {
 					...unwrappedToolCall,
+					name: "PERSONAL_ASSISTANT",
 					params: {
-						action: "create",
-						subaction: "create",
+						...(unwrappedToolCall.params &&
+						typeof unwrappedToolCall.params === "object"
+							? unwrappedToolCall.params
+							: {}),
+						action: "book_travel",
 						intent: getUserMessageText(args.executorCtx.message),
-						details: {
-							contactName: stringParam(unwrappedToolCall.params?.name),
-							relationship: stringParam(unwrappedToolCall.params?.relationship),
-							originalPlannerAction: unwrappedToolCall.name,
-						},
 					},
 				}
-			: forceWebToBookTravel
+			: forceBrowserToAutofill
 				? {
 						...unwrappedToolCall,
-						name: "PERSONAL_ASSISTANT",
+						name: "CREDENTIALS",
 						params: {
 							...(unwrappedToolCall.params &&
 							typeof unwrappedToolCall.params === "object"
 								? unwrappedToolCall.params
 								: {}),
-							action: "book_travel",
-							intent: getUserMessageText(args.executorCtx.message),
+							action: "fill",
+							subaction: "fill",
 						},
 					}
-				: forceBrowserToAutofill
-					? {
-							...unwrappedToolCall,
-							name: "CREDENTIALS",
-							params: {
-								...(unwrappedToolCall.params &&
-								typeof unwrappedToolCall.params === "object"
-									? unwrappedToolCall.params
-									: {}),
-								action: "fill",
-								subaction: "fill",
-							},
-						}
-					: unwrappedToolCall;
+				: unwrappedToolCall;
 	const toolCall = normalizeAliasedPlannerToolCall(
 		toolCallForNormalization,
 		effectiveResolvedName,
@@ -4501,6 +4448,9 @@ export async function runV5MessageRuntimeStage1(args: {
 	state: State;
 	responseId: UUID;
 	plannerLoopConfig?: PlannerLoopParams["config"];
+	onResponseHandlerEarlyReply?: (
+		event: ResponseHandlerEarlyReplyEvent,
+	) => Promise<void> | void;
 }): Promise<V5MessageRuntimeStage1Result> {
 	const senderRole =
 		getTrajectoryContext()?.userRole ??
@@ -4517,7 +4467,7 @@ export async function runV5MessageRuntimeStage1(args: {
 	});
 
 	// G10/G11: construct the per-trajectory recorder. No-op when disabled via
-	// MILADY_TRAJECTORY_RECORDING=0. Failures inside the recorder must NEVER
+	// ELIZA_TRAJECTORY_RECORDING=0. Failures inside the recorder must NEVER
 	// propagate up — the recorder is observability, not load-bearing.
 	const recordingEnabled = isTrajectoryRecordingEnabled();
 	const recorder: TrajectoryRecorder | undefined = recordingEnabled
@@ -4712,7 +4662,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					availableContexts,
 				}) ?? buildFallbackStage1DirectReplyPlan();
 		}
-		if (!messageHandler && process.env.MILADY_DEBUG_STAGE1 === "1") {
+		if (!messageHandler && process.env.ELIZA_DEBUG_STAGE1 === "1") {
 			args.runtime.logger?.warn?.(
 				{
 					raw:
@@ -4738,6 +4688,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				"v5 messageHandler returned invalid MessageHandlerResult",
 			);
 		}
+		const parsedResponseHandlerReply = getMessageHandlerReply(messageHandler);
 
 		if (recorder && trajectoryId) {
 			await recordMessageHandlerStage({
@@ -4861,6 +4812,20 @@ export async function runV5MessageRuntimeStage1(args: {
 
 		const selectedContexts =
 			route.type === "planning_needed" ? route.contexts : [];
+		const routedResponseHandlerReply = getMessageHandlerReply(messageHandler);
+		const earlyReplyText =
+			routedResponseHandlerReply || parsedResponseHandlerReply;
+		const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
+		const earlyReplySent =
+			messageHandler.processMessage === "RESPOND" &&
+			earlyReplyText.length > 0 &&
+			typeof onResponseHandlerEarlyReply === "function";
+		if (earlyReplySent && typeof onResponseHandlerEarlyReply === "function") {
+			await onResponseHandlerEarlyReply({
+				text: earlyReplyText,
+				messageHandler,
+			});
+		}
 		const plannerProviderNames = selectV5PlannerStateProviderNames({
 			runtime: args.runtime,
 			message: args.message,
@@ -5004,6 +4969,18 @@ export async function runV5MessageRuntimeStage1(args: {
 							"Call at least one exposed non-terminal tool that can attempt the current request.",
 				})
 			: plannerContextWithDecision;
+		const plannerContextAfterEarlyReply = earlyReplySent
+			? appendContextEvent(effectivePlannerContext, {
+					id: `early-reply:${messageHandlerEndedAt}`,
+					type: "instruction",
+					source: "message-service",
+					createdAt: Date.now(),
+					content:
+						"The Stage 1 router already sent this visible reply to the user before planning: " +
+						JSON.stringify(earlyReplyText) +
+						". Do not repeat it. Send only additional follow-up text if the planner or tool work adds something new.",
+				})
+			: effectivePlannerContext;
 		const evaluatorEffects: EvaluatorEffects = {
 			copyToClipboard: () => undefined,
 			messageToUser: () => undefined,
@@ -5028,7 +5005,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		try {
 			plannerResult = await runPlannerLoop({
 				runtime: plannerRuntime,
-				context: effectivePlannerContext,
+				context: plannerContextAfterEarlyReply,
 				config: args.plannerLoopConfig,
 				tools: plannerTools.length > 0 ? plannerTools : undefined,
 				requireNonTerminalToolCall,
@@ -5039,7 +5016,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					executeV5PlannedToolCall({
 						runtime: args.runtime,
 						toolCall,
-						plannerContext: effectivePlannerContext,
+						plannerContext: plannerContextAfterEarlyReply,
 						executorCtx: {
 							message: args.message,
 							state: plannerState,
@@ -5071,7 +5048,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				plannerState,
 				selectedContexts,
 				senderRole,
-				plannerContext: effectivePlannerContext,
+				plannerContext: plannerContextAfterEarlyReply,
 				plannerRuntime,
 				actions: exposedPlannerActions,
 				evaluatorEffects,
@@ -5104,26 +5081,31 @@ export async function runV5MessageRuntimeStage1(args: {
 				? withActionResultsForPrompt(plannerState, actionResults)
 				: plannerState;
 		const plannedText = String(plannerResult.finalMessage ?? "").trim();
+		const plannedTextRepeatsEarlyReply =
+			earlyReplySent &&
+			normalizeVisibleTextForDuplicateCheck(plannedText) ===
+				normalizeVisibleTextForDuplicateCheck(earlyReplyText);
 
 		return {
 			kind: "planned_reply",
 			messageHandler,
-			result: plannedText
-				? createV5ReplyStrategyResult({
-						...args,
-						state: finalPlannerState,
-						text: plannedText,
-						thought:
-							plannerResult.evaluator?.thought ??
-							plannerResult.trajectory.steps.at(-1)?.thought ??
-							messageHandler.thought,
-					})
-				: {
-						responseContent: null,
-						responseMessages: [],
-						state: finalPlannerState,
-						mode: "none",
-					},
+			result:
+				plannedText && !plannedTextRepeatsEarlyReply
+					? createV5ReplyStrategyResult({
+							...args,
+							state: finalPlannerState,
+							text: plannedText,
+							thought:
+								plannerResult.evaluator?.thought ??
+								plannerResult.trajectory.steps.at(-1)?.thought ??
+								messageHandler.thought,
+						})
+					: {
+							responseContent: null,
+							responseMessages: [],
+							state: finalPlannerState,
+							mode: "none",
+						},
 		};
 	} catch (err) {
 		endStatus = "errored";
@@ -5441,7 +5423,7 @@ export function buildFailureReplyPrompt(recentMessages: string): string {
 		"  if the answer looks obvious from context (a SHA, a count, a price,",
 		"  a date, a status, a file path, a name, a result), DO NOT emit it.",
 		"  The trajectory that would have GROUNDED the answer failed, so any",
-		"  factual claim you make here is by definition ungrounded — the user",
+		"  factual claim you make here is by definition ungrounded. The user",
 		"  will retry, the real run will produce the grounded answer, and",
 		"  meanwhile you must not invent one from recent-conversation context.",
 		"- Do not paraphrase or echo the user's question as if you were about",
@@ -5575,15 +5557,11 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["SCHEDULE_RECURRING_EVENT", "CALENDAR"],
 		["SCHEDULE_RECURRING_MEETING", "CALENDAR"],
 		["SCHEDULE_RECURRING", "CALENDAR"],
-		["BOOK_TRAVEL_ACTION", "PERSONAL_ASSISTANT"],
-		["BOOK_TRAVEL", "PERSONAL_ASSISTANT"],
-		["SCHEDULING_NEGOTIATION", "PERSONAL_ASSISTANT"],
 		["CAPTURE_TRAVEL_PREFERENCES", "REPLY"],
 		["CAPTURE_BOOKING_PREFERENCES", "REPLY"],
 		["CREATE_TRAVEL_PREFERENCES", "REPLY"],
 		["SET_PREFERENCES", "REPLY"],
 		["SET_TRAVEL_PREFERENCES", "REPLY"],
-		["PROFILE", "REPLY"],
 		["CREATE_FOLLOWUP", "SCHEDULED_TASKS"],
 		["GET_PENDING_ASSETS", "MESSAGE"],
 		["GET_PENDING_ITEMS", "MESSAGE"],
@@ -5669,15 +5647,15 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["SET_GOAL", "OWNER_GOALS"],
 		["CREATE_REMINDER", "OWNER_REMINDERS"],
 		["SET_REMINDER_RULE", "OWNER_REMINDERS"],
-		["CHECK_IN", "CHECKIN"],
-		["LIFE_CHECK_IN", "CHECKIN"],
-		["MORNING_CHECKIN", "CHECKIN"],
-		["MORNING_CHECK_IN", "CHECKIN"],
-		["NIGHT_CHECKIN", "CHECKIN"],
-		["NIGHT_CHECK_IN", "CHECKIN"],
-		["RUN_CHECKIN", "CHECKIN"],
-		["RUN_MORNING_CHECKIN", "CHECKIN"],
-		["RUN_NIGHT_CHECKIN", "CHECKIN"],
+		["CHECK_IN", "SCHEDULED_TASKS"],
+		["LIFE_CHECK_IN", "SCHEDULED_TASKS"],
+		["MORNING_CHECKIN", "SCHEDULED_TASKS"],
+		["MORNING_CHECK_IN", "SCHEDULED_TASKS"],
+		["NIGHT_CHECKIN", "SCHEDULED_TASKS"],
+		["NIGHT_CHECK_IN", "SCHEDULED_TASKS"],
+		["RUN_CHECKIN", "SCHEDULED_TASKS"],
+		["RUN_MORNING_CHECKIN", "SCHEDULED_TASKS"],
+		["RUN_NIGHT_CHECKIN", "SCHEDULED_TASKS"],
 		["AUTOMATION_RUN", "REPLY"],
 		["DAILY_BRIEF", "REPLY"],
 		["MEMORY_SET", "REPLY"],
@@ -5697,13 +5675,11 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["CALENDAR_CHECK_AVAILABILITY", "CALENDAR"],
 		["BLOCK_WEBSITE", "BLOCK"],
 		["WEBSITE_BLOCKER", "BLOCK"],
-		["WEBSITE_BLOCK", "BLOCK"],
 		["AUTOMATION_FOCUS_BLOCK", "BLOCK"],
 		["FOCUS_BLOCK", "BLOCK"],
 		["SET_APP_BLOCK", "BLOCK"],
 		["PHONE_SET_APP_BLOCK", "BLOCK"],
 		["PHONE_BLOCK_APPS", "BLOCK"],
-		["APP_BLOCK", "BLOCK"],
 		["BLOCK_APPS", "BLOCK"],
 		["ADMIN_REJECT_APPROVAL", "RESOLVE_REQUEST"],
 		["REJECT_APPROVAL", "RESOLVE_REQUEST"],
@@ -6475,7 +6451,6 @@ function findDirectOwnedActionSuggestion(
 	if (looksLikeLocalShellRequest(messageText)) {
 		const shellAction = findRuntimeActionByNames(runtime, [
 			"SHELL",
-			"SHELL_COMMAND",
 			"RUN_IN_TERMINAL",
 			"RUN_COMMAND",
 			"EXECUTE_COMMAND",
@@ -6728,10 +6703,9 @@ function _hasSelectedShellCommandAction(
 		responseContent?.actions?.some(
 			(actionName) =>
 				typeof actionName === "string" &&
-				[
-					normalizeActionIdentifier("SHELL"),
-					normalizeActionIdentifier("SHELL_COMMAND"),
-				].includes(normalizeActionIdentifier(actionName)),
+				[normalizeActionIdentifier("SHELL")].includes(
+					normalizeActionIdentifier(actionName),
+				),
 		) ?? false
 	);
 }
@@ -8003,7 +7977,7 @@ export class DefaultMessageService implements IMessageService {
 	): Promise<MessageProcessingResult> {
 		// Analysis-mode token detection runs BEFORE any planner work so the
 		// agent never hallucinates a "performing an analysis" reply. Gated by
-		// `MILADY_ENABLE_ANALYSIS_MODE` / `NODE_ENV=development`. See
+		// `ELIZA_ENABLE_ANALYSIS_MODE` / `NODE_ENV=development`. See
 		// services/analysis-mode-handler.ts and review #15.
 		const analysisActivation = maybeHandleAnalysisActivation({
 			text: message.content?.text,
@@ -8177,6 +8151,13 @@ export class DefaultMessageService implements IMessageService {
 									);
 								}
 
+								// First-sentence cloud-TTS path. The local-inference voice loop
+								// uses VoiceScheduler/PhraseChunker instead
+								// (packages/app-core/src/services/local-inference/voice/scheduler.ts) —
+								// this is not duplicated, it's the cloud-deployment counterpart
+								// (packages/core can't import packages/app-core; the two paths live
+								// at different layers and only one is active per deployment).
+								//
 								// Only run first-sentence TTS detection when `accumulated` is present.
 								// Raw-token streams (no accumulated) may contain partial
 								// structured output that would garble hasFirstSentence() and TTS.
@@ -8805,6 +8786,53 @@ export class DefaultMessageService implements IMessageService {
 		let routedDecision: ContextRoutingDecision | null = null;
 		let strategyResult: StrategyResult | null = null;
 		let _usedV5Runtime = false;
+		const earlyReplyMessages: Memory[] = [];
+		const persistedEarlyReplyIds = new Set<string>();
+		const voiceResponseHandlerFastPath = isVoiceChannelMessage(message);
+		const deliverResponseHandlerEarlyReply = voiceResponseHandlerFastPath
+			? async (event: ResponseHandlerEarlyReplyEvent): Promise<void> => {
+					const text = event.text.trim();
+					if (!text || !message.id) return;
+					const earlyResponseId = asUUID(v4());
+					const earlyContent: Content = {
+						thought: event.messageHandler.thought,
+						actions: ["REPLY"],
+						providers: [],
+						text,
+						simple: true,
+						responseId: earlyResponseId,
+						inReplyTo: createUniqueUuid(runtime, message.id),
+					};
+					await runtime.applyPipelineHooks(
+						"outgoing_before_deliver",
+						outgoingPipelineHookContext(earlyContent, {
+							source: "response-handler",
+							roomId: message.roomId,
+							message,
+							responseId: earlyResponseId,
+						}),
+					);
+					const earlyMemory: Memory = {
+						id: earlyResponseId,
+						entityId: runtime.agentId,
+						agentId: runtime.agentId,
+						content: earlyContent,
+						roomId: message.roomId,
+						createdAt: Date.now(),
+					};
+					await runtime.createMemory(earlyMemory, "messages");
+					await this.emitMessageSent(
+						runtime,
+						earlyMemory,
+						message.content.source ?? "messageHandler",
+					);
+					earlyReplyMessages.push(earlyMemory);
+					persistedEarlyReplyIds.add(earlyResponseId);
+					if (callback) {
+						await callback(earlyContent);
+					}
+				}
+			: undefined;
 
 		const parallelJoin: { translatedUserText?: string } = {};
 		const setTranslatedUserText = (text: string) => {
@@ -8871,6 +8899,7 @@ export class DefaultMessageService implements IMessageService {
 						message,
 						state,
 						responseId,
+						onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
 					}),
 					runtime.applyPipelineHooks(
 						"parallel_with_should_respond",
@@ -9041,7 +9070,10 @@ export class DefaultMessageService implements IMessageService {
 			}
 
 			responseContent = result.responseContent;
-			responseMessages = result.responseMessages;
+			responseMessages =
+				earlyReplyMessages.length > 0
+					? [...earlyReplyMessages, ...result.responseMessages]
+					: result.responseMessages;
 			state = result.state;
 			mode = result.mode;
 
@@ -9122,6 +9154,12 @@ export class DefaultMessageService implements IMessageService {
 				mode !== "actions"
 			) {
 				for (const responseMemory of responseMessages) {
+					if (
+						responseMemory.id &&
+						persistedEarlyReplyIds.has(responseMemory.id)
+					) {
+						continue;
+					}
 					// Update the content in case inReplyTo was added
 					if (responseContent) {
 						responseMemory.content = responseContent;
@@ -9167,6 +9205,12 @@ export class DefaultMessageService implements IMessageService {
 					);
 					if (responseMessages.length > 0) {
 						for (const responseMemory of responseMessages) {
+							if (
+								responseMemory.id &&
+								persistedEarlyReplyIds.has(responseMemory.id)
+							) {
+								continue;
+							}
 							if (responseContent) {
 								responseMemory.content = responseContent;
 							}
@@ -9280,7 +9324,10 @@ export class DefaultMessageService implements IMessageService {
 				"Saved terminal response to memory",
 			);
 
-			if (callback) {
+			if (
+				callback &&
+				!(terminalAction === "IGNORE" && isVoiceChannelMessage(message))
+			) {
 				await callback(terminalContent);
 			}
 		}

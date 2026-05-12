@@ -33,6 +33,11 @@ import type { OptimizationExample, PromptScorer } from "../optimizers/types.js";
 import { REJECTED_DIRNAME } from "./artifact-store.js";
 import { gatedPersistNativeResult } from "./promotion-persist.js";
 
+interface PromotionFixture {
+  dataset: OptimizationExample[];
+  holdoutSet: OptimizationExample[];
+}
+
 interface StubServiceState {
   storeRoot: string;
   currentPrompt: string | null;
@@ -229,6 +234,77 @@ describe("gatedPersistNativeResult", () => {
     expect(remaining.length).toBe(5);
     // The freshly-promoted file should be among the survivors.
     expect(state.promotedWrites).toBe(1);
+  });
+
+  it("prefers the holdout set over the full dataset when present", async () => {
+    // Build two scorers — one keyed only on holdout-prompt-lookup and one
+    // keyed only on full-dataset-prompt-lookup — so we can prove the gate
+    // ran against the holdout subset (the other would throw if hit).
+    const holdoutOnly: PromotionFixture = {
+      holdoutSet: [{ id: "h-1", input: { user: "h" }, expectedOutput: "h" }],
+      // dataset includes other rows but they must not be scored against.
+      dataset: [
+        { id: "t-1", input: { user: "t" }, expectedOutput: "t" },
+        { id: "h-1", input: { user: "h" }, expectedOutput: "h" },
+      ],
+    };
+    const scorerCalls: OptimizationExample[][] = [];
+    const trackingScorer: PromptScorer = async (prompt, examples) => {
+      scorerCalls.push(examples);
+      return prompt === goodCandidatePrompt ? 0.9 : 0.5;
+    };
+
+    const service = makeStubService(state);
+    await gatedPersistNativeResult({
+      task: "action_planner",
+      datasetPath: "/tmp/dataset.jsonl",
+      runId: "run-test-holdout",
+      baselinePrompt,
+      result: {
+        optimizer: "instruction-search",
+        datasetSize: holdoutOnly.dataset.length,
+        score: 0.9,
+        baselineScore: 0.5,
+        result: {
+          optimizedPrompt: goodCandidatePrompt,
+          lineage: [{ round: 0, variant: 0, score: 0.5 }],
+        },
+        dataset: holdoutOnly.dataset,
+        holdoutSet: holdoutOnly.holdoutSet,
+        scorer: trackingScorer,
+      },
+      service,
+      notesPrefix: [],
+    });
+
+    // Every scorer call must have been against the holdout subset only.
+    expect(scorerCalls.length).toBeGreaterThan(0);
+    for (const examples of scorerCalls) {
+      for (const ex of examples) {
+        expect(ex.id).toBe("h-1");
+      }
+    }
+  });
+
+  it("falls back to the full dataset when no holdout is supplied", async () => {
+    const scorer = fixedScorer({
+      [baselinePrompt]: 0.5,
+      [goodCandidatePrompt]: 0.9,
+    });
+    const service = makeStubService(state);
+    const out = await gatedPersistNativeResult({
+      task: "action_planner",
+      datasetPath: "/tmp/dataset.jsonl",
+      runId: "run-test-fallback-dataset",
+      baselinePrompt,
+      result: makeNativeResult(goodCandidatePrompt, scorer),
+      service,
+      notesPrefix: [],
+    });
+    const fallbackLine = out.notes?.find((n) =>
+      n.includes("gate_dataset=full-dataset"),
+    );
+    expect(fallbackLine).toBeTruthy();
   });
 
   it("handles missing OptimizedPromptService getPrompt gracefully (falls back to baseline)", async () => {

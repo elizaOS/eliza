@@ -1,10 +1,10 @@
-# CUDA compile-only validation - elizaOS/llama.cpp v0.1.0-milady
+# CUDA compile-only validation - elizaOS/llama.cpp v0.1.0-eliza
 
 **Date:** 2026-05-09
 **Wave:** W3 agent D
 **Scope:** Install CUDA toolkit on this Linux x86_64 host (no GPU bound) and
 compile-validate every CUDA kernel in `elizaOS/llama.cpp` at tag
-`v0.1.0-milady` (commit `edd55d8b`). Goal: every kernel produces clean PTX /
+`v0.1.0-eliza` (commit `edd55d8b`). Goal: every kernel produces clean PTX /
 cubin with no errors. Real-GPU runtime is for a future agent on NVIDIA
 hardware.
 
@@ -64,11 +64,11 @@ Build cuda_12.6.r12.6/compiler.35059454_0
 ## Source
 
 ```
-git clone --depth 1 --branch v0.1.0-milady \
+git clone --depth 1 --branch v0.1.0-eliza \
   https://github.com/elizaOS/llama.cpp.git \
-  /home/shaw/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0
+  /home/shaw/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0
 ```
-HEAD = `edd55d8 merge: Metal kernels from milady/metal into milady/integration`,
+HEAD = `edd55d8 merge: Metal kernels from eliza/metal into eliza/integration`,
 matching the unified-fork tag from the prior wave's report at
 `reports/porting/2026-05-09-unified/INDEX.md`.
 
@@ -158,10 +158,10 @@ scheduling:
 | .cu file | obj bytes | notes |
 |---|---:|---|
 | `fattn.cu` | 69,444,808 | FlashAttention dispatch shell - includes every fattn kernel template via headers, ~10 min of cicc per arch on this host (~40 min total wall). Single-thread bottleneck. |
-| `template-instances/fattn-vec-instance-tbq3_0-tbq3_0.cu` | 37,762,616 | TBQ K x TBQ V (Apothic cherry-pick). New in milady fork. |
-| `template-instances/fattn-vec-instance-tbq4_0-tbq3_0.cu` | 37,214,040 | TBQ K x TBQ V. New in milady fork. |
-| `template-instances/fattn-vec-instance-tbq3_0-tbq4_0.cu` | 37,039,096 | TBQ K x TBQ V. New in milady fork. |
-| `template-instances/fattn-vec-instance-tbq4_0-tbq4_0.cu` | 36,454,424 | TBQ K x TBQ V. New in milady fork. |
+| `template-instances/fattn-vec-instance-tbq3_0-tbq3_0.cu` | 37,762,616 | TBQ K x TBQ V (Apothic cherry-pick). New in eliza fork. |
+| `template-instances/fattn-vec-instance-tbq4_0-tbq3_0.cu` | 37,214,040 | TBQ K x TBQ V. New in eliza fork. |
+| `template-instances/fattn-vec-instance-tbq3_0-tbq4_0.cu` | 37,039,096 | TBQ K x TBQ V. New in eliza fork. |
+| `template-instances/fattn-vec-instance-tbq4_0-tbq4_0.cu` | 36,454,424 | TBQ K x TBQ V. New in eliza fork. |
 | `template-instances/mmq-instance-q2_k.cu` | 22,325,680 | upstream Q2_K mmq instance |
 | `template-instances/fattn-tile-instance-dkq256-dv256.cu` | 22,250,712 | upstream FA tile (256/256) |
 | `mmvf.cu` | 21,753,856 | upstream mat-vec f16 |
@@ -268,7 +268,7 @@ landed. Next session.
 
 **Status: NOT IN FORK YET.** `nm` shows zero QJL-named symbols defined in
 `libggml-cuda.so.0.9.7`. The reference research kernels live unchanged at
-`/home/shaw/milady/eliza/packages/training/scripts/quantization/qjl/csrc/`
+`/home/shaw/eliza/eliza/packages/training/scripts/quantization/qjl/csrc/`
 (qjl_quant_kernel.cu, qjl_score_kernel.cu, qjl_quant_values_kernel.cu,
 qjl_gqa_score_kernel.cu, quantization.cu) but have not been ported into
 `ggml/src/ggml-cuda/`. Matches strategy doc table D row "QJL1_256" -
@@ -296,7 +296,7 @@ or `#ifdef` gates were needed in the upstream fattn-vec template.
 
 **Status: NOT IN FORK.** Per the unified-fork report
 (`reports/porting/2026-05-09-unified/INDEX.md` -> "What did NOT land"),
-the fork at `v0.1.0-milady` carries Apothic's TBQ CUDA template
+the fork at `v0.1.0-eliza` carries Apothic's TBQ CUDA template
 instances but **not** the spiritbuun TurboQuant-CUDA fixes nor the
 DFlash spec-decode integration; that integration is 8,988 commits
 across 727 files and is left as a follow-up. Out of scope for this
@@ -314,7 +314,7 @@ re-runs `nvcc -ptx` against every `*.cu` under `ggml/src/ggml-cuda/`
 `CMAKE_CUDA_ARCHITECTURES`, emitting per-(file,arch) `.ptx` files
 without linking. This is the early-signal PR gate for kernel-level
 syntax / instruction-set errors that the link-time build would only
-catch later. Land this on `milady/main` along with a
+catch later. Land this on `eliza/main` along with a
 `.github/workflows/local-inference-bench.yml` `fork-build-cuda` matrix
 job that calls it.
 
@@ -325,7 +325,7 @@ that `includes_CUDA.rsp` exists). Run as:
 
 ```bash
 OUT_DIR=./probe \
-FORK_DIR=$HOME/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0 \
+FORK_DIR=$HOME/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0 \
 BUILD_DIR=$FORK_DIR/build-cuda \
 CUDA_HOME=$HOME/cuda \
 CUDA_ARCHS="80;86;89;90" \
@@ -442,7 +442,7 @@ For each new TBQ kernel:
 | `ptx-tbq-sample-tbq3_0-tbq3_0-sm80-head200.ptx` | head of one TBQ PTX dump - global tables, .target sm_80, .version 8.5 directives. |
 | `ptx-tbq-sample-tbq3_0-tbq3_0-sm80-tail30.ptx` | tail of the same PTX dump - shows kernel terminator + linkage notes. |
 | `probe-cuda-compile-only.sh` | standalone probe driver - run after a successful ggml-cuda build to re-verify any subset |
-| `test-cuda-compile-only.cmake.patch` | proposed CMake target the next agent should land on `milady/main` |
+| `test-cuda-compile-only.cmake.patch` | proposed CMake target the next agent should land on `eliza/main` |
 | `cmake-version.txt` | cmake + gcc versions (3.28.3 + 13.3.0) |
 
 ## Caveats / known limitations of this verification

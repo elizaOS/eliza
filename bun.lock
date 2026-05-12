@@ -191,9 +191,11 @@
         "@elizaos/app-contacts": "2.0.0-beta.1",
         "@elizaos/app-core": "2.0.0-beta.1",
         "@elizaos/app-defense-of-the-agents": "2.0.0-beta.1",
+        "@elizaos/app-hyperliquid": "2.0.0-beta.1",
         "@elizaos/app-hyperscape": "2.0.0-beta.1",
         "@elizaos/app-lifeops": "2.0.0-beta.1",
         "@elizaos/app-phone": "2.0.0-beta.1",
+        "@elizaos/app-polymarket": "2.0.0-beta.1",
         "@elizaos/app-scape": "2.0.0-beta.1",
         "@elizaos/app-shopify": "2.0.0-beta.1",
         "@elizaos/app-steward": "2.0.0-beta.1",
@@ -205,6 +207,7 @@
         "@elizaos/app-wifi": "2.0.0-beta.1",
         "@elizaos/capacitor-agent": "2.0.0-beta.1",
         "@elizaos/capacitor-appblocker": "2.0.0-beta.1",
+        "@elizaos/capacitor-bun-runtime": "0.1.0",
         "@elizaos/capacitor-calendar": "2.0.0-beta.1",
         "@elizaos/capacitor-camera": "2.0.0-beta.1",
         "@elizaos/capacitor-canvas": "2.0.0-beta.1",
@@ -336,6 +339,7 @@
       },
       "optionalDependencies": {
         "@elizaos/capacitor-appblocker": "2.0.0-beta.1",
+        "@elizaos/capacitor-bun-runtime": "0.1.0",
         "@elizaos/capacitor-camera": "2.0.0-beta.1",
         "@elizaos/capacitor-canvas": "2.0.0-beta.1",
         "@elizaos/capacitor-contacts": "2.0.0-beta.1",
@@ -417,6 +421,10 @@
         "@elizaos/plugin-browser": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
       },
+    },
+    "packages/bun-ios-runtime": {
+      "name": "@elizaos/bun-ios-runtime",
+      "version": "0.0.0",
     },
     "packages/cloud-routing": {
       "name": "@elizaos/cloud-routing",
@@ -1785,6 +1793,9 @@
         "storybook": "^10.3.5",
         "typescript": "^6.0.3",
         "vitest": "^4.0.18",
+      },
+      "optionalDependencies": {
+        "@elizaos/capacitor-bun-runtime": "0.1.0",
       },
       "peerDependencies": {
         "react": "^19.0.0",
@@ -4177,6 +4188,8 @@
     "@elizaos/aws-examples": ["@elizaos/aws-examples@workspace:packages/examples/aws"],
 
     "@elizaos/browser-bridge-extension": ["@elizaos/browser-bridge-extension@workspace:packages/browser-bridge"],
+
+    "@elizaos/bun-ios-runtime": ["@elizaos/bun-ios-runtime@workspace:packages/bun-ios-runtime"],
 
     "@elizaos/capacitor-agent": ["@elizaos/capacitor-agent@workspace:packages/native-plugins/agent"],
 

@@ -5,7 +5,7 @@
  * Wave-4-F bridged the iOS pipeline: previously
  * `run-mobile-build.mjs` invoked cmake against the upstream npm package's
  * bundled `ios/` source, which produced a stock llama.cpp framework with
- * none of the milady kernels (TurboQuant / QJL / PolarQuant / DFlash).
+ * none of the eliza kernels (TurboQuant / QJL / PolarQuant / DFlash).
  * That framework satisfied the patched podspec but violated AGENTS.md §3
  * (required-kernel contract).
  *
@@ -41,7 +41,10 @@ const __dirname = path.dirname(__filename);
 
 // packages/app-core/scripts/ios-xcframework → packages/app-core/scripts
 const SCRIPTS_DIR = path.resolve(__dirname, "..");
-const DFLASH_BUILD_SCRIPT = path.join(SCRIPTS_DIR, "build-llama-cpp-dflash.mjs");
+const DFLASH_BUILD_SCRIPT = path.join(
+  SCRIPTS_DIR,
+  "build-llama-cpp-dflash.mjs",
+);
 
 // Per AGENTS.md §3, the required kernels for any Eliza-1 binary.
 // Symbol presence here is checked against the produced static archive
@@ -72,7 +75,7 @@ const REQUIRED_IOS_KERNEL_SYMBOLS = [
     kernel: "dflash",
     // DFlash is a CLI/runtime feature in the fork; its CPU-side flash-attn
     // hook is what the iOS slice carries. The symbol surfaces as the
-    // FA-ext entry point ggml-cpu wires for the v0.4.0-milady fork.
+    // FA-ext entry point ggml-cpu wires for the v0.4.0-eliza fork.
     symbolPattern: /dflash|flash[_-]?attn[_-]?ext/i,
     where: "libggml-cpu.a / libggml-metal.a",
   },
@@ -113,7 +116,7 @@ const REQUIRED_IOS_RUNTIME_SYMBOLS = [
 ].map((symbol) => ({
   symbol,
   symbolPattern: new RegExp(`(?:^|\\s)_?${symbol}\\b`, "m"),
-    where: symbol.startsWith("eliza_inference_")
+  where: symbol.startsWith("eliza_inference_")
     ? "libelizainference ABI archive (fail-closed shim or real OmniVoice build)"
     : "llama-cpp-capacitor bridge archive",
 }));
@@ -158,7 +161,9 @@ function parseArgs(argv) {
     }
   }
   if (!args.output) {
-    throw new Error("--output <dir> is required (e.g. .../LlamaCpp.xcframework)");
+    throw new Error(
+      "--output <dir> is required (e.g. .../LlamaCpp.xcframework)",
+    );
   }
   return args;
 }
@@ -199,7 +204,11 @@ function refreshIosRuntimeSymbolShim({ sliceDir, isSimulator }) {
     throw new Error(`[ios-xcframework] runtime symbol shim missing: ${source}`);
   }
   const sdk = isSimulator ? "iphonesimulator" : "iphoneos";
-  const sdkPath = captureStdout("xcrun", ["--sdk", sdk, "--show-sdk-path"]).trim();
+  const sdkPath = captureStdout("xcrun", [
+    "--sdk",
+    sdk,
+    "--show-sdk-path",
+  ]).trim();
   const obj = path.join(sliceDir, "eliza-ios-runtime-shim.o");
   const archive = path.join(sliceDir, "libeliza-ios-runtime-shim.a");
   const minVersionFlag = isSimulator
@@ -216,6 +225,8 @@ function refreshIosRuntimeSymbolShim({ sliceDir, isSimulator }) {
     "-isysroot",
     sdkPath,
     minVersionFlag,
+    "-I",
+    path.join(sliceDir, "include"),
     "-fvisibility=default",
     "-c",
     source,
@@ -368,7 +379,7 @@ function buildStaticFramework(tmpDir, slice, target) {
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
   <key>CFBundleName</key><string>LlamaCpp</string>
   <key>CFBundlePackageType</key><string>FMWK</string>
-  <key>CFBundleShortVersionString</key><string>0.4.0-milady</string>
+  <key>CFBundleShortVersionString</key><string>0.4.0-eliza</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>MinimumOSVersion</key><string>14.0</string>
   <key>CFBundleSupportedPlatforms</key>
@@ -500,7 +511,14 @@ function verifyXcframework(xcframeworkDir) {
       `[ios-xcframework] produced bundle missing Info.plist: ${xcframeworkDir}`,
     );
   }
-  const out = captureStdout("plutil", ["-extract", "AvailableLibraries", "json", "-o", "-", infoPlist]);
+  const out = captureStdout("plutil", [
+    "-extract",
+    "AvailableLibraries",
+    "json",
+    "-o",
+    "-",
+    infoPlist,
+  ]);
   let entries;
   try {
     entries = JSON.parse(out);
@@ -526,7 +544,9 @@ function verifyXcframework(xcframeworkDir) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (process.platform !== "darwin") {
-    throw new Error("[ios-xcframework] iOS xcframework packaging requires a macOS host with Xcode.");
+    throw new Error(
+      "[ios-xcframework] iOS xcframework packaging requires a macOS host with Xcode.",
+    );
   }
 
   const deviceDir = args.deviceArchiveDir ?? defaultSliceDir("ios-arm64-metal");
@@ -535,11 +555,15 @@ async function main() {
 
   if (args.buildIfMissing) {
     if (!fs.existsSync(path.join(deviceDir, "CAPABILITIES.json"))) {
-      console.log(`[ios-xcframework] device slice missing — invoking dflash build`);
+      console.log(
+        `[ios-xcframework] device slice missing — invoking dflash build`,
+      );
       run("node", [DFLASH_BUILD_SCRIPT, "--target", "ios-arm64-metal"]);
     }
     if (!fs.existsSync(path.join(simDir, "CAPABILITIES.json"))) {
-      console.log(`[ios-xcframework] simulator slice missing — invoking dflash build`);
+      console.log(
+        `[ios-xcframework] simulator slice missing — invoking dflash build`,
+      );
       run("node", [
         DFLASH_BUILD_SCRIPT,
         "--target",

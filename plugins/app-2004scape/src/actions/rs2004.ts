@@ -35,13 +35,13 @@
  */
 
 import {
-  parseJSONObjectFromText,
   type Action,
   type ActionResult as CoreActionResult,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
   type Memory,
+  parseJSONObjectFromText,
   type State,
 } from "@elizaos/core";
 import type { ActionResult as PluginActionResult } from "../sdk/types.js";
@@ -515,13 +515,6 @@ export const rs2004Action: Action = {
       descriptionCompressed: "Action.",
       required: true,
       schema: { type: "string", enum: [...RS_2004_OPS] },
-    },
-    {
-      name: "subaction",
-      description: "Legacy alias for action.",
-      descriptionCompressed: "Legacy op alias.",
-      required: false,
-      schema: { type: "string" },
     },
     {
       name: "params",

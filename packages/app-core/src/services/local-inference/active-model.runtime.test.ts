@@ -1,11 +1,11 @@
 /**
  * Runtime test for the W1-C cache-type-override plumbing against the
- * elizaOS/node-llama-cpp@v3.18.1-milady.3+ binding.
+ * elizaOS/node-llama-cpp@v3.18.1-eliza.3+ binding.
  *
- * Stock node-llama-cpp@3.18.1 rejects the milady-fork KV cache type
+ * Stock node-llama-cpp@3.18.1 rejects the eliza-fork KV cache type
  * strings (`tbq3_0`, `tbq4_0`, `qjl1_256`, `q4_polar`) at
  * `resolveGgmlTypeOption()` because its `GgmlType` enum doesn't carry
- * the new variants. The milady fork extends the enum to include slot
+ * the new variants. The eliza fork extends the enum to include slot
  * 43 (TBQ3_0), 44 (TBQ4_0), 46 (QJL1_256), 47 (Q4_POLAR) so the
  * string-to-int resolution succeeds.
  *
@@ -76,7 +76,7 @@ function findTestGguf(): string | null {
   const home = os.homedir();
   return findFirstExistingPath([
     path.join(home, ".eliza/local-inference/models/eliza-1-0_6b-32k.gguf"),
-    path.join(home, ".milady/local-inference/models/eliza-1-0_6b-32k.gguf"),
+    path.join(home, ".eliza/local-inference/models/eliza-1-0_6b-32k.gguf"),
     path.join(home, ".eliza/models/eliza-1-0_6b-32k.gguf"),
     path.join(home, ".eliza/models/eliza-1-1_7b-32k.gguf"),
   ]);
@@ -94,7 +94,7 @@ function makeInstalledModel(modelPath: string): InstalledModel {
   };
 }
 
-const MILADY_FORK_GGML_TYPES = {
+const ELIZA_FORK_GGML_TYPES = {
   TBQ3_0: 43,
   TBQ4_0: 44,
   QJL1_256: 46,
@@ -102,7 +102,7 @@ const MILADY_FORK_GGML_TYPES = {
 } as const;
 
 function getMismatchedForkTypes(enumRecord: Record<string, number>) {
-  return Object.entries(MILADY_FORK_GGML_TYPES).filter(
+  return Object.entries(ELIZA_FORK_GGML_TYPES).filter(
     ([key, expected]) => enumRecord[key] !== expected,
   );
 }
@@ -112,15 +112,15 @@ async function loadGgmlTypeRecord(): Promise<Record<string, number>> {
   return GgmlType as unknown as Record<string, number>;
 }
 
-describe("ActiveModel runtime: cache-type override → milady fork binding", () => {
-  it("detects whether node-llama-cpp exposes the milady-fork GgmlType extensions", async () => {
+describe("ActiveModel runtime: cache-type override → eliza fork binding", () => {
+  it("detects whether node-llama-cpp exposes the eliza-fork GgmlType extensions", async () => {
     // Importing from the binding to prove which copy the test runner
     // actually loaded. CI can resolve the stock prebuild, which has no
-    // fork-only enum entries; a milady fork install must expose all entries
+    // fork-only enum entries; a eliza fork install must expose all entries
     // with the expected numeric slots.
     const enumRecord = await loadGgmlTypeRecord();
     const mismatches = getMismatchedForkTypes(enumRecord);
-    const hasAnyForkType = Object.keys(MILADY_FORK_GGML_TYPES).some(
+    const hasAnyForkType = Object.keys(ELIZA_FORK_GGML_TYPES).some(
       (key) => enumRecord[key] !== undefined,
     );
 
@@ -193,7 +193,7 @@ describe("ActiveModel runtime: cache-type override → milady fork binding", () 
     const enumRecord = await loadGgmlTypeRecord();
     if (getMismatchedForkTypes(enumRecord).length > 0) {
       console.warn(
-        "[active-model.runtime] node-llama-cpp does not expose milady fork GgmlType entries; resolved-args validation passed, skipping native load of fork-only cache types.",
+        "[active-model.runtime] node-llama-cpp does not expose eliza fork GgmlType entries; resolved-args validation passed, skipping native load of fork-only cache types.",
       );
       return;
     }
@@ -226,7 +226,7 @@ describe("ActiveModel runtime: cache-type override → milady fork binding", () 
     // from before elizaOS/node-llama-cpp existed. With stock
     // node-llama-cpp@3.18.1 + lowercase `tbq4_0`, the binding would
     // either throw or silently degrade because the stock enum has no
-    // such key. With the milady fork binding, the string resolves
+    // such key. With the eliza fork binding, the string resolves
     // cleanly. Any error here must come from the C++ kernel layer (which
     // would mention either a ggml type code, a memory layout problem,
     // or VRAM/context size — never the "invalid cache type" string).

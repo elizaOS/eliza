@@ -30,7 +30,7 @@ import {
   getInternalToolAppTargetTab,
 } from "../components/apps/internal-tool-apps";
 import {
-  getAllOverlayApps,
+  getAvailableOverlayApps,
   getOverlayApp,
   isOverlayApp,
 } from "../components/apps/overlay-app-registry";
@@ -491,7 +491,7 @@ function resolveInternalToolTabFromSlug(slug: string): Tab | null {
  * slug is `getAppSlug(name)`. We iterate the registry to find a match.
  */
 function resolveOverlayAppNameFromSlug(slug: string): string | null {
-  for (const app of getAllOverlayApps()) {
+  for (const app of getAvailableOverlayApps()) {
     if (getAppSlug(app.name) === slug && isOverlayApp(app.name)) {
       return app.name;
     }

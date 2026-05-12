@@ -256,7 +256,7 @@ def missing_files(
 
 
 # Release-state interpretation: `base-v1` (the upstream base models,
-# GGUF-converted via the elizaOS/llama.cpp fork and fully Milady-optimized,
+# GGUF-converted via the elizaOS/llama.cpp fork and fully Eliza-optimized,
 # NOT fine-tuned) is a legit release shape. It does not pretend `final.weights`
 # is a *trained Eliza-1 checkpoint* — instead it records each component's
 # upstream `sourceModel`. So for `base-v1`, `final.weights` is not required to
@@ -367,7 +367,7 @@ def render_readiness(
         "readiness path.",
         "- v1 release shape (`releaseState=base-v1`): the upstream BASE models "
         "— GGUF-converted via the elizaOS/llama.cpp fork and fully "
-        "Milady-optimized (every quant/kernel trick in `packages/inference/AGENTS.md` "
+        "Eliza-optimized (every quant/kernel trick in `packages/inference/AGENTS.md` "
         "§3) — but NOT fine-tuned. `evidence/release.json` records `finetuned=false` "
         "and a `sourceModels` map (which upstream HF repo each component comes "
         "from). For `base-v1`, `final.weights` need not be `true` (the bytes are "

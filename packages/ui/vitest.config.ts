@@ -8,6 +8,10 @@ const monorepoRoot = resolve(packageRoot, "../..");
 const uiSrc = resolve(packageRoot, "src");
 const sharedSrc = resolve(monorepoRoot, "packages/shared/src");
 const coreSrc = resolve(monorepoRoot, "packages/core/src");
+const bunRuntimeSrc = resolve(
+  monorepoRoot,
+  "packages/native-plugins/bun-runtime/src/index.ts",
+);
 const reactPath = realpathSync(resolve(packageRoot, "node_modules/react"));
 const reactDomPath = realpathSync(
   resolve(packageRoot, "node_modules/react-dom"),
@@ -39,6 +43,10 @@ export default defineConfig({
       {
         find: /^@elizaos\/core\/(.+)$/,
         replacement: resolve(coreSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/capacitor-bun-runtime$/,
+        replacement: bunRuntimeSrc,
       },
       {
         find: /^react$/,

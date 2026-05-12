@@ -1,7 +1,7 @@
 """Publish the eliza-training-pipeline source tree to HuggingFace Hub.
 
-The training/ directory is intentionally NOT committed to the milady git
-repo (see /home/shaw/milady/.gitignore). HuggingFace is the canonical
+The training/ directory is intentionally NOT committed to the eliza git
+repo (see /home/shaw/eliza/.gitignore). HuggingFace is the canonical
 artifact store for everything in this tree:
 
   - corpora + dataset splits → ``elizaos/eliza-toon-v1-sft``  (push_to_hf.py)
@@ -9,7 +9,7 @@ artifact store for everything in this tree:
   - this pipeline (scripts + configs + reports) → ``elizaos/eliza-1-pipeline``
     (THIS script)
 
-That keeps the milady repo small, prevents accidental commits of
+That keeps the eliza repo small, prevents accidental commits of
 unfiltered trajectory data, and gives the team one URL to point training
 runners at.
 
@@ -146,7 +146,7 @@ def build_pipeline_card() -> str:
         "## What this repo is\n"
         "\n"
         "The full training pipeline source tree (scripts, configs, reports). The\n"
-        "milady core repo intentionally does NOT track this tree — HuggingFace is\n"
+        "eliza core repo intentionally does NOT track this tree — HuggingFace is\n"
         "the canonical artifact store for everything training-related so corpora,\n"
         "checkpoints, and pipeline source can be versioned without bloating the\n"
         "main monorepo.\n"

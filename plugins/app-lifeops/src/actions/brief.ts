@@ -107,8 +107,9 @@ interface BriefActionParameters {
  * sources explicitly).
  *
  * TODO Wave-2: replace these with real composition of CALENDAR.feed,
- * MESSAGE.triage, LIFE.due_today, MONEY.recurring_charges via the umbrella
- * dispatchers rather than direct loaders. Wave-1 leaves the seams open so the
+ * MESSAGE.triage, OWNER_TODOS/OWNER_REMINDERS due-today, and
+ * OWNER_FINANCES.recurring_charges via the umbrella dispatchers rather than
+ * direct loaders. Wave-1 leaves the seams open so the
  * unit tests can mock per-domain inputs without standing up the full
  * connector graph.
  */
@@ -340,114 +341,115 @@ const examples: ActionExample[][] = [
   ],
 ];
 
-export const briefAction: Action & { suppressPostActionContinuation?: boolean } =
-  {
-    name: ACTION_NAME,
-    similes: SIMILE_NAMES.slice(),
-    tags: [
-      "domain:briefing",
-      "capability:read",
-      "capability:compose",
-      "surface:internal",
-    ],
-    description:
-      "Compose the owner's morning, evening, or weekly briefing by pulling calendar feed, inbox triage, life-domain due items, and money recurring charges into a single LifeOpsBriefing. Subactions: compose_morning, compose_evening, compose_weekly.",
-    descriptionCompressed:
-      "briefing: compose_morning|compose_evening|compose_weekly; LifeOpsBriefing shape; LLM narrative pass",
-    routingHint:
-      'briefing/digest intent ("give me my morning brief", "evening summary", "what\'s on this week", "compose daily digest") -> BRIEF; for one-domain reads use the underlying umbrella (CALENDAR.feed, MESSAGE.triage, etc.)',
-    contexts: ["briefing", "calendar", "inbox", "tasks", "finance"],
-    roleGate: { minRole: "OWNER" },
-    suppressPostActionContinuation: true,
-    validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
-    parameters: [
-      {
-        name: "subaction",
-        description:
-          "Which brief to compose: compose_morning | compose_evening | compose_weekly.",
-        schema: { type: "string" as const, enum: [...SUBACTIONS] },
-      },
-      {
-        name: "period",
-        description:
-          "Time window the brief covers: today | tomorrow | this_week. Defaults to the subaction's natural period.",
-        schema: {
-          type: "string" as const,
-          enum: ["today", "tomorrow", "this_week"],
-        },
-      },
-      {
-        name: "include",
-        description:
-          "Per-domain include flags; each defaults to true. Shape: { calendar?, inbox?, life?, money? }.",
-        schema: { type: "object" as const, additionalProperties: true },
-      },
-      {
-        name: "format",
-        description:
-          "narrative renders the LLM compose pass; json returns only the structured LifeOpsBriefing. Defaults to narrative.",
-        schema: { type: "string" as const, enum: ["narrative", "json"] },
-      },
-    ],
-    examples,
-    handler: async (
-      runtime: IAgentRuntime,
-      message: Memory,
-      _state,
-      options,
-      callback: HandlerCallback | undefined,
-    ): Promise<ActionResult> => {
-      if (!(await hasLifeOpsAccess(runtime, message))) {
-        const text = "Briefings are restricted to the owner.";
-        await callback?.({ text });
-        return { text, success: false, data: { error: "PERMISSION_DENIED" } };
-      }
-
-      const params = getParams(options);
-      const subaction = resolveSubaction(params);
-      if (!subaction) {
-        return {
-          success: false,
-          text: "Tell me which briefing to compose: compose_morning, compose_evening, or compose_weekly.",
-          data: { error: "MISSING_SUBACTION" },
-        };
-      }
-
-      const include = resolveIncludeFlags(params.include);
-      const period = resolvePeriod(params, subaction);
-      const format: "narrative" | "json" =
-        params.format === "json" ? "json" : "narrative";
-
-      const briefing = await assembleBriefing({
-        runtime,
-        subaction,
-        period,
-        include,
-        format,
-      });
-
-      const text =
-        briefing.narrative ??
-        `Composed your ${briefing.kind} briefing for ${briefing.period}.`;
-
-      logger.info(
-        `[BRIEF] ${subaction} id=${briefing.id} period=${briefing.period} calendar=${briefing.sections.calendar?.length ?? 0} inbox=${briefing.sections.inbox?.length ?? 0} life=${briefing.sections.life?.length ?? 0} money=${briefing.sections.money?.length ?? 0}`,
-      );
-
-      await callback?.({
-        text,
-        source: "action",
-        action: ACTION_NAME,
-      });
-
-      return {
-        success: true,
-        text,
-        data: {
-          subaction,
-          briefing,
-          briefingId: briefing.id,
-        },
-      };
+export const briefAction: Action & {
+  suppressPostActionContinuation?: boolean;
+} = {
+  name: ACTION_NAME,
+  similes: SIMILE_NAMES.slice(),
+  tags: [
+    "domain:briefing",
+    "capability:read",
+    "capability:compose",
+    "surface:internal",
+  ],
+  description:
+    "Compose the owner's morning, evening, or weekly briefing by pulling calendar feed, inbox triage, life-domain due items, and money recurring charges into a single LifeOpsBriefing. Subactions: compose_morning, compose_evening, compose_weekly.",
+  descriptionCompressed:
+    "briefing: compose_morning|compose_evening|compose_weekly; LifeOpsBriefing shape; LLM narrative pass",
+  routingHint:
+    'briefing/digest intent ("give me my morning brief", "evening summary", "what\'s on this week", "compose daily digest") -> BRIEF; for one-domain reads use the underlying umbrella (CALENDAR.feed, MESSAGE.triage, etc.)',
+  contexts: ["briefing", "calendar", "inbox", "tasks", "finance"],
+  roleGate: { minRole: "OWNER" },
+  suppressPostActionContinuation: true,
+  validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
+  parameters: [
+    {
+      name: "action",
+      description:
+        "Canonical brief operation: compose_morning | compose_evening | compose_weekly.",
+      schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
-  };
+    {
+      name: "period",
+      description:
+        "Time window the brief covers: today | tomorrow | this_week. Defaults to the subaction's natural period.",
+      schema: {
+        type: "string" as const,
+        enum: ["today", "tomorrow", "this_week"],
+      },
+    },
+    {
+      name: "include",
+      description:
+        "Per-domain include flags; each defaults to true. Shape: { calendar?, inbox?, life?, money? }.",
+      schema: { type: "object" as const, additionalProperties: true },
+    },
+    {
+      name: "format",
+      description:
+        "narrative renders the LLM compose pass; json returns only the structured LifeOpsBriefing. Defaults to narrative.",
+      schema: { type: "string" as const, enum: ["narrative", "json"] },
+    },
+  ],
+  examples,
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state,
+    options,
+    callback: HandlerCallback | undefined,
+  ): Promise<ActionResult> => {
+    if (!(await hasLifeOpsAccess(runtime, message))) {
+      const text = "Briefings are restricted to the owner.";
+      await callback?.({ text });
+      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+    }
+
+    const params = getParams(options);
+    const subaction = resolveSubaction(params);
+    if (!subaction) {
+      return {
+        success: false,
+        text: "Tell me which briefing to compose: compose_morning, compose_evening, or compose_weekly.",
+        data: { error: "MISSING_SUBACTION" },
+      };
+    }
+
+    const include = resolveIncludeFlags(params.include);
+    const period = resolvePeriod(params, subaction);
+    const format: "narrative" | "json" =
+      params.format === "json" ? "json" : "narrative";
+
+    const briefing = await assembleBriefing({
+      runtime,
+      subaction,
+      period,
+      include,
+      format,
+    });
+
+    const text =
+      briefing.narrative ??
+      `Composed your ${briefing.kind} briefing for ${briefing.period}.`;
+
+    logger.info(
+      `[BRIEF] ${subaction} id=${briefing.id} period=${briefing.period} calendar=${briefing.sections.calendar?.length ?? 0} inbox=${briefing.sections.inbox?.length ?? 0} life=${briefing.sections.life?.length ?? 0} money=${briefing.sections.money?.length ?? 0}`,
+    );
+
+    await callback?.({
+      text,
+      source: "action",
+      action: ACTION_NAME,
+    });
+
+    return {
+      success: true,
+      text,
+      data: {
+        subaction,
+        briefing,
+        briefingId: briefing.id,
+      },
+    };
+  },
+};

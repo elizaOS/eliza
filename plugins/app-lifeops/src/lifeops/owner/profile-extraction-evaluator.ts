@@ -5,8 +5,14 @@ import type {
 } from "@elizaos/core";
 import { EntityStore } from "../entities/store.js";
 import { SELF_ENTITY_ID } from "../entities/types.js";
-import { createOwnerFactStore, type OwnerFactsPatch } from "../owner/fact-store.js";
-import { applyExtractedEdges, type ExtractedEdge } from "../relationships/extraction.js";
+import {
+  createOwnerFactStore,
+  type OwnerFactsPatch,
+} from "../owner/fact-store.js";
+import {
+  applyExtractedEdges,
+  type ExtractedEdge,
+} from "../relationships/extraction.js";
 import { RelationshipStore } from "../relationships/store.js";
 
 type IdentityHint = {
@@ -48,6 +54,11 @@ const FACT_PATTERNS = [
     pattern: /\bmy partner(?:'s name)? is\s+([^,.!?]{2,60})/iu,
   },
 ] as const;
+
+const TRAVEL_PREFERENCE_CONTEXT =
+  /\b(?:travel|booking|bookings|trip|trips|flight|flights|hotel|hotels)\b/iu;
+const TRAVEL_PREFERENCE_DETAILS =
+  /\b(?:aisle|window|seat|seats|checked\s+bag|checked\s+bags|carry-?on|luggage|hotel|hotels|budget|\$\d|venue|venues|mile|miles|night|nights)\b/iu;
 
 const RELATIONSHIP_TYPES: Record<string, string> = {
   boss: "managed_by",
@@ -102,6 +113,56 @@ function collectFactHints(text: string, facts: OwnerFactsPatch): void {
   }
 }
 
+function cleanTravelPreference(raw: string | undefined): string | null {
+  const value = raw
+    ?.replace(/\s+/g, " ")
+    .replace(/^[\s:,-]+/u, "")
+    .replace(/[.!?]+$/u, "")
+    .trim();
+  if (!value || value.length < 8) {
+    return null;
+  }
+
+  const withoutLeadIn = value
+    .replace(/^(?:that\s+)?(?:i\s+)?prefer\s+/iu, "")
+    .trim();
+  if (!TRAVEL_PREFERENCE_DETAILS.test(withoutLeadIn)) {
+    return null;
+  }
+
+  const normalized = withoutLeadIn.replace(/^(.)/u, (first) =>
+    first.toUpperCase(),
+  );
+  return `Prefer ${normalized}`;
+}
+
+function collectTravelPreferenceHints(
+  text: string,
+  facts: OwnerFactsPatch,
+): void {
+  if (
+    facts.travelBookingPreferences ||
+    !/\bprefer(?:ence|ences|s|red)?\b/iu.test(text) ||
+    !TRAVEL_PREFERENCE_CONTEXT.test(text)
+  ) {
+    return;
+  }
+
+  const patterns = [
+    /\b(?:for\s+(?:all\s+)?future\s+travel\s+bookings?|for\s+travel\s+bookings?|when\s+booking\s+travel)[:,-]?\s*((?:i\s+)?prefer\s+[^.!?]{8,240})/iu,
+    /\b(?:travel|booking|flight|hotel)\s+preferences?\s*(?:are|is|:|-)\s*([^.!?]{8,240})/iu,
+    /\b(?:remember\s+that\s+)?((?:i\s+)?prefer\s+[^.!?]{8,240})/iu,
+  ];
+
+  for (const pattern of patterns) {
+    const preference = cleanTravelPreference(pattern.exec(text)?.[1]);
+    if (preference) {
+      facts.travelBookingPreferences = preference;
+      return;
+    }
+  }
+}
+
 function collectIdentityHints(text: string): IdentityHint[] {
   const hints: IdentityHint[] = [];
   const patterns = [
@@ -146,6 +207,7 @@ function collectRelationshipHints(text: string): RelationshipHint[] {
 function extractProfileDetails(text: string): ProfileExtraction {
   const facts: OwnerFactsPatch = {};
   collectFactHints(text, facts);
+  collectTravelPreferenceHints(text, facts);
   return {
     facts,
     identities: collectIdentityHints(text),

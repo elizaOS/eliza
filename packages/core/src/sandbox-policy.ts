@@ -15,7 +15,7 @@ export function isLocalCodeExecutionAllowed(): boolean {
 
 export function buildStoreVariantBlockedMessage(featureLabel: string): string {
 	return [
-		`${featureLabel} requires the direct download build of Milady.`,
+		`${featureLabel} requires the direct download build of Eliza.`,
 		`Store-distributed builds run in an OS sandbox that blocks forking user-installed CLIs.`,
 		`To use this feature, install from ${getDirectDownloadUrl()}.`,
 	].join(" ");

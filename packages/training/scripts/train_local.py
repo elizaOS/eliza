@@ -19,6 +19,18 @@ Usage:
         --registry-key qwen3-0.6b \
         --epochs 3 --batch-size 4 --grad-accum 8 \
         --run-name eliza-1-0_6b-eliza-native-v1
+
+Environment knobs:
+    ELIZA_TORCH_COMPILE=1   opt in to `torch.compile(model, mode="default")`
+                            (applied after the Liger patch, before the trainer
+                            is built; any compile error falls back to the
+                            uncompiled model). Default OFF — see
+                            benchmarks/APOLLO_TUNING.md §A4. ~+15-30% step time.
+    ELIZA_AC_EVERY=N        activation-checkpoint granularity (1 = uniform,
+                            2 = every other layer, 0 = disabled).
+    ELIZA_FORCE_COL=1       force completion-only loss even when Liger is on
+                            (skips Liger's logits-free CE path).
+    ELIZA_ALLOW_UNVERIFIED_BASE=1   load a registry entry flagged unverified.
 """
 
 from __future__ import annotations
@@ -68,6 +80,21 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 log = logging.getLogger("train")
+
+
+def _triton_runtime_ok() -> bool:
+    """True iff Triton can initialize its CUDA backend (it JIT-compiles a small
+    `cuda_utils.c` against the interpreter's Python.h + a CUDA toolkit; missing
+    `python3.x-dev` headers or a stale toolkit makes that fail at the *first*
+    Triton kernel launch). Probed up front so Liger/fused-quant paths fall back
+    cleanly instead of crashing mid-run."""
+    try:
+        from triton.runtime import driver  # type: ignore
+        driver.active.get_current_device()
+        return True
+    except Exception as e:  # noqa: BLE001
+        log.warning("Triton runtime probe failed: %s", e)
+        return False
 
 
 def load_jsonl(path: Path, *, max_n: int | None = None) -> list[dict[str, Any]]:
@@ -234,15 +261,14 @@ def main() -> int:
         if (
             entry.unverified_base
             and args.model == ap.get_default("model")
-            and os.environ.get("MILADY_ALLOW_UNVERIFIED_BASE") != "1"
+            and os.environ.get("ELIZA_ALLOW_UNVERIFIED_BASE") != "1"
         ):
             raise SystemExit(
                 f"--registry-key {args.registry_key!r} → hf_id {entry.hf_id!r} "
-                "is an UNVERIFIED placeholder with no published checkpoint as of "
-                "2026-05; loading it will fail. Use a real key "
-                "(qwen3-0.6b / qwen3-1.7b / qwen3-4b → eliza-1-0_6b / eliza-1-1_7b / "
-                "eliza-1-4b), pass an explicit --model <real-hf-id>, or set "
-                "MILADY_ALLOW_UNVERIFIED_BASE=1 to override."
+                "is flagged unverified_base — its hf_id does not resolve to a "
+                "published checkpoint; loading it will fail. Use a verified key, "
+                "pass an explicit --model <real-hf-id>, or set "
+                "ELIZA_ALLOW_UNVERIFIED_BASE=1 to override."
             )
         if args.model == ap.get_default("model"):
             args.model = entry.hf_id
@@ -367,6 +393,20 @@ def main() -> int:
         and (args.registry_key is None
              or getattr(_registry_get(args.registry_key), "use_liger", True))
     )
+    if use_liger and device == "cuda" and not _triton_runtime_ok():
+        # Liger is Triton kernels; if Triton can't JIT-compile its CUDA driver
+        # helper (e.g. missing python3.x-dev headers, mismatched CUDA toolkit)
+        # it dies at the *first* training step, not at apply time. Probe up
+        # front and fall back rather than crash 8 minutes into the run.
+        msg = ("Triton runtime probe failed — Liger kernel disabled, falling "
+               "back to HF defaults. Fix: install the Python dev headers for "
+               "this interpreter (apt install python3.x-dev) and a CUDA "
+               "toolkit Triton can use, or run with --use-liger off.")
+        if args.use_liger == "on":
+            log.warning("--use-liger=on requested but %s", msg)
+        else:
+            log.warning(msg)
+        use_liger = False
     if use_liger and device == "cuda":
         try:
             from liger_kernel.transformers import _apply_liger_kernel_to_instance
@@ -397,11 +437,11 @@ def main() -> int:
     elif hasattr(model, "gradient_checkpointing_enable"):
         # Selective activation checkpointing: skip every Nth layer so we trade
         # ~5% peak memory for ~10% throughput vs uniform full-block AC. Set
-        # MILADY_AC_EVERY=1 (default) for uniform; 2 for "checkpoint every other
+        # ELIZA_AC_EVERY=1 (default) for uniform; 2 for "checkpoint every other
         # layer"; 0 to disable AC entirely. PyTorch FSDP blog confirms the win.
-        ac_every = int(os.environ.get("MILADY_AC_EVERY", "1"))
+        ac_every = int(os.environ.get("ELIZA_AC_EVERY", "1"))
         if ac_every <= 0:
-            log.info("activation checkpointing DISABLED (MILADY_AC_EVERY=0)")
+            log.info("activation checkpointing DISABLED (ELIZA_AC_EVERY=0)")
         else:
             model.gradient_checkpointing_enable(
                 gradient_checkpointing_kwargs={"use_reentrant": False},
@@ -431,6 +471,27 @@ def main() -> int:
                         ac_every, kept, len(layers),
                     )
 
+    # Opt-in `torch.compile` of the model forward/backward. Must run AFTER the
+    # Liger patch (Liger swaps module forward methods, so compile has to capture
+    # the post-patch graph) and AFTER gradient checkpointing is enabled, and
+    # BEFORE the trainer is constructed. Default OFF: compile is finicky with the
+    # `_ElizaSFTTrainer.compute_loss` override (graph break on the
+    # `outputs.loss is not None` branch) and with FSDP wrap order, so any
+    # exception falls back to the uncompiled model. ~+15-30% step time when it
+    # works (see benchmarks/APOLLO_TUNING.md §A4).
+    if (
+        os.environ.get("ELIZA_TORCH_COMPILE", "").lower() in ("1", "true", "yes")
+        and device == "cuda"
+    ):
+        try:
+            model = torch.compile(model, mode="default")
+            log.info("torch.compile(mode='default') applied (ELIZA_TORCH_COMPILE)")
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "ELIZA_TORCH_COMPILE set but torch.compile failed (%s) — "
+                "continuing uncompiled", exc,
+            )
+
     peft_cfg = None
     if not args.full_finetune:
         peft_cfg = LoraConfig(
@@ -448,9 +509,9 @@ def main() -> int:
     out_dir = Path(args.out_dir) / args.run_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    if os.environ.get("MILADY_TRAINER_OPTIM"):
+    if os.environ.get("ELIZA_TRAINER_OPTIM"):
         raise SystemExit(
-            "MILADY_TRAINER_OPTIM is disabled. This entrypoint always builds "
+            "ELIZA_TRAINER_OPTIM is disabled. This entrypoint always builds "
             "APOLLO/APOLLO-Mini through the trainer create_optimizer hook."
         )
 
@@ -488,10 +549,10 @@ def main() -> int:
         # `outputs.logits` is None — SFTTrainer's `completion_only_loss=True`
         # path tries to slice logits manually and crashes. We disable
         # completion-only loss when Liger is active and rely on the chat
-        # template + EOS to align target tokens. Set MILADY_FORCE_COL=1 to
+        # template + EOS to align target tokens. Set ELIZA_FORCE_COL=1 to
         # override (skip Liger if you need strict completion masking).
         completion_only_loss=(
-            os.environ.get("MILADY_FORCE_COL", "0") == "1"
+            os.environ.get("ELIZA_FORCE_COL", "0") == "1"
             or args.use_liger == "off"
         ),
         report_to=os.environ.get("WANDB_PROJECT", "none") if os.environ.get("WANDB_PROJECT") else "none",
@@ -544,11 +605,11 @@ def main() -> int:
             )
 
     # Optional Transformer Engine FP8 swap. No-op everywhere except H200 (sm_90)
-    # unless MILADY_FP8_TRAIN=1 forces the swap. When enabled, every train_step
+    # unless ELIZA_FP8_TRAIN=1 forces the swap. When enabled, every train_step
     # runs inside `te.fp8_autocast`, which we install via a one-line trainer hook
     # below. Master weights stay bf16, gradients stay bf16 — see te_fp8.py.
     fp8_handle = None
-    if os.environ.get("MILADY_DISABLE_FP8") != "1":
+    if os.environ.get("ELIZA_DISABLE_FP8") != "1":
         from training.te_fp8 import maybe_enable_fp8
         fp8_handle = maybe_enable_fp8(model)
         if fp8_handle.enabled:
@@ -560,7 +621,7 @@ def main() -> int:
     # which fails when Liger fused chunked-CE returns logits=None. When the
     # model already produces `outputs.loss` (Liger or model-side loss), use
     # that directly. Also handles the FSDP+APOLLO `create_optimizer` rebuild.
-    class _MiladySFTTrainer(SFTTrainer):
+    class _ElizaSFTTrainer(SFTTrainer):
         def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
             # Forward — pass labels so the model computes loss internally
             # (Liger's chunked CE does this and skips the logits tensor).
@@ -593,7 +654,7 @@ def main() -> int:
                 return self.optimizer
             return self.optimizer
 
-    trainer_cls = _MiladySFTTrainer
+    trainer_cls = _ElizaSFTTrainer
 
     trainer = trainer_cls(
         model=model,

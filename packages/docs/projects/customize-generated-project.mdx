@@ -3,7 +3,7 @@ title: "Customize a Generated Project"
 description: "Update identity, branding, default app plugins, and platform config in a generated project"
 ---
 
-This guide uses Milady as a reference shape without requiring edits to the Milady source. Apply the same pattern in your generated project.
+This guide uses Eliza as a reference shape without requiring edits to the Eliza source. Apply the same pattern in your generated project.
 
 ## Files to Review
 
@@ -21,14 +21,14 @@ Set the project identity in `apps/app/app.config.ts`:
 
 ```typescript
 const config = {
-  appName: "Milady",
+  appName: "Eliza",
   appId: "ai.elizaos.eliza",
-  orgName: "milady-ai",
-  repoName: "milady",
-  cliName: "milady",
+  orgName: "eliza-ai",
+  repoName: "eliza",
+  cliName: "eliza",
   description: "Cute agents for the acceleration",
-  envPrefix: "MILADY",
-  namespace: "milady",
+  envPrefix: "ELIZA",
+  namespace: "eliza",
 };
 ```
 
@@ -52,7 +52,7 @@ Native shells need stable identifiers:
 ```typescript
 desktop: {
   bundleId: "ai.elizaos.eliza",
-  urlScheme: "milady",
+  urlScheme: "eliza",
 },
 ```
 
@@ -64,16 +64,16 @@ Keep brand metadata together:
 
 ```typescript
 branding: {
-  appName: "Milady",
-  orgName: "milady-ai",
-  repoName: "milady",
-  docsUrl: "https://docs.milady.ai",
-  appUrl: "https://app.milady.ai",
+  appName: "Eliza",
+  orgName: "eliza-ai",
+  repoName: "eliza",
+  docsUrl: "https://docs.eliza.ai",
+  appUrl: "https://app.eliza.ai",
   bugReportUrl:
-    "https://github.com/milady-ai/milady/issues/new?template=bug_report.yml",
-  hashtag: "#MiladyAgent",
-  fileExtension: ".milady-agent",
-  packageScope: "miladyai",
+    "https://github.com/eliza-ai/eliza/issues/new?template=bug_report.yml",
+  hashtag: "#ElizaAgent",
+  fileExtension: ".eliza-agent",
+  packageScope: "elizaai",
 },
 ```
 
@@ -85,7 +85,7 @@ The web block controls PWA and sharing metadata:
 
 ```typescript
 web: {
-  shortName: "Milady",
+  shortName: "Eliza",
   themeColor: "#08080a",
   backgroundColor: "#0a0a0a",
   shareImagePath: "/og-image.png",
@@ -126,19 +126,19 @@ Generated apps can target several shells:
 | iOS/Android | `apps/app/app.config.ts`, `apps/app/capacitor.config.ts` |
 | AOSP variants | `aosp` block in `app.config.ts` when your project owns a system image |
 
-Milady's AOSP block shows the expected kind of product metadata:
+Eliza's AOSP block shows the expected kind of product metadata:
 
 ```typescript
 aosp: {
-  productLunch: "milady_cf_x86_64_phone-trunk_staging-userdebug",
-  vendorDir: "milady",
-  variantName: "MiladyOS",
-  productName: "milady",
+  productLunch: "eliza_cf_x86_64_phone-trunk_staging-userdebug",
+  vendorDir: "eliza",
+  variantName: "ElizaOS",
+  productName: "eliza",
   packageName: "ai.elizaos.eliza",
-  appName: "Milady",
-  commonMk: "vendor/milady/milady_common.mk",
-  modelSourceLabel: "milady-download",
-  bootanimationAssetDir: "os/android/vendor/milady/bootanimation",
+  appName: "Eliza",
+  commonMk: "vendor/eliza/eliza_common.mk",
+  modelSourceLabel: "eliza-download",
+  bootanimationAssetDir: "os/android/vendor/eliza/bootanimation",
 },
 ```
 
@@ -146,18 +146,18 @@ Only include AOSP config if your project owns that platform target.
 
 ## Root Package Scripts
 
-Keep root scripts product-oriented. Milady exposes commands like:
+Keep root scripts product-oriented. Eliza exposes commands like:
 
 ```json
 {
   "bin": {
-    "milady": "milady.mjs",
-    "milady.ai": "milady.mjs"
+    "eliza": "eliza.mjs",
+    "eliza.ai": "eliza.mjs"
   },
   "scripts": {
-    "dev": "node eliza/packages/app-core/scripts/rt.mjs eliza/packages/app-core/scripts/dev-ui.mjs --name=milady",
+    "dev": "node eliza/packages/app-core/scripts/rt.mjs eliza/packages/app-core/scripts/dev-ui.mjs --name=eliza",
     "build": "node scripts/run-eliza-app-core-script.mjs run-production-build.mjs",
-    "build:desktop": "ELIZA_APP_NAME=Milady ELIZA_APP_ID=ai.elizaos.eliza ELIZA_NAMESPACE=milady node scripts/run-eliza-app-core-script.mjs desktop-build.mjs build --variant=base",
+    "build:desktop": "ELIZA_APP_NAME=Eliza ELIZA_APP_ID=ai.elizaos.eliza ELIZA_NAMESPACE=eliza node scripts/run-eliza-app-core-script.mjs desktop-build.mjs build --variant=base",
     "test": "bun run verify:secrets && node eliza/packages/app-core/test/scripts/test-runner.mjs"
   }
 }

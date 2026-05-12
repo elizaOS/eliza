@@ -43,7 +43,7 @@ async function loadDotEnvFile(envPath) {
 }
 
 async function loadDotEnv() {
-  // First the repo's own .env, then the parent milady/.env (workspace root).
+  // First the repo's own .env, then the parent eliza/.env (workspace root).
   // process.env already-set values win — no override.
   await loadDotEnvFile(join(REPO_ROOT, ".env"));
   await loadDotEnvFile(join(REPO_ROOT, "..", ".env"));
@@ -161,7 +161,7 @@ function groqApiKey() {
 }
 
 const SYSTEM_PROMPT = `You are a senior product designer and QA engineer reviewing an
-in-app screenshot for the elizaOS / Milady desktop+web+mobile assistant.
+in-app screenshot for the elizaOS / Eliza desktop+web+mobile assistant.
 
 Your job: identify concrete, actionable issues with this page. You will be given:
 - the screenshot

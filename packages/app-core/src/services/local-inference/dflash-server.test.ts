@@ -13,12 +13,14 @@ import {
   extractStreamingChatDelta,
   extractVerifierRejectRange,
   findBundleOmnivoiceAssets,
+  findBundleVisionMmproj,
   getDflashRuntimeStatus,
   logDflashDevDisabledWarning,
   parseDflashMetrics,
   resolveDflashBinary,
   resolveDflashKvOffload,
   resolveFusedDflashBinary,
+  shouldRequireActiveDflashForRequest,
 } from "./dflash-server";
 
 const originalEnv = { ...process.env };
@@ -100,7 +102,8 @@ describe("DFlash runtime discovery", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-dflash-test-"));
     process.env.ELIZA_STATE_DIR = root;
     delete process.env.ELIZA_DFLASH_ENABLED;
-    delete process.env.ELIZA_DFLASH_DISABLED;
+    delete process.env.MILADY_DFLASH_DISABLE;
+    delete process.env.ELIZA_DFLASH_DISABLE;
     delete process.env.ELIZA_DFLASH_METAL_AUTO;
     delete process.env.ELIZA_DFLASH_METAL_ENABLED;
     delete process.env.HIP_VISIBLE_DEVICES;
@@ -193,7 +196,8 @@ describe("fused-vs-two-process spawn selection", () => {
   }
   function clearEnv() {
     delete process.env.ELIZA_DFLASH_ENABLED;
-    delete process.env.ELIZA_DFLASH_DISABLED;
+    delete process.env.MILADY_DFLASH_DISABLE;
+    delete process.env.ELIZA_DFLASH_DISABLE;
     delete process.env.ELIZA_DFLASH_METAL_AUTO;
     delete process.env.ELIZA_DFLASH_METAL_ENABLED;
     delete process.env.ELIZA_DFLASH_DISABLE_FUSED_SERVER;
@@ -283,34 +287,114 @@ describe("fused-vs-two-process spawn selection", () => {
     // A non-bundle layout (no text/ parent) returns null.
     expect(findBundleOmnivoiceAssets(path.join(root, "model.gguf"))).toBeNull();
   });
+
+  it("findBundleVisionMmproj derives --mmproj from the bundle manifest files.vision[0].path", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-mmproj-test-"));
+    const bundle = path.join(root, "eliza-1-9b.bundle");
+    fs.mkdirSync(path.join(bundle, "text"), { recursive: true });
+    fs.mkdirSync(path.join(bundle, "vision"), { recursive: true });
+    const textGguf = path.join(bundle, "text", "eliza-1-9b-64k.gguf");
+    fs.writeFileSync(textGguf, "x");
+    fs.writeFileSync(path.join(bundle, "vision", "mmproj-9b.gguf"), "x");
+    fs.writeFileSync(
+      path.join(bundle, "eliza-1.manifest.json"),
+      JSON.stringify({
+        id: "eliza-1-9b",
+        tier: "9b",
+        files: {
+          text: [{ path: "text/eliza-1-9b-64k.gguf", ctx: 65536 }],
+          vision: [{ path: "vision/mmproj-9b.gguf" }],
+        },
+      }),
+      "utf8",
+    );
+    expect(findBundleVisionMmproj(textGguf)).toBe(
+      path.join(bundle, "vision", "mmproj-9b.gguf"),
+    );
+
+    // No vision[] entry → text-only tier → null.
+    const noVision = path.join(root, "eliza-1-1_7b.bundle");
+    fs.mkdirSync(path.join(noVision, "text"), { recursive: true });
+    const noVisionText = path.join(noVision, "text", "eliza-1-1_7b-32k.gguf");
+    fs.writeFileSync(noVisionText, "x");
+    fs.writeFileSync(
+      path.join(noVision, "eliza-1.manifest.json"),
+      JSON.stringify({
+        id: "eliza-1-1_7b",
+        tier: "1_7b",
+        files: {
+          text: [{ path: "text/eliza-1-1_7b-32k.gguf", ctx: 32768 }],
+          vision: [],
+        },
+      }),
+      "utf8",
+    );
+    expect(findBundleVisionMmproj(noVisionText)).toBeNull();
+
+    // Manifest declares a vision file that isn't on disk → null (fail closed,
+    // no half-loaded vision).
+    const ghostBundle = path.join(root, "eliza-1-27b.bundle");
+    fs.mkdirSync(path.join(ghostBundle, "text"), { recursive: true });
+    const ghostText = path.join(ghostBundle, "text", "eliza-1-27b-128k.gguf");
+    fs.writeFileSync(ghostText, "x");
+    fs.writeFileSync(
+      path.join(ghostBundle, "eliza-1.manifest.json"),
+      JSON.stringify({
+        id: "eliza-1-27b",
+        tier: "27b",
+        files: {
+          text: [{ path: "text/eliza-1-27b-128k.gguf", ctx: 131072 }],
+          vision: [{ path: "vision/mmproj-27b.gguf" }],
+        },
+      }),
+      "utf8",
+    );
+    expect(findBundleVisionMmproj(ghostText)).toBeNull();
+
+    // Missing manifest / non-bundle layout → null.
+    expect(findBundleVisionMmproj(path.join(root, "loose.gguf"))).toBeNull();
+  });
 });
 
-describe("MILADY_DFLASH_DISABLE developer kill-switch", () => {
+describe("ELIZA_DFLASH_DISABLE developer kill-switch", () => {
+  afterEach(() => {
+    delete process.env.MILADY_DFLASH_DISABLE;
+    delete process.env.ELIZA_DFLASH_DISABLE;
+    delete process.env.ELIZA_DFLASH_ENABLED;
+  });
+
   it("disables DFlash even when ELIZA_DFLASH_ENABLED forces it on", () => {
     delete process.env.MILADY_DFLASH_DISABLE;
+    delete process.env.ELIZA_DFLASH_DISABLE;
     process.env.ELIZA_DFLASH_ENABLED = "1";
     expect(dflashDevDisabled()).toBe(false);
     expect(dflashEnabled()).toBe(true);
 
+    process.env.ELIZA_DFLASH_DISABLE = "1";
+    expect(dflashDevDisabled()).toBe(true);
+    expect(dflashEnabled()).toBe(false);
+    expect(getDflashRuntimeStatus().reason).toContain("ELIZA_DFLASH_DISABLE");
+  });
+
+  it("MILADY_DFLASH_DISABLE is accepted as a back-compat alias", () => {
+    delete process.env.ELIZA_DFLASH_DISABLE;
     process.env.MILADY_DFLASH_DISABLE = "1";
     expect(dflashDevDisabled()).toBe(true);
     expect(dflashEnabled()).toBe(false);
-    expect(getDflashRuntimeStatus().reason).toContain("MILADY_DFLASH_DISABLE");
   });
 
   it("logs a loud warning when active and is silent otherwise", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       delete process.env.MILADY_DFLASH_DISABLE;
+      delete process.env.ELIZA_DFLASH_DISABLE;
       logDflashDevDisabledWarning();
       expect(warn).not.toHaveBeenCalled();
 
-      process.env.MILADY_DFLASH_DISABLE = "1";
+      process.env.ELIZA_DFLASH_DISABLE = "1";
       logDflashDevDisabledWarning();
       expect(warn).toHaveBeenCalledTimes(1);
-      expect(String(warn.mock.calls[0][0])).toContain(
-        "MILADY_DFLASH_DISABLE=1",
-      );
+      expect(String(warn.mock.calls[0][0])).toContain("ELIZA_DFLASH_DISABLE=1");
     } finally {
       warn.mockRestore();
     }
@@ -350,6 +434,21 @@ llamacpp:n_drafted_accepted 75
     expect(snapshot?.acceptanceRate).toBeCloseTo(0.75, 5);
   });
 
+  it("prefers unlabelled totals over labelled shard samples", () => {
+    const text = `llamacpp:n_decode_total 64
+llamacpp:n_drafted_total{slot_id="0"} 10
+llamacpp:n_drafted_total{slot_id="1"} 20
+llamacpp:n_drafted_total 40
+llamacpp:n_drafted_accepted_total{slot_id="0"} 4
+llamacpp:n_drafted_accepted_total{slot_id="1"} 5
+llamacpp:n_drafted_accepted_total 12
+`;
+    const snapshot = parseDflashMetrics(text);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.drafted).toBe(40);
+    expect(snapshot?.accepted).toBe(12);
+  });
+
   it("returns null when the response has no speculative counters", () => {
     const text = `# HELP some_other_metric Random gauge.
 # TYPE some_other_metric gauge
@@ -367,6 +466,51 @@ llamacpp:n_drafted_accepted_total 0
     expect(snapshot).not.toBeNull();
     expect(snapshot?.drafted).toBe(0);
     expect(Number.isNaN(snapshot?.acceptanceRate)).toBe(true);
+  });
+});
+
+describe("shouldRequireActiveDflashForRequest", () => {
+  it("does not require draft evidence for tiny prewarm-style requests", () => {
+    expect(
+      shouldRequireActiveDflashForRequest(
+        { draftMin: 2, disableDrafter: false },
+        1,
+      ),
+    ).toBe(false);
+    expect(
+      shouldRequireActiveDflashForRequest(
+        { draftMin: 2, disableDrafter: false },
+        3,
+      ),
+    ).toBe(false);
+  });
+
+  it("requires draft evidence once the request is long enough to verify a draft", () => {
+    expect(
+      shouldRequireActiveDflashForRequest(
+        { draftMin: 2, disableDrafter: false },
+        4,
+      ),
+    ).toBe(true);
+  });
+
+  it("does not require draft evidence when the drafter is deliberately disabled", () => {
+    expect(
+      shouldRequireActiveDflashForRequest(
+        { draftMin: 2, disableDrafter: true },
+        128,
+      ),
+    ).toBe(false);
+  });
+
+  it("allows zero draft only behind the local diagnostics escape hatch", () => {
+    process.env.ELIZA_DFLASH_ALLOW_ZERO_DRAFT = "1";
+    expect(
+      shouldRequireActiveDflashForRequest(
+        { draftMin: 2, disableDrafter: false },
+        128,
+      ),
+    ).toBe(false);
   });
 });
 

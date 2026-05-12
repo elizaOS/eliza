@@ -2,13 +2,14 @@ import * as fs from "node:fs/promises";
 import {
   type Action,
   type ActionResult,
+  CANONICAL_SUBACTION_KEY,
   logger as coreLogger,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
   type State,
 } from "@elizaos/core";
-
+import { resolveRuntimeExecutionMode } from "@elizaos/shared";
 import {
   failureToActionResult,
   readNumberParam,
@@ -17,7 +18,6 @@ import {
   successActionResult,
   truncate,
 } from "../lib/format.js";
-import { resolveRuntimeExecutionMode } from "@elizaos/shared";
 import { runShell, type ShellResult } from "../lib/run-shell.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
@@ -32,10 +32,79 @@ const TIMEOUT_MIN_MS = 100;
 const TIMEOUT_MAX_MS = 600_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
 const STREAM_CAP_CHARS = 30_000;
+const SHELL_HISTORY_DEFAULT_LIMIT = 20;
+
+type ShellActionSubaction = "run" | "clear_history" | "view_history";
+
+type ShellHistoryEntryLike = {
+  command?: unknown;
+};
+
+type ShellHistoryServiceLike = {
+  clearCommandHistory?: (conversationId: string) => void;
+  getCommandHistory?: (
+    conversationId: string,
+    limit?: number,
+  ) => ShellHistoryEntryLike[];
+};
+
+function normalizeShellSubaction(
+  value: string | undefined,
+): ShellActionSubaction {
+  const normalized = value
+    ?.trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  switch (normalized) {
+    case "clear":
+    case "clear_history":
+    case "history_clear":
+      return "clear_history";
+    case "view":
+    case "show":
+    case "list":
+    case "view_history":
+    case "show_history":
+    case "list_history":
+    case "history_view":
+      return "view_history";
+    case "run":
+    case "execute":
+    case "command":
+    default:
+      return "run";
+  }
+}
+
+function inferShellSubactionFromText(
+  text: string,
+): ShellActionSubaction | null {
+  const lower = text.toLowerCase();
+  if (!/\b(history|terminal|shell|command)\b/.test(lower)) return null;
+  if (/\b(show|view|list|display|print)\b/.test(lower)) return "view_history";
+  if (/\b(clear|reset|delete|remove|clean|wipe)\b/.test(lower)) {
+    return "clear_history";
+  }
+  return null;
+}
+
+function getShellHistoryService(
+  runtime: IAgentRuntime,
+): ShellHistoryServiceLike | null {
+  const service = runtime.getService("shell") as unknown;
+  return service && typeof service === "object" ? service : null;
+}
 
 function clampTimeout(value: number | undefined, fallback: number): number {
   if (value === undefined || !Number.isFinite(value)) return fallback;
   return Math.max(TIMEOUT_MIN_MS, Math.min(TIMEOUT_MAX_MS, Math.floor(value)));
+}
+
+function clampHistoryLimit(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value)) {
+    return SHELL_HISTORY_DEFAULT_LIMIT;
+  }
+  return Math.max(1, Math.min(100, Math.floor(value)));
 }
 
 function formatStreams(stdout: string, stderr: string): string {
@@ -53,21 +122,30 @@ function formatStreams(stdout: string, stderr: string): string {
   return lines.join("\n");
 }
 
-
 export const shellAction: Action = {
   name: "SHELL",
   contexts: [...CODING_TOOLS_CONTEXTS],
   roleGate: { minRole: "OWNER" },
   contextGate: { anyOf: ["code", "terminal", "automation"] },
-  similes: ["BASH", "EXEC", "RUN_COMMAND"],
+  similes: ["EXEC", "RUN_COMMAND"],
   description:
-    "Execute a shell command via the configured local shell. Runs synchronously in the session cwd by default. Returns stdout, stderr, and exit code. Hard timeout kills the command. Paths under the configured blocklist are off-limits as cwd.",
-  descriptionCompressed: "Run a shell command synchronously.",
+    "Canonical shell action. action=run executes a shell command via the configured local shell. action=clear_history clears recorded shell command history for this conversation. action=view_history returns recent recorded shell commands. command is required only for action=run. Paths under the configured blocklist are off-limits as cwd.",
+  descriptionCompressed: "Run shell commands or manage shell command history.",
   parameters: [
     {
+      name: "action",
+      description: "Shell operation: run | clear_history | view_history.",
+      required: false,
+      schema: {
+        type: "string",
+        enum: ["run", "clear_history", "view_history"],
+      },
+    },
+    {
       name: "command",
-      description: "Shell command to run; executed via /bin/bash -c <command>.",
-      required: true,
+      description:
+        "Shell command to run for action=run; executed via /bin/bash -c <command>.",
+      required: false,
       schema: { type: "string" },
     },
     {
@@ -90,6 +168,13 @@ export const shellAction: Action = {
       required: false,
       schema: { type: "string" },
     },
+    {
+      name: "limit",
+      description:
+        "For action=view_history: maximum number of recorded commands to return.",
+      required: false,
+      schema: { type: "number" },
+    },
   ],
   validate: async () => true,
   handler: async (
@@ -99,6 +184,76 @@ export const shellAction: Action = {
     options?: unknown,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
+    const explicitSubaction = readStringParam(options, "action");
+    const inferredSubaction = inferShellSubactionFromText(
+      message.content?.text ?? "",
+    );
+    const subaction = explicitSubaction
+      ? normalizeShellSubaction(explicitSubaction)
+      : (inferredSubaction ?? "run");
+
+    if (subaction === "clear_history" || subaction === "view_history") {
+      const shellHistoryService = getShellHistoryService(runtime);
+      if (!shellHistoryService) {
+        return failureToActionResult({
+          reason: "internal",
+          message: "Shell history service unavailable.",
+        });
+      }
+      const conversationId = message.roomId || message.agentId;
+      if (!conversationId) {
+        return failureToActionResult({
+          reason: "missing_param",
+          message: "no conversation id",
+        });
+      }
+      if (subaction === "clear_history") {
+        if (typeof shellHistoryService.clearCommandHistory !== "function") {
+          return failureToActionResult({
+            reason: "internal",
+            message: "Shell history clearing is unavailable.",
+          });
+        }
+        shellHistoryService.clearCommandHistory(String(conversationId));
+        const text = "Shell command history has been cleared.";
+        if (callback) await callback({ text, source: "coding-tools" });
+        return successActionResult(text, {
+          actionName: "SHELL",
+          [CANONICAL_SUBACTION_KEY]: "clear_history",
+        });
+      }
+
+      if (typeof shellHistoryService.getCommandHistory !== "function") {
+        return failureToActionResult({
+          reason: "internal",
+          message: "Shell history reading is unavailable.",
+        });
+      }
+      const limit = clampHistoryLimit(readNumberParam(options, "limit"));
+      const entries = shellHistoryService.getCommandHistory(
+        String(conversationId),
+        limit,
+      );
+      const lines = entries.length
+        ? entries
+            .map((entry, index) => {
+              const command =
+                typeof entry.command === "string"
+                  ? entry.command
+                  : JSON.stringify(entry);
+              return `${index + 1}. ${command}`;
+            })
+            .join("\n")
+        : "(no shell history recorded for this conversation)";
+      const text = `Shell command history (last ${entries.length}):\n${lines}`;
+      if (callback) await callback({ text, source: "coding-tools" });
+      return successActionResult(text, {
+        actionName: "SHELL",
+        [CANONICAL_SUBACTION_KEY]: "view_history",
+        entryCount: entries.length,
+      });
+    }
+
     const command = readStringParam(options, "command");
     if (!command || command.trim().length === 0) {
       return failureToActionResult({
@@ -159,7 +314,7 @@ export const shellAction: Action = {
 
     const defaultTimeout = readPositiveIntSetting(
       runtime,
-      "CODING_TOOLS_BASH_TIMEOUT_MS",
+      "CODING_TOOLS_SHELL_TIMEOUT_MS",
       DEFAULT_TIMEOUT_MS,
     );
     const timeout = clampTimeout(
@@ -186,16 +341,16 @@ export const shellAction: Action = {
       );
     }
 
-    coreLogger.info(
-      `${CODING_TOOLS_LOG_PREFIX} SHELL mode=${mode} cwd=${cwd}`,
-    );
+    coreLogger.info(`${CODING_TOOLS_LOG_PREFIX} SHELL mode=${mode} cwd=${cwd}`);
 
     let result: ShellResult;
     try {
       result = await runShell(runtime, { command, cwd, timeoutMs: timeout });
     } catch (err) {
       const message = (err as Error).message;
-      coreLogger.error(`${CODING_TOOLS_LOG_PREFIX} SHELL dispatch failed: ${message}`);
+      coreLogger.error(
+        `${CODING_TOOLS_LOG_PREFIX} SHELL dispatch failed: ${message}`,
+      );
       return failureToActionResult({ reason: "internal", message }, { cwd });
     }
 
@@ -237,7 +392,10 @@ export const shellAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Run `git status` in the current repo.", source: "chat" },
+        content: {
+          text: "Run `git status` in the current repo.",
+          source: "chat",
+        },
       },
       {
         name: "{{agentName}}",
@@ -269,5 +427,3 @@ export const shellAction: Action = {
     ],
   ],
 };
-
-export const bashAction = shellAction;

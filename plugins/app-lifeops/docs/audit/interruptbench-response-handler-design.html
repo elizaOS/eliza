@@ -319,7 +319,7 @@ flowchart TD
   <td>(c) Post-parse patch</td>
   <td><code>ResponseHandlerEvaluator</code> with <code>shouldRun</code> + <code>evaluate</code> returning a typed patch</td>
   <td><span class="file-ref">response-handler-evaluators.ts</span></td>
-  <td>Only one in repo today: <code>lifeops.work_thread_router</code> at <span class="file-ref">plugins/app-lifeops/.../response-handler-evaluator.ts:23</span></td>
+  <td>Current production use is deterministic repair/extraction only; work-thread routing moved to the <code>threadOps</code> field evaluator.</td>
 </tr>
 </tbody>
 </table>
@@ -989,7 +989,7 @@ no data migration; existing rows get <code>version = 1</code> on first read.</p>
 <tr><td><span class="file-ref">plugins/app-lifeops/src/lifeops/work-threads/store.ts</span></td><td>Add <code>merge()</code> using <code>withTransaction</code>. Add <code>expectedVersion</code> param to <code>update()</code>.</td></tr>
 <tr><td><span class="file-ref">plugins/app-lifeops/src/actions/work-thread.ts</span></td><td>Replace non-atomic merge loop with <code>store.merge(...)</code>. Keep <code>workThreadOperationSemaphore</code> as soft in-process throttle.</td></tr>
 <tr><td><span class="file-ref">plugins/app-lifeops/src/lifeops/scheduled-task/runner.ts</span></td><td>Wrap <code>fire()</code> in <code>withTransaction</code>. Idempotent on duplicate fire.</td></tr>
-<tr><td><span class="file-ref">plugins/app-lifeops/src/plugin.ts</span></td><td>Register the new <code>threadOps</code> field evaluator. Keep the existing <code>ResponseHandlerEvaluator</code> for now (it patches contexts; will be deprecated once <code>threadOps</code> proves itself).</td></tr>
+<tr><td><span class="file-ref">plugins/app-lifeops/src/plugin.ts</span></td><td>Register the <code>threadOps</code> field evaluator. Do not register a work-thread <code>ResponseHandlerEvaluator</code>; work-thread routing belongs to the field registry.</td></tr>
 </tbody>
 </table>
 

@@ -393,3 +393,54 @@ describe("canSetAsDefault", () => {
     expect(canSetAsDefault(m, device)).toBe(false);
   });
 });
+
+describe("releaseChannel", () => {
+  it("accepts an absent releaseChannel (defaults to recommended)", () => {
+    const result = validateManifest(baseManifest("9b"));
+    expect(result.ok).toBe(true);
+  });
+
+  it("accepts releaseChannel=recommended", () => {
+    const m = { ...baseManifest("9b"), releaseChannel: "recommended" as const };
+    expect(validateManifest(m).ok).toBe(true);
+  });
+
+  it("accepts releaseChannel=base-v1 only when defaultEligible is false", () => {
+    const m = {
+      ...baseManifest("9b"),
+      releaseChannel: "base-v1" as const,
+      defaultEligible: false,
+    };
+    const result = validateManifest(m);
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects releaseChannel=base-v1 with defaultEligible=true", () => {
+    const m = {
+      ...baseManifest("9b"),
+      releaseChannel: "base-v1" as const,
+      defaultEligible: true,
+    };
+    const result = validateManifest(m);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.includes("base-v1"))).toBe(true);
+    }
+  });
+
+  it("rejects an unknown releaseChannel value", () => {
+    const m = { ...baseManifest("9b"), releaseChannel: "v3" as never };
+    expect(validateManifest(m).ok).toBe(false);
+  });
+
+  it("a base-v1-channel manifest is never a device default", () => {
+    const m = {
+      ...baseManifest("9b"),
+      releaseChannel: "base-v1" as const,
+      defaultEligible: false,
+    };
+    expect(
+      canSetAsDefault(m, { availableBackends: ["metal"], ramMb: 64_000 }),
+    ).toBe(false);
+  });
+});

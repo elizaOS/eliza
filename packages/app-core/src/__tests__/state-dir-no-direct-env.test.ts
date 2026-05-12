@@ -1,9 +1,9 @@
 /**
  * Guard: no callsite in `packages/app-core/src/` reads `ELIZA_STATE_DIR` /
- * `MILADY_STATE_DIR` without going through `resolveStateDir()` or pairing both
+ * `ELIZA_STATE_DIR` without going through `resolveStateDir()` or pairing both
  * env vars in the same window. The canonical resolver lives in
  * `@elizaos/core/utils/state-dir.ts` and honors the documented precedence
- * `MILADY_STATE_DIR > ELIZA_STATE_DIR > ~/.${ELIZA_NAMESPACE ?? "eliza"}`.
+ * `ELIZA_STATE_DIR > ELIZA_STATE_DIR > ~/.${ELIZA_NAMESPACE ?? "eliza"}`.
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -42,7 +42,7 @@ function walkSrc(root: string): string[] {
 }
 
 describe("state-dir consolidation", () => {
-  it("no callsite reads ELIZA_STATE_DIR without honoring MILADY_STATE_DIR in the same window", () => {
+  it("no callsite reads ELIZA_STATE_DIR without honoring ELIZA_STATE_DIR in the same window", () => {
     const files = walkSrc(APP_CORE_SRC);
     const offenders: string[] = [];
     for (const file of files) {
@@ -59,12 +59,12 @@ describe("state-dir consolidation", () => {
         ) {
           continue;
         }
-        // Check a 5-line window for MILADY_STATE_DIR pairing OR resolveStateDir usage.
+        // Check a 5-line window for ELIZA_STATE_DIR pairing OR resolveStateDir usage.
         const windowStart = Math.max(0, i - 2);
         const windowEnd = Math.min(lines.length, i + 3);
         const window = lines.slice(windowStart, windowEnd).join("\n");
         if (
-          window.includes("MILADY_STATE_DIR") ||
+          window.includes("ELIZA_STATE_DIR") ||
           window.includes("resolveStateDir")
         ) {
           continue;

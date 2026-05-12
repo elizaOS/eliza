@@ -38,6 +38,7 @@ import {
 import {
   ensureRuntimeSqlCompatibility,
   isMobilePlatform,
+  resolveDesktopApiPort,
   resolveServerOnlyPort,
   syncAppEnvToEliza,
   syncElizaEnvAliases,
@@ -1101,7 +1102,13 @@ export async function startEliza(
       }
 
       const { startApiServer } = await import("../api/server");
-      const apiPort = resolveServerOnlyPort(process.env);
+      // Desktop launcher sets ELIZA_API_PORT (default 31337) to match the
+      // renderer's hardcoded API base; honor it when present. CLI/server-only
+      // mode (no ELIZA_API_PORT) keeps the legacy `resolveServerOnlyPort`
+      // default (2138) so this change is transparent for non-desktop users.
+      const apiPort = process.env.ELIZA_API_PORT
+        ? resolveDesktopApiPort(process.env)
+        : resolveServerOnlyPort(process.env);
       const { port: actualApiPort } = await startApiServer({
         port: apiPort,
         runtime: currentRuntime,

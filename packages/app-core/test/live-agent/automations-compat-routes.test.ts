@@ -78,7 +78,10 @@ function buildRuntimeStub() {
     character: { name: "Eliza" },
     actions: [
       { name: "CODE_TASK", description: "Run a coding agent task." },
-      { name: "MESSAGE", description: "Send, read, search, or manage messages." },
+      {
+        name: "MESSAGE",
+        description: "Send, read, search, or manage messages.",
+      },
     ],
     providers: [
       {

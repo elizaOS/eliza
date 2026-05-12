@@ -21,6 +21,7 @@
 
 import type {
   Action,
+  AgentRuntime,
   Handler,
   Plugin,
 } from "@elizaos/core";

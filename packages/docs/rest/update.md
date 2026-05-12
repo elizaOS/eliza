@@ -4,7 +4,11 @@ sidebarTitle: "Update"
 description: "REST API endpoints for checking for updates and switching release channels."
 ---
 
-The update API lets you check for new Eliza versions and switch between release channels (stable, beta, nightly). It reports the current version, installation method, and available updates across all channels.
+The update API lets you check for new Eliza versions and switch between release channels (stable, beta, nightly). It reports the current version, installation method, available updates across all channels, and the local authority that is allowed to apply the update.
+
+<Warning>
+The REST API is status-only for updates. It does not expose a remote endpoint that runs package-manager, OS package-manager, or Git commands on the host.
+</Warning>
 
 ## Endpoints
 
@@ -31,7 +35,14 @@ Returns the current version, whether an update is available, and the latest vers
 {
   "currentVersion": "0.8.2",
   "channel": "stable",
-  "installMethod": "npm",
+  "installMethod": "npm-global",
+  "updateAuthority": "package-manager",
+  "nextAction": "run-package-manager-command",
+  "canAutoUpdate": true,
+  "canExecuteUpdate": false,
+  "remoteDisplay": true,
+  "updateCommand": "npm install -g elizaos@latest",
+  "updateInstructions": "This is a remote status view. Run \"npm install -g elizaos@latest\" on the host; no remote execution endpoint is exposed.",
   "updateAvailable": true,
   "latestVersion": "0.9.0",
   "channels": {
@@ -53,7 +64,14 @@ Returns the current version, whether an update is available, and the latest vers
 |-------|------|-------------|
 | `currentVersion` | string | Currently running version |
 | `channel` | string | Active release channel (`stable`, `beta`, or `nightly`) |
-| `installMethod` | string | How Eliza was installed (`npm`, `bun`, `binary`, etc.) |
+| `installMethod` | string | How Eliza was installed (`npm-global`, `bun-global`, `homebrew`, `apt`, `snap`, `flatpak`, `local-dev`, or `unknown`) |
+| `updateAuthority` | string | Who owns update execution (`package-manager`, `os-package-manager`, `developer`, or `operator`) |
+| `nextAction` | string | Recommended local action (`run-package-manager-command`, `run-git-pull`, `review-installation`, or `none`) |
+| `canAutoUpdate` | boolean | Whether the local CLI updater has a command path for this install method |
+| `canExecuteUpdate` | boolean | Whether this request context may execute the update. Remote status views return `false` because no remote execution endpoint exists. |
+| `remoteDisplay` | boolean | `true` when the request is a remote display of host status rather than a trusted local request |
+| `updateCommand` | string\|null | Human-readable command to run on the host, or `git pull` for local development checkouts |
+| `updateInstructions` | string | Human-readable next-step guidance |
 | `updateAvailable` | boolean | Whether a newer version exists for the current channel |
 | `latestVersion` | string\|null | Latest version available for the current channel |
 | `channels` | object | Latest version for each channel |

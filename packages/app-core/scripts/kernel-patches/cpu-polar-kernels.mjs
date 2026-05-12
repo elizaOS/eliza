@@ -1,5 +1,5 @@
 // PolarQuant pre-Hadamard-transposed (`_preht`) CPU dot wiring for the
-// v0.4.0-milady fork.
+// elizaOS/llama.cpp fork (v1.0.0-eliza).
 //
 // What this module does (applied after `git reset --hard` on the cached
 // fork checkout, every build):
@@ -47,7 +47,7 @@
 // (ggml-base) does not reference them, so no Windows/Android ggml-base
 // link-list change is needed.
 //
-// Idempotent: each mutation carries a `MILADY-CPU-POLAR-PREHT-V1`
+// Idempotent: each mutation carries a `ELIZA-CPU-POLAR-PREHT-V1`
 // sentinel.
 
 import fs from "node:fs";
@@ -67,7 +67,7 @@ const POLAR_CPU_SRC_DIR = path.resolve(
   "polarquant-cpu",
 );
 
-const SENTINEL = "MILADY-CPU-POLAR-PREHT-V1";
+const SENTINEL = "ELIZA-CPU-POLAR-PREHT-V1";
 
 // Standalone TUs mirrored verbatim (with the include rewrite below) plus
 // the self-contained cpu-feature header.
@@ -96,8 +96,8 @@ const POLARQUANT_PREHT_H =
  * mirrored \`_preht\` TUs include this shim instead of polarquant.h: it
  * re-exports the fork's definitions and supplies the one missing helper.
  */
-#ifndef MILADY_POLARQUANT_PREHT_H
-#define MILADY_POLARQUANT_PREHT_H
+#ifndef ELIZA_POLARQUANT_PREHT_H
+#define ELIZA_POLARQUANT_PREHT_H
 
 #define GGML_COMMON_DECL_C
 #include "ggml-common.h"        /* block_q4_polar, QK_POLAR, ggml_half */
@@ -116,6 +116,21 @@ extern "C" {
  * fork's conversion (table-lookup or hardware F16C). */
 static inline float polar_fp16_to_fp32(ggml_half h) {
     return GGML_FP16_TO_FP32(h);
+}
+
+/* Memoized +/-1 QJL sign vector. The standalone library ships this in
+ * polar_qjl.c, which we do NOT mirror (the fork already owns
+ * polar_qjl_signs via polar_centroids.h); the \`_preht\` TUs only need a
+ * cached pointer to it. The fill is deterministic, so a benign race
+ * between first callers writing identical bytes is harmless. */
+static inline const float * polar_qjl_signs_cached(void) {
+    static float s_signs[QK_POLAR];
+    static volatile int s_ready = 0;
+    if (!s_ready) {
+        polar_qjl_signs(s_signs);
+        s_ready = 1;
+    }
+    return s_signs;
 }
 
 /* The three pre-Hadamard-transposed dot entry points. \`q_preht\` MUST be
@@ -142,7 +157,7 @@ const char * polarquant_active_simd(void);
 }
 #endif
 
-#endif /* MILADY_POLARQUANT_PREHT_H */
+#endif /* ELIZA_POLARQUANT_PREHT_H */
 `;
 
 // Trimmed runtime dispatcher: only ggml_vec_dot_q4_polar_preht_f32 +

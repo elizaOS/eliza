@@ -13,7 +13,7 @@ manifest on review. Power users who want host-Ollama, docker reach, and
 EXECUTE_CODE want the direct manifest (or, equivalently, the AppImage /
 .deb / .rpm builds).
 
-The build is selected by the `MILADY_BUILD_VARIANT` env var at build time —
+The build is selected by the `ELIZA_BUILD_VARIANT` env var at build time —
 see `bun run build:flatpak` (`packages/app-core/scripts/build-flatpak.mjs`).
 
 ## Sandbox philosophy (store variant)
@@ -25,13 +25,13 @@ agent needs:
   loopback web dashboard.
 - `--share=ipc` — required for localhost loopback the dashboard binds.
 - `--socket=wayland` + `--socket=fallback-x11` — desktop integration.
-- `--filesystem=xdg-documents/Milady:create` — a single user-granted
-  workspace folder under `~/Documents/Milady`. The user picks (or
+- `--filesystem=xdg-documents/Eliza:create` — a single user-granted
+  workspace folder under `~/Documents/Eliza`. The user picks (or
   confirms) this through the FileChooser portal at first run.
 - `--filesystem=xdg-config/elizaos-app:create` — config and account
   storage under `~/.config/elizaos-app`.
-- `--persist=.milady` — `~/.milady` is rewritten transparently by
-  Flatpak to `~/.var/app/ai.elizaos.App/.milady`, surviving upgrades.
+- `--persist=.eliza` — `~/.eliza` is rewritten transparently by
+  Flatpak to `~/.var/app/ai.elizaos.App/.eliza`, surviving upgrades.
 - `--talk-name=org.freedesktop.Notifications` — desktop notifications.
 - `--talk-name=org.kde.StatusNotifierWatcher` — system tray.
 
@@ -49,7 +49,7 @@ unconditionally:
   exposure would let the runtime talk to anything; we go through the
   portal stack instead.
 
-The runtime reads `MILADY_BUILD_VARIANT=store` (set by the store wrapper)
+The runtime reads `ELIZA_BUILD_VARIANT=store` (set by the store wrapper)
 and gates off:
 
 - PATH-lookup CLI spawning (no `bun`, `python`, `git`, `docker`, etc. on
@@ -92,7 +92,7 @@ flatpak install --user flathub org.freedesktop.Platform//24.08
 flatpak install --user flathub org.freedesktop.Sdk//24.08
 
 # Build the store variant.
-MILADY_BUILD_VARIANT=store bun run build:flatpak
+ELIZA_BUILD_VARIANT=store bun run build:flatpak
 
 # Or call flatpak-builder directly.
 cd packages/app-core/packaging/flatpak
@@ -105,7 +105,7 @@ flatpak run ai.elizaos.App start
 # Inspect the granted permissions to confirm the lockdown.
 flatpak info --show-permissions ai.elizaos.App
 # Expect: shared=network;ipc; sockets=wayland;fallback-x11; filesystems
-# limited to xdg-documents/Milady and xdg-config/elizaos-app; talk-names
+# limited to xdg-documents/Eliza and xdg-config/elizaos-app; talk-names
 # limited to Notifications + StatusNotifierWatcher.
 ```
 
@@ -144,7 +144,7 @@ When you're ready to submit the store variant to Flathub:
 The direct manifest (`ai.elizaos.App.yml`) keeps the existing
 `--filesystem=home` posture so power users who self-host a Flatpak repo
 or side-load a bundle get the same experience as the AppImage / .deb /
-.rpm builds. It does NOT set `MILADY_BUILD_VARIANT=store`, so the
+.rpm builds. It does NOT set `ELIZA_BUILD_VARIANT=store`, so the
 runtime exposes the full coding-agent surface.
 
 Don't submit this manifest to Flathub. It will fail review.

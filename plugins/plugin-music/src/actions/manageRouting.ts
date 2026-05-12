@@ -101,7 +101,11 @@ function readParams(options: unknown): Record<string, unknown> {
 function routingTextFromOptions(options: unknown): string | null {
   const params = readParams(options);
   const operation =
-    typeof params.operation === "string" ? params.operation.toLowerCase() : "";
+    typeof params.routingAction === "string"
+      ? params.routingAction.toLowerCase()
+      : typeof params.operation === "string"
+        ? params.operation.toLowerCase()
+        : "";
   const mode = typeof params.mode === "string" ? params.mode.toLowerCase() : "";
   const sourceId =
     typeof params.sourceId === "string" ? params.sourceId.trim() : "";
@@ -265,8 +269,8 @@ export const manageRouting = {
 
   parameters: [
     {
-      name: "operation",
-      description: "Routing operation to perform.",
+      name: "routingAction",
+      description: "Routing action to perform.",
       required: false,
       schema: {
         type: "string",

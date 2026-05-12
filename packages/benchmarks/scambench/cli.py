@@ -35,7 +35,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger("scambench")
 
 # File path: packages/benchmarks/scambench/cli.py
-# parents[0]=scambench, [1]=benchmarks, [2]=packages, [3]=eliza, [4]=milady (repo root)
+# parents[0]=scambench, [1]=benchmarks, [2]=packages, [3]=eliza, [4]=eliza (repo root)
 # Datasets live under packages/training/, so the right anchor is parents[2].
 PACKAGES_ROOT = Path(__file__).resolve().parents[2]
 TRAINING_ROOT = PACKAGES_ROOT / "training"

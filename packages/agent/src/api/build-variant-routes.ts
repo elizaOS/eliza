@@ -5,7 +5,7 @@
  * renderer can drive variant-conditional UI (e.g. greying out "Local" in
  * sandboxed store builds).
  *
- * Reads MILADY_BUILD_VARIANT directly here rather than going through the
+ * Reads ELIZA_BUILD_VARIANT directly here rather than going through the
  * dynamic @elizaos/app-core import — the API server boots before the agent
  * runtime, so the canonical accessor module isn't loaded yet, but the env
  * var is set by the desktop-build orchestrator.
@@ -21,7 +21,7 @@ export interface BuildVariantResponse {
 }
 
 function resolveBuildVariant(): BuildVariant {
-  return process.env.MILADY_BUILD_VARIANT === "store" ? "store" : "direct";
+  return process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct";
 }
 
 export interface BuildVariantRouteContext {

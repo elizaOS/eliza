@@ -16,21 +16,15 @@ import { expect, it } from "vitest";
 import { describeLive } from "../live-agent-test";
 
 await describeLive(
-	"live-agent-test smoke (Cerebras)",
-	{ requiredEnv: ["OPENAI_API_KEY"] },
-	({ harness }) => {
-		it(
-			"answers a simple math question through the full message pipeline",
-			async () => {
-				const reply = await harness().runAgentTurn(
-					"What is 2+2? Reply briefly.",
-				);
-				expect(reply.length).toBeGreaterThan(0);
-				expect(reply).toContain("4");
-			},
-			120_000,
-		);
-	},
+  "live-agent-test smoke (Cerebras)",
+  { requiredEnv: ["OPENAI_API_KEY"] },
+  ({ harness }) => {
+    it("answers a simple math question through the full message pipeline", async () => {
+      const reply = await harness().runAgentTurn("What is 2+2? Reply briefly.");
+      expect(reply.length).toBeGreaterThan(0);
+      expect(reply).toContain("4");
+    }, 120_000);
+  },
 );
 
 // Each of the suites below is expected to skip cleanly in CI / local runs
@@ -39,67 +33,57 @@ await describeLive(
 // import path, wrong required-env defaults) trips the smoke instead of
 // rotting in the converter agent's inline runtimes.
 await describeLive(
-	"live-agent-test smoke (ollama)",
-	{ provider: "ollama", requiredEnv: [] },
-	({ harness }) => {
-		it("answers a simple math question via ollama", async () => {
-			const reply = await harness().runAgentTurn(
-				"What is 2+2? Reply briefly.",
-			);
-			expect(reply.length).toBeGreaterThan(0);
-		}, 120_000);
-	},
+  "live-agent-test smoke (ollama)",
+  { provider: "ollama", requiredEnv: [] },
+  ({ harness }) => {
+    it("answers a simple math question via ollama", async () => {
+      const reply = await harness().runAgentTurn("What is 2+2? Reply briefly.");
+      expect(reply.length).toBeGreaterThan(0);
+    }, 120_000);
+  },
 );
 
 await describeLive(
-	"live-agent-test smoke (xai)",
-	{ provider: "xai", requiredEnv: [] },
-	({ harness }) => {
-		it("answers a simple math question via xai", async () => {
-			const reply = await harness().runAgentTurn(
-				"What is 2+2? Reply briefly.",
-			);
-			expect(reply.length).toBeGreaterThan(0);
-		}, 120_000);
-	},
+  "live-agent-test smoke (xai)",
+  { provider: "xai", requiredEnv: [] },
+  ({ harness }) => {
+    it("answers a simple math question via xai", async () => {
+      const reply = await harness().runAgentTurn("What is 2+2? Reply briefly.");
+      expect(reply.length).toBeGreaterThan(0);
+    }, 120_000);
+  },
 );
 
 await describeLive(
-	"live-agent-test smoke (nvidiacloud)",
-	{ provider: "nvidiacloud", requiredEnv: [] },
-	({ harness }) => {
-		it("answers a simple math question via nvidiacloud", async () => {
-			const reply = await harness().runAgentTurn(
-				"What is 2+2? Reply briefly.",
-			);
-			expect(reply.length).toBeGreaterThan(0);
-		}, 120_000);
-	},
+  "live-agent-test smoke (nvidiacloud)",
+  { provider: "nvidiacloud", requiredEnv: [] },
+  ({ harness }) => {
+    it("answers a simple math question via nvidiacloud", async () => {
+      const reply = await harness().runAgentTurn("What is 2+2? Reply briefly.");
+      expect(reply.length).toBeGreaterThan(0);
+    }, 120_000);
+  },
 );
 
 await describeLive(
-	"live-agent-test smoke (elizacloud)",
-	{ provider: "elizacloud", requiredEnv: [] },
-	({ harness }) => {
-		it("answers a simple math question via elizacloud", async () => {
-			const reply = await harness().runAgentTurn(
-				"What is 2+2? Reply briefly.",
-			);
-			expect(reply.length).toBeGreaterThan(0);
-		}, 120_000);
-	},
+  "live-agent-test smoke (elizacloud)",
+  { provider: "elizacloud", requiredEnv: [] },
+  ({ harness }) => {
+    it("answers a simple math question via elizacloud", async () => {
+      const reply = await harness().runAgentTurn("What is 2+2? Reply briefly.");
+      expect(reply.length).toBeGreaterThan(0);
+    }, 120_000);
+  },
 );
 
 await describeLive(
-	"live-agent-test smoke (cerebras alias)",
-	{ provider: "cerebras", requiredEnv: [] },
-	({ harness }) => {
-		it("answers a simple math question via the cerebras alias", async () => {
-			const reply = await harness().runAgentTurn(
-				"What is 2+2? Reply briefly.",
-			);
-			expect(reply.length).toBeGreaterThan(0);
-			expect(reply).toContain("4");
-		}, 120_000);
-	},
+  "live-agent-test smoke (cerebras alias)",
+  { provider: "cerebras", requiredEnv: [] },
+  ({ harness }) => {
+    it("answers a simple math question via the cerebras alias", async () => {
+      const reply = await harness().runAgentTurn("What is 2+2? Reply briefly.");
+      expect(reply.length).toBeGreaterThan(0);
+      expect(reply).toContain("4");
+    }, 120_000);
+  },
 );

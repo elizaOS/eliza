@@ -11,11 +11,11 @@
  *                         backed by Eliza Cloud. No on-device agent.
  *                         Renderer mode `cloud`.
  *   - `android-system`  — privileged platform-signed AOSP release APK for
- *                         Milady OS / ElizaOS device builds. Renderer
+ *                         Eliza OS / ElizaOS device builds. Renderer
  *                         mode `local`.
  *
  * The build script injects `VITE_ELIZA_ANDROID_RUNTIME_MODE` (and the
- * `VITE_MILADY_ANDROID_RUNTIME_MODE` alias for white-label forks) at vite
+ * `VITE_ELIZA_ANDROID_RUNTIME_MODE` alias for white-label forks) at vite
  * compile time so the renderer can adapt — most importantly, the
  * `android-cloud` build must hide the "Local" runtime picker so users
  * cannot try to provision an on-device agent that physically isn't there.
@@ -48,7 +48,7 @@ export function resolveAndroidRuntimeMode(env: RuntimeEnv): AndroidRuntimeMode {
   return normalizeMode(
     readString(env, [
       "VITE_ELIZA_ANDROID_RUNTIME_MODE",
-      "VITE_MILADY_ANDROID_RUNTIME_MODE",
+      "VITE_ELIZA_ANDROID_RUNTIME_MODE",
     ]),
   );
 }

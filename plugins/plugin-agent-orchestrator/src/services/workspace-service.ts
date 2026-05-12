@@ -154,18 +154,18 @@ export function _clearDefaultBranchCache(): void {
  * Resolve the default base directory for coding workspaces.
  *
  * Resolution order:
- *   1. `MILADY_WORKSPACE_DIR` runtime setting (set by store builds after the
+ *   1. `ELIZA_WORKSPACE_DIR` runtime setting (set by store builds after the
  *      user picks a folder via the native picker — see desktopPickWorkspaceFolder).
- *   2. `MILADY_WORKSPACE_DIR` env var.
+ *   2. `ELIZA_WORKSPACE_DIR` env var.
  *   3. `~/.eliza/workspaces` (direct-build default; invisible inside an OS
  *      sandbox container, hence the picker requirement for store builds).
  */
 function resolveDefaultBaseDir(runtime: IAgentRuntime): string {
-  const fromSetting = runtime.getSetting("MILADY_WORKSPACE_DIR");
+  const fromSetting = runtime.getSetting("ELIZA_WORKSPACE_DIR");
   if (typeof fromSetting === "string" && fromSetting.trim().length > 0) {
     return expandHome(fromSetting.trim());
   }
-  const fromEnv = process.env.MILADY_WORKSPACE_DIR;
+  const fromEnv = process.env.ELIZA_WORKSPACE_DIR;
   if (typeof fromEnv === "string" && fromEnv.trim().length > 0) {
     return expandHome(fromEnv.trim());
   }

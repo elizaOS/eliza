@@ -14,12 +14,7 @@ import { ApiError, api } from "../../../lib/api-client";
 
 type PaymentProvider = "stripe" | "oxapay" | "x402" | "crypto";
 type PaymentContext = "verified_payer" | "any_payer";
-type PaymentRequestStatus =
-  | "pending"
-  | "settled"
-  | "expired"
-  | "cancelled"
-  | "failed";
+type PaymentRequestStatus = "pending" | "settled" | "expired" | "cancelled" | "failed";
 
 interface PublicPaymentRequest {
   id: string;

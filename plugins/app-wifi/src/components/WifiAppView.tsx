@@ -247,7 +247,7 @@ export function WifiAppView(props: OverlayAppContext) {
   }, [networks]);
 
   return (
-    <div className="flex h-full w-full flex-col bg-bg">
+    <div className="fixed inset-0 z-50 flex h-[100vh] w-full flex-col overflow-hidden bg-bg pb-[var(--safe-area-bottom,0px)] pl-[var(--safe-area-left,0px)] pr-[var(--safe-area-right,0px)] pt-[var(--safe-area-top,0px)] supports-[height:100dvh]:h-[100dvh]">
       <header className="flex items-center justify-between gap-3 border-b border-border/24 px-4 py-3">
         <div className="flex items-center gap-2">
           <Button

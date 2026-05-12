@@ -9,7 +9,7 @@ public struct SandboxPaths {
     public let tmp: URL
     public let bundle: URL
 
-    public init(appBundle: Bundle = .main, brand: String = "Milady") {
+    public init(appBundle: Bundle = .main, brand: String = "Eliza") {
         let fm = FileManager.default
         let supportRoot = (try? fm.url(
             for: .applicationSupportDirectory,

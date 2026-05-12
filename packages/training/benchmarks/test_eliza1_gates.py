@@ -21,6 +21,7 @@ from benchmarks.eliza1_gates import (
 
 def _full_results(**overrides: object) -> dict[str, object]:
     base: dict[str, object] = {
+        "format_ok": 0.92,
         "text_eval": 0.72,
         "voice_rtf": 0.30,
         "asr_wer": 0.05,
@@ -51,6 +52,10 @@ def test_v2_yaml_loads() -> None:
     # The v2 gate metadata carries the op vocabulary.
     assert doc["gates"]["text_eval"]["op"] == ">="
     assert doc["gates"]["thirty_turn_ok"]["op"] == "bool"
+    # Structural parsable-output gate (full mode only).
+    assert doc["gates"]["format_ok"]["op"] == ">="
+    assert doc["tiers"]["0_6b"]["format_ok"]["threshold"] == 0.70
+    assert doc["tiers"]["0_6b"]["format_ok"]["required"] is True
 
 
 def test_normalize_tier() -> None:

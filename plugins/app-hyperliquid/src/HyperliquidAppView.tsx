@@ -164,9 +164,9 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
                   {(markets?.markets ?? []).slice(0, 24).map((market) => (
                     <div
                       key={market.name}
-                      className="grid grid-cols-[1fr_auto_auto] items-center gap-3 px-4 py-2.5 text-sm"
+                      className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-3 px-4 py-2.5 text-sm"
                     >
-                      <span className="font-medium text-txt">
+                      <span className="min-w-0 truncate font-medium text-txt">
                         {market.name}
                       </span>
                       <span className="text-xs text-muted">

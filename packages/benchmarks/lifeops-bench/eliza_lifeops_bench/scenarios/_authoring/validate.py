@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ...scorer import _UMBRELLA_SUBACTIONS
 from ...types import Domain
 from .._personas import ALL_PERSONAS
 from .taxonomy import (
@@ -26,6 +27,13 @@ from .taxonomy import (
 VALID_DOMAIN_VALUES: frozenset[str] = frozenset(d.value for d in Domain)
 VALID_MODE_VALUES: frozenset[str] = frozenset({"static", "live"})
 VALID_PERSONA_IDS: frozenset[str] = frozenset(p.id for p in ALL_PERSONAS)
+PARAMETER_ALIASES: dict[str, str] = {
+    # Production manifests generally call the discriminator `action`; the
+    # benchmark corpus uses the runtime-facing names that the executor
+    # dispatches on.
+    "subaction": "action",
+    "operation": "action",
+}
 
 
 @dataclass(frozen=True)
@@ -252,8 +260,21 @@ def _check_actions(
         schema = valid_actions[name]
         properties = schema.get("properties") or {}
         required = schema.get("required") or []
+        # Umbrella actions (CALENDAR, MESSAGE) carry their discriminator under
+        # `subaction` / `operation` in the bench's ground-truth corpus and the
+        # scorer canonicalizes both forms. The manifest schema for those
+        # umbrellas declares the discriminator under a different field name
+        # (`action` for CALENDAR), so honor the same authoritative table the
+        # scorer uses to keep the validator's parameter-declaration check
+        # aligned with how `compare_actions` reads the kwargs.
+        umbrella = _UMBRELLA_SUBACTIONS.get(name)
+        umbrella_discriminator = umbrella[0] if umbrella is not None else None
+
         for required_field in required:
-            if required_field not in kwargs:
+            if required_field not in kwargs and not any(
+                alias in kwargs and target == required_field
+                for alias, target in PARAMETER_ALIASES.items()
+            ):
                 issues.append(
                     ValidationIssue(
                         path=f"{prefix}.kwargs.{required_field}",
@@ -264,7 +285,21 @@ def _check_actions(
                 )
 
         for kw_name, kw_value in kwargs.items():
-            if kw_name not in properties:
+            declared_name = kw_name
+            if declared_name not in properties:
+                declared_name = PARAMETER_ALIASES.get(kw_name, kw_name)
+            if declared_name not in properties:
+                # Accept the umbrella discriminator field (e.g. `subaction` on
+                # CALENDAR) even when the manifest schema names the field
+                # differently — the scorer treats them as equivalent.
+                if kw_name == umbrella_discriminator:
+                    _check_id_references(
+                        f"{prefix}.kwargs.{kw_name}",
+                        kw_value,
+                        valid_world_ids,
+                        issues,
+                    )
+                    continue
                 issues.append(
                     ValidationIssue(
                         path=f"{prefix}.kwargs.{kw_name}",
@@ -274,7 +309,7 @@ def _check_actions(
                     )
                 )
             else:
-                expected_type = properties[kw_name].get("type")
+                expected_type = properties[declared_name].get("type")
                 if expected_type and not _matches_type(kw_value, expected_type):
                     issues.append(
                         ValidationIssue(

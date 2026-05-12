@@ -8,7 +8,7 @@
 #
 # This script does NOT spin up Vast instances — that is owned by
 # `train_vast.sh`. We only read the instance id it already provisioned
-# (via `MILADY_VAST_INSTANCE_ID` / `VAST_INSTANCE_ID` env, or the
+# (via `ELIZA_VAST_INSTANCE_ID` / `VAST_INSTANCE_ID` env, or the
 # `.vast_instance_id` file in the repo root).
 #
 # Args:
@@ -33,7 +33,7 @@
 # the same signal and returns non-zero, which we treat as "try next sweep"
 # rather than crash).
 #
-# Logs to ~/.milady/checkpoint-sync.log with a 10 MB rotation.
+# Logs to ~/.eliza/checkpoint-sync.log with a 10 MB rotation.
 
 set -euo pipefail
 
@@ -59,13 +59,13 @@ Optional:
                              never pruned. Default 0.
 
 Env (read, never written):
-  MILADY_VAST_INSTANCE_ID    Vast instance id. Set by train_vast.sh provision.
-  VAST_INSTANCE_ID           Legacy alias. Honored if MILADY_* unset.
+  ELIZA_VAST_INSTANCE_ID    Vast instance id. Set by train_vast.sh provision.
+  VAST_INSTANCE_ID           Legacy alias. Honored if ELIZA_* unset.
 
 Outputs:
   training/checkpoints/<run-name>/checkpoint-<step>/...
   training/checkpoints/<run-name>/_pull-log.jsonl  (one line per successful pull)
-  ~/.milady/checkpoint-sync.log                    (rotated at 10 MB)
+  ~/.eliza/checkpoint-sync.log                    (rotated at 10 MB)
 EOF
 }
 
@@ -114,7 +114,7 @@ fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCAL_CKPT_DIR="$ROOT/checkpoints/$RUN_NAME"
 PULL_LOG="$LOCAL_CKPT_DIR/_pull-log.jsonl"
-LOG_FILE="$HOME/.milady/checkpoint-sync.log"
+LOG_FILE="$HOME/.eliza/checkpoint-sync.log"
 LOG_MAX_BYTES=$((10 * 1024 * 1024))
 
 mkdir -p "$LOCAL_CKPT_DIR" "$(dirname "$LOG_FILE")"
@@ -138,11 +138,11 @@ log() {
 }
 
 # Resolve instance id from env or .vast_instance_id (same precedence as
-# train_vast.sh — MILADY_* preferred, VAST_* as backward-compat alias,
+# train_vast.sh — ELIZA_* preferred, VAST_* as backward-compat alias,
 # file as last resort).
 resolve_instance_id() {
-  if [[ -n "${MILADY_VAST_INSTANCE_ID:-}" ]]; then
-    echo "$MILADY_VAST_INSTANCE_ID"
+  if [[ -n "${ELIZA_VAST_INSTANCE_ID:-}" ]]; then
+    echo "$ELIZA_VAST_INSTANCE_ID"
     return 0
   fi
   if [[ -n "${VAST_INSTANCE_ID:-}" ]]; then
@@ -285,7 +285,7 @@ while true; do
       log "sweep: ssh endpoint not resolvable yet (instance still booting?)"
     fi
   else
-    log "sweep: no MILADY_VAST_INSTANCE_ID / VAST_INSTANCE_ID / .vast_instance_id — skipping"
+    log "sweep: no ELIZA_VAST_INSTANCE_ID / VAST_INSTANCE_ID / .vast_instance_id — skipping"
   fi
 
   if [[ "$SHOULD_EXIT" -eq 1 ]]; then

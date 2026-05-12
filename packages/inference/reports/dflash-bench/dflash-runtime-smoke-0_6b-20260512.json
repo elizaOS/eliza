@@ -1,0 +1,92 @@
+{
+  "generatedAt": "2026-05-12T02:21:47.872Z",
+  "verifier": "packages/inference/verify/dflash_drafter_runtime_smoke.mjs",
+  "targetModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle/text/eliza-1-0_6b-32k.gguf",
+  "drafterModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle/dflash/drafter-0_6b.gguf",
+  "checks": {
+    "drafterShape": "upstream-dflash-draft",
+    "upstreamDflashShapeOk": true,
+    "plainArShapeOk": false,
+    "hasTargetCheckpointSha256": false,
+    "gpt2TokenizerHasMerges": true
+  },
+  "metadata": {
+    "version": 3,
+    "tensorCount": 58,
+    "kvCount": 32,
+    "architecture": "dflash-draft",
+    "drafterShape": "upstream-dflash-draft",
+    "tokenizerModel": "gpt2",
+    "tokenizerPre": "qwen35",
+    "hasTokenizerMerges": true,
+    "targetCheckpointSha256": null,
+    "dflash": {
+      "blockSize": 16,
+      "maskTokenId": 248070,
+      "targetLayerIds": {
+        "type": "array",
+        "innerType": 5,
+        "length": 5,
+        "values": [
+          1,
+          8,
+          15,
+          22,
+          29
+        ],
+        "truncated": false
+      },
+      "nTargetFeatures": 12800
+    },
+    "upstreamRequiredTensors": {
+      "dflash_fc.weight": true,
+      "dflash_hidden_norm.weight": true,
+      "output_norm.weight": true
+    },
+    "plainArMarkers": {
+      "token_embd.weight": false,
+      "blk.0.attn_q.weight": true,
+      "blk.0.attn_k.weight": true
+    }
+  },
+  "runtime": [
+    {
+      "label": "installed",
+      "binary": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-speculative-simple",
+      "args": [
+        "-m",
+        "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle/text/eliza-1-0_6b-32k.gguf",
+        "-md",
+        "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle/dflash/drafter-0_6b.gguf",
+        "-p",
+        "Hello",
+        "-n",
+        "1",
+        "-c",
+        "128",
+        "-cd",
+        "128",
+        "-ngl",
+        "0",
+        "-ngld",
+        "0",
+        "--device",
+        "none",
+        "--device-draft",
+        "none",
+        "--draft",
+        "1",
+        "--draft-min",
+        "1",
+        "--draft-p-min",
+        "0.1"
+      ],
+      "status": 0,
+      "signal": null,
+      "classification": "generation_attempt_completed",
+      "outputTail": "print_info: file type   = Q4_K - Medium\nprint_info: file size   = 301.94 MiB (4.71 BPW) \nload: model vocab missing newline token, using special_pad_id instead\nload: 0 unused tokens\nload: special_eos_id is not in special_eog_ids - the tokenizer config may be incorrect\nload: printing all EOG tokens:\nload:   - 0 ('<|endoftext|>')\nload:   - 248044 ('[PAD248044]')\nload: special tokens cache size = 1\nload: token to piece cache size = 0.0000 MB\nprint_info: arch                  = dflash-draft\nprint_info: vocab_only            = 0\nprint_info: no_alloc              = 0\nprint_info: n_ctx_train           = 262144\nprint_info: n_embd                = 2560\nprint_info: n_embd_inp            = 2560\nprint_info: n_layer               = 5\nprint_info: n_head                = 32\nprint_info: n_head_kv             = 8\nprint_info: n_rot                 = 128\nprint_info: n_swa                 = 0\nprint_info: is_swa_any            = 0\nprint_info: n_embd_head_k         = 128\nprint_info: n_embd_head_v         = 128\nprint_info: n_gqa                 = 4\nprint_info: n_embd_k_gqa          = 1024\nprint_info: n_embd_v_gqa          = 1024\nprint_info: f_norm_eps            = 0.0e+00\nprint_info: f_norm_rms_eps        = 1.0e-06\nprint_info: f_clamp_kqv           = 0.0e+00\nprint_info: f_max_alibi_bias      = 0.0e+00\nprint_info: f_logit_scale         = 0.0e+00\nprint_info: f_attn_scale          = 0.0e+00\nprint_info: n_ff                  = 9728\nprint_info: n_expert              = 0\nprint_info: n_expert_used         = 0\nprint_info: n_expert_groups       = 0\nprint_info: n_group_used          = 0\nprint_info: causal attn           = 0\nprint_info: pooling type          = 0\nprint_info: rope type             = 2\nprint_info: rope scaling          = linear\nprint_info: freq_base_train       = 10000000.0\nprint_info: freq_scale_train      = 1\nprint_info: n_ctx_orig_yarn       = 262144\nprint_info: rope_yarn_log_mul     = 0.0000\nprint_info: rope_finetuned        = unknown\nprint_info: model type            = 0.6B\nprint_info: model params          = 537.43 M\nprint_info: general.name          = z-lab/Qwen3.5-4B-DFlash\nprint_info: vocab type            = BPE\nprint_info: n_vocab               = 248320\nprint_info: n_merges              = 247587\nprint_info: BOS token             = 11 '[PAD11]'\nprint_info: EOS token             = 248044 '[PAD248044]'\nprint_info: EOT token             = 0 '<|endoftext|>'\nprint_info: PAD token             = 248044 '[PAD248044]'\nprint_info: EOG token             = 0 '<|endoftext|>'\nprint_info: EOG token             = 248044 '[PAD248044]'\nprint_info: max token length      = 13\nload_tensors: loading model tensors, this can take a while... (mmap = true, direct_io = false)\nload_tensors: offloading 0 repeating layers to GPU\nload_tensors: offloaded 0/6 layers to GPU\nload_tensors:   CPU_Mapped model buffer size =   284.36 MiB\nload_tensors:   CPU_REPACK model buffer size =   301.82 MiB\n...............................\ndecode: n_tokens == 0\nllama_decode: failed to decode, ret = -1\nllama_context: constructing llama_context\nllama_context: n_seq_max     = 1\nllama_context: n_ctx         = 256\nllama_context: n_ctx_seq     = 256\nllama_context: n_batch       = 256\nllama_context: n_ubatch      = 256\nllama_context: causal_attn   = 0\nllama_context: flash_attn    = auto\nllama_context: kv_unified    = false\nllama_context: freq_base     = 10000000.0\nllama_context: freq_scale    = 1\nllama_context: n_ctx_seq (256) < n_ctx_train (262144) -- the full capacity of the model will not be utilized\nllama_context:        CPU  output buffer size =     0.95 MiB\nllama_kv_cache:        CPU KV buffer size =     5.00 MiB\nllama_kv_cache: size =    5.00 MiB (   256 cells,   5 layers,  1/1 seqs), K (f16):    2.50 MiB, V (f16):    2.50 MiB\nsched_reserve: reserving ...\nsched_reserve: Flash Attention was auto, set to enabled\nsched_reserve:        CPU compute buffer size =   712.79 MiB\nsched_reserve: graph nodes  = 208\nsched_reserve: graph splits = 1\nsched_reserve: reserve took 1.69 ms, sched copies = 1\nthe target and draft vocabs are not compatible - tokens will be translated between the two\nencoded    1 tokens in    0.002 seconds, speed:  487.329 t/s\ndecoded    2 tokens in    0.251 seconds, speed:    7.970 t/s\n\nn_draft   = 1\nn_predict = 2\nn_drafted = 0\nn_accept  = 0\naccept    = nan%\n\ndraft:\n\n\ntarget:\n\ncommon_perf_print:    sampling time =       0.26 ms\ncommon_perf_print:    samplers time =       0.14 ms /     2 tokens\ncommon_perf_print:        load time =     610.54 ms\ncommon_perf_print: prompt eval time =       0.00 ms /     1 tokens (    0.00 ms per token,      inf tokens per second)\ncommon_perf_print:        eval time =      23.94 ms /     2 runs   (   11.97 ms per token,    83.54 tokens per second)\ncommon_perf_print:       total time =     588.65 ms /     3 tokens\ncommon_perf_print: unaccounted time =     564.45 ms /  95.9 %      (total - sampling - prompt eval - eval) / (total)\ncommon_perf_print:    graphs reused =          1\nllama_memory_breakdown_print: | memory breakdown [MiB] | total   free    self   model   context   compute    unaccounted |\nllama_memory_breakdown_print: |   - Host               |                  704 =   600 +      28 +      75                |\nllama_memory_breakdown_print: |   - CPU_REPACK         |                  603 =   603 +       0 +       0                |\nllama_perf_context_print:        load time =     484.63 ms\nllama_perf_context_print: prompt eval time =       0.00 ms /     1 tokens (    0.00 ms per token,      inf tokens per second)\nllama_perf_context_print:        eval time =     226.30 ms /     2 runs   (  113.15 ms per token,     8.84 tokens per second)\nllama_perf_context_print:       total time =     588.65 ms /     3 tokens\nllama_perf_context_print:    graphs reused =          0"
+    }
+  ],
+  "metadataStatus": "metadata_loadable",
+  "metadataFailures": []
+}

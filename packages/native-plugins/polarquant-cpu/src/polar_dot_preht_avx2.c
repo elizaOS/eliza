@@ -83,10 +83,10 @@ void ggml_vec_dot_q4_polar_preht_f32_avx2(
         __m256 acc2 = _mm256_setzero_ps();
         __m256 acc3 = _mm256_setzero_ps();
         for (int i = 0; i < QK_POLAR; i += 32) {
-            __m256 c0 = unpack8_centroids(blk->qs + i / 2);
-            __m256 c1 = unpack8_centroids(blk->qs + i / 2 + 4);
-            __m256 c2 = unpack8_centroids(blk->qs + i / 2 + 8);
-            __m256 c3 = unpack8_centroids(blk->qs + i / 2 + 12);
+            __m256 c0 = unpack8_centroids(blk->qs + i / 2,      clo, chi);
+            __m256 c1 = unpack8_centroids(blk->qs + i / 2 + 4,  clo, chi);
+            __m256 c2 = unpack8_centroids(blk->qs + i / 2 + 8,  clo, chi);
+            __m256 c3 = unpack8_centroids(blk->qs + i / 2 + 12, clo, chi);
             if (use_qjl) {
                 c0 = _mm256_fmadd_ps(vres, _mm256_loadu_ps(signs + i),      c0);
                 c1 = _mm256_fmadd_ps(vres, _mm256_loadu_ps(signs + i + 8),  c1);

@@ -295,7 +295,7 @@ jobs:
         id: dflash-cache
         uses: actions/cache@v4
         with:
-          path: ~/.cache/eliza-dflash/milady-llama-cpp/build/bin/llama-server
+          path: ~/.cache/eliza-dflash/eliza-llama-cpp/build/bin/llama-server
           key: dflash-llama-cpp-${{ runner.os }}-v1
 
       - name: Build dflash fork (best-effort)

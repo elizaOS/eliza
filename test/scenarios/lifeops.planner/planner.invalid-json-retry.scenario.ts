@@ -24,9 +24,9 @@
  * Cited: 03-coverage-gap-matrix.md "Planner returns invalid JSON, retries"
  * — listed NONE; no scenario.
  *
- * Note: this scenario requires `MILADY_LIFEOPS_RUN_DIR` to be set (i.e. it
+ * Note: this scenario requires `ELIZA_LIFEOPS_RUN_DIR` to be set (i.e. it
  * must be run via `--run-dir`). When run without `--run-dir`, the recorder
- * writes to `~/.milady/trajectories/` and the post-check still works as
+ * writes to `~/.eliza/trajectories/` and the post-check still works as
  * long as the recorder is enabled (default).
  */
 
@@ -47,12 +47,12 @@ interface RecordedTrajectoryMin {
 }
 
 function resolveTrajectoryDir(): string {
-  const explicit = process.env.MILADY_TRAJECTORY_DIR?.trim();
+  const explicit = process.env.ELIZA_TRAJECTORY_DIR?.trim();
   if (explicit && explicit.length > 0) return explicit;
   const stateDir =
-    process.env.MILADY_STATE_DIR ??
     process.env.ELIZA_STATE_DIR ??
-    path.join(os.homedir(), ".milady");
+    process.env.MILADY_STATE_DIR ??
+    path.join(os.homedir(), ".eliza");
   return path.join(stateDir, "trajectories");
 }
 

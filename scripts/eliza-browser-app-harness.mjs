@@ -586,8 +586,8 @@ function spawnDevDesktop(runDir) {
       LOG_LEVEL: logLevel,
       ELIZA_BROWSER_APP_HARNESS_RUN_ID:
         process.env.ELIZA_BROWSER_APP_HARNESS_RUN_ID ?? "",
-      MILADY_TRAJECTORY_DIR:
-        process.env.MILADY_TRAJECTORY_DIR ?? join(runDir, "trajectories"),
+      ELIZA_TRAJECTORY_DIR:
+        process.env.ELIZA_TRAJECTORY_DIR ?? join(runDir, "trajectories"),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

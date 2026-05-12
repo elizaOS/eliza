@@ -23,8 +23,10 @@ import type { useApp } from "../../state/useApp";
 import { ttsDebug } from "../../utils/tts-debug";
 import { resolveCharacterVoiceConfigFromAppConfig } from "../../voice/character-voice-config";
 import type {
+  VoiceAssistantSpeechTelemetry,
   VoiceCaptureMode,
   VoicePlaybackStartEvent,
+  VoiceTranscriptEvent,
 } from "../../voice/voice-chat-types";
 import { useCompanionSceneStatus } from "../companion/injected";
 
@@ -71,6 +73,31 @@ type CompanionSpeechMemoryEntry = {
   messageId: string;
   text: string;
 };
+
+type VoiceLatencyState = {
+  assistantFirstMessageId: string | null;
+  firstSegmentCached: boolean | null;
+  speechEndToFirstTokenMs: number | null;
+  speechEndToVoiceStartMs: number | null;
+  assistantStreamToVoiceStartMs: number | null;
+};
+
+type PendingVoiceTurnState = {
+  id: string;
+  expiresAtMs: number;
+  firstSegmentCached?: boolean;
+  firstTokenAtMs?: number;
+  assistantFirstMessageId?: string;
+  assistantFirstTextAtMs?: number;
+  speechEndedAtMs: number;
+  voiceStartedAtMs?: number;
+};
+
+function makeVoiceTurnId(speechEndedAtMs: number): string {
+  return `voice-turn-${Math.round(speechEndedAtMs)}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+}
 
 const companionSpeechMemoryByConversation = new Map<
   string,
@@ -166,18 +193,10 @@ export function useChatVoiceController(options: {
   const [voiceConfig, setVoiceConfig] = useState<VoiceConfig | null>(null);
   /** Bumps after each `getConfig` (or inline VOICE_CONFIG event) settles — game-modal auto-speak waits for this so TTS does not run with a stale/null voice profile and get stuck deduped. */
   const [voiceBootstrapTick, setVoiceBootstrapTick] = useState(0);
-  const [voiceLatency, setVoiceLatency] = useState<{
-    firstSegmentCached: boolean | null;
-    speechEndToFirstTokenMs: number | null;
-    speechEndToVoiceStartMs: number | null;
-  } | null>(null);
-  const pendingVoiceTurnRef = useRef<{
-    expiresAtMs: number;
-    firstSegmentCached?: boolean;
-    firstTokenAtMs?: number;
-    speechEndedAtMs: number;
-    voiceStartedAtMs?: number;
-  } | null>(null);
+  const [voiceLatency, setVoiceLatency] = useState<VoiceLatencyState | null>(
+    null,
+  );
+  const pendingVoiceTurnRef = useRef<PendingVoiceTurnState | null>(null);
   const suppressedAssistantSpeechIdRef = useRef<string | null>(null);
   /** Skips duplicate companion auto-speak when only `voiceBootstrapTick` bumps (config/cloud reload) for the same assistant text. */
   const companionBootstrapAutoSpeakRef = useRef<{
@@ -293,18 +312,30 @@ export function useChatVoiceController(options: {
   }, []);
 
   const handleVoiceTranscript = useCallback(
-    (text: string) => {
+    (text: string, event?: VoiceTranscriptEvent) => {
       if (isComposerLocked) return;
       const composedText = composeVoiceDraft(text);
       if (!composedText) return;
       const speechEndedAtMs = nowMs();
+      const voiceTurnId = event?.turn.id ?? makeVoiceTurnId(speechEndedAtMs);
       pendingVoiceTurnRef.current = {
+        id: voiceTurnId,
         expiresAtMs: speechEndedAtMs + 15000,
         speechEndedAtMs,
       };
       setVoiceLatency(null);
       setState("chatInput", composedText);
-      setTimeout(() => void handleChatSend("VOICE_DM"), 50);
+      setTimeout(
+        () =>
+          void handleChatSend("VOICE_DM", {
+            metadata: {
+              voiceTurnId,
+              voiceSpeechEndedAtMs: Math.round(speechEndedAtMs),
+              voiceSource: event?.turn.source ?? event?.turn.metadata?.source,
+            },
+          }),
+        50,
+      );
     },
     [composeVoiceDraft, handleChatSend, isComposerLocked, setState, setTimeout],
   );
@@ -323,6 +354,19 @@ export function useChatVoiceController(options: {
         provider: event.provider,
         segment: event.segment,
         cached: event.cached,
+        messageId: event.messageId,
+        voiceTurnId: event.voiceTurnId,
+        speechEndToVoiceStartMs:
+          event.speechEndedAtMs != null
+            ? Math.max(0, Math.round(event.startedAtMs - event.speechEndedAtMs))
+            : undefined,
+        assistantStreamToVoiceStartMs:
+          event.assistantFirstTextAtMs != null
+            ? Math.max(
+                0,
+                Math.round(event.startedAtMs - event.assistantFirstTextAtMs),
+              )
+            : undefined,
       });
       const pending = pendingVoiceTurnRef.current;
       if (!pending) return;
@@ -336,12 +380,24 @@ export function useChatVoiceController(options: {
       pending.firstSegmentCached = event.cached;
 
       setVoiceLatency((prev) => ({
+        assistantFirstMessageId:
+          prev?.assistantFirstMessageId ??
+          event.messageId ??
+          pending.assistantFirstMessageId ??
+          null,
         firstSegmentCached: event.cached,
         speechEndToFirstTokenMs: prev?.speechEndToFirstTokenMs ?? null,
         speechEndToVoiceStartMs: Math.max(
           0,
           Math.round(event.startedAtMs - pending.speechEndedAtMs),
         ),
+        assistantStreamToVoiceStartMs:
+          event.assistantFirstTextAtMs != null
+            ? Math.max(
+                0,
+                Math.round(event.startedAtMs - event.assistantFirstTextAtMs),
+              )
+            : (prev?.assistantStreamToVoiceStartMs ?? null),
       }));
     },
     [],
@@ -472,11 +528,20 @@ export function useChatVoiceController(options: {
   }, [isGameModal]);
 
   useEffect(() => {
-    if (!isGameModal || agentVoiceMuted || voice.isListening) return;
-    if (!companionSceneAvatarReady) return;
+    let pendingVoiceTurn = pendingVoiceTurnRef.current;
+    if (pendingVoiceTurn && nowMs() > pendingVoiceTurn.expiresAtMs) {
+      pendingVoiceTurnRef.current = null;
+      pendingVoiceTurn = null;
+    }
+
+    const shouldSpeakVisibleOutput = isGameModal || pendingVoiceTurn != null;
+    if (!shouldSpeakVisibleOutput || agentVoiceMuted || voice.isListening) {
+      return;
+    }
+    if (isGameModal && !companionSceneAvatarReady) return;
     if (voiceBootstrapTick === 0) return;
     // Skip the stale replay when the view just became active (mode switch).
-    if (gameModalJustActivatedRef.current) {
+    if (isGameModal && gameModalJustActivatedRef.current) {
       gameModalJustActivatedRef.current = false;
       return;
     }
@@ -508,7 +573,16 @@ export function useChatVoiceController(options: {
     if (initialCompletedAssistant) {
       initialCompletedAssistantOnGameModalMountRef.current = null;
     }
-    if (hasCompanionSpeechBeenPlayed(activeConversationId, messageId, text)) {
+    const prev = companionBootstrapAutoSpeakRef.current;
+    const sameQueuedVisibleText =
+      prev &&
+      prev.messageId === messageId &&
+      prev.text === text &&
+      prev.unlockGen === ug;
+    if (
+      hasCompanionSpeechBeenPlayed(activeConversationId, messageId, text) &&
+      !sameQueuedVisibleText
+    ) {
       companionBootstrapAutoSpeakRef.current = {
         tick,
         messageId,
@@ -517,7 +591,6 @@ export function useChatVoiceController(options: {
       };
       return;
     }
-    const prev = companionBootstrapAutoSpeakRef.current;
     if (
       prev &&
       prev.messageId === messageId &&
@@ -534,13 +607,52 @@ export function useChatVoiceController(options: {
         };
         return;
       }
-      if (tick === prev.tick) {
+      if (tick === prev.tick && chatSending) {
         // Same deps re-run (e.g. React Strict Mode dev double effect) — already queued.
         return;
       }
     }
 
-    queueAssistantSpeech(messageId, text, !chatSending);
+    const textUpdatedAtMs = nowMs();
+    let telemetry: VoiceAssistantSpeechTelemetry | undefined;
+    let replacePlayback = true;
+
+    if (pendingVoiceTurn) {
+      if (pendingVoiceTurn.assistantFirstTextAtMs == null) {
+        pendingVoiceTurn.assistantFirstTextAtMs = textUpdatedAtMs;
+        pendingVoiceTurn.assistantFirstMessageId = messageId;
+      }
+      if (pendingVoiceTurn.firstTokenAtMs == null) {
+        pendingVoiceTurn.firstTokenAtMs = textUpdatedAtMs;
+        setVoiceLatency((prev) => ({
+          assistantFirstMessageId: messageId,
+          firstSegmentCached: prev?.firstSegmentCached ?? null,
+          speechEndToFirstTokenMs: Math.max(
+            0,
+            Math.round(textUpdatedAtMs - pendingVoiceTurn.speechEndedAtMs),
+          ),
+          speechEndToVoiceStartMs: prev?.speechEndToVoiceStartMs ?? null,
+          assistantStreamToVoiceStartMs:
+            prev?.assistantStreamToVoiceStartMs ?? null,
+        }));
+      }
+      replacePlayback =
+        pendingVoiceTurn.assistantFirstMessageId == null ||
+        pendingVoiceTurn.assistantFirstMessageId === messageId;
+      telemetry = {
+        messageId,
+        voiceTurnId: pendingVoiceTurn.id,
+        speechEndedAtMs: pendingVoiceTurn.speechEndedAtMs,
+        assistantFirstTextAtMs:
+          pendingVoiceTurn.assistantFirstTextAtMs ?? textUpdatedAtMs,
+        assistantTextUpdatedAtMs: textUpdatedAtMs,
+      };
+    }
+
+    queueAssistantSpeech(messageId, text, !chatSending, {
+      replace: replacePlayback,
+      telemetry,
+    });
     rememberCompanionSpeech(activeConversationId, messageId, text);
     suppressedAssistantSpeechIdRef.current = null;
     companionBootstrapAutoSpeakRef.current = {
@@ -579,12 +691,18 @@ export function useChatVoiceController(options: {
     const firstTokenAtMs = nowMs();
     pending.firstTokenAtMs = firstTokenAtMs;
     setVoiceLatency((prev) => ({
+      assistantFirstMessageId:
+        prev?.assistantFirstMessageId ??
+        pending.assistantFirstMessageId ??
+        null,
       firstSegmentCached: prev?.firstSegmentCached ?? null,
       speechEndToFirstTokenMs: Math.max(
         0,
         Math.round(firstTokenAtMs - pending.speechEndedAtMs),
       ),
       speechEndToVoiceStartMs: prev?.speechEndToVoiceStartMs ?? null,
+      assistantStreamToVoiceStartMs:
+        prev?.assistantStreamToVoiceStartMs ?? null,
     }));
   }, [chatFirstTokenReceived]);
 

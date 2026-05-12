@@ -2,7 +2,7 @@
 <!--
   AppxManifest.store.xml — AppContainer-sandboxed manifest for Microsoft Store distribution.
 
-  This is the store-build flavor (MILADY_BUILD_VARIANT=store). It deliberately omits
+  This is the store-build flavor (ELIZA_BUILD_VARIANT=store). It deliberately omits
   runFullTrust and windows.fullTrustApplication so the app runs as a regular AppContainer
   process. As a consequence, local-agent execution paths that rely on PATH-lookup, spawning
   external CLIs (node, bun, codex, claude), or arbitrary filesystem access are NOT available

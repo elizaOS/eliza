@@ -3,11 +3,11 @@
 // Routes os.homedir() / os.tmpdir() to the iOS app sandbox via
 // environment variables set by ElizaBunRuntime.swift at startup:
 //
-//   ELIZA_IOS_HOME           → ~/Library/Application Support/Milady/
+//   ELIZA_IOS_HOME           → ~/Library/Application Support/Eliza/
 //   ELIZA_IOS_TMP            → NSTemporaryDirectory()
 //   ELIZA_IOS_DOCUMENTS      → ~/Documents/
-//   ELIZA_IOS_CACHES         → ~/Library/Caches/Milady/
-//   ELIZA_IOS_APP_SUPPORT    → ~/Library/Application Support/Milady/
+//   ELIZA_IOS_CACHES         → ~/Library/Caches/Eliza/
+//   ELIZA_IOS_APP_SUPPORT    → ~/Library/Application Support/Eliza/
 //
 // The host (Swift code) sets these before bun_embedded_run() so any code
 // that calls os.homedir() gets a sandbox-correct path without needing to

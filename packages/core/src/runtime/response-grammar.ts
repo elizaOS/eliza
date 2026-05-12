@@ -15,12 +15,17 @@
  * GBNF. Cloud adapters ignore both — `responseSchema` / `tools` carry the
  * equivalent (unforced) contract for them, so there is no fallback branch here.
  *
- * Reconciliation note:
- *   Production Stage 1 now sends the schema composed by
- *   `ResponseHandlerFieldRegistry`. When registered field evaluators are
- *   supplied, `buildResponseGrammar` emits that field-registry envelope in
- *   priority order. The legacy fixed envelope remains below as a compatibility
- *   fallback for tests or older callers that do not pass field evaluators.
+ * Source of truth:
+ *   `ResponseHandlerFieldRegistry.composeSchema()`
+ *   (`./response-handler-field-registry.ts`) is canonical. Production Stage 1
+ *   sends that composed schema as the HANDLE_RESPONSE tool's `parameters`, and
+ *   when registered field evaluators are supplied here `buildResponseGrammar`
+ *   emits the *same* field-registry envelope in priority order — schema, prompt
+ *   slices, and GBNF skeleton all derive from one registered set. The legacy
+ *   fixed W3 envelope (`STAGE1_ENVELOPE_KEYS` below, mirroring
+ *   `HANDLE_RESPONSE_SCHEMA` in `../actions/to-tool.ts`) remains only as a
+ *   compatibility fallback for tests or older callers that do not pass field
+ *   evaluators. See the `TODO(consolidate)` block on `HANDLE_RESPONSE_SCHEMA`.
  *
  * Caching: `buildResponseGrammar` is pure given the runtime registries
  * snapshot. The result is byte-stable across turns when the registries haven't
@@ -42,7 +47,10 @@ import type {
 } from "../types/model.js";
 
 // ---------------------------------------------------------------------------
-// Stage-1 envelope: fixed key order matching `HANDLE_RESPONSE_SCHEMA`.
+// Stage-1 envelope (FALLBACK ONLY): fixed key order matching the legacy W3
+// `HANDLE_RESPONSE_SCHEMA` in `../actions/to-tool.ts`. Used only when no Stage-1
+// field evaluators are registered (tests / older callers). Production always
+// has the builtin evaluators registered, so the field-registry path below wins.
 // ---------------------------------------------------------------------------
 
 /** `shouldRespond` enum values, in the order the model should try them. */
@@ -397,6 +405,10 @@ function gbnfRefForFieldSchema(
  *
  * The skeleton's spans, in order:
  *   `{` literal
+ * Field-registry path:
+ *   [one span per registered field evaluator, priority-ordered]
+ *
+ * Legacy fallback path (only when no fields are supplied):
  *   [non-direct only] `"shouldRespond":` literal → enum span (RESPOND/IGNORE/STOP)
  *   `,"thought":` (or `{"thought":` when direct) literal → free-string span
  *   `,"replyText":` literal → free-string span
@@ -406,7 +418,6 @@ function gbnfRefForFieldSchema(
  *   `,"contextSlices":` literal → free-json span (string array)
  *   `,"candidateActions":` … `,"parentActionHints":` … `,"requiresTool":` …
  *   `,"extract":` literal → free-json span (object)
- *   [one span per registered field evaluator, priority-ordered]
  *   `}` literal
  *
  * Single-value enums (e.g. a field evaluator whose schema is a one-element
@@ -499,7 +510,10 @@ export function buildResponseGrammar(
 		builder.root(rootParts);
 		const grammar = builder.build();
 		const skeleton: ResponseSkeleton = { spans, id: cacheKey };
-		const result: ResponseGrammarResult = { responseSkeleton: skeleton, grammar };
+		const result: ResponseGrammarResult = {
+			responseSkeleton: skeleton,
+			grammar,
+		};
 		stage1Cache.set(cacheKey, result);
 		return result;
 	}

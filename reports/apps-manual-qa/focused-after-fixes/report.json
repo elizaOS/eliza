@@ -1,0 +1,465 @@
+[
+  {
+    "viewport": "desktop",
+    "scenario": "win-tasks",
+    "state": "initial",
+    "actionResult": null,
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-after-fixes/desktop-win-tasks-initial.png",
+    "messages": [
+      {
+        "type": "error",
+        "text": "TypeError: s.find is not a function\n    at http://127.0.0.1:3145/assets/main-WYQyl6xQ.js:112:281051\n    at Object.vs [as useMemo] (http://127.0.0.1:3145/assets/vendor-react-C5QeB5hO.js:14:56356)\n    at e.useMemo (http://127.0.0.1:3145/asset"
+      },
+      {
+        "type": "error",
+        "text": "[ErrorBoundary] TypeError: s.find is not a function\n    at http://127.0.0.1:3145/assets/main-WYQyl6xQ.js:112:281051\n    at Object.vs [as useMemo] (http://127.0.0.1:3145/assets/vendor-react-C5QeB5hO.js:14:56356)\n    at e.useMemo (http://127."
+      }
+    ],
+    "dom": {
+      "url": "http://127.0.0.1:3145/?appWindow=1#/apps/tasks",
+      "text": [
+        "Something went wrong",
+        "s.find is not a function",
+        "Try Again"
+      ],
+      "red": [
+        {
+          "text": "Something went wrong",
+          "tag": "P",
+          "color": "rgb(239, 68, 68)",
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgb(239, 68, 68)",
+          "x": 642,
+          "y": 25,
+          "w": 156,
+          "h": 20
+        }
+      ],
+      "overflow": [],
+      "horizontalOverflow": false
+    }
+  },
+  {
+    "viewport": "desktop",
+    "scenario": "win-lifeops",
+    "state": "initial",
+    "actionResult": null,
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-after-fixes/desktop-win-lifeops-initial.png",
+    "messages": [],
+    "dom": {
+      "url": "http://127.0.0.1:3145/?appWindow=1#/apps/lifeops",
+      "text": [
+        "Overview",
+        "Sleep",
+        "Screen Time",
+        "Messages",
+        "Mail",
+        "Calendar",
+        "Reminders",
+        "Money",
+        "Documents",
+        "Settings",
+        "Waiting for LifeOps runtime",
+        "LIFEOPS CHAT",
+        "Ask me about the visible LifeOps item or the next action you want handled.",
+        "Clear"
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontalOverflow": false
+    }
+  },
+  {
+    "viewport": "desktop",
+    "scenario": "win-database-tabs",
+    "state": "initial",
+    "actionResult": null,
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-after-fixes/desktop-win-database-tabs-initial.png",
+    "messages": [],
+    "dom": {
+      "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database",
+      "text": [
+        "Tables",
+        "Media",
+        "Vectors",
+        "Table Editor",
+        "SQL Editor",
+        "Connecting...",
+        "0 TABLES",
+        "TABLE EDITOR",
+        "Refresh",
+        "TABLES (0)",
+        "DATABASE",
+        "Table Browser",
+        "Database not available",
+        "The database viewer is only available when the local agent runtime is running."
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontalOverflow": false
+    }
+  },
+  {
+    "viewport": "desktop",
+    "scenario": "win-database-tabs",
+    "state": "01-Media",
+    "actionResult": {
+      "ok": true,
+      "label": "Media"
+    },
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-after-fixes/desktop-win-database-tabs-01-media.png",
+    "messages": [],
+    "dom": {
+      "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database",
+      "text": [
+        "Tables",
+        "Media",
+        "Vectors",
+        "0 items",
+        "ALL MEDIA",
+        "All",
+        "Images",
+        "Video",
+        "Audio",
+        "No media found",
+        "No media found",
+        "No images, videos, or audio files were detected in the database."
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontalOverflow": false
+    }
+  },
+  {
+    "viewport": "desktop",
+    "scenario": "win-database-tabs",
+    "state": "02-Vectors",
+    "actionResult": {
+      "ok": true,
+      "label": "Vectors"
+    },
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-after-fixes/desktop-win-database-tabs-02-vectors.png",
+    "messages": [],
+    "dom": {
+      "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database",
+      "text": [
+        "Tables",
+        "Media",
+        "Vectors",
+        "Vectors",
+        "LIST VIEW",
+        "List",
+        "2D",
+        "3D",
+        "Search",
+        "Loading memories...",
+        "Memory Detail",
+        "Select a memory from the sidebar to inspect its content, metadata, and embedding values."
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontalOverflow": false
+    }
+  },
+  {
+    "viewport": "desktop",
+    "scenario": "win-database-tabs",
+    "state": "03-SQL Editor",
+    "actionResult": {
+      "ok": false,
+      "label": "SQL Editor"
+    },
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-after-fixes/desktop-win-database-tabs-03-sql-editor.png",
+    "messages": [],
+    "dom": {
+      "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database",
+      "text": [
+        "Tables",
+        "Media",
+        "Vectors",
+        "Vectors",
+        "LIST VIEW",
+        "List",
+        "2D",
+        "3D",
+        "Search",
+        "Loading memories...",
+        "Memory Detail",
+        "Select a memory from the sidebar to inspect its content, metadata, and embedding values."
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontalOverflow": false
+    }
+  },
+  {
+    "viewport": "desktop",
+    "scenario": "win-shopify",
+    "state": "initial",
+    "actionResult": null,
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-after-fixes/desktop-win-shopify-initial.png",
+    "messages": [],
+    "dom": {
+      "url": "http://127.0.0.1:3145/?appWindow=1#/apps/shopify",
+      "text": [
+        "Shopify",
+        "Not connected",
+        "Connect your Shopify store",
+        "STORE DOMAIN",
+        "SHOPIFY_STORE_DOMAIN=your-store.myshopify.com",
+        "ACCESS TOKEN",
+        "SHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+        "Restart after setting these env vars. Required scopes: read_products, read_orders, read_inventory, and read_customers scopes."
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontalOverflow": false
+    }
+  },
+  {
+    "viewport": "desktop",
+    "scenario": "win-inventory",
+    "state": "initial",
+    "actionResult": null,
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-after-fixes/desktop-win-inventory-initial.png",
+    "messages": [],
+    "dom": {
+      "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory",
+      "text": [
+        "$0.00",
+        "RPC",
+        "No EVM address",
+        "No Solana address",
+        "Swap",
+        "Send",
+        "Receive",
+        "Tokens",
+        "DeFi",
+        "NFTs",
+        "No assets",
+        "No balances or trade history yet.",
+        "Here's what the market looks like right now.",
+        "Spot prices",
+        "CoinGecko",
+        "Spot prices unavailable",
+        "CoinGecko did not return live data.",
+        "Top movers",
+        "CoinGecko",
+        "Top movers unavailable",
+        "CoinGecko did not return live data.",
+        "Popular predictions",
+        "Polymarket",
+        "Popular predictions unavailable",
+        "Polymarket did not return live data."
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontalOverflow": false
+    }
+  },
+  {
+    "viewport": "mobile",
+    "scenario": "win-tasks",
+    "state": "initial",
+    "actionResult": null,
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-after-fixes/mobile-win-tasks-initial.png",
+    "messages": [
+      {
+        "type": "error",
+        "text": "TypeError: s.find is not a function\n    at http://127.0.0.1:3145/assets/main-WYQyl6xQ.js:112:281051\n    at Object.vs [as useMemo] (http://127.0.0.1:3145/assets/vendor-react-C5QeB5hO.js:14:56356)\n    at e.useMemo (http://127.0.0.1:3145/asset"
+      },
+      {
+        "type": "error",
+        "text": "[ErrorBoundary] TypeError: s.find is not a function\n    at http://127.0.0.1:3145/assets/main-WYQyl6xQ.js:112:281051\n    at Object.vs [as useMemo] (http://127.0.0.1:3145/assets/vendor-react-C5QeB5hO.js:14:56356)\n    at e.useMemo (http://127."
+      }
+    ],
+    "dom": {
+      "url": "http://127.0.0.1:3145/?appWindow=1#/apps/tasks",
+      "text": [
+        "Something went wrong",
+        "s.find is not a function",
+        "Try Again"
+      ],
+      "red": [
+        {
+          "text": "Something went wrong",
+          "tag": "P",
+          "color": "rgb(239, 68, 68)",
+          "background": "rgba(0, 0, 0, 0)",
+          "border": "rgb(239, 68, 68)",
+          "x": 117,
+          "y": 25,
+          "w": 156,
+          "h": 20
+        }
+      ],
+      "overflow": [],
+      "horizontalOverflow": false
+    }
+  },
+  {
+    "viewport": "mobile",
+    "scenario": "win-lifeops",
+    "state": "initial",
+    "actionResult": null,
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-after-fixes/mobile-win-lifeops-initial.png",
+    "messages": [],
+    "dom": {
+      "url": "http://127.0.0.1:3145/?appWindow=1#/apps/lifeops",
+      "text": [
+        "Waiting for LifeOps runtime"
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontalOverflow": false
+    }
+  },
+  {
+    "viewport": "mobile",
+    "scenario": "win-database-tabs",
+    "state": "initial",
+    "actionResult": null,
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-after-fixes/mobile-win-database-tabs-initial.png",
+    "messages": [],
+    "dom": {
+      "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database",
+      "text": [
+        "Browse",
+        "DATABASE",
+        "Table Browser",
+        "Database not available",
+        "The database viewer is only available when the local agent runtime is running."
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontalOverflow": false
+    }
+  },
+  {
+    "viewport": "mobile",
+    "scenario": "win-database-tabs",
+    "state": "01-Media",
+    "actionResult": {
+      "ok": false,
+      "label": "Media"
+    },
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-after-fixes/mobile-win-database-tabs-01-media.png",
+    "messages": [],
+    "dom": {
+      "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database",
+      "text": [
+        "Browse",
+        "DATABASE",
+        "Table Browser",
+        "Database not available",
+        "The database viewer is only available when the local agent runtime is running."
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontalOverflow": false
+    }
+  },
+  {
+    "viewport": "mobile",
+    "scenario": "win-database-tabs",
+    "state": "02-Vectors",
+    "actionResult": {
+      "ok": false,
+      "label": "Vectors"
+    },
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-after-fixes/mobile-win-database-tabs-02-vectors.png",
+    "messages": [],
+    "dom": {
+      "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database",
+      "text": [
+        "Browse",
+        "DATABASE",
+        "Table Browser",
+        "Database not available",
+        "The database viewer is only available when the local agent runtime is running."
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontalOverflow": false
+    }
+  },
+  {
+    "viewport": "mobile",
+    "scenario": "win-database-tabs",
+    "state": "03-SQL Editor",
+    "actionResult": {
+      "ok": false,
+      "label": "SQL Editor"
+    },
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-after-fixes/mobile-win-database-tabs-03-sql-editor.png",
+    "messages": [],
+    "dom": {
+      "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database",
+      "text": [
+        "Browse",
+        "DATABASE",
+        "Table Browser",
+        "Database not available",
+        "The database viewer is only available when the local agent runtime is running."
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontalOverflow": false
+    }
+  },
+  {
+    "viewport": "mobile",
+    "scenario": "win-shopify",
+    "state": "initial",
+    "actionResult": null,
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-after-fixes/mobile-win-shopify-initial.png",
+    "messages": [],
+    "dom": {
+      "url": "http://127.0.0.1:3145/?appWindow=1#/apps/shopify",
+      "text": [
+        "Shopify",
+        "Not connected",
+        "Connect your Shopify store",
+        "STORE DOMAIN",
+        "SHOPIFY_STORE_DOMAIN=your-store.myshopify.com",
+        "ACCESS TOKEN",
+        "SHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+        "Restart after setting these env vars. Required scopes: read_products, read_orders, read_inventory, and read_customers scopes."
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontalOverflow": false
+    }
+  },
+  {
+    "viewport": "mobile",
+    "scenario": "win-inventory",
+    "state": "initial",
+    "actionResult": null,
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-after-fixes/mobile-win-inventory-initial.png",
+    "messages": [],
+    "dom": {
+      "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory",
+      "text": [
+        "Wallet",
+        "No balances or trade history yet.",
+        "Here's what the market looks like right now.",
+        "Spot prices",
+        "CoinGecko",
+        "Spot prices unavailable",
+        "CoinGecko did not return live data.",
+        "Top movers",
+        "CoinGecko",
+        "Top movers unavailable",
+        "CoinGecko did not return live data.",
+        "Popular predictions",
+        "Polymarket",
+        "Popular predictions unavailable",
+        "Polymarket did not return live data."
+      ],
+      "red": [],
+      "overflow": [],
+      "horizontalOverflow": false
+    }
+  }
+]

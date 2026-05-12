@@ -77,7 +77,7 @@ fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOCAL_CKPT_DIR="$ROOT/checkpoints/$RUN_NAME"
 PROGRESS_LOG="$LOCAL_CKPT_DIR/_progress.jsonl"
-LOG_FILE="$HOME/.milady/checkpoint-eval.log"
+LOG_FILE="$HOME/.eliza/checkpoint-eval.log"
 LOG_MAX_BYTES=$((10 * 1024 * 1024))
 
 if [[ -z "$VAL_JSONL" ]]; then

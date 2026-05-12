@@ -15,6 +15,16 @@ import {
   type ResponseHandlerFieldEvaluator,
 } from "@elizaos/core";
 
+const SOURCE_REF_SCHEMA = {
+  type: ["object", "null"],
+  additionalProperties: false,
+  properties: {
+    kind: { type: "string" },
+    id: { type: "string" },
+  },
+  required: ["kind", "id"],
+};
+
 const SHOULD_RESPOND_EVAL: ResponseHandlerFieldEvaluator<"RESPOND" | "IGNORE"> = {
   name: "shouldRespond",
   description:
@@ -154,7 +164,7 @@ const THREAD_OPS_EVAL: ResponseHandlerFieldEvaluator = {
         },
         workThreadId: { type: ["string", "null"] },
         sourceWorkThreadIds: { type: "array", items: { type: "string" } },
-        sourceRef: { type: ["object", "null"] },
+        sourceRef: SOURCE_REF_SCHEMA,
         instruction: { type: ["string", "null"] },
         reason: { type: ["string", "null"] },
       },

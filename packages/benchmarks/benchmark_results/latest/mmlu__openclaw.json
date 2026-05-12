@@ -1,25 +1,25 @@
 {
   "agent": "openclaw",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132346Z_2b949bcd/standard__mmlu/run_mmlu_20260511T132346Z_2_5d42728c/output"
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132346Z_2b949bcd/standard__mmlu/run_mmlu_20260511T132346Z_2_5d42728c/output"
   ],
   "benchmark_directory": "standard",
   "benchmark_id": "mmlu",
   "cache_metrics": {
-    "cache_read_input_tokens": 0,
     "cache_creation_input_tokens": 0,
-    "turns_with_cached_field": 1,
-    "cache_hit_ratio": 0.0
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 1
   },
   "error": null,
   "higher_is_better": true,
   "metrics": {
     "accuracy": 0,
     "cache_metrics": {
-      "cache_read_input_tokens": 0,
       "cache_creation_input_tokens": 0,
-      "turns_with_cached_field": 1,
-      "cache_hit_ratio": 0.0
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 1
     },
     "correct": 0,
     "n": 1.0,
@@ -32,18 +32,18 @@
     "return_code": 0,
     "score": 0,
     "token_metrics": {
+      "avg_completion_tokens": 8.0,
+      "avg_prompt_tokens": 108.5,
+      "completion_tokens": 16,
       "llm_call_count": 2,
       "prompt_tokens": 217,
-      "completion_tokens": 16,
-      "total_tokens": 233,
-      "avg_prompt_tokens": 108.5,
-      "avg_completion_tokens": 8.0
+      "total_tokens": 233
     },
     "trajectory_summary": {
       "files": 2,
-      "turns": 2,
       "prompt_chars": 401,
-      "repeated_prefixes": []
+      "repeated_prefixes": [],
+      "turns": 2
     }
   },
   "model": "gpt-oss-120b",
@@ -54,25 +54,25 @@
     "throughput_per_second": 0.30854647312783084
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132346Z_2b949bcd/standard__mmlu/run_mmlu_20260511T132346Z_2_5d42728c/output/mmlu-results.json",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132346Z_2b949bcd/standard__mmlu/run_mmlu_20260511T132346Z_2_5d42728c/output/mmlu-results.json",
   "run_group_id": "rg_20260511T132346Z_2b949bcd",
   "run_id": "run_mmlu_20260511T132346Z_2_5d42728c",
   "score": 0.0,
   "status": "succeeded",
   "token_metrics": {
+    "avg_completion_tokens": 8.0,
+    "avg_prompt_tokens": 108.5,
+    "completion_tokens": 16,
     "llm_call_count": 2,
     "prompt_tokens": 217,
-    "completion_tokens": 16,
-    "total_tokens": 233,
-    "avg_prompt_tokens": 108.5,
-    "avg_completion_tokens": 8.0
+    "total_tokens": 233
   },
   "trajectory_summary": {
     "files": 2,
-    "turns": 2,
     "prompt_chars": 401,
-    "repeated_prefixes": []
+    "repeated_prefixes": [],
+    "turns": 2
   },
   "unit": "ratio",
-  "updated_at": "2026-05-11T14:03:01.810486+00:00"
+  "updated_at": "2026-05-12T01:33:59Z"
 }

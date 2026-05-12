@@ -46,7 +46,10 @@ const pluginElizaCloudSrc = path.join(
   "src",
 );
 const pluginEdgeTtsSrc = path.join(monorepoRoot, "plugins/plugin-edge-tts");
-const pluginIMessageSrc = path.join(monorepoRoot, "plugins/plugin-imessage/src");
+const pluginIMessageSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-imessage/src",
+);
 const pluginLocalInferenceSrc = path.join(
   monorepoRoot,
   "plugins/plugin-local-inference/src",
@@ -103,6 +106,7 @@ export default defineConfig({
       "**/*.real.test.{ts,tsx}",
       "**/*.real.e2e.test.{ts,tsx}",
       "**/*.spec.{ts,tsx}",
+      "scripts/run-mobile-build-policy.test.mjs",
       ".claude/**",
       "test/app/memory-relationships.real.e2e.test.ts",
       "test/app/qa-checklist.real.e2e.test.ts",

@@ -7,11 +7,6 @@
  * before dispatch. The parent stays registered alongside its virtuals.
  */
 
-import {
-  isPromotedSubactionVirtual,
-  listSubactionsFromParameters,
-  promoteSubactionsToActions,
-} from "@elizaos/core";
 import type {
   Action,
   ActionResult,
@@ -20,6 +15,11 @@ import type {
   IAgentRuntime,
   Memory,
   State,
+} from "@elizaos/core";
+import {
+  isPromotedSubactionVirtual,
+  listSubactionsFromParameters,
+  promoteSubactionsToActions,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { scheduledTaskAction } from "../src/actions/scheduled-task.js";
@@ -60,10 +60,11 @@ function makeStubAction(): Action {
     examples: [],
     validate: async () => true,
     handler: async (_runtime, _message, _state, options) => {
-      const sub =
-        ((options as HandlerOptions | undefined)?.parameters as
+      const sub = (
+        (options as HandlerOptions | undefined)?.parameters as
           | Record<string, unknown>
-          | undefined)?.subaction;
+          | undefined
+      )?.subaction;
       return {
         success: true,
         text: `dispatched ${String(sub)}`,
@@ -88,10 +89,11 @@ function makeCanonicalActionStub(): Action {
       },
     ],
     handler: async (_runtime, _message, _state, options) => {
-      const action =
-        ((options as HandlerOptions | undefined)?.parameters as
+      const action = (
+        (options as HandlerOptions | undefined)?.parameters as
           | Record<string, unknown>
-          | undefined)?.action;
+          | undefined
+      )?.action;
       return {
         success: true,
         text: `dispatched ${String(action)}`,
@@ -107,6 +109,11 @@ describe("promoteSubactionsToActions", () => {
     const promoted = promoteSubactionsToActions(stub);
     expect(promoted).toHaveLength(4);
     expect(promoted[0]).toBe(stub);
+    expect(stub.subActions).toEqual([
+      "STUB_LIST",
+      "STUB_CREATE",
+      "STUB_DELETE",
+    ]);
     expect(promoted.slice(1).map((a) => a.name)).toEqual([
       "STUB_LIST",
       "STUB_CREATE",
@@ -126,11 +133,7 @@ describe("promoteSubactionsToActions", () => {
   it("listSubactionsFromParameters reads the canonical action enum", () => {
     expect(
       listSubactionsFromParameters(makeCanonicalActionStub().parameters),
-    ).toEqual([
-      "list",
-      "create",
-      "delete",
-    ]);
+    ).toEqual(["list", "create", "delete"]);
   });
 
   it("listSubactionsFromParameters falls back to legacy aliases", () => {
@@ -235,7 +238,7 @@ describe("promoteSubactionsToActions", () => {
     const stub: Action = {
       name: "BARE",
       description: "no subactions",
-      handler: async () => ({ success: true } satisfies ActionResult),
+      handler: async () => ({ success: true }) satisfies ActionResult,
       validate: async () => true,
     };
     expect(promoteSubactionsToActions(stub)).toEqual([stub]);
@@ -305,7 +308,8 @@ describe("SCHEDULED_TASKS promotion + alias normalization", () => {
           text: "stub-ok",
           data: {
             action: (parameters as Record<string, unknown> | undefined)?.action,
-            subaction: (parameters as Record<string, unknown> | undefined)?.subaction,
+            subaction: (parameters as Record<string, unknown> | undefined)
+              ?.subaction,
           },
         } satisfies ActionResult;
       }),

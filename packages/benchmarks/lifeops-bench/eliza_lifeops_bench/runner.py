@@ -101,6 +101,7 @@ def _execute_action(action: Action, world: LifeWorld) -> dict[str, Any]:
     raise `UnsupportedAction` — never silently no-op. The runner catches and
     surfaces these so gaps land in `LIFEOPS_BENCH_GAPS.md`.
     """
+    action = _normalize_action(action)
     handler = _ACTION_HANDLERS.get(action.name)
     if handler is None:
         raise UnsupportedAction(
@@ -109,9 +110,42 @@ def _execute_action(action: Action, world: LifeWorld) -> dict[str, Any]:
     return handler(world, action.kwargs, action.name)
 
 
+def _initial_user_content(scenario: Scenario) -> str:
+    return (
+        f"Current benchmark time: {scenario.now_iso}. "
+        "Interpret relative dates against this timestamp, not the wall-clock date.\n\n"
+        f"{scenario.instruction}"
+    )
+
+
 def supported_actions() -> set[str]:
     """Return every action name the executor knows how to apply against a LifeWorld."""
     return set(_ACTION_HANDLERS.keys())
+
+
+_PROMOTED_ACTION_DEFAULTS: dict[str, tuple[str, str, str]] = {
+    "CALENDAR_CREATE_EVENT": ("CALENDAR", "subaction", "create_event"),
+    "CALENDAR_UPDATE_EVENT": ("CALENDAR", "subaction", "update_event"),
+    "CALENDAR_DELETE_EVENT": ("CALENDAR", "subaction", "delete_event"),
+    "CALENDAR_PROPOSE_TIMES": ("CALENDAR", "subaction", "propose_times"),
+    "CALENDAR_SEARCH_EVENTS": ("CALENDAR", "subaction", "search_events"),
+    "CALENDAR_CHECK_AVAILABILITY": ("CALENDAR", "subaction", "check_availability"),
+    "CALENDAR_NEXT_EVENT": ("CALENDAR", "subaction", "next_event"),
+    "CALENDAR_UPDATE_PREFERENCES": ("CALENDAR", "subaction", "update_preferences"),
+}
+
+
+def _normalize_action(action: Action) -> Action:
+    """Canonicalize planner-facing aliases before executor dispatch."""
+    if action.name in {"REPLY", "RESPOND"}:
+        return Action(name="REPLY", kwargs=action.kwargs)
+    promoted = _PROMOTED_ACTION_DEFAULTS.get(action.name)
+    if promoted is None:
+        return action
+    parent, discriminator, value = promoted
+    kwargs = dict(action.kwargs)
+    kwargs.setdefault(discriminator, value)
+    return Action(name=parent, kwargs=kwargs)
 
 
 _OPENAI_FUNCTION_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -134,12 +168,38 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
         "log_interaction, or list."
     ),
     "LIFE_CREATE": (
-        "Create personal life records such as reminders, alarms, workouts, or health "
-        "metrics. Use subaction=create and put typed fields in details."
+        "Create a life record. Required: subaction='create', title:str, kind='definition', "
+        "and details:{kind ∈ {reminder, alarm, workout, health_metric}, ...typed fields}. "
+        "For reminder/alarm: details.due (ISO8601) and details.listId (default 'list_personal'); "
+        "alarms also take cadence ∈ {daily, weekly}, timeOfDay 'HH:MM', dayOfWeek:[str] (weekly). "
+        "Workout: details.distanceKm, durationMinutes, effort, occurredAtIso. "
+        "Health metric: details.metric (e.g. weight_kg), value:float, occurredAtIso."
     ),
-    "LIFE_COMPLETE": "Complete a target, usually a reminder. Include target.",
-    "LIFE_SNOOZE": "Snooze a reminder-like target. Include target and minutes.",
-    "LIFE_REVIEW": "Review life records without mutating state.",
+    "LIFE_COMPLETE": (
+        "Mark a reminder complete. Required: subaction='complete', target='reminder_*' id. "
+        "Only reminder_* targets are supported; other ids raise UnsupportedAction."
+    ),
+    "LIFE_SNOOZE": (
+        "Push a reminder's due time forward. Required: subaction='snooze', "
+        "target='reminder_*' id, minutes:int. The new due_at is the existing due_at "
+        "(or world.now_iso) plus minutes."
+    ),
+    "LIFE_REVIEW": (
+        "Read-only listing of life records. Required: subaction='review'. No state mutation."
+    ),
+    "LIFE_DELETE": (
+        "Delete a reminder by id. Required: subaction='delete', target='reminder_*' id. "
+        "Alarm definitions (no concrete id) are a structured no-op for parity with the executor."
+    ),
+    "LIFE_UPDATE": (
+        "Update an alarm/reminder definition. Required: subaction='update', kind='definition', "
+        "title:str, details:{...fields to patch} (e.g. timeOfDay, cadence). Modeled as a no-op "
+        "because definitions aren't a separate LifeWorld entity."
+    ),
+    "LIFE_SKIP": (
+        "Skip one occurrence of an alarm/reminder. Required: subaction='skip', kind='definition', "
+        "title:str, details:{skipDate:'YYYY-MM-DD' or skipDates:[...]}. No-op (no skip-log entity)."
+    ),
     "HEALTH": "Read health data without mutating state.",
     "MONEY": "Read financial state or route a money subaction.",
     "MONEY_DASHBOARD": "Read the financial dashboard.",
@@ -167,8 +227,24 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
     "BLOCK_STATUS": "Read app/website block status.",
     "BLOCK_REQUEST_PERMISSION": "Request permission to create or change an app/website block.",
     "SCHEDULED_TASK_CREATE": (
-        "Create a scheduled task. Include kind, trigger, promptInstructions, and "
-        "other structured task fields when known."
+        "Create a scheduled task. Wire shape: kind, promptInstructions, and trigger "
+        "are TOP-LEVEL flat fields. trigger is an OBJECT, not a string — use "
+        '{"kind":"once","atIso":"2026-05-12T09:00:00Z"} for one-shot tasks or '
+        '{"kind":"recurring","rrule":"FREQ=DAILY"} for recurring. Example: '
+        '{"kind":"reminder","promptInstructions":"Stand up and stretch",'
+        '"trigger":{"kind":"once","atIso":"2026-05-12T09:00:00Z"}}.'
+    ),
+    "SCHEDULED_TASK_UPDATE": (
+        "Update an existing scheduled task. Wire shape: taskId is a TOP-LEVEL flat "
+        "field; trigger (when present) is an OBJECT with kind+atIso/rrule, never a "
+        "string. Example: "
+        '{"subaction":"update","taskId":"task_abc",'
+        '"trigger":{"kind":"once","atIso":"2026-05-13T10:00:00Z"}}.'
+    ),
+    "SCHEDULED_TASK_SNOOZE": (
+        "Snooze a scheduled task. Wire shape: taskId and minutes are TOP-LEVEL flat "
+        "fields. Example: "
+        '{"subaction":"snooze","taskId":"task_abc","minutes":30}.'
     ),
 }
 
@@ -201,20 +277,102 @@ _DISCRIMINATORS: dict[str, tuple[str, list[str]]] = {
     ),
     "ENTITY": ("subaction", ["add", "set_identity", "log_interaction", "list"]),
     "LIFE_CREATE": ("subaction", ["create"]),
+    "LIFE_UPDATE": ("subaction", ["update"]),
+    "LIFE_DELETE": ("subaction", ["delete"]),
     "LIFE_COMPLETE": ("subaction", ["complete"]),
+    "LIFE_SKIP": ("subaction", ["skip"]),
     "LIFE_SNOOZE": ("subaction", ["snooze"]),
     "LIFE_REVIEW": ("subaction", ["review"]),
+    "LIFE_UPDATE": ("subaction", ["update"]),
+    "SCHEDULED_TASK_UPDATE": ("subaction", ["update"]),
+    "SCHEDULED_TASK_SNOOZE": ("subaction", ["snooze"]),
     "HEALTH": ("subaction", ["by_metric", "summary", "trends"]),
+}
+
+
+# JSON-schema fragment for SCHEDULED_TASK_* trigger objects. Documented inline so
+# the LLM sees the {kind, atIso}/{kind, rrule} shape rather than guessing.
+_TRIGGER_OBJECT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "description": (
+        "Trigger is an OBJECT, never a string. Use kind=once with atIso (ISO8601) "
+        "for one-shot triggers, or kind=recurring with rrule for recurring."
+    ),
+    "properties": {
+        "kind": {"type": "string", "enum": ["once", "recurring"]},
+        "atIso": {
+            "type": "string",
+            "description": "ISO8601 datetime (e.g. 2026-05-12T09:00:00Z) for kind=once.",
+        },
+        "rrule": {
+            "type": "string",
+            "description": "RFC 5545 RRULE string for kind=recurring.",
+        },
+    },
+    "required": ["kind"],
+    "additionalProperties": True,
+}
+
+
+# JSON-schema fragment for LIFE_CREATE details. Top-level fields are forbidden
+# (title belongs at the top level of kwargs, not here).
+_LIFE_CREATE_DETAILS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "description": (
+        "Typed fields for the record being created. Do NOT put title here — title "
+        "is a TOP-LEVEL flat field on the action kwargs."
+    ),
+    "properties": {
+        "kind": {
+            "type": "string",
+            "enum": ["reminder", "alarm", "workout", "health_metric"],
+            "description": "Discriminates the kind of life record to create.",
+        },
+        "listId": {
+            "type": "string",
+            "description": "Reminder list id (e.g. list_personal). Reminder/alarm only.",
+        },
+        "due": {
+            "type": "string",
+            "description": "ISO8601 due datetime. Reminder/alarm only.",
+        },
+        "cadence": {
+            "type": "string",
+            "description": "Cadence label (daily/weekly/etc). Reminder/alarm only.",
+        },
+        "timeOfDay": {
+            "type": "string",
+            "description": "HH:MM local time. Alarm only.",
+        },
+        "distanceKm": {"type": "number", "description": "Workout only."},
+        "durationMinutes": {"type": "number", "description": "Workout only."},
+        "occurredAtIso": {
+            "type": "string",
+            "description": "ISO8601 timestamp for workouts / health metrics.",
+        },
+        "metric": {
+            "type": "string",
+            "description": "Health metric type (e.g. weight_kg). health_metric only.",
+        },
+        "value": {
+            "type": "number",
+            "description": "Health metric numeric value. health_metric only.",
+        },
+    },
+    "additionalProperties": True,
 }
 
 
 def _tool_parameters_for_action(action_name: str) -> dict[str, Any]:
     """Return a permissive JSON Schema for a LifeOps action.
 
-    The schema intentionally requires only the action discriminator where one
-    exists. LifeOps scenarios use a broad, evolving action vocabulary, and a
+    The schema requires only the action discriminator where one exists, but
+    surfaces explicit top-level shape hints for LIFE_* / SCHEDULED_TASK_*
+    verbs so the planner sees title/target as flat fields and trigger as an
+    object. LifeOps scenarios use a broad, evolving action vocabulary, and a
     too-strict schema would reject valid benchmark kwargs before the executor
-    can apply its own deterministic checks.
+    can apply its own deterministic checks, so additionalProperties stays
+    open.
     """
     schema: dict[str, Any] = {
         "type": "object",
@@ -222,17 +380,99 @@ def _tool_parameters_for_action(action_name: str) -> dict[str, Any]:
         "additionalProperties": True,
     }
     discriminator = _DISCRIMINATORS.get(action_name)
-    if discriminator is None:
-        return schema
-    field, values = discriminator
-    schema["properties"] = {
-        field: {
+    if discriminator is not None:
+        field, values = discriminator
+        schema["properties"][field] = {
             "type": "string",
             "enum": values,
             "description": f"LifeOps {action_name} discriminator.",
         }
-    }
-    schema["required"] = [field]
+        schema["required"] = [field]
+
+    if action_name == "LIFE_CREATE":
+        schema["properties"]["title"] = {
+            "type": "string",
+            "description": (
+                "TOP-LEVEL flat field — the human-readable record title. "
+                "Do NOT nest title inside details."
+            ),
+        }
+        schema["properties"]["details"] = _LIFE_CREATE_DETAILS_SCHEMA
+        schema["required"] = sorted({*schema.get("required", []), "title"})
+    elif action_name == "LIFE_UPDATE":
+        schema["properties"]["target"] = {
+            "type": "string",
+            "description": (
+                "TOP-LEVEL flat field — the id of the record being updated "
+                "(e.g. reminder_*). Do NOT nest target inside details."
+            ),
+        }
+        schema["properties"]["details"] = {
+            "type": "object",
+            "description": "Changed fields. title/due/listId go here, not at top level.",
+            "additionalProperties": True,
+        }
+    elif action_name in {"LIFE_DELETE", "LIFE_COMPLETE", "LIFE_SKIP"}:
+        schema["properties"]["target"] = {
+            "type": "string",
+            "description": (
+                "TOP-LEVEL flat field — the id of the target record "
+                "(e.g. reminder_*). Do NOT nest target inside details."
+            ),
+        }
+        schema["required"] = sorted({*schema.get("required", []), "target"})
+    elif action_name == "LIFE_SNOOZE":
+        schema["properties"]["target"] = {
+            "type": "string",
+            "description": (
+                "TOP-LEVEL flat field — the id of the reminder to snooze "
+                "(e.g. reminder_*)."
+            ),
+        }
+        schema["properties"]["minutes"] = {
+            "type": "integer",
+            "description": "TOP-LEVEL flat field — snooze duration in minutes.",
+            "minimum": 1,
+        }
+        schema["required"] = sorted({*schema.get("required", []), "target", "minutes"})
+    elif action_name == "LIFE_REVIEW":
+        schema["properties"]["details"] = {
+            "type": "object",
+            "description": "Optional filters (kind, listId, from, to).",
+            "additionalProperties": True,
+        }
+    elif action_name == "SCHEDULED_TASK_CREATE":
+        schema["properties"]["kind"] = {
+            "type": "string",
+            "description": "TOP-LEVEL flat field — scheduled task kind (e.g. reminder).",
+        }
+        schema["properties"]["promptInstructions"] = {
+            "type": "string",
+            "description": "TOP-LEVEL flat field — instructions used as the task title.",
+        }
+        schema["properties"]["trigger"] = _TRIGGER_OBJECT_SCHEMA
+        schema["required"] = sorted(
+            {*schema.get("required", []), "promptInstructions", "trigger"}
+        )
+    elif action_name == "SCHEDULED_TASK_UPDATE":
+        schema["properties"]["taskId"] = {
+            "type": "string",
+            "description": "TOP-LEVEL flat field — id of the scheduled task to update.",
+        }
+        schema["properties"]["trigger"] = _TRIGGER_OBJECT_SCHEMA
+        schema["required"] = sorted({*schema.get("required", []), "taskId"})
+    elif action_name == "SCHEDULED_TASK_SNOOZE":
+        schema["properties"]["taskId"] = {
+            "type": "string",
+            "description": "TOP-LEVEL flat field — id of the scheduled task to snooze.",
+        }
+        schema["properties"]["minutes"] = {
+            "type": "integer",
+            "description": "TOP-LEVEL flat field — snooze duration in minutes.",
+            "minimum": 1,
+        }
+        schema["required"] = sorted({*schema.get("required", []), "taskId", "minutes"})
+
     return schema
 
 
@@ -453,12 +693,27 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
         propose_times, search_events, check_availability,
         next_event, update_preferences
     """
-    sub = _required(kw, "subaction", action=name, sub="<missing>")
+    sub = kw.get("subaction") or kw.get("action") or kw.get("operation")
+    if not sub:
+        sub = _required(kw, "subaction", action=name, sub="<missing>")
     details = _details(kw)
     if sub == "create_event":
-        calendar_id = details.get("calendarId") or kw.get("calendarId")
-        start = details.get("start") or kw.get("start")
-        end = details.get("end") or kw.get("end")
+        calendar_id = (
+            details.get("calendarId")
+            or kw.get("calendarId")
+            or details.get("calendar_id")
+            or kw.get("calendar_id")
+            or _primary_calendar_id(world)
+        )
+        start = (
+            details.get("start")
+            or kw.get("start")
+            or details.get("start_time")
+            or kw.get("start_time")
+        )
+        end = details.get("end") or kw.get("end") or details.get("end_time") or kw.get("end_time")
+        if start and not end:
+            end = _shift_iso(str(start), minutes=_duration_minutes(kw, details, 30))
         title = kw.get("title") or details.get("title") or "Untitled"
         if not calendar_id or not start or not end:
             raise KeyError(
@@ -470,6 +725,9 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
             or details.get("eventId")
             or _synthetic_id("event_auto", {"t": title, "s": start, "e": end, "c": calendar_id})
         )
+        if event_id in world.calendar_events:
+            event = world.calendar_events[str(event_id)]
+            return {"id": event.id, "title": event.title, "idempotent": True}
         event = world.create_calendar_event(
             event_id=event_id,
             calendar_id=calendar_id,
@@ -484,25 +742,118 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
         )
         return {"id": event.id, "title": event.title}
     if sub == "update_event":
-        event_id = _required(details, "eventId", action=name, sub=sub)
-        start = _required(details, "start", action=name, sub=sub)
-        end = _required(details, "end", action=name, sub=sub)
-        event = world.move_event(event_id, start=start, end=end)
+        updates = kw.get("updates") or details.get("updates") or {}
+        if not isinstance(updates, dict):
+            updates = {}
+        requested_event_id = (
+            details.get("eventId")
+            or kw.get("eventId")
+            or details.get("event_id")
+            or kw.get("event_id")
+            or details.get("id")
+            or kw.get("id")
+        )
+        event = _find_calendar_event(
+            world,
+            event_id=requested_event_id,
+            title=details.get("title")
+            or kw.get("title")
+            or updates.get("title")
+            or details.get("event_name")
+            or kw.get("event_name")
+            or (
+                requested_event_id
+                if isinstance(requested_event_id, str)
+                and requested_event_id not in world.calendar_events
+                else None
+            ),
+            date_hint=details.get("start")
+            or kw.get("start")
+            or details.get("new_start")
+            or kw.get("new_start")
+            or details.get("newStart")
+            or kw.get("newStart")
+            or updates.get("start")
+            or updates.get("new_start")
+            or updates.get("newStart")
+            or details.get("date")
+            or kw.get("date"),
+        )
+        if event is None:
+            raise KeyError(
+                f"{name}/{sub} missing required field 'eventId' in kwargs={sorted(kw)}"
+            )
+        start = (
+            details.get("start")
+            or kw.get("start")
+            or details.get("new_start")
+            or kw.get("new_start")
+            or details.get("newStart")
+            or kw.get("newStart")
+            or updates.get("start")
+            or updates.get("new_start")
+            or updates.get("newStart")
+            or event.start
+        )
+        end = (
+            details.get("end")
+            or kw.get("end")
+            or details.get("new_end")
+            or kw.get("new_end")
+            or details.get("newEnd")
+            or kw.get("newEnd")
+            or updates.get("end")
+            or updates.get("new_end")
+            or updates.get("newEnd")
+        )
+        if not end:
+            end = _shift_iso(str(start), minutes=_duration_minutes(kw, details, 60))
+        event = world.move_event(event.id, start=start, end=end)
         return {"id": event.id, "start": event.start, "end": event.end}
     if sub == "delete_event":
-        event_id = _required(details, "eventId", action=name, sub=sub)
-        event = world.cancel_event(event_id)
+        requested_event_id = (
+            details.get("eventId")
+            or kw.get("eventId")
+            or details.get("event_id")
+            or kw.get("event_id")
+            or details.get("id")
+            or kw.get("id")
+        )
+        event = _find_calendar_event(
+            world,
+            event_id=requested_event_id,
+            title=details.get("title")
+            or kw.get("title")
+            or details.get("event_name")
+            or kw.get("event_name"),
+            date_hint=details.get("date")
+            or kw.get("date")
+            or details.get("start")
+            or kw.get("start"),
+        )
+        if event is None:
+            if requested_event_id:
+                return {
+                    "ok": False,
+                    "noop": True,
+                    "missing_id": str(requested_event_id),
+                    "subaction": sub,
+                }
+            raise KeyError(
+                f"{name}/{sub} missing required field 'eventId' in kwargs={sorted(kw)}"
+            )
+        event = world.cancel_event(event.id)
         return {"id": event.id, "status": event.status}
-    if sub in {
-        "propose_times",
-        "search_events",
-        "check_availability",
-        "next_event",
-        "update_preferences",
-    }:
-        # Read-only or planner-config subactions; LifeWorld has no place to
-        # persist these, so they're no-ops by design. State hash matches
-        # because both replays are no-ops.
+    if sub in {"search_events", "check_availability", "next_event"}:
+        return {
+            "subaction": sub,
+            "ok": True,
+            "events": _search_calendar_events(world, kw, details),
+        }
+    if sub in {"propose_times", "update_preferences"}:
+        # Planner-config subactions; LifeWorld has no place to persist these,
+        # so they're no-ops by design. State hash matches because both replays
+        # are no-ops.
         return {"subaction": sub, "ok": True, "noop": True}
     raise UnsupportedAction(
         f"unsupported action in execute path: CALENDAR/{sub} — file gap in LIFEOPS_BENCH_GAPS.md"
@@ -1023,6 +1374,175 @@ def _shift_iso(iso: str, *, minutes: int) -> str:
     return f"{out}Z"
 
 
+def _try_parse_iso(value: str) -> datetime | None:
+    s = value.strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _primary_calendar_id(world: LifeWorld) -> str | None:
+    primary = next((cal for cal in world.calendars.values() if cal.is_primary), None)
+    if primary is not None:
+        return primary.id
+    first = next(iter(world.calendars.values()), None)
+    return first.id if first is not None else None
+
+
+def _duration_minutes(kw: dict[str, Any], details: dict[str, Any], fallback: int) -> int:
+    raw = (
+        details.get("duration_minutes")
+        or kw.get("duration_minutes")
+        or kw.get("duration")
+        or details.get("duration")
+    )
+    if isinstance(raw, (int, float)):
+        return max(1, int(raw))
+    if isinstance(raw, str):
+        match = re.fullmatch(r"\s*(\d+)\s*(m|min|minute|minutes|h|hr|hour|hours)?\s*", raw)
+        if match:
+            value = int(match.group(1))
+            unit = match.group(2) or "minutes"
+            return max(1, value * 60 if unit.startswith("h") else value)
+    hours = details.get("duration_hours") or kw.get("duration_hours")
+    if isinstance(hours, (int, float)):
+        return max(1, int(hours * 60))
+    return fallback
+
+
+def _find_calendar_event(
+    world: LifeWorld,
+    *,
+    event_id: Any = None,
+    title: Any = None,
+    date_hint: Any = None,
+) -> Any:
+    if isinstance(event_id, str) and event_id in world.calendar_events:
+        return world.calendar_events[event_id]
+    if isinstance(title, str) and title.strip():
+        wanted = title.strip().lower()
+        active_events = [
+            event
+            for event in world.calendar_events.values()
+            if event.status != "cancelled"
+        ]
+        matches = [
+            event for event in active_events if event.title.strip().lower() == wanted
+        ]
+        if not matches:
+            matches = [
+                event
+                for event in active_events
+                if wanted in event.title.strip().lower()
+                or event.title.strip().lower() in wanted
+            ]
+        if matches:
+            hint = _try_parse_iso(str(date_hint)) if isinstance(date_hint, str) else None
+            if hint is None:
+                hint = _try_parse_iso(world.now_iso)
+            hint_date = hint.date() if hint is not None else None
+
+            def rank(event: Any) -> tuple[int, float, int, str]:
+                event_start = _try_parse_iso(str(event.start))
+                same_day = (
+                    0
+                    if hint_date is not None
+                    and event_start is not None
+                    and event_start.date() == hint_date
+                    else 1
+                )
+                distance = (
+                    abs((event_start - hint).total_seconds())
+                    if event_start is not None and hint is not None
+                    else float("inf")
+                )
+                primary = 0 if event.calendar_id == "cal_primary" else 1
+                return (same_day, distance, primary, event.id)
+
+            return sorted(matches, key=rank)[0]
+    return None
+
+
+def _search_calendar_events(
+    world: LifeWorld,
+    kw: dict[str, Any],
+    details: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    details = details or {}
+    query_raw = (
+        kw.get("query")
+        or details.get("query")
+        or kw.get("title")
+        or details.get("title")
+        or kw.get("event_name")
+        or details.get("event_name")
+        or ""
+    )
+    query = str(query_raw).strip().lower()
+    date_raw = kw.get("date") or details.get("date")
+    if date_raw == "today":
+        date_filter = world.now_iso[:10]
+    elif isinstance(date_raw, str) and re.match(r"^\d{4}-\d{2}-\d{2}", date_raw):
+        date_filter = date_raw[:10]
+    else:
+        date_filter = None
+
+    time_range = kw.get("time_range") or details.get("time_range") or {}
+    if not isinstance(time_range, dict):
+        time_range = {}
+    start = (
+        kw.get("start")
+        or details.get("start")
+        or kw.get("startDate")
+        or details.get("startDate")
+        or time_range.get("start")
+    )
+    end = (
+        kw.get("end")
+        or details.get("end")
+        or kw.get("endDate")
+        or details.get("endDate")
+        or time_range.get("end")
+    )
+
+    def matches(event: Any) -> bool:
+        if getattr(event, "status", None) == "cancelled":
+            return False
+        title = str(getattr(event, "title", "")).lower()
+        if query and query not in title and title not in query:
+            return False
+        event_start = str(getattr(event, "start", ""))
+        event_end = str(getattr(event, "end", ""))
+        if date_filter and event_start[:10] != date_filter:
+            return False
+        if isinstance(start, str) and event_end < start:
+            return False
+        if isinstance(end, str) and event_start > end:
+            return False
+        return True
+
+    return [
+        {
+            "id": event.id,
+            "calendar_id": event.calendar_id,
+            "title": event.title,
+            "start": event.start,
+            "end": event.end,
+            "status": event.status,
+        }
+        for event in sorted(
+            (event for event in world.calendar_events.values() if matches(event)),
+            key=lambda event: (event.start, event.id),
+        )
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Registry — every action name the executor knows
 # ---------------------------------------------------------------------------
@@ -1087,6 +1607,10 @@ _ACTION_HANDLERS: dict[
     "SCHEDULED_TASK_CREATE": _u_scheduled_task_create,
     "SCHEDULED_TASK_SNOOZE": _u_scheduled_task_mutate,
     "SCHEDULED_TASK_UPDATE": _u_scheduled_task_mutate,
+    # Conversational terminal sentinels are valid assistant outcomes. They
+    # have no LifeWorld side effect and should not be reported as executor
+    # coverage gaps.
+    "REPLY": lambda _world, kw, _name: {"ok": True, "noop": True, "reply": kw},
     # Promoted CALENDAR_* names (the manifest exporter promotes
     # subactions into top-level action names). Each promoted name carries
     # `subaction` in its kwargs already, so route to `_u_calendar` unchanged.
@@ -1319,7 +1843,7 @@ class LifeOpsBenchRunner:
 
         world = self.world_factory(seed, scenario.now_iso)
         history: list[MessageTurn] = [
-            MessageTurn(role="user", content=scenario.instruction),
+            MessageTurn(role="user", content=_initial_user_content(scenario)),
         ]
         turns: list[TurnResult] = []
         terminated_reason: str = "max_turns"
@@ -1342,44 +1866,95 @@ class LifeOpsBenchRunner:
             history.append(agent_turn)
 
             agent_actions = _extract_actions_from_turn(agent_turn)
+            tool_results: list[dict[str, Any]] = []
             for action in agent_actions:
                 # Execution failures don't crash the run — we surface them as
                 # tool-error messages and let scoring penalize via state mismatch.
+                tool_call_id = _extract_tool_call_id(agent_turn, action)
                 try:
                     result_payload = _execute_action(action, world)
+                    tool_results.append(
+                        {
+                            "name": action.name,
+                            "tool_call_id": tool_call_id,
+                            "content": json.dumps(result_payload),
+                            "payload": result_payload,
+                        }
+                    )
                     history.append(
                         MessageTurn(
                             role="tool",
                             content=json.dumps(result_payload),
                             name=action.name,
-                            tool_call_id=_extract_tool_call_id(agent_turn, action),
+                            tool_call_id=tool_call_id,
                         )
                     )
                 except UnsupportedAction as exc:
                     logger.warning("Unsupported action in scenario %s: %s", scenario.id, exc)
+                    error_payload = {"error": "unsupported_action", "message": str(exc)}
+                    tool_results.append(
+                        {
+                            "name": action.name,
+                            "tool_call_id": tool_call_id,
+                            "content": json.dumps(error_payload),
+                            "payload": error_payload,
+                        }
+                    )
                     history.append(
                         MessageTurn(
                             role="tool",
-                            content=json.dumps({"error": "unsupported_action", "message": str(exc)}),
+                            content=json.dumps(error_payload),
                             name=action.name,
-                            tool_call_id=_extract_tool_call_id(agent_turn, action),
+                            tool_call_id=tool_call_id,
                         )
                     )
                 except (KeyError, ValueError, TypeError) as exc:
                     logger.warning(
                         "Action %s failed in scenario %s: %s", action.name, scenario.id, exc
                     )
+                    error_payload = {"error": "execution_failed", "message": str(exc)}
+                    tool_results.append(
+                        {
+                            "name": action.name,
+                            "tool_call_id": tool_call_id,
+                            "content": json.dumps(error_payload),
+                            "payload": error_payload,
+                        }
+                    )
                     history.append(
                         MessageTurn(
                             role="tool",
-                            content=json.dumps({"error": "execution_failed", "message": str(exc)}),
+                            content=json.dumps(error_payload),
                             name=action.name,
-                            tool_call_id=_extract_tool_call_id(agent_turn, action),
+                            tool_call_id=tool_call_id,
                         )
                     )
 
-            agent_cost = float(getattr(agent_turn, "cost_usd", 0.0) or 0.0)
-            await self._charge(agent_cost, scenario.id, seed, bucket="agent")
+            # Per-turn cost / latency are nullable on MessageTurn — `None`
+            # means the provider didn't expose the number (unpriced model,
+            # pre-flight error). Per AGENTS.md Cmd #8 we keep the None
+            # through to the TurnResult rather than masking with 0.0. The
+            # budget charge uses 0.0 locally because there is no real spend
+            # to charge against when the value is unknown.
+            agent_cost_raw = getattr(agent_turn, "cost_usd", None)
+            agent_cost: float | None = (
+                float(agent_cost_raw)
+                if isinstance(agent_cost_raw, (int, float))
+                else None
+            )
+            await self._charge(
+                agent_cost if agent_cost is not None else 0.0,
+                scenario.id,
+                seed,
+                bucket="agent",
+            )
+
+            latency_raw = getattr(agent_turn, "latency_ms", None)
+            latency_value: int | None = (
+                int(latency_raw)
+                if isinstance(latency_raw, (int, float))
+                else None
+            )
 
             # Cache telemetry: adapters set these as attributes on the
             # MessageTurn when the provider reported them. `None` means the
@@ -1409,10 +1984,11 @@ class LifeOpsBenchRunner:
                 agent_message=agent_turn.content,
                 agent_actions=agent_actions,
                 user_response="",
-                latency_ms=int(getattr(agent_turn, "latency_ms", 0) or 0),
+                latency_ms=latency_value,
                 input_tokens=input_tokens_val,
                 output_tokens=int(getattr(agent_turn, "output_tokens", 0) or 0),
                 cost_usd=agent_cost,
+                tool_results=tool_results,
                 cache_read_input_tokens=cache_read,
                 cache_creation_input_tokens=cache_creation,
                 cache_hit_pct=compute_cache_hit_pct(
@@ -1511,8 +2087,16 @@ class LifeOpsBenchRunner:
             total_score=0.0,
             max_score=1.0,
             terminated_reason=terminated_reason,  # type: ignore[arg-type]
-            total_cost_usd=sum(t.cost_usd for t in turns),
-            total_latency_ms=sum(t.latency_ms for t in turns),
+            # Skip None per-turn values when aggregating — "unpriced" /
+            # "no timing data" is distinct from "$0" / "0 ms" (AGENTS.md
+            # Cmd #8). Invariant: ``total_cost_usd ==
+            # sum(t.cost_usd for t in turns if t.cost_usd is not None)``.
+            total_cost_usd=sum(
+                t.cost_usd for t in turns if t.cost_usd is not None
+            ),
+            total_latency_ms=sum(
+                t.latency_ms for t in turns if t.latency_ms is not None
+            ),
             error=None,
         )
         result.total_score = score_scenario(result, scenario)

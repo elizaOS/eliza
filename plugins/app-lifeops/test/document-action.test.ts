@@ -1,5 +1,5 @@
 /**
- * `DOC` umbrella action — unit tests.
+ * `OWNER_DOCUMENTS` umbrella action — unit tests.
  *
  * Wave-1 scaffold (W1-8). Asserts that the action surface advertised in the
  * PRD §Docs And Portals exists and validates inputs correctly. Persistence
@@ -18,7 +18,7 @@ const mocks = vi.hoisted(() => ({
     updatedAt: new Date(),
     state: "pending" as const,
     requestedBy:
-      (input as { requestedBy?: string }).requestedBy ?? "DOC",
+      (input as { requestedBy?: string }).requestedBy ?? "OWNER_DOCUMENTS",
     subjectUserId:
       (input as { subjectUserId?: string }).subjectUserId ?? "owner-1",
     action: (input as { action?: string }).action ?? "sign_document",
@@ -71,7 +71,7 @@ vi.mock("../src/lifeops/scheduled-task/service.js", () => ({
 
 import {
   __resetDocumentStoreForTests,
-  docAction,
+  ownerDocumentsAction,
 } from "../src/actions/document.js";
 
 function makeRuntime(): IAgentRuntime {
@@ -100,7 +100,7 @@ async function callDoc(
   message: Memory,
   parameters: Record<string, unknown>,
 ) {
-  return docAction.handler(
+  return ownerDocumentsAction.handler(
     runtime,
     message,
     undefined,
@@ -109,7 +109,7 @@ async function callDoc(
   );
 }
 
-describe("DOC umbrella action — Docs And Portals", () => {
+describe("OWNER_DOCUMENTS umbrella action — Docs And Portals", () => {
   beforeEach(() => {
     __resetDocumentStoreForTests();
     mocks.enqueue.mockClear();
@@ -118,26 +118,30 @@ describe("DOC umbrella action — Docs And Portals", () => {
   });
 
   describe("metadata", () => {
-    it("exposes the canonical name and PRD similes", () => {
-      expect(docAction.name).toBe("DOC");
-      const similes = docAction.similes ?? [];
+    it("exposes the canonical name and owner-document similes", () => {
+      expect(ownerDocumentsAction.name).toBe("OWNER_DOCUMENTS");
+      const similes = ownerDocumentsAction.similes ?? [];
       for (const required of [
-        "DOC_REQUEST_SIGNATURE",
-        "DOC_REQUEST_APPROVAL",
-        "DOC_TRACK_DEADLINE",
-        "DOC_UPLOAD_ASSET",
-        "DOC_COLLECT_ID_OR_FORM",
-        "DOC_CLOSE_REQUEST",
-        "DOCUMENT",
-        "DOCUMENTS",
+        "OWNER_DOCUMENTS_REQUEST_SIGNATURE",
+        "OWNER_DOCUMENTS_REQUEST_APPROVAL",
+        "OWNER_DOCUMENTS_TRACK_DEADLINE",
+        "OWNER_DOCUMENTS_UPLOAD_ASSET",
+        "OWNER_DOCUMENTS_COLLECT_ID_OR_FORM",
+        "OWNER_DOCUMENTS_CLOSE_REQUEST",
         "PAPERWORK",
       ]) {
         expect(similes).toContain(required);
       }
+      expect(similes).not.toContain("DOCUMENT");
+      expect(similes).not.toContain("DOCUMENTS");
     });
 
     it("validates as accessible for an owner-attached message", async () => {
-      const ok = await docAction.validate?.(makeRuntime(), makeMessage(), undefined);
+      const ok = await ownerDocumentsAction.validate?.(
+        makeRuntime(),
+        makeMessage(),
+        undefined,
+      );
       expect(ok).toBe(true);
     });
 
@@ -150,7 +154,7 @@ describe("DOC umbrella action — Docs And Portals", () => {
     it("accepts simile-style action names mapped through the subaction map", async () => {
       const result = await callDoc(makeRuntime(), makeMessage(), {
         // simile-style: action arg uses the PRD name, handler maps it.
-        action: "DOC_REQUEST_APPROVAL",
+        action: "OWNER_DOCUMENTS_REQUEST_APPROVAL",
         documentTitle: "Quarterly Plan",
       });
       expect(result.success).toBe(true);

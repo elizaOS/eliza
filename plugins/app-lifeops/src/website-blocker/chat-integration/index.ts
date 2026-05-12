@@ -1,6 +1,5 @@
-// W2-F: standalone `LIST_ACTIVE_BLOCKS` and `RELEASE_BLOCK` Action envelopes
-// were folded into `WEBSITE_BLOCK.{list_active, release}` subactions
-// (HARDCODING_AUDIT.md §6 high-confidence #6). Reader/writer remain here.
+// Reader/writer support BLOCK action=list_active/release without owning the
+// planner-facing action envelope.
 export {
   BLOCK_RULE_RECONCILE_INTERVAL_MS,
   BLOCK_RULE_RECONCILE_TASK_NAME,

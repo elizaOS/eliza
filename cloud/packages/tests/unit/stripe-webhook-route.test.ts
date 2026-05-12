@@ -24,6 +24,12 @@ interface Harness {
   parseError: Error | null;
   parseCalls: Array<{ rawBody: string; signature: string | null }>;
   publishCalls: Array<Record<string, unknown>>;
+  markSettledCalls: Array<{
+    id: string;
+    txRef: string;
+    proof: Record<string, unknown>;
+  }>;
+  markFailedCalls: Array<{ id: string; error: string }>;
   recordedEventIds: Set<string>;
   duplicateEventIds: Set<string>;
 }
@@ -51,6 +57,17 @@ function installMocks(harness: Harness): void {
         return true;
       },
     },
+  }));
+
+  mock.module("@/lib/services/payment-requests-default", () => ({
+    getPaymentRequestsService: () => ({
+      markSettled: async (id: string, txRef: string, proof: Record<string, unknown>) => {
+        harness.markSettledCalls.push({ id, txRef, proof });
+      },
+      markFailed: async (id: string, error: string) => {
+        harness.markFailedCalls.push({ id, error });
+      },
+    }),
   }));
 
   mock.module("@/lib/services/payment-webhook-errors", () => ({
@@ -97,6 +114,8 @@ function freshHarness(): Harness {
     parseError: null,
     parseCalls: [],
     publishCalls: [],
+    markSettledCalls: [],
+    markFailedCalls: [],
     recordedEventIds: new Set(),
     duplicateEventIds: new Set(),
   };
@@ -124,6 +143,10 @@ describe("POST /api/v1/stripe/webhook", () => {
     });
 
     expect(response.status).toBe(200);
+    expect(harness.markSettledCalls[0]).toMatchObject({
+      id: PAYMENT_REQUEST_ID,
+      txRef: PAYMENT_INTENT_ID,
+    });
     expect(harness.publishCalls.length).toBe(1);
     expect(harness.publishCalls[0]).toMatchObject({
       name: "PaymentSettled",
@@ -152,6 +175,10 @@ describe("POST /api/v1/stripe/webhook", () => {
     });
 
     expect(response.status).toBe(200);
+    expect(harness.markFailedCalls[0]).toEqual({
+      id: PAYMENT_REQUEST_ID,
+      error: "Stripe payment failed",
+    });
     expect(harness.publishCalls[0]?.name).toBe("PaymentFailed");
   });
 
@@ -232,5 +259,6 @@ describe("POST /api/v1/stripe/webhook", () => {
     const body = (await second.json()) as { duplicate?: boolean };
     expect(body.duplicate).toBe(true);
     expect(harness.publishCalls.length).toBe(1);
+    expect(harness.markSettledCalls).toHaveLength(1);
   });
 });

@@ -3,7 +3,7 @@
 ## Overview
 
 This directory builds MSIX packages for two distinct Windows distribution flavors,
-selected via the `MILADY_BUILD_VARIANT` env var:
+selected via the `ELIZA_BUILD_VARIANT` env var:
 
 | Variant | Manifest | Sandbox | Local agents | Distribution |
 |---------|----------|---------|---------------|--------------|
@@ -19,7 +19,7 @@ The two manifests share the same `Identity Name` (`ElizaOS.App`), `Publisher`
 |------|---------|
 | `AppxManifest.xml` | Direct-build manifest (full-trust desktop) |
 | `AppxManifest.store.xml` | Store-build manifest (AppContainer-sandboxed) |
-| `build-msix.ps1` | Build script — picks manifest by `MILADY_BUILD_VARIANT`, signs, verifies |
+| `build-msix.ps1` | Build script — picks manifest by `ELIZA_BUILD_VARIANT`, signs, verifies |
 | `generate-placeholder-assets.ps1` | Creates placeholder visual assets |
 | `assets/` | Tile / logo artwork |
 | `store/` | Partner Center listing metadata + screenshots |
@@ -84,11 +84,11 @@ Windows AppContainer host before Partner Center submission:
 
 - **Filesystem writes outside the package storage** — AppContainer redirects
   writes under `%USERPROFILE%` to per-app virtualized locations. Code that writes
-  to `~/.milady/...` outside the runtime workspace must use either the package
+  to `~/.eliza/...` outside the runtime workspace must use either the package
   storage API or ask via file picker. The default state-dir resolution
-  (`MILADY_STATE_DIR`) already points at the per-user app data path, so this
-  largely works; verify `~/.milady/optimized-prompts` and
-  `~/.milady/audit/app-loads.jsonl` writes succeed inside the package container.
+  (`ELIZA_STATE_DIR`) already points at the per-user app data path, so this
+  largely works; verify `~/.eliza/optimized-prompts` and
+  `~/.eliza/audit/app-loads.jsonl` writes succeed inside the package container.
 
 This list is verification-only; the actual gating lives in the sandbox-runtime
 agent's work. If you hit a failing path here, file it against that agent rather
@@ -101,14 +101,14 @@ input to MSIX) but does NOT build MSIX itself. MSIX is a separate Windows-only
 step driven by `build-msix.ps1`. To produce a store MSIX:
 
 ```powershell
-$env:MILADY_BUILD_VARIANT = "store"
+$env:ELIZA_BUILD_VARIANT = "store"
 pwsh -File packaging/msix/build-msix.ps1 `
   -BuildDir ./apps/app/electrobun/build `
   -OutputDir ./apps/app/electrobun/artifacts `
   -Version "2.0.0-beta.0"
 ```
 
-The `MILADY_BUILD_VARIANT` env var is the same flag used by the runtime to gate
+The `ELIZA_BUILD_VARIANT` env var is the same flag used by the runtime to gate
 local-agent execution and force cloud hosting mode. Setting it for the build also
 sets it for the packaged app's runtime via Electrobun's env propagation.
 
@@ -117,9 +117,9 @@ sets it for the packaged app's runtime via Electrobun's env propagation.
 1. **Code signing**:
    - For `direct` builds: `WINDOWS_SIGN_CERT_BASE64` + `WINDOWS_SIGN_CERT_PASSWORD`,
      or Azure Trusted Signing.
-   - For `store` builds: `MILADY_MSIX_STORE_CERT_PATH` (path to the `.pfx` issued
+   - For `store` builds: `ELIZA_MSIX_STORE_CERT_PATH` (path to the `.pfx` issued
      by Partner Center for the registered Identity Name) +
-     `MILADY_MSIX_STORE_CERT_PASSWORD`. If absent, the MSIX is delivered unsigned
+     `ELIZA_MSIX_STORE_CERT_PASSWORD`. If absent, the MSIX is delivered unsigned
      and Partner Center re-signs server-side on upload.
 2. **Windows SDK** — installed on CI runner (available on `windows-latest`).
 3. **Microsoft Partner Center account** — for Store submission ($19 one-time).
@@ -139,7 +139,7 @@ pwsh -File packaging/msix/build-msix.ps1 `
   -Version "2.0.0-beta.0"
 
 # 3. Build store MSIX
-$env:MILADY_BUILD_VARIANT = "store"
+$env:ELIZA_BUILD_VARIANT = "store"
 pwsh -File packaging/msix/build-msix.ps1 `
   -BuildDir ./apps/app/electrobun/build `
   -OutputDir ./apps/app/electrobun/artifacts `
@@ -154,7 +154,7 @@ Output filenames:
 
 `release-electrobun.yml` runs the direct flavor automatically when
 `WINDOWS_SIGN_CERT_BASE64` is configured. The store flavor is opt-in: set
-`MILADY_BUILD_VARIANT=store` on the CI step that targets Partner Center upload.
+`ELIZA_BUILD_VARIANT=store` on the CI step that targets Partner Center upload.
 
 ## Store submission
 
@@ -162,31 +162,31 @@ Output filenames:
 2. Register the app identity (`ElizaOS.App`).
 3. **Set Identity env vars** on the CI step that produces the store MSIX
    (preferred over editing the manifest file in-tree):
-   - `MILADY_MSIX_IDENTITY_NAME` — Partner Center-registered app name, e.g.
+   - `ELIZA_MSIX_IDENTITY_NAME` — Partner Center-registered app name, e.g.
      `ElizaOS.App` (often the same as the placeholder, but Partner Center may
      issue a namespace-scoped name).
-   - `MILADY_MSIX_PUBLISHER_ID` — full `Publisher` attribute, e.g.
+   - `ELIZA_MSIX_PUBLISHER_ID` — full `Publisher` attribute, e.g.
      `CN=XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX`. MUST match the publisher ID
      issued for your Partner Center account.
-   - `MILADY_MSIX_PUBLISHER_DISPLAY_NAME` — human-readable publisher, e.g.
+   - `ELIZA_MSIX_PUBLISHER_DISPLAY_NAME` — human-readable publisher, e.g.
      `elizaOS Labs`. Defaults to the placeholder `elizaOS` if unset.
    `build-msix.ps1` substitutes these into the staged manifest before
    `makeappx pack`. When unset, the script prints a `::warning::` and ships
    the placeholder values (Partner Center will reject the upload).
 4. Replace placeholder assets in `assets/` with final artwork.
 5. Add screenshots to `store/screenshots/`.
-6. Build the store MSIX (`MILADY_BUILD_VARIANT=store` plus the three Identity
+6. Build the store MSIX (`ELIZA_BUILD_VARIANT=store` plus the three Identity
    env vars) and upload via Partner Center. Submit for certification review.
 
 Example CI snippet:
 ```yaml
 env:
-  MILADY_BUILD_VARIANT: store
-  MILADY_MSIX_IDENTITY_NAME: ElizaOS.App
-  MILADY_MSIX_PUBLISHER_ID: CN=12345678-90AB-CDEF-1234-567890ABCDEF
-  MILADY_MSIX_PUBLISHER_DISPLAY_NAME: elizaOS Labs
-  MILADY_MSIX_STORE_CERT_PATH: ${{ secrets.MILADY_MSIX_STORE_CERT_PATH }}
-  MILADY_MSIX_STORE_CERT_PASSWORD: ${{ secrets.MILADY_MSIX_STORE_CERT_PASSWORD }}
+  ELIZA_BUILD_VARIANT: store
+  ELIZA_MSIX_IDENTITY_NAME: ElizaOS.App
+  ELIZA_MSIX_PUBLISHER_ID: CN=12345678-90AB-CDEF-1234-567890ABCDEF
+  ELIZA_MSIX_PUBLISHER_DISPLAY_NAME: elizaOS Labs
+  ELIZA_MSIX_STORE_CERT_PATH: ${{ secrets.ELIZA_MSIX_STORE_CERT_PATH }}
+  ELIZA_MSIX_STORE_CERT_PASSWORD: ${{ secrets.ELIZA_MSIX_STORE_CERT_PASSWORD }}
 ```
 
 ## Updating the publisher identity
@@ -209,7 +209,7 @@ the Windows submission engineer:
 - [ ] `makeappx pack /d <staging> /p out.msix /o` succeeds against the store
       manifest.
 - [ ] `signtool verify /pa /v out-store.msix` returns success when signed with
-      `MILADY_MSIX_STORE_CERT_PATH`.
+      `ELIZA_MSIX_STORE_CERT_PATH`.
 - [ ] App launches inside AppContainer (Task Manager → Details column "AppContainer
       = Yes" on the launcher process).
 - [ ] Renderer reaches the local API on its loopback port without firewall prompt.
