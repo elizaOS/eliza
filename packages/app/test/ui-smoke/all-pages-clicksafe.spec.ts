@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { DIRECT_ROUTE_CASES, escapeRegExp } from "./apps-session-route-cases";
 import {
@@ -215,6 +216,9 @@ const SETTING_SECTIONS_TO_CLICK = [/^Capabilities\b/, /^Permissions\b/];
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 const ONE_PIXEL_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
+const SMOKE_VRM = readFileSync(
+  new URL("../../../../plugins/app-companion/public_src/vrms/eliza-1.vrm", import.meta.url),
+);
 const EMPTY_PERMISSIONS = Object.fromEntries(
   PERMISSION_IDS.map((id: PermissionId) => [
     id,
@@ -355,7 +359,7 @@ async function installSupplementalSafeRoutes(page: Page): Promise<void> {
     await route.fulfill({
       status: 200,
       contentType: "application/octet-stream",
-      body: Buffer.alloc(0),
+      body: SMOKE_VRM,
     });
   });
 

@@ -1,0 +1,31 @@
+2025-06-15T06:30:12Z [INFO] Gateway started — version 2.4.1
+2025-06-15T06:30:14Z [INFO] Loading heartbeat config from config/heartbeat-config.yaml
+2025-06-15T06:30:15Z [INFO] State file loaded: memory/heartbeat-state.json (last heartbeat: 1773590400)
+2025-06-15T06:30:15Z [INFO] Scheduling first heartbeat in 1800000ms
+2025-06-15T07:00:16Z [INFO] Heartbeat #38 started — checks: email, calendar, weather
+2025-06-15T07:00:18Z [INFO] Email check: 0 unread, 0 urgent
+2025-06-15T07:00:19Z [INFO] Calendar check: 0 events in next 48h
+2025-06-15T07:00:19Z [INFO] Weather check: London — 16°C, overcast
+2025-06-15T07:00:19Z [INFO] Heartbeat #38 complete — status: healthy (1890ms)
+2025-06-16T06:30:00Z [WARN] Gateway restart triggered by update
+2025-06-16T06:30:05Z [INFO] Gateway started — version 2.4.2
+2025-06-16T06:30:07Z [INFO] State file loaded: memory/heartbeat-state.json
+2025-06-16T07:00:08Z [INFO] Heartbeat #39 started — checks: email, calendar
+2025-06-16T07:00:10Z [INFO] Email check: 1 unread, 1 urgent (from: ops-team@example.com)
+2025-06-16T07:00:10Z [ALERT] Urgent email detected — notifying user via telegram
+2025-06-16T07:00:11Z [INFO] Calendar check: 0 events (Sunday)
+2025-06-16T07:00:11Z [INFO] Heartbeat #39 complete — status: healthy (2340ms)
+2025-06-17T08:00:02Z [INFO] Heartbeat #44 started — checks: email, calendar, weather
+2025-06-17T08:00:04Z [INFO] Email check: 3 unread, 0 urgent
+2025-06-17T08:00:05Z [INFO] Calendar check: 2 events in next 24h
+2025-06-17T08:00:05Z [INFO] Weather check: London — 18°C, partly cloudy
+2025-06-17T08:00:05Z [INFO] Heartbeat #44 complete — status: healthy (2180ms)
+2025-06-17T14:00:03Z [INFO] Heartbeat #46 started — checks: email, github
+2025-06-17T14:00:05Z [INFO] Email check: 1 unread, 0 urgent
+2025-06-17T14:00:06Z [INFO] GitHub check: PR #342 updated, CI green
+2025-06-17T14:00:06Z [INFO] Heartbeat #46 complete — status: healthy (1990ms)
+2025-06-17T18:00:01Z [INFO] Heartbeat #47 started — checks: calendar, weather, social
+2025-06-17T18:00:03Z [INFO] Calendar check: 0 events remaining today
+2025-06-17T18:00:04Z [INFO] Weather check: London — 17°C, clear
+2025-06-17T18:00:06Z [INFO] Social check: MoltBook — 2 notifications
+2025-06-17T18:00:06Z [INFO] Heartbeat #47 complete — status: healthy (2870ms)

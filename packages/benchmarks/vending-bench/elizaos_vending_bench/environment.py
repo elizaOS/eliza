@@ -111,11 +111,8 @@ class EconomicModel:
 
         # Use date-based seed for consistency
         day_seed = sim_date.toordinal() + seed_offset
-        self.rng.seed(day_seed)
-        result = self.rng.choices(choices, weights)[0]
-        # Reset to original seed behavior
-        self.rng.seed()
-        return result
+        day_rng = random.Random(day_seed)
+        return day_rng.choices(choices, weights)[0]
 
     def get_season(self, sim_date: date) -> Season:
         """Get the season for a given date."""

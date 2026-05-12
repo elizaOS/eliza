@@ -1,0 +1,54 @@
+{
+  "plan_name": "Batch Execution Plan v1.0",
+  "created_date": "2025-03-12",
+  "author": "Infrastructure Team",
+  "status": "validated",
+  "validation_note": "Validated against production API specs on 2025-03-11. All parameters confirmed with the API operations team.",
+  
+  "execution_parameters": {
+    "batch_size": 10,
+    "rate_limit_rpm": 60,
+    "max_concurrent_requests": 16,
+    "cooldown_between_batches_sec": 10,
+    "per_question_timeout_sec": 120,
+    "max_retries": 2
+  },
+  
+  "estimated_metrics": {
+    "total_questions": 970,
+    "num_batches": 97,
+    "avg_batch_processing_time_sec": 120,
+    "total_cooldown_time_sec": 960,
+    "estimated_total_time_hours": 4.2,
+    "estimated_total_time_minutes": 252
+  },
+  
+  "cost_estimate": {
+    "avg_input_tokens_per_question": 800,
+    "avg_output_tokens_per_question": 1500,
+    "total_input_tokens": 776000,
+    "total_output_tokens": 1455000,
+    "estimated_cost_usd": 385.50
+  },
+  
+  "scheduling": {
+    "recommended_start_time": "02:00 UTC",
+    "reason": "Lowest API traffic period based on throughput logs",
+    "expected_completion_time": "06:12 UTC"
+  },
+  
+  "error_handling": {
+    "on_rate_limit_429": "exponential_backoff",
+    "on_timeout": "retry_with_reduced_output_tokens",
+    "on_server_error_500": "retry_after_30s",
+    "max_consecutive_failures": 5,
+    "abort_threshold_pct": 10
+  },
+  
+  "notes": [
+    "Rate limit of 60 RPM confirmed with API provider on 2025-03-11",
+    "Batch size of 10 provides optimal throughput at this rate limit",
+    "Total execution time of 4.2 hours accounts for retries and cooldowns",
+    "Consider running during off-peak hours to minimize queue depth"
+  ]
+}

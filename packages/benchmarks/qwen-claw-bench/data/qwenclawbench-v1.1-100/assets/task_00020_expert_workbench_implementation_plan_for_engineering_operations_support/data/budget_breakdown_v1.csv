@@ -1,0 +1,21 @@
+line_item_id,category,item_description,amount_cny,approved_date,status
+BUD-001,hardware,NVIDIA A100 GPU Servers (4 units),2800000,2024-09-15,approved
+BUD-002,hardware,NAS Storage Expansion (200TB),1050000,2024-09-15,approved
+BUD-003,hardware,Edge Computing Nodes (8 units),800000,2024-09-15,approved
+BUD-004,hardware,Network Switches and Cabling,380000,2024-09-15,approved
+BUD-005,hardware,Rack Infrastructure and UPS,320000,2024-09-15,approved
+BUD-006,software,Kubernetes Enterprise License (3-year),650000,2024-09-15,approved
+BUD-007,software,AI/ML Platform License (DataRobot),1350000,2024-09-15,approved
+BUD-008,software,SCADA Integration Middleware,420000,2024-09-15,approved
+BUD-009,software,Monitoring and Observability Stack,300000,2024-09-15,approved
+BUD-010,software,Security and Compliance Tools,250000,2024-09-15,approved
+BUD-011,services,System Integration Consulting,1600000,2024-09-15,approved
+BUD-012,services,Cloud Architecture Design,520000,2024-09-15,approved
+BUD-013,services,Data Migration Services,380000,2024-09-15,approved
+BUD-014,personnel,Core Development Team (12 months),1680000,2024-09-15,approved
+BUD-015,personnel,Project Management Office,450000,2024-09-15,approved
+BUD-016,personnel,QA and Testing Team,320000,2024-09-15,approved
+BUD-017,training,Technical Training Programs,250000,2024-09-15,approved
+BUD-018,training,End User Training and Adoption,160000,2024-09-15,approved
+BUD-019,contingency,Risk Contingency Reserve (5%),760000,2024-09-15,approved
+BUD-020,contingency,Change Request Buffer,760000,2024-09-15,approved

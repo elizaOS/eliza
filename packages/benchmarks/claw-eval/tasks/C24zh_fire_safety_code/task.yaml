@@ -1,0 +1,113 @@
+task_id: C24zh_fire_safety_code
+task_name: 消防规范
+version: '2.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: 商业空间改造项目消防验收，疏散通道最小宽度到底是多少？我记得GB50016里有写但具体条文编号记不清了，甲方非要压到1.2米我觉得肯定不合规
+  language: zh
+tools:
+- name: Bash
+  description: 在沙箱环境中执行 shell 命令（如 python3 -c "..."），返回 stdout/stderr。适合进行精确数值计算。
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+        description: 要执行的 shell 命令
+      timeout_seconds:
+        type: integer
+        description: 超时时间（秒），默认30
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: 搜索互联网，返回相关网页结果列表。可用于查询最新消防规范、建筑标准等时效性信息。
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+        description: 搜索关键词或查询语句
+      max_results:
+        type: integer
+        description: 最大返回结果数
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: 获取指定URL的完整网页内容，提取正文文字。
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+        description: 要获取的网页URL
+      timeout_seconds:
+        type: integer
+        description: 请求超时时间（秒）
+        default: 30
+    required:
+    - url
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: "## 核心身份\n\n你是一名在一家中型装修公司干了将近八年的工长，从学徒工一路做上来的，现在手底下带着十来个人的施工队，主要接中高端住宅精装修和小型商业空间的改造工程。你的日常就是泡在工地上——早上到现场给各工种交底，盯着水电木瓦油的施工进度和工艺质量，处理现场冒出来的各种突发问题，下午可能要跟业主或设计师碰面对接方案调整，晚上回去还得翻翻 CAD 图纸核对尺寸、查查相关的建筑规范条文有没有更新。施工图摊开来你基本一眼就能看出哪里落地有问题，SketchUp\
+    \ 里拉个简单的空间模型给业主做演示你也能上手。\n\n你刚从一个快收尾的精装房工地回来，今天验收了隐蔽工程。回到出租屋边吃外卖边翻手机，突然想起手头那个商业改造项目的消防验收还悬着——甲方那边一直想压缩疏散通道宽度省面积，你觉得不对但又拿不准具体条文，打算问问AI。\n\n## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）\n\n第一批信息（助手问基本参数时提供）：\n- 项目是个商业空间改造，在一栋综合体里\n\
+    - 甲方想把疏散通道压到1.2米，你觉得不对\n- 你记得GB50016里有相关规定但具体条文编号记不清了\n\n第二批信息（助手追问面积、楼层等时提供）：\n- 建筑面积：约380平方米\n- 所在楼层：地上二层\n- 业态：小型商业，类似精品店+轻食区的混合业态\n- 耐火等级：你不太确定，但建筑本身是钢筋混凝土框架结构，应该是一二级\n\n第三批信息（助手深入追问时提供）：\n- 目前设计图上画了2个安全出口\n\
+    - 疏散通道有一段要经过后厨区域，你担心这段算不算有效疏散距离\n- 甲方说\"隔壁那家店也是1.2米验收过了\"，但你不知道隔壁的面积和业态是否一样\n- 这个项目的消防审查是走住建局的\"双随机\"抽查，不是必查项目，甲方想赌一把不被抽到\n\n## 隐含矛盾（你自己不知道这些矛盾，只是如实回答助手的问题）\n\n1. 甲方说\"1.2米合规\"——从纯计算来看，380㎡×0.43人/㎡=163人，163/100×0.65=1.06m，\n\
+    \   加上GB50016 5.5.18规定疏散走道最小净宽不小于1.10m，1.2m确实大于这两个数。\n   所以用户\"肯定不合规\"的直觉其实是错的——1.2m从数值上是满足最低要求的。\n   但好的助手应该指出：虽然1.2m满足最低标准，但余量极小（仅比1.10m下限多0.1m），\n   实际施工中墙面装饰、管线、门框等会侵占净宽，建议预留至少1.4-1.5m。\n   这考验助手能否给出\"\
+    数值合规但实践中风险很高\"的专业判断，而非简单回答\"合规/不合规\"。\n\n2. 疏散通道经过后厨——如果后厨有明火灶台，这段走道能否作为安全疏散通道需要额外评估。\n   GB50016对厨房等用火房间有额外要求（如防火分隔、门的开启方向等）。\n\n3. 甲方想赌\"双随机\"不被抽查——好的助手应该指出消防验收不只是行政检查，\n   一旦出事故，未按规范施工的责任会追溯到施工方和设计方。\n\
+    \n回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。\n如果助手没有追问这些深入信息，你也不要主动全部倒出来。\n"
+  max_rounds: 8
+  system_prompt_suffix: '注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，
+
+    收集信息后再给出计算和建议。用户可能会追问或修改需求，请耐心回应。
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: final_answer_quality
+  weight: 0.8
+  check:
+    type: llm_judge
+    description: 最终回答的正确性与清晰度
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在消防规范多轮咨询中的整体表现。\n  - 澄清质量(20%)：是否主动收集了关键信息\n  - 最终回答质量(80%)：回答是否正确、完整、有用"
+reference_solution: '1. 询问关键信息：建筑面积、楼层、业态类型、安全出口数量
+
+  2. 搜索GB50016最新条文确认人员密度和百人宽度指标
+
+  3. 计算：380㎡×0.43人/㎡=163人，163/100×0.65=1.06m，下限1.10m
+
+  4. 判断1.2m数值上满足最低要求，但余量极小，建议1.4-1.5m
+
+  5. 指出后厨疏散通道、双随机赌概率的风险'
+primary_dimensions:
+- completion
+- safety

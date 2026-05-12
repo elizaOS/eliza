@@ -1,0 +1,72 @@
+{
+  "company_name": "TargetImpact",
+  "url": "https://targetimpact.com/",
+  "industry": "Digital Marketing / Email Marketing",
+  "founded": 2012,
+  "headquarters": "Austin, TX",
+  "estimated_employees": 320,
+  "estimated_revenue_millions": 45,
+  "market_segment": "SMB and Mid-Market",
+  "primary_products": [
+    "Email Marketing Platform",
+    "Audience Targeting",
+    "Data Enrichment"
+  ],
+  "secondary_products": [
+    "Landing Page Builder",
+    "A/B Testing Suite",
+    "Analytics Dashboard"
+  ],
+  "key_differentiators": [
+    "AI-powered audience segmentation",
+    "Native CRM integrations",
+    "Deliverability optimization engine"
+  ],
+  "pricing_tiers": [
+    {
+      "name": "Starter",
+      "price_monthly": 29,
+      "target": "Small businesses"
+    },
+    {
+      "name": "Growth",
+      "price_monthly": 99,
+      "target": "Growing teams"
+    },
+    {
+      "name": "Professional",
+      "price_monthly": 249,
+      "target": "Mid-market"
+    },
+    {
+      "name": "Enterprise",
+      "price_monthly": "Custom",
+      "target": "Large organizations"
+    }
+  ],
+  "recent_strategy_notes": "Company has been shifting toward enterprise sales with longer consultation offers and white-glove onboarding since Q1 2024",
+  "funding_history": [
+    {
+      "round": "Series A",
+      "year": 2015,
+      "amount_millions": 8
+    },
+    {
+      "round": "Series B",
+      "year": 2018,
+      "amount_millions": 22
+    },
+    {
+      "round": "Series C",
+      "year": 2021,
+      "amount_millions": 50
+    }
+  ],
+  "notable_customers_industries": [
+    "E-commerce",
+    "SaaS",
+    "Financial Services",
+    "Healthcare"
+  ],
+  "last_updated": "2024-06-10"
+}

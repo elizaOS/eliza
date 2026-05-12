@@ -1,0 +1,13 @@
+{"type": "session_start", "session_id": "heartbeat_4715304", "model": "claude-opus-4-0-20250115", "created_at": "2026-03-04T02:13:51.507660", "user_id": "system", "channel": "internal"}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-03-04T02:14:11.579466", "session_id": "heartbeat_4715304", "seq": 1}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-04T02:14:19.780078", "session_id": "heartbeat_4715304", "seq": 2, "usage": {"prompt_tokens": 7861, "completion_tokens": 2756, "total_tokens": 8918}}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-03-04T02:18:51.630745", "session_id": "heartbeat_4715304", "seq": 3}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-03-04T02:23:36.179474", "session_id": "heartbeat_4715304", "seq": 4, "usage": {"prompt_tokens": 2530, "completion_tokens": 206, "total_tokens": 11009}}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-03-04T02:25:13.837593", "session_id": "heartbeat_4715304", "seq": 5}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-03-04T02:27:09.315892", "session_id": "heartbeat_4715304", "seq": 6}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-03-04T02:30:51.537077", "session_id": "heartbeat_4715304", "seq": 7}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-03-04T02:34:59.160882", "session_id": "heartbeat_4715304", "seq": 8}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-03-04T02:35:29.400498", "session_id": "heartbeat_4715304", "seq": 9}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-03-04T02:39:04.387528", "session_id": "heartbeat_4715304", "seq": 10}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-03-04T02:41:09.544410", "session_id": "heartbeat_4715304", "seq": 11}
+{"type": "session_end", "session_id": "heartbeat_4715304", "ended_at": "2026-03-04T02:41:19.544410", "total_messages": 11, "status": "completed"}

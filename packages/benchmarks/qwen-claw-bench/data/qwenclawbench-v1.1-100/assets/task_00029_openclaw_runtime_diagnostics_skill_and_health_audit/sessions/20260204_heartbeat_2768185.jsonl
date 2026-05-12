@@ -1,0 +1,4 @@
+{"type": "session_start", "session_id": "heartbeat_2768185", "model": "claude-opus-4-0-20250115", "created_at": "2026-02-04T11:50:00.700222", "user_id": "system", "channel": "internal"}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-04T11:53:45.162834", "session_id": "heartbeat_2768185", "seq": 1, "usage": {"prompt_tokens": 4576, "completion_tokens": 3097, "total_tokens": 9831}}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-04T11:55:14.822407", "session_id": "heartbeat_2768185", "seq": 2, "usage": {"prompt_tokens": 2846, "completion_tokens": 216, "total_tokens": 7923}}
+{"type": "session_end", "session_id": "heartbeat_2768185", "ended_at": "2026-02-04T11:55:24.822407", "total_messages": 2, "status": "timeout"}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import warnings
 
 from elizaos_trust_bench.corpus import get_corpus
@@ -82,11 +83,28 @@ def _validate_handler(handler: object) -> list[str]:
 
 def _clamp_confidence(value: float) -> float:
     """Clamp confidence to [0.0, 1.0] range."""
+    if not math.isfinite(value):
+        return 0.0
     if value < 0.0:
         return 0.0
     if value > 1.0:
         return 1.0
     return value
+
+
+def _coerce_detected(value: object) -> bool:
+    """Normalize common detector return encodings to a real boolean."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "y", "detected", "malicious"}:
+            return True
+        if normalized in {"false", "0", "no", "n", "none", "benign", ""}:
+            return False
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return False
 
 
 def _safe_call_detector(
@@ -142,10 +160,21 @@ def _safe_call_detector(
         )
         return {"detected": False, "confidence": 0.0}
 
-    # Clamp confidence to valid range
-    result["confidence"] = _clamp_confidence(float(result["confidence"]))
+    try:
+        confidence = _clamp_confidence(float(result["confidence"]))
+    except (TypeError, ValueError):
+        logger.warning(
+            "Handler %s() returned non-numeric confidence %r (test %s)",
+            method_name,
+            result["confidence"],
+            test_id,
+        )
+        confidence = 0.0
 
-    return result
+    return {
+        "detected": _coerce_detected(result["detected"]),
+        "confidence": confidence,
+    }
 
 
 class TrustBenchmarkRunner:

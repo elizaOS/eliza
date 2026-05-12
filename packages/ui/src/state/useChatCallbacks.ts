@@ -19,7 +19,6 @@ import {
   type ImageAttachment,
 } from "../api";
 import { type Tab, tabFromPath } from "../navigation";
-import { isTransientOptionalFetchFailure } from "../utils/transient-fetch";
 import { isTtsDebugEnabled } from "../utils/tts-debug";
 import {
   isConversationRecord,
@@ -78,6 +77,16 @@ function traceGreeting(phase: string, detail?: Record<string, unknown>): void {
   } else {
     console.info(`[eliza][greeting] ${phase}`);
   }
+}
+
+function isTransientConversationHydrationFetchFailure(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  if (!/^(Failed to fetch|Request aborted)$/i.test(err.message)) return false;
+  if (err.name === "TypeError") return true;
+  return (
+    err.name === "ApiError" &&
+    (err as Error & { kind?: string }).kind === "network"
+  );
 }
 
 import { isRoutineCodingAgentMessage } from "../chat";
@@ -548,7 +557,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           if (!isCurrentHydration()) {
             return null;
           }
-          if (!isTransientOptionalFetchFailure(err)) {
+          if (!isTransientConversationHydrationFetchFailure(err)) {
             console.warn(
               "[eliza][chat:init] failed to load restored conversation messages",
               err,
@@ -632,7 +641,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         return null;
       }
     } catch (err) {
-      if (!isTransientOptionalFetchFailure(err)) {
+      if (!isTransientConversationHydrationFetchFailure(err)) {
         console.warn("[eliza][chat:init] failed to hydrate conversations", err);
       }
       return null;

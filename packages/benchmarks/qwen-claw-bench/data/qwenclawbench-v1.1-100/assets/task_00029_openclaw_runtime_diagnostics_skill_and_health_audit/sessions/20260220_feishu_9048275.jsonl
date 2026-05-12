@@ -1,0 +1,27 @@
+{"type": "session_start", "session_id": "feishu_9048275", "model": "claude-sonnet-4-20250514", "created_at": "2026-02-20T09:03:50.859013", "user_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa06", "channel": "feishu"}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-20T09:06:53.737515", "session_id": "feishu_9048275", "seq": 1}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-02-20T09:07:38.790273", "session_id": "feishu_9048275", "seq": 2}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-20T09:12:03.411010", "session_id": "feishu_9048275", "seq": 3, "usage": {"prompt_tokens": 1107, "completion_tokens": 1284, "total_tokens": 5732}}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-20T09:16:24.495810", "session_id": "feishu_9048275", "seq": 4, "usage": {"prompt_tokens": 6484, "completion_tokens": 1072, "total_tokens": 11945}}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-20T09:17:26.146160", "session_id": "feishu_9048275", "seq": 5}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-02-20T09:17:51.715017", "session_id": "feishu_9048275", "seq": 6}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-20T09:21:14.633065", "session_id": "feishu_9048275", "seq": 7}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-20T09:24:22.660156", "session_id": "feishu_9048275", "seq": 8}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-20T09:29:20.224913", "session_id": "feishu_9048275", "seq": 9, "usage": {"prompt_tokens": 801, "completion_tokens": 914, "total_tokens": 1963}}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-20T09:33:26.251244", "session_id": "feishu_9048275", "seq": 10}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-02-20T09:37:56.426404", "session_id": "feishu_9048275", "seq": 11}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-20T09:38:48.984925", "session_id": "feishu_9048275", "seq": 12, "usage": {"prompt_tokens": 2673, "completion_tokens": 657, "total_tokens": 10053}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-20T09:41:56.618761", "session_id": "feishu_9048275", "seq": 13, "usage": {"prompt_tokens": 4269, "completion_tokens": 2694, "total_tokens": 278}}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-20T09:44:35.344282", "session_id": "feishu_9048275", "seq": 14, "usage": {"prompt_tokens": 863, "completion_tokens": 197, "total_tokens": 3083}}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-02-20T09:48:21.258963", "session_id": "feishu_9048275", "seq": 15}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-20T09:49:04.017787", "session_id": "feishu_9048275", "seq": 16}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-02-20T09:53:48.170529", "session_id": "feishu_9048275", "seq": 17}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-20T09:58:22.360357", "session_id": "feishu_9048275", "seq": 18}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-02-20T10:00:25.182087", "session_id": "feishu_9048275", "seq": 19}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-20T10:02:11.142327", "session_id": "feishu_9048275", "seq": 20}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-02-20T10:03:06.721168", "session_id": "feishu_9048275", "seq": 21, "usage": {"prompt_tokens": 3530, "completion_tokens": 1962, "total_tokens": 2901}}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-20T10:05:57.274662", "session_id": "feishu_9048275", "seq": 22}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-20T10:08:20.735449", "session_id": "feishu_9048275", "seq": 23}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-02-20T10:09:09.788942", "session_id": "feishu_9048275", "seq": 24}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-20T10:12:06.041096", "session_id": "feishu_9048275", "seq": 25, "usage": {"prompt_tokens": 3356, "completion_tokens": 1807, "total_tokens": 6096}}
+{"type": "session_end", "session_id": "feishu_9048275", "ended_at": "2026-02-20T10:12:16.041096", "total_messages": 25, "status": "completed"}

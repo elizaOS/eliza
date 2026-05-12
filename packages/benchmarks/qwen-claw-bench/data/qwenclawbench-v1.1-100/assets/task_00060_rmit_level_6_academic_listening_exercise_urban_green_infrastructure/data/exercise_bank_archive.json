@@ -1,0 +1,90 @@
+[
+  {
+    "exercise_id": "EX-2024-001",
+    "topic": "Renewable Energy Storage Technologies",
+    "date": "2024-01-18",
+    "level": 6,
+    "question_count": 11,
+    "t1_count": 4,
+    "t1_ratio": 0.36,
+    "status": "approved",
+    "notes": "Standard L6 exercise. All validation checks passed."
+  },
+  {
+    "exercise_id": "EX-2024-002",
+    "topic": "Behavioural Economics in Public Policy",
+    "date": "2024-02-25",
+    "level": 6,
+    "question_count": 12,
+    "t1_count": 4,
+    "t1_ratio": 0.33,
+    "status": "revision_required",
+    "notes": "T-1 ratio slightly below minimum 0.35. One additional T-1 question needed."
+  },
+  {
+    "exercise_id": "EX-2024-003",
+    "topic": "Antibiotic Resistance Mechanisms",
+    "date": "2024-03-12",
+    "level": 6,
+    "question_count": 15,
+    "t1_count": 6,
+    "t1_ratio": 0.40,
+    "status": "rejected",
+    "notes": "Question count exceeds L6 maximum of 12. Reduce to 11-12 questions and resubmit."
+  },
+  {
+    "exercise_id": "EX-2024-004",
+    "topic": "Deep-Sea Mining Environmental Impact",
+    "date": "2024-04-08",
+    "level": 6,
+    "question_count": 10,
+    "t1_count": 4,
+    "t1_ratio": 0.40,
+    "status": "approved",
+    "notes": "T-1 ratio at upper bound. Synonym verification complete."
+  },
+  {
+    "exercise_id": "EX-2024-005",
+    "topic": "Coral Reef Ecosystem Conservation",
+    "date": "2024-07-20",
+    "level": 6,
+    "question_count": 11,
+    "t1_count": 4,
+    "t1_ratio": 0.36,
+    "status": "approved",
+    "notes": "Gold-standard reference exercise. Full verification documentation available."
+  },
+  {
+    "exercise_id": "EX-2024-006",
+    "topic": "Autonomous Vehicle Ethics",
+    "date": "2024-08-05",
+    "level": 6,
+    "question_count": 12,
+    "t1_count": 4,
+    "t1_ratio": 0.33,
+    "status": "revision_required",
+    "notes": "T-1 ratio below minimum. Convert Q7 from T-0 to T-1 via synonym substitution."
+  },
+  {
+    "exercise_id": "EX-2024-007",
+    "topic": "Microplastics in Freshwater Systems",
+    "date": "2024-09-01",
+    "level": 6,
+    "question_count": 11,
+    "t1_count": 6,
+    "t1_ratio": 0.55,
+    "status": "approved",
+    "notes": "updated_standard_2024 — revised T-1 ratio target for enhanced difficulty. Approved under new framework."
+  },
+  {
+    "exercise_id": "EX-2024-008",
+    "topic": "Neuroplasticity and Language Acquisition",
+    "date": "2024-09-10",
+    "level": 6,
+    "question_count": 11,
+    "t1_count": 4,
+    "t1_ratio": 0.36,
+    "status": "approved",
+    "notes": "Standard L6 parameters. All checks passed."
+  }
+]

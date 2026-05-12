@@ -72,6 +72,9 @@ function parseArgs(argv) {
     ttsAllPhrases: process.env.ELIZA_E2E_TTS_ALL_PHRASES === "1",
     ttsSteps: Number.parseInt(process.env.ELIZA_E2E_TTS_STEPS || "32", 10),
     micTtsSteps: Number.parseInt(process.env.ELIZA_E2E_MIC_TTS_STEPS || "32", 10),
+    ttsRoundtripAsr: process.env.ELIZA_E2E_TTS_ROUNDTRIP_ASR === "1",
+    ttsAudioDir: process.env.ELIZA_E2E_TTS_AUDIO_DIR || "",
+    phraseMaxTokens: Number.parseInt(process.env.ELIZA_E2E_PHRASE_MAX_TOKENS || "8", 10),
     maxTtsPhrases: Number.parseInt(process.env.ELIZA_E2E_MAX_TTS_PHRASES || "3", 10),
     threads: Number.parseInt(
       process.env.ELIZA_E2E_THREADS || String(Math.min(os.cpus().length, 12)),
@@ -89,7 +92,6 @@ function parseArgs(argv) {
     ),
     report: process.env.ELIZA_E2E_REPORT || "",
     quiet: process.env.ELIZA_E2E_QUIET === "1",
-    json: process.env.ELIZA_E2E_JSON === "1",
   };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -118,18 +120,18 @@ function parseArgs(argv) {
     else if (a === "--tts-all-phrases") args.ttsAllPhrases = true;
     else if (a === "--tts-steps") args.ttsSteps = Number.parseInt(next(), 10);
     else if (a === "--mic-tts-steps") args.micTtsSteps = Number.parseInt(next(), 10);
+    else if (a === "--tts-roundtrip-asr") args.ttsRoundtripAsr = true;
+    else if (a === "--tts-audio-dir") args.ttsAudioDir = next();
+    else if (a === "--phrase-max-tokens") args.phraseMaxTokens = Number.parseInt(next(), 10);
     else if (a === "--max-tts-phrases") args.maxTtsPhrases = Number.parseInt(next(), 10);
     else if (a === "--threads") args.threads = Number.parseInt(next(), 10);
     else if (a === "--ctx") args.ctx = Number.parseInt(next(), 10);
     else if (a === "--ngl") args.ngl = next();
     else if (a === "--report") args.report = next();
     else if (a === "--quiet") args.quiet = true;
-    else if (a === "--json") {
-      args.json = true;
-      args.quiet = true;
-    } else if (a === "--help" || a === "-h") {
+    else if (a === "--help" || a === "-h") {
       console.log(
-        "Usage: bun packages/inference/verify/e2e_loop_bench.mjs --bundle <dir> --tier <id> [--backend cpu|vulkan|cuda] [--turns N] [--wav a,b] [--report out.json] [--json] [--quiet]",
+        "Usage: bun packages/inference/verify/e2e_loop_bench.mjs --bundle <dir> --tier <id> [--backend cpu|vulkan|cuda|metal] [--turns N] [--wav a,b] [--report out.json]",
       );
       process.exit(0);
     } else throw new Error(`unknown argument: ${a}`);
@@ -148,7 +150,7 @@ const log = (q) => (...m) => {
 function stateRoot() {
   return (
     process.env.ELIZA_STATE_DIR?.trim() ||
-    process.env.MILADY_STATE_DIR?.trim() ||
+    process.env.ELIZA_STATE_DIR?.trim() ||
     path.join(os.homedir(), ".eliza")
   );
 }
@@ -392,33 +394,10 @@ function writeWav16(file, samples, sampleRate) {
 // WER (Levenshtein over normalized word lists)
 // --------------------------------------------------------------------------
 
-// Standard ASR-WER text normalization, applied identically to ref and hyp:
-// lowercase → expand common contractions → strip punctuation (keep
-// intra-word apostrophes for the few not expanded) → collapse whitespace.
-// Keep this in sync with the eval suite's documented normalization (see
-// `eval_asr_wer` in packages/training/scripts/eval/eliza1_eval_suite.py).
-const CONTRACTIONS = [
-  [/\bwon't\b/g, "will not"],
-  [/\bcan't\b/g, "cannot"],
-  [/\bshan't\b/g, "shall not"],
-  [/\bain't\b/g, "is not"],
-  [/\blet's\b/g, "let us"],
-  [/\b(\w+)'ll\b/g, "$1 will"],
-  [/\b(\w+)'ve\b/g, "$1 have"],
-  [/\b(\w+)'re\b/g, "$1 are"],
-  [/\b(\w+)'d\b/g, "$1 would"],
-  [/\b(\w+)n't\b/g, "$1 not"],
-  [/\b(\w+)'m\b/g, "$1 am"],
-  // possessive / "it's" → "it is" is ambiguous; only expand the unambiguous
-  // verb forms above. Leave other 's attached, then strip below.
-];
-
 function normalizeWords(s) {
-  let t = (s || "").toLowerCase();
-  for (const [re, rep] of CONTRACTIONS) t = t.replace(re, rep);
-  return t
+  return (s || "")
+    .toLowerCase()
     .replace(/[^\p{L}\p{N}\s']/gu, " ")
-    .replace(/'/g, "")
     .replace(/\s+/g, " ")
     .trim()
     .split(" ")
@@ -536,6 +515,33 @@ function readErrAndFree(ffi, s, ptrBuf) {
     /* best-effort */
   }
   return msg;
+}
+
+function asrTranscribeFloat32(ffiCtx, ffi, s, samples, sampleRate) {
+  const pcm16k = resampleLinear(samples, sampleRate, 16000);
+  const pcmBuf = Buffer.from(pcm16k.buffer, pcm16k.byteOffset, pcm16k.byteLength);
+  const outBytes = 4096;
+  const outBuf = Buffer.alloc(outBytes);
+  const errBuf = Buffer.alloc(8);
+  errBuf.fill(0);
+  const t0 = performance.now();
+  const rc = s.eliza_inference_asr_transcribe(
+    ffiCtx,
+    ffi.ptr(pcmBuf),
+    BigInt(pcm16k.length),
+    16000,
+    ffi.ptr(outBuf),
+    BigInt(outBytes),
+    ffi.ptr(errBuf),
+  );
+  const latencyMs = performance.now() - t0;
+  if (rc < 0) {
+    throw new Error(`asr_transcribe rc=${rc}: ${readErrAndFree(ffi, s, errBuf)}`);
+  }
+  return {
+    latencyMs,
+    transcript: outBuf.toString("utf8", 0, rc).trim(),
+  };
 }
 
 // --------------------------------------------------------------------------
@@ -733,31 +739,29 @@ async function synthPhrasePcm(port, text, turnTimeoutS, ttsSteps = 32, durationS
 // --------------------------------------------------------------------------
 
 async function runTurn(opts, turnIdx) {
-  const { port, ffiCtx, ffi, s, wav, refText, nPredict, turnTimeoutS, logFn, ttsAllPhrases, ttsSteps, maxTtsPhrases } = opts;
+  const {
+    port,
+    ffiCtx,
+    ffi,
+    s,
+    wav,
+    refText,
+    nPredict,
+    turnTimeoutS,
+    logFn,
+    ttsAllPhrases,
+    ttsSteps,
+    maxTtsPhrases,
+    phraseMaxTokens,
+    ttsRoundtripAsr,
+    ttsAudioDir,
+  } = opts;
   const turnT0 = performance.now();
 
   // 1) ASR: feed the WAV's mono PCM (resampled to 16 kHz) to the FFI.
-  const pcm16k = resampleLinear(wav.samples, wav.sampleRate, 16000);
-  const pcmBuf = Buffer.from(pcm16k.buffer, pcm16k.byteOffset, pcm16k.byteLength);
-  const outBytes = 4096;
-  const outBuf = Buffer.alloc(outBytes);
-  const errBuf = Buffer.alloc(8);
-  errBuf.fill(0);
-  const asrT0 = performance.now();
-  const rc = s.eliza_inference_asr_transcribe(
-    ffiCtx,
-    ffi.ptr(pcmBuf),
-    BigInt(pcm16k.length),
-    16000,
-    ffi.ptr(outBuf),
-    BigInt(outBytes),
-    ffi.ptr(errBuf),
-  );
-  const asrMs = performance.now() - asrT0;
-  if (rc < 0) {
-    throw new Error(`asr_transcribe rc=${rc}: ${readErrAndFree(ffi, s, errBuf)}`);
-  }
-  const transcript = outBuf.toString("utf8", 0, rc).trim();
+  const inputAsr = asrTranscribeFloat32(ffiCtx, ffi, s, wav.samples, wav.sampleRate);
+  const asrMs = inputAsr.latencyMs;
+  const transcript = inputAsr.transcript;
   const wer = refText ? wordErrorRate(refText, transcript) : null;
   logFn(`turn ${turnIdx}: ASR ${asrMs.toFixed(0)}ms -> ${JSON.stringify(transcript)} (wer=${wer == null ? "n/a" : wer.toFixed(3)})`);
 
@@ -786,7 +790,7 @@ async function runTurn(opts, turnIdx) {
   // 3) Phrase chunker + 4) TTS per phrase. First-audio = ASR-done → first PCM
   //    sample of the first phrase (the streaming-handoff latency the runtime
   //    optimizes); also report it relative to the first text token.
-  const allPhrases = chunkPhrases(gen.content || prompt);
+  const allPhrases = chunkPhrases(gen.content || prompt, phraseMaxTokens);
   // In endurance mode the contract is "the loop completes without crash /
   // leak" — synthesizing every phrase of every one of 30 turns at a >1×-RTF
   // CPU TTS would take ~45 min for no extra signal. So unless --tts-all-phrases
@@ -800,13 +804,30 @@ async function runTurn(opts, turnIdx) {
   const ttsRuns = [];
   let firstPhrasePcm = null;
   const ttsLoopT0 = performance.now();
-  for (const ph of phrases) {
+  for (let i = 0; i < phrases.length; i += 1) {
+    const ph = phrases[i];
     const durationSec = estimateTtsDurationSec(ph);
     const r = await synthPhrasePcm(port, ph, turnTimeoutS, ttsSteps, durationSec);
-    ttsRuns.push({ phrase: ph, durationHintSec: durationSec, audioSec: r.audioSec, wallMs: r.wallMs, rtf: r.rtf });
+    const run = { phrase: ph, durationHintSec: durationSec, audioSec: r.audioSec, wallMs: r.wallMs, rtf: r.rtf };
+    if (ttsAudioDir) {
+      fs.mkdirSync(ttsAudioDir, { recursive: true });
+      const safe = String(turnIdx).padStart(2, "0") + "-" + String(i + 1).padStart(2, "0");
+      const file = path.join(ttsAudioDir, `turn-${safe}-steps${ttsSteps}.wav`);
+      writeWav16(file, r.samples, r.sampleRate);
+      run.audioPath = file;
+    }
+    if (ttsRoundtripAsr) {
+      const rt = asrTranscribeFloat32(ffiCtx, ffi, s, r.samples, r.sampleRate);
+      run.roundTripAsr = {
+        latencyMs: round1(rt.latencyMs),
+        transcript: rt.transcript,
+        wer: round4(wordErrorRate(ph, rt.transcript)),
+      };
+    }
+    ttsRuns.push(run);
     if (firstPhrasePcm === null) firstPhrasePcm = r;
   }
-  const ttsTotalWallMs = performance.now() - ttsLoopT0;
+  const ttsTotalWallMs = ttsRuns.reduce((a, r) => a + (r.wallMs || 0), 0);
   const totalAudioSec = ttsRuns.reduce((a, r) => a + r.audioSec, 0);
   const ttsRtf = totalAudioSec > 0 ? ttsTotalWallMs / 1000 / totalAudioSec : null;
   // first-audio relative to mic-in (ASR start) and to first text token.
@@ -843,6 +864,7 @@ async function runTurn(opts, turnIdx) {
       audioSec: round2(totalAudioSec),
       wallMs: round1(ttsTotalWallMs),
       rtf: ttsRtf == null ? null : round4(ttsRtf),
+      roundTripAsrWerMean: round4(mean(ttsRuns.map((r) => r.roundTripAsr?.wer))),
       perPhrase: ttsRuns.map((r) => ({
         ...r,
         durationHintSec: r.durationHintSec == null ? null : round2(r.durationHintSec),
@@ -937,6 +959,22 @@ function maxOf(xs) {
   return v.length ? Math.max(...v) : null;
 }
 
+function parseCodecBackendLog(logText) {
+  const text = logText || "";
+  const fallback = text.match(
+    /\[PipelineCodec\] Metal codec fallback: requested=([^\s]+) selected=([^\s]+) reason=([^\n]+)/,
+  );
+  const loaded = text.match(/\[PipelineCodec\] Loaded codec: sr=(\d+) hop=(\d+) backend=([^\s]+)/);
+  return {
+    metalCodecFallback: !!fallback,
+    requestedBackend: fallback?.[1] ?? null,
+    selectedBackend: fallback?.[2] ?? loaded?.[3] ?? null,
+    reason: fallback?.[3]?.trim() ?? null,
+    sampleRate: loaded ? Number(loaded[1]) : null,
+    hopLength: loaded ? Number(loaded[2]) : null,
+  };
+}
+
 // --------------------------------------------------------------------------
 // main
 // --------------------------------------------------------------------------
@@ -977,6 +1015,8 @@ async function main() {
       nPredict: args.nPredict,
       ttsSteps: args.ttsSteps,
       micTtsSteps: args.micTtsSteps,
+      ttsRoundtripAsr: args.ttsRoundtripAsr,
+      phraseMaxTokens: args.phraseMaxTokens,
       wavs: args.wavs.length,
       refs: args.refs.length,
     },
@@ -1033,6 +1073,7 @@ async function main() {
       DYLD_LIBRARY_PATH: `${engine.dir}${path.delimiter}${process.env.DYLD_LIBRARY_PATH || ""}`,
       ELIZA_OMNIVOICE_MODEL: files.ttsModel,
       ELIZA_OMNIVOICE_CODEC: files.ttsCodec,
+      ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT: "1",
     };
     const serverArgs = [
       "-m", files.text,
@@ -1123,6 +1164,9 @@ async function main() {
           turnTimeoutS: args.turnTimeoutS, logFn,
           ttsAllPhrases: args.ttsAllPhrases ? true : fullTurn,
           ttsSteps: args.ttsSteps,
+          ttsRoundtripAsr: args.ttsRoundtripAsr,
+          ttsAudioDir: args.ttsAudioDir,
+          phraseMaxTokens: args.phraseMaxTokens,
           maxTtsPhrases: args.maxTtsPhrases,
         },
         t + 1,
@@ -1172,6 +1216,8 @@ async function main() {
       firstAudioFromTokenMsMedian: round1(median(turnReports.map((r) => r.firstAudioFromTokenMs))),
       ttsRtfMedian: round4(median(turnReports.map((r) => r.tts.rtf))),
       ttsRtfMean: round4(mean(turnReports.map((r) => r.tts.rtf))),
+      ttsRoundTripAsrWerMean: round4(mean(turnReports.map((r) => r.tts.roundTripAsrWerMean))),
+      ttsRoundTripAsrWerByTurn: turnReports.map((r) => r.tts.roundTripAsrWerMean),
       totalTurnMsMedian: round1(median(turnReports.map((r) => r.totalTurnMs))),
       bargeInCancelMs: bargeIn ? bargeIn.httpAbortMs : null,
       serverPeakRssMb: peakRss,
@@ -1195,6 +1241,10 @@ async function main() {
     summary.flowCompletedOk = flowCompletedOk;
     summary.optimizationReadyOk = optimizationReadyOk;
     summary.requiredOptimizations = requiredOptimizations;
+    const fullServerLog = fs.existsSync(path.join(tmpDir, "server.log"))
+      ? fs.readFileSync(path.join(tmpDir, "server.log"), "utf8")
+      : "";
+    summary.codecBackend = parseCodecBackendLog(fullServerLog);
 
     const out = {
       ...baseReport,
@@ -1212,9 +1262,7 @@ async function main() {
       summary,
       bargeIn,
       turns: turnReports,
-      serverLog: fs.existsSync(path.join(tmpDir, "server.log"))
-        ? fs.readFileSync(path.join(tmpDir, "server.log"), "utf8").split("\n").slice(-300).join("\n")
-        : null,
+      serverLog: fullServerLog ? fullServerLog.split("\n").slice(-300).join("\n") : null,
     };
     return finish(out, args, logFn);
   } catch (err) {
@@ -1286,13 +1334,6 @@ function finish(report, args, logFn) {
     );
   } else {
     logFn(`RESULT status=${report.status}: ${report.reason}`);
-  }
-  if (args.json) {
-    // Machine-readable: emit the (single-run) report on stdout, same as the
-    // sibling harnesses (`embedding_bench.mjs`, `guided_decode_token_bench.mjs`,
-    // `bargein_latency_harness.mjs`, …). `--json` implies `--quiet` so stdout
-    // stays parseable.
-    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   }
   // The bench exits 0 whenever it produced its output (including needs-*),
   // matching the eval-suite honesty contract; a non-zero exit means a harness

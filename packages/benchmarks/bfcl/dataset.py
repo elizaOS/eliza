@@ -566,6 +566,7 @@ class BFCLDataset:
         self,
         n: int,
         categories: Optional[list[BFCLCategory]] = None,
+        require_ground_truth: bool = True,
     ) -> list[BFCLTestCase]:
         """Get a stratified sample of test cases."""
         import random
@@ -579,7 +580,11 @@ class BFCLDataset:
         samples: list[BFCLTestCase] = []
 
         for category in categories:
-            category_cases = list(self.get_by_category(category))
+            category_cases = [
+                tc
+                for tc in self.get_by_category(category)
+                if not require_ground_truth or tc.has_ground_truth
+            ]
             if category_cases:
                 sample_size = min(samples_per_category, len(category_cases))
                 samples.extend(random.sample(category_cases, sample_size))
@@ -587,7 +592,11 @@ class BFCLDataset:
         # If we need more samples, add randomly
         remaining = n - len(samples)
         if remaining > 0:
-            remaining_cases = [tc for tc in self._test_cases if tc not in samples]
+            remaining_cases = [
+                tc
+                for tc in self._test_cases
+                if tc not in samples and (not require_ground_truth or tc.has_ground_truth)
+            ]
             if remaining_cases:
                 samples.extend(
                     random.sample(remaining_cases, min(remaining, len(remaining_cases)))

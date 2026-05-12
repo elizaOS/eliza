@@ -316,7 +316,7 @@ if (TARGET === "ios" || TARGET === "ios-jsc") {
     stubsDir,
     "ios-child-process.cjs",
   );
-  nativeStubs.child_process = path.join(stubsDir, "ios-child-process.cjs");
+  nativeStubs["child_process"] = path.join(stubsDir, "ios-child-process.cjs");
   nativeStubs["node:os"] = path.join(stubsDir, "ios-os.cjs");
   // Note: `bun:ffi` is provided natively by the iOS Bun runtime; the
   // ios-ffi.cjs stub only loads in dev/desktop fallbacks where this bundle
@@ -333,17 +333,17 @@ if (TARGET === "ios-jsc") {
   const throwStub = path.join(stubsDir, "ios-jsc-throw.cjs");
   const dnsStub = path.join(stubsDir, "ios-jsc-dns.cjs");
   nativeStubs["node:net"] = throwStub;
-  nativeStubs.net = throwStub;
+  nativeStubs["net"] = throwStub;
   nativeStubs["node:tls"] = throwStub;
-  nativeStubs.tls = throwStub;
+  nativeStubs["tls"] = throwStub;
   nativeStubs["node:dgram"] = throwStub;
-  nativeStubs.dgram = throwStub;
+  nativeStubs["dgram"] = throwStub;
   nativeStubs["node:cluster"] = throwStub;
-  nativeStubs.cluster = throwStub;
+  nativeStubs["cluster"] = throwStub;
   nativeStubs["node:worker_threads"] = throwStub;
-  nativeStubs.worker_threads = throwStub;
+  nativeStubs["worker_threads"] = throwStub;
   nativeStubs["node:dns"] = dnsStub;
-  nativeStubs.dns = dnsStub;
+  nativeStubs["dns"] = dnsStub;
   nativeStubs["node:dns/promises"] = dnsStub;
   nativeStubs["dns/promises"] = dnsStub;
   nativeStubs["bun:ffi"] = path.join(stubsDir, "ios-ffi.cjs");
@@ -587,6 +587,63 @@ const zodCjsResolverPlugin = {
       }
       return undefined;
     });
+  },
+};
+
+function findEthersCommonJsIndex() {
+  const candidates = [];
+  const directPackageRoots = [
+    path.resolve(repoRoot, "node_modules", "ethers"),
+    path.resolve(agentRoot, "node_modules", "ethers"),
+  ];
+  for (const pkgRoot of directPackageRoots) {
+    candidates.push(path.join(pkgRoot, "lib.commonjs", "index.js"));
+  }
+
+  const bunDirs = [
+    path.resolve(repoRoot, "node_modules", ".bun"),
+    path.resolve(agentRoot, "node_modules", ".bun"),
+  ];
+  for (const bunDir of bunDirs) {
+    for (const entry of readdirSyncSafe(bunDir)) {
+      if (!entry.startsWith("ethers@")) continue;
+      candidates.push(
+        path.join(
+          bunDir,
+          entry,
+          "node_modules",
+          "ethers",
+          "lib.commonjs",
+          "index.js",
+        ),
+      );
+    }
+  }
+
+  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+
+const ethersCommonJsIndex = findEthersCommonJsIndex();
+if (!ethersCommonJsIndex) {
+  console.error(
+    "[build-mobile] FATAL: could not locate ethers/lib.commonjs/index.js. " +
+      "Run `bun install` first.",
+  );
+  process.exit(1);
+}
+
+// Bun.build's large mobile ESM graph can lower `import { ethers }` or
+// `import * as ethers` to bare identifiers like `id2`, `keccak256`, and
+// `JsonRpcProvider` without emitting the corresponding bindings. Resolve
+// ethers through its CommonJS entry so Bun packages the real module object
+// with stable properties instead of relying on fragile ESM namespace lowering.
+const ethersCjsResolverPlugin = {
+  name: "eliza-mobile-ethers-cjs",
+  setup(build) {
+    build.onResolve({ filter: /^ethers$/ }, () => ({
+      path: ethersCommonJsIndex,
+      namespace: "file",
+    }));
   },
 };
 
@@ -883,6 +940,7 @@ const buildResult = await Bun.build({
     // the whole process down. Defining the marker as `false` flattens the
     // branch at build time.
     "process.env.ELIZA_DISABLE_DIRECT_RUN": JSON.stringify("1"),
+    "globalThis.__ELIZA_MOBILE_BUNDLE__": JSON.stringify(true),
     // ios-jsc-only defines. Code can branch on ELIZA_RUNTIME='ios-jsc'
     // to detect the JSContext + bridge runtime, and the global flags let
     // the polyfill prefix flip behaviour without re-reading process.env
@@ -898,6 +956,7 @@ const buildResult = await Bun.build({
   plugins: [
     coreTestingStripPlugin,
     zodCjsResolverPlugin,
+    ethersCjsResolverPlugin,
     stubCssPlugin,
     dedupePlugin,
     nativeCapacitorPlugin,

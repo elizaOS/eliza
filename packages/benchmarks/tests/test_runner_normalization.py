@@ -115,7 +115,10 @@ def test_normalize_hermes_samples_jsonl(tmp_path: Path) -> None:
                     {"from": "human", "value": "please call x"},
                     {
                         "from": "gpt",
-                        "value": '<tool_call>{"name":"x","arguments":{"a":1}}</tool_call>',
+                        "value": "",
+                        "tool_calls": [
+                            {"function": {"name": "x", "arguments": json.dumps({"a": 1})}}
+                        ],
                     },
                 ],
                 "tools": [{"name": "x"}],

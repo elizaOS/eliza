@@ -1,4 +1,3 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import { strict as assert } from "node:assert";
 import {
   asUUID,
@@ -44,7 +43,6 @@ export async function setupScenario(
     id: asUUID(uuid()),
     agentId: runtime.agentId,
     name: "E2E Test World",
-    serverId: "e2e-test-server",
     metadata: {
       ownership: {
         ownerId: user.id,
@@ -60,7 +58,7 @@ export async function setupScenario(
     type: ChannelType.DM,
     source: "e2e-test",
     worldId: world.id,
-    serverId: world.serverId,
+    serverId: "e2e-test-server",
   };
   await runtime.createRoom(room);
 
@@ -107,8 +105,9 @@ export function sendMessageAndWaitForResponse(
 
     // The callback function that the message handler will invoke with the agent's final response.
     // We use this callback to resolve our promise.
-    const callback = (responseContent: Content) => {
+    const callback = async (responseContent: Content): Promise<Memory[]> => {
       resolve(responseContent);
+      return [];
     };
 
     // Emit the event to trigger the agent's message processing logic.

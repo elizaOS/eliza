@@ -36,7 +36,6 @@ train = [
   "accelerate>=1.1.0",
   "peft>=0.14.0",
   "trl>=0.13.0",
-  "bitsandbytes>=0.45.0",
   "datasets>=3.2.0",
   "wandb>=0.18.0",
   "apollo-torch>=1.0.3",

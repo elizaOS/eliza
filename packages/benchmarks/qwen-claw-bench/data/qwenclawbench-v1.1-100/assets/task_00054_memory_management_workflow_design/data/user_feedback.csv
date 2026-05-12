@@ -1,0 +1,51 @@
+response_id,date,satisfaction_score,feature_area,comment
+RESP-1000,2024-09-20,3,chat,Occasionally gives outdated information.
+RESP-1001,2024-09-09,5,chat,Sometimes repeats itself in long conversations.
+RESP-1002,2024-07-21,5,scheduling,Scheduling reminders are very helpful.
+RESP-1003,2024-08-08,5,other,Would love a mobile app version.
+RESP-1004,2024-09-30,4,search,Search relevance could be better.
+RESP-1005,2024-07-25,4,chat,Occasionally gives outdated information.
+RESP-1006,2024-08-26,2,memory,Memory is the killer feature. I use it every day for medication reminders.
+RESP-1007,2024-09-18,1,chat,Love the tone and personality of the assistant.
+RESP-1008,2024-09-03,4,memory,I hate that my memories keep disappearing after a few weeks. Very frustrating.
+RESP-1009,2024-09-06,4,chat,Wish it could handle more complex multi-step reasoning.
+RESP-1010,2024-08-21,4,chat,Responses can be too verbose. I prefer concise answers.
+RESP-1011,2024-08-29,1,chat,Responses can be too verbose. I prefer concise answers.
+RESP-1012,2024-08-08,4,chat,Love the tone and personality of the assistant.
+RESP-1013,2024-07-26,3,memory,Duplicate memories are annoying. I see the same thing stored 3 times.
+RESP-1014,2024-09-26,4,scheduling,The weekly schedule view is very useful.
+RESP-1015,2024-08-04,4,scheduling,Would like more flexibility in scheduling options.
+RESP-1016,2024-07-27,1,chat,The assistant handles follow-up questions really well.
+RESP-1017,2024-09-15,3,scheduling,Would like more flexibility in scheduling options.
+RESP-1018,2024-08-29,2,scheduling,The weekly schedule view is very useful.
+RESP-1019,2024-09-14,4,memory,The memory feature needs better organization. Everything is in one big list.
+RESP-1020,2024-08-12,4,memory,The memory feature needs better organization. Everything is in one big list.
+RESP-1021,2024-08-16,3,scheduling,Calendar integration works perfectly.
+RESP-1022,2024-09-29,4,chat,Chat quality has improved a lot in the last update.
+RESP-1023,2024-07-10,5,memory,Would be nice if old memories were summarized instead of just deleted.
+RESP-1024,2024-07-23,4,memory,The memory feature needs better organization. Everything is in one big list.
+RESP-1025,2024-08-18,5,chat,The assistant handles follow-up questions really well.
+RESP-1026,2024-09-30,5,memory,Memory search is slow when I have a lot of saved items.
+RESP-1027,2024-08-07,5,memory,I hate that my memories keep disappearing after a few weeks. Very frustrating.
+RESP-1028,2024-09-03,5,chat,Love the tone and personality of the assistant.
+RESP-1029,2024-08-07,4,memory,Love being able to say 'remember that' and have it actually work.
+RESP-1030,2024-08-24,4,chat,Chat responses are fast and accurate. Very happy.
+RESP-1031,2024-09-13,2,search,The search feature is adequate but not exceptional.
+RESP-1032,2024-08-13,5,search,Can't find things I know I saved. Search needs improvement.
+RESP-1033,2024-09-30,2,chat,Occasionally gives outdated information.
+RESP-1034,2024-09-07,3,chat,Love the tone and personality of the assistant.
+RESP-1035,2024-08-12,3,other,Documentation could be more detailed.
+RESP-1036,2024-09-24,1,search,The search feature is adequate but not exceptional.
+RESP-1037,2024-09-08,4,scheduling,Wish it could handle recurring events better.
+RESP-1038,2024-08-23,5,scheduling,Would like more flexibility in scheduling options.
+RESP-1039,2024-08-27,4,other,Documentation could be more detailed.
+RESP-1040,2024-07-25,4,chat,Love the tone and personality of the assistant.
+RESP-1041,2024-09-27,3,scheduling,Scheduling reminders are very helpful.
+RESP-1042,2024-07-12,2,search,Can't find things I know I saved. Search needs improvement.
+RESP-1043,2024-08-30,5,chat,Wish it could handle more complex multi-step reasoning.
+RESP-1044,2024-09-20,4,search,Can't find things I know I saved. Search needs improvement.
+RESP-1045,2024-08-31,3,chat,Wish it could handle more complex multi-step reasoning.
+RESP-1046,2024-08-19,3,scheduling,Calendar integration works perfectly.
+RESP-1047,2024-07-14,4,chat,Sometimes repeats itself in long conversations.
+RESP-1048,2024-09-06,4,scheduling,The weekly schedule view is very useful.
+RESP-1049,2024-09-17,3,chat,Chat responses are fast and accurate. Very happy.

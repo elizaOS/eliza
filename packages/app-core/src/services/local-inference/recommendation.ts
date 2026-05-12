@@ -28,7 +28,6 @@ import type {
 // type so the ladder definitions can't drift from the canonical list.
 // Adding a tier requires extending the manifest module; this file picks
 // it up automatically.
-const TIER_0_8B: Eliza1TierId = "eliza-1-0_8b";
 const TIER_0_6B: Eliza1TierId = "eliza-1-0_6b";
 const TIER_1_7B: Eliza1TierId = "eliza-1-1_7b";
 const TIER_2B: Eliza1TierId = "eliza-1-2b";

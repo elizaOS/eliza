@@ -17,7 +17,7 @@ Generated from the launch-readiness QA reports in `launchdocs/`.
 - `05-settings-qa.md`
 - `06-ios-qa.md`
 - `07-android-qa.md`
-- `08-cloud-eliza-qa.md`
+- `08-cloud-eliza-ai-qa.md`
 - `09-desktop-qa.md`
 - `10-remote-interfaces.md`
 - `11-browser-wallet-qa.md`
@@ -78,7 +78,7 @@ Note: a direct `bun test` run against the launchpad tests failed because those t
 - Harden onboarding remote target validation and cloud agent auto-pick behavior.
 - Add route/client parity tests for LifeOps connectors and cloud pairing.
 - Add local model UX tests for local-only mode plus cloud API/RPC combinations.
-- Expand prompt/trajectory evals and add efficiency budgets for TOON/caveman-compressed payloads.
+- Expand prompt/trajectory evals and add efficiency budgets for native tool-call payloads and compacted prompt surfaces.
 
 ## Human Work Plan
 

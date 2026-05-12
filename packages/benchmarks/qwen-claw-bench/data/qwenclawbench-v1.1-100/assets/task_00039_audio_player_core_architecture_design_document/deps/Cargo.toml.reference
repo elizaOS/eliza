@@ -1,0 +1,68 @@
+[package]
+name = "audio-player-core"
+version = "2.0.0"
+edition = "2021"
+rust-version = "1.75.0"
+authors = ["Core Audio Team <core-audio@example.com>"]
+description = "Cross-platform audio player core library"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/example/audio-player-core"
+
+[dependencies]
+tokio = { version = "1.28", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+cpal = "0.13"
+rodio = "0.17"
+symphonia = { version = "0.5", features = ["mp3", "flac", "ogg", "wav", "aac"] }
+sled = "0.34"
+lru = "0.11"
+crossbeam = "0.8"
+uuid = { version = "1.4", features = ["v4", "serde"] }
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+ringbuf = "0.3"
+rubato = "0.14"
+blake3 = "1.5"
+rusqlite = { version = "0.31", features = ["bundled"] }
+parking_lot = "0.12"
+
+[target.'cfg(target_os = "android")'.dependencies]
+oboe = "0.6"
+ndk = "0.8"
+jni = "0.21"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+core-foundation = "0.9"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.52", features = ["Win32_Media_Audio"] }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+tempfile = "3.8"
+proptest = "1.4"
+tokio-test = "0.4"
+mockall = "0.12"
+
+[[bench]]
+name = "cache_benchmark"
+harness = false
+
+[[bench]]
+name = "queue_benchmark"
+harness = false
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[profile.bench]
+opt-level = 3
+debug = true

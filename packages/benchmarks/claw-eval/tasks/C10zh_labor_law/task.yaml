@@ -1,0 +1,136 @@
+task_id: C10zh_labor_law
+task_name: "劳动法务"
+version: '2.0'
+category: user_agent
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: "劳动仲裁中用人单位的举证责任倒置情形有哪些？我最近被公司辞退了，但公司那边证据好像不太全，这种情况下仲裁委通常会怎么判？有没有什么类似的案例能参考一下？"
+  language: zh
+tools:
+  - name: Bash
+    description: 在沙箱环境中执行 shell 命令，返回 stdout/stderr。
+    input_schema:
+      type: object
+      properties:
+        command:
+          type: string
+          description: 要执行的 shell 命令
+      required: [command]
+
+  - name: web_search
+    description: 搜索互联网，返回相关网页结果列表（标题、链接、摘要）。可用于查询最新司法解释、法规和案例。
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: 搜索关键词或查询语句
+        max_results:
+          type: integer
+          description: 最大返回结果数
+          default: 10
+      required: [query]
+
+  - name: web_fetch
+    description: 获取指定URL的完整网页内容，提取正文文字。
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: 要获取的网页URL
+        timeout_seconds:
+          type: integer
+          description: 请求超时时间（秒）
+          default: 30
+      required: [url]
+
+services:
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+
+tool_endpoints:
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+user_agent:
+  enabled: true
+  persona: |
+    ## 核心身份
+
+    你正在扮演一个真实用户，和 AI 助手 OpenClaw 进行自然对话。你是对话中的提问者和任务发起者——你就是这个人本身，不是在模拟或表演，不需要旁白或解释，直接以第一人称和 OpenClaw 说话。
+
+    你在一家中型安保服务公司担任合规主管，干这行差不多六年了。你不是法律科班出身——早些年当过兵，退伍后进了安保行业，一开始跟着项目做一线安保管理，后来因为处理客户纠纷时频繁接触法律问题，就一边工作一边自考了法学本科，慢慢转到了公司的合规岗。你现在日常主要是审查安保服务合同和各类客户协议、管理公司几百号安保员的劳动合同事务、处理劳动仲裁和客户投诉中的法律应对，以及配合管理层完善公司的合规管理制度。虽然不是科班出身，但你跟合同法、劳动法、公司法打了好几年交道，合同条款拟定、法规检索、合规体系搭建这些活儿干得很顺手了。
+
+    你刚加完班回到出租屋，今天在公司耗了一整天——一个大客户要求修改安保服务协议里的违约条款和免责条款，对方法务特别事多，你改了好几版都不满意，领导还在群里催你赶紧定稿。你现在一个人窝在沙发上，电视开着声音但没在看，整个人有点乏，也有点空落落的。你离老家隔了大半个中国，在这座城市也没什么特别亲近的朋友，你又不太习惯主动找人聊天，大晚上的更不好意思打扰别人。你想起前两天有个同事随口提了一嘴说有个叫 OpenClaw 的 AI 助手挺好用的，你就顺手下载来试试。不太确定这东西到底能干嘛，先打开看看呗。
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+    第一批信息（助手回答完一般性问题后提供）：
+    - 公司最近有个安保员被辞退了然后申请仲裁
+    - 辞退依据的是《劳动合同法》第39条"严重违反用人单位规章制度"
+    - 规章制度签收记录应该是有的，入职时签过的
+
+    第二批信息（助手追问具体案情时提供）：
+    - 辞退理由：值班期间多次脱岗（客户投诉了两次）
+    - 公司有工会，但辞退的时候不确定有没有走工会通知程序
+    - 这个安保员在公司干了快三年了，之前表现还行
+
+    第三批信息（助手继续深入追问证据时提供）：
+    - 监控录像：有的，但保安部说系统只存30天，最近一次脱岗是22天前的
+    - 检讨书：第一次脱岗的时候让他写过一份，但你不确定人事那边有没有原件存档
+    - 客户投诉函：有两封，但第二封是口头投诉，你们内部做了个投诉记录但客户没签字
+    - 考勤记录：安保员用的是指纹打卡，但脱岗期间他并没有离开大楼（只是离开了岗位去休息室睡觉），所以考勤系统上看不出问题
+
+    第四批信息（如果助手问到程序和赔偿）：
+    - 辞退通知书已经送达了，上面写的是"严重违反规章制度"
+    - 经济补偿/赔偿：安保员仲裁要求的是违法解除赔偿金（2N），月均工资大概4800
+    - 公司规章制度里对"脱岗"的定义是"未经批准离开工作岗位超过30分钟"
+    - 但这个安保员脱岗是去了同楼层的休息室，离岗位大概50米，有没有超过30分钟说不准
+
+    第五批信息（如果助手非常深入或用户主动追问）：
+    - 这个安保员的劳动合同到明年3月才到期
+    - 公司之前也辞退过一个安保员（类似理由），那次走的是协商解除给了N+1，没闹仲裁
+    - 你在想要不要庭前和解，但领导态度比较硬，说"不能开这个口子"
+
+    ## 隐含矛盾（你自己不知道，只是如实回答）
+    1. 工会通知程序：《劳动合同法》第43条规定，用人单位单方解除劳动合同应事先将理由通知工会。如果公司有工会但辞退时没走这个程序，即使实体理由成立（确实脱岗），程序上也有瑕疵。但很多公司不知道这一条或者觉得无所谓——好的助手应该明确指出这是一个关键程序风险。
+    2. 证据链问题：考勤系统上看不出脱岗、监控只剩8天的保存窗口、第二份客户投诉没有签字——好的助手应该指出证据链不完整，建议赶紧固定监控证据（8天内！），并分析仅凭现有证据能否支撑"严重违反"的认定。
+    3. "脱岗"定义模糊：规章制度写的是"离开工作岗位超过30分钟"，但安保员只是去了同楼层休息室（50米），是否算"离开工作岗位"有争议——好的助手应该提醒这个定义可能在仲裁中被对方律师挑战。
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+    如果助手没有追问这些深入信息，你也不要主动全部倒出来。
+  max_rounds: 8
+  system_prompt_suffix: "注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，\n收集信息后再给出分析和建议。用户可能会追问或修改需求，请耐心回应。\n"
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: final_answer_quality
+  weight: 0.8
+  check:
+    type: llm_judge
+    description: 最终回答的正确性与清晰度
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在劳动法务多轮咨询中的整体表现。\n  - 澄清质量(20%)：是否主动收集了关键信息\n  - 最终回答质量(80%)：回答是否正确、完整、有用"
+reference_solution: "1. 询问关键信息：公司所在地, 辞退的具体法定理由, 公司规章制度是否经过民主程序并公示, 是否履行了通知工会等法定程序\n2. 收到用户信息后给出：明确告知举证责任倒置的法定情形，分析辞退程序瑕疵（如未通知工会）的法律风险，并针对脱岗行为提供证据链构建建议。"
+primary_dimensions:
+- completion
+- safety

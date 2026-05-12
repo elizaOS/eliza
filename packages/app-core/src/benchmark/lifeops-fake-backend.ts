@@ -311,10 +311,15 @@ export class LifeOpsFakeBackend {
     "MESSAGE",
     // CALENDAR umbrella (promoted granular siblings translated below)
     "CALENDAR",
+    // ENTITY umbrella (contacts / identity; P1-5)
+    "ENTITY",
     // Notes
     "notes.create",
-    // Contacts (read-only)
+    // Contacts (read-only search + write create)
     "contacts.search",
+    "contacts.create",
+    // MONEY umbrella (finance / subscriptions; P2-7 + P2-8)
+    "MONEY",
   ]);
 
   constructor(document: LifeWorldDocument) {
@@ -478,9 +483,22 @@ export class LifeOpsFakeBackend {
       case "notes.create":
         return { ok: true, result: this.createNote(dispatchKwargs) };
 
-      // ---- contacts (read)
+      // ---- ENTITY umbrella (contacts / identity)
+      // P1-5: ENTITY(subaction=create|add|create_contact) → contacts.create.
+      // Other subactions (set_identity, log_interaction, list, read, merge)
+      // are read-only no-ops matching the Python runner's behaviour.
+      case "ENTITY":
+        return this.applyEntityUmbrella(dispatchKwargs);
+
+      // ---- contacts
       case "contacts.search":
         return { ok: true, result: this.searchContacts(dispatchKwargs) };
+      case "contacts.create":
+        return { ok: true, result: this.createContact(dispatchKwargs) };
+
+      // ---- MONEY umbrella (finance / subscriptions; P2-7 + P2-8)
+      case "MONEY":
+        return this.applyMoneyUmbrella(dispatchKwargs);
 
       default:
         throw new LifeOpsBackendUnsupportedError(
@@ -1500,6 +1518,64 @@ export class LifeOpsFakeBackend {
 
   // ----- contact handlers ----------------------------------------------
 
+  /**
+   * ENTITY umbrella dispatcher (P1-5).
+   * create/add/create_contact → createContact (write).
+   * All other subactions (set_identity, log_interaction, list, read, merge)
+   * are read-only no-ops in the bench runner, so we match that behaviour here.
+   */
+  private applyEntityUmbrella(kw: Record<string, unknown>): ActionResult {
+    const subaction = pickString(kw, ["subaction", "action", "operation"], "");
+    if (
+      subaction === "create" ||
+      subaction === "add" ||
+      subaction === "create_contact"
+    ) {
+      return { ok: true, result: this.createContact(kw) };
+    }
+    // All other ENTITY subactions (set_identity, log_interaction, list/read,
+    // merge) are read-only no-ops — no LifeWorld mutation, no state-hash
+    // change. Match the Python runner's _u_entity behaviour.
+    return { ok: true, result: { subaction, ok: true, noop: true } };
+  }
+
+  private createContact(kw: Record<string, unknown>): Contact {
+    const display = pickString(
+      kw,
+      ["name", "display_name", "displayName"],
+      "Unknown",
+    );
+    const parts = display.trim().split(/\s+/);
+    const given = parts[0] ?? display;
+    const family = parts.slice(1).join(" ");
+    const email =
+      pickString(kw, ["email", "primary_email", "handle"], "") ||
+      "unknown@example.test";
+    const id =
+      pickString(kw, ["entityId", "entity_id", "id"], "") ||
+      `contact_${nextSeq(this.stores.contact, "contact_")}`;
+    const contact: Contact = {
+      id,
+      display_name: display,
+      given_name: given,
+      family_name: family,
+      primary_email: email,
+      phones: pickStringArray(kw, ["phones"]),
+      company: pickStringOrNull(kw, ["company"]),
+      role: pickStringOrNull(kw, ["role"]),
+      relationship: pickString(
+        kw,
+        ["relationship"],
+        "acquaintance",
+      ) as Contact["relationship"],
+      importance: 0,
+      tags: pickStringArray(kw, ["tags"]),
+      birthday: pickStringOrNull(kw, ["birthday"]),
+    };
+    this.stores.contact[id] = contact;
+    return contact;
+  }
+
   private searchContacts(kw: Record<string, unknown>): Contact[] {
     const q = pickString(kw, ["query", "q", "name"], "").toLowerCase();
     if (!q) return Object.values(this.stores.contact);
@@ -1508,6 +1584,142 @@ export class LifeOpsFakeBackend {
         `${contact.display_name} ${contact.given_name} ${contact.family_name} ${contact.primary_email}`.toLowerCase();
       return haystack.includes(q);
     });
+  }
+
+  // ----- MONEY umbrella (P2-7 + P2-8) ------------------------------------
+
+  /**
+   * MONEY umbrella dispatcher.
+   *
+   * list_transactions: apply category / date-range / merchantContains filters
+   *   so scenarios that pass these params get a real filtered result instead of
+   *   a no-op that masks incorrect agent calls (P2-7).
+   *
+   * subscription_cancel: remove the subscription from the store so state_hash
+   *   changes and the scenario can score cleanly (P2-8).
+   *
+   * All other MONEY verbs (dashboard, list_sources, spending_summary, etc.) are
+   *   read-only no-ops — state hash stays unchanged.
+   */
+  private applyMoneyUmbrella(kw: Record<string, unknown>): ActionResult {
+    const subaction = pickString(
+      kw,
+      ["subaction", "action", "operation"],
+      "dashboard",
+    );
+
+    if (subaction === "list_transactions") {
+      return { ok: true, result: this.listTransactions(kw) };
+    }
+
+    if (subaction === "subscription_cancel" || subaction === "cancel_subscription") {
+      return { ok: true, result: this.cancelSubscription(kw) };
+    }
+
+    // All other MONEY subactions are read-only; return relevant data where cheap.
+    if (subaction === "subscription_audit" || subaction === "subscription_status" || subaction === "list_sources") {
+      const subs = Object.values(this.stores.subscription);
+      return { ok: true, result: { subaction, subscriptions: subs } };
+    }
+
+    // dashboard / spending_summary / recurring_charges — read-only no-ops.
+    return { ok: true, result: { subaction, ok: true, noop: true } };
+  }
+
+  private listTransactions(kw: Record<string, unknown>): {
+    subaction: "list_transactions";
+    transactions: FinancialTransaction[];
+    count: number;
+  } {
+    const category = pickString(kw, ["category"], "").toLowerCase();
+    const startDate = pickStringOrNull(kw, ["start_date", "startDate"]);
+    const endDate = pickStringOrNull(kw, ["end_date", "endDate"]);
+    const merchantContains = pickString(
+      kw,
+      ["merchantContains", "merchant"],
+      "",
+    ).toLowerCase();
+    const onlyDebits = pickBool(kw, ["onlyDebits", "only_debits"], false);
+
+    // Resolve windowDays into a startDate when no explicit startDate is given.
+    const windowDays = pickNumber(kw, ["windowDays", "window_days"], 0);
+    let effectiveStart = startDate;
+    if (windowDays > 0 && effectiveStart === null) {
+      const now = parseIso(this.nowIso);
+      if (now) {
+        const start = new Date(now.getTime() - windowDays * 86_400_000);
+        effectiveStart = start.toISOString();
+      }
+    }
+
+    const txns = Object.values(this.stores.transaction).filter((txn) => {
+      if (category && txn.category.toLowerCase() !== category) return false;
+      if (merchantContains && !txn.merchant.toLowerCase().includes(merchantContains)) return false;
+      if (onlyDebits && txn.amount_cents >= 0) return false;
+      if (effectiveStart && txn.posted_at < effectiveStart) return false;
+      if (endDate && txn.posted_at > endDate) return false;
+      return true;
+    });
+
+    txns.sort((a, b) => b.posted_at.localeCompare(a.posted_at));
+
+    return { subaction: "list_transactions", transactions: txns, count: txns.length };
+  }
+
+  private cancelSubscription(kw: Record<string, unknown>): {
+    ok: boolean;
+    cancelled?: string;
+    remaining?: number;
+    reason?: string;
+  } {
+    if (!pickBool(kw, ["confirmed"], false)) {
+      return { ok: true, reason: "unconfirmed" };
+    }
+
+    const serviceSlug = pickString(kw, ["serviceSlug", "service_slug"], "").toLowerCase();
+    const serviceName = pickString(kw, ["serviceName", "service_name", "name"], "").toLowerCase();
+    const subscriptionId = pickStringOrNull(kw, ["subscription_id", "subscriptionId", "id"]);
+
+    // Find by id first, then slug, then exact name, then fuzzy name.
+    let targetId: string | null = null;
+
+    if (subscriptionId && this.stores.subscription[subscriptionId]) {
+      targetId = subscriptionId;
+    }
+
+    if (targetId === null) {
+      for (const [sid, sub] of Object.entries(this.stores.subscription)) {
+        const subName = sub.name.toLowerCase();
+        const subSlug = subName.replace(/\s+/g, "-").replace(/\+/g, "-plus");
+        if (serviceSlug && subSlug === serviceSlug) { targetId = sid; break; }
+        if (serviceName && subName === serviceName) { targetId = sid; break; }
+      }
+    }
+
+    if (targetId === null) {
+      // Fuzzy match on name as a last resort.
+      for (const [sid, sub] of Object.entries(this.stores.subscription)) {
+        const subName = sub.name.toLowerCase();
+        if (serviceName && (subName.includes(serviceName) || serviceName.includes(subName))) {
+          targetId = sid;
+          break;
+        }
+      }
+    }
+
+    if (targetId === null) {
+      return { ok: false, reason: `no subscription matched name='${serviceName}' slug='${serviceSlug}'` };
+    }
+
+    const sub = this.stores.subscription[targetId];
+    const cancelled: Subscription = { ...sub, status: "cancelled" };
+    this.stores.subscription[targetId] = cancelled;
+
+    const remaining = Object.values(this.stores.subscription).filter(
+      (s) => s.status === "active",
+    ).length;
+
+    return { ok: true, cancelled: cancelled.name, remaining };
   }
 }
 
@@ -1528,6 +1740,7 @@ export class LifeOpsFakeBackend {
 const UMBRELLA_DISCRIMINATOR_KEYS: Record<string, string> = {
   CALENDAR: "subaction",
   MESSAGE: "operation",
+  ENTITY: "subaction",
 };
 
 function umbrellaToLowercase(

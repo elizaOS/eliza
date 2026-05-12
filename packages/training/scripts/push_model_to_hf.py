@@ -36,7 +36,7 @@ Usage::
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
         --registry-key eliza-1-2b \\
         --checkpoint checkpoints/eliza-1-2b-apollo/final \\
-        --eval-results path/to/eliza_bench.json
+        --eval-results path/to/native_tool_call_bench.json
 
 The script defers the heavy upload to `huggingface_hub.HfApi.upload_folder`
 (or `upload_large_folder` for >50 GB payloads — the 27B bf16 weights hit
@@ -197,7 +197,7 @@ QUANT_BLURBS: dict[str, dict[str, str]] = {
         "runtime": "eliza local runtime, vLLM with custom kernel, scripts/quantization/polarquant_apply.py",
         "file_size": "~38% of bf16",
         "target_hw": "16 GB consumer GPU (RTX 5080 Laptop, RTX 4070 Ti)",
-        "quality_delta": "<=0.3 PPL on the eliza-toon-v1-sft test split",
+        "quality_delta": "<=0.3 PPL on the eliza-native-v1-sft test split",
         "extra_tags": "",
     },
     "turboquant": {
@@ -227,14 +227,14 @@ QUANT_BLURBS: dict[str, dict[str, str]] = {
         "runtime": "vLLM with --quantization fp8, TensorRT-LLM, scripts/training/te_fp8.py",
         "file_size": "~50% of bf16",
         "target_hw": "Hopper (H100/H200), Blackwell (B100/B200, RTX Pro 5000+), MI300+",
-        "quality_delta": "<=0.5 PPL on the eliza-toon-v1-sft test split",
+        "quality_delta": "<=0.5 PPL on the eliza-native-v1-sft test split",
         "extra_tags": "",
     },
     "gguf-q4_k_m": {
         "blurb": (
             "GGUF Q4_K_M (4-bit K-quant, mixed precision) for llama.cpp / "
             "llama-server / Ollama. IMatrix calibrated on the "
-            "eliza-toon-v1-sft validation split."
+            "eliza-native-v1-sft validation split."
         ),
         "scheme_name": "GGUF Q4_K_M (K-quant, mixed)",
         "bits_weights": "~4.5 (mixed)",
@@ -243,7 +243,7 @@ QUANT_BLURBS: dict[str, dict[str, str]] = {
         "runtime": "llama.cpp / llama-server / Ollama / LM Studio",
         "file_size": "~30% of bf16",
         "target_hw": "16 GB consumer GPU, Apple Silicon (M-series 16 GB+)",
-        "quality_delta": "~0.5 PPL on the eliza-toon-v1-sft test split",
+        "quality_delta": "~0.5 PPL on the eliza-native-v1-sft test split",
         "extra_tags": "  - llama.cpp\n  - gguf\n",
     },
     "gguf-q5_k_m": {
@@ -258,7 +258,7 @@ QUANT_BLURBS: dict[str, dict[str, str]] = {
         "runtime": "llama.cpp / llama-server / Ollama / LM Studio",
         "file_size": "~37% of bf16",
         "target_hw": "24 GB workstation GPU, Apple Silicon (M-series 24 GB+)",
-        "quality_delta": "~0.2 PPL on the eliza-toon-v1-sft test split",
+        "quality_delta": "~0.2 PPL on the eliza-native-v1-sft test split",
         "extra_tags": "  - llama.cpp\n  - gguf\n",
     },
     "gguf-q6_k": {
@@ -273,7 +273,7 @@ QUANT_BLURBS: dict[str, dict[str, str]] = {
         "runtime": "llama.cpp / llama-server / Ollama / LM Studio",
         "file_size": "~44% of bf16",
         "target_hw": "32 GB workstation GPU (RTX 5090, RTX A6000), Apple Silicon (M-series 32 GB+)",
-        "quality_delta": "~0.05 PPL on the eliza-toon-v1-sft test split",
+        "quality_delta": "~0.05 PPL on the eliza-native-v1-sft test split",
         "extra_tags": "  - llama.cpp\n  - gguf\n",
     },
 }

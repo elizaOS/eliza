@@ -1,0 +1,38 @@
+### /etc/os-release ###
+PRETTY_NAME="Ubuntu 22.04.3 LTS"
+NAME="Ubuntu"
+VERSION_ID="22.04"
+VERSION="22.04.3 LTS (Jammy Jellyfish)"
+VERSION_CODENAME=jammy
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=jammy
+
+### uname -a ###
+Linux prod-web-node03 5.15.0-91-generic #101-Ubuntu SMP Tue Nov 14 13:30:08 UTC 2023 x86_64 x86_64 x86_64 GNU/Linux
+
+### uptime ###
+ 14:30:02 up 142 days,  7:33,  3 users,  load average: 4.21, 3.87, 3.65
+
+### lsb_release -a ###
+No LSB modules are available.
+Distributor ID: Ubuntu
+Description:    Ubuntu 22.04.3 LTS
+Release:        22.04
+Codename:       jammy
+
+### hostnamectl ###
+ Static hostname: prod-web-node03
+       Icon name: computer-server
+         Chassis: server
+      Machine ID: 8a3f2b1c4d5e6f7a8b9c0d1e2f3a4b5c
+         Boot ID: f1e2d3c4b5a69788a9b0c1d2e3f4a5b6
+Operating System: Ubuntu 22.04.3 LTS
+          Kernel: Linux 5.15.0-91-generic
+    Architecture: x86-64
+ Hardware Vendor: Dell Inc.
+  Hardware Model: PowerEdge R730xd

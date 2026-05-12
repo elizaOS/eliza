@@ -1,5 +1,5 @@
 import { logger } from "@elizaos/core";
-import { ethers } from "ethers";
+import * as ethers from "ethers";
 import { isAddressWhitelisted, markAddressVerified } from "./twitter-verify.js";
 
 const ELIZA_NFT_CONTRACT_ADDRESS = "0x5Af0D9827E0c53E4799BB226655A1de152A425a5";

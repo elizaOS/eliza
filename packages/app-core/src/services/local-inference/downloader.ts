@@ -676,6 +676,7 @@ export class Downloader {
       manifestPath,
       record,
       0,
+      catalogEntry.bundleManifestSha256,
     );
 
     const manifest = parseBundleManifestOrThrow(

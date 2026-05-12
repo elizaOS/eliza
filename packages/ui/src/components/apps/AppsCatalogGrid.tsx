@@ -4,6 +4,7 @@ import type { RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";
 import { AppHero } from "./app-identity";
 import { getAppShortName, groupAppsForCatalog } from "./helpers";
+import { getProvenanceFlags, getProvenanceTitle } from "./provenance";
 
 interface AppsCatalogGridProps {
   activeAppNames: Set<string>;
@@ -53,24 +54,19 @@ function appProvenanceLabels(app: RegistryAppInfo): {
   supportLabel: string | null;
   title: string | undefined;
 } {
-  const isThirdParty = app.thirdParty === true || app.origin === "third-party";
-  const isBuiltIn = app.builtIn === true || app.origin === "builtin";
-  const isFirstParty = app.firstParty === true || app.support === "first-party";
-  const isCommunity =
-    app.support === "community" || (isThirdParty && !isFirstParty);
-
+  const flags = getProvenanceFlags(app);
   return {
-    originLabel: isThirdParty ? "Third party" : isBuiltIn ? "Built in" : null,
-    supportLabel: isCommunity
+    originLabel: flags.isThirdParty
+      ? "Third party"
+      : flags.isBuiltIn
+        ? "Built in"
+        : null,
+    supportLabel: flags.isCommunity
       ? "Community"
-      : isFirstParty
+      : flags.isFirstParty
         ? "First party"
         : null,
-    title: isThirdParty
-      ? "Community app registered through the plugin registry"
-      : isBuiltIn || isFirstParty
-        ? "First-party app generated from the elizaOS plugin registry"
-        : undefined,
+    title: getProvenanceTitle(flags, "app"),
   };
 }
 

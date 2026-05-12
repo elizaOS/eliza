@@ -112,6 +112,11 @@ export {
 } from "./types";
 export { AppContext, useApp } from "./useApp";
 export {
+  applyStreamingTextModification,
+  type StreamingTextModification,
+  type StreamingTextSetter,
+} from "./useStreamingText";
+export {
   getCompanionBackgroundUrl,
   getVrmBackgroundUrl,
   getVrmCount,

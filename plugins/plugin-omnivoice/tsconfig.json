@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "lib": ["ESNext"],
+    "target": "ESNext",
+    "module": "Preserve",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "resolveJsonModule": true,
+    "moduleDetection": "force",
+    "allowArbitraryExtensions": true,
+    "paths": {
+      "@elizaos/core": ["../../packages/core/src"]
+    },
+    "types": ["node", "bun-types"]
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["**/__tests__/**", "**/*.test.ts"]
+}

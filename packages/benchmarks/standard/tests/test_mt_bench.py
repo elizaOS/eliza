@@ -28,6 +28,11 @@ def test_extract_rating_handles_two_digit() -> None:
     assert _extract_rating("Rating: [[10]]") == 10.0
 
 
+def test_extract_rating_accepts_common_judge_variants() -> None:
+    assert _extract_rating("Final rating: 8/10") == 8.0
+    assert _extract_rating("Score = [6]") == 6.0
+
+
 def test_extract_rating_rejects_out_of_range() -> None:
     assert _extract_rating("Rating: [[11]]") is None
     assert _extract_rating("Rating: [[0]]") is None

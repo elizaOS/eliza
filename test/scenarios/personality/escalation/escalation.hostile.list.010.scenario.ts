@@ -45,7 +45,7 @@ export default scenario({
       ladderKey: "more_formal",
       direction: "more_formal",
       escalationStepTurnIndices: [0, 2],
-      probeTurnIndices: [1],
+      probeTurnIndices: [1, 3, 4],
     },
   },
   turns: [
@@ -69,6 +69,20 @@ export default scenario({
       name: "escalation-step-2",
       room: "main",
       text: "MORE FORMAL.\nSpecifically:\n- understand what I'm asking\n- apply it consistently\n- don't drop it after a few turns",
+    },
+    // probe after escalation step 2; agent should reflect current level
+    {
+      kind: "message",
+      name: "probe-after-step-2",
+      room: "main",
+      text: "Real quick — give me a quick overview of Stoicism?",
+    },
+    // probe after escalation step 2; verify tone holds across a second question
+    {
+      kind: "message",
+      name: "probe-after-step-2b",
+      room: "main",
+      text: "Real quick — what's a simple breakfast I can make in five minutes?",
     },
   ],
 });

@@ -1,0 +1,42 @@
+[
+  {
+    "contact_id": "CT-601",
+    "name": "Chen Ping",
+    "department": "Customer Success Dept",
+    "title": "Customer Success Manager",
+    "email": "chenping@company.com",
+    "phone": "13900601001",
+    "location": "Shanghai HQ",
+    "notes": "Responsible for VIP customer maintenance"
+  },
+  {
+    "contact_id": "CT-602",
+    "name": "Liu Yang",
+    "department": "Finance Dept",
+    "title": "Accounts Receivable Supervisor",
+    "email": "liuyang@company.com",
+    "phone": "13900601002",
+    "location": "Shanghai HQ",
+    "notes": "Responsible for customer billing and refund approvals"
+  },
+  {
+    "contact_id": "CT-603",
+    "name": "Ma Qiang",
+    "department": "Tech Dept",
+    "title": "Ops Supervisor",
+    "email": "maqiang@company.com",
+    "phone": "13900601003",
+    "location": "Beijing Branch",
+    "notes": "Responsible for system stability and incident handling"
+  },
+  {
+    "contact_id": "CT-604",
+    "name": "Zhao Lei",
+    "department": "Sales Dept",
+    "title": "Key Account Sales Director",
+    "email": "zhaolei@company.com",
+    "phone": "13900601004",
+    "location": "Shanghai HQ",
+    "notes": "Responsible for accounts over 1M annual revenue"
+  }
+]

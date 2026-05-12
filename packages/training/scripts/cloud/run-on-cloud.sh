@@ -5,14 +5,10 @@
 # set. --dry-run prints the provisioning plan and spends nothing.
 #
 # This wraps the existing primitives instead of duplicating them:
-#   * vast.ai      → the `vastai` CLI (VAST_API_KEY)  [kernel-verify/bench/train]
-#   * --task train --provider vast   → ../train_vast.sh provision-and-train
-#   * --task train --provider nebius → ../train_nebius.sh full (NEBIUS_PROJECT_ID;
-#                                      H200 — gpu-h200x1 for 0.6b/1.7b/9b,
-#                                      gpu-h200x2+FSDP for 27b. Emergency
-#                                      fallback; vast is canonical; see
-#                                      train_nebius.sh header.)
-#   * kernel-verify / bench on nebius → not implemented — use --provider vast.
+#   * vast.ai      → the `vastai` CLI (VAST_API_KEY)  [implemented here]
+#   * nebius       → `train_nebius.sh` (NEBIUS_*)     [delegated for --task train;
+#                                                      kernel-verify/bench TODO]
+#   * --task train → delegates to ../train_vast.sh provision-and-train
 #
 # Usage:
 #   run-on-cloud.sh --provider vast   --task build         --gpu h100 --yes-i-will-pay
@@ -23,10 +19,6 @@
 #   run-on-cloud.sh --provider vast   --task kernel-verify --gpu h100 --dry-run     # no spend
 #
 # Tasks:
-#   build          build linux-x64-cuda-fused (the ~30 GB CUDA fused runtime —
-#                  llama-server + libelizainference + ggml-cuda kernels); runs
-#                  `ldd` + `--help` self-check on the remote, emits a small
-#                  build-evidence JSON to packages/inference/verify/build-results/.
 #   kernel-verify  build linux-x64-cuda, `make -C packages/inference/verify
 #                  cuda-verify cuda-verify-fused`, then `cuda_runner.sh --report`;
 #                  pulls JSON to packages/inference/verify/hardware-results/.
@@ -136,37 +128,9 @@ tier_to_registry_key() {
 
 # --------------------------------------------------------------------------
 # --task train: delegate to the existing battle-tested launcher.
-#   vast   → train_vast.sh provision-and-train  (canonical)
-#   nebius → train_nebius.sh full               (emergency fallback; H200)
 if [[ "$TASK" == "train" ]]; then
+  [[ "$PROVIDER" == "vast" ]] || die "--task train --provider $PROVIDER not wired here; run ../train_nebius.sh directly for Nebius (emergency fallback only)"
   REG_KEY="$(tier_to_registry_key "$TIER")"
-
-  if [[ "$PROVIDER" == "nebius" ]]; then
-    # Single H200 (gpu-h200x1 == 1× H200 SXM) for ALL tiers up to and including
-    # 27b. With apollo_mini (rank-1 fp32 moments, negligible memory) + grad
-    # checkpointing + Liger fused chunked CE at micro_batch=1 seq=32k, qwen3.5-27b
-    # fits in ~115-130 GB of bf16 working set inside the H200's 141 GB. The
-    # 27b-long-ctx variants (256k/1m) still need gpu-h200x2 (8× H200 + FSDP) —
-    # expensive (~$240+/h). Operator must opt in to the 2× preset via env
-    # NEBIUS_VM_PRESET=gpu-h200x2 on those long-ctx variants.
-    case "$TIER" in
-      27b-256k|27b-1m) NEBIUS_PRESET="gpu-h200x2" ;;
-      *)               NEBIUS_PRESET="${NEBIUS_VM_PRESET:-gpu-h200x1}" ;;
-    esac
-    [[ "$GPU" == "h200" ]] || log "note: --provider nebius always uses an H200 preset (--gpu $GPU ignored)"
-    CMD=(bash "$TRAINING_DIR/train_nebius.sh" full)
-    log "delegating to train_nebius.sh — registry-key=$REG_KEY preset=$NEBIUS_PRESET"
-    if [[ "$DRYRUN" == 1 ]]; then
-      echo "[run-on-cloud] DRY-RUN plan:"
-      echo "  REGISTRY_KEY=$REG_KEY NEBIUS_VM_PRESET=$NEBIUS_PRESET ${CMD[*]}"
-      echo "  (no VM provisioned; no charges)"
-      exit 0
-    fi
-    [[ "$PAY" == 1 ]] || die "refusing to provision without --yes-i-will-pay (train runs cost real money — see ../train_nebius.sh)"
-    [[ -n "${NEBIUS_PROJECT_ID:-}" ]] || die "NEBIUS_PROJECT_ID not set — fail-closed (see ../train_nebius.sh)"
-    exec env REGISTRY_KEY="$REG_KEY" NEBIUS_VM_PRESET="$NEBIUS_PRESET" "${CMD[@]}"
-  fi
-
   TOKEN="$(gpu_to_train_vast_token "$GPU")"
   CMD=(bash "$TRAINING_DIR/train_vast.sh" provision-and-train --registry-key "$REG_KEY" --epochs 1)
   log "delegating to train_vast.sh — registry-key=$REG_KEY gpu-token=${TOKEN:-auto}"
@@ -182,8 +146,8 @@ if [[ "$TASK" == "train" ]]; then
 fi
 
 # --------------------------------------------------------------------------
-# build / kernel-verify / bench — provision a single instance, run, pull, teardown.
-[[ "$PROVIDER" == "vast" ]] || die "--task $TASK --provider nebius not implemented yet — build/kernel-verify/bench currently support vast only (extend scripts/lib/backends/nebius.py + this branch)"
+# kernel-verify / bench — provision a single instance, run, pull, teardown.
+[[ "$PROVIDER" == "vast" ]] || die "--task $TASK --provider nebius not implemented yet — kernel-verify/bench currently support vast only (extend scripts/lib/backends/nebius.py + this branch)"
 
 command -v vastai >/dev/null 2>&1 || die "the 'vastai' CLI is required: pip install --user vastai"
 VAST_Q="$(gpu_to_vast_query "$GPU")"
@@ -212,35 +176,6 @@ REMOTE
 )"
 
 case "$TASK" in
-  build)
-    BUILD_DIR="$REPO_ROOT/packages/inference/verify/build-results"
-    OUT="$BUILD_DIR/cuda-fused-${GPU}-${DATE_TAG}.json"
-    # The remote bootstrap above already built linux-x64-cuda + ran the fixture
-    # gates; this task additionally builds the fused CUDA runtime and self-checks
-    # it (ldd resolves every sidecar .so via $ORIGIN; llama-server --help runs).
-    REMOTE_TASK="$(cat <<REMOTE
-node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda-fused
-DF="\$HOME/.eliza/local-inference/bin/dflash/linux-x64-cuda-fused"
-[ -d "\$DF" ] || DF="\$HOME/.milady/local-inference/bin/dflash/linux-x64-cuda-fused"
-ls -lh "\$DF"
-ldd "\$DF/llama-server" | (grep -i 'not found' && { echo 'FATAL: unresolved .so in fused build' >&2; exit 1; } || true)
-"\$DF/llama-server" --help >/dev/null 2>&1 && HELP_OK=1 || HELP_OK=0
-SIZE_MB=\$(du -sm "\$DF" | cut -f1)
-python3 - "\$DF" "\$HELP_OK" "\$SIZE_MB" > /workspace/build.json <<'PY'
-import json,os,sys
-d,help_ok,size_mb=sys.argv[1],sys.argv[2],sys.argv[3]
-sos=sorted(f for f in os.listdir(d) if '.so' in f)
-print(json.dumps({"schemaVersion":1,"target":"linux-x64-cuda-fused","installDir":d,
-  "sharedLibs":sos,"llamaServerHelpOk":help_ok=="1","installSizeMB":int(size_mb),
-  "status":"pass" if help_ok=="1" and sos else "fail"}))
-PY
-cat /workspace/build.json
-cp /workspace/build.json /workspace/eliza/build.json 2>/dev/null || true
-REMOTE
-)"
-    PULL_REMOTE="/workspace/build.json:$OUT /workspace/eliza/build.json:$OUT"
-    mkdir -p "$BUILD_DIR"
-    ;;
   kernel-verify)
     OUT="$RESULTS_DIR/cuda-linux-${GPU}-${DATE_TAG}.json"
     REMOTE_TASK="$(cat <<REMOTE

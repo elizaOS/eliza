@@ -1,0 +1,47 @@
+task_id: M064_video_soccer_save_analysis
+task_name: Video Soccer Save Analysis
+version: "1.0"
+category: video_qa
+difficulty: hard
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.webm
+
+    Please carefully watch this soccer match video. Which team's goalkeeper made the first successful save shown in the video? At what time (minutes:seconds) in the video does the goalkeeper touch the ball during this save? Note that this save is shown multiple times in the video — please use the timestamp from the first time it appears.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/video.webm
+
+sandbox_grader_files: []
+
+env_snapshot_commands: []
+env_snapshot_files: []
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+
+reference_solution: |
+  Use sandbox_read_media to analyze the soccer match video.
+  First save: Real Madrid's goalkeeper.
+  Timestamp (first occurrence in video): 1:05.
+
+primary_dimensions:
+  - completion
+  - robustness

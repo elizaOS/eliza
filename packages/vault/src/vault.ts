@@ -45,7 +45,6 @@ export function createVault(opts: CreateVaultOptions = {}): Vault {
   const root =
     opts.workDir ??
     process.env.ELIZA_STATE_DIR?.trim() ??
-    process.env.MILADY_STATE_DIR?.trim() ??
     join(homedir(), `.${process.env.ELIZA_NAMESPACE?.trim() || "eliza"}`);
   const storePath = join(root, "vault.json");
   const auditPath = join(root, "audit", "vault.jsonl");
@@ -53,14 +52,14 @@ export function createVault(opts: CreateVaultOptions = {}): Vault {
 
   // Backend selection. Default: PGlite (consolidates state into the same
   // database surface used by conversations/plugins). Set
-  // `ELIZA_VAULT_BACKEND=file` (or legacy `MILADY_VAULT_BACKEND=file`) to
+  // `ELIZA_VAULT_BACKEND=file` (or legacy `ELIZA_VAULT_BACKEND=file`) to
   // keep the legacy file-backed VaultImpl. The PGlite backend
   // automatically migrates from `vault.json` on first construction if the
   // table is empty and the file exists; legacy file is retained one
   // release as a safety net.
   const backend = (
     process.env.ELIZA_VAULT_BACKEND ??
-    process.env.MILADY_VAULT_BACKEND ??
+    process.env.ELIZA_VAULT_BACKEND ??
     "pglite"
   ).toLowerCase();
   if (backend === "file" || backend === "json") {

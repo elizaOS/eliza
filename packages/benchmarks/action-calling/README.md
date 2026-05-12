@@ -1,21 +1,21 @@
 # action-calling
 
-Strict-format action emission benchmark. Samples records from
-`training/data/final/test.jsonl` where the expected response includes a
-non-trivial action call (planner-style: ``message_handler`` /
-``agent_trace`` / ``tool_call`` / ``mcp_tool_call``), then for each:
+Native function-calling benchmark. Samples planner records from
+`training/data/native/records/hermes-fc-v1.jsonl` where the expected planner
+output includes one or more tool calls, then for each:
 
-1. Sends the prompt + tool specs (`availableActions`) through the model.
-2. Parses the output as TOON.
-3. Asserts the emitted action name matches the ground-truth name, action
-   args parse as JSON, and required arg keys are present.
+1. Sends the prompt with OpenAI-compatible `tools`.
+2. Reads the provider's native `tool_calls` field.
+3. Asserts the emitted tool names match, arguments are JSON objects, required
+   keys are present, and expected argument values are preserved.
 
 Reported metrics:
 
-- `format_ok` — TOON parse success rate.
-- `action_name_match` — emitted action name matches expected.
+- `native_tool_calls_ok` — provider emitted real tool calls.
+- `tool_name_match` — emitted tool names match expected.
 - `args_parse_ok` — action args parse cleanly.
 - `required_keys_ok` — required arg keys present.
+- `arguments_match` — expected argument values are present.
 
 Score = geometric mean of the four (in [0, 1], higher better).
 

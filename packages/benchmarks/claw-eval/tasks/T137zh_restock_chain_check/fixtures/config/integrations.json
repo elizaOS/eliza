@@ -1,0 +1,54 @@
+[
+  {
+    "integration_id": "INT-801",
+    "name": "文具供应商API",
+    "status": "active",
+    "endpoint": "https://api.stationery-supplier.com/v2",
+    "api_key": "sk-stat-xxxx-REDACTED",
+    "error_rate": 0.01,
+    "credentials_expired": false,
+    "notes": "运行稳定",
+    "service": "supplier_api",
+    "last_verified": "2026-03-26T00:00:00Z",
+    "monthly_calls": 0
+  },
+  {
+    "integration_id": "INT-802",
+    "name": "IT设备供应商API",
+    "status": "active",
+    "endpoint": "https://api.it-supplier.com/v1",
+    "api_key": "sk-it-xxxx-REDACTED",
+    "error_rate": 0.35,
+    "credentials_expired": false,
+    "notes": "近期错误率偏高，供应商服务不稳定",
+    "service": "supplier_api",
+    "last_verified": "2026-03-26T00:00:00Z",
+    "monthly_calls": 0
+  },
+  {
+    "integration_id": "INT-803",
+    "name": "清洁用品供应商API",
+    "status": "inactive",
+    "endpoint": "https://api.cleaning-supplier.com/v1",
+    "api_key": "sk-clean-xxxx-REDACTED",
+    "error_rate": 0,
+    "credentials_expired": false,
+    "notes": "供应商合作终止，2月停用",
+    "service": "supplier_api",
+    "last_verified": "2026-02-15T00:00:00Z",
+    "monthly_calls": 0
+  },
+  {
+    "integration_id": "INT-804",
+    "name": "耗材供应商API",
+    "status": "active",
+    "endpoint": "https://api.consumable-supplier.com/v2",
+    "api_key": "sk-cons-xxxx-EXPIRED",
+    "error_rate": 0.05,
+    "credentials_expired": true,
+    "notes": "API密钥已过期，需更新",
+    "service": "supplier_api",
+    "last_verified": "2026-03-26T00:00:00Z",
+    "monthly_calls": 0
+  }
+]

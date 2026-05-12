@@ -45,9 +45,9 @@ import {
   type SubactionsMap,
 } from "./lib/resolve-action-args.js";
 import {
-  checkAvailabilityAction,
-  proposeMeetingTimesAction,
-  updateMeetingPreferencesAction,
+  runCheckAvailabilityHandler,
+  runProposeMeetingTimesHandler,
+  runUpdateMeetingPreferencesHandler,
 } from "./lib/scheduling-handler.js";
 
 // Re-exported for consumers that route calendar-plan extraction without
@@ -522,29 +522,29 @@ async function route(
         timeZone: params.timeZone ?? null,
       });
     case "propose_times":
-      return (await proposeMeetingTimesAction.handler?.(
+      return runProposeMeetingTimesHandler(
         runtime,
         message,
         state,
         forwardedOptions,
         delegatedCallback,
-      )) as ActionResult;
+      );
     case "check_availability":
-      return (await checkAvailabilityAction.handler?.(
+      return runCheckAvailabilityHandler(
         runtime,
         message,
         state,
         forwardedOptions,
         delegatedCallback,
-      )) as ActionResult;
+      );
     case "update_preferences":
-      return (await updateMeetingPreferencesAction.handler?.(
+      return runUpdateMeetingPreferencesHandler(
         runtime,
         message,
         state,
         forwardedOptions,
         delegatedCallback,
-      )) as ActionResult;
+      );
   }
 }
 

@@ -64,7 +64,7 @@ function parseArgs(argv) {
   const out = {
     target: "http://localhost:31337",
     config: null,
-    token: process.env.ELIZA_API_TOKEN ?? process.env.MILADY_API_TOKEN ?? null,
+    token: process.env.ELIZA_API_TOKEN ?? process.env.ELIZA_API_TOKEN ?? null,
     out: null,
     streaming: true,
     loadTimeoutMs: 120_000,

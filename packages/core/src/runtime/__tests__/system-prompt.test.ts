@@ -89,6 +89,36 @@ describe("system prompt helpers", () => {
 		).toBe("Fallback.");
 	});
 
+	it("substitutes {{name}} and {{agentName}} placeholders in system + bio", () => {
+		const prompt = buildCanonicalSystemPrompt({
+			character: {
+				name: "Eliza",
+				system: "You are {{name}}. Warm, calm, and precise.",
+				bio: [
+					"{{name}} is warm, precise, and easy to talk to.",
+					"{{agentName}} values accuracy over speed.",
+				],
+			},
+		});
+
+		expect(prompt).not.toMatch(/\{\{\s*name\s*\}\}/);
+		expect(prompt).not.toMatch(/\{\{\s*agentName\s*\}\}/);
+		expect(prompt).toContain("You are Eliza.");
+		expect(prompt).toContain("Eliza is warm, precise");
+		expect(prompt).toContain("Eliza values accuracy");
+	});
+
+	it("leaves already-resolved system + bio unchanged (idempotent)", () => {
+		const prompt = buildCanonicalSystemPrompt({
+			character: {
+				name: "Eliza",
+				system: "You are Eliza.",
+				bio: ["Eliza is warm."],
+			},
+		});
+		expect(prompt).toBe("You are Eliza.\n\n# About Eliza\nEliza is warm.");
+	});
+
 	it("drops only the duplicate leading system message", () => {
 		const messages = [
 			{ role: "system", content: "System." },

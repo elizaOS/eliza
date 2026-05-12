@@ -6,7 +6,9 @@
  *
  * These provide additional agent features:
  * - Extended providers (facts, contacts, relationships, roles, settings, todos, personality)
- * - Advanced actions (contacts management, room management, todos, personality)
+ * - Advanced actions (contacts management, room management, personality)
+ *   Note: todo planner actions are NOT registered here. The canonical todo
+ *   surfaces are TODO (plugin-todos) and OWNER_TODOS (app-lifeops).
  * - Registered post-turn evaluators (experience, skills, facts, relationships,
  *   identities, task success)
  * - Additional services (experience, todos, personality)

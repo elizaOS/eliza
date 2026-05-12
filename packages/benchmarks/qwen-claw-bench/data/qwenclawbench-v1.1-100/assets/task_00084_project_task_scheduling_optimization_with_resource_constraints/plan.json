@@ -1,0 +1,173 @@
+{
+  "task_id": "task_3501_task_and_plan_manage",
+  "domain": "Communication and Scheduling",
+  "difficulty": "hard",
+  "grading_type": "hybrid",
+  "timeout_seconds": 600,
+  "output_file": "schedule_result.md",
+  "workspace_files": [
+    {
+      "path": "project/tasks.json",
+      "role": "data",
+      "file_type": "json",
+      "description": "Primary task definitions with durations: A=3h, B=2h, C=4h, D=2h, E=1h, F=3h",
+      "generation_strategy": "template",
+      "row_count": null,
+      "script_hint": "JSON array of objects with fields: task_id (A-F), name, duration_hours. A=3, B=2, C=4, D=2, E=1, F=3. Include brief task descriptions like 'Requirements gathering', 'Backend module', etc."
+    },
+    {
+      "path": "project/dependencies.yaml",
+      "role": "data",
+      "file_type": "yaml",
+      "description": "Dependency graph: B depends on A, C depends on A, D depends on B, E depends on C, F depends on D and E",
+      "generation_strategy": "template",
+      "row_count": null,
+      "script_hint": "YAML mapping of task_id to list of prerequisite task_ids. B: [A], C: [A], D: [B], E: [C], F: [D, E]. Include comments explaining notation."
+    },
+    {
+      "path": "project/resources.csv",
+      "role": "data",
+      "file_type": "csv",
+      "description": "Resource list showing 2 available workers, each can handle 1 task at a time",
+      "generation_strategy": "template",
+      "row_count": 2,
+      "script_hint": "CSV with columns: resource_id, name, max_concurrent_tasks, availability_hours_per_day. Two rows: Worker1 and Worker2, both with max_concurrent_tasks=1, availability=8."
+    },
+    {
+      "path": "project/previous_schedule_v1.csv",
+      "role": "trap",
+      "file_type": "csv",
+      "description": "An outdated previous schedule attempt that has suboptimal assignments and an incorrect duration for task C (shows 3h instead of 4h)",
+      "generation_strategy": "template",
+      "row_count": 6,
+      "script_hint": "CSV with columns: task_id, assigned_to, start_hour, end_hour, duration. Contains a suboptimal sequential schedule. TRAP: Task C duration is listed as 3 instead of 4, making total appear as 14h. Schedule: A(0-3), B(3-5), C(3-6 WRONG), D(5-7), E(6-7), F(7-10). Total shown as 10h."
+    },
+    {
+      "path": "project/notes/manager_email.txt",
+      "role": "trap",
+      "file_type": "txt",
+      "description": "Email from a manager suggesting F only depends on D (omitting E dependency), which would change the critical path",
+      "generation_strategy": "template",
+      "row_count": null,
+      "script_hint": "Informal email text from a project manager saying: 'I checked with the team and task F only needs D to be complete before starting. We removed the E dependency last sprint.' This is WRONG — the canonical dependencies.yaml still lists both D and E as prerequisites for F."
+    },
+    {
+      "path": "project/notes/meeting_notes_20240115.md",
+      "role": "noise",
+      "file_type": "md",
+      "description": "Meeting notes discussing unrelated sprint retrospective topics",
+      "generation_strategy": "template",
+      "row_count": null,
+      "script_hint": "Markdown meeting notes with attendees, date, and discussion points about code review practices, CI/CD pipeline improvements, and team velocity. No relevant scheduling data."
+    },
+    {
+      "path": "project/config/scheduler_settings.ini",
+      "role": "noise",
+      "file_type": "ini",
+      "description": "Configuration file for a scheduling tool with various parameters",
+      "generation_strategy": "template",
+      "row_count": null,
+      "script_hint": "INI file with sections [general], [optimization], [display]. Contains settings like algorithm=greedy, max_iterations=1000, time_unit=hours, gantt_color_scheme=default. Noise — not directly relevant."
+    },
+    {
+      "path": "project/historical_estimates.csv",
+      "role": "trap",
+      "file_type": "csv",
+      "description": "Historical task duration estimates from a previous project phase with unit mismatch — durations in minutes instead of hours but column header says 'duration_hours'",
+      "generation_strategy": "template",
+      "row_count": 6,
+      "script_hint": "CSV with columns: task_id, duration_hours, confidence. Values: A=180, B=120, C=240, D=120, E=60, F=180 — these are actually MINUTES but the column header says 'duration_hours'. Confidence values around 0.8-0.95. This is a unit_mismatch trap."
+    },
+    {
+      "path": "project/team_capacity.json",
+      "role": "data",
+      "file_type": "json",
+      "description": "Team capacity constraints confirming 2 parallel workers",
+      "generation_strategy": "template",
+      "row_count": null,
+      "script_hint": "JSON object with fields: team_size=2, max_parallel_tasks=2, constraint='each_person_one_task_at_a_time', working_hours_per_day=8."
+    },
+    {
+      "path": "project/README.md",
+      "role": "data",
+      "file_type": "md",
+      "description": "Project README explaining the scheduling problem context",
+      "generation_strategy": "template",
+      "row_count": null,
+      "script_hint": "Markdown README explaining this is a project scheduling optimization problem. References tasks.json for durations, dependencies.yaml for the dependency graph, and resources.csv for worker info. Mentions the goal is to minimize makespan."
+    }
+  ],
+  "traps": [
+    {
+      "id": "trap_1",
+      "type": "outdated_data",
+      "file_a": "project/tasks.json",
+      "file_b": "project/previous_schedule_v1.csv",
+      "field": "duration of task C",
+      "value_in_a": "4",
+      "value_in_b": "3",
+      "correct": "4",
+      "why_tricky": "The previous schedule CSV shows task C as 3 hours, which could lead to an incorrect critical path calculation and a shorter total time if the agent trusts the old schedule"
+    },
+    {
+      "id": "trap_2",
+      "type": "misleading_context",
+      "file_a": "project/dependencies.yaml",
+      "file_b": "project/notes/manager_email.txt",
+      "field": "dependencies of task F",
+      "value_in_a": "D and E",
+      "value_in_b": "only D",
+      "correct": "D and E",
+      "why_tricky": "The manager email claims the E dependency for F was removed, but the canonical dependency file still requires both D and E. Trusting the email would allow F to start earlier and yield a wrong schedule."
+    },
+    {
+      "id": "trap_3",
+      "type": "unit_mismatch",
+      "file_a": "project/tasks.json",
+      "file_b": "project/historical_estimates.csv",
+      "field": "duration_hours",
+      "value_in_a": "3 (hours for task A)",
+      "value_in_b": "180 (minutes labeled as hours)",
+      "correct": "3 hours",
+      "why_tricky": "The historical estimates CSV has a column labeled 'duration_hours' but the values are actually in minutes (180 instead of 3). Using these raw values would produce an absurd schedule."
+    }
+  ],
+  "grading_criteria": [
+    {
+      "key": "file_exists_check",
+      "description": "The output file schedule_result.md was created",
+      "type": "file_exists",
+      "expected": "schedule_result.md"
+    },
+    {
+      "key": "minimum_makespan",
+      "description": "The optimal makespan (total project duration) is 11 hours. Critical path: A->C->E->F = 3+4+1+3=11. With 2 workers, B and D can run in parallel on the other worker, so makespan equals the critical path length of 11.",
+      "type": "numeric_match",
+      "expected": "11"
+    },
+    {
+      "key": "task_a_start",
+      "description": "Task A starts at time 0",
+      "type": "content_contains",
+      "expected": "A"
+    },
+    {
+      "key": "critical_path_mention",
+      "description": "The output identifies or discusses the critical path (A->C->E->F = 3+4+1+3=11, which is the longest path and determines the makespan with 2 workers)",
+      "type": "content_contains",
+      "expected": "critical path"
+    },
+    {
+      "key": "task_f_end_time",
+      "description": "Task F ends at hour 11 in the optimal schedule (starts at hour 8 after both D and E complete, duration 3h)",
+      "type": "regex_match",
+      "expected": "F.*\\b11\\b"
+    },
+    {
+      "key": "dependency_f_correct",
+      "description": "Output correctly states F depends on both D and E",
+      "type": "content_contains",
+      "expected": "D and E"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "agent": "half_v1",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T102050Z_733a34a7/bfcl__bfcl/half_v1_bfcl_20260512T102050Z_2_25f5b045/output"
+  ],
+  "benchmark_directory": "bfcl",
+  "benchmark_id": "bfcl",
+  "cache_metrics": {},
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "ast_accuracy": 0.5,
+    "calibration_depth": "scorer_payload",
+    "calibration_spec_version": "calibration_v1",
+    "error_analysis": {},
+    "exec_accuracy": 0.5,
+    "overall_score": 0.5,
+    "relevance_accuracy": 0.5,
+    "return_code": 0,
+    "synthetic_expected_score": 0.5,
+    "synthetic_harness": "half_v1",
+    "synthetic_is_meaningful": true,
+    "synthetic_strategy": "function_call",
+    "total_tests": 0
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {},
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T102050Z_733a34a7/bfcl__bfcl/half_v1_bfcl_20260512T102050Z_2_25f5b045/output/bfcl_results_half_v1.json",
+  "run_group_id": "rg_20260512T102050Z_733a34a7",
+  "run_id": "half_v1_bfcl_20260512T102050Z_2_25f5b045",
+  "score": 0.5,
+  "status": "succeeded",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": "ratio",
+  "updated_at": "2026-05-12T10:20:50.522224+00:00"
+}

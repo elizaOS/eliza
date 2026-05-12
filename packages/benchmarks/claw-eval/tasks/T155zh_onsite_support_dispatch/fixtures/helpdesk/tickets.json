@@ -1,0 +1,62 @@
+[
+  {
+    "ticket_id": "TK-1201",
+    "title": "生产系统完全宕机",
+    "description": "万通物流（CUS-1201）紧急反馈：今天上午10:00开始，生产环境ERP系统完全无法访问，所有业务操作中断。已尝试重启服务但未恢复。系统日志显示数据库连接池耗尽，疑似数据库主节点故障。目前全公司200+员工无法正常工作，物流调度完全停滞。",
+    "customer_id": "CUS-1201",
+    "reporter": "王总经理",
+    "department": "技术支持",
+    "priority": "critical",
+    "status": "open",
+    "created_at": "2026-03-26T10:15:00+08:00",
+    "tags": ["系统宕机", "VIP", "紧急", "现场支持"],
+    "category": "系统故障",
+    "requires_onsite": true,
+    "sla_deadline": "2026-03-26T14:15:00+08:00"
+  },
+  {
+    "ticket_id": "TK-1202",
+    "title": "报表导出偶尔失败",
+    "description": "瀚海电商（CUS-1202）反馈：在导出月度销售报表时，大约30%的概率会出现超时错误。错误信息：ExportTimeout: query exceeded 30s limit。小范围数据可以正常导出。",
+    "customer_id": "CUS-1202",
+    "reporter": "林经理",
+    "department": "技术支持",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-25T16:00:00+08:00",
+    "tags": ["报表", "导出", "超时"],
+    "category": "功能故障",
+    "requires_onsite": false,
+    "sla_deadline": "2026-03-27T16:00:00+08:00"
+  },
+  {
+    "ticket_id": "TK-1203",
+    "title": "新功能培训需求",
+    "description": "前锋科技（CUS-1203）希望安排一次关于新版本数据分析模块的培训，约20人参加。希望在下周进行，线上或线下均可。",
+    "customer_id": "CUS-1203",
+    "reporter": "张主管",
+    "department": "客户服务",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-03-25T11:00:00+08:00",
+    "tags": ["培训", "新功能"],
+    "category": "服务请求",
+    "requires_onsite": false,
+    "sla_deadline": "2026-04-02T11:00:00+08:00"
+  },
+  {
+    "ticket_id": "TK-1204",
+    "title": "数据迁移咨询",
+    "description": "阳光传媒（CUS-1204）计划将历史数据从旧系统迁移到新平台，数据量约500GB，希望了解迁移方案和时间估算。",
+    "customer_id": "CUS-1204",
+    "reporter": "刘总监",
+    "department": "技术支持",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-25T14:30:00+08:00",
+    "tags": ["数据迁移", "咨询", "VIP"],
+    "category": "技术咨询",
+    "requires_onsite": false,
+    "sla_deadline": "2026-03-27T14:30:00+08:00"
+  }
+]

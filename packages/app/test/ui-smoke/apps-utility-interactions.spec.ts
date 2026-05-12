@@ -24,21 +24,7 @@ const BENIGN_CONSOLE_PATTERNS = [
   /THREE\.Clock: This module has been deprecated/i,
   /THREE\.WebGLShadowMap: PCFSoftShadowMap has been deprecated/i,
   /GL Driver Message .*GPU stall due to ReadPixels/i,
-  // The ui-smoke preview server serves the SPA but not the runtime
-  // boot-config's `vrmAssets`, nor the companion's emote animation .glb files
-  // (the dist ships `.glb.gz`; the catalog paths are `.glb`). getVrmUrl()
-  // resolves to a `bundled-N` fallback path the preview server has no asset
-  // for too. installDefaultAppRoutes mocks `**/vrms/**` and `**/animations/**`
-  // with real/placeholder bytes, but if a request slips through (timing) the
-  // canvas/animation loader falls back gracefully — companion VRM/animation
-  // *rendering* is out of scope for this controls-interaction test.
-  /Failed to load VRM/i,
-  /\[VrmEngine\] Failed to load emote/i,
-  // The companion canvas requests several asset paths the preview server has no
-  // file for (the gz/non-gz mismatch + the missing vrmAssets); the resulting
-  // bare "Failed to load resource: 404" console errors carry no URL so they
-  // can't be filtered precisely — they are all the VRM/animation fallback noise.
-  /Failed to load resource: the server responded with a status of 404/i,
+  /\[eliza\]\[startup:init\] stream settings avatar TypeError: Failed to fetch/i,
 ];
 
 function routeReadyChecks(routeCase: RouteCase): readonly ReadyCheck[] {
@@ -162,6 +148,16 @@ test("companion app controls are interactive and error-free", async ({
   await openAppWindow(page, companion as RouteCase);
 
   await expect(page.getByTestId("companion-vrm-canvas")).toBeVisible();
+  await expect(page.getByTestId("companion-vrm-stage")).toHaveAttribute(
+    "data-vrm-loaded",
+    "true",
+    { timeout: 90_000 },
+  );
+  await expect(page.getByTestId("companion-root")).toHaveAttribute(
+    "data-avatar-ready",
+    "true",
+    { timeout: 90_000 },
+  );
   await expect(page.getByTestId("companion-chat-dock")).toBeVisible();
 
   const voiceToggle = page.getByTestId("companion-voice-toggle");
@@ -205,7 +201,7 @@ test("companion app controls are interactive and error-free", async ({
   await page.getByTestId("companion-shell-toggle-companion").click();
   await expect(page.getByTestId("companion-chat-dock")).toBeVisible();
 
-  await page.keyboard.press("Control+E");
+  await page.getByTestId("companion-emote-toggle").click();
   await expect(page.getByTestId("emote-picker")).toBeVisible();
   await page.getByTestId("emote-picker-search").fill("wave");
   await page.getByTestId("emote-picker-item-wave").click();
@@ -214,17 +210,17 @@ test("companion app controls are interactive and error-free", async ({
   await page.getByTestId("emote-picker-close").click();
   await expect(page.getByTestId("emote-picker")).toBeHidden();
 
-  // Exercise the VRM orbit controls without surfacing console errors.
-  // `force: true` bypasses the actionability check: the chat-transcript
-  // overlay (which fills the companion dock at the bottom) can sit over part
-  // of the canvas's CSS box, and we only care that a pointer drag in the
-  // canvas region doesn't trigger a console error.
   const canvas = page.getByTestId("companion-vrm-canvas");
-  await canvas.dragTo(canvas, {
-    sourcePosition: { x: 200, y: 240 },
-    targetPosition: { x: 260, y: 220 },
-    force: true,
-  });
+  const canvasBox = await canvas.boundingBox();
+  expect(canvasBox).not.toBeNull();
+  const dragStart = {
+    x: canvasBox!.x + canvasBox!.width * 0.5,
+    y: canvasBox!.y + canvasBox!.height * 0.35,
+  };
+  await page.mouse.move(dragStart.x, dragStart.y);
+  await page.mouse.down();
+  await page.mouse.move(dragStart.x + 60, dragStart.y - 20, { steps: 5 });
+  await page.mouse.up();
 
   await expectNoIssues(page, issues, "companion interactions");
 });

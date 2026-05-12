@@ -27,15 +27,15 @@ def test_resolve_tier_small() -> None:
     spec = resolve_tier({"MODEL_TIER": "small"})
     assert spec.tier == "small"
     assert spec.provider == "local-llama-cpp"
-    assert spec.model_name == "qwen3-0.6b-q8_0"
+    assert spec.model_name == "qwen3-0.8b-q8_0"
     assert spec.bundle_path is not None
-    assert "eliza-1-0.6b.bundle" in spec.bundle_path
+    assert "eliza-1-0.8b.bundle" in spec.bundle_path
 
 
 def test_resolve_tier_mid() -> None:
     spec = resolve_tier({"MODEL_TIER": "mid"})
     assert spec.tier == "mid"
-    assert spec.model_name == "qwen3-1.7b-q4_k_m"
+    assert spec.model_name == "qwen3-2b-q4_k_m"
     assert spec.context_window == 65_536
 
 
@@ -53,9 +53,31 @@ def test_unknown_tier_falls_back_to_large() -> None:
 
 def test_model_name_override() -> None:
     spec = resolve_tier(
-        {"MODEL_TIER": "small", "MODEL_NAME_OVERRIDE": "qwen3-0.6b-q4_k_s"}
+        {"MODEL_TIER": "small", "MODEL_NAME_OVERRIDE": "qwen3-0.8b-q4_k_s"}
     )
-    assert spec.model_name == "qwen3-0.6b-q4_k_s"
+    assert spec.model_name == "qwen3-0.8b-q4_k_s"
+
+
+def test_orchestrator_model_name_aliases_are_honored() -> None:
+    spec = resolve_tier({"MODEL_TIER": "large", "BENCHMARK_MODEL_NAME": "gpt-oss-20b"})
+    assert spec.model_name == "gpt-oss-20b"
+
+    spec = resolve_tier({"MODEL_TIER": "large", "MODEL_NAME": "gpt-oss-120b-alt"})
+    assert spec.model_name == "gpt-oss-120b-alt"
+
+    spec = resolve_tier({"MODEL_TIER": "large", "CEREBRAS_MODEL": "gpt-oss-120b-cerebras"})
+    assert spec.model_name == "gpt-oss-120b-cerebras"
+
+
+def test_explicit_model_name_override_wins_over_orchestrator_alias() -> None:
+    spec = resolve_tier(
+        {
+            "MODEL_TIER": "large",
+            "MODEL_NAME_OVERRIDE": "explicit-model",
+            "BENCHMARK_MODEL_NAME": "orchestrator-model",
+        }
+    )
+    assert spec.model_name == "explicit-model"
 
 
 def test_model_base_url_override() -> None:
@@ -74,7 +96,7 @@ def test_model_bundle_override() -> None:
 
 def test_override_does_not_mutate_registry() -> None:
     resolve_tier({"MODEL_TIER": "small", "MODEL_NAME_OVERRIDE": "mutated"})
-    assert DEFAULT_TIERS["small"].model_name == "qwen3-0.6b-q8_0"
+    assert DEFAULT_TIERS["small"].model_name == "qwen3-0.8b-q8_0"
 
 
 @pytest.mark.parametrize("tier", ["small", "mid", "large", "frontier"])

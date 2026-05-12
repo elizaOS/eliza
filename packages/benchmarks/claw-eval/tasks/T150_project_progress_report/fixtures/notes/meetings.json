@@ -1,0 +1,78 @@
+[
+  {
+    "note_id": "NOTE-601",
+    "title": "Alpha Project Requirements Review Notes 3/17",
+    "content": "## Alpha Project Requirements Review\n\n### Attendees\nWang Ming (Project Manager), Li Hua (Architect)\n\n### Meeting Conclusions\nConfirmed Q2 three core feature requirements, priority ranking completed.\n\n### Action Items\n1. [Wang Ming] Complete requirements specification final draft, due 3/21 -> Completed\n2. [Li Hua] Write interface design document, due 3/22 -> Completed\n3. [Li Hua] Technical feasibility assessment report, due 3/25 -> In progress, expected to deliver on time",
+    "participants": [
+      "Wang Ming",
+      "Li Hua"
+    ],
+    "tags": [
+      "Alpha",
+      "requirements"
+    ],
+    "created_at": "2026-03-17T10:00:00Z",
+    "duration_minutes": 60
+  },
+  {
+    "note_id": "NOTE-602",
+    "title": "Alpha Project Technical Design Notes 3/20",
+    "content": "## Alpha Project Technical Design\n\n### Attendees\nLi Hua (Architect), Ma Qiang (Ops)\n\n### Meeting Conclusions\nDecided to adopt microservice architecture, need further verification of deployment plan.\n\n### Action Items\n1. [Ma Qiang] Complete deployment environment setup, due 3/24 -> Completed\n2. [Li Hua] Microservice architecture plan document, due 3/28 -> Not started, depends on feasibility report conclusions",
+    "participants": [
+      "Li Hua",
+      "Ma Qiang"
+    ],
+    "tags": [
+      "Alpha",
+      "technical"
+    ],
+    "created_at": "2026-03-20T10:00:00Z",
+    "duration_minutes": 60
+  },
+  {
+    "note_id": "NOTE-603",
+    "title": "Beta Project Kickoff Notes 3/18",
+    "content": "## Beta Project Kickoff\n\n### Attendees\nZhao Lei (Product Manager), Zhang Wei (Backend Dev), Zhou Ming (Frontend Dev)\n\n### Meeting Conclusions\nProject duration 6 weeks, delivered in three iterations. First iteration focuses on core features.\n\n### Action Items\n1. [Zhao Lei] Complete PRD document first draft, due 3/21 -> Completed\n2. [Zhang Wei] Complete backend database design, due 3/24 -> In progress, approximately 60% done\n3. [Zhou Ming] Complete frontend prototype design, due 3/22 -> Blocked, waiting for third-party API documentation (vendor contacted, expected to provide by 3/28)",
+    "participants": [
+      "Zhao Lei",
+      "Zhang Wei",
+      "Zhou Ming"
+    ],
+    "tags": [
+      "Beta",
+      "kickoff"
+    ],
+    "created_at": "2026-03-18T10:00:00Z",
+    "duration_minutes": 60
+  },
+  {
+    "note_id": "NOTE-604",
+    "title": "Beta Project Progress Check Notes 3/22",
+    "content": "## Beta Project Progress Check\n\n### Attendees\nZhao Lei (Product Manager), Zhang Wei (Backend Dev)\n\n### Meeting Conclusions\nOverall progress behind by approximately 1 week. Need to add resources or adjust schedule. Frontend blocked by third-party API documentation.\n\n### Action Items\n1. [Zhang Wei] Complete API development (high priority), due 3/25 -> Pending, already overdue! Originally due 3/25 but depends on incomplete database design\n2. [Zhao Lei] Coordinate third-party API documentation acquisition, due 3/24 -> Pending, still following up",
+    "participants": [
+      "Zhao Lei",
+      "Zhang Wei"
+    ],
+    "tags": [
+      "Beta",
+      "progress"
+    ],
+    "created_at": "2026-03-22T10:00:00Z",
+    "duration_minutes": 60
+  },
+  {
+    "note_id": "NOTE-605",
+    "title": "Gamma Project Client Meeting Notes 3/19",
+    "content": "## Gamma Project Client Meeting\n\n### Attendees\nZhao Lei (Product Manager), Wang Ming (Project Manager)\n\n### Meeting Conclusions\nClient confirmed all feature requirements, acceptance criteria agreed upon. Project progressing smoothly.\n\n### Action Items\n1. [Wang Ming] Compile client-confirmed acceptance criteria document, due 3/21 -> Completed\n2. [Zhao Lei] Update project delivery plan, due 3/22 -> Completed",
+    "participants": [
+      "Zhao Lei",
+      "Wang Ming"
+    ],
+    "tags": [
+      "Gamma",
+      "client"
+    ],
+    "created_at": "2026-03-19T10:00:00Z",
+    "duration_minutes": 60
+  }
+]

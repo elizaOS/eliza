@@ -70,7 +70,7 @@ const ciExcludedRealPaths = [
   ),
   elizaWorkspacePattern("packages/benchmarks/app-eval/evaluate.real.test.ts"),
   elizaWorkspacePattern(
-    "plugins/plugin-form/src/tests/toon-integration.live.test.ts",
+    "plugins/plugin-form/src/tests/json-integration.live.test.ts",
   ),
   elizaWorkspacePattern(
     "plugins/app-lifeops/test/lifeops-life-chat.real.test.ts",

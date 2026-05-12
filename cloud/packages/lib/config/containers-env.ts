@@ -44,10 +44,7 @@ export const containersEnv = {
   /** SSH user for connecting to Docker nodes. Defaults to "root". */
   sshUser(): string {
     const env = getCloudAwareEnv();
-    return (
-      pick(env.CONTAINERS_SSH_USER, env.AGENT_SSH_USER, env.ELIZA_SSH_USER) ??
-      "root"
-    );
+    return pick(env.CONTAINERS_SSH_USER, env.AGENT_SSH_USER, env.ELIZA_SSH_USER) ?? "root";
   },
 
   /** Docker network name created on every node. Containers attach to this. */
@@ -142,10 +139,7 @@ export const containersEnv = {
   /** Application port baked into the canonical Eliza agent image. */
   agentPort(): string {
     const env = getCloudAwareEnv();
-    return (
-      pick(env.ELIZA_AGENT_PORT, env.AGENT_AGENT_PORT, env.ELIZA_AGENT_PORT) ??
-      "3000"
-    );
+    return pick(env.ELIZA_AGENT_PORT, env.AGENT_AGENT_PORT) ?? "3000";
   },
 
   /** Bridge port the agent listens on inside the container (for agent-server bridge). */

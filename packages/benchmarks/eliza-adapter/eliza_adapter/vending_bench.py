@@ -66,7 +66,11 @@ def _response_to_vending_json(text: str, params: dict, user_prompt: str) -> str:
 
     action_params = params.get("BENCHMARK_ACTION")
     if isinstance(action_params, dict):
-        raw_action = action_params.get("action") or action_params.get("command")
+        raw_action = (
+            action_params.get("action")
+            or action_params.get("command")
+            or action_params.get("tool_name")
+        )
         if isinstance(raw_action, str):
             normalized = raw_action.strip().upper()
             if normalized in {
@@ -81,7 +85,19 @@ def _response_to_vending_json(text: str, params: dict, user_prompt: str) -> str:
                 "CHECK_DELIVERIES",
                 "ADVANCE_DAY",
             }:
-                data = {k: v for k, v in action_params.items() if k not in {"command", "action"}}
+                data = {
+                    k: v
+                    for k, v in action_params.items()
+                    if k not in {"command", "action", "tool_name", "arguments"}
+                }
+                arguments = action_params.get("arguments")
+                if isinstance(arguments, str):
+                    try:
+                        arguments = json.loads(arguments)
+                    except json.JSONDecodeError:
+                        arguments = None
+                if isinstance(arguments, dict):
+                    data.update(arguments)
                 data["action"] = normalized
                 return json.dumps(data)
 

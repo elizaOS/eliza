@@ -1,0 +1,1562 @@
+{
+  "runId": "companion-utility-final-20260512T080841833Z",
+  "uiBase": "http://127.0.0.1:60269",
+  "createdAt": "2026-05-12T08:08:42.103Z",
+  "routes": [
+    {
+      "name": "lifeops",
+      "path": "/apps/lifeops",
+      "viewport": "desktop",
+      "screenshot": "screenshots/lifeops__desktop.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-desktop-lifeops#/apps/lifeops",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"lifeops-shell\"]"
+            },
+            "ok": true,
+            "ms": 23
+          }
+        ]
+      },
+      "navMs": 2149,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [
+          "The day is open.",
+          "Screen Time",
+          "Social"
+        ],
+        "buttons": 24,
+        "visibleElementCount": 261,
+        "textLength": 536,
+        "textSample": "Overview Sleep Screen Time Messages Mail Calendar Reminders Money Documents Settings STILL UP / TUESDAY, MAY 12 The day is open. SLEEP No sleep signal REMINDERS Clear SCREEN No data Partial overview Missing: Sleep, Messages, Mail, and Calendar Open setup Sleep Connect Health Screen Time No data No screen-time sessions yet. Social No data No social time 0 opened / 0 sent Calendar Connect Google Messages Connect platform Mail Connect Google LIFEOPS CHAT Ask me about the visible LifeOps item or the",
+        "scroll": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "tasks",
+      "path": "/apps/tasks",
+      "viewport": "desktop",
+      "screenshot": "screenshots/tasks__desktop.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-desktop-tasks#/apps/tasks",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"tasks-view\"]"
+            },
+            "ok": true,
+            "ms": 7
+          }
+        ]
+      },
+      "navMs": 1048,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [
+          "Tasks"
+        ],
+        "buttons": 0,
+        "visibleElementCount": 25,
+        "textLength": 127,
+        "textSample": "Tasks Detailed status, history, approvals, and coordinator output for coding-agent tasks. TASKS No orchestrator work running",
+        "scroll": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "plugins",
+      "path": "/apps/plugins",
+      "viewport": "desktop",
+      "screenshot": "screenshots/plugins__desktop.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-desktop-plugins#/apps/plugins",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "text": "AI Providers"
+            },
+            "ok": true,
+            "ms": 33
+          }
+        ]
+      },
+      "navMs": 1062,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [],
+        "buttons": 9,
+        "visibleElementCount": 90,
+        "textLength": 338,
+        "textSample": "OTHER FEATURES 🧩 Browser Workspace No configuration needed. Agent-controlled browser workspace. AI PROVIDERS 🧩 Anthropic No configuration needed. Anthropic model provider for Claude chat and reasoning models. 🧩 OpenAI No configuration needed. Integrates OpenAI's GPT models for automated text generation with customizable prompts.",
+        "scroll": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "skills",
+      "path": "/apps/skills",
+      "viewport": "desktop",
+      "screenshot": "screenshots/skills__desktop.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-desktop-skills#/apps/skills",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"skills-shell\"]"
+            },
+            "ok": true,
+            "ms": 3
+          }
+        ]
+      },
+      "navMs": 1085,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [],
+        "buttons": 9,
+        "visibleElementCount": 62,
+        "textLength": 216,
+        "textSample": "+ New Skill Install All (0) ON (0) OFF (0) No Skills Installed ADVANCED Skills Custom agent skills 0 visible No Skills Installed Install skills from the marketplace or create your own. Browse Marketplace Create Skill",
+        "scroll": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "fine-tuning",
+      "path": "/apps/fine-tuning",
+      "viewport": "desktop",
+      "screenshot": "screenshots/fine-tuning__desktop.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-desktop-fine-tuning#/apps/fine-tuning",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"fine-tuning-view\"]"
+            },
+            "ok": true,
+            "ms": 15
+          }
+        ]
+      },
+      "navMs": 1022,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [
+          "Fine-Tuning"
+        ],
+        "buttons": 9,
+        "visibleElementCount": 107,
+        "textLength": 846,
+        "textSample": "FINE-TUNING Fine-Tuning Build datasets from real trajectories, run training jobs, then import and activate models. Refresh All OVERVIEW Status RUNTIME: Offline RUNNING JOBS: 0 QUEUED JOBS: 0 DATASETS: 0 MODELS: 0 FAILED JOBS: 0 DATA REVIEW Trajectories Publish to Hugging Face Refresh Unavailable DATASET BUILD Datasets Build Dataset Refresh Datasets No datasets yet. TRAINING Training Jobs GPU fine-tunes via Vast.ai are queued from built datasets. Auto-build dataset from trajectories cpu Start Tra",
+        "scroll": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "trajectories",
+      "path": "/apps/trajectories",
+      "viewport": "desktop",
+      "screenshot": "screenshots/trajectories__desktop.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-desktop-trajectories#/apps/trajectories",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"trajectories-view\"]"
+            },
+            "ok": true,
+            "ms": 3
+          }
+        ]
+      },
+      "navMs": 1032,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [],
+        "buttons": 5,
+        "visibleElementCount": 54,
+        "textLength": 49,
+        "textSample": "ENTRIES No trajectories yet. No trajectories yet.",
+        "scroll": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "relationships",
+      "path": "/apps/relationships",
+      "viewport": "desktop",
+      "screenshot": "screenshots/relationships__desktop.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-desktop-relationships#/apps/relationships",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"relationships-view\"]"
+            },
+            "ok": true,
+            "ms": 4
+          }
+        ]
+      },
+      "navMs": 1017,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [
+          "No relationships data available"
+        ],
+        "buttons": 2,
+        "visibleElementCount": 45,
+        "textLength": 78,
+        "textSample": "Platform filter All No relationships data available No relationship data yet.",
+        "scroll": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "memories",
+      "path": "/apps/memories",
+      "viewport": "desktop",
+      "screenshot": "screenshots/memories__desktop.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-desktop-memories#/apps/memories",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"memory-viewer-view\"]"
+            },
+            "ok": true,
+            "ms": 13
+          }
+        ]
+      },
+      "navMs": 1066,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [
+          "No memories yet"
+        ],
+        "buttons": 4,
+        "visibleElementCount": 47,
+        "textLength": 183,
+        "textSample": "TOTAL 0 FILTER BY TYPE All PEOPLE No people yet. Feed Browse No memories yet Memories will appear here as the agent processes conversations, extracts facts, and builds relationships.",
+        "scroll": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "runtime",
+      "path": "/apps/runtime",
+      "viewport": "desktop",
+      "screenshot": "screenshots/runtime__desktop.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-desktop-runtime#/apps/runtime",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"runtime-view\"]"
+            },
+            "ok": true,
+            "ms": 10
+          }
+        ]
+      },
+      "navMs": 1122,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [],
+        "buttons": 10,
+        "visibleElementCount": 152,
+        "textLength": 898,
+        "textSample": "depth array cap object cap Refresh Expand Top SECTIONS Σ Summary 3 signals R Runtime 3 roots live A Actions registered handlers 1 P Providers loaded contexts 1 P Plugins active modules 1 S Services instantiated services 1 E Evaluators decision hooks 1 Plugins 1 [0] plugin-browser :: BrowserWorkspacePlugin (plugin-browser) Actions 1 [0] open_browser_workspace :: BrowserWorkspaceAction (browser-workspace-action) Providers 1 [0] browser_workspace_provider :: BrowserWorkspaceProvider (browser-worksp",
+        "scroll": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "database",
+      "path": "/apps/database",
+      "viewport": "desktop",
+      "screenshot": "screenshots/database__desktop.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-desktop-database#/apps/database",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"database-view\"]"
+            },
+            "ok": true,
+            "ms": 4
+          }
+        ]
+      },
+      "navMs": 1097,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [
+          "Table Browser"
+        ],
+        "buttons": 7,
+        "visibleElementCount": 55,
+        "textLength": 224,
+        "textSample": "Tables Media Vectors Table Editor SQL Editor Connecting... 0 TABLES TABLE EDITOR Refresh TABLES (0) DATABASE Table Browser Database not available The database viewer is only available when the local agent runtime is running.",
+        "scroll": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "logs",
+      "path": "/apps/logs",
+      "viewport": "desktop",
+      "screenshot": "screenshots/logs__desktop.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-desktop-logs#/apps/logs",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"logs-view\"]"
+            },
+            "ok": true,
+            "ms": 2
+          }
+        ]
+      },
+      "navMs": 1107,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [],
+        "buttons": 4,
+        "visibleElementCount": 46,
+        "textLength": 299,
+        "textSample": "Filter logs Narrow the runtime stream by text, severity, source, or tag so the current incident stands out without losing the surrounding context. All levels All sources All tags Refresh Showing 1 entry 0 active filters TIME LEVEL SOURCE TAGS MESSAGE 12:18:46 AM INFO [smoke] smoke smoke API ready",
+        "scroll": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "inventory",
+      "path": "/apps/inventory",
+      "viewport": "desktop",
+      "screenshot": "screenshots/inventory__desktop.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-desktop-inventory#/apps/inventory",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"wallet-shell\"]"
+            },
+            "ok": true,
+            "ms": 25
+          }
+        ]
+      },
+      "navMs": 1085,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [
+          "No balances or trade history yet."
+        ],
+        "buttons": 14,
+        "visibleElementCount": 132,
+        "textLength": 430,
+        "textSample": "$0.00 RPC No EVM address No Solana address Swap Send Receive Tokens DeFi NFTs No assets No balances or trade history yet. Here's what the market looks like right now. Spot prices CoinGecko Spot prices unavailable CoinGecko did not return live data. Top movers CoinGecko Top movers unavailable CoinGecko did not return live data. Popular predictions Polymarket Popular predictions unavailable Polymarket did not return live data.",
+        "scroll": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "elizamaker",
+      "path": "/apps/elizamaker",
+      "viewport": "desktop",
+      "screenshot": "screenshots/elizamaker__desktop.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-desktop-elizamaker#/apps/elizamaker",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"chat-composer-textarea\"]"
+            },
+            "ok": true,
+            "ms": 3
+          }
+        ]
+      },
+      "navMs": 1028,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [],
+        "buttons": 4,
+        "visibleElementCount": 33,
+        "textLength": 35,
+        "textSample": "Eliza What would you like to check?",
+        "scroll": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "companion",
+      "path": "/apps/companion",
+      "viewport": "desktop",
+      "screenshot": "screenshots/companion__desktop.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-desktop-companion#/apps/companion",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"companion-root\"]"
+            },
+            "ok": true,
+            "ms": 89
+          },
+          {
+            "check": {
+              "selector": "[data-testid=\"companion-root\"][data-avatar-ready=\"true\"]"
+            },
+            "ok": true,
+            "ms": 13103
+          }
+        ]
+      },
+      "navMs": 20045,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [],
+        "buttons": 11,
+        "visibleElementCount": 95,
+        "textLength": 55,
+        "textSample": "Switch shell view 🇺🇸 EN What would you like to check?",
+        "scroll": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "shopify",
+      "path": "/apps/shopify",
+      "viewport": "desktop",
+      "screenshot": "screenshots/shopify__desktop.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-desktop-shopify#/apps/shopify",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"shopify-shell\"]"
+            },
+            "ok": true,
+            "ms": 2
+          }
+        ]
+      },
+      "navMs": 1071,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [],
+        "buttons": 2,
+        "visibleElementCount": 57,
+        "textLength": 260,
+        "textSample": "Shopify Not connected Connect your Shopify store STORE DOMAIN SHOPIFY_STORE_DOMAIN=your-store.myshopify.com ACCESS TOKEN SHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx Restart after setting these env vars. read_products read_orders read_inventory read_customers",
+        "scroll": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "vincent",
+      "path": "/apps/vincent",
+      "viewport": "desktop",
+      "screenshot": "screenshots/vincent__desktop.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-desktop-vincent#/apps/vincent",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"vincent-shell\"]"
+            },
+            "ok": true,
+            "ms": 4
+          }
+        ]
+      },
+      "navMs": 1062,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [
+          "Vincent"
+        ],
+        "buttons": 3,
+        "visibleElementCount": 41,
+        "textLength": 318,
+        "textSample": "Vincent Hyperliquid and Polymarket trading access Disconnected Vincent disconnected Connect your Vincent account to enable DeFi vault management. Connect Vincent Connect your Vincent account to get started Once connected, you'll see your vault health, trading strategy, P&L analytics, and transaction history here.",
+        "scroll": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "hyperliquid",
+      "path": "/apps/hyperliquid",
+      "viewport": "desktop",
+      "screenshot": "screenshots/hyperliquid__desktop.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-desktop-hyperliquid#/apps/hyperliquid",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"hyperliquid-shell\"]"
+            },
+            "ok": true,
+            "ms": 9
+          }
+        ]
+      },
+      "navMs": 1038,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [
+          "Hyperliquid",
+          "Markets",
+          "Positions",
+          "Open orders"
+        ],
+        "buttons": 2,
+        "visibleElementCount": 69,
+        "textLength": 410,
+        "textSample": "Hyperliquid Native read/status surface for Hyperliquid PUBLIC READS Ready CREDENTIALS Read-only ACCOUNT No account address configured Signed Hyperliquid exchange mutations are disabled in UI smoke. Public market reads do not require a vault. Markets 2 BTC 50x sz 5 ETH 50x sz 4 Positions Connect an account address to read Hyperliquid positions. Open orders Connect an account address to read open orders.",
+        "scroll": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "polymarket",
+      "path": "/apps/polymarket",
+      "viewport": "desktop",
+      "screenshot": "screenshots/polymarket__desktop.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-desktop-polymarket#/apps/polymarket",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"polymarket-shell\"]"
+            },
+            "ok": true,
+            "ms": 11
+          }
+        ]
+      },
+      "navMs": 1023,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [
+          "Polymarket",
+          "Read access",
+          "Trading readiness",
+          "Active markets",
+          "Will the UI smoke suite stay green?"
+        ],
+        "buttons": 3,
+        "visibleElementCount": 76,
+        "textLength": 474,
+        "textSample": "Polymarket Native market discovery and trading readiness Read access Gamma and Data API reads are public. Ready Trading readiness Orders stay disabled until signed CLOB calls are implemented. Disabled Trading is disabled in UI smoke. Active markets Will the UI smoke suite stay green? 24h volume 1200 QA Will the UI smoke suite stay green? Ready Deterministic fixture market for app-window QA. Liquidity 10000 Volume 42000 Last trade 0.72 Outcomes Yes 0.72 No 0.28",
+        "scroll": {
+          "innerWidth": 1440,
+          "innerHeight": 900,
+          "scrollWidth": 1440,
+          "scrollHeight": 900
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "lifeops",
+      "path": "/apps/lifeops",
+      "viewport": "mobile",
+      "screenshot": "screenshots/lifeops__mobile.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-mobile-lifeops#/apps/lifeops",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"lifeops-shell\"]"
+            },
+            "ok": true,
+            "ms": 12
+          }
+        ]
+      },
+      "navMs": 1031,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [
+          "The day is open.",
+          "Screen Time",
+          "Social"
+        ],
+        "buttons": 11,
+        "visibleElementCount": 151,
+        "textLength": 357,
+        "textSample": "STILL UP / TUESDAY, MAY 12 The day is open. SLEEP No sleep signal REMINDERS Clear SCREEN No data Partial overview Missing: Sleep, Messages, Mail, and Calendar Open setup Sleep Connect Health Screen Time No data No screen-time sessions yet. Social No data No social time 0 opened / 0 sent Calendar Connect Google Messages Connect platform Mail Connect Google",
+        "scroll": {
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "scrollWidth": 390,
+          "scrollHeight": 844
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "tasks",
+      "path": "/apps/tasks",
+      "viewport": "mobile",
+      "screenshot": "screenshots/tasks__mobile.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-mobile-tasks#/apps/tasks",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"tasks-view\"]"
+            },
+            "ok": true,
+            "ms": 6
+          }
+        ]
+      },
+      "navMs": 1026,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [
+          "Tasks"
+        ],
+        "buttons": 0,
+        "visibleElementCount": 25,
+        "textLength": 127,
+        "textSample": "Tasks Detailed status, history, approvals, and coordinator output for coding-agent tasks. TASKS No orchestrator work running",
+        "scroll": {
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "scrollWidth": 390,
+          "scrollHeight": 844
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "plugins",
+      "path": "/apps/plugins",
+      "viewport": "mobile",
+      "screenshot": "screenshots/plugins__mobile.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-mobile-plugins#/apps/plugins",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "text": "AI Providers"
+            },
+            "ok": true,
+            "ms": 14
+          }
+        ]
+      },
+      "navMs": 1047,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [],
+        "buttons": 9,
+        "visibleElementCount": 90,
+        "textLength": 338,
+        "textSample": "OTHER FEATURES 🧩 Browser Workspace No configuration needed. Agent-controlled browser workspace. AI PROVIDERS 🧩 Anthropic No configuration needed. Anthropic model provider for Claude chat and reasoning models. 🧩 OpenAI No configuration needed. Integrates OpenAI's GPT models for automated text generation with customizable prompts.",
+        "scroll": {
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "scrollWidth": 390,
+          "scrollHeight": 844
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "skills",
+      "path": "/apps/skills",
+      "viewport": "mobile",
+      "screenshot": "screenshots/skills__mobile.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-mobile-skills#/apps/skills",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"skills-shell\"]"
+            },
+            "ok": true,
+            "ms": 2
+          }
+        ]
+      },
+      "navMs": 992,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [],
+        "buttons": 3,
+        "visibleElementCount": 32,
+        "textLength": 160,
+        "textSample": "Browse ADVANCED Skills Custom agent skills 0 visible No Skills Installed Install skills from the marketplace or create your own. Browse Marketplace Create Skill",
+        "scroll": {
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "scrollWidth": 390,
+          "scrollHeight": 844
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "fine-tuning",
+      "path": "/apps/fine-tuning",
+      "viewport": "mobile",
+      "screenshot": "screenshots/fine-tuning__mobile.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-mobile-fine-tuning#/apps/fine-tuning",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"fine-tuning-view\"]"
+            },
+            "ok": true,
+            "ms": 14
+          }
+        ]
+      },
+      "navMs": 1003,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [
+          "Fine-Tuning"
+        ],
+        "buttons": 9,
+        "visibleElementCount": 107,
+        "textLength": 846,
+        "textSample": "FINE-TUNING Fine-Tuning Build datasets from real trajectories, run training jobs, then import and activate models. Refresh All OVERVIEW Status RUNTIME: Offline RUNNING JOBS: 0 QUEUED JOBS: 0 DATASETS: 0 MODELS: 0 FAILED JOBS: 0 DATA REVIEW Trajectories Publish to Hugging Face Refresh Unavailable DATASET BUILD Datasets Build Dataset Refresh Datasets No datasets yet. TRAINING Training Jobs GPU fine-tunes via Vast.ai are queued from built datasets. Auto-build dataset from trajectories cpu Start Tra",
+        "scroll": {
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "scrollWidth": 390,
+          "scrollHeight": 844
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "trajectories",
+      "path": "/apps/trajectories",
+      "viewport": "mobile",
+      "screenshot": "screenshots/trajectories__mobile.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-mobile-trajectories#/apps/trajectories",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"trajectories-view\"]"
+            },
+            "ok": true,
+            "ms": 11
+          }
+        ]
+      },
+      "navMs": 981,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [],
+        "buttons": 1,
+        "visibleElementCount": 16,
+        "textLength": 27,
+        "textSample": "Browse No trajectories yet.",
+        "scroll": {
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "scrollWidth": 390,
+          "scrollHeight": 844
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "relationships",
+      "path": "/apps/relationships",
+      "viewport": "mobile",
+      "screenshot": "screenshots/relationships__mobile.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-mobile-relationships#/apps/relationships",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"relationships-view\"]"
+            },
+            "ok": true,
+            "ms": 10
+          }
+        ]
+      },
+      "navMs": 1005,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [
+          "No relationships data available"
+        ],
+        "buttons": 2,
+        "visibleElementCount": 31,
+        "textLength": 85,
+        "textSample": "Browse Platform filter All No relationships data available No relationship data yet.",
+        "scroll": {
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "scrollWidth": 390,
+          "scrollHeight": 844
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "memories",
+      "path": "/apps/memories",
+      "viewport": "mobile",
+      "screenshot": "screenshots/memories__mobile.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-mobile-memories#/apps/memories",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"memory-viewer-view\"]"
+            },
+            "ok": true,
+            "ms": 11
+          }
+        ]
+      },
+      "navMs": 1002,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [
+          "No memories yet"
+        ],
+        "buttons": 3,
+        "visibleElementCount": 21,
+        "textLength": 141,
+        "textSample": "Browse Feed Browse No memories yet Memories will appear here as the agent processes conversations, extracts facts, and builds relationships.",
+        "scroll": {
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "scrollWidth": 390,
+          "scrollHeight": 844
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "runtime",
+      "path": "/apps/runtime",
+      "viewport": "mobile",
+      "screenshot": "screenshots/runtime__mobile.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-mobile-runtime#/apps/runtime",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"runtime-view\"]"
+            },
+            "ok": true,
+            "ms": 10
+          }
+        ]
+      },
+      "navMs": 1009,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [],
+        "buttons": 1,
+        "visibleElementCount": 82,
+        "textLength": 653,
+        "textSample": "Browse Plugins 1 [0] plugin-browser :: BrowserWorkspacePlugin (plugin-browser) Actions 1 [0] open_browser_workspace :: BrowserWorkspaceAction (browser-workspace-action) Providers 1 [0] browser_workspace_provider :: BrowserWorkspaceProvider (browser-workspace-provider) Evaluators 1 [0] browser_workspace_health :: BrowserWorkspaceHealthEvaluator (browser-workspace-health) Services ( 1 types) [0] browser-workspace 1 [0] browser-workspace-service :: BrowserWorkspaceService (browser-workspace-service",
+        "scroll": {
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "scrollWidth": 390,
+          "scrollHeight": 844
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "database",
+      "path": "/apps/database",
+      "viewport": "mobile",
+      "screenshot": "screenshots/database__mobile.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-mobile-database#/apps/database",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"database-view\"]"
+            },
+            "ok": true,
+            "ms": 7
+          }
+        ]
+      },
+      "navMs": 1015,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [
+          "Table Browser"
+        ],
+        "buttons": 1,
+        "visibleElementCount": 22,
+        "textLength": 131,
+        "textSample": "Browse DATABASE Table Browser Database not available The database viewer is only available when the local agent runtime is running.",
+        "scroll": {
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "scrollWidth": 390,
+          "scrollHeight": 844
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "logs",
+      "path": "/apps/logs",
+      "viewport": "mobile",
+      "screenshot": "screenshots/logs__mobile.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-mobile-logs#/apps/logs",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"logs-view\"]"
+            },
+            "ok": true,
+            "ms": 3
+          }
+        ]
+      },
+      "navMs": 1052,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [],
+        "buttons": 4,
+        "visibleElementCount": 40,
+        "textLength": 268,
+        "textSample": "Filter logs Narrow the runtime stream by text, severity, source, or tag so the current incident stands out without losing the surrounding context. All levels All sources All tags Refresh Showing 1 entry 0 active filters 12:18:46 AM INFO [smoke] smoke smoke API ready",
+        "scroll": {
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "scrollWidth": 390,
+          "scrollHeight": 844
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "inventory",
+      "path": "/apps/inventory",
+      "viewport": "mobile",
+      "screenshot": "screenshots/inventory__mobile.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-mobile-inventory#/apps/inventory",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"wallet-shell\"]"
+            },
+            "ok": true,
+            "ms": 2
+          }
+        ]
+      },
+      "navMs": 1021,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [
+          "No balances or trade history yet."
+        ],
+        "buttons": 4,
+        "visibleElementCount": 52,
+        "textLength": 349,
+        "textSample": "Wallet No balances or trade history yet. Here's what the market looks like right now. Spot prices CoinGecko Spot prices unavailable CoinGecko did not return live data. Top movers CoinGecko Top movers unavailable CoinGecko did not return live data. Popular predictions Polymarket Popular predictions unavailable Polymarket did not return live data.",
+        "scroll": {
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "scrollWidth": 390,
+          "scrollHeight": 844
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "elizamaker",
+      "path": "/apps/elizamaker",
+      "viewport": "mobile",
+      "screenshot": "screenshots/elizamaker__mobile.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-mobile-elizamaker#/apps/elizamaker",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"chat-composer-textarea\"]"
+            },
+            "ok": true,
+            "ms": 5
+          }
+        ]
+      },
+      "navMs": 1004,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [],
+        "buttons": 4,
+        "visibleElementCount": 33,
+        "textLength": 35,
+        "textSample": "Eliza What would you like to check?",
+        "scroll": {
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "scrollWidth": 390,
+          "scrollHeight": 844
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "companion",
+      "path": "/apps/companion",
+      "viewport": "mobile",
+      "screenshot": "screenshots/companion__mobile.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-mobile-companion#/apps/companion",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"companion-root\"]"
+            },
+            "ok": true,
+            "ms": 33
+          },
+          {
+            "check": {
+              "selector": "[data-testid=\"companion-root\"][data-avatar-ready=\"true\"]"
+            },
+            "ok": true,
+            "ms": 6956
+          }
+        ]
+      },
+      "navMs": 9802,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [],
+        "buttons": 11,
+        "visibleElementCount": 94,
+        "textLength": 52,
+        "textSample": "Switch shell view 🇺🇸 What would you like to check?",
+        "scroll": {
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "scrollWidth": 390,
+          "scrollHeight": 844
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "shopify",
+      "path": "/apps/shopify",
+      "viewport": "mobile",
+      "screenshot": "screenshots/shopify__mobile.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-mobile-shopify#/apps/shopify",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"shopify-shell\"]"
+            },
+            "ok": true,
+            "ms": 13
+          }
+        ]
+      },
+      "navMs": 1064,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [],
+        "buttons": 2,
+        "visibleElementCount": 57,
+        "textLength": 260,
+        "textSample": "Shopify Not connected Connect your Shopify store STORE DOMAIN SHOPIFY_STORE_DOMAIN=your-store.myshopify.com ACCESS TOKEN SHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx Restart after setting these env vars. read_products read_orders read_inventory read_customers",
+        "scroll": {
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "scrollWidth": 390,
+          "scrollHeight": 844
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "vincent",
+      "path": "/apps/vincent",
+      "viewport": "mobile",
+      "screenshot": "screenshots/vincent__mobile.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-mobile-vincent#/apps/vincent",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"vincent-shell\"]"
+            },
+            "ok": true,
+            "ms": 7
+          }
+        ]
+      },
+      "navMs": 989,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [
+          "Vincent"
+        ],
+        "buttons": 3,
+        "visibleElementCount": 41,
+        "textLength": 318,
+        "textSample": "Vincent Hyperliquid and Polymarket trading access Disconnected Vincent disconnected Connect your Vincent account to enable DeFi vault management. Connect Vincent Connect your Vincent account to get started Once connected, you'll see your vault health, trading strategy, P&L analytics, and transaction history here.",
+        "scroll": {
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "scrollWidth": 390,
+          "scrollHeight": 844
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "hyperliquid",
+      "path": "/apps/hyperliquid",
+      "viewport": "mobile",
+      "screenshot": "screenshots/hyperliquid__mobile.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-mobile-hyperliquid#/apps/hyperliquid",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"hyperliquid-shell\"]"
+            },
+            "ok": true,
+            "ms": 9
+          }
+        ]
+      },
+      "navMs": 1003,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [
+          "Hyperliquid",
+          "Markets",
+          "Positions",
+          "Open orders"
+        ],
+        "buttons": 2,
+        "visibleElementCount": 69,
+        "textLength": 410,
+        "textSample": "Hyperliquid Native read/status surface for Hyperliquid PUBLIC READS Ready CREDENTIALS Read-only ACCOUNT No account address configured Signed Hyperliquid exchange mutations are disabled in UI smoke. Public market reads do not require a vault. Markets 2 BTC 50x sz 5 ETH 50x sz 4 Positions Connect an account address to read Hyperliquid positions. Open orders Connect an account address to read open orders.",
+        "scroll": {
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "scrollWidth": 390,
+          "scrollHeight": 844
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    },
+    {
+      "name": "polymarket",
+      "path": "/apps/polymarket",
+      "viewport": "mobile",
+      "screenshot": "screenshots/polymarket__mobile.png",
+      "url": "http://127.0.0.1:60269/?appWindow=1&manualQa=companion-utility-final-20260512T080841833Z-mobile-polymarket#/apps/polymarket",
+      "ready": {
+        "ok": true,
+        "results": [
+          {
+            "check": {
+              "selector": "[data-testid=\"polymarket-shell\"]"
+            },
+            "ok": true,
+            "ms": 2
+          }
+        ]
+      },
+      "navMs": 975,
+      "navError": null,
+      "issues": [],
+      "inspection": {
+        "title": "Eliza",
+        "bodyHasRedError": false,
+        "redText": [],
+        "headings": [
+          "Polymarket",
+          "Read access",
+          "Trading readiness",
+          "Active markets",
+          "Will the UI smoke suite stay green?"
+        ],
+        "buttons": 3,
+        "visibleElementCount": 76,
+        "textLength": 474,
+        "textSample": "Polymarket Native market discovery and trading readiness Read access Gamma and Data API reads are public. Ready Trading readiness Orders stay disabled until signed CLOB calls are implemented. Disabled Trading is disabled in UI smoke. Active markets Will the UI smoke suite stay green? 24h volume 1200 QA Will the UI smoke suite stay green? Ready Deterministic fixture market for app-window QA. Liquidity 10000 Volume 42000 Last trade 0.72 Outcomes Yes 0.72 No 0.28",
+        "scroll": {
+          "innerWidth": 390,
+          "innerHeight": 844,
+          "scrollWidth": 390,
+          "scrollHeight": 844
+        },
+        "hasHorizontalOverflow": false,
+        "approximateViewportCoverage": 1
+      },
+      "verdict": "pass"
+    }
+  ],
+  "summary": {
+    "total": 36,
+    "readyFailures": 0,
+    "errorScreens": 0,
+    "overflow": 0,
+    "consoleIssues": 0
+  }
+}

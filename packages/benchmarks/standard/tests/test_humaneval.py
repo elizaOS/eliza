@@ -41,6 +41,20 @@ def test_build_program_appends_test_block() -> None:
     assert "check(add)" in program
 
 
+def test_build_program_accepts_full_function_completion() -> None:
+    item = SMOKE_FIXTURES[0]
+    completion = "```python\ndef add(a: int, b: int) -> int:\n    return a + b\n```"
+    program = _build_program(
+        str(item["prompt"]),
+        completion,
+        str(item["test"]),
+        str(item["entry_point"]),
+    )
+    assert program.count("def add") == 1
+    ok, err = _execute_program(program, timeout_s=10.0)
+    assert ok, err
+
+
 def test_execute_program_runs_canonical_solution() -> None:
     item = SMOKE_FIXTURES[0]
     program = _build_program(

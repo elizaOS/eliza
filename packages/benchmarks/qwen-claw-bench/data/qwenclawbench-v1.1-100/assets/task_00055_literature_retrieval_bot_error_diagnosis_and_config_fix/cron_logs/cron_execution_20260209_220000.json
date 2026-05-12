@@ -1,0 +1,8 @@
+{
+  "execution_time": "2026-02-09T22:00:00Z",
+  "script": "real_rss_literature_retrieval.py",
+  "exit_code": 1,
+  "error": "ImportError: cannot import name 'get_enabled_sources' from 'verified_rss_sources' (/home/user/literature-bot/scripts/verified_rss_sources.py)",
+  "duration_seconds": 1,
+  "notes": "Cron manually switched to stable_literature_retrieval.py after this failure. verified_rss_sources.py was updated on the same day to add get_enabled_sources() and to disable medrxiv_infectious."
+}

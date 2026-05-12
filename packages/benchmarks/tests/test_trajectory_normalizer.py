@@ -217,14 +217,17 @@ def test_openclaw_multi_assistant_turn_step_index() -> None:
     assert entries[1].request["messages"][-1] == {"role": "tool", "content": "t1"}
 
 
-def test_hermes_xml_tool_call_parses(tmp_path: Path) -> None:
+def test_hermes_native_tool_call_parses(tmp_path: Path) -> None:
     src = tmp_path / "samples.jsonl"
     row = {
         "messages": [
             {"from": "human", "value": "please call x"},
             {
                 "from": "gpt",
-                "value": 'sure\n<tool_call>{"name":"x","arguments":{"a":1}}</tool_call>',
+                "value": "sure",
+                "tool_calls": [
+                    {"function": {"name": "x", "arguments": json.dumps({"a": 1})}}
+                ],
             },
         ],
         "tools": [{"name": "x"}],
@@ -239,7 +242,6 @@ def test_hermes_xml_tool_call_parses(tmp_path: Path) -> None:
     assert e.agent_id == "hermes"
     # Prefix message rolls into request.messages with the role remapped.
     assert e.request["messages"] == [{"role": "user", "content": "please call x"}]
-    # The cleaned content drops the tag and keeps the prefix text.
     assert e.response["text"] == "sure"
     assert e.response["toolCalls"] == [
         {"name": "x", "arguments": {"a": 1}, "id": "", "result": None}
@@ -252,7 +254,11 @@ def test_hermes_role_mapping(tmp_path: Path) -> None:
         "messages": [
             {"from": "system", "value": "be useful"},
             {"from": "human", "value": "hello"},
-            {"from": "gpt", "value": '<tool_call>{"name":"f","arguments":{}}</tool_call>'},
+            {
+                "from": "gpt",
+                "value": "",
+                "tool_calls": [{"function": {"name": "f", "arguments": "{}"}}],
+            },
             {"from": "tool", "value": {"ok": True}},
             {"from": "gpt", "value": "done"},
         ],
@@ -272,37 +278,39 @@ def test_hermes_role_mapping(tmp_path: Path) -> None:
     assert "toolCalls" not in entries[0].response
 
 
-def test_hermes_malformed_tool_call_dropped_silently(tmp_path: Path) -> None:
+def test_hermes_text_protocol_is_not_parsed(tmp_path: Path) -> None:
     src = tmp_path / "samples.jsonl"
     row = {
         "messages": [
             {"from": "human", "value": "do it"},
-            {"from": "gpt", "value": "trying <tool_call>{not json}</tool_call>"},
+            {"from": "gpt", "value": "trying legacy text call"},
         ],
         "tools": [],
     }
     _write_jsonl(src, [row])
     entries = normalize_hermes_samples_jsonl(src, benchmark_id="b", task_id="t")
     assert len(entries) == 1
-    assert entries[0].response.get("text") == "trying"
+    assert entries[0].response.get("text") == "trying legacy text call"
     assert "toolCalls" not in entries[0].response
 
 
-def test_hermes_unclosed_tool_call_tolerated(tmp_path: Path) -> None:
-    """Hermes' own parser tolerates truncated `<tool_call>...` at EOS;
-    we should too."""
+def test_hermes_flat_native_tool_call_tolerated(tmp_path: Path) -> None:
     src = tmp_path / "samples.jsonl"
     row = {
         "messages": [
             {"from": "human", "value": "go"},
-            {"from": "gpt", "value": '<tool_call>{"name":"truncated","arguments":{"k":2}}'},
+            {
+                "from": "gpt",
+                "value": "",
+                "toolCalls": [{"name": "native_call", "arguments": {"k": 2}}],
+            },
         ],
         "tools": [],
     }
     _write_jsonl(src, [row])
     entries = normalize_hermes_samples_jsonl(src, benchmark_id="b", task_id="t")
     assert entries[0].response["toolCalls"] == [
-        {"name": "truncated", "arguments": {"k": 2}, "id": "", "result": None}
+        {"name": "native_call", "arguments": {"k": 2}, "id": "", "result": None}
     ]
 
 

@@ -1,0 +1,49 @@
+{
+  "api_name": "Baidu Qianfan API",
+  "last_updated": "2024-01-15",
+  "reference": "https://cloud.baidu.com/doc/WENXINWORKSHOP/s/tlmyncueh",
+  "error_codes": [
+    {
+      "code": 110,
+      "message": "Access token invalid or no longer valid",
+      "description": "The provided access_token is malformed, revoked, or does not exist. Re-authenticate to obtain a new token.",
+      "http_status": 401
+    },
+    {
+      "code": 111,
+      "message": "Access token expired",
+      "description": "The access_token has exceeded its validity period (default 30 days). Request a new token using the OAuth endpoint.",
+      "http_status": 401
+    },
+    {
+      "code": 17,
+      "message": "Open api daily request limit reached",
+      "description": "The application has exceeded its daily API call quota. Wait until the quota resets at midnight (UTC+8) or upgrade your plan.",
+      "http_status": 429
+    },
+    {
+      "code": 18,
+      "message": "Open api qps request limit reached",
+      "description": "Too many requests per second. Implement rate limiting or exponential backoff in your client.",
+      "http_status": 429
+    },
+    {
+      "code": 282000,
+      "message": "Internal error",
+      "description": "An unexpected server-side error occurred. Retry the request after a brief delay. If persistent, contact Baidu support.",
+      "http_status": 500
+    },
+    {
+      "code": 336001,
+      "message": "Invalid parameter",
+      "description": "One or more request parameters are missing or have invalid values. Check the request body and query parameters.",
+      "http_status": 400
+    },
+    {
+      "code": 336003,
+      "message": "Request body too large",
+      "description": "The request payload exceeds the maximum allowed size. Reduce the number of messages or shorten the content.",
+      "http_status": 413
+    }
+  ]
+}

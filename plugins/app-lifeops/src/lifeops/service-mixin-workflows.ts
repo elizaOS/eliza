@@ -1,35 +1,29 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
-
 import { computeNextCronRunAtMs } from "@elizaos/agent";
-import type { LifeOpsDerivedEvent } from "@elizaos/plugin-health";
 import type {
   CreateLifeOpsWorkflowRequest,
   LifeOpsCalendarEvent,
   LifeOpsCalendarEventEndedFilters,
+  LifeOpsEventKind,
   LifeOpsWorkflowDefinition,
   LifeOpsWorkflowRecord,
   LifeOpsWorkflowRun,
+  LifeOpsWorkflowSchedule,
   UpdateLifeOpsWorkflowRequest,
 } from "../contracts/index.js";
 import { LIFEOPS_WORKFLOW_STATUSES } from "../contracts/index.js";
+import { resolveNextRelativeScheduleInstant } from "./relative-schedule-resolver.js";
+import {
+  createLifeOpsWorkflowDefinition,
+  createLifeOpsWorkflowRun,
+  type LifeOpsScheduleMergedStateRecord,
+} from "./repository.js";
+import { parseWorkflowSchedulerState } from "./service-helpers-browser.js";
 import {
   getWorkflowStepRegistry,
   UnknownWorkflowStepError,
   type WorkflowStepExecuteArgs,
   type WorkflowStepExecuteContext,
 } from "./registries/workflow-step-registry.js";
-import { resolveNextRelativeScheduleInstant } from "./relative-schedule-resolver.js";
-import {
-  createLifeOpsWorkflowDefinition,
-  createLifeOpsWorkflowRun,
-} from "./repository.js";
-import { parseWorkflowSchedulerState } from "./service-helpers-browser.js";
 import {
   isRecord,
   normalizeOptionalRecord,
@@ -75,6 +69,27 @@ export interface LifeOpsWorkflowService {
     request?: { now?: string; confirmBrowserActions?: boolean },
   ): Promise<LifeOpsWorkflowRun>;
 }
+
+type LifeOpsWorkflowEvent = {
+  id: string;
+  kind: LifeOpsEventKind;
+  occurredAt: string;
+  confidence: number;
+  payload: Record<string, unknown>;
+};
+
+type WorkflowEventSchedule = Extract<LifeOpsWorkflowSchedule, { kind: "event" }>;
+
+type WorkflowMixinDependencies = LifeOpsServiceBase & {
+  readEffectiveScheduleState(args?: {
+    timezone?: string | null;
+    now?: Date;
+  }): Promise<LifeOpsScheduleMergedStateRecord | null>;
+  emitWorkflowRunNudge(
+    workflow: LifeOpsWorkflowDefinition,
+    run: LifeOpsWorkflowRun,
+  ): Promise<void>;
+};
 
 export function matchesCalendarEventEndedFilters(
   event: LifeOpsCalendarEvent,
@@ -132,7 +147,7 @@ export function matchesCalendarEventEndedFilters(
 }
 
 function matchesLifeOpsDerivedEventFilters(
-  event: LifeOpsDerivedEvent,
+  event: LifeOpsWorkflowEvent,
   filters: unknown,
   nowIso: string,
 ): boolean {
@@ -185,7 +200,7 @@ function matchesLifeOpsDerivedEventFilters(
     event.kind === "gmail.message.received" ||
     event.kind === "gmail.thread.needs_response"
   ) {
-    const payload = event.payload ?? {};
+    const payload = isRecord(event.payload) ? event.payload : {};
     const grantId = typeof payload.grantId === "string" ? payload.grantId : "";
     if (
       Array.isArray(record.grantIds) &&
@@ -244,7 +259,10 @@ function matchesLifeOpsDerivedEventFilters(
 export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsWorkflowService> {
-  return class extends Base {
+  const WorkflowsBase =
+    Base as unknown as Constructor<WorkflowMixinDependencies>;
+
+  class LifeOpsWorkflowServiceMixin extends WorkflowsBase {
     protected readWorkflowSchedulerState(
       workflow: LifeOpsWorkflowDefinition,
     ): LifeOpsWorkflowSchedulerState | null {
@@ -495,7 +513,7 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
     public async runDueEventWorkflows(args: {
       now: string;
       limit: number;
-      lifeOpsEvents?: LifeOpsDerivedEvent[];
+      lifeOpsEvents?: LifeOpsWorkflowEvent[];
     }): Promise<LifeOpsWorkflowRun[]> {
       const workflows = await this.repository.listWorkflows(this.agentId());
       const runs: LifeOpsWorkflowRun[] = [];
@@ -511,6 +529,7 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
         ) {
           continue;
         }
+        const eventSchedule = workflow.schedule as WorkflowEventSchedule;
         let nextWorkflow = workflow;
         const existingState = this.readWorkflowSchedulerState(nextWorkflow);
         let schedulerState: LifeOpsWorkflowSchedulerState = existingState ?? {
@@ -526,7 +545,7 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
         let stateChanged = existingState === null;
 
         const remaining = args.limit - runs.length;
-        if (workflow.schedule.eventKind === "calendar.event.ended") {
+        if (eventSchedule.eventKind === "calendar.event.ended") {
           const candidates =
             await this.repository.listCalendarEventsEndedAfterCursor({
               agentId: this.agentId(),
@@ -539,8 +558,8 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
             });
 
           const filters =
-            workflow.schedule.filters?.kind === "calendar.event.ended"
-              ? workflow.schedule.filters.filters
+            eventSchedule.filters?.kind === "calendar.event.ended"
+              ? eventSchedule.filters.filters
               : undefined;
 
           for (const event of candidates) {
@@ -600,7 +619,7 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
           }
         } else {
           const candidates = (args.lifeOpsEvents ?? [])
-            .filter((event) => event.kind === workflow.schedule.eventKind)
+            .filter((event) => event.kind === eventSchedule.eventKind)
             .filter((event) => {
               if (!schedulerState.lastFiredEventEndAt) {
                 return true;
@@ -616,8 +635,8 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
             .slice(0, Math.max(remaining * 4, 8));
 
           const filters =
-            workflow.schedule.filters?.kind === workflow.schedule.eventKind
-              ? workflow.schedule.filters.filters
+            eventSchedule.filters?.kind === eventSchedule.eventKind
+              ? eventSchedule.filters.filters
               : undefined;
 
           for (const event of candidates) {
@@ -976,5 +995,10 @@ export function withWorkflows<TBase extends Constructor<LifeOpsServiceBase>>(
       }
       return result.run;
     }
-  } as MixinClass<TBase, LifeOpsWorkflowService>;
+  }
+
+  return LifeOpsWorkflowServiceMixin as unknown as MixinClass<
+    TBase,
+    LifeOpsWorkflowService
+  >;
 }

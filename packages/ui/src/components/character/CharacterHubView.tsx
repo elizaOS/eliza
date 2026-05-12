@@ -32,6 +32,7 @@ import type {
   ExperienceRecord,
   RelationshipsActivityItem,
 } from "../../api/client-types";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
 import {
   getWindowNavigationPath,
   shouldUseHashNavigation,
@@ -55,7 +56,6 @@ import {
   CharacterOverviewSection,
   type CharacterOverviewWidget,
 } from "./CharacterOverviewSection";
-import { CharacterRelationshipsSection } from "./CharacterRelationshipsSection";
 import {
   CHARACTER_HUB_SECTIONS,
   type CharacterHubSection,
@@ -263,6 +263,7 @@ export function CharacterHubView({
   hasPendingChanges: boolean;
   onSave: () => Promise<unknown>;
 }) {
+  useRenderGuard("CharacterHubView");
   const { setActionNotice, setTab, tab, t } = useApp();
   const [activeSection, setActiveSection] = useState<CharacterHubSection>(() =>
     getSectionFromLocation(tab),
@@ -1224,7 +1225,7 @@ export function CharacterHubView({
     }
 
     return (
-      <CharacterRelationshipsSection summary="See the full relationships viewer, including extracted facts, relevant memories, and user-scoped preferences.">
+      <section className="flex min-w-0 flex-col gap-3">
         {relationshipActivityError ? (
           <div className="border-b border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
             {relationshipActivityError}
@@ -1238,7 +1239,7 @@ export function CharacterHubView({
             }}
           />
         </div>
-      </CharacterRelationshipsSection>
+      </section>
     );
   };
 

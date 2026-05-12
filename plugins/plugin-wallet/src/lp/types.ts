@@ -1,4 +1,3 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type {
   IAgentRuntime,
   ILpService,
@@ -92,6 +91,13 @@ export interface EvmWallet {
   privateKey: `0x${string}`;
 }
 
+export type EvmPoolTokenInfo = PoolInfo["tokenA"] & {
+  /** EVM token contract address. Also mirrored to mint for core PoolInfo compatibility. */
+  address: Address;
+  mint: Address;
+  decimals: number;
+};
+
 export interface EvmPoolInfo extends Omit<PoolInfo, "tokenA" | "tokenB"> {
   /** Chain ID where the pool exists */
   chainId: number;
@@ -100,19 +106,9 @@ export interface EvmPoolInfo extends Omit<PoolInfo, "tokenA" | "tokenB"> {
   /** Pool contract address */
   poolAddress: Address;
   /** Token A info with EVM address */
-  tokenA: {
-    address: Address;
-    symbol?: string;
-    decimals: number;
-    reserve?: string;
-  };
+  tokenA: EvmPoolTokenInfo;
   /** Token B info with EVM address */
-  tokenB: {
-    address: Address;
-    symbol?: string;
-    decimals: number;
-    reserve?: string;
-  };
+  tokenB: EvmPoolTokenInfo;
   /** Fee tier (for Uniswap V3 style pools) */
   feeTier?: number;
   /** Tick spacing (for concentrated liquidity) */
@@ -258,6 +254,7 @@ export interface IEvmLpService extends Service {
   getMarketData(
     poolAddresses: Address[],
   ): Promise<Record<string, Partial<EvmPoolInfo>>>;
+
 }
 
 // ============================================================================

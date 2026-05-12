@@ -1,0 +1,57 @@
+# OpenClaw Gateway Configuration
+# Last modified: 2026-02-10T08:14:00Z
+
+gateway:
+  bind: "0.0.0.0:3578"
+  name: "production-gateway"
+  logLevel: info
+  maxMemoryMB: 1024
+
+model:
+  provider: anthropic
+  default: claude-opus-4-6-20260205
+  fallback: claude-sonnet-4-20250514
+  maxTokens: 8192
+
+plugins:
+  entries:
+    telegram:
+      enabled: true
+      config:
+        botToken: "REDACTED"
+        allowedUsers:
+          - 8837291
+    discord:
+      enabled: true
+      config:
+        botToken: "REDACTED"
+        guildId: "1094827364510"
+    device-pair:
+      enabled: true
+      config:
+        publicUrl: "https://gw.example.com"
+
+heartbeat:
+  enabled: true
+  intervalMs: 1800000
+  prompt: "Read HEARTBEAT.md if it exists. Follow it strictly."
+
+cron:
+  enabled: true
+  jobs: []
+
+session:
+  maxConcurrent: 5
+  timeoutMs: 300000
+  historyLimit: 50
+
+security:
+  exec:
+    mode: allowlist
+    allowedCommands:
+      - "openclaw*"
+      - "git*"
+      - "ls"
+      - "cat"
+      - "ps"
+      - "grep"

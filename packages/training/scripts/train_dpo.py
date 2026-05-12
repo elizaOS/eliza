@@ -3,7 +3,7 @@
 Uses TRL's `DPOTrainer` against synthesized preference pairs from
 `data/synthesized/action_pairs/`. The synthesized files ship as flat eliza
 records (one per row) — we treat the `expectedResponse` as `chosen` and
-generate a corrupted `rejected` per record (perturbed action / broken TOON)
+generate a corrupted `rejected` per record (perturbed action / broken native JSON)
 so DPO has signal without needing a separate teacher pass.
 
 Mirrors `train_local.py`'s style: APOLLO + Liger + FA-2/3 selection,
@@ -14,7 +14,7 @@ Usage:
     # Smoke
     uv run --extra train python scripts/train_dpo.py \
         --registry-key qwen3.5-2b \
-        --sft-checkpoint checkpoints/qwen3-06b-eliza-toon-v3/final \
+        --sft-checkpoint checkpoints/qwen3-06b-eliza-payload-v3/final \
         --output-dir checkpoints/qwen3-06b-dpo-smoke \
         --max-steps 5
 
@@ -59,7 +59,7 @@ _ROUTING_FLIP = {"RESPOND": "IGNORE", "IGNORE": "RESPOND", "STOP": "RESPOND"}
 
 
 def _corrupt_response(expected: str, task_type: str, rng: random.Random) -> str:
-    """Return a plausibly-bad TOON response derived from `expected`.
+    """Return a plausibly-bad native JSON response derived from `expected`.
 
     Strategy depends on the bucket:
       should_respond → flip the action label.
@@ -259,9 +259,8 @@ def main() -> int:
     log.info("loading policy + ref from %s", args.sft_checkpoint)
     policy = AutoModelForCausalLM.from_pretrained(args.sft_checkpoint, **model_kwargs)
     # Frozen reference. We deliberately keep a separate copy in memory rather
-    # than passing `ref_model=None` (which would have TRL re-create one with
-    # peft adapter-disable tricks) — at our model sizes that's both clearer
-    # and faster.
+    # than passing `ref_model=None`; at our model sizes that's both clearer
+    # and faster, and it keeps the DPO path full-parameter/APOLLO-only.
     ref_model = AutoModelForCausalLM.from_pretrained(args.sft_checkpoint, **model_kwargs)
     for p in ref_model.parameters():
         p.requires_grad_(False)
@@ -298,7 +297,9 @@ def main() -> int:
             "ELIZA_TRAINER_OPTIM is disabled. DPO always builds "
             "APOLLO/APOLLO-Mini through the trainer create_optimizer hook."
         )
-    trainer_optim = "adafactor"
+    # IMPORTANT: DPO uses the same APOLLO-only optimizer policy as SFT. The
+    # custom DPOTrainer.create_optimizer below is the sole optimizer path so
+    # full-parameter tuning remains viable on smaller GPU memory budgets.
     dpo_cfg = DPOConfig(
         output_dir=str(out_dir),
         num_train_epochs=args.epochs,
@@ -308,7 +309,6 @@ def main() -> int:
         lr_scheduler_type="cosine",
         warmup_ratio=0.03,
         weight_decay=0.0,
-        optim=trainer_optim,
         bf16=device == "cuda",
         beta=args.beta,
         max_length=args.max_seq_len,

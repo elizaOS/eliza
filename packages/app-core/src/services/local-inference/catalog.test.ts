@@ -18,6 +18,34 @@ describe("local inference catalog", () => {
     );
   });
 
+  it("uses the Qwen3.5 0.6B / 1.7B / 4B text source tiers, not stale Qwen3 text tiers", () => {
+    expect(ELIZA_1_TIER_IDS.slice(0, 3)).toEqual([
+      "eliza-1-0_6b",
+      "eliza-1-1_7b",
+      "eliza-1-4b",
+    ]);
+    expect(FIRST_RUN_DEFAULT_MODEL_ID).toBe("eliza-1-1_7b");
+    const serializedCatalog = JSON.stringify(MODEL_CATALOG);
+    expect(serializedCatalog).toContain("Qwen/Qwen3.5-0.6B");
+    expect(serializedCatalog).toContain("Qwen/Qwen3.5-1.7B");
+    expect(serializedCatalog).toContain("Qwen/Qwen3.5-4B");
+    expect(serializedCatalog).not.toMatch(
+      new RegExp(
+        [
+          "eliza-1-0" + "_8b",
+          "eliza-1-" + "2" + "b",
+          "Qwen/Qwen3-0\\.6B",
+          "Qwen/Qwen3-1\\.7B",
+          "Qwen3\\.5-0\\.8B",
+          "Qwen3\\.5-" + "2" + "B",
+        ].join("|"),
+      ),
+    );
+    for (const model of MODEL_CATALOG) {
+      expect(model.tokenizerFamily).toBe("qwen35");
+    }
+  });
+
   it("marks ONLY the Eliza-1 tiers as default-eligible", () => {
     expect([...DEFAULT_ELIGIBLE_MODEL_IDS].sort()).toEqual(
       [...ELIZA_1_TIER_IDS].sort(),
@@ -92,13 +120,13 @@ describe("local inference catalog", () => {
     // 27B-256k = 256k. The catalog records the largest
     // ctx the bundle's manifest will advertise for each tier.
     const expected: Record<string, number> = {
-      "eliza-1-0_8b": 32768,
       "eliza-1-0_6b": 32768,
       "eliza-1-1_7b": 32768,
       "eliza-1-2b": 32768,
       "eliza-1-9b": 65536,
       "eliza-1-27b": 131072,
       "eliza-1-27b-256k": 262144,
+      "eliza-1-27b-1m": 1_048_576,
     };
     for (const [id, expectedLength] of Object.entries(expected)) {
       const model = findCatalogModel(id);
@@ -185,8 +213,20 @@ describe("local inference catalog", () => {
       expect(drafter.hiddenFromCatalog).toBe(true);
       expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(drafter.id)).toBe(false);
       expect(drafter.companionForModelId).toBeTruthy();
-      expect(drafter.tokenizerFamily).toBe("eliza1");
+      expect(drafter.tokenizerFamily).toBe("qwen35");
     }
+  });
+
+  it("records 27b-1m text and vision source provenance", () => {
+    const model = findCatalogModel("eliza-1-27b-1m");
+    expect(model?.sourceModel?.finetuned).toBe(false);
+    const components = model?.sourceModel?.components;
+    expect(components?.text).toEqual({
+      repo: "Qwen/Qwen3.6-27B",
+    });
+    expect(components?.vision).toEqual({
+      repo: "Qwen/Qwen3.6-27B",
+    });
   });
 
   it("does not leak implementation-family names in visible catalog copy", () => {

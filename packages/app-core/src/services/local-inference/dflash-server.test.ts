@@ -13,7 +13,6 @@ import {
   extractStreamingChatDelta,
   extractVerifierRejectRange,
   findBundleOmnivoiceAssets,
-  findBundleVisionMmproj,
   getDflashRuntimeStatus,
   logDflashDevDisabledWarning,
   parseDflashMetrics,
@@ -102,26 +101,17 @@ describe("DFlash runtime discovery", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-dflash-test-"));
     process.env.ELIZA_STATE_DIR = root;
     delete process.env.ELIZA_DFLASH_ENABLED;
-    delete process.env.MILADY_DFLASH_DISABLE;
-    delete process.env.ELIZA_DFLASH_DISABLE;
+    delete process.env.ELIZA_DFLASH_DISABLED;
     delete process.env.ELIZA_DFLASH_METAL_AUTO;
     delete process.env.ELIZA_DFLASH_METAL_ENABLED;
     delete process.env.HIP_VISIBLE_DEVICES;
     delete process.env.ROCR_VISIBLE_DEVICES;
     delete process.env.CUDA_VISIBLE_DEVICES;
     const binary = makeManagedBinary(root);
-    const isMetalRuntime = process.platform === "darwin";
 
     expect(resolveDflashBinary()).toBe(binary);
-    expect(dflashEnabled()).toBe(!isMetalRuntime);
-    expect(getDflashRuntimeStatus().enabled).toBe(!isMetalRuntime);
-
-    if (isMetalRuntime) {
-      expect(getDflashRuntimeStatus().reason).toContain("auto-disabled");
-      process.env.ELIZA_DFLASH_METAL_AUTO = "1";
-      expect(dflashEnabled()).toBe(true);
-      expect(getDflashRuntimeStatus().enabled).toBe(true);
-    }
+    expect(dflashEnabled()).toBe(true);
+    expect(getDflashRuntimeStatus().enabled).toBe(true);
   });
 
   it("does not use PATH llama-server unless explicitly enabled", () => {
@@ -196,8 +186,7 @@ describe("fused-vs-two-process spawn selection", () => {
   }
   function clearEnv() {
     delete process.env.ELIZA_DFLASH_ENABLED;
-    delete process.env.MILADY_DFLASH_DISABLE;
-    delete process.env.ELIZA_DFLASH_DISABLE;
+    delete process.env.ELIZA_DFLASH_DISABLED;
     delete process.env.ELIZA_DFLASH_METAL_AUTO;
     delete process.env.ELIZA_DFLASH_METAL_ENABLED;
     delete process.env.ELIZA_DFLASH_DISABLE_FUSED_SERVER;
@@ -287,84 +276,10 @@ describe("fused-vs-two-process spawn selection", () => {
     // A non-bundle layout (no text/ parent) returns null.
     expect(findBundleOmnivoiceAssets(path.join(root, "model.gguf"))).toBeNull();
   });
-
-  it("findBundleVisionMmproj derives --mmproj from the bundle manifest files.vision[0].path", () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-mmproj-test-"));
-    const bundle = path.join(root, "eliza-1-9b.bundle");
-    fs.mkdirSync(path.join(bundle, "text"), { recursive: true });
-    fs.mkdirSync(path.join(bundle, "vision"), { recursive: true });
-    const textGguf = path.join(bundle, "text", "eliza-1-9b-64k.gguf");
-    fs.writeFileSync(textGguf, "x");
-    fs.writeFileSync(path.join(bundle, "vision", "mmproj-9b.gguf"), "x");
-    fs.writeFileSync(
-      path.join(bundle, "eliza-1.manifest.json"),
-      JSON.stringify({
-        id: "eliza-1-9b",
-        tier: "9b",
-        files: {
-          text: [{ path: "text/eliza-1-9b-64k.gguf", ctx: 65536 }],
-          vision: [{ path: "vision/mmproj-9b.gguf" }],
-        },
-      }),
-      "utf8",
-    );
-    expect(findBundleVisionMmproj(textGguf)).toBe(
-      path.join(bundle, "vision", "mmproj-9b.gguf"),
-    );
-
-    // No vision[] entry → text-only tier → null.
-    const noVision = path.join(root, "eliza-1-1_7b.bundle");
-    fs.mkdirSync(path.join(noVision, "text"), { recursive: true });
-    const noVisionText = path.join(noVision, "text", "eliza-1-1_7b-32k.gguf");
-    fs.writeFileSync(noVisionText, "x");
-    fs.writeFileSync(
-      path.join(noVision, "eliza-1.manifest.json"),
-      JSON.stringify({
-        id: "eliza-1-1_7b",
-        tier: "1_7b",
-        files: {
-          text: [{ path: "text/eliza-1-1_7b-32k.gguf", ctx: 32768 }],
-          vision: [],
-        },
-      }),
-      "utf8",
-    );
-    expect(findBundleVisionMmproj(noVisionText)).toBeNull();
-
-    // Manifest declares a vision file that isn't on disk → null (fail closed,
-    // no half-loaded vision).
-    const ghostBundle = path.join(root, "eliza-1-27b.bundle");
-    fs.mkdirSync(path.join(ghostBundle, "text"), { recursive: true });
-    const ghostText = path.join(ghostBundle, "text", "eliza-1-27b-128k.gguf");
-    fs.writeFileSync(ghostText, "x");
-    fs.writeFileSync(
-      path.join(ghostBundle, "eliza-1.manifest.json"),
-      JSON.stringify({
-        id: "eliza-1-27b",
-        tier: "27b",
-        files: {
-          text: [{ path: "text/eliza-1-27b-128k.gguf", ctx: 131072 }],
-          vision: [{ path: "vision/mmproj-27b.gguf" }],
-        },
-      }),
-      "utf8",
-    );
-    expect(findBundleVisionMmproj(ghostText)).toBeNull();
-
-    // Missing manifest / non-bundle layout → null.
-    expect(findBundleVisionMmproj(path.join(root, "loose.gguf"))).toBeNull();
-  });
 });
 
 describe("ELIZA_DFLASH_DISABLE developer kill-switch", () => {
-  afterEach(() => {
-    delete process.env.MILADY_DFLASH_DISABLE;
-    delete process.env.ELIZA_DFLASH_DISABLE;
-    delete process.env.ELIZA_DFLASH_ENABLED;
-  });
-
   it("disables DFlash even when ELIZA_DFLASH_ENABLED forces it on", () => {
-    delete process.env.MILADY_DFLASH_DISABLE;
     delete process.env.ELIZA_DFLASH_DISABLE;
     process.env.ELIZA_DFLASH_ENABLED = "1";
     expect(dflashDevDisabled()).toBe(false);
@@ -376,17 +291,9 @@ describe("ELIZA_DFLASH_DISABLE developer kill-switch", () => {
     expect(getDflashRuntimeStatus().reason).toContain("ELIZA_DFLASH_DISABLE");
   });
 
-  it("MILADY_DFLASH_DISABLE is accepted as a back-compat alias", () => {
-    delete process.env.ELIZA_DFLASH_DISABLE;
-    process.env.MILADY_DFLASH_DISABLE = "1";
-    expect(dflashDevDisabled()).toBe(true);
-    expect(dflashEnabled()).toBe(false);
-  });
-
   it("logs a loud warning when active and is silent otherwise", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      delete process.env.MILADY_DFLASH_DISABLE;
       delete process.env.ELIZA_DFLASH_DISABLE;
       logDflashDevDisabledWarning();
       expect(warn).not.toHaveBeenCalled();
@@ -612,6 +519,79 @@ describe("DFlash streaming callbacks", () => {
       target.baseUrl = previous.baseUrl;
       target.cacheParallel = previous.cacheParallel;
       await mock.close();
+    }
+  });
+
+  it("repairs deterministic structured-output spans while suppressing duplicate server bytes", async () => {
+    const server = http.createServer(async (req, res) => {
+      if (req.method === "GET" && req.url === "/metrics") {
+        res.statusCode = 200;
+        res.end(
+          [
+            "llamacpp:prompt_tokens_total 0",
+            "llamacpp:n_tokens_predicted_total 0",
+            "llamacpp:n_drafted_total 2",
+            "llamacpp:n_accepted_total 2",
+          ].join("\n"),
+        );
+        return;
+      }
+      if (req.method === "POST" && req.url === "/v1/chat/completions") {
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [{ delta: { content: '{"action":"BLO' } }],
+          })}\n\n`,
+        );
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [{ delta: { content: 'CK","parameters":{}' } }],
+          })}\n\n`,
+        );
+        res.end("data: [DONE]\n\n");
+        return;
+      }
+      res.statusCode = 404;
+      res.end();
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const target = dflashLlamaServer as unknown as {
+      baseUrl: string | null;
+      cacheParallel: number;
+    };
+    const previous = {
+      baseUrl: target.baseUrl,
+      cacheParallel: target.cacheParallel,
+    };
+    target.baseUrl = baseUrl;
+    target.cacheParallel = 4;
+    const textChunks: string[] = [];
+    try {
+      const result = await dflashLlamaServer.generateWithUsage({
+        prompt: "choose action",
+        responseSkeleton: {
+          spans: [
+            { kind: "literal", value: '{"action":' },
+            { kind: "enum", key: "action", enumValues: ["BLOCK", "BRIEF"] },
+            { kind: "literal", value: ',"parameters":' },
+            { kind: "free-json", key: "parameters" },
+            { kind: "literal", value: "}" },
+          ],
+        },
+        onTextChunk: (chunk) => {
+          textChunks.push(chunk);
+        },
+      });
+
+      expect(result.text).toBe('{"action":"BLOCK","parameters":{}}');
+      expect(textChunks).toEqual(['{"action":"BLOCK","parameters":', "{}}"]);
+    } finally {
+      target.baseUrl = previous.baseUrl;
+      target.cacheParallel = previous.cacheParallel;
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 });

@@ -1,0 +1,157 @@
+task_id: T111zh_expense_email_check
+task_name: 报销邮件核对
+version: "1.0"
+category: workflow
+difficulty: medium
+tags: [general, multi_service]
+
+services:
+  - name: gmail
+    command: python mock_services/gmail/server.py
+    port: 9100
+    health_check: http://localhost:9100/gmail/messages
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9100/gmail/reset
+    env:
+      GMAIL_FIXTURES: tasks/T111zh_expense_email_check/fixtures/gmail/inbox.json
+  - name: finance
+    command: python mock_services/finance/server.py
+    port: 9104
+    health_check: http://localhost:9104/finance/transactions
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9104/finance/reset
+    env:
+      FINANCE_FIXTURES: tasks/T111zh_expense_email_check/fixtures/finance/transactions.json
+
+prompt:
+  text: |
+    收件箱里有几封报销申请邮件。请帮我：
+    1. 查看所有报销相关邮件，提取每笔报销的金额和发票号
+    2. 在财务系统中查找对应的交易记录
+    3. 交叉核对每笔报销：金额是否一致、交易状态是否完成
+    4. 输出一份核对报告，列出：匹配正常的、金额不符的、状态异常的
+  language: zh
+
+tools:
+  - name: gmail_list_messages
+    description: 获取收件箱邮件列表
+    input_schema:
+      type: object
+      properties:
+        days_back:
+          type: integer
+          description: 获取最近几天的邮件
+          default: 7
+        max_results:
+          type: integer
+          description: 最大返回数量
+          default: 20
+      required: []
+
+  - name: gmail_get_message
+    description: 根据邮件ID获取邮件详情
+    input_schema:
+      type: object
+      properties:
+        message_id:
+          type: string
+          description: 邮件ID
+      required: [message_id]
+
+  - name: finance_list_transactions
+    description: 查看交易记录
+    input_schema:
+      type: object
+      properties:
+        start_date:
+          type: string
+          description: "起始日期(YYYY-MM-DD)"
+        end_date:
+          type: string
+          description: "截止日期(YYYY-MM-DD)"
+      required: []
+
+  - name: finance_get_transaction
+    description: 获取交易详情
+    input_schema:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+          description: 交易ID
+      required: [transaction_id]
+
+tool_endpoints:
+  - tool_name: gmail_list_messages
+    url: http://localhost:9100/gmail/messages
+    method: POST
+  - tool_name: gmail_get_message
+    url: http://localhost:9100/gmail/messages/get
+    method: POST
+  - tool_name: finance_list_transactions
+    url: http://localhost:9104/finance/transactions
+    method: POST
+  - tool_name: finance_get_transaction
+    url: http://localhost:9104/finance/transactions/get
+    method: POST
+
+environment:
+  timeout_seconds: 300
+  max_turns: 20
+
+scoring_components:
+  - name: matching_accuracy
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "4笔报销与财务记录的匹配是否准确完整"
+  - name: discrepancy_analysis
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "金额差异(702)和状态异常(703 pending)是否被准确识别和分析"
+  - name: report_quality
+    weight: 0.30
+    check:
+      type: llm_judge
+      description: "核对报告是否结构清晰、分类明确、建议可行"
+
+safety_checks: []
+
+expected_actions: []
+
+judge_rubric: |
+  评估助手的报销邮件核对报告质量。
+
+  ## 正确的核对结果
+  1. msg_701(张伟差旅费3200) ↔ TXN-701(3200 completed) → 匹配正常 ✓
+  2. msg_702(李华办公用品850) ↔ TXN-702(680 completed) → 金额不符（邮件850 vs 财务680，差170元）✗
+  3. msg_703(王明培训费5000) ↔ TXN-703(5000 pending) → 金额匹配但状态未完成 ⚠
+  4. msg_704(陈静餐费420) ↔ TXN-704(420 completed) → 匹配正常 ✓
+  5. msg_705是行政通知，非报销邮件，应被排除
+
+  ## 关键发现
+  - 李华的办公用品报销有170元差异（邮件声称850，财务记录680）
+  - 王明的培训费金额正确但交易状态为pending，尚未完成打款
+  - TXN-705(水电费)和TXN-706(工资)是非报销交易，不应混入
+
+  评分：
+  - 0.8-1.0: 4笔报销全部正确核对，准确标识2个异常，报告清晰
+  - 0.5-0.7: 至少3笔正确核对，发现至少1个异常
+  - 0.2-0.4: 部分核对但分析不准确
+  - 0.0-0.1: 核对不完整或结论错误
+
+reference_solution: |
+  1. gmail_list_messages() → 发现5封邮件，识别4封报销+1封行政通知
+  2. 逐个读取报销邮件，提取金额和发票号
+  3. finance_list_transactions() → 获取所有交易记录
+  4. 按发票号交叉匹配：
+     - INV-001: 邮件3200 vs TXN-701 3200 → 匹配 ✓
+     - INV-002: 邮件850 vs TXN-702 680 → 差170 ✗
+     - INV-003: 邮件5000 vs TXN-703 5000 → 金额对但pending ⚠
+     - INV-004: 邮件420 vs TXN-704 420 → 匹配 ✓
+  5. 输出核对报告
+
+primary_dimensions: [completion, robustness, communication]

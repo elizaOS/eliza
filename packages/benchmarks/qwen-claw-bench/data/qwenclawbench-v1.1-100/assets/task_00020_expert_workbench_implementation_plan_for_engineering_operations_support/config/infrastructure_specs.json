@@ -1,0 +1,204 @@
+{
+  "document_info": {
+    "title": "Infrastructure Specifications - Engineering Operations Intelligent Support Center",
+    "version": "1.2",
+    "last_updated": "2025-01-08",
+    "author": "Infrastructure Architecture Team",
+    "classification": "internal"
+  },
+  "current_infrastructure": {
+    "compute": {
+      "gpu_servers": {
+        "count": 4,
+        "model": "NVIDIA DGX A100",
+        "gpu_per_server": 8,
+        "total_gpu_memory_gb": 1280,
+        "cpu": "AMD EPYC 7742 64-Core",
+        "ram_per_server_gb": 1024,
+        "storage_per_server_tb": 15,
+        "location": "Primary Data Center - Building A",
+        "utilization_avg_pct": 72
+      },
+      "kubernetes_cluster": {
+        "total_nodes": 32,
+        "master_nodes": 3,
+        "worker_nodes": 29,
+        "node_spec": {
+          "cpu_cores": 32,
+          "ram_gb": 128,
+          "local_storage_gb": 500
+        },
+        "container_runtime": "containerd",
+        "k8s_version": "1.28.4",
+        "ingress_controller": "NGINX",
+        "service_mesh": "Istio 1.20",
+        "total_pods_capacity": 3200,
+        "current_pods_running": 1847
+      },
+      "application_servers": {
+        "count": 16,
+        "type": "Dell PowerEdge R750",
+        "cpu": "Intel Xeon Gold 6348 28-Core",
+        "ram_gb": 256,
+        "purpose": "General application workloads"
+      }
+    },
+    "storage": {
+      "nas": {
+        "vendor": "NetApp AFF A400",
+        "total_capacity_tb": 200,
+        "used_capacity_tb": 142,
+        "protocol": ["NFS", "SMB", "iSCSI"],
+        "raid_level": "RAID-DP",
+        "replication": "synchronous to DR site"
+      },
+      "object_storage": {
+        "vendor": "MinIO",
+        "total_capacity_tb": 50,
+        "used_capacity_tb": 31,
+        "protocol": "S3-compatible",
+        "purpose": "AI training data, logs, backups"
+      },
+      "backup": {
+        "vendor": "Veeam Backup & Replication",
+        "total_capacity_tb": 500,
+        "retention_days": 90,
+        "rpo_hours": 4,
+        "rto_hours": 8
+      }
+    },
+    "network": {
+      "backbone": {
+        "bandwidth_gbps": 10,
+        "topology": "spine-leaf",
+        "switches": "Cisco Nexus 9000 series"
+      },
+      "wan": {
+        "primary": {
+          "type": "MPLS",
+          "bandwidth_mbps": 1000,
+          "provider": "China Telecom"
+        },
+        "secondary": {
+          "type": "SD-WAN",
+          "bandwidth_mbps": 500,
+          "provider": "China Unicom"
+        }
+      },
+      "field_connectivity": {
+        "onshore_sites": {
+          "count": 18,
+          "connection_type": "fiber + 4G backup",
+          "avg_bandwidth_mbps": 100
+        },
+        "offshore_platforms": {
+          "count": 6,
+          "connection_type": "VSAT satellite",
+          "avg_bandwidth_mbps": 20,
+          "latency_ms": 600
+        }
+      }
+    },
+    "security": {
+      "firewall": "Fortinet FortiGate 3000F",
+      "ids_ips": "Fortinet FortiGuard",
+      "siem": "Splunk Enterprise Security",
+      "endpoint_protection": "CrowdStrike Falcon",
+      "certificate_management": "HashiCorp Vault"
+    }
+  },
+  "planned_infrastructure": {
+    "compute": {
+      "additional_gpu_servers": {
+        "count": 8,
+        "model": "NVIDIA DGX H100",
+        "gpu_per_server": 8,
+        "total_gpu_memory_gb": 5120,
+        "purpose": "LLM fine-tuning, real-time inference, training",
+        "estimated_delivery": "2025-Q2",
+        "budget_cny": 6400000
+      },
+      "edge_computing_nodes": {
+        "count": 12,
+        "locations": [
+          "Field Site Alpha", "Field Site Beta", "Field Site Gamma",
+          "Field Site Delta", "Offshore Platform 1", "Offshore Platform 2",
+          "Offshore Platform 3", "Compressor Station A", "Compressor Station B",
+          "Pipeline Junction North", "Pipeline Junction South", "Central Processing Facility"
+        ],
+        "spec_per_node": {
+          "model": "NVIDIA Jetson AGX Orin",
+          "gpu_memory_gb": 64,
+          "cpu_cores": 12,
+          "ram_gb": 64,
+          "local_storage_tb": 4,
+          "ruggedized": true,
+          "operating_temp_range_c": "-20 to 55"
+        },
+        "purpose": "Local AI inference, data preprocessing, offline operation",
+        "estimated_delivery": "2025-Q3"
+      },
+      "kubernetes_expansion": {
+        "additional_nodes": 16,
+        "total_nodes_after": 48,
+        "purpose": "Microservices scaling for Expert Workbench platform"
+      }
+    },
+    "storage": {
+      "object_storage_expansion": {
+        "vendor": "MinIO Enterprise",
+        "additional_capacity_tb": 500,
+        "total_after_tb": 550,
+        "purpose": "AI training datasets, historical sensor data, video archives",
+        "tiering": {
+          "hot_tb": 100,
+          "warm_tb": 200,
+          "cold_tb": 200
+        }
+      },
+      "vector_database": {
+        "technology": "Milvus",
+        "purpose": "Knowledge graph embeddings, semantic search",
+        "estimated_capacity_vectors": 500000000
+      }
+    },
+    "network": {
+      "5g_private_network": {
+        "vendor": "Huawei",
+        "coverage_sites": 8,
+        "bandwidth_per_site_gbps": 1,
+        "latency_ms": 10,
+        "purpose": "Real-time video streaming, AR remote assistance, IoT data",
+        "estimated_deployment": "2025-Q3",
+        "budget_cny": 2400000
+      },
+      "backbone_upgrade": {
+        "target_bandwidth_gbps": 25,
+        "technology": "25GbE spine-leaf",
+        "estimated_completion": "2025-Q2"
+      }
+    },
+    "cloud_strategy": {
+      "cloud_hybrid": true,
+      "primary_cloud": "private",
+      "primary_cloud_platform": "VMware vSphere + Kubernetes",
+      "backup_cloud": "public_restricted",
+      "backup_cloud_provider": "Huawei Cloud",
+      "backup_cloud_usage": [
+        "Disaster recovery",
+        "Non-sensitive workload bursting",
+        "Development and testing environments"
+      ],
+      "data_residency": "All production data on-premises; only anonymized/aggregated data may transit to public cloud",
+      "compliance_notes": "Subject to data classification policy; restricted and confidential data must remain on private infrastructure"
+    }
+  },
+  "capacity_planning": {
+    "projected_growth_annual_pct": 35,
+    "peak_concurrent_users": 200,
+    "peak_ai_inference_requests_per_second": 500,
+    "data_ingestion_rate_gb_per_day": 50,
+    "video_streams_concurrent": 24,
+    "estimated_total_data_2026_tb": 850
+  }
+}

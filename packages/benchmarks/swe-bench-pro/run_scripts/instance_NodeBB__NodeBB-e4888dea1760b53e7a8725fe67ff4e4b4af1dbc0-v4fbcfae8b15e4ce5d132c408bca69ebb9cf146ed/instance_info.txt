@@ -1,0 +1,6 @@
+Instance ID: instance_NodeBB__NodeBB-e4888dea1760b53e7a8725fe67ff4e4b4af1dbc0-v4fbcfae8b15e4ce5d132c408bca69ebb9cf146ed
+Repository: NodeBB/NodeBB
+Base Commit: 7b8bffd763e2155cf88f3ebc258fa68ebe18188d
+Test Files: ["test/tokens.js"]
+FAIL_TO_PASS: ["test/tokens.js | API tokens .update() should update the uid of a token"]
+PASS_TO_PASS: ["test/tokens.js | API tokens .list() should list available tokens", "test/tokens.js | API tokens .create() should fail to create a token for a user that does not exist", "test/tokens.js | API tokens .create() should create a token for a user that exists", "test/tokens.js | API tokens .get() should retrieve a token", "test/tokens.js | API tokens .get() should retrieve multiple tokens", "test/tokens.js | API tokens .get() should fail if you pass in invalid data", "test/tokens.js | API tokens .generate() should generate a new token", "test/tokens.js | API tokens .update() should update the description of a token", "test/tokens.js | API tokens .delete() should delete a token from a system", "test/tokens.js | API tokens .log() should record the current time as the last seen time of that token", "test/tokens.js | API tokens .getLastSeen() should retrieve the time the token was last seen", "test/tokens.js | API tokens .getLastSeen() should return null if the token has never been seen"]

@@ -137,13 +137,11 @@ export function overrideBrandConfig(
 function resolveBrandConfig(): DesktopBrandConfig {
 	const fileConfig = loadFileConfig();
 	const appName =
-		envFallback("ELIZA_APP_NAME", "ELIZA_APP_NAME") ||
+		envFallback("ELIZA_APP_NAME") ||
 		fileConfig.appName ||
 		DEFAULT_CONFIG.appName;
 	const appId =
-		envFallback("ELIZA_APP_ID", "ELIZA_APP_ID") ||
-		fileConfig.appId ||
-		DEFAULT_CONFIG.appId;
+		envFallback("ELIZA_APP_ID") || fileConfig.appId || DEFAULT_CONFIG.appId;
 
 	return {
 		...DEFAULT_CONFIG,
@@ -151,15 +149,15 @@ function resolveBrandConfig(): DesktopBrandConfig {
 		appName,
 		appId,
 		urlScheme:
-			envFallback("ELIZA_URL_SCHEME", "ELIZA_URL_SCHEME") ||
+			envFallback("ELIZA_URL_SCHEME") ||
 			fileConfig.urlScheme ||
 			DEFAULT_CONFIG.urlScheme,
 		releaseUrl:
-			envFallback("ELIZA_RELEASE_URL", "ELIZA_RELEASE_URL") ||
+			envFallback("ELIZA_RELEASE_URL") ||
 			fileConfig.releaseUrl ||
 			DEFAULT_CONFIG.releaseUrl,
 		buildVariant:
-			envFallback("ELIZA_BUILD_VARIANT", "ELIZA_BUILD_VARIANT") === "store" ||
+			envFallback("ELIZA_BUILD_VARIANT") === "store" ||
 			fileConfig.buildVariant === "store"
 				? "store"
 				: "direct",
@@ -167,7 +165,7 @@ function resolveBrandConfig(): DesktopBrandConfig {
 			fileConfig.configExportFileName ??
 			`${appName.toLowerCase().replace(/\s+/g, "-")}-config.json`,
 		namespace:
-			envFallback("ELIZA_NAMESPACE", "ELIZA_NAMESPACE") ||
+			envFallback("ELIZA_NAMESPACE") ||
 			fileConfig.namespace ||
 			DEFAULT_CONFIG.namespace,
 		configDirName: fileConfig.configDirName ?? appName,

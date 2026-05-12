@@ -10,7 +10,7 @@ import { recommendForFirstRun } from "./recommendation";
 import { localInferenceService } from "./service";
 
 describe("local inference catalog", () => {
-  it("ships exactly the 5 Eliza-1 size tiers", () => {
+  it("ships exactly the Eliza-1 size tiers", () => {
     expect(
       MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)
         .map((m) => m.id)
@@ -18,7 +18,7 @@ describe("local inference catalog", () => {
     ).toEqual([...ELIZA_1_TIER_IDS].sort());
   });
 
-  it("marks ONLY the 5 Eliza-1 size tiers as default-eligible", () => {
+  it("marks ONLY the Eliza-1 size tiers as default-eligible", () => {
     expect([...DEFAULT_ELIGIBLE_MODEL_IDS].sort()).toEqual(
       [...ELIZA_1_TIER_IDS].sort(),
     );
@@ -90,6 +90,7 @@ describe("local inference catalog", () => {
       "eliza-1-9b": 65536,
       "eliza-1-27b": 131072,
       "eliza-1-27b-256k": 262144,
+      "eliza-1-27b-1m": 1_048_576,
     };
     for (const [id, expectedLength] of Object.entries(expected)) {
       const model = findCatalogModel(id);

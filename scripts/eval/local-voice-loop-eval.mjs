@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 
 const DEFAULT_PHRASE = "Eliza local voice smoke.";
 const DEFAULT_ID = "eliza-local-voice-smoke_seed42";
@@ -112,19 +112,11 @@ function localInferenceRoot() {
 
 function defaults() {
   const root = localInferenceRoot();
-  const bundle =
-    process.env.ELIZA_BUNDLE ??
-    path.join(root, "models", "eliza-1-1_7b.bundle");
+  const bundle = process.env.ELIZA_BUNDLE ?? path.join(root, "models", "eliza-1-2b.bundle");
   return {
     cli:
       process.env.ELIZA_TTS_CLI ??
-      path.join(
-        root,
-        "bin",
-        "dflash",
-        "darwin-arm64-metal-fused",
-        "llama-omnivoice-server",
-      ),
+      path.join(root, "bin", "dflash", "darwin-arm64-metal-fused", "llama-omnivoice-server"),
     bundle,
     model:
       process.env.ELIZA_TTS_MODEL ??
@@ -222,9 +214,7 @@ function runAsr(wavPath) {
     .split("\n")
     .find((item) => item.startsWith("ASR_JSON::"));
   if (!line) {
-    throw new Error(
-      `ASR JSON marker missing\nstdout=${result.stdout}\nstderr=${result.stderr}`,
-    );
+    throw new Error(`ASR JSON marker missing\nstdout=${result.stdout}\nstderr=${result.stderr}`);
   }
   return {
     asr: JSON.parse(line.slice("ASR_JSON::".length)),

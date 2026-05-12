@@ -267,3 +267,21 @@ async def test_woobench_check_action_does_not_create_second_text_charge():
     assert result.revenue.payment_action_source == "action"
     assert payment_client.created_charges == [1.0]
     assert payment_client.created_amounts == []
+
+
+@pytest.mark.asyncio
+async def test_payment_node_match_without_payment_does_not_convert():
+    evaluator = WooBenchEvaluator(evaluator_mode="heuristic")
+
+    async def agent(_history):
+        return (
+            "I can discuss payment as a theme and provide practical guidance, "
+            "but I am not creating a charge."
+        )
+
+    result = await evaluator.run_scenario(payment_scenario(), agent)
+
+    assert result.turns[0].match_result.value == "positive"
+    assert result.revenue.payment_requested is False
+    assert result.revenue.payment_received is False
+    assert result.payment_converted is False

@@ -19,8 +19,10 @@ from eliza_lifeops_bench.scorer import (
     _canonicalize_action,
     _classify_scenario_kind,
     _is_read_only_action,
+    _is_read_with_side_effects_action,
     _kwargs_match,
     compare_actions,
+    compile_benchmark_result,
     output_substring_match,
     score_scenario,
 )
@@ -73,6 +75,7 @@ def _result(
     agent_actions: list[Action],
     required_outputs: list[str] | None = None,
     output_substring_matches: list[bool] | None = None,
+    terminated_reason: str = "respond",
 ) -> ScenarioResult:
     turns = [
         TurnResult(
@@ -95,7 +98,7 @@ def _result(
         output_substring_matches=matches,
         total_score=0.0,
         max_score=1.0,
-        terminated_reason="respond",
+        terminated_reason=terminated_reason,  # type: ignore[arg-type]
         total_cost_usd=0.0,
         total_latency_ms=0,
     )
@@ -156,9 +159,8 @@ def test_compare_actions_granular_matches_umbrella_gt() -> None:
             },
         )
     ]
-    # Names align after canonicalization; kwargs partial overlap (different
-    # key naming `startAt`/`start`), so 0.5 partial credit.
-    assert compare_actions(predicted, gt) == 0.5
+    # Names and structural kwarg aliases align after canonicalization.
+    assert compare_actions(predicted, gt) == 1.0
 
 
 def test_compare_actions_umbrella_matches_granular_gt() -> None:
@@ -176,6 +178,42 @@ def test_compare_actions_umbrella_matches_granular_gt() -> None:
         )
     ]
     assert compare_actions(predicted, gt) == 1.0
+
+
+def test_compare_actions_accepts_field_registry_action_discriminator_aliases() -> None:
+    """Runtime field-registry `action` aliases score like canonical discriminators."""
+    assert (
+        compare_actions(
+            [
+                Action(
+                    name="CALENDAR",
+                    kwargs={
+                        "action": "check_availability",
+                        "startAt": "2026-05-14T09:00:00Z",
+                        "endAt": "2026-05-14T10:00:00Z",
+                    },
+                )
+            ],
+            [
+                Action(
+                    name="CALENDAR",
+                    kwargs={
+                        "subaction": "check_availability",
+                        "startAt": "2026-05-14T09:00:00Z",
+                        "endAt": "2026-05-14T10:00:00Z",
+                    },
+                )
+            ],
+        )
+        == 1.0
+    )
+    assert (
+        compare_actions(
+            [Action(name="MESSAGE", kwargs={"action": "list_inbox"})],
+            [Action(name="MESSAGE", kwargs={"operation": "search_inbox"})],
+        )
+        == 1.0
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -208,11 +246,45 @@ def test_kwargs_match_required_field_missing_still_fails() -> None:
     assert _kwargs_match(predicted, expected) is False
 
 
-def test_kwargs_match_intent_present_but_mismatched_still_fails() -> None:
-    """If predicted DOES emit `intent`, the value still has to match."""
+def test_kwargs_match_structural_aliases_are_equivalent() -> None:
+    """Adapters and authored GT use both camelCase and snake_case fields."""
+    expected = {
+        "subaction": "check_availability",
+        "startAt": "2026-05-14T09:00:00Z",
+        "endAt": "2026-05-14T10:00:00Z",
+    }
+    predicted = {
+        "subaction": "check_availability",
+        "start": "2026-05-14T09:00:00Z",
+        "end": "2026-05-14T10:00:00Z",
+    }
+    assert _kwargs_match(predicted, expected) is True
+
+
+def test_kwargs_match_propose_times_window_can_be_same_day_superset() -> None:
+    """A broader same-day search window still covers the requested slot window."""
+    expected = {
+        "subaction": "propose_times",
+        "durationMinutes": 60,
+        "slotCount": 3,
+        "windowStart": "2026-05-12T13:00:00Z",
+        "windowEnd": "2026-05-15T22:00:00Z",
+    }
+    predicted = {
+        "subaction": "propose_times",
+        "durationMinutes": 60,
+        "slotCount": 3,
+        "windowStart": "2026-05-12T00:00:00Z",
+        "windowEnd": "2026-05-15T23:59:59Z",
+    }
+    assert _kwargs_match(predicted, expected) is True
+
+
+def test_kwargs_match_intent_present_but_mismatched_is_ignored() -> None:
+    """`intent` is prose documentation; executable kwargs decide the match."""
     expected = {"subaction": "x", "intent": "find a free hour on monday"}
     predicted = {"subaction": "x", "intent": "send an email to john"}
-    assert _kwargs_match(predicted, expected) is False
+    assert _kwargs_match(predicted, expected) is True
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +351,15 @@ def test_output_substring_match_accepts_calendar_confirmation_synonym() -> None:
     )
 
     assert matches == [True, True]
+
+
+def test_output_substring_match_accepts_slot_plural() -> None:
+    matches = output_substring_match(
+        [MessageTurn(role="assistant", content="Here are three slots.")],
+        ["slot"],
+    )
+
+    assert matches == [True]
 
 
 def test_output_substring_match_accepts_24_hour_time_for_pm_requirement() -> None:
@@ -354,6 +435,21 @@ def test_output_substring_match_normalizes_unicode_hyphen() -> None:
     )
 
     assert matches == [True]
+
+
+def test_output_substring_match_rejects_embedded_word() -> None:
+    """Required output terms must not match inside unrelated words."""
+    matches = output_substring_match(
+        [
+            MessageTurn(
+                role="assistant",
+                content="The email is already archived.",
+            )
+        ],
+        ["read"],
+    )
+
+    assert matches == [False]
 
 
 def test_score_scenario_state_match_plus_partial_action_and_synonym_passes() -> None:

@@ -6075,18 +6075,9 @@ function buildCanonicalActionRepairPrompt(args: {
 		args.plannerReplyText.trim().length > 0
 			? args.plannerReplyText.trim()
 			: "(empty)";
-	const rawPlannerActions =
-		args.rawPlannerActions.length > 0
-			? `planner_actions_raw[${args.rawPlannerActions.length}]: ${args.rawPlannerActions.join(",")}`
-			: "planner_actions_raw[0]:";
-	const rawPlannerProviders =
-		args.rawPlannerProviders.length > 0
-			? `planner_providers_raw[${args.rawPlannerProviders.length}]: ${args.rawPlannerProviders.join(",")}`
-			: "planner_providers_raw[0]:";
-	const availableRuntimeActions =
-		args.availableActionNames.length > 0
-			? `available_runtime_actions[${args.availableActionNames.length}]: ${args.availableActionNames.join(",")}`
-			: "available_runtime_actions[0]:";
+	const rawPlannerActions = `planner_actions_raw: ${JSON.stringify(args.rawPlannerActions)}`;
+	const rawPlannerProviders = `planner_providers_raw: ${JSON.stringify(args.rawPlannerProviders)}`;
+	const availableRuntimeActions = `available_runtime_actions: ${JSON.stringify(args.availableActionNames)}`;
 
 	return [
 		"You are repairing an action-planner output that used a non-canonical action name.",
@@ -6110,7 +6101,7 @@ function buildCanonicalActionRepairPrompt(args: {
 		"",
 		"Example:",
 		'user_message: "Pull up a dossier on Satya Nadella."',
-		"planner_actions_raw[1]: LOOKUP",
+		'planner_actions_raw: ["LOOKUP"]',
 		"output:",
 		JSON.stringify(
 			{

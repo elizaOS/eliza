@@ -687,9 +687,13 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
  * so we do not re-download multi‑GB models. Opt out:
  * `ELIZA_EMBEDDING_WARMUP_NO_REUSE=1`.
  */
-// Deduplicate concurrent callers: two concurrent createWriteStream(dest)
-// would race; the loser's safeUnlink deletes the file mid-write, causing
-// llama.loadModel to throw ENOENT as an uncaughtException.
+// In-flight promise cache so concurrent callers (bootElizaRuntime +
+// startEliza both run on agent boot) share a single download. Without this,
+// two `fs.createWriteStream(dest)` open the same GGUF target concurrently,
+// and the first to fail calls `safeUnlink(dest)` — which deletes the file
+// out from under the second's pending write. Downstream `llama.loadModel`
+// then opens the now-missing file and throws ENOENT, which surfaces as an
+// uncaughtException and kills the agent.
 let warmupInFlight: Promise<void> | null = null;
 
 async function warmupEmbeddingModel(
@@ -1217,6 +1221,16 @@ export async function startEliza(
 }
 
 function isDirectRuntimeRun(): boolean {
+  if (
+    (globalThis as { __ELIZA_MOBILE_BUNDLE__?: unknown })
+      .__ELIZA_MOBILE_BUNDLE__ === true ||
+    (globalThis as { __ELIZA_DISABLE_DIRECT_RUN?: unknown })
+      .__ELIZA_DISABLE_DIRECT_RUN === true ||
+    process.argv.includes("ios-bridge") ||
+    process.env.ELIZA_DISABLE_DIRECT_RUN === "1"
+  ) {
+    return false;
+  }
   const scriptArg = process.argv[1];
   if (!scriptArg) {
     return false;

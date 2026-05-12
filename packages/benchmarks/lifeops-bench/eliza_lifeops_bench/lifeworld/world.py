@@ -35,6 +35,7 @@ from .entities import (
     Note,
     Reminder,
     ReminderList,
+    ScheduledTask,
     Subscription,
 )
 
@@ -71,6 +72,7 @@ class LifeWorld:
         EntityKind.SUBSCRIPTION: "subscriptions",
         EntityKind.HEALTH_METRIC: "health_metrics",
         EntityKind.LOCATION_POINT: "location_points",
+        EntityKind.SCHEDULED_TASK: "scheduled_tasks",
     }
 
     def __init__(self, *, seed: int, now_iso: str) -> None:
@@ -92,6 +94,7 @@ class LifeWorld:
         self.subscriptions: dict[str, Subscription] = {}
         self.health_metrics: dict[str, HealthMetric] = {}
         self.location_points: dict[str, LocationPoint] = {}
+        self.scheduled_tasks: dict[str, ScheduledTask] = {}
 
     # ---------------------------------------------------------------- CRUD
 
@@ -277,6 +280,10 @@ class LifeWorld:
         """Push a reminder's due time. Used for the LIFE_SNOOZE umbrella subaction."""
         return self.update(EntityKind.REMINDER, reminder_id, due_at=new_due_at)
 
+    def touch_reminder_list_reviewed(self, list_id: str) -> ReminderList:
+        """Stamp last_reviewed_at on a reminder list. Used by LIFE_REVIEW."""
+        return self.update(EntityKind.REMINDER_LIST, list_id, last_reviewed_at=self.now_iso)
+
     # ----------------------------------------------------- Subscription helpers
 
     def cancel_subscription(self, subscription_id: str) -> Subscription:
@@ -422,6 +429,53 @@ class LifeWorld:
         )
         self.add(EntityKind.NOTE, note)
         return note
+
+    # ---------------------------------------------------- ScheduledTask helpers
+
+    def create_scheduled_task(
+        self,
+        *,
+        task_id: str,
+        kind: str,
+        prompt_instructions: str,
+        trigger: dict[str, Any] | None = None,
+        output: dict[str, Any] | None = None,
+        subject: dict[str, Any] | None = None,
+        priority: str | None = None,
+        should_fire: dict[str, Any] | None = None,
+        completion_check: dict[str, Any] | None = None,
+        pipeline: dict[str, Any] | None = None,
+        respects_global_pause: bool = True,
+        metadata: dict[str, Any] | None = None,
+        state: str = "active",
+    ) -> ScheduledTask:
+        task = ScheduledTask(
+            id=task_id,
+            kind=kind,
+            prompt_instructions=prompt_instructions,
+            trigger=dict(trigger or {}),
+            state=state,
+            output=dict(output) if isinstance(output, dict) else output,
+            subject=dict(subject) if isinstance(subject, dict) else subject,
+            priority=priority,
+            should_fire=dict(should_fire) if isinstance(should_fire, dict) else should_fire,
+            completion_check=(
+                dict(completion_check)
+                if isinstance(completion_check, dict)
+                else completion_check
+            ),
+            pipeline=dict(pipeline) if isinstance(pipeline, dict) else pipeline,
+            respects_global_pause=respects_global_pause,
+            metadata=dict(metadata or {}),
+            created_at=self.now_iso,
+            updated_at=self.now_iso,
+        )
+        self.add(EntityKind.SCHEDULED_TASK, task)
+        return task
+
+    def update_scheduled_task(self, task_id: str, **patches: Any) -> ScheduledTask:
+        patches.setdefault("updated_at", self.now_iso)
+        return self.update(EntityKind.SCHEDULED_TASK, task_id, **patches)
 
     # -------------------------------------------------- Snapshot / serialize
 

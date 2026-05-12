@@ -15,6 +15,8 @@ extern "C" {
 
 ELIZA_BUN_ENGINE_EXPORT const char *eliza_bun_engine_abi_version(void);
 
+ELIZA_BUN_ENGINE_EXPORT const char *eliza_bun_engine_last_error(void);
+
 ELIZA_BUN_ENGINE_EXPORT int32_t eliza_bun_engine_start(
     const char *bundle_path,
     const char *argv_json,

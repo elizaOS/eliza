@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <!-- WARNING: 2.3.4.RELEASE is outdated and has known CVEs
+             including CVE-2020-5421 (RFD attack) and CVE-2021-22118.
+             TODO: Upgrade to 2.7.x or 3.x — ticket INFRA-2201 created 2023-11-01 -->
+        <version>2.3.4.RELEASE</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.wish.biz</groupId>
+    <artifactId>compensation-service</artifactId>
+    <version>2.3.1</version>
+    <packaging>jar</packaging>
+    <name>compensation-service</name>
+    <description>Compensation Business Service Module</description>
+
+    <properties>
+        <java.version>1.8</java.version>
+        <pagehelper.version>1.2.10</pagehelper.version>
+        <mysql.version>8.0.16</mysql.version>
+        <lombok.version>1.18.12</lombok.version>
+        <commons-io.version>2.6</commons-io.version>
+    </properties>
+
+    <dependencies>
+        <!-- Spring Boot Web Starter -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Spring Boot Actuator -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- MyBatis PageHelper -->
+        <dependency>
+            <groupId>com.github.pagehelper</groupId>
+            <artifactId>pagehelper-spring-boot-starter</artifactId>
+            <version>${pagehelper.version}</version>
+        </dependency>
+
+        <!-- MySQL Connector
+             NOTE: 8.0.16 is outdated. 8.0.28+ recommended.
+             CVE-2021-2471 affects versions prior to 8.0.27 -->
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+            <version>${mysql.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Lombok -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>${lombok.version}</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Apache Commons IO
+             WARNING: Version 2.6 is affected by CVE-2021-29425
+             (limited path traversal in FileNameUtils).
+             Upgrade to 2.11.0+ to remediate. -->
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>${commons-io.version}</version>
+        </dependency>
+
+        <!-- Servlet API -->
+        <dependency>
+            <groupId>javax.servlet</groupId>
+            <artifactId>javax.servlet-api</artifactId>
+            <version>4.0.1</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Test Dependencies -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>3.5.13</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>${java.version}</source>
+                    <target>${java.version}</target>
+                </configuration>
+            </plugin>
+            <!-- TODO: Add OWASP dependency-check-maven plugin
+                 Ticket INFRA-2205 created 2023-12-15, not yet implemented -->
+        </plugins>
+    </build>
+</project>

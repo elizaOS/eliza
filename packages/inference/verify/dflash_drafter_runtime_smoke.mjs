@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -146,6 +147,88 @@ function parseArgs(argv) {
   }
 
   return args;
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function detectCliFeatures(binary, libraryPath = "") {
+  const flags = new Set();
+  if (!binary || !fs.existsSync(binary)) {
+    return {
+      available: false,
+      binary,
+      flags,
+      skippedReason: "binary_missing",
+      helpStatus: null,
+    };
+  }
+  const env = { ...process.env };
+  if (libraryPath) {
+    env.DYLD_LIBRARY_PATH = `${libraryPath}${env.DYLD_LIBRARY_PATH ? `:${env.DYLD_LIBRARY_PATH}` : ""}`;
+    env.LD_LIBRARY_PATH = `${libraryPath}${env.LD_LIBRARY_PATH ? `:${env.LD_LIBRARY_PATH}` : ""}`;
+  }
+  const result = spawnSync(binary, ["--help"], {
+    encoding: "utf8",
+    env,
+    maxBuffer: 20 * 1024 * 1024,
+  });
+  const help = `${result.stdout || ""}${result.stderr || ""}`;
+  const allFlags = help.match(/-{1,2}[A-Za-z0-9][A-Za-z0-9_-]*/g) ?? [];
+  for (const flag of allFlags) flags.add(flag);
+  return {
+    available: true,
+    binary,
+    flags,
+    skippedReason: null,
+    helpStatus: result.status,
+    helpSignal: result.signal,
+    helpOutputTail: help.trim().split(/\r?\n/).slice(-30).join("\n"),
+  };
+}
+
+function supportsCliFlag(features, flag) {
+  if (!features?.available) return false;
+  if (features.flags?.has(flag)) return true;
+  if (!features.helpOutputTail) return false;
+  return new RegExp(`(^|[\\s,])${escapeRegExp(flag)}([\\s,]|$)`).test(
+    features.helpOutputTail,
+  );
+}
+
+function pushOptionalFlag(args, skippedCliFlags, features, flag, ...values) {
+  if (supportsCliFlag(features, flag)) {
+    args.push(flag, ...values);
+    return;
+  }
+  skippedCliFlags.push({
+    flag,
+    values,
+    reason: "not advertised by binary --help",
+  });
+}
+
+function serializeCliFeatures(features) {
+  if (!features) return null;
+  return {
+    available: features.available,
+    binary: features.binary,
+    supportedOptionalFlags: [
+      "--device",
+      "--device-draft",
+      "--draft",
+      "--draft-min",
+      "--draft-max",
+      "--draft-p-min",
+      "--spec-type",
+      "--temp",
+      "--tree-budget",
+    ].filter((flag) => supportsCliFlag(features, flag)),
+    helpStatus: features.helpStatus,
+    helpSignal: features.helpSignal,
+    skippedReason: features.skippedReason,
+  };
 }
 
 function readU64(buf, off) {
@@ -301,18 +384,25 @@ function parseGguf(file) {
   const tensorCount = readU64(buf, off);
   const kvCount = readU64(buf, off);
   const metadata = {};
+  const metadataHashes = {};
   const metadataTypes = {};
 
   for (let i = 0; i < kvCount; i += 1) {
     const key = readString(buf, off);
     const type = buf.readUInt32LE(off.value);
     off.value += 4;
+    const valueStart = off.value;
     const capture =
       !key.startsWith("tokenizer.ggml.tokens") &&
       !key.startsWith("tokenizer.ggml.token_type") &&
       !key.startsWith("tokenizer.ggml.merges");
     metadataTypes[key] = type;
     metadata[key] = readValue(buf, off, type, capture);
+    const valueEnd = off.value;
+    metadataHashes[key] = crypto
+      .createHash("sha256")
+      .update(buf.subarray(valueStart, valueEnd))
+      .digest("hex");
   }
 
   const tensors = [];
@@ -337,6 +427,7 @@ function parseGguf(file) {
     tensorCount,
     kvCount,
     metadata,
+    metadataHashes,
     metadataTypes,
     metadataKeys: Object.keys(metadata),
     tensorNames: tensors.map((tensor) => tensor.name),
@@ -344,7 +435,109 @@ function parseGguf(file) {
   };
 }
 
+function metadataArrayLength(value) {
+  return value?.type === "array" ? value.length : null;
+}
+
+function tokenizerSummary(parsed) {
+  const metadata = parsed.metadata;
+  const hashes = parsed.metadataHashes;
+  return {
+    architecture: metadata["general.architecture"] ?? null,
+    name: metadata["general.name"] ?? null,
+    tokenizerModel: metadata["tokenizer.ggml.model"] ?? null,
+    tokenizerPre: metadata["tokenizer.ggml.pre"] ?? null,
+    tokensLength: metadataArrayLength(metadata["tokenizer.ggml.tokens"]),
+    tokenTypeLength: metadataArrayLength(metadata["tokenizer.ggml.token_type"]),
+    mergesLength: metadataArrayLength(metadata["tokenizer.ggml.merges"]),
+    eosTokenId: metadata["tokenizer.ggml.eos_token_id"] ?? null,
+    bosTokenId: metadata["tokenizer.ggml.bos_token_id"] ?? null,
+    paddingTokenId: metadata["tokenizer.ggml.padding_token_id"] ?? null,
+    addBosToken: metadata["tokenizer.ggml.add_bos_token"] ?? null,
+    hashes: {
+      model: hashes["tokenizer.ggml.model"] ?? null,
+      pre: hashes["tokenizer.ggml.pre"] ?? null,
+      tokens: hashes["tokenizer.ggml.tokens"] ?? null,
+      tokenType: hashes["tokenizer.ggml.token_type"] ?? null,
+      merges: hashes["tokenizer.ggml.merges"] ?? null,
+      eosTokenId: hashes["tokenizer.ggml.eos_token_id"] ?? null,
+      bosTokenId: hashes["tokenizer.ggml.bos_token_id"] ?? null,
+      paddingTokenId: hashes["tokenizer.ggml.padding_token_id"] ?? null,
+      addBosToken: hashes["tokenizer.ggml.add_bos_token"] ?? null,
+    },
+  };
+}
+
+function compareTokenizers(target, drafter) {
+  const compared = [
+    ["tokenizer.ggml.model", target.hashes.model, drafter.hashes.model],
+    ["tokenizer.ggml.pre", target.hashes.pre, drafter.hashes.pre],
+    ["tokenizer.ggml.tokens", target.hashes.tokens, drafter.hashes.tokens],
+    [
+      "tokenizer.ggml.token_type",
+      target.hashes.tokenType,
+      drafter.hashes.tokenType,
+    ],
+    ["tokenizer.ggml.merges", target.hashes.merges, drafter.hashes.merges],
+    [
+      "tokenizer.ggml.eos_token_id",
+      target.hashes.eosTokenId,
+      drafter.hashes.eosTokenId,
+    ],
+    [
+      "tokenizer.ggml.bos_token_id",
+      target.hashes.bosTokenId,
+      drafter.hashes.bosTokenId,
+    ],
+    [
+      "tokenizer.ggml.padding_token_id",
+      target.hashes.paddingTokenId,
+      drafter.hashes.paddingTokenId,
+    ],
+  ];
+  const mismatches = compared
+    .filter(([, targetHash, drafterHash]) => targetHash !== drafterHash)
+    .map(([key, targetHash, drafterHash]) => ({
+      key,
+      targetHash,
+      drafterHash,
+    }));
+  return {
+    compatible: mismatches.length === 0,
+    mismatches,
+  };
+}
+
+function readTargetMeta(targetModel, drafterModel) {
+  const candidates = [
+    path.join(path.dirname(drafterModel), "target-meta.json"),
+    path.join(
+      path.dirname(path.dirname(targetModel)),
+      "dflash",
+      "target-meta.json",
+    ),
+  ];
+  const file = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!file) return { file: null, status: "missing", data: null };
+  try {
+    return {
+      file,
+      status: "loaded",
+      data: JSON.parse(fs.readFileSync(file, "utf8")),
+    };
+  } catch (error) {
+    return {
+      file,
+      status: "invalid_json",
+      error: error.message,
+      data: null,
+    };
+  }
+}
+
 function buildRuntimeArgs(targetModel, drafterModel, options) {
+  const skippedCliFlags = [];
+  const features = options.cliFeatures;
   const args = [
     "-m",
     targetModel,
@@ -364,22 +557,55 @@ function buildRuntimeArgs(targetModel, drafterModel, options) {
     options.ngld,
   ];
   if (options.deviceNone) {
-    args.push("--device", "none", "--device-draft", "none");
+    pushOptionalFlag(args, skippedCliFlags, features, "--device", "none");
+    pushOptionalFlag(
+      args,
+      skippedCliFlags,
+      features,
+      "--device-draft",
+      "none",
+    );
   }
-  args.push("--draft", "1", "--draft-min", "1", "--draft-p-min", "0.1");
+  pushOptionalFlag(args, skippedCliFlags, features, "--draft", "1");
+  pushOptionalFlag(args, skippedCliFlags, features, "--draft-min", "1");
+  pushOptionalFlag(args, skippedCliFlags, features, "--draft-p-min", "0.1");
   if (options.specType) {
-    args.push("--spec-type", options.specType);
+    pushOptionalFlag(
+      args,
+      skippedCliFlags,
+      features,
+      "--spec-type",
+      options.specType,
+    );
   }
   if (options.temperature) {
-    args.push("--temp", options.temperature);
+    pushOptionalFlag(
+      args,
+      skippedCliFlags,
+      features,
+      "--temp",
+      options.temperature,
+    );
   }
   if (options.treeBudget) {
-    args.push("--tree-budget", options.treeBudget);
+    pushOptionalFlag(
+      args,
+      skippedCliFlags,
+      features,
+      "--tree-budget",
+      options.treeBudget,
+    );
   }
-  return args;
+  return { args, skippedCliFlags };
 }
 
 function classifyRuntimeOutput(text) {
+  if (/target and draft vocabs are not compatible/i.test(text)) {
+    return "target_draft_vocab_incompatible";
+  }
+  if (/requires (?:DFlash )?hidden-state capture/i.test(text)) {
+    return "dflash_hidden_capture_required";
+  }
   if (/unknown model architecture: 'dflash-draft'/.test(text)) {
     return "runtime_missing_dflash_draft_architecture";
   }
@@ -404,12 +630,17 @@ function runRuntime(
   options,
 ) {
   if (!binary) return null;
-  const args = buildRuntimeArgs(targetModel, drafterModel, options);
+  const { args, skippedCliFlags } = buildRuntimeArgs(
+    targetModel,
+    drafterModel,
+    options,
+  );
   if (!fs.existsSync(binary)) {
     return {
       label,
       binary,
       args,
+      skippedCliFlags,
       status: null,
       signal: null,
       classification: "binary_missing",
@@ -428,16 +659,47 @@ function runRuntime(
   });
   const output = `${result.stdout || ""}${result.stderr || ""}`;
   const lines = output.trim().split(/\r?\n/);
+  const dflash = parseBenchOutput(output);
+  const requiresTrueDrafting = Boolean(options.requiresTrueDflashDrafting);
+  const hasDflashCounters = dflash.drafted !== null || dflash.accepted !== null;
+  const vocabIncompatible =
+    dflash.vocabIncompatibleWarning ||
+    options.tokenizerCompatibility?.compatible === false;
+  let classification =
+    result.status === 0
+      ? "generation_attempt_completed"
+      : classifyRuntimeOutput(output);
+  let dflashFailure = null;
+  if (result.status === 0 && requiresTrueDrafting) {
+    if (vocabIncompatible && (dflash.drafted ?? 0) === 0) {
+      classification = "dflash_vocab_incompatible_no_drafts";
+      dflashFailure =
+        "target and DFlash drafter tokenizers are incompatible; runtime translated tokens but produced zero drafted tokens";
+    } else if (!hasDflashCounters) {
+      classification = "dflash_counters_missing";
+      dflashFailure =
+        "true DFlash runtime exited 0 but did not print n_drafted/n_accept counters";
+    } else if ((dflash.drafted ?? 0) === 0 && (dflash.accepted ?? 0) === 0) {
+      classification = "dflash_no_drafts";
+      dflashFailure =
+        "true DFlash runtime exited 0 but generated zero drafted and accepted tokens";
+    }
+  }
   return {
     label,
     binary,
     args,
+    skippedCliFlags,
     status: result.status,
     signal: result.signal,
-    classification:
-      result.status === 0
-        ? "generation_attempt_completed"
-        : classifyRuntimeOutput(output),
+    classification,
+    dflash: {
+      ...dflash,
+      requiresTrueDrafting,
+      tokenizerCompatible: options.tokenizerCompatibility?.compatible ?? null,
+      draftingActive: (dflash.drafted ?? 0) > 0,
+    },
+    dflashFailure,
     outputTail: lines.slice(-120).join("\n"),
   };
 }
@@ -454,12 +716,48 @@ function parseBenchOutput(text) {
     const m = text.match(re);
     return m ? Number(m[1]) : null;
   };
+  const tokenLine = (re) => {
+    const m = text.match(re);
+    return m
+      ? {
+          tokens: Number(m[1]),
+          seconds: Number(m[2]),
+          tokensPerSecond: Number(m[3]),
+        }
+      : null;
+  };
+  const timingLine = (prefix, label) => {
+    const re = new RegExp(
+      `${prefix}:\\s+${label} time =\\s*([\\d.]+) ms /\\s*(\\d+) (?:tokens|runs).*?([\\d.]+|inf) tokens per second`,
+      "i",
+    );
+    const m = text.match(re);
+    if (!m) return null;
+    return {
+      milliseconds: Number(m[1]),
+      tokens: Number(m[2]),
+      tokensPerSecond: m[3] === "inf" ? Infinity : Number(m[3]),
+    };
+  };
   const drafted = num(/n_drafted\s*[:=]\s*(\d+)/i);
   const accepted =
     num(/n_drafted_accepted\s*[:=]\s*(\d+)/i) ??
     num(/n_accept(?:ed)?\s*[:=]\s*(\d+)/i);
-  // Prefer the generation ("eval"/"decode") tokens-per-second line.
+  const encoded = tokenLine(
+    /encoded\s+(\d+)\s+tokens\s+in\s+([\d.]+)\s+seconds,\s+speed:\s+([\d.]+)\s+t\/s/i,
+  );
+  const decoded = tokenLine(
+    /decoded\s+(\d+)\s+tokens\s+in\s+([\d.]+)\s+seconds,\s+speed:\s+([\d.]+)\s+t\/s/i,
+  );
+  const commonPromptEval = timingLine("common_perf_print", "prompt eval");
+  const commonEval = timingLine("common_perf_print", "eval");
+  const draftPromptEval = timingLine("llama_perf_context_print", "prompt eval");
+  const draftEval = timingLine("llama_perf_context_print", "eval");
+  // Prefer the wall-clock decoded line for generation speed. llama.cpp's
+  // per-context eval timing excludes speculative overhead and can otherwise
+  // overstate end-to-end tok/s when DFlash is not actually drafting.
   const tokPerSec =
+    decoded?.tokensPerSecond ??
     num(/eval time\s*=.*?,\s*([\d.]+)\s*tokens per second/i) ??
     num(/decode:.*?,\s*([\d.]+)\s*t\/s/i) ??
     num(/([\d.]+)\s*tokens? per second/i);
@@ -469,6 +767,19 @@ function parseBenchOutput(text) {
     acceptanceRate:
       drafted && drafted > 0 && accepted != null ? accepted / drafted : null,
     tokensPerSecond: tokPerSec,
+    generation: {
+      encoded,
+      decoded,
+      tokensPerSecond: decoded?.tokensPerSecond ?? null,
+    },
+    timings: {
+      targetPromptEval: commonPromptEval,
+      targetEval: commonEval,
+      draftPromptEval,
+      draftEval,
+    },
+    vocabIncompatibleWarning:
+      /target and draft vocabs are not compatible/i.test(text),
   };
 }
 
@@ -481,6 +792,7 @@ function parseBenchOutput(text) {
  * missing so callers record a "needs hardware" entry rather than fail.
  */
 function runBenchPass(binary, targetModel, drafterModel, options, withDrafter) {
+  const skippedCliFlags = [];
   if (!binary || !fs.existsSync(binary)) {
     return { available: false, binary, withDrafter };
   }
@@ -489,6 +801,7 @@ function runBenchPass(binary, targetModel, drafterModel, options, withDrafter) {
       available: false,
       binary,
       withDrafter,
+      skippedCliFlags,
       reason: "target or drafter model missing",
     };
   }
@@ -510,16 +823,55 @@ function runBenchPass(binary, targetModel, drafterModel, options, withDrafter) {
     options.ngl,
     "-ngld",
     options.ngld,
+  ];
+  pushOptionalFlag(
+    args,
+    skippedCliFlags,
+    options.cliFeatures,
     "--draft-min",
     withDrafter ? "2" : "0",
+  );
+  pushOptionalFlag(
+    args,
+    skippedCliFlags,
+    options.cliFeatures,
     "--draft-max",
     withDrafter ? "6" : "0",
-  ];
+  );
   if (options.deviceNone) {
-    args.push("--device", "none", "--device-draft", "none");
+    pushOptionalFlag(
+      args,
+      skippedCliFlags,
+      options.cliFeatures,
+      "--device",
+      "none",
+    );
+    pushOptionalFlag(
+      args,
+      skippedCliFlags,
+      options.cliFeatures,
+      "--device-draft",
+      "none",
+    );
   }
-  if (options.specType) args.push("--spec-type", options.specType);
-  if (options.temperature) args.push("--temp", options.temperature);
+  if (options.specType) {
+    pushOptionalFlag(
+      args,
+      skippedCliFlags,
+      options.cliFeatures,
+      "--spec-type",
+      options.specType,
+    );
+  }
+  if (options.temperature) {
+    pushOptionalFlag(
+      args,
+      skippedCliFlags,
+      options.cliFeatures,
+      "--temp",
+      options.temperature,
+    );
+  }
   const started = Date.now();
   const result = spawnSync(binary, args, {
     encoding: "utf8",
@@ -529,14 +881,29 @@ function runBenchPass(binary, targetModel, drafterModel, options, withDrafter) {
   const wallMs = Date.now() - started;
   const output = `${result.stdout || ""}${result.stderr || ""}`;
   const parsed = parseBenchOutput(output);
+  const draftingActive = (parsed.drafted ?? 0) > 0;
+  const dflashFailure =
+    withDrafter &&
+    !draftingActive &&
+    (parsed.vocabIncompatibleWarning ||
+      options.tokenizerCompatibility?.compatible === false)
+      ? "target and DFlash drafter tokenizers are incompatible; runtime produced zero drafted tokens"
+      : withDrafter && !draftingActive
+        ? "runtime produced zero drafted tokens"
+        : null;
   return {
     available: true,
     binary,
     withDrafter,
+    args,
+    skippedCliFlags,
     status: result.status,
     wallMs,
     tokensRequested: Number(n),
     ...parsed,
+    draftingActive,
+    dflashFailure,
+    tokenizerCompatible: options.tokenizerCompatibility?.compatible ?? null,
     outputTail: output.trim().split(/\r?\n/).slice(-40).join("\n"),
   };
 }
@@ -580,13 +947,28 @@ function runDflashBench(args) {
     withoutDrafter,
     acceptanceRate: withDrafter.acceptanceRate ?? null,
     speedup,
+    draftingActive: withDrafter.draftingActive ?? false,
+    dflashFailure: withDrafter.dflashFailure ?? null,
     // A neutral schema W11 can re-key into eliza1_gates.yaml. Null fields mean
     // "needs hardware" — recorded, not faked (AGENTS.md §3 / §7).
     summary: {
       tokensPerSecondWithDrafter: withDrafter.tokensPerSecond ?? null,
       tokensPerSecondBaseline: withoutDrafter.tokensPerSecond ?? null,
+      generationTokensPerSecondWithDrafter:
+        withDrafter.generation?.tokensPerSecond ?? null,
+      generationTokensPerSecondBaseline:
+        withoutDrafter.generation?.tokensPerSecond ?? null,
+      targetEvalTokensPerSecondWithDrafter:
+        withDrafter.timings?.targetEval?.tokensPerSecond ?? null,
+      draftEvalTokensPerSecondWithDrafter:
+        withDrafter.timings?.draftEval?.tokensPerSecond ?? null,
+      dflashDraftedTokens: withDrafter.drafted ?? null,
+      dflashAcceptedTokens: withDrafter.accepted ?? null,
       dflashAcceptanceRate: withDrafter.acceptanceRate ?? null,
       dflashSpeedup: speedup,
+      dflashDraftingActive: withDrafter.draftingActive ?? false,
+      dflashFailure: withDrafter.dflashFailure ?? null,
+      tokenizerCompatible: withDrafter.tokenizerCompatible ?? null,
     },
   };
   fs.mkdirSync(path.dirname(args.benchReport), { recursive: true });
@@ -622,22 +1004,39 @@ function runDflashBench(args) {
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
+  const installedCliFeatures = detectCliFeatures(args.specBinary);
+  const referenceCliFeatures = args.referenceBinary
+    ? detectCliFeatures(args.referenceBinary, args.referenceLibraryPath)
+    : null;
   const report = {
     generatedAt: new Date().toISOString(),
     verifier: path.relative(process.cwd(), __filename),
     targetModel: args.targetModel,
     drafterModel: args.drafterModel,
+    cliFeatures: {
+      installed: serializeCliFeatures(installedCliFeatures),
+      reference: serializeCliFeatures(referenceCliFeatures),
+    },
     checks: {},
     metadata: null,
     runtime: [],
   };
 
+  const parsedTarget = parseGguf(args.targetModel);
   const parsed = parseGguf(args.drafterModel);
   const metadata = parsed.metadata;
+  const targetMetadata = parsedTarget.metadata;
   const tensorNames = new Set(parsed.tensorNames);
   const hasTokenizerMerges = Object.hasOwn(metadata, "tokenizer.ggml.merges");
   const tokenizerModel = metadata["tokenizer.ggml.model"];
   const architecture = metadata["general.architecture"];
+  const targetMeta = readTargetMeta(args.targetModel, args.drafterModel);
+  const targetTokenizer = tokenizerSummary(parsedTarget);
+  const drafterTokenizer = tokenizerSummary(parsed);
+  const tokenizerCompatibility = compareTokenizers(
+    targetTokenizer,
+    drafterTokenizer,
+  );
 
   // Two valid drafter shapes:
   //  (a) Eliza-1 production drafter — a plain autoregressive GGUF
@@ -677,6 +1076,13 @@ function main() {
     metadata["dflash-draft.target_checkpoint_sha256"] ?? null;
 
   report.metadata = {
+    target: {
+      version: parsedTarget.version,
+      tensorCount: parsedTarget.tensorCount,
+      kvCount: parsedTarget.kvCount,
+      architecture: targetMetadata["general.architecture"],
+      name: targetMetadata["general.name"],
+    },
     version: parsed.version,
     tensorCount: parsed.tensorCount,
     kvCount: parsed.kvCount,
@@ -698,6 +1104,12 @@ function main() {
     plainArMarkers: Object.fromEntries(
       plainArMarkers.map((name) => [name, tensorNames.has(name)]),
     ),
+    tokenizerCompatibility,
+    tokenizers: {
+      target: targetTokenizer,
+      drafter: drafterTokenizer,
+    },
+    targetMeta,
   };
 
   const upstreamShapeOk =
@@ -709,12 +1121,20 @@ function main() {
     typeof architecture === "string" &&
     architecture.length > 0 &&
     tensorNames.has("token_embd.weight");
+  const requiresTrueDflashDrafting = upstreamShapeOk;
+  report.runtimePolicy = {
+    requiresTrueDflashDrafting,
+    reason: requiresTrueDflashDrafting
+      ? "upstream dflash-draft drafter"
+      : "plain autoregressive drafter smoke",
+  };
 
   report.checks = {
     drafterShape: report.metadata.drafterShape,
     upstreamDflashShapeOk: upstreamShapeOk,
     plainArShapeOk,
     hasTargetCheckpointSha256: targetCheckpointSha256 !== null,
+    targetDrafterTokenizerCompatible: tokenizerCompatibility.compatible,
     gpt2TokenizerHasMerges: tokenizerModel !== "gpt2" || hasTokenizerMerges,
   };
 
@@ -734,6 +1154,11 @@ function main() {
       "tokenizer.ggml.model is gpt2 but tokenizer.ggml.merges is absent",
     );
   }
+  if (requiresTrueDflashDrafting && !tokenizerCompatibility.compatible) {
+    failedMetadata.push(
+      "DFlash drafter tokenizer does not match target tokenizer; speculative drafting must fail closed until a drafter distilled against this target is provided",
+    );
+  }
   report.metadataStatus =
     failedMetadata.length === 0 ? "metadata_loadable" : "metadata_invalid";
   report.metadataFailures = failedMetadata;
@@ -747,7 +1172,12 @@ function main() {
           "",
           args.targetModel,
           args.drafterModel,
-          args,
+          {
+            ...args,
+            cliFeatures: installedCliFeatures,
+            requiresTrueDflashDrafting,
+            tokenizerCompatibility,
+          },
         ),
       );
     }
@@ -759,14 +1189,23 @@ function main() {
           args.referenceLibraryPath,
           args.targetModel,
           args.drafterModel,
-          args,
+          {
+            ...args,
+            cliFeatures: referenceCliFeatures,
+            requiresTrueDflashDrafting,
+            tokenizerCompatibility,
+          },
         ),
       );
     }
   }
 
   if (args.bench) {
-    report.bench = runDflashBench(args);
+    report.bench = runDflashBench({
+      ...args,
+      cliFeatures: installedCliFeatures,
+      tokenizerCompatibility,
+    });
   }
 
   fs.mkdirSync(path.dirname(args.report), { recursive: true });
@@ -774,14 +1213,19 @@ function main() {
   console.log(`wrote ${args.report}`);
   console.log(`metadataStatus=${report.metadataStatus}`);
   for (const run of report.runtime.filter(Boolean)) {
+    const drafted = run.dflash?.drafted ?? "n/a";
+    const accepted = run.dflash?.accepted ?? "n/a";
     console.log(
-      `${run.label}: status=${run.status} classification=${run.classification}`,
+      `${run.label}: status=${run.status} classification=${run.classification} drafted=${drafted} accepted=${accepted}`,
     );
+    if (run.dflashFailure) {
+      console.log(`${run.label}: dflashFailure=${run.dflashFailure}`);
+    }
   }
 
   const runtimeFailed = report.runtime
     .filter(Boolean)
-    .some((run) => run.status !== 0);
+    .some((run) => run.status !== 0 || run.dflashFailure);
   if (failedMetadata.length > 0 || runtimeFailed) {
     process.exit(1);
   }

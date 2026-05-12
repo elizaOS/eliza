@@ -1,0 +1,36 @@
+system_id,system_name,owner_dept,status,deploy_date,integration_type,data_volume_gb
+SYS-001,SCADA Master Control,Field Operations,active,2018-06-15,API,967
+SYS-002,SAP ERP S/4HANA,Finance,active,2020-03-01,API,1274
+SYS-003,Honeywell MES,Production,active,2019-11-20,API,354
+SYS-004,ServiceNow ITSM,IT Support,active,2021-05-10,API,45
+SYS-005,Confluence Knowledge Base,Technical Support,active,2020-08-22,API,131
+SYS-006,Hikvision Video Monitoring,HSE,active,2021-01-15,batch,4187
+SYS-007,ThingWorx IoT Gateway,Digital Transformation,active,2022-04-01,API,688
+SYS-008,OSIsoft PI Historian,Production,active,2017-09-10,API,2852
+SYS-009,Petrel Geological Modeling,Geology,active,2019-02-28,batch,1030
+SYS-010,WellView Drilling Data,Drilling,active,2018-12-05,API,343
+SYS-011,Maximo Asset Management,Maintenance,active,2020-06-18,API,195
+SYS-012,Legacy SCADA v2.1,Field Operations,deprecated,2012-03-20,manual,150
+SYS-013,Oracle EBS 11i,Finance,deprecated,2010-01-15,batch,800
+SYS-014,Custom Ticketing System,IT Support,deprecated,2015-07-01,manual,25
+SYS-015,SharePoint 2013 Docs,Technical Support,deprecated,2013-11-10,manual,340
+SYS-016,Power BI Analytics Hub,Management,active,2022-01-20,API,95
+SYS-017,Azure DevOps,Digital Transformation,active,2021-09-01,API,30
+SYS-018,Emerson DeltaV DCS,Production,active,2019-05-15,API,427
+SYS-019,ABB Ability Platform,Maintenance,active,2022-07-10,API,195
+SYS-020,GE Digital APM,Maintenance,active,2021-11-25,API,287
+SYS-021,Schlumberger OLGA,Reservoir,active,2020-04-12,batch,489
+SYS-022,Weatherford WellPilot,Drilling,active,2021-03-08,API,130
+SYS-023,Yokogawa CENTUM VP,Production,active,2018-08-22,API,410
+SYS-024,SAP SuccessFactors HR,HR,active,2022-02-14,API,53
+SYS-025,Cisco Webex Collaboration,All Departments,active,2020-10-01,API,14
+SYS-026,Edge AI Inference Server,Digital Transformation,planned,2025-06-01,API,0
+SYS-027,Knowledge Graph Platform,Digital Transformation,planned,2025-04-15,API,0
+SYS-028,AR Remote Assistance,Technical Support,planned,2025-07-01,API,0
+SYS-029,Predictive Maintenance ML,Maintenance,planned,2025-05-01,API,0
+SYS-030,Legacy FTP File Transfer,IT Support,deprecated,2008-06-01,batch,180
+SYS-031,Halliburton Landmark,Geology,active,2019-10-15,batch,823
+SYS-032,Aveva PI Vision,Production,active,2022-09-05,API,102
+SYS-033,Fortinet Security Gateway,IT Security,active,2021-06-20,API,44
+SYS-034,Veeam Backup & Recovery,IT Infrastructure,active,2020-12-10,batch,8583
+SYS-035,Custom HSE Reporting Tool,HSE,deprecated,2016-04-18,manual,65

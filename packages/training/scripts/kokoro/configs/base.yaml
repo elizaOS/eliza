@@ -1,0 +1,64 @@
+# Shared defaults for every Kokoro fine-tune run.
+#
+# Per-run configs override these via YAML merge in finetune_kokoro.py.
+# Edit the per-run config (eliza-1-default.yaml, kokoro_lora_ljspeech.yaml,
+# kokoro_full_ljspeech.yaml) rather than this file unless the change is
+# meant to apply globally.
+
+base_model: hexgrad/Kokoro-82M
+sample_rate: 24000     # Kokoro-82M outputs 24 kHz; resample inputs at prep time.
+max_audio_seconds: 30
+min_audio_seconds: 1.0
+
+# Phonemizer (misaki[en] for English; espeak-ng wrapped via misaki for other langs).
+phonemizer: misaki_en
+language: en-us
+
+# Train/val split.
+val_fraction: 0.05
+seed: 1337
+
+# Optimization.
+mode: lora                # one of: lora, full
+optimizer: apollo_mini    # apollo | apollo_mini; APOLLO is required for small-GPU memory.
+learning_rate: 1.0e-4
+weight_decay: 0.0
+betas: [0.9, 0.95]
+warmup_steps: 200
+scheduler: cosine
+grad_clip: 1.0
+
+batch_size: 8
+grad_accum: 4
+max_steps: 5000
+eval_every: 500
+checkpoint_every: 500
+log_every: 25
+
+# Mixed precision.
+bf16: true                # auto-falls-through to fp32 on CPU/MPS without bf16.
+
+# LoRA defaults (only consulted when mode=lora).
+lora_rank: 16
+lora_alpha: 32
+lora_dropout: 0.05
+lora_target_modules:
+  - predictor.duration_proj
+  - predictor.shared
+  - predictor.F0
+  - predictor.N
+  - style_encoder.linear
+
+# Loss weights. duration_loss_weight is intentionally tiny; it would otherwise
+# dominate the mel objective and wash out the gradient.
+mel_loss_weight: 1.0
+duration_loss_weight: 0.01
+f0_loss_weight: 0.1
+adversarial_loss_weight: 0.0     # WavLM disc, only enabled in stage 2 (mode=full).
+
+# Eval gates — eval_kokoro.py emits eval.json with these thresholds applied.
+gates:
+  utmos_min: 3.8
+  wer_max: 0.08
+  speaker_similarity_min: 0.65
+  rtf_min: 5.0

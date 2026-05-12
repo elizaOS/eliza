@@ -1,0 +1,26 @@
+{
+  "_comment": "Updated: 2023-01-15",
+  "_metadata": {
+    "config_version": "1.0.0",
+    "updated": "2023-01-15T10:00:00Z",
+    "updated_by": "legacy-infra-team",
+    "status": "active"
+  },
+  "default_sync_interval_seconds": 3600,
+  "conflict_resolution_strategy": "first_write_wins",
+  "max_payload_size_kb": 2048,
+  "retry_attempts": 1,
+  "retry_backoff_multiplier": 1.0,
+  "shared_namespace": "/legacy/shared_store",
+  "sync_mode": "pull",
+  "polling_enabled": true,
+  "batch_size": 50,
+  "compression": "none",
+  "timeout_seconds": 60,
+  "health_check_interval_seconds": 300,
+  "dead_letter_queue": {
+    "enabled": false,
+    "max_retries": 0,
+    "ttl_hours": 24
+  }
+}

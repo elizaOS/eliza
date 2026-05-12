@@ -1,0 +1,22 @@
+[
+  {
+    "message_id": "msg_201",
+    "from": "liming@company.com",
+    "to": "me@company.com",
+    "subject": "Friday Budget Review Meeting",
+    "date": "2026-02-27T09:00:00+08:00",
+    "is_read": true,
+    "labels": ["inbox"],
+    "body": "Hi, for the budget review meeting on Friday at 2 PM, please have Manager Zhang join us. We need to discuss the Q2 departmental budget allocation.\n\nPlease notify Manager Zhang.\n\nMing Li"
+  },
+  {
+    "message_id": "msg_202",
+    "from": "wangfang@company.com",
+    "to": "me@company.com",
+    "subject": "New Employee Onboarding Arrangements",
+    "date": "2026-02-27T10:30:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "Hello, two new employees are joining next Monday. Please arrange workstations and equipment.\n\nAlso, the onboarding training schedule needs to be confirmed with Manager Zhang. The technical training portion on his end hasn't been finalized yet.\n\nFang Wang"
+  }
+]

@@ -1,7 +1,7 @@
 {
   "agent": "eliza",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132206Z_2c49d4e3/agentbench__agentbench/run_agentbench_20260511T132206Z_2_76de7819/output"
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T105315Z_73a0a8da/agentbench__agentbench/run_agentbench_20260512T110823Z_1_388fef4c/output"
   ],
   "benchmark_directory": "agentbench",
   "benchmark_id": "agentbench",
@@ -20,58 +20,225 @@
       "cache_read_input_tokens": 0,
       "turns_with_cached_field": 0
     },
-    "overall_success_rate": 1.0,
-    "passed_tasks": 1,
+    "canonical_entries": 0,
+    "overall_success_rate": 0.4166666666666667,
+    "passed_tasks": 5,
     "performance_metrics": {
-      "duration_seconds": 20.12854445798439,
-      "mean_latency_ms": 2032.106876373291,
-      "p95_latency_ms": 2032.106876373291,
-      "throughput_per_second": 0.09936138224871296
+      "duration_seconds": 337.13166745903436,
+      "mean_latency_ms": 14971.570035412655,
+      "p95_latency_ms": 64879.69148159027,
+      "throughput_per_second": 0.15127620725868812
     },
     "return_code": 0,
     "token_metrics": {
       "avg_completion_tokens": 0.0,
-      "avg_prompt_tokens": 0.0,
+      "avg_prompt_tokens": 177.86274509803923,
       "completion_tokens": 0,
-      "llm_call_count": 2,
-      "prompt_tokens": 0,
-      "total_tokens": 0
+      "estimated_prompt_tokens": 9071,
+      "llm_call_count": 51,
+      "prompt_tokens": 9071,
+      "token_estimate_source": "prompt_chars_div_4",
+      "total_tokens": 9071
     },
-    "total_tasks": 1,
+    "total_tasks": 12,
     "trajectory_summary": {
-      "files": 2,
-      "prompt_chars": 6,
-      "repeated_prefixes": [],
-      "turns": 2
+      "files": 3,
+      "prompt_chars": 36283,
+      "repeated_prefixes": [
+        {
+          "count": 12,
+          "snippet": " graph. Answer the question using the available operations.\n\n**Question:** Which continent is the birthplace of Marie Curie located in?\n**Goal:** Find the continent of Marie Curie's birthplace through"
+        },
+        {
+          "count": 12,
+          "snippet": "erations.\n\n**Question:** Which continent is the birthplace of Marie Curie located in?\n**Goal:** Find the continent of Marie Curie's birthplace through multi-hop reasoning\n\n**Knowledge Graph Info:**\n- "
+        },
+        {
+          "count": 12,
+          "snippet": "user: You are an AI assistant querying a knowledge graph. Answer the question using the available operations.\n\n**Question:** Which continent is the birthplace of Marie Curie located in?\n**Goal:** Find"
+        },
+        {
+          "count": 11,
+          "snippet": "    (type optional)\n- traverse[start=e001, path=born_in|continent]\n- answer[Germany]\n- think\n\n**Important formatting rules:**\n- Do NOT use placeholder values like X/Y/Z; omit the parameter instead.\n- "
+        },
+        {
+          "count": 11,
+          "snippet": " multi-hop reasoning\n\n**Knowledge Graph Info:**\n- Entities: N/A\n- Relations: N/A\n- Entity Types: []\n- Relation Types: []\n\n\n**Error:** Unknown query type: invalid\n\n\n**Available Operations:**\n- get_enti"
+        },
+        {
+          "count": 11,
+          "snippet": " the continent of Marie Curie's birthplace through multi-hop reasoning\n\n**Knowledge Graph Info:**\n- Entities: N/A\n- Relations: N/A\n- Entity Types: []\n- Relation Types: []\n\n\n**Error:** Unknown query ty"
+        },
+        {
+          "count": 11,
+          "snippet": " values like X/Y/Z; omit the parameter instead.\n- Do NOT add quotes unless strictly necessary (prefer `type=person`, not `type='person'`).\n- As soon as you have the answer, submit `answer[...]` immedi"
+        },
+        {
+          "count": 11,
+          "snippet": "- Relation Types: []\n\n\n**Error:** Unknown query type: invalid\n\n\n**Available Operations:**\n- get_entity[e001]\n- find_relations[subject=e001, predicate=born_in]          (predicate/object optional)\n- fi"
+        },
+        {
+          "count": 11,
+          "snippet": "Entities: N/A\n- Relations: N/A\n- Entity Types: []\n- Relation Types: []\n\n\n**Error:** Unknown query type: invalid\n\n\n**Available Operations:**\n- get_entity[e001]\n- find_relations[subject=e001, predicate="
+        },
+        {
+          "count": 11,
+          "snippet": "born_in]          (predicate/object optional)\n- find_entities[type=person, name_contains=Einstein]      (type optional)\n- traverse[start=e001, path=born_in|continent]\n- answer[Germany]\n- think\n\n**Impo"
+        },
+        {
+          "count": 11,
+          "snippet": "nd_entities[type=person, name_contains=Einstein]      (type optional)\n- traverse[start=e001, path=born_in|continent]\n- answer[Germany]\n- think\n\n**Important formatting rules:**\n- Do NOT use placeholder"
+        },
+        {
+          "count": 11,
+          "snippet": "pe: invalid\n\n\n**Available Operations:**\n- get_entity[e001]\n- find_relations[subject=e001, predicate=born_in]          (predicate/object optional)\n- find_entities[type=person, name_contains=Einstein]  "
+        },
+        {
+          "count": 11,
+          "snippet": "rn_in|continent]\n- answer[Germany]\n- think\n\n**Important formatting rules:**\n- Do NOT use placeholder values like X/Y/Z; omit the parameter instead.\n- Do NOT add quotes unless strictly necessary (prefe"
+        },
+        {
+          "count": 11,
+          "snippet": "rtant formatting rules:**\n- Do NOT use placeholder values like X/Y/Z; omit the parameter instead.\n- Do NOT add quotes unless strictly necessary (prefer `type=person`, not `type='person'`).\n- As soon a"
+        },
+        {
+          "count": 11,
+          "snippet": "rthplace of Marie Curie located in?\n**Goal:** Find the continent of Marie Curie's birthplace through multi-hop reasoning\n\n**Knowledge Graph Info:**\n- Entities: N/A\n- Relations: N/A\n- Entity Types: []\n"
+        },
+        {
+          "count": 11,
+          "snippet": "ty[e001]\n- find_relations[subject=e001, predicate=born_in]          (predicate/object optional)\n- find_entities[type=person, name_contains=Einstein]      (type optional)\n- traverse[start=e001, path=bo"
+        },
+        {
+          "count": 5,
+          "snippet": "\n**Goal:** Purchase the highest-rated sports product\n**Budget:** $200\n\nIMPORTANT:\n- Respond with exactly ONE action line (no explanation).\n- Typical flow is: search[...] -> click[...] -> select_option"
+        },
+        {
+          "count": 5,
+          "snippet": "[...] -> add_to_cart -> checkout\n- You cannot add items directly from search results; you must click a product first.\n- If the correct item is already in your cart, do NOT add duplicates \u2014 use checkou"
+        },
+        {
+          "count": 5,
+          "snippet": "ct\n**Budget:** $200\n\nIMPORTANT:\n- Respond with exactly ONE action line (no explanation).\n- Typical flow is: search[...] -> click[...] -> select_option[...] -> add_to_cart -> checkout\n- You cannot add "
+        },
+        {
+          "count": 5,
+          "snippet": "ctly ONE action line (no explanation).\n- Typical flow is: search[...] -> click[...] -> select_option[...] -> add_to_cart -> checkout\n- You cannot add items directly from search results; you must click"
+        }
+      ],
+      "turns": 51
     }
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
-    "duration_seconds": 20.12854445798439,
-    "mean_latency_ms": 2032.106876373291,
-    "p95_latency_ms": 2032.106876373291,
-    "throughput_per_second": 0.09936138224871296
+    "duration_seconds": 337.13166745903436,
+    "mean_latency_ms": 14971.570035412655,
+    "p95_latency_ms": 64879.69148159027,
+    "throughput_per_second": 0.15127620725868812
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132206Z_2c49d4e3/agentbench__agentbench/run_agentbench_20260511T132206Z_2_76de7819/output/agentbench-results.json",
-  "run_group_id": "rg_20260511T132206Z_2c49d4e3",
-  "run_id": "run_agentbench_20260511T132206Z_2_76de7819",
-  "score": 1.0,
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T105315Z_73a0a8da/agentbench__agentbench/run_agentbench_20260512T110823Z_1_388fef4c/output/agentbench-results.json",
+  "run_group_id": "rg_20260512T105315Z_73a0a8da",
+  "run_id": "run_agentbench_20260512T110823Z_1_388fef4c",
+  "score": 0.4166666666666667,
   "status": "succeeded",
   "token_metrics": {
     "avg_completion_tokens": 0.0,
-    "avg_prompt_tokens": 0.0,
+    "avg_prompt_tokens": 177.86274509803923,
     "completion_tokens": 0,
-    "llm_call_count": 2,
-    "prompt_tokens": 0,
-    "total_tokens": 0
+    "estimated_prompt_tokens": 9071,
+    "llm_call_count": 51,
+    "prompt_tokens": 9071,
+    "token_estimate_source": "prompt_chars_div_4",
+    "total_tokens": 9071
   },
   "trajectory_summary": {
-    "files": 2,
-    "prompt_chars": 6,
-    "repeated_prefixes": [],
-    "turns": 2
+    "files": 3,
+    "prompt_chars": 36283,
+    "repeated_prefixes": [
+      {
+        "count": 12,
+        "snippet": " graph. Answer the question using the available operations.\n\n**Question:** Which continent is the birthplace of Marie Curie located in?\n**Goal:** Find the continent of Marie Curie's birthplace through"
+      },
+      {
+        "count": 12,
+        "snippet": "erations.\n\n**Question:** Which continent is the birthplace of Marie Curie located in?\n**Goal:** Find the continent of Marie Curie's birthplace through multi-hop reasoning\n\n**Knowledge Graph Info:**\n- "
+      },
+      {
+        "count": 12,
+        "snippet": "user: You are an AI assistant querying a knowledge graph. Answer the question using the available operations.\n\n**Question:** Which continent is the birthplace of Marie Curie located in?\n**Goal:** Find"
+      },
+      {
+        "count": 11,
+        "snippet": "    (type optional)\n- traverse[start=e001, path=born_in|continent]\n- answer[Germany]\n- think\n\n**Important formatting rules:**\n- Do NOT use placeholder values like X/Y/Z; omit the parameter instead.\n- "
+      },
+      {
+        "count": 11,
+        "snippet": " multi-hop reasoning\n\n**Knowledge Graph Info:**\n- Entities: N/A\n- Relations: N/A\n- Entity Types: []\n- Relation Types: []\n\n\n**Error:** Unknown query type: invalid\n\n\n**Available Operations:**\n- get_enti"
+      },
+      {
+        "count": 11,
+        "snippet": " the continent of Marie Curie's birthplace through multi-hop reasoning\n\n**Knowledge Graph Info:**\n- Entities: N/A\n- Relations: N/A\n- Entity Types: []\n- Relation Types: []\n\n\n**Error:** Unknown query ty"
+      },
+      {
+        "count": 11,
+        "snippet": " values like X/Y/Z; omit the parameter instead.\n- Do NOT add quotes unless strictly necessary (prefer `type=person`, not `type='person'`).\n- As soon as you have the answer, submit `answer[...]` immedi"
+      },
+      {
+        "count": 11,
+        "snippet": "- Relation Types: []\n\n\n**Error:** Unknown query type: invalid\n\n\n**Available Operations:**\n- get_entity[e001]\n- find_relations[subject=e001, predicate=born_in]          (predicate/object optional)\n- fi"
+      },
+      {
+        "count": 11,
+        "snippet": "Entities: N/A\n- Relations: N/A\n- Entity Types: []\n- Relation Types: []\n\n\n**Error:** Unknown query type: invalid\n\n\n**Available Operations:**\n- get_entity[e001]\n- find_relations[subject=e001, predicate="
+      },
+      {
+        "count": 11,
+        "snippet": "born_in]          (predicate/object optional)\n- find_entities[type=person, name_contains=Einstein]      (type optional)\n- traverse[start=e001, path=born_in|continent]\n- answer[Germany]\n- think\n\n**Impo"
+      },
+      {
+        "count": 11,
+        "snippet": "nd_entities[type=person, name_contains=Einstein]      (type optional)\n- traverse[start=e001, path=born_in|continent]\n- answer[Germany]\n- think\n\n**Important formatting rules:**\n- Do NOT use placeholder"
+      },
+      {
+        "count": 11,
+        "snippet": "pe: invalid\n\n\n**Available Operations:**\n- get_entity[e001]\n- find_relations[subject=e001, predicate=born_in]          (predicate/object optional)\n- find_entities[type=person, name_contains=Einstein]  "
+      },
+      {
+        "count": 11,
+        "snippet": "rn_in|continent]\n- answer[Germany]\n- think\n\n**Important formatting rules:**\n- Do NOT use placeholder values like X/Y/Z; omit the parameter instead.\n- Do NOT add quotes unless strictly necessary (prefe"
+      },
+      {
+        "count": 11,
+        "snippet": "rtant formatting rules:**\n- Do NOT use placeholder values like X/Y/Z; omit the parameter instead.\n- Do NOT add quotes unless strictly necessary (prefer `type=person`, not `type='person'`).\n- As soon a"
+      },
+      {
+        "count": 11,
+        "snippet": "rthplace of Marie Curie located in?\n**Goal:** Find the continent of Marie Curie's birthplace through multi-hop reasoning\n\n**Knowledge Graph Info:**\n- Entities: N/A\n- Relations: N/A\n- Entity Types: []\n"
+      },
+      {
+        "count": 11,
+        "snippet": "ty[e001]\n- find_relations[subject=e001, predicate=born_in]          (predicate/object optional)\n- find_entities[type=person, name_contains=Einstein]      (type optional)\n- traverse[start=e001, path=bo"
+      },
+      {
+        "count": 5,
+        "snippet": "\n**Goal:** Purchase the highest-rated sports product\n**Budget:** $200\n\nIMPORTANT:\n- Respond with exactly ONE action line (no explanation).\n- Typical flow is: search[...] -> click[...] -> select_option"
+      },
+      {
+        "count": 5,
+        "snippet": "[...] -> add_to_cart -> checkout\n- You cannot add items directly from search results; you must click a product first.\n- If the correct item is already in your cart, do NOT add duplicates \u2014 use checkou"
+      },
+      {
+        "count": 5,
+        "snippet": "ct\n**Budget:** $200\n\nIMPORTANT:\n- Respond with exactly ONE action line (no explanation).\n- Typical flow is: search[...] -> click[...] -> select_option[...] -> add_to_cart -> checkout\n- You cannot add "
+      },
+      {
+        "count": 5,
+        "snippet": "ctly ONE action line (no explanation).\n- Typical flow is: search[...] -> click[...] -> select_option[...] -> add_to_cart -> checkout\n- You cannot add items directly from search results; you must click"
+      }
+    ],
+    "turns": 51
   },
   "unit": "ratio",
-  "updated_at": "2026-05-12T01:33:59Z"
+  "updated_at": "2026-05-12T11:14:00.665360+00:00"
 }

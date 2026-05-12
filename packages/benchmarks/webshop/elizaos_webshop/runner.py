@@ -108,32 +108,37 @@ class WebShopRunner:
 
     async def run_benchmark(self) -> WebShopReport:
         self._start_time = time.time()
-        await self.dataset.load(use_huggingface=self.use_hf)
+        try:
+            await self.dataset.load(use_huggingface=self.use_hf)
 
-        tasks = self.dataset.get_tasks(limit=self.config.max_tasks)
-        if not tasks:
-            raise RuntimeError("No tasks loaded")
+            tasks = self.dataset.get_tasks(limit=self.config.max_tasks)
+            if not tasks:
+                raise RuntimeError("No tasks loaded")
 
-        results: list[WebShopResult] = []
-        for task in tasks:
-            for trial in range(1, max(1, self.config.num_trials) + 1):
-                task.metadata["trial_number"] = trial
-                results.append(await self._run_task(task, trial_number=trial))
+            results: list[WebShopResult] = []
+            for task in tasks:
+                for trial in range(1, max(1, self.config.num_trials) + 1):
+                    task.metadata["trial_number"] = trial
+                    results.append(await self._run_task(task, trial_number=trial))
 
-        report = self._generate_report(results)
-        await self._save_results(report)
+            report = self._generate_report(results)
+            await self._save_results(report)
 
-        if self._trajectory and self._trajectory.enabled:
-            traj_dir = str(Path(self.config.output_dir) / "trajectories")
-            exported = self._trajectory.export_trajectories(
-                output_dir=traj_dir, dataset_name="webshop_trajectories"
-            )
-            if exported and exported.success:
-                logger.info(
-                    f"[WebShopRunner] Exported {exported.trajectories_exported} trajectories"
+            if self._trajectory and self._trajectory.enabled:
+                traj_dir = str(Path(self.config.output_dir) / "trajectories")
+                exported = self._trajectory.export_trajectories(
+                    output_dir=traj_dir, dataset_name="webshop_trajectories"
                 )
+                if exported and exported.success:
+                    logger.info(
+                        f"[WebShopRunner] Exported {exported.trajectories_exported} trajectories"
+                    )
 
-        return report
+            return report
+        finally:
+            if self._bridge_manager is not None:
+                self._bridge_manager.stop()
+                self._bridge_manager = None
 
     async def _run_task(self, task: WebShopTask, *, trial_number: int) -> WebShopResult:
         start = time.time()

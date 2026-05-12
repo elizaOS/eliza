@@ -1,0 +1,16 @@
+{
+  "jokes": [
+    {"id": 1, "text": "Why do programmers prefer dark mode? Because light attracts bugs."},
+    {"id": 2, "text": "A SQL query walks into a bar, walks up to two tables and asks... 'Can I join you?'"},
+    {"id": 3, "text": "Why did the developer go broke? Because they used up all their cache."},
+    {"id": 4, "text": "How many programmers does it take to change a light bulb? None — it's a hardware problem."},
+    {"id": 5, "text": "Why do Java developers wear glasses? Because they don't C#."},
+    {"id": 6, "text": "A programmer's partner says: 'Go to the store, get a loaf of bread, and if they have eggs, get a dozen.' The programmer comes home with 12 loaves of bread."},
+    {"id": 7, "text": "Why was the JavaScript developer sad? Because they didn't Node how to Express their feelings."},
+    {"id": 8, "text": "What do you call a programmer from Finland? Nerdic."},
+    {"id": 9, "text": "Why did the computer go to therapy? It had too many unresolved issues."},
+    {"id": 10, "text": "What is a computer's favorite snack? Microchips."}
+  ],
+  "total": 10,
+  "last_updated": "2026-02-08"
+}

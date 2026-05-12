@@ -1,0 +1,203 @@
+task_id: T129zh_business_trip_planning
+task_name: 出差规划
+version: "1.0"
+category: workflow
+difficulty: medium
+tags: [general, multi_service]
+
+services:
+  - name: gmail
+    command: python mock_services/gmail/server.py
+    port: 9100
+    health_check: http://localhost:9100/gmail/messages
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9100/gmail/reset
+    env:
+      GMAIL_FIXTURES: tasks/T129zh_business_trip_planning/fixtures/gmail/inbox.json
+  - name: calendar
+    command: python mock_services/calendar/server.py
+    port: 9101
+    health_check: http://localhost:9101/calendar/events
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9101/calendar/reset
+    env:
+      CALENDAR_FIXTURES: tasks/T129zh_business_trip_planning/fixtures/calendar/events.json
+  - name: contacts
+    command: python mock_services/contacts/server.py
+    port: 9103
+    health_check: http://localhost:9103/contacts/search
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9103/contacts/reset
+    env:
+      CONTACTS_FIXTURES: tasks/T129zh_business_trip_planning/fixtures/contacts/contacts.json
+
+prompt:
+  text: |
+    收件箱有几封出差邀请邮件，请帮我规划：
+    1. 查看所有出差相关邮件
+    2. 检查日历中对应日期是否有冲突
+    3. 查找出差目的地的当地同事联系方式
+    4. 综合分析后给出出差建议方案：
+       - 哪些行程冲突需要取舍
+       - 推荐的行程安排
+       - 各地联系人清单
+  language: zh
+
+tools:
+  - name: gmail_list_messages
+    description: 获取收件箱邮件列表
+    input_schema:
+      type: object
+      properties:
+        days_back:
+          type: integer
+          description: 获取最近几天的邮件
+          default: 7
+        max_results:
+          type: integer
+          description: 最大返回数量
+          default: 20
+      required: []
+
+  - name: gmail_get_message
+    description: 根据邮件ID获取邮件详情
+    input_schema:
+      type: object
+      properties:
+        message_id:
+          type: string
+          description: 邮件ID
+      required: [message_id]
+
+  - name: calendar_list_events
+    description: 查看日历事件
+    input_schema:
+      type: object
+      properties:
+        start_date:
+          type: string
+          description: "起始日期(YYYY-MM-DD)"
+        end_date:
+          type: string
+          description: "截止日期(YYYY-MM-DD)"
+      required: []
+
+  - name: calendar_get_event
+    description: 获取事件详情
+    input_schema:
+      type: object
+      properties:
+        event_id:
+          type: string
+          description: 事件ID
+      required: [event_id]
+
+  - name: contacts_search
+    description: 搜索内部通讯录
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: 搜索关键词
+        department:
+          type: string
+          description: 按部门筛选
+      required: [query]
+
+  - name: contacts_get
+    description: 获取联系人详情
+    input_schema:
+      type: object
+      properties:
+        contact_id:
+          type: string
+          description: 联系人ID
+      required: [contact_id]
+
+tool_endpoints:
+  - tool_name: gmail_list_messages
+    url: http://localhost:9100/gmail/messages
+    method: POST
+  - tool_name: gmail_get_message
+    url: http://localhost:9100/gmail/messages/get
+    method: POST
+  - tool_name: calendar_list_events
+    url: http://localhost:9101/calendar/events
+    method: POST
+  - tool_name: calendar_get_event
+    url: http://localhost:9101/calendar/events/get
+    method: POST
+  - tool_name: contacts_search
+    url: http://localhost:9103/contacts/search
+    method: POST
+  - tool_name: contacts_get
+    url: http://localhost:9103/contacts/get
+    method: POST
+
+environment:
+  mock_today: "2026-03-25"
+  timeout_seconds: 600
+  max_turns: 30
+
+scoring_components:
+  - name: conflict_analysis
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "是否正确识别4/2上海和深圳与本地产品评审的三方冲突"
+  - name: trip_recommendation
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "是否给出合理的取舍建议（上海VIP优先于深圳技术交流）"
+  - name: contact_preparation
+    weight: 0.30
+    check:
+      type: llm_judge
+      description: "是否列出各地联系人清单"
+
+safety_checks: []
+
+expected_actions: []
+
+judge_rubric: |
+  评估助手的出差规划方案质量。
+
+  ## 正确的冲突分析
+  - 4/2：上海客户拜访(msg_801) vs 深圳技术交流(msg_802) vs 本地产品评审(evt_401)
+    → 三方冲突！同一天不可能三个都参加
+  - 4/5：北京年度会议(msg_803) — 已有日历确认(evt_403)+机票预订 → 无冲突
+  - msg_804和msg_805是干扰项
+
+  ## 合理的建议
+  - 4/2选择上海（VIP客户优先级最高），放弃深圳或改期
+  - 本地产品评审需要协调改期（跟王明沟通）
+  - 4/5北京已确认，正常参加
+  - 建议行程：4/2上海 → 4/3空闲(或顺便深圳) → 4/4去北京 → 4/5北京会议
+
+  ## 联系人清单
+  - 上海：陈经理(CT-401), 吴总(CT-402)
+  - 深圳：李伟(CT-403), 黄工(CT-404)
+  - 北京：张总(CT-405), 刘秘书(CT-406)
+
+  评分：
+  - 0.8-1.0: 冲突识别正确，建议合理，联系人完整
+  - 0.5-0.7: 冲突基本识别，建议方向对
+  - 0.2-0.4: 分析不完整
+  - 0.0-0.1: 未完成
+
+reference_solution: |
+  1. gmail_list_messages() → 5封邮件，识别3封出差邀请
+  2. calendar_list_events(4/1~4/7) → 检查日程冲突
+  3. 4/2：上海(VIP) vs 深圳 vs 本地评审 → 冲突
+  4. 4/5：北京已确认 → OK
+  5. contacts_search("上海") → 陈经理、吴总
+  6. contacts_search("深圳") → 李伟、黄工
+  7. contacts_search("北京") → 张总、刘秘书
+  8. 建议：4/2选上海(VIP优先)，协调评审改期
+
+primary_dimensions: [completion, robustness, communication]

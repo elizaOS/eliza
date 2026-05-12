@@ -251,7 +251,7 @@ def run_benchmark(
         "profit": (ProfitSuite, lambda: ProfitSuite.run(system, calls, users)),
     }
 
-    run_suites = suites or list(suite_map.keys())
+    run_suites = [s.lower() for s in suites] if suites else list(suite_map.keys())
 
     for suite_name in run_suites:
         if suite_name not in suite_map:
@@ -464,8 +464,8 @@ def main(
         sys_instance = BaselineSystem()
         console.print(f"\nSystem: [bold]{sys_instance.__class__.__name__}[/]")
 
-    suites_to_run = list(suite) if suite else None
-    selected_suites = [s.lower() for s in suites_to_run] if suites_to_run else None
+    suites_to_run = [s.lower() for s in suite] if suite else None
+    selected_suites = suites_to_run
 
     # Pre-warm cache for LLM systems only when EXTRACT is requested.
     # Rank/Detect/Profit do not depend on extraction and should not pay LLM cost.

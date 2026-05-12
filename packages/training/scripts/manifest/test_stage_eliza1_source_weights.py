@@ -34,10 +34,12 @@ def test_lite_tiers_are_source_only_and_keep_dflash_missing(
 ) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
 
-    report = stage.stage_sources(_args(tmp_path, "0_6b"))
+    report = stage.stage_sources(_args(tmp_path, "0_8b"))
 
-    assert [f["kind"] for f in report["files"]] == ["text"]
-    assert "Qwen/Qwen3-0.6B-GGUF" in report["sources"]
+    kinds = [f["kind"] for f in report["files"]]
+    assert "text" in kinds
+    assert "dflash" not in kinds
+    assert "unsloth/Qwen3.5-0.8B-GGUF" in report["sources"]
     assert any("No upstream DFlash drafter" in b for b in report["blockers"])
 
 
@@ -53,3 +55,17 @@ def test_pro_tier_records_text_dflash_and_vision_sources(
     assert "batiai/Qwen3.6-27B-GGUF" in report["sources"]
     assert "spiritbuun/Qwen3.6-27B-DFlash-GGUF" in report["sources"]
     assert all("final Eliza-1" not in f["destination"] for f in report["files"])
+
+
+def test_one_million_context_tier_reuses_27b_sources(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(stage, "HfApi", FakeHfApi)
+
+    report = stage.stage_sources(_args(tmp_path, "27b-1m"))
+
+    assert [f["kind"] for f in report["files"]] == ["text", "dflash", "vision"]
+    assert "batiai/Qwen3.6-27B-GGUF" in report["sources"]
+    assert "spiritbuun/Qwen3.6-27B-DFlash-GGUF" in report["sources"]
+    assert any("final 1m" in note for f in report["files"] for note in f["notes"])

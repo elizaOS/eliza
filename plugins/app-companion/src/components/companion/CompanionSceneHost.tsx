@@ -535,12 +535,13 @@ function CompanionSceneSurface({
     return () =>
       window.removeEventListener("eliza:editor-camera-offset", handler);
   }, []);
+  const avatarReady = teleportCompletedKey === teleportKey;
   const sceneStatus = useMemo(
     () => ({
-      avatarReady: teleportCompletedKey === teleportKey,
+      avatarReady,
       teleportKey,
     }),
-    [teleportCompletedKey, teleportKey],
+    [avatarReady, teleportKey],
   );
 
   useEffect(() => {
@@ -601,6 +602,7 @@ function CompanionSceneSurface({
     <div
       ref={rootRef}
       data-testid="companion-root"
+      data-avatar-ready={avatarReady ? "true" : "false"}
       data-no-window-drag=""
       className={`relative flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden text-[#1a1a2e] font-display ${interactive ? "cursor-grab" : ""}`}
       style={{

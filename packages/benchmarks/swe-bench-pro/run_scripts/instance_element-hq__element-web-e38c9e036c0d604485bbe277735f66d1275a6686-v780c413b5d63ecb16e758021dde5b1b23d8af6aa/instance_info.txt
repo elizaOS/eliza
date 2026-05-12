@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-e38c9e036c0d604485bbe277735f66d1275a6686-v780c413b5d63ecb16e758021dde5b1b23d8af6aa
+Repository: element-hq/element-web
+Base Commit: 13e9e14eaaa87bbc5b277327728cbefbd0c4d5e8
+Test Files: ["test/components/views/rooms/wysiwyg_composer/WysiwygComposer-test.tsx", "/app/test/components/views/rooms/wysiwyg_composer/WysiwygComposer-test.ts"]
+FAIL_TO_PASS: ["/app/test/components/views/rooms/wysiwyg_composer/WysiwygComposer-test.tsx | WysiwygComposer | Should focus when receiving an Action.FocusSendMessageComposer action", "/app/test/components/views/rooms/wysiwyg_composer/WysiwygComposer-test.tsx | WysiwygComposer | Should focus when receiving a reply_to_event action"]
+PASS_TO_PASS: ["/app/test/components/views/rooms/wysiwyg_composer/WysiwygComposer-test.tsx | WysiwygComposer | Should have contentEditable at false when disabled", "/app/test/components/views/rooms/wysiwyg_composer/WysiwygComposer-test.tsx | WysiwygComposer | Should call onChange handler", "/app/test/components/views/rooms/wysiwyg_composer/WysiwygComposer-test.tsx | WysiwygComposer | Should send message, call clear and focus the textbox", "/app/test/components/views/rooms/wysiwyg_composer/WysiwygComposer-test.tsx | WysiwygComposer | Should not focus when disabled"]

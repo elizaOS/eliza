@@ -1,0 +1,87 @@
+{
+  "policyVersion": "3.2.0",
+  "lastUpdated": "2024-02-20",
+  "organization": "Wish BizTech Security Team",
+  "policies": [
+    {
+      "id": "SEC-001",
+      "title": "No Hardcoded Credentials",
+      "severity": "critical",
+      "category": "credential-management",
+      "description": "Application source code and configuration files must not contain hardcoded passwords, API keys, tokens, or other secrets. All credentials must be retrieved from an approved secrets management solution (e.g., HashiCorp Vault, AWS Secrets Manager).",
+      "references": ["OWASP A07:2021", "CWE-798"]
+    },
+    {
+      "id": "SEC-002",
+      "title": "Parameterized Queries Required",
+      "severity": "critical",
+      "category": "injection-prevention",
+      "description": "All database queries must use parameterized statements (PreparedStatement in Java). String concatenation to build SQL queries is strictly prohibited. ORM frameworks with built-in parameterization (MyBatis #{}, JPA named parameters) are acceptable.",
+      "references": ["OWASP A03:2021", "CWE-89"]
+    },
+    {
+      "id": "SEC-003",
+      "title": "User Input Sanitization",
+      "severity": "high",
+      "category": "input-validation",
+      "description": "All user-supplied input must be validated and sanitized before use in HTML output, SQL queries, file system operations, or any other sensitive context. Output encoding appropriate to the context (HTML, URL, JavaScript) must be applied.",
+      "references": ["OWASP A03:2021", "CWE-79"]
+    },
+    {
+      "id": "SEC-004",
+      "title": "No Logging of PII or Secrets",
+      "severity": "high",
+      "category": "data-protection",
+      "description": "Application logs must not contain personally identifiable information (PII), passwords, authentication tokens, credit card numbers, or other sensitive data. Log messages must be reviewed to ensure sensitive fields are masked or excluded.",
+      "references": ["OWASP A09:2021", "CWE-532"]
+    },
+    {
+      "id": "SEC-005",
+      "title": "Specific Exception Handling",
+      "severity": "medium",
+      "category": "error-handling",
+      "description": "Code must catch specific exception types rather than generic Exception or Throwable. Empty catch blocks are prohibited. All caught exceptions must be logged with appropriate context or re-thrown. Swallowed exceptions can hide security-relevant failures.",
+      "references": ["CWE-396", "CWE-390"]
+    },
+    {
+      "id": "SEC-006",
+      "title": "File Path Validation",
+      "severity": "critical",
+      "category": "path-traversal-prevention",
+      "description": "All file paths constructed from user input must be validated against an approved whitelist of directories and filenames. Path traversal sequences (../, ..\\ , %2e%2e) must be rejected. The canonical path must be verified to remain within the expected base directory.",
+      "references": ["OWASP A01:2021", "CWE-22"]
+    },
+    {
+      "id": "SEC-007",
+      "title": "Dependency Version Management",
+      "severity": "high",
+      "category": "supply-chain",
+      "description": "All third-party dependencies must be kept up to date. Dependencies with known CVEs rated CVSS 7.0 or higher must be upgraded within 30 days of disclosure. Automated dependency scanning (OWASP Dependency-Check, Snyk) must be integrated into the CI/CD pipeline.",
+      "references": ["OWASP A06:2021", "CWE-1104"]
+    },
+    {
+      "id": "SEC-008",
+      "title": "Authentication and Authorization on All Endpoints",
+      "severity": "high",
+      "category": "access-control",
+      "description": "All API endpoints must enforce authentication (e.g., Bearer token, session cookie) and authorization checks. Security scheme definitions in API specifications must be referenced and enforced in the application code.",
+      "references": ["OWASP A01:2021", "CWE-862"]
+    },
+    {
+      "id": "SEC-009",
+      "title": "Thread Safety and Synchronization",
+      "severity": "medium",
+      "category": "concurrency",
+      "description": "Synchronized blocks must use final or effectively final lock objects. Mutable lock references that can be reassigned create silent race conditions. Lock objects must not be exposed via public setters or mutable accessors.",
+      "references": ["CWE-662", "CWE-366"]
+    },
+    {
+      "id": "SEC-010",
+      "title": "Resource Lifecycle Management",
+      "severity": "medium",
+      "category": "resource-management",
+      "description": "All I/O resources (streams, connections, readers) must be closed in finally blocks or managed with try-with-resources statements. Unclosed resources can lead to resource exhaustion and denial of service under load.",
+      "references": ["CWE-404", "CWE-772"]
+    }
+  ]
+}

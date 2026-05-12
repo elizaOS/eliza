@@ -10,10 +10,10 @@ This script therefore measures the things TurboQuant actually changes:
   * Peak generation VRAM with a long context (empirical, with
     ``torch.cuda.reset_peak_memory_stats`` framing)
   * Tokens / sec for both runs (wall clock)
-  * Output sanity (the quantized model still produces a non-empty TOON-
+  * Output sanity (the quantized model still produces a non-empty native JSON-
     looking response on each of 5 sampled prompts)
 
-Default model is ``Qwen/Qwen3-0.6B``. ``Qwen/Qwen3.5-0.8B`` is a hybrid
+Default model is ``Qwen/Qwen3-0.8B``. ``Qwen/Qwen3.5-0.8B`` is a hybrid
 linear-attention + Gated Attention model with a vision encoder; the
 linear layers do not have a (B, H, T, D) KV cache and so are bypassed by
 the cache machinery. Use ``--model Qwen/Qwen3.5-0.8B`` to opt-in to the
@@ -55,8 +55,8 @@ ROOT = Path(__file__).resolve().parents[2]
 VAL_JSONL = ROOT / "data" / "final" / "val.jsonl"
 
 
-def load_toon_message_handler_prompts(n: int = 5) -> list[dict]:
-    """Pull n records whose expected response looks like a TOON message_handler
+def load_payload_message_handler_prompts(n: int = 5) -> list[dict]:
+    """Pull n records whose expected response looks like a native JSON message_handler
     document (starts with `thought:` and contains `text:` somewhere). These
     are the canonical assistant-turn shape for the message_handler task.
     """
@@ -77,7 +77,7 @@ def load_toon_message_handler_prompts(n: int = 5) -> list[dict]:
                     break
     if len(out) < n:
         # Fall back to thought-only docs (some message_handler outputs are
-        # action-routing docs without a `text:` field). Still TOON.
+        # action-routing docs without a `text:` field). Still native JSON.
         with VAL_JSONL.open("r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
@@ -94,7 +94,7 @@ def load_toon_message_handler_prompts(n: int = 5) -> list[dict]:
                 if len(out) >= n:
                     break
     if len(out) < n:
-        raise RuntimeError(f"Only found {len(out)} TOON prompts in {VAL_JSONL}")
+        raise RuntimeError(f"Only found {len(out)} native JSON prompts in {VAL_JSONL}")
     return out[:n]
 
 
@@ -107,8 +107,8 @@ def render_chat(tokenizer, record: dict) -> str:
     """
     sys_prompt = (
         "You are an autonomous elizaOS agent. Decide which action to take "
-        "from `availableActions` and respond with ONE TOON document. "
-        "Always TOON. No fences, no <think>, no prose before or after."
+        "from `availableActions` and respond with ONE native JSON document. "
+        "Always native JSON. No fences, no <think>, no prose before or after."
     )
     msgs = [{"role": "system", "content": sys_prompt}]
     for m in record.get("memoryEntries") or []:
@@ -258,7 +258,7 @@ def directory_size_bytes(path: Path) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
-    ap.add_argument("--model", default="Qwen/Qwen3-0.6B")
+    ap.add_argument("--model", default="Qwen/Qwen3-0.8B")
     ap.add_argument("--num-prompts", type=int, default=5)
     ap.add_argument("--max-new-tokens", type=int, default=128)
     ap.add_argument("--calibration-samples", type=int, default=32)
@@ -298,14 +298,14 @@ def main() -> int:
         snap = Path(snapshot_download(args.model, allow_patterns=["*.safetensors"]))
         on_disk_bytes = directory_size_bytes(snap)
 
-    # Pull TOON prompts and build long-context calibration.
-    records = load_toon_message_handler_prompts(args.num_prompts)
+    # Pull native JSON prompts and build long-context calibration.
+    records = load_payload_message_handler_prompts(args.num_prompts)
     rendered = [render_chat(tok, r) for r in records]
-    log.info("loaded %d TOON prompts", len(rendered))
+    log.info("loaded %d native JSON prompts", len(rendered))
     # Long-context probe: tile a non-trivial corpus through the chat template
     # so we hit a realistic generation regime where KV dominates.
     long_prompt_text = (
-        "Summarize the following operational notes in TOON.\n\n"
+        "Summarize the following operational notes in native JSON.\n\n"
         + (records[0].get("currentMessage") or {}).get("content", "")
     )
     long_ids_full = tok(long_prompt_text, return_tensors="pt").input_ids[0]

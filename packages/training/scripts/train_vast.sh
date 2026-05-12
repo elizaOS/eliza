@@ -83,7 +83,7 @@
 #                                (e.g. polarquant,turboquant,qjl,fp8,gguf-q4_k_m).
 #                                Each name resolves to
 #                                scripts/quantization/${name}_apply.py.
-#   BENCHMARK_AFTER            # 1 = run eliza_bench (default 1)
+#   BENCHMARK_AFTER            # 1 = run native function-calling benchmark (default 1)
 #   BENCH_MAX_PER_BUCKET       # default: 200 (auto-lowered to 100 for 27B)
 #   FSDP_WORLD_SIZE            # default: matches num_gpus of selected
 #                                VAST_GPU_TARGET (1 for *-1x, 2 for *-2x)
@@ -244,11 +244,11 @@ PIPELINE="${PIPELINE:-sft}"
 case "$PIPELINE" in
   sft|dpo)
     case "$REGISTRY_KEY" in
-      qwen3.5-2b|qwen3.5-4b|qwen3.5-9b)
+      qwen3.5-2b|qwen3.5-9b)
         DEFAULT_GPU_TARGET="blackwell6000-1x"
         DEFAULT_FSDP_WORLD_SIZE=1
         ;;
-      qwen3.5-27b|qwen3.6-27b)
+      qwen3.6-27b)
         DEFAULT_GPU_TARGET="b200-2x"
         DEFAULT_FSDP_WORLD_SIZE=2
         ;;
@@ -264,11 +264,11 @@ case "$PIPELINE" in
         DEFAULT_GPU_TARGET="h200-2x"
         DEFAULT_FSDP_WORLD_SIZE=2
         ;;
-      qwen3.5-4b|qwen3.5-9b)
+      qwen3.5-9b)
         DEFAULT_GPU_TARGET="h200-4x"
         DEFAULT_FSDP_WORLD_SIZE=4
         ;;
-      qwen3.5-27b|qwen3.6-27b)
+      qwen3.6-27b)
         DEFAULT_GPU_TARGET="h200-8x"
         DEFAULT_FSDP_WORLD_SIZE=8
         ;;
@@ -296,17 +296,6 @@ case "$VAST_GPU_TARGET" in
   *)    FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-$DEFAULT_FSDP_WORLD_SIZE}" ;;
 esac
 
-# The transformer decoder-layer class FSDP's TRANSFORMER_BASED_WRAP policy
-# wraps. Qwen3-0.6B/1.7B/4B are plain Qwen3 (`Qwen3DecoderLayer`); the larger
-# Qwen3.5/Qwen3.6 tiers (qwen3.5-2b/9b, qwen3.6-27b) use `Qwen3_5DecoderLayer`.
-# Wrapping the wrong class name silently degrades FSDP to wrapping the whole
-# model in one unit (huge all-gather peaks → OOM).
-case "$REGISTRY_KEY" in
-  qwen3-0.6b|qwen3-1.7b|qwen3-4b) FSDP_WRAP_CLS="Qwen3DecoderLayer" ;;
-  *)                              FSDP_WRAP_CLS="Qwen3_5DecoderLayer" ;;
-esac
-FSDP_WRAP_CLS="${FSDP_WRAP_CLS_OVERRIDE:-$FSDP_WRAP_CLS}"
-
 case "$PIPELINE" in
   # Preserve the legacy SFT run-name suffix so existing checkpoint dirs
   # and HF publish targets that hardcode `${REGISTRY_KEY//./-}-apollo`
@@ -331,14 +320,14 @@ DEFAULT_QUANTIZE_AFTER="$(cd "$ROOT" && uv run python -c "from scripts.training.
 QUANTIZE_AFTER="${QUANTIZE_AFTER:-${DEFAULT_QUANTIZE_AFTER}}"
 BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
 
-# eliza_bench at --max-per-bucket 200 with --max-new-tokens=512 generates
+# native_tool_call_bench at --max-per-bucket 200 with --max-new-tokens=512 generates
 # ~600 forward passes per bucket × 4 buckets × 5 model variants ≈ 12k
 # generations. On a 27B bf16 model this is unnecessarily slow; cap to
 # 100/bucket for 27B unless caller overrides.
 if [ -z "${BENCH_MAX_PER_BUCKET:-}" ]; then
   case "$REGISTRY_KEY" in
-    qwen3.5-27b|qwen3.6-27b) BENCH_MAX_PER_BUCKET=100 ;;
-    *)                       BENCH_MAX_PER_BUCKET=200 ;;
+    qwen3.6-27b) BENCH_MAX_PER_BUCKET=100 ;;
+    *)           BENCH_MAX_PER_BUCKET=200 ;;
   esac
 fi
 
@@ -614,26 +603,10 @@ sync_tree() {
     --include='train.jsonl' \
     --include='val.jsonl' \
     --include='test.jsonl' \
-    --include='manifest.json' \
     --include='manifest_final.json' \
     --include='README.md' \
     --include='*/' \
     --exclude='*'
-  # When the run trains on the benchmark-aligned combined corpus
-  # (TRAIN_FILE=data/final-eliza1-fullcorpus/train.jsonl) or the
-  # 0.6b SFT mix-in (datasets/eliza1-sft-0_6b/), ship those too. The
-  # generic --exclude 'data/raw/' above keeps the slim tree small;
-  # these two trees are the canonical fine-tune corpora and must go.
-  if [ "${SYNC_FULLCORPUS_SOURCES:-0}" = "1" ] || [ -d "$ROOT/data/final-eliza1-fullcorpus" ]; then
-    if [ -d "$ROOT/data/final-eliza1-fullcorpus" ]; then
-      echo "[train_vast] [sync] sending data/final-eliza1-fullcorpus/ (combined benchmark-aligned + broad-mix corpus)"
-      rsync_remote to "$ROOT/data/final-eliza1-fullcorpus/" "$REMOTE_TRAIN_DIR/data/final-eliza1-fullcorpus/"
-    fi
-    if [ -d "$ROOT/datasets/eliza1-sft-0_6b" ]; then
-      echo "[train_vast] [sync] sending datasets/eliza1-sft-0_6b/ (the 0.6b SFT corpus)"
-      rsync_remote to "$ROOT/datasets/eliza1-sft-0_6b/" "$REMOTE_TRAIN_DIR/datasets/eliza1-sft-0_6b/"
-    fi
-  fi
 }
 
 run_remote() {
@@ -658,7 +631,7 @@ run_remote() {
   # ~25 GB on this hardware tier. Refuse the combo and point operators at
   # b200-2x or h200-2x (default) or blackwell6000-4x (192 GB/rank under
   # FSDP-4 leaves real headroom).
-  if { [ "$REGISTRY_KEY" = "qwen3.5-27b" ] || [ "$REGISTRY_KEY" = "qwen3.6-27b" ]; } \
+  if [ "$REGISTRY_KEY" = "qwen3.6-27b" ] \
      && [ "$VAST_GPU_TARGET" = "blackwell6000-2x" ] \
      && [ "${ELIZA_FORCE_27B_BLACKWELL2X:-0}" != "1" ]; then
     log_err "27B on blackwell6000-2x has been empirically shown to OOM"
@@ -674,12 +647,12 @@ run_remote() {
   # APOLLO is the canonical optimizer for ALL eliza-1 sizes (see
   # model_registry.py: 2B/9B → apollo_mini, 27B → apollo_mini @ rank=512).
   # train_local.py builds it via _ElizaSFTTrainer.create_optimizer, which
-  # routes 2-D weights to the projector + everything else to plain AdamW.
+  # routes 2-D weights to APOLLO's projector + everything else to APOLLO's
+  # unprojected parameter group.
   # Under FSDP1 with --fsdp_use_orig_params true (set below), named_parameters()
-  # exposes original 2-D shapes so the routing works correctly. Operators
-  # who need a different optimizer can override via ELIZA_TRAINER_OPTIM,
-  # but APOLLO is the default — do not switch to plain AdamW for 27B
-  # (its 8-byte fp32 moments would alone consume ~108 GB/rank under FSDP-2).
+  # exposes original 2-D shapes so the routing works correctly. Do not add a
+  # non-APOLLO optimizer path: APOLLO's projected state is the reason these
+  # full-parameter fine-tunes fit smaller GPU memory budgets.
   ssh_run "bash -lc '
     set -euo pipefail
     cd $REMOTE_TRAIN_DIR
@@ -702,7 +675,7 @@ run_remote() {
       --fsdp_sync_module_states true \\
       --fsdp_use_orig_params true \\
       --fsdp_auto_wrap_policy TRANSFORMER_BASED_WRAP \\
-      --fsdp_transformer_layer_cls_to_wrap $FSDP_WRAP_CLS \\
+      --fsdp_transformer_layer_cls_to_wrap Qwen3_5DecoderLayer \\
       --fsdp_backward_prefetch BACKWARD_PRE \\
       scripts/train_local.py \\
         --registry-key $REGISTRY_KEY \\
@@ -812,17 +785,17 @@ bench_remote() {
     echo "[train_vast] [bench] BENCHMARK_AFTER=0 — skipping"
     return 0
   fi
-  echo "[train_vast] [bench] eliza_bench: base + finetuned + quantized (max_per_bucket=$BENCH_MAX_PER_BUCKET)"
+  echo "[train_vast] [bench] native_tool_call_bench: base + finetuned + quantized (max_per_bucket=$BENCH_MAX_PER_BUCKET)"
   ssh_run "bash -lc '
     set -euo pipefail
     cd $REMOTE_TRAIN_DIR
     export PATH=\$HOME/.local/bin:\$PATH
     base_id=\$(uv run --extra train python -c \"from scripts.training.model_registry import get; print(get(\\\"$REGISTRY_KEY\\\").hf_id)\")
-    uv run --extra train python scripts/benchmark/eliza_bench.py \\
+    uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
         --model \$base_id \\
         --out-dir benchmarks/$RUN_NAME/base \\
         --max-per-bucket $BENCH_MAX_PER_BUCKET
-    uv run --extra train python scripts/benchmark/eliza_bench.py \\
+    uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
         --model checkpoints/$RUN_NAME/final \\
         --out-dir benchmarks/$RUN_NAME/finetuned \\
         --max-per-bucket $BENCH_MAX_PER_BUCKET
@@ -834,7 +807,7 @@ bench_remote() {
       cd $REMOTE_TRAIN_DIR
       export PATH=\$HOME/.local/bin:\$PATH
       if [ -d checkpoints/$RUN_NAME/final-${q} ]; then
-        uv run --extra train python scripts/benchmark/eliza_bench.py \\
+        uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
           --model checkpoints/$RUN_NAME/final-${q} \\
           --out-dir benchmarks/$RUN_NAME/${q} \\
           --max-per-bucket $BENCH_MAX_PER_BUCKET
@@ -951,9 +924,9 @@ provision_and_train() {
         # against the same auto-pick table as the runtime default block.
         local _sft_default
         case "$REGISTRY_KEY" in
-          qwen3.5-2b|qwen3.5-4b|qwen3.5-9b) _sft_default="blackwell6000-1x" ;;
-          qwen3.5-27b|qwen3.6-27b)          _sft_default="b200-2x" ;;
-          *)                                _sft_default="blackwell6000-2x" ;;
+          qwen3.5-2b|qwen3.5-9b) _sft_default="blackwell6000-1x" ;;
+          qwen3.6-27b)           _sft_default="b200-2x" ;;
+          *)                     _sft_default="blackwell6000-2x" ;;
         esac
         log "  3. run_grpo_remote (bash scripts/train_grpo_verl.sh \\"
         log "       --registry-key $REGISTRY_KEY \\"
@@ -1251,7 +1224,7 @@ Subcommands:
                                                  sft|dpo → accelerate launch + APOLLO
                                                  grpo    → bash train_grpo_verl.sh
   quantize                                     Apply QUANTIZE_AFTER list (remote, SFT only)
-  bench                                        Run eliza_bench on base + finetuned
+  bench                                        Run native function-calling benchmark on base + finetuned
   fetch                                        rsync checkpoints + benchmarks back
   full                                         provision -> sync -> run [-> quantize -> bench
                                                only for SFT] -> fetch

@@ -1,0 +1,21 @@
+# Task Dependency Graph
+# Format: task_id: [list of prerequisite task_ids]
+# A task cannot start until ALL of its prerequisites are complete.
+
+# Task A has no prerequisites (entry point)
+A: []
+
+# Task B depends on completion of A
+B: [A]
+
+# Task C depends on completion of A
+C: [A]
+
+# Task D depends on completion of B
+D: [B]
+
+# Task E depends on completion of C
+E: [C]
+
+# Task F depends on BOTH D and E being complete
+F: [D, E]

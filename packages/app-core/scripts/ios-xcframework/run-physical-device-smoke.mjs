@@ -26,7 +26,7 @@
  * real Eliza-1 bundle smoke can run.
  */
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -83,7 +83,26 @@ const EXIT = {
   xcodebuildFailed: 23,
 };
 
-const XCODEBUILD_TIMEOUT_MS = 15 * 60 * 1000;
+const DEFAULT_DESTINATION_TIMEOUT_SECONDS = 45;
+const DEFAULT_XCODEBUILD_TIMEOUT_MS = 5 * 60 * 1000;
+const DEFAULT_XCODEBUILD_IDLE_TIMEOUT_MS = 90 * 1000;
+const BENCHMARK_XCODEBUILD_TIMEOUT_MS = 20 * 60 * 1000;
+const BENCHMARK_XCODEBUILD_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+const XCODEBUILD_PROGRESS_INTERVAL_MS = 30 * 1000;
+
+function parseIntegerOption(name, value, { min = 1 } = {}) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < min) {
+    throw new Error(`${name} must be an integer >= ${min}`);
+  }
+  return parsed;
+}
+
+function parseIntegerEnv(name, { min = 1 } = {}) {
+  const value = process.env[name]?.trim();
+  if (!value) return null;
+  return parseIntegerOption(name, value, { min });
+}
 
 function parseArgs(argv) {
   const args = {
@@ -93,9 +112,19 @@ function parseArgs(argv) {
     skipVoiceAbi: false,
     keepTemp: false,
     report: null,
+    benchmarkModel: null,
     derivedDataPath: null,
     resultBundlePath: null,
     developmentTeam: process.env.ELIZA_IOS_DEVELOPMENT_TEAM ?? null,
+    destinationTimeoutSeconds:
+      parseIntegerEnv("ELIZA_IOS_DESTINATION_TIMEOUT_SECONDS") ??
+      DEFAULT_DESTINATION_TIMEOUT_SECONDS,
+    xcodebuildTimeoutMs: parseIntegerEnv("ELIZA_IOS_XCODEBUILD_TIMEOUT_MS"),
+    xcodebuildIdleTimeoutMs: parseIntegerEnv("ELIZA_IOS_XCODEBUILD_IDLE_TIMEOUT_MS"),
+    xcodebuildProgressIntervalMs:
+      parseIntegerEnv("ELIZA_IOS_XCODEBUILD_PROGRESS_INTERVAL_MS") ??
+      XCODEBUILD_PROGRESS_INTERVAL_MS,
+    collectTestDiagnostics: process.env.ELIZA_IOS_COLLECT_TEST_DIAGNOSTICS ?? "never",
     xcodebuildArgs: [],
   };
 
@@ -125,12 +154,36 @@ function parseArgs(argv) {
       case "--report":
         args.report = next();
         break;
+      case "--benchmark-model":
+        args.benchmarkModel = next();
+        break;
       case "--derived-data-path":
         args.derivedDataPath = next();
         break;
       case "--result-bundle-path":
         args.resultBundlePath = next();
         break;
+      case "--destination-timeout-seconds":
+      case "--destination-timeout":
+        args.destinationTimeoutSeconds = parseIntegerOption(a, next());
+        break;
+      case "--xcodebuild-timeout-ms":
+        args.xcodebuildTimeoutMs = parseIntegerOption(a, next());
+        break;
+      case "--xcodebuild-idle-timeout-ms":
+        args.xcodebuildIdleTimeoutMs = parseIntegerOption(a, next());
+        break;
+      case "--xcodebuild-progress-interval-ms":
+        args.xcodebuildProgressIntervalMs = parseIntegerOption(a, next());
+        break;
+      case "--collect-test-diagnostics": {
+        const value = next();
+        if (!["never", "on-failure"].includes(value)) {
+          throw new Error("--collect-test-diagnostics must be one of: never, on-failure");
+        }
+        args.collectTestDiagnostics = value;
+        break;
+      }
       case "--development-team":
         args.developmentTeam = next();
         break;
@@ -144,6 +197,11 @@ function parseArgs(argv) {
       default:
         throw new Error(`Unknown argument: ${a}`);
     }
+  }
+  if (!["never", "on-failure"].includes(args.collectTestDiagnostics)) {
+    throw new Error(
+      "ELIZA_IOS_COLLECT_TEST_DIAGNOSTICS must be one of: never, on-failure",
+    );
   }
   return args;
 }
@@ -167,8 +225,26 @@ Options:
                               voice ABI symbols. Default is to require them.
   --derived-data-path <path>  Override xcodebuild DerivedData path.
   --result-bundle-path <path> Override xcodebuild result bundle path.
+  --destination-timeout <sec> Fail device destination lookup after this many
+                              seconds. Default: ${DEFAULT_DESTINATION_TIMEOUT_SECONDS}.
+  --xcodebuild-timeout-ms <n> Kill xcodebuild after total elapsed ms. Default:
+                              ${DEFAULT_XCODEBUILD_TIMEOUT_MS} without
+                              --benchmark-model, ${BENCHMARK_XCODEBUILD_TIMEOUT_MS}
+                              with one.
+  --xcodebuild-idle-timeout-ms <n>
+                              Kill xcodebuild after this many ms with no
+                              stdout/stderr. Default: ${DEFAULT_XCODEBUILD_IDLE_TIMEOUT_MS}
+                              without --benchmark-model,
+                              ${BENCHMARK_XCODEBUILD_IDLE_TIMEOUT_MS} with one.
+  --collect-test-diagnostics <never|on-failure>
+                              Controls xcodebuild sysdiagnose collection.
+                              Default: never, to avoid hanging on locked
+                              physical devices.
   --xcodebuild-arg <arg>      Append one raw xcodebuild argument. Repeatable.
   --report <path>             Write a JSON report after success/failure.
+  --benchmark-model <path>    Optional GGUF to bundle into the host app and
+                              benchmark with llama_init_context/completion on
+                              physical-device CPU and Metal.
   --keep-temp                 Keep the generated temporary XCTest project.
   -h, --help                  Print this message.
 
@@ -286,6 +362,134 @@ function commandMetadata(cmd, args, opts = {}) {
   };
 }
 
+function appendBounded(buffer, chunk, maxChars) {
+  const next = `${buffer}${chunk}`;
+  if (next.length <= maxChars) return next;
+  return next.slice(next.length - maxChars);
+}
+
+function formatDurationMs(ms) {
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return minutes > 0 ? `${minutes}m ${remainder}s` : `${remainder}s`;
+}
+
+function lastNonEmptyLine(text) {
+  const lines = (text ?? "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  return lines.length > 0 ? lines[lines.length - 1] : "";
+}
+
+function runStreamingCapture(cmd, args, opts = {}) {
+  return new Promise((resolve) => {
+    const startedAtMs = Date.now();
+    const startedAt = new Date(startedAtMs).toISOString();
+    const maxBuffer = opts.maxBuffer ?? 64 * 1024 * 1024;
+    let stdout = "";
+    let stderr = "";
+    let lastOutputAtMs = startedAtMs;
+    let lastOutputAt = startedAt;
+    let lastOutputStream = null;
+    let lastOutputLine = "";
+    let timeoutReason = null;
+    let spawnError = null;
+    let killTimer = null;
+
+    const child = spawn(cmd, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      cwd: opts.cwd,
+      env: { ...process.env, ...(opts.env ?? {}) },
+    });
+
+    const onData = (streamName, chunk) => {
+      const text = chunk.toString("utf8");
+      if (streamName === "stdout") {
+        stdout = appendBounded(stdout, text, maxBuffer);
+        process.stdout.write(text);
+      } else {
+        stderr = appendBounded(stderr, text, maxBuffer);
+        process.stderr.write(text);
+      }
+      lastOutputAtMs = Date.now();
+      lastOutputAt = new Date(lastOutputAtMs).toISOString();
+      lastOutputStream = streamName;
+      lastOutputLine = lastNonEmptyLine(text) || lastOutputLine;
+    };
+
+    child.stdout.on("data", (chunk) => onData("stdout", chunk));
+    child.stderr.on("data", (chunk) => onData("stderr", chunk));
+    child.on("error", (err) => {
+      spawnError = err;
+    });
+
+    const terminate = (reason) => {
+      if (timeoutReason) return;
+      timeoutReason = reason;
+      const elapsed = Date.now() - startedAtMs;
+      const lastOutputAgo = Date.now() - lastOutputAtMs;
+      process.stderr.write(
+        `[ios-smoke] ${cmd} ${reason}; terminating after ${formatDurationMs(
+          elapsed,
+        )}. Last output was ${formatDurationMs(lastOutputAgo)} ago` +
+          `${lastOutputLine ? `: ${lastOutputLine.slice(0, 240)}` : "."}\n`,
+      );
+      child.kill("SIGTERM");
+      killTimer = setTimeout(() => {
+        child.kill("SIGKILL");
+      }, 10_000);
+    };
+
+    const timeoutTimer = opts.timeoutMs
+      ? setTimeout(() => terminate("timeout"), opts.timeoutMs)
+      : null;
+    const idleTimer = opts.idleTimeoutMs
+      ? setInterval(() => {
+          if (Date.now() - lastOutputAtMs >= opts.idleTimeoutMs) {
+            terminate("idle-timeout");
+          }
+        }, Math.min(opts.idleTimeoutMs, 5_000))
+      : null;
+    const progressTimer = opts.progressIntervalMs
+      ? setInterval(() => {
+          const elapsed = Date.now() - startedAtMs;
+          const lastOutputAgo = Date.now() - lastOutputAtMs;
+          process.stderr.write(
+            `[ios-smoke] ${cmd} still running after ${formatDurationMs(
+              elapsed,
+            )}; last output ${formatDurationMs(lastOutputAgo)} ago` +
+              `${lastOutputLine ? `: ${lastOutputLine.slice(0, 240)}` : "."}\n`,
+          );
+        }, opts.progressIntervalMs)
+      : null;
+
+    child.on("close", (status, signal) => {
+      if (timeoutTimer) clearTimeout(timeoutTimer);
+      if (idleTimer) clearInterval(idleTimer);
+      if (progressTimer) clearInterval(progressTimer);
+      if (killTimer) clearTimeout(killTimer);
+      const finishedAtMs = Date.now();
+      resolve({
+        status,
+        signal,
+        stdout,
+        stderr,
+        error: spawnError,
+        startedAt,
+        finishedAt: new Date(finishedAtMs).toISOString(),
+        elapsedMs: finishedAtMs - startedAtMs,
+        timeoutMs: opts.timeoutMs ?? null,
+        idleTimeoutMs: opts.idleTimeoutMs ?? null,
+        timeoutReason,
+        timedOut: timeoutReason === "timeout",
+        idleTimedOut: timeoutReason === "idle-timeout",
+        lastOutputAt,
+        lastOutputStream,
+        lastOutputLine,
+      });
+    });
+  });
+}
+
 function runInherit(cmd, args, opts = {}) {
   const result = spawnSync(cmd, args, {
     stdio: "inherit",
@@ -300,20 +504,14 @@ function runInherit(cmd, args, opts = {}) {
 function ensureTool(name) {
   const result = runCapture("xcrun", ["--find", name], { timeout: 30_000 });
   if (result.status !== 0 || !result.stdout.trim()) {
-    throw new Error(
-      `[ios-smoke] required Xcode tool not found via xcrun: ${name}`,
-    );
+    throw new Error(`[ios-smoke] required Xcode tool not found via xcrun: ${name}`);
   }
 }
 
 function parsePlistJson(plistPath) {
-  const result = runCapture(
-    "plutil",
-    ["-convert", "json", "-o", "-", plistPath],
-    {
-      timeout: 30_000,
-    },
-  );
+  const result = runCapture("plutil", ["-convert", "json", "-o", "-", plistPath], {
+    timeout: 30_000,
+  });
   if (result.status !== 0) {
     throw Object.assign(
       new Error(
@@ -326,9 +524,7 @@ function parsePlistJson(plistPath) {
     return JSON.parse(result.stdout);
   } catch (err) {
     throw Object.assign(
-      new Error(
-        `[ios-smoke] malformed JSON from plutil for ${plistPath}: ${err}`,
-      ),
+      new Error(`[ios-smoke] malformed JSON from plutil for ${plistPath}: ${err}`),
       { exitCode: EXIT.localPreflight },
     );
   }
@@ -366,9 +562,7 @@ function validateXcframeworkDeviceSlice(xcframework) {
   const libraryPath = path.join(xcframework, library.LibraryIdentifier);
   if (!fs.existsSync(libraryPath)) {
     throw Object.assign(
-      new Error(
-        `[ios-smoke] xcframework device slice path is missing: ${libraryPath}`,
-      ),
+      new Error(`[ios-smoke] xcframework device slice path is missing: ${libraryPath}`),
       { exitCode: EXIT.localPreflight, xcframeworkInfo: info },
     );
   }
@@ -410,19 +604,14 @@ function parseDevicectlDevices(text) {
 
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
-    if (
-      !line ||
-      /^-+$/.test(line) ||
-      /^Name\s+Hostname\s+Identifier\s+State\s+Model/i.test(line)
-    ) {
+    if (!line || /^-+$/.test(line) || /^Name\s+Hostname\s+Identifier\s+State\s+Model/i.test(line)) {
       continue;
     }
     const cols = line.split(/\s{2,}/).map((part) => part.trim());
     if (cols.length < 5) continue;
     const [name, hostname, id, state, model] = cols;
     const isIosPhysical =
-      /\b(iPhone|iPad|iPod)\b/i.test(name) ||
-      /\b(iPhone|iPad|iPod)\b/i.test(model);
+      /\b(iPhone|iPad|iPod)\b/i.test(name) || /\b(iPhone|iPad|iPod)\b/i.test(model);
     if (!isIosPhysical) continue;
     const record = {
       section: "CoreDevice",
@@ -434,16 +623,78 @@ function parseDevicectlDevices(text) {
       model,
       idSource: "devicectl",
     };
-    if (
-      /(available|connected)/i.test(state) &&
-      !/unavailable|offline|disconnected/i.test(state)
-    ) {
+    if (/(available|connected)/i.test(state) && !/unavailable|offline|disconnected/i.test(state)) {
       connected.push(record);
     } else {
       offline.push(record);
     }
   }
   return { connected, offline };
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function parseBulletValue(text, key) {
+  const match = text.match(new RegExp(`•\\s+${escapeRegExp(key)}:\\s*([^\\n]+)`));
+  return match?.[1]?.trim() ?? null;
+}
+
+function parseDevicectlDetails(text) {
+  return {
+    identifier: parseBulletValue(text, "identifier"),
+    name: parseBulletValue(text, "name"),
+    marketingName: parseBulletValue(text, "marketingName"),
+    productType: parseBulletValue(text, "productType"),
+    platform: parseBulletValue(text, "platform"),
+    reality: parseBulletValue(text, "reality"),
+    udid: parseBulletValue(text, "udid"),
+    osVersionNumber: parseBulletValue(text, "osVersionNumber"),
+    osBuildUpdate: parseBulletValue(text, "osBuildUpdate"),
+    bootState: parseBulletValue(text, "bootState"),
+    ddiServicesAvailable: parseBulletValue(text, "ddiServicesAvailable"),
+    developerModeStatus: parseBulletValue(text, "developerModeStatus"),
+    authenticationType: parseBulletValue(text, "authenticationType"),
+    pairingState: parseBulletValue(text, "pairingState"),
+    transportType: parseBulletValue(text, "transportType"),
+    tunnelState: parseBulletValue(text, "tunnelState"),
+  };
+}
+
+function parseDevicectlLockState(text) {
+  return {
+    deviceIdentifier: parseBulletValue(text, "deviceIdentifier"),
+    passcodeRequired: parseBulletValue(text, "passcodeRequired"),
+    unlockedSinceBoot: parseBulletValue(text, "unlockedSinceBoot"),
+  };
+}
+
+function devicectlInfoMetadata(args, parser) {
+  const result = runCapture("xcrun", args, { timeout: 30_000 });
+  return {
+    command: ["xcrun", ...args],
+    status: result.status,
+    signal: result.signal,
+    stdout: summarizeText(result.stdout, 8_000),
+    stderr: summarizeText(result.stderr, 4_000),
+    summary: result.status === 0 ? parser(result.stdout) : null,
+    error: result.error ? String(result.error) : null,
+  };
+}
+
+function captureDeviceDiagnostics(deviceId) {
+  return {
+    capturedAt: new Date().toISOString(),
+    details: devicectlInfoMetadata(
+      ["devicectl", "device", "info", "details", "--device", deviceId],
+      parseDevicectlDetails,
+    ),
+    lockState: devicectlInfoMetadata(
+      ["devicectl", "device", "info", "lockState", "--device", deviceId],
+      parseDevicectlLockState,
+    ),
+  };
 }
 
 function mergeDeviceLists(primary, secondary) {
@@ -470,14 +721,9 @@ function listPhysicalIosDevices() {
     timeout: 90_000,
   });
   const coreDevices =
-    devicectl.status === 0
-      ? parseDevicectlDevices(devicectl.stdout)
-      : { connected: [], offline: [] };
+    devicectl.status === 0 ? parseDevicectlDevices(devicectl.stdout) : { connected: [], offline: [] };
   return {
-    connected: mergeDeviceLists(
-      xctraceDevices.connected,
-      coreDevices.connected,
-    ),
+    connected: mergeDeviceLists(xctraceDevices.connected, coreDevices.connected),
     offline: mergeDeviceLists(xctraceDevices.offline, coreDevices.offline),
     raw: xctrace.stdout,
     xctraceRaw: xctrace.stdout,
@@ -552,9 +798,7 @@ function ensureXcframework(args) {
     throw Object.assign(
       new Error(
         `[ios-smoke] LlamaCpp.xcframework not found in default locations:\n` +
-          defaultXcframeworkCandidates()
-            .map((p) => `  - ${p}`)
-            .join("\n") +
+          defaultXcframeworkCandidates().map((p) => `  - ${p}`).join("\n") +
           `\nRun with --build-if-missing, or pass --xcframework <path>.`,
       ),
       { exitCode: EXIT.missingXcframework },
@@ -611,97 +855,126 @@ function locateDeviceFrameworkBinary(xcframework) {
 
 function classifyXcodebuildFailure(result) {
   const text = `${result.stdout}\n${result.stderr}`;
-  if (/invalid option|Usage: xcodebuild/i.test(text))
-    return "xcodebuild-invocation";
+  if (/invalid option|Usage: xcodebuild/i.test(text)) return "xcodebuild-invocation";
   if (/Developer Mode/i.test(text)) return "developer-mode-disabled";
-  if (
-    /device .*not trusted|not trusted by this computer|trust this computer/i.test(
-      text,
-    )
-  ) {
+  if (/device .*not trusted|not trusted by this computer|trust this computer/i.test(text)) {
     return "device-not-trusted";
   }
-  if (
-    /Tool-hosted testing is unavailable on device destinations|Select a host application for the test target/i.test(
-      text,
-    )
-  ) {
+  if (/Tool-hosted testing is unavailable on device destinations|Select a host application for the test target/i.test(text)) {
     return "requires-host-app-test-target";
+  }
+  if (/testOptionalElizaTextGenerationBenchmark.*failed|Benchmark GGUF resource missing|llama_completion failed|llama_init_context failed/i.test(text)) {
+    return "ios-text-benchmark-failed";
   }
   if (/not paired|pair/i.test(text)) return "device-not-paired";
   if (/locked/i.test(text)) return "device-locked";
-  if (
-    /No profiles for|requires a provisioning profile|Signing for .* requires a development team|Code signing/i.test(
-      text,
-    )
-  ) {
+  if (/No profiles for|requires a provisioning profile|Signing for .* requires a development team|Code signing/i.test(text)) {
     return "code-signing";
   }
-  if (
-    /The device .* is not available|Unable to find a destination|Ineligible destinations/i.test(
-      text,
-    )
-  ) {
+  if (/Failed to install the app on the device/i.test(text) &&
+      /(?:CoreDeviceError[\s\S]*Code: 3002|IXRemoteErrorDomain[\s\S]*Code: 6|Connection (?:with the remote side was unexpectedly closed|interrupted)|IDEInstallCoreDeviceWorker)/i.test(text)) {
+    return "coredevice-install-connection-interrupted";
+  }
+  if (/The device .* is not available|Unable to find a destination|Ineligible destinations/i.test(text)) {
     return "device-destination-unavailable";
   }
   if (/duplicate symbol|duplicate symbols/i.test(text)) {
     return "duplicate-static-linkage";
   }
-  if (
-    /framework 'Accelerate' not found|Undefined symbol: _(?:cblas_|vDSP_)/i.test(
-      text,
-    )
-  ) {
+  if (/framework 'Accelerate' not found|Undefined symbol: _(?:cblas_|vDSP_)/i.test(text)) {
     return "missing-system-framework-linkage";
   }
-  if (
-    /Crash:\s+ElizaIosRuntimeSmokeHost\s+at\s+eliza_ios_ffi_abi_smoke_run|testLibElizaInferenceAbiV1CallsMatchHeader.*Failed|unexpected exit, crash, or test timeout/i.test(
-      text,
-    )
-  ) {
+  if (/Crash:\s+ElizaIosRuntimeSmokeHost\s+at\s+eliza_ios_ffi_abi_smoke_run|testLibElizaInferenceAbiV1CallsMatchHeader.*Failed|unexpected exit, crash, or test timeout/i.test(text)) {
     return "voice-abi-runtime-crash";
   }
-  const undefinedSymbolFailure =
-    /Undefined symbols|symbol\(s\) not found|ld: symbol/i.test(text);
+  const undefinedSymbolFailure = /Undefined symbols|symbol\(s\) not found|ld: symbol/i.test(text);
   const missingVoiceAbi =
     undefinedSymbolFailure &&
-    /_eliza_inference_(?:abi_version|create|destroy|mmap_acquire|mmap_evict|tts_synthesize|asr_transcribe|free_string)\b/i.test(
-      text,
-    );
+    /_eliza_inference_(?:abi_version|create|destroy|mmap_acquire|mmap_evict|tts_synthesize|asr_transcribe|free_string)\b/i.test(text);
   const missingCapacitorBridge =
     undefinedSymbolFailure &&
-    /_llama_(?:init_context|release_context|completion|stop_completion|get_formatted_chat|toggle_native_log|embedding|embedding_register_context|embedding_unregister_context|get_model_info|get_context_ptr|get_last_error|free_string)\b/i.test(
-      text,
-    );
+    /_llama_(?:init_context|release_context|completion|stop_completion|get_formatted_chat|toggle_native_log|embedding|embedding_register_context|embedding_unregister_context|get_model_info|get_context_ptr|get_last_error|free_string)\b/i.test(text);
   if (missingVoiceAbi && missingCapacitorBridge) {
     return "missing-capacitor-bridge-and-voice-abi-symbols";
   }
   if (missingVoiceAbi) return "missing-voice-abi-symbols";
   if (missingCapacitorBridge) return "missing-capacitor-bridge-symbols";
-  if (
-    /symbol\(s\) not found|Undefined symbols|Missing required Eliza-1 iOS runtime symbols/i.test(
-      text,
-    )
-  ) {
+  if (/symbol\(s\) not found|Undefined symbols|Missing required Eliza-1 iOS runtime symbols/i.test(text)) {
     return "runtime-symbol-resolution";
   }
+  if (result.timeoutReason === "idle-timeout") return "xcodebuild-idle-timeout";
+  if (result.timeoutReason === "timeout") return "xcodebuild-timeout";
   return "xcodebuild-failed";
 }
 
-function runXcodebuildForReport(xcodeArgs, { cwd }) {
-  const result = runCapture("xcodebuild", xcodeArgs, {
+function blockerNextAction(category, deviceName = "the iPhone/iPad") {
+  switch (category) {
+    case "device-locked":
+      return `Unlock ${deviceName}, keep it awake on the Home screen, then rerun the smoke.`;
+    case "device-not-trusted":
+      return `Unlock ${deviceName}, accept the "Trust This Computer" prompt, enter the passcode, then rerun.`;
+    case "device-not-paired":
+      return `Pair ${deviceName} with this Mac in Xcode Devices and Simulators, trust the Mac on-device, then rerun.`;
+    case "developer-mode-disabled":
+      return `Enable Developer Mode on ${deviceName} in Settings > Privacy & Security, restart if prompted, then rerun.`;
+    case "code-signing":
+      return "Set ELIZA_IOS_DEVELOPMENT_TEAM or pass --development-team with a team that can sign for this device, then rerun.";
+    case "device-destination-unavailable":
+      return `Reconnect ${deviceName} by USB, unlock it, confirm Developer Mode and trust, then rerun.`;
+    case "coredevice-install-connection-interrupted":
+      return `Keep ${deviceName} unlocked and awake, unplug/replug USB, dismiss any install/trust prompts, remove any stale ElizaIosRuntimeSmokeHost app if visible, then rerun.`;
+    case "xcodebuild-idle-timeout":
+      return `Check ${deviceName} for trust, unlock, Developer Mode, or signing prompts; the harness killed xcodebuild after no progress.`;
+    case "xcodebuild-timeout":
+      return "Inspect xcodebuild stdoutTail/stderrTail and the recorded device diagnostics; increase --xcodebuild-timeout-ms only if progress is visible.";
+    default:
+      return "Inspect xcodebuild stdoutTail/stderrTail and deviceDiagnostics in this report, then rerun after clearing the reported blocker.";
+  }
+}
+
+function extractBenchmarkResults(text) {
+  const results = [];
+  const re = /ELIZA_IOS_TPS_RESULT\s+(\{[^\n]+\})/g;
+  let match;
+  while ((match = re.exec(text)) !== null) {
+    try {
+      results.push(JSON.parse(match[1]));
+    } catch {
+      // A malformed benchmark line should not hide the XCTest result.
+    }
+  }
+  return results;
+}
+
+async function runXcodebuildForReport(
+  xcodeArgs,
+  { cwd, timeoutMs, idleTimeoutMs, progressIntervalMs },
+) {
+  const result = await runStreamingCapture("xcodebuild", xcodeArgs, {
     cwd,
-    timeout: XCODEBUILD_TIMEOUT_MS,
+    timeoutMs,
+    idleTimeoutMs,
+    progressIntervalMs,
   });
-  process.stdout.write(result.stdout);
-  process.stderr.write(result.stderr);
   return {
     command: ["xcodebuild", ...xcodeArgs],
     cwd,
     status: result.status,
     signal: result.signal,
+    startedAt: result.startedAt,
+    finishedAt: result.finishedAt,
+    elapsedMs: result.elapsedMs,
+    timeoutMs: result.timeoutMs,
+    idleTimeoutMs: result.idleTimeoutMs,
+    timeoutReason: result.timeoutReason,
+    timedOut: result.timedOut,
+    idleTimedOut: result.idleTimedOut,
+    lastOutputAt: result.lastOutputAt,
+    lastOutputStream: result.lastOutputStream,
+    lastOutputLine: result.lastOutputLine,
     stdoutTail: summarizeText(result.stdout),
     stderrTail: summarizeText(result.stderr),
+    benchmarkResults: extractBenchmarkResults(`${result.stdout}\n${result.stderr}`),
     error: result.error ? String(result.error) : null,
     failureCategory:
       result.status === 0 && !result.signal && !result.error
@@ -748,18 +1021,34 @@ function writeSmokeProject({
   frameworkBinary,
   skipVoiceAbi,
   developmentTeam,
+  benchmarkModel,
 }) {
   const vendorDir = path.join(tempDir, "Vendor");
   const hostDir = path.join(tempDir, "Sources", "HostApp");
   const testDir = path.join(tempDir, "Tests", "ElizaIosRuntimeSmokeTests");
+  const resourcesDir = path.join(tempDir, "Resources");
   fs.mkdirSync(vendorDir, { recursive: true });
   fs.mkdirSync(hostDir, { recursive: true });
   fs.mkdirSync(testDir, { recursive: true });
-  fs.symlinkSync(
-    xcframework,
-    path.join(vendorDir, "LlamaCpp.xcframework"),
-    "dir",
-  );
+  fs.mkdirSync(resourcesDir, { recursive: true });
+  fs.symlinkSync(xcframework, path.join(vendorDir, "LlamaCpp.xcframework"), "dir");
+  let benchmarkResourceName = "";
+  if (benchmarkModel) {
+    const source = path.resolve(benchmarkModel);
+    if (!fs.existsSync(source)) {
+      throw Object.assign(
+        new Error(`[ios-smoke] --benchmark-model does not exist: ${source}`),
+        { exitCode: EXIT.localPreflight },
+      );
+    }
+    benchmarkResourceName = path.basename(source);
+    const dest = path.join(resourcesDir, benchmarkResourceName);
+    try {
+      fs.linkSync(source, dest);
+    } catch {
+      fs.copyFileSync(source, dest);
+    }
+  }
   fs.copyFileSync(
     path.join(__dirname, "..", "omnivoice-fuse", "ffi.h"),
     path.join(testDir, "ffi.h"),
@@ -798,11 +1087,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
   );
 
   const voiceSymbols = skipVoiceAbi ? [] : VOICE_ABI_SYMBOLS;
-  const requiredRuntimeSymbols = [
-    ...LLAMA_SYMBOLS,
-    ...KERNEL_SYMBOLS,
-    ...voiceSymbols,
-  ];
+  const requiredRuntimeSymbols = [...LLAMA_SYMBOLS, ...KERNEL_SYMBOLS, ...voiceSymbols];
   const hostOtherLdFlags = hostRuntimeLinkerFlags({
     frameworkBinary,
     symbols: requiredRuntimeSymbols,
@@ -823,6 +1108,7 @@ extern "C" {
 #endif
 
 char * eliza_ios_ffi_abi_smoke_run(const char * bundle_dir);
+char * eliza_ios_text_benchmark_run(const char * model_path, const char * mode);
 void eliza_ios_ffi_abi_smoke_free(char * message);
 
 #ifdef __cplusplus
@@ -835,9 +1121,16 @@ void eliza_ios_ffi_abi_smoke_free(char * message);
     `#include "ElizaFfiAbiSmoke.h"
 #include "ffi.h"
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+extern int64_t llama_init_context(const char * model_path, const char * params_json);
+extern char * llama_completion(int64_t context_id, const char * prompt, const char * params_json);
+extern void llama_release_context(int64_t context_id);
+extern char * llama_get_last_error(void);
+extern void llama_free_string(char * value);
 
 static char * smoke_strdup(const char * s) {
     const char * value = s ? s : "";
@@ -855,6 +1148,61 @@ static char * smoke_message(const char * prefix, const char * detail) {
     char * out = (char *) malloc(len);
     if (!out) return NULL;
     snprintf(out, len, "%s: %s", p, d);
+    return out;
+}
+
+static size_t smoke_json_escaped_len(const char * s) {
+    size_t out = 0;
+    const unsigned char * p = (const unsigned char *) (s ? s : "");
+    while (*p) {
+        out += (*p == '"' || *p == '\\\\') ? 2 : 1;
+        p++;
+    }
+    return out;
+}
+
+static char * smoke_json_append_escaped(char * dst, const char * s) {
+    const unsigned char * p = (const unsigned char *) (s ? s : "");
+    while (*p) {
+        if (*p == '"' || *p == '\\\\') {
+            *dst++ = '\\\\';
+        }
+        *dst++ = (char) *p++;
+    }
+    return dst;
+}
+
+static char * smoke_json_error(const char * stage, const char * mode, const char * detail) {
+    const char * st = stage ? stage : "unknown";
+    const char * md = mode ? mode : "unknown";
+    const char * dt = detail ? detail : "";
+    const char * a = "{\\"error\\":\\"";
+    const char * b = "\\",\\"mode\\":\\"";
+    const char * c = "\\",\\"stage\\":\\"";
+    const char * d = "\\"}";
+    const size_t len =
+        strlen(a) + smoke_json_escaped_len(dt) +
+        strlen(b) + smoke_json_escaped_len(md) +
+        strlen(c) + smoke_json_escaped_len(st) +
+        strlen(d) + 1;
+    char * out = (char *) malloc(len);
+    if (!out) return NULL;
+    char * p = out;
+    memcpy(p, a, strlen(a)); p += strlen(a);
+    p = smoke_json_append_escaped(p, dt);
+    memcpy(p, b, strlen(b)); p += strlen(b);
+    p = smoke_json_append_escaped(p, md);
+    memcpy(p, c, strlen(c)); p += strlen(c);
+    p = smoke_json_append_escaped(p, st);
+    memcpy(p, d, strlen(d)); p += strlen(d);
+    *p = '\\0';
+    return out;
+}
+
+static char * smoke_json_last_error(const char * stage, const char * mode) {
+    char * err = llama_get_last_error();
+    char * out = smoke_json_error(stage, mode, err ? err : "No detailed native error captured");
+    if (err) llama_free_string(err);
     return out;
 }
 
@@ -961,11 +1309,34 @@ char * eliza_ios_ffi_abi_smoke_run(const char * bundle_dir) {
 void eliza_ios_ffi_abi_smoke_free(char * message) {
     free(message);
 }
+
+char * eliza_ios_text_benchmark_run(const char * model_path, const char * mode) {
+    const int use_cpu = mode && strcmp(mode, "cpu") == 0;
+    const char * ctx_params_cpu = "{\\"n_ctx\\":512,\\"n_batch\\":512,\\"n_ubatch\\":128,\\"no_gpu_devices\\":true,\\"n_gpu_layers\\":0,\\"flash_attn\\":false,\\"use_mmap\\":true,\\"n_threads\\":4}";
+    const char * ctx_params_metal = "{\\"n_ctx\\":512,\\"n_batch\\":512,\\"n_ubatch\\":128,\\"n_gpu_layers\\":999,\\"flash_attn\\":true,\\"use_mmap\\":true,\\"n_threads\\":4}";
+    const char * completion_params = "{\\"n_predict\\":32,\\"temperature\\":0,\\"seed\\":42,\\"top_k\\":1,\\"n_threads\\":4,\\"stop\\":[\\"<|im_end|>\\"]}";
+    const char * prompt = "You are Eliza. Write one short benchmark sentence.";
+    int64_t ctx = llama_init_context(model_path, use_cpu ? ctx_params_cpu : ctx_params_metal);
+    if (ctx <= 0) {
+        return smoke_json_last_error("llama_init_context", mode ? mode : "unknown");
+    }
+
+    char * completion = llama_completion(ctx, prompt, completion_params);
+    llama_release_context(ctx);
+    if (!completion) {
+        return smoke_json_last_error("llama_completion", mode ? mode : "unknown");
+    }
+    const size_t len = strlen(completion);
+    char * out = (char *) malloc(len + 1);
+    if (out) memcpy(out, completion, len + 1);
+    llama_free_string(completion);
+    return out;
+}
 `,
   );
   fs.writeFileSync(
     path.join(testDir, "ElizaIosRuntimeSmokeTests.swift"),
-    `import XCTest
+`import XCTest
 import Metal
 import Darwin
 
@@ -973,6 +1344,7 @@ final class ElizaIosRuntimeSmokeTests: XCTestCase {
   private let llamaSymbols: [String] = ${swiftArray(LLAMA_SYMBOLS)}
   private let kernelSymbols: [String] = ${swiftArray(KERNEL_SYMBOLS)}
   private let voiceSymbols: [String] = ${swiftArray(voiceSymbols)}
+  private let benchmarkResourceName = ${jsString(benchmarkResourceName)}
 
   func testMetalDeviceIsAvailableOnPhysicalIos() throws {
     XCTAssertNil(ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"], "This smoke must run on physical iOS hardware, not a simulator.")
@@ -990,7 +1362,7 @@ final class ElizaIosRuntimeSmokeTests: XCTestCase {
     }
     XCTAssertTrue(
       missing.isEmpty,
-      "Missing required Eliza-1 iOS runtime symbols: \\(missing.joined(separator: ", ")). This is a runtime failure, not a shader-fixture failure."
+      "Missing required Eliza-1 iOS runtime symbols: \\(missing.joined(separator: \", \")). This is a runtime failure, not a shader-fixture failure."
     )
   }
 
@@ -1006,6 +1378,70 @@ final class ElizaIosRuntimeSmokeTests: XCTestCase {
       let message = String(cString: failure)
       eliza_ios_ffi_abi_smoke_free(failure)
       XCTFail(message)
+    }
+  }
+
+  func testOptionalElizaTextGenerationBenchmark() throws {
+    guard !benchmarkResourceName.isEmpty else {
+      throw XCTSkip("No --benchmark-model provided.")
+    }
+
+    let base = (benchmarkResourceName as NSString).deletingPathExtension
+    let ext = (benchmarkResourceName as NSString).pathExtension
+    let modelURL = try XCTUnwrap(
+      Bundle.main.url(forResource: base, withExtension: ext),
+      "Benchmark GGUF resource missing from host app bundle: \\(benchmarkResourceName)"
+    )
+
+    for mode in ["cpu", "metal"] {
+      let ptr = modelURL.path.withCString { cPath in
+        mode.withCString { cMode in
+          eliza_ios_text_benchmark_run(cPath, cMode)
+        }
+      }
+      let raw = try XCTUnwrap(ptr, "eliza_ios_text_benchmark_run returned null for \\(mode)")
+      defer { eliza_ios_ffi_abi_smoke_free(raw) }
+
+      let text = String(cString: raw)
+      let data = try XCTUnwrap(text.data(using: .utf8), "Benchmark result is not UTF-8 for \\(mode): \\(text)")
+      let jsonObject = try JSONSerialization.jsonObject(with: data)
+      let json = try XCTUnwrap(jsonObject as? [String: Any], "Benchmark result is not a JSON object for \\(mode): \\(text)")
+      if let error = json["error"] as? String {
+        let report: [String: Any] = [
+          "mode": mode,
+          "model": benchmarkResourceName,
+          "error": error,
+          "stage": (json["stage"] as? String) ?? "unknown",
+          "tokens_predicted": 0,
+          "tokens_evaluated": 0,
+          "prompt_per_second": 0,
+          "predicted_per_second": 0
+        ]
+        let reportData = try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])
+        print("ELIZA_IOS_TPS_RESULT " + String(data: reportData, encoding: .utf8)!)
+        XCTFail("llama_completion failed for \\(mode): \\(error)")
+        continue
+      }
+
+      let timings = try XCTUnwrap(json["timings"] as? [String: Any], "Missing timings in benchmark result for \\(mode): \\(text)")
+      let predictedPerSecond = try XCTUnwrap(timings["predicted_per_second"] as? Double, "Missing predicted_per_second for \\(mode): \\(text)")
+      let promptPerSecond = (timings["prompt_per_second"] as? Double) ?? 0
+      let predicted = (json["tokens_predicted"] as? Int) ?? 0
+      let evaluated = (json["tokens_evaluated"] as? Int) ?? 0
+
+      XCTAssertGreaterThan(predictedPerSecond, 0, "predicted_per_second must be positive for \\(mode)")
+      XCTAssertGreaterThan(predicted, 0, "tokens_predicted must be positive for \\(mode)")
+
+      let report: [String: Any] = [
+        "mode": mode,
+        "model": benchmarkResourceName,
+        "tokens_predicted": predicted,
+        "tokens_evaluated": evaluated,
+        "prompt_per_second": promptPerSecond,
+        "predicted_per_second": predictedPerSecond
+      ]
+      let reportData = try JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])
+      print("ELIZA_IOS_TPS_RESULT " + String(data: reportData, encoding: .utf8)!)
     }
   }
 }
@@ -1029,6 +1465,8 @@ targets:
     deploymentTarget: "14.0"
     sources:
       - Sources/HostApp
+      - path: Resources
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: ai.elizalabs.ElizaIosRuntimeSmokeHost
@@ -1072,10 +1510,27 @@ schemes:
 function writeReport(reportPath, report) {
   if (!reportPath) return;
   fs.mkdirSync(path.dirname(path.resolve(reportPath)), { recursive: true });
-  fs.writeFileSync(
-    path.resolve(reportPath),
-    `${JSON.stringify(report, null, 2)}\n`,
-  );
+  fs.writeFileSync(path.resolve(reportPath), `${JSON.stringify(report, null, 2)}\n`);
+}
+
+function hasXcodebuildArg(args, flag) {
+  return args.xcodebuildArgs.includes(flag);
+}
+
+function resolveXcodebuildTimeouts(args) {
+  return {
+    timeoutMs:
+      args.xcodebuildTimeoutMs ??
+      (args.benchmarkModel ? BENCHMARK_XCODEBUILD_TIMEOUT_MS : DEFAULT_XCODEBUILD_TIMEOUT_MS),
+    idleTimeoutMs:
+      args.xcodebuildIdleTimeoutMs ??
+      (args.benchmarkModel
+        ? BENCHMARK_XCODEBUILD_IDLE_TIMEOUT_MS
+        : DEFAULT_XCODEBUILD_IDLE_TIMEOUT_MS),
+    progressIntervalMs: args.xcodebuildProgressIntervalMs,
+    destinationTimeoutSeconds: args.destinationTimeoutSeconds,
+    collectTestDiagnostics: args.collectTestDiagnostics,
+  };
 }
 
 function buildXcodeArgs({
@@ -1084,6 +1539,7 @@ function buildXcodeArgs({
   args,
   derivedDataPath,
   resultBundlePath,
+  xcodebuildDestinationId,
 }) {
   const xcodeArgs = [
     "test",
@@ -1092,13 +1548,19 @@ function buildXcodeArgs({
     "-scheme",
     "ElizaIosRuntimeSmoke",
     "-destination",
-    `platform=iOS,id=${device.id}`,
+    `platform=iOS,id=${xcodebuildDestinationId ?? device.id}`,
     "-derivedDataPath",
     derivedDataPath,
     "-resultBundlePath",
     resultBundlePath,
-    "CODE_SIGNING_ALLOWED=YES",
   ];
+  if (args.destinationTimeoutSeconds && !hasXcodebuildArg(args, "-destination-timeout")) {
+    xcodeArgs.push("-destination-timeout", String(args.destinationTimeoutSeconds));
+  }
+  if (args.collectTestDiagnostics && !hasXcodebuildArg(args, "-collect-test-diagnostics")) {
+    xcodeArgs.push("-collect-test-diagnostics", args.collectTestDiagnostics);
+  }
+  xcodeArgs.push("CODE_SIGNING_ALLOWED=YES");
   if (args.developmentTeam) {
     xcodeArgs.push(`DEVELOPMENT_TEAM=${args.developmentTeam}`);
   }
@@ -1116,6 +1578,7 @@ async function main() {
     finishedAt: null,
     device: null,
     xcframework: null,
+    benchmarkModel: args.benchmarkModel ? path.resolve(args.benchmarkModel) : null,
     skippedVoiceAbi: args.skipVoiceAbi,
     failClosed: {
       physicalDeviceOnly: true,
@@ -1123,13 +1586,41 @@ async function main() {
       requiresRuntimeSymbols: true,
       requiresVoiceAbi: !args.skipVoiceAbi,
       capturesXcodebuildOutput: true,
+      capturesXcodebuildProgress: true,
+      capturesDeviceDiagnostics: true,
     },
     toolchain: null,
     xcodebuild: null,
+    xcodebuildTimeouts: null,
+    xcodebuildDestinationId: null,
+    deviceDiagnostics: null,
     blocker: null,
     resultBundlePath: null,
     derivedDataPath: null,
   };
+  let exitingFromSignal = false;
+  const signalHandler = (signal) => {
+    if (exitingFromSignal) return;
+    exitingFromSignal = true;
+    report.status = "failed";
+    report.finishedAt = new Date().toISOString();
+    report.error = `[ios-smoke] interrupted by ${signal}`;
+    report.blocker = report.blocker ?? {
+      category: "interrupted",
+      detail:
+        "The smoke was interrupted before xcodebuild completed; rerun with the recorded timeouts enabled.",
+      nextAction:
+        "Rerun the smoke and let the harness timeout produce the full xcodebuild diagnostics report.",
+    };
+    writeReport(args.report, report);
+    if (tempDir && !args.keepTemp) {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+    process.stderr.write(`${report.error}\n`);
+    process.exit(signal === "SIGINT" ? 130 : 143);
+  };
+  process.once("SIGINT", signalHandler);
+  process.once("SIGTERM", signalHandler);
 
   try {
     if (process.platform !== "darwin") {
@@ -1147,22 +1638,25 @@ async function main() {
     }
 
     const toolchain = {
-      xcodebuild: commandMetadata("xcodebuild", ["-version"], {
-        timeout: 30_000,
-      }),
+      xcodebuild: commandMetadata("xcodebuild", ["-version"], { timeout: 30_000 }),
       xctrace: commandMetadata("xcrun", ["xctrace", "version"], {
         timeout: 30_000,
       }),
     };
 
     const { device, devices } = resolveDevice(args.deviceId);
+    const deviceDiagnostics = captureDeviceDiagnostics(device.id);
+    const deviceDetailSummary = deviceDiagnostics.details.summary;
+    const xcodebuildDestinationId = deviceDetailSummary?.udid || device.id;
+    const xcodebuildTimeouts = resolveXcodebuildTimeouts(args);
     const xcframework = path.resolve(ensureXcframework(args));
     const xcframeworkDeviceSlice = validateXcframeworkDeviceSlice(xcframework);
     const frameworkBinary = locateDeviceFrameworkBinary(xcframework);
 
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-ios-smoke-"));
     const derivedDataPath =
-      args.derivedDataPath ?? path.join(tempDir, "DerivedData");
+      args.derivedDataPath ??
+      path.join(tempDir, "DerivedData");
     const resultBundlePath =
       args.resultBundlePath ??
       path.join(tempDir, "ElizaIosRuntimeSmoke.xcresult");
@@ -1172,6 +1666,7 @@ async function main() {
       frameworkBinary,
       skipVoiceAbi: args.skipVoiceAbi,
       developmentTeam: args.developmentTeam,
+      benchmarkModel: args.benchmarkModel ? path.resolve(args.benchmarkModel) : null,
     });
 
     report = {
@@ -1182,12 +1677,18 @@ async function main() {
       connectedPhysicalDeviceCount: devices.connected.length,
       offlinePhysicalDeviceCount: devices.offline.length,
       xcframework,
+      benchmarkModel: args.benchmarkModel ? path.resolve(args.benchmarkModel) : null,
       xcframeworkDeviceSlice,
       frameworkBinary,
       developmentTeam: args.developmentTeam,
       tempPackage: tempDir,
       derivedDataPath,
       resultBundlePath,
+      xcodebuildTimeouts,
+      xcodebuildDestinationId,
+      deviceDiagnostics: {
+        beforeXcodebuild: deviceDiagnostics,
+      },
       requiredSymbols: {
         llama: LLAMA_SYMBOLS,
         kernels: KERNEL_SYMBOLS,
@@ -1201,21 +1702,36 @@ async function main() {
       args,
       derivedDataPath,
       resultBundlePath,
+      xcodebuildDestinationId,
     });
     console.log(
       `[ios-smoke] running physical-device XCTest on ${device.name} (${device.version ?? "unknown"}) ${device.id}`,
     );
+    if (xcodebuildDestinationId !== device.id) {
+      console.log(
+        `[ios-smoke] using hardware UDID ${xcodebuildDestinationId} for xcodebuild destination`,
+      );
+    }
     console.log(`[ios-smoke] xcframework: ${xcframework}`);
-    report.xcodebuild = runXcodebuildForReport(xcodeArgs, { cwd: tempDir });
+    report.xcodebuild = await runXcodebuildForReport(xcodeArgs, {
+      cwd: tempDir,
+      timeoutMs: xcodebuildTimeouts.timeoutMs,
+      idleTimeoutMs: xcodebuildTimeouts.idleTimeoutMs,
+      progressIntervalMs: xcodebuildTimeouts.progressIntervalMs,
+    });
     if (
       report.xcodebuild.status !== 0 ||
       report.xcodebuild.signal ||
-      report.xcodebuild.error
+      report.xcodebuild.error ||
+      report.xcodebuild.timedOut ||
+      report.xcodebuild.idleTimedOut
     ) {
+      report.deviceDiagnostics.afterXcodebuild = captureDeviceDiagnostics(device.id);
       report.blocker = {
         category: report.xcodebuild.failureCategory,
         detail:
-          "xcodebuild test did not complete successfully; see xcodebuild stdoutTail/stderrTail in this report.",
+          "xcodebuild test did not complete successfully; see xcodebuild stdoutTail/stderrTail and deviceDiagnostics in this report.",
+        nextAction: blockerNextAction(report.xcodebuild.failureCategory, device.name),
       };
       throw Object.assign(
         new Error(
@@ -1234,16 +1750,18 @@ async function main() {
     report.finishedAt = new Date().toISOString();
     report.error = err instanceof Error ? err.message : String(err);
     if (!report.blocker) {
+      const category =
+        err?.exitCode === EXIT.noDevice
+          ? "no-connected-physical-device"
+          : err?.exitCode === EXIT.missingXcframework
+            ? "missing-xcframework"
+            : err?.exitCode === EXIT.localPreflight
+              ? "local-preflight"
+              : "unknown";
       report.blocker = {
-        category:
-          err?.exitCode === EXIT.noDevice
-            ? "no-connected-physical-device"
-            : err?.exitCode === EXIT.missingXcframework
-              ? "missing-xcframework"
-              : err?.exitCode === EXIT.localPreflight
-                ? "local-preflight"
-                : "unknown",
+        category,
         detail: report.error,
+        nextAction: blockerNextAction(category, report.device?.name),
       };
     }
     if (err?.devices) {
@@ -1257,6 +1775,8 @@ async function main() {
     process.stderr.write(`${report.error}\n`);
     process.exit(err?.exitCode ?? EXIT.xcodebuildFailed);
   } finally {
+    process.off("SIGINT", signalHandler);
+    process.off("SIGTERM", signalHandler);
     if (tempDir && !args.keepTemp) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     } else if (tempDir) {

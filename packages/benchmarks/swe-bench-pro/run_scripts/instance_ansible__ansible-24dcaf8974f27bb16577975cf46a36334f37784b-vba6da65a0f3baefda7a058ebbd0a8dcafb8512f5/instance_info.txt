@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-24dcaf8974f27bb16577975cf46a36334f37784b-vba6da65a0f3baefda7a058ebbd0a8dcafb8512f5
+Repository: ansible/ansible
+Base Commit: 1b4fd23ba6dab52a395278e3ef7ca994e0819d60
+Test Files: ["test/units/plugins/test_plugins.py"]
+FAIL_TO_PASS: ["test/units/plugins/test_plugins.py::TestErrors::test_plugins__get_paths", "test/units/plugins/test_plugins.py::TestErrors::test_all_no_duplicate_names", "test/units/plugins/test_plugins.py::TestErrors::test__load_module_source_no_duplicate_names", "test/units/plugins/test_plugins.py::TestErrors::test_plugin__init_config_list", "test/units/plugins/test_plugins.py::TestErrors::test_plugins__get_package_paths_no_package", "test/units/plugins/test_plugins.py::TestErrors::test_plugin__init_config_str", "test/units/plugins/test_plugins.py::TestErrors::test_plugins__get_package_paths_with_package", "test/units/plugins/test_plugins.py::TestErrors::test_plugin__init_config_none", "test/units/plugins/test_plugins.py::TestErrors::test_print_paths"]
+PASS_TO_PASS: []

@@ -81,30 +81,19 @@ SMOKE_LIVE = Scenario(
         "find any unread email from uma.wright180@example.test this month and "
         "draft a polite reply confirming I will deliver the report by Friday"
     ),
-    ground_truth_actions=[
-        Action(
-            name="MESSAGE",
-            kwargs={
-                "operation": "search_inbox",
-                "source": "gmail",
-                "query": "from:uma.wright180@example.test newer_than:7d",
-            },
-        ),
-        Action(
-            name="MESSAGE",
-            kwargs={
-                "operation": "draft_reply",
-                "source": "gmail",
-                "messageId": "email_000002",
-                "body": "Confirming I will deliver the report by Friday.",
-            },
-        ),
-    ],
-    required_outputs=["draft", "Friday"],
+    ground_truth_actions=[],
+    required_outputs=[],
     first_question_fallback=None,
     world_seed=2026,
     max_turns=12,
     description="Two-step search + draft. LIVE mode — persona answers follow-ups about tone.",
+    success_criteria=[
+        "the assistant searches or otherwise accounts for the unread email from Uma",
+        "the assistant drafts a polite reply committing to deliver the report by Friday",
+    ],
+    world_assertions=[
+        "the final trajectory should not claim an email was sent; only a draft is required",
+    ],
 )
 
 

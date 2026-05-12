@@ -218,7 +218,7 @@ export function appendCmakeGraft({ llamaCppRoot }) {
     );
     upgraded = upgraded.replace(
       "target_link_libraries(elizainference PUBLIC llama)\n    target_link_libraries(elizainference PUBLIC ggml Threads::Threads)",
-      'target_link_libraries(elizainference PUBLIC llama)\n    if(APPLE)\n        target_link_options(elizainference PRIVATE\n            "LINKER:-reexport_library,$<TARGET_FILE:llama>")\n    endif()\n    target_link_libraries(elizainference PUBLIC ggml Threads::Threads)',
+      "target_link_libraries(elizainference PUBLIC llama)\n    if(APPLE)\n        target_link_options(elizainference PRIVATE\n            \"LINKER:-reexport_library,$<TARGET_FILE:llama>\")\n    endif()\n    target_link_libraries(elizainference PUBLIC ggml Threads::Threads)",
     );
     upgraded = upgraded.replace(
       "target_link_libraries(elizainference PUBLIC llama)\n    if(APPLE)",
@@ -274,9 +274,7 @@ export function fusedCmakeBuildTargets() {
     "llama-server",
     "llama-cli",
     "llama-speculative-simple",
-    // Non-interactive generation drivers used by the verify runners.
-    "llama-bench",
-    "llama-completion",
+    "llama-mtmd-cli",
     "omnivoice-core",
     "elizainference",
     "llama-omnivoice-server",

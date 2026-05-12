@@ -1,0 +1,10 @@
+{"timestamp":"2025-01-14T09:12:33Z","user":"user_042","query":"How do I reset my password?","response_time_ms":1230,"satisfaction":4,"tokens_used":387}
+{"timestamp":"2025-01-14T09:45:11Z","user":"user_117","query":"Explain quantum computing in simple terms","response_time_ms":2891,"satisfaction":5,"tokens_used":1204}
+{"timestamp":"2025-01-14T10:03:55Z","user":"user_042","query":"What's the best programming language to learn first?","response_time_ms":1876,"satisfaction":3,"tokens_used":892}
+{"timestamp":"2025-01-14T10:22:08Z","user":"user_203","query":"Help me debug this Python script","response_time_ms":3402,"satisfaction":5,"tokens_used":2105}
+{"timestamp":"2025-01-14T11:01:44Z","user":"user_088","query":"Compare React vs Vue for a new project","response_time_ms":2567,"satisfaction":2,"tokens_used":1580}
+{"timestamp":"2025-01-14T11:30:19Z","user":"user_088","query":"Your comparison was too wishy-washy. Just tell me which one to pick.","response_time_ms":1943,"satisfaction":2,"tokens_used":1102}
+{"timestamp":"2025-01-14T12:15:02Z","user":"user_317","query":"Write a haiku about Mondays","response_time_ms":890,"satisfaction":4,"tokens_used":156}
+{"timestamp":"2025-01-14T13:44:37Z","user":"user_042","query":"Summarize the latest AI news","response_time_ms":4102,"satisfaction":3,"tokens_used":2340}
+{"timestamp":"2025-01-14T14:08:51Z","user":"user_501","query":"Is pineapple on pizza acceptable?","response_time_ms":1455,"satisfaction":1,"tokens_used":678}
+{"timestamp":"2025-01-14T14:09:12Z","user":"user_501","query":"That was the most non-answer I've ever seen. Do you have opinions or not?","response_time_ms":1203,"satisfaction":1,"tokens_used":545}

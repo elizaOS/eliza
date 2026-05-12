@@ -1,0 +1,202 @@
+[2026-02-08 09:41:58] DEBUG session: New session created: subagent_5269741
+[2026-02-08 09:55:15] INFO  heartbeat: Heartbeat polling enabled (interval: 1800000ms)
+[2026-02-08 09:55:49] INFO  heartbeat: Heartbeat polling enabled (interval: 1800000ms)
+[2026-02-08 10:23:33] WARN  memory: Memory usage elevated: 387MB (threshold: 512MB)
+[2026-02-08 10:40:43] INFO  gateway: Loaded config from /home/admin/.openclaw/config/gateway.yaml
+[2026-02-08 10:52:12] DEBUG cron: Cron tick - no jobs due
+[2026-02-08 11:04:16] INFO  cron: Cron scheduler started
+[2026-02-08 11:15:08] WARN  memory: Memory usage elevated: 473MB (threshold: 512MB)
+[2026-02-08 11:26:41] INFO  sessions: Found 163 existing session files
+[2026-02-08 11:49:42] DEBUG session: Heartbeat OK from main session
+[2026-02-08 12:10:29] DEBUG session: Writing session log: cron_6924476.jsonl (229 lines)
+[2026-02-08 12:25:33] WARN  session: Session file growing large: cron_8731683 (1646KB)
+[2026-02-08 12:35:31] INFO  gateway: Loaded config from /home/admin/.openclaw/config/gateway.yaml
+[2026-02-08 12:59:47] INFO  session: Subagent completed: subagent_2783632 (exit: 0)
+[2026-02-08 13:12:47] INFO  backup: Backup completed: .openclaw/backups/backup_20260209_030005.tar.gz (42MB)
+[2026-02-08 13:42:16] INFO  sessions: Found 174 existing session files
+[2026-02-08 13:58:52] DEBUG session: New session created: subagent_2437800
+[2026-02-08 14:25:28] WARN  memory: Memory usage elevated: 306MB (threshold: 512MB)
+[2026-02-08 14:46:16] INFO  session: Message processed (9732 tokens, 21301ms)
+[2026-02-08 14:57:25] INFO  heartbeat: Heartbeat polling enabled (interval: 1800000ms)
+[2026-02-08 15:22:02] INFO  gateway: Server started on 0.0.0.0:3117
+[2026-02-08 15:51:35] INFO  session: Subagent completed: subagent_8387668 (exit: 0)
+[2026-02-08 16:12:01] INFO  gateway: Remote URL configured: https://claw.example-team.com
+[2026-02-08 16:34:46] INFO  gateway: Health check OK (uptime: 4d 9h)
+[2026-02-08 16:53:25] INFO  plugins: Feishu plugin initialized (app: cli_a90c427613b85bc8)
+[2026-02-08 17:07:04] DEBUG session: New session created: cron_4780238
+[2026-02-08 17:16:35] WARN  memory: Memory usage elevated: 403MB (threshold: 512MB)
+[2026-02-08 17:23:39] INFO  cron: Cron scheduler started
+[2026-02-08 17:50:20] INFO  heartbeat: Heartbeat polling enabled (interval: 1800000ms)
+[2026-02-08 18:02:44] DEBUG session: Heartbeat OK from main session
+[2026-02-08 18:22:36] DEBUG session: Writing session log: main_7295052.jsonl (208 lines)
+[2026-02-08 18:36:12] INFO  plugins: Feishu plugin initialized (app: cli_a90c427613b85bc8)
+[2026-02-08 18:41:27] DEBUG cron: Cron tick - no jobs due
+[2026-02-08 19:10:16] INFO  session: Subagent spawned: heartbeat_6832582
+[2026-02-08 19:11:10] INFO  sessions: Found 165 existing session files
+[2026-02-08 19:27:53] DEBUG session: Writing session log: cron_4083674.jsonl (260 lines)
+[2026-02-08 19:56:03] INFO  heartbeat: Heartbeat polling enabled (interval: 1800000ms)
+[2026-02-08 19:59:25] INFO  session: Subagent completed: feishu_5957087 (exit: 0)
+[2026-02-08 20:10:47] INFO  gateway: Health check OK (uptime: 5d 1h)
+[2026-02-08 20:24:47] DEBUG cron: Cron tick - no jobs due
+[2026-02-08 20:27:23] INFO  session: Subagent spawned: feishu_2623766
+[2026-02-08 20:36:43] INFO  plugins: Feishu plugin initialized (app: cli_a90c427613b85bc8)
+[2026-02-08 20:49:40] WARN  memory: Memory usage elevated: 461MB (threshold: 512MB)
+[2026-02-08 20:52:02] DEBUG cron: Cron tick - no jobs due
+[2026-02-08 21:16:19] WARN  session: Session file growing large: cron_4010995 (1486KB)
+[2026-02-08 21:28:03] INFO  session: Message processed (2570 tokens, 35895ms)
+[2026-02-08 21:58:03] INFO  backup: Backup completed: .openclaw/backups/backup_20260209_030005.tar.gz (42MB)
+[2026-02-08 22:26:40] WARN  session: Session file growing large: main_1893564 (1513KB)
+[2026-02-08 22:39:34] INFO  gateway: Remote URL configured: https://claw.example-team.com
+[2026-02-08 22:41:39] INFO  cron: Cron scheduler started
+[2026-02-08 22:54:02] INFO  gateway: Health check OK (uptime: 4d 6h)
+[2026-02-08 23:22:02] WARN  memory: Memory usage elevated: 443MB (threshold: 512MB)
+[2026-02-08 23:24:50] INFO  sessions: Found 197 existing session files
+[2026-02-08 23:32:28] WARN  memory: Memory usage elevated: 410MB (threshold: 512MB)
+[2026-02-09 00:00:38] DEBUG cron: Cron tick - no jobs due
+[2026-02-09 00:13:23] INFO  sessions: Session storage initialized at ./sessions (jsonl mode)
+[2026-02-09 00:34:48] INFO  gateway: Health check OK (uptime: 4d 9h)
+[2026-02-09 00:53:38] DEBUG session: Writing session log: feishu_9061505.jsonl (484 lines)
+[2026-02-09 00:57:57] INFO  cron: Cron scheduler started
+[2026-02-09 01:02:03] INFO  session: Message processed (6460 tokens, 18217ms)
+[2026-02-09 01:08:24] WARN  memory: Memory usage elevated: 327MB (threshold: 512MB)
+[2026-02-09 01:24:37] INFO  backup: Backup completed: .openclaw/backups/backup_20260209_030005.tar.gz (42MB)
+[2026-02-09 01:44:50] DEBUG session: Heartbeat OK from main session
+[2026-02-09 01:56:52] INFO  feishu: Received DM from ou_c3a29983d0c0277397bdd75aa601007d
+[2026-02-09 02:25:03] INFO  heartbeat: Heartbeat polling enabled (interval: 1800000ms)
+[2026-02-09 02:49:17] INFO  cron: Cron scheduler started
+[2026-02-09 03:11:41] WARN  session: Session file growing large: main_7661562 (1213KB)
+[2026-02-09 03:30:38] WARN  session: Session file growing large: cron_8778805 (1910KB)
+[2026-02-09 04:00:24] WARN  memory: Memory usage elevated: 386MB (threshold: 512MB)
+[2026-02-09 04:19:00] DEBUG session: New session created: cron_6806909
+[2026-02-09 04:32:54] WARN  session: Session file growing large: cron_8150974 (586KB)
+[2026-02-09 04:54:36] INFO  cron: Cron scheduler started
+[2026-02-09 05:18:54] INFO  gateway: Remote URL configured: https://claw.example-team.com
+[2026-02-09 05:23:54] DEBUG cron: Cron tick - no jobs due
+[2026-02-09 05:33:27] INFO  feishu: Received DM from ou_c3a29983d0c0277397bdd75aa601007d
+[2026-02-09 05:55:46] INFO  heartbeat: Heartbeat polling enabled (interval: 1800000ms)
+[2026-02-09 06:24:50] INFO  gateway: Server started on 0.0.0.0:3117
+[2026-02-09 06:35:50] INFO  feishu: Received DM from ou_c3a29983d0c0277397bdd75aa601007d
+[2026-02-09 06:54:21] INFO  heartbeat: Heartbeat polling enabled (interval: 1800000ms)
+[2026-02-09 07:20:23] INFO  session: Subagent completed: feishu_2779073 (exit: 0)
+[2026-02-09 07:49:32] INFO  cron: Cron scheduler started
+[2026-02-09 07:55:36] INFO  backup: Backup completed: .openclaw/backups/backup_20260209_030005.tar.gz (42MB)
+[2026-02-09 08:03:16] INFO  sessions: Session storage initialized at ./sessions (jsonl mode)
+[2026-02-09 08:24:47] INFO  feishu: Received DM from ou_c3a29983d0c0277397bdd75aa601007d
+[2026-02-09 08:49:39] INFO  plugins: Feishu plugin initialized (app: cli_a90c427613b85bc8)
+[2026-02-09 09:01:30] DEBUG session: Heartbeat OK from main session
+[2026-02-09 09:13:00] INFO  plugins: Feishu plugin initialized (app: cli_a90c427613b85bc8)
+[2026-02-09 09:30:40] DEBUG cron: Cron tick - no jobs due
+[2026-02-09 09:47:36] INFO  session: Message processed (6240 tokens, 38071ms)
+[2026-02-09 09:51:45] DEBUG session: New session created: heartbeat_7420360
+[2026-02-09 10:09:37] INFO  session: Subagent spawned: subagent_1258692
+[2026-02-09 10:11:00] DEBUG session: Writing session log: subagent_7754559.jsonl (235 lines)
+[2026-02-09 10:26:32] DEBUG session: Writing session log: heartbeat_9896009.jsonl (324 lines)
+[2026-02-09 10:32:13] INFO  backup: Backup completed: .openclaw/backups/backup_20260209_030005.tar.gz (42MB)
+[2026-02-09 10:53:17] INFO  session: Message processed (14874 tokens, 26287ms)
+[2026-02-09 11:00:27] WARN  memory: Memory usage elevated: 317MB (threshold: 512MB)
+[2026-02-09 11:20:55] DEBUG cron: Cron tick - no jobs due
+[2026-02-09 11:33:49] INFO  sessions: Found 150 existing session files
+[2026-02-09 11:46:57] INFO  gateway: Server started on 0.0.0.0:3117
+[2026-02-09 11:56:14] INFO  gateway: Loaded config from /home/admin/.openclaw/config/gateway.yaml
+[2026-02-09 12:17:10] INFO  sessions: Session storage initialized at ./sessions (jsonl mode)
+[2026-02-09 12:43:34] INFO  session: Subagent completed: main_8065171 (exit: 0)
+[2026-02-09 12:46:28] INFO  plugins: Feishu plugin initialized (app: cli_a90c427613b85bc8)
+[2026-02-09 12:53:58] INFO  gateway: Server started on 0.0.0.0:3117
+[2026-02-09 13:02:23] INFO  gateway: Remote URL configured: https://claw.example-team.com
+[2026-02-09 13:09:19] INFO  sessions: Session storage initialized at ./sessions (jsonl mode)
+[2026-02-09 13:12:39] INFO  gateway: Health check OK (uptime: 2d 10h)
+[2026-02-09 13:27:34] INFO  plugins: Feishu plugin initialized (app: cli_a90c427613b85bc8)
+[2026-02-09 13:52:55] INFO  session: Message processed (5035 tokens, 10786ms)
+[2026-02-09 14:07:50] DEBUG session: Writing session log: feishu_9976385.jsonl (470 lines)
+[2026-02-09 14:25:16] INFO  gateway: Remote URL configured: https://claw.example-team.com
+[2026-02-09 14:33:41] DEBUG cron: Cron tick - no jobs due
+[2026-02-09 14:42:47] INFO  session: Subagent completed: feishu_8361466 (exit: 0)
+[2026-02-09 15:08:47] DEBUG session: Writing session log: main_4631209.jsonl (441 lines)
+[2026-02-09 15:27:46] INFO  sessions: Found 193 existing session files
+[2026-02-09 15:48:29] INFO  session: Message processed (10824 tokens, 36247ms)
+[2026-02-09 15:59:48] INFO  session: Subagent completed: cron_4945679 (exit: 0)
+[2026-02-09 16:28:29] INFO  plugins: Feishu plugin initialized (app: cli_a90c427613b85bc8)
+[2026-02-09 16:41:58] INFO  sessions: Session storage initialized at ./sessions (jsonl mode)
+[2026-02-09 16:43:42] INFO  sessions: Session storage initialized at ./sessions (jsonl mode)
+[2026-02-09 17:02:54] DEBUG session: Writing session log: subagent_3399821.jsonl (104 lines)
+[2026-02-09 17:04:59] DEBUG session: Writing session log: main_6844173.jsonl (230 lines)
+[2026-02-09 17:17:21] INFO  gateway: Server started on 0.0.0.0:3117
+[2026-02-09 17:44:40] INFO  heartbeat: Heartbeat polling enabled (interval: 1800000ms)
+[2026-02-09 17:56:06] DEBUG cron: Cron tick - no jobs due
+[2026-02-09 18:18:20] INFO  gateway: Remote URL configured: https://claw.example-team.com
+[2026-02-09 18:32:24] INFO  feishu: Received DM from ou_c3a29983d0c0277397bdd75aa601007d
+[2026-02-09 19:01:22] INFO  plugins: Feishu plugin initialized (app: cli_a90c427613b85bc8)
+[2026-02-09 19:15:10] INFO  backup: Backup completed: .openclaw/backups/backup_20260209_030005.tar.gz (42MB)
+[2026-02-09 19:42:49] DEBUG cron: Cron tick - no jobs due
+[2026-02-09 19:48:58] INFO  gateway: Health check OK (uptime: 4d 10h)
+[2026-02-09 20:14:27] INFO  session: Subagent spawned: heartbeat_7813642
+[2026-02-09 20:18:56] DEBUG session: New session created: feishu_3312270
+[2026-02-09 20:22:20] INFO  gateway: Health check OK (uptime: 1d 5h)
+[2026-02-09 20:37:30] INFO  backup: Backup completed: .openclaw/backups/backup_20260209_030005.tar.gz (42MB)
+[2026-02-09 20:50:08] INFO  backup: Backup completed: .openclaw/backups/backup_20260209_030005.tar.gz (42MB)
+[2026-02-09 20:53:29] INFO  feishu: Received DM from ou_c3a29983d0c0277397bdd75aa601007d
+[2026-02-09 21:14:17] WARN  session: Session file growing large: heartbeat_2919047 (775KB)
+[2026-02-09 21:32:37] INFO  sessions: Found 194 existing session files
+[2026-02-09 21:58:56] INFO  sessions: Found 182 existing session files
+[2026-02-09 22:05:45] INFO  sessions: Session storage initialized at ./sessions (jsonl mode)
+[2026-02-09 22:14:56] INFO  plugins: Feishu plugin initialized (app: cli_a90c427613b85bc8)
+[2026-02-09 22:38:50] INFO  backup: Backup completed: .openclaw/backups/backup_20260209_030005.tar.gz (42MB)
+[2026-02-09 22:55:18] INFO  sessions: Found 153 existing session files
+[2026-02-09 23:06:26] INFO  heartbeat: Heartbeat polling enabled (interval: 1800000ms)
+[2026-02-09 23:30:46] INFO  cron: Cron scheduler started
+[2026-02-09 23:32:50] INFO  gateway: Loaded config from /home/admin/.openclaw/config/gateway.yaml
+[2026-02-09 23:36:13] INFO  session: Message processed (10677 tokens, 38524ms)
+[2026-02-09 23:45:13] INFO  session: Subagent completed: heartbeat_5641750 (exit: 0)
+[2026-02-10 00:11:50] INFO  sessions: Session storage initialized at ./sessions (jsonl mode)
+[2026-02-10 00:33:54] DEBUG session: Writing session log: cron_4553868.jsonl (117 lines)
+[2026-02-10 00:59:54] INFO  session: Subagent spawned: heartbeat_8433222
+[2026-02-10 01:21:33] INFO  sessions: Found 197 existing session files
+[2026-02-10 01:28:35] DEBUG cron: Cron tick - no jobs due
+[2026-02-10 01:44:38] DEBUG session: Heartbeat OK from main session
+[2026-02-10 02:02:08] INFO  sessions: Session storage initialized at ./sessions (jsonl mode)
+[2026-02-10 02:18:04] INFO  backup: Backup completed: .openclaw/backups/backup_20260209_030005.tar.gz (42MB)
+[2026-02-10 02:20:44] WARN  session: Session file growing large: feishu_8489205 (1773KB)
+[2026-02-10 02:22:24] INFO  cron: Cron scheduler started
+[2026-02-10 02:38:06] INFO  heartbeat: Heartbeat polling enabled (interval: 1800000ms)
+[2026-02-10 02:44:08] INFO  session: Subagent completed: main_6077067 (exit: 0)
+[2026-02-10 02:58:23] INFO  backup: Backup completed: .openclaw/backups/backup_20260209_030005.tar.gz (42MB)
+[2026-02-10 03:13:14] INFO  cron: Cron scheduler started
+[2026-02-10 03:30:43] WARN  memory: Memory usage elevated: 434MB (threshold: 512MB)
+[2026-02-10 04:00:36] INFO  backup: Backup completed: .openclaw/backups/backup_20260209_030005.tar.gz (42MB)
+[2026-02-10 04:03:23] INFO  feishu: Received DM from ou_c3a29983d0c0277397bdd75aa601007d
+[2026-02-10 04:08:47] WARN  memory: Memory usage elevated: 403MB (threshold: 512MB)
+[2026-02-10 04:37:51] DEBUG cron: Cron tick - no jobs due
+[2026-02-10 04:52:03] INFO  gateway: Server started on 0.0.0.0:3117
+[2026-02-10 05:05:04] INFO  heartbeat: Heartbeat polling enabled (interval: 1800000ms)
+[2026-02-10 05:32:04] WARN  session: Session file growing large: cron_9768361 (51KB)
+[2026-02-10 05:55:11] INFO  backup: Backup completed: .openclaw/backups/backup_20260209_030005.tar.gz (42MB)
+[2026-02-10 06:21:08] INFO  session: Subagent completed: main_8896351 (exit: 0)
+[2026-02-10 06:40:01] INFO  session: Message processed (2766 tokens, 27732ms)
+[2026-02-10 06:59:04] INFO  sessions: Session storage initialized at ./sessions (jsonl mode)
+[2026-02-10 07:07:53] DEBUG cron: Cron tick - no jobs due
+[2026-02-10 07:19:45] WARN  session: Session file growing large: main_7209434 (1519KB)
+[2026-02-10 07:33:27] DEBUG session: Writing session log: cron_1876486.jsonl (62 lines)
+[2026-02-10 08:00:09] DEBUG session: Writing session log: main_9091830.jsonl (393 lines)
+[2026-02-10 08:03:54] INFO  gateway: Server started on 0.0.0.0:3117
+[2026-02-10 08:09:25] INFO  heartbeat: Heartbeat polling enabled (interval: 1800000ms)
+[2026-02-10 08:32:20] DEBUG session: Heartbeat OK from main session
+[2026-02-10 08:48:27] DEBUG session: Heartbeat OK from main session
+[2026-02-10 09:03:13] WARN  memory: Memory usage elevated: 451MB (threshold: 512MB)
+[2026-02-10 09:15:56] INFO  session: Subagent spawned: cron_5914420
+[2026-02-10 09:45:40] DEBUG session: Writing session log: heartbeat_2463436.jsonl (334 lines)
+[2026-02-10 09:47:49] INFO  heartbeat: Heartbeat polling enabled (interval: 1800000ms)
+[2026-02-10 10:17:12] INFO  gateway: Health check OK (uptime: 3d 19h)
+[2026-02-10 10:39:13] WARN  memory: Memory usage elevated: 388MB (threshold: 512MB)
+[2026-02-10 10:45:51] INFO  heartbeat: Heartbeat polling enabled (interval: 1800000ms)
+[2026-02-10 11:09:05] DEBUG cron: Cron tick - no jobs due
+[2026-02-10 11:37:31] DEBUG cron: Cron tick - no jobs due
+[2026-02-10 11:51:12] INFO  feishu: Received DM from ou_c3a29983d0c0277397bdd75aa601007d
+[2026-02-10 12:11:37] INFO  backup: Backup completed: .openclaw/backups/backup_20260209_030005.tar.gz (42MB)
+[2026-02-10 12:21:00] INFO  session: Subagent spawned: main_5833141
+[2026-02-10 12:43:59] DEBUG session: New session created: feishu_8237324
+[2026-02-10 13:13:24] INFO  heartbeat: Heartbeat polling enabled (interval: 1800000ms)
+[2026-02-10 13:31:39] DEBUG cron: Cron tick - no jobs due
+[2026-02-10 13:34:07] DEBUG session: Heartbeat OK from main session
+[2026-02-10 13:39:16] INFO  cron: Cron scheduler started
+[2026-02-10 13:40:14] INFO  backup: Backup completed: .openclaw/backups/backup_20260209_030005.tar.gz (42MB)
+[2026-02-10 14:02:10] INFO  backup: Backup completed: .openclaw/backups/backup_20260209_030005.tar.gz (42MB)

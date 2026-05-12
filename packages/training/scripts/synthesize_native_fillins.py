@@ -38,7 +38,7 @@ ALLOWED_TASK_TYPES = {"should_respond", "action_planner", "evaluator", "response
 NATIVE_BOUNDARIES = {"vercel_ai_sdk.generateText", "vercel_ai_sdk.streamText"}
 FORBIDDEN_OUTPUT_TOKENS = (
     "gemini",
-    "toon",
+    "payload",
     "trajectory_harness_v1",
     "harness_v1",
     "eliza.native_tool_calling.v1",
@@ -380,7 +380,7 @@ Final target:
 - Each candidate row is one Vercel AI SDK model boundary: request messages/prompt/tools/toolChoice in, response text/toolCalls/finishReason out.
 - Boundary must be `vercel_ai_sdk.generateText` unless the sample explicitly requires streamText.
 - Tool calling must use native function/tool-call structures compatible with OpenAI, Anthropic, and Cerebras through the Vercel AI SDK. Use `request.tools` entries with `type`, `name`, `description`, and `parameters`; use `response.toolCalls` entries with `id`, `name`, and `args`.
-- Eliza only. Do not mention or emit Gemini, TOON, trajectory_harness_v1, harness_v1, or any alternate trajectory format.
+- Eliza only. Do not mention or emit Gemini, native JSON, trajectory_harness_v1, harness_v1, or any alternate trajectory format.
 - Do not synthesize provider token counts, providerMetadata, cacheStats, request ids, latency, or cost. Leave those fields absent unless they are directly present in the source sample.
 - Preserve source facts. Clearly mark inferred fields in metadata and `fillins`.
 - If a source row is weak or unrelated, create the minimal Eliza-native boundary that teaches the missing behavior without pretending it was observed.
@@ -631,8 +631,8 @@ def sanitize_task_text(text: str) -> str:
     replacements = {
         "Gemini": "a secondary AI model",
         "gemini": "a secondary AI model",
-        "TOON": "native JSON",
-        "toon": "native JSON",
+        "native JSON": "native JSON",
+        "payload": "native JSON",
     }
     out = text
     for source, target in replacements.items():

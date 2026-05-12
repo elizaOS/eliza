@@ -1,0 +1,86 @@
+[2024-03-15 09:00:00.666] [INFO ] knowledge_ingestion v2.3.1 starting up
+[2024-03-15 09:00:01.324] [INFO ] Configuration loaded from config/assistant_config_v2.toml
+[2024-03-15 09:00:02.945] [INFO ] Vector store connection established: ChromaDB v0.4.22 at localhost:8000
+[2024-03-15 09:00:04.114] [INFO ] Embedding model loaded: text-embedding-3-small (1536 dimensions)
+[2024-03-15 09:00:05.566] [INFO ] Chunk size: 512 tokens, overlap: 64 tokens
+[2024-03-15 09:00:06.102] [INFO ] Starting document ingestion pipeline...
+[2024-03-15 09:00:09.731] [INFO ] Processing: FreeRTOS_Reference_Manual_v10.6.1.pdf (2.4 MB)
+[2024-03-15 09:00:11.610] [INFO ] PDF parser: extracted 186 pages, 342 text sections
+[2024-03-15 09:00:26.614] [INFO ] Chunking complete: 342 chunks generated (avg 478 tokens/chunk)
+[2024-03-15 09:00:34.941] [INFO ] Embeddings computed: 342/342 vectors (batch size 64)
+[2024-03-15 09:00:39.911] [INFO ] Stored 342 chunks for FreeRTOS_Reference_Manual_v10.6.1.pdf [SUCCESS]
+[2024-03-15 09:00:41.282] [INFO ] Processing: zephyr-docs-3.6.0.tar.gz (18.7 MB, 1842 HTML files)
+[2024-03-15 09:00:44.766] [INFO ] HTML parser: processing 1842 files...
+[2024-03-15 09:01:14.378] [WARN ] Skipping 12 files with empty content (navigation-only pages)
+[2024-03-15 09:01:16.647] [INFO ] Extracted 1830 content pages, generating chunks...
+[2024-03-15 09:01:36.178] [INFO ] Chunking complete: 1205 chunks generated (avg 502 tokens/chunk)
+[2024-03-15 09:02:21.899] [INFO ] Embeddings computed: 1205/1205 vectors (batch size 64)
+[2024-03-15 09:02:31.300] [WARN ] Detected 23 near-duplicate chunks (cosine similarity > 0.97), flagged for review
+[2024-03-15 09:02:33.943] [INFO ] Stored 1205 chunks for zephyr-docs-3.6.0 [SUCCESS]
+[2024-03-15 09:02:36.994] [INFO ] Processing: RT-Thread_Programming_Guide_v5.0.2.pdf (8.1 MB)
+[2024-03-15 09:02:38.739] [INFO ] PDF parser: extracted 450 pages
+[2024-03-15 09:02:43.136] [WARN ] Encoding detection: pages 1-89 detected as UTF-8 (English), pages 90-450 detected as GB2312 (Chinese)
+[2024-03-15 09:02:46.749] [ERROR] Failed to parse pages 90-450: UnicodeDecodeError - Chinese character encoding not supported by current text splitter
+[2024-03-15 09:02:47.630] [WARN ] Falling back to English-only content: 89/450 pages (19.8%)
+[2024-03-15 09:02:55.952] [INFO ] Chunking complete: 89 chunks generated from English pages (avg 491 tokens/chunk)
+[2024-03-15 09:02:59.131] [INFO ] Embeddings computed: 89/89 vectors (batch size 64)
+[2024-03-15 09:03:01.673] [WARN ] Stored 89 chunks for RT-Thread_Programming_Guide_v5.0.2.pdf [PARTIAL - 80.2% content skipped]
+[2024-03-15 09:03:04.753] [INFO ] Processing: ARM_Architecture_Reference_Manual_ARMv8-A.pdf (42.3 MB)
+[2024-03-15 09:03:09.191] [INFO ] PDF parser: extracted 8942 pages, filtering to relevant sections...
+[2024-03-15 09:03:24.579] [INFO ] Content filter: selected 2100 sections (instruction set, registers, memory model, exceptions)
+[2024-03-15 09:04:24.403] [INFO ] Chunking complete: 2100 chunks generated (avg 510 tokens/chunk)
+[2024-03-15 09:05:54.684] [INFO ] Embeddings computed: 2100/2100 vectors (batch size 64)
+[2024-03-15 09:06:06.692] [INFO ] Stored 2100 chunks for ARM_Architecture_Reference_Manual_ARMv8-A.pdf [SUCCESS]
+[2024-03-15 09:06:09.138] [INFO ] Processing: riscv-isa-spec-20240101.pdf (5.6 MB)
+[2024-03-15 09:06:11.777] [INFO ] PDF parser: extracted 1240 pages
+[2024-03-15 09:06:23.163] [INFO ] Chunking complete: 890 chunks generated (avg 488 tokens/chunk)
+[2024-03-15 09:06:53.232] [INFO ] Embeddings computed: 890/890 vectors (batch size 64)
+[2024-03-15 09:06:58.710] [INFO ] Stored 890 chunks for riscv-isa-spec-20240101.pdf [SUCCESS]
+[2024-03-15 09:07:01.396] [INFO ] Processing: blog_freertos_best_practices_2024.html
+[2024-03-15 09:07:02.357] [INFO ] HTML parser: extracted content, 18 chunks generated
+[2024-03-15 09:07:05.190] [INFO ] Stored 18 chunks for blog_freertos_best_practices_2024.html [SUCCESS]
+[2024-03-15 09:07:07.737] [INFO ] Processing: blog_zephyr_getting_started.html
+[2024-03-15 09:07:08.729] [INFO ] HTML parser: extracted content, 24 chunks generated
+[2024-03-15 09:07:11.721] [INFO ] Stored 24 chunks for blog_zephyr_getting_started.html [SUCCESS]
+[2024-03-15 09:07:13.590] [INFO ] Processing: tutorial_rust_embedded_hal.html
+[2024-03-15 09:07:14.131] [INFO ] HTML parser: extracted content, 31 chunks generated
+[2024-03-15 09:07:17.235] [INFO ] Stored 31 chunks for tutorial_rust_embedded_hal.html [SUCCESS]
+[2024-03-15 09:07:19.152] [INFO ] Processing: blog_arm_cortexm_debugging_tips.html
+[2024-03-15 09:07:20.389] [INFO ] HTML parser: extracted content, 15 chunks generated
+[2024-03-15 09:07:23.694] [INFO ] Stored 15 chunks for blog_arm_cortexm_debugging_tips.html [SUCCESS]
+[2024-03-15 09:07:25.642] [INFO ] Processing: tutorial_openocd_setup_guide.html
+[2024-03-15 09:07:26.366] [INFO ] HTML parser: extracted content, 22 chunks generated
+[2024-03-15 09:07:29.355] [INFO ] Stored 22 chunks for tutorial_openocd_setup_guide.html [SUCCESS]
+[2024-03-15 09:07:31.341] [INFO ] Processing: blog_riscv_ecosystem_overview.html
+[2024-03-15 09:07:32.206] [INFO ] HTML parser: extracted content, 19 chunks generated
+[2024-03-15 09:07:35.933] [INFO ] Stored 19 chunks for blog_riscv_ecosystem_overview.html [SUCCESS]
+[2024-03-15 09:07:37.124] [INFO ] Processing: tutorial_yocto_first_build.html
+[2024-03-15 09:07:38.435] [INFO ] HTML parser: extracted content, 28 chunks generated
+[2024-03-15 09:07:41.607] [INFO ] Stored 28 chunks for tutorial_yocto_first_build.html [SUCCESS]
+[2024-03-15 09:07:43.262] [INFO ] Processing: blog_embedded_linux_vs_rtos.html
+[2024-03-15 09:07:44.901] [INFO ] HTML parser: extracted content, 12 chunks generated
+[2024-03-15 09:07:47.488] [INFO ] Stored 12 chunks for blog_embedded_linux_vs_rtos.html [SUCCESS]
+[2024-03-15 09:07:49.510] [INFO ] Processing: tutorial_gdb_remote_debugging.html
+[2024-03-15 09:07:50.685] [INFO ] HTML parser: extracted content, 20 chunks generated
+[2024-03-15 09:07:53.851] [INFO ] Stored 20 chunks for tutorial_gdb_remote_debugging.html [SUCCESS]
+[2024-03-15 09:07:55.961] [INFO ] Processing: blog_contiki_ng_iot_networking.html
+[2024-03-15 09:07:56.130] [INFO ] HTML parser: extracted content, 14 chunks generated
+[2024-03-15 09:07:59.162] [INFO ] Stored 14 chunks for blog_contiki_ng_iot_networking.html [SUCCESS]
+[2024-03-15 09:08:01.361] [INFO ] Processing: blog_mbed_os_deprecation_notice.html
+[2024-03-15 09:08:02.358] [INFO ] HTML parser: extracted content, 8 chunks generated
+[2024-03-15 09:08:05.323] [INFO ] Stored 8 chunks for blog_mbed_os_deprecation_notice.html [SUCCESS]
+[2024-03-15 09:08:07.527] [INFO ] Processing: tutorial_buildroot_custom_package.html
+[2024-03-15 09:08:08.907] [INFO ] HTML parser: extracted content, 16 chunks generated
+[2024-03-15 09:08:11.511] [INFO ] Stored 16 chunks for tutorial_buildroot_custom_package.html [SUCCESS]
+[2024-03-15 09:08:13.469] [WARN ] Post-ingestion analysis: found 47 near-duplicate chunk pairs across sources
+[2024-03-15 09:08:14.559] [WARN ] Highest overlap: blog_freertos_best_practices_2024.html <-> FreeRTOS_Reference_Manual (8 chunk pairs, avg similarity 0.94)
+[2024-03-15 09:08:15.653] [INFO ] ========== INGESTION SUMMARY ==========
+[2024-03-15 09:08:16.895] [INFO ] Total documents processed: 17
+[2024-03-15 09:08:16.913] [INFO ] Successful: 16 | Partial: 1 (RT-Thread)
+[2024-03-15 09:08:16.449] [INFO ] Total chunks stored: 4853
+[2024-03-15 09:08:16.967] [INFO ] Total embedding tokens used: ~2,326,000
+[2024-03-15 09:08:16.464] [INFO ] Estimated embedding cost: $0.047
+[2024-03-15 09:08:16.174] [INFO ] Vector store size: 4853 vectors x 1536 dimensions
+[2024-03-15 09:08:16.254] [INFO ] Wall time: 496 seconds
+[2024-03-15 09:08:17.510] [INFO ] ========================================
+[2024-03-15 09:08:18.740] [INFO ] knowledge_ingestion pipeline finished

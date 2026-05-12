@@ -94,6 +94,7 @@ function inferParams(
     [/\b8b\b/, "8B", "mid"],
     [/\b7b\b/, "7B", "mid"],
     [/\b3b\b/, "3B", "small"],
+    [/\b2b\b/, "2B", "small"],
     [/\b1\.7b\b/, "1.7B", "small"],
     [/\b1b\b/, "1B", "small"],
   ];

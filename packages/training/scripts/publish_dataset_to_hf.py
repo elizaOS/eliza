@@ -61,19 +61,37 @@ class DatasetSpec:
     is_pointer_only: bool = False        # if True, do not upload data — README only
 
 
-def _spec_training() -> DatasetSpec:
-    final = DATA / "final"
+def _spec_training_from_dir(source_dir: Path | None = None) -> DatasetSpec:
+    """Build the active SFT upload spec.
+
+    By default this uses ``data/final``. Passing ``source_dir`` also supports a
+    staged candidate directory with ``data/train.jsonl``,
+    ``data/validation.jsonl``, and ``data/test.jsonl``; the validation split is
+    published as the public root ``val.jsonl`` expected by Vast/bootstrap jobs.
+    """
+    source_dir = source_dir.resolve() if source_dir else DATA / "final"
+    candidate_data = source_dir / "data"
+    final = candidate_data if (candidate_data / "train.jsonl").exists() else source_dir
+
     # The canonical SFT train file is train.jsonl. Older runs of the pipeline
     # produced train_final.jsonl as a temporary name; if it still exists locally
     # we honor it for backwards compat, but train.jsonl is the source of truth.
     train_src = final / "train_final.jsonl"
     if not train_src.exists():
         train_src = final / "train.jsonl"
+    val_src = final / "val.jsonl"
+    if not val_src.exists():
+        val_src = final / "validation.jsonl"
+    manifest_src = source_dir / "manifest.json"
+    if not manifest_src.exists():
+        manifest_src = final / "manifest_final.json"
+    if not manifest_src.exists():
+        manifest_src = final / "manifest.json"
     files = (
         train_src,
-        final / "val.jsonl",
+        val_src,
         final / "test.jsonl",
-        final / "manifest_final.json",
+        manifest_src,
     )
     path_in_repo = {
         files[0]: "train.jsonl",
@@ -87,6 +105,10 @@ def _spec_training() -> DatasetSpec:
         path_in_repo=path_in_repo,
         card=_card_training(),
     )
+
+
+def _spec_training() -> DatasetSpec:
+    return _spec_training_from_dir()
 
 
 def _spec_scambench() -> DatasetSpec:
@@ -248,8 +270,10 @@ def _card_training() -> str:
         "\n"
         "# eliza-1 training corpus\n"
         "\n"
-        "Active SFT corpus for the elizaOS **eliza-1** model series\n"
-        "([`elizaos/eliza-1-2b`](https://huggingface.co/elizaos/eliza-1-2b),\n"
+        "Active SFT corpus for the elizaOS **eliza-1** Qwen-based model series\n"
+        "([`elizaos/eliza-1-0_8b`](https://huggingface.co/elizaos/eliza-1-0_8b),\n"
+        "[`elizaos/eliza-1-2b`](https://huggingface.co/elizaos/eliza-1-2b),\n"
+        "[`elizaos/eliza-1-4b`](https://huggingface.co/elizaos/eliza-1-4b),\n"
         "[`elizaos/eliza-1-9b`](https://huggingface.co/elizaos/eliza-1-9b),\n"
         "[`elizaos/eliza-1-27b`](https://huggingface.co/elizaos/eliza-1-27b)).\n"
         "\n"
@@ -257,22 +281,29 @@ def _card_training() -> str:
         "\n"
         "| Path           | Role                          |\n"
         "|----------------|-------------------------------|\n"
-        "| `train.jsonl`  | training split (~11.7 GB)     |\n"
-        "| `val.jsonl`    | validation split (~456 MB)    |\n"
-        "| `test.jsonl`   | test split (~201 MB)          |\n"
+        "| `train.jsonl`  | training split                |\n"
+        "| `val.jsonl`    | validation split              |\n"
+        "| `test.jsonl`   | held-out test split           |\n"
         "| `manifest.json`| per-source counts             |\n"
         "\n"
         "## Schema\n"
         "\n"
-        "Each line is a JSON object with at minimum:\n"
+        "The active trajectory path uses `eliza_native_v1`: one row per model\n"
+        "boundary, with the exact request sent to the model and the expected\n"
+        "text/tool-call response.\n"
         "\n"
         "```json\n"
         "{\n"
-        '  "messages": [{"role": "system|user|assistant|tool", "content": "..."}],\n'
-        '  "source": "<dataset slug>",\n'
-        '  "tags": ["..."]\n'
+        '  "format": "eliza_native_v1",\n'
+        '  "request": {"messages": [{"role": "user", "content": "..."}], "tools": []},\n'
+        '  "response": {"text": "...", "toolCalls": []},\n'
+        '  "metadata": {"task_type": "...", "source_dataset": "..."}\n'
         "}\n"
         "```\n"
+        "\n"
+        "Legacy `messages` and flat ElizaRecord rows are accepted by the local\n"
+        "formatter, but a published root split must be internally consistent so\n"
+        "the Hugging Face Dataset Viewer can load all train/validation/test splits.\n"
         "\n"
         "## Source mix\n"
         "\n"
@@ -295,8 +326,9 @@ def _card_training() -> str:
         "\n"
         "## Intended use\n"
         "\n"
-        "Supervised fine-tuning of small-to-medium causal LMs (2B-27B) for\n"
-        "agent / tool-use workloads on consumer + workstation hardware.\n"
+        "Supervised fine-tuning of small-to-medium Qwen causal LMs (0.8B-27B)\n"
+        "for agent / tool-use workloads on mobile, local desktop, and\n"
+        "workstation hardware.\n"
         "\n"
         "## License + provenance\n"
         "\n"
@@ -449,7 +481,7 @@ def _card_combined() -> str:
         "# eliza-1 training corpus (consolidated)\n"
         "\n"
         "Single-repo home for everything used to train the elizaOS\n"
-        "**eliza-1** model series. This bundles the active SFT split, the\n"
+        "**eliza-1** Qwen-based model series. This bundles the active SFT split, the\n"
         "scambench adversarial set, and the small Claude-teacher synthesis\n"
         "sets that previously lived in separate repos.\n"
         "\n"
@@ -459,9 +491,9 @@ def _card_combined() -> str:
         "## Layout\n"
         "\n"
         "```\n"
-        "train.jsonl                 # active SFT training split (~14 GB)\n"
-        "val.jsonl                   # validation split (~478 MB)\n"
-        "test.jsonl                  # test split (~211 MB)\n"
+        "train.jsonl                 # active SFT training split\n"
+        "val.jsonl                   # validation split\n"
+        "test.jsonl                  # held-out test split\n"
         "manifest.json               # per-source counts for the SFT splits\n"
         "\n"
         "scambench/\n"
@@ -477,14 +509,16 @@ def _card_combined() -> str:
         "\n"
         "## Schema\n"
         "\n"
-        "Each line in the SFT splits and the scambench corpus is a JSON object\n"
-        "with at minimum:\n"
+        "The active SFT root splits use `eliza_native_v1`: one row per model\n"
+        "boundary, with the exact request sent to the model and the expected\n"
+        "text/tool-call response.\n"
         "\n"
         "```json\n"
         "{\n"
-        '  "messages": [{"role": "system|user|assistant|tool", "content": "..."}],\n'
-        '  "source": "<dataset slug>",\n'
-        '  "tags": ["..."]\n'
+        '  "format": "eliza_native_v1",\n'
+        '  "request": {"messages": [{"role": "user", "content": "..."}], "tools": []},\n'
+        '  "response": {"text": "...", "toolCalls": []},\n'
+        '  "metadata": {"task_type": "...", "source_dataset": "..."}\n'
         "}\n"
         "```\n"
         "\n"
@@ -524,8 +558,9 @@ def _card_combined() -> str:
         "\n"
         "## Intended use\n"
         "\n"
-        "Supervised fine-tuning of small-to-medium causal LMs (2B-27B) for\n"
-        "agent / tool-use workloads on consumer + workstation hardware.\n"
+        "Supervised fine-tuning of small-to-medium Qwen causal LMs (0.8B-27B)\n"
+        "for agent / tool-use workloads on mobile, local desktop, and\n"
+        "workstation hardware.\n"
         "\n"
         "## Abliteration calibration\n"
         "\n"
@@ -584,7 +619,73 @@ def _remote_sha256(api, repo_id: str, path_in_repo: str) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def _print_dry_run(spec: DatasetSpec, repo_id: str) -> int:
+def _split_data_files(spec: DatasetSpec) -> dict[str, Path]:
+    """Return train/validation/test JSONL files addressed as HF splits.
+
+    The live HF Dataset Viewer builds all splits together. A publish that lets
+    those split schemas drift can break the public dataset even when every file
+    is individually valid JSONL, so real publish validates this exact mapping.
+    """
+    by_split: dict[str, Path] = {}
+    for path in spec.files:
+        target = spec.path_in_repo.get(path)
+        if target == "train.jsonl":
+            by_split["train"] = path
+        elif target in {"val.jsonl", "validation.jsonl"}:
+            by_split["validation"] = path
+        elif target == "test.jsonl":
+            by_split["test"] = path
+    required = {"train", "validation", "test"}
+    return by_split if required <= set(by_split) else {}
+
+
+def validate_hf_loadable(spec: DatasetSpec) -> bool:
+    data_files = _split_data_files(spec)
+    if not data_files:
+        return True
+    for split, path in data_files.items():
+        if not path.exists():
+            log.error("missing %s split for HF load preflight: %s", split, path)
+            return False
+    try:
+        from datasets import load_dataset
+    except ImportError:
+        log.error(
+            "datasets is required for HF load preflight; install the train extra "
+            "before publishing"
+        )
+        return False
+    try:
+        ds = load_dataset(
+            "json",
+            data_files={split: str(path) for split, path in data_files.items()},
+        )
+    except Exception as exc:
+        log.error("HF load preflight failed: %s", exc)
+        return False
+
+    feature_fingerprints = {
+        split: repr(dataset.features)
+        for split, dataset in ds.items()
+    }
+    if len(set(feature_fingerprints.values())) != 1:
+        log.error("HF load preflight found split feature drift: %s", feature_fingerprints)
+        return False
+    log.info(
+        "HF load preflight ok: %s",
+        {split: int(ds[split].num_rows) for split in ds},
+    )
+    return True
+
+
+def _print_dry_run(spec: DatasetSpec, repo_id: str, *, validate_hf_load: bool = False) -> int:
+    rc = _print_dry_run_without_validation(spec, repo_id)
+    if rc != 0 or not validate_hf_load:
+        return rc
+    return 0 if validate_hf_loadable(spec) else 2
+
+
+def _print_dry_run_without_validation(spec: DatasetSpec, repo_id: str) -> int:
     log.info("dataset=%s repo_id=%s (dry-run)", spec.name, repo_id)
     if spec.is_pointer_only:
         log.info("pointer-only — would upload README only (no data files).")
@@ -602,7 +703,7 @@ def _print_dry_run(spec: DatasetSpec, repo_id: str) -> int:
         total += size
         log.info(
             "  %-60s -> %s  (%.2f MB)",
-            str(f.relative_to(ROOT)),
+            str(f.relative_to(ROOT)) if f.is_relative_to(ROOT) else str(f),
             spec.path_in_repo[f],
             size / 1e6,
         )
@@ -615,6 +716,8 @@ def publish(spec: DatasetSpec, repo_id: str, public: bool) -> int:
     if not hf_token():
         log.error("HF_TOKEN (or HUGGINGFACE_HUB_TOKEN) env var not set; refusing to push.")
         return 1
+    if not validate_hf_loadable(spec):
+        return 2
 
     from huggingface_hub import HfApi
     from huggingface_hub.errors import RepositoryNotFoundError
@@ -725,6 +828,16 @@ def main() -> int:
         help="Destination HF dataset repo id (e.g. elizaos/eliza-1-training).",
     )
     ap.add_argument(
+        "--source-dir",
+        type=Path,
+        default=None,
+        help=(
+            "Override the source directory for --dataset training. Supports "
+            "data/final-style roots and staged candidate directories whose "
+            "validation split is data/validation.jsonl."
+        ),
+    )
+    ap.add_argument(
         "--private",
         action="store_true",
         help="Create the repo as private (default: public).",
@@ -734,11 +847,22 @@ def main() -> int:
         action="store_true",
         help="Print the planned uploads + total bytes; do not authenticate or push.",
     )
+    ap.add_argument(
+        "--validate-hf-load",
+        action="store_true",
+        help="During --dry-run, also exercise datasets.load_dataset on train/val/test.",
+    )
     args = ap.parse_args()
 
-    spec = SPEC_BUILDERS[args.dataset]()
+    if args.source_dir is not None and args.dataset != "training":
+        ap.error("--source-dir is only supported with --dataset training")
+    spec = (
+        _spec_training_from_dir(args.source_dir)
+        if args.source_dir is not None
+        else SPEC_BUILDERS[args.dataset]()
+    )
     if args.dry_run:
-        return _print_dry_run(spec, args.repo_id)
+        return _print_dry_run(spec, args.repo_id, validate_hf_load=args.validate_hf_load)
     # Mirror push_to_hf.py default: public unless --private flips it.
     return publish(spec, args.repo_id, public=not args.private)
 

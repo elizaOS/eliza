@@ -702,10 +702,6 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
                 "agentRuntimeMode",
                 "ELIZA_IOS_RUNTIME_MODE",
                 "ELIZA_MOBILE_RUNTIME_MODE",
-                "ELIZA_IOS_RUNTIME_MODE",
-                "ELIZA_MOBILE_RUNTIME_MODE",
-                "VITE_ELIZA_IOS_RUNTIME_MODE",
-                "VITE_ELIZA_MOBILE_RUNTIME_MODE",
                 "VITE_ELIZA_IOS_RUNTIME_MODE",
                 "VITE_ELIZA_MOBILE_RUNTIME_MODE",
             ]

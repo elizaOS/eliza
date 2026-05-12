@@ -84,7 +84,7 @@ layer types — but:
    needs to load it via `AutoModelForVision2Seq` (or the
    `Qwen3_5ForConditionalGeneration` class directly) and walk the
    text decoder. We have **not** done that integration yet — for the
-   `0.8B` validation we fall back to `Qwen/Qwen3-0.6B`.
+   `0.8B` validation we fall back to `Qwen/Qwen3-0.8B`.
 3. The MoE variants (`Qwen3.5-122B-A10B`, `Qwen3.5-397B-A17B`,
    `Qwen3.6-35B-A3B`) have router weights — those are tiny, fall
    under the `--min-numel` cutoff, and are deliberately skipped.
@@ -129,8 +129,8 @@ Useful knobs:
 ### Validation
 
 `scripts/quantization/test_polarquant.py` runs the round-trip on
-`Qwen/Qwen3-0.6B` (the closest text-only causal-LM stand-in for
-`Qwen/Qwen3.5-0.8B` — see caveat above), using 5 TOON-shaped samples
+`Qwen/Qwen3-0.8B` (the closest text-only causal-LM stand-in for
+`Qwen/Qwen3.5-0.8B` — see caveat above), using 5 native JSON-shaped samples
 from `data/final/val.jsonl`. It asserts (a) the codes-only payload is
 at least 30% smaller than the fp16 baseline checkpoint and (b) the
 quantized model produces non-degenerate text on every sample.
@@ -188,14 +188,14 @@ fp16 to keep the freshly-generated context lossless.
   Shannon-Bennett lower bound.
 - **Cons.** The reference implementation is pure PyTorch — the
   per-step quantize/dequantize is a Python-level operation per layer
-  per step, which costs throughput. On a 0.6B model on a 5080 we
+  per step, which costs throughput. On a 0.8B model on a 5080 we
   observed **~5× slowdown** vs the bf16 ``DynamicCache``
   (66.8 → 12.2 tok/s). The TurboQuant paper claims faster runtime than
   the bf16 baseline because it ships **Triton kernels**; those are not
   in the `turbokv` 0.1.0 PyPI release we depend on. Until upstream
   ships Triton, this method is a *memory* win, not a *speed* win.
 - The savings are concentrated in the long-context regime. At 4096-
-  token prefill on Qwen3-0.6B we measured **3.52× per-token KV
+  token prefill on Qwen3-0.8B we measured **3.52× per-token KV
   reduction** (114,688 → 32,608 bytes/token) which produced a real
   274 MB peak-VRAM drop on a tiny model — the absolute savings scale
   with `num_hidden_layers × num_kv_heads × head_dim × context_length`.
@@ -236,7 +236,7 @@ the **text decoder config** — `model.config.get_text_config(decoder=True)`.
 The `cache.py` in `turbokv` 0.1.0 already calls `get_text_config` when
 available, so this should work in principle, but we have not validated
 it end-to-end on a Qwen3.5 checkpoint yet — for the 0.8B-class
-validation we fall back to `Qwen/Qwen3-0.6B`.
+validation we fall back to `Qwen/Qwen3-0.8B`.
 
 For the dense MoE variants (`Qwen3.5-122B-A10B`, `Qwen3.5-397B-A17B`,
 `Qwen3.6-35B-A3B`), TurboQuant is orthogonal to the expert routing —
@@ -298,8 +298,8 @@ out = model.generate(**tok("...", return_tensors="pt").to("cuda"),
 ### Validation
 
 `scripts/quantization/test_turboquant.py` runs the round-trip on
-`Qwen/Qwen3-0.6B` (closest text-only stand-in for `Qwen/Qwen3.5-0.8B`
-— see caveat above), with 5 TOON-shaped prompts from
+`Qwen/Qwen3-0.8B` (closest text-only stand-in for `Qwen/Qwen3.5-0.8B`
+— see caveat above), with 5 native JSON-shaped prompts from
 `data/final/val.jsonl` and a 4096-token long-context probe. It asserts
 (a) the per-token KV-cache size shrinks by at least 30% and (b) every
 quantized output is non-empty and not degenerate.
@@ -310,7 +310,7 @@ uv run python scripts/quantization/test_turboquant.py
 
 The full numeric report is written to
 `scripts/quantization/turboquant_report.json`. Last measured run on
-Qwen3-0.6B / 5080 (4-bit, skip={0}, 4096-token long context):
+Qwen3-0.8B / 5080 (4-bit, skip={0}, 4096-token long context):
 
 | metric | baseline (bf16 DynamicCache) | TurboQuant 4-bit | delta |
 |---|---|---|---|
@@ -422,7 +422,7 @@ exact failure mode. Without the headers the JIT cannot build and
 ### Validation
 
 `scripts/quantization/test_fused_turboquant.py` runs three paths back-to-
-back on `Qwen/Qwen3-0.6B` with 5 prompts × 128 new tokens at a 4096-token
+back on `Qwen/Qwen3-0.8B` with 5 prompts × 128 new tokens at a 4096-token
 prompt. It writes the full report to
 `scripts/quantization/fused_turboquant_report.json` and asserts:
 
@@ -433,7 +433,7 @@ prompt. It writes the full report to
 uv run python scripts/quantization/test_fused_turboquant.py
 ```
 
-#### Last measured run (Qwen3-0.6B, 5080 Laptop, 4-bit, 4096-token prompt + 128 new tokens)
+#### Last measured run (Qwen3-0.8B, 5080 Laptop, 4-bit, 4096-token prompt + 128 new tokens)
 
 | path | peak VRAM | tokens/sec | notes |
 |---|---|---|---|
@@ -535,7 +535,7 @@ context losslessly.
   number of bits per coord — at the canonical
   ``projection_dim_per_head=256`` the K-side ratio
   ``head_dim*2 / (projection_dim/8 + 2)`` works out to **7.53x for
-  head_dim=128** (Qwen3-0.6B / Llama-3 / Qwen3.5-2B), not the
+  head_dim=128** (Qwen3-0.8B / Llama-3 / Qwen3.5-2B), not the
   marketing-headline 16x (which would assume zero norm overhead).
   Pushing to ``projection_dim_per_head=128`` recovers ~14.2x at the
   cost of attention-score quality. The kernel hard-codes
@@ -560,7 +560,7 @@ score kernel ``cuda_qjl_gqa_score`` handles
 Should work, by structural match, on:
 
 - Qwen2 / Qwen2.5 (full-attention, GQA, head_dim=128)
-- Qwen3 0.6B / 1.7B / 4B / 8B (full-attention, GQA, head_dim=128) —
+- Qwen3 0.8B / 2B / 4B / 8B (full-attention, GQA, head_dim=128) —
   validated locally by the pure-PyTorch ratio probe in `test_qjl.py`
 
 #### Qwen3.5 / Qwen3.6 caveat (read this)
@@ -579,7 +579,7 @@ The 0.8B / 2B / 4B vision-language variants
 `AutoModelForVision2Seq` and the text decoder extracted via
 `model.language_model` before patching the attention modules. We have
 **not** done that integration yet — `test_qjl.py` falls back to
-`Qwen/Qwen3-0.6B` for the 0.8B-class validation.
+`Qwen/Qwen3-0.8B` for the 0.8B-class validation.
 
 ### Build
 
@@ -668,7 +668,7 @@ Useful knobs:
 
 ### Validation
 
-`scripts/quantization/test_qjl.py` runs on `Qwen/Qwen3-0.6B` (closest
+`scripts/quantization/test_qjl.py` runs on `Qwen/Qwen3-0.8B` (closest
 text-only stand-in for `Qwen/Qwen3.5-0.8B` — see caveat above):
 
 1. Attempts to build the vendored CUDA extension. If `nvcc` or
@@ -698,7 +698,7 @@ uv run python scripts/quantization/test_qjl.py
 
 The full numeric report is written to
 `scripts/quantization/qjl_report.json`. Last measured run on
-Qwen3-0.6B / 5080 (bf16 baseline cache, projection_dim=256, seed=42):
+Qwen3-0.8B / 5080 (bf16 baseline cache, projection_dim=256, seed=42):
 
 | metric | value | notes |
 |---|---|---|
@@ -735,7 +735,7 @@ Qwen3-0.6B / 5080 (bf16 baseline cache, projection_dim=256, seed=42):
   Hopper/Ampere host for actual inference.
 - **Hard-coded `EMB_DIM 128`** in
   `qjl/csrc/qjl_quant_kernel.cu:7`. The code only works for
-  `head_dim == 128` out of the box. Qwen3-0.6B / Qwen3.5-2B / Llama-3
+  `head_dim == 128` out of the box. Qwen3-0.8B / Qwen3.5-2B / Llama-3
   all match. If we later need to apply QJL to a model with
   `head_dim != 128`, the `#define EMB_DIM` must be edited and the
   kernel rebuilt; there is no runtime arg for it.
@@ -756,8 +756,8 @@ stream. Destructive transform — save to a NEW directory.
 
 ```
 uv run python scripts/quantization/abliteration_apply.py \
-    --checkpoint Qwen/Qwen3-0.6B \
-    --output checkpoints/qwen3-0.6b-abliterated \
+    --checkpoint Qwen/Qwen3-0.8B \
+    --output checkpoints/qwen3.5-0.8b-abliterated \
     --harmful-jsonl data/harmful.jsonl \
     --harmless-jsonl data/harmless.jsonl
 ```

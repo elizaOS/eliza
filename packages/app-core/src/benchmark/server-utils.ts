@@ -373,9 +373,19 @@ export function composeBenchmarkPrompt(params: {
     );
   }
 
-  segments.push(
-    "Respond using normal Eliza action output so actions/params can be executed and evaluated.",
-  );
+  const benchmark =
+    typeof params.context?.benchmark === "string"
+      ? params.context.benchmark
+      : undefined;
+  if (benchmark === "action-calling") {
+    segments.push(
+      "This is an action-calling benchmark. Use the available benchmark tool through Eliza's normal native action/function-calling path. Do not serialize tool calls in prose, XML, markdown, or JSON text.",
+    );
+  } else {
+    segments.push(
+      "Respond using normal Eliza action output so actions/params can be executed and evaluated.",
+    );
+  }
 
   return segments.join("\n\n");
 }

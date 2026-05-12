@@ -16,6 +16,7 @@ from ..types import Domain, Scenario
 from ._smoke_scenarios import SMOKE_SCENARIOS
 from .calendar import CALENDAR_SCENARIOS
 from .contacts import CONTACTS_SCENARIOS
+from .expanded import EXPANDED_SCENARIOS
 from .finance import FINANCE_SCENARIOS
 from .focus import FOCUS_SCENARIOS
 from .health import HEALTH_SCENARIOS
@@ -39,6 +40,7 @@ ALL_SCENARIOS: list[Scenario] = [
     *SLEEP_SCENARIOS,
     *FOCUS_SCENARIOS,
     *ALL_LIVE_SCENARIOS,
+    *EXPANDED_SCENARIOS,
 ]
 
 SCENARIOS_BY_ID: dict[str, Scenario] = {s.id: s for s in ALL_SCENARIOS}
@@ -52,6 +54,7 @@ __all__ = [
     "ALL_SCENARIOS",
     "CALENDAR_SCENARIOS",
     "CONTACTS_SCENARIOS",
+    "EXPANDED_SCENARIOS",
     "FINANCE_SCENARIOS",
     "FOCUS_SCENARIOS",
     "HEALTH_SCENARIOS",

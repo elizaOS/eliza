@@ -129,7 +129,11 @@ class MockWebShopAgent:
                 for opt, vals in out2.observation.product.options.items():
                     if not vals:
                         continue
-                    out3 = take_step(f"select_option[{opt}, {vals[0]}]")
+                    preferred = task.goal_attributes.get(f"{opt}_option")
+                    if preferred not in vals:
+                        preferred = task.goal_attributes.get(opt)
+                    value = preferred if preferred in vals else vals[0]
+                    out3 = take_step(f"select_option[{opt}, {value}]")
                     if out3 is None or out3.done:
                         break
                 if not ctx.done:

@@ -69,6 +69,7 @@ export type {
   LifeOpsSleepCycle,
   LifeOpsSleepCycleEvidence,
   LifeOpsSleepCycleEvidenceSource,
+  LifeOpsSleepHealthProvider,
   LifeOpsSleepCycleType,
   LifeOpsSleepDetectedFilters,
   LifeOpsSleepEndedFilters,

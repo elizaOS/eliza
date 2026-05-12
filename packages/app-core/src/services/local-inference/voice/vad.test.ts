@@ -20,12 +20,15 @@ import { makeSpeechWithSilenceFixture } from "./__test-helpers__/synthetic-speec
 import type { PcmFrame, VadEvent } from "./types";
 import {
   createSileroVadDetector,
+  createVadDetector,
   NativeSileroVad,
   RmsEnergyGate,
+  resolveVadProvider,
   rms,
   SileroVad,
   VadDetector,
   VadUnavailableError,
+  vadProviderOrder,
 } from "./vad";
 
 const SR = 16_000;
@@ -259,6 +262,74 @@ describe("VadDetector", () => {
 });
 
 describe("NativeSileroVad", () => {
+  it("documents the auto provider order: Qwen toolkit → native Silero → ONNX Silero", () => {
+    expect(vadProviderOrder()).toEqual([
+      "qwen-toolkit",
+      "silero-native",
+      "silero-onnx",
+    ]);
+    expect(vadProviderOrder("silero-native")).toEqual(["silero-native"]);
+  });
+
+  it("prefers a supplied Qwen toolkit VAD adapter over native and ONNX providers", async () => {
+    const qwenVad = new ScriptedSilero([
+      0.01, 0.9, 0.9, 0.02, 0.02, 0.02, 0.02, 0.02,
+    ]);
+    const ffi = fakeFfi("x", {
+      vadSupported: true,
+      vadProbs: [0.01],
+    });
+    const resolved = await resolveVadProvider({
+      qwenToolkitVad: {
+        isAvailable: () => true,
+        loadVad: async () => qwenVad,
+      },
+      ffi,
+      ctx: 1n,
+      modelPath: "/nonexistent/should-not-load.onnx",
+    });
+
+    expect(resolved.id).toBe("qwen-toolkit");
+    expect(resolved.vad).toBe(qwenVad);
+
+    const det = await createVadDetector({
+      qwenToolkitVad: {
+        loadVad: async () => qwenVad,
+      },
+      ffi,
+      ctx: 1n,
+      modelPath: "/nonexistent/should-not-load.onnx",
+      config: {
+        onsetThreshold: 0.5,
+        pauseHangoverMs: 64,
+        endHangoverMs: 128,
+        minSpeechMs: 1,
+      },
+    });
+    const events = await feedProbs(det, [0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(events.some((e) => e.type === "speech-start")).toBe(true);
+  });
+
+  it("falls back from an unavailable Qwen toolkit adapter to native Silero", async () => {
+    const ffi = fakeFfi("x", {
+      vadSupported: true,
+      vadProbs: [0.1],
+    });
+    const resolved = await resolveVadProvider({
+      qwenToolkitVad: {
+        isAvailable: () => false,
+        loadVad: async () => {
+          throw new Error("should not load");
+        },
+      },
+      ffi,
+      ctx: 1n,
+      modelPath: "/nonexistent/should-not-load.onnx",
+    });
+    expect(resolved.id).toBe("silero-native");
+    expect(await resolved.vad.process(new Float32Array(FRAME))).toBe(0.1);
+  });
+
   it("uses the native FFI path when support is advertised", async () => {
     const ffi = fakeFfi("x", {
       vadSupported: true,

@@ -1,0 +1,36 @@
+task_id: M030_video_snack_checklist
+task_name: Video Snack Checklist
+version: "1.0"
+category: video_image
+difficulty: medium
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    容器里有以下文件：
+    - /workspace/fixtures/video.mp4
+
+    请浏览这段 vlog，把其中出现的所有零食都截图下来（截图里零食的名称或包装要清晰可见），每种零食截一张最清晰的，同一零食不用重复截。在每张截图下标注零食名称，优先写英文，没有英文的话写中文。最后把所有截图和名称整合成一张美食打卡清单图片，输出为 /workspace/snack_checklist.jpg。
+  language: zh
+tools: []
+tool_endpoints: []
+sandbox_files:
+  - fixtures/video.mp4
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/snack_checklist.jpg
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Watch vlog video, screenshot each unique snack, label with name,
+  compose into a single checklist image saved as /workspace/snack_checklist.jpg.
+primary_dimensions:
+  - completion
+  - robustness
