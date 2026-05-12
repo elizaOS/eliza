@@ -265,11 +265,15 @@ sync_tree() {
   local target; target="$(ssh_target)"
   echo "[train_nebius][sync] rsyncing packages/training/ → $target:$REMOTE_TRAIN_DIR"
   ssh -o StrictHostKeyChecking=no "$target" "sudo mkdir -p $REMOTE_TRAIN_DIR && sudo chown -R \$USER $REMOTE_TRAIN_DIR"
+  # Keep the slim scripts/configs tree + benchmarks/ python+yaml (run_pipeline.py
+  # imports benchmarks.eliza1_gates) but drop the big corpora, raw data, old
+  # benchmark/checkpoint outputs, and caches.
   rsync -avhz --delete \
-    --exclude '.venv/' --exclude '.git/' --exclude 'wandb/' --exclude 'benchmarks/' \
+    --exclude '.venv/' --exclude '.git/' --exclude 'wandb/' \
     --exclude 'data/raw/' --exclude 'data/normalized/' --exclude 'data/synthesized/' \
     --exclude 'data/final/' --exclude 'data/final-eliza1-fullcorpus/' --exclude 'datasets/' \
     --exclude 'checkpoints/' --exclude '.hypothesis/' --exclude '.logs/' --exclude '.pytest_cache/' \
+    --exclude 'benchmarks/eliza-1-*/' --exclude 'benchmarks/__pycache__/' \
     "$ROOT/" "$target:$REMOTE_TRAIN_DIR/"
 
   if [ "$SYNC_FULLCORPUS_SOURCES" = "1" ]; then
@@ -302,6 +306,14 @@ run_remote() {
   local upsample="${ELIZA1_FULLCORPUS_UPSAMPLE:-1}"
   local hf_tok="${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}"
   local log="$REMOTE_TRAIN_DIR/run_${RUN_NAME}.log"
+  # The eliza1-sft-0_6b mix-in rows are ChatML (`{"messages":[...]}`), which
+  # validate_corpus.py (a native-record schema validator) cannot parse — so a
+  # combined corpus that includes them needs --allow-unvalidated-corpus. The
+  # build-time format_for_training.format_record gate already vets every row for
+  # train_local.py compatibility. Set ALLOW_UNVALIDATED_CORPUS=0 to re-enable
+  # the strict gate (only safe for a pure native-record corpus).
+  local allow_unval_flag=""
+  [ "${ALLOW_UNVALIDATED_CORPUS:-1}" = "1" ] && allow_unval_flag="--allow-unvalidated-corpus"
 
   echo "[train_nebius][run] run_pipeline.py registry=$REGISTRY_KEY run=$RUN_NAME world=$FSDP_WORLD_SIZE"
   echo "[train_nebius][run] corpus: train=$TRAIN_FILE val=$VAL_FILE test=$TEST_FILE rebuild_fullcorpus=$SYNC_FULLCORPUS_SOURCES upsample=$upsample"
@@ -328,7 +340,7 @@ uv run --extra train $launch scripts/run_pipeline.py \\
   --epochs 1 --lr 1e-5 --use-liger on \\
   --train-file $TRAIN_FILE --val-file $VAL_FILE --test-file $TEST_FILE \\
   --eval-mode full --bench-per-bucket 200 --skip-throughput-bench \\
-  --quantizers $QUANTIZE_AFTER --eliza1-bundle $base_bench_flag $push_flag
+  --quantizers $QUANTIZE_AFTER --eliza1-bundle $base_bench_flag $push_flag $allow_unval_flag
 echo "RUN_PIPELINE_DONE_OK"
 EOF
   ssh -o StrictHostKeyChecking=no "$target" "chmod +x $REMOTE_TRAIN_DIR/.run_pipeline.sh; tmux kill-session -t elizatrain 2>/dev/null || true; tmux new-session -d -s elizatrain \"bash $REMOTE_TRAIN_DIR/.run_pipeline.sh 2>&1 | tee $log; echo RUN_PIPELINE_EXIT=\\\$? >> $log\""
