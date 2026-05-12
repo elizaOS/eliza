@@ -686,7 +686,26 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
  * so we do not re-download multi‑GB models. Opt out:
  * `ELIZA_EMBEDDING_WARMUP_NO_REUSE=1`.
  */
+// In-flight promise cache so concurrent callers (bootElizaRuntime +
+// startEliza both run on agent boot) share a single download. Without this,
+// two `fs.createWriteStream(dest)` open the same GGUF target concurrently,
+// and the first to fail calls `safeUnlink(dest)` — which deletes the file
+// out from under the second's pending write. Downstream `llama.loadModel`
+// then opens the now-missing file and throws ENOENT, which surfaces as an
+// uncaughtException and kills the agent.
+let warmupInFlight: Promise<void> | null = null;
+
 async function warmupEmbeddingModel(
+  onProgress?: EmbeddingProgressCallback,
+): Promise<void> {
+  if (warmupInFlight) return warmupInFlight;
+  warmupInFlight = warmupEmbeddingModelImpl(onProgress).finally(() => {
+    warmupInFlight = null;
+  });
+  return warmupInFlight;
+}
+
+async function warmupEmbeddingModelImpl(
   onProgress?: EmbeddingProgressCallback,
 ): Promise<void> {
   // Mobile bundle does not ship `node-llama-cpp` (no Android prebuild) and
