@@ -972,6 +972,15 @@ declare module "./client-base" {
 // ---------------------------------------------------------------------------
 
 ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
+  try {
+    const viaRpc = await invokeDesktopBridgeRequest<AgentStatus>({
+      rpcMethod: "getAgentStatus",
+      ipcChannel: "agent",
+    });
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* fall through */
+  }
   return this.fetch("/api/status");
 };
 
