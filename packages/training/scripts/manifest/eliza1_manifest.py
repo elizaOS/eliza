@@ -1078,16 +1078,7 @@ def build_manifest(
             "score": embed_mteb_score if embed_mteb_score is not None else -1,
             "passed": bool(embed_mteb_passed),
         }
-    if any(
-        value is not None
-        for value in (
-            vad_latency_ms_median,
-            vad_latency_ms_passed,
-            vad_boundary_ms,
-            vad_endpoint_ms,
-            vad_false_barge_in_rate,
-        )
-    ):
+    if vad_latency_ms_median is not None or vad_latency_ms_passed is not None:
         evals["vadLatencyMs"] = {
             "median": vad_latency_ms_median if vad_latency_ms_median is not None else -1,
             "passed": bool(vad_latency_ms_passed),

@@ -52,6 +52,10 @@ let initialized = false;
  * into the in-memory cache and optionally syncs them to localStorage.
  */
 export async function initializeStorageBridge(): Promise<void> {
+  if (initialized) {
+    return;
+  }
+
   if (!isNative) {
     initialized = true;
     return;

@@ -63,6 +63,7 @@ import {
   type NetworkStatusChangeDetail,
   normalizeMobileRuntimeMode,
   preSeedAndroidLocalRuntimeIfFresh,
+  routeOnboardingDeepLink,
   resolveWindowShellRoute,
   SHARE_TARGET_EVENT,
   type ShareTargetPayload,
@@ -500,6 +501,10 @@ async function initializeNetworkListener(): Promise<void> {
 }
 
 function handleDeepLink(url: string): void {
+  if (routeOnboardingDeepLink(url, APP_URL_SCHEME)) {
+    return;
+  }
+
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -1029,6 +1034,9 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (isNative) {
+    await initializeStorageBridge();
+  }
   mountReactApp();
   await initializePlatform();
 }

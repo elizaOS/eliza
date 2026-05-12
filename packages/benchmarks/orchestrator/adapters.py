@@ -1447,7 +1447,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "terminal_bench": {
             "max_tasks": 1,
             "sample": True,
-            "timeout": 60,
+            "timeout": 180,
             "no_markdown": True,
             "no_sessions": True,
             "no_leaderboard": True,

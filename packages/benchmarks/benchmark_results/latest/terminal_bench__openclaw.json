@@ -1,7 +1,7 @@
 {
   "agent": "openclaw",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T021123Z_c2522f6b/terminal-bench__terminal_bench/run_terminal_bench_20260512T021123Z_1_e0adb28c/output"
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T021646Z_b3c78b3e/terminal-bench__terminal_bench/run_terminal_bench_20260512T021646Z_2_ab26b7b5/output"
   ],
   "benchmark_directory": "terminal-bench",
   "benchmark_id": "terminal_bench",
@@ -14,7 +14,7 @@
   "error": null,
   "higher_is_better": true,
   "metrics": {
-    "accuracy": 0.0,
+    "accuracy": 1.0,
     "cache_metrics": {
       "cache_creation_input_tokens": 0,
       "cache_hit_ratio": 0.0,
@@ -22,15 +22,14 @@
       "turns_with_cached_field": 0
     },
     "canonical_entries": 0,
-    "nonzero_return_code_with_result": 1,
-    "passed_tasks": 0,
+    "passed_tasks": 1,
     "performance_metrics": {
-      "duration_seconds": 206.94390170800034,
-      "mean_latency_ms": 0.0,
-      "p95_latency_ms": 0.0,
-      "throughput_per_second": 0.0048322274381924464
+      "duration_seconds": 126.20016708300682,
+      "mean_latency_ms": 434.4367980957031,
+      "p95_latency_ms": 434.4367980957031,
+      "throughput_per_second": 0.007923919778507588
     },
-    "return_code": 1,
+    "return_code": 0,
     "token_metrics": {
       "avg_completion_tokens": 0.0,
       "avg_prompt_tokens": 0.0,
@@ -49,16 +48,16 @@
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
-    "duration_seconds": 206.94390170800034,
-    "mean_latency_ms": 0.0,
-    "p95_latency_ms": 0.0,
-    "throughput_per_second": 0.0048322274381924464
+    "duration_seconds": 126.20016708300682,
+    "mean_latency_ms": 434.4367980957031,
+    "p95_latency_ms": 434.4367980957031,
+    "throughput_per_second": 0.007923919778507588
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T021123Z_c2522f6b/terminal-bench__terminal_bench/run_terminal_bench_20260512T021123Z_1_e0adb28c/output/terminal-bench-20260511_191450.json",
-  "run_group_id": "rg_20260512T021123Z_c2522f6b",
-  "run_id": "run_terminal_bench_20260512T021123Z_1_e0adb28c",
-  "score": 0.0,
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T021646Z_b3c78b3e/terminal-bench__terminal_bench/run_terminal_bench_20260512T021646Z_2_ab26b7b5/output/terminal-bench-20260511_191852.json",
+  "run_group_id": "rg_20260512T021646Z_b3c78b3e",
+  "run_id": "run_terminal_bench_20260512T021646Z_2_ab26b7b5",
+  "score": 1.0,
   "status": "succeeded",
   "token_metrics": {
     "avg_completion_tokens": 0.0,
@@ -75,5 +74,5 @@
     "turns": 1
   },
   "unit": "ratio",
-  "updated_at": "2026-05-12T02:14:50.315074+00:00"
+  "updated_at": "2026-05-12T02:18:52.422430+00:00"
 }
