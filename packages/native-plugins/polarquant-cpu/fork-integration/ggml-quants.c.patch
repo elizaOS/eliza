@@ -1,0 +1,16 @@
+--- a/ggml/src/ggml-quants.c
++++ b/ggml/src/ggml-quants.c
+@@ -<inside ggml_quantize_chunk's type switch, near the GGML_TYPE_TBQ4_0 case> @@
++    case GGML_TYPE_Q4_POLAR:
++        {
++            GGML_ASSERT(start % QK_POLAR == 0);
++            const block_q4_polar * block_start =
++                (block_q4_polar *)((char *)dst + (start / QK_POLAR) * sizeof(block_q4_polar));
++            // PolarQuant Q4 is sign-residual-friendly when use_qjl is on; the
++            // GGUF metadata key polarquant.use_qjl decides.  We default to 1
++            // here because the inner ggml_quantize_chunk caller is the GGUF
++            // converter pipeline, which only ever invokes us with Q4_POLAR
++            // when the producing safetensors sidecar carries QJL bits.
++            quantize_row_q4_polar(src + start, block_start, n, /*use_qjl=*/1);
++            result = (n / QK_POLAR) * sizeof(block_q4_polar);
++        } break;

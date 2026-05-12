@@ -1,0 +1,91 @@
+{
+  "name": "@elizaos/plugin-telegram",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1",
+    "@telegraf/types": "^7.1.0",
+    "@types/node": "^24.0.10",
+    "strip-literal": "^3.0.0",
+    "telegraf": "4.16.3",
+    "telegram": "^2.26.22",
+    "type-detect": "^4.1.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@elizaos/config": "^1.7.2",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
+    "test:live": "bun run test:e2e"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-telegram.git"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "TELEGRAM_API_ROOT": {
+        "type": "string",
+        "description": "Base URL for Telegram Bot API used by the TelegramService, allowing override of the default API endpoint.",
+        "required": false,
+        "sensitive": false
+      },
+      "TELEGRAM_BOT_TOKEN": {
+        "type": "string",
+        "description": "Telegram bot token used for authenticating and operating the Telegram bot.",
+        "required": true,
+        "sensitive": true
+      },
+      "TELEGRAM_ALLOWED_CHATS": {
+        "type": "string",
+        "description": "JSON-encoded array of Telegram chat IDs that are authorized to interact with the bot.",
+        "required": false,
+        "sensitive": false
+      },
+      "TELEGRAM_TEST_CHAT_ID": {
+        "type": "string",
+        "description": "Telegram chat ID used by the test suite to send, receive, and validate messages during Telegram bot tests.",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  }
+}

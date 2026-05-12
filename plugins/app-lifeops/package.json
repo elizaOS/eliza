@@ -1,0 +1,112 @@
+{
+  "name": "@elizaos/app-lifeops",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "description": "LifeOps app plugin: routines, goals, Google Workspace, Apple Calendar, Apple Reminders, Twilio, browser companion control, hosts-file blocking (self-control), and related agent surfaces.",
+  "sideEffects": [
+    "./src/widgets/index.ts",
+    "./src/api/client-lifeops.ts",
+    "./src/ui.ts",
+    "./dist/widgets/index.js",
+    "./dist/api/client-lifeops.js",
+    "./dist/ui.js"
+  ],
+  "main": "./dist/index.js",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js",
+      "default": "./dist/plugin.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "scripts": {
+    "lint:default-packs": "node scripts/lint-default-packs.mjs",
+    "verify": "bun run lint:default-packs && bun run build:types && bun run test",
+    "pretest": "node scripts/lint-default-packs.mjs",
+    "test": "vitest run --config vitest.config.ts",
+    "test:app-state": "vitest run --config vitest.config.ts eliza/plugins/app-lifeops/test/lifeops-app-state.test.ts",
+    "test:background-real": "vitest run --config vitest.background-real.config.ts test/scheduled-task-end-to-end.e2e.test.ts test/reminder-review-job.real.e2e.test.ts test/lifeops-scheduling.real.test.ts test/schedule-merged-state.real.test.ts",
+    "test:integration": "cd ../../.. && vitest run --config eliza/test/vitest/integration.config.ts eliza/plugins/app-lifeops/test/life-smoke.integration.test.ts",
+    "test:scenarios": "cd ../../.. && bun run scenarios:lifeops",
+    "bench:work-threads": "cd ../.. && bun plugins/app-lifeops/scripts/work-thread-benchmark.ts",
+    "verify:live-schedule": "bun run ./scripts/verify-live-schedule-data.ts",
+    "build": "bun run build:js && bun run build:types",
+    "clean": "rm -rf dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@capacitor/core": "8.3.1",
+    "@elizaos/agent": "2.0.0-beta.1",
+    "@elizaos/app-core": "2.0.0-beta.3",
+    "@elizaos/capacitor-appblocker": "2.0.0-beta.1",
+    "@elizaos/capacitor-calendar": "2.0.0-beta.1",
+    "@elizaos/capacitor-mobile-signals": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/native-activity-tracker": "2.0.0-beta.1",
+    "@elizaos/plugin-browser": "2.0.0-beta.1",
+    "@elizaos/plugin-calendly": "2.0.0-beta.1",
+    "@elizaos/plugin-discord": "2.0.0-beta.1",
+    "@elizaos/plugin-elizacloud": "2.0.0-beta.1",
+    "@elizaos/plugin-google": "2.0.0-beta.1",
+    "@elizaos/plugin-health": "2.0.0-beta.1",
+    "@elizaos/plugin-imessage": "2.0.0-beta.1",
+    "@elizaos/plugin-signal": "2.0.0-beta.1",
+    "@elizaos/plugin-telegram": "2.0.0-beta.1",
+    "@elizaos/plugin-whatsapp": "2.0.0-beta.1",
+    "@elizaos/plugin-x": "2.0.0-beta.1",
+    "@elizaos/scenario-schema": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.2",
+    "drizzle-orm": "0.45.2",
+    "lucide-react": "^1.0.0",
+    "react-plaid-link": "^4.0.1",
+    "sharp": "^0.34.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.4.0",
+    "@elizaos/scenario-schema": "2.0.0-beta.1",
+    "@types/jsdom": "^28.0.0",
+    "jsdom": "^29.0.0",
+    "tsup": "^8.5.1"
+  },
+  "peerDependencies": {
+    "react": "*"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {}
+  },
+  "elizaos": {
+    "app": {
+      "heroImage": "assets/hero.png",
+      "permissions": [
+        "reminders",
+        "calendar",
+        "health",
+        "screentime",
+        "notes"
+      ]
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ]
+}

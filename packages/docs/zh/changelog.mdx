@@ -1,0 +1,1131 @@
+---
+title: 更新日志
+description: Eliza 的最新动态——新功能、改进和修复。
+---
+
+<Update label="2026-04-23" description="4月23日当周；双钱包和云钱包配置、Agent Browser Bridge、自动化草稿、云代理配置 UX、BlueBubbles 连接器" tags={["Feature", "Update", "Fix"]}>
+
+<div id="dual-wallet-with-cloud-wallet-provisioning">
+## 带云钱包配置的双钱包
+</div>
+
+你的代理现在支持双钱包架构，[本地钱包和云钱包](/zh/rest/wallet)共存，每条链有一个主源。当你启用云钱包功能登录 [Eliza Cloud](/zh/guides/cloud) 时，EVM 和 Solana 钱包会从云端自动导入并设置为主钱包——无需手动设置。你可以随时切换主源，云钱包描述符也可以按需重新查询。如果登录期间配置失败，身份验证仍会成功，你可以稍后重试钱包配置。
+
+<div id="agent-browser-bridge">
+## Agent Browser Bridge
+</div>
+
+LifeOps Browser 扩展已重命名并重新定位为 **Agent Browser Bridge**——一个独立的浏览器扩展（Chrome 和 Safari），让你的代理能够在浏览器会话中观察和执行操作。该 bridge 作为独立应用运行，带有专用的设置面板、刷新的安装程序工件以及浏览器工作区视图中的新主页标签。现有的 LifeOps 浏览器工作流程可继续使用新的 bridge。
+
+<div id="automation-drafts">
+## 自动化草稿
+</div>
+
+[自动化](/zh/guides/cloud)视图现在支持在激活工作流之前起草工作流。一个新的草稿窗格让你可以编写范围限定于特定房间的工作流、规范化其标题，并在草稿无法交付时优雅地处理发送错误。草稿会一直保持在你的活动自动化列表之外，直到你准备好发布它们。
+
+<div id="cloud-agent-provisioning-ux">
+## 云代理配置 UX
+</div>
+
+云[仪表板](/zh/guides/cloud)现在能清晰地处理非运行中的 runtime 卡片。在卡片轮询就绪状态期间，主要的**打开**按钮会被禁用并标记为代理的当前状态（"启动中…"、"已停止"、"已暂停"、"无法访问"），配置期间会有脉动的状态点，以及一个解释预期启动时间的工具提示。一旦健康探测返回运行中状态，按钮会自动切换回实心的**打开**状态。从仪表板删除云代理和内联配置也已恢复。
+
+<div id="bluebubbles-connector">
+## BlueBubbles 连接器
+</div>
+
+新的 [BlueBubbles 连接器](/zh/connectors/bluebubbles)让你的代理能够通过 HTTP 连接到自托管的 [BlueBubbles](https://bluebubbles.app) 服务器，从而桥接到 iMessage。与直接读取本地 Messages 数据库的原生 iMessage 连接器不同，BlueBubbles 可以从同一网络上的任何机器访问，这使得它非常适合你的代理没有运行在保存 Messages 数据库的 Mac 上的情况。
+
+<div id="updates">
+## 更新
+</div>
+
+- **聊天和页面优化** — 页面范围内的聊天上下文、聊天小组件标题、聊天标题和聊天侧边栏都已精细化，以获得更干净的布局，并在页面切换之间提供更可靠的上下文。
+- **侧边栏和应用视图现代化** — 仪表板侧边栏控件、[应用视图](/zh/dashboard/apps)目录和应用侧边栏已经过清理，具有折叠的控件和更紧凑的密度。角色编辑器、[角色](/zh/agents/character-interface)布局、角色面板和角色侧边栏也已经过优化，以获得更一致的导航体验。
+- **连接器侧边栏清理** — 连接器配置侧边栏已经过清理和优化，具有更清晰的开关和用于启用/禁用各个平台的连接器开关。
+- **嵌入式知识上传** — [知识](/zh/guides/documents)系统现在支持直接从角色编辑器进行嵌入式上传，因此你可以在配置代理人格时附加参考材料。
+- **X (Twitter) 计费和状态** — X 连接器计费现在与其他云使用情况一起呈现，状态报告也通过新的测试覆盖得到了加强。
+- **云迁移修复** — 一个影响云部署代理的迁移问题已被解决，因此升级在首次启动时能干净地应用。
+- **iOS runtime 入门模式** — iOS 应用现在支持不同的 runtime 构建和入门模式，为移动用户提供更流畅的首次运行体验。
+- **可访问性清理** — 仪表板微标签、页面 chrome 和状态 affordances 已经过清理，以获得更好的可访问性一致性。
+
+<div id="bug-fixes">
+## 错误修复
+</div>
+
+- 修复了 n8n sidecar 在某些配置中无法干净恢复的问题——sidecar 现在能可靠地启动和故障转移
+- 修复了从侧边栏打开时自动化深层链接未滚动到正确部分的问题——哈希锚点现在能正确解析
+- 修复了云仪表板允许用户点击非运行中 runtime 卡片上的"打开"按钮，导致页面失效的问题
+- 修复了 Agent Browser Bridge 中浏览器工作区标签未在会话之间重置的问题
+
+</Update>
+
+<Update label="2026-04-20" description="4月20日当周；更智能的动作路由、跨渠道消息准确性、训练优化器改进" tags={["Update", "Fix"]}>
+
+<div id="smarter-action-routing">
+## 更智能的动作路由
+</div>
+
+当你用自然语言命令时，你的代理现在能更可靠地选择正确的动作。让代理"把这个发到 Discord"不再会意外触发日程安排，而像"我多久没跟 Sarah 聊天了？"这样的关系查询现在无论措辞如何都能正确解析。跨渠道发送、关系查询和设备意图同步动作都有了更精确的描述，帮助动作规划器区分听起来相似的请求。
+
+<div id="updates">
+## 更新
+</div>
+
+- **训练优化器准确性** — [训练系统](/zh/guides/training)现在使用严格的动作名称匹配来评分动作规划器输出，而不是模糊的 token 重叠，因此优化运行能对你的代理行为产生更有意义的改进。
+- **技能动作整合** — 旧的技能调用方法已被淘汰。`USE_SKILL` 现在是触发[技能](/zh/plugins/skills)的唯一方式，所有之前的别名（`RUN_SKILL`、`INVOKE_SKILL`）会自动重定向到它。
+- **技能 API 简化** — [技能](/zh/plugins/skills)的启用/禁用端点已整合为单一切换界面，使技能管理对集成和自动化更加可预测。
+- **健康连接器优雅恢复** — 如果连接器的健康检查暂时不可达，运行时现在会优雅降级，而不是阻止其他动作的运行。
+
+<div id="bug-fixes">
+## 错误修复
+</div>
+
+- 修复了 Windows 桌面安装程序在文件路径较长的系统上失败的问题——构建现在自动启用扩展路径支持
+- 修复了桌面应用图标在 Windows 安装程序中无法正确显示的问题
+
+</Update>
+
+<Update label="2026-04-19" description="4月19日当周；仪表盘重新设计、n8n 工作流自动化、life-ops 连接器界面、移动端响应式" tags={["Feature", "Update", "Fix"]}>
+
+<div id="dashboard-redesign">
+## 仪表盘重新设计
+</div>
+
+[云端仪表盘](/zh/guides/cloud)首页已完全重新设计。代理卡片现在使用以数据为先的布局，配有更简洁的实例网格和筛选标签以便快速浏览。新的持久侧边栏配有垂直标签页，取代了之前的导航方式，主区域现在以排版为核心，带来更安静、更易读的浏览体验。你可以直接从仪表盘通过内联弹窗配置新的云端代理——不再需要跳转到其他页面创建代理。云端代理的删除和卡片操作管理也已恢复。
+
+<div id="n8n-workflow-automations">
+## Workflows 工作流自动化
+</div>
+
+你的代理现在通过新插件支持 [n8n](https://n8n.io) 工作流自动化。自动化视图中的专用工作流面板让你可以浏览、激活、停用和删除工作流。n8n sidecar 在插件启用时自动启动，状态更新实时轮询。旧的 n8n 插件已被淘汰，由这个新集成取代。
+
+<div id="life-ops-connector-ui-overhaul">
+## Life-ops 连接器界面改版
+</div>
+
+[Life-ops](/zh/rest/lifeops) 连接器设置面板已重新设计，采用扁平无边框卡片布局。每个连接器——Signal、Discord、Telegram 和 iMessage——现在都显示清晰的连接按钮和适配平台的权限面板。冗余的边框和卡片容器已被移除，云端警告横幅已降级为柔和的内联文字，使界面保持干净且易于浏览。
+
+<div id="updates">
+## 更新
+</div>
+
+- **移动端响应式首页** — 仪表盘首页现在在手机和平板上完全响应式。顶部栏固定，使菜单按钮在长页面上始终可访问，筛选标签在窄屏上水平滚动，触摸目标满足适合触摸的尺寸，所有视口宽度上的水平溢出均已消除。
+- **设置面板精简** — 云端和 AI 模型设置面板已简化。占位符 UI（如代理网格、使用指标和失效的外部链接）已被移除。模型选择下拉菜单现在即使在明确连接到云端之前也能正确显示。
+- **OpenRouter SDK 升级** — OpenRouter 插件已升级到 `@openrouter/ai-sdk-provider` v2.0.0，改进了模型路由和兼容性。
+- **Discord 任务代理清理** — Discord 中[编程代理](/zh/guides/coding-swarms)的消息现在更加干净。心跳更新显示实际经过的时间而不是内部工具名称，会话状态和验证器分析等调试级别的消息不再泄露到频道中。
+- **首页无障碍性** — 弹窗和运行时卡片现在符合无障碍对等标准，具有适当的 ARIA 属性，微标签、状态提示和侧边栏行的对比度也已改善。
+
+<div id="bug-fixes">
+## 错误修复
+</div>
+
+- 修复了代理 Web 界面在不支持 WebGPU 的浏览器中显示空白屏幕的问题（未启用 flag 的 Chrome、Safari、无头 Chromium）——polyfill 现在可以防止 three.js 初始化崩溃
+- 修复了代理 Web 界面因浏览器 bundle 尝试解析品牌默认值时出现 "require is not defined" 错误而显示空白屏幕的问题
+- 修复了云端钱包余额 API 返回 500 错误的问题，因为 Steward 钱包路由存根缺少子路径导出
+- 修复了首页的"打开 Eliza"按钮在没有本地运行时运行时导航到无效端口的问题——现在会显示安装指南
+- 修复了云端代理配置弹窗在提交按钮成功后重新启用时允许重复创建代理的问题
+- 修复了 life-ops 连接器卡片不显示连接按钮的问题
+- 修复了 Vite 6 浏览器构建因未解析的仅服务器端插件导入而崩溃的问题——这些现在已正确 stub 处理
+
+</Update>
+
+<Update label="2026-04-17" description="4月17日当周；life-ops 个人账户连接器、Google 多账户、Steward 云端钱包自动配置" tags={["Feature", "Update", "Fix"]}>
+
+<div id="life-ops-personal-account-connectors">
+## Life-ops 个人账户连接器
+</div>
+
+你的代理现在可以连接到你的个人 Signal、Discord 和 Telegram 账户——不仅仅是机器人账户——将消息聚合到 [life-ops](/zh/rest/lifeops) 系统中。Signal 使用关联设备二维码配对，Discord 使用 OAuth2，Telegram 支持手机/验证码/2FA 认证。连接后，来自这些平台的消息会与 Gmail 和 Calendar 一起流入代理的统一收件箱，让你的代理对你的通信有更全面的了解。
+
+<div id="multi-account-google-connector">
+## Google 多账户连接器
+</div>
+
+[life-ops](/zh/rest/lifeops) 的 Google 集成现在支持每侧多个 Google 账户——包括你（所有者）和你的代理。日历事件和 Gmail 消息在所有已连接账户中聚合，即使你为工作和个人使用不同的 Google 账户，也能获得统一视图。设置中新增的账户管理面板允许你单独添加、删除和配置每个账户。现有的单账户设置无需任何更改即可继续工作。
+
+<div id="steward-wallet-auto-provisioning-on-cloud-login">
+## 云端登录时 Steward 钱包自动配置
+</div>
+
+当你从桌面应用程序登录 [Eliza Cloud](/zh/guides/cloud) 时，现在会自动配置一个由 [Steward](/zh/guides/wallet) 管理的钱包。你不再需要在连接到云端后手动配置 Steward 凭证——钱包页面、支出策略和交易签名在你登录后即可开箱即用。
+
+<div id="updates">
+## 更新
+</div>
+
+- **Pipeline hooks** — 新的 hooks 系统允许运行时在代理 pipeline 的关键节点执行自定义逻辑，为插件作者和高级用户提供对请求处理方式的更多控制。
+- **Life-ops UI 清理** — life-ops 设置面板中的冗余描述和填充文本已被移除，使连接器配置更清晰、更易于浏览。
+- **跨平台地区标签** — 界面中对 "on this Mac" 的引用已更新为 "on this device"，使措辞在 Windows、Linux 和移动设备上准确无误。
+- **OAuth 认证 URL 改进** — life-ops 中的 Google OAuth 流程现在更可靠地显示授权 URL，修复了连接新账户时链接未显示的情况。
+- **移动应用构建改进** — iOS 构建现在通过 CocoaPods 从源代码编译所有四个官方 Capacitor 插件并兼容 Xcode 16，Android 构建从配置中动态处理应用身份。
+
+<div id="bug-fixes">
+## 错误修复
+</div>
+
+- 修复了桌面应用在打包构建重启后卡住的问题，原因是误报的就绪检查匹配了聊天视图中的加载文本
+- 修复了 iOS 构建在 Xcode 16 下 Swift Package Manager 二进制剥离失败的问题
+- 安全：将 Vite 升级到 6.4.2，DOMPurify 升级到 3.4.0，以解决传递依赖中的路径遍历和 XSS 漏洞
+
+</Update>
+
+<Update label="2026-04-10" description="4月10日当周；Eliza Cloud 用于编程代理、联系人视图、内容包选择器、Discord 云端设置、连接丢失覆盖层" tags={["Feature", "Update", "Fix"]}>
+
+<div id="eliza-cloud-as-a-provider-for-coding-agents">
+## Eliza Cloud 作为编程代理的提供商
+</div>
+
+[编程代理](/zh/guides/coding-swarms)（Claude Code、Codex、Aider）现在可以使用 Eliza Cloud 作为其 LLM 提供商。在编程代理设置中选择 "Eliza Cloud"，绑定你的云 API 密钥，你的编程会话将通过云端路由——无需为每个代理单独配置 API 密钥。设置界面会反映每个代理的认证就绪状态，让你一目了然地看到哪些代理已准备就绪。改进的终端配色方案也使 Codex 输出更易于阅读。
+
+<div id="contacts-view">
+## 联系人视图
+</div>
+
+高级部分新增了"联系人"选项卡，为你提供代理关系的可视化地图。通过搜索和筛选浏览联系人，查看关系强度和信任级别，并查看身份集群图以展示代理连接之间的相互关系。联系人系统现已内置于核心运行时——无需单独的插件。
+
+<div id="content-pack-picker">
+## 内容包选择器
+</div>
+
+[入门引导](/zh/guides/beginners-development-guide)的身份步骤和角色编辑器现在包含内容包浏览器。从可用的主题包中选择，直接在设置过程中或随时从角色编辑器自定义代理的启动体验、背景和品牌。
+
+<div id="discord-cloud-settings">
+## Discord 云端设置
+</div>
+
+云端部署的代理现在在[云端仪表板](/zh/guides/cloud)中提供完整的 Discord 配置面板。配置 DM 策略、公会行为、操作开关（反应、贴纸、投票、主题帖）、消息格式和特权意图——全部无需编辑配置文件。
+
+<div id="connection-lost-overlay">
+## 连接丢失覆盖层
+</div>
+
+当代理的后端变得不可达时，仪表板现在会显示一个清晰的全屏覆盖层，而不是静默失败。覆盖层指示连接已丢失，并在后端恢复可用时自动更新。
+
+<div id="updates">
+## 更新
+</div>
+
+- **聊天来源指示器简化** — 侧边栏和收件箱中的跨频道来源标签现在使用紧凑图标代替完整文本徽章，减少视觉杂乱的同时仍然显示每条消息来自哪个平台。
+- **连接器身份和投递检查** — 来自连接器的消息现在包含更丰富的身份元数据和投递状态，使在[收件箱](/zh/guides/connectors)中追踪跨平台消息路由更加容易。
+- **轨迹场景分组** — [轨迹视图](/zh/advanced/trajectories)现在将相关的 LLM 调用分组为命名场景并提供历史筛选器，使跨会话审查和比较代理行为更加容易。
+- **高级记忆存储** — 你的代理现在可以持久化超出默认对话历史的结构化记忆。这实现了跨会话的更好上下文回忆，可通过代理配置使用。
+- **云端语音支持加固** — 云端容器现在包含原生音频编码依赖，因此 Discord 语音和 TTS 无需额外配置即可可靠工作。当语音依赖缺失时，系统会优雅降级并显示清晰的错误信息而不是崩溃。
+- **知识插件自动配置** — 知识插件现在在 API 密钥或云提供商可用时自动启用，并从现有配置中自动检测你的文本提供商和模型。无需手动设置即可开始使用[知识](/zh/guides/documents)。
+
+<div id="bug-fixes">
+## 错误修复
+</div>
+
+- 修复了[应用视图](/zh/dashboard/apps)中的游戏目录显示已删除或不可用应用的问题——注册表现在会将其过滤掉
+- 修复了游戏视图导致过多轮询请求可能拖慢仪表板的问题
+- 修复了配置更新后入门引导角色预设未正确加载的问题
+- 修复了代理运行时完成启动前音乐播放器状态端点返回错误的问题
+- 修复了编程代理设置在保存请求失败时静默丢弃已保存 API 密钥的问题——错误现在会内联显示
+
+</Update>
+
+<Update label="2026-04-08" description="4月8日当周；插件安装后自动重启、跳过入门引导、EVM 选择加入、稳定性修复" tags={["Update", "Fix"]}>
+
+<div id="auto-restart-after-plugin-install">
+## 插件安装后自动重启
+</div>
+
+在桌面应用上安装插件现在会自动重启代理，使新插件立即生效。进度指示器显示重启状态，如果重启失败，你会收到清晰的错误消息而不是静默挂起。不再需要每次安装插件后手动重启。
+
+<div id="onboarding-skipped-when-already-configured">
+## 已配置时跳过入门引导
+</div>
+
+如果你的后端已经设置好了——例如，从备份恢复或重新连接现有代理之后——[入门引导向导](/zh/guides/beginners-user-guide)现在会自动跳过。你可以直接进入聊天，而不是重新走一遍已经完成的设置步骤。
+
+<div id="updates-1">
+## 更新
+</div>
+
+- **EVM 插件现为选择加入** — EVM 钱包插件之前在存在 EVM 私钥时会自动加载，但注册问题导致启动崩溃。现在需要在环境中设置 `ENABLE_EVM_PLUGIN=1` 才能激活。上游问题解决后，自动启用将恢复。详见[钱包设置](/zh/guides/wallet)。
+- **更流畅的桌面认证** — 短暂的网络中断不再触发桌面应用上不必要的重新认证提示。瞬态 401 响应现在会被优雅处理，使你的会话保持连接。
+
+<div id="bug-fixes-1">
+## 错误修复
+</div>
+
+- 修复了在 Docker、无头环境和云环境中缺少桌面专用可选包时插件导致代理启动崩溃的问题——这些插件现在会优雅降级
+- 修复了多个组件同时初始化时并发数据库迁移损坏启动状态的问题
+- 修复了运行时重启后桌面应用未检测到端口变化需要完全重启应用的问题
+- 修复了 Windows 桌面健康检查由于激进的轮询间隔在启动期间超时的问题
+
+</Update>
+
+<Update label="2026-04-07" description="开发者诊断、life-ops PGlite 迁移、workspace 脚本、终端开发横幅" tags={["Fix", "Update"]}>
+
+<div id="life-ops-safer-migrations-on-pglite">
+## Life-ops：PGlite 上更安全的迁移
+</div>
+
+life-ops 子系统的架构升级现在在所有权 `ALTER TABLE` 步骤之后运行核心索引，因此早于 `domain` 和 `subject_*` 列的旧数据库在 `CREATE INDEX` 时不再失败。每次迁移的 savepoint 也被包装在显式的 `BEGIN` / `COMMIT` 事务中，使 PGlite 和 Postgres 在升级期间都遵守 `SAVEPOINT` 语义。
+
+<div id="plugin-resolution-why-optional-plugins-were-requested">
+## 插件解析：为什么请求了可选插件
+</div>
+
+当可选插件因缺少包或 browser stagehand checkout 而无法加载时，启动日志现在会包含将其添加到加载集的第一个配置来源或环境变量。这将通用的 "Cannot find module" 错误转变为可操作的修复：从 `plugins.allow` 中移除它、取消自动启用它的环境变量，或安装该包。
+
+<div id="workspace-tooling-and-repo-hygiene">
+## Workspace 工具和仓库清理
+</div>
+
+新的 workspace 依赖脚本（`workspace:deps:sync|check|restore`、`workspace:replace-versions`、`workspace:restore-refs`、`workspace:prepare`）减少了在链接本地 elizaOS 或插件 checkout 时对 `package.json` 的手动修改。仓库现在还忽略 `cache/audio/` 和 `scripts/bin/*`，同时保留 `scripts/bin/.gitkeep`，使本地二进制文件和缓存不进入 git。
+
+<div id="terminal-dev-banners">
+## 终端开发横幅
+</div>
+
+编排器、Vite、API 和 Electrobun 现在可以在本地开发期间打印带框的设置表格，带有可选的 figlet 风格标题和 TTY 感知的 ANSI 着色。这严格用于开发者工作流的终端诊断，不是仪表盘 UI 的更改。
+
+</Update>
+
+<Update label="2026-04-05" description="仪表盘聊天：操作回调就地替换（类似 Discord 的 SSE 渐进式消息）" tags={["Update", "Fix"]}>
+<div id="action-callbacks-replace-dont-concatenate-dashboard-sse">
+## 操作回调：替换而非拼接（仪表盘 SSE）
+</div>
+
+长时间运行的 **操作** 多次调用 `HandlerCallback`——与 Discord 上的**渐进式消息**模式相同——现在会在流式助手回复中**替换**之前的回调文本，而不是**追加**。
+
+**原因：** 在 Discord 上，一条消息会被**就地编辑**。Web 仪表盘通过 **SSE** 进行流式传输；简单地将每个回调与现有字符串合并会产生粘连的状态行（`🔍 …🔍 …✨ …Now playing…`），与 Telegram/Discord 的实时更新相比显得异常。
+
+**实现方式：** `generateChatResponse` 在该轮对话中**第一次操作回调之前**快照已存在的文本（`preCallbackText`，通常是 LLM 的流式回复）。之后每次回调将可见内容设置为 `preCallbackText + "\n\n" + latestCallbackText`，并发出一个 SSE **快照**，使客户端现有的 `fullText` 处理逻辑更新单个助手气泡。
+
+**插件契约：** 不变——插件继续调用 `callback({ text, source })`。无需 WebSocket 侧信道或运行时特定的钩子。
+
+**文档：** [操作回调与 SSE 流式传输](/zh/runtime/action-callback-streaming)。
+
+</Update>
+
+<Update label="2026-07-02" description="6月26日至7月2日当周；插件配置表单、Discord 命令、云端加固" tags={["Feature", "Update", "Fix"]}>
+<div id="chat-driven-plugin-configuration">
+## 聊天驱动的插件配置
+</div>
+
+你的代理现在可以通过对话帮助你配置插件。让你的代理设置一个插件，它会在聊天中直接生成一个交互式表单——无需导航到设置页面。代理会检测你询问的是哪个插件，生成正确的配置字段，并在提交时应用你的选择。详情请参阅[插件](/zh/plugins/overview)。
+
+<div id="discord-slash-commands">
+## Discord 斜杠命令
+</div>
+
+Eliza 现在支持原生 Discord 斜杠命令。本周推出四个命令——`/skill`、`/workspace`、`/shell` 和 `/cron`——让你可以直接从 Discord 管理技能、工作区、shell 访问和计划任务。还提供了一个带有自动视觉支持的 `/issue` 命令，可以通过截图提交问题。请参阅 [Discord 连接器](/zh/connectors/discord)了解设置方法。
+
+<div id="skills-marketplace-with-remote-registry">
+## 带远程注册中心的技能市场
+</div>
+
+你现在可以直接在仪表盘中从远程注册中心浏览和安装技能。[技能](/zh/plugins/skills)市场连接到托管目录，因此社区贡献的新技能会自动出现，无需更新 Eliza。
+
+<div id="vincent-oauth-wallet-login">
+## Vincent OAuth 钱包登录
+</div>
+
+[钱包](/zh/guides/wallet)界面现在支持 Vincent OAuth 登录，为你提供基于浏览器的身份验证流程，无需手动输入凭据即可连接钱包服务。
+
+<div id="steward-evm-signing-for-cloud-containers">
+## 云端容器的 Steward EVM 签名
+</div>
+
+部署在云端的代理现在可以通过 [Steward](/zh/guides/wallet) 桥接签署 EVM 交易。当云端容器配置了 Steward 后，交易和转账会自动通过策略执行的签名代理路由——桌面端提供的相同安全控制现在也可在云端部署中使用。
+
+<div id="splash-screen-with-asset-preloading">
+## 带资源预加载的启动画面
+</div>
+
+启动体验已重新设计，采用复古风格的启动画面，在后台预加载 VRM 虚拟形象、图标和语音资源，并显示可见的进度条。回访用户会自动跳过启动画面。结果是更快的可交互时间，首次加载时没有无样式内容闪烁或 VRM 加载器闪烁。
+
+<div id="updates">
+## 更新
+</div>
+
+- **代理上下文感知** — 你的代理现在在回答问题时了解自己的模型配置、钱包状态和已安装的插件，因此可以更准确地回答关于自身功能的问题。
+- **云端模型默认值更新** — 云端容器现在默认使用 Sonnet 4.6 和 Minimax M2.7，提供更好的开箱即用响应质量。
+- **数据库和运行时视图中的侧边栏搜索** — [数据库](/zh/advanced/database)和运行时视图现在在侧边栏标题中包含搜索功能，更方便在大型数据集中查找表和条目。
+- **插件按状态排序** — [插件](/zh/plugins/overview)和[连接器](/zh/guides/connectors)列表现在将就绪/启用的插件显示在顶部，让你快速查看哪些是活跃的。
+- **插件按类别分组** — 插件列表现在显示类别标签并进行可视化分组，更方便浏览大型插件集合。
+- **深色模式对比度柔化** — 深色模式表面使用更深的背景和更暗的文字，减少长时间使用时的视觉疲劳。
+- **重启横幅改为通知** — "需要重启"横幅现在是右下角的紧凑型通知，而不是全宽度横幅，减少视觉干扰。
+- **数据库表浏览器扩展** — [数据库](/zh/advanced/database)表浏览器现在正确填充可用空间，具有全宽度空状态和正确的溢出处理。
+- **云端轨迹日志** — 云端容器现在记录轨迹数据，你可以在[轨迹视图](/zh/advanced/trajectories)中查看云端部署代理的 LLM 调用历史。
+- **云端账户和服务路由分离** — 云端登录和服务路由（推理、RPC、媒体）现在是独立的，你可以登录云端而不必将所有服务路由通过它。
+- **旧版云端配置迁移** — 旧的云端配置格式在启动时自动迁移，防止更新后设置被静默忽略。
+
+<div id="bug-fixes">
+## 错误修复
+</div>
+
+- 修复了云端配置的容器未启用知识、心跳或 TTS 的问题——这些功能现在在云端部署中正确激活
+- 修复了云端配置的容器显示引导向导而非直接跳转到代理的问题——托管容器现在立即启动
+- 修复了云端容器在登录后报告错误连接状态的问题
+- 修复了插件安装在插件管理器暂时不可用时静默失败的问题——安装现在会重试并正常恢复
+- 修复了 Windows 桌面权限、摄像头路由和关机在某些配置下无法正常工作的问题
+- 修复了在 Windows 上使用 Git Bash 时 Electrobun tar 提取失败的问题
+- 修复了 EVM 插件因静态导入而在启动时崩溃的问题——现在已改为可选激活标志
+- 修复了 Steward EVM 地址在首次启动时无法被钱包界面发现的问题
+- 修复了云端登录因偏好保存竞态条件而立即注销的问题
+- 修复了数据库视图空状态未填满可用宽度的问题
+- 修复了角色重置未清除界面中虚拟形象、预设和语音选择的问题
+- 修复了提供商 API 密钥未从启动时保存的配置中加载的问题
+- 修复了在设置中保存新 API 密钥时代理运行时未自动重启的问题
+
+</Update>
+
+<Update label="2026-04-16" description="4月10日至16日当周" tags={["Feature", "Update", "Fix"]}>
+<div id="keyboard-shortcuts-overlay">
+## 键盘快捷键叠加层
+</div>
+
+在应用的任何位置按 `Shift+?` 即可查看所有可用的键盘快捷键。叠加层按类别分组快捷键——代理、导航、刷新和实用工具——让你无需离开键盘即可发现命令。
+
+<div id="training-backend-detection">
+## 训练后端检测
+</div>
+
+在开始微调任务之前，Eliza 现在会自动检测可用的计算后端（MLX、CUDA、CPU）并验证你的选择。如果你请求一个不可用的后端，会收到明确的错误提示，而不是静默失败。检测到的后端也可通过[训练 API](/zh/rest/training) 获取。
+
+<div id="orchestrator-trajectory-view">
+## 编排器轨迹视图
+</div>
+
+群体编排器发出的 LLM 调用现在带有来源元数据标签，并在[轨迹视图](/zh/advanced/trajectories)中以紫色徽章显示。你可以查看编排器做出了哪些决策、它们与哪个会话和任务相关，以及它们与单个代理调用有何不同。
+
+<div id="updates">
+## 更新
+</div>
+
+- **流中断恢复** — 如果 LLM 响应流在消息中途中断，聊天现在会将其标记为"(响应已中断)"并显示重试按钮，让你无需重新输入即可重新生成。此前，中断的流会留下一条不完整的消息且无法恢复。
+- **终端会话持久化** — 编程代理终端现在在你切换标签页时保持活跃，并在 WebSocket 断开后自动重连。你在浏览仪表盘时不再丢失终端上下文。
+- **语音速率限制** — 语音发送端点现在强制执行 2,000 字符的文本上限和每会话速率限制，以防止快速连续的 TTS 滥用。超过任一限制的请求会收到明确的错误响应。
+- **重连进度指示器** — 当仪表盘失去 WebSocket 连接时，你现在会看到一个琥珀色的"正在重连（第 X/15 次尝试）..."横幅和旋转指示器，然后才会出现失败横幅，让你能看到重试过程。
+
+<div id="bug-fixes">
+## 错误修复
+</div>
+
+- 修复了编程代理停止按钮不起作用的问题——点击停止现在可以正确终止活跃会话
+- 修复了打开编程代理面板时终端输出重复的问题
+- 修复了当服务器返回 HTML 而非二进制数据时，VRM 虚拟形象和 3D 资源静默加载失败的问题
+- 修复了内存监控问题——新增了一个调试面板，可在长时间运行的会话中跟踪堆内存使用情况
+<Update label="2026-06-11" description="6月5日至11日当周" tags={["Update", "Fix"]}>
+<div id="unified-provider-configuration">
+## 统一的提供商配置
+</div>
+
+引导、设置和订阅流程现在共享单一的提供商配置契约。此前，在一个地方更改模型提供商并不总是反映到其他地方——现在提供商选择在所有地方保持一致。钱包 RPC 提供商选项也从您保存的钱包配置中初始化，而不是回退到硬编码的默认值。
+
+<div id="updates">
+## 更新
+</div>
+
+- **Companion shell 启动稳定性** — Companion 视图在启动时不再卡住或出现异常行为。启动后的路由现在绑定到活动标签页，欢迎动画也正确排序，确保 shell 在首次打开时干净地加载。
+- **TTS 语言准确性** — 文字转语音现在在每个语音片段上显式设置语言标签，防止系统回退到操作系统的区域设置而产生意外的发音。
+- **深色模式 shell 标题栏可见性** — Shell 标题栏中的切换按钮边框在深色模式下现在可见，修复了之前难以看清的对比度问题。
+- **连接器搜索自动填充已阻止** — 连接器面板中的搜索输入框不再触发浏览器自动填充建议，此前这些建议可能会遮挡结果列表。
+- **按钮点击区域规范化** — 小型和大型按钮变体现在具有一致的垂直内边距，使整个仪表盘中的点击和触摸目标更加可靠。
+
+<div id="bug-fixes">
+## 错误修复
+</div>
+
+- 修复了 embedding 释放过程中的竞态条件，该问题可能导致清理期间正在进行的操作失败
+- 修复了一次性错误提示不显示的问题——瞬态操作错误现在会显示一次并自动消失，而不是被静默吞没
+</Update>
+
+<Update label="2026-06-04" description="5月29日至6月4日当周" tags={["Feature", "Update"]}>
+## Privy 服务器钱包
+
+您的代理现在可以通过 Privy 的服务器端钱包基础设施来配置和管理钱包。三个新的 API 端点 — `/api/privy/status`、`/api/privy/login` 和 `/api/privy/logout` — 自动处理 Ethereum 和 Solana 链的钱包配置。配置您的 Privy 凭据，系统会在您的代理需要时按需创建钱包。详情请参阅[钱包指南](/guides/wallet)。
+
+## 对话历史回滚
+
+您现在可以使用新的 `POST /api/conversations/:id/messages/truncate` 端点从特定消息开始截断对话。传入 `messageId` 可删除该消息及其后的所有内容，让您无需重新开始即可撤销对话中的错误方向。详情请参阅[对话 API 参考](/rest/conversations)。
+
+## 原生 Signal 设备配对
+
+Signal 连接器现在支持通过二维码进行原生设备配对，用专门构建的原生桥接替代了之前对 signal-cli 的依赖。配对通过新的 `/api/signal/*` 端点管理，处理会话生命周期、二维码生成和连接状态 — 使 Signal 的设置更快、更可靠。详情请参阅 [Signal 插件文档](/plugin-registry/platform/signal)。
+
+## 更新
+
+- **旧版 Electron 环境变量已移除** — `ELIZA_ELECTRON_API_BASE` 和 `ELIZA_ELECTRON_TEST_API_BASE` 不再受支持。Electrobun 迁移已完成 — 请改用当前的 Electrobun 配置路径。详情请参阅[桌面应用指南](/apps/desktop)。
+- **模块化运行时打包** — 核心自主代理服务已提取为独立包，改善了模块边界并减少了轻量级部署的启动开销。
+</Update>
+
+<Update label="2026-05-07" description="5月1日至7日当周" tags={["Feature", "Update"]}>
+<div id="agent-export-and-import">
+## 代理导出与导入
+</div>
+
+您现在可以使用一个加密文件在不同机器之间迁移代理。导出功能捕获代理的完整状态——角色、记忆、知识、关系和配置——生成一个受密码保护的 `.eliza-agent` 归档文件。在另一台机器上导入即可恢复所有内容。详情请参阅[代理导出指南](/zh/guides/agent-export)。
+
+<div id="sandbox-and-computer-use">
+## 沙箱与计算机使用
+</div>
+
+代理现在可以在隔离的容器沙箱内运行代码、浏览网页、截取屏幕截图、录制音频并与桌面应用程序交互。沙箱支持四种可配置的安全模式（off、light、standard、max）、网络策略、审计日志以及远程签名服务——该服务将钱包密钥保存在主机上，同时沙箱中的代理提交交易。详情请参阅[沙箱指南](/zh/guides/sandbox)。
+
+<div id="mcp-marketplace">
+## MCP 市场
+</div>
+
+您现在可以直接从官方 MCP 注册表浏览和安装模型上下文协议服务器。按名称搜索工具、查看详情并一步完成安装——配置会自动生成。MCP 服务器通过文件访问、数据库查询和 API 集成等外部功能扩展您的代理。详情请参阅 [MCP 市场指南](/zh/guides/mcp-marketplace)。
+
+<div id="custom-actions-editor">
+## 自定义操作编辑器
+</div>
+
+仪表板中的可视化编辑器让您无需编写插件代码即可创建自定义代理操作。使用 HTTP、shell 或代码处理程序定义操作，配置参数和标头，并进行测试——全部在 UI 中完成。详情请参阅[自定义操作指南](/zh/guides/custom-actions)。
+
+<div id="plugin-eject-system">
+## 插件弹出系统
+</div>
+
+您现在可以在本地 fork 任何插件的源代码，修改它，并让运行时加载您的本地副本而不是 npm 包。六个新的代理操作——eject、reinject、sync 和 status（适用于插件和核心）——使自定义、测试和向上游贡献更改变得简单。详情请参阅[插件弹出指南](/zh/plugins/plugin-eject)。
+
+<div id="stream-overlay-widgets">
+## 直播叠加层小部件
+</div>
+
+直播现在支持可自定义的叠加层系统，内置小部件包括——观众计数、思想气泡、警报弹窗、操作滚动条、品牌标识和自定义 HTML。您可以使用布局编辑器排列小部件并按目标保存布局。外部插件可以注册自己的叠加层小部件。
+
+<div id="memory-and-embedding-explorer">
+## 记忆与嵌入探索器
+</div>
+
+仪表板中新增的向量浏览器让您可以可视化地探索代理的记忆存储。在分页列表中浏览记忆、按内容搜索并检查单个条目。二维散点图和交互式三维可视化展示了嵌入的聚类方式，使您更容易理解代理记住了什么以及它们之间的关联。
+
+<div id="three-new-platform-connectors">
+## 三个新平台连接器
+</div>
+
+您的代理现在可以连接到三个额外的消息平台：
+
+- **Matrix** — 联邦式聊天，支持主服务器配置、访问令牌认证、自动加入、端到端加密和仅提及模式。
+- **Nostr** — 基于中继的去中心化社交，支持私钥认证、可配置的中继列表和私信支持。
+- **Nextcloud Talk** — 基于 Webhook 的机器人集成，支持按房间过滤。
+
+使用 `eliza plugins install <name>` 安装任何连接器，并在[社交设置](/zh/guides/connectors)中进行配置。
+
+<div id="updates">
+## 更新
+</div>
+
+- **密钥保险库** — 仪表板中新增的密钥视图按类别（AI 提供商、区块链、连接器、认证）组织您的 API 密钥和凭据。您可以添加、删除和管理密钥，并通过插件感知发现功能显示哪些插件需要哪些密钥。
+- **媒体库** — 仪表板中新增的媒体库让您可以浏览代理数据库中存储的照片、视频和音频，支持按媒体类型过滤。
+- **诊断与安全审计 API** — 新的端点公开可过滤的运行时日志、基于游标分页的自主事件回放，以及带有严重性过滤和 SSE 流的安全审计日志。详情请参阅 [API 参考](/zh/api-reference)。
+- **入门引导中的直播权限** — 摄像头和麦克风权限现在在入门向导中请求，并可在设置中管理，因此直播功能在移动端和桌面端都能开箱即用。
+- **深色主题按钮可读性** — 强调色按钮现在使用深色文字以获得更好的对比度，悬停效果突出显示边框而不是更改文字颜色。
+- **入门引导布局改进** — 连接步骤现在显示快速开始/高级切换、全宽度提供商卡片以及权限步骤中始终可见的继续按钮。
+- **配置模板** — 八个适用于常见部署场景的即用配置模板现已可用。请参阅[配置模板指南](/zh/guides/config-templates)。
+</Update>
+
+<Update label="2026-04-30" description="4月24日至30日当周" tags={["Feature", "Update"]}>
+<div id="streaming-response-recovery">
+## 流式响应恢复
+</div>
+
+当聊天响应在传输过程中中断时——无论是网络故障还是超时——消息现在会被标记为已中断，并显示一个重试按钮。您可以重新请求响应，而不是面对一条不完整的消息。
+
+<div id="orchestrator-trajectory-tagging">
+## 编排器轨迹标记
+</div>
+
+[集群编排器](/zh/guides/coding-swarms)发出的 LLM 调用现在在[轨迹查看器](/zh/advanced/trajectories)中带有紫色的"编排器"徽章。每个条目包含决策类型、会话 ID 和任务标签等元数据，使您在多代理运行期间更容易区分编排器推理和单个代理调用。
+
+<div id="training-backend-auto-detection">
+## 训练后端自动检测
+</div>
+
+[微调](/zh/guides/training)系统现在会在开始训练任务之前检测可用的 ML 后端——Apple Silicon 上的 MLX、NVIDIA GPU 上的 CUDA，以及 CPU 作为后备方案。如果请求的后端不可用，您将获得清晰的错误提示，而不是在运行过程中遇到难以理解的故障。
+
+<div id="updates">
+## 更新
+</div>
+
+- **角色元数据在重启后保持不变** — 您的代理的用户名和主题现在可以在重启后保留。此前，这些字段被视为仅限运行时的数据，在重启后会恢复为默认值。详情请参阅[角色编辑器](/zh/agents/character-interface)。
+- **重连进度指示器** — 当 WebSocket 连接断开时，仪表板现在会显示一个琥珀色的"正在重新连接..."横幅，并显示当前尝试次数，然后再升级为红色的失败状态，让您实时了解恢复进度。
+</Update>
+
+<Update label="2026-04-23" description="4月17日至23日当周" tags={["Update", "Fix"]}>
+<div id="telegram-connector-reliability">
+## Telegram 连接器可靠性
+</div>
+
+Telegram 连接器现在能够优雅地处理意外错误，而不会导致代理进程崩溃。对话历史恢复增加了超时机制，因此缓慢的 Telegram API 响应不再阻塞启动，并且在启动期间遇到瞬时故障时身份验证会自动重试。这些更改使连接 Telegram 的代理在生产环境中更加稳健。
+
+<div id="updates">
+## 更新
+</div>
+
+- **连接器标签页仅显示选中的连接器** — [连接器](/zh/guides/connectors)配置面板现在只显示您在侧边栏中选择的连接器，而不是同时渲染所有连接器，使查找和编辑设置更加方便。
+- **macOS 权限对话框标识** — macOS 上的系统权限提示（麦克风、辅助功能等）现在正确显示"Eliza"作为请求应用名称，而不是显示通用或缺失的标识符。
+
+<div id="bug-fixes">
+## 错误修复
+</div>
+
+- 修复了在用户发送第一条消息之前，伴侣模式在空对话中显示虚假输入指示器的问题
+</Update>
+
+<Update label="2026-04-16" description="4月10日至16日当周" tags={["Feature", "Update"]}>
+<div id="six-new-platform-connectors">
+## 六个新平台连接器
+</div>
+
+您的代理现在可以开箱即用地连接到六个额外的消息平台：
+
+- **Signal** — 通过 signal-cli 进行私密消息传递，支持附件和已读回执。请参阅 [Signal 插件文档](/zh/plugin-registry/platform/signal)。
+- **Farcaster** — 去中心化社交协议集成，支持链上发布、回复和反应。请参阅 [Farcaster 插件文档](/zh/plugin-registry/platform/farcaster)。
+- **Microsoft Teams** — Azure Bot 集成，支持线程回复和媒体。请参阅 [MS Teams 插件文档](/zh/plugin-registry/platform/msteams)。
+- **Google Chat** — 服务账户集成，支持 Webhook 投递和按空间配置。请参阅 [Google Chat 插件文档](/zh/plugin-registry/platform/googlechat)。
+- **Mattermost** — 自托管团队消息，支持 Bot Token 认证和提及过滤。请参阅 [Mattermost 插件文档](/zh/plugin-registry/platform/mattermost)。
+
+使用 `eliza plugins install <name>` 安装任何连接器，并在您的[社交设置](/zh/guides/connectors)中进行配置。
+
+<div id="lens-protocol-connector">
+## Lens Protocol 连接器
+</div>
+
+您的代理现在可以在 Lens Protocol 去中心化社交网络上进行交互。通过 Lens V3 API 发布、回复、反应、转发和处理通知。可以与您的其他[社交连接器](/zh/guides/connectors)一起配置。
+
+<div id="trajectory-archival-and-optimization">
+## 轨迹归档和优化
+</div>
+
+轨迹数据——代理每次 LLM 调用的完整记录——现在通过压缩导出进行持久归档。系统保留完整的提示和响应文本以确保[训练](/zh/guides/training)保真度，同时将轻量级洞察提取到元数据中，在不丢失数据的情况下减少存储使用。归档的轨迹在清理前被压缩为 JSONL 格式，因此在 TTL 清理过程中不会丢失任何数据。详情请参阅[轨迹指南](/zh/advanced/trajectories)。
+
+<div id="updates-1">
+## 更新
+</div>
+
+- **连接器测试覆盖** — Farcaster 和 Lens Protocol 连接器现在拥有针对实时 API 验证的全面端到端测试套件，确认已可用于生产环境。
+- **API 文档翻译** — API 参考和代理端点现已提供西班牙语、法语和简体中文版本。
+- **角色生成改进** — 角色生成端点现在支持 `system` 字段和 `context.topics` 参数，以实现更有针对性的角色创建。请参阅[角色 API 参考](/zh/rest/character)。
+</Update>
+
+<Update label="2026-04-09" description="4月3日至9日当周" tags={["Feature", "Update", "Fix"]}>
+<div id="opinion-markets-plugin">
+## 预测市场插件
+</div>
+
+您的代理现在可以通过新的预测市场插件在预测市场上进行交易。浏览市场、下注、查看持仓、取消订单和兑现结果——全部通过聊天或 REST API 完成。实时市场数据通过 WebSocket 流式传输，使您的代理能够及时了解价格变动。
+
+<div id="agent-self-awareness">
+## 代理自我感知
+</div>
+
+您的代理现在可以报告自身状态。新的感知系统将运行时、云连接、钱包、连接器、插件和权限的健康信号汇聚到单一视图中。询问您的代理"你的状态如何？"，它会返回一份结构化摘要，说明哪些正常运行、哪些已降级、哪些需要关注。
+
+<div id="coding-agent-settings">
+## 编程代理设置
+</div>
+
+设置视图现在包含一个编程代理部分，您可以在其中选择代理选择策略、默认代理类型、权限级别和每个代理的模型偏好。这些控制项让您可以更精细地控制[编程集群](/zh/guides/coding-swarms)的行为。
+
+<div id="granular-cloud-service-toggles">
+## 细粒度云服务开关
+</div>
+
+连接到 Eliza Cloud 后，您现在可以单独启用或禁用各个云服务——推理、RPC、媒体、TTS 和嵌入——而不是切换整个云连接。例如，这允许您在使用本地模型提供商的同时保留云 RPC。详情请参阅[云指南](/zh/guides/cloud)。
+
+<div id="character-generation-api-format-update">
+## 角色生成 API 格式更新
+</div>
+
+`POST /api/character/generate` 端点现在在 `messageExamples` 模式中返回 `chatExamples`——使用 `{name, content}` 消息对象的对话组，而不是之前的 `{user, content}` 扁平数组。`"system"` 字段类型现在也被接受。请参阅[角色 API 参考](/zh/rest/character)了解更新的响应格式。
+
+<div id="updates-2">
+## 更新
+</div>
+
+- **额度耗尽错误清晰呈现** — 云提供商计费错误（HTTP 402 和 429）现在会被检测到并在仪表板中显示可操作的指导，而不是通用的失败消息。
+- **知识服务重试** — 当知识服务仍在加载时，请求会返回 `Retry-After` 头，客户端会使用指数退避自动重试，防止启动期间的查询失败。
+- **系统警告横幅** — 连接器故障和协调器接线问题现在直接在仪表板中以可关闭的警告横幅形式显示，以便您可以立即处理问题。
+</Update>
+
+<Update label="2026-04-02" description="3月27日至4月2日当周" tags={["Feature", "Update", "Fix"]}>
+<div id="multi-destination-streaming-with-pump.fun-and-x/twitter">
+## 多目标推流：pump.fun 和 X/Twitter
+</div>
+
+您现在可以同时向多个目标推流，并在运行时切换目标。本周发布了两个新的推流插件：
+
+- **pump.fun** — 通过 RTMP 直接推流到 pump.fun
+- **X/Twitter** — 通过 RTMPS 推流到 X/Twitter
+
+在[推流设置](/zh/dashboard/stream)中配置您的目标，无需重启即可切换活动目标。推流插件现在还会在启动时验证您的 RTMP URL，如果缺失则显示明确的错误。
+
+<div id="windows-standalone-installer">
+## Windows 独立安装程序
+</div>
+
+Windows 下载现在是使用 Inno Setup 构建的适当单文件安装程序。之前，公开的 `.exe` 是一个引导包装器，需要配套的载荷归档。新安装程序可独立工作——下载、运行即可完成。MSIX 仍可作为替代方案使用。详情请参阅[安装指南](/zh/installation)。
+
+<div id="companion-i18n-support">
+## 伴侣国际化支持
+</div>
+
+伴侣 UI 现在支持国际化。英语和简体中文（zh-CN）在发布时可用，框架已为其他语言做好准备。已安装插件的插件图标也会出现在伴侣侧边栏中。
+
+<div id="coding-agent-always-available">
+## 编程代理始终可用
+</div>
+
+编程代理插件现在是一个核心插件，在每次启动时自动加载。您不再需要手动启用它来使用编程和终端功能。详情请参阅[编程集群指南](/zh/guides/coding-swarms)。
+
+<div id="health-endpoint-and-crash-recovery">
+## 健康检查端点和崩溃恢复
+</div>
+
+新的 `GET /api/health` 端点返回每个子系统的结构化状态——运行时、数据库、插件、协调器、连接器和运行时间。当服务器不可达时，仪表板会显示连接失败的横幅和重试按钮，React 错误边界可防止全屏白屏崩溃。请参阅 [API 参考](/zh/api-reference)了解端点详情。
+
+<div id="updates-3">
+## 更新
+</div>
+
+- **改进桌面启动错误** — 当代理运行时加载失败时，桌面应用现在会保持 API 服务器运行，并在 UI 中显示实际的错误消息，而不是通用的"Failed to fetch"。这使得诊断配置问题变得更加容易。
+- **NFA 端点优雅降级** — 当未安装 BNB 身份插件时，`/api/nfa/status` 和 `/api/nfa/learnings` 端点现在会优雅地返回空数据，而不是失败。详情请参阅[钱包指南](/zh/guides/wallet)。
+- **伴侣视图中的插件图标** — 已安装的插件现在在伴侣 UI 中显示其图标，便于识别。
+
+<div id="bug-fixes-1">
+## 错误修复
+</div>
+
+- 修复了 Intel Mac 桌面应用因发布了 ARM64 原生二进制文件而非 x64 二进制文件导致启动时崩溃的问题
+- 修复了跨 CLI、桌面开发模式和直接运行时加载的插件解析失败（"Cannot find module"）——不仅仅是打包构建
+- 修复了编程代理插件因过时的包导出指向不存在的源文件而无法在 Bun 下加载的问题
+- 模型提供商的额度耗尽现在会被检测到并在仪表板中清晰显示
+- 知识服务在暂时不可用时现在会使用指数退避自动重试，而不是静默失败
+- 桌面应用启动错误现在会保持 API 服务器运行，以便您可以看到实际的错误消息而不是通用的失败信息
+- 当未安装 BNB 身份插件时，NFA 端点会返回优雅的空响应，而不是抛出错误
+</Update>
+
+<Update label="2026-03-26" description="3月20日至26日当周" tags={["Feature", "Update", "Fix"]}>
+<div id="api-key-validation-for-model-providers">
+## 模型提供商 API 密钥验证
+</div>
+
+桌面应用现在会自动验证八个模型提供商的 API 密钥——包括 OpenAI、Anthropic、Groq、Google GenAI、OpenRouter 和 xAI。密钥在启动时扫描并在后台验证，以便您能立即知道提供商是否配置错误。您还可以从托盘菜单按需测试连接。请参阅[模型提供商](/zh/model-providers)了解设置详情。
+
+<div id="dedicated-settings-window">
+## 专用设置窗口
+</div>
+
+全新的独立设置窗口让您可以快速访问通用、提供商、高级和关于标签页，无需离开当前视图。该窗口与您的暗色模式偏好同步，并直接连接到 API 进行实时配置更改。可从托盘菜单或应用菜单栏打开。
+
+<div id="application-menu-overhaul">
+## 应用菜单改版
+</div>
+
+菜单栏已重新组织，新增了一个代理菜单，让您可以一键访问[知识库](/zh/guides/documents)、[技能](/zh/plugins/skills)、[插件](/zh/plugins/overview)和[社交连接器](/zh/guides/connectors)。文件、视图和窗口菜单也已扩展，导航更加便捷。
+
+<div id="interactive-tray-provider-management">
+## 交互式托盘提供商管理
+</div>
+
+系统托盘现在包含每个模型提供商的交互式子菜单。您可以设置活跃提供商、测试连接或启用它——全部通过托盘图标完成，无需打开仪表板。
+
+<div id="bug-fixes-2">
+## 错误修复
+</div>
+
+- 当未加载角色草稿时，角色视图不再崩溃
+- 角色编辑器暗色模式现在可以在笔记本框架和装饰元素中正确渲染
+</Update>
+
+<Update label="2026-03-19" description="3月14日至19日当周" tags={["Feature", "Update", "Security", "Fix"]}>
+<div id="cloud-control-plane-dashboard">
+## 云控制面板仪表板
+</div>
+
+您现在可以直接从 Eliza 主页管理云代理。新仪表板包括代理生命周期控制（配置、暂停、恢复、删除）、快照和备份、额度和账单、容器指标和日志流——全部无需离开应用。本地和远程代理与云代理一起被自动发现。详情请参阅[云部署](/zh/deployment#cloud-agent-deployment)。
+
+<div id="cloud-first-onboarding">
+## 云优先引导
+</div>
+
+首次运行 `eliza start` 时现在会询问"您的代理应该部署在哪里？"，并推荐 [Eliza Cloud](/zh/guides/cloud) 作为首选。选择云端可获得无需本地配置的托管运行时，或选择本地在您自己的机器上运行。云配置会自动保存，后续启动无需再次提示即可重新连接。详情请参阅[云指南](/zh/guides/cloud)。
+
+<div id="game-style-notebook-character-editor">
+## 游戏风格笔记本角色编辑器
+</div>
+
+[角色编辑器](/zh/agents/character-interface)已重新设计为交互式笔记本 UI。侧边栏标签页让您在"关于我"、"指令"和"风格规则"部分之间导航。每个部分支持核心/示例切换，编辑器支持浅色和暗色模式。您现在还可以直接从编辑器编辑角色主题和角色名称。
+
+<div id="scratch-workspace-controls-for-coding-agents">
+## 编程代理的临时工作区控制
+</div>
+
+编程代理会话现在显示保留、提升和删除临时工作区的控制按钮。当编程会话结束时，您可以决定是否保留临时工作区、将其提升为永久工作区或清理它——直接从仪表板操作。详情请参阅[编程集群指南](/zh/guides/coding-swarms)。
+
+<div id="official-docker-images">
+## 官方 Docker 镜像
+</div>
+
+预构建的 Docker 镜像现在在每次发布时都会发布到 GitHub Container Registry，大小优化为手动构建的约一半。拉取 `ghcr.io/eliza-ai/agent` 即可部署，无需从源代码构建。请参阅[部署指南](/zh/deployment)了解 Docker Compose 设置和环境变量。
+
+<div id="vrm-wave-greeting-and-smooth-loading-transitions">
+## VRM 挥手问候和平滑加载过渡
+</div>
+
+您的 VRM 头像现在在应用启动和角色切换后加载完成时会播放挥手问候动画。加载屏幕通过动画进度和淡出效果平滑过渡，而不是硬切换。
+
+<div id="dashboard-ui-redesign">
+## 仪表板 UI 重新设计
+</div>
+
+多个[仪表板](/zh/apps/dashboard)标签页已使用更简洁的双面板布局重建：
+
+- **设置** — 左侧为部分导航，右侧为活动部分
+- **心跳** — 左侧为触发器列表，右侧为创建/编辑表单，配有更友好的持续时间选择器
+- **钱包** — 左侧为投资组合和链选择器，右侧为代币表格
+- **社交和插件** — 左侧为频道/插件列表，右侧为配置详情
+- **应用** — 游戏风格的手机和平板设备 UI，用于浏览和启动应用
+
+<div id="homepage-redesign">
+## 主页重新设计
+</div>
+
+主页现在展示带有悬停标签的平台下载图标，始终链接到最新版本、打字机风格的主题动画和精简的页脚。下载链接在构建时从最新的 GitHub 版本获取，因此始终保持最新。
+
+<div id="electrobun-desktop-migration">
+## Electrobun 桌面迁移
+</div>
+
+[桌面应用](/zh/apps/desktop)已完全从 Electron 迁移到 Electrobun——一个更轻量、更快速的原生外壳。这减少了内存使用和启动时间。自动更新继续通过 Electrobun 更新器工作。详情请参阅[桌面更新](/zh/self-updates#electrobun-desktop-updates)。
+
+<div id="faster-page-loads">
+## 更快的页面加载
+</div>
+
+Three.js 和 3D 头像堆栈（约 1.7 MB）现在延迟加载——只在您打开伴侣视图时才下载。推流视图也是延迟加载的。这些更改共同显著减少了初始页面加载时间。
+
+<div id="smaller-prompts,-faster-responses">
+## 更小的提示，更快的响应
+</div>
+
+默认工作区模板文件不再注入到每个提示中——只包含您自定义的文件。表情定义也已从提示上下文移至操作参数中。这些更改共同将每轮提示大小减少了约 4,000 个字符，这意味着更快的响应和更低的 Token 成本。
+
+<div id="wallet-key-export-security">
+## 钱包密钥导出安全
+</div>
+
+钱包私钥导出现在需要 10 秒的确认延迟，限制为每 10 分钟一次导出，并为每次尝试生成审计日志条目。这可以防止被入侵的会话即时提取密钥。详情请参阅[钱包指南](/zh/guides/wallet)。
+
+<div id="cloud-api-key-protection">
+## 云 API 密钥保护
+</div>
+
+云 API 密钥在登录后不再存储在 `process.env` 中。它们会被立即清除并保存在一个密封的、不可枚举的存储中——防止通过崩溃转储、子进程或环境检查泄露。
+
+<div id="windows-desktop-crash-fix">
+## Windows 桌面崩溃修复
+</div>
+
+Windows 桌面应用不再因嵌入初始化问题而在启动时崩溃。致命的启动错误现在会写入日志文件以便于诊断。
+
+<div id="character-editor-bug-fixes">
+## 角色编辑器错误修复
+</div>
+
+- 编辑时角色主题现在可以正确加载和保存
+- 保存角色不再因载荷中的额外字段而出现 422 错误
+- 原始翻译键（如 `characterview.StyleRules`）现在显示为正确的英文文本
+- 使用伴侣模式时，保存和自定义按钮现在可见，带有磨砂玻璃背景
+- 角色视图中的 Etherscan 链接现在指向正确的钱包地址页面
+
+<div id="additional-fixes">
+## 其他修复
+</div>
+
+- 模式验证现在可以正确拒绝之前绕过检查的无效角色数据
+- 暗色模式导航标签页现在在所有仪表板视图中可见
+- 导航离开时空对话会自动清理
+- 密码字段切换不再清除已输入的 API 密钥或 Bot Token
+- 钱包 RPC 选择现在在引导、设置和运行时之间保持一致
+- 引导配置在应用重新启动后正确持久化
+- 头像索引解析现在验证输入范围，防止显示错误
+- 语音默认值现在保持一致——`autoSpeak` 不再在语音关闭时显示为启用
+- 超大的语音 API 请求会被正确拒绝，返回 413 错误
+- 通过消除冗余排序和字符串分配，改善了 LLM 回合和流式传输的性能
+- 当无法保存语音配置时，角色保存不再失败
+- 服务器启动现在检测并终止占用默认端口的过时进程，防止无限挂起
+- 桌面应用在打包构建中正确发现插件，解决了 Windows 上的静默启动失败
+- 云仪表板现在在 Eliza Cloud 登录后正确显示代理
+- API 服务器错误现在在桌面模式下输出到 stderr，便于故障排除
+</Update>
+
+<Update label="2026-03-13" description="3月8日至13日当周" tags={["Feature", "Security", "Fix"]}>
+<div id="game-style-onboarding-redesign">
+## 游戏风格引导重新设计
+</div>
+
+首次运行设置已重建为精简的六步流程，采用三栏毛玻璃布局和应用于所有模态框和覆盖层的暗色游戏风格主题。新的步骤——唤醒、身份、语言、连接、权限和激活——替代了之前的十步向导。
+
+<div id="new-cli-commands---doctor,-db-reset,-and-interactive-setup">
+## 新 CLI 命令——doctor、db reset 和交互式设置
+</div>
+
+本周发布了三个新的 CLI 命令：
+
+- **`eliza doctor`** — 运行完整的环境健康检查，标记缺失的依赖项、端口冲突和配置问题。请参阅 [doctor 参考](/zh/cli/doctor)。
+- **`eliza db reset`** — 通过确认提示安全地重置数据库。请参阅 [db 参考](/zh/cli/db)。
+- **`eliza setup`** — 一个交互式向导，引导您完成模型提供商选择，支持九个提供商。请参阅 [setup 参考](/zh/cli/setup)。
+
+<div id="distribution-across-six-new-package-managers">
+## 通过六个新包管理器分发
+</div>
+
+Eliza 现在可以通过更多安装渠道获得：
+
+- **Homebrew** — `brew install eliza`（CLI）或 `brew install --cask eliza`（桌面版）
+- **Snap Store** — `snap install eliza`，使用严格限制
+- **Flatpak / Flathub** — 生产就绪的 Flatpak，带有 AppStream 元数据
+- **APT** — Debian/Ubuntu 用户可以通过 APT 安装并作为 systemd 服务运行，支持自动重启
+- **Google Play Store** — Android 应用，带有签名发布
+- **iOS 和 Mac App Store** — 通过 TestFlight 和 App Store Connect 提供
+
+请参阅[安装指南](/zh/installation)了解特定平台的说明。
+
+<div id="native-gpu-companion-rendering">
+## 原生 GPU 伴侣渲染
+</div>
+
+桌面构建现在包含用于伴侣视觉效果的 WebGPU 驱动的原生渲染基础设施，为 GPU 加速场景提供比基于 WebView 的渲染器更快的替代方案。
+
+<div id="game-client-canvas-windows">
+## 游戏客户端画布窗口
+</div>
+
+[桌面](/zh/apps/desktop)上的游戏客户端现在在专用的原生窗口中打开，具有隔离的 Cookie 和存储，而不是嵌入式 iframe。这提高了应用内游戏体验的稳定性和安全性。
+
+<div id="streaming-controls-in-companion-mode">
+## 伴侣模式中的推流控制
+</div>
+
+您现在可以直接从伴侣模式管理直播推流——包括目标和源选择器、推流设置以及新的代理操作，如开始直播、下线和在直播中发言。详情请参阅[推流指南](/zh/dashboard/stream)。
+
+<div id="nfa-wallet-flow">
+## NFA 钱包流程
+</div>
+
+新的身份和 NFA 钱包流程添加了身份卡界面、钱包风格的确认用户体验和公共 BSC RPC 默认值。详情请参阅[钱包指南](/zh/guides/wallet)。
+
+<div id="link-sanitization-for-chat-messages">
+## 聊天消息链接清理
+</div>
+
+聊天消息链接现在会被清理以阻止 `javascript:`、`data:` 和 `vbscript:` URI 方案，防止通过不受信任的内容进行 XSS 攻击。普通链接和相对路径继续正常工作。
+
+<div id="wallet-transfer-guard-in-manual-key-mode">
+## 手动密钥模式中的钱包转账保护
+</div>
+
+代理发起的钱包转账请求不再能绕过手动本地密钥确认保护。所有转账现在都需要用户明确的签名批准。
+
+<div id="command-palette-and-real-time-sidebar">
+## 命令面板和实时侧边栏
+</div>
+
+命令面板现在使用集中式命令注册表，使发现和访问操作更加方便。对话侧边栏也通过 WebSocket 事件实时更新，而不是轮询，因此新消息和状态变更会即时显示。
+
+<div id="desktop-bug-fixes">
+## 桌面错误修复
+</div>
+
+- 隐藏/显示后窗口位置现在可以正确恢复
+- 剪贴板图片编码在各平台上可靠工作
+- TTS 中断现在完全停止正在传输的音频
+- 导航保护阻止外部 URL 在主应用窗口中加载
+- VRM 头像面部朝向不再错误翻转
+- 设置、推流导航、VRM 加载和外壳关闭流程中的伴侣 UI 回归问题已解决
+
+<div id="additional-fixes-1">
+## 其他修复
+</div>
+
+- 语音和代理模式下拉菜单不再被其他元素遮挡
+- 设置侧边栏现在显示部分标签以便于导航
+- 头像选择器防止加载期间的双击
+- 添加帖子按钮上的重复"++"标签已修复
+- 对话侧边栏现在左侧显示标题，右侧显示时间戳
+- 云模型提供商不再在您切换后重启时重新启用
+- 远程服务器访问在使用通配符绑定和反向代理路径前缀时正常工作
+- 从市场安装的技能现在在 UI 中显示（之前跳过了点前缀目录）
+- 超大的语音 API 请求会被正确拒绝，返回 413 错误
+- 协调器聊天显示中的操作块被干净地剥离，不影响用户 JSON
+</Update>
+
+<Update label="2026-03-07" description="2月23日至3月7日" tags={["Feature", "Update", "Security", "Fix"]}>
+<div id="coding-agent-swarm-orchestration">
+## 编程代理集群编排
+</div>
+
+您现在可以在单个任务上并行运行多个编程代理。新的集群协调器将复杂工作分解为子任务，根据成功率和速度将每个子任务路由到表现最佳的代理，并在并排面板中显示实时终端输出。详情请参阅[编程集群指南](/zh/guides/coding-swarms)。
+
+<div id="live-streaming-to-twitch,-youtube,-and-custom-rtmp">
+## 直播推流到 Twitch、YouTube 和自定义 RTMP
+</div>
+
+Eliza 现在支持多目标直播推流。您可以推流到 Twitch、YouTube、pump.fun、X/Twitter 或任何自定义 RTMP 目标——并在运行时切换目标而无需重启。您的代理还可以通过 TTS 直接传输到音频轨道在直播中发言。详情请参阅[推流指南](/zh/dashboard/stream)。
+
+<div id="3d-companion-with-vrm-avatars">
+## 3D 伴侣与 VRM 头像
+</div>
+
+全新的 3D 伴侣视图现已可用，配备 VRM 头像引擎、动画、气泡表情、主题切换和本地化支持（英语和中文）。伴侣视图还包括一个钱包交易面板，支持代币兑换、发送、交易历史、投资组合展示和盈亏分析。详情请参阅[钱包指南](/zh/guides/wallet)。
+
+<div id="imessage-and-sms-connector">
+## iMessage 和 SMS 连接器
+</div>
+
+新的 Blooio 插件将 iMessage 和 SMS 作为一流的消息连接器添加。在引导过程中设置您的 API 密钥和电话号码即可开始消息传递。详情请参阅[连接器概述](/zh/guides/connectors)。
+
+<div id="bulk-knowledge-import">
+## 批量知识导入
+</div>
+
+您现在可以一次上传多个文件和整个文件夹到[知识库](/zh/guides/documents)。大型导入以流式批次处理，因此您无需逐个上传文件。
+
+<div id="in-app-bug-reports">
+## 应用内错误报告
+</div>
+
+新的错误报告模态框让您可以直接从应用内向 GitHub 提交问题，支持可选的截图捕获。如果 GitHub 提交不可用，您可以将报告复制到剪贴板。
+
+<div id="subscription-provider-setup">
+## 订阅提供商设置
+</div>
+
+订阅提供商现在可以从设置 UI 端到端配置，包括 OAuth 流程和提供商切换。详情请参阅[仪表板设置](/zh/apps/dashboard/settings)。
+
+<div id="chat-image-attachments">
+## 聊天图片附件
+</div>
+
+您现在可以在[聊天](/zh/dashboard/chat)对话中直接附加和发送图片。
+
+<div id="slash,-hash,-and-dollar-commands">
+## 斜杠、井号和美元符号命令
+</div>
+
+应用现在支持聊天中的 `/`、`#` 和 `$` 命令前缀，用于快速访问操作、频道和变量。详情请参阅[聊天命令参考](/zh/chat-commands)。
+
+<div id="companion-wallet-trading-panel">
+## 伴侣钱包交易面板
+</div>
+
+伴侣视图现在包含完整的交易面板。您可以通过 PancakeSwap 在 BNB Chain 上兑换代币、通过地址验证发送 BNB 和代币、浏览多链投资组合、查看 NFT 收藏品和查看盈亏分析——全部无需离开伴侣视图。详情请参阅[钱包指南](/zh/guides/wallet)。
+
+<div id="telegram-message-chunking-and-draft-stream">
+## Telegram 消息分块和草稿流
+</div>
+
+Telegram 连接器现在自动将长的代理回复拆分为正确分块的消息，而不是截断它们。新的草稿流模式让您可以在代理生成回复时实时查看消息组成。
+
+<div id="agent-activity-box">
+## 代理活动框
+</div>
+
+一个固定的活动指示器现在在聊天视图中显示每个任务的实时进度。常规编程代理状态消息从聊天历史中过滤以减少噪音。详情请参阅[编程集群指南](/zh/guides/coding-swarms)。
+
+<div id="opinion-markets-plugin">
+## 预测市场插件
+</div>
+
+新的预测市场插件让您的代理通过中央限价订单簿在预测市场上交易。您可以获取市场详情、列出可用市场、下注、取消订单、查看持仓和兑现赢利——全部通过聊天操作或 REST API 完成。
+
+<div id="bnb-identity-plugin-and-nfa-learning-provenance">
+## BNB 身份插件和 NFA 学习溯源
+</div>
+
+新的 BNB Chain 身份插件为您的代理提供链上身份管理。该插件支持 BAP-578 NFA（非同质化代理）学习溯源——您可以铸造 NFA、更新代理学习历史的 Merkle 根并查询 NFA 状态。详情请参阅[钱包指南](/zh/guides/wallet)。
+
+<div id="agent-self-awareness">
+## 代理自我感知
+</div>
+
+您的代理现在可以使用新的自我感知系统内省自身状态。`GET_SELF_STATUS` 操作返回运行时健康、钱包状态、云连接、活跃连接器和插件健康的统一视图——帮助您的代理做出上下文感知的决策。
+
+<div id="swarm-completion-summaries">
+## 集群完成摘要
+</div>
+
+多代理编程集群运行现在在所有任务完成时生成综合消息，为您提供跨代理会话完成情况的结构化摘要。
+
+<div id="health-endpoint-and-reconnect-banner">
+## 健康检查端点和重连横幅
+</div>
+
+新的 `/api/health` 端点报告服务器就绪状态。当服务器不可达时，仪表板显示连接失败横幅和重试按钮，React 错误边界防止全屏白屏崩溃。
+
+<div id="cross-platform-audio-capture-for-streaming">
+## 跨平台推流音频捕获
+</div>
+
+推流现在自动检测适合您平台的最佳捕获方法——桌面使用原生管道、Linux 使用 X11、macOS 使用 AVFoundation、Web 使用 CDP。音频源选择支持系统音频、麦克风和文件播放，并支持每源音量控制。
+
+<div id="wallet-trading-actions">
+## 钱包交易操作
+</div>
+
+新的 `CHECK_BALANCE`、`EXECUTE_TRADE` 和 `TRANSFER_TOKEN` 操作让您的代理可以通过 PancakeSwap 在 BSC 上交易代币。交易配置文件跟踪盈亏和交易历史。详情请参阅[钱包指南](/zh/guides/wallet)。
+
+<div id="emote-animations-restored">
+## 表情动画恢复
+</div>
+
+所有 30 个 VRM 表情动画已替换为可用的 Mixamo 文件——之前的动画是损坏的 Git LFS 存根，会静默失败。您现在还可以将自定义 VRM 头像直接拖放到头像选择器上。
+
+<div id="accessibility-improvements">
+## 无障碍改进
+</div>
+
+UI 中的 Emoji 图标已全部替换为 SVG 图标，以确保跨平台一致渲染和正确的屏幕阅读器支持。
+
+<div id="security-hardening">
+## 安全加固
+</div>
+
+此版本包含一系列广泛的安全改进：
+
+- **DNS 重绑定保护** — API 服务器现在验证 Host 头，阻止针对 localhost 的 DNS 重绑定攻击
+- **配置注入防护** — `$include` 指令和通过配置端点的原型污染被阻止
+- **环境变量保护** — 进程级变量如 `NODE_OPTIONS` 和 `LD_PRELOAD`、TLS 绕过变量和 CA 覆盖变量被阻止写入配置持久化
+- **自定义操作门控** — Shell 和代码执行处理程序现在需要明确授权
+- **插件安装安全** — 所有 `npm` 和 `bun` 安装调用现在使用 `--ignore-scripts` 以防止恶意的 postinstall 执行
+- **SQL 保护加固** — 危险的 PostgreSQL 函数被阻止从原始 SQL 查询端点执行
+- **桌面 URL 验证** — `shell.openExternal` 和文件路径 IPC 处理程序验证输入以阻止恶意 URL 方案
+- **MCP 服务器加固** — V8 inspector 调试标志在 MCP 服务器参数中被阻止
+- **终端升级认证** — 终端命令执行现在需要专用的升级 Token，与主 API Token 分开
+
+<div id="additional-fixes-2">
+## 其他修复
+</div>
+
+- WhatsApp 会话凭据现在在断开连接前正确保存，防止重启时不必要的二维码重新扫描
+- 模型提供商下拉菜单在页面加载时不再默认为错误的提供商——您保存的选择会被尊重
+- 系统警告横幅在 20 秒后自动消失，不再永久覆盖导航栏
+- 崩溃进程遗留的过时数据库锁文件在重启时自动清理，防止数据丢失
+- 模型提供商检测现在优先使用您的明确配置而非自动检测的插件
+- 恢复会话时终端输出不再闪烁或从顶部滚动
+- 触发器不再在代理重启期间触发，防止一次性触发器被消耗而未执行
+- 设置模型下拉菜单现在正确回退到本地提供商（如 Ollama）的环境变量值
+- 即使目录 API 被限流，技能仍在 UI 中保持可见
+- 代理加载不再因重试陷阱而在启动时挂起
+- 自定义 VRM 头像上传在页面刷新后持久保存
+- 新消息更新时聊天自动滚动已恢复
+- 删除对话现在需要明确确认
+- 按 Enter 或 Space 时设置模态框不再关闭
+- 超过 32 MB 的文档上传现在显示清晰、人类可读的错误消息
+- API 服务器中的内存泄漏和 GC 压力已减少
+- Gemini API 密钥别名现在正确规范化，`getSetting` 优雅处理 null 值
+- 超出模型上下文窗口的嵌入输入现在自动截断，防止崩溃
+- 设置重置按钮现在可以正常使用——之前是一个不起作用的占位符
+- 弹出窗口中的推流现在正确路由，TTS 音频在弹出模式下可靠播放
+- 侧边栏中的头像面板现在可以折叠，在集群会话期间为终端面板提供更多垂直空间
+- 通过自动回退到 Node 来缓解 Bun 1.3.9 在 Linux 上的崩溃问题
+</Update>

@@ -1,0 +1,30 @@
+{
+  "id": "training",
+  "name": "Training",
+  "description": "Training jobs, datasets, models, blueprints, and trajectory routes for the agent.",
+  "npmName": "@elizaos/app-training",
+  "source": "bundled",
+  "tags": ["training", "trajectories"],
+  "config": {},
+  "render": {
+    "visible": false,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Zap",
+    "group": "Curated",
+    "groupOrder": 100,
+    "actions": []
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "app",
+  "subtype": "tool",
+  "launch": {
+    "type": "server-launch",
+    "capabilities": ["training", "trajectories"],
+    "routePlugin": {
+      "specifier": "@elizaos/app-training",
+      "exportName": "trainingPlugin"
+    }
+  }
+}

@@ -1,0 +1,118 @@
+{
+  "name": "@elizaos/plugin-matrix",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "auto-enable.ts"
+  ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "messaging"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "test": "vitest run --config vitest.config.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "matrix-js-sdk": "^41.4.0",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "2.0.0-beta.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/bun": "^1.1.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js via main entry point"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginParameters": {
+      "MATRIX_HOMESERVER": {
+        "type": "string",
+        "description": "Homeserver URL",
+        "required": false,
+        "sensitive": false
+      },
+      "MATRIX_USER_ID": {
+        "type": "string",
+        "description": "User identifier",
+        "required": false,
+        "sensitive": false
+      },
+      "MATRIX_ACCESS_TOKEN": {
+        "type": "string",
+        "description": "Access token for Matrix",
+        "required": true,
+        "sensitive": true
+      },
+      "MATRIX_DEVICE_ID": {
+        "type": "string",
+        "description": "Device identifier",
+        "required": false,
+        "sensitive": false
+      },
+      "MATRIX_ROOMS": {
+        "type": "string",
+        "description": "Comma-separated room/channel list",
+        "required": false,
+        "sensitive": false
+      },
+      "MATRIX_AUTO_JOIN": {
+        "type": "boolean",
+        "description": "Automatically join/discover channels",
+        "required": false,
+        "sensitive": false
+      },
+      "MATRIX_ENCRYPTION": {
+        "type": "boolean",
+        "description": "Enable encryption",
+        "required": false,
+        "sensitive": false
+      },
+      "MATRIX_REQUIRE_MENTION": {
+        "type": "boolean",
+        "description": "Only respond when mentioned",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  }
+}

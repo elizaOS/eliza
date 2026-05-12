@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=elizaOS App
+GenericName=AI Assistant
+Comment=Personal AI assistant built on elizaOS
+Exec=elizaos-app start
+Icon=ai.elizaos.App
+Terminal=true
+Categories=Development;Utility;
+Keywords=ai;assistant;agent;elizaos;llm;chatbot;
+StartupNotify=false

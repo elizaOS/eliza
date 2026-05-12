@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LOCA Trajectory Viewer</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Marked.js for markdown rendering -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <div class="top-bar">
+        <div class="top-bar-left">
+            <span class="logo">LOCA Trajectory Viewer</span>
+            <select id="file-selector">
+                <option value="">-- Select Trajectory --</option>
+            </select>
+        </div>
+        <div class="top-bar-center">
+            <div class="playback-controls">
+                <button id="btn-first" title="First (Home)">&#x23EE;</button>
+                <button id="btn-prev" title="Previous (Left)">&#x23EA;</button>
+                <button id="btn-play" title="Play/Pause (Space)">&#x25B6;</button>
+                <button id="btn-next" title="Next (Right)">&#x23E9;</button>
+                <button id="btn-last" title="Last (End)">&#x23ED;</button>
+            </div>
+            <div class="progress-container">
+                <input type="range" id="progress-bar" min="0" max="0" value="0">
+                <span id="step-counter">0 / 0</span>
+            </div>
+        </div>
+        <div class="top-bar-right">
+            <div id="metrics-badge" class="metrics-badge" style="display:none;">
+                <span id="metric-accuracy" class="metric"></span>
+                <span id="metric-steps" class="metric"></span>
+                <span id="metric-status" class="metric"></span>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="chat-area" id="chat-area">
+            <div class="empty-state">
+                <p>Select a trajectory from the dropdown to begin.</p>
+                <p class="shortcut-hint">
+                    Shortcuts: <kbd>Space</kbd> Play/Pause &middot;
+                    <kbd>&larr;</kbd><kbd>&rarr;</kbd> Prev/Next &middot;
+                    <kbd>Home</kbd><kbd>End</kbd> First/Last
+                </p>
+            </div>
+        </div>
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">Tool Details</div>
+            <div class="sidebar-content" id="sidebar-content">
+                <p class="sidebar-empty">Click a tool call to view details.</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

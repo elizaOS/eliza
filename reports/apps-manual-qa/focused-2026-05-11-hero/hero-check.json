@@ -1,0 +1,40 @@
+[
+  {
+    "viewport": "desktop",
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3144/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3144/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "natural": {
+      "complete": true,
+      "naturalWidth": 1,
+      "naturalHeight": 1
+    },
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-2026-05-11-hero/details-training__desktop.png"
+  },
+  {
+    "viewport": "mobile",
+    "issues": [
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3144/api/avatar/vrm net::ERR_ABORTED"
+      },
+      {
+        "kind": "requestfailed",
+        "text": "http://127.0.0.1:3144/api/avatar/background net::ERR_ABORTED"
+      }
+    ],
+    "natural": {
+      "complete": true,
+      "naturalWidth": 1,
+      "naturalHeight": 1
+    },
+    "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/focused-2026-05-11-hero/details-training__mobile.png"
+  }
+]

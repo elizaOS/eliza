@@ -1,0 +1,13 @@
+{
+  "name": "@elizaos/example-browser-extension-safari",
+  "version": "2.0.0-beta.0",
+  "description": "Safari extension wrapper for Chat with Webpage - see README.md for build instructions",
+  "scripts": {
+    "prepare:source": "node scripts/prepare-safari-source.mjs",
+    "convert": "npm run prepare:source && xcrun safari-web-extension-converter .generated/extension --project-location . --app-name 'Chat with Webpage' --bundle-identifier com.elizaos.chatwithwebpage --swift --no-open --no-prompt --force",
+    "build": "if [ \"$(uname)\" = \"Darwin\" ]; then npm run convert && node scripts/fix-generated-safari.mjs && echo 'Now open the Xcode project in safari/Chat with Webpage/'; else echo 'Safari extension build skipped - requires macOS with Xcode'; fi",
+    "info": "echo 'See README.md for detailed Safari extension build instructions'",
+    "lint": "node scripts/fix-generated-safari.mjs && bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "echo 'No TypeScript config; skipping typecheck'"
+  }
+}

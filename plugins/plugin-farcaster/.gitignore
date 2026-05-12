@@ -1,0 +1,16 @@
+node_modules
+dist
+.env
+.env.local
+.elizadb-test/
+.eliza/
+bun.lock
+.elizadb
+.turbo
+target/
+__pycache__
+*.pyc
+.venv
+*.egg-info
+.DS_Store
+package-lock.json

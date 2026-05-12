@@ -1,0 +1,61 @@
+{
+	"extends": "../../tsconfig.json",
+	// Sources only: build emits JS to dist/; declarations via tsconfig.declarations.json + build.ts. Stray .js/.d.ts next to .ts are accidental IDE/tsc emits — remove with bun run clean.
+	"compilerOptions": {
+		"outDir": "./dist",
+		"rootDir": "../../",
+		"sourceMap": false,
+		"inlineSourceMap": false,
+		"typeRoots": [
+			"../../node_modules/@types",
+			"../../node_modules/.bun/node_modules/@types",
+			"../../cloud/node_modules/@types",
+			"../../cloud/node_modules/.bun/node_modules/@types",
+			"../../node_modules",
+			"../../node_modules/.bun/node_modules",
+			"../../cloud/node_modules",
+			"../../cloud/node_modules/.bun/node_modules",
+			"../../../node_modules/@types",
+			"../../../node_modules/.bun/node_modules/@types",
+			"../../../node_modules",
+			"../../../node_modules/.bun/node_modules"
+		],
+		"types": ["node", "bun"],
+		"noEmit": true,
+		"composite": false,
+		"declaration": false,
+		"declarationMap": false,
+		"skipLibCheck": true,
+		"paths": {
+			"@elizaos/core": ["./src/index.node.ts"],
+			"@elizaos/shared": ["../shared/src/index.ts"],
+			"@elizaos/plugin-elizacloud": [
+				"../../plugins/plugin-elizacloud/src/index.node.ts"
+			],
+			"@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
+			"@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
+			"@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
+			"@elizaos/plugin-computeruse": [
+				"../../plugins/plugin-computeruse/src/index.ts"
+			],
+			"@elizaos/plugin-whatsapp": [
+				"../../plugins/plugin-whatsapp/src/index.ts"
+			],
+			"@elizaos/app-task-coordinator": [
+				"../../plugins/app-task-coordinator/src/api/coordinator-types.ts"
+			]
+		}
+	},
+	"include": [
+		"src/**/*.ts",
+		"../@schemas/**/*.ts",
+		"../agent/src/external-modules.d.ts"
+	],
+	"exclude": [
+		"vitest.config.ts",
+		"node_modules",
+		"dist",
+		"src/**/__tests__/**",
+		"src/**/*.test.ts"
+	]
+}

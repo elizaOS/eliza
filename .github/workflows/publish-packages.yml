@@ -1,0 +1,513 @@
+name: Publish Packages
+
+# Post-release package distribution. Called by release-orchestrator.yml or
+# manually dispatched for retries / ad-hoc republish operations.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 2.0.0-beta.0)"
+        required: true
+        type: string
+      pypi:
+        description: "Publish to PyPI"
+        required: false
+        type: boolean
+        default: true
+      snap:
+        description: "Publish to Snap Store"
+        required: false
+        type: boolean
+        default: true
+      flatpak:
+        description: "Publish Flatpak"
+        required: false
+        type: boolean
+        default: true
+      apt:
+        description: "Build Debian package"
+        required: false
+        type: boolean
+        default: true
+    secrets:
+      SNAP_STORE_CREDENTIALS:
+        required: false
+      APT_REPO_TOKEN:
+        required: false
+      PYPI_API_TOKEN:
+        required: false
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish (e.g. 2.0.0-beta.0)"
+        required: true
+        type: string
+      pypi:
+        description: "Publish to PyPI"
+        type: boolean
+        default: true
+      snap:
+        description: "Publish to Snap Store"
+        type: boolean
+        default: true
+      flatpak:
+        description: "Publish Flatpak"
+        type: boolean
+        default: true
+      apt:
+        description: "Build Debian package"
+        type: boolean
+        default: true
+
+concurrency:
+  group: publish-packages-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CI: "true"
+
+jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      npm_version: ${{ steps.ver.outputs.npm_version }}
+      pypi_version: ${{ steps.ver.outputs.pypi_version }}
+      deb_version: ${{ steps.ver.outputs.deb_version }}
+      is_prerelease: ${{ steps.ver.outputs.is_prerelease }}
+      snap_store_ready: ${{ steps.registry_credentials.outputs.snap_store_ready }}
+      apt_repo_ready: ${{ steps.registry_credentials.outputs.apt_repo_ready }}
+    steps:
+      - name: Determine versions
+        id: ver
+        run: |
+          VERSION="${{ inputs.version }}"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "npm_version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          # PEP 440 conversion: 2.0.0-beta.0 → 2.0.0b0
+          PYPI_VERSION=$(echo "$VERSION" | sed -E 's/-beta\.?/b/; s/-rc\.?/rc/')
+          echo "pypi_version=$PYPI_VERSION" >> "$GITHUB_OUTPUT"
+
+          # Debian version: 2.0.0-beta.0 → 2.0.0~beta0-1
+          DEB_VERSION=$(echo "$VERSION" | sed -E 's/-beta\./~beta/; s/-rc\./~rc/')
+          echo "deb_version=${DEB_VERSION}-1" >> "$GITHUB_OUTPUT"
+
+          # Pre-release detection
+          if echo "$VERSION" | grep -qE '(beta|rc)'; then
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "Version: $VERSION"
+          echo "PyPI: $PYPI_VERSION"
+          echo "Debian: ${DEB_VERSION}-1"
+          echo "Pre-release: $(echo "$VERSION" | grep -qE '(beta|rc)' && echo true || echo false)"
+
+      - name: Check registry credentials
+        id: registry_credentials
+        env:
+          INPUT_SNAP: ${{ inputs.snap }}
+          INPUT_APT: ${{ inputs.apt }}
+          SNAP_STORE_CREDENTIALS: ${{ secrets.SNAP_STORE_CREDENTIALS }}
+          APT_REPO_TOKEN: ${{ secrets.APT_REPO_TOKEN }}
+        run: |
+          missing=0
+          if [[ -n "$SNAP_STORE_CREDENTIALS" ]]; then
+            echo "snap_store_ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "snap_store_ready=false" >> "$GITHUB_OUTPUT"
+            if [[ "$INPUT_SNAP" == "true" ]]; then
+              echo "::error::SNAP_STORE_CREDENTIALS is required when Snap publishing is enabled."
+              missing=1
+            fi
+          fi
+
+          if [[ -n "$APT_REPO_TOKEN" ]]; then
+            echo "apt_repo_ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "apt_repo_ready=false" >> "$GITHUB_OUTPUT"
+            if [[ "$INPUT_APT" == "true" ]]; then
+              echo "::error::APT_REPO_TOKEN is required when apt publishing is enabled."
+              missing=1
+            fi
+          fi
+
+          exit "$missing"
+
+  # ── PyPI ───────────────────────────────────────────────────────────────
+  publish-pypi:
+    name: Publish to PyPI
+    needs: prepare
+    if: inputs.pypi
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write  # OIDC trusted publishing
+    environment:
+      name: pypi
+      url: https://pypi.org/project/elizaos-app/${{ needs.prepare.outputs.pypi_version }}/
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Update version in source
+        working-directory: packages/app-core/packaging/pypi
+        run: |
+          PYPI_VERSION="${{ needs.prepare.outputs.pypi_version }}"
+          sed -i "s/^version = .*/version = \"$PYPI_VERSION\"/" pyproject.toml
+          sed -i "s/^__version__ = .*/__version__ = \"$PYPI_VERSION\"/" elizaos_app/__init__.py
+          echo "Updated to version: $PYPI_VERSION"
+          grep "version" pyproject.toml | head -1
+          grep "__version__" elizaos_app/__init__.py
+
+      - name: Build package
+        working-directory: packages/app-core/packaging/pypi
+        run: |
+          pip install build
+          python -m build
+          echo "Built packages:"
+          ls -lh dist/
+
+      - name: Validate package
+        working-directory: packages/app-core/packaging/pypi
+        run: |
+          pip install twine
+          twine check dist/*
+
+      - name: Test package installs
+        working-directory: packages/app-core/packaging/pypi
+        run: |
+          pip install dist/*.whl
+          python -c "import elizaos_app; print(f'elizaos_app {elizaos_app.__version__} loaded OK')"
+          python -c "
+          from elizaos_app.loader import _parse_version
+          assert _parse_version('v22.12.0') == (22, 12, 0)
+          print('Loader tests passed')
+          "
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/app-core/packaging/pypi/dist/
+          # Falls back to API token when OIDC trusted publishing is not
+          # configured (e.g. first publish before the project exists on PyPI).
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+  # ── Homebrew ───────────────────────────────────────────────────────────
+  # NOTE: Homebrew tap updates are handled by the standalone update-homebrew.yml
+  # workflow, which triggers via repository_dispatch. Do not duplicate here.
+
+  # ── Snap ───────────────────────────────────────────────────────────────
+  publish-snap:
+    name: Build & Publish Snap
+    needs: prepare
+    if: inputs.snap
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Prepare snapcraft.yaml
+        run: |
+          mkdir -p snap
+          cp packages/app-core/packaging/snap/snapcraft.yaml snap/snapcraft.yaml
+          VERSION="${{ needs.prepare.outputs.version }}"
+          sed -i "s/^version: .*/version: '${VERSION}'/" snap/snapcraft.yaml
+          echo "Snap version: $VERSION"
+
+      - name: Normalize runner root ownership for snapd
+        run: |
+          set -euo pipefail
+          ROOT_OWNER="$(stat -c '%u:%g' /)"
+          echo "Runner root owner: ${ROOT_OWNER}"
+          if [ "${ROOT_OWNER}" = "0:0" ]; then
+            echo "Root is already 0:0 — snapd canonicalization OK"
+            exit 0
+          fi
+          echo "Attempting to repair / ownership so snapd/systemd path canonicalization accepts this runner"
+          if sudo -n chown root:root / 2>/dev/null; then
+            echo "Chown succeeded; new owner: $(stat -c '%u:%g' /)"
+          else
+            echo "::warning::Unable to chown / to root:root (sudo unavailable or passwordless sudo disabled). snapd may fail downstream. Remediation: run this job on a standard ubuntu-latest / ubuntu-24.04 GitHub-hosted runner, or configure the container image so / is owned by 0:0."
+          fi
+
+      - name: Build snap
+        uses: snapcore/action-build@v1
+        id: snapcraft
+
+      - name: Test snap
+        run: |
+          sudo snap install ${{ steps.snapcraft.outputs.snap }} --dangerous
+          snap list elizaos-app
+          elizaos-app --version || echo "Version check completed"
+
+      - name: Publish to Snap Store
+        if: success() && needs.prepare.outputs.snap_store_ready == 'true'
+        uses: snapcore/action-publish@v1
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAP_STORE_CREDENTIALS }}
+        with:
+          snap: ${{ steps.snapcraft.outputs.snap }}
+          release: ${{ needs.prepare.outputs.is_prerelease == 'true' && 'edge,beta' || 'stable,candidate' }}
+
+  # ── Debian / apt ───────────────────────────────────────────────────────
+  build-deb:
+    name: Build Debian Package
+    needs: prepare
+    if: inputs.apt
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write  # gh release upload
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js (system-wide for dpkg)
+        run: |
+          # Install Node.js 22 via NodeSource so dpkg-checkbuilddeps can find it
+          curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+          sudo apt-get install -y nodejs build-essential
+          node --version
+          npm --version
+          dpkg-query -W -f='${Version} ${Provides}\n' nodejs | grep -Eq '(^|, )npm(,|$)'
+
+      - name: Setup Bun
+        run: |
+          curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.13"
+          echo "$HOME/.bun/bin" >> "$GITHUB_PATH"
+          export PATH="$HOME/.bun/bin:$PATH"
+          bun --version
+
+      - name: Prepare debian packaging
+        run: |
+          # Copy debian directory into project root
+          cp -r packages/app-core/packaging/debian .
+
+          # Update changelog version
+          DEB_VERSION="${{ needs.prepare.outputs.deb_version }}"
+          sed -i "1s/([^)]*)/($DEB_VERSION)/" debian/changelog
+          sed -i "1s/UNRELEASED/unstable/" debian/changelog
+
+          echo "Debian version: $DEB_VERSION"
+          head -3 debian/changelog
+          dpkg-checkbuilddeps debian/control
+
+      - name: Install build dependencies
+        run: |
+          for attempt in 1 2 3; do
+            sudo apt-get update && \
+            sudo apt-get install -y debhelper devscripts fakeroot && break
+            echo "apt-get attempt $attempt failed, retrying in 10s..."
+            sleep 10
+          done
+
+      - name: Build .deb package
+        run: |
+          dpkg-buildpackage -us -uc -b
+          echo "Built packages:"
+          ls -lh ../*.deb
+          # Copy to workspace for artifact upload (upload-artifact doesn't allow ../)
+          mkdir -p deb-output
+          cp ../*.deb ../*.changes deb-output/ 2>/dev/null || cp ../*.deb deb-output/
+
+      - name: Test .deb package
+        run: |
+          debs=(deb-output/*.deb)
+          sudo dpkg -i "${debs[@]}" || sudo apt-get -f install -y
+          which elizaos-app
+          elizaos-app --version || echo "Version check completed"
+
+      - name: Upload .deb artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: debian-package
+          path: deb-output/
+          retention-days: 90
+
+      - name: Attach .deb to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ needs.prepare.outputs.version }}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::No GitHub release found for $TAG; cannot attach .deb artifacts."
+            exit 1
+          fi
+          for deb in deb-output/*.deb; do
+            echo "Uploading $deb to release..."
+            gh release upload "$TAG" "$deb" --clobber
+          done
+
+      - name: Trigger APT repository update
+        if: success() && needs.prepare.outputs.apt_repo_ready == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.APT_REPO_TOKEN }}
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+
+          DEB_FILE="$(find deb-output -maxdepth 1 -type f -name '*.deb' | sort | head -n 1)"
+          if [[ -z "$DEB_FILE" ]]; then
+            echo "::error::No .deb artifact found in deb-output."
+            exit 1
+          fi
+          DEB_BASENAME="$(basename "$DEB_FILE")"
+
+          TAG="v${VERSION}"
+
+          DEB_URL="https://github.com/elizaOS/eliza/releases/download/${TAG}/${DEB_BASENAME}"
+
+          echo "Dispatching APT update: version=$VERSION, deb_url=$DEB_URL"
+          gh api repos/elizaOS/apt/dispatches \
+            --method POST \
+            -f event_type=update-apt \
+            -f "client_payload[version]=$VERSION" \
+            -f "client_payload[deb_url]=$DEB_URL"
+
+  # ── Flatpak ────────────────────────────────────────────────────────────
+  build-flatpak:
+    name: Build Flatpak
+    needs: prepare
+    if: inputs.flatpak
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write  # gh release upload
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install Flatpak tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install -y --user flathub org.freedesktop.Platform//24.08
+          flatpak install -y --user flathub org.freedesktop.Sdk//24.08
+
+      - name: Wait for npm package version
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.npm_version }}"
+          for attempt in $(seq 1 30); do
+            if curl -fsS "https://registry.npmjs.org/elizaos/${VERSION}" >/dev/null; then
+              echo "Found elizaos@${VERSION} on npm"
+              exit 0
+            fi
+            echo "elizaos@${VERSION} is not visible on npm yet (attempt ${attempt}/30); waiting..."
+            sleep 20
+          done
+          echo "::error::elizaos@${VERSION} was not visible on npm before Flatpak build"
+          exit 1
+
+      - name: Prepare Flatpak release manifest
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.prepare.outputs.npm_version }}"
+          TODAY="$(date -u +%F)"
+          MANIFEST="packages/app-core/packaging/flatpak/ai.elizaos.App.yml"
+          METAINFO="packages/app-core/packaging/flatpak/ai.elizaos.App.metainfo.xml"
+
+          sed -i -E \
+            "s#npm install -g elizaos(@[^[:space:]]+)? --prefix=/app --ignore-scripts#npm install -g elizaos@${VERSION} --prefix=/app --ignore-scripts#" \
+            "$MANIFEST"
+          sed -i -E \
+            "s#<release version=\"[^\"]+\" date=\"[^\"]+\">#<release version=\"${VERSION}\" date=\"${TODAY}\">#" \
+            "$METAINFO"
+
+          grep -n "npm install -g elizaos" "$MANIFEST"
+          grep -n "<release version" "$METAINFO" | head -1
+
+      - name: Build Flatpak
+        working-directory: packages/app-core/packaging/flatpak
+        run: |
+          flatpak-builder --repo=repo --force-clean build-dir ai.elizaos.App.yml
+          flatpak build-bundle repo elizaos-app.flatpak ai.elizaos.App
+
+      - name: Test Flatpak
+        working-directory: packages/app-core/packaging/flatpak
+        run: |
+          flatpak --user install -y elizaos-app.flatpak
+          flatpak run ai.elizaos.App --version || echo "Version check completed"
+
+      - name: Upload Flatpak bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: flatpak-bundle
+          path: packages/app-core/packaging/flatpak/elizaos-app.flatpak
+          retention-days: 90
+
+      - name: Attach Flatpak to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ needs.prepare.outputs.version }}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::No GitHub release found for $TAG; cannot attach Flatpak artifact."
+            exit 1
+          fi
+          gh release upload "$TAG" packages/app-core/packaging/flatpak/elizaos-app.flatpak --clobber
+
+  # ── Summary ────────────────────────────────────────────────────────────
+  publish-summary:
+    name: Publish Summary
+    needs: [prepare, publish-pypi, publish-snap, build-deb, build-flatpak]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Summary
+        run: |
+          {
+            echo "## Package Publishing Summary"
+            echo ""
+            echo "Version: **${{ needs.prepare.outputs.version }}**"
+            echo ""
+            echo "| Package | Status |"
+            echo "|---------|--------|"
+            echo "| PyPI (elizaos-app ${{ needs.prepare.outputs.pypi_version }}) | ${{ needs.publish-pypi.result || 'skipped' }} |"
+            echo "| Homebrew | handled by update-homebrew.yml |"
+            echo "| Snap | ${{ needs.publish-snap.result || 'skipped' }} |"
+            echo "| Debian (.deb) | ${{ needs.build-deb.result || 'skipped' }} |"
+            echo "| Flatpak | ${{ needs.build-flatpak.result || 'skipped' }} |"
+            echo ""
+            echo "### Install commands"
+            echo '```bash'
+            echo "pip install elizaos-app==${{ needs.prepare.outputs.pypi_version }}"
+            echo "brew install elizaos-app"
+            echo "sudo snap install elizaos-app --classic"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Require enabled package publishers succeeded
+        run: |
+          failed=0
+          require_result() {
+            local label="$1"
+            local enabled="$2"
+            local result="$3"
+            if [[ "$enabled" == "true" && "$result" != "success" ]]; then
+              echo "::error::$label result was '$result', expected success"
+              failed=1
+            fi
+          }
+
+          require_result "PyPI" "${{ inputs.pypi }}" "${{ needs.publish-pypi.result }}"
+          require_result "Snap" "${{ inputs.snap }}" "${{ needs.publish-snap.result }}"
+          require_result "Debian/APT" "${{ inputs.apt }}" "${{ needs.build-deb.result }}"
+          require_result "Flatpak" "${{ inputs.flatpak }}" "${{ needs.build-flatpak.result }}"
+
+          exit "$failed"

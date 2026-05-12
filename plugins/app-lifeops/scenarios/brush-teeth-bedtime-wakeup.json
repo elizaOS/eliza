@@ -1,0 +1,45 @@
+{
+  "id": "brush-teeth-bedtime-wakeup",
+  "title": "Brush teeth from wake-up and bedtime phrasing",
+  "domain": "tasks",
+  "rooms": [
+    {
+      "id": "main",
+      "source": "discord",
+      "title": "LifeOps Brush Teeth Wake Bed"
+    }
+  ],
+  "turns": [
+    {
+      "name": "brush-teeth wake-bed preview",
+      "text": "make sure i actually brush my teeth when i wake up and before bed lol",
+      "responseIncludesAny": ["brush teeth", "brushing", "bed", "wake"]
+    },
+    {
+      "name": "brush-teeth wake-bed confirm",
+      "text": "Yes, save that.",
+      "responseIncludesAny": ["saved", "brush teeth", "brushing"]
+    },
+    {
+      "name": "inspect brush definitions",
+      "apiRequest": {
+        "method": "GET",
+        "path": "/api/lifeops/definitions"
+      },
+      "apiStatus": 200
+    }
+  ],
+  "finalChecks": [
+    {
+      "type": "definitionCountDelta",
+      "title": "Brush teeth",
+      "delta": 1,
+      "cadenceKind": "times_per_day",
+      "requiredSlots": [
+        { "label": "Morning", "minuteOfDay": 480 },
+        { "label": "Night", "minuteOfDay": 1260 }
+      ],
+      "requireReminderPlan": true
+    }
+  ]
+}

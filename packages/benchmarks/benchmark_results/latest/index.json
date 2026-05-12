@@ -1,0 +1,941 @@
+{
+  "latest": {
+    "abliteration-robustness::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/abliteration-robustness__eliza.json",
+      "run_id": "run_abliteration-robustness_20260511T131636Z_1_a9cfb29d",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "abliteration-robustness::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/abliteration-robustness__hermes.json",
+      "run_id": "run_abliteration-robustness_20260511T131640Z_1_ea474e1e",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "abliteration-robustness::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/abliteration-robustness__openclaw.json",
+      "run_id": "run_abliteration-robustness_20260511T131644Z_1_62f75834",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "action-calling::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/action-calling__eliza.json",
+      "run_id": "run_action-calling_20260511T132140Z_2_abeae1d9",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "action-calling::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/action-calling__hermes.json",
+      "run_id": "run_action-calling_20260511T132226Z_2_4b61428e",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "action-calling::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/action-calling__openclaw.json",
+      "run_id": "run_action-calling_20260511T132230Z_2_19eac6bc",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "adhdbench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/adhdbench__eliza.json",
+      "run_id": "run_adhdbench_20260511T133839Z_3_5ef43cc2",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "adhdbench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/adhdbench__hermes.json",
+      "run_id": "run_adhdbench_20260511T133937Z_2_eab7f2ee",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "adhdbench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/adhdbench__openclaw.json",
+      "run_id": "run_adhdbench_20260511T134009Z_2_1b1bab0b",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "agentbench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/agentbench__eliza.json",
+      "run_id": "run_agentbench_20260511T132206Z_2_76de7819",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "agentbench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/agentbench__hermes.json",
+      "run_id": "run_agentbench_20260511T132427Z_2_518b0be6",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "agentbench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/agentbench__openclaw.json",
+      "run_id": "run_agentbench_20260511T132514Z_3_876dca6c",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "app-eval::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/app-eval__eliza.json",
+      "run_id": "run_app-eval_20260511T132606Z_3_f79b0d04",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "app-eval::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/app-eval__hermes.json",
+      "run_id": "run_app-eval_20260511T132504Z_2_d812114f",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "app-eval::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/app-eval__openclaw.json",
+      "run_id": "run_app-eval_20260511T132523Z_2_7a8f8340",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "bfcl::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/bfcl__eliza.json",
+      "run_id": "run_bfcl_20260511T133303Z_2_d447a22d",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "bfcl::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/bfcl__hermes.json",
+      "run_id": "run_bfcl_20260512T020846Z_1_f56e6fbf",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T02:08:49.189405+00:00"
+    },
+    "bfcl::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/bfcl__openclaw.json",
+      "run_id": "run_bfcl_20260512T021008Z_1_32a9417d",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T02:10:35.680171+00:00"
+    },
+    "clawbench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/clawbench__eliza.json",
+      "run_id": "run_clawbench_20260511T131735Z_2_8e2b0ca0",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "clawbench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/clawbench__hermes.json",
+      "run_id": "run_clawbench_20260511T131812Z_2_12006427",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "clawbench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/clawbench__openclaw.json",
+      "run_id": "run_clawbench_20260511T131814Z_2_0a2143ec",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "compactbench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/compactbench__eliza.json",
+      "run_id": "run_compactbench_20260511T135316Z_2_e9edc60f",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "compactbench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/compactbench__hermes.json",
+      "run_id": "run_compactbench_20260511T135326Z_2_235b5925",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "compactbench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/compactbench__openclaw.json",
+      "run_id": "run_compactbench_20260511T135336Z_2_4bf96c0f",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "configbench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/configbench__eliza.json",
+      "run_id": "run_configbench_20260511T131523Z_2_8fe04874",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "configbench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/configbench__hermes.json",
+      "run_id": "run_configbench_20260511T131529Z_2_d14cc037",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "configbench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/configbench__openclaw.json",
+      "run_id": "run_configbench_20260511T131529Z_2_65bc0156",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "context_bench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/context_bench__eliza.json",
+      "run_id": "run_context_bench_20260511T131808Z_1_b30dd1d0",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "context_bench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/context_bench__hermes.json",
+      "run_id": "run_context_bench_20260511T131827Z_1_d9ec8194",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "context_bench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/context_bench__openclaw.json",
+      "run_id": "run_context_bench_20260511T131829Z_1_d9a4afc0",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "eliza-format::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/eliza-format__eliza.json",
+      "run_id": "run_eliza-format_20260512T014000Z_2_8877609c",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:40:02.559648+00:00"
+    },
+    "eliza-format::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/eliza-format__hermes.json",
+      "run_id": "run_eliza-format_20260512T014002Z_2_e7ac806e",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:40:04.230590+00:00"
+    },
+    "eliza-format::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/eliza-format__openclaw.json",
+      "run_id": "run_eliza-format_20260512T014004Z_2_38a88152",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:40:06.115338+00:00"
+    },
+    "eliza_replay::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/eliza_replay__eliza.json",
+      "run_id": "run_eliza_replay_20260511T132748Z_2_012e3110",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "eliza_replay::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/eliza_replay__hermes.json",
+      "run_id": "run_eliza_replay_20260511T132914Z_2_ff0efd30",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "eliza_replay::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/eliza_replay__openclaw.json",
+      "run_id": "run_eliza_replay_20260511T132947Z_2_d77c50cf",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "evm::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/evm__eliza.json",
+      "run_id": "run_evm_20260511T132601Z_2_e7bbfd9f",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "evm::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/evm__hermes.json",
+      "run_id": "run_evm_20260511T132814Z_2_c84896d4",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "evm::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/evm__openclaw.json",
+      "run_id": "run_evm_20260511T132929Z_2_0e0370b8",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "experience::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/experience__eliza.json",
+      "run_id": "run_experience_20260511T133048Z_1_fa3122b7",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "experience::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/experience__hermes.json",
+      "run_id": "run_experience_20260511T133634Z_1_c19c2f07",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "experience::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/experience__openclaw.json",
+      "run_id": "run_experience_20260511T133639Z_1_89cc9e87",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "framework::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/framework__eliza.json",
+      "run_id": "run_framework_20260511T131541Z_1_4029d17d",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "framework::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/framework__hermes.json",
+      "run_id": "run_framework_20260511T131543Z_1_5fcdf4cb",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "framework::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/framework__openclaw.json",
+      "run_id": "run_framework_20260511T131544Z_1_e8db3b31",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "gaia::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/gaia__eliza.json",
+      "run_id": "run_gaia_20260511T132227Z_2_5a0972c4",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "gaia::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/gaia__hermes.json",
+      "run_id": "run_gaia_20260511T132432Z_2_e9221ed0",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "gaia::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/gaia__openclaw.json",
+      "run_id": "run_gaia_20260511T132516Z_2_d5099158",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "gaia_orchestrated::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/gaia_orchestrated__eliza.json",
+      "run_id": "run_gaia_orchestrated_20260511T132250Z_2_028ac64a",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "gaia_orchestrated::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/gaia_orchestrated__hermes.json",
+      "run_id": "run_gaia_orchestrated_20260511T132439Z_2_2a109c85",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "gaia_orchestrated::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/gaia_orchestrated__openclaw.json",
+      "run_id": "run_gaia_orchestrated_20260511T132517Z_2_5d89420c",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "gauntlet::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/gauntlet__eliza.json",
+      "run_id": "run_gauntlet_20260511T132505Z_1_1d67d7a8",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "gauntlet::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/gauntlet__hermes.json",
+      "run_id": "run_gauntlet_20260511T132613Z_1_3d28700f",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "gauntlet::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/gauntlet__openclaw.json",
+      "run_id": "run_gauntlet_20260511T132618Z_1_1cdb8d26",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "gsm8k::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/gsm8k__eliza.json",
+      "run_id": "run_gsm8k_20260511T131604Z_1_b2e67a88",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "gsm8k::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/gsm8k__hermes.json",
+      "run_id": "run_gsm8k_20260511T131742Z_2_98443c83",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "gsm8k::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/gsm8k__openclaw.json",
+      "run_id": "run_gsm8k_20260511T131750Z_2_3ade5d07",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "hermes_swe_env::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/hermes_swe_env__eliza.json",
+      "run_id": "run_hermes_swe_env_20260511T183932Z_5_90f9a298",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "hermes_swe_env::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/hermes_swe_env__hermes.json",
+      "run_id": "run_hermes_swe_env_20260511T184100Z_5_c64656f4",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "hermes_swe_env::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/hermes_swe_env__openclaw.json",
+      "run_id": "run_hermes_swe_env_20260511T184354Z_5_91e367ce",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "hermes_tblite::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/hermes_tblite__eliza.json",
+      "run_id": "run_hermes_tblite_20260511T183809Z_5_841770a7",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "hermes_tblite::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/hermes_tblite__hermes.json",
+      "run_id": "run_hermes_tblite_20260511T183948Z_5_e5b523e7",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "hermes_tblite::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/hermes_tblite__openclaw.json",
+      "run_id": "run_hermes_tblite_20260511T184111Z_5_5770afb4",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "hermes_terminalbench_2::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/hermes_terminalbench_2__eliza.json",
+      "run_id": "run_hermes_terminalbench_2_20260511T183853Z_5_b47ca7e8",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "hermes_terminalbench_2::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/hermes_terminalbench_2__hermes.json",
+      "run_id": "run_hermes_terminalbench_2_20260511T184021Z_5_8a995df8",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "hermes_terminalbench_2::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/hermes_terminalbench_2__openclaw.json",
+      "run_id": "run_hermes_terminalbench_2_20260511T184203Z_5_979a9c5d",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "hermes_yc_bench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/hermes_yc_bench__eliza.json",
+      "run_id": "run_hermes_yc_bench_20260511T184454Z_6_f77036b7",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "hermes_yc_bench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/hermes_yc_bench__hermes.json",
+      "run_id": "run_hermes_yc_bench_20260511T184503Z_6_732a2e50",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "hermes_yc_bench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/hermes_yc_bench__openclaw.json",
+      "run_id": "run_hermes_yc_bench_20260511T184511Z_6_87bbb0d1",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "humaneval::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/humaneval__eliza.json",
+      "run_id": "run_humaneval_20260511T132236Z_2_fd1cec57",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "humaneval::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/humaneval__hermes.json",
+      "run_id": "run_humaneval_20260511T132307Z_2_fc7381e7",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "humaneval::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/humaneval__openclaw.json",
+      "run_id": "run_humaneval_20260511T132315Z_2_8b406c2a",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "hyperliquid_bench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/hyperliquid_bench__eliza.json",
+      "run_id": "run_hyperliquid_bench_20260511T133453Z_4_ee1ab217",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "hyperliquid_bench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/hyperliquid_bench__hermes.json",
+      "run_id": "run_hyperliquid_bench_20260511T133553Z_3_4a8dafff",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "hyperliquid_bench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/hyperliquid_bench__openclaw.json",
+      "run_id": "run_hyperliquid_bench_20260511T133611Z_3_60de6301",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "hyperliquidbench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/hyperliquidbench__eliza.json",
+      "run_id": "run_hyperliquidbench_20260511T133514Z_3_81fa4ec5",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "hyperliquidbench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/hyperliquidbench__hermes.json",
+      "run_id": "run_hyperliquidbench_20260511T133600Z_3_500eca65",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "hyperliquidbench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/hyperliquidbench__openclaw.json",
+      "run_id": "run_hyperliquidbench_20260511T133617Z_3_167e69de",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "interrupt_bench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/interrupt_bench__eliza.json",
+      "run_id": "run_interrupt_bench_20260511T190138Z_2_3c9b3960",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "interrupt_bench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/interrupt_bench__hermes.json",
+      "run_id": "run_interrupt_bench_20260511T190157Z_2_74fd294b",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "interrupt_bench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/interrupt_bench__openclaw.json",
+      "run_id": "run_interrupt_bench_20260511T190215Z_2_abd29ea1",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "lifeops_bench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/lifeops_bench__eliza.json",
+      "run_id": "run_lifeops_bench_20260511T133611Z_3_654904c4",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "lifeops_bench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/lifeops_bench__hermes.json",
+      "run_id": "run_lifeops_bench_20260511T133740Z_3_8770bdbd",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "lifeops_bench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/lifeops_bench__openclaw.json",
+      "run_id": "run_lifeops_bench_20260511T133743Z_3_65ea05b6",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "loca_bench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/loca_bench__eliza.json",
+      "run_id": "run_loca_bench_20260512T014140Z_1_27b81055",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:46:31.917358+00:00"
+    },
+    "loca_bench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/loca_bench__hermes.json",
+      "run_id": "run_loca_bench_20260512T014632Z_2_a2b6bc08",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:52:46.988647+00:00"
+    },
+    "loca_bench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/loca_bench__openclaw.json",
+      "run_id": "run_loca_bench_20260512T012256Z_3_4b3f44cb",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "mind2web::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/mind2web__eliza.json",
+      "run_id": "run_mind2web_20260511T132344Z_2_f094bd98",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "mind2web::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/mind2web__hermes.json",
+      "run_id": "run_mind2web_20260511T132454Z_2_5934acb1",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "mind2web::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/mind2web__openclaw.json",
+      "run_id": "run_mind2web_20260511T132519Z_2_9a0d480e",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "mint::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/mint__eliza.json",
+      "run_id": "run_mint_20260511T133129Z_1_ee685e77",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "mint::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/mint__hermes.json",
+      "run_id": "run_mint_20260511T133209Z_1_7b4ba0b8",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "mint::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/mint__openclaw.json",
+      "run_id": "run_mint_20260511T133218Z_1_f9632551",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "mmlu::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/mmlu__eliza.json",
+      "run_id": "run_mmlu_20260511T135353Z_1_c042504a",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "mmlu::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/mmlu__hermes.json",
+      "run_id": "run_mmlu_20260511T132338Z_2_462d325b",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "mmlu::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/mmlu__openclaw.json",
+      "run_id": "run_mmlu_20260511T132346Z_2_5d42728c",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "mt_bench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/mt_bench__eliza.json",
+      "run_id": "run_mt_bench_20260511T132927Z_1_a75ce0e6",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "mt_bench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/mt_bench__hermes.json",
+      "run_id": "run_mt_bench_20260511T132950Z_1_d825e19e",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "mt_bench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/mt_bench__openclaw.json",
+      "run_id": "run_mt_bench_20260511T133002Z_1_95df32e0",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "openclaw_bench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/openclaw_bench__eliza.json",
+      "run_id": "run_openclaw_bench_20260511T131935Z_1_542f6546",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "openclaw_bench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/openclaw_bench__hermes.json",
+      "run_id": "run_openclaw_bench_20260511T131959Z_1_ec94e323",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "openclaw_bench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/openclaw_bench__openclaw.json",
+      "run_id": "run_openclaw_bench_20260511T132003Z_1_e5b73ec2",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:33:59Z"
+    },
+    "orchestrator_lifecycle::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/orchestrator_lifecycle__eliza.json",
+      "run_id": "run_orchestrator_lifecycle_20260511T132311Z_2_2ce39e2e",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "orchestrator_lifecycle::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/orchestrator_lifecycle__hermes.json",
+      "run_id": "run_orchestrator_lifecycle_20260511T132447Z_2_272e2973",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "orchestrator_lifecycle::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/orchestrator_lifecycle__openclaw.json",
+      "run_id": "run_orchestrator_lifecycle_20260511T132519Z_2_2903d6fb",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "osworld::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/osworld__eliza.json",
+      "run_id": "run_osworld_20260511T132418Z_2_e8b5ff92",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "osworld::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/osworld__hermes.json",
+      "run_id": "run_osworld_20260511T132501Z_2_eec79ae0",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "osworld::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/osworld__openclaw.json",
+      "run_id": "run_osworld_20260511T132521Z_2_9bca20b1",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "personality_bench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/personality_bench__eliza.json",
+      "run_id": "run_personality_bench_20260511T190157Z_2_e52ba721",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "personality_bench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/personality_bench__hermes.json",
+      "run_id": "run_personality_bench_20260511T190215Z_2_975f2bc5",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "personality_bench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/personality_bench__openclaw.json",
+      "run_id": "run_personality_bench_20260511T190231Z_2_0177c44f",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "realm::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/realm__eliza.json",
+      "run_id": "run_realm_20260511T132811Z_1_15179dce",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "realm::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/realm__hermes.json",
+      "run_id": "run_realm_20260511T133004Z_1_371f8f1c",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "realm::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/realm__openclaw.json",
+      "run_id": "run_realm_20260511T133053Z_1_aee5c8f2",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "rlm_bench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/rlm_bench__eliza.json",
+      "run_id": "run_rlm_bench_20260511T131656Z_1_e604898f",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "rlm_bench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/rlm_bench__hermes.json",
+      "run_id": "run_rlm_bench_20260511T131703Z_1_a7247d1a",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "rlm_bench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/rlm_bench__openclaw.json",
+      "run_id": "run_rlm_bench_20260511T131717Z_1_c1c42400",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "scambench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/scambench__eliza.json",
+      "run_id": "run_scambench_20260511T131616Z_1_52835136",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "scambench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/scambench__hermes.json",
+      "run_id": "run_scambench_20260511T131620Z_1_216b7994",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "scambench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/scambench__openclaw.json",
+      "run_id": "run_scambench_20260511T131626Z_1_a5927398",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "social_alpha::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/social_alpha__eliza.json",
+      "run_id": "run_social_alpha_20260511T132634Z_1_b66477b4",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "social_alpha::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/social_alpha__hermes.json",
+      "run_id": "run_social_alpha_20260511T132708Z_1_25f9dd04",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "social_alpha::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/social_alpha__openclaw.json",
+      "run_id": "run_social_alpha_20260511T132711Z_1_2a1bdb46",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "solana::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/solana__eliza.json",
+      "run_id": "run_solana_20260511T132643Z_2_0021d973",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "solana::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/solana__hermes.json",
+      "run_id": "run_solana_20260511T132844Z_2_2ff12441",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "solana::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/solana__openclaw.json",
+      "run_id": "run_solana_20260511T132934Z_2_60543aa9",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "swe_bench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/swe_bench__eliza.json",
+      "run_id": "run_swe_bench_20260511T133148Z_3_9f71d24c",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "swe_bench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/swe_bench__hermes.json",
+      "run_id": "run_swe_bench_20260511T132749Z_2_311bb8aa",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "swe_bench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/swe_bench__openclaw.json",
+      "run_id": "run_swe_bench_20260511T132914Z_2_c3999cb8",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "swe_bench_orchestrated::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/swe_bench_orchestrated__eliza.json",
+      "run_id": "run_swe_bench_orchestrated_20260511T133342Z_3_2edef168",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "swe_bench_orchestrated::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/swe_bench_orchestrated__hermes.json",
+      "run_id": "run_swe_bench_orchestrated_20260511T133418Z_3_1683d9a8",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "swe_bench_orchestrated::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/swe_bench_orchestrated__openclaw.json",
+      "run_id": "run_swe_bench_orchestrated_20260511T133428Z_3_cb30efe5",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "tau_bench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/tau_bench__eliza.json",
+      "run_id": "run_tau_bench_20260511T132340Z_1_4ca0c220",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "tau_bench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/tau_bench__hermes.json",
+      "run_id": "run_tau_bench_20260511T132543Z_1_c6fb3215",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "tau_bench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/tau_bench__openclaw.json",
+      "run_id": "run_tau_bench_20260511T132730Z_2_f75e2969",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "terminal_bench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/terminal_bench__eliza.json",
+      "run_id": "run_terminal_bench_20260511T191117Z_1_89640af6",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "terminal_bench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/terminal_bench__hermes.json",
+      "run_id": "run_terminal_bench_20260512T020834Z_3_c265976a",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T02:08:46.931113+00:00"
+    },
+    "terminal_bench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/terminal_bench__openclaw.json",
+      "run_id": "run_terminal_bench_20260512T021646Z_2_ab26b7b5",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T02:18:52.422430+00:00"
+    },
+    "trust::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/trust__eliza.json",
+      "run_id": "run_trust_20260511T131352Z_1_1fa9e42b",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "trust::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/trust__hermes.json",
+      "run_id": "run_trust_20260511T131414Z_1_b4cf02ac",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "trust::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/trust__openclaw.json",
+      "run_id": "run_trust_20260511T133008Z_2_3239deee",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "vending_bench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/vending_bench__eliza.json",
+      "run_id": "run_vending_bench_20260511T134044Z_3_be33c10e",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "vending_bench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/vending_bench__hermes.json",
+      "run_id": "run_vending_bench_20260511T133949Z_2_5b07d7dd",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "vending_bench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/vending_bench__openclaw.json",
+      "run_id": "run_vending_bench_20260511T134010Z_2_b363ce71",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "visualwebbench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/visualwebbench__eliza.json",
+      "run_id": "run_visualwebbench_20260511T191814Z_1_8c822c6b",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "visualwebbench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/visualwebbench__hermes.json",
+      "run_id": "run_visualwebbench_20260511T191828Z_1_ab9fac47",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "visualwebbench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/visualwebbench__openclaw.json",
+      "run_id": "run_visualwebbench_20260511T194124Z_4_e371fc96",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "voicebench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/voicebench__eliza.json",
+      "run_id": "run_voicebench_20260511T131604Z_1_3a4ffbf3",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "voicebench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/voicebench__hermes.json",
+      "run_id": "run_voicebench_20260511T131605Z_1_1868b35e",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "voicebench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/voicebench__openclaw.json",
+      "run_id": "run_voicebench_20260511T131606Z_1_29fe64d9",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "webshop::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/webshop__eliza.json",
+      "run_id": "run_webshop_20260511T133807Z_2_2808a942",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "webshop::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/webshop__hermes.json",
+      "run_id": "run_webshop_20260511T133925Z_2_8bb8e852",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "webshop::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/webshop__openclaw.json",
+      "run_id": "run_webshop_20260511T134008Z_2_85550192",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "woobench::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/woobench__eliza.json",
+      "run_id": "run_woobench_20260511T132149Z_2_9aebcb40",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "woobench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/woobench__hermes.json",
+      "run_id": "run_woobench_20260511T132037Z_1_abc19cf8",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    },
+    "woobench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/latest/woobench__openclaw.json",
+      "run_id": "run_woobench_20260511T132113Z_1_94cbf416",
+      "status": "succeeded",
+      "updated_at": "2026-05-12T01:34:00Z"
+    }
+  },
+  "updated_at": "2026-05-12T02:18:52.424365+00:00"
+}

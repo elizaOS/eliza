@@ -1,0 +1,5023 @@
+{
+  "version": "1.0.0",
+  "actions": [
+    {
+      "name": "BLOCK",
+      "description": "Block or unblock specific phone apps (Family Controls / Usage Access) and ",
+      "parameters": [
+        {
+          "name": "target",
+          "description": "Which surface to act on: 'app' (phone apps) or 'website' (desktop hosts-file/SelfControl). ",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "action",
+          "description": "One of: block, unblock, status, request_permission, release, list_active. ",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "intent",
+          "description": "Free-form description of what the owner wants. Used by the block action to extract apps/hostnames + duration.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "hostnames",
+          "description": "(target=website) Public hostnames or URLs to block, e.g. ['x.com','twitter.com'].",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "confirmed",
+          "description": "(target=website) Set true only when the owner has explicitly confirmed the block. Without it, block returns a draft confirmation request. Required by release.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "ruleId",
+          "description": "(target=website, action=release) ID of the managed block rule to release.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "reason",
+          "description": "(target=website, action=release) Optional reason recorded on the rule when released.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "includeLiveStatus",
+          "description": "(target=website, action=list_active) Include the current hosts-file/SelfControl live block state. Default true.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "includeManagedRules",
+          "description": "(target=website, action=list_active) Include managed owner block rules. Default true.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "packageNames",
+          "description": "(target=app, Android) Package names to block, e.g. ['com.twitter.android'].",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "appTokens",
+          "description": "(target=app, iOS) iPhone app tokens from a previous selectApps() call.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "durationMinutes",
+          "description": "How long to block, in minutes. Omit/null for an indefinite block that stays active until manually removed.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "descriptionCompressed": "block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focus-blocks — those go to CALENDAR create_event); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
+      "similes": [
+        "SELFCONTROL",
+        "SITE_BLOCKER",
+        "HOSTS_BLOCK",
+        "BLOCK_WEBSITE",
+        "SHIELD_APPS",
+        "FAMILY_CONTROLS",
+        "PHONE_FOCUS",
+        "PHONE_BLOCK_APPS",
+        "BLOCK_APPS"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use BLOCK with the provided parameters.",
+          "actions": ["BLOCK"],
+          "params": {
+            "BLOCK": {
+              "target": "example",
+              "action": "example",
+              "intent": "example",
+              "hostnames": "example",
+              "confirmed": false,
+              "ruleId": "example",
+              "reason": "example",
+              "includeLiveStatus": false,
+              "includeManagedRules": false,
+              "packageNames": "example",
+              "appTokens": "example",
+              "durationMinutes": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "BRIEF",
+      "description": "Compose the owner's morning, evening, or weekly briefing by pulling calendar feed, inbox triage, life-domain due items, and money recurring charges into a single LifeOpsBriefing. Subactions: compose_morning, compose_evening, compose_weekly.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Canonical brief operation: compose_morning | compose_evening | compose_weekly.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["compose_morning", "compose_evening", "compose_weekly"]
+          }
+        },
+        {
+          "name": "period",
+          "description": "Time window the brief covers: today | tomorrow | this_week. Defaults to the subaction's natural period.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["today", "tomorrow", "this_week"]
+          }
+        },
+        {
+          "name": "include",
+          "description": "Per-domain include flags; each defaults to true. Shape: { calendar?, inbox?, life?, money? }.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "format",
+          "description": "narrative renders the LLM compose pass; json returns only the structured LifeOpsBriefing. Defaults to narrative.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["narrative", "json"]
+          }
+        }
+      ],
+      "descriptionCompressed": "briefing: compose_morning|compose_evening|compose_weekly; LifeOpsBriefing shape; LLM narrative pass",
+      "exampleCalls": [
+        {
+          "user": "Use BRIEF with the provided parameters.",
+          "actions": ["BRIEF"],
+          "params": {
+            "BRIEF": {
+              "action": "compose_morning",
+              "period": "today",
+              "include": "example",
+              "format": "narrative"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "BROWSER",
+      "description": "Single BROWSER action — control whichever browser target is registered. Targets are pluggable: `workspace` (electrobun-embedded BrowserView, the default; falls back to a JSDOM web mode when the desktop bridge isn't configured), `bridge` (the user's real Chrome/Safari via the Agent Browser Bridge companion extension), and `computeruse` (a local puppeteer-driven Chromium via plugin-computeruse). The agent uses what is available — the BrowserService picks the active target when none is specified. Use `action: \"autofill_login\"` with `domain` (and optional `username`, `submit`) to vault-gated autofill into an open workspace tab.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Browser action to perform. Snake_case values are canonical; legacy kebab-case and subaction are also accepted.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "back",
+              "click",
+              "close",
+              "context",
+              "forward",
+              "get",
+              "get_context",
+              "hide",
+              "info",
+              "list_tabs",
+              "navigate",
+              "open",
+              "open_tab",
+              "press",
+              "reload",
+              "screenshot",
+              "show",
+              "snapshot",
+              "state",
+              "tab",
+              "type",
+              "wait",
+              "close_tab",
+              "switch_tab",
+              "realistic_click",
+              "realistic_fill",
+              "realistic_type",
+              "realistic_press",
+              "cursor_move",
+              "cursor_hide",
+              "autofill_login"
+            ]
+          }
+        },
+        {
+          "name": "tabAction",
+          "description": "Tab operation when subaction is tab",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["close", "list", "new", "switch"]
+          }
+        },
+        {
+          "name": "domain",
+          "description": "Required when action is autofill_login: registrable hostname (e.g. `github.com`).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "username",
+          "description": "When using autofill-login: specific saved login; omit for most recently modified.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "submit",
+          "description": "When using autofill-login: submit the form after filling (default false).",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "id",
+          "description": "Session or tab id to target",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "url",
+          "description": "URL for open or navigate",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "selector",
+          "description": "Selector for click, type, or wait",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "text",
+          "description": "Text for type",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "key",
+          "description": "Keyboard key for press",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "pixels",
+          "description": "Scroll distance in pixels",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "timeoutMs",
+          "description": "Command timeout in milliseconds",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "script",
+          "description": "Script for eval",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "watchMode",
+          "description": "Hint that the user is watching; prefers realistic-* subactions for click/fill so the cursor moves visibly and pointer events fire faithfully.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "cursorDurationMs",
+          "description": "Cursor animation duration (ms) for realistic-* subactions",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "perCharDelayMs",
+          "description": "Per-character delay for realistic-type/realistic-fill (ms)",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "replace",
+          "description": "Replace existing input value when filling (vs append) — applies to realistic-fill",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "x",
+          "description": "Cursor target X (CSS pixels) for cursor-move",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "y",
+          "description": "Cursor target Y (CSS pixels) for cursor-move",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "descriptionCompressed": "Browser tab/page control: open/navigate/click/type/screenshot/state; action autofill_login + domain autofill vault-gated credential into workspace tab pre-authorized in Settings Vault Logins. Bridge settings/status use MANAGE_BROWSER_BRIDGE.",
+      "similes": [
+        "BROWSE_SITE",
+        "BROWSER_SESSION",
+        "CONTROL_BROWSER",
+        "CONTROL_BROWSER_SESSION",
+        "MANAGE_ELIZA_BROWSER_WORKSPACE",
+        "NAVIGATE_SITE",
+        "OPEN_SITE",
+        "USE_BROWSER",
+        "BROWSER_ACTION",
+        "BROWSER_AUTOFILL_LOGIN",
+        "AGENT_AUTOFILL",
+        "AUTOFILL_BROWSER_LOGIN",
+        "AUTOFILL_LOGIN",
+        "FILL_BROWSER_CREDENTIALS",
+        "LOG_INTO_SITE",
+        "SIGN_IN_TO_SITE"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use BROWSER with the provided parameters.",
+          "actions": ["BROWSER"],
+          "params": {
+            "BROWSER": {
+              "action": "back",
+              "tabAction": "close",
+              "domain": "example",
+              "username": "example",
+              "submit": false,
+              "id": "example",
+              "url": "example",
+              "selector": "example",
+              "text": "example",
+              "key": "example",
+              "pixels": 1,
+              "timeoutMs": 1,
+              "script": "example",
+              "watchMode": false,
+              "cursorDurationMs": 1,
+              "perCharDelayMs": 1,
+              "replace": false,
+              "x": 1,
+              "y": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CALENDAR",
+      "description": "Manage live calendar events plus availability and meeting preferences. Subactions: ",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Which calendar operation to run. Calendar: feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule. Availability: check_availability, propose_times. Preferences: update_preferences.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "feed",
+              "next_event",
+              "search_events",
+              "create_event",
+              "update_event",
+              "delete_event",
+              "trip_window",
+              "bulk_reschedule",
+              "check_availability",
+              "propose_times",
+              "update_preferences"
+            ]
+          }
+        },
+        {
+          "name": "intent",
+          "description": "Natural-language description of the calendar request (e.g. \"what is on my calendar today\", \"do i have any flights this week\", \"create a meeting tomorrow at 3pm\").",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "title",
+          "description": "Event title when creating a calendar event. TOP-LEVEL (flat) field — ",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "Event title, TOP-LEVEL flat field (NOT inside details). Example: { subaction: 'create_event', title: 'Dentist', details: { start, end } }"
+        },
+        {
+          "name": "query",
+          "description": "Search phrase for search_events / travel_itinerary (e.g. flight, dentist, Denver).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "queries",
+          "description": "Optional array of search phrases for search_events. Combined and deduped.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "details",
+          "description": "Structured calendar fields for create_event / update_event / delete_event. ",
+          "required": false,
+          "schema": {
+            "type": "object",
+            "properties": {
+              "calendarId": {
+                "type": "string"
+              },
+              "timeMin": {
+                "type": "string"
+              },
+              "timeMax": {
+                "type": "string"
+              },
+              "timeZone": {
+                "type": "string"
+              },
+              "forceSync": {
+                "type": "boolean"
+              },
+              "windowDays": {
+                "type": "number"
+              },
+              "windowPreset": {
+                "type": "string"
+              },
+              "start": {
+                "type": "string"
+              },
+              "end": {
+                "type": "string"
+              },
+              "startAt": {
+                "type": "string"
+              },
+              "endAt": {
+                "type": "string"
+              },
+              "durationMinutes": {
+                "type": "number"
+              },
+              "eventId": {
+                "type": "string"
+              },
+              "newTitle": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "location": {
+                "type": "string"
+              },
+              "travelOriginAddress": {
+                "type": "string"
+              },
+              "attendees": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "descriptionCompressed": "details (for create/update/delete_event ONLY): { calendarId, start (ISO-8601), end (ISO-8601), eventId, newTitle, location, attendees, description }. "
+        },
+        {
+          "name": "durationMinutes",
+          "description": "Top-level flat field. Meeting length in minutes for propose_times. ",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "daysAhead",
+          "description": "Days ahead for propose_times search window (defaults to 7, ignored when windowStart/windowEnd are supplied).",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "slotCount",
+          "description": "Number of candidate slots for propose_times (defaults to 3).",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "windowStart",
+          "description": "ISO-8601 earliest start of the propose_times search window.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "windowEnd",
+          "description": "ISO-8601 latest end of the propose_times search window.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "startAt",
+          "description": "Top-level flat field. ISO-8601 start time for check_availability. ",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "endAt",
+          "description": "Top-level flat field. ISO-8601 end time for check_availability. See `startAt`.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeZone",
+          "description": "IANA time zone for update_preferences (interprets preferred hours).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "preferredStartLocal",
+          "description": "Top-level flat field for update_preferences. Earliest preferred meeting start time-of-day (local HH:MM, 24h). ",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "preferredEndLocal",
+          "description": "Top-level flat field for update_preferences. Latest preferred meeting end time-of-day (local HH:MM, 24h). See `preferredStartLocal`.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "defaultDurationMinutes",
+          "description": "Default meeting duration in minutes (5–480).",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "travelBufferMinutes",
+          "description": "Minutes to reserve before/after each meeting (0–240).",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "blackoutWindows",
+          "description": "Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun..6=Sat) }.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "startLocal": {
+                  "type": "string",
+                  "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                },
+                "endLocal": {
+                  "type": "string",
+                  "pattern": "^[0-2][0-9]:[0-5][0-9]$"
+                },
+                "daysOfWeek": {
+                  "type": "array",
+                  "items": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 6
+                  }
+                }
+              }
+            }
+          },
+          "descriptionCompressed": "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]"
+        }
+      ],
+      "descriptionCompressed": "calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
+      "exampleCalls": [
+        {
+          "user": "Use CALENDAR with the provided parameters.",
+          "actions": ["CALENDAR"],
+          "params": {
+            "CALENDAR": {
+              "action": "feed",
+              "intent": "example",
+              "title": "example",
+              "query": "example",
+              "queries": "example",
+              "details": "example",
+              "durationMinutes": 1,
+              "daysAhead": 1,
+              "slotCount": 1,
+              "windowStart": "example",
+              "windowEnd": "example",
+              "startAt": "example",
+              "endAt": "example",
+              "timeZone": "example",
+              "preferredStartLocal": "example",
+              "preferredEndLocal": "example",
+              "defaultDurationMinutes": 1,
+              "travelBufferMinutes": 1,
+              "blackoutWindows": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "COMPUTER_USE",
+      "description": "computer_use:\n  purpose: Canonical cross-platform computer-use action for real desktop interaction on macOS, Linux, and Windows when direct computer operation is required.\n  guidance: Take a screenshot before acting. After each desktop action, the result includes a screenshot when available. Use this standard plugin action, not a LifeOps wrapper, for Finder/Desktop/native-app/browser/file/terminal workflows on the owner's machine.\n  actions: screenshot/click/click_with_modifiers/double_click/right_click/mouse_move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Desktop action to perform.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "screenshot",
+              "click",
+              "click_with_modifiers",
+              "double_click",
+              "right_click",
+              "mouse_move",
+              "type",
+              "key",
+              "key_combo",
+              "scroll",
+              "drag",
+              "detect_elements",
+              "ocr"
+            ]
+          }
+        },
+        {
+          "name": "coordinate",
+          "description": "Target [x, y] pixel coordinate.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "name": "startCoordinate",
+          "description": "Start [x, y] pixel coordinate for drag.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "name": "text",
+          "description": "Text to type.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "modifiers",
+          "description": "Modifier keys to hold during click_with_modifiers, e.g. ['cmd', 'shift'] or ['ctrl'].",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "key",
+          "description": "Single key or combo string depending on action.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "button",
+          "description": "Mouse button for click_with_modifiers.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["left", "middle", "right"]
+          }
+        },
+        {
+          "name": "clicks",
+          "description": "Number of clicks for click_with_modifiers.",
+          "required": false,
+          "schema": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 5
+          }
+        },
+        {
+          "name": "scrollDirection",
+          "description": "Scroll direction.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["up", "down", "left", "right"]
+          }
+        },
+        {
+          "name": "scrollAmount",
+          "description": "Scroll tick count.",
+          "required": false,
+          "schema": {
+            "type": "number",
+            "default": 3,
+            "minimum": 1,
+            "maximum": 20
+          }
+        }
+      ],
+      "descriptionCompressed": "Canonical cross-platform desktop control: screenshot/click/modified click/double/right/move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
+      "similes": [
+        "USE_COMPUTER",
+        "CONTROL_COMPUTER",
+        "COMPUTER_ACTION",
+        "DESKTOP_ACTION",
+        "CLICK",
+        "CLICK_SCREEN",
+        "TYPE_TEXT",
+        "PRESS_KEY",
+        "KEY_COMBO",
+        "SCROLL_SCREEN",
+        "MOVE_MOUSE",
+        "DRAG",
+        "MOUSE_CLICK",
+        "CLICK_WITH_MODIFIERS",
+        "TAKE_SCREENSHOT",
+        "CAPTURE_SCREEN",
+        "SEE_SCREEN"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use COMPUTER_USE with the provided parameters.",
+          "actions": ["COMPUTER_USE"],
+          "params": {
+            "COMPUTER_USE": {
+              "action": "screenshot",
+              "coordinate": "example",
+              "startCoordinate": "example",
+              "text": "example",
+              "modifiers": "example",
+              "key": "example",
+              "button": "left",
+              "clicks": 1,
+              "scrollDirection": "up",
+              "scrollAmount": 3
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CONFLICT_DETECT",
+      "description": "Proactively scan the owner's calendar for overlapping events, or evaluate a proposed event window against the owner's feed. Subactions: scan_today, scan_week, scan_event_proposal.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Canonical conflict scan operation: scan_today | scan_week | scan_event_proposal.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["scan_today", "scan_week", "scan_event_proposal"]
+          }
+        },
+        {
+          "name": "range",
+          "description": "Either 'today' | 'week' or an explicit { start, end } ISO window. Defaults to subaction's natural range.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "proposal",
+          "description": "scan_event_proposal only: { startISO, endISO, attendees? } describing the candidate event.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "descriptionCompressed": "calendar conflicts: scan_today|scan_week|scan_event_proposal; severity warning|hard based on attendee overlap",
+      "exampleCalls": [
+        {
+          "user": "Use CONFLICT_DETECT with the provided parameters.",
+          "actions": ["CONFLICT_DETECT"],
+          "params": {
+            "CONFLICT_DETECT": {
+              "action": "scan_today",
+              "range": "example",
+              "proposal": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CONNECTOR",
+      "description": "Manage **account** state for installed connectors: connect (log in), ",
+      "parameters": [
+        {
+          "name": "connector",
+          "description": "Which connector to manage (kind from ConnectorRegistry, e.g. google, x, telegram, signal, discord, imessage, whatsapp, twilio, calendly, duffel, health, browser_bridge). Optional when subaction=list.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "action",
+          "description": "Lifecycle operation. connect (start auth/pairing); disconnect (revoke + clear grant); verify (active read/send probe where available). status/list are read-only diagnostics for explicit troubleshooting; prefer provider/core registry context when available. Strongly preferred - when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "side",
+          "description": "owner | agent. Defaults to owner.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["owner", "agent"]
+          }
+        },
+        {
+          "name": "mode",
+          "description": "Connection mode: local | cloud_managed | remote. Defaults vary by connector.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["local", "cloud_managed", "remote"]
+          }
+        },
+        {
+          "name": "recentLimit",
+          "description": "verify only — how many recent messages/dialogs to read where the connector supports passive reads.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "query",
+          "description": "Discord verify only — optional search text to prove browser-message reads.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sendTarget",
+          "description": "verify only — destination chat/recipient/channel for the self-test send.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sendMessage",
+          "description": "verify only — text body for the self-test send.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "browser",
+          "description": "browser_bridge connect only — chrome | safari.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["chrome", "safari"]
+          }
+        },
+        {
+          "name": "profileId",
+          "description": "browser_bridge connect only — profile identifier within the browser.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "profileLabel",
+          "description": "browser_bridge connect only — human-readable profile label.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "redirectUrl",
+          "description": "google/x connect only — optional OAuth redirect URL override.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "account-level connector lifecycle: connect(log in)|disconnect(log out)|verify|status|list; registry-driven kinds; for plugin install/uninstall use PLUGIN",
+      "similes": [
+        "CONNECT_GOOGLE",
+        "CONNECT_TELEGRAM",
+        "CONNECT_DISCORD",
+        "DISCONNECT_SERVICE",
+        "CHECK_CONNECTION",
+        "SERVICE_STATUS",
+        "NOTIFICATION_RESOLVE_ENDPOINTS"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use CONNECTOR with the provided parameters.",
+          "actions": ["CONNECTOR"],
+          "params": {
+            "CONNECTOR": {
+              "connector": "example",
+              "action": "example",
+              "side": "owner",
+              "mode": "local",
+              "recentLimit": 1,
+              "query": "example",
+              "sendTarget": "example",
+              "sendMessage": "example",
+              "browser": "chrome",
+              "profileId": "example",
+              "profileLabel": "example",
+              "redirectUrl": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "CREDENTIALS",
+      "description": "Owner-only password and autofill operations across browser autofill (LifeOps extension) and the OS password manager (1Password / ProtonPass). ",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "fill | whitelist_add | whitelist_list (autofill) | search | list | inject_username | inject_password (password manager).",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "field",
+          "description": "(action=fill) One of email, password, name, phone, custom. Tells the password manager which field to resolve.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "domain",
+          "description": "(action=fill | whitelist_add) Domain to act on. For fill, used as the tab URL when url is omitted.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "url",
+          "description": "(action=fill) Optional explicit tab URL (used for whitelist enforcement).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "intent",
+          "description": "(action=search) Natural-language description of the lookup intent.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "query",
+          "description": "(action=search) Search string matched against item title, URL, username, and tags.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "itemId",
+          "description": "(action=inject_username | inject_password) Password manager item id.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "description": "(action=list) Optional item limit (default 20).",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "confirmed",
+          "description": "Required true for whitelist_add and for either inject_* action. Ensures the owner approved the change.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "descriptionCompressed": "credentials: fill|whitelist_add|whitelist_list|search|list|inject_username|inject_password; clipboard-only; confirmed:true required for inject and whitelist_add",
+      "exampleCalls": [
+        {
+          "user": "Use CREDENTIALS with the provided parameters.",
+          "actions": ["CREDENTIALS"],
+          "params": {
+            "CREDENTIALS": {
+              "action": "example",
+              "field": "example",
+              "domain": "example",
+              "url": "example",
+              "intent": "example",
+              "query": "example",
+              "itemId": "example",
+              "limit": 1,
+              "confirmed": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "ENTITY",
+      "description": "Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: create, read, set_identity, set_relationship, log_interaction, merge. For rolodex/contact lifecycle (CRUD on a single contact's profile) use CONTACT; ENTITY is the owner-graph umbrella for identity, relationships, and interaction history. Use SCHEDULED_TASKS for follow-up cadence; use OWNER_REMINDERS for one-off dated reminders to call/text someone.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Which ENTITY operation to run: create (new contact), read (load rolodex), log_interaction (record contact event), set_identity (force-merge a platform handle onto an entity), set_relationship (typed edge between entities), merge (collapse duplicate entities). For rolodex/contact lifecycle (read full profile, search, update fields) use CONTACT. Follow-up cadence belongs to SCHEDULED_TASKS.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["create", "read", "set_identity"],
+          "descriptionCompressed": "ENTITY op: create | read | log_interaction | set_identity | set_relationship | merge"
+        },
+        {
+          "name": "intent",
+          "description": "Free-form user intent used to infer action when not set.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "free-form intent infer action"
+        },
+        {
+          "name": "name",
+          "description": "Contact display name. When relationshipId is omitted, the handler resolves an existing contact by this name.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "contact display name"
+        },
+        {
+          "name": "channel",
+          "description": "Primary channel for the contact (email, telegram, discord, signal, sms, twilio_voice, imessage, whatsapp).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["email", "telegram", "imessage"],
+          "descriptionCompressed": "primary channel: email|telegram|discord|signal|sms|twilio_voice|imessage|whatsapp"
+        },
+        {
+          "name": "handle",
+          "description": "Primary handle/address on the chosen channel.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "email",
+          "description": "Optional email address for the contact.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "phone",
+          "description": "Optional phone number for the contact.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "notes",
+          "description": "Free-form notes or interaction summary.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "relationshipId",
+          "description": "Target relationship id.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "reason",
+          "description": "Optional reason note.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "confirmed",
+          "description": "Optional explicit confirmation flag.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "entityId",
+          "description": "Target entity id. Used by set_identity (force a new identity onto a known entity), merge (target id), and any operation that needs a stable EntityStore id.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "platform",
+          "description": "Identity platform for set_identity (e.g. telegram, slack, email, twitter). Combine with handle.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["telegram", "email", "phone", "slack"],
+          "descriptionCompressed": "set_identity platform e.g. telegram|slack|email|twitter|phone"
+        },
+        {
+          "name": "displayName",
+          "description": "Display name shown alongside an observed identity (set_identity).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "toEntityId",
+          "description": "Target entity id for set_relationship.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "fromEntityId",
+          "description": "Source entity id for set_relationship. Defaults to 'self' when omitted.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "relationshipType",
+          "description": "Edge type label for set_relationship (e.g. manages, colleague_of, works_at, partner_of, family_of).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["manages", "colleague_of", "works_at", "partner_of"],
+          "descriptionCompressed": "set_relationship edge type label e.g. manages|colleague_of|works_at|partner_of"
+        },
+        {
+          "name": "sourceEntityIds",
+          "description": "Entity ids being folded into the target entity (merge). Provide as a JSON array of strings.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "evidence",
+          "description": "Free-form evidence string captured alongside set_identity / set_relationship observations.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "people+relationships: create|read|set_identity|set_relationship|log_interaction|merge; rolodex CRUD → CONTACT; follow-up cadence → SCHEDULED_TASK",
+      "similes": [
+        "CONTACTS",
+        "ROLODEX",
+        "LOG_INTERACTION",
+        "ADD_ENTITY",
+        "ADD_PERSON",
+        "MERGE_ENTITIES",
+        "MERGE_CONTACTS",
+        "SET_IDENTITY"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use ENTITY with the provided parameters.",
+          "actions": ["ENTITY"],
+          "params": {
+            "ENTITY": {
+              "action": "create",
+              "intent": "example",
+              "name": "example",
+              "channel": "email",
+              "handle": "example",
+              "email": "example",
+              "phone": "example",
+              "notes": "example",
+              "relationshipId": "example",
+              "reason": "example",
+              "confirmed": false,
+              "entityId": "example",
+              "platform": "telegram",
+              "displayName": "example",
+              "toEntityId": "example",
+              "fromEntityId": "example",
+              "relationshipType": "manages",
+              "sourceEntityIds": "example",
+              "evidence": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "FILE",
+      "description": "Read, write, edit, search, find, or list files through one FILE action. Choose action=read/write/edit/grep/glob/ls. Use target=device for device-filesystem reads, writes, and directory lists; workspace paths must be absolute unless an operation explicitly defaults to the session cwd.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "File operation to run.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": ["read", "write", "edit", "grep", "glob", "ls"]
+          }
+        },
+        {
+          "name": "target",
+          "description": "Optional target filesystem. Use device for relative paths under the device filesystem bridge; omit for workspace files.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["workspace", "device"]
+          }
+        },
+        {
+          "name": "file_path",
+          "description": "Absolute path for read/write/edit operations.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "path",
+          "description": "Absolute file or directory path for grep/glob/ls. Defaults to the session cwd where supported.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "content",
+          "description": "Full file contents for action=write.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "old_string",
+          "description": "Exact substring to replace for action=edit.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "new_string",
+          "description": "Replacement substring for action=edit.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "replace_all",
+          "description": "For action=edit, replace every occurrence instead of requiring one match.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "pattern",
+          "description": "Regex for action=grep or glob pattern for action=glob.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "glob",
+          "description": "Optional ripgrep glob filter for action=grep.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "type",
+          "description": "Optional ripgrep file type for action=grep.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "output_mode",
+          "description": "For action=grep: content, files_with_matches, or count.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["content", "files_with_matches", "count"]
+          }
+        },
+        {
+          "name": "-A",
+          "description": "For action=grep content mode, lines after each match.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "-B",
+          "description": "For action=grep content mode, lines before each match.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "-C",
+          "description": "For action=grep content mode, lines around each match.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "case_insensitive",
+          "description": "For action=grep, match case-insensitively.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "multiline",
+          "description": "For action=grep, enable multiline regex matching.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "head_limit",
+          "description": "For action=grep, truncate output to the first N lines.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "show_line_numbers",
+          "description": "For action=grep, include 1-based line numbers in content output.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "offset",
+          "description": "For action=read, zero-based line offset.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "limit",
+          "description": "For action=read, max number of lines to return.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "ignore",
+          "description": "For action=ls, glob patterns to exclude.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "encoding",
+          "description": "For target=device read/write: utf8 or base64. Defaults to utf8.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["utf8", "base64"]
+          }
+        }
+      ],
+      "descriptionCompressed": "File operations umbrella: action=read/write/edit/grep/glob/ls, optional target=device.",
+      "similes": ["FILE_OPERATION", "FILE_IO"],
+      "exampleCalls": [
+        {
+          "user": "Use FILE with the provided parameters.",
+          "actions": ["FILE"],
+          "params": {
+            "FILE": {
+              "action": "read",
+              "target": "workspace",
+              "file_path": "example",
+              "path": "example",
+              "content": "example",
+              "old_string": "example",
+              "new_string": "example",
+              "replace_all": false,
+              "pattern": "example",
+              "glob": "example",
+              "type": "example",
+              "output_mode": "content",
+              "-A": 1,
+              "-B": 1,
+              "-C": 1,
+              "case_insensitive": false,
+              "multiline": false,
+              "head_limit": 1,
+              "show_line_numbers": false,
+              "offset": 1,
+              "limit": 1,
+              "ignore": "example",
+              "encoding": "utf8"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "GITHUB",
+      "description": "GitHub umbrella for pull requests, issues, and notification triage. Use action=pr_list/pr_review/issue_create/issue_assign/issue_close/issue_reopen/issue_comment/issue_label/notification_triage.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "GitHub operation to run.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "pr_list",
+              "pr_review",
+              "issue_create",
+              "issue_assign",
+              "issue_close",
+              "issue_reopen",
+              "issue_comment",
+              "issue_label",
+              "notification_triage"
+            ]
+          }
+        },
+        {
+          "name": "repo",
+          "description": "Repository in owner/name form.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "number",
+          "description": "Pull request or issue number.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "state",
+          "description": "PR state for pr_list: open, closed, or all.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["open", "closed", "all"],
+            "default": "open"
+          }
+        },
+        {
+          "name": "author",
+          "description": "Optional PR author username filter for pr_list.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "review_action",
+          "description": "For action=pr_review: approve, request-changes, or comment.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["approve", "request-changes", "comment"]
+          }
+        },
+        {
+          "name": "title",
+          "description": "Issue title for action=issue_create.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "body",
+          "description": "Issue body, issue comment body, or PR review body.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "assignees",
+          "description": "GitHub usernames to assign.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "labels",
+          "description": "Labels to apply on issue create or issue_label.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "as",
+          "description": "Identity to use: agent or user.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["agent", "user"],
+            "default": "agent"
+          }
+        },
+        {
+          "name": "accountId",
+          "description": "Optional GitHub account id from GITHUB_ACCOUNTS. Defaults by role.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "confirmed",
+          "description": "Must be true for GitHub write operations.",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      ],
+      "descriptionCompressed": "GitHub: pr_list|pr_review|issue_create|issue_assign|issue_close|issue_reopen|issue_comment|issue_label|notification_triage",
+      "similes": [
+        "GITHUB_PR_OP",
+        "GITHUB_ISSUE_OP",
+        "GITHUB_NOTIFICATION_TRIAGE",
+        "GITHUB_PULL_REQUEST",
+        "GITHUB_ISSUE",
+        "GITHUB_NOTIFICATIONS"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use GITHUB with the provided parameters.",
+          "actions": ["GITHUB"],
+          "params": {
+            "GITHUB": {
+              "action": "pr_list",
+              "repo": "example",
+              "number": 1,
+              "state": "open",
+              "author": "example",
+              "review_action": "approve",
+              "title": "example",
+              "body": "example",
+              "assignees": "example",
+              "labels": "example",
+              "as": "agent",
+              "accountId": "example",
+              "confirmed": false
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "INBOX_UNIFIED",
+      "description": "Cross-platform unified inbox: fan out to Gmail, Slack, Discord, Telegram, Signal, iMessage, and WhatsApp and merge into a single recency-ordered feed. Subactions: list, search, summarize.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Canonical inbox operation: list | search | summarize.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["list", "search", "summarize"]
+          }
+        },
+        {
+          "name": "platforms",
+          "description": "Optional array of platforms to limit fan-out: gmail | slack | discord | telegram | signal | imessage | whatsapp. Default: all.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "since",
+          "description": "ISO-8601 lower bound on receivedAt.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "description": "Per-platform limit; default 50.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "query",
+          "description": "Required for search; free-form search string.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "unified inbox: list|search|summarize across gmail|slack|discord|telegram|signal|imessage|whatsapp; dedupe by id+thread topic",
+      "exampleCalls": [
+        {
+          "user": "Use INBOX_UNIFIED with the provided parameters.",
+          "actions": ["INBOX_UNIFIED"],
+          "params": {
+            "INBOX_UNIFIED": {
+              "action": "list",
+              "platforms": "example",
+              "since": "example",
+              "limit": 1,
+              "query": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "LINEAR",
+      "description": "Manage Linear issues, comments, and activity. Operations: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. The op is inferred from the message text when not explicitly provided.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Operation to perform. One of: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Inferred from message text when omitted.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "create_issue",
+              "get_issue",
+              "update_issue",
+              "delete_issue",
+              "create_comment",
+              "update_comment",
+              "delete_comment",
+              "list_comments",
+              "get_activity",
+              "clear_activity",
+              "search_issues"
+            ]
+          }
+        }
+      ],
+      "descriptionCompressed": "Linear: create/get/update/delete issue, create/update/delete/list comment, search issues, get/clear activity.",
+      "similes": [
+        "LINEAR_ISSUES",
+        "LINEAR_COMMENTS",
+        "LINEAR_ACTIVITY",
+        "LINEAR_SEARCH",
+        "MANAGE_LINEAR_ISSUE",
+        "MANAGE_LINEAR_ISSUES",
+        "COMMENT_LINEAR_ISSUE",
+        "LINEAR_WORKFLOW_SEARCH"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use LINEAR with the provided parameters.",
+          "actions": ["LINEAR"],
+          "params": {
+            "LINEAR": {
+              "action": "create_issue"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MANAGE_BROWSER_BRIDGE",
+      "description": "Owner-only management of the Agent Browser Bridge companion extension that connects Eliza to the user's Chrome and Safari browsers. Actions: refresh (show settings/status/connection state), install (build and reveal the extension for setup), reveal_folder (open the built extension folder), open_manager (open chrome://extensions only when the owner explicitly asks). The action parameter is inferred from message text when omitted; show/settings/status maps to refresh and 'open chrome extensions' maps to open_manager. Prefer the browser-bridge provider for passive companion status and use this action's refresh child action only for an explicit live refresh.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Bridge management action. Use refresh for show/settings/status/connection-state requests. Use open_manager only for explicit chrome://extensions or extension-manager requests. install builds/reveals/opens setup; reveal_folder opens the build folder. Inferred from message text if omitted.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["install", "reveal_folder", "open_manager", "refresh"]
+          }
+        }
+      ],
+      "descriptionCompressed": "Manage LifeOps Browser Bridge: refresh shows settings/status; install setup; reveal_folder build folder; open_manager chrome://extensions.",
+      "similes": [
+        "INSTALL_BROWSER_BRIDGE",
+        "SETUP_BROWSER_BRIDGE",
+        "PAIR_BROWSER",
+        "CONNECT_BROWSER",
+        "ADD_BROWSER_EXTENSION",
+        "REVEAL_BROWSER_BRIDGE_FOLDER",
+        "OPEN_BROWSER_BRIDGE_FOLDER",
+        "SHOW_BROWSER_EXTENSION_FOLDER",
+        "OPEN_CHROME_EXTENSIONS",
+        "OPEN_BROWSER_BRIDGE_MANAGER",
+        "OPEN_EXTENSION_MANAGER",
+        "REFRESH_BROWSER_BRIDGE",
+        "REFRESH_BROWSER_BRIDGE_CONNECTION",
+        "RELOAD_BROWSER_BRIDGE_STATUS",
+        "RECONNECT_BROWSER",
+        "MANAGE_CHROME_EXTENSION",
+        "MANAGE_SAFARI_EXTENSION",
+        "BROWSER_BRIDGE_INSTALL",
+        "BROWSER_BRIDGE_REVEAL_FOLDER",
+        "BROWSER_BRIDGE_OPEN_MANAGER",
+        "BROWSER_BRIDGE_REFRESH"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use MANAGE_BROWSER_BRIDGE with the provided parameters.",
+          "actions": ["MANAGE_BROWSER_BRIDGE"],
+          "params": {
+            "MANAGE_BROWSER_BRIDGE": {
+              "action": "install"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MC",
+      "description": "Drive a Minecraft bot. Choose one action: connect (host?,port?,username?,auth?,version?), disconnect, goto (x,y,z), stop, look (yaw,pitch), control (control,state,durationMs?), waypoint_goto (name), dig (x,y,z), place (x,y,z,face), chat (message), attack (entityId), waypoint_set (name), waypoint_delete (name).",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Operation to run.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "connect",
+              "disconnect",
+              "goto",
+              "stop",
+              "look",
+              "control",
+              "waypoint_goto",
+              "dig",
+              "place",
+              "chat",
+              "attack",
+              "waypoint_set",
+              "waypoint_delete"
+            ]
+          },
+          "descriptionCompressed": "Action."
+        },
+        {
+          "name": "params",
+          "description": "Optional JSON object containing the fields required by the chosen op.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          },
+          "descriptionCompressed": "Op fields."
+        }
+      ],
+      "descriptionCompressed": "minecraft ops: connect|disconnect|goto|stop|look|control|waypoint_*|dig|place|chat|attack",
+      "exampleCalls": [
+        {
+          "user": "Use MC with the provided parameters.",
+          "actions": ["MC"],
+          "params": {
+            "MC": {
+              "action": "connect",
+              "params": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MCP",
+      "description": "Single MCP entry point. Use action=call_tool to invoke an MCP tool, action=read_resource to read an MCP resource. Cloud runtimes also accept action=search_actions and action=list_connections.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "MCP operation: call_tool | read_resource | search_actions | list_connections",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "call_tool",
+              "read_resource",
+              "search_actions",
+              "list_connections"
+            ]
+          }
+        },
+        {
+          "name": "serverName",
+          "description": "Optional MCP server name that owns the tool or resource.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "toolName",
+          "description": "For action=call_tool: optional exact MCP tool name to call.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "arguments",
+          "description": "For action=call_tool: optional JSON arguments to pass to the selected MCP tool.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "uri",
+          "description": "For action=read_resource: exact MCP resource URI to read.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "query",
+          "description": "Natural-language description of the tool call or resource to select; for action=search_actions, the keyword query.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "platform",
+          "description": "For action=search_actions: filter results to a single connected platform.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "description": "For action=search_actions: maximum results to return.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "offset",
+          "description": "For action=search_actions: skip first N results for pagination.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "descriptionCompressed": "MCP call_tool read_resource search_actions list_connections",
+      "similes": [
+        "MCP_ACTION",
+        "MCP_ROUTER",
+        "USE_MCP",
+        "CALL_MCP_TOOL",
+        "CALL_TOOL",
+        "USE_TOOL",
+        "USE_MCP_TOOL",
+        "EXECUTE_TOOL",
+        "EXECUTE_MCP_TOOL",
+        "RUN_TOOL",
+        "RUN_MCP_TOOL",
+        "INVOKE_TOOL",
+        "INVOKE_MCP_TOOL",
+        "READ_MCP_RESOURCE",
+        "READ_RESOURCE",
+        "GET_RESOURCE",
+        "GET_MCP_RESOURCE",
+        "FETCH_RESOURCE",
+        "FETCH_MCP_RESOURCE",
+        "ACCESS_RESOURCE",
+        "ACCESS_MCP_RESOURCE"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use MCP with the provided parameters.",
+          "actions": ["MCP"],
+          "params": {
+            "MCP": {
+              "action": "call_tool",
+              "serverName": "example",
+              "toolName": "example",
+              "arguments": "example",
+              "uri": "example",
+              "query": "example",
+              "platform": "example",
+              "limit": 1,
+              "offset": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MUSIC",
+      "description": "Unified music action. Use verb-shaped action for everything: ",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Verb-shaped subaction. Playback: play, pause, resume, skip, stop. ",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "play",
+              "pause",
+              "resume",
+              "skip",
+              "stop",
+              "queue_view",
+              "queue_add",
+              "queue_clear",
+              "playlist_play",
+              "playlist_save",
+              "search",
+              "play_query",
+              "download",
+              "play_audio",
+              "set_routing",
+              "set_zone",
+              "generate",
+              "extend",
+              "custom_generate"
+            ]
+          }
+        },
+        {
+          "name": "query",
+          "description": "Search/play/queue query depending on subaction.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "url",
+          "description": "Direct media URL when using play_audio or play.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "playlistName",
+          "description": "Playlist name for playlist_play / playlist_save.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "song",
+          "description": "Song query when adding to a playlist.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "description": "Search result limit (search / library helpers).",
+          "required": false,
+          "schema": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10
+          }
+        },
+        {
+          "name": "confirmed",
+          "description": "Must be true when the underlying operation requires confirmation.",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        {
+          "name": "routingAction",
+          "description": "Structured routing action when using set_routing (set_mode, start_route, status, stop_route).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "mode",
+          "description": "Routing mode for set_routing operations.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sourceId",
+          "description": "Stream/source id for set_routing.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "targetIds",
+          "description": "Routing target ids.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "prompt",
+          "description": "Suno generation prompt for action=generate/custom_generate.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "audio_id",
+          "description": "Existing Suno audio id when action=extend.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "duration",
+          "description": "Generation length in seconds for action=generate/custom_generate, or extension seconds for action=extend.",
+          "required": false,
+          "schema": {
+            "type": "number",
+            "default": 30
+          }
+        },
+        {
+          "name": "style",
+          "description": "Style hint for action=custom_generate (Suno).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "reference_audio",
+          "description": "Reference audio URL for action=custom_generate (Suno).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "bpm",
+          "description": "Target BPM for action=custom_generate (Suno).",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "key",
+          "description": "Musical key for action=custom_generate (Suno).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "Verb-shaped: play/pause/resume/skip/stop, queue_view/queue_add/queue_clear, playlist_play/playlist_save, search/play_query/download/play_audio, set_routing/set_zone, generate/extend/custom_generate.",
+      "similes": [
+        "GENERATE_MUSIC",
+        "CREATE_MUSIC",
+        "MAKE_MUSIC",
+        "COMPOSE_MUSIC",
+        "CUSTOM_GENERATE_MUSIC",
+        "EXTEND_AUDIO"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use MUSIC with the provided parameters.",
+          "actions": ["MUSIC"],
+          "params": {
+            "MUSIC": {
+              "action": "play",
+              "query": "example",
+              "url": "example",
+              "playlistName": "example",
+              "song": "example",
+              "limit": 1,
+              "confirmed": false,
+              "routingAction": "example",
+              "mode": "example",
+              "sourceId": "example",
+              "targetIds": "example",
+              "prompt": "example",
+              "audio_id": "example",
+              "duration": 30,
+              "style": "example",
+              "reference_audio": "example",
+              "bpm": 1,
+              "key": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MYSTICISM_READING",
+      "description": "Mystical reading router. Set type to tarot, astrology, or iching, and action to start (begin a new reading), followup (reveal the next element), or deepen (more interpretation for the most-recent element).",
+      "parameters": [
+        {
+          "name": "type",
+          "description": "Reading type: tarot, astrology, or iching.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": ["tarot", "astrology", "iching"]
+          }
+        },
+        {
+          "name": "action",
+          "description": "Action: start, followup, or deepen.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": ["start", "followup", "deepen"]
+          }
+        },
+        {
+          "name": "question",
+          "description": "Optional question or focus for the reading.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "context",
+          "description": "Optional additional context (e.g., birth data hint for astrology).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "Mystical readings: tarot, astrology, iching; actions: start, followup, deepen.",
+      "similes": [
+        "TAROT_READING",
+        "READ_TAROT",
+        "DRAW_CARDS",
+        "TAROT_SPREAD",
+        "CARD_READING",
+        "ICHING_READING",
+        "CAST_HEXAGRAM",
+        "CONSULT_ICHING",
+        "THROW_COINS",
+        "ORACLE_READING",
+        "ASTROLOGY_READING",
+        "BIRTH_CHART",
+        "NATAL_CHART",
+        "HOROSCOPE_READING",
+        "ZODIAC_READING",
+        "READING_FOLLOWUP",
+        "CONTINUE_READING",
+        "NEXT_CARD",
+        "PROCEED_READING",
+        "DEEPEN_READING",
+        "EXPLORE_DEEPER",
+        "ELABORATE_READING"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use MYSTICISM_READING with the provided parameters.",
+          "actions": ["MYSTICISM_READING"],
+          "params": {
+            "MYSTICISM_READING": {
+              "type": "tarot",
+              "action": "start",
+              "question": "example",
+              "context": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "OWNER_ALARMS",
+      "description": "Owner alarms: create, update, delete, complete, skip, snooze, or review alarm-like reminders.",
+      "parameters": [],
+      "descriptionCompressed": "owner alarms: action=create|update|delete|complete|skip|snooze|review",
+      "similes": ["ALARM", "ALARMS", "WAKE_ME", "WAKE_UP"]
+    },
+    {
+      "name": "OWNER_DOCUMENTS",
+      "description": "Manage the owner's document workflow surface: signature requests, approvals, deadline tracking, portal uploads, ID/form collection, and request close-out. Subactions: request_signature, request_approval, track_deadline, upload_asset, collect_id, close_request.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "request_signature",
+              "request_approval",
+              "track_deadline",
+              "upload_asset",
+              "collect_id",
+              "close_request"
+            ]
+          }
+        },
+        {
+          "name": "documentRequestId",
+          "description": "Existing DocumentRequest id. Required for track_deadline and close_request.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "requesteeEntityId",
+          "description": "Entity id of the person we are asking. Required for request_signature and collect_id.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "documentTitle",
+          "description": "Short human-readable label for the document.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "deadline",
+          "description": "ISO-8601 deadline for the request.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "portalUrl",
+          "description": "Portal endpoint for upload_asset and (optionally) collect_id.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "assetPath",
+          "description": "Local path or URL of the asset to upload. Required for upload_asset.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "assetKind",
+          "description": "What kind of asset: deck, headshot, id, form, etc. Required for upload_asset and collect_id.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "signatureUrl",
+          "description": "Optional signing portal URL (DocuSign / HelloSign / etc.).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "approvalReason",
+          "description": "Reason label for request_approval.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "note",
+          "description": "Free-form note recorded on the DocumentRequest.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "resolution",
+          "description": "close_request only: completed | expired | cancelled. Defaults to completed.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["completed", "expired", "cancelled"]
+          }
+        }
+      ],
+      "descriptionCompressed": "docs: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request; deadline-aware; owner-gated for signature+upload",
+      "exampleCalls": [
+        {
+          "user": "Use OWNER_DOCUMENTS with the provided parameters.",
+          "actions": ["OWNER_DOCUMENTS"],
+          "params": {
+            "OWNER_DOCUMENTS": {
+              "action": "request_signature",
+              "documentRequestId": "example",
+              "requesteeEntityId": "example",
+              "documentTitle": "example",
+              "deadline": "example",
+              "portalUrl": "example",
+              "assetPath": "example",
+              "assetKind": "example",
+              "signatureUrl": "example",
+              "approvalReason": "example",
+              "note": "example",
+              "resolution": "completed"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "OWNER_FINANCES",
+      "description": "Owner finances: payment sources, transaction imports, spending summaries, recurring charges, and subscription audits.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Owner finance action.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "owner finances: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
+      "similes": ["FINANCES"],
+      "exampleCalls": [
+        {
+          "user": "Use OWNER_FINANCES with the provided parameters.",
+          "actions": ["OWNER_FINANCES"],
+          "params": {
+            "OWNER_FINANCES": {
+              "action": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "OWNER_GOALS",
+      "description": "Owner goals: create, update, delete, or review long-term goals and progress.",
+      "parameters": [],
+      "descriptionCompressed": "owner goals: action=create|update|delete|review; backing kind=goal",
+      "similes": ["GOAL", "GOALS", "LONG_TERM_GOAL"]
+    },
+    {
+      "name": "OWNER_HEALTH",
+      "description": "Owner health telemetry reads across HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura. Actions: today, trend, by_metric, status.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Owner health read action: today, trend, by_metric, or status.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "owner health: today|trend|by_metric|status; read-only telemetry",
+      "similes": ["FITNESS", "WELLNESS"],
+      "exampleCalls": [
+        {
+          "user": "Use OWNER_HEALTH with the provided parameters.",
+          "actions": ["OWNER_HEALTH"],
+          "params": {
+            "OWNER_HEALTH": {
+              "action": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "OWNER_REMINDERS",
+      "description": "Owner reminders: create, update, delete, complete, skip, snooze, or review one-off and recurring reminders.",
+      "parameters": [],
+      "descriptionCompressed": "owner reminders: action=create|update|delete|complete|skip|snooze|review",
+      "similes": [
+        "REMINDER",
+        "REMINDERS",
+        "SET_REMINDER",
+        "REMIND_ME",
+        "REMIND_ME_TO"
+      ]
+    },
+    {
+      "name": "OWNER_ROUTINES",
+      "description": "Owner routines and habits: create or manage recurring routines, and inspect passive schedule inference.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Routine operation: create, update, delete, complete, skip, snooze, review, schedule_summary, or schedule_inspect.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "owner routines: action=create|update|delete|complete|skip|snooze|review|schedule_summary|schedule_inspect",
+      "similes": [
+        "HABIT",
+        "HABITS",
+        "ROUTINE",
+        "ROUTINES",
+        "DAILY_TASK",
+        "WEEKLY_TASK"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use OWNER_ROUTINES with the provided parameters.",
+          "actions": ["OWNER_ROUTINES"],
+          "params": {
+            "OWNER_ROUTINES": {
+              "action": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "OWNER_SCREENTIME",
+      "description": "Owner screen-time and activity analytics across local activity, app usage, and browser reports.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Owner screentime read action.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "owner screentime: summary|today|weekly|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity",
+      "similes": ["SCREENTIME", "ACTIVITY_REPORT"],
+      "exampleCalls": [
+        {
+          "user": "Use OWNER_SCREENTIME with the provided parameters.",
+          "actions": ["OWNER_SCREENTIME"],
+          "params": {
+            "OWNER_SCREENTIME": {
+              "action": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "OWNER_TODOS",
+      "description": "Owner todos: create, update, delete, complete, skip, snooze, or review personal todos.",
+      "parameters": [],
+      "descriptionCompressed": "owner todos: action=create|update|delete|complete|skip|snooze|review",
+      "similes": [
+        "OWNER_TODO",
+        "PERSONAL_TODO",
+        "PERSONAL_TODOS",
+        "PERSONAL_TASK"
+      ]
+    },
+    {
+      "name": "PAYMENT",
+      "description": "Payment router for the active mysticism reading session. Set action to 'check' to read payment status, or 'request' to ask the user to pay (set amount or include $X.XX in the message).",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Operation: check or request.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": ["check", "request"]
+          }
+        },
+        {
+          "name": "amount",
+          "description": "For request — payment amount as a string (e.g. '3.00').",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "entityId",
+          "description": "For check — optional entity id whose active reading payment should be checked. Defaults to the current sender.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "roomId",
+          "description": "For check — optional room id whose active reading payment should be checked. Defaults to the current room.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "Mysticism payment ops: check, request.",
+      "similes": [
+        "REQUEST_PAYMENT",
+        "CHARGE_USER",
+        "ASK_FOR_PAYMENT",
+        "SET_PRICE",
+        "CHECK_PAYMENT",
+        "VERIFY_PAYMENT",
+        "PAYMENT_STATUS"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use PAYMENT with the provided parameters.",
+          "actions": ["PAYMENT"],
+          "params": {
+            "PAYMENT": {
+              "action": "check",
+              "amount": "example",
+              "entityId": "example",
+              "roomId": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "PERPETUAL_MARKET",
+      "description": "Use registered perpetual market providers. target selects the provider; Hyperliquid is registered today. action=read reads public state with kind: status, markets, market, positions, or funding. action=place_order reports trading readiness; signed order placement is disabled in this app scaffold.",
+      "parameters": [
+        {
+          "name": "target",
+          "description": "Perpetual market provider.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["hyperliquid"],
+            "default": "hyperliquid"
+          }
+        },
+        {
+          "name": "action",
+          "description": "Perpetual market operation: read or place_order.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["read", "place_order"]
+          }
+        },
+        {
+          "name": "kind",
+          "description": "read only: status | markets | market | positions | funding.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["status", "markets", "market", "positions", "funding"]
+          }
+        },
+        {
+          "name": "coin",
+          "description": "market only: Hyperliquid coin/asset symbol (e.g. BTC).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "side",
+          "description": "place_order only: intended side, buy or sell.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["buy", "sell"]
+          }
+        },
+        {
+          "name": "asset",
+          "description": "place_order only: Hyperliquid asset symbol.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "size",
+          "description": "place_order only: intended order size.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "descriptionCompressed": "Perpetual market router: target hyperliquid; action read or place_order.",
+      "exampleCalls": [
+        {
+          "user": "Use PERPETUAL_MARKET with the provided parameters.",
+          "actions": ["PERPETUAL_MARKET"],
+          "params": {
+            "PERPETUAL_MARKET": {
+              "target": "hyperliquid",
+              "action": "read",
+              "kind": "status",
+              "coin": "example",
+              "side": "buy",
+              "asset": "example",
+              "size": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "PERSONAL_ASSISTANT",
+      "description": "Owner personal-assistant workflows. Use action=book_travel for real travel booking, action=scheduling for scheduling negotiation, and action=sign_document for document-signature flows that must be queued for owner approval.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Assistant workflow to run.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "personal assistant workflows: action=book_travel|scheduling|sign_document",
+      "similes": [
+        "ASSISTANT",
+        "SCHEDULING",
+        "SIGN_DOCUMENT",
+        "DOCUSIGN",
+        "TRAVEL_CAPTURE_PREFERENCES",
+        "TRAVEL_BOOK_FLIGHT",
+        "TRAVEL_BOOK_HOTEL",
+        "TRAVEL_SYNC_ITINERARY_TO_CALENDAR",
+        "TRAVEL_REBOOK_AFTER_CONFLICT"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use PERSONAL_ASSISTANT with the provided parameters.",
+          "actions": ["PERSONAL_ASSISTANT"],
+          "params": {
+            "PERSONAL_ASSISTANT": {
+              "action": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "PLAY_EMOTE",
+      "description": "Play a one-shot emote animation on your 3D VRM avatar, then return to idle. ",
+      "parameters": [
+        {
+          "name": "emote",
+          "description": "Required emote ID to play once silently before returning to idle. ",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "Play one-shot VRM avatar emote animation. Silent visual side-action.",
+      "similes": [
+        "EMOTE",
+        "ANIMATE",
+        "GESTURE",
+        "DANCE",
+        "WAVE",
+        "PLAY_ANIMATION",
+        "DO_EMOTE",
+        "PERFORM"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use PLAY_EMOTE with the provided parameters.",
+          "actions": ["PLAY_EMOTE"],
+          "params": {
+            "PLAY_EMOTE": {
+              "emote": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "PRIORITIZE",
+      "description": "Rank the owner's open todos, message threads, or pending decisions by urgency × importance via an LLM compose pass. Subactions: rank_todos, rank_threads, rank_decisions.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Canonical prioritization operation: rank_todos | rank_threads | rank_decisions.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["rank_todos", "rank_threads", "rank_decisions"]
+          }
+        },
+        {
+          "name": "subject",
+          "description": "Alternative selector: todos | threads | decisions. Maps onto the matching subaction.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["todos", "threads", "decisions"]
+          }
+        },
+        {
+          "name": "topN",
+          "description": "How many items to return at the top. Defaults to 5.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "criteria",
+          "description": "Free-form additional weighting criteria the owner wants applied.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "prioritize: rank_todos|rank_threads|rank_decisions; topN ranking by urgency × importance",
+      "exampleCalls": [
+        {
+          "user": "Use PRIORITIZE with the provided parameters.",
+          "actions": ["PRIORITIZE"],
+          "params": {
+            "PRIORITIZE": {
+              "action": "rank_todos",
+              "subject": "todos",
+              "topN": 1,
+              "criteria": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "REMOTE_DESKTOP",
+      "description": "Manage remote-desktop sessions so the owner can connect to this machine from another device. ",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "One of: start, status, end, list, revoke.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["start", "status", "end", "list", "revoke"]
+          },
+          "examples": ["start", "list", "revoke"],
+          "descriptionCompressed": "remote-desktop action: start|status|end|list|revoke"
+        },
+        {
+          "name": "sessionId",
+          "description": "Session id - required for status, end, and revoke actions.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["rs_abc123"],
+          "descriptionCompressed": "session id (status|end|revoke)"
+        },
+        {
+          "name": "confirmed",
+          "description": "Must be true for start (security sensitive).",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          },
+          "descriptionCompressed": "true required for start (security)"
+        },
+        {
+          "name": "pairingCode",
+          "description": "6-digit one-time pairing code for start. Required unless ELIZA_REMOTE_LOCAL_MODE=1.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "pattern": "^[0-9]{6}$"
+          },
+          "examples": ["482193"],
+          "descriptionCompressed": "6-digit pairing code (start; skipped in local mode)"
+        },
+        {
+          "name": "requesterIdentity",
+          "description": "Identifier for who is asking (entity id, friend name, device id). Logged for audit on start.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "audit: requester id (start)"
+        },
+        {
+          "name": "intent",
+          "description": "Freeform owner intent / reason for the session. Logged for audit.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "audit: owner reason"
+        }
+      ],
+      "descriptionCompressed": "remote-desktop sessions: start|status|end|list|revoke; start requires confirmed:true (+ pairing code in cloud mode)",
+      "similes": [
+        "REMOTE_SESSION",
+        "VNC_SESSION",
+        "REMOTE_CONTROL",
+        "PHONE_REMOTE_ACCESS",
+        "CONNECT_FROM_PHONE"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use REMOTE_DESKTOP with the provided parameters.",
+          "actions": ["REMOTE_DESKTOP"],
+          "params": {
+            "REMOTE_DESKTOP": {
+              "action": "start",
+              "sessionId": "rs_abc123",
+              "confirmed": false,
+              "pairingCode": "482193",
+              "requesterIdentity": "example",
+              "intent": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "RESOLVE_REQUEST",
+      "description": "Approve or reject a pending action queued for owner confirmation (send_email, send_message, book_travel, voice_call, etc.). Subactions: approve, reject. requestId is optional — the handler inspects the pending queue and infers the target from owner intent, or asks a follow-up.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "One of: approve, reject.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["approve", "reject"]
+          }
+        },
+        {
+          "name": "requestId",
+          "description": "Approval request id to approve or reject. Optional: omit it when the user references the pending request in natural language.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "reason",
+          "description": "Optional short reason for the approval or rejection, in the user's language.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "approve|reject queued action; requestId optional; covers send_email|send_message|book_travel|voice_call",
+      "similes": [
+        "APPROVE",
+        "REJECT",
+        "CONFIRM",
+        "DENY",
+        "YES_DO_IT",
+        "NO_DONT",
+        "ACCEPT_REQUEST",
+        "DECLINE_REQUEST",
+        "ADMIN_REJECT_APPROVAL",
+        "REJECT_APPROVAL",
+        "DENY_APPROVAL",
+        "DECLINE_APPROVAL"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use RESOLVE_REQUEST with the provided parameters.",
+          "actions": ["RESOLVE_REQUEST"],
+          "params": {
+            "RESOLVE_REQUEST": {
+              "action": "approve",
+              "requestId": "example",
+              "reason": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "ROBLOX",
+      "description": "Route Roblox game integration with action message, execute, or get_player.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Roblox operation: message, execute, or get_player.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": ["message", "execute", "get_player"]
+          },
+          "descriptionCompressed": "Roblox action."
+        },
+        {
+          "name": "message",
+          "description": "Message content for the message subaction.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "message text"
+        },
+        {
+          "name": "actionName",
+          "description": "Game-side action name for execute.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "game action name"
+        },
+        {
+          "name": "parameters",
+          "description": "Game-side action parameters for execute.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          },
+          "descriptionCompressed": "game action params"
+        },
+        {
+          "name": "targetPlayerIds",
+          "description": "Roblox player IDs to target for message or execute.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "descriptionCompressed": "target player ids"
+        },
+        {
+          "name": "playerId",
+          "description": "Roblox player/user ID for lookup or targeting.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          },
+          "descriptionCompressed": "Roblox user id"
+        },
+        {
+          "name": "username",
+          "description": "Roblox username for lookup.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "Roblox username"
+        }
+      ],
+      "descriptionCompressed": "Route Roblox action: message, execute, or get_player.",
+      "similes": ["ROBLOX", "ROBLOX_ROUTER", "ROBLOX_GAME_ACTION"],
+      "exampleCalls": [
+        {
+          "user": "Use ROBLOX with the provided parameters.",
+          "actions": ["ROBLOX"],
+          "params": {
+            "ROBLOX": {
+              "action": "message",
+              "message": "example",
+              "actionName": "example",
+              "parameters": "example",
+              "targetPlayerIds": "example",
+              "playerId": 1,
+              "username": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "RS_2004",
+      "description": "Drive the 2004scape game agent. Choose one action (walk_to, chop, mine, fish, burn, cook, fletch, craft, smith, drop, pickup, equip, unequip, use, use_on_item, use_on_object, open, close, deposit, withdraw, buy, sell, attack, cast_spell, set_style, eat, talk, navigate_dialog, interact_object, open_door, pickpocket). For open/close, set target='bank' or target='shop' (or include npc to imply shop). Per-action fields go in params.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Operation to run.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "walk_to",
+              "chop",
+              "mine",
+              "fish",
+              "burn",
+              "cook",
+              "fletch",
+              "craft",
+              "smith",
+              "drop",
+              "pickup",
+              "equip",
+              "unequip",
+              "use",
+              "use_on_item",
+              "use_on_object",
+              "open",
+              "close",
+              "deposit",
+              "withdraw",
+              "buy",
+              "sell",
+              "attack",
+              "cast_spell",
+              "set_style",
+              "eat",
+              "talk",
+              "navigate_dialog",
+              "interact_object",
+              "open_door",
+              "pickpocket"
+            ]
+          },
+          "descriptionCompressed": "Action."
+        },
+        {
+          "name": "params",
+          "description": "Optional JSON object containing the fields required by the chosen op.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          },
+          "descriptionCompressed": "Action fields."
+        }
+      ],
+      "descriptionCompressed": "rs_2004 actions (walk_to, skills, inventory, bank, shop, combat, interact)",
+      "exampleCalls": [
+        {
+          "user": "Use RS_2004 with the provided parameters.",
+          "actions": ["RS_2004"],
+          "params": {
+            "RS_2004": {
+              "action": "walk_to",
+              "params": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SCAPE",
+      "description": "Drive the 'scape (xRSPS) game agent. Pick one action: walk_to (x,z,run?), attack (npcId), chat_public (message), eat (item?), drop (item), set_goal (title,notes?), complete_goal (status?,goalId?,notes?), remember (notes,kind?,weight?). Returns success and a short status message; the autonomous loop already handles its own dispatch — this is the planner-facing surface.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Operation to run.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "walk_to",
+              "attack",
+              "chat_public",
+              "eat",
+              "drop",
+              "set_goal",
+              "complete_goal",
+              "remember"
+            ]
+          },
+          "descriptionCompressed": "Action."
+        },
+        {
+          "name": "params",
+          "description": "Optional JSON object containing the fields required by the chosen action.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          },
+          "descriptionCompressed": "Action fields."
+        }
+      ],
+      "descriptionCompressed": "scape actions: walk_to|attack|chat_public|eat|drop|set_goal|complete_goal|remember",
+      "similes": [
+        "SCAPE_WALK_TO",
+        "MOVE_TO",
+        "GO_TO",
+        "TRAVEL_TO",
+        "HEAD_TO",
+        "ATTACK_NPC",
+        "FIGHT_NPC",
+        "KILL_NPC",
+        "ENGAGE",
+        "CHAT_PUBLIC",
+        "SAY",
+        "SPEAK",
+        "TALK",
+        "BROADCAST",
+        "JOURNAL",
+        "INVENTORY",
+        "SET_GOAL",
+        "COMPLETE_GOAL",
+        "REMEMBER",
+        "EAT_FOOD",
+        "DROP_ITEM"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SCAPE with the provided parameters.",
+          "actions": ["SCAPE"],
+          "params": {
+            "SCAPE": {
+              "action": "walk_to",
+              "params": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SCHEDULED_TASKS",
+      "description": "Manage the owner's scheduled-task spine: reminders, check-ins, follow-ups, approvals, recaps, watchers, outputs, and custom tasks. Actions: list, get, create, update, snooze, skip, complete, acknowledge, dismiss, cancel, reopen, history.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Which scheduled-task operation to run: list | get | create | update | snooze | skip | complete | acknowledge | dismiss | cancel | reopen | history.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "list",
+              "get",
+              "create",
+              "update",
+              "snooze",
+              "skip",
+              "complete",
+              "acknowledge",
+              "dismiss",
+              "cancel",
+              "reopen",
+              "history"
+            ]
+          }
+        },
+        {
+          "name": "taskId",
+          "description": "Target taskId for get / update / snooze / skip / complete / acknowledge / dismiss / cancel / reopen / history.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "kind",
+          "description": "ScheduledTaskKind for create + filter for list. One of reminder, checkin, followup, approval, recap, watcher, output, custom.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "status",
+          "description": "Status filter for list (string or string[]). One of scheduled, fired, acknowledged, completed, skipped, expired, failed, dismissed.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "subjectKind",
+          "description": "ScheduledTaskSubject.kind: entity | relationship | thread | document | calendar_event | self.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "subjectId",
+          "description": "ScheduledTaskSubject.id paired with subjectKind.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "ownerVisibleOnly",
+          "description": "When true, list returns only ownerVisible tasks.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "promptInstructions",
+          "description": "create-only: prompt instructions stored on the task.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "trigger",
+          "description": "create-only: ScheduledTaskTrigger object (once / cron / interval / relative_to_anchor / during_window / event / manual / after_task).",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "contextRequest",
+          "description": "create-only: structured context request for owner facts, entities, relationships, recent task states, or event payload.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "shouldFire",
+          "description": "create-only: structural gate composition; use gate refs rather than prompt text conditions.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "completionCheck",
+          "description": "create-only: structural completion check such as user_replied_within, user_acknowledged, subject_updated, or health_signal_observed.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "output",
+          "description": "create-only: output destination/target, e.g. { destination: 'channel', target: 'in_app:<roomId>' }.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "pipeline",
+          "description": "create-only: child ScheduledTask refs for onComplete/onSkip/onFail.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "escalation",
+          "description": "create-only: escalation ladder or explicit channel steps.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "metadata",
+          "description": "create-only: structured task metadata.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "idempotencyKey",
+          "description": "create-only: stable key for deduping repeated schedules.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "priority",
+          "description": "create-only: low | medium | high (default medium).",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          }
+        },
+        {
+          "name": "respectsGlobalPause",
+          "description": "create-only: when true, the task skips during global pause.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "ownerVisible",
+          "description": "create-only: when true, the task surfaces in owner views.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "source",
+          "description": "create-only: task source (default_pack | user_chat | first_run | plugin).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "minutes",
+          "description": "snooze-only: minutes to defer next fire.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "untilIso",
+          "description": "snooze-only: ISO-8601 timestamp to defer next fire to.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "reason",
+          "description": "skip / complete / acknowledge / dismiss / reopen: free-form reason recorded on the state log.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "patch",
+          "description": "update-only: shallow patch of editable ScheduledTask fields.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "sinceIso",
+          "description": "history-only: ISO-8601 lower bound on log occurredAtIso.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "untilHistoryIso",
+          "description": "history-only: ISO-8601 upper bound on log occurredAtIso.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "includeRollups",
+          "description": "history-only: include rolled-up daily summary log rows (default false; raw rows only).",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "limit",
+          "description": "history-only: row cap (default 100).",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "descriptionCompressed": "scheduled tasks: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history; kinds reminder|checkin|followup|approval|recap|watcher|output|custom",
+      "exampleCalls": [
+        {
+          "user": "Use SCHEDULED_TASKS with the provided parameters.",
+          "actions": ["SCHEDULED_TASKS"],
+          "params": {
+            "SCHEDULED_TASKS": {
+              "action": "list",
+              "taskId": "example",
+              "kind": "example",
+              "status": "example",
+              "subjectKind": "example",
+              "subjectId": "example",
+              "ownerVisibleOnly": false,
+              "promptInstructions": "example",
+              "trigger": "example",
+              "contextRequest": "example",
+              "shouldFire": "example",
+              "completionCheck": "example",
+              "output": "example",
+              "pipeline": "example",
+              "escalation": "example",
+              "metadata": "example",
+              "idempotencyKey": "example",
+              "priority": "low",
+              "respectsGlobalPause": false,
+              "ownerVisible": false,
+              "source": "example",
+              "minutes": 1,
+              "untilIso": "example",
+              "reason": "example",
+              "patch": "example",
+              "sinceIso": "example",
+              "untilHistoryIso": "example",
+              "includeRollups": false,
+              "limit": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SHELL",
+      "description": "Canonical shell action. action=run executes a shell command via the configured local shell. action=clear_history clears recorded shell command history for this conversation. action=view_history returns recent recorded shell commands. command is required only for action=run. Paths under the configured blocklist are off-limits as cwd.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Shell operation: run | clear_history | view_history.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["run", "clear_history", "view_history"]
+          }
+        },
+        {
+          "name": "command",
+          "description": "Shell command to run for action=run; executed via /bin/bash -c <command>.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "description",
+          "description": "Five to ten word humanly-readable summary of the command.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "timeout",
+          "description": "Hard timeout in ms; clamped to [100, 600000]. Default 120000.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "cwd",
+          "description": "Absolute working directory; must not resolve under a blocked path. Defaults to the session cwd.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "description": "For action=view_history: maximum number of recorded commands to return.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "descriptionCompressed": "Run shell commands or manage shell command history.",
+      "similes": ["EXEC", "RUN_COMMAND"],
+      "exampleCalls": [
+        {
+          "user": "Use SHELL with the provided parameters.",
+          "actions": ["SHELL"],
+          "params": {
+            "SHELL": {
+              "action": "run",
+              "command": "example",
+              "description": "example",
+              "timeout": 1,
+              "cwd": "example",
+              "limit": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SHOPIFY",
+      "description": "Manage a Shopify store. Actions: search (read-only catalog browsing across products, orders, and customers), products (CRUD on products), inventory (stock adjustments), orders (list/update orders), customers (CRUD on customers). Action is inferred from the message text when not explicitly provided.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Operation to perform. One of: search, products, inventory, orders, customers. Inferred from message text when omitted.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["search", "products", "inventory", "orders", "customers"]
+          }
+        },
+        {
+          "name": "query",
+          "description": "Search term for action=search.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "scope",
+          "description": "Search scope for action=search: all, products, orders, or customers.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["all", "products", "orders", "customers"]
+          }
+        },
+        {
+          "name": "limit",
+          "description": "Maximum results per searched Shopify category.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "descriptionCompressed": "Shopify: search, products, inventory, orders, customers.",
+      "similes": [
+        "MANAGE_SHOPIFY_PRODUCTS",
+        "MANAGE_SHOPIFY_INVENTORY",
+        "MANAGE_SHOPIFY_ORDERS",
+        "MANAGE_SHOPIFY_CUSTOMERS",
+        "LIST_PRODUCTS",
+        "CREATE_PRODUCT",
+        "UPDATE_PRODUCT",
+        "SEARCH_PRODUCTS",
+        "CHECK_INVENTORY",
+        "ADJUST_INVENTORY",
+        "CHECK_STOCK",
+        "UPDATE_STOCK",
+        "LIST_ORDERS",
+        "CHECK_ORDERS",
+        "FULFILL_ORDER",
+        "ORDER_STATUS",
+        "LIST_CUSTOMERS",
+        "FIND_CUSTOMER",
+        "SEARCH_CUSTOMERS"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SHOPIFY with the provided parameters.",
+          "actions": ["SHOPIFY"],
+          "params": {
+            "SHOPIFY": {
+              "action": "search",
+              "query": "example",
+              "scope": "all",
+              "limit": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "SKILL",
+      "description": "Manage skill catalog. Operations: search (browse available skills), details (info about a specific skill), sync (refresh catalog from registry), toggle (enable/disable installed skill), install (install from registry), uninstall (remove non-bundled skill). For invoking an enabled skill, use USE_SKILL instead.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Operation to perform. One of: search, details, sync, toggle, install, uninstall. Inferred from message text when omitted.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "search",
+              "details",
+              "sync",
+              "toggle",
+              "install",
+              "uninstall"
+            ]
+          }
+        }
+      ],
+      "descriptionCompressed": "Skill catalog: search, details, sync, toggle, install, uninstall.",
+      "similes": [
+        "MANAGE_SKILL",
+        "MANAGE_SKILLS",
+        "SKILL_CATALOG",
+        "SKILLS",
+        "AGENT_SKILL",
+        "AGENT_SKILLS",
+        "INSTALL_SKILL",
+        "UNINSTALL_SKILL",
+        "SEARCH_SKILLS",
+        "SYNC_SKILL_CATALOG",
+        "TOGGLE_SKILL"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use SKILL with the provided parameters.",
+          "actions": ["SKILL"],
+          "params": {
+            "SKILL": {
+              "action": "search"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "TASKS",
+      "description": "Single planner-visible surface for the orchestrator's task-agent and workspace lifecycle. ",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Task operation: create, spawn_agent, send, stop_agent, list_agents, cancel, history, control, share, provision_workspace, submit_workspace, manage_issues, archive, reopen.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "create",
+              "spawn_agent",
+              "send",
+              "stop_agent",
+              "list_agents",
+              "cancel",
+              "history",
+              "control",
+              "share",
+              "provision_workspace",
+              "submit_workspace",
+              "manage_issues",
+              "archive",
+              "reopen"
+            ]
+          }
+        },
+        {
+          "name": "task",
+          "description": "Task prompt for create / spawn_agent / send (as new task).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "agentType",
+          "description": "Agent type (codex, claude, etc.) for create / spawn_agent / control.resume.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "agents",
+          "description": "Pipe-delimited multi-agent task list for action=create.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "repo",
+          "description": "Repository URL/slug for action=create / action=manage_issues / action=provision_workspace.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "workdir",
+          "description": "Working directory for action=create / action=spawn_agent.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "memoryContent",
+          "description": "Additional memory/context for action=create / action=spawn_agent.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "label",
+          "description": "Task label for action=create / action=spawn_agent / action=send.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "approvalPreset",
+          "description": "Approval preset for action=create / action=spawn_agent.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["readonly", "standard", "permissive", "autonomous"]
+          }
+        },
+        {
+          "name": "keepAliveAfterComplete",
+          "description": "Keep session alive after completion for action=spawn_agent.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "input",
+          "description": "Text input to send to a running session for action=send.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "keys",
+          "description": "Key sequence to send for action=send.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "sessionId",
+          "description": "Target session id for action=send / action=stop_agent / action=cancel / action=control / action=share.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "threadId",
+          "description": "Target task-thread id for action=cancel / action=control / action=share / action=archive / action=reopen.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "taskId",
+          "description": "Alias for threadId; preferred for action=archive / action=reopen.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "all",
+          "description": "Apply to all sessions for action=stop_agent / action=cancel.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "search",
+          "description": "Free-text search for thread/task lookup in action=cancel / action=control / action=history / action=share.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "reason",
+          "description": "Cancellation reason for action=cancel.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "metric",
+          "description": "History query mode for action=history: list (default), count, or detail.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["list", "count", "detail"]
+          }
+        },
+        {
+          "name": "window",
+          "description": "Relative window for action=history.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "active",
+              "today",
+              "yesterday",
+              "last_7_days",
+              "last_30_days"
+            ]
+          }
+        },
+        {
+          "name": "statuses",
+          "description": "Status filter list for action=history.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "name": "limit",
+          "description": "Result limit for action=history.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "includeArchived",
+          "description": "Include archived threads in action=history.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "controlAction",
+          "description": "Child action for action=control: pause | resume | stop | continue | archive | reopen.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "issueAction",
+          "description": "Child action for action=manage_issues: create | list | get | update | comment | close | reopen | add_labels.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "note",
+          "description": "Optional note for action=control with controlAction=pause|stop.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "instruction",
+          "description": "Follow-up instruction for action=control with controlAction=resume|continue.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "baseBranch",
+          "description": "Base branch for action=provision_workspace / action=submit_workspace.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "useWorktree",
+          "description": "Use worktree mode for action=provision_workspace.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "parentWorkspaceId",
+          "description": "Parent workspace id for action=provision_workspace worktree mode.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "workspaceId",
+          "description": "Workspace id for action=submit_workspace.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "commitMessage",
+          "description": "Commit message for action=submit_workspace.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "prTitle",
+          "description": "PR title for action=submit_workspace.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "prBody",
+          "description": "PR body for action=submit_workspace.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "draft",
+          "description": "Create draft PR for action=submit_workspace.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "skipPR",
+          "description": "Skip PR creation for action=submit_workspace.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "title",
+          "description": "Issue title for action=manage_issues with issueAction=create|update.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "body",
+          "description": "Issue body for action=manage_issues with issueAction=create|update|comment.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "issueNumber",
+          "description": "Issue number for action=manage_issues with issueAction=get|update|comment|close|reopen|add_labels.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "labels",
+          "description": "Labels (csv string or array) for action=manage_issues with issueAction=create|update|add_labels|list.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "state",
+          "description": "State filter (open|closed|all) for action=manage_issues with issueAction=list.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "validator",
+          "description": "Optional verifier for action=create.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        },
+        {
+          "name": "maxRetries",
+          "description": "Verifier retry count for action=create.",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        {
+          "name": "onVerificationFail",
+          "description": "Verifier failure behavior for action=create.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["retry", "escalate"]
+          }
+        },
+        {
+          "name": "metadata",
+          "description": "Additional metadata for action=create.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "descriptionCompressed": "tasks: action=create|spawn_agent|send|stop_agent|list_agents|cancel|history|control|share|provision_workspace|submit_workspace|manage_issues|archive|reopen",
+      "similes": [
+        "CREATE_AGENT_TASK",
+        "CREATE_TASK",
+        "START_CODING_TASK",
+        "LAUNCH_CODING_TASK",
+        "RUN_CODING_TASK",
+        "START_AGENT_TASK",
+        "SPAWN_AND_PROVISION",
+        "CODE_THIS",
+        "LAUNCH_TASK",
+        "CREATE_SUBTASK",
+        "SPAWN_AGENT",
+        "SPAWN_CODING_AGENT",
+        "START_CODING_AGENT",
+        "LAUNCH_CODING_AGENT",
+        "CREATE_CODING_AGENT",
+        "SPAWN_CODER",
+        "RUN_CODING_AGENT",
+        "SPAWN_SUB_AGENT",
+        "START_TASK_AGENT",
+        "CREATE_AGENT",
+        "SEND_TO_AGENT",
+        "SEND_TO_CODING_AGENT",
+        "MESSAGE_CODING_AGENT",
+        "INPUT_TO_AGENT",
+        "RESPOND_TO_AGENT",
+        "TELL_CODING_AGENT",
+        "MESSAGE_AGENT",
+        "TELL_TASK_AGENT",
+        "STOP_AGENT",
+        "STOP_CODING_AGENT",
+        "KILL_CODING_AGENT",
+        "TERMINATE_AGENT",
+        "END_CODING_SESSION",
+        "CANCEL_AGENT",
+        "CANCEL_TASK_AGENT",
+        "STOP_SUB_AGENT",
+        "LIST_AGENTS",
+        "LIST_CODING_AGENTS",
+        "SHOW_CODING_AGENTS",
+        "GET_ACTIVE_AGENTS",
+        "LIST_SESSIONS",
+        "SHOW_CODING_SESSIONS",
+        "SHOW_TASK_AGENTS",
+        "LIST_SUB_AGENTS",
+        "SHOW_TASK_STATUS",
+        "CANCEL_TASK",
+        "STOP_TASK",
+        "ABORT_TASK",
+        "KILL_TASK",
+        "STOP_SUBTASK",
+        "TASK_HISTORY",
+        "LIST_TASK_HISTORY",
+        "GET_TASK_HISTORY",
+        "SHOW_TASKS",
+        "COUNT_TASKS",
+        "TASK_STATUS_HISTORY",
+        "TASK_CONTROL",
+        "CONTROL_TASK",
+        "PAUSE_TASK",
+        "RESUME_TASK",
+        "CONTINUE_TASK",
+        "ARCHIVE_TASK",
+        "REOPEN_TASK",
+        "TASK_SHARE",
+        "SHARE_TASK_RESULT",
+        "SHOW_TASK_ARTIFACT",
+        "VIEW_TASK_OUTPUT",
+        "CAN_I_SEE_IT",
+        "PULL_IT_UP",
+        "CREATE_WORKSPACE",
+        "PROVISION_WORKSPACE",
+        "CLONE_REPO",
+        "SETUP_WORKSPACE",
+        "PREPARE_WORKSPACE",
+        "SUBMIT_WORKSPACE",
+        "FINALIZE_WORKSPACE",
+        "COMMIT_AND_PR",
+        "CREATE_PR",
+        "SUBMIT_CHANGES",
+        "FINISH_WORKSPACE",
+        "MANAGE_ISSUES",
+        "CREATE_ISSUE",
+        "LIST_ISSUES",
+        "CLOSE_ISSUE",
+        "COMMENT_ISSUE",
+        "UPDATE_ISSUE",
+        "GET_ISSUE",
+        "ARCHIVE_CODING_TASK",
+        "CLOSE_CODING_TASK",
+        "ARCHIVE_TASK_THREAD",
+        "REOPEN_CODING_TASK",
+        "UNARCHIVE_CODING_TASK",
+        "RESUME_CODING_TASK"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use TASKS with the provided parameters.",
+          "actions": ["TASKS"],
+          "params": {
+            "TASKS": {
+              "action": "create",
+              "task": "example",
+              "agentType": "example",
+              "agents": "example",
+              "repo": "example",
+              "workdir": "example",
+              "memoryContent": "example",
+              "label": "example",
+              "approvalPreset": "readonly",
+              "keepAliveAfterComplete": false,
+              "input": "example",
+              "keys": "example",
+              "sessionId": "example",
+              "threadId": "example",
+              "taskId": "example",
+              "all": false,
+              "search": "example",
+              "reason": "example",
+              "metric": "list",
+              "window": "active",
+              "statuses": "example",
+              "limit": 1,
+              "includeArchived": false,
+              "controlAction": "example",
+              "issueAction": "example",
+              "note": "example",
+              "instruction": "example",
+              "baseBranch": "example",
+              "useWorktree": false,
+              "parentWorkspaceId": "example",
+              "workspaceId": "example",
+              "commitMessage": "example",
+              "prTitle": "example",
+              "prBody": "example",
+              "draft": false,
+              "skipPR": false,
+              "title": "example",
+              "body": "example",
+              "issueNumber": 1,
+              "labels": "example",
+              "state": "example",
+              "validator": "example",
+              "maxRetries": "example",
+              "onVerificationFail": "retry",
+              "metadata": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "TODO",
+      "description": "Manage the user's todo list. Actions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear. Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Action: write, create, update, complete, cancel, delete, list, clear.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "id",
+          "description": "Todo id (update/complete/cancel/delete).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "content",
+          "description": "Imperative form, e.g. 'Add tests' (create/update).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "activeForm",
+          "description": "Present-continuous form, e.g. 'Adding tests' (create/update).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "status",
+          "description": "pending | in_progress | completed | cancelled.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "parentTodoId",
+          "description": "Parent todo id for sub-tasks (create/update).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "todos",
+          "description": "Array of {id?, content, status, activeForm?} for action=write. Replaces the user's list for this conversation.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "content": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "activeForm": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "includeCompleted",
+          "description": "Include completed/cancelled todos in action=list output.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "limit",
+          "description": "Max rows to return for action=list.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "descriptionCompressed": "todos: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId)",
+      "similes": [
+        "TODO_WRITE",
+        "WRITE_TODOS",
+        "SET_TODOS",
+        "UPDATE_TODOS",
+        "TODO_CREATE",
+        "CREATE_TODO",
+        "TODO_UPDATE",
+        "UPDATE_TODO",
+        "TODO_COMPLETE",
+        "COMPLETE_TODO",
+        "FINISH_TODO",
+        "TODO_CANCEL",
+        "CANCEL_TODO",
+        "TODO_DELETE",
+        "DELETE_TODO",
+        "REMOVE_TODO",
+        "TODO_LIST",
+        "LIST_TODOS",
+        "GET_TODOS",
+        "SHOW_TODOS",
+        "TODO_CLEAR",
+        "CLEAR_TODOS"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use TODO with the provided parameters.",
+          "actions": ["TODO"],
+          "params": {
+            "TODO": {
+              "action": "example",
+              "id": "example",
+              "content": "example",
+              "activeForm": "example",
+              "status": "example",
+              "parentTodoId": "example",
+              "todos": "example",
+              "includeCompleted": false,
+              "limit": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "TUNNEL",
+      "description": "Tunnel operations dispatched by `action`: start, stop, status. The `start` action accepts an optional `port` (defaults to 3000); `stop` and `status` take no parameters. Backed by whichever tunnel plugin is active (local Tailscale CLI, Eliza Cloud headscale, or ngrok).",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Which tunnel sub-operation to run. One of: start, stop, status.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": ["start", "stop", "status"]
+          }
+        },
+        {
+          "name": "parameters",
+          "description": "Parameters forwarded to the selected sub-op. For `start`, optionally `{ port: number }`. `stop` and `status` take no parameters.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "similes": [
+        "OPEN_TUNNEL",
+        "CREATE_TUNNEL",
+        "CLOSE_TUNNEL",
+        "CHECK_TUNNEL",
+        "TUNNEL_INFO"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use TUNNEL with the provided parameters.",
+          "actions": ["TUNNEL"],
+          "params": {
+            "TUNNEL": {
+              "action": "start",
+              "parameters": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "USE_SKILL",
+      "description": "Invoke an enabled skill by slug. The skill's instructions or script run and the result returns to the conversation.",
+      "parameters": [
+        {
+          "name": "slug",
+          "description": "Slug (canonical name) of an enabled skill to invoke. Must match a skill returned by the enabled_skills provider.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "mode",
+          "description": "How to invoke the skill: 'script' to run the bundled executable, 'guidance' to load the SKILL.md instructions, or 'auto' to pick automatically based on whether the skill ships scripts.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["guidance", "script", "auto"],
+            "default": "auto"
+          }
+        },
+        {
+          "name": "script",
+          "description": "Optional script filename to run (used with mode='script' or mode='auto' when the skill has multiple scripts). Defaults to the first script in the skill.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "args",
+          "description": "Optional arguments to pass to the skill's script. Either an array of strings or a JSON object whose values become positional arguments.",
+          "required": false,
+          "schema": {
+            "type": "object"
+          }
+        }
+      ],
+      "descriptionCompressed": "Invoke an enabled skill by slug.",
+      "similes": [
+        "INVOKE_SKILL",
+        "RUN_SKILL",
+        "EXECUTE_SKILL",
+        "CALL_SKILL",
+        "USE_AGENT_SKILL",
+        "RUN_AGENT_SKILL",
+        "USE_CAPABILITY",
+        "RUN_CAPABILITY"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use USE_SKILL with the provided parameters.",
+          "actions": ["USE_SKILL"],
+          "params": {
+            "USE_SKILL": {
+              "slug": "example",
+              "mode": "auto",
+              "script": "example",
+              "args": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "VOICE_CALL",
+      "description": "Owner-only. Place an outbound voice call via a registered provider. Action: `dial` with recipientKind=owner|external|e164. Current dispatch provider is Twilio; Android/app-phone is implementation-only until wired as a VOICE_CALL provider. Owner uses the env-configured owner number + standing escalation policy; external resolves a contact name via relationships then checks the allow-list; e164 dials a raw phone number. All paths draft first, require confirmed:true to dispatch, and use the approval queue.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Single canonical verb: `dial`.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["dial"]
+          }
+        },
+        {
+          "name": "recipientKind",
+          "description": "Recipient discriminator: `owner` (escalation; uses owner number env), `external` (third party; recipient name resolved via relationships, allow-list checked), or `e164` (raw E.164 phone in `phoneNumber`).",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": ["owner", "external", "e164"]
+          }
+        },
+        {
+          "name": "phoneNumber",
+          "description": "For recipientKind=e164: destination phone number in E.164 format (e.g. +15551234567).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "recipient",
+          "description": "For recipientKind=external: contact name or E.164 phone number. Names resolve via the relationships store.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "bodyText",
+          "description": "Optional spoken message played when the call connects.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "confirmed",
+          "description": "Must be true to actually place the call. Without it the action returns a draft / approval-queue entry.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "reason",
+          "description": "Optional reason describing why the call is being placed (recorded with the approval task).",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "Twilio voice dial: recipientKind=owner|external|e164; draft-confirm; approval-queue",
+      "similes": [
+        "CALL_ME",
+        "ESCALATE_TO_USER",
+        "CALL_THIRD_PARTY",
+        "PHONE_SOMEONE",
+        "DIAL"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use VOICE_CALL with the provided parameters.",
+          "actions": ["VOICE_CALL"],
+          "params": {
+            "VOICE_CALL": {
+              "action": "dial",
+              "recipientKind": "owner",
+              "phoneNumber": "example",
+              "recipient": "example",
+              "bodyText": "example",
+              "confirmed": false,
+              "reason": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "WINDOW",
+      "description": "Single WINDOW action — manages local desktop windows through the computer-use service. ",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Window operation verb.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "list",
+              "focus",
+              "switch",
+              "arrange",
+              "move",
+              "minimize",
+              "maximize",
+              "restore",
+              "close"
+            ]
+          }
+        },
+        {
+          "name": "windowId",
+          "description": "Window identifier.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "windowTitle",
+          "description": "Window title or app-name query.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "arrangement",
+          "description": "Layout for window arrange: tile, cascade, vertical, or horizontal.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "x",
+          "description": "Target X coordinate for window move.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "y",
+          "description": "Target Y coordinate for window move.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "descriptionCompressed": "Single WINDOW action; action=list|focus|switch|arrange|move|minimize|maximize|restore|close manages local desktop windows.",
+      "similes": ["MANAGE_WINDOW", "WINDOW", "USE_WINDOW", "WINDOW_ACTION"],
+      "exampleCalls": [
+        {
+          "user": "Use WINDOW with the provided parameters.",
+          "actions": ["WINDOW"],
+          "params": {
+            "WINDOW": {
+              "action": "list",
+              "windowId": "example",
+              "windowTitle": "example",
+              "arrangement": "example",
+              "x": 1,
+              "y": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "WORK_THREAD",
+      "description": "Create, steer, stop, wait, complete, merge, attach source refs to, or schedule follow-up work for owner work threads. Use only for thread lifecycle/routing; domain work stays on existing task/messaging/workflow actions.",
+      "parameters": [
+        {
+          "name": "operations",
+          "description": "Array of thread lifecycle operations. Each item has type, optional workThreadId, sourceWorkThreadIds, instruction, reason, title, summary, sourceRef, and trigger for schedule_followup.",
+          "required": true,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      ],
+      "descriptionCompressed": "work-thread lifecycle: create|steer|stop|mark_waiting|mark_completed|merge|attach_source|schedule_followup",
+      "exampleCalls": [
+        {
+          "user": "Use WORK_THREAD with the provided parameters.",
+          "actions": ["WORK_THREAD"],
+          "params": {
+            "WORK_THREAD": {
+              "operations": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "WORKFLOW",
+      "description": "Manage workflows. Action-based dispatch - provide an `action` parameter:\n",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Operation: create, modify, activate, deactivate, toggle_active, delete, executions.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "create",
+              "modify",
+              "activate",
+              "deactivate",
+              "toggle_active",
+              "delete",
+              "executions"
+            ]
+          }
+        },
+        {
+          "name": "workflowId",
+          "description": "Workflow id.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "workflowName",
+          "description": "Workflow name fragment for fuzzy matching.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "seedPrompt",
+          "description": "Natural-language description for action=create.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "name",
+          "description": "Optional explicit name for created workflow.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "active",
+          "description": "Target state for action=toggle_active (true to activate).",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
+          "name": "limit",
+          "description": "Max executions to return for action=executions (default 10).",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        }
+      ],
+      "descriptionCompressed": "manage workflows; action-based dispatch (create modify activate deactivate toggle_active delete executions)",
+      "similes": [
+        "CREATE_WORKFLOW",
+        "DELETE_WORKFLOW",
+        "TOGGLE_WORKFLOW_ACTIVE",
+        "ACTIVATE_WORKFLOW",
+        "DEACTIVATE_WORKFLOW",
+        "ENABLE_WORKFLOW",
+        "DISABLE_WORKFLOW",
+        "PAUSE_WORKFLOW",
+        "RESUME_WORKFLOW",
+        "MODIFY_WORKFLOW",
+        "UPDATE_WORKFLOW",
+        "EDIT_WORKFLOW",
+        "EDIT_EXISTING_WORKFLOW",
+        "UPDATE_EXISTING_WORKFLOW",
+        "CHANGE_EXISTING_WORKFLOW",
+        "LOAD_WORKFLOW_FOR_EDIT",
+        "GET_WORKFLOW_EXECUTIONS",
+        "GET_EXECUTIONS",
+        "SHOW_EXECUTIONS",
+        "EXECUTION_HISTORY",
+        "WORKFLOW_RUNS",
+        "WORKFLOW_EXECUTIONS"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use WORKFLOW with the provided parameters.",
+          "actions": ["WORKFLOW"],
+          "params": {
+            "WORKFLOW": {
+              "action": "create",
+              "workflowId": "example",
+              "workflowName": "example",
+              "seedPrompt": "example",
+              "name": "example",
+              "active": false,
+              "limit": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "WORKTREE",
+      "description": "Manage the current git worktree stack. Choose action=enter to create and switch into an isolated worktree, or action=exit to leave the current worktree and optionally remove it.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Worktree operation to run.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": ["enter", "exit"]
+          }
+        },
+        {
+          "name": "name",
+          "description": "For action=enter, optional worktree branch/dir name. Defaults to auto-*.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "path",
+          "description": "For action=enter, optional absolute worktree directory within sandbox roots.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "base",
+          "description": "For action=enter, optional base ref. Defaults to HEAD.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "cleanup",
+          "description": "For action=exit, remove the popped worktree directory with git worktree remove --force.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        }
+      ],
+      "descriptionCompressed": "Git worktree umbrella: action=enter/exit.",
+      "similes": ["GIT_WORKTREE"],
+      "exampleCalls": [
+        {
+          "user": "Use WORKTREE with the provided parameters.",
+          "actions": ["WORKTREE"],
+          "params": {
+            "WORKTREE": {
+              "action": "enter",
+              "name": "example",
+              "path": "example",
+              "base": "example",
+              "cleanup": false
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

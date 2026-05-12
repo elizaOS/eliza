@@ -1,0 +1,337 @@
+name: Nightly Build
+
+# Automated nightly builds from the default branch.
+# Publishes @elizaos/* packages with the "nightly" dist-tag and creates
+# a GitHub pre-release. Skips if no new commits since the last nightly.
+
+on:
+  schedule:
+    # Run at 4:00 AM UTC daily
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Force nightly build even if no new commits"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+env:
+  CI: "true"
+  NODE_NO_WARNINGS: "1"
+  NODE_OPTIONS: "--max-old-space-size=4096"
+  BUN_VERSION: "1.3.13"
+  NODE_VERSION: "23"
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  check-commits:
+    name: Check for new commits
+    runs-on: ubuntu-24.04
+    outputs:
+      has_new_commits: ${{ steps.check.outputs.has_new_commits }}
+      short_sha: ${{ steps.check.outputs.short_sha }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          submodules: false
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Check for new commits since last nightly
+        id: check
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          echo "short_sha=$SHORT_SHA" >> "$GITHUB_OUTPUT"
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.force }}" == "true" ]]; then
+            echo "has_new_commits=true" >> "$GITHUB_OUTPUT"
+            echo "Forced build — skipping commit check"
+            exit 0
+          fi
+
+          LAST_NIGHTLY=$(git tag -l 'v*-nightly.*' --sort=-v:refname | head -1)
+
+          if [[ -z "$LAST_NIGHTLY" ]]; then
+            echo "has_new_commits=true" >> "$GITHUB_OUTPUT"
+            echo "No previous nightly tag found — building"
+            exit 0
+          fi
+
+          COMMIT_COUNT=$(git rev-list "${LAST_NIGHTLY}..HEAD" --count)
+
+          if [[ "$COMMIT_COUNT" -eq 0 ]]; then
+            echo "has_new_commits=false" >> "$GITHUB_OUTPUT"
+            echo "No new commits since $LAST_NIGHTLY — skipping"
+          else
+            echo "has_new_commits=true" >> "$GITHUB_OUTPUT"
+            echo "$COMMIT_COUNT new commits since $LAST_NIGHTLY"
+          fi
+
+  build-and-test:
+    name: Build & Test
+    needs: check-commits
+    if: needs.check-commits.outputs.has_new_commits == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      nightly_version: ${{ steps.version.outputs.nightly_version }}
+      nightly_tag: ${{ steps.version.outputs.nightly_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+
+      - name: Compute nightly version
+        id: version
+        run: |
+          BASE_VERSION=$(node -p "require('./package.json').version.replace(/-.*/, '')")
+          DATE=$(date -u +%Y%m%d)
+          NIGHTLY_VERSION="${BASE_VERSION}-nightly.${DATE}"
+          NIGHTLY_TAG="v${NIGHTLY_VERSION}"
+
+          echo "nightly_version=$NIGHTLY_VERSION" >> "$GITHUB_OUTPUT"
+          echo "nightly_tag=$NIGHTLY_TAG" >> "$GITHUB_OUTPUT"
+          echo "Nightly version: $NIGHTLY_VERSION"
+
+      - name: Build
+        run: bun run build
+
+      - name: Run tests
+        run: bun run test
+
+      - name: Run desktop contract tests
+        working-directory: packages/app-core/platforms/electrobun
+        run: bun run test
+
+  desktop-build-matrix:
+    name: Desktop Release Build Matrix
+    needs: [check-commits, build-and-test]
+    if: needs.check-commits.outputs.has_new_commits == 'true'
+    # TODO: eliza does not currently expose a `workflow_call`-able desktop
+    # release pipeline. Wire this to the eliza equivalent once it lands;
+    # in the meantime this verifies the renderer package on each desktop OS.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            platform: mac
+          - os: ubuntu-latest
+            platform: linux
+          - os: windows-latest
+            platform: win
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        if: runner.os != 'Windows'
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: ${{ runner.os == 'Linux' && 'true' || 'false' }}
+
+      - name: Setup Bun (Windows)
+        if: runner.os == 'Windows'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          no-cache: true
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: bun install --ignore-scripts --no-frozen-lockfile
+
+      - name: Build
+        run: bun run build
+
+      - name: Build desktop bundle
+        working-directory: packages/app
+        run: bun run build
+
+  publish-npm:
+    name: Publish to npm (nightly)
+    needs: [check-commits, build-and-test, desktop-build-matrix]
+    if: needs.check-commits.outputs.has_new_commits == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+
+      - name: Build
+        run: bun run build
+
+      - name: Configure git for lerna
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Publish @elizaos/* packages with nightly dist-tag
+        run: bunx lerna publish from-package --dist-tag nightly --force-publish --yes --no-verify-access
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  create-release:
+    name: Create GitHub pre-release
+    needs: [check-commits, build-and-test, desktop-build-matrix, publish-npm]
+    if: needs.check-commits.outputs.has_new_commits == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          submodules: false
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Create nightly tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          TAG="${{ needs.build-and-test.outputs.nightly_tag }}"
+
+          # Delete existing tag if it exists (nightly dates can repeat on re-runs)
+          git tag -d "$TAG" 2>/dev/null || true
+          git push origin ":refs/tags/$TAG" 2>/dev/null || true
+
+          git tag -a "$TAG" -m "Nightly build $TAG"
+          git push origin "$TAG"
+
+      - name: Create GitHub pre-release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.build-and-test.outputs.nightly_tag }}
+          name: "Nightly ${{ needs.build-and-test.outputs.nightly_version }}"
+          prerelease: true
+          generate_release_notes: true
+          body: |
+            ## Nightly Build
+
+            **Version:** `${{ needs.build-and-test.outputs.nightly_version }}`
+            **Commit:** `${{ needs.check-commits.outputs.short_sha }}`
+            **Channel:** nightly
+
+            ### Install
+            ```bash
+            npm install @elizaos/core@nightly
+            ```
+
+            > This is an automated nightly build from the default branch.
+            > It may contain experimental features and known issues.
+            > For stable releases, use `npm install @elizaos/core@latest`.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  cleanup:
+    name: Cleanup old nightly releases
+    needs: create-release
+    if: needs.create-release.result == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Delete old nightly releases (keep last 14)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RELEASES=$(gh release list --json tagName,isPrerelease --limit 100 \
+            | jq -r '.[] | select(.isPrerelease == true and (.tagName | test("nightly"))) | .tagName')
+
+          COUNT=$(echo "$RELEASES" | grep -c . || true)
+          KEEP=14
+
+          if [[ "$COUNT" -le "$KEEP" ]]; then
+            echo "Only $COUNT nightly releases — nothing to clean up"
+            exit 0
+          fi
+
+          DELETE_COUNT=$((COUNT - KEEP))
+          echo "Cleaning up $DELETE_COUNT old nightly releases (keeping $KEEP)"
+
+          echo "$RELEASES" | tail -n "$DELETE_COUNT" | while IFS= read -r TAG; do
+            echo "Deleting release: $TAG"
+            gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          done
+
+  nightly-summary:
+    name: Nightly Summary
+    if: always()
+    needs: [check-commits, build-and-test, publish-npm, create-release, cleanup]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Summary
+        run: |
+          {
+            echo "## Nightly Build Summary"
+            echo ""
+            if [[ "${{ needs.check-commits.outputs.has_new_commits }}" != "true" ]]; then
+              echo "No new commits — build skipped."
+              exit 0
+            fi
+            echo "**Version:** \`${{ needs.build-and-test.outputs.nightly_version }}\`"
+            echo ""
+            echo "| Step | Status |"
+            echo "|------|--------|"
+            echo "| Build & Test | ${{ needs.build-and-test.result }} |"
+            echo "| npm Publish | ${{ needs.publish-npm.result }} |"
+            echo "| GitHub Release | ${{ needs.create-release.result }} |"
+            echo "| Cleanup | ${{ needs.cleanup.result }} |"
+            echo ""
+            echo '```bash'
+            echo "npm install @elizaos/core@nightly"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

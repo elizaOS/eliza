@@ -1,0 +1,6104 @@
+{
+  "schemaVersion": "registry-v2",
+  "lastUpdatedAt": "2026-05-11T13:58:00.202Z",
+  "generatedFrom": {
+    "builtinRepo": "github:elizaos/eliza",
+    "builtinBranch": "main",
+    "builtinDirectory": "plugins",
+    "thirdPartyDirectory": "entries/third-party"
+  },
+  "counts": {
+    "total": 104,
+    "builtin": 104,
+    "thirdParty": 0,
+    "app": 23,
+    "connector": 17,
+    "plugin": 64
+  },
+  "registry": {
+    "@elizaos/app-2004scape": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-2004scape",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-2004scape",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "2004scape game service — autonomous RS agent with SDK WebSocket layer",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-2004scape#readme",
+      "topics": ["game", "app", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "2004scape",
+        "category": "game",
+        "launchType": "connect",
+        "launchUrl": "/api/apps/2004scape/viewer",
+        "icon": "Gamepad2",
+        "heroImage": "assets/hero.png",
+        "capabilities": [],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-2004scape",
+        "uiExtension": {
+          "detailPanelId": "2004scape-operator-dashboard"
+        },
+        "viewer": {
+          "url": "/api/apps/2004scape/viewer",
+          "embedParams": {
+            "bot": "",
+            "password": ""
+          },
+          "postMessageAuth": true,
+          "sandbox": "allow-scripts allow-same-origin allow-popups allow-forms"
+        },
+        "session": {
+          "mode": "spectate-and-steer",
+          "features": [
+            "commands",
+            "telemetry",
+            "pause",
+            "resume",
+            "suggestions"
+          ]
+        },
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-babylon": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-babylon",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-babylon",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Eliza app integration for Babylon prediction market game.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-babylon#readme",
+      "topics": [
+        "game",
+        "prediction-market",
+        "babylon",
+        "elizaos",
+        "eliza",
+        "app",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "Babylon",
+        "category": "game",
+        "launchType": "url",
+        "launchUrl": "{BABYLON_CLIENT_URL}",
+        "icon": "Gamepad",
+        "heroImage": "assets/hero.png",
+        "capabilities": [
+          "trades",
+          "prediction-markets",
+          "social",
+          "team-chat",
+          "autonomous"
+        ],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-babylon",
+        "uiExtension": {
+          "detailPanelId": "babylon-operator-dashboard"
+        },
+        "viewer": {
+          "url": "{BABYLON_CLIENT_URL}",
+          "embedParams": {
+            "embedded": "true"
+          },
+          "postMessageAuth": true,
+          "sandbox": "allow-scripts allow-same-origin allow-popups allow-forms"
+        },
+        "session": {
+          "mode": "spectate-and-steer",
+          "features": ["commands", "telemetry", "pause", "resume"]
+        },
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-clawville": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-clawville",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-clawville",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Eliza app integration for ClawVille, a sea-themed agent game where connected agents enter a 3D underwater world, visit specialist buildings, and learn skills via the agentskills.io open standard.",
+      "homepage": "https://clawville.world/",
+      "topics": [
+        "game",
+        "agents",
+        "clawville",
+        "sea",
+        "openclaw",
+        "skills",
+        "solana",
+        "elizaos",
+        "eliza",
+        "app",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "ClawVille",
+        "category": "game",
+        "launchType": "connect",
+        "launchUrl": "https://clawville.world/game",
+        "icon": "Gamepad2",
+        "heroImage": "assets/hero.png",
+        "capabilities": [
+          "game",
+          "skill-learning",
+          "tokens",
+          "multi-agent",
+          "solana-wallet"
+        ],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-clawville",
+        "uiExtension": {
+          "detailPanelId": "clawville-control"
+        },
+        "viewer": {
+          "url": "/api/apps/clawville/viewer",
+          "sandbox": "allow-scripts allow-same-origin allow-popups allow-forms"
+        },
+        "session": {
+          "mode": "spectate-and-steer",
+          "features": ["commands", "telemetry", "suggestions"]
+        },
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-companion": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-companion",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-companion",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Companion app package with the VRM scene runtime and avatar utilities.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-companion#readme",
+      "topics": ["shell", "app", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "Eliza Companion",
+        "category": "game",
+        "launchType": "overlay",
+        "launchUrl": null,
+        "icon": "Bot",
+        "heroImage": "assets/hero.png",
+        "capabilities": [],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-companion",
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-contacts": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-contacts",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-contacts",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Android Contacts overlay app — wraps the @elizaos/capacitor-contacts native plugin.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-contacts#readme",
+      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "Contacts",
+        "category": "system",
+        "launchType": "local",
+        "launchUrl": null,
+        "icon": null,
+        "heroImage": "assets/hero.png",
+        "capabilities": [],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-contacts",
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-defense-of-the-agents": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-defense-of-the-agents",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-defense-of-the-agents",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Eliza app integration for Defense of the Agents.",
+      "homepage": "https://www.defenseoftheagents.com/",
+      "topics": [
+        "game",
+        "moba",
+        "agents",
+        "strategy",
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "Defense of the Agents",
+        "category": "game",
+        "launchType": "connect",
+        "launchUrl": "https://www.defenseoftheagents.com/",
+        "icon": "Gamepad",
+        "heroImage": "assets/hero.png",
+        "capabilities": ["strategy", "telemetry", "lane-control"],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-defense-of-the-agents",
+        "uiExtension": {
+          "detailPanelId": "defense-agent-control"
+        },
+        "viewer": {
+          "url": "/api/apps/defense-of-the-agents/viewer",
+          "sandbox": "allow-scripts allow-same-origin allow-popups allow-forms"
+        },
+        "session": {
+          "mode": "spectate-and-steer",
+          "features": ["commands", "telemetry", "suggestions"]
+        },
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-documents": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-documents",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-documents",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Character Knowledge documents, fragments, and search routes for the agent.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-documents#readme",
+      "topics": [
+        "documents",
+        "tool",
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "Knowledge",
+        "category": "tool",
+        "launchType": "url",
+        "launchUrl": null,
+        "icon": "BookOpen",
+        "heroImage": "assets/hero.png",
+        "capabilities": ["documents"],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-documents",
+        "bridgeExport": "documentsPlugin",
+        "visibleInAppStore": false
+      }
+    },
+    "@elizaos/app-elizamaker": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-elizamaker",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-elizamaker",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "ElizaMaker: ERC-8041 NFT drop/mint/whitelist routes, Twitter-verified Merkle proofs, and OG code tracking.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-elizamaker#readme",
+      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "Elizamaker",
+        "category": "app",
+        "launchType": "local",
+        "launchUrl": null,
+        "icon": null,
+        "heroImage": "assets/hero.png",
+        "capabilities": [],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-elizamaker",
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-hyperliquid": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-hyperliquid",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-hyperliquid",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Native Hyperliquid market, position, and order status for wallet trading.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-hyperliquid#readme",
+      "topics": [
+        "trading",
+        "hyperliquid",
+        "perps",
+        "wallet",
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "Hyperliquid",
+        "category": "trading",
+        "launchType": "url",
+        "launchUrl": null,
+        "icon": "ChartCandlestick",
+        "heroImage": "assets/hero.png",
+        "capabilities": ["hyperliquid", "trading", "wallet", "perps"],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-hyperliquid",
+        "bridgeExport": "hyperliquidPlugin",
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-hyperscape": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-hyperscape",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-hyperscape",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Hyperscape game session resolvers — spectate-and-steer agent sessions with live data from the Hyperscape API",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-hyperscape#readme",
+      "topics": ["game", "app", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "Hyperscape",
+        "category": "game",
+        "launchType": "url",
+        "launchUrl": null,
+        "icon": "Gamepad2",
+        "heroImage": "assets/hero.png",
+        "capabilities": [],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@hyperscape/plugin-hyperscape",
+        "uiExtension": {
+          "detailPanelId": "hyperscape-embedded-agents"
+        },
+        "session": {
+          "mode": "spectate-and-steer",
+          "features": [
+            "commands",
+            "telemetry",
+            "pause",
+            "resume",
+            "suggestions"
+          ]
+        },
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-lifeops": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-lifeops",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-lifeops",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "LifeOps app plugin: routines, goals, Google Workspace, Apple Calendar, Apple Reminders, Twilio, browser companion control, hosts-file blocking (self-control), and related agent surfaces.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-lifeops#readme",
+      "topics": [
+        "lifeops",
+        "tasks",
+        "calendar",
+        "gmail",
+        "tool",
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "LifeOps",
+        "category": "tool",
+        "launchType": "local",
+        "launchUrl": null,
+        "icon": "Calendar",
+        "heroImage": "assets/hero.png",
+        "capabilities": ["lifeops", "tasks", "calendar", "gmail"],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-lifeops",
+        "bridgeExport": "lifeopsPlugin",
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-phone": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-phone",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-phone",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Phone app for Eliza — Android dialer/call-log overlay (@elizaos/capacitor-phone) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-phone#readme",
+      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "Phone",
+        "category": "system",
+        "launchType": "local",
+        "launchUrl": null,
+        "icon": null,
+        "heroImage": "assets/hero.png",
+        "capabilities": [],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-phone",
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-polymarket": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-polymarket",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-polymarket",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Native Polymarket market discovery and trading readiness for prediction markets.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-polymarket#readme",
+      "topics": [
+        "trading",
+        "polymarket",
+        "prediction-markets",
+        "wallet",
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "Polymarket",
+        "category": "trading",
+        "launchType": "url",
+        "launchUrl": null,
+        "icon": "Landmark",
+        "heroImage": "assets/hero.svg",
+        "capabilities": [
+          "polymarket",
+          "prediction-markets",
+          "trading",
+          "wallet"
+        ],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-polymarket",
+        "bridgeExport": "polymarketPlugin",
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-scape": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-scape",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-scape",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "'scape — first-class agent integration for xRSPS. Autonomous RuneScape-alike agent with JSON-encoded state, Scape Journal, and directed-prompt operator control.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-scape#readme",
+      "topics": [
+        "game",
+        "runescape",
+        "xrsps",
+        "agents",
+        "autonomous",
+        "app",
+        "interactive",
+        "scape",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "'scape",
+        "category": "game",
+        "launchType": "connect",
+        "launchUrl": "https://scape-client-2sqyc.kinsta.page",
+        "icon": "Gamepad2",
+        "heroImage": "assets/hero.png",
+        "capabilities": [
+          "autonomous",
+          "game",
+          "journal",
+          "operator-steering",
+          "runescape",
+          "xrsps",
+          "agents",
+          "app",
+          "interactive",
+          "scape"
+        ],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-scape",
+        "viewer": {
+          "url": "/api/apps/scape/viewer",
+          "sandbox": "allow-scripts allow-same-origin allow-popups allow-forms",
+          "embedParams": {
+            "embedded": "true"
+          }
+        },
+        "session": {
+          "mode": "spectate-and-steer",
+          "features": ["commands", "telemetry", "suggestions"]
+        },
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-screenshare": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-screenshare",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-screenshare",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Screen Share app: authenticated desktop screen streaming and remote mouse/keyboard control for local, Linux, macOS, and Windows runtimes.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-screenshare#readme",
+      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "Screen Share",
+        "category": "utility",
+        "launchType": "connect",
+        "launchUrl": "/api/apps/screenshare/viewer",
+        "icon": null,
+        "heroImage": "assets/hero.svg",
+        "capabilities": [
+          "screen-stream",
+          "mouse-control",
+          "keyboard-control",
+          "remote-support"
+        ],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-screenshare",
+        "bridgeExport": {
+          "types": "./dist/index.d.ts",
+          "import": "./dist/index.js",
+          "default": "./dist/index.js"
+        },
+        "viewer": {
+          "url": "/api/apps/screenshare/viewer",
+          "sandbox": "allow-scripts allow-same-origin allow-forms allow-pointer-lock"
+        },
+        "session": {
+          "mode": "spectate-and-steer",
+          "features": ["commands", "telemetry", "suggestions"]
+        },
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-shopify": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-shopify",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-shopify",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Storefront and admin tools for agent-driven commerce.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-shopify#readme",
+      "topics": ["marketplace", "app", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "Shopify",
+        "category": "marketplace",
+        "launchType": "url",
+        "launchUrl": null,
+        "icon": "Briefcase",
+        "heroImage": "assets/hero.png",
+        "capabilities": [],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-shopify",
+        "bridgeExport": "shopifyPlugin",
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-steward": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-steward",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-steward",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Wallet management, browser wallet bridge, and trade approval routes.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-steward#readme",
+      "topics": [
+        "wallet",
+        "trading",
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "Steward",
+        "category": "trading",
+        "launchType": "url",
+        "launchUrl": null,
+        "icon": "Wallet",
+        "heroImage": "assets/hero.png",
+        "capabilities": ["wallet", "trading"],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-steward",
+        "bridgeExport": "stewardPlugin",
+        "visibleInAppStore": false
+      }
+    },
+    "@elizaos/app-task-coordinator": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-task-coordinator",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-task-coordinator",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Task Coordinator",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-task-coordinator#readme",
+      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "Task Coordinator",
+        "category": "app",
+        "launchType": "local",
+        "launchUrl": null,
+        "icon": null,
+        "heroImage": "assets/hero.png",
+        "capabilities": [],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-task-coordinator",
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-training": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-training",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-training",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Training jobs, datasets, models, blueprints, and trajectory routes for the agent.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-training#readme",
+      "topics": [
+        "training",
+        "trajectories",
+        "tool",
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "Training",
+        "category": "tool",
+        "launchType": "url",
+        "launchUrl": null,
+        "icon": "Zap",
+        "heroImage": "assets/hero.png",
+        "capabilities": ["training", "trajectories"],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-training",
+        "bridgeExport": "trainingPlugin",
+        "visibleInAppStore": false
+      }
+    },
+    "@elizaos/app-trajectory-logger": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-trajectory-logger",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-trajectory-logger",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Realtime trajectory inspector overlay app — surfaces the last completed and the in-flight trajectory with HANDLE / PLAN / ACTION / EVALUATE phase drilldowns.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-trajectory-logger#readme",
+      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "Trajectory Logger",
+        "category": "developer",
+        "launchType": "local",
+        "launchUrl": null,
+        "icon": null,
+        "heroImage": "assets/hero.png",
+        "capabilities": [],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-trajectory-logger",
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-vincent": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-vincent",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-vincent",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Connect Vincent to trade on Hyperliquid and Polymarket through Vincent's agent.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-vincent#readme",
+      "topics": [
+        "trading",
+        "hyperliquid",
+        "polymarket",
+        "prediction-markets",
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "Vincent",
+        "category": "trading",
+        "launchType": "url",
+        "launchUrl": null,
+        "icon": "Wallet",
+        "heroImage": "assets/hero.png",
+        "capabilities": [
+          "vincent",
+          "delegated-trading",
+          "wallet",
+          "trading",
+          "hyperliquid",
+          "polymarket",
+          "prediction-markets"
+        ],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-vincent",
+        "bridgeExport": "vincentPlugin",
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-wallet": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-wallet",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-wallet",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Wallet",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-wallet#readme",
+      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "Wallet",
+        "category": "app",
+        "launchType": "local",
+        "launchUrl": null,
+        "icon": null,
+        "heroImage": "assets/hero.png",
+        "capabilities": [],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-wallet",
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-wifi": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-wifi",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-wifi",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Wi-Fi overlay app for the Eliza Android build — scan, inspect, and connect to nearby networks via @elizaos/capacitor-wifi.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-wifi#readme",
+      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "WiFi",
+        "category": "system",
+        "launchType": "local",
+        "launchUrl": null,
+        "icon": null,
+        "heroImage": "assets/hero.png",
+        "capabilities": [],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-wifi",
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/plugin-agent-orchestrator": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-agent-orchestrator",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-agent-orchestrator",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Canonical ElizaOS plugin for spawning and orchestrating coding agents via the Agent Client Protocol (acpx) — combined with workspace lifecycle, GitHub integration, task share, runtime-driven sub-agent routing, and supporting services.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-agent-orchestrator#readme",
+      "topics": [
+        "elizaos",
+        "plugin",
+        "acpx",
+        "agent-client-protocol",
+        "coding-agent",
+        "subagent",
+        "task",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-agent-skills": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-agent-skills",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-agent-skills",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Agent Skills plugin for elizaOS - implement the Agent Skills specification with progressive disclosure",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-agent-skills#readme",
+      "topics": [
+        "elizaos",
+        "plugin",
+        "agent-skills",
+        "clawhub",
+        "otto",
+        "skills",
+        "agents",
+        "progressive-disclosure",
+        "agent",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-anthropic": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-anthropic",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-anthropic",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Anthropic model provider for Claude chat and reasoning models.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-anthropic#readme",
+      "topics": [
+        "text-large",
+        "text-small",
+        "tool-use",
+        "ai-provider",
+        "llm",
+        "anthropic",
+        "chat",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-aosp-local-inference": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-aosp-local-inference",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-aosp-local-inference",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "AOSP-only llama.cpp FFI bindings (via bun:ffi) and local-inference bootstrap for elizaOS mobile builds.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-aosp-local-inference#readme",
+      "topics": [
+        "elizaos",
+        "plugin",
+        "aosp",
+        "android",
+        "llama.cpp",
+        "local-inference",
+        "bun-ffi",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-app-control": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-app-control",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-app-control",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "App control plugin for Eliza agents — launch, close, and list running apps via the local dashboard API.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-app-control#readme",
+      "topics": [
+        "apps",
+        "control",
+        "core-addon",
+        "automation",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-background-runner": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-background-runner",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-background-runner",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Background task runner for elizaOS — drives core TaskService.runDueTasks() from OS-level wake-ups (BGTaskScheduler on iOS, WorkManager on Android via @capacitor/background-runner). Falls back to a setInterval poll when no native scheduler is available.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-background-runner#readme",
+      "topics": [
+        "elizaos",
+        "plugin",
+        "background",
+        "task",
+        "scheduler",
+        "capacitor",
+        "ios",
+        "android",
+        "mobile",
+        "automation",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-bluebubbles": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "connector",
+      "registryKind": "connector",
+      "directory": "plugins/plugin-bluebubbles",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-bluebubbles",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "BlueBubbles connector for sending and receiving iMessage through a local BlueBubbles server.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-bluebubbles#readme",
+      "topics": [
+        "messaging",
+        "connector",
+        "social",
+        "social-chat",
+        "bluebubbles",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-bluesky": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "connector",
+      "registryKind": "connector",
+      "directory": "plugins/plugin-bluesky",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-bluesky",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Bluesky connector for ElizaOS",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-bluesky#readme",
+      "topics": [
+        "connector",
+        "social",
+        "social-feed",
+        "bluesky",
+        "messaging",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-browser": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-browser",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-browser",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Browser plugin: unified BROWSER action and MANAGE_BROWSER_BRIDGE management action. Owns the workspace browser (electrobun-embedded + jsdom fallback) and the Chrome/Safari companion bridge. Targets are registered with the BrowserService; the agent uses what is available.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-browser#readme",
+      "topics": [
+        "browser-automation",
+        "browser",
+        "automation",
+        "stagehand",
+        "playwright",
+        "web-scraping",
+        "devtools",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-calendly": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-calendly",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-calendly",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Calendly integration plugin for elizaOS agents — event types, scheduled events, cancellations, and booking-link handoff via Calendly v2 API",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-calendly#readme",
+      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-capacitor-bridge": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-capacitor-bridge",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-capacitor-bridge",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Capacitor WebSocket bridge to device llama for stock mobile (non-AOSP) Eliza builds.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-capacitor-bridge#readme",
+      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-cli": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-cli",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-cli",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "CLI framework plugin for ElizaOS agents - provides command registration, execution, and utilities",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-cli#readme",
+      "topics": [
+        "elizaos",
+        "plugin",
+        "cli",
+        "command-line",
+        "terminal",
+        "developer-tools",
+        "devtools",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-codex-cli": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-codex-cli",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-codex-cli",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Codex Cli",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-codex-cli#readme",
+      "topics": [
+        "text-large",
+        "text-small",
+        "tool-use",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-coding-tools": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-coding-tools",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-coding-tools",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Native Claude-Code-style coding tools (Read, Write, Edit, Bash, Grep, Glob, etc.) for the Eliza agent.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-coding-tools#readme",
+      "topics": [
+        "eliza",
+        "plugin",
+        "coding",
+        "tools",
+        "claude-code",
+        "agent",
+        "coding-tools",
+        "filesystem",
+        "shell",
+        "git",
+        "code",
+        "devtools",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-commands": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-commands",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-commands",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Chat command system for Eliza agents (/help, /status, /reset, etc.)",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-commands#readme",
+      "topics": [
+        "chat-commands",
+        "commands",
+        "automation",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-computeruse": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-computeruse",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-computeruse",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Desktop automation plugin — screenshots, mouse/keyboard control, browser CDP, and window management for elizaOS agents. Ported from open-computer-use (Apache 2.0).",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-computeruse#readme",
+      "topics": [
+        "computeruse",
+        "automation",
+        "desktop",
+        "gui",
+        "mcp",
+        "devtools",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-discord": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "connector",
+      "registryKind": "connector",
+      "directory": "plugins/plugin-discord",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.2",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-discord",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.2",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Discord connector for elizaOS servers, voice, and message management with Eliza Cloud OAuth gateway or local bot-token setup.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-discord#readme",
+      "topics": [
+        "connector",
+        "social",
+        "social-chat",
+        "messaging",
+        "discord",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-discord-local": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-discord-local",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-discord-local",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Local Discord desktop integration for Eliza via Discord RPC and macOS UI automation",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-discord-local#readme",
+      "topics": [
+        "plugin",
+        "elizaos",
+        "discord",
+        "desktop",
+        "messaging",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-edge-tts": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-edge-tts",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-edge-tts",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Free text-to-speech using Microsoft Edge TTS - no API key required",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-edge-tts#readme",
+      "topics": [
+        "text-to-speech",
+        "edge-tts",
+        "edge",
+        "voice",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-elevenlabs": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-elevenlabs",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-elevenlabs",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "ElevenLabs voice plugin for text-to-speech generation and conversational audio output.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-elevenlabs#readme",
+      "topics": [
+        "voice",
+        "text-to-speech",
+        "audio",
+        "elevenlabs",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-eliza-classic": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-eliza-classic",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-eliza-classic",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Deterministic ELIZA-style pattern matching (browser + Node); ships compiled ESM in dist/.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-eliza-classic#readme",
+      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-elizacloud": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-elizacloud",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-elizacloud",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "elizaOS plugin to connect with elizaOS Cloud services",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-elizacloud#readme",
+      "topics": [
+        "text-large",
+        "text-small",
+        "tool-use",
+        "embedding",
+        "text-to-speech",
+        "image-description",
+        "elizacloud",
+        "other",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-farcaster": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "connector",
+      "registryKind": "connector",
+      "directory": "plugins/plugin-farcaster",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-farcaster",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Farcaster connector for publishing casts and responding to social conversations.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-farcaster#readme",
+      "topics": [
+        "social-posting",
+        "connector",
+        "social",
+        "farcaster",
+        "messaging",
+        "social-feed",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-feishu": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "connector",
+      "registryKind": "connector",
+      "directory": "plugins/plugin-feishu",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-feishu",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Feishu connector for bots, chats, and workflow notifications on Lark/Feishu.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-feishu#readme",
+      "topics": [
+        "messaging",
+        "connector",
+        "feishu",
+        "productivity",
+        "social",
+        "social-chat",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-form": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-form",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-form",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Eliza plugin-form: conversational forms as guardrails for guided user journeys.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-form#readme",
+      "topics": [
+        "forms",
+        "form",
+        "conversational",
+        "data-collection",
+        "media",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-github": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-github",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-github",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "GitHub integration plugin for elizaOS agents — PRs, issues, notifications via the GitHub REST API",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-github#readme",
+      "topics": [
+        "github",
+        "devtools",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-google": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-google",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-google",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Google",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-google#readme",
+      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-google-chat": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "connector",
+      "registryKind": "connector",
+      "directory": "plugins/plugin-google-chat",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-google-chat",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Google Chat connector for bots, spaces, and message-driven workflows.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-google-chat#readme",
+      "topics": [
+        "messaging",
+        "connector",
+        "google-chat",
+        "productivity",
+        "social",
+        "social-chat",
+        "google",
+        "chat",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-google-genai": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-google-genai",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-google-genai",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "LLM ElizaOS plugin for google genai",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-google-genai#readme",
+      "topics": [
+        "text-large",
+        "text-small",
+        "tool-use",
+        "embedding",
+        "image-description",
+        "ai-provider",
+        "llm",
+        "google-genai",
+        "google",
+        "genai",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-groq": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-groq",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-groq",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Groq model provider for low-latency chat and inference workloads.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-groq#readme",
+      "topics": [
+        "text-large",
+        "text-small",
+        "tool-use",
+        "text-to-speech",
+        "ai-provider",
+        "llm",
+        "groq",
+        "chat",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-health": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-health",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-health",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Health, sleep, circadian and screen-time domain plugin for elizaOS — extracted from app-lifeops in Wave 1 (W1-B). Owns connectors (Apple Health, Google Fit, Strava, Fitbit, Withings, Oura), sleep/circadian/regularity engines, screen-time aggregation, and the wake/bedtime/nap anchor contributions consumed by app-lifeops via the W1-F connector / channel / signal-bus contracts.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-health#readme",
+      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-imessage": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "connector",
+      "registryKind": "connector",
+      "directory": "plugins/plugin-imessage",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-imessage",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "iMessage connector for Mac-based conversations and message automation.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-imessage#readme",
+      "topics": [
+        "messaging",
+        "connector",
+        "imessage",
+        "apple",
+        "macos",
+        "social",
+        "social-chat",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-inmemorydb": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-inmemorydb",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-inmemorydb",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Pure in-memory, ephemeral database storage for elizaOS - no persistence, completely forgets on reset",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-inmemorydb#readme",
+      "topics": [
+        "database",
+        "storage",
+        "inmemorydb",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-instagram": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "connector",
+      "registryKind": "connector",
+      "directory": "plugins/plugin-instagram",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-instagram",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Enables Instagram integration with support for media posting, comment handling, and interaction management.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-instagram#readme",
+      "topics": [
+        "connector",
+        "social",
+        "social-feed",
+        "instagram",
+        "messaging",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-line": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "connector",
+      "registryKind": "connector",
+      "directory": "plugins/plugin-line",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-line",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "LINE connector for bot messaging and customer conversations.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-line#readme",
+      "topics": [
+        "connector",
+        "messaging",
+        "line",
+        "social",
+        "social-chat",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-linear": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-linear",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-linear",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Linear integration plugin for ElizaOS (TypeScript)",
+      "homepage": "https://github.com/elizaos/eliza#readme",
+      "topics": [
+        "elizaos",
+        "plugin",
+        "linear",
+        "typescript",
+        "project-management",
+        "issue-tracking",
+        "devtools",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-lmstudio": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-lmstudio",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-lmstudio",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Lmstudio",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-lmstudio#readme",
+      "topics": [
+        "text-large",
+        "text-small",
+        "embedding",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-local-ai": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-local-ai",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-local-ai",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "LocalAI provider for self-hosted, OpenAI-compatible local model inference.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-local-ai#readme",
+      "topics": [
+        "ai-provider",
+        "llm",
+        "local-models",
+        "self-hosted",
+        "local-ai",
+        "local",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-local-embedding": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-local-embedding",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-local-embedding",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Local AI model embedding and inference plugin for ElizaOS",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-local-embedding#readme",
+      "topics": [
+        "local-embedding",
+        "local",
+        "embedding",
+        "documents",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-local-inference": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-local-inference",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-local-inference",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Local inference HTTP routes for the Eliza agent: model catalog, downloads, hardware detection, and chat-command surface.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-local-inference#readme",
+      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-local-storage": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-local-storage",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-local-storage",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Local filesystem attachment storage backed by @brighter/storage-adapter-local. Default fallback when Eliza Cloud storage is not connected.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-local-storage#readme",
+      "topics": [
+        "storage",
+        "files",
+        "local",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-localdb": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-localdb",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-localdb",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "File-backed (Node) and localStorage (browser) persistence via plugin-inmemorydb; ships compiled ESM in dist/.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-localdb#readme",
+      "topics": [
+        "database",
+        "storage",
+        "localdb",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-matrix": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "connector",
+      "registryKind": "connector",
+      "directory": "plugins/plugin-matrix",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-matrix",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Matrix connector for rooms, bots, and federated chat workflows.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-matrix#readme",
+      "topics": [
+        "messaging",
+        "connector",
+        "matrix",
+        "chat",
+        "social",
+        "social-chat",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-mcp": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-mcp",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-mcp",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "elizaOS plugin to integrate with MCP (Model Context Protocol) servers",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-mcp#readme",
+      "topics": [
+        "mcp",
+        "devtools",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-minecraft": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-minecraft",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-minecraft",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Minecraft automation plugin for ElizaOS (Mineflayer bridge)",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-minecraft#readme",
+      "topics": [
+        "plugin",
+        "elizaos",
+        "minecraft",
+        "mineflayer",
+        "app",
+        "games",
+        "automation",
+        "gaming",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-mlx": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-mlx",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-mlx",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Mlx",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-mlx#readme",
+      "topics": [
+        "text-large",
+        "text-small",
+        "embedding",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-music": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-music",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-music",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Unified music plugin: library & playlists, metadata APIs, playback engine, queue, HTTP streaming routes, and optional Discord voice.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-music#readme",
+      "topics": [
+        "music",
+        "library",
+        "playlists",
+        "playback",
+        "streaming",
+        "audio",
+        "discord",
+        "music-player",
+        "music-library",
+        "other",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-mysticism": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-mysticism",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-mysticism",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Mystical divination engines for ElizaOS — Tarot, I Ching, and Astrology readings",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-mysticism#readme",
+      "topics": [
+        "plugin",
+        "elizaos",
+        "mysticism",
+        "tarot",
+        "iching",
+        "astrology",
+        "divination",
+        "gaming",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-ngrok": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-ngrok",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-ngrok",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Ngrok tunnel plugin for elizaOS — third-party backend implementing the @elizaos/plugin-tunnel ITunnelService contract.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-ngrok#readme",
+      "topics": [
+        "elizaos",
+        "plugin",
+        "tunnel",
+        "ngrok",
+        "networking",
+        "devtools",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-nostr": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "connector",
+      "registryKind": "connector",
+      "directory": "plugins/plugin-nostr",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-nostr",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Nostr connector for relay-based social posting and conversation handling.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-nostr#readme",
+      "topics": [
+        "social-posting",
+        "connector",
+        "social",
+        "nostr",
+        "relays",
+        "social-feed",
+        "messaging",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-ollama": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-ollama",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-ollama",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Ollama provider for running local LLMs on your own machine.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-ollama#readme",
+      "topics": [
+        "text-large",
+        "text-small",
+        "embedding",
+        "ai-provider",
+        "llm",
+        "ollama",
+        "local-models",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-openai": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-openai",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-openai",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Integrates OpenAI's GPT models for automated text generation with customizable prompts.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-openai#readme",
+      "topics": [
+        "text-large",
+        "text-small",
+        "tool-use",
+        "embedding",
+        "text-to-speech",
+        "image-description",
+        "ai-provider",
+        "llm",
+        "openai",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-openrouter": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-openrouter",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-openrouter",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "OpenRouter provider for routing requests across many hosted models through one API.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-openrouter#readme",
+      "topics": [
+        "text-large",
+        "text-small",
+        "tool-use",
+        "embedding",
+        "image-description",
+        "image-generation",
+        "ai-provider",
+        "llm",
+        "openrouter",
+        "routing",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-pdf": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-pdf",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-pdf",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Core Node.js plugin for elizaOS that provides essential services and actions for file operations.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-pdf#readme",
+      "topics": [
+        "pdf",
+        "documents",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-rlm": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-rlm",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-rlm",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "RLM (Recursive Language Model) plugin for elizaOS - enables processing of arbitrarily long contexts",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-rlm#readme",
+      "topics": [
+        "elizaos",
+        "plugin",
+        "rlm",
+        "recursive-language-model",
+        "ai",
+        "agent",
+        "long-context",
+        "llm",
+        "documents",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-roblox": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-roblox",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-roblox",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Roblox app integration for agent-driven gameplay and interactive experiences.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-roblox#readme",
+      "topics": [
+        "app",
+        "games",
+        "roblox",
+        "interactive",
+        "gaming",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-shell": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-shell",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-shell",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Shell history and observability plugin for ElizaOS",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-shell#readme",
+      "topics": [
+        "eliza",
+        "plugin",
+        "shell",
+        "terminal",
+        "command",
+        "history",
+        "shell-access",
+        "devtools",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-shopify": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-shopify",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-shopify",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Shopify Admin API plugin for elizaOS agents -- manage products, orders, inventory, and customers.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-shopify#readme",
+      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-signal": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "connector",
+      "registryKind": "connector",
+      "directory": "plugins/plugin-signal",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-signal",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Signal messaging integration plugin for ElizaOS agents",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-signal#readme",
+      "topics": [
+        "elizaos",
+        "plugin",
+        "signal",
+        "messaging",
+        "secure",
+        "encrypted",
+        "connector",
+        "social",
+        "social-chat",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-slack": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "connector",
+      "registryKind": "connector",
+      "directory": "plugins/plugin-slack",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-slack",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Slack integration plugin for elizaOS agents with Socket Mode support",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-slack#readme",
+      "topics": [
+        "elizaos",
+        "plugin",
+        "slack",
+        "chat",
+        "messaging",
+        "connector",
+        "social",
+        "social-chat",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-social-alpha": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-social-alpha",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-social-alpha",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Social Alpha Plugin — Tracks token recommendations (shills/FUD), builds trust scores based on P&L outcomes, and exposes a Social Alpha Provider with win rate, rank, and recommender analytics.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-social-alpha#readme",
+      "topics": [
+        "plugin",
+        "elizaos",
+        "social-alpha",
+        "trust-score",
+        "shill-tracker",
+        "social",
+        "alpha",
+        "blockchain",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-sql": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-sql",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-sql",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Sql",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-sql#readme",
+      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-streaming": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-streaming",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-streaming",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Unified RTMP streaming for elizaOS (Twitch, YouTube, X, pump.fun, custom and named ingest URLs)",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-streaming#readme",
+      "topics": [
+        "elizaos",
+        "elizaos-plugin",
+        "streaming",
+        "rtmp",
+        "plugin",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-suno": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-suno",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-suno",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Suno AI Music Generation Plugin for Eliza",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-suno#readme",
+      "topics": [
+        "audio-generation",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-tailscale": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-tailscale",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-tailscale",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Tunnel plugin for elizaOS — local Tailscale serve/funnel or Eliza Cloud-routed Tailscale auth-key minter",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-tailscale#readme",
+      "topics": [
+        "tunnel",
+        "tailscale",
+        "networking",
+        "devtools",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-tee": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-tee",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-tee",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Trusted Execution Environment (TEE) integration plugin for elizaOS - Multi-language support (TypeScript, Python, Rust)",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-tee#readme",
+      "topics": [
+        "crypto",
+        "tee",
+        "other",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-telegram": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "connector",
+      "registryKind": "connector",
+      "directory": "plugins/plugin-telegram",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-telegram",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Telegram connector for bot chats, groups, channels, and topic-based conversations through BotFather tokens or an Eliza Cloud webhook gateway.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-telegram#readme",
+      "topics": [
+        "connector",
+        "messaging",
+        "telegram",
+        "chat",
+        "social",
+        "social-chat",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-todos": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-todos",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-todos",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "User-scoped persistent todos with CRUD. Single TODO umbrella action (op-based: write/create/update/complete/cancel/delete/list/clear) and a currentTodosProvider that surfaces the user's pending + in-progress todos to the planner each turn. Backed by drizzle pgSchema('todos').",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-todos#readme",
+      "topics": [
+        "eliza",
+        "plugin",
+        "todos",
+        "todo",
+        "tasks",
+        "agent",
+        "claude-code",
+        "crud",
+        "devtools",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-tunnel": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-tunnel",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-tunnel",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Tunnel plugin for elizaOS — local Tailscale CLI backend (serve/funnel). Pair with @elizaos/plugin-elizacloud for the hosted headscale backend.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-tunnel#readme",
+      "topics": [
+        "elizaos",
+        "plugin",
+        "tunnel",
+        "tailscale",
+        "networking",
+        "devtools",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-twitch": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "connector",
+      "registryKind": "connector",
+      "directory": "plugins/plugin-twitch",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-twitch",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Twitch connector for live chat, channel events, and audience interactions.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-twitch#readme",
+      "topics": [
+        "messaging",
+        "live-streaming",
+        "connector",
+        "streaming",
+        "twitch",
+        "chat",
+        "social",
+        "social-chat",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-video": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-video",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-video",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Video download, audio extraction, and transcription helpers (YouTube, Vimeo, direct MP4).",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-video#readme",
+      "topics": [
+        "video",
+        "youtube",
+        "transcription",
+        "media",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-vision": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-vision",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-vision",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Vision plugin for ElizaOS - provides camera integration and visual awareness",
+      "homepage": "https://elizaos.ai",
+      "topics": [
+        "plugin",
+        "elizaos",
+        "vision",
+        "camera",
+        "computer-vision",
+        "ai-vision",
+        "media",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-wallet": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-wallet",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-wallet",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Unified non-custodial wallet for elizaOS agents — EVM + Solana, ERC-6551 token-bound accounts, on-chain spend policies, x402 micropayments, CCTP bridge, Li.Fi swap routing, Jupiter routing, multi-DEX LP management (Raydium/Orca/Meteora on Solana, Uniswap/Aerodrome on EVM), Hyperliquid perps, Polymarket, Aave/Morpho lending, and Clanker token launches. Replaces plugin-evm + plugin-solana + plugin-raydium + plugin-orca + plugin-meteora + plugin-jupiter + plugin-lp-manager + plugin-clanker behind one canonical action+provider surface.",
+      "homepage": "https://github.com/eliza-ai/eliza/tree/main/eliza/plugins/plugin-wallet",
+      "topics": [
+        "plugin",
+        "elizaos",
+        "wallet",
+        "non-custodial",
+        "evm",
+        "solana",
+        "erc-6551",
+        "x402",
+        "cctp",
+        "lifi",
+        "jupiter",
+        "raydium",
+        "orca",
+        "meteora",
+        "hyperliquid",
+        "polymarket",
+        "aave",
+        "morpho",
+        "clanker",
+        "lp-management",
+        "trading",
+        "automation",
+        "crypto",
+        "blockchain",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-web-search": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-web-search",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-web-search",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Web Search",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-web-search#readme",
+      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-wechat": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-wechat",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-wechat",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "WeChat connector plugin for elizaOS via proxy API",
+      "homepage": "https://github.com/eliza-ai/plugin-wechat",
+      "topics": [
+        "plugin",
+        "elizaos",
+        "wechat",
+        "connector",
+        "messaging",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-whatsapp": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "connector",
+      "registryKind": "connector",
+      "directory": "plugins/plugin-whatsapp",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-whatsapp",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "WhatsApp plugin for ElizaOS (Cloud API + Baileys QR auth)",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-whatsapp#readme",
+      "topics": [
+        "plugin",
+        "elizaos",
+        "whatsapp",
+        "messaging",
+        "connector",
+        "social",
+        "social-chat",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-workflow": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-workflow",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-workflow",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "ElizaOS plugin for generating and running workflows in-process",
+      "homepage": "https://github.com/elizaos-plugins/plugin-workflow#readme",
+      "topics": [
+        "elizaos",
+        "plugin",
+        "workflows",
+        "workflow",
+        "automation",
+        "ai",
+        "other",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-x": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "connector",
+      "registryKind": "connector",
+      "directory": "plugins/plugin-x",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-x",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "elizaOS X (formerly Twitter) connector: posting, mentions, replies, DMs, and timeline interactions.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-x#readme",
+      "topics": [
+        "elizaos",
+        "plugin",
+        "x",
+        "twitter",
+        "social",
+        "connector",
+        "messaging",
+        "social-posting",
+        "social-chat",
+        "dm",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-x402": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-x402",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-x402",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "x402 micropayment middleware for elizaOS plugin HTTP routes",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-x402#readme",
+      "topics": [
+        "elizaos",
+        "plugin",
+        "x402",
+        "payments",
+        "micropayments",
+        "http-402",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-xai": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-xai",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-xai",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "elizaOS xAI plugin: Grok models for text generation and embeddings.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-xai#readme",
+      "topics": [
+        "elizaos",
+        "plugin",
+        "xai",
+        "grok",
+        "ai-provider",
+        "text-large",
+        "text-small",
+        "tool-use",
+        "embedding",
+        "llm",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-zai": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-zai",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-zai",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Zai",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-zai#readme",
+      "topics": [
+        "text-large",
+        "text-small",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    }
+  }
+}

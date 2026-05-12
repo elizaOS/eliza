@@ -1,0 +1,214 @@
+---
+title: Containers
+description: Deploy and manage containers on Eliza Cloud.
+---
+
+import { Callout } from "@/docs/components";
+
+# Containers
+
+<div className="status-badge status-stable">Stable</div>
+
+Deploy and manage Docker containers. The current public API accepts a generic image reference in `image`; it is not limited to ECR images.
+
+## List Containers
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/containers</span>
+</div>
+
+Get all containers for your organization.
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "my-app",
+      "project_name": "my-app",
+      "status": "running",
+      "image_tag": "ghcr.io/acme/my-app:latest",
+      "load_balancer_url": "https://my-app.example.com",
+      "cpu": 256,
+      "memory": 512,
+      "port": 3000,
+      "desired_count": 1,
+      "billing_status": "active",
+      "created_at": "2026-05-05T10:30:00Z"
+    }
+  ]
+}
+```
+
+---
+
+## Create Container
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/containers</span>
+</div>
+
+Deploy a new container. Returns a container record and polling instructions.
+
+### Request
+
+```json
+{
+  "name": "My App",
+  "project_name": "my-app",
+  "image": "ghcr.io/acme/my-app:latest",
+  "port": 3000,
+  "cpu": 256,
+  "memory": 512,
+  "desired_count": 1,
+  "health_check_path": "/health",
+  "environment_vars": {
+    "PORT": "3000",
+    "ELIZA_APP_ID": "uuid-abc123"
+  }
+}
+```
+
+### Parameters
+
+| Parameter | Type | Required | Description |
+| --------- | ---- | -------- | ----------- |
+| `name` | string | yes | Display name. |
+| `project_name` | string | yes | Stable project identifier. |
+| `image` | string | yes | Full image reference, for example `ghcr.io/owner/repo:tag`. |
+| `port` | integer | no | Container port. Default: 3000. |
+| `cpu` | integer | no | CPU units. Default: 256. |
+| `memory` | integer | no | Memory in MB. Default: 512. |
+| `desired_count` | integer | no | Must be 1 on the current shared Docker pool. |
+| `health_check_path` | string | no | Health check endpoint. Default: `/health`. |
+| `environment_vars` | object | no | String environment variables. |
+| `persist_volume` | boolean | no | Mount project-scoped persistent storage at `/data`. |
+| `use_hetzner_volume` | boolean | no | Use a Hetzner Cloud volume when persistent volumes are enabled and configured. |
+| `volume_size_gb` | integer | no | Declared volume size in GiB. Default: 10. |
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "My App",
+    "project_name": "my-app",
+    "status": "deploying",
+    "load_balancer_url": "https://my-app.example.com"
+  },
+  "polling": {
+    "endpoint": "/api/v1/containers/550e8400-e29b-41d4-a716-446655440000",
+    "intervalMs": 5000,
+    "expectedDurationMs": 120000
+  }
+}
+```
+
+<Callout type="warning">
+  Container deployments require sufficient credits or available earnings and are subject to organization quotas.
+</Callout>
+
+---
+
+## Get Container
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/containers/{"{id}"}</span>
+</div>
+
+Get container details and deployment status.
+
+### Status Values
+
+| Status | Description |
+| ------ | ----------- |
+| `pending` | Deployment initiated. |
+| `deploying` | Image pull or container start in progress. |
+| `running` | Container is healthy and accessible. |
+| `failed` | Deployment failed; check `error_message` and logs. |
+| `stopped` | Container stopped. |
+| `suspended` | Billing or policy suspension. |
+
+---
+
+## Update Container
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-patch">PATCH</span>
+  <span className="path">/api/v1/containers/{"{id}"}</span>
+</div>
+
+Patch supports:
+
+- `environment_vars` to replace runtime environment variables.
+- `desired_count` to scale, currently only `1`.
+- `action: "restart"` to restart the container.
+
+---
+
+## Delete Container
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-delete">DELETE</span>
+  <span className="path">/api/v1/containers/{"{id}"}</span>
+</div>
+
+Stop and delete a container.
+
+---
+
+## Container Logs
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/containers/{"{id}"}/logs</span>
+</div>
+
+Get plain-text container logs.
+
+### Query Parameters
+
+| Parameter | Type | Description |
+| --------- | ---- | ----------- |
+| `tail` | integer | Number of lines. Default: 200. |
+
+---
+
+## Container Metrics
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/containers/{"{id}"}/metrics</span>
+</div>
+
+Get container metrics.
+
+---
+
+## Quota
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/containers/quota</span>
+</div>
+
+Get organization container quota.
+
+---
+
+## Credentials
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/containers/credentials</span>
+</div>
+
+Create or fetch registry credential helper data when configured. Public container creation can also use any image reference that the target node can pull.

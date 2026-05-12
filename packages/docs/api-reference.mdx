@@ -1,0 +1,882 @@
+---
+title: REST API Reference
+sidebarTitle: API Reference
+description: Complete reference for all Eliza REST API endpoints, organized by resource group.
+---
+
+The Eliza API server runs on port **31337** (`ELIZA_API_PORT`) in development and on port **2138** (`ELIZA_PORT`) in production, where the API and dashboard share the same port. All endpoints are prefixed with `/api/`. Authentication is required when `ELIZA_API_TOKEN` is set.
+
+<Warning>
+When `ELIZA_API_TOKEN` is configured, include the token as a `Bearer` token in the `Authorization` header, or use the pairing flow to obtain it.
+</Warning>
+
+## Quick Start
+
+These examples use port `31337` (the development default). In production, replace with port `2138` or your configured `ELIZA_PORT`. Replace `YOUR_TOKEN` with the value of `ELIZA_API_TOKEN` or the token received from the pairing flow.
+
+### Check agent status
+
+```bash
+curl http://localhost:31337/api/status
+```
+
+```json
+{
+  "state": "running",
+  "agentName": "Eliza",
+  "model": "@elizaos/plugin-anthropic",
+  "uptime": 3600000,
+  "startedAt": 1718000000000
+}
+```
+
+### Authenticate via pairing code
+
+When pairing is enabled, the agent displays a code in its terminal. Submit it to receive a token:
+
+```bash
+curl -X POST http://localhost:31337/api/auth/pair \
+  -H "Content-Type: application/json" \
+  -d '{"code": "ABCD-EFGH"}'
+```
+
+```json
+{
+  "token": "your-api-token"
+}
+```
+
+### Get character info
+
+```bash
+curl http://localhost:31337/api/character \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### Send a conversation message
+
+```bash
+curl -X POST http://localhost:31337/api/conversations/YOUR_CONVERSATION_ID/messages \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello, what can you do?"}'
+```
+
+### Stream a conversation response
+
+```bash
+curl -N -X POST http://localhost:31337/api/conversations/YOUR_CONVERSATION_ID/messages/stream \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Tell me about yourself"}'
+```
+
+The response is a Server-Sent Events stream. Each event contains a `data` field with a JSON payload.
+
+### List conversations
+
+```bash
+curl http://localhost:31337/api/conversations \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### Upload a knowledge document
+
+```bash
+curl -X POST http://localhost:31337/api/documents \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Company FAQ",
+    "content": "Q: What is Eliza?\nA: A personal AI assistant built on elizaOS."
+  }'
+```
+
+### Search knowledge
+
+```bash
+curl "http://localhost:31337/api/documents/search?q=what+is+eliza&limit=5" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### List plugins
+
+```bash
+curl http://localhost:31337/api/plugins \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+### Get autonomy state
+
+```bash
+curl http://localhost:31337/api/agent/autonomy \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```json
+{
+  "enabled": false,
+  "thinking": false
+}
+```
+
+### Enable autonomy
+
+```bash
+curl -X POST http://localhost:31337/api/agent/autonomy \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true}'
+```
+
+---
+
+## Authentication
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/auth/status` | Check if auth is required and whether pairing is enabled |
+| `POST` | `/api/auth/pair` | Submit a pairing code to receive the API token |
+
+---
+
+## Status & Runtime
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/status` | Get current agent status, name, model, uptime, autonomy state, and pending restart info |
+| `GET` | `/api/health` | Structured subsystem health check (runtime, database, plugins, connectors, readiness) |
+| `GET` | `/api/runtime` | Get runtime details (loaded plugins, services, capabilities) |
+
+Example `GET /api/status` response:
+
+```json
+{
+  "name": "Eliza",
+  "status": "running",
+  "model": "anthropic/claude-sonnet-4.6",
+  "uptime": 3600,
+  "autonomy": { "enabled": true },
+  "pendingRestart": false
+}
+```
+
+---
+
+## Agent Lifecycle
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/agent/start` | Start the agent |
+| `POST` | `/api/agent/stop` | Stop the agent and disable autonomy |
+| `POST` | `/api/agent/pause` | Pause the agent (keep uptime, disable autonomy) |
+| `POST` | `/api/agent/resume` | Resume a paused agent and re-enable autonomy |
+
+---
+
+## Agent Admin
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/agent/restart` | Restart the agent runtime |
+| `POST` | `/api/agent/reset` | Wipe config, workspace, memory and return to onboarding |
+| `POST` | `/api/restart` | Restart the process (alias used by some callers) |
+| `GET` | `/api/agent/self-status` | Structured self-status summary (capabilities, wallet, plugins, awareness) |
+
+---
+
+## Agent Transfer (Export / Import)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/agent/export` | Export agent as a password-encrypted `.eliza-agent` binary file |
+| `GET` | `/api/agent/export/estimate` | Estimate export file size before downloading |
+| `POST` | `/api/agent/import` | Import agent from a password-encrypted `.eliza-agent` file |
+
+---
+
+## Autonomy
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/agent/autonomy` | Get autonomy state (enabled) |
+| `POST` | `/api/agent/autonomy` | Enable or disable autonomy (`{ enabled: boolean }`) |
+
+---
+
+## Agent Events
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/agent/events` | Get buffered agent events. Params: `after` (event ID cursor), `limit` (1-1000, default 200), `runId` (filter by run), `fromSeq` (min sequence number) |
+
+---
+
+## Onboarding
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/onboarding/status` | Check if onboarding is complete |
+| `GET` | `/api/onboarding/options` | Get available onboarding options (providers, styles) |
+| `POST` | `/api/onboarding` | Complete the onboarding wizard |
+
+---
+
+## Provider
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/provider/switch` | Atomically switch the active AI provider selection and persist canonical routing state |
+
+---
+
+## Character
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/character` | Get current character data (name, bio, system, style, etc.) |
+| `PUT` | `/api/character` | Update character fields (validated against CharacterSchema) |
+| `GET` | `/api/character/random-name` | Generate a random agent name |
+| `POST` | `/api/character/generate` | AI-assisted generation of bio, system prompt, style, chatExamples, or postExamples |
+| `GET` | `/api/character/schema` | Get the character field schema for UI rendering |
+
+---
+
+## Chat & Conversations
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/conversations` | List all conversations |
+| `POST` | `/api/conversations` | Create a new conversation |
+| `GET` | `/api/conversations/:id/messages` | Get messages for a conversation |
+| `POST` | `/api/conversations/:id/messages` | Send a message in a conversation |
+| `POST` | `/api/conversations/:id/messages/stream` | Send a message and stream the response in a conversation (SSE) |
+| `POST` | `/api/conversations/:id/greeting` | Generate a greeting message for a conversation |
+| `PATCH` | `/api/conversations/:id` | Update conversation metadata (e.g. title) |
+| `DELETE` | `/api/conversations/:id` | Delete a conversation |
+
+<Info>
+Conversations are scoped to the web-chat interface. Each conversation maps to an elizaOS room with a deterministic world ID. Messages from connector channels include additional sender identity fields (`from`, `fromUserName`, `avatarUrl`) when the connector provides them.
+</Info>
+
+---
+
+## Inbox (Unified Messages)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/inbox/messages` | List recent messages across all connector channels in a unified feed |
+| `GET` | `/api/inbox/chats` | List connector chat threads (one row per external chat room) |
+| `GET` | `/api/inbox/sources` | List distinct connector source tags the agent has messages for |
+
+<Info>
+The inbox aggregates messages from every connected platform (iMessage, Telegram, Discord, WhatsApp, WeChat, Slack, Signal, SMS) into a single time-ordered feed. Dashboard web-chat messages are excluded — those are accessible via the [Conversations API](/rest/conversations).
+</Info>
+
+---
+
+## Config
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/config` | Get the current eliza.json configuration |
+| `PUT` | `/api/config` | Update configuration fields |
+| `GET` | `/api/config/schema` | Get the configuration schema for UI rendering |
+
+---
+
+## Connectors
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/connectors` | List all configured messaging connectors |
+| `POST` | `/api/connectors` | Add or update a connector configuration |
+| `DELETE` | `/api/connectors/:name` | Remove a connector configuration |
+
+---
+
+## Plugins
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/plugins` | List all plugins with status, config, and validation info |
+| `PUT` | `/api/plugins/:id` | Update plugin configuration (enable/disable, set params) |
+| `POST` | `/api/plugins/:id/test` | Test a plugin's configuration |
+| `POST` | `/api/plugins/install` | Install a plugin from the registry |
+| `POST` | `/api/plugins/uninstall` | Uninstall a user-installed plugin |
+| `POST` | `/api/plugins/:id/eject` | Eject a bundled plugin to user-managed |
+| `POST` | `/api/plugins/:id/sync` | Sync an ejected plugin with its upstream |
+| `POST` | `/api/plugins/:id/reinject` | Reinject a previously ejected plugin |
+| `GET` | `/api/plugins/installed` | List user-installed plugins |
+| `GET` | `/api/plugins/ejected` | List ejected plugins |
+| `GET` | `/api/plugins/core` | List core plugin status |
+| `POST` | `/api/plugins/core/toggle` | Toggle a core plugin on/off |
+
+---
+
+## Secrets
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/secrets` | Get all plugin-declared sensitive parameters with current set/unset status |
+| `PUT` | `/api/secrets` | Update sensitive environment variables (API keys, tokens) |
+
+---
+
+## Skills
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/skills` | List all loaded skills |
+| `POST` | `/api/skills/refresh` | Refresh the skills snapshot |
+| `GET` | `/api/skills/:id/scan` | Get security scan report for a skill |
+| `POST` | `/api/skills/:id/acknowledge` | Acknowledge a skill security scan |
+| `POST` | `/api/skills/create` | Create a new skill |
+| `POST` | `/api/skills/:id/open` | Open a skill directory |
+| `GET` | `/api/skills/:id/source` | Get skill source code |
+| `PUT` | `/api/skills/:id/source` | Update skill source code |
+| `POST` | `/api/skills/:id/enable` | Enable a skill (honors scan acknowledgments) |
+| `POST` | `/api/skills/:id/disable` | Disable a skill |
+| `DELETE` | `/api/skills/:id` | Delete a skill |
+
+### Skills Catalog (Marketplace)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/skills/catalog` | Browse the skills catalog |
+| `GET` | `/api/skills/catalog/search` | Search catalog skills |
+| `GET` | `/api/skills/catalog/:slug` | Get details for a catalog skill |
+| `POST` | `/api/skills/catalog/refresh` | Refresh the catalog cache |
+| `POST` | `/api/skills/catalog/install` | Install a catalog skill |
+| `POST` | `/api/skills/catalog/uninstall` | Uninstall a catalog skill |
+
+### Skills Marketplace (npm-based)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/skills/marketplace/search` | Search marketplace skills |
+| `GET` | `/api/skills/marketplace/installed` | List installed marketplace skills |
+| `POST` | `/api/skills/marketplace/install` | Install a marketplace skill |
+| `POST` | `/api/skills/marketplace/uninstall` | Uninstall a marketplace skill |
+| `GET` | `/api/skills/marketplace/config` | Get marketplace configuration |
+| `PUT` | `/api/skills/marketplace/config` | Update marketplace configuration |
+
+---
+
+## Registry (Plugin Registry)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/registry/plugins` | List all plugins from the elizaOS registry |
+| `GET` | `/api/registry/plugins/:name` | Get details for a specific registry plugin |
+| `GET` | `/api/registry/search` | Search the registry. Params: `q` (required), `limit` |
+| `POST` | `/api/registry/refresh` | Force refresh the registry cache |
+
+---
+
+## On-Chain Registry (ERC-8004)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/registry/status` | Get on-chain agent registration status |
+| `POST` | `/api/registry/register` | Register agent on-chain |
+| `POST` | `/api/registry/update-uri` | Update the on-chain tokenURI |
+| `POST` | `/api/registry/sync` | Sync agent profile on-chain |
+| `GET` | `/api/registry/config` | Get on-chain registry configuration (chainId, addresses, explorer) |
+
+---
+
+## Memory & Context
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/memory/remember` | Save a free-text note into the agent's persistent memory |
+| `GET` | `/api/memory/search` | Full-text keyword search over saved memory notes. Params: `q` (required), `limit` |
+| `GET` | `/api/context/quick` | Search memory and knowledge, then synthesize a concise answer. Params: `q` (required), `limit` |
+
+---
+
+## Knowledge
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/documents/stats` | Get document and fragment counts |
+| `GET` | `/api/documents` | List knowledge documents. Params: `limit`, `offset` |
+| `GET` | `/api/documents/:id` | Get a specific document with content |
+| `POST` | `/api/documents` | Upload a document (base64 content or text) |
+| `POST` | `/api/documents/bulk` | Upload up to 100 documents in a single request |
+| `POST` | `/api/documents/url` | Upload from URL (supports YouTube auto-transcription) |
+| `DELETE` | `/api/documents/:id` | Delete a document and all its fragments |
+| `GET` | `/api/documents/search` | Semantic search. Params: `q` (required), `threshold`, `limit` |
+| `GET` | `/api/documents/:documentId/fragments` | List all fragments for a document |
+
+---
+
+## Database
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/database/status` | Get database status (provider, connection, table count) |
+| `GET` | `/api/database/config` | Get persisted database configuration |
+| `PUT` | `/api/database/config` | Update database provider configuration |
+| `POST` | `/api/database/test` | Test a PostgreSQL connection |
+| `GET` | `/api/database/tables` | List all database tables with column info |
+| `GET` | `/api/database/tables/:table/rows` | Query rows from a table with pagination, sorting, and search |
+| `POST` | `/api/database/tables/:table/rows` | Insert a new row into a table |
+| `PUT` | `/api/database/tables/:table/rows` | Update a row in a table |
+| `DELETE` | `/api/database/tables/:table/rows` | Delete a row from a table |
+| `POST` | `/api/database/query` | Execute a raw SQL query (read-only by default) |
+
+---
+
+## Triggers
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/triggers` | List all triggers |
+| `POST` | `/api/triggers` | Create a new trigger |
+| `GET` | `/api/triggers/:id` | Get a trigger by ID |
+| `PUT` | `/api/triggers/:id` | Update a trigger |
+| `DELETE` | `/api/triggers/:id` | Delete a trigger |
+| `POST` | `/api/triggers/:id/execute` | Manually execute a trigger |
+| `GET` | `/api/triggers/:id/runs` | Get run history for a trigger |
+| `GET` | `/api/triggers/health` | Get trigger system health snapshot |
+
+---
+
+## Workflows Workflows
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/workflow/workflows` | List workflows |
+| `GET` | `/api/workflow/status` | Get workflow integration status (mode, health, platform) |
+
+---
+
+## Trajectories
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/trajectories` | List and search trajectories with filters |
+| `GET` | `/api/trajectories/:id` | Get trajectory details with LLM calls and provider accesses |
+| `GET` | `/api/trajectories/stats` | Get trajectory statistics |
+| `GET` | `/api/trajectories/config` | Get trajectory logging configuration (enabled/disabled) |
+| `PUT` | `/api/trajectories/config` | Enable or disable trajectory logging |
+| `POST` | `/api/trajectories/export` | Export trajectories (JSON, CSV, ART, or ZIP) |
+| `DELETE` | `/api/trajectories` | Delete trajectories (by IDs or all) |
+
+---
+
+## Training & Fine-Tuning
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/training/status` | Get training service status |
+| `GET` | `/api/training/trajectories` | List trajectories for training. Params: `limit`, `offset` |
+| `GET` | `/api/training/trajectories/:id` | Get trajectory detail for training |
+| `GET` | `/api/training/datasets` | List training datasets |
+| `POST` | `/api/training/datasets/build` | Build a new dataset from trajectories |
+| `GET` | `/api/training/jobs` | List training jobs |
+| `POST` | `/api/training/jobs` | Start a new training job |
+| `GET` | `/api/training/jobs/:id` | Get training job status |
+| `POST` | `/api/training/jobs/:id/cancel` | Cancel a running training job |
+| `GET` | `/api/training/models` | List fine-tuned models |
+| `POST` | `/api/training/models/:id/import-ollama` | Import a model to Ollama |
+| `POST` | `/api/training/models/:id/activate` | Activate a fine-tuned model |
+| `POST` | `/api/training/models/:id/benchmark` | Benchmark a fine-tuned model |
+| `GET` | `/api/training/auto/config` | Get auto-training configuration (thresholds, cooldown) |
+| `PUT` | `/api/training/auto/config` | Update auto-training configuration |
+
+---
+
+## Cloud
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/cloud/login` | Start Eliza Cloud login flow (returns browser URL and session ID) |
+| `GET` | `/api/cloud/login/status` | Poll login session status. Param: `sessionId` |
+| `GET` | `/api/cloud/status` | Get cloud connection status, auth state, and billing URL |
+| `GET` | `/api/cloud/credits` | Get cloud credit balance |
+| `GET` | `/api/cloud/billing/summary` | Get cloud billing summary for in-app billing |
+| `GET` | `/api/cloud/billing/payment-methods` | List saved cloud billing payment methods |
+| `GET` | `/api/cloud/billing/history` | List recent cloud billing activity |
+| `POST` | `/api/cloud/billing/checkout` | Create a cloud billing checkout session |
+| `POST` | `/api/cloud/billing/crypto/quote` | Create a cloud billing crypto quote |
+| `POST` | `/api/cloud/disconnect` | Disconnect from Eliza Cloud and clear credentials |
+| `GET` | `/api/cloud/agents` | List cloud agents |
+| `POST` | `/api/cloud/agents` | Create a new cloud agent |
+| `POST` | `/api/cloud/agents/:id/provision` | Provision a cloud agent |
+| `POST` | `/api/cloud/agents/:id/shutdown` | Shutdown and delete a cloud agent |
+| `POST` | `/api/cloud/agents/:id/connect` | Connect to an existing cloud agent |
+| `POST` | `/api/cloud/v1/eliza/agents/:id/pairing-token` | Generate a pairing token for opening a cloud agent's Web UI in a new tab. Returns `{ success, data: { token, redirectUrl, expiresIn } }` |
+
+<Info>
+Routes under `/api/cloud/v1/` are forwarded as `/api/v1/` on the cloud backend, distinct from the legacy `/api/cloud/compat/*` mapping. Both `Authorization: Bearer` and `X-Api-Key` headers are accepted for authentication.
+</Info>
+
+---
+
+## Subscription (OAuth Flows)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/subscription/status` | Get status of subscription auth providers |
+| `POST` | `/api/subscription/anthropic/start` | Start Anthropic OAuth flow (returns auth URL) |
+| `POST` | `/api/subscription/anthropic/exchange` | Exchange Anthropic auth code for tokens |
+| `POST` | `/api/subscription/anthropic/setup-token` | Accept an Anthropic setup token directly |
+| `POST` | `/api/subscription/openai/start` | Start OpenAI OAuth flow (returns auth URL) |
+| `POST` | `/api/subscription/openai/exchange` | Exchange OpenAI auth code for tokens |
+| `DELETE` | `/api/subscription/:provider` | Remove subscription credentials for a provider |
+
+---
+
+## Apps
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/apps` | List available and installed apps |
+| `GET` | `/api/apps/search` | Search for apps. Params: `q`, `limit` |
+| `GET` | `/api/apps/installed` | List installed apps |
+| `POST` | `/api/apps/launch` | Launch an app (install plugin if needed) |
+| `POST` | `/api/apps/stop` | Stop a running app |
+| `GET` | `/api/apps/info/:name` | Get app details |
+| `GET` | `/api/apps/plugins` | List non-app plugins from registry |
+| `GET` | `/api/apps/plugins/search` | Search non-app plugins. Params: `q`, `limit` |
+| `POST` | `/api/apps/refresh` | Refresh the app registry cache |
+
+### Hyperscape Integration
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/apps/hyperscape/embedded-agents` | List embedded Hyperscape agents |
+| `POST` | `/api/apps/hyperscape/embedded-agents` | Create an embedded Hyperscape agent |
+| `POST` | `/api/apps/hyperscape/embedded-agents/:id/(start\|stop\|pause\|resume\|command)` | Control an embedded agent |
+| `POST` | `/api/apps/hyperscape/agents/:id/message` | Send a message to a Hyperscape agent |
+| `GET` | `/api/apps/hyperscape/agents/:id/goal` | Get a Hyperscape agent's current goal |
+| `GET` | `/api/apps/hyperscape/agents/:id/quick-actions` | Get available quick actions for a Hyperscape agent |
+
+---
+
+## MCP (Model Context Protocol)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/mcp/marketplace/search` | Search the MCP marketplace. Params: `q`, `limit` |
+| `GET` | `/api/mcp/marketplace/details/:name` | Get details for an MCP server |
+| `GET` | `/api/mcp/config` | Get MCP server configuration |
+| `POST` | `/api/mcp/config/server` | Add or update an MCP server config |
+| `DELETE` | `/api/mcp/config/server/:name` | Remove an MCP server config |
+| `PUT` | `/api/mcp/config` | Bulk update MCP configuration |
+| `GET` | `/api/mcp/status` | Get MCP connection status for all configured servers |
+
+---
+
+## Models
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/models` | List available models. Params: `provider` (optional), `refresh` (bust cache) |
+
+---
+
+## Core Status
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/core/status` | Get elizaOS core version and status |
+
+---
+
+## Permissions
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/permissions` | Get all system permission states |
+| `GET` | `/api/permissions/:id` | Get a single permission state |
+| `GET` | `/api/permissions/shell` | Get shell access toggle status |
+| `PUT` | `/api/permissions/shell` | Toggle shell access on/off |
+| `PUT` | `/api/permissions/state` | Update permission states from Electrobun RPC |
+| `POST` | `/api/permissions/refresh` | Force refresh all permission states |
+| `POST` | `/api/permissions/:id/request` | Request a specific system permission |
+| `POST` | `/api/permissions/:id/open-settings` | Open system settings for a permission |
+
+---
+
+## Custom Actions
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/custom-actions` | List all user-defined custom actions |
+| `POST` | `/api/custom-actions` | Create a new custom action |
+| `POST` | `/api/custom-actions/generate` | AI-generate an action definition from a prompt |
+| `PUT` | `/api/custom-actions/:id` | Update an existing custom action |
+| `DELETE` | `/api/custom-actions/:id` | Delete a custom action |
+| `POST` | `/api/custom-actions/:id/test` | Test-run a custom action |
+
+---
+
+## Automations
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/automations` | Unified list of all automations (triggers, workflows, workbench tasks) |
+| `GET` | `/api/automations/nodes` | Node catalog — available trigger, action, context, integration, and agent nodes |
+
+---
+
+## Workbench
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/workbench/overview` | Get workbench overview (tasks, triggers, todos, life-ops, autonomy state) |
+| `GET` | `/api/workbench/tasks` | List workbench tasks |
+| `POST` | `/api/workbench/tasks` | Create a workbench task |
+| `GET` | `/api/workbench/tasks/:id` | Get a single workbench task |
+| `PUT` | `/api/workbench/tasks/:id` | Update a workbench task |
+| `DELETE` | `/api/workbench/tasks/:id` | Delete a workbench task |
+| `GET` | `/api/workbench/todos` | List workbench todos |
+| `POST` | `/api/workbench/todos` | Create or update a workbench to-do item |
+
+---
+
+## Automations
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/automations` | Unified list of all automations (triggers + workflows + workbench tasks) with summary counts |
+| `GET` | `/api/automations/nodes` | Node catalog — available trigger, action, context, integration, and agent nodes |
+| `GET` | `/api/workflow/workflows` | List workflows |
+| `GET` | `/api/workflow/status` | Get workflow status (mode, health, platform) |
+
+---
+
+## LifeOps
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/lifeops/overview` | Aggregated overview of occurrences, goals, and reminders |
+| `GET` | `/api/lifeops/definitions` | List all definitions |
+| `POST` | `/api/lifeops/definitions` | Create a new definition |
+| `GET` | `/api/lifeops/definitions/:id` | Get a single definition |
+| `PUT` | `/api/lifeops/definitions/:id` | Update a definition |
+| `GET` | `/api/lifeops/goals` | List all goals |
+| `POST` | `/api/lifeops/goals` | Create a new goal |
+| `GET` | `/api/lifeops/goals/:id` | Get a single goal |
+| `PUT` | `/api/lifeops/goals/:id` | Update a goal |
+| `POST` | `/api/lifeops/occurrences/:id/complete` | Mark an occurrence as completed |
+| `POST` | `/api/lifeops/occurrences/:id/skip` | Skip an occurrence |
+| `POST` | `/api/lifeops/occurrences/:id/snooze` | Snooze an occurrence |
+
+---
+
+## Diagnostics & Logs
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/logs` | Get log entries. Filters: `source`, `level`, `tag`, `since` |
+| `GET` | `/api/extension/status` | Check browser extension relay and path status |
+
+---
+
+## Security Audit
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/security/audit` | Query audit log. Filters: `type`, `severity`, `since`, `limit`. Supports SSE streaming with `stream=1` |
+
+---
+
+## Emotes
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/emotes` | Get the full emote catalog for 3D avatar animations |
+| `POST` | `/api/emote` | Trigger an emote animation by ID |
+
+---
+
+## TTS (Text-to-Speech)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/tts/elevenlabs` | Generate speech audio via ElevenLabs |
+| `POST` | `/api/tts/cloud` | Generate speech audio via Eliza Cloud |
+
+---
+
+## Terminal
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/terminal/run` | Execute a shell command in the agent workspace |
+
+---
+
+## Wallet
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/wallet/addresses` | Get EVM and Solana wallet addresses |
+| `GET` | `/api/wallet/balances` | Get token balances across all chains |
+| `GET` | `/api/wallet/nfts` | Get NFTs across EVM and Solana |
+| `GET` | `/api/wallet/config` | Get wallet API key configuration status |
+| `PUT` | `/api/wallet/config` | Update wallet API keys (Alchemy, Helius, etc.) |
+| `POST` | `/api/wallet/import` | Import a private key for EVM or Solana |
+| `POST` | `/api/wallet/generate` | Generate new wallet(s) for EVM, Solana, or both |
+| `POST` | `/api/wallet/export` | Export private keys (requires confirmation) |
+| `POST` | `/api/wallet/production-defaults` | Apply production-ready wallet trading defaults |
+
+### Wallet Cloud
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/wallet/primary` | Set the primary wallet source (local or cloud) for a chain. Gated by `ENABLE_CLOUD_WALLET` |
+| `POST` | `/api/wallet/refresh-cloud` | Re-query Eliza Cloud for the latest cloud wallet descriptors. Gated by `ENABLE_CLOUD_WALLET` |
+
+### Wallet Trading
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/wallet/trade/preflight` | Preflight check for BSC trading readiness |
+| `POST` | `/api/wallet/trade/quote` | Get a price quote for a token swap |
+| `POST` | `/api/wallet/trade/execute` | Execute a token trade (returns unsigned tx or executes on-chain) |
+| `GET` | `/api/wallet/trade/tx-status` | Check on-chain status of a trade transaction |
+| `GET` | `/api/wallet/trading/profile` | Get trading P&L profile from the local ledger |
+| `POST` | `/api/wallet/transfer/execute` | Transfer native or ERC-20 tokens on BSC |
+
+### Wallet Steward Bridge
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/wallet/steward-status` | Get Steward bridge connection status |
+| `GET` | `/api/wallet/steward-policies` | Get Steward policy configurations |
+| `GET` | `/api/wallet/steward-pending-approvals` | List pending Steward transaction approvals |
+| `POST` | `/api/wallet/steward-approve-tx` | Approve a pending Steward transaction |
+| `POST` | `/api/wallet/steward-deny-tx` | Deny a pending Steward transaction |
+| `GET` | `/api/wallet/steward-tx-records` | Get Steward transaction history |
+
+---
+
+## Drop / Mint
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/drop/status` | Get drop/mint service status |
+| `POST` | `/api/drop/mint` | Mint an NFT |
+| `POST` | `/api/drop/mint-whitelist` | Mint with whitelist verification (Merkle proof) |
+
+---
+
+## Whitelist Verification
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/whitelist/status` | Get whitelist eligibility status for connected wallet |
+| `POST` | `/api/whitelist/twitter/message` | Generate a Twitter verification message for the agent |
+| `POST` | `/api/whitelist/twitter/verify` | Verify a Twitter/X account via tweet URL |
+
+---
+
+## Update Management
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/update/status` | Get current version, update channel, and available updates |
+| `PUT` | `/api/update/channel` | Switch update channel (stable, beta, nightly) |
+
+---
+
+## Share Ingest
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/ingest/share` | Ingest shared content from external sources |
+| `GET` | `/api/ingest/share` | Get queued shared content. Param: `consume=1` to dequeue |
+
+---
+
+## Streaming
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/stream/live` | Start streaming using the active destination adapter |
+| `POST` | `/api/stream/offline` | Stop the active stream |
+| `GET` | `/api/stream/status` | Get current stream health and configuration |
+| `POST` | `/api/stream/start` | Start stream with explicit RTMP parameters |
+| `POST` | `/api/stream/stop` | Stop the active FFmpeg process |
+| `POST` | `/api/stream/frame` | Pipe a raw image frame to FFmpeg (pipe capture mode) |
+| `POST` | `/api/stream/volume` | Set audio volume (0–100) |
+| `POST` | `/api/stream/mute` | Mute stream audio |
+| `POST` | `/api/stream/unmute` | Unmute stream audio |
+| `GET` | `/api/streaming/destinations` | List all configured streaming destinations with active status |
+| `POST` | `/api/streaming/destination` | Switch the active streaming destination (`{ destinationId }`) |
+| `GET` | `/api/stream/overlay-layout` | Get overlay layout (optional `destination` query param) |
+| `POST` | `/api/stream/overlay-layout` | Save overlay layout |
+| `GET` | `/api/stream/voice` | Get voice/TTS configuration |
+| `POST` | `/api/stream/voice` | Save voice/TTS settings |
+| `POST` | `/api/stream/voice/speak` | Trigger TTS on the live stream |
+| `GET` | `/api/stream/settings` | Get visual stream settings. Response includes `avatarIndex` (1–8) for the agent's VRM avatar |
+| `POST` | `/api/stream/settings` | Save visual stream settings |
+
+---
+
+## NFA (Non-Fungible Agent)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/nfa/status` | Get NFA token and on-chain identity status |
+| `GET` | `/api/nfa/learnings` | Get parsed learning entries with Merkle root |
+
+<Info>
+NFA endpoints depend on the optional `@elizaos/plugin-bnb-identity` plugin. When the plugin is not installed, `/api/nfa/status` returns `null` for both `nfa` and `identity` fields, and `/api/nfa/learnings` returns an empty entries array with a default Merkle root.
+</Info>
+
+---
+
+## Sandbox
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/sandbox/platform` | Get platform info (Docker/container availability) |
+| `GET` | `/api/sandbox/status` | Get sandbox manager status |
+| `GET` | `/api/sandbox/events` | Get sandbox event log (last 100) |
+| `GET` | `/api/sandbox/capabilities` | Detect available sandbox capabilities |
+| `POST` | `/api/sandbox/start` | Start the sandbox container |
+| `POST` | `/api/sandbox/stop` | Stop the sandbox container |
+| `POST` | `/api/sandbox/recover` | Recover a failed sandbox |
+| `POST` | `/api/sandbox/docker/start` | Attempt to start Docker Desktop |
+| `POST` | `/api/sandbox/exec` | Execute a command in the sandbox |
+| `GET` | `/api/sandbox/browser` | Get browser CDP/WS endpoints |
+
+### Sandbox Screen
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/sandbox/screen/screenshot` | Capture a screenshot (returns PNG) |
+| `POST` | `/api/sandbox/screen/screenshot` | Capture a screenshot (returns base64 JSON, optional region) |
+| `GET` | `/api/sandbox/screen/windows` | List visible windows |
+
+### Sandbox Audio
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/sandbox/audio/record` | Record audio (returns base64 WAV). Optional: `durationMs` |
+| `POST` | `/api/sandbox/audio/play` | Play audio from base64 data. Fields: `data`, `format` |
+
+### Sandbox Computer Use
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/sandbox/computer/click` | Perform a mouse click at (x, y) |
+| `POST` | `/api/sandbox/computer/type` | Type text via keyboard |
+| `POST` | `/api/sandbox/computer/keypress` | Send a key press |
+
+### Sandbox Signing
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/sandbox/sign` | Submit a signing request |
+| `POST` | `/api/sandbox/sign/approve` | Approve a pending signing request |
+| `POST` | `/api/sandbox/sign/reject` | Reject a pending signing request |
+| `GET` | `/api/sandbox/sign/pending` | List pending signing approvals |
+| `GET` | `/api/sandbox/sign/address` | Get the signer address |

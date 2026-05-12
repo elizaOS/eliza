@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "rule": "duplicate-service-type",
+      "serviceType": "discord-local",
+      "files": [
+        "packages/agent/src/runtime/discord-local-plugin.ts",
+        "plugins/plugin-discord/discord-local-service.ts"
+      ],
+      "reason": "Legacy agent mirror and extracted Discord plugin share the service contract during migration; runtime collision guardrails already require this exact pair."
+    },
+    {
+      "rule": "duplicate-service-type",
+      "serviceType": "trajectories",
+      "files": [
+        "packages/agent/src/runtime/trajectory-storage.ts",
+        "packages/core/src/features/trajectories/TrajectoriesService.ts"
+      ],
+      "reason": "Core and agent trajectory services intentionally coexist; callers that need the full set use getServicesByType(), and the runtime collision test pins this exact pair."
+    }
+  ]
+}

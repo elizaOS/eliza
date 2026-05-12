@@ -1,0 +1,5806 @@
+{
+  "schemaVersion": 1,
+  "target": "http://localhost:31337",
+  "label": "baseline-stub-2026-05-09",
+  "streaming": true,
+  "configPath": "/home/shaw/eliza/eliza/scripts/benchmark/configs/aosp-default.json",
+  "startedAt": "2026-05-10T01:20:35.243Z",
+  "finishedAt": "2026-05-10T01:21:22.210Z",
+  "config": {
+    "$schema": "../profile-config.schema.json",
+    "description": "Default profiling matrix for the AOSP on-device chat path. Reflects the porting plan's 'Validation matrix (per port)' section. Some kvCacheConfigs (qjl1_256) and dflashConfigs (drafter pairing) will fail today; they are kept in the matrix so reports document the gap until the kernels land.",
+    "models": [
+      "llama-3.2-1b",
+      "bonsai-8b-1bit"
+    ],
+    "kvCacheConfigs": [
+      {
+        "name": "baseline-fp16",
+        "k": "f16",
+        "v": "f16"
+      },
+      {
+        "name": "tbq4-tbq3",
+        "k": "tbq4_0",
+        "v": "tbq3_0"
+      },
+      {
+        "name": "qjl-tbq3",
+        "k": "qjl1_256",
+        "v": "tbq3_0"
+      }
+    ],
+    "dflashConfigs": [
+      {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      }
+    ],
+    "prompts": [
+      {
+        "id": "short-q",
+        "text": "What is the capital of France?",
+        "maxTokens": 50
+      },
+      {
+        "id": "med-reason",
+        "text": "Explain in three sentences why the sky is blue.",
+        "maxTokens": 120
+      },
+      {
+        "id": "long-gen",
+        "text": "Write a 200-word story about a small robot who wants to learn to paint.",
+        "maxTokens": 250
+      },
+      {
+        "id": "context-heavy",
+        "text": "PREAMBLE:\nThe Mariana Trench is the deepest known oceanic trench in the world, located in the western Pacific Ocean. It reaches a maximum depth of about 11,034 meters at the Challenger Deep. The trench was first sounded in 1875 by HMS Challenger. Marine life persists even at these depths, including amphipods, sea cucumbers, and microbial mats that thrive on chemosynthesis. Hydrothermal vents along the trench floor support entire ecosystems independent of sunlight. The Trieste bathyscaphe carried Jacques Piccard and Don Walsh to the bottom in 1960, and James Cameron repeated the descent solo in 2012. Pressure at the bottom exceeds 1,000 atmospheres, making engineering exploration extraordinarily difficult. Recent uncrewed vehicles have catalogued new species including the Mariana snailfish, the deepest-dwelling vertebrate ever recorded. Plastic debris has nonetheless been found at the trench floor, indicating that anthropogenic pollution has reached even Earth's most remote habitats.\n\nQUESTION: Summarize the preamble in one sentence.",
+        "maxTokens": 100
+      }
+    ],
+    "iterations": 3,
+    "warmupIterations": 1
+  },
+  "runs": [
+    {
+      "key": "llama-3.2-1b__baseline-fp16__no-dflash__short-q",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "baseline-fp16",
+        "k": "f16",
+        "v": "f16"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "short-q",
+        "maxTokens": 50
+      },
+      "startedAt": "2026-05-10T01:20:35.243Z",
+      "finishedAt": "2026-05-10T01:20:36.076Z",
+      "loadMs": 124.98056299999999,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:35.367Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "f16",
+            "v": "f16"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 93.69215699999998,
+          "totalLatencyMs": 189.63244699999998,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 121.28726050769151,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 72.83242999999999,
+          "totalLatencyMs": 172.09442400000006,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 133.64756082974537,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 62.88131499999997,
+          "totalLatencyMs": 160.09555899999998,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 143.66419745597068,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 86.02594699999997,
+          "totalLatencyMs": 180.84978,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 127.17737339796598,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 172.09442400000006,
+          "p95": 179.97424440000003,
+          "min": 160.09555899999998,
+          "max": 180.84978
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 72.83242999999999,
+          "p95": 84.70659529999996,
+          "min": 62.88131499999997,
+          "max": 86.02594699999997
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 133.64756082974537,
+          "p95": 142.66253379334813,
+          "min": 127.17737339796598,
+          "max": 143.66419745597068
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 23,
+          "p95": 23,
+          "min": 23,
+          "max": 23
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__baseline-fp16__no-dflash__med-reason",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "baseline-fp16",
+        "k": "f16",
+        "v": "f16"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "med-reason",
+        "maxTokens": 120
+      },
+      "startedAt": "2026-05-10T01:20:36.076Z",
+      "finishedAt": "2026-05-10T01:20:37.000Z",
+      "loadMs": 122.0476910000001,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:36.197Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "f16",
+            "v": "f16"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 92.64639500000021,
+          "totalLatencyMs": 198.25746100000015,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 131.1426055234309,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 89.58691999999996,
+          "totalLatencyMs": 196.36668399999985,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 132.40535242729882,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 98.8045619999998,
+          "totalLatencyMs": 203.40575999999987,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 127.82332221073786,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 95.16748499999994,
+          "totalLatencyMs": 201.269724,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 129.17988599219223,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 201.269724,
+          "p95": 203.1921563999999,
+          "min": 196.36668399999985,
+          "max": 203.40575999999987
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 95.16748499999994,
+          "p95": 98.44085429999983,
+          "min": 89.58691999999996,
+          "max": 98.8045619999998
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 129.17988599219223,
+          "p95": 132.08280578378816,
+          "min": 127.82332221073786,
+          "max": 132.40535242729882
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__baseline-fp16__no-dflash__long-gen",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "baseline-fp16",
+        "k": "f16",
+        "v": "f16"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "long-gen",
+        "maxTokens": 250
+      },
+      "startedAt": "2026-05-10T01:20:37.000Z",
+      "finishedAt": "2026-05-10T01:20:37.906Z",
+      "loadMs": 121.38970799999993,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:37.121Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "f16",
+            "v": "f16"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 89.16860500000007,
+          "totalLatencyMs": 196.6097229999998,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 132.24167962435928,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 74.47805400000016,
+          "totalLatencyMs": 181.60808399999996,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 143.1654330982315,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 99.3065389999997,
+          "totalLatencyMs": 204.36765100000002,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 127.22170007228783,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 92.4555349999996,
+          "totalLatencyMs": 199.22001,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 130.50897849066467,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 199.22001,
+          "p95": 203.85288690000002,
+          "min": 181.60808399999996,
+          "max": 204.36765100000002
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 92.4555349999996,
+          "p95": 98.62143859999969,
+          "min": 74.47805400000016,
+          "max": 99.3065389999997
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 130.50897849066467,
+          "p95": 141.8997876374748,
+          "min": 127.22170007228783,
+          "max": 143.1654330982315
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__baseline-fp16__no-dflash__context-heavy",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "baseline-fp16",
+        "k": "f16",
+        "v": "f16"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "context-heavy",
+        "maxTokens": 100
+      },
+      "startedAt": "2026-05-10T01:20:37.906Z",
+      "finishedAt": "2026-05-10T01:20:38.771Z",
+      "loadMs": 120.27531599999975,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:38.026Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "f16",
+            "v": "f16"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 91.29184699999996,
+          "totalLatencyMs": 198.06728900000007,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 131.26852056828014,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 62.29701000000023,
+          "totalLatencyMs": 168.53231800000003,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 154.27308132081822,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 85.7088920000001,
+          "totalLatencyMs": 191.43127099999992,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 135.81898017069534,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 78.4654230000001,
+          "totalLatencyMs": 183.82790999999997,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 141.4366295085442,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 183.82790999999997,
+          "p95": 190.67093489999993,
+          "min": 168.53231800000003,
+          "max": 191.43127099999992
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 78.4654230000001,
+          "p95": 84.9845451000001,
+          "min": 62.29701000000023,
+          "max": 85.7088920000001
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 141.4366295085442,
+          "p95": 152.98943613959082,
+          "min": 135.81898017069534,
+          "max": 154.27308132081822
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__baseline-fp16__dflash-bonsai__short-q",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "baseline-fp16",
+        "k": "f16",
+        "v": "f16"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "short-q",
+        "maxTokens": 50
+      },
+      "startedAt": "2026-05-10T01:20:38.771Z",
+      "finishedAt": "2026-05-10T01:20:39.609Z",
+      "loadMs": 121.60891300000003,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:38.892Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "f16",
+            "v": "f16"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 76.48210800000015,
+          "totalLatencyMs": 173.98919399999977,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 132.19211763231704,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 74.41094599999997,
+          "totalLatencyMs": 171.62210400000004,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 134.015371353331,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 76.44696299999941,
+          "totalLatencyMs": 174.35967999999957,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 131.91123085337193,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 94.70874999999978,
+          "totalLatencyMs": 193.447005,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 118.89561174648324,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 174.35967999999957,
+          "p95": 191.53827249999995,
+          "min": 171.62210400000004,
+          "max": 193.447005
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 76.44696299999941,
+          "p95": 92.88257129999974,
+          "min": 74.41094599999997,
+          "max": 94.70874999999978
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 131.91123085337193,
+          "p95": 133.8049573033351,
+          "min": 118.89561174648324,
+          "max": 134.015371353331
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 23,
+          "p95": 23,
+          "min": 23,
+          "max": 23
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__baseline-fp16__dflash-bonsai__med-reason",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "baseline-fp16",
+        "k": "f16",
+        "v": "f16"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "med-reason",
+        "maxTokens": 120
+      },
+      "startedAt": "2026-05-10T01:20:39.609Z",
+      "finishedAt": "2026-05-10T01:20:40.443Z",
+      "loadMs": 121.35609900000054,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:39.730Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "f16",
+            "v": "f16"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 61.109151999999995,
+          "totalLatencyMs": 167.01067700000021,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 155.6786695739217,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 63.342907999999625,
+          "totalLatencyMs": 170.34825099999944,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 152.6285115777331,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 94.3741740000005,
+          "totalLatencyMs": 200.9820690000006,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 129.36477432720588,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 65.4465140000002,
+          "totalLatencyMs": 172.08986300000015,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 151.08385553192042,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 172.08986300000015,
+          "p95": 198.09284840000055,
+          "min": 170.34825099999944,
+          "max": 200.9820690000006
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 65.4465140000002,
+          "p95": 91.48140800000046,
+          "min": 63.342907999999625,
+          "max": 94.3741740000005
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 151.08385553192042,
+          "p95": 152.47404597315182,
+          "min": 129.36477432720588,
+          "max": 152.6285115777331
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__baseline-fp16__dflash-bonsai__long-gen",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "baseline-fp16",
+        "k": "f16",
+        "v": "f16"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "long-gen",
+        "maxTokens": 250
+      },
+      "startedAt": "2026-05-10T01:20:40.443Z",
+      "finishedAt": "2026-05-10T01:20:41.287Z",
+      "loadMs": 121.47616300000027,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:40.564Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "f16",
+            "v": "f16"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 67.18353000000025,
+          "totalLatencyMs": 173.57913000000008,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 149.7875925521691,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 97.32863199999974,
+          "totalLatencyMs": 202.83253699999932,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 128.184562420575,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 67.47077200000058,
+          "totalLatencyMs": 173.25855300000057,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 150.0647416811793,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 65.54522399999951,
+          "totalLatencyMs": 170.20150599999943,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 152.7601054246846,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 173.25855300000057,
+          "p95": 199.87513859999945,
+          "min": 170.20150599999943,
+          "max": 202.83253699999932
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 67.47077200000058,
+          "p95": 94.34284599999982,
+          "min": 65.54522399999951,
+          "max": 97.32863199999974
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 150.0647416811793,
+          "p95": 152.49056905033407,
+          "min": 128.184562420575,
+          "max": 152.7601054246846
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__baseline-fp16__dflash-bonsai__context-heavy",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "baseline-fp16",
+        "k": "f16",
+        "v": "f16"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "context-heavy",
+        "maxTokens": 100
+      },
+      "startedAt": "2026-05-10T01:20:41.287Z",
+      "finishedAt": "2026-05-10T01:20:42.123Z",
+      "loadMs": 121.27943999999934,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:41.408Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "f16",
+            "v": "f16"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 73.1365620000006,
+          "totalLatencyMs": 180.05043999999998,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 144.40397924048395,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 80.5099479999999,
+          "totalLatencyMs": 188.1405420000001,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 138.19456308359094,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 70.18296199999986,
+          "totalLatencyMs": 177.04430299999967,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 146.85589741907734,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 63.517922,
+          "totalLatencyMs": 167.88346699999965,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 154.86932968807497,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 177.04430299999967,
+          "p95": 187.03091810000006,
+          "min": 167.88346699999965,
+          "max": 188.1405420000001
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 70.18296199999986,
+          "p95": 79.47724939999989,
+          "min": 63.517922,
+          "max": 80.5099479999999
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 146.85589741907734,
+          "p95": 154.0679864611752,
+          "min": 138.19456308359094,
+          "max": 154.86932968807497
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__tbq4-tbq3__no-dflash__short-q",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "tbq4-tbq3",
+        "k": "tbq4_0",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "short-q",
+        "maxTokens": 50
+      },
+      "startedAt": "2026-05-10T01:20:42.124Z",
+      "finishedAt": "2026-05-10T01:20:42.941Z",
+      "loadMs": 121.38901900000019,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:42.244Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "tbq4_0",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 99.179889,
+          "totalLatencyMs": 197.5734709999997,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 116.41239020394613,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 67.59312499999942,
+          "totalLatencyMs": 166.6391909999993,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 138.02275360302303,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 71.3601550000003,
+          "totalLatencyMs": 168.85546900000008,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 136.2111641169288,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 61.38269500000024,
+          "totalLatencyMs": 160.3028549999999,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 143.47841777365733,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 166.6391909999993,
+          "p95": 168.6338412,
+          "min": 160.3028549999999,
+          "max": 168.85546900000008
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 67.59312499999942,
+          "p95": 70.98345200000021,
+          "min": 61.38269500000024,
+          "max": 71.3601550000003
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 138.02275360302303,
+          "p95": 142.9328513565939,
+          "min": 136.2111641169288,
+          "max": 143.47841777365733
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 23,
+          "p95": 23,
+          "min": 23,
+          "max": 23
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__tbq4-tbq3__no-dflash__med-reason",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "tbq4-tbq3",
+        "k": "tbq4_0",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "med-reason",
+        "maxTokens": 120
+      },
+      "startedAt": "2026-05-10T01:20:42.941Z",
+      "finishedAt": "2026-05-10T01:20:43.771Z",
+      "loadMs": 121.18422399999963,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:43.061Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "tbq4_0",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 77.27494900000056,
+          "totalLatencyMs": 183.570874,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 141.63466912512493,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 63.22937699999966,
+          "totalLatencyMs": 169.8241939999998,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 153.09950477374284,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 62.323442999999315,
+          "totalLatencyMs": 167.36889100000008,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 155.34547576108386,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 81.25118000000111,
+          "totalLatencyMs": 185.87030500000037,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 139.88248418702466,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 169.8241939999998,
+          "p95": 184.26569390000031,
+          "min": 167.36889100000008,
+          "max": 185.87030500000037
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 63.22937699999966,
+          "p95": 79.44899970000097,
+          "min": 62.323442999999315,
+          "max": 81.25118000000111
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 153.09950477374284,
+          "p95": 155.12087866234975,
+          "min": 139.88248418702466,
+          "max": 155.34547576108386
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__tbq4-tbq3__no-dflash__long-gen",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "tbq4-tbq3",
+        "k": "tbq4_0",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "long-gen",
+        "maxTokens": 250
+      },
+      "startedAt": "2026-05-10T01:20:43.771Z",
+      "finishedAt": "2026-05-10T01:20:44.648Z",
+      "loadMs": 121.06355699999949,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:43.891Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "tbq4_0",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 89.06512699999985,
+          "totalLatencyMs": 195.15036599999985,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 133.23059819421513,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 68.4821979999997,
+          "totalLatencyMs": 176.5267300000014,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 147.2864761047791,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 86.48826999999983,
+          "totalLatencyMs": 193.09046299999864,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 134.65191183471438,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 82.21786699999939,
+          "totalLatencyMs": 189.1175519999997,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 137.48062897937703,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 189.1175519999997,
+          "p95": 192.69317189999873,
+          "min": 176.5267300000014,
+          "max": 193.09046299999864
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 82.21786699999939,
+          "p95": 86.06122969999979,
+          "min": 68.4821979999997,
+          "max": 86.48826999999983
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 137.48062897937703,
+          "p95": 146.3058913922389,
+          "min": 134.65191183471438,
+          "max": 147.2864761047791
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__tbq4-tbq3__no-dflash__context-heavy",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "tbq4-tbq3",
+        "k": "tbq4_0",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "context-heavy",
+        "maxTokens": 100
+      },
+      "startedAt": "2026-05-10T01:20:44.648Z",
+      "finishedAt": "2026-05-10T01:20:45.530Z",
+      "loadMs": 121.35670100000061,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:44.769Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "tbq4_0",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 80.13776500000131,
+          "totalLatencyMs": 186.35195300000123,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 139.52094185994298,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 70.45484899999974,
+          "totalLatencyMs": 176.8845569999994,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 146.98852427235968,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 84.44350199999826,
+          "totalLatencyMs": 190.75487099999918,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 136.30058233218122,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 98.25725700000112,
+          "totalLatencyMs": 204.47970500000156,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 127.1519831271265,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 190.75487099999918,
+          "p95": 203.10722160000134,
+          "min": 176.8845569999994,
+          "max": 204.47970500000156
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 84.44350199999826,
+          "p95": 96.87588150000083,
+          "min": 70.45484899999974,
+          "max": 98.25725700000112
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 136.30058233218122,
+          "p95": 145.91973007834184,
+          "min": 127.1519831271265,
+          "max": 146.98852427235968
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__tbq4-tbq3__dflash-bonsai__short-q",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "tbq4-tbq3",
+        "k": "tbq4_0",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "short-q",
+        "maxTokens": 50
+      },
+      "startedAt": "2026-05-10T01:20:45.530Z",
+      "finishedAt": "2026-05-10T01:20:46.408Z",
+      "loadMs": 121.0029940000004,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:45.650Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "tbq4_0",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 94.2446259999997,
+          "totalLatencyMs": 193.79552499999954,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 118.68179102690867,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 85.63811099999839,
+          "totalLatencyMs": 181.98534799999834,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 126.38380096402163,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 92.20614999999998,
+          "totalLatencyMs": 189.6395510000002,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 121.28271702140856,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 92.65814899999896,
+          "totalLatencyMs": 189.53372499999932,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 121.35043512704709,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 189.53372499999932,
+          "p95": 189.6289684000001,
+          "min": 181.98534799999834,
+          "max": 189.6395510000002
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 92.20614999999998,
+          "p95": 92.61294909999906,
+          "min": 85.63811099999839,
+          "max": 92.65814899999896
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 121.35043512704709,
+          "p95": 125.88046438032418,
+          "min": 121.28271702140856,
+          "max": 126.38380096402163
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 23,
+          "p95": 23,
+          "min": 23,
+          "max": 23
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__tbq4-tbq3__dflash-bonsai__med-reason",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "tbq4-tbq3",
+        "k": "tbq4_0",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "med-reason",
+        "maxTokens": 120
+      },
+      "startedAt": "2026-05-10T01:20:46.408Z",
+      "finishedAt": "2026-05-10T01:20:47.264Z",
+      "loadMs": 121.1906170000002,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:46.529Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "tbq4_0",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 73.17037100000016,
+          "totalLatencyMs": 180.80932100000064,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 143.7978963484958,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 74.29457000000002,
+          "totalLatencyMs": 182.1460729999999,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 142.74257782104374,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 65.22918799999934,
+          "totalLatencyMs": 170.53546900000038,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 152.46095227263217,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 91.50879700000041,
+          "totalLatencyMs": 199.3194540000004,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 130.44386525361418,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 182.1460729999999,
+          "p95": 197.60211590000037,
+          "min": 170.53546900000038,
+          "max": 199.3194540000004
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 74.29457000000002,
+          "p95": 89.78737430000038,
+          "min": 65.22918799999934,
+          "max": 91.50879700000041
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 142.74257782104374,
+          "p95": 151.48911482747334,
+          "min": 130.44386525361418,
+          "max": 152.46095227263217
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__tbq4-tbq3__dflash-bonsai__long-gen",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "tbq4-tbq3",
+        "k": "tbq4_0",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "long-gen",
+        "maxTokens": 250
+      },
+      "startedAt": "2026-05-10T01:20:47.264Z",
+      "finishedAt": "2026-05-10T01:20:48.167Z",
+      "loadMs": 121.15082799999982,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:47.385Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "tbq4_0",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 92.17102899999918,
+          "totalLatencyMs": 197.21247399999993,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 131.8375023275658,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 97.33210099999997,
+          "totalLatencyMs": 204.03118299999915,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 127.43150148769224,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 89.17275800000061,
+          "totalLatencyMs": 193.56515600000057,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 134.32169579115737,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 77.41403700000046,
+          "totalLatencyMs": 184.389185,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 141.0061007645324,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 193.56515600000057,
+          "p95": 202.9845802999993,
+          "min": 184.389185,
+          "max": 204.03118299999915
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 89.17275800000061,
+          "p95": 96.51616670000003,
+          "min": 77.41403700000046,
+          "max": 97.33210099999997
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 134.32169579115737,
+          "p95": 140.33766026719488,
+          "min": 127.43150148769224,
+          "max": 141.0061007645324
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__tbq4-tbq3__dflash-bonsai__context-heavy",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "tbq4-tbq3",
+        "k": "tbq4_0",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "context-heavy",
+        "maxTokens": 100
+      },
+      "startedAt": "2026-05-10T01:20:48.167Z",
+      "finishedAt": "2026-05-10T01:20:49.047Z",
+      "loadMs": 121.36526000000049,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:48.288Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "tbq4_0",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 76.10116800000105,
+          "totalLatencyMs": 181.60197100000005,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 143.17025226559898,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 72.35922299999947,
+          "totalLatencyMs": 178.14250300000094,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 145.9505708191372,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 90.55080099999941,
+          "totalLatencyMs": 197.19450499999948,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 131.84951578645698,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 92.15292699999918,
+          "totalLatencyMs": 199.63621199999943,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 130.23689309432538,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 197.19450499999948,
+          "p95": 199.39204129999945,
+          "min": 178.14250300000094,
+          "max": 199.63621199999943
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 90.55080099999941,
+          "p95": 91.99271439999922,
+          "min": 72.35922299999947,
+          "max": 92.15292699999918
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 131.84951578645698,
+          "p95": 144.5404653158692,
+          "min": 130.23689309432538,
+          "max": 145.9505708191372
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__qjl-tbq3__no-dflash__short-q",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "qjl-tbq3",
+        "k": "qjl1_256",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "short-q",
+        "maxTokens": 50
+      },
+      "startedAt": "2026-05-10T01:20:49.047Z",
+      "finishedAt": "2026-05-10T01:20:49.879Z",
+      "loadMs": 121.20585000000028,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:49.168Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "qjl1_256",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 70.13820699999997,
+          "totalLatencyMs": 169.38327000000027,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 135.7867279336381,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 88.38267199999973,
+          "totalLatencyMs": 185.40682799999922,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 124.05152630085499,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 90.2542799999992,
+          "totalLatencyMs": 188.6936429999987,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 121.89069877674766,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 65.14843299999848,
+          "totalLatencyMs": 163.83332299999893,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 140.38658057372217,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 185.40682799999922,
+          "p95": 188.36496149999874,
+          "min": 163.83332299999893,
+          "max": 188.6936429999987
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 88.38267199999973,
+          "p95": 90.06711919999924,
+          "min": 65.14843299999848,
+          "max": 90.2542799999992
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 124.05152630085499,
+          "p95": 138.75307514643544,
+          "min": 121.89069877674766,
+          "max": 140.38658057372217
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 23,
+          "p95": 23,
+          "min": 23,
+          "max": 23
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__qjl-tbq3__no-dflash__med-reason",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "qjl-tbq3",
+        "k": "qjl1_256",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "med-reason",
+        "maxTokens": 120
+      },
+      "startedAt": "2026-05-10T01:20:49.879Z",
+      "finishedAt": "2026-05-10T01:20:50.728Z",
+      "loadMs": 121.62275699999918,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:50.000Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "qjl1_256",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 70.24231299999883,
+          "totalLatencyMs": 176.0743279999988,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 147.66491115047833,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 77.23846499999854,
+          "totalLatencyMs": 182.60773199999858,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 142.3817037495444,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 79.33790299999964,
+          "totalLatencyMs": 184.8759489999993,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 140.63484266414824,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 77.50072600000021,
+          "totalLatencyMs": 182.2955439999987,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 142.62553779153365,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 182.60773199999858,
+          "p95": 184.64912729999924,
+          "min": 182.2955439999987,
+          "max": 184.8759489999993
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 77.50072600000021,
+          "p95": 79.1541852999997,
+          "min": 77.23846499999854,
+          "max": 79.33790299999964
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 142.3817037495444,
+          "p95": 142.60115438733473,
+          "min": 140.63484266414824,
+          "max": 142.62553779153365
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__qjl-tbq3__no-dflash__long-gen",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "qjl-tbq3",
+        "k": "qjl1_256",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "long-gen",
+        "maxTokens": 250
+      },
+      "startedAt": "2026-05-10T01:20:50.728Z",
+      "finishedAt": "2026-05-10T01:20:51.586Z",
+      "loadMs": 121.01892399999997,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:50.849Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "qjl1_256",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 80.94914599999902,
+          "totalLatencyMs": 186.35073399999965,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 139.52185452620782,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 76.43371699999989,
+          "totalLatencyMs": 182.94785199999933,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 142.1170006412543,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 63.38556299999982,
+          "totalLatencyMs": 169.40927300000112,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 153.47447952273444,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 88.47342299999946,
+          "totalLatencyMs": 195.43058900000142,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 133.03956219463583,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 182.94785199999933,
+          "p95": 194.18231530000122,
+          "min": 169.40927300000112,
+          "max": 195.43058900000142
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 76.43371699999989,
+          "p95": 87.2694523999995,
+          "min": 63.38556299999982,
+          "max": 88.47342299999946
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 142.1170006412543,
+          "p95": 152.33873163458642,
+          "min": 133.03956219463583,
+          "max": 153.47447952273444
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__qjl-tbq3__no-dflash__context-heavy",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "qjl-tbq3",
+        "k": "qjl1_256",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "context-heavy",
+        "maxTokens": 100
+      },
+      "startedAt": "2026-05-10T01:20:51.586Z",
+      "finishedAt": "2026-05-10T01:20:52.432Z",
+      "loadMs": 121.22087299999839,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:51.707Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "qjl1_256",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 64.87282700000287,
+          "totalLatencyMs": 171.36202400000184,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 151.725565519696,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 77.35403399999996,
+          "totalLatencyMs": 183.14571499999875,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 141.96346335484932,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 71.327279000001,
+          "totalLatencyMs": 178.97285900000134,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 145.27342383238013,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 84.5968529999991,
+          "totalLatencyMs": 189.58180899999934,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 137.14395984057782,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 183.14571499999875,
+          "p95": 188.93819959999928,
+          "min": 178.97285900000134,
+          "max": 189.58180899999934
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 77.35403399999996,
+          "p95": 83.87257109999919,
+          "min": 71.327279000001,
+          "max": 84.5968529999991
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 141.96346335484932,
+          "p95": 144.94242778462706,
+          "min": 137.14395984057782,
+          "max": 145.27342383238013
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__qjl-tbq3__dflash-bonsai__short-q",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "qjl-tbq3",
+        "k": "qjl1_256",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "short-q",
+        "maxTokens": 50
+      },
+      "startedAt": "2026-05-10T01:20:52.432Z",
+      "finishedAt": "2026-05-10T01:20:53.271Z",
+      "loadMs": 121.21215800000209,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:52.553Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "qjl1_256",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 72.16267900000094,
+          "totalLatencyMs": 169.83503399999972,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 135.42553299103196,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 99.29032999999981,
+          "totalLatencyMs": 196.8822480000017,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 116.82109602893095,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 79.49304199999824,
+          "totalLatencyMs": 178.25863599999866,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 129.02600690830022,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 73.31836399999884,
+          "totalLatencyMs": 171.06712999999945,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 134.45014246746334,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 178.25863599999866,
+          "p95": 195.0198868000014,
+          "min": 171.06712999999945,
+          "max": 196.8822480000017
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 79.49304199999824,
+          "p95": 97.31060119999965,
+          "min": 73.31836399999884,
+          "max": 99.29032999999981
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 129.02600690830022,
+          "p95": 133.90772891154703,
+          "min": 116.82109602893095,
+          "max": 134.45014246746334
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 23,
+          "p95": 23,
+          "min": 23,
+          "max": 23
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__qjl-tbq3__dflash-bonsai__med-reason",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "qjl-tbq3",
+        "k": "qjl1_256",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "med-reason",
+        "maxTokens": 120
+      },
+      "startedAt": "2026-05-10T01:20:53.271Z",
+      "finishedAt": "2026-05-10T01:20:54.133Z",
+      "loadMs": 121.15516800000114,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:53.392Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "qjl1_256",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 97.14835299999686,
+          "totalLatencyMs": 203.08017800000016,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 128.02825098961642,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 66.4742640000004,
+          "totalLatencyMs": 173.59507100000337,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 149.77383776063257,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 74.43678499999805,
+          "totalLatencyMs": 180.55297599999903,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 144.0020573241625,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 74.50212599999941,
+          "totalLatencyMs": 180.86625999999887,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 143.75262694103455,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 180.55297599999903,
+          "p95": 180.8349315999989,
+          "min": 173.59507100000337,
+          "max": 180.86625999999887
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 74.43678499999805,
+          "p95": 74.49559189999927,
+          "min": 66.4742640000004,
+          "max": 74.50212599999941
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 144.0020573241625,
+          "p95": 149.19665971698555,
+          "min": 143.75262694103455,
+          "max": 149.77383776063257
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__qjl-tbq3__dflash-bonsai__long-gen",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "qjl-tbq3",
+        "k": "qjl1_256",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "long-gen",
+        "maxTokens": 250
+      },
+      "startedAt": "2026-05-10T01:20:54.133Z",
+      "finishedAt": "2026-05-10T01:20:55.012Z",
+      "loadMs": 121.3354410000029,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:54.253Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "qjl1_256",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 67.25095200000214,
+          "totalLatencyMs": 171.25818300000174,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 151.81756307667786,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 86.44284100000004,
+          "totalLatencyMs": 192.59250600000087,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 135.0000606981036,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 86.18858900000123,
+          "totalLatencyMs": 193.8845190000029,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 134.10044357383487,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 91.96002299999964,
+          "totalLatencyMs": 197.7532769999998,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 131.47696156762058,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 193.8845190000029,
+          "p95": 197.36640120000013,
+          "min": 192.59250600000087,
+          "max": 197.7532769999998
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 86.44284100000004,
+          "p95": 91.40830479999967,
+          "min": 86.18858900000123,
+          "max": 91.96002299999964
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 134.10044357383487,
+          "p95": 134.9100989856767,
+          "min": 131.47696156762058,
+          "max": 135.0000606981036
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "llama-3.2-1b__qjl-tbq3__dflash-bonsai__context-heavy",
+      "model": "llama-3.2-1b",
+      "kvCache": {
+        "name": "qjl-tbq3",
+        "k": "qjl1_256",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "context-heavy",
+        "maxTokens": 100
+      },
+      "startedAt": "2026-05-10T01:20:55.012Z",
+      "finishedAt": "2026-05-10T01:20:55.887Z",
+      "loadMs": 121.26582699999926,
+      "loadResult": {
+        "modelId": "llama-3.2-1b",
+        "loadedAt": "2026-05-10T01:20:55.132Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "qjl1_256",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 71.17515999999887,
+          "totalLatencyMs": 176.6035179999999,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 147.22243528580225,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 73.44027799999822,
+          "totalLatencyMs": 180.48567299999922,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 144.0557556055993,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 93.4494990000021,
+          "totalLatencyMs": 199.9661589999996,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 130.0220003725733,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 86.54118599999856,
+          "totalLatencyMs": 194.69161600000007,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 133.54452818348372,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 194.69161600000007,
+          "p95": 199.43870469999968,
+          "min": 180.48567299999922,
+          "max": 199.9661589999996
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 86.54118599999856,
+          "p95": 92.75866770000175,
+          "min": 73.44027799999822,
+          "max": 93.4494990000021
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 133.54452818348372,
+          "p95": 143.00463286338774,
+          "min": 130.0220003725733,
+          "max": 144.0557556055993
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__baseline-fp16__no-dflash__short-q",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "baseline-fp16",
+        "k": "f16",
+        "v": "f16"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "short-q",
+        "maxTokens": 50
+      },
+      "startedAt": "2026-05-10T01:20:55.887Z",
+      "finishedAt": "2026-05-10T01:20:56.950Z",
+      "loadMs": 351.4254949999995,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:20:56.238Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "f16",
+            "v": "f16"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 82.95096199999898,
+          "totalLatencyMs": 180.70586299999923,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 127.27865946441428,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 80.66451600000073,
+          "totalLatencyMs": 178.62833600000158,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 128.75896688641714,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 81.69519099999889,
+          "totalLatencyMs": 179.19728000000032,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 128.3501624578228,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 74.35032899999715,
+          "totalLatencyMs": 171.30680500000017,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 134.2620335485212,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 178.62833600000158,
+          "p95": 179.14038560000046,
+          "min": 171.30680500000017,
+          "max": 179.19728000000032
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 80.66451600000073,
+          "p95": 81.59212349999906,
+          "min": 74.35032899999715,
+          "max": 81.69519099999889
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 128.75896688641714,
+          "p95": 133.71172688231078,
+          "min": 128.3501624578228,
+          "max": 134.2620335485212
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 23,
+          "p95": 23,
+          "min": 23,
+          "max": 23
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__baseline-fp16__no-dflash__med-reason",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "baseline-fp16",
+        "k": "f16",
+        "v": "f16"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "med-reason",
+        "maxTokens": 120
+      },
+      "startedAt": "2026-05-10T01:20:56.950Z",
+      "finishedAt": "2026-05-10T01:20:58.089Z",
+      "loadMs": 351.5240709999998,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:20:57.301Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "f16",
+            "v": "f16"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 100.29213900000104,
+          "totalLatencyMs": 206.86619200000132,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 125.68510953205845,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 95.74614400000064,
+          "totalLatencyMs": 203.86263000000326,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 127.5368614640142,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 74.59332599999834,
+          "totalLatencyMs": 179.66679699999804,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 144.71232544987308,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 87.38760900000125,
+          "totalLatencyMs": 195.08296900000278,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 133.27662652089137,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 195.08296900000278,
+          "p95": 202.9846639000032,
+          "min": 179.66679699999804,
+          "max": 203.86263000000326
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 87.38760900000125,
+          "p95": 94.9102905000007,
+          "min": 74.59332599999834,
+          "max": 95.74614400000064
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 133.27662652089137,
+          "p95": 143.5687555569749,
+          "min": 127.5368614640142,
+          "max": 144.71232544987308
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__baseline-fp16__no-dflash__long-gen",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "baseline-fp16",
+        "k": "f16",
+        "v": "f16"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "long-gen",
+        "maxTokens": 250
+      },
+      "startedAt": "2026-05-10T01:20:58.089Z",
+      "finishedAt": "2026-05-10T01:20:59.193Z",
+      "loadMs": 351.2986659999988,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:20:58.440Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "f16",
+            "v": "f16"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 84.9846209999996,
+          "totalLatencyMs": 191.94376900000134,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 135.45633773607844,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 96.19988699999885,
+          "totalLatencyMs": 202.6277119999977,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 128.31413701202084,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 71.3323390000005,
+          "totalLatencyMs": 176.4371480000009,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 147.36125750570324,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 72.31136300000071,
+          "totalLatencyMs": 179.1690230000022,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 145.11437057955985,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 179.1690230000022,
+          "p95": 200.28184309999816,
+          "min": 176.4371480000009,
+          "max": 202.6277119999977
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 72.31136300000071,
+          "p95": 93.81103459999903,
+          "min": 71.3323390000005,
+          "max": 96.19988699999885
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 145.11437057955985,
+          "p95": 147.1365688130889,
+          "min": 128.31413701202084,
+          "max": 147.36125750570324
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__baseline-fp16__no-dflash__context-heavy",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "baseline-fp16",
+        "k": "f16",
+        "v": "f16"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "context-heavy",
+        "maxTokens": 100
+      },
+      "startedAt": "2026-05-10T01:20:59.193Z",
+      "finishedAt": "2026-05-10T01:21:00.267Z",
+      "loadMs": 351.49704700000075,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:20:59.544Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "f16",
+            "v": "f16"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 64.21766000000207,
+          "totalLatencyMs": 170.05529899999965,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 152.8914426830066,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 80.15375700000004,
+          "totalLatencyMs": 185.4857179999999,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 140.1725172177408,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 62.19898299999841,
+          "totalLatencyMs": 168.1289680000009,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 154.64319033945333,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 90.32060700000147,
+          "totalLatencyMs": 196.28881300000285,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 132.45787980795228,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 185.4857179999999,
+          "p95": 195.20850350000256,
+          "min": 168.1289680000009,
+          "max": 196.28881300000285
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 80.15375700000004,
+          "p95": 89.30392200000132,
+          "min": 62.19898299999841,
+          "max": 90.32060700000147
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 140.1725172177408,
+          "p95": 153.19612302728208,
+          "min": 132.45787980795228,
+          "max": 154.64319033945333
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__baseline-fp16__dflash-bonsai__short-q",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "baseline-fp16",
+        "k": "f16",
+        "v": "f16"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "short-q",
+        "maxTokens": 50
+      },
+      "startedAt": "2026-05-10T01:21:00.267Z",
+      "finishedAt": "2026-05-10T01:21:01.311Z",
+      "loadMs": 351.5162569999993,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:21:00.618Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "f16",
+            "v": "f16"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 78.27827099999922,
+          "totalLatencyMs": 177.71501100000023,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 129.42069367454823,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 83.35317399999985,
+          "totalLatencyMs": 180.4750389999972,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 127.44144634871284,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 67.49756499999785,
+          "totalLatencyMs": 165.37984099999812,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 139.07378227555716,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 69.19554199999766,
+          "totalLatencyMs": 167.3343879999993,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 137.44933288906577,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 167.3343879999993,
+          "p95": 179.16097389999743,
+          "min": 165.37984099999812,
+          "max": 180.4750389999972
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 69.19554199999766,
+          "p95": 81.93741079999963,
+          "min": 67.49756499999785,
+          "max": 83.35317399999985
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 137.44933288906577,
+          "p95": 138.91133733690802,
+          "min": 127.44144634871284,
+          "max": 139.07378227555716
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 23,
+          "p95": 23,
+          "min": 23,
+          "max": 23
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__baseline-fp16__dflash-bonsai__med-reason",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "baseline-fp16",
+        "k": "f16",
+        "v": "f16"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "med-reason",
+        "maxTokens": 120
+      },
+      "startedAt": "2026-05-10T01:21:01.311Z",
+      "finishedAt": "2026-05-10T01:21:02.425Z",
+      "loadMs": 351.2026119999973,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:21:01.662Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "f16",
+            "v": "f16"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 93.09366999999838,
+          "totalLatencyMs": 198.11989499999981,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 131.2336653519831,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 62.23096799999985,
+          "totalLatencyMs": 167.85894199999893,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 154.89195684314612,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 95.40830099999948,
+          "totalLatencyMs": 202.0539899999967,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 128.6784784601404,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 85.51285800000187,
+          "totalLatencyMs": 191.69233199999871,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 135.6340116932803,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 191.69233199999871,
+          "p95": 201.0178241999969,
+          "min": 167.85894199999893,
+          "max": 202.0539899999967
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 85.51285800000187,
+          "p95": 94.41875669999973,
+          "min": 62.23096799999985,
+          "max": 95.40830099999948
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 135.6340116932803,
+          "p95": 152.96616232815953,
+          "min": 128.6784784601404,
+          "max": 154.89195684314612
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__baseline-fp16__dflash-bonsai__long-gen",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "baseline-fp16",
+        "k": "f16",
+        "v": "f16"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "long-gen",
+        "maxTokens": 250
+      },
+      "startedAt": "2026-05-10T01:21:02.425Z",
+      "finishedAt": "2026-05-10T01:21:03.531Z",
+      "loadMs": 352.6363789999996,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:21:02.777Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "f16",
+            "v": "f16"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 93.9373940000005,
+          "totalLatencyMs": 197.3486499999999,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 131.74653082248096,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 85.33155199999965,
+          "totalLatencyMs": 189.70365400000082,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 137.05587347305334,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 67.23558000000048,
+          "totalLatencyMs": 173.38504000000103,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 149.9552671902942,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 84.21301799999856,
+          "totalLatencyMs": 190.7267380000012,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 136.32068724417567,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 189.70365400000082,
+          "p95": 190.62442960000118,
+          "min": 173.38504000000103,
+          "max": 190.7267380000012
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 84.21301799999856,
+          "p95": 85.21969859999955,
+          "min": 67.23558000000048,
+          "max": 85.33155199999965
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 137.05587347305334,
+          "p95": 148.6653278185701,
+          "min": 136.32068724417567,
+          "max": 149.9552671902942
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__baseline-fp16__dflash-bonsai__context-heavy",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "baseline-fp16",
+        "k": "f16",
+        "v": "f16"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "context-heavy",
+        "maxTokens": 100
+      },
+      "startedAt": "2026-05-10T01:21:03.531Z",
+      "finishedAt": "2026-05-10T01:21:04.637Z",
+      "loadMs": 351.4935459999979,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:21:03.882Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "f16",
+            "v": "f16"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 86.43418399999791,
+          "totalLatencyMs": 191.41939499999717,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 135.82740662199032,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 73.17153499999768,
+          "totalLatencyMs": 179.58554599999843,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 144.7777985428751,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 94.34602400000222,
+          "totalLatencyMs": 201.70546900000045,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 128.90081825198277,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 71.43728199999896,
+          "totalLatencyMs": 178.72216299999855,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 145.47720083267015,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 179.58554599999843,
+          "p95": 199.49347670000026,
+          "min": 178.72216299999855,
+          "max": 201.70546900000045
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 73.17153499999768,
+          "p95": 92.22857510000176,
+          "min": 71.43728199999896,
+          "max": 94.34602400000222
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 144.7777985428751,
+          "p95": 145.40726060369064,
+          "min": 128.90081825198277,
+          "max": 145.47720083267015
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__tbq4-tbq3__no-dflash__short-q",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "tbq4-tbq3",
+        "k": "tbq4_0",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "short-q",
+        "maxTokens": 50
+      },
+      "startedAt": "2026-05-10T01:21:04.637Z",
+      "finishedAt": "2026-05-10T01:21:05.724Z",
+      "loadMs": 351.3682460000018,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:21:04.988Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "tbq4_0",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 80.32888200000161,
+          "totalLatencyMs": 178.26037799999904,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 129.0247460375077,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 94.4662759999992,
+          "totalLatencyMs": 190.94840900000054,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 120.4513832843715,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 82.48037599999952,
+          "totalLatencyMs": 180.13496400000076,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 127.68204178284844,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 84.28475499999695,
+          "totalLatencyMs": 184.3294309999983,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 124.77660173540173,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 184.3294309999983,
+          "p95": 190.28651120000032,
+          "min": 180.13496400000076,
+          "max": 190.94840900000054
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 84.28475499999695,
+          "p95": 93.44812389999898,
+          "min": 82.48037599999952,
+          "max": 94.4662759999992
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 124.77660173540173,
+          "p95": 127.39149777810377,
+          "min": 120.4513832843715,
+          "max": 127.68204178284844
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 23,
+          "p95": 23,
+          "min": 23,
+          "max": 23
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__tbq4-tbq3__no-dflash__med-reason",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "tbq4-tbq3",
+        "k": "tbq4_0",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "med-reason",
+        "maxTokens": 120
+      },
+      "startedAt": "2026-05-10T01:21:05.724Z",
+      "finishedAt": "2026-05-10T01:21:06.844Z",
+      "loadMs": 350.3733350000002,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:21:06.074Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "tbq4_0",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 61.357622999999876,
+          "totalLatencyMs": 167.2902780000004,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 155.4184756630026,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 83.17751500000304,
+          "totalLatencyMs": 191.04018500000166,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 136.09702063468885,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 98.39408999999796,
+          "totalLatencyMs": 203.57309899999746,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 127.71825023894893,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 97.42792299999928,
+          "totalLatencyMs": 204.1905689999985,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 127.33203167674306,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 203.57309899999746,
+          "p95": 204.1288219999984,
+          "min": 191.04018500000166,
+          "max": 204.1905689999985
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 97.42792299999928,
+          "p95": 98.29747329999809,
+          "min": 83.17751500000304,
+          "max": 98.39408999999796
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 127.71825023894893,
+          "p95": 135.25914359511484,
+          "min": 127.33203167674306,
+          "max": 136.09702063468885
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__tbq4-tbq3__no-dflash__long-gen",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "tbq4-tbq3",
+        "k": "tbq4_0",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "long-gen",
+        "maxTokens": 250
+      },
+      "startedAt": "2026-05-10T01:21:06.845Z",
+      "finishedAt": "2026-05-10T01:21:07.956Z",
+      "loadMs": 351.5681680000016,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:21:07.196Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "tbq4_0",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 96.30681399999958,
+          "totalLatencyMs": 202.19147899999734,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 128.59097786213007,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 62.40564099999756,
+          "totalLatencyMs": 170.29610599999796,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 152.67524672584298,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 93.19231999999829,
+          "totalLatencyMs": 199.6006329999982,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 130.26010794264485,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 78.72198600000047,
+          "totalLatencyMs": 185.49923099999796,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 140.162306117594,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 185.49923099999796,
+          "p95": 198.19049279999817,
+          "min": 170.29610599999796,
+          "max": 199.6006329999982
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 78.72198600000047,
+          "p95": 91.74528659999851,
+          "min": 62.40564099999756,
+          "max": 93.19231999999829
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 140.162306117594,
+          "p95": 151.4239526650181,
+          "min": 130.26010794264485,
+          "max": 152.67524672584298
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__tbq4-tbq3__no-dflash__context-heavy",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "tbq4-tbq3",
+        "k": "tbq4_0",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "context-heavy",
+        "maxTokens": 100
+      },
+      "startedAt": "2026-05-10T01:21:07.956Z",
+      "finishedAt": "2026-05-10T01:21:09.039Z",
+      "loadMs": 351.4045509999996,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:21:08.307Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "tbq4_0",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 69.07700599999953,
+          "totalLatencyMs": 174.73563199999626,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 148.79621118147531,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 78.13659399999597,
+          "totalLatencyMs": 184.54978899999696,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 140.88339055213132,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 62.27255299999524,
+          "totalLatencyMs": 169.58165199999348,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 153.3184733923986,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 93.52302000000054,
+          "totalLatencyMs": 200.33718599999702,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 129.78119798488328,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 184.54978899999696,
+          "p95": 198.758446299997,
+          "min": 169.58165199999348,
+          "max": 200.33718599999702
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 78.13659399999597,
+          "p95": 91.98437740000008,
+          "min": 62.27255299999524,
+          "max": 93.52302000000054
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 140.88339055213132,
+          "p95": 152.07496510837186,
+          "min": 129.78119798488328,
+          "max": 153.3184733923986
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__tbq4-tbq3__dflash-bonsai__short-q",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "tbq4-tbq3",
+        "k": "tbq4_0",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "short-q",
+        "maxTokens": 50
+      },
+      "startedAt": "2026-05-10T01:21:09.039Z",
+      "finishedAt": "2026-05-10T01:21:10.135Z",
+      "loadMs": 351.2917060000036,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:21:09.389Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "tbq4_0",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 87.07984199999919,
+          "totalLatencyMs": 185.34083100000134,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 124.09569912848742,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 81.58321299999807,
+          "totalLatencyMs": 177.50142600000254,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 129.57642379729202,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 86.41067199999816,
+          "totalLatencyMs": 183.512748000001,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 125.33189247430307,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 100.33895900000061,
+          "totalLatencyMs": 197.07047700000112,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 116.70951605805404,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 183.512748000001,
+          "p95": 195.71470410000111,
+          "min": 177.50142600000254,
+          "max": 197.07047700000112
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 86.41067199999816,
+          "p95": 98.94613030000036,
+          "min": 81.58321299999807,
+          "max": 100.33895900000061
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 125.33189247430307,
+          "p95": 129.15197066499314,
+          "min": 116.70951605805404,
+          "max": 129.57642379729202
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 23,
+          "p95": 23,
+          "min": 23,
+          "max": 23
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__tbq4-tbq3__dflash-bonsai__med-reason",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "tbq4-tbq3",
+        "k": "tbq4_0",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "med-reason",
+        "maxTokens": 120
+      },
+      "startedAt": "2026-05-10T01:21:10.135Z",
+      "finishedAt": "2026-05-10T01:21:11.252Z",
+      "loadMs": 351.2937050000037,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:21:10.486Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "tbq4_0",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 68.28359199999977,
+          "totalLatencyMs": 174.1836919999987,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 149.26770526829912,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 75.45149999999558,
+          "totalLatencyMs": 182.1691939999946,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 142.724460865764,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 93.29189000000042,
+          "totalLatencyMs": 198.8110519999973,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 130.77743786598117,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 100.42063100000087,
+          "totalLatencyMs": 207.92322699999932,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 125.04615465592059,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 198.8110519999973,
+          "p95": 207.01200949999912,
+          "min": 182.1691939999946,
+          "max": 207.92322699999932
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 93.29189000000042,
+          "p95": 99.70775690000083,
+          "min": 75.45149999999558,
+          "max": 100.42063100000087
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 130.77743786598117,
+          "p95": 141.5297585657857,
+          "min": 125.04615465592059,
+          "max": 142.724460865764
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__tbq4-tbq3__dflash-bonsai__long-gen",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "tbq4-tbq3",
+        "k": "tbq4_0",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "long-gen",
+        "maxTokens": 250
+      },
+      "startedAt": "2026-05-10T01:21:11.252Z",
+      "finishedAt": "2026-05-10T01:21:12.397Z",
+      "loadMs": 351.2977200000023,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:21:11.602Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "tbq4_0",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 94.19702400000097,
+          "totalLatencyMs": 199.3942840000018,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 130.39491142082974,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 92.37471000000369,
+          "totalLatencyMs": 197.08307100000093,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 131.92406566467537,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 92.24900300000445,
+          "totalLatencyMs": 196.9452620000011,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 132.01637722058962,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 94.31099499999982,
+          "totalLatencyMs": 199.15554800000245,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 130.55122119921901,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 197.08307100000093,
+          "p95": 198.9483003000023,
+          "min": 196.9452620000011,
+          "max": 199.15554800000245
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 92.37471000000369,
+          "p95": 94.11736650000022,
+          "min": 92.24900300000445,
+          "max": 94.31099499999982
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 131.92406566467537,
+          "p95": 132.00714606499818,
+          "min": 130.55122119921901,
+          "max": 132.01637722058962
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__tbq4-tbq3__dflash-bonsai__context-heavy",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "tbq4-tbq3",
+        "k": "tbq4_0",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "context-heavy",
+        "maxTokens": 100
+      },
+      "startedAt": "2026-05-10T01:21:12.397Z",
+      "finishedAt": "2026-05-10T01:21:13.479Z",
+      "loadMs": 351.1787540000005,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:21:12.748Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "tbq4_0",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 81.35988799999905,
+          "totalLatencyMs": 187.82311800000025,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 138.4281140514341,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 61.37062400000286,
+          "totalLatencyMs": 168.58765799999674,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 154.22244017412297,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 62.49213699999382,
+          "totalLatencyMs": 168.1968979999947,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 154.58073430106197,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 96.38562800000363,
+          "totalLatencyMs": 202.5985190000065,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 128.33262616297392,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 168.58765799999674,
+          "p95": 199.19743290000554,
+          "min": 168.1968979999947,
+          "max": 202.5985190000065
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 62.49213699999382,
+          "p95": 92.99627890000265,
+          "min": 61.37062400000286,
+          "max": 96.38562800000363
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 154.22244017412297,
+          "p95": 154.54490488836808,
+          "min": 128.33262616297392,
+          "max": 154.58073430106197
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__qjl-tbq3__no-dflash__short-q",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "qjl-tbq3",
+        "k": "qjl1_256",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "short-q",
+        "maxTokens": 50
+      },
+      "startedAt": "2026-05-10T01:21:13.479Z",
+      "finishedAt": "2026-05-10T01:21:14.558Z",
+      "loadMs": 351.5521860000008,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:21:13.830Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "qjl1_256",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 84.9987770000007,
+          "totalLatencyMs": 182.90627600000153,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 125.74746204990697,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 91.2869739999951,
+          "totalLatencyMs": 189.4090189999988,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 121.43033167813485,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 88.31388400000287,
+          "totalLatencyMs": 185.65995000000112,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 123.88239897726926,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 69.33323199999722,
+          "totalLatencyMs": 168.13611200000014,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 136.79393276323637,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 185.65995000000112,
+          "p95": 189.03411209999905,
+          "min": 168.13611200000014,
+          "max": 189.4090189999988
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 88.31388400000287,
+          "p95": 90.98966499999587,
+          "min": 69.33323199999722,
+          "max": 91.2869739999951
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 123.88239897726926,
+          "p95": 135.50277938463967,
+          "min": 121.43033167813485,
+          "max": 136.79393276323637
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 23,
+          "p95": 23,
+          "min": 23,
+          "max": 23
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__qjl-tbq3__no-dflash__med-reason",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "qjl-tbq3",
+        "k": "qjl1_256",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "med-reason",
+        "maxTokens": 120
+      },
+      "startedAt": "2026-05-10T01:21:14.558Z",
+      "finishedAt": "2026-05-10T01:21:15.659Z",
+      "loadMs": 351.4969009999986,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:21:14.909Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "qjl1_256",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 91.50304899999901,
+          "totalLatencyMs": 197.0338269999993,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 131.95703700157077,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 73.36087000000407,
+          "totalLatencyMs": 179.060974,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 145.20193551499392,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 91.24685700000555,
+          "totalLatencyMs": 196.19338300000527,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 132.52230835939713,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 68.32722300000023,
+          "totalLatencyMs": 174.57649800000218,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 148.93184533922587,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 179.060974,
+          "p95": 194.48014210000474,
+          "min": 174.57649800000218,
+          "max": 196.19338300000527
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 73.36087000000407,
+          "p95": 89.4582583000054,
+          "min": 68.32722300000023,
+          "max": 91.24685700000555
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 145.20193551499392,
+          "p95": 148.55885435680267,
+          "min": 132.52230835939713,
+          "max": 148.93184533922587
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__qjl-tbq3__no-dflash__long-gen",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "qjl-tbq3",
+        "k": "qjl1_256",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "long-gen",
+        "maxTokens": 250
+      },
+      "startedAt": "2026-05-10T01:21:15.659Z",
+      "finishedAt": "2026-05-10T01:21:16.802Z",
+      "loadMs": 350.5896320000029,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:21:16.009Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "qjl1_256",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 97.87273699999787,
+          "totalLatencyMs": 204.1042430000016,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 127.38588682842716,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 90.35058500000014,
+          "totalLatencyMs": 193.39646700000594,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 134.43885714830148,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 88.16183199999796,
+          "totalLatencyMs": 193.52822799999558,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 134.3473263238921,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 93.37181299999793,
+          "totalLatencyMs": 198.9175069999983,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 130.7074494956355,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 193.52822799999558,
+          "p95": 198.37857909999803,
+          "min": 193.39646700000594,
+          "max": 198.9175069999983
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 90.35058500000014,
+          "p95": 93.06969019999815,
+          "min": 88.16183199999796,
+          "max": 93.37181299999793
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 134.3473263238921,
+          "p95": 134.42970406586053,
+          "min": 130.7074494956355,
+          "max": 134.43885714830148
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__qjl-tbq3__no-dflash__context-heavy",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "qjl-tbq3",
+        "k": "qjl1_256",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "no-dflash",
+        "drafter": null
+      },
+      "prompt": {
+        "id": "context-heavy",
+        "maxTokens": 100
+      },
+      "startedAt": "2026-05-10T01:21:16.802Z",
+      "finishedAt": "2026-05-10T01:21:17.906Z",
+      "loadMs": 351.5317799999975,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:21:17.153Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "qjl1_256",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 69.17855599999893,
+          "totalLatencyMs": 175.04012099999818,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 148.53737446856695,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 94.4144759999981,
+          "totalLatencyMs": 200.3371249999982,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 129.78123750153765,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 74.27368900000147,
+          "totalLatencyMs": 177.7612880000015,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 146.2635666771259,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 94.31412200000341,
+          "totalLatencyMs": 197.82841899999767,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 131.42702212062014,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 197.82841899999767,
+          "p95": 200.08625439999815,
+          "min": 177.7612880000015,
+          "max": 200.3371249999982
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 94.31412200000341,
+          "p95": 94.40444059999864,
+          "min": 74.27368900000147,
+          "max": 94.4144759999981
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 131.42702212062014,
+          "p95": 144.77991222147534,
+          "min": 129.78123750153765,
+          "max": 146.2635666771259
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__qjl-tbq3__dflash-bonsai__short-q",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "qjl-tbq3",
+        "k": "qjl1_256",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "short-q",
+        "maxTokens": 50
+      },
+      "startedAt": "2026-05-10T01:21:17.906Z",
+      "finishedAt": "2026-05-10T01:21:18.968Z",
+      "loadMs": 350.3646260000023,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:21:18.256Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "qjl1_256",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 70.0722209999949,
+          "totalLatencyMs": 167.99711799999932,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 136.90711051364642,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 72.25073300000076,
+          "totalLatencyMs": 171.0846109999984,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 134.4364046863351,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 89.41466600000422,
+          "totalLatencyMs": 187.02439500000037,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 122.97860928784159,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 85.34434799999872,
+          "totalLatencyMs": 183.03423499999917,
+          "estimatedTokens": 23,
+          "tokensPerSecond": 125.65955215973723,
+          "fullText": "[stub reply] echo of 30-char prompt: What is the capital of France?... (30 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 183.03423499999917,
+          "p95": 186.62537900000024,
+          "min": 171.0846109999984,
+          "max": 187.02439500000037
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 85.34434799999872,
+          "p95": 89.00763420000368,
+          "min": 72.25073300000076,
+          "max": 89.41466600000422
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 125.65955215973723,
+          "p95": 133.55871943367532,
+          "min": 122.97860928784159,
+          "max": 134.4364046863351
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 23,
+          "p95": 23,
+          "min": 23,
+          "max": 23
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__qjl-tbq3__dflash-bonsai__med-reason",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "qjl-tbq3",
+        "k": "qjl1_256",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "med-reason",
+        "maxTokens": 120
+      },
+      "startedAt": "2026-05-10T01:21:18.968Z",
+      "finishedAt": "2026-05-10T01:21:20.016Z",
+      "loadMs": 351.41715300000214,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:21:19.319Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "qjl1_256",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 66.94138999999996,
+          "totalLatencyMs": 171.27723900000274,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 151.80067212549812,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 69.19416099999944,
+          "totalLatencyMs": 174.82733899999585,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 148.71815900601575,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 76.1816439999966,
+          "totalLatencyMs": 182.82930399999896,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 142.2091504543503,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 62.15199600000051,
+          "totalLatencyMs": 166.06566200000088,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 156.5645762457495,
+          "fullText": "[stub reply] echo of 47-char prompt: Explain in three sentences why the sky i... (47 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 174.82733899999585,
+          "p95": 182.02910749999864,
+          "min": 166.06566200000088,
+          "max": 182.82930399999896
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 69.19416099999944,
+          "p95": 75.48289569999687,
+          "min": 62.15199600000051,
+          "max": 76.1816439999966
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 148.71815900601575,
+          "p95": 155.7799345217761,
+          "min": 142.2091504543503,
+          "max": 156.5645762457495
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__qjl-tbq3__dflash-bonsai__long-gen",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "qjl-tbq3",
+        "k": "qjl1_256",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "long-gen",
+        "maxTokens": 250
+      },
+      "startedAt": "2026-05-10T01:21:20.016Z",
+      "finishedAt": "2026-05-10T01:21:21.119Z",
+      "loadMs": 351.2725930000015,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:21:20.367Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "qjl1_256",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 90.05438100000174,
+          "totalLatencyMs": 196.93616499999916,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 132.02247540465768,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 63.213402000001224,
+          "totalLatencyMs": 167.45712400000048,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 155.26362437706698,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 86.13783700000204,
+          "totalLatencyMs": 190.95042100000137,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 136.16099856621847,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 88.56837599999562,
+          "totalLatencyMs": 193.9917490000007,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 134.0263188203943,
+          "fullText": "[stub reply] echo of 71-char prompt: Write a 200-word story about a small rob... (71 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 190.95042100000137,
+          "p95": 193.68761620000078,
+          "min": 167.45712400000048,
+          "max": 193.9917490000007
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 86.13783700000204,
+          "p95": 88.32532209999627,
+          "min": 63.213402000001224,
+          "max": 88.56837599999562
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 136.16099856621847,
+          "p95": 153.3533617959821,
+          "min": 134.0263188203943,
+          "max": 155.26362437706698
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    },
+    {
+      "key": "bonsai-8b-1bit__qjl-tbq3__dflash-bonsai__context-heavy",
+      "model": "bonsai-8b-1bit",
+      "kvCache": {
+        "name": "qjl-tbq3",
+        "k": "qjl1_256",
+        "v": "tbq3_0"
+      },
+      "dflash": {
+        "name": "dflash-bonsai",
+        "drafter": "bonsai-8b-dflash-drafter"
+      },
+      "prompt": {
+        "id": "context-heavy",
+        "maxTokens": 100
+      },
+      "startedAt": "2026-05-10T01:21:21.119Z",
+      "finishedAt": "2026-05-10T01:21:22.210Z",
+      "loadMs": 351.2653130000035,
+      "loadResult": {
+        "modelId": "bonsai-8b-1bit",
+        "loadedAt": "2026-05-10T01:21:21.469Z",
+        "status": "ready"
+      },
+      "configGaps": [
+        {
+          "kind": "kv-cache-override-not-supported",
+          "requested": {
+            "k": "qjl1_256",
+            "v": "tbq3_0"
+          },
+          "workaround": "Set ELIZA_LLAMA_CACHE_TYPE_K / ELIZA_LLAMA_CACHE_TYPE_V on the agent process before starting it. Re-run the harness against that agent for the override to apply."
+        },
+        {
+          "kind": "drafter-override-not-supported",
+          "requested": {
+            "drafter": "bonsai-8b-dflash-drafter"
+          },
+          "workaround": "Drafter pairing is read from the catalog entry's runtime.dflash.drafterModelId. Edit the catalog or use a model whose runtime block already references the desired drafter."
+        }
+      ],
+      "warmupIterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 86.95670199999586,
+          "totalLatencyMs": 193.79778299999452,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 134.16046147442634,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "iterations": [
+        {
+          "index": 0,
+          "mode": "stream",
+          "firstTokenLatencyMs": 78.05355099999724,
+          "totalLatencyMs": 183.76340999999957,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 141.48627302899996,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 1,
+          "mode": "stream",
+          "firstTokenLatencyMs": 69.30630499999825,
+          "totalLatencyMs": 176.6726340000023,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 147.16484048117866,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        },
+        {
+          "index": 2,
+          "mode": "stream",
+          "firstTokenLatencyMs": 76.17693399999553,
+          "totalLatencyMs": 183.72290999999677,
+          "estimatedTokens": 26,
+          "tokensPerSecond": 141.51746235676572,
+          "fullText": "[stub reply] echo of 1048-char prompt: PREAMBLE:\nThe Mariana Trench is the deep... (300 synthetic chars)",
+          "done": true,
+          "streamError": null
+        }
+      ],
+      "summary": {
+        "successCount": 3,
+        "errorCount": 0,
+        "totalLatencyMs": {
+          "count": 3,
+          "median": 183.72290999999677,
+          "p95": 183.7593599999993,
+          "min": 176.6726340000023,
+          "max": 183.76340999999957
+        },
+        "firstTokenLatencyMs": {
+          "count": 3,
+          "median": 76.17693399999553,
+          "p95": 77.86588929999706,
+          "min": 69.30630499999825,
+          "max": 78.05355099999724
+        },
+        "tokensPerSecond": {
+          "count": 3,
+          "median": 141.51746235676572,
+          "p95": 146.60010266873738,
+          "min": 141.48627302899996,
+          "max": 147.16484048117866
+        },
+        "estimatedTokens": {
+          "count": 3,
+          "median": 26,
+          "p95": 26,
+          "min": 26,
+          "max": 26
+        }
+      },
+      "error": null
+    }
+  ]
+}

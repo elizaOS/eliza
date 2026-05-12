@@ -1,0 +1,237 @@
+---
+title: Agents
+description: Create and manage AI agents on elizaOS Cloud.
+---
+
+import { Callout, Tabs } from "@/docs/components";
+
+# Agents
+
+<div className="status-badge status-stable">Stable</div>
+
+Create, configure, and manage your AI agents (characters).
+
+<Callout type="info">
+  **API Key Support:** All agent management endpoints support API key authentication. This enables:
+  - **Developers** to manage agents programmatically from scripts and CI/CD pipelines
+  - **AI Agents** to create and manage other agents autonomously
+  - **Integration** with external systems that need to provision agents automatically
+</Callout>
+
+## Authentication
+
+All agent endpoints accept authentication via:
+- **Steward session cookie** - for browser-based access
+- **API Key** - via `X-API-Key` header or `Authorization: Bearer` header
+
+```bash
+# Using X-API-Key header (recommended)
+curl "https://elizacloud.ai/api/my-agents/characters" \
+  -H "X-API-Key: YOUR_API_KEY"
+
+# Using Authorization header
+curl "https://elizacloud.ai/api/my-agents/characters" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+## List Agents
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/my-agents/characters</span>
+</div>
+
+Get all your agents with optional filtering and pagination.
+
+### Query Parameters
+
+| Parameter  | Type   | Description                             |
+| ---------- | ------ | --------------------------------------- |
+| `search`   | string | Search by name or bio                   |
+| `category` | string | Filter by category                      |
+| `sortBy`   | string | `newest`, `updated`, or `name`          |
+| `order`    | string | `asc` or `desc`                         |
+| `page`     | number | Page number (default: 1)                |
+| `limit`    | number | Items per page (default: 30, max: 1000) |
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "characters": [
+      {
+        "id": "uuid-abc123",
+        "name": "Customer Support Bot",
+        "bio": ["Expert in customer support"],
+        "avatarUrl": "https://...",
+        "category": "support",
+        "isPublic": false,
+        "createdAt": "2024-01-15T10:30:00Z",
+        "updatedAt": "2024-01-15T10:30:00Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 30,
+      "totalPages": 1,
+      "totalCount": 1,
+      "hasMore": false
+    }
+  }
+}
+```
+
+---
+
+## Create Agent
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/app/agents</span>
+</div>
+
+Create a new agent with a name and optional bio.
+
+### Request
+
+```json
+{
+  "name": "My Assistant",
+  "bio": "A helpful customer support assistant"
+}
+```
+
+### Parameters
+
+| Parameter | Type   | Required | Description                     |
+| --------- | ------ | -------- | ------------------------------- |
+| `name`    | string | ✓        | Agent name (max 100 characters) |
+| `bio`     | string |          | Agent bio/description           |
+
+### Response
+
+```json
+{
+  "success": true,
+  "agent": {
+    "id": "uuid-abc123",
+    "name": "My Assistant",
+    "username": "my-assistant",
+    "bio": ["A helpful customer support assistant"],
+    "created_at": "2024-01-15T10:30:00Z"
+  }
+}
+```
+
+<Callout type="info">
+  Agent creation is rate limited and subject to organization quotas based on
+  credit balance.
+</Callout>
+
+---
+
+## Get Agent
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/my-agents/characters/{"{id}"}</span>
+</div>
+
+Get details about a specific agent.
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "character": {
+      "id": "uuid-abc123",
+      "name": "My Assistant",
+      "bio": ["A helpful assistant"],
+      "avatarUrl": null,
+      "category": null,
+      "isPublic": false,
+      "createdAt": "2024-01-15T10:30:00Z"
+    }
+  }
+}
+```
+
+---
+
+## Delete Agent
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-delete">DELETE</span>
+  <span className="path">/api/my-agents/characters/{"{id}"}</span>
+</div>
+
+Delete an agent you own.
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "message": "Character deleted successfully"
+  }
+}
+```
+
+---
+
+## Clone Agent
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/my-agents/characters/{"{id}"}/clone</span>
+</div>
+
+Create a copy of an existing agent.
+
+---
+
+## Agent Stats
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/my-agents/characters/{"{id}"}/stats</span>
+</div>
+
+Get usage statistics for an agent. The response currently exposes counters
+reported by the API; treat zero values as "no recorded activity" rather than a
+guarantee that deeper analytics are unavailable.
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": {
+    "stats": {
+      "views": 0,
+      "interactions": 0,
+      "messageCount": 0
+    }
+  }
+}
+```
+
+---
+
+## Publish Agent
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/agents/{"{agentId}"}/publish</span>
+</div>
+
+Publish an agent to the marketplace.
+
+<Callout type="info">
+  Published agents can be discovered and used by other users in the marketplace.
+</Callout>

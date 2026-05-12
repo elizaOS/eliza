@@ -1,0 +1,368 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalDependencies": [
+    "package.json",
+    "bun.lock",
+    "bunfig.toml",
+    "turbo.json"
+  ],
+  "tasks": {
+    "build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/agent#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/plugin-agent-skills#build",
+        "@elizaos/plugin-browser#build",
+        "@elizaos/plugin-elizacloud#build",
+        "@elizaos/plugin-pdf#build",
+        "@elizaos/plugin-streaming#build",
+        "@elizaos/capacitor-contacts#build",
+        "@elizaos/capacitor-phone#build",
+        "@elizaos/capacitor-wifi#build"
+      ],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/app-core#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/agent#build",
+        "@elizaos/shared#build",
+        "@elizaos/ui#build"
+      ],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/ui#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/plugin-pdf#build"
+      ],
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos-examples/html-eliza#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-app-capacitor#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-app-electron-workspace#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "bags-claimer#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "elizaos-cloudflare-worker#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-a2a-server#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-app-capacitor-backend#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-autonomous#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-bluesky#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-chat#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-convex#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-discord#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-form#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-lp-manager#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-mcp-server#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-rest-api-elysia#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-rest-api-express#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-rest-api-hono#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-roblox-agent#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-telegram#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-text-adventure#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-tic-tac-toe#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/example-xai-x#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/vercel-edge-examples#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@moltbook/eliza-agent#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "@elizaos/plugin-aosp-local-inference#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": []
+    },
+    "eliza-next-example#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": [".next/**", "!.next/cache/**"]
+    },
+    "@elizaos/example-browser-extension#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/plugin-anthropic#build",
+        "@elizaos/plugin-google-genai#build",
+        "@elizaos/plugin-groq#build",
+        "@elizaos/plugin-inmemorydb#build",
+        "@elizaos/plugin-openai#build"
+      ],
+      "outputs": ["chrome/dist/**", "safari/Chat with Webpage/**"]
+    },
+    "@elizaos/core#build": {
+      "env": ["LOG_LEVEL"],
+      "outputs": ["dist/**"],
+      "inputs": ["src/**", "build.ts", "tsconfig.declarations.json"]
+    },
+    "@elizaos/electrobun#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["build/**"]
+    },
+    "@elizaos/plugin-cli#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-commands#build": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-discord#build": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-elizacloud#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/cloud-sdk#build",
+        "^build"
+      ],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-groq#build": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-imessage#build": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-agent-skills#build": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-app-control#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-browser#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/shared#build",
+        "@elizaos/vault#build",
+        "^build"
+      ],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-edge-tts#build": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-local-ai#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-local-embedding#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-ollama#build": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-openai#build": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-openrouter#build": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-pdf#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-shell#build": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-wallet#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/plugin-sql#build": {
+      "dependsOn": ["@elizaos/core#build", "^build"],
+      "outputs": ["src/dist/**"]
+    },
+    "@elizaos/plugin-whatsapp#build": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/native-activity-tracker#build": {
+      "dependsOn": ["@elizaos/core#build"],
+      "outputs": ["dist/**"]
+    },
+    "@elizaos/scenario-runner#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/agent#build",
+        "@elizaos/shared#build",
+        "@elizaos/vault#build",
+        "@elizaos/app-core#build",
+        "@elizaos/plugin-sql#build",
+        "@elizaos/plugin-telegram#build",
+        "@elizaos/plugin-streaming#build",
+        "@elizaos/plugin-signal#build",
+        "@elizaos/plugin-browser#build",
+        "@elizaos/plugin-elizacloud#build",
+        "@elizaos/ui#build"
+      ],
+      "outputs": ["dist/**"]
+    },
+    "lint": {
+      "outputs": []
+    },
+    "lint:check": {
+      "outputs": []
+    },
+    "typecheck": {
+      "dependsOn": [],
+      "outputs": []
+    },
+    "@elizaos/app#typecheck": {
+      "dependsOn": ["@elizaos/app-lifeops#build"],
+      "outputs": []
+    },
+    "@elizaos/example-telegram#typecheck": {
+      "dependsOn": ["@elizaos/plugin-sql#build"],
+      "outputs": []
+    },
+    "@elizaos/example-farcaster#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/plugin-farcaster#build",
+        "@elizaos/plugin-openai#build",
+        "@elizaos/plugin-sql#build"
+      ],
+      "outputs": []
+    },
+    "@elizaos/example-game-of-life#build": {
+      "dependsOn": ["@elizaos/core#build", "@elizaos/plugin-inmemorydb#build"],
+      "outputs": []
+    },
+    "@elizaos/gcp-examples#build": {
+      "dependsOn": [
+        "@elizaos/core#build",
+        "@elizaos/plugin-openai#build",
+        "@elizaos/plugin-sql#build"
+      ],
+      "outputs": ["dist/**"]
+    },
+    "format": {
+      "outputs": []
+    },
+    "format:check": {
+      "outputs": []
+    },
+    "start": {
+      "dependsOn": ["@elizaos/core#build"],
+      "env": ["LOG_LEVEL"],
+      "persistent": true
+    },
+    "dev": {
+      "dependsOn": ["@elizaos/core#build"],
+      "persistent": true
+    },
+    "test": {
+      "dependsOn": ["^build"],
+      "outputs": ["coverage/**"],
+      "inputs": [
+        "src/**/*.ts",
+        "src/**/*.js",
+        "__tests__/**/*",
+        "*.test.*",
+        "package.json",
+        "tests/**/*"
+      ],
+      "cache": false
+    },
+    "migrate": {
+      "dependsOn": ["@elizaos/core#build"],
+      "cache": false
+    },
+    "migrate:generate": {
+      "dependsOn": ["@elizaos/core#build"],
+      "cache": false
+    },
+    "clean": {
+      "cache": false
+    }
+  }
+}

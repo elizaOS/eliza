@@ -1,0 +1,26 @@
+{
+  "name": "@elizaos-benchmarks/lib",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared TS schemas + helpers for the LifeOpsBench benchmark + prompt-optimization pipeline.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./metrics-schema": "./src/metrics-schema.ts",
+    "./model-tiers": "./src/model-tiers.ts",
+    "./local-llama-cpp": "./src/local-llama-cpp.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "bun run typecheck"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3"
+  }
+}

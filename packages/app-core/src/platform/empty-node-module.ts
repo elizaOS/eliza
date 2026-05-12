@@ -1,0 +1,173 @@
+const noop = () => undefined;
+const asyncNoop = async () => undefined;
+const falseNoop = () => false;
+
+export const pipeline = asyncNoop;
+export const finished = asyncNoop;
+export const ReadableStream = globalThis.ReadableStream;
+export const WritableStream = globalThis.WritableStream;
+export const TransformStream = globalThis.TransformStream;
+
+export const isAnyArrayBuffer = falseNoop;
+export const isArrayBufferView = falseNoop;
+export const isAsyncFunction = falseNoop;
+export const isDate = falseNoop;
+export const isMap = falseNoop;
+export const isNativeError = falseNoop;
+export const isPromise = falseNoop;
+export const isRegExp = falseNoop;
+export const isSet = falseNoop;
+export const isTypedArray = falseNoop;
+
+export default new Proxy(noop, {
+  get: () => noop,
+  apply: () => undefined,
+});
+
+// elizaOS server-only stubs (browser bundle reach-through)
+export const ACCOUNT_CREDENTIAL_PROVIDER_IDS = [];
+export const AGENT_EVENT_ALLOWED_STREAMS = [];
+export const applyCanonicalOnboardingConfig = noop;
+export const applyCloudConfigToEnv = noop;
+export const applyOnboardingCredentialPersistence = noop;
+export const applyPluginRuntimeMutation = noop;
+export const bootElizaRuntime = noop;
+export const buildCharacterFromConfig = noop;
+export const checkForUpdate = noop;
+export const clearCloudSecrets = noop;
+export const clearPersistedOnboardingConfig = noop;
+export const cloneWithoutBlockedObjectKeys = noop;
+export const collectPluginNames = noop;
+export const configureLocalEmbeddingPlugin = noop;
+export const CONFIG_WRITE_ALLOWED_TOP_KEYS = [];
+export const CONNECTOR_ENV_MAP = [];
+export const CORE_PLUGINS = [];
+export const createElizaPlugin = noop;
+export const CUSTOM_PLUGINS_DIRNAME = [];
+export const detectEmbeddingTier = noop;
+export const DIRECT_ACCOUNT_PROVIDER_ENV = [];
+export const DIRECT_ACCOUNT_PROVIDER_IDS = [];
+export const discoverInstalledPlugins = noop;
+export const discoverPluginsFromManifest = noop;
+export const EMBEDDING_PRESETS = [];
+export const ensureApiTokenForBindHost = noop;
+export const ensureCloudTtsApiKeyAlias = noop;
+export const executeTriggerTask = noop;
+export const extractAuthToken = noop;
+export const fetchWithTimeoutGuard = noop;
+export const findPrimaryEnvKey = noop;
+export const formatVaultRef = noop;
+export const getAccessToken = noop;
+export const getCloudSecret = noop;
+export const getLastFailedPluginNames = noop;
+export const handleCloudBillingRoute = noop;
+export const handleCloudCompatRoute = noop;
+export const handleCloudTtsPreviewRoute = noop;
+export const initStewardWalletCache = noop;
+export const injectApiBaseIntoHtml = noop;
+export const InstallPhase = noop;
+export const InstallProgress = noop;
+export const InstallResult = noop;
+export const isAdvancedCapabilityPluginId = noop;
+export const isAllowedHost = noop;
+export const isAuthorized = noop;
+export const isPluginManagerLike = noop;
+export const isSafeResetStateDir = noop;
+export const isSubscriptionProvider = noop;
+export const isVaultRef = noop;
+export const listProviderAccounts = noop;
+export const listTriggerTasks = noop;
+export const loadElizaConfig = noop;
+export const mirrorCompatHeaders = noop;
+export const normalizeCloudSiteUrl = noop;
+export const normalizeWsClientId = noop;
+export const parseVaultRef = noop;
+export const persistConfigEnv = noop;
+export const persistConversationRoomTitle = noop;
+export const ProgressCallback = noop;
+export const readBundledPluginPackageMetadata = noop;
+export const readConfigEnv = noop;
+export const readTriggerConfig = noop;
+export const registerJsRuntimeFactory = noop;
+export const __resetCloudBaseUrlCache = noop;
+export const resolveAdvancedCapabilitiesEnabled = noop;
+export const resolveAppHeroImage = noop;
+export const resolveChannel = noop;
+export const resolveCloudTtsBaseUrl = noop;
+export const resolveConfigPath = noop;
+export const resolveCorsOrigin = noop;
+export const resolveDefaultAgentWorkspaceDir = noop;
+export const resolveElevenLabsApiKeyForCloudMode = noop;
+export const resolveElizaVersion = noop;
+export const resolveMcpServersRejection = noop;
+export const resolveMcpTerminalAuthorizationRejection = noop;
+export const resolvePackageEntry = noop;
+export const resolvePluginConfigMutationRejections = noop;
+export const resolveStateDir = noop;
+export const resolveTerminalRunClientId = noop;
+export const resolveTerminalRunRejection = noop;
+export const resolveUserPath = noop;
+export const resolveWalletExportRejection = noop;
+export const resolveWebSocketUpgradeRejection = noop;
+export const routeAutonomyTextToUser = noop;
+export const saveElizaConfig = noop;
+export const scanDropInPlugins = noop;
+export const shutdownRuntime = noop;
+export const startApiServer = noop;
+export const startEliza = noop;
+export const streamResponseBodyWithByteLimit = noop;
+export const triggersFeatureEnabled = noop;
+export const typeBootElizaRuntimeOptions = noop;
+export const typeConversationMeta = noop;
+export const typeElizaConfig = noop;
+export const typeStartElizaOptions = noop;
+export const UninstallResult = noop;
+export const validateMcpServerConfig = noop;
+
+// ── Extra @elizaos/agent stubs surfaced by plugin dist files ────────
+// Upstream's enumeration only walked app-core/dist; the broader plugin
+// graph (app-companion, app-knowledge, etc.) static-imports additional
+// names. Append rather than edit upstream stubs to keep merge churn
+// minimal.
+export type AccountCredentialRecord = unknown;
+export type BootElizaRuntimeOptions = unknown;
+export type CloudProxyConfigLike = unknown;
+export type ConversationMeta = unknown;
+export type DatabaseSync = unknown;
+export type DocumentAddedByRole = unknown;
+export type DocumentAddedFrom = unknown;
+export type DocumentSearchMode = unknown;
+export type DocumentVisibilityScope = unknown;
+export type DocumentsLoadFailReason = unknown;
+export type DocumentsServiceLike = unknown;
+export type DocumentsServiceResult = unknown;
+export type DropService = unknown;
+export type ElizaConfig = unknown;
+export type PluginModuleShape = unknown;
+export type RegistryService = unknown;
+export type ReleaseChannel = unknown;
+export type StartElizaOptions = unknown;
+export type Trajectory = unknown;
+export type TxService = unknown;
+
+export const computeNextCronRunAtMs = (): number => 0;
+export const createIntegrationTelemetrySpan = noop;
+export const createZipArchive = noop;
+export const extractActionParamsViaLlm = noop;
+export const extractCompatTextContent = (): string => "";
+export const extractPlugin = noop;
+export const gatePluginSessionForHostedApp = <T>(plugin: T): T => plugin;
+export const getAgentEventService = (): null => null;
+export const getDocumentsService = (): null => null;
+export const getDocumentsServiceTimeoutMs = (): number => 0;
+export const getWalletAddresses = (): Record<string, never> =>
+  Object.freeze({});
+export const handleConnectorAccountRoutes = noop;
+export const hasOwnerAccess = (): false => false;
+export const parseCronExpression = noop;
+export const registerEscalationChannel = noop;
+export const renderGroundedActionReply = noop;
+export const resolveOAuthDir = (): string => "";
+export const resolveOwnerEntityId = (): string => "";
+export const runCoordinatorPreflight = noop;
+export const setStewardEvmBridgeActive = noop;

@@ -1,0 +1,29 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist/node",
+    "sourceMap": true,
+    "inlineSources": true,
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "ignoreDeprecations": "6.0",
+    "paths": {
+      "@elizaos/core": ["../../../packages/core/dist"]
+    },
+    "types": ["node", "bun-types"]
+  },
+  "include": ["**/*.ts"],
+  "exclude": [
+    "build.ts",
+    "dist",
+    "node_modules",
+    "src/test-utils/**",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ]
+}

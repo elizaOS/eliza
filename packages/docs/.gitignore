@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# Claude-generated reports and analysis files
+*_report.md
+*_report.json
+*-report.md
+*-report.json
+link_check_report.md
+link_check_results.json
+*analysis*.json
+*summary*.json
+*_analysis*
+*_summary*

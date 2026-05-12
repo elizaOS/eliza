@@ -1,0 +1,124 @@
+---
+title: API Overview
+description: Complete REST API reference for elizaOS Cloud. OpenAI-compatible endpoints for chat, embeddings, and more.
+---
+
+import { Callout, Cards } from "@/docs/components";
+
+# REST API Reference
+
+elizaOS Cloud provides a comprehensive REST API for all platform features.
+
+<div className="status-badge status-stable">Stable</div>
+
+<Callout type="info">
+  Looking for a full, route-by-route explorer? Go to [API Explorer
+  →](/docs/api/overview)
+</Callout>
+
+## Base URL
+
+```
+https://elizacloud.ai/api/v1
+```
+
+## Authentication
+
+All API requests require authentication via API key or session token:
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/dashboard" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+<Callout type="info">
+  Get your API key from [Dashboard → API Keys](/dashboard/api-keys)
+</Callout>
+
+### Authentication Methods
+
+| Method    | Header                         | Use Case             |
+| --------- | ------------------------------ | -------------------- |
+| API Key   | `Authorization: Bearer eliza_xxx` | Server-to-server     |
+| X-API-Key | `X-API-Key: eliza_xxx`            | Alternative header   |
+| Session   | Cookie-based                   | Browser applications |
+
+## API Categories
+
+<Cards>
+  <Cards.Card title="Chat Completions" href="/docs/api/chat">
+    OpenAI-compatible chat API with streaming support
+  </Cards.Card>
+  <Cards.Card title="Messages" href="/docs/api/messages">
+    Anthropic-compatible messages API for Claude Code and SDK clients
+  </Cards.Card>
+  <Cards.Card title="Embeddings" href="/docs/api/embeddings">
+    Generate vector embeddings for text
+  </Cards.Card>
+  <Cards.Card title="Image Generation" href="/docs/api/images">
+    Create images from text prompts
+  </Cards.Card>
+  <Cards.Card title="Video Generation" href="/docs/api/video">
+    Generate videos from prompts
+  </Cards.Card>
+  <Cards.Card title="Agents" href="/docs/api/agents">
+    Manage AI agents and characters
+  </Cards.Card>
+  <Cards.Card title="Knowledge" href="/docs/api/documents">
+    Upload and query documents
+  </Cards.Card>
+  <Cards.Card title="Apps" href="/docs/api/apps">
+    Create and manage applications
+  </Cards.Card>
+  <Cards.Card title="Containers" href="/docs/api/containers">
+    Deploy and monitor containers
+  </Cards.Card>
+</Cards>
+
+## Error Handling
+
+All errors follow a consistent format:
+
+```json
+{
+  "error": {
+    "code": "INVALID_REQUEST",
+    "message": "The request body is invalid",
+    "details": "Field 'model' is required"
+  }
+}
+```
+
+### Error Codes
+
+| Code                   | HTTP Status | Description                       |
+| ---------------------- | ----------- | --------------------------------- |
+| `UNAUTHORIZED`         | 401         | Invalid or missing authentication |
+| `FORBIDDEN`            | 403         | Insufficient permissions          |
+| `NOT_FOUND`            | 404         | Resource not found                |
+| `RATE_LIMITED`         | 429         | Too many requests                 |
+| `INSUFFICIENT_CREDITS` | 402         | Not enough credits                |
+| `INTERNAL_ERROR`       | 500         | Server error                      |
+
+## Rate Limits
+
+| Endpoint         | Rate Limit  |
+| ---------------- | ----------- |
+| Chat completions | 60 req/min  |
+| Embeddings       | 100 req/min |
+| Image generation | 20 req/min  |
+| Video generation | 5 req/min   |
+
+<Callout type="info">
+  Rate limits can be increased for enterprise plans. Contact sales for details.
+</Callout>
+
+## OpenAPI Specification
+
+The full OpenAPI specification is available at:
+
+```
+https://elizacloud.ai/api/openapi.json
+```
+
+You can use this with tools like Swagger UI, Postman, or to generate client SDKs.

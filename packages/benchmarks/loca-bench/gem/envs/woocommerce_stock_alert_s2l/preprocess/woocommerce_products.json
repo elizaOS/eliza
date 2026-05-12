@@ -1,0 +1,567 @@
+{
+  "products": [
+    {
+      "id": 1,
+      "sku": "HOM-00001",
+      "name": "Fan #1",
+      "category": "Home & Garden",
+      "price": 51.96,
+      "stock_quantity": 26,
+      "stock_threshold": 29,
+      "supplier": {
+        "name": "Fashion Wholesale",
+        "supplier_id": "SUP003",
+        "contact": "orders@fashionwholesale.com"
+      }
+    },
+    {
+      "id": 2,
+      "sku": "SPO-00002",
+      "name": "Workout Gloves #2",
+      "category": "Sports",
+      "price": 29.03,
+      "stock_quantity": 25,
+      "stock_threshold": 42,
+      "supplier": {
+        "name": "FurniturePro Ltd.",
+        "supplier_id": "SUP002",
+        "contact": "sales@furniturepro.com"
+      }
+    },
+    {
+      "id": 3,
+      "sku": "FUR-00003",
+      "name": "Futon #3",
+      "category": "Furniture",
+      "price": 318.74,
+      "stock_quantity": 35,
+      "stock_threshold": 43,
+      "supplier": {
+        "name": "Quality Apparel",
+        "supplier_id": "SUP008",
+        "contact": "orders@qualityapparel.com"
+      }
+    },
+    {
+      "id": 4,
+      "sku": "HOM-00004",
+      "name": "Rug #4",
+      "category": "Home & Garden",
+      "price": 144.27,
+      "stock_quantity": 15,
+      "stock_threshold": 34,
+      "supplier": {
+        "name": "Quality Apparel",
+        "supplier_id": "SUP008",
+        "contact": "orders@qualityapparel.com"
+      }
+    },
+    {
+      "id": 5,
+      "sku": "HOM-00005",
+      "name": "Lamp #5",
+      "category": "Home & Garden",
+      "price": 68.2,
+      "stock_quantity": 7,
+      "stock_threshold": 24,
+      "supplier": {
+        "name": "Quality Apparel",
+        "supplier_id": "SUP008",
+        "contact": "orders@qualityapparel.com"
+      }
+    },
+    {
+      "id": 6,
+      "sku": "CLO-00006",
+      "name": "Slippers #6",
+      "category": "Clothing",
+      "price": 48.41,
+      "stock_quantity": 8,
+      "stock_threshold": 26,
+      "supplier": {
+        "name": "Fashion Wholesale",
+        "supplier_id": "SUP003",
+        "contact": "orders@fashionwholesale.com"
+      }
+    },
+    {
+      "id": 7,
+      "sku": "HOM-00007",
+      "name": "Storage Bin #7",
+      "category": "Home & Garden",
+      "price": 26.2,
+      "stock_quantity": 22,
+      "stock_threshold": 30,
+      "supplier": {
+        "name": "Fashion Wholesale",
+        "supplier_id": "SUP003",
+        "contact": "orders@fashionwholesale.com"
+      }
+    },
+    {
+      "id": 8,
+      "sku": "HOM-00008",
+      "name": "Blanket #8",
+      "category": "Home & Garden",
+      "price": 55.86,
+      "stock_quantity": 11,
+      "stock_threshold": 48,
+      "supplier": {
+        "name": "Sports Gear Co.",
+        "supplier_id": "SUP005",
+        "contact": "info@sportsgear.com"
+      }
+    },
+    {
+      "id": 9,
+      "sku": "SPO-00009",
+      "name": "Exercise Bike #9",
+      "category": "Sports",
+      "price": 638.6,
+      "stock_quantity": 14,
+      "stock_threshold": 29,
+      "supplier": {
+        "name": "Fashion Wholesale",
+        "supplier_id": "SUP003",
+        "contact": "orders@fashionwholesale.com"
+      }
+    },
+    {
+      "id": 10,
+      "sku": "FUR-00010",
+      "name": "Recliner #10",
+      "category": "Furniture",
+      "price": 254.24,
+      "stock_quantity": 1,
+      "stock_threshold": 43,
+      "supplier": {
+        "name": "TechSupply Co.",
+        "supplier_id": "SUP001",
+        "contact": "tech@techsupply.com"
+      }
+    },
+    {
+      "id": 11,
+      "sku": "SPO-00011",
+      "name": "Sports Watch #11",
+      "category": "Sports",
+      "price": 91.16,
+      "stock_quantity": 21,
+      "stock_threshold": 25,
+      "supplier": {
+        "name": "HomeGoods Inc.",
+        "supplier_id": "SUP004",
+        "contact": "contact@homegoods.com"
+      }
+    },
+    {
+      "id": 12,
+      "sku": "ELE-00012",
+      "name": "External Hard Drive #12",
+      "category": "Electronics",
+      "price": 120.69,
+      "stock_quantity": 20,
+      "stock_threshold": 23,
+      "supplier": {
+        "name": "FurniturePro Ltd.",
+        "supplier_id": "SUP002",
+        "contact": "sales@furniturepro.com"
+      }
+    },
+    {
+      "id": 13,
+      "sku": "CLO-00013",
+      "name": "Sneakers #13",
+      "category": "Clothing",
+      "price": 115.33,
+      "stock_quantity": 14,
+      "stock_threshold": 32,
+      "supplier": {
+        "name": "Sports Gear Co.",
+        "supplier_id": "SUP005",
+        "contact": "info@sportsgear.com"
+      }
+    },
+    {
+      "id": 14,
+      "sku": "CLO-00014",
+      "name": "Dress #14",
+      "category": "Clothing",
+      "price": 58.74,
+      "stock_quantity": 1,
+      "stock_threshold": 22,
+      "supplier": {
+        "name": "FurniturePro Ltd.",
+        "supplier_id": "SUP002",
+        "contact": "sales@furniturepro.com"
+      }
+    },
+    {
+      "id": 15,
+      "sku": "FUR-00015",
+      "name": "Table #15",
+      "category": "Furniture",
+      "price": 204.07,
+      "stock_quantity": 25,
+      "stock_threshold": 41,
+      "supplier": {
+        "name": "FurniturePro Ltd.",
+        "supplier_id": "SUP002",
+        "contact": "sales@furniturepro.com"
+      }
+    },
+    {
+      "id": 16,
+      "sku": "ELE-00016",
+      "name": "Router #16",
+      "category": "Electronics",
+      "price": 149.19,
+      "stock_quantity": 1,
+      "stock_threshold": 20,
+      "supplier": {
+        "name": "TechSupply Co.",
+        "supplier_id": "SUP001",
+        "contact": "tech@techsupply.com"
+      }
+    },
+    {
+      "id": 17,
+      "sku": "ELE-00017",
+      "name": "Desk Lamp #17",
+      "category": "Electronics",
+      "price": 34.5,
+      "stock_quantity": 47,
+      "stock_threshold": 26,
+      "supplier": {
+        "name": "Premium Furniture",
+        "supplier_id": "SUP007",
+        "contact": "sales@premiumfurn.com"
+      }
+    },
+    {
+      "id": 18,
+      "sku": "FUR-00018",
+      "name": "Mirror #18",
+      "category": "Furniture",
+      "price": 53.25,
+      "stock_quantity": 59,
+      "stock_threshold": 27,
+      "supplier": {
+        "name": "Quality Apparel",
+        "supplier_id": "SUP008",
+        "contact": "orders@qualityapparel.com"
+      }
+    },
+    {
+      "id": 19,
+      "sku": "CLO-00019",
+      "name": "Coat #19",
+      "category": "Clothing",
+      "price": 161.81,
+      "stock_quantity": 104,
+      "stock_threshold": 12,
+      "supplier": {
+        "name": "HomeGoods Inc.",
+        "supplier_id": "SUP004",
+        "contact": "contact@homegoods.com"
+      }
+    },
+    {
+      "id": 20,
+      "sku": "HOM-00020",
+      "name": "Pillow #20",
+      "category": "Home & Garden",
+      "price": 45.75,
+      "stock_quantity": 104,
+      "stock_threshold": 26,
+      "supplier": {
+        "name": "Sports Gear Co.",
+        "supplier_id": "SUP005",
+        "contact": "info@sportsgear.com"
+      }
+    },
+    {
+      "id": 21,
+      "sku": "HOM-00021",
+      "name": "Food Processor #21",
+      "category": "Home & Garden",
+      "price": 145.27,
+      "stock_quantity": 80,
+      "stock_threshold": 10,
+      "supplier": {
+        "name": "Quality Apparel",
+        "supplier_id": "SUP008",
+        "contact": "orders@qualityapparel.com"
+      }
+    },
+    {
+      "id": 22,
+      "sku": "SPO-00022",
+      "name": "Yoga Block #22",
+      "category": "Sports",
+      "price": 21.84,
+      "stock_quantity": 105,
+      "stock_threshold": 28,
+      "supplier": {
+        "name": "Fashion Wholesale",
+        "supplier_id": "SUP003",
+        "contact": "orders@fashionwholesale.com"
+      }
+    },
+    {
+      "id": 23,
+      "sku": "CLO-00023",
+      "name": "Sunglasses #23",
+      "category": "Clothing",
+      "price": 24.47,
+      "stock_quantity": 71,
+      "stock_threshold": 22,
+      "supplier": {
+        "name": "HomeGoods Inc.",
+        "supplier_id": "SUP004",
+        "contact": "contact@homegoods.com"
+      }
+    },
+    {
+      "id": 24,
+      "sku": "HOM-00024",
+      "name": "Slow Cooker #24",
+      "category": "Home & Garden",
+      "price": 62.83,
+      "stock_quantity": 21,
+      "stock_threshold": 18,
+      "supplier": {
+        "name": "Quality Apparel",
+        "supplier_id": "SUP008",
+        "contact": "orders@qualityapparel.com"
+      }
+    },
+    {
+      "id": 25,
+      "sku": "SPO-00025",
+      "name": "Push-up Bars #25",
+      "category": "Sports",
+      "price": 39.76,
+      "stock_quantity": 55,
+      "stock_threshold": 26,
+      "supplier": {
+        "name": "Fashion Wholesale",
+        "supplier_id": "SUP003",
+        "contact": "orders@fashionwholesale.com"
+      }
+    },
+    {
+      "id": 26,
+      "sku": "HOM-00026",
+      "name": "Trash Can #26",
+      "category": "Home & Garden",
+      "price": 31.04,
+      "stock_quantity": 72,
+      "stock_threshold": 25,
+      "supplier": {
+        "name": "FurniturePro Ltd.",
+        "supplier_id": "SUP002",
+        "contact": "sales@furniturepro.com"
+      }
+    },
+    {
+      "id": 27,
+      "sku": "ELE-00027",
+      "name": "USB Cable #27",
+      "category": "Electronics",
+      "price": 23.27,
+      "stock_quantity": 64,
+      "stock_threshold": 30,
+      "supplier": {
+        "name": "FurniturePro Ltd.",
+        "supplier_id": "SUP002",
+        "contact": "sales@furniturepro.com"
+      }
+    },
+    {
+      "id": 28,
+      "sku": "CLO-00028",
+      "name": "Skirt #28",
+      "category": "Clothing",
+      "price": 27.98,
+      "stock_quantity": 42,
+      "stock_threshold": 30,
+      "supplier": {
+        "name": "Fashion Wholesale",
+        "supplier_id": "SUP003",
+        "contact": "orders@fashionwholesale.com"
+      }
+    },
+    {
+      "id": 29,
+      "sku": "FUR-00029",
+      "name": "Side Table #29",
+      "category": "Furniture",
+      "price": 80.42,
+      "stock_quantity": 64,
+      "stock_threshold": 23,
+      "supplier": {
+        "name": "Quality Apparel",
+        "supplier_id": "SUP008",
+        "contact": "orders@qualityapparel.com"
+      }
+    },
+    {
+      "id": 30,
+      "sku": "SPO-00030",
+      "name": "Sports Watch #30",
+      "category": "Sports",
+      "price": 70.0,
+      "stock_quantity": 46,
+      "stock_threshold": 11,
+      "supplier": {
+        "name": "Fashion Wholesale",
+        "supplier_id": "SUP003",
+        "contact": "orders@fashionwholesale.com"
+      }
+    },
+    {
+      "id": 31,
+      "sku": "HOM-00031",
+      "name": "Refrigerator #31",
+      "category": "Home & Garden",
+      "price": 1343.23,
+      "stock_quantity": 40,
+      "stock_threshold": 11,
+      "supplier": {
+        "name": "TechSupply Co.",
+        "supplier_id": "SUP001",
+        "contact": "tech@techsupply.com"
+      }
+    },
+    {
+      "id": 32,
+      "sku": "HOM-00032",
+      "name": "Air Purifier #32",
+      "category": "Home & Garden",
+      "price": 176.3,
+      "stock_quantity": 48,
+      "stock_threshold": 30,
+      "supplier": {
+        "name": "HomeGoods Inc.",
+        "supplier_id": "SUP004",
+        "contact": "contact@homegoods.com"
+      }
+    },
+    {
+      "id": 33,
+      "sku": "SPO-00033",
+      "name": "Swimming Goggles #33",
+      "category": "Sports",
+      "price": 29.21,
+      "stock_quantity": 96,
+      "stock_threshold": 12,
+      "supplier": {
+        "name": "TechSupply Co.",
+        "supplier_id": "SUP001",
+        "contact": "tech@techsupply.com"
+      }
+    },
+    {
+      "id": 34,
+      "sku": "ELE-00034",
+      "name": "Monitor Arm #34",
+      "category": "Electronics",
+      "price": 94.35,
+      "stock_quantity": 76,
+      "stock_threshold": 15,
+      "supplier": {
+        "name": "TechSupply Co.",
+        "supplier_id": "SUP001",
+        "contact": "tech@techsupply.com"
+      }
+    },
+    {
+      "id": 35,
+      "sku": "HOM-00035",
+      "name": "Rug #35",
+      "category": "Home & Garden",
+      "price": 76.49,
+      "stock_quantity": 112,
+      "stock_threshold": 15,
+      "supplier": {
+        "name": "Premium Furniture",
+        "supplier_id": "SUP007",
+        "contact": "sales@premiumfurn.com"
+      }
+    },
+    {
+      "id": 36,
+      "sku": "ELE-00036",
+      "name": "Router #36",
+      "category": "Electronics",
+      "price": 73.48,
+      "stock_quantity": 101,
+      "stock_threshold": 17,
+      "supplier": {
+        "name": "Quality Apparel",
+        "supplier_id": "SUP008",
+        "contact": "orders@qualityapparel.com"
+      }
+    },
+    {
+      "id": 37,
+      "sku": "CLO-00037",
+      "name": "T-Shirt #37",
+      "category": "Clothing",
+      "price": 25.74,
+      "stock_quantity": 50,
+      "stock_threshold": 29,
+      "supplier": {
+        "name": "Global Electronics",
+        "supplier_id": "SUP006",
+        "contact": "support@globalelec.com"
+      }
+    },
+    {
+      "id": 38,
+      "sku": "HOM-00038",
+      "name": "Electric Kettle #38",
+      "category": "Home & Garden",
+      "price": 61.27,
+      "stock_quantity": 76,
+      "stock_threshold": 14,
+      "supplier": {
+        "name": "Global Electronics",
+        "supplier_id": "SUP006",
+        "contact": "support@globalelec.com"
+      }
+    },
+    {
+      "id": 39,
+      "sku": "FUR-00039",
+      "name": "Storage Chest #39",
+      "category": "Furniture",
+      "price": 124.2,
+      "stock_quantity": 104,
+      "stock_threshold": 10,
+      "supplier": {
+        "name": "Global Electronics",
+        "supplier_id": "SUP006",
+        "contact": "support@globalelec.com"
+      }
+    },
+    {
+      "id": 40,
+      "sku": "SPO-00040",
+      "name": "Helmet #40",
+      "category": "Sports",
+      "price": 68.99,
+      "stock_quantity": 27,
+      "stock_threshold": 22,
+      "supplier": {
+        "name": "Premium Furniture",
+        "supplier_id": "SUP007",
+        "contact": "sales@premiumfurn.com"
+      }
+    }
+  ],
+  "generated_at": "2026-01-29T07:15:08.135323",
+  "total_products": 40,
+  "low_stock_products": 16
+}

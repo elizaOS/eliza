@@ -1,0 +1,2091 @@
+{
+  "generatedAt": "2026-05-09T22:04:30.321Z",
+  "summary": {
+    "packages": 147,
+    "sourceSubpathImports": 14,
+    "sourceSubpathStringReferences": 14,
+    "nonRootExports": 29,
+    "importRewrites": 14,
+    "rootBarrelAdds": 7,
+    "exportMapCollapses": 29,
+    "manual": 5
+  },
+  "imports": [
+    {
+      "file": "packages/app/src/main.tsx",
+      "owner": "@elizaos/app",
+      "packageName": "@elizaos/app-wallet",
+      "specifier": "@elizaos/app-wallet/register",
+      "subpath": "register",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    }
+  ],
+  "stringReferences": [
+    {
+      "file": "packages/app/src/main.tsx",
+      "owner": "@elizaos/app",
+      "packageName": "@elizaos/app-wallet",
+      "specifier": "@elizaos/app-wallet/register",
+      "subpath": "register",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    },
+    {
+      "file": "packages/app-core/src/services/plugin-installer.ts",
+      "owner": "@elizaos/app-core",
+      "packageName": "@elizaos/agent",
+      "specifier": "@elizaos/agent/services/plugin-installer",
+      "subpath": "services/plugin-installer",
+      "asset": false,
+      "selfImport": false
+    }
+  ],
+  "exports": [
+    {
+      "packageName": "@elizaos/agent",
+      "packageJson": "packages/agent/package.json",
+      "key": "./api/*",
+      "target": "./src/api/*.ts",
+      "asset": false,
+      "wildcard": true,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/agent",
+      "packageJson": "packages/agent/package.json",
+      "key": "./services/plugin-installer",
+      "target": "./src/services/plugin-installer.ts",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "packageJson": "packages/app-core/package.json",
+      "key": "./api/auth",
+      "target": "./dist/api/auth.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "packageJson": "packages/app-core/package.json",
+      "key": "./api/automation-node-contributors",
+      "target": "./dist/api/automation-node-contributors.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "packageJson": "packages/app-core/package.json",
+      "key": "./api/client-base",
+      "target": "./dist/api/client-base.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "packageJson": "packages/app-core/package.json",
+      "key": "./api/compat-route-shared",
+      "target": "./dist/api/compat-route-shared.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "packageJson": "packages/app-core/package.json",
+      "key": "./api/response",
+      "target": "./dist/api/response.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "packageJson": "packages/app-core/package.json",
+      "key": "./platform/empty-node-module",
+      "target": "./dist/platform/empty-node-module.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "packageJson": "packages/app-core/package.json",
+      "key": "./runtime/app-route-plugin-registry",
+      "target": "./dist/runtime/app-route-plugin-registry.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "packageJson": "packages/app-core/package.json",
+      "key": "./services/plugin-installer",
+      "target": "./dist/services/plugin-installer.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "packageJson": "packages/app-core/package.json",
+      "key": "./services/steward-sidecar",
+      "target": "./dist/services/steward-sidecar.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "packageJson": "packages/app-core/package.json",
+      "key": "./services/steward-sidecar/helpers",
+      "target": "./dist/services/steward-sidecar/helpers.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "packageJson": "plugins/app-wallet/package.json",
+      "key": "./ui",
+      "target": "./dist/ui.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "packageJson": "plugins/app-wallet/package.json",
+      "key": "./plugin",
+      "target": "./dist/plugin.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "packageJson": "plugins/app-wallet/package.json",
+      "key": "./register",
+      "target": "./dist/register.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "packageJson": "plugins/app-wallet/package.json",
+      "key": "./inventory/ChainIcon",
+      "target": "./dist/inventory/ChainIcon.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "packageJson": "plugins/app-wallet/package.json",
+      "key": "./inventory/TokenLogo",
+      "target": "./dist/inventory/TokenLogo.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "packageJson": "plugins/app-wallet/package.json",
+      "key": "./widgets/wallet-status",
+      "target": "./dist/widgets/wallet-status.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "packageJson": "plugins/app-wallet/package.json",
+      "key": "./wallet-rpc",
+      "target": "./dist/wallet-rpc.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "packageJson": "plugins/app-wallet/package.json",
+      "key": "./state/*",
+      "target": "./dist/state/*.js",
+      "asset": false,
+      "wildcard": true,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "packageJson": "plugins/app-wallet/package.json",
+      "key": "./inventory/*",
+      "target": "./dist/inventory/*.js",
+      "asset": false,
+      "wildcard": true,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "packageJson": "plugins/app-wallet/package.json",
+      "key": "./*",
+      "target": "./dist/*.js",
+      "asset": false,
+      "wildcard": true,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/plugin-browser",
+      "packageJson": "plugins/plugin-browser/package.json",
+      "key": "./contracts",
+      "target": "./dist/contracts.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/plugin-browser",
+      "packageJson": "plugins/plugin-browser/package.json",
+      "key": "./packaging",
+      "target": "./dist/packaging.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/plugin-browser",
+      "packageJson": "plugins/plugin-browser/package.json",
+      "key": "./plugin",
+      "target": "./dist/plugin.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/plugin-browser",
+      "packageJson": "plugins/plugin-browser/package.json",
+      "key": "./schema",
+      "target": "./dist/schema.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/plugin-browser",
+      "packageJson": "plugins/plugin-browser/package.json",
+      "key": "./workspace",
+      "target": "./dist/workspace/index.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/shared",
+      "packageJson": "packages/shared/package.json",
+      "key": "./config/allowed-hosts",
+      "target": "./dist/config/allowed-hosts.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    },
+    {
+      "packageName": "@elizaos/ui",
+      "packageJson": "packages/ui/package.json",
+      "key": "./platform/native-plugin-entrypoints",
+      "target": "./dist/platform/native-plugin-entrypoints.js",
+      "asset": false,
+      "wildcard": false,
+      "platform": false
+    }
+  ],
+  "rootBarrels": [
+    {
+      "packageName": "@clawville/app-clawville",
+      "root": "plugins/app-clawville/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos-plugins/plugin-web-search",
+      "root": "plugins/plugin-web-search/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/agent",
+      "root": "packages/agent/src/index.ts",
+      "nonRootExports": 2,
+      "explicitExports": 1,
+      "wildcardExports": 1,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-2004scape",
+      "root": "plugins/app-2004scape/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-babylon",
+      "root": "plugins/app-babylon/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-companion",
+      "root": "plugins/app-companion/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-contacts",
+      "root": "plugins/app-contacts/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-core",
+      "root": "packages/app-core/src/index.ts",
+      "nonRootExports": 10,
+      "explicitExports": 10,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-defense-of-the-agents",
+      "root": "plugins/app-defense-of-the-agents/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-documents",
+      "root": "plugins/app-documents/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-elizamaker",
+      "root": "plugins/app-elizamaker/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-hyperliquid",
+      "root": "plugins/app-hyperliquid/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-hyperscape",
+      "root": "plugins/app-hyperscape/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-lifeops",
+      "root": "plugins/app-lifeops/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-phone",
+      "root": "plugins/app-phone/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-polymarket",
+      "root": "plugins/app-polymarket/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-scape",
+      "root": "plugins/app-scape/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-screenshare",
+      "root": "plugins/app-screenshare/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-shopify",
+      "root": "plugins/app-shopify/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-steward",
+      "root": "plugins/app-steward/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-task-coordinator",
+      "root": "plugins/app-task-coordinator/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-training",
+      "root": "plugins/app-training/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-trajectory-logger",
+      "root": "plugins/app-trajectory-logger/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-vincent",
+      "root": "plugins/app-vincent/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-wallet",
+      "root": "plugins/app-wallet/src/index.ts",
+      "nonRootExports": 10,
+      "explicitExports": 7,
+      "wildcardExports": 3,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/app-wifi",
+      "root": "plugins/app-wifi/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/billing",
+      "root": "cloud/packages/billing/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/browser-bridge-extension",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/capacitor-agent",
+      "root": "packages/native-plugins/agent/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/capacitor-appblocker",
+      "root": "packages/native-plugins/appblocker/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/capacitor-camera",
+      "root": "packages/native-plugins/camera/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/capacitor-canvas",
+      "root": "packages/native-plugins/canvas/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/capacitor-contacts",
+      "root": "packages/native-plugins/contacts/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/capacitor-desktop",
+      "root": "packages/native-plugins/desktop/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/capacitor-gateway",
+      "root": "packages/native-plugins/gateway/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/capacitor-llama",
+      "root": "packages/native-plugins/llama/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/capacitor-location",
+      "root": "packages/native-plugins/location/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/capacitor-messages",
+      "root": "packages/native-plugins/messages/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/capacitor-mobile-signals",
+      "root": "packages/native-plugins/mobile-signals/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/capacitor-phone",
+      "root": "packages/native-plugins/phone/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/capacitor-screencapture",
+      "root": "packages/native-plugins/screencapture/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/capacitor-swabble",
+      "root": "packages/native-plugins/swabble/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/capacitor-system",
+      "root": "packages/native-plugins/system/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/capacitor-talkmode",
+      "root": "packages/native-plugins/talkmode/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/capacitor-websiteblocker",
+      "root": "packages/native-plugins/websiteblocker/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/capacitor-wifi",
+      "root": "packages/native-plugins/wifi/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/cloud-api",
+      "root": "cloud/apps/api/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/cloud-db",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/cloud-frontend",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/cloud-lib",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/cloud-routing",
+      "root": "packages/cloud-routing/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/cloud-sdk",
+      "root": "cloud/packages/sdk/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/cloud-types",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/cloud-ui",
+      "root": "cloud/packages/ui/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/core",
+      "root": "packages/core/src/index.node.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/distro-android-os",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/docs",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/macosalarm",
+      "root": "packages/native-plugins/macosalarm/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/native-activity-tracker",
+      "root": "packages/native-plugins/activity-tracker/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-agent-orchestrator",
+      "root": "plugins/plugin-agent-orchestrator/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-agent-skills",
+      "root": "plugins/plugin-agent-skills/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-anthropic",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-aosp-local-inference",
+      "root": "plugins/plugin-aosp-local-inference/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-app-control",
+      "root": "plugins/plugin-app-control/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-background-runner",
+      "root": "plugins/plugin-background-runner/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-bluebubbles",
+      "root": "plugins/plugin-bluebubbles/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-bluesky",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-browser",
+      "root": "plugins/plugin-browser/src/index.ts",
+      "nonRootExports": 5,
+      "explicitExports": 5,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-calendly",
+      "root": "plugins/plugin-calendly/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-capacitor-bridge",
+      "root": "plugins/plugin-capacitor-bridge/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-cli",
+      "root": "plugins/plugin-cli/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-codex-cli",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-coding-tools",
+      "root": "plugins/plugin-coding-tools/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-commands",
+      "root": "plugins/plugin-commands/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-computeruse",
+      "root": "plugins/plugin-computeruse/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-discord",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-discord-local",
+      "root": "plugins/plugin-discord-local/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-edge-tts",
+      "root": "plugins/plugin-edge-tts/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-elevenlabs",
+      "root": "plugins/plugin-elevenlabs/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-eliza-classic",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-elizacloud",
+      "root": "plugins/plugin-elizacloud/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-farcaster",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-feishu",
+      "root": "plugins/plugin-feishu/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-form",
+      "root": "plugins/plugin-form/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-github",
+      "root": "plugins/plugin-github/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-google",
+      "root": "plugins/plugin-google/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-google-chat",
+      "root": "plugins/plugin-google-chat/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-google-genai",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-groq",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-health",
+      "root": "plugins/plugin-health/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-imessage",
+      "root": "plugins/plugin-imessage/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-inmemorydb",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-instagram",
+      "root": "plugins/plugin-instagram/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-line",
+      "root": "plugins/plugin-line/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-linear",
+      "root": "plugins/plugin-linear/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-local-ai",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-local-embedding",
+      "root": "plugins/plugin-local-embedding/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-local-inference",
+      "root": "plugins/plugin-local-inference/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-local-storage",
+      "root": "plugins/plugin-local-storage/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-localdb",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-matrix",
+      "root": "plugins/plugin-matrix/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-mcp",
+      "root": "plugins/plugin-mcp/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-minecraft",
+      "root": "plugins/plugin-minecraft/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-music",
+      "root": "plugins/plugin-music/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-mysticism",
+      "root": "plugins/plugin-mysticism/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-ngrok",
+      "root": "plugins/plugin-ngrok/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-nostr",
+      "root": "plugins/plugin-nostr/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-ollama",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-openai",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-openrouter",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-pdf",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-rlm",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-roblox",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-shell",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-shopify",
+      "root": "plugins/plugin-shopify/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-signal",
+      "root": "plugins/plugin-signal/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-slack",
+      "root": "plugins/plugin-slack/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-social-alpha",
+      "root": "plugins/plugin-social-alpha/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-sql",
+      "root": "plugins/plugin-sql/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-streaming",
+      "root": "plugins/plugin-streaming/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-suno",
+      "root": "plugins/plugin-suno/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-tailscale",
+      "root": "plugins/plugin-tailscale/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-tee",
+      "root": "plugins/plugin-tee/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-telegram",
+      "root": "plugins/plugin-telegram/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-todos",
+      "root": "plugins/plugin-todos/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-tunnel",
+      "root": "plugins/plugin-tunnel/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-twitch",
+      "root": "plugins/plugin-twitch/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-video",
+      "root": "plugins/plugin-video/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-vision",
+      "root": "plugins/plugin-vision/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-wallet",
+      "root": "plugins/plugin-wallet/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-wechat",
+      "root": "plugins/plugin-wechat/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-whatsapp",
+      "root": "plugins/plugin-whatsapp/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-workflow",
+      "root": "plugins/plugin-workflow/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-x",
+      "root": "plugins/plugin-x/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-x402",
+      "root": "plugins/plugin-x402/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/plugin-xai",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/prompts",
+      "root": "packages/prompts/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/scenario-runner",
+      "root": "packages/scenario-runner/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/scenario-schema",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/shared",
+      "root": "packages/shared/src/index.ts",
+      "nonRootExports": 1,
+      "explicitExports": 1,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/skills",
+      "root": "packages/skills/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/ui",
+      "root": "packages/ui/src/index.ts",
+      "nonRootExports": 1,
+      "explicitExports": 1,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/vault",
+      "root": "packages/vault/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "@elizaos/workflows",
+      "root": "packages/workflows/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "eliza-app",
+      "root": null,
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    },
+    {
+      "packageName": "elizaos",
+      "root": "packages/elizaos/src/index.ts",
+      "nonRootExports": 0,
+      "explicitExports": 0,
+      "wildcardExports": 0,
+      "assetExports": 0,
+      "platformExports": 0
+    }
+  ],
+  "plan": {
+    "importRewrites": [
+      {
+        "file": "packages/app/src/main.tsx",
+        "from": "@elizaos/app-wallet/register",
+        "to": "@elizaos/app-wallet",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      },
+      {
+        "file": "packages/app-core/src/services/plugin-installer.ts",
+        "from": "@elizaos/agent/services/plugin-installer",
+        "to": "@elizaos/agent",
+        "reason": "source subpath import"
+      }
+    ],
+    "rootBarrelAdds": [
+      {
+        "packageName": "@elizaos/agent",
+        "file": "packages/agent/src/index.ts",
+        "specifier": "./services/plugin-installer",
+        "line": "export * from \"./services/plugin-installer\";",
+        "key": "./services/plugin-installer"
+      },
+      {
+        "packageName": "@elizaos/app-core",
+        "file": "packages/app-core/src/index.ts",
+        "specifier": "./platform/empty-node-module",
+        "line": "export * from \"./platform/empty-node-module\";",
+        "key": "./platform/empty-node-module"
+      },
+      {
+        "packageName": "@elizaos/app-core",
+        "file": "packages/app-core/src/index.ts",
+        "specifier": "./runtime/app-route-plugin-registry",
+        "line": "export * from \"./runtime/app-route-plugin-registry\";",
+        "key": "./runtime/app-route-plugin-registry"
+      },
+      {
+        "packageName": "@elizaos/app-core",
+        "file": "packages/app-core/src/index.ts",
+        "specifier": "./services/plugin-installer",
+        "line": "export * from \"./services/plugin-installer\";",
+        "key": "./services/plugin-installer"
+      },
+      {
+        "packageName": "@elizaos/app-core",
+        "file": "packages/app-core/src/index.ts",
+        "specifier": "./services/steward-sidecar/helpers",
+        "line": "export * from \"./services/steward-sidecar/helpers\";",
+        "key": "./services/steward-sidecar/helpers"
+      },
+      {
+        "packageName": "@elizaos/plugin-browser",
+        "file": "plugins/plugin-browser/src/index.ts",
+        "specifier": "./workspace.js",
+        "line": "export * from \"./workspace.js\";",
+        "key": "./workspace"
+      },
+      {
+        "packageName": "@elizaos/ui",
+        "file": "packages/ui/src/index.ts",
+        "specifier": "./platform/native-plugin-entrypoints",
+        "line": "export * from \"./platform/native-plugin-entrypoints\";",
+        "key": "./platform/native-plugin-entrypoints"
+      }
+    ],
+    "exportMapCollapses": [
+      {
+        "packageName": "@elizaos/agent",
+        "packageJson": "packages/agent/package.json",
+        "remove": [
+          "./services/plugin-installer",
+          "./api/*"
+        ]
+      },
+      {
+        "packageName": "@elizaos/app-core",
+        "packageJson": "packages/app-core/package.json",
+        "remove": [
+          "./api/auth",
+          "./api/automation-node-contributors",
+          "./api/client-base",
+          "./api/compat-route-shared",
+          "./api/response",
+          "./platform/empty-node-module",
+          "./runtime/app-route-plugin-registry",
+          "./services/plugin-installer",
+          "./services/steward-sidecar",
+          "./services/steward-sidecar/helpers"
+        ]
+      },
+      {
+        "packageName": "@elizaos/app-wallet",
+        "packageJson": "plugins/app-wallet/package.json",
+        "remove": [
+          "./ui",
+          "./plugin",
+          "./register",
+          "./inventory/ChainIcon",
+          "./inventory/TokenLogo",
+          "./widgets/wallet-status",
+          "./wallet-rpc",
+          "./state/*",
+          "./inventory/*",
+          "./*"
+        ]
+      },
+      {
+        "packageName": "@elizaos/plugin-browser",
+        "packageJson": "plugins/plugin-browser/package.json",
+        "remove": [
+          "./contracts",
+          "./packaging",
+          "./plugin",
+          "./schema",
+          "./workspace"
+        ]
+      },
+      {
+        "packageName": "@elizaos/shared",
+        "packageJson": "packages/shared/package.json",
+        "remove": [
+          "./config/allowed-hosts"
+        ]
+      },
+      {
+        "packageName": "@elizaos/ui",
+        "packageJson": "packages/ui/package.json",
+        "remove": [
+          "./platform/native-plugin-entrypoints"
+        ]
+      }
+    ],
+    "manual": [
+      {
+        "packageName": "@elizaos/agent",
+        "key": "./api/*",
+        "reason": "wildcard export needs a package-level barrel decision"
+      },
+      {
+        "packageName": "@elizaos/app-core",
+        "key": "./api/client-base",
+        "target": "./dist/api/client-base.js",
+        "reason": "could not resolve export target to a source module"
+      },
+      {
+        "packageName": "@elizaos/app-wallet",
+        "key": "./state/*",
+        "reason": "wildcard export needs a package-level barrel decision"
+      },
+      {
+        "packageName": "@elizaos/app-wallet",
+        "key": "./inventory/*",
+        "reason": "wildcard export needs a package-level barrel decision"
+      },
+      {
+        "packageName": "@elizaos/app-wallet",
+        "key": "./*",
+        "reason": "wildcard export needs a package-level barrel decision"
+      }
+    ]
+  }
+}

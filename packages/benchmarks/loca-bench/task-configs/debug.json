@@ -1,0 +1,52 @@
+{
+  "configurations": [
+    {
+      "name": "CanvasListTest-5-courses",
+      "env_class": "gem.envs.canvas_list_test_s2l.canvas_list_test_s2l.CanvasListTestS2LEnv",
+      "env_params": {
+        "seed": 123,
+        "num_courses": 4,
+        "submission_prob": 0.3,
+        "exemption_prob": 0.1,
+        "exemption_meet_prob": 0.5
+      },
+      "mcp_servers": {
+        "canvas": {
+          "enabled": true,
+          "type": "canvas",
+          "params": {
+            "data_dir": "{task_workspace}/local_db/canvas",
+            "login_id": "ryan.brown93@mcp.com",
+            "password": "BryapivvLK7C"
+          }
+        },
+        "python_execute": {
+          "enabled": true,
+          "type": "python_execute",
+          "params": {
+            "workspace_dir": "{agent_workspace}"
+          }
+        },
+        "claim_done": {
+          "enabled": true,
+          "type": "claim_done",
+          "params": {}
+        },
+        "memory": {
+          "enabled": true,
+          "type": "memory",
+          "params": {
+            "memory_file_path": "{agent_workspace}/memory/memory.json"
+          }
+        },
+        "filesystem": {
+          "enabled": true,
+          "type": "filesystem",
+          "params": {
+            "workspace_path": "{agent_workspace}"
+          }
+        }
+      }
+    }
+  ]
+}

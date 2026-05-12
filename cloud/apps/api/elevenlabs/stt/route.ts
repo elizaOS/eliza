@@ -1,0 +1,14 @@
+/**
+ * /api/elevenlabs/stt — alias for POST /api/v1/voice/stt.
+ */
+
+import { Hono } from "hono";
+
+import { forwardSameOriginRequest } from "@/lib/worker/same-origin-forward";
+import type { AppEnv } from "@/types/cloud-worker-env";
+
+const app = new Hono<AppEnv>();
+
+app.post("/", (c) => forwardSameOriginRequest(c, "/api/v1/voice/stt"));
+
+export default app;

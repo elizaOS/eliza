@@ -1,0 +1,49 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "paths": {
+      "@elizaos/app-core": ["./src/type-stubs/app-core/index.d.ts"],
+      "@elizaos/app-lifeops": ["./src/type-stubs/eliza-apps/lifeops.d.ts"],
+      "@elizaos/core": ["./src/type-stubs/core/index.d.ts"],
+      "@elizaos/shared": ["./src/type-stubs/shared/index.d.ts"],
+      "@elizaos/app-2004scape": [
+        "../../../../../../plugins/app-2004scape/src/index.ts"
+      ],
+      "@elizaos/app-babylon": [
+        "../../../../../../plugins/app-babylon/src/index.ts"
+      ],
+      "@elizaos/app-defense-of-the-agents": [
+        "../../../../../../plugins/app-defense-of-the-agents/src/index.ts"
+      ],
+      "@elizaos/app-hyperscape": [
+        "../../../../../../plugins/app-hyperscape/src/index.ts"
+      ],
+      "@elizaos/app-scape": [
+        "../../../../../../plugins/app-scape/src/index.ts"
+      ],
+      "@elizaos/app-task-coordinator": [
+        "../../../../../../plugins/app-task-coordinator/src/index.ts"
+      ]
+    },
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "experimentalDecorators": true,
+    "useUnknownInCatchVariables": true,
+    "types": ["vite/client"]
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": ["node_modules", "dist", "ios", "android", "electrobun"]
+}

@@ -1,0 +1,23 @@
+{
+  "name": "@elizaos/browser-bridge-extension",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "scripts": {
+    "build": "bun scripts/build.mjs chrome",
+    "build:chrome": "bun scripts/build.mjs chrome",
+    "build:safari-webextension": "bun scripts/build.mjs safari",
+    "package:chrome": "bun scripts/package-chrome.mjs",
+    "package:safari": "bun scripts/package-safari.mjs",
+    "package:stores": "bun scripts/package-store-assets.mjs",
+    "package:release": "bun scripts/package-release.mjs",
+    "test": "bunx vitest run --config ./vitest.extension.config.ts",
+    "test:smoke": "node scripts/extension-smoke.mjs",
+    "test:smoke:safari": "node scripts/extension-smoke-safari.mjs",
+    "test:ci": "bun run test && bun run test:smoke"
+  },
+  "dependencies": {
+    "@elizaos/plugin-browser": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1"
+  },
+  "private": true
+}

@@ -1,0 +1,65 @@
+{
+  "name": "@elizaos/skills",
+  "version": "2.0.0-beta.1",
+  "description": "Bundled skills and skill loading utilities for elizaOS agents",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json",
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "tsc --noCheck -p tsconfig.build.json",
+    "dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
+    "test": "bun test ./test",
+    "prepublishOnly": "bun run clean && bun run build",
+    "lint": "bunx @biomejs/biome check --write ./src",
+    "lint:check": "bunx @biomejs/biome check ./src"
+  },
+  "files": [
+    "dist/**/*",
+    "skills/**/*",
+    "README.md",
+    "dist"
+  ],
+  "keywords": [
+    "elizaos",
+    "skills",
+    "agent",
+    "ai",
+    "llm",
+    "automation"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos/eliza.git",
+    "directory": "packages/skills"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1",
+    "yaml": "^2.8.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "86dadd9916e7db917e2ba0aa84fdecdbdf2d7598"
+}

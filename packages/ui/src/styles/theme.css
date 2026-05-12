@@ -1,0 +1,73 @@
+:root {
+  --bg: #f7f8fa;
+  --bg-accent: #f1f3f5;
+  --bg-elevated: #fcfdfd;
+  --bg-hover: #eceff3;
+  --bg-muted: #f1f3f5;
+  --card: #fcfdfd;
+  --card-foreground: #1e2329;
+  --surface: #fcfdfd;
+  --text: #1e2329;
+  --text-strong: #0b0e11;
+  --txt: var(--text);
+  --muted: #5e6673;
+  --muted-strong: #474d57;
+  --border: #dce1e7;
+  --border-strong: #ced6df;
+  --accent: #f0b90b;
+  --accent-rgb: 240, 185, 11;
+  --accent-foreground: #1a1f26;
+  --accent-subtle: rgba(240, 185, 11, 0.12);
+  --destructive: #f6465d;
+  --destructive-foreground: #ffffff;
+  --destructive-subtle: rgba(246, 70, 93, 0.12);
+  --status-success: #03a66d;
+  --status-success-bg: rgba(3, 166, 109, 0.12);
+  --status-danger: #f6465d;
+  --status-danger-bg: rgba(246, 70, 93, 0.12);
+  --status-warning: #f0b90b;
+  --status-warning-bg: rgba(240, 185, 11, 0.12);
+  --status-info: #3b82f6;
+  --status-info-bg: rgba(59, 130, 246, 0.12);
+  --font-body:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+  --font-display: var(--font-body);
+  --font-chat: var(--font-body);
+  --mono: "Courier New", Courier, monospace;
+  color-scheme: light;
+}
+
+[data-theme="dark"],
+.dark {
+  --bg: #050506;
+  --bg-accent: #0a0a0c;
+  --bg-elevated: #0d0d10;
+  --bg-hover: #141418;
+  --bg-muted: #0a0a0c;
+  --card: #0e0e11;
+  --card-foreground: #eaecef;
+  --surface: #121214;
+  --text: #eaecef;
+  --text-strong: #ffffff;
+  --txt: var(--text);
+  --muted: #8a8a94;
+  --muted-strong: #b9b9c2;
+  --border: #232329;
+  --border-strong: #313136;
+  --accent: #f0b90b;
+  --accent-rgb: 240, 185, 11;
+  --accent-foreground: #1a1f26;
+  --accent-subtle: rgba(240, 185, 11, 0.12);
+  --destructive: #f6465d;
+  --destructive-foreground: #ffffff;
+  --destructive-subtle: rgba(246, 70, 93, 0.12);
+  --status-success: #16a34a;
+  --status-success-bg: rgba(22, 163, 74, 0.12);
+  --status-danger: #f6465d;
+  --status-danger-bg: rgba(246, 70, 93, 0.12);
+  --status-warning: #f0b90b;
+  --status-warning-bg: rgba(240, 185, 11, 0.12);
+  --status-info: #60a5fa;
+  --status-info-bg: rgba(96, 165, 250, 0.12);
+  color-scheme: dark;
+}

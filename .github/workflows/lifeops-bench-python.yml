@@ -1,0 +1,383 @@
+# LifeOpsBench (Python) — unit + smoke + opt-in live runs
+#
+# Wires the Python LifeOpsBench package
+# (`packages/benchmarks/lifeops-bench/`) into CI. Three jobs:
+#
+#   unit-tests   — required. pytest against the in-process bench (no LLM,
+#                  no API keys). Currently 600 pass, 3 skipped (live-gated).
+#   smoke-bench  — required. Runs the CLI against the in-process executor
+#                  with the `wrong` reference oracle on a small set, with
+#                  cost cap and per-scenario timeout, NO API keys. Proves
+#                  the CLI + runner + scorer pipeline works end-to-end.
+#                  (`perfect` is exercised inside `unit-tests` via the
+#                   adapter-conformance + executor-conformance tests, which
+#                   construct PerfectAgent per-scenario the way the CLI
+#                   itself does not yet.)
+#   live-bench   — opt-in via workflow_dispatch + mode=full. Requires
+#                  CEREBRAS_API_KEY + ANTHROPIC_API_KEY; skipped with a
+#                  notice when either is absent. Never required for merge.
+#
+# DO NOT add live-bench to required PR checks. The unit-tests + smoke-bench
+# jobs are the only required gates.
+#
+# Existing TS-side gate (`.github/workflows/lifeops-bench.yml`) is
+# orthogonal and must continue to work — do not touch it.
+
+name: LifeOpsBench (Python)
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "packages/benchmarks/lifeops-bench/**"
+      - "packages/benchmarks/eliza-adapter/eliza_adapter/lifeops_bench.py"
+      - "packages/benchmarks/eliza-adapter/eliza_adapter/client.py"
+      - "packages/app-core/src/benchmark/lifeops-bench-handler.ts"
+      - "packages/app-core/src/benchmark/lifeops-fake-backend.ts"
+      - "plugins/app-lifeops/src/actions/**"
+      - "scripts/lifeops-bench/**"
+      - ".github/workflows/lifeops-bench-python.yml"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run mode: smoke (in-process, no API keys) or full (live LLMs)"
+        required: false
+        type: choice
+        default: "smoke"
+        options:
+          - smoke
+          - full
+      seeds:
+        description: "Seeds per scenario (pass^k)"
+        required: false
+        type: string
+        default: "1"
+      agent:
+        description: "Agent backend for live-bench (only used with mode=full)"
+        required: false
+        type: choice
+        default: "perfect"
+        options:
+          - perfect
+          - wrong
+          - hermes
+          - cerebras-direct
+          - eliza
+      domain:
+        description: "Domain filter (`all` = no filter)"
+        required: false
+        type: string
+        default: "all"
+
+concurrency:
+  group: lifeops-bench-python-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_VERSION: "0.5.18"
+  BENCH_DIR: packages/benchmarks/lifeops-bench
+
+jobs:
+  # ---------------------------------------------------------------------
+  # 1) Unit tests — REQUIRED for merge.
+  # ---------------------------------------------------------------------
+  unit-tests:
+    name: unit-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache uv package cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('packages/benchmarks/lifeops-bench/pyproject.toml') }}
+          restore-keys: |
+            uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-
+
+      - name: Install uv
+        run: |
+          set -e
+          python -m pip install --upgrade pip
+          python -m pip install "uv==${UV_VERSION}"
+          uv --version
+
+      - name: uv sync (lifeops-bench)
+        working-directory: ${{ env.BENCH_DIR }}
+        run: uv sync --extra test --extra anthropic
+
+      - name: Run pytest
+        id: pytest
+        working-directory: ${{ env.BENCH_DIR }}
+        env:
+          # Hermetic — no provider creds available to unit tests.
+          CEREBRAS_API_KEY: ""
+          ANTHROPIC_API_KEY: ""
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -e
+          uv run pytest tests/ -v --tb=short
+
+      - name: Upload pytest cache on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: pytest-cache-${{ github.run_id }}
+          path: |
+            ${{ env.BENCH_DIR }}/.pytest_cache/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # ---------------------------------------------------------------------
+  # 2) Smoke bench — REQUIRED for merge. NO API keys, in-process executor.
+  # ---------------------------------------------------------------------
+  smoke-bench:
+    name: smoke-bench
+    needs: unit-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+          fetch-depth: 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache uv package cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('packages/benchmarks/lifeops-bench/pyproject.toml') }}
+          restore-keys: |
+            uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-
+
+      - name: Install uv
+        run: |
+          set -e
+          python -m pip install --upgrade pip
+          python -m pip install "uv==${UV_VERSION}"
+
+      - name: uv sync (lifeops-bench)
+        working-directory: ${{ env.BENCH_DIR }}
+        run: uv sync --extra test --extra anthropic
+
+      - name: Run smoke bench (in-process, no API keys)
+        id: smoke
+        working-directory: ${{ env.BENCH_DIR }}
+        env:
+          # Hermetic: explicitly clear any inherited keys so the run cannot
+          # accidentally hit a real provider.
+          CEREBRAS_API_KEY: ""
+          ANTHROPIC_API_KEY: ""
+          OPENAI_API_KEY: ""
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -e
+          mkdir -p lifeops_bench_results
+          # The `wrong` reference oracle runs entirely in-process and
+          # exercises the runner / scorer / executor pipeline without any
+          # LLM. PerfectAgent's CLI entry point currently requires a
+          # per-scenario constructor (see __main__._build_agent_fn) and is
+          # covered instead by the conformance test in unit-tests above.
+          uv run python -m eliza_lifeops_bench \
+            --agent wrong \
+            --mode static \
+            --seeds 1 \
+            --concurrency 4 \
+            --max-cost-usd 0.01 \
+            --per-scenario-timeout-s 30 \
+            --output-dir lifeops_bench_results \
+            2>&1 | tee smoke.log
+          ls -la lifeops_bench_results/
+
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lifeops-smoke-${{ github.run_id }}
+          path: |
+            ${{ env.BENCH_DIR }}/lifeops_bench_results/*.json
+            ${{ env.BENCH_DIR }}/lifeops_bench_results/report.md
+            ${{ env.BENCH_DIR }}/smoke.log
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Annotate PR with smoke summary
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v9
+        env:
+          BENCH_DIR: ${{ env.BENCH_DIR }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const dir = path.join(process.env.BENCH_DIR, 'lifeops_bench_results');
+            if (!fs.existsSync(dir)) {
+              core.warning(`results dir not found: ${dir}`);
+              return;
+            }
+            const files = fs.readdirSync(dir)
+              .filter(f => f.startsWith('lifeops_') && f.endsWith('.json'))
+              .map(f => ({ f, mtime: fs.statSync(path.join(dir, f)).mtimeMs }))
+              .sort((a, b) => b.mtime - a.mtime);
+            if (files.length === 0) {
+              core.warning('no lifeops_*.json result files produced');
+              return;
+            }
+            const latest = path.join(dir, files[0].f);
+            const data = JSON.parse(fs.readFileSync(latest, 'utf8'));
+            const fmt = (v, d = 3) =>
+              typeof v === 'number' ? v.toFixed(d) : (v ?? 'n/a');
+            const passAt1 = data.pass_at_1;
+            const passAtK = data.pass_at_k;
+            const agentCost = data.agent_cost_usd;
+            const evalCost = data.eval_cost_usd;
+            const totalCost = data.total_cost_usd;
+            const totalLatency = data.total_latency_ms;
+            const scenarios = Array.isArray(data.scenarios) ? data.scenarios : [];
+            const skipped = scenarios.filter(s =>
+              s && (s.terminated_reason === 'cost_exceeded' || s.terminated_reason === 'timeout')
+            ).length;
+            const lines = [
+              `### LifeOpsBench (Python) — smoke`,
+              ``,
+              `Run ID: \`${{ github.run_id }}\``,
+              `Result file: \`${path.basename(latest)}\``,
+              ``,
+              `| metric | value |`,
+              `| --- | ---: |`,
+              `| pass@1 | ${fmt(passAt1)} |`,
+              `| pass@k | ${fmt(passAtK)} |`,
+              `| agent_cost_usd | $${fmt(agentCost, 4)} |`,
+              `| eval_cost_usd | $${fmt(evalCost, 4)} |`,
+              `| total_cost_usd | $${fmt(totalCost, 4)} |`,
+              `| total_latency_ms | ${fmt(totalLatency, 0)} |`,
+              `| scenarios_run | ${scenarios.length} |`,
+              `| scenarios_skipped (cost / timeout) | ${skipped} |`,
+              ``,
+              `Full artifacts: \`lifeops-smoke-${{ github.run_id }}\` upload on this run.`,
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: lines,
+            });
+
+  # ---------------------------------------------------------------------
+  # 3) Live bench — opt-in via workflow_dispatch + mode=full. NEVER
+  #    required for merge. Skipped (not failed) when secrets are missing.
+  # ---------------------------------------------------------------------
+  live-bench:
+    name: live-bench
+    needs: unit-tests
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'full'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check live-bench secrets
+        id: gate
+        env:
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "${CEREBRAS_API_KEY:-}" ] || [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+            echo "::notice::LifeOpsBench live-bench skipped — CEREBRAS_API_KEY and/or ANTHROPIC_API_KEY are not configured."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+          fetch-depth: 1
+
+      - name: Setup Python
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache uv package cache
+        if: steps.gate.outputs.skip != 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('packages/benchmarks/lifeops-bench/pyproject.toml') }}
+          restore-keys: |
+            uv-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-
+
+      - name: Install uv
+        if: steps.gate.outputs.skip != 'true'
+        run: |
+          set -e
+          python -m pip install --upgrade pip
+          python -m pip install "uv==${UV_VERSION}"
+
+      - name: uv sync (lifeops-bench)
+        if: steps.gate.outputs.skip != 'true'
+        working-directory: ${{ env.BENCH_DIR }}
+        run: uv sync --extra test --extra anthropic
+
+      - name: Run live bench
+        if: steps.gate.outputs.skip != 'true'
+        id: live
+        working-directory: ${{ env.BENCH_DIR }}
+        env:
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PYTHONUNBUFFERED: "1"
+        run: |
+          set -e
+          mkdir -p lifeops_bench_results
+          AGENT="${{ inputs.agent || 'perfect' }}"
+          DOMAIN="${{ inputs.domain || 'all' }}"
+          SEEDS="${{ inputs.seeds || '1' }}"
+          DOMAIN_FLAG=()
+          if [ -n "$DOMAIN" ] && [ "$DOMAIN" != "all" ]; then
+            DOMAIN_FLAG=(--domain "$DOMAIN")
+          fi
+          uv run python -m eliza_lifeops_bench \
+            --agent "$AGENT" \
+            --seeds "$SEEDS" \
+            --concurrency 4 \
+            --max-cost-usd 25.00 \
+            --per-scenario-timeout-s 300 \
+            --output-dir lifeops_bench_results \
+            "${DOMAIN_FLAG[@]}" \
+            2>&1 | tee live.log
+
+      - name: Upload live artifacts
+        if: always() && steps.gate.outputs.skip != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: lifeops-live-${{ github.run_id }}
+          path: |
+            ${{ env.BENCH_DIR }}/lifeops_bench_results/*.json
+            ${{ env.BENCH_DIR }}/lifeops_bench_results/report.md
+            ${{ env.BENCH_DIR }}/live.log
+          if-no-files-found: warn
+          retention-days: 90

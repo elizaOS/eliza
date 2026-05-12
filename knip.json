@@ -1,0 +1,156 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "github-actions": false,
+  "vite": false,
+  "vitest": false,
+  "rules": {
+    "duplicates": "off"
+  },
+  "ignore": [
+    ".github/**",
+    "**/dist/**",
+    "**/coverage/**",
+    "**/storybook-static/**",
+    "**/.turbo/**"
+  ],
+  "ignoreBinaries": [
+    "biome",
+    "capacitor",
+    "playwright",
+    "rm",
+    "tsc",
+    "tsup",
+    "tsx",
+    "vite",
+    "vitest"
+  ],
+  "ignoreDependencies": ["vitest", "vitest/config"],
+  "ignoreWorkspaces": ["."],
+  "workspaces": {
+    "packages/app": {
+      "entry": [
+        "src/**/*.{ts,tsx}",
+        "app.config.ts",
+        "capacitor.config.ts",
+        "vite.config.ts",
+        "vite-dev-origin.ts",
+        "vitest.config.ts",
+        "vitest.e2e.config.ts",
+        "playwright.*.config.ts",
+        "scripts/**/*.{mjs,ts}",
+        "vite/**/*.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,tsx}",
+        "scripts/**/*.{mjs,ts}",
+        "vite/**/*.ts",
+        "*.ts"
+      ],
+      "ignore": ["dist/**", "ios/**", "android/**"],
+      "ignoreDependencies": [
+        "@capacitor/barcode-scanner",
+        "@capacitor/browser",
+        "@capacitor/haptics",
+        "@capacitor/push-notifications",
+        "@clawville/app-clawville",
+        "@elizaos/app-.*",
+        "@elizaos/capacitor-.*",
+        "@elizaos/plugin-.*",
+        "@elizaos/shared",
+        "@elizaos/ui",
+        "@pixiv/three-vrm",
+        "llama-cpp-capacitor",
+        "pathe",
+        "tailwindcss",
+        "three",
+        "ws"
+      ],
+      "ignoreUnresolved": ["tsx"]
+    },
+    "packages/app-core": {
+      "entry": [
+        "src/**/*.{ts,tsx}",
+        "scripts/**/*.{mjs,ts}",
+        "test/**/*.{ts,tsx}",
+        "platforms/**/*.{ts,tsx}",
+        "packaging/**/*.{mjs,ts}",
+        "vitest.config.ts",
+        "vitest.e2e.config.ts",
+        "playwright.config.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,tsx}",
+        "scripts/**/*.{mjs,ts}",
+        "test/**/*.{ts,tsx}",
+        "platforms/**/*.{ts,tsx}",
+        "packaging/**/*.{mjs,ts}",
+        "*.ts"
+      ],
+      "ignore": [
+        "dist/**",
+        "test/contracts/**",
+        "platforms/**/build/**",
+        "platforms/**/artifacts/**"
+      ]
+    },
+    "packages/core": {
+      "entry": ["src/**/*.ts", "!src/**/*.d.ts", "build.ts"],
+      "project": ["src/**/*.ts", "!src/**/*.d.ts", "build.ts"],
+      "ignoreDependencies": [
+        "@ai-sdk/anthropic",
+        "@ai-sdk/google",
+        "@ai-sdk/openai",
+        "@elizaos/prompts",
+        "@openrouter/ai-sdk-provider"
+      ],
+      "ignoreUnresolved": [
+        "./Action",
+        "./Memory",
+        "./Provider",
+        "./Runtime",
+        "./State"
+      ],
+      "ignore": [
+        "e2e/**",
+        "test/**",
+        "src/testing/**",
+        "src/__tests__/**",
+        "src/index.browser.ts",
+        "src/streaming-context.browser.ts",
+        "src/index.edge.ts",
+        "src/features/working-memory/attachmentContext.ts",
+        "src/features/working-memory/readAttachmentAction.ts",
+        "src/features/working-memory/taskClipboardPersistence.ts",
+        "src/features/working-memory/taskClipboardService.ts",
+        "src/runtime/cache-observation.ts",
+        "src/runtime/cache-observer.ts",
+        "src/runtime/context-diff.ts",
+        "src/services/triggerScheduling.ts",
+        "src/services/triggerWorker.ts",
+        "src/**/*.d.ts",
+        "src/**/*.d.ts.map"
+      ]
+    },
+    "plugins/plugin-tailscale": {
+      "entry": ["src/index.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "packages/ui": {
+      "entry": ["src/**/*.{ts,tsx}", "vitest.config.ts"],
+      "project": ["src/**/*.{ts,tsx}", "vitest.config.ts"],
+      "ignoreDependencies": [
+        "@elizaos/core",
+        "@elizaos/plugin-browser",
+        "@elizaos/shared",
+        "jsdom",
+        "node-llama-cpp",
+        "three",
+        "vite",
+        "vite/client",
+        "ws",
+        "zod"
+      ],
+      "ignore": ["dist/**", "storybook-static/**"]
+    }
+  }
+}

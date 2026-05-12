@@ -1,0 +1,21 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
+	"root": false,
+	"files": {
+		"ignoreUnknown": true,
+		"includes": [
+			"**",
+			"!**/__tests__/e2e/benchmarks/data_processed",
+			"!**/dist",
+			"!**/node_modules",
+			"!src/frontend/index.css"
+		]
+	},
+	"linter": {
+		"rules": {
+			"correctness": {
+				"useHookAtTopLevel": "off"
+			}
+		}
+	}
+}

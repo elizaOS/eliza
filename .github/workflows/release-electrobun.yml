@@ -1,0 +1,1711 @@
+# Build & Release — Electrobun desktop app (signed/notarized on macOS, CEF on Windows/Linux)
+# Produces installer artifacts plus platform-prefixed .tar.zst/*-update.json
+# update channel files.
+#
+# Path notes for eliza-native port:
+#   - The Electrobun shell lives at `packages/app-core/platforms/electrobun/`
+#     in eliza (not `packages/app/electrobun/` — that directory only carries a
+#     .gitignore stub). All build artifacts, scripts, and signing helpers live
+#     under that platforms/electrobun/ path.
+#   - Helper scripts that did not exist in upstream eliza (ensure-electrobun-core.mjs,
+#     ensure-legacy-electrobun-compat.mjs, patch-release-check-pack-fallback.mjs)
+#     have been removed; the corresponding caching/preflight steps are dropped
+#     and surfaced as TODOs so the user can port them if needed.
+#
+# Required GitHub Secrets (macOS signing + notarization):
+#   CSC_LINK                     – base64-encoded Developer ID Application .p12
+#   CSC_KEY_PASSWORD             – password for the .p12 certificate
+#   APPLE_ID                     – Apple ID email for notarization
+#   APPLE_APP_SPECIFIC_PASSWORD  – app-specific password from appleid.apple.com
+#   APPLE_TEAM_ID                – 10-char Apple Developer Team ID
+#
+# Configure on elizaOS/eliza repo settings:
+#   WINDOWS_SIGN_CERT_BASE64, WINDOWS_SIGN_CERT_PASSWORD, WINDOWS_SIGN_TIMESTAMP_URL
+#   ANTHROPIC_API_KEY (used by Windows packaged smoke test as the boot AI provider)
+#   ELIZAOS_CLOUD_API_KEY / ELIZACLOUD_API_KEY / ELIZAOS_CLOUD_BASE_URL (optional cloud regression)
+#
+# Optional release-host upload secrets:
+#   RELEASE_UPLOAD_KEY           – SSH private key for releases server
+#   RELEASE_HOST_FINGERPRINT     – pinned SSH host key entry for releases host
+name: Build & Release (Electrobun)
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_call:
+    inputs:
+      tag:
+        description: "Release tag override (e.g. v2.0.0-beta.0)"
+        required: false
+        type: string
+      draft:
+        description: "Create the GitHub release as a draft"
+        required: false
+        type: boolean
+        default: false
+      publish_release:
+        description: "Create the GitHub release and upload updater files"
+        required: false
+        type: boolean
+        default: false
+      platform:
+        description: "Desktop platform matrix to build (all, windows, macos, linux)"
+        required: false
+        type: string
+        default: "all"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v2.0.0-beta.0)"
+        required: false
+        type: string
+      draft:
+        description: "Create as draft release"
+        required: false
+        type: boolean
+        default: true
+      platform:
+        description: "Desktop platform matrix to build"
+        required: false
+        type: choice
+        default: "all"
+        options:
+          - all
+          - windows
+          - macos
+          - linux
+
+concurrency:
+  group: release-electrobun-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  BUN_VERSION: "1.3.13" # 1.3.13 is the verified desktop packaging runtime; 1.3.11 trips Electrobun bundle creation in CI.
+
+jobs:
+  prepare:
+    name: Prepare Release
+    if: >-
+      ${{
+        github.event_name != 'push' ||
+        (
+          !contains(github.ref_name, '-')
+        )
+      }}
+    runs-on: ${{ vars.RUNNER_UBUNTU || 'ubuntu-24.04' }}
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      env: ${{ steps.version.outputs.env }}
+      source_sha: ${{ steps.version.outputs.source_sha }}
+      desktop_matrix: ${{ steps.desktop-matrix.outputs.desktop_matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Determine version + env
+        id: version
+        run: |
+          if [[ -n "${{ inputs.tag }}" ]]; then
+            TAG="${{ inputs.tag }}"
+          elif [[ "${{ github.ref_type }}" == "tag" ]]; then
+            TAG="${{ github.ref_name }}"
+          else
+            echo "Manual branch dispatches must provide inputs.tag; refusing to derive a release tag from package.json." >&2
+            exit 1
+          fi
+          VERSION="${TAG#v}"
+          # canary for pre-release tags, stable for everything else
+          if [[ "$VERSION" == *"-"* ]]; then
+            BUILD_ENV="canary"
+          else
+            BUILD_ENV="stable"
+          fi
+          {
+            echo "tag=$TAG"
+            echo "version=$VERSION"
+            echo "env=$BUILD_ENV"
+            echo "source_sha=$GITHUB_SHA"
+          } >> "$GITHUB_OUTPUT"
+          echo "Release: $VERSION (tag: $TAG, env: $BUILD_ENV, sha: $GITHUB_SHA)"
+
+      - name: Select desktop platform matrix
+        id: desktop-matrix
+        env:
+          RELEASE_PLATFORM: ${{ inputs.platform || 'all' }}
+        run: |
+          case "$RELEASE_PLATFORM" in
+            ""|all)
+              printf '%s\n' '{"platform":[{"name":"macOS (Apple Silicon)","os":"macos","runner":"macos-14","artifact-name":"macos-arm64"},{"name":"macOS (Intel)","os":"macos","runner":"macos-15-intel","artifact-name":"macos-x64"},{"name":"Windows","os":"windows","runner":"${{ vars.RUNNER_WINDOWS || 'windows-2025' }}","artifact-name":"windows-x64"},{"name":"Linux","os":"linux","runner":"ubuntu-latest","artifact-name":"linux-x64"}]}' > "$RUNNER_TEMP/desktop-matrix.json"
+              ;;
+            windows)
+              printf '%s\n' '{"platform":[{"name":"Windows","os":"windows","runner":"${{ vars.RUNNER_WINDOWS || 'windows-2025' }}","artifact-name":"windows-x64"}]}' > "$RUNNER_TEMP/desktop-matrix.json"
+              ;;
+            macos)
+              printf '%s\n' '{"platform":[{"name":"macOS (Apple Silicon)","os":"macos","runner":"macos-14","artifact-name":"macos-arm64"},{"name":"macOS (Intel)","os":"macos","runner":"macos-15-intel","artifact-name":"macos-x64"}]}' > "$RUNNER_TEMP/desktop-matrix.json"
+              ;;
+            linux)
+              printf '%s\n' '{"platform":[{"name":"Linux","os":"linux","runner":"ubuntu-latest","artifact-name":"linux-x64"}]}' > "$RUNNER_TEMP/desktop-matrix.json"
+              ;;
+            *)
+              echo "::error::Unsupported desktop release platform: $RELEASE_PLATFORM"
+              exit 1
+              ;;
+          esac
+
+          echo "desktop_matrix=$(tr -d '\n' < "$RUNNER_TEMP/desktop-matrix.json")" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/desktop-matrix.json"
+
+  validate-release:
+    name: Validate Release Inputs
+    if: ${{ inputs.platform != 'windows' }}
+    needs: prepare
+    runs-on: ${{ vars.RUNNER_UBUNTU || 'ubuntu-24.04' }}
+    env:
+      NODE_NO_WARNINGS: "1"
+    defaults:
+      run:
+        shell: bash -euo pipefail {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Setup Bun workspace
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts
+          install-native-deps: "true"
+          run-postinstall: "true"
+
+      # TODO: verify this script exists in eliza or port equivalent.
+      # In eliza this was `bun run test:regression-matrix:release`.
+      - name: Regression matrix contract
+        run: bun run test:regression-matrix:release
+
+      - name: Prepare Whisper model artifact
+        run: |
+          bash packages/app-core/platforms/electrobun/scripts/ensure-whisper-model.sh base.en
+          mkdir -p .artifacts/whisper-model
+          cp "$HOME/.cache/eliza/whisper/ggml-base.en.bin" .artifacts/whisper-model/ggml-base.en.bin
+
+      - name: Upload Whisper model artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: whisper-model-base-en
+          path: .artifacts/whisper-model/ggml-base.en.bin
+          if-no-files-found: error
+
+      - name: Align version with release tag
+        run: |
+          node packages/app-core/scripts/align-electrobun-version.mjs
+          node <<'NODE'
+          const fs = require("node:fs");
+          const version = process.env.RELEASE_VERSION;
+          const packagePath = "packages/app-core/platforms/electrobun/package.json";
+          const configPath = "packages/app-core/platforms/electrobun/electrobun.config.ts";
+          const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+          pkg.version = version;
+          fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + "\n");
+          let config = fs.readFileSync(configPath, "utf8");
+          config = config.replace(/version:\s*"[^"]+"/, `version: "${version}"`);
+          fs.writeFileSync(configPath, config);
+          NODE
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+
+      - name: Ensure avatar assets
+        run: node packages/app-core/scripts/ensure-avatars.mjs
+
+      - name: Build core dist (server bundle)
+        run: |
+          bunx tsdown
+          echo '{"type":"module"}' > dist/package.json
+          node --import tsx scripts/write-build-info.ts
+
+      - name: Run heavy E2E regression suite
+        # TODO: verify this target exists in eliza root package.json.
+        run: bun run test:e2e:heavy
+
+      - name: Probe optional cloud live regression key
+        id: probe-cloud-live-key
+        env:
+          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
+        run: |
+          if [ -n "${ELIZAOS_CLOUD_API_KEY:-}" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No Eliza Cloud API key configured for release validation - skipping optional cloud live regression."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run optional cloud live regression suite
+        if: steps.probe-cloud-live-key.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -o pipefail
+          log_file="$(mktemp)"
+
+          if bun run test:live:cloud 2>&1 | tee "$log_file"; then
+            exit 0
+          fi
+
+          echo "::warning::Optional cloud live regression failed; release validation continues with deterministic build and packaging checks."
+          exit 0
+        env:
+          ELIZA_LIVE_TEST: "1"
+          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
+          ELIZAOS_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
+
+      - name: Restore build metadata after test rebuilds
+        run: node --import tsx scripts/write-build-info.ts
+
+      - name: Release readiness checks
+        env:
+          ELIZA_RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          ELIZA_VALIDATE_CDN: "1"
+        run: bun run release:check
+
+  build-browser-companions:
+    name: Build Agent Browser Bridge companions
+    if: ${{ inputs.platform == '' || inputs.platform == 'all' }}
+    needs: [prepare, validate-release]
+    runs-on: macos-15
+    timeout-minutes: 60
+    outputs:
+      packaged: ${{ steps.package-browser-bridge.outputs.packaged }}
+    defaults:
+      run:
+        shell: bash -euo pipefail {0}
+    env:
+      ELIZA_RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Setup Bun workspace
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts
+          install-native-deps: "false"
+          run-postinstall: "true"
+
+      - name: Package Agent Browser Bridge release bundles
+        id: package-browser-bridge
+        run: |
+          if bun run browser-bridge:package:release; then
+            echo "packaged=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::Agent Browser Bridge packaging failed; desktop release will continue without browser companion bundles."
+            echo "packaged=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload Agent Browser Bridge release artifacts
+        if: steps.package-browser-bridge.outputs.packaged == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: browser-bridge-store-bundles
+          path: |
+            packages/browser-bridge/dist/artifacts/browser-bridge-chrome-v*.zip
+            packages/browser-bridge/dist/artifacts/browser-bridge-safari-v*.zip
+            packages/browser-bridge/dist/artifacts/browser-bridge-safari-project-v*.zip
+            packages/browser-bridge/dist/artifacts/browser-bridge-release-manifest-v*.json
+          if-no-files-found: error
+          retention-days: 30
+
+  build:
+    name: Build ${{ matrix.platform.name }}
+    if: ${{ always() && needs.prepare.result == 'success' && (needs.validate-release.result == 'success' || needs.validate-release.result == 'skipped') }}
+    needs: [prepare, validate-release]
+    runs-on: ${{ matrix.platform.runner }}
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: bash -euo pipefail {0}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.prepare.outputs.desktop_matrix) }}
+
+    steps:
+      - name: Enable Git long paths (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          function Set-GitLongPaths([string]$Scope) {
+            & git config $Scope core.longpaths true
+            if ($LASTEXITCODE -ne 0) {
+              throw "git config $Scope core.longpaths true failed with exit code $LASTEXITCODE"
+            }
+          }
+
+          try {
+            Set-GitLongPaths "--system"
+            Write-Host "Enabled Git long paths in system config."
+          } catch {
+            Write-Warning "System git config failed; falling back to --global. $($_.Exception.Message)"
+            Set-GitLongPaths "--global"
+            Write-Host "Enabled Git long paths in global config."
+          }
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install root dependencies
+        # --ignore-scripts skips native dependency install scripts (e.g. @tensorflow/tfjs-node
+        # which has no pre-built binary for Node 22 on Windows and fails to compile).
+        # Workspace prepare scripts are NOT suppressed by --ignore-scripts in bun.
+        # macOS Intel: keep the x64 invocation explicit in case the runner image
+        # ships with dual-arch shims.
+        run: |
+          if [ "${{ matrix.platform.os }}" = "macos" ] && [ "${{ matrix.platform.artifact-name }}" = "macos-x64" ]; then
+            install_cmd=(arch -x86_64 bun install --ignore-scripts)
+          else
+            install_cmd=(bun install --ignore-scripts)
+          fi
+
+          for attempt in 1 2 3; do
+            if "${install_cmd[@]}"; then
+              exit 0
+            fi
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "bun install failed after ${attempt} attempts" >&2
+              exit 1
+            fi
+
+            echo "bun install failed on attempt ${attempt}; retrying in 15 seconds" >&2
+            sleep 15
+          done
+
+      - name: Run repository postinstall patches
+        run: bun run postinstall
+
+      - name: Cache Whisper models and binaries
+        if: matrix.platform.os == 'macos' || matrix.platform.os == 'linux'
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/eliza/whisper
+            node_modules/whisper-node/lib/whisper.cpp/main
+            node_modules/whisper-node/lib/whisper.cpp/build
+          key: whisper-${{ matrix.platform.artifact-name }}-${{ hashFiles('packages/app-core/platforms/electrobun/scripts/build-whisper.sh', 'packages/app-core/platforms/electrobun/scripts/build-whisper-universal.sh', 'packages/app-core/platforms/electrobun/scripts/ensure-whisper-model.sh') }}
+          restore-keys: whisper-${{ matrix.platform.artifact-name }}-
+
+      - name: Download Whisper model artifact
+        if: matrix.platform.os == 'macos' || matrix.platform.os == 'linux'
+        uses: actions/download-artifact@v8
+        with:
+          name: whisper-model-base-en
+          path: .artifacts/whisper-model
+
+      - name: Seed Whisper model cache
+        if: matrix.platform.os == 'macos' || matrix.platform.os == 'linux'
+        run: |
+          mkdir -p "$HOME/.cache/eliza/whisper"
+          cp .artifacts/whisper-model/ggml-base.en.bin "$HOME/.cache/eliza/whisper/ggml-base.en.bin"
+
+      - name: Align version with release tag
+        run: |
+          node packages/app-core/scripts/align-electrobun-version.mjs
+          node <<'NODE'
+          const fs = require("node:fs");
+          const version = process.env.RELEASE_VERSION;
+          const packagePath = "packages/app-core/platforms/electrobun/package.json";
+          const configPath = "packages/app-core/platforms/electrobun/electrobun.config.ts";
+          const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+          pkg.version = version;
+          fs.writeFileSync(packagePath, JSON.stringify(pkg, null, 2) + "\n");
+          let config = fs.readFileSync(configPath, "utf8");
+          config = config.replace(/version:\s*"[^"]+"/, `version: "${version}"`);
+          fs.writeFileSync(configPath, config);
+          NODE
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+
+      - name: Generate i18n keyword data
+        run: |
+          node packages/shared/scripts/generate-keywords.mjs --target ts
+          test -f packages/shared/src/i18n/generated/validation-keyword-data.js
+
+      - name: Stage desktop bundle inputs
+        run: |
+          if [ "${{ matrix.platform.os }}" = "macos" ] && [ "${{ matrix.platform.artifact-name }}" = "macos-x64" ]; then
+            ELIZA_DESKTOP_COMMAND_PREFIX="arch -x86_64" node packages/app-core/scripts/desktop-build.mjs stage --variant=base --build-whisper
+          else
+            node packages/app-core/scripts/desktop-build.mjs stage --variant=base --build-whisper
+          fi
+          mkdir -p dist/node_modules/@elizaos/shared/src/i18n/generated
+          cp packages/shared/src/i18n/generated/validation-keyword-data.ts dist/node_modules/@elizaos/shared/src/i18n/generated/
+          cp packages/shared/src/i18n/generated/validation-keyword-data.js dist/node_modules/@elizaos/shared/src/i18n/generated/
+          test -f dist/node_modules/@elizaos/shared/src/i18n/generated/validation-keyword-data.js
+
+      - name: Validate Electrobun runtime copy contract
+        env:
+          ELIZA_ELECTROBUN_REPO_ROOT: ${{ github.workspace }}
+        run: |
+          test -f dist/entry.js
+          test -f package.json
+          test -f dist/node_modules/@elizaos/agent/package.json
+          test -f dist/node_modules/@elizaos/shared/src/i18n/generated/validation-keyword-data.js
+          node --import tsx <<'NODE'
+          const path = await import("node:path");
+          const configModule = await import("./packages/app-core/platforms/electrobun/electrobun.config.ts");
+          const config = configModule.default?.default ?? configModule.default;
+          const electrobunDir = path.resolve("packages/app-core/platforms/electrobun");
+          const copyMap = config.build?.copy ?? {};
+          const runtimeSource = Object.entries(copyMap).find(
+            ([, destination]) => destination === "eliza-dist",
+          )?.[0];
+          if (!runtimeSource) {
+            throw new Error("Electrobun copy map does not include eliza-dist runtime destination");
+          }
+          const resolvedRuntimeSource = path.resolve(electrobunDir, runtimeSource);
+          const expectedRuntimeSource = path.resolve("dist");
+          if (resolvedRuntimeSource !== expectedRuntimeSource) {
+            throw new Error(
+              `Electrobun runtime source resolves to ${resolvedRuntimeSource}, expected ${expectedRuntimeSource}`,
+            );
+          }
+          NODE
+
+      # Import the Developer ID certificate into a temporary keychain.
+      # Requires CSC_LINK (base64-encoded .p12) + CSC_KEY_PASSWORD.
+      # The signing identity string is extracted and passed to Electrobun as
+      # ELECTROBUN_DEVELOPER_ID in the build step below.
+      - name: Set up macOS signing keychain
+        if: matrix.platform.os == 'macos'
+        id: macos-keychain
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          if [ -z "$CSC_LINK" ]; then
+            echo "::warning::CSC_LINK not set — building unsigned (no codesign/notarize)"
+            echo "skip_codesign=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/eliza-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+
+          # Create a short-lived keychain for this build
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Decode and import the .p12 certificate
+          CERT_PATH="$RUNNER_TEMP/cert.p12"
+          echo "$CSC_LINK" | base64 --decode > "$CERT_PATH"
+          security import "$CERT_PATH" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$CSC_KEY_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          rm -f "$CERT_PATH"
+
+          # Add to the keychain search list (preserving login keychain)
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
+          # Allow codesign to access the key without a password prompt
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Extract identity for Electrobun
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)"/\1/')
+          if [ -z "$IDENTITY" ]; then
+            echo "::error::No 'Developer ID Application' identity found in certificate"
+            exit 1
+          fi
+          echo "Signing identity: $IDENTITY"
+          echo "developer_id=$IDENTITY" >> "$GITHUB_OUTPUT"
+          echo "skip_codesign=" >> "$GITHUB_OUTPUT"
+
+      - name: Sign native macOS effects dylib
+        if: matrix.platform.os == 'macos' && steps.macos-keychain.outputs.skip_codesign != '1'
+        env:
+          ELECTROBUN_DEVELOPER_ID: ${{ steps.macos-keychain.outputs.developer_id }}
+        run: |
+          DYLIB="packages/app-core/platforms/electrobun/src/libMacWindowEffects.dylib"
+          if [ ! -f "$DYLIB" ]; then
+            echo "::error::Expected $DYLIB to exist after build:native-effects"
+            exit 1
+          fi
+          codesign --force --timestamp --sign "$ELECTROBUN_DEVELOPER_ID" "$DYLIB"
+          codesign --verify --strict --verbose=2 "$DYLIB"
+
+      - name: Install quiet macOS packaging wrappers
+        if: matrix.platform.os == 'macos' && steps.macos-keychain.outputs.skip_codesign != '1'
+        run: |
+          wrapper_dir="$RUNNER_TEMP/eliza-notary-bin"
+          mkdir -p "$wrapper_dir"
+          cp packages/app-core/platforms/electrobun/scripts/hdiutil-wrapper.sh "$wrapper_dir/hdiutil"
+          cp packages/app-core/platforms/electrobun/scripts/xcrun-wrapper.sh "$wrapper_dir/xcrun"
+          cp packages/app-core/platforms/electrobun/scripts/zip-wrapper.sh "$wrapper_dir/zip"
+          chmod +x "$wrapper_dir/hdiutil"
+          chmod +x "$wrapper_dir/xcrun"
+          chmod +x "$wrapper_dir/zip"
+          echo "$wrapper_dir" >> "$GITHUB_PATH"
+
+      - name: Resolve electrobun package dir
+        id: resolve-electrobun
+        shell: bash
+        run: |
+          package_dir="$(node <<'NODE'
+          const { createRequire } = require("node:module");
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const workspacePackageJson = path.resolve("packages/app-core/platforms/electrobun/package.json");
+          const req = createRequire(workspacePackageJson);
+          const entryPath = req.resolve("electrobun");
+          let packageDir = path.dirname(entryPath);
+
+          while (!fs.existsSync(path.join(packageDir, "package.json"))) {
+            const parentDir = path.dirname(packageDir);
+            if (parentDir === packageDir) {
+              throw new Error(
+                `Could not find electrobun package.json starting from ${entryPath}`,
+              );
+            }
+            packageDir = parentDir;
+          }
+
+          const manifestPath = path.join(packageDir, "package.json");
+          const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+          if (manifest.name !== "electrobun") {
+            throw new Error(
+              `Resolved unexpected package at ${manifestPath}: ${manifest.name}`,
+            );
+          }
+
+          process.stdout.write(packageDir);
+          NODE
+          )"
+
+          if [ -z "$package_dir" ]; then
+            echo "::error::Failed to resolve electrobun package directory"
+            exit 1
+          fi
+
+          case "${{ matrix.platform.artifact-name }}" in
+            macos-arm64|macos-x64|linux-x64|linux-arm64)
+              electrobun_core_target="${{ matrix.platform.artifact-name }}"
+              ;;
+            windows-x64)
+              electrobun_core_target="win-x64"
+              ;;
+            *)
+              echo "::error::Unsupported Electrobun release artifact target: ${{ matrix.platform.artifact-name }}"
+              exit 1
+              ;;
+          esac
+
+          echo "Resolved electrobun package dir: $package_dir"
+          echo "package-dir=$package_dir" >> "$GITHUB_OUTPUT"
+          echo "cache-dir=$package_dir/.cache" >> "$GITHUB_OUTPUT"
+          echo "core-target=$electrobun_core_target" >> "$GITHUB_OUTPUT"
+          echo "core-cache-dir=$package_dir/dist-$electrobun_core_target" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Electrobun CLI and core binaries
+        uses: actions/cache@v5
+        with:
+          path: |
+            ${{ steps.resolve-electrobun.outputs.cache-dir }}
+            ${{ steps.resolve-electrobun.outputs.core-cache-dir }}
+          key: electrobun-core-${{ matrix.platform.artifact-name }}-${{ hashFiles('packages/app-core/platforms/electrobun/package.json') }}
+          restore-keys: electrobun-core-${{ matrix.platform.artifact-name }}-
+
+      # TODO: verify this script exists in eliza. `ensure-electrobun-core.mjs`
+      # was eliza-only and is not present in upstream eliza/packages/app-core/scripts/.
+      # Without it the cache step above is decorative — Electrobun will fall
+      # back to its own download flow on first build. Port the script if you
+      # want pre-warmed core binaries on the first packaging run.
+      - name: Prepare Electrobun core binaries
+        run: |
+          if [ -f packages/app-core/scripts/ensure-electrobun-core.mjs ]; then
+            node packages/app-core/scripts/ensure-electrobun-core.mjs \
+              --package-dir "${{ steps.resolve-electrobun.outputs.package-dir }}" \
+              --target "${{ steps.resolve-electrobun.outputs.core-target }}"
+          else
+            echo "::warning::packages/app-core/scripts/ensure-electrobun-core.mjs not present — Electrobun will download core binaries on demand."
+          fi
+
+      - name: Probe Electrobun bun entry build
+        working-directory: packages/app-core/platforms/electrobun
+        run: |
+          out_dir="$RUNNER_TEMP/electrobun-entry-probe"
+          rm -rf "$out_dir"
+          bun build src/index.ts --target=bun --outdir "$out_dir"
+
+      - name: Build patched Electrobun CLI
+        shell: bash
+        run: |
+          node packages/app-core/scripts/build-patched-electrobun-cli.mjs "${{ steps.resolve-electrobun.outputs.package-dir }}" "${{ matrix.platform.artifact-name }}"
+
+      - name: Build Electrobun app
+        id: build-electrobun-app
+        run: |
+          set +e
+          if [ "${{ matrix.platform.os }}" = "macos" ] && [ "${{ matrix.platform.artifact-name }}" = "macos-x64" ]; then
+            ELIZA_DESKTOP_COMMAND_PREFIX="arch -x86_64" node packages/app-core/scripts/desktop-build.mjs package --env=${{ needs.prepare.outputs.env }}
+          else
+            node packages/app-core/scripts/desktop-build.mjs package --env=${{ needs.prepare.outputs.env }}
+          fi
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "fallback=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "${{ inputs.draft }}" != "true" ] || [ "${{ inputs.publish_release }}" = "true" ]; then
+            exit "$status"
+          fi
+
+          artifact_root="packages/app-core/platforms/electrobun/artifacts"
+          build_root="packages/app-core/platforms/electrobun/build"
+          build_dir="$(find "$build_root" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort | tail -1 || true)"
+          if [ -z "$build_dir" ]; then
+            echo "::error::Electrobun packaging failed and no built app tree exists"
+            exit "$status"
+          fi
+
+          VERSION="$(node -p "require('./packages/app-core/platforms/electrobun/package.json').version")"
+          ENV_NAME="${{ needs.prepare.outputs.env }}"
+          find -L "$build_dir" -type d -name "Resources" | while read -r res_dir; do
+            dest="$res_dir/version.json"
+            printf '{"identifier":"ai.elizaos.Eliza","channel":"%s","name":"eliza","version":"%s"}' \
+              "$ENV_NAME" "$VERSION" > "$dest"
+            echo "Wrote fallback $dest"
+          done
+
+          mkdir -p "$artifact_root"
+          case "${{ matrix.platform.os }}" in
+            linux)
+              tar --zstd -cf "$artifact_root/eliza-${{ needs.prepare.outputs.env }}-${{ matrix.platform.artifact-name }}.tar.zst" -C "$build_root" "$(basename "$build_dir")"
+              ;;
+            macos)
+              tar -czf "$artifact_root/eliza-${{ needs.prepare.outputs.env }}-${{ matrix.platform.artifact-name }}.app.tar.gz" -C "$build_root" "$(basename "$build_dir")"
+              ;;
+            windows)
+              powershell -NoProfile -Command "Compress-Archive -Path '$build_dir' -DestinationPath '$artifact_root/eliza-${{ needs.prepare.outputs.env }}-${{ matrix.platform.artifact-name }}.exe.zip' -Force"
+              ;;
+          esac
+          echo "fallback=true" >> "$GITHUB_OUTPUT"
+          echo "::warning::Electrobun package command exited with $status; uploaded draft-validation fallback archive from $build_dir"
+        env:
+          # Electrobun reads these env vars directly. The workflow derives the
+          # signing identity from CSC_LINK/CSC_KEY_PASSWORD during keychain setup
+          # and maps the notarization credentials from the standard repo secrets.
+          ELECTROBUN_DEVELOPER_ID: ${{ steps.macos-keychain.outputs.developer_id }}
+          ELECTROBUN_APPLEID: ${{ secrets.APPLE_ID }}
+          ELECTROBUN_APPLEIDPASS: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          ELECTROBUN_TEAMID: ${{ secrets.APPLE_TEAM_ID }}
+          ELECTROBUN_SKIP_CODESIGN: ${{ steps.macos-keychain.outputs.skip_codesign }}
+          ELECTROBUN_REAL_HDIUTIL: /usr/bin/hdiutil
+          ELIZA_ELECTROBUN_NOTARIZE: 0
+          ELECTROBUN_REAL_XCRUN: /usr/bin/xcrun
+          ELECTROBUN_REAL_ZIP: /usr/bin/zip
+          ELIZA_ELECTROBUN_REPO_ROOT: ${{ github.workspace }}
+          # Flat release root for the updater. Env is encoded in the platform prefix
+          # (canary-macos-arm64-update.json etc.), so the baseUrl has no env subdir.
+          # TODO: Configure releases host on elizaOS/eliza repo settings (replace
+          # releases.eliza.ai placeholder with the eliza release host).
+          ELIZA_RELEASE_URL: ${{ (github.event_name != 'workflow_call' || inputs.publish_release) && !inputs.draft && 'https://releases.elizaos.ai/' || '' }}
+
+      - name: Dump Electrobun build diagnostics
+        if: failure()
+        run: |
+          root="packages/app-core/platforms/electrobun"
+          echo "=== ${root}/build ==="
+          find -L "$root/build" -maxdepth 6 -type f -print 2>/dev/null | sort | head -300 || true
+          echo "=== ${root}/artifacts ==="
+          find -L "$root/artifacts" -maxdepth 6 -type f -print 2>/dev/null | sort | head -300 || true
+          echo "=== ${root} wrapper diagnostics ==="
+          find -L "$root/build" -name wrapper-diagnostics.json -print -exec sed -n '1,220p' {} \; 2>/dev/null || true
+
+      - name: Upload Electrobun build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: electrobun-${{ matrix.platform.artifact-name }}-build-diagnostics
+          path: |
+            packages/app-core/platforms/electrobun/build/**
+            packages/app-core/platforms/electrobun/build/**/wrapper-diagnostics.json
+            packages/app-core/platforms/electrobun/artifacts/**
+          if-no-files-found: warn
+          retention-days: 14
+
+      # Inject version.json into the packaged Resources directory.
+      # The bun entry getVersionInfo() reads ../Resources/version.json and
+      # throws if absent, killing the process before main() runs.
+      # Electrobun does not generate this file for us, so write it from the
+      # release metadata after the packaged bundle exists.
+      - name: Inject version.json into bundle (Windows)
+        if: matrix.platform.os == 'windows'
+        shell: pwsh
+        run: |
+          $version = (Get-Content packages/app-core/platforms/electrobun/package.json | ConvertFrom-Json).version
+          $envName = "${{ needs.prepare.outputs.env }}"
+          $buildRoot = "packages/app-core/platforms/electrobun/build"
+
+          Get-ChildItem -Path $buildRoot -Recurse -Directory -Filter "Resources" | ForEach-Object {
+            $versionJson = @{
+              identifier = "ai.elizaos.Eliza"
+              channel = $envName
+              name = "eliza"
+              version = $version
+            } | ConvertTo-Json -Compress
+            $dest = Join-Path $_.FullName "version.json"
+            Write-Host "Writing $dest"
+            Set-Content -Path $dest -Value $versionJson -Encoding utf8
+          }
+
+      - name: Inject version.json into bundle (macOS / Linux)
+        if: matrix.platform.os != 'windows'
+        run: |
+          VERSION="$(node -p "require('./packages/app-core/platforms/electrobun/package.json').version")"
+          ENV_NAME="${{ needs.prepare.outputs.env }}"
+          build_root="packages/app-core/platforms/electrobun/build"
+          if [ -d "$build_root" ]; then
+            find -L "$build_root" -type d -name "Resources" | while read -r res_dir; do
+              dest="$res_dir/version.json"
+              printf '{"identifier":"ai.elizaos.Eliza","channel":"%s","name":"eliza","version":"%s"}' \
+                "$ENV_NAME" "$VERSION" > "$dest"
+              echo "Wrote $dest"
+            done
+          fi
+
+      - name: List build output
+        run: |
+          echo "=== Electrobun artifacts ==="
+          find -L packages/app-core/platforms/electrobun/artifacts -type f 2>/dev/null | sort || echo "(no artifacts directory)"
+
+      - name: Stage standard macOS release app
+        if: matrix.platform.os == 'macos' && steps.build-electrobun-app.outputs.fallback != 'true'
+        env:
+          ELECTROBUN_DEVELOPER_ID: ${{ steps.macos-keychain.outputs.developer_id }}
+          ELECTROBUN_APPLEID: ${{ secrets.APPLE_ID }}
+          ELECTROBUN_APPLEIDPASS: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          ELECTROBUN_TEAMID: ${{ secrets.APPLE_TEAM_ID }}
+          ELECTROBUN_SKIP_CODESIGN: ${{ steps.macos-keychain.outputs.skip_codesign }}
+        run: bash packages/app-core/platforms/electrobun/scripts/stage-macos-release-artifacts.sh
+
+      - name: Sign Windows executables
+        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
+        env:
+          # Configure on elizaOS/eliza repo settings.
+          WINDOWS_SIGN_CERT_BASE64: ${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}
+          WINDOWS_SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
+          WINDOWS_SIGN_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGN_TIMESTAMP_URL }}
+        shell: pwsh
+        run: pwsh -File packages/app-core/platforms/electrobun/scripts/sign-windows.ps1 -ArtifactsDir (Join-Path $PWD "packages/app-core/platforms/electrobun/artifacts") -BuildDir (Join-Path $PWD "packages/app-core/platforms/electrobun/build")
+
+      - name: Install Inno Setup 6.7.1
+        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
+        shell: pwsh
+        run: |
+          $url = "https://github.com/jrsoftware/issrc/releases/download/is-6_7_1/innosetup-6.7.1.exe"
+          $installer = Join-Path $env:RUNNER_TEMP "innosetup-6.7.1.exe"
+          Write-Host "Downloading Inno Setup 6.7.1..."
+          Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing
+          Write-Host "Installing silently..."
+          Start-Process -FilePath $installer -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-" -Wait -NoNewWindow
+
+          $iscc = @(
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+            "C:\Program Files\Inno Setup 6\ISCC.exe"
+          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+          if (-not $iscc) {
+            Write-Error "ISCC.exe not found after installing Inno Setup 6.7.1"
+            exit 1
+          }
+
+          Add-Content -Path $env:GITHUB_ENV -Value "ELIZA_INNO_SETUP_COMPILER=$iscc"
+          Write-Host "Using ISCC compiler: $iscc"
+
+      - name: Extract Windows app bundle for Inno Setup
+        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
+        shell: pwsh
+        run: |
+          $artifactsDir = Join-Path $PWD "packages/app-core/platforms/electrobun/artifacts"
+          $tarball = Get-ChildItem -Path $artifactsDir -File -Filter "*.tar.zst" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+
+          if (-not $tarball) {
+            Write-Error "No .tar.zst archive found in artifacts"
+            exit 1
+          }
+
+          # Use a short path to avoid Windows MAX_PATH (260 char) limits
+          # with deeply nested node_modules inside the app bundle
+          $extractDir = "C:\e"
+          Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+          Write-Host "Extracting $($tarball.Name) to $extractDir ..."
+          tar -xf $tarball.FullName -C $extractDir
+          Write-Host "Extracted top-level structure:"
+          Get-ChildItem -Path $extractDir -Recurse -Depth 3 | ForEach-Object { Write-Host "  $($_.FullName)" }
+
+          # Verify the expected runtime entry point exists without mutating the
+          # extracted installer source tree. Inno follows recursively, so
+          # junction/copy aliases here can duplicate the deep runtime tree and
+          # trip Windows path handling during compilation.
+          $appRoot = Get-ChildItem -Path $extractDir -Directory | Select-Object -First 1
+          if ($appRoot) {
+            $resApp = Join-Path $appRoot.FullName "Resources\app"
+            $elizaDist = Join-Path $resApp "eliza-dist"
+            $entryCheckEliza = Join-Path $elizaDist "entry.js"
+            Write-Host "Checking for: $entryCheckEliza"
+            if (Test-Path $entryCheckEliza) {
+              Write-Host "eliza-dist/entry.js found"
+            } else {
+              Write-Host "WARNING: eliza-dist/entry.js NOT found"
+              Write-Host "Resources/app contents:"
+              if (Test-Path $resApp) {
+                Get-ChildItem -Path $resApp -Recurse -Depth 2 | ForEach-Object { Write-Host "  $($_.FullName)" }
+              } else {
+                Write-Host "  Resources/app directory does not exist"
+              }
+            }
+            $keywordDataCheck = Join-Path $elizaDist "node_modules\@elizaos\shared\src\i18n\generated\validation-keyword-data.js"
+            Write-Host "Checking for: $keywordDataCheck"
+            if (Test-Path $keywordDataCheck) {
+              Write-Host "eliza-dist generated keyword data found"
+            } else {
+              Write-Error "eliza-dist generated keyword data NOT found: $keywordDataCheck"
+              exit 1
+            }
+            $agentManifestPath = Join-Path $elizaDist "node_modules\@elizaos\agent\package.json"
+            Write-Host "Checking for: $agentManifestPath"
+            if (Test-Path $agentManifestPath) {
+              Write-Host "eliza-dist @elizaos/agent package manifest found"
+            } else {
+              Write-Error "eliza-dist @elizaos/agent package manifest NOT found: $agentManifestPath"
+              exit 1
+            }
+          }
+
+      - name: Build Inno Setup installer
+        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
+        env:
+          WINDOWS_SIGN_CERT_BASE64: ${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}
+          WINDOWS_SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
+          WINDOWS_SIGN_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGN_TIMESTAMP_URL }}
+        shell: pwsh
+        run: |
+          pwsh -File packages/app-core/packaging/inno/build-inno.ps1 `
+            -BuildDir "C:\e" `
+            -OutputDir (Join-Path $PWD "packages/app-core/platforms/electrobun/artifacts") `
+            -Version "${{ needs.prepare.outputs.version }}" `
+            -Channel "${{ needs.prepare.outputs.env }}"
+
+      - name: Verify Windows public installer looks complete
+        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path "packages/app-core/platforms/electrobun/artifacts" -File -Filter "ElizaOSApp-Setup-*.exe" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+
+          if (-not $installer) {
+            Write-Error "No public Windows installer found in packages/app-core/platforms/electrobun/artifacts"
+            exit 1
+          }
+
+          $minimumBytes = 50MB
+          if ($installer.Length -lt $minimumBytes) {
+            Write-Error "Installer is too small to be a standalone Windows package: $($installer.FullName) ($($installer.Length) bytes)"
+            exit 1
+          }
+
+          Write-Host "Verified standalone Windows installer: $($installer.Name)"
+          Write-Host "Installer size: $([math]::Round($installer.Length / 1MB, 1)) MB"
+
+      - name: Cache Windows embedding model
+        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
+        uses: actions/cache@v5
+        with:
+          path: ~/.eliza/models
+          key: embedding-model-nomic-embed-text-v1.5-Q4_K_S
+
+      - name: Seed Windows embedding model cache
+        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
+        shell: pwsh
+        run: |
+          $modelsDir = Join-Path $env:USERPROFILE ".eliza\models"
+          $modelName = "nomic-embed-text-v1.5.Q4_K_S.gguf"
+          $modelRepo = "nomic-ai/nomic-embed-text-v1.5-GGUF"
+          $modelPath = Join-Path $modelsDir $modelName
+
+          if (-not (Test-Path $modelPath)) {
+            New-Item -ItemType Directory -Force -Path $modelsDir | Out-Null
+            $url = "https://huggingface.co/$modelRepo/resolve/main/$modelName"
+            Write-Host "Downloading Windows embedding model cache seed: $url"
+            Invoke-WebRequest -Uri $url -OutFile $modelPath
+          }
+
+          Write-Host "Windows embedding model cache ready: $modelPath"
+
+      - name: Smoke test packaged Windows app
+        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
+        timeout-minutes: 30
+        shell: pwsh
+        env:
+          ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1"
+          # The runtime requires at least one AI provider plugin to fully
+          # initialize — without it, startApiServer() can fail before
+          # server.listen() and the health endpoint never becomes reachable.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ELIZA_WINDOWS_SMOKE_REQUIRE_INSTALLER: "1"
+          # Use a short path under runner.temp to avoid MAX_PATH issues with
+          # deeply nested node_modules while staying in a user-writable location.
+          ELIZA_TEST_WINDOWS_INSTALL_DIR: ${{ runner.temp }}\el
+          ELIZA_TEST_WINDOWS_LAUNCHER_DIR: ${{ runner.temp }}\eliza-windows-ui-launcher
+          ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE: ${{ runner.temp }}\eliza-windows-ui-launcher.txt
+          # Inno installer is built into platforms/electrobun/artifacts.
+          ELIZA_TEST_WINDOWS_ARTIFACTS_DIR: ${{ github.workspace }}\packages\app-core\platforms\electrobun\artifacts
+          ELIZA_TEST_WINDOWS_BUILD_DIR: ${{ github.workspace }}\packages\app-core\platforms\electrobun\build
+        run: |
+          Remove-Item $env:ELIZA_TEST_WINDOWS_INSTALL_DIR -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item $env:ELIZA_TEST_WINDOWS_LAUNCHER_DIR -Recurse -Force -ErrorAction SilentlyContinue
+          Remove-Item $env:ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE -Force -ErrorAction SilentlyContinue
+
+          bun run test:desktop:packaged:windows
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Packaged Windows smoke test exited with code $LASTEXITCODE."
+            exit $LASTEXITCODE
+          }
+
+          if (-not (Test-Path $env:ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE)) {
+            Write-Error "Smoke test did not emit a reusable Windows launcher path."
+            exit 1
+          }
+
+          $launcherPath = (Get-Content $env:ELIZA_TEST_WINDOWS_LAUNCHER_PATH_FILE -Raw).Trim()
+          if ([string]::IsNullOrWhiteSpace($launcherPath) -or -not (Test-Path $launcherPath)) {
+            Write-Error "Reusable Windows launcher path is invalid: $launcherPath"
+            exit 1
+          }
+
+          Add-Content -Path $env:GITHUB_ENV -Value "ELIZA_TEST_WINDOWS_LAUNCHER_PATH=$launcherPath"
+          Write-Host "Reusing packaged Windows launcher for Playwright: $launcherPath"
+
+      - name: Run Windows clean installer proof
+        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
+        shell: pwsh
+        env:
+          ELIZA_DISABLE_LOCAL_EMBEDDINGS: "1"
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR: ${{ runner.temp }}\el-proof
+        run: |
+          Remove-Item $env:ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR -Recurse -Force -ErrorAction SilentlyContinue
+          pwsh -File packages/app-core/platforms/electrobun/scripts/verify-windows-installer-proof.ps1 `
+            -ArtifactsDir (Join-Path $PWD "packages/app-core/platforms/electrobun/artifacts") `
+            -BuildDir (Join-Path $PWD "packages/app-core/platforms/electrobun/build") `
+            -ProofInstallDir $env:ELIZA_TEST_WINDOWS_PROOF_INSTALL_DIR `
+            -OutputDir (Join-Path $PWD "packages/app-core/platforms/electrobun/artifacts/windows-installer-proof")
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Windows clean installer proof exited with code $LASTEXITCODE."
+            exit $LASTEXITCODE
+          }
+
+      - name: Upload Windows installer proof artifact
+        if: always() && matrix.platform.os == 'windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: electrobun-windows-installer-proof
+          path: packages/app-core/platforms/electrobun/artifacts/windows-installer-proof/**
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload Windows installer .exe + Inno log on smoke failure
+        if: failure() && matrix.platform.os == 'windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: electrobun-windows-installer-debug
+          path: |
+            packages/app-core/platforms/electrobun/artifacts/*.exe
+            ${{ runner.temp }}/eliza-inno-setup.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Run Windows packaged renderer bootstrap check
+        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
+        run: bun run test:desktop:playwright
+
+      - name: Upload Windows Playwright UI diagnostics
+        if: failure() && matrix.platform.os == 'windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: electrobun-windows-ui-playwright-diagnostics
+          # TODO: confirm packaged-app Playwright result location in eliza
+          # (was apps/app/test-results/** in eliza; might be packages/app/test-results/**).
+          path: packages/app/test-results/**
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Stage Windows setup executables
+        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
+        shell: pwsh
+        run: |
+          $artifactsDir = Join-Path $PWD "packages/app-core/platforms/electrobun/artifacts"
+          $setupExecutables = Get-ChildItem -Path "packages/app-core/platforms/electrobun/build" -Recurse -File -Filter "*Setup*.exe" -ErrorAction SilentlyContinue
+          if (-not $setupExecutables) {
+            Write-Error "No Windows setup executable found under packages/app-core/platforms/electrobun/build"
+            exit 1
+          }
+          New-Item -ItemType Directory -Force -Path $artifactsDir | Out-Null
+          $publicInstaller = Get-ChildItem -Path $artifactsDir -File -Filter "ElizaOSApp-Setup-*.exe" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          foreach ($setupExecutable in $setupExecutables) {
+            $destinationPath = Join-Path $artifactsDir $setupExecutable.Name
+            if (
+              $publicInstaller -and
+              $publicInstaller.Name -eq $setupExecutable.Name -and
+              $publicInstaller.Length -ge 50MB -and
+              $setupExecutable.Length -lt $publicInstaller.Length
+            ) {
+              Write-Warning "Skipping build setup stub that would overwrite verified public installer: $($setupExecutable.FullName)"
+              continue
+            }
+            if (Test-Path $destinationPath) {
+              Write-Host "Skipping setup executable already present in artifacts: $destinationPath"
+              continue
+            }
+            Copy-Item $setupExecutable.FullName -Destination $destinationPath -Force
+            Write-Host "Staged Windows setup executable: $($setupExecutable.Name)"
+          }
+
+      - name: Sign Windows executables (post-stage)
+        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
+        env:
+          WINDOWS_SIGN_CERT_BASE64: ${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}
+          WINDOWS_SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
+          WINDOWS_SIGN_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGN_TIMESTAMP_URL }}
+        shell: pwsh
+        run: pwsh -File packages/app-core/platforms/electrobun/scripts/sign-windows.ps1 -ArtifactsDir (Join-Path $PWD "packages/app-core/platforms/electrobun/artifacts") -BuildDir (Join-Path $PWD "packages/app-core/platforms/electrobun/build")
+
+      - name: Verify Windows code signature
+        if: matrix.platform.os == 'windows' && env.WINDOWS_SIGN_CERT_BASE64 != ''
+        env:
+          WINDOWS_SIGN_CERT_BASE64: ${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter "signtool.exe" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match "x64" } |
+            Sort-Object { [version]($_.FullName -replace '.*\\(\d+\.\d+\.\d+\.\d+)\\.*', '$1') } -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+
+          $artifactsDir = Join-Path $PWD "packages/app-core/platforms/electrobun/artifacts"
+          $signed = 0
+          $failed = 0
+
+          Get-ChildItem -Path $artifactsDir -Recurse -Filter "*.exe" -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "Verifying: $($_.FullName)"
+            & $signtool verify /pa /v $_.FullName
+            if ($LASTEXITCODE -eq 0) {
+              $signed++
+            } else {
+              Write-Host "::error::Signature verification failed: $($_.Name)"
+              $failed++
+            }
+          }
+
+          Write-Host "Verification complete: $signed signed, $failed failed"
+          if ($failed -gt 0) {
+            exit 1
+          }
+
+      - name: Re-verify Windows public installer before upload
+        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path "packages/app-core/platforms/electrobun/artifacts" -File -Filter "ElizaOSApp-Setup-*.exe" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+
+          if (-not $installer) {
+            Write-Error "No public Windows installer found in packages/app-core/platforms/electrobun/artifacts after staging/signing."
+            exit 1
+          }
+
+          $minimumBytes = 50MB
+          if ($installer.Length -lt $minimumBytes) {
+            Write-Error "Public Windows installer regressed below standalone size threshold: $($installer.FullName) ($($installer.Length) bytes)"
+            exit 1
+          }
+
+          Write-Host "Public installer still valid for release upload: $($installer.Name)"
+          Write-Host "Installer size: $([math]::Round($installer.Length / 1MB, 1)) MB"
+
+      - name: Build MSIX package
+        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
+        env:
+          WINDOWS_SIGN_CERT_BASE64: ${{ secrets.WINDOWS_SIGN_CERT_BASE64 }}
+          WINDOWS_SIGN_CERT_PASSWORD: ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
+          WINDOWS_SIGN_TIMESTAMP_URL: ${{ secrets.WINDOWS_SIGN_TIMESTAMP_URL }}
+        shell: pwsh
+        run: |
+          pwsh -File packages/app-core/packaging/msix/build-msix.ps1 `
+            -BuildDir (Join-Path $PWD "packages/app-core/platforms/electrobun/build") `
+            -OutputDir (Join-Path $PWD "packages/app-core/platforms/electrobun/artifacts") `
+            -Version "${{ needs.prepare.outputs.version }}"
+
+      # When building unsigned (skip_codesign=1), the CEF framework ships with
+      # a pre-existing signature.  Injecting version.json into Resources breaks
+      # that signature (resource hash mismatch).  Ad-hoc re-sign the .app so
+      # the bundle is internally consistent even without a Developer ID cert.
+      - name: Ad-hoc re-sign unsigned macOS bundle
+        if: matrix.platform.os == 'macos' && steps.macos-keychain.outputs.skip_codesign == '1' && steps.build-electrobun-app.outputs.fallback != 'true'
+        run: |
+          for app in packages/app-core/platforms/electrobun/artifacts/*.app; do
+            [ -d "$app" ] || continue
+            echo "Ad-hoc signing: $app"
+            codesign --force --deep --sign - "$app" || echo "::warning::Ad-hoc re-sign failed for $app"
+          done
+
+      - name: Verify macOS signature and notarization
+        if: matrix.platform.os == 'macos' && steps.build-electrobun-app.outputs.fallback != 'true'
+        run: |
+          shopt -s nullglob
+
+          retry_stapler_validate() {
+            local target="$1"
+            local attempts="${2:-5}"
+            local delay_seconds="${3:-15}"
+            local attempt
+            for ((attempt = 1; attempt <= attempts; attempt += 1)); do
+              if xcrun stapler validate "$target"; then
+                return 0
+              fi
+              if [ "$attempt" -lt "$attempts" ]; then
+                echo "::warning::stapler validate failed for $target (attempt $attempt/$attempts); retrying..."
+                sleep "$((delay_seconds * attempt))"
+              fi
+            done
+            return 1
+          }
+
+          apps=()
+          while IFS= read -r app; do
+            apps+=("$app")
+          done < <(find -L packages/app-core/platforms/electrobun/artifacts -maxdepth 1 -type d -name "*.app" | sort)
+          mounted_volume=""
+          if [ "${#apps[@]}" -eq 0 ]; then
+            dmgs=(packages/app-core/platforms/electrobun/artifacts/*.dmg)
+            if [ "${#dmgs[@]}" -eq 0 ]; then
+              echo "::error::No .app bundle or .dmg found in packages/app-core/platforms/electrobun/artifacts"
+              exit 1
+            fi
+            dmg="${dmgs[0]}"
+            echo "No .app bundle found in artifacts; mounting DMG: $dmg"
+            mount_line=""
+            for attempt in 1 2 3 4 5; do
+              attach_output="$(hdiutil attach -nobrowse -readonly "$dmg" 2>&1)" && \
+                mount_line="$(printf '%s\n' "$attach_output" | awk '/\/Volumes\// { print substr($0, index($0, "/Volumes/")); exit }')" && \
+                [ -n "$mount_line" ] && [ -d "$mount_line" ] && break
+              echo "::warning::DMG attach attempt $attempt/5 failed"
+              if [ -n "${attach_output:-}" ]; then
+                printf '%s\n' "$attach_output"
+              fi
+              mount_line=""
+              sleep 2
+            done
+            if [ -z "$mount_line" ]; then
+              echo "::error::Failed to determine mounted DMG volume"
+              exit 1
+            fi
+            mounted_volume="$mount_line"
+            trap 'if [ -n "$mounted_volume" ] && [ -d "$mounted_volume" ]; then hdiutil detach "$mounted_volume" >/dev/null 2>&1 || true; fi' EXIT
+            apps=()
+            while IFS= read -r app; do
+              apps+=("$app")
+            done < <(find "$mounted_volume" -maxdepth 1 -type d -name "*.app" | sort)
+            if [ "${#apps[@]}" -eq 0 ]; then
+              echo "::error::No .app bundle found inside mounted DMG"
+              exit 1
+            fi
+          fi
+          for app in "${apps[@]}"; do
+            echo "Verifying: $app"
+            codesign --verify --deep --strict --verbose=2 "$app"
+            info="$(codesign -dv --verbose=4 "$app" 2>&1 || true)"
+            echo "$info" | grep -q "Authority=Developer ID Application" || {
+              echo "::error::Missing Developer ID Application signature on $app"
+              exit 1
+            }
+            # Gatekeeper can reject the standalone staging copy on Intel even
+            # when the notarized DMG is valid; treat as advisory.
+            if ! spctl -a -vv --type exec "$app"; then
+              echo "::warning::Gatekeeper rejected staged app bundle $app; continuing because the notarized DMG is the release artifact."
+            fi
+            retry_stapler_validate "$app" 3 10 || echo "::warning::Stapler validation failed (may be expected for .app; DMG stapling is the norm)"
+          done
+          found_dmg=0
+          while IFS= read -r dmg; do
+            [[ -z "$dmg" ]] && continue
+            found_dmg=1
+            echo "Verifying installer: $dmg"
+            dmg_info="$(codesign -dv --verbose=4 "$dmg" 2>&1 || true)"
+            echo "$dmg_info"
+            echo "$dmg_info" | grep -q "Authority=Developer ID Application" || {
+              echo "::error::Missing Developer ID Application signature on $dmg"
+              exit 1
+            }
+            retry_stapler_validate "$dmg"
+          done < <(find -L packages/app-core/platforms/electrobun/artifacts -maxdepth 1 -type f -name "*.dmg" | sort)
+          if [ "$found_dmg" -eq 0 ]; then
+            echo "::error::No DMG found in packages/app-core/platforms/electrobun/artifacts"
+            exit 1
+          fi
+
+      - name: Smoke test packaged macOS app
+        if: matrix.platform.os == 'macos' && steps.build-electrobun-app.outputs.fallback != 'true'
+        continue-on-error: true
+        env:
+          SMOKE_DIAGNOSTICS_DIR: ${{ runner.temp }}/eliza-smoke-diagnostics
+        run: |
+          STARTUP_TIMEOUT=420 \
+          LIVENESS_TIMEOUT=10 \
+          SKIP_BUILD=1 \
+          SKIP_SIGNATURE_CHECK=1 \
+          bun run test:desktop:packaged
+
+      - name: Collect Windows smoke diagnostics
+        if: failure() && matrix.platform.os == 'windows'
+        shell: pwsh
+        run: |
+          $diagnosticsDir = Join-Path $PWD "packages/app-core/platforms/electrobun/artifacts/windows-smoke-diagnostics"
+          $appDataRoot = if ($env:ELIZA_TEST_WINDOWS_APPDATA_PATH) { $env:ELIZA_TEST_WINDOWS_APPDATA_PATH } else { $env:APPDATA }
+          $localAppDataRoot = if ($env:ELIZA_TEST_WINDOWS_LOCALAPPDATA_PATH) { $env:ELIZA_TEST_WINDOWS_LOCALAPPDATA_PATH } else { $env:LOCALAPPDATA }
+          $wrapperRoots = @(@(
+            (Join-Path $localAppDataRoot "com.elizaai.eliza"),
+            (Join-Path $localAppDataRoot "ai.elizaos.Eliza"),
+            (Join-Path $localAppDataRoot "ai.elizaos.app")
+          ) | Select-Object -Unique)
+
+          Write-Host "Diagnostics roots:"
+          Write-Host "  appDataRoot      = $appDataRoot"
+          Write-Host "  localAppDataRoot = $localAppDataRoot"
+          foreach ($wrapperRoot in $wrapperRoots) {
+            Write-Host "  wrapperRoot      = $wrapperRoot"
+          }
+
+          Remove-Item $diagnosticsDir -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $diagnosticsDir | Out-Null
+
+          if (Test-Path $appDataRoot) {
+            Write-Host "--- APPDATA tree ($appDataRoot) ---"
+            Get-ChildItem -Path $appDataRoot -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "  $($_.FullName)" }
+            Write-Host "--- end APPDATA tree ---"
+
+            $logFiles = Get-ChildItem -Path $appDataRoot -Recurse -File -Include "*.log" -ErrorAction SilentlyContinue
+            foreach ($log in $logFiles) {
+              $relative = $log.FullName.Substring($appDataRoot.Length).TrimStart('\','/')
+              $safeName = $relative -replace '[\\/:]', '_'
+              $dest = Join-Path $diagnosticsDir $safeName
+              New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest) | Out-Null
+              Copy-Item $log.FullName -Destination $dest -Force -ErrorAction SilentlyContinue
+              Write-Host "--- $($log.FullName) ---"
+              Get-Content $log.FullName -Tail 400 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+              Write-Host "--- end $($log.FullName) ---"
+            }
+            if (-not $logFiles) {
+              Write-Warning "No *.log files found anywhere under $appDataRoot"
+            }
+          } else {
+            Write-Warning "APPDATA root not found: $appDataRoot"
+          }
+
+          if (Test-Path $localAppDataRoot) {
+            $localLogFiles = Get-ChildItem -Path $localAppDataRoot -Recurse -File -Include "*.log" -ErrorAction SilentlyContinue
+            foreach ($log in $localLogFiles) {
+              $relative = $log.FullName.Substring($localAppDataRoot.Length).TrimStart('\','/')
+              $safeName = "local_" + ($relative -replace '[\\/:]', '_')
+              $dest = Join-Path $diagnosticsDir $safeName
+              New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest) | Out-Null
+              Copy-Item $log.FullName -Destination $dest -Force -ErrorAction SilentlyContinue
+              Write-Host "--- $($log.FullName) ---"
+              Get-Content $log.FullName -Tail 400 -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+              Write-Host "--- end $($log.FullName) ---"
+            }
+          }
+
+          foreach ($pattern in @("eliza-windows-smoke-*.state.json", "eliza-windows-smoke-*.events.jsonl", "eliza-startup-trace-*.state.json")) {
+            $traceGlob = Join-Path $env:RUNNER_TEMP $pattern
+            $traceFiles = Get-ChildItem -Path $traceGlob -ErrorAction SilentlyContinue
+            if ($traceFiles) {
+              foreach ($f in $traceFiles) {
+                $dest = Join-Path $diagnosticsDir $f.Name
+                New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest) | Out-Null
+                Copy-Item $f.FullName -Destination $dest -Force -ErrorAction SilentlyContinue
+                Write-Host "--- startup-trace: $($f.Name) ---"
+                Get-Content $f.FullName -Tail 400 | ForEach-Object { Write-Host $_ }
+                Write-Host "--- end $($f.Name) ---"
+              }
+            }
+          }
+
+          foreach ($root in @($wrapperRoots + @("C:\\e", "D:\\a\\_temp\\el"))) {
+            if (Test-Path $root) {
+              Get-ChildItem -Path $root -Recurse -File -Filter "startup-session.json" -ErrorAction SilentlyContinue |
+                ForEach-Object {
+                  $dest = Join-Path $diagnosticsDir ("startup-session-" + ($_.FullName -replace '[\\:]', '_') + ".json")
+                  New-Item -ItemType Directory -Force -Path (Split-Path -Parent $dest) | Out-Null
+                  Copy-Item $_.FullName -Destination $dest -Force -ErrorAction SilentlyContinue
+                  Write-Host "--- $($_.FullName) ---"
+                  Get-Content $_.FullName | ForEach-Object { Write-Host $_ }
+                  Write-Host "--- end ---"
+                }
+            }
+          }
+
+          foreach ($wrapperRoot in $wrapperRoots) {
+            if (Test-Path $wrapperRoot) {
+              Get-ChildItem -Path $wrapperRoot -Recurse -File -Filter "wrapper-diagnostics.json" -ErrorAction SilentlyContinue |
+                ForEach-Object {
+                  $relativePath = $_.FullName.Substring($wrapperRoot.Length).TrimStart('\\')
+                  $destination = Join-Path $diagnosticsDir $relativePath
+                  $destinationParent = Split-Path -Parent $destination
+                  New-Item -ItemType Directory -Force -Path $destinationParent | Out-Null
+                  Copy-Item $_.FullName -Destination $destination -Force
+                }
+            } else {
+              Write-Warning "Wrapper diagnostics root not found at $wrapperRoot"
+            }
+          }
+
+      - name: Upload Windows smoke diagnostics
+        if: failure() && matrix.platform.os == 'windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: electrobun-${{ matrix.platform.artifact-name }}-smoke-diagnostics
+          path: packages/app-core/platforms/electrobun/artifacts/windows-smoke-diagnostics/**
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload macOS smoke diagnostics
+        if: failure() && matrix.platform.os == 'macos'
+        uses: actions/upload-artifact@v7
+        with:
+          name: electrobun-${{ matrix.platform.artifact-name }}-smoke-diagnostics
+          path: |
+            ${{ runner.temp }}/eliza-smoke-diagnostics/**
+            packages/app-core/platforms/electrobun/build/**/wrapper-diagnostics.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Compress Windows artifacts before upload
+        if: matrix.platform.os == 'windows' && steps.build-electrobun-app.outputs.fallback != 'true'
+        shell: pwsh
+        run: |
+          $artifactsDir = Join-Path $PWD "packages/app-core/platforms/electrobun/artifacts"
+          $canonicalInstallers = Get-ChildItem -Path $artifactsDir -File -Filter "ElizaOSApp-Setup-*.exe" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending
+          if (-not $canonicalInstallers) {
+            Write-Error "No canonical Windows installer found before compression."
+            exit 1
+          }
+          if ($canonicalInstallers.Count -gt 1) {
+            Write-Error "Multiple canonical Windows installers found before compression."
+            $canonicalInstallers | ForEach-Object { Write-Host "  - $($_.FullName)" }
+            exit 1
+          }
+
+          $canonicalInstaller = $canonicalInstallers | Select-Object -First 1
+          $otherSetupExecutables = Get-ChildItem -Path $artifactsDir -File -Filter "*Setup*.exe" -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -ne $canonicalInstaller.FullName }
+          foreach ($extraSetup in $otherSetupExecutables) {
+            Write-Warning "Removing non-canonical setup executable before upload: $($extraSetup.FullName)"
+            Remove-Item $extraSetup.FullName -Force -ErrorAction SilentlyContinue
+          }
+
+          $exeFiles = Get-ChildItem -Path $artifactsDir -File -Filter "*.exe" -ErrorAction SilentlyContinue
+          foreach ($exe in $exeFiles) {
+            if ($exe.FullName -eq $canonicalInstaller.FullName) {
+              Write-Host "Keeping canonical Windows installer uncompressed for single-extract downloads: $($exe.Name)"
+              continue
+            }
+            $zipPath = $exe.FullName + ".zip"
+            Write-Host "Compressing $($exe.Name) -> $($exe.Name).zip"
+            Compress-Archive -Path $exe.FullName -DestinationPath $zipPath -CompressionLevel Optimal
+            Remove-Item $exe.FullName -Force
+            $originalMB = [math]::Round($exe.Length / 1MB, 1)
+            $compressedMB = [math]::Round((Get-Item $zipPath).Length / 1MB, 1)
+            Write-Host "Compressed: ${originalMB}MB -> ${compressedMB}MB"
+          }
+
+      - name: Prepare public canary Windows installer artifact
+        if: matrix.platform.os == 'windows' && needs.prepare.outputs.env == 'canary' && steps.build-electrobun-app.outputs.fallback != 'true'
+        shell: pwsh
+        run: |
+          $artifactsDir = Join-Path $PWD "packages/app-core/platforms/electrobun/artifacts"
+          $publicCanaryDir = Join-Path $artifactsDir "public-canary-installer"
+          Remove-Item $publicCanaryDir -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $publicCanaryDir | Out-Null
+
+          $canonicalInstallers = Get-ChildItem -Path $artifactsDir -File -Filter "ElizaOSApp-Setup-*.exe" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending
+          if ($canonicalInstallers) {
+            if ($canonicalInstallers.Count -gt 1) {
+              Write-Error "Multiple canonical Windows installers found for canary artifact publishing."
+              $canonicalInstallers | ForEach-Object { Write-Host "  - $($_.FullName)" }
+              exit 1
+            }
+            $canonicalInstaller = $canonicalInstallers | Select-Object -First 1
+            Copy-Item $canonicalInstaller.FullName -Destination $publicCanaryDir -Force
+          } else {
+            $canonicalInstallerZips = Get-ChildItem -Path $artifactsDir -File -Filter "ElizaOSApp-Setup-*.exe.zip" -ErrorAction SilentlyContinue |
+              Sort-Object LastWriteTime -Descending
+            if (-not $canonicalInstallerZips) {
+              Write-Error "No canonical Windows installer (or zip fallback) found for canary artifact publishing."
+              exit 1
+            }
+            if ($canonicalInstallerZips.Count -gt 1) {
+              Write-Error "Multiple canonical Windows installer zips found for canary artifact publishing."
+              $canonicalInstallerZips | ForEach-Object { Write-Host "  - $($_.FullName)" }
+              exit 1
+            }
+
+            $canonicalInstallerZip = $canonicalInstallerZips | Select-Object -First 1
+            Expand-Archive -Path $canonicalInstallerZip.FullName -DestinationPath $publicCanaryDir -Force
+          }
+
+          $publicInstallers = Get-ChildItem -Path $publicCanaryDir -File -Filter "ElizaOSApp-Setup-*.exe" -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending
+          if (-not $publicInstallers) {
+            Write-Error "Failed to stage a public Windows installer under $publicCanaryDir"
+            exit 1
+          }
+          if ($publicInstallers.Count -gt 1) {
+            Write-Error "Canary installer artifact contains multiple public installers."
+            $publicInstallers | ForEach-Object { Write-Host "  - $($_.FullName)" }
+            exit 1
+          }
+
+          $publicInstaller = $publicInstallers | Select-Object -First 1
+          Write-Host "Prepared public canary installer artifact: $($publicInstaller.FullName)"
+
+      - name: Upload public canary installer artifact
+        if: matrix.platform.os == 'windows' && needs.prepare.outputs.env == 'canary' && steps.build-electrobun-app.outputs.fallback != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: electrobun-${{ matrix.platform.artifact-name }}-public-installer
+          path: packages/app-core/platforms/electrobun/artifacts/public-canary-installer/ElizaOSApp-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: electrobun-${{ matrix.platform.artifact-name }}
+          path: |
+            packages/app-core/platforms/electrobun/artifacts/*.dmg
+            packages/app-core/platforms/electrobun/artifacts/*.tar.zst
+            packages/app-core/platforms/electrobun/artifacts/*.exe
+            packages/app-core/platforms/electrobun/artifacts/*.exe.zip
+            packages/app-core/platforms/electrobun/artifacts/*.tar.gz
+            packages/app-core/platforms/electrobun/artifacts/*-update.json
+            packages/app-core/platforms/electrobun/artifacts/*.patch
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Upload MSIX artifact
+        if: matrix.platform.os == 'windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: electrobun-${{ matrix.platform.artifact-name }}-msix
+          path: packages/app-core/platforms/electrobun/artifacts/*.msix
+          if-no-files-found: warn
+          retention-days: 30
+          compression-level: 6
+
+  release:
+    name: Create Release
+    if: >-
+      ${{
+        (inputs.platform == '' || inputs.platform == 'all') &&
+        (github.event_name != 'workflow_call' || inputs.publish_release) &&
+        (github.event_name != 'push' || needs.prepare.outputs.env != 'canary')
+      }}
+    needs: [prepare, build]
+    runs-on: ${{ vars.RUNNER_UBUNTU || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: release-artifacts
+          pattern: electrobun-*
+          merge-multiple: false
+
+      - name: List artifacts
+        run: find release-artifacts -type f | sort 2>/dev/null || echo "No artifacts"
+
+      - name: Collect public release files
+        run: |
+          mkdir -p release-files
+          # Public GitHub releases should expose end-user installables, not the
+          # updater transport files. Windows publishes the standalone Inno Setup
+          # installer, not the raw Electrobun bootstrap stub.
+          find release-artifacts -type f \( \
+            -name "*.dmg" -o \
+            -name "ElizaOSApp-Setup-*.exe" -o \
+            -name "ElizaOSApp-Setup-*.exe.zip" -o \
+            -name "*Setup*.tar.gz" -o \
+            -name "*.msix" \
+          \) -exec cp {} release-files/ \; 2>/dev/null || true
+
+          # Decompress Windows .exe.zip back to .exe for end-user downloads
+          # (zip was only used for inter-job artifact transfer to avoid SAS token timeout)
+          for f in release-files/*.exe.zip; do
+            [ -f "$f" ] || continue
+            echo "Decompressing $f"
+            cd release-files && unzip -o "$(basename "$f")" && rm "$(basename "$f")" && cd ..
+          done
+
+          echo "=== Public release files ==="
+          ls -lh release-files/ 2>/dev/null || echo "None"
+
+      - name: Collect update channel files
+        run: |
+          mkdir -p update-channel
+          find release-artifacts -type f \( \
+            -name "*.tar.zst" -o \
+            -name "*.patch" -o \
+            -name "*-update.json" \
+          \) -exec cp {} update-channel/ \; 2>/dev/null || true
+          echo "=== Update channel files ==="
+          ls -lh update-channel/ 2>/dev/null || echo "None"
+
+      - name: Generate checksums
+        run: |
+          cd release-files
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          target_commitish: ${{ needs.prepare.outputs.source_sha }}
+          name: Eliza ${{ needs.prepare.outputs.tag }}
+          draft: ${{ inputs.draft || false }}
+          prerelease: ${{ contains(needs.prepare.outputs.version, '-') }}
+          generate_release_notes: true
+          files: release-files/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Upload platform-prefixed update manifests + tarballs to the eliza
+      # releases host so the Electrobun updater can discover them via the
+      # flat baseUrl contract in electrobun.config.ts:
+      #   ${baseUrl}/${platformPrefix}-update.json
+      #   ${baseUrl}/${platformPrefix}-${tarballFileName}
+      # Requires RELEASE_UPLOAD_KEY secret (SSH private key for releases server).
+      # Skipped for draft releases — test/preview builds must not pollute the production update channel.
+      # TODO: configure releases.elizaos.ai (or chosen release host) and update
+      # the rsync target / known_hosts entry below before enabling.
+      - name: Upload update channel files to release host
+        if: ${{ !inputs.draft }}
+        env:
+          RELEASE_UPLOAD_KEY: ${{ secrets.RELEASE_UPLOAD_KEY }}
+          RELEASE_HOST_FINGERPRINT: ${{ secrets.RELEASE_HOST_FINGERPRINT }}
+        run: |
+          if [ -z "$RELEASE_UPLOAD_KEY" ]; then
+            echo "No RELEASE_UPLOAD_KEY secret — skipping upload"
+            exit 0
+          fi
+          echo "$RELEASE_UPLOAD_KEY" > /tmp/release_key
+          chmod 600 /tmp/release_key
+          # Pin the host fingerprint from RELEASE_HOST_FINGERPRINT so SSH
+          # verifies the server identity without disabling host-key checking.
+          # To rotate: run `ssh-keyscan -H <release-host>` and update the secret.
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "$RELEASE_HOST_FINGERPRINT" >> ~/.ssh/known_hosts
+          # Electrobun resolves update metadata and tarballs at the flat
+          # release root, keyed by platform prefix, not inside version folders.
+          rsync -av --delete-after \
+            -e "ssh -i /tmp/release_key" \
+            update-channel/ \
+            releases@releases.elizaos.ai:/var/www/releases/
+          rm -f /tmp/release_key
+
+  publish-browser-companions:
+    name: Publish Agent Browser Bridge companions
+    if: ${{ (github.event_name != 'workflow_call' || inputs.publish_release) && needs.build-browser-companions.outputs.packaged == 'true' && needs.release.result == 'success' }}
+    needs: [prepare, build-browser-companions, release]
+    runs-on: ${{ vars.RUNNER_UBUNTU || 'ubuntu-24.04' }}
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download Agent Browser Bridge artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: browser-bridge-release
+          pattern: browser-bridge-*
+          merge-multiple: false
+
+      - name: List Agent Browser Bridge artifacts
+        run: find browser-bridge-release -type f | sort 2>/dev/null || echo "No Agent Browser Bridge artifacts"
+
+      - name: Attach Agent Browser Bridge assets to GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          find browser-bridge-release -type f \
+            \( \
+              -name "browser-bridge-chrome-v*.zip" -o \
+              -name "browser-bridge-safari-v*.zip" -o \
+              -name "browser-bridge-release-manifest-v*.json" \
+            \) \
+            -print0 | xargs -0 -r gh release upload "${{ needs.prepare.outputs.tag }}" --repo "$GH_REPO" --clobber

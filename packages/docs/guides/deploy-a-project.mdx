@@ -1,0 +1,59 @@
+---
+title: "Deploy a Project"
+description: "Move a generated elizaOS project from local development to production"
+---
+
+A project is the deployable product workspace created by the `project`
+template. The CLI scaffolds that workspace; deployment is handled by the
+project's package scripts plus your chosen hosting target.
+
+## Start From A Project
+
+```bash
+elizaos create my-agent --template project
+cd my-agent
+bun install
+bun run dev
+```
+
+The generated project owns the runtime scripts:
+
+```bash
+bun run build
+bun run test
+bun run typecheck
+bun run lint
+```
+
+## Option 1: Eliza Cloud
+
+Eliza Cloud provides app registration, container hosting, app-scoped chat,
+monetization, earnings, and cashout flows. Use the Cloud dashboard, API, or SDK
+to register a Cloud app and deploy a container.
+
+<Card title="Deploy to Eliza Cloud" icon="cloud" href="/guides/deploy-to-cloud">
+  Register the Cloud app, deploy the container, and wire app-scoped chat.
+</Card>
+
+## Option 2: Self-Hosted
+
+For self-hosting, deploy the generated project as a normal Bun/Node service:
+
+1. Build the project with `bun run build`.
+2. Provide the same environment variables used locally.
+3. Run the project's server or packaged app entrypoint.
+4. Put the API and app behind your reverse proxy, container platform, or PaaS.
+
+Use this path when you need direct control over infrastructure, networking, or
+data locality.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Customize a Generated Project" icon="sliders" href="/projects/customize-generated-project">
+    Set app identity, bundle IDs, branding, app plugins, and platform config.
+  </Card>
+  <Card title="Test a Project" icon="flask" href="/guides/test-a-project">
+    Run the generated project's test scripts before shipping.
+  </Card>
+</CardGroup>

@@ -1,0 +1,111 @@
+name: Quality (Fork)
+
+# Fork-safe quality variant. Only runs on PRs from forked repositories
+# (or via manual dispatch) so secret-less forks still get lint, typecheck,
+# and a build smoke without inheriting any privileged secrets.
+
+on:
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: quality-fork-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUN_VERSION: "1.3.13"
+  NODE_VERSION: "23"
+
+jobs:
+  lint:
+    name: Lint
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+
+      - name: Run lint
+        run: bun run lint
+
+      - name: Run format check
+        run: bun run format:check
+
+  typecheck:
+    name: Type Check
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+
+      # @elizaos/core's package.json points "main"/"types" at dist/ files
+      # that don't exist until the build runs. Plugins that resolve core
+      # via node_modules (rather than the root tsconfig path mapping) fail
+      # typecheck without this. turbo.json declares `typecheck` depends on
+      # `@elizaos/core#build`, but downstream packages with broken src
+      # references can fail before turbo schedules the core build, so we
+      # build it explicitly here.
+      - name: Build @elizaos/core dist
+        working-directory: packages/core
+        run: bun run build
+
+      - name: Run typecheck
+        run: bun run typecheck
+
+  build:
+    name: Build
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork == true)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+
+      - name: Build
+        run: bun run build
+
+      - name: Build homepage
+        working-directory: packages/homepage
+        run: bun run build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

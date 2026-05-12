@@ -1,0 +1,157 @@
+---
+title: "Installation"
+description: "Install the elizaOS CLI and scaffold your first project or plugin"
+---
+
+The public `elizaos` package installs the `elizaos` binary. The CLI is intentionally small: it creates and upgrades generated workspaces, shows template information, and prints version information. Running, building, and testing happens through scripts inside the generated project or plugin.
+
+## Prerequisites
+
+- **Node.js 24+**: install from [nodejs.org](https://nodejs.org/) or use a version manager.
+- **Bun**: install from [bun.sh](https://bun.sh/). Generated TypeScript workspaces use Bun scripts.
+- **Git**: required when creating a project template that includes the local `eliza` checkout.
+
+<Note>
+  **Windows users:** WSL2 is the recommended shell for project development.
+</Note>
+
+## Install the CLI
+
+You can run the CLI without a global install:
+
+```bash
+npx elizaos
+```
+
+Or install it globally:
+
+```bash
+bun add -g elizaos
+```
+
+Verify the installed binary:
+
+```bash
+elizaos --version
+elizaos version
+```
+
+<Tip>
+  The npm package name is `elizaos`, and the binary is `elizaos`.
+</Tip>
+
+## Create a Project
+
+Create a deployable product workspace:
+
+```bash
+elizaos create my-agent-app --template project
+cd my-agent-app
+bun install
+bun run dev
+```
+
+The project template creates the app workspace, initializes the local `eliza` checkout unless you pass `--skip-upstream`, and writes `.elizaos/template.json` metadata so future template upgrades can be applied intentionally.
+
+Useful project scripts are defined in the generated `package.json`:
+
+```bash
+bun run dev
+bun run build
+bun run test
+bun run typecheck
+bun run lint
+```
+
+## Create a Plugin
+
+Create a runtime extension:
+
+```bash
+elizaos create plugin-weather --template plugin
+cd plugin-weather
+bun install
+bun run build
+bun run test
+```
+
+Plugins add runtime capabilities such as actions, providers, evaluators, services, routes, or app surfaces. They are consumed by projects after they are built and added as dependencies or local workspace packages.
+
+## Inspect Templates
+
+List available templates:
+
+```bash
+elizaos info
+elizaos info --template project
+elizaos info --template plugin
+elizaos info --language typescript
+```
+
+For automation:
+
+```bash
+elizaos info --json
+```
+
+## Upgrade Generated Files
+
+Run upgrades from the root of a generated project or plugin:
+
+```bash
+elizaos upgrade --check
+elizaos upgrade
+```
+
+The upgrade command reads `.elizaos/template.json`, renders the latest version of the same template, and updates managed files. Locally modified files that conflict are skipped and reported.
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion icon="terminal" title="Command not found">
+    If a global install does not expose `elizaos`, make sure Bun's global bin directory is on your `PATH`:
+
+    ```bash
+    export PATH="$HOME/.bun/bin:$PATH"
+    ```
+
+    You can always use `npx elizaos` without a global install.
+  </Accordion>
+
+  <Accordion icon="node-js" title="Node version mismatch">
+    Check your Node.js version:
+
+    ```bash
+    node --version
+    ```
+
+    Use Node.js 24 or newer for the CLI and generated workspaces.
+  </Accordion>
+
+  <Accordion icon="rotate" title="Template upgrade conflicts">
+    Preview before writing:
+
+    ```bash
+    elizaos upgrade --check
+    ```
+
+    If the command reports conflicts, review the listed files and apply the template changes manually where needed.
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Create and run a generated project.
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/cli-reference/overview">
+    Commands, flags, and examples.
+  </Card>
+  <Card title="Project Overview" icon="diagram-project" href="/projects/overview">
+    Understand generated project structure.
+  </Card>
+  <Card title="Create a Plugin" icon="puzzle-piece" href="/guides/create-a-plugin">
+    Build a reusable runtime extension.
+  </Card>
+</CardGroup>

@@ -1,0 +1,1132 @@
+---
+title: Journal des modifications
+description: Nouveautés de Eliza — fonctionnalités, améliorations et correctifs.
+---
+
+<Update label="2026-04-23" description="Semaine du 23 avril ; portefeuille dual et provisionnement de portefeuille cloud, Agent Browser Bridge, brouillons d'automatisation, UX de provisionnement d'agents cloud, connecteur BlueBubbles" tags={["Feature", "Update", "Fix"]}>
+
+<div id="dual-wallet-with-cloud-wallet-provisioning">
+## Portefeuille dual avec provisionnement de portefeuille cloud
+</div>
+
+Votre agent prend désormais en charge une architecture de portefeuille dual dans laquelle les [portefeuilles locaux et cloud](/fr/rest/wallet) coexistent, avec une source principale par chaîne. Lorsque vous vous connectez à [Eliza Cloud](/fr/guides/cloud) avec la fonctionnalité de portefeuille cloud activée, les portefeuilles EVM et Solana sont importés depuis le cloud et définis comme principaux automatiquement — sans configuration manuelle. Vous pouvez changer la source principale à tout moment, et les descripteurs de portefeuille cloud peuvent être réinterrogés à la demande. Si le provisionnement échoue lors de la connexion, l'authentification réussit tout de même et vous pouvez réessayer le provisionnement du portefeuille plus tard.
+
+<div id="agent-browser-bridge">
+## Agent Browser Bridge
+</div>
+
+L'extension LifeOps Browser a été renommée et relocalisée en tant qu'**Agent Browser Bridge** — une extension de navigateur autonome (Chrome et Safari) qui permet à votre agent d'observer et d'agir au sein de vos sessions de navigateur. Le bridge s'exécute comme sa propre application avec un panneau de configuration dédié, des artefacts d'installateur rafraîchis et un nouvel onglet d'accueil dans la vue de l'espace de travail du navigateur. Les flux de travail LifeOps Browser existants continuent de fonctionner avec le nouveau bridge.
+
+<div id="automation-drafts">
+## Brouillons d'automatisation
+</div>
+
+La vue des [automatisations](/fr/guides/cloud) prend désormais en charge la rédaction de flux de travail avant de les activer. Un nouveau volet de brouillons vous permet de composer un flux de travail limité à une salle spécifique, de normaliser son titre et de gérer avec élégance les erreurs d'envoi si le brouillon ne peut pas être livré. Les brouillons restent en dehors de votre liste d'automatisations actives jusqu'à ce que vous soyez prêt à les expédier.
+
+<div id="cloud-agent-provisioning-ux">
+## UX de provisionnement d'agents cloud
+</div>
+
+Le [tableau de bord](/fr/guides/cloud) cloud gère désormais clairement les cartes de runtime non en cours d'exécution. Le bouton principal **Ouvrir** est désactivé et étiqueté avec l'état actuel de l'agent ("démarrage…", "arrêté", "en pause", "inaccessible") pendant que la carte interroge pour la disponibilité, avec un point d'état pulsé pendant le provisionnement et une info-bulle expliquant le temps de démarrage attendu. Le bouton repasse automatiquement à l'état solide **Ouvrir** dès que la sonde de santé renvoie en cours d'exécution. La suppression des agents cloud et le provisionnement en ligne depuis le tableau de bord ont également été restaurés.
+
+<div id="bluebubbles-connector">
+## Connecteur BlueBubbles
+</div>
+
+Un nouveau [connecteur BlueBubbles](/fr/connectors/bluebubbles) permet à votre agent de se connecter à iMessage via un serveur [BlueBubbles](https://bluebubbles.app) auto-hébergé via HTTP. Contrairement au connecteur iMessage natif — qui lit directement la base de données Messages locale — BlueBubbles peut être atteint depuis n'importe quelle machine sur le même réseau, ce qui en fait un bon choix lorsque votre agent ne s'exécute pas sur le Mac qui contient la base de données Messages.
+
+<div id="updates">
+## Mises à jour
+</div>
+
+- **Finition du chat et des pages** — Le contexte de chat avec portée de page, l'en-tête du widget de chat, le titre du chat et la barre latérale du chat ont tous été affinés pour des mises en page plus propres et un contexte plus fiable lors du changement entre les pages.
+- **Modernisation de la barre latérale et de la vue des apps** — Les contrôles de la barre latérale du tableau de bord, le catalogue de la [vue des apps](/fr/dashboard/apps) et la barre latérale des apps ont été nettoyés avec des contrôles repliés et une densité plus serrée. L'éditeur de personnages, la mise en page des [personnages](/fr/agents/character-interface), le panneau des personnages et la barre latérale des personnages ont également été polis pour une expérience de navigation plus cohérente.
+- **Nettoyage de la barre latérale des connecteurs** — La barre latérale de configuration des connecteurs a été nettoyée et polie, avec des bascules plus claires et des interrupteurs de connecteurs pour activer/désactiver les plateformes individuelles.
+- **Téléchargements de connaissances embarqués** — Le système de [connaissances](/fr/guides/documents) prend désormais en charge les téléchargements embarqués directement depuis l'éditeur de personnages, afin que vous puissiez joindre du matériel de référence tout en configurant la personnalité de votre agent.
+- **Facturation et statut X (Twitter)** — La facturation du connecteur X est désormais présentée aux côtés des autres utilisations cloud, et les rapports de statut ont été renforcés avec une nouvelle couverture de tests.
+- **Correctif de migration cloud** — Un problème de migration affectant les agents déployés en cloud a été résolu afin que les mises à niveau s'appliquent proprement au premier démarrage.
+- **Modes d'onboarding de runtime iOS** — L'application iOS prend désormais en charge des modes de build de runtime et d'onboarding distincts, offrant aux utilisateurs mobiles une expérience de première exécution plus fluide.
+- **Nettoyage d'accessibilité** — Les micro-étiquettes du tableau de bord, le chrome de page et les affordances de statut ont été nettoyés pour une meilleure parité d'accessibilité.
+
+<div id="bug-fixes">
+## Corrections de bugs
+</div>
+
+- Correction du sidecar n8n qui ne se rétablissait pas proprement dans certaines configurations — le sidecar démarre désormais et bascule de manière fiable
+- Correction des liens profonds d'automatisation qui ne défilaient pas jusqu'à la bonne section lorsqu'ils étaient ouverts depuis la barre latérale — les ancres de hachage se résolvent désormais correctement
+- Correction du tableau de bord cloud qui permettait aux utilisateurs de cliquer sur le bouton Ouvrir sur des cartes de runtime non en cours d'exécution, ce qui menait à des pages mortes
+- Correction des onglets de l'espace de travail du navigateur qui ne se réinitialisaient pas entre les sessions dans Agent Browser Bridge
+
+</Update>
+
+<Update label="2026-04-20" description="Semaine du 20 avril ; routage d'actions plus intelligent, précision de la messagerie multi-canal, améliorations de l'optimiseur d'entraînement" tags={["Update", "Fix"]}>
+
+<div id="smarter-action-routing">
+## Routage d'actions plus intelligent
+</div>
+
+Votre agent choisit désormais la bonne action de manière plus fiable lorsque vous lui donnez des commandes en langage naturel. Demander à votre agent de "publier ceci sur Discord" ne déclenche plus accidentellement la planification, et les requêtes relationnelles comme "depuis combien de temps n'ai-je pas parlé à Sarah ?" se résolvent maintenant correctement quelle que soit la formulation. Les actions d'envoi multi-canal, de recherche de relations et de synchronisation d'intentions de périphérique ont des descriptions plus précises qui aident le planificateur d'actions à distinguer les requêtes similaires.
+
+<div id="updates">
+## Mises à jour
+</div>
+
+- **Précision de l'optimiseur d'entraînement** — Le [système d'entraînement](/fr/guides/training) évalue désormais les sorties du planificateur d'actions en utilisant une correspondance stricte des noms d'actions au lieu d'un chevauchement flou de tokens, de sorte que les exécutions d'optimisation produisent des améliorations plus significatives du comportement de votre agent.
+- **Actions de compétences consolidées** — Les méthodes héritées d'invocation de compétences ont été retirées. `USE_SKILL` est désormais le seul moyen de déclencher les [compétences](/fr/plugins/skills), tous les alias précédents (`RUN_SKILL`, `INVOKE_SKILL`) étant automatiquement redirigés vers celui-ci.
+- **API de compétences simplifiée** — Le point de terminaison d'activation/désactivation des [compétences](/fr/plugins/skills) a été consolidé en une seule surface de bascule, rendant la gestion des compétences plus prévisible pour les intégrations et les automatisations.
+- **Récupération gracieuse du connecteur de santé** — Si la vérification de santé d'un connecteur est temporairement inaccessible, le runtime se dégrade désormais gracieusement au lieu de bloquer l'exécution d'autres actions.
+
+<div id="bug-fixes">
+## Corrections de bugs
+</div>
+
+- Correction de l'échec de l'installateur de bureau Windows sur les systèmes avec des chemins de fichiers longs — la compilation active désormais automatiquement la prise en charge des chemins étendus
+- Correction de l'icône de l'application de bureau qui ne s'affichait pas correctement dans l'installateur Windows
+
+</Update>
+
+<Update label="2026-04-19" description="Semaine du 19 avril ; refonte du tableau de bord, automatisations de workflows n8n, interface du connecteur life-ops, réactivité mobile" tags={["Feature", "Update", "Fix"]}>
+
+<div id="dashboard-redesign">
+## Refonte du tableau de bord
+</div>
+
+La page d'accueil du [tableau de bord cloud](/fr/guides/cloud) a été entièrement repensée. Les cartes d'agents utilisent désormais une mise en page axée sur les données avec des grilles d'instances plus propres et des puces de filtre pour une navigation rapide. Une nouvelle barre latérale persistante avec des onglets verticaux remplace la navigation précédente, et la section héro est désormais axée sur la typographie pour une expérience de lecture plus calme et plus lisible. Vous pouvez provisionner de nouveaux agents cloud directement depuis le tableau de bord avec une modale en ligne — plus besoin de naviguer ailleurs pour créer un agent. La suppression des agents cloud et la gestion des actions de cartes sont également restaurées.
+
+<div id="n8n-workflow-automations">
+## Automatisations de workflows n8n
+</div>
+
+Votre agent prend désormais en charge les automatisations de workflows [n8n](https://n8n.io) via un nouveau plugin. Un volet Workflows dédié dans la vue Automatisations vous permet de parcourir, activer, désactiver et supprimer des workflows. Le sidecar n8n démarre automatiquement lorsque le plugin est activé, et les mises à jour de statut sont interrogées en temps réel. L'ancien plugin n8n a été retiré au profit de cette nouvelle intégration.
+
+<div id="life-ops-connector-ui-overhaul">
+## Refonte de l'interface du connecteur life-ops
+</div>
+
+Les panneaux de configuration du connecteur [life-ops](/fr/rest/lifeops) ont été repensés avec une disposition de cartes plate et sans bordure. Chaque connecteur — Signal, Discord, Telegram et iMessage — affiche désormais un bouton de connexion clair et un panneau de permissions adapté à la plateforme. Les bordures redondantes et les conteneurs de cartes ont été supprimés, et la bannière d'avertissement cloud a été rétrogradée en texte en ligne atténué pour que l'interface reste propre et facile à parcourir.
+
+<div id="updates">
+## Mises à jour
+</div>
+
+- **Page d'accueil responsive mobile** — La page d'accueil du tableau de bord est désormais entièrement responsive sur les téléphones et tablettes. La barre supérieure est fixe pour que le bouton de menu reste accessible sur les pages longues, les puces de filtre défilent horizontalement sur les écrans étroits, les cibles tactiles respectent les tailles adaptées au toucher, et le débordement horizontal est éliminé sur toutes les largeurs de fenêtre.
+- **Panneaux de paramètres compactés** — Les panneaux de paramètres Cloud et Modèle IA ont été simplifiés. Les éléments d'interface comme la grille d'agents, les métriques d'utilisation et les liens externes morts ont été supprimés. Les menus déroulants de sélection de modèle apparaissent désormais correctement même avant de se connecter explicitement au cloud.
+- **SDK OpenRouter mis à jour** — Le plugin OpenRouter a été mis à jour vers `@openrouter/ai-sdk-provider` v2.0.0 pour un meilleur routage des modèles et une meilleure compatibilité.
+- **Nettoyage de l'agent de tâches Discord** — Les messages de l'[agent de codage](/fr/guides/coding-swarms) dans Discord sont désormais beaucoup plus propres. Les mises à jour de battement de cœur affichent le temps réel écoulé au lieu des noms d'outils internes, et les messages de niveau débogage comme l'état de session et l'analyse du validateur ne fuient plus dans le canal.
+- **Accessibilité de la page d'accueil** — Les modales et les cartes de runtime respectent désormais les standards de parité d'accessibilité avec des attributs ARIA appropriés, et le contraste a été amélioré sur les micro-labels, les indicateurs de statut et les lignes de la barre latérale.
+
+<div id="bug-fixes">
+## Corrections de bugs
+</div>
+
+- Correction de l'interface web de l'agent affichant un écran blanc dans les navigateurs sans support WebGPU (Chrome sans flag, Safari, Chromium headless) — un polyfill empêche désormais le crash d'initialisation de three.js
+- Correction de l'interface web de l'agent affichant un écran blanc à cause d'une erreur "require is not defined" lorsque le bundle navigateur tentait de résoudre les valeurs par défaut de marque
+- Correction de l'API de solde du portefeuille cloud retournant des erreurs 500 car le stub de route du portefeuille Steward manquait une exportation de sous-chemin
+- Correction du bouton "Ouvrir Eliza" sur la page d'accueil naviguant vers un port mort quand aucun runtime local n'était en cours d'exécution — il affiche désormais des instructions d'installation à la place
+- Correction de la modale de provisionnement d'agents cloud permettant la création d'agents en double quand le bouton d'envoi se réactivait après le succès
+- Correction des cartes de connecteur life-ops n'affichant pas les boutons de connexion
+- Correction des builds navigateur Vite 6 plantant à cause d'importations de plugins serveur uniquement non résolues — celles-ci sont désormais correctement stubbées
+
+</Update>
+
+<Update label="2026-04-17" description="Semaine du 17 avril ; connecteurs de comptes personnels life-ops, Google multi-comptes, provisionnement de portefeuille Steward dans le cloud" tags={["Feature", "Update", "Fix"]}>
+
+<div id="life-ops-personal-account-connectors">
+## Connecteurs de comptes personnels life-ops
+</div>
+
+Votre agent peut désormais se connecter à vos comptes personnels Signal, Discord et Telegram — pas seulement des comptes bot — pour agréger les messages dans le système [life-ops](/fr/rest/lifeops). Signal utilise l'appairage par QR code d'appareil lié, Discord utilise OAuth2, et Telegram prend en charge l'authentification par téléphone/code/2FA. Une fois connectés, les messages de ces plateformes affluent dans la boîte de réception unifiée de votre agent aux côtés de Gmail et Calendar, donnant à votre agent une image plus complète de vos communications.
+
+<div id="multi-account-google-connector">
+## Connecteur Google multi-comptes
+</div>
+
+L'intégration Google de [life-ops](/fr/rest/lifeops) prend désormais en charge plusieurs comptes Google par côté — à la fois pour vous (le propriétaire) et pour votre agent. Les événements de calendrier et les messages Gmail sont agrégés sur tous les comptes connectés, vous offrant une vue unifiée même si vous utilisez des comptes Google séparés pour le travail et le personnel. Un nouveau panneau de gestion des comptes dans les paramètres vous permet d'ajouter, supprimer et configurer chaque compte individuellement. Les configurations existantes à compte unique continuent de fonctionner sans aucune modification.
+
+<div id="steward-wallet-auto-provisioning-on-cloud-login">
+## Provisionnement automatique du portefeuille Steward à la connexion cloud
+</div>
+
+Lorsque vous vous connectez à [Eliza Cloud](/fr/guides/cloud) depuis l'application de bureau, un portefeuille géré par [Steward](/fr/guides/wallet) est désormais provisionné automatiquement. Vous n'avez plus besoin de configurer manuellement les identifiants Steward après la connexion au cloud — la page du portefeuille, les politiques de dépenses et la signature des transactions fonctionnent directement dès que vous vous connectez.
+
+<div id="updates">
+## Mises à jour
+</div>
+
+- **Hooks de pipeline** — Un nouveau système de hooks permet au runtime d'exécuter une logique personnalisée aux points clés du pipeline de l'agent, donnant aux auteurs de plugins et aux utilisateurs avancés plus de contrôle sur le traitement des requêtes.
+- **Nettoyage de l'interface life-ops** — Les descriptions redondantes et le texte de remplissage ont été supprimés des panneaux de configuration life-ops, rendant la configuration des connecteurs plus propre et plus facile à parcourir.
+- **Labels de langue multiplateformes** — Les références à "on this Mac" dans l'interface ont été mises à jour en "on this device" pour que le libellé soit précis sur Windows, Linux et mobile.
+- **Améliorations de l'URL d'authentification OAuth** — Le flux OAuth Google dans life-ops affiche désormais l'URL d'autorisation de manière plus fiable, corrigeant les cas où le lien ne s'affichait pas lors de la connexion d'un nouveau compte.
+- **Améliorations de la compilation de l'app mobile** — Les builds iOS compilent désormais les quatre plugins officiels Capacitor depuis les sources via CocoaPods avec compatibilité Xcode 16, et les builds Android gèrent l'identité de l'application dynamiquement depuis la configuration.
+
+<div id="bug-fixes">
+## Corrections de bugs
+</div>
+
+- Correction de l'application de bureau qui se figeait après un relancement de build empaqueté en raison d'une vérification de disponibilité faux positif qui correspondait au texte de chargement dans la vue de chat
+- Correction des builds iOS échouant sous le stripping de binaires Swift Package Manager avec Xcode 16
+- Sécurité : mise à jour de Vite vers 6.4.2 et DOMPurify vers 3.4.0 pour corriger des vulnérabilités de traversée de chemin et XSS dans les dépendances transitives
+
+</Update>
+
+<Update label="2026-04-10" description="Semaine du 10 avril ; Eliza Cloud pour les agents de codage, vue contacts, sélecteur de packs de contenu, paramètres Discord cloud, overlay de connexion perdue" tags={["Feature", "Update", "Fix"]}>
+
+<div id="eliza-cloud-as-a-provider-for-coding-agents">
+## Eliza Cloud comme fournisseur pour les agents de codage
+</div>
+
+Les [agents de codage](/fr/guides/coding-swarms) (Claude Code, Codex, Aider) peuvent désormais utiliser Eliza Cloud comme fournisseur LLM. Sélectionnez "Eliza Cloud" dans les paramètres des agents de codage, associez votre clé API cloud, et vos sessions de codage transitent par le cloud — aucune clé API par agent requise. L'interface de configuration reflète l'état d'authentification par agent pour que vous puissiez voir d'un coup d'oeil quels agents sont prêts à l'emploi. Une palette de couleurs de terminal améliorée facilite également la lecture de la sortie de Codex.
+
+<div id="contacts-view">
+## Vue contacts
+</div>
+
+Un nouvel onglet Contacts dans la section Avancé vous offre une carte visuelle des relations de votre agent. Parcourez les contacts avec recherche et filtrage, consultez la force des relations et les niveaux de confiance, et visualisez un graphe de clusters d'identité montrant comment les connexions de votre agent sont liées entre elles. Le système de contacts est désormais intégré au runtime principal — aucun plugin séparé requis.
+
+<div id="content-pack-picker">
+## Sélecteur de packs de contenu
+</div>
+
+L'étape d'identité de l'[onboarding](/fr/guides/beginners-development-guide) et l'éditeur de personnage incluent désormais un navigateur de packs de contenu. Choisissez parmi les packs thématiques disponibles pour personnaliser l'expérience de démarrage, les arrière-plans et l'image de marque de votre agent directement lors de la configuration ou depuis l'éditeur de personnage à tout moment.
+
+<div id="discord-cloud-settings">
+## Paramètres Discord cloud
+</div>
+
+Les agents déployés dans le cloud exposent désormais un panneau complet de configuration Discord dans le [tableau de bord cloud](/fr/guides/cloud). Configurez les politiques de DM, le comportement de guilde, les bascules d'actions (réactions, stickers, sondages, fils), le formatage des messages et les intents privilégiés — le tout sans modifier de fichiers de configuration.
+
+<div id="connection-lost-overlay">
+## Overlay de connexion perdue
+</div>
+
+Lorsque le backend de votre agent devient inaccessible, le tableau de bord affiche désormais un overlay plein écran clair au lieu d'échouer silencieusement. L'overlay indique que la connexion est perdue et se met à jour automatiquement lorsque le backend redevient disponible.
+
+<div id="updates">
+## Mises à jour
+</div>
+
+- **Indicateurs de source de chat simplifiés** — Les étiquettes de source inter-canaux dans la barre latérale et la boîte de réception utilisent désormais des icônes compactes au lieu de badges textuels complets, réduisant l'encombrement visuel tout en indiquant de quelle plateforme provient chaque message.
+- **Vérifications d'identité et de livraison des connecteurs** — Les messages des connecteurs incluent désormais des métadonnées d'identité plus riches et un statut de livraison, facilitant le suivi du routage des messages inter-plateformes dans la [boîte de réception](/fr/guides/connectors).
+- **Regroupement de scénarios dans les trajectoires** — La [vue trajectoires](/fr/advanced/trajectories) regroupe désormais les appels LLM liés en scénarios nommés avec des filtres d'historique, facilitant la révision et la comparaison du comportement de l'agent entre les sessions.
+- **Stockage mémoire avancé** — Votre agent peut désormais persister des mémoires structurées au-delà de l'historique de conversation par défaut. Cela permet un meilleur rappel de contexte entre les sessions et est disponible via la configuration de l'agent.
+- **Support vocal cloud renforcé** — Les conteneurs cloud incluent désormais les dépendances natives d'encodage audio, de sorte que la voix Discord et le TTS fonctionnent de manière fiable sans configuration supplémentaire. Lorsque les dépendances vocales sont manquantes, le système dégrade gracieusement avec une erreur claire au lieu de planter.
+- **Auto-configuration du plugin de connaissances** — Le plugin de connaissances s'active désormais automatiquement lorsque des clés API ou un fournisseur cloud sont disponibles, et détecte automatiquement votre fournisseur de texte et votre modèle à partir de votre configuration existante. Aucune configuration manuelle nécessaire pour commencer à utiliser les [connaissances](/fr/guides/documents).
+
+<div id="bug-fixes">
+## Corrections de bugs
+</div>
+
+- Correction du catalogue de jeux dans la [vue apps](/fr/dashboard/apps) affichant des apps supprimées ou indisponibles — le registre les filtre désormais
+- Correction des vues de jeux causant des requêtes de polling excessives pouvant ralentir le tableau de bord
+- Correction des presets de personnage d'onboarding ne se chargeant pas correctement après une mise à jour de configuration
+- Correction de l'endpoint de statut du lecteur de musique renvoyant des erreurs avant que le runtime de l'agent n'ait fini de démarrer
+- Correction des paramètres des agents de codage abandonnant silencieusement les clés API sauvegardées lorsque la requête de sauvegarde échouait — les erreurs sont désormais affichées en ligne
+
+</Update>
+
+<Update label="2026-04-08" description="Semaine du 8 avril ; redémarrage automatique après installation de plugin, saut d'onboarding, EVM opt-in, corrections de stabilité" tags={["Update", "Fix"]}>
+
+<div id="auto-restart-after-plugin-install">
+## Redémarrage automatique après installation de plugin
+</div>
+
+L'installation d'un plugin sur l'application de bureau redémarre désormais automatiquement l'agent pour que le nouveau plugin prenne effet immédiatement. Un indicateur de progression affiche le statut du redémarrage, et si le redémarrage échoue, vous recevez un message d'erreur clair au lieu d'un blocage silencieux. Plus besoin de redémarrer manuellement après chaque installation de plugin.
+
+<div id="onboarding-skipped-when-already-configured">
+## Onboarding ignoré lorsque déjà configuré
+</div>
+
+Si votre backend est déjà configuré — par exemple, après une restauration depuis une sauvegarde ou la reconnexion d'un agent existant — l'[assistant d'onboarding](/fr/guides/beginners-user-guide) est désormais ignoré automatiquement. Vous accédez directement au chat au lieu de passer par des écrans de configuration que vous avez déjà complétés.
+
+<div id="updates-1">
+## Mises à jour
+</div>
+
+- **Le plugin EVM est désormais opt-in** — Le plugin de wallet EVM se chargeait automatiquement lorsqu'une clé privée EVM était présente, mais un problème d'enregistrement causait des plantages au démarrage. Il nécessite désormais `ENABLE_EVM_PLUGIN=1` dans votre environnement pour s'activer. Une fois le problème upstream résolu, l'activation automatique reviendra. Voir la [configuration du wallet](/fr/guides/wallet) pour plus de détails.
+- **Authentification bureau plus fluide** — Les interruptions réseau brèves ne déclenchent plus de demandes de ré-authentification inutiles sur l'application de bureau. Les réponses 401 transitoires sont désormais gérées gracieusement pour que votre session reste connectée.
+
+<div id="bug-fixes-1">
+## Corrections de bugs
+</div>
+
+- Correction des plugins provoquant des plantages de l'agent au démarrage dans Docker, les environnements headless et cloud lorsque les paquets optionnels réservés au bureau étaient manquants — ces plugins dégradent désormais gracieusement
+- Correction des migrations de base de données concurrentes corrompant l'état au démarrage lorsque plusieurs composants s'initialisaient en même temps
+- Correction de l'application de bureau ne détectant pas les changements de port après un redémarrage du runtime, nécessitant un relancement complet de l'app
+- Correction des vérifications de santé du bureau sous Windows expirant au démarrage en raison d'un intervalle de polling agressif
+
+</Update>
+
+<Update label="2026-04-07" description="Diagnostics développeur, migrations PGlite life-ops, scripts workspace, bannières terminal en développement" tags={["Fix", "Update"]}>
+
+<div id="life-ops-safer-migrations-on-pglite">
+## Life-ops : migrations plus sûres sur PGlite
+</div>
+
+Les mises à jour de schéma du sous-système life-ops exécutent désormais les index principaux après les étapes `ALTER TABLE` de propriété, de sorte que les bases de données héritées antérieures aux colonnes `domain` et `subject_*` n'échouent plus lors du `CREATE INDEX`. Les savepoints par migration sont également encapsulés dans une transaction explicite `BEGIN` / `COMMIT` afin que PGlite et Postgres respectent tous deux la sémantique de `SAVEPOINT` lors des mises à jour.
+
+<div id="plugin-resolution-why-optional-plugins-were-requested">
+## Résolution de plugins : pourquoi des plugins optionnels ont été demandés
+</div>
+
+Lorsqu'un plugin optionnel ne peut pas être chargé parce qu'un package ou un checkout browser stagehand est manquant, les journaux de démarrage incluent désormais la première source de configuration ou variable d'environnement qui l'a ajouté à l'ensemble de chargement. Cela transforme une erreur générique "Cannot find module" en un correctif actionnable : supprimez-le de `plugins.allow`, désactivez la variable d'environnement qui l'a activé automatiquement, ou installez le package.
+
+<div id="workspace-tooling-and-repo-hygiene">
+## Outillage workspace et hygiène du dépôt
+</div>
+
+De nouveaux scripts de dépendances workspace (`workspace:deps:sync|check|restore`, `workspace:replace-versions`, `workspace:restore-refs`, `workspace:prepare`) réduisent la chirurgie manuelle de `package.json` lors de la liaison de checkouts locaux elizaOS ou de plugins. Le dépôt ignore désormais aussi `cache/audio/` et `scripts/bin/*` tout en conservant `scripts/bin/.gitkeep` pour que les binaires et caches locaux restent hors de git.
+
+<div id="terminal-dev-banners">
+## Bannières terminal en développement
+</div>
+
+L'orchestrateur, Vite, l'API et Electrobun peuvent désormais afficher des tableaux de paramètres encadrés avec des en-têtes optionnels style figlet et une coloration ANSI adaptée au TTY pendant le développement local. Il s'agit strictement de diagnostics terminal pour les flux de travail de développement, pas d'une modification de l'interface du tableau de bord.
+
+</Update>
+
+<Update label="2026-04-05" description="Chat du tableau de bord : les callbacks d'action remplacent sur place (messages progressifs à la Discord via SSE)" tags={["Update", "Fix"]}>
+
+<div id="action-callbacks-replace-dont-concatenate-dashboard-sse">
+## Callbacks d'action : remplacer, pas concaténer (SSE du tableau de bord)
+</div>
+
+Les **actions** de longue durée qui appellent `HandlerCallback` plusieurs fois — le même schéma que les **messages progressifs** sur Discord — **remplacent** désormais le texte du callback précédent dans la réponse streamée de l'assistant au lieu de l'**ajouter à la suite**.
+
+**Pourquoi :** Sur Discord, un message est **modifié sur place**. Le tableau de bord web streame via **SSE** ; fusionner naïvement chaque callback avec la chaîne existante produisait des lignes d'état collées (`🔍 …🔍 …✨ …Now playing…`) et semblait cassé par rapport aux mises à jour en direct de Telegram/Discord.
+
+**Comment :** `generateChatResponse` prend un instantané du texte qui existait **avant le premier callback d'action** du tour (`preCallbackText`, typiquement la réponse streamée du LLM). Chaque callback suivant définit le corps visible à `preCallbackText + "\n\n" + latestCallbackText` et émet un **instantané** SSE pour que le traitement `fullText` existant du client mette à jour la bulle unique de l'assistant.
+
+**Contrat des plugins :** Inchangé — les plugins continuent d'appeler `callback({ text, source })`. Aucun canal WebSocket latéral ni hook spécifique au runtime n'est requis.
+
+**Docs :** [Callbacks d'action et streaming SSE](/fr/runtime/action-callback-streaming).
+
+</Update>
+
+<Update label="2026-07-02" description="Semaine du 26 juin au 2 juillet ; formulaires de configuration de plugins, commandes Discord, renforcement du cloud" tags={["Feature", "Update", "Fix"]}>
+<div id="chat-driven-plugin-configuration">
+## Configuration de plugins par le chat
+</div>
+
+Votre agent peut désormais vous aider à configurer des plugins par la conversation. Demandez à votre agent de configurer un plugin et il génère un formulaire interactif directement dans le chat — pas besoin de naviguer vers les paramètres. L'agent détecte de quel plugin vous parlez, génère les champs de configuration appropriés et applique vos choix à la soumission. Consultez [plugins](/fr/plugins/overview) pour plus de détails.
+
+<div id="discord-slash-commands">
+## Commandes slash Discord
+</div>
+
+Eliza prend désormais en charge les commandes slash natives de Discord. Quatre commandes sont disponibles cette semaine — `/skill`, `/workspace`, `/shell` et `/cron` — vous permettant de gérer les compétences, les espaces de travail, l'accès au shell et les tâches planifiées directement depuis Discord. Une commande `/issue` avec support auto-vision est également disponible pour soumettre des problèmes avec des captures d'écran. Consultez le [connecteur Discord](/fr/connectors/discord) pour la configuration.
+
+<div id="skills-marketplace-with-remote-registry">
+## Marché de compétences avec registre distant
+</div>
+
+Vous pouvez désormais parcourir et installer des compétences depuis un registre distant directement dans le tableau de bord. Le marché de [compétences](/fr/plugins/skills) se connecte à un catalogue hébergé, de sorte que les nouvelles compétences contribuées par la communauté apparaissent automatiquement sans mise à jour de Eliza.
+
+<div id="vincent-oauth-wallet-login">
+## Connexion au portefeuille Vincent OAuth
+</div>
+
+L'interface de [portefeuille](/fr/guides/wallet) prend désormais en charge la connexion Vincent OAuth, vous offrant un flux d'authentification basé sur le navigateur pour connecter les services de portefeuille sans saisir manuellement les identifiants.
+
+<div id="steward-evm-signing-for-cloud-containers">
+## Signature EVM Steward pour les conteneurs cloud
+</div>
+
+Les agents déployés dans le cloud peuvent désormais signer des transactions EVM via le pont [Steward](/fr/guides/wallet). Lorsqu'un conteneur cloud a Steward configuré, les échanges et transferts sont acheminés automatiquement via le proxy de signature avec politique — les mêmes contrôles de sécurité disponibles sur le bureau fonctionnent désormais dans les déploiements cloud.
+
+<div id="splash-screen-with-asset-preloading">
+## Écran de démarrage avec préchargement des ressources
+</div>
+
+L'expérience de démarrage a été repensée avec un écran de style rétro qui précharge les avatars VRM, les icônes et les ressources vocales en arrière-plan avec une barre de progression visible. Les utilisateurs habitués passent automatiquement l'écran. Le résultat est un temps d'interactivité plus rapide sans flash de contenu non stylé ni scintillement du chargeur VRM au premier lancement.
+
+<div id="updates">
+## Mises à jour
+</div>
+
+- **Conscience contextuelle de l'agent** — Votre agent connaît désormais sa propre configuration de modèle, son statut de portefeuille et ses plugins installés lorsqu'il répond aux questions, ce qui lui permet de donner des réponses plus précises sur ses propres capacités.
+- **Modèles cloud par défaut mis à jour** — Les conteneurs cloud utilisent désormais par défaut Sonnet 4.6 et Minimax M2.7 pour une meilleure qualité de réponse immédiate.
+- **Recherche dans la barre latérale des vues Base de données et Runtime** — Les vues [base de données](/fr/advanced/database) et runtime incluent désormais une recherche dans l'en-tête de la barre latérale, facilitant la recherche de tables et d'entrées dans les grands ensembles de données.
+- **Plugins triés par statut** — Les listes de [plugins](/fr/plugins/overview) et de [connecteurs](/fr/guides/connectors) affichent désormais les plugins prêts/activés en haut, pour que vous puissiez voir rapidement ce qui est actif.
+- **Plugins groupés par catégorie** — Les listes de plugins affichent désormais des étiquettes de catégorie avec un regroupement visuel, facilitant la navigation dans les grandes collections de plugins.
+- **Contraste du mode sombre adouci** — Les surfaces du mode sombre utilisent des arrière-plans plus profonds avec un texte plus atténué pour réduire la fatigue oculaire lors des sessions prolongées.
+- **Bannière de redémarrage déplacée vers une notification** — La bannière "redémarrage requis" est désormais une notification compacte dans le coin inférieur droit au lieu d'une barre pleine largeur, réduisant la perturbation visuelle.
+- **Explorateur de tables de base de données étendu** — L'explorateur de tables de [base de données](/fr/advanced/database) remplit désormais correctement l'espace disponible, avec des états vides pleine largeur et une gestion correcte du débordement.
+- **Journalisation des trajectoires pour le cloud** — Les conteneurs cloud enregistrent désormais les données de trajectoire, pour que vous puissiez consulter l'historique des appels LLM dans la [vue de trajectoire](/fr/advanced/trajectories) pour les agents déployés dans le cloud.
+- **Compte cloud et routage des services séparés** — La connexion au cloud et le routage des services (inférence, RPC, médias) sont désormais indépendants, ce qui vous permet d'être connecté au cloud sans acheminer tous les services à travers celui-ci.
+- **Migration de la configuration cloud héritée** — Les anciens formats de configuration cloud sont automatiquement migrés au démarrage, empêchant les paramètres d'être silencieusement ignorés après une mise à jour.
+
+<div id="bug-fixes">
+## Corrections de bugs
+</div>
+
+- Correction des conteneurs provisionnés dans le cloud n'activant pas les connaissances, les battements de cœur ou le TTS — ces fonctionnalités s'activent désormais correctement dans les déploiements cloud
+- Correction des conteneurs provisionnés dans le cloud affichant l'assistant d'intégration au lieu de passer directement à l'agent — les conteneurs gérés démarrent désormais immédiatement
+- Correction des conteneurs cloud signalant un statut de connexion incorrect après la connexion
+- Correction des installations de plugins échouant silencieusement lorsque le gestionnaire de plugins était temporairement indisponible — les installations réessaient et récupèrent désormais correctement
+- Correction des permissions du bureau Windows, du routage de la caméra et de l'arrêt ne fonctionnant pas correctement dans certaines configurations
+- Correction de l'extraction tar Electrobun échouant sur Windows lors de l'utilisation de Git Bash
+- Correction du plugin EVM plantant au démarrage en raison d'une importation statique — il est désormais conditionné par un indicateur d'activation optionnel
+- Correction de l'adresse EVM Steward non découvrable par l'interface de portefeuille au premier lancement
+- Correction de la connexion cloud se déconnectant instantanément en raison d'une condition de concurrence lors de la sauvegarde des préférences
+- Correction de l'état vide de la vue base de données ne remplissant pas la largeur disponible
+- Correction de la réinitialisation du personnage n'effaçant pas les sélections d'avatar, de préréglage et de voix dans l'interface
+- Correction des clés API des fournisseurs ne se chargeant pas depuis la configuration enregistrée au démarrage
+- Correction du runtime de l'agent ne redémarrant pas automatiquement lorsque vous enregistrez une nouvelle clé API dans les paramètres
+
+</Update>
+
+<Update label="2026-04-16" description="Semaine du 10 au 16 avril" tags={["Feature", "Update", "Fix"]}>
+<div id="keyboard-shortcuts-overlay">
+## Superposition des raccourcis clavier
+</div>
+
+Appuyez sur `Shift+?` depuis n'importe où dans l'application pour voir tous les raccourcis clavier disponibles. La superposition regroupe les raccourcis par catégorie — agent, navigation, actualisation et utilitaire — pour que vous puissiez découvrir les commandes sans quitter le clavier.
+
+<div id="training-backend-detection">
+## Détection du backend d'entraînement
+</div>
+
+Avant de lancer un travail de fine-tuning, Eliza détecte désormais automatiquement les backends de calcul disponibles (MLX, CUDA, CPU) et valide votre sélection. Si vous demandez un backend qui n'est pas disponible, vous recevez une erreur claire au lieu d'un échec silencieux. Les backends détectés sont également disponibles via l'[API d'entraînement](/fr/rest/training).
+
+<div id="orchestrator-trajectory-view">
+## Vue de trajectoire de l'orchestrateur
+</div>
+
+Les appels LLM effectués par l'orchestrateur de l'essaim sont désormais étiquetés avec des métadonnées de source et affichés avec des badges violets dans la [vue de trajectoire](/fr/advanced/trajectories). Vous pouvez voir quelles décisions l'orchestrateur a prises, à quelle session et tâche elles se rapportent, et en quoi elles diffèrent des appels d'agents individuels.
+
+<div id="updates">
+## Mises à jour
+</div>
+
+- **Récupération d'interruption de flux** — Si un flux de réponse LLM se coupe en plein message, le chat le marque désormais comme "(Réponse interrompue)" et affiche un bouton Réessayer pour que vous puissiez régénérer sans retaper. Auparavant, les flux interrompus laissaient un message partiel sans possibilité de récupération.
+- **Persistance de session terminal** — Les terminaux de l'agent de codage restent désormais actifs lorsque vous changez d'onglet et se reconnectent automatiquement après une déconnexion WebSocket. Vous ne perdez plus le contexte du terminal en naviguant dans le tableau de bord.
+- **Limitation du débit vocal** — Le point de terminaison vocal applique désormais un plafond de 2 000 caractères de texte et une limite de débit par session pour empêcher l'abus rapide de TTS. Les requêtes dépassant l'une ou l'autre limite reçoivent une réponse d'erreur claire.
+- **Indicateur de progression de reconnexion** — Lorsque le tableau de bord perd sa connexion WebSocket, vous voyez désormais une bannière ambrée "Reconnexion (tentative X/15)..." avec un indicateur rotatif avant l'apparition de la bannière d'échec, vous donnant une visibilité sur le processus de nouvelle tentative.
+
+<div id="bug-fixes">
+## Corrections de bugs
+</div>
+
+- Correction du bouton d'arrêt de l'agent de codage qui ne fonctionnait pas — cliquer sur arrêter met désormais correctement fin à la session active
+- Correction de la sortie en double du terminal lors de l'ouverture d'un panneau d'agent de codage
+- Correction du chargement silencieusement échoué des avatars VRM et des ressources 3D lorsque le serveur renvoyait du HTML au lieu de données binaires
+- Correction du monitoring de la mémoire — un nouveau panneau de débogage est disponible pour suivre l'utilisation du tas pendant les sessions longues
+<Update label="2026-06-11" description="Semaine du 5 au 11 juin" tags={["Update", "Fix"]}>
+<div id="unified-provider-configuration">
+## Configuration unifiée des fournisseurs
+</div>
+
+Les flux d'intégration, de paramètres et d'abonnement partagent désormais un contrat unique de configuration des fournisseurs. Auparavant, modifier votre fournisseur de modèle à un endroit ne se reflétait pas toujours ailleurs — désormais les sélections de fournisseur restent cohérentes partout. Les choix de fournisseur RPC de portefeuille sont également initialisés à partir de votre configuration de portefeuille enregistrée au lieu de recourir à des valeurs par défaut codées en dur.
+
+<div id="updates">
+## Mises à jour
+</div>
+
+- **Stabilité du démarrage du shell companion** — La vue companion ne se bloque plus et ne dysfonctionne plus au lancement. Le routage après le démarrage est désormais lié à l'onglet actif, et les animations d'accueil sont correctement séquencées pour que le shell se charge proprement à la première ouverture.
+- **Précision de la langue TTS** — La synthèse vocale définit désormais explicitement la balise de langue sur chaque énoncé, empêchant le système de recourir à la locale du système d'exploitation et de produire une prononciation inattendue.
+- **Visibilité de l'en-tête du shell en mode sombre** — La bordure du bouton bascule dans l'en-tête du shell est désormais visible en mode sombre, corrigeant un problème de contraste qui la rendait difficile à voir.
+- **Auto-remplissage du navigateur bloqué dans la recherche de connecteurs** — Le champ de recherche dans le panneau des connecteurs ne déclenche plus les suggestions d'auto-remplissage du navigateur, qui pouvaient recouvrir la liste des résultats.
+- **Zones de clic des boutons normalisées** — Les variantes de bouton petit et grand ont désormais un espacement vertical cohérent, rendant les zones de clic et de toucher plus fiables dans tout le tableau de bord.
+
+<div id="bug-fixes">
+## Corrections de bugs
+</div>
+
+- Correction d'une condition de concurrence lors de la suppression des embeddings qui pouvait provoquer l'échec des opérations en cours pendant le nettoyage
+- Correction de l'absence d'affichage des indications d'erreur ponctuelles — les erreurs d'action transitoires apparaissent désormais une fois et se ferment automatiquement au lieu d'être silencieusement ignorées
+</Update>
+
+<Update label="2026-06-04" description="Semaine du 29 mai au 4 juin" tags={["Feature", "Update"]}>
+## Portefeuilles serveur Privy
+
+Votre agent peut désormais provisionner et gérer des portefeuilles via l'infrastructure de portefeuilles côté serveur de Privy. Trois nouveaux endpoints API — `/api/privy/status`, `/api/privy/login` et `/api/privy/logout` — gèrent le provisionnement des portefeuilles pour les chaînes Ethereum et Solana automatiquement. Configurez vos identifiants Privy et le système crée les portefeuilles à la demande lorsque votre agent en a besoin. Consultez le [guide des portefeuilles](/guides/wallet) pour plus de détails.
+
+## Retour en arrière de l'historique des conversations
+
+Vous pouvez désormais tronquer une conversation à partir d'un message spécifique en utilisant le nouvel endpoint `POST /api/conversations/:id/messages/truncate`. Passez un `messageId` pour supprimer ce message et tout ce qui suit, vous permettant d'annuler un mauvais virage dans une conversation sans repartir de zéro. Consultez la [référence API des conversations](/rest/conversations) pour plus de détails.
+
+## Appairage natif des appareils Signal
+
+Le connecteur Signal prend désormais en charge l'appairage natif des appareils via code QR, remplaçant la dépendance précédente à signal-cli par un pont natif dédié. L'appairage est géré via de nouveaux endpoints `/api/signal/*` qui gèrent le cycle de vie de la session, la génération du code QR et l'état de la connexion — rendant la configuration de Signal plus rapide et plus fiable. Consultez la [documentation du plugin Signal](/plugin-registry/platform/signal) pour plus de détails.
+
+## Mises à jour
+
+- **Variables d'environnement héritées d'Electron supprimées** — `ELIZA_ELECTRON_API_BASE` et `ELIZA_ELECTRON_TEST_API_BASE` ne sont plus prises en charge. La migration vers Electrobun est terminée — utilisez les chemins de configuration Electrobun actuels à la place. Consultez le [guide de l'application de bureau](/apps/desktop) pour plus de détails.
+- **Empaquetage modulaire du runtime** — Les services principaux de l'agent autonome ont été extraits dans un package autonome, améliorant les frontières entre modules et réduisant la surcharge au démarrage pour les déploiements légers.
+</Update>
+
+<Update label="2026-05-07" description="Semaine du 1er au 7 mai" tags={["Feature", "Update"]}>
+<div id="agent-export-and-import">
+## Exportation et importation d'agents
+</div>
+
+Vous pouvez désormais migrer votre agent entre machines avec un seul fichier chiffré. L'exportation capture l'état complet de l'agent — personnage, souvenirs, connaissances, relations et configuration — dans une archive `.eliza-agent` protégée par mot de passe. Importez-la sur une autre machine pour tout restaurer. Consultez le [guide d'exportation d'agent](/fr/guides/agent-export) pour plus de détails.
+
+<div id="sandbox-and-computer-use">
+## Sandbox et utilisation de l'ordinateur
+</div>
+
+Les agents peuvent désormais exécuter du code, naviguer sur le web, prendre des captures d'écran, enregistrer de l'audio et interagir avec des applications de bureau dans un sandbox de conteneur isolé. Le sandbox prend en charge quatre modes de sécurité configurables (off, light, standard, max), des politiques réseau, la journalisation d'audit et un service de signature distant qui conserve les clés de portefeuille sur l'hôte tandis que les agents en sandbox soumettent des transactions. Consultez le [guide du sandbox](/fr/guides/sandbox) pour plus de détails.
+
+<div id="mcp-marketplace">
+## Marketplace MCP
+</div>
+
+Vous pouvez désormais parcourir et installer des serveurs du Protocole de Contexte de Modèle directement depuis le registre officiel MCP. Recherchez des outils par nom, consultez les détails et installez-les en une seule étape — la configuration est générée automatiquement. Les serveurs MCP étendent votre agent avec des capacités externes comme l'accès aux fichiers, les requêtes de base de données et les intégrations d'API. Consultez le [guide du marketplace MCP](/fr/guides/mcp-marketplace) pour plus de détails.
+
+<div id="custom-actions-editor">
+## Éditeur d'actions personnalisées
+</div>
+
+Un éditeur visuel dans le tableau de bord vous permet de créer des actions d'agent personnalisées sans écrire de code de plugin. Définissez des actions avec des gestionnaires HTTP, shell ou code, configurez les paramètres et les en-têtes, et testez-les — le tout depuis l'interface. Consultez le [guide des actions personnalisées](/fr/guides/custom-actions) pour plus de détails.
+
+<div id="plugin-eject-system">
+## Système d'éjection de plugins
+</div>
+
+Vous pouvez désormais forker le code source de n'importe quel plugin localement, le modifier et faire en sorte que le runtime charge votre copie locale au lieu du paquet npm. Six nouvelles actions d'agent — eject, reinject, sync et status pour les plugins et le core — facilitent la personnalisation, les tests et la contribution des modifications en amont. Consultez le [guide d'éjection de plugins](/fr/plugins/plugin-eject) pour plus de détails.
+
+<div id="stream-overlay-widgets">
+## Widgets de superposition pour les streams
+</div>
+
+Les diffusions en direct prennent désormais en charge un système de superposition personnalisable avec des widgets intégrés — compteur de spectateurs, bulles de pensée, fenêtres d'alerte, tickers d'actions, branding et HTML personnalisé. Vous pouvez organiser les widgets avec l'éditeur de mise en page et enregistrer des dispositions par destination. Les plugins externes peuvent enregistrer leurs propres widgets de superposition.
+
+<div id="memory-and-embedding-explorer">
+## Explorateur de mémoire et d'embeddings
+</div>
+
+Un nouveau navigateur vectoriel dans le tableau de bord vous permet d'explorer visuellement le magasin de mémoire de votre agent. Parcourez les souvenirs dans une liste paginée, recherchez par contenu et inspectez les entrées individuelles. Un nuage de points 2D et une visualisation 3D interactive montrent comment les embeddings se regroupent, facilitant la compréhension de ce que votre agent retient et comment cela s'articule.
+
+<div id="three-new-platform-connectors">
+## Trois nouveaux connecteurs de plateforme
+</div>
+
+Votre agent peut désormais se connecter à trois plateformes de messagerie supplémentaires :
+
+- **Matrix** — chat fédéré avec configuration du homeserver, authentification par jeton d'accès, adhésion automatique, chiffrement de bout en bout et mode mentions uniquement.
+- **Nostr** — réseau social décentralisé basé sur les relais avec authentification par clé privée, liste de relais configurable et support des messages directs.
+- **Nextcloud Talk** — intégration de bot basée sur les webhooks avec filtrage par salon.
+
+Installez n'importe quel connecteur avec `eliza plugins install <name>` et configurez-le dans vos [paramètres sociaux](/fr/guides/connectors).
+
+<div id="updates">
+## Mises à jour
+</div>
+
+- **Coffre-fort de secrets** — Une nouvelle vue Secrets dans le tableau de bord organise vos clés API et identifiants par catégorie (fournisseurs d'IA, blockchain, connecteurs, authentification). Vous pouvez ajouter, supprimer et gérer les secrets avec une découverte orientée plugins qui montre quels plugins nécessitent quelles clés.
+- **Galerie multimédia** — Une nouvelle galerie multimédia dans le tableau de bord vous permet de parcourir les photos, vidéos et fichiers audio stockés dans la base de données de votre agent, avec filtrage par type de média.
+- **API de diagnostics et d'audit de sécurité** — De nouveaux endpoints exposent des journaux d'exécution filtrables, la relecture d'événements d'autonomie avec pagination par curseur et un journal d'audit de sécurité avec filtrage par sévérité et streaming SSE. Consultez la [référence API](/fr/api-reference) pour plus de détails.
+- **Permissions de diffusion lors de l'intégration** — Les permissions de caméra et de microphone sont désormais demandées lors de l'assistant de configuration initiale et gérables depuis les Paramètres, pour que la diffusion fonctionne immédiatement sur mobile et ordinateur.
+- **Lisibilité des boutons en thème sombre** — Les boutons de couleur d'accentuation utilisent désormais un texte sombre pour un meilleur contraste, et les effets de survol mettent en évidence la bordure au lieu de changer la couleur du texte.
+- **Améliorations de la mise en page de l'intégration** — L'étape de connexion affiche désormais un interrupteur Démarrage rapide / Avancé, des cartes de fournisseurs pleine largeur et un bouton Continuer toujours visible à l'étape des permissions.
+- **Modèles de configuration** — Huit modèles de configuration prêts à l'emploi pour les scénarios de déploiement courants sont désormais disponibles. Consultez le [guide des modèles de configuration](/fr/guides/config-templates).
+</Update>
+
+<Update label="2026-04-30" description="Semaine du 24 au 30 avril" tags={["Feature", "Update"]}>
+<div id="streaming-response-recovery">
+## Récupération des réponses en streaming
+</div>
+
+Lorsqu'une réponse de chat est interrompue en cours de diffusion — que ce soit à cause d'un problème réseau ou d'un délai dépassé — le message est désormais marqué comme interrompu avec un bouton Réessayer. Vous pouvez redemander la réponse au lieu de rester avec un message partiel.
+
+<div id="orchestrator-trajectory-tagging">
+## Étiquetage des trajectoires de l'orchestrateur
+</div>
+
+Les appels LLM effectués par l'[orchestrateur d'essaim](/fr/guides/coding-swarms) sont désormais identifiés par un badge violet « orchestrateur » dans le [visualiseur de trajectoires](/fr/advanced/trajectories). Chaque entrée inclut des métadonnées telles que le type de décision, l'ID de session et le libellé de la tâche, ce qui facilite la distinction entre le raisonnement de l'orchestrateur et les appels individuels des agents lors d'exécutions multi-agents.
+
+<div id="training-backend-auto-detection">
+## Détection automatique du backend d'entraînement
+</div>
+
+Le système de [réglage fin](/fr/guides/training) détecte désormais les backends ML disponibles — MLX sur Apple Silicon, CUDA sur GPU NVIDIA et CPU en solution de repli — avant de lancer un travail d'entraînement. Si le backend demandé n'est pas disponible, vous obtenez une erreur claire au lieu d'un échec cryptique en cours d'exécution.
+
+<div id="updates">
+## Mises à jour
+</div>
+
+- **Les métadonnées du personnage persistent entre les redémarrages** — Le nom d'utilisateur et les sujets de votre agent survivent désormais aux redémarrages. Auparavant, ces champs étaient traités comme des données d'exécution uniquement et revenaient aux valeurs par défaut après un redémarrage. Consultez l'[éditeur de personnage](/fr/agents/character-interface) pour plus de détails.
+- **Indicateur de progression de reconnexion** — Lorsque la connexion WebSocket est interrompue, le tableau de bord affiche désormais une bannière ambre « Reconnexion... » avec le nombre de tentatives en cours avant de passer à l'état d'échec rouge, vous offrant une visibilité en temps réel sur la progression de la récupération.
+</Update>
+
+<Update label="2026-04-23" description="Semaine du 17 au 23 avril" tags={["Update", "Fix"]}>
+<div id="telegram-connector-reliability">
+## Fiabilité du connecteur Telegram
+</div>
+
+Le connecteur Telegram gère désormais les erreurs inattendues de manière élégante au lieu de faire planter le processus de l'agent. L'historique des conversations est restauré avec un délai d'attente afin qu'une réponse lente de l'API Telegram ne bloque plus le démarrage, et l'authentification se relance automatiquement en cas d'échecs transitoires au démarrage. Ces changements rendent les agents connectés à Telegram nettement plus résilients en production.
+
+<div id="updates">
+## Mises à jour
+</div>
+
+- **L'onglet Connecteurs n'affiche que le connecteur sélectionné** — Le panneau de configuration des [connecteurs](/fr/guides/connectors) n'affiche désormais que le connecteur sélectionné dans la barre latérale au lieu d'afficher tous les connecteurs en même temps, ce qui facilite la recherche et la modification des paramètres.
+- **Identité dans les dialogues de permission macOS** — Les invites de permission système sur macOS (microphone, accessibilité, etc.) affichent désormais correctement "Eliza" comme nom de l'application demandeuse au lieu d'un identifiant générique ou manquant.
+
+<div id="bug-fixes">
+## Corrections de bugs
+</div>
+
+- Correction du mode compagnon affichant un faux indicateur de saisie dans les conversations vides avant que l'utilisateur n'envoie un premier message
+</Update>
+
+<Update label="2026-04-16" description="Semaine du 10 au 16 avril" tags={["Feature", "Update"]}>
+<div id="six-new-platform-connectors">
+## Six nouveaux connecteurs de plateforme
+</div>
+
+Votre agent peut désormais se connecter à six plateformes de messagerie supplémentaires prêtes à l'emploi :
+
+- **Signal** — messagerie privée via signal-cli avec prise en charge des pièces jointes et des accusés de lecture. Consultez la [documentation du plugin Signal](/fr/plugin-registry/platform/signal).
+- **Farcaster** — intégration du protocole social décentralisé pour publier, répondre et réagir on-chain. Consultez la [documentation du plugin Farcaster](/fr/plugin-registry/platform/farcaster).
+- **Microsoft Teams** — intégration Azure Bot avec réponses en fil de discussion et prise en charge des médias. Consultez la [documentation du plugin MS Teams](/fr/plugin-registry/platform/msteams).
+- **Google Chat** — intégration par compte de service avec livraison par webhook et configuration par espace. Consultez la [documentation du plugin Google Chat](/fr/plugin-registry/platform/googlechat).
+- **Mattermost** — messagerie d'équipe auto-hébergée avec authentification par jeton de bot et filtrage des mentions. Consultez la [documentation du plugin Mattermost](/fr/plugin-registry/platform/mattermost).
+
+Installez n'importe quel connecteur avec `eliza plugins install <name>` et configurez-le dans vos [paramètres sociaux](/fr/guides/connectors).
+
+<div id="lens-protocol-connector">
+## Connecteur Lens Protocol
+</div>
+
+Votre agent peut désormais interagir sur le réseau social décentralisé Lens Protocol. Publiez, répondez, réagissez, repartagez et gérez les notifications — le tout via l'API Lens V3. Configurez-le aux côtés de vos autres [connecteurs sociaux](/fr/guides/connectors).
+
+<div id="trajectory-archival-and-optimization">
+## Archivage et optimisation des trajectoires
+</div>
+
+Les données de trajectoire — l'enregistrement complet de chaque appel LLM effectué par votre agent — sont désormais archivées de manière durable avec des exports compressés. Le système préserve le texte complet des prompts et des réponses pour la fidélité de l'[entraînement](/fr/guides/training) tout en extrayant des informations légères dans les métadonnées, réduisant l'utilisation du stockage sans perte de données. Les trajectoires archivées sont compressées en JSONL avant l'élagage, de sorte que rien n'est perdu lors du nettoyage TTL. Consultez le [guide des trajectoires](/fr/advanced/trajectories) pour plus de détails.
+
+<div id="updates">
+## Mises à jour
+</div>
+
+- **Couverture de tests des connecteurs** — Les connecteurs Farcaster et Lens Protocol disposent désormais de suites de tests de bout en bout complètes vérifiées contre les API en production, confirmant leur disponibilité en production.
+- **Documentation API traduite** — La référence API et les endpoints des agents sont désormais disponibles en espagnol, français et chinois simplifié.
+- **Améliorations de la génération de personnages** — L'endpoint de génération de personnages prend désormais en charge un champ `system` et un paramètre `context.topics` pour une création de personnages plus ciblée. Consultez la [référence API des personnages](/fr/rest/character).
+</Update>
+
+<Update label="2026-04-09" description="Semaine du 3 au 9 avril" tags={["Feature", "Update", "Fix"]}>
+<div id="opinion-markets-plugin">
+## Plugin de marchés d'opinion
+</div>
+
+Votre agent peut désormais trader sur les marchés prédictifs grâce à un nouveau plugin de marchés d'opinion. Parcourez les marchés, placez des paris, vérifiez les positions, annulez des ordres et réclamez les résultats — le tout depuis le chat ou l'API REST. Les données de marché en temps réel sont transmises via WebSocket afin que votre agent reste informé des mouvements de prix.
+
+<div id="agent-self-awareness">
+## Auto-conscience de l'agent
+</div>
+
+Votre agent peut désormais rendre compte de son propre état. Un nouveau système de conscience agrège les signaux de santé du runtime, de la connexion cloud, du portefeuille, des connecteurs, des plugins et des permissions dans une vue unique. Demandez à votre agent "quel est ton statut ?" et il renvoie un résumé structuré de ce qui fonctionne, ce qui est dégradé et ce qui nécessite une attention particulière.
+
+<div id="coding-agent-settings">
+## Paramètres de l'agent de codage
+</div>
+
+La vue Paramètres inclut désormais une section Agents de codage où vous pouvez choisir la stratégie de sélection d'agent, le type d'agent par défaut, le niveau de permission et les préférences de modèle par agent. Ces contrôles vous donnent un contrôle plus fin sur le comportement des [essaims de codage](/fr/guides/coding-swarms).
+
+<div id="granular-cloud-service-toggles">
+## Contrôles granulaires des services cloud
+</div>
+
+Lorsque vous êtes connecté à Eliza Cloud, vous pouvez désormais activer ou désactiver individuellement les services cloud — inférence, RPC, médias, TTS et embeddings — au lieu de basculer l'ensemble de la connexion cloud. Cela vous permet de conserver le RPC cloud tout en utilisant un fournisseur de modèles local, par exemple. Consultez le [guide cloud](/fr/guides/cloud) pour plus de détails.
+
+<div id="character-generation-api-format-update">
+## Mise à jour du format de l'API de génération de personnages
+</div>
+
+L'endpoint `POST /api/character/generate` renvoie désormais `chatExamples` dans le schéma `messageExamples` — des groupes de conversation avec des objets de message `{name, content}` au lieu du précédent tableau plat `{user, content}`. Le champ de type `"system"` est également désormais accepté. Consultez la [référence API des personnages](/fr/rest/character) pour le format de réponse mis à jour.
+
+<div id="updates">
+## Mises à jour
+</div>
+
+- **Erreurs d'épuisement de crédits affichées clairement** — Les erreurs de facturation des fournisseurs cloud (HTTP 402 et 429) sont désormais détectées et affichées dans le tableau de bord avec des conseils exploitables au lieu de messages d'erreur génériques.
+- **Relance du service de connaissances** — Lorsque le service de connaissances est encore en cours de chargement, les requêtes renvoient un en-tête `Retry-After` et le client relance automatiquement avec un backoff exponentiel, évitant les requêtes échouées au démarrage.
+- **Bannières d'avertissement système** — Les échecs de connecteurs et les problèmes de câblage du coordinateur s'affichent désormais directement dans le tableau de bord sous forme de bannières d'avertissement fermables afin que vous puissiez agir immédiatement sur les problèmes.
+</Update>
+
+<Update label="2026-04-02" description="Semaine du 27 mars au 2 avril" tags={["Feature", "Update", "Fix"]}>
+<div id="multi-destination-streaming-with-pump.fun-and-x/twitter">
+## Streaming multi-destinations avec pump.fun et X/Twitter
+</div>
+
+Vous pouvez désormais streamer vers plusieurs destinations simultanément et basculer entre elles au moment de l'exécution. Deux nouveaux plugins de streaming sont livrés cette semaine :
+
+- **pump.fun** — streamez directement vers pump.fun via RTMP
+- **X/Twitter** — streamez vers X/Twitter via RTMPS
+
+Configurez vos destinations dans les [paramètres de stream](/fr/dashboard/stream) et changez la cible active sans redémarrer. Les plugins de streaming valident désormais aussi votre URL RTMP au démarrage et affichent une erreur claire si elle est manquante.
+
+<div id="windows-standalone-installer">
+## Installateur autonome Windows
+</div>
+
+Le téléchargement Windows est désormais un véritable installateur mono-fichier construit avec Inno Setup. Auparavant, le `.exe` public était un lanceur d'amorçage nécessitant une archive de données complémentaire. Le nouvel installateur fonctionne seul — téléchargez, exécutez, et c'est prêt. MSIX reste disponible comme alternative. Consultez le [guide d'installation](/fr/installation) pour plus de détails.
+
+<div id="companion-i18n-support">
+## Prise en charge de l'i18n du compagnon
+</div>
+
+L'interface utilisateur du compagnon prend désormais en charge l'internationalisation. L'anglais et le chinois simplifié (zh-CN) sont disponibles au lancement, avec le cadre en place pour des langues supplémentaires. Les logos des plugins installés apparaissent également dans la barre latérale du compagnon.
+
+<div id="coding-agent-always-available">
+## Agent de codage toujours disponible
+</div>
+
+Le plugin d'agent de codage est désormais un plugin principal qui se charge automatiquement à chaque démarrage. Vous n'avez plus besoin de l'activer manuellement pour utiliser les fonctionnalités de codage et de terminal. Consultez le [guide des essaims de codage](/fr/guides/coding-swarms) pour plus de détails.
+
+<div id="health-endpoint-and-crash-recovery">
+## Endpoint de santé et récupération après crash
+</div>
+
+Un nouvel endpoint `GET /api/health` renvoie l'état structuré de chaque sous-système — runtime, base de données, plugins, coordinateur, connecteurs et temps de fonctionnement. Le tableau de bord affiche une bannière de connexion échouée avec un bouton de relance lorsque le serveur est injoignable, et une frontière d'erreur React empêche les crashs en écran blanc complet. Consultez la [référence API](/fr/api-reference) pour les détails de l'endpoint.
+
+<div id="updates">
+## Mises à jour
+</div>
+
+- **Amélioration des erreurs de démarrage bureau** — Lorsque le runtime de l'agent échoue au chargement, l'application bureau maintient désormais le serveur API en fonctionnement et affiche le message d'erreur réel dans l'interface au lieu d'un générique "Failed to fetch." Cela facilite grandement le diagnostic des problèmes de configuration.
+- **Repli gracieux des endpoints NFA** — Les endpoints `/api/nfa/status` et `/api/nfa/learnings` renvoient désormais des données vides de manière gracieuse lorsque le plugin d'identité BNB n'est pas installé, au lieu d'échouer. Consultez le [guide du portefeuille](/fr/guides/wallet) pour plus de détails.
+- **Logos des plugins dans la vue compagnon** — Les plugins installés affichent désormais leurs logos dans l'interface du compagnon pour une identification plus facile.
+
+<div id="bug-fixes">
+## Corrections de bugs
+</div>
+
+- Correction du crash de l'application bureau sur Mac Intel au démarrage dû à des binaires natifs ARM64 livrés au lieu de binaires x64
+- Correction des échecs de résolution de plugins ("Cannot find module") dans le CLI, le mode développement bureau et le chargement direct du runtime — pas seulement dans les builds empaquetés
+- Correction de l'échec de chargement du plugin d'agent de codage sous Bun en raison d'un export de paquet obsolète pointant vers un fichier source inexistant
+- L'épuisement de crédits des fournisseurs de modèles est désormais détecté et affiché clairement dans le tableau de bord
+- Le service de connaissances relance automatiquement avec un backoff exponentiel lorsqu'il est temporairement indisponible, au lieu d'échouer silencieusement
+- Les erreurs de démarrage de l'application bureau maintiennent désormais le serveur API en fonctionnement afin que vous puissiez voir le message d'erreur réel au lieu d'un échec générique
+- Les endpoints NFA renvoient des réponses vides gracieuses lorsque le plugin d'identité BNB n'est pas installé, au lieu de générer des erreurs
+</Update>
+
+<Update label="2026-03-26" description="Semaine du 20 au 26 mars" tags={["Feature", "Update", "Fix"]}>
+<div id="api-key-validation-for-model-providers">
+## Validation des clés API pour les fournisseurs de modèles
+</div>
+
+L'application bureau valide désormais automatiquement vos clés API pour huit fournisseurs de modèles — notamment OpenAI, Anthropic, Groq, Google GenAI, OpenRouter et xAI. Les clés sont analysées au démarrage et vérifiées en arrière-plan afin que vous sachiez immédiatement si un fournisseur est mal configuré. Vous pouvez également tester les connexions à la demande depuis le menu de la barre système. Consultez les [fournisseurs de modèles](/fr/model-providers) pour les détails de configuration.
+
+<div id="dedicated-settings-window">
+## Fenêtre de paramètres dédiée
+</div>
+
+Une nouvelle fenêtre de Paramètres autonome vous donne un accès rapide aux onglets Général, Fournisseurs, Avancé et À propos sans quitter votre vue actuelle. La fenêtre se synchronise avec votre préférence de mode sombre et se connecte directement à l'API pour des modifications de configuration en temps réel. Ouvrez-la depuis le menu de la barre système ou la barre de menus de l'application.
+
+<div id="application-menu-overhaul">
+## Refonte du menu de l'application
+</div>
+
+La barre de menus a été réorganisée avec un nouveau menu Agent qui vous donne un accès en un clic aux [Connaissances](/fr/guides/documents), [Compétences](/fr/plugins/skills), [Plugins](/fr/plugins/overview) et [Connecteurs sociaux](/fr/guides/connectors). Les menus Fichier, Affichage et Fenêtre ont également été enrichis pour une navigation plus rapide.
+
+<div id="interactive-tray-provider-management">
+## Gestion interactive des fournisseurs depuis la barre système
+</div>
+
+La barre système inclut désormais des sous-menus interactifs pour chaque fournisseur de modèles. Vous pouvez définir un fournisseur comme actif, tester sa connexion ou l'activer — le tout depuis l'icône de la barre système sans ouvrir le tableau de bord.
+
+<div id="bug-fixes">
+## Corrections de bugs
+</div>
+
+- La vue personnage ne plante plus lorsqu'aucun brouillon de personnage n'est chargé
+- Le mode sombre de l'éditeur de personnage s'affiche désormais correctement dans le cadre du carnet et les éléments décoratifs
+</Update>
+
+<Update label="2026-03-19" description="Semaine du 14 au 19 mars" tags={["Feature", "Update", "Security", "Fix"]}>
+<div id="cloud-control-plane-dashboard">
+## Tableau de bord du plan de contrôle cloud
+</div>
+
+Vous pouvez désormais gérer les agents cloud directement depuis la page d'accueil de Eliza. Le nouveau tableau de bord inclut les contrôles de cycle de vie des agents (provisionnement, suspension, reprise, suppression), les snapshots et sauvegardes, les crédits et la facturation, les métriques de conteneur et le streaming de logs — le tout sans quitter l'application. Les agents locaux et distants sont auto-découverts aux côtés des agents cloud. Consultez le [déploiement Cloud](/fr/deployment#cloud-agent-deployment) pour plus de détails.
+
+<div id="cloud-first-onboarding">
+## Intégration cloud-first
+</div>
+
+Exécuter `eliza start` pour la première fois demande désormais "Où votre agent doit-il vivre ?" avec [Eliza Cloud](/fr/guides/cloud) comme option recommandée. Choisissez cloud pour un runtime hébergé sans configuration locale, ou local pour exécuter sur votre propre machine. La configuration cloud est enregistrée automatiquement afin que les lancements suivants se reconnectent sans invite. Consultez le [guide cloud](/fr/guides/cloud) pour plus de détails.
+
+<div id="game-style-notebook-character-editor">
+## Éditeur de personnage en style carnet de jeu
+</div>
+
+L'[éditeur de personnage](/fr/agents/character-interface) a été repensé sous forme d'interface utilisateur de carnet interactif. Des onglets dans la barre latérale permettent de naviguer entre les sections À propos de moi, Directives et Règles de style. Chaque section prend en charge le basculement Principal/Exemples, et l'éditeur fonctionne en mode clair comme en mode sombre. Vous pouvez désormais aussi modifier les sujets du personnage et le nom du personnage directement depuis l'éditeur.
+
+<div id="scratch-workspace-controls-for-coding-agents">
+## Contrôles d'espace de travail temporaire pour les agents de codage
+</div>
+
+Les sessions d'agent de codage affichent désormais des contrôles de conservation, promotion et suppression pour les espaces de travail temporaires. Lorsqu'une session de codage se termine, vous pouvez décider de conserver l'espace de travail temporaire, de le promouvoir en espace permanent ou de le nettoyer — directement depuis le tableau de bord. Consultez le [guide des essaims de codage](/fr/guides/coding-swarms) pour plus de détails.
+
+<div id="official-docker-images">
+## Images Docker officielles
+</div>
+
+Des images Docker pré-construites sont désormais publiées sur GitHub Container Registry à chaque version, optimisées à environ la moitié de la taille d'un build manuel. Tirez `ghcr.io/eliza-ai/agent` pour déployer sans compiler depuis les sources. Consultez le [guide de déploiement](/fr/deployment) pour la configuration Docker Compose et les variables d'environnement.
+
+<div id="vrm-wave-greeting-and-smooth-loading-transitions">
+## Animation de salut VRM et transitions de chargement fluides
+</div>
+
+Votre avatar VRM joue désormais une animation de salut après le chargement au lancement de l'application et lors des changements de personnage. L'écran de chargement fait une transition fluide avec une progression animée et un fondu au lieu d'une coupure nette.
+
+<div id="dashboard-ui-redesign">
+## Refonte de l'interface du tableau de bord
+</div>
+
+Plusieurs onglets du [tableau de bord](/fr/apps/dashboard) ont été reconstruits avec une mise en page à deux panneaux plus propre :
+
+- **Paramètres** — navigation par section à gauche, section active à droite
+- **Heartbeats** — liste des déclencheurs à gauche, formulaire de création/édition à droite avec un sélecteur de durée plus convivial
+- **Portefeuilles** — portfolio et sélecteur de chaîne à gauche, tableau de tokens à droite
+- **Social et Plugins** — liste des canaux/plugins à gauche, détail de configuration à droite
+- **Applications** — interface de style jeu avec téléphone et tablette pour parcourir et lancer les applications
+
+<div id="homepage-redesign">
+## Refonte de la page d'accueil
+</div>
+
+La page d'accueil présente désormais des icônes de téléchargement par plateforme avec des étiquettes au survol qui pointent toujours vers la dernière version, une animation hero en machine à écrire et un pied de page simplifié. Les liens de téléchargement sont récupérés depuis la dernière version GitHub au moment du build afin qu'ils restent à jour.
+
+<div id="electrobun-desktop-migration">
+## Migration bureau vers Electrobun
+</div>
+
+L'[application bureau](/fr/apps/desktop) a entièrement migré d'Electron vers Electrobun — un shell natif plus léger et plus rapide. Cela réduit l'utilisation mémoire et le temps de démarrage. Les mises à jour automatiques continuent de fonctionner via le système de mise à jour Electrobun. Consultez les [mises à jour bureau](/fr/self-updates#electrobun-desktop-updates) pour plus de détails.
+
+<div id="faster-page-loads">
+## Chargement de pages plus rapide
+</div>
+
+Three.js et la pile d'avatars 3D (~1,7 Mo) sont désormais chargés en différé — ils ne se téléchargent que lorsque vous ouvrez la vue compagnon. La vue de streaming est également chargée en différé. Ensemble, ces changements réduisent significativement le chargement initial de la page.
+
+<div id="smaller-prompts,-faster-responses">
+## Prompts plus petits, réponses plus rapides
+</div>
+
+Les fichiers de modèle d'espace de travail par défaut ne sont plus injectés dans chaque prompt — seuls les fichiers que vous avez personnalisés sont inclus. Les définitions d'émotes ont également été déplacées hors du contexte du prompt et dans les paramètres d'action. Ensemble, ces changements réduisent la taille du prompt d'environ 4 000 caractères par tour, ce qui signifie des réponses plus rapides et des coûts en tokens réduits.
+
+<div id="wallet-key-export-security">
+## Sécurité de l'export des clés de portefeuille
+</div>
+
+Les exports de clés privées de portefeuille nécessitent désormais un délai de confirmation de 10 secondes, sont limités à un export par 10 minutes et génèrent une entrée de journal d'audit pour chaque tentative. Cela protège contre l'extraction instantanée de clés depuis des sessions compromises. Consultez le [guide du portefeuille](/fr/guides/wallet) pour plus de détails.
+
+<div id="cloud-api-key-protection">
+## Protection des clés API cloud
+</div>
+
+Les clés API cloud ne sont plus stockées dans `process.env` après la connexion. Elles sont effacées immédiatement et conservées dans un stockage scellé et non-énumérable — empêchant les fuites via les dumps de crash, les processus enfants ou l'inspection de l'environnement.
+
+<div id="windows-desktop-crash-fix">
+## Correction du crash bureau Windows
+</div>
+
+L'application bureau Windows ne plante plus au démarrage en raison d'un problème d'initialisation des embeddings. Les erreurs fatales de démarrage sont désormais écrites dans un fichier journal pour faciliter le diagnostic.
+
+<div id="character-editor-bug-fixes">
+## Corrections de bugs de l'éditeur de personnage
+</div>
+
+- Les sujets de personnage sont désormais correctement chargés et enregistrés lors de l'édition
+- L'enregistrement d'un personnage n'échoue plus avec une erreur 422 due à des champs supplémentaires dans le payload
+- Les clés de traduction brutes (par ex., `characterview.StyleRules`) s'affichent désormais comme du texte anglais correct
+- Les boutons Enregistrer et Personnaliser sont désormais visibles en mode compagnon, avec un fond en verre dépoli
+- Le lien Etherscan depuis la vue personnage pointe désormais vers la bonne page d'adresse de portefeuille
+
+<div id="additional-fixes">
+## Corrections supplémentaires
+</div>
+
+- La validation de schéma rejette désormais correctement les données de personnage invalides qui contournaient auparavant les vérifications
+- Les onglets de navigation en mode sombre sont désormais visibles dans toutes les vues du tableau de bord
+- Les conversations vides sont automatiquement nettoyées lorsque vous naviguez ailleurs
+- Le bouton de basculement du champ mot de passe n'efface plus les clés API ou les tokens de bot saisis
+- La sélection RPC du portefeuille est désormais cohérente entre l'intégration, les paramètres et le runtime
+- La configuration d'intégration persiste correctement entre les relances de l'application
+- L'analyse de l'index d'avatar valide désormais la plage d'entrée, prévenant les erreurs d'affichage
+- Les valeurs par défaut de la voix sont désormais cohérentes — `autoSpeak` n'apparaît plus comme activé lorsque la voix est désactivée
+- Les requêtes API vocales surdimensionnées sont correctement rejetées avec une erreur 413
+- Amélioration des performances pour les tours LLM et le streaming en éliminant les tris et allocations de chaînes redondants
+- Les enregistrements de personnage n'échouent plus lorsque la configuration vocale ne peut pas être sauvegardée
+- Le démarrage du serveur détecte et tue désormais les processus obsolètes occupant le port par défaut, évitant les blocages indéfinis
+- L'application bureau découvre correctement les plugins dans les builds empaquetés, résolvant les échecs de démarrage silencieux sur Windows
+- Le tableau de bord cloud affiche désormais correctement les agents après la connexion à Eliza Cloud
+- Les erreurs du serveur API sont désormais envoyées vers stderr en mode bureau pour faciliter le dépannage
+</Update>
+
+<Update label="2026-03-13" description="Semaine du 8 au 13 mars" tags={["Feature", "Security", "Fix"]}>
+<div id="game-style-onboarding-redesign">
+## Refonte de l'intégration en style jeu
+</div>
+
+La configuration initiale a été reconstruite sous forme d'un flux simplifié en six étapes avec une mise en page à trois colonnes en glassmorphisme et un thème sombre de style jeu appliqué à tous les modaux et superpositions. Les nouvelles étapes — Réveil, Identité, Langue, Connexion, Permissions et Activation — remplacent l'ancien assistant en dix étapes.
+
+<div id="new-cli-commands-—-doctor,-db-reset,-and-interactive-setup">
+## Nouvelles commandes CLI — doctor, db reset et configuration interactive
+</div>
+
+Trois nouvelles commandes CLI sont livrées cette semaine :
+
+- **`eliza doctor`** — exécute une vérification complète de l'état de l'environnement, signalant les dépendances manquantes, les conflits de ports et les problèmes de configuration. Consultez la [référence doctor](/fr/cli/doctor).
+- **`eliza db reset`** — réinitialise la base de données en toute sécurité avec une invite de confirmation. Consultez la [référence db](/fr/cli/db).
+- **`eliza setup`** — un assistant interactif qui vous guide à travers la sélection du fournisseur de modèles avec prise en charge de neuf fournisseurs. Consultez la [référence setup](/fr/cli/setup).
+
+<div id="distribution-across-six-new-package-managers">
+## Distribution via six nouveaux gestionnaires de paquets
+</div>
+
+Eliza est désormais disponible via beaucoup plus de canaux d'installation :
+
+- **Homebrew** — `brew install eliza` (CLI) ou `brew install --cask eliza` (bureau)
+- **Snap Store** — `snap install eliza` avec confinement strict
+- **Flatpak / Flathub** — Flatpak prêt pour la production avec métadonnées AppStream
+- **APT** — les utilisateurs Debian/Ubuntu peuvent installer via APT et exécuter comme service systemd avec redémarrage automatique
+- **Google Play Store** — application Android avec versions signées
+- **iOS et Mac App Store** — disponible via TestFlight et App Store Connect
+
+Consultez le [guide d'installation](/fr/installation) pour les instructions spécifiques à chaque plateforme.
+
+<div id="native-gpu-companion-rendering">
+## Rendu GPU natif du compagnon
+</div>
+
+Les builds bureau incluent désormais une infrastructure de rendu natif alimentée par WebGPU pour les visuels du compagnon, offrant une alternative plus rapide au rendu basé sur webview pour les scènes accélérées par GPU.
+
+<div id="game-client-canvas-windows">
+## Fenêtres canvas du client de jeu
+</div>
+
+Les clients de jeu sur [bureau](/fr/apps/desktop) s'ouvrent désormais dans une fenêtre native dédiée avec des cookies et un stockage isolés au lieu d'un iframe intégré. Cela améliore la stabilité et la sécurité des expériences de jeu intégrées.
+
+<div id="streaming-controls-in-companion-mode">
+## Contrôles de streaming en mode compagnon
+</div>
+
+Vous pouvez désormais gérer le streaming en direct directement depuis le mode compagnon — y compris les sélecteurs de destination et de source, les paramètres de stream et de nouvelles actions d'agent comme passer en direct, passer hors ligne et parler pendant le stream. Consultez le [guide de stream](/fr/dashboard/stream) pour plus de détails.
+
+<div id="nfa-wallet-flow">
+## Flux de portefeuille NFA
+</div>
+
+Un nouveau flux d'identité et de portefeuille NFA ajoute une surface de carte d'identité, une UX de confirmation de style portefeuille et des valeurs par défaut de RPC public BSC. Consultez le [guide du portefeuille](/fr/guides/wallet) pour plus de détails.
+
+<div id="link-sanitization-for-chat-messages">
+## Assainissement des liens pour les messages de chat
+</div>
+
+Les liens des messages de chat sont désormais assainis pour bloquer les schémas URI `javascript:`, `data:` et `vbscript:`, empêchant les XSS via du contenu non fiable. Les liens normaux et les chemins relatifs continuent de fonctionner comme prévu.
+
+<div id="wallet-transfer-guard-in-manual-key-mode">
+## Protection des transferts de portefeuille en mode clé manuelle
+</div>
+
+Les demandes de transfert de portefeuille initiées par l'agent ne peuvent plus contourner la protection de confirmation en mode clé locale manuelle. Tous les transferts nécessitent désormais une approbation de signature explicite de l'utilisateur.
+
+<div id="command-palette-and-real-time-sidebar">
+## Palette de commandes et barre latérale en temps réel
+</div>
+
+La palette de commandes utilise désormais un registre de commandes centralisé, facilitant la découverte et l'accès aux actions. La barre latérale des conversations se met également à jour en temps réel via les événements WebSocket au lieu du polling, de sorte que les nouveaux messages et changements de statut apparaissent instantanément.
+
+<div id="desktop-bug-fixes">
+## Corrections de bugs bureau
+</div>
+
+- La position de la fenêtre est désormais correctement restaurée après masquage/affichage
+- L'encodage des images du presse-papiers fonctionne de manière fiable sur toutes les plateformes
+- L'interruption TTS arrête désormais complètement l'audio en cours
+- La protection de navigation empêche les URL externes de se charger dans la fenêtre principale de l'application
+- L'orientation du visage de l'avatar VRM ne s'inverse plus incorrectement
+- Les régressions de l'interface du compagnon dans les paramètres, la navigation de stream, le chargement VRM et les flux de fermeture du shell sont résolues
+
+<div id="additional-fixes">
+## Corrections supplémentaires
+</div>
+
+- Les menus déroulants de voix et de mode agent ne sont plus masqués derrière d'autres éléments
+- La barre latérale des paramètres affiche désormais des étiquettes de section pour une navigation plus facile
+- Le sélecteur d'avatar empêche le double-clic pendant le chargement
+- L'étiquette dupliquée "++" sur le bouton d'ajout de publication est corrigée
+- La barre latérale des conversations affiche désormais le titre à gauche et l'horodatage à droite
+- Le fournisseur de modèles cloud ne se réactive plus au redémarrage après que vous avez changé
+- L'accès au serveur distant fonctionne correctement avec le bind wildcard et les préfixes de chemin de proxy inverse
+- Les compétences installées depuis le marketplace apparaissent désormais dans l'interface (les répertoires avec préfixe point étaient ignorés)
+- Les requêtes API vocales surdimensionnées sont correctement rejetées avec une erreur 413
+- Les blocs d'action dans l'affichage du chat du coordinateur sont nettoyés proprement sans affecter le JSON de l'utilisateur
+</Update>
+
+<Update label="2026-03-07" description="23 février – 7 mars" tags={["Feature", "Update", "Security", "Fix"]}>
+<div id="coding-agent-swarm-orchestration">
+## Orchestration d'essaim d'agents de codage
+</div>
+
+Vous pouvez désormais exécuter plusieurs agents de codage en parallèle sur une seule tâche. Le nouveau coordinateur d'essaim décompose les travaux complexes en sous-tâches, route chacune vers l'agent le plus performant en fonction du taux de réussite et de la vitesse, et affiche la sortie du terminal en direct dans des panneaux côte à côte. Consultez le [guide des essaims de codage](/fr/guides/coding-swarms) pour plus de détails.
+
+<div id="live-streaming-to-twitch,-youtube,-and-custom-rtmp">
+## Streaming en direct vers Twitch, YouTube et RTMP personnalisé
+</div>
+
+Eliza prend désormais en charge le streaming en direct multi-destinations. Vous pouvez streamer vers Twitch, YouTube, pump.fun, X/Twitter ou toute cible RTMP personnalisée — et changer de destination au moment de l'exécution sans redémarrer. Votre agent peut également parler pendant le stream via TTS injecté directement dans la piste audio. Consultez le [guide de stream](/fr/dashboard/stream) pour plus de détails.
+
+<div id="3d-companion-with-vrm-avatars">
+## Compagnon 3D avec avatars VRM
+</div>
+
+Une vue compagnon 3D complète est désormais disponible avec un moteur d'avatars VRM, des animations, des émotes en bulles, le changement de thème et la prise en charge de la localisation (anglais et chinois). La vue compagnon inclut également un panneau de trading de portefeuille avec échanges de tokens, envoi, historique des trades, affichage du portfolio et analyses de P&L. Consultez le [guide du portefeuille](/fr/guides/wallet) pour plus de détails.
+
+<div id="imessage-and-sms-connector">
+## Connecteur iMessage et SMS
+</div>
+
+Le nouveau plugin Blooio ajoute iMessage et SMS comme connecteur de messagerie de première classe. Configurez votre clé API et votre numéro de téléphone pendant l'intégration pour commencer à envoyer des messages. Consultez la [vue d'ensemble des connecteurs](/fr/guides/connectors) pour plus de détails.
+
+<div id="bulk-knowledge-import">
+## Import en masse de connaissances
+</div>
+
+Vous pouvez désormais téléverser plusieurs fichiers et des dossiers entiers dans la [base de connaissances](/fr/guides/documents) en une seule fois. Les imports volumineux sont traités en lots de streaming afin que vous n'ayez pas à téléverser les fichiers un par un.
+
+<div id="in-app-bug-reports">
+## Rapports de bugs intégrés
+</div>
+
+Un nouveau modal de rapport de bugs vous permet de soumettre des problèmes directement à GitHub depuis l'application, avec capture d'écran optionnelle. Si la soumission GitHub n'est pas disponible, vous pouvez copier le rapport dans votre presse-papiers à la place.
+
+<div id="subscription-provider-setup">
+## Configuration du fournisseur d'abonnement
+</div>
+
+Les fournisseurs d'abonnement peuvent désormais être configurés de bout en bout depuis l'interface des Paramètres, y compris les flux OAuth et le changement de fournisseur. Consultez les [paramètres du tableau de bord](/fr/apps/dashboard/settings) pour plus de détails.
+
+<div id="chat-image-attachments">
+## Pièces jointes d'images dans le chat
+</div>
+
+Vous pouvez désormais joindre et envoyer des images directement dans les conversations du [chat](/fr/dashboard/chat).
+
+<div id="slash,-hash,-and-dollar-commands">
+## Commandes slash, hash et dollar
+</div>
+
+L'application prend désormais en charge les préfixes de commande `/`, `#` et `$` dans le chat pour un accès rapide aux actions, canaux et variables. Consultez la [référence des commandes de chat](/fr/chat-commands) pour plus de détails.
+
+<div id="companion-wallet-trading-panel">
+## Panneau de trading du portefeuille compagnon
+</div>
+
+La vue compagnon inclut désormais un panneau de trading complet. Vous pouvez échanger des tokens sur BNB Chain via PancakeSwap, envoyer des BNB et des tokens avec validation d'adresse, parcourir votre portfolio multi-chaînes, voir les collectibles NFT et consulter les analyses de P&L — le tout sans quitter le compagnon. Consultez le [guide du portefeuille](/fr/guides/wallet) pour plus de détails.
+
+<div id="telegram-message-chunking-and-draft-stream">
+## Découpage de messages Telegram et draft-stream
+</div>
+
+Le connecteur Telegram découpe désormais automatiquement les longues réponses de l'agent en messages correctement segmentés au lieu de les tronquer. Un nouveau mode draft-stream vous permet de voir la composition du message en temps réel pendant que l'agent génère sa réponse.
+
+<div id="agent-activity-box">
+## Boîte d'activité de l'agent
+</div>
+
+Un indicateur d'activité persistant affiche désormais la progression en temps réel par tâche dans la vue de chat. Les messages de statut routiniers de l'agent de codage sont filtrés de l'historique du chat pour réduire le bruit. Consultez le [guide des essaims de codage](/fr/guides/coding-swarms) pour plus de détails.
+
+<div id="opinion-markets-plugin">
+## Plugin de marchés d'opinion
+</div>
+
+Un nouveau plugin de marchés d'opinion permet à votre agent de trader sur les marchés prédictifs via un carnet d'ordres à cours limité central. Vous pouvez obtenir les détails du marché, lister les marchés disponibles, placer des paris, annuler des ordres, vérifier les positions et réclamer les gains — le tout depuis les actions de chat ou l'API REST.
+
+<div id="bnb-identity-plugin-and-nfa-learning-provenance">
+## Plugin d'identité BNB et provenance d'apprentissage NFA
+</div>
+
+Un nouveau plugin d'identité BNB Chain donne à votre agent la gestion d'identité on-chain. Le plugin prend en charge la provenance d'apprentissage NFA (Non-Fungible Agent) BAP-578 — vous pouvez minter des NFA, mettre à jour les racines Merkle de l'historique d'apprentissage de votre agent et interroger le statut NFA. Consultez le [guide du portefeuille](/fr/guides/wallet) pour plus de détails.
+
+<div id="agent-self-awareness">
+## Auto-conscience de l'agent
+</div>
+
+Votre agent peut désormais introspecter son propre état grâce à un nouveau système d'auto-conscience. Une action `GET_SELF_STATUS` renvoie une vue unifiée de la santé du runtime, de l'état du portefeuille, de la connectivité cloud, des connecteurs actifs et de la santé des plugins — aidant votre agent à prendre des décisions contextuelles.
+
+<div id="swarm-completion-summaries">
+## Résumés d'achèvement d'essaim
+</div>
+
+Les exécutions d'essaim de codage multi-agents produisent désormais un message de synthèse lorsque toutes les tâches sont terminées, vous donnant un résumé structuré de ce qui a été accompli à travers les sessions d'agents.
+
+<div id="health-endpoint-and-reconnect-banner">
+## Endpoint de santé et bannière de reconnexion
+</div>
+
+Un nouvel endpoint `/api/health` signale la disponibilité du serveur. Le tableau de bord affiche une bannière de connexion échouée avec un bouton de relance lorsque le serveur est injoignable, et une frontière d'erreur React empêche les crashs en écran blanc complet.
+
+<div id="cross-platform-audio-capture-for-streaming">
+## Capture audio multiplateforme pour le streaming
+</div>
+
+Le streaming détecte désormais automatiquement la meilleure méthode de capture pour votre plateforme — pipe natif sur bureau, X11 sur Linux, AVFoundation sur macOS et CDP sur web. La sélection de source audio prend en charge l'audio système, le microphone et la lecture de fichiers avec contrôle du volume par source.
+
+<div id="wallet-trading-actions">
+## Actions de trading du portefeuille
+</div>
+
+De nouvelles actions `CHECK_BALANCE`, `EXECUTE_TRADE` et `TRANSFER_TOKEN` permettent à votre agent de trader des tokens sur BSC via PancakeSwap. Un profil de trading suit le P&L et l'historique des trades. Consultez le [guide du portefeuille](/fr/guides/wallet) pour plus de détails.
+
+<div id="emote-animations-restored">
+## Animations d'émotes restaurées
+</div>
+
+Les 30 animations d'émotes VRM ont été remplacées par des fichiers Mixamo fonctionnels — les animations précédentes étaient des stubs Git LFS cassés qui échouaient silencieusement. Vous pouvez désormais aussi glisser-déposer des avatars VRM personnalisés directement sur le sélecteur d'avatar.
+
+<div id="accessibility-improvements">
+## Améliorations de l'accessibilité
+</div>
+
+Les icônes emoji dans toute l'interface ont été remplacées par des icônes SVG pour un rendu cohérent sur toutes les plateformes et une prise en charge correcte des lecteurs d'écran.
+
+<div id="security-hardening">
+## Renforcement de la sécurité
+</div>
+
+Cette version inclut un large ensemble d'améliorations de sécurité :
+
+- **Protection contre le DNS rebinding** — le serveur API valide désormais les en-têtes Host, bloquant les attaques de DNS rebinding contre localhost
+- **Prévention de l'injection de configuration** — les directives `$include` et la pollution de prototype via les endpoints de configuration sont bloquées
+- **Protection des variables d'environnement** — les variables de niveau processus comme `NODE_OPTIONS` et `LD_PRELOAD`, les variables de contournement TLS et les variables de remplacement de CA sont bloquées de la persistance de configuration
+- **Contrôle des actions personnalisées** — les gestionnaires d'exécution de shell et de code nécessitent désormais une autorisation explicite
+- **Sécurité de l'installation de plugins** — tous les appels d'installation `npm` et `bun` utilisent désormais `--ignore-scripts` pour empêcher l'exécution malveillante de postinstall
+- **Renforcement du garde SQL** — les fonctions PostgreSQL dangereuses sont bloquées depuis l'endpoint de requête SQL brut
+- **Validation des URL bureau** — les gestionnaires `shell.openExternal` et les gestionnaires IPC de chemin de fichier valident les entrées pour bloquer les schémas d'URL malveillants
+- **Renforcement du serveur MCP** — les drapeaux de débogage de l'inspecteur V8 sont bloqués dans les arguments du serveur MCP
+- **Authentification renforcée du terminal** — l'exécution de commandes terminal nécessite désormais un jeton d'authentification dédié, séparé du jeton API principal
+
+<div id="additional-fixes">
+## Corrections supplémentaires
+</div>
+
+- Les identifiants de session WhatsApp sont désormais correctement sauvegardés avant la déconnexion, évitant les re-scans QR inutiles au redémarrage
+- Le menu déroulant du fournisseur de modèles ne se met plus par défaut sur le mauvais fournisseur au chargement de la page — votre choix enregistré est respecté
+- Les bannières d'avertissement système disparaissent automatiquement après 20 secondes et ne recouvrent plus en permanence la barre de navigation
+- Les fichiers de verrouillage de base de données obsolètes des processus plantés sont automatiquement nettoyés au redémarrage, évitant la perte de données
+- La détection du fournisseur de modèles priorise désormais votre configuration explicite par rapport aux plugins auto-détectés
+- La sortie du terminal ne clignote plus et ne défile plus depuis le haut lors de la reprise d'une session
+- Les déclencheurs ne se déclenchent plus pendant le redémarrage de l'agent, empêchant les déclencheurs à usage unique d'être consommés sans s'exécuter
+- Les menus déroulants de modèles dans les paramètres utilisent désormais correctement les valeurs des variables d'environnement comme repli pour les fournisseurs locaux comme Ollama
+- Les compétences restent visibles dans l'interface même lorsque l'API du catalogue est limitée en débit
+- Le chargement de l'agent ne bloque plus au démarrage à cause de pièges de relance
+- Les téléversements d'avatars VRM personnalisés persistent après le rafraîchissement de la page
+- Le défilement automatique du chat est restauré lors des mises à jour de nouveaux messages
+- La suppression de conversation nécessite désormais une confirmation explicite
+- Le modal des paramètres ne se ferme plus en appuyant sur Entrée ou Espace
+- Les téléversements de documents dépassant 32 Mo affichent désormais un message d'erreur clair et lisible
+- Les fuites mémoire et la pression GC dans le serveur API ont été réduites
+- L'alias de clé API Gemini est désormais correctement normalisé, et `getSetting` gère les valeurs null de manière gracieuse
+- Les entrées d'embedding qui dépassent la fenêtre de contexte du modèle sont désormais tronquées automatiquement, empêchant un crash
+- Le bouton de réinitialisation des paramètres est désormais fonctionnel — c'était auparavant un espace réservé non fonctionnel
+- Les fenêtres popout de stream routent désormais correctement, et l'audio TTS se lit de manière fiable en mode popout
+- Le panneau d'avatar dans la barre latérale est désormais repliable, offrant plus d'espace vertical aux panneaux de terminal pendant les sessions d'essaim
+- Un crash sur Bun 1.3.9 sur Linux est atténué en basculant automatiquement vers Node
+</Update>

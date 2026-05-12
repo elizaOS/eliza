@@ -1,0 +1,69 @@
+{
+  "benchmark": "guided-structured-decode-token-savings",
+  "generatedAt": "2026-05-12T05:10:34.758Z",
+  "host": {
+    "platform": "linux",
+    "arch": "x64",
+    "cpus": 24
+  },
+  "static": {
+    "mode": "static",
+    "bytesPerToken": 3.6,
+    "rows": [
+      {
+        "name": "planner-action-select (8 actions)",
+        "freeSpans": 3,
+        "forcedBytes": 36,
+        "forcedTokensEst": 10,
+        "freeBytesEst": 133,
+        "freeTokensEst": 37,
+        "totalTokensEst": 47,
+        "tokenReductionPct": 21,
+        "prefixBytes": 10
+      },
+      {
+        "name": "planner-action-select (single action)",
+        "freeSpans": 2,
+        "forcedBytes": 44,
+        "forcedTokensEst": 12,
+        "freeBytesEst": 120,
+        "freeTokensEst": 33,
+        "totalTokensEst": 45,
+        "tokenReductionPct": 27,
+        "prefixBytes": 32
+      },
+      {
+        "name": "stage1-response-envelope",
+        "freeSpans": 6,
+        "forcedBytes": 81,
+        "forcedTokensEst": 23,
+        "freeBytesEst": 252,
+        "freeTokensEst": 70,
+        "totalTokensEst": 93,
+        "tokenReductionPct": 25,
+        "prefixBytes": 17
+      },
+      {
+        "name": "typed-fields-object (SETTINGS)",
+        "freeSpans": 4,
+        "forcedBytes": 54,
+        "forcedTokensEst": 15,
+        "freeBytesEst": 38,
+        "freeTokensEst": 11,
+        "totalTokensEst": 26,
+        "tokenReductionPct": 58,
+        "prefixBytes": 11
+      }
+    ],
+    "aggregate": {
+      "forcedTokensEst": 60,
+      "totalTokensEst": 211,
+      "tokenReductionPct": 28
+    }
+  },
+  "live": {
+    "mode": "live",
+    "status": "skipped",
+    "reason": "pass --bin PATH --model PATH for a live run"
+  }
+}

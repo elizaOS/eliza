@@ -1,0 +1,52 @@
+def node_package_path(package_name)
+  package_json = `node --print "require.resolve('#{package_name}/package.json')"`.strip
+  if package_json.empty?
+    raise "Unable to resolve #{package_name}; run bun install before pod install"
+  end
+  File.dirname(package_json)
+end
+
+capacitor_ios_path = node_package_path('@capacitor/ios')
+
+require_relative File.join(capacitor_ios_path, 'scripts/pods_helpers')
+
+platform :ios, '15.0'
+use_frameworks!
+
+# workaround to avoid Xcode caching of Pods that requires
+# Product -> Clean Build Folder after new Cordova plugins installed
+# Requires CocoaPods 1.6 or newer
+install! 'cocoapods', :disable_input_output_paths => true
+
+def capacitor_pods
+  pod 'Capacitor', :path => node_package_path('@capacitor/ios')
+  pod 'CapacitorCordova', :path => node_package_path('@capacitor/ios')
+  pod 'CapacitorApp', :path => node_package_path('@capacitor/app')
+  pod 'CapacitorBarcodeScanner', :path => node_package_path('@capacitor/barcode-scanner')
+  pod 'CapacitorBrowser', :path => node_package_path('@capacitor/browser')
+  pod 'CapacitorHaptics', :path => node_package_path('@capacitor/haptics')
+  pod 'CapacitorKeyboard', :path => node_package_path('@capacitor/keyboard')
+  pod 'CapacitorPreferences', :path => node_package_path('@capacitor/preferences')
+  pod 'LlamaCppCapacitor', :path => node_package_path('llama-cpp-capacitor')
+  pod 'CapacitorPushNotifications', :path => node_package_path('@capacitor/push-notifications')
+  pod 'ElizaosCapacitorAgent', :path => node_package_path('@elizaos/capacitor-agent')
+  pod 'ElizaosCapacitorCamera', :path => node_package_path('@elizaos/capacitor-camera')
+  pod 'ElizaosCapacitorCalendar', :path => node_package_path('@elizaos/capacitor-calendar')
+  pod 'ElizaosCapacitorCanvas', :path => node_package_path('@elizaos/capacitor-canvas')
+  pod 'ElizaosCapacitorGateway', :path => node_package_path('@elizaos/capacitor-gateway')
+  pod 'ElizaosCapacitorLocation', :path => node_package_path('@elizaos/capacitor-location')
+  pod 'ElizaosCapacitorMobileSignals', :path => node_package_path('@elizaos/capacitor-mobile-signals')
+  pod 'ElizaosCapacitorScreencapture', :path => node_package_path('@elizaos/capacitor-screencapture')
+  pod 'ElizaosCapacitorSwabble', :path => node_package_path('@elizaos/capacitor-swabble')
+  pod 'ElizaosCapacitorTalkmode', :path => node_package_path('@elizaos/capacitor-talkmode')
+  pod 'ElizaosCapacitorWebsiteblocker', :path => node_package_path('@elizaos/capacitor-websiteblocker')
+end
+
+target 'App' do
+  capacitor_pods
+  # Add your Pods here
+end
+
+post_install do |installer|
+  assertDeploymentTarget(installer)
+end

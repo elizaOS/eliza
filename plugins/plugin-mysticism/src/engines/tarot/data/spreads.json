@@ -1,0 +1,167 @@
+[
+  {
+    "id": "single",
+    "name": "Single Card",
+    "description": "A quick single card draw for immediate insight or daily guidance",
+    "positions": [
+      {
+        "index": 0,
+        "name": "The Card",
+        "description": "Your message for now — the energy or theme most relevant to your question"
+      }
+    ],
+    "cardCount": 1
+  },
+  {
+    "id": "three_card",
+    "name": "Past, Present, Future",
+    "description": "A classic three-card spread showing the progression of time and how energies flow from what was, through what is, toward what will be",
+    "positions": [
+      {
+        "index": 0,
+        "name": "Past",
+        "description": "What has led to this moment — the foundation and root causes"
+      },
+      {
+        "index": 1,
+        "name": "Present",
+        "description": "Where you are now — the current energies and central challenge"
+      },
+      {
+        "index": 2,
+        "name": "Future",
+        "description": "Where things are heading — the likely outcome if the current path continues"
+      }
+    ],
+    "cardCount": 3
+  },
+  {
+    "id": "celtic_cross",
+    "name": "Celtic Cross",
+    "description": "The most comprehensive and widely-used tarot spread, offering deep insight into a situation from multiple angles including subconscious influences, past events, and potential outcomes",
+    "positions": [
+      {
+        "index": 0,
+        "name": "Present / Significator",
+        "description": "The heart of the matter — the central issue or energy surrounding your question"
+      },
+      {
+        "index": 1,
+        "name": "Challenge / Crossing",
+        "description": "What crosses you — the immediate obstacle or opposing force at play"
+      },
+      {
+        "index": 2,
+        "name": "Foundation",
+        "description": "The root cause — the deep foundation beneath the situation, often from the past"
+      },
+      {
+        "index": 3,
+        "name": "Recent Past",
+        "description": "What is passing away — events and energies that are fading but still influential"
+      },
+      {
+        "index": 4,
+        "name": "Crown / Best Outcome",
+        "description": "What crowns you — the best that can be achieved or the goal you aspire toward"
+      },
+      {
+        "index": 5,
+        "name": "Near Future",
+        "description": "What is coming — the energy approaching in the near term"
+      },
+      {
+        "index": 6,
+        "name": "Self / Attitude",
+        "description": "How you see yourself — your current attitude, feelings, and approach to the situation"
+      },
+      {
+        "index": 7,
+        "name": "Environment / Others",
+        "description": "External influences — how others see you and the environmental factors at play"
+      },
+      {
+        "index": 8,
+        "name": "Hopes and Fears",
+        "description": "Your inner hopes and fears — what you most desire and what you most dread, often intertwined"
+      },
+      {
+        "index": 9,
+        "name": "Final Outcome",
+        "description": "The culmination — where this path leads if all current energies play out"
+      }
+    ],
+    "cardCount": 10
+  },
+  {
+    "id": "relationship",
+    "name": "Relationship Spread",
+    "description": "A six-card spread designed to explore the dynamics between two people, whether romantic, friendship, or professional",
+    "positions": [
+      {
+        "index": 0,
+        "name": "You",
+        "description": "How you show up in this relationship — your energy, role, and perspective"
+      },
+      {
+        "index": 1,
+        "name": "The Other Person",
+        "description": "How the other person shows up — their energy, role, and perspective"
+      },
+      {
+        "index": 2,
+        "name": "The Connection",
+        "description": "The nature of the bond between you — what draws you together"
+      },
+      {
+        "index": 3,
+        "name": "Strengths",
+        "description": "The strengths and gifts this relationship offers both of you"
+      },
+      {
+        "index": 4,
+        "name": "Challenges",
+        "description": "The obstacles and growth edges — what needs attention or healing"
+      },
+      {
+        "index": 5,
+        "name": "Potential Outcome",
+        "description": "Where this relationship is heading — the trajectory if current patterns continue"
+      }
+    ],
+    "cardCount": 6
+  },
+  {
+    "id": "career",
+    "name": "Career Path Spread",
+    "description": "A five-card spread focused on professional life, career decisions, and work-related challenges",
+    "positions": [
+      {
+        "index": 0,
+        "name": "Current Situation",
+        "description": "Your present professional standing — where you are in your career right now"
+      },
+      {
+        "index": 1,
+        "name": "Obstacles",
+        "description": "What stands in your way — the challenges and blocks in your professional path"
+      },
+      {
+        "index": 2,
+        "name": "Hidden Strengths",
+        "description": "Untapped talents and resources — skills and assets you may not be fully leveraging"
+      },
+      {
+        "index": 3,
+        "name": "Action to Take",
+        "description": "Recommended next step — the most productive action or mindset shift to embrace"
+      },
+      {
+        "index": 4,
+        "name": "Potential Outcome",
+        "description": "Where this path leads — the likely result of following through on the guidance"
+      }
+    ],
+    "cardCount": 5
+  }
+]

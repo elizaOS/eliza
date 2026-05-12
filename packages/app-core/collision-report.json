@@ -1,0 +1,50 @@
+{
+  "generatedAt": "2026-04-14T02:36:23.039Z",
+  "scannedFiles": 6,
+  "includeDeclarationFiles": false,
+  "symbolCount": 106,
+  "pureReexports": {
+    "total": 0,
+    "externalBridgeCount": 0,
+    "files": []
+  },
+  "hierarchyViolations": {
+    "total": 0,
+    "byPackage": [],
+    "entries": []
+  },
+  "collisions": {
+    "classCollisions": [],
+    "exportedFunctionCollisions": [
+      {
+        "name": "isExactVersionSpecifier",
+        "entries": [
+          {
+            "name": "isExactVersionSpecifier",
+            "kind": "function",
+            "exported": true,
+            "file": "scripts/copy-runtime-node-modules.ts",
+            "line": 569,
+            "packageName": "@elizaos/app-core",
+            "packageDir": "",
+            "sourceName": "isExactVersionSpecifier"
+          },
+          {
+            "name": "isExactVersionSpecifier",
+            "kind": "function",
+            "exported": true,
+            "file": "scripts/release-check.ts",
+            "line": 507,
+            "packageName": "@elizaos/app-core",
+            "packageDir": "",
+            "sourceName": "isExactVersionSpecifier"
+          }
+        ]
+      }
+    ],
+    "localInterfaceCollisions": [],
+    "exportedInterfaceCollisions": [],
+    "localTypeCollisions": [],
+    "exportedTypeCollisions": []
+  }
+}

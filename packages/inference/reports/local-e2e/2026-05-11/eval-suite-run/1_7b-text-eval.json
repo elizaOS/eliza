@@ -1,0 +1,38 @@
+{
+  "schemaVersion": 1,
+  "metric": "text_eval",
+  "op": ">=",
+  "status": "ok",
+  "score": 0.3392,
+  "perplexity": 36.731,
+  "meanNllNats": 3.6036,
+  "tokens": 151,
+  "model": "/tmp/eliza1-eval-models/Qwen3-1.7B-Q8_0.gguf",
+  "modelIsBundleText": false,
+  "perText": [
+    {
+      "tokens": 29,
+      "ppl": 9.8549
+    },
+    {
+      "tokens": 27,
+      "ppl": 135.619
+    },
+    {
+      "tokens": 31,
+      "ppl": 16.5621
+    },
+    {
+      "tokens": 37,
+      "ppl": 61.4728
+    },
+    {
+      "tokens": 27,
+      "ppl": 50.365
+    }
+  ],
+  "scoring": "score = exp(-0.3 * meanNll); see eliza1_eval_suite.py header",
+  "passed": false,
+  "gateThreshold": 0.6,
+  "gateReason": "text_eval=0.3392 >= 0.6"
+}

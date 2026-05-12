@@ -1,0 +1,53 @@
+{
+    "name": "@elizaos/plugin-web-search",
+    "version": "2.0.0-beta.1",
+    "type": "module",
+    "main": "dist/index.js",
+    "module": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        "./package.json": "./package.json",
+        ".": {
+            "import": {
+                "types": "./dist/index.d.ts",
+                "default": "./dist/index.js"
+            }
+        },
+        "./*.css": "./dist/*.css",
+        "./*": {
+            "import": "./dist/*.js",
+            "default": "./dist/*.js",
+            "types": "./dist/*.d.ts"
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "dependencies": {
+        "@elizaos/core": "2.0.0-beta.1",
+        "@tavily/core": "^0.7.0",
+        "js-tiktoken": "1.0.21",
+        "tsup": "^8.5.1"
+    },
+    "devDependencies": {
+        "@biomejs/biome": "2.4.14"
+    },
+    "scripts": {
+        "build": "tsup --format esm --dts",
+        "dev": "tsup --format esm --dts --watch",
+        "lint": "biome check src/",
+        "lint:fix": "biome check --write src/",
+        "format": "biome format src/",
+        "format:fix": "biome format --write src/",
+        "typecheck": "tsc --noEmit -p tsconfig.json"
+    },
+    "agentConfig": {
+        "pluginType": "elizaos:client:1.0.0",
+        "pluginParameters": {
+            "TAVILY_API_KEY": {
+                "type": "string",
+                "description": "Tavily API key for accessing news services"
+            }
+        }
+    }
+}

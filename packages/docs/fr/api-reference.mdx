@@ -1,0 +1,923 @@
+---
+title: Référence de l'API REST
+sidebarTitle: Référence API
+description: Référence complète de tous les points de terminaison de l'API REST Eliza, organisés par groupe de ressources.
+---
+
+Le serveur API Eliza fonctionne sur le port **31337** par défaut (`ELIZA_API_PORT`). Tous les points de terminaison sont préfixés par `/api/`. L'authentification est requise lorsque `ELIZA_API_TOKEN` est défini.
+
+<Warning>
+Lorsque `ELIZA_API_TOKEN` est configuré, incluez le jeton en tant que jeton `Bearer` dans l'en-tête `Authorization`, ou utilisez le flux d'appairage pour l'obtenir.
+</Warning>
+
+<div id="quick-start">
+## Démarrage rapide
+</div>
+
+Ces exemples supposent que l'API fonctionne sur `localhost:31337`. Remplacez `YOUR_TOKEN` par la valeur de `ELIZA_API_TOKEN` ou le jeton reçu lors du flux d'appairage.
+
+<div id="check-agent-status">
+### Vérifier le statut de l'agent
+</div>
+
+```bash
+curl http://localhost:31337/api/status
+```
+
+```json
+{
+  "name": "Eliza",
+  "status": "running",
+  "model": "claude-sonnet-4-6",
+  "uptime": 3600
+}
+```
+
+<div id="authenticate-via-pairing-code">
+### S'authentifier via un code d'appairage
+</div>
+
+Lorsque l'appairage est activé, l'agent affiche un code dans son terminal. Soumettez-le pour recevoir un jeton :
+
+```bash
+curl -X POST http://localhost:31337/api/auth/pair \
+  -H "Content-Type: application/json" \
+  -d '{"code": "ABCD-EFGH"}'
+```
+
+```json
+{
+  "token": "your-api-token"
+}
+```
+
+<div id="get-character-info">
+### Obtenir les informations du personnage
+</div>
+
+```bash
+curl http://localhost:31337/api/character \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+<div id="send-a-chat-message">
+### Envoyer un message dans une conversation
+</div>
+
+```bash
+curl -X POST http://localhost:31337/api/conversations/YOUR_CONVERSATION_ID/messages \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello, what can you do?"}'
+```
+
+<div id="stream-a-chat-response">
+### Diffuser une réponse de conversation en streaming
+</div>
+
+```bash
+curl -N -X POST http://localhost:31337/api/conversations/YOUR_CONVERSATION_ID/messages/stream \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Tell me about yourself"}'
+```
+
+La réponse est un flux Server-Sent Events. Chaque événement contient un champ `data` avec un payload JSON.
+
+<div id="list-conversations">
+### Lister les conversations
+</div>
+
+```bash
+curl http://localhost:31337/api/conversations \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+<div id="upload-a-knowledge-document">
+### Télécharger un document de connaissances
+</div>
+
+```bash
+curl -X POST http://localhost:31337/api/documents \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Company FAQ",
+    "content": "Q: What is Eliza?\nA: A personal AI assistant built on elizaOS."
+  }'
+```
+
+<div id="search-knowledge">
+### Rechercher dans les connaissances
+</div>
+
+```bash
+curl "http://localhost:31337/api/documents/search?q=what+is+eliza&limit=5" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+<div id="list-plugins">
+### Lister les plugins
+</div>
+
+```bash
+curl http://localhost:31337/api/plugins \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+<div id="get-autonomy-state">
+### Obtenir l'état d'autonomie
+</div>
+
+```bash
+curl http://localhost:31337/api/agent/autonomy \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```json
+{
+  "enabled": false,
+  "thinking": false
+}
+```
+
+<div id="enable-autonomy">
+### Activer l'autonomie
+</div>
+
+```bash
+curl -X POST http://localhost:31337/api/agent/autonomy \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true}'
+```
+
+---
+
+<div id="authentication">
+## Authentification
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/auth/status` | Vérifier si l'authentification est requise et si l'appairage est activé |
+| `POST` | `/api/auth/pair` | Soumettre un code d'appairage pour recevoir le jeton API |
+
+---
+
+<div id="status--runtime">
+## Statut et environnement d'exécution
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/status` | Obtenir le statut actuel de l'agent, le nom, le modèle, le temps de fonctionnement, l'état d'autonomie et les informations de redémarrage en attente |
+| `GET` | `/api/health` | Vérification structurée de la santé des sous-systèmes (environnement d'exécution, base de données, plugins, connecteurs, état de préparation) |
+| `GET` | `/api/runtime` | Obtenir les détails de l'environnement d'exécution (plugins chargés, services, capacités) |
+
+Exemple de réponse de `GET /api/status` :
+
+```json
+{
+  "name": "Eliza",
+  "status": "running",
+  "model": "anthropic/claude-sonnet-4-6",
+  "uptime": 3600,
+  "autonomy": { "enabled": true },
+  "pendingRestart": false
+}
+```
+
+---
+
+<div id="agent-lifecycle">
+## Cycle de vie de l'agent
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `POST` | `/api/agent/start` | Démarrer l'agent et activer l'autonomie |
+| `POST` | `/api/agent/stop` | Arrêter l'agent et désactiver l'autonomie |
+| `POST` | `/api/agent/pause` | Mettre l'agent en pause (conserver le temps de fonctionnement, désactiver l'autonomie) |
+| `POST` | `/api/agent/resume` | Reprendre un agent en pause et réactiver l'autonomie |
+
+---
+
+<div id="agent-admin">
+## Administration de l'agent
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `POST` | `/api/agent/restart` | Redémarrer l'environnement d'exécution de l'agent |
+| `POST` | `/api/agent/reset` | Effacer la configuration, l'espace de travail, la mémoire et revenir à l'intégration initiale |
+| `POST` | `/api/restart` | Redémarrer le processus (alias utilisé par certains appelants) |
+| `GET` | `/api/agent/self-status` | Résumé structuré de l'auto-statut (capacités, portefeuille, plugins, conscience) |
+
+---
+
+<div id="agent-transfer-export--import">
+## Transfert d'agent (exportation / importation)
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `POST` | `/api/agent/export` | Exporter l'agent sous forme de fichier binaire `.eliza-agent` chiffré par mot de passe |
+| `GET` | `/api/agent/export/estimate` | Estimer la taille du fichier d'exportation avant le téléchargement |
+| `POST` | `/api/agent/import` | Importer un agent à partir d'un fichier `.eliza-agent` chiffré par mot de passe |
+
+---
+
+<div id="autonomy">
+## Autonomie
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/agent/autonomy` | Obtenir l'état d'autonomie (activé, en réflexion) |
+| `POST` | `/api/agent/autonomy` | Activer ou désactiver l'autonomie (`{ enabled: boolean }`) |
+
+---
+
+<div id="agent-events">
+## Événements de l'agent
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/agent/events` | Obtenir les événements mis en mémoire tampon de l'agent. Paramètres : `after` (curseur d'ID d'événement), `limit` (1-1000, défaut 200), `runId` (filtrer par exécution), `fromSeq` (numéro de séquence minimum) |
+
+---
+
+<div id="onboarding">
+## Intégration initiale
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/onboarding/status` | Vérifier si l'intégration initiale est terminée |
+| `GET` | `/api/onboarding/options` | Obtenir les options d'intégration disponibles (fournisseurs, styles) |
+| `POST` | `/api/onboarding` | Terminer l'assistant d'intégration |
+
+---
+
+<div id="provider">
+## Fournisseur
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `POST` | `/api/provider/switch` | Changer atomiquement la sélection du fournisseur d'IA actif et persister l'état canonique de routage |
+
+---
+
+<div id="character">
+## Personnage
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/character` | Obtenir les données du personnage actuel (nom, bio, système, style, etc.) |
+| `PUT` | `/api/character` | Mettre à jour les champs du personnage (validés par rapport au CharacterSchema) |
+| `GET` | `/api/character/random-name` | Générer un nom d'agent aléatoire |
+| `POST` | `/api/character/generate` | Génération assistée par IA de la bio, du prompt système, du style, des chatExamples ou des postExamples |
+| `GET` | `/api/character/schema` | Obtenir le schéma des champs du personnage pour le rendu de l'interface |
+
+---
+
+<div id="chat--conversations">
+## Chat et conversations
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/conversations` | Lister toutes les conversations |
+| `POST` | `/api/conversations` | Créer une nouvelle conversation |
+| `GET` | `/api/conversations/:id/messages` | Obtenir les messages d'une conversation |
+| `POST` | `/api/conversations/:id/messages` | Envoyer un message dans une conversation |
+| `POST` | `/api/conversations/:id/messages/stream` | Envoyer un message et diffuser la réponse en streaming dans une conversation (SSE) |
+| `POST` | `/api/conversations/:id/greeting` | Générer un message d'accueil pour une conversation |
+| `PATCH` | `/api/conversations/:id` | Mettre à jour les métadonnées de la conversation (par ex. le titre) |
+| `DELETE` | `/api/conversations/:id` | Supprimer une conversation |
+
+<Info>
+Les conversations sont limitées à l'interface de chat web. Chaque conversation correspond à une salle elizaOS avec un identifiant de monde déterministe. Les messages provenant des canaux de connecteurs incluent des champs d'identité supplémentaires de l'expéditeur (`from`, `fromUserName`, `avatarUrl`) lorsque le connecteur les fournit.
+</Info>
+
+---
+
+<div id="inbox-unified-messages">
+## Boîte de réception (Messages unifiés)
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/inbox/messages` | Lister les messages récents de tous les canaux de connecteurs dans un flux unifié |
+| `GET` | `/api/inbox/chats` | Lister les fils de discussion des connecteurs (une ligne par salon de chat externe) |
+| `GET` | `/api/inbox/sources` | Lister les tags de source de connecteurs distincts pour lesquels l'agent a des messages |
+
+<Info>
+La boîte de réception agrège les messages de toutes les plateformes connectées (iMessage, Telegram, Discord, WhatsApp, WeChat, Slack, Signal, SMS) dans un flux unique ordonné par le temps. Les messages du chat web du tableau de bord sont exclus — ceux-ci sont accessibles via l'[API de conversations](/fr/rest/conversations).
+</Info>
+
+---
+
+<div id="config">
+## Configuration
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/config` | Obtenir la configuration actuelle de eliza.json |
+| `PUT` | `/api/config` | Mettre à jour les champs de configuration |
+| `GET` | `/api/config/schema` | Obtenir le schéma de configuration pour le rendu de l'interface |
+
+---
+
+<div id="connectors">
+## Connecteurs
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/connectors` | Lister tous les connecteurs de messagerie configurés |
+| `POST` | `/api/connectors` | Ajouter ou mettre à jour la configuration d'un connecteur |
+| `DELETE` | `/api/connectors/:name` | Supprimer la configuration d'un connecteur |
+
+---
+
+<div id="plugins">
+## Plugins
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/plugins` | Lister tous les plugins avec leur statut, configuration et informations de validation |
+| `PUT` | `/api/plugins/:id` | Mettre à jour la configuration d'un plugin (activer/désactiver, définir les paramètres) |
+| `POST` | `/api/plugins/:id/test` | Tester la configuration d'un plugin |
+| `POST` | `/api/plugins/install` | Installer un plugin depuis le registre |
+| `POST` | `/api/plugins/uninstall` | Désinstaller un plugin installé par l'utilisateur |
+| `POST` | `/api/plugins/:id/eject` | Éjecter un plugin intégré vers une gestion utilisateur |
+| `POST` | `/api/plugins/:id/sync` | Synchroniser un plugin éjecté avec sa version amont |
+| `POST` | `/api/plugins/:id/reinject` | Réinjecter un plugin précédemment éjecté |
+| `GET` | `/api/plugins/installed` | Lister les plugins installés par l'utilisateur |
+| `GET` | `/api/plugins/ejected` | Lister les plugins éjectés |
+| `GET` | `/api/plugins/core` | Lister le statut des plugins principaux |
+| `POST` | `/api/plugins/core/toggle` | Activer/désactiver un plugin principal |
+
+---
+
+<div id="secrets">
+## Secrets
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/secrets` | Obtenir tous les paramètres sensibles déclarés par les plugins avec leur statut actuel (défini/non défini) |
+| `PUT` | `/api/secrets` | Mettre à jour les variables d'environnement sensibles (clés API, jetons) |
+
+---
+
+<div id="skills">
+## Compétences
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/skills` | Lister toutes les compétences chargées |
+| `POST` | `/api/skills/refresh` | Rafraîchir l'instantané des compétences |
+| `GET` | `/api/skills/:id/scan` | Obtenir le rapport d'analyse de sécurité d'une compétence |
+| `POST` | `/api/skills/:id/acknowledge` | Accuser réception de l'analyse de sécurité d'une compétence |
+| `POST` | `/api/skills/create` | Créer une nouvelle compétence |
+| `POST` | `/api/skills/:id/open` | Ouvrir le répertoire d'une compétence |
+| `GET` | `/api/skills/:id/source` | Obtenir le code source d'une compétence |
+| `PUT` | `/api/skills/:id/source` | Mettre à jour le code source d'une compétence |
+| `POST` | `/api/skills/:id/enable` | Activer une compétence (respecte les confirmations d'analyse de sécurité) |
+| `POST` | `/api/skills/:id/disable` | Désactiver une compétence |
+| `PUT` | `/api/skills/:id` | **Obsolète** — utilisez `POST /api/skills/:id/enable` ou `POST /api/skills/:id/disable` |
+| `DELETE` | `/api/skills/:id` | Supprimer une compétence |
+
+<div id="skills-catalog-marketplace">
+### Catalogue de compétences (Marketplace)
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/skills/catalog` | Parcourir le catalogue de compétences |
+| `GET` | `/api/skills/catalog/search` | Rechercher des compétences dans le catalogue |
+| `GET` | `/api/skills/catalog/:slug` | Obtenir les détails d'une compétence du catalogue |
+| `POST` | `/api/skills/catalog/refresh` | Rafraîchir le cache du catalogue |
+| `POST` | `/api/skills/catalog/install` | Installer une compétence du catalogue |
+| `POST` | `/api/skills/catalog/uninstall` | Désinstaller une compétence du catalogue |
+
+<div id="skills-marketplace-npm-based">
+### Marketplace de compétences (basé sur npm)
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/skills/marketplace/search` | Rechercher des compétences sur le marketplace |
+| `GET` | `/api/skills/marketplace/installed` | Lister les compétences installées depuis le marketplace |
+| `POST` | `/api/skills/marketplace/install` | Installer une compétence du marketplace |
+| `POST` | `/api/skills/marketplace/uninstall` | Désinstaller une compétence du marketplace |
+| `GET` | `/api/skills/marketplace/config` | Obtenir la configuration du marketplace |
+| `PUT` | `/api/skills/marketplace/config` | Mettre à jour la configuration du marketplace |
+
+---
+
+<div id="registry-plugin-registry">
+## Registre (registre de plugins)
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/registry/plugins` | Lister tous les plugins du registre elizaOS |
+| `GET` | `/api/registry/plugins/:name` | Obtenir les détails d'un plugin spécifique du registre |
+| `GET` | `/api/registry/search` | Rechercher dans le registre. Paramètres : `q` (requis), `limit` |
+| `POST` | `/api/registry/refresh` | Forcer le rafraîchissement du cache du registre |
+
+---
+
+<div id="on-chain-registry-erc-8004">
+## Registre on-chain (ERC-8004)
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/registry/status` | Obtenir le statut d'enregistrement on-chain de l'agent |
+| `POST` | `/api/registry/register` | Enregistrer l'agent on-chain |
+| `POST` | `/api/registry/update-uri` | Mettre à jour le tokenURI on-chain |
+| `POST` | `/api/registry/sync` | Synchroniser le profil de l'agent on-chain |
+| `GET` | `/api/registry/config` | Obtenir la configuration du registre on-chain (chainId, adresses, explorateur) |
+
+---
+
+<div id="knowledge">
+## Connaissances
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/documents/stats` | Obtenir le nombre de documents et de fragments |
+| `GET` | `/api/documents` | Lister les documents de connaissances. Paramètres : `limit`, `offset` |
+| `GET` | `/api/documents/:id` | Obtenir un document spécifique avec son contenu |
+| `POST` | `/api/documents` | Télécharger un document (contenu en base64 ou texte) |
+| `POST` | `/api/documents/url` | Télécharger depuis une URL (prend en charge la transcription automatique YouTube) |
+| `DELETE` | `/api/documents/:id` | Supprimer un document et tous ses fragments |
+| `GET` | `/api/documents/search` | Recherche sémantique. Paramètres : `q` (requis), `threshold`, `limit` |
+| `GET` | `/api/documents/:documentId/fragments` | Lister tous les fragments d'un document |
+
+---
+
+<div id="database">
+## Base de données
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/database/status` | Obtenir le statut de la base de données (fournisseur, connexion, nombre de tables) |
+| `GET` | `/api/database/config` | Obtenir la configuration persistée de la base de données |
+| `PUT` | `/api/database/config` | Mettre à jour la configuration du fournisseur de base de données |
+| `POST` | `/api/database/test` | Tester une connexion PostgreSQL |
+| `GET` | `/api/database/tables` | Lister toutes les tables de la base de données avec les informations de colonnes |
+| `GET` | `/api/database/tables/:table/rows` | Interroger les lignes d'une table avec pagination, tri et recherche |
+| `POST` | `/api/database/tables/:table/rows` | Insérer une nouvelle ligne dans une table |
+| `PUT` | `/api/database/tables/:table/rows` | Mettre à jour une ligne dans une table |
+| `DELETE` | `/api/database/tables/:table/rows` | Supprimer une ligne d'une table |
+| `POST` | `/api/database/query` | Exécuter une requête SQL brute (lecture seule par défaut) |
+
+---
+
+<div id="triggers">
+## Déclencheurs
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/triggers` | Lister tous les déclencheurs |
+| `POST` | `/api/triggers` | Créer un nouveau déclencheur |
+| `GET` | `/api/triggers/:id` | Obtenir un déclencheur par ID |
+| `PUT` | `/api/triggers/:id` | Mettre à jour un déclencheur |
+| `DELETE` | `/api/triggers/:id` | Supprimer un déclencheur |
+| `POST` | `/api/triggers/:id/execute` | Exécuter manuellement un déclencheur |
+| `GET` | `/api/triggers/:id/runs` | Obtenir l'historique d'exécution d'un déclencheur |
+| `GET` | `/api/triggers/health` | Obtenir un instantané de la santé du système de déclencheurs |
+
+---
+
+<div id="trajectories">
+## Trajectoires
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/trajectories` | Lister et rechercher des trajectoires avec des filtres |
+| `GET` | `/api/trajectories/:id` | Obtenir les détails d'une trajectoire avec les appels LLM et les accès fournisseur |
+| `GET` | `/api/trajectories/stats` | Obtenir les statistiques des trajectoires |
+| `GET` | `/api/trajectories/config` | Obtenir la configuration de journalisation des trajectoires (activée/désactivée) |
+| `PUT` | `/api/trajectories/config` | Activer ou désactiver la journalisation des trajectoires |
+| `POST` | `/api/trajectories/export` | Exporter les trajectoires (JSON, CSV, ART ou ZIP) |
+| `DELETE` | `/api/trajectories` | Supprimer des trajectoires (par ID ou toutes) |
+
+---
+
+<div id="training--fine-tuning">
+## Entraînement et ajustement fin
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/training/status` | Obtenir le statut du service d'entraînement |
+| `GET` | `/api/training/trajectories` | Lister les trajectoires pour l'entraînement. Paramètres : `limit`, `offset` |
+| `GET` | `/api/training/trajectories/:id` | Obtenir le détail d'une trajectoire pour l'entraînement |
+| `GET` | `/api/training/datasets` | Lister les jeux de données d'entraînement |
+| `POST` | `/api/training/datasets/build` | Construire un nouveau jeu de données à partir des trajectoires |
+| `GET` | `/api/training/jobs` | Lister les tâches d'entraînement |
+| `POST` | `/api/training/jobs` | Démarrer une nouvelle tâche d'entraînement |
+| `GET` | `/api/training/jobs/:id` | Obtenir le statut d'une tâche d'entraînement |
+| `POST` | `/api/training/jobs/:id/cancel` | Annuler une tâche d'entraînement en cours |
+| `GET` | `/api/training/models` | Lister les modèles ajustés |
+| `POST` | `/api/training/models/:id/import-ollama` | Importer un modèle dans Ollama |
+| `POST` | `/api/training/models/:id/activate` | Activer un modèle ajusté |
+| `POST` | `/api/training/models/:id/benchmark` | Évaluer les performances d'un modèle ajusté |
+
+---
+
+<div id="cloud">
+## Cloud
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `POST` | `/api/cloud/login` | Démarrer le flux de connexion Eliza Cloud (renvoie l'URL du navigateur et l'ID de session) |
+| `GET` | `/api/cloud/login/status` | Interroger le statut de la session de connexion. Paramètre : `sessionId` |
+| `GET` | `/api/cloud/status` | Obtenir le statut de la connexion cloud, l'état d'authentification et l'URL de facturation |
+| `GET` | `/api/cloud/credits` | Obtenir le solde des crédits cloud |
+| `GET` | `/api/cloud/billing/summary` | Obtenir le résumé de facturation cloud pour la facturation intégrée |
+| `GET` | `/api/cloud/billing/payment-methods` | Lister les moyens de paiement enregistrés pour la facturation cloud |
+| `GET` | `/api/cloud/billing/history` | Lister l'activité récente de facturation cloud |
+| `POST` | `/api/cloud/billing/checkout` | Créer une session de paiement pour la facturation cloud |
+| `POST` | `/api/cloud/billing/crypto/quote` | Créer un devis de facturation cloud en crypto |
+| `POST` | `/api/cloud/disconnect` | Se déconnecter d'Eliza Cloud et effacer les identifiants |
+| `GET` | `/api/cloud/agents` | Lister les agents cloud |
+| `POST` | `/api/cloud/agents` | Créer un nouvel agent cloud |
+| `POST` | `/api/cloud/agents/:id/provision` | Provisionner un agent cloud |
+| `POST` | `/api/cloud/agents/:id/shutdown` | Arrêter et supprimer un agent cloud |
+| `POST` | `/api/cloud/agents/:id/connect` | Se connecter à un agent cloud existant |
+| `POST` | `/api/cloud/v1/eliza/agents/:id/pairing-token` | Générer un jeton d'appairage pour ouvrir l'interface Web d'un agent cloud dans un nouvel onglet. Retourne `{ success, data: { token, redirectUrl, expiresIn } }` |
+
+<Info>
+Les routes sous `/api/cloud/v1/` sont transmises en tant que `/api/v1/` vers le backend cloud, distinctes du mappage hérité `/api/cloud/compat/*`. Les en-têtes `Authorization: Bearer` et `X-Api-Key` sont acceptés pour l'authentification.
+</Info>
+
+---
+
+<div id="subscription-oauth-flows">
+## Abonnement (flux OAuth)
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/subscription/status` | Obtenir le statut des fournisseurs d'authentification par abonnement |
+| `POST` | `/api/subscription/anthropic/start` | Démarrer le flux OAuth Anthropic (renvoie l'URL d'authentification) |
+| `POST` | `/api/subscription/anthropic/exchange` | Échanger le code d'authentification Anthropic contre des jetons |
+| `POST` | `/api/subscription/anthropic/setup-token` | Accepter directement un jeton de configuration Anthropic |
+| `POST` | `/api/subscription/openai/start` | Démarrer le flux OAuth OpenAI (renvoie l'URL d'authentification) |
+| `POST` | `/api/subscription/openai/exchange` | Échanger le code d'authentification OpenAI contre des jetons |
+| `DELETE` | `/api/subscription/:provider` | Supprimer les identifiants d'abonnement pour un fournisseur |
+
+---
+
+<div id="apps">
+## Applications
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/apps` | Lister les applications disponibles et installées |
+| `GET` | `/api/apps/search` | Rechercher des applications. Paramètres : `q`, `limit` |
+| `GET` | `/api/apps/installed` | Lister les applications installées |
+| `POST` | `/api/apps/launch` | Lancer une application (installer le plugin si nécessaire) |
+| `POST` | `/api/apps/stop` | Arrêter une application en cours d'exécution |
+| `GET` | `/api/apps/info/:name` | Obtenir les détails d'une application |
+| `GET` | `/api/apps/plugins` | Lister les plugins non-application du registre |
+| `GET` | `/api/apps/plugins/search` | Rechercher des plugins non-application. Paramètres : `q`, `limit` |
+| `POST` | `/api/apps/refresh` | Rafraîchir le cache du registre d'applications |
+
+<div id="hyperscape-integration">
+### Intégration Hyperscape
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/apps/hyperscape/embedded-agents` | Lister les agents Hyperscape intégrés |
+| `POST` | `/api/apps/hyperscape/embedded-agents` | Créer un agent Hyperscape intégré |
+| `POST` | `/api/apps/hyperscape/embedded-agents/:id/(start\|stop\|pause\|resume\|command)` | Contrôler un agent intégré |
+| `POST` | `/api/apps/hyperscape/agents/:id/message` | Envoyer un message à un agent Hyperscape |
+| `GET` | `/api/apps/hyperscape/agents/:id/goal` | Obtenir l'objectif actuel d'un agent Hyperscape |
+| `GET` | `/api/apps/hyperscape/agents/:id/quick-actions` | Obtenir les actions rapides disponibles pour un agent Hyperscape |
+
+---
+
+<div id="mcp-model-context-protocol">
+## MCP (Model Context Protocol)
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/mcp/marketplace/search` | Rechercher sur le marketplace MCP. Paramètres : `q`, `limit` |
+| `GET` | `/api/mcp/marketplace/details/:name` | Obtenir les détails d'un serveur MCP |
+| `GET` | `/api/mcp/config` | Obtenir la configuration des serveurs MCP |
+| `POST` | `/api/mcp/config/server` | Ajouter ou mettre à jour la configuration d'un serveur MCP |
+| `DELETE` | `/api/mcp/config/server/:name` | Supprimer la configuration d'un serveur MCP |
+| `PUT` | `/api/mcp/config` | Mise à jour groupée de la configuration MCP |
+| `GET` | `/api/mcp/status` | Obtenir le statut de connexion MCP pour tous les serveurs configurés |
+
+---
+
+<div id="models">
+## Modèles
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/models` | Lister les modèles disponibles. Paramètres : `provider` (optionnel), `refresh` (vider le cache) |
+
+---
+
+<div id="core-status">
+## Statut du cœur
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/core/status` | Obtenir la version et le statut du cœur elizaOS |
+
+---
+
+<div id="permissions">
+## Permissions
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/permissions` | Obtenir tous les états de permissions du système |
+| `GET` | `/api/permissions/:id` | Obtenir l'état d'une permission unique |
+| `GET` | `/api/permissions/shell` | Obtenir le statut de l'accès au terminal |
+| `PUT` | `/api/permissions/shell` | Activer/désactiver l'accès au terminal |
+| `PUT` | `/api/permissions/state` | Mettre à jour les états de permissions depuis Electrobun RPC |
+| `POST` | `/api/permissions/refresh` | Forcer le rafraîchissement de tous les états de permissions |
+| `POST` | `/api/permissions/:id/request` | Demander une permission système spécifique |
+| `POST` | `/api/permissions/:id/open-settings` | Ouvrir les paramètres système pour une permission |
+
+---
+
+<div id="custom-actions">
+## Actions personnalisées
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/custom-actions` | Lister toutes les actions personnalisées définies par l'utilisateur |
+| `POST` | `/api/custom-actions` | Créer ou mettre à jour une action personnalisée |
+| `POST` | `/api/custom-actions/generate` | Génération d'action personnalisée assistée par IA |
+
+---
+
+<div id="workbench">
+## Atelier
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/workbench/overview` | Obtenir la vue d'ensemble de l'atelier (tâches, déclencheurs, à faire, état d'autonomie) |
+| `GET` | `/api/workbench/tasks` | Lister les tâches de l'atelier |
+| `POST` | `/api/workbench/tasks` | Créer ou mettre à jour une tâche de l'atelier |
+| `GET` | `/api/workbench/todos` | Lister les éléments à faire |
+| `POST` | `/api/workbench/todos` | Créer ou mettre à jour un élément à faire |
+
+---
+
+<div id="diagnostics--logs">
+## Diagnostics et journaux
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/logs` | Obtenir les entrées de journal. Filtres : `source`, `level`, `tag`, `since` |
+| `GET` | `/api/extension/status` | Vérifier le relais et le statut du chemin de l'extension navigateur |
+
+---
+
+<div id="security-audit">
+## Audit de sécurité
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/security/audit` | Interroger le journal d'audit. Filtres : `type`, `severity`, `since`, `limit`. Prend en charge le streaming SSE avec `stream=1` |
+
+---
+
+<div id="emotes">
+## Emotes
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/emotes` | Obtenir le catalogue complet d'emotes pour les animations d'avatar 3D |
+| `POST` | `/api/emote` | Déclencher une animation d'emote par ID |
+
+---
+
+<div id="tts-text-to-speech">
+## TTS (synthèse vocale)
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `POST` | `/api/tts/elevenlabs` | Générer de l'audio vocal via ElevenLabs |
+
+---
+
+<div id="terminal">
+## Terminal
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `POST` | `/api/terminal/run` | Exécuter une commande shell dans l'espace de travail de l'agent |
+
+---
+
+<div id="wallet">
+## Portefeuille
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/wallet/addresses` | Obtenir les adresses de portefeuille EVM et Solana |
+| `GET` | `/api/wallet/balances` | Obtenir les soldes de jetons sur toutes les chaînes |
+| `GET` | `/api/wallet/nfts` | Obtenir les NFT sur EVM et Solana |
+| `GET` | `/api/wallet/config` | Obtenir le statut de configuration des clés API du portefeuille |
+| `PUT` | `/api/wallet/config` | Mettre à jour les clés API du portefeuille (Alchemy, Helius, etc.) |
+| `POST` | `/api/wallet/import` | Importer une clé privée pour EVM ou Solana |
+| `POST` | `/api/wallet/generate` | Générer de nouveaux portefeuilles pour EVM, Solana ou les deux |
+| `POST` | `/api/wallet/export` | Exporter les clés privées (nécessite une confirmation) |
+
+<div id="wallet-cloud">
+### Wallet Cloud
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `POST` | `/api/wallet/primary` | Définir la source de portefeuille principale (local ou cloud) pour une chaîne. Contrôlé par `ENABLE_CLOUD_WALLET` |
+| `POST` | `/api/wallet/refresh-cloud` | Interroger à nouveau Eliza Cloud pour obtenir les derniers descripteurs de portefeuille cloud. Contrôlé par `ENABLE_CLOUD_WALLET` |
+
+---
+
+<div id="drop--mint">
+## Drop / Mint
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/drop/status` | Obtenir le statut du service de drop/mint |
+| `POST` | `/api/drop/mint` | Créer (mint) un NFT |
+| `POST` | `/api/drop/mint-whitelist` | Créer (mint) avec vérification de liste blanche (preuve de Merkle) |
+
+---
+
+<div id="whitelist-verification">
+## Vérification de liste blanche
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/whitelist/status` | Obtenir le statut d'éligibilité à la liste blanche pour le portefeuille connecté |
+| `POST` | `/api/whitelist/twitter/message` | Générer un message de vérification Twitter pour l'agent |
+| `POST` | `/api/whitelist/twitter/verify` | Vérifier un compte Twitter/X via l'URL du tweet |
+
+---
+
+<div id="update-management">
+## Gestion des mises à jour
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/update/status` | Obtenir la version actuelle, le canal de mise à jour et les mises à jour disponibles |
+| `PUT` | `/api/update/channel` | Changer de canal de mise à jour (stable, beta, nightly) |
+
+---
+
+<div id="share-ingest">
+## Ingestion de partage
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `POST` | `/api/ingest/share` | Ingérer du contenu partagé depuis des sources externes |
+| `GET` | `/api/ingest/share` | Obtenir le contenu partagé en file d'attente. Paramètre : `consume=1` pour retirer de la file |
+
+---
+
+<div id="streaming">
+## Streaming
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `POST` | `/api/stream/live` | Démarrer le streaming en utilisant l'adaptateur de destination actif |
+| `POST` | `/api/stream/offline` | Arrêter le flux actif |
+| `GET` | `/api/stream/status` | Obtenir la santé et la configuration du flux actuel |
+| `POST` | `/api/stream/start` | Démarrer le flux avec des paramètres RTMP explicites |
+| `POST` | `/api/stream/stop` | Arrêter le processus FFmpeg actif |
+| `POST` | `/api/stream/frame` | Envoyer une image brute vers FFmpeg (mode de capture par pipe) |
+| `POST` | `/api/stream/volume` | Définir le volume audio (0–100) |
+| `POST` | `/api/stream/mute` | Couper le son du flux |
+| `POST` | `/api/stream/unmute` | Rétablir le son du flux |
+| `GET` | `/api/streaming/destinations` | Lister toutes les destinations de streaming configurées avec le statut actif |
+| `POST` | `/api/streaming/destination` | Changer la destination de streaming active (`{ destinationId }`) |
+| `GET` | `/api/stream/overlay-layout` | Obtenir la disposition de l'overlay (paramètre de requête `destination` optionnel) |
+| `POST` | `/api/stream/overlay-layout` | Enregistrer la disposition de l'overlay |
+| `GET` | `/api/stream/voice` | Obtenir la configuration voix/TTS |
+| `POST` | `/api/stream/voice` | Enregistrer les paramètres voix/TTS |
+| `POST` | `/api/stream/voice/speak` | Déclencher la synthèse vocale sur le flux en direct |
+| `GET` | `/api/stream/settings` | Obtenir les paramètres visuels du flux. La réponse inclut `avatarIndex` (1–8) pour l'avatar VRM de l'agent |
+| `POST` | `/api/stream/settings` | Enregistrer les paramètres visuels du flux |
+
+---
+
+<div id="nfa-non-fungible-agent">
+## NFA (Non-Fungible Agent)
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/nfa/status` | Obtenir le statut du jeton NFA et de l'identité on-chain |
+| `GET` | `/api/nfa/learnings` | Obtenir les entrées d'apprentissage analysées avec la racine de Merkle |
+
+<Info>
+Les points de terminaison NFA dépendent du plugin optionnel `@elizaos/plugin-bnb-identity`. Lorsque le plugin n'est pas installé, `/api/nfa/status` renvoie `null` pour les champs `nfa` et `identity`, et `/api/nfa/learnings` renvoie un tableau d'entrées vide avec une racine de Merkle par défaut.
+</Info>
+
+---
+
+<div id="sandbox">
+## Sandbox
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/sandbox/platform` | Obtenir les informations de plateforme (disponibilité Docker/conteneur) |
+| `GET` | `/api/sandbox/status` | Obtenir le statut du gestionnaire de sandbox |
+| `GET` | `/api/sandbox/events` | Obtenir le journal des événements de la sandbox (100 derniers) |
+| `GET` | `/api/sandbox/capabilities` | Détecter les capacités de sandbox disponibles |
+| `POST` | `/api/sandbox/start` | Démarrer le conteneur sandbox |
+| `POST` | `/api/sandbox/stop` | Arrêter le conteneur sandbox |
+| `POST` | `/api/sandbox/recover` | Récupérer une sandbox en échec |
+| `POST` | `/api/sandbox/docker/start` | Tenter de démarrer Docker Desktop |
+| `POST` | `/api/sandbox/exec` | Exécuter une commande dans la sandbox |
+| `GET` | `/api/sandbox/browser` | Obtenir les points de terminaison CDP/WS du navigateur |
+
+<div id="sandbox-screen">
+### Écran de la sandbox
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `GET` | `/api/sandbox/screen/screenshot` | Capturer une capture d'écran (renvoie du PNG) |
+| `POST` | `/api/sandbox/screen/screenshot` | Capturer une capture d'écran (renvoie du JSON en base64, région optionnelle) |
+| `GET` | `/api/sandbox/screen/windows` | Lister les fenêtres visibles |
+
+<div id="sandbox-audio">
+### Audio de la sandbox
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `POST` | `/api/sandbox/audio/record` | Enregistrer de l'audio (renvoie du WAV en base64). Optionnel : `durationMs` |
+| `POST` | `/api/sandbox/audio/play` | Lire de l'audio à partir de données en base64. Champs : `data`, `format` |
+
+<div id="sandbox-computer-use">
+### Utilisation de l'ordinateur dans la sandbox
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `POST` | `/api/sandbox/computer/click` | Effectuer un clic de souris aux coordonnées (x, y) |
+| `POST` | `/api/sandbox/computer/type` | Saisir du texte via le clavier |
+| `POST` | `/api/sandbox/computer/keypress` | Envoyer une pression de touche |
+
+<div id="sandbox-signing">
+### Signature dans la sandbox
+</div>
+
+| Méthode | Chemin | Description |
+|---------|--------|-------------|
+| `POST` | `/api/sandbox/sign` | Soumettre une demande de signature |
+| `POST` | `/api/sandbox/sign/approve` | Approuver une demande de signature en attente |
+| `POST` | `/api/sandbox/sign/reject` | Rejeter une demande de signature en attente |
+| `GET` | `/api/sandbox/sign/pending` | Lister les approbations de signature en attente |
+| `GET` | `/api/sandbox/sign/address` | Obtenir l'adresse du signataire |

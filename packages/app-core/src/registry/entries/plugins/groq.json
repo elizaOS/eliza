@@ -1,0 +1,93 @@
+{
+  "id": "groq",
+  "name": "Groq",
+  "description": "Groq model provider for low-latency chat and inference workloads.",
+  "npmName": "@elizaos/plugin-groq",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["ai-provider", "llm", "groq", "chat"],
+  "config": {
+    "GROQ_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "Groq API key",
+      "advanced": false
+    },
+    "GROQ_BASE_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "default": "https://api.groq.com/openai/v1",
+      "label": "Base Url",
+      "help": "Custom API base URL",
+      "advanced": false
+    },
+    "GROQ_SMALL_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "openai/gpt-oss-120b",
+      "label": "Small Model",
+      "help": "Small model name",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    },
+    "GROQ_LARGE_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "openai/gpt-oss-120b",
+      "label": "Large Model",
+      "help": "Large model name",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    },
+    "GROQ_TTS_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "canopylabs/orpheus-v1-english",
+      "label": "Tts Model",
+      "help": "TTS model name",
+      "placeholder": "e.g., tts-1, eleven_multilingual_v2",
+      "advanced": false
+    },
+    "GROQ_TTS_VOICE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "troy",
+      "label": "Tts Voice",
+      "help": "TTS voice name",
+      "advanced": false
+    },
+    "GROQ_TTS_RESPONSE_FORMAT": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "wav",
+      "label": "Tts Response Format",
+      "help": "TTS response format",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Zap",
+    "group": "ai-provider",
+    "groupOrder": 0,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-groq#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-groq",
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#groq"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "ai-provider"
+}

@@ -1,0 +1,110 @@
+{
+  "id": "twitch",
+  "name": "Twitch",
+  "description": "Twitch connector for live chat, channel events, and audience interactions.",
+  "npmName": "@elizaos/plugin-twitch",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "connector",
+    "streaming",
+    "twitch",
+    "chat",
+    "social",
+    "social-chat",
+    "messaging"
+  ],
+  "config": {
+    "TWITCH_CHANNEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Channel",
+      "help": "Channel name",
+      "advanced": false
+    },
+    "TWITCH_CHANNELS": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Channels",
+      "help": "Comma-separated room/channel list",
+      "advanced": false
+    },
+    "TWITCH_USERNAME": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Username",
+      "help": "Username for authentication",
+      "advanced": false
+    },
+    "TWITCH_CLIENT_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Client Id",
+      "help": "Application/client ID",
+      "advanced": false
+    },
+    "TWITCH_ACCESS_TOKEN": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Access Token",
+      "help": "Access token for Twitch",
+      "advanced": false
+    },
+    "TWITCH_ALLOWED_ROLES": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Allowed Roles",
+      "help": "Comma-separated allowed roles",
+      "advanced": false
+    },
+    "TWITCH_CLIENT_SECRET": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Client Secret",
+      "help": "Client secret for Twitch",
+      "advanced": false
+    },
+    "TWITCH_REFRESH_TOKEN": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Refresh Token",
+      "help": "Refresh token for Twitch",
+      "advanced": false
+    },
+    "TWITCH_REQUIRE_MENTION": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Require Mention",
+      "help": "Only respond when mentioned",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": false,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "Gamepad2",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#twitch"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "token",
+    "credentialKeys": ["TWITCH_ACCESS_TOKEN"]
+  }
+}

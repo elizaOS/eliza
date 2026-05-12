@@ -1,0 +1,380 @@
+---
+title: MCP Protocol
+description: Model Context Protocol implementation on elizaOS Cloud. Connect tools and resources to AI models.
+---
+
+import { Callout, Tabs, Cards } from "@/docs/components";
+
+# MCP Protocol
+
+Deep dive into the Model Context Protocol implementation on elizaOS Cloud.
+
+<div className="status-badge status-stable">Stable</div>
+
+<Callout type="info">
+  This page covers the **MCP protocol specification**. To connect MCP servers to
+  your agents, see [MCP Integration](/docs/mcps).
+</Callout>
+
+## Overview
+
+MCP (Model Context Protocol) is a standard for connecting AI models to external tools and data:
+
+- **Tools**: Functions the model can call
+- **Resources**: Data the model can read
+- **Prompts**: Pre-defined interaction templates
+
+## MCP Endpoint
+
+elizaOS Cloud exposes an MCP-compatible endpoint:
+
+```
+https://elizacloud.ai/api/mcp
+```
+
+## Protocol Methods
+
+### Initialize
+
+```bash
+curl -X POST "https://elizacloud.ai/api/mcp" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "initialize",
+    "params": {
+      "protocolVersion": "2024-11-05",
+      "capabilities": {},
+      "clientInfo": {
+        "name": "my-client",
+        "version": "1.0.0"
+      }
+    },
+    "id": 1
+  }'
+```
+
+### Response
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "protocolVersion": "2024-11-05",
+    "capabilities": {
+      "tools": {},
+      "resources": {},
+      "prompts": {}
+    },
+    "serverInfo": {
+      "name": "elizaOS Cloud MCP",
+      "version": "1.0.0"
+    }
+  },
+  "id": 1
+}
+```
+
+## Tools
+
+### List Tools
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/list",
+  "id": 2
+}
+```
+
+### Response
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "tools": [
+      {
+        "name": "generate_image",
+        "description": "Generate an image from a text prompt",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "prompt": {
+              "type": "string",
+              "description": "Image description"
+            },
+            "size": {
+              "type": "string",
+              "enum": ["square", "landscape", "portrait"]
+            }
+          },
+          "required": ["prompt"]
+        }
+      },
+      {
+        "name": "search_documents",
+        "description": "Search the knowledge base",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": { "type": "string" },
+            "limit": { "type": "integer" }
+          },
+          "required": ["query"]
+        }
+      }
+    ]
+  },
+  "id": 2
+}
+```
+
+### Call Tool
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "generate_image",
+    "arguments": {
+      "prompt": "A sunset over mountains",
+      "size": "landscape"
+    }
+  },
+  "id": 3
+}
+```
+
+### Tool Response
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "image",
+        "data": "base64...",
+        "mimeType": "image/png"
+      }
+    ]
+  },
+  "id": 3
+}
+```
+
+## Resources
+
+### List Resources
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "resources/list",
+  "id": 4
+}
+```
+
+### Read Resource
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "resources/read",
+  "params": {
+    "uri": "eliza://documents/doc_abc123"
+  },
+  "id": 5
+}
+```
+
+## Prompts
+
+### List Prompts
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "prompts/list",
+  "id": 6
+}
+```
+
+### Get Prompt
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "prompts/get",
+  "params": {
+    "name": "summarize",
+    "arguments": {
+      "text": "Long text to summarize..."
+    }
+  },
+  "id": 7
+}
+```
+
+## Transport Options
+
+### HTTP
+
+Standard HTTP POST requests:
+
+```bash
+curl -X POST "https://elizacloud.ai/api/mcp" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc": "2.0", ...}'
+```
+
+### Server-Sent Events (SSE)
+
+For streaming responses:
+
+```bash
+curl -X GET "https://elizacloud.ai/api/mcp/stream" \
+  -H "Accept: text/event-stream"
+```
+
+### WebSocket
+
+Coming soon for bidirectional communication.
+
+## Available Tools
+
+elizaOS Cloud provides these built-in MCP tools:
+
+| Tool               | Description                |
+| ------------------ | -------------------------- |
+| `generate_image`   | Create images from prompts |
+| `generate_video`   | Create videos from prompts |
+| `search_documents` | Query knowledge base       |
+| `get_weather`      | Current weather data       |
+| `get_time`         | Time and timezone info     |
+| `get_crypto_price` | Cryptocurrency prices      |
+
+## Connecting External MCPs
+
+### Add MCP Server
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/mcps" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My MCP Server",
+    "url": "https://my-mcp-server.com/mcp",
+    "authentication": {
+      "type": "bearer",
+      "token": "xxx"
+    }
+  }'
+```
+
+### Proxy Through elizaOS
+
+Access external MCPs through elizaOS:
+
+```bash
+curl -X POST "https://elizacloud.ai/api/mcp/proxy/{mcpId}" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {...},
+    "id": 1
+  }'
+```
+
+## Creating an MCP Server
+
+### Basic Structure
+
+```javascript
+const express = require('express');
+const app = express();
+
+app.post('/mcp', (req, res) => {
+  const { method, params, id } = req.body;
+
+  switch (method) {
+    case 'initialize':
+      return res.json({
+        jsonrpc: '2.0',
+        result: {
+          protocolVersion: '2024-11-05',
+          capabilities: { tools: {} },
+          serverInfo: { name: 'My MCP', version: '1.0.0' }
+        },
+        id
+      });
+
+    case 'tools/list':
+      return res.json({
+        jsonrpc: '2.0',
+        result: { tools: myTools },
+        id
+      });
+
+    case 'tools/call':
+      const result = await handleToolCall(params);
+      return res.json({
+        jsonrpc: '2.0',
+        result,
+        id
+      });
+  }
+});
+```
+
+## Error Handling
+
+### Error Codes
+
+| Code   | Name             | Description        |
+| ------ | ---------------- | ------------------ |
+| -32700 | Parse error      | Invalid JSON       |
+| -32600 | Invalid request  | Invalid JSON-RPC   |
+| -32601 | Method not found | Unknown method     |
+| -32602 | Invalid params   | Invalid parameters |
+| -32603 | Internal error   | Server error       |
+
+### Error Response
+
+```json
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": -32602,
+    "message": "Invalid params",
+    "data": { "field": "prompt", "issue": "required" }
+  },
+  "id": 1
+}
+```
+
+## Best Practices
+
+- **Clear Schemas** — Provide detailed input schemas for your tools
+- **Good Descriptions** — Help models understand tool purposes with clear naming
+- **Handle Errors** — Return clear error messages following JSON-RPC conventions
+- **Validate Input** — Always validate tool arguments before processing
+
+## Next Steps
+
+<Cards>
+  <Cards.Card title="MCP Integration" href="/docs/mcps">
+    Connect MCPs to agents
+  </Cards.Card>
+  <Cards.Card title="A2A Protocol" href="/docs/a2a">
+    Agent-to-agent communication
+  </Cards.Card>
+  <Cards.Card title="API Reference" href="/docs/api">
+    Complete API documentation
+  </Cards.Card>
+</Cards>

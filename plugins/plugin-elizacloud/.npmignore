@@ -1,0 +1,38 @@
+# Source directories
+typescript/
+python/
+rust/
+
+# Development files
+.github/
+.turbo/
+*.tsbuildinfo
+.turbo-tsconfig.json
+
+# Test files
+**/__tests__/
+**/*.test.ts
+**/*.spec.ts
+tests/
+
+# Config files
+tsconfig*.json
+build.ts
+biome.json
+.prettierrc*
+
+# Git
+.git/
+.gitignore
+
+# Environment
+.env*
+
+# IDE
+.idea/
+.vscode/
+
+# Python build artifacts
+__pycache__/
+*.pyc
+*.egg-info/

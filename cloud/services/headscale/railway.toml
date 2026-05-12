@@ -1,0 +1,11 @@
+[build]
+# Build the official headscale image directly. Pin a stable tag and bump
+# manually rather than relying on `latest`.
+builder = "DOCKERFILE"
+dockerfilePath = "./Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
