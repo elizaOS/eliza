@@ -115,28 +115,34 @@ export const DIRECTION_KEY_TO_OPTION = {
 // that into a per-turn leakage / denial / refuse-and-offer-alternative
 // check.
 export const SCOPE_VARIANT_TO_MODE = {
-  // Per-user isolation family — a setting in room A must not influence room B.
-  per_user_isolation: "per-user-isolation",
-  user_overrides_persist_across_unrelated_turns: "per-user-isolation",
-
-  // Global-applies family — admin sets the global slot, the rubric expects
-  // the agent to honour it everywhere (including in the regular user's room).
-  global_applies_to_admin_only: "global-applies",
-  admin_global_setting_applies_to_all: "global-applies",
-  admin_global_terse_user_verbose: "global-applies",
-  admin_global_formal_user_casual: "global-applies",
-
-  // Admin sets a global, regular user attempts to override — the agent
-  // must keep the global directive while honouring the per-user override
-  // ONLY in the user's own room. Folds onto `per-user-isolation` because
-  // the rubric uses the forbidden/required leakage check, which is exactly
-  // what catches a cross-room leak.
-  admin_global_then_user_override: "per-user-isolation",
-
   // Refusal family — non-admin tries to apply a global directive, agent
   // must refuse AND offer a per-user alternative.
-  global_rejected_for_non_admin: "global-rejected-for-non-admin",
-  user_tries_global_should_refuse: "user-tries-global-should-refuse",
+  user_tries_global_should_refuse: "refuse",
+  global_rejected_for_non_admin: "refuse",
+
+  // Override family — admin sets a global, then user overrides for their
+  // own session. The agent must honour the per-user override in the user's
+  // room while keeping the global directive elsewhere.
+  admin_global_then_user_override: "user_overrides_global",
+
+  // Conflict family — global and per-user styles conflict; the per-user
+  // preference wins within the user's room.
+  admin_global_terse_user_verbose: "user_wins_conflict",
+  admin_global_formal_user_casual: "user_wins_conflict",
+
+  // Global-scope family — admin global applies only to admin conversations,
+  // not to regular users.
+  global_applies_to_admin_only: "global_applies_to_admin_only",
+
+  // Global-all family — admin global applies to every user's room.
+  admin_global_setting_applies_to_all: "global_applies_to_all",
+
+  // Persistence family — a per-user override must survive across unrelated
+  // topic changes in the same conversation.
+  user_overrides_persist_across_unrelated_turns: "persistence",
+
+  // Isolation family — a per-user setting in room A must not influence room B.
+  per_user_isolation: "isolation",
 };
 
 export function bridgePersonalityExpect(scenario) {
@@ -238,7 +244,7 @@ export function bridgePersonalityExpect(scenario) {
       if (kw.forbidGlobalChangeFromUser === true) {
         // Tighten the mode: a forbidGlobalChangeFromUser flag overrides
         // anything else — the regular user MUST be refused.
-        options.mode = "user-tries-global-should-refuse";
+        options.mode = "refuse";
       }
       break;
     }
