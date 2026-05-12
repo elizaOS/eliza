@@ -578,6 +578,13 @@ export interface OnboardingOptionsSnapshot {
  */
 export type ConfigSnapshot = Record<string, unknown>;
 
+export interface ConfigSchemaSnapshot {
+	schema: Record<string, unknown>;
+	uiHints: Record<string, unknown>;
+	version: string;
+	generatedAt: string;
+}
+
 /**
  * Typed response for `listConversations` — matches `GET /api/conversations`.
  * Items pass through as `Record<string, unknown>`; consumers downcast
@@ -586,6 +593,35 @@ export type ConfigSnapshot = Record<string, unknown>;
  */
 export interface ConversationsListSnapshot {
 	conversations: ReadonlyArray<Record<string, unknown>>;
+}
+
+export interface ConversationMessagesSnapshot {
+	messages: ReadonlyArray<Record<string, unknown>>;
+}
+
+export interface InboxMessagesParams {
+	limit?: number;
+	sources?: readonly string[];
+	roomId?: string;
+	roomSource?: string;
+}
+
+export interface InboxMessagesSnapshot {
+	messages: ReadonlyArray<Record<string, unknown>>;
+	count: number;
+}
+
+export interface InboxChatsParams {
+	sources?: readonly string[];
+}
+
+export interface InboxChatsSnapshot {
+	chats: ReadonlyArray<Record<string, unknown>>;
+	count: number;
+}
+
+export interface InboxSourcesSnapshot {
+	sources: readonly string[];
 }
 
 /**
@@ -730,6 +766,7 @@ export type ElizaDesktopRPCSchema = {
 			 * redacted in-memory config. Same data as `GET /api/config`.
 			 */
 			getConfig: { params: undefined; response: ConfigSnapshot };
+			getConfigSchema: { params: undefined; response: ConfigSchemaSnapshot };
 			/**
 			 * Typed counterpart to `client.getAuthStatus()` — pairing/auth
 			 * gate state. Same data as `GET /api/auth/status`. The
@@ -750,6 +787,22 @@ export type ElizaDesktopRPCSchema = {
 			listConversations: {
 				params: undefined;
 				response: ConversationsListSnapshot;
+			};
+			getConversationMessages: {
+				params: { id: string };
+				response: ConversationMessagesSnapshot;
+			};
+			getInboxMessages: {
+				params: InboxMessagesParams | undefined;
+				response: InboxMessagesSnapshot;
+			};
+			getInboxChats: {
+				params: InboxChatsParams | undefined;
+				response: InboxChatsSnapshot;
+			};
+			getInboxSources: {
+				params: undefined;
+				response: InboxSourcesSnapshot;
 			};
 			/**
 			 * Typed counterpart to `client.getCharacter()` — the agent's

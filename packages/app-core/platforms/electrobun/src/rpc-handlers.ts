@@ -14,11 +14,41 @@ import { setAgentReady } from "./agent-ready-state";
 import { postAgentResetFromMain } from "./agent-reset-from-main";
 import { resolveDesktopRuntimeMode } from "./api-base";
 import { showBackgroundNoticeOnce } from "./background-notice";
+import {
+	composeBootProgressSnapshot,
+	readAgentHealthSnapshotViaHttp,
+} from "./boot-progress";
 import { getBrandConfig } from "./brand-config";
 import { postCloudDisconnectFromMain } from "./cloud-disconnect-from-main";
+import {
+	composeAuthMeSnapshot,
+	composeAuthStatusSnapshot,
+	composeConfigSchemaSnapshot,
+	composeConfigSnapshot,
+	readAuthMeViaHttp,
+	readAuthStatusViaHttp,
+	readConfigSchemaViaHttp,
+	readConfigViaHttp,
+} from "./config-and-auth-rpc";
+import {
+	composeCharacterSnapshot,
+	composeConversationMessagesSnapshot,
+	composeConversationsListSnapshot,
+	readCharacterViaHttp,
+	readConversationMessagesViaHttp,
+	readConversationsListViaHttp,
+} from "./conversations-and-character-rpc";
 import { desktopHttpRequest } from "./desktop-http-request";
 import { formatRendererDiagnosticLine } from "./diagnostic-format";
 import { getFloatingChatManager } from "./floating-chat-window";
+import {
+	composeInboxChatsSnapshot,
+	composeInboxMessagesSnapshot,
+	composeInboxSourcesSnapshot,
+	readInboxChatsViaHttp,
+	readInboxMessagesViaHttp,
+	readInboxSourcesViaHttp,
+} from "./inbox-rpc";
 import { logger } from "./logger";
 import { getAgentManager } from "./native/agent";
 import { getBrowserWorkspaceManager } from "./native/browser-workspace";
@@ -48,24 +78,6 @@ import {
 } from "./native/steward";
 import { getSwabbleManager } from "./native/swabble";
 import { getTalkModeManager } from "./native/talkmode";
-import {
-	composeBootProgressSnapshot,
-	readAgentHealthSnapshotViaHttp,
-} from "./boot-progress";
-import {
-	composeAuthMeSnapshot,
-	composeAuthStatusSnapshot,
-	composeConfigSnapshot,
-	readAuthMeViaHttp,
-	readAuthStatusViaHttp,
-	readConfigViaHttp,
-} from "./config-and-auth-rpc";
-import {
-	composeCharacterSnapshot,
-	composeConversationsListSnapshot,
-	readCharacterViaHttp,
-	readConversationsListViaHttp,
-} from "./conversations-and-character-rpc";
 import {
 	composeOnboardingOptionsSnapshot,
 	composeOnboardingStatusSnapshot,
@@ -309,6 +321,11 @@ export function buildBunRpcHandlers({
 				resolveRpcAgentPort(agent.getStatus().port),
 				readConfigViaHttp,
 			),
+		getConfigSchema: async () =>
+			composeConfigSchemaSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readConfigSchemaViaHttp,
+			),
 		/**
 		 * Typed counterpart to `client.getAuthStatus()` — auth/pairing
 		 * gate state used by the polling-backend startup phase.
@@ -336,6 +353,29 @@ export function buildBunRpcHandlers({
 			composeConversationsListSnapshot(
 				resolveRpcAgentPort(agent.getStatus().port),
 				readConversationsListViaHttp,
+			),
+		getConversationMessages: async (params) =>
+			composeConversationMessagesSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				params.id,
+				readConversationMessagesViaHttp,
+			),
+		getInboxMessages: async (params) =>
+			composeInboxMessagesSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				params,
+				readInboxMessagesViaHttp,
+			),
+		getInboxChats: async (params) =>
+			composeInboxChatsSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				params,
+				readInboxChatsViaHttp,
+			),
+		getInboxSources: async () =>
+			composeInboxSourcesSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readInboxSourcesViaHttp,
 			),
 		/**
 		 * Typed counterpart to `client.getCharacter()` — current
