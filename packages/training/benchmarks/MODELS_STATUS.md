@@ -4,6 +4,24 @@ Quick reference for what each `model_registry.py` tier is, where it can train,
 and what command runs the SFT. Source of truth for tier geometry / budgets is
 `scripts/training/model_registry.py`; this file is the operator-facing summary.
 
+## Runtime auto-default semantics (2026-05-12)
+
+A `base-v1-candidate` bundle (the publish-side state when not every
+release-blocking gate is green) is **publishable, installable, AND
+allowed to auto-fill an empty default slot** on a device whose backend
+the manifest verified `pass`. The on-device gate
+(`canSetAsDefault` in `packages/app-core/src/services/local-inference/manifest/validator.ts`)
+no longer hard-requires `manifest.defaultEligible === true`; it requires
+the manifest to be contract-valid, the device RAM to meet the floor, and
+at least one tier-supported backend to be verified-pass.
+
+When both a strict release (`defaultEligible: true`) and a candidate
+bundle are installed, the recommender prefers the strict release. The
+candidate-as-default path exists so a fresh install of
+`elizaos/eliza-1-{0_6b,1_7b,...}` lands the user in chat with the
+downloaded bundle already wired to `TEXT_SMALL` / `TEXT_LARGE` instead of
+stranding them on an installed-but-unused model.
+
 ## Local tiers (16 GB consumer GPU, RTX 5080 Laptop class)
 
 > **Backbone move (owner decision):** the small eliza-1 tiers move to the
