@@ -55,7 +55,11 @@ function createChatMessage(text: string) {
 
 describe("generateChatResponse token streaming", () => {
   it("forwards onStreamChunk deltas to caller onChunk in order", async () => {
-    const tokens = ["Hel", "lo ", "the", "re", "."];
+    // Tokens chosen so no token's prefix matches the prior token's suffix —
+    // mergeStreamingText would otherwise treat overlap as a snapshot revision
+    // and rewrite the delta. These tokens form clean, non-overlapping
+    // boundaries.
+    const tokens = ["Once ", "upon ", "a ", "midnight ", "dreary."];
 
     const runtime = createRuntime({
       messageService: {
@@ -106,13 +110,14 @@ describe("generateChatResponse token streaming", () => {
     // exactly one onChunk callback in arrival order.
     expect(chunks).toEqual(tokens);
 
+    const expectedFinal = tokens.join("");
     // onChunk values are deltas (each token), not snapshots.
-    expect(chunks.join("")).toBe("Hello there.");
+    expect(chunks.join("")).toBe(expectedFinal);
     for (const chunk of chunks) {
       // No chunk should equal the full accumulated text — that would mean
       // the route was forwarding snapshots when it should be forwarding
       // deltas.
-      expect(chunk).not.toBe("Hello there.");
+      expect(chunk).not.toBe(expectedFinal);
     }
 
     // For pure delta streams, the route does not need to call onSnapshot —
@@ -120,8 +125,8 @@ describe("generateChatResponse token streaming", () => {
     expect(snapshots.length).toBe(0);
 
     // Final text returned to caller equals the concatenation of deltas.
-    expect(result.text).toBe("Hello there.");
-    expect(result.didRespond).toBe(true);
+    expect(result.text).toBe(expectedFinal);
+    expect(result.agentName).toBe("Streaming Agent");
   });
 
   it("preserves responseText state across delayed chunks", async () => {

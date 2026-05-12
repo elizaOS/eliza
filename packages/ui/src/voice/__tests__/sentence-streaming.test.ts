@@ -118,28 +118,32 @@ describe("simulated streaming TTS flush behavior", () => {
     const flusher = runStreamingFlusher();
 
     // Tokens dribble in before the first sentence is complete.
+    // First sentence MUST be >= ASSISTANT_TTS_FIRST_FLUSH_CHARS (24) to
+    // trigger the first-clip flush — that's the real hook's gate.
     flusher.pushDelta("Hel");
-    flusher.pushDelta("lo there");
+    flusher.pushDelta("lo there my friendly people");
 
     // Simulate debounce window — flush should not produce anything yet
     // because no terminal punctuation has arrived.
     vi.advanceTimersByTime(ASSISTANT_TTS_DEBOUNCE_MS);
     expect(flusher.flush()).toBeNull();
 
-    // Period arrives — first complete sentence is now eligible.
+    // Period arrives — first complete sentence is now eligible AND
+    // exceeds the 24-char first-clip threshold.
     flusher.pushDelta(". How are");
     vi.advanceTimersByTime(ASSISTANT_TTS_DEBOUNCE_MS);
 
     const firstClip = flusher.flush();
-    expect(firstClip).toBe("Hello there.");
-    expect(flusher.flushedClips).toEqual(["Hello there."]);
+    expect(firstClip).toBe("Hello there my friendly people.");
+    expect(flusher.flushedClips).toEqual(["Hello there my friendly people."]);
 
-    // Subsequent deltas must wait for next sentence boundary.
+    // Subsequent deltas must wait for next sentence boundary AND meet
+    // the larger MIN_CHUNK_CHARS (88) threshold.
     flusher.pushDelta(" you?");
     vi.advanceTimersByTime(ASSISTANT_TTS_DEBOUNCE_MS);
     const secondClip = flusher.flush();
-    // Second clip is below the MIN_CHUNK_CHARS threshold (only "How are you?"),
-    // so it should remain buffered until the final flush.
+    // Second clip "How are you?" is well below MIN_CHUNK_CHARS (88),
+    // so it remains buffered until a final flush.
     expect(secondClip).toBeNull();
   });
 
