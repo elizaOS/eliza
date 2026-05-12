@@ -1,9 +1,9 @@
-import {
-  type IAgentRuntime,
-  type Memory,
-  type Provider,
-  type ProviderResult,
-  type State,
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
 } from "@elizaos/core";
 import type { BotState } from "../sdk/types.js";
 import { getRs2004scapeEventLogService } from "./service-access.js";
@@ -176,9 +176,13 @@ export const goalsProvider: Provider = {
       const state = service?.getBotState?.();
       if (!state?.connected || !state.inGame || !state.player) {
         return {
-          text: JSON.stringify({
-            rs_2004_goals: { status: "not_in_game", goals: [] },
-          }, null, 2),
+          text: JSON.stringify(
+            {
+              rs_2004_goals: { status: "not_in_game", goals: [] },
+            },
+            null,
+            2,
+          ),
         };
       }
 
@@ -186,28 +190,37 @@ export const goalsProvider: Provider = {
       const goals = computeGoals(state, eventLog);
       goals.sort(
         (a, b) =>
-          (PRIORITY_ORDER[a.priority] ?? 99) - (PRIORITY_ORDER[b.priority] ?? 99),
+          (PRIORITY_ORDER[a.priority] ?? 99) -
+          (PRIORITY_ORDER[b.priority] ?? 99),
       );
 
       return {
-        text: JSON.stringify({
-          rs_2004_goals: {
-            status: "ready",
-            instruction:
-              "Follow IMMEDIATE goals first, then SHORT_TERM; explore only when nothing else is pressing.",
-            goals: goals.slice(0, GOAL_LIMIT),
+        text: JSON.stringify(
+          {
+            rs_2004_goals: {
+              status: "ready",
+              instruction:
+                "Follow IMMEDIATE goals first, then SHORT_TERM; explore only when nothing else is pressing.",
+              goals: goals.slice(0, GOAL_LIMIT),
+            },
           },
-        }, null, 2),
+          null,
+          2,
+        ),
       };
     } catch (error) {
       return {
-        text: JSON.stringify({
-          rs_2004_goals: {
-            status: "error",
-            reason: error instanceof Error ? error.message : String(error),
-            goals: [],
+        text: JSON.stringify(
+          {
+            rs_2004_goals: {
+              status: "error",
+              reason: error instanceof Error ? error.message : String(error),
+              goals: [],
+            },
           },
-        }, null, 2),
+          null,
+          2,
+        ),
       };
     }
   },

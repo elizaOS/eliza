@@ -94,7 +94,8 @@ class FakeTodosService {
     const row = this.rows.find((r) => r.id === id);
     if (!row) return null;
     if (patch.content !== undefined) row.content = String(patch.content);
-    if (patch.activeForm !== undefined) row.activeForm = String(patch.activeForm);
+    if (patch.activeForm !== undefined)
+      row.activeForm = String(patch.activeForm);
     if (patch.status !== undefined) {
       row.status = String(patch.status);
       row.completedAt = row.status === "completed" ? new Date() : null;
@@ -188,14 +189,14 @@ function mockRuntime(service: FakeTodosService): IAgentRuntime {
     agentId: AGENT,
     getSetting: (): string | boolean | number | null => null,
     getService: ((name: string) =>
-      name === TODOS_SERVICE_TYPE ? service : null) as IAgentRuntime["getService"],
+      name === TODOS_SERVICE_TYPE
+        ? service
+        : null) as IAgentRuntime["getService"],
   };
   return stub as never as IAgentRuntime;
 }
 
-function makeMessage(
-  overrides: Partial<Memory> = {},
-): Memory {
+function makeMessage(overrides: Partial<Memory> = {}): Memory {
   return {
     entityId: ENTITY,
     roomId: ROOM,
@@ -298,7 +299,11 @@ describe("TODO action", () => {
       });
       expect(result.success).toBe(true);
       const data = result.data as Record<string, unknown>;
-      const todo = data.todo as { content: string; entityId: string; status: string };
+      const todo = data.todo as {
+        content: string;
+        entityId: string;
+        status: string;
+      };
       expect(todo.content).toBe("Add tests");
       expect(todo.entityId).toBe(ENTITY);
       expect(todo.status).toBe("pending");

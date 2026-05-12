@@ -10,10 +10,12 @@ import {
 } from "@elizaos/core";
 
 type ElizaConfig = Record<string, unknown> & {
-  cloud?: (Record<string, unknown> & {
-    apiKey?: string | null;
-    baseUrl?: string | null;
-  }) | null;
+  cloud?:
+    | (Record<string, unknown> & {
+        apiKey?: string | null;
+        baseUrl?: string | null;
+      })
+    | null;
   env?: Record<string, unknown> | null;
 };
 

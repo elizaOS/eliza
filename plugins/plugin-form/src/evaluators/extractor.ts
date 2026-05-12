@@ -10,9 +10,9 @@
  */
 
 import type {
-  EventPayload,
   Evaluator,
   EvaluatorProcessor,
+  EventPayload,
   IAgentRuntime,
   JsonValue,
   UUID,
@@ -86,9 +86,7 @@ async function checkAndActivateExternalField(
     entityId,
     field,
   );
-  const activationPayload = JSON.parse(
-    JSON.stringify(activation),
-  ) as JsonValue;
+  const activationPayload = JSON.parse(JSON.stringify(activation)) as JsonValue;
 
   await emitEvent(runtime, "FORM_EXTERNAL_ACTIVATED", {
     sessionId: session.id,
@@ -127,7 +125,10 @@ const formIntentProcessor: EvaluatorProcessor<
         if (!form.ux?.allowUndo) return undefined;
         const result = await formService.undoLastChange(session.id, entityId);
         return result
-          ? { success: true, values: { formIntent: "undo", undid: result.field } }
+          ? {
+              success: true,
+              values: { formIntent: "undo", undid: result.field },
+            }
           : undefined;
       }
 
@@ -139,7 +140,10 @@ const formIntentProcessor: EvaluatorProcessor<
           session.lastAskedField,
         );
         return skipped
-          ? { success: true, values: { formIntent: "skip", skipped: session.lastAskedField } }
+          ? {
+              success: true,
+              values: { formIntent: "skip", skipped: session.lastAskedField },
+            }
           : undefined;
       }
 
@@ -173,10 +177,7 @@ const formExtractionsProcessor: EvaluatorProcessor<
 
     // Lifecycle / UX intents shouldn't double-process extractions; only
     // fill_form and `other` may carry inline data.
-    if (
-      output.formIntent !== "fill_form" &&
-      output.formIntent !== "other"
-    ) {
+    if (output.formIntent !== "fill_form" && output.formIntent !== "other") {
       // Still update last-message tracking before bailing so deduplication works.
       const refreshed = await formService.getActiveSession(
         entityId,

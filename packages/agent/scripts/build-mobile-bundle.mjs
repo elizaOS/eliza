@@ -62,8 +62,9 @@ const repoRoot = path.resolve(agentRoot, "..", "..");
 // CJS-on-V8 shims) and a polyfill prefix from
 // native/ios-bun-port/polyfill/dist/polyfill-prefix.js is concatenated on
 // top to install Bun + Node module shims over globalThis.__ELIZA_BRIDGE__.
-const targetArg = (process.argv.find((a) => a.startsWith("--target=")) ?? "")
-  .split("=")[1];
+const targetArg = (
+  process.argv.find((a) => a.startsWith("--target=")) ?? ""
+).split("=")[1];
 const TARGET = targetArg || process.env.ELIZA_MOBILE_TARGET || "android";
 if (TARGET !== "android" && TARGET !== "ios" && TARGET !== "ios-jsc") {
   console.error(
@@ -311,7 +312,10 @@ const nativeStubs = {
 // ElizaBunRuntime.swift. These stubs surface the platform constraints as JS
 // runtime errors rather than module-load crashes.
 if (TARGET === "ios" || TARGET === "ios-jsc") {
-  nativeStubs["node:child_process"] = path.join(stubsDir, "ios-child-process.cjs");
+  nativeStubs["node:child_process"] = path.join(
+    stubsDir,
+    "ios-child-process.cjs",
+  );
   nativeStubs["child_process"] = path.join(stubsDir, "ios-child-process.cjs");
   nativeStubs["node:os"] = path.join(stubsDir, "ios-os.cjs");
   // Note: `bun:ffi` is provided natively by the iOS Bun runtime; the

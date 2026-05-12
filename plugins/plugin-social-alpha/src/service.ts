@@ -3629,8 +3629,7 @@ ${report.tokenReports.join("\n")}
 				);
 
 				if (component?.data) {
-					const profileData =
-						component.data as TrustMarketplaceComponentData;
+					const profileData = component.data as TrustMarketplaceComponentData;
 					const entityDetails = await runtime.getEntityById(component.entityId);
 
 					const recommendations = Array.isArray(profileData.recommendations)

@@ -142,7 +142,10 @@ async function waitForTrackedSession(
 		| undefined;
 	await waitFor(
 		async () => {
-			listResult = await listAgentsAction.handler(runtime, createMessage({}) as never);
+			listResult = await listAgentsAction.handler(
+				runtime,
+				createMessage({}) as never,
+			);
 			if (!listResult?.success) {
 				return false;
 			}
@@ -191,9 +194,9 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 		const [preflight] = await service.checkAvailableAgents([agentType]);
 		assert.equal(preflight?.installed, true);
 
-			const spawnResult = await spawnAgentAction.handler(
-				runtime,
-				createMessage({
+		const spawnResult = await spawnAgentAction.handler(
+			runtime,
+			createMessage({
 				agentType,
 				workdir,
 				task:
@@ -251,9 +254,9 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 		);
 
 		const secondTaskEventStart = events.length;
-			const sendResult = await sendToAgentAction.handler(
-				runtime,
-				createMessage({
+		const sendResult = await sendToAgentAction.handler(
+			runtime,
+			createMessage({
 				sessionId,
 				task:
 					`Now create a second file named ${secondFileName} containing exactly "${agentType}-second". ` +
@@ -280,10 +283,10 @@ async function runSequentialSmoke(agentType: Framework): Promise<void> {
 			3000,
 		);
 
-			const finalList = await listAgentsAction.handler(
-				runtime,
-				createMessage({}) as never,
-			);
+		const finalList = await listAgentsAction.handler(
+			runtime,
+			createMessage({}) as never,
+		);
 		assert.equal(finalList?.success, true);
 		assert.ok(finalList?.text.includes(sessionId));
 	} finally {
@@ -322,9 +325,9 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
 		const [preflight] = await service.checkAvailableAgents([agentType]);
 		assert.equal(preflight?.installed, true);
 
-			const spawnResult = await spawnAgentAction.handler(
-				runtime,
-				createMessage({
+		const spawnResult = await spawnAgentAction.handler(
+			runtime,
+			createMessage({
 				agentType,
 				workdir,
 				task:
@@ -387,10 +390,10 @@ async function runWebSmoke(agentType: Framework): Promise<void> {
 			3000,
 		);
 
-			const finalList = await listAgentsAction.handler(
-				runtime,
-				createMessage({}) as never,
-			);
+		const finalList = await listAgentsAction.handler(
+			runtime,
+			createMessage({}) as never,
+		);
 		assert.equal(finalList?.success, true);
 		assert.ok(finalList?.text.includes(sessionId));
 	} finally {

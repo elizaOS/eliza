@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime, Memory, Service, UUID } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-
+import * as pluginModule from "../src/index.js";
 import codingToolsPlugin, {
   availableToolsProvider,
   CODING_TOOLS_CONTEXTS,
@@ -16,13 +16,8 @@ import codingToolsPlugin, {
   SESSION_CWD_SERVICE,
   SessionCwdService,
 } from "../src/index.js";
-import * as pluginModule from "../src/index.js";
 
-const EXPECTED_ACTIONS = [
-  "FILE",
-  "SHELL",
-  "WORKTREE",
-];
+const EXPECTED_ACTIONS = ["FILE", "SHELL", "WORKTREE"];
 
 describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
   it("exports a Plugin with the expected name", () => {
@@ -122,7 +117,7 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   let tmpDir: string;
   let runtime: IAgentRuntime;
   let services: Map<string, Service>;
-  let cleanup: Array<() => Promise<void>> = [];
+  const cleanup: Array<() => Promise<void>> = [];
 
   beforeAll(async () => {
     tmpDir = await fs.realpath(
@@ -186,7 +181,10 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   it("FILE action=read returns a known file's contents", async () => {
     const action = findAction("FILE");
     const result = await action.handler!(runtime, makeMessage(), undefined, {
-      parameters: { action: "read", file_path: path.join(tmpDir, "needle.txt") },
+      parameters: {
+        action: "read",
+        file_path: path.join(tmpDir, "needle.txt"),
+      },
     });
     expect(result.success).toBe(true);
     expect(result.text).toContain("NEEDLE");

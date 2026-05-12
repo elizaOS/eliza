@@ -58,7 +58,9 @@ function isServerFrame(
         hasNumber(value, "level")
       );
     case "ack":
-      return hasString(value, "correlationId") && typeof value.success === "boolean";
+      return (
+        hasString(value, "correlationId") && typeof value.success === "boolean"
+      );
     case "perception":
       return isPerceptionFrame(value);
     case "operatorCommand":

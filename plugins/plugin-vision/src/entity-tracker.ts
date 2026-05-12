@@ -1,6 +1,6 @@
 import {
-  type IAgentRuntime,
   createUniqueUuid,
+  type IAgentRuntime,
   logger,
   type UUID,
 } from "@elizaos/core";

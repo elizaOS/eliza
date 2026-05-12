@@ -11,8 +11,9 @@
  * load it eagerly at module init and surface a clean diagnostic if the
  * binary is missing for the current arch (`isAvailable()` reports false).
  */
-import { createRequire } from "node:module";
+
 import { readFileSync, unlinkSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ScreenRegion } from "../types.js";
@@ -58,9 +59,7 @@ interface NutModule {
   Button: { LEFT: number; MIDDLE: number; RIGHT: number };
   Key: Record<string, number>;
   Point: new (x: number, y: number) => { x: number; y: number };
-  straightTo: (
-    target: { x: number; y: number },
-  ) => Promise<unknown> | unknown;
+  straightTo: (target: { x: number; y: number }) => Promise<unknown> | unknown;
   FileType: { PNG: number; JPG: number };
 }
 
@@ -294,7 +293,9 @@ export async function nutKeyCombo(combo: string): Promise<void> {
     }
   }
   if (!mainKey) {
-    throw new Error(`Combo "${combo}" must include at least one non-modifier key`);
+    throw new Error(
+      `Combo "${combo}" must include at least one non-modifier key`,
+    );
   }
   const mainCode = resolveKeyCode(mainKey);
   if (modifierCodes.length > 0) {
@@ -349,8 +350,14 @@ export async function nutCaptureScreenshot(
   }
 }
 
-export async function nutScreenSize(): Promise<{ width: number; height: number }> {
+export async function nutScreenSize(): Promise<{
+  width: number;
+  height: number;
+}> {
   const m = nut();
-  const [width, height] = await Promise.all([m.screen.width(), m.screen.height()]);
+  const [width, height] = await Promise.all([
+    m.screen.width(),
+    m.screen.height(),
+  ]);
   return { width, height };
 }

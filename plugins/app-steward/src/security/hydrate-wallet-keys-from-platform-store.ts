@@ -1,7 +1,7 @@
-import { deriveAgentVaultId } from "@elizaos/app-core";
 import type { SecureStoreSecretKind } from "@elizaos/app-core";
 import {
   createNodePlatformSecureStore,
+  deriveAgentVaultId,
   isWalletOsStoreReadEnabled,
 } from "@elizaos/app-core";
 import { logger } from "@elizaos/core";

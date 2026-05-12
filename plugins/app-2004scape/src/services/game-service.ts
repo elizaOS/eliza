@@ -4,15 +4,11 @@ import {
   ModelType,
   parseJSONObjectFromText,
   Service,
-  setTrajectoryPurpose,
   type State,
+  setTrajectoryPurpose,
   type TextGenerationModelType,
   withStandaloneTrajectory,
 } from "@elizaos/core";
-import {
-  formatRs2004RouterPrompt,
-  resolveRs2004RouterAction,
-} from "./autonomous-loop-prompt.js";
 import { type GatewayHandle, startGateway } from "../gateway/index.js";
 import { botStateProvider } from "../providers/bot-state.js";
 import { goalsProvider } from "../providers/goals.js";
@@ -21,6 +17,10 @@ import { worldKnowledgeProvider } from "../providers/world-knowledge.js";
 import { BotActions } from "../sdk/actions.js";
 import type { ActionResult, BotState, EventLogEntry } from "../sdk/types.js";
 import { setCurrentLlmResponse } from "../shared-state.js";
+import {
+  formatRs2004RouterPrompt,
+  resolveRs2004RouterAction,
+} from "./autonomous-loop-prompt.js";
 import { BotManager } from "./bot-manager.js";
 
 const DEFAULT_GATEWAY_PORT = 18791;
@@ -378,7 +378,10 @@ Your choice:`;
   private parseActionFromResponse(
     response: string,
   ): { actionType: string; params: Record<string, unknown> } | null {
-    const parsed = parseJSONObjectFromText(response) as Record<string, unknown> | null;
+    const parsed = parseJSONObjectFromText(response) as Record<
+      string,
+      unknown
+    > | null;
     const action = this.extractActionName(parsed);
     if (!action) return null;
 
