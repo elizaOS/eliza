@@ -12,6 +12,10 @@ import * as fs from "node:fs";
 import { Utils } from "electrobun/bun";
 import { setAgentReady } from "./agent-ready-state";
 import { postAgentResetFromMain } from "./agent-reset-from-main";
+import {
+	composeAgentStatusSnapshot,
+	readAgentStatusViaHttp,
+} from "./agent-status-rpc";
 import { resolveDesktopRuntimeMode } from "./api-base";
 import { showBackgroundNoticeOnce } from "./background-notice";
 import {
@@ -280,6 +284,11 @@ export function buildBunRpcHandlers({
 			}
 		},
 		agentStatus: async () => agent.getStatus(),
+		getAgentStatus: async () =>
+			composeAgentStatusSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readAgentStatusViaHttp,
+			),
 		/**
 		 * Aggregated boot snapshot — typed counterpart to renderer
 		 * `/api/health` + `/api/dev/stack` polling. Pure composition over
