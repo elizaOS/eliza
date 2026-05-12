@@ -531,7 +531,7 @@ describe("v5 tiered action surface", () => {
 		expect(actions).toContain("CREDENTIALS");
 	});
 
-	it("repairs direct night check-ins away from the simple reply shortcut", async () => {
+	it("repairs direct night check-ins to the CHECKIN umbrella when that action is available", async () => {
 		const checkin = makeAction({
 			name: "CHECKIN",
 			description:
@@ -577,9 +577,60 @@ describe("v5 tiered action surface", () => {
 
 		const prompt = plannerUserContent(runtime);
 		expect(prompt).toMatch(/selected_contexts:[^\n]*tasks/);
-		expect(prompt).toContain('"parentActionHints":["SCHEDULED_TASKS"]');
+		expect(prompt).toContain('"parentActionHints":["CHECKIN"]');
 		const actions = availableActionsSection(runtime);
 		expect(actions).toContain("CHECKIN");
+	});
+
+	it("falls back to the SCHEDULED_TASKS umbrella for check-ins when no umbrella action is registered", async () => {
+		const scheduledTasks = makeAction({
+			name: "SCHEDULED_TASKS",
+			description:
+				"Schedule, list, and run recurring agent tasks including check-ins.",
+			contexts: ["tasks", "automation"],
+		});
+		const runtime = makeRuntime({
+			actions: [scheduledTasks],
+			responses: [
+				stage1Response({
+					contexts: ["simple"],
+					replyText: "Here is a generic night check-in.",
+				}),
+				{
+					body: {
+						text: "",
+						toolCalls: [
+							{
+								id: "scheduled-tasks-1",
+								name: "SCHEDULED_TASKS",
+								arguments: { subaction: "run_night_checkin" },
+							},
+						],
+					},
+				},
+				{
+					body: JSON.stringify({
+						success: true,
+						decision: "FINISH",
+						thought: "Night check-in completed.",
+						messageToUser: "Night check-in complete.",
+					}),
+				},
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("give me my night check-in"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const prompt = plannerUserContent(runtime);
+		expect(prompt).toMatch(/selected_contexts:[^\n]*tasks/);
+		expect(prompt).toContain('"parentActionHints":["SCHEDULED_TASKS"]');
+		const actions = availableActionsSection(runtime);
+		expect(actions).toContain("SCHEDULED_TASKS");
 	});
 
 	it("repairs Calendly link requests into the calendar context", async () => {

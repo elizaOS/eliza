@@ -6,9 +6,15 @@
  * agreement across passes drives confidence. Disagreement always routes to
  * NEEDS_REVIEW — never a silent flip.
  *
+ * Transport (HTTP + auth + abort + tolerant JSON parsing + retry) is
+ * delegated to the shared `CerebrasJudge` class in scenario-runner. The
+ * personality-bench-specific multi-pass loop, perturbations, and verdict
+ * aggregation stay here.
+ *
  * No real Anthropic Opus judge here per the W3-3 brief.
  */
 
+import { CerebrasJudge } from "../../../../../scenario-runner/src/cerebras-judge.ts";
 import type { LayerResult, Verdict } from "../../types.ts";
 
 /** Structured payload the LLM is asked to return. */
@@ -31,11 +37,6 @@ export interface LlmJudgeQuestion {
   question: string;
   systemHint: string;
   evidence: Record<string, string>;
-}
-
-/** OpenAI-compatible chat completion shape we actually need. */
-interface ChatCompletionResponse {
-  choices: Array<{ message: { content: string | null } }>;
 }
 
 const JSON_CONTRACT =
@@ -111,46 +112,29 @@ async function runOnePass(
   question: LlmJudgeQuestion,
   systemPromptIndex: number,
 ): Promise<LlmJudgePayload | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), cfg.timeoutMs);
+  const fallbackPrompt = PERTURBATIONS[0] ?? "You are a strict judge.";
+  const systemPrompt =
+    PERTURBATIONS[systemPromptIndex % PERTURBATIONS.length] ?? fallbackPrompt;
   try {
-    const fallbackPrompt = PERTURBATIONS[0] ?? "You are a strict judge.";
-    const systemPrompt =
-      PERTURBATIONS[systemPromptIndex % PERTURBATIONS.length] ?? fallbackPrompt;
-    const res = await fetch(
-      `${cfg.baseUrl.replace(/\/$/, "")}/chat/completions`,
-      {
-        method: "POST",
-        signal: controller.signal,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${cfg.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: cfg.model,
-          temperature: 0,
-          max_tokens: 200,
-          response_format: { type: "json_object" },
-          messages: [
-            {
-              role: "system",
-              content: `${systemPrompt}\n${question.systemHint}`,
-            },
-            { role: "user", content: buildUserMessage(question) },
-          ],
-        }),
-      },
-    );
-    if (!res.ok) {
-      return null;
-    }
-    const json = (await res.json()) as ChatCompletionResponse;
-    const content = json.choices?.[0]?.message?.content ?? "";
-    return extractJson(content);
+    const judge = new CerebrasJudge({
+      apiKey: cfg.apiKey,
+      baseUrl: cfg.baseUrl,
+      model: cfg.model,
+      timeoutMs: cfg.timeoutMs,
+      // personality-bench treats any non-200 as "this pass didn't parse" and
+      // downgrades to NEEDS_REVIEW. Don't retry transport-level — the multi-
+      // pass agreement check is the redundancy layer here.
+      maxRetries: 0,
+    });
+    const response = await judge.judge(buildUserMessage(question), {
+      systemPrompt: `${systemPrompt}\n${question.systemHint}`,
+      temperature: 0,
+      maxTokens: 200,
+      jsonObjectMode: true,
+    });
+    return extractJson(response.raw);
   } catch {
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 

@@ -29,6 +29,17 @@ in `report.json`.
 > pull (disk budget) and have no on-disk bundle yet. No drafter for any tier
 > on this host.
 >
+> **2026-05-11/12 (Wave-7 H1-redo):** the 27b / 27b-1m bundles are now staged
+> locally after disk cleanup. `Qwen-Qwen3.6-27B-Q4_K_M.gguf` (16.55 GiB,
+> sha256 `f741bb17c9e5eae6629f211aed5675edad1120504654b27704fcdf5653e6417b`)
+> was pulled from `batiai/Qwen3.6-27B-GGUF` and hardlinked across both
+> bundles — `source/` and `text/` paths in both `eliza-1-27b.bundle/` and
+> `eliza-1-27b-1m.bundle/` all share inode `329833689` (link count 4),
+> so total disk footprint stays at ~16.5 GiB. 27b-1m manifest adds
+> `contextWindow: 1048576` to record the rope-scaling target. Both stay
+> `releaseState=local-standin` / `publishEligible=false` / `final.weights=false`.
+> Drafter still missing for all tiers.
+>
 > **2026-05-11 (Wave-7 H2 update):** the three on-disk bundles (0.6b, 1.7b,
 > 9b) were pushed to Hugging Face under `elizaos/eliza-1-<tier>` as
 > **pre-release / local-standin** artifacts. Each repo carries the verbatim
@@ -53,8 +64,8 @@ in `report.json`.
 | `eliza-1-0.6b`    | 0.6b    | local-standin  | false           | false         | **missing**    | ✓                 | **true**   |
 | `eliza-1-1.7b`    | 1.7b    | local-standin  | false           | false         | **missing**    | ✓                 | **true**   |
 | `eliza-1-9b`      | 9b      | local-standin  | false           | false         | **missing**    | ✓                 | **true**   |
-| `eliza-1-27b`     | 27b     | local-standin  | false           | false         | **missing**    | (no bundle on host) | **true** |
-| `eliza-1-27b-1m`  | 27b-1m  | local-standin  | false           | false         | **missing**    | (no bundle on host) | **true** |
+| `eliza-1-27b`     | 27b     | local-standin  | false           | false         | **missing**    | ✓                 | **true**   |
+| `eliza-1-27b-1m`  | 27b-1m  | local-standin  | false           | false         | **missing**    | ✓ (hardlinked)    | **true**   |
 
 DFlash drafter gaps: per `ELIZA_1_PRODUCTION_READINESS_REVIEW.md`, the 0.6B
 and 1.7B bundles ship without a paired drafter (no upstream drafter has been

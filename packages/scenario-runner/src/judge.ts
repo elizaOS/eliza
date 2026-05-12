@@ -2,14 +2,19 @@
  * LLM-as-judge: scores a candidate text against a rubric using the runtime's
  * registered TEXT_LARGE model. Returns a 0.0..1.0 score. Real LLM only — no
  * heuristics fallback, no fake scores.
+ *
+ * Transport for the Cerebras path is delegated to `CerebrasJudge`
+ * (cerebras-judge.ts). Prompt + retry-on-parse-failure semantics stay here.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, ModelType } from "@elizaos/core";
+import { ModelType, logger } from "@elizaos/core";
+import { isCerebrasEvalEnabled } from "../../../plugins/app-lifeops/test/helpers/lifeops-eval-model.ts";
 import {
-  getEvalModelClient,
-  isCerebrasEvalEnabled,
-} from "../../../plugins/app-lifeops/test/helpers/lifeops-eval-model.ts";
+  CerebrasJudge,
+  extractBalancedJsonObject as extractBalancedJsonObjectShared,
+  type JudgeResponse,
+} from "./cerebras-judge.ts";
 
 const JUDGE_PROMPT_TEMPLATE = `You are a strict evaluator. Score the candidate response against the rubric from 0.0 (fails completely) to 1.0 (fully satisfies).
 
@@ -30,62 +35,41 @@ const MAX_RETRIES = 2;
 export interface JudgeResult {
   score: number;
   reason: string;
-}
-
-function clamp01(value: number): number {
-  if (!Number.isFinite(value)) return 0;
-  if (value < 0) return 0;
-  if (value > 1) return 1;
-  return value;
+  /** Canonical verdict (additive, non-breaking). */
+  verdict?: "PASS" | "FAIL" | "REVIEW";
+  /** Raw model text from the underlying call. */
+  raw?: string;
 }
 
 /**
- * Extract the first balanced `{...}` JSON object substring from the model
- * output. Respects string boundaries and escape sequences so that a `}`
- * inside a string value does not terminate the match prematurely.
- *
- * Returns null when no balanced object is found.
+ * Re-export for callers (e.g. lifeops-live-judge) that pulled the
+ * balanced-object scanner from this module before the consolidation. The
+ * canonical implementation now lives in cerebras-judge.ts.
  */
-function extractBalancedJsonObject(raw: string): string | null {
-  const start = raw.indexOf("{");
-  if (start === -1) return null;
+export const extractBalancedJsonObject = extractBalancedJsonObjectShared;
 
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-
-  for (let i = start; i < raw.length; i += 1) {
-    const ch = raw[i];
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (ch === "\\" && inString) {
-      escaped = true;
-      continue;
-    }
-    if (ch === '"') {
-      inString = !inString;
-      continue;
-    }
-    if (inString) continue;
-    if (ch === "{") depth += 1;
-    else if (ch === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        return raw.slice(start, i + 1);
-      }
-    }
-  }
-  return null;
+function judgeResponseToResult(
+  response: JudgeResponse,
+): JudgeResult | null {
+  if (response.score === undefined) return null;
+  return {
+    score: response.score,
+    reason: response.reason && response.reason.length > 0
+      ? response.reason
+      : "(no reason)",
+    verdict: response.verdict,
+    raw: response.raw,
+  };
 }
 
 function parseJudgeJson(raw: string): JudgeResult | null {
-  const json = extractBalancedJsonObject(raw);
-  if (!json) return null;
+  // Kept for the non-Cerebras path (runtime.useModel fallback). Uses the
+  // same tolerant parser the shared CerebrasJudge transport uses.
+  const balanced = extractBalancedJsonObjectShared(raw);
+  if (!balanced) return null;
   let parsed: Record<string, unknown>;
   try {
-    parsed = JSON.parse(json) as Record<string, unknown>;
+    parsed = JSON.parse(balanced) as Record<string, unknown>;
   } catch {
     return null;
   }
@@ -99,7 +83,12 @@ function parseJudgeJson(raw: string): JudgeResult | null {
     typeof parsed.reason === "string" && parsed.reason.length > 0
       ? parsed.reason
       : "(no reason)";
-  return { score: clamp01(score), reason };
+  const clamped = score < 0 ? 0 : score > 1 ? 1 : score;
+  return {
+    score: clamped,
+    reason,
+    verdict: clamped >= 0.75 ? "PASS" : clamped <= 0.25 ? "FAIL" : "REVIEW",
+  };
 }
 
 export class JudgeParseError extends Error {
@@ -131,29 +120,28 @@ export async function judgeTextWithLlm(
   // the agent under test is never used to grade itself. Falls back to the
   // runtime's TEXT_LARGE provider when Cerebras isn't configured (unit
   // tests pass a stub runtime; CI without the key keeps working).
-  const useCerebras = isCerebrasEvalEnabled();
-  const cerebrasClient = useCerebras ? getEvalModelClient() : null;
+  const cerebrasJudge = isCerebrasEvalEnabled() ? new CerebrasJudge() : null;
 
   let lastRaw = "";
   for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt += 1) {
-    let raw: string;
-    if (cerebrasClient) {
-      const result = await cerebrasClient({
-        prompt,
+    let result: JudgeResult | null;
+    if (cerebrasJudge) {
+      const response = await cerebrasJudge.judge(prompt, {
         maxTokens: MAX_JUDGE_TOKENS,
         temperature: 0,
       });
-      raw = result.text;
+      lastRaw = response.raw;
+      result = judgeResponseToResult(response);
     } else {
       const output = await runtime.useModel(ModelType.TEXT_LARGE, {
         prompt,
         maxTokens: MAX_JUDGE_TOKENS,
         temperature: 0,
       });
-      raw = typeof output === "string" ? output : JSON.stringify(output);
+      const raw = typeof output === "string" ? output : JSON.stringify(output);
+      lastRaw = raw;
+      result = parseJudgeJson(raw);
     }
-    lastRaw = raw;
-    const result = parseJudgeJson(raw);
     if (result) {
       if (attempt > 1) {
         logger.info(
@@ -163,7 +151,7 @@ export async function judgeTextWithLlm(
       return result;
     }
     logger.warn(
-      `[scenario-judge] attempt ${attempt} produced unparseable output (${raw.length} chars); ${
+      `[scenario-judge] attempt ${attempt} produced unparseable output (${lastRaw.length} chars); ${
         attempt <= MAX_RETRIES ? "retrying" : "giving up"
       }`,
     );

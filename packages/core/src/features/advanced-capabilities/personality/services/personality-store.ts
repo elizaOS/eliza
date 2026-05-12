@@ -166,6 +166,20 @@ export class PersonalityStore extends Service {
 	}
 
 	/**
+	 * Drop every in-memory personality slot and audit entry. Bundled profile
+	 * defaults are preserved (they are loaded from disk on initialize and
+	 * never mutated by slot operations).
+	 *
+	 * Used by the benchmark harness's `/api/benchmark/reset` route so that
+	 * personality state seeded by one scenario does not leak into the next
+	 * scenario sharing the same runtime process.
+	 */
+	clear(): void {
+		this.slots.clear();
+		this.audit.length = 0;
+	}
+
+	/**
 	 * Apply a trait change with audit. Returns the slot before and after.
 	 */
 	applyTrait(args: {
@@ -284,6 +298,16 @@ export class PersonalityStore extends Service {
 			timestamp: after.updated_at,
 		});
 		return { before, after };
+	}
+
+	/**
+	 * Clear every in-memory slot and audit entry, leaving the named-profile
+	 * registry intact. Used by the benchmark server between scenarios so
+	 * personality state from one scenario does not bleed into the next.
+	 */
+	clearAll(): void {
+		this.slots.clear();
+		this.audit = [];
 	}
 
 	async stop(): Promise<void> {
