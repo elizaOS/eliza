@@ -2987,10 +2987,7 @@
       "version": "2.0.0-beta.1",
       "dependencies": {
         "@elizaos/core": "2.0.0-beta.1",
-        "@huggingface/transformers": "^4.0.0",
-        "node-llama-cpp": "3.18.1",
-        "uuid": "^14.0.0",
-        "zod": "^4.4.3",
+        "@elizaos/plugin-local-inference": "2.0.0-beta.1",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.4.14",
@@ -3013,6 +3010,7 @@
         "@types/node": "24.12.2",
         "tsup": "8.5.1",
         "typescript": "^6.0.3",
+        "vitest": "^4.1.4",
       },
       "peerDependencies": {
         "@elizaos/core": "2.0.0-beta.1",
