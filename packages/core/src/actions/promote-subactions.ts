@@ -114,6 +114,58 @@ function findDiscriminatorParameter(
 		.find((parameter): parameter is ActionParameter => Boolean(parameter));
 }
 
+/**
+ * Build the virtual's exposed parameter schema. Replaces the parent's
+ * discriminator parameter (e.g. `action` with enum=[create, spawn_agent,
+ * send, ...]) with one whose enum is pinned to the single subaction value
+ * this virtual represents.
+ *
+ * Why this matters: without this transform, every virtual exposes the
+ * FULL discriminator enum to the LLM's tool schema, even though its name
+ * already implies which subaction it dispatches. The model sees
+ * `TASKS_SPAWN_AGENT(action: enum[14 values], task, agentType, ...)` and
+ * is asked to set `action` to a value — but `action` is meant to be
+ * implicit from the virtual name. With weaker LLMs (Cerebras-hosted
+ * gpt-oss / qwen-instruct, native function-calling planners that have to
+ * fill structured args), this is the dominant cause of "TASKS umbrella
+ * called with no sub-action" retry loops: the model picks the parent
+ * because the virtual's schema looks more complex than the parent's.
+ *
+ * Pinning the enum to a single value (rather than removing the field)
+ * preserves the discriminator's documentation purpose: the schema still
+ * declares the discriminator and its value, so any consumer of the
+ * exposed schema (tool inspectors, grammar generators, prompt
+ * templates) gets a complete picture. The runtime handler still injects
+ * the discriminator into `mergeOptionsWithSubaction` regardless, so
+ * dispatch is unaffected.
+ */
+function pinDiscriminatorForVirtual(
+	parameters: readonly ActionParameter[] | undefined,
+	subaction: string,
+): ActionParameter[] | undefined {
+	if (!parameters) return undefined;
+	const discriminator = findDiscriminatorParameter(parameters);
+	if (!discriminator) return [...parameters];
+	return parameters.map((parameter) => {
+		if (parameter.name !== discriminator.name) return parameter;
+		const baseSchema =
+			parameter.schema && typeof parameter.schema === "object"
+				? parameter.schema
+				: { type: "string" as const };
+		return {
+			...parameter,
+			description: `Subaction discriminator (auto-set to "${subaction}" for this virtual; do not change).`,
+			required: false,
+			schema: {
+				...baseSchema,
+				type: baseSchema.type ?? "string",
+				enum: [subaction],
+				default: subaction,
+			},
+		};
+	});
+}
+
 function toUpperSnake(value: string): string {
 	return value
 		.trim()
@@ -208,6 +260,17 @@ export function promoteSubactionsToActions(
 		const description = `${parent.description} — ${subBlurb}`;
 		const similes = Array.from(
 			new Set([
+				// Parent's name is FIRST simile so ACTION_ROLE_POLICY lookups
+				// (and any other simile-based lookup that does an exact name
+				// match across the simile list) resolve to the parent's
+				// declared role/policy. Without this, virtuals like
+				// `TASKS_SPAWN_AGENT` have no name in the policy table and
+				// fall through to the contextGate (which checks contexts
+				// like ["tasks", "code"]) — failing when the active context
+				// is just "general". The parent's similes are listed after,
+				// so the virtual still inherits everything the parent
+				// matched on.
+				toUpperSnake(parent.name),
 				...(parent.similes ?? []),
 				...(override.similes ?? []),
 				toUpperSnake(sub),
@@ -226,7 +289,7 @@ export function promoteSubactionsToActions(
 			examples,
 			handler: buildVirtualHandler(parent, subKey),
 			validate: buildVirtualValidator(parent),
-			parameters: parent.parameters,
+			parameters: pinDiscriminatorForVirtual(parent.parameters, subKey),
 			contexts: parent.contexts,
 			contextGate: parent.contextGate,
 			roleGate: parent.roleGate,
