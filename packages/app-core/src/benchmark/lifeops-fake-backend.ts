@@ -311,10 +311,13 @@ export class LifeOpsFakeBackend {
     "MESSAGE",
     // CALENDAR umbrella (promoted granular siblings translated below)
     "CALENDAR",
+    // ENTITY umbrella (contacts / identity; P1-5)
+    "ENTITY",
     // Notes
     "notes.create",
-    // Contacts (read-only)
+    // Contacts (read-only search + write create)
     "contacts.search",
+    "contacts.create",
   ]);
 
   constructor(document: LifeWorldDocument) {
@@ -478,9 +481,18 @@ export class LifeOpsFakeBackend {
       case "notes.create":
         return { ok: true, result: this.createNote(dispatchKwargs) };
 
-      // ---- contacts (read)
+      // ---- ENTITY umbrella (contacts / identity)
+      // P1-5: ENTITY(subaction=create|add|create_contact) → contacts.create.
+      // Other subactions (set_identity, log_interaction, list, read, merge)
+      // are read-only no-ops matching the Python runner's behaviour.
+      case "ENTITY":
+        return this.applyEntityUmbrella(dispatchKwargs);
+
+      // ---- contacts
       case "contacts.search":
         return { ok: true, result: this.searchContacts(dispatchKwargs) };
+      case "contacts.create":
+        return { ok: true, result: this.createContact(dispatchKwargs) };
 
       default:
         throw new LifeOpsBackendUnsupportedError(
@@ -1500,6 +1512,64 @@ export class LifeOpsFakeBackend {
 
   // ----- contact handlers ----------------------------------------------
 
+  /**
+   * ENTITY umbrella dispatcher (P1-5).
+   * create/add/create_contact → createContact (write).
+   * All other subactions (set_identity, log_interaction, list, read, merge)
+   * are read-only no-ops in the bench runner, so we match that behaviour here.
+   */
+  private applyEntityUmbrella(kw: Record<string, unknown>): ActionResult {
+    const subaction = pickString(kw, ["subaction", "action", "operation"], "");
+    if (
+      subaction === "create" ||
+      subaction === "add" ||
+      subaction === "create_contact"
+    ) {
+      return { ok: true, result: this.createContact(kw) };
+    }
+    // All other ENTITY subactions (set_identity, log_interaction, list/read,
+    // merge) are read-only no-ops — no LifeWorld mutation, no state-hash
+    // change. Match the Python runner's _u_entity behaviour.
+    return { ok: true, result: { subaction, ok: true, noop: true } };
+  }
+
+  private createContact(kw: Record<string, unknown>): Contact {
+    const display = pickString(
+      kw,
+      ["name", "display_name", "displayName"],
+      "Unknown",
+    );
+    const parts = display.trim().split(/\s+/);
+    const given = parts[0] ?? display;
+    const family = parts.slice(1).join(" ");
+    const email =
+      pickString(kw, ["email", "primary_email", "handle"], "") ||
+      "unknown@example.test";
+    const id =
+      pickString(kw, ["entityId", "entity_id", "id"], "") ||
+      `contact_${nextSeq(this.stores.contact, "contact_")}`;
+    const contact: Contact = {
+      id,
+      display_name: display,
+      given_name: given,
+      family_name: family,
+      primary_email: email,
+      phones: pickStringArray(kw, ["phones"]),
+      company: pickStringOrNull(kw, ["company"]),
+      role: pickStringOrNull(kw, ["role"]),
+      relationship: pickString(
+        kw,
+        ["relationship"],
+        "acquaintance",
+      ) as Contact["relationship"],
+      importance: 0,
+      tags: pickStringArray(kw, ["tags"]),
+      birthday: pickStringOrNull(kw, ["birthday"]),
+    };
+    this.stores.contact[id] = contact;
+    return contact;
+  }
+
   private searchContacts(kw: Record<string, unknown>): Contact[] {
     const q = pickString(kw, ["query", "q", "name"], "").toLowerCase();
     if (!q) return Object.values(this.stores.contact);
@@ -1528,6 +1598,7 @@ export class LifeOpsFakeBackend {
 const UMBRELLA_DISCRIMINATOR_KEYS: Record<string, string> = {
   CALENDAR: "subaction",
   MESSAGE: "operation",
+  ENTITY: "subaction",
 };
 
 function umbrellaToLowercase(
