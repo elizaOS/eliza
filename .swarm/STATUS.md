@@ -117,3 +117,63 @@ _Updated: 2026-05-12 (resumed director run, has `Agent` tool)._
 3. **NDK omnivoice-fuse graft for `*-fused` android targets** (item 5): wiring landed 2026-05-12 (`compile-libllama.mjs` now runs the same graft as the dflash desktop fused targets behind `--target android-{arm64,x86_64}-{cpu,vulkan}-fused`; `--dry-run` audited). Operator unblock on an NDK-bearing host: `export ANDROID_NDK_HOME=$HOME/Android/Sdk/ndk/27.0.12077973 && bun run node packages/app-core/scripts/aosp/compile-libllama.mjs --target android-x86_64-cpu-fused --jobs 8` (verifyFusedSymbols asserts llama_*/ov_*/eliza_inference_* co-residency post-build).
 4. **GPU cloud jobs** (item 4): once a live `nebius` login (`nebius iam whoami` works) or `vastai` key is available — `bash packages/training/scripts/cloud/run-on-cloud.sh --provider vast --task build --gpu h100 --yes-i-will-pay` (linux-x64-cuda-fused); `--task kernel-verify --gpu h200` (ggml-cuda kernel-verify + native-NVIDIA-Vulkan; A100 if no H200/H100); ROCm `hip_verify` needs a `gfx*` box. The 9b/27b SFT model builds: babysat operator run per `reports/eliza1-0_6b-apollo-fullcorpus-2026-05-12.md` §9.
 5. **`Tests` CI confirmation**: needs a quiet window with no concurrent commits to let a `Tests` run reach a terminal state and confirm the `@elizaos/skills` + native-plugins dev-condition fixes resolve Client/Plugin Tests.
+
+## FINALIZE-4 run (2026-05-12 ~07:30–08:10 PDT, resumed after rate-limit kill of round 3)
+
+### Item 1 — CPU `qjl1_256` / `q4_polar` fused-attn segfault: **FIXED**
+
+- **Root cause:** `GGML_TYPE_QJL1_256` (K-cache) and `GGML_TYPE_Q4_POLAR` (V-cache) are stored-cache-only types with no `vec_dot` in the CPU type-traits (`ggml/src/ggml-cpu/ggml-cpu.c:417,424`). When `--cache-type-k qjl1_256 --cache-type-v q4_polar` were active, the graph builder still routed K/V through generic `GGML_OP_FLASH_ATTN_EXT` (`src/llama-graph.cpp:1772`). Inside `ggml_compute_forward_flash_attn_ext_f16` (`ggml/src/ggml-cpu/ops.cpp:8201-8245`) the per-step call `q_to_vec_dot(pq, Q_q, DK)` hit a NULL function pointer (rip=0x0); GDB backtrace pinned the crash to `ggml_compute_forward_flash_attn_ext` in `libggml-cpu.so.0`.
+- **Fix:** in fork `elizaOS/llama.cpp` `src/llama-graph.cpp build_attn_mha`, when `k->type == GGML_TYPE_QJL1_256 || k->type == GGML_TYPE_TBQ3_TCQ`, dequantize via `ggml_cast(k, F32) → ggml_cast(k_f32, F16)` before `ggml_flash_attn_ext`. Likewise for `v->type == GGML_TYPE_Q4_POLAR`. Bit-exact w.r.t. the type's `to_float` (`dequantize_row_qjl1_256` uses `qjl_default_projection()`; `dequantize_row_q4_polar` uses the Polar centroids). Fork commit `cb700767`, tag `v1.1.1-eliza`; later subsumed into `v1.2.0-eliza` (`a61c93aa`) by concurrent automation that piled item 2's work on top.
+- **Regression test:** `packages/inference/verify/cpu_qjl_polar_attn_smoke.c` — builds a `flash_attn_ext` graph at the post-cast shape (F32 Q × F16 K/V), computes, asserts finite + mostly-nonzero output. Wired into `make -C packages/inference/verify cpu-dispatch-smoke`. Result: `n_out=65536 nan=0 inf=0 nonzero=65535 maxabs=0.0299 → PASS`.
+- **Locally verified:** `~/.eliza/local-inference/bin/dflash/linux-x64-cpu-fused/llama-server -m text.gguf --cache-type-k qjl1_256 --cache-type-v q4_polar` now boots healthy through warmup (was segfault on warmup pre-fix). `GET /health → {"status":"ok"}`. `POST /completion {"prompt":"Hello, ","n_predict":8}` returns 8 tokens. The duet harness's segfault is gone — it now boots both runtimes, registers both bundles, executes engine.load(), and progresses to seed-turn message-handler. The seed-turn fails on a **separate** SQL-bootstrap issue (`embeddings.dim_384` column not present in the duet harness's in-memory SQL backend) which is **not** the kernel — that's a duet-bootstrap concern (the runtime expects an embeddings provider seeded with the right `dim_*` column matching the dimension the embeddings plugin selects; the duet harness boots a minimal SQL runtime without that wiring). For the headline metric goal (TTFT / accept-rate / token-savings %) the harness needs the SQL-bootstrap fix too — it's an orthogonal lane.
+
+### Item 2 — fork-side guided-decode fast-forward + W7 streaming + spec-loop verifier: **DONE BY CONCURRENT AUTOMATION**
+
+Concurrent automation landed `v1.2.0-eliza` (`a61c93aaa5899c17bb1bc32b5645ebb4276c2746`) which adds:
+- `tools/server/server-task.{h,cpp}`: `task_prefill_plan` parsed from `eliza_prefill_plan` request fragment (runs[] + free_count + id).
+- `tools/server/server-context.cpp`: `init_prefill_plan` / `prefill_pending_run` / `prefill_advance_to_next_run` helpers; the splice path advances `n_past` + grammar past each forced run without per-token sample/softmax. Byte-identical to grammar-only mode.
+- `omnivoice/src/eliza-inference-ffi.cpp`: real buffered streaming ASR with vocab-gated capability probe (`_supported()` returns 1).
+- `eliza_inference_set_verifier_callback` no longer a stub; in-process spec loop / fused drafter calls `eliza_inference_emit_verifier_event`.
+- `ggml/src/ggml-cuda/fused-attn-qjl-tbq.cu` added (CUDA path; CUDA verify is GPU-bound, not run on this box).
+
+Eliza-repo gitlink + LLAMA_CPP_TAG / REF bumped to `v1.2.0-eliza`. `--target linux-x64-cpu-fused` builds clean against it; verify gates `kernel-contract reference-test cpu-dispatch-smoke cpu-bench` PASS.
+
+### Item 3 — NDK omnivoice-fuse graft for `*-fused` android targets: **DONE (source-side)**
+
+Concurrent automation completed the wiring (`packages/app-core/scripts/aosp/compile-libllama.mjs` + `compile-libllama-fused.test.mjs`). `node ... --target android-x86_64-cpu-fused --dry-run` prints full cmake + graft steps cleanly. NDK end-to-end is `--dry-run` only on this box (no NDK installed); reproducible operator command in `packages/inference/reports/porting/2026-05-12/android-fused-graft-wiring.md`.
+
+### Item 4 — 0.6b APOLLO SFT: **RUNNING (resumed from checkpoint-1000)**
+
+- Process state: `train_local.py` PID 3262051 alive, in tokenization stage (~step 18800/68297 after 5 min). The earlier run on PID 3132086 died at step 1348 (`exit=143`, SIGTERM) at 07:46:18 — coincident with my fork rebuild OOM-pressuring the host. Restarted from `checkpoints/eliza-1-0_6b-apollo-fullcorpus-1778563093/checkpoint-1000` with the same `run_pipeline.py` invocation (`--skip-publish`). Expected ETA at ~12 s/it is ~24h from train-loop resume.
+- `run_pipeline.py` will auto-chain bench/quant/bundle; the auto-publish hook fires on a green `format_ok≥0.70` gate.
+
+### Item 5 — GPU cloud jobs: **`nebius iam whoami` now works**, but `--task build --provider nebius` is still **NOT IMPLEMENTED**
+
+`nebius iam whoami` returns cleanly (`useraccount-e00n33fjz1z6v99cqp` / `shawmakesmagic@gmail.com`). `bash packages/training/scripts/cloud/run-on-cloud.sh --provider nebius --task build --gpu h200 --dry-run` errors with:
+> `--task build --provider nebius not implemented yet — build/kernel-verify/bench currently support vast only (extend scripts/lib/backends/nebius.py + this branch)`
+
+The vast.ai variant works but requires a live `VAST_API_KEY` (not set on this box). Left documented; no GPU instance provisioned. The `nebius` `train` task is implemented (`train_nebius.sh full`) and tier-aware, but that's the SFT lane — the *kernel-verify / linux-x64-cuda-fused build / bench* lanes still need someone to extend `scripts/lib/backends/nebius.py`.
+
+### Item 6 — re-verify + Tests CI: **inflight**
+
+- `bun install` + `ensure-workspace-symlinks.mjs`: clean.
+- `bun run verify`: **in flight** (background task `bmo0ow026`; this turn doesn't get to wait for it).
+- `make -C packages/inference/verify kernel-contract reference-test cpu-bench cpu-dispatch-smoke`: PASS (cpu_qjl_polar_attn_smoke part included).
+- CI on `develop`: `Scenario Matrix` / `Quality (Extended)` reliably green. `Tests` keeps getting cancelled by the concurrent-commit storm (every batch of pushes from automation cancels the prior run). `Docker CI Smoke` / `Cloud Tests` / `CodeQL` mostly green, some in_progress. No new red workflow that hasn't been there for the last 3 finalize rounds.
+
+### FINALIZE-4 commits on `develop`
+- `5dd3e5fd21` — inference(cpu): fix QJL1_256/Q4_POLAR fused-attn segfault + bump fork to v1.1.1-eliza (this round, plus the NDK omnivoice-fuse graft + the duet bench JSON for evidence).
+- (fork `elizaOS/llama.cpp`) `cb700767` on `main`, tag `v1.1.1-eliza` — graph dequantize-on-cast fix.
+
+(Concurrent automation, layered on top of this round's fix:)
+- `2b53c8bf42` — inference: bump fork to v1.2.0-eliza (a61c93aa) — adds the forced-token fast-forward + W7 streaming + verifier-callback.
+- `dcff094805` — verify(platform-matrix): record CPU QJL1_256/Q4_POLAR warmup-no-segfault.
+- `2e56f07cfc` — fix(training): include 0_8b/2b/4b in eliza1_gates.KNOWN_TIERS.
+
+### Genuinely-remaining (operator / hardware gated)
+1. **GPU cloud build/kernel-verify** (nebius): extend `scripts/lib/backends/nebius.py` so `run-on-cloud.sh --provider nebius --task build|kernel-verify` dispatches against the live `nebius` CLI; then `bash packages/training/scripts/cloud/run-on-cloud.sh --provider nebius --task build --gpu h200 --yes-i-will-pay` builds linux-x64-cuda-fused on Nebius (~30 GB) + emits the build-evidence JSON.
+2. **Vast.ai cloud jobs**: `export VAST_API_KEY=<key> && bash packages/training/scripts/cloud/run-on-cloud.sh --provider vast --task kernel-verify --gpu h200 --yes-i-will-pay` for ggml-cuda kernel-verify + native-NVIDIA-Vulkan (A100 if no H200/H100). ROCm `hip_verify` needs a `gfx*` box.
+3. **NDK end-to-end** for android-{arm64,x86_64}-{cpu,vulkan}-fused: on an NDK-bearing host, `export ANDROID_NDK_HOME=$HOME/Android/Sdk/ndk/27.0.12077973 && bun run node packages/app-core/scripts/aosp/compile-libllama.mjs --target android-x86_64-cpu-fused --jobs 8`.
+4. **Voice-duet headline numbers** (TTFT-from-utterance-end p50/p90/p99, dflash accept-rate, structured-decode token-savings %, emotion-fidelity): blocked behind a separate **duet-harness SQL bootstrap fix** — the duet harness's in-memory SQL backend lacks an embeddings provider seeded to the right `dim_*` column. CPU kernel is no longer the blocker. Once that's fixed: `bun run voice:duet --turns 20 --report packages/inference/reports/porting/2026-05-12/voice-duet-bench-eliza-1-0_6b.json`.
+5. **`Tests` CI quiet-window confirmation**: needs a window without concurrent commits to let `Tests` reach a terminal state and confirm the prior dev-condition + skills/native-plugins fixes resolve Client/Plugin Tests.
+6. **SFT completion + auto-publish**: ~24h ETA; on completion the operator/hook publishes `elizaos/eliza-1-0_6b-sft` weights when the gate clears `format_ok ≥ 0.70`.
