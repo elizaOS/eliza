@@ -1,10 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { logger } from "../logger.ts";
-import {
-	__resetReadEnvWarnings,
-	readEnv,
-	readEnvBool,
-} from "./read-env.ts";
+import { __resetReadEnvWarnings, readEnv, readEnvBool } from "./read-env.ts";
 
 describe("readEnv", () => {
 	beforeEach(() => __resetReadEnvWarnings());
@@ -84,9 +80,9 @@ describe("readEnvBool", () => {
 
 	it("returns the default when unset", () => {
 		expect(readEnvBool("ELIZA_FLAG", [], { env: {} })).toBe(false);
-		expect(
-			readEnvBool("ELIZA_FLAG", [], { env: {}, defaultValue: true }),
-		).toBe(true);
+		expect(readEnvBool("ELIZA_FLAG", [], { env: {}, defaultValue: true })).toBe(
+			true,
+		);
 	});
 
 	it("honors legacy aliases with a deprecation warning", () => {

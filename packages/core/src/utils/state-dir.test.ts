@@ -168,9 +168,9 @@ describe("migrateLegacyStateDir", () => {
 		expect(result.from).toBe(legacyDir);
 		expect(result.to).toBe(join(tempHome, ".eliza"));
 		expect(existsSync(join(tempHome, ".eliza", "milady.json"))).toBe(true);
-		expect(readFileSync(join(tempHome, ".eliza", "skills", "x.md"), "utf8")).toBe(
-			"skill",
-		);
+		expect(
+			readFileSync(join(tempHome, ".eliza", "skills", "x.md"), "utf8"),
+		).toBe("skill");
 		// Legacy dir left in place.
 		expect(existsSync(legacyDir)).toBe(true);
 		expect(warn).toHaveBeenCalledTimes(1);
