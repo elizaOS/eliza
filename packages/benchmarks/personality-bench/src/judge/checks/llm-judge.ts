@@ -38,16 +38,43 @@ interface ChatCompletionResponse {
   choices: Array<{ message: { content: string | null } }>;
 }
 
+const JSON_CONTRACT =
+  'Respond with a single JSON object and nothing else. Schema: {"verdict":"YES"|"NO"|"NEEDS_REVIEW","reason":"<one sentence>"}. No prose, no code fences, no trailing commentary.';
+
 const PERTURBATIONS: ReadonlyArray<string> = [
-  "You are a meticulous personality-benchmark judge. Be strict.",
-  "You are an independent reviewer scoring assistant transcripts. Be conservative.",
-  "You are an evaluation auditor. Reject ambiguous evidence.",
+  `You are a meticulous personality-benchmark judge. Be strict. ${JSON_CONTRACT}`,
+  `You are an independent reviewer scoring assistant transcripts. Be conservative. ${JSON_CONTRACT}`,
+  `You are an evaluation auditor. Reject ambiguous evidence. ${JSON_CONTRACT}`,
 ];
 
-function extractJson(text: string): LlmJudgePayload | null {
-  const match = text.match(/\{[\s\S]*?\}/);
-  if (!match) return null;
-  const parsed = safeJsonParse(match[0]);
+export function tolerantJsonParse(
+  text: string,
+): Record<string, unknown> | null {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return null;
+  const candidates: string[] = [trimmed];
+  const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenced?.[1]) candidates.push(fenced[1].trim());
+  const first = trimmed.indexOf("{");
+  const last = trimmed.lastIndexOf("}");
+  if (first !== -1 && last > first) {
+    candidates.push(trimmed.slice(first, last + 1));
+  }
+  for (const c of candidates) {
+    try {
+      const parsed: unknown = JSON.parse(c);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      // try the next candidate
+    }
+  }
+  return null;
+}
+
+export function extractJson(text: string): LlmJudgePayload | null {
+  const parsed = tolerantJsonParse(text);
   if (!parsed) return null;
   const verdictRaw = String(parsed.verdict ?? "").toUpperCase();
   const reason = String(parsed.reason ?? "").trim();
@@ -61,22 +88,6 @@ function extractJson(text: string): LlmJudgePayload | null {
     return { verdict: "NEEDS_REVIEW", reason };
   }
   return null;
-}
-
-function safeJsonParse(raw: string): Record<string, unknown> | null {
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (
-      parsed !== null &&
-      typeof parsed === "object" &&
-      !Array.isArray(parsed)
-    ) {
-      return parsed as Record<string, unknown>;
-    }
-    return null;
-  } catch {
-    return null;
-  }
 }
 
 function buildUserMessage(question: LlmJudgeQuestion): string {
@@ -119,6 +130,7 @@ async function runOnePass(
           model: cfg.model,
           temperature: 0,
           max_tokens: 200,
+          response_format: { type: "json_object" },
           messages: [
             {
               role: "system",
