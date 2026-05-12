@@ -19,7 +19,7 @@
  * children are stopped on exit by the bootstrap module's signal hooks.
  */
 
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -77,7 +77,9 @@ async function main() {
     redirectModule.applyMockoonEnvOverrides();
   } else {
     // Manual fallback — mirror the helper's behavior for the gmail key.
-    const gmailPort = handle.connectors.find((c) => c.connector === "gmail")?.port;
+    const gmailPort = handle.connectors.find(
+      (c) => c.connector === "gmail",
+    )?.port;
     if (!gmailPort) fail("gmail connector missing from handle");
     if (!process.env.ELIZA_MOCK_GOOGLE_BASE) {
       process.env.ELIZA_MOCK_GOOGLE_BASE = `http://127.0.0.1:${gmailPort}/`;
@@ -91,7 +93,7 @@ async function main() {
   }
 
   const googleBase = process.env.ELIZA_MOCK_GOOGLE_BASE;
-  if (!googleBase || !googleBase.includes("127.0.0.1")) {
+  if (!googleBase?.includes("127.0.0.1")) {
     fail(
       `ELIZA_MOCK_GOOGLE_BASE should point at loopback, got ${JSON.stringify(googleBase)}`,
     );
@@ -129,13 +131,18 @@ async function main() {
     fail(`mock gmail did not return JSON; body head: ${body.slice(0, 200)}`);
   }
   // The gmail.json fixture serves a `messages` array + `resultSizeEstimate`.
-  if (!Array.isArray(parsed.messages) || typeof parsed.resultSizeEstimate !== "number") {
+  if (
+    !Array.isArray(parsed.messages) ||
+    typeof parsed.resultSizeEstimate !== "number"
+  ) {
     fail(
       `mock gmail body did not match expected fixture shape; got: ${body.slice(0, 200)}`,
     );
   }
 
-  const logSizeAfter = existsSync(gmailLogPath) ? statSync(gmailLogPath).size : 0;
+  const logSizeAfter = existsSync(gmailLogPath)
+    ? statSync(gmailLogPath).size
+    : 0;
   // The Mockoon process logs every served request unless `--disable-log-to-file`
   // truly silences ALL logs. start-all.mjs passes that flag, BUT stdout still
   // flows to the log file via our `openSync` redirect, so request bursts
@@ -158,9 +165,13 @@ async function main() {
       `expected 429 from X-Mockoon-Fault: rate_limit; got ${faultResp.status}`,
     );
   }
-  console.log("[mockoon-smoke] fault toggle X-Mockoon-Fault=rate_limit -> 429 OK");
+  console.log(
+    "[mockoon-smoke] fault toggle X-Mockoon-Fault=rate_limit -> 429 OK",
+  );
 
-  console.log("[mockoon-smoke] PASS — Mockoon served the gmail call on loopback");
+  console.log(
+    "[mockoon-smoke] PASS — Mockoon served the gmail call on loopback",
+  );
   console.log(
     `[mockoon-smoke] connector summary: ${handle.connectors
       .map((c) => `${c.connector}@${c.port}${c.ownedHere ? "*" : ""}`)

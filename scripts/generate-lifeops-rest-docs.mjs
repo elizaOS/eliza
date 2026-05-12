@@ -13,7 +13,7 @@
  * Mintlify frontmatter and the hand-written intro paragraph.
  */
 import { readFileSync, writeFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -48,14 +48,20 @@ function categorize(path) {
   if (top === "lifeops") {
     if (
       ["entities", "relationships"].includes(second) ||
-      ["entities", "relationships"].some((x) => stripped.startsWith(`lifeops/${x}/`))
+      ["entities", "relationships"].some((x) =>
+        stripped.startsWith(`lifeops/${x}/`),
+      )
     ) {
       return "Knowledge graph (entities + relationships)";
     }
     if (second === "scheduled-tasks" || stripped.startsWith("lifeops/dev/")) {
       return "Scheduled tasks (W1-A spine)";
     }
-    if (second === "definitions" || second === "occurrences" || second === "goals") {
+    if (
+      second === "definitions" ||
+      second === "occurrences" ||
+      second === "goals"
+    ) {
       return "Definitions, occurrences, goals";
     }
     if (second === "reminders" || second === "reminder-preferences") {
@@ -102,7 +108,11 @@ function categorize(path) {
     if (second === "inbox") {
       return "Inbox";
     }
-    if (second === "smart-features" || second === "features" || second === "capabilities") {
+    if (
+      second === "smart-features" ||
+      second === "features" ||
+      second === "capabilities"
+    ) {
       return "Capabilities + feature flags";
     }
     if (second === "website-access") {

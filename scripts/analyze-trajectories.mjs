@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import crypto from "node:crypto";
 /**
  * Analyze JSON trajectory files written by trajectory-recorder.ts.
  *
@@ -17,7 +18,6 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
 
 const root = process.argv[2];
 if (!root) {
@@ -87,7 +87,8 @@ for (const { file, j } of trajectories) {
       : [];
     let assembled = "";
     messages.forEach((m, mi) => {
-      const content = typeof m.content === "string" ? m.content : JSON.stringify(m.content);
+      const content =
+        typeof m.content === "string" ? m.content : JSON.stringify(m.content);
       assembled += `\n[${m.role}]\n${content}`;
       // Split into sections by blank-line and hash each
       for (const section of content.split(SECTION_SPLIT)) {
@@ -112,11 +113,22 @@ for (const { file, j } of trajectories) {
 const sectionBuckets = new Map();
 for (const s of promptSections) {
   if (!sectionBuckets.has(s.hash)) {
-    sectionBuckets.set(s.hash, { hash: s.hash, length: s.length, count: 0, sample: s.content, occurrences: [] });
+    sectionBuckets.set(s.hash, {
+      hash: s.hash,
+      length: s.length,
+      count: 0,
+      sample: s.content,
+      occurrences: [],
+    });
   }
   const b = sectionBuckets.get(s.hash);
   b.count += 1;
-  b.occurrences.push({ file: s.file, role: s.role, stage: s.stage, msgIndex: s.msgIndex });
+  b.occurrences.push({
+    file: s.file,
+    role: s.role,
+    stage: s.stage,
+    msgIndex: s.msgIndex,
+  });
 }
 const duplicatedSections = [...sectionBuckets.values()]
   .filter((b) => b.count >= 2)
@@ -125,35 +137,54 @@ const duplicatedSections = [...sectionBuckets.values()]
 // Print report
 const cacheHitPct = totalPrompt > 0 ? (totalCacheRead / totalPrompt) * 100 : 0;
 console.log(`\n══ Trajectory Analysis: ${root} ══`);
-console.log(`Trajectories: ${trajectories.length}  ModelCalls: ${modelCallCount}`);
+console.log(
+  `Trajectories: ${trajectories.length}  ModelCalls: ${modelCallCount}`,
+);
 console.log(`Models used:`);
 for (const [m, c] of modelCounts) console.log(`  ${m}: ${c} calls`);
 console.log(`\nTokens:`);
 console.log(`  prompt           = ${totalPrompt.toLocaleString()}`);
 console.log(`  completion       = ${totalCompletion.toLocaleString()}`);
-console.log(`  cache(read)      = ${totalCacheRead.toLocaleString()}  ${cacheHitPct.toFixed(2)}%  hit-rate`);
+console.log(
+  `  cache(read)      = ${totalCacheRead.toLocaleString()}  ${cacheHitPct.toFixed(2)}%  hit-rate`,
+);
 console.log(`  cache(create)    = ${totalCacheCreate.toLocaleString()}`);
 console.log(`  cost USD         = $${totalCost.toFixed(4)}`);
 
-console.log(`\nDuplicated prompt sections (>=80 chars, hashed by content, count >=2):`);
+console.log(
+  `\nDuplicated prompt sections (>=80 chars, hashed by content, count >=2):`,
+);
 if (duplicatedSections.length === 0) {
   console.log(`  (none)`);
 } else {
   duplicatedSections.slice(0, 10).forEach((b, i) => {
-    console.log(`\n  [#${i + 1}] hash=${b.hash}  length=${b.length}  duplicates=${b.count}`);
-    console.log(`    occurrences: ${b.occurrences.slice(0, 4).map((o) => `${o.file}/${o.role}#${o.msgIndex}`).join("  ")}${b.occurrences.length > 4 ? "  ..." : ""}`);
-    const preview = b.sample.length > 200 ? `${b.sample.slice(0, 200)}…` : b.sample;
+    console.log(
+      `\n  [#${i + 1}] hash=${b.hash}  length=${b.length}  duplicates=${b.count}`,
+    );
+    console.log(
+      `    occurrences: ${b.occurrences
+        .slice(0, 4)
+        .map((o) => `${o.file}/${o.role}#${o.msgIndex}`)
+        .join("  ")}${b.occurrences.length > 4 ? "  ..." : ""}`,
+    );
+    const preview =
+      b.sample.length > 200 ? `${b.sample.slice(0, 200)}…` : b.sample;
     console.log(`    sample: ${preview.replace(/\n/g, "\\n")}`);
   });
   if (duplicatedSections.length > 10) {
-    console.log(`\n  …+${duplicatedSections.length - 10} more duplicate sections`);
+    console.log(
+      `\n  …+${duplicatedSections.length - 10} more duplicate sections`,
+    );
   }
 }
 
 console.log(`\nDistinct sections seen: ${sectionBuckets.size}`);
 console.log(`Total section occurrences: ${promptSections.length}`);
 const bytesTotal = promptSections.reduce((a, b) => a + b.length, 0);
-const bytesUnique = [...sectionBuckets.values()].reduce((a, b) => a + b.length, 0);
+const bytesUnique = [...sectionBuckets.values()].reduce(
+  (a, b) => a + b.length,
+  0,
+);
 const dupBytes = bytesTotal - bytesUnique;
 const dupPct = bytesTotal > 0 ? (dupBytes / bytesTotal) * 100 : 0;
 console.log(

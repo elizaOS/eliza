@@ -42,67 +42,61 @@ import { copyFileSync, existsSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 if (process.platform !== "win32") {
-	process.exit(0);
+  process.exit(0);
 }
 
-const target = join(
-	process.cwd(),
-	"node_modules",
-	"bun",
-	"bin",
-	"bun.exe",
-);
+const target = join(process.cwd(), "node_modules", "bun", "bin", "bun.exe");
 
 if (!existsSync(target)) {
-	// No `bun` package installed under this workspace root, nothing to do.
-	process.exit(0);
+  // No `bun` package installed under this workspace root, nothing to do.
+  process.exit(0);
 }
 
 const STUB_MAX_SIZE = 100 * 1024; // real Bun is ~110MB; stub is ~450B
 
 let targetSize;
 try {
-	targetSize = statSync(target).size;
+  targetSize = statSync(target).size;
 } catch {
-	process.exit(0);
+  process.exit(0);
 }
 
 if (targetSize > STUB_MAX_SIZE) {
-	// Already the real binary, nothing to do.
-	process.exit(0);
+  // Already the real binary, nothing to do.
+  process.exit(0);
 }
 
 const source = process.execPath;
 
 if (!existsSync(source)) {
-	console.warn(
-		`[fix-windows-bun-stub] running Bun (${source}) not found on disk; cannot replace stub at ${target}.`,
-	);
-	process.exit(0);
+  console.warn(
+    `[fix-windows-bun-stub] running Bun (${source}) not found on disk; cannot replace stub at ${target}.`,
+  );
+  process.exit(0);
 }
 
 let sourceSize;
 try {
-	sourceSize = statSync(source).size;
+  sourceSize = statSync(source).size;
 } catch {
-	process.exit(0);
+  process.exit(0);
 }
 
 if (sourceSize <= STUB_MAX_SIZE) {
-	// Running under the stub itself, somehow — bail rather than copy a stub onto a stub.
-	console.warn(
-		`[fix-windows-bun-stub] running Bun (${source}, ${sourceSize}B) looks like a stub itself; refusing to copy.`,
-	);
-	process.exit(0);
+  // Running under the stub itself, somehow — bail rather than copy a stub onto a stub.
+  console.warn(
+    `[fix-windows-bun-stub] running Bun (${source}, ${sourceSize}B) looks like a stub itself; refusing to copy.`,
+  );
+  process.exit(0);
 }
 
 try {
-	copyFileSync(source, target);
-	console.log(
-		`[fix-windows-bun-stub] replaced ${target} (${targetSize}B stub) with real Bun from ${source} (${sourceSize}B).`,
-	);
+  copyFileSync(source, target);
+  console.log(
+    `[fix-windows-bun-stub] replaced ${target} (${targetSize}B stub) with real Bun from ${source} (${sourceSize}B).`,
+  );
 } catch (err) {
-	console.warn(
-		`[fix-windows-bun-stub] copy failed: ${err instanceof Error ? err.message : String(err)}`,
-	);
+  console.warn(
+    `[fix-windows-bun-stub] copy failed: ${err instanceof Error ? err.message : String(err)}`,
+  );
 }

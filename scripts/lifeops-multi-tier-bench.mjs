@@ -35,12 +35,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -128,12 +123,7 @@ const runDir = resolve(
 // Cell planning
 // ---------------------------------------------------------------------------
 
-const BENCH_DIR = join(
-  REPO_ROOT,
-  "packages",
-  "benchmarks",
-  "lifeops-bench",
-);
+const BENCH_DIR = join(REPO_ROOT, "packages", "benchmarks", "lifeops-bench");
 
 const AGGREGATOR = join(REPO_ROOT, "scripts", "aggregate-lifeops-run.mjs");
 const DELTA = join(REPO_ROOT, "scripts", "lifeops-bench-delta.mjs");
@@ -226,7 +216,9 @@ if (dryRun) {
     ),
   );
   console.log(`[multi-tier] dry-run plan written to ${planFile}`);
-  console.log(`[multi-tier] suite=${suite} tiers=${tiers.join(",")} harnesses=${harnesses.join(",")}`);
+  console.log(
+    `[multi-tier] suite=${suite} tiers=${tiers.join(",")} harnesses=${harnesses.join(",")}`,
+  );
   console.log(`[multi-tier] dflash binary: ${dflashPath ?? "(absent)"}`);
   for (const c of plans) {
     const tag = c.skipReason ? `SKIP (${c.skipReason})` : "RUN";
@@ -245,7 +237,9 @@ for (const cell of plans) {
   mkdirSync(cell.dir, { recursive: true });
 
   if (cell.skipReason) {
-    console.log(`[multi-tier] SKIP ${cell.tier}/${cell.harness}: ${cell.skipReason}`);
+    console.log(
+      `[multi-tier] SKIP ${cell.tier}/${cell.harness}: ${cell.skipReason}`,
+    );
     results.push({ ...cell, status: "skipped" });
     continue;
   }
@@ -391,7 +385,10 @@ const rows = results.map((r) => {
       cacheHit: "—",
       latencyMs: "—",
       costUsd: "—",
-      status: r.status === "skipped" ? `SKIPPED (${r.skipReason})` : `FAILED (${r.status})`,
+      status:
+        r.status === "skipped"
+          ? `SKIPPED (${r.skipReason})`
+          : `FAILED (${r.status})`,
     };
   }
   const report = safeLoadReport(join(r.dir, "report.json"));
@@ -409,9 +406,10 @@ const rows = results.map((r) => {
   const passCount = report.passCount ?? 0;
   const scenarioCount = report.scenarioCount ?? report.scenarios?.length ?? 0;
   const passPct = scenarioCount > 0 ? (100 * passCount) / scenarioCount : 0;
-  const cacheHit = typeof report.cacheHitPct === "number"
-    ? `${(report.cacheHitPct * 100).toFixed(1)}%`
-    : "n/a";
+  const cacheHit =
+    typeof report.cacheHitPct === "number"
+      ? `${(report.cacheHitPct * 100).toFixed(1)}%`
+      : "n/a";
   const latency = report.meanLatencyMs ?? report.medianLatencyMs ?? null;
   const cost = report.totalCostUsd ?? null;
   return {
@@ -431,12 +429,18 @@ lines.push("");
 lines.push(`Suite: \`${suite}\``);
 lines.push(`Tiers: ${tiers.map((t) => `\`${t}\``).join(", ")}`);
 lines.push(`Harnesses: ${harnesses.map((h) => `\`${h}\``).join(", ")}`);
-lines.push(`dflash llama-cpp fork: ${dflashPath ? `present at \`${dflashPath}\`` : "absent (small/mid tiers will skip)"}`);
+lines.push(
+  `dflash llama-cpp fork: ${dflashPath ? `present at \`${dflashPath}\`` : "absent (small/mid tiers will skip)"}`,
+);
 lines.push("");
 lines.push("## Per-cell results");
 lines.push("");
-lines.push("| tier | harness | pass | cache-hit | latency (ms) | cost (USD) | status |");
-lines.push("|------|---------|------|-----------|--------------|------------|--------|");
+lines.push(
+  "| tier | harness | pass | cache-hit | latency (ms) | cost (USD) | status |",
+);
+lines.push(
+  "|------|---------|------|-----------|--------------|------------|--------|",
+);
 for (const row of rows) {
   lines.push(
     `| \`${row.tier}\` | \`${row.harness}\` | ${row.pass} | ${row.cacheHit} | ${row.latencyMs} | ${row.costUsd} | ${row.status} |`,
@@ -451,7 +455,10 @@ if (deltas.length > 0) {
   for (const d of deltas) {
     const lbl = `\`${d.baseline}\` → \`${d.candidate}\``;
     const path = d.outDir ? `\`${d.outDir}\`` : "—";
-    const status = d.status === "ok" ? "ok" : `${d.status}${d.reason ? ` (${d.reason})` : ""}`;
+    const status =
+      d.status === "ok"
+        ? "ok"
+        : `${d.status}${d.reason ? ` (${d.reason})` : ""}`;
     lines.push(`| ${lbl} | \`${d.harness}\` | ${status} | ${path} |`);
   }
   lines.push("");

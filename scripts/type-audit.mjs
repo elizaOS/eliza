@@ -25,9 +25,7 @@ const JSON_FLAG = process.argv.includes("--json");
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
-const SCAN_DIRS = ["src", "packages", "plugins"].map((d) =>
-  path.join(ROOT, d),
-);
+const SCAN_DIRS = ["src", "packages", "plugins"].map((d) => path.join(ROOT, d));
 
 const IGNORE_PATTERNS = [
   /node_modules/,

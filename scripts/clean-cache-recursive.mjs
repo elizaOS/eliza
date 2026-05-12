@@ -17,8 +17,10 @@ let scanned = 0;
 
 function shouldRemove(name, parentNamesAbove) {
   if (name === ".turbo") return true;
-  if (name === ".cache" && parentNamesAbove.includes("node_modules")) return true;
-  if (name === ".vite" && parentNamesAbove.includes("node_modules")) return true;
+  if (name === ".cache" && parentNamesAbove.includes("node_modules"))
+    return true;
+  if (name === ".vite" && parentNamesAbove.includes("node_modules"))
+    return true;
   return false;
 }
 
@@ -64,7 +66,12 @@ function walk(dir, parentNamesAbove) {
   }
 }
 
-for (const name of [".turbo", ".turbo-tsconfig.json", "tsdoc_cache", "tsdoc_comments"]) {
+for (const name of [
+  ".turbo",
+  ".turbo-tsconfig.json",
+  "tsdoc_cache",
+  "tsdoc_comments",
+]) {
   const target = path.join(ROOT, name);
   try {
     statSync(target);
