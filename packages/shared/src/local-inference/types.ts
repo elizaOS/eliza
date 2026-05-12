@@ -331,6 +331,8 @@ export interface CatalogModel {
     | "24B"
     | "27B"
     | "32B";
+  /** Optional display-only parameter label for external models. */
+  parameterLabel?: string;
   quant: string;
   sizeGb: number;
   /** Minimum system RAM (GB) we recommend before offering this model. */
