@@ -37,3 +37,16 @@ _Updated: 2026-05-12 (resumed director run, has `Agent` tool)._
 - `CEREBRAS_API_KEY` (gpt-oss-120b, OpenAI-compatible) — provided by the operator out-of-band; do not commit it.
 - Nebius H200: needs interactive `nebius` CLI browser-SSO login (operator completes the browser step).
 - Local: RTX 5080 Laptop (sm_120, CUDA 12.8), Intel ANV iGPU (Vulkan), x86-64 AVX2/AVX-VNNI.
+
+## Director session 2026-05-12 — additional CI fixes (this run)
+- `01054138cd` — ui: removed duplicate `./events` export entry (`bun install` in the docker-ci-smoke container warned on it; biome `noDuplicateObjectKeys`).
+- `13e18fc036` — ui: biome-formatted `tsconfig.json` + `tsconfig.build.json`.
+- `c46f41be14` — biome format + safe lint over `test/` (350 files, mechanical).
+- `84a96d2d40` — biome format + safe lint over `packages/benchmarks/` + ignore vendored upstream benchmark trees (OSWorld, HyperliquidBench, loca-bench/gem+vis_traj, *.html).
+- Verified locally: `bun install --frozen-lockfile` is clean & stable under bun 1.3.13 (the repo's `packageManager`); installed bun 1.3.13 locally for parity. The committed `bun.lock` (re-synced in `7fca7ae565`) does not drift under 1.3.13 — the CI "bun.lock changed during dependency install" / docker-ci-smoke "bun install failed after 3 attempts" failures are CI-infra (stale `~/.bun/install/cache` restored via `restore-keys: bun-Linux-`, apt-mirror flakes, the bun npm-package placeholder binary) plus the now-fixed duplicate `./events` key — not a bad lockfile.
+- Verified: `@elizaos/agent#typecheck` and `@elizaos/app-core#typecheck` and `@elizaos/ui#typecheck` all pass clean locally after the drizzle-orm tsconfig pin.
+
+## Known-remaining (honest)
+- Repo-wide `bunx biome check .` ≈ 800 diagnostics left, mostly `noNonNullAssertion`/`noExplicitAny` warnings + a few `format`/`organizeImports` in `plugins/app-lifeops` (140), `plugins/plugin-social-alpha` (vendor code, lint deliberately skipped, its `biome.json` is missing `"extends": "//"` so it formats with tabs — needs a 1-line fix), `packages/inference/**` (102 — deferred per the plan: C2/C3/C4 are rewriting it, sweep last), `packages/app-core` (81), various small plugins. The per-package `turbo run lint` (the CI contract) is green. Repo-wide-clean is a documented WS-1 stretch goal.
+- The big implementation workstreams (WS-2 kernel parity / build matrix, WS-3 fork-built GGUFs + model bundles + 0.6b APOLLO fine-tune + drafters, WS-4 guided structured-decode fork fast-forward + W7 fused streaming decoders, WS-5 the two-agents duet harness + scientific latency grind + emotion fidelity) are GPU- and sub-agent-bound; the 0.6b APOLLO SFT was launched by a prior session (`37f94a1307`). This director run has no `Agent`/`Task` tool — it can only work directly; concurrent automation sessions on `develop` are carrying the heavy lanes.
+- CI runs on `develop` are frequently `cancelled` by the high commit rate from concurrent automation (concurrency groups) — clean terminal-state reads require a quiet window.
