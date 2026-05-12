@@ -42,20 +42,20 @@ export const ELIZA_1_TOKENIZER_FAMILY = "eliza1" as const;
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 151_936 as const;
 
 // Tiers — see packages/inference/AGENTS.md §2 (Tier matrix). `27b-1m` is the
-// GH200-class 1M-context variant of the 27B tier. `0_8b` is the new smallest
-// tier on the Qwen3.5-0.8B backbone (the small tiers move to the Qwen3.5
-// family); `0_6b` / `1_7b` are kept as a legacy Qwen3 line — see catalog.ts.
-// TODO(owner): the Qwen3.5-2B / Qwen3.5-4B mid-local tiers are wired into
-// the training registry (scripts/training/model_registry.py) and the
-// training run-on-cloud / train_nebius launchers; they ship into the
-// runtime manifest only after the canonical catalog (`catalog.ts` source
-// models, drafters) and recommendation ladders are extended. Land that as
-// a follow-up so the manifest schema, gates yaml, and catalog stay in
-// lockstep.
+// GH200-class 1M-context variant of the 27B tier. `0_8b` and `2b` are the
+// Qwen3.5 small/mid local tiers (the eliza-1 line is Qwen3.5-only per the
+// 2026-05-12 operator directive — Qwen3 dense bases don't work with the
+// dflash spec-decode path). `0_6b` / `1_7b` / `4b` remain here as
+// **deprecated** tier ids: the elizaos/eliza-1-{0_6b,1_7b,4b} HF repos
+// stay public for existing downloads, but their cards are marked
+// DEPRECATED and no new SFT runs target them — see catalog.ts +
+// packages/training/scripts/training/model_registry.py.
 export const ELIZA_1_TIERS = [
   "0_8b",
   "0_6b",
   "1_7b",
+  "2b",
+  "4b",
   "9b",
   "27b",
   "27b-256k",
@@ -148,6 +148,8 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
   "0_8b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
   "0_6b": ["turboquant_q3", "qjl", "polarquant", "dflash"],
   "1_7b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
+  "2b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
+  "4b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
   "9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
   "27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
   "27b-256k": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
@@ -155,13 +157,15 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
 };
 
 // Backends each tier is expected to support on shipped hardware. The small
-// tiers (0.8B / 0.6B / 1.7B) do not need cuda/rocm.
+// tiers (0.8B / 0.6B / 1.7B / 2B / 4B) do not need cuda/rocm.
 export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Backend>>
 > = {
   "0_8b": ["metal", "vulkan", "cpu"],
   "0_6b": ["metal", "vulkan", "cpu"],
   "1_7b": ["metal", "vulkan", "cpu"],
+  "2b": ["metal", "vulkan", "cpu"],
+  "4b": ["metal", "vulkan", "cpu"],
   "9b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
   "27b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
   "27b-256k": ["metal", "vulkan", "cuda", "rocm", "cpu"],

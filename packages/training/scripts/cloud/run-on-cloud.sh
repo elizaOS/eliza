@@ -89,7 +89,7 @@ done
 [[ -n "$TASK" ]]     || die "--task {kernel-verify,bench,train} is required"
 case "$PROVIDER" in vast|nebius) ;; *) die "unknown provider '$PROVIDER'" ;; esac
 case "$TASK" in build|kernel-verify|bench|train) ;; *) die "unknown task '$TASK'" ;; esac
-case "$TIER" in 0_8b|0_6b|1_7b|2b|4b|9b|27b|27b-256k|27b-1m) ;; *) die "unknown tier '$TIER'" ;; esac
+case "$TIER" in 0_8b|2b|4b|9b|27b|27b-256k|27b-1m) ;; *) die "unknown tier '$TIER'" ;; esac
 
 # --------------------------------------------------------------------------
 # GPU friendly name → vastai search clause + train_vast token.
@@ -116,13 +116,15 @@ gpu_to_train_vast_token() {
 }
 tier_to_registry_key() {
   # Keys must match scripts/training/model_registry.py REGISTRY. The canonical
-  # eliza-1 fused-model line is Qwen3.5-only (Qwen3 doesn't work with dflash).
-  # All Qwen3.5 entries train from the published -Base pretrain checkpoints;
-  # Qwen/Qwen3.5-27B has no -Base variant — that release IS the base.
-  # The Qwen3-0.6B/1.7B legacy small tiers remain addressable for compat.
+  # eliza-1 fused-model line is Qwen3.5-only (Qwen3 doesn't work with dflash —
+  # the dflash kernels are validated against the Qwen3.5 architecture +
+  # 248320 tokenizer; a Qwen3 base has the wrong vocab + attention shape for
+  # the fused QJL/Polar paths). All entries train from the published -Base
+  # pretrain checkpoints; Qwen/Qwen3.5-27B has no -Base variant — that
+  # release IS the base. The 0_6b/1_7b legacy tier ids in the runtime
+  # manifest stay addressable but no longer route to a registry key.
   case "$1" in
     0_8b) echo qwen3.5-0.8b ;;
-    0_6b) echo qwen3-0.6b ;; 1_7b) echo qwen3-1.7b ;;
     2b)   echo qwen3.5-2b ;;
     4b)   echo qwen3.5-4b ;;
     9b)   echo qwen3.5-9b ;;

@@ -26,15 +26,15 @@ from scripts.training.model_registry import (
 )
 
 
-# Small tiers: the new Qwen3.5-0.8B base + the legacy Qwen3 dense checkpoints.
-# The Qwen3 small tiers (qwen3-0.6b/qwen3-1.7b/qwen3-4b) and the legacy
-# qwen3.6-27b are kept addressable for callers that still reference them, but
-# the canonical eliza-1 fused-model SFT sequence is Qwen3.5-only.
-SMALL_KEYS = ("qwen3.5-0.8b", "qwen3-0.6b", "qwen3-1.7b", "qwen3-4b")
-SMALL_PUBLIC_NAMES = ("eliza-1-0_8b", "eliza-1-0_6b", "eliza-1-1_7b", "eliza-1-4b")
-# Larger Qwen3.5 line — used by the eliza-1 fused-model SFT cloud sequence
-# (2B → 4B → 9B → 27B), each on the published `-Base` pretrain checkpoint
-# (Qwen/Qwen3.5-27B has no `-Base` variant; that release IS the base).
+# The eliza-1 fused-model line is Qwen3.5-only (per the 2026-05-12 operator
+# directive — the Qwen3 dense bases don't work with dflash). The smallest
+# tier is qwen3.5-0.8b on Qwen/Qwen3.5-0.8B-Base; 2b/4b are mid-local on
+# Qwen/Qwen3.5-{2B,4B}-Base; 9b is the workstation tier on
+# Qwen/Qwen3.5-9B-Base; 27b is the cloud tier on Qwen/Qwen3.5-27B (no -Base
+# variant — that release IS the base). qwen3.6-27b is kept as a legacy
+# long-context 27B variant.
+SMALL_KEYS = ("qwen3.5-0.8b",)
+SMALL_PUBLIC_NAMES = ("eliza-1-0_8b",)
 LARGE_KEYS = ("qwen3.5-2b", "qwen3.5-4b", "qwen3.5-9b", "qwen3.5-27b", "qwen3.6-27b")
 LARGE_PUBLIC_NAMES = ("eliza-1-2b", "eliza-1-4b", "eliza-1-9b", "eliza-1-27b", "eliza-1-27b")
 ALL_KEYS = SMALL_KEYS + LARGE_KEYS
@@ -65,9 +65,6 @@ def test_no_entry_is_flagged_unverified() -> None:
 
 def test_tier_assignments() -> None:
     assert get("qwen3.5-0.8b").tier == Tier.LOCAL
-    assert get("qwen3-0.6b").tier == Tier.LOCAL
-    assert get("qwen3-1.7b").tier == Tier.LOCAL
-    assert get("qwen3-4b").tier == Tier.LOCAL
     assert get("qwen3.5-2b").tier == Tier.LOCAL
     assert get("qwen3.5-4b").tier == Tier.LOCAL
     assert get("qwen3.5-9b").tier == Tier.WORKSTATION
@@ -76,8 +73,8 @@ def test_tier_assignments() -> None:
 
 
 def test_by_tier_partitions_the_ladder() -> None:
-    # LOCAL: qwen3.5-0.8b/2b/4b + qwen3-0.6b/1.7b/4b = 6
-    assert len(by_tier(Tier.LOCAL)) == 6
+    # LOCAL: qwen3.5-0.8b/2b/4b = 3
+    assert len(by_tier(Tier.LOCAL)) == 3
     # WORKSTATION: qwen3.5-9b
     assert len(by_tier(Tier.WORKSTATION)) == 1
     # CLOUD: qwen3.5-27b + qwen3.6-27b (legacy)
@@ -88,14 +85,6 @@ def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
     assert get("Qwen/Qwen3.5-0.8B-Base").short_name == "qwen3.5-0.8b"
     assert get("qwen3.5-0.8b").short_name == "qwen3.5-0.8b"
     assert get("eliza-1-0_8b").short_name == "qwen3.5-0.8b"
-    assert get("Qwen/Qwen3-0.6B").short_name == "qwen3-0.6b"
-    assert get("qwen3-0.6b").short_name == "qwen3-0.6b"
-    assert get("eliza-1-0_6b").short_name == "qwen3-0.6b"
-    assert get("eliza-1-1_7b").short_name == "qwen3-1.7b"
-    # eliza-1-4b is ambiguous: both qwen3-4b (legacy) and qwen3.5-4b
-    # (canonical Qwen3.5 fused-model line) claim it. The first match in
-    # REGISTRY iteration order wins; in practice callers should disambiguate
-    # via the explicit registry key.
     assert get("qwen3.5-2b").short_name == "qwen3.5-2b"
     assert get("qwen3.5-4b").short_name == "qwen3.5-4b"
     assert get("qwen3.5-9b").short_name == "qwen3.5-9b"
@@ -107,15 +96,17 @@ def test_dflash_drafter_base_is_qwen3_5_for_qwen3_5_targets() -> None:
     # checkpoint — it shares their 248320-token tokenizer (a Qwen3-0.6B
     # drafter has the wrong vocab). The shipped drafter GGUF is that base
     # distilled to ~0.6B. Mirrors DEFAULT_STUDENT_BASE in
-    # scripts/distill_dflash_drafter.py.
+    # scripts/distill_dflash_drafter.py. Per the 2026-05-12 operator
+    # directive (Qwen3.5-only fused-model line), the legacy Qwen3 tier
+    # drafter entries (eliza-1-1_7b / eliza-1-4b) are dropped — the
+    # corresponding tiers are deprecated.
     for tier in ("eliza-1-2b", "eliza-1-4b", "eliza-1-9b", "eliza-1-27b"):
         assert DFLASH_DRAFTER_BASE[tier] == "Qwen/Qwen3.5-0.8B-Base"
-    # Legacy Qwen3 small tiers keep a Qwen3-vocab drafter base.
-    for tier in ("eliza-1-1_7b",):
-        assert DFLASH_DRAFTER_BASE[tier] == "Qwen/Qwen3-0.6B"
-    # Smallest tiers ship no drafter.
-    assert "eliza-1-0_6b" not in DFLASH_DRAFTER_BASE
+    # Smallest tier ships no drafter.
     assert "eliza-1-0_8b" not in DFLASH_DRAFTER_BASE
+    # Deprecated Qwen3 tiers have no drafter entries.
+    assert "eliza-1-0_6b" not in DFLASH_DRAFTER_BASE
+    assert "eliza-1-1_7b" not in DFLASH_DRAFTER_BASE
 
 
 def test_unknown_model_raises_keyerror() -> None:
@@ -158,18 +149,14 @@ def test_2b_and_9b_seq_len_defaults_unchanged_by_m35() -> None:
 
 
 def test_small_real_tiers_fit_a_consumer_gpu() -> None:
-    """0.8B/0.6B/1.7B/4B (Qwen3 legacy) are the "fine-tune on one consumer
-    GPU" tier — full-param APOLLO SFT, modest seq_len, ≤24 GB budget.
-
-    The Qwen3.5-4b on Qwen3.5-4B-Base is sized for a 24-28 GB H200/H100 slice
-    (the larger 248k vocab + hybrid linear-attn KV plumbing push its budget
-    above the strict 24 GB consumer-GPU floor); checked separately below."""
-    consumer_keys = ("qwen3.5-0.8b", "qwen3-0.6b", "qwen3-1.7b", "qwen3-4b")
-    for key in consumer_keys:
-        e = get(key)
-        assert e.tier == Tier.LOCAL
-        assert e.seq_len <= 8192
-        assert e.train_mem_gb_budget <= 24.0
+    """The qwen3.5-0.8b small tier is the only "fine-tune on a 16 GB
+    consumer GPU" entry left after the Qwen3 legacy line was dropped on
+    2026-05-12. qwen3.5-2b and qwen3.5-4b are mid-local tiers checked
+    separately below."""
+    e = get("qwen3.5-0.8b")
+    assert e.tier == Tier.LOCAL
+    assert e.seq_len <= 8192
+    assert e.train_mem_gb_budget <= 24.0
 
 
 def test_qwen3_5_mid_tiers_fit_an_h200_class_gpu() -> None:
