@@ -38,7 +38,12 @@ the bigger tiers and for VRAM-constrained hosts.
   `fattn-vec-instance-{qjl,polar,tbq}.cu` kernels) compiles with the stock
   nvcc 12.0 at `CMAKE_CUDA_ARCHITECTURES="89-real;90-real;90-virtual"` (the
   driver JITs the sm_90 PTX to sm_120) — see `scripts/vendor_llama_cpp.sh`'s
-  `build-cuda` for the recipe.
+  `build-cuda` for the recipe. **Build the fork's CUDA backend with `-j2`**,
+  not `-j$(nproc)`, on a ≤ 32 GB-RAM box: the custom `fattn-vec-instance-*`
+  instantiations ~1.6× the standard set of fattn template TUs, each `fattn*.cu`
+  nvcc eats ~1.5–2 GB during template metaprogramming, and at full parallelism
+  on a 30 GB laptop the concurrent nvcc's get OOM-killed on `fattn.cu.o`. (The
+  *stock* llama.cpp CUDA build is fine at `-j$(nproc)` — fewer fattn TUs.)
 - **Flash attention on** — `optimizations.flashAttention: true` is already set
   in `catalog.ts` `runtimeFor()`; keep it. `-fa 1` is +25 % prefill vs off.
 - **Logical batch ≥ 2048** for prefill — `-b 2048` beats `-b 512` once `-fa`
