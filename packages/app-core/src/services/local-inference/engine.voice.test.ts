@@ -42,6 +42,7 @@ import type {
   RejectedTokenRange,
   SpeakerPreset,
   TextToken,
+  VoiceSchedulerTelemetryEvent,
 } from "./voice/types";
 import { writeVoicePresetFile } from "./voice/voice-preset-format";
 
@@ -345,7 +346,7 @@ describe("LocalInferenceEngine voice surface", () => {
     });
   });
 
-  it("direct TEXT_TO_SPEECH returns WAV bytes and does not block singing text", async () => {
+  it("direct TEXT_TO_SPEECH returns WAV bytes and preserves singing/emotion tags", async () => {
     writePresetBundle(bundleRoot);
     const backend = new CountingBackend();
     const engine = new LocalInferenceEngine();
@@ -357,13 +358,63 @@ describe("LocalInferenceEngine voice surface", () => {
     });
     await engine.armVoice();
 
-    const wav = await engine.synthesizeSpeech("[singing] la la la.");
+    const expressiveText = "[singing] [happy] la la la [laughter].";
+    const wav = await engine.synthesizeSpeech(expressiveText);
 
     expect(backend.calls).toBe(1);
-    expect(backend.texts).toEqual(["[singing] la la la."]);
+    expect(backend.texts).toEqual([expressiveText]);
     expect(String.fromCharCode(...wav.subarray(0, 4))).toBe("RIFF");
     expect(String.fromCharCode(...wav.subarray(8, 12))).toBe("WAVE");
     await engine.stopVoice();
+  });
+
+  it("emits structured scheduler telemetry for phrase dispatch, cache miss, TTS, and audio commit", async () => {
+    writePresetBundle(bundleRoot);
+    const backend = new CountingBackend();
+    const telemetry: VoiceSchedulerTelemetryEvent[] = [];
+    const engine = new LocalInferenceEngine();
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: backend,
+      events: {
+        onTelemetry: (event) => telemetry.push(event),
+      },
+    });
+
+    await engine.pushAcceptedTokens([tok(0, "Sure"), tok(1, ".")]);
+    await engine.voice()?.settle();
+
+    expect(backend.calls).toBe(1);
+    expect(telemetry.map((event) => event.type)).toEqual([
+      "phrase-dispatch",
+      "phrase-cache-miss",
+      "tts-start",
+      "tts-first-audio",
+      "audio-committed",
+    ]);
+    expect(telemetry[0]).toMatchObject({
+      type: "phrase-dispatch",
+      phrase: {
+        text: "Sure.",
+        fromIndex: 0,
+        toIndex: 1,
+        tokenCount: 2,
+      },
+    });
+    expect(telemetry.find((event) => event.type === "tts-first-audio")).toMatchObject({
+      source: "synthesis",
+      samples: 2,
+      sampleRate: 24000,
+    });
+    expect(telemetry.find((event) => event.type === "audio-committed")).toMatchObject({
+      source: "synthesis",
+      samples: 2,
+      flushedSamples: 2,
+      paused: false,
+      ringBufferSamples: 0,
+      sinkBufferedSamples: 2,
+    });
   });
 
   it("prewarms phrase audio so repeated local TTS avoids a backend pass", async () => {

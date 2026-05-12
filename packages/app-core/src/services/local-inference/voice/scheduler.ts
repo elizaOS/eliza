@@ -185,6 +185,14 @@ export class VoiceScheduler {
         atMs: nowMs(),
         phrase: phraseTelemetry(phrase),
       });
+      this.emitTelemetry({
+        type: "tts-first-audio",
+        atMs: nowMs(),
+        phrase: phraseTelemetry(phrase),
+        source: "cache",
+        samples: cached.pcm.length,
+        sampleRate: cached.sampleRate,
+      });
       return {
         phraseId: phrase.id,
         fromIndex: phrase.fromIndex,

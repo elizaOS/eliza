@@ -60,6 +60,7 @@ import {
 import { parseJsonObject } from "../runtime/json-output";
 import { getLocalizedExamplesProvider } from "../runtime/localized-examples-provider";
 import {
+	getMessageHandlerReply,
 	parseMessageHandlerOutput,
 	routeMessageHandlerOutput,
 	SIMPLE_CONTEXT_ID,

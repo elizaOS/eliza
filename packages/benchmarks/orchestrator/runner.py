@@ -290,7 +290,7 @@ def _collect_run_trajectory_metrics(run_root: Path, *, duration_seconds: float) 
         "llm_call_count": summary.turns,
         "prompt_tokens": summary.prompt_tokens,
         "completion_tokens": summary.completion_tokens,
-        "total_tokens": summary.prompt_tokens + summary.completion_tokens,
+        "total_tokens": summary.total_tokens,
         "avg_prompt_tokens": (summary.prompt_tokens / summary.turns) if summary.turns else 0.0,
         "avg_completion_tokens": (summary.completion_tokens / summary.turns) if summary.turns else 0.0,
     }
@@ -313,6 +313,7 @@ def _collect_run_trajectory_metrics(run_root: Path, *, duration_seconds: float) 
             "turn_index": record.index,
             "prompt_tokens": record.tokens.prompt,
             "completion_tokens": record.tokens.completion,
+            "total_tokens": record.tokens.total or (record.tokens.prompt + record.tokens.completion),
             "cached_tokens": record.tokens.cached,
             "cache_creation_tokens": record.tokens.cache_creation,
             "latency_ms": record.latency_ms,

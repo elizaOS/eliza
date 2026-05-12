@@ -321,18 +321,30 @@ export function useChatVoiceController(options: {
   }, []);
 
   const handleVoiceTranscript = useCallback(
-    (text: string) => {
+    (text: string, event?: VoiceTranscriptEvent) => {
       if (isComposerLocked) return;
       const composedText = composeVoiceDraft(text);
       if (!composedText) return;
       const speechEndedAtMs = nowMs();
+      const voiceTurnId = event?.turn.id ?? makeVoiceTurnId(speechEndedAtMs);
       pendingVoiceTurnRef.current = {
+        id: voiceTurnId,
         expiresAtMs: speechEndedAtMs + 15000,
         speechEndedAtMs,
       };
       setVoiceLatency(null);
       setState("chatInput", composedText);
-      setTimeout(() => void handleChatSend("VOICE_DM"), 50);
+      setTimeout(
+        () =>
+          void handleChatSend("VOICE_DM", {
+            metadata: {
+              voiceTurnId,
+              voiceSpeechEndedAtMs: Math.round(speechEndedAtMs),
+              voiceSource: event?.turn.source ?? event?.turn.metadata?.source,
+            },
+          }),
+        50,
+      );
     },
     [composeVoiceDraft, handleChatSend, isComposerLocked, setState, setTimeout],
   );
@@ -364,12 +376,24 @@ export function useChatVoiceController(options: {
       pending.firstSegmentCached = event.cached;
 
       setVoiceLatency((prev) => ({
+        assistantFirstMessageId:
+          prev?.assistantFirstMessageId ??
+          event.messageId ??
+          pending.assistantFirstMessageId ??
+          null,
         firstSegmentCached: event.cached,
         speechEndToFirstTokenMs: prev?.speechEndToFirstTokenMs ?? null,
         speechEndToVoiceStartMs: Math.max(
           0,
           Math.round(event.startedAtMs - pending.speechEndedAtMs),
         ),
+        assistantStreamToVoiceStartMs:
+          event.assistantFirstTextAtMs != null
+            ? Math.max(
+                0,
+                Math.round(event.startedAtMs - event.assistantFirstTextAtMs),
+              )
+            : (prev?.assistantStreamToVoiceStartMs ?? null),
       }));
     },
     [],

@@ -40,6 +40,7 @@ from typing import Any, Iterable
 class TurnTokens:
     prompt: int = 0
     completion: int = 0
+    total: int = 0
     cached: int = 0
     cache_creation: int = 0
     has_cached: bool = False
@@ -60,6 +61,7 @@ class RunSummary:
     files: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    total_tokens: int = 0
     cached_tokens: int = 0
     cache_creation_tokens: int = 0
     turns_with_cached_field: int = 0
@@ -118,6 +120,7 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
             or usage.get("completion_tokens")
             or usage.get("output_tokens")
         )
+        total = _coerce_int(usage.get("totalTokens") or usage.get("total_tokens"))
         if not prompt:
             prompt = _coerce_int(usage.get("input_tokens"))
         cached_raw = (
@@ -137,6 +140,7 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
             return TurnTokens(
                 prompt=prompt,
                 completion=completion,
+                total=total,
                 cached=cached,
                 cache_creation=cache_creation,
                 has_cached=has_cached,
@@ -169,6 +173,7 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
             continue
         prompt = 0
         completion = 0
+        total = 0
         cached = 0
         cache_creation = 0
         has_cached = False
@@ -180,6 +185,11 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
                 item.get("completion_tokens")
                 or item.get("completionTokens")
                 or item.get("output_tokens")
+            )
+            total += _coerce_int(
+                item.get("total_tokens")
+                or item.get("totalTokens")
+                or item.get("tokens_used")
             )
             cached_raw = (
                 item.get("prompt_cache_hit_tokens")
@@ -197,6 +207,7 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
             return TurnTokens(
                 prompt=prompt,
                 completion=completion,
+                total=total,
                 cached=cached,
                 cache_creation=cache_creation,
                 has_cached=has_cached,
@@ -209,7 +220,7 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
             continue
         total = _coerce_int(metrics.get("tokens_used") or metrics.get("total_tokens"))
         if total:
-            return TurnTokens(prompt=total)
+            return TurnTokens(prompt=total, total=total)
 
     # Shape 2: per-call list — `usage.calls[]`.
     if isinstance(usage, dict):
@@ -219,6 +230,7 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
             completion = sum(
                 _coerce_int(c.get("completionTokens")) for c in calls if isinstance(c, dict)
             )
+            total = sum(_coerce_int(c.get("totalTokens")) for c in calls if isinstance(c, dict))
             cached = 0
             cache_creation = 0
             has_cached = False
@@ -235,6 +247,7 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
                 return TurnTokens(
                     prompt=prompt,
                     completion=completion,
+                    total=total,
                     cached=cached,
                     cache_creation=cache_creation,
                     has_cached=has_cached,
@@ -251,6 +264,7 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
             return TurnTokens(
                 prompt=prompt,
                 completion=completion,
+                total=_coerce_int(obj.get("total_tokens") or obj.get("totalTokens")),
                 cached=cached,
                 cache_creation=_coerce_int(obj.get("cache_creation_input_tokens")),
                 has_cached=has_cached,
@@ -261,7 +275,11 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
         prompt = _coerce_int(obj.get("input_tokens"))
         completion = _coerce_int(obj.get("output_tokens"))
         if prompt or completion:
-            return TurnTokens(prompt=prompt, completion=completion)
+            return TurnTokens(
+                prompt=prompt,
+                completion=completion,
+                total=_coerce_int(obj.get("total_tokens") or obj.get("totalTokens")),
+            )
 
     if "token_usage" in obj or "tokens_used" in obj:
         token_usage = obj.get("token_usage")
@@ -275,6 +293,11 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
                 token_usage.get("completion_tokens")
                 or token_usage.get("completionTokens")
                 or token_usage.get("output_tokens")
+            )
+            total = _coerce_int(
+                token_usage.get("total_tokens")
+                or token_usage.get("totalTokens")
+                or token_usage.get("tokens_used")
             )
             cached_raw = (
                 token_usage.get("cached_prompt_tokens")
@@ -291,18 +314,19 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
                 return TurnTokens(
                     prompt=prompt,
                     completion=completion,
+                    total=total,
                     cached=cached,
                     cache_creation=cache_creation,
                     has_cached=cached_raw is not None,
                 )
         total = _coerce_int(token_usage or obj.get("tokens_used"))
         if total:
-            return TurnTokens(prompt=total)
+            return TurnTokens(prompt=total, total=total)
 
     for key in ("total_tokens", "totalTokens", "tokens_used", "tokensUsed"):
         total = _coerce_int(obj.get(key))
         if total:
-            return TurnTokens(prompt=total)
+            return TurnTokens(prompt=total, total=total)
 
     # Shape 4: nested `tokens` dict.
     tokens = obj.get("tokens")
@@ -317,6 +341,7 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
             return TurnTokens(
                 prompt=prompt,
                 completion=completion,
+                total=_coerce_int(tokens.get("total")),
                 cached=cached,
                 cache_creation=cache_creation,
                 has_cached=has_cached,
@@ -677,6 +702,7 @@ def summarize(
             summary.turns += 1
             summary.prompt_tokens += tokens.prompt
             summary.completion_tokens += tokens.completion
+            summary.total_tokens += tokens.total or (tokens.prompt + tokens.completion)
             summary.cached_tokens += tokens.cached
             summary.cache_creation_tokens += tokens.cache_creation
             if tokens.has_cached:
@@ -738,6 +764,7 @@ def render_json(summary: RunSummary, records: list[TurnRecord]) -> str:
         "turns": summary.turns,
         "prompt_tokens": summary.prompt_tokens,
         "completion_tokens": summary.completion_tokens,
+        "total_tokens": summary.total_tokens,
         "cached_tokens": summary.cached_tokens,
         "cache_creation_tokens": summary.cache_creation_tokens,
         "turns_with_cached_field": summary.turns_with_cached_field,
