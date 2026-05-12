@@ -1,0 +1,268 @@
+[
+  {
+    "id": "mail.flag_urgent_from_ceo",
+    "name": "Flag urgent email from CEO",
+    "domain": "mail",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Mark the latest email from ceo@example.test as urgent.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "manage",
+          "source": "gmail",
+          "manageOperation": "star",
+          "messageId": "email_000001"
+        }
+      }
+    ],
+    "required_outputs": [
+      "urgent"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "The most recent email from ceo@example.test, which is email_000001.",
+      "applies_when": "agent asks which email to flag"
+    },
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Ensures the assistant can apply an urgent/star flag to a specific email."
+  },
+  {
+    "id": "mail.search_attachments_pdf",
+    "name": "Find recent PDFs",
+    "domain": "mail",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Search my inbox for emails with PDF attachments received in the last 30 days.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "search_inbox",
+          "source": "gmail",
+          "query": "has:attachment filename:pdf",
+          "since": "2026-04-10",
+          "until": "2026-05-10"
+        }
+      }
+    ],
+    "required_outputs": [
+      "PDF"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Validates a date\u2011bounded search for PDF attachments."
+  },
+  {
+    "id": "mail.reply_with_template",
+    "name": "Reply using template",
+    "domain": "mail",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Reply to email_000000 using my standard meeting confirmation template, filling in the date as June 2, 2026.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "draft_reply",
+          "source": "gmail",
+          "messageId": "email_000000",
+          "body": "Confirming meeting on June 2, 2026."
+        }
+      }
+    ],
+    "required_outputs": [
+      "June 2"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Tests drafting a reply that incorporates a date from a template."
+  },
+  {
+    "id": "mail.search_meeting_invite",
+    "name": "Find meeting invites from calendar label",
+    "domain": "mail",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "Find any meeting invitation emails from my calendar (label:calendar) this month.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "search_inbox",
+          "source": "gmail",
+          "query": "label:calendar",
+          "since": "2026-05-01",
+          "until": "2026-05-31"
+        }
+      }
+    ],
+    "required_outputs": [
+      "meeting"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Searches for calendar\u2011labeled meeting invites within a month."
+  },
+  {
+    "id": "mail.reply_to_family",
+    "name": "Reply to family email",
+    "domain": "mail",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Reply to the email from sister (contact_00001@example.test) saying 'Thanks, I\u2019ll bring dessert.'",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "draft_reply",
+          "source": "gmail",
+          "messageId": "email_000001",
+          "body": "Thanks, I\u2019ll bring dessert."
+        }
+      }
+    ],
+    "required_outputs": [
+      "dessert"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Simple reply to a family member with a friendly note."
+  },
+  {
+    "id": "mail.search_by_subject",
+    "name": "Search emails by subject keyword",
+    "domain": "mail",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Search for emails with subject containing 'budget' from last quarter.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "search_inbox",
+          "source": "gmail",
+          "query": "subject:budget",
+          "since": "2025-10-01",
+          "until": "2026-01-01"
+        }
+      }
+    ],
+    "required_outputs": [
+      "budget"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Subject\u2011based search over a defined quarter."
+  },
+  {
+    "id": "mail.mark_as_read",
+    "name": "Mark specific email as read",
+    "domain": "mail",
+    "mode": "static",
+    "persona_id": "owen_retiree",
+    "instruction": "Mark email_000002 as read.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "manage",
+          "source": "gmail",
+          "manageOperation": "mark_read",
+          "messageId": "email_000002"
+        }
+      }
+    ],
+    "required_outputs": [
+      "read"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Simple state change for a single email."
+  },
+  {
+    "id": "mail.search_recent_from_contact",
+    "name": "Search recent emails from a contact",
+    "domain": "mail",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "Find the last three emails from contact_00002@example.test.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "search_inbox",
+          "source": "gmail",
+          "query": "from:contact_00002@example.test",
+          "limit": 3
+        }
+      }
+    ],
+    "required_outputs": [
+      "contact"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Limits the search result count to three recent messages."
+  },
+  {
+    "id": "mail.reply_with_emoji",
+    "name": "Reply with emoji",
+    "domain": "mail",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Reply to email_000001 with a friendly '\ud83d\udc4d' emoji.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "draft_reply",
+          "source": "gmail",
+          "messageId": "email_000001",
+          "body": "\ud83d\udc4d"
+        }
+      }
+    ],
+    "required_outputs": [
+      "\ud83d\udc4d"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Tests emoji\u2011only reply drafting."
+  },
+  {
+    "id": "mail.search_by_date_range",
+    "name": "Search emails between dates",
+    "domain": "mail",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Search my inbox for emails received between 2026-04-01 and 2026-04-15.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "search_inbox",
+          "source": "gmail",
+          "since": "2026-04-01",
+          "until": "2026-04-15"
+        }
+      }
+    ],
+    "required_outputs": [
+      "April"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Simple date\u2011range based inbox search."
+  }
+]

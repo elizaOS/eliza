@@ -1,0 +1,62 @@
+# `prompts.updateSummarizationTemplate`
+
+- **Kind**: template
+- **Owner**: packages/prompts
+- **File**: `packages/prompts/src/index.ts:1272`
+- **Token count**: 212
+- **Last optimized**: never
+
+## Current text
+```
+# Task: Update and Condense Conversation Summary
+
+Update an existing summary with new messages, keeping it concise.
+
+# Existing Summary
+{{existingSummary}}
+
+# Existing Topics
+{{existingTopics}}
+
+# New Messages Since Last Summary
+{{newMessages}}
+
+# Instructions
+Update by:
+1. Merging existing summary with new-message insights
+2. Removing redundant or less important details
+3. Keeping the most important context and decisions
+4. Adding new topics as they emerge
+5. **Keep ENTIRE updated summary under 2500 tokens**
+
+Goal: rolling summary that captures conversation essence without growing indefinitely.
+
+JSON:
+text: Your updated and condensed summary here
+topics[0]: topic1
+topics[1]: topic2
+topics[2]: topic3
+keyPoints[0]: First key point
+keyPoints[1]: Second key point
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
+
+```
+
+## Compressed variant
+```
+none
+```
+
+## Usage stats (latest trajectories)
+- Invocations: 0 (this prompt was not matched in any recent trajectory)
+
+## Sample failure transcripts
+None.
+
+## Suggested edits (heuristic)
+None.
+
+## Actions
+- Accept a candidate rewrite: `bun run lifeops:prompt-accept -- --id <id> --from <candidate-file>`
+- Freeze (skip future optimization): `bun run lifeops:prompt-freeze -- --id <id>`

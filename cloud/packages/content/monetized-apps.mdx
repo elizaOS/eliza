@@ -1,0 +1,160 @@
+---
+title: Monetized Apps
+description: Create, deploy, and monetize Eliza Cloud apps.
+---
+
+import { Callout, Steps, Cards } from "@/docs/components";
+
+# Monetized Apps
+
+Build an Eliza Cloud app, route user chat through the app-scoped endpoint, earn creator markup, and deploy the app as a container whose hosting can be paid from earnings before credits.
+
+<div className="status-badge status-new">New</div>
+
+## Concepts
+
+- **Project**: Your deployable product workspace. For container hosting, use `project_name` as the stable project identifier.
+- **App plugin**: An `@elizaos/app-*` package inside Eliza. This is code loaded by an Eliza runtime.
+- **Eliza Cloud app**: The Cloud app record created with `POST /api/v1/apps`. It owns app hosting metadata, marketplace/domain settings, chat routing, analytics, and monetization settings.
+
+Keep the Cloud app `id` in your project configuration and pass it to the app-scoped chat endpoint. Do not use package names or deployment project names as app IDs.
+
+## Flow
+
+```
+user signs in and chats with your app
+  -> your server forwards the user's bearer token to /api/v1/apps/{id}/chat
+  -> Eliza Cloud charges the user's organization credit balance
+  -> creator markup is credited to your redeemable earnings
+  -> daily container billing uses your earnings first, then org credits
+  -> you redeem available earnings for elizaOS tokens
+```
+
+<Callout type="info">
+  The hosting funding loop is controlled by the organization billing setting `payAsYouGoFromEarnings`. It is on by default. When off, container hosting uses credits only and earnings remain available for token cashout.
+</Callout>
+
+## Register and Configure
+
+<Steps>
+### Create a Cloud app
+
+```bash
+curl -X POST "https://www.elizacloud.ai/api/v1/apps" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My App",
+    "app_url": "https://placeholder.invalid",
+    "allowed_origins": ["https://placeholder.invalid"],
+    "skipGitHubRepo": true
+  }'
+```
+
+The response includes `app.id` and a one-time `apiKey`. Store the app ID in your project; keep API keys server-side only.
+
+### Enable monetization
+
+```bash
+curl -X PUT "https://www.elizacloud.ai/api/v1/apps/$APP_ID/monetization" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "monetizationEnabled": true,
+    "inferenceMarkupPercentage": 100,
+    "purchaseSharePercentage": 10
+  }'
+```
+
+`inferenceMarkupPercentage` is the creator markup on app-scoped chat inference. `purchaseSharePercentage` is reserved for app credit purchase share flows.
+
+### Forward user chat
+
+```ts
+const response = await fetch(`${ELIZA_CLOUD_URL}/api/v1/apps/${APP_ID}/chat`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${userStewardJwt}`,
+  },
+  body: JSON.stringify({
+    model: "provider/model-id",
+    messages: [{ role: "user", content: "Hello" }],
+    stream: false,
+  }),
+});
+```
+
+Forward the user's bearer token, not your app admin API key, for user-facing chat. The user's organization credit balance is charged and your app's markup is recorded as creator earnings.
+
+### Deploy the container
+
+```ts
+import { ElizaCloudClient } from "@elizaos/cloud-sdk";
+
+const cloud = new ElizaCloudClient({ apiKey: process.env.ELIZA_CLOUD_API_KEY });
+
+const { data: container } = await cloud.createContainer({
+  name: "my-app",
+  project_name: "my-app",
+  image: "ghcr.io/acme/my-app:latest",
+  port: 3000,
+  cpu: 256,
+  memory: 512,
+  desired_count: 1,
+  health_check_path: "/health",
+  environment_vars: {
+    PORT: "3000",
+    ELIZA_APP_ID: APP_ID,
+    ELIZA_CLOUD_URL: "https://www.elizacloud.ai",
+  },
+});
+```
+
+When the container is running, patch the Cloud app to the real URL:
+
+```bash
+curl -X PATCH "https://www.elizacloud.ai/api/v1/apps/$APP_ID" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "app_url": "https://my-app.example.com",
+    "allowed_origins": ["https://my-app.example.com"]
+  }'
+```
+
+### Redeem earnings
+
+Use [Dashboard -> Earnings](/dashboard/earnings), or call the redemptions API. Earnings are tracked in dollars; redemptions use `pointsAmount`, where 100 points equals $1.00.
+
+```bash
+curl "https://www.elizacloud.ai/api/v1/redemptions/balance" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY"
+```
+</Steps>
+
+## Affiliate Header
+
+The optional `X-Affiliate-Code` header is implemented on the generic chat and messages APIs, including `POST /api/v1/chat/completions` and `POST /api/v1/messages`. It credits affiliate markup to the affiliate owner's redeemable earnings.
+
+<Callout type="warning">
+  The app-scoped chat endpoint `POST /api/v1/apps/{id}/chat` does not currently read `X-Affiliate-Code` in the API route. Forwarding the header is harmless, but affiliate earnings on app-scoped chat need product/API confirmation.
+</Callout>
+
+## Hosting Billing
+
+Daily container billing calculates the container's hosting cost, then tries to pay from the owner's redeemable earnings when `payAsYouGoFromEarnings` is enabled. Any remainder falls through to organization credits. Containers are suspended only when the configured funding sources cannot cover hosting.
+
+## Next Steps
+
+<Cards>
+  <Cards.Card title="Apps API" href="/docs/api/apps">
+    Register Cloud apps and configure monetization
+  </Cards.Card>
+  <Cards.Card title="Containers API" href="/docs/api/containers">
+    Deploy and monitor app containers
+  </Cards.Card>
+  <Cards.Card title="Redemptions API" href="/docs/api/redemptions">
+    Quote, create, and track token redemptions
+  </Cards.Card>
+</Cards>

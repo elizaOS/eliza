@@ -1,0 +1,44 @@
+// Headscale ACL policy — customer tunnel + internal agent isolation.
+//
+// CRITICAL: this is the only thing that prevents customer tunnels from
+// reaching the agent fleet. Keep this file limited to fields Headscale
+// accepts at startup; policy test fixtures belong outside the live ACL.
+{
+  "tagOwners": {
+    // Agent containers self-tag with tag:agent during VPN bootstrap.
+    "tag:agent": ["tunnel@"],
+    // Customer tunnel sessions use this shared service tag. Per-session
+    // isolation is enforced by default-deny ACLs and the proxy lookup layer.
+    "tag:eliza-tunnel": ["tunnel@"],
+    // The public reverse proxy is itself a tagged service node.
+    "tag:eliza-proxy": ["tunnel@"]
+  },
+
+  "groups": {},
+
+  "hosts": {},
+
+  // Default deny: anything not explicitly allowed below is dropped.
+  "acls": [
+    // Reverse proxy can reach any customer tunnel on HTTPS only.
+    {
+      "action": "accept",
+      "src": ["tag:eliza-proxy"],
+      "dst": ["tag:eliza-tunnel:443"]
+    },
+    // Agents can reach each other on internal ports (existing behavior).
+    {
+      "action": "accept",
+      "src": ["tag:agent"],
+      "dst": ["tag:agent:*"]
+    },
+    // Tunnels can reach the proxy node back (for two-way traffic).
+    {
+      "action": "accept",
+      "src": ["tag:eliza-tunnel"],
+      "dst": ["tag:eliza-proxy:*"]
+    }
+    // NO rule grants tag:eliza-tunnel access to tag:agent or vice versa.
+    // This isolation is the entire point of tag-based ACLs here.
+  ]
+}

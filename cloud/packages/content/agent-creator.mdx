@@ -1,0 +1,267 @@
+---
+title: Agent Creator
+description: Build AI agents visually with the elizaOS Cloud Agent Creator. No code required to create powerful conversational agents.
+---
+
+import { Callout, Steps, Cards } from "@/docs/components";
+
+# Agent Creator
+
+The Agent Creator is a visual editor for building AI agents without writing code.
+
+<div className="status-badge status-stable">Stable</div>
+
+<Callout type="info">
+  Access the Agent Creator at [Dashboard → Agent Creator](/dashboard/build)
+</Callout>
+
+## Overview
+
+The Agent Creator provides a streamlined interface for:
+
+- **Character Design**: Define personality and communication style
+- **Avatar Generation**: AI-powered avatar creation
+- **Model Selection**: Choose from multiple AI providers
+- **Live Preview**: Test your agent in real-time
+- **One-Click Deploy**: Launch instantly to production
+
+## Getting Started
+
+<Steps>
+### Open Agent Creator
+Navigate to [Dashboard → Build](/dashboard/build) to access the creator.
+
+### Enter Basic Info
+
+- **Name**: Your agent's display name
+- **Description**: Brief summary of what your agent does
+
+### Define Personality
+
+Fill in the personality fields:
+
+- **Bio**: Background and expertise
+- **Style**: Communication tone
+- **Topics**: Areas of knowledge
+
+### Generate Avatar (Optional)
+
+Click "Generate Avatar" to create an AI-generated profile image.
+
+### Preview & Test
+
+Use the built-in chat to test your agent's responses.
+
+### Deploy
+
+Click "Deploy" to make your agent live.
+
+</Steps>
+
+## Character Fields
+
+### Name & Description
+
+```
+Name: Research Assistant
+Description: An expert AI that helps with academic research and data analysis.
+```
+
+### Bio
+
+The bio defines your agent's background. Use multiple statements for comprehensive context:
+
+```
+- PhD-level expertise in machine learning and data science
+- Experienced in analyzing research papers and synthesizing findings
+- Skilled at explaining complex topics in accessible language
+```
+
+### Style
+
+Style instructions shape how your agent communicates:
+
+**All Contexts:**
+
+```
+- Professional and academic tone
+- Evidence-based reasoning
+- Clear and well-structured responses
+```
+
+**Chat-Specific:**
+
+```
+- Conversational yet informative
+- Ask clarifying questions when needed
+- Provide step-by-step explanations
+```
+
+### Topics
+
+Define areas of expertise:
+
+```
+machine learning, data science, research methodology,
+statistics, academic writing, literature review
+```
+
+### Adjectives
+
+Personality descriptors:
+
+```
+knowledgeable, thorough, patient, analytical, helpful
+```
+
+## Model Configuration
+
+### Supported Providers
+
+Available providers and models come from the current model catalog. Use the
+dashboard model selector or [Models API](/docs/api/models) for the live list.
+
+### Temperature Settings
+
+| Temperature   | Behavior                            |
+| ------------- | ----------------------------------- |
+| **0.0 - 0.3** | More focused, deterministic         |
+| **0.4 - 0.7** | Balanced creativity and consistency |
+| **0.8 - 1.0** | More creative, varied responses     |
+
+<Callout type="warning">
+  Higher temperatures may produce less predictable outputs. Start with 0.7 for
+  most use cases.
+</Callout>
+
+## Avatar Generation
+
+The Agent Creator includes AI-powered avatar generation.
+
+### Generation Options
+
+- **Style**: Realistic, Cartoon, Anime, Abstract
+- **Background**: Solid color, Gradient, Scene
+- **Expression**: Neutral, Friendly, Professional
+
+### Custom Upload
+
+You can also upload a custom avatar image:
+
+- Supported formats: PNG, JPG, WebP
+- Recommended size: 512x512 pixels
+- Maximum file size: 2MB
+
+## Advanced Settings
+
+### System Prompt Override
+
+For fine-grained control, you can provide a custom system prompt:
+
+```
+You are {name}, a helpful AI assistant.
+
+Background:
+{bio}
+
+Communication Style:
+{style}
+
+Always be helpful and accurate.
+```
+
+### Knowledge Base
+
+Connect documents to enhance your agent's knowledge:
+
+1. Navigate to [Knowledge Base](/dashboard/documents)
+2. Upload documents (PDF, TXT, MD)
+3. Link to your agent in the creator
+
+### MCP Tools
+
+Connect external tools via MCP:
+
+1. Browse the [MCP Registry](/dashboard/mcps)
+2. Select tools to enable
+3. Configure tool-specific settings
+
+## Templates
+
+Start from pre-built templates:
+
+<div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+  <div className="p-4 border border-white/10 bg-white/[0.02]">
+    <h4 className="font-semibold mb-2">💼 Business Assistant</h4>
+    <p className="text-white/60 text-sm">
+      Professional agent for business queries, scheduling, and communication.
+    </p>
+  </div>
+  <div className="p-4 border border-white/10 bg-white/[0.02]">
+    <h4 className="font-semibold mb-2">📚 Research Helper</h4>
+    <p className="text-white/60 text-sm">
+      Academic-focused agent for research and analysis.
+    </p>
+  </div>
+  <div className="p-4 border border-white/10 bg-white/[0.02]">
+    <h4 className="font-semibold mb-2">💻 Code Reviewer</h4>
+    <p className="text-white/60 text-sm">
+      Technical agent for code review and debugging.
+    </p>
+  </div>
+  <div className="p-4 border border-white/10 bg-white/[0.02]">
+    <h4 className="font-semibold mb-2">🎨 Creative Writer</h4>
+    <p className="text-white/60 text-sm">
+      Creative agent for writing, brainstorming, and content creation.
+    </p>
+  </div>
+</div>
+
+## Export & Import
+
+### Export Character JSON
+
+Download your agent's configuration as JSON:
+
+```json
+{
+  "name": "Research Assistant",
+  "bio": [...],
+  "style": {...},
+  "modelProvider": "openai",
+  "settings": {...}
+}
+```
+
+### Import Existing Character
+
+Upload a character JSON file to populate the creator:
+
+1. Click "Import Character"
+2. Select your JSON file
+3. Review and modify as needed
+4. Deploy
+
+## Tips for Success
+
+- **Be Specific** — Detailed style instructions lead to more consistent behavior
+- **Test Extensively** — Try various scenarios in the preview before deploying
+- **Iterate** — Start simple and add complexity based on testing results
+- **Use Templates** — Start from a template and customize for faster setup
+
+## Next Steps
+
+<Cards>
+  <Cards.Card title="AI Agents" href="/docs/agents">
+    Learn more about agent capabilities
+  </Cards.Card>
+  <Cards.Card title="Character JSON" href="/docs/character-json">
+    Advanced character configuration
+  </Cards.Card>
+  <Cards.Card title="Knowledge Base" href="/docs/documents">
+    Enhance agents with RAG
+  </Cards.Card>
+  <Cards.Card title="API Explorer" href="/dashboard/api-explorer">
+    Test your agent via API
+  </Cards.Card>
+</Cards>

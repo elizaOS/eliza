@@ -1,0 +1,71 @@
+{{- if and .Values.prometheus.enabled .Values.prometheus.alerts.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "gateway-webhook.fullname" . }}-alerts
+  namespace: {{ include "gateway-webhook.namespace" . }}
+  labels:
+    {{- include "gateway-webhook.labels" . | nindent 4 }}
+    prometheus: kube-prometheus
+spec:
+  groups:
+    - name: gateway-webhook.rules
+      rules:
+        - alert: GatewayWebhookDown
+          expr: up{job="{{ include "gateway-webhook.fullname" . }}"} == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Gateway Webhook pod is down"
+            description: "Gateway Webhook pod {{ "{{" }} $labels.pod {{ "}}" }} has been down for more than 1 minute."
+
+        - alert: GatewayWebhookPodUnhealthy
+          expr: |
+            kube_pod_container_status_ready{container="gateway", namespace="{{ include "gateway-webhook.namespace" . }}"} == 0
+          for: 2m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Gateway Webhook pod not ready"
+            description: "Pod {{ "{{" }} $labels.pod {{ "}}" }} has not been ready for 2 minutes."
+
+        - alert: GatewayWebhookHighMemory
+          expr: |
+            container_memory_usage_bytes{container="gateway", namespace="{{ include "gateway-webhook.namespace" . }}"} / container_spec_memory_limit_bytes{container="gateway", namespace="{{ include "gateway-webhook.namespace" . }}"} > 0.9
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Gateway Webhook high memory usage"
+            description: "Pod {{ "{{" }} $labels.pod {{ "}}" }} memory usage is above 90%."
+
+        - alert: GatewayWebhookHighCPU
+          expr: |
+            rate(container_cpu_usage_seconds_total{container="gateway", namespace="{{ include "gateway-webhook.namespace" . }}"}[5m]) / container_spec_cpu_quota{container="gateway", namespace="{{ include "gateway-webhook.namespace" . }}"} * 100000 > 90
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Gateway Webhook high CPU usage"
+            description: "Pod {{ "{{" }} $labels.pod {{ "}}" }} CPU usage is above 90%."
+
+        - alert: GatewayWebhookRestarting
+          expr: |
+            increase(kube_pod_container_status_restarts_total{container="gateway", namespace="{{ include "gateway-webhook.namespace" . }}"}[1h]) > 3
+          labels:
+            severity: warning
+          annotations:
+            summary: "Gateway Webhook restarting frequently"
+            description: "Pod {{ "{{" }} $labels.pod {{ "}}" }} has restarted {{ "{{" }} $value {{ "}}" }} times in the last hour."
+
+        - alert: GatewayWebhookSlowStart
+          expr: |
+            time() - kube_pod_start_time{pod=~"gateway-webhook.*", namespace="{{ include "gateway-webhook.namespace" . }}"} > 300
+            and kube_pod_container_status_ready{container="gateway", namespace="{{ include "gateway-webhook.namespace" . }}"} == 0
+          labels:
+            severity: warning
+          annotations:
+            summary: "Gateway Webhook slow to start"
+            description: "Pod {{ "{{" }} $labels.pod {{ "}}" }} has been starting for more than 5 minutes."
+{{- end }}

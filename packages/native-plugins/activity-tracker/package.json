@@ -1,0 +1,43 @@
+{
+  "name": "@elizaos/native-activity-tracker",
+  "version": "2.0.0-beta.1",
+  "description": "macOS activity-tracker native helper (Swift) plus a small TypeScript driver that spawns and line-parses the collector process.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/",
+    "native/macos/activity-collector",
+    "native/macos/activity-collector.swift",
+    "dist"
+  ],
+  "scripts": {
+    "build": "node ../../../scripts/rm-path-recursive.mjs dist && tsc -p tsconfig.json",
+    "build:swift": "swiftc -O native/macos/activity-collector.swift -o native/macos/activity-collector"
+  },
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "elizaos": {
+    "platforms": [
+      "darwin"
+    ],
+    "runtime": "native",
+    "platformDetails": {
+      "darwin": "NSWorkspace app-focus collector via Swift helper.",
+      "linux": "Not available — macOS-only collector.",
+      "win32": "Not available — macOS-only collector."
+    }
+  }
+}

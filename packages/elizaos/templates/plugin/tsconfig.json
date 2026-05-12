@@ -1,0 +1,31 @@
+{
+	"compilerOptions": {
+		"outDir": "dist",
+		"lib": ["ESNext", "dom"],
+		"types": ["node"],
+		"target": "ESNext",
+		"module": "Preserve",
+		"moduleResolution": "Bundler",
+		"strict": true,
+		"esModuleInterop": true,
+		"skipLibCheck": true,
+		"incremental": true,
+		"composite": true,
+		"declaration": true,
+		"declarationMap": true,
+		"forceConsistentCasingInFileNames": false,
+		"allowImportingTsExtensions": true,
+		"resolveJsonModule": true,
+		"noImplicitAny": true,
+		"allowJs": true,
+		"checkJs": false,
+		"noEmitOnError": false,
+		"moduleDetection": "force",
+		"allowArbitraryExtensions": true,
+		"jsx": "react",
+		"isolatedModules": false,
+		"noEmit": true
+	},
+	"include": ["src/**/*.ts", "src/**/*.tsx"],
+	"exclude": []
+}

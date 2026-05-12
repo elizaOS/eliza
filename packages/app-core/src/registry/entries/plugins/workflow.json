@@ -1,0 +1,25 @@
+{
+  "id": "workflow",
+  "name": "Workflow",
+  "description": "Natural-language workflow actions (create, activate, deactivate, delete). Workflows run in-process with the agent runtime using workflows.",
+  "npmName": "@elizaos/plugin-workflow",
+  "version": "1.2.10",
+  "source": "bundled",
+  "tags": ["workflow", "automation"],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "group": "feature-other",
+    "groupOrder": 12,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://elizaos.ai",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "other"
+}

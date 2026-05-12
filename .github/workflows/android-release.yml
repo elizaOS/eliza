@@ -1,0 +1,301 @@
+name: Android Build & Publish
+
+on:
+  workflow_call:
+    inputs:
+      track:
+        description: "Play Store track"
+        required: false
+        type: string
+        default: internal
+      version_name:
+        description: "Version name (e.g. 2.0.0-beta.0)"
+        required: true
+        type: string
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: true
+      ANDROID_KEYSTORE_PASSWORD:
+        required: true
+      ANDROID_KEY_ALIAS:
+        required: true
+      ANDROID_KEY_PASSWORD:
+        required: true
+      PLAY_STORE_SERVICE_ACCOUNT_JSON:
+        required: false
+  workflow_dispatch:
+    inputs:
+      track:
+        description: "Play Store track"
+        type: choice
+        options:
+          - internal
+          - beta
+          - production
+        default: internal
+      version_name:
+        description: "Version name (e.g. 2.0.0-beta.0)"
+        required: false
+        type: string
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  JAVA_VERSION: "21"
+  NODE_VERSION: "22"
+
+jobs:
+  build-aab:
+    name: Build Signed AAB
+    runs-on: ubuntu-24.04
+    outputs:
+      version_name: ${{ steps.version.outputs.name }}
+      version_code: ${{ steps.version.outputs.code }}
+      play_store_ready: ${{ steps.play_store_credentials.outputs.ready }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: "temurin"
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+
+      - name: Determine version
+        id: version
+        run: |
+          if [[ -n "${{ inputs.version_name }}" ]]; then
+            VERSION_NAME="${{ inputs.version_name }}"
+          else
+            VERSION_NAME=$(node -p "require('./package.json').version")
+          fi
+
+          # Generate a monotonic Android version code from semver.
+          # 2.0.0-alpha.82 -> 200001082, 2.0.0-beta.0 -> 200003000,
+          # 2.0.0 -> 200009000, 2.1.3 -> 201039000.
+          VERSION_CODE=$(node - "$VERSION_NAME" <<'NODE'
+          const version = process.argv[2];
+          const match = version.match(/^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z-]+)(?:\.(\d+))?)?$/);
+          if (!match) {
+            console.error(`Invalid semver version: ${version}`);
+            process.exit(1);
+          }
+
+          const [, majorRaw, minorRaw, patchRaw, prerelease, prereleaseRaw = "0"] =
+            match;
+          const major = Number(majorRaw);
+          const minor = Number(minorRaw);
+          const patch = Number(patchRaw);
+          const prereleaseNumber = Number(prereleaseRaw);
+          if (
+            !Number.isInteger(major) ||
+            !Number.isInteger(minor) ||
+            !Number.isInteger(patch) ||
+            !Number.isInteger(prereleaseNumber) ||
+            prereleaseNumber < 0 ||
+            prereleaseNumber > 999
+          ) {
+            console.error(`Invalid Android version component in ${version}`);
+            process.exit(1);
+          }
+
+          const channelOffsets = {
+            alpha: 1000,
+            beta: 3000,
+            rc: 5000,
+            nightly: 7000,
+          };
+          const channelOffset = prerelease
+            ? (channelOffsets[prerelease] ?? 8000)
+            : 9000;
+          const code =
+            major * 100000000 +
+            minor * 1000000 +
+            patch * 10000 +
+            channelOffset +
+            prereleaseNumber;
+          if (code > 2100000000) {
+            console.error(`Android versionCode ${code} exceeds Play Store limit`);
+            process.exit(1);
+          }
+          console.log(code);
+          NODE
+          )
+
+          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "Version: $VERSION_NAME (code: $VERSION_CODE)"
+
+      - name: Check Play Store credentials
+        id: play_store_credentials
+        env:
+          PLAY_STORE_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          if [[ -n "$PLAY_STORE_SERVICE_ACCOUNT_JSON" ]]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::PLAY_STORE_SERVICE_ACCOUNT_JSON is required for Android release publishing."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Prepare Android platform
+        working-directory: packages/app
+        run: bun run build:android
+
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > /tmp/elizaos-upload.jks
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+
+      - name: Build signed AAB
+        working-directory: packages/app/android
+        env:
+          ELIZAOS_VERSION_NAME: ${{ steps.version.outputs.name }}
+          ELIZAOS_VERSION_CODE: ${{ steps.version.outputs.code }}
+          ELIZAOS_KEYSTORE_PATH: /tmp/elizaos-upload.jks
+          ELIZAOS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ELIZAOS_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ELIZAOS_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew bundleRelease
+
+      - name: Verify AAB
+        run: |
+          AAB_PATH="packages/app/android/app/build/outputs/bundle/release/app-release.aab"
+          if [[ ! -f "$AAB_PATH" ]]; then
+            echo "ERROR: AAB not found at $AAB_PATH"
+            ls -la packages/app/android/app/build/outputs/bundle/release/ 2>/dev/null || echo "Release dir not found"
+            exit 1
+          fi
+          echo "AAB size: $(du -h "$AAB_PATH" | cut -f1)"
+          file "$AAB_PATH"
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: eliza-release-aab
+          path: packages/app/android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 90
+
+      - name: Attach AAB to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ steps.version.outputs.name }}"
+          TAG="v${VERSION}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::No GitHub release found for $TAG; cannot attach AAB."
+            exit 1
+          fi
+          cp packages/app/android/app/build/outputs/bundle/release/app-release.aab \
+             "Eliza-${VERSION}.aab"
+          gh release upload "$TAG" "Eliza-${VERSION}.aab" --clobber
+
+      - name: Clean up keystore
+        if: always()
+        run: rm -f /tmp/elizaos-upload.jks
+
+  publish-play-store:
+    name: Publish to Play Store
+    needs: build-aab
+    if: needs.build-aab.outputs.play_store_ready == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Download AAB
+        uses: actions/download-artifact@v8
+        with:
+          name: eliza-release-aab
+          path: aab/
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0.3"
+          bundler-cache: true
+          working-directory: packages/app-core/platforms/android
+
+      - name: Decode Play Store service account key
+        run: |
+          echo "${{ secrets.PLAY_STORE_SERVICE_ACCOUNT_JSON }}" | base64 -d > /tmp/play-store-key.json
+
+      - name: Determine track
+        id: track
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "track=${{ inputs.track }}" >> "$GITHUB_OUTPUT"
+          elif echo "${{ needs.build-aab.outputs.version_name }}" | grep -qE '(beta|rc)'; then
+            echo "track=internal" >> "$GITHUB_OUTPUT"
+          else
+            echo "track=production" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload to Play Store
+        working-directory: packages/app-core/platforms/android
+        env:
+          PLAY_STORE_JSON_KEY: /tmp/play-store-key.json
+        run: |
+          bundle exec fastlane supply \
+            --aab "$GITHUB_WORKSPACE/aab/app-release.aab" \
+            --track "${{ steps.track.outputs.track }}" \
+            --json_key "$PLAY_STORE_JSON_KEY" \
+            --package_name "ai.elizaos.app"
+
+      - name: Clean up credentials
+        if: always()
+        run: rm -f /tmp/play-store-key.json
+
+  summary:
+    name: Release Summary
+    needs: [build-aab, publish-play-store]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Summary
+        run: |
+          {
+            echo "## Android Release Summary"
+            echo ""
+            echo "**Version:** ${{ needs.build-aab.outputs.version_name }} (code: ${{ needs.build-aab.outputs.version_code }})"
+            echo ""
+            echo "| Step | Status |"
+            echo "|------|--------|"
+            echo "| Build AAB | ${{ needs.build-aab.result }} |"
+            echo "| Publish to Play Store | ${{ needs.publish-play-store.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Require Android release succeeded
+        run: |
+          failed=0
+          if [[ "${{ needs.build-aab.result }}" != "success" ]]; then
+            echo "::error::Signed AAB build result was '${{ needs.build-aab.result }}', expected success"
+            failed=1
+          fi
+          if [[ "${{ needs.publish-play-store.result }}" != "success" ]]; then
+            echo "::error::Play Store publish result was '${{ needs.publish-play-store.result }}', expected success"
+            failed=1
+          fi
+          exit "$failed"

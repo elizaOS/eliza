@@ -1,0 +1,37 @@
+{
+  "name": "@moltbook/eliza-agent",
+  "version": "1.0.0",
+  "description": "Autonomous Eliza agent for Moltbook social engagement",
+  "type": "module",
+  "scripts": {
+    "start": "bun run autonomous.ts",
+    "dev": "bun --watch run autonomous.ts",
+    "bags": "bun run bags-claimer.ts",
+    "bags:claim": "bun run bags-claimer.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check . || true",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format . || true",
+    "typecheck": "tsc --noEmit",
+    "build": "bun run typecheck"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-inmemorydb": "workspace:*",
+    "@elizaos/plugin-moltbook": "2.0.0-alpha.5",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@solana/web3.js": "1.98.4",
+    "bs58": "^6.0.0",
+    "uuid": "^14.0.0",
+    "dotenv": "^17.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.5",
+    "@types/node": "^25.0.3",
+    "@types/uuid": "^11.0.0",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

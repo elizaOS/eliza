@@ -1,0 +1,46 @@
+{
+  "name": "@elizaos/scenario-schema",
+  "version": "2.0.0-beta.1",
+  "description": "Schema validation for elizaOS scenario test files (final-checks, action specs, etc.).",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/elizaOS/eliza",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "packages/scenario-schema"
+  },
+  "keywords": [
+    "elizaos",
+    "scenario",
+    "schema",
+    "validation"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js",
+      "default": "./index.js"
+    },
+    "./package.json": "./package.json",
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  }
+}

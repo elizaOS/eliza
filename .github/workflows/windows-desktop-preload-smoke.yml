@@ -1,0 +1,88 @@
+name: Windows Desktop Preload Smoke
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "packages/app-core/scripts/**"
+      - "packages/app-core/platforms/electrobun/**"
+      - "packages/app/**"
+      - "package.json"
+      - "bun.lock"
+  workflow_dispatch:
+
+concurrency:
+  group: windows-desktop-preload-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preload-smoke:
+    name: desktop preload preflight (windows)
+    runs-on: windows-latest
+    steps:
+      - name: Enable long paths (Windows)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          function Set-GitLongPaths([string]$Scope) {
+            & git config $Scope core.longpaths true
+            if ($LASTEXITCODE -ne 0) {
+              throw "git config $Scope core.longpaths true failed with exit code $LASTEXITCODE"
+            }
+          }
+
+          try {
+            Set-GitLongPaths "--system"
+            Write-Host "Enabled Git long paths in system config."
+          } catch {
+            Write-Warning "System git config failed; falling back to --global. $($_.Exception.Message)"
+            Set-GitLongPaths "--global"
+            Write-Host "Enabled Git long paths in global config."
+          }
+
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /package.json
+            /bun.lock
+            /bunfig.toml
+            /tsconfig.json
+            /.github/actions/setup-bun-workspace/**
+            packages/
+            patches/
+            scripts/
+            plugins/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Setup Bun workspace
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.3.11"
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          run-postinstall: "false"
+          init-submodules: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Run lightweight desktop bootstrap patches
+        run: |
+          bun install --cwd packages/app-core/platforms/electrobun --ignore-scripts
+          node packages/app-core/scripts/patch-workspace-plugins.mjs
+          node packages/app-core/scripts/patch-deps.mjs
+          node packages/app-core/scripts/ensure-type-package-aliases.mjs
+
+      - name: Desktop preflight
+        run: bun packages/app-core/scripts/desktop-build.mjs preflight --variant=base
+
+      - name: Build preload bridge
+        working-directory: packages/app-core/platforms/electrobun
+        # Invoke node directly to sidestep the Bun 1.3.x Windows bin-remap bug
+        # that breaks `bun run <script>` when the script alias shells out to
+        # another bin (node). The package.json script is literally this command.
+        run: node ../../scripts/build-electrobun-preload.mjs

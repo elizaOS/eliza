@@ -1,0 +1,148 @@
+{
+  "version": "1.0.0",
+  "providers": [
+    {
+      "name": "ACTIONS",
+      "description": "Possible response actions",
+      "position": -1,
+      "dynamic": false,
+      "descriptionCompressed": "Available response actions."
+    },
+    {
+      "name": "CHARACTER",
+      "description": "Provides the agent's character definition and personality information including bio, topics, adjectives, style directions, and example conversations",
+      "dynamic": false,
+      "descriptionCompressed": "Agent character: bio, topics, adjectives, style, example conversations."
+    },
+    {
+      "name": "RECENT_MESSAGES",
+      "description": "Provides recent message history from the current conversation including formatted messages, posts, action results, and recent interactions",
+      "position": 100,
+      "dynamic": true,
+      "descriptionCompressed": "Recent conversation messages, posts, action results."
+    },
+    {
+      "name": "ACTION_STATE",
+      "description": "Provides information about the current action state and available actions",
+      "dynamic": true,
+      "descriptionCompressed": "Current action state and available actions."
+    },
+    {
+      "name": "ATTACHMENTS",
+      "description": "Media attachments in the current message",
+      "dynamic": true,
+      "descriptionCompressed": "Media attachments in current message."
+    },
+    {
+      "name": "CAPABILITIES",
+      "description": "Agent capabilities including models, services, and features",
+      "dynamic": false,
+      "descriptionCompressed": "Agent capabilities: models, services, features."
+    },
+    {
+      "name": "CHOICE",
+      "description": "Available choice options for selection when there are pending tasks or decisions",
+      "dynamic": true,
+      "descriptionCompressed": "Pending choice options for multi-option tasks."
+    },
+    {
+      "name": "CONTACTS",
+      "description": "Provides contact information from the relationships including categories and preferences",
+      "dynamic": true,
+      "descriptionCompressed": "Contact info from relationships with categories."
+    },
+    {
+      "name": "CONTEXT_BENCH",
+      "description": "Benchmark/task context injected by a benchmark harness",
+      "position": 5,
+      "dynamic": true,
+      "descriptionCompressed": "Benchmark/task context from harness."
+    },
+    {
+      "name": "ENTITIES",
+      "description": "Provides information about entities in the current context including users, agents, and participants",
+      "dynamic": true,
+      "descriptionCompressed": "Entities in context: users, agents, participants."
+    },
+    {
+      "name": "FACTS",
+      "description": "Provides known facts about entities learned through conversation",
+      "dynamic": true,
+      "descriptionCompressed": "Known facts about entities from conversation."
+    },
+    {
+      "name": "FOLLOW_UPS",
+      "description": "Provides information about upcoming follow-ups and reminders scheduled for contacts",
+      "dynamic": true,
+      "descriptionCompressed": "Upcoming follow-ups/reminders for contacts."
+    },
+    {
+      "name": "DOCUMENTS",
+      "description": "Provides relevant snippets and recent entries from the agent document store",
+      "dynamic": true,
+      "descriptionCompressed": "Relevant snippets and recent stored documents."
+    },
+    {
+      "name": "PROVIDERS",
+      "description": "Available context providers",
+      "dynamic": false,
+      "descriptionCompressed": "Available context providers."
+    },
+    {
+      "name": "RELATIONSHIPS",
+      "description": "Relationships between entities observed by the agent including tags and metadata",
+      "dynamic": true,
+      "descriptionCompressed": "Entity relationships with tags/metadata."
+    },
+    {
+      "name": "ROLES",
+      "description": "Roles assigned to entities in the current context (Admin, Owner, Member, None)",
+      "dynamic": true,
+      "descriptionCompressed": "Entity roles in context (Admin/Owner/Member/None)."
+    },
+    {
+      "name": "SETTINGS",
+      "description": "Current settings for the agent/server (filtered for security, excludes sensitive keys)",
+      "dynamic": true,
+      "descriptionCompressed": "Agent/server settings (security-filtered)."
+    },
+    {
+      "name": "TIME",
+      "description": "Provides the current date and time in UTC for time-based operations or responses",
+      "dynamic": true,
+      "descriptionCompressed": "Current UTC date/time."
+    },
+    {
+      "name": "WORLD",
+      "description": "Provides information about the current world context including settings and members",
+      "dynamic": true,
+      "descriptionCompressed": "World context: settings and members."
+    },
+    {
+      "name": "LONG_TERM_MEMORY",
+      "description": "Persistent facts and preferences about the user learned and remembered across conversations",
+      "position": 50,
+      "dynamic": false,
+      "descriptionCompressed": "Persistent user facts/preferences across conversations."
+    },
+    {
+      "name": "SUMMARIZED_CONTEXT",
+      "description": "Provides summarized context from previous conversations for optimized context usage",
+      "position": 96,
+      "dynamic": false,
+      "descriptionCompressed": "Summarized context from prior conversations."
+    },
+    {
+      "name": "AGENT_SETTINGS",
+      "description": "Provides the agent's current configuration settings (filtered for security)",
+      "dynamic": true,
+      "descriptionCompressed": "Agent config settings (security-filtered)."
+    },
+    {
+      "name": "CURRENT_TIME",
+      "description": "Provides current time and date information in various formats",
+      "dynamic": true,
+      "descriptionCompressed": "Current time/date in various formats."
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "tsBuildInfoFile": ".tsbuildinfo",
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@/lib/*": ["./packages/lib/*"],
+      "@/db/*": ["./packages/db/*"],
+      "@/tests/*": ["./packages/tests/*"],
+      "@/types/*": ["./packages/types/*"],
+      "@/*": ["./*"],
+      "@/components/*": ["./packages/ui/src/components/*"],
+      "@elizaos/cloud-ui": ["./packages/ui/src/index.ts"],
+      "@elizaos/core": ["../packages/core/src/index.node.ts"],
+      "@elizaos/core/*": ["../packages/core/src/*"],
+      "drizzle-orm": ["./node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["./node_modules/drizzle-orm/*"]
+    }
+  },
+  "include": [
+    "./packages/types/**/*.d.ts",
+    "./packages/ui/src/components/**/*.ts",
+    "./packages/ui/src/components/**/*.tsx",
+    "./packages/lib/**/*.ts",
+    "./packages/lib/**/*.tsx",
+    "./packages/db/**/*.ts",
+    "./packages/tests/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "ignore",
+    "e2e",
+    "scripts",
+    "**/*.stories.ts",
+    "**/*.stories.tsx",
+    ".next",
+    "out",
+    "build",
+    "dist",
+    ".turbo",
+    "coverage"
+  ]
+}

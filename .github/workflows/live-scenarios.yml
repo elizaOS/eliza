@@ -1,0 +1,224 @@
+# Live Scenario Runner (nightly)
+#
+# Executes the 22 executive-assistant scenarios and 15 connector certification
+# scenarios against a live LLM runtime with real connector credentials and
+# uploads the JSON report. Scheduled/default dispatch runs are report-only
+# while this catalog is still being hardened; manual dispatch can opt into
+# failing when any scenario fails or the aggregate LLM-judge score falls below
+# LIFEOPS_JUDGE_THRESHOLD. Missing setup prerequisites still fail loudly.
+#
+# Required repo secrets (self-documented):
+#   LLM provider (at least one):
+#     OPENAI_API_KEY
+#     OPENROUTER_API_KEY
+#     ANTHROPIC_API_KEY
+#     GOOGLE_GENERATIVE_AI_API_KEY or GOOGLE_API_KEY
+#     GROQ_API_KEY
+#   Connector credentials (presence gates the relevant scenarios):
+#     GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_OAUTH_REFRESH_TOKEN
+#     GMAIL_TEST_ACCOUNT_EMAIL, GMAIL_TEST_ACCOUNT_REFRESH_TOKEN
+#     CALENDLY_API_TOKEN
+#     TELEGRAM_BOT_TOKEN, TELEGRAM_TEST_CHAT_ID, TELEGRAM_API_ID, TELEGRAM_API_HASH
+#     DISCORD_BOT_TOKEN, DISCORD_TEST_GUILD_ID, DISCORD_TEST_CHANNEL_ID
+#     SIGNAL_CLI_URL, SIGNAL_TEST_NUMBER
+#     IMESSAGE_BRIDGE_URL, IMESSAGE_TEST_HANDLE
+#     WHATSAPP_TOKEN, WHATSAPP_PHONE_ID, WHATSAPP_TEST_CONTACT
+#     TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER, TWILIO_TEST_TO_NUMBER
+#     X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET, X_TEST_DM_HANDLE
+#     NOTIFICATION_RELAY_URL, NOTIFICATION_RELAY_TOKEN
+#     TRAVEL_BOOKING_API_KEY
+# Optional:
+#   LIFEOPS_JUDGE_THRESHOLD (workflow input, default 0.8)
+#   SCENARIO_FILTER        (comma-separated scenario ids, default all)
+#   SCENARIO_ENFORCE_GATE  (workflow input, default false)
+#   SKIP_REASON            (required if SCENARIO_SKIP is set)
+#
+# 1Password vault: this workflow's plain `*_API_KEY` secrets are sourced from the
+# `eliza-e2e` 1Password vault. The vault must exist in 1Password and the
+# corresponding GitHub Actions secrets must be configured on the
+# `elizaOS/eliza` repo before this workflow can run successfully. See
+# scenario-matrix.yml for the structured `ELIZA_E2E_*` connector secrets.
+
+name: Live Scenarios
+
+on:
+  schedule:
+    # 08:30 UTC daily — after upstream nightly at 04:00 UTC settles.
+    - cron: "30 8 * * *"
+  workflow_dispatch:
+    inputs:
+      scenario_filter:
+        description: "Comma-separated scenario ids (empty = all)"
+        required: false
+        type: string
+        default: ""
+      judge_threshold:
+        description: "LLM-judge minimum pass score (0.0 - 1.0)"
+        required: false
+        type: string
+        default: "0.8"
+      skip_reason:
+        description: "If you plan to skip any scenario, document why"
+        required: false
+        type: string
+        default: ""
+      enforce_gate:
+        description: "Fail the workflow when live scenarios fail"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: live-scenarios-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BUN_VERSION: "1.3.13"
+  NODE_VERSION: "22.20.0"
+  ELIZA_LIVE_TEST: "1"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  live-scenarios:
+    name: Live scenarios (EA + connectors)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+
+      - name: Verify scenario-runner CLI present
+        run: |
+          test -f packages/scenario-runner/src/cli.ts || \
+            { echo "scenario-runner CLI missing"; exit 1; }
+
+      - name: Build live scenario runtime packages
+        # The live runner executes TypeScript sources directly, but several
+        # workspace packages intentionally export dist/* entry points. Because
+        # dependency installation ignores postinstall scripts, build only the
+        # packages that the live scenario runtime imports through those exports.
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          echo "::group::Build packages/core"
+          bun run --cwd packages/core build
+          echo "::endgroup::"
+
+          provider_package=""
+          if [ -n "${GROQ_API_KEY:-}" ]; then
+            provider_package="plugins/plugin-groq"
+          elif [ -n "${OPENAI_API_KEY:-}" ]; then
+            provider_package="plugins/plugin-openai"
+          elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+            provider_package="plugins/plugin-anthropic"
+          elif [ -n "${GOOGLE_GENERATIVE_AI_API_KEY:-}" ] || [ -n "${GOOGLE_API_KEY:-}" ]; then
+            provider_package="plugins/plugin-google-genai"
+          elif [ -n "${OPENROUTER_API_KEY:-}" ]; then
+            provider_package="plugins/plugin-openrouter"
+          fi
+
+          package_dirs=(
+            plugins/plugin-sql
+            plugins/plugin-agent-skills
+            plugins/plugin-pdf
+            plugins/plugin-telegram
+            plugins/plugin-whatsapp
+            plugins/plugin-signal
+            plugins/plugin-imessage
+          )
+          if [ -n "$provider_package" ]; then
+            package_dirs+=("$provider_package")
+          fi
+
+          for package_dir in "${package_dirs[@]}"; do
+            echo "::group::Build ${package_dir}"
+            bun run --cwd "$package_dir" build
+            echo "::endgroup::"
+          done
+
+      - name: Run EA + connector live scenarios
+        id: run
+        env:
+          # LLM providers
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          # Google Workspace
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
+          GMAIL_TEST_ACCOUNT_EMAIL: ${{ secrets.GMAIL_TEST_ACCOUNT_EMAIL }}
+          GMAIL_TEST_ACCOUNT_REFRESH_TOKEN: ${{ secrets.GMAIL_TEST_ACCOUNT_REFRESH_TOKEN }}
+          # Calendly
+          CALENDLY_API_TOKEN: ${{ secrets.CALENDLY_API_TOKEN }}
+          # Messaging
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_TEST_CHAT_ID: ${{ secrets.TELEGRAM_TEST_CHAT_ID }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_TEST_GUILD_ID: ${{ secrets.DISCORD_TEST_GUILD_ID }}
+          DISCORD_TEST_CHANNEL_ID: ${{ secrets.DISCORD_TEST_CHANNEL_ID }}
+          SIGNAL_CLI_URL: ${{ secrets.SIGNAL_CLI_URL }}
+          SIGNAL_TEST_NUMBER: ${{ secrets.SIGNAL_TEST_NUMBER }}
+          IMESSAGE_BRIDGE_URL: ${{ secrets.IMESSAGE_BRIDGE_URL }}
+          IMESSAGE_TEST_HANDLE: ${{ secrets.IMESSAGE_TEST_HANDLE }}
+          WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+          WHATSAPP_PHONE_ID: ${{ secrets.WHATSAPP_PHONE_ID }}
+          WHATSAPP_TEST_CONTACT: ${{ secrets.WHATSAPP_TEST_CONTACT }}
+          # Twilio SMS/Voice
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
+          TWILIO_TEST_TO_NUMBER: ${{ secrets.TWILIO_TEST_TO_NUMBER }}
+          # X / DM
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+          X_TEST_DM_HANDLE: ${{ secrets.X_TEST_DM_HANDLE }}
+          # Push notifications + travel
+          NOTIFICATION_RELAY_URL: ${{ secrets.NOTIFICATION_RELAY_URL }}
+          NOTIFICATION_RELAY_TOKEN: ${{ secrets.NOTIFICATION_RELAY_TOKEN }}
+          TRAVEL_BOOKING_API_KEY: ${{ secrets.TRAVEL_BOOKING_API_KEY }}
+          # Run controls
+          SCENARIO_FILTER: ${{ inputs.scenario_filter }}
+          LIFEOPS_JUDGE_THRESHOLD: ${{ inputs.judge_threshold || '0.8' }}
+          SCENARIO_ENFORCE_GATE: ${{ inputs.enforce_gate && '1' || '0' }}
+          SKIP_REASON: ${{ inputs.skip_reason }}
+          REPORT_PATH: artifacts/lifeops-scenario-report.json
+        run: node scripts/run-live-scenarios.mjs
+
+      - name: Upload scenario report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: lifeops-scenario-report
+          path: artifacts/lifeops-scenario-report.json
+          if-no-files-found: warn
+          retention-days: 30

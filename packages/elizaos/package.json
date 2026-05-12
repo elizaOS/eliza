@@ -1,0 +1,65 @@
+{
+  "name": "elizaos",
+  "version": "2.0.0-beta.5",
+  "description": "elizaOS CLI - Create and upgrade elizaOS projects and plugins",
+  "type": "module",
+  "bin": {
+    "elizaos": "./dist/cli.js"
+  },
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "templates",
+    "templates-manifest.json",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun run build.ts --watch",
+    "lint": "bunx @biomejs/biome check --write README.md build.ts package.json scripts src templates-manifest.json templates/min-plugin templates/min-project templates/project/.env.example templates/project/.gitignore templates/project/README.md templates/project/bunfig.toml templates/project/package.json templates/project/scripts templates/project/template.json templates/project/test tsconfig.json vitest.config.ts && cd templates/plugin && bunx @biomejs/biome check --write --unsafe . --config-path ./biome.json --vcs-enabled=false && cd ../project/apps/app && bunx @biomejs/biome check --write --unsafe . --config-path ./biome.json --vcs-enabled=false",
+    "lint:check": "bunx @biomejs/biome check README.md build.ts package.json scripts src templates-manifest.json templates/min-plugin templates/min-project templates/project/.env.example templates/project/.gitignore templates/project/README.md templates/project/bunfig.toml templates/project/package.json templates/project/scripts templates/project/template.json templates/project/test tsconfig.json vitest.config.ts && cd templates/plugin && bunx @biomejs/biome check . --config-path ./biome.json --vcs-enabled=false && cd ../project/apps/app && bunx @biomejs/biome check . --config-path ./biome.json --vcs-enabled=false",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "test:packaged": "node ./scripts/packaged-smoke.mjs",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.0.0",
+    "commander": "^14.0.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.17"
+  },
+  "keywords": [
+    "elizaos",
+    "cli",
+    "ai",
+    "agent"
+  ],
+  "author": "elizaOS Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza"
+  },
+  "homepage": "https://elizaos.ai",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2",
+  "publishConfig": {
+    "access": "public"
+  }
+}

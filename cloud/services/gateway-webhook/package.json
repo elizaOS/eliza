@@ -1,0 +1,30 @@
+{
+  "name": "@elizaos/gateway-webhook",
+  "version": "1.0.0",
+  "description": "Multi-platform webhook gateway for Eliza Cloud (Telegram, Blooio, Twilio, WhatsApp)",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "dev": "PORT=3002 bun run --watch src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target node",
+    "start": "PORT=3002 bun run src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "docker:build": "docker build -t gateway-webhook:local ."
+  },
+  "dependencies": {
+    "@elizaos/billing": "workspace:*",
+    "@upstash/redis": "^1.37.0",
+    "hashring": "^3.2.0",
+    "hono": "4.12.18",
+    "ioredis": "^5.10.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/hashring": "^3.2.5",
+    "@types/node": "22.19.17",
+    "typescript": "^6.0.3"
+  }
+}

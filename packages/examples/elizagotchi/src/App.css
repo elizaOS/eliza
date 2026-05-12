@@ -1,0 +1,786 @@
+/**
+ * Elizagotchi - Fullscreen Minimal Style
+ */
+
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap");
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+  touch-action: manipulation;
+}
+
+body {
+  font-family: "Outfit", system-ui, sans-serif;
+}
+
+/* ============================================================================
+   GAME CONTAINER
+   ============================================================================ */
+
+.game {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #7ec8e3 0%, #a8e6cf 100%);
+  transition: background 0.8s ease;
+}
+
+.game.night {
+  background: linear-gradient(180deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+}
+
+/* ============================================================================
+   BACKGROUND LAYER
+   ============================================================================ */
+
+.bg-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.bg-layer svg {
+  width: 100%;
+  height: 100%;
+}
+
+.poop-layer {
+  position: absolute;
+  bottom: 15%;
+  left: 0;
+  right: 0;
+  height: 20%;
+  pointer-events: none;
+}
+
+.poop-layer svg {
+  position: absolute;
+}
+
+/* ============================================================================
+   PET LAYER
+   ============================================================================ */
+
+.pet-layer {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(70vw, 70vh, 350px);
+  height: min(70vw, 70vh, 350px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.3s ease;
+}
+
+.pet-layer .pet-sprite {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.2));
+}
+
+.pet-layer.playing,
+.pet-layer.happy {
+  animation: bounce 0.4s ease-in-out infinite;
+}
+
+.pet-layer.eating {
+  animation: munch 0.25s ease-in-out infinite;
+}
+
+.pet-layer.sleeping {
+  animation: breathe 2s ease-in-out infinite;
+}
+
+.pet-layer.evolving {
+  animation: glow-pulse 0.5s ease-in-out infinite;
+}
+
+.pet-layer.refusing {
+  animation: shake 0.3s ease-in-out;
+}
+
+/* ============================================================================
+   TOP BAR
+   ============================================================================ */
+
+.top-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 20px;
+  padding-top: calc(env(safe-area-inset-top, 20px) + 20px);
+  pointer-events: none;
+}
+
+.top-bar > * {
+  pointer-events: auto;
+}
+
+.stats-overlay {
+  display: flex;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 50px;
+}
+
+.stat-pill {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stat-pill-icon {
+  font-size: 14px;
+  transition: transform 0.3s;
+}
+
+.stat-pill.low .stat-pill-icon {
+  animation: pulse-warn 1s ease-in-out infinite;
+}
+
+.stat-pill-bar {
+  width: 32px;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.stat-pill-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+  background: linear-gradient(90deg, #4ade80, #22c55e);
+}
+
+.stat-pill.medium .stat-pill-fill {
+  background: linear-gradient(90deg, #fbbf24, #f59e0b);
+}
+
+.stat-pill.low .stat-pill-fill {
+  background: linear-gradient(90deg, #f87171, #ef4444);
+}
+
+.stat-pill.critical .stat-pill-fill {
+  animation: flash 0.5s ease-in-out infinite;
+}
+
+.status-badge {
+  font-size: 18px;
+  animation: wobble 1s ease-in-out infinite;
+}
+
+/* Settings button (top right) */
+.settings-btn-top {
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.settings-btn-top:hover {
+  background: rgba(0, 0, 0, 0.5);
+  transform: rotate(45deg);
+}
+
+/* ============================================================================
+   PET LABEL
+   ============================================================================ */
+
+.pet-label {
+  position: absolute;
+  top: calc(50% + min(35vw, 35vh, 175px) + 20px);
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  color: white;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.pet-name {
+  display: block;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.pet-stage {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  opacity: 0.7;
+  margin-top: 4px;
+}
+
+/* ============================================================================
+   MESSAGE TOAST
+   ============================================================================ */
+
+.toast {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -150%);
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  color: white;
+  padding: 12px 24px;
+  border-radius: 30px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  animation: toast-in 0.3s ease-out;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* ============================================================================
+   ACTIONS BAR
+   ============================================================================ */
+
+.actions-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 20px;
+  padding-bottom: calc(env(safe-area-inset-bottom, 20px) + 20px);
+  background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.4) 100%);
+}
+
+.action-btn {
+  width: 52px;
+  height: 52px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  font-size: 22px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.action-btn:hover:not(:disabled) {
+  transform: scale(1.1);
+  box-shadow: 0 6px 25px rgba(0, 0, 0, 0.3);
+}
+
+.action-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.action-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.action-btn.active {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white;
+}
+
+.game.night .action-btn {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.game.night .action-btn.active {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+}
+
+/* ============================================================================
+   SETTINGS PANEL
+   ============================================================================ */
+
+.settings-panel {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fade-in 0.2s ease;
+}
+
+.settings-content {
+  background: white;
+  border-radius: 24px;
+  padding: 28px;
+  width: 320px;
+  max-width: 90vw;
+  position: relative;
+  animation: slide-up 0.3s ease;
+}
+
+.settings-content h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 20px;
+  color: #1a1a2e;
+}
+
+.settings-section {
+  margin-bottom: 20px;
+}
+
+.settings-section-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #999;
+  margin-bottom: 10px;
+}
+
+.settings-action {
+  display: block;
+  width: 100%;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  border: none;
+  border-radius: 12px;
+  background: #f3f4f6;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  color: #333;
+}
+
+.settings-action:hover {
+  background: #e5e7eb;
+  transform: translateX(4px);
+}
+
+.settings-action:last-child {
+  margin-bottom: 0;
+}
+
+.settings-error {
+  color: #ef4444;
+  font-size: 0.8rem;
+  margin-top: 8px;
+}
+
+.settings-info {
+  padding-top: 16px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.info-row span:last-child {
+  font-weight: 600;
+  color: #333;
+}
+
+.settings-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: #f3f4f6;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  color: #666;
+}
+
+.settings-close:hover {
+  background: #e5e7eb;
+  color: #333;
+}
+
+/* ============================================================================
+   ATTENTION PULSE
+   ============================================================================ */
+
+.attention-pulse {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(80vw, 80vh, 400px);
+  height: min(80vw, 80vh, 400px);
+  border: 3px solid rgba(255, 100, 100, 0.5);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: attention-ring 1.5s ease-out infinite;
+}
+
+/* ============================================================================
+   AGENT LOG OVERLAY (Developer)
+   ============================================================================ */
+
+.agent-log {
+  position: fixed;
+  left: 20px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 92px);
+  width: min(420px, calc(100vw - 40px));
+  max-height: 40vh;
+  background: rgba(0, 0, 0, 0.55);
+  color: white;
+  border-radius: 16px;
+  padding: 12px;
+  z-index: 200;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.agent-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agent-log-title {
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+.agent-log-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.agent-log-btn {
+  border: 0;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.12);
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.agent-log-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.agent-log-list {
+  margin-top: 10px;
+  overflow: auto;
+  max-height: calc(40vh - 54px);
+  padding-right: 6px;
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  font-size: 12px;
+}
+
+.agent-log-empty {
+  opacity: 0.8;
+  padding: 8px 0;
+}
+
+.agent-log-entry {
+  padding: 8px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.agent-log-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  opacity: 0.9;
+}
+
+.agent-log-kind {
+  font-weight: 700;
+}
+
+.agent-log-action {
+  font-weight: 700;
+}
+
+.agent-log-status {
+  opacity: 0.8;
+}
+
+.agent-log-text {
+  margin-top: 6px;
+  opacity: 0.85;
+  line-height: 1.35;
+}
+
+/* ============================================================================
+   KEYFRAMES
+   ============================================================================ */
+
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) translateY(0);
+  }
+  50% {
+    transform: translate(-50%, -50%) translateY(-20px);
+  }
+}
+
+@keyframes munch {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.05);
+  }
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.02);
+  }
+}
+
+@keyframes glow-pulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 20px 40px rgba(0, 0, 0, 0.2)) brightness(1);
+  }
+  50% {
+    filter: drop-shadow(0 20px 60px rgba(255, 215, 0, 0.5)) brightness(1.3);
+  }
+}
+
+@keyframes shake {
+  0%,
+  100% {
+    transform: translate(-50%, -50%) translateX(0);
+  }
+  25% {
+    transform: translate(-50%, -50%) translateX(-10px);
+  }
+  75% {
+    transform: translate(-50%, -50%) translateX(10px);
+  }
+}
+
+@keyframes pulse-warn {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+}
+
+@keyframes flash {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes wobble {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  25% {
+    transform: rotate(-10deg);
+  }
+  75% {
+    transform: rotate(10deg);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -100%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -150%);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes attention-ring {
+  0% {
+    transform: translate(-50%, -50%) scale(0.8);
+    opacity: 0.8;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1.2);
+    opacity: 0;
+  }
+}
+
+.cloud-1 {
+  animation: drift 30s linear infinite;
+}
+
+.cloud-2 {
+  animation: drift 40s linear infinite reverse;
+}
+
+@keyframes drift {
+  from {
+    transform: translateX(-50px);
+  }
+  to {
+    transform: translateX(150px);
+  }
+}
+
+.star {
+  animation: twinkle 3s ease-in-out infinite;
+}
+
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* ============================================================================
+   RESPONSIVE
+   ============================================================================ */
+
+@media (max-width: 380px) {
+  .action-btn {
+    width: 46px;
+    height: 46px;
+    font-size: 18px;
+  }
+
+  .actions-bar {
+    gap: 6px;
+  }
+
+  .stat-pill-bar {
+    width: 24px;
+  }
+
+  .stat-pill-icon {
+    font-size: 12px;
+  }
+
+  .settings-btn-top {
+    width: 38px;
+    height: 38px;
+    font-size: 16px;
+  }
+}
+
+@media (min-width: 768px) {
+  .action-btn {
+    width: 60px;
+    height: 60px;
+    font-size: 26px;
+  }
+
+  .actions-bar {
+    gap: 14px;
+  }
+
+  .stat-pill-bar {
+    width: 45px;
+    height: 6px;
+  }
+
+  .stat-pill-icon {
+    font-size: 18px;
+  }
+
+  .pet-name {
+    font-size: 2rem;
+  }
+
+  .settings-btn-top {
+    width: 48px;
+    height: 48px;
+    font-size: 22px;
+  }
+}

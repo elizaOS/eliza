@@ -1,0 +1,188 @@
+---
+title: "x402 paid plugin routes"
+description: "Micropayments (HTTP 402) for plugin HTTP routes in @elizaos/agent"
+---
+
+## Overview
+
+When you run the elizaOS agent HTTP server (`@elizaos/agent`), plugin routes registered on `AgentRuntime` can require an [x402](https://www.x402.org/) payment before the handler runs. The gate lives in `tryHandleRuntimePluginRoute`: if a route sets `x402`, unauthenticated clients receive **402 Payment Required** with an `accepts` array; after verification, the handler runs and the runtime emits **`PAYMENT_VERIFIED`**.
+
+Each `accepts[].maxAmountRequired` value is the **minimum payable amount in that asset’s smallest units** (atomic units), computed from `priceInCents` with **exact `BigInt` math** from USD/token ratios (env overrides such as `ELIZAOS_PRICE_USD`; see `atomicAmountForPriceInCents` in `payment-config.ts`). The exported `TOKEN_PRICES_USD` map is a **float mirror** for legacy or display use only.
+
+402 responses also include a **`PAYMENT-REQUIRED`** response header (base64 JSON) aligned with **x402 V2** so standard clients can discover payment options without relying on the JSON body alone.
+
+## Design rationale (WHY)
+
+### Why facilitator **verify** and **settle** for standard clients
+
+A signed authorization (what many clients put in `PAYMENT-SIGNATURE` / `X-Payment`) proves the buyer *agreed* to pay; it does not by itself prove the seller’s treasury received funds on-chain. The agent therefore calls the facilitator **`/verify`** then **`/settle`** for the standard path, and only runs the route handler after **settlement succeeds**.
+
+**Why not “verify only”:** unlock-after-verify would recreate the same economic hole as “EIP-712 proof only” locally—bots could pass verification while never completing transfer, depending on scheme and client behavior.
+
+### Why we still return the **legacy JSON 402 body** (`x402Version: 1`)
+
+Many existing integrations (wallets, scanners, internal tools) parse the **JSON** `accepts` array and `x402Version: 1`. Removing or abruptly changing that shape would break them.
+
+**Why add `PAYMENT-REQUIRED` anyway:** protocol V2 buyers and newer SDKs expect header-based `PaymentRequired` with CAIP-2 network identifiers. Emitting both surfaces keeps backward compatibility *and* moves the implementation toward spec without forcing every consumer to migrate on day one.
+
+### Why **replay protection** is separate from “did the payment verify?”
+
+Replay keys prevent the *same* proof or payment id from unlocking the route twice (including across processes when durable mode is available). That is orthogonal to “was this authorization valid once?”.
+
+**Why durable replay matters:** without a shared store, each process has its own in-memory TTL map—an attacker can rotate instances or wait for restart to reuse a proof. Durable reservation makes “consume once” a real invariant for hot routes.
+
+### Why **`X402_ALLOW_EIP712_SIGNATURE_VERIFICATION`** defaults off for the *local* EIP-712 path
+
+Local verification of TransferWithAuthorization-style JSON can be cryptographically fine and still **not** prove settlement. We keep that path behind an explicit env flag so operators opt in consciously.
+
+**Why the facilitator path is different:** verify+settle is the supported way to turn an authorization into moved funds; the facilitator (or your own service with the same contract) owns the operational keys and chain submission.
+
+### Why default facilitator URLs are **Eliza-hosted** but overridable
+
+A default URL makes the “happy path” work in demos and internal deployments. Production almost always needs **`X402_FACILITATOR_URL`** (or explicit verify/settle URLs) pointed at *your* facilitator or vendor.
+
+**Why `/verify` + `/settle` suffix behavior:** different hosts mount those endpoints under different prefixes; supporting a base URL plus optional overrides avoids hardcoding one vendor’s path layout.
+
+For planned work (single canonical payment object, stricter protocol modes, Solana standard path), see [x402 roadmap](/plugins/x402-roadmap).
+
+## Built-in payment presets
+
+Use these string names in `x402.paymentConfigs` or in `character.settings.x402.defaultPaymentConfigs`:
+
+| Preset | Network | Asset |
+| --- | --- | --- |
+| `base_usdc` | Base (8453) | USDC |
+| `solana_usdc` | Solana | USDC |
+| `polygon_usdc` | Polygon (137) | USDC |
+| `bsc_usdc` | BNB Smart Chain (56) | Binance-Peg USDC |
+| `base_elizaos` | Base | elizaOS (ERC-20) |
+| `solana_elizaos` | Solana | elizaOS (SPL) |
+| `solana_degenai` | Solana | degenAI (SPL) |
+
+Volatile token amounts use USD reference prices; override with env vars **`ELIZAOS_PRICE_USD`**, **`DEGENAI_PRICE_USD`**, **`AI16Z_PRICE_USD`** (see `@elizaos/agent` `payment-config.ts`).
+
+## Character-level defaults (`x402: true`)
+
+Set defaults once on the character; routes can use the shorthand `x402: true`:
+
+```json
+{
+  "settings": {
+    "x402": {
+      "defaultPaymentConfigs": ["base_usdc", "base_elizaos"],
+      "defaultPriceInCents": 100
+    }
+  }
+}
+```
+
+- **`x402: true`** — uses `defaultPriceInCents` and `defaultPaymentConfigs`. If either is missing, **startup validation fails** with a message naming the route.
+- **`x402: { priceInCents: 50 }`** — uses character `defaultPaymentConfigs` only.
+- **`x402: { priceInCents: 50, paymentConfigs: ["solana_usdc"] }`** — explicit `paymentConfigs` on the route win; character defaults are not used for that field.
+
+## Route fields
+
+On each route (alongside `type`, `path`, `handler`):
+
+- **`x402`** — `true` or `{ priceInCents, paymentConfigs? }`.
+- **`description`** — shown in each `accepts[].description` entry in the 402 response (wallet / x402scan UX).
+- **`validator`** — optional `X402RequestValidator`; on failure the server returns 402 with the same `accepts` payload.
+
+## Environment variables
+
+**Payout addresses** (required for real settlement on each chain you offer):
+
+- **`BASE_PUBLIC_KEY`** or **`PAYMENT_WALLET_BASE`** — Base / EVM payout address.
+- **`SOLANA_PUBLIC_KEY`** or **`PAYMENT_WALLET_SOLANA`** — Solana payout address.
+- **`POLYGON_PUBLIC_KEY`** or **`PAYMENT_WALLET_POLYGON`** — Polygon payout address.
+- **`BSC_PUBLIC_KEY`** or **`PAYMENT_WALLET_BSC`** — BNB Smart Chain / EVM payout address.
+
+**URLs & facilitator**
+
+- **`X402_BASE_URL`** — public origin used to build `resource` URLs in 402 responses (no trailing slash). Defaults to a placeholder if unset — set this in production.
+- **`X402_FACILITATOR_URL`** — optional facilitator base URL for standard `PAYMENT-SIGNATURE` flows. The agent posts to **`/verify`** and **`/settle`** under this URL. If unset, the default is Eliza’s hosted x402 API base (`https://x402.elizacloud.ai/api/v1/x402`).
+- **`X402_FACILITATOR_VERIFY_URL`** / **`X402_FACILITATOR_SETTLE_URL`** — optional explicit endpoint overrides if your facilitator does not expose standard `POST /verify` and `POST /settle` under one base URL.
+- **`EVM_FACILITATOR`** — optional facilitator hint for EVM flows where supported.
+- **`X402_FACILITATOR_RELAXED_BINDING`** — set to `1` or `true` only if your facilitator cannot echo binding fields. **Default is strict:** a `200` verify response must include **`resource`**, **`routePath`** (or **`route`**), **`priceInCents`**, and **`paymentConfig`** (one of the route’s allowed presets), matching the request. Generic empty JSON bodies will **not** unlock paid routes.
+
+**RPC / runtime settings**
+
+Verification uses public RPC defaults; override per network via runtime settings **`BASE_RPC_URL`**, **`POLYGON_RPC_URL`**, **`BSC_RPC_URL`**, **`ETHEREUM_RPC_URL`** (see `getSetting` in the agent runtime).
+
+**Verification policy**
+
+- **`X402_ALLOW_EIP712_SIGNATURE_VERIFICATION`** — default **off**. When unset or not `1`/`true`, **EIP-712 authorization signatures** (TransferWithAuthorization-style JSON proofs) are **rejected** because they do not prove tokens moved on-chain. Set to `1` or `true` only if you explicitly accept that tradeoff (e.g. dev or a facilitator-backed flow).
+- **`X402_REPLAY_DURABLE`** — default **on** (any value except `0`, `false`, or `off`). The guard atomically reserves replay keys in the SQL-backed `cache` table when the runtime adapter exposes a database, then marks them consumed after successful verification. This prevents duplicate verification across processes sharing that database. Entries do **not** expire, so the same proof or payment ID **cannot be reused after restart**.
+- **`X402_REPLAY_WINDOW_MS`** or **`X402_REPLAY_TTL_MS`** — used when **`X402_REPLAY_DURABLE`** is disabled **or** the guard is invoked **without** a `runtime` (e.g. isolated unit tests): optional; default **600000** (10 minutes). In that mode, consumed credentials are tracked **in memory per process** with that TTL (not suitable for production multi-instance or restart safety). Replay keys are **canonical** (e.g. same EVM tx hash whether the client sends plain or base64-wrapped proof text).
+
+**Payout safety**
+
+- Built-in presets ship with **example** Base/Solana payout addresses when env vars are unset. **`NODE_ENV=production`** startup validation **fails** if a paid route still resolves to those bundled examples — set **`BASE_PUBLIC_KEY`**, **`SOLANA_PUBLIC_KEY`**, etc., to your real treasury.
+- **BNB Smart Chain uses 18-decimal Binance-Peg USDC** at `0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d`. For facilitator-settled `exact` payments, make sure the token/facilitator combination supports the signature scheme you advertise; raw transaction hash verification works for direct ERC-20 transfers to the configured `payTo`.
+
+**Solana legacy proofs**
+
+- `SOLANA:<address>:<signature>`: the middle field must equal the route’s **`payTo`** address (the configured preset `paymentAddress`). The server verifies the on-chain credit to that address, not to an arbitrary address from the proof.
+
+**Development**
+
+- **`X402_TEST_MODE`** — set to `true` or `1` to **skip verification** and run the handler immediately (console warning). If **`NODE_ENV=production`** and test mode is on, startup validation **warns** — never use test mode in production.
+
+## Custom configs (`registerX402Config`)
+
+Plugins can register extra presets (e.g. ai16z, BSC) in `init()`:
+
+```typescript
+import { registerX402Config } from "@elizaos/plugin-x402";
+
+registerX402Config("my_token_base", {
+  network: "BASE",
+  assetNamespace: "erc20",
+  assetReference: "0x…",
+  paymentAddress: process.env.BASE_PUBLIC_KEY!,
+  symbol: "MYTOKEN",
+  chainId: "8453",
+});
+```
+
+Startup validation resolves names via the built-in registry plus anything you registered. Errors call out **unknown config names** and list **available** presets.
+
+## Runtime events
+
+Emitted via `runtime.emitEvent` (same mechanism as other runtime events):
+
+- **`PAYMENT_REQUIRED`** — 402 returned (no valid proof / validator failed). Payload includes `path`, `configNames`, and a `reason` string.
+- **`PAYMENT_VERIFIED`** — proof accepted; handler is about to run. For the **standard facilitator path**, this fires only **after** verify **and** settle succeed (so “verified” here means “safe to fulfill,” not merely “signature parsed”). Payload includes `path`, `priceInCents`, `paymentConfigs`, plus when available: `payer`, `amountAtomic`, `network`, `proofId`, `paymentConfig`, `symbol`.
+
+Use these for logging, analytics, or follow-up automation.
+
+## Client / buyer (calling your paid routes)
+
+For **browser or server clients that pay** to call your plugin route:
+
+- Prefer **[`x402-fetch`](https://www.npmjs.com/package/x402-fetch)** (`wrapFetchWithPayment`) for the pay → retry flow.
+- Teams integrating x402 have reported friction with **`x402-axios`** for buyer flows; prefer fetch-based helpers unless you have a proven axios setup.
+- Standard buyers should read **`PAYMENT-REQUIRED`** from 402 responses and **`PAYMENT-RESPONSE`** from successful paid responses. Legacy integrations may still use the JSON 402 body and `X-Payment` / `X-Payment-Proof` paths.
+- See Coinbase’s **[x402 quickstart for buyers](https://docs.cdp.coinbase.com/x402/quickstart-for-buyers)** for wallet and testnet guidance.
+
+With **`X402_TEST_MODE`** enabled on the server, your client can hit paid routes **without** real mainnet payments while you wire up the rest of the stack.
+
+## Optional script (smoke test)
+
+`packages/agent/scripts/test-x402-plugin-route.ts` performs a simple **402 probe** against `X402_API_URL` (and optionally a paid retry if `x402-fetch` is installed). Run from the package root:
+
+```bash
+X402_API_URL=http://127.0.0.1:3000 X402_TEST_PATH=/my-plugin/paid bun run scripts/test-x402-plugin-route.ts
+```
+
+## Vite / browser bundles
+
+If a Vite frontend **transitively imports** `x402-fetch`, add a small shim and alias (similar to [elizaOS/otaku](https://github.com/elizaOS/otaku) `src/frontend/shims/x402-fetch.ts`) so the client bundle does not pull Node-only code. **eliza-v3** packages do not reference `x402-fetch` today — only add a shim when you introduce that import.
+
+## Message pipeline & paid “jobs”
+
+Some apps treat x402-paid HTTP calls separately from the chat message pipeline. If you add **deduplication / race tracking** around user messages, ensure **one-shot job** or **webhook** messages are not blocked waiting for a chat turn (cf. Otaku’s `metadata.isJobMessage` pattern). Review your pipeline when combining **paid HTTP routes** with **autonomous messaging**.
+
+## CDP / agent-as-buyer (follow-up)
+
+When a CDP- or wallet-based plugin exists in your project, you can add an action similar to Otaku’s **`FETCH_WITH_PAYMENT`** pattern (cap, wallet, automatic pay-and-retry). That is **not** part of the seller middleware in `@elizaos/agent`; it belongs in the wallet / CDP plugin layer.

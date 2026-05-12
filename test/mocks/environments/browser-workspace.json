@@ -1,0 +1,30 @@
+{
+  "uuid": "00000000-0000-4000-8000-0browserwork",
+  "lastMigration": 33,
+  "name": "Browser Workspace",
+  "endpointPrefix": "",
+  "latency": 0,
+  "port": 3007,
+  "hostname": "127.0.0.1",
+  "routes": [],
+  "rootChildren": [],
+  "folders": [],
+  "data": [],
+  "callbacks": [],
+  "proxyMode": false,
+  "proxyHost": "",
+  "proxyRemovePrefix": false,
+  "tlsOptions": {
+    "enabled": false,
+    "type": "CERT",
+    "pfxPath": "",
+    "certPath": "",
+    "keyPath": "",
+    "caPath": "",
+    "passphrase": ""
+  },
+  "cors": true,
+  "headers": [],
+  "proxyReqHeaders": [],
+  "proxyResHeaders": []
+}

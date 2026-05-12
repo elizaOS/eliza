@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "metric": "dflash_acceptance",
+  "op": ">=",
+  "status": "not-run",
+  "acceptanceRate": null,
+  "speedup": null,
+  "passed": null,
+  "reason": "bundle text/drafter GGUFs are local stand-ins / missing"
+}

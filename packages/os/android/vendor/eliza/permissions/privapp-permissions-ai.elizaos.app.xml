@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Privileged-permission whitelist for ai.elizaos.app.
+
+  Lists every signature|privileged permission the Eliza APK declares in
+  its AndroidManifest. Without an entry here, PackageManager refuses to
+  grant the permission even though the app is installed in /system/priv-app/,
+  and `adb logcat` will show "Privileged permission ... not in
+  privapp-permissions whitelist" at boot.
+
+  When adding a new signature|privileged permission to the manifest,
+  remember to add it here as well — otherwise the priv-app boot-time
+  check will fail and the device will refuse to start the package.
+
+  Read by PackageManager from /system/etc/permissions/.
+  Soong module: see ../permissions/Android.bp (`prebuilt_etc`,
+    sub_dir: "permissions").
+-->
+<permissions>
+    <privapp-permissions package="ai.elizaos.app">
+        <permission name="android.permission.PACKAGE_USAGE_STATS" />
+        <!--
+          Required by ElizaBootReceiver to flip the GET_USAGE_STATS
+          appop to ALLOWED via reflection on AppOpsManager#setMode at
+          sys.boot_completed. Without this the receiver throws
+          SecurityException("uid X does not have MANAGE_APP_OPS_MODES")
+          and the appop stays in default mode, breaking PACKAGE_USAGE_STATS.
+        -->
+        <permission name="android.permission.MANAGE_APP_OPS_MODES" />
+        <!-- Required for AOSP/system builds that expose AVF/Microdroid. -->
+        <permission name="android.permission.MANAGE_VIRTUAL_MACHINE" />
+    </privapp-permissions>
+</permissions>

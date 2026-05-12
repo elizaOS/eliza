@@ -1,0 +1,27 @@
+# Excel MCP Server Configuration
+name: excel
+display_name: Excel MCP Server
+description: Excel file manipulation server
+
+execution:
+  command_type: direct
+  executable_name: "excel-mcp-server"
+  additional_args:
+    - "stdio"
+
+parameters:
+  excel_files_path:
+    required: false
+    default: "."
+    env_var: "EXCEL_FILES_PATH"
+    description: "Path to Excel files directory"
+
+  env_vars:
+    required: false
+    description: "Optional dictionary of additional environment variables to set"
+
+workspace:
+  set_cwd: true
+  cwd_param: excel_files_path
+  supports_placeholders: true
+  mkdir_if_needed: true

@@ -1,0 +1,84 @@
+{
+  "name": "@elizaos/capacitor-screencapture",
+  "version": "2.0.0-beta.1",
+  "description": "Captures screenshots and records the screen across web, mobile, and desktop.",
+  "keywords": [
+    "screen-capture",
+    "screenshots",
+    "screen-recording",
+    "media"
+  ],
+  "main": "./dist/plugin.cjs.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/plugin.cjs.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/",
+    "ios/Sources/",
+    "ios/Plugin.xcodeproj/",
+    "*.podspec",
+    "dist"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "dependencies": {
+    "@elizaos/app-core": "2.0.0-beta.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza"
+  },
+  "scripts": {
+    "build": "bun run clean && tsc && bun --bun rollup -c rollup.config.mjs",
+    "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
+    "prepublishOnly": "bun run build",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.3.1",
+    "@capacitor/ios": "^8.0.0",
+    "@rollup/plugin-node-resolve": "^16.0.0",
+    "rimraf": "^6.0.0",
+    "rollup": "^4.60.2",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.3.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios",
+      "podName": "ElizaCapacitorScreenCapture"
+    },
+    "android": {
+      "src": "android"
+    }
+  },
+  "elizaos": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Full support via Screen Capture API (getDisplayMedia) for screenshots and screen recording with pause/resume",
+      "node": "Full support via Electrobun native screen capture APIs",
+      "ios": true,
+      "android": true
+    }
+  }
+}

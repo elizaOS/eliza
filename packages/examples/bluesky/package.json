@@ -1,0 +1,36 @@
+{
+  "name": "@elizaos/example-bluesky",
+  "version": "2.0.0-beta.0",
+  "description": "Full-featured Bluesky AI agent using elizaOS",
+  "type": "module",
+  "scripts": {
+    "start": "bun run agent.ts",
+    "dev": "bun --watch run agent.ts",
+    "test": "vitest run __tests__ --passWithNoTests",
+    "test:watch": "vitest",
+    "test:live": "LIVE_TEST=true vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "build": "bun run typecheck"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-bluesky": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "dotenv": "^17.2.3",
+    "uuid": "^14.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/node": "^25.0.3",
+    "@types/uuid": "^11.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

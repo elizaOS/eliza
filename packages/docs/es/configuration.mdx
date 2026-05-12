@@ -1,0 +1,1586 @@
+---
+title: "Configuración"
+sidebarTitle: "Configuración"
+description: "Referencia completa del archivo de configuración principal del runtime de Eliza, variables de entorno, comandos CLI y todas las secciones de configuración."
+---
+
+Eliza utiliza un archivo de configuración JSON5 principal para los ajustes de runtime y arranque.
+Esta página documenta el archivo de configuración, las variables de entorno que lo sobreescriben y
+los campos canónicos de enrutamiento del runtime que ahora controlan la selección de hosting y proveedor.
+
+<div id="config-file-location">
+
+## Ubicación del archivo de configuración
+
+</div>
+
+Por defecto, Eliza almacena su configuración en:
+
+```
+~/.eliza/eliza.json
+```
+
+<Info>
+El directorio de configuración es `~/.eliza` y el archivo de configuración es `eliza.json` dentro de él. El binario CLI es `eliza` y el nombre del paquete npm es `elizaai`.
+</Info>
+
+<div id="overriding-the-location">
+
+### Sobrescribir la ubicación
+
+</div>
+
+Dos variables de entorno controlan dónde busca Eliza la configuración:
+
+| Variable | Propósito | Predeterminado |
+|----------|-----------|----------------|
+| `ELIZA_STATE_DIR` | Sobrescribir todo el directorio de estado | `~/.eliza` |
+| `ELIZA_CONFIG_PATH` | Sobrescribir la ruta del archivo de configuración directamente | `~/.eliza/eliza.json` |
+
+`ELIZA_CONFIG_PATH` tiene prioridad sobre `ELIZA_STATE_DIR`. Ambas admiten la expansión de `~` para el directorio home. Por compatibilidad con versiones anteriores, los nombres heredados `ELIZA_STATE_DIR` y `ELIZA_CONFIG_PATH` también se aceptan como alternativas.
+
+```bash
+# Use a custom state directory (config lives at /opt/eliza/eliza.json)
+ELIZA_STATE_DIR=/opt/eliza eliza start
+
+# Point to a specific config file
+ELIZA_CONFIG_PATH=~/projects/bot/config.json5 eliza start
+```
+
+<div id="other-state-directory-paths">
+
+### Otras rutas del directorio de estado
+
+</div>
+
+El directorio de estado también contiene:
+
+| Ruta | Propósito |
+|------|-----------|
+| `~/.eliza/models/` | Listas de proveedores de modelos en caché (archivos JSON por proveedor) |
+| `~/.eliza/credentials/` | Credenciales OAuth (sobrescribible mediante `ELIZA_OAUTH_DIR`) |
+| `~/.eliza/credentials/oauth.json` | Almacenamiento de tokens OAuth |
+
+<div id="canonical-runtime-routing">
+
+## Enrutamiento canónico del runtime
+
+</div>
+
+La topología de runtime almacenada de Eliza ya no se infiere de un único
+blob `connection`, y el campo raíz `connection` ya no forma parte del
+esquema de configuración persistida. Los campos canónicos persistidos son:
+
+| Campo | Propósito |
+|------|---------|
+| `deploymentTarget` | Dónde se ejecuta el servidor activo: `local`, `cloud` o `remote` |
+| `linkedAccounts` | Qué cuentas de proveedor o nube están disponibles para ese servidor |
+| `serviceRouting` | Qué backend maneja cada capacidad (`llmText`, `tts`, `media`, `embeddings`, `rpc`) |
+
+```json5
+{
+  deploymentTarget: {
+    runtime: "cloud",
+    provider: "elizacloud",
+  },
+  linkedAccounts: {
+    elizacloud: {
+      status: "linked",
+      source: "oauth",
+    },
+  },
+  serviceRouting: {
+    llmText: {
+      backend: "anthropic",
+      transport: "direct",
+      primaryModel: "anthropic/claude-sonnet-4.6",
+    },
+    tts: {
+      backend: "elizacloud",
+      transport: "cloud-proxy",
+      accountId: "elizacloud",
+    },
+  },
+}
+```
+
+Esto significa que un servidor puede estar alojado en Eliza Cloud y aún así
+usar Anthropic, OpenAI, OpenRouter o un modelo local para la inferencia de chat.
+
+<div id="file-format">
+
+## Formato de archivo
+
+</div>
+
+El archivo de configuración admite la sintaxis **JSON5**, que permite:
+
+- Comentarios (`//` y `/* */`)
+- Comas finales
+- Claves sin comillas
+- Cadenas con comillas simples
+- Cadenas multilínea
+
+```json5
+{
+  // Agent configuration
+  agent: { name: "mila" },
+
+  // API keys (prefer .env for secrets)
+  env: {
+    ANTHROPIC_API_KEY: "<ANTHROPIC_API_KEY>",
+  },
+}
+```
+
+<div id="include-directive">
+
+### Directiva `$include`
+
+</div>
+
+Las configuraciones admiten composición modular a través de `$include`. Los archivos incluidos se fusionan en profundidad en orden, donde los valores posteriores sobrescriben a los anteriores.
+
+```json5
+{
+  "$include": "./base.json5",
+  // Local overrides merged on top
+  agents: { list: [{ id: "custom", name: "Custom Agent" }] }
+}
+```
+
+```json5
+// Array form: merge multiple base configs
+{
+  "$include": ["./base.json5", "./connectors.json5"],
+  env: { MY_KEY: "override" }
+}
+```
+
+Se admiten hasta 10 niveles de anidamiento en las inclusiones. Las inclusiones circulares se detectan y se rechazan.
+
+<div id="environment-variables-in-config">
+
+### Variables de entorno en la configuración
+
+</div>
+
+Eliza carga las variables de entorno desde dos fuentes:
+
+<Tabs>
+  <Tab title="En línea en la configuración (sección env)">
+    Establezca variables directamente en `eliza.json`. Se aplican al entorno del proceso si no están ya definidas:
+
+    ```json5
+    {
+      env: {
+        ANTHROPIC_API_KEY: "<ANTHROPIC_API_KEY>",
+        OPENAI_API_KEY: "<OPENAI_API_KEY>",
+        // Structured form under vars:
+        vars: {
+          BRAVE_API_KEY: "<BRAVE_API_KEY>",
+        },
+      },
+    }
+    ```
+
+    Tanto los valores de cadena de nivel superior como los valores bajo `env.vars` se fusionan en el entorno del proceso.
+  </Tab>
+  <Tab title="Importación del entorno del shell">
+    Opte por importar variables de su shell de inicio de sesión:
+
+    ```json5
+    {
+      env: {
+        shellEnv: {
+          enabled: true,
+          timeoutMs: 15000, // default: 15s
+        },
+      },
+    }
+    ```
+
+    Esto ejecuta `$SHELL -l -c 'env -0'` e importa las variables faltantes.
+  </Tab>
+</Tabs>
+
+<Warning>
+El archivo de configuración se escribe con el modo `0o600` (solo lectura+escritura del propietario) porque la sección `env` puede contener claves API. Mantenga los secretos en la sección `env` o utilice un archivo separado `~/.eliza/.env`.
+</Warning>
+
+<div id="top-level-structure">
+
+## Estructura de nivel superior
+
+</div>
+
+Aquí están todas las claves de nivel superior en `ElizaConfig`:
+
+```json5
+{
+  meta: {},           // Config metadata (version tracking)
+  auth: {},           // Auth profiles and provider credentials
+  env: {},            // Environment variables and shell env import
+  wizard: {},         // Onboarding wizard state
+  diagnostics: {},    // Diagnostics, OpenTelemetry, cache tracing
+  logging: {},        // Log levels, file output, redaction
+  update: {},         // Auto-update channel and check interval
+  browser: {},        // Browser automation (CDP, profiles, headless)
+  ui: {},             // UI theme, assistant name/avatar
+  skills: {},         // Skill loading, allowlists, per-skill config
+  plugins: {},        // Plugin loading, allow/deny lists, slots
+  models: {},         // Custom model providers, Bedrock discovery
+  nodeHost: {},       // Node host browser proxy settings
+  agents: {},         // Agent definitions, defaults, personality
+  deploymentTarget: {}, // Canonical hosting target (local/cloud/remote)
+  linkedAccounts: {}, // Canonical linked account inventory
+  serviceRouting: {}, // Canonical per-capability routing
+  tools: {},          // Tool profiles, web search/fetch, exec, media
+  bindings: [],       // Agent-to-channel routing rules
+  broadcast: {},      // Multi-agent broadcast configuration
+  audio: {},          // Audio settings (placeholder)
+  messages: {},       // Response prefix, queue, TTS, debounce
+  commands: {},       // Command toggles (bash, config, debug)
+  approvals: {},      // Exec approval forwarding to chat channels
+  session: {},        // Session-level configuration
+  web: {},            // WebSocket/WhatsApp web provider settings
+  cron: {},           // Cron job scheduling
+  hooks: {},          // Webhook hooks, Gmail integration
+  discovery: {},      // mDNS and wide-area service discovery
+  talk: {},           // ElevenLabs voice/Talk mode
+  gateway: {},        // Gateway server (port, bind, TLS, auth)
+  memory: {},         // Memory backend (builtin vs qmd)
+  embedding: {},      // Local embedding model (GGUF, GPU layers)
+  database: {},       // Database provider (PGLite or Postgres)
+  cloud: {},          // Cloud integration (remote provisioning)
+  x402: {},           // HTTP payment protocol
+  media: {},          // Media generation (image, video, audio, vision)
+  connectors: {},     // Messaging connectors (Telegram, Discord, etc.)
+  channels: {},       // [deprecated] Use connectors instead
+  mcp: {},            // MCP server configuration
+  registry: {},       // ERC-8004 agent registry
+  features: {},       // Feature flags (auto-enable plugins)
+  customActions: [],  // User-defined custom actions
+}
+```
+
+<div id="agent-configuration">
+
+## Configuración de agentes
+
+</div>
+
+Los agentes se definen bajo `agents.list`. La sección `agents.defaults` proporciona valores predeterminados compartidos.
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "anthropic/claude-sonnet-4.6" },
+      workspace: "~/projects/my-agent",
+      thinkingDefault: "medium",
+      timeoutSeconds: 120,
+      maxConcurrent: 1,
+    },
+    list: [
+      {
+        id: "mila",
+        default: true,
+        name: "Mila",
+        model: "anthropic/claude-opus-4.7",
+        workspace: "~/projects/mila-workspace",
+        // Personality (set during onboarding)
+        bio: ["A helpful AI assistant"],
+        system: "You are Mila, a thoughtful assistant.",
+        style: { all: ["concise", "friendly"] },
+        adjectives: ["helpful", "creative"],
+        // Identity for display
+        identity: { name: "Mila" },
+        // Per-agent tool overrides
+        tools: {
+          profile: "standard",
+          exec: { security: "allowlist" },
+        },
+        // Per-agent sandbox settings
+        sandbox: {
+          mode: "non-main",
+          workspaceAccess: "ro",
+          scope: "session",
+        },
+      },
+    ],
+  },
+}
+```
+
+<div id="key-agent-fields">
+
+### Campos clave del agente
+
+</div>
+
+| Campo | Tipo | Descripción |
+|-------|------|-------------|
+| `id` | `string` | Identificador único del agente (obligatorio) |
+| `default` | `boolean` | Marcar como agente predeterminado |
+| `name` | `string` | Nombre para mostrar |
+| `model` | `string \| { primary, fallbacks[] }` | Selección de modelo con alternativas opcionales |
+| `workspace` | `string` | Directorio de trabajo para las ejecuciones del agente |
+| `skills` | `string[]` | Lista de habilidades permitidas (omitir para todas, vacío para ninguna) |
+| `bio` | `string[]` | Líneas de biografía del agente |
+| `system` | `string` | Prompt del sistema |
+| `style` | `{ all?, chat?, post? }` | Reglas de estilo de comunicación |
+| `identity` | `object` | Identidad para mostrar (nombre, etc.) |
+| `tools` | `AgentToolsConfig` | Sobrescrituras de políticas de herramientas por agente |
+| `sandbox` | `object` | Configuración de aislamiento en sandbox |
+| `heartbeat` | `object` | Ejecuciones periódicas de heartbeat en segundo plano |
+| `memorySearch` | `MemorySearchConfig` | Sobrescrituras de búsqueda de memoria por agente |
+
+<div id="agent-defaults">
+
+### Valores predeterminados del agente
+
+</div>
+
+`agents.defaults` controla el comportamiento global para todos los agentes:
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "anthropic/claude-sonnet-4.6", fallbacks: ["openai/gpt-4o"] },
+      workspace: "~/agent-workspace",
+      thinkingDefault: "medium",       // off | minimal | low | medium | high | xhigh
+      verboseDefault: "off",           // off | on | full
+      elevatedDefault: "off",          // off | on | ask | full
+      blockStreamingDefault: "off",    // off | on
+      timeoutSeconds: 120,
+      maxConcurrent: 1,
+      userTimezone: "America/New_York",
+      timeFormat: "auto",              // auto | 12 | 24
+      // Heartbeat (periodic background runs)
+      heartbeat: {
+        every: "30m",
+        model: "anthropic/claude-haiku-3.5",
+        target: "last",
+      },
+      // Sandbox defaults
+      sandbox: {
+        mode: "non-main",
+        workspaceAccess: "ro",
+        scope: "session",
+        docker: {
+          image: "node:20-slim",
+          network: "none",
+        },
+      },
+      // Sub-agent defaults
+      subagents: {
+        maxConcurrent: 1,
+        archiveAfterMinutes: 60,
+        model: "anthropic/claude-haiku-3.5",
+      },
+    },
+  },
+}
+```
+
+<div id="model-configuration">
+
+## Configuración de modelos
+
+</div>
+
+<div id="selecting-models">
+
+### Selección de modelos
+
+</div>
+
+La forma más sencilla de configurar modelos es a través de `agents.defaults.model`:
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: {
+        primary: "anthropic/claude-sonnet-4.6",
+        fallbacks: ["openai/gpt-4o", "groq/openai/gpt-oss-120b"],
+      },
+    },
+  },
+}
+```
+
+La sección `models` a nivel superior le permite definir proveedores personalizados, sobrescribir definiciones de modelos y configurar Bedrock:
+
+```json5
+{
+  models: {
+    // "merge" (default) adds to built-in providers; "replace" uses only what's defined here
+    mode: "merge",
+    // Quick model aliases set during onboarding
+    small: "claude-haiku",
+    large: "claude-sonnet-4-6",
+    // Custom or self-hosted providers
+    providers: {
+      "my-provider": {
+        baseUrl: "https://api.example.com/v1",
+        apiKey: "<OPENAI_API_KEY>",
+        api: "openai-completions",   // openai-completions | openai-responses | anthropic-messages | google-generative-ai | bedrock-converse-stream
+        models: [
+          {
+            id: "my-model-v1",
+            name: "My Model v1",
+            reasoning: false,
+            input: ["text", "image"],
+            cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+            contextWindow: 200000,
+            maxTokens: 8192,
+          },
+        ],
+      },
+    },
+    // AWS Bedrock model discovery
+    bedrockDiscovery: {
+      enabled: true,
+      region: "us-east-1",
+      providerFilter: ["anthropic", "meta"],
+      refreshInterval: 3600,
+    },
+  },
+}
+```
+
+<div id="model-provider-auth-modes">
+
+### Modos de autenticación del proveedor de modelos
+
+</div>
+
+Cada proveedor personalizado puede especificar un modo de autenticación:
+
+| Modo | Descripción |
+|------|-------------|
+| `api-key` | Clave API estática (predeterminado) |
+| `aws-sdk` | Credenciales del SDK de AWS (para Bedrock) |
+| `oauth` | Credenciales OAuth renovables |
+| `token` | Token de portador estático |
+
+<div id="plugin-configuration">
+
+## Configuración de plugins
+
+</div>
+
+Los plugins extienden Eliza con conectores, proveedores y capacidades de funcionalidades.
+
+```json5
+{
+  plugins: {
+    enabled: true,             // Master switch
+    allow: ["telegram", "anthropic"],  // Allowlist (plugin short ids)
+    deny: ["experimental"],    // Denylist (takes priority over allow)
+    // Per-plugin configuration
+    entries: {
+      telegram: {
+        enabled: true,
+        config: { /* plugin-specific */ },
+      },
+      browser: {
+        enabled: false,        // Disable a specific plugin
+      },
+    },
+    // Plugin loading
+    load: {
+      paths: ["/path/to/custom-plugin"],  // Additional plugin paths
+    },
+    // Slot assignments
+    slots: {
+      memory: "builtin",      // Which plugin owns the memory slot ("none" disables)
+    },
+  },
+}
+```
+
+<div id="plugin-auto-enable">
+
+### Activación automática de plugins
+
+</div>
+
+Eliza activa automáticamente los plugins según su configuración. En la mayoría de los casos, no necesita añadir manualmente plugins a la lista de permitidos.
+
+**Los plugins de conectores** se activan automáticamente cuando un conector está configurado con credenciales:
+
+| Conector | Plugin | Activador de activación automática |
+|----------|--------|------------------------------------|
+| `telegram` | `@elizaos/plugin-telegram` | `connectors.telegram.botToken` |
+| `discord` | `@elizaos/plugin-discord` | `connectors.discord.token` (o `botToken`, `apiKey`) |
+| `slack` | `@elizaos/plugin-slack` | `connectors.slack.botToken` |
+| `twitter` | `@elizaos/plugin-x` | `connectors.twitter.apiKey` |
+| `whatsapp` | `@elizaos/plugin-whatsapp` | `connectors.whatsapp.authDir` (o `authState`, `sessionPath`, o `accounts` con `authDir`) |
+| `signal` | `@elizaos/plugin-signal` | `connectors.signal.account` (o `httpUrl`, `httpHost`, `httpPort`, `cliPath`, o `accounts` con entradas habilitadas) |
+| `farcaster` | `@elizaos/plugin-farcaster` | `connectors.farcaster.apiKey` |
+| `matrix` | `@elizaos/plugin-matrix` | `connectors.matrix.token` |
+| `nostr` | `@elizaos/plugin-nostr` | `connectors.nostr.token` |
+| `msteams` | `@elizaos/plugin-msteams` | `connectors.msteams.token` |
+| `googlechat` | `@elizaos/plugin-google-chat` | `connectors.googlechat.token` |
+| `imessage` | `@elizaos/plugin-imessage` | `connectors.imessage.cliPath` |
+| `lens` | `@elizaos/plugin-lens` | `connectors.lens.token` |
+| `mattermost` | `@elizaos/plugin-mattermost` | `connectors.mattermost.token` |
+| `feishu` | `@elizaos/plugin-feishu` | `connectors.feishu.token` |
+| `blooio` | `@elizaos/plugin-blooio` | `connectors.blooio.apiKey` |
+| `wechat` | `@elizaos/plugin-wechat` | `connectors.wechat.apiKey` (o `accounts` con `apiKey`) |
+| `twitch` | `@elizaos/plugin-twitch` | `connectors.twitch.accessToken` o `clientId` o `enabled: true` |
+| `wechat` | `@elizaos/plugin-wechat` | `connectors.wechat.apiKey` (nivel superior o en entrada de `accounts`) |
+
+**Los plugins de proveedores** se activan automáticamente cuando la variable de entorno de la clave API correspondiente está definida:
+
+| Variable de entorno | Plugin |
+|---------------------|--------|
+| `ANTHROPIC_API_KEY` / `CLAUDE_API_KEY` | `@elizaos/plugin-anthropic` |
+| `OPENAI_API_KEY` | `@elizaos/plugin-openai` |
+| `AI_GATEWAY_API_KEY` / `AIGATEWAY_API_KEY` | `@elizaos/plugin-vercel-ai-gateway` |
+| `GOOGLE_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` | `@elizaos/plugin-google-genai` |
+| `GOOGLE_CLOUD_API_KEY` | `@elizaos/plugin-google-antigravity` |
+| `GROQ_API_KEY` | `@elizaos/plugin-groq` |
+| `XAI_API_KEY` / `GROK_API_KEY` | `@elizaos/plugin-xai` |
+| `OPENROUTER_API_KEY` | `@elizaos/plugin-openrouter` |
+| `OLLAMA_BASE_URL` | `@elizaos/plugin-ollama` |
+| `ZAI_API_KEY` | `@elizaos/plugin-zai` |
+| `DEEPSEEK_API_KEY` | `@elizaos/plugin-deepseek` |
+| `TOGETHER_API_KEY` | `@elizaos/plugin-together` |
+| `MISTRAL_API_KEY` | `@elizaos/plugin-mistral` |
+| `COHERE_API_KEY` | `@elizaos/plugin-cohere` |
+| `PERPLEXITY_API_KEY` | `@elizaos/plugin-perplexity` |
+| `ELIZAOS_CLOUD_API_KEY` / `ELIZAOS_CLOUD_ENABLED` | `@elizaos/plugin-elizacloud` |
+| `CUA_API_KEY` / `CUA_HOST` | `@elizaos/plugin-cua` |
+| `OBSIDIAN_VAULT_PATH` | `@elizaos/plugin-obsidian` |
+| `REPOPROMPT_CLI_PATH` | `@elizaos/plugin-repoprompt` |
+
+**Los plugins de funcionalidades** se activan automáticamente a través del mapa de flags `features`:
+
+```json5
+{
+  features: {
+    browser: true,
+    cron: true,
+    shell: true,
+    imageGen: true,
+    tts: true,
+    webhooks: true,
+    computeruse: true,
+  },
+}
+```
+
+| Flag de funcionalidad | Plugin |
+|-----------------------|--------|
+| `browser` | `@elizaos/plugin-browser` |
+| `cua` | `@elizaos/plugin-cua` |
+| `obsidian` | `@elizaos/plugin-obsidian` |
+| `shell` | `@elizaos/plugin-shell` |
+| `imageGen` | `@elizaos/plugin-image-generation` |
+| `tts` | `@elizaos/plugin-tts` |
+| `stt` | `@elizaos/plugin-stt` |
+| `agentSkills` | `@elizaos/plugin-agent-skills` |
+| `commands` | `@elizaos/plugin-commands` |
+| `diagnosticsOtel` | `@elizaos/plugin-diagnostics-otel` |
+| `webhooks` | `@elizaos/plugin-webhooks` |
+| `gmailWatch` | `@elizaos/plugin-gmail-watch` |
+| `experience` | capacidades avanzadas integradas |
+| `form` | capacidades avanzadas integradas |
+| `x402` | `@elizaos/plugin-x402` |
+| `fal` | `@elizaos/plugin-fal` |
+| `suno` | `@elizaos/plugin-suno` |
+| `vision` | `@elizaos/plugin-vision` |
+| `computeruse` | `@elizaos/plugin-computeruse` |
+| `repoprompt` | `@elizaos/plugin-repoprompt` |
+
+<Info>
+Los plugins `vision`, `fal` y `suno` también se activan automáticamente cuando sus respectivas secciones de configuración `media.*` están configuradas (por ejemplo, `media.vision.provider` está definido, o `media.image.provider: "fal"` con `mode: "own-key"`). Los plugins de webhooks se activan automáticamente cuando `hooks.token` está definido. La vigilancia de Gmail se activa automáticamente cuando `hooks.gmail.account` está definido.
+</Info>
+
+<Tip>
+Siempre puede forzar la desactivación de cualquier plugin activado automáticamente estableciendo `plugins.entries.<id>.enabled: false`. La lista de denegación tiene prioridad sobre toda la lógica de activación automática.
+</Tip>
+
+<div id="connectors-messaging-channels">
+
+## Conectores (canales de mensajería)
+
+</div>
+
+Los conectores integran Eliza con plataformas de mensajería. Configúrelos bajo `connectors`:
+
+```json5
+{
+  connectors: {
+    telegram: {
+      enabled: true,
+      botToken: "<TELEGRAM_BOT_TOKEN>",
+      // Additional connector-specific options
+    },
+    discord: {
+      enabled: true,
+      token: "<DISCORD_BOT_TOKEN>",
+    },
+    slack: {
+      enabled: true,
+      botToken: "<SLACK_BOT_TOKEN>",
+      appToken: "<SLACK_APP_TOKEN>",
+    },
+    whatsapp: {
+      enabled: true,
+      authDir: "~/.eliza/whatsapp-auth",
+    },
+  },
+}
+```
+
+<Warning>
+La clave `channels` está obsoleta. Utilice `connectors` en su lugar. Ambas son compatibles durante la migración, pero `connectors` tiene prioridad.
+</Warning>
+
+<div id="agent-bindings">
+
+### Vinculaciones de agentes
+
+</div>
+
+Dirija conversaciones específicas a agentes específicos usando `bindings`:
+
+```json5
+{
+  bindings: [
+    {
+      agentId: "support-bot",
+      match: {
+        channel: "telegram",
+        peer: { kind: "group", id: "-100123456" },
+      },
+    },
+    {
+      agentId: "dm-agent",
+      match: {
+        channel: "discord",
+        peer: { kind: "dm", id: "user-id" },
+      },
+    },
+  ],
+}
+```
+
+<div id="gateway-configuration">
+
+## Configuración del gateway
+
+</div>
+
+El gateway es el servidor central que gestiona las conexiones WebSocket, la API HTTP y la interfaz de control (Control UI).
+
+```json5
+{
+  gateway: {
+    port: 18789,                // Default: 18789
+    mode: "local",              // "local" | "remote"
+    bind: "loopback",           // "auto" | "lan" | "loopback" | "tailnet" | "custom"
+    customBindHost: "10.0.0.5", // Only used when bind: "custom"
+    // TLS configuration
+    tls: {
+      enabled: true,
+      autoGenerate: true,       // Auto self-signed cert
+      certPath: "/path/to/cert.pem",
+      keyPath: "/path/to/key.pem",
+    },
+    // Authentication
+    auth: {
+      mode: "token",            // "token" | "password"
+      token: "<API_TOKEN>",
+      allowTailscale: false,
+    },
+    // Control UI (web dashboard)
+    controlUi: {
+      enabled: true,
+      basePath: "/",
+      allowedOrigins: ["https://my-domain.com"],
+      allowInsecureAuth: false,
+    },
+    // Config reload strategy
+    reload: {
+      mode: "hybrid",           // "off" | "restart" | "hot" | "hybrid"
+      debounceMs: 300,
+    },
+    // Tailscale integration
+    tailscale: {
+      mode: "off",              // "off" | "serve" | "funnel"
+      resetOnExit: false,
+    },
+    // Remote gateway connection
+    remote: {
+      url: "wss://remote-host:18789",
+      transport: "direct",      // "ssh" | "direct"
+      token: "<REMOTE_AUTH_TOKEN>",
+      sshTarget: "user@host",
+      sshIdentity: "~/.ssh/id_ed25519",
+    },
+    // HTTP API endpoints
+    http: {
+      endpoints: {
+        chatCompletions: { enabled: false },
+        responses: {
+          enabled: false,
+          maxBodyBytes: 20971520,  // 20MB
+        },
+      },
+    },
+    // Trusted reverse proxies (for x-forwarded-for)
+    trustedProxies: ["172.17.0.1"],
+  },
+}
+```
+
+<div id="bind-modes">
+
+### Modos de enlace
+
+</div>
+
+| Modo | Comportamiento |
+|------|----------------|
+| `auto` | Loopback si está disponible, de lo contrario todas las interfaces |
+| `loopback` | Solo `127.0.0.1` (predeterminado) |
+| `lan` | `0.0.0.0` — todas las interfaces |
+| `tailnet` | IPv4 de Tailnet (`100.64.0.0/10`) si está disponible, de lo contrario loopback |
+| `custom` | IP especificada por el usuario a través de `customBindHost` |
+
+<div id="tools-configuration">
+
+## Configuración de herramientas
+
+</div>
+
+La sección `tools` controla la disponibilidad de herramientas, búsqueda/obtención web, permisos de ejecución, comprensión de medios y más.
+
+```json5
+{
+  tools: {
+    profile: "standard",        // Base tool profile
+    allow: ["web_search", "web_fetch"],
+    deny: ["dangerous_tool"],
+    alsoAllow: ["extra_tool"],  // Merged into allow + profile allowlist
+
+    // Web search
+    web: {
+      search: {
+        enabled: true,
+        provider: "brave",     // "brave" | "perplexity"
+        apiKey: "<BRAVE_API_KEY>",
+        maxResults: 5,
+        cacheTtlMinutes: 15,
+      },
+      fetch: {
+        enabled: true,
+        maxChars: 30000,
+        maxCharsCap: 50000,
+        timeoutSeconds: 30,
+        readability: true,
+        firecrawl: {
+          enabled: true,
+          apiKey: "<FIRECRAWL_API_KEY>",
+        },
+      },
+    },
+
+    // Exec tool
+    exec: {
+      host: "sandbox",         // "sandbox" | "gateway" | "node"
+      security: "allowlist",   // "deny" | "allowlist" | "full"
+      ask: "on-miss",          // "off" | "on-miss" | "always"
+      timeoutSec: 60,
+      backgroundMs: 5000,
+      pathPrepend: ["/usr/local/bin"],
+      safeBins: ["cat", "ls", "echo"],
+    },
+
+    // Elevated exec
+    elevated: {
+      enabled: true,
+    },
+
+    // Media understanding
+    media: {
+      concurrency: 2,
+      image: {
+        enabled: true,
+        maxBytes: 10485760,
+        models: [
+          { provider: "openai", model: "gpt-4o" },
+          { provider: "google", model: "gemini-2.0-flash" },
+        ],
+      },
+      audio: { enabled: true },
+      video: { enabled: true },
+    },
+
+    // Sub-agent defaults
+    subagents: {
+      model: "anthropic/claude-haiku-3.5",
+      tools: { allow: ["web_search"], deny: [] },
+    },
+  },
+}
+```
+
+<div id="logging">
+
+## Registro de eventos
+
+</div>
+
+```json5
+{
+  logging: {
+    level: "error",            // silent | fatal | error | warn | info | debug | trace
+    consoleLevel: "info",      // Independent console log level
+    consoleStyle: "pretty",    // "pretty" | "compact" | "json"
+    file: "/var/log/eliza.log",
+    redactSensitive: "tools",  // "off" | "tools"
+    redactPatterns: ["sk-[a-zA-Z0-9]+"],
+  },
+}
+```
+
+<Info>
+Cuando no existe un archivo de configuración, Eliza establece por defecto `logging.level: "error"`.
+</Info>
+
+<div id="database">
+
+## Base de datos
+
+</div>
+
+Eliza admite dos backends de base de datos:
+
+<Tabs>
+  <Tab title="PGLite (predeterminado)">
+    PostgreSQL embebido local sin dependencias externas:
+
+    ```json5
+    {
+      database: {
+        provider: "pglite",
+        pglite: {
+          dataDir: "~/.eliza/workspace/.eliza/.elizadb",
+        },
+      },
+    }
+    ```
+  </Tab>
+  <Tab title="PostgreSQL">
+    Conectar a un servidor PostgreSQL externo:
+
+    ```json5
+    {
+      database: {
+        provider: "postgres",
+        postgres: {
+          // Option 1: Connection string
+          connectionString: "postgresql://user:pass@localhost:5432/eliza",
+          // Option 2: Individual fields
+          host: "localhost",
+          port: 5432,
+          database: "eliza",
+          user: "eliza",
+          password: "<DB_PASSWORD>",
+          ssl: true,
+        },
+      },
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<div id="memory">
+
+## Memoria
+
+</div>
+
+```json5
+{
+  memory: {
+    backend: "builtin",        // "builtin" | "qmd"
+    citations: "auto",         // "auto" | "on" | "off"
+    qmd: {
+      command: "qmd",
+      includeDefaultMemory: true,
+      paths: [
+        { path: "~/notes", name: "Notes", pattern: "**/*.md" },
+      ],
+      sessions: {
+        enabled: true,
+        exportDir: "~/.eliza/qmd-sessions",
+        retentionDays: 30,
+      },
+      update: {
+        interval: "30m",
+        debounceMs: 500,
+        onBoot: true,
+        embedInterval: "1h",
+      },
+      limits: {
+        maxResults: 10,
+        maxSnippetChars: 500,
+        maxInjectedChars: 10000,
+        timeoutMs: 5000,
+      },
+    },
+  },
+}
+```
+
+<div id="embedding">
+
+## Embedding
+
+</div>
+
+Configure el modelo de embedding local para la búsqueda de memoria vectorial:
+
+```json5
+{
+  embedding: {
+    model: "nomic-embed-text-v1.5.Q5_K_M.gguf",
+    modelRepo: "nomic-ai/nomic-embed-text-v1.5-GGUF",
+    dimensions: 768,
+    gpuLayers: "auto",              // number | "auto" | "max"
+    idleTimeoutMinutes: 30,         // 0 = never unload
+  },
+}
+```
+
+<div id="browser">
+
+## Navegador
+
+</div>
+
+Configure la automatización del navegador a través del Protocolo Chrome DevTools:
+
+```json5
+{
+  browser: {
+    enabled: true,
+    headless: false,
+    noSandbox: false,               // Required for Linux containers
+    attachOnly: false,              // Only attach, never launch
+    executablePath: "/usr/bin/google-chrome",
+    defaultProfile: "chrome",
+    evaluateEnabled: true,          // Allow arbitrary JS evaluation
+    // Named browser profiles
+    profiles: {
+      chrome: {
+        cdpPort: 9222,
+        driver: "eliza",
+        color: "#FF4500",
+      },
+      remote: {
+        cdpUrl: "ws://remote-host:9222",
+      },
+    },
+    snapshotDefaults: {
+      mode: "efficient",
+    },
+  },
+}
+```
+
+<div id="media-generation">
+
+## Generación de medios
+
+</div>
+
+Configure la generación de imágenes, video, audio y visión:
+
+```json5
+{
+  media: {
+    image: {
+      enabled: true,
+      mode: "own-key",              // "cloud" | "own-key"
+      provider: "fal",              // "cloud" | "fal" | "openai" | "google" | "xai"
+      defaultSize: "1024x1024",
+      fal: { apiKey: "<FAL_API_KEY>", model: "flux/schnell" },
+    },
+    video: {
+      enabled: true,
+      mode: "own-key",
+      provider: "fal",
+      fal: { apiKey: "<FAL_API_KEY>" },
+    },
+    audio: {
+      enabled: true,
+      mode: "own-key",
+      provider: "suno",
+      suno: { apiKey: "<SUNO_API_KEY>" },
+    },
+    vision: {
+      enabled: true,
+      provider: "openai",
+      openai: { apiKey: "<OPENAI_API_KEY>", model: "gpt-4o" },
+    },
+  },
+}
+```
+
+<div id="messages-and-tts">
+
+## Mensajes y TTS
+
+</div>
+
+```json5
+{
+  messages: {
+    responsePrefix: "[{model}]",    // Template: {model}, {provider}, {thinkingLevel}, {identityName}
+    ackReaction: "eyes",            // Emoji reaction on inbound messages (empty disables)
+    ackReactionScope: "group-mentions", // "group-mentions" | "group-all" | "direct" | "all"
+    removeAckAfterReply: false,
+    // Message queue behavior
+    queue: {
+      mode: "steer",                // steer | followup | collect | steer-backlog | steer+backlog | queue | interrupt
+      debounceMs: 1500,
+      cap: 20,
+      drop: "old",                  // old | new | summarize
+    },
+    // Text-to-speech
+    tts: {
+      auto: "off",                  // off | always | inbound | tagged
+      provider: "elevenlabs",       // elevenlabs | openai | edge
+      elevenlabs: {
+        voiceId: "21m00Tcm4TlvDq8ikWAM",
+        modelId: "eleven_turbo_v2_5",
+      },
+      maxTextLength: 5000,
+      timeoutMs: 30000,
+    },
+  },
+}
+```
+
+<div id="hooks">
+
+## Hooks
+
+</div>
+
+Los hooks habilitan integraciones de webhooks y vigilancia de Gmail:
+
+```json5
+{
+  hooks: {
+    enabled: true,
+    path: "/hooks",
+    token: "<WEBHOOK_TOKEN>",
+    maxBodyBytes: 1048576,
+    // Webhook-to-agent mappings
+    mappings: [
+      {
+        match: { path: "/github", source: "github" },
+        action: "agent",
+        sessionKey: "github-events",
+        messageTemplate: "GitHub event: {{body}}",
+      },
+    ],
+    // Gmail integration
+    gmail: {
+      account: "user@gmail.com",
+      label: "INBOX",
+      includeBody: true,
+    },
+    // Internal agent event hooks
+    internal: {
+      enabled: true,
+      handlers: [
+        { event: "session:start", module: "./hooks/on-start.js" },
+      ],
+      entries: {
+        "my-hook": { enabled: true, env: { KEY: "value" } },
+      },
+    },
+  },
+}
+```
+
+<div id="mcp-servers">
+
+## Servidores MCP
+
+</div>
+
+Configure los servidores del Protocolo de Contexto de Modelo (MCP):
+
+```json5
+{
+  mcp: {
+    servers: {
+      filesystem: {
+        type: "stdio",
+        command: "bunx",
+        args: ["-y", "@modelcontextprotocol/server-filesystem", "/home/user"],
+      },
+      "remote-server": {
+        type: "sse",
+        url: "https://mcp.example.com/sse",
+        headers: { Authorization: "Bearer token" },
+        timeoutInMillis: 30000,
+      },
+    },
+  },
+}
+```
+
+<div id="cloud-integration">
+
+## Integración en la nube
+
+</div>
+
+```json5
+{
+  cloud: {
+    enabled: false,
+    provider: "elizacloud",
+    baseUrl: "https://elizacloud.ai/api/v1",
+    inferenceMode: "byok",         // "cloud" | "byok" | "local"
+    autoProvision: false,
+    bridge: {
+      reconnectIntervalMs: 3000,
+      maxReconnectAttempts: 20,
+      heartbeatIntervalMs: 30000,
+    },
+    backup: {
+      autoBackupIntervalMs: 3600000, // 1 hour
+      maxSnapshots: 10,
+    },
+  },
+}
+```
+
+<div id="update-channel">
+
+## Canal de actualización
+
+</div>
+
+```json5
+{
+  update: {
+    channel: "stable",              // "stable" | "beta" | "nightly"
+    checkOnStart: true,
+    checkIntervalSeconds: 14400,    // 4 hours
+  },
+}
+```
+
+<div id="diagnostics">
+
+## Diagnósticos
+
+</div>
+
+```json5
+{
+  diagnostics: {
+    enabled: false,
+    flags: ["telegram.http"],       // Ad-hoc diagnostic flags
+    otel: {
+      enabled: true,
+      endpoint: "https://otel.example.com",
+      protocol: "http/protobuf",    // "http/protobuf" | "grpc"
+      serviceName: "eliza",
+      traces: true,
+      metrics: true,
+      logs: true,
+      sampleRate: 1.0,
+      flushIntervalMs: 30000,
+    },
+    cacheTrace: {
+      enabled: false,
+      filePath: "/tmp/cache-trace.jsonl",
+      includeMessages: true,
+      includePrompt: false,
+      includeSystem: false,
+    },
+  },
+}
+```
+
+<div id="cron-jobs">
+
+## Tareas cron
+
+</div>
+
+```json5
+{
+  cron: {
+    enabled: true,
+    store: "~/.eliza/cron-store.json",
+    maxConcurrentRuns: 3,
+  },
+}
+```
+
+<div id="discovery">
+
+## Descubrimiento
+
+</div>
+
+```json5
+{
+  discovery: {
+    mdns: {
+      mode: "minimal",             // "off" | "minimal" | "full"
+    },
+    wideArea: {
+      enabled: false,
+      domain: "eliza.internal",
+    },
+  },
+}
+```
+
+<div id="talk-mode-voice">
+
+## Modo de conversación (voz)
+
+</div>
+
+```json5
+{
+  talk: {
+    voiceId: "21m00Tcm4TlvDq8ikWAM",
+    modelId: "eleven_turbo_v2_5",
+    outputFormat: "mp3_44100_128",
+    interruptOnSpeech: true,
+    voiceAliases: {
+      narrator: "yoZ06aMxZJJ28mfd3POQ",
+    },
+  },
+}
+```
+
+<div id="ui-theme">
+
+## Tema de interfaz
+
+</div>
+
+```json5
+{
+  ui: {
+    seamColor: "#FF4500",
+    theme: "eliza",                // eliza | qt314 | web2000 | programmer | haxor | psycho
+    assistant: {
+      name: "Mila",
+      avatar: "https://example.com/avatar.png",
+    },
+  },
+}
+```
+
+<div id="auth-profiles">
+
+## Perfiles de autenticación
+
+</div>
+
+Configure la autenticación multiperfil con enfriamiento/retroceso:
+
+```json5
+{
+  auth: {
+    profiles: {
+      "anthropic-main": {
+        provider: "anthropic",
+        mode: "api_key",           // "api_key" | "oauth" | "token"
+        email: "user@example.com",
+      },
+    },
+    order: {
+      anthropic: ["anthropic-main", "anthropic-backup"],
+    },
+    cooldowns: {
+      billingBackoffHours: 5,
+      billingMaxHours: 24,
+      failureWindowHours: 24,
+    },
+  },
+}
+```
+
+<div id="approvals">
+
+## Aprobaciones
+
+</div>
+
+Reenvíe las solicitudes de aprobación de ejecución a canales de chat:
+
+```json5
+{
+  approvals: {
+    exec: {
+      enabled: true,
+      mode: "session",             // "session" | "targets" | "both"
+      targets: [
+        { channel: "telegram", to: "123456789" },
+      ],
+    },
+  },
+}
+```
+
+<div id="skills">
+
+## Habilidades
+
+</div>
+
+```json5
+{
+  skills: {
+    allowBundled: ["web", "code"], // Only load these bundled skills
+    denyBundled: ["experimental"], // Block specific bundled skills
+    load: {
+      extraDirs: ["~/my-skills"],  // Additional skill directories
+      watch: true,                 // Watch for changes
+      watchDebounceMs: 500,
+    },
+    install: {
+      preferBrew: false,
+      nodeManager: "npm",          // "npm" | "yarn" | "bun"
+    },
+    entries: {
+      "my-skill": {
+        enabled: true,
+        apiKey: "<OPENAI_API_KEY>",
+        env: { CUSTOM_VAR: "value" },
+        config: { maxRetries: 3 },
+      },
+    },
+  },
+}
+```
+
+<div id="commands">
+
+## Comandos
+
+</div>
+
+Active o desactive comandos de CLI y chat:
+
+```json5
+{
+  commands: {
+    native: "auto",                // Enable native command registration
+    nativeSkills: "auto",
+    text: true,                    // Enable text command parsing
+    bash: false,                   // Allow bash command (!)
+    bashForegroundMs: 2000,
+    config: false,                 // Allow /config command
+    debug: false,                  // Allow /debug command
+    restart: false,                // Allow restart commands
+    useAccessGroups: true,
+  },
+}
+```
+
+<div id="environment-variables-reference">
+
+## Referencia de variables de entorno
+
+</div>
+
+Variables de entorno clave que afectan el comportamiento de Eliza:
+
+<div id="path-overrides">
+
+### Sobrescrituras de rutas
+
+</div>
+
+| Variable | Propósito |
+|----------|-----------|
+| `ELIZA_STATE_DIR` | Sobrescribir el directorio de estado (`~/.eliza`) |
+| `ELIZA_CONFIG_PATH` | Sobrescribir la ruta del archivo de configuración directamente |
+| `ELIZA_OAUTH_DIR` | Sobrescribir el directorio de credenciales OAuth |
+
+<div id="ports-and-networking">
+
+### Puertos y redes
+
+</div>
+
+| Variable | Predeterminado | Propósito |
+|----------|----------------|-----------|
+| `ELIZA_API_PORT` | `31337` | Puerto de API + WebSocket (solo en modo desarrollo; en producción la API se sirve en `ELIZA_PORT`) |
+| `ELIZA_PORT` | `2138` | Puerto del panel de control (Web UI) — también sirve la API en producción |
+| `ELIZA_GATEWAY_PORT` | `18789` | Puerto del gateway |
+| `ELIZA_HOME_PORT` | `2142` | Puerto del panel de inicio |
+| `ELIZA_WECHAT_WEBHOOK_PORT` | `18790` | Puerto del webhook de WeChat |
+
+```bash
+# Custom ports
+ELIZA_GATEWAY_PORT=19000 ELIZA_PORT=3000 eliza start
+```
+
+<div id="model-provider-api-keys">
+
+### Claves API de proveedores de modelos
+
+</div>
+
+| Variable | Proveedor |
+|----------|-----------|
+| `ANTHROPIC_API_KEY` | Anthropic (Claude) |
+| `OPENAI_API_KEY` | OpenAI (GPT) |
+| `AI_GATEWAY_API_KEY` | Vercel AI Gateway |
+| `GOOGLE_API_KEY` | Google Gemini |
+| `GOOGLE_CLOUD_API_KEY` | Google Antigravity |
+| `GROQ_API_KEY` | Groq |
+| `XAI_API_KEY` | xAI (Grok) |
+| `OPENROUTER_API_KEY` | OpenRouter |
+| `DEEPSEEK_API_KEY` | DeepSeek |
+| `TOGETHER_API_KEY` | Together AI |
+| `MISTRAL_API_KEY` | Mistral |
+| `COHERE_API_KEY` | Cohere |
+| `PERPLEXITY_API_KEY` | Perplexity |
+| `ZAI_API_KEY` | zAI |
+| `OLLAMA_BASE_URL` | Ollama (local) |
+
+<div id="feature-specific-variables">
+
+### Variables específicas de funcionalidades
+
+</div>
+
+| Variable | Propósito |
+|----------|-----------|
+| `BRAVE_API_KEY` | Brave Search (herramienta de búsqueda web) |
+| `FIRECRAWL_API_KEY` | Firecrawl (alternativa de obtención web) |
+| `ELEVENLABS_API_KEY` | ElevenLabs (TTS y modo de conversación) |
+| `FAL_KEY` | FAL.ai (generación de imágenes/video) |
+
+Consulte la página de [Proveedores de modelos](/es/model-providers) para obtener una lista completa de los proveedores compatibles.
+
+<div id="cli-config-commands">
+
+## Comandos CLI de configuración
+
+</div>
+
+Eliza proporciona comandos CLI para inspeccionar la configuración sin editar JSON directamente:
+
+```bash
+# Configuration guidance (common env vars and usage)
+eliza configure
+
+# Read a config value (dot-notation)
+eliza config get agents.defaults.model
+eliza config get gateway.port
+
+# Print the resolved config file path
+eliza config path
+
+# Display all config values grouped by section
+eliza config show
+eliza config show --all    # Include advanced/hidden fields
+eliza config show --json   # Raw JSON output
+```
+
+Para cambiar valores, edite `~/.eliza/eliza.json` directamente (admite JSON5 con comentarios).
+
+<Tip>
+Utilice `eliza configure` para obtener una referencia rápida de opciones de configuración
+comunes y variables de entorno. Para el arranque local, ejecute `eliza setup`, o edite
+`~/.eliza/eliza.json` directamente.
+</Tip>
+
+<div id="full-example">
+
+## Ejemplo completo
+
+</div>
+
+Una configuración completa mostrando las opciones más comunes:
+
+```json5
+{
+  // Metadata
+  meta: { lastTouchedVersion: "1.0.0" },
+
+  // Environment variables
+  env: {
+    ANTHROPIC_API_KEY: "<ANTHROPIC_API_KEY>",
+  },
+
+  // Logging
+  logging: { level: "info", consoleStyle: "pretty" },
+
+  // Agent configuration
+  agents: {
+    defaults: {
+      model: { primary: "anthropic/claude-sonnet-4.6" },
+      workspace: "~/agent-workspace",
+      thinkingDefault: "medium",
+      sandbox: { mode: "non-main" },
+    },
+    list: [
+      {
+        id: "mila",
+        default: true,
+        name: "Mila",
+        bio: ["A capable AI assistant"],
+        system: "You are Mila.",
+      },
+    ],
+  },
+
+  // Gateway
+  gateway: {
+    port: 18789,
+    bind: "loopback",
+    auth: { mode: "token" },
+  },
+
+  // Connectors
+  connectors: {
+    telegram: { botToken: "<TELEGRAM_BOT_TOKEN>" },
+  },
+
+  // Tools
+  tools: {
+    exec: { security: "allowlist" },
+    web: {
+      search: { enabled: true, provider: "brave" },
+    },
+  },
+
+  // Feature flags
+  features: {
+    browser: true,
+    cron: true,
+  },
+
+  // Update channel
+  update: { channel: "stable" },
+}
+```

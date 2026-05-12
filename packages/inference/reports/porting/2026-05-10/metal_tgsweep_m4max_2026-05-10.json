@@ -1,0 +1,22 @@
+{
+  "device": "Apple M4 Max",
+  "date": "2026-05-10",
+  "mode": "tgsweep",
+  "iterations": 200,
+  "warmup": 50,
+  "note": "QJL and Polar both reduce via simd_sum and assume one Apple SIMD-group (32 lanes) per threadgroup. Sizes that succeed at dispatch but exceed 32 lanes will silently under-reduce — this sweep records dispatch success/failure and timing only.",
+  "sweeps": [
+    { "kernel": "qjl", "results": [
+      { "tg": 32, "status": "ok", "gpu_med_us": 332.4792, "gpu_p99_us": 1843.5483 },
+      { "tg": 64, "status": "ok", "gpu_med_us": 279.3750, "gpu_p99_us": 1570.2213 },
+      { "tg": 128, "status": "ok", "gpu_med_us": 294.3750, "gpu_p99_us": 1383.2679 },
+      { "tg": 256, "status": "ok", "gpu_med_us": 435.5417, "gpu_p99_us": 1344.4325 }
+    ] },
+    { "kernel": "polar", "results": [
+      { "tg": 32, "status": "ok", "gpu_med_us": 344.0417, "gpu_p99_us": 1221.7708 },
+      { "tg": 64, "status": "ok", "gpu_med_us": 710.8750, "gpu_p99_us": 1613.2583 },
+      { "tg": 128, "status": "ok", "gpu_med_us": 1572.9583, "gpu_p99_us": 2762.1263 },
+      { "tg": 256, "status": "ok", "gpu_med_us": 4255.1667, "gpu_p99_us": 4995.3129 }
+    ] }
+  ]
+}

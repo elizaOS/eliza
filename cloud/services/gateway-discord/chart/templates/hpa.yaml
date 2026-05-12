@@ -1,0 +1,55 @@
+{{- if .Values.hpa.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "gateway-discord.fullname" . }}
+  namespace: {{ include "gateway-discord.namespace" . }}
+  labels:
+    {{- include "gateway-discord.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "gateway-discord.fullname" . }}
+  minReplicas: {{ .Values.hpa.minReplicas }}
+  maxReplicas: {{ .Values.hpa.maxReplicas }}
+  metrics:
+    {{- if .Values.hpa.metrics.cpu.enabled }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.hpa.metrics.cpu.averageUtilization }}
+    {{- end }}
+    {{- if .Values.hpa.metrics.memory.enabled }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.hpa.metrics.memory.averageUtilization }}
+    {{- end }}
+    {{- if .Values.hpa.metrics.customBotMetric.enabled }}
+    - type: Pods
+      pods:
+        metric:
+          name: {{ .Values.hpa.metrics.customBotMetric.metricName }}
+        target:
+          type: AverageValue
+          averageValue: {{ .Values.hpa.metrics.customBotMetric.targetAverageValue | quote }}
+    {{- end }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: {{ .Values.hpa.behavior.scaleUp.stabilizationWindowSeconds }}
+      policies:
+        - type: Pods
+          value: {{ .Values.hpa.behavior.scaleUp.maxPods }}
+          periodSeconds: {{ .Values.hpa.behavior.scaleUp.periodSeconds }}
+    scaleDown:
+      stabilizationWindowSeconds: {{ .Values.hpa.behavior.scaleDown.stabilizationWindowSeconds }}
+      policies:
+        - type: Pods
+          value: {{ .Values.hpa.behavior.scaleDown.maxPods }}
+          periodSeconds: {{ .Values.hpa.behavior.scaleDown.periodSeconds }}
+{{- end }}

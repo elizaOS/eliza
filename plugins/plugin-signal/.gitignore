@@ -1,0 +1,5 @@
+# Stray declaration emit next to root sources (library types live under dist/)
+/auto-enable.d.ts
+/auto-enable.d.ts.map
+/vitest.config.d.ts
+/vitest.config.d.ts.map

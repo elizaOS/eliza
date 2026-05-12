@@ -1,0 +1,66 @@
+name: Validate Electrobun Release Workflow
+
+on:
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: test-electrobun-release-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: "1.3.13"
+  NODE_NO_WARNINGS: "1"
+
+jobs:
+  validate-release-workflow:
+    name: Release Workflow Contract
+    runs-on: ${{ vars.RUNNER_UBUNTU || 'ubuntu-24.04' }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash -euo pipefail {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Setup Bun workspace
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts
+          install-native-deps: "false"
+          run-postinstall: "true"
+
+      # TODO: port `test:regression-matrix:release-contract` and
+      # `test:release:contract` from the eliza repo. Until then these
+      # steps are intentionally no-ops so the workflow stays green and
+      # documents the porting work without blocking CI.
+      - name: Run regression matrix contract (TODO — port from eliza)
+        run: |
+          if bun run --silent test:regression-matrix:release-contract --help >/dev/null 2>&1; then
+            bun run test:regression-matrix:release-contract
+          else
+            echo "::warning::test:regression-matrix:release-contract not yet ported from eliza; skipping"
+          fi
+
+      - name: Run release contract suite (TODO — port from eliza)
+        run: |
+          if bun run --silent test:release:contract --help >/dev/null 2>&1; then
+            bun run test:release:contract
+          else
+            echo "::warning::test:release:contract not yet ported from eliza; skipping"
+          fi

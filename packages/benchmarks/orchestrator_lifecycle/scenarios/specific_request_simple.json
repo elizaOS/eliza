@@ -1,0 +1,13 @@
+{
+  "scenario_id": "specific_request_simple",
+  "title": "Specific Request Simple",
+  "category": "intake",
+  "required_capabilities": ["orchestration.status_reporting"],
+  "turns": [
+    {
+      "actor": "user",
+      "message": "Implement the login timeout fix and keep me updated.",
+      "expected_behaviors": ["spawn_subagent", "report_active_subagent_status"]
+    }
+  ]
+}

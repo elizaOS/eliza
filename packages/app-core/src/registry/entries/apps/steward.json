@@ -1,0 +1,31 @@
+{
+  "id": "steward",
+  "name": "Steward",
+  "description": "Wallet management, browser wallet bridge, and trade approval routes.",
+  "npmName": "@elizaos/app-steward",
+  "source": "bundled",
+  "tags": ["wallet", "trading"],
+  "config": {},
+  "render": {
+    "visible": false,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Wallet",
+    "group": "Curated",
+    "groupOrder": 100,
+    "actions": []
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "app",
+  "subtype": "trading",
+  "launch": {
+    "type": "server-launch",
+    "capabilities": ["wallet", "trading"],
+    "curatedSlug": "steward",
+    "routePlugin": {
+      "specifier": "@elizaos/app-steward",
+      "exportName": "stewardPlugin"
+    }
+  }
+}

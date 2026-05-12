@@ -1,0 +1,124 @@
+{
+  "name": "@elizaos/plugin-codex-cli",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
+  "types": "dist/index.d.ts",
+  "browser": "dist/browser/index.browser.js",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-codex-cli.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": "./dist/node/index.node.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "auto-enable.ts"
+  ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "text-large",
+        "text-small",
+        "tool-use"
+      ]
+    }
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@types/bun": "^1.3.8",
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "2.0.0-beta.1",
+    "zod": "^4.4.3"
+  },
+  "scripts": {
+    "build:ts": "bun run build.ts",
+    "dev": "bun --hot build.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "clean": "rm -rf dist .turbo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config ./vitest.config.ts --passWithNoTests",
+    "test:ts": "vitest run --config ./vitest.config.ts --passWithNoTests",
+    "build": "bun run build.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "CODEX_AUTH_PATH": {
+        "type": "string",
+        "description": "Path to the codex CLI OAuth auth cache. Defaults to ~/.codex/auth.json.",
+        "required": false,
+        "sensitive": false
+      },
+      "CODEX_BASE_URL": {
+        "type": "string",
+        "description": "Base URL for the ChatGPT Codex backend endpoint.",
+        "required": false,
+        "default": "https://chatgpt.com/backend-api/codex",
+        "sensitive": false
+      },
+      "CODEX_MODEL": {
+        "type": "string",
+        "description": "Codex model identifier to use for text/object generation.",
+        "required": false,
+        "default": "gpt-5.5",
+        "sensitive": false
+      },
+      "CODEX_JITTER_MS_MAX": {
+        "type": "number",
+        "description": "Maximum pre-request jitter in milliseconds. Set 0 to disable.",
+        "required": false,
+        "default": 200,
+        "sensitive": false
+      },
+      "CODEX_ORIGINATOR": {
+        "type": "string",
+        "description": "Originator header sent to the ChatGPT Codex backend.",
+        "required": false,
+        "default": "codex_cli_rs",
+        "sensitive": false
+      }
+    }
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node"
+  }
+}

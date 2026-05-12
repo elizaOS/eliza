@@ -1,0 +1,10 @@
+{
+  "name": "@elizaos/docs",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "description": "ElizaOS documentation",
+  "scripts": {
+    "test": "bun test ./test"
+  },
+  "private": true
+}

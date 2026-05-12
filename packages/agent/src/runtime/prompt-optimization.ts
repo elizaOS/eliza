@@ -1,0 +1,1632 @@
+/**
+ * Prompt optimization layer for eliza.
+ *
+ * Wraps `runtime.useModel()` to apply context-aware action compaction
+ * and optional prompt tracing/capture. Controlled via ELIZA_* env vars.
+ */
+
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+import {
+  type AgentRuntime,
+  assertActiveTrajectoryForLlmCall,
+  EventType,
+  getTrajectoryContext,
+  isLlmGenerationModelType,
+  normalizeTrajectoryLlmPurpose,
+} from "@elizaos/core";
+import { detectRuntimeModel } from "../api/agent-model.ts";
+import {
+  type ModelTokenMetadata,
+  resolveModelTokenMetadata,
+} from "../config/model-metadata.ts";
+import type { ElizaConfig } from "../config/types.ts";
+
+import type { TrajectoryLlmCall } from "../types/trajectory.ts";
+import type {
+  CompactorMessage,
+  CompactorModelCall,
+} from "./conversation-compactor.types.ts";
+import {
+  type ApplyConversationCompactionResult,
+  type ApplyConversationMessageCompactionResult,
+  applyConversationCompaction,
+  applyConversationMessageCompaction,
+  type StrategyName,
+  selectStrategyFromEnv,
+} from "./conversation-compactor-runtime.ts";
+import {
+  compactActionsForIntent,
+  compactCodingExamplesForIntent,
+  compactConversationHistory,
+  compactModelPrompt,
+  validateIntentActionMap,
+} from "./prompt-compaction.ts";
+import {
+  enrichTrajectoryLlmCall,
+  ensureTrajectoriesTable,
+  isLegacyTrajectoryLogger,
+  loadTrajectoryByStepId,
+  saveTrajectory,
+  toOptionalNumber,
+  toText,
+} from "./trajectory-internals.ts";
+
+export {
+  buildFullParamActionSet,
+  compactActionsForIntent,
+  detectIntentCategories,
+} from "./prompt-compaction.ts";
+
+// ---------------------------------------------------------------------------
+// Env-var driven configuration (evaluated once at import time)
+// ---------------------------------------------------------------------------
+
+const ELIZA_PROMPT_OPT_MODE = (
+  process.env.ELIZA_PROMPT_OPT_MODE ?? "baseline"
+).toLowerCase();
+
+const ELIZA_PROMPT_TRACE =
+  process.env.ELIZA_PROMPT_TRACE === "1" ||
+  process.env.ELIZA_PROMPT_TRACE?.toLowerCase() === "true";
+
+/**
+ * Dump raw prompts to .tmp/prompt-captures/ for analysis. Dev-only.
+ * WARNING: captures contain full conversation content including user messages.
+ */
+const ELIZA_CAPTURE_PROMPTS =
+  process.env.ELIZA_CAPTURE_PROMPTS === "1" ||
+  process.env.ELIZA_CAPTURE_PROMPTS?.toLowerCase() === "true";
+
+let promptCaptureSeq = 0;
+
+/** When false, context-aware action compaction is skipped entirely. Default: enabled. */
+const ELIZA_ACTION_COMPACTION = (() => {
+  const raw = process.env.ELIZA_ACTION_COMPACTION?.toLowerCase();
+  if (raw === "0" || raw === "false") return false;
+  return true;
+})();
+
+// Track which runtimes have been wrapped to prevent double-installation.
+const installedRuntimes = new WeakSet<AgentRuntime>();
+const usageCaptureInstalledRuntimes = new WeakSet<AgentRuntime>();
+const usageCaptureStacks = new WeakMap<AgentRuntime, ModelUsageAccumulator[]>();
+const runtimeModelConfigs = new WeakMap<AgentRuntime, ElizaConfig>();
+const trackedTrajectoryLoggers = new WeakSet<object>();
+const trajectoryLlmLogCounts = new WeakMap<AgentRuntime, Map<string, number>>();
+const TRAJECTORY_CONTEXT_MANAGER_KEY = Symbol.for(
+  "elizaos.trajectoryContextManager",
+);
+
+type GlobalWithTrajectoryContextManager = typeof globalThis & {
+  [TRAJECTORY_CONTEXT_MANAGER_KEY]?: {
+    active: () => { trajectoryStepId?: string } | undefined;
+  };
+};
+
+type TrajectoryLoggerLike = {
+  logLlmCall?: (...args: unknown[]) => unknown;
+  logProviderAccess?: (...args: unknown[]) => unknown;
+  getLlmCallLogs?: () => readonly unknown[];
+  getProviderAccessLogs?: () => readonly unknown[];
+  updateLatestLlmCall?: (
+    stepId: string,
+    patch: Record<string, unknown>,
+  ) => Promise<void> | void;
+};
+
+type RuntimeWithTrajectoryService = AgentRuntime & {
+  getService?: (serviceType: string) => unknown;
+  getServicesByType?: (serviceType: string) => unknown;
+};
+
+type RuntimeWithEmitEvent = AgentRuntime & {
+  emitEvent: (event: unknown, params?: unknown) => Promise<void> | void;
+};
+
+type PromptOptimizationTelemetry = {
+  mode: string;
+  actionCompactionEnabled: boolean;
+  originalPromptChars: number;
+  finalPromptChars: number;
+  originalPromptTokens: number;
+  finalPromptTokens: number;
+  budgetTokens?: number;
+  outputReserveTokens?: number;
+  transformations: string[];
+  conversationCompaction?:
+    | Omit<ApplyConversationCompactionResult, "prompt">
+    | Omit<ApplyConversationMessageCompactionResult, "messages">;
+};
+
+export interface CapturedModelUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  cachedInputTokens?: number;
+  model?: string;
+  provider?: string;
+  isEstimated: boolean;
+  llmCalls: number;
+}
+
+interface ModelUsageRecord {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  cachedInputTokens?: number;
+  model?: string;
+  provider?: string;
+  isEstimated: boolean;
+}
+
+interface ModelUsageAccumulator {
+  records: ModelUsageRecord[];
+}
+
+interface PromptBudget {
+  metadata: ModelTokenMetadata;
+  outputReserveTokens: number;
+  promptBudgetTokens: number;
+}
+
+export interface PromptBudgetResult {
+  prompt: string;
+  originalPromptTokens: number;
+  promptTokens: number;
+  budgetTokens: number;
+  truncated: boolean;
+}
+
+export function shouldPreserveFullPromptForTrajectoryCapture(): boolean {
+  return getActiveTrajectoryStepId() !== null;
+}
+
+function getSharedTrajectoryStepId(): string | null {
+  const stepId = (globalThis as GlobalWithTrajectoryContextManager)[
+    TRAJECTORY_CONTEXT_MANAGER_KEY
+  ]?.active?.()?.trajectoryStepId;
+  return typeof stepId === "string" && stepId.trim().length > 0
+    ? stepId.trim()
+    : null;
+}
+
+function getActiveTrajectoryStepId(): string | null {
+  const coreStepId = getTrajectoryContext()?.trajectoryStepId;
+  if (typeof coreStepId === "string" && coreStepId.trim().length > 0) {
+    return coreStepId.trim();
+  }
+
+  return getSharedTrajectoryStepId();
+}
+
+function extractTrajectoryStepIdFromLoggerArgs(args: unknown[]): string | null {
+  if (args.length === 0) return null;
+  const first = args[0];
+  if (typeof first === "string") {
+    const stepId = first.trim();
+    return stepId.length > 0 ? stepId : null;
+  }
+  if (!first || typeof first !== "object") return null;
+  const stepId = (first as { stepId?: unknown }).stepId;
+  return typeof stepId === "string" && stepId.trim().length > 0
+    ? stepId.trim()
+    : null;
+}
+
+function getTrajectoryLlmLogCount(
+  runtime: AgentRuntime,
+  stepId: string,
+): number {
+  return trajectoryLlmLogCounts.get(runtime)?.get(stepId) ?? 0;
+}
+
+function incrementTrajectoryLlmLogCount(
+  runtime: AgentRuntime,
+  stepId: string,
+): void {
+  const counts =
+    trajectoryLlmLogCounts.get(runtime) ?? new Map<string, number>();
+  counts.set(stepId, (counts.get(stepId) ?? 0) + 1);
+  trajectoryLlmLogCounts.set(runtime, counts);
+}
+
+function resolveTrajectoryLogger(
+  runtime: AgentRuntime,
+): TrajectoryLoggerLike | null {
+  const runtimeWithService = runtime as RuntimeWithTrajectoryService;
+  const candidates: TrajectoryLoggerLike[] = [];
+  const seen = new Set<unknown>();
+  const push = (candidate: unknown): void => {
+    if (!candidate || typeof candidate !== "object" || seen.has(candidate)) {
+      return;
+    }
+    seen.add(candidate);
+    candidates.push(candidate as TrajectoryLoggerLike);
+  };
+
+  if (typeof runtimeWithService.getServicesByType === "function") {
+    const byType = runtimeWithService.getServicesByType("trajectories");
+    if (Array.isArray(byType)) {
+      for (const candidate of byType) {
+        push(candidate);
+      }
+    } else {
+      push(byType);
+    }
+  }
+
+  if (typeof runtimeWithService.getService === "function") {
+    push(runtimeWithService.getService("trajectories"));
+  }
+
+  if (candidates.length === 0) return null;
+
+  let best: TrajectoryLoggerLike | null = null;
+  let bestScore = -1;
+  for (const candidate of candidates) {
+    let score = 0;
+    if (isLegacyTrajectoryLogger(candidate)) score += 100;
+    if (typeof candidate.logLlmCall === "function") score += 10;
+    if (typeof candidate.logProviderAccess === "function") score += 10;
+    if (typeof candidate.getLlmCallLogs === "function") score += 2;
+    if (typeof candidate.getProviderAccessLogs === "function") score += 2;
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+
+  return best;
+}
+
+function ensureTrajectoryLoggerTracking(
+  runtime: AgentRuntime,
+): TrajectoryLoggerLike | null {
+  const trajectoryLogger = resolveTrajectoryLogger(runtime);
+  if (!trajectoryLogger) {
+    return trajectoryLogger;
+  }
+
+  if (typeof trajectoryLogger.updateLatestLlmCall !== "function") {
+    trajectoryLogger.updateLatestLlmCall = async (
+      stepId: string,
+      patch: Record<string, unknown>,
+    ) => {
+      const normalizedStepId = stepId.trim();
+      if (!normalizedStepId) return;
+
+      const tableReady = await ensureTrajectoriesTable(runtime);
+      if (!tableReady) return;
+
+      const trajectory = await loadTrajectoryByStepId(
+        runtime,
+        normalizedStepId,
+      );
+      if (!trajectory || !Array.isArray(trajectory.steps)) return;
+
+      const step =
+        [...trajectory.steps]
+          .reverse()
+          .find((candidate) => candidate.stepId === normalizedStepId) ??
+        trajectory.steps[trajectory.steps.length - 1];
+      const calls = Array.isArray(step?.llmCalls) ? step.llmCalls : [];
+      const latestCall =
+        calls.length > 0
+          ? (calls[calls.length - 1] as TrajectoryLlmCall)
+          : null;
+      if (!latestCall) return;
+
+      let updated = false;
+      const nextModel = toText(patch.model, "").trim();
+      const currentModel = toText(latestCall.model, "").trim();
+      if (
+        nextModel &&
+        currentModel !== nextModel &&
+        (currentModel.length === 0 ||
+          isGenericTrajectoryModel(currentModel) ||
+          !isGenericTrajectoryModel(nextModel))
+      ) {
+        latestCall.model = nextModel;
+        updated = true;
+      }
+
+      const nextSystemPrompt = toText(patch.systemPrompt, "");
+      if (!toText(latestCall.systemPrompt, "") && nextSystemPrompt) {
+        latestCall.systemPrompt = nextSystemPrompt;
+        updated = true;
+      }
+
+      const nextUserPrompt = toText(patch.userPrompt, "");
+      if (!toText(latestCall.userPrompt, "") && nextUserPrompt) {
+        latestCall.userPrompt = nextUserPrompt;
+        updated = true;
+      }
+
+      const nextResponse = toText(patch.response, "");
+      if (!toText(latestCall.response, "") && nextResponse) {
+        latestCall.response = nextResponse;
+        updated = true;
+      }
+
+      type NumericLlmCallField =
+        | "temperature"
+        | "maxTokens"
+        | "latencyMs"
+        | "promptTokens"
+        | "completionTokens";
+
+      function readExistingNumeric(
+        call: TrajectoryLlmCall,
+        key: NumericLlmCallField,
+      ) {
+        switch (key) {
+          case "temperature":
+            return call.temperature;
+          case "maxTokens":
+            return call.maxTokens;
+          case "latencyMs":
+            return call.latencyMs;
+          case "promptTokens":
+            return call.promptTokens;
+          case "completionTokens":
+            return call.completionTokens;
+          default: {
+            const _exhaustive: never = key;
+            return _exhaustive;
+          }
+        }
+      }
+
+      function writeNumeric(
+        call: TrajectoryLlmCall,
+        key: NumericLlmCallField,
+        value: number,
+      ) {
+        switch (key) {
+          case "temperature":
+            call.temperature = value;
+            break;
+          case "maxTokens":
+            call.maxTokens = value;
+            break;
+          case "latencyMs":
+            call.latencyMs = value;
+            break;
+          case "promptTokens":
+            call.promptTokens = value;
+            break;
+          case "completionTokens":
+            call.completionTokens = value;
+            break;
+          default: {
+            const _exhaustive: never = key;
+            return _exhaustive;
+          }
+        }
+      }
+
+      const applyMissingNumber = (key: NumericLlmCallField): void => {
+        const rawPatch = (patch as Record<string, unknown>)[key];
+        const nextValue = toOptionalNumber(rawPatch);
+        if (nextValue === undefined) return;
+        const currentValue = toOptionalNumber(
+          readExistingNumeric(latestCall, key),
+        );
+        if (currentValue !== undefined && currentValue > 0) return;
+        writeNumeric(latestCall, key, nextValue);
+        updated = true;
+      };
+
+      applyMissingNumber("temperature");
+      applyMissingNumber("maxTokens");
+      applyMissingNumber("latencyMs");
+      applyMissingNumber("promptTokens");
+      applyMissingNumber("completionTokens");
+
+      if (typeof patch.tokenUsageEstimated === "boolean") {
+        const currentEstimated = latestCall.tokenUsageEstimated;
+        if (
+          typeof currentEstimated !== "boolean" ||
+          (currentEstimated && !patch.tokenUsageEstimated)
+        ) {
+          latestCall.tokenUsageEstimated = patch.tokenUsageEstimated;
+          updated = true;
+        }
+      }
+
+      const patchProviderMetadata = (patch as Record<string, unknown>)
+        .providerMetadata;
+      if (
+        patchProviderMetadata &&
+        typeof patchProviderMetadata === "object" &&
+        !Array.isArray(patchProviderMetadata)
+      ) {
+        const currentProviderMetadata =
+          latestCall.providerMetadata &&
+          typeof latestCall.providerMetadata === "object" &&
+          !Array.isArray(latestCall.providerMetadata)
+            ? (latestCall.providerMetadata as Record<string, unknown>)
+            : {};
+        latestCall.providerMetadata = {
+          ...currentProviderMetadata,
+          ...(patchProviderMetadata as Record<string, unknown>),
+        };
+        updated = true;
+      }
+
+      const enriched = enrichTrajectoryLlmCall(
+        latestCall as Record<string, unknown>,
+      );
+      const nextStepType = toText(enriched.stepType, "");
+      if (nextStepType && toText(latestCall.stepType, "") !== nextStepType) {
+        latestCall.stepType = nextStepType;
+        updated = true;
+      }
+
+      const nextTags = Array.isArray(enriched.tags)
+        ? enriched.tags.filter(
+            (tag): tag is string => typeof tag === "string" && tag.length > 0,
+          )
+        : [];
+      const currentTags = Array.isArray(latestCall.tags)
+        ? latestCall.tags.filter(
+            (tag): tag is string => typeof tag === "string" && tag.length > 0,
+          )
+        : [];
+      if (
+        nextTags.length > 0 &&
+        JSON.stringify(currentTags) !== JSON.stringify(nextTags)
+      ) {
+        latestCall.tags = nextTags;
+        updated = true;
+      }
+
+      if (!updated) return;
+
+      trajectory.updatedAt = new Date().toISOString();
+      await saveTrajectory(runtime, trajectory);
+    };
+  }
+
+  if (typeof trajectoryLogger.logLlmCall !== "function") {
+    return trajectoryLogger;
+  }
+
+  const loggerObject = trajectoryLogger as object;
+  if (trackedTrajectoryLoggers.has(loggerObject)) {
+    return trajectoryLogger;
+  }
+
+  const originalLogLlmCall = trajectoryLogger.logLlmCall.bind(trajectoryLogger);
+  trajectoryLogger.logLlmCall = ((...args: unknown[]) => {
+    const stepId = extractTrajectoryStepIdFromLoggerArgs(args);
+    if (stepId) {
+      incrementTrajectoryLlmLogCount(runtime, stepId);
+    }
+    return originalLogLlmCall(...args);
+  }) as typeof trajectoryLogger.logLlmCall;
+
+  trackedTrajectoryLoggers.add(loggerObject);
+  return trajectoryLogger;
+}
+
+function stringifyTrajectoryResponse(response: unknown): string {
+  if (typeof response === "string") return response;
+  if (response == null) return "";
+  try {
+    return JSON.stringify(response);
+  } catch {
+    return String(response);
+  }
+}
+
+export function estimateTokenCount(text: string): number {
+  if (!text) return 0;
+  return Math.ceil(text.length / 4);
+}
+
+type ModelPayloadMessage = {
+  role?: unknown;
+  content?: unknown;
+  toolCalls?: unknown;
+  tool_calls?: unknown;
+  toolCallId?: unknown;
+  tool_call_id?: unknown;
+  toolName?: unknown;
+  name?: unknown;
+};
+
+function messageContentToText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (!part || typeof part !== "object") return "";
+        const record = part as Record<string, unknown>;
+        if (typeof record.text === "string") return record.text;
+        if (typeof record.content === "string") return record.content;
+        return "";
+      })
+      .filter(Boolean)
+      .join("\n");
+  }
+  if (content == null) return "";
+  return String(content);
+}
+
+function normalizeToolCalls(value: unknown): CompactorMessage["toolCalls"] {
+  if (!Array.isArray(value)) return undefined;
+  const out: NonNullable<CompactorMessage["toolCalls"]> = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const fn =
+      record.function && typeof record.function === "object"
+        ? (record.function as Record<string, unknown>)
+        : null;
+    const id = typeof record.id === "string" ? record.id : "";
+    const name =
+      typeof record.name === "string"
+        ? record.name
+        : typeof fn?.name === "string"
+          ? fn.name
+          : "";
+    if (!id || !name) continue;
+    const argsRaw =
+      record.arguments ??
+      record.args ??
+      (fn ? (fn.arguments ?? fn.args) : undefined);
+    let parsedArgs: Record<string, unknown> = {};
+    if (argsRaw && typeof argsRaw === "object" && !Array.isArray(argsRaw)) {
+      parsedArgs = argsRaw as Record<string, unknown>;
+    } else if (typeof argsRaw === "string" && argsRaw.trim().length > 0) {
+      try {
+        const parsed = JSON.parse(argsRaw) as unknown;
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          parsedArgs = parsed as Record<string, unknown>;
+        }
+      } catch {
+        parsedArgs = { raw: argsRaw };
+      }
+    }
+    out.push({ id, name, arguments: parsedArgs });
+  }
+  return out.length > 0 ? out : undefined;
+}
+
+function normalizePayloadMessages(value: unknown): CompactorMessage[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: CompactorMessage[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) {
+      return null;
+    }
+    const record = item as ModelPayloadMessage;
+    const role = typeof record.role === "string" ? record.role : "";
+    if (
+      role !== "system" &&
+      role !== "user" &&
+      role !== "assistant" &&
+      role !== "tool"
+    ) {
+      return null;
+    }
+    const content = messageContentToText(record.content);
+    const toolCalls = normalizeToolCalls(record.toolCalls ?? record.tool_calls);
+    const toolCallId =
+      typeof record.toolCallId === "string"
+        ? record.toolCallId
+        : typeof record.tool_call_id === "string"
+          ? record.tool_call_id
+          : undefined;
+    const toolName =
+      typeof record.toolName === "string"
+        ? record.toolName
+        : typeof record.name === "string"
+          ? record.name
+          : undefined;
+    out.push({
+      role,
+      content,
+      ...(toolCalls ? { toolCalls } : {}),
+      ...(toolCallId ? { toolCallId } : {}),
+      ...(toolName ? { toolName } : {}),
+    });
+  }
+  return out;
+}
+
+function renderMessagesForTelemetry(messages: CompactorMessage[]): string {
+  return messages
+    .map((message) => {
+      const toolCalls = message.toolCalls?.length
+        ? `\n${message.toolCalls
+            .map(
+              (call) =>
+                `  toolCall id=${call.id} name=${call.name} args=${JSON.stringify(call.arguments)}`,
+            )
+            .join("\n")}`
+        : "";
+      const toolMeta =
+        message.role === "tool"
+          ? ` toolCallId=${message.toolCallId ?? ""} toolName=${message.toolName ?? ""}`
+          : "";
+      return `[${message.role}${toolMeta}] ${message.content}${toolCalls}`;
+    })
+    .join("\n");
+}
+
+function compactorMessagesToPayloadMessages(
+  messages: CompactorMessage[],
+): Array<Record<string, unknown>> {
+  return messages.map((message) => {
+    const record: Record<string, unknown> = {
+      role: message.role,
+      content: message.content,
+    };
+    if (message.role === "assistant" && message.toolCalls?.length) {
+      record.tool_calls = message.toolCalls.map((call) => ({
+        id: call.id,
+        type: "function",
+        function: {
+          name: call.name,
+          arguments: JSON.stringify(call.arguments ?? {}),
+        },
+      }));
+    }
+    if (message.role === "tool") {
+      if (message.toolCallId) record.tool_call_id = message.toolCallId;
+      if (message.toolName) record.name = message.toolName;
+    }
+    return record;
+  });
+}
+
+function providerOptionsWithPromptOptimization(
+  payloadRecord: Record<string, unknown>,
+  telemetry: PromptOptimizationTelemetry,
+): Record<string, unknown> {
+  const providerOptions = (
+    payloadRecord.providerOptions &&
+    typeof payloadRecord.providerOptions === "object" &&
+    !Array.isArray(payloadRecord.providerOptions)
+      ? (payloadRecord.providerOptions as Record<string, unknown>)
+      : {}
+  ) as Record<string, unknown>;
+  const eliza = (
+    providerOptions.eliza &&
+    typeof providerOptions.eliza === "object" &&
+    !Array.isArray(providerOptions.eliza)
+      ? (providerOptions.eliza as Record<string, unknown>)
+      : {}
+  ) as Record<string, unknown>;
+  eliza.promptOptimization = telemetry;
+  providerOptions.eliza = eliza;
+  payloadRecord.providerOptions = providerOptions;
+  return providerOptions;
+}
+
+function isModelUsedEvent(event: unknown): boolean {
+  if (event === EventType.MODEL_USED || event === "MODEL_USED") {
+    return true;
+  }
+  if (Array.isArray(event)) {
+    return event.some((entry) => isModelUsedEvent(entry));
+  }
+  return false;
+}
+
+function toUsageModelLabel(
+  payload: Record<string, unknown>,
+): string | undefined {
+  for (const key of ["model", "modelId", "modelName", "type"]) {
+    const value = payload[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return undefined;
+}
+
+function normalizeModelUsageRecord(payload: unknown): ModelUsageRecord | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const record = payload as Record<string, unknown>;
+  const tokens =
+    record.tokens &&
+    typeof record.tokens === "object" &&
+    !Array.isArray(record.tokens)
+      ? (record.tokens as Record<string, unknown>)
+      : undefined;
+  if (!tokens) return null;
+
+  const promptTokens = toOptionalNumber(tokens.prompt);
+  const completionTokens = toOptionalNumber(tokens.completion);
+  const totalTokens = toOptionalNumber(tokens.total);
+  const cacheReadInputTokens =
+    toOptionalNumber(tokens.cacheReadInputTokens) ??
+    toOptionalNumber(tokens.cache_read_input_tokens) ??
+    toOptionalNumber(tokens.cacheReadTokens) ??
+    toOptionalNumber(tokens.cachedInputTokens) ??
+    toOptionalNumber(tokens.cached_input_tokens);
+  const cacheCreationInputTokens =
+    toOptionalNumber(tokens.cacheCreationInputTokens) ??
+    toOptionalNumber(tokens.cache_creation_input_tokens) ??
+    toOptionalNumber(tokens.cacheWriteInputTokens) ??
+    toOptionalNumber(tokens.cacheWriteTokens);
+  const cachedInputTokens =
+    toOptionalNumber(tokens.cachedInputTokens) ??
+    toOptionalNumber(tokens.cached_input_tokens) ??
+    cacheReadInputTokens;
+  if (
+    promptTokens === undefined &&
+    completionTokens === undefined &&
+    totalTokens === undefined &&
+    cacheReadInputTokens === undefined &&
+    cacheCreationInputTokens === undefined &&
+    cachedInputTokens === undefined
+  ) {
+    return null;
+  }
+
+  const normalizedPromptTokens = promptTokens ?? 0;
+  const normalizedCompletionTokens =
+    completionTokens ??
+    Math.max(
+      0,
+      (totalTokens ?? normalizedPromptTokens) - normalizedPromptTokens,
+    );
+  const normalizedTotalTokens =
+    totalTokens ?? normalizedPromptTokens + normalizedCompletionTokens;
+  const provider =
+    typeof record.provider === "string" && record.provider.trim().length > 0
+      ? record.provider.trim()
+      : typeof record.source === "string" && record.source.trim().length > 0
+        ? record.source.trim()
+        : undefined;
+
+  return {
+    promptTokens: normalizedPromptTokens,
+    completionTokens: normalizedCompletionTokens,
+    totalTokens: normalizedTotalTokens,
+    ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
+    ...(cacheCreationInputTokens !== undefined
+      ? { cacheCreationInputTokens }
+      : {}),
+    ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
+    ...(toUsageModelLabel(record) ? { model: toUsageModelLabel(record) } : {}),
+    ...(provider ? { provider } : {}),
+    isEstimated:
+      record.usageEstimated === true ||
+      record.estimated === true ||
+      tokens.estimated === true,
+  };
+}
+
+function aggregateModelUsage(
+  records: readonly ModelUsageRecord[],
+): CapturedModelUsage | null {
+  if (records.length === 0) return null;
+
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let totalTokens = 0;
+  let cacheReadInputTokens = 0;
+  let cacheCreationInputTokens = 0;
+  let cachedInputTokens = 0;
+  let hasCacheReadInputTokens = false;
+  let hasCacheCreationInputTokens = false;
+  let hasCachedInputTokens = false;
+  let model: string | undefined;
+  let provider: string | undefined;
+  let isEstimated = false;
+
+  for (const record of records) {
+    promptTokens += record.promptTokens;
+    completionTokens += record.completionTokens;
+    totalTokens += record.totalTokens;
+    if (record.cacheReadInputTokens !== undefined) {
+      cacheReadInputTokens += record.cacheReadInputTokens;
+      hasCacheReadInputTokens = true;
+    }
+    if (record.cacheCreationInputTokens !== undefined) {
+      cacheCreationInputTokens += record.cacheCreationInputTokens;
+      hasCacheCreationInputTokens = true;
+    }
+    if (record.cachedInputTokens !== undefined) {
+      cachedInputTokens += record.cachedInputTokens;
+      hasCachedInputTokens = true;
+    }
+    model = record.model ?? model;
+    provider = record.provider ?? provider;
+    isEstimated ||= record.isEstimated;
+  }
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: totalTokens || promptTokens + completionTokens,
+    ...(hasCacheReadInputTokens ? { cacheReadInputTokens } : {}),
+    ...(hasCacheCreationInputTokens ? { cacheCreationInputTokens } : {}),
+    ...(hasCachedInputTokens ? { cachedInputTokens } : {}),
+    ...(model ? { model } : {}),
+    ...(provider ? { provider } : {}),
+    isEstimated,
+    llmCalls: records.length,
+  };
+}
+
+function ensureModelUsageEventCapture(runtime: AgentRuntime): void {
+  if (usageCaptureInstalledRuntimes.has(runtime)) return;
+  usageCaptureInstalledRuntimes.add(runtime);
+
+  const runtimeWithEmit = runtime as RuntimeWithEmitEvent;
+  if (typeof runtimeWithEmit.emitEvent !== "function") return;
+
+  const originalEmitEvent = runtimeWithEmit.emitEvent.bind(runtime);
+  runtimeWithEmit.emitEvent = (async (event: unknown, params?: unknown) => {
+    if (isModelUsedEvent(event)) {
+      const usageRecord = normalizeModelUsageRecord(params);
+      if (usageRecord) {
+        for (const accumulator of usageCaptureStacks.get(runtime) ?? []) {
+          accumulator.records.push(usageRecord);
+        }
+      }
+    }
+    return originalEmitEvent(event, params);
+  }) as RuntimeWithEmitEvent["emitEvent"];
+}
+
+export async function withModelUsageCapture<T>(
+  runtime: AgentRuntime,
+  run: () => Promise<T>,
+): Promise<{ result: T; usage: CapturedModelUsage | null }> {
+  ensureModelUsageEventCapture(runtime);
+
+  const stack = usageCaptureStacks.get(runtime) ?? [];
+  const accumulator: ModelUsageAccumulator = { records: [] };
+  stack.push(accumulator);
+  usageCaptureStacks.set(runtime, stack);
+
+  try {
+    const result = await run();
+    return {
+      result,
+      usage: aggregateModelUsage(accumulator.records),
+    };
+  } finally {
+    const index = stack.indexOf(accumulator);
+    if (index >= 0) {
+      stack.splice(index, 1);
+    }
+    if (stack.length === 0) {
+      usageCaptureStacks.delete(runtime);
+    }
+  }
+}
+
+function resolvePayloadModelId(
+  runtime: AgentRuntime,
+  modelType: string,
+  payloadRecord: Record<string, unknown>,
+): string {
+  for (const key of ["model", "modelId", "modelName"]) {
+    const value = payloadRecord[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+
+  const config = runtimeModelConfigs.get(runtime);
+  const detected = detectRuntimeModel(runtime, config);
+  if (detected && detected.trim().length > 0) {
+    return detected.trim();
+  }
+
+  return modelType;
+}
+
+function resolvePromptBudget(
+  runtime: AgentRuntime,
+  modelType: string,
+  payloadRecord: Record<string, unknown>,
+): PromptBudget {
+  const metadata = resolveModelTokenMetadata(
+    runtimeModelConfigs.get(runtime),
+    resolvePayloadModelId(runtime, modelType, payloadRecord),
+  );
+  const requestedOutputTokens = [
+    toOptionalNumber(payloadRecord.maxOutputTokens),
+    toOptionalNumber(payloadRecord.maxTokens),
+  ].find((value): value is number => value !== undefined && value > 0);
+  const outputReserveTokens = Math.min(
+    Math.max(1, metadata.contextWindow - 1),
+    requestedOutputTokens ?? metadata.maxTokens,
+  );
+  const promptBudgetTokens = Math.max(
+    1,
+    Math.floor((metadata.contextWindow - outputReserveTokens) * 0.95),
+  );
+
+  return {
+    metadata,
+    outputReserveTokens,
+    promptBudgetTokens,
+  };
+}
+
+function shouldApplyPromptBudget(modelType: string): boolean {
+  if (modelType.includes("EMBEDDING")) return false;
+  return (
+    modelType.includes("TEXT_") ||
+    modelType.includes("REASONING_") ||
+    modelType === "RESPONSE_HANDLER" ||
+    modelType === "ACTION_PLANNER"
+  );
+}
+
+function truncatePromptToTokenBudget(
+  prompt: string,
+  budgetTokens: number,
+): string {
+  const charBudget = Math.max(0, budgetTokens * 4);
+  if (prompt.length <= charBudget) return prompt;
+  if (charBudget <= 0) return "";
+
+  const marker =
+    "\n\n[... context truncated to fit model context window ...]\n\n";
+  const receivedMessageStart = prompt.search(/\n#{1,3}\s*Received Message\b/i);
+  const tail =
+    receivedMessageStart >= 0
+      ? prompt.slice(receivedMessageStart)
+      : prompt.slice(-Math.floor(charBudget * 0.7));
+  if (tail.length >= charBudget) {
+    return tail.slice(-charBudget);
+  }
+
+  const headBudget = charBudget - tail.length - marker.length;
+  if (headBudget <= 0) {
+    return tail.slice(-charBudget);
+  }
+
+  return `${prompt.slice(0, headBudget)}${marker}${tail}`;
+}
+
+/**
+ * Resolve the configured conversation compactor strategy lazily (per call)
+ * so tests can mutate `process.env` without re-importing the module.
+ * Throws on an invalid env value — handled by the caller.
+ */
+function resolveConversationCompactionStrategy(): StrategyName | null {
+  return selectStrategyFromEnv();
+}
+
+/**
+ * Build a `CompactorModelCall` that delegates to `runtime.useModel`.
+ * Bypasses the wrapped `useModel` (we use the original closure) to avoid
+ * recursion when the summarization call itself triggers prompt
+ * optimization. Falls back to the wrapped `useModel` if no original is
+ * supplied (e.g. when called from tests).
+ */
+function buildRuntimeCompactorModelCall(
+  runtime: AgentRuntime,
+  originalUseModel: AgentRuntime["useModel"] | null,
+): CompactorModelCall {
+  const useModel = (originalUseModel ?? runtime.useModel.bind(runtime)) as (
+    modelType: string,
+    payload: unknown,
+  ) => Promise<unknown>;
+  return async ({
+    systemPrompt,
+    messages,
+    maxOutputTokens,
+  }: {
+    systemPrompt: string;
+    messages: CompactorMessage[];
+    maxOutputTokens?: number;
+  }) => {
+    const userText = messages.map((m) => m.content).join("\n");
+    const result = await useModel("TEXT_LARGE", {
+      system: systemPrompt,
+      prompt: userText,
+      ...(maxOutputTokens !== undefined ? { maxTokens: maxOutputTokens } : {}),
+    });
+    if (typeof result === "string") return result;
+    if (result == null) return "";
+    try {
+      return JSON.stringify(result);
+    } catch {
+      return String(result);
+    }
+  };
+}
+
+/**
+ * Async pre-step that runs a conversation-compactor strategy when
+ * `ELIZA_CONVERSATION_COMPACTOR` is set and the prompt is over budget.
+ * No-ops when the env var is unset, the prompt is under budget, or the
+ * compactor cannot reduce the prompt.
+ *
+ * Logs `[eliza] conversation-compaction strategy=X originalTokens=N
+ * compactedTokens=M latencyMs=L` on a successful compaction.
+ */
+export async function maybeApplyConversationCompaction(
+  runtime: AgentRuntime,
+  prompt: string,
+  budgetTokens: number,
+  callModel: CompactorModelCall,
+  onResult?: (result: ApplyConversationCompactionResult) => void,
+): Promise<string> {
+  let strategy: StrategyName | null;
+  try {
+    strategy = resolveConversationCompactionStrategy();
+  } catch (error) {
+    runtime.logger?.warn?.(String((error as Error).message));
+    return prompt;
+  }
+  if (!strategy) return prompt;
+
+  const currentTokens = estimateTokenCount(prompt);
+  if (currentTokens <= budgetTokens) return prompt;
+
+  const result = await applyConversationCompaction({
+    prompt,
+    strategy,
+    currentTokens,
+    targetTokens: budgetTokens,
+    callModel,
+    runtime,
+  });
+  onResult?.(result);
+  if (!result.didCompact) return prompt;
+
+  runtime.logger?.info?.(
+    `[eliza] conversation-compaction strategy=${strategy} originalTokens=${result.originalTokens} compactedTokens=${result.compactedTokens} latencyMs=${result.latencyMs}`,
+  );
+  return result.prompt;
+}
+
+export async function maybeApplyConversationMessageCompaction(
+  runtime: AgentRuntime,
+  messages: CompactorMessage[],
+  budgetTokens: number,
+  callModel: CompactorModelCall,
+  onResult?: (result: ApplyConversationMessageCompactionResult) => void,
+): Promise<CompactorMessage[]> {
+  let strategy: StrategyName | null;
+  try {
+    strategy = resolveConversationCompactionStrategy();
+  } catch (error) {
+    runtime.logger?.warn?.(String((error as Error).message));
+    return messages;
+  }
+  if (!strategy) return messages;
+
+  const rendered = renderMessagesForTelemetry(messages);
+  const currentTokens = estimateTokenCount(rendered);
+  if (currentTokens <= budgetTokens) return messages;
+
+  const result = await applyConversationMessageCompaction({
+    messages,
+    strategy,
+    currentTokens,
+    targetTokens: budgetTokens,
+    callModel,
+  });
+  onResult?.(result);
+  if (!result.didCompact) return messages;
+
+  runtime.logger?.info?.(
+    `[eliza] conversation-message-compaction strategy=${strategy} originalTokens=${result.originalTokens} compactedTokens=${result.compactedTokens} latencyMs=${result.latencyMs}`,
+  );
+  return result.messages;
+}
+
+export function fitPromptToTokenBudget(
+  prompt: string,
+  budgetTokens: number,
+): PromptBudgetResult {
+  const originalPromptTokens = estimateTokenCount(prompt);
+  if (originalPromptTokens <= budgetTokens) {
+    return {
+      prompt,
+      originalPromptTokens,
+      promptTokens: originalPromptTokens,
+      budgetTokens,
+      truncated: false,
+    };
+  }
+
+  let nextPrompt = compactActionsForIntent(prompt);
+  nextPrompt = compactCodingExamplesForIntent(nextPrompt);
+  nextPrompt = compactConversationHistory(nextPrompt);
+  nextPrompt = compactModelPrompt(nextPrompt);
+
+  let promptTokens = estimateTokenCount(nextPrompt);
+  let truncated = false;
+  if (promptTokens > budgetTokens) {
+    nextPrompt = truncatePromptToTokenBudget(nextPrompt, budgetTokens);
+    promptTokens = estimateTokenCount(nextPrompt);
+    truncated = true;
+  }
+
+  return {
+    prompt: nextPrompt,
+    originalPromptTokens,
+    promptTokens,
+    budgetTokens,
+    truncated,
+  };
+}
+
+function isGenericTrajectoryModel(model: string): boolean {
+  const normalized = model.trim().toUpperCase();
+  return (
+    normalized.length === 0 ||
+    normalized === "UNKNOWN" ||
+    normalized.startsWith("TEXT_") ||
+    normalized.startsWith("REASONING_") ||
+    normalized.startsWith("OBJECT_")
+  );
+}
+
+function resolveTrajectoryModelLabel(
+  runtime: AgentRuntime,
+  modelType: string,
+  payloadRecord: Record<string, unknown>,
+  providerHint?: unknown,
+): string {
+  const explicitModel =
+    typeof payloadRecord.model === "string"
+      ? payloadRecord.model.trim()
+      : typeof payloadRecord.modelId === "string"
+        ? payloadRecord.modelId.trim()
+        : "";
+  if (explicitModel) {
+    return explicitModel;
+  }
+
+  const provider =
+    typeof providerHint === "string" && providerHint.trim().length > 0
+      ? providerHint.trim()
+      : typeof payloadRecord.provider === "string" &&
+          payloadRecord.provider.trim().length > 0
+        ? payloadRecord.provider.trim()
+        : "";
+  if (provider) {
+    return modelType ? `${provider}/${modelType}` : provider;
+  }
+
+  const configuredModel = detectRuntimeModel(runtime);
+  if (configuredModel && configuredModel.trim().length > 0) {
+    return configuredModel.trim();
+  }
+
+  return modelType;
+}
+
+// ---------------------------------------------------------------------------
+// Public API — install the useModel wrapper on a runtime
+// ---------------------------------------------------------------------------
+
+export function installPromptOptimizations(
+  runtime: AgentRuntime,
+  config?: ElizaConfig,
+): void {
+  if (config) {
+    runtimeModelConfigs.set(runtime, config);
+  }
+  ensureModelUsageEventCapture(runtime);
+  if (installedRuntimes.has(runtime)) return;
+  installedRuntimes.add(runtime);
+
+  // Validate intent-action map against registered actions
+  const actionNames = runtime.actions?.map((a) => a.name) ?? [];
+  if (actionNames.length > 0) {
+    validateIntentActionMap(actionNames, runtime.logger);
+  }
+
+  const originalUseModel = runtime.useModel.bind(runtime);
+
+  runtime.useModel = (async (...args: Parameters<typeof originalUseModel>) => {
+    const modelType = String(args[0] ?? "").toUpperCase();
+    const llmPurpose = normalizeTrajectoryLlmPurpose(
+      getTrajectoryContext()?.purpose,
+      modelType === "ACTION_PLANNER" ? "planner" : "action",
+    );
+    if (isLlmGenerationModelType(modelType)) {
+      assertActiveTrajectoryForLlmCall({
+        actionType: "runtime.useModel",
+        modelType,
+        purpose: llmPurpose,
+      });
+    }
+
+    const normalizedTrajectoryStepId = getActiveTrajectoryStepId();
+    const trajectoryLogger = normalizedTrajectoryStepId
+      ? ensureTrajectoryLoggerTracking(runtime)
+      : null;
+    const llmLogCountBefore = normalizedTrajectoryStepId
+      ? getTrajectoryLlmLogCount(runtime, normalizedTrajectoryStepId)
+      : 0;
+    const startedAt = Date.now();
+
+    const payload = args[1];
+    const isTextLarge = modelType.includes("TEXT_LARGE");
+    if (!payload || typeof payload !== "object") {
+      const { result } = await withModelUsageCapture(runtime, () =>
+        originalUseModel(...args),
+      );
+      return result;
+    }
+
+    const promptRecord = payload as Record<string, unknown>;
+    const promptKey =
+      typeof promptRecord.prompt === "string"
+        ? "prompt"
+        : typeof promptRecord.userPrompt === "string"
+          ? "userPrompt"
+          : typeof promptRecord.input === "string"
+            ? "input"
+            : null;
+    const originalMessages = promptKey
+      ? null
+      : normalizePayloadMessages(promptRecord.messages);
+    if (!promptKey && !originalMessages) {
+      const { result } = await withModelUsageCapture(runtime, () =>
+        originalUseModel(...args),
+      );
+      return result;
+    }
+
+    const originalPrompt = promptKey
+      ? String(promptRecord[promptKey] ?? "")
+      : renderMessagesForTelemetry(originalMessages ?? []);
+    const promptOptimizationTelemetry: PromptOptimizationTelemetry = {
+      mode: ELIZA_PROMPT_OPT_MODE,
+      actionCompactionEnabled: ELIZA_ACTION_COMPACTION,
+      originalPromptChars: originalPrompt.length,
+      finalPromptChars: originalPrompt.length,
+      originalPromptTokens: estimateTokenCount(originalPrompt),
+      finalPromptTokens: estimateTokenCount(originalPrompt),
+      transformations: [],
+    };
+
+    // --- Prompt capture (dev debugging) ---
+    if (ELIZA_CAPTURE_PROMPTS) {
+      const captureDir = path.resolve(".tmp", "prompt-captures");
+      const seq = String(++promptCaptureSeq).padStart(4, "0");
+      const filename = `${seq}-${modelType}.txt`;
+      const capturePath = path.join(captureDir, filename);
+      await mkdir(captureDir, { recursive: true }).catch(() => {});
+      await writeFile(
+        capturePath,
+        `--- model: ${modelType} | key: ${promptKey ?? "messages"} | chars: ${originalPrompt.length} ---\n\n${originalPrompt}`,
+      ).catch(() => {});
+      promptOptimizationTelemetry.transformations.push(
+        `capture:original:${capturePath}`,
+      );
+    }
+
+    let rewrittenArgs = args;
+    let nextPrompt = originalPrompt;
+    let nextMessages = originalMessages;
+    let outputReserveTokens: number | undefined;
+
+    // Skip intent compaction while trajectory capture is active; hard model
+    // budgets still apply because providers cannot accept overflow prompts.
+    if (
+      promptKey &&
+      isTextLarge &&
+      !shouldPreserveFullPromptForTrajectoryCapture()
+    ) {
+      // --- Context-aware action compaction (when enabled) ---
+      // Strips param detail from actions not relevant to the user's intent.
+      // All action names remain visible — only param detail is stripped.
+      let workingPrompt = ELIZA_ACTION_COMPACTION
+        ? compactActionsForIntent(originalPrompt)
+        : originalPrompt;
+      if (workingPrompt !== originalPrompt) {
+        promptOptimizationTelemetry.transformations.push(
+          `action-compaction:${originalPrompt.length}->${workingPrompt.length}`,
+        );
+      }
+
+      // Strip coding agent examples when no coding intent is detected.
+      // These are ~4k chars of provider-injected examples that are only
+      // useful when the user is asking about code/repos/agents.
+      if (ELIZA_ACTION_COMPACTION) {
+        const beforeCoding = workingPrompt;
+        workingPrompt = compactCodingExamplesForIntent(workingPrompt);
+        if (workingPrompt !== beforeCoding) {
+          promptOptimizationTelemetry.transformations.push(
+            `coding-example-compaction:${beforeCoding.length}->${workingPrompt.length}`,
+          );
+        }
+        const beforeHistory = workingPrompt;
+        workingPrompt = compactConversationHistory(workingPrompt);
+        if (workingPrompt !== beforeHistory) {
+          promptOptimizationTelemetry.transformations.push(
+            `conversation-history-presentation-compaction:${beforeHistory.length}->${workingPrompt.length}`,
+          );
+        }
+      }
+
+      // --- Full prompt compaction (compact mode only) ---
+      nextPrompt = workingPrompt;
+      if (ELIZA_PROMPT_OPT_MODE === "compact") {
+        nextPrompt = compactModelPrompt(workingPrompt);
+        if (nextPrompt !== workingPrompt) {
+          promptOptimizationTelemetry.transformations.push(
+            `model-prompt-compaction:${workingPrompt.length}->${nextPrompt.length}`,
+          );
+        }
+        if (ELIZA_PROMPT_TRACE && nextPrompt.length !== originalPrompt.length) {
+          runtime.logger?.info(
+            `[eliza] Compact prompt rewrite: ${originalPrompt.length} -> ${nextPrompt.length} chars`,
+          );
+        }
+      } else if (workingPrompt !== originalPrompt && ELIZA_PROMPT_TRACE) {
+        runtime.logger?.info(
+          `[eliza] Action compaction: ${originalPrompt.length} -> ${workingPrompt.length} chars (saved ${originalPrompt.length - workingPrompt.length})`,
+        );
+      }
+    }
+
+    if (shouldApplyPromptBudget(modelType)) {
+      const budget = resolvePromptBudget(runtime, modelType, {
+        ...promptRecord,
+        ...(promptKey ? { [promptKey]: nextPrompt } : {}),
+        ...(nextMessages
+          ? { messages: compactorMessagesToPayloadMessages(nextMessages) }
+          : {}),
+      });
+      outputReserveTokens = budget.outputReserveTokens;
+      promptOptimizationTelemetry.budgetTokens = budget.promptBudgetTokens;
+      promptOptimizationTelemetry.outputReserveTokens =
+        budget.outputReserveTokens;
+
+      if (promptKey) {
+        // Conversation-level compaction (opt-in via env). Runs before the
+        // truncation-based fitter so summarization gets first crack at
+        // shrinking the conversation history. If it can't get the prompt
+        // under budget, the existing tail-truncation pipeline still kicks in.
+        try {
+          const beforeConversationCompaction = nextPrompt;
+          let conversationCompactionSkipReason: string | undefined;
+          nextPrompt = await maybeApplyConversationCompaction(
+            runtime,
+            nextPrompt,
+            budget.promptBudgetTokens,
+            buildRuntimeCompactorModelCall(runtime, originalUseModel),
+            (result) => {
+              const { prompt: _prompt, ...rest } = result;
+              promptOptimizationTelemetry.conversationCompaction = rest;
+              conversationCompactionSkipReason = result.skipReason;
+            },
+          );
+          if (nextPrompt !== beforeConversationCompaction) {
+            promptOptimizationTelemetry.transformations.push(
+              `conversation-compaction:${beforeConversationCompaction.length}->${nextPrompt.length}`,
+            );
+          } else if (conversationCompactionSkipReason) {
+            promptOptimizationTelemetry.transformations.push(
+              `conversation-compaction-skipped:${conversationCompactionSkipReason}`,
+            );
+          }
+        } catch (error) {
+          runtime.logger?.warn?.(
+            `[eliza] conversation-compaction failed: ${String(
+              (error as Error).message,
+            )}`,
+          );
+        }
+
+        const budgetedPrompt = fitPromptToTokenBudget(
+          nextPrompt,
+          budget.promptBudgetTokens,
+        );
+        if (budgetedPrompt.prompt !== nextPrompt) {
+          promptOptimizationTelemetry.transformations.push(
+            `budget-fit:${nextPrompt.length}->${budgetedPrompt.prompt.length}`,
+          );
+          nextPrompt = budgetedPrompt.prompt;
+          if (ELIZA_PROMPT_TRACE) {
+            runtime.logger?.info(
+              `[eliza] Budget prompt rewrite (${budget.metadata.source}:${budget.metadata.modelId}): ${budgetedPrompt.originalPromptTokens} -> ${budgetedPrompt.promptTokens} tokens`,
+            );
+          }
+        }
+      } else if (nextMessages) {
+        try {
+          const beforeRendered = renderMessagesForTelemetry(nextMessages);
+          let conversationCompactionSkipReason: string | undefined;
+          nextMessages = await maybeApplyConversationMessageCompaction(
+            runtime,
+            nextMessages,
+            budget.promptBudgetTokens,
+            buildRuntimeCompactorModelCall(runtime, originalUseModel),
+            (result) => {
+              const { messages: _messages, ...rest } = result;
+              promptOptimizationTelemetry.conversationCompaction = rest;
+              conversationCompactionSkipReason = result.skipReason;
+            },
+          );
+          const afterRendered = renderMessagesForTelemetry(nextMessages);
+          if (afterRendered !== beforeRendered) {
+            promptOptimizationTelemetry.transformations.push(
+              `conversation-message-compaction:${beforeRendered.length}->${afterRendered.length}`,
+            );
+          } else if (conversationCompactionSkipReason) {
+            promptOptimizationTelemetry.transformations.push(
+              `conversation-message-compaction-skipped:${conversationCompactionSkipReason}`,
+            );
+          }
+        } catch (error) {
+          runtime.logger?.warn?.(
+            `[eliza] conversation-message-compaction failed: ${String(
+              (error as Error).message,
+            )}`,
+          );
+        }
+      }
+    }
+
+    const finalPromptForTelemetry = promptKey
+      ? nextPrompt
+      : renderMessagesForTelemetry(nextMessages ?? []);
+    promptOptimizationTelemetry.finalPromptChars =
+      finalPromptForTelemetry.length;
+    promptOptimizationTelemetry.finalPromptTokens = estimateTokenCount(
+      finalPromptForTelemetry,
+    );
+
+    if (ELIZA_CAPTURE_PROMPTS && finalPromptForTelemetry !== originalPrompt) {
+      const captureDir = path.resolve(".tmp", "prompt-captures");
+      const seq = String(promptCaptureSeq).padStart(4, "0");
+      const filename = `${seq}-${modelType}-rewritten.txt`;
+      const capturePath = path.join(captureDir, filename);
+      await writeFile(
+        capturePath,
+        `--- model: ${modelType} | key: ${promptKey ?? "messages"} | chars: ${finalPromptForTelemetry.length} | rewritten ---\n\n${finalPromptForTelemetry}`,
+      ).catch(() => {});
+      promptOptimizationTelemetry.transformations.push(
+        `capture:rewritten:${capturePath}`,
+      );
+    }
+
+    const shouldSetMaxOutputTokens =
+      outputReserveTokens !== undefined &&
+      toOptionalNumber(promptRecord.maxOutputTokens) !== undefined;
+    const messagesChanged =
+      nextMessages !== null &&
+      renderMessagesForTelemetry(nextMessages) !== originalPrompt;
+    const mergedProviderOptions = providerOptionsWithPromptOptimization(
+      promptRecord,
+      promptOptimizationTelemetry,
+    );
+    const rewrittenPayload = {
+      ...(payload as Record<string, unknown>),
+      ...(promptKey ? { [promptKey]: nextPrompt } : {}),
+      ...(!promptKey && nextMessages && messagesChanged
+        ? { messages: compactorMessagesToPayloadMessages(nextMessages) }
+        : {}),
+      providerOptions: mergedProviderOptions,
+      ...(outputReserveTokens !== undefined
+        ? shouldSetMaxOutputTokens
+          ? { maxOutputTokens: outputReserveTokens }
+          : { maxTokens: outputReserveTokens }
+        : {}),
+    };
+    rewrittenArgs = [
+      args[0],
+      rewrittenPayload as Parameters<typeof originalUseModel>[1],
+      ...args.slice(2),
+    ] as Parameters<typeof originalUseModel>;
+
+    const { result, usage: capturedUsage } = await withModelUsageCapture(
+      runtime,
+      () => originalUseModel(...rewrittenArgs),
+    );
+    const responseText = stringifyTrajectoryResponse(result);
+    const payloadRecord = rewrittenArgs[1] as Record<string, unknown>;
+    const systemPrompt =
+      typeof payloadRecord.system === "string"
+        ? payloadRecord.system
+        : typeof runtime.character?.system === "string"
+          ? runtime.character.system
+          : "";
+    const payloadMessages = normalizePayloadMessages(payloadRecord.messages);
+    const userPromptForTrajectory = promptKey
+      ? String(payloadRecord[promptKey] ?? "")
+      : payloadMessages
+        ? renderMessagesForTelemetry(payloadMessages)
+        : "";
+    const promptTokens =
+      capturedUsage?.promptTokens ??
+      estimateTokenCount(systemPrompt + userPromptForTrajectory);
+    const completionTokens =
+      capturedUsage?.completionTokens ?? estimateTokenCount(responseText);
+    const fallbackCall = {
+      stepId: normalizedTrajectoryStepId ?? undefined,
+      model: resolveTrajectoryModelLabel(
+        runtime,
+        modelType,
+        payloadRecord,
+        args[2],
+      ),
+      systemPrompt,
+      userPrompt: userPromptForTrajectory,
+      response: responseText,
+      temperature:
+        typeof payloadRecord.temperature === "number"
+          ? payloadRecord.temperature
+          : 0,
+      maxTokens:
+        toOptionalNumber(payloadRecord.maxTokens) ??
+        toOptionalNumber(payloadRecord.maxOutputTokens) ??
+        outputReserveTokens ??
+        0,
+      purpose: llmPurpose,
+      actionType: "runtime.useModel",
+      latencyMs: Math.max(0, Date.now() - startedAt),
+      promptTokens,
+      completionTokens,
+      ...(capturedUsage?.cacheReadInputTokens !== undefined
+        ? { cacheReadInputTokens: capturedUsage.cacheReadInputTokens }
+        : {}),
+      ...(capturedUsage?.cacheCreationInputTokens !== undefined
+        ? { cacheCreationInputTokens: capturedUsage.cacheCreationInputTokens }
+        : {}),
+      tokenUsageEstimated: !capturedUsage,
+      providerMetadata: {
+        ...(payloadRecord.providerMetadata &&
+        typeof payloadRecord.providerMetadata === "object" &&
+        !Array.isArray(payloadRecord.providerMetadata)
+          ? (payloadRecord.providerMetadata as Record<string, unknown>)
+          : {}),
+        promptOptimization: promptOptimizationTelemetry,
+      },
+    };
+
+    if (
+      normalizedTrajectoryStepId &&
+      trajectoryLogger &&
+      typeof trajectoryLogger.logLlmCall === "function" &&
+      getTrajectoryLlmLogCount(runtime, normalizedTrajectoryStepId) ===
+        llmLogCountBefore
+    ) {
+      try {
+        trajectoryLogger.logLlmCall(fallbackCall);
+        runtime.logger?.warn?.(
+          `[eliza] Trajectory logger missed live LLM capture for ${normalizedTrajectoryStepId}; recorded fallback call from prompt optimization wrapper`,
+        );
+      } catch {
+        // Ignore fallback logging failures; the model call itself already succeeded.
+      }
+    } else if (
+      normalizedTrajectoryStepId &&
+      trajectoryLogger &&
+      typeof trajectoryLogger.updateLatestLlmCall === "function"
+    ) {
+      try {
+        await trajectoryLogger.updateLatestLlmCall(
+          normalizedTrajectoryStepId,
+          fallbackCall,
+        );
+      } catch {
+        // Ignore enrichment failures; the model call itself already succeeded.
+      }
+    }
+
+    return result;
+  }) as typeof runtime.useModel;
+}

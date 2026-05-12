@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OrchestratorLifecycleScenario",
+  "type": "object",
+  "required": ["scenario_id", "title", "category", "turns"],
+  "properties": {
+    "scenario_id": { "type": "string" },
+    "title": { "type": "string" },
+    "category": { "type": "string" },
+    "required_capabilities": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "turns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["actor", "message"],
+        "properties": {
+          "actor": { "type": "string" },
+          "message": { "type": "string" },
+          "expected_behaviors": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "forbidden_behaviors": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

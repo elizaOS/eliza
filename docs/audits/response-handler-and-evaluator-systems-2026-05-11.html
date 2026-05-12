@@ -1,0 +1,623 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Response Handler and Evaluator Systems Review</title>
+  <style>
+    :root {
+      --bg: #f7f7f4;
+      --panel: #ffffff;
+      --ink: #202124;
+      --muted: #656b73;
+      --line: #d9d9d2;
+      --accent: #0f766e;
+      --accent-2: #7c3aed;
+      --warn: #b45309;
+      --bad: #b91c1c;
+      --good: #166534;
+      --code: #f0f2f1;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+    }
+    header {
+      padding: 40px 48px 28px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfbf8;
+    }
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 30px 28px 60px;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 34px;
+      line-height: 1.1;
+      letter-spacing: 0;
+    }
+    h2 {
+      margin: 34px 0 14px;
+      padding-bottom: 8px;
+      font-size: 24px;
+      border-bottom: 1px solid var(--line);
+    }
+    h3 {
+      margin: 24px 0 10px;
+      font-size: 18px;
+    }
+    p { margin: 8px 0 12px; }
+    a { color: var(--accent); text-decoration-thickness: 1px; }
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+    }
+    code {
+      background: var(--code);
+      padding: 1px 4px;
+      border-radius: 4px;
+    }
+    pre {
+      margin: 10px 0;
+      padding: 14px;
+      overflow: auto;
+      background: #171a1f;
+      color: #f5f7fa;
+      border-radius: 8px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 14px 0 22px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+    }
+    th, td {
+      vertical-align: top;
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+      text-align: left;
+    }
+    th {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: #374151;
+      background: #eeeeea;
+    }
+    tr:last-child td { border-bottom: 0; }
+    td:last-child, th:last-child { border-right: 0; }
+    .lead {
+      max-width: 920px;
+      font-size: 17px;
+      color: #34383d;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+    }
+    .callout {
+      margin: 18px 0;
+      padding: 14px 16px;
+      border-left: 4px solid var(--accent);
+      background: #eef8f6;
+    }
+    .callout.warn { border-color: var(--warn); background: #fff7ed; }
+    .callout.bad { border-color: var(--bad); background: #fef2f2; }
+    .tag {
+      display: inline-block;
+      margin: 0 4px 4px 0;
+      padding: 2px 7px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      font-size: 12px;
+      color: #374151;
+      white-space: nowrap;
+    }
+    .tag.good { color: var(--good); border-color: #bbf7d0; background: #f0fdf4; }
+    .tag.warn { color: var(--warn); border-color: #fed7aa; background: #fff7ed; }
+    .tag.bad { color: var(--bad); border-color: #fecaca; background: #fef2f2; }
+    .flow {
+      display: grid;
+      gap: 10px;
+      margin: 14px 0 22px;
+    }
+    .step {
+      position: relative;
+      padding: 12px 14px 12px 42px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .step::before {
+      content: attr(data-n);
+      position: absolute;
+      left: 12px;
+      top: 12px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .small { color: var(--muted); font-size: 13px; }
+    .mono-list li { margin-bottom: 6px; }
+    @media (max-width: 820px) {
+      header { padding: 28px 22px 20px; }
+      main { padding: 22px 16px 44px; }
+      .grid { grid-template-columns: 1fr; }
+      table { display: block; overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Response Handler and Evaluator Systems Review</h1>
+    <p class="lead">A code-level review of the Stage-1 response handler, the response-handler field registry, the post-parse response-handler evaluators, the in-loop trajectory evaluator, and the registered post-turn evaluator service in this repository as of May 11, 2026. Updated after implementation: the field registry is now the production Stage-1 schema and dispatch path.</p>
+  </header>
+
+  <main>
+    <section>
+      <h2>Executive Summary</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>What Exists</h3>
+          <p>The repository has four related but distinct systems:</p>
+          <p><span class="tag good">Stage-1 response handler</span> <span class="tag">responseHandlerEvaluators</span> <span class="tag warn">responseHandlerFieldEvaluators</span> <span class="tag">post-turn EvaluatorService</span> <span class="tag">planner-loop evaluator</span></p>
+          <p>The production message path now composes the <code>HANDLE_RESPONSE</code> schema from <code>ResponseHandlerFieldRegistry</code>, renders registered prompt slices, dispatches parsed fields to handlers, and then routes to direct reply or planner loop.</p>
+        </div>
+        <div class="card">
+          <h3>Main Finding</h3>
+          <p>The earlier gap has been closed: <code>message.ts</code> calls <code>composePromptSlices()</code>, sends <code>composeSchema()</code> to <code>createHandleResponseTool()</code>, and calls <code>dispatch()</code> before routing.</p>
+          <p><span class="tag good">Active scope</span> LifeOps <code>threadOps</code> is now a field evaluator only. The deleted post-parse work-thread regex router is no longer exported, tested, or benchmarked.</p>
+        </div>
+      </div>
+
+      <div class="callout">
+        <strong>Practical implication:</strong> cloud and local providers now see the same field-registry envelope. The legacy <code>HANDLE_RESPONSE_SCHEMA</code> remains only as fallback compatibility when no registry fields are available; normal runtime registration uses the composed all-required schema.
+      </div>
+    </section>
+
+    <section>
+      <h2>Source Map</h2>
+      <table>
+        <thead><tr><th>Area</th><th>Primary files</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Stage-1 tool schema</td>
+            <td><code>packages/core/src/actions/to-tool.ts</code></td>
+            <td>Defines legacy fallback schemas and <code>createHandleResponseTool()</code>, which now accepts a registry-composed schema override.</td>
+          </tr>
+          <tr>
+            <td>Stage-1 message flow</td>
+            <td><code>packages/core/src/services/message.ts</code></td>
+            <td>Composes Stage-1 prompt, calls <code>ModelType.RESPONSE_HANDLER</code>, parses the result, applies post-parse response-handler evaluators, and routes.</td>
+          </tr>
+          <tr>
+            <td>Field registry contract</td>
+            <td><code>packages/core/src/runtime/response-handler-field-evaluator.ts</code><br><code>packages/core/src/runtime/response-handler-field-registry.ts</code></td>
+            <td>Defines field evaluator schema/prompt/parse/handle contract, registry, schema composition, prompt slices, and dispatch.</td>
+          </tr>
+          <tr>
+            <td>Built-in field evaluators</td>
+            <td><code>packages/core/src/runtime/builtin-field-evaluators.ts</code></td>
+            <td>Defines <code>shouldRespond</code>, <code>contexts</code>, <code>intents</code>, <code>replyText</code>, <code>candidateActionNames</code>, <code>facts</code>, <code>relationships</code>, <code>addressedTo</code>.</td>
+          </tr>
+          <tr>
+            <td>Grammar/skeleton</td>
+            <td><code>packages/core/src/runtime/response-grammar.ts</code></td>
+            <td>Builds local structure forcing from the same registered field evaluator envelope; legacy envelope remains only as fallback.</td>
+          </tr>
+          <tr>
+            <td>Post-parse response-handler evaluators</td>
+            <td><code>packages/core/src/runtime/response-handler-evaluators.ts</code></td>
+            <td>Runs deterministic patch evaluators over the parsed <code>MessageHandlerResult</code>.</td>
+          </tr>
+          <tr>
+            <td>LifeOps response-handler extensions</td>
+            <td><code>plugins/app-lifeops/src/plugin.ts</code><br><code>plugins/app-lifeops/src/lifeops/work-threads/field-evaluator-thread-ops.ts</code><br><code>plugins/app-lifeops/src/lifeops/owner/profile-extraction-evaluator.ts</code></td>
+            <td>Registers <code>threadOps</code> as a field evaluator and owner profile extraction as a post-parse evaluator.</td>
+          </tr>
+          <tr>
+            <td>Post-turn evaluator service</td>
+            <td><code>packages/core/src/services/evaluator.ts</code><br><code>packages/core/src/types/evaluator.ts</code><br><code>packages/core/src/services/evaluator-priorities.ts</code></td>
+            <td>Runs registered plugin evaluators in one structured model call after the turn.</td>
+          </tr>
+          <tr>
+            <td>Planner-loop evaluator</td>
+            <td><code>packages/core/src/runtime/evaluator.ts</code><br><code>packages/core/src/runtime/planner-loop.ts</code><br><code>packages/core/src/prompts/evaluator.ts</code></td>
+            <td>Evaluates a tool trajectory between planner iterations and chooses <code>FINISH</code>, <code>NEXT_RECOMMENDED</code>, or <code>CONTINUE</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Stage-1 Response Handler</h2>
+      <p>The production response handler is the first model call for a normal inbound message. It asks the model to call <code>HANDLE_RESPONSE</code> once and produce a flat, all-required field-registry envelope.</p>
+
+      <h3>Actual Tool Shape</h3>
+      <p>The production schema is generated from <code>ResponseHandlerFieldRegistry.composeSchema()</code> and passed into <code>createHandleResponseTool()</code>. The active envelope is:</p>
+      <pre>{
+  shouldRespond: "RESPOND" | "IGNORE" | "STOP",
+  contexts: string[],
+  intents: string[],
+  replyText: string,
+  threadOps: ThreadOp[],
+  candidateActionNames: string[],
+  facts: string[],
+  relationships: [{ subject, predicate, object }],
+  addressedTo: string[]
+}</pre>
+      <p>The legacy nested/direct schemas are still present as defensive fallback shapes, but the normal runtime path sends the composed registry schema.</p>
+
+      <h3>Flow Control</h3>
+      <div class="flow">
+        <div class="step" data-n="1"><strong>Role and context catalog.</strong> <code>runV5MessageRuntimeStage1()</code> resolves sender role and available context definitions.</div>
+        <div class="step" data-n="2"><strong>Prompt render.</strong> <code>renderMessageHandlerModelInput()</code> builds the Stage-1 prompt and appends the active field evaluator prompt slices.</div>
+        <div class="step" data-n="3"><strong>Tool definition.</strong> <code>createHandleResponseTool()</code> receives <code>responseHandlerFieldRegistry.composeSchema()</code>.</div>
+        <div class="step" data-n="4"><strong>Local grammar.</strong> <code>buildResponseGrammar()</code> builds local structure forcing from the same registered field envelope.</div>
+        <div class="step" data-n="5"><strong>Model call.</strong> Runtime calls <code>ModelType.RESPONSE_HANDLER</code> with tool choice required, max tokens 1024, and optional structured streaming.</div>
+        <div class="step" data-n="6"><strong>Parse and dispatch.</strong> The tool arguments are normalized, then <code>responseHandlerFieldRegistry.dispatch()</code> parses and handles active fields in priority order.</div>
+        <div class="step" data-n="7"><strong>Fallback.</strong> If no structured field object can be parsed, the runtime falls back to the legacy parser and simple direct-reply fallback.</div>
+        <div class="step" data-n="8"><strong>Post-parse patchers.</strong> <code>runResponseHandlerEvaluators()</code> runs deterministic post-parse evaluators unless a field handler preempted the turn.</div>
+        <div class="step" data-n="9"><strong>Route.</strong> <code>routeMessageHandlerOutput()</code> decides terminal ignore/stop, final direct reply, or planner needed.</div>
+        <div class="step" data-n="10"><strong>Side memory.</strong> Facts and relationships from <code>extract</code> launch a background facts/relationships stage; <code>addressedTo</code> is applied as relationship edges.</div>
+      </div>
+
+      <h3>Production Routing Outcomes</h3>
+      <table>
+        <thead><tr><th>Parsed plan</th><th>Runtime result</th></tr></thead>
+        <tbody>
+          <tr><td><code>IGNORE</code></td><td>Terminal silent ignore.</td></tr>
+          <tr><td><code>STOP</code></td><td>Terminal stop signal.</td></tr>
+          <tr><td><code>contexts = ["simple"]</code> or no planning context</td><td>Emit <code>replyText</code> directly, with a fallback direct-reply model call only if no usable reply text exists.</td></tr>
+          <tr><td>Any non-simple context or non-empty <code>candidateActionNames</code></td><td>Compose planner state, select action surface, run planner loop.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Response-Handler Field Registry</h2>
+      <p>The field registry owns top-level Stage-1 fields. Its lifecycle is now the production lifecycle: collect field evaluators, compose one JSON schema, compose prompt slices, call the LLM once, and dispatch each parsed field to its handler in priority order.</p>
+
+      <h3>Registered Fields</h3>
+      <table>
+        <thead><tr><th>Field</th><th>Owner</th><th>Priority</th><th>Intended meaning</th><th>Handler?</th></tr></thead>
+        <tbody>
+          <tr><td><code>shouldRespond</code></td><td>core</td><td>5</td><td>RESPOND or IGNORE. Built-in parser defaults malformed values to RESPOND.</td><td>No</td></tr>
+          <tr><td><code>contexts</code></td><td>core</td><td>10</td><td>Context tags, including pseudo-context <code>simple</code>.</td><td>No</td></tr>
+          <tr><td><code>intents</code></td><td>core</td><td>15</td><td>Short verb phrases for routing and action retrieval.</td><td>No</td></tr>
+          <tr><td><code>replyText</code></td><td>core</td><td>20</td><td>User-facing direct reply text for simple mode.</td><td>No</td></tr>
+          <tr><td><code>threadOps</code></td><td>app-lifeops</td><td>30</td><td>Work-thread operations, including <code>abort</code>.</td><td>Yes, intended to abort or stage planner hints</td></tr>
+          <tr><td><code>candidateActionNames</code></td><td>core</td><td>50</td><td>Action names for planner retrieval.</td><td>No</td></tr>
+          <tr><td><code>facts</code></td><td>core</td><td>80</td><td>Durable fact strings.</td><td>No</td></tr>
+          <tr><td><code>relationships</code></td><td>core</td><td>85</td><td>Subject-predicate-object relationship triples.</td><td>No</td></tr>
+          <tr><td><code>addressedTo</code></td><td>core</td><td>90</td><td>UUIDs or names of message addressees.</td><td>No</td></tr>
+        </tbody>
+      </table>
+
+      <h3>Registry Mechanics</h3>
+      <table>
+        <thead><tr><th>Method</th><th>What it does</th><th>Production use observed</th></tr></thead>
+        <tbody>
+          <tr><td><code>register()</code></td><td>Validates name, description, schema. First registration wins. Invalidates cached schema.</td><td>Called from <code>AgentRuntime.registerResponseHandlerFieldEvaluator()</code>.</td></tr>
+          <tr><td><code>composeSchema()</code></td><td>Creates an all-required strict object schema from sorted field evaluators.</td><td>Used by <code>message.ts</code> to define <code>HANDLE_RESPONSE</code>.</td></tr>
+          <tr><td><code>composeSchemaSignature()</code></td><td>Serializes composed schema for cache keys.</td><td>Passed to <code>buildResponseGrammar()</code>.</td></tr>
+          <tr><td><code>composePromptSlices()</code></td><td>Builds per-turn prompt sections and applies <code>shouldRun()</code> for prompt activity.</td><td>Used by <code>message.ts</code> before the Stage-1 model call.</td></tr>
+          <tr><td><code>dispatch()</code></td><td>Defaults missing fields, parses each field, runs handlers, supports preemption.</td><td>Used by <code>message.ts</code> immediately after parsing <code>HANDLE_RESPONSE</code>.</td></tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        <strong>Status:</strong> the registry is active production scope. Field preemption is tested, <code>threadOps</code> is production registered, and the old work-thread post-parse router has been removed.
+      </div>
+
+      <h3>LifeOps <code>threadOps</code></h3>
+      <p><code>threadOpsFieldEvaluator</code> is the only plugin-contributed field evaluator found. It is registered by <code>plugins/app-lifeops/src/plugin.ts</code> under <code>responseHandlerFieldEvaluators</code>.</p>
+      <table>
+        <thead><tr><th>Part</th><th>Behavior</th></tr></thead>
+        <tbody>
+          <tr><td><code>shouldRun</code></td><td>Only owners can mutate threads. It activates when the room has active/waiting/paused threads, recent pending prompts, or an active turn that can be aborted.</td></tr>
+          <tr><td><code>schema</code></td><td>Array of operations: <code>create</code>, <code>steer</code>, <code>stop</code>, <code>merge</code>, <code>attach_source</code>, <code>schedule_followup</code>, <code>mark_waiting</code>, <code>mark_completed</code>, <code>abort</code>.</td></tr>
+          <tr><td><code>parse</code></td><td>Normalizes operation objects and strips invalid values.</td></tr>
+          <tr><td><code>handle</code></td><td>If an <code>abort</code> op exists, calls <code>turnControllers.abortTurn(roomId, reason)</code>, forces simple response text, and returns <code>ack-and-stop</code> preemption. For non-abort ops, adds work-thread action hints and planning contexts.</td></tr>
+        </tbody>
+      </table>
+      <p>That handler is now production-reachable through <code>ResponseHandlerFieldRegistry.dispatch()</code> in <code>message.ts</code>. Abort ops preempt the planner; non-abort ops stage work-thread routing through the existing action path.</p>
+    </section>
+
+    <section>
+      <h2>Post-Parse Response-Handler Evaluators</h2>
+      <p>This is the deterministic repair system that runs after field-registry dispatch, unless a field handler preempts the turn. It is defined by <code>ResponseHandlerEvaluator</code> in <code>response-handler-evaluators.ts</code>. These evaluators do not influence the Stage-1 model schema or prompt. They inspect and mutate the parsed <code>MessageHandlerResult</code> deterministically.</p>
+
+      <h3>Registered Evaluators</h3>
+      <table>
+        <thead><tr><th>Name</th><th>Owner</th><th>Priority</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>core.known_tool_request_repair</code></td>
+            <td>core, passed as built-in from <code>message.ts</code></td>
+            <td>20</td>
+            <td>Regex/heuristic repair for explicit known tool requests. Forces <code>requiresTool</code>, clears direct reply, and adds contexts/action hints for approvals, credentials, check-ins, calendar/calendar travel/calendly, owner preference, message reply drafting, screenshot requests, and similar known cases.</td>
+          </tr>
+          <tr>
+            <td><code>owner.profile_extraction</code></td>
+            <td>app-lifeops</td>
+            <td>30</td>
+            <td>Owner-only deterministic extraction. Parses names, location, timezone, partner, platform handles, and relationships via regex, writes owner facts/entities/relationship edges, and adds a context slice.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Patch Model</h3>
+      <p>Each evaluator returns a <code>ResponseHandlerPatch</code>. The runner applies patches in priority order and records trace entries for changed fields.</p>
+      <pre>type ResponseHandlerPatch = {
+  processMessage?: "RESPOND" | "IGNORE" | "STOP";
+  requiresTool?: boolean;
+  simple?: boolean;
+  setContexts?: AgentContext[];
+  addContexts?: AgentContext[];
+  addCandidateActions?: string[];
+  addParentActionHints?: string[];
+  addContextSlices?: string[];
+  clearReply?: boolean;
+  reply?: string;
+  debug?: string[];
+};</pre>
+      <p>Context additions are filtered against <code>availableContexts</code>. Candidate actions and parent hints are merged case-insensitively. Errors are logged and do not abort the full message pipeline.</p>
+    </section>
+
+    <section>
+      <h2>Planner-Loop Evaluator</h2>
+      <p>This is not a plugin registry system. It is a built-in trajectory decision call inside <code>runPlannerLoop()</code>. After planner tool execution, the loop asks an evaluator model whether the task is done, whether one queued tool should run next, or whether the planner must replan.</p>
+
+      <h3>Control Flow</h3>
+      <div class="flow">
+        <div class="step" data-n="1"><strong>Planner emits tool calls.</strong> <code>callPlanner()</code> builds planned tool calls or a terminal message.</div>
+        <div class="step" data-n="2"><strong>Tools execute.</strong> The loop executes queued tool calls and records each step in the trajectory.</div>
+        <div class="step" data-n="3"><strong>Optional gate.</strong> <code>tryGateEvaluator()</code> can synthesize a successful <code>FINISH</code> and skip the evaluator model call when a successful tool drained the queue and the planner already supplied a clean explicit <code>messageToUser</code>.</div>
+        <div class="step" data-n="4"><strong>Evaluator call.</strong> <code>runEvaluator()</code> uses <code>ModelType.RESPONSE_HANDLER</code> by default with <code>evaluatorSchema</code>.</div>
+        <div class="step" data-n="5"><strong>Decision.</strong> <code>FINISH</code> returns final message, <code>NEXT_RECOMMENDED</code> selects a queued tool, <code>CONTINUE</code> clears queue and replans.</div>
+        <div class="step" data-n="6"><strong>Repair.</strong> If evaluator says <code>FINISH</code> after tool use without <code>messageToUser</code>, the loop appends an instruction and evaluates once more.</div>
+      </div>
+
+      <h3>Schema</h3>
+      <pre>{
+  success: boolean,
+  decision: "FINISH" | "NEXT_RECOMMENDED" | "CONTINUE",
+  thought: string,
+  messageToUser?: string,
+  copyToClipboard?: { title: string, content: string, tags?: string[] },
+  recommendedToolCallId?: string
+}</pre>
+      <p>The evaluator has built-in sanitization for user-visible messages: it strips internal PTY session IDs, generated task-agent labels, and similar orchestration artifacts before delivering <code>messageToUser</code>.</p>
+    </section>
+
+    <section>
+      <h2>Post-Turn Evaluator Service</h2>
+      <p>This is the registered plugin evaluator system. It runs after the agent response is complete, before <code>ALWAYS_AFTER</code> actions, via <code>runPostTurnEvaluators()</code> in <code>DefaultMessageService</code>. It is separate from the in-loop planner evaluator.</p>
+
+      <h3>Evaluator Contract</h3>
+      <pre>interface Evaluator&lt;TOutput, TPrepared&gt; {
+  name: string;
+  description: string;
+  priority?: number;
+  providers?: string[];
+  schema: JSONSchema;
+  shouldRun(context): Promise&lt;boolean&gt;;
+  prepare?(context): Promise&lt;TPrepared&gt;;
+  prompt(context): string;
+  parse?(output): TOutput | null;
+  processors?: EvaluatorProcessor[];
+}</pre>
+
+      <h3>Service Flow</h3>
+      <div class="flow">
+        <div class="step" data-n="1"><strong>Collect.</strong> Sort <code>runtime.evaluators</code> by priority then name.</div>
+        <div class="step" data-n="2"><strong>Gate.</strong> Run all <code>shouldRun()</code> checks in parallel. Failures become non-fatal errors.</div>
+        <div class="step" data-n="3"><strong>Provider state.</strong> Compose state for union of all active evaluator <code>providers</code>.</div>
+        <div class="step" data-n="4"><strong>Prepare.</strong> Run each active <code>prepare()</code> in parallel. Failures remove that evaluator from the model call.</div>
+        <div class="step" data-n="5"><strong>One model call.</strong> Build one merged JSON schema with one top-level property per evaluator and call <code>ModelType.TEXT_LARGE</code> with JSON output.</div>
+        <div class="step" data-n="6"><strong>Parse and process.</strong> For each evaluator section, parse output, then run processors in priority order. Processor failures are isolated.</div>
+      </div>
+
+      <h3>Registered Evaluators Found</h3>
+      <table>
+        <thead><tr><th>Registration source</th><th>Evaluators</th><th>When registered</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>basic-capabilities</code></td>
+            <td><code>attachmentImageAnalysis</code>, <code>linkExtraction</code></td>
+            <td>Always, unless basic capabilities are disabled. Also registers <code>EvaluatorService</code>.</td>
+          </tr>
+          <tr>
+            <td><code>basic-capabilities</code> advanced mode</td>
+            <td><code>factMemory</code>, <code>relationships</code>, <code>identities</code>, <code>success</code>, <code>skillProposal</code>, <code>skillRefinement</code>, <code>experiencePatterns</code></td>
+            <td>When <code>enableExtended</code> or <code>advancedCapabilities</code> is enabled for basic capabilities.</td>
+          </tr>
+          <tr>
+            <td>Native feature <code>relationships</code></td>
+            <td><code>factMemory</code>, <code>relationships</code>, <code>identities</code>, <code>success</code>, <code>skillProposal</code>, <code>skillRefinement</code></td>
+            <td>Native runtime feature defaults show <code>relationships: true</code>. Runtime skips duplicate evaluator names on plugin registration.</td>
+          </tr>
+          <tr>
+            <td><code>advancedMemory</code> character flag</td>
+            <td><code>summary</code>, <code>longTermMemory</code></td>
+            <td>When <code>character.advancedMemory === true</code>.</td>
+          </tr>
+          <tr>
+            <td><code>@elizaos/plugin-form</code></td>
+            <td><code>form_extractor</code></td>
+            <td>When the form plugin is loaded.</td>
+          </tr>
+          <tr>
+            <td><code>@elizaos/plugin-x402</code></td>
+            <td>None</td>
+            <td>Explicitly declares <code>evaluators: []</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Evaluator Side Effects</h3>
+      <table>
+        <thead><tr><th>Evaluator</th><th>Purpose</th><th>Main side effect</th></tr></thead>
+        <tbody>
+          <tr><td><code>form_extractor</code></td><td>Form intent and field extraction.</td><td>Mutates active form session, submits/stashes/cancels/undoes/skips/autofills, emits form events.</td></tr>
+          <tr><td><code>attachmentImageAnalysis</code></td><td>Inbound image capture.</td><td>Runs image description during <code>prepare()</code> and stores <code>image_analyses</code> memory. The later model call only acknowledges.</td></tr>
+          <tr><td><code>linkExtraction</code></td><td>Inbound URL capture.</td><td>Fetches link preview, optionally summarizes via <code>TEXT_SMALL</code>, stores <code>links</code> memory during <code>prepare()</code>.</td></tr>
+          <tr><td><code>factMemory</code></td><td>Structured fact-store operations.</td><td>Applies durable/current fact add/strengthen/decay/contradict ops.</td></tr>
+          <tr><td><code>relationships</code></td><td>Relationship extraction.</td><td>Applies relationship updates between known room entities.</td></tr>
+          <tr><td><code>identities</code></td><td>Platform identity extraction.</td><td>Observes/upserts participant platform identities.</td></tr>
+          <tr><td><code>success</code></td><td>Task-completion reflection.</td><td>Stores completion assessment for the turn.</td></tr>
+          <tr><td><code>summary</code></td><td>Rolling room summary.</td><td>Updates or creates session summary.</td></tr>
+          <tr><td><code>longTermMemory</code></td><td>High-confidence persistent memory extraction.</td><td>Stores long-term memory entries and checkpoints extraction.</td></tr>
+          <tr><td><code>experiencePatterns</code></td><td>Agent learning experiences.</td><td>Stores notable successes, failures, corrections, discoveries, and validated lessons through the experience service.</td></tr>
+          <tr><td><code>skillProposal</code></td><td>Reusable procedure detection.</td><td>Writes proposed <code>SKILL.md</code> files for review.</td></tr>
+          <tr><td><code>skillRefinement</code></td><td>Skill improvement after failed/retried trajectories.</td><td>Edits active skills up to refinement cap or stages proposals.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>System Comparison</h2>
+      <table>
+        <thead><tr><th>System</th><th>When it runs</th><th>Does it call LLM?</th><th>Registered by plugins?</th><th>Can affect current response?</th><th>Primary output</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Stage-1 response handler</td>
+            <td>Before any planner/action work.</td>
+            <td>Yes, one <code>RESPONSE_HANDLER</code> call.</td>
+            <td>Not directly. Tool schema is static today.</td>
+            <td>Yes, it decides ignore/direct/planner.</td>
+            <td><code>MessageHandlerResult</code>.</td>
+          </tr>
+          <tr>
+            <td>Response-handler field registry</td>
+            <td>Intended to wrap Stage 1.</td>
+            <td>Intended to shape the same Stage-1 call.</td>
+            <td>Yes, via <code>responseHandlerFieldEvaluators</code>.</td>
+            <td>Intended yes, but handler dispatch is not wired in production.</td>
+            <td>Top-level field values plus effects/preemption.</td>
+          </tr>
+          <tr>
+            <td>Post-parse response-handler evaluators</td>
+            <td>Immediately after Stage-1 parse.</td>
+            <td>No.</td>
+            <td>Yes, via <code>responseHandlerEvaluators</code>.</td>
+            <td>Yes, by patching Stage-1 plan before route.</td>
+            <td><code>ResponseHandlerPatch</code>.</td>
+          </tr>
+          <tr>
+            <td>Planner-loop evaluator</td>
+            <td>Between planner/action iterations.</td>
+            <td>Usually yes, unless gated.</td>
+            <td>No, except caller can inject <code>params.evaluate</code>.</td>
+            <td>Yes, decides whether planning is done and may provide final text.</td>
+            <td><code>EvaluatorOutput</code> with <code>FINISH</code>, <code>NEXT_RECOMMENDED</code>, or <code>CONTINUE</code>.</td>
+          </tr>
+          <tr>
+            <td>Post-turn EvaluatorService</td>
+            <td>After response delivery state is known, before <code>ALWAYS_AFTER</code>.</td>
+            <td>Yes, one merged <code>TEXT_LARGE</code> call for active evaluators.</td>
+            <td>Yes, via plugin <code>evaluators</code>.</td>
+            <td>No direct routing impact for the current response; side effects affect future turns.</td>
+            <td>Processor <code>ActionResult</code>s and persisted side effects.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Key Architectural Difference</h3>
+      <p><strong>Response-handler evaluators are about current-turn routing.</strong> They operate before the route to direct reply or planner is finalized.</p>
+      <p><strong>Post-turn evaluators are about memory, extraction, reflection, and learning.</strong> They run after the response and should not be relied on to fix the response that was just sent.</p>
+      <p><strong>The planner-loop evaluator is a control-flow judge.</strong> It is not a plugin extractor. It evaluates the trajectory of tool calls and determines whether to stop, continue, or run a queued tool.</p>
+    </section>
+
+    <section>
+      <h2>Resolved and Remaining Risks</h2>
+      <table>
+        <thead><tr><th>Item</th><th>Current evidence</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Field registry dispatch</td>
+            <td><code>message.ts</code> now calls <code>responseHandlerFieldRegistry.dispatch()</code> after parsing <code>HANDLE_RESPONSE</code>.</td>
+            <td><span class="tag good">Resolved</span></td>
+          </tr>
+          <tr>
+            <td>Field registry schema as tool schema</td>
+            <td><code>createHandleResponseTool()</code> accepts the composed registry schema from <code>message.ts</code>.</td>
+            <td><span class="tag good">Resolved</span></td>
+          </tr>
+          <tr>
+            <td>Field registry prompt slices</td>
+            <td><code>message.ts</code> renders the active field prompt slices into the Stage-1 prompt.</td>
+            <td><span class="tag good">Resolved</span></td>
+          </tr>
+          <tr>
+            <td>Duplicated extraction concepts</td>
+            <td>Normal schema now uses top-level <code>facts</code>, <code>relationships</code>, and <code>addressedTo</code>. Legacy nested <code>extract</code> is accepted only by compatibility normalization.</td>
+            <td><span class="tag good">Resolved for production</span></td>
+          </tr>
+          <tr>
+            <td>Post-parse response-handler evaluators</td>
+            <td>Core deterministic repair hooks still exist. LifeOps work-thread routing moved out of this system and into <code>threadOps</code>.</td>
+            <td><span class="tag warn">Keep as repair hooks only</span></td>
+          </tr>
+          <tr>
+            <td>Some post-turn evaluator side effects happen in <code>prepare()</code>.</td>
+            <td>Image analysis and link extraction persist memories before the unified evaluator model call.</td>
+            <td><span class="tag warn">Unchanged</span> acceptable if intentional, but evaluator model result is not the only mutation source.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Follow-Up Benchmark Review</h2>
+      <p>A bounded LifeOpsBench comparison was rerun on May 11, 2026 against Cerebras <code>gpt-oss-120b</code>, using two static calendar scenarios, one seed, concurrency 1, and JS scenarios skipped. Mockoon was disabled for this static slice; the bootstrap now falls back to Homebrew <code>npx</code> or repo-local <code>bunx</code> when <code>npx</code> is not on the shell path.</p>
+      <table>
+        <thead><tr><th>Agent</th><th>Scenarios</th><th>Pass@1</th><th>Mean Score</th><th>Cost</th><th>Latency</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>eliza</code></td><td>2</td><td>0.000</td><td>0.200</td><td>$0.0000</td><td>0.0s recorded</td><td>Stage-1 Cerebras wiring is fixed; no 404s and no local-embedding 401s. The remaining miss is model behavior: repeated calendar tool attempts still end at <code>max_turns</code> on this tiny slice.</td></tr>
+          <tr><td><code>hermes</code></td><td>2</td><td>0.000</td><td>0.250</td><td>$0.0066</td><td>4.1s</td><td>Completed both scenarios with no 429 in the final run; retry/backoff is present for transient Cerebras 429/5xx failures.</td></tr>
+          <tr><td><code>openclaw</code></td><td>2</td><td>0.000</td><td>0.300</td><td>$0.0131</td><td>5.9s</td><td>Completed both scenarios. A follow-up OpenClaw-only rerun after the <code>id</code> alias fix completed without executor warnings at the same mean score.</td></tr>
+        </tbody>
+      </table>
+      <p class="small">Latest all-agent artifacts: <code>~/.eliza/runs/lifeops/lifeops-multiagent-1778526387011/</code>. Follow-up clean OpenClaw-only artifact: <code>~/.eliza/runs/lifeops/lifeops-multiagent-1778526830810/</code>. Earlier failing artifacts captured the fixed provider/model issue at <code>~/.eliza/runs/lifeops/lifeops-multiagent-1778524474307/</code>.</p>
+      <p>Existing latest benchmark-result snapshots cover 50 benchmark families with all three agents present; 46 had numeric scores. On a per-benchmark normalized score, Hermes averaged 0.803, Eliza 0.781, and OpenClaw 0.652. Winner counts across those 46 scored families were: Eliza 9, Hermes 3, OpenClaw 2, ties 32. Raw averages are not directly comparable because benchmark score scales differ.</p>
+      <div class="callout warn">
+        <strong>Missed items found and fixed:</strong> <code>response-grammar.test.ts</code> now pins the field-registry envelope; LifeOpsBench now canonicalizes promoted calendar aliases, accepts observed <code>event_name</code>/<code>id</code> variants, treats <code>REPLY</code> as a terminal no-op, and makes duplicate synthetic calendar creates idempotent.
+      </div>
+    </section>
+
+    <section>
+      <h2>Validation Status</h2>
+      <ol>
+        <li>Core Stage-1, grammar, registry, abort, planner, context-catalog, tiered-action, and stress-compaction tests pass under <code>node scripts/run-vitest.mjs</code>.</li>
+        <li>LifeOps <code>threadOps</code>, action-structure audit, and work-thread integration tests pass under <code>node scripts/run-vitest.mjs</code>.</li>
+        <li>The interrupt benchmark scenario suite passes. The work-thread benchmark script now measures <code>threadOps</code> field-evaluator routing instead of the deleted post-parse router; the latest run measured <code>evaluator.handle</code> at 0.02ms average and <code>evaluator.shouldRun</code> at 0.60ms average over 30 iterations.</li>
+        <li><code>packages/core</code> and <code>packages/app-core</code> both pass <code>tsc --noEmit</code> for the touched paths.</li>
+        <li>LifeOpsBench scaffold/executor tests pass under Homebrew Python with 12 tests, including alias, idempotency, and <code>REPLY</code> regression coverage.</li>
+      </ol>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,580 @@
+[
+  {
+    "id": "messages.send_imessage_jordan",
+    "name": "Send iMessage to Jordan Lee",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Send Jordan Lee an iMessage saying \"I'll be there in 10 mins\".",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "imessage",
+          "targetKind": "contact",
+          "target": "Jordan Lee",
+          "message": "I'll be there in 10 mins"
+        }
+      }
+    ],
+    "required_outputs": [
+      "Jordan",
+      "10 mins"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Simple outbound iMessage to a known contact."
+  },
+  {
+    "id": "messages.read_slack_team_updates",
+    "name": "Read Slack team-updates channel",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Show me everything posted in the Slack channel \"team-updates\" (conv_0003) since yesterday.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_channel",
+          "source": "slack",
+          "roomId": "conv_0003",
+          "from": "2026-05-09T00:00:00Z",
+          "until": "2026-05-10T12:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": [
+      "team-updates"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Read-channel with explicit date range for Slack."
+  },
+  {
+    "id": "messages.send_telegram_project_alpha",
+    "name": "Send message to Telegram project-alpha group",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Tell the Telegram group \"project-alpha\" (conv_0004) that we are deploying the new version tomorrow.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "telegram",
+          "targetKind": "group",
+          "roomId": "conv_0004",
+          "message": "Deploying new version tomorrow"
+        }
+      }
+    ],
+    "required_outputs": [
+      "project-alpha",
+      "deploying"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Group send on Telegram."
+  },
+  {
+    "id": "messages.read_signal_zoe",
+    "name": "Read recent Signal thread with Zoe Patel",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Pull up the last 20 messages from my Signal conversation with Zoe Patel.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_with_contact",
+          "source": "signal",
+          "contact": "Zoe Patel",
+          "limit": 20
+        }
+      }
+    ],
+    "required_outputs": [
+      "Zoe"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Read-with-contact on Signal with a limit."
+  },
+  {
+    "id": "messages.summarize_unread_imessage_liam",
+    "name": "Summarize unread iMessage thread with Liam Wong",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "Give me a quick summary of what I missed in my iMessage chat with Liam Wong.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_with_contact",
+          "source": "imessage",
+          "contact": "Liam Wong",
+          "limit": 50
+        }
+      }
+    ],
+    "required_outputs": [
+      "Liam"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Just a short bullet list, no need for full transcripts.",
+      "applies_when": "agent asks about summary length or format"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Read-with-contact on iMessage with fallback for summary format."
+  },
+  {
+    "id": "messages.send_whatsapp_birthday_aisha",
+    "name": "Send birthday WhatsApp message to Aisha Khan",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Send Aisha Khan a WhatsApp message wishing her a happy birthday.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "whatsapp",
+          "targetKind": "contact",
+          "target": "Aisha Khan",
+          "message": "Happy birthday! \ud83c\udf89"
+        }
+      }
+    ],
+    "required_outputs": [
+      "Aisha",
+      "birthday"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Outbound WhatsApp message with celebratory content."
+  },
+  {
+    "id": "messages.read_discord_announcements",
+    "name": "Read Discord announcements channel",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Fetch the last two days of messages from the Discord announcements channel (conv_0005).",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_channel",
+          "source": "discord",
+          "roomId": "conv_0005",
+          "from": "2026-05-08T00:00:00Z",
+          "until": "2026-05-10T12:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": [
+      "Discord"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Read-channel from Discord with date range."
+  },
+  {
+    "id": "messages.read_signal_carlos",
+    "name": "Read Signal thread with Carlos Mendes",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Give me the most recent 15 messages from my Signal chat with Carlos Mendes.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_with_contact",
+          "source": "signal",
+          "contact": "Carlos Mendes",
+          "limit": 15
+        }
+      }
+    ],
+    "required_outputs": [
+      "Carlos"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Read-with-contact on Signal."
+  },
+  {
+    "id": "messages.send_imessage_emily_congrats",
+    "name": "Send congratulatory iMessage to Emily Chen",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Send Emily Chen an iMessage: \"Congrats on your promotion! \ud83c\udf89\"",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "imessage",
+          "targetKind": "contact",
+          "target": "Emily Chen",
+          "message": "Congrats on your promotion! \ud83c\udf89"
+        }
+      }
+    ],
+    "required_outputs": [
+      "Emily",
+      "promotion"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Outbound iMessage with emojis."
+  },
+  {
+    "id": "messages.summarize_whatsapp_family",
+    "name": "Summarize family WhatsApp group since Monday",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Give me a brief recap of what happened in the family WhatsApp group (conv_0002) since Monday.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_channel",
+          "source": "whatsapp",
+          "roomId": "conv_0002",
+          "from": "2026-05-03T00:00:00Z",
+          "until": "2026-05-10T12:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": [
+      "family"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Just a short bullet list, no need for full transcripts.",
+      "applies_when": "agent asks about summary length or format"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Read-channel + summarize for family group."
+  },
+  {
+    "id": "messages.send_signal_book_club",
+    "name": "Send message to Signal book-club group",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Tell the Signal group \"book-club\" (conv_0006) that the next meeting is Thursday at 7pm.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "signal",
+          "targetKind": "group",
+          "roomId": "conv_0006",
+          "message": "Next meeting Thursday at 7pm"
+        }
+      }
+    ],
+    "required_outputs": [
+      "book-club",
+      "Thursday"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Group send on Signal."
+  },
+  {
+    "id": "messages.read_imessage_personal",
+    "name": "Read personal iMessage thread since yesterday",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "owen_retiree",
+    "instruction": "Show me everything in my personal iMessage conversation (conv_0000) from yesterday onward.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_channel",
+          "source": "imessage",
+          "roomId": "conv_0000",
+          "from": "2026-05-09T00:00:00Z",
+          "until": "2026-05-10T12:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": [
+      "iMessage"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Read-channel for a personal iMessage thread."
+  },
+  {
+    "id": "messages.send_telegram_drew_report",
+    "name": "Send report request to Drew Patel via Telegram",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "Message Drew Patel on Telegram asking \"Can you send the report?\"",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "telegram",
+          "targetKind": "contact",
+          "target": "Drew Patel",
+          "message": "Can you send the report?"
+        }
+      }
+    ],
+    "required_outputs": [
+      "Drew",
+      "report"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Outbound Telegram message to a contact."
+  },
+  {
+    "id": "messages.read_whatsapp_nina",
+    "name": "Read recent WhatsApp chat with Nina Rao",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Pull the last 30 messages from my WhatsApp conversation with Nina Rao.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_with_contact",
+          "source": "whatsapp",
+          "contact": "Nina Rao",
+          "limit": 30
+        }
+      }
+    ],
+    "required_outputs": [
+      "Nina"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Read-with-contact on WhatsApp with a larger limit."
+  },
+  {
+    "id": "messages.summarize_telegram_project_x",
+    "name": "Summarize unread Telegram messages in project-x group",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Give me a concise summary of unread messages in the Telegram group \"project-x\" (conv_0008) since last week.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_channel",
+          "source": "telegram",
+          "roomId": "conv_0008",
+          "from": "2026-05-03T00:00:00Z",
+          "until": "2026-05-10T12:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": [
+      "project-x"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "A short bullet list is fine; no need for verbatim quotes.",
+      "applies_when": "agent asks about summary length or format"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Read-channel + summarize for Telegram group with fallback."
+  },
+  {
+    "id": "messages.read_slack_announcements",
+    "name": "Read Slack announcements channel from start of day",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Fetch everything posted in the Slack \"announcements\" channel (conv_0009) since this morning.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_channel",
+          "source": "slack",
+          "roomId": "conv_0009",
+          "from": "2026-05-10T00:00:00Z",
+          "until": "2026-05-10T12:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": [
+      "announcements"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Read-channel for Slack announcements with same-day range."
+  },
+  {
+    "id": "messages.send_imessage_grace_lunch",
+    "name": "Send lunch invitation to Grace Liu via iMessage",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Message Grace Liu on iMessage asking if she wants to have lunch at 1pm.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "imessage",
+          "targetKind": "contact",
+          "target": "Grace Liu",
+          "message": "Lunch at 1pm?"
+        }
+      }
+    ],
+    "required_outputs": [
+      "Grace",
+      "1pm"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Simple iMessage invitation."
+  },
+  {
+    "id": "messages.read_signal_jordan_group",
+    "name": "Read Signal group \"jordan-fans\" recent messages",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Show me the last 40 messages from the Signal group \"jordan-fans\" (conv_0010).",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_channel",
+          "source": "signal",
+          "roomId": "conv_0010",
+          "limit": 40
+        }
+      }
+    ],
+    "required_outputs": [
+      "jordan-fans"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Read-channel with limit for a Signal group."
+  },
+  {
+    "id": "messages.read_imessage_family",
+    "name": "Read family iMessage thread from last week",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Show me everything in my family iMessage thread (conv_0012) from 2026-05-03 onward.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_channel",
+          "source": "imessage",
+          "roomId": "conv_0012",
+          "from": "2026-05-03T00:00:00Z",
+          "until": "2026-05-10T12:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": [
+      "family"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Read-channel for an iMessage family group with date range."
+  },
+  {
+    "id": "messages.send_whatsapp_mike_checkin",
+    "name": "Send check\u2011in WhatsApp message to Mike Chen",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Message Mike Chen on WhatsApp asking \"How's the project going?\"",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "whatsapp",
+          "targetKind": "contact",
+          "target": "Mike Chen",
+          "message": "How's the project going?"
+        }
+      }
+    ],
+    "required_outputs": [
+      "Mike",
+      "project"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Outbound WhatsApp check\u2011in."
+  },
+  {
+    "id": "messages.read_signal_anniversary",
+    "name": "Read Signal thread about anniversary",
+    "domain": "messages",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Fetch the last 25 messages from my Signal conversation with \"Anniversary Planning\" (conv_0013).",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "read_channel",
+          "source": "signal",
+          "roomId": "conv_0013",
+          "limit": 25
+        }
+      }
+    ],
+    "required_outputs": [
+      "anniversary"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Read-channel for a Signal group with a limit."
+  }
+]

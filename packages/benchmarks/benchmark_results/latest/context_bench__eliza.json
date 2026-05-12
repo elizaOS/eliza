@@ -1,0 +1,77 @@
+{
+  "agent": "eliza",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T131808Z_1ba6d41d/context-bench__context_bench/run_context_bench_20260511T131808Z_1_b30dd1d0/output"
+  ],
+  "benchmark_directory": "context-bench",
+  "benchmark_id": "context_bench",
+  "cache_metrics": {
+    "cache_creation_input_tokens": 0,
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "cache_metrics": {
+      "cache_creation_input_tokens": 0,
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
+    },
+    "lost_in_middle_score": 0,
+    "overall_accuracy": 1.0,
+    "performance_metrics": {
+      "duration_seconds": 18.56154883399722,
+      "mean_latency_ms": 2657.2060585021973,
+      "p95_latency_ms": 2657.2060585021973,
+      "throughput_per_second": 0.05387481448576134
+    },
+    "return_code": 0,
+    "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
+      "llm_call_count": 1,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    },
+    "total_tasks": 1,
+    "trajectory_summary": {
+      "files": 2,
+      "prompt_chars": 8,
+      "repeated_prefixes": [],
+      "turns": 1
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 18.56154883399722,
+    "mean_latency_ms": 2657.2060585021973,
+    "p95_latency_ms": 2657.2060585021973,
+    "throughput_per_second": 0.05387481448576134
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T131808Z_1ba6d41d/context-bench__context_bench/run_context_bench_20260511T131808Z_1_b30dd1d0/output/context_bench_eliza_20260511_061827_detailed.json",
+  "run_group_id": "rg_20260511T131808Z_1ba6d41d",
+  "run_id": "run_context_bench_20260511T131808Z_1_b30dd1d0",
+  "score": 1.0,
+  "status": "succeeded",
+  "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
+    "llm_call_count": 1,
+    "prompt_tokens": 0,
+    "total_tokens": 0
+  },
+  "trajectory_summary": {
+    "files": 2,
+    "prompt_chars": 8,
+    "repeated_prefixes": [],
+    "turns": 1
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-12T01:33:59Z"
+}

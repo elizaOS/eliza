@@ -1,0 +1,993 @@
+[
+  {
+    "id": "travel.search_flights_lax_paris_next_monday",
+    "name": "Search flights LAX \u2192 PAR next Monday",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Find flights from LAX to PAR departing on 2026-05-13 and returning on 2026-05-20 for two adults, business class preferred.",
+    "ground_truth_actions": [
+      {
+        "name": "BOOK_TRAVEL",
+        "kwargs": {
+          "origin": "LAX",
+          "destination": "PAR",
+          "departureDate": "2026-05-13",
+          "returnDate": "2026-05-20",
+          "passengers": [
+            {
+              "type": "adult"
+            },
+            {
+              "type": "adult"
+            }
+          ]
+        }
+      }
+    ],
+    "required_outputs": [
+      "flight",
+      "business"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Two adult passengers, business class.",
+      "applies_when": "agent asks about passenger count or cabin class"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Simple flight search with multiple passengers and cabin preference."
+  },
+  {
+    "id": "travel.block_work_calendar_trip_nyc",
+    "name": "Block work calendar for NYC trip",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Block my work calendar from 2026-05-14 to 2026-05-18 for the New York business trip, mark me as unavailable.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "create_event",
+          "intent": "block NY trip",
+          "title": "OOO \u2014 NYC Business Trip",
+          "details": {
+            "calendarId": "cal_work",
+            "start": "2026-05-14T00:00:00Z",
+            "end": "2026-05-18T23:59:00Z",
+            "all_day": true
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "OOO",
+      "NYC"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "All\u2011day OOO block on the work calendar for a multi\u2011day trip."
+  },
+  {
+    "id": "travel.create_departure_reminder_flight",
+    "name": "Create reminder for flight departure",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Remind me on 2026-05-12 at 6am to leave for the airport for my flight to London.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Leave for LHR airport",
+          "details": {
+            "kind": "reminder",
+            "due": "2026-05-12T06:00:00Z",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "airport"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Personal list, default reminder.",
+      "applies_when": "agent asks which reminder list to use"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates a personal reminder for airport departure."
+  },
+  {
+    "id": "travel.share_flight_details_via_whatsapp",
+    "name": "Share flight details via WhatsApp",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "Send my friend Alex the flight details: 'LAX \u2192 SYD, dep 2026-06-01 22:00, arr 2026-06-02 08:00.' via WhatsApp.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "whatsapp",
+          "targetKind": "contact",
+          "target": "Alex Tran",
+          "message": "LAX \u2192 SYD, dep 2026-06-01 22:00, arr 2026-06-02 08:00."
+        }
+      }
+    ],
+    "required_outputs": [
+      "sent"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Message composition and sending via WhatsApp."
+  },
+  {
+    "id": "travel.block_family_calendar_vacation",
+    "name": "Block family calendar for vacation",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Block my family calendar from 2026-07-01 to 2026-07-07 for the beach vacation, all day.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "create_event",
+          "intent": "block vacation",
+          "title": "Beach Vacation",
+          "details": {
+            "calendarId": "cal_family",
+            "start": "2026-07-01T00:00:00Z",
+            "end": "2026-07-07T23:59:00Z",
+            "all_day": true
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "vacation"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "All\u2011day block on the family calendar for a week\u2011long vacation."
+  },
+  {
+    "id": "travel.create_hotel_checkin_reminder",
+    "name": "Create hotel check\u2011in reminder",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Remind me on 2026-05-15 at 3pm to check in at the hotel.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Hotel check\u2011in",
+          "details": {
+            "kind": "reminder",
+            "due": "2026-05-15T15:00:00Z",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "check\u2011in"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Personal list, default reminder.",
+      "applies_when": "agent asks which list to use"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates a personal reminder for hotel check\u2011in."
+  },
+  {
+    "id": "travel.search_flights_syd_lax_return",
+    "name": "Search flights SYD \u2192 LAX return",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Find a return flight from SYD to LAX departing 2026-06-10, economy class.",
+    "ground_truth_actions": [
+      {
+        "name": "BOOK_TRAVEL",
+        "kwargs": {
+          "origin": "SYD",
+          "destination": "LAX",
+          "departureDate": "2026-06-10",
+          "returnDate": "2026-06-10",
+          "passengers": [
+            {
+              "type": "adult"
+            }
+          ]
+        }
+      }
+    ],
+    "required_outputs": [
+      "flight"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "One adult passenger, economy class.",
+      "applies_when": "agent asks about passenger count or cabin"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Single\u2011direction flight search with same day return."
+  },
+  {
+    "id": "travel.block_primary_calendar_conference",
+    "name": "Block primary calendar for conference",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "owen_retiree",
+    "instruction": "Block my primary calendar from 2026-09-01 to 2026-09-03 for the tech conference, mark as busy.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "create_event",
+          "intent": "block conference",
+          "title": "Tech Conference",
+          "details": {
+            "calendarId": "cal_primary",
+            "start": "2026-09-01T00:00:00Z",
+            "end": "2026-09-03T23:59:00Z",
+            "all_day": true
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "conference"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "All\u2011day busy block on the primary calendar."
+  },
+  {
+    "id": "travel.create_trip_reminder_flight_checkin",
+    "name": "Create trip reminder for flight check\u2011in",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Remind me 24 hours before my flight on 2026-08-15 at 09:00 UTC to check\u2011in online.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Online check\u2011in",
+          "details": {
+            "kind": "reminder",
+            "due": "2026-08-14T09:00:00Z",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "check\u2011in"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Personal list, default reminder.",
+      "applies_when": "agent asks which list to store the reminder in"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates a reminder timed relative to a flight date."
+  },
+  {
+    "id": "travel.send_flight_confirmation_sms",
+    "name": "Send flight confirmation via SMS",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Text my phone the confirmation: 'Flight confirmed LAX \u2192 NRT, dep 2026-07-20 12:00 UTC.'",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "sms",
+          "targetKind": "contact",
+          "target": "self",
+          "message": "Flight confirmed LAX \u2192 NRT, dep 2026-07-20 12:00 UTC."
+        }
+      }
+    ],
+    "required_outputs": [
+      "texted"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Sends an SMS with flight confirmation details."
+  },
+  {
+    "id": "travel.search_flights_mia_to_lhr_business",
+    "name": "Search business flights MIA \u2192 LHR",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Find a business class flight from MIA to LHR departing 2026-05-22, returning 2026-05-28, one passenger.",
+    "ground_truth_actions": [
+      {
+        "name": "BOOK_TRAVEL",
+        "kwargs": {
+          "origin": "MIA",
+          "destination": "LHR",
+          "departureDate": "2026-05-22",
+          "returnDate": "2026-05-28",
+          "passengers": [
+            {
+              "type": "adult"
+            }
+          ]
+        }
+      }
+    ],
+    "required_outputs": [
+      "business"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "One adult passenger, business class.",
+      "applies_when": "agent asks about cabin or passenger count"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Business\u2011class flight search with round\u2011trip dates."
+  },
+  {
+    "id": "travel.block_primary_calendar_holiday_trip",
+    "name": "Block primary calendar for holiday trip",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Add an OOO event to my primary calendar from 2026-12-20 to 2026-12-30 for the holiday trip.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "create_event",
+          "intent": "holiday OOO",
+          "title": "OOO \u2014 Holiday Trip",
+          "details": {
+            "calendarId": "cal_primary",
+            "start": "2026-12-20T00:00:00Z",
+            "end": "2026-12-30T23:59:00Z",
+            "all_day": true
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "OOO"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates an all\u2011day out\u2011of\u2011office block for a holiday period."
+  },
+  {
+    "id": "travel.create_preflight_checklist_reminder",
+    "name": "Create pre\u2011flight checklist reminder",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Remind me on 2026-05-10 at 8am to complete my pre\u2011flight checklist.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Pre\u2011flight checklist",
+          "details": {
+            "kind": "reminder",
+            "due": "2026-05-10T08:00:00Z",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "checklist"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Personal list, default reminder.",
+      "applies_when": "agent asks which reminder list to use"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Sets a reminder for completing a pre\u2011flight checklist."
+  },
+  {
+    "id": "travel.send_flight_details_to_brother",
+    "name": "Send flight details to brother",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "Message my brother the flight info: 'NYC \u2192 SFO, dep 2026-07-05 14:00, arr 2026-07-05 17:00' via iMessage.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "imessage",
+          "targetKind": "contact",
+          "target": "Brother",
+          "message": "NYC \u2192 SFO, dep 2026-07-05 14:00, arr 2026-07-05 17:00"
+        }
+      }
+    ],
+    "required_outputs": [
+      "sent"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Sends flight details via iMessage to a family contact."
+  },
+  {
+    "id": "travel.search_flights_sfo_to_hkg_one_way",
+    "name": "Search one\u2011way flight SFO \u2192 HKG",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Find a one\u2011way flight from SFO to HKG departing on 2026-09-01 for a single adult, economy class.",
+    "ground_truth_actions": [
+      {
+        "name": "BOOK_TRAVEL",
+        "kwargs": {
+          "origin": "SFO",
+          "destination": "HKG",
+          "departureDate": "2026-09-01",
+          "returnDate": "2026-09-01",
+          "passengers": [
+            {
+              "type": "adult"
+            }
+          ]
+        }
+      }
+    ],
+    "required_outputs": [
+      "flight"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "One adult passenger, economy class.",
+      "applies_when": "agent asks about passenger count or cabin class"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "One\u2011way flight search with default cabin."
+  },
+  {
+    "id": "travel.block_family_calendar_ski_trip",
+    "name": "Block family calendar for ski trip",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Add an all\u2011day event to my family calendar from 2026-02-10 to 2026-02-15 named 'Ski Trip'.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "create_event",
+          "intent": "ski trip block",
+          "title": "Ski Trip",
+          "details": {
+            "calendarId": "cal_family",
+            "start": "2026-02-10T00:00:00Z",
+            "end": "2026-02-15T23:59:00Z",
+            "all_day": true
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "Ski"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "All\u2011day block on family calendar for a winter vacation."
+  },
+  {
+    "id": "travel.create_postflight_feedback_reminder",
+    "name": "Create post\u2011flight feedback reminder",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Remind me on 2026-05-20 at 18:00 to write feedback for my recent flight.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Flight feedback",
+          "details": {
+            "kind": "reminder",
+            "due": "2026-05-20T18:00:00Z",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "feedback"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Personal list, default reminder.",
+      "applies_when": "agent asks which list to store the reminder in"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Sets a reminder for writing post\u2011flight feedback."
+  },
+  {
+    "id": "travel.search_flights_ord_to_cdg_next_week",
+    "name": "Search flights ORD \u2192 CDG next week",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Find flights from ORD to CDG departing 2026-05-17 for two adults, economy class.",
+    "ground_truth_actions": [
+      {
+        "name": "BOOK_TRAVEL",
+        "kwargs": {
+          "origin": "ORD",
+          "destination": "CDG",
+          "departureDate": "2026-05-17",
+          "returnDate": "2026-05-17",
+          "passengers": [
+            {
+              "type": "adult"
+            },
+            {
+              "type": "adult"
+            }
+          ]
+        }
+      }
+    ],
+    "required_outputs": [
+      "flight"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Two adult passengers, economy class.",
+      "applies_when": "agent asks about passenger count or cabin"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Round\u2011trip flight search where return date equals departure date (same\u2011day return)."
+  },
+  {
+    "id": "travel.block_primary_calendar_conference_week",
+    "name": "Block primary calendar for conference week",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "owen_retiree",
+    "instruction": "Add a busy block on my primary calendar from 2026-11-05 to 2026-11-09 for the annual conference.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "create_event",
+          "intent": "conference week block",
+          "title": "Annual Conference",
+          "details": {
+            "calendarId": "cal_primary",
+            "start": "2026-11-05T00:00:00Z",
+            "end": "2026-11-09T23:59:00Z",
+            "all_day": true
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "conference"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Busy block spanning a full conference week."
+  },
+  {
+    "id": "travel.create_flight_checkin_reminder",
+    "name": "Create flight check\u2011in reminder",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Remind me on 2026-07-14 at 09:00 to check\u2011in for my flight departing 2026-07-15.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Flight check\u2011in",
+          "details": {
+            "kind": "reminder",
+            "due": "2026-07-14T09:00:00Z",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "check\u2011in"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Personal list, default reminder.",
+      "applies_when": "agent asks which list to use for the reminder"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Sets a reminder a day before flight check\u2011in."
+  },
+  {
+    "id": "travel.send_flight_itinerary_to_friend",
+    "name": "Send flight itinerary to friend",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Message my friend Lily the itinerary: 'Flight ATL \u2192 SEA, dep 2026-08-01 07:00, arr 2026-08-01 09:30.' via WhatsApp.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "whatsapp",
+          "targetKind": "contact",
+          "target": "Lily",
+          "message": "Flight ATL \u2192 SEA, dep 2026-08-01 07:00, arr 2026-08-01 09:30."
+        }
+      }
+    ],
+    "required_outputs": [
+      "sent"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Sends flight itinerary via WhatsApp to a friend."
+  },
+  {
+    "id": "travel.search_flights_jfk_to_lax_weekend",
+    "name": "Search weekend flight JFK \u2192 LAX",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Find a flight from JFK to LAX departing Saturday 2026-05-22 and returning Sunday 2026-05-23, one adult, economy.",
+    "ground_truth_actions": [
+      {
+        "name": "BOOK_TRAVEL",
+        "kwargs": {
+          "origin": "JFK",
+          "destination": "LAX",
+          "departureDate": "2026-05-22",
+          "returnDate": "2026-05-23",
+          "passengers": [
+            {
+              "type": "adult"
+            }
+          ]
+        }
+      }
+    ],
+    "required_outputs": [
+      "flight"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "One adult passenger, economy class.",
+      "applies_when": "agent asks about passenger count or cabin"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Weekend round\u2011trip flight search."
+  },
+  {
+    "id": "travel.block_family_calendar_halloween",
+    "name": "Block family calendar for Halloween",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Add an all\u2011day event named 'Halloween Party' to my family calendar on 2026-10-31.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "create_event",
+          "intent": "Halloween party",
+          "title": "Halloween Party",
+          "details": {
+            "calendarId": "cal_family",
+            "start": "2026-10-31T00:00:00Z",
+            "end": "2026-10-31T23:59:00Z",
+            "all_day": true
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "Halloween"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Single\u2011day all\u2011day event on family calendar."
+  },
+  {
+    "id": "travel.create_predeparture_checklist_reminder",
+    "name": "Create pre\u2011departure checklist reminder",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Remind me on 2026-09-30 at 07:00 to complete my pre\u2011departure checklist.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Pre\u2011departure checklist",
+          "details": {
+            "kind": "reminder",
+            "due": "2026-09-30T07:00:00Z",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "checklist"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Personal list, default reminder.",
+      "applies_when": "agent asks which list to store the reminder in"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates a reminder for a pre\u2011departure checklist."
+  },
+  {
+    "id": "travel.search_flights_sfo_to_jfk_business",
+    "name": "Search business flight SFO \u2192 JFK",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Find a business class flight from SFO to JFK departing 2026-06-10, one passenger.",
+    "ground_truth_actions": [
+      {
+        "name": "BOOK_TRAVEL",
+        "kwargs": {
+          "origin": "SFO",
+          "destination": "JFK",
+          "departureDate": "2026-06-10",
+          "returnDate": "2026-06-10",
+          "passengers": [
+            {
+              "type": "adult"
+            }
+          ]
+        }
+      }
+    ],
+    "required_outputs": [
+      "business"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "One adult passenger, business class.",
+      "applies_when": "agent asks about passenger count or cabin class"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Business\u2011class flight search with a single departure date."
+  },
+  {
+    "id": "travel.block_primary_calendar_vacation_trip",
+    "name": "Block primary calendar for vacation trip",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "Add an OOO event to my primary calendar from 2026-08-01 to 2026-08-10 for a vacation.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "create_event",
+          "intent": "vacation OOO",
+          "title": "OOO \u2014 Vacation",
+          "details": {
+            "calendarId": "cal_primary",
+            "start": "2026-08-01T00:00:00Z",
+            "end": "2026-08-10T23:59:00Z",
+            "all_day": true
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "OOO"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "All\u2011day out\u2011of\u2011office block for a vacation period."
+  },
+  {
+    "id": "travel.create_flight_feedback_reminder",
+    "name": "Create flight feedback reminder",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "Remind me on 2026-05-25 at 20:00 to write feedback for my flight on 2026-05-20.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Flight feedback",
+          "details": {
+            "kind": "reminder",
+            "due": "2026-05-25T20:00:00Z",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "feedback"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Personal list, default reminder.",
+      "applies_when": "agent asks which list to store the reminder in"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Sets a reminder for writing flight feedback after travel."
+  },
+  {
+    "id": "travel.send_itinerary_to_partner",
+    "name": "Send itinerary to partner",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Message my partner the itinerary: 'Flight BOS \u2192 SFO 2026-06-01 13:00, Hotel: Seaside Resort.' via iMessage.",
+    "ground_truth_actions": [
+      {
+        "name": "MESSAGE",
+        "kwargs": {
+          "operation": "send",
+          "source": "imessage",
+          "targetKind": "contact",
+          "target": "Partner",
+          "message": "Flight BOS \u2192 SFO 2026-06-01 13:00, Hotel: Seaside Resort."
+        }
+      }
+    ],
+    "required_outputs": [
+      "sent"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Sends itinerary via iMessage to a partner contact."
+  },
+  {
+    "id": "travel.search_flights_lga_to_syd_one_way",
+    "name": "Search one\u2011way flight LGA \u2192 SYD",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "Find a one\u2011way flight from LGA to SYD departing 2026-09-15 for a single adult, economy class.",
+    "ground_truth_actions": [
+      {
+        "name": "BOOK_TRAVEL",
+        "kwargs": {
+          "origin": "LGA",
+          "destination": "SYD",
+          "departureDate": "2026-09-15",
+          "returnDate": "2026-09-15",
+          "passengers": [
+            {
+              "type": "adult"
+            }
+          ]
+        }
+      }
+    ],
+    "required_outputs": [
+      "flight"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "One adult passenger, economy class.",
+      "applies_when": "agent asks about passenger count or cabin class"
+    },
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "One\u2011way flight search with standard cabin."
+  },
+  {
+    "id": "travel.block_primary_calendar_conference_day",
+    "name": "Block primary calendar for conference day",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "owen_retiree",
+    "instruction": "Block my primary calendar on 2026-10-12 as busy for the conference day.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "create_event",
+          "intent": "conference day block",
+          "title": "Conference Day",
+          "details": {
+            "calendarId": "cal_primary",
+            "start": "2026-10-12T00:00:00Z",
+            "end": "2026-10-12T23:59:00Z",
+            "all_day": true
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "Conference"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Single\u2011day busy block on primary calendar."
+  },
+  {
+    "id": "travel.create_flight_reminder_precheckin",
+    "name": "Create pre\u2011check\u2011in reminder",
+    "domain": "travel",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "Remind me on 2026-07-14 at 11:00 to complete my flight check\u2011in for the flight on 2026-07-15.",
+    "ground_truth_actions": [
+      {
+        "name": "LIFE_CREATE",
+        "kwargs": {
+          "subaction": "create",
+          "kind": "definition",
+          "title": "Pre\u2011check\u2011in",
+          "details": {
+            "kind": "reminder",
+            "due": "2026-07-14T11:00:00Z",
+            "listId": "list_personal"
+          }
+        }
+      }
+    ],
+    "required_outputs": [
+      "check\u2011in"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Personal list, default reminder.",
+      "applies_when": "agent asks which list to use for the reminder"
+    },
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Creates a reminder for flight check\u2011in prior to departure."
+  }
+]

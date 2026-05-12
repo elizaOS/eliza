@@ -1,0 +1,102 @@
+{
+  "id": "blooio",
+  "name": "Blooio",
+  "description": "Integrates Blooio iMessage/SMS messaging into elizaOS with signed webhooks and outbound message sending.",
+  "npmName": "@elizaos/plugin-blooio",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "connector",
+    "social",
+    "social-chat",
+    "messaging",
+    "blooio",
+    "imessage",
+    "sms"
+  ],
+  "config": {
+    "BLOOIO_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "API key for Blooio",
+      "advanced": false
+    },
+    "BLOOIO_BASE_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Base Url",
+      "help": "Base URL for API requests",
+      "advanced": false
+    },
+    "BLOOIO_FROM_NUMBER": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "From Number",
+      "help": "Sender phone number",
+      "advanced": false
+    },
+    "BLOOIO_WEBHOOK_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Webhook Url",
+      "help": "Webhook callback URL",
+      "advanced": false
+    },
+    "BLOOIO_WEBHOOK_PATH": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Webhook Path",
+      "help": "Webhook path",
+      "advanced": false
+    },
+    "BLOOIO_WEBHOOK_PORT": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Webhook Port",
+      "help": "Port number",
+      "advanced": false,
+      "min": 1,
+      "max": 65535
+    },
+    "BLOOIO_WEBHOOK_SECRET": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Webhook Secret",
+      "help": "Secret key for webhook/client verification",
+      "advanced": false
+    },
+    "BLOOIO_SIGNATURE_TOLERANCE_SEC": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Signature Tolerance Sec",
+      "help": "Tolerance window in seconds",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Circle",
+    "group": "feature-other",
+    "groupOrder": 12,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza#readme",
+    "repository": "https://github.com/elizaos/eliza",
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#blooio-sms-via-api"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "other"
+}

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "excel": {
+      "command": "excel-mcp-server",
+      "args": [
+        "stdio"
+      ]
+    }
+  }
+}
+

@@ -1,0 +1,41 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          direct_prompt: |
+            This is the elizaOS Plugin Registry repository.
+
+            For third-party package submissions:
+            1. Contributors should only add or update JSON files under entries/third-party/.
+            2. They must not hand-edit generated-registry.json, index.json, or registry-summary.json.
+            3. package must be a public npm package name and must not use the reserved @elizaos/* scope.
+            4. repository must be github:owner/repo with no .git suffix.
+            5. kind must be plugin, connector, or app.
+            6. Validate that the npm package and GitHub repository exist.
+            7. Third-party packages are community supported, not first-party supported.
+
+            Built-in entries are generated from elizaOS plugins/ and should not be submitted manually.
+            If the PR changes registry infrastructure, review the implementation normally.
+          allowed_tools: "Bash(npm view),Bash(curl),Bash(git ls-remote)"

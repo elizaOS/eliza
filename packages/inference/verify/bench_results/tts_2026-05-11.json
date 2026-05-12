@@ -1,0 +1,37 @@
+{
+  "backend": "cpu_x86_64_avx_vnni",
+  "date": "2026-05-11",
+  "host": "Intel Core Ultra 9 275HX (Arrow Lake-HX, 24 logical cores; AVX2 + AVX-VNNI, no AVX-512), 30 GB RAM, no NVIDIA module loaded",
+  "kind": "omnivoice-tts-first-audio-rtf",
+  "binary": "~/.eliza/local-inference/bin/dflash/linux-x64-cpu-fused/llama-omnivoice-server",
+  "fork": { "llamaCpp": "08032d57", "omnivoice": "38f82402" },
+  "model": "~/.eliza/local-inference/models/eliza-1-0_6b.bundle/tts/omnivoice-base-Q4_K_M.gguf",
+  "codec": "~/.eliza/local-inference/models/eliza-1-0_6b.bundle/tts/omnivoice-tokenizer-Q4_K_M.gguf",
+  "notes": [
+    "Both eliza-1-0_6b and eliza-1-1_7b bundles ship the SAME tts/ artifacts (OmniVoice-base 0.6B Q4_K_M LM + tokenizer/codec Q4_K_M); the TTS RTF is therefore identical across the two tiers — the tier difference is which text backbone feeds the chunker, not the voice model.",
+    "Batch-only path: the CLI synthesizes the whole phrase (32-step MaskGIT decode -> DAC codec decode) before writing any audio. First-audio latency == whole-phrase synthesis wall time. The libelizainference ABI v2 streaming-TTS entries (eliza_inference_tts_synthesize_stream / *_supported) are honest stubs (return 0) until W7's fused streaming decoder lands — there is no sample-streaming yet.",
+    "MaskGIT LM forward dominates: ~90% of wall time (e.g. 1-word: 7.5s of 8.3s). The codec/DAC decode (kept on CPU per the documented Metal decode-stall fallback) is NOT the RTF bottleneck on this host.",
+    "MaskGIT is a FIXED 32 demask steps regardless of phrase length; the per-step LM forward cost grows with the audio-token sequence length (T), so RTF is roughly flat (~6-9x) across short clauses to a paragraph but absolute latency scales ~linearly with phrase length.",
+    "Threading: omnivoice.cpp pins the CPU backend to hardware_concurrency()/2 = 12 threads here (src/backend.h backend_cpu_n_threads); not exposed as a CLI flag. CUDA unavailable (nvidia kernel module not loaded); no linux-x64-vulkan-fused build on disk, and llama-omnivoice-server exposes no GPU-offload flag, so no Vulkan TTS measurement was possible on this host.",
+    "Gate context: voice_rtf gate is <=0.5 (0_6b) / <=0.45 (1_7b). CPU-only is far over gate; the gate is meant for the GPU path (Apple Metal measured ~17ms/step for 'Hi.' in the fused-voice-ffi-smoke -> ~13x faster than this CPU box's ~235ms/step). Real publish RTF must come from GPU offload of the MaskGIT LM (Metal/Vulkan/CUDA) with the DAC codec staying CPU."
+  ],
+  "phrases": [
+    {"case":"1word","text":"Sure.","wallSec":8.328,"maskgitLmMs":7535.78,"avgMsPerStep":235.49,"samples":30720,"audioSec":1.28,"rtf":6.51,"firstAudioMs":8328,"codecBackend":"CPU","cpuThreads":12},
+    {"case":"filler","text":"One moment.","wallSec":8.695,"maskgitLmMs":7657.37,"avgMsPerStep":239.29,"samples":38400,"audioSec":1.60,"rtf":5.43,"firstAudioMs":8695,"codecBackend":"CPU","cpuThreads":12},
+    {"case":"sentence","text":"The capital of France is Paris.","wallSec":17.177,"maskgitLmMs":13407.11,"avgMsPerStep":418.97,"samples":50880,"audioSec":2.12,"rtf":8.10,"firstAudioMs":17177,"codecBackend":"CPU","cpuThreads":12},
+    {"case":"longsentence","text":"I have scheduled the meeting for tomorrow at three o'clock.","wallSec":29.520,"maskgitLmMs":26726.78,"avgMsPerStep":835.21,"samples":79440,"audioSec":3.31,"rtf":8.92,"firstAudioMs":29520,"codecBackend":"CPU","cpuThreads":12},
+    {"case":"paragraph","text":"Here is a short summary of the document you asked about. It covers three main points and a recommendation. Let me know if you want more detail on any of them.","wallSec":86.006,"maskgitLmMs":81387.76,"avgMsPerStep":2543.37,"samples":229440,"audioSec":9.56,"rtf":9.00,"firstAudioMs":86006,"codecBackend":"CPU","cpuThreads":12}
+  ],
+  "summary": {
+    "rtfCpuMin": 5.43,
+    "rtfCpuMax": 9.00,
+    "rtfCpuMedian": 8.10,
+    "firstAudioCpuShortestMs": 8328,
+    "gateThreshold0_6b": 0.5,
+    "gateThreshold1_7b": 0.45,
+    "passesGateCpu": false,
+    "passesGateVulkan": "not-measured (no vulkan-fused build / no GPU-offload CLI flag)",
+    "passesGateCuda": "not-measured (nvidia kernel module not loaded on this host)",
+    "phraseCacheMitigation": "cached common phrases (DEFAULT_PHRASE_CACHE_SEED / FIRST_AUDIO_FILLERS) bypass synthesis entirely -> ~0 ms first-audio; cache seed PCM ships in cache/voice-preset-default.bin (currently N=0 phrases in the staged stand-in) and EngineVoiceBridge re-prewarms at idle when a real TTS backend is present."
+  }
+}

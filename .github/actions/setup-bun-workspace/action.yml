@@ -1,0 +1,196 @@
+name: "Setup Bun Workspace"
+description: "Install Bun workspace dependencies and required native deps for eliza CI jobs."
+
+inputs:
+  bun-version:
+    description: "Bun version to install"
+    required: false
+    default: "1.3.13"
+  python-version:
+    description: "Python version for node-gyp fallbacks"
+    required: false
+    default: "3.12"
+  install-command:
+    description: "Dependency install command"
+    required: false
+    default: "bun install --frozen-lockfile --ignore-scripts"
+  install-native-deps:
+    description: "Whether to install native apt dependencies"
+    required: false
+    default: "true"
+  run-postinstall:
+    description: "Whether to run the repo postinstall step explicitly"
+    required: false
+    default: "true"
+  skip-avatar-clone:
+    description: "Set SKIP_AVATAR_CLONE=1 for postinstall"
+    required: false
+    default: "false"
+  no-vision-deps:
+    description: "Set ELIZA_NO_VISION_DEPS=1 for postinstall"
+    required: false
+    default: "false"
+  init-submodules:
+    description: "Run `git submodule update --init --recursive` before install"
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install setuptools for distutils (Python 3.12+)
+      shell: bash
+      run: pip install setuptools
+
+    - name: Install protoc
+      # protoc is required even when install-native-deps=false because Rust
+      # plugins (plugin-{discord,groq,openai,sql,whatsapp}) depend on the
+      # crates.io `elizaos` crate whose build script invokes prost-build.
+      # Without protoc, `cargo test` fails before any test runs.
+      if: ${{ runner.os == 'Linux' }}
+      shell: bash
+      run: |
+        if command -v protoc >/dev/null 2>&1; then
+          echo "protoc already installed: $(protoc --version)"
+          exit 0
+        fi
+        APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30)
+        for attempt in 1 2 3; do
+          if sudo apt-get "${APT_ARGS[@]}" update && \
+             sudo apt-get "${APT_ARGS[@]}" install -y --fix-missing protobuf-compiler; then
+            break
+          fi
+          if [ "$attempt" -eq 3 ]; then
+            echo "apt install of protobuf-compiler failed after ${attempt} attempts"
+            exit 1
+          fi
+          sleep $((attempt * 10))
+        done
+        protoc --version
+
+    - name: Install native dependencies
+      if: ${{ inputs.install-native-deps == 'true' && runner.os == 'Linux' }}
+      shell: bash
+      run: |
+        # Some CI runners intermittently fail reaching Ubuntu mirrors over IPv6.
+        # Force IPv4 and retry apt commands so CI setup is resilient.
+        APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30)
+        for attempt in 1 2 3; do
+          if sudo apt-get "${APT_ARGS[@]}" update && \
+             sudo apt-get "${APT_ARGS[@]}" install -y --fix-missing \
+               build-essential libcairo2-dev libpango1.0-dev libjpeg-dev \
+               libgif-dev libpixman-1-dev librsvg2-dev; then
+            break
+          fi
+          if [ "$attempt" -eq 3 ]; then
+            echo "apt install failed after ${attempt} attempts"
+            exit 1
+          fi
+          sleep $((attempt * 10))
+        done
+
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: ${{ inputs.bun-version }}
+
+    - name: Cache Bun install
+      uses: actions/cache@v5
+      with:
+        path: ~/.bun/install/cache
+        key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+        restore-keys: bun-${{ runner.os }}-
+
+    - name: Initialize submodules
+      if: ${{ inputs.init-submodules == 'true' }}
+      shell: bash
+      run: git submodule update --init --recursive
+
+    - name: Install dependencies
+      shell: bash
+      run: |
+        install_command="${{ inputs.install-command }}"
+        for attempt in 1 2; do
+          install_log="$(mktemp)"
+          if bash -lc "$install_command" 2>&1 | tee "$install_log"; then
+            rm -f "$install_log"
+            exit 0
+          fi
+          install_status=${PIPESTATUS[0]}
+          if grep -q "lockfile had changes, but lockfile is frozen" "$install_log" && \
+             [[ "$install_command" == *"--frozen-lockfile"* ]]; then
+            fallback_command="${install_command/--frozen-lockfile/--no-frozen-lockfile}"
+            echo "::warning::Bun reported frozen lockfile drift; validating with non-frozen install and git diff."
+            if bash -lc "$fallback_command"; then
+              if git diff --quiet -- bun.lock; then
+                rm -f "$install_log"
+                exit 0
+              fi
+              echo "::error::bun.lock changed during dependency install. Commit the updated lockfile."
+              git diff -- bun.lock
+              rm -f "$install_log"
+              exit 1
+            fi
+          fi
+          rm -f "$install_log"
+          if [ "$attempt" -eq 2 ]; then
+            exit "$install_status"
+          fi
+          echo "Dependency install failed; retrying once after cleaning Bun's install cache."
+          rm -rf ~/.bun/install/cache
+          sleep 5
+        done
+      env:
+        npm_config_python: ${{ env.pythonLocation }}/bin/python3
+
+    - name: Materialize bun npm package binary
+      if: ${{ runner.os != 'Windows' }}
+      # The default install command uses --ignore-scripts so trustedDependencies
+      # postinstalls don't run silently. The `bun` npm package ships a placeholder
+      # binary that errors with "Bun's postinstall script was not run" until its
+      # own install.js downloads the real binary; run it explicitly so any
+      # subsequent `bun ...` invocation (including the repo postinstall) works.
+      #
+      # Bun's hoisted install layout puts the package at
+      # node_modules/.bun/bun@<ver>/node_modules/bun/install.js rather
+      # than the legacy node_modules/bun/install.js, so check the
+      # hoisted path too. Recent bun versions nest deeper (the cache
+      # uses content-addressable hash dirs); raised maxdepth from 4 to
+      # 8 and added a final unbounded fallback so every layout we've
+      # seen in the wild gets caught.
+      shell: bash
+      run: |
+        install_js=""
+        if [ -f node_modules/bun/install.js ]; then
+          install_js="node_modules/bun/install.js"
+        elif [ -d node_modules/.bun ]; then
+          install_js="$(find node_modules/.bun -maxdepth 8 -path '*/bun@*/node_modules/bun/install.js' -print -quit 2>/dev/null)"
+        fi
+        # Final fallback: scan the whole node_modules tree (slower but
+        # exhaustive). Skip if we already found one above.
+        if [ -z "$install_js" ] || [ ! -f "$install_js" ]; then
+          install_js="$(find node_modules -path '*/bun/install.js' -print -quit 2>/dev/null)"
+        fi
+        if [ -n "$install_js" ] && [ -f "$install_js" ]; then
+          echo "Running bun postinstall: $install_js"
+          (cd "$(dirname "$install_js")" && node install.js)
+        else
+          echo "::warning::No bun/install.js found; downstream bun run calls may fail"
+        fi
+
+    - name: Run repository postinstall
+      if: ${{ inputs.run-postinstall == 'true' }}
+      shell: bash
+      run: bun run postinstall
+      env:
+        SKIP_AVATAR_CLONE: ${{ inputs.skip-avatar-clone == 'true' && '1' || '' }}
+        ELIZA_NO_VISION_DEPS: ${{ inputs.no-vision-deps == 'true' && '1' || '' }}
+
+    - name: Ensure generated shared i18n data
+      shell: bash
+      run: node packages/app-core/scripts/ensure-shared-i18n-data.mjs
