@@ -151,6 +151,9 @@ _PROMOTED_ACTION_DEFAULTS: dict[str, tuple[str, str, str]] = {
 }
 
 _ACTION_NAME_ALIASES: dict[str, str] = {
+    # Retired action names → canonical replacements.
+    "DEVICE_INTENT": "BLOCK",
+    "LIFEOPS": "LIFE",
     "SCHEDULED_TASKS_CREATE": "SCHEDULED_TASK_CREATE",
     "SCHEDULED_TASKS_SNOOZE": "SCHEDULED_TASK_SNOOZE",
     "SCHEDULED_TASKS_UPDATE": "SCHEDULED_TASK_UPDATE",
@@ -1586,9 +1589,8 @@ def _u_life_create(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str,
         )
         return {"id": reminder.id, "title": reminder.title}
     if detail_kind == "workout":
-        # Persist as a Note so the world hash captures the workout entry.
-        note_id = _synthetic_id(
-            "note_workout",
+        workout_id = _synthetic_id(
+            "workout",
             {
                 "t": title,
                 "d": details.get("distanceKm"),
@@ -1596,18 +1598,25 @@ def _u_life_create(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str,
                 "o": details.get("occurredAtIso"),
             },
         )
-        body = json.dumps(
-            {k: details[k] for k in sorted(details) if k != "kind"},
-            sort_keys=True,
-            default=str,
+        activity_type = (
+            details.get("workoutType")
+            or details.get("activityType")
+            or details.get("activity_type")
+            or title
         )
-        note = world.create_note(
-            note_id=note_id,
-            title=title,
-            body_markdown=body,
-            tags=["workout"],
+        duration_minutes = int(details.get("durationMinutes") or details.get("duration_minutes") or 0)
+        calories = details.get("calories") or details.get("kcal")
+        calories = int(calories) if calories is not None else None
+        distance_km_raw = details.get("distanceKm") or details.get("distance_km")
+        distance_km = float(distance_km_raw) if distance_km_raw is not None else None
+        workout = world.log_workout(
+            workout_id=workout_id,
+            activity_type=str(activity_type),
+            duration_minutes=duration_minutes,
+            calories=calories,
+            distance_km=distance_km,
         )
-        return {"id": note.id, "kind": "workout"}
+        return {"id": workout.id, "kind": "workout"}
     if detail_kind == "health_metric":
         metric_type = _required(details, "metric", action=name, sub="create/health_metric")
         value = float(_required(details, "value", action=name, sub="create/health_metric"))
@@ -2136,8 +2145,18 @@ def _u_money_subscription_cancel(
     return {"id": sub.id, "status": sub.status}
 
 
-def _u_book_travel(_world: LifeWorld, _kw: dict[str, Any], _name: str) -> dict[str, Any]:
-    """BOOK_TRAVEL returns offers without booking — no state mutation."""
+def _u_book_travel(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
+    """BOOK_TRAVEL — search/offer path and cancel path.
+
+    Search/offer (default): returns stub offers without mutating state.
+    Cancel: marks a booking as cancelled in the fake state and returns the
+    cancelled booking id. No LifeWorld entity exists for bookings, so the
+    cancellation is a no-op for the state hash (same as search).
+    """
+    subaction = kw.get("subaction") or kw.get("action")
+    if subaction == "cancel":
+        booking_id = kw.get("booking_id") or kw.get("bookingId") or kw.get("id")
+        return {"ok": True, "cancelled_booking_id": booking_id}
     return {"action": "BOOK_TRAVEL", "ok": True, "noop": True}
 
 

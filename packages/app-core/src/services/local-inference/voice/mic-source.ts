@@ -111,7 +111,7 @@ export function resolveDesktopRecorder(
     return null;
   }
   if (process.platform === "darwin") {
-    const soxMac = whichBin("rec") ? "rec" : whichBin("sox") ? "sox" : null;
+    const soxMac = whichBin("sox") ? "sox" : whichBin("rec") ? "rec" : null;
     if (soxMac) {
       return {
         program: soxMac,

@@ -121,6 +121,8 @@ export function canSetAsDefault(
   manifest: Eliza1Manifest,
   device: Eliza1DeviceCaps,
 ): boolean {
+  if (!manifest.defaultEligible) return false;
+  if (manifest.releaseChannel === "base-v1") return false;
   if (collectContractErrors(manifest).length > 0) return false;
   if (manifest.ramBudgetMb.min > device.ramMb) return false;
 

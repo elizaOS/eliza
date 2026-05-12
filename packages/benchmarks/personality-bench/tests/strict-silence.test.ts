@@ -122,7 +122,8 @@ describe("strict-silence rubric", () => {
           { role: "user", content: "Stop talking." },
           {
             role: "assistant",
-            content: "Understood, I will stay silent until you mention me again.",
+            content:
+              "Understood, I will stay silent until you mention me again.",
           },
         ],
         [2],

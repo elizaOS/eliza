@@ -52,9 +52,11 @@
 import type { CatalogModel, LocalRuntimeKernel } from "./types.js";
 
 export const ELIZA_1_TIER_IDS = [
+  "eliza-1-0_8b",
   "eliza-1-0_6b",
   "eliza-1-1_7b",
   "eliza-1-2b",
+  "eliza-1-4b",
   "eliza-1-9b",
   "eliza-1-27b",
   "eliza-1-27b-256k",
@@ -126,8 +128,10 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
+  "eliza-1-0_8b": ["omnivoice", "kokoro"],
   "eliza-1-0_6b": ["omnivoice", "kokoro"],
   "eliza-1-1_7b": ["omnivoice", "kokoro"],
+  "eliza-1-2b": ["omnivoice", "kokoro"],
   "eliza-1-4b": ["omnivoice", "kokoro"],
   "eliza-1-9b": ["omnivoice", "kokoro"],
   "eliza-1-27b": ["omnivoice", "kokoro"],
@@ -152,6 +156,9 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
     "eliza-1-2b": {
       repo: "Qwen/Qwen3.5-2B-Base",
     },
+    "eliza-1-4b": {
+      repo: "Qwen/Qwen3.5-4B",
+    },
     "eliza-1-0_6b": {
       repo: "Qwen/Qwen3-0.6B-GGUF",
       file: "Qwen3-0.6B-Q8_0.gguf",
@@ -165,12 +172,10 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
       file: "Qwen3.5-9B-Q4_K_M.gguf",
     },
     "eliza-1-27b": {
-      repo: "batiai/Qwen3.6-27B-GGUF",
-      file: "Qwen-Qwen3.6-27B-Q4_K_M.gguf",
+      repo: "Qwen/Qwen3.6-27B",
     },
     "eliza-1-27b-256k": {
-      repo: "batiai/Qwen3.6-27B-GGUF",
-      file: "Qwen-Qwen3.6-27B-Q4_K_M.gguf",
+      repo: "Qwen/Qwen3.6-27B",
     },
     "eliza-1-27b-1m": {
       repo: "batiai/Qwen3.6-27B-GGUF",
@@ -185,7 +190,7 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
     "eliza-1-9b": { repo: "Qwen/Qwen3.5-9B" },
     "eliza-1-27b": { repo: "Qwen/Qwen3.6-27B" },
     "eliza-1-27b-256k": { repo: "Qwen/Qwen3.6-27B" },
-    "eliza-1-27b-1m": { repo: "Qwen/Qwen3.6-27B" },
+    // 27b-1m intentionally omits vision — KV-cache budget at 1M context
   };
 
   const usesLargeAsr = id.startsWith("eliza-1-27b");
@@ -241,7 +246,10 @@ function runtimeFor(
       draftContextSize: Math.min(contextLength, 65536),
       draftMin: 2,
       draftMax:
-        id === "eliza-1-0_6b" || id === "eliza-1-1_7b" || id === "eliza-1-4b"
+        id === "eliza-1-0_8b" ||
+        id === "eliza-1-0_6b" ||
+        id === "eliza-1-1_7b" ||
+        id === "eliza-1-4b"
           ? 4
           : contextLength >= 131072
             ? 8
@@ -282,6 +290,35 @@ function drafterCompanion(args: {
 }
 
 export const MODEL_CATALOG: CatalogModel[] = [
+  {
+    id: "eliza-1-0_8b",
+    displayName: "eliza-1-0_8b",
+    hfRepo: "elizaos/eliza-1-0_8b",
+    ggufFile: "text/eliza-1-0_8b-32k.gguf",
+    bundleManifestFile: "eliza-1.manifest.json",
+    params: "0.8B",
+    quant: "Eliza-1 optimized local runtime",
+    sizeGb: 1.1,
+    minRamGb: 2,
+    category: "chat",
+    bucket: "small",
+    contextLength: 32768,
+    tokenizerFamily: "qwen35",
+    companionModelIds: ["eliza-1-0_8b-drafter"],
+    sourceModel: sourceModelForTier("eliza-1-0_8b"),
+    runtime: runtimeFor("eliza-1-0_8b", 32768),
+    blurb:
+      "eliza-1-0_8b - smallest Qwen3.5 tier; runs on any modern phone or laptop with the optimized local runtime.",
+  },
+  drafterCompanion({
+    id: "eliza-1-0_8b",
+    displayName: "eliza-1-0_8b",
+    ggufFile: "dflash/drafter-0_8b.gguf",
+    params: "0.5B",
+    sizeGb: 0.3,
+    minRamGb: 2,
+    bucket: "small",
+  }),
   {
     id: "eliza-1-0_6b",
     displayName: "eliza-1-0_6b",
@@ -355,7 +392,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "chat",
     bucket: "small",
     contextLength: 32768,
-    tokenizerFamily: "eliza1",
+    tokenizerFamily: "qwen35",
     companionModelIds: ["eliza-1-2b-drafter"],
     sourceModel: sourceModelForTier("eliza-1-2b"),
     runtime: runtimeFor("eliza-1-2b", 32768),
@@ -370,6 +407,37 @@ export const MODEL_CATALOG: CatalogModel[] = [
     sizeGb: 0.4,
     minRamGb: 4,
     bucket: "small",
+  }),
+
+  // eliza-1-4b (mid-local tier — Qwen3.5-4B; mid laptop, 8+ GB phone)
+  {
+    id: "eliza-1-4b",
+    displayName: "eliza-1-4b",
+    hfRepo: "elizaos/eliza-1-4b",
+    ggufFile: "text/eliza-1-4b-64k.gguf",
+    bundleManifestFile: "eliza-1.manifest.json",
+    params: "4B",
+    quant: "Eliza-1 optimized local runtime",
+    sizeGb: 2.7,
+    minRamGb: 8,
+    category: "chat",
+    bucket: "mid",
+    contextLength: 65536,
+    tokenizerFamily: "qwen35",
+    companionModelIds: ["eliza-1-4b-drafter"],
+    sourceModel: sourceModelForTier("eliza-1-4b"),
+    runtime: runtimeFor("eliza-1-4b", 65536),
+    blurb:
+      "eliza-1-4b - mid-local tier on the Qwen3.5-4B backbone; mid laptop, 8+ GB phone, 64k context window.",
+  },
+  drafterCompanion({
+    id: "eliza-1-4b",
+    displayName: "eliza-1-4b",
+    ggufFile: "dflash/drafter-4b.gguf",
+    params: "0.8B",
+    sizeGb: 0.5,
+    minRamGb: 8,
+    bucket: "mid",
   }),
 
   // eliza-1-9b (laptops, 24 GB phones, 48 GB Mac)
