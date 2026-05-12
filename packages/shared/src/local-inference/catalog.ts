@@ -119,9 +119,18 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   const omnivoice = { repo: "Serveurperso/OmniVoice-GGUF" } as const;
   const kokoro = { repo: KOKORO_SOURCE_REPO } as const;
   const silero = { repo: "onnx-community/silero-vad" } as const;
-  const embedding = { repo: "Qwen/Qwen3-Embedding-0.6B-GGUF" } as const;
-  const asrSmall = { repo: "ggml-org/Qwen3-ASR-0.6B-GGUF" } as const;
-  const asrLarge = { repo: "ggml-org/Qwen3-ASR-1.7B-GGUF" } as const;
+  const embedding = {
+    repo: ELIZA_1_HF_REPO,
+    file: bundleRemotePath(id, "embedding/eliza-1-embedding.gguf"),
+  } as const;
+  const asrSmall = {
+    repo: ELIZA_1_HF_REPO,
+    file: bundleRemotePath(id, "asr/eliza-1-asr-small.gguf"),
+  } as const;
+  const asrLarge = {
+    repo: ELIZA_1_HF_REPO,
+    file: bundleRemotePath(id, "asr/eliza-1-asr-large.gguf"),
+  } as const;
 
   const textByTier: Record<Eliza1TierId, { repo: string; file?: string }> = {
     "eliza-1-0_8b": { repo: "Qwen/Qwen3.5-0.8B" },

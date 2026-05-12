@@ -114,8 +114,8 @@ _CC_BY_NC_SA = "CC-BY-NC-SA-4.0.txt"
 # Each entry's upstream is the *v1 source repo* recorded in
 # ELIZA_1_RELEASE_ASSET_STATUS.md ("v1 source repos per tier /
 # component"). Small text tiers use the public Qwen3.5 0.8B / 2B / 4B line.
-# ASR and embedding are deliberate upstream exceptions: they remain Qwen3-ASR
-# and Qwen3-Embedding artifacts rather than being rewritten as Qwen3.5.
+# ASR and embedding are deliberate upstream exceptions: they remain published
+# Qwen3-ASR / Qwen3-Embedding artifacts rather than being rewritten as Qwen3.5.
 ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
     LicenseAttestation(
         bundle_file="LICENSE.text",
@@ -157,8 +157,8 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         component="ASR (Qwen3-ASR)",
         spdx="Apache-2.0",
         text_file=_APACHE,
-        upstream_repo="ggml-org/Qwen3-ASR-0.8B-GGUF / ggml-org/Qwen3-ASR-2B-GGUF (base: Qwen/Qwen3-ASR-*)",
-        upstream_url="https://huggingface.co/ggml-org/Qwen3-ASR-0.8B-GGUF",
+        upstream_repo="ggml-org/Qwen3-ASR-0.6B-GGUF / ggml-org/Qwen3-ASR-1.7B-GGUF (base: Qwen/Qwen3-ASR-0.6B / Qwen/Qwen3-ASR-1.7B)",
+        upstream_url="https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF",
         copyright_holder="Alibaba Cloud (Qwen team) and contributors",
         note=(
             "ASR weights are Qwen3-ASR, GGUF-converted upstream. This is a "
@@ -208,11 +208,11 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         component="embedding (Qwen3-Embedding)",
         spdx="Apache-2.0",
         text_file=_APACHE,
-        upstream_repo="Qwen/Qwen3-Embedding-0.8B-GGUF",
-        upstream_url="https://huggingface.co/Qwen/Qwen3-Embedding-0.8B-GGUF",
+        upstream_repo="Qwen/Qwen3-Embedding-0.6B-GGUF",
+        upstream_url="https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF",
         copyright_holder="Alibaba Cloud (Qwen team) and contributors",
         note=(
-            "Qwen3-Embedding-0.8B (1024-dim, Matryoshka, 32k ctx), shipped as a "
+            "Qwen3-Embedding-0.6B (1024-dim, Matryoshka, 32k ctx), shipped as a "
             "separate embedding/ artifact on non-lite tiers. On 0_8b the embedding "
             "model IS the text backbone with --pooling last — no duplicate weights, "
             "no separate embedding/ artifact, and this file is absent on 0_8b. "

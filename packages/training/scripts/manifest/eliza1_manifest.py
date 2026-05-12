@@ -100,6 +100,19 @@ ELIZA_1_PROVENANCE_SLOTS: Final[tuple[str, ...]] = (
     "vision",
     "drafter",
 )
+QWEN3_ASR_GGUF_REPOS: Final[tuple[str, ...]] = (
+    "ggml-org/Qwen3-ASR-0.6B-GGUF",
+    "ggml-org/Qwen3-ASR-1.7B-GGUF",
+)
+QWEN3_EMBEDDING_GGUF_REPOS: Final[tuple[str, ...]] = (
+    "Qwen/Qwen3-Embedding-0.6B-GGUF",
+    "Qwen/Qwen3-Embedding-4B-GGUF",
+    "Qwen/Qwen3-Embedding-8B-GGUF",
+)
+QWEN3_CANONICAL_SOURCE_REPOS_BY_SLOT: Final[Mapping[str, tuple[str, ...]]] = {
+    "asr": QWEN3_ASR_GGUF_REPOS,
+    "embedding": QWEN3_EMBEDDING_GGUF_REPOS,
+}
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_8b": ("turboquant_q3", "qjl", "polarquant", "dflash"),
@@ -817,10 +830,17 @@ def validate_manifest(
                             f"provenance.sourceModels.{slot}: must be an object"
                         )
                         continue
-                    if not isinstance(source.get("repo"), str) or not source.get("repo"):
+                    repo = source.get("repo")
+                    if not isinstance(repo, str) or not repo:
                         errors.append(
                             f"provenance.sourceModels.{slot}.repo: required non-empty string"
                         )
+                    elif rs == "base-v1":
+                        repo_error = canonical_qwen_source_repo_error(slot, repo)
+                        if repo_error is not None:
+                            errors.append(
+                                f"provenance.sourceModels.{slot}.repo: {repo_error}"
+                            )
                     # `file` is optional (some sources are a whole repo dir);
                     # `convertedVia` records the converter path used.
                     for opt_field in ("file", "convertedVia", "note"):
@@ -999,6 +1019,24 @@ def validate_manifest(
         )
 
     return tuple(errors)
+
+
+def canonical_qwen_source_repo_error(slot: str, repo: str) -> str | None:
+    """Return an error for known Qwen ASR/embedding provenance misspellings.
+
+    Text tiers are Qwen3.5, but ASR and embedding are separate Qwen3
+    components with their own published GGUF repos. The release pipeline must
+    not invent matching Qwen3.5 or 0.8B/2B ASR/embedding names.
+    """
+
+    allowed = QWEN3_CANONICAL_SOURCE_REPOS_BY_SLOT.get(slot)
+    if allowed is None or repo in allowed:
+        return None
+    allowed_list = ", ".join(allowed)
+    return (
+        f"must be one of the published upstream GGUF repos [{allowed_list}], "
+        f"got {repo!r}"
+    )
 
 
 # ---------------------------------------------------------------------------

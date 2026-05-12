@@ -13,9 +13,12 @@ will replace or add promoted bundle revisions after the APOLLO SFT gates pass.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import shutil
 import sys
+import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable, Sequence
@@ -73,6 +76,18 @@ def _iter_manifest_paths(manifest: dict[str, Any]) -> Iterable[str]:
                 yield entry["path"]
 
 
+def _iter_manifest_file_entries(manifest: dict[str, Any]) -> Iterable[dict[str, Any]]:
+    files = manifest.get("files")
+    if not isinstance(files, dict):
+        return
+    for entries in files.values():
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if isinstance(entry, dict) and isinstance(entry.get("path"), str):
+                yield entry
+
+
 def _safe_bundle_child(bundle_dir: Path, rel: str) -> Path:
     if not rel or Path(rel).is_absolute():
         raise ValueError(f"invalid bundle-relative path: {rel!r}")
@@ -81,6 +96,14 @@ def _safe_bundle_child(bundle_dir: Path, rel: str) -> Path:
     if target != root and root not in target.parents:
         raise ValueError(f"bundle path escapes root: {rel!r}")
     return target
+
+
+def _sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for block in iter(lambda: fh.read(chunk), b""):
+            h.update(block)
+    return h.hexdigest()
 
 
 def _voice_policy_warnings(tier: str, manifest: dict[str, Any]) -> list[str]:
@@ -100,6 +123,7 @@ def plan_bundle(
     tier: str,
     *,
     strict_voice_policy: bool = False,
+    verify_hashes: bool = True,
 ) -> BundlePlan:
     bundle_dir = bundles_root / f"eliza-1-{tier}.bundle"
     path_in_repo = f"bundles/{tier}"
@@ -143,7 +167,8 @@ def plan_bundle(
             errors.append(f"manifest tier {manifest_tier!r} does not match {tier}")
 
         seen: set[str] = {"eliza-1.manifest.json"}
-        for rel in _iter_manifest_paths(manifest):
+        for entry in _iter_manifest_file_entries(manifest):
+            rel = entry["path"]
             try:
                 target = _safe_bundle_child(bundle_dir, rel)
             except ValueError as exc:
@@ -152,6 +177,14 @@ def plan_bundle(
             seen.add(rel)
             if not target.is_file():
                 errors.append(f"missing manifest file: {rel}")
+                continue
+            expected_sha = entry.get("sha256")
+            if verify_hashes and isinstance(expected_sha, str):
+                got_sha = _sha256_file(target)
+                if got_sha != expected_sha:
+                    errors.append(
+                        f"sha256 mismatch for {rel}: manifest={expected_sha} actual={got_sha}"
+                    )
         voice_warnings = _voice_policy_warnings(tier, manifest)
         if strict_voice_policy:
             errors.extend(voice_warnings)
@@ -240,11 +273,34 @@ def plan_bundles(
     tiers: Sequence[str],
     *,
     strict_voice_policy: bool = False,
+    verify_hashes: bool = True,
 ) -> list[BundlePlan]:
     return [
-        plan_bundle(bundles_root, tier, strict_voice_policy=strict_voice_policy)
+        plan_bundle(
+            bundles_root,
+            tier,
+            strict_voice_policy=strict_voice_policy,
+            verify_hashes=verify_hashes,
+        )
         for tier in tiers
     ]
+
+
+def _hardlink_or_copy(source: Path, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.link(source, destination)
+    except OSError:
+        shutil.copy2(source, destination)
+
+
+def _mirror_for_large_folder_upload(plan: BundlePlan, staging_root: Path) -> Path:
+    source_root = Path(plan.bundle_dir)
+    dest_root = staging_root / plan.path_in_repo
+    for source in sorted(source_root.rglob("*")):
+        if source.is_file():
+            _hardlink_or_copy(source, dest_root / source.relative_to(source_root))
+    return staging_root
 
 
 def publish_plans(
@@ -253,6 +309,8 @@ def publish_plans(
     repo_id: str,
     token: str,
     dry_run: bool,
+    large_folder_upload: bool = False,
+    large_folder_workers: int | None = None,
 ) -> None:
     if dry_run:
         return
@@ -270,14 +328,28 @@ def publish_plans(
     for plan in plans:
         if not plan.uploadable:
             continue
-        api.upload_folder(
-            folder_path=plan.bundle_dir,
-            path_in_repo=plan.path_in_repo,
-            repo_id=repo_id,
-            repo_type="model",
-            ignore_patterns=[".DS_Store", "__MACOSX/*"],
-            commit_message=f"Publish Eliza-1 {plan.tier} base GGUF bundle",
-        )
+        if large_folder_upload:
+            parent = Path(plan.bundle_dir).parent
+            with tempfile.TemporaryDirectory(
+                prefix=f"eliza1-{plan.tier}-hf-",
+                dir=str(parent),
+            ) as tmp:
+                staging_root = _mirror_for_large_folder_upload(plan, Path(tmp))
+                api.upload_large_folder(
+                    repo_id=repo_id,
+                    repo_type="model",
+                    folder_path=staging_root,
+                    num_workers=large_folder_workers,
+                )
+        else:
+            api.upload_folder(
+                folder_path=plan.bundle_dir,
+                path_in_repo=plan.path_in_repo,
+                repo_id=repo_id,
+                repo_type="model",
+                ignore_patterns=[".DS_Store", "__MACOSX/*"],
+                commit_message=f"Publish Eliza-1 {plan.tier} base GGUF bundle",
+            )
 
 
 def _print_summary(plans: Sequence[BundlePlan], *, repo_id: str, dry_run: bool) -> None:
@@ -303,6 +375,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--allow-missing", action="store_true")
     ap.add_argument("--strict-voice-policy", action="store_true")
+    ap.add_argument(
+        "--skip-hash-verify",
+        action="store_true",
+        help="Only check manifest file presence; do not hash large GGUF files.",
+    )
+    ap.add_argument(
+        "--large-folder-upload",
+        action="store_true",
+        help="Use Hugging Face upload_large_folder with a repo-shaped hardlink staging tree.",
+    )
+    ap.add_argument("--large-folder-workers", type=int)
     ap.add_argument("--report", type=Path, help="Optional JSON report path.")
     args = ap.parse_args(argv)
 
@@ -311,6 +394,7 @@ def main(argv: list[str] | None = None) -> int:
         args.bundles_root,
         tiers,
         strict_voice_policy=args.strict_voice_policy,
+        verify_hashes=not args.skip_hash_verify,
     )
     _print_summary(plans, repo_id=args.repo_id, dry_run=args.dry_run)
 
@@ -329,7 +413,14 @@ def main(argv: list[str] | None = None) -> int:
         if not token:
             print("HF_TOKEN or HUGGINGFACE_HUB_TOKEN is required for upload", file=sys.stderr)
             return 2
-        publish_plans(plans, repo_id=args.repo_id, token=token, dry_run=False)
+        publish_plans(
+            plans,
+            repo_id=args.repo_id,
+            token=token,
+            dry_run=False,
+            large_folder_upload=args.large_folder_upload,
+            large_folder_workers=args.large_folder_workers,
+        )
     return 0
 
 

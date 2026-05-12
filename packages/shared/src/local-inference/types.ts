@@ -317,10 +317,8 @@ export interface CatalogModel {
   params:
     | "360M"
     | "0.5B"
-    | "0.6B"
     | "0.8B"
     | "1B"
-    | "1.7B"
     | "2B"
     | "3B"
     | "4B"

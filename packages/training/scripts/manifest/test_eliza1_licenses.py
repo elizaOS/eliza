@@ -72,10 +72,11 @@ def test_qwen3_asr_and_embedding_remain_upstream_exceptions() -> None:
     asr = next(a for a in ATTESTATIONS if a.bundle_file == "LICENSE.asr")
     embedding = next(a for a in ATTESTATIONS if a.bundle_file == "LICENSE.embedding")
 
-    assert "Qwen3-ASR-0.8B-GGUF" in asr.upstream_repo
+    assert "Qwen3-ASR-0.6B-GGUF" in asr.upstream_repo
+    assert "Qwen3-ASR-1.7B-GGUF" in asr.upstream_repo
     assert "Qwen3 upstream exception" in asr.render()
     assert "Qwen3.5-ASR" not in asr.render()
-    assert "Qwen3-Embedding-0.8B-GGUF" in embedding.upstream_repo
+    assert "Qwen3-Embedding-0.6B-GGUF" in embedding.upstream_repo
     assert "Qwen3.5-Embedding" not in embedding.render()
 
 
