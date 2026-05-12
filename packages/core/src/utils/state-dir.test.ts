@@ -14,12 +14,12 @@ const FAKE_HOME = "/fake/home";
 const fakeHomedir = () => FAKE_HOME;
 
 describe("resolveStateDir", () => {
-	it("honors ELIZA_STATE_DIR over ELIZA_STATE_DIR and namespace default", () => {
+	it("honors ELIZA_STATE_DIR over MILADY_STATE_DIR and namespace default", () => {
 		expect(
 			resolveStateDir(
 				{
 					ELIZA_STATE_DIR: "/tmp/foo",
-					ELIZA_STATE_DIR: "/tmp/bar",
+					MILADY_STATE_DIR: "/tmp/bar",
 					ELIZA_NAMESPACE: "eliza",
 				},
 				fakeHomedir,
@@ -27,10 +27,10 @@ describe("resolveStateDir", () => {
 		).toBe("/tmp/foo");
 	});
 
-	it("honors ELIZA_STATE_DIR when ELIZA_STATE_DIR is unset", () => {
+	it("honors MILADY_STATE_DIR when ELIZA_STATE_DIR is unset", () => {
 		expect(
 			resolveStateDir(
-				{ ELIZA_STATE_DIR: "/tmp/bar", ELIZA_NAMESPACE: "eliza" },
+				{ MILADY_STATE_DIR: "/tmp/bar", ELIZA_NAMESPACE: "eliza" },
 				fakeHomedir,
 			),
 		).toBe("/tmp/bar");
@@ -49,7 +49,7 @@ describe("resolveStateDir", () => {
 	it("treats whitespace-only env values as unset", () => {
 		expect(
 			resolveStateDir(
-				{ ELIZA_STATE_DIR: "   ", ELIZA_STATE_DIR: "/tmp/bar" },
+				{ ELIZA_STATE_DIR: "   ", MILADY_STATE_DIR: "/tmp/bar" },
 				fakeHomedir,
 			),
 		).toBe("/tmp/bar");
