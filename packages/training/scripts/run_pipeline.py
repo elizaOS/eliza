@@ -215,6 +215,14 @@ def main() -> int:
              "1e-5 follows the APOLLO paper §5 SFT recipe — train_local.py's "
              "own default of 2e-4 is the LoRA rate and would diverge here.",
     )
+    ap.add_argument(
+        "--use-liger", choices=("auto", "on", "off"), default="auto",
+        help="Liger Triton kernels for SFT (fused CE + RMSNorm/SwiGLU/RoPE). "
+             "auto = on when CUDA + a working Triton runtime are present, off "
+             "otherwise (train_local.py probes Triton and falls back rather "
+             "than crashing if it can't JIT-compile — e.g. missing "
+             "python3.x-dev headers).",
+    )
     ap.add_argument("--max-samples", type=int, default=0,
                     help="Cap training samples (0 = full corpus).")
     ap.add_argument("--train-file", default=None,
@@ -453,7 +461,7 @@ def main() -> int:
             "--lr", str(args.lr),
             "--run-name", run_name,
             "--full-finetune",
-            "--use-liger", "on",
+            "--use-liger", args.use_liger,
             "--train-file", str(train_file),
             "--val-file", str(val_file),
         ]
