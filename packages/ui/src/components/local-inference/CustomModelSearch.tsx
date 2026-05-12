@@ -91,8 +91,8 @@ export function CustomModelSearch({
       return;
     }
 
+    lastRequestRef.current = requestKey;
     const handle = setTimeout(async () => {
-      lastRequestRef.current = requestKey;
       setLoading(true);
       setError(null);
       try {

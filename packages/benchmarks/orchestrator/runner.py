@@ -584,6 +584,30 @@ def _pop_quarantine_records(output_root: Path) -> list[tuple[str, str, str]]:
     return _QUARANTINE_TRACKER.pop(output_root, [])
 
 
+def _annotate_latest_index_comparability(index: dict[str, Any]) -> None:
+    """Add per-benchmark comparability metadata for latest rows."""
+
+    groups: dict[str, dict[str, str | None]] = {}
+    latest = index.get("latest")
+    if not isinstance(latest, dict):
+        index["benchmark_comparability"] = {}
+        return
+    for key, entry in latest.items():
+        if not isinstance(key, str) or "::" not in key or not isinstance(entry, dict):
+            continue
+        benchmark_id, agent = key.split("::", 1)
+        groups.setdefault(benchmark_id, {})[agent] = entry.get("comparison_signature")
+
+    index["benchmark_comparability"] = {
+        benchmark_id: {
+            "comparable": len({sig for sig in signatures.values() if sig}) <= 1,
+            "comparison_signatures": signatures,
+            "agents": sorted(signatures),
+        }
+        for benchmark_id, signatures in sorted(groups.items())
+    }
+
+
 def _write_latest_result_snapshot(
     output_root: Path,
     *,
@@ -722,6 +746,7 @@ def _write_latest_result_snapshot(
             index["latest_by_comparison_signature"][
                 f"{comparison_signature_key}::{key}"
             ] = index["latest"][key]
+    _annotate_latest_index_comparability(index)
     (latest_dir / "index.json").write_text(json.dumps(index, indent=2, sort_keys=True, ensure_ascii=True), encoding="utf-8")
     return snapshot_path
 
@@ -929,6 +954,8 @@ def _rebuild_latest_result_snapshots(
             "updated_at": row.get("ended_at") or row.get("started_at"),
             "result_json_path": row.get("result_json_path"),
         }
+
+    _annotate_latest_index_comparability(index)
 
     # Prune stale files from each managed dir (only files we own).
     for d, expected in expected_by_dir.items():
