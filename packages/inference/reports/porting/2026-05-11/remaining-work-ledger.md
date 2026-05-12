@@ -24,6 +24,18 @@ backend × device that is source-complete but unverified, with the exact runner
 command and remaining blocker — see
 [`needs-hardware-ledger.md`](./needs-hardware-ledger.md).
 
+**Android `*-fused` omnivoice graft — wired 2026-05-12.** The AOSP NDK
+cross-build path in `packages/app-core/scripts/aosp/compile-libllama.mjs`
+now runs the same `prepare.mjs` + `cmake-graft.mjs` + `verify-symbols.mjs`
+flow that the dflash desktop fused targets use, behind a new explicit
+`--target android-{arm64,x86_64}-{cpu,vulkan}-fused` flag (plus a
+`--dry-run` plan-only mode). End-to-end verification on this box was
+`--dry-run` only — no Android NDK is installed, no Android hardware. The
+operator command for an NDK-bearing box is in
+[`../2026-05-12/android-fused-graft-wiring.md`](../2026-05-12/android-fused-graft-wiring.md).
+Closes `.swarm/STATUS.md` FINALIZE-2 item 5 / genuinely-remaining #3 at
+the source layer.
+
 **Verify re-run, 2026-05-12 (post multi-agent wave):** the full integration
 matrix is green again on this box (CPU + Intel ARL/ANV Vulkan + RTX 5080 sm_120
 CUDA, run alongside a concurrent full-corpus SFT job holding ~12 GB VRAM — no
