@@ -1696,6 +1696,23 @@ function reserveStdoutForBridgeProtocol(): () => void {
   const originalConsoleLog = console.log.bind(console);
   const originalConsoleInfo = console.info.bind(console);
   const originalConsoleDebug = console.debug.bind(console);
+  const assignments: Array<() => void> = [];
+
+  const tryAssign = <T extends object, K extends keyof T>(
+    target: T,
+    key: K,
+    value: T[K],
+    restore: () => void,
+  ): void => {
+    try {
+      target[key] = value;
+      assignments.push(restore);
+    } catch {
+      // Embedded iOS Bun can expose selected globals as readonly. Protocol
+      // writes still use `originalStdoutWrite`; this downgrade only means
+      // third-party stdout noise cannot be force-rerouted by assignment.
+    }
+  };
 
   const writeToStderr = (
     chunk: string | Uint8Array,
@@ -1713,26 +1730,41 @@ function reserveStdoutForBridgeProtocol(): () => void {
     return cb ? stderrWrite(chunk, cb) : stderrWrite(chunk);
   };
 
-  process.stdout.write = ((
+  const stdoutWriteToStderr = ((
     chunk: unknown,
     encoding?: unknown,
     cb?: unknown,
-  ) => {
-    return writeToStderr(
+  ) =>
+    writeToStderr(
       chunk as string | Uint8Array,
       encoding as BufferEncoding,
       cb as ((err?: Error) => void) | undefined,
-    );
-  }) as typeof process.stdout.write;
-  console.log = (...args: unknown[]) => console.error(...args);
-  console.info = (...args: unknown[]) => console.error(...args);
-  console.debug = (...args: unknown[]) => console.error(...args);
+    )) as typeof process.stdout.write;
+
+  tryAssign(process.stdout, "write", stdoutWriteToStderr, () => {
+    process.stdout.write = originalStdoutWrite;
+  });
+  tryAssign(console, "log", ((...args: unknown[]) =>
+    console.error(...args)) as typeof console.log, () => {
+    console.log = originalConsoleLog;
+  });
+  tryAssign(console, "info", ((...args: unknown[]) =>
+    console.error(...args)) as typeof console.info, () => {
+    console.info = originalConsoleInfo;
+  });
+  tryAssign(console, "debug", ((...args: unknown[]) =>
+    console.error(...args)) as typeof console.debug, () => {
+    console.debug = originalConsoleDebug;
+  });
 
   return () => {
-    process.stdout.write = originalStdoutWrite;
-    console.log = originalConsoleLog;
-    console.info = originalConsoleInfo;
-    console.debug = originalConsoleDebug;
+    for (let i = assignments.length - 1; i >= 0; i -= 1) {
+      try {
+        assignments[i]?.();
+      } catch {
+        // Best-effort teardown during app shutdown.
+      }
+    }
   };
 }
 
